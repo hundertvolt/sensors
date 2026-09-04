@@ -1234,7 +1234,7 @@ done, see BACKLOG.md.
 `ext/microdot.py` + the real website (Part H) for one device — build-only, like the legacy path
 above; this script itself never flashes or tests real hardware (see the "Production-readiness
 scope" note below for what does). Every device needs its own `boot_entry/<device>_boot.py` (e.g.
-`boot_entry/wozi_boot.py`/`boot_entry/dev_boot.py`, DEV_HARDWARE_BASELINE_PLAN.md decision 2) —
+`boot_entry/wozi_boot.py`/`boot_entry/dev_boot.py`, the now-deleted `DEV_HARDWARE_BASELINE_PLAN.md` decision 2) —
 `build_stage_dir()` raises immediately if the requested device has none, and its `reserved` staging
 names (`microdot.py`, `main.py`, `frozen_html.py`) block a future `src/` file from silently
 colliding with any of them.
@@ -1385,8 +1385,106 @@ board attached) and actually creating the NetworkManager bridge/AP (`bench` — 
 installing/enabling NetworkManager in a shared cloud sandbox, since it could disrupt that
 container's own outbound networking for the rest of the session). `tests_scripts/
 test_setup_toolchain_env.py` covers every other code path (idempotency, credential generation,
-error messages, CLI wiring) against mocked `run()`/`/sys` fixtures instead. Full `flash`/`bench`
-real-hardware verification is the next step, on the real bench Rpi4 (see BACKLOG.md).
+error messages, CLI wiring) against mocked `run()`/`/sys` fixtures instead. **Full `flash`/`bench`
+real-hardware verification is DONE** — both tiers run clean end to end on the real bench Rpi4
+(2026-09-04); see B.13 below for the incident that interrupted the first attempt and the fixes it
+produced.
+
+## B.13 Bench network safety: the 2026-09-04 lockout, its fixes, and the dead-man's-switch pattern
+
+**Incident**: mid-way through the first real, from-blank `env --tier bench` verification run
+(2026-09-04), a one-shot `systemd-run --on-active=N` recovery timer was armed, fired successfully
+on a dry run, and — being one-shot — was consumed. The real destructive command sequence that
+followed (`sudo gpasswd -d nico dialout` + `nmcli connection delete` for
+`br0-wifi-ap`/`br0-eth0`/`br0`) then ran completely unprotected in the same continuous turn,
+dropping the host's own LAN IP synchronously (`eth0`'s LAN IP lives on the bridge once enslaved to
+it, so deleting `br0-eth0`/`br0` drops it with zero grace period) — cutting both the human's SSH
+session and the agent's own API connectivity at once.
+
+**Recovery**: pulling the SD card and mounting it read-write on a second machine.
+`/etc/NetworkManager/system-connections/Wired connection 1.nmconnection` (NetworkManager's own
+auto-generated default `eth0` profile, predating the bridge) had been auto-suppressed
+(`autoconnect=false`, `autoconnect-priority=-999`) once the bridge slave profile (`br0-eth0`)
+claimed the device — normal NM behavior, not incident-caused corruption. The fix was a one-line
+edit (`autoconnect=true`, drop the negative-priority line) — worth knowing as a fallback for any
+future lockout, though arming the switch properly (below) is what avoids needing it.
+
+**Second-order finding, fixed**: a Linux bridge synthesizes its own MAC address (commonly
+inherited from a slave port, and this can shift over the bridge's lifetime) — distinct from the
+real, permanent hardware MAC of the underlying physical interface. The router's static DHCP
+reservation (and its saved friendly hostname) had been keyed to whatever MAC `br0` presented while
+it existed; once recovery brought `eth0` up directly, unbridged, it presented its own true
+hardware MAC for the first time, which the router had never seen before — treating it as a
+brand-new device (a new pool IP, a synthesized `PC-<mac>` hostname, instead of the old reservation
+and its `raspberrypi` friendly name). **Fixed**: `toolchain/setup_toolchain.py`'s
+`ensure_bench_bridge()` now pins `bridge.mac-address` to the uplink interface's real hardware MAC
+(`get_interface_mac()`, reading straight from the kernel via `ip -o link show`) before the bridge
+is ever brought up, on every fresh creation — and warns, without auto-repairing, if an
+already-existing bridge's MAC doesn't match (auto-repairing a live bridge's MAC was deliberately
+ruled out: cycling it risks the exact same class of incident this fix exists to prevent).
+`dev_legacy/README.md`'s manual bridge recipe carries the identical fix. **Verified working for
+real** (2026-09-04, the from-blank bench-bootstrap run below): a freshly recreated bridge got back
+the *exact same* DHCP lease `eth0` already held unbridged — no drift. **Still open, needs the
+router's own admin UI (not automatable from here)**: the router's *existing* reservation is still
+keyed to the old, pre-incident synthesized MAC, not the real one — re-keying it (and renaming the
+entry back to `raspberrypi` if the router doesn't infer it automatically) is the project owner's
+own follow-up.
+
+**Standing rule this incident produced** (CLAUDE.md's own hard-rule summary points here): any
+destructive test of the bench host's own network/access config — tearing down `br0`/its slaves,
+revoking `dialout`, anything that can cut the very connection a session is using to reach the host
+— must keep a recovery dead-man's-switch continuously armed for the entire risk window, never
+touching live network state with none armed. The failure mode above was specifically a **stale
+timer surviving across a dry-run/real-run gap** spanning separate commands — not the absence of a
+per-command re-arm inside one continuous script. One arm covering a whole atomic sequence
+generously is equivalent protection to re-arming before each individual command *within* that same
+sequence; a real, single-shot function call like `ensure_bench_bridge()` takes seconds, not
+minutes, so size the window off a real measured timing pass, not a guess (see below).
+
+**The recovery script, and the arm/verify/disarm pattern** — validated end-to-end on a real,
+successful bridge-creation run (2026-09-04): the switch fired once for real that same day (a timer
+expired before its own operator promptly disarmed it, correctly tearing a live bridge back down to
+the known-good state, no harm done), and a second, properly-timed run confirmed the pattern below
+works. Recreate this exact recovery script fresh in a session's own scratchpad each time — it's
+short, self-contained, and deliberately not a committed repo file (a project owner decision,
+2026-09-04); the pattern, not the file, is what's durable:
+
+```bash
+#!/bin/bash
+# Recovery action: tears down whatever partial bridge state exists and restores the plain,
+# known-good default wired profile. Idempotent - safe to fire even if the bridge was never
+# created, or teardown already happened by other means (every nmcli call below tolerates
+# "already gone"/"not active" failures without needing set -e or per-call error handling).
+set -x
+nmcli connection down br0-wifi-ap
+nmcli connection down br0-eth0
+nmcli connection down br0
+nmcli connection delete br0-wifi-ap
+nmcli connection delete br0-eth0
+nmcli connection delete br0
+nmcli connection modify "Wired connection 1" autoconnect yes connection.autoconnect-priority 0
+nmcli connection up "Wired connection 1"
+```
+
+Arm/verify/disarm sequence, in order:
+
+1. Confirm current state first (`ip -o addr show br0`, `nmcli -t -f NAME connection show`) — never
+   assume.
+2. Arm immediately before the risky action, generously timed for the *actual* operation about to
+   run, not the whole session: `sudo systemd-run --unit=bench-recovery --on-active=<N> /bin/bash
+   <path-to-script-above>`. Confirm it's armed (`systemctl list-timers --all | grep
+   bench-recovery`) before proceeding.
+3. Run the real operation.
+4. **Poll for the real outcome immediately — do not go diagnose something else in between.** A
+   bridge finishing `nmcli connection up` does not mean it's actually forwarding traffic yet: a
+   real, measured run showed `nmcli` reporting success in ~1s, but the bridge not actually
+   obtaining a DHCP lease and becoming the default route until ~30s later (STP carrier/forwarding
+   delay, confirmed via `journalctl -u NetworkManager`) — the exact gap that let the timer fire on
+   a genuinely-working bridge on the first attempt that day, because the operator spent that window
+   diagnosing instead of checking. Use a short bounded poll (e.g. 3s interval, `ip -o addr show br0
+   | grep -q "inet "`) rather than a fixed sleep or an open-ended investigation.
+5. The instant success is confirmed, disarm: `sudo systemctl stop bench-recovery.timer
+   bench-recovery.service`. Confirm it's gone.
 
 ---
 

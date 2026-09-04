@@ -164,83 +164,15 @@ information):
 - **A destructive test of the bench host's own network/access config (tearing down `br0`/its
   slaves, revoking `dialout`, anything that can cut the very connection a session is using to reach
   the host) must keep a recovery dead-man's-switch continuously armed for the entire risk window —
-  never touch live network state with none armed.** A one-shot `systemd-run --on-active=N` timer
-  consumed by an earlier dry run provides zero protection for the real run that follows it;
-  confirmed the hard way (2026-09-04, see `dev_legacy/README.md`'s "Current bench state" for the
-  full incident account) — the bench Pi4's own SSH access was lost exactly this way (`eth0`'s LAN IP
-  lives on the bridge once enslaved to it, so deleting `br0-eth0`/`br0` drops it synchronously, no
-  grace period). Recovered without console/HDMI access by editing the SD card's
-  `/etc/NetworkManager/system-connections/Wired connection 1.nmconnection` from a second machine —
-  NetworkManager auto-suppresses its own default per-interface profile (`autoconnect=false`, a
-  deeply negative `autoconnect-priority`) once a more specific profile claims that device, so
-  restoring it after a lockout is normally a one-line edit, not a new profile — worth knowing as a
-  fallback, but arming the switch properly is what avoids needing it.
-
-  **Validated end-to-end on a real, successful bridge-creation run (2026-09-04)** — the switch
-  actually fired once for real that same day (a timer expired before its own operator promptly
-  disarmed it, correctly tearing a live bridge back down to the known-good state, no harm done) and
-  a second, properly-timed run confirmed the pattern below works. Recreate this exact recovery
-  script fresh in a session's own scratchpad each time — it's short, self-contained, and
-  deliberately not a committed repo file (a project owner decision, 2026-09-04); the pattern, not
-  the file, is what's durable:
-
-  ```bash
-  #!/bin/bash
-  # Recovery action: tears down whatever partial bridge state exists and restores the plain,
-  # known-good default wired profile. Idempotent - safe to fire even if the bridge was never
-  # created, or teardown already happened by other means (every nmcli call below tolerates
-  # "already gone"/"not active" failures without needing set -e or per-call error handling).
-  set -x
-  nmcli connection down br0-wifi-ap
-  nmcli connection down br0-eth0
-  nmcli connection down br0
-  nmcli connection delete br0-wifi-ap
-  nmcli connection delete br0-eth0
-  nmcli connection delete br0
-  nmcli connection modify "Wired connection 1" autoconnect yes connection.autoconnect-priority 0
-  nmcli connection up "Wired connection 1"
-  ```
-
-  Arm/verify/disarm sequence, in order:
-
-  1. Confirm current state first (`ip -o addr show br0`, `nmcli -t -f NAME connection show`) —
-     never assume.
-  2. Arm immediately before the risky action, generously timed for the *actual* operation about to
-     run, not the whole session:
-     `sudo systemd-run --unit=bench-recovery --on-active=<N> /bin/bash <path-to-script-above>`.
-     Confirm it's armed (`systemctl list-timers --all | grep bench-recovery`) before proceeding.
-  3. Run the real operation.
-  4. **Poll for the real outcome immediately — do not go diagnose something else in between.** A
-     bridge finishing `nmcli connection up` does not mean it's actually forwarding traffic yet: a
-     real, measured run showed `nmcli` reporting success in ~1s, but the bridge not actually
-     obtaining a DHCP lease and becoming the default route until ~30s later (STP carrier/forwarding
-     delay, confirmed via `journalctl -u NetworkManager`) — the exact gap that let the timer fire on
-     a genuinely-working bridge on the first attempt that day, because the operator spent that
-     window diagnosing instead of checking. Use a short bounded poll (e.g. 3s interval,
-     `ip -o addr show br0 | grep -q "inet "`) rather than a fixed sleep or an open-ended
-     investigation.
-  5. The instant success is confirmed, disarm: `sudo systemctl stop bench-recovery.timer
-     bench-recovery.service`. Confirm it's gone.
-
-  Sizing the timer window: one arm covering the whole atomic sequence generously is equivalent
-  protection to re-arming before each individual `nmcli` call *within* that same sequence — the
-  incident this rule exists to prevent was a **stale timer surviving across a dry-run/real-run gap**
-  spanning separate commands, not the absence of a per-command re-arm inside one continuous script.
-  A real, single-shot function call like `ensure_bench_bridge()` takes seconds, not minutes; size
-  the window off a real measured timing pass (as above), not a guess.
+  never touch live network state with none armed.** Confirmed the hard way (2026-09-04): a one-shot
+  timer consumed by an earlier dry run gave zero protection to the real run that followed, costing
+  the bench Pi4's own SSH access. Full incident account, the recovery script, and the validated
+  arm/verify/disarm pattern: SPECIFICATION.md Part B.13.
 - **The bench Pi4's `br0` bridge must always present `eth0`'s own real hardware MAC, never a
   NetworkManager-synthesized one — pin it via `bridge.mac-address`, always, on every bridge
-  creation.** A synthesized bridge MAC can drift across the bridge's own lifetime; the router's
-  static DHCP reservation is keyed to whatever MAC it saw when the reservation was made, so a drift
-  silently orphans it — the host then gets bumped to a new pool IP and a synthesized `PC-<mac>`
-  hostname instead of its real, reserved one. Confirmed the hard way as a downstream symptom of the
-  2026-09-04 lockout above: recovering onto a plain, unbridged `eth0` exposed its real MAC for the
-  first time, which the router had never seen before. Fixed in both
-  `toolchain/setup_toolchain.py`'s `ensure_bench_bridge()` (pins on creation, warns without
-  auto-repairing on a mismatch against an already-existing bridge — cycling a live bridge's MAC
-  risks the exact same SSH-drop this fix exists to prevent) and `dev_legacy/README.md`'s manual
-  recipe — see `dev_legacy/README.md`'s "Current bench state" for the still-open router-side
-  re-keying this can't fix from the Pi's own side.
+  creation.** A synthesized bridge MAC can drift across the bridge's own lifetime, silently
+  orphaning the router's static DHCP reservation. Full incident account and the fix (both in
+  `ensure_bench_bridge()` and `dev_legacy/README.md`'s manual recipe): SPECIFICATION.md Part B.13.
 
 ## Working agreements
 

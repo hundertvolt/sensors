@@ -572,16 +572,11 @@ nmcli connection up br0-eth0; nmcli connection up br0-wifi-ap
 ```
 
 **Pin `bridge.mac-address` to `eth0`'s own real hardware MAC before ever bringing the bridge up —
-load-bearing, not optional** (REAL FINDING, 2026-09-04 bench Pi4 lockout incident, see CLAUDE.md's
-"Hard rules"): left unset, NetworkManager synthesizes the bridge's own MAC (commonly inherited from
-a slave port, and this can shift across the bridge's lifetime) instead of exposing `eth0`'s real,
-permanent one. The router's static DHCP reservation is keyed to whatever MAC it saw when the
-reservation was made — once the bridge presents a different one, the reservation silently orphans:
-the host gets bumped to a new pool address and a synthesized `PC-<mac>` hostname instead of its real
-one. Pinning to the real hardware MAC means a reservation keyed to it survives any future
-teardown/recreate of this exact bridge. `toolchain/setup_toolchain.py`'s `ensure_bench_bridge()`
-does this automatically on creation, and warns (without auto-repairing — cycling a live bridge's MAC
-risks the same SSH-drop this fix exists to prevent) if an existing bridge's MAC doesn't match.
+load-bearing, not optional.** Left unset, NetworkManager synthesizes the bridge's own MAC instead of
+exposing `eth0`'s real, permanent one, which silently orphans the router's static DHCP reservation
+(keyed to whatever MAC it saw when made) on the next drift. `toolchain/setup_toolchain.py`'s
+`ensure_bench_bridge()` does this automatically on creation. Full incident/reasoning: SPECIFICATION.md
+Part B.13.
 
 **`wifi-sec.pmf disable` (not `optional`/`required`) is load-bearing** — the Pico W's `cyw43439`
 WiFi chip's WPA2 handshake silently fails against a PMF-enabled/mixed config (observed: `iw event`
@@ -657,65 +652,17 @@ believed-true; the flash-filesystem/firmware facts from that date are superseded
 - **SGP40's VOC algorithm holds real backup state again** (no longer freshly reset/in blackout) —
   the full-system bring-up's own periodic backup cycle fired repeatedly and wrote real algorithm
   state to its FRAM chunk.
-- **The bench *host* (the Rpi4 itself, not the RP2040 DUT) lost SSH access on 2026-09-04 during a
-  from-blank `env --tier bench` test (BACKLOG.md's top priority) and was recovered by pulling the
-  SD card into a second machine** — see BACKLOG.md's `env --tier bench` item for the full account
-  (root cause: a one-shot `systemd-run` recovery dead-man's-switch, verified on a dry run, was never
-  re-armed before the real `nmcli connection delete br0-eth0`/`br0` that followed — dropping the
-  host's own LAN IP synchronously, since it lives on the bridge once `eth0` is enslaved to it).
-  Recovery: NetworkManager had auto-suppressed its own default wired profile
-  (`autoconnect=false` + a deeply negative `autoconnect-priority`) once the bridge slave profile
-  claimed `eth0`; re-enabling it (`autoconnect=true`, drop the priority override) restored plain
-  DHCP-over-`eth0` with no bridge.
-  - **Two downstream symptoms, both from one cause**: the host now shows up under a *different*
-    DHCP-leased IP and a synthesized `PC-D8-3A-DD-28-EA-5A` hostname in the router, instead of the
-    old static reservation/friendly name. Cause: a Linux bridge synthesizes its own MAC (often
-    inherited from a slave port, and it can shift across the bridge's lifetime) rather than exposing
-    `eth0`'s real one — the router's reservation was keyed to whatever MAC `br0` presented while it
-    existed, so once `eth0` connects unbridged (its own true MAC), the router treats it as a new
-    device. **Fixed going forward** (2026-09-04): the bridge recipe above and
-    `ensure_bench_bridge()` now pin `bridge.mac-address` to `eth0`'s real hardware MAC
-    (`d8:3a:dd:28:ea:5a`, confirmed via `ip link show eth0` — matches the router's own synthesized
-    `PC-D8-3A-DD-28-EA-5A` name, confirming this MAC is what the router now sees) on every future
-    bridge creation, so a reservation keyed to this MAC survives any future teardown/recreate.
-    **Still open, needs router admin UI access (not automatable from here)**: re-key the router's
-    existing static reservation to `d8:3a:dd:28:ea:5a` and, if the router doesn't infer it
-    automatically, rename the entry back to `raspberrypi`. On-device hostname itself
-    (`/etc/hostname`, `/etc/hosts`) was confirmed still correctly `raspberrypi` throughout — this was
-    never an on-device regression, only the router's stale MAC-keyed bookkeeping.
-  - `nico`'s `dialout` membership, also revoked during the same test, has been restored
-    (`sudo gpasswd -a nico dialout`, confirmed 2026-09-04).
-  - **`env --tier bench`'s real from-blank bridge creation is now verified working, for real, on
-    this bench Pi4 (2026-09-04)** — the last open gap in BACKLOG.md's `env --tier bench` item is
-    closed. `env --tier flash` was run first, full and unmodified end to end (real toolchain
-    rebuild, real `/dev/ttyACM0` USB auto-detection) — no network changes, so no dead-man's-switch
-    needed for that part. `ensure_bench_bridge()`'s own creation path was then exercised directly
-    (calling it in-process rather than re-running `run_env()`'s multi-minute, already-verified
-    `run_setup()` prefix a third time) under a freshly-armed `systemd-run` recovery timer, sized
-    from a first, deliberately-observed real timing run: `nmcli connection up br0-eth0`/
-    `br0-wifi-ap` both report success in ~1s, but the bridge doesn't actually get a DHCP lease and
-    become the default route until ~30s later (STP carrier/forwarding delay), confirmed directly
-    via `journalctl -u NetworkManager`. First attempt's own recovery timer (120s) fired and tore
-    the freshly-created bridge back down before it could be confirmed+disarmed — the agent spent
-    that time on unplanned diagnosis instead of promptly checking and disarming, not a bug in the
-    bridge logic itself (`journalctl -u bench-recovery.service` timestamps confirm the bridge had
-    in fact come up cleanly, ~90s before the timer fired) - itself a real proof that the dead-man's-
-    switch mechanism works exactly as designed. **Redone properly**: armed again (150s), then a
-    short bounded poll (3s interval) for `br0` to actually carry an IP, then immediate
-    verify-and-disarm the moment it did (~30s in, leaving ample unused margin) — this is the
-    validated pattern for any future single-atomic-sequence network test: one arm covering the
-    whole sequence generously (not a per-command re-arm, since there is no dry-run/real-run gap
-    within one continuous script call), then check-and-disarm *immediately* on completion, with no
-    detour in between. **Confirms the MAC-pinning fix works as intended**: `br0`'s live MAC came up
-    as `d8:3a:dd:28:ea:5a` (`eth0`'s real hardware MAC, pinned by `ensure_bench_bridge()` before the
-    bridge was ever brought up) and the DHCP lease it got back was the *same* IP
-    (`192.168.85.75`) `eth0` already held unbridged - no drift, exactly the property this fix
-    exists to guarantee for any future teardown/recreate. The router's *existing* reservation is
-    still keyed to the old, pre-incident synthesized MAC, not this real one - that manual
-    re-keying (see above) remains open and is unaffected by this verification.
-  - `br0`/`br0-eth0`/`br0-wifi-ap` are **live again** as of the verification above (a fresh
-    randomly-generated SSID/password per session, not committed anywhere - see
-    `generate_bench_ap_credentials()`) - no longer in the deliberately-blank state.
+- **The bench host's own network setup (`br0`/`br0-eth0`/`br0-wifi-ap`, `dialout`) is live and
+  healthy as of 2026-09-04** — `dialout` membership confirmed restored; the bridge/AP is up with a
+  fresh, randomly-generated per-session SSID/password (never committed anywhere — see
+  `generate_bench_ap_credentials()`); on-device hostname (`/etc/hostname`/`/etc/hosts`) is correctly
+  `raspberrypi`. **Still open, needs the router's own admin UI (not automatable from here, the
+  project owner's own follow-up)**: the router's *existing* static DHCP reservation is still keyed
+  to a stale, pre-2026-09-04 MAC, not `eth0`'s real one (`d8:3a:dd:28:ea:5a`) — until re-keyed, the
+  host shows up under a pool IP and a synthesized `PC-D8-3A-DD-28-EA-5A` hostname instead of the old
+  reservation/friendly name. A 2026-09-04 SSH-lockout incident and its fixes (this bridge's own
+  MAC-pinning, and the dead-man's-switch safety pattern for any future destructive network test on
+  this host) are recorded in full in SPECIFICATION.md Part B.13 — not repeated here.
 
 ## Legacy on-device filesystem snapshot (2026-08-27, historical)
 

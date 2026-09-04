@@ -134,7 +134,7 @@ a live question:
 - ~~Captive-portal hotspot-mode redirect fallback (SPECIFICATION.md Part A.5) - real-hardware
   verification status: NEVER ACTUALLY RUN under a valid configuration.~~ — **resolved: confirmed
   working on real hardware (2026-09-03), on the real `src/sensortask_dev.py` build via
-  `scripts/build_firmware.py dev`** (DEV_HARDWARE_BASELINE_PLAN.md §4b steps 10-12). A real
+  `scripts/build_firmware.py dev`** (the now-deleted `DEV_HARDWARE_BASELINE_PLAN.md` §4b steps 10-12). A real
   `GET /generate_204` over the real hotspot link returned a genuine `302`/`Location: /`, `GET /`
   served the real site (`200`), and all three sensors (BMP3xx/SCD30/SGP40) read plausible real
   values — a 6.5-minute stability window afterward showed zero real errors on any module, watchdog

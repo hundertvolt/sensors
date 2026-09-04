@@ -286,7 +286,7 @@ constraints.
   one real, hand-written second variant now exists).** SPECIFICATION.md Part A.3 already names the
   automated generator as a real planned direction (one setup-definition file → every variant's
   `sensortask-*.py`/website pair), shaped for by A.8's registration-API/A.9's `HTML_SRC_DIRS`
-  mechanisms. `src/sensortask_dev.py` (DEV_HARDWARE_BASELINE_PLAN.md, 2026-09-03) is the first
+  mechanisms. `src/sensortask_dev.py` (the now-deleted `DEV_HARDWARE_BASELINE_PLAN.md`, 2026-09-03) is the first
   concrete step toward it — a real, hand-written, `src/`-quality dev-bench variant carrying the
   same three sensors as wozi (SCD30 + BMP3xx + SGP40), built and flashed for real via
   `scripts/build_firmware.py dev`/`boot_entry/dev_boot.py`, confirmed clean on real hardware
