@@ -697,6 +697,43 @@ constraints.
   would only make these troughs deeper/more frequent. Not acted on here (that's the project owner's
   own call, same as the rest of open question 7) - recorded as real, first-hand data for that
   decision, not a recommendation.
+  **Threshold tuning: real evidence gathered, decision explicitly NOT made yet (2026-09-04, same
+  investigation, project owner's own call - do not treat as settled).** A proactive
+  `gc.threshold(N)` (MicroPython's default on this hardware is `-1`, proactive collection disabled -
+  confirmed directly, so the allocator only ever collected reactively, after an allocation had
+  already failed) is the candidate fix, with no vendored-code change needed - `16384` was validated
+  directly on real hardware to eliminate the reproduction entirely (the same concurrent-load run that
+  produced dozens of real `MemoryError`s in 6.5 minutes, first at 45s, produced zero, free-memory
+  floor rising from ~2.8KB to ~123.7KB). **Real root-cause corroboration found while re-checking this
+  work**: `/status` (`asy_webserver_service.py`'s `_get_status()`, the only route that aggregates
+  every module's settings/status/error-log into one `json.dumps()` call) measured at 5711 bytes on
+  real hardware - matching the top of the documented "4KB-5.7KB" `MemoryError` traceback size range
+  almost exactly, versus every other route under 350 bytes. Strong circumstantial confirmation `/status`
+  specifically is the failure site, and that shrinking/streaming that one response (untried) is a real,
+  separate mitigation worth considering alongside any threshold choice.
+  **A same-day direct A/B against `65536` was also run** (both realistic 1-3req/s and aggressive-hammer
+  load): both values produced zero `MemoryError`s/reboots, but `65536` showed a lower free-memory floor
+  under hammer load (~61.3KB vs. `16384`'s ~123.7KB) - mechanically expected, since a bigger threshold
+  waits for more new garbage before collecting again (fewer, later, deeper collections), not more
+  headroom. **However, the apparent "~once/sec" collection frequency and any conclusion about CPU-time
+  cost from this A/B are NOT reliable** - project owner caught this directly: the only instrumentation
+  used was a `gc.mem_free()` trace piggybacked on `system_service.py`'s existing 1Hz `status_counter()`
+  tick, which cannot distinguish "collections really run once/sec" from "they run more often, this just
+  only sampled once/sec." **No threshold value is decided. Nothing has been committed.** Real
+  MicroPython GC internals were confirmed directly against the pinned `micropython/py/gc.c` source: an
+  automatic collect-and-retry-once already happens before a real `MemoryError` is ever raised, but the
+  allocator needs one *contiguous* free run of blocks and the collector is non-compacting, so a heap can
+  have plenty of total free bytes yet still fail one large single allocation if it's fragmented into
+  scattered smaller gaps - this is why this specific allocation site was disproportionately vulnerable
+  versus the many small allocations elsewhere in the system.
+  **Agreed plan for the next session**: (1) build real sub-second-resolution instrumentation (a
+  dedicated polling task, not piggybacked on the 1Hz uptime tick - MicroPython's GC has no
+  refcounting, so any `gc.mem_free()` increase between two closely-spaced samples is unambiguous proof
+  a real collection just fired) and re-measure the threshold candidates under both realistic and
+  hammer load with real frequency/CPU-time numbers, deciding the final value together rather than
+  unilaterally; (2) once a value is picked and committed, run the real-hardware bench suite; (3) if
+  that passes, run the full test suite three times. Not to be started without the project owner's
+  go-ahead in that session.
   **Not fixed, deliberately**: the actual allocation site is inside vendored `ext/microdot.py`
   (pinned `v2.6.2`, hands-off per CLAUDE.md's own rule) - not something to patch directly. No `src/`
   change was made; the temporary trace instrumentation was fully reverted (`git diff` clean) and the
