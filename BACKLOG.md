@@ -129,7 +129,7 @@ constraints.
    section for the full three-quirk account. That workaround closes the "can't even run this code
    path in CI" half of the gap; it does not replace real-hardware verification of the actual
    rp2/lwIP transport, which is what this entry is still tracking.
-6. **Should `asy_wifi_service.py` gain an independent WiFi reachability check?** Confirmed on real
+6. Should `asy_wifi_service.py` gain an independent WiFi reachability check? Confirmed on real
    hardware (`tests_hardware/README.md`'s "Known assumptions and open findings"): the CYW43
    firmware/lwIP stack can silently mask a real link disruption from `wlan.isconnected()`/
    `wlan.status()` entirely — a real `arping` probe got zero responses from the DUT while
@@ -138,11 +138,25 @@ constraints.
    (`micropython/micropython#9455`/`#9505`/`#18797`, open since v1.19.1/2022), not project-specific.
    `_wlan_isconnected_or_false()` is a bare pass-through to `wlan.isconnected()` with no independent
    check, so `_on_sta_disconnected()`'s retry logic structurally cannot fire if the firmware never
-   reports the disconnect. **Not decided**: whether to add one (e.g. a periodic ping/HTTP
-   self-check) beyond trusting `isconnected()` alone. Mitigated at the test-harness level only for
-   now (`bench/test_network_resilience.py`'s outage/flap tests recover via a real `hard_reset()` if
-   the graceful wait times out, but still re-raise so the real limitation stays visible as a test
-   failure).
+   reports the disconnect. **Decided (2026-09-04): investigated, no `src/` change.** Traced every
+   real consumer of connection state across all of `src/` (not just `asy_wifi_service.py` itself) —
+   only two exist beyond its own retry loop: `AsyNtpClient`'s `network_available` callback (a false
+   "connected" signal just lets a doomed sync attempt through, which fails cleanly via NTP's own
+   already-robust independent timeout/backoff/give-up machinery — no crash, just a slightly
+   over-counted failure streak) and `WifiUptime` (keeps climbing during a dead-but-reported-alive
+   stretch — a real but purely cosmetic `/status` inaccuracy, consumed by nothing that acts on it).
+   No hang, crash, or data corruption anywhere; the hardware watchdog is fed by task-supervisor
+   health, not network reachability, so this can't cause a WDT-loop either. The one real, concrete
+   consequence is slower field recovery (the device can stay silently unreachable longer than the
+   normal retry cadence would otherwise achieve, until the CYW43's own internal state changes or a
+   physical power-cycle happens) — not a correctness bug, and the "physical intervention as accepted
+   backstop" pattern already used elsewhere in this codebase covers it. Given that, the project owner
+   judged the complexity of a new probe mechanism not worth it for this level of benefit. Mitigated
+   at the test-harness level only, staying as-is (`bench/test_network_resilience.py`'s outage/flap
+   tests recover via a real `hard_reset()` if the graceful wait times out, but still re-raise so the
+   real limitation stays visible as a test failure; `test_hotspot_role_reversal.py`'s own
+   `joined_hotspot` fixture teardown has the same fallback for its own role-flip-back reachability
+   wait).
 7. **Should `asy_webserver_service.py`'s `max_connections=4` be raised?** Confirmed on real
    hardware (dev-bench, hotspot mode): a realistic 8-way concurrent client burst against `/`
    (simulating several phones/tabs hitting the DUT at once) got 7/8 real `302` responses (some
