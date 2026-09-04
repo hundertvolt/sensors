@@ -172,6 +172,178 @@ def _sta_reconnected(dut_ip: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Real packet loss/latency/corruption/duplication/reordering (tc netem,
+# bench_control.py's inject_network_degradation()) - a genuinely different fault shape than every
+# other test in this file: block_udp_ports()/redirect_udp_port_to_local() above and ap_down()
+# elsewhere are all binary (a link/port is either fully working or fully blocked/redirected) or a
+# wholesale substitution (a rogue responder's own fabricated reply); this instead perturbs *real*
+# packets on a real link. BACKLOG.md's "network fault injection" item, re-scoped 2026-09-04 once
+# the binary cases above turned out to already be covered - this is what was actually still
+# missing. Parameter ranges below are grounded in researched real-world figures, not arbitrary:
+# "congested WiFi" is typically modeled around ~30ms delay/~20ms jitter with 0.5-5% loss, and a
+# genuinely poor/lossy link around 150-200ms(+/-40ms) delay with ~15% loss (Calomel.org's own
+# published network-emulation reference figures, corroborated by multiple independent tc-netem
+# testing guides - see this session's own research citations, 2026-09-04).
+# ---------------------------------------------------------------------------
+
+
+def test_real_operations_survive_and_recover_under_sustained_packet_loss_and_latency(board: Board, bench: BenchBridge, dut_ip: str) -> None:
+    reset_all_error_logs(dut_ip)
+    bench.inject_network_degradation(loss_pct=30, delay_ms=150, jitter_ms=50)
+    try:
+        # Under real, sustained 30% loss + 150ms(+/-50ms) latency, any *individual* request may
+        # legitimately time out or fail outright - the property under test is that a bounded retry
+        # loop still eventually gets through, not that every single request succeeds. 90s is
+        # generous relative to a handful of client-side retries at these loss/latency figures.
+        wait_until(
+            lambda: _sta_reconnected(dut_ip),
+            timeout_s=90.0,
+            poll_interval_s=3.0,
+            description="DUT still eventually reachable over REST under sustained packet loss/latency",
+        )
+    finally:
+        bench.clear_network_degradation()
+
+    joined = "\n".join(board.tail_log(duration_s=5.0))  # a brief passive window, purely for the crash check below
+    crash_markers = [ln for ln in joined.splitlines() if "Traceback" in ln]
+    assert not crash_markers, "sustained packet loss/latency crashed the system instead of degrading cleanly:\n" + "\n".join(crash_markers)
+
+    # Full recovery once the degradation clears - back to fast, reliable responses, not left in some
+    # lingering half-degraded state (e.g. a retry loop that only backs off and never resets).
+    wait_until(
+        lambda: http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=5.0).status_code == 200,
+        timeout_s=30.0,
+        poll_interval_s=2.0,
+        description="DUT fully recovered (fast, reliable REST) after network degradation cleared",
+    )
+    reset_all_error_logs(dut_ip)  # never leave a deliberately-provoked fault in the live error history
+
+
+def test_real_operations_unaffected_by_light_realistic_wifi_congestion(board: Board, bench: BenchBridge, dut_ip: str) -> None:
+    # The "everyday" end of the researched range (30ms delay, 20ms jitter, 0.5-5% loss) - unlike the
+    # sustained/severe test above, real requests here should just succeed, first try, without
+    # needing any special retry tolerance - this is what "gracefully handles normal WiFi noise"
+    # actually means, not just "doesn't outright fail under a worst case".
+    reset_all_error_logs(dut_ip)
+    bench.inject_network_degradation(loss_pct=2, delay_ms=30, jitter_ms=20)
+    try:
+        for _ in range(5):
+            res = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0)
+            assert res.status_code == 200, f"a plain GET /status failed under light, realistic WiFi congestion (2% loss/30ms delay): {res.status_code} {res.body!r}"
+            time.sleep(1.0)
+    finally:
+        bench.clear_network_degradation()
+    assert_module_error_log_empty(dut_ip, "NTP")
+
+
+def test_real_operations_survive_real_packet_corruption(board: Board, bench: BenchBridge, dut_ip: str) -> None:
+    # A genuinely different fault than the NTP/DNS "rogue responder" tests below: corrupt() flips a
+    # random bit inside an otherwise-real, otherwise-legitimate packet (a real radio-level bit
+    # error) rather than substituting a wholly fabricated payload - real UDP/TCP checksums should
+    # catch this and simply drop/retransmit, but that's exactly the property this test confirms
+    # rather than assumes.
+    reset_all_error_logs(dut_ip)
+    bench.inject_network_degradation(corrupt_pct=5)
+    try:
+        wait_until(
+            lambda: _sta_reconnected(dut_ip),
+            timeout_s=60.0,
+            poll_interval_s=3.0,
+            description="DUT still eventually reachable over REST under real packet corruption",
+        )
+    finally:
+        bench.clear_network_degradation()
+
+    joined = "\n".join(board.tail_log(duration_s=5.0))
+    crash_markers = [ln for ln in joined.splitlines() if "Traceback" in ln]
+    assert not crash_markers, "real packet corruption crashed the system instead of the checksum layer cleanly dropping it:\n" + "\n".join(crash_markers)
+
+    wait_until(
+        lambda: http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=5.0).status_code == 200,
+        timeout_s=30.0,
+        poll_interval_s=2.0,
+        description="DUT fully recovered after packet corruption cleared",
+    )
+    reset_all_error_logs(dut_ip)
+
+
+def test_real_operations_survive_duplicated_and_reordered_packets(board: Board, bench: BenchBridge, dut_ip: str) -> None:
+    # A real duplicated or out-of-order UDP/TCP delivery - genuinely possible on real WiFi (frame
+    # retransmission racing the original, multipath/rate-adaptation reordering), and a different
+    # hazard class than loss/latency/corruption: does a duplicate or late-arriving response ever get
+    # mismatched against a *different*, later pending request/session than the one it actually
+    # answers? `reorder` needs an existing `delay` to be meaningful (man tc-netem: without one,
+    # there's nothing for a reordered packet to overtake) - a light delay is included for exactly
+    # that reason, not as an additional stressor of its own.
+    reset_all_error_logs(dut_ip)
+    bench.inject_network_degradation(delay_ms=20, duplicate_pct=10, reorder_pct=25)
+    try:
+        wait_until(
+            lambda: _sta_reconnected(dut_ip),
+            timeout_s=60.0,
+            poll_interval_s=3.0,
+            description="DUT still reachable over REST under real duplicated/reordered packets",
+        )
+    finally:
+        bench.clear_network_degradation()
+
+    joined = "\n".join(board.tail_log(duration_s=5.0))
+    crash_markers = [ln for ln in joined.splitlines() if "Traceback" in ln]
+    assert not crash_markers, "duplicated/reordered packets crashed the system instead of being handled cleanly:\n" + "\n".join(crash_markers)
+
+    wait_until(
+        lambda: http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=5.0).status_code == 200,
+        timeout_s=30.0,
+        poll_interval_s=2.0,
+        description="DUT fully recovered after duplication/reordering cleared",
+    )
+    reset_all_error_logs(dut_ip)
+
+
+def test_ntp_recovers_via_its_own_retry_timer_after_a_transient_outage_with_no_reboot(board: Board, bench: BenchBridge, dut_ip: str) -> None:
+    # Real-hardware form of tests/test_asy_ntp_client.py::test_integration_recovers_on_retry_after_
+    # one_dropped_request: proves the real retry-timer mechanism itself (not a fresh boot) recovers
+    # from one *transient* outage, as opposed to every other outage/failure test in this tier, which
+    # forces a fresh boot (hard_reset()) against an already-bad server/link. A precise, guaranteed
+    # full block (block_udp_ports(), not a probabilistic netem loss) is the right primitive here -
+    # this test needs the outage to reliably outlast asy_ntp_client.py's own 5s _NTP_CONN_TIMEOUT
+    # (so the attempt genuinely fails) while still clearing well inside its 15s _NTP_RETRY_INTERV
+    # (so the following retry lands on a clean network), a timing window a probabilistic loss
+    # percentage can't guarantee the way a real, total block can.
+    get_before = http_client.fetch(dut_ip, 80, "GET", "/networking", timeout_s=10.0)
+    assert get_before.status_code == 200, f"GET /networking failed: {get_before.status_code} {get_before.body!r}"
+    original_host = get_before.json()["NTP_Host"]
+
+    def _synced() -> bool:
+        status = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).json()
+        return status.get("networking", {}).get("NtpSynced") is True
+
+    # REAL FINDING: dut_ip's own fixture only waits for real HTTP reachability, not specifically
+    # for NTP to have finished syncing - confirmed directly, a real run's own NtpLastSyncAge showed
+    # sync completing only ~12s before this check, after dut_ip had already returned. A precondition
+    # genuinely worth waiting for, not asserting instantly.
+    wait_until(_synced, timeout_s=30.0, poll_interval_s=2.0, description="test precondition: DUT to report NTP-synced before this test's own transient-outage fault starts")
+    reset_all_error_logs(dut_ip)
+
+    bench.block_udp_ports([123])
+    try:
+        # Re-triggers a real resync attempt without a reboot - PUT-ing NTP_Host back to its own
+        # current value still fires post_asy_fct ("fires if ANY field in this call validated" -
+        # already confirmed directly, see test_garbage_ntp_host_via_rest_config_degrades_and_
+        # recovers_cleanly's own comment for the full account).
+        put_res = http_client.fetch(dut_ip, 80, "PUT", "/networking", {"NTP_Host": original_host}, timeout_s=10.0)
+        assert put_res.status_code == 200 and put_res.json()["result"].get("NTP_Host") in ("Valid", "Unchanged"), f"re-triggering PUT /networking NTP_Host={original_host!r} was rejected: {put_res.status_code} {put_res.body!r}"
+        time.sleep(8.0)  # longer than the real 5s fetch timeout, so this attempt genuinely fails, not just races a lucky window
+    finally:
+        bench.unblock_udp_ports([123])
+
+    # Cleared well before the real 15s retry interval elapses - the retry timer's own next attempt
+    # must land on a genuinely clear network and succeed, with no hard_reset() anywhere in this test.
+    wait_until(_synced, timeout_s=20.0, poll_interval_s=1.0, description="NTP resynced via its own retry timer after a transient (not sustained) outage, with no reboot")
+    reset_all_error_logs(dut_ip)  # the one deliberately-provoked failed attempt above did legitimately log something - never leave that in the live error history
+
+
+# ---------------------------------------------------------------------------
 # NTP/DNS servers answering with real garbage, not just being unreachable - BACKLOG.md's open
 # question #5. test_wifi_networking.py's own test_real_ntp_handles_a_genuinely_unreachable_server_
 # without_crashing already covers a *dropped* NTP server (block_udp_ports); these two are its

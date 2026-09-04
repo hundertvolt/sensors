@@ -164,6 +164,63 @@ class BenchBridge:
         # so this is always safe to call even if redirect_udp_port_to_local() was never reached.
         _run_iptables(["-t", "nat", "-D", "PREROUTING", "-p", "udp", "--dport", str(port), "-j", "DNAT", "--to-destination", f"127.0.0.1:{local_port}", "-m", "comment", "--comment", comment], allow_missing=True)
 
+    def inject_network_degradation(
+        self,
+        *,
+        loss_pct: float | None = None,
+        delay_ms: float | None = None,
+        jitter_ms: float = 0.0,
+        corrupt_pct: float | None = None,
+        duplicate_pct: float | None = None,
+        reorder_pct: float | None = None,
+    ) -> None:
+        """Real packet loss/latency/corruption/duplication/reordering (`tc netem`), the genuine
+        remaining gap `block_udp_ports()`/`redirect_udp_port_to_local()` above don't cover: those
+        two are binary (a port is either fully reachable or fully blocked/redirected) or a wholesale
+        substitution (a rogue responder's own fabricated reply) - this instead perturbs *real*
+        packets on a real link, closer to actual real-world WiFi/radio conditions (see this class's
+        own module-level note on the researched, real-world-grounded parameter ranges used by
+        `test_network_resilience.py`'s own callers of this method). `corrupt_pct` flips a random bit
+        inside an otherwise-real packet (a real radio-level bit error, distinct from a rogue
+        responder's wholly fabricated payload); `duplicate_pct`/`reorder_pct` model a real
+        duplicated or out-of-order UDP delivery (`reorder` needs `delay_ms` set to be meaningful per
+        `man tc-netem` - without an existing delay there's nothing for a reordered packet to
+        overtake). Applied to `wifi_iface()` specifically (the AP-side radio only, `wlan0` on this
+        bench host) - confirmed directly, 2026-09-04: a `tc qdisc` on this interface leaves
+        `eth0`/`br0` completely untouched (their own qdiscs, and this host's own outbound/SSH
+        connectivity through them, are unaffected either way), the same narrow "only the DUT-facing
+        radio" scoping every other fault-injection method in this class already uses. Uses `qdisc
+        replace`, not `add` - `wlan0` already has a real default root qdisc (`fq_codel` on this
+        host) before this ever runs, and `add` fails outright against an existing root qdisc. At
+        least one impairment must be given; all may be combined in the one underlying `netem` qdisc
+        (a second, unpaired `inject_*` call would silently *replace* the first's degradation, not
+        stack with it - matching plain `tc` semantics, not layered like the iptables rules above)."""
+        if loss_pct is None and delay_ms is None and corrupt_pct is None and duplicate_pct is None and reorder_pct is None:
+            raise ValueError("inject_network_degradation() needs at least one impairment")
+        netem_args = []
+        if delay_ms is not None:
+            netem_args += ["delay", f"{delay_ms}ms"]
+            if jitter_ms:
+                netem_args.append(f"{jitter_ms}ms")
+        if loss_pct is not None:
+            netem_args += ["loss", f"{loss_pct}%"]
+        if corrupt_pct is not None:
+            netem_args += ["corrupt", f"{corrupt_pct}%"]
+        if duplicate_pct is not None:
+            netem_args += ["duplicate", f"{duplicate_pct}%"]
+        if reorder_pct is not None:
+            netem_args += ["reorder", f"{reorder_pct}%"]
+        iface = self.wifi_iface()
+        _run_tc(["qdisc", "replace", "dev", iface, "root", "netem", *netem_args])
+
+    def clear_network_degradation(self) -> None:
+        # `qdisc del ... root` reverts the interface to its own kernel-assigned default qdisc
+        # (confirmed directly: back to fq_codel on this host, byte-identical to its state before
+        # inject_network_degradation() ever ran) - allow_missing so this is always safe to call even
+        # if inject_network_degradation() was never reached (e.g. an earlier assertion failed first).
+        iface = self.wifi_iface()
+        _run_tc(["qdisc", "del", "dev", iface, "root"], allow_missing=True)
+
     # -- role reversal: the bridge's one radio temporarily becomes the DUT's own hotspot client --
     # See HARDWARE_TEST_PLAN.md §11.2 for why this is a sequential flip, not simultaneous AP+client
     # (the bench Rpi4 has a single WiFi radio, confirmed directly by the project owner).
@@ -261,6 +318,12 @@ def _run_iptables(args: list[str], *, allow_missing: bool = False) -> None:
     proc = subprocess.run(["sudo", "iptables", *args], capture_output=True, text=True, timeout=10.0)
     if proc.returncode != 0 and not allow_missing:
         raise HardwareTestFailure(f"iptables {' '.join(args)} failed: {proc.stderr.strip()}")
+
+
+def _run_tc(args: list[str], *, allow_missing: bool = False) -> None:
+    proc = subprocess.run(["sudo", "tc", *args], capture_output=True, text=True, timeout=10.0)
+    if proc.returncode != 0 and not allow_missing:
+        raise HardwareTestFailure(f"tc {' '.join(args)} failed: {proc.stderr.strip()}")
 
 
 _MAC_RE = re.compile(r"^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$")

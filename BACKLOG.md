@@ -402,23 +402,25 @@ constraints.
   `asy_ntp_client.py`'s sync task waits on that same shared lock — NTP sync can be delayed up to a
   minute during active WLAN instability. A priority-inversion-shaped cost worth having in view, not
   a correctness bug; not acted on.
-- **Network fault injection against the real dev bench unit — flagged as the next thing to build
-  (project owner, 2026-09-04).** `dev_legacy/README.md`'s "WiFi/NTP/DNS integration testing"
-  section documents the bridge (`br0` = `eth0` + a hosted `wlan0` AP) the physical RP2040 bench
-  unit connects through for real WiFi/NTP/DNS testing; the digital twin's own fault injection
-  (`--fault`/`--hang` in `digital_twin/launch.py`/`run_wozi_integration.py`) only ever faults the
-  I2C/SPI/FRAM bus layer, never the network layer.
-  **Re-scoped 2026-09-04 after checking what `bench_control.py` already has**: selective
-  port-level fault injection already exists and is already exercised
-  (`BenchBridge.block_udp_ports()`/`redirect_udp_port_to_local()`, plain `iptables` DROP/DNAT rules
-  — `tests_hardware/bench/test_wifi_networking.py::test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing`
-  and `test_network_resilience.py` already use these for NTP/DNS-port-specific outage/garbage-
-  response scenarios) — the original "DNS-blackhole" framing of this item is therefore already
-  substantially covered. **The genuine remaining gap is `tc netem`-style partial-degradation fault
-  injection (packet loss %, added latency/jitter) on the bridge**, as opposed to the binary
-  block/allow this file already has — this exercises a different code shape entirely: retry/backoff
-  under *slow or intermittent* responses, not just a hard-unreachable server. No script or recipe
-  exists for this yet; the natural home is a new `BenchBridge.inject_packet_loss()`/
-  `inject_latency()` pair (via `tc qdisc add dev <bridge-wifi-iface> root netem loss <pct>%`/
-  `delay <ms>`, paired `tc qdisc del` teardown, same idempotent-cleanup shape as
-  `unblock_udp_ports()`) plus new bench-tier test(s) in `test_network_resilience.py` or a new file.
+- **Network fault injection against the real dev bench unit — DONE (2026-09-04).**
+  `BenchBridge.inject_network_degradation()` (`tc netem` on `wifi_iface()` only - confirmed
+  directly, `eth0`/`br0`/this host's own SSH stay completely untouched) covers loss, latency+jitter,
+  real bit-level corruption, duplication, and reordering - the genuine remaining gap this item
+  originally identified, once `block_udp_ports()`/`redirect_udp_port_to_local()` turned out to
+  already cover the binary block/garbage-response cases. Six new real-hardware tests in
+  `test_network_resilience.py`, all verified passing for real on the bench Pi4: sustained
+  severe loss+latency (30%/150ms±50ms), light realistic everyday WiFi congestion (2%/30ms±20ms,
+  expected to cause *zero* visible impact - a genuinely different assertion shape than every
+  other fault test in this tier), real packet corruption, duplicated/reordered delivery, and a
+  transient (not sustained) outage that recovers via `asy_ntp_client.py`'s own retry timer with
+  no `hard_reset()` anywhere in the test - the real-hardware form of
+  `tests/test_asy_ntp_client.py::test_integration_recovers_on_retry_after_one_dropped_request`.
+  Parameter ranges are grounded in researched real-world figures (congested-WiFi/poor-link
+  reference figures from published `tc netem` testing guides), not arbitrary - see the new tests'
+  own section-header comment for the citations. Deliberately not attempted: reproducing the ~150
+  other mock-tier `asy_wifi_service.py`/`asy_ntp_client.py` tests that inject a raw firmware/API-level
+  exception (e.g. `wlan.connect()` itself raising) - those aren't network-*path* faults `tc`/`iptables`
+  can express at all, they're CYW43-firmware-level faults the digital twin's own `--fault wlan:...`
+  hook already covers software-side; only genuinely wire-level fault shapes (loss, latency,
+  corruption, duplication, reordering, block, garbage) were in scope for a *network* fault-injection
+  pass, and that set is now believed complete.
