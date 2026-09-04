@@ -89,6 +89,7 @@ def test_real_wifi_outage_and_recovery_while_in_normal_sta_mode(board: Board, be
     # consistently-graceful vs. consistently-needs-hard_reset() pattern stays visible over time
     # rather than silently blurred together.
     recovered_via_hard_reset = False
+    recovery_started = time.monotonic()
     try:
         wait_until(
             lambda: _sta_reconnected(dut_ip),
@@ -96,12 +97,14 @@ def test_real_wifi_outage_and_recovery_while_in_normal_sta_mode(board: Board, be
             poll_interval_s=5.0,
             description="DUT to re-establish its real STA connection after the bridge AP comes back up",
         )
+        print(f"RESULT NOTE: recovered gracefully in {time.monotonic() - recovery_started:.1f}s (bench.ap_up() to first reachable /status)")
     except TimeoutError:
         recovered_via_hard_reset = True
+        graceful_wait_s = time.monotonic() - recovery_started
         bench.kick_all_stations()
         board.hard_reset()
         wait_until(lambda: _sta_reconnected(dut_ip), timeout_s=60.0, poll_interval_s=3.0, description="DUT reachable again after a recovery hard_reset() (see this test's own comment)")
-        print("RESULT NOTE: recovered via a fallback hard_reset() - the graceful established-connection retry did not clear this real CYW43-firmware characteristic within 150s")
+        print(f"RESULT NOTE: recovered via a fallback hard_reset() - the graceful established-connection retry did not clear this real CYW43-firmware characteristic within {graceful_wait_s:.1f}s")
 
     assert http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200, "webserver unresponsive after a real WiFi outage and recovery"
     if not recovered_via_hard_reset:
@@ -123,6 +126,7 @@ def test_real_wifi_flaps_repeatedly_without_wedging_the_system(board: Board, ben
     # Same hard_reset()-fallback-is-a-real-pass pattern as test_real_wifi_outage_and_recovery_
     # while_in_normal_sta_mode above, same reason - see that test's own comment.
     recovered_via_hard_reset = False
+    recovery_started = time.monotonic()
     try:
         wait_until(
             lambda: _sta_reconnected(dut_ip),
@@ -130,12 +134,14 @@ def test_real_wifi_flaps_repeatedly_without_wedging_the_system(board: Board, ben
             poll_interval_s=5.0,
             description="DUT to re-establish its real STA connection after repeated AP flapping",
         )
+        print(f"RESULT NOTE: recovered gracefully in {time.monotonic() - recovery_started:.1f}s (last bench.ap_up() to first reachable /status)")
     except TimeoutError:
         recovered_via_hard_reset = True
+        graceful_wait_s = time.monotonic() - recovery_started
         bench.kick_all_stations()
         board.hard_reset()
         wait_until(lambda: _sta_reconnected(dut_ip), timeout_s=60.0, poll_interval_s=3.0, description="DUT reachable again after a recovery hard_reset() (see this test's own comment)")
-        print("RESULT NOTE: recovered via a fallback hard_reset() - the graceful established-connection retry did not clear this real CYW43-firmware characteristic within 150s")
+        print(f"RESULT NOTE: recovered via a fallback hard_reset() - the graceful established-connection retry did not clear this real CYW43-firmware characteristic within {graceful_wait_s:.1f}s")
 
     assert http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200, "webserver unresponsive after repeated real WiFi flapping"
     if not recovered_via_hard_reset:

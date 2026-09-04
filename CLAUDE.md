@@ -131,6 +131,12 @@ information):
   software fix to chase** — settled, don't re-propose an I2C-level timeout mechanism; full
   reasoning (including why `socket.getaddrinfo()` belongs in this same bucket, and which calls
   genuinely *can* be timeout-wrapped) is in SPECIFICATION.md Part F.2.
+- **The same backstop applies to a WiFi link stuck in a CYW43-firmware-level `isconnected()` false
+  positive — a power cycle/`hard_reset()` is a deliberately stable, intended recovery feature, not
+  a fallback to fix away.** Confirmed inherently safe: every real flash write is reachable only
+  through the REST PUT path, so a device whose API is unreachable structurally cannot have a write
+  in flight. Settled, don't propose an independent reachability-probe mechanism; full reasoning and
+  real bench-hardware timing data are in SPECIFICATION.md Part F.2 and BACKLOG.md.
 - **Don't wrap every `asyncio` primitive call in `try`/`except` against a theoretical internal
   `MemoryError` as a blanket policy** — see SPECIFICATION.md Part F.2 for the full rule and its
   narrow exception.

@@ -7,37 +7,6 @@ operating constraints/architecture reference) or README.md (human-facing orienta
 migrated there rather than duplicated here. See README.md for orientation, CLAUDE.md for operating
 constraints.
 
-## HIGH PRIORITY — ready for a local Pi4 (real-hardware) session to run
-
-- **`asy_wifi_service.py`'s own reconnect-trigger logic (`_run_sta_mode()`/
-  `_handle_sta_connection_result()`) has no independent reachability check** - `isconnected()`
-  reporting a false positive here has no backstop the way `network_available()`'s NTP consumer
-  does (that one's own independently-timeout-bounded UDP round trip degrades benignly regardless -
-  proven, `tests/test_ntp_wifi_dns_integration.py`'s `test_full_chain_degrades_cleanly_when_wifi_
-  reports_connected_but_the_ntp_server_never_answers`). Real-hardware finding
-  (`test_network_resilience.py`'s own account): the CYW43 firmware's `associated: yes`/
-  `isconnected()` bookkeeping can stay stuck true well past a 150s wait window after a real outage,
-  with no observed upper bound - the existing tests accept a `hard_reset()` fallback as a real pass
-  rather than proving the graceful path always wins within some bound. Project-owner's own working
-  model (2026-09-04): while `isconnected()` reports true, the CYW43 module is itself attempting
-  silent self-resolution, and this is correct/desired for a normally-stable link with short,
-  self-resolving outages and for a permanently-disabled AP the DUT was never previously established
-  against - matches `_on_sta_disconnected()`'s own code shape exactly for the "never established"
-  path (`_register_sta_connection_failure()` -> hotspot fallback once `isconnected()` does flip
-  false). The one case confirmed **not** to match this model: an **already-established** connection
-  whose AP is gone **permanently** - `_on_sta_disconnected()`'s ESTABLISHED branch retries every 60s
-  forever and never reaches `_register_sta_connection_failure()`/hotspot fallback at all, so even a
-  correctly-flipping `isconnected()` doesn't converge to hotspot mode here, only to an unbounded
-  retry loop - a real, distinct question from the "does isconnected() flip at all" one, not yet put
-  to the project owner directly. No unit/twin/real-hardware test proves or disproves the "usually
-  self-resolves quickly, bounded in practice" empirical claim - only the "if it doesn't self-resolve,
-  a hard_reset() fallback is an accepted real pass" reaction to it. Real-hardware next step: log real
-  wall-clock recovery times across several genuine `ap_down()`/`ap_up()` cycles (the existing
-  `test_real_wifi_outage_and_recovery_while_in_normal_sta_mode`/`test_real_wifi_flaps_repeatedly_
-  without_wedging_the_system` already print `RESULT NOTE` lines distinguishing graceful vs.
-  hard-reset recovery - collect these across enough real runs to say whether "usually resolves
-  within N seconds" is actually true, not assumed) before treating this as settled either way.
-
 ## Refactor targets not yet done
 
 - **`boot_entry/` isn't in `pyproject.toml`'s lint/typecheck `files` scope yet.**
@@ -106,6 +75,17 @@ constraints.
   in `src/` — this test pass proves the existing primitive works under a real fault, it doesn't add
   automatic recovery to production code. That remains an explicit, undecided design question (who
   calls `verify_present()`, on what trigger) for whenever it's actually wanted.
+  **Tier-parity gap found and closed (2026-09-04, cross-tier distribution audit)**: the flash-tier
+  CS-hijack script exercises both a write and a read race, but the twin-tier exception-injection
+  test only ever covered `write` - `readinto`, FRAM's other real fault-injectable op (`_FAULT_DEVICE_OPS`),
+  had no twin-tier sibling. Not a redundant gap either: `_read_address()` (`get_values()`'s/
+  `verify_present()`'s own real read primitive) has no try/except of its own, confirmed the same
+  shape as `_write()`'s already-documented one - genuinely distinct code from the write path,
+  needing its own proof that `AsyFramManager`'s one-layer-up broad `except Exception` is what
+  protects it. Added `test_wozi_fram_recovers_after_an_injected_spi_read_fault` (mirrors the write
+  test: seed real content, inject a `readinto` fault, assert it propagates as a raised `OSError`,
+  `verify_present()` recovers cleanly, then a fresh read returns the real pre-fault seeded bytes,
+  not stale/corrupted ones). 4/4 tests in the file pass; ruff/mypy clean.
 - **No standardized timeout/cancellation mechanism yet for blocking calls that genuinely can be
   timeout-wrapped** (FRAM SPI transactions, `src/asy_udp_socket.py`'s own `select.poll`-driven
   `ready()`/`write_and_recvfrom()` — anything that isn't a raw blocking `machine.I2C` call
@@ -454,3 +434,104 @@ constraints.
   `pyserial` opens against `/dev/ttyACM0` failed with `Permission denied` despite `/etc/group`
   already listing it correctly - worked around with `sg dialout -c "..."` per invocation rather than
   needing a fresh login; a brand-new session/shell wouldn't hit this at all.
+- **`isconnected()` false-positive behavior — real wall-clock recovery data collected, proven
+  graceful via new test coverage, no `src/` change (2026-09-04).** Follow-up to the
+  previously-open "does the graceful path usually resolve quickly?" question (was itself
+  originally opened by a cloud-session bird's-eye review, see this file's own git history).
+  **Real-hardware timing data, 8 real trials total on the bench Pi4** (`test_network_resilience.py`'s
+  own `RESULT NOTE` lines, now printing actual elapsed seconds, not just which path was taken):
+  - `test_real_wifi_outage_and_recovery_while_in_normal_sta_mode` (one real 15s `ap_down()`/
+    `ap_up()` cycle while already `_PHASE_STA_ESTABLISHED`): **5/5 real runs required the
+    `hard_reset()` fallback**, every one landing tightly in the 154.0-160.2s range (i.e. the
+    graceful path essentially always rides out the full 150s wait ceiling before falling back) -
+    this falsifies the "usually self-resolves quickly" half of the working model for *this exact*
+    outage shape. `isconnected()` genuinely never flips false within the window in practice, not
+    just "sometimes."
+  - `test_real_wifi_flaps_repeatedly_without_wedging_the_system` (3x cycles of a real 3s
+    `ap_down()`/3s `ap_up()`): **3/3 real runs recovered gracefully**, tightly clustered at
+    28.7-30.4s - the opposite outcome, and just as consistent.
+  This is a genuine, non-obvious asymmetry - repeated brief flapping self-heals reliably, one
+  longer sustained outage essentially never does within 150s - worth recording precisely as
+  observed rather than theorized away. Plausible mechanism (not confirmed, flagged as such): the
+  bridge/hostapd side's own multiple deauth/reassociate events during the flap sequence may drive
+  the CYW43 firmware's internal state machine through a transition a single clean 15s gap doesn't
+  trigger - but this project's own code has no visibility into the CYW43 firmware's internals to
+  confirm that, and doesn't need to; the `hard_reset()` fallback already covers the "didn't
+  self-resolve" case correctly regardless of *why*.
+
+  **Doc/repo/forum research** (widening BACKLOG's existing `micropython/micropython#9455`/`#9505`/
+  `#18797` citations): `micropython/micropython#9455` (Pico W network inaccessible after ~5-10min
+  idle, `OSError: -2`, no upper bound reported, still open, no maintainer fix/root-cause statement -
+  one comment notes external pings extend accessibility, consistent with "periodic servicing" being
+  a mitigation, not a fix); `#9505` (stale IP/status after a real AP-side disconnect, still open);
+  `micropython/discussions/17207` ("half connected unusable state" - `isconnected()==True`,
+  `status()==STAT_GOT_IP`, `ifconfig` address invalid, requests fail `OSError -2`, no maintainer
+  firmware-level explanation, community workaround is a full `deinit()`+reconnect, not detection);
+  Alan Edwardes' practitioner write-up (no reliable detection method found either; settled on a
+  bounded connect-timeout + treating a chip-level reset as the real recovery mechanism - the same
+  shape this codebase already uses). **No source found across any of this treats independent
+  reachability probing as a solved problem** - every thread converges on "can't fully trust
+  `isconnected()`, no upstream fix exists, a reset is the real backstop," matching this project's
+  own already-decided position. This project's own `wlan.config(pm=0xA11140)` (power-save disabled,
+  already in `asy_wifi_service.py`) is the one documented partial mitigation from that research, and
+  it's already applied.
+
+  **Code re-verified directly (not just recalled) to confirm graceful behavior, per the project
+  owner's own framing: "no crash, graceful degradation with self-healing as soon as detectable" -
+  already the case, confirmed by re-reading every real code path, not assumed**: every
+  WLAN-observing call in `asy_wifi_service.py` is individually try/except-wrapped, degrading to
+  `None`/`False`, never raising; `hw_op_failed` (the one flag that can trigger a task restart) is
+  only ever set by a genuine hardware exception, never by `isconnected()` merely reporting a stale
+  value, so the false-positive quirk itself structurally cannot cause a restart loop; self-healing
+  begins on the very next `wifi_refresh_sec` (5s) cycle once `isconnected()` does flip, with no
+  extra latency layered on top by this project's own code. Both downstream consumers
+  (`asy_ntp_client.py`'s `network_available()`, `sensortask_wozi.py`/`sensortask_dev.py`'s
+  `/status` fields) degrade to already-tested cosmetic/self-clearing effects, never a crash - see
+  "Should `asy_wifi_service.py` gain an independent WiFi reachability check?" above for the full
+  per-consumer trace. `is_hotspot_active()` is unaffected by construction (a plain `_conn_phase`
+  int-compare, never touches `wlan` at all).
+
+  **New unit-test coverage added (mock tier, `tests/test_asy_wifi_service.py`)** to make this
+  graceful-degradation claim a standing, machine-checked guarantee rather than a read-the-code
+  conclusion, per the project owner's own explicit direction that this is of major importance:
+  - `test_run_sta_mode_stays_benign_across_many_cycles_when_isconnected_is_permanently_stuck_true` -
+    drives the real (not monkeypatched) `_run_sta_mode()` across 30 real cycles with `isconnected()`
+    permanently stuck true, proving `_conn_phase` stays `ESTABLISHED`, `connection_failures` stays
+    0, `hw_op_failed` stays `False`, and no reconnect is ever even attempted - the real bug's exact
+    shape.
+  - `test_run_sta_mode_attempts_a_real_reconnect_on_the_very_first_cycle_once_isconnected_finally_flips_false` -
+    completes the picture: after 10 stuck-true cycles, flips `isconnected()` false and proves a real
+    reconnect attempt (`wlan.connect()`) fires on the very first following cycle, not a later one.
+  Both pass; full local suite (`scripts/test.sh`) reruns clean, ruff/mypy clean. **Deliberately not
+  extended to the digital twin tier, re-considered and still correct**: `asy_wifi_service.py`'s own
+  code has no way to distinguish "genuinely still connected" from "`isconnected()` incorrectly still
+  reporting connected" - both execute the bit-for-bit identical code path, so a twin-tier repro of
+  the *wifi module's own* steady state would just re-exercise the ordinary connected-steady-state
+  already covered by `tests/test_digital_twin_sensortask_integration.py`'s own
+  `test_watchdog_is_never_starved_while_every_real_task_runs_concurrently`. The one place a false
+  positive produces genuinely divergent, testable behavior is where a dependent operation that's
+  actually broken gets attempted anyway (NTP's real UDP round trip) - and that's the
+  `network_available()` consumer already covered at mock tier (`test_full_chain_degrades_cleanly_
+  when_wifi_reports_connected_but_the_ntp_server_never_answers`, the real object graph) and bench
+  tier (`test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing`, real hardware),
+  with digital twin already correctly excluded there too - unchanged from that existing decision.
+  Flash tier: still N/A (no network stack element).
+
+  **Standing design decision, restated for clarity per the project owner's own framing (2026-09-04):
+  this is not a critical top-level issue, not even a style break.** Hotspot mode is already
+  time-limited as a deliberate safety measure; a physical power cycle bringing a permanently
+  unreachable device back to hotspot mode (via `hard_reset()`, or in the field a real power cycle)
+  is an accepted, intended, **stable feature** of this project's own fault-recovery design, not a
+  fallback to chase away - the same "hardware watchdog/physical intervention is the accepted
+  backstop" principle CLAUDE.md already applies to a wedged I2C bus, applied here to a wedged WiFi
+  link. **Confirmed inherently safe, not just assumed**: every real flash write in `src/` is
+  reachable only through the REST PUT path (traced every real caller of `write_config()` -
+  `base_classes.py`'s `_set_mgr_cfg()`/`_set_dict_cfg()`, invoked exclusively from
+  `api_response.py`/`asy_webserver_service.py`'s PUT handling, no exceptions found), so a device
+  whose API is genuinely unreachable structurally cannot have a flash write in flight - a power
+  cycle during this state carries zero flash-corruption risk. Full reasoning, folded into the
+  permanent architecture record alongside the existing I2C wedged-bus backstop: SPECIFICATION.md
+  Part F.2; the standing rule itself: CLAUDE.md's "Hard rules". The real timing data above just
+  replaces "usually resolves quickly" with a more precise, evidence-backed picture of when that
+  backstop actually gets used in practice for one specific outage shape - it doesn't change the
+  design decision itself. No `src/` change made or needed.

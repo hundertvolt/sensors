@@ -251,6 +251,55 @@ def test_wozi_fram_recovers_after_an_injected_spi_write_fault() -> None:
     run_timed(scenario(), timeout_s=20.0)
 
 
+def test_wozi_fram_recovers_after_an_injected_spi_read_fault() -> None:
+    # Read-side sibling of test_wozi_fram_recovers_after_an_injected_spi_write_fault above -
+    # previously missing (a tier-coverage gap: the real-hardware CS-hijack script covers both a
+    # write and a read race, but this twin-level exception-injection form only ever covered write).
+    # Not a redundant mirror: _read_address() (FRAM_SPI's own real read primitive, used by
+    # get_values() and by verify_present()'s own RDID probe) has no try/except of its own either -
+    # confirmed directly, same shape as _write()'s already-documented gap - so a genuine SPI-level
+    # read failure is real, distinct code from the write path, and needs its own proof that
+    # AsyFramManager's one-layer-up broad `except Exception` is what actually protects it, not
+    # FRAM_SPI itself.
+    machine.configure_i2c_wiring("wozi")
+    port = _next_test_port()
+
+    async def scenario() -> None:
+        await sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir(), web_host="127.0.0.1", web_port=port)
+        assert sensortask_wozi.fram is not None
+        fram_spi = sensortask_wozi.fram.fram
+        assert fram_spi._spidev.spi._spi is not None
+        chip = fram_spi._spidev.spi._spi.device
+        assert chip is not None
+        assert fram_spi.initialized is True
+
+        # Seed real, known bytes first, through a clean round trip - so a "recovered" read below
+        # can be checked against real prior content, not just "returned without raising".
+        async with fram_spi:
+            ok = await fram_spi.set_values(b"\x05\x06\x07\x08", addr_start=0x200)
+            assert ok, "seed write before the fault-injection scenario failed"
+
+        chip.fault.inject_fault("readinto", OSError(5))
+        buf = bytearray(4)
+        raised: BaseException | None = None
+        async with fram_spi:
+            try:
+                await fram_spi.get_values(buf, addr_start=0x200)
+            except OSError as e:
+                raised = e
+        assert raised is not None, "expected the injected SPI fault to propagate as a raised exception from get_values()"
+
+        # Recovery: same reasoning as the write test above - FaultInjector raises before FramChip.
+        # readinto() ever touches simulated chip state, so the chip itself was never disturbed.
+        assert await fram_spi.verify_present(), "verify_present() failed to recover after one injected SPI read fault"
+
+        async with fram_spi:
+            ok = await fram_spi.get_values(buf, addr_start=0x200)
+            assert ok and bytes(buf) == b"\x05\x06\x07\x08", f"get_values() returned {bytes(buf)!r} on a clean retry after recovery, expected the real pre-fault seeded content b'\\x05\\x06\\x07\\x08'"
+
+    run_timed(scenario(), timeout_s=20.0)
+
+
 if __name__ == "__main__":
     import microtest
 

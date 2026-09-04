@@ -3701,6 +3701,26 @@ what actually reconstructs `machine.I2C` from scratch. Task respawn therefore on
 handle the device-level case; the bus-level case was never its job in the first place, consistent
 with the wedged-bus policy stated above.
 
+**The same backstop principle applies to a WiFi link stuck in a CYW43-firmware-level false
+positive** (`wlan.isconnected()` reporting connected well after the real link is actually gone —
+see BACKLOG.md's `isconnected()` entry for the full account, upstream research citations, and real
+bench-hardware timing data). `asy_wifi_service.py`'s own code has no way to distinguish a genuine
+connection from this firmware-level lie, so it cannot self-diagnose or force a recovery — a
+physical power cycle (in the field) or `hard_reset()` (the bench test harness's own equivalent) is
+the accepted, intended recovery mechanism, not a software fix to chase (no independent reachability
+probe has been added or is planned; every upstream MicroPython report on this quirk converges on
+the same conclusion). **This backstop is inherently safe, confirmed directly against the code, not
+assumed**: every real `ConfigManager.write_config()` call in `src/` is reachable only through the
+REST PUT path (`base_classes.py`'s `_set_mgr_cfg()`/`_set_dict_cfg()`, invoked exclusively from
+`api_response.py`/`asy_webserver_service.py`'s own PUT handling — confirmed by tracing every real
+caller, no exceptions), so a device whose API is genuinely unreachable structurally cannot have a
+flash write in flight; a power cycle during this state carries zero flash-corruption risk. Combined
+with the RP2040's own reboot-safe boot chain (A.7's "FRAM chunk determinism rule" — a full reboot
+replays module-level construction from scratch, the same mechanism the I2C bus-level case above
+relies on), this makes power-cycle recovery a deliberately stable, intended feature of this
+project's own fault-recovery design, not merely a fallback — the same "hardware watchdog is the
+accepted backstop" principle above, applied to a wedged WiFi link instead of a wedged I2C bus.
+
 ## F.3 Long-blocking operations must not stall timing-sensitive work
 
 Any new code that blocks the event loop for a noticeable time must not do so while timing-sensitive

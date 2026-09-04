@@ -1686,6 +1686,60 @@ def test_run_sta_mode_skips_attempt_when_already_connected() -> None:
     assert attempt_calls[0] == 0
 
 
+def test_run_sta_mode_stays_benign_across_many_cycles_when_isconnected_is_permanently_stuck_true() -> None:
+    # Real-hardware finding this proves benign at mock tier (test_network_resilience.py's own
+    # account, 5/5 real trials): the CYW43 firmware can leave isconnected() stuck True for well over
+    # 150s after a real outage - _run_sta_mode() is the exact per-wifi_refresh_sec-cycle method the
+    # real running task calls once already established, and `if not self._wlan_isconnected_or_false():
+    # ...` structurally never fires while stuck true, so _attempt_sta_connect()/_on_sta_disconnected()
+    # are never reached at all. Drives the real (not monkeypatched) method across many repeated
+    # cycles and proves the steady state stays fully benign: no exception, no hw_op_failed (no task
+    # restart), no connection_failures climb (no spurious hotspot escalation), _conn_phase stays
+    # ESTABLISHED - matches CLAUDE.md's "physical intervention as the accepted backstop" pattern
+    # for this class of problem, not a hang or crash.
+    client = make_client(conn_fail_to_hotspot=2)
+    client._conn_phase = _PHASE_STA_ESTABLISHED
+    _wlan(client)._connected = True
+
+    async def scenario() -> None:
+        for _ in range(30):
+            await client._run_sta_mode()
+
+    run(scenario())
+    assert client._conn_phase == _PHASE_STA_ESTABLISHED
+    assert client.connection_failures == 0
+    assert client.hw_op_failed is False
+    assert _wlan(client).connect_calls == []  # never even attempted an explicit reconnect - matches
+    # the real bug's own shape: nothing in this code decides to reconnect while isconnected() lies
+
+
+def test_run_sta_mode_attempts_a_real_reconnect_on_the_very_first_cycle_once_isconnected_finally_flips_false() -> None:
+    # Completes the picture the steady-state test above starts: once the CYW43-firmware-level lie
+    # finally clears (isconnected() actually flips false, whatever real-world timing that takes),
+    # self-healing must begin on the very first following cycle, not some later one -
+    # _wlan_isconnected_or_false() is queried fresh every _run_sta_mode() call, so there's no extra
+    # latency layered on top of the underlying firmware's own timing.
+    # make_client_with_json (a real configured SSID), not make_client (whose default empty SSID
+    # would make _attempt_sta_connect() take the "immediate hotspot mode" shortcut instead of
+    # ever calling wlan.connect() - not what this test needs to observe).
+    client = make_client_with_json(_VALID_JSON, conn_fail_to_hotspot=2)
+    client._conn_phase = _PHASE_STA_ESTABLISHED
+    _wlan(client)._connected = True
+
+    async def scenario() -> None:
+        for _ in range(10):  # stuck true for a while first, same shape as the steady-state test above
+            await client._run_sta_mode()
+        assert _wlan(client).connect_calls == []  # confirms nothing attempted yet
+        _wlan(client)._connected = False  # the real firmware-level flip, finally happening
+        # ~5s real time - _poll_sta_connect_status()'s own bounded 10*0.5s loop, matching
+        # test_integration_sta_connect_succeeds_and_propagates_to_get_data's own documented cost.
+        await client._run_sta_mode()
+
+    run(scenario())
+    assert len(_wlan(client).connect_calls) == 1  # a real reconnect attempt was made on this very
+    # first post-flip cycle
+
+
 def test_get_hotspot_stations_returns_the_real_list_on_success() -> None:
     client = make_client()
     _wlan(client)._stations = [(b"\xaa\xbb\xcc\xdd\xee\xff",)]
