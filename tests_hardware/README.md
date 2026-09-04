@@ -1,6 +1,6 @@
 # tests_hardware/ - real-hardware test tier
 
-Implements HARDWARE_TEST_PLAN.md's flash/bench/manual backends: automated tests driven from the
+Implements SPECIFICATION.md Part E.6's flash/bench/manual backends: automated tests driven from the
 host over `mpremote`/`nmcli`/`iptables` (never the MicroPython Unix port `tests/` uses - see
 SPECIFICATION.md Part E.1), plus a structurally separate manual runner for tests that need a human's
 hands. **Real-hardware execution is standing practice on the bench Pi4** - both the flash and bench
@@ -22,7 +22,7 @@ deactivation risk, `BENCH_AP_PASSWORD` handling in "Environment variables" below
    and `toolchain/setup_toolchain.py`'s own docstring for the full recipe (dialout group, device
    auto-detection, `br0-wifi-ap` bridge creation via `ensure_bench_bridge()`).
 2. The board must already be running the real `dev` firmware
-   (HARDWARE_TEST_PLAN.md §6.1's "one allowed flash" - `uv run scripts/build_firmware.py dev` +
+   (SPECIFICATION.md Part E.6.3's "one allowed flash" - `uv run scripts/build_firmware.py dev` +
    `picotool load -x -v`, or the manual BOOTSEL-button first flash for a genuinely blank board, see
    `tests_hardware/manual/manual_toolchain.py`). **Never `scripts/build_firmware.py wozi` against
    this bench** - `wozi` is never physically flashed, only `dev` is (CLAUDE.md's hard rule); `wozi`'s
@@ -65,7 +65,7 @@ scripts/run_bench_hardware_suite.sh
 scripts/run_bench_hardware_suite.sh --run-long-soak --long-soak-seconds 21600
 
 # Add --allow-flash-cycle to also run the one deliberate re-provisioning-flash test (skipped by
-# default - this genuinely re-flashes the board, see HARDWARE_TEST_PLAN.md §6.1):
+# default - this genuinely re-flashes the board, see SPECIFICATION.md Part E.6.3):
 scripts/run_flash_hardware_suite.sh --allow-flash-cycle
 
 # Manual tests (interactive, prints instructions, waits for confirmation):
@@ -347,7 +347,7 @@ tests closed these (54 -> 65, `bench/test_network_resilience.py` plus two new
   `_PHASE_STA_ESTABLISHED` (which it necessarily already is, since these tests depend on `dut_ip`),
   a disconnect takes the "retrying previously successful connection in one minute" branch, which
   never increments `connection_failures` and never reaches the hotspot-fallback path at all. This is
-  a structurally *different, safer* branch than the one `HARDWARE_TEST_PLAN.md` §11's role-reversal
+  a structurally *different, safer* branch than the one SPECIFICATION.md Part E.6.4's role-reversal
   scenario exercises (a never-yet-connected DUT) - confirmed by reading the real source before
   designing these tests, specifically to rule out accidentally tripping that scenario's own disclosed
   permanent-WLAN-deactivation risk. "WiFi available but no internet access" is treated as equivalent

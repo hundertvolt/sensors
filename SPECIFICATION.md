@@ -3203,8 +3203,7 @@ which sentinel a future caller might end up storing there.
 ## E.6 Shared behaviors and the real-hardware test tier
 
 Two additions to the testing architecture above, both from an ideation-then-implementation session
-on `claude/unit-tests-future-ideation` (see `HARDWARE_TEST_PLAN.md`, repo root, temporary planning
-doc, for the full design discussion this section summarizes):
+on `claude/unit-tests-future-ideation`:
 
 **`tests/_shared_rest_roundtrip.py`** — a small, flat module (matching this directory's own
 existing convention for shared-but-nonpublic test modules, e.g. `_fram_chip_fake.py`,
@@ -3217,9 +3216,9 @@ constructed" check, and a "GET /measurements or /sensors payload isn't self-wrap
 the full account). Both backends call the same shared function with their own applicable
 arguments; every other REST-round-trip pair scanned during that session turned out to be either
 too structurally different or too trivial (a single equality check) to be worth a shared
-abstraction — see `HARDWARE_TEST_PLAN.md` §2.2 for the full scan and reasoning, and don't force
-further sharing onto genuinely backend-specific coverage (mock's byte/frame assertions, twin's
-persistence/IRQ/random-walk behavior) just because this precedent exists.
+abstraction — see E.6.5 below for the full scan and reasoning, and don't force further sharing onto
+genuinely backend-specific coverage (mock's byte/frame assertions, twin's persistence/IRQ/
+random-walk behavior) just because this precedent exists.
 
 **`tests_hardware/`** — a new top-level tier, sibling to `tests/` and `tests_scripts/`, for tests
 that need real RP2040 hardware over `mpremote` (flash tier) and/or a real WiFi bridge (bench tier,
@@ -3251,6 +3250,129 @@ scope (`pyproject.toml`'s `[tool.ruff]`/`[tool.mypy]`) does **not** currently ex
 `tests_hardware/`, matching the same deliberate, not-yet-decided non-scoping `tests_scripts/`
 already has (see CLAUDE.md's "Code quality tooling") — extending either scope to cover
 `tests_hardware/` is a separate future decision.
+
+### E.6.1 The five-backend model
+
+Every testing claim in this codebase is checked from one or more of five backends, each proving
+what only it can — not five independent silos, but a hierarchy:
+
+| | **mock** | **twin** | **flash** | **bench** | **manual** |
+|---|---|---|---|---|---|
+| Executes on | MicroPython Unix-port, `tests/machine.py`/`tests/_fram_chip_fake.py` fakes | MicroPython Unix-port, `digital_twin/` fakes (real asyncio object graph) | real RP2040, USB serial (`mpremote`) | real RP2040, USB + real WiFi bridge/AP (bench host) | rides on **flash** or **bench** — not an independent substrate |
+| Flash cost | none | none | one, ever, at setup | one, ever, at setup (same board as flash) | at most one *extra* — only a genuinely blank board's first-ever flash |
+| Fault injection | synthetic, in-process (`tests/network.py`/`tests/machine.py`'s `raise_on`-style queues) | synthetic but higher-fidelity, same interface shape (`digital_twin/_fault_injection.py`) | none — no bridge to control | real, via the bridge host: AP down/up, `iptables` drops, credential rotation, client kick | N/A — a human closes the loop instead |
+| What only it can prove | raw bus byte/frame correctness, config-schema boundaries, bus-NAK/CRC error paths | realistic stateful/concurrent/timing/persistence behavior of the whole assembled system, without real silicon | real electrical timing, real WDT reset, real Timer/IRQ/scheduler behavior, real flash/littlefs persistence, real BOOTSEL | real lwIP/WiFi transport, real fault-injected network scenarios, real end-to-end timing under genuine network conditions | anything a script structurally cannot do: unplug/replug, genuine power loss, a chemical stimulus, a real second device joining a hotspot, a blank board's first flash |
+
+`bench` ⊇ `flash` (same physical board, same one-time flash — everything `flash` can do, `bench`
+can also do, never the reverse: no bridge on `flash` means no real network, no real fault
+injection). `manual` is an execution *mode*, not a tier — it attaches to whichever hardware `flash`
+or `bench` needs, kept structurally separate (`tests_hardware/manual/`, never collected by plain
+`pytest`) specifically so an unattended automated pass can never silently stall waiting on an
+absent human. `mock`/`twin` stay Unix-port-only, sharing only the same `src/` code under test with
+the real-hardware tiers, plus (E.6.2 below) the same shared-behavior-catalog interface shape where
+a behavior genuinely applies to more than one backend.
+
+### E.6.2 Shared behavior catalog + per-backend capability adapters
+
+`tests/_shared_rest_roundtrip.py` (E.6 above) is the concrete, narrow instance of a general
+pattern: pull only the *backend-agnostic* claims (round-trips, boundary acceptance/rejection, "a
+bus fault degrades cleanly," "a REST field persists end-to-end") into a shared layer of plain
+functions, each taking a small, explicit capability object rather than a raw driver — e.g. a
+`driver_factory()` callable for object-level checks, an `http_client` for REST-level checks, a
+`reboot()` callable for persistence checks, a `raise_on(...)`-shaped fault-injection callable for
+WiFi-fault-shaped checks. Each backend then supplies just that narrow adapter, never a
+reimplementation of the check itself: a mock adapter constructs against `tests/machine.py` fakes
+in-process/synchronously; a twin adapter constructs against `digital_twin/` fakes or drives via
+`digital_twin/_http_client.py`; the flash/bench isolated-driver adapter is one generic
+`mpremote run`-backed mechanism (`harness.Board.run_isolated()`) implemented once; the flash/bench
+live-system adapter is a real HTTP client pointed at the board's reachable address
+(`tests_hardware/http_client.py`), mirroring `digital_twin/_http_client.py`'s own interface closely
+enough that the sensortask REST-round-trip cluster can run the *same* shared test body against
+twin, flash, and bench alike by swapping only which client object is passed in; the bench
+fault-injection adapter (`tests_hardware/bench_control.py`'s `BenchBridge`) is the real equivalent
+of `network.py`'s/`_fault_injection.py`'s synthetic `raise_on`/`script_connect_outcomes` surface,
+backed by real bridge-host actions (AP down/up, a scoped `iptables` UDP-port block/redirect,
+credential rotation, client kick) — `flash` has no adapter for this capability at all, correctly,
+since there's no bridge to control there. What stays deliberately out of the shared layer: mock's
+raw byte/frame assertions, twin's persistence/IRQ/random-walk chip behavior, and every
+real-hardware-only electrical/timing check — genuinely backend-specific coverage that would just
+manufacture redundancy if force-fit into a common shape. This is documentation discipline, not an
+automated consistency check: whenever a genuinely shared behavior is added, the applicable/N/A
+backends are stated in that function's own docstring (see `_shared_rest_roundtrip.py`'s two current
+functions for the pattern) — no `tests/_shared/backend_matrix.py`-style manifest module exists or
+is planned; `tests_hardware/README.md`'s "Known assumptions and open findings" plays the equivalent
+role for flash/bench-specific findings.
+
+### E.6.3 Real-hardware harness: honoring "no extra flash cycles"
+
+The one allowed flash puts the real, unmodified production UF2 on the board — the exact artifact
+`scripts/build_firmware.py` produces for a real deployed unit, never a special test-instrumented
+build, so real-hardware tests exercise the actual shipped firmware. After that one-time
+provisioning, every subsequent interaction takes one of two execution modes:
+
+- **Live-system mode**: the board just runs, auto-booted, normally. Tests interact only through its
+  real external interfaces — HTTP (the live-system adapter above), real WiFi/NTP/DNS (bench only),
+  real serial log tailing (`harness.Board.tail_log()`, passive, sends nothing). No `mpremote run`
+  script injection in this mode at all — this is where almost every bench-tier test and several
+  flash-tier ones live.
+- **Isolated-driver mode**: for object-level checks that want direct control rather than going
+  through the full running system (clock-stretch timing, RDY-pin edge, Timer/scheduler-saturation
+  checks, ...). `mpremote run <script>` interrupts the auto-started system into the raw REPL, runs a
+  short script that imports the real frozen driver modules directly and exercises them, then the
+  harness issues a soft reset to restore the normal auto-booted state before the next test. Soft
+  resets are free and unlimited — the constraint is specifically about *flashing*, not resetting.
+  One load-bearing exception, confirmed the hard way this session: a trailing soft reset only
+  restores the *appearance* of normal operation for a fresh isolated-driver call; it does **not**
+  resume a specific live system state a test was depending on (e.g. `conftest.py`'s `dut_ip`
+  fixture, which needs the *already-running* `main.py`'s own WiFi task still intact) — only a
+  genuine `hard_reset()` (a real `machine.reset()`, confirmed to reliably resume the live,
+  auto-booted system) is safe for that. See `harness.Board.run_isolated()`'s own docstring for the
+  full mechanism this was traced against.
+
+### E.6.4 Hotspot role-reversal (bench, single-radio)
+
+The RP2040's own hotspot/AP mode — its own DHCP, its own captive-portal DNS spoof, full REST
+accessibility while *it* is the access point — is untestable in the digital twin
+(`digital_twin/network.py`'s `WLAN` never models AP-mode DHCP or a real second radio joining it)
+and on mock/twin only ever exercised from the DUT's own perspective, never a genuine external
+client's. `tests_hardware/bench/test_hotspot_role_reversal.py` closes this on real hardware: the
+bench rig's one WiFi radio temporarily stops being the DUT's uplink AP and becomes a *client* of
+the DUT's own hotspot instead, then flips back — a sequential role flip (not simultaneous, since
+this bench host has only one radio), safe specifically because of a real, source-traced timing
+budget: `reconnect_wifi()` only sets a flag, picked up within `wifi_refresh_sec` (5s default);
+`_handle_reconnect_trigger()` itself sleeps 5s; `_switch_wlan_mode()` adds
+disconnect→sleep(2s)→deinit→sleep(1s)→reinit→sleep(1s); one more 3s settle sleep — roughly 15-20s
+total from a credential PUT succeeding to the DUT's first real STA connect attempt, comfortably
+inside a scripted `nmcli connection up` (typically low single-digit seconds). A real, load-bearing
+finding this design depends on: by the scenario's own last stage the DUT has necessarily already
+been in hotspot mode since stage 0, so a failed real-credential PUT there lands in
+`_PHASE_DEACTIVATED` (a terminal state only a physical power-cycle clears, SPECIFICATION.md Part
+A.4's deliberate safety feature) rather than gracefully falling back to hotspot — this is why
+`test_hotspot_role_reversal.py`'s own `joined_hotspot` fixture teardown always has a real
+`hard_reset()` fallback if its own post-flip-back reachability wait times out (see
+`tests_hardware/README.md`'s "Known assumptions and open findings" for the same risk described from
+the test-author's side). The hotspot's own SSID/password are fully deterministic (SSID = the
+current `Hostname` config field, password the fixed hardcoded string) — no scan/discovery needed to
+compute what to join.
+
+### E.6.5 Mock vs. digital-twin: overlap scan
+
+Six subsystem pairs were scanned in full (every `test_*` function read, not just names) for real
+duplicate assertions vs. complementary coverage between the mock and twin backends, informing
+E.6/`tests/_shared_rest_roundtrip.py`'s own scope:
+
+| Pair | Verdict |
+|---|---|
+| BMP3xx | complementary; 1 near-duplicate (same compensation formula, forward vs. inverse direction) |
+| SGP40 | complementary; 1 near-duplicate (same CRC8 worked example, independently reimplemented — a deliberate cross-check, not accidental) |
+| FRAM | complementary (166 mock tests vs. 18 twin tests, two independently-built fake-chip opcode interpreters); a small, low-value pocket of duplicated basic WREN/WRITE/WEL protocol semantics |
+| Neopixel/WiFi | essentially no meaningful duplication — genuinely different SUTs |
+| Webserver | complementary; 2 near-duplicates, both already self-documented in their own code comments as deliberate re-tests at a different backend/timeout scale |
+| Sensortask | complementary overall, but one real, concentrated cluster: 4 near-identical pairs, all "same REST endpoint round-trip, once via a direct call, once over real HTTP against the twin" (module-construction check, SCD30 PUT round-trip, notification PUT round-trip, measurements/sensors GET shape check) — the cluster `_shared_rest_roundtrip.py` actually targets |
+
+Conclusion: consolidation should target the REST-round-trip shape specifically, not force
+uniformity onto pairs that are already correctly complementary — mock's byte-frame assertions and
+twin's persistence/IRQ/random-walk behavior are meant to stay backend-specific.
 
 ---
 

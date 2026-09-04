@@ -114,7 +114,7 @@ constraints.
    MicroPython Unix port's socket implementation, not real rp2/lwIP. **Decided: deferred by the
    project owner** as real future work, not chased directly — but no longer blocked on tooling: a
    real Pico W is reachable over USB serial (README.md's "Real hardware access (mpremote)"), and
-   `tests_hardware/` (flash/bench automated `pytest` tests, from `HARDWARE_TEST_PLAN.md`'s
+   `tests_hardware/` (flash/bench automated `pytest` tests, from SPECIFICATION.md Part E.6's
    mock/twin/flash/bench/manual backend design) closes this gap in code. **Real-hardware execution
    is standing practice** on the bench Pi4, both tiers running clean end to end — see
    `tests_hardware/README.md` for current status and how to run it.
@@ -168,6 +168,15 @@ constraints.
    the cap costs RAM per additional held-open connection buffer on an RP2040 with a fixed, already
    tight budget, a real tradeoff only the project owner should weigh in on; left exactly as-is
    pending that decision.
+8. **Two real-hardware bench-rig capabilities, flagged as "not currently provisioned" during the
+   original `tests_hardware/` design discussion, each gating one test candidate from `[MANUAL]` to
+   `[AUTO]`** (migrated from the now-deleted `HARDWARE_TEST_PLAN.md` — see SPECIFICATION.md Part
+   E.6 for the surrounding architecture these would extend): a programmable GPIO fault-injection
+   harness on the bench rig, which would upgrade the "genuinely wedged I2C bus → watchdog backstop"
+   manual test to automated; and a dedicated second WiFi test client on the bench rig (today's bench
+   host has only the one WiFi adapter, already hosting the AP), which would upgrade "real end-to-end
+   hotspot session" from a manual test to automated. Neither is assumed worth building — flag to
+   the project owner as an explicit choice, not a default plan, if either ever becomes relevant.
 
 ## Deferred / explicitly out-of-scope work
 
