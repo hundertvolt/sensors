@@ -3232,17 +3232,21 @@ holds tests that need a human's hands — printed instructions, human-feasible b
 explicit confirmation prompts — kept structurally apart so an unattended automated pass can never
 silently stall waiting on an absent human.
 
-**Real-hardware execution is in progress**, on the bench Pi4, at the project owner's go-ahead — the
-session that wrote `tests_hardware/` had no board or bench rig attached, so every test was
-originally verified only for correct collection (`pytest tests_hardware --collect-only` succeeds
+**Real-hardware execution is standing practice**, on the bench Pi4, always under the project
+owner's go-ahead given directly in the running session (CLAUDE.md's own hard rule on this) — the
+session that originally wrote `tests_hardware/` had no board or bench rig attached, so every test
+was first verified only for correct collection (`pytest tests_hardware --collect-only` succeeds
 with nothing attached, every fixture skips cleanly rather than erroring), lint-cleanliness, and
-(where applicable) faithful grounding against real source/datasheets. The flash tier is now
-confirmed green against real hardware (real bugs found and fixed along the way — wrong pin wiring
-in a few device scripts, a couple of MicroPython-behavior misassumptions); the bench tier is
-partially run, with a real, not-yet-fully-root-caused WiFi reconnection flakiness under active
-investigation. See `REAL_HARDWARE_RUN_LOG.md` (repo root, temporary) for current status/history and
-`tests_hardware/README.md` for the durable reference (provisioning, env vars, and the mechanisms
-still flagged as genuinely unverified). `src/`, `tests/`, and `digital_twin/`'s own lint/type-check
+(where applicable) faithful grounding against real source/datasheets. Both the flash and bench
+tiers now run clean end to end against real hardware (real bugs found and fixed along the way, on
+both the `src/`/test side — wrong pin wiring in a few device scripts, a couple of
+MicroPython-behavior misassumptions, and, most recently, three test-only bugs a full clean run
+surfaced: two tests reading a status field from the wrong REST endpoint, one asserting an error log
+stays empty when a real, benign warning/error path is actually expected to fire). The earlier WiFi
+reconnection flakiness this section used to flag as still under investigation is root-caused and
+mitigated - see `tests_hardware/README.md`'s "Known assumptions and open findings" for the full,
+current account (provisioning, env vars, and the mechanisms still flagged as genuinely unverified).
+`src/`, `tests/`, and `digital_twin/`'s own lint/type-check
 scope (`pyproject.toml`'s `[tool.ruff]`/`[tool.mypy]`) does **not** currently extend to
 `tests_hardware/`, matching the same deliberate, not-yet-decided non-scoping `tests_scripts/`
 already has (see CLAUDE.md's "Code quality tooling") — extending either scope to cover

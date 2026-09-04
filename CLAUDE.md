@@ -150,6 +150,17 @@ information):
   Full checklist, plus the two real-hardware write-safety constraints any new device's own on-chip
   NVM or the RP2040's own flash filesystem must respect: SPECIFICATION.md Part C.8's own standing
   rule, right after its general-call hazard finding.
+- **A session needs the project owner's go-ahead, given directly in that session's own
+  conversation, before running anything against real hardware** (any `mpremote` command, `nmcli`/
+  `iw`/`iptables` call, `picotool`, or `tests_hardware/`'s own suite runners) — a go-ahead given to
+  a different session, or to an earlier session that already ended, does not carry over; if there's
+  any doubt whether the current conversation actually has it, ask first rather than assume. Once
+  granted, it covers the rest of that same conversation — real-hardware work spanning multiple
+  turns doesn't need to be re-confirmed turn by turn. `tests_hardware/README.md` is the durable
+  technical reference (prerequisites, environment variables, safety facts like the
+  `--allow-flash-cycle`/long-soak opt-in gates and the hotspot role-reversal scenario's stage-6
+  permanent-WLAN-deactivation risk) for what a session with that go-ahead actually needs to know —
+  this rule is just the standing gate for whether to start at all.
 
 ## Working agreements
 

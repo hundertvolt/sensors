@@ -6,17 +6,15 @@ into `SPECIFICATION.md`/`BACKLOG.md`/`CLAUDE.md` first — see README.md's "Furt
 
 Produced on branch `claude/unit-tests-future-ideation` (branched off
 `claude/digital-twin-oserror-7y00lb`) during an ideation/discussion session with the project owner
-about where unit testing goes next. **Update: implementation now exists** (a later session on the
-same branch, after the project owner said to start building) — `tests/_shared_rest_roundtrip.py`
-(the shared-behavior extraction from §2.2/§4) and the full `tests_hardware/` tier (flash/bench
-automated tests over `pytest`, plus a structurally separate `tests_hardware/manual/` runner) are
-real, committed code, collectible/lint-clean/type-checked, but **not yet run against real
-hardware** — no board or bench rig was attached to the session that wrote them. See
-`tests_hardware/README.md` for what a dedicated session with real hardware needs to do next
-(provisioning, environment variables, and — importantly — a list of mechanisms flagged as
-unverified during implementation that the first real run should specifically check, not assume).
-This document's own §9/§11.6 "unsettled" lists are updated below to reflect what's now resolved vs.
-still genuinely open.
+about where unit testing goes next. **Update: implementation now exists and real-hardware execution
+is standing practice** (a later session on the same branch, after the project owner said to start
+building) — `tests/_shared_rest_roundtrip.py` (the shared-behavior extraction from §2.2/§4) and the
+full `tests_hardware/` tier (flash/bench automated tests over `pytest`, plus a structurally separate
+`tests_hardware/manual/` runner) are real, committed code, and both the flash and bench tiers now
+run clean end to end on the real bench Pi4 (77 automated tests, 68 passed/6 opt-in-skipped/0
+failed as of 2026-09-04). See `tests_hardware/README.md` for current status, how to run it, and the
+mechanisms still flagged as genuinely unverified. This document's own §9/§11.6 "unsettled" lists are
+updated below to reflect what's now resolved vs. still genuinely open.
 
 **Read this whole document before writing any code against it.** It assumes familiarity with
 SPECIFICATION.md Part E (testing architecture), Part D (the `src/` promotion checklist), Part F

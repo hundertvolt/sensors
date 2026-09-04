@@ -3,18 +3,17 @@
 Implements HARDWARE_TEST_PLAN.md's flash/bench/manual backends: automated tests driven from the
 host over `mpremote`/`nmcli`/`iptables` (never the MicroPython Unix port `tests/` uses - see
 SPECIFICATION.md Part E.1), plus a structurally separate manual runner for tests that need a human's
-hands. Written in a session with no board or bench rig attached; **real-hardware execution is now in
-progress** on the bench Pi4 - the flash tier is confirmed green, the bench tier is partially run.
-Current status/history: `REAL_HARDWARE_RUN_LOG.md` (repo root, temporary, live). This file stays the
-durable reference: prerequisites, environment variables, how to run it, and the facts/assumptions
-worth knowing before trusting a run's results.
+hands. **Real-hardware execution is standing practice on the bench Pi4** - both the flash and bench
+tiers run clean end to end as of 2026-09-04 (77 automated tests: 68 passed, 6 opt-in-skipped, 0
+failed/errored); this file is the durable reference for prerequisites, environment variables, how to
+run it, and the facts/assumptions worth knowing before trusting a run's results.
 
 **Any session about to run real-hardware tests against this tier needs the project owner's
-go-ahead first** - see `REAL_HARDWARE_HANDOFF.md` (repo root) for the critical safety facts (the
-`--allow-flash-cycle`/long-soak opt-in gates, the stage-6 permanent-WLAN-deactivation risk,
-`BENCH_AP_PASSWORD` handling) and `REAL_HARDWARE_RUN_LOG.md`'s "Next session should start here" for
-the current, up-to-date run order - a go-ahead given to a different or earlier session does not
-carry over.
+go-ahead first, given directly in that session's own conversation** - see CLAUDE.md's own hard rule
+on this. Once granted, this file has everything else needed: prerequisites below, environment
+variables, the critical safety facts folded into "Known assumptions and open findings" (the
+`--allow-flash-cycle`/long-soak opt-in gates in "Running" below, the stage-6 permanent-WLAN-
+deactivation risk, `BENCH_AP_PASSWORD` handling in "Environment variables" below).
 
 ## Prerequisites
 

@@ -116,8 +116,8 @@ constraints.
    real Pico W is reachable over USB serial (README.md's "Real hardware access (mpremote)"), and
    `tests_hardware/` (flash/bench automated `pytest` tests, from `HARDWARE_TEST_PLAN.md`'s
    mock/twin/flash/bench/manual backend design) closes this gap in code. **Real-hardware execution
-   is now in progress** on the bench Pi4 — see `REAL_HARDWARE_RUN_LOG.md` (repo root, temporary) for
-   current status and `tests_hardware/README.md` for how to run it.
+   is standing practice** on the bench Pi4, both tiers running clean end to end — see
+   `tests_hardware/README.md` for current status and how to run it.
 
    The Unix port is *also* structurally unable to exercise this code path at all (a genuine,
    confirmed C-level difference between the Unix port's `ports/unix/modsocket.c` and rp2's real

@@ -454,41 +454,27 @@ the shared-behavior-catalog + per-backend-adapter design, and the no-extra-flash
 real-hardware harness), produced by an ideation session with the project owner and then implemented
 by a later session on the same branch — see **`tests_hardware/`** (real code: automated flash/bench
 tests over `pytest`, a separate manual-test runner) and **`tests/_shared_rest_roundtrip.py`** (the
-shared-behavior extraction). **Real-hardware execution is now in progress** on the bench Pi4 — see
-`REAL_HARDWARE_RUN_LOG.md` below for current status, `tests_hardware/README.md` for how to run it.
+shared-behavior extraction). **Real-hardware execution is standing practice** on the bench Pi4, both
+tiers running clean end to end (`tests_hardware/README.md` has current status and how to run it).
 Its own §8 points at **`tmp_hardware_test_candidates.md`** (also temporary, repo root), the itemized
 real-hardware test list this plan's inventory section summarizes and `tests_hardware/`'s own
 implementation status now tracks against. Both planning docs are deleted once real-hardware
 verification is complete and verified (not just started), following the same pattern as the earlier
 temporary planning docs listed at the end of this section — see `HARDWARE_TEST_PLAN.md`'s own §8
-for what must be migrated into `SPECIFICATION.md` first.
+for what must be migrated into `SPECIFICATION.md` first. **Not yet done**: this migration itself —
+both docs still hold real, not-yet-duplicated architecture content (the five-backend model table,
+the capability-adapter design, the hotspot role-reversal deep-dive's verified driver-behavior facts)
+that a future close-out pass needs to fold into `SPECIFICATION.md` Part E before either file can
+actually be deleted, not just "everything in them now works."
 
-**`REAL_HARDWARE_HANDOFF.md`** (temporary handoff doc, current): the onboarding doc for a dedicated
-session running locally on the real bench machine (the only place with actual `mpremote`/bench-WiFi/
-board access) to actually execute `tests_hardware/` against real hardware — critical safety facts (a
-real UF2 reflash's own `--allow-flash-cycle` gate, a real permanent-WLAN-deactivation risk in the
-hotspot role-reversal scenario's own stage 6, the `BENCH_AP_PASSWORD` credential-handoff
-requirement), a suggested run order, and what to do with whatever real hardware disagrees with.
-Real-hardware execution is already substantially under way under a prior go-ahead (see
-`REAL_HARDWARE_RUN_LOG.md` for current status) — but that go-ahead does not carry over to a new
-session: this doc's own standing rule still applies, that nothing here may be acted on without the
-project owner's go-ahead given directly in that session's own conversation. Deleted once the
-real-hardware integration it describes is complete and verified, migrating anything still
-permanently true into `tests_hardware/README.md`/`SPECIFICATION.md`/`BACKLOG.md` first — same
-close-out convention as every other temporary planning doc here.
-
-**`REAL_HARDWARE_RUN_LOG.md`** (temporary, live progress log, current): the running account of the
-first actual real-hardware pass through `tests_hardware/` on the bench Pi4 — what's been found and
-fixed phase by phase, current status, and a "Next session should start here" list. Same
-delete-once-verified lifecycle as the other real-hardware planning docs above.
-
-**`DEV_HARDWARE_BASELINE_PLAN.md`** (temporary planning doc, current): the plan for building one
-real, fully-reviewed, physically-flashed `src/`-quality firmware variant for the dev bench itself
-(not wozi's own pins scratch-patched onto it) — the project owner's named prerequisite for the
-per-variant `sensortask-*.py` generator work (BACKLOG.md). Facts already established, open
-questions needing a decision, and the full action list split into what's doable ahead of the
-physical session (code/tests) versus what needs it (the real flash and on-bench verification). Same
-delete-once-verified lifecycle as the other real-hardware planning docs above.
+`REAL_HARDWARE_HANDOFF.md`, `REAL_HARDWARE_RUN_LOG.md`, and `DEV_HARDWARE_BASELINE_PLAN.md` — three
+more temporary real-hardware planning/handoff docs from the same effort, all now deleted (2026-09-04)
+once real-hardware execution was genuinely complete and verified: the go-ahead-requirement policy
+they carried is now CLAUDE.md's own hard rule; their safety facts (the `--allow-flash-cycle`/
+long-soak opt-in gates, the stage-6 permanent-WLAN-deactivation risk, `BENCH_AP_PASSWORD` handling)
+were already duplicated in `tests_hardware/README.md`; their one genuinely open item (a real,
+long-duration memory-soak run, still opt-in and not yet executed) is now tracked in BACKLOG.md
+instead of a standalone progress log.
 
 `DRIVER_SPEC.md`, `src/README.md`, `tests/README.md`, `toolchain/README.md`, `WIRING_CONTRACT.md`,
 `FINAL_WIRING_PLAN.md`, `WEBSITE_PLAN.md`, and `AUDIT_PLAN.md` — earlier temporary planning/spec
