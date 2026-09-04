@@ -7,22 +7,6 @@ operating constraints/architecture reference) or README.md (human-facing orienta
 migrated there rather than duplicated here. See README.md for orientation, CLAUDE.md for operating
 constraints.
 
-## HIGH PRIORITY — hand off to a cloud agent, not a local Pi4 session
-
-- **CI's `web-unit-tests` job (Vitest, real-browser/Playwright mode, coverage step) is intermittently
-  hitting its 20-minute job timeout and getting cancelled** — confirmed on this branch's own PR
-  (#50) current HEAD as of 2026-09-04: run `33856690559`'s `web-unit-tests` job succeeded through
-  "Run unit tests (Vitest, real-browser mode)" but was killed mid-"Run unit tests with coverage"
-  by `.github/workflows/ci.yml`'s own `timeout-minutes: 20`, which also skipped the downstream
-  `web-cross-browser-smoke` job (`needs: [web-changes, web-unit-tests]`). Not deterministic — two
-  runs earlier the same day (`33849432338`, `33844419303`) passed clean; several others this same
-  day did not. Not caused by this session's own changes (only `toolchain/`/`tests_scripts/`/docs
-  were touched here, never `js/`/`tests_js/`/the website suite). **Project owner's own direction:
-  investigate/fix this via a cloud agent, explicitly not from a local bench-Pi4 session** — this
-  branch's local sessions are reserved for real-hardware work the cloud can't do; a slow/flaky
-  browser-mode coverage run isn't that. Root cause not yet investigated at all (no theory recorded
-  here beyond the raw timeout).
-
 ## Refactor targets not yet done
 
 - **`boot_entry/` isn't in `pyproject.toml`'s lint/typecheck `files` scope yet.**

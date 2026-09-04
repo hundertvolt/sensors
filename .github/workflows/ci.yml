@@ -125,10 +125,57 @@ jobs:
       # dev (see "Run unit tests" comment above).
       - name: Run unit tests (Vitest, real-browser mode)
         run: npm test
+
+  # Split out from web-unit-tests (was its last three steps) after this job's own coverage rerun
+  # was confirmed to intermittently blow web-unit-tests' 20-minute timeout-minutes budget even
+  # though the coverage step itself is continue-on-error: true - `needs:`/timeout-minutes gate on
+  # a whole job finishing, not on its "real" step alone, so a slow instrumented rerun (real-browser
+  # Playwright + a real digital-twin subprocess boot, same suite run a second time) could still get
+  # the entire job - including the already-passed real test step above - killed by the timeout and
+  # block the downstream web-cross-browser-smoke job that only actually needs the real test result.
+  # Confirmed on this branch's own PR #50 (run `33856690559`, BACKLOG.md's former "HIGH PRIORITY"
+  # entry): "Run unit tests (Vitest, real-browser mode)" had already succeeded when the job was
+  # killed mid-"Run unit tests with coverage". Coverage is a report, never a gate (CLAUDE.md's
+  # "Code quality tooling", SPECIFICATION.md Part E.5) - giving it a wholly separate job with its
+  # own timeout budget, gating nothing downstream, is what actually makes that true; before this
+  # split, it could still take the real signal down with it purely on wall-clock time.
+  web-coverage:
+    needs: [web-changes, web-unit-tests]
+    if: needs.web-changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Cache Playwright Chromium
+        id: playwright-cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - name: Install Playwright Chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+      - name: Install Playwright OS dependencies (cache hit)
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+      - name: Set up MicroPython toolchain (install uv, restore cache)
+        uses: ./.github/actions/setup-micropython-toolchain
+      - name: Build MicroPython Unix port (if not cached)
+        run: |
+          bin="$HOME/pico-toolchain/micropython/ports/unix/build-standard/micropython"
+          if [ ! -x "$bin" ]; then
+            uv run toolchain/setup_toolchain.py setup
+          fi
       # Coverage is a report, not a gate (mirrors the Python side's own non-gating
       # scripts/test.sh --coverage - see CLAUDE.md's "Code quality tooling", SPECIFICATION.md
-      # Part E.5). The `Run unit tests` step above is the real pass/fail signal; this just
-      # re-runs the same suite once more, instrumented, to measure js/ line coverage.
+      # Part E.5). web-unit-tests' own "Run unit tests" step is the real pass/fail signal; this
+      # just re-runs the same suite once more, instrumented, to measure js/ line coverage.
       - name: Run unit tests with coverage
         run: npm run test:coverage 2>&1 | tee coverage-output.txt
         continue-on-error: true
