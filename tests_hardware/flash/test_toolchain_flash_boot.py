@@ -8,6 +8,7 @@ on its own."""
 from __future__ import annotations
 
 import subprocess
+import time
 
 import pytest
 from harness import REPO_ROOT, Board, HardwareTestFailure, wait_until
@@ -75,19 +76,28 @@ def test_real_uf2_reflash_and_boot_smoke_test(board: Board, request: pytest.Fixt
     assert uf2_path.exists(), f"build_firmware.py reported success but {uf2_path} doesn't exist"
 
     board.enter_bootloader()  # drops the already-running board into BOOTSEL/mass-storage mode
-    # picotool needs a moment to see the freshly-enumerated BOOTSEL device - a real USB
-    # re-enumeration delay, not a src/ timing concern, hence a plain bounded wait rather than a
-    # wait_until() (there's no cheap boolean "is it in BOOTSEL yet" check available here short of
-    # shelling out to `picotool info` repeatedly, which load's own retry-on-not-found behavior
-    # already effectively does).
-    load = subprocess.run(
-        ["sudo", "picotool", "load", "-x", "-v", str(uf2_path)],
-        cwd=REPO_ROOT,
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
+    # REAL FINDING, fixed (2026-09-04): this comment used to claim "a plain bounded wait" here, but
+    # no such wait was ever actually implemented - picotool was called immediately after
+    # enter_bootloader() with zero delay, racing the real USB BOOTSEL re-enumeration. Confirmed
+    # directly, real hardware: a real run failed with picotool's own "No accessible RP-series
+    # devices in BOOTSEL mode were found" (exit 249) - not a flaky one-off, a genuine missing-wait
+    # bug. Retried here (bounded, short interval) rather than a single fixed sleep, since picotool
+    # itself has no internal retry of its own for this - a real BOOTSEL enumeration delay varies by
+    # run, and a bounded retry adapts to that instead of guessing one fixed number.
+    load: subprocess.CompletedProcess[str] | None = None
+    for _attempt in range(5):
+        load = subprocess.run(
+            ["sudo", "picotool", "load", "-x", "-v", str(uf2_path)],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        if load.returncode == 0:
+            break
+        time.sleep(2.0)
+    assert load is not None
     if load.returncode != 0:
-        raise HardwareTestFailure(f"picotool load -x -v {uf2_path} failed (exit {load.returncode}):\n{load.stdout}\n{load.stderr}")
+        raise HardwareTestFailure(f"picotool load -x -v {uf2_path} failed after 5 attempts (exit {load.returncode}):\n{load.stdout}\n{load.stderr}")
 
     wait_until(board.is_reachable, timeout_s=30.0, poll_interval_s=1.0, description="board reachable again after real UF2 reflash")

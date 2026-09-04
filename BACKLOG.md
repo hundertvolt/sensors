@@ -577,3 +577,33 @@ constraints.
   All three device scripts/harness additions ran clean under real hardware where applicable (flash/
   bench); every mock/twin addition verified under the real MicroPython Unix-port interpreter;
   ruff/mypy clean throughout.
+- **Two real findings from the first full-production 3x-rebuild/3x-full-suite verification pass
+  (2026-09-04), both fixed.**
+  - **`test_real_uf2_reflash_and_boot_smoke_test`'s own comment claimed "a plain bounded wait"
+    between `board.enter_bootloader()` and the real `picotool load` call that was never actually
+    implemented** - `picotool` was invoked with zero delay, racing the real USB BOOTSEL
+    re-enumeration. Confirmed on real hardware: failed with picotool's own "No accessible RP-series
+    devices in BOOTSEL mode were found" (exit 249), leaving the board stuck in BOOTSEL mode for
+    every test after it in the same run (explaining a cascading, unrelated-looking
+    `test_watchdog_starvation_triggers_a_real_hardware_reset` failure right after it - the board
+    wasn't running normal firmware for that test's own `run_isolated()` to interrupt). Fixed with a
+    bounded retry (5x, 2s apart) rather than one fixed guessed delay - real BOOTSEL enumeration
+    timing varies by run. Re-verified clean: both tests pass, 26/26 real passes in the full flash
+    suite.
+  - **`pytest`'s own exit code can't distinguish "every expected test genuinely passed" from
+    "hardware was unreachable and every fixture skipped cleanly"** - both exit 0.
+    `scripts/run_flash_hardware_suite.sh`/`scripts/run_bench_hardware_suite.sh` now route through a
+    new shared `scripts/_require_clean_hardware_run.sh`, which inspects the real pytest output and
+    hard-fails on any unexpected skip (one currently-known, deliberate, permanent exception:
+    `test_spoofed_off_subnet_source_address_is_ignored`, open question 8's own raw-socket-spoofing
+    gap) or on zero real passes - not just a nonzero exit code. Caught for real during this same
+    pass: a mass-skip (60/60) on a bench run that followed directly after the BOOTSEL-stuck board
+    above, which the old bare-exit-code check had silently treated as a clean run.
+  - **Not a bug, but a real, easy-to-trip footgun confirmed while enabling `--run-long-soak` for
+    this pass**: `--long-soak-seconds`'s own help text already documents that
+    `test_ticks_ms_real_2pow30_rollover` computes its own real ~12.4-day wait independent of that
+    flag - `--run-long-soak` alone does not bound it. Already known/documented, not newly found,
+    but worth restating here since it's easy to miss: never pass `--run-long-soak` without also
+    `--deselect
+    tests_hardware/flash/test_bus_electrical_timing.py::test_ticks_ms_real_2pow30_rollover` unless a
+    session genuinely intends a multi-day run.
