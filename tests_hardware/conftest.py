@@ -73,6 +73,50 @@ def bench(board: Board) -> Iterator[BenchBridge]:
     yield bridge
 
 
+_DUT_DEFAULT_HOSTNAME = "SensorNode"  # src/asy_wifi_service.py's _VAL_HOST schema default - this bench's own DUT has never been reconfigured with a different one (dev_legacy/README.md's "Current bench state")
+_DUT_HOTSPOT_PASSWORD = "12345678"  # hardcoded in src/asy_wifi_service.py's _configure_hotspot_ap() - same value as test_hotspot_role_reversal.py's own _HOTSPOT_PASSWORD
+
+
+def _recover_stale_dut_credentials(bench: BenchBridge) -> None:
+    """Last-resort recovery for dut_ip() below: if the DUT couldn't join the bench AP even after
+    two hard_reset() retries, stale stored WiFi credentials are the most likely real cause - e.g.
+    this bridge was recreated with a fresh random SSID/password
+    (toolchain/setup_toolchain.py's ensure_bench_bridge(), which never re-prints an existing
+    password) and the DUT still has the old ones. Recovers fully automatically, no human
+    interaction, entirely from inside this one fixture - deliberately never triggered from
+    anywhere outside an actual bench test run (project owner's own scoping direction, 2026-09-04).
+
+    Reuses the exact same real, already-proven mechanism
+    tests_hardware/bench/test_hotspot_role_reversal.py's own stage 6 exercises by hand: join the
+    DUT's own hotspot fallback as a client, PUT the bench AP's real current SSID/password to it,
+    then restore the bridge. The one piece that test used to need a human for
+    (`BENCH_AP_PASSWORD` - see its own docstring: `ensure_bench_bridge()` never re-prints an
+    existing password, and a plain nmcli query withholds secrets even as root) is read directly via
+    `BenchBridge.ap_password()` instead - confirmed directly (2026-09-04): `--show-secrets` reveals
+    the real stored PSK under the same sudo access this whole module already has for everything
+    else, no separate credential handoff needed."""
+    wait_until(
+        lambda: bench.is_ssid_visible(_DUT_DEFAULT_HOSTNAME),
+        timeout_s=30.0,
+        poll_interval_s=2.0,
+        description=f"DUT's own hotspot ({_DUT_DEFAULT_HOSTNAME!r}) to become scannable during automatic stale-credential recovery",
+    )
+    bench.join_dut_hotspot(_DUT_DEFAULT_HOSTNAME, _DUT_HOTSPOT_PASSWORD, timeout_s=45.0)
+    try:
+        gateway = bench.gateway_ip()
+        ssid = bench.ap_ssid()
+        password = bench.ap_password()
+        res = http_client.fetch(gateway, 80, "PUT", "/networking", {"SSID": ssid, "PW": password}, timeout_s=10.0)
+        if res.status_code != 200:
+            raise HardwareTestFailure(f"PUT /networking during automatic stale-credential recovery failed: {res.status_code} {res.body!r}")
+        result = res.json().get("result", {})
+        accepted = {"Valid", "Unchanged"}
+        if result.get("SSID") not in accepted or result.get("PW") not in accepted:
+            raise HardwareTestFailure(f"PUT /networking during automatic stale-credential recovery was rejected: {result!r}")
+    finally:
+        bench.leave_dut_hotspot_and_restore_bridge()
+
+
 @pytest.fixture(scope="session")
 def dut_ip(board: Board, bench: BenchBridge) -> str:
     """The DUT's real STA-mode IP on the bench bridge network, for live-system HTTP checks.
@@ -226,5 +270,16 @@ def dut_ip(board: Board, bench: BenchBridge) -> str:
     except (TimeoutError, HardwareTestFailure):
         bench.kick_all_stations()
         board.hard_reset()
-        _wait_for_ip_and_http(60.0, description_suffix=" (after one hard_reset() retry - see this fixture's own docstring)")
+        try:
+            _wait_for_ip_and_http(60.0, description_suffix=" (after one hard_reset() retry - see this fixture's own docstring)")
+        except (TimeoutError, HardwareTestFailure):
+            # SIXTH REAL FINDING, fixed: neither retry above helps if the real cause is stale
+            # stored WiFi credentials (e.g. this bridge was just recreated with a fresh
+            # random SSID/password) - the DUT organically falls back to its own hotspot every
+            # single time, since kick_all_stations()/hard_reset() do nothing to fix what it's
+            # actually trying to connect to. See _recover_stale_dut_credentials()'s own docstring.
+            _recover_stale_dut_credentials(bench)
+            bench.kick_all_stations()
+            board.hard_reset()
+            _wait_for_ip_and_http(60.0, description_suffix=" (after automatic stale-WiFi-credential recovery - see _recover_stale_dut_credentials())")
     return ip_holder[-1]

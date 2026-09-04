@@ -61,6 +61,16 @@ class BenchBridge:
     def ap_ssid(self) -> str:
         return _nmcli("-g", "802-11-wireless.ssid", "connection", "show", self.ap_conn).strip()
 
+    def ap_password(self) -> str:
+        """The real, current WPA2 PSK for this bridge's own AP. Unlike ap_ssid()'s plain `-g`
+        query, a secrets field needs `--show-secrets` - nmcli withholds it otherwise even under
+        root (confirmed directly on a real bench bridge, 2026-09-04: a plain `-g` query for this
+        same field returns empty even as root; `--show-secrets` returns the real stored PSK). This
+        is what lets conftest.py's `dut_ip` fixture recover a DUT with stale WiFi credentials fully
+        automatically, entirely from inside a bench test run, without a human manually re-supplying
+        a password that `ensure_bench_bridge()` only ever prints once, at creation time."""
+        return _nmcli("--show-secrets", "-g", "802-11-wireless-security.psk", "connection", "show", self.ap_conn).strip()
+
     # -- fault injection: attacking the DUT's *uplink* (the bridge is the AP the DUT connects to) --
 
     def ap_down(self) -> None:
