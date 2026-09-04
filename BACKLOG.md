@@ -535,3 +535,45 @@ constraints.
   replaces "usually resolves quickly" with a more precise, evidence-backed picture of when that
   backstop actually gets used in practice for one specific outage shape - it doesn't change the
   design decision itself. No `src/` change made or needed.
+- **Three new recombination tests, project owner's own explicit follow-up request (2026-09-04),
+  built and folded into every tier they're genuinely meaningful for:**
+  - **FRAM write vs. a real hardware reset.** `tests_hardware/flash/test_bus_concurrency.py::
+    test_fram_hard_reset_race_during_write_and_recovery` (flash tier) - a real `machine.reset()`
+    raced against an in-flight FRAM write at the same deterministic yield-point technique the
+    CS-hijack test uses, via a new `Board.run_isolated_expect_reset()` harness primitive; confirmed
+    5/5 real trials. `tests/test_digital_twin_sensortask_integration.py::
+    test_sgp40_voc_backup_unflushed_write_is_lost_but_the_system_recovers_cleanly_to_the_last_flushed_state`
+    (twin tier) - a real write that lands in-memory but is never flushed before a simulated reboot,
+    proving the system falls back cleanly to the last durably-persisted state.
+    `tests_hardware/bench/test_end_to_end_timing.py::
+    test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly` (bench tier) - three
+    real `hard_reset()`s at uncontrolled points relative to SGP40's own real, natural backup
+    cadence (BackupPeriod=1min), honestly documented as probabilistic (a host-triggered reset can't
+    be synchronized to the real SPI transfer's own timing) rather than claiming byte-precision it
+    can't deliver. Mock tier: not extended - no real reboot/timing concept exists there to race
+    against.
+  - **Repeated real WiFi flapping x concurrent bus load.**
+    `tests/test_digital_twin_bus_hazard_concurrency.py::
+    test_wozi_survives_concurrent_bus_load_and_a_real_established_wifi_disconnect` (twin tier) - a
+    single real established-connection disconnect, not repeated flapping (a real finding: this
+    tier can't fast-forward `_on_sta_disconnected()`'s own genuine 60s `asyncio.sleep()`, so
+    repeating that isn't a reasonable CI-time proof here); extends the mock-tier-only wifi_mode_lock
+    proof through the real, fully-wired task graph + real bus contention.
+    `tests_hardware/bench/test_bus_concurrency_under_api_load.py::
+    test_concurrent_get_sensors_under_real_multi_client_load_survives_repeated_real_wifi_flapping`
+    (bench tier) - reuses `test_network_resilience.py`'s own proven-fast real 3x(3s/3s) flap
+    technique concurrently with the file's own GET/PUT bus-load workers. Flash/mock: N/A (no real
+    network primitive at either tier).
+  - **NTP transient-outage retry x concurrent bus load.**
+    `tests_hardware/bench/test_bus_concurrency_under_api_load.py::
+    test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_transient_outage_and_retry`
+    (bench tier) - `test_network_resilience.py`'s own `block_udp_ports([123])` transient-outage
+    scenario running concurrently with the file's own bus-load workers. **Deliberately not
+    extended to twin/mock tier in this pass** - no NTP-drop-and-retry scenario currently exists at
+    either tier at all (unlike the wifi-flap case above, which had an existing mock-tier proof to
+    extend); building one from scratch was judged lower priority than completing the full
+    3x-rebuild/3x-full-suite verification this same request also asked for. Flagged, not silently
+    skipped - a real, still-open opportunity if a future session has the time budget for it.
+  All three device scripts/harness additions ran clean under real hardware where applicable (flash/
+  bench); every mock/twin addition verified under the real MicroPython Unix-port interpreter;
+  ruff/mypy clean throughout.

@@ -320,6 +320,21 @@ class Board:
             raise HardwareTestFailure(f"mpremote run {script_path} failed (exit {result.returncode}):\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}")
         return result.stdout
 
+    def run_isolated_expect_reset(self, script_path: str | Path, timeout_s: float | None = None) -> None:
+        """Like run_isolated(), but for a script that deliberately triggers a real machine.reset()
+        mid-run (e.g. racing it against an in-flight FRAM write, the same deterministic yield-point
+        technique fram_cs_hijack_fault_injection_and_recovery.py already uses for a CS race, applied
+        to a real hardware reset instead) - the device disappearing mid-session is this call's own
+        expected, successful outcome, not a failure to raise on (same "a non-zero/timeout exit is
+        expected" shape as enter_bootloader() above). Still re-arms the watchdog first via the same
+        chained invocation run_isolated() uses - a script racing a real hardware event needs the
+        same full window an ordinary isolated script gets. No soft-reset chained onto the end -
+        there is nothing to return to once the script's own reset has already fired for real; the
+        caller must wait_until(board.is_device_present, ...) and then issue a fresh run_isolated()
+        call of its own to talk to the now-rebooted, freshly-auto-started system."""
+        self._mpremote("exec", "import machine; machine.WDT(timeout=8000)", "run", str(script_path), timeout_s=timeout_s)
+        # Deliberately ignore the return code/output - see this method's own docstring.
+
     def soft_reset(self) -> None:
         result = self._mpremote("soft-reset", timeout_s=15.0)
         if result.returncode != 0:

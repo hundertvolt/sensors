@@ -10,6 +10,7 @@ import time
 
 import http_client
 from bench_control import BenchBridge
+from error_log_helpers import assert_module_error_log_empty, reset_all_error_logs
 from harness import Board, wait_until
 
 # ---------------------------------------------------------------------------
@@ -155,3 +156,76 @@ def _try_fetch_ok(dut_ip: str) -> bool:
         return http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=5.0).status_code == 200
     except OSError:
         return False
+
+
+# ---------------------------------------------------------------------------
+# Recombination test (2026-09-04, project owner's own explicit request): does a real hard_reset()
+# landing at an uncontrolled point relative to FRAM's own real, natural background write activity
+# (SGP40's periodic VOC-backup) leave the system - and specifically the FRAM subsystem - fully
+# healthy afterward? Complements tests_hardware/flash/test_bus_concurrency.py's own deterministic
+# reset race (which can only ever land right as a write session begins, before any bytes are sent -
+# see that test's own device script for the full reasoning): here, timing is genuinely uncontrolled
+# relative to the real SPI write itself, the same "power loss is asynchronous, not scheduled"
+# property this codebase's own I2C-wedge-backstop principle already accepts elsewhere
+# (SPECIFICATION.md Part F.2) - at the cost of not being able to prove any one reset actually landed
+# mid-transfer. Several real resets spread across a fast, real backup cadence give repeated,
+# timing-uncorrelated opportunities rather than depending on hitting one precise instant.
+# ---------------------------------------------------------------------------
+
+
+def test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly(board: Board, bench: BenchBridge, dut_ip: str) -> None:
+    reset_all_error_logs(dut_ip)
+    current = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=10.0).json()
+    original_backup_period = current.get("SGP40", {}).get("BackupPeriod")
+    assert original_backup_period is not None, "could not read the current real BackupPeriod before changing it"
+
+    # BackupPeriod=1 (minute) is the schema's own fastest active cadence (0 disables backup
+    # entirely) - real flash write, restored to its original value in the finally block below, same
+    # one-time-not-looped budget every other config-persisting bench test in this tier already uses.
+    put_res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"SGP40": {"BackupPeriod": 1}}, timeout_s=10.0)
+    assert put_res.status_code == 200 and put_res.json().get("result", {}).get("SGP40", {}).get("BackupPeriod") in ("Valid", "Unchanged"), (
+        f"failed to set BackupPeriod=1: {put_res.status_code} {put_res.body!r}"
+    )
+
+    try:
+        for _cycle in range(3):
+            time.sleep(25.0)  # real time inside the fast 60s backup cadence - not synchronized to
+            # the write itself (can't be, from the host side; see this section's own comment), just
+            # spread across the window so each of the 3 resets below lands at a genuinely different,
+            # uncontrolled point relative to it.
+            bench.kick_all_stations()  # see test_cold_boot_to_first_http_response_latency_is_sane's own comment
+            board.hard_reset()
+            wait_until(
+                lambda: _try_fetch_ok(dut_ip),
+                timeout_s=60.0,
+                poll_interval_s=1.0,
+                description="DUT reachable again after a real hard_reset() during natural FRAM backup activity",
+            )
+
+        # Full health check, not just "reachable" - the FRAM subsystem specifically must still work.
+        assert_module_error_log_empty(dut_ip, "SGP40")
+        assert_module_error_log_empty(dut_ip, "FRAM")
+
+        # One more real backup completing cleanly after all three resets proves the FRAM subsystem
+        # itself is still genuinely functional, not merely "board reachable".
+        status_before = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).json()
+        backup_ts_before = status_before.get("sensors", {}).get("SGP40", {}).get("BackupTS")
+        wait_until(
+            lambda: _sgp_backup_ts_advanced(dut_ip, backup_ts_before),
+            timeout_s=90.0,
+            poll_interval_s=5.0,
+            description="a fresh real SGP40 VOC backup completing after the reset sequence",
+        )
+    finally:
+        restore_res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"SGP40": {"BackupPeriod": original_backup_period}}, timeout_s=10.0)
+        assert restore_res.status_code == 200, f"failed to restore BackupPeriod to {original_backup_period}"
+        reset_all_error_logs(dut_ip)
+
+
+def _sgp_backup_ts_advanced(dut_ip: str, before: int | None) -> bool:
+    try:
+        status = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).json()
+    except OSError:
+        return False
+    after = status.get("sensors", {}).get("SGP40", {}).get("BackupTS")
+    return after is not None and after != before

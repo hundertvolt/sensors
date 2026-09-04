@@ -762,6 +762,89 @@ def test_sgp40_voc_backup_survives_a_simulated_reboot_through_the_real_fram_chun
     run_timed(scenario(), timeout_s=30.0)
 
 
+# ---------------------------------------------------------------------------
+# Recombination test (2026-09-04, project owner's own explicit request): the reboot-survival test
+# above always flush_fram()s right after the one real backup it triggers, before ever simulating a
+# reboot - it proves the happy persistence path, not what happens if a real crash/power-loss lands
+# *between* a real write landing in the twin's own in-memory FRAM image and the next periodic/
+# explicit flush to persistent storage ever running. This is the twin-tier analogue of
+# tests_hardware/flash/test_bus_concurrency.py's own real hard-reset-race-during-write test (a real
+# RP2040 reset instead of a real chip-level fault) - see that test's device script for the full
+# real-hardware account and its own honest scope limits.
+# ---------------------------------------------------------------------------
+
+
+def test_sgp40_voc_backup_unflushed_write_is_lost_but_the_system_recovers_cleanly_to_the_last_flushed_state() -> None:
+    async def scenario() -> None:
+        cfg_path = _tmp_cfg_dir()
+        state_path = cfg_path + "fram_state.json"
+        machine.configure_fram_state_path(state_path)
+        try:
+            # --- Boot 1: real construction, one real backup, flushed - this becomes the durable
+            # "last known good" state everything below checks against. Same setup shape as the
+            # reboot-survival test above. ---
+            await sensortask_wozi.build_system(cfg_path=cfg_path, web_host="127.0.0.1", web_port=_next_test_port())
+            assert sensortask_wozi.sgp_reader is not None and sensortask_wozi.scd_reader is not None
+            sgp1 = sensortask_wozi.sgp_reader
+            await sensortask_wozi.scd_reader._set_meas_data(SCD30(800, 22.0, 45.0, None, None, None))
+            persisted, _results = await sgp1.cfgmgr.write_config({"WaitTimeNTP": 1}, sgp1.get_cfg_schema())
+            assert persisted
+            task = sgp1.start_asy_read()
+            try:
+                await asyncio.sleep(2.5)
+                sgp1.backup_counter = 59
+                sgp1.trigger_event.set()
+                assert await _wait_until(lambda: sgp1.last_backup is not None, timeout_s=5.0), "the first real VOC backup write never completed"
+            finally:
+                await _cancel(task)
+            machine.flush_fram()
+            with open(state_path) as f:
+                flushed_state = f.read()
+
+            # --- A second, real backup happens through the exact same real chain, genuinely
+            # mutating the twin's own in-memory FRAM image - but this one is deliberately never
+            # flushed, simulating a real crash/power-loss landing after this write's own real effect
+            # already took place in RAM but before the next periodic/explicit flush to persistent
+            # storage ever ran (the closest twin-tier analogue to the flash-tier reset race's own
+            # "reset lands mid-write" scenario - here the write itself always completes cleanly, but
+            # never gets durably persisted). ---
+            task2 = sgp1.start_asy_read()
+            try:
+                sgp1.backup_counter = 59
+                sgp1.trigger_event.set()
+                assert await _wait_until(lambda: sgp1.last_backup is not None, timeout_s=5.0), "the second real VOC backup write never completed"
+            finally:
+                await _cancel(task2)
+            with open(state_path) as f:
+                unflushed_check = f.read()
+            assert unflushed_check == flushed_state, "the second backup's own write leaked onto disk despite never being flushed - flush_fram() may no longer be the only real persistence trigger"
+
+            # --- Simulated crash-reboot: rebuild the whole real object graph fresh from the SAME
+            # state_path, which (by design, per the assertion above) still only ever held boot 1's
+            # flushed content - the second backup's own real, already-applied write is genuinely
+            # lost, exactly as a real un-flushed write would be lost to a real power cycle. ---
+            await sensortask_wozi.build_system(cfg_path=cfg_path, web_host="127.0.0.1", web_port=_next_test_port())
+            assert sensortask_wozi.sgp_reader is not None and sensortask_wozi.scd_reader is not None
+            assert sensortask_wozi.sgp_reader is not sgp1  # genuinely fresh object, not memory surviving in-process
+            sgp2 = sensortask_wozi.sgp_reader
+            await sensortask_wozi.scd_reader._set_meas_data(SCD30(800, 22.0, 45.0, None, None, None))
+
+            # --- Restore, through the real chain again - the system must boot and restore cleanly
+            # against the last *flushed* state, with no crash and no trace of the lost write. ---
+            task3 = sgp2.start_asy_read()
+            try:
+                await asyncio.sleep(2.5)
+                sgp2.trigger_event.set()
+                assert await _wait_until(lambda: sgp2.restored_from is not None, timeout_s=5.0), "the real VOC backup restore never completed after the simulated crash-reboot"
+            finally:
+                await _cancel(task3)
+        finally:
+            machine.configure_fram_state_path(None)  # see the reboot-survival test's own comment above
+            gc.collect()  # this test builds the whole real object graph twice in one run
+
+    run_timed(scenario(), timeout_s=30.0)
+
+
 if __name__ == "__main__":
     import microtest
 

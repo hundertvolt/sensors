@@ -29,7 +29,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from harness import Board
+from harness import Board, wait_until
 
 DEVICE_SCRIPTS = Path(__file__).resolve().parent.parent / "device_scripts"
 RESULT_RE = re.compile(r"^RESULT: (PASS|FAIL)(.*)$", re.MULTILINE)
@@ -94,3 +94,18 @@ def test_fram_cs_pin_hijack_fault_injection_and_recovery(board: Board) -> None:
     # (BACKLOG.md open question 8's "not currently provisioned" GPIO harness doesn't apply here).
     output = board.run_isolated(DEVICE_SCRIPTS / "fram_cs_hijack_fault_injection_and_recovery.py", timeout_s=60.0)
     _assert_pass(output, "FRAM CS-pin hijack fault-injection/recovery check")
+
+
+def test_fram_hard_reset_race_during_write_and_recovery(board: Board) -> None:
+    # Real hardware-reset race against an in-flight FRAM write - a genuinely different fault than
+    # the CS-hijack race above (a real RP2040-side machine.reset(), not a controlled SPI-protocol-
+    # level CS deselect) - see fram_reset_race_during_write_seed_and_race.py's own docstring for the
+    # full mechanism and its honest, deliberately-scoped-safe design.
+    board.run_isolated_expect_reset(DEVICE_SCRIPTS / "fram_reset_race_during_write_seed_and_race.py", timeout_s=30.0)
+    # is_reachable() (not the presence-only is_device_present()), same established pattern
+    # test_reboot_persistence.py's own test_config_value_survives_a_genuine_hard_reset uses - the
+    # real, freshly-rebooted production firmware is about to be interrupted for the verify phase
+    # below anyway, so there's no live system here to avoid disturbing.
+    wait_until(board.is_reachable, timeout_s=30.0, poll_interval_s=1.0, description="board reachable again after the real reset-raced write")
+    output = board.run_isolated(DEVICE_SCRIPTS / "fram_reset_race_during_write_verify_recovery.py", timeout_s=60.0)
+    _assert_pass(output, "FRAM hard-reset race during write recovery check")

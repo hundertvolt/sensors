@@ -300,6 +300,82 @@ def test_wozi_fram_recovers_after_an_injected_spi_read_fault() -> None:
     run_timed(scenario(), timeout_s=20.0)
 
 
+async def _wait_established_then_flap_once(conn: "Any") -> None:
+    # A single real established-connection disconnect, not repeated flapping - see this test's own
+    # module-level comment for why: asy_wifi_service.py's own _on_sta_disconnected() ESTABLISHED
+    # branch is a genuine, non-fast-forwardable 60s asyncio.sleep() even at twin speed (this suite
+    # never fast-forwards time - SPECIFICATION.md Part E.5.1), so repeated flapping isn't a
+    # reasonable CI-time proof at this tier; tests_hardware/bench/test_network_resilience.py's own
+    # real, fast repeated-flap technique is what actually exercises that shape, on real hardware
+    # where it demonstrably behaves differently (see BACKLOG.md's own real timing account).
+    while not conn.wlan.isconnected():
+        await asyncio.sleep(0.5)
+    conn.wlan.disconnect()
+    while not conn.wlan.isconnected():
+        await asyncio.sleep(1.0)
+
+
+def test_wozi_survives_concurrent_bus_load_and_a_real_established_wifi_disconnect() -> None:
+    # Recombination test (2026-09-04, project owner's own explicit request): proves the real, fully-
+    # wired system - not just the isolated AsyConnTime class (tests/test_asy_wifi_service.py's own
+    # test_status_getters_return_locked_defaults_during_a_real_concurrent_outage_retry, mock tier,
+    # which uses a synthetic pre-acquired lock, not a real competing task) - tolerates a genuine 60s
+    # wifi_mode_lock hold (the real ESTABLISHED-branch retry) while real concurrent bus load is
+    # simultaneously in flight, through the exact same real object graph
+    # test_wozi_real_task_graph_survives_concurrent_bus_load_including_a_real_general_call already
+    # proves healthy under a clean network. Real ~70s test time - unavoidable, see
+    # _wait_established_then_flap_once()'s own comment.
+    #
+    # Deliberately does NOT reuse _run_real_task_graph_and_assert_healthy() above: a REAL FINDING
+    # from this test's own first draft - that helper's shared_bus_log check
+    # (_GENERAL_CALL_ENTRY in shared_bus_log) assumes its own short ~9s run window never wraps the
+    # twin I2C fake's bounded log deque (digital_twin/machine.py's own _LOG_MAXLEN); at this test's
+    # much longer ~75s real duration (unavoidable - see above), the one-time general-call entry from
+    # SGP40's own startup gets evicted by ordinary bus traffic long before the run ends, long after
+    # actually happening - a false negative on an orthogonal property this test isn't about (already
+    # proven, short-duration, by the sibling test above). This test inlines its own leaner health
+    # check instead, without that specific assertion.
+    machine.configure_i2c_wiring("wozi")
+    port = _next_test_port()
+
+    async def scenario() -> None:
+        module = sensortask_wozi
+        await module.build_system(cfg_path=_tmp_cfg_dir(), web_host="127.0.0.1", web_port=port)
+        assert module.conn is not None
+        assert module.watchdog is not None and module.sysfunct is not None
+        assert module.sgp_reader is not None and module.bmp_reader is not None and module.scd_reader is not None
+        assert module.fram is not None
+        # A real configured SSID (not the "SSID==''" unconfigured shortcut) - same technique
+        # test_wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server_and_status_led
+        # (test_digital_twin_sensortask_integration.py) already uses, written before the task graph
+        # starts below so the wifi task's very first connect attempt sees it.
+        persisted, _results = await module.conn.cfgmgr.write_config({"SSID": "TestNet"}, module.conn.get_cfg_schema())
+        assert persisted
+
+        await module.sysfunct.start_timers(module._collect_timer_starters())
+        tasks = [starter() for starter in module._collect_task_starters()]
+        tasks.append(asyncio.get_event_loop().create_task(_feed_watchdog_periodically(module.watchdog)))
+        flap_task = asyncio.get_event_loop().create_task(_wait_established_then_flap_once(module.conn))
+        try:
+            await asyncio.sleep(75.0)
+            assert module.watchdog.would_have_triggered_count == 0
+            sgp_data = await module.sgp_reader.get_data()
+            bmp_data = await module.bmp_reader.get_data()
+            scd_data = await module.scd_reader.get_data()
+            assert sgp_data.VOC is not None, "SGP40 never produced real data under concurrent bus load + a real wifi disconnect"
+            assert bmp_data.Pres is not None, "BMP3xx never produced real data under concurrent bus load + a real wifi disconnect"
+            assert scd_data.CO2 is not None, "SCD30 never produced real data under concurrent bus load + a real wifi disconnect"
+            assert module.fram.fram.initialized is True
+            assert await module.fram.fram.verify_present()
+            assert module.conn.wlan.isconnected() is True, "WiFi never recovered from the real established-connection disconnect within the real 60s retry window"
+        finally:
+            await _cancel(flap_task)
+            for task in tasks:
+                await _cancel(task)
+
+    run_timed(scenario(), timeout_s=95.0)
+
+
 if __name__ == "__main__":
     import microtest
 
