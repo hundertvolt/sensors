@@ -808,6 +808,18 @@ def detect_uplink_interface() -> str:
     return match.group(1)
 
 
+def get_interface_mac(iface: str) -> str:
+    """The real, permanent hardware MAC of a network interface, straight from the kernel - not a
+    NetworkManager-synthesized or bridge-inherited one. See ensure_bench_bridge()'s own note on why
+    pinning `bridge.mac-address` to this value matters (2026-09-04 bench Pi4 lockout incident,
+    CLAUDE.md's "Hard rules")."""
+    out = run(["ip", "-o", "link", "show", iface], env=build_env())
+    match = re.search(r"link/ether\s+(\S+)", out)
+    if not match:
+        raise SetupError(f"could not determine the hardware MAC address of interface {iface!r}")
+    return match.group(1)
+
+
 def detect_free_wifi_interface(exclude: str) -> str:
     """A WiFi adapter not already acting as the uplink - requires exactly one candidate for the
     same reason resolve_pico_device() does: an ambiguous pick is a hard error, not a guess."""
@@ -901,7 +913,9 @@ def ensure_bench_bridge(uplink_iface: str | None, wifi_iface: str | None, ssid: 
     br_netfilter (see ensure_br_netfilter()'s own docstring) and pins the AP to a fixed 2.4GHz
     channel (see the channel comment below) - both run unconditionally, even when the bridge
     connection profile already exists, since they're independent host/radio-level settings a
-    pre-existing bridge could still be missing."""
+    pre-existing bridge could still be missing. Also checks (but never auto-repairs) the bridge's
+    own MAC address against the uplink interface's real hardware MAC - see the mismatch-warning
+    block below for why this one is flag-only, not self-healing like the channel check."""
     ensure_br_netfilter()
 
     if bench_ap_exists():
@@ -915,6 +929,29 @@ def ensure_bench_bridge(uplink_iface: str | None, wifi_iface: str | None, ssid: 
             log(f"Bench AP channel is {current_channel!r}, not the fixed 6 - repairing")
             run(["sudo", "nmcli", "connection", "modify", BENCH_AP_CONN, "802-11-wireless.channel", "6"])
             run(["sudo", "nmcli", "connection", "up", BENCH_AP_CONN])
+        # REAL FINDING (2026-09-04 bench Pi4 lockout incident, CLAUDE.md's "Hard rules"): a bridge
+        # created without pinning bridge.mac-address presents a NetworkManager-synthesized MAC that
+        # can drift across the bridge's own lifetime - the router's static DHCP reservation (keyed
+        # to whatever MAC it saw when the reservation was made) then silently orphans, and the host
+        # gets a new pool address plus a synthesized `PC-<mac>` hostname instead of its real one.
+        # Flag-only, not auto-repaired: changing a live bridge's MAC requires cycling the very
+        # interface this SSH session's own route may depend on - the same risk class as the
+        # incident this check exists to prevent, so it needs a human decision, not silent action.
+        eth_iface = run(["nmcli", "-g", "connection.interface-name", "connection", "show", BENCH_ETH_CONN]).strip()
+        try:
+            real_mac = get_interface_mac(eth_iface)
+        except SetupError:
+            real_mac = ""
+        bridge_mac = run(["nmcli", "-g", "bridge.mac-address", "connection", "show", BENCH_BRIDGE_CONN]).strip()
+        if real_mac and bridge_mac.lower() != real_mac.lower():
+            log(
+                f"WARNING: bridge {BENCH_BRIDGE_CONN!r}'s MAC ({bridge_mac or 'unset/synthesized'}) does not "
+                f"match {eth_iface!r}'s real hardware MAC ({real_mac}) - a router DHCP reservation keyed to "
+                f"the old MAC will drift on the next lease renewal. Not auto-repairing (see this function's "
+                f"own docstring); fix by hand when convenient, ideally at a moment SSH access loss is "
+                f"acceptable: sudo nmcli connection modify {BENCH_BRIDGE_CONN} bridge.mac-address {real_mac} "
+                f"&& sudo nmcli connection up {BENCH_ETH_CONN}"
+            )
         return current_ssid
 
     if ssid is None or password is None:
@@ -930,6 +967,16 @@ def ensure_bench_bridge(uplink_iface: str | None, wifi_iface: str | None, ssid: 
     log(f"Creating bench WiFi bridge: {uplink_iface} (uplink) + {wifi_iface} (hosted AP, SSID {ssid!r})")
     env = build_env()
     run(["sudo", "nmcli", "connection", "add", "type", "bridge", "ifname", BENCH_BRIDGE_CONN, "con-name", BENCH_BRIDGE_CONN], env=env)
+    # Pin the bridge's own MAC to the uplink interface's real hardware MAC before this bridge is
+    # ever brought up, rather than letting NetworkManager synthesize one - REAL FINDING (2026-09-04
+    # bench Pi4 lockout incident, see CLAUDE.md's "Hard rules"): a synthesized bridge MAC can drift
+    # across the bridge's own lifetime, silently orphaning a router's static DHCP reservation (keyed
+    # to whatever MAC it saw when the reservation was made) - the host then gets a new pool address
+    # and a synthesized `PC-<mac>` hostname instead of its real one. Pinning to the real, permanent
+    # hardware MAC means a reservation keyed to it never needs to be re-keyed again, even across a
+    # future teardown/recreate of this exact bridge (e.g. a from-blank bootstrap test).
+    uplink_mac = get_interface_mac(uplink_iface)
+    run(["sudo", "nmcli", "connection", "modify", BENCH_BRIDGE_CONN, "bridge.mac-address", uplink_mac], env=env)
     run(
         ["sudo", "nmcli", "connection", "add", "type", "ethernet", "ifname", uplink_iface,
          "master", BENCH_BRIDGE_CONN, "con-name", BENCH_ETH_CONN, "slave-type", "bridge"],

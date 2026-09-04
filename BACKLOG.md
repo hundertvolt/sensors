@@ -207,13 +207,13 @@ constraints.
   also exercised for real where safe (empty-`/sys` USB scan, a real `iproute2` apt-install-and-
   parse). Not yet exercised for real: `flash` against an actual RP2040 board, and — the real gap —
   `bench` actually *creating* the NetworkManager bridge/AP from a genuinely blank host, as opposed
-  to reusing one. **The bench Pi4 is, as of 2026-09-04, actually in that genuinely-blank state** —
-  `br0`/`br0-eth0`/`br0-wifi-ap` were deliberately deleted and `nico` was removed from `dialout` to
-  set up the from-blank test for real, so unlike every earlier real-hardware session (which always
-  ran against an already-provisioned bench), the next session doesn't need to tear anything down
-  first — just re-grant `dialout` (`sudo gpasswd -a nico dialout`) if that part isn't being tested
-  too, and run both tiers for real, same dedicated-session pattern as the earlier
-  `build_firmware.py` autolaunch verification (see this branch's own commit history).
+  to reusing one. **The bench Pi4 is, as of 2026-09-04, still in that genuinely-blank state** —
+  `br0`/`br0-eth0`/`br0-wifi-ap` remain deleted, so the next session doesn't need to tear anything
+  down first, just run both tiers for real, same dedicated-session pattern as the earlier
+  `build_firmware.py` autolaunch verification (see this branch's own commit history). `nico`'s
+  `dialout` membership (also revoked to set up the from-blank test) has since been restored
+  (`sudo gpasswd -a nico dialout`, confirmed 2026-09-04) — that part of the from-blank state no
+  longer needs separate testing unless deliberately revoked again first.
   **Standing rule for this and any future destructive test of the bench host's own network/access
   config, added after a real incident**: keep a recovery dead-man's-switch (e.g. a `systemd-run
   --on-active=N` timer that rebuilds the bridge/reachability) continuously re-armed — immediately
@@ -230,6 +230,20 @@ constraints.
   `autoconnect-priority` once a more specific profile like a bridge slave claims the device; flipping
   `autoconnect` back to `true` and dropping the priority override was the entire fix, no new profile
   needed). Worth knowing as a fallback for any future lockout, not just this one.
+  **Second real finding from the same incident, fixed 2026-09-04**: recovering onto plain,
+  unbridged `eth0` exposed its real hardware MAC to the router for the first time — the bridge it
+  replaced had been presenting a NetworkManager-synthesized MAC (inherited from a slave port, and
+  can drift across the bridge's own lifetime) that the router's static DHCP reservation was actually
+  keyed to, so the router silently treated the host as a brand-new device (new pool IP, synthesized
+  `PC-<mac>` hostname) rather than honoring the old reservation. `ensure_bench_bridge()` and
+  `dev_legacy/README.md`'s manual recipe now pin `bridge.mac-address` to the uplink interface's real
+  hardware MAC on every bridge creation (and warn, without auto-repairing, if an already-existing
+  bridge's MAC doesn't match) — so a reservation keyed to that MAC survives any future
+  teardown/recreate. **Still open, needs the router's own admin UI (not automatable from here)**:
+  re-key the existing reservation to `eth0`'s real MAC (`d8:3a:dd:28:ea:5a`) and rename the entry
+  back to `raspberrypi` if the router doesn't infer it automatically — see
+  `dev_legacy/README.md`'s "Current bench state" for the full account, including confirmation that
+  the Pi's own `/etc/hostname` was never actually wrong.
 - **Real-hardware re-test of the segfault fix and the memory-leak soak test — real-hardware forms
   now exist and are wired into `tests_hardware/`, but the actual long-soak run is still opt-in and
   has not yet been executed.** Corrects a stale claim (this entry used to say neither soak-test

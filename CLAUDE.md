@@ -176,6 +176,19 @@ information):
   a more specific profile claims that device, so restoring it after a lockout is normally a one-line
   edit, not a new profile — worth knowing as a fallback, but re-arming the switch properly is what
   avoids needing it.
+- **The bench Pi4's `br0` bridge must always present `eth0`'s own real hardware MAC, never a
+  NetworkManager-synthesized one — pin it via `bridge.mac-address`, always, on every bridge
+  creation.** A synthesized bridge MAC can drift across the bridge's own lifetime; the router's
+  static DHCP reservation is keyed to whatever MAC it saw when the reservation was made, so a drift
+  silently orphans it — the host then gets bumped to a new pool IP and a synthesized `PC-<mac>`
+  hostname instead of its real, reserved one. Confirmed the hard way as a downstream symptom of the
+  2026-09-04 lockout above: recovering onto a plain, unbridged `eth0` exposed its real MAC for the
+  first time, which the router had never seen before. Fixed in both
+  `toolchain/setup_toolchain.py`'s `ensure_bench_bridge()` (pins on creation, warns without
+  auto-repairing on a mismatch against an already-existing bridge — cycling a live bridge's MAC
+  risks the exact same SSH-drop this fix exists to prevent) and `dev_legacy/README.md`'s manual
+  recipe — see `dev_legacy/README.md`'s "Current bench state" for the still-open router-side
+  re-keying this can't fix from the Pi's own side.
 
 ## Working agreements
 
