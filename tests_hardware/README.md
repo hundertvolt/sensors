@@ -421,6 +421,36 @@ itself the real, meaningful check for a benign/expected outcome. One case (`test
 mid_response_does_not_hang_the_server`) has a real but genuinely timing-dependent expected log entry
 (whether the server is still mid-write when the client's RST lands) - documented as a deliberate
 non-assertion rather than a flaky one. This retrofit was **not** extended to the rest of the tier in
-this pass (the hotspot role-reversal scenario's own dozen-plus fault tests, the flash-tier timer-
-exhaustion/scheduler-saturation scripts, etc.) - a real, larger remaining gap, flagged here rather
-than silently left looking finished.
+this pass.
+
+**Partially closed later (2026-09-04, cloud-agent pass)**: `test_hotspot_role_reversal.py`'s
+`test_malformed_truncated_packet_is_silently_dropped` and
+`test_malformed_http_request_over_real_wireless_degrades_cleanly` now assert the module log stays
+empty too (`DNSSRV`/`WEBSERVER` respectively - both grounded directly against source: a
+garbage-but-present UDP datagram never reaches `captive_dns.py`'s own `wrnno=2` backoff branch,
+which only fires on a genuine `(None, None)` `recvfrom()` failure, and an unparseable HTTP request
+line fails entirely inside vendored `ext/microdot.py` before this project's own code is ever
+reached). **Real finding while doing this**: `test_dns_flood_backoff_curve_recovers_once_flood_stops`'s
+own comment claims its flood "triggers the backoff path" - checked directly against
+`captive_dns.py`'s `run()` and this is not what happens: `AsyUDPSocket.recvfrom()` returns real
+`(data, addr)` for any received-but-garbage UDP payload (UDP has no content validation), so the
+flood actually takes the *same* `pr.evt()`-only path as the truncated-packet test above, never the
+`recv_fail_backoff_s`-growing branch its own docstring describes. The test's own assertions (a
+legitimate query still answered promptly once the flood stops) still hold regardless, so this isn't
+a false pass - but the comment's account of *which* code path it's proving is currently wrong. Left
+unfixed and flagged here rather than guessed at, since correcting it either means fixing the
+comment (if the *intended* target really is the recv-failure/backoff path, this test doesn't
+exercise it at all and would need a different fault to actually trigger `(None, None)`) or
+re-scoping the test's own claim - a decision for the project owner, not a mechanical rewrite.
+
+The rest of the tier - `test_hotspot_role_reversal.py`'s remaining fault tests (association/DHCP
+churn, which are bench-radio-observable only and have no DUT-side `src/` module to log against, so
+this policy doesn't apply to them) - stays outside this policy's scope for the reason already
+given, not silently left looking finished. The flash-tier timer-exhaustion/scheduler-saturation
+device scripts (`timer_alarm_pool_exhaustion.py`/`scheduler_saturation_drop.py`) were re-checked too
+and turned out **not** to need this retrofit at all: flash tier has no REST server reachable at all
+(USB/serial only, no network), both scripts already assert the *specific* expected outcome via
+their own `RESULT: PASS/FAIL` line (exact `errno`, per-timer self-heal proof) rather than "didn't
+crash," and neither invokes any `src/` driver module that could log to `errcount` in the first
+place (bare `machine.Timer` only) - so there is no comparable gap there to close. The original note
+above overstated this; corrected here rather than left stale.

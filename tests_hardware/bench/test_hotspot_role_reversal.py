@@ -240,8 +240,16 @@ def test_genuine_root_domain_query_is_answered_correctly(joined_hotspot: str) ->
 def test_malformed_truncated_packet_is_silently_dropped(joined_hotspot: str) -> None:
     # A truncated packet (fewer than 12 header bytes) - src/captive_dns.py's response() returns
     # None for this (confirmed by reading the module), i.e. no response should ever arrive.
+    reset_all_error_logs(joined_hotspot)
     response = dns_probe.query(joined_hotspot, "", raw_query=b"\x01\x02\x03")
     assert response is None, f"expected no response to a malformed/truncated packet, got {response!r}"
+    # The datagram itself arrived fine at the socket layer (UDP has no content validation), so
+    # AsyUDPSocket.recvfrom() returns real (data, addr) here - captive_dns.py's own run() only
+    # reaches wrn_s(wrnno=2) on a genuine (None, None) recv failure, never on garbage-but-present
+    # payload content; a malformed packet's own "response() returned None" path logs via
+    # self.pr.evt() instead (an ordinary event, confirmed directly - not err_s()/wrn_s()), so the
+    # module's real errcount log should stay empty, not just "no response sent".
+    assert_module_error_log_empty(joined_hotspot, "DNSSRV")
 
 
 @pytest.mark.skip(
@@ -370,6 +378,7 @@ def test_put_to_nonsense_path_is_405_not_a_redirect_over_the_hotspot_link(joined
 def test_malformed_http_request_over_real_wireless_degrades_cleanly(joined_hotspot: str) -> None:
     import socket
 
+    reset_all_error_logs(joined_hotspot)
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.settimeout(10.0)
         sock.connect((joined_hotspot, 80))
@@ -382,6 +391,13 @@ def test_malformed_http_request_over_real_wireless_degrades_cleanly(joined_hotsp
     # hardware-only property this adds is that the connection doesn't hang forever or crash the
     # webserver, over a genuine wireless link where real packet loss/reordering is possible.
     assert http_client.fetch(joined_hotspot, 80, "GET", "/status", timeout_s=10.0).status_code == 200, "webserver unresponsive after a malformed request over real wireless"
+    # An unparseable request line fails entirely inside vendored ext/microdot.py's own Request.create()
+    # (its own "if the request could not be parsed, issue a 400 error" path) - never reaches this
+    # project's own route handlers or asy_webserver_service.py's _serve() outer try/except at all
+    # (that wrapper's own wrn_s()/err_s() calls are for connection-level failures - timeouts, peer
+    # resets, unhandled route exceptions - none of which this clean 400-then-close round trip hits),
+    # matching test_network_resilience.py's own malformed-JSON-body finding for the same vendored layer.
+    assert_module_error_log_empty(joined_hotspot, "WEBSERVER")
 
 
 def test_rapid_associate_disassociate_churn_doesnt_wedge_station_management(bench: BenchBridge, hotspot_ssid: str, joined_hotspot: str) -> None:
