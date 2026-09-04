@@ -272,12 +272,25 @@ def flush_fram() -> None:
         _current_fram_chip.save_state()
 
 
+_DEV_FRAM_SIZE = 0x40000  # MB85RS2MTA, 256KB - sensortask_dev.py's own AsyFramManager(spi0, 5, max_size=0x40000, ...)
+_DEV_FRAM_RDID = bytes([0x04, 0x7F, 0x48, 0x03])  # manufacturer=Fujitsu, cont_code, product ID 0x4803 - asy_fram_driver.py's own _KNOWN_PRODUCT_IDS[0x40000], datasheets/fram/MB85RS2MTA-DS501-00032-3v0-E.pdf p.10
+
+
 def _wire_spi_device(id: int) -> "Any | None":
     global _current_fram_chip
     if id == 0:
         from _fram_chip import FramChip
 
-        chip = FramChip(state_path=_fram_state_path)
+        # REAL FINDING, fixed 2026-09-04: this used to always construct a fixed-identity chip
+        # (wozi's own 8KB MB85RS64V), regardless of _i2c_wiring_profile - dev's own FRAM_SPI (a
+        # different, larger real chip: 256KB MB85RS2MTA) silently failed its own device-ID check on
+        # every twin run as a result, caught and swallowed by AsyFramManager.setup()'s own broad
+        # `except Exception`. Mirrors _wire_i2c_devices()'s own profile branch above - see
+        # _fram_chip.py's own FramChip docstring for the full account.
+        if _i2c_wiring_profile == "dev":
+            chip = FramChip(size=_DEV_FRAM_SIZE, state_path=_fram_state_path, rdid_response=_DEV_FRAM_RDID)
+        else:
+            chip = FramChip(state_path=_fram_state_path)
         _current_fram_chip = chip
         return chip
     return None

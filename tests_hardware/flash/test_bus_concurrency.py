@@ -78,3 +78,19 @@ def test_bus_topology_autodetect_address_and_reserved_range_sweep(board: Board) 
     # need continuous measurement to be active to prove a lone device survives a rogue broadcast.
     output = board.run_isolated(DEVICE_SCRIPTS / "bus_topology_autodetect_and_hazard_sweep.py", timeout_s=90.0)
     _assert_pass(output, "bus-topology autodetect/address/reserved-range/self-hazard sweep")
+
+
+def test_fram_same_device_read_write_concurrency(board: Board) -> None:
+    # No NVM-write-budget dependency, like BMP3xx above - FRAM's real datasheet endurance is
+    # 10^13 read/write operations per byte (see the device script's own docstring), not wear-limited
+    # for any realistic test usage.
+    output = board.run_isolated(DEVICE_SCRIPTS / "fram_same_device_rw_concurrency.py", timeout_s=90.0)
+    _assert_pass(output, "FRAM same-device read/write concurrency check")
+
+
+def test_fram_cs_pin_hijack_fault_injection_and_recovery(board: Board) -> None:
+    # Real-hardware GPIO-level fault injection against FRAM's own CS pin - see the device script's
+    # own docstring for the full mechanism and why it needed no separate fault-injection hardware
+    # (BACKLOG.md open question 8's "not currently provisioned" GPIO harness doesn't apply here).
+    output = board.run_isolated(DEVICE_SCRIPTS / "fram_cs_hijack_fault_injection_and_recovery.py", timeout_s=60.0)
+    _assert_pass(output, "FRAM CS-pin hijack fault-injection/recovery check")

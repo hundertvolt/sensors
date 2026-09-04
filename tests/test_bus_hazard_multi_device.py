@@ -18,12 +18,23 @@ specifically - see SPECIFICATION.md Part C.8's own note on this.
 import asyncio
 import struct
 
+from _fram_chip_fake import FakeMB85RS64V
 from machine import I2C as FakeI2C
 
+import asy_spi_driver
 from asy_bmp3xx_driver import BMP3XX_I2C
+from asy_fram_driver import FRAM_SPI
 from asy_i2c_driver import I2C
 from asy_scd30_driver import SCD30_I2C
 from asy_sgp40_driver import SGP40_I2C
+from asy_spi_driver import SPI as AsySPI
+from print_log import PrintLogHistory
+
+# Same one-process-per-test-file swap test_asy_fram_driver.py's own header comment explains -
+# asy_spi_driver.SPI.init() resolves `_SPI` as a plain module global at call time, so this is safe
+# to do once here alongside this file's own I2C imports above, independent of them (a different bus
+# type entirely).
+asy_spi_driver._SPI = FakeMB85RS64V  # type: ignore[misc]
 
 try:
     from typing import TYPE_CHECKING
@@ -516,6 +527,86 @@ def test_no_reserved_i2c_address_collides_with_any_promoted_devices_own_address(
     # a reserved I2C range would be caught here immediately, before it ever reaches real hardware.
     for name, address in (("SCD30", _SCD_ADDR), ("BMP3xx", _BMP_ADDR), ("SGP40", _SGP_ADDR)):
         assert not _is_reserved(address), f"{name}'s own address {address:#x} falls inside a reserved I2C range"
+
+
+# ---------------------------------------------------------------------------
+# 5. FRAM (SPI) - the one promoted bus-facing device with no I2C address concept and no bus-
+#    sharing: sections 2 (cross-device interleave) and 3 (general-call broadcast) don't apply -
+#    both wozi and dev wire exactly one SPI device to its own dedicated bus (sensortask_wozi.py/
+#    sensortask_dev.py's own construction comments). Same-device concurrency (this section) is
+#    therefore FRAM's whole applicable slice of this file's own standing rule (see this module's
+#    own docstring) - previously missing entirely, a real gap against that rule fixed here.
+#    Proven by outcome (final memory state, every read exactly matches what it should), not
+#    wire-log byte parsing like section 1's SCD30 test: FakeMB85RS64V's own write()/readinto()
+#    (tests/_fram_chip_fake.py) don't feed tests/machine.py's shared SPI.log at all (they fully
+#    override the base fake's methods rather than delegating to them) - but its own internal
+#    _pending_op/_pending_addr two-phase opcode/data state machine is itself corruption-sensitive:
+#    a read's opcode phase landing between a write's own opcode-phase and data-phase calls would
+#    silently misroute the write's data bytes to the wrong branch, which a plain "did the right
+#    bytes end up in the right place" assertion below would still catch directly.
+# ---------------------------------------------------------------------------
+
+
+def make_fram_bus() -> AsySPI:
+    return AsySPI(0, sck_pin=2, mosi_pin=3, miso_pin=4)
+
+
+def make_fram(max_size: int = 0x2000) -> "tuple[FRAM_SPI, FakeMB85RS64V]":
+    bus = make_fram_bus()
+    fram = FRAM_SPI(bus, 1, logger=PrintLogHistory(name="TESTFRAM"), max_size=max_size)
+    chip = fram._spidev.spi._spi
+    assert isinstance(chip, FakeMB85RS64V)
+    return fram, chip
+
+
+_FRAM_READ_REGION = (0x0000, 16)  # (start_address, length) - never touched by the writer below
+_FRAM_WRITE_REGION = (0x1000, 16)  # disjoint from the read region, well within the 0x2000 chip's range
+_FRAM_SEED_PATTERN = bytes(range(16))  # 0x00..0x0F - fixed, known, easy to spot corruption in
+_FRAM_WRITE_PATTERN = bytes(range(0xF0, 0x100))  # 0xF0..0xFF - deliberately distinct from the seed
+
+
+def test_fram_same_device_concurrent_read_and_write_never_corrupt_each_other() -> None:
+    fram, chip = make_fram()
+    run(setup_fram_test(fram))
+    chip.memory[_FRAM_READ_REGION[0] : _FRAM_READ_REGION[0] + _FRAM_READ_REGION[1]] = _FRAM_SEED_PATTERN
+
+    read_iterations = 20
+    reads_completed = 0
+    write_completed = False
+    read_mismatches: list[str] = []
+
+    async def reader() -> None:
+        nonlocal reads_completed
+        buf = bytearray(_FRAM_READ_REGION[1])
+        for i in range(read_iterations):
+            ok = await fram.get_values(buf, addr_start=_FRAM_READ_REGION[0])
+            if not ok or bytes(buf) != _FRAM_SEED_PATTERN:
+                read_mismatches.append(f"iter {i}: ok={ok} got={bytes(buf).hex()} expected={_FRAM_SEED_PATTERN.hex()}")
+            reads_completed += 1
+
+    async def writer() -> None:
+        nonlocal write_completed
+        await asyncio.sleep(0)  # let the reader get partway into its run first, matching section 1's own pattern
+        ok = await fram.set_values(_FRAM_WRITE_PATTERN, addr_start=_FRAM_WRITE_REGION[0])
+        assert ok, "FRAM write failed outright under concurrent read load"
+        write_completed = True
+
+    async def locked_call(coro: "Coroutine[Any, Any, None]") -> None:
+        async with fram:
+            await coro
+
+    with _FastAsyncSleep():
+        run(_gather(locked_call(reader()), locked_call(writer())))
+
+    assert reads_completed == read_iterations
+    assert write_completed
+    assert not read_mismatches, f"{len(read_mismatches)} corrupted/torn read(s) under concurrent write: {read_mismatches[:5]}"
+    written_back = bytes(chip.memory[_FRAM_WRITE_REGION[0] : _FRAM_WRITE_REGION[0] + _FRAM_WRITE_REGION[1]])
+    assert written_back == _FRAM_WRITE_PATTERN, f"write region shows {written_back.hex()}, expected {_FRAM_WRITE_PATTERN.hex()} - torn/corrupted write"
+
+
+async def setup_fram_test(fram: FRAM_SPI) -> None:
+    await fram.setup()
 
 
 if __name__ == "__main__":

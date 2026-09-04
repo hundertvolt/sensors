@@ -122,7 +122,12 @@ def test_concurrent_get_sensors_under_real_multi_client_load_never_corrupts_or_c
     # per the standing error-log policy (tests_hardware/README.md), a clean pass leaves nothing
     # behind for either SCD30 or BMP3XX (whose config-snapshot reads this test drove directly) or
     # SGP40 (whose real general-call reset this test triggered concurrently with those reads).
-    for module in ("SCD30", "BMP3XX", "SGP40"):
+    # FRAM has no dedicated REST-triggered synchronous write path to drive directly the way
+    # GET /sensors does for SCD30/BMP3xx above (its own writes happen on each sensor's periodic
+    # error-log/VOC-backup cycle, not on-demand) - but every one of those sensors' own error-log
+    # writes above this same heavy concurrent load already lands on FRAM, so confirming FRAM itself
+    # reported nothing wrong is real, meaningful coverage of it staying healthy under this load too.
+    for module in ("SCD30", "BMP3XX", "SGP40", "FRAM"):
         assert_module_error_log_empty(dut_ip, module)
 
     # Final sanity: the real system is still serving plausible measurements after the load, not
