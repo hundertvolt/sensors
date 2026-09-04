@@ -607,3 +607,23 @@ constraints.
     `--deselect
     tests_hardware/flash/test_bus_electrical_timing.py::test_ticks_ms_real_2pow30_rollover` unless a
     session genuinely intends a multi-day run.
+- **Real finding, recovered: a missing `BENCH_AP_PASSWORD` cascades into ~25 real test failures,
+  not just one clean skip (2026-09-04).** `test_hotspot_role_reversal.py`'s own
+  `test_real_credentials_put_succeeds_and_confirms_accepted_values` (the one step that PUTs the
+  real bench-bridge SSID/PW back to the DUT while it's still reachable, before stage 7's
+  `leave_dut_hotspot_and_restore_bridge()`) skips cleanly when `BENCH_AP_PASSWORD` isn't set - by
+  design, documented in its own skip message. What isn't obvious from reading that one test in
+  isolation: without it, the DUT's persisted SSID stays `""` (cleared by stage 0's own
+  `PUT /networking {"SSID": ""}`), so stage 7's flip-back can never succeed - not gracefully, and
+  not even via its own documented `hard_reset()` fallback (a real reboot still reads the same
+  cleared, persisted SSID and falls straight back into hotspot mode) - leaving the DUT
+  unreachable over the bench bridge for every test that runs after it in the same session. Real
+  observed cost this session: 33 passed, 25 failed, 1 error in one run, entirely attributable to
+  this one missing env var. **Recovered directly via serial** (`mpremote run` against
+  `config_manager.ConfigManager` writing `config_WIFI.cfg` directly, bypassing the network
+  entirely, then a real `mpremote reset`) rather than waiting through more doomed network-based
+  retries - confirmed reconnected (`Mode: STA, Connected: true`) within ~20s. **Standing rule for
+  any future real bench session running `test_hotspot_role_reversal.py`: always set
+  `BENCH_AP_PASSWORD` first** (`tests_hardware/README.md`'s own credential-handoff section already
+  documents how to find/record it) - this is not optional/best-effort the way the test's own quiet
+  skip message might suggest.
