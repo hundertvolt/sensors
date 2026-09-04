@@ -62,33 +62,35 @@ constraints.
   wrappers (e.g. `Protocol` classes matching just the overridden methods, plus `__getattr__`
   delegation) and a decision on how to type the genuinely-variadic/opaque `src/` cases, not just a
   flag flip.
-- **FRAM bus-recovery is only partially wired up — flagged as the next thing to build (2026-09-04).**
-  `asy_fram_driver.py`'s own `src/` promotion added device-identification/write-protect
-  verification, but there's still no periodic/triggered re-probe policy — `verify_present()` and
-  `set_write_protected()` have zero callers anywhere; `get_write_protected()` has exactly one,
-  `_write()`'s own write-protection gate, which isn't a re-probe of anything — and no task
-  supervisor for FRAM specifically. Whoever wires this up must wrap the calls in the same
-  `try/except Exception` discipline this file's other methods already use — `asy_fram_driver.py`
-  doesn't catch its own inherited `RuntimeError` path on these three itself.
-  **Investigated 2026-09-04, for "is there an existing test to extend":** `verify_present()` itself
-  is already correctness-tested in isolation
-  (`tests/test_asy_fram_driver.py::test_verify_present_true_for_the_256kb_chip`/
-  `test_verify_present_false_for_the_256kb_chip_after_id_changes`) — the gap is specifically that no
-  *production* code path ever calls it, not that the method is unverified. `digital_twin/launch.py`'s
-  fault-injection vocabulary already has FRAM wired in
-  (`_FAULT_DEVICE_OPS["fram"] = ("write", "readinto")`, i.e. `--fault fram:write`/
-  `--fault fram:readinto` already work) — but no test yet drives that fault and checks for recovery,
-  because there's nothing in production code that would recover yet. **This is the natural extension
-  point once the supervisor/re-probe policy itself is written**, not something to extend today as-is.
-  Separately, also confirmed: unlike SCD30/SGP40/BMP3xx, **FRAM currently has zero presence in any of
-  CLAUDE.md's four hard-rule bus-hazard tiers**
+- **FRAM bus-hazard/recovery test coverage — DONE across all four hard-rule tiers (2026-09-04).**
+  FRAM previously had zero presence in any of CLAUDE.md's four hard-rule bus-hazard test files
   (`tests/test_bus_hazard_multi_device.py`, `tests/test_digital_twin_bus_hazard_concurrency.py`,
   `tests_hardware/flash/test_bus_concurrency.py`, `tests_hardware/bench/test_bus_concurrency_under_api_load.py`)
-  — a distinct, pre-existing gap against that same standing rule, worth closing alongside this one
-  since a supervisor/re-probe policy is exactly the kind of new bus-facing behavior that rule exists
-  to cover. Real-hardware fault injection (physically disturbing the SPI bus, as opposed to the
-  twin's software fault hook) is blocked on the same missing GPIO fault-injection harness as the
-  "genuinely wedged I2C bus" manual test (open question 8 above) — not buildable today regardless.
+  despite being a promoted, bus-facing device like every I2C driver already covered there - closed.
+  Real-hardware fault injection turned out **not** to need the separate GPIO fault-injection harness
+  open question 8 flags as "not currently provisioned": FRAM's own CS pin is a plain,
+  software-toggled `machine.Pin` the RP2040 already fully owns (`asy_spi_driver.py`'s
+  `SPIDevice.cs_pin`), so a self-contained on-device script
+  (`tests_hardware/device_scripts/fram_cs_hijack_fault_injection_and_recovery.py`) races it
+  directly during the one real yield point inside `SPIDevice.__aenter__()`, no external hardware
+  needed - project-owner-proposed technique, confirmed reliable 5/5 trials each for both a hijacked
+  write (silently never reaches the chip) and a hijacked read (never returns the real data), both
+  asserted as hard requirements, plus a full recovery proof after each. `verify_present()` itself
+  was already correctness-tested in isolation before this pass; the real remaining gap closed here
+  was tier coverage, not the method's own correctness.
+  **REAL FINDING, fixed along the way**: writing the twin-tier fault-injection test surfaced that
+  `digital_twin/machine.py`'s `_wire_spi_device()` always constructed a fixed-identity `FramChip`
+  (wozi's own 8KB MB85RS64V) regardless of which variant was actually running - `dev`'s own FRAM (a
+  different, larger real chip, 256KB MB85RS2MTA) had been silently failing its own device-ID check
+  on every twin run since `dev`'s own FRAM was added, caught and swallowed by
+  `AsyFramManager.setup()`'s broad `except Exception`, unnoticed until this pass's new assertion.
+  Fixed (`_wire_spi_device()` now reads the existing `_i2c_wiring_profile` global, mirroring
+  `_wire_i2c_devices()`'s own per-variant branch); full local suite reruns clean.
+  **Still genuinely open, a separate and larger question**: there is still no periodic/triggered
+  *production* re-probe policy — `verify_present()`/`set_write_protected()` have zero real callers
+  in `src/` — this test pass proves the existing primitive works under a real fault, it doesn't add
+  automatic recovery to production code. That remains an explicit, undecided design question (who
+  calls `verify_present()`, on what trigger) for whenever it's actually wanted.
 - **No standardized timeout/cancellation mechanism yet for blocking calls that genuinely can be
   timeout-wrapped** (FRAM SPI transactions, `src/asy_udp_socket.py`'s own `select.poll`-driven
   `ready()`/`write_and_recvfrom()` — anything that isn't a raw blocking `machine.I2C` call
