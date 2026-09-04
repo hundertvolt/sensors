@@ -176,26 +176,32 @@ constraints.
   both tiers for
   real on the bench Rpi4, the same dedicated-session pattern used for the earlier `build_firmware.py`
   autolaunch verification (see this branch's own commit history).
-- **Real-hardware re-test of the segfault fix and the memory-leak soak test (owner's standing
-  future plan, not yet actionable)** — the project owner has real future plans to run tests directly
-  on the actual rp2040 target hardware. Once that's possible, repeat both Unix-port soak tests
-  there:
-  - The **segfault stress test** (`digital_twin/segfault_stress_repro.py`'s repeated-concurrent-
-    client-burst scenario) — not because the root cause is in doubt (a dangling-pointer bug in
-    `extmod/modselect.c`, confirmed compiled out of real rp2 firmware via
+- **Real-hardware re-test of the segfault fix and the memory-leak soak test — real-hardware forms
+  now exist and are wired into `tests_hardware/`, but the actual long-soak run is still opt-in and
+  has not yet been executed.** Corrects a stale claim (this entry used to say neither soak-test
+  script had a real-hardware-runnable form at all — no longer true):
+  - The **segfault stress test** equivalent is
+    `tests_hardware/bench/test_end_to_end_timing.py::test_real_concurrent_client_burst_does_not_crash_the_webserver`
+    — confirmed passing on real hardware (2026-09-04). Not because the root cause was ever in doubt
+    (a dangling-pointer bug in `extmod/modselect.c`, confirmed compiled out of real rp2 firmware via
     `MICROPY_PY_SELECT_POSIX_OPTIMISATIONS` and fixed on the Unix port by
     `digital_twin/unix_port_poll_prewarm.py` — see `digital_twin/README.md`'s "What's here" for the
-    fix and BACKLOG.md's own git history for the investigation), but as standing on-target
-    validation practice for the wider stress scenario itself.
-  - The **memory-leak soak test** (a long-running `gc.mem_free()` recovery-peak trend measurement
-    against the real assembled system under HTTP soak traffic) — not because the "no confirmed leak
-    on the Unix port" conclusion is in doubt (four independent, properly-powered replication
-    experiments found no reproducible decline, on either idle or HTTP-soak traffic), but because the
-    Unix port's allocator/heap behavior isn't guaranteed identical to rp2040's real one, so an
-    independent on-target confirmation is worthwhile.
-  Neither soak-test script currently has a real-hardware-runnable form (both assume the Unix-port
-  `digital_twin` harness); porting/adapting them for actual on-device execution is part of this
-  future work, not already done.
+    fix), but as standing on-target validation of the wider stress scenario itself.
+  - The **memory-leak soak test** equivalent is
+    `tests_hardware/bench/test_memory_stress_bench.py::test_real_hardware_memory_does_not_leak_under_real_http_soak_traffic`
+    — real, committed, but `@pytest.mark.long_soak` (skipped unless `--run-long-soak` is passed) and
+    **not yet actually run** as of 2026-09-04. Deliberately does **not** use the Unix-port twin's own
+    `gc.mem_free()` recovery-peak-trend methodology — confirmed impossible on real hardware without
+    disturbing the very system being measured (`mpremote exec()` always interrupts the live system
+    first, and a live `asyncio.run()` doesn't resume once interrupted — see the test's own module
+    docstring). Instead watches real HTTP soak traffic passively for the two disqualifying symptoms
+    observable without disturbing anything: a `MemoryError` traceback, or an unexpected mid-soak
+    reboot — a real but coarser signal than an actual trend measurement. Not because the "no
+    confirmed leak on the Unix port" conclusion is in doubt (four independent, properly-powered
+    replication experiments found no reproducible decline, on either idle or HTTP-soak traffic), but
+    because the Unix port's allocator/heap behavior isn't guaranteed identical to rp2040's real one.
+    **Next step**: run `scripts/run_bench_hardware_suite.sh --run-long-soak --long-soak-seconds
+    <N>` for real and record the result here.
 - **Website definitions-file autogeneration — not yet built.** `html/definitions/<device>.json`
   (Part H.5) is currently hand-written. A worked, already-checked-against-real-code *sketch* exists
   for deriving most of it at build time from `#`-prefixed comment tags placed above each driver's
