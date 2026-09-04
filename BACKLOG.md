@@ -9,19 +9,6 @@ constraints.
 
 ## HIGH PRIORITY — ready for a local Pi4 (real-hardware) session to run
 
-- **New compound-fault real-hardware test, written and ready, never yet run**:
-  `tests_hardware/bench/test_bus_concurrency_under_api_load.py::
-  test_concurrent_get_sensors_under_real_multi_client_load_survives_light_network_degradation`
-  (2026-09-04, cloud-session bird's-eye gap review). Combines the file's existing concurrent-
-  multi-client bus-load pattern with `test_network_resilience.py`'s own researched "everyday
-  congestion" `tc netem` range (`loss_pct=2, delay_ms=30, jitter_ms=20`) run simultaneously - the
-  first test in this tier where a bus-hazard axis and a network-fault axis are both live at once,
-  identified as a real, previously-untested gap (every other test in the tier proves one axis
-  clean of the other). Needs a real bench run to confirm it actually passes as designed (verified
-  clean under ruff/mypy only - never exercised against real hardware). If it fails, the failure
-  itself is real signal (see the test's own docstring for what "corruption" vs. "expected
-  individual request failure under injected loss" means here) - don't treat a first failure as a
-  test-authoring bug without checking the corruption list it prints first.
 - **`asy_wifi_service.py`'s own reconnect-trigger logic (`_run_sta_mode()`/
   `_handle_sta_connection_result()`) has no independent reachability check** - `isconnected()`
   reporting a false positive here has no backstop the way `network_available()`'s NTP consumer
@@ -452,3 +439,18 @@ constraints.
   hook already covers software-side; only genuinely wire-level fault shapes (loss, latency,
   corruption, duplication, reordering, block, garbage) were in scope for a *network* fault-injection
   pass, and that set is now believed complete.
+- **Compound-fault coverage (bus contention x network degradation) — confirmed passing for real
+  (2026-09-04).**
+  `tests_hardware/bench/test_bus_concurrency_under_api_load.py::
+  test_concurrent_get_sensors_under_real_multi_client_load_survives_light_network_degradation` (the
+  cloud-session bird's-eye-review test flagged as "written and ready, never yet run") ran clean on
+  the bench Pi4 against the real dev board: concurrent multi-client `GET /sensors` bus reads plus a
+  concurrent SGP40 general-call reset, all under real, simultaneously-active `tc netem` "everyday
+  congestion" (`loss_pct=2, delay_ms=30, jitter_ms=20`) - zero corruption findings, full recovery
+  once the degradation cleared, all four modules' (`SCD30`/`BMP3XX`/`SGP40`/`FRAM`) error logs
+  clean. Re-ran together with the file's other (pre-existing, clean-network) test - both pass,
+  95.93s. **Session note, not a project fact**: the bench host's own shell session had been started
+  before `ensure_dialout_group()` granted `nico` real `dialout` membership, so `groups`/direct
+  `pyserial` opens against `/dev/ttyACM0` failed with `Permission denied` despite `/etc/group`
+  already listing it correctly - worked around with `sg dialout -c "..."` per invocation rather than
+  needing a fresh login; a brand-new session/shell wouldn't hit this at all.
