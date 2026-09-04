@@ -105,12 +105,7 @@ def test_real_wifi_outage_and_recovery_while_in_normal_sta_mode(board: Board, be
 
     assert http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200, "webserver unresponsive after a real WiFi outage and recovery"
     if not recovered_via_hard_reset:
-        # _on_sta_disconnected()'s ESTABLISHED branch (see this section's own docstring) calls only
-        # pr.evt() - never err_s()/wrn_s() - so a real graceful outage-and-recovery this size is
-        # expected to leave WIFI's own error/warning log completely untouched, not just "no crash".
-        # Not asserted when a hard_reset() was needed instead: that's a real reboot, an entirely
-        # different code path with no such guarantee, not a violation of this property.
-        assert_module_error_log_empty(dut_ip, "WIFI")
+        _assert_wifi_log_has_only_benign_ap_not_found_warning(dut_ip)
 
 
 def test_real_wifi_flaps_repeatedly_without_wedging_the_system(board: Board, bench: BenchBridge, dut_ip: str) -> None:
@@ -144,7 +139,29 @@ def test_real_wifi_flaps_repeatedly_without_wedging_the_system(board: Board, ben
 
     assert http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200, "webserver unresponsive after repeated real WiFi flapping"
     if not recovered_via_hard_reset:
-        assert_module_error_log_empty(dut_ip, "WIFI")  # same reasoning as the single-outage test above
+        _assert_wifi_log_has_only_benign_ap_not_found_warning(dut_ip)  # same reasoning as the single-outage test above
+
+
+def _assert_wifi_log_has_only_benign_ap_not_found_warning(dut_ip: str) -> None:
+    """REAL FINDING, fixed 2026-09-04: both WiFi-outage tests above used to assert the WIFI error/
+    warning log stays completely empty after a graceful (non-hard_reset()) recovery, reasoning that
+    `_on_sta_disconnected()`'s ESTABLISHED branch (see either test's own docstring) calls only
+    `pr.evt()` - true, but that's only ONE of the paths a real outage can take. `_run_sta_mode()`'s
+    own outer loop (`wifi_refresh_sec`=5s cadence) calls `_attempt_sta_connect()` ->
+    `_poll_sta_connect_status()` independently of that 60s sleep whenever a poll happens to observe
+    `isconnected()` as False - and if that active retry's own 5s sub-poll window lands while the
+    real AP is still down, `wlan.status()` genuinely returns `STAT_NO_AP_FOUND`, correctly logging
+    `wrn_s("WLAN access point not found", wrnno=5)` (confirmed directly against real source,
+    src/asy_wifi_service.py's `_poll_sta_connect_status()`). Confirmed on real hardware: a genuine
+    15s outage reliably produced exactly this one warning even on a fully graceful recovery - a
+    correct, accurate report of a real transient condition, not a bug. Tolerate that one specific
+    warning; anything else (any error, or a different warning) still fails this check."""
+    entry = get_errcount(dut_ip).get("WIFI", {})
+    history = entry.get("history", [])
+    # "N" entries are print_log.py's own "nothing recorded" padding (get_log()'s own encoding) -
+    # always present, filling out the fixed-size ring, and not a real log line at all.
+    unexpected = [h for h in history if h.get("type") not in ("N",) and not (h.get("type") == "W" and h.get("num") == 5)]
+    assert not unexpected, f"WIFI error log had unexpected entries beyond the known-benign wrnno=5: {unexpected!r} (full: {entry!r})"
 
 
 def _sta_reconnected(dut_ip: str) -> bool:
@@ -314,31 +331,44 @@ def test_garbage_ntp_host_via_rest_config_degrades_and_recovers_cleanly(board: B
     # Recovery: once a real, resolvable host is configured again, the next forced resync
     # (post_asy_fct fires on this restore PUT too, per handle_set_cmd()'s "fires if ANY field in
     # this call validated" rule - already confirmed directly, HARDWARE_TEST_PLAN.md §11.6) must
-    # actually succeed - checked via /networking's own real NtpSynced field, not just "no error
-    # logged" (a sync that silently never re-attempted would otherwise look identical to one that
-    # attempted and failed silently).
+    # actually succeed - checked via NtpSynced, not just "no error logged" (a sync that silently
+    # never re-attempted would otherwise look identical to one that attempted and failed silently).
+    #
+    # REAL FINDING, fixed 2026-09-04 - this test could never pass at all, not just "flaky": NtpSynced
+    # is not a field of GET /networking (that endpoint returns the config schema only - SSID/PW/
+    # NTP_Host/etc.) - it's only ever exposed under GET /status's nested "networking" status object
+    # (sensortask_dev.py/sensortask_wozi.py's own _networking_status(), wired in via
+    # status_sources={"networking": _networking_status}). The old check read
+    # `GET /networking`'s response `.get("NtpSynced")`, which is always `None` regardless of real
+    # sync state, so `_synced()` could structurally never return True - every prior run of this test
+    # was guaranteed to exhaust both the 30s wait and the 120s post-hard_reset() retry, no matter how
+    # healthy the real WiFi/NTP link actually was. This is the exact same category of bug
+    # tests_hardware/README.md's "Lesson from a since-fixed test bug" entry already documents and
+    # fixed once for a sibling test's "Mode" field - never applied here until now. Confirmed directly
+    # on real hardware: querying GET /status right after this exact PUT sequence showed
+    # `networking.NtpSynced: true` with `NtpLastSyncAge` well under a minute - the resync mechanism
+    # itself, and the real WiFi link, were both fine the whole time. The "WiFi reconnect flakiness"
+    # explanation this comment used to carry (attributing the timeout to BACKLOG.md open question 6)
+    # was itself a misdiagnosis built on a check that could never succeed in the first place - don't
+    # re-attribute a future real, structural failure here to WiFi flakiness without first confirming
+    # this fixed check is what's actually being used.
     def _synced() -> bool:
-        return http_client.fetch(dut_ip, 80, "GET", "/networking", timeout_s=10.0).json().get("NtpSynced") is True
+        status = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).json()
+        return status.get("networking", {}).get("NtpSynced") is True
 
-    # REAL FINDING, fixed: a real resync after restoring a good host can be delayed well past a
-    # bare 30s if this bench's own already-documented, unresolved WiFi reconnect flakiness
-    # (BACKLOG.md open question 6) happens to strike right around here too - confirmed directly: a
-    # clean, isolated repro of this exact PUT sequence succeeded quickly, but a separate run hit
-    # real repeated "WLAN connection established" churn (a genuine WiFi reconnect, not just a slow
-    # NTP attempt) that delayed the sync past 30s before it recovered on its own a while later. Not
-    # a src/ NTP bug - the resync mechanism itself (ntp_force_sync() unconditionally resets
-    # retries and re-triggers a new attempt, confirmed directly against its own source) is correct;
-    # what's flaky is the WiFi link itself, the same open question every other real-reboot test in
-    # this tier already has a bounded recovery retry for - this test previously had none.
+    # The hard_reset() fallback below (mirroring every other real-reboot test in this tier's own
+    # bounded-retry pattern) is kept as a genuine defensive measure against a real, if rare, WiFi
+    # hiccup - but its own timing (120s, and the "observed a real successful sync land at ~84s of
+    # WiFi uptime" reasoning that used to justify it) was measured against the broken check above
+    # and is therefore not trustworthy evidence of anything; kept as a reasonable, not
+    # measurement-derived, bound. With the check now actually correct, a real resync is expected to
+    # land well inside the first 30s in the overwhelming majority of runs - a run that needs this
+    # fallback at all is worth a second look, not an expected/tolerated outcome.
     try:
         wait_until(_synced, timeout_s=30.0, poll_interval_s=2.0, description=f"NTP to report synced again after restoring a real NTP_Host ({original_host!r})")
     except TimeoutError:
         bench.kick_all_stations()
         board.hard_reset()
-        # 120s, not 60s: confirmed directly on real hardware that this bench's own WiFi flakiness
-        # can involve several real reconnect cycles in a row before one finally settles (observed
-        # a real successful sync land at ~84s of WiFi uptime, and separately a case where 60s still
-        # wasn't enough) - this bound is sized off that observed worst case, not guessed.
         wait_until(_synced, timeout_s=120.0, poll_interval_s=3.0, description=f"NTP to report synced again (after one recovery hard_reset() retry, real NTP_Host={original_host!r})")
     assert_module_error_log_empty(dut_ip, "NTP")
 

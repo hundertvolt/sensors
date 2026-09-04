@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import http_client
 from bench_control import BenchBridge
-from error_log_helpers import assert_module_error_log_empty, reset_all_error_logs
+from error_log_helpers import assert_module_error_log_contains, reset_all_error_logs
 from harness import Board, wait_until
 
 # ---------------------------------------------------------------------------
@@ -102,14 +102,27 @@ def test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing(board:
         bench.kick_all_stations()
         board.hard_reset()
         wait_until(lambda: _http_ok(dut_ip), timeout_s=60.0, poll_interval_s=3.0, description="DUT reachable over REST again (after one recovery hard_reset() retry - see this test's own comment)")
-    # asy_ntp_client.py's own _handle_ntp_sync_failure() (confirmed directly): its entire
-    # errno=16/errno=17 retry-logging block is gated on `if await self.ntp_issynced():` - only
-    # reached for a *re*-sync failure after a prior successful sync. This is a fresh boot
-    # (hard_reset() above) with NTP unreachable for the whole window, so ntp_issynced() stays False
-    # throughout and that whole block is never entered - a first-ever unresponsive NTP server is
-    # expected to log nothing at all (the "if not synced at all, ntp_time_hours_counter() will
-    # permanently try to sync" case its own comment names), not just "no crash".
-    assert_module_error_log_empty(dut_ip, "NTP")
+    # REAL FINDING, fixed 2026-09-04 - this assertion's own reasoning only traced ONE of two
+    # independent error-logging paths in asy_ntp_client.py, so it was wrong the whole time, not the
+    # real system: `_handle_ntp_sync_failure()`'s own errno=16/errno=17 retry-logging block is indeed
+    # gated on `ntp_issynced()` and correctly never fires on a first-ever unresponsive server. But
+    # `AsyNtpClient` also extends `base_classes.py`'s `SensorReaderConfig`, whose *separate*,
+    # coarser `_error_check()` consecutive-failure-streak counter (SPECIFICATION.md Part C.7) is
+    # NOT gated on ntp_issynced() at all - confirmed directly against real source (base_classes.py
+    # lines ~213-225) - and fires unconditionally on every failed real sync attempt regardless of
+    # sync history: `errno=1` ("Error counter increased to N") on each one, `errno=2` ("Maximum
+    # error count reached!") once past `max_module_error` (5 by default), then asy_ntp_client.py's
+    # own `errno=20` ("Giving up after repeated sync failures, restarting task") from the outer loop
+    # that wraps this same counter. A 90s window with the NTP port genuinely, persistently blocked
+    # is real, sustained failure - exactly what this mechanism exists to detect and report, so
+    # seeing all three fire is the module working correctly, not a bug. Confirmed directly on real
+    # hardware: this exact scenario reliably produces 8x errno=1, 1x errno=2, 1x errno=20 under
+    # `assert_module_error_log_empty`'s old blanket-emptiness check - it never could have passed for
+    # a genuinely unreachable server, only for one that failed faster than one `_error_check()` cycle
+    # could register (a false pass, not evidence of correct handling). Checking for the real,
+    # expected outcome instead: the module must actually notice and report giving up, not silently
+    # spin forever - a missing errno=20 here would be the real bug this test should be catching.
+    assert_module_error_log_contains(dut_ip, "NTP", 20, "E")
 
 
 def _http_ok(dut_ip: str) -> bool:
