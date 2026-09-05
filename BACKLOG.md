@@ -876,6 +876,23 @@ constraints.
   recommendation; step (4) (deciding on a threshold, the streaming fix, or both) still needs the
   project owner's own call.
 
+  **Step (4) decided (2026-09-05): `gc.threshold(32768)`, on top of (not instead of) the streaming
+  fix.** Project owner's own call, made against the step-1 data above - both as a defense-in-depth
+  margin against any other still-undiscovered large-allocation site, given the streaming fix alone
+  was already independently confirmed sufficient for the specific reproduction this investigation
+  started from. Implemented at module level in both `boot_entry/dev_boot.py` and
+  `boot_entry/wozi_boot.py` (as early as possible, before `main()`/`build_system()` allocate
+  anything - matching exactly how the value was measured, not left to `main()`'s own later timing).
+  Two new Unix-port unit tests added (`tests/test_asy_webserver_service.py`'s new "H.3" section):
+  `test_h3_hammer_concurrent_status_requests_stay_valid_with_gc_threshold_unset` and
+  `..._with_the_chosen_gc_threshold`, each driving 200 concurrent `GET /status` requests against a
+  real-hardware-scale (17-module) registration under `gc.threshold(-1)`/`gc.threshold(32768)`
+  respectively, saving/restoring whatever value the shared Unix-port process already had so neither
+  test leaks its setting into another test in the same file. These are correctness/regression
+  guards, not memory-pressure reproductions - this process's 8MB heap (`scripts/test.sh`'s own
+  `-X heapsize=8M`) can never reproduce a genuine embedded-scale `MemoryError`. Full local
+  `scripts/test.sh` clean (0 FAIL) after adding these.
+
   **Step (2) done (2026-09-05), software-only, no real hardware touched.** `_get_status()`/
   `_build_status_pieces()` in `asy_webserver_service.py` now build a plain `list[str]` of small,
   already-`json.dumps()`-encoded fragments - one per top-level section (`networking`/`system`/

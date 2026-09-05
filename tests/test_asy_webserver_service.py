@@ -2,6 +2,7 @@
 GET routes return the bare shaped dict; PUT routes return the existing api_response.py envelope - see SPECIFICATION.md Part A.8 for the PUT-shapes decision. Connection-lifecycle internals are exercised with hand-scripted fake reader/writer doubles, never a real select.poll()."""
 
 import asyncio
+import gc
 import json
 import os
 import sys
@@ -2122,6 +2123,69 @@ def test_h2_stream_many_error_sources_are_coalesced_into_size_bounded_batches_no
     assert len(body["errcount"]) == 21  # 20 fake modules + this service's own WEBSERVER entry
     for i in range(20):
         assert body["errcount"][f"MODULE{i}"] == {"counter": 10, "history": [{"num": 1, "type": "E"}] * 10}
+
+
+# -- H.3: gc.threshold() companions to the real-hardware hammer-load investigation ---------------
+#
+# Unit-test-tier companions to BACKLOG.md's real-hardware hammer-load investigation (2026-09-05):
+# the same 5-concurrent-client pattern that produced 237 real MemoryErrors on real hardware before
+# the streaming fix, and 0 after (confirmed with no gc.threshold() change at all). This Unix-port
+# process has an 8MB heap (scripts/test.sh's own -X heapsize=8M) and can never reproduce a genuine
+# embedded-scale MemoryError - these are correctness/regression guards, not memory-pressure
+# reproductions: many concurrent /status requests against a real-hardware-scale (17 module)
+# registration must all still complete cleanly and produce one valid, correctly-shaped JSON
+# document, under both MicroPython's own real default (no proactive collection) and the project
+# owner's actually-chosen gc.threshold(32768) (BACKLOG.md, 2026-09-05 - defense in depth on top of,
+# not instead of, the streaming fix; real sub-second-resolution frequency/mem_free-floor
+# measurements at 16384/32768/65536 fed that decision). gc.threshold() is process-global state
+# (confirmed directly against the pinned interpreter's own py/modgc.c: it has no per-object/
+# per-task scoping) - every test below saves and restores the value it finds already set, so
+# neither test leaks its own setting into any other test sharing this same Unix-port process.
+
+
+def _make_hammer_service() -> "tuple[WebserverService, Microdot]":
+    modules = []
+    for i in range(17):  # matches the real registered-module count found on real hardware
+        m = _FakeModule(f"MODULE{i}")
+        m.pr.err_count = 5
+        m.pr.history = [(1, "E")] * 5
+        modules.append(m)
+    return _make_service(
+        status_sources={"networking": _const_source({"A": 1}), "system": _const_source({"B": 2})},
+        maintenance_sensors=[("SGP40", _const_source({"BackupTS": 1}))],
+        error_sources=modules,
+        history_length=0,
+    )
+
+
+async def _hammer_status(app: "Microdot", n: int) -> None:
+    async def _one() -> None:
+        res = await app.dispatch_request(_make_request(app, "GET", "/status", None))
+        body = json.loads(status_body(res))
+        assert set(body.keys()) == {"networking", "system", "notification", "sensors", "errcount"}
+        assert len(body["errcount"]) == 18  # 17 fake modules + this service's own WEBSERVER entry
+
+    await asyncio.gather(*(_one() for _ in range(n)))
+
+
+def test_h3_hammer_concurrent_status_requests_stay_valid_with_gc_threshold_unset() -> None:
+    orig_threshold = gc.threshold()
+    gc.threshold(-1)  # MicroPython's own real default (confirmed directly - no proactive collection)
+    try:
+        _, app = _make_hammer_service()
+        run(_hammer_status(app, 200))
+    finally:
+        gc.threshold(orig_threshold)
+
+
+def test_h3_hammer_concurrent_status_requests_stay_valid_with_the_chosen_gc_threshold() -> None:
+    orig_threshold = gc.threshold()
+    gc.threshold(32768)  # the project owner's chosen value, see this section's own comment above
+    try:
+        _, app = _make_hammer_service()
+        run(_hammer_status(app, 200))
+    finally:
+        gc.threshold(orig_threshold)
 
 
 if __name__ == "__main__":
