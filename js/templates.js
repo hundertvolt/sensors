@@ -10,6 +10,7 @@
 // {formatFieldValue}` here would collide with field-format.js's own `export function
 // formatFieldValue` once both are concatenated into one module - callers that need this function
 // import it from js/field-format.js directly instead (js/render.js, tests_js/templates.test.js).
+import { resolveFieldValue } from "./definitions.js";
 import { formatFieldValue } from "./field-format.js";
 
 /** @typedef {import("./definitions.js").FieldDef} FieldDef */
@@ -194,7 +195,7 @@ export function buildFieldGroupCard(group, currentValues) {
     card.appendChild(heading);
 
     for (const field of group.fields) {
-        card.appendChild(buildField(field, currentValues[field.key], Boolean(group.submit)));
+        card.appendChild(buildField(field, resolveFieldValue(field, currentValues), Boolean(group.submit)));
     }
 
     if (group.submit) {

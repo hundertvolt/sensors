@@ -20,7 +20,14 @@ from print_log import PrintLogHistory
 # fixed values for this specific chip, confirmed against the datasheet.
 _SPI_MANF_ID = const(0x04)  # Fujitsu
 _SPI_CONT_CODE = const(0x7F)  # JEDEC continuation-code byte, fixed for Fujitsu's bank
-_SPI_PROD_ID = const(0x0302)  # 64Kbit density (0x03) + proprietary byte (0x02)
+
+# Product ID (RDID's 3rd+4th bytes) is chip-specific, unlike manufacturer ID/continuation code above
+# (shared project-wide, confirmed against both datasheets below) - keyed by max_size so setup() can
+# tell which of this codebase's two known SPI FRAM breakouts is actually wired.
+_KNOWN_PRODUCT_IDS: dict[int, int] = {
+    0x2000: 0x0302,  # MB85RS64V, 64Kbit/8KB - datasheets/fram/MB85RS64V-DS501-00015-4v0-E.pdf p.10
+    0x40000: 0x4803,  # MB85RS2MTA, 2Mbit/256KB - datasheets/fram/MB85RS2MTA-DS501-00032-3v0-E.pdf p.10
+}
 
 _SPI_OPCODE_WREN = const(0x06)  # Set write enable latch
 _SPI_OPCODE_WRDI = const(0x04)  # Reset write enable latch
@@ -68,11 +75,14 @@ class FRAM_SPI(Lockable):
         self._addr_buf = bytearray(4) if self._max_size > 0xFFFF else bytearray(3)
 
     async def _check_device_id(self) -> bool:
+        expected_prod_id = _KNOWN_PRODUCT_IDS.get(self._max_size)
+        if expected_prod_id is None:
+            raise ValueError(f"FRAM max_size {self._max_size:#x} has no known product ID to verify against - add it to _KNOWN_PRODUCT_IDS")
         async with self._spidev as spidev:
             await spidev.write(bytearray([_SPI_OPCODE_RDID]))
             await spidev.readinto(self._id_buf)
         prod_id = (self._id_buf[2] << 8) + self._id_buf[3]
-        return self._id_buf[0] == _SPI_MANF_ID and self._id_buf[1] == _SPI_CONT_CODE and prod_id == _SPI_PROD_ID
+        return self._id_buf[0] == _SPI_MANF_ID and self._id_buf[1] == _SPI_CONT_CODE and prod_id == expected_prod_id
 
     async def _read_address(self, address: int, read_buffer: bytearray | memoryview) -> None:
         async with self._spidev as spidev:
@@ -226,7 +236,14 @@ class FRAM_SPI(Lockable):
             await self.pr.err_s("FRAM verify_present: lock busy, giving up.", errno=97)
             return False
         try:
-            present = await self._check_device_id()
+            try:
+                present = await self._check_device_id()
+            except ValueError as e:
+                # Provably unreachable (self._max_size is fixed post-construction, and reaching here
+                # already required a prior successful setup() with that same size) - kept per Part
+                # E.5.1's documented precedent for this exact class of defensive branch, not chased.
+                await self.pr.err_s("FRAM verify_present: device ID check failed.", e, errno=98)
+                present = False
             if not present:
                 self.initialized = False
         finally:

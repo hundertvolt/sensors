@@ -435,6 +435,49 @@ def test_timer_deinit_stops_further_callbacks() -> None:
     assert count_after == count_at_deinit  # nothing fired after deinit()
 
 
+def test_timer_reinit_from_within_its_own_callback_does_not_raise() -> None:
+    # Regression test: self-rearming/chained timers (src/system_service.py's own
+    # _timer_sequencer(), fixed to reuse one preallocated Timer via repeated .init() calls rather
+    # than constructing a fresh Timer() per chain step - see CLAUDE.md/SPECIFICATION.md Part F.1)
+    # re-.init() the SAME Timer object from within that object's own currently-firing callback.
+    # Timer.init()'s own internal deinit() used to unconditionally call self._task.cancel() -
+    # cancelling the task that is, at that exact moment, running the very callback doing the
+    # re-init, which MicroPython's asyncio (extmod/asyncio/task.py) rejects with
+    # RuntimeError("can't cancel self"). This is a real, valid pattern on real rp2 hardware (just
+    # reprograms the alarm pool - the just-fired ONE_SHOT alarm is already consumed), so the twin
+    # must support it too.
+    steps: list[int] = []
+    timer = Timer()
+
+    def _chain(_t: "Timer", counter: int = 0) -> None:
+        steps.append(counter)
+        if counter < 2:
+            timer.init(period=10, mode=Timer.ONE_SHOT, callback=lambda t: _chain(t, counter + 1))
+
+    async def scenario() -> None:
+        timer.init(period=10, mode=Timer.ONE_SHOT, callback=lambda t: _chain(t))
+        for _ in range(100):  # generous relative to the 10ms period, matches the sibling test below
+            if len(steps) >= 3:
+                return
+            await asyncio.sleep_ms(10)
+        raise AssertionError("chained timer never completed all steps")
+
+    run(asyncio.wait_for(scenario(), 5))  # must not raise "can't cancel self"
+    assert steps == [0, 1, 2]
+
+
+def test_timer_deinit_outside_a_running_event_loop_does_not_raise() -> None:
+    # Sibling regression test: the same self-reinit fix above needs asyncio.current_task() to tell
+    # whether deinit() is running from inside the timer's own callback - but current_task() itself
+    # raises RuntimeError("no running event loop") when called with no event loop running at all
+    # (confirmed directly against extmod/asyncio/core.py), which a plain synchronous caller (no
+    # asyncio.run() in progress) hits immediately. deinit() must treat that the same as "definitely
+    # not my own callback", not let the RuntimeError propagate.
+    timer = Timer()
+    timer.init(period=1000, mode=Timer.ONE_SHOT, callback=lambda t: None)
+    timer.deinit()  # must not raise, called with no event loop running
+
+
 def test_timer_fires_for_real_on_a_short_period() -> None:
     # The one live-timing test in this whole package (see module docstring): a very short period
     # with a generous asyncio.wait_for bound, checking the asyncio-task-scheduled mechanism itself

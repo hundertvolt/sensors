@@ -97,6 +97,17 @@ information):
 - **`dev` config is a bench rig only** — its quirks (e.g. LED/Neopixel REST routes referencing an
   object that's never instantiated) are explicitly out of scope. Don't fix them as if they were
   bugs.
+- **WoZi is the exemplary/base variant the whole `src/` promotion is built and validated against —
+  it is never physically flashed or bench-tested; only the dev board is, and only ever will be.**
+  WoZi's own correctness is established entirely through the mock/twin/unit-test suite (`tests/`),
+  which stays the source of truth for it and is unaffected by any real-hardware work. The dev bench
+  exists solely to physically validate the underlying shared mechanisms (I2C/SPI/WiFi/webserver/
+  etc.) that wozi's own code also uses — **a passing dev-bench result is treated as valid for wozi
+  too**, provided the code actually under test is genuinely dev-native (dev's own correct pins/
+  config via its own entry point), never wozi's own hardcoded build forced onto dev hardware. That
+  specific mismatch (`scripts/build_firmware.py wozi` — wozi's hardcoded pins — flashed onto the dev
+  bench) produced two false "bugs" once (see BACKLOG.md's git history around 2026-09-02/03) — it
+  isn't a shortcut for testing wozi, it's testing nothing at all, and must not be repeated.
 - **No unit tests against the current (deployed, pre-refactor) codebase — `python/`, `modules/`.**
   The agreed plan is: fully understand the current system first, confirm what's already
   promoted into `src/`, and write tests as part of that refactor — not before, and
@@ -120,6 +131,12 @@ information):
   software fix to chase** — settled, don't re-propose an I2C-level timeout mechanism; full
   reasoning (including why `socket.getaddrinfo()` belongs in this same bucket, and which calls
   genuinely *can* be timeout-wrapped) is in SPECIFICATION.md Part F.2.
+- **The same backstop applies to a WiFi link stuck in a CYW43-firmware-level `isconnected()` false
+  positive — a power cycle/`hard_reset()` is a deliberately stable, intended recovery feature, not
+  a fallback to fix away.** Confirmed inherently safe: every real flash write is reachable only
+  through the REST PUT path, so a device whose API is unreachable structurally cannot have a write
+  in flight. Settled, don't propose an independent reachability-probe mechanism; full reasoning and
+  real bench-hardware timing data are in SPECIFICATION.md Part F.2 and BACKLOG.md.
 - **Don't wrap every `asyncio` primitive call in `try`/`except` against a theoretical internal
   `MemoryError` as a blanket policy** — see SPECIFICATION.md Part F.2 for the full rule and its
   narrow exception.
@@ -129,6 +146,39 @@ information):
 - **Long-blocking operations must not stall timing-sensitive work** — standing design principle
   for all new code; full reasoning (including the retired `get_long_block_lock()` mechanism) is in
   SPECIFICATION.md Part F.3.
+- **A new bus-facing (I2C/SPI) device gets bus-hazard test coverage across all four test tiers that
+  apply to it — never forget this** (project owner's explicit, standing direction): same-device
+  read-vs-write concurrency, cross-device interleaving if it shares a bus in either variant, and an
+  address/command sweep, in `tests/test_bus_hazard_multi_device.py` (mock), `tests/
+  test_digital_twin_bus_hazard_concurrency.py` (digital twin), `tests_hardware/flash/
+  test_bus_concurrency.py` + `tests_hardware/bus_topology.py` (real hardware, dev bench), and
+  `tests_hardware/bench/test_bus_concurrency_under_api_load.py` (real hardware, full HTTP stack).
+  Full checklist, plus the two real-hardware write-safety constraints any new device's own on-chip
+  NVM or the RP2040's own flash filesystem must respect: SPECIFICATION.md Part C.8's own standing
+  rule, right after its general-call hazard finding.
+- **A session needs the project owner's go-ahead, given directly in that session's own
+  conversation, before running anything against real hardware** (any `mpremote` command, `nmcli`/
+  `iw`/`iptables` call, `picotool`, or `tests_hardware/`'s own suite runners) — a go-ahead given to
+  a different session, or to an earlier session that already ended, does not carry over; if there's
+  any doubt whether the current conversation actually has it, ask first rather than assume. Once
+  granted, it covers the rest of that same conversation — real-hardware work spanning multiple
+  turns doesn't need to be re-confirmed turn by turn. `tests_hardware/README.md` is the durable
+  technical reference (prerequisites, environment variables, safety facts like the
+  `--allow-flash-cycle`/long-soak opt-in gates and the hotspot role-reversal scenario's stage-6
+  permanent-WLAN-deactivation risk) for what a session with that go-ahead actually needs to know —
+  this rule is just the standing gate for whether to start at all.
+- **A destructive test of the bench host's own network/access config (tearing down `br0`/its
+  slaves, revoking `dialout`, anything that can cut the very connection a session is using to reach
+  the host) must keep a recovery dead-man's-switch continuously armed for the entire risk window —
+  never touch live network state with none armed.** Confirmed the hard way (2026-09-04): a one-shot
+  timer consumed by an earlier dry run gave zero protection to the real run that followed, costing
+  the bench Pi4's own SSH access. Full incident account, the recovery script, and the validated
+  arm/verify/disarm pattern: SPECIFICATION.md Part B.13.
+- **The bench Pi4's `br0` bridge must always present `eth0`'s own real hardware MAC, never a
+  NetworkManager-synthesized one — pin it via `bridge.mac-address`, always, on every bridge
+  creation.** A synthesized bridge MAC can drift across the bridge's own lifetime, silently
+  orphaning the router's static DHCP reservation. Full incident account and the fix (both in
+  `ensure_bench_bridge()` and `dev_legacy/README.md`'s manual recipe): SPECIFICATION.md Part B.13.
 
 ## Working agreements
 
@@ -259,6 +309,29 @@ information):
   elsewhere in that file. **Rule: any test double for `uart.poller` (or an equivalent fake-stream
   object) must be a bounded fake like `_StepPoller`, never backed by a real `select.poll()`.** Don't
   re-diagnose this specific symptom as a new code bug if it recurs elsewhere.
+- **Known hang cause #2, fixed**: a digital-twin integration test that drives the real
+  `sensortask_wozi.build_system()`/`start_and_check_tasks()` task graph to a clean, non-cancelled
+  completion (e.g. a bounded `--soak` run finishing normally, not via timeout) leaves its ~18
+  independently-`create_task()`-spawned sibling tasks (WiFi, sensor readers, the webserver, ...)
+  parked in the shared, process-wide asyncio task queue after the test's own coroutine returns —
+  `Task.cancel()` on the one task a test explicitly awaits (`main_task` in
+  `digital_twin/run_wozi_integration.py`) never cascades to those siblings, since MicroPython's
+  asyncio has no parent/child task tracking. `tests/test_*.py` files run one Unix-port process per
+  file (see `scripts/test.sh`'s own comment) sharing one process-wide task queue across every test
+  function in that file, so this only ever surfaced as the *whole process* hanging at exit after the
+  last test's own "N/N passed" line printed — not a per-test symptom, and easy to mistake for an
+  unrelated infra issue. Fixed in `tests/microtest.py`: `run()` now always calls `sys.exit()`
+  (0 on an all-pass run, 1 on any failure) instead of only exiting on failure — this forces the
+  process down immediately regardless of what's still parked in the task/IO queue, rather than
+  relying on the interpreter's own idle-detection ever reaching zero pending tasks. This is exactly
+  the same "explicit tracked-task-list + cancel-all in `finally`" shape `digital_twin/launch.py`'s
+  own `main()` already used for its own (much smaller, self-spawned) task list — the one difference
+  is `run_wozi_integration.py` drives the real, much larger `system_service.py`-supervised task
+  graph, which isn't reachable/trackable from outside that module, making a blanket forced-exit the
+  more robust fix than trying to enumerate and cancel every sibling task individually. Surfaced by
+  the `system_service.py` `_timer_sequencer()` Timer-GC fix above: before that fix, `start_timers()`
+  hung forever, so `start_and_check_tasks()` never even got called and no sibling tasks ever
+  existed to leak — the soak test's own bounded-completion path was previously unreachable.
 - **Known intermittent-`MemoryError` cause, fixed**: `scripts/test.sh` runs every `tests/test_*.py`
   file as one Unix-port process for all its test functions, sharing one heap — a file whose several
   heaviest tests each build the whole real `sensortask_wozi.build_system()` object graph (one test

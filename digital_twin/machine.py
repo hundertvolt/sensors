@@ -1,5 +1,5 @@
 """Digital-twin fake `machine` module — same raw I2C/SPI bus-transaction mocking boundary as `tests/machine.py`, but built to behave like real attached hardware instead: real-time-firing `Timer`, and I2C/SPI buses wired to per-address chip simulators. Deliberately independent, does not import `tests/machine.py`.
-Bus wiring mirrors `sensortask_wozi.build_system()` exactly; any other bus id/address NAKs. See `digital_twin/README.md`'s "What's here" section for the full wiring/`Pin`-identity account."""
+Bus wiring mirrors whichever `sensortask_*.build_system()` variant is selected via `configure_i2c_wiring()` (default "wozi", matching `sensortask_wozi.build_system()` exactly - `configure_i2c_wiring("dev")` selects `sensortask_dev.build_system()`'s own layout instead); any other bus id/address NAKs. See `digital_twin/README.md`'s "What's here" section for the full wiring/`Pin`-identity account."""
 
 import asyncio
 import errno
@@ -153,18 +153,50 @@ def flush_scd30() -> None:
         _current_scd30_chip.save_state()
 
 
+_i2c_wiring_profile = "wozi"  # DEV_HARDWARE_BASELINE_PLAN.md's dev-bench variant flipped which bus
+# carries which sensors (and SCD30's own IRQ pin number) relative to wozi - same module-level-hook
+# pattern as configure_random_source()/configure_fram_state_path() above, applied to bus wiring
+# instead. Default "wozi" keeps every existing test/twin user (which never calls
+# configure_i2c_wiring()) on today's exact, unchanged behavior.
+
+
+def configure_i2c_wiring(profile: str) -> None:
+    # Called once, before build_system()-equivalent code constructs i2c0/i2c1, by whatever entry
+    # point wants a non-default wiring (digital_twin/run_dev_integration.py's own main() calls this
+    # with "dev"). Validated eagerly here rather than only inside _wire_i2c_devices() below, so a
+    # typo surfaces immediately at the call site instead of silently NAKing every I2C transaction
+    # later.
+    if profile not in ("wozi", "dev"):
+        raise ValueError(f"unknown I2C wiring profile {profile!r} - expected 'wozi' or 'dev'")
+    global _i2c_wiring_profile
+    _i2c_wiring_profile = profile
+
+
 def _wire_i2c_devices(id: int) -> "dict[int, Any]":
     global _current_scd30_chip
-    if id == 0:
-        from _scd30_chip import Scd30Chip
+    from _bmp3xx_chip import Bmp3xxChip
+    from _scd30_chip import Scd30Chip
+    from _sgp40_chip import Sgp40Chip
 
+    if _i2c_wiring_profile == "dev":
+        # dev_legacy/README.md's wiring table: i2c0 (id=0) carries BMP3xx alone; i2c1 (id=1)
+        # carries SCD30 (IRQ/RDY=GPIO11) + SGP40 sharing the bus - the reverse pairing from wozi's
+        # own layout below.
+        if id == 0:
+            return {0x77: Bmp3xxChip(random_source=_random_source)}
+        if id == 1:
+            chip = Scd30Chip(rdy_pin=Pin(11, mode=Pin.IN), random_source=_random_source, state_path=_scd30_state_path)
+            _current_scd30_chip = chip
+            return {0x61: chip, 0x59: Sgp40Chip(random_source=_random_source)}
+        return {}
+
+    # "wozi" (default): i2c0 (id=0) carries SCD30 alone (IRQ/RDY=GPIO8); i2c1 (id=1) carries
+    # SGP40 + BMP3xx sharing the bus.
+    if id == 0:
         chip = Scd30Chip(rdy_pin=Pin(8, mode=Pin.IN), random_source=_random_source, state_path=_scd30_state_path)
         _current_scd30_chip = chip
         return {0x61: chip}
     if id == 1:
-        from _bmp3xx_chip import Bmp3xxChip
-        from _sgp40_chip import Sgp40Chip
-
         return {0x59: Sgp40Chip(random_source=_random_source), 0x77: Bmp3xxChip(random_source=_random_source)}
     return {}
 
@@ -240,12 +272,25 @@ def flush_fram() -> None:
         _current_fram_chip.save_state()
 
 
+_DEV_FRAM_SIZE = 0x40000  # MB85RS2MTA, 256KB - sensortask_dev.py's own AsyFramManager(spi0, 5, max_size=0x40000, ...)
+_DEV_FRAM_RDID = bytes([0x04, 0x7F, 0x48, 0x03])  # manufacturer=Fujitsu, cont_code, product ID 0x4803 - asy_fram_driver.py's own _KNOWN_PRODUCT_IDS[0x40000], datasheets/fram/MB85RS2MTA-DS501-00032-3v0-E.pdf p.10
+
+
 def _wire_spi_device(id: int) -> "Any | None":
     global _current_fram_chip
     if id == 0:
         from _fram_chip import FramChip
 
-        chip = FramChip(state_path=_fram_state_path)
+        # REAL FINDING, fixed 2026-09-04: this used to always construct a fixed-identity chip
+        # (wozi's own 8KB MB85RS64V), regardless of _i2c_wiring_profile - dev's own FRAM_SPI (a
+        # different, larger real chip: 256KB MB85RS2MTA) silently failed its own device-ID check on
+        # every twin run as a result, caught and swallowed by AsyFramManager.setup()'s own broad
+        # `except Exception`. Mirrors _wire_i2c_devices()'s own profile branch above - see
+        # _fram_chip.py's own FramChip docstring for the full account.
+        if _i2c_wiring_profile == "dev":
+            chip = FramChip(size=_DEV_FRAM_SIZE, state_path=_fram_state_path, rdid_response=_DEV_FRAM_RDID)
+        else:
+            chip = FramChip(state_path=_fram_state_path)
         _current_fram_chip = chip
         return chip
     return None
@@ -363,7 +408,24 @@ class Timer:
 
     def deinit(self) -> None:
         if self._task is not None:
-            self._task.cancel()
+            try:
+                is_own_callback = self._task is asyncio.current_task()
+            except RuntimeError:  # no running event loop (e.g. a synchronous test calling deinit()
+                # directly, outside asyncio.run()) - definitely not this Timer's own callback either way.
+                is_own_callback = False
+            if not is_own_callback:
+                self._task.cancel()
+            # Re-.init()-ing a Timer from within its own currently-firing callback is a real,
+            # valid MicroPython pattern (self-rearming/chained timers - e.g.
+            # src/system_service.py's own _timer_sequencer(), which reuses one preallocated Timer
+            # across every chain step rather than constructing a fresh one per step - see
+            # CLAUDE.md/SPECIFICATION.md Part F.1). On real rp2 hardware this just reprograms the
+            # alarm pool - the just-fired ONE_SHOT alarm is already consumed, nothing to cancel.
+            # asyncio.Task.cancel() has no such carve-out (MicroPython's own extmod/asyncio/task.py
+            # raises RuntimeError("can't cancel self") - a task can't cancel itself), so this twin
+            # must skip the self-cancel instead of calling it unconditionally: the old _run() task
+            # is about to return on its own (ONE_SHOT) or continue its own loop (PERIODIC) right
+            # after this callback returns, without needing to be torn down here.
             self._task = None
         self.callback = None
 

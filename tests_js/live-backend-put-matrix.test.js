@@ -16,14 +16,36 @@ const REAL_PATHS = /** @type {const} */ (["/sensors", "/networking", "/system", 
 
 // Three real, documented backend quirks where a field's GET readback never reflects a value that
 // was just applied - see SPECIFICATION.md Part H.7 for the full account (driver sources, the
-// digital-twin fake, and the confirmed js/mock-server.js divergence this exposed).
+// digital-twin fake, and the confirmed js/mock-server.js divergence this exposed). ContMeas's own
+// remount value is `true` ("On"), matching its FieldDef `defaultValue` (SPECIFICATION.md Part
+// H.5/H.6) - the safe state legacy itself used as ContMeas's synthetic reference
+// (modules/sensortask-wozi.py's `data["ContMeas"] = True`), not a bare toggle's own
+// Boolean(undefined) fallback.
 /** @type {Record<string, unknown>} */
-const ALWAYS_REMOUNTS_AS = { ForceCalRef: 400, ContMeas: false, SGPResetVOC: false };
+const ALWAYS_REMOUNTS_AS = { ForceCalRef: 400, ContMeas: true, SGPResetVOC: false };
 
 // Generous per-case ceiling: one real nav-drawer click, one real fill/select/toggle, one real
 // Apply click, a data-apply-status poll, and (for most cases) a second real remount+read - all
 // against a local twin, but under real browser/event-loop scheduling.
 const CASE_TIMEOUT_MS = 15000;
+
+/**
+ * True if `sectionKey`/`groupKey`'s own field list carries a `dispatch: true` field (js/render.js's
+ * collectGroupBody() always resubmits one) - such a field keeps every Apply on that shared group
+ * card a real round trip even when every other field is left at its own current/blank value, so a
+ * resubmit-unchanged probe on any field in that group still gets a real "Valid"/"Unchanged" back.
+ * Without a dispatch sibling, resubmitting an unchanged non-dispatch toggle/enum field is now
+ * sparse-omitted (see below) - so this is what decides which of the two commands to use.
+ * @param {SiteDefinitions} defs
+ * @param {string} sectionKey
+ * @param {string} groupKey
+ * @returns {boolean}
+ */
+function groupHasDispatchField(defs, sectionKey, groupKey) {
+    const section = defs.sections.find((s) => s.key === sectionKey);
+    const group = section?.groups.find((g) => "fields" in g && g.key === groupKey);
+    return group !== undefined && "fields" in group && group.fields.some((f) => f.dispatch === true);
+}
 
 const boot = await commands.startLiveMatrix();
 
@@ -49,7 +71,13 @@ if (boot.skipped) {
 } else {
     describe.each(CASES)("live PUT $sectionKey/$groupKey/$field.key ($field.kind)", (testCase) => {
         const { sectionKey, groupKey, field } = testCase;
-        let currentValue = testCase.currentValue;
+        // Same fallback as js/definitions.js's resolveFieldValue(): a field with no real GET
+        // readback (testCase.currentValue undefined) may still declare a schema-level defaultValue
+        // as its safe synthetic baseline (ContMeas - SPECIFICATION.md Part H.5) - resolve it once
+        // here so every probe below (resubmit-unchanged gating, the toggle "opposite" state, the
+        // enum "every other option" list) reasons about the same effective current value the real
+        // UI does, not the raw possibly-undefined GET value alone.
+        let currentValue = testCase.currentValue !== undefined ? testCase.currentValue : field.defaultValue;
 
         /**
          * Fills+applies `value` through the real UI, then confirms it rendered correctly both
@@ -118,13 +146,41 @@ if (boot.skipped) {
         // credential and firing a real reconnect.
         const resubmittable = currentValue !== undefined && !(field.kind === "string" && currentValue === "") && field.mask !== true;
         if (resubmittable) {
-            it(
-                "resubmitting the field's own current value renders correctly (Valid or Unchanged)",
-                async () => {
-                    await applyAndExpectRendered(currentValue, "ValidOrUnchanged");
-                },
-                CASE_TIMEOUT_MS,
-            );
+            // A non-dispatch toggle/enum field is now sparse-omitted when resubmitted unchanged
+            // (js/render.js's collectGroupBody() fix) - no round trip fires unless a sibling field
+            // in the same group is dispatch-marked and keeps the shared card's Apply body non-empty
+            // regardless. number/string fields are unaffected either way: applyAndExpectRendered()
+            // always fills a real, non-blank value, so they were never sparse-omittable here.
+            const willRoundTrip =
+                field.kind === "number" ||
+                field.kind === "string" ||
+                field.dispatch === true ||
+                groupHasDispatchField(testCase.defs, sectionKey, groupKey);
+            if (willRoundTrip) {
+                it(
+                    "resubmitting the field's own current value renders correctly (Valid or Unchanged)",
+                    async () => {
+                        await applyAndExpectRendered(currentValue, "ValidOrUnchanged");
+                    },
+                    CASE_TIMEOUT_MS,
+                );
+            } else {
+                it(
+                    "resubmitting the field's own current value is sparse-omitted (nothing to submit, no round trip)",
+                    async () => {
+                        const result = await commands.applyUnchangedFieldExpectNothingToSubmit({
+                            sectionKey,
+                            groupKey,
+                            fieldKey: field.key,
+                            kind: /** @type {"toggle" | "enum"} */ (field.kind),
+                            value: currentValue,
+                        });
+                        expect(result.resultText).toBe("Nothing to submit - no fields were changed.");
+                        expect(result.applyStatus).toBeNull();
+                    },
+                    CASE_TIMEOUT_MS,
+                );
+            }
         }
 
         if (field.kind === "number") {
@@ -144,7 +200,7 @@ if (boot.skipped) {
             // would silently fail against; harmless for every other field.
             const validValues = [min, mid, max]
                 .map((v) => (wholeRange ? Math.round(v) : Math.round(v * 100) / 100))
-                .filter((v) => v !== testCase.currentValue);
+                .filter((v) => v !== currentValue);
 
             /**
              * @param {number} start
@@ -190,7 +246,7 @@ if (boot.skipped) {
                 it(
                     `accepts the declared special value ${special.value} ("${special.meaning}"), rendered correctly`,
                     async () => {
-                        await applyAndExpectRendered(special.value, special.value === testCase.currentValue ? "ValidOrUnchanged" : "Valid");
+                        await applyAndExpectRendered(special.value, special.value === currentValue ? "ValidOrUnchanged" : "Valid");
                     },
                     CASE_TIMEOUT_MS,
                 );
@@ -221,7 +277,7 @@ if (boot.skipped) {
                 CASE_TIMEOUT_MS,
             );
 
-            it.each(validLengths.map((len) => "x".repeat(len)).filter((v) => v !== testCase.currentValue))(
+            it.each(validLengths.map((len) => "x".repeat(len)).filter((v) => v !== currentValue))(
                 "accepts a %s-char string (a valid value distributed across the length range), rendered correctly",
                 async (value) => {
                     await applyAndExpectRendered(value, "Valid");
@@ -230,7 +286,7 @@ if (boot.skipped) {
         }
 
         if (field.kind === "toggle") {
-            const opposite = !testCase.currentValue;
+            const opposite = !currentValue;
             it(
                 "flipping to the opposite state renders Valid with the new state actually shown",
                 async () => {
@@ -241,7 +297,7 @@ if (boot.skipped) {
         }
 
         if (field.kind === "enum") {
-            const options = (field.options ?? []).filter((o) => o.value !== testCase.currentValue);
+            const options = (field.options ?? []).filter((o) => o.value !== currentValue);
             it.each(options.map((o) => o.value))("selecting option %s renders Valid with that option actually shown selected", async (value) => {
                 await applyAndExpectRendered(value, "Valid");
             });

@@ -77,6 +77,11 @@ class SystemService:
         self.uptime_timer = Timer()
         self.reset_timer = Timer()
         self.storage_timer = Timer()
+        # Preallocated the same way as the three timers above - _timer_sequencer() re-.init()s this
+        # one repeatedly rather than constructing a fresh, unreferenced Timer() each step (see its
+        # own comment: an unstored Timer is GC-eligible before its ONE_SHOT callback ever fires -
+        # SPECIFICATION.md Part F.1's documented soft-Timer-callback-drop gotcha).
+        self.sequencer_timer = Timer()
         self.ntp_is_synced = asy_ntp_callback
         self.start_time_set = False
         # None until status_counter() resolves it - a later change to this value signals a reboot happened.
@@ -148,8 +153,14 @@ class SystemService:
         if counter < len(timers):
             delay = int(_TIMER_BASE_PERIOD / (len(timers) + 1))
             try:
-                # one delay after each start, also (virtually) for last one
-                Timer(
+                # one delay after each start, also (virtually) for last one. Reuses the
+                # preallocated self.sequencer_timer (see __init__) rather than constructing a bare
+                # Timer() here - a bare Timer object isn't referenced by the alarm/IRQ machinery
+                # itself, so it was GC-eligible before this ONE_SHOT callback ever fired, silently
+                # dropping the callback and hanging every caller of start_timers() forever
+                # (confirmed by reproduction on real hardware - see CLAUDE.md/SPECIFICATION.md Part
+                # F.1). self.sequencer_timer's own Python-level reference now keeps it alive.
+                self.sequencer_timer.init(
                     period=delay,
                     mode=Timer.ONE_SHOT,
                     callback=lambda b: self._timer_sequencer(timers, counter=counter),
@@ -167,6 +178,24 @@ class SystemService:
         except Exception as e:  # driver-supplied starter (get_task_starters()) - could legitimately misbehave
             await self.pr.err_s("Task starter", n, "failed to start:", e, errno=3)
             return None
+
+    async def _log_dead_task(self, task: "asyncio.Task[Any]", n: int) -> None:
+        # A finished Task carries no .exception()/.result() in MicroPython's asyncio
+        # (extmod/asyncio/task.py, v1.28.0 - confirmed directly, not assumed from CPython's asyncio
+        # API) - awaiting it again is the only way to recover why it ended: a real exception
+        # re-raises here (Task.__next__ re-raises its stored .data), a clean return does not.
+        # Without this, start_and_check_tasks()'s own "Task ended - attempting restart" warning
+        # below had zero diagnostic content - every restart looked identical whether the task
+        # returned cleanly, was cancelled, or crashed on a real bug.
+        try:
+            await task
+        except asyncio.CancelledError:
+            # Previously logged via the non-persisting self.pr.err() - left zero trace in errcount,
+            # indistinguishable from a clean return. Persists now via its own errno=6, distinct from
+            # errno=5's real-exception case (see SPECIFICATION.md's errno/wrnno table).
+            await self.pr.err_s("Task", n, "ended: was cancelled", errno=6)
+        except Exception as e:
+            await self.pr.err_s("Task", n, "ended with exception:", e, errno=5)
 
     def start_asy_uptime_counter(self) -> asyncio.Task[None]:
         evtloop = asyncio.get_event_loop()
@@ -198,6 +227,8 @@ class SystemService:
             no_fail = True
             for n in range(0, len(tasks)):
                 if tasks[n] is None or tasks[n].done():  # type: ignore[union-attr]
+                    if tasks[n] is not None:
+                        await self._log_dead_task(tasks[n], n)  # type: ignore[arg-type]
                     task_errors += _TASK_FAIL_INCREMENT
                     tasks[n] = await self._start_task(task_starters[n], n)
                     no_fail = False

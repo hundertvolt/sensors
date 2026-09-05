@@ -684,6 +684,12 @@ class AsyConnTime(SensorReaderConfig):
     def network_available(self) -> bool:  # caller must already hold wifi_mode_lock
         return (self._conn_phase != _PHASE_HOTSPOT) and (self._wlan_status_or_none() == network.STAT_GOT_IP)
 
+    def is_hotspot_active(self) -> bool:
+        # A plain self._conn_phase int-compare touches no hardware, unlike network_available()'s
+        # own _wlan_status_or_none() call - no lock needed, so this picks the callable-from-anywhere
+        # getter shape (like get_dns_server_ip()/get_wlan_rssi() above), not network_available()'s.
+        return self._conn_phase == _PHASE_HOTSPOT
+
     def set_ext_led(self, ext_led: "LEDControl") -> None:  # for post-setting ext_led at any time
         self.ext_led = ext_led  # if called even after init, call set_wifi_led(True) to init LED
 

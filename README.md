@@ -34,6 +34,29 @@ uv run toolchain/setup_toolchain.py --latest      # detect + pin + install newes
 uv run toolchain/setup_toolchain.py test          # offline re-verify an existing install (~30s)
 ```
 
+## Dev environment setup (generic / flash / bench)
+
+`toolchain/setup_toolchain.py`'s `env` subcommand sets up one of three tiers, each a strict
+superset of the one before it:
+
+| Tier | Adds on top of the previous tier | Command |
+|---|---|---|
+| generic | Python (`uv sync`) + website (`npm ci`) deps, the firmware/Unix-port toolchain above | `uv run toolchain/setup_toolchain.py env --tier generic` |
+| flash | Non-root USB serial access (`dialout` group) + an auto-detected real RP2040/Pico W board | `uv run toolchain/setup_toolchain.py env --tier flash` |
+| bench | A real WiFi bridge/AP on this host (NetworkManager), so a flashed board reaches genuine internet/NTP | `uv run toolchain/setup_toolchain.py env --tier bench` |
+
+Every tier needs only itself run once on a given host — `flash`/`bench` call straight through to
+the tier(s) below rather than needing them run separately first. apt packages, `dialout` group
+membership, and the `bench` NetworkManager bridge/AP all install/configure automatically via
+`sudo` (pass `--skip-apt` to opt out of all of them). USB device detection (by Raspberry Pi's USB
+vendor ID) and network interface detection (uplink = default-route interface, WiFi = a free
+adapter that isn't the uplink) are automatic but overridable with `--device`/`--uplink-iface`/
+`--wifi-iface` if a host has more than one candidate and auto-detection is ambiguous. `bench` is
+idempotent: re-running it against an already-configured bridge reports the existing AP's SSID
+rather than recreating (and re-randomizing) it — see `dev_legacy/README.md`'s WiFi/NTP/DNS section
+for the manual `nmcli` recipe this automates, including the Pico W `cyw43439`-specific WPA2/PMF
+tuning it applies.
+
 ## Code quality tooling
 
 Ruff and mypy checks, scoped to `src/`, `tests/`, and `digital_twin/` (the
@@ -159,6 +182,37 @@ every push/PR; `scripts/test.sh` (above) covers both scripts' own logic fast and
 `tests_scripts/` instead of repeating the multi-minute real compile every run — see
 `tests_scripts/test_build_firmware.py`'s `RUN_SLOW_FIRMWARE_BUILD=1` opt-in for running that real
 compile locally.
+
+## Real hardware access (mpremote)
+
+`mpremote` (dev dependency, installed by `uv sync`) talks to a real RP2040/Pico W over its USB
+serial port for flash-free iteration: `exec`/`run`/`ls`/`cat` execute or read against the device
+without writing flash, unlike `cp`/`rm`/`mkdir`/`rmdir`, which do. `scripts/mpremote_connect.sh`
+wraps `uv run mpremote connect <device>` with a default device path of `/dev/ttyACM0`, overridable
+via `MPREMOTE_DEVICE`:
+
+```sh
+scripts/mpremote_connect.sh ls                                  # list the device's filesystem
+scripts/mpremote_connect.sh exec "import sys; print(sys.implementation)"   # RAM-only REPL exec
+scripts/mpremote_connect.sh run some_script.py                  # run a local script from RAM
+MPREMOTE_DEVICE=/dev/ttyACM1 scripts/mpremote_connect.sh ls     # different serial device
+```
+
+Non-root serial access needs the connecting user in the `dialout` group (`sudo usermod -aG dialout
+$USER`, then re-login) and a real board plugged in — both checked/added automatically, including
+USB-vendor-ID auto-detection of which `/dev/ttyACM*` is the board (still pass it as
+`MPREMOTE_DEVICE` yourself, or override with `--device` if more than one is plugged in), by
+`uv run toolchain/setup_toolchain.py env --tier flash` (see "Dev environment setup" above). This
+is a genuinely different tier from the mocked `tests/` suite (which
+runs under the Unix port against `tests/machine.py`'s fake `machine` module — see
+`SPECIFICATION.md` Part E) and from `scripts/build_firmware.py` (which builds a `.uf2` but never
+flashes or touches real hardware, see above). Real-hardware-in-the-loop testing against a physical
+bench unit — full workflow, including a frozen-firmware full-system bring-up and a bridged-AP
+WiFi/NTP/DNS integration setup — is documented as its own single source of truth in
+`dev_legacy/README.md` (see "Further reading" below); `dev_legacy/`'s own sessions are exploratory/
+ad hoc bring-up logs, distinct from **`tests_hardware/`**, the newer structured, repeatable
+`pytest`-based automated test tier (plus a separate manual-test runner) built against this same
+`mpremote`/bench-bridge access — see `tests_hardware/README.md` for how to run it.
 
 ## Digital twin (hardware simulator)
 
@@ -382,19 +436,38 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   listed here for now so it isn't only locatable by cross-reference in the meantime. See
   `SPECIFICATION.md` Part A.10 for how it fits into the rest of the architecture.
 
-`WIRING_CONTRACT.md`, `FINAL_WIRING_PLAN.md`, and `WEBSITE_PLAN.md` — temporary planning docs for,
-respectively, the `improved-quality/` → `src/` wiring effort (`src/sensortask_wozi.py`'s
-construction restructure, generic webserver/API service, digital-twin simulator, website placeholder
-scaffold, full Unix-port integration, and the self-healing-system failure-mode audit) and the
-JS/HTML/CSS website redesign — were each deleted once their effort merged back. Everything permanent
-they settled was migrated into `SPECIFICATION.md` first: `WIRING_CONTRACT.md`/`FINAL_WIRING_PLAN.md`'s
-construction order/FRAM-chunk order/dependency graph/debug-level registry (Part A.7), the REST API
-endpoint reference (Part A.8), the website-stub/frozen-HTML pipeline (Part A.9), the digital-twin
-pointer (Part A.10), and two new checkable conventions found during the audit (the
-silent-failure-masking and cascading-recovery-storm rules, Parts C.7/C.9); `WEBSITE_PLAN.md`'s
-settled website architecture (Part H) and its `src/`-based firmware-assembly pipeline (Part B.11) —
-plus, in both cases, a handful of still-open items folded into `BACKLOG.md`. `AUDIT_PLAN.md`, the
-master action list for the earlier full `src/` audit, was deleted the same way once that audit
-closed — everything permanent it
-settled was migrated into `SPECIFICATION.md` (the style-guideline harmonization it drove lives in
-Parts C/D) first.
+**`dev_legacy/README.md`** (permanent, kept current):
+
+- **`dev_legacy/README.md`** — the single source of truth for the physical "dev" RP2040 bench
+  unit: wiring, chip identities, confirmed-working status (per peripheral and for the full
+  assembled system), current bench state, the `mpremote` workflow for testing `src/` drivers
+  against it (see "Real hardware access (mpremote)" above), building/flashing a frozen firmware for
+  a full-system bring-up, and the bridged-AP setup for real WiFi/NTP/DNS integration testing — see
+  that file itself for specifics, not restated here. Also holds, in its own clearly-marked final
+  section, a historical, frozen-in-time snapshot of this unit's onboard filesystem from 2026-08-27
+  (back when it still ran 1.24.1) — reference material for future `src/` promotion work, not
+  itself reviewed, promoted, or covered by lint/type/test config.
+
+`HARDWARE_TEST_PLAN.md`, `tmp_hardware_test_candidates.md`, `REAL_HARDWARE_HANDOFF.md`,
+`REAL_HARDWARE_RUN_LOG.md`, and `DEV_HARDWARE_BASELINE_PLAN.md` — five temporary real-hardware
+planning/handoff docs, all now deleted (2026-09-04) once real-hardware execution was genuinely
+complete and verified (both `tests_hardware/` tiers running clean end to end on the bench Pi4).
+Everything permanent each one settled was migrated first: the five-backend model table, the
+shared-behavior-catalog/capability-adapter design, the no-extra-flash-cycles harness's two execution
+modes, the hotspot role-reversal deep-dive's verified driver-behavior facts, and the mock/twin
+overlap scan now live in `SPECIFICATION.md` Part E.6; the "a session needs the project owner's
+go-ahead before touching real hardware, and it doesn't carry over between sessions" policy is now
+CLAUDE.md's own hard rule; the remaining safety facts (the `--allow-flash-cycle`/long-soak opt-in
+gates, the stage-6 permanent-WLAN-deactivation risk, `BENCH_AP_PASSWORD` handling) were already
+duplicated in `tests_hardware/README.md`; the two still-genuinely-open items (a real, long-duration
+memory-soak run not yet executed; two bench-rig capabilities — a programmable GPIO fault-injection
+harness, a second WiFi test client — flagged as not currently provisioned) are now tracked in
+BACKLOG.md instead of a standalone planning doc. See **`tests_hardware/`** (real code: automated
+flash/bench tests over `pytest`, a separate manual-test runner) and
+**`tests/_shared_rest_roundtrip.py`** (the shared-behavior extraction) for the real implementation.
+
+`DRIVER_SPEC.md`, `src/README.md`, `tests/README.md`, `toolchain/README.md`, `WIRING_CONTRACT.md`,
+`FINAL_WIRING_PLAN.md`, `WEBSITE_PLAN.md`, and `AUDIT_PLAN.md` — earlier temporary planning/spec
+docs, each deleted once its own effort closed, with everything permanent it settled migrated into
+`SPECIFICATION.md` first. See `SPECIFICATION.md`'s own front matter for the full provenance
+(which doc's content became which Part) — not restated here to avoid the two drifting apart.

@@ -28,20 +28,21 @@ def prewarm_poll_set(ceiling: int = _DEFAULT_CEILING, port: int = 18099) -> None
     listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     listener.bind(addr)
     listener.listen(ceiling + 4)
-    clients = []
     servers = []
     try:
         for _ in range(ceiling):
+            # Only the accepted server-side socket needs to stay registered to force pollfds
+            # growth - the client end's job is done once accept() completes, so close it
+            # immediately rather than holding ~2x ceiling fds open at once (peak fd count was
+            # exceeding the process's open-file limit, raising OSError EMFILE here).
             c = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             c.connect(addr)
             s, _peer = listener.accept()
-            clients.append(c)
+            c.close()
             servers.append(s)
             poller.register(s, select.POLLIN)
     finally:
         for s in servers:
             poller.unregister(s)
             s.close()
-        for c in clients:
-            c.close()
         listener.close()

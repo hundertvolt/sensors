@@ -18,11 +18,15 @@ const PAUSE_TIME_MAX = 3600; // matches src/asy_webserver_service.py's own _PAUS
 
 // Three /sensors fields with real, documented hardware quirks (SPECIFICATION.md Part H.4;
 // src/asy_scd30_driver.py's _set_dict_cfg()/get_forced_recalibration_reference(),
-// src/asy_sgp40_driver.py's _push_reset_voc()): each is a direct hardware dispatch re-run every
-// request, never compared against a stored value ("Unchanged" can never fire) and never persisted
-// the way an ordinary settings field is - modeled here instead of falling through to the generic
-// store-and-echo path, which would wrongly report "Unchanged" on a resubmit and echo back whatever
-// was just PUT rather than the real GET-readback quirk below.
+// src/asy_sgp40_driver.py's _push_reset_voc()): each is a direct hardware dispatch re-run
+// whenever actually submitted, never compared against a stored value ("Unchanged" can never fire)
+// and never persisted the way an ordinary settings field is - modeled here instead of falling
+// through to the generic store-and-echo path, which would wrongly report "Unchanged" on a resubmit
+// and echo back whatever was just PUT rather than the real GET-readback quirk below. `ContMeas`
+// (unlike `ForceCalRef`/`SGPResetVOC`) is no longer `dispatch: true` in the FieldDef schema - its
+// own `defaultValue: true` (js/definitions.js) means js/render.js's collectGroupBody() now
+// sparse-omits it whenever untouched instead of resubmitting it on every unrelated group Apply, so
+// it reaches this dispatch path far less often, only on a genuine deliberate change.
 const SENSOR_QUIRK_FIELDS = new Set(["ForceCalRef", "ContMeas", "SGPResetVOC"]);
 
 /**

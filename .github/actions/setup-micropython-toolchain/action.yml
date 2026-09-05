@@ -2,12 +2,13 @@ name: Setup MicroPython toolchain
 description: >
   Installs uv and restores (or lets the caller build) the cached MicroPython Unix-port toolchain
   build under ~/pico-toolchain. Shared by every job that needs to run the Unix-port interpreter
-  (web-unit-tests, web-cross-browser-smoke, unit-tests, digital-twin-e2e, firmware-build-verify) -
-  factored out here so all five stay on the exact same cache key/path instead of five hand-kept
-  copies of the same two steps. Each job still runs its own actual toolchain build (or skip, on a
-  cache hit) afterward - this action only restores the cache, it never runs setup_toolchain.py
-  itself, since a couple of callers need extra logic around that step (e.g. web jobs also stage the
-  real website; firmware-build-verify additionally needs the ARM cross-compiler apt packages).
+  (web-unit-tests, web-coverage, web-cross-browser-smoke, unit-tests, digital-twin-e2e,
+  firmware-build-verify) - factored out here so all six stay on the exact same cache key/path
+  instead of six hand-kept copies of the same two steps. Each job still runs its own actual
+  toolchain build (or skip, on a cache hit) afterward - this action only restores the cache, it
+  never runs setup_toolchain.py itself, since a couple of callers need extra logic around that step
+  (e.g. web jobs also stage the real website; firmware-build-verify additionally needs the ARM
+  cross-compiler apt packages).
 
 runs:
   using: composite

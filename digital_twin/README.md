@@ -18,13 +18,20 @@ Kept completely separate so nothing here can accidentally affect the determinist
   schedule via an internal `asyncio` task, not `_thread` (upstream's own `_thread.rst` docs state
   outright that it "is highly experimental and its API is not yet fully settled" — not a fit for
   load-bearing behavior here, and every real `Timer` callback in this codebase is already trivial
-  enough that true preemption buys nothing). `I2C`/`SPI` wire the real "wozi" variant's bus layout
-  exactly, mirroring `sensortask_wozi.build_system()`'s own construction: `I2C(0, ...)` carries the SCD30 at `0x61`, `I2C(1, ...)`
-  carries the SGP40 at `0x59` and BMP3xx at `0x77`, `SPI(0, ...)` carries the FRAM chip. Any other
+  enough that true preemption buys nothing). `I2C`/`SPI` wire one of two selectable bus-layout
+  profiles (`configure_i2c_wiring("wozi" | "dev")`, called once before any bus is constructed —
+  default `"wozi"` if never called, so every caller that predates this option keeps its exact prior
+  behavior unchanged): `"wozi"` mirrors `sensortask_wozi.build_system()`'s own construction
+  (`I2C(0, ...)` carries the SCD30 at `0x61`, `I2C(1, ...)` carries the SGP40 at `0x59` and BMP3xx at
+  `0x77`), `"dev"` mirrors `sensortask_dev.build_system()`'s own reversed layout instead (`I2C(0,
+  ...)` carries the BMP3xx at `0x77` alone, `I2C(1, ...)` carries the SCD30 at `0x61` — IRQ/RDY pin
+  11, not wozi's 8 — and SGP40 at `0x59`); `SPI(0, ...)` carries the FRAM chip either way. Any other
   address NAKs — a real bus with a fixed, known set of devices on it, not an unbounded fixture. `Pin`
   identity is shared by id (`Pin(8)` constructed twice returns the same underlying pin state), since
   a real GPIO pin is one fixed physical resource and chip fakes and drivers may each construct their
-  own `Pin` object for the same id.
+  own `Pin` object for the same id — this is exactly why the two profiles' differing SCD30 IRQ pin
+  numbers (8 vs. 11) matter: the chip fake's own `rdy_pin` must be constructed with the same id the
+  real driver's own IRQ `Pin` uses, or a simulated edge never reaches its handler.
 - `_sgp40_chip.py` / `_scd30_chip.py` / `_bmp3xx_chip.py` — one chip fake per sensor, each verified
   against its own datasheet in `datasheets/` for the raw transaction shape and sensible value
   ranges. `_scd30_chip.py`'s RDY pin fires a real rising edge on its own internal measurement-
@@ -335,7 +342,16 @@ shared FRAM SPI bus — to actually reach its hung `writeto` before the run exit
 ### `_unix_port_udp_addr_shim.py` (real UDP round trips under the Unix port)
 
 `patch_asy_udp_socket_for_unix_port()` — called once, early, as `run_wozi_integration.py`'s own
-`main()` does (right after `prewarm_poll_set()`, before anything constructs a socket) — works
+`main()` does (right after `prewarm_poll_set()`, before anything constructs a socket) — also called
+the same way, module-level before `import sensortask_wozi`, by `tests/
+test_digital_twin_sensortask_integration.py` (its own hotspot/DNS section drives a genuine UDP round
+trip against the real `captive_dns.py` `DNSServer` the same way `run_wozi_integration.py`'s run 7
+does — see that test's own comment). That same test also needs the real privileged port 53 itself
+to actually be bindable, same as run 7 — `scripts/test.sh` now grants the built interpreter binary
+`CAP_NET_BIND_SERVICE` unconditionally (mirroring `scripts/run_digital_twin_ci.sh`'s own identical
+grant, see that script's own comment for the full mechanism/rationale), not just
+`run_digital_twin_ci.sh`, since this test now runs as part of the plain unit-tests suite too, not
+only the separate digital-twin-e2e job. Works
 around three confirmed MicroPython-Unix-port-only `socket` quirks that otherwise make a real UDP
 round trip (DNS, NTP) impossible under this harness, entirely from twin-side code:
 
@@ -389,9 +405,11 @@ started with. For a new **I2C** sensor this is a small, mechanical addition:
      answering the *exact* raw transaction shape the real `*_I2C` driver class sends — confirmed
      directly against that file's own source, never assumed.
 2. Wire it into `machine.py`'s `_wire_i2c_devices()`: add the new chip to the `dict` for whichever
-   bus id (`0` or `1`) the real wiring puts it on (cross-check `src/sensortask_wozi.py`'s
-   `build_system()` for the real pin/address assignment), or add a new `if id == N:` branch if it
-   lands on a bus id neither SCD30 nor SGP40/BMP3xx already use.
+   bus id (`0` or `1`) the real wiring puts it on, under the matching `_i2c_wiring_profile` branch
+   (`"wozi"` or `"dev"` — cross-check `src/sensortask_wozi.py`'s/`src/sensortask_dev.py`'s own
+   `build_system()` for the real pin/address assignment, since the two profiles put sensors on
+   different buses), or add a new `if id == N:` branch if it lands on a bus id neither profile
+   already uses on that bus.
 3. Add `tests/test_digital_twin_<name>.py` — deterministic unit tests of the chip fake in isolation
    (no real `machine.I2C` involved, matching every existing `tests/test_digital_twin_{sgp40,scd30,
    bmp3xx}.py`) — then extend `tests/test_digital_twin_machine.py`'s own dispatch tests if the new
@@ -455,3 +473,15 @@ correctly by the dedicated pass instead - see `digital_twin/typecheck.ini`'s own
   poll object has no `pollfd` field or array to grow at all) — real hardware was never affected.
   Fixed by `unix_port_poll_prewarm.py` (see "What's here" above and that module's own comments for
   the pre-warming mechanism itself).
+  **Related upstream prior art, not the same bug**: the general shape of this — `pollfds`
+  reallocation leaving stale pointers in already-registered `poll_obj_t`s — was filed as
+  [micropython/micropython#12887](https://github.com/micropython/micropython/issues/12887) ("Use
+  After Free at modselect.c:151", CVE-2023-7152) and fixed by
+  [PR #12895](https://github.com/jimmo/micropython/commit/8b24aa36ba978eafc6114b6798b47b7bfecdca26)
+  (merged into the 1.22.0 milestone, long before this project's v1.28.0 pin). Verified directly
+  against `extmod/modselect.c` at the real `v1.28.0` tag: that fix's pointer-update loop only skips
+  a poll object when the map slot itself is empty (`if (!poll_obj) continue;`) — it does not skip a
+  poll object whose `pollfd` field is legitimately `NULL` (the non-fd/stream-wrapper case this
+  project hit), so it still runs pointer arithmetic on that `NULL` and corrupts it. No separate
+  upstream issue for this narrower residual case was found as of this check — worth filing one
+  upstream (with `segfault_stress_repro.py` as a ready-made repro) as a future follow-up.

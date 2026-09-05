@@ -240,9 +240,10 @@ describe("renderSection", () => {
         await waitFor(() => main.querySelector('[data-field-key="MeasInt"]') !== null);
 
         /** @type {HTMLInputElement} */ (mustQuery(main, '[data-field-key="MeasInt"]')).value = "3000"; // out of range
-        // COffset is left blank on purpose - a number field's sparse-PUT convention omits it
-        // entirely (unlike the toggle/enum fields below, which always resubmit their current
-        // value and so are never sparse-omittable through this UI).
+        // COffset and MeasEnabled are left untouched on purpose - a number field's sparse-PUT
+        // convention omits a blank input, and a non-dispatch toggle/enum field (unlike the real
+        // ContMeas/SystemCmd/ResetErrors/SGPResetVOC) is now sparse-omitted the same way when it
+        // still matches its current value (collectGroupBody()).
         mustQuery(main, ".apply-button").click();
 
         await waitFor(() => mustQuery(main, '[data-group-key="SCD30"]').dataset.applyStatus !== undefined);
@@ -251,13 +252,47 @@ describe("renderSection", () => {
         expect(card.dataset.applyStatus).toBe("invalid"); // worst-first across the whole group
 
         expect(mustQuery(card, '[data-field-wrapper-key="MeasInt"]').dataset.applyStatus).toBe("invalid");
-        // Toggle/enum fields always resubmit their current, already-valid value - reads back
-        // Unchanged, colored on their own box too, distinct from MeasInt's Invalid.
-        expect(mustQuery(card, '[data-field-wrapper-key="MeasEnabled"]').dataset.applyStatus).toBe("unchanged");
-        // COffset was never part of this submission at all (sparse-omitted) - no per-field result
-        // to show, matching the legacy behavior this restores: only fields present in the
-        // response's own result get colored.
+        // Neither COffset nor MeasEnabled was part of this submission at all (both sparse-omitted) -
+        // no per-field result to show, matching the legacy behavior this restores: only fields
+        // present in the response's own result get colored.
+        expect(mustQuery(card, '[data-field-wrapper-key="MeasEnabled"]').dataset.applyStatus).toBeUndefined();
         expect(mustQuery(card, '[data-field-wrapper-key="COffset"]').dataset.applyStatus).toBeUndefined();
+    });
+
+    it("sparse-omits an untouched toggle/enum field left at its current value, unlike a dispatch-marked field", async () => {
+        uninstall = installMockFetch(DEFS, DATA);
+        const main = mount();
+        stop = renderSection(DEFS, getSection("sensors"), main);
+        await waitFor(() => main.querySelector('[data-field-key="MeasEnabled"]') !== null);
+
+        // MeasEnabled/Oversampling both start at their real current value (DATA.sensorsConfig.SCD30)
+        // and are never touched - only MeasInt is genuinely changed.
+        /** @type {HTMLInputElement} */ (mustQuery(main, '[data-field-key="MeasInt"]')).value = "10";
+        mustQuery(main, ".apply-button").click();
+
+        await waitFor(() => mustQuery(main, '[data-group-key="SCD30"]').dataset.applyStatus !== undefined);
+
+        const card = mustQuery(main, '[data-group-key="SCD30"]');
+        expect(card.dataset.applyStatus).toBe("valid");
+        // Only the field that actually changed shows up in the result text.
+        expect(mustQuery(card, ".apply-result").textContent).toBe("OK — MeasInt: Valid");
+    });
+
+    it("still submits a toggle/enum field explicitly flipped back to its original value (a real, deliberate change)", async () => {
+        uninstall = installMockFetch(DEFS, DATA);
+        const main = mount();
+        stop = renderSection(DEFS, getSection("sensors"), main);
+        await waitFor(() => main.querySelector('[data-field-key="MeasEnabled"]') !== null);
+
+        const toggle = mustQuery(main, '[data-field-key="MeasEnabled"]');
+        toggle.click(); // On -> Off: a real, deliberate change from the current value (true)
+        mustQuery(main, ".apply-button").click();
+
+        await waitFor(() => mustQuery(main, '[data-group-key="SCD30"]').dataset.applyStatus !== undefined);
+
+        const card = mustQuery(main, '[data-group-key="SCD30"]');
+        expect(card.dataset.applyStatus).toBe("valid");
+        expect(mustQuery(card, ".apply-result").textContent).toContain("MeasEnabled: Valid");
     });
 
     it("submits a numeric-valued enum field as a number, not a stringified one (regression)", async () => {
@@ -359,7 +394,7 @@ describe("renderSection", () => {
                             label: "Reset Errors",
                             submit: true,
                             submitLabel: "Reset All Errors",
-                            fields: [{ key: "ResetErrors", label: "Confirm Reset", kind: "toggle", onLabel: "Yes, reset", offLabel: "No" }],
+                            fields: [{ key: "ResetErrors", label: "Confirm Reset", kind: "toggle", onLabel: "Yes, reset", offLabel: "No", dispatch: true }],
                         },
                     ],
                 },
@@ -389,6 +424,80 @@ describe("renderSection", () => {
         await waitFor(() => button.disabled); // request in flight
         await waitFor(() => !button.disabled); // request settled
         expect(card.dataset.applyStatus).toBe("valid");
+    });
+
+    describe("a toggle field with no real GET readback but a schema-declared defaultValue", () => {
+        // Generic coverage for js/definitions.js's resolveFieldValue()/FieldDef.defaultValue -
+        // reusable in any future field shaped like the real ContMeas (see SPECIFICATION.md Part H.5):
+        // never returned by GET, but with a well-defined safe baseline other than a bare toggle's own
+        // Boolean(undefined) = false fallback. "AuxEnabled" is a made-up field, not the real ContMeas
+        // key (js/mock-server.js special-cases that exact name for its own hardware-quirk fake).
+        /** @type {import("../js/definitions.js").SiteDefinitions} */
+        const defsWithDefaultValue = {
+            ...DEFS,
+            sections: [
+                ...DEFS.sections.filter((s) => s.key !== "networking"),
+                {
+                    key: "networking",
+                    label: "Networking",
+                    rest: { get: "/networking", put: "/networking" },
+                    pollGroup: "settings",
+                    groups: [
+                        {
+                            key: "aux",
+                            label: "Auxiliary",
+                            submit: true,
+                            fields: [{ key: "AuxEnabled", label: "Auxiliary Output", kind: "toggle", onLabel: "On", offLabel: "Off", defaultValue: true }],
+                        },
+                    ],
+                },
+            ],
+        };
+        // networkingConfig deliberately never mentions AuxEnabled - the mock GET response omits it
+        // entirely, the same "never returned by GET" shape the real ContMeas has.
+        const dataWithoutReadback = { ...DATA, networkingConfig: {} };
+
+        it("renders On (the schema defaultValue), not Off, despite no real current value", async () => {
+            uninstall = installMockFetch(defsWithDefaultValue, dataWithoutReadback);
+            const main = mount();
+            const section = /** @type {import("../js/definitions.js").Section} */ (defsWithDefaultValue.sections.find((s) => s.key === "networking"));
+            stop = renderSection(defsWithDefaultValue, section, main);
+            await waitFor(() => main.querySelector('[data-field-key="AuxEnabled"]') !== null);
+
+            const toggle = mustQuery(main, '[data-field-key="AuxEnabled"]');
+            expect(toggle.getAttribute("aria-pressed")).toBe("true");
+            expect(toggle.textContent).toBe("On");
+        });
+
+        it("sparse-omits it when left untouched at the defaultValue (nothing to submit)", async () => {
+            uninstall = installMockFetch(defsWithDefaultValue, dataWithoutReadback);
+            const main = mount();
+            const section = /** @type {import("../js/definitions.js").Section} */ (defsWithDefaultValue.sections.find((s) => s.key === "networking"));
+            stop = renderSection(defsWithDefaultValue, section, main);
+            await waitFor(() => main.querySelector('[data-field-key="AuxEnabled"]') !== null);
+
+            mustQuery(main, ".apply-button").click();
+            await waitFor(() => mustQuery(main, ".apply-result").textContent !== "");
+
+            expect(mustQuery(main, ".apply-result").textContent).toBe("Nothing to submit - no fields were changed.");
+            expect(mustQuery(main, '[data-group-key="aux"]').dataset.applyStatus).toBeUndefined();
+        });
+
+        it("submits it once deliberately flipped away from the defaultValue", async () => {
+            uninstall = installMockFetch(defsWithDefaultValue, dataWithoutReadback);
+            const main = mount();
+            const section = /** @type {import("../js/definitions.js").Section} */ (defsWithDefaultValue.sections.find((s) => s.key === "networking"));
+            stop = renderSection(defsWithDefaultValue, section, main);
+            await waitFor(() => main.querySelector('[data-field-key="AuxEnabled"]') !== null);
+
+            mustQuery(main, '[data-field-key="AuxEnabled"]').click(); // On -> Off: a real, deliberate change
+            mustQuery(main, ".apply-button").click();
+            await waitFor(() => mustQuery(main, '[data-group-key="aux"]').dataset.applyStatus !== undefined);
+
+            const card = mustQuery(main, '[data-group-key="aux"]');
+            expect(card.dataset.applyStatus).toBe("valid");
+            expect(mustQuery(card, ".apply-result").textContent).toContain("AuxEnabled: Valid");
+        });
     });
 
     it("skips the PUT and shows a neutral message when Apply is clicked with nothing to submit", async () => {

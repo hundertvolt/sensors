@@ -1,5 +1,13 @@
 """Digital-twin chip fake for the MB85RS64V FRAM chip (SPI) — answers `asy_fram_driver.py`'s exact opcode/CS-session shape (RDID/RDSR/WRSR/WREN/WRDI/READ/WRITE); independently reimplemented, not shared with `tests/_fram_chip_fake.py`.
-Persists only via explicit `save_state()`; see `digital_twin/README.md`'s "FRAM persistence" section."""
+Persists only via explicit `save_state()`; see `digital_twin/README.md`'s "FRAM persistence" section.
+`rdid_response` defaults to the real MB85RS64V's own device ID (wozi's chip) - `machine.py`'s
+`_wire_spi_device()` overrides both `size` and this for the `dev` wiring profile, whose real chip
+is a different, larger part (MB85RS2MTA) with its own distinct product ID. REAL FINDING, fixed
+2026-09-04: before this parameter existed, `_wire_spi_device()` always constructed a fixed-identity
+chip regardless of profile, so `dev`'s own FRAM_SPI.setup() silently failed
+`_check_device_id()`'s product-ID check on every twin run - caught and swallowed by
+`AsyFramManager.setup()`'s own broad `except Exception`, leaving FRAM silently uninitialized the
+entire time with nothing ever checking `.initialized`/`.verify_present()` closely enough to notice."""
 
 from _fault_injection import FaultInjector
 
@@ -38,11 +46,11 @@ _LOAD_CHUNK_CHARS = 1024  # hex characters per chunk when streaming the memory i
 
 
 class FramChip:
-    def __init__(self, size: int = 0x2000, state_path: "str | None" = None) -> None:
+    def __init__(self, size: int = 0x2000, state_path: "str | None" = None, rdid_response: "bytes | None" = None) -> None:
         self.size = size
         self.state_path = state_path
         self.status = 0x00
-        self.rdid_response = _DEFAULT_RDID
+        self.rdid_response = _DEFAULT_RDID if rdid_response is None else rdid_response
         self.fault = FaultInjector()
         self.memory = bytearray(size)
         self._pending_op: int | None = None
