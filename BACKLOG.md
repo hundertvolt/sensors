@@ -782,7 +782,7 @@ constraints.
   catch-all (`"WEBSERVER Unhandled exception in route handler:"`, errno=4) - no crash from the
   MemoryError itself, request failed with a clean 500, system kept running.
 
-  **Fixed (2026-09-05, software-only, not yet re-verified on real hardware): `_coalesce_json_fragments()`
+  **Fixed and confirmed on real hardware (2026-09-05): `_coalesce_json_fragments()`
   + `_append_coalesced_object()` replace the plain `",".join()` for both `"sensors"` and `"errcount"`.**
   Splitting one piece per module (matching the real module count, ~17-22 total transmitted pieces)
   was considered and rejected: that would land close to the ~20-piece count already measured (this
@@ -803,9 +803,26 @@ constraints.
   at ~45.3s (vs. the already-validated 5-piece baseline's 42.7s - a ~6% difference, not the ~53%
   regression over-fragmentation previously caused) - the real module-count-scale registration this
   soak drives via the real `sensortask_wozi.build_system()` graph, not just the synthetic unit test.
-  **Not yet done**: a fresh real-hardware hammer-load re-run (this step's own methodology, repeated)
-  to directly confirm the 237-MemoryError reproduction is actually gone, not just plausible from local
-  reasoning + timing.
+  **Real-hardware re-run confirms the fix (2026-09-05, same bench Pi4, project owner's go-ahead given
+  in-session): 0 MemoryErrors, 0 tracebacks, 0 reboots over the same 10-minute hammer load that
+  previously produced 237 real MemoryErrors.** Fresh `dev` build+flash from this fix's own commit,
+  same stale-AP-station-table workaround as before (`kick_all_stations()` before the post-flash
+  reconnect), same methodology (5 concurrent threads hammering `/measurements`/`/sensors`/`/status`/
+  `/networking` plus `PUT /sensors SGPResetVOC` every 3s, 10 minutes, passive `tail_log()` throughout).
+  `SysUptime` climbed monotonically through 799s with zero crash/reboot markers the whole time (an
+  extra ~90s watched past the hammer's own end, specifically to also re-check the second finding
+  below). `GET /status` continued parsing as one complete, valid JSON document throughout and
+  afterward, confirmed against the real 17-module registration count on this hardware. Board restored
+  to a clean, bench-network-connected, error-counters-reset state before finishing.
+  **One new, separate, minor observation from this same run, not chased further**: `CFGMGR_SGP40`
+  logged 84 errno=8 entries (`config_manager.py`'s `get_dict()`: "unknown key, or a non-iterable/
+  malformed keys param") during the load - plausibly related to the concurrent `SGPResetVOC` PUTs
+  racing a GET, but not investigated; flagging rather than silently letting it pass unremarked.
+  **The second finding from the prior run (a real hardware watchdog reset, `machine.reset_cause() ==
+  machine.WDT_RESET`, observed a few minutes after that run's own hammer load ended) did NOT recur in
+  this run's ~90s post-hammer observation window** - consistent with (but not proof of) that reset
+  being a one-off from the prior run's own conditions rather than a deterministic consequence of this
+  hammer pattern; still not root-caused, still worth a dedicated look if it recurs.
   **Second, separate real finding from the same run, root cause not yet determined**: sometime after
   the 10-minute hammer load itself ended (system healthy throughout, uptime monotonically reached 740
   with zero reboot markers by the end of continuous log capture), a real hardware watchdog reset fired
