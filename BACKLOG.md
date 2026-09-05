@@ -754,8 +754,42 @@ constraints.
   reproduction, even with no `gc.threshold()` change at all; (4) decide the actual fix - some
   `gc.threshold()` value, the streaming change, or both - based on steps 1 and 3's real results
   together, not before; (5) once a build is decided and committed, run the real-hardware bench suite;
-  (6) if that passes, run the full test suite three times. Not to be started without the project
-  owner's go-ahead in that session.
+  (6) if that passes, run the full test suite three times. Steps 1 and 3-6 need real hardware and the
+  project owner's own go-ahead in-session before starting; not started yet.
+
+  **Step (2) done (2026-09-05), software-only, no real hardware touched.** `_get_status()`/
+  `_build_status_pieces()` in `asy_webserver_service.py` now build a plain `list[str]` of small,
+  already-`json.dumps()`-encoded fragments - one per top-level section (`networking`/`system`/
+  `notification`/`sensors`/`errcount`) - instead of one dict handed to a single `json.dumps()` call.
+  Handed to Microdot as `Response(iter(pieces), headers={...})` with an explicit `Content-Length`
+  (computed once every fragment is known, not left to `Response.complete()`'s bytes-only default).
+  Bounds the largest single allocation this route ever makes to one section's own payload (bounded by
+  this codebase's small, fixed module/sensor count) instead of the whole ~5.7KB aggregate. Two real
+  findings from building this, both now documented in SPECIFICATION.md Part F.1:
+  - **MicroPython's `async def ... yield` "async generator" is broken, not just absent.** It parses,
+    but produces a runtime object typed `'generator'` with `__next__` but no `__aiter__`/`__anext__`
+    at all (confirmed against the pinned interpreter directly, and against its own docs - PEP 525 is
+    listed with an empty "Complete" column). `ext/microdot.py`'s `body_iter()` falls back to driving
+    such an object via plain synchronous `next()`, which **segfaults the interpreter** the moment
+    execution resumes past a real `await` inside it. Ruled out entirely for this reason, not by
+    preference - every source is instead awaited up front (still inside a real coroutine) into a
+    plain list, which Microdot then drives as an ordinary `list_iterator` with no `await` anywhere
+    inside it.
+  - **Fragmenting the response too finely regresses throughput, independent of memory safety.**
+    `WebserverService._serve()` wraps every single stream write in its own `asyncio.wait_for()`
+    (`_TimeoutStreamProxy`, the existing per-call-timeout hardening). An earlier attempt yielding one
+    piece per punctuation character (~20 pieces for a typical `/status` body) measured a real 42.7s to
+    65.2s (+53%) wall-clock regression on `tests/test_digital_twin_run_wozi_integration.py`'s fixed
+    soak workload, confirmed against an unmodified baseline via `git stash`. Coalescing to 5 pieces
+    (one per top-level key, built with ordinary string concatenation bounded to that one section)
+    restored baseline timing while keeping the same memory-safety property intact.
+  Confirmed memory-safe as designed, not just in effect: a MicroPython `list`'s own backing array
+  (`py/objlist.c`/`py/objlist.h`) is one small allocation sized by *element count*, not content size;
+  each string's own data buffer (`py/objstr.h`) is a separate, independently-sized allocation. A short
+  list of independently-sized JSON fragments therefore never needs one large contiguous block itself.
+  Full local verification: `scripts/lint.sh`/`scripts/typecheck.sh` clean, `scripts/test.sh` (real
+  MicroPython Unix-port interpreter plus `uv run pytest tests_scripts`) clean, 0 `FAIL` lines. No real
+  hardware was touched for this step.
   **Not fixed, deliberately**: the actual allocation site is inside vendored `ext/microdot.py`
   (pinned `v2.6.2`, hands-off per CLAUDE.md's own rule) - not something to patch directly. No `src/`
   change was made; the temporary trace instrumentation was fully reverted (`git diff` clean) and the

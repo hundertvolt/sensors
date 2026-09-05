@@ -12,6 +12,7 @@ import sys
 # pyproject.toml/scripts/test.sh - a "Pre-push verification" scope change this file must not need.
 sys.path.insert(0, "ext")
 
+from _shared_rest_roundtrip import drain_json_response_body  # noqa: E402
 from freezefs.ffsmount import VfsFrozen  # type: ignore[import-not-found]  # noqa: E402
 from microdot import Microdot, Request  # type: ignore[import-not-found]  # noqa: E402
 
@@ -24,7 +25,7 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Coroutine
+    from collections.abc import Callable, Coroutine
     from typing import Any, TypeVar
 
     T = TypeVar("T")
@@ -32,6 +33,14 @@ if TYPE_CHECKING:
 
 def run(coro: "Coroutine[Any, Any, T]") -> "T":
     return asyncio.run(coro)
+
+
+def status_body(res: "Any") -> bytes:
+    # GET /status streams from a plain list of already-json.dumps()-encoded fragments now (see
+    # asy_webserver_service.py's _get_status()/_build_status_pieces()) - drains it the way a real
+    # client naturally would, so every existing json.loads(...) assertion on a GET /status response
+    # keeps working unchanged.
+    return drain_json_response_body(res.body)
 
 
 def run_timed(coro: "Coroutine[Any, Any, T]", timeout_s: float = 5.0) -> "T":
@@ -591,7 +600,7 @@ def test_status_get_returns_exact_substructure_no_settings_fields_anywhere() -> 
         status_sources={"networking": net_status, "system": sys_status, "notification": notif_status}
     )
     res = run(app.dispatch_request(_make_request(app, "GET", "/status", None)))
-    body = json.loads(res.body)
+    body = json.loads(status_body(res))
     assert set(body.keys()) == {"networking", "system", "sensors", "notification", "errcount"}
     assert body["networking"] == {"Connected": True, "Rssi": -50}
     assert body["system"] == {"SysUptime": 123}
@@ -604,14 +613,14 @@ def test_status_get_sensors_subkey_omits_sensors_with_no_maintenance_data() -> N
 
     service, app = _make_service(maintenance_sensors=[("SGP40", sgp_maint)])
     res = run(app.dispatch_request(_make_request(app, "GET", "/status", None)))
-    body = json.loads(res.body)
+    body = json.loads(status_body(res))
     assert body["sensors"] == {"SGP40": {"BackupTS": 111, "RestoreTS": 222}}
 
 
 def test_status_get_sensors_subkey_empty_when_no_maintenance_sensors_registered() -> None:
     service, app = _make_service(maintenance_sensors=[])
     res = run(app.dispatch_request(_make_request(app, "GET", "/status", None)))
-    assert json.loads(res.body)["sensors"] == {}
+    assert json.loads(status_body(res))["sensors"] == {}
 
 
 def test_status_put_empty_and_false_reset_errors_are_both_noops() -> None:
@@ -943,7 +952,7 @@ def test_c_zero_entries_in_any_registration_group_produces_well_formed_empty_res
     for path in ("/measurements", "/sensors", "/status"):
         res = run(app.dispatch_request(_make_request(app, "GET", path, None)))
         assert res.status_code == 200, path
-        json.loads(res.body)  # well-formed JSON, no exception
+        json.loads(status_body(res))  # well-formed JSON, no exception
 
 
 def test_c_one_entry_behaves_identically_to_a_hand_constructed_single_item_list() -> None:
@@ -971,9 +980,9 @@ def test_d_status_errcount_includes_one_entry_per_module_and_per_configmanager()
     cfgmgr = _FakeModule("CFGMGR_SGP40")
     service, app = _make_service(error_sources=[module, cfgmgr])
     res = run(app.dispatch_request(_make_request(app, "GET", "/status", None)))
-    errcount = json.loads(res.body)["errcount"]
+    errcount = json.loads(status_body(res))["errcount"]
     # "WEBSERVER" is this service's own entry (see SPECIFICATION.md Part A.8 for the
-    # registration-API contract) - added directly in _build_errcount(), not via the error_sources registry, since
+    # registration-API contract) - added directly in _build_status_pieces(), not via the error_sources registry, since
     # WebserverService can't register itself into its own not-yet-constructed error_sources list.
     assert set(errcount.keys()) == {"SGP40", "CFGMGR_SGP40", "WEBSERVER"}
 
@@ -984,7 +993,7 @@ def test_d_counter_always_present_history_present_for_both_populated_and_zero_ca
     noisy_free = _FakeModule("FREE")
     service, app = _make_service(error_sources=[quiet, noisy_free])
     res = run(app.dispatch_request(_make_request(app, "GET", "/status", None)))
-    errcount = json.loads(res.body)["errcount"]
+    errcount = json.loads(status_body(res))["errcount"]
     assert errcount["QUIET"]["counter"] == 1
     assert errcount["QUIET"]["history"] == [{"num": 3, "type": "E"}]
     assert errcount["FREE"]["counter"] == 0
@@ -1010,11 +1019,11 @@ def test_d_own_errcount_entry_reflects_real_logged_warnings_and_resets_with_the_
     writer = _ScriptedWriter()
     run_timed(service._serve(reader, writer))
     res = run(app.dispatch_request(_make_request(app, "GET", "/status", None)))
-    errcount = json.loads(res.body)["errcount"]
+    errcount = json.loads(status_body(res))["errcount"]
     assert errcount["WEBSERVER"]["counter"] >= 1
     run(app.dispatch_request(_make_request(app, "PUT", "/status", {"ResetErrors": True})))
     res = run(app.dispatch_request(_make_request(app, "GET", "/status", None)))
-    assert json.loads(res.body)["errcount"]["WEBSERVER"]["counter"] == 0
+    assert json.loads(status_body(res))["errcount"]["WEBSERVER"]["counter"] == 0
 
 
 def test_d_reset_on_one_module_never_affects_another() -> None:
@@ -1864,6 +1873,225 @@ def test_h1_abort_driven_404_is_unaffected_by_the_catch_all() -> None:
     assert json.loads(res.body) == {"res": "ERR", "code": 404, "descr": "Not found", "result": {}}
     log = run(service.get_error_counter())
     assert log["WEBSERVER"]["ErrCount"] == 0  # the catch-all above never fired
+
+
+# H.2 - /status JSON streaming (asy_webserver_service.py's _get_status()/_build_status_pieces() -
+# BACKLOG.md's Microdot generator-streaming mitigation for the real-hardware MemoryError root cause:
+# one small json.dumps() per already-independent source instead of one big buffer for the whole
+# aggregate). Sections above (test_status_get_*, D, most of the earlier /status coverage) already
+# exercise the resulting JSON's *shape* end to end via status_body() - these are specific to the
+# streaming mechanism itself. Deliberately a plain list of pre-fetched fragments handed to a plain
+# sync iterator, not an `async def ... yield` "async generator" - confirmed directly against the
+# pinned MicroPython interpreter that the latter produces a broken runtime object (no
+# __aiter__/__anext__ at all, and driving it past a real `await` via plain next() - exactly what
+# ext/microdot.py's body_iter() would do with it - segfaults the interpreter). See
+# SPECIFICATION.md Part F.1 for the full finding.
+
+
+def _const_source(value: "dict[str, Any]") -> "Callable[[], Coroutine[Any, Any, dict[str, Any]]]":
+    async def _source() -> "dict[str, Any]":
+        return value
+
+    return _source
+
+
+async def _raising_source() -> "dict[str, Any]":
+    raise RuntimeError("simulated status stream source failure")
+
+
+class _RaisingErrorCounterModule(_FakeModule):
+    async def get_error_counter(self) -> "dict[str, Any]":
+        raise RuntimeError("simulated get_error_counter failure")
+
+
+# -- functionality ----------------------------------------------------------------------------
+
+
+def test_h2_stream_response_is_a_plain_iterator_with_explicit_json_content_type() -> None:
+    # Response.__init__'s automatic Content-Type only fires for isinstance(body, (dict, list)) (see
+    # ext/microdot.py, confirmed directly) - a non-dict/list body needs it set explicitly or it would
+    # silently fall back to Response.default_content_type ("text/plain") once complete() runs.
+    _, app = _make_service()
+    res = run(app.dispatch_request(_make_request(app, "GET", "/status", None)))
+    assert hasattr(res.body, "__next__")  # a plain sync iterator, not a dict/list/bytes body
+    assert not hasattr(res.body, "__anext__")  # never a broken MicroPython "async generator" object
+    assert res.headers["Content-Type"] == "application/json; charset=UTF-8"
+
+
+def test_h2_stream_yields_one_piece_per_top_level_section_not_one_precomputed_buffer() -> None:
+    # Observable proof of the actual memory-efficiency property this was built for: the body is
+    # genuinely 5 separate pieces (one per top-level key), never one big string built up front for
+    # the whole aggregate - but also never one piece per punctuation character (measured to regress
+    # real throughput ~53% via this server's own per-write asyncio.wait_for() wrapping - see
+    # _build_status_pieces()'s own comment for the full finding).
+    service, app = _make_service(
+        status_sources={"networking": _const_source({"A": 1})},
+        maintenance_sensors=[("SGP40", _const_source({"BackupTS": 1}))],
+        error_sources=[_FakeModule("SGP40")],
+        history_length=0,  # this service's own real PrintLogHistory (its "WEBSERVER" errcount entry)
+        # otherwise pre-fills a fixed-size ring buffer with placeholder entries by default - unrelated
+        # to this test, kept at zero so the expected shape below is exact.
+    )
+    res = run(app.dispatch_request(_make_request(app, "GET", "/status", None)))
+    chunks = list(res.body)
+    assert len(chunks) == 5  # more than one - a single json.dumps() body would be exactly one - but
+    # deliberately not one per punctuation character either
+    joined = b"".join(c.encode() if isinstance(c, str) else c for c in chunks)
+    assert json.loads(joined) == {
+        "networking": {"A": 1},
+        "system": {},
+        "notification": {},
+        "sensors": {"SGP40": {"BackupTS": 1}},
+        "errcount": {"SGP40": {"counter": 0, "history": []}, "WEBSERVER": {"counter": 0, "history": []}},
+    }
+
+
+def test_h2_stream_response_has_an_explicit_correct_content_length_header() -> None:
+    # Response.complete() only auto-sets Content-Length for isinstance(self.body, bytes), never a
+    # generic iterator - _get_status() sets it explicitly instead, since the full size is already
+    # known once every source has been awaited up front (nothing here is genuinely lazy streaming -
+    # see _get_status()'s own comment). Real-hardware/real-socket regression coverage
+    # (found via tests/test_digital_twin_run_wozi_integration.py's own soak test failing without
+    # this): digital_twin/_http_client.py's fetch() falls back to a slow, effectively-untested
+    # reader.read(-1)-until-EOF path whenever Content-Length is missing.
+    service, app = _make_service()
+    reader = _ScriptedReader([(0, _request_bytes("GET", "/status"))])
+    writer = _ScriptedWriter()
+    run_timed(service._serve(reader, writer))
+    assert b" 200 " in writer.written
+    assert b"Connection: close" in writer.written
+    header_block, _, sent_body = writer.written.partition(b"\r\n\r\n")
+    match = None
+    for line in header_block.split(b"\r\n"):
+        if line.lower().startswith(b"content-length:"):
+            match = int(line.split(b":", 1)[1].strip())
+    assert match is not None, "Content-Length header missing from a real, fully-written /status response"
+    assert match == len(sent_body)
+
+
+# -- stability / resilience --------------------------------------------------------------------
+
+
+def test_h2_stream_status_source_failure_yields_an_error_marker_not_a_broken_stream() -> None:
+    service, app = _make_service(status_sources={"networking": _raising_source})
+    res = run(app.dispatch_request(_make_request(app, "GET", "/status", None)))
+    body = json.loads(status_body(res))
+    assert set(body.keys()) == {"networking", "system", "sensors", "notification", "errcount"}
+    assert body["networking"] == {"error": "unavailable"}
+    log = run(service.get_error_counter())
+    assert log["WEBSERVER"]["ErrNum"].count(6) == 1
+    assert log["WEBSERVER"]["ErrType"][log["WEBSERVER"]["ErrNum"].index(6)] == "E"
+
+
+def test_h2_stream_maintenance_source_failure_is_isolated_to_that_one_sensor() -> None:
+    service, app = _make_service(
+        maintenance_sensors=[("SGP40", _raising_source), ("BMP3XX", _const_source({"BackupTS": 1}))]
+    )
+    res = run(app.dispatch_request(_make_request(app, "GET", "/status", None)))
+    body = json.loads(status_body(res))
+    assert body["sensors"]["SGP40"] == {"error": "unavailable"}
+    assert body["sensors"]["BMP3XX"] == {"BackupTS": 1}  # a sibling source's failure never leaks into this one
+
+
+def test_h2_stream_errcount_source_failure_is_isolated_to_that_one_module() -> None:
+    good = _FakeModule("BMP3XX")
+    bad = _RaisingErrorCounterModule("SGP40")
+    service, app = _make_service(error_sources=[good, bad], history_length=0)  # see
+    # test_h2_stream_yields_many_small_chunks_not_one_precomputed_buffer()'s own comment on why
+    res = run(app.dispatch_request(_make_request(app, "GET", "/status", None)))
+    errcount = json.loads(status_body(res))["errcount"]
+    assert errcount["SGP40"] == {"error": "unavailable"}
+    assert errcount["BMP3XX"] == {"counter": 0, "history": []}
+    # WEBSERVER's own counter reflects the SGP40 failure just logged (errno=6) - not zero, since that
+    # failure genuinely happened and belongs in this service's own error history too (history_length=0
+    # above keeps the ring buffer itself at zero capacity, so the detail entry never lands in
+    # "history" - see test_h2_stream_status_source_failure_yields_an_error_marker_not_a_broken_stream()
+    # for that same errno=6 detail checked with a real ring buffer instead).
+    assert errcount["WEBSERVER"]["counter"] == 1
+    assert errcount["WEBSERVER"]["history"] == []
+
+
+def test_h2_stream_own_webserver_errcount_source_failure_yields_an_error_marker() -> None:
+    service, app = _make_service()
+
+    async def _raise() -> "dict[str, Any]":
+        raise RuntimeError("simulated own-log read failure")
+
+    service.pr.get_log = _raise  # type: ignore[assignment]
+    res = run(app.dispatch_request(_make_request(app, "GET", "/status", None)))
+    errcount = json.loads(status_body(res))["errcount"]
+    assert errcount["WEBSERVER"] == {"error": "unavailable"}
+
+
+def test_h2_stream_every_source_failing_still_produces_one_complete_valid_json_document() -> None:
+    # The worst case this design has to survive: every single data source misbehaves. Even then, the
+    # response must still be one complete, parseable JSON document with a plain 200 - each source's
+    # own try/except (see _dump_status_source()'s own comment) keeps its exception from ever escaping
+    # _build_status_pieces()/_get_status() itself, so Microdot's own blanket catch never even sees one.
+    service, app = _make_service(
+        status_sources={"networking": _raising_source, "system": _raising_source, "notification": _raising_source},
+        maintenance_sensors=[("SGP40", _raising_source)],
+        error_sources=[_RaisingErrorCounterModule("BMP3XX")],
+        history_length=0,  # see test_h2_stream_yields_many_small_chunks_not_one_precomputed_buffer()'s
+        # own comment on why
+    )
+    res = run(app.dispatch_request(_make_request(app, "GET", "/status", None)))
+    assert res.status_code == 200  # no per-source failure ever escapes far enough to change this
+    body = json.loads(status_body(res))
+    assert body["networking"] == body["system"] == body["notification"] == {"error": "unavailable"}
+    assert body["sensors"]["SGP40"] == {"error": "unavailable"}
+    assert body["errcount"]["BMP3XX"] == {"error": "unavailable"}
+    # WEBSERVER's own entry is never itself an "error" marker (its own get_log() never raised here) -
+    # its counter instead reflects the 5 other failures just logged (3 status sources + 1 maintenance
+    # sensor + 1 errcount module, each its own errno=6 call) - not zero, and not one of the sources
+    # under test itself blowing up this entry too.
+    assert body["errcount"]["WEBSERVER"]["counter"] == 5
+    assert body["errcount"]["WEBSERVER"]["history"] == []  # history_length=0 above, see comment above
+
+
+# -- maximum achievable coverage ----------------------------------------------------------------
+
+
+def test_h2_stream_empty_registration_everywhere_matches_the_old_all_empty_shape() -> None:
+    service, app = _make_service(sensors=[], settings={}, maintenance_sensors=[], error_sources=[], history_length=0)  # see
+    # test_h2_stream_yields_many_small_chunks_not_one_precomputed_buffer()'s own comment on why
+    res = run(app.dispatch_request(_make_request(app, "GET", "/status", None)))
+    body = json.loads(status_body(res))
+    assert body == {
+        "networking": {},
+        "system": {},
+        "notification": {},
+        "sensors": {},
+        "errcount": {"WEBSERVER": {"counter": 0, "history": []}},
+    }
+
+
+def test_h2_stream_two_maintenance_sensors_produce_valid_json_with_no_stray_commas() -> None:
+    service, app = _make_service(
+        maintenance_sensors=[("SGP40", _const_source({"A": 1})), ("BMP3XX", _const_source({"B": 2}))]
+    )
+    res = run(app.dispatch_request(_make_request(app, "GET", "/status", None)))
+    body = json.loads(status_body(res))
+    assert body["sensors"] == {"SGP40": {"A": 1}, "BMP3XX": {"B": 2}}
+
+
+def test_h2_stream_two_error_sources_plus_the_own_entry_produce_valid_json_with_no_stray_commas() -> None:
+    service, app = _make_service(error_sources=[_FakeModule("SGP40"), _FakeModule("BMP3XX")])
+    res = run(app.dispatch_request(_make_request(app, "GET", "/status", None)))
+    errcount = json.loads(status_body(res))["errcount"]
+    assert set(errcount.keys()) == {"SGP40", "BMP3XX", "WEBSERVER"}
+
+
+def test_h2_stream_module_names_with_special_characters_are_correctly_escaped() -> None:
+    # Names go through json.dumps(name), never hand-rolled string concatenation - this is what makes
+    # an unusual name safe rather than corrupting the surrounding document (see
+    # _build_status_pieces()'s own comment on why every piece is its own list entry rather than
+    # joined by hand).
+    tricky = _FakeModule('SGP"40')
+    service, app = _make_service(error_sources=[tricky])
+    res = run(app.dispatch_request(_make_request(app, "GET", "/status", None)))
+    errcount = json.loads(status_body(res))["errcount"]
+    assert set(errcount.keys()) == {'SGP"40', "WEBSERVER"}
 
 
 if __name__ == "__main__":

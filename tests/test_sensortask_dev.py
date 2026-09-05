@@ -20,7 +20,11 @@ sys.path.insert(0, "ext")
 
 import machine  # noqa: E402
 from _fram_chip_fake import FakeMB85RS64V  # noqa: E402
-from _shared_rest_roundtrip import assert_named_modules_constructed, assert_sensor_payload_not_self_wrapped  # noqa: E402
+from _shared_rest_roundtrip import (  # noqa: E402
+    assert_named_modules_constructed,
+    assert_sensor_payload_not_self_wrapped,
+    drain_json_response_body,
+)
 from microdot import Request  # type: ignore[import-not-found]  # noqa: E402
 
 import asy_spi_driver  # noqa: E402
@@ -68,6 +72,14 @@ _PHASE_HOTSPOT = 2
 
 def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
     return asyncio.run(coro)
+
+
+def status_body(res: "Any") -> bytes:
+    # GET /status streams from a plain list of already-json.dumps()-encoded fragments now (see
+    # asy_webserver_service.py's _get_status()/_build_status_pieces()) - drains it the way a real
+    # client naturally would, so every existing json.loads(...) assertion on a GET /status response
+    # keeps working unchanged.
+    return drain_json_response_body(res.body)
 
 
 # ---------------------------------------------------------------------------
@@ -933,7 +945,7 @@ def test_webserver_notification_put_flat_field_round_trips_through_the_real_coor
 def test_webserver_status_get_reflects_the_real_object_graph() -> None:
     run(sensortask_dev.build_system(cfg_path=_tmp_cfg_dir()))
     res = _dispatch("GET", "/status")
-    body = json.loads(res.body)
+    body = json.loads(status_body(res))
     assert set(body.keys()) == {"networking", "system", "notification", "sensors", "errcount"}
     assert set(body["sensors"].keys()) == {"SGP40"}  # only sensor with real maintenance data
     assert "BackupTS" in body["sensors"]["SGP40"] and "RestoreTS" in body["sensors"]["SGP40"]
