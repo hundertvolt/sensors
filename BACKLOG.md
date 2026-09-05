@@ -836,6 +836,46 @@ constraints.
   or whether something else is responsible. Board was restored to a clean, bench-network-connected
   state (stale AP station table entry cleared, hard-reset, error counters reset) before finishing.
 
+  **Step (1) done (2026-09-05, real bench hardware, project owner's go-ahead given in-session): real
+  sub-second GC-collection-frequency measurement at 16384/32768/65536, replacing the prior session's
+  unreliable 1Hz-sampled trace.** Temporary instrumentation only (`git diff` confirmed clean after
+  reverting, real production `dev` firmware rebuilt+reflashed before finishing) - a `_gc_probe()`
+  task added to `boot_entry/dev_boot.py`, sampling `gc.mem_free()` every 100ms and printing
+  `GCPROBE <ticks_ms> <mem_free> COLLECTED|-` (a same-or-higher reading than the previous sample is
+  unambiguous proof a real collection fired, since MicroPython's GC has no refcounting - free memory
+  cannot rise on its own between two closely-spaced samples). One freshly built+flashed image per
+  threshold value, `gc.threshold(N)` set once at module import time (as early as possible). Each run:
+  ~96-102s idle (the real system's own normal background load only, no injected traffic) followed by
+  ~90-92s of this same investigation's hammer load (5 concurrent threads + `PUT /sensors
+  SGPResetVOC` every 3s), passively `tail_log()`-ed throughout - host-side receive timestamps used to
+  bucket samples into idle/hammer phases. Zero MemoryErrors/reboots in any of the six phases (all
+  three thresholds' hammer phases were only ~90s, not the 10-minute window that would have shown the
+  now-fixed `errcount` MemoryError anyway):
+
+  | threshold | idle freq | idle avg interval | idle mem_free floor | hammer freq | hammer avg interval | hammer mem_free floor |
+  |---|---|---|---|---|---|---|
+  | 16384 (16KB) | 1.421/s | 703ms | 121936 | 3.120/s | 321ms | 87152 |
+  | 32768 (32KB) | 0.987/s | 1013ms | 111904 | 4.605/s | 217ms | 80096 |
+  | 65536 (64KB) | 0.798/s | 1254ms | 86640 | 2.648/s | 378ms | 53856 |
+
+  **Idle-phase frequency decreases monotonically with threshold, as mechanically expected** (a bigger
+  threshold waits for more newly-allocated garbage before collecting again - fewer, later, deeper
+  collections). **Hammer-phase frequency does NOT move monotonically** (32768 measured *more*
+  frequent than both 16384 and 65536) - a single ~90s run per threshold, real concurrent-load timing
+  noise (network jitter, the bench host's own scheduling, which of the 5 hammer threads happens to be
+  mid-request when a sample lands) is a fully plausible explanation, but this was not repeated to
+  confirm; treat the hammer-phase numbers as one real data point each, not a settled trend, unlike the
+  idle-phase numbers. **`mem_free` floor drops with threshold in both phases** (also mechanically
+  expected: a bigger threshold means more garbage is allowed to pile up between collections, so the
+  trough between collections goes lower) - 65536's hammer floor (53856 bytes) is markedly closer to
+  the danger zone than 16384's (87152) or 32768's (80096), the opposite direction from what a
+  "headroom" framing of a bigger threshold might naively suggest. **No CPU-time/overhead measurement
+  was attempted** - this instrumentation only detects *that* a collection happened between two 100ms
+  samples, not how long any individual collection actually took to run.
+  **Still no threshold decided** - this is real frequency/floor data for the joint decision, not a
+  recommendation; step (4) (deciding on a threshold, the streaming fix, or both) still needs the
+  project owner's own call.
+
   **Step (2) done (2026-09-05), software-only, no real hardware touched.** `_get_status()`/
   `_build_status_pieces()` in `asy_webserver_service.py` now build a plain `list[str]` of small,
   already-`json.dumps()`-encoded fragments - one per top-level section (`networking`/`system`/
