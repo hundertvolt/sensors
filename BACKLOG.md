@@ -754,8 +754,48 @@ constraints.
   reproduction, even with no `gc.threshold()` change at all; (4) decide the actual fix - some
   `gc.threshold()` value, the streaming change, or both - based on steps 1 and 3's real results
   together, not before; (5) once a build is decided and committed, run the real-hardware bench suite;
-  (6) if that passes, run the full test suite three times. Steps 1 and 3-6 need real hardware and the
+  (6) if that passes, run the full test suite three times. Steps 1 and 4-6 need real hardware and the
   project owner's own go-ahead in-session before starting; not started yet.
+
+  **Step (3) done (2026-09-05, real bench hardware, project owner's go-ahead given in-session):
+  streaming alone does NOT resolve the reproduction - a real MemoryError still occurs, `gc.threshold()`
+  left untouched at its default -1.** Freshly built+flashed `dev` firmware (this session's own step-2
+  commit) onto the bench Pi4's board, then ran the same methodology as the original 2026-09-04
+  investigation (5 concurrent HTTP client threads hammering `/measurements`/`/sensors`/`/status`/
+  `/networking` as fast as possible, plus a `PUT /sensors {"SGP40":{"SGPResetVOC":true}}` every 3s)
+  for 10 minutes, passively `tail_log()`-ing the real serial output throughout. **237 real
+  `MemoryError` tracebacks** over the 10-minute window, first within seconds - not eliminated, though
+  the traceback location moved: every one now points at `asy_webserver_service.py`'s own
+  `_build_status_pieces()` (line numbers in the on-device traceback are offset from `src/`'s own
+  line numbers by `scripts/build_firmware.py`'s `if TYPE_CHECKING:`-stripping stage - resolved by
+  re-running the same strip locally and confirming the offset, not a sign of stale firmware),
+  allocating ~4912-4926 bytes each time - specifically at the line joining every registered module's
+  `errcount` entry into one string (`pieces.append(',"errcount":{' + ','.join(errcount_parts) + '}}')`).
+  **Root cause of why this specific piece is still ~5KB**: this step's own design assumption
+  ("`sensors`/`errcount` bounded by this codebase's small, fixed module/sensor count") didn't account
+  for how many modules are *actually* registered on real hardware - 17 (`NEOPIXEL`, `CFGMGR_NOTIFY`,
+  `CFGMGR_SGP40`, `CFGMGR_WIFI`, `CFGMGR_SYSTEM`, `SYSTEM`, `BMP3XX`, `NTP`, `DNSSRV`, `FRAM`,
+  `CFGMGR_BMP3XX`, `SGP40`, `CFGMGR_NTP`, `WIFI`, `NOTIFY`, `SCD30`, `WEBSERVER`), each with its own
+  up-to-10-entry error history - so the single joined `errcount` piece ends up almost exactly as large
+  as the *entire* old pre-streaming aggregate (~5.7KB), defeating the mitigation's whole point for
+  that one piece. Every occurrence was caught cleanly by the existing `app.errorhandler(Exception)`
+  catch-all (`"WEBSERVER Unhandled exception in route handler:"`, errno=4) - no crash from the
+  MemoryError itself, request failed with a clean 500, system kept running. **Not yet fixed / not
+  decided**: the natural next step (splitting `errcount` the same way `sensors` already is - one piece
+  per module instead of one joined blob for the whole section) is a real design change, not made here
+  without the project owner's decision first.
+  **Second, separate real finding from the same run, root cause not yet determined**: sometime after
+  the 10-minute hammer load itself ended (system healthy throughout, uptime monotonically reached 740
+  with zero reboot markers by the end of continuous log capture), a real hardware watchdog reset fired
+  (`machine.reset_cause() == machine.WDT_RESET`, confirmed directly after the fact) - the board came
+  back up in hotspot mode with `SysUptime` reset to ~110s. Not conflated with the MemoryError finding
+  above (the webserver's own per-connection `MemoryError`s are already caught inside `_serve()` and
+  never escape to crash the supervised task), but a real, un-investigated regression risk worth
+  chasing: whether this specific un-throttled, max-speed 5-thread-plus-command flood (a harsher
+  pattern than the original investigation's own client mix, not yet compared side by side) is
+  sufficient on its own to occasionally starve the event loop past the documented 8388ms WDT-feed cap,
+  or whether something else is responsible. Board was restored to a clean, bench-network-connected
+  state (stale AP station table entry cleared, hard-reset, error counters reset) before finishing.
 
   **Step (2) done (2026-09-05), software-only, no real hardware touched.** `_get_status()`/
   `_build_status_pieces()` in `asy_webserver_service.py` now build a plain `list[str]` of small,
