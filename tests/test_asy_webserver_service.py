@@ -2094,6 +2094,36 @@ def test_h2_stream_module_names_with_special_characters_are_correctly_escaped() 
     assert set(errcount.keys()) == {'SGP"40', "WEBSERVER"}
 
 
+def test_h2_stream_many_error_sources_are_coalesced_into_size_bounded_batches_not_one_growing_blob() -> None:
+    # Real-hardware finding (BACKLOG.md, 2026-09-05): 17 real registered modules joined into one
+    # "errcount" piece (the original design) reached ~4.9KB - almost as large as the whole
+    # pre-streaming aggregate this entire design exists to avoid, and still large enough to cause a
+    # real, reproducible MemoryError under sustained load. Simulates that scale directly - enough
+    # error sources, each carrying a nontrivial error history, that the old single-join design would
+    # produce one multi-KB piece - and checks _coalesce_json_fragments()/_append_coalesced_object()
+    # actually split it into several bounded pieces instead, while still producing one complete,
+    # correctly-shaped JSON document.
+    modules = []
+    for i in range(20):
+        m = _FakeModule(f"MODULE{i}")
+        m.pr.err_count = 10
+        m.pr.history = [(1, "E")] * 10
+        modules.append(m)
+    service, app = _make_service(error_sources=modules, history_length=0)
+    res = run(app.dispatch_request(_make_request(app, "GET", "/status", None)))
+    chunks = list(res.body)
+    encoded = [c.encode() if isinstance(c, str) else c for c in chunks]
+    # A generous margin over _MAX_STATUS_PIECE_BYTES for the small fixed prefix/suffix
+    # _append_coalesced_object() fuses onto the first/last batch - the point being asserted here is
+    # "nowhere near the ~4.9KB real-hardware failure size", not an exact byte count.
+    assert all(len(c) < 1200 for c in encoded), [len(c) for c in encoded]
+    assert len(chunks) > 5  # proof the errcount section really did split into multiple pieces
+    body = json.loads(b"".join(encoded))
+    assert len(body["errcount"]) == 21  # 20 fake modules + this service's own WEBSERVER entry
+    for i in range(20):
+        assert body["errcount"][f"MODULE{i}"] == {"counter": 10, "history": [{"num": 1, "type": "E"}] * 10}
+
+
 if __name__ == "__main__":
     import microtest
 

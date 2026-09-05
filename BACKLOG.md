@@ -780,10 +780,32 @@ constraints.
   as the *entire* old pre-streaming aggregate (~5.7KB), defeating the mitigation's whole point for
   that one piece. Every occurrence was caught cleanly by the existing `app.errorhandler(Exception)`
   catch-all (`"WEBSERVER Unhandled exception in route handler:"`, errno=4) - no crash from the
-  MemoryError itself, request failed with a clean 500, system kept running. **Not yet fixed / not
-  decided**: the natural next step (splitting `errcount` the same way `sensors` already is - one piece
-  per module instead of one joined blob for the whole section) is a real design change, not made here
-  without the project owner's decision first.
+  MemoryError itself, request failed with a clean 500, system kept running.
+
+  **Fixed (2026-09-05, software-only, not yet re-verified on real hardware): `_coalesce_json_fragments()`
+  + `_append_coalesced_object()` replace the plain `",".join()` for both `"sensors"` and `"errcount"`.**
+  Splitting one piece per module (matching the real module count, ~17-22 total transmitted pieces)
+  was considered and rejected: that would land close to the ~20-piece count already measured (this
+  same investigation, step 2) to cause a real +53% throughput regression via `_serve()`'s per-write
+  `asyncio.wait_for()` wrapping. Instead, fragments are batched by a fixed byte budget
+  (`_MAX_STATUS_PIECE_BYTES = 1024`) rather than by module count: each transmitted piece stays well
+  under any size ever observed to fail, *and* the piece count stays low regardless of how many
+  modules are ever registered (batches, not one-per-module). `_append_coalesced_object()` additionally
+  fuses the section's own `{`/`}` onto the first/last batch rather than adding them as their own
+  pieces, so the common case (a section small enough to fit in one batch - true for every registration
+  size this project runs today except the real `errcount` section specifically) stays at exactly the
+  same one-piece-per-section shape as the original step-2 design; `test_asy_webserver_service.py`'s
+  existing `len(chunks) == 5` assertion still holds unchanged for that reason. New coverage added:
+  `test_h2_stream_many_error_sources_are_coalesced_into_size_bounded_batches_not_one_growing_blob`
+  (20 synthetic modules with realistic-sized histories, asserts every piece stays under 1.2KB and the
+  full document still parses correctly). Local verification only so far: full `scripts/test.sh` clean
+  (0 FAIL), and `tests/test_digital_twin_run_wozi_integration.py`'s real-socket soak timing re-measured
+  at ~45.3s (vs. the already-validated 5-piece baseline's 42.7s - a ~6% difference, not the ~53%
+  regression over-fragmentation previously caused) - the real module-count-scale registration this
+  soak drives via the real `sensortask_wozi.build_system()` graph, not just the synthetic unit test.
+  **Not yet done**: a fresh real-hardware hammer-load re-run (this step's own methodology, repeated)
+  to directly confirm the 237-MemoryError reproduction is actually gone, not just plausible from local
+  reasoning + timing.
   **Second, separate real finding from the same run, root cause not yet determined**: sometime after
   the 10-minute hammer load itself ended (system healthy throughout, uptime monotonically reached 740
   with zero reboot markers by the end of continuous log capture), a real hardware watchdog reset fired

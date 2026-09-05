@@ -64,6 +64,10 @@ _PAUSE_TIME_FIELD: "cm.FieldSchema" = ("PauseTime", "int", 0, 0, _PAUSE_TIME_MAX
 # can reuse config_manager.py's own type_or_range_error() (and its int<->float coercion policy,
 # SPECIFICATION.md Part A.8) instead of a second, hand-rolled strict check.
 
+_MAX_STATUS_PIECE_BYTES = const(1024)  # _coalesce_json_fragments()'s own per-piece cap for
+# /status's "sensors"/"errcount" sections - see that function's own comment and BACKLOG.md's
+# real-hardware finding (2026-09-05) for why a per-*section* bound isn't enough on its own.
+
 _ERROR_SHAPES = (  # (status_code, descr) - registered via @app.errorhandler for shaped JSON bodies,
     # per "Criteria for this step to finish": at least 400/404/405/413/500 wired.
     (400, "Bad request"),
@@ -88,6 +92,50 @@ def _index_pairs(items: "Iterable[tuple[str, MaintenanceFct]]") -> "dict[str, Ma
     for name, fct in items:
         result[name] = fct
     return result
+
+
+def _coalesce_json_fragments(parts: "list[str]", max_bytes: int = _MAX_STATUS_PIECE_BYTES) -> "list[str]":
+    # Batches an ordered list of already-independent, comma-joinable JSON fragments (one module's/
+    # sensor's own already-json.dumps()'d "name":{...} entry) into as few pieces as practical while
+    # keeping each piece under max_bytes - real-hardware finding (BACKLOG.md, 2026-09-05): joining
+    # *every* registered module's errcount entry into one string (the original design, one piece for
+    # the whole "errcount" section) scales with the real module count (17 on real hardware), reaching
+    # ~4.9KB - almost as large as the pre-streaming ~5.7KB whole-aggregate MemoryError this entire
+    # redesign exists to avoid. One piece per module instead would fix that, but would also push the
+    # transmitted piece count up to ~module-count, close to the ~20-piece count already measured to
+    # cause a real +53% throughput regression (_serve()'s per-write asyncio.wait_for() wrapping -
+    # see _build_status_pieces()'s own comment). Batching by a byte budget instead of by module count
+    # bounds both: each piece stays well under any size that has ever been observed to fail, and the
+    # piece count stays low regardless of how many modules are ever registered.
+    batches: list[str] = []
+    current = ""
+    for part in parts:
+        if not current:
+            current = part
+        elif len(current) + 1 + len(part) > max_bytes:
+            batches.append(current)
+            current = part
+        else:
+            current += "," + part
+    if current:
+        batches.append(current)
+    return batches
+
+
+def _append_coalesced_object(pieces: "list[str]", prefix: str, parts: "list[str]", suffix: str) -> None:
+    # Appends a `{...}` JSON object built from _coalesce_json_fragments(parts) to pieces, fusing
+    # prefix/suffix onto the first/last batch (a cheap, small string concatenation) rather than
+    # adding them as their own separate pieces - keeps the common case (a section small enough to
+    # fit in one single batch) down to exactly the one piece per section the original, pre-finding
+    # design produced, only growing past that when a section's real content actually needs more
+    # than one batch to stay under _MAX_STATUS_PIECE_BYTES.
+    batches = _coalesce_json_fragments(parts)
+    if not batches:
+        pieces.append(prefix + suffix)
+        return
+    pieces.append(prefix + batches[0])
+    pieces.extend("," + batch for batch in batches[1:])
+    pieces[-1] += suffix
 
 
 def _flatten_cfg_values(values: "dict[str, Any]") -> "dict[str, Any]":
@@ -477,10 +525,11 @@ class WebserverService:
         # *contiguous* free run for a single buffer that size and never compacts the heap, so a
         # single json.dumps() over the whole aggregate can fail even when the total free byte count
         # would suggest otherwise. One small json.dumps() per already-independent source (the same
-        # sources _get_status() used to assemble into one dict before returning it), joined back
-        # together only within one top-level section at a time (never across sections - see
-        # _build_status_pieces()'s own comment on why), bounds the largest single allocation this
-        # route ever makes to one section's own payload, never the whole aggregate.
+        # sources _get_status() used to assemble into one dict before returning it) bounds the
+        # largest single allocation this route ever makes - to one fixed top-level key's own payload
+        # for "networking"/"system"/"notification", or to one _coalesce_json_fragments() batch (see
+        # _build_status_pieces()'s own comment) for the variable-length "sensors"/"errcount" keys -
+        # never the whole aggregate.
         #
         # Deliberately NOT an `async def ... yield` "async generator" despite every source read
         # needing `await` - confirmed directly against the pinned MicroPython interpreter (see
@@ -512,19 +561,23 @@ class WebserverService:
         )
 
     async def _build_status_pieces(self) -> "list[str]":
-        # One piece per top-level key (5 total: networking/system/notification/sensors/errcount),
-        # each built with ordinary string concatenation *within that one section only* - not one
-        # piece per punctuation character. Measured directly (tests/test_digital_twin_run_wozi_
-        # integration.py's real-socket soak test): yielding every colon/comma/brace as its own piece
-        # drove a real ~53% wall-clock regression (42.7s -> 65.2s for the same tiny workload) because
-        # WebserverService._serve() wraps *every single* stream write in its own asyncio.wait_for()
-        # (_TimeoutStreamProxy, the per-call-timeout hardening every route already relies on) -
-        # fragmenting one response into ~20 pieces multiplies that fixed per-call overhead by ~20,
-        # which dominates for a body this small. Bounding concatenation to one section at a time
-        # keeps the actual memory-safety property intact (the largest single string this ever builds
-        # is one section's own payload - "sensors"/"errcount" bounded by this codebase's small, fixed
-        # module/sensor count - never the whole ~5.7KB aggregate that caused the real MemoryError),
-        # while cutting the transmitted piece count (and so the wait_for()-wrapping overhead) by ~4x.
+        # Fixed pieces for the three small top-level keys, each built with ordinary string
+        # concatenation - not one piece per punctuation character. Measured directly
+        # (tests/test_digital_twin_run_wozi_integration.py's real-socket soak test): yielding every
+        # colon/comma/brace as its own piece drove a real ~53% wall-clock regression (42.7s -> 65.2s
+        # for the same tiny workload) because WebserverService._serve() wraps *every single* stream
+        # write in its own asyncio.wait_for() (_TimeoutStreamProxy, the per-call-timeout hardening
+        # every route already relies on) - fragmenting one response into ~20 pieces multiplies that
+        # fixed per-call overhead by ~20, which dominates for a body this small.
+        #
+        # "sensors"/"errcount" are each variable-length (one entry per registered maintenance
+        # sensor/error source) and handed to _coalesce_json_fragments() instead of one plain
+        # ",".join() - real-hardware finding (BACKLOG.md, 2026-09-05): joining *every* module's own
+        # entry into one string for the whole section scales with the real module count (17 on real
+        # hardware, not the "small, fixed count" this design first assumed), reaching ~4.9KB -
+        # almost as large as the pre-streaming ~5.7KB whole-aggregate MemoryError this entire
+        # redesign exists to avoid. See that function's own comment for how it bounds both the
+        # largest single allocation *and* the transmitted piece count at the same time.
         pieces = ['{"networking":' + await self._dump_status_source("networking")]
         pieces.append(',"system":' + await self._dump_status_source("system"))
         pieces.append(',"notification":' + await self._dump_status_source("notification"))
@@ -532,7 +585,7 @@ class WebserverService:
         sensor_parts = []
         for name, fct in self._maintenance_sensors.items():
             sensor_parts.append(json.dumps(name) + ":" + await self._dump_maintenance(fct, name))
-        pieces.append(',"sensors":{' + ",".join(sensor_parts) + "}")
+        _append_coalesced_object(pieces, ',"sensors":{', sensor_parts, "}")
 
         errcount_parts = []
         for name, module in self._error_sources.items():
@@ -543,7 +596,7 @@ class WebserverService:
         # full sensor/settings surface, just the error-counter subset), so it's added directly here
         # instead of trying to register self into that dict.
         errcount_parts.append(json.dumps(_NAME) + ":" + await self._dump_errcount_entry(self.pr.get_log, _NAME))
-        pieces.append(',"errcount":{' + ",".join(errcount_parts) + "}}")
+        _append_coalesced_object(pieces, ',"errcount":{', errcount_parts, "}}")
         return pieces
 
     async def _dump_status_source(self, key: str) -> str:
