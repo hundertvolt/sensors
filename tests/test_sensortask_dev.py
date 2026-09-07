@@ -770,11 +770,11 @@ def test_webserver_measurements_and_sensors_get_include_every_real_sensor() -> N
     run(sensortask_dev.build_system(cfg_path=_tmp_cfg_dir()))
     res = _dispatch("GET", "/measurements")
     assert res.status_code == 200
-    measurements = json.loads(res.body)
+    measurements = json.loads(status_body(res))
     assert_sensor_payload_not_self_wrapped(measurements, {"SCD30", "BMP3XX", "SGP40"})
 
     res = _dispatch("GET", "/sensors")
-    sensors = json.loads(res.body)
+    sensors = json.loads(status_body(res))
     assert_sensor_payload_not_self_wrapped(sensors, {"SCD30", "BMP3XX", "SGP40"})
 
 

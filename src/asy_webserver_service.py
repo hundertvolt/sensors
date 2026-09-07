@@ -138,6 +138,34 @@ def _append_coalesced_object(pieces: "list[str]", prefix: str, parts: "list[str]
     pieces[-1] += suffix
 
 
+async def _stream_dict_response(result: "dict[str, Any]") -> "Any":
+    # Generalizes _get_status()'s own memory-bounded streaming (see that method's own comment and
+    # CLAUDE.md's memory-safety hard rule) to every other GET route that used to just `return
+    # result` and let Microdot's Response.__init__ run one json.dumps() over the whole dict
+    # (ext/microdot.py: `if isinstance(body, (dict, list)): body = json.dumps(body)`) - the same
+    # single-large-contiguous-allocation shape /status used to have, before its own real-hardware
+    # MemoryError was root-caused (BACKLOG.md). /measurements and /sensors scale with however many
+    # sensor modules a given device variant registers (not foreseeable at review time, per the
+    # project owner's own framing) and /networking, /system, /notification scale with however many
+    # SettingsGroup entries this device's own build wires up - none of these have a fixed, always-
+    # small upper bound the way a single hardcoded endpoint would. One small json.dumps() per
+    # already-complete top-level (key, value) pair, coalesced into as few pieces as practical via
+    # the same _coalesce_json_fragments()/_append_coalesced_object() byte-budget batching /status
+    # already uses, produces byte-identical JSON to json.dumps(result) while keeping the largest
+    # single allocation bounded regardless of how large result ever grows. Not used for /status
+    # itself - its own sub-sections ("sensors"/"errcount") need their own per-fragment dumps before
+    # coalescing (module-scoped data, not one flat dict), so _build_status_pieces() stays as-is.
+    parts = [json.dumps(k) + ":" + json.dumps(v) for k, v in result.items()]
+    pieces: list[str] = []
+    _append_coalesced_object(pieces, "{", parts, "}")
+    encoded = [p.encode() for p in pieces]
+    content_length = sum(len(p) for p in encoded)
+    return Response(
+        iter(encoded),
+        headers={"Content-Type": "application/json; charset=UTF-8", "Content-Length": str(content_length)},
+    )
+
+
 def _flatten_cfg_values(values: "dict[str, Any]") -> "dict[str, Any]":
     # get_dict_cfg() has two real shapes across this codebase's registrable modules: a genuinely
     # flat dict (SystemService's own override, self.cfgmgr.get_dict(...)) or
@@ -339,7 +367,7 @@ class WebserverService:
 
     # -- /measurements, /sensors --------------------------------------------------------------
 
-    async def _get_measurements(self, request: "Any") -> "dict[str, Any]":
+    async def _get_measurements(self, request: "Any") -> "Any":
         # A plain for-loop, not a dict comprehension - MicroPython doesn't support `await` inside a
         # comprehension (confirmed directly: raises SyntaxError at import time), unlike CPython.
         # .update(), not result[name] = ... : every real driver's own get_dict_data() (via
@@ -354,16 +382,20 @@ class WebserverService:
         result: dict[str, Any] = {}
         for module in self._sensors.values():
             result.update(await module.get_dict_data())
-        return result
+        # Streamed via _stream_dict_response() instead of `return result` (letting Microdot's own
+        # Response.__init__ run one json.dumps() over the whole thing) - see that function's own
+        # comment: this scales with however many sensors a device variant registers, never
+        # foreseeable at review time (CLAUDE.md's memory-safety hard rule).
+        return await _stream_dict_response(result)
 
-    async def _get_sensors(self, request: "Any") -> "dict[str, Any]":
+    async def _get_sensors(self, request: "Any") -> "Any":
         # .update(), not result[name] = ... - see _get_measurements()'s own comment above, the exact
         # same double-wrap bug via get_dict_cfg()/base_classes._get_dict_cfg() instead of
         # get_dict_data()/make_dict().
         result: dict[str, Any] = {}
         for module in self._sensors.values():
             result.update(await module.get_dict_cfg())
-        return result
+        return await _stream_dict_response(result)  # see _get_measurements()'s own comment above
 
     async def _put_sensors(self, request: "Any") -> "ar.ResponseEnvelope":
         body = _body_as_dict(request)
@@ -425,8 +457,11 @@ class WebserverService:
                 results.update(group_result)
         return results
 
-    async def _get_networking(self, request: "Any") -> "dict[str, Any]":
-        return await self._get_settings_flat("networking")
+    async def _get_networking(self, request: "Any") -> "Any":
+        # Streamed via _stream_dict_response() - see that function's own comment: this scales with
+        # however many SettingsGroup entries this device variant's own build wires up (CLAUDE.md's
+        # memory-safety hard rule).
+        return await _stream_dict_response(await self._get_settings_flat("networking"))
 
     async def _put_networking(self, request: "Any") -> "ar.ResponseEnvelope":
         body = _body_as_dict(request)
@@ -435,8 +470,8 @@ class WebserverService:
         results = await self._apply_settings_groups("networking", body)
         return ar.make_response(0, result=results)
 
-    async def _get_system(self, request: "Any") -> "dict[str, Any]":
-        return await self._get_settings_flat("system")
+    async def _get_system(self, request: "Any") -> "Any":
+        return await _stream_dict_response(await self._get_settings_flat("system"))  # see _get_networking()'s own comment
 
     async def _put_system(self, request: "Any") -> "ar.ResponseEnvelope":
         body = _body_as_dict(request)
@@ -461,8 +496,8 @@ class WebserverService:
             return "Failed"
         return "Valid" if ok else "Failed"
 
-    async def _get_notification(self, request: "Any") -> "dict[str, Any]":
-        return await self._get_settings_flat("notification")
+    async def _get_notification(self, request: "Any") -> "Any":
+        return await _stream_dict_response(await self._get_settings_flat("notification"))  # see _get_networking()'s own comment
 
     async def _put_notification(self, request: "Any") -> "ar.ResponseEnvelope":
         body = _body_as_dict(request)
