@@ -1029,7 +1029,7 @@ def test_is_hotspot_active_wiring_real_static_root_and_api_route_unaffected_in_h
 
     res = _dispatch("GET", "/measurements")
     assert res.status_code == 200
-    assert_sensor_payload_not_self_wrapped(json.loads(res.body), {"SCD30", "BMP3XX", "SGP40"})
+    assert_sensor_payload_not_self_wrapped(json.loads(status_body(res)), {"SCD30", "BMP3XX", "SGP40"})
 
 
 def test_is_hotspot_active_wiring_directory_traversal_still_404s_in_hotspot_mode() -> None:
