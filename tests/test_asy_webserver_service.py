@@ -2161,7 +2161,14 @@ def _make_hammer_service() -> "tuple[WebserverService, Microdot]":
 async def _hammer_status(app: "Microdot", n: int) -> None:
     async def _one() -> None:
         res = await app.dispatch_request(_make_request(app, "GET", "/status", None))
-        body = json.loads(status_body(res))
+        # _assert_body_is_bounded_stream() (defined below, alongside I.2's own hammer helper) also
+        # confirms res.body is a genuinely bounded stream, not just that the final assembled JSON is
+        # well-formed - added after a post-hoc check found this test alone (unlike H.2's own direct
+        # unit tests on _get_status()) would still pass 145/145 even with /status's own streaming
+        # reverted to one plain dict, since status_body()/drain_json_response_body() deliberately
+        # tolerates either body shape and an 8MB Unix-port heap absorbs a payload this small either
+        # way. Forward-referenced here (defined later in this same module, both run at test time only).
+        body = json.loads(_assert_body_is_bounded_stream(res, "/status"))
         assert set(body.keys()) == {"networking", "system", "notification", "sensors", "errcount"}
         assert len(body["errcount"]) == 18  # 17 fake modules + this service's own WEBSERVER entry
 
@@ -2244,6 +2251,30 @@ def test_i1_a_key_with_special_characters_is_correctly_escaped_not_hand_concaten
     assert json.loads(status_body(res)) == result
 
 
+_HAMMER_PIECE_BUDGET = 1200  # same generous margin over _MAX_STATUS_PIECE_BYTES (1024) as the H.2
+# coalescing test above - not an exact byte count, just "nowhere near" an unbounded aggregate.
+
+
+def _assert_body_is_bounded_stream(res: "Any", path: str) -> bytes:
+    # A route hammer test asserting only on the final assembled JSON (json.loads(status_body(res)))
+    # cannot tell a genuinely-streamed, bounded-piece response apart from a reverted
+    # `return result` that Microdot's own Response.__init__ turns into one plain json.dumps() string
+    # - status_body()/drain_json_response_body() deliberately accepts both shapes so pre-existing
+    # tests don't have to branch, which means it silently hides exactly the regression this whole
+    # audit exists to catch. Confirmed directly: reverting one of the five fixed routes back to
+    # `return result` still left every pre-existing hammer test passing 145/145 before this helper
+    # was added. res.body must be a real streamed iterator, never a plain str/bytes, and every piece
+    # it yields must stay under the same per-piece budget _stream_dict_response() itself enforces.
+    body = res.body
+    assert not isinstance(body, (str, bytes)), f"{path}: response body is not a streamed iterator (regressed to a single json.dumps() aggregate)"
+    chunks = []
+    for chunk in body:
+        encoded = chunk.encode() if isinstance(chunk, str) else chunk
+        assert len(encoded) <= _HAMMER_PIECE_BUDGET, f"{path}: piece of {len(encoded)} bytes exceeds the per-piece budget"
+        chunks.append(encoded)
+    return b"".join(chunks)
+
+
 # -- I.2: hammer /measurements and /sensors specifically - the project owner's own named top
 # candidate ("the configuration of sensor modules varies from device to device, its final size is
 # not foreseeable") - at the real registered-module count found on real hardware (17, same scale
@@ -2259,7 +2290,7 @@ async def _hammer_route(app: "Microdot", path: str, n: int, expected_keys: "set[
     async def _one() -> None:
         res = await app.dispatch_request(_make_request(app, "GET", path, None))
         assert res.status_code == 200, path
-        body = json.loads(status_body(res))
+        body = json.loads(_assert_body_is_bounded_stream(res, path))
         assert set(body.keys()) == expected_keys
 
     await asyncio.gather(*(_one() for _ in range(n)))
@@ -2308,6 +2339,71 @@ def test_i2_hammer_concurrent_sensors_requests_stay_valid_with_the_chosen_gc_thr
         gc.threshold(orig_threshold)
 
 
+# -- I.2b: /networking, /system, /notification each get the same dedicated per-hotspot hammer
+# treatment as /measurements/sensors above (task's own "each identified hotspot gets its own
+# hammering test set" ask - the combined I.3 set below is additional, not a substitute for this).
+# Real device wiring registers only a handful of SettingsGroups per endpoint (sensortask_wozi.py/
+# sensortask_dev.py: 2-3 groups, a few fields each) - stressed here at the same 17-group scale as
+# the sensor endpoints above so this test set doesn't depend on today's small real field counts
+# staying small forever.
+
+
+def _make_settings_hammer_service(endpoint: str) -> "tuple[WebserverService, Microdot, set[str]]":
+    # _get_settings_flat() merges every group's fields into one flat top-level dict (no per-group
+    # namespacing - matches real production wiring, see that method's own docstring), so each
+    # group here must contribute distinct field names or later groups would silently overwrite
+    # earlier ones and this hammer would only ever exercise 2 keys instead of 34.
+    groups = [
+        SettingsGroup(_FakeModule(f"GROUP{i}", values={f"F{i}A": i, f"F{i}B": 0}), (f"F{i}A", f"F{i}B")) for i in range(17)
+    ]
+    service, app = _make_service(settings={endpoint: groups})
+    return service, app, {f"F{i}{s}" for i in range(17) for s in ("A", "B")}
+
+
+async def _hammer_settings_route(app: "Microdot", path: str, n: int, expected_key_count: int) -> None:
+    async def _one() -> None:
+        res = await app.dispatch_request(_make_request(app, "GET", path, None))
+        assert res.status_code == 200, path
+        body = json.loads(_assert_body_is_bounded_stream(res, path))
+        assert len(body) == expected_key_count, path  # every group's fields present exactly once
+
+    await asyncio.gather(*(_one() for _ in range(n)))
+
+
+def _run_settings_hammer(endpoint: str, path: str, threshold: int) -> None:
+    orig_threshold = gc.threshold()
+    gc.threshold(threshold)
+    try:
+        _, app, keys = _make_settings_hammer_service(endpoint)
+        run(_hammer_settings_route(app, path, 200, len(keys)))
+    finally:
+        gc.threshold(orig_threshold)
+
+
+def test_i2b_hammer_concurrent_networking_requests_stay_valid_with_gc_threshold_unset() -> None:
+    _run_settings_hammer("networking", "/networking", -1)
+
+
+def test_i2b_hammer_concurrent_networking_requests_stay_valid_with_the_chosen_gc_threshold() -> None:
+    _run_settings_hammer("networking", "/networking", 32768)
+
+
+def test_i2b_hammer_concurrent_system_requests_stay_valid_with_gc_threshold_unset() -> None:
+    _run_settings_hammer("system", "/system", -1)
+
+
+def test_i2b_hammer_concurrent_system_requests_stay_valid_with_the_chosen_gc_threshold() -> None:
+    _run_settings_hammer("system", "/system", 32768)
+
+
+def test_i2b_hammer_concurrent_notification_requests_stay_valid_with_gc_threshold_unset() -> None:
+    _run_settings_hammer("notification", "/notification", -1)
+
+
+def test_i2b_hammer_concurrent_notification_requests_stay_valid_with_the_chosen_gc_threshold() -> None:
+    _run_settings_hammer("notification", "/notification", 32768)
+
+
 # -- I.3: the "final test set" - every memory-bounded GET route hammered concurrently for longer,
 # maxing out every situation identified by this audit at once, not just one route in isolation
 # (task section 3's own explicit ask). Registers a real-hardware-scale mix across every
@@ -2348,7 +2444,8 @@ async def _hammer_all_routes(app: "Microdot", rounds: int) -> None:
     async def _one(path: str) -> None:
         res = await app.dispatch_request(_make_request(app, "GET", path, None))
         assert res.status_code == 200, path
-        json.loads(status_body(res))  # well-formed JSON, no exception, for every route
+        json.loads(_assert_body_is_bounded_stream(res, path))  # well-formed JSON, no exception, and
+        # genuinely streamed in bounded pieces (not a reverted single json.dumps() aggregate)
 
     await asyncio.gather(*(_one(path) for _ in range(rounds) for path in _ALL_MEMORY_BOUNDED_GET_ROUTES))
 

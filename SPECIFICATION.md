@@ -4619,8 +4619,14 @@ shared primitive directly (empty dict, byte-identical-to-`json.dumps()` equivale
 `Content-Type`/`Content-Length` headers, many-entry coalescing, special-character escaping); I.2
 hammers `/measurements`/`/sensors` at the real 17-module registration scale found on real hardware,
 once with `gc.threshold(-1)` (native default) and once with the project's own chosen `32768`,
-mirroring the existing `/status`-only H.3 section; I.3 is the "final test set" the audit's own task
-asked for — every one of the six memory-bounded GET routes hammered concurrently, at a combined
+mirroring the existing `/status`-only H.3 section; **I.2b gives `/networking`/`/system`/
+`/notification` the same dedicated per-route hammer treatment**, one `SettingsGroup` per field pair
+across 17 groups (real device wiring registers only 2-3 groups per endpoint today, per
+`sensortask_wozi.py`/`sensortask_dev.py` — stressed well past that so this coverage doesn't depend on
+those small counts staying small) — added during a post-hoc verification pass once it was noticed
+the original I.2 only covered two of the five fixed routes individually, leaving the other three
+exercised solely by I.3's combined test; I.3 is the "final test set" the audit's own task asked for —
+every one of the six memory-bounded GET routes hammered concurrently, at a combined
 real-hardware-scale registration (17 sensors, 17 error sources, one settings group per flat
 endpoint), both without and with the chosen `gc.threshold()`. Every existing pre-audit test that
 asserted directly on a `/measurements`/`/sensors`/`/networking`/`/system`/`/notification` GET
@@ -4628,7 +4634,30 @@ response's `res.body` was updated to drain the now-streamed body first (`status_
 `drain_json_response_body()`, the same helper already used for `/status`) — a mechanical, behavior-
 preserving change; none of those assertions' actual expected JSON shape changed.
 
-Like every Unix-port test in this project, I.2/I.3's hammer tests run against an 8MB heap
+**Every I.2/I.2b/I.3 hammer helper — and, once the same gap was found in it, H.3's own pre-existing
+`/status` hammer test too — asserts the response is a genuinely bounded stream, not just a
+well-formed final JSON body** (`_assert_body_is_bounded_stream()`: `res.body` must actually be an
+iterator, never a plain `str`/`bytes`, and every piece it yields must stay under the same generous
+per-piece margin the H.2 coalescing test already uses) — added after a deliberate check found that
+`status_body()`/`drain_json_response_body()`'s own by-design tolerance for *either* body shape (so
+pre-existing non-streaming assertions don't have to branch) meant the original hammer tests would
+still pass 145/145 even with one of the five fixes fully reverted back to `return result`, since an
+8MB Unix-port heap trivially absorbs a payload this small regardless of contiguity. Confirmed by
+reverting, in turn, `_get_measurements()`'s and `_get_networking()`'s own `_stream_dict_response()`
+call and `_get_status()`'s own `Response(iter(pieces), ...)` (replaced with `json.loads(b"".join(
+pieces))`, simulating a return to one plain dict for Microdot's own `Response.__init__` to
+`json.dumps()`) and re-running each time: before this assertion existed, the full suite stayed green
+for every one of the three; after, each revert now fails exactly the hammer tests that exercise the
+reverted route (measurements: both I.2 tests plus both I.3 tests; networking: both I.2b tests plus
+both I.3 tests; status: both H.3 tests plus both I.3 tests — H.2's own direct unit tests on
+`_get_status()` already caught the `/status` case regardless, unlike H.3's hammer test), restored
+clean afterward with no source change each time. This is the actual mechanism that gives these
+hammer tests regression-catching power for the fix itself, not just for request-handling correctness
+in general — added on top of every pre-existing assertion in each test, none removed, since the
+concurrency/shape/key-count checks these tests already made remain genuinely valuable validation in
+their own right, not merely redundant with the new one.
+
+Like every Unix-port test in this project, I.2/I.2b/I.3's hammer tests run against an 8MB heap
 (`scripts/test.sh`'s own `-X heapsize=8M`) and are correctness/regression guards, not a real
 embedded-scale memory-pressure reproduction — see I.5/BACKLOG.md for what real hardware still needs
 to confirm.
