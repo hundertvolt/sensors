@@ -296,12 +296,27 @@ to pick up next, not a re-summary of what Part I already covers in full.
   (32768 measured *higher* frequency than both 16384 and 65536) and was never repeated to confirm** -
   carried over unresolved; worth a multi-trial repeat with real per-collection pause data if the item
   above is picked up first.
-- **`tests/test_asy_webserver_service.py`'s H.3 and new Section I hammer tests alike run against an
+- **`tests/test_asy_webserver_service.py`'s H.3 and Section I hammer tests alike run against an
   8MB Unix-port heap and are correctness/regression guards only, never a real memory-pressure
   reproduction** - carried over unresolved. A genuinely new, automated (not ad-hoc-scripted)
   real-hardware memory-pressure test still needs a new `tests_hardware/bench/` test built around the
-  hammer-load methodology below - this audit added the Unix-port-tier coverage (I.2/I.3) but
-  deliberately did not attempt this, per this session's own no-real-hardware constraint.
+  hammer-load methodology below - this audit added the Unix-port-tier coverage (I.2/I.2b/I.3) but
+  deliberately did not attempt this, per this session's own no-real-hardware constraint. A follow-up
+  verification pass (still 2026-09-07, same branch) found and closed two gaps in that Unix-port
+  coverage itself, worth knowing before extending it further: (1) `/networking`/`/system`/
+  `/notification` originally had no dedicated per-route hammer test of their own, only the combined
+  I.3 one - added as I.2b, same 17-group stress scale as the sensor routes; (2) every hammer test
+  (H.3 and Section I alike) only ever asserted the final assembled JSON was well-formed, never that
+  the response was actually a bounded stream - confirmed by deliberately reverting each of the five
+  route fixes plus `/status`'s own and re-running: all of them still passed 145/145 either way, since
+  `status_body()` tolerates either body shape by design and an 8MB heap trivially absorbs a payload
+  this small regardless of contiguity. Fixed by adding `_assert_body_is_bounded_stream()` (asserts
+  `res.body` is a real iterator, never `str`/`bytes`, and every piece stays under budget) into every
+  hammer helper, on top of every existing assertion, not replacing any of them - confirmed each of
+  the three reverts now fails exactly the tests exercising that route. See SPECIFICATION.md Part
+  I.3's own updated write-up for the full account. This closes the "are these hammer tests actually
+  capable of catching a regression in the fix itself" question for the Unix-port tier - the still-open
+  item is real-hardware-scale reproduction, unchanged by this fix.
 - **Reusable real-hardware GC-instrumentation technique** (unchanged from the previous hand-off,
   restated here since every item above needs it): a temporary `_gc_probe()` async task added to
   `boot_entry/<device>_boot.py` (never committed - `git diff` confirmed clean, real firmware
