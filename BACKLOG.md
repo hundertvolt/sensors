@@ -250,89 +250,77 @@ constraints.
    across all of them, rather than re-discovering each one independently session by session, would
    likely be worth a dedicated pass of its own).
 
-## Handoff notes for a deeper memory-usage/memory-pattern analysis session (2026-09-07)
+## Handoff notes for the real-hardware follow-up session (2026-09-07 systematic memory-safety audit)
 
-The 2026-09-04→07 real-hardware `MemoryError` investigation (root-caused above, `/status`
-streaming fix + `gc.threshold(32768)` both confirmed on real hardware) ended up producing real,
-reusable techniques and platform facts beyond the one bug it started from. The project owner intends
-a follow-up session, starting from this same branch, to go much deeper on the device's memory usage
-and memory-relevant coding patterns generally - not just `/status`. This section exists so that
-session doesn't have to rediscover any of this from scratch. The narrative investigation itself
-(root cause, the two mitigations, the real hammer-load numbers) is already fully written up in this
-file's own entries above - this section is deliberately just pointers + genuinely new
-technique/fact/open-question material, not a re-summary of what's already there.
+The 2026-09-07 systematic memory-safety audit (SPECIFICATION.md Part I, branch
+`claude/systematic-memory-audit`, forked from this same branch) closed the previous hand-off's own
+top item - a full function-by-function scan of `src/` for every other large-allocation/fragmentation-
+prone site, not just `/status`. **One real gap was found and fixed**: `/measurements`, `/sensors`,
+`/networking`, `/system`, `/notification` all had `/status`'s own pre-fix one-`json.dumps()`-over-
+the-whole-aggregate shape - each now streams via the new shared `_stream_dict_response()` primitive
+(SPECIFICATION.md Part I.3), the same memory-bounding technique `/status` already used, generalized.
+Everything else scanned (Part I.2's full catalog) was reviewed and found already safe - the VOC
+algorithm backup/restore buffer (the project owner's own other named candidate) included, using a
+fixed 256-byte pre-allocated buffer with no per-cycle allocation. This entire pass ran in a Unix-port
+sandbox only (8MB heap, no real-hardware access this session, per this session's own operating
+constraints) - the items below are exactly what a follow-up session with real-hardware access needs
+to pick up next, not a re-summary of what Part I already covers in full.
 
-- **Durable MicroPython platform facts confirmed this session now live in SPECIFICATION.md Part
-  F.1**, not just this file: MicroPython `list`s never need one contiguous block sized to their
-  *content* (only their element count - each string/bytes element is its own separate allocation,
-  confirmed against `py/objlist.c`/`py/objstr.h`); `gc.threshold()`'s exact C-level semantics
-  (returns `None` on set, not the old value; `-1` sentinel disables proactive collection; internally
-  block-granular, not byte-granular); and `scripts/build_firmware.py`'s `_strip_type_checking.py`
-  strips *every* comment from a staged/frozen file as a side effect of its own `ast.unparse()`
-  round-trip, not just the `if TYPE_CHECKING:` blocks it's actually targeting - so an on-device
-  traceback's line numbers are never a 1:1 match to `src/`'s own file, and need re-deriving via the
-  same strip function before trusting them (no helper script for this exists yet - a one-off
-  `python3 -c` invocation was used each time this session; worth a small `scripts/` helper if a
-  future session does this often).
-- **A reusable real-hardware GC-instrumentation technique, used and validated this session**: a
-  temporary `_gc_probe()` async task added to `boot_entry/<device>_boot.py` (never committed - `git
-  diff` confirmed clean, real production firmware rebuilt+reflashed before finishing each time),
-  sampling `gc.mem_free()` every 100ms and printing `GCPROBE <ticks_ms> <mem_free> COLLECTED|-`. A
-  same-or-higher reading than the immediately preceding sample is unambiguous proof a real collection
-  fired in that window (MicroPython's GC has no refcounting, so free memory cannot rise on its own
-  between two closely-spaced samples otherwise) - this is how the real frequency/floor table earlier
-  in this file was actually measured, replacing an earlier, explicitly-flagged-unreliable 1Hz-sampled
-  trace. Captured passively via `tail_log()`-style direct `pyserial` reads (never `mpremote exec()`
-  against a live system - that soft-resets it, wiping the very state being measured), with host-side
-  receive timestamps used to bucket samples into whatever phases a given experiment needs (idle vs.
-  hammer load, in this session's case). Reusable as-is for any future real-hardware memory
-  experiment; remember the same revert-before-finishing discipline every time.
-- **Real, quantified numbers already gathered this session, useful as a baseline for a deeper pass**:
-  real per-route JSON response sizes (`/status` ≈5.7KB pre-fix, every other route ≤~350 bytes); the
-  real registered-module count on this hardware (17, enumerated in `sensortask_wozi.py`'s/
-  `sensortask_dev.py`'s `_collect_error_sources()`); GC collection frequency + `mem_free` floor at
-  `gc.threshold()` = 16384/32768/65536 under both idle and hammer load (full table earlier in this
-  file); 237 real `MemoryError`s in 10 minutes of hammer load pre-fix, 0 post-fix, confirmed twice
-  more on a 3rd/4th run each carrying the final `gc.threshold(32768)` build.
-- **Real open questions a deeper pass should pick up, not yet investigated this session**:
-  - **No systematic audit of every other large-allocation site in `src/`** was done - `/status` was
-    investigated specifically because it was already empirically identified (BACKLOG.md's original
-    2026-09-04 finding) as the single largest response body this service produces. Every other
-    `json.dumps()`/string-concatenation call site across the rest of `src/` (not just
-    `asy_webserver_service.py`) has not been swept for the same "one big contiguous allocation"
-    shape - a genuinely "way deeper" memory pass should probably start there rather than assuming
-    `/status` was the only instance of this pattern.
-  - **No per-collection CPU-time/pause-length measurement exists anywhere in this investigation** -
-    only collection *frequency* was measured (this file says so explicitly at the point that data is
-    presented). A `_gc_probe()`-style task could plausibly be extended to bracket a detected
-    collection with `time.ticks_us()` reads to estimate real pause duration, which matters directly
-    for the still-open WDT-timing-sensitivity question below.
-  - **The hammer-phase GC-frequency trend was non-monotonic across the three thresholds tested**
-    (32768 measured *higher* frequency than both 16384 and 65536) - flagged at the time as one
-    ~90s trial per threshold, real concurrent-load timing noise being a fully plausible explanation,
-    but never repeated to actually confirm. A deeper pass with multiple trials per threshold (and
-    ideally longer windows) would give a real trend instead of one noisy data point each.
-  - **The real hardware watchdog reset observed once after an early post-fix hammer run
-    (`machine.reset_cause() == machine.WDT_RESET`, this file's own earlier entry) was never
-    root-caused** - it didn't recur in a later, shorter (~90s) re-check, but that's absence of
-    evidence, not evidence of absence. Whether real, sustained concurrent load can starve the event
-    loop past the documented 8388ms WDT-feed cap (and whether `gc.threshold(32768)`'s own longer,
-    less-frequent collections make a single collection's pause length worse in exactly the scenario
-    this reset happened in) is a real, still-open question directly relevant to a deeper memory/
-    timing analysis.
-  - **`_MAX_STATUS_PIECE_BYTES = 1024`** (the byte budget `_coalesce_json_fragments()` batches
-    `/status`'s `sensors`/`errcount` fragments against) **was chosen as "comfortably below the
-    ~4-5KB failure size observed," not derived from any measured real heap-fragmentation
-    characteristic.** Worth revisiting with real data on how large a contiguous free run this
-    hardware can reliably provide under worst-case fragmentation, rather than a comfortable-margin
-    guess.
-  - **`test_asy_webserver_service.py`'s new H.3 `gc.threshold()` tests run against an 8MB Unix-port
-    heap and can only ever be correctness/regression guards, never a real memory-pressure
-    reproduction** - if a deeper pass wants an *automated*, repeatable (not ad-hoc-scripted)
-    real-hardware memory-pressure test, that would need a genuinely new `tests_hardware/bench/` test
-    built around this session's hammer-load methodology (scripted this session as a one-off,
-    non-committed Python script - `hammer_status_streaming.py`-shaped - never turned into a checked-
-    in `tests_hardware/` test).
+- **Real-hardware confirmation of `_stream_dict_response()`'s fix, the same shape as the
+  already-confirmed `/status` fix**: run the same hammer-load methodology (`_gc_probe()` technique
+  below, this file's own earlier real-hardware entries) against `/measurements`/`/sensors`
+  specifically - the two routes whose per-device size is genuinely unbounded, and the project
+  owner's own named top candidate - at real device scale, both with `gc.threshold(-1)` and the
+  currently-chosen `32768`, and confirm 0 real `MemoryError`s either way now that no GET route left
+  in `src/` still does the one-big-`json.dumps()` thing. This is the one concrete, actionable
+  real-hardware validation this audit could not itself perform.
+- **`_MAX_STATUS_PIECE_BYTES = 1024`** (shared by `/status` and every route `_stream_dict_response()`
+  now also covers) **is still "comfortably below the ~4-5KB failure size observed," not derived from
+  any measured real heap-fragmentation characteristic** - carried over unresolved from the previous
+  hand-off. Worth revisiting with real data on how large a contiguous free run this hardware can
+  reliably provide under worst-case fragmentation, now that more routes share this one constant.
+- **Per-collection CPU-time/pause-length measurement still doesn't exist for this project's own real
+  hardware** - carried over unresolved. SPECIFICATION.md Part I.1's research found general community
+  reports (~1ms typical, up to 15-16ms under adverse conditions) but nothing specific to this
+  device's own heap layout/collection frequency. Extend the existing `_gc_probe()` technique below to
+  bracket a detected collection with `time.ticks_us()` reads - directly relevant to the still-open
+  WDT-reset question next.
+- **The one real hardware watchdog reset observed once after an early post-fix hammer run
+  (`machine.reset_cause() == machine.WDT_RESET`) is still not root-caused** - carried over
+  unresolved. Whether sustained real concurrent load (now spread across more routes than just
+  `/status`, since this audit generalized the streaming fix) can starve the event loop past the
+  8388ms WDT-feed cap, and whether a longer, less-frequent `gc.threshold(32768)` collection makes a
+  single pause worse in exactly this scenario, is the question the pause-length measurement above
+  would help answer.
+- **The hammer-phase GC-frequency trend was non-monotonic across the three thresholds tested
+  (32768 measured *higher* frequency than both 16384 and 65536) and was never repeated to confirm** -
+  carried over unresolved; worth a multi-trial repeat with real per-collection pause data if the item
+  above is picked up first.
+- **`tests/test_asy_webserver_service.py`'s H.3 and new Section I hammer tests alike run against an
+  8MB Unix-port heap and are correctness/regression guards only, never a real memory-pressure
+  reproduction** - carried over unresolved. A genuinely new, automated (not ad-hoc-scripted)
+  real-hardware memory-pressure test still needs a new `tests_hardware/bench/` test built around the
+  hammer-load methodology below - this audit added the Unix-port-tier coverage (I.2/I.3) but
+  deliberately did not attempt this, per this session's own no-real-hardware constraint.
+- **Reusable real-hardware GC-instrumentation technique** (unchanged from the previous hand-off,
+  restated here since every item above needs it): a temporary `_gc_probe()` async task added to
+  `boot_entry/<device>_boot.py` (never committed - `git diff` confirmed clean, real firmware
+  rebuilt+reflashed before finishing each time), sampling `gc.mem_free()` every 100ms and printing
+  `GCPROBE <ticks_ms> <mem_free> COLLECTED|-`. Captured via direct `pyserial` reads (never `mpremote
+  exec()` against a live system - that soft-resets it, wiping the very state being measured).
+- **Decision criteria for the follow-up session**: (1) whether `/measurements`/`/sensors` at real
+  17-module device scale ever produces a response body approaching the ~4-5KB failure-sized range
+  the pre-fix `/status` did - if so, the fix's real-hardware value is directly demonstrated the same
+  way `/status`'s already was (237→0 `MemoryError`s); if the real body stays much smaller than that
+  even at full registration, the fix is still correct (never a regression) but its real-world payoff
+  for these two routes specifically is smaller than `/status`'s own - worth noting either way, not a
+  reason to revert anything; (2) whether `_MAX_STATUS_PIECE_BYTES`'s 1024-byte budget has headroom to
+  shrink (tighter safety margin) or should grow (fewer, larger pieces for better throughput, mirroring
+  the already-measured ~53% regression from too many small pieces) once a real worst-case-
+  fragmentation contiguous-run number exists; (3) per-collection pause length at the chosen
+  threshold, to close the WDT-reset question. None of these three are blocking - the fix already
+  shipped is provably correct at the pattern level (Unix-port hammer tests, both `gc.threshold()`
+  settings, byte-identical JSON to the pre-fix shape) regardless of what real hardware turns up.
 
 ## Deferred / explicitly out-of-scope work
 - **Real-hardware re-test of the segfault fix and the memory-leak soak test — real-hardware forms

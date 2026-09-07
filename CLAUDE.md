@@ -179,6 +179,23 @@ information):
   creation.** A synthesized bridge MAC can drift across the bridge's own lifetime, silently
   orphaning the router's static DHCP reservation. Full incident account and the fix (both in
   `ensure_bench_bridge()` and `dev_legacy/README.md`'s manual recipe): SPECIFICATION.md Part B.13.
+- **Memory-safety discipline: catch→degrade→restart→watchdog, `gc`-default-first, always applied —
+  not only once something has already broken.** Any new function/module that holds, builds, or grows
+  an allocation whose size isn't a small, provably-fixed constant follows the same standing ladder
+  every existing module already mostly follows: catch `(OSError, MemoryError)` and degrade locally
+  where a concrete risk exists; never let that bubble into an unguarded crash of an otherwise-healthy
+  request/task; trust `system_service.py`'s task supervisor to restart a task that still dies (already
+  confirmed to catch `MemoryError` too — it's a direct `Exception` subclass, not nested under
+  `OSError`); let the hardware watchdog be the final backstop once restarts alone aren't keeping up.
+  Any new stress/hammer test for such code must pass with `gc.threshold(-1)` (MicroPython's own real
+  default) *before* it's ever run with the project's chosen `gc.threshold(32768)` — a threshold is
+  defense in depth on top of an already-safe design, never the fix for a design that still needs one
+  big contiguous allocation somewhere. A REST GET route whose response dict can grow with device
+  configuration/registration count (not a small, fixed handful of keys) streams it via
+  `asy_webserver_service.py`'s `_stream_dict_response()` instead of returning the dict directly for
+  Microdot to `json.dumps()` in one shot. Full research findings, the complete hotspot catalog (what
+  needed fixing vs. what was reviewed and found already safe), and the full scheme: SPECIFICATION.md
+  Part I.
 
 ## Working agreements
 
