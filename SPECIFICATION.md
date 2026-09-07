@@ -3668,6 +3668,44 @@ this Part — see this document's front matter for that tradeoff.
     `except asyncio.TimeoutError:` (or a broader `except Exception:`) arm, distinct from any
     `OSError` handling in the same call site. `src/asy_webserver_service.py`'s `_serve()`/
     `_TimeoutStreamProxy` is the real example of code that needs both arms.
+  - **A MicroPython `list`'s own backing array never needs one contiguous block sized to its
+    *content* - only to its *element count*.** Confirmed directly against the pinned interpreter's
+    own `py/objlist.c`/`py/objlist.h`: a list's `items` array is `mp_obj_t*` (`m_new(mp_obj_t,
+    o->alloc)`), one small allocation holding pointers, sized by how many elements the list has, not
+    by the size of what they point to; each `str`/`bytes` object's own character data
+    (`py/objstr.h`) is a *separate*, independently-sized allocation. A short list of independently-
+    sized JSON fragments therefore never itself becomes the kind of single large contiguous
+    allocation a non-compacting GC can fail to find room for - only each individual fragment's own
+    buffer does. Confirmed while designing `src/asy_webserver_service.py`'s `/status` streaming
+    fix (BACKLOG.md) specifically to rule out the "did we just move the big allocation into the list
+    itself" question - it doesn't move there.
+  - **`gc.threshold()`'s exact semantics, confirmed directly against the pinned interpreter's own
+    `py/modgc.c`**: called with no argument, returns the current threshold in bytes (or `-1` if
+    disabled - MicroPython's own real default on this hardware, proactive collection never fires,
+    only reactive collect-on-failure); called with an argument, *sets* the threshold and always
+    returns `None` (never the previous value - save it yourself first if you need to restore it,
+    e.g. around a test that changes it: `orig = gc.threshold(); gc.threshold(N); ...;
+    gc.threshold(orig)`). A negative argument re-disables proactive collection (stores the same
+    `-1` sentinel internally) rather than raising or clamping to 0. The byte value is stored
+    internally divided by `MICROPY_BYTES_PER_GC_BLOCK` (16 bytes on this 32-bit target) - irrelevant
+    to calling code (the public API is always in bytes), but explains why an odd/small threshold
+    value gets rounded down to the nearest 16-byte block internally.
+  - **`scripts/build_firmware.py`'s `_stage_stripped()`/`_strip_type_checking.py` strips every
+    comment from a file, not just its targeted `if TYPE_CHECKING:` blocks - a side effect of its own
+    implementation, not a second, separate feature.** `strip_type_checking_blocks()` only removes
+    that one block shape from the AST, but reconstructs the output via `ast.unparse()` whenever it
+    removes anything at all - and Python's `ast` module never represents comments as nodes in the
+    first place, so `ast.unparse()`'s output has no comments left anywhere in that file, not just
+    inside the removed blocks. Confirmed directly by comparing a real on-device traceback's line
+    numbers (`asy_webserver_service.py`'s `_get_status()`/`_build_status_pieces()`) against `src/`'s
+    own file during this session's real-hardware `/status` hammer-load testing: the frozen,
+    on-device line numbers were offset from the checked-in source by roughly the number of comment
+    lines those two functions carry, not by anything related to the `TYPE_CHECKING` stripping this
+    script's own docstring describes. Harmless today (this codebase's frozen firmware never needs
+    its own comments back at runtime, and BACKLOG.md/git history already carry the narrative
+    reasoning those comments exist for), but genuinely worth knowing before treating an on-device
+    traceback's line number as a literal `src/` line number - re-derive the real line via the same
+    strip (`python3 -c "..." strip_type_checking_blocks(...)`) instead of assuming a 1:1 mapping.
 - **Always check current MicroPython and Microdot documentation before asserting how an API
   behaves** — do not rely on training-data memory for either. This has already caught real
   discrepancies once; treat it as a standing requirement for every session, not a one-time step.

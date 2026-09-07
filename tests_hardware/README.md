@@ -222,6 +222,12 @@ a live question:
   - One real caveat for the field, not a reason to distrust this fix: a device WDT-looping against
     a real router would hit the same stale-entry pattern with no bench harness able to
     `kick_client()` on its behalf.
+  - **Confirmed the same fix is also required after a `picotool load` reflash, not just
+    `hard_reset()`** (BACKLOG.md's 2026-09-05/07 real-hardware `MemoryError`-mitigation sessions,
+    hit repeatedly, every single reflash): a fresh flash cycle reboots the board the same abrupt,
+    no-clean-802.11-deauth way a hard reset does, so it's mechanically the identical hazard - `kick_
+    all_stations()` before the post-flash reconnect attempt, every time, not just around
+    `hard_reset()` calls already inside the test harness itself.
 - **A second, distinct, real WiFi mechanism - a well-documented upstream characteristic, not
   something to fix in `src/` without a project-owner decision.** Found while confirming the fix
   above at scale: `bench/test_network_resilience.py`'s `ap_down()`/`ap_up()`-based outage/flap
