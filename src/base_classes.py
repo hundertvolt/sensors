@@ -279,8 +279,23 @@ class SensorReaderConfig(SensorReader):
         # Setter mirror of _get_dict_cfg (see SPECIFICATION.md C.5.2): persist first, then push live only
         # changed fields with a callback. Snapshot each field's pre-write value first - the one
         # _recover_failed_push rung that only exists here, before the write below overwrites it.
+        #
+        # REAL FINDING (2026-09-08, real bench hardware): a command-only/special-alone field (e.g.
+        # SGP40's own "SGPResetVOC" trigger) is never in ConfigManager's own `_cache` (by design -
+        # see config_manager.py's setup()'s own "not used for storage" skip) - snapshotting it here
+        # unconditionally therefore always hit `_get_mgr_cfg()`'s real `KeyError` path, logging one
+        # spurious CFGMGR_<name> errno=8 ("Config read error") for every single write to such a
+        # field. Confirmed deterministic on real hardware, not a race: one isolated SGPResetVOC PUT
+        # with zero concurrent traffic reproduced it every time (`/status`'s own
+        # `errcount.CFGMGR_SGP40` incremented by exactly one per PUT). Wasted work chasing a value
+        # that was never even going to be used: `_recover_failed_push()` (the only consumer of
+        # `old_values`) already skips a special-alone field outright (`if not use_value: return`,
+        # "nothing to persist-correct") - `old_values.get(key, ...)` for such a field is never
+        # actually read. Fixed by applying that same schema-derived "is this field ever persisted"
+        # filter here too, before the fetch, instead of only at the point of use.
+        persisted_keys = [key for key, field in schema_dict(cfg_vals).items() if key in data and check_cfg_get_default(field)[0]]
         try:  # _get_mgr_cfg is an overridable extension point, same defense as _get_dict_cfg's own use of it
-            old_values = await self._get_mgr_cfg(list(data.keys()))
+            old_values = await self._get_mgr_cfg(persisted_keys) if persisted_keys else {}
         except Exception as e:
             await self.pr.err_s("Error reading previous config for fallback:", e, errno=7)
             old_values = None

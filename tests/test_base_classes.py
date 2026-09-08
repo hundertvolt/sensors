@@ -1298,6 +1298,40 @@ def test_set_dict_cfg_failed_push_on_special_alone_field_skips_recovery_entirely
         _remove(path_prefix + "config_pushfailtrigger.cfg")
 
 
+def test_set_dict_cfg_special_alone_field_write_never_logs_a_spurious_config_read_error() -> None:
+    # REAL FINDING (2026-09-08, real bench hardware, root-caused via a dedicated isolated repro):
+    # a command-only/special-alone field (e.g. asy_sgp40_driver.py's own SGPResetVOC) is never in
+    # ConfigManager's own _cache (config_manager.py's setup() explicitly skips it - "not used for
+    # storage"). _set_dict_cfg()'s own pre-write old-value snapshot used to fetch it unconditionally
+    # anyway, hitting ConfigManager.get_dict()'s real KeyError path and logging one spurious
+    # CFGMGR_<name> errno=8 ("Config read error") on *every single write* to such a field -
+    # confirmed deterministic on real hardware (one isolated PUT, zero concurrent load, one new
+    # errno=8 entry in /status's own errcount.CFGMGR_SGP40 every time - not the race this was
+    # originally mistaken for). Wasted work, too: _recover_failed_push() (the only real consumer of
+    # old_values) already skips a special-alone field outright, so the fetched value was never even
+    # used. Fixed by filtering the snapshot fetch itself down to genuinely persisted keys, using the
+    # same schema-derived check _recover_failed_push() already applies at the point of use.
+    path_prefix = _tmp_path("") + "/"
+    _remove(path_prefix + "config_specialnospuriouserr.cfg")
+    try:
+        reader = SensorReaderConfig(Meas(20.0, 50), 3, "specialnospuriouserr", _VAL_SPECIAL, cfg_path=path_prefix)
+        run(reader.cfgmgr.setup())
+
+        async def push_ok(value: "int | float | str | bool | None") -> bool:
+            return True
+
+        reader._push_callbacks["Trigger"] = push_ok
+        # Baseline taken after setup(), not assumed 0 - a fresh special-alone-only schema's own
+        # setup() legitimately logs two benign warnings of its own (no config file yet, and no
+        # storage values to persist) - unrelated to this test's own real subject.
+        err_count_before = reader.cfgmgr.pr.err_count
+        results = run(reader._set_dict_cfg({"Trigger": True}, _VAL_SPECIAL))
+        assert results == {"Trigger": "Valid"}
+        assert reader.cfgmgr.pr.err_count == err_count_before  # the real bug: this used to increase by 1 on every single call
+    finally:
+        _remove(path_prefix + "config_specialnospuriouserr.cfg")
+
+
 def test_set_dict_cfg_old_value_snapshot_read_exception_falls_back_to_default() -> None:
     # _get_mgr_cfg is the same overridable extension point _get_dict_cfg already defends against -
     # _set_dict_cfg's own pre-write snapshot read gets identical defense: a raising override must

@@ -1160,13 +1160,38 @@ to pick up next, not a re-summary of what Part I already covers in full.
   logged 84 errno=8 entries (`config_manager.py`'s `get_dict()`: "unknown key, or a non-iterable/
   malformed keys param") during the load - plausibly related to the concurrent `SGPResetVOC` PUTs
   racing a GET, but not investigated; flagging rather than silently letting it pass unremarked.
-  **Dedicated repro attempted, inconclusive (2026-09-08, real bench hardware)**: a bounded 90s
-  hammer-load repro (same shape - concurrent GET /measurements+/sensors plus PUT /sensors
-  SGPResetVOC every 3s, 8 real PUTs total) produced **zero** `CFGMGR_SGP40` errno=8 lines. Not a
-  refutation - the original 84-occurrence finding came from a sustained 10-minute window; a 90s
-  bounded window may simply be too short to hit whatever timing window this race needs. Still open;
-  a longer (but still bounded, not full-suite) dedicated repro is the natural next step for a future
-  session with more time budget to spend on this specific item.
+  **Root-caused and fixed at the root (2026-09-08, real bench hardware, project owner's own
+  explicit "test harder" direction).** First repro attempt (a 90s hammer-load window, grepping
+  console log text for the literal string "errno=8") found zero occurrences - a **flawed repro, not
+  a real absence**: `PrintLog.err_s()`'s `errno=` parameter is stored into the error history but
+  never printed to console text at all, so that grep could never have matched anything regardless of
+  what happened. Corrected by querying `/status`'s own `errcount.CFGMGR_SGP40` field (the same
+  structured error-history mechanism the original 2026-09-05 finding must have actually come from)
+  instead of grepping console text.
+  **Confirmed deterministic, not a race with concurrent GET traffic at all**: a single isolated
+  `PUT /sensors {"SGP40":{"SGPResetVOC":true}}`, zero concurrent load, incremented
+  `errcount.CFGMGR_SGP40.counter` by exactly one, every time. Traced to the exact cause:
+  `base_classes.py`'s `_set_dict_cfg()` unconditionally snapshots every field's pre-write value via
+  `self._get_mgr_cfg(list(data.keys()))` before persisting - for a command-only/special-alone field
+  like `SGPResetVOC` (`asy_sgp40_driver.py`'s own `_VAL_RESET`, `def=None`, never stored in
+  `ConfigManager`'s `_cache` by design), this always hits `ConfigManager.get_dict()`'s real
+  `KeyError` path, logging one spurious `CFGMGR_<name>` errno=8 ("Config read error") per write.
+  Wasted work, too: `_recover_failed_push()` (the only real consumer of `old_values`) already skips
+  a special-alone field outright (`if not use_value: return`) - the snapshotted value was never
+  even going to be used.
+  **Fixed**: `_set_dict_cfg()` now filters the snapshot fetch itself down to genuinely persisted
+  keys, applying the same schema-derived `check_cfg_get_default(field)[0]` check
+  `_recover_failed_push()` already used at the point of use - just moved earlier, to the point of
+  fetch. Generic fix in shared `base_classes.py` code, not SGP40-specific - applies to every driver
+  with a command-only/special-alone field. New regression test added
+  (`tests/test_base_classes.py::test_set_dict_cfg_special_alone_field_write_never_logs_a_spurious_config_read_error`),
+  confirmed to genuinely catch the bug (fails against the pre-fix code, verified directly via a
+  temporary revert). All 108 tests in that file pass (107 pre-existing + 1 new).
+  **Real-hardware verified, both in isolation and under the original reproduction conditions**:
+  freshly rebuilt+reflashed `dev` firmware - 5 isolated `SGPResetVOC` PUTs, zero concurrent load:
+  `errcount.CFGMGR_SGP40.counter` stayed at 0 (previously would have read 5). Re-ran the original
+  90s hammer-load methodology (concurrent GET /measurements+/sensors, real `SGPResetVOC` PUTs under
+  load): `counter` stayed at 0 throughout. Confirms the fix, not just the isolated mechanism.
   **The second finding from the prior run (a real hardware watchdog reset, `machine.reset_cause() ==
   machine.WDT_RESET`, observed a few minutes after that run's own hammer load ended) did NOT recur in
   this run's ~90s post-hammer observation window** - consistent with (but not proof of) that reset
