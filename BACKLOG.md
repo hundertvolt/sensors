@@ -250,6 +250,85 @@ constraints.
    across all of them, rather than re-discovering each one independently session by session, would
    likely be worth a dedicated pass of its own).
 
+   **Follow-up dedicated stability investigation (2026-09-08, real bench hardware, project owner's
+   go-ahead given in-session) - the broader pass this item asked for, scoped to WiFi-reconnect
+   flakiness specifically.** A 3-round (bench+flash suite + mid-tier soak) stability pass was
+   started per the project owner's own direction; round 1 alone produced 25 failures
+   spanning `test_network_resilience.py`/`test_rest_endpoints_over_sta.py`/
+   `test_sensor_config_push_over_real_hardware.py`/`test_wifi_networking.py` plus a `joined_hotspot`
+   teardown error, and round 2 produced 23 failures + 24 errors (the entire `test_hotspot_role_
+   reversal.py` file erroring at fixture setup). Stopped after round 2 (project owner's direction:
+   investigate directly rather than keep re-running the full suite) and root-caused with three small,
+   bounded, dedicated repro scripts instead:
+   - **First hypothesis, tested and REJECTED**: "the 30s/60s/90s recovery-wait timeouts are just too
+     tight for how long a real reconnect takes now." Two clean, isolated experiments - 8 back-to-back
+     `kick_all_stations()`+`hard_reset()` cycles (5s settle), then 20 more in a tight loop (2s
+     settle) - both came back **rock-solid at ~9.1s per cycle, zero variance, zero failures across
+     28/28 total trials**. This rules out both "timeouts too tight" and "cumulative resets degrade
+     the bridge" as explanations - the plain hard-reset recovery mechanism itself is fast and
+     completely reliable.
+   - **Second hypothesis, tested and initially appeared CONFIRMED, but was actually a self-inflicted
+     methodology bug**: "the DUT-hotspot-then-back-to-STA transition itself (not a plain hard-reset)
+     is what's unreliable." An isolated repro of just `joined_hotspot`'s own stage 0-2/7-8 (skipping
+     all 17 real per-test bodies in between) reproduced the exact failure on trial 1: primary 90s
+     wait timed out, the `kick_all_stations()`+`hard_reset()` recovery fallback **also** timed out at
+     30s, DUT left genuinely unreachable. This looked like confirmation - but investigating *why*
+     the recovery fallback itself failed (unlike the clean 28/28 trials above) found the real cause:
+     **`BENCH_AP_PASSWORD` was never set this session.** `test_real_credentials_put_succeeds_and_
+     confirms_accepted_values` - the one step that PUTs the DUT's real SSID back before stage 7's
+     flip-back - skips cleanly without it (by design, see that test's own skip message), leaving the
+     DUT's persisted SSID at `""` (cleared by stage 0). A `hard_reset()` recovery then can't help
+     either: a real reboot still reads the same cleared, persisted SSID and falls straight back into
+     hotspot mode - **this is `tests_hardware/README.md`/this file's own already-documented 2026-09-04
+     "missing `BENCH_AP_PASSWORD` cascades into ~25 real test failures" finding, rediscovered by
+     forgetting its own standing rule**, not a new mechanism. My own isolated repro script never set
+     it either, so it faithfully reproduced the *known* failure, not a new one - the "hotspot
+     round-trip is unreliable" conclusion this initially suggested was wrong and is retracted.
+     Recovered directly via `tests_hardware/conftest.py`'s own `_recover_stale_dut_credentials()`
+     helper (reads the real AP password straight from `nmcli --show-secrets` under sudo, no human
+     env var needed - the same mechanism `dut_ip`'s own fixture already uses as its last-resort
+     recovery path), then **re-ran just `test_hotspot_role_reversal.py` in isolation with
+     `BENCH_AP_PASSWORD` correctly set (`bench.ap_password()`, piped into the env, never printed) -
+     24 passed, 1 known permanent skip, 0 failures in 4m35s**, including the exact two tests
+     (`test_real_credentials_put_succeeds_and_confirms_accepted_values`,
+     `test_post_condition_sta_connected_state_inferred_from_reachability`) that broke both rounds.
+     **Confirms decisively: this file's own flakiness in rounds 1-2 was entirely attributable to a
+     missing env var, not a real WiFi-reconnect reliability problem** - the already-documented
+     standing rule ("always set `BENCH_AP_PASSWORD` first" before running this file) is correct and
+     sufficient; no code or timeout change is needed.
+   - **Round 2's other, separate failure - still genuinely open, NOT explained by the above**:
+     `test_end_to_end_timing.py::test_real_hard_resets_during_natural_fram_backup_activity_recover_
+     cleanly` (3x `kick_all_stations()`+`hard_reset()` during natural SGP40→FRAM backup writes, never
+     touches hotspot mode at all) hit its own 60s recovery timeout once. Given the 28/28 clean plain
+     hard-reset trials above, this weakens (doesn't rule out) "the recovery mechanism is just
+     unreliable" as an explanation - most consistent with this file's own prior "1-in-3ish, worth
+     tracking" classification from earlier in this same open question. Not reproduced in isolation
+     this session (time not spent chasing a single rare occurrence, per the project owner's own
+     "dedicated, not repeated full runs" direction) - still open for a future session if it recurs.
+   - **This session's own actionable lesson, not a code finding**: set `BENCH_AP_PASSWORD` at the
+     start of any bench session that might touch `test_hotspot_role_reversal.py` (directly, or via a
+     full-suite/stability-pass run that includes it) - `bench.ap_password()` retrieves it live from
+     `nmcli --show-secrets` under sudo without needing it recorded anywhere, so there's no reason to
+     skip this step. The 6h long-tier soak test was stopped per the project owner's direction before
+     it ran (out of scope for this session); not re-started.
+
+10. **A spontaneous `/dev/ttyACM0` USB dropout during a purely passive test, real hardware,
+    2026-09-08 - genuinely new, not yet root-caused, not the same mechanism as open question 9
+    above.** During the 3-round stability pass's round 2 mid-tier soak,
+    `test_scd30_real_clock_stretch_never_exceeds_the_configured_timeout` (nothing but a plain
+    `board.tail_log()` - no `hard_reset()`, no reflash, no WiFi/hotspot activity of any kind) failed
+    with `harness.HardwareNotAvailable: could not open port /dev/ttyACM0: [Errno 19] No such
+    device`, roughly 80s into its own 600s window. `dmesg` was checked for a correlating kernel-level
+    USB disconnect/reconnect event at the estimated failure timestamp and **found none bracketing
+    it** - the closest real disconnect/reconnect pair in the kernel log was ~70s+ away in either
+    direction, so this either wasn't a genuine USB replug (a transient host-side node/permission
+    hiccup pyserial surfaced as ENODEV instead) or the wall-clock correlation attempt itself was
+    imprecise (pytest -v's own output has no timestamps; the estimate was reconstructed from total
+    elapsed time and test order). Not chased further this session (a single occurrence, and the
+    project owner's own direction was dedicated/targeted investigation over repeated full runs) -
+    worth a dedicated `dmesg -w`-concurrent passive-tail_log repro if it recurs, to get a real
+    correlated timestamp instead of an estimate.
+
 ## Handoff notes for the real-hardware follow-up session (2026-09-07 systematic memory-safety audit)
 
 The 2026-09-07 systematic memory-safety audit (SPECIFICATION.md Part I, branch
