@@ -304,12 +304,6 @@ constraints.
   `scripts/build_firmware.py wozi` against this bench** — `wozi` is never physically flashed, only
   `dev` is (CLAUDE.md's hard rule); that mismatch is exactly what produced the noise this item
   originally described.
-- **`dev.json`'s SHTC3/MPRLS/ISL29125 field entries remain an unconfirmed projection.** These sensors
-  have no real driver under `src/` yet, so their `html/definitions/dev.json` entries follow the same
-  pattern every promoted sensor's entry does, without a real driver to confirm the projection against.
-  Resolves naturally once a future session promotes those drivers — Part C.11 point 9's
-  driver-promotion checklist already requires a matching definitions-file update in that same
-  session.
 - **Manual cross-browser/cross-device spot check not yet done — needs the project owner directly.**
   Automated coverage (Part H.7's cross-browser smoke script, Vitest's browser-mode suite) only ever
   exercises Chromium/WebKitGTK/Firefox/Edge on Linux CI runners — Part H.1's "stable and

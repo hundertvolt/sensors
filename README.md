@@ -8,14 +8,16 @@ filesystem. Code ships as frozen bytecode compiled into the MicroPython firmware
 the device filesystem at runtime.
 
 **5 units are currently deployed**: `arzi`, `wozi`, and three physically-identical-to-arzi units
-sharing the `neu` build (same sensors, different GPIO wiring). `dev` is a bench/test rig only.
+sharing the `neu` build (same sensors, different GPIO wiring). `dev` is a bench/test rig only — the
+one physically-flashed/bench-tested `src/`-based variant, never deployed in the field (see
+CLAUDE.md's hard rules for why wozi, not dev, is never flashed).
 
 | Config | Sensors | FRAM | Watchdog | HTML source |
 |---|---|---|---|---|
 | arzi | SCD30 (CO2/temp/hum), SGP40 (VOC) | yes | active (8000ms) | `html_raw/arzi` |
 | neu ×3 | same as arzi, different pin assignments | yes | active | `html_raw/arzi` (reused) |
 | wozi | SCD30, SGP40, BMP388 (pressure/temp) | yes | active | `html_raw/wozi` |
-| dev | SCD30, SGP40, SHTC3, MPRLS, ISL29125 | no | disabled | `html_raw/dev` (bench rig) |
+| dev | SCD30, SGP40, BMP388 — same drivers as wozi, different I2C bus pairing (Part C.8) | yes | active (8000ms) | `html_raw/dev` (bench rig) |
 
 ## Repository layout, architecture, refactor status, and the build process
 
@@ -168,9 +170,10 @@ uv run scripts/build_firmware.py wozi --output build/my-firmware.uf2    # explic
 uv run scripts/build_firmware.py wozi --jobs 8                          # override parallel make jobs
 ```
 
-`<device>` must match an `html/definitions/<device>.json` file (`wozi` today — the only variant
-`src/` currently assembles). Under the hood this also stages and freezes the real website for that
-one device, runnable on its own for just that step:
+`<device>` must match an `html/definitions/<device>.json` file (`wozi` and `dev` today — `dev` is
+the bench-only variant, never built for field deployment, but a real `src/`-assembled one all the
+same). Under the hood this also stages and freezes the real website for that one device, runnable
+on its own for just that step:
 
 ```sh
 scripts/build_website.sh wozi                                 # -> frozen_modules/frozen_html.py

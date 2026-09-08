@@ -1,5 +1,5 @@
-"""Async SPI driver for one Fujitsu MB85RS64V FRAM chip (Adafruit's 8KB SPI FRAM breakout): raw byte-addressed get_values()/set_values() plus write protection.
-Source: Fujitsu MB85RS64V datasheet (DS501-00015), cross-checked against Adafruit's Adafruit_FRAM_SPI reference driver.
+"""Async SPI driver for one Fujitsu FRAM chip (MB85RS64V 8KB or MB85RS2MTA 256KB, RDID-detected via _KNOWN_PRODUCT_IDS): raw byte-addressed get_values()/set_values() plus write protection.
+Source: Fujitsu MB85RS64V (DS501-00015) and MB85RS2MTA (DS501-00032) datasheets, cross-checked against Adafruit's Adafruit_FRAM_SPI reference driver.
 """
 # CRC/dual-copy data-integrity recovery lives one layer up in asy_fram_manager.py - this file only
 # detects device-ID mismatch, a write-enable latch that didn't set/clear, and a stale write-protect

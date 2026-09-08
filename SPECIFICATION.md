@@ -455,8 +455,10 @@ versus what our own REST layer still has to add.
 - Request size is already bounded by Microdot itself before any handler runs:
   `Request.max_content_length` (16KB default) → 413 for an oversized body,
   `Request.max_readline` (2KB default) → guards a single request/header line. This project's JSON
-  payloads are tiny; the defaults are already generous headroom on a 264KB-SRAM target, no override
-  needed — just worth knowing the guard already exists rather than re-adding one at our own layer.
+  payloads are tiny, so `asy_webserver_service.py`'s `WebserverService.__init__` deliberately
+  tightens `max_content_length` to 4096 bytes (still generous headroom for any real payload here) —
+  a real, applied override, not a "no override needed" no-op; worth knowing Microdot's own guard
+  exists underneath it either way, rather than re-adding a bespoke one at our own layer.
 - The Microdot server task is already wired into `system_service.py`'s generic
   `start_and_check_tasks()` supervisor exactly like every other sensor task (see
   `src/sensortask_wozi.py`'s `_collect_task_starters()`: `webserver.get_task_starters()` is folded
@@ -4223,12 +4225,17 @@ validates it at load time (H.4's "Definitions validation" row).
     `defaultValue` is `true` — matching `modules/sensortask-wozi.py`'s own legacy synthetic
     reference (`data["ContMeas"] = True  # not readable from sensor, just as reference for
     parsing`), not the toggle's own naive default.
-- See `html/definitions/wozi.json` and `html/definitions/dev.json` for two worked, real examples
-  (wozi's SCD30/SGP40/BMP388 vs. dev's SCD30/SGP40/SHTC3/MPRLS/ISL29125 — deliberately different
-  sensor sets, field kinds, and value ranges). `dev.json`'s SHTC3/MPRLS/ISL29125 entries are a
-  projection from the same pattern every promoted sensor follows, not confirmed against real driver
-  code — these sensors have no real driver under `src/` yet; resolves naturally once a future
-  session promotes those drivers.
+- See `html/definitions/wozi.json` and `html/definitions/dev.json` for two worked, real examples —
+  both entirely confirmed against real driver code now (`src/sensortask_wozi.py`/
+  `src/sensortask_dev.py`). The two files' field content is close to identical (same three drivers —
+  SCD30, SGP40, BMP3XX — so the same `ConfigSchema`-derived min/max/kind per field either way); only
+  `device.id`/`displayName` and the underlying I2C bus pairing actually differ (wozi: SGP40+BMP3xx on
+  i2c1, SCD30 alone on i2c0; dev: SGP40+SCD30 on i2c1, BMP3xx alone on i2c0 — see Part C.8), which the
+  definitions files themselves have no reason to encode since a sensor's schema is driver-defined, not
+  bus-defined. `dev.json` previously carried placeholder `SHTC3`/`MPRLS`/`ISL29125` entries for
+  sensors with no real driver under `src/`; those were replaced with the real SCD30/SGP40/BMP3XX
+  entries once `src/sensortask_dev.py` promoted dev to a real, physically-flashed variant (this PR) —
+  this paragraph previously described the old placeholder state and was stale until now.
 
 **Autogeneration is not yet built.** The definitions file is currently hand-written; a build-time
 generator deriving it from tagged schema comments in the real `.py` source (before `mpy-cross` strips
