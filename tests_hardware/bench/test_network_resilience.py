@@ -26,6 +26,7 @@ import socket
 import time
 
 import http_client
+import ntp_probe
 from bench_control import BenchBridge
 from error_log_helpers import (
     assert_module_error_log_contains,
@@ -448,6 +449,81 @@ def test_dns_server_sends_garbage_instead_of_a_valid_response(board: Board, benc
     try:
         assert_module_error_log_contains(dut_ip, "NTP", 12, "E")
     finally:
+        reset_all_error_logs(dut_ip)
+
+
+# ---------------------------------------------------------------------------
+# Connected-socket source-address filtering - the one specific claim in BACKLOG.md's open question
+# #5 the two garbage-response tests above never actually exercised. Both of those redirect to a
+# *local* rogue responder via DNAT; on the return path, Linux conntrack's own reverse-NAT rewrites
+# the reply's source back to the real, originally-contacted NTP_Host/DNS server before it ever
+# reaches the DUT (confirmed by reading how DNAT+conntrack handles the return leg of a redirected
+# flow) - so the DUT's connected AsyUDPSocket never actually sees an apparent-wrong-source reply
+# there, whether or not it would reject one. This test instead learns the DUT's own real ephemeral
+# source port for one in-flight request via a real wire-level `tcpdump` capture on the DUT-facing
+# radio (bench_control.BenchBridge.start_udp_source_capture()/read_captured_udp_source_port() - see
+# that method's own docstring for why a *local-delivery* capture via redirect_udp_port_to_local()
+# was tried first and abandoned: real, reproducible, confirmed via a live iptables packet-counter
+# comparison, not a guess) and sends a crafted, otherwise-valid NTP reply straight at (dut_ip, that
+# port) from this bench host's own real IP - a genuinely different source than the connected
+# socket's own true peer, with no DNAT/conntrack path involved at all, while the DUT's real request
+# is left completely alone (no block/redirect of any kind - the spoofed reply just races the real
+# one, which is fine either way: if source filtering works, the spoofed reply is dropped regardless
+# of timing and the real sync succeeds normally). No IP spoofing/raw sockets needed: the DUT is the
+# intended destination of this plain sendto(), not any port this test touches.
+# ---------------------------------------------------------------------------
+
+_NTP_SPOOF_INJECTED_UNIX_TIME = 2524608000  # 2050-01-01T00:00:00Z - decades from any real "now", safely inside _parse_ntp_reply()'s own 2025-2100 plausibility window
+
+
+def test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source(board: Board, bench: BenchBridge, dut_ip: str) -> None:
+    # If AsyUDPSocket's connect()'d client socket only accepts datagrams from its true peer, a
+    # reply from anywhere else must be silently dropped by the DUT's own lwIP stack before it ever
+    # reaches recvfrom() - unambiguously checkable via GET /status's real UtcTime, since a real
+    # *accepted* reply's crafted Transmit Timestamp (2050-01-01) directly sets the RTC
+    # (src/asy_ntp_client.py's _parse_ntp_reply(), confirmed by reading that method in full).
+    get_before = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0)
+    assert get_before.status_code == 200, f"GET /status failed: {get_before.status_code} {get_before.body!r}"
+    year_before = get_before.json()["system"]["UtcTime"]["year"]
+    assert 2020 < year_before < 2049, f"DUT's own UtcTime is already outside a sane pre-test range, can't use it as this test's own signal: {year_before}"
+
+    reset_all_error_logs(dut_ip)
+    try:
+        # Bounded retry of the whole capture attempt (not just the usual post-test reachability
+        # wait): this bench's own well-documented ~1-in-3ish reachability hiccup (BACKLOG.md open
+        # question 9) means an individual hard_reset() occasionally lands in hotspot fallback
+        # instead, sending no real STA-side UDP traffic through this radio at all for tcpdump to
+        # ever see.
+        dut_ephemeral_port = None
+        attempts_made = 0
+        for _attempt in range(3):
+            attempts_made += 1
+            capture = bench.start_udp_source_capture(dut_ip, 123)
+            bench.kick_all_stations()  # see conftest.py's dut_ip docstring for the full finding
+            board.hard_reset()  # forces a fresh NTP sync attempt, giving this capture a request to observe
+            dut_ephemeral_port = bench.read_captured_udp_source_port(capture, timeout_s=55.0)  # generous relative to asy_ntp_client.py's own retry/backoff budget - see test_wifi_networking.py's equivalent comment
+            if dut_ephemeral_port is not None:
+                break
+        assert dut_ephemeral_port is not None, f"never observed a real NTP request from the DUT across {attempts_made} hard_reset() attempts - nothing to inject a reply against"
+
+        spoofed_reply = ntp_probe.build_reply(_NTP_SPOOF_INJECTED_UNIX_TIME)
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as spoof_sock:
+            spoof_sock.sendto(spoofed_reply, (dut_ip, dut_ephemeral_port))
+
+        time.sleep(3.0)  # generous relative to _parse_ntp_reply()'s own synchronous RTC().datetime() write, if it were ever reached
+        get_after = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0)
+        assert get_after.status_code == 200, f"GET /status failed: {get_after.status_code} {get_after.body!r}"
+        year_after = get_after.json()["system"]["UtcTime"]["year"]
+        assert year_after != 2050, f"the DUT's RTC was set to this test's own spoofed reply's injected date (2050-01-01) - AsyUDPSocket accepted a reply from an unexpected source on a connected socket:\n{get_after.body!r}"
+    finally:
+        # Always runs, even on a failed assertion above - this test's own last hard_reset() must
+        # never leave the DUT unreachable or its error history dirty for whatever runs next.
+        try:
+            wait_until(lambda: _sta_reconnected(dut_ip), timeout_s=60.0, poll_interval_s=3.0, description="DUT reachable over REST again after the hard_reset() above")
+        except TimeoutError:
+            bench.kick_all_stations()
+            board.hard_reset()
+            wait_until(lambda: _sta_reconnected(dut_ip), timeout_s=60.0, poll_interval_s=3.0, description="DUT reachable over REST again (after one recovery hard_reset() retry)")
         reset_all_error_logs(dut_ip)
 
 

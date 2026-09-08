@@ -164,6 +164,52 @@ class BenchBridge:
         # so this is always safe to call even if redirect_udp_port_to_local() was never reached.
         _run_iptables(["-t", "nat", "-D", "PREROUTING", "-p", "udp", "--dport", str(port), "-j", "DNAT", "--to-destination", f"127.0.0.1:{local_port}", "-m", "comment", "--comment", comment], allow_missing=True)
 
+    def start_udp_source_capture(self, src_host: str, dst_port: int, iface: str | None = None) -> subprocess.Popen[str]:
+        """Starts a real `tcpdump -c 1` on `iface` (default `wifi_iface()`, the DUT-facing radio),
+        filtered to the first UDP datagram from `src_host` to `dst_port` - a real wire-level capture
+        of the DUT's own outbound request, not a local-delivery guess. Returns the still-running
+        `Popen` immediately (before the caller's own `hard_reset()`, so no early request is missed);
+        pair with `read_captured_udp_source_port()` below to block for the actual result.
+
+        REAL FINDING this exists to work around: `redirect_udp_port_to_local()`'s own DNAT-to-
+        127.0.0.1 redirect is real (the `nat` table's own per-rule packet counter confirms every
+        redirected datagram is matched) but delivery to a *local listening socket* on the resulting
+        address/port was repeatedly, reproducibely absent in this bench's own real environment
+        (`net.ipv4.conf.*.route_localnet` reads 0 - disabled - on every interface here, the
+        documented Linux behavior for exactly this "DNAT to 127.0.0.1 from a non-loopback ingress
+        interface" shape) - confirmed directly, not guessed, via a live comparison: a background
+        `iptables -t nat -L PREROUTING -n -v` poll showed the rule's own pkt counter climbing in
+        real time while a live-bound listening socket on the same redirected port received nothing
+        across several independent hard_reset() cycles. `RogueUdpResponder`'s own tests (the
+        garbage-response ones) are unaffected only because those exercise the DUT's own *reply
+        path*, not this specific "learn the DUT's own ephemeral source port by receiving its
+        request locally" one - a real, narrower gap than open question #5's original write-up
+        assumed. Real wire capture sidesteps the whole question: no local delivery is needed at
+        all."""
+        target_iface = iface or self.wifi_iface()
+        return subprocess.Popen(
+            ["sudo", "timeout", "60", "tcpdump", "-i", target_iface, "-nn", "-l", "-c", "1", "udp", "and", "src", "host", src_host, "and", "dst", "port", str(dst_port)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+
+    def read_captured_udp_source_port(self, proc: subprocess.Popen[str], timeout_s: float = 55.0) -> int | None:
+        """Blocks for the one packet line `start_udp_source_capture()`'s tcpdump is watching for
+        (`HH:MM:SS.ffffff IP src_host.src_port > dst_host.dst_port: ...`), returning `src_port` -
+        or None if nothing matched within `timeout_s` (the process's own `-c 1`/`timeout 60` end it
+        either way, so this never blocks past that)."""
+        try:
+            line = proc.stdout.readline() if proc.stdout is not None else ""  # type: ignore[union-attr]
+        finally:
+            proc.wait(timeout=max(timeout_s, 5.0))
+        # e.g. "14:35:23.753510 IP 192.168.85.57.55718 > 162.159.200.123.123: NTPv3, ..." - the
+        # source token's own trailing ".<port>" (tcpdump -nn's own numeric host.port notation).
+        match = re.search(r"IP\s+(\S+)\s*>", line)
+        if match is None or "." not in match.group(1):
+            return None
+        return int(match.group(1).rsplit(".", 1)[1])
+
     def inject_network_degradation(
         self,
         *,
