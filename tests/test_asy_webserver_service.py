@@ -15,10 +15,10 @@ sys.path.insert(0, "ext")
 
 from _shared_rest_roundtrip import drain_json_response_body  # noqa: E402
 from freezefs.ffsmount import VfsFrozen  # type: ignore[import-not-found]  # noqa: E402
-from microdot import Microdot, Request  # type: ignore[import-not-found]  # noqa: E402
+from microdot import Microdot, Request, Response  # type: ignore[import-not-found]  # noqa: E402
 
 import config_manager as cm
-from asy_webserver_service import SettingsGroup, WebserverService, _TimeoutStreamProxy
+from asy_webserver_service import SettingsGroup, WebserverService, _stream_dict_response, _TimeoutStreamProxy
 
 try:
     from typing import TYPE_CHECKING
@@ -288,7 +288,7 @@ def test_measurements_get_returns_merged_per_sensor_dict() -> None:
     service, app = _make_service(sensors=[scd, sgp])
     res = run(app.dispatch_request(_make_request(app, "GET", "/measurements", None)))
     assert res.status_code == 200
-    assert json.loads(res.body) == {"SCD30": {"CO2": 800}, "SGP40": {"VOC": 120}}
+    assert json.loads(status_body(res)) == {"SCD30": {"CO2": 800}, "SGP40": {"VOC": 120}}
 
 
 def test_measurements_get_does_not_double_wrap_a_real_self_wrapped_sensor_shape() -> None:
@@ -298,7 +298,7 @@ def test_measurements_get_does_not_double_wrap_a_real_self_wrapped_sensor_shape(
     scd = _NestedCfgModule("SCD30", values={}, data={"CO2": 800})
     service, app = _make_service(sensors=[scd])
     res = run(app.dispatch_request(_make_request(app, "GET", "/measurements", None)))
-    body = json.loads(res.body)
+    body = json.loads(status_body(res))
     assert "SCD30" not in body["SCD30"]
     assert body == {"SCD30": {"CO2": 800}}
 
@@ -307,14 +307,14 @@ def test_measurements_get_empty_sensor_list_returns_empty_dict_not_a_crash() -> 
     service, app = _make_service(sensors=[])
     res = run(app.dispatch_request(_make_request(app, "GET", "/measurements", None)))
     assert res.status_code == 200
-    assert json.loads(res.body) == {}
+    assert json.loads(status_body(res)) == {}
 
 
 def test_sensors_get_mirrors_measurements_structure_with_cfg_fields() -> None:
     scd = _NestedCfgModule("SCD30", values={"Interval": 10, "Offset": 2})
     service, app = _make_service(sensors=[scd])
     res = run(app.dispatch_request(_make_request(app, "GET", "/sensors", None)))
-    assert json.loads(res.body) == {"SCD30": {"Interval": 10, "Offset": 2}}
+    assert json.loads(status_body(res)) == {"SCD30": {"Interval": 10, "Offset": 2}}
 
 
 def test_sensors_get_does_not_double_wrap_a_real_self_wrapped_sensor_shape() -> None:
@@ -323,7 +323,7 @@ def test_sensors_get_does_not_double_wrap_a_real_self_wrapped_sensor_shape() -> 
     scd = _NestedCfgModule("SCD30", values={"Interval": 10, "Offset": 2})
     service, app = _make_service(sensors=[scd])
     res = run(app.dispatch_request(_make_request(app, "GET", "/sensors", None)))
-    body = json.loads(res.body)
+    body = json.loads(status_body(res))
     assert "SCD30" not in body["SCD30"]
     assert body == {"SCD30": {"Interval": 10, "Offset": 2}}
 
@@ -396,7 +396,7 @@ def test_networking_get_is_flat_settings_only_no_live_fields() -> None:
     group = SettingsGroup(wifi, ("SSID",))
     service, app = _make_service(settings={"networking": [group]})
     res = run(app.dispatch_request(_make_request(app, "GET", "/networking", None)))
-    body = json.loads(res.body)
+    body = json.loads(status_body(res))
     assert body == {"SSID": "MyNet"}
     assert "Connected" not in body and "IP" not in body and "Rssi" not in body
 
@@ -444,7 +444,7 @@ def test_networking_get_flattens_a_real_type_name_nested_get_dict_cfg_shape() ->
     group = SettingsGroup(wifi, ("SSID",))  # type: ignore[arg-type]  # structurally _ModuleLike-shaped
     service, app = _make_service(settings={"networking": [group]})
     res = run(app.dispatch_request(_make_request(app, "GET", "/networking", None)))
-    assert json.loads(res.body) == {"SSID": "MyNet"}
+    assert json.loads(status_body(res)) == {"SSID": "MyNet"}
 
 
 def test_networking_put_partial_field_update_triggers_only_relevant_post_hook() -> None:
@@ -509,7 +509,7 @@ def test_system_get_is_flat_debug_gmt_dst_only() -> None:
     groups = [SettingsGroup(sysm, ("DebugLevel",)), SettingsGroup(ntp, ("GMTOffset", "DSTOffset"))]
     service, app = _make_service(settings={"system": groups})
     res = run(app.dispatch_request(_make_request(app, "GET", "/system", None)))
-    assert json.loads(res.body) == {"DebugLevel": 2, "GMTOffset": 3600, "DSTOffset": 3600}
+    assert json.loads(status_body(res)) == {"DebugLevel": 2, "GMTOffset": 3600, "DSTOffset": 3600}
 
 
 def test_system_put_settings_only_body_no_systemcmd_takes_no_lifecycle_action() -> None:
@@ -652,7 +652,7 @@ def test_notification_get_is_flat_settings_only_no_live_fields() -> None:
     )
     service, app = _make_service(settings={"notification": [SettingsGroup(notif, ("OnH",))]})
     res = run(app.dispatch_request(_make_request(app, "GET", "/notification", None)))
-    body = json.loads(res.body)
+    body = json.loads(status_body(res))
     assert body == {"OnH": 8}
     assert "Triggered" not in body and "TS" not in body and "PauseTime" not in body
 
@@ -960,7 +960,7 @@ def test_c_one_entry_behaves_identically_to_a_hand_constructed_single_item_list(
     single = _NestedCfgModule("SCD30", values={}, data={"CO2": 900})
     service, app = _make_service(sensors=[single])
     res = run(app.dispatch_request(_make_request(app, "GET", "/measurements", None)))
-    assert json.loads(res.body) == {"SCD30": {"CO2": 900}}
+    assert json.loads(status_body(res)) == {"SCD30": {"CO2": 900}}
 
 
 def test_c_duplicate_registration_last_registration_wins() -> None:
@@ -968,7 +968,7 @@ def test_c_duplicate_registration_last_registration_wins() -> None:
     second = _NestedCfgModule("SCD30", values={}, data={"CO2": 222})
     service, app = _make_service(sensors=[first, second])
     res = run(app.dispatch_request(_make_request(app, "GET", "/measurements", None)))
-    assert json.loads(res.body) == {"SCD30": {"CO2": 222}}
+    assert json.loads(status_body(res)) == {"SCD30": {"CO2": 222}}
 
 
 # ---------------------------------------------------------------------------
@@ -1081,7 +1081,7 @@ def test_e_concurrent_put_during_get_never_produces_a_torn_response() -> None:
         )
         get_res = await app.dispatch_request(_make_request(app, "GET", "/networking", None))
         await put_task
-        body = json.loads(get_res.body)
+        body = json.loads(status_body(get_res))
         # MicroPython's cooperative, non-preemptive scheduling means the synchronous dict-build in
         # get_dict_cfg() can't be interleaved by the PUT's own await points - either both fields are
         # the old values or both are the new ones, never a mix (CLAUDE.md Part F).
@@ -1670,7 +1670,7 @@ def test_g_static_routes_never_shadow_a_real_api_endpoint() -> None:
     service, app = _make_service(sensors=[scd], static_mount=mount)
     res = run(app.dispatch_request(_make_request(app, "GET", "/measurements", None)))
     assert res.status_code == 200
-    assert json.loads(res.body) == {"SCD30": {"CO2": 800}}  # the real endpoint, not the static file
+    assert json.loads(status_body(res)) == {"SCD30": {"CO2": 800}}  # the real endpoint, not the static file
 
 
 def test_g_static_routes_are_not_registered_at_all_when_static_mount_is_none() -> None:
@@ -1733,7 +1733,7 @@ def test_g2_hotspot_active_does_not_shadow_a_real_api_route() -> None:
     _, app = _make_service(sensors=[scd], static_mount=mount, is_hotspot_active=lambda: True)
     res = run(app.dispatch_request(_make_request(app, "GET", "/measurements", None)))
     assert res.status_code == 200
-    assert json.loads(res.body) == {"SCD30": {"CO2": 800}}
+    assert json.loads(status_body(res)) == {"SCD30": {"CO2": 800}}
 
 
 def test_g2_hotspot_redirect_does_not_log_a_warning_or_error() -> None:
@@ -2161,7 +2161,14 @@ def _make_hammer_service() -> "tuple[WebserverService, Microdot]":
 async def _hammer_status(app: "Microdot", n: int) -> None:
     async def _one() -> None:
         res = await app.dispatch_request(_make_request(app, "GET", "/status", None))
-        body = json.loads(status_body(res))
+        # _assert_body_is_bounded_stream() (defined below, alongside I.2's own hammer helper) also
+        # confirms res.body is a genuinely bounded stream, not just that the final assembled JSON is
+        # well-formed - added after a post-hoc check found this test alone (unlike H.2's own direct
+        # unit tests on _get_status()) would still pass 145/145 even with /status's own streaming
+        # reverted to one plain dict, since status_body()/drain_json_response_body() deliberately
+        # tolerates either body shape and an 8MB Unix-port heap absorbs a payload this small either
+        # way. Forward-referenced here (defined later in this same module, both run at test time only).
+        body = json.loads(_assert_body_is_bounded_stream(res, "/status"))
         assert set(body.keys()) == {"networking", "system", "notification", "sensors", "errcount"}
         assert len(body["errcount"]) == 18  # 17 fake modules + this service's own WEBSERVER entry
 
@@ -2184,6 +2191,334 @@ def test_h3_hammer_concurrent_status_requests_stay_valid_with_the_chosen_gc_thre
     try:
         _, app = _make_hammer_service()
         run(_hammer_status(app, 200))
+    finally:
+        gc.threshold(orig_threshold)
+
+
+# -- I: _stream_dict_response() - the shared streaming primitive generalizing H.2's /status
+# mitigation to every other dict-shaped GET route (systematic memory-safety audit, 2026-09-07 - see
+# CLAUDE.md's memory-safety hard rule and SPECIFICATION.md's Memory-Safety Audit & Discipline Part).
+# /measurements, /sensors, /networking, /system, /notification all used to just `return result` and
+# let Microdot's own Response.__init__ run one json.dumps() over the whole dict
+# (ext/microdot.py: `if isinstance(body, (dict, list)): body = json.dumps(body)`) - the same
+# single-large-contiguous-allocation shape /status itself used to have before its own real-hardware
+# MemoryError was root-caused (BACKLOG.md). I.1 exercises the shared primitive directly; I.2/I.3
+# hammer the newly-streamed routes the same way H.3 already hammers /status - these Unix-port runs
+# (8MB heap, scripts/test.sh's own -X heapsize=8M) are correctness/regression guards, never a real
+# embedded-scale memory-pressure reproduction, exactly like H.3's own framing.
+
+
+def test_i1_empty_dict_produces_the_same_valid_empty_object_as_plain_json_dumps() -> None:
+    res = run(_stream_dict_response({}))
+    assert json.loads(status_body(res)) == {}
+
+
+def test_i1_output_is_byte_identical_to_microdots_own_single_json_dumps_path() -> None:
+    # The whole point of this primitive: identical JSON on the wire, just assembled without ever
+    # holding one buffer sized to the full aggregate (see _stream_dict_response()'s own comment).
+    result = {"A": 1, "B": {"nested": True}, "C": [1, 2, 3], "D": None}
+    streamed = run(_stream_dict_response(result))
+    plain = Response(result)  # Microdot's own dict path - one json.dumps() over the whole thing
+    assert json.loads(status_body(streamed)) == json.loads(plain.body)
+
+
+def test_i1_sets_content_type_and_an_exact_content_length_header() -> None:
+    res = run(_stream_dict_response({"A": 1}))
+    assert res.headers["Content-Type"] == "application/json; charset=UTF-8"
+    body = status_body(res)
+    assert res.headers["Content-Length"] == str(len(body))
+
+
+def test_i1_many_entries_are_coalesced_into_size_bounded_batches_not_one_growing_blob() -> None:
+    # Mirrors H.2's identical proof for /status's own "errcount" section
+    # (test_h2_stream_many_error_sources_are_coalesced_into_size_bounded_batches_not_one_growing_blob
+    # above) - same _coalesce_json_fragments()/_append_coalesced_object() mechanism, applied here to
+    # a flat top-level dict (the shape /measurements, /sensors, /networking, /system, /notification
+    # all produce) instead of /status's own nested "errcount" section.
+    result = {f"Field{i}": "x" * 100 for i in range(30)}  # ~30*(11+100) bytes, several times over
+    # _MAX_STATUS_PIECE_BYTES if joined into one piece
+    res = run(_stream_dict_response(result))
+    chunks = list(res.body)
+    encoded = [c.encode() if isinstance(c, str) else c for c in chunks]
+    assert all(len(c) < 1200 for c in encoded), [len(c) for c in encoded]
+    assert len(chunks) > 1  # proof it really did split into multiple pieces
+    assert json.loads(b"".join(encoded)) == result
+
+
+def test_i1_a_key_with_special_characters_is_correctly_escaped_not_hand_concatenated() -> None:
+    result = {'Weird"Key': 1}
+    res = run(_stream_dict_response(result))
+    assert json.loads(status_body(res)) == result
+
+
+_HAMMER_PIECE_BUDGET = 1200  # same generous margin over _MAX_STATUS_PIECE_BYTES (1024) as the H.2
+# coalescing test above - not an exact byte count, just "nowhere near" an unbounded aggregate.
+
+
+def _assert_body_is_bounded_stream(res: "Any", path: str) -> bytes:
+    # A route hammer test asserting only on the final assembled JSON (json.loads(status_body(res)))
+    # cannot tell a genuinely-streamed, bounded-piece response apart from a reverted
+    # `return result` that Microdot's own Response.__init__ turns into one plain json.dumps() string
+    # - status_body()/drain_json_response_body() deliberately accepts both shapes so pre-existing
+    # tests don't have to branch, which means it silently hides exactly the regression this whole
+    # audit exists to catch. Confirmed directly: reverting one of the five fixed routes back to
+    # `return result` still left every pre-existing hammer test passing 145/145 before this helper
+    # was added. res.body must be a real streamed iterator, never a plain str/bytes, and every piece
+    # it yields must stay under the same per-piece budget _stream_dict_response() itself enforces.
+    body = res.body
+    assert not isinstance(body, (str, bytes)), f"{path}: response body is not a streamed iterator (regressed to a single json.dumps() aggregate)"
+    chunks = []
+    for chunk in body:
+        encoded = chunk.encode() if isinstance(chunk, str) else chunk
+        assert len(encoded) <= _HAMMER_PIECE_BUDGET, f"{path}: piece of {len(encoded)} bytes exceeds the per-piece budget"
+        chunks.append(encoded)
+    return b"".join(chunks)
+
+
+# -- I.2: hammer /measurements and /sensors specifically - the project owner's own named top
+# candidate ("the configuration of sensor modules varies from device to device, its final size is
+# not foreseeable") - at the real registered-module count found on real hardware (17, same scale
+# H.3 already uses for /status).
+
+
+def _make_sensor_hammer_service() -> "tuple[WebserverService, Microdot]":
+    modules = [_NestedCfgModule(f"SENSOR{i}", values={"Interval": 5, "Offset": 0}, data={"Value": i}) for i in range(17)]
+    return _make_service(sensors=modules, history_length=0)
+
+
+async def _hammer_route(app: "Microdot", path: str, n: int, expected_keys: "set[str]") -> None:
+    async def _one() -> None:
+        res = await app.dispatch_request(_make_request(app, "GET", path, None))
+        assert res.status_code == 200, path
+        body = json.loads(_assert_body_is_bounded_stream(res, path))
+        assert set(body.keys()) == expected_keys
+
+    await asyncio.gather(*(_one() for _ in range(n)))
+
+
+_SENSOR_HAMMER_KEYS = {f"SENSOR{i}" for i in range(17)}
+
+
+def test_i2_hammer_concurrent_measurements_requests_stay_valid_with_gc_threshold_unset() -> None:
+    orig_threshold = gc.threshold()
+    gc.threshold(-1)  # MicroPython's own real default (confirmed directly - no proactive collection)
+    try:
+        _, app = _make_sensor_hammer_service()
+        run(_hammer_route(app, "/measurements", 200, _SENSOR_HAMMER_KEYS))
+    finally:
+        gc.threshold(orig_threshold)
+
+
+def test_i2_hammer_concurrent_measurements_requests_stay_valid_with_the_chosen_gc_threshold() -> None:
+    orig_threshold = gc.threshold()
+    gc.threshold(32768)  # the project owner's chosen value, see H.3's own comment above
+    try:
+        _, app = _make_sensor_hammer_service()
+        run(_hammer_route(app, "/measurements", 200, _SENSOR_HAMMER_KEYS))
+    finally:
+        gc.threshold(orig_threshold)
+
+
+def test_i2_hammer_concurrent_sensors_requests_stay_valid_with_gc_threshold_unset() -> None:
+    orig_threshold = gc.threshold()
+    gc.threshold(-1)
+    try:
+        _, app = _make_sensor_hammer_service()
+        run(_hammer_route(app, "/sensors", 200, _SENSOR_HAMMER_KEYS))
+    finally:
+        gc.threshold(orig_threshold)
+
+
+def test_i2_hammer_concurrent_sensors_requests_stay_valid_with_the_chosen_gc_threshold() -> None:
+    orig_threshold = gc.threshold()
+    gc.threshold(32768)
+    try:
+        _, app = _make_sensor_hammer_service()
+        run(_hammer_route(app, "/sensors", 200, _SENSOR_HAMMER_KEYS))
+    finally:
+        gc.threshold(orig_threshold)
+
+
+# -- I.2b: /networking, /system, /notification each get the same dedicated per-hotspot hammer
+# treatment as /measurements/sensors above (task's own "each identified hotspot gets its own
+# hammering test set" ask - the combined I.3 set below is additional, not a substitute for this).
+# Real device wiring registers only a handful of SettingsGroups per endpoint (sensortask_wozi.py/
+# sensortask_dev.py: 2-3 groups, a few fields each) - stressed here at the same 17-group scale as
+# the sensor endpoints above so this test set doesn't depend on today's small real field counts
+# staying small forever.
+
+
+def _make_settings_hammer_service(endpoint: str) -> "tuple[WebserverService, Microdot, set[str]]":
+    # _get_settings_flat() merges every group's fields into one flat top-level dict (no per-group
+    # namespacing - matches real production wiring, see that method's own docstring), so each
+    # group here must contribute distinct field names or later groups would silently overwrite
+    # earlier ones and this hammer would only ever exercise 2 keys instead of 34.
+    groups = [
+        SettingsGroup(_FakeModule(f"GROUP{i}", values={f"F{i}A": i, f"F{i}B": 0}), (f"F{i}A", f"F{i}B")) for i in range(17)
+    ]
+    service, app = _make_service(settings={endpoint: groups})
+    return service, app, {f"F{i}{s}" for i in range(17) for s in ("A", "B")}
+
+
+async def _hammer_settings_route(app: "Microdot", path: str, n: int, expected_key_count: int) -> None:
+    async def _one() -> None:
+        res = await app.dispatch_request(_make_request(app, "GET", path, None))
+        assert res.status_code == 200, path
+        body = json.loads(_assert_body_is_bounded_stream(res, path))
+        assert len(body) == expected_key_count, path  # every group's fields present exactly once
+
+    await asyncio.gather(*(_one() for _ in range(n)))
+
+
+def _run_settings_hammer(endpoint: str, path: str, threshold: int) -> None:
+    orig_threshold = gc.threshold()
+    gc.threshold(threshold)
+    try:
+        _, app, keys = _make_settings_hammer_service(endpoint)
+        run(_hammer_settings_route(app, path, 200, len(keys)))
+    finally:
+        gc.threshold(orig_threshold)
+
+
+def test_i2b_hammer_concurrent_networking_requests_stay_valid_with_gc_threshold_unset() -> None:
+    _run_settings_hammer("networking", "/networking", -1)
+
+
+def test_i2b_hammer_concurrent_networking_requests_stay_valid_with_the_chosen_gc_threshold() -> None:
+    _run_settings_hammer("networking", "/networking", 32768)
+
+
+def test_i2b_hammer_concurrent_system_requests_stay_valid_with_gc_threshold_unset() -> None:
+    _run_settings_hammer("system", "/system", -1)
+
+
+def test_i2b_hammer_concurrent_system_requests_stay_valid_with_the_chosen_gc_threshold() -> None:
+    _run_settings_hammer("system", "/system", 32768)
+
+
+def test_i2b_hammer_concurrent_notification_requests_stay_valid_with_gc_threshold_unset() -> None:
+    _run_settings_hammer("notification", "/notification", -1)
+
+
+def test_i2b_hammer_concurrent_notification_requests_stay_valid_with_the_chosen_gc_threshold() -> None:
+    _run_settings_hammer("notification", "/notification", 32768)
+
+
+# -- I.3: the "final test set" - every memory-bounded GET route hammered concurrently for longer,
+# maxing out every situation identified by this audit at once, not just one route in isolation
+# (task section 3's own explicit ask). Registers a real-hardware-scale mix across every
+# registration group at the same time: 17 sensor modules (measurements/sensors), 17 error sources
+# plus this service's own entry (status/errcount, matching H.3's own scale), and one settings group
+# per flat endpoint (networking/system/notification).
+
+
+def _make_combined_hammer_service() -> "tuple[WebserverService, Microdot]":
+    sensor_modules = [_NestedCfgModule(f"SENSOR{i}", values={"Interval": 5, "Offset": 0}, data={"Value": i}) for i in range(17)]
+    error_modules = []
+    for i in range(17):
+        m = _FakeModule(f"MODULE{i}")
+        m.pr.err_count = 5
+        m.pr.history = [(1, "E")] * 5
+        error_modules.append(m)
+    net_mod = _FakeModule("WIFI", schema=(("SSID", "str", "", 0, 32, None),), values={"SSID": "MyNet"})
+    sys_mod = _FakeModule("SYSTEM", schema=(("DebugLevel", "int", 0, 0, 5, None),), values={"DebugLevel": 2})
+    notif_mod = _FakeModule("NOTIF", schema=(("OnH", "int", 8, 0, 23, None),), values={"OnH": 8})
+    return _make_service(
+        sensors=sensor_modules,
+        settings={
+            "networking": [SettingsGroup(net_mod, ("SSID",))],
+            "system": [SettingsGroup(sys_mod, ("DebugLevel",))],
+            "notification": [SettingsGroup(notif_mod, ("OnH",))],
+        },
+        status_sources={"networking": _const_source({"A": 1}), "system": _const_source({"B": 2})},
+        maintenance_sensors=[("SGP40", _const_source({"BackupTS": 1}))],
+        error_sources=error_modules,
+        history_length=0,
+    )
+
+
+_ALL_MEMORY_BOUNDED_GET_ROUTES = ("/status", "/measurements", "/sensors", "/networking", "/system", "/notification")
+
+
+async def _hammer_all_routes(app: "Microdot", rounds: int) -> None:
+    async def _one(path: str) -> None:
+        res = await app.dispatch_request(_make_request(app, "GET", path, None))
+        assert res.status_code == 200, path
+        json.loads(_assert_body_is_bounded_stream(res, path))  # well-formed JSON, no exception, and
+        # genuinely streamed in bounded pieces (not a reverted single json.dumps() aggregate)
+
+    await asyncio.gather(*(_one(path) for _ in range(rounds) for path in _ALL_MEMORY_BOUNDED_GET_ROUTES))
+
+
+def test_i3_hammer_every_memory_bounded_get_route_concurrently_with_gc_threshold_unset() -> None:
+    orig_threshold = gc.threshold()
+    gc.threshold(-1)
+    try:
+        _, app = _make_combined_hammer_service()
+        run(_hammer_all_routes(app, 40))  # 40 rounds * 6 routes = 240 concurrent requests
+    finally:
+        gc.threshold(orig_threshold)
+
+
+def test_i3_hammer_every_memory_bounded_get_route_concurrently_with_the_chosen_gc_threshold() -> None:
+    orig_threshold = gc.threshold()
+    gc.threshold(32768)
+    try:
+        _, app = _make_combined_hammer_service()
+        run(_hammer_all_routes(app, 40))
+    finally:
+        gc.threshold(orig_threshold)
+
+
+# -- I.4: /measurements and /sensors hammered concurrently with a real config *write* (PUT
+# /sensors) in the mix, not just GETs alone - the unit-level equivalent of
+# tests_hardware/bench/test_memory_stress_bench.py's own real-hardware hammer-load test (4 GET
+# threads at max speed plus one PUT-a-command-field thread every 3s), which found nothing wrong on
+# real hardware but never had a fast, CI-run counterpart proving the same combined GET+write shape
+# stays memory-safe/bounded-stream at this tier. ConfigManager's own asyncio.Lock already rules out
+# a data race (SPECIFICATION.md Part C.7) - this is about the same concern I.2/I.3 above already
+# check for GET-only traffic (bounded-stream responses, no exception), now with a concurrent writer
+# present too, not a race-condition hunt.
+
+
+def _make_write_hammer_service() -> "tuple[WebserverService, Microdot]":
+    modules = [_FakeModule(f"SENSOR{i}") for i in range(17)]
+    return _make_service(sensors=modules, history_length=0)
+
+
+async def _hammer_routes_with_concurrent_writes(app: "Microdot", rounds: int) -> None:
+    async def _get_one(path: str) -> None:
+        res = await app.dispatch_request(_make_request(app, "GET", path, None))
+        assert res.status_code == 200, path
+        json.loads(_assert_body_is_bounded_stream(res, path))
+
+    async def _put_one(round_num: int) -> None:
+        target = f"SENSOR{round_num % 17}"
+        res = await app.dispatch_request(_make_request(app, "PUT", "/sensors", {target: {"Interval": 5 + (round_num % 10)}}))
+        assert res.status_code == 200, "/sensors PUT"
+        assert json.loads(res.body)["result"] == {target: {"Interval": "Valid"}}
+
+    gets = (_get_one(path) for _ in range(rounds) for path in ("/measurements", "/sensors"))
+    puts = (_put_one(i) for i in range(rounds))
+    await asyncio.gather(*gets, *puts)
+
+
+def test_i4_hammer_measurements_and_sensors_concurrently_with_a_real_config_write_with_gc_threshold_unset() -> None:
+    orig_threshold = gc.threshold()
+    gc.threshold(-1)
+    try:
+        _, app = _make_write_hammer_service()
+        run(_hammer_routes_with_concurrent_writes(app, 40))  # 40 rounds * 2 GET routes + 40 PUTs = 120 concurrent requests
+    finally:
+        gc.threshold(orig_threshold)
+
+
+def test_i4_hammer_measurements_and_sensors_concurrently_with_a_real_config_write_with_the_chosen_gc_threshold() -> None:
+    orig_threshold = gc.threshold()
+    gc.threshold(32768)
+    try:
+        _, app = _make_write_hammer_service()
+        run(_hammer_routes_with_concurrent_writes(app, 40))
     finally:
         gc.threshold(orig_threshold)
 

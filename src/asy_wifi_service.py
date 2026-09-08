@@ -311,22 +311,48 @@ class AsyConnTime(SensorReaderConfig):
             await self.pr.err_s("Error activating hotspot AP:", e, errno=12)
 
     def _configure_hotspot_ap(self, country: str, hostname: str) -> None:
-        network.country(country)  # Country
-        network.hostname(hostname)  # Hostname
-        self.wlan.config(essid=hostname, password="12345678")
-        self.wlan.active(True)
-        self.wlan.config(pm=0xA11140)  # disable power-save mode
+        # CORRECTED (2026-09-08, verified directly against the pinned MicroPython/cyw43-driver C
+        # source, not assumed): a stale comment used to live here claiming "_run_hotspot_mode()
+        # calls _start_hotspot() (and so this method) again every loop iteration ... STAT_GOT_IP is
+        # a STA-only status an AP interface never reports." That's factually wrong on this pinned
+        # version - extmod/network_cyw43.c's own `.status()` is one generic function for both AP and
+        # STA interfaces (network_cyw43_status() -> cyw43_tcpip_link_status()), and
+        # lib/cyw43-driver/src/cyw43_lwip.c's cyw43_tcpip_link_status() returns CYW43_LINK_UP
+        # (numerically 3, the same value as network.STAT_GOT_IP) for *any* interface whose netif has
+        # a bound IPv4 address - true for an AP interface's own self-assigned address just as much as
+        # a STA interface's DHCP-leased one. So in real steady-state operation,
+        # `_run_hotspot_mode()`'s `status != network.STAT_GOT_IP` branch (the one that calls this
+        # method) is only true on the *first* tick after entering hotspot mode - once the AP is up
+        # and has its address, `wlan.status()` reports STAT_GOT_IP and `_run_hotspot_mode()` takes
+        # the other branch (`_manage_hotspot_stations()`) from then on, matching what this project's
+        # own real bench logs actually show ("Hotspot mode is active" from that other branch
+        # repeating, never this method's own "WLAN hotspot was started" line).
+        #
+        # The `if not self.wlan.active():` guard below is kept anyway, as real, low-risk defense in
+        # depth matching the evident original intent (the `pr.one(...)` log call's own name - "one" -
+        # already signals a log-once-per-entry expectation): if this method is ever genuinely
+        # re-entered while the AP is still active (a real status flicker, or the rare case this
+        # project's own test-side retry logic can trigger), it now skips redundant
+        # essid/password/active(True) reapplication instead of repeating it - still fully
+        # self-healing if the interface was ever externally deactivated, since active() would then
+        # correctly report False again. This is not confirmed to be the cause of any specific
+        # observed real-hardware flakiness (that theory, based on the now-corrected comment above,
+        # is retracted - see BACKLOG.md) - it's kept purely because skipping genuinely unnecessary
+        # reconfiguration is strictly better regardless, and matches the code's own evident intent.
+        if not self.wlan.active():
+            network.country(country)  # Country
+            network.hostname(hostname)  # Hostname
+            self.wlan.config(essid=hostname, password="12345678")
+            self.wlan.active(True)
+            self.wlan.config(pm=0xA11140)  # disable power-save mode
+            self.pr.one("WLAN hotspot was started")
         own_ip, own_netmask = self.wlan.ifconfig()[:2]
-        # _run_hotspot_mode() calls _start_hotspot() (and so this method) again every loop
-        # iteration for as long as wlan.status() != network.STAT_GOT_IP - true on every iteration
-        # while purely in AP mode (STAT_GOT_IP is a STA-only status an AP interface never reports).
         # Guard against leaking a duplicate concurrent DNSServer.run() task on top of one already
         # running - same "is None or .done()" convention system_service.py's own
         # start_and_check_tasks() already uses for its supervised tasks.
         if self.dns_server_task is None or self.dns_server_task.done():
             evtloop = asyncio.get_event_loop()
             self.dns_server_task = evtloop.create_task(self.dns_server.run(own_ip, own_netmask))
-        self.pr.one("WLAN hotspot was started")
 
     def _hotspot_client_connected(self) -> None:
         self.hotspot_timer.deinit()  # if client connected, do not stop hotspot

@@ -401,6 +401,13 @@ def test_client_mode_filters_datagrams_from_unexpected_sources() -> None:
     # datagrams from any address other than the connected peer. Prove this directly with a
     # genuine third, independent UDP endpoint acting as an off-path/spoofed sender: it must never
     # be seen by the client, even though it targets the exact same port.
+    # This is the Unix-port/BSD-socket half of BACKLOG.md's open question #5 ("connected-socket
+    # source filtering") - real rp2/lwIP is a genuinely different socket implementation and isn't
+    # exercised here at all (see that question's own C-level-difference note); real-hardware
+    # confirmation that this same property holds on the actual target is
+    # tests_hardware/bench/test_network_resilience.py's
+    # test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source (2026-09-08, confirmed
+    # holds - no gap between this test's own guarantee and the real device's).
     peer_addr = make_addr()
     attacker_addr = make_addr()
 

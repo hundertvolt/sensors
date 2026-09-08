@@ -68,6 +68,11 @@ effort completed: its settled architecture now lives in Part H below, its still-
   purpose/design constraints, folder/module map, the visual-vs-mechanics layering contract, its
   REST-mirroring architecture and definitions-file schema, digital-twin integration (bundling,
   connection-concurrency ceiling, cross-browser coverage), and its CI/tooling stack.
+- **Part I — Memory-Safety Audit & Discipline**: the systematic whole-`src/` memory-safety audit
+  (2026-09-07) — MicroPython/RP2040 memory-management research findings, the full hotspot catalog
+  (what needed a mitigation vs. what was reviewed and found already safe), the
+  `_stream_dict_response()` shared primitive, and the standing catch→degrade→restart→watchdog
+  handling scheme every new module must follow going forward.
 
 ---
 
@@ -3916,6 +3921,13 @@ default; a new primitive is what needs justifying, not the other way around.
       this Part as a replacement for it. Part C and this Part are complementary, not overlapping:
       Part C is the deep spec for one module *kind*; this Part is the general discovery procedure
       plus the catalog of primitives that cut across every kind.
+- [ ] **Memory-bounded streaming of a dict-shaped GET response** —
+      `asy_webserver_service.py`'s `_stream_dict_response()`. Any REST route whose response body is
+      a dict that could grow with device configuration/registration count (not a small, structurally
+      fixed handful of keys) returns `await _stream_dict_response(result)` instead of `return
+      result` — never lets Microdot's own `Response.__init__` run one `json.dumps()` over the whole
+      aggregate. See Part I for the full rationale, the hotspot catalog this was built against, and
+      the standing memory-safety discipline this primitive is one instance of.
 - [ ] **Cross-language mirror: `js/` must encode the same policy `src/` enforces for anything it
       simulates.** `js/mock-server.js` (SPECIFICATION.md's website effort) is not "a JS server that
       seems reasonable" — every validation/coercion/dispatch rule it implements must match the real
@@ -4407,3 +4419,327 @@ poll for the exact expected rendered text/state, never a fixed sleep. A number/s
 a fixed delay can catch a still-in-flight *previous* case's caption instead of a real race. Poll the
 DOM for the specific text a real GET response should produce (computed via `formatFieldValue()`) up
 to a generous bounded timeout instead.
+
+---
+
+# Part I — Memory-Safety Audit & Discipline
+
+Written up during the 2026-09-07 systematic memory-safety audit session (branch
+`claude/systematic-memory-audit`), commissioned after a real-hardware `MemoryError` investigation
+(BACKLOG.md, 2026-09-04→07) fixed one concrete endpoint (`GET /status`) reactively and then flagged
+that **no systematic audit of every other large-allocation site in `src/` had ever been done**. This
+Part is that systematic pass: research findings (I.1), the full hotspot catalog produced by scanning
+every file in `src/` function-by-function against those findings (I.2), the one new shared primitive
+the audit produced (I.3), the standing multi-stage handling scheme every module already mostly
+follows and must keep following (I.4), and the real-hardware confirmation of it all (I.5).
+
+**Scope of what changed vs. what was reviewed-only**: this audit found exactly one class of genuine
+gap beyond the already-fixed `/status` — four other GET routes with the identical
+one-`json.dumps()`-over-the-whole-aggregate shape (I.2/I.3) — and fixed it. Everything else scanned
+(I.2's "reviewed, no change needed" table) was already correct, several of the drivers already
+demonstrating the exact discipline I.4 now writes down as a standing rule. This Part documents both
+halves equally: what needed fixing, and what was already right and why, so a future session doesn't
+have to independently re-derive either.
+
+## I.1 Research findings: MicroPython memory management, general and rp2-specific
+
+Consulted directly (official docs, the pinned interpreter's own C source, upstream issue tracker/
+forum reports) per CLAUDE.md's standing "check current docs, don't rely on training memory" practice
+— `docs.micropython.org` itself is unreachable from this session's network egress policy, so the
+official `.rst` doc sources were read directly from `raw.githubusercontent.com` at the pinned
+`v1.28.0` tag instead of the rendered site; the content is identical, just fetched from the other
+location a future session should know to try first if it hits the same egress block.
+
+- **The collector is mark-and-sweep, non-compacting** (confirmed against `py/gc.c` via the
+  MicroPython Memory Manager wiki page and `docs/develop/memorymgt.rst`): a mark phase scans every
+  live root (interpreter stack, registered root pointers) and recursively marks everything
+  reachable from them, then a sweep phase frees every unmarked block. Because it never moves a live
+  object to defragment the heap, "despite there being a substantial amount of RAM available, there
+  is insufficient contiguous space to allocate a particular object" is a real, expected failure
+  mode, not a bug in this interpreter — the official constrained-device guidance's own words. This
+  is the single fact that makes every finding in I.2 below meaningful: the question for each
+  call site was never "is there enough free memory," it was "is there enough *contiguous* free
+  memory," and those two questions have different answers under this specific collector design.
+- **The heap's allocation unit is a 16-byte block on a 32-bit target** (`4 * sizeof(word)`,
+  confirmed against `docs/develop/memorymgt.rst` and independently against F.1's own
+  `MICROPY_BYTES_PER_GC_BLOCK` finding from `py/modgc.c`) — consistent, not two separate facts. A
+  large allocation therefore needs that many contiguous 16-byte blocks free in a row, which is
+  exactly what a non-compacting collector cannot guarantee to have even when `gc.mem_free()` reports
+  a large total.
+- **Official guidance for reducing/avoiding fragmentation** (`docs/reference/constrained.rst`,
+  confirmed directly), matching and extending what BACKLOG.md's own investigation already
+  independently arrived at for `/status`:
+  - Instantiate large, permanent buffers early (before the heap has a chance to fragment around
+    them) — this project's own `LockableBuffer`/`AsyFramChunk(TimestampedBuffer)` (I.2) already do
+    exactly this: one `bytearray(size)` allocation at construction, never re-allocated per
+    read/write.
+  - Minimize repeated creation/destruction of same-shaped objects — the general case
+    `_stream_dict_response()` (I.3) exists to avoid: one big, freshly-`json.dumps()`-built string
+    per request, on a route whose size scales with device configuration, is exactly the repeated-
+    large-transient-allocation pattern this guidance warns against.
+  - Prefer `bytes`/`bytearray` over a list of individual Python objects for binary data, and prefer
+    pre-allocated I/O buffers over building one fresh on each transaction — already this project's
+    own established pattern for every I2C/SPI/UART driver (I.2).
+  - Avoid needless string concatenation; a MicroPython `str`/`bytes` object is immutable, so `a +=
+    b` allocates a new buffer sized `len(a) + len(b)` and copies both inputs into it — a loop
+    accumulating into the same name via `+=` is therefore O(n²) in total bytes copied, not O(n), for
+    n accumulation steps. Every accumulation loop found in `src/` (I.2) either bounds the total size
+    by an already-known cap, or was already found to guard the one MemoryError-shaped failure mode
+    that matters (`asy_uart_driver.py`).
+- **A MicroPython `list`'s own backing array is sized by element *count*, never by the total size of
+  what its elements point to** — already an F.1 fact (confirmed against `py/objlist.c`), restated
+  here because it's the reason `_stream_dict_response()`/`_coalesce_json_fragments()`'s own list of
+  string pieces is safe in the first place: turning one big string into a list of N smaller strings
+  never itself becomes a new large contiguous allocation, only each individual piece's own buffer
+  does, and each piece is deliberately kept small.
+- **`MemoryError` and `OSError` are direct sibling subclasses of `Exception`, not one nested inside
+  the other** — confirmed directly against the pinned `v1.28.0` `py/objexcept.c` source:
+  `MP_DEFINE_EXCEPTION(MemoryError, Exception)` and `MP_DEFINE_EXCEPTION(OSError, Exception)`, the
+  same two-argument macro shape for both, both naming `Exception` as the parent. This both confirms
+  F.1's existing "`MemoryError` is not an `OSError` subclass" fact from the other direction, and
+  closes a question this audit's task explicitly asked to check: **a plain `except Exception:`
+  *does* catch a `MemoryError`** — `system_service.py`'s `_log_dead_task()`/`start_and_check_tasks()`
+  task-supervisor loop (I.4) therefore already correctly restarts a task that dies from an uncaught
+  `MemoryError`, with no change needed there.
+- **A real `gc.collect()` pause is typically ~1ms in community reports, but can reach 15-16ms under
+  adverse heap conditions** — well under the 8388ms WDT-feed cap (F.1), so a single collection
+  cannot by itself starve the watchdog, but long enough to matter for F.3's "timing-sensitive work"
+  concern (a visible Neopixel-animation glitch). **Confirmed directly on this project's own real
+  target hardware (2026-09-08, explicit `gc.collect()` timed with `time.ticks_us()`, both idle and
+  under real hammer load, both `gc.threshold(-1)` and `gc.threshold(32768)`)**: ~13.4-17.2ms average,
+  ~15.1-21.2ms max — consistent with, if slightly above, the community range. A ~21ms max pause is
+  over 400x smaller than the WDT-feed cap, so a single collection is conclusively ruled out as a
+  cause of any real watchdog reset on this hardware; cumulative back-to-back collections were
+  checked too (worst-case combination of the real measured max frequency and max pause length yields
+  only ~10% of the WDT-feed cap) and are ruled out on the same basis.
+- **No async-generator-shaped alternative to this project's own "await everything up front, hand
+  Microdot a plain list" workaround was found anywhere** (searched directly, not assumed) — every
+  MicroPython PEP 525 discussion found converges on the same documented "not implemented" status
+  F.1 already recorded, and no example repo/library was found doing this differently on MicroPython.
+  This answers the task's own "is there a more elegant solution" question directly: no, the existing
+  workaround (already in place for `/status`, now generalized by `_stream_dict_response()`) *is* the
+  standard answer for this platform, not a local workaround this project is uniquely stuck with.
+- **RP2040-specific findings, checked and found not applicable to this codebase**: a real upstream
+  rp2-port heap-corruption report (`micropython/micropython#11116`) concerns a C++ module's
+  `new`/`delete` calls competing with the GC heap for RAM — this project ships pure-`.py`/frozen-
+  bytecode modules only, no custom C/C++ module, so that failure mode doesn't apply here, confirmed
+  by checking, not assumed from the port name alone. Pico W's CYW43 WiFi/BT firmware genuinely
+  reduces usable heap versus a plain Pico (real forum reports cite roughly half the 264KB SRAM
+  consumed by the driver+firmware blobs) — already an accepted, unavoidable fact of this board
+  choice (F.1's own littlefs-partition-size note is the filesystem-side version of the same
+  underlying cause), not something any amount of `src/`-side mitigation changes.
+
+## I.2 Hotspot catalog — every `src/` file scanned, function by function
+
+Scanned against I.1's own criteria (races, single large contiguous allocations, patterns that
+fragment the heap, inefficient repeated-copy patterns like unbounded string concatenation) plus the
+two named starting candidates (the already-fixed `/status`, and the VOC algorithm's backup/restore
+buffer). Two outcomes only: a real gap needing a mitigation, or reviewed and found already safe
+(with the specific reason, not just "looks fine") — no third "not checked" category left anywhere in
+`src/`.
+
+**Needed a mitigation (fixed this session, I.3):**
+
+- `asy_webserver_service.py`'s `_get_measurements()`, `_get_sensors()`, `_get_networking()`,
+  `_get_system()`, `_get_notification()` — each built a `dict` and `return`ed it directly, letting
+  Microdot's own `Response.__init__` (`ext/microdot.py`: `if isinstance(body, (dict, list)): body =
+  json.dumps(body)`) run one `json.dumps()` over the whole aggregate — the identical
+  single-large-contiguous-allocation shape `/status` used to have before BACKLOG.md's own
+  2026-09-04→07 investigation root-caused and fixed it there specifically. `/measurements`/
+  `/sensors` scale with however many sensor modules a given device variant registers (the project
+  owner's own named top candidate: "the configuration of sensor modules varies from device to
+  device, its final size is not foreseeable"); `/networking`/`/system`/`/notification` scale with
+  however many `SettingsGroup` entries a device's own build wires up. None of the five has a fixed,
+  provably-small upper bound the way a genuinely one-off endpoint would.
+
+**Reviewed, found already safe (no change made):**
+
+- **VOC algorithm backup/restore buffer** (`src/asy_sgp40_driver.py` +
+  `src/voc_algorithm.py`) — the project owner's own second named candidate. `VOCAlgorithm.
+  get_params_memsize()` is a fixed `256` bytes (`_VOC_PARAMS_MEMSIZE`); the backing buffer is
+  allocated exactly once, at construction, via `AsyFramManager.get_timestamped_chunk()` →
+  `LockableBuffer.__init__`'s single `bytearray(size)` call (already clamp-guarded against a
+  negative/malformed size, per F.1's `[x] * n` segfault-range hard rule). Every backup/restore cycle
+  (`DFRobot_vocalgorithmParams.pack_into()`/`unpack_from()`) writes/reads in place via
+  `struct.pack_into()`/`struct.unpack_from()` on that one pre-existing buffer — no fresh allocation
+  on any read/write cycle, ever. Not a hotspot.
+- **`asy_uart_driver.py`'s `read_until_complete()`/`readline_until_complete()`** — both accumulate
+  into a `bytearray` via `msg += add` across possibly-several read rounds, but every accumulation is
+  wrapped in its own `try/except MemoryError: return None` (already the "catch and degrade" half of
+  I.4's scheme, in place before this audit), and `read_until_complete()`'s own total size is bounded
+  by a caller-supplied `nbytes` up front. `readline_until_complete()`'s own comment already
+  documents it as "unbounded across rounds" — accepted, not fixed, because a malformed/malicious
+  peer sending an endless no-newline stream still degrades cleanly (a caught `MemoryError` → `None`
+  return, no crash) rather than needing a hard cap invented for this audit.
+- **`print_log.py`'s `PrintLogHistory`/`base_classes.py`'s `LockableBuffer`** — both already
+  implement the "clamp size before allocating, catch `MemoryError` around the one real allocation"
+  pattern F.1's own `[x] * n` hard rule requires, confirmed directly in each constructor. Nothing to
+  add.
+- **`captive_dns.py`'s `DNSQuery.__init__()`/`.response()`** — the domain-name string-concatenation
+  loop and the response-packet `+=` chain both operate on data structurally bounded by a single DNS
+  query datagram (RFC 1035's own 255-byte name limit, a handful of small fixed-size protocol
+  fields) — never a scale that grows with device configuration or an attacker-controlled iteration
+  count beyond what a truncated/malformed packet already degrades cleanly out of via the existing
+  broad `except Exception`.
+- **UDP receive buffers** (`captive_dns.py`'s `recvfrom(4096)`, `asy_dns_client.py`'s
+  `_DNS_RECV_BUF`, `asy_ntp_client.py`'s fixed 48-byte NTP packet) — every call site passes a small,
+  fixed constant, never a value that scales with anything this project's own configuration
+  controls.
+- **I2C/SPI register buffers** (`asy_i2c_driver.py`, `asy_fram_driver.py`, `asy_scd30_driver.py`,
+  `asy_sgp40_driver.py`, `asy_bmp3xx_driver.py`) — every buffer is a small, fixed size derived from
+  a datasheet-documented register width, allocated once (often reused across calls, e.g.
+  `SGP40_I2C._reply_buffer`) rather than freshly per transaction.
+- **`config_manager.py`'s `ConfigManager.setup()`/`write_config()`** — each `ConfigManager` instance
+  owns one sensor's own small config file (a handful of scalar fields); `json.load()`/`json.dump()`
+  are already wrapped in `except (MemoryError, OSError, ...)`. Not a candidate for the streaming
+  treatment `_stream_dict_response()` gives the webserver's own aggregation layer — there is no
+  aggregation here, each file is independently small regardless of how many sensors a device has.
+- **`asy_fram_manager.py`'s `allocated_size` bookkeeping** — tracks FRAM *address space* consumed by
+  chunk registrations at boot, not RAM; the real RAM buffer each chunk needs is the same
+  once-at-construction `LockableBuffer` allocation covered above.
+- **`asy_wifi_service.py`** — no `network.WLAN.scan()` call anywhere (checked directly, since a scan
+  result list can be arbitrarily large in a dense RF environment) — this project's own WiFi service
+  never triggers a scan, so that particular a real-world MicroPython memory-pressure pattern doesn't
+  apply here at all.
+
+## I.3 The shared primitive: `_stream_dict_response()`
+
+`asy_webserver_service.py`'s `_stream_dict_response()` generalizes the already-shipped `/status`
+mitigation (`_coalesce_json_fragments()`/`_append_coalesced_object()`, both unchanged and still
+`/status`-specific for its own nested per-section shape) to any flat, dict-shaped GET response: one
+small `json.dumps(key) + ":" + json.dumps(value)` fragment per already-complete top-level entry,
+batched into as few pieces as practical under the same `_MAX_STATUS_PIECE_BYTES` (1024) byte budget,
+handed to Microdot as `Response(iter(pieces), headers={..., "Content-Length": ...})` — byte-identical
+JSON to `json.dumps(result)`, with the largest single allocation bounded regardless of how large
+`result` ever grows. `/measurements`, `/sensors`, `/networking`, `/system`, `/notification` each now
+build their existing small `result` dict exactly as before (this loop itself was never the memory
+risk) and route it through this one function instead of returning it directly. `/status` itself is
+untouched — its own sub-sections need their own per-fragment dumps before coalescing (module-scoped
+data, not one flat dict already assembled), so `_build_status_pieces()` stays exactly as it was.
+
+**`_MAX_STATUS_PIECE_BYTES = 1024`'s real headroom, confirmed on real target hardware (2026-09-08)**:
+a temporary on-device probe (attempting a real `bytearray()` allocation at each of a descending list
+of candidate sizes under real max-speed hammer load, recording the largest that actually succeeded —
+not a raw `gc.mem_free()` read, which can't distinguish contiguous from scattered free space) found
+the smallest largest-allocatable-contiguous-block observed across hundreds of samples was 49152
+bytes — **at least ~48x headroom** versus the 1024-byte budget, even at the tightest real
+fragmentation this hardware produced under sustained hammer load. Confirms the constant was already
+correctly conservative, not just "comfortably below" by assumption.
+
+Test coverage (`tests/test_asy_webserver_service.py`'s own Section I): I.1-labeled tests exercise the
+shared primitive directly (empty dict, byte-identical-to-`json.dumps()` equivalence, the
+`Content-Type`/`Content-Length` headers, many-entry coalescing, special-character escaping); I.2
+hammers `/measurements`/`/sensors` at the real 17-module registration scale found on real hardware,
+once with `gc.threshold(-1)` (native default) and once with the project's own chosen `32768`,
+mirroring the existing `/status`-only H.3 section; **I.2b gives `/networking`/`/system`/
+`/notification` the same dedicated per-route hammer treatment**, one `SettingsGroup` per field pair
+across 17 groups (real device wiring registers only 2-3 groups per endpoint today, per
+`sensortask_wozi.py`/`sensortask_dev.py` — stressed well past that so this coverage doesn't depend on
+those small counts staying small) — added during a post-hoc verification pass once it was noticed
+the original I.2 only covered two of the five fixed routes individually, leaving the other three
+exercised solely by I.3's combined test; I.3 is the "final test set" the audit's own task asked for —
+every one of the six memory-bounded GET routes hammered concurrently, at a combined
+real-hardware-scale registration (17 sensors, 17 error sources, one settings group per flat
+endpoint), both without and with the chosen `gc.threshold()`. Every existing pre-audit test that
+asserted directly on a `/measurements`/`/sensors`/`/networking`/`/system`/`/notification` GET
+response's `res.body` was updated to drain the now-streamed body first (`status_body()`/
+`drain_json_response_body()`, the same helper already used for `/status`) — a mechanical, behavior-
+preserving change; none of those assertions' actual expected JSON shape changed.
+
+**Every I.2/I.2b/I.3 hammer helper — and, once the same gap was found in it, H.3's own pre-existing
+`/status` hammer test too — asserts the response is a genuinely bounded stream, not just a
+well-formed final JSON body** (`_assert_body_is_bounded_stream()`: `res.body` must actually be an
+iterator, never a plain `str`/`bytes`, and every piece it yields must stay under the same generous
+per-piece margin the H.2 coalescing test already uses) — added after a deliberate check found that
+`status_body()`/`drain_json_response_body()`'s own by-design tolerance for *either* body shape (so
+pre-existing non-streaming assertions don't have to branch) meant the original hammer tests would
+still pass 145/145 even with one of the five fixes fully reverted back to `return result`, since an
+8MB Unix-port heap trivially absorbs a payload this small regardless of contiguity. Confirmed by
+reverting, in turn, `_get_measurements()`'s and `_get_networking()`'s own `_stream_dict_response()`
+call and `_get_status()`'s own `Response(iter(pieces), ...)` (replaced with `json.loads(b"".join(
+pieces))`, simulating a return to one plain dict for Microdot's own `Response.__init__` to
+`json.dumps()`) and re-running each time: before this assertion existed, the full suite stayed green
+for every one of the three; after, each revert now fails exactly the hammer tests that exercise the
+reverted route (measurements: both I.2 tests plus both I.3 tests; networking: both I.2b tests plus
+both I.3 tests; status: both H.3 tests plus both I.3 tests — H.2's own direct unit tests on
+`_get_status()` already caught the `/status` case regardless, unlike H.3's hammer test), restored
+clean afterward with no source change each time. This is the actual mechanism that gives these
+hammer tests regression-catching power for the fix itself, not just for request-handling correctness
+in general — added on top of every pre-existing assertion in each test, none removed, since the
+concurrency/shape/key-count checks these tests already made remain genuinely valuable validation in
+their own right, not merely redundant with the new one.
+
+Like every Unix-port test in this project, I.2/I.2b/I.3's hammer tests run against an 8MB heap
+(`scripts/test.sh`'s own `-X heapsize=8M`) and are correctness/regression guards, not a real
+embedded-scale memory-pressure reproduction — I.5 covers the real-hardware confirmation.
+
+## I.4 The standing multi-stage memory-error handling scheme
+
+**Every module in `src/`, present and future, follows this ladder for anything that can plausibly
+exhaust memory or hold a large/growing allocation — not only once something has already broken.**
+This was largely already true before this audit (the ladder below mostly *describes* existing
+behavior, confirmed by re-reading it end to end during this pass) rather than introducing a new
+mechanism; the point of writing it down here is that it's now a checkable, standing requirement for
+new code too, per CLAUDE.md's own memory-safety hard rule.
+
+- **(a) Catch and handle where reasonable.** A call site that can raise `MemoryError` from a
+  caller-controllable or unboundedly-growing allocation catches `(OSError, MemoryError)` (or
+  `MemoryError` alone where `OSError` doesn't apply) and degrades locally — `asy_uart_driver.py`'s
+  `msg += add` accumulation loops, `machine.Timer.init()`'s documented `OSError(ENOMEM)` case
+  (`system_service.py`, every driver's own `start_timer()`), `base_classes.py`'s `LockableBuffer`
+  construction. Not a blanket policy on every `asyncio` primitive (F.2's own explicit rule) — only
+  where a concrete, non-hypothetical allocation risk exists.
+- **(b) Degrade gracefully, directly or upstream.** A caught allocation failure produces a
+  well-defined "unavailable"/`None`/`False` result the caller already knows how to handle, never an
+  unguarded re-raise into a context with no handling for it — `asy_webserver_service.py`'s
+  `_dump_status_source()`/`_dump_maintenance()`/`_dump_errcount_entry()` each substitute
+  `{"error":"unavailable"}` for one failed source rather than discarding every other already-fetched
+  source in the same response, the established pattern `_stream_dict_response()`'s own callers
+  don't need to duplicate (their own `result` dict is built the same defensive way already).
+- **(c) Restart the task when it really bubbles up.** Confirmed, not merely assumed, this session
+  (I.1's own `MemoryError`/`Exception` hierarchy finding): `system_service.py`'s
+  `start_and_check_tasks()` already restarts any task that ends for any reason, `MemoryError`
+  included, since `_log_dead_task()`'s `except Exception as e:` genuinely catches it (`MemoryError`
+  is a direct `Exception` subclass, sibling to `OSError`, not nested under it) and logs it via its
+  own `errno=5` before the supervisor loop restarts that task slot on the next iteration. No change
+  needed — this was already correct, and now has a direct source-level citation instead of an
+  assumption.
+- **(d) The watchdog is the final resort, and must stop being fed once self-healing has genuinely
+  failed.** Also already in place: `start_and_check_tasks()`'s own `task_errors` counter escalates
+  past repeated restarts (`_TASK_FAIL_INCREMENT`/`_TASK_FAIL_MAX`) to `reboot_system()` once restarts
+  alone aren't keeping up, at which point the loop stops calling `self.watchdog.feed()` and lets the
+  hardware watchdog reset the device — the same "hardware watchdog as the accepted backstop"
+  principle CLAUDE.md's hard rules already establish for a wedged I2C bus/WiFi link, applied here to
+  a module that can't recover through restart alone.
+- **(e) Prove there are no memory issues under native `gc` defaults, first.** Every new stress test
+  this audit added (I.3) runs with `gc.threshold(-1)` — MicroPython's own real default, no proactive
+  collection — before it's ever run with a chosen threshold. A test that only passes with a
+  threshold applied is a test that was never actually proving the underlying code path is
+  memory-safe; the threshold is a safety margin on top of already-correct code, not a substitute for
+  it (see (f) below).
+- **(f) A `gc.threshold()` value is defense in depth on top of an already-safe design, never the fix
+  itself.** `boot_entry/wozi_boot.py`/`boot_entry/dev_boot.py` already set `gc.threshold(32768)` for
+  exactly this reason (BACKLOG.md, 2026-09-05) — chosen *after* the `/status` streaming fix already
+  eliminated the real-hardware `MemoryError` reproduction with no threshold change at all, specifically
+  so an early, more frequent collection can shift the already-safe margin further into safety for
+  long-term stability, not to paper over a design that still needs one big contiguous allocation
+  somewhere. A future session must not "fix" a failing (e)-stage test by reaching for a threshold
+  change instead of fixing the underlying allocation pattern.
+
+**Applying this scheme to new code**: before adding a function/module that holds, builds, or grows
+an allocation whose size isn't a small, provably-fixed constant, run it through (a)-(d) at design
+time (not after a real failure), and give it its own (e)/(f)-shaped test pair in whichever existing
+test file already covers that module — matching Part G's own "check the catalog, cite what you
+model on" discovery procedure, now with this ladder and `_stream_dict_response()` as one of the
+things to check against.
+
+## I.5 Real-hardware confirmation
+
+Every parameter this audit's own Unix-port tests couldn't reach (an 8MB Unix-port heap vs. the
+RP2040's actual RAM budget) was confirmed on real target hardware in the 2026-09-08 follow-up bench
+session: `gc.threshold(32768)` (defense in depth — real hammer-load `mem_free` floor 91312 bytes at
+`32768` vs. 128 bytes at MicroPython's reactive-only default `-1`), the real GC pause-length range
+(I.1), and `_MAX_STATUS_PIECE_BYTES`'s real headroom (I.3). `tests_hardware/bench/
+test_memory_stress_bench.py` carries the permanent real-hardware regression coverage (a 120s
+always-run hammer test plus a `long_soak`-gated 600s variant); nothing from this audit remains
+open pending hardware.
