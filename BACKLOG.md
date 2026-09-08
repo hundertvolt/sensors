@@ -395,82 +395,26 @@ constraints.
      "transient contention," not a persistent bug. No longer an open item - this file's own test
      coverage (including the new hotspot-reconfiguration-guard tests) is confirmed passing in full.
 
-10. **A spontaneous `/dev/ttyACM0` USB dropout during a purely passive test, real hardware,
-    2026-09-08 - genuinely new, not yet root-caused, not the same mechanism as open question 9
-    above.** During the 3-round stability pass's round 2 mid-tier soak,
-    `test_scd30_real_clock_stretch_never_exceeds_the_configured_timeout` (nothing but a plain
-    `board.tail_log()` - no `hard_reset()`, no reflash, no WiFi/hotspot activity of any kind) failed
-    with `harness.HardwareNotAvailable: could not open port /dev/ttyACM0: [Errno 19] No such
-    device`, roughly 80s into its own 600s window. `dmesg` was checked for a correlating kernel-level
-    USB disconnect/reconnect event at the estimated failure timestamp and **found none bracketing
-    it** - the closest real disconnect/reconnect pair in the kernel log was ~70s+ away in either
-    direction, so this either wasn't a genuine USB replug (a transient host-side node/permission
-    hiccup pyserial surfaced as ENODEV instead) or the wall-clock correlation attempt itself was
-    imprecise (pytest -v's own output has no timestamps; the estimate was reconstructed from total
-    elapsed time and test order). Not chased further this session (a single occurrence, and the
-    project owner's own direction was dedicated/targeted investigation over repeated full runs) -
-    worth a dedicated `dmesg -w`-concurrent passive-tail_log repro if it recurs, to get a real
-    correlated timestamp instead of an estimate.
-
-    **Dmesg-history re-check (2026-09-08, same session), re-confirms the original finding rather
-    than adding new evidence**: rather than a blind wait-and-hope repro (which the project owner
-    explicitly cautioned against as wasted time for a rare, non-triggerable event), checked this
-    bench Pi4's full `dmesg` history (covers this entire session, boot time `05:29:52` onward - the
-    round-2 mid-tier soak that originally hit this ran within this same window). Every one of the
-    ~59 `USB disconnect`/`cdc_acm ... ttyACM0` pairs in that window correlates exactly with a
-    deliberate `hard_reset()`/`enter_bootloader()`/`picotool load` call from this session's own real
-    test/repro/reflash work (device-number increments, immediate reconnect, no gaps) - no anomalous,
-    unpaired, or error-shaped USB event (`over-current`, a reset with no following reconnect, etc.)
-    found anywhere. Confirms the same "no dmesg correlation" conclusion the original finding already
-    reached, now on a much larger, later window - not new evidence either way.
-
-    **Follow-up, project owner's own explicit direction: actively try to reproduce and trigger it
-    again, and determine whether this is Pi4 (host) or rp2 (device) side.** Several real, systematic
-    (not blind-wait) attempts:
-    - **Host-side USB power management, checked and ruled out as active**: this bench Pi4's real
-      internal root hub (`/sys/bus/usb/devices/1-1`, upstream of the DUT's own `1-1.4` port) has
-      `power/control=auto`, `autosuspend_delay_ms=0` - a real, structurally plausible host-side
-      mechanism (an autosuspended port waking on access could plausibly produce a transient ENODEV).
-      Polled every 2s across two full live-capture windows below (300 samples total): the hub's own
-      `runtime_status` never once left `active`. Real evidence against this being the mechanism, not
-      just an untested theory - something else is keeping the hub continuously active in practice.
-    - **Two live, concurrent `dmesg -T -w` + passive `board.tail_log()` capture windows (5 minutes
-      each, real correlated timestamps this time, not an estimate)**: one from an already-stable
-      connection, one immediately after a fresh `hard_reset()` (to match the "USB freshly
-      re-enumerated, then goes idle" shape more closely). **Neither reproduced the failure** - the
-      DUT stayed reachable and the port stayed openable throughout both windows.
-    - **A genuine, well-supported clue found in the original stability-pass's own saved logs**
-      (`round2_suite.log`/`round2_soak.log`, still in this session's scratchpad): the failing test
-      was the **first** test in a **brand-new pytest process**, failing at its very first
-      `tail_log()` `open()` call - immediately after the *preceding* process (round 2's own
-      bench+flash suite) had just finished with `test_hotspot_role_reversal.py` erroring 24 times in
-      a row at fixture setup. That's the exact same `BENCH_AP_PASSWORD` cascade this session's own
-      item 1/2 work root-caused and fixed earlier **in this same session** - unfixed and actively
-      live at the time round 2 actually ran, so a real candidate for having left the DUT in a
-      repeatedly-resetting, not-yet-settled state right as the next process's own fresh 10s grace
-      window (`harness.py`'s own already-documented USB-CDC-ACM-resettle allowance) started timing
-      from zero again.
-    - **That specific mechanism directly tested and NOT confirmed**: 4 real back-to-back
-      `hard_reset()` calls with no settle gap between them (3 trials), then an immediate
-      `tail_log()` attempt exactly like the failing test did - **3/3 succeeded in ~2s each**, nowhere
-      near the 10s grace window, even under this compounded-reset shape. This specific "compounded
-      resets exceed the grace window" theory is therefore not confirmed, though it isn't a perfect
-      reproduction either - the real cascade's own actual reset count/timing (from `_recover_stale_
-      dut_credentials()`-style retries, not a scripted 4-in-a-row) wasn't precisely reconstructed.
-    - **Conclusion, honestly stated**: not reproduced despite four distinct, systematic attempts
-      (host power-management check, two live captures, one targeted mechanism test). The temporal
-      coincidence with the (at-the-time-unfixed) `BENCH_AP_PASSWORD` cascade remains a real,
-      plausible, but **unconfirmed** correlation, not a proven causal chain - and no dmesg evidence
-      exists on either side, this time or during the original investigation, of a genuine hardware
-      USB event (no disconnect/reconnect pair, no error/reset markers) at all. Best-supported
-      current answer to "Pi4 or rp2": **neither firmly implicated** - the evidence leans against a
-      genuine physical/electrical USB event on either side (a real one would leave a kernel-level
-      disconnect/reconnect trace, none found anywhere across two independent investigations), and
-      toward a rare, still-unexplained host-driver-level hiccup, possibly connected to the general
-      chaos of that specific session's own cascading test failures rather than an independent fault.
-      Since the actual root cause of that cascade is now fixed, the conditions that plausibly
-      produced it should no longer occur - worth treating as lower-priority unless it recurs under
-      normal (non-cascading) operation, which would be a stronger, more concerning signal.
+10. **A spontaneous `/dev/ttyACM0` USB dropout during a purely passive test - closed (2026-09-08),
+    not reproducible.** `test_scd30_real_clock_stretch_never_exceeds_the_configured_timeout` (a
+    plain `board.tail_log()`, no reset/reflash/WiFi activity) failed once with
+    `HardwareNotAvailable: ... [Errno 19] No such device`, during round 2 of that day's stability
+    pass. **Four systematic reproduction attempts, same session**: (1) host-side USB autosuspend on
+    the bench Pi4's own internal root hub upstream of the DUT - a real, plausible mechanism, checked
+    directly and ruled out (the hub never actually suspends, confirmed via 300 polled samples across
+    two live windows); (2) two live 5-minute `dmesg -T -w` + concurrent `tail_log()` capture windows
+    (one stable, one immediately post-`hard_reset()`) - neither reproduced it; (3) a genuine clue
+    from the original logs (the failure was the very first test in a fresh process, right after that
+    same round's suite had just ended in the since-fixed `BENCH_AP_PASSWORD` cascade) led to a
+    targeted compounded-reset test - 4 back-to-back `hard_reset()`s with no settle gap, immediately
+    followed by `tail_log()`, still succeeded in ~2s every time (3/3 trials); (4) a full `dmesg`
+    history re-check across this entire session found no anomalous/unpaired USB event anywhere,
+    matching the original investigation's own "no correlation found" conclusion.
+    **Closed**: a real, singular, complex event somewhere in the host/device USB interaction, not
+    systematically reproducible with the time and tooling available - no evidence points clearly to
+    either the Pi4 or the rp2 side specifically. Not worth further investigation unless it recurs
+    under normal (non-cascading) operation; the `dmesg -T -w`-concurrent capture technique built for
+    this investigation is ready to reuse for a real correlated timestamp if it ever does.
 
 ## Handoff notes for the real-hardware follow-up session (2026-09-07 systematic memory-safety audit)
 
