@@ -43,14 +43,17 @@ deactivation risk, `BENCH_AP_PASSWORD` handling in "Environment variables" below
 - `MPREMOTE_DEVICE` (or `--device` on any `pytest tests_hardware` invocation) - serial device path
   for the flash-tier board. Defaults to `/dev/ttyACM0`, same convention as
   `scripts/mpremote_connect.sh`.
-- `BENCH_AP_PASSWORD` - the real bench bridge AP's own password, needed only by
+- `BENCH_AP_PASSWORD` - **optional, not required for a normal run** (fixed 2026-09-08 - see
+  BACKLOG.md's "missing BENCH_AP_PASSWORD" entries for the full incident this used to cause).
   `tests_hardware/bench/test_hotspot_role_reversal.py::test_real_credentials_put_succeeds_and_confirms_accepted_values`
-  (stage 6's real credential handoff). `toolchain/setup_toolchain.py`'s own `ensure_bench_bridge()`
-  deliberately never re-prints this on an idempotent re-run ("a later idempotent run will report the
-  SSID again, but never re-prints the password") - find it from wherever it was recorded when the
-  bridge was first created (or reset the bridge and re-run `env --tier bench` to generate + print a
-  fresh one, if that's acceptable for this session). Without it, that one test skips cleanly rather
-  than failing or guessing.
+  (stage 6's real credential handoff) now defaults to `bench.ap_password()` - the real bench bridge
+  AP's own password, read live from `nmcli --show-secrets` under the same sudo access this whole
+  tier already has for everything else (the same mechanism `conftest.py`'s own
+  `_recover_stale_dut_credentials()` already relied on). This env var only matters if you need to
+  override that with a different password (e.g. testing against a non-bench AP `nmcli` can't read
+  secrets back from) - set it and it takes priority over the automatic lookup. **Do not rely on this
+  test skipping cleanly if you deliberately want to skip stage 6/7** - it no longer skips on its own;
+  a real bench (`ensure_bench_bridge()`-created `br0-wifi-ap`) always has a readable password.
 
 ## Running
 

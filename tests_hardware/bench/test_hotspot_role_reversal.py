@@ -443,16 +443,23 @@ def test_invalid_credentials_rejected_without_triggering_reconnect(bench: BenchB
 
 
 def test_real_credentials_put_succeeds_and_confirms_accepted_values(bench: BenchBridge, joined_hotspot: str, hotspot_ssid: str) -> None:
-    # ensure_bench_bridge() never re-prints the AP password on an idempotent re-run (by design -
-    # toolchain/setup_toolchain.py's own comment: "a later idempotent run... never re-prints the
-    # password"), so this harness has no way to read the real bench AP's own password back out of
-    # NetworkManager once it already exists (nmcli deliberately doesn't expose stored PSKs in
-    # plain -g queries either). The real credential handoff therefore needs it supplied externally
-    # - see tests_hardware/README.md's credential-handoff section for how a dedicated session
-    # provides this, rather than guessing or silently skipping the real PUT.
-    password = os.environ.get("BENCH_AP_PASSWORD")
-    if not password:
-        pytest.skip("BENCH_AP_PASSWORD not set - see tests_hardware/README.md's credential-handoff section")
+    # REAL FINDING, fixed (2026-09-08): this used to require a human-supplied BENCH_AP_PASSWORD env
+    # var and skip cleanly without it - reasonable when written (ensure_bench_bridge() never
+    # re-prints the AP password on an idempotent re-run, and a plain nmcli -g query withholds
+    # secrets even as root), but that reasoning is now stale: bench.ap_password() (added for
+    # conftest.py's own _recover_stale_dut_credentials(), see that function's docstring) already
+    # reads the real PSK straight from `nmcli --show-secrets` under the same sudo access this whole
+    # module already has for everything else. That skip was never just "one clean skip" though - a
+    # real-hardware run confirmed it cascades into ~25 unrelated-looking failures across the rest of
+    # the session (BACKLOG.md's own "missing BENCH_AP_PASSWORD" finding, 2026-09-04, rediscovered
+    # 2026-09-08): without this PUT, the DUT's persisted SSID stays "" (cleared by stage 0), so
+    # stage 7's flip-back can never succeed - not gracefully, not even via hard_reset() (a real
+    # reboot still reads the same cleared SSID). Using bench.ap_password() by default means this
+    # test - and therefore the whole file - now runs correctly with zero manual/env-var setup,
+    # regardless of the bench's prior state. BENCH_AP_PASSWORD is still honored as an explicit
+    # override (e.g. testing against a non-bench AP whose password nmcli can't read back), just no
+    # longer required.
+    password = os.environ.get("BENCH_AP_PASSWORD") or bench.ap_password()
     ssid = bench.ap_ssid()
     res = http_client.fetch(joined_hotspot, 80, "PUT", "/networking", {"SSID": ssid, "PW": password, "Hostname": hotspot_ssid})
     assert res.status_code == 200

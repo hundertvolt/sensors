@@ -293,9 +293,7 @@ constraints.
      (`test_real_credentials_put_succeeds_and_confirms_accepted_values`,
      `test_post_condition_sta_connected_state_inferred_from_reachability`) that broke both rounds.
      **Confirms decisively: this file's own flakiness in rounds 1-2 was entirely attributable to a
-     missing env var, not a real WiFi-reconnect reliability problem** - the already-documented
-     standing rule ("always set `BENCH_AP_PASSWORD` first" before running this file) is correct and
-     sufficient; no code or timeout change is needed.
+     missing env var, not a real WiFi-reconnect reliability problem.**
    - **Round 2's other, separate failure - still genuinely open, NOT explained by the above**:
      `test_end_to_end_timing.py::test_real_hard_resets_during_natural_fram_backup_activity_recover_
      cleanly` (3x `kick_all_stations()`+`hard_reset()` during natural SGP40→FRAM backup writes, never
@@ -305,12 +303,15 @@ constraints.
      tracking" classification from earlier in this same open question. Not reproduced in isolation
      this session (time not spent chasing a single rare occurrence, per the project owner's own
      "dedicated, not repeated full runs" direction) - still open for a future session if it recurs.
-   - **This session's own actionable lesson, not a code finding**: set `BENCH_AP_PASSWORD` at the
-     start of any bench session that might touch `test_hotspot_role_reversal.py` (directly, or via a
-     full-suite/stability-pass run that includes it) - `bench.ap_password()` retrieves it live from
-     `nmcli --show-secrets` under sudo without needing it recorded anywhere, so there's no reason to
-     skip this step. The 6h long-tier soak test was stopped per the project owner's direction before
-     it ran (out of scope for this session); not re-started.
+   - **Fixed at the root, same session, per the project owner's own explicit direction that this
+     "shall work by just running the script" regardless of prior state, no manual/env-var setup
+     required**: `test_real_credentials_put_succeeds_and_confirms_accepted_values` now defaults to
+     `bench.ap_password()` instead of requiring `BENCH_AP_PASSWORD` - see the now-resolved
+     "missing `BENCH_AP_PASSWORD`" entry earlier in this file for the actual code change and
+     verification (24 passed, 1 known skip, 0 failed, no env var set). No standing "remember to set
+     this first" rule is needed any more - the previous bullet's own "actionable lesson" is
+     superseded by this. The 6h long-tier soak test was stopped per the project owner's direction
+     before it ran (out of scope for this session); not re-started.
 
 10. **A spontaneous `/dev/ttyACM0` USB dropout during a purely passive test, real hardware,
     2026-09-08 - genuinely new, not yet root-caused, not the same mechanism as open question 9
@@ -845,26 +846,30 @@ to pick up next, not a re-summary of what Part I already covers in full.
     or bundled into a general suite run; (4) `run_flash_hardware_suite.sh`/`run_bench_hardware_suite.sh`
     now always pass `-m "not long_soak and not multi_day_rollover"`, so neither category can run
     through those general wrappers even if a caller mistakenly passes one of the new flags to them.
-- **Real finding, recovered: a missing `BENCH_AP_PASSWORD` cascades into ~25 real test failures,
-  not just one clean skip (2026-09-04).** `test_hotspot_role_reversal.py`'s own
+- ~~Real finding, recovered: a missing `BENCH_AP_PASSWORD` cascades into ~25 real test failures,
+  not just one clean skip (2026-09-04).~~ — **fixed at the root (2026-09-08), no longer a standing
+  rule a session needs to remember.** `test_hotspot_role_reversal.py`'s own
   `test_real_credentials_put_succeeds_and_confirms_accepted_values` (the one step that PUTs the
   real bench-bridge SSID/PW back to the DUT while it's still reachable, before stage 7's
-  `leave_dut_hotspot_and_restore_bridge()`) skips cleanly when `BENCH_AP_PASSWORD` isn't set - by
-  design, documented in its own skip message. What isn't obvious from reading that one test in
-  isolation: without it, the DUT's persisted SSID stays `""` (cleared by stage 0's own
-  `PUT /networking {"SSID": ""}`), so stage 7's flip-back can never succeed - not gracefully, and
+  `leave_dut_hotspot_and_restore_bridge()`) used to skip cleanly when `BENCH_AP_PASSWORD` wasn't
+  set - by design, documented in its own skip message. What wasn't obvious from reading that one
+  test in isolation: without it, the DUT's persisted SSID stayed `""` (cleared by stage 0's own
+  `PUT /networking {"SSID": ""}`), so stage 7's flip-back could never succeed - not gracefully, and
   not even via its own documented `hard_reset()` fallback (a real reboot still reads the same
   cleared, persisted SSID and falls straight back into hotspot mode) - leaving the DUT
   unreachable over the bench bridge for every test that runs after it in the same session. Real
-  observed cost this session: 33 passed, 25 failed, 1 error in one run, entirely attributable to
-  this one missing env var. **Recovered directly via serial** (`mpremote run` against
-  `config_manager.ConfigManager` writing `config_WIFI.cfg` directly, bypassing the network
-  entirely, then a real `mpremote reset`) rather than waiting through more doomed network-based
-  retries - confirmed reconnected (`Mode: STA, Connected: true`) within ~20s. **Standing rule for
-  any future real bench session running `test_hotspot_role_reversal.py`: always set
-  `BENCH_AP_PASSWORD` first** (`tests_hardware/README.md`'s own credential-handoff section already
-  documents how to find/record it) - this is not optional/best-effort the way the test's own quiet
-  skip message might suggest.
+  observed cost the first time this was hit (2026-09-04): 33 passed, 25 failed, 1 error, entirely
+  attributable to this one missing env var - and it recurred identically on 2026-09-08 (see this
+  file's own real-hardware stability-pass entry above) because the standing "always set it first"
+  rule this entry used to end with is exactly the kind of thing a session can forget. **Real fix
+  (2026-09-08)**: the test now defaults to `bench.ap_password()` (reads the real PSK live from
+  `nmcli --show-secrets` under sudo - the same mechanism `conftest.py`'s own
+  `_recover_stale_dut_credentials()` already used, added after this test was originally written but
+  never back-ported to it) instead of requiring a human-supplied env var at all -
+  `BENCH_AP_PASSWORD` is now purely an optional override, never a requirement. This closes the
+  cascade at its source rather than relying on a human remembering a setup step: the file now runs
+  correctly (confirmed: 24 passed, 1 known skip, 0 failed) with zero env/manual setup, regardless of
+  whether anyone thought to export the variable first.
 - **Real infrastructure bug, fixed: both memory-soak tests' own "unexpected reboot" detection was a
   near-guaranteed false positive.** `"CFGMGR_" in line` was meant as a one-time boot marker, but
   it's actually the module-tag prefix `PrintLogHistory` stamps on *every* log line from a given
