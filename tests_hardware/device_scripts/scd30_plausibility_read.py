@@ -31,11 +31,25 @@ by actually starting the reader's real task graph (start_timer() + read_loop() +
 same three calls sensortask_wozi.py's own get_task_starters()/get_timer_starters() wiring makes)
 before polling.
 
-Run via `mpremote run <this> soft-reset`. Worst case (30 x 0.5s poll) is ~15s, past the RP2040
-hardware watchdog's 8.388s ceiling (SPECIFICATION.md Part F.1); `run_isolated()`'s soft reset stops
-the live system's own feed loop (system_service.py) without resetting that hardware timer
-(confirmed against ports/rp2/machine_wdt.c), so this script feeds its own WDT handle once per poll
-rather than relying on anything outside itself."""
+Run via `mpremote run <this> soft-reset`. Worst case (~90 x 0.5s settle poll + 30 x 0.5s final poll)
+is ~60s, past the RP2040 hardware watchdog's 8.388s ceiling (SPECIFICATION.md Part F.1);
+`run_isolated()`'s soft reset stops the live system's own feed loop (system_service.py) without
+resetting that hardware timer (confirmed against ports/rp2/machine_wdt.c), so this script feeds its
+own WDT handle once per poll rather than relying on anything outside itself.
+
+REAL FINDING (2026-09-08): `SCD30_Reader.read_loop()` -> `_init_scd()` -> `scd.setup()` ->
+`scd.reset()` (asy_scd30_driver.py) sends the SCD30's own soft-reset command (0xD304) over I2C
+every time this script runs - a genuine sensor-level reset, not just an RP2040 one - then waits only
+the documented ~2.5s *boot* time before continuous measurement resumes. Taking the very first
+available reading after that (the original behavior here) can catch the sensor mid-settling: a real
+run on this bench read CO2=162.79 ppm (below the datasheet's own accurate range) immediately after
+such a reset and failed the plausibility check on an otherwise-healthy sensor - not a bus/wiring
+fault, just an unconverged transient. `datasheets/scd30/Sensirion_CO2_Sensors_SCD30_Datasheet.pdf`'s
+own response-time spec (tau63%, time to reach 63% of a step change) is >10s, and
+`Sensirion_CO2_Sensors_SCD30_Low_Power_Mode.pdf`'s Appendix A shows response time at this script's
+~3s sampling interval (trigger_sec=3, close to its "2s/5s" bucket) staying under ~40s - so this
+script now discards readings for a `_SETTLE_S` window before taking the one that actually gets
+checked, rather than accepting the first non-None value."""
 
 import asyncio
 
@@ -47,6 +61,7 @@ from asy_scd30_driver import SCD30_Reader
 CO2_MIN_PPM, CO2_MAX_PPM = 200, 10_000
 HUMIDITY_MIN_RH, HUMIDITY_MAX_RH = 0.0, 100.0
 TEMP_MIN_C, TEMP_MAX_C = -40.0, 70.0
+_SETTLE_S = 45.0  # datasheet-bound response-time window (see docstring) plus margin
 
 
 async def _main() -> None:
@@ -57,8 +72,12 @@ async def _main() -> None:
     read_task = asyncio.create_task(reader.read_loop())
     init_irq_task = asyncio.create_task(reader.scd_init_irq())
 
-    # A real SCD30 needs time after power-up before its first measurement is ready - trigger_sec=3
-    # matches production; give it a few cycles' worth of headroom rather than reading immediately.
+    # Let the sensor's own post-reset response-time settle before trusting any reading (see the
+    # REAL FINDING above) - readings seen during this window are deliberately discarded.
+    for _ in range(int(_SETTLE_S / 0.5)):
+        wdt.feed()
+        await asyncio.sleep(0.5)
+
     # get_data() -> the SCD30 namedtuple (CO2, Temp, Hum, WetBulb, DewPoint, TS) - see
     # asy_scd30_driver.py's own `SCD30 = namedtuple(...)` definition; field names are capitalized,
     # not the lowercase attribute names a first guess from the datasheet's own prose might suggest.

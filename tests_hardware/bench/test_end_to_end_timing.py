@@ -237,7 +237,34 @@ def test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly(bo
             description="a fresh real SGP40 VOC backup completing after the reset sequence",
         )
     finally:
-        restore_res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"SGP40": {"BackupPeriod": original_backup_period}}, timeout_s=10.0)
+        try:
+            restore_res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"SGP40": {"BackupPeriod": original_backup_period}}, timeout_s=10.0)
+        except OSError:
+            # REAL FINDING (2026-09-08): this cleanup PUT hit the same rare transient reachability
+            # miss the reset-recovery loop above already accounts for (its own comment), but this
+            # spot had no retry armor at all yet - confirmed real, not a lasting problem: landing
+            # here is well after the last hard_reset() and a passing 90s post-reset health check
+            # above, and the DUT was found reachable again moments later, already at its default
+            # BackupPeriod - so a brief reachability wait (no reset) is tried first, escalating to
+            # the tier's usual kick+hard_reset only if that also fails, rather than assuming a full
+            # reboot is needed for what was very likely just one lost/delayed TCP attempt.
+            try:
+                wait_until(
+                    lambda: _try_fetch_ok(dut_ip),
+                    timeout_s=20.0,
+                    poll_interval_s=2.0,
+                    description="DUT reachable again before retrying the BackupPeriod restore",
+                )
+            except TimeoutError:
+                bench.kick_all_stations()
+                board.hard_reset()
+                wait_until(
+                    lambda: _try_fetch_ok(dut_ip),
+                    timeout_s=60.0,
+                    poll_interval_s=1.0,
+                    description="DUT reachable again (after one recovery hard_reset() retry) before retrying the BackupPeriod restore",
+                )
+            restore_res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"SGP40": {"BackupPeriod": original_backup_period}}, timeout_s=10.0)
         assert restore_res.status_code == 200, f"failed to restore BackupPeriod to {original_backup_period}"
         reset_all_error_logs(dut_ip)
 

@@ -18,7 +18,9 @@ RESULT_RE = re.compile(r"^RESULT: (PASS|FAIL)(.*)$", re.MULTILINE)
 
 
 def test_scd30_real_reading_is_within_datasheet_plausible_bounds(board: Board) -> None:
-    output = board.run_isolated(DEVICE_SCRIPTS / "scd30_plausibility_read.py", timeout_s=60.0)
+    # ~60s real runtime (45s post-reset settle + up to 15s final poll - see the device script's own
+    # docstring); timeout is generous relative to that.
+    output = board.run_isolated(DEVICE_SCRIPTS / "scd30_plausibility_read.py", timeout_s=100.0)
     match = RESULT_RE.search(output)
     assert match is not None, f"device script printed no RESULT line - full output:\n{output}"
     assert match.group(1) == "PASS", f"SCD30 plausibility check failed: {match.group(2).strip()}\nfull output:\n{output}"
