@@ -266,36 +266,66 @@ sandbox only (8MB heap, no real-hardware access this session, per this session's
 constraints) - the items below are exactly what a follow-up session with real-hardware access needs
 to pick up next, not a re-summary of what Part I already covers in full.
 
-- **Real-hardware confirmation of `_stream_dict_response()`'s fix, the same shape as the
-  already-confirmed `/status` fix**: run the same hammer-load methodology (`_gc_probe()` technique
-  below, this file's own earlier real-hardware entries) against `/measurements`/`/sensors`
-  specifically - the two routes whose per-device size is genuinely unbounded, and the project
-  owner's own named top candidate - at real device scale, both with `gc.threshold(-1)` and the
-  currently-chosen `32768`, and confirm 0 real `MemoryError`s either way now that no GET route left
-  in `src/` still does the one-big-`json.dumps()` thing. This is the one concrete, actionable
-  real-hardware validation this audit could not itself perform.
+- ~~Real-hardware confirmation of `_stream_dict_response()`'s fix, the same shape as the
+  already-confirmed `/status` fix~~ — **resolved (2026-09-08, real bench hardware, project owner's
+  go-ahead given in-session).** Ran the established hammer-load methodology (5 concurrent host
+  threads: 4x GET split across `/measurements`/`/sensors` at a ~20ms poll interval, 1x `PUT
+  /sensors SGPResetVOC` every 3s) for a 90s idle phase + a 600s hammer phase, once at
+  `gc.threshold(-1)` and once at the currently-chosen `32768`, via a temporary `_gc_probe()`
+  instrumentation build (never committed - `git diff` confirmed clean after reverting, real
+  production `dev` firmware rebuilt+reflashed before finishing). **Zero `MemoryError`s, zero
+  tracebacks, zero reboots in all four phases.** This bench's own real device scale registers only
+  3 sensor modules (BMP3XX/SCD30/SGP40, not the 17-module scale the original `/status` failure was
+  measured against) - a plain `GET /measurements`/`GET /sensors` at idle measured only 274/341
+  bytes, nowhere near the ~4-5KB failure-sized range `/status` itself hit pre-fix. Matches decision
+  criterion (1) below's second branch exactly: the fix is confirmed correct and never a regression,
+  but its real-world payoff for these two specific routes *on this bench* is much smaller than
+  `/status`'s own 237→0 `MemoryError` result - a real finding, not a reason to revert anything (a
+  device with more registered modules would see a body size, and therefore a payoff, closer to
+  `/status`'s).
 - **`_MAX_STATUS_PIECE_BYTES = 1024`** (shared by `/status` and every route `_stream_dict_response()`
   now also covers) **is still "comfortably below the ~4-5KB failure size observed," not derived from
   any measured real heap-fragmentation characteristic** - carried over unresolved from the previous
   hand-off. Worth revisiting with real data on how large a contiguous free run this hardware can
   reliably provide under worst-case fragmentation, now that more routes share this one constant.
-- **Per-collection CPU-time/pause-length measurement still doesn't exist for this project's own real
-  hardware** - carried over unresolved. SPECIFICATION.md Part I.1's research found general community
-  reports (~1ms typical, up to 15-16ms under adverse conditions) but nothing specific to this
-  device's own heap layout/collection frequency. Extend the existing `_gc_probe()` technique below to
-  bracket a detected collection with `time.ticks_us()` reads - directly relevant to the still-open
-  WDT-reset question next.
+- ~~Per-collection CPU-time/pause-length measurement still doesn't exist for this project's own real
+  hardware~~ — **resolved (2026-09-08, same run as above).** Extended `_gc_probe()` with a second
+  task, `_gc_pause_probe()`, bracketing an explicit `gc.collect()` with `time.ticks_us()` every 2s
+  (MicroPython's automatic threshold-triggered collection runs the identical internal mark-sweep
+  routine `gc.collect()` does, so this measures a real representative per-collection pause, not a
+  proxy) - see the GCPAUSE log-line format in the updated instrumentation entry below. **Real
+  per-collection pause length: ~13.4-17.2ms average, ~15.1-21.2ms max, across both thresholds and
+  both idle/hammer phases** (44 samples/phase idle, 294 samples/phase hammer) - consistent with, if
+  slightly above, SPECIFICATION.md Part I.1's cited community range (~1ms typical, up to 15-16ms
+  under adverse conditions). **Directly answers the WDT-reset question's "single collection" branch:
+  a ~21ms max pause is over 400x smaller than the 8388ms WDT-feed cap - a single GC pause cannot by
+  itself starve the watchdog on this hardware**, ruling that specific mechanism out as the previous
+  WDT reset's cause (still not root-caused overall - see next item).
 - **The one real hardware watchdog reset observed once after an early post-fix hammer run
-  (`machine.reset_cause() == machine.WDT_RESET`) is still not root-caused** - carried over
-  unresolved. Whether sustained real concurrent load (now spread across more routes than just
-  `/status`, since this audit generalized the streaming fix) can starve the event loop past the
-  8388ms WDT-feed cap, and whether a longer, less-frequent `gc.threshold(32768)` collection makes a
-  single pause worse in exactly this scenario, is the question the pause-length measurement above
-  would help answer.
-- **The hammer-phase GC-frequency trend was non-monotonic across the three thresholds tested
-  (32768 measured *higher* frequency than both 16384 and 65536) and was never repeated to confirm** -
-  carried over unresolved; worth a multi-trial repeat with real per-collection pause data if the item
-  above is picked up first.
+  (`machine.reset_cause() == machine.WDT_RESET`) is still not root-caused overall, though the
+  "single long GC pause" hypothesis is now ruled out** (real pause-length data above: max ~21ms,
+  nowhere near the 8388ms cap). This session's own two 600s hammer-load runs (both thresholds, same
+  methodology as the original reset) did not reproduce it either - zero reboot markers in either
+  run. Whether *cumulative* GC time across many back-to-back collections (not any single pause) can
+  still starve a specific event-loop task long enough to matter, or whether something unrelated to
+  GC entirely caused the original reset, remains open - carried over, narrowed rather than closed.
+- **The hammer-phase GC-frequency trend was non-monotonic across the three *proactive* thresholds
+  originally tested (16384/32768/65536) and was never repeated to confirm** - carried over
+  unresolved; this session's own run compared `32768` against true reactive-only `-1` instead (a
+  different, new comparison - see below), not a repeat of the original three-way trend, so this
+  item's own multi-trial-repeat is still open. **New data point from this session, worth recording
+  alongside it**: hammer-phase collection frequency at `-1` (1.47/s) was *lower* than at `32768`
+  (4.89/s) - mechanically expected in this direction (reactive-only defers collection until an
+  allocation is actually about to fail, so fewer, later collections occur) and not itself surprising
+  or non-monotonic in the way the original 16384/32768/65536 finding was. **The real headline result
+  from this comparison is the `mem_free` floor, not frequency**: hammer-phase floor at `-1` was
+  **128 bytes** (idle floor: 656 bytes) versus `32768`'s **91312 bytes** (idle floor: 106544 bytes) -
+  a ~700x difference. Zero crashes occurred at either setting in this specific 600s run, but a
+  128-byte floor under real hammer load is a hair's-width away from a real `MemoryError` on the very
+  next allocation that doesn't fit - the single strongest piece of real-hardware evidence yet for why
+  `gc.threshold(32768)` (proactive collection, defense in depth) was the right call over trusting
+  MicroPython's own reactive-only default, independent of and in addition to the streaming-JSON fix
+  itself.
 - **`tests/test_asy_webserver_service.py`'s H.3 and Section I hammer tests alike run against an
   8MB Unix-port heap and are correctness/regression guards only, never a real memory-pressure
   reproduction** - carried over unresolved. A genuinely new, automated (not ad-hoc-scripted)
@@ -317,25 +347,32 @@ to pick up next, not a re-summary of what Part I already covers in full.
   I.3's own updated write-up for the full account. This closes the "are these hammer tests actually
   capable of catching a regression in the fix itself" question for the Unix-port tier - the still-open
   item is real-hardware-scale reproduction, unchanged by this fix.
-- **Reusable real-hardware GC-instrumentation technique** (unchanged from the previous hand-off,
-  restated here since every item above needs it): a temporary `_gc_probe()` async task added to
-  `boot_entry/<device>_boot.py` (never committed - `git diff` confirmed clean, real firmware
-  rebuilt+reflashed before finishing each time), sampling `gc.mem_free()` every 100ms and printing
-  `GCPROBE <ticks_ms> <mem_free> COLLECTED|-`. Captured via direct `pyserial` reads (never `mpremote
-  exec()` against a live system - that soft-resets it, wiping the very state being measured).
-- **Decision criteria for the follow-up session**: (1) whether `/measurements`/`/sensors` at real
-  17-module device scale ever produces a response body approaching the ~4-5KB failure-sized range
-  the pre-fix `/status` did - if so, the fix's real-hardware value is directly demonstrated the same
-  way `/status`'s already was (237→0 `MemoryError`s); if the real body stays much smaller than that
-  even at full registration, the fix is still correct (never a regression) but its real-world payoff
-  for these two routes specifically is smaller than `/status`'s own - worth noting either way, not a
-  reason to revert anything; (2) whether `_MAX_STATUS_PIECE_BYTES`'s 1024-byte budget has headroom to
-  shrink (tighter safety margin) or should grow (fewer, larger pieces for better throughput, mirroring
-  the already-measured ~53% regression from too many small pieces) once a real worst-case-
-  fragmentation contiguous-run number exists; (3) per-collection pause length at the chosen
-  threshold, to close the WDT-reset question. None of these three are blocking - the fix already
-  shipped is provably correct at the pattern level (Unix-port hammer tests, both `gc.threshold()`
-  settings, byte-identical JSON to the pre-fix shape) regardless of what real hardware turns up.
+- **Reusable real-hardware GC-instrumentation technique, now extended with real pause-length
+  timing (2026-09-08)**: a temporary `_gc_probe()` async task added to `boot_entry/<device>_boot.py`
+  (never committed - `git diff` confirmed clean, real firmware rebuilt+reflashed before finishing
+  each time), sampling `gc.mem_free()` every 100ms and printing `GCPROBE <ticks_ms> <mem_free>
+  COLLECTED|-`. A second task, `_gc_pause_probe()`, runs alongside it, printing `GCPAUSE <ticks_ms>
+  <duration_us> <mem_free_before> <mem_free_after>` every 2s by explicitly timing `gc.collect()`
+  with `time.ticks_us()` (see the resolved pause-length item above for why this is a real, not
+  proxy, measurement). Both captured via direct `pyserial` reads (never `mpremote exec()` against a
+  live system - that soft-resets it, wiping the very state being measured). **New operational
+  reminder, re-confirmed this session**: every `picotool load` reflash needs
+  `bench_control.BenchBridge.kick_all_stations()` called *before* the post-flash reconnect attempt,
+  exactly as `tests_hardware/README.md`'s "WiFi reconnection flakiness" entry already documents - an
+  ad-hoc reflash step in this session's own scratch tooling initially skipped it and hit precisely
+  the predicted symptom (fell back to hotspot mode instead of rejoining), recovered via
+  `kick_all_stations()` + `hard_reset()`. Not a new finding, just a fresh confirmation the existing
+  rule is still correct and still easy to forget in one-off tooling.
+- ~~Decision criteria for the follow-up session~~ — **(1) and (3) resolved above with real data (both
+  branches of (1) apply: this bench's own 3-module scale stayed far below the failure-sized range,
+  while (3)'s WDT question narrowed from "not root-caused" to "not root-caused, but a single pause
+  is ruled out"). (2) is still open** - whether `_MAX_STATUS_PIECE_BYTES`'s 1024-byte budget has
+  headroom to shrink or should grow once a real worst-case-fragmentation contiguous-run number
+  exists remains unanswered; this session's pause-length work didn't measure fragmentation/
+  contiguous-run size, only collection timing and frequency. None of these were ever blocking - the
+  fix already shipped is provably correct at the pattern level (Unix-port hammer tests, both
+  `gc.threshold()` settings, byte-identical JSON to the pre-fix shape, now also confirmed clean
+  under two real-hardware 600s hammer runs) regardless of what real hardware turns up on (2).
 
 ## Deferred / explicitly out-of-scope work
 - **Real-hardware re-test of the segfault fix and the memory-leak soak test — real-hardware forms
@@ -364,9 +401,14 @@ to pick up next, not a re-summary of what Part I already covers in full.
     Not because the "no confirmed leak on the Unix port" conclusion is in doubt (four independent,
     properly-powered replication experiments found no reproducible decline, on either idle or
     HTTP-soak traffic), but because the Unix port's allocator/heap behavior isn't guaranteed
-    identical to rp2040's real one. **Next step**: run `scripts/run_bench_soak_tests.sh --tier
-    long` for real (its own dedicated invocation now - see this file's own soak-tier entry below)
-    and record the result here.
+    identical to rp2040's real one. **`--tier mid` (10 minutes) run for real (2026-09-08, bench
+    Pi4, project owner's go-ahead given in-session): clean pass** - `test_real_hardware_memory_
+    does_not_leak_under_real_http_soak_traffic` plus its two long_soak siblings
+    (`test_single_core_timing_headroom_holds_under_normal_full_task_load`,
+    `test_scd30_real_clock_stretch_never_exceeds_the_configured_timeout`) all PASSED, 3/3, zero
+    `MemoryError`/reboot markers, zero unexpected skips. **Still open**: the real `--tier long`
+    (6h) production-duration run itself - `mid` is a genuine real-hardware pass at 10 minutes, not
+    a substitute for the full 6h window this item was always about.
 - **Website definitions-file autogeneration — not yet built.** `html/definitions/<device>.json`
   (Part H.5) is currently hand-written. A worked, already-checked-against-real-code *sketch* exists
   for deriving most of it at build time from `#`-prefixed comment tags placed above each driver's
