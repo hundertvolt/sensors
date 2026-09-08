@@ -100,9 +100,11 @@ constraints.
      `test_ntp_server_sends_garbage_instead_of_a_valid_response`/`test_dns_server_sends_garbage_
      instead_of_a_valid_response` and `test_hotspot_role_reversal.py`'s
      `test_malformed_truncated_packet_is_silently_dropped` — see `tests_hardware/README.md`'s "Fourth
-     pass" section. One separately-flagged doc/comment mismatch remains there
-     (`test_dns_flood_backoff_curve_recovers_once_flood_stops`'s own comment claims the wrong code
-     path) — a project-owner decision on how to resolve it, not chased further.
+     pass" section. One separately-flagged doc/comment mismatch there
+     (`test_dns_flood_backoff_curve_recovers_once_flood_stops`'s own comment claimed the wrong code
+     path) is now fixed in place (2026-09-08) — see that file's own note for the corrected account
+     and the real, still-open coverage gap it surfaced (no fault in this codebase can currently
+     force the actual backoff-growth branch from a bench test).
    - **Connected-socket source-address filtering — CONFIRMED HOLDS**:
      `test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source`
      (`test_network_resilience.py`) forges a crafted NTP reply from a genuinely different source and
@@ -134,40 +136,14 @@ constraints.
    (twin tier, real assembled system, at `max_connections=4`). Not added to flash tier (no network
    there, see `test_memory_stress.py`'s own header comment) or as a second bench test (already
    covered).
-6. Should `asy_wifi_service.py` gain an independent WiFi reachability check? The CYW43 firmware/lwIP
-   stack can silently mask a real link disruption from `wlan.isconnected()` entirely - confirmed on
-   real hardware (a real `arping` probe got zero responses while `iw station dump` showed the DUT
-   continuously "associated: yes" for hundreds of seconds spanning a whole AP outage). A
-   well-documented, long-standing upstream MicroPython characteristic
-   (`micropython/micropython#9455`/`#9505`/`#18797`, open since v1.19.1/2022), not project-specific;
-   no upstream fix exists, and no known-good independent detection method exists in the wider
-   MicroPython community either (`micropython/discussions/17207`, various practitioner write-ups) -
-   every source converges on "a reset is the real backstop." **Decided: investigated, no `src/`
-   change.** Every real consumer of connection state was traced: `AsyNtpClient`'s
-   `network_available` callback just lets a doomed sync attempt through NTP's own already-robust
-   independent timeout/backoff (no crash, a slightly over-counted failure streak), and `WifiUptime`
-   keeps climbing during a dead-but-reported-alive stretch (a cosmetic `/status` inaccuracy consumed
-   by nothing that acts on it). No hang, crash, or data corruption; the hardware watchdog is fed by
-   task-supervisor health, not network reachability, so this can't cause a WDT-loop either. The one
-   real cost is slower field recovery until a physical power-cycle happens - covered by the same
-   "physical intervention as accepted backstop" pattern CLAUDE.md already applies to a wedged I2C
-   bus and a wedged WiFi link (see its Hard rules). **Real timing data on how that backstop plays
-   out in practice** (bench hardware, `test_network_resilience.py`): a sustained single outage
-   essentially never self-resolves within a 150s window (5/5 real trials all rode out the full wait
-   before the `hard_reset()` fallback fired, tightly clustered 154-160s); repeated brief flapping
-   (3x 3s-down/3s-up) self-heals reliably instead (3/3 trials, 29-30s) - a genuine, non-obvious
-   asymmetry, plausibly because repeated deauth/reassociate events drive the CYW43 firmware through
-   a state transition a single clean gap doesn't trigger (not confirmed - this project has no
-   visibility into the firmware's internals, and doesn't need it; the `hard_reset()` fallback covers
-   the "didn't self-resolve" case regardless of why). **Regression coverage**: mock tier
-   (`tests/test_ntp_wifi_dns_integration.py`, `tests/test_asy_wifi_service.py` - a real,
-   permanently-stuck-true `isconnected()` proven benign across 30 cycles, then a real reconnect
-   proven to fire on the very first cycle once it flips false) and bench tier
-   (`tests_hardware/bench/test_wifi_networking.py::test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing`).
-   Deliberately not extended to flash tier (no network capability at all) or digital twin (its `WLAN`
-   fake can't independently model "looks connected but everything downstream is broken" without
-   twin-internal changes nobody has asked for; the mock-tier test already proves the same property
-   through the real object graph).
+6. ~~Should `asy_wifi_service.py` gain an independent WiFi reachability check?~~ — **closed
+   (2026-09-08): investigated, no `src/` change.** The CYW43 firmware/lwIP stack can silently mask a
+   real link disruption from `wlan.isconnected()` entirely; decided, with full upstream research
+   citations, real bench-hardware recovery-timing data, and regression coverage, in
+   `SPECIFICATION.md` Part F.2 - that Part is now this item's complete, permanent, self-contained
+   home. Kept here as a closed stub, at its original number, only because several `tests/`/
+   `tests_hardware/` code comments still cite it as "BACKLOG.md open question 6" - don't renumber
+   this item while those references exist.
 7. **Should `asy_webserver_service.py`'s `max_connections=4` be raised?** Confirmed on real
    hardware (dev-bench, hotspot mode): a realistic 8-way concurrent client burst against `/`
    (simulating several phones/tabs hitting the DUT at once) got 7/8 real `302` responses (some
@@ -220,6 +196,13 @@ constraints.
     re-check) found no correlated cause on either the Pi4 or rp2 side. Not worth further
     investigation unless it recurs under normal operation; a `dmesg -T -w`-concurrent capture
     technique is ready to reuse for a real correlated timestamp if it ever does.
+11. **CLAUDE.md's "Pre-push verification" clean-chroot recipe has no GCC>=14 host target.** The
+    existing recipe only builds an Ubuntu 24.04 "noble" chroot (GCC 13.x), which is exactly why the
+    real mbedtls `-Warray-bounds` false positive (`SPECIFICATION.md` Part B.7.1, fixed via
+    `_MBEDTLS_GCC14_ARRAY_BOUNDS_WORKAROUND`) wasn't caught by it — that bug was only found by
+    testing directly on a Debian trixie (GCC 14.2) bench host outside this recipe. Whether to add a
+    second trixie/GCC>=14 chroot target to the standing recipe (and if so, alongside or replacing
+    noble) is an open choice for the project owner, not decided or built here.
 
 ## Deferred / explicitly out-of-scope work
 - **Real-hardware re-test of the segfault fix and the memory-leak soak test — real-hardware forms

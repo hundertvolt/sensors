@@ -477,18 +477,20 @@ empty too (`DNSSRV`/`WEBSERVER` respectively - both grounded directly against so
 garbage-but-present UDP datagram never reaches `captive_dns.py`'s own `wrnno=2` backoff branch,
 which only fires on a genuine `(None, None)` `recvfrom()` failure, and an unparseable HTTP request
 line fails entirely inside vendored `ext/microdot.py` before this project's own code is ever
-reached). **Real finding while doing this**: `test_dns_flood_backoff_curve_recovers_once_flood_stops`'s
-own comment claims its flood "triggers the backoff path" - checked directly against
-`captive_dns.py`'s `run()` and this is not what happens: `AsyUDPSocket.recvfrom()` returns real
-`(data, addr)` for any received-but-garbage UDP payload (UDP has no content validation), so the
-flood actually takes the *same* `pr.evt()`-only path as the truncated-packet test above, never the
-`recv_fail_backoff_s`-growing branch its own docstring describes. The test's own assertions (a
-legitimate query still answered promptly once the flood stops) still hold regardless, so this isn't
-a false pass - but the comment's account of *which* code path it's proving is currently wrong. Left
-unfixed and flagged here rather than guessed at, since correcting it either means fixing the
-comment (if the *intended* target really is the recv-failure/backoff path, this test doesn't
-exercise it at all and would need a different fault to actually trigger `(None, None)`) or
-re-scoping the test's own claim - a decision for the project owner, not a mechanical rewrite.
+reached). **Real finding while doing this, since corrected (2026-09-08)**:
+`test_dns_flood_backoff_curve_recovers_once_flood_stops`'s own comment used to claim its flood
+"triggers the backoff path" - checked directly against `captive_dns.py`'s `run()` and that was not
+what happens: `AsyUDPSocket.recvfrom()` returns real `(data, addr)` for any received-but-garbage UDP
+payload (UDP has no content validation), so the flood actually takes the *same* `pr.evt()`-only path
+as the truncated-packet test above, never the `recv_fail_backoff_s`-growing branch the old comment
+described. The test's own assertions (a legitimate query still answered promptly once the flood
+stops) always held regardless, so this was never a false pass - only the comment's account of
+*which* code path it was proving was wrong. **Resolved by correcting the comment in place**
+(project-owner direction): it now describes the actual `pr.evt()`-only path the flood exercises and
+notes that no fault in this codebase can currently force a real `(None, None)` `recvfrom()` failure
+from a bench test, so the backoff-growth branch itself remains unexercised by any test in this
+tier - a real, still-open coverage gap (not a bug), left for whenever a way to inject that specific
+failure is worth building.
 
 The rest of the tier - `test_hotspot_role_reversal.py`'s remaining fault tests (association/DHCP
 churn, which are bench-radio-observable only and have no DUT-side `src/` module to log against, so

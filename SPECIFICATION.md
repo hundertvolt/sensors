@@ -3776,16 +3776,51 @@ handle the device-level case; the bus-level case was never its job in the first 
 with the wedged-bus policy stated above.
 
 **The same backstop principle applies to a WiFi link stuck in a CYW43-firmware-level false
-positive** (`wlan.isconnected()` reporting connected well after the real link is actually gone —
-see BACKLOG.md's `isconnected()` entry for the full account, upstream research citations, and real
-bench-hardware timing data). `asy_wifi_service.py`'s own code has no way to distinguish a genuine
-connection from this firmware-level lie, so it cannot self-diagnose or force a recovery — a
-physical power cycle (in the field) or `hard_reset()` (the bench test harness's own equivalent) is
-the accepted, intended recovery mechanism, not a software fix to chase (no independent reachability
-probe has been added or is planned; every upstream MicroPython report on this quirk converges on
-the same conclusion). **This backstop is inherently safe, confirmed directly against the code, not
-assumed**: every real `ConfigManager.write_config()` call in `src/` is reachable only through the
-REST PUT path (`base_classes.py`'s `_set_mgr_cfg()`/`_set_dict_cfg()`, invoked exclusively from
+positive** (`wlan.isconnected()` reporting connected well after the real link is actually gone).
+Confirmed on real hardware: a real `arping` probe got zero responses while `iw station dump` showed
+the DUT continuously "associated: yes" for hundreds of seconds spanning a whole AP outage. This is a
+well-documented, long-standing upstream MicroPython characteristic
+(`micropython/micropython#9455`/`#9505`/`#18797`, open since v1.19.1/2022), not project-specific; no
+upstream fix exists, and no known-good independent detection method exists in the wider MicroPython
+community either (`micropython/discussions/17207`, various practitioner write-ups) — every source
+converges on "a reset is the real backstop." **Decided: investigated, no `src/` change.** Every real
+consumer of connection state was traced: `AsyNtpClient`'s `network_available` callback just lets a
+doomed sync attempt through NTP's own already-robust independent timeout/backoff (no crash, a
+slightly over-counted failure streak), and `WifiUptime` keeps climbing during a dead-but-reported-
+alive stretch (a cosmetic `/status` inaccuracy consumed by nothing that acts on it). No hang, crash,
+or data corruption; the hardware watchdog is fed by task-supervisor health, not network
+reachability, so this can't cause a WDT-loop either. `asy_wifi_service.py`'s own code has no way to
+distinguish a genuine connection from this firmware-level lie, so it cannot self-diagnose or force a
+recovery — a physical power cycle (in the field) or `hard_reset()` (the bench test harness's own
+equivalent) is the accepted, intended recovery mechanism, not a software fix to chase (no
+independent reachability probe has been added or is planned).
+
+**Real timing data on how that backstop plays out in practice** (bench hardware,
+`tests_hardware/bench/test_network_resilience.py`): a sustained single outage essentially never
+self-resolves within a 150s window (5/5 real trials all rode out the full wait before the
+`hard_reset()` fallback fired, tightly clustered 154–160s); repeated brief flapping (3x 3s-down/
+3s-up) self-heals reliably instead (3/3 trials, 29–30s) — a genuine, non-obvious asymmetry,
+plausibly because repeated deauth/reassociate events drive the CYW43 firmware through a state
+transition a single clean gap doesn't trigger (not confirmed — this project has no visibility into
+the firmware's internals, and doesn't need it; the `hard_reset()` fallback covers the "didn't
+self-resolve" case regardless of why). The one real cost is slower field recovery until a physical
+power-cycle happens, covered by the same accepted-backstop pattern as the wedged-I2C-bus case above.
+**Regression coverage**: mock tier (`tests/test_ntp_wifi_dns_integration.py`,
+`tests/test_asy_wifi_service.py` — a real, permanently-stuck-true `isconnected()` proven benign
+across 30 cycles, then a real reconnect proven to fire on the very first cycle once it flips false)
+and bench tier
+(`tests_hardware/bench/test_wifi_networking.py::test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing`).
+Deliberately not extended to flash tier (no network capability at all) or digital twin (its `WLAN`
+fake can't independently model "looks connected but everything downstream is broken" without
+twin-internal changes nobody has asked for; the mock-tier test already proves the same property
+through the real object graph). Was tracked as BACKLOG.md's own open question 6 until this account
+was completed and the item closed there (2026-09-08) — this Part is now its permanent, self-contained
+home; BACKLOG.md keeps only a closed pointer, for the several `tests_hardware/`/`tests/` code
+comments that still cite it by that number.
+
+**This backstop is inherently safe, confirmed directly against the code, not assumed**: every real
+`ConfigManager.write_config()` call in `src/` is reachable only through the REST PUT path
+(`base_classes.py`'s `_set_mgr_cfg()`/`_set_dict_cfg()`, invoked exclusively from
 `api_response.py`/`asy_webserver_service.py`'s own PUT handling — confirmed by tracing every real
 caller, no exceptions), so a device whose API is genuinely unreachable structurally cannot have a
 flash write in flight; a power cycle during this state carries zero flash-corruption risk. Combined

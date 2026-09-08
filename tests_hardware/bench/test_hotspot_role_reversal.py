@@ -306,11 +306,14 @@ def test_spoofed_off_subnet_source_address_is_ignored(joined_hotspot: str) -> No
 
 def test_dns_flood_backoff_curve_recovers_once_flood_stops(joined_hotspot: str) -> None:
     # src/captive_dns.py's own recv-failure backoff (_RECV_FAIL_BACKOFF_INITIAL_S=0.5s doubling to
-    # _RECV_FAIL_BACKOFF_MAX_S=5.0s cap - confirmed by reading the module during §11.1's research).
-    # Floods with malformed packets (each individually triggers the backoff path, not the normal
-    # query path) for a few seconds, then confirms a legitimate query is still served promptly
-    # afterward - the "recovers once the flood stops" half of this candidate; the backoff *curve*
-    # itself (exact per-packet timing) isn't independently measured here, only its end effect.
+    # _RECV_FAIL_BACKOFF_MAX_S=5.0s cap) only fires on a genuine (None, None) recvfrom() failure.
+    # Corrected (see tests_hardware/README.md's "Real finding" note): a garbage-but-present UDP
+    # payload still yields a real (data, addr) from recvfrom() - UDP has no content validation - so
+    # this flood takes the *same* pr.evt()-only path as a normal/truncated query, never the
+    # recv_fail_backoff_s-growing branch. This test proves robustness under a flood of nonsense
+    # queries and prompt recovery once it stops; it does not exercise or measure the backoff curve
+    # itself (no fault in this codebase can currently force a real (None, None) recvfrom() failure
+    # to trigger that path from a bench test).
     import socket
 
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
