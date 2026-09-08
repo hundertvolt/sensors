@@ -270,6 +270,35 @@ a live question:
   scoping) would otherwise collect and run them as ordinary pytest tests, each calling `input()`
   and hanging forever. `scripts/run_flash_hardware_suite.sh`/`run_bench_hardware_suite.sh` are
   scoped to avoid this either way, but the naming is the structural backstop.
+- **Reusable real-hardware GC/fragmentation-instrumentation technique**: a temporary async probe
+  task added to `boot_entry/<device>_boot.py` (never committed - `git diff` confirmed clean after
+  reverting, real production firmware rebuilt+reflashed before finishing), printing a fixed-format
+  line every N ms/every real event, captured via direct `pyserial` reads (`Board.tail_log()`, never
+  `mpremote exec()` against a live system - that soft-resets it, wiping the very state being
+  measured). Used for `gc.mem_free()` sampling + collection detection, real per-collection pause
+  timing (bracket `gc.collect()` with `time.ticks_us()`), and real contiguous-allocation-frontier
+  probing (attempt a real `bytearray()` at each of a descending candidate-size list, record the
+  largest that succeeds - `gc.mem_free()` alone can't distinguish contiguous from scattered free
+  space). Reuse this pattern for any future real-hardware memory/timing investigation rather than
+  re-deriving it; SPECIFICATION.md Part I.1/I.3/I.5 has the results this technique already produced.
+  The same technique applied to `AsyUDPSocket.ready()` (a one-line `print()` on a real
+  `POLLERR`/`POLLHUP` event) found that real rp2/lwIP does not appear to propagate ICMP errors onto
+  a connected UDP socket's poll state at all (BACKLOG.md open question 5) - zero such events
+  observed across 6 real retry cycles against a target with no listener (the condition that
+  generates a real ICMP Port Unreachable).
+- **`bench_control.BenchBridge.redirect_udp_port_to_local()`'s DNAT redirect does not reliably
+  deliver to a local *listening socket*** - confirmed via a live `iptables -t nat -L PREROUTING -n
+  -v` packet-counter poll showing the rule matching real traffic while a live-bound listening
+  socket on the same redirected port received nothing, across several independent `hard_reset()`
+  cycles. `net.ipv4.conf.*.route_localnet` reads `0` (disabled) on every interface on this bench,
+  the documented Linux condition for "DNAT to 127.0.0.1 from a non-loopback ingress interface" to
+  silently fail post-NAT routing. The existing `RogueUdpResponder`-based garbage-response tests are
+  unaffected (they exercise the DUT's own *reply* path, which does work), and a separate quirk was
+  also seen where the redirect didn't intercept traffic at all for one `hard_reset()` cycle, root
+  cause not chased. **If a future test needs to observe the DUT's own outbound *request* (not
+  inject a reply), use `bench_control.BenchBridge.start_udp_source_capture()`/
+  `read_captured_udp_source_port()` instead** (a real wire-level `tcpdump -c 1` capture on the
+  DUT-facing radio) - no local delivery involved, confirmed reliable on its first real run.
 
 ## Third pass - closing real coverage gaps (found via a direct project-owner audit question)
 

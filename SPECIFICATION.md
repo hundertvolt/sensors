@@ -4431,8 +4431,7 @@ that **no systematic audit of every other large-allocation site in `src/` had ev
 Part is that systematic pass: research findings (I.1), the full hotspot catalog produced by scanning
 every file in `src/` function-by-function against those findings (I.2), the one new shared primitive
 the audit produced (I.3), the standing multi-stage handling scheme every module already mostly
-follows and must keep following (I.4), and what's still open pending real hardware (I.5, mirrored in
-BACKLOG.md's own hand-off section for the follow-up bench session).
+follows and must keep following (I.4), and the real-hardware confirmation of it all (I.5).
 
 **Scope of what changed vs. what was reviewed-only**: this audit found exactly one class of genuine
 gap beyond the already-fixed `/status` — four other GET routes with the identical
@@ -4502,13 +4501,17 @@ location a future session should know to try first if it hits the same egress bl
   *does* catch a `MemoryError`** — `system_service.py`'s `_log_dead_task()`/`start_and_check_tasks()`
   task-supervisor loop (I.4) therefore already correctly restarts a task that dies from an uncaught
   `MemoryError`, with no change needed there.
-- **A real `gc.collect()` pause is typically ~1ms, but can reach 15-16ms under adverse heap
-  conditions** (multiple independent real-hardware/forum reports, not one isolated anecdote) — well
-  under the 8388ms WDT-feed cap (F.1), so a single collection cannot by itself starve the watchdog,
-  but long enough to matter for F.3's "timing-sensitive work" concern (a visible Neopixel-animation
-  glitch) and directly relevant to BACKLOG.md's still-open, never-root-caused single real WDT reset
-  observation — see I.5/BACKLOG.md for why this remains open pending real-hardware measurement, not
-  resolved by this research alone.
+- **A real `gc.collect()` pause is typically ~1ms in community reports, but can reach 15-16ms under
+  adverse heap conditions** — well under the 8388ms WDT-feed cap (F.1), so a single collection
+  cannot by itself starve the watchdog, but long enough to matter for F.3's "timing-sensitive work"
+  concern (a visible Neopixel-animation glitch). **Confirmed directly on this project's own real
+  target hardware (2026-09-08, explicit `gc.collect()` timed with `time.ticks_us()`, both idle and
+  under real hammer load, both `gc.threshold(-1)` and `gc.threshold(32768)`)**: ~13.4-17.2ms average,
+  ~15.1-21.2ms max — consistent with, if slightly above, the community range. A ~21ms max pause is
+  over 400x smaller than the WDT-feed cap, so a single collection is conclusively ruled out as a
+  cause of any real watchdog reset on this hardware; cumulative back-to-back collections were
+  checked too (worst-case combination of the real measured max frequency and max pause length yields
+  only ~10% of the WDT-feed cap) and are ruled out on the same basis.
 - **No async-generator-shaped alternative to this project's own "await everything up front, hand
   Microdot a plain list" workaround was found anywhere** (searched directly, not assumed) — every
   MicroPython PEP 525 discussion found converges on the same documented "not implemented" status
@@ -4614,6 +4617,15 @@ risk) and route it through this one function instead of returning it directly. `
 untouched — its own sub-sections need their own per-fragment dumps before coalescing (module-scoped
 data, not one flat dict already assembled), so `_build_status_pieces()` stays exactly as it was.
 
+**`_MAX_STATUS_PIECE_BYTES = 1024`'s real headroom, confirmed on real target hardware (2026-09-08)**:
+a temporary on-device probe (attempting a real `bytearray()` allocation at each of a descending list
+of candidate sizes under real max-speed hammer load, recording the largest that actually succeeded —
+not a raw `gc.mem_free()` read, which can't distinguish contiguous from scattered free space) found
+the smallest largest-allocatable-contiguous-block observed across hundreds of samples was 49152
+bytes — **at least ~48x headroom** versus the 1024-byte budget, even at the tightest real
+fragmentation this hardware produced under sustained hammer load. Confirms the constant was already
+correctly conservative, not just "comfortably below" by assumption.
+
 Test coverage (`tests/test_asy_webserver_service.py`'s own Section I): I.1-labeled tests exercise the
 shared primitive directly (empty dict, byte-identical-to-`json.dumps()` equivalence, the
 `Content-Type`/`Content-Length` headers, many-entry coalescing, special-character escaping); I.2
@@ -4659,8 +4671,7 @@ their own right, not merely redundant with the new one.
 
 Like every Unix-port test in this project, I.2/I.2b/I.3's hammer tests run against an 8MB heap
 (`scripts/test.sh`'s own `-X heapsize=8M`) and are correctness/regression guards, not a real
-embedded-scale memory-pressure reproduction — see I.5/BACKLOG.md for what real hardware still needs
-to confirm.
+embedded-scale memory-pressure reproduction — I.5 covers the real-hardware confirmation.
 
 ## I.4 The standing multi-stage memory-error handling scheme
 
@@ -4722,11 +4733,13 @@ test file already covers that module — matching Part G's own "check the catalo
 model on" discovery procedure, now with this ladder and `_stream_dict_response()` as one of the
 things to check against.
 
-## I.5 What's still open, pending real hardware
+## I.5 Real-hardware confirmation
 
-Real-hardware confirmation of the parameters this audit's own Unix-port tests cannot reach (an 8MB
-Unix-port heap vs. the RP2040's actual RAM budget) is tracked in BACKLOG.md's own hand-off section
-for the follow-up bench session — the concrete measurement plan, decision criteria, and exactly
-which tests to re-run under which `gc.threshold()` setting live there, not duplicated here per this
-document's own front-matter split between stable specification (here) and active/in-flux work
-(BACKLOG.md).
+Every parameter this audit's own Unix-port tests couldn't reach (an 8MB Unix-port heap vs. the
+RP2040's actual RAM budget) was confirmed on real target hardware in the 2026-09-08 follow-up bench
+session: `gc.threshold(32768)` (defense in depth — real hammer-load `mem_free` floor 91312 bytes at
+`32768` vs. 128 bytes at MicroPython's reactive-only default `-1`), the real GC pause-length range
+(I.1), and `_MAX_STATUS_PIECE_BYTES`'s real headroom (I.3). `tests_hardware/bench/
+test_memory_stress_bench.py` carries the permanent real-hardware regression coverage (a 120s
+always-run hammer test plus a `long_soak`-gated 600s variant); nothing from this audit remains
+open pending hardware.
