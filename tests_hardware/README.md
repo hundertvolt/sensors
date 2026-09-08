@@ -3,10 +3,10 @@
 Implements SPECIFICATION.md Part E.6's flash/bench/manual backends: automated tests driven from the
 host over `mpremote`/`nmcli`/`iptables` (never the MicroPython Unix port `tests/` uses - see
 SPECIFICATION.md Part E.1), plus a structurally separate manual runner for tests that need a human's
-hands. **Real-hardware execution is standing practice on the bench Pi4** - both the flash and bench
-tiers run clean end to end as of 2026-09-04 (77 automated tests: 68 passed, 6 opt-in-skipped, 0
-failed/errored); this file is the durable reference for prerequisites, environment variables, how to
-run it, and the facts/assumptions worth knowing before trusting a run's results.
+hands. **Real-hardware execution is standing practice on the bench Pi4** - the flash and bench tiers
+have run clean end to end on real hardware, with additional coverage added since; this file is the
+durable reference for prerequisites, environment variables, how to run it, and the facts/assumptions
+worth knowing before trusting a run's results.
 
 **Any session about to run real-hardware tests against this tier needs the project owner's
 go-ahead first, given directly in that session's own conversation** - see CLAUDE.md's own hard rule
@@ -44,7 +44,7 @@ deactivation risk, `BENCH_AP_PASSWORD` handling in "Environment variables" below
   for the flash-tier board. Defaults to `/dev/ttyACM0`, same convention as
   `scripts/mpremote_connect.sh`.
 - `BENCH_AP_PASSWORD` - **optional, not required for a normal run** (fixed 2026-09-08 - see
-  BACKLOG.md's "missing BENCH_AP_PASSWORD" entries for the full incident this used to cause).
+  BACKLOG.md open question 9 for the full incident this used to cause).
   `tests_hardware/bench/test_hotspot_role_reversal.py::test_real_credentials_put_succeeds_and_confirms_accepted_values`
   (stage 6's real credential handoff) now defaults to `bench.ap_password()` - the real bench bridge
   AP's own password, read live from `nmcli --show-secrets` under the same sudo access this whole

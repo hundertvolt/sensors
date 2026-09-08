@@ -15,8 +15,8 @@ CLAUDE.md's hard rules for why wozi, not dev, is never flashed).
 | Config | Sensors | FRAM | Watchdog | HTML source |
 |---|---|---|---|---|
 | arzi | SCD30 (CO2/temp/hum), SGP40 (VOC) | yes | active (8000ms) | `html_raw/arzi` |
-| neu ×3 | same as arzi, different pin assignments | yes | active | `html_raw/arzi` (reused) |
-| wozi | SCD30, SGP40, BMP388 (pressure/temp) | yes | active | `html_raw/wozi` |
+| neu ×3 | same as arzi, different pin assignments | yes | active (8000ms) | `html_raw/arzi` (reused) |
+| wozi | SCD30, SGP40, BMP388 (pressure/temp) | yes | active (8000ms) | `html_raw/wozi` |
 | dev | SCD30, SGP40, BMP388 — same drivers as wozi, different I2C bus pairing (Part C.8) | yes | active (8000ms) | `html_raw/dev` (bench rig) |
 
 ## Repository layout, architecture, refactor status, and the build process
@@ -219,12 +219,14 @@ ad hoc bring-up logs, distinct from **`tests_hardware/`**, the newer structured,
 
 ## Digital twin (hardware simulator)
 
-`digital_twin/` is a fake `machine`/`network`/`neopixel` implementation that mirrors the real `wozi` bus wiring — real-time-firing
-`Timer`s, randomized-but-plausible sensor values, and a scripted `WLAN` connect sequence — so driver
-code can run under the real MicroPython Unix-port interpreter with no physical hardware attached.
-Its default wiring (`scripts/run_unix_port_integration.sh`, `scripts/run_digital_twin_ci.sh`) serves
-the real, production `wozi` website (`scripts/build_website.sh wozi`), not the `html_stub`
-placeholder — see `SPECIFICATION.md` Part H.7 for the full account.
+`digital_twin/` is a fake `machine`/`network`/`neopixel` implementation that mirrors a real device's
+bus wiring — real-time-firing `Timer`s, randomized-but-plausible sensor values, and a scripted
+`WLAN` connect sequence — so driver code can run under the real MicroPython Unix-port interpreter
+with no physical hardware attached. `wozi` is the default wiring (`scripts/run_unix_port_integration.sh`,
+`scripts/run_digital_twin_ci.sh`); `dev` is also fully supported end-to-end (`digital_twin/run_dev_integration.py`)
+— see `digital_twin/README.md`. The default run serves the real, production `wozi` website
+(`scripts/build_website.sh wozi`), not the `html_stub` placeholder — see `SPECIFICATION.md` Part H.7
+for the full account.
 
 **Quick start: twin + real website, in one command** (builds the MicroPython Unix port and the
 website automatically if either is missing, then serves both forever):

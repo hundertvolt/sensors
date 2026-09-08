@@ -106,7 +106,7 @@ information):
   too**, provided the code actually under test is genuinely dev-native (dev's own correct pins/
   config via its own entry point), never wozi's own hardcoded build forced onto dev hardware. That
   specific mismatch (`scripts/build_firmware.py wozi` — wozi's hardcoded pins — flashed onto the dev
-  bench) produced two false "bugs" once (see BACKLOG.md's git history around 2026-09-02/03) — it
+  bench) produced two false "bugs" once (see BACKLOG.md's "Per-variant `sensortask-*.py` generator" entry) — it
   isn't a shortcut for testing wozi, it's testing nothing at all, and must not be repeated.
 - **No unit tests against the current (deployed, pre-refactor) codebase — `python/`, `modules/`.**
   The agreed plan is: fully understand the current system first, confirm what's already
@@ -136,7 +136,8 @@ information):
   a fallback to fix away.** Confirmed inherently safe: every real flash write is reachable only
   through the REST PUT path, so a device whose API is unreachable structurally cannot have a write
   in flight. Settled, don't propose an independent reachability-probe mechanism; full reasoning and
-  real bench-hardware timing data are in SPECIFICATION.md Part F.2 and BACKLOG.md.
+  real bench-hardware timing data are in SPECIFICATION.md Part F.2 (BACKLOG.md keeps only a closed
+  pointer, open question 6).
 - **Don't wrap every `asyncio` primitive call in `try`/`except` against a theoretical internal
   `MemoryError` as a blanket policy** — see SPECIFICATION.md Part F.2 for the full rule and its
   narrow exception.
@@ -286,7 +287,8 @@ information):
   never both be checked correctly in one invocation. `digital_twin/machine.py`/`network.py`/
   `neopixel.py` (a straight `Duplicate module named "machine"` collision with `tests/machine.py`
   otherwise — confirmed directly, not the softer resolution-priority hijack `tests/network.py`'s own
-  exclude guards against) and `digital_twin/launch.py`/every `tests/test_digital_twin_*.py` (attr-
+  exclude guards against) and `digital_twin/launch.py`/`run_wozi_integration.py`/`run_dev_integration.py`/
+  `segfault_stress_repro.py`/every `tests/test_digital_twin_*.py` (attr-
   defined noise on every twin-only API the real board stub doesn't declare, e.g.
   `WDT.would_have_triggered_count`, `WLAN.script_connect_outcomes()` — confirmed directly, including
   one real `mypy src tests`-only finding this design caught that a from-scratch `mypy` run missed)

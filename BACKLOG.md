@@ -351,17 +351,12 @@ constraints.
   today) and the full apt package list. An official one-shot alternative exists
   ([`raspberrypi/pico-setup`](https://github.com/raspberrypi/pico-setup)'s `pico_setup.sh`), worth
   considering as a base.
-- **`asy_wifi_service.py`'s getters hide two opposite locking contracts under one shape** —
-  `network_available()` requires the caller to already hold `wifi_mode_lock`, while
-  `get_wlan_ifconfig()`/`get_dns_server_ip()`/`get_wlan_rssi()`/`wlan_isconnected()` assume the
-  *caller does not* hold it (checking `.locked()` defensively instead). A rename to make this
-  visible in the method name itself (e.g. `network_available_locked()`) was considered but not
-  done - nothing blocks it now that `improved-quality/sensortask-wozi.py` (the WIP file that once
-  called `conn.network_available` by its current name) is deleted, but `src/sensortask_wozi.py`
-  itself still calls it the same way, so a rename remains a real (if small) call-site update, not
-  yet picked up. Meanwhile, a prominent comment sits directly above the first
-  self-checking getter, explicitly cross-referencing `network_available()` and naming the
-  convention a new getter must pick deliberately.
+- **`asy_wifi_service.py`'s locking-contract inconsistency and 60s-retry priority-inversion cost** —
+  see SPECIFICATION.md Part C.8 for the full account. Still not picked up: a rename to make
+  `network_available()`'s already-held-lock contract visible in its own name (e.g.
+  `network_available_locked()`) was considered but not done — nothing blocks it now that
+  `improved-quality/sensortask-wozi.py` is deleted, but `src/sensortask_wozi.py` itself still calls
+  it by the current name, so this remains a real (if small) call-site update.
 - **`asy_i2c_driver.py`'s `get_bits`/`set_bits`/`get_register_struct` still call the allocating
   `readfrom_mem()` rather than zero-copy `readfrom_mem_into()`** — no real caller needs the
   zero-copy path yet, but worth doing before `asy_isl29125_driver.py` (its one plausible future
@@ -370,75 +365,17 @@ constraints.
   (checked every available Sensirion doc) — safe today only because every setter is REST-triggered,
   never called from a boot path or periodic loop. Don't add a periodic/high-frequency caller
   without reconsidering this.
-- **`asy_wifi_service.py`'s 60s STA-retry branch holds `wifi_mode_lock` for up to a minute**, and
-  `asy_ntp_client.py`'s sync task waits on that same shared lock — NTP sync can be delayed up to a
-  minute during active WLAN instability. A priority-inversion-shaped cost worth having in view, not
-  a correctness bug; not acted on.
-- **Network fault injection against the real dev bench unit — DONE (2026-09-04).**
-  `BenchBridge.inject_network_degradation()` (`tc netem` on `wifi_iface()` only - confirmed
-  directly, `eth0`/`br0`/this host's own SSH stay completely untouched) covers loss, latency+jitter,
-  real bit-level corruption, duplication, and reordering - the genuine remaining gap this item
-  originally identified, once `block_udp_ports()`/`redirect_udp_port_to_local()` turned out to
-  already cover the binary block/garbage-response cases. Six new real-hardware tests in
-  `test_network_resilience.py`, all verified passing for real on the bench Pi4: sustained
-  severe loss+latency (30%/150ms±50ms), light realistic everyday WiFi congestion (2%/30ms±20ms,
-  expected to cause *zero* visible impact - a genuinely different assertion shape than every
-  other fault test in this tier), real packet corruption, duplicated/reordered delivery, and a
-  transient (not sustained) outage that recovers via `asy_ntp_client.py`'s own retry timer with
-  no `hard_reset()` anywhere in the test - the real-hardware form of
-  `tests/test_asy_ntp_client.py::test_integration_recovers_on_retry_after_one_dropped_request`.
-  Parameter ranges are grounded in researched real-world figures (congested-WiFi/poor-link
-  reference figures from published `tc netem` testing guides), not arbitrary - see the new tests'
-  own section-header comment for the citations. Deliberately not attempted: reproducing the ~150
-  other mock-tier `asy_wifi_service.py`/`asy_ntp_client.py` tests that inject a raw firmware/API-level
-  exception (e.g. `wlan.connect()` itself raising) - those aren't network-*path* faults `tc`/`iptables`
-  can express at all, they're CYW43-firmware-level faults the digital twin's own `--fault wlan:...`
-  hook already covers software-side; only genuinely wire-level fault shapes (loss, latency,
-  corruption, duplication, reordering, block, garbage) were in scope for a *network* fault-injection
-  pass, and that set is now believed complete.
-- **Compound-fault coverage (bus contention x network degradation) — confirmed passing for real
-  (2026-09-04).**
-  `tests_hardware/bench/test_bus_concurrency_under_api_load.py::
-  test_concurrent_get_sensors_under_real_multi_client_load_survives_light_network_degradation` (the
-  cloud-session bird's-eye-review test flagged as "written and ready, never yet run") ran clean on
-  the bench Pi4 against the real dev board: concurrent multi-client `GET /sensors` bus reads plus a
-  concurrent SGP40 general-call reset, all under real, simultaneously-active `tc netem` "everyday
-  congestion" (`loss_pct=2, delay_ms=30, jitter_ms=20`) - zero corruption findings, full recovery
-  once the degradation cleared, all four modules' (`SCD30`/`BMP3XX`/`SGP40`/`FRAM`) error logs
-  clean. Re-ran together with the file's other (pre-existing, clean-network) test - both pass,
-  95.93s. **Session note, not a project fact**: the bench host's own shell session had been started
-  before `ensure_dialout_group()` granted `nico` real `dialout` membership, so `groups`/direct
-  `pyserial` opens against `/dev/ttyACM0` failed with `Permission denied` despite `/etc/group`
-  already listing it correctly - worked around with `sg dialout -c "..."` per invocation rather than
-  needing a fresh login; a brand-new session/shell wouldn't hit this at all.
-- **Three fault-recombination tests exist across every tier where they're meaningful**: FRAM write
-  vs. a real hardware reset (flash/twin/bench — `test_fram_hard_reset_race_during_write_and_recovery`,
-  `test_sgp40_voc_backup_unflushed_write_is_lost_but_the_system_recovers_cleanly_to_the_last_flushed_state`,
-  `test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly`), repeated real WiFi
-  flapping x concurrent bus load (twin/bench), and NTP transient-outage retry x concurrent bus load
-  (bench only). **Still open**: the NTP-outage-x-bus-load recombination has no twin/mock-tier
-  equivalent (no NTP-drop-and-retry scenario exists at either tier to extend) — a real opportunity
-  if a future session has the budget, not chased yet.
-- **Three infrastructure fixes from the first full-production 3x-rebuild/3x-full-suite verification
-  pass, all shipped**: `enter_bootloader()`→`picotool load` now retries (5x, 2s apart) instead of
-  racing the real USB BOOTSEL re-enumeration with zero delay;
-  `run_flash_hardware_suite.sh`/`run_bench_hardware_suite.sh` route through
-  `scripts/_require_clean_hardware_run.sh`, which hard-fails on any unexpected skip or zero real
-  passes (pytest's own exit code can't distinguish "all passed" from "hardware unreachable, every
-  fixture skipped" — both exit 0); soak-test invocation is now `--soak-tier {short,mid,long}` (via
-  `scripts/run_bench_soak_tests.sh`, the only intended way to run them) with the multi-day rollover
-  test on its own separate `--allow-multi-day-rollover-wait` flag, instead of one shared flag that
-  could bundle a ~12.4-day wait into an ordinary soak run.
-- **Fixed at the root: a missing `BENCH_AP_PASSWORD` used to cascade into ~25 real test failures.**
-  `test_hotspot_role_reversal.py`'s credential-restore test now defaults to `bench.ap_password()`
-  (reads the real PSK live from `nmcli --show-secrets`) instead of requiring a human-supplied env
-  var — `BENCH_AP_PASSWORD` is now purely an optional override, never a requirement. No standing
-  setup step needed before running this tier.
-- **Fixed a near-guaranteed false positive in both memory-soak tests' "unexpected reboot" detection**:
-  `"CFGMGR_" in line` fires on every ordinary `ConfigManager` log line, not just at boot.
-  `tests_hardware/bench/test_memory_stress_bench.py`/`tests_hardware/flash/test_memory_stress.py`
-  now check for `config_manager.py`'s genuinely one-time-per-`setup()` `"...- config is ready."`
-  message instead.
+- Network fault injection against the real dev bench unit is complete:
+  `BenchBridge.inject_network_degradation()` (`tc netem` on `wifi_iface()` only) covers loss,
+  latency+jitter, corruption, duplication, and reordering, exercised by
+  `tests_hardware/bench/test_network_resilience.py`. CYW43-firmware-level faults (e.g.
+  `wlan.connect()` itself raising) aren't network-path faults `tc`/`iptables` can express — those
+  stay covered by the digital twin's own `--fault wlan:...` hook instead.
+- **Still open**: the NTP-outage-x-bus-load fault recombination has no twin/mock-tier equivalent
+  (no NTP-drop-and-retry scenario exists at either tier to extend) — a real opportunity if a future
+  session has the budget, not chased yet. The other two recombinations that matter (FRAM write vs.
+  a real hardware reset; repeated WiFi flapping x concurrent bus load) already have coverage across
+  every tier where they're meaningful.
 - ~~A real device-side traceback at boot - `AttributeError: 'NoneType' object has no attribute
   '__aexit__'` in `asy_sgp40_driver.py`'s `_store_sgp()` calling `base_classes.py`'s
   `_set_meas_data()` (`async with self._datalock:`)~~ - **closed (2026-09-08), confirmed

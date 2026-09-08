@@ -1,12 +1,12 @@
-# `digital_twin/` — hardware simulator for the wozi prototype
+# `digital_twin/` — hardware simulator for the wozi and dev prototypes
 
 A set of fake `machine`/`network`/`neopixel` modules, sitting at the same raw I2C/SPI
 bus-transaction mocking boundary `tests/machine.py` establishes for unit tests, but built for a
 different purpose: real-time-firing `Timer`s and randomized-but-plausible sensor values, so the full
-assembled `src/sensortask_wozi.py` prototype can run under the real MicroPython Unix-port
-interpreter and behave like it's attached to real hardware — not just satisfy a hand-driven test
-double. See SPECIFICATION.md Part A.10 for how this fits into the rest of the architecture, and
-Part C.11 point 9 for the per-driver "add a matching chip fake" requirement.
+assembled `src/sensortask_wozi.py`/`src/sensortask_dev.py` prototypes can run under the real
+MicroPython Unix-port interpreter and behave like they're attached to real hardware — not just
+satisfy a hand-driven test double. See SPECIFICATION.md Part A.10 for how this fits into the rest of
+the architecture, and Part C.11 point 9 for the per-driver "add a matching chip fake" requirement.
 
 **Not `tests/machine.py`, does not import it, and is never imported by anything in `tests/`.**
 Kept completely separate so nothing here can accidentally affect the deterministic unit-test suite
@@ -69,6 +69,10 @@ Kept completely separate so nothing here can accidentally affect the determinist
   real bus-level read per sensor, a `WLAN.connect()` attempt, and WDT feeding. `--fault
   DEVICE:OP[:TIMES]` drives each chip fake's existing `FaultInjector`/`raise_on` API. Lighter and
   narrower in scope than `run_wozi_integration.py` below, which boots the real object graph instead.
+- `run_dev_integration.py` — the `dev`-variant sibling of `run_wozi_integration.py` below: same
+  orchestrator shape (soak/fault-injection/`--duration`-forever), boots `sensortask_dev.build_system()`
+  against `configure_i2c_wiring("dev")` instead. No dedicated wrapper script exists yet (see
+  "Swapping the twin in" below for direct invocation).
 
 Every chip fake exposes a `.fault` (`FaultInjector`) surface for provoking a bus NAK/CRC-corruption/
 timeout on demand — off/clean by default. Same surface also carries `inject_hang()`/`maybe_hang()`,
@@ -140,6 +144,19 @@ value}}` shape, so `/networking`/`/notification` always returned `{}` and `/syst
 dropped its `ntp`-sourced fields — masked by `tests/test_asy_webserver_service.py`'s own uniform
 fakes, which happened to return an already-flat shape. See `_flatten_cfg_values()` in
 `src/asy_webserver_service.py` for the fix.
+
+### Running the dev variant
+
+`run_dev_integration.py` mirrors `run_wozi_integration.py` exactly — only the booted module and bus
+wiring differ — but has no dedicated `scripts/run_*.sh` wrapper yet. Invoke it directly, building the
+`dev` website first (`scripts/build_website.sh dev`, not `wozi`):
+
+```bash
+MICROPYPATH="src:digital_twin:ext:frozen_modules:.frozen" <micropython-unix-port-binary> digital_twin/run_dev_integration.py [flags]
+```
+
+Same flag vocabulary, same `frozen_modules`/`MICROPYPATH`-ordering requirements as
+`run_wozi_integration.py` above.
 
 ### FRAM persistence
 
