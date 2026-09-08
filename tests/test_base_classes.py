@@ -1332,6 +1332,51 @@ def test_set_dict_cfg_special_alone_field_write_never_logs_a_spurious_config_rea
         _remove(path_prefix + "config_specialnospuriouserr.cfg")
 
 
+def test_set_dict_cfg_mixed_persisted_and_special_alone_fields_in_one_request() -> None:
+    # Coverage gap in the fix above: a single request combining a genuinely persisted field with a
+    # special-alone one must filter *per field*, not treat the whole request as one shape. Proves
+    # two things together, in the one call, that the dedicated special-alone test above and the
+    # existing SampleInterv-only old-value tests each only prove in isolation: (1) the special-alone
+    # field (Trigger) still logs no spurious error, and (2) the persisted field's (SampleInterv) own
+    # old-value snapshot is still correctly fetched and used for real push-failure recovery - the
+    # filtering change must not have accidentally dropped it too.
+    combined = _VAL_SI + _VAL_SPECIAL
+    path_prefix = _tmp_path("") + "/"
+    _remove(path_prefix + "config_mixedpersistedspecial.cfg")
+    try:
+        reader = SensorReaderConfig(Meas(20.0, 50), 3, "mixedpersistedspecial", combined, cfg_path=path_prefix)
+        run(reader.cfgmgr.setup())
+
+        async def push_ok(value: "int | float | str | bool | None") -> bool:
+            return True
+
+        async def push_fail(value: "int | float | str | bool | None") -> bool:
+            return False
+
+        # Establish a known old value (5) for SampleInterv via one successful write first.
+        reader._push_callbacks["SampleInterv"] = push_ok
+        reader._push_callbacks["Trigger"] = push_ok
+        run(reader._set_dict_cfg({"SampleInterv": 5}, combined))
+        err_count_before = reader.cfgmgr.pr.err_count
+
+        # Now both fields fail their push in the same request - SampleInterv must recover to its
+        # real old value (5, not the new 42), Trigger must just report "Failed" with no recovery
+        # attempt and no spurious config-read error logged for either field.
+        reader._push_callbacks["SampleInterv"] = push_fail
+        reader._push_callbacks["Trigger"] = push_fail
+        results = run(reader._set_dict_cfg({"SampleInterv": 42, "Trigger": True}, combined))
+        assert results == {"SampleInterv": "Failed", "Trigger": "Failed"}
+        # Read back with _VAL_SI alone, not combined - matches real production usage
+        # (asy_sgp40_driver.py's own get_dict_cfg() deliberately excludes its special-alone field
+        # from the schema it reads with, for this exact reason: _get_dict_cfg() has no filtering of
+        # its own, unlike the fix under test here, so including Trigger in the read schema would
+        # exercise a separate, pre-existing characteristic unrelated to this test's own subject.
+        assert run(reader._get_dict_cfg("Sensor", _VAL_SI)) == {"Sensor": {"SampleInterv": 5}}
+        assert reader.cfgmgr.pr.err_count == err_count_before
+    finally:
+        _remove(path_prefix + "config_mixedpersistedspecial.cfg")
+
+
 def test_set_dict_cfg_old_value_snapshot_read_exception_falls_back_to_default() -> None:
     # _get_mgr_cfg is the same overridable extension point _get_dict_cfg already defends against -
     # _set_dict_cfg's own pre-write snapshot read gets identical defense: a raising override must
