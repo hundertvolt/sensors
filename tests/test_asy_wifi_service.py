@@ -2714,6 +2714,7 @@ def test_configure_hotspot_ap_does_not_reapply_essid_password_when_already_activ
         essid_call = {"essid": "MyHost", "password": "12345678"}
         client._configure_hotspot_ap("US", "MyHost")
         first_task = client.dns_server_task
+        assert first_task is not None
         assert _wlan(client)._active is True
         assert _wlan(client).config_calls.count(essid_call) == 1
         client._configure_hotspot_ap("US", "MyHost")  # a real re-entry while still active
@@ -2732,14 +2733,17 @@ def test_configure_hotspot_ap_reconfigures_after_the_interface_was_externally_de
         essid_call = {"essid": "MyHost", "password": "12345678"}
         client._configure_hotspot_ap("US", "MyHost")
         first_task = client.dns_server_task
+        assert first_task is not None
         assert _wlan(client).config_calls.count(essid_call) == 1
         _wlan(client).active(False)  # simulates a real external deactivation, not a normal steady-state tick
         client._configure_hotspot_ap("US", "MyHost")
         assert _wlan(client).config_calls.count(essid_call) == 2  # self-healed: reconfigured, not silently skipped
         assert _wlan(client)._active is True
+        second_task = client.dns_server_task
+        assert second_task is not None
         await _cancel(first_task)
-        if client.dns_server_task is not first_task:
-            await _cancel(client.dns_server_task)
+        if second_task is not first_task:
+            await _cancel(second_task)
 
     run(scenario())
 
