@@ -404,6 +404,21 @@ constraints.
     worth a dedicated `dmesg -w`-concurrent passive-tail_log repro if it recurs, to get a real
     correlated timestamp instead of an estimate.
 
+    **Dmesg-history re-check (2026-09-08, same session), re-confirms the original finding rather
+    than adding new evidence**: rather than a blind wait-and-hope repro (which the project owner
+    explicitly cautioned against as wasted time for a rare, non-triggerable event), checked this
+    bench Pi4's full `dmesg` history (covers this entire session, boot time `05:29:52` onward - the
+    round-2 mid-tier soak that originally hit this ran within this same window). Every one of the
+    ~59 `USB disconnect`/`cdc_acm ... ttyACM0` pairs in that window correlates exactly with a
+    deliberate `hard_reset()`/`enter_bootloader()`/`picotool load` call from this session's own real
+    test/repro/reflash work (device-number increments, immediate reconnect, no gaps) - no anomalous,
+    unpaired, or error-shaped USB event (`over-current`, a reset with no following reconnect, etc.)
+    found anywhere. Confirms the same "no dmesg correlation" conclusion the original finding already
+    reached, now on a much larger, later window - not new evidence either way. This item remains
+    fundamentally not systematically reproducible without the event recurring live under a
+    concurrent `dmesg -w` capture; not attempted as a bounded wait this session given the project
+    owner's own explicit "don't wait for something to maybe happen" direction.
+
 ## Handoff notes for the real-hardware follow-up session (2026-09-07 systematic memory-safety audit)
 
 The 2026-09-07 systematic memory-safety audit (SPECIFICATION.md Part I, branch
@@ -480,6 +495,17 @@ to pick up next, not a re-summary of what Part I already covers in full.
   `gc.threshold(32768)` (proactive collection, defense in depth) was the right call over trusting
   MicroPython's own reactive-only default, independent of and in addition to the streaming-JSON fix
   itself.
+  **A real repeat attempt was started but abandoned mid-run (2026-09-08, same session)**: a 3-
+  threshold (16384/32768/65536) rebuild+reflash+short-hammer repro (adapted from this section's own
+  reusable `_gc_probe()` instrumentation technique, shortened to a 60s hammer phase per threshold to
+  fit a bounded time budget). 2 of 3 thresholds' idle+hammer phases actually ran to completion on
+  real hardware, but the process was killed by its own external time bound before the 3rd threshold
+  finished and before the script's own summary/results-file write - **no numeric data survived**,
+  since this driver only writes results at the very end. Not retried: this comparison inherently
+  costs 3 full real firmware rebuild+reflash cycles, which does not comfortably fit a bounded,
+  disciplined per-test time budget the way items 1/2/4/5's repros did. Still open, exactly as before
+  - a future session with a larger time allowance for this one item specifically (not a "quick
+  bounded repro," an inherently multi-rebuild one) is the right way to pick this back up.
 - **`tests/test_asy_webserver_service.py`'s H.3 and Section I hammer tests alike run against an
   8MB Unix-port heap and are correctness/regression guards only, never a real memory-pressure
   reproduction** - carried over unresolved. A genuinely new, automated (not ad-hoc-scripted)
@@ -1122,6 +1148,13 @@ to pick up next, not a re-summary of what Part I already covers in full.
   logged 84 errno=8 entries (`config_manager.py`'s `get_dict()`: "unknown key, or a non-iterable/
   malformed keys param") during the load - plausibly related to the concurrent `SGPResetVOC` PUTs
   racing a GET, but not investigated; flagging rather than silently letting it pass unremarked.
+  **Dedicated repro attempted, inconclusive (2026-09-08, real bench hardware)**: a bounded 90s
+  hammer-load repro (same shape - concurrent GET /measurements+/sensors plus PUT /sensors
+  SGPResetVOC every 3s, 8 real PUTs total) produced **zero** `CFGMGR_SGP40` errno=8 lines. Not a
+  refutation - the original 84-occurrence finding came from a sustained 10-minute window; a 90s
+  bounded window may simply be too short to hit whatever timing window this race needs. Still open;
+  a longer (but still bounded, not full-suite) dedicated repro is the natural next step for a future
+  session with more time budget to spend on this specific item.
   **The second finding from the prior run (a real hardware watchdog reset, `machine.reset_cause() ==
   machine.WDT_RESET`, observed a few minutes after that run's own hammer load ended) did NOT recur in
   this run's ~90s post-hammer observation window** - consistent with (but not proof of) that reset
