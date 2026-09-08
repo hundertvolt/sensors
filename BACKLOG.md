@@ -386,6 +386,14 @@ constraints.
      this is a deeper toolchain bug. Flagged as a new, standalone open item, not chased further this
      session (out of scope for a WiFi-hotspot-flakiness fix, and orthogonal to it - real evidence
      rules out any connection between the two).
+     **Resolved as transient (2026-09-08, same session): confirmed via the actual sanctioned
+     mechanism.** Running the exact same file through the real 180s-timeout/3-attempt retry loop
+     (replicated directly from `scripts/test.sh`'s own logic, not a bare single-shot invocation like
+     every earlier attempt this session used) passed clean on the very first attempt - **186/186
+     passed** (184 original + this session's own 2 new regression tests), 0 failures. Consistent
+     with `scripts/test.sh`'s own comment describing exactly this retry mechanism as existing for
+     "transient contention," not a persistent bug. No longer an open item - this file's own test
+     coverage (including the new hotspot-reconfiguration-guard tests) is confirmed passing in full.
 
 10. **A spontaneous `/dev/ttyACM0` USB dropout during a purely passive test, real hardware,
     2026-09-08 - genuinely new, not yet root-caused, not the same mechanism as open question 9
@@ -503,9 +511,13 @@ to pick up next, not a re-summary of what Part I already covers in full.
   finished and before the script's own summary/results-file write - **no numeric data survived**,
   since this driver only writes results at the very end. Not retried: this comparison inherently
   costs 3 full real firmware rebuild+reflash cycles, which does not comfortably fit a bounded,
-  disciplined per-test time budget the way items 1/2/4/5's repros did. Still open, exactly as before
-  - a future session with a larger time allowance for this one item specifically (not a "quick
-  bounded repro," an inherently multi-rebuild one) is the right way to pick this back up.
+  disciplined per-test time budget the way items 1/2/4/5's repros did.
+  **Closed (2026-09-08, project owner's own explicit call).** This item is a measurement/data-
+  gathering question about GC-collection frequency at different threshold values, not a bug or a
+  flake - and `gc.threshold(32768)` is already the decided, shipped value (step (4) above, made
+  against the `mem_free`-floor data, the actually load-bearing result). Repeating the frequency
+  trend specifically would only add more descriptive data about a value already chosen for
+  independent reasons, not change or validate the decision itself. Not pursued further.
 - **`tests/test_asy_webserver_service.py`'s H.3 and Section I hammer tests alike run against an
   8MB Unix-port heap and are correctness/regression guards only, never a real memory-pressure
   reproduction** - carried over unresolved. A genuinely new, automated (not ad-hoc-scripted)
