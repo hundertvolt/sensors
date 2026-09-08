@@ -571,6 +571,50 @@ def test_realistic_mixed_openhab_polling_and_browser_session_concurrently() -> N
     run_timed(scenario(), timeout_s=20.0)
 
 
+async def _real_config_write(host: str, port: int, interval: int) -> int:
+    """A real, harmless, valid config write - PUT /sensors {"SCD30": {"Interval": interval}} -
+    against the real, currently-registered SCD30 driver (unlike _slow_but_healthy_put()'s own
+    no-op empty /system PUT above, this genuinely reaches ConfigManager.write_config() through the
+    real object graph). Used to prove concurrent GET polling survives a real concurrent config
+    write, not just another concurrent read - the digital-twin-tier equivalent of
+    tests_hardware/bench/test_memory_stress_bench.py's own real-hardware hammer-load test (GET
+    /measurements+/sensors concurrent with a real PUT-triggered SGP40 reset) and
+    tests/test_asy_webserver_service.py's own I.4 unit-level equivalent."""
+    res = await _http_client.fetch(host, port, "PUT", "/sensors", {"SCD30": {"Interval": interval}})
+    return res.status_code
+
+
+def test_realistic_mixed_polling_and_a_concurrent_real_config_write() -> None:
+    # Same OpenHAB-polling mix as above, with a real config write landing concurrently - proves the
+    # combined GET+write shape stays healthy against the real, fully assembled twin system
+    # (ConfigManager's own asyncio.Lock already rules out a data race - SPECIFICATION.md Part C.7 -
+    # this is about the same "stays healthy under this traffic shape" concern the GET-only tests
+    # above already check, now with a real writer in the mix too). Exactly max_connections=4 at
+    # once (2 polling GETs + 2 writes), same "all must succeed cleanly" bar as
+    # test_n_healthy_concurrent_connections_up_to_max_connections_all_succeed above - not pushed
+    # past the ceiling, since that's a different, already-covered concern
+    # (test_realistic_mixed_traffic_above_the_connection_ceiling_degrades_gracefully below).
+    port = _next_test_port()
+
+    async def scenario() -> None:
+        await _boot(port)
+        task = await _start_webserver()
+        try:
+            async def _writes() -> "list[int]":
+                return list(
+                    await asyncio.gather(_real_config_write("127.0.0.1", port, 5), _real_config_write("127.0.0.1", port, 6))
+                )
+
+            openhab_result, write_results = await asyncio.gather(_openhab_poll("127.0.0.1", port), _writes())
+            assert openhab_result == [200, 200], openhab_result
+            assert write_results == [200, 200], write_results
+            assert await _still_serving("127.0.0.1", port)
+        finally:
+            await _cancel(task)
+
+    run_timed(scenario(), timeout_s=20.0)
+
+
 def test_realistic_mixed_traffic_above_the_connection_ceiling_degrades_gracefully() -> None:
     # Same mix as above, pushed past max_connections=4: a second browser tab opens while OpenHAB is
     # already polling and the first tab is still loading - 6 connections at once against a ceiling

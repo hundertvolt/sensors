@@ -2470,6 +2470,59 @@ def test_i3_hammer_every_memory_bounded_get_route_concurrently_with_the_chosen_g
         gc.threshold(orig_threshold)
 
 
+# -- I.4: /measurements and /sensors hammered concurrently with a real config *write* (PUT
+# /sensors) in the mix, not just GETs alone - the unit-level equivalent of
+# tests_hardware/bench/test_memory_stress_bench.py's own real-hardware hammer-load test (4 GET
+# threads at max speed plus one PUT-a-command-field thread every 3s), which found nothing wrong on
+# real hardware but never had a fast, CI-run counterpart proving the same combined GET+write shape
+# stays memory-safe/bounded-stream at this tier. ConfigManager's own asyncio.Lock already rules out
+# a data race (SPECIFICATION.md Part C.7) - this is about the same concern I.2/I.3 above already
+# check for GET-only traffic (bounded-stream responses, no exception), now with a concurrent writer
+# present too, not a race-condition hunt.
+
+
+def _make_write_hammer_service() -> "tuple[WebserverService, Microdot]":
+    modules = [_FakeModule(f"SENSOR{i}") for i in range(17)]
+    return _make_service(sensors=modules, history_length=0)
+
+
+async def _hammer_routes_with_concurrent_writes(app: "Microdot", rounds: int) -> None:
+    async def _get_one(path: str) -> None:
+        res = await app.dispatch_request(_make_request(app, "GET", path, None))
+        assert res.status_code == 200, path
+        json.loads(_assert_body_is_bounded_stream(res, path))
+
+    async def _put_one(round_num: int) -> None:
+        target = f"SENSOR{round_num % 17}"
+        res = await app.dispatch_request(_make_request(app, "PUT", "/sensors", {target: {"Interval": 5 + (round_num % 10)}}))
+        assert res.status_code == 200, "/sensors PUT"
+        assert json.loads(res.body)["result"] == {target: {"Interval": "Valid"}}
+
+    gets = (_get_one(path) for _ in range(rounds) for path in ("/measurements", "/sensors"))
+    puts = (_put_one(i) for i in range(rounds))
+    await asyncio.gather(*gets, *puts)
+
+
+def test_i4_hammer_measurements_and_sensors_concurrently_with_a_real_config_write_with_gc_threshold_unset() -> None:
+    orig_threshold = gc.threshold()
+    gc.threshold(-1)
+    try:
+        _, app = _make_write_hammer_service()
+        run(_hammer_routes_with_concurrent_writes(app, 40))  # 40 rounds * 2 GET routes + 40 PUTs = 120 concurrent requests
+    finally:
+        gc.threshold(orig_threshold)
+
+
+def test_i4_hammer_measurements_and_sensors_concurrently_with_a_real_config_write_with_the_chosen_gc_threshold() -> None:
+    orig_threshold = gc.threshold()
+    gc.threshold(32768)
+    try:
+        _, app = _make_write_hammer_service()
+        run(_hammer_routes_with_concurrent_writes(app, 40))
+    finally:
+        gc.threshold(orig_threshold)
+
+
 if __name__ == "__main__":
     import microtest
 
