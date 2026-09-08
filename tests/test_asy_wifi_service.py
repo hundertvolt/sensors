@@ -2619,17 +2619,30 @@ def test_start_hotspot_valid_config_activates_the_ap() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Task/timer resource leak regression: _run_hotspot_mode() calls _start_hotspot() every loop iteration where
-# wlan.status() != network.STAT_GOT_IP - true on literally every iteration while purely in AP mode,
-# since STAT_GOT_IP is a STA-only status an AP interface never reports (confirmed directly against
-# both tests/network.py's and digital_twin/network.py's WLAN fakes: nothing ever sets _status to
-# STAT_GOT_IP except a STA connect() completing). _configure_hotspot_ap() (called from
-# _start_hotspot() via _activate_hotspot_ap()) unconditionally did
-# `self.dns_server_task = evtloop.create_task(...)` with no is-already-running guard - unlike every
-# other task-holding attribute in this file (ledflash, hotspot_timer), which all null-check before
-# reassigning. Net effect before the fix: one new concurrent DNSServer.run() task leaked per
-# wifi_refresh_sec while stuck in hotspot mode (a real, long-running-uptime scenario, not an edge
-# case), all sharing the one DNSServer instance's single AsyUDPSocket/poller.
+# Task/timer resource leak regression: _run_hotspot_mode() calls _start_hotspot() every loop
+# iteration where wlan.status() != network.STAT_GOT_IP.
+#
+# CORRECTED (2026-09-08, see _configure_hotspot_ap()'s own corrected comment in src/
+# asy_wifi_service.py): this used to claim that condition is "true on literally every iteration
+# while purely in AP mode, since STAT_GOT_IP is a STA-only status an AP interface never reports."
+# That claim about real hardware was wrong, verified directly against the pinned MicroPython/
+# cyw43-driver C source - an AP interface reaches STAT_GOT_IP too, once it has its own
+# self-assigned IP, same as a STA interface with a DHCP lease. In real steady-state operation this
+# branch (and so _start_hotspot()/_configure_hotspot_ap()) only fires once per hotspot entry, not
+# every tick. What *is* still accurate: neither tests/network.py's nor digital_twin/network.py's
+# WLAN fakes ever transition `_status` to STAT_GOT_IP for AP mode on their own (a deliberate
+# mocking simplification, not a modeling bug to fix here) - so calling _start_hotspot() twice in a
+# row, as this test does, is this file's own way of exercising the repeated-call shape a real
+# device would only very rarely revisit (e.g. a genuine status flicker), not the routine case the
+# original comment believed it was.
+#
+# The regression this section actually guards against is still real and still applies regardless:
+# _configure_hotspot_ap() (called from _start_hotspot() via _activate_hotspot_ap()) unconditionally
+# did `self.dns_server_task = evtloop.create_task(...)` with no is-already-running guard - unlike
+# every other task-holding attribute in this file (ledflash, hotspot_timer), which all null-check
+# before reassigning. Net effect before that fix: a second real re-entry into this method (rare in
+# steady state, but not impossible) would leak a concurrent DNSServer.run() task, sharing the one
+# DNSServer instance's single AsyUDPSocket/poller with the still-running original.
 # ---------------------------------------------------------------------------
 
 
@@ -2680,6 +2693,53 @@ def test_start_hotspot_starts_a_fresh_dns_server_task_if_the_previous_one_alread
         assert second_task is not None
         assert second_task is not first_task
         await _cancel(second_task)
+
+    run(scenario())
+
+
+# ---------------------------------------------------------------------------
+# Radio reconfiguration idempotency (2026-09-08, real bench hardware investigation - see
+# _configure_hotspot_ap()'s own corrected comment): a genuine re-entry into this method while the
+# AP interface is still active must not reapply essid/password/active(True) - only skip-if-already-
+# active protects against a real, if rare, beacon interruption on the actual CYW43 firmware, unlike
+# the DNS-task guard above which is a pure resource-leak concern.
+# ---------------------------------------------------------------------------
+
+
+def test_configure_hotspot_ap_does_not_reapply_essid_password_when_already_active() -> None:
+    client = make_client()
+    run(client.pr.setup())
+
+    async def scenario() -> None:
+        essid_call = {"essid": "MyHost", "password": "12345678"}
+        client._configure_hotspot_ap("US", "MyHost")
+        first_task = client.dns_server_task
+        assert _wlan(client)._active is True
+        assert _wlan(client).config_calls.count(essid_call) == 1
+        client._configure_hotspot_ap("US", "MyHost")  # a real re-entry while still active
+        assert _wlan(client).config_calls.count(essid_call) == 1  # not reapplied a second time
+        assert client.dns_server_task is first_task  # unaffected - the DNS-task guard is independent
+        await _cancel(first_task)
+
+    run(scenario())
+
+
+def test_configure_hotspot_ap_reconfigures_after_the_interface_was_externally_deactivated() -> None:
+    client = make_client()
+    run(client.pr.setup())
+
+    async def scenario() -> None:
+        essid_call = {"essid": "MyHost", "password": "12345678"}
+        client._configure_hotspot_ap("US", "MyHost")
+        first_task = client.dns_server_task
+        assert _wlan(client).config_calls.count(essid_call) == 1
+        _wlan(client).active(False)  # simulates a real external deactivation, not a normal steady-state tick
+        client._configure_hotspot_ap("US", "MyHost")
+        assert _wlan(client).config_calls.count(essid_call) == 2  # self-healed: reconfigured, not silently skipped
+        assert _wlan(client)._active is True
+        await _cancel(first_task)
+        if client.dns_server_task is not first_task:
+            await _cancel(client.dns_server_task)
 
     run(scenario())
 

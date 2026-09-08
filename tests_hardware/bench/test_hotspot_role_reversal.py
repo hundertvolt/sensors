@@ -38,6 +38,49 @@ from harness import Board, HardwareTestFailure, wait_until
 
 pytestmark = pytest.mark.role_reversal
 
+
+def _join_dut_hotspot_with_reverify_retry(bench: BenchBridge, ssid: str, password: str, *, attempts: int = 5) -> None:
+    """Shared by every real `join_dut_hotspot()` call site in this module - see joined_hotspot's
+    own "REAL FINDING" comment for the race this guards against: `is_ssid_visible()` being True one
+    moment doesn't guarantee `nmcli device wifi connect`'s own internal (re)scan still sees it a
+    moment later, and a dedicated isolated repro (2026-09-08) showed this can persist across several
+    consecutive attempts, not just one. Each retry re-confirms real, fresh visibility (the same
+    --rescan-yes scan is_ssid_visible() always does) before trying again, instead of a blind sleep.
+
+    REAL FINDING from that same repro's own fix-verification pass: an earlier version of this
+    function used a tight 15s/1s reverify wait, and let a TimeoutError from it escape uncaught
+    (wait_until() raises TimeoutError, not HardwareTestFailure) - a genuinely slow real `--rescan
+    yes` scan (it can itself take several seconds; 15s only leaves room for one or two full scan
+    cycles) crashed the whole retry loop on attempt 1 instead of exhausting all `attempts`. Fixed by
+    widening the reverify window to match the same 30s/2s budget the pre-loop wait_until already
+    uses successfully, and by catching TimeoutError alongside HardwareTestFailure so a slow-to-
+    reappear scan still counts as one exhausted attempt rather than an unhandled crash.
+
+    A second real repro run with both of those fixes in place still exhausted 3 attempts once
+    (each with a fresh, successful reverify scan immediately beforehand) - tracing the actual cause
+    into src/asy_wifi_service.py found a plausible real explanation, not just bench-side scan noise:
+    `_configure_hotspot_ap()` re-runs `wlan.config(essid=..., password=...)`+`wlan.active(True)` on
+    every `_run_hotspot_mode()` loop iteration for as long as no client is connected - every
+    `wifi_refresh_sec` (5s default), by design, per that method's own existing comment. Whether this
+    genuinely causes a brief beacon gap on the real CYW43 firmware is not confirmed here (would need
+    its own dedicated hardware investigation, out of scope for a bench-test stability fix) - but it's
+    a real, code-confirmed ~5s periodic reconfiguration cadence, a plausible enough explanation for
+    an occasional missed scan/connect that widening `attempts` (not touching src/ on an unconfirmed
+    hypothesis) is the appropriate response here: more independent chances to land outside whatever
+    window (real or coincidental) causes an occasional miss."""
+    for attempt in range(attempts):
+        try:
+            bench.join_dut_hotspot(ssid, password, timeout_s=45.0)
+            return
+        except HardwareTestFailure:
+            if attempt == attempts - 1:
+                raise
+            try:
+                wait_until(lambda: bench.is_ssid_visible(ssid), timeout_s=30.0, poll_interval_s=2.0, description=f"DUT's own hotspot ({ssid!r}) to be freshly scannable again before retrying the join")
+            except TimeoutError:
+                pass  # fall through and retry the join anyway - it may still succeed, and the
+                # join's own next HardwareTestFailure (or success) is the real signal either way
+
 _HOTSPOT_PASSWORD = "12345678"  # hardcoded in src/asy_wifi_service.py's _configure_hotspot_ap() - see §11.1
 
 
@@ -76,15 +119,10 @@ def joined_hotspot(board: Board, bench: BenchBridge, dut_ip: str, hotspot_ssid: 
     # is_ssid_visible() being True one moment doesn't guarantee `nmcli device wifi connect`'s own
     # internal (re)scan sees it a moment later (confirmed directly: failed once with "Wi-Fi network
     # could not be found" right after a successful is_ssid_visible() check) - ap_down() is
-    # idempotent (see its own docstring) so retrying the whole join here is safe.
-    for attempt in range(3):
-        try:
-            bench.join_dut_hotspot(hotspot_ssid, _HOTSPOT_PASSWORD, timeout_s=45.0)
-            break
-        except HardwareTestFailure:
-            if attempt == 2:
-                raise
-            time.sleep(3.0)
+    # idempotent (see its own docstring) so retrying the whole join here is safe. See
+    # _join_dut_hotspot_with_reverify_retry()'s own docstring for the 2026-09-08 repro that found
+    # this needs re-verification per retry, not just a blind sleep.
+    _join_dut_hotspot_with_reverify_retry(bench, hotspot_ssid, _HOTSPOT_PASSWORD)
 
     # Stage 2 - DHCP.
     wait_until(lambda: bool(bench.gateway_ip()), timeout_s=45.0, poll_interval_s=2.0, description="bench radio DHCP lease + gateway on the DUT hotspot")
@@ -202,7 +240,7 @@ def test_repeated_associate_disassociate_cycles_dont_wedge_the_dhcp_server(bench
         bench.leave_dut_hotspot_and_restore_bridge()
         bench.ap_down()
         wait_until(lambda: bench.is_ssid_visible(hotspot_ssid), timeout_s=15.0, poll_interval_s=1.0, description=f"DUT hotspot {hotspot_ssid!r} visible again on reassociate cycle {cycle}")
-        bench.join_dut_hotspot(hotspot_ssid, _HOTSPOT_PASSWORD, timeout_s=45.0)
+        _join_dut_hotspot_with_reverify_retry(bench, hotspot_ssid, _HOTSPOT_PASSWORD)
         wait_until(lambda: bool(bench.gateway_ip()), timeout_s=45.0, poll_interval_s=2.0, description=f"DHCP lease on reassociate cycle {cycle}")
 
 
@@ -408,7 +446,7 @@ def test_rapid_associate_disassociate_churn_doesnt_wedge_station_management(benc
         bench.leave_dut_hotspot_and_restore_bridge()
         bench.ap_down()
         wait_until(lambda: bench.is_ssid_visible(hotspot_ssid), timeout_s=15.0, poll_interval_s=1.0, description=f"DUT hotspot {hotspot_ssid!r} visible again on churn cycle {cycle}")
-        bench.join_dut_hotspot(hotspot_ssid, _HOTSPOT_PASSWORD, timeout_s=45.0)
+        _join_dut_hotspot_with_reverify_retry(bench, hotspot_ssid, _HOTSPOT_PASSWORD)
     assert http_client.fetch(bench.gateway_ip(), 80, "GET", "/status", timeout_s=10.0).status_code == 200, "webserver unresponsive after rapid associate/disassociate churn"
 
 

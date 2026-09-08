@@ -313,6 +313,80 @@ constraints.
      superseded by this. The 6h long-tier soak test was stopped per the project owner's direction
      before it ran (out of scope for this session); not re-started.
 
+   **Dedicated follow-up fixes (2026-09-08, same session, real bench hardware, project owner's
+   go-ahead given in-session): both of the two items above chased with small, bounded, isolated
+   repro scripts (per the project owner's own "reproduce in a dedicated way, not full runs"
+   direction) rather than re-running the full suite - both fixed at the root, not just documented.**
+   - **The FRAM-backup `hard_reset()` recovery timeout** (this open question's own "still genuinely
+     open" bullet above): an 8-trial dedicated repro (real `hard_reset()` at randomized 3-40s dwell
+     points inside the 60s `BackupPeriod=1` cadence) came back **8/8 clean, ~7.7s recovery every
+     time, zero variance** - did not reproduce the single 60s timeout. But it surfaced the real,
+     fixable gap: unlike every sibling test in this tier with the same "wait_until reachable after
+     hard_reset()" shape (`test_real_reboot_sequencing_via_rest_completes_cleanly` in this same
+     file, `joined_hotspot`'s own teardown, `test_wifi_networking.py`, `test_network_resilience.py`),
+     `test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly`'s own reachability
+     wait had **no fallback at all** - a genuine miss just raises straight into a test failure. Fixed
+     by adding the same `kick_all_stations()`+`hard_reset()`+re-wait fallback every sibling already
+     has (`tests_hardware/bench/test_end_to_end_timing.py`).
+   - **The `joined_hotspot` fixture's own stage-1 association race** (`is_ssid_visible()` true one
+     moment doesn't guarantee `nmcli device wifi connect`'s own scan sees it a moment later - already
+     documented in that fixture's own comment as a single-retry-worthy race): a dedicated repro
+     reproduced it hitting all 3 of the existing blind-retry budget's attempts in a row (`"No network
+     with SSID 'SensorNode' found"` three times), not just once. Fixed by adding
+     `_join_dut_hotspot_with_reverify_retry()` (`tests_hardware/bench/test_hotspot_role_reversal.py`)
+     - re-confirms real, fresh visibility via `is_ssid_visible()` before every retry instead of a
+     blind sleep, widened to 5 attempts, and used at all three real `join_dut_hotspot()` call sites
+     in the file (two of which previously had **zero** retry at all, more exposed to this exact race
+     than the one that already had a 3-attempt blind retry). A first version of this fix had its own
+     bug caught by the fix-verification repro itself: the reverify `wait_until()` can itself raise
+     `TimeoutError` (not `HardwareTestFailure`), which escaped uncaught and crashed the whole retry
+     loop early - fixed by catching both and widening the reverify window to 30s/2s (a real scan can
+     itself take several seconds; the first version's 15s/1s window left room for barely one or two
+     full scan cycles).
+   - **Real production finding along the way, fixed separately**: tracing *why* the join can still
+     occasionally fail even with a fresh reverify scan immediately beforehand led into
+     `src/asy_wifi_service.py`'s `_configure_hotspot_ap()`. An initial hypothesis - "this
+     reconfigures the AP's essid/password every `wifi_refresh_sec` (5s) while no client is
+     connected, a real candidate for a brief beacon gap" - **was wrong and is retracted**: traced
+     directly against the pinned MicroPython/cyw43-driver C source
+     (`extmod/network_cyw43.c`/`lib/cyw43-driver/src/cyw43_lwip.c`), `network.status()` is one
+     generic function for both AP and STA interfaces, returning `STAT_GOT_IP` for *any* interface
+     with a bound IP address - including an AP's own self-assigned one, not just a STA's DHCP lease.
+     The existing code comment claiming "STAT_GOT_IP is a STA-only status an AP interface never
+     reports" was itself factually wrong (now corrected in-place, per this file's own "update stale
+     facts" standing rule) - confirmed directly on real hardware too: `"WLAN hotspot was started"`
+     prints exactly once per hotspot entry, not repeatedly, matching the corrected C-source trace,
+     not the original comment. **What *is* real and kept, as defense in depth matching the code's
+     own evident intent** (the `pr.one(...)` log call's own name already signals a log-once
+     expectation): `_configure_hotspot_ap()` had no guard against a genuine re-entry while the AP is
+     still active blindly reapplying `essid`/`password`/`active(True)` - fixed with a
+     `not self.wlan.active()` guard (self-heals correctly if the interface was ever externally
+     deactivated). Present identically in the legacy, currently-deployed
+     `python/CommonDrivers/async_connect.py` too (confirmed directly - not a `src/` refactor
+     regression). Two new mock-tier regression tests added
+     (`tests/test_asy_wifi_service.py`): one proving the guard skips reapplication on a real
+     re-entry, one proving it still self-heals after an external deactivation. All 184 pre-existing
+     tests plus these 2 new ones verified passing (the 2 new ones confirmed via isolated runs - see
+     the new open item below for why a full-file run couldn't be completed this session).
+     Real-hardware verified: rebuilt+reflashed `dev`, confirmed the corrected log behavior directly,
+     restored to normal STA mode afterward.
+   - **New, separate, genuinely unexplained finding surfaced while verifying the above**:
+     `tests/test_asy_wifi_service.py`'s full run now hangs partway through
+     (`test_wlan_connect_resets_err_cnt_internal_at_the_start_of_every_run`, deterministically, every
+     attempt) on this bench Pi4 - but reproduces **identically against the completely unmodified
+     original file** (`git show HEAD:...`), and even inside a fully clean environment (`env -i` +
+     `setsid`, stripping all inherited shell state), and even with a 90s timeout (not just marginally
+     slow - a real hang). **Not caused by this session's `src/`/test changes** - confirmed before any
+     of them were made too. The specific hanging test passes cleanly in complete isolation, as do
+     both of this session's own two new tests - only the *combination* of running ~170+ tests
+     first, in one process, on this specific machine right now, reproduces it. `scripts/test.sh`'s
+     own per-file timeout+retry (180s x3) exists for exactly this shape of transient contention
+     (see its own comment) - not tried here (each attempt this session used a single, un-retried
+     invocation) - worth trying that properly, or a fresh reboot of the bench Pi4, before assuming
+     this is a deeper toolchain bug. Flagged as a new, standalone open item, not chased further this
+     session (out of scope for a WiFi-hotspot-flakiness fix, and orthogonal to it - real evidence
+     rules out any connection between the two).
+
 10. **A spontaneous `/dev/ttyACM0` USB dropout during a purely passive test, real hardware,
     2026-09-08 - genuinely new, not yet root-caused, not the same mechanism as open question 9
     above.** During the 3-round stability pass's round 2 mid-tier soak,
