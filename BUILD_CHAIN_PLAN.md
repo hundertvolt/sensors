@@ -15,6 +15,37 @@ family), and `klkizi`/`grkizi`/`schlafzi` (the three "ArZi neu" units — curren
 hardware to each other, but each gets its own independent TOML file since future hardware
 divergence between them is expected).
 
+## Acceptance criteria — the actual promise (project owner's explicit direction, 2026-09-09)
+
+These are the literal, testable definition of "done" for Sessions 2/3/4/6 collectively — not new
+scope, a crystallization of what the rest of this doc already implies. Any future session touching
+the generator/website builder/CI matrix should validate its own work against these directly:
+
+1. **Adding a new driver module to the repo requires exactly one small, explicit fact: associating
+   its common name (the one used in a device TOML) with its actual Python file/class — nothing
+   else.** Everything else (schema fields, frozen-module inclusion, REST/config/error-log naming,
+   website field generation, wiring-port validation) is derived automatically from the driver file
+   itself once that association exists.
+   - Prefer deriving this association from the codebase's own already-mandatory naming convention
+     (`asy_<name>_driver.py` → `<Name>_Reader` class → `_NAME` constant, SPECIFICATION.md Part
+     C.5) rather than a separate hand-maintained lookup table — a `driver = "<name>"` TOML value
+     maps to its class purely by that existing naming rule, so writing the file correctly (already
+     mandatory) *is* the association, with nothing extra to keep in sync. Fall back to an explicit
+     table only where a driver genuinely can't follow the naming pattern.
+   - **Named exception, not a broken promise**: digital-twin coverage of a genuinely new chip type
+     still needs someone to hand-write that chip's simulated register/protocol behavior — inherently
+     bespoke, not derivable from the driver file. This is outside "the auto build" in the firmware/
+     website-generation sense this criterion is about.
+2. **Wiring up a new hardware combination of already-known modules requires exactly one new file —
+   the device's TOML — and nothing else; the full firmware+website build follows automatically.**
+   No driver code changes, no generator changes, no per-device test file. Session 3's and Session
+   6's own test suites must include a **synthetic "novel combination" fixture device** — existing
+   drivers mixed in a pin/bus layout none of the 6 real devices use — proving the full pipeline
+   (firmware build, website generation, digital-twin boot) succeeds from that one new file with
+   zero code changes elsewhere. This is a stronger proof than the 6 real devices alone, since those
+   are all hand-verified against real wiring facts rather than exercising the generator's full
+   generality.
+
 ## Core design decisions
 
 - **Config format**: TOML (matches `toolchain/versions.toml`'s existing precedent).
