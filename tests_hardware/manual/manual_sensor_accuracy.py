@@ -1,6 +1,6 @@
-"""Manual tests, Part 2 category E (tmp_hardware_test_candidates.md items 9-10): real sensor
-accuracy against a genuine external reference - distinct from the automated tier's own plausibility-
-only check (tests_hardware/flash/test_sensor_accuracy.py, sane bounds not exact reference)."""
+"""Manual tests: real sensor accuracy against a genuine external reference - distinct from
+tests_hardware/flash/test_sensor_accuracy.py's automated, plausibility-only (sane bounds, not
+exact reference) check."""
 
 from __future__ import annotations
 

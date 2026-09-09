@@ -1,23 +1,6 @@
-"""Manual-test runner: the primitives + entry point for every `[MANUAL]` real-hardware test
-(tmp_hardware_test_candidates.md Part 2, plus HARDWARE_TEST_PLAN.md §11.5 item 25) - kept
-structurally separate from the automated flash/bench runner (never invoked by `uv run pytest
-tests_hardware`, no pytest fixtures/collection involved at all) so an unattended automated pass can
-never silently stall waiting on a human who isn't there, per HARDWARE_TEST_PLAN.md §7's own design
-note and this project's "manual tests must be structurally separated from automated ones" requirement.
-
-Conventions every manual test in this package follows (HARDWARE_TEST_PLAN.md §7):
-  - print_instruction() before the window that depends on it, not after.
-  - Timing is human-executable on a breadboard test device (tens of seconds, chosen per what's
-    physically involved), never a value carried over from an automated/simulated test.
-  - confirm() waits for explicit human confirmation wherever the console survives the step;
-    countdown() is reserved for the genuine power-cycle cases where it doesn't.
-  - state_expected_outcome() prints what "passed" should look like before the script's own verdict,
-    for the tests that end in a human visual/instrument check rather than a script-only assertion.
-
-Run via `uv run python tests_hardware/manual/__main__.py` (all tests, in the order registered
-below) or `--list` / `--only <name>` to run a subset - see tests_hardware/README.md for the full
-recipe. **Never run this file (runner.py) directly** - see __main__.py's own docstring for the
-real duplicate-module-instance bug that causes (a silent, exit-0, zero-output no-op)."""
+"""Manual-test runner: primitives + entry point for every `[MANUAL]` real-hardware test - kept
+structurally separate from the automated flash/bench runner so an unattended pass never stalls on
+a human. Run via `__main__.py`, never this file directly - see tests_hardware/README.md."""
 
 from __future__ import annotations
 
@@ -65,7 +48,7 @@ def countdown(seconds: int, message: str) -> None:
 class ManualTest(NamedTuple):
     name: str
     description: str
-    tier: str  # "[USB]" or "[USB+WiFi]" - matches tmp_hardware_test_candidates.md's own tags
+    tier: str  # "[USB]" or "[USB+WiFi]"
     fn: Callable[[], None]
 
 
@@ -126,6 +109,5 @@ def main() -> int:
     return 0
 
 
-# Deliberately no `if __name__ == "__main__":` block here - see this module's own docstring and
-# __main__.py's docstring for why running this file directly causes a silent no-op (a duplicate
-# module-instance bug). Use `uv run python tests_hardware/manual/__main__.py` instead.
+# Deliberately no `if __name__ == "__main__":` block here - running this file directly causes a
+# silent no-op (see __main__.py). Use `uv run python tests_hardware/manual/__main__.py` instead.

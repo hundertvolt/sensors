@@ -1,8 +1,6 @@
-"""Manual test, Part 2 category D (tmp_hardware_test_candidates.md item 8): the one genuinely
-first-time-only manual step in an otherwise fully-automated real-hardware pass (HARDWARE_TEST_PLAN.md
-§6.1) - a blank board has no already-running firmware to trigger machine.bootloader() from, so its
-very first flash needs a human holding BOOTSEL. Every subsequent flash of that same board is
-tests_hardware/flash/test_toolchain_flash_boot.py's automated (`--allow-flash-cycle`-gated) path."""
+"""Manual test: the one first-time-only manual step in an otherwise automated real-hardware pass -
+a blank board has no running firmware to trigger machine.bootloader() from, so its first flash
+needs a human holding BOOTSEL. Every later flash is test_toolchain_flash_boot.py's automated path."""
 
 from __future__ import annotations
 

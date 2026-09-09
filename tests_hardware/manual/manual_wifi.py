@@ -1,9 +1,6 @@
-"""Manual tests, Part 2 category B (tmp_hardware_test_candidates.md items 4-5) plus
-HARDWARE_TEST_PLAN.md §11.5 item 25 (a genuine phone/laptop's OS-level captive-portal
-auto-detection against the DNS-only spoof - an open question §11.1's research surfaced, not
-settled by reading the code alone: src/captive_dns.py has no HTTP-level redirect, only DNS
-spoofing, so whether a real phone's "sign in to network" popup fires at all is genuinely unknown
-until a human tries it)."""
+"""Manual tests: a real phone/laptop joining the DUT's fallback hotspot, loading its website end
+to end, and observing whether OS-level captive-portal auto-detection fires against
+src/captive_dns.py's DNS-only spoof (no HTTP redirect exists - genuinely unknown until tried)."""
 
 from __future__ import annotations
 
@@ -40,7 +37,7 @@ def test_real_end_to_end_hotspot_session_real_client() -> None:
 
 @register(
     "real_phone_captive_portal_auto_detection",
-    "Observe whether a real phone/laptop's OS-level 'sign in to network' captive-portal auto-detection popup fires against src/captive_dns.py's DNS-only spoof (no HTTP-level redirect exists) - an open question this session's own research surfaced (HARDWARE_TEST_PLAN.md §11.1/§11.5 item 25), not settled by reading the code alone.",
+    "Observe whether a real phone/laptop's OS-level 'sign in to network' captive-portal auto-detection popup fires against src/captive_dns.py's DNS-only spoof (no HTTP-level redirect exists) - a genuinely open question, not settled by reading the code alone.",
     "[USB+WiFi][MANUAL]",
 )
 def test_real_phone_captive_portal_auto_detection() -> None:

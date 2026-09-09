@@ -203,6 +203,18 @@ constraints.
     testing directly on a Debian trixie (GCC 14.2) bench host outside this recipe. Whether to add a
     second trixie/GCC>=14 chroot target to the standing recipe (and if so, alongside or replacing
     noble) is an open choice for the project owner, not decided or built here.
+12. **Does `machine.soft_reset()` reset the RP2040 hardware counter `time.ticks_ms()` derives from?**
+    If it does, any `board.exec()` call spaced across `tests_hardware/flash/
+    test_bus_electrical_timing.py::test_ticks_ms_real_2pow30_rollover`'s multi-day wait would itself
+    corrupt the measurement (each such call interrupts via Ctrl-C, not soft-reset, unless mpremote's
+    own `_auto_soft_reset` default fires one). Confirm on the first real run of that test before
+    trusting its result.
+13. **Is "reads also blocked while the chip is write-protected" the intended, accepted behavior of
+    `FRAM_SPI`'s busy-flag protocol?** `_AsyBaseFramChunk._read_chunk()`'s busy/idle status-byte
+    protocol needs to WRITE a transient busy marker before it reads data, so a real write-protected
+    chip makes `chunk.read()` return `None` too, not just `chunk.write()` — confirmed directly on
+    real hardware (`tests_hardware/device_scripts/fram_write_protect_roundtrip.py`). Not decided
+    here; a project-owner call.
 
 ## Deferred / explicitly out-of-scope work
 - **Real-hardware re-test of the segfault fix and the memory-leak soak test — real-hardware forms

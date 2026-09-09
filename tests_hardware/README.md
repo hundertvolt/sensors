@@ -503,3 +503,43 @@ their own `RESULT: PASS/FAIL` line (exact `errno`, per-timer self-heal proof) ra
 crash," and neither invokes any `src/` driver module that could log to `errcount` in the first
 place (bare `machine.Timer` only) - so there is no comparable gap there to close. The original note
 above overstated this; corrected here rather than left stale.
+
+## Fifth pass - FRAM fault-injection: CS hijack and hard-reset race
+
+Partially closes the "still not automated" gap noted in the Third pass above (a genuine power-loss
+test of FRAM backup/restore) - not full power loss, but two real, reachable fault shapes during an
+in-flight FRAM write:
+
+- **FRAM CS-pin hijack** (`device_scripts/fram_cs_hijack_fault_injection_and_recovery.py`): races a
+  software CS deassertion against an in-flight SPI write/read. `SPIDevice.write()`/`readinto()` have
+  no internal yield point (synchronous `machine.SPI` calls), so the only reachable race window is
+  `SPIDevice.__aenter__()`'s `await asyncio.sleep(0.001)` - CS already asserted, opcode not yet
+  clocked out. Confirmed empirically (2026-09-04, this bench unit): 5/5 trials of both scenarios
+  landed identically (a deterministic scheduling-order race, not timing luck). Write hijack: the
+  write never reaches the chip (real memory shows the untouched original). Read hijack: the buffer
+  comes back all zero bytes (MISO's real electrical state while SO is high-Z during deselect), never
+  the real seeded pattern, never an exception. Both scenarios end with `verify_present()` succeeding
+  and a fresh write+read round trip working normally - the chip's SPI protocol state machine is
+  never left wedged by a CS-based interruption.
+- **FRAM hard-reset race during write** (`device_scripts/fram_reset_race_during_write_seed_and_race.py`
+  + `..._verify_recovery.py`): races a genuine `machine.reset()` against an in-flight FRAM write, at
+  the same yield-point technique as the CS-hijack script above. A real reset is a genuinely different
+  fault than a CS deselect: the FRAM chip has no idea the RP2040 rebooted, so the WEL write-enable
+  latch (already SET by the prior WREN handshake) is left exactly as it was, not cleanly unwound.
+  Because `SPIDevice.write()`/`readinto()` have no internal yield point, this cannot prove a
+  genuinely torn (partially-written) transfer - only that a reset landing right as a write session
+  begins leaves the target region untouched and the driver/chip fully recoverable, including that the
+  stray SET WEL causes no problem for the very next real write. A true mid-byte-transfer power loss
+  is architecturally unreachable via any interpreter-level race (same class of limitation as the
+  wedged-bus case in SPECIFICATION.md Part F.2) - only a real external power cycle or an
+  out-of-process host-triggered interrupt could reach that point; this is the honest, safely-buildable
+  scope, not the exhaustive one.
+
+**Isolated-driver device-script cfgmgr priming pattern**: any device script that constructs a
+`*_Reader` directly (not via `sensortask_*.build_system()`) must prime `reader.cfgmgr.valid = True`
+and `reader.cfgmgr._cache = {...}` with the driver's own schema defaults before starting read/trigger
+tasks. Without it, `cfgmgr.valid` stays `False`, the reader's first config read returns `None`, and
+the read loop fails silently (visible only at `debug=5`, e.g. "Error reading config data!") without
+ever attempting a real sensor read. Found independently in `bmp3xx_plausibility_read.py` and
+`sgp40_fram_backup_restore.py`. Never call `cfgmgr.setup()` in such scripts - that performs a real
+littlefs file write/read.

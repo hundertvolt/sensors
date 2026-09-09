@@ -349,7 +349,7 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_repeated_r
         bench.kick_all_stations()
         board.hard_reset()
         wait_until(lambda: http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200, timeout_s=60.0, poll_interval_s=3.0, description="DUT reachable again after a recovery hard_reset()")
-        print("RESULT NOTE: recovered via a fallback hard_reset() after the flapping+bus-load compound - see test_real_wifi_flaps_repeatedly_without_wedging_the_system's own account")
+        print("RESULT NOTE: recovered via a fallback hard_reset() after the flapping+bus-load compound")
 
     if not recovered_via_hard_reset:
         for module in ("SCD30", "BMP3XX", "SGP40", "FRAM"):

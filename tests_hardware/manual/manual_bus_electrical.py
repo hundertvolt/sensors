@@ -1,5 +1,4 @@
-"""Manual tests, Part 2 category A (tmp_hardware_test_candidates.md items 1-3): real bus/electrical
-timing that needs a human's hands on the breadboard."""
+"""Manual tests: real bus/electrical timing that needs a human's hands on the breadboard."""
 
 from __future__ import annotations
 
