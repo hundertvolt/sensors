@@ -12,7 +12,7 @@ already passed - safe to hand straight to `buildgen.graph`/`buildgen.codegen`.""
 
 from pathlib import Path
 
-from buildgen.buildspec import ADDRESS_CAPABLE_DRIVERS, BUS_ATTACHED_DRIVERS, FIXED_ADDRESS_DRIVERS, REQUIRED_TOML_FIELDS
+from buildgen.buildspec import ADDRESS_CAPABLE_DRIVERS, ALLOWED_INSTANCE_FIELDS, BUS_ATTACHED_DRIVERS, FIXED_ADDRESS_DRIVERS, REQUIRED_TOML_FIELDS
 from buildgen.driver_registry import SERVICE_DRIVERS, parse_name_constant, resolve_driver
 from buildgen.errors import BuildError
 from buildgen.model import DeviceModel, InstanceSpec, instance_label, load_device, resolve_instance_key
@@ -23,8 +23,19 @@ _BUS_WIRE_FIELDS = {
     "i2c": ("scl_pin", "sda_pin"),
     "spi": ("sck_pin", "mosi_pin", "miso_pin"),
 }
+# Every field a bus table of this kind may declare, in total - its own required wire pins plus
+# "frequency" (both i2c/asy_i2c_driver.I2C's own required param, checked separately above for a
+# more specific message) and, i2c-only, "timeout" (asy_i2c_driver.I2C's own optional param;
+# asy_spi_driver.SPI has none) - itself optional at the bus-table-shape level, only actually
+# required when an scd30 instance sits on this specific bus (enforced by that driver's own
+# @requires tag, not here).
+_BUS_ALLOWED_FIELDS = {
+    "i2c": frozenset(_BUS_WIRE_FIELDS["i2c"]) | {"frequency", "timeout"},
+    "spi": frozenset(_BUS_WIRE_FIELDS["spi"]),
+}
 _REQUIRED_DEVICE_FIELDS = ("name", "hostname", "hotspot_password", "conn_fail_to_hotspot", "hotspot_time_min")
 _REQUIRED_DEVICE_INT_FIELDS = ("conn_fail_to_hotspot", "hotspot_time_min")
+_ALLOWED_DEVICE_FIELDS = frozenset(_REQUIRED_DEVICE_FIELDS) | {"wiring"}
 
 # [device.wiring] fields and which mandatory-infra consumer's own _WIRING they resolve against -
 # both fixed and known ahead of time (BUILD_CHAIN_PLAN.md's schema section: exactly these two
@@ -40,6 +51,19 @@ def _bus_kind(bus_name: str, device: str) -> str:
 
 
 def _check_device_table(model: DeviceModel) -> None:
+    # KNOWN GAP, discovered during this session's own review, pre-existing (not introduced here):
+    # `name`/`hostname`/`hotspot_password` are validated below (presence, shape, the
+    # SensorStation<name> derivation formula) but this generator never actually wires any of the
+    # three into generated code - neither AsyConnTime.__init__ nor any hand-written
+    # sensortask_*.py has a constructor-time injection point for them. Hostname/HotspotPW are
+    # ConfigManager-persisted runtime values with a single hardcoded shared default
+    # ("SensorNode"/"12345678" - asy_wifi_service.py's own _VAL_HOST/_VAL_HOTSPOT_PW), identical
+    # across every device's frozen build; confirmed directly that src/sensortask_wozi.py doesn't
+    # set them either. So today, every device (hand-written or generated) actually boots with
+    # hostname "SensorNode", not "SensorStationWozi" etc., regardless of what devices/*.toml says.
+    # Flagged in this session's PR rather than silently left implicit - fixing it needs either a
+    # `src/` constructor-time override mechanism (out of this session's narrow-additive-only scope)
+    # or a build-artifact-tree config-seeding step (Session 6's territory), not a buildgen/-only fix.
     dev = model.doc.get("device")
     if not isinstance(dev, dict):
         raise BuildError(model.device, "missing [device] table")
@@ -54,6 +78,9 @@ def _check_device_table(model: DeviceModel) -> None:
     expected_hostname = "SensorStation" + dev["name"]
     if dev["hostname"] != expected_hostname:
         raise BuildError(model.device, f"[device].hostname is {dev['hostname']!r}, expected {expected_hostname!r} (SensorStation<name>)", field="hostname")
+    unknown = set(dev) - _ALLOWED_DEVICE_FIELDS
+    if unknown:
+        raise BuildError(model.device, f"[device] declares unrecognized field(s) {sorted(unknown)} - typo, or copy-pasted from an unrelated table?", field=sorted(unknown)[0])
 
 
 def _check_bus_tables(model: DeviceModel) -> "dict[str, dict]":
@@ -73,6 +100,9 @@ def _check_bus_tables(model: DeviceModel) -> "dict[str, dict]":
             raise BuildError(model.device, f"bus.{bus_name} (i2c) is missing an int frequency", field="frequency")
         if kind == "spi" and "frequency" in bus_table:
             raise BuildError(model.device, f"bus.{bus_name} (spi) declares frequency - asy_spi_driver.SPI has no such parameter", field="frequency")
+        unknown = set(bus_table) - _BUS_ALLOWED_FIELDS[kind]
+        if unknown:
+            raise BuildError(model.device, f"bus.{bus_name} ({kind}) declares unrecognized field(s) {sorted(unknown)} - typo, or copy-pasted from an unrelated bus kind?", field=sorted(unknown)[0])
     return buses
 
 
@@ -105,6 +135,14 @@ def _check_required_fields(model: DeviceModel, buses: "dict[str, dict]") -> None
             raise BuildError(model.device, f"{spec.label} references undeclared bus {spec.fields['bus']!r}", instance=spec.label, field="bus")
         if "address" in spec.fields and spec.driver not in ADDRESS_CAPABLE_DRIVERS:
             raise BuildError(model.device, f"{spec.label} declares an address field, but {spec.driver!r} has no address-select pin (see buildgen.buildspec.ADDRESS_CAPABLE_DRIVERS)", instance=spec.label, field="address")
+        # Catch-all: any field beyond "driver"/"name_ext" (structural, handled by model.py) and
+        # this driver's own required+optional set is a copy-paste/typo error (BUILD_CHAIN_PLAN.md's
+        # "plain wrong/missing/copy-pasted fields") - e.g. an "irq_pin" left over from copying a
+        # scd30 block to make a new sgp40 instance, silently ignored by codegen otherwise since it
+        # never appears in any driver's own _build_call() branch.
+        unknown = set(spec.fields) - {"driver", "name_ext"} - ALLOWED_INSTANCE_FIELDS.get(spec.driver, frozenset())
+        if unknown:
+            raise BuildError(model.device, f"{spec.label} declares unrecognized field(s) {sorted(unknown)} for driver {spec.driver!r}", instance=spec.label, field=sorted(unknown)[0])
 
 
 def _check_all_buses_used(model: DeviceModel, buses: "dict[str, dict]") -> None:

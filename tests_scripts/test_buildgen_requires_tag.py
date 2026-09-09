@@ -63,3 +63,11 @@ def test_check_requires_tags_missing_bus_field():
     tags = (RequiresTag("timeout", ">=", 200000, "@requires bus.timeout>=200000"),)
     with pytest.raises(BuildError, match="is missing field"):
         check_requires_tags(tags, {}, "dev", "scd30", "i2c0")
+
+
+def test_check_requires_tags_wrong_type_fails_loud_not_a_raw_traceback():
+    # A malformed TOML value (e.g. "200ms" where an int is expected) must produce a clean
+    # BuildError, not an uncaught TypeError from comparing str >= int.
+    tags = (RequiresTag("timeout", ">=", 200000, "@requires bus.timeout>=200000"),)
+    with pytest.raises(BuildError, match="not comparable"):
+        check_requires_tags(tags, {"timeout": "200ms"}, "dev", "scd30", "i2c0")

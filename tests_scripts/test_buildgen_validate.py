@@ -130,6 +130,41 @@ def test_address_field_on_driver_without_address_select_pin(tmp_path: Path, src_
         _build(tmp_path, src_dir, doc)
 
 
+def test_instance_unknown_field_rejected(tmp_path: Path, src_dir: Path):
+    # A copy-paste leftover (e.g. converting a scd30 block to sgp40 but forgetting to drop
+    # irq_pin) must fail loud, not be silently dropped by codegen.
+    doc = base_doc()
+    doc["instance"][1]["irq_pin"] = 9  # sgp40 has no irq_pin field
+    with pytest.raises(BuildError, match="unrecognized field"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_instance_optional_field_is_allowed(tmp_path: Path, src_dir: Path):
+    doc = base_doc()
+    doc["instance"][0]["trigger_sec"] = 7  # scd30's own optional field
+    _build(tmp_path, src_dir, doc)  # no raise
+
+
+def test_device_unknown_field_rejected(tmp_path: Path, src_dir: Path):
+    doc = base_doc()
+    doc["device"]["conn_fail_to_hotspot_typo"] = 5
+    with pytest.raises(BuildError, match="unrecognized field"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_bus_unknown_field_rejected(tmp_path: Path, src_dir: Path):
+    doc = base_doc()
+    doc["bus"]["i2c0"]["baud_rate"] = 100000  # not a real asy_i2c_driver.I2C parameter
+    with pytest.raises(BuildError, match="unrecognized field"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_bus_timeout_is_allowed_on_i2c(tmp_path: Path, src_dir: Path):
+    doc = base_doc()
+    doc["bus"]["i2c0"]["timeout"] = 300000
+    _build(tmp_path, src_dir, doc)  # no raise - i2c's own optional field, no false positive
+
+
 def test_declared_bus_never_used(tmp_path: Path, src_dir: Path):
     doc = base_doc()
     doc["bus"]["i2c1"] = {"scl_pin": 20, "sda_pin": 21, "frequency": 50000}

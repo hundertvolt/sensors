@@ -46,13 +46,14 @@ def _parse(path: Path, device: str, driver: str) -> ast.Module:
         raise BuildError(device, f"{path} has a syntax error: {e}", instance=driver) from e
 
 
-def _find_reader_class(tree: ast.Module) -> str | None:
+def _find_reader_classes(tree: ast.Module) -> "list[str]":
+    found = []
     for node in ast.walk(tree):
         if isinstance(node, ast.ClassDef):
             base_names = {b.id for b in node.bases if isinstance(b, ast.Name)}
             if base_names & _READER_BASES:
-                return node.name
-    return None
+                found.append(node.name)
+    return found
 
 
 def _class_needs_setup(tree: ast.Module, class_name: str) -> bool:
@@ -88,13 +89,20 @@ def resolve_driver(driver: str, src_dir: Path, device: str) -> DriverInfo:
     if not path.is_file():
         raise BuildError(device, f"unknown driver {driver!r}: no {path.name} in {src_dir} and no buildgen.driver_registry._OVERRIDES entry", instance=driver)
     tree = _parse(path, device, driver)
-    found_class_name = _find_reader_class(tree)
-    if found_class_name is None:
+    found = _find_reader_classes(tree)
+    if not found:
         raise BuildError(
             device,
             f"{path} defines no SensorReader/SensorReaderConfig subclass - add one, or add {driver!r} to buildgen.driver_registry._OVERRIDES if it genuinely can't follow that convention",
             instance=driver,
         )
+    if len(found) > 1:
+        raise BuildError(
+            device,
+            f"{path} defines more than one SensorReader/SensorReaderConfig subclass ({sorted(found)}) - ambiguous, add {driver!r} to buildgen.driver_registry._OVERRIDES to pick one explicitly",
+            instance=driver,
+        )
+    found_class_name = found[0]
     return DriverInfo(driver, module, found_class_name, "sensor", path, _class_needs_setup(tree, found_class_name))
 
 

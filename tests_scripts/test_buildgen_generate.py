@@ -103,3 +103,49 @@ def test_build_error_reports_device_and_field(tmp_path: Path, src_dir: Path):
         generate_device(path, src_dir)
     assert "broken_device" in str(exc_info.value)
     assert "hotspot_time_min" in str(exc_info.value)
+
+
+def test_cli_writes_module_and_boot_entry_to_out_dir(repo_root: Path, tmp_path: Path):
+    from buildgen.generate import main
+
+    out_dir = tmp_path / "out"
+    exit_code = main([str(repo_root / "devices" / "wozi.toml"), "--out-dir", str(out_dir)])
+    assert exit_code == 0
+    assert (out_dir / "sensortask_wozi.py").is_file()
+    assert (out_dir / "wozi_boot.py").is_file()
+    ast.parse((out_dir / "sensortask_wozi.py").read_text())
+
+
+def test_cli_prints_module_source_without_out_dir(repo_root: Path, capsys: pytest.CaptureFixture):
+    from buildgen.generate import main
+
+    exit_code = main([str(repo_root / "devices" / "wozi.toml")])
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert "async def build_system(" in captured.out
+
+
+def test_cli_reports_build_error_on_stderr_and_exits_nonzero(tmp_path: Path, capsys: pytest.CaptureFixture):
+    from buildgen.generate import main
+
+    doc = base_doc()
+    del doc["device"]["hotspot_time_min"]
+    path = write_doc(tmp_path, "broken_device", doc)
+    exit_code = main([str(path), "--src-dir", str(Path(__file__).resolve().parent.parent / "src")])
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert "hotspot_time_min" in captured.err
+
+
+def test_hostname_and_hotspot_password_are_not_yet_wired_into_generated_code(repo_root: Path, src_dir: Path, ext_dir: Path):
+    # Documents a real, pre-existing gap found during this session's own review (see
+    # buildgen/validate.py's _check_device_table() comment for the full account): [device].name/
+    # hostname/hotspot_password are validated (presence, shape, the SensorStation<name> formula)
+    # but neither this generator nor any hand-written sensortask_*.py actually has a
+    # constructor-time injection point for them - AsyConnTime's Hostname/HotspotPW are
+    # ConfigManager-persisted runtime values with one hardcoded default shared by every device's
+    # build. This test is a tripwire: it should start failing (and get deleted/updated) the day a
+    # future session actually wires either value into generated code.
+    result = generate_device(repo_root / "devices" / "wozi.toml", src_dir, ext_dir)
+    assert "SensorStationWozi" not in result.module_source
+    assert "12345678" not in result.module_source

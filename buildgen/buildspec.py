@@ -24,6 +24,24 @@ REQUIRED_TOML_FIELDS: dict[str, tuple[str, ...]] = {
     "notification": (),
 }
 
+# TOML fields a driver's instances *may* declare, beyond the required ones above - present because
+# the underlying constructor param has its own default (e.g. BMP3xx_Reader's own address=0x77).
+OPTIONAL_TOML_FIELDS: dict[str, tuple[str, ...]] = {
+    "scd30": ("trigger_sec",),
+    "sgp40": (),
+    "bmp3xx": ("address", "trigger_sec"),
+    "fram": (),
+    "neopixel": (),
+    "notification": (),
+}
+
+# Every field an instance of this driver may legitimately declare (beyond "driver"/"name_ext") -
+# a field outside this set is a copy-paste/typo error, not a silently-dropped no-op
+# (BUILD_CHAIN_PLAN.md's "a copy-paste duplicate... plain wrong/missing/copy-pasted fields").
+ALLOWED_INSTANCE_FIELDS: dict[str, frozenset[str]] = {
+    driver: frozenset(REQUIRED_TOML_FIELDS[driver]) | frozenset(OPTIONAL_TOML_FIELDS[driver]) for driver in REQUIRED_TOML_FIELDS
+}
+
 # Drivers whose instances sit on a declared [bus.*] - i.e. carry a "bus" TOML field at all.
 BUS_ATTACHED_DRIVERS = frozenset(REQUIRED_TOML_FIELDS) - {"neopixel", "notification"}
 

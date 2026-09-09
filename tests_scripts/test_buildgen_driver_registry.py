@@ -50,6 +50,12 @@ def test_resolve_driver_file_with_no_reader_subclass(tmp_path: Path):
         resolve_driver("bogus", tmp_path, "dev")
 
 
+def test_resolve_driver_file_with_two_reader_subclasses_is_ambiguous(tmp_path: Path):
+    (tmp_path / "asy_dual_driver.py").write_text("class Foo_Reader(SensorReader):\n    pass\n\n\nclass Bar_Reader(SensorReaderConfig):\n    pass\n")
+    with pytest.raises(BuildError, match="ambiguous"):
+        resolve_driver("dual", tmp_path, "dev")
+
+
 def test_resolve_driver_syntax_error_in_driver_file(tmp_path: Path):
     (tmp_path / "asy_broken_driver.py").write_text("class Foo(:\n")
     with pytest.raises(BuildError, match="syntax error"):

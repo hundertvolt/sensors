@@ -59,7 +59,20 @@ def check_requires_tags(tags: "tuple[RequiresTag, ...]", bus_table: dict, device
         actual = bus_table.get(tag.field)
         if actual is None:
             raise BuildError(device, f"bus.{bus_name} is missing field {tag.field!r}, required by {instance_label} ({tag.raw!r})", instance=instance_label, field=tag.field)
-        if not _OPS[tag.op](actual, tag.value):
+        try:
+            satisfied = _OPS[tag.op](actual, tag.value)
+        except TypeError:
+            # A malformed TOML value (e.g. a string where the tag expects a number) must fail
+            # loud as a BuildError, not surface as a raw, uncaught TypeError from the comparison
+            # itself - _check_bus_tables() only validates the handful of bus fields it knows about
+            # by name (scl_pin/sda_pin/frequency/...), not every field an @requires tag might name.
+            raise BuildError(
+                device,
+                f"bus.{bus_name}.{tag.field}={actual!r} is not comparable to {instance_label}'s requirement {tag.raw!r} (wrong type)",
+                instance=instance_label,
+                field=tag.field,
+            ) from None
+        if not satisfied:
             raise BuildError(
                 device,
                 f"bus.{bus_name}.{tag.field}={actual!r} does not satisfy {instance_label}'s requirement {tag.raw!r}",
