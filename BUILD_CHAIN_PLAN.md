@@ -133,6 +133,24 @@ proceed rather than degrading:
   REST/config-name collision with no disambiguating extension, a missing required pin/bus field, a
   copy-paste duplicate, or any other structurally broken definitions file. Typical real-world
   causes: misconfigured definition files, and plain wrong/missing/copy-pasted fields.
+- **Global-resource-collision checks are their own error class and must not be skipped.**
+  Overlapping bus addresses, double-claimed pin numbers, and any other double-definition of a
+  resource meant to be exclusive are *syntactically valid, individually valid-looking fields that
+  are still wrong in the whole-file view* — they can only be caught by a cross-instance pass over
+  the entire device, never by validating one field at a time. Concretely:
+  - **Schema shape**: model each bus (`i2c0`/`i2c1`/`spi0`-style peripheral instantiation) as its
+    own top-level entry owning its own shared wire pins (SCL/SDA, SCK/MOSI/MISO), separate from
+    each instance's own *exclusive* resources (its address on that bus, its CS pin, its IRQ pin) —
+    mirrors how the real code already builds a bus once and passes it into each device
+    constructor. This lets the validator use schema shape to tell "shared by design" apart from
+    "must be exclusive," rather than guessing per field.
+  - **Global GPIO-pin exclusivity**: one flat namespace across the whole device — every bus's wire
+    pins, every instance's CS pin, every instance's IRQ pin, every standalone peripheral pin
+    (Neopixel data, any future direct-GPIO driver). A physical pin wired to two different signals
+    is always an error, regardless of what role either signal plays.
+  - **Per-bus address exclusivity**: scoped, not global — two instances on the *same* bus can't
+    share an address, but the same address value on two *different* buses is legitimate and must
+    not false-positive.
 - **Never produce a corrupted or partial build.** On any detected error, abort the entire build
   immediately — no partial `build/<device>/` output left behind that could be mistaken for a real
   artifact.
