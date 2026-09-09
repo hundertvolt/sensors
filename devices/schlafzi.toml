@@ -11,6 +11,17 @@ name = "Schlafzi"
 hostname = "SensorStationSchlafzi"
 hotspot_password = "12345678"
 
+# Mandatory infrastructure tuning - wifi/ntp/system are never modeled as [[instance]] entries
+# (every buildable device has them, unconditionally; the TOML models optional modules only -
+# BUILD_CHAIN_PLAN.md's own schema decision, 2026-09-09). Required, not defaulted: a device TOML
+# missing either field below is a build-time error, same fail-loud contract as everything else in
+# this file (tests_scripts/test_device_tomls.py's check_system_config_present_and_valid enforces
+# this by hand until Session 3's generator exists). modules/sensortask-neu.py:
+# `conn = asy_conn_time(..., conn_fail_to_hotspot=5, hotspot_time_min=8, ...)`.
+[system_config]
+conn_fail_to_hotspot = 5
+hotspot_time_min = 8
+
 # SCD30 lives on i2c0 here (modules/sensortask-neu.py: `i2c0 = asy_i2c_driver.I2C(0, 13, 12,
 # ...)`, `scd_reader = SCD30_Reader(i2c0, 8, ...)`) - same i2c0/i2c1 pin pair as arzi's own layout.
 # timeout=200000 (200ms): same SCD30-datasheet clock-stretch headroom as wozi/dev/arzi's own SCD30
@@ -73,17 +84,6 @@ max_size = 0x2000
 [[instance]]
 driver = "neopixel"
 pin = 15
-
-[[instance]]
-driver = "wifi"
-conn_fail_to_hotspot = 5
-hotspot_time_min = 8
-
-[[instance]]
-driver = "ntp"
-
-[[instance]]
-driver = "system"
 
 [[instance]]
 driver = "notification"

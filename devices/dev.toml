@@ -7,6 +7,17 @@ name = "Dev"
 hostname = "SensorStationDev"
 hotspot_password = "12345678"
 
+# Mandatory infrastructure tuning - wifi/ntp/system are never modeled as [[instance]] entries
+# (every buildable device has them, unconditionally; the TOML models optional modules only -
+# BUILD_CHAIN_PLAN.md's own schema decision, 2026-09-09). Required, not defaulted: a device TOML
+# missing either field below is a build-time error, same fail-loud contract as everything else in
+# this file (tests_scripts/test_device_tomls.py's check_system_config_present_and_valid enforces
+# this by hand until Session 3's generator exists). src/sensortask_dev.py:
+# `conn = AsyWifiService(..., conn_fail_to_hotspot=5, hotspot_time_min=8, ...)`.
+[system_config]
+conn_fail_to_hotspot = 5
+hotspot_time_min = 8
+
 # BMP3xx sits alone on i2c0 here (src/sensortask_dev.py: `i2c0 = asy_i2c_driver.I2C(0, 13, 12,
 # ...)`) - reverse of wozi's own bus pairing, deliberate (SPECIFICATION.md Part C.8's bus-hazard
 # cross-device-interleaving concern). No SCD30 on this bus, so no clock-stretch timeout override
@@ -73,17 +84,6 @@ driver = "neopixel"
 # GPIO18 on this bench unit (wozi: GPIO15) - src/sensortask_dev.py: `pixel = NeopixelDriver(18,
 # ...)`.
 pin = 18
-
-[[instance]]
-driver = "wifi"
-conn_fail_to_hotspot = 5
-hotspot_time_min = 8
-
-[[instance]]
-driver = "ntp"
-
-[[instance]]
-driver = "system"
 
 [[instance]]
 driver = "notification"

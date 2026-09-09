@@ -8,6 +8,13 @@ author could introduce (global GPIO-pin exclusivity, per-bus address exclusivity
 collision) - checked by hand here since no automated validator exists yet (this initiative's own
 "Global-resource-collision awareness" priming note).
 
+The TOML models *optional* modules only. WiFi/NTP/SystemService are mandatory infrastructure (every
+buildable device has all three unconditionally) and are never `[[instance]]` entries - their own
+per-device-tunable knobs live in a required `[system_config]` table instead (BUILD_CHAIN_PLAN.md's
+"Device TOML schema", revised 2026-09-09). This suite checks both directions of that rule: the
+required table is present and valid, and the three mandatory driver kinds never leak into
+`[[instance]]`.
+
 Every collision-detection rule is exercised twice: once against each of the 6 real files (the
 correct-path case - proving no rule false-positives on real data) and once against a small
 synthetic doc engineered to violate exactly that rule (the error-handling case - proving the check
@@ -21,16 +28,23 @@ import tomllib
 
 DEVICE_NAMES = ["dev", "wozi", "arzi", "klkizi", "grkizi", "schlafzi"]
 
-# Every device is expected to declare exactly these singleton-service driver kinds, plus scd30 and
+# Every device is expected to declare exactly these optional-module driver kinds, plus scd30 and
 # sgp40 (every real device has both - BUILD_CHAIN_PLAN.md's priming note). bmp3xx is present only
 # on wozi/dev (see _DEVICES_WITH_BMP3XX below) - the one real per-device sensor-set difference today.
-_ALWAYS_PRESENT_DRIVERS = {"scd30", "sgp40", "fram", "neopixel", "wifi", "ntp", "system", "notification"}
+# wifi/ntp/system are deliberately excluded - mandatory infrastructure, never [[instance]] entries
+# (see module docstring and _MANDATORY_INFRA_DRIVERS below).
+_ALWAYS_PRESENT_DRIVERS = {"scd30", "sgp40", "fram", "neopixel", "notification"}
 _DEVICES_WITH_BMP3XX = {"wozi", "dev"}
 # Driver kinds that can have more than one instance per device (BUILD_CHAIN_PLAN.md's schema:
 # "Every driver kind that can have more than one instance per device accepts this [name_ext]
 # field; a singleton service kind ... doesn't declare it at all").
 _MULTI_INSTANCE_CAPABLE_DRIVERS = {"scd30", "sgp40", "bmp3xx"}
-_SINGLETON_DRIVERS = {"fram", "neopixel", "wifi", "ntp", "system", "notification"}
+_SINGLETON_DRIVERS = {"fram", "neopixel", "notification"}
+# Mandatory infrastructure - present on every real device, but never modeled as [[instance]]
+# entries at all (BUILD_CHAIN_PLAN.md's "Device TOML schema" - the TOML models optional modules
+# only). Tuned instead via the required [system_config] table.
+_MANDATORY_INFRA_DRIVERS = {"wifi", "ntp", "system"}
+_REQUIRED_SYSTEM_CONFIG_FIELDS = ("conn_fail_to_hotspot", "hotspot_time_min")
 
 _REQUIRED_BUS_PIN_FIELDS = {
     "i2c": {"scl_pin", "sda_pin"},
@@ -156,6 +170,27 @@ def check_no_instance_name_collision(doc: dict, label: str) -> None:
     assert len(names) == len(set(names)), f"{label}: instance name collision in {names}"
 
 
+def check_no_mandatory_infra_modeled_as_instance(doc: dict, label: str) -> None:
+    # wifi/ntp/system are mandatory infrastructure - the TOML models optional modules only
+    # (BUILD_CHAIN_PLAN.md's "Device TOML schema", revised 2026-09-09) - so none of them may ever
+    # appear in [[instance]], not even redundantly alongside [system_config].
+    drivers = {inst["driver"] for inst in doc["instance"]}
+    leaked = drivers & _MANDATORY_INFRA_DRIVERS
+    assert not leaked, f"{label}: {sorted(leaked)} modeled as [[instance]] - mandatory infrastructure belongs in [system_config], never as an instance"
+
+
+def check_system_config_present_and_valid(doc: dict, label: str) -> None:
+    # WiFi's own per-device-tunable knobs (conn_fail_to_hotspot/hotspot_time_min) live here since
+    # wifi itself isn't an [[instance]]. Required, not defaulted - a missing field is a build-time
+    # error (BUILD_CHAIN_PLAN.md's "Build/generator script quality bar" fail-loud contract), so this
+    # check fails loudly too rather than falling back to some assumed default value.
+    cfg = doc.get("system_config")
+    assert cfg is not None, f"{label}: no [system_config] table - required for mandatory wifi/ntp/system tuning"
+    for field in _REQUIRED_SYSTEM_CONFIG_FIELDS:
+        assert field in cfg, f"{label}: [system_config] is missing required field {field!r}"
+        assert isinstance(cfg[field], int) and not isinstance(cfg[field], bool), f"{label}: [system_config].{field} must be an int, got {cfg[field]!r}"
+
+
 # --- shape/parse tests, run against the 6 real files --------------------------------------------
 
 
@@ -239,6 +274,16 @@ def test_no_instance_name_collision(devices_dir: Path, device: str):
     check_no_instance_name_collision(_load(devices_dir, device), device)
 
 
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_no_mandatory_infra_modeled_as_instance(devices_dir: Path, device: str):
+    check_no_mandatory_infra_modeled_as_instance(_load(devices_dir, device), device)
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_system_config_present_and_valid(devices_dir: Path, device: str):
+    check_system_config_present_and_valid(_load(devices_dir, device), device)
+
+
 def test_bmp3xx_only_present_on_wozi_and_dev(devices_dir: Path):
     # arzi/klkizi/grkizi/schlafzi have no BMP3xx at all (confirmed directly against
     # modules/sensortask-arzi.py / modules/sensortask-neu.py - neither imports/constructs one).
@@ -268,6 +313,7 @@ def test_klkizi_grkizi_schlafzi_share_identical_wiring(devices_dir: Path):
 # "everything else about this doc is fine" assumption holds.
 _BASE_DOC: dict = {
     "device": {"name": "Test", "hostname": "SensorStationTest", "hotspot_password": "x"},
+    "system_config": {"conn_fail_to_hotspot": 5, "hotspot_time_min": 8},
     "bus": {
         "i2c0": {"scl_pin": 13, "sda_pin": 12, "frequency": 50000, "timeout": 200000},
         "i2c1": {"scl_pin": 19, "sda_pin": 18, "frequency": 50000},
@@ -297,6 +343,8 @@ def test_base_doc_fixture_itself_passes_every_check():
     check_no_global_gpio_pin_collision(doc, "base")
     check_no_per_bus_address_collision(doc, "base")
     check_no_instance_name_collision(doc, "base")
+    check_no_mandatory_infra_modeled_as_instance(doc, "base")
+    check_system_config_present_and_valid(doc, "base")
 
 
 def test_detects_missing_bus_wire_pin():
@@ -424,3 +472,39 @@ def test_allows_two_same_driver_instances_disambiguated_by_name_ext():
     doc = _base_doc()
     doc["instance"].append({"driver": "scd30", "name_ext": "fan_pressure", "bus": "i2c1", "irq_pin": 9, "trigger_sec": 3})
     check_no_instance_name_collision(doc, "base")  # must not raise
+
+
+@pytest.mark.parametrize("mandatory_driver", sorted(_MANDATORY_INFRA_DRIVERS))
+def test_detects_mandatory_infra_modeled_as_instance(mandatory_driver: str):
+    doc = _base_doc()
+    doc["instance"].append({"driver": mandatory_driver})
+    with pytest.raises(AssertionError, match="mandatory infrastructure"):
+        check_no_mandatory_infra_modeled_as_instance(doc, "base")
+
+
+def test_detects_missing_system_config_table():
+    doc = _base_doc()
+    del doc["system_config"]
+    with pytest.raises(AssertionError, match=r"no \[system_config\] table"):
+        check_system_config_present_and_valid(doc, "base")
+
+
+def test_detects_system_config_missing_conn_fail_to_hotspot():
+    doc = _base_doc()
+    del doc["system_config"]["conn_fail_to_hotspot"]
+    with pytest.raises(AssertionError, match="missing required field 'conn_fail_to_hotspot'"):
+        check_system_config_present_and_valid(doc, "base")
+
+
+def test_detects_system_config_missing_hotspot_time_min():
+    doc = _base_doc()
+    del doc["system_config"]["hotspot_time_min"]
+    with pytest.raises(AssertionError, match="missing required field 'hotspot_time_min'"):
+        check_system_config_present_and_valid(doc, "base")
+
+
+def test_detects_system_config_field_wrong_type():
+    doc = _base_doc()
+    doc["system_config"]["hotspot_time_min"] = "eight"
+    with pytest.raises(AssertionError, match="must be an int"):
+        check_system_config_present_and_valid(doc, "base")

@@ -122,15 +122,35 @@ decisions evolve"). References the mechanism `src/` now has after Session 1 (`co
 mechanism reference).
 
 Two top-level shapes: a single `[device]` table (identity/network facts, not repeated) and a
-uniform `[[instance]]` array of tables — **every** constructed module is an instance, not just
-sensor drivers: a singleton service (WiFi, NTP, SystemService, FRAM, Neopixel,
-NotificationCoordinator) still varies per device by its own pin/bus/chip-size facts (confirmed
-directly: `sensortask_wozi.py`'s FRAM is an 8KB `MB85RS64V` on `spi0`/cs `1`; `sensortask_dev.py`'s
-is a 256KB `MB85RS2MTA` on a differently-pinned `spi0`/cs `5` — a real per-device fact, not a
-sensor-only concern), so there is no second, special-cased declaration mechanism for "the modules
-every device always has." A device variant that lacks a given singleton (if one ever does) simply
-omits that `[[instance]]` entry — the same absence-means-absent handling a missing sensor already
-gets.
+uniform `[[instance]]` array of tables. **The TOML models optional modules only** — driver-level
+sensors, plus singleton services that themselves vary per device or could someday be entirely
+absent: FRAM (`sensortask_wozi.py`'s is an 8KB `MB85RS64V` on `spi0`/cs `1`; `sensortask_dev.py`'s
+is a 256KB `MB85RS2MTA` on a differently-pinned `spi0`/cs `5` — a real per-device fact), Neopixel
+(its own data pin varies per device), NotificationCoordinator (today wired to a Neopixel in every
+real device, but a genuinely optional software capability a future device could lack or wire to a
+different sink entirely).
+
+**WiFi, NTP, and SystemService are mandatory infrastructure and are never `[[instance]]`
+entries** (project owner's explicit direction, 2026-09-09, revising this doc's own earlier draft,
+which had modeled them as instances too — corrected before it ever reached a real device TOML).
+Every buildable device has all three unconditionally: there is no real variant that omits network
+connectivity, time sync, or the task supervisor/watchdog, so — unlike a sensor or an optional
+peripheral — there is no presence-or-absence question for the schema to encode. Their own
+per-device-tunable knobs (today: WiFi's `conn_fail_to_hotspot`/`hotspot_time_min`; NTP/SystemService
+have none) live instead in one top-level `[system_config]` table, **required, not defaulted**: a
+device TOML missing either field is a build-time error, the same fail-loud contract "Build/
+generator script quality bar" below gives every other structurally-broken-definitions-file case.
+
+The same reasoning is why the webserver — also unconditional, present on every device — was never
+modeled as an instance either, even before this revision: its own constructor takes no independent
+per-device facts at all, only references to whichever other instances the TOML already declares
+(`WebserverService(app, sensors=(scd_reader, bmp_reader, sgp_reader), settings=[...])`-style
+composition over the already-resolved instance graph) — there was never anything for a
+`[[instance]]` entry to carry for it in the first place.
+
+A device variant that lacks a given *optional* singleton (if one ever does) simply omits that
+`[[instance]]` entry — the same absence-means-absent handling a missing sensor already gets. This
+does not extend to WiFi/NTP/SystemService, which are never optional and never omitted.
 
 ```toml
 # example-device.toml - illustrative shape only (Session 2 writes the 6 real files: dev, wozi,
@@ -147,6 +167,15 @@ hostname = "SensorStationWozi"
 # session) - defaults to the existing hardcoded "12345678" if omitted (CLAUDE.md's accepted-risk
 # credential note); a device TOML may override it, but never needs to.
 hotspot_password = "12345678"
+
+# Mandatory infrastructure tuning - WiFi/NTP/SystemService are never [[instance]] entries (every
+# buildable device has all three unconditionally; see this doc's "Device TOML schema" intro above
+# for the full reasoning). Required, not defaulted: a device TOML missing either field below is a
+# build-time error (this doc's own "Build/generator script quality bar" fail-loud contract).
+[system_config]
+conn_fail_to_hotspot = 5   # src/asy_wifi_service.py's AsyWifiService constructor param, same name.
+hotspot_time_min = 8       # ditto. NTP/SystemService have no tunable fields today, so nothing of
+# theirs lives here yet - this table only ever grows if/when they do.
 
 # One table per bus an [[instance]] entry below can reference by id. Every I2C/SPI pin, frequency,
 # and per-bus timeout override lives here - no hardcoded pins anywhere in generated or
@@ -228,7 +257,9 @@ bus = "i2c1"
 irq_pin = 9
 trigger_sec = 3
 
-# --- singleton services (never more than one per device, but still per-device-configurable) -----
+# --- optional singleton services (never more than one per device, but still per-device- ----------
+# --- configurable, or could someday be entirely absent - see this doc's "Device TOML schema" ------
+# --- intro above for why WiFi/NTP/SystemService don't belong in this list) ------------------------
 
 [[instance]]
 driver = "fram"
@@ -243,17 +274,6 @@ driver = "neopixel"
 pin = 15
 
 [[instance]]
-driver = "wifi"
-conn_fail_to_hotspot = 5
-hotspot_time_min = 8
-
-[[instance]]
-driver = "ntp"
-
-[[instance]]
-driver = "system"
-
-[[instance]]
 driver = "notification"
 # NotificationSignal registrations (WarnCO2/WarnVOC/WarnHum today) are a related but separate
 # mechanism from _WIRING (SPECIFICATION.md C.14.3) - resolved at register()-call time, after every
@@ -262,11 +282,11 @@ driver = "notification"
 # 3's own design question, not settled here.
 ```
 
-**What this session settles**: the two top-level shapes above, the uniform `[[instance]]`
-convention (singleton services included, not special-cased), `name_ext`'s default-empty-means-
-unchanged rule, `[instance.wiring]`'s shape (a flat `{toml_field_name = "another instance's
-resolved name"}` table), and that an address field only exists for a driver kind whose chip
-actually has one (checked per datasheet, not assumed).
+**What this session settles**: the two top-level shapes above, the `[[instance]]` convention for
+*optional* modules (WiFi/NTP/SystemService excluded — mandatory infrastructure, tuned instead via
+`[system_config]`), `name_ext`'s default-empty-means-unchanged rule, `[instance.wiring]`'s shape (a
+flat `{toml_field_name = "another instance's resolved name"}` table), and that an address field
+only exists for a driver kind whose chip actually has one (checked per datasheet, not assumed).
 
 **What Session 2 does**: write the 6 real files (`dev`, `wozi`, `arzi`, `klkizi`, `grkizi`,
 `schlafzi`) from this shape, using the wiring facts already gathered from
@@ -289,9 +309,16 @@ clock-stretch headroom `wozi`/`dev` already have — the old, pre-refactor `asy_
 (`python/IndividualDrivers/asy_i2c_driver.py`) never had a `timeout` parameter at all, so its
 absence in the legacy arzi/neu files was a driver limitation, not a considered decision that this
 chip-level datasheet fact (datasheets/scd30/..._Interface_Description.pdf) doesn't apply there too;
-`src/asy_i2c_driver.py` (what these TOML files target) does support it. A minimal shape/collision
-smoke-test suite lives at `tests_scripts/test_device_tomls.py` (parses as valid TOML, matches this
-schema's shape, and re-implements — by hand, since no generator/validator exists yet — the
+`src/asy_i2c_driver.py` (what these TOML files target) does support it. **Revision, same session
+(2026-09-09)**: the project owner (this doc's own author) reviewed the first draft of these 6 files
+and rejected modeling WiFi/NTP/SystemService as `[[instance]]` entries — they're mandatory
+infrastructure, not optional modules, so the TOML shouldn't carry them at all; see "Device TOML
+schema" above for the corrected shape. All 6 files were revised to drop those three `[[instance]]`
+blocks and add a `[system_config]` table (`conn_fail_to_hotspot = 5`, `hotspot_time_min = 8` —
+unchanged values, just relocated) instead. A minimal shape/collision smoke-test suite lives at
+`tests_scripts/test_device_tomls.py` (parses as valid TOML, matches this schema's shape — including
+that `[system_config]` is present with both required fields and that WiFi/NTP/SystemService never
+appear as instances — and re-implements — by hand, since no generator/validator exists yet — the
 global-GPIO-pin/per-bus-address/instance-name collision checks below against these 6 real files
 specifically; **not** a substitute for Session 3's own full validator and its malformed-fixture
 test coverage).
@@ -370,8 +397,9 @@ proceed rather than degrading:
 - **Detect and react to every error class that would make a real build impossible** —
   misconfigured/malformed TOML, an unresolved wiring reference, a driver-class/type mismatch, a
   REST/config-name collision with no disambiguating extension, a missing required pin/bus field, a
-  copy-paste duplicate, or any other structurally broken definitions file. Typical real-world
-  causes: misconfigured definition files, and plain wrong/missing/copy-pasted fields.
+  missing or incomplete `[system_config]` table (required, not defaulted — see "Device TOML schema"
+  above), a copy-paste duplicate, or any other structurally broken definitions file. Typical
+  real-world causes: misconfigured definition files, and plain wrong/missing/copy-pasted fields.
 - **Global-resource-collision checks are their own error class and must not be skipped.**
   Overlapping bus addresses, double-claimed pin numbers, and any other double-definition of a
   resource meant to be exclusive are *syntactically valid, individually valid-looking fields that
