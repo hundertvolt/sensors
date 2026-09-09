@@ -101,6 +101,15 @@ class NeopixelDriver:
         return []  # no machine.Timer anywhere in this file (SPECIFICATION.md C.9 shape, kept
         # empty rather than omitted so callers can treat every driver uniformly)
 
+    def get_error_sources(self) -> "list[Any]":
+        # Fan-in primitive (SPECIFICATION.md Part C.14/G.2), same shape as base_classes.py's
+        # SensorReader.get_error_sources() - duck-typed, not inherited (no schema at all, see this
+        # module's own docstring).
+        return [self]
+
+    def get_loggers(self) -> "list[PrintLogHistory]":
+        return [self.pr]
+
     async def get_error_counter(self) -> "dict[str, dict[str, int | list[int] | list[str]]]":
         return await self.pr.get_log()
 

@@ -109,8 +109,11 @@ def make_manager(max_size: int = 0x2000) -> "tuple[AsyFramManager, FakeMB85RS64V
     return manager, chip
 
 
-async def _value_stub() -> "int | None":
-    return None
+class _FakeSource:
+    # A controllable NotificationSignal producer (SPECIFICATION.md Part C.14.2) whose configured
+    # field is always None - matches the removed _value_stub()'s own always-None return.
+    async def get_data(self) -> "_FakeSource":
+        return self
 
 
 async def _local_time_stub() -> "Any":
@@ -130,7 +133,7 @@ def make_notify(manager: AsyFramManager, cfg_path: str) -> NotificationCoordinat
     # layout (built once in finalize()) to decode identically across a simulated reboot, matching
     # the "number and order of registered signals stays constant" invariant this design relies on.
     coordinator = NotificationCoordinator(_request_signal_stub, _local_time_stub, cfg_path=cfg_path, fram=manager)
-    coordinator.register(NotificationSignal("WarnCO2", _value_stub, _FIELD_WARN_CO2, (1, 0, 0)))
+    coordinator.register(NotificationSignal("WarnCO2", _FakeSource(), "WarnCO2", _FIELD_WARN_CO2, (1, 0, 0)))
     coordinator.finalize()
     return coordinator
 

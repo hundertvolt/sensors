@@ -28,6 +28,7 @@ _VAL_PW = (("PW", "str", "", 8, 63, ""),)
 _VAL_CTRY = (("Country", "str", "DE", 2, 2, None),)
 _VAL_HOST = (("Hostname", "str", "SensorNode", 1, 32, None),)
 _VAL_LED = (("LedWifiOn", "bool", True, None, None, None),)
+_VAL_HOTSPOT_PW = (("HotspotPW", "str", "12345678", 8, 63, None),)
 
 try:
     from typing import TYPE_CHECKING
@@ -348,8 +349,15 @@ def test_get_dict_cfg_masks_the_password() -> None:
 # level test_asy_ntp_client.py's own config-matrix tests exercise through _get_ntp_config().
 # ---------------------------------------------------------------------------
 
-_WIFI_KEYS = ["SSID", "PW", "Country", "Hostname", "LedWifiOn"]
-_WIFI_DEFAULTS = {"SSID": "", "PW": "", "Country": "DE", "Hostname": "SensorNode", "LedWifiOn": True}
+_WIFI_KEYS = ["SSID", "PW", "Country", "Hostname", "LedWifiOn", "HotspotPW"]
+_WIFI_DEFAULTS = {
+    "SSID": "",
+    "PW": "",
+    "Country": "DE",
+    "Hostname": "SensorNode",
+    "LedWifiOn": True,
+    "HotspotPW": "12345678",
+}
 
 
 def test_config_all_fields_valid_reads_real_values() -> None:
@@ -362,6 +370,7 @@ def test_config_all_fields_valid_reads_real_values() -> None:
         "Country": "US",
         "Hostname": "TestNode",
         "LedWifiOn": False,
+        "HotspotPW": "12345678",
     }
 
 
@@ -549,6 +558,7 @@ def test_get_dict_cfg_returns_schema_defaults_wrapped_in_wifi_key() -> None:
     result = run(client.get_dict_cfg())
     expected = dict(_WIFI_DEFAULTS)
     expected["PW"] = "********"
+    expected["HotspotPW"] = "********"
     assert result == {"WIFI": expected}
 
 
@@ -559,6 +569,7 @@ def test_get_dict_cfg_returns_all_none_values_when_config_manager_is_invalid() -
     result = run(client.get_dict_cfg())
     expected: dict[str, str | None] = {key: None for key in _WIFI_KEYS}
     expected["PW"] = "********"
+    expected["HotspotPW"] = "********"
     assert result == {"WIFI": expected}
 
 
@@ -1346,7 +1357,7 @@ def test_activate_hotspot_ap_exception_sets_hw_op_failed_and_persists_errno_12()
     client = make_client()
     run(client.pr.setup())
     _wlan(client).raise_on["config"] = RuntimeError("simulated hardware fault")
-    run(client._activate_hotspot_ap("DE", "TestHost"))
+    run(client._activate_hotspot_ap("DE", "TestHost", "12345678"))
     assert client.hw_op_failed is True
     counter = run(client.get_error_counter())
     assert _last_err(counter, "ErrNum") == 12
@@ -1357,7 +1368,7 @@ def test_activate_hotspot_ap_success_configures_and_activates_the_ap() -> None:
     client = make_client()
 
     async def scenario() -> None:
-        await client._activate_hotspot_ap("US", "MyHost")
+        await client._activate_hotspot_ap("US", "MyHost", "12345678")
         assert client.hw_op_failed is False
         assert _wlan(client)._active is True
         assert {"essid": "MyHost", "password": "12345678"} in _wlan(client).config_calls
@@ -2236,7 +2247,7 @@ async def _start_real_hotspot(client: AsyConnTime, server_addr: "tuple[str, int]
     # DNSServer.run()'s subnet filter doesn't reject the test query as off-subnet.
     _wlan(client)._ifconfig = ("127.0.0.1", "255.255.255.0", "127.0.0.1", "127.0.0.1")
     client.dns_server.udps = AsyUDPSocket(server_addr, mode="server")
-    await client._activate_hotspot_ap("US", "TestHost")
+    await client._activate_hotspot_ap("US", "TestHost", "12345678")
 
 
 def test_integration_hotspot_captive_dns_ignores_a_malformed_packet_without_crashing() -> None:
@@ -2401,7 +2412,7 @@ def test_cfg_schema_matches_what_cfgmgr_was_built_with() -> None:
     # attribute that lets a caller outside this module get that schema without reaching into a
     # private, underscore-prefixed module-level const.
     client = make_client()
-    assert client.cfg_schema == (_VAL_SSID + _VAL_PW + _VAL_CTRY + _VAL_HOST + _VAL_LED)
+    assert client.cfg_schema == (_VAL_SSID + _VAL_PW + _VAL_CTRY + _VAL_HOST + _VAL_LED + _VAL_HOTSPOT_PW)
 
 
 def test_get_cfg_schema_matches_the_public_attribute() -> None:
@@ -2409,7 +2420,7 @@ def test_get_cfg_schema_matches_the_public_attribute() -> None:
     # itself stays a public attribute too, for the legacy REST layer's own direct reads.
     client = make_client()
     assert client.get_cfg_schema() == client.cfg_schema
-    assert client.get_cfg_schema() == (_VAL_SSID + _VAL_PW + _VAL_CTRY + _VAL_HOST + _VAL_LED)
+    assert client.get_cfg_schema() == (_VAL_SSID + _VAL_PW + _VAL_CTRY + _VAL_HOST + _VAL_LED + _VAL_HOTSPOT_PW)
 
 
 def test_write_config_via_public_cfg_schema_round_trips_a_real_value() -> None:
@@ -2712,12 +2723,12 @@ def test_configure_hotspot_ap_does_not_reapply_essid_password_when_already_activ
 
     async def scenario() -> None:
         essid_call = {"essid": "MyHost", "password": "12345678"}
-        client._configure_hotspot_ap("US", "MyHost")
+        client._configure_hotspot_ap("US", "MyHost", "12345678")
         first_task = client.dns_server_task
         assert first_task is not None
         assert _wlan(client)._active is True
         assert _wlan(client).config_calls.count(essid_call) == 1
-        client._configure_hotspot_ap("US", "MyHost")  # a real re-entry while still active
+        client._configure_hotspot_ap("US", "MyHost", "12345678")  # a real re-entry while still active
         assert _wlan(client).config_calls.count(essid_call) == 1  # not reapplied a second time
         assert client.dns_server_task is first_task  # unaffected - the DNS-task guard is independent
         await _cancel(first_task)
@@ -2731,12 +2742,12 @@ def test_configure_hotspot_ap_reconfigures_after_the_interface_was_externally_de
 
     async def scenario() -> None:
         essid_call = {"essid": "MyHost", "password": "12345678"}
-        client._configure_hotspot_ap("US", "MyHost")
+        client._configure_hotspot_ap("US", "MyHost", "12345678")
         first_task = client.dns_server_task
         assert first_task is not None
         assert _wlan(client).config_calls.count(essid_call) == 1
         _wlan(client).active(False)  # simulates a real external deactivation, not a normal steady-state tick
-        client._configure_hotspot_ap("US", "MyHost")
+        client._configure_hotspot_ap("US", "MyHost", "12345678")
         assert _wlan(client).config_calls.count(essid_call) == 2  # self-healed: reconfigured, not silently skipped
         assert _wlan(client)._active is True
         second_task = client.dns_server_task

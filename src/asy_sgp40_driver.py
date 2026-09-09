@@ -18,6 +18,7 @@ from machine import Timer
 from micropython import const
 
 from asy_i2c_driver import I2CDevice
+from asy_scd30_driver import SCD30_Reader
 from base_classes import Lockable, SensorReaderConfig
 from config_manager import make_dict, name_cfg
 from crc_checks import CRC8, CRC32
@@ -34,6 +35,7 @@ if TYPE_CHECKING:
 
     from asy_fram_manager import AsyFramChunkTimestampedBuffer, AsyFramManager
     from asy_i2c_driver import I2C
+    from config_manager import WiringSchema
 
 # roughly the time how often the data written to the FRAM is verified.
 # less a data safety feature here but rather a check if communication and integrity is generally okay
@@ -57,13 +59,20 @@ _NAME = const("SGP40")
 SGP40 = namedtuple("SGP40", ("VOC", "Raw", "TS"))
 _FIELDS = const(("VOC", "Raw", "TS"))  # kept in sync with SGP40's own fields above
 
+# This driver's one live cross-instance dependency (SPECIFICATION.md Part C.14): the
+# temperature/humidity compensation source, which must be an SCD30_Reader (the only sensor on this
+# system exposing both fields live) - resolved by a future generator to an already-constructed
+# instance and passed as comp_source below, never a getter/callback.
+_WIRING: "WiringSchema" = (("comp_source", SCD30_Reader),)
+
 
 class SGP40_Reader(SensorReaderConfig):
     def __init__(
         self,
         i2c: "I2C",
-        asy_comp_callback: "Callable[[], Coroutine[Any, Any, list[int | float | None]]]",
+        comp_source: "SCD30_Reader",
         max_module_error: int = 5,
+        name_ext: str = "",
         cfg_path: str = "",
         fram_storage: "AsyFramManager | None" = None,
         fram_ntp_callback: "Callable[[], Coroutine[Any, Any, bool]] | None" = None,
@@ -75,6 +84,7 @@ class SGP40_Reader(SensorReaderConfig):
             max_module_error,
             _NAME,
             _VAL_BP + _VAL_BMAX + _VAL_WT + _VAL_RESET,
+            name_ext=name_ext,
             cfg_path=cfg_path,
             fram=fram_storage,
             history_length=history_length,
@@ -91,7 +101,10 @@ class SGP40_Reader(SensorReaderConfig):
         # real values are always set by _init_sgp() before read_loop() ever reads these
         self.voc_init = 0
         self.voc_write = 0
-        self.comp_callback = asy_comp_callback  # expects [Temperature, Humidity]
+        # Direct reference to the producer's own concurrency-safe value holder (its get_data(),
+        # already _datalock-guarded - SPECIFICATION.md Part C.14/G.2), not a wrapping getter
+        # function - _read_sgp() reads Temp/Hum off it directly every cycle.
+        self.comp_source = comp_source
         if fram_storage is None or fram_ntp_callback is None:
             self.ts_storage = None
         else:
@@ -173,10 +186,16 @@ class SGP40_Reader(SensorReaderConfig):
                 if not self._reset_fram_cleared:
                     await self.pr.err_s("Error clearing FRAM!", errno=15)
 
-        try:  # caller-supplied callback, could legitimately misbehave
-            comp_data = await self.comp_callback()  # [Temperature, Humidity]
+        # Direct read of the producer's own get_data() (SPECIFICATION.md Part C.14) - no wrapping
+        # callback. get_data() never raises, but Temp/Hum can individually be None (SCD30 hasn't
+        # completed its first real measurement yet, or its own error streak gave up) - float(None)
+        # raises, so that's still guarded here, matching this driver's own SGP40-degrades-
+        # uncompensated-when-SCD30-is-down documented behavior (SPECIFICATION.md Part A.4).
+        try:
+            scd_data = await self.comp_source.get_data()
+            comp_data: list[int | float | None] = [float(scd_data.Temp), float(scd_data.Hum)]
         except Exception as e:
-            await self.pr.err_s("Compensation data callback failed:", e, errno=18)
+            await self.pr.err_s("Compensation data read failed:", e, errno=18)
             comp_data = [None, None]
         if len(comp_data) != 2 or comp_data[0] is None or comp_data[1] is None:
             await self.pr.wrn_s("No compensation data available!", wrnno=14)
@@ -394,13 +413,13 @@ class SGP40_Reader(SensorReaderConfig):
 
     async def get_dict_data(self) -> dict[str, dict[str, int | float | str | bool | None]]:
         data = await self.get_data()
-        return make_dict(data, _FIELDS)
+        return make_dict(data, _FIELDS, name=self.name)
 
     async def get_dict_cfg(self) -> dict[str, dict[str, int | float | str | bool | None]]:
         # Deliberately excludes _VAL_RESET (SGPResetVOC) - see that const's own comment: it's never
         # in cfgmgr's _cache (special-alone, not persisted), and ConfigManager.get_dict() is
         # all-or-nothing per requested key, so including it here would break this whole read.
-        return await self._get_dict_cfg(_NAME, _VAL_BP + _VAL_BMAX + _VAL_WT)
+        return await self._get_dict_cfg(self.name, _VAL_BP + _VAL_BMAX + _VAL_WT)
 
     async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[str]]]:
         return await self.pr.get_log()

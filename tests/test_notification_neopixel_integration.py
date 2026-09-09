@@ -35,6 +35,18 @@ async def _local_time() -> _FakeTime:
     return _FakeTime(12, 0)
 
 
+class _FakeSource:
+    # A controllable NotificationSignal producer (SPECIFICATION.md Part C.14.2): get_data() returns
+    # self, dynamically exposing exactly one attribute (whatever field name the caller configures)
+    # - a fixed value, matching every removed inline get_value()/co2_value()/voc_value() closure's
+    # own fixed-return shape.
+    def __init__(self, field: str, value: int) -> None:
+        setattr(self, field, value)
+
+    async def get_data(self) -> "_FakeSource":
+        return self
+
+
 _TMP_DIR = "tests/_tmp"
 _next_dir = 0
 
@@ -120,10 +132,8 @@ async def _cancel_all(tasks: "list[asyncio.Task[None]]") -> None:
 def test_real_threshold_crossing_produces_an_actual_ramp_with_scaled_color() -> None:
     pixel, notify = make_pair()
 
-    async def get_value() -> int:
-        return 2000  # above the 1600 default threshold
-
-    signal = NotificationSignal("WarnCO2", get_value, (("WarnCO2", "int", 1600, 0, 3000, None),), (1, 0, 0))
+    source = _FakeSource("WarnCO2", 2000)  # above the 1600 default threshold
+    signal = NotificationSignal("WarnCO2", source, "WarnCO2", (("WarnCO2", "int", 1600, 0, 3000, None),), (1, 0, 0))
     notify.register(signal)
     notify.finalize()
     run(notify.cfgmgr.setup())
@@ -143,14 +153,12 @@ def test_real_threshold_crossing_produces_an_actual_ramp_with_scaled_color() -> 
 def test_multiple_simultaneous_crossings_produce_sequential_correctly_colored_ramps() -> None:
     pixel, notify = make_pair()
 
-    async def co2_value() -> int:
-        return 2000
-
-    async def voc_value() -> int:
-        return 400
-
-    co2 = NotificationSignal("WarnCO2", co2_value, (("WarnCO2", "int", 1600, 0, 3000, None),), (1, 0, 0))
-    voc = NotificationSignal("WarnVOC", voc_value, (("WarnVOC", "int", 350, 0, 500, None),), (0, 1, 0))
+    co2 = NotificationSignal(
+        "WarnCO2", _FakeSource("WarnCO2", 2000), "WarnCO2", (("WarnCO2", "int", 1600, 0, 3000, None),), (1, 0, 0)
+    )
+    voc = NotificationSignal(
+        "WarnVOC", _FakeSource("WarnVOC", 400), "WarnVOC", (("WarnVOC", "int", 350, 0, 500, None),), (0, 1, 0)
+    )
     notify.register(co2)
     notify.register(voc)
     notify.finalize()
@@ -175,10 +183,8 @@ def test_multiple_simultaneous_crossings_produce_sequential_correctly_colored_ra
 def test_led_signal_during_notification_triggered_animation_is_queued_and_eventually_runs() -> None:
     pixel, notify = make_pair()
 
-    async def get_value() -> int:
-        return 2000
-
-    signal = NotificationSignal("WarnCO2", get_value, (("WarnCO2", "int", 1600, 0, 3000, None),), (1, 0, 0))
+    source = _FakeSource("WarnCO2", 2000)
+    signal = NotificationSignal("WarnCO2", source, "WarnCO2", (("WarnCO2", "int", 1600, 0, 3000, None),), (1, 0, 0))
     notify.register(signal)
     notify.finalize()
     run(notify.cfgmgr.setup())

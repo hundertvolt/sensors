@@ -9,7 +9,7 @@ Every method returns a well-defined value, never raises.
 
 import asyncio
 
-from config_manager import ConfigManager, check_cfg_get_default, schema_dict, schema_names, type_or_range_error
+from config_manager import ConfigManager, check_cfg_get_default, instance_name, schema_dict, schema_names, type_or_range_error
 from print_log import PrintLogHistory, make_logger
 
 try:
@@ -159,13 +159,18 @@ class SensorReader:
         history_length: int = 10,
         debug: int | None = None,
         name: str = "",
+        name_ext: str = "",
         logger: PrintLogHistory | None = None,
     ) -> None:
+        # name_ext="" (every module today) reproduces `name` unchanged - see instance_name()'s own
+        # comment and SPECIFICATION.md Part C.14. Resolved once here, before either logger branch,
+        # so self.pr.name/self.name always agree regardless of which branch runs.
+        resolved_name = instance_name(name, name_ext)
         if logger is not None:  # reach-through: reuse a directly-bound sibling object's own logger
             self.pr = logger
         else:
-            self.pr = make_logger(fram, history_length, debug, name)
-        self.name = name  # matches self.pr.name - the _ModuleLike registration shape
+            self.pr = make_logger(fram, history_length, debug, resolved_name)
+        self.name = resolved_name  # matches self.pr.name - the _ModuleLike registration shape
         # asy_webserver_service.py's registration lists key on (sensors=/error_sources=/settings=).
         self._datastruct = init_data
         self._datalock = asyncio.Lock()
@@ -227,6 +232,19 @@ class SensorReader:
                 self.pr.err("Error counter back to", self._err_cnt_internal)
         return True
 
+    def get_error_sources(self) -> "list[Any]":
+        # N-to-1 fan-in primitive (SPECIFICATION.md Part C.14/G.2): every module callable from a
+        # top-level *_collect_error_sources()* implements this, structurally (no shared base
+        # required - matches asy_webserver_service.py's own _ModuleLike Protocol precedent), so the
+        # aggregator can hold a plain, generically-collected list of instances instead of a
+        # hand-enumerated one. Plain SensorReader has no nested error-logging sub-object of its own.
+        return [self]
+
+    def get_loggers(self) -> "list[PrintLogHistory]":
+        # Same fan-in shape as get_error_sources(), for a system-wide debug-level registry instead
+        # (SPECIFICATION.md Part C.14) - one entry per logger this module itself owns.
+        return [self.pr]
+
     async def reset_error_counter(self) -> None:
         # Resets both counters this file tracks, not just pr's persisted history/err_count -
         # _err_cnt_internal is the separate consecutive-failure streak _error_check's give-up
@@ -242,17 +260,22 @@ class SensorReaderConfig(SensorReader):
         max_module_error: int,
         name: str,
         default_vals: "ConfigSchema",
+        name_ext: str = "",
         cfg_path: str = "",
         fram: "AsyFramManager | None" = None,
         history_length: int = 10,
         debug: int | None = None,
     ) -> None:
-        super().__init__(init_data, max_module_error, fram, history_length, debug, name=name)
+        super().__init__(init_data, max_module_error, fram, history_length, debug, name=name, name_ext=name_ext)
         self.cfg_schema = default_vals
+        # self.name (already instance_name(name, name_ext), resolved by super().__init__() above)
+        # threads the same per-instance extension into both the on-flash filename and this
+        # ConfigManager's own "CFGMGR_<name>" logger (SPECIFICATION.md Part C.14) - not the raw
+        # `name` param, which is only this driver type's fixed base name.
         self.cfgmgr = ConfigManager(
-            cfg_path + "config_" + name + ".cfg",
+            cfg_path + "config_" + self.name + ".cfg",
             default_vals,
-            name,
+            self.name,
         )
         # Per-field live-push callbacks: a subclass registers {field_name: async_push_fn} entries
         # after super().__init__(); a field with no entry is persist-only (see SPECIFICATION.md C.5.2).
@@ -371,6 +394,15 @@ class SensorReaderConfig(SensorReader):
             await self._set_mgr_cfg({key: recovered}, cfg_vals)
         except Exception as e:
             await self.pr.err_s("Error correcting", key, "after failed push:", e, errno=9)
+
+    def get_error_sources(self) -> "list[Any]":
+        # Extends SensorReader.get_error_sources() with this class's own nested error-logging
+        # sub-object (self.cfgmgr) - see that method's own comment for the full fan-in convention.
+        return [self, self.cfgmgr]
+
+    def get_loggers(self) -> "list[PrintLogHistory]":
+        # Same extension as get_error_sources() above, for the debug-level registry instead.
+        return [self.pr, self.cfgmgr.pr]
 
     def get_cfg_schema(self) -> "ConfigSchema":
         # Captured once from super().__init__()'s default_vals; sync (no I/O/locking involved).

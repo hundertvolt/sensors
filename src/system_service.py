@@ -30,6 +30,7 @@ if TYPE_CHECKING:
 
     from asy_fram_manager import AsyFramManager
     from config_manager import ConfigSchema, WriteValidity
+    from print_log import PrintLogHistory
 
 _RESET_DELAY = const(4)  # seconds between reset command and execution (keep < watchdog timeout!)
 _MAX_STORAGE_PAUSE = const(3600)  # one hour max pause for FRAM
@@ -255,6 +256,15 @@ class SystemService:
         # None until resolved; then a UTC timestamp if NTP synced, else random after _NTP_WAIT_TIME -
         # stable for the rest of this boot, so a later change means a reboot happened.
         return await self.boot_signature.get_value()
+
+    def get_error_sources(self) -> "list[Any]":
+        # Fan-in primitive (SPECIFICATION.md Part C.14/G.2) - matches base_classes.py's
+        # SensorReaderConfig.get_error_sources() shape (this class owns a cfgmgr too), duck-typed
+        # rather than inherited (see this module's own "not a SensorReaderConfig subclass" comment).
+        return [self, self.cfgmgr]
+
+    def get_loggers(self) -> "list[PrintLogHistory]":
+        return [self.pr, self.cfgmgr.pr]
 
     async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[str]]]:
         return await self.pr.get_log()

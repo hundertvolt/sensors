@@ -648,6 +648,18 @@ class WebserverService:
         # asy_neopixel_driver.py's/asy_notification_service.py's own identical precedent; found
         # missing entirely during the Step 7 audit, unlike those two).
 
+    def get_error_sources(self) -> "list[Any]":
+        # Fan-in primitive (SPECIFICATION.md Part C.14/G.2), same shape as base_classes.py's
+        # SensorReader.get_error_sources() - duck-typed, not inherited. Not actually consulted by
+        # sensortask_wozi.py's own _collect_error_sources() (this service's own /status "errcount"
+        # entry is added directly in _build_status_pieces() instead, see that method's own
+        # comment) - kept for get_loggers()'s own sibling consistency (D.10) and so a future caller
+        # doesn't have to special-case this one module.
+        return [self]
+
+    def get_loggers(self) -> "list[PrintLogHistory]":
+        return [self.pr]
+
     async def get_error_counter(self) -> "dict[str, dict[str, Any]]":
         return await self.pr.get_log()
 
