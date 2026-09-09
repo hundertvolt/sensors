@@ -25,6 +25,12 @@ import _http_client  # noqa: E402
 
 import sensortask_wozi  # noqa: E402
 
+# Mirrors asy_wifi_service.py's own _PHASE_STA_SEEKING/_PHASE_HOTSPOT values - same
+# not-importable-once-const()-folded reasoning as tests/test_asy_wifi_service.py's own copy; keep in
+# sync with asy_wifi_service.py's own definitions if those ever change.
+_PHASE_STA_SEEKING = 0
+_PHASE_HOTSPOT = 2
+
 try:
     from typing import TYPE_CHECKING
 except ImportError:  # typing has no runtime presence on MicroPython, on-device or in the Unix-port test build
@@ -176,6 +182,114 @@ def test_real_website_static_mount_never_shadows_a_real_api_route() -> None:
             res = await _http_client.fetch("127.0.0.1", port, "GET", "/measurements")
             assert res.status_code == 200
             assert set(res.json().keys()) == {"SCD30", "BMP3XX", "SGP40"}
+        finally:
+            await _cancel(task)
+
+    run_timed(scenario(), timeout_s=10.0)
+
+
+# ---------------------------------------------------------------------------
+# Captive-portal hotspot-mode redirect - full integration, real production website + real API, real
+# HTTP over a real socket (the one thing test_sensortask_wozi.py's own in-process _dispatch()
+# equivalent can't exercise). No real WiFi task is started (conn.start_asy_wlan_connect() is never
+# called here) - conn._conn_phase is set directly instead, the same test-seam convention
+# test_sensortask_wozi.py's own wiring-level coverage and this file's sibling
+# test_digital_twin_sensortask_integration.py's own direct-attribute tests already use; that file's
+# own test_wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server_and_status_led
+# already covers the "reached via a genuine real STA-failure/hotspot transition" case with the
+# html_stub website - this file adds the REAL production website + full real API surface on top,
+# plus the dynamic-switch and error-path coverage that test doesn't.
+# ---------------------------------------------------------------------------
+
+
+def test_real_website_hotspot_mode_redirects_unmatched_path_to_root() -> None:
+    port = _next_test_port()
+
+    async def scenario() -> None:
+        await _boot(port)
+        assert sensortask_wozi.conn is not None
+        sensortask_wozi.conn._conn_phase = _PHASE_HOTSPOT
+        task = await _start_webserver()
+        try:
+            res = await _http_client.fetch("127.0.0.1", port, "GET", "/generate_204")
+            assert res.status_code == 302
+            assert res.headers["Location"] == "/"
+        finally:
+            await _cancel(task)
+
+    run_timed(scenario(), timeout_s=10.0)
+
+
+def test_real_website_hotspot_mode_still_serves_real_index_and_real_api_route() -> None:
+    # Upstream/downstream error handling: the real production website and real sensor API must keep
+    # working unaffected while the device is its own hotspot - the redirect fallback only ever fires
+    # for a path that matches no real route and no real static file.
+    port = _next_test_port()
+
+    async def scenario() -> None:
+        await _boot(port)
+        assert sensortask_wozi.conn is not None
+        sensortask_wozi.conn._conn_phase = _PHASE_HOTSPOT
+        task = await _start_webserver()
+        try:
+            res = await _http_client.fetch("127.0.0.1", port, "GET", "/")
+            assert res.status_code == 200
+            assert res.headers["Content-Encoding"] == "gzip"
+            body = _decompress(res.body)
+            assert b"Sensor Station" in body  # the real prod index.html, not a redirect loop
+
+            res = await _http_client.fetch("127.0.0.1", port, "GET", "/measurements")
+            assert res.status_code == 200
+            assert set(res.json().keys()) == {"SCD30", "BMP3XX", "SGP40"}
+        finally:
+            await _cancel(task)
+
+    run_timed(scenario(), timeout_s=10.0)
+
+
+def test_real_website_dynamic_hotspot_toggle_switches_redirect_behavior_live() -> None:
+    # Dynamic-mode-switch coverage, full integration: flips the real conn's phase mid-run, over the
+    # same live webserver task/socket, and confirms each real HTTP request reflects the phase at
+    # request time.
+    port = _next_test_port()
+
+    async def scenario() -> None:
+        await _boot(port)
+        assert sensortask_wozi.conn is not None
+        conn = sensortask_wozi.conn
+        assert conn._conn_phase == _PHASE_STA_SEEKING
+        task = await _start_webserver()
+        try:
+            res = await _http_client.fetch("127.0.0.1", port, "GET", "/generate_204")
+            assert res.status_code == 404
+
+            conn._conn_phase = _PHASE_HOTSPOT
+            res = await _http_client.fetch("127.0.0.1", port, "GET", "/generate_204")
+            assert res.status_code == 302
+            assert res.headers["Location"] == "/"
+
+            conn._conn_phase = _PHASE_STA_SEEKING
+            res = await _http_client.fetch("127.0.0.1", port, "GET", "/generate_204")
+            assert res.status_code == 404
+        finally:
+            await _cancel(task)
+
+    run_timed(scenario(), timeout_s=10.0)
+
+
+def test_real_website_put_to_unmatched_path_in_hotspot_mode_still_405() -> None:
+    # All-paths/no-crash coverage: a non-GET request to an unmatched path must still resolve to a
+    # clean 405 over a real socket, hotspot mode or not - never a hang, a redirect, or a crash.
+    port = _next_test_port()
+
+    async def scenario() -> None:
+        await _boot(port)
+        assert sensortask_wozi.conn is not None
+        sensortask_wozi.conn._conn_phase = _PHASE_HOTSPOT
+        task = await _start_webserver()
+        try:
+            res = await _http_client.fetch("127.0.0.1", port, "PUT", "/generate_204", {})
+            assert res.status_code == 405
         finally:
             await _cancel(task)
 

@@ -49,6 +49,19 @@ if [ ! -x "$micropython_bin" ]; then
     uv run toolchain/setup_toolchain.py setup --toolchain-dir "$toolchain_dir" "${skip_apt_flag[@]}"
 fi
 
+# run_wozi_integration.py's own DNSServer (src/captive_dns.py) binds the real privileged port 53;
+# a non-root dev environment can't bind that without either running as root or holding this
+# specific capability on the interpreter binary. Applied fresh every invocation, not assumed to
+# survive from a prior run - see scripts/run_digital_twin_ci.sh's identical block for why baking
+# this into the toolchain build itself wouldn't be reliable (xattrs, where capabilities live,
+# don't survive a cached/restored toolchain's tar round-trip).
+echo "== Granting CAP_NET_BIND_SERVICE to $micropython_bin (needed for the real port-53 DNS server)"
+if [ "$(id -u)" -eq 0 ]; then
+    setcap 'cap_net_bind_service=+ep' "$micropython_bin"
+else
+    sudo setcap 'cap_net_bind_service=+ep' "$micropython_bin"
+fi
+
 echo "== Building the real wozi website into frozen_modules/frozen_html.py"
 scripts/build_website.sh wozi
 

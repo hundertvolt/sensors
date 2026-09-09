@@ -115,6 +115,152 @@ def test_setup_product_id_byte_order_is_1st_byte_high_2nd_byte_low() -> None:
     assert raised
 
 
+def test_setup_succeeds_with_the_256kb_chips_real_device_id() -> None:
+    # Real hardware finding: MB85RS2MTA reports product ID bytes 0x48, 0x03 (datasheets/fram/
+    # MB85RS2MTA-DS501-00032-3v0-E.pdf p.10) - only passes once the expected product ID is looked
+    # up per max_size (_KNOWN_PRODUCT_IDS), not hardcoded to the smaller chip.
+    fram, chip = make_fram(max_size=0x40000)
+    chip.rdid_response = bytes([0x04, 0x7F, 0x48, 0x03])
+    run(setup_fram(fram))
+    assert fram.initialized is True
+
+
+def test_setup_raises_when_configured_size_does_not_match_the_reported_chip() -> None:
+    # The real chip present (8KB MB85RS64V's ID) doesn't match the size the driver was configured
+    # for (256KB) - must raise rather than silently accept a smaller chip than the caller expects.
+    fram, chip = make_fram(max_size=0x40000)
+    chip.rdid_response = bytes([0x04, 0x7F, 0x03, 0x02])  # the 8KB chip's real ID, not the 256KB one
+    try:
+        run(setup_fram(fram))
+        raised = False
+    except OSError:
+        raised = True
+    assert raised
+    assert fram.initialized is False
+
+
+def test_setup_raises_when_small_chip_configured_but_256kb_chips_id_reported() -> None:
+    # Mismatch in the opposite direction from test_setup_raises_when_configured_size_does_not_match_
+    # the_reported_chip: configured for the 8KB chip, but the 256KB chip's real ID is what's present.
+    fram, chip = make_fram(max_size=0x2000)
+    chip.rdid_response = bytes([0x04, 0x7F, 0x48, 0x03])  # the 256KB chip's real ID, not the 8KB one
+    try:
+        run(setup_fram(fram))
+        raised = False
+    except OSError:
+        raised = True
+    assert raised
+    assert fram.initialized is False
+
+
+def test_setup_raises_when_256kb_configured_size_reports_the_wrong_manufacturer_id() -> None:
+    # Mirrors test_setup_raises_on_wrong_manufacturer_id, but for the size-keyed 256KB path -
+    # confirms the manufacturer check still runs (and still gates the result) once the expected
+    # product ID comes from a dict lookup instead of a single hardcoded module constant.
+    fram, chip = make_fram(max_size=0x40000)
+    chip.rdid_response = bytes([0x05, 0x7F, 0x48, 0x03])
+    try:
+        run(setup_fram(fram))
+        raised = False
+    except OSError:
+        raised = True
+    assert raised
+    assert fram.initialized is False
+
+
+def test_setup_raises_when_256kb_configured_size_reports_the_wrong_continuation_code() -> None:
+    fram, chip = make_fram(max_size=0x40000)
+    chip.rdid_response = bytes([0x04, 0x00, 0x48, 0x03])
+    try:
+        run(setup_fram(fram))
+        raised = False
+    except OSError:
+        raised = True
+    assert raised
+    assert fram.initialized is False
+
+
+def test_setup_raises_when_256kb_configured_size_reports_a_garbage_product_id() -> None:
+    fram, chip = make_fram(max_size=0x40000)
+    chip.rdid_response = bytes([0x04, 0x7F, 0x99, 0x99])
+    try:
+        run(setup_fram(fram))
+        raised = False
+    except OSError:
+        raised = True
+    assert raised
+    assert fram.initialized is False
+
+
+def test_setup_256kb_product_id_byte_order_is_1st_byte_high_2nd_byte_low() -> None:
+    # Mirrors test_setup_product_id_byte_order_is_1st_byte_high_2nd_byte_low for the 256KB chip's
+    # own real bytes (0x48, 0x03) - the byte-order fix must hold for both entries in
+    # _KNOWN_PRODUCT_IDS, not just the one it was originally found against.
+    fram, chip = make_fram(max_size=0x40000)
+    chip.rdid_response = bytes([0x04, 0x7F, 0x03, 0x48])  # swapped vs. the real 0x48, 0x03
+    try:
+        run(setup_fram(fram))
+        raised = False
+    except OSError:
+        raised = True
+    assert raised
+    assert fram.initialized is False
+
+
+def test_setup_raises_for_a_max_size_with_no_known_product_id() -> None:
+    # A max_size that isn't one of this codebase's two known real chips (_KNOWN_PRODUCT_IDS) must
+    # raise clearly rather than silently skip the device-ID check.
+    fram, chip = make_fram(max_size=0x8000)
+    chip.rdid_response = bytes([0x04, 0x7F, 0x03, 0x02])  # a real chip's ID - still must not matter
+    try:
+        run(setup_fram(fram))
+        raised = False
+    except ValueError:
+        raised = True
+    assert raised
+    assert fram.initialized is False
+
+
+def test_setup_raises_for_max_sizes_one_off_from_each_known_size() -> None:
+    # Near-miss boundary values, not just wildly-off ones (0x8000 above): one byte below/above each
+    # of the two known chip sizes must still be treated as unrecognized, not fuzzily matched.
+    for max_size in (0x1FFF, 0x2001, 0x3FFFF, 0x40001):
+        fram, chip = make_fram(max_size=max_size)
+        chip.rdid_response = bytes([0x04, 0x7F, 0x03, 0x02])
+        try:
+            run(setup_fram(fram))
+            raised = False
+        except ValueError:
+            raised = True
+        assert raised
+        assert fram.initialized is False
+
+
+def test_verify_present_true_for_the_256kb_chip() -> None:
+    fram, _chip = make_fram(max_size=0x40000)
+    _chip.rdid_response = bytes([0x04, 0x7F, 0x48, 0x03])
+    run(setup_fram(fram))
+
+    async def scenario() -> bool:
+        return await fram.verify_present()
+
+    assert run(scenario()) is True
+    assert fram.initialized is True
+
+
+def test_verify_present_false_for_the_256kb_chip_after_id_changes() -> None:
+    fram, chip = make_fram(max_size=0x40000)
+    chip.rdid_response = bytes([0x04, 0x7F, 0x48, 0x03])
+    run(setup_fram(fram))
+    chip.rdid_response = bytes([0xFF, 0xFF, 0xFF, 0xFF])  # simulated disturbance / device gone
+
+    async def scenario() -> bool:
+        return await fram.verify_present()
+
+    assert run(scenario()) is False
+    assert fram.initialized is False
+
+
 # ---------------------------------------------------------------------------
 # get_values / set_values - guards (initialized, lock, range) and real data
 # ---------------------------------------------------------------------------
@@ -607,39 +753,35 @@ def test_max_size_boundary_values_select_the_correct_address_width() -> None:
         assert len(buf) == (4 if expect_4_byte_header else 3)
 
 
-async def _get_and_set(fram: FRAM_SPI, data: bytes, addr: int) -> tuple[bool, bool]:
-    async with fram:
-        get_ok = await fram.get_values(bytearray(len(data)), addr)
-        set_ok = await fram.set_values(data, addr)
-    return get_ok, set_ok
-
-
-def test_max_size_zero_or_negative_degrades_to_always_rejecting_access_not_a_crash() -> None:
-    # Not a validated constructor parameter (int, enforced by the type system alone) - this locks
-    # in that a nonsensical value degrades safely (every access rejected) rather than crashing.
+def test_max_size_zero_or_negative_raises_at_setup_as_an_unrecognized_size() -> None:
+    # Not a validated constructor parameter (int, enforced by the type system alone) - but setup()'s
+    # device-ID check is keyed by max_size (see _KNOWN_PRODUCT_IDS), so a nonsensical value now fails
+    # loudly here instead of silently completing setup() and only rejecting every access afterward.
     for max_size in (0, -1, -100):
         fram, _chip = make_fram(max_size=max_size)
-        run(setup_fram(fram))
-        get_ok, set_ok = run(_get_and_set(fram, b"x", 0))
-        assert get_ok is False
-        assert set_ok is False
+        try:
+            run(setup_fram(fram))
+            raised = False
+        except ValueError:
+            raised = True
+        assert raised
+        assert fram.initialized is False
 
 
-def test_multiple_invalid_edge_values_combined_still_degrade_safely() -> None:
-    # Several edge values together (not just one at a time): a nonsensical max_size alongside a
-    # real wp/wp_pin configuration - each independent code path still behaves exactly as it does
-    # in isolation, with no interaction/crash between them. Hardware is seeded to already be
-    # protected (see test_wp_and_wp_pin_combinations_all_construct_and_setup_cleanly) since
-    # setup() now syncs _wp from the real status register, not the wp= constructor guess.
+def test_unrecognized_max_size_raises_at_setup_regardless_of_wp_settings() -> None:
+    # Several edge values together (not just one at a time): an unrecognized max_size alongside a
+    # real wp/wp_pin configuration. _check_device_id() (now keyed by max_size) runs before any
+    # wp/status-register handling in setup(), so it must raise the same way regardless of what
+    # wp/wp_pin are set to - no interaction/crash between them.
     fram, chip = make_fram(max_size=-1, wp=True, wp_pin=7)
     chip.status = 0x8C
-    run(setup_fram(fram))
-    assert fram.initialized is True
-    assert fram._wp_pin is not None
-    assert fram._wp_pin.value() == 0  # wp=True -> WP driven low, independent of max_size
-    get_ok, set_ok = run(_get_and_set(fram, b"x", 0))
-    assert get_ok is False  # max_size=-1 rejects every access, as in isolation above
-    assert set_ok is False
+    try:
+        run(setup_fram(fram))
+        raised = False
+    except ValueError:
+        raised = True
+    assert raised
+    assert fram.initialized is False
 
 
 # ---------------------------------------------------------------------------

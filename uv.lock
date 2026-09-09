@@ -141,6 +141,19 @@ wheels = [
 ]
 
 [[package]]
+name = "mpremote"
+version = "1.29.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "platformdirs" },
+    { name = "pyserial" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ac/b7/8c44eb606b0e53517fd6ddda3f598b3bdb180c181f4e0bcbb9b7743f4cb5/mpremote-1.29.0.tar.gz", hash = "sha256:ab0b6f21059698e573ca076fe9a0299e5fe7bbc3ca3f5b2f00007e22e51c7b80", size = 33808, upload-time = "2026-08-24T13:54:53.108Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/51/85/f68fbcfe4d1ce32a7f2154a48f68195d4f256e3700b69ad0d5b758ee3b37/mpremote-1.29.0-py3-none-any.whl", hash = "sha256:dedac688bcd65b9d4d5b7a66119332f2830000088321107994959333f53e41c8", size = 38653, upload-time = "2026-08-24T13:54:51.674Z" },
+]
+
+[[package]]
 name = "mypy"
 version = "2.3.0"
 source = { registry = "https://pypi.org/simple" }
@@ -220,6 +233,15 @@ wheels = [
 ]
 
 [[package]]
+name = "platformdirs"
+version = "4.11.4"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/50/bb/ebc6636e1ae41314f796ebb7215fd28febb45f9aac72f2b04cb74b5071dc/platformdirs-4.11.4.tar.gz", hash = "sha256:f3373be828247211d0febabea97e238c3dfde8a60b3c90c32756fb52cb21556d", size = 34079, upload-time = "2026-08-24T14:53:49.676Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/28/be/0ff05fcd2938fb58ad9219bd54135968342d214737e012d62d43f06a2dd6/platformdirs-4.11.4-py3-none-any.whl", hash = "sha256:e34ff91a24bcddc6d939b878bdf3f5c437c9c46fe9e212b1bf455fdf1ee57586", size = 23741, upload-time = "2026-08-24T14:53:48.406Z" },
+]
+
+[[package]]
 name = "pluggy"
 version = "1.6.0"
 source = { registry = "https://pypi.org/simple" }
@@ -235,6 +257,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/c3/b2/bc9c9196916376152d655522fdcebac55e66de6603a76a02bca1b6414f6c/pygments-2.20.0.tar.gz", hash = "sha256:6757cd03768053ff99f3039c1a36d6c0aa0b263438fcab17520b30a303a82b5f", size = 4955991, upload-time = "2026-03-29T13:29:33.898Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f4/7e/a72dd26f3b0f4f2bf1dd8923c85f7ceb43172af56d63c7383eb62b332364/pygments-2.20.0-py3-none-any.whl", hash = "sha256:81a9e26dd42fd28a23a2d169d86d7ac03b46e2f8b59ed4698fb4785f946d0176", size = 1231151, upload-time = "2026-03-29T13:29:30.038Z" },
+]
+
+[[package]]
+name = "pyserial"
+version = "3.5"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/1e/7d/ae3f0a63f41e4d2f6cb66a5b57197850f919f59e558159a4dd3a818f5082/pyserial-3.5.tar.gz", hash = "sha256:3c77e014170dfffbd816e6ffc205e9842efb10be9f58ec16d3e8675b4925cddb", size = 159125, upload-time = "2020-11-23T03:59:15.045Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/07/bc/587a445451b253b285629263eb51c2d8e9bcea4fc97826266d186f96f558/pyserial-3.5-py2.py3-none-any.whl", hash = "sha256:c4451db6ba391ca6ca299fb3ec7bae67a5c55dde170964c7a14ceefec02f2cf0", size = 90585, upload-time = "2020-11-23T03:59:13.41Z" },
 ]
 
 [[package]]
@@ -285,6 +316,7 @@ source = { virtual = "." }
 
 [package.dev-dependencies]
 dev = [
+    { name = "mpremote" },
     { name = "mypy" },
     { name = "pytest" },
     { name = "ruff" },
@@ -294,6 +326,7 @@ dev = [
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "mpremote" },
     { name = "mypy" },
     { name = "pytest" },
     { name = "ruff" },

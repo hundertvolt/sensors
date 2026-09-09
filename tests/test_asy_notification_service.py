@@ -1106,17 +1106,15 @@ def test_auto_on_false_blocks_all_checks_regardless_of_window() -> None:
 
 
 def test_override_active_blocks_checks_and_resumes_after_countdown() -> None:
-    # Directly inspects _auto_active - the one thing auto_led_override() actually controls -
-    # rather than routing through a full monitor_loop() cycle: monitor_loop() itself resets
-    # _auto_active=True once at its own start (matches today's original "reset override state on
-    # task (re)start" behavior, preserved deliberately - see this file's own module docstring on
-    # deferred construction being a one-time boot handshake, the same spirit applies to a task's
-    # own start). Starting a second monitor_task to observe an "after" state would just re-trigger
-    # that same reset and defeat the observation; monitor_loop()'s gate itself
-    # (`if auto_on and self._auto_active:`) is the exact same expression already proven to
-    # correctly gate on its first operand by test_auto_on_false_blocks_all_checks_regardless_of_window
-    # - both operands go through one plain `and`, so there is no asymmetric-bug scenario where one
-    # operand gates correctly and the other doesn't.
+    # Directly inspects _auto_active - the one thing auto_led_override() actually controls - rather
+    # than routing through a full monitor_loop() cycle. auto_led_override() is _auto_active's sole
+    # owner/writer (monitor_loop() only ever reads it - see
+    # test_monitor_loop_restart_does_not_clobber_an_active_led_override below for the regression
+    # this ownership split fixes); monitor_loop()'s gate itself (`if auto_on and self._auto_active:`)
+    # is the exact same expression already proven to correctly gate on its first operand by
+    # test_auto_on_false_blocks_all_checks_regardless_of_window - both operands go through one plain
+    # `and`, so there is no asymmetric-bug scenario where one operand gates correctly and the other
+    # doesn't.
     coordinator, _clock, _cb = make_coordinator()
     coordinator.finalize()
     run(coordinator.cfgmgr.setup())
@@ -1144,6 +1142,44 @@ def test_override_active_blocks_checks_and_resumes_after_countdown() -> None:
     assert before is True
     assert during is False
     assert after is True
+
+
+def test_monitor_loop_restart_does_not_clobber_an_active_led_override() -> None:
+    # Regression test: monitor_loop() used to unconditionally set self._auto_active = True at its
+    # own start - harmless on a genuine first boot (already True from __init__), but wrong on a
+    # supervisor-driven restart (see test_monitor_loop_gives_up_after_too_many_consecutive_config_read_failures
+    # for how that restart happens): it would silently clobber an override auto_led_override() had
+    # legitimately set active in the meantime, since the two tasks are independently restartable by
+    # system_service.py's start_and_check_tasks() but shared this one unlocked flag. Fixed by making
+    # auto_led_override() the flag's sole writer; monitor_loop() only ever reads it now.
+    coordinator, _clock, _cb = make_coordinator()
+    coordinator.finalize()
+    run(coordinator.cfgmgr.setup())
+
+    async def scenario() -> "tuple[bool, bool]":
+        override_task = coordinator.start_asy_auto_override()
+        await asyncio.sleep(0.05)
+        await coordinator.set_override_led(2)
+        await asyncio.sleep(1.1)  # first decrement(): 2 -> 1, still > 0 -> _auto_active False
+        during_before_restart = coordinator._auto_active
+
+        # Simulate the task supervisor restarting monitor_loop() (e.g. after it gave up following
+        # too many consecutive own-config-read failures) while the override above is still active.
+        monitor_task = coordinator.start_asy_notify_monitor()
+        await asyncio.sleep(0.05)
+        during_after_restart = coordinator._auto_active
+
+        for t in (override_task, monitor_task):
+            t.cancel()
+            try:
+                await t
+            except asyncio.CancelledError:
+                pass
+        return during_before_restart, during_after_restart
+
+    before_restart, after_restart = run(scenario())
+    assert before_restart is False  # override genuinely active
+    assert after_restart is False  # ...and still active after monitor_loop()'s restart
 
 
 def test_set_override_led_above_the_max_clamps_and_reads_back_clamped() -> None:

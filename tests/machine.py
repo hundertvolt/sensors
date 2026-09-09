@@ -428,10 +428,10 @@ class Timer:
     ONE_SHOT = 0
     PERIODIC = 1
 
-    # Class-level registry, not per-instance: system_service.py's own _timer_sequencer never keeps
-    # a reference to the Timer it chains through (fire-and-forget, matching real hardware), so this
-    # is the only way test code can reach and fire it. Tests must clear this between test functions
-    # (all_timers.clear()) since it otherwise persists across a whole test file's process lifetime.
+    # Class-level registry, not per-instance: records every real Timer() *construction*, so a test
+    # can assert none happened (e.g. system_service.py's _timer_sequencer() reusing one preallocated
+    # Timer via .init() instead - SPECIFICATION.md Part F.1). Tests must clear this between test
+    # functions (all_timers.clear()) since it otherwise persists across the whole process lifetime.
     all_timers: "list[Timer]" = []
 
     # Test-only fault injection, off by default: real rp2 Timer.init() calls

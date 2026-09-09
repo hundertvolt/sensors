@@ -296,6 +296,40 @@ export async function applyField(_context, { sectionKey, groupKey, fieldKey, fie
 }
 
 /**
+ * Leaves a non-`dispatch` toggle/enum field at its own already-current value and clicks its group
+ * card's real Apply button, expecting js/render.js's collectGroupBody() to sparse-omit it (the fix
+ * this command exists to exercise): no PUT ever fires, so - unlike applyField() above - this never
+ * waits on a real `data-apply-status`, which would never arrive. navigateToSection()'s own
+ * mainEl.replaceChildren() (js/templates.js's buildSectionShell()) guarantees a genuinely fresh
+ * card with no leftover `data-apply-status` from an earlier field's test sharing this same group.
+ * @param {import("playwright").BrowserContext} _context unused - see applyField()'s own note.
+ * @param {{sectionKey: string, groupKey: string, fieldKey: string, kind: "toggle" | "enum", value: unknown}} args
+ * @returns {Promise<{resultText: string | null, applyStatus: string | null}>}
+ */
+export async function applyUnchangedFieldExpectNothingToSubmit(_context, { sectionKey, groupKey, fieldKey, kind, value }) {
+    const page = /** @type {import("playwright").Page} */ (livePage);
+    await navigateToSection(sectionKey);
+    const card = page.locator(`[data-group-key="${groupKey}"]`);
+    await card.waitFor();
+    const control = card.locator(`[data-field-key="${fieldKey}"]`);
+
+    if (kind === "toggle") {
+        const desired = String(Boolean(value));
+        const current = await control.getAttribute("data-value");
+        if (current !== desired) {
+            await control.click();
+        }
+    } else {
+        await control.selectOption({ value: String(value) });
+    }
+
+    await card.locator(".apply-button").click();
+    const resultText = await pollForText(card.locator(".apply-result"), "Nothing to submit - no fields were changed.", APPLY_STATUS_TIMEOUT_MS);
+    const applyStatus = await card.getAttribute("data-apply-status");
+    return { resultText, applyStatus };
+}
+
+/**
  * Forces a genuinely fresh remount of `sectionKey` and reads back `fieldKey`'s freshly-rendered
  * initial state - the only real-UI-driven proof a toggle/enum field's persisted value round-tripped
  * (SPECIFICATION.md Part H.3: an in-place poll never touches those controls).

@@ -279,8 +279,11 @@ class SensorReaderConfig(SensorReader):
         # Setter mirror of _get_dict_cfg (see SPECIFICATION.md C.5.2): persist first, then push live only
         # changed fields with a callback. Snapshot each field's pre-write value first - the one
         # _recover_failed_push rung that only exists here, before the write below overwrites it.
+        # Filtered to genuinely-persisted keys only - see BACKLOG.md's 2026-09-04->08 MemoryError
+        # item for the spurious-errno bug this avoids on a command-only/special-alone field.
+        persisted_keys = [key for key, field in schema_dict(cfg_vals).items() if key in data and check_cfg_get_default(field)[0]]
         try:  # _get_mgr_cfg is an overridable extension point, same defense as _get_dict_cfg's own use of it
-            old_values = await self._get_mgr_cfg(list(data.keys()))
+            old_values = await self._get_mgr_cfg(persisted_keys) if persisted_keys else {}
         except Exception as e:
             await self.pr.err_s("Error reading previous config for fallback:", e, errno=7)
             old_values = None

@@ -3,6 +3,7 @@
  * itself; see SPECIFICATION.md Part H.3 for the full layer/contract definition this file follows.
  */
 
+import { resolveFieldValue } from "./definitions.js";
 import { formatFieldValue } from "./field-format.js";
 import { pollManager, startPolling } from "./poll-manager.js";
 import { buildErrcountGroup, buildFieldGroupCard, buildSectionShell } from "./templates.js";
@@ -60,12 +61,17 @@ function describeGetFailure(response, url) {
 
 /**
  * Reads whatever the visitor entered/toggled in `card`'s controls back into a plain PUT body,
- * keyed off the same `data-field-key`/`data-sub-field-key` hooks `js/templates.js` sets.
+ * keyed off the same `data-field-key`/`data-sub-field-key` hooks `js/templates.js` sets. A toggle
+ * or enum field is sparse-omitted (like every number/string field already is) when it still
+ * matches its resolveFieldValue() baseline (the real current value, or the field's own
+ * `defaultValue` when GET never reports one) and isn't `dispatch`-marked - see definitions.js's own
+ * comments on both flags.
  * @param {HTMLElement} card
  * @param {FieldGroup} group
+ * @param {Record<string, unknown>} currentValues
  * @returns {Record<string, unknown>}
  */
-function collectGroupBody(card, group) {
+function collectGroupBody(card, group, currentValues) {
     /** @type {Record<string, unknown>} */
     const body = {};
     for (const field of group.fields) {
@@ -75,7 +81,10 @@ function collectGroupBody(card, group) {
         if (field.kind === "toggle") {
             const button = card.querySelector(`[data-field-key="${field.key}"]`);
             if (button instanceof HTMLElement) {
-                body[field.key] = button.dataset.value === "true";
+                const value = button.dataset.value === "true";
+                if (field.dispatch || value !== Boolean(resolveFieldValue(field, currentValues))) {
+                    body[field.key] = value;
+                }
             }
             continue;
         }
@@ -110,7 +119,11 @@ function collectGroupBody(card, group) {
         if (control.value === "") {
             continue; // sparse PUT: an untouched input is omitted, not sent as empty
         }
-        body[field.key] = readInputValue(control.value, field);
+        const value = readInputValue(control.value, field);
+        if (field.kind === "enum" && !field.dispatch && value === resolveFieldValue(field, currentValues)) {
+            continue; // dropdown still at its current selection - nothing changed for this field
+        }
+        body[field.key] = value;
     }
     return body;
 }
@@ -190,15 +203,14 @@ function buildAndWireFieldGroup(group, section, currentValues, onApplied) {
         if (putPath === undefined) {
             return;
         }
-        const groupBody = collectGroupBody(card, group);
+        const groupBody = collectGroupBody(card, group, currentValues);
         if (Object.keys(groupBody).length === 0) {
-            // A toggle always resubmits its current value, and so does an enum whose current value
-            // matches a real option (see collectGroupBody()) - so this can only happen when a group
-            // made only of number/string fields is submitted untouched, or an enum field with no
-            // matching current value (e.g. SystemCmd, never returned by GET) is left at its blank
-            // placeholder. Skip the round trip entirely rather than PUTing an empty body and letting
-            // applyResultStyling()'s empty-result-means-success fallback show a misleading "Valid"
-            // for a request that changed nothing.
+            // Every field kind is now sparse-omitted when left untouched (matching value for a
+            // toggle/enum, blank for a number/string/composite) - only a `dispatch`-marked field
+            // (e.g. SystemCmd, ResetErrors) always resubmits regardless. Skip the round trip
+            // entirely rather than PUTing an empty body and letting applyResultStyling()'s
+            // empty-result-means-success fallback show a misleading "Valid" for a request that
+            // changed nothing.
             if (resultEl) {
                 resultEl.textContent = "Nothing to submit - no fields were changed.";
             }
@@ -244,6 +256,15 @@ function buildAndWireFieldGroup(group, section, currentValues, onApplied) {
                     ? Object.fromEntries(Object.keys(groupBody).map((key) => [key, "Valid"]))
                     : reconcileResults(groupBody, rawResult ?? {});
             applyResultStyling(card, flatResult, envelope.descr ?? "Done");
+            // Keeps collectGroupBody()'s own unchanged-detection correct for a second Apply click
+            // later in the same page load, without waiting on onApplied()'s slower GET round trip:
+            // a field the server actually stored (Valid or Unchanged, never Failed/Invalid) becomes
+            // the new "current" baseline immediately.
+            for (const [key, value] of Object.entries(groupBody)) {
+                if (flatResult[key] === "Valid" || flatResult[key] === "Unchanged") {
+                    currentValues[key] = value;
+                }
+            }
             onApplied();
         } catch (error) {
             if (resultEl) {

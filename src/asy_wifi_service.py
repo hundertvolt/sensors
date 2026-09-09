@@ -311,22 +311,23 @@ class AsyConnTime(SensorReaderConfig):
             await self.pr.err_s("Error activating hotspot AP:", e, errno=12)
 
     def _configure_hotspot_ap(self, country: str, hostname: str) -> None:
-        network.country(country)  # Country
-        network.hostname(hostname)  # Hostname
-        self.wlan.config(essid=hostname, password="12345678")
-        self.wlan.active(True)
-        self.wlan.config(pm=0xA11140)  # disable power-save mode
+        # Only reached on the first tick after entering hotspot mode in normal operation - see
+        # SPECIFICATION.md Part F.2 for why STAT_GOT_IP isn't STA-only. The active() guard below is
+        # kept regardless, as low-risk defense against redundant reconfiguration on genuine re-entry.
+        if not self.wlan.active():
+            network.country(country)  # Country
+            network.hostname(hostname)  # Hostname
+            self.wlan.config(essid=hostname, password="12345678")
+            self.wlan.active(True)
+            self.wlan.config(pm=0xA11140)  # disable power-save mode
+            self.pr.one("WLAN hotspot was started")
         own_ip, own_netmask = self.wlan.ifconfig()[:2]
-        # _run_hotspot_mode() calls _start_hotspot() (and so this method) again every loop
-        # iteration for as long as wlan.status() != network.STAT_GOT_IP - true on every iteration
-        # while purely in AP mode (STAT_GOT_IP is a STA-only status an AP interface never reports).
         # Guard against leaking a duplicate concurrent DNSServer.run() task on top of one already
         # running - same "is None or .done()" convention system_service.py's own
         # start_and_check_tasks() already uses for its supervised tasks.
         if self.dns_server_task is None or self.dns_server_task.done():
             evtloop = asyncio.get_event_loop()
             self.dns_server_task = evtloop.create_task(self.dns_server.run(own_ip, own_netmask))
-        self.pr.one("WLAN hotspot was started")
 
     def _hotspot_client_connected(self) -> None:
         self.hotspot_timer.deinit()  # if client connected, do not stop hotspot
@@ -629,16 +630,10 @@ class AsyConnTime(SensorReaderConfig):
     async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[str]]]:
         return await self.pr.get_log()
 
-    # Locking convention for this class's WLAN-observing getters (BACKLOG.md's own flagged
-    # inconsistency - documented, not redesigned, since both shapes are genuinely needed): a method
-    # whose own docstring/comment says "caller must already hold wifi_mode_lock" (network_available()
-    # below) is meant to be called from INSIDE a caller's own already-locked critical section - it
-    # never checks .locked() itself, since the caller holding it is the whole point. Every method
-    # below this comment instead checks self.wifi_mode_lock.locked() itself and degrades to a "don't
-    # know yet" sentinel (None/False) - these are the public, callable-from-anywhere getters, never
-    # meant to be wrapped in the caller's own lock. A new getter must pick one shape deliberately, not
-    # copy whichever neighbor happens to be closest - get_dns_server_ip() once returned an
-    # unconditional None because it didn't.
+    # Locking convention for these getters (see SPECIFICATION.md Part C.8's "Known inconsistency"):
+    # network_available() below assumes the caller already holds wifi_mode_lock; every getter below
+    # this comment checks .locked() itself instead and degrades to None/False. A new getter must
+    # pick one shape deliberately, not copy whichever neighbor happens to be closest.
     def get_wlan_ifconfig(self) -> tuple[str, str, str, str] | None:
         if self.wifi_mode_lock.locked():
             return None
@@ -684,6 +679,12 @@ class AsyConnTime(SensorReaderConfig):
     def network_available(self) -> bool:  # caller must already hold wifi_mode_lock
         return (self._conn_phase != _PHASE_HOTSPOT) and (self._wlan_status_or_none() == network.STAT_GOT_IP)
 
+    def is_hotspot_active(self) -> bool:
+        # A plain self._conn_phase int-compare touches no hardware, unlike network_available()'s
+        # own _wlan_status_or_none() call - no lock needed, so this picks the callable-from-anywhere
+        # getter shape (like get_dns_server_ip()/get_wlan_rssi() above), not network_available()'s.
+        return self._conn_phase == _PHASE_HOTSPOT
+
     def set_ext_led(self, ext_led: "LEDControl") -> None:  # for post-setting ext_led at any time
         self.ext_led = ext_led  # if called even after init, call set_wifi_led(True) to init LED
 
@@ -713,14 +714,8 @@ class AsyConnTime(SensorReaderConfig):
     async def wlan_connect(self) -> None:
         await self.pr.setup()  # required for all logged warnings and errors (base_classes.py's own
         # __init__ never calls this - matches every _init_<sensor>() in the three promoted drivers)
-        await self.dns_server.pr.setup()  # dns_server is its own separate PrintLogHistory instance
-        # (captive_dns.py's DNSServer, own construction, not covered by self.pr.setup() above) -
-        # self.dns_server.run() is only ever started later in this same function's own hotspot-
-        # activation path, so this is always called before it. Found during baseline
-        # verification: every dns_server.pr.err_s()/wrn_s() call degraded to
-        # "PrintLog: Uninitialized, call setup first!" forever (never actually logging/persisting)
-        # since nothing ever called this - real hardware falling back to hotspot mode has the
-        # identical gap, not twin-specific.
+        await self.dns_server.pr.setup()  # its own separate PrintLogHistory, not covered by
+        # self.pr.setup() above - see SPECIFICATION.md Part C.7 for the real bug this fixed.
         self._err_cnt_internal = 0  # fresh failure streak each task (re)start, same as _init_<sensor>()
         self._reset_wlan_connect_state()
         await self._apply_initial_led_config()

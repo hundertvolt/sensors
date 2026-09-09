@@ -40,16 +40,10 @@ _TASK_FAIL_INCREMENT = const(100)  # absolute value important for decrease time,
 _TASK_FAIL_MAX = const(300)  # ...ratio important for triggering reset (multiple errors)
 _NAME = const("SYSTEM")
 
-# General, module-independent system-settings schema (config_SYSTEM.cfg, via _NAME above) - the
-# real, connected successor to the old, now-deleted improved-quality/sensortask-wozi.py
-# "config_SYSTEM.cfg" schema, which was a disconnected, never-read duplicate: its setSGP/setBMP
-# handlers wrote into it, but neither driver's own logic ever read from it, so a REST client
-# setting those fields never actually changed real sensor behavior (see SPECIFICATION.md Part
-# C.5.3). DebugLevel is the first field; owner-confirmed intent is to
-# grow this with more device-wide settings over time (e.g. timing/timezone info currently on
-# AsyNtpClient, future rsyslog settings) - adding a field here is exactly the same one-line
-# _VAL_*-tuple-concatenation pattern every other ConfigManager-backed module already uses (see
-# SPECIFICATION.md Part C), not a mechanism that needs revisiting per new field.
+# General, module-independent system-settings schema (config_SYSTEM.cfg, via _NAME above) - see
+# SPECIFICATION.md Part C.5 for the setSGP/setBMP history this superseded. DebugLevel is the first
+# field; adding another is the same one-line _VAL_*-tuple-concatenation pattern every other
+# ConfigManager-backed module already uses (Part C).
 _VAL_DEBUG_LEVEL = const((("DebugLevel", "int", 0, 0, 5, None),))  # range matches print_log.py's
 # PrintLog.level_off()..level_info() (0-5); default 0 matches the reference file's own debug=False.
 
@@ -77,6 +71,11 @@ class SystemService:
         self.uptime_timer = Timer()
         self.reset_timer = Timer()
         self.storage_timer = Timer()
+        # Preallocated the same way as the three timers above - _timer_sequencer() re-.init()s this
+        # one repeatedly rather than constructing a fresh, unreferenced Timer() each step (see its
+        # own comment: an unstored Timer is GC-eligible before its ONE_SHOT callback ever fires -
+        # SPECIFICATION.md Part F.1's documented soft-Timer-callback-drop gotcha).
+        self.sequencer_timer = Timer()
         self.ntp_is_synced = asy_ntp_callback
         self.start_time_set = False
         # None until status_counter() resolves it - a later change to this value signals a reboot happened.
@@ -148,8 +147,10 @@ class SystemService:
         if counter < len(timers):
             delay = int(_TIMER_BASE_PERIOD / (len(timers) + 1))
             try:
-                # one delay after each start, also (virtually) for last one
-                Timer(
+                # Reuses the preallocated self.sequencer_timer rather than a bare Timer() here - an
+                # unreferenced Timer is GC-eligible before its ONE_SHOT callback fires, silently
+                # hanging every caller of start_timers() forever (SPECIFICATION.md Part F.1).
+                self.sequencer_timer.init(
                     period=delay,
                     mode=Timer.ONE_SHOT,
                     callback=lambda b: self._timer_sequencer(timers, counter=counter),
@@ -167,6 +168,20 @@ class SystemService:
         except Exception as e:  # driver-supplied starter (get_task_starters()) - could legitimately misbehave
             await self.pr.err_s("Task starter", n, "failed to start:", e, errno=3)
             return None
+
+    async def _log_dead_task(self, task: "asyncio.Task[Any]", n: int) -> None:
+        # A finished Task carries no .exception()/.result() in MicroPython's asyncio - awaiting it
+        # again is the only way to recover why it ended (a real exception re-raises here, a clean
+        # return does not), giving the restart warning below real diagnostic content.
+        try:
+            await task
+        except asyncio.CancelledError:
+            # Previously logged via the non-persisting self.pr.err() - left zero trace in errcount,
+            # indistinguishable from a clean return. Persists now via its own errno=6, distinct from
+            # errno=5's real-exception case (see SPECIFICATION.md's errno/wrnno table).
+            await self.pr.err_s("Task", n, "ended: was cancelled", errno=6)
+        except Exception as e:
+            await self.pr.err_s("Task", n, "ended with exception:", e, errno=5)
 
     def start_asy_uptime_counter(self) -> asyncio.Task[None]:
         evtloop = asyncio.get_event_loop()
@@ -198,6 +213,8 @@ class SystemService:
             no_fail = True
             for n in range(0, len(tasks)):
                 if tasks[n] is None or tasks[n].done():  # type: ignore[union-attr]
+                    if tasks[n] is not None:
+                        await self._log_dead_task(tasks[n], n)  # type: ignore[arg-type]
                     task_errors += _TASK_FAIL_INCREMENT
                     tasks[n] = await self._start_task(task_starters[n], n)
                     no_fail = False
@@ -292,13 +309,8 @@ class SystemService:
         self._level_setters = list(setters)
 
     def _apply_level(self, value: int) -> None:
-        # Iterates the registry, pushing value to every other logger's own set_level() (already
-        # existing on every PrintLog - see print_log.py). Each call is individually guarded:
-        # set_level() itself is documented to never raise, but a registry entry is a plain
-        # Callable[[int], None] from this class's own point of view, not guaranteed to be exactly
-        # that implementation - matching this codebase's established "driver/caller-supplied
-        # callback could misbehave" defense (e.g. _timer_sequencer()'s own per-starter try/except),
-        # so one bad entry can't stop the rest of the registry from being updated.
+        # Each call individually guarded (same "caller-supplied callback could misbehave" defense
+        # as _timer_sequencer()'s own per-starter try/except) - one bad entry can't stop the rest.
         for setter in self._level_setters:
             try:
                 setter(value)

@@ -115,7 +115,13 @@ def make_conn(cfg_path: "str | None" = None) -> AsyConnTime:
     return conn
 
 
-def make_ntp(conn: AsyConnTime, ntp_host: str, cfg_path: "str | None" = None) -> AsyNtpClient:
+def make_ntp(
+    conn: AsyConnTime,
+    ntp_host: str,
+    cfg_path: "str | None" = None,
+    ntp_fetch_timeout_ms: "int | None" = None,  # None = AsyNtpClient's own real default
+    max_module_error: int = 5,  # AsyNtpClient's own real default
+) -> AsyNtpClient:
     # Exactly sensortask-wozi.py's own wiring: conn.get_wifi_mode_lock()/network_available/
     # get_dns_server_ip passed straight through as ntp's own constructor arguments - the real
     # bound methods, not a lambda standing in for them.
@@ -125,7 +131,10 @@ def make_ntp(conn: AsyConnTime, ntp_host: str, cfg_path: "str | None" = None) ->
         # One single f-string, not a plain-string-literal-adjacent-to-an-f-string concatenation -
         # same MicroPython gotcha test_asy_ntp_client.py's own _client_with_offsets() documents.
         f.write(f'{{"NTP_Host": "{ntp_host}", "NTP_Offset_S": 0, "NTP_Interv_H": 12, "GMTOffset": 0, "DSTOffset": 0}}')
-    ntp = AsyNtpClient(conn.get_wifi_mode_lock(), conn.network_available, conn.get_dns_server_ip, cfg_path=cfg_path)
+    kwargs: dict[str, Any] = {"cfg_path": cfg_path, "max_module_error": max_module_error}
+    if ntp_fetch_timeout_ms is not None:
+        kwargs["ntp_fetch_timeout_ms"] = ntp_fetch_timeout_ms
+    ntp = AsyNtpClient(conn.get_wifi_mode_lock(), conn.network_available, conn.get_dns_server_ip, **kwargs)
     run(ntp.cfgmgr.setup())
     return ntp
 
@@ -154,6 +163,15 @@ async def _cancel(task: "asyncio.Task[Any]") -> None:
         await task
     except asyncio.CancelledError:
         pass
+
+
+def _last_err(counter: "dict[str, dict[str, int | list[int] | list[str]]]", field: str) -> "int | str | None":
+    # Same helper as tests/test_asy_ntp_client.py's own _last_err() - duplicated, not imported,
+    # matching this file's existing convention of small per-file test helpers (e.g.
+    # _sweep_stale_tmp_dirs above).
+    value = counter["NTP"][field]  # ErrNum/ErrType are list-shaped once _error_check() has run once
+    assert isinstance(value, list)
+    return value[-1] if value else None
 
 
 # ---------------------------------------------------------------------------
@@ -395,6 +413,55 @@ def test_full_chain_reaches_synced_state_via_a_real_wifi_service_and_a_literal_i
     synced, last_sync = run(scenario())
     assert synced is True
     assert last_sync == 0
+
+
+def test_full_chain_degrades_cleanly_when_wifi_reports_connected_but_the_ntp_server_never_answers() -> None:
+    # The real-hardware finding this proves at the mock/unit level (BACKLOG.md open question 6,
+    # closed 2026-09-04 "investigated, no src/ change"): the CYW43 firmware/lwIP stack can report
+    # a real link as fully connected (wlan.isconnected()==True, STAT_GOT_IP) while it's actually
+    # dead - a real arping probe got zero responses from a DUT that `iw station dump` showed
+    # continuously "associated: yes" for. `connect_wlan(conn)` below puts the *real* AsyConnTime's
+    # WLAN into exactly that "looks connected" state, so `conn.network_available()` - driven
+    # through the real object, not a lambda stand-in - genuinely reports True the whole time. The
+    # FakeNtpServer is bound and reachable (a real socket, a real port) but its own serve_once()
+    # is deliberately never called, so a real send genuinely goes unanswered - the same observable
+    # shape a truly dead-but-reported-alive link produces (nothing ever comes back), reached here
+    # via "nobody's listening" rather than "the packet vanishes on a dead radio link" - the
+    # distinction doesn't matter to this code, which only ever sees "sent, then nothing back
+    # within the timeout" either way.
+    conn = make_conn()
+    connect_wlan(conn)
+    server = FakeNtpServer()
+    ntp = make_ntp(conn, "127.0.0.1", ntp_fetch_timeout_ms=100, max_module_error=2)
+
+    async def scenario() -> "tuple[bool, int | str | None, int | str | None]":
+        try:
+            with server.redirect_resolution():
+                task = asyncio.create_task(ntp.asy_ntp_time())
+                # One trigger per would-be failure cycle - max_module_error=2 gives up on the 3rd,
+                # each cycle bounded by the 100ms fetch timeout above, so this stays fast.
+                for _ in range(3):
+                    ntp.ntp_sync_trigger_event.set()
+                    await asyncio.sleep_ms(150)
+                await asyncio.wait_for(task, 2.0)  # must actually complete, not hang forever
+                synced = await ntp.ntp_issynced()
+                counter = await ntp.get_error_counter()
+                last_num = _last_err(counter, "ErrNum")
+                last_type = _last_err(counter, "ErrType")
+                return synced, last_num, last_type
+        finally:
+            server.close()
+
+    synced, last_num, last_type = run(scenario())
+    # Never synced (a real send with nobody answering back can't produce a real time), but the
+    # task itself completes cleanly (asyncio.wait_for above didn't time out) and gives up through
+    # the same real errno=20 path the isolated-mock version of this scenario already proves in
+    # tests/test_asy_ntp_client.py::test_asy_ntp_time_gives_up_after_repeated_sync_failures_and_persists_errno_20
+    # - this test's own value is proving the same property through the *real* network_available()
+    # chain (a WLAN fake genuinely reporting connected), not a directly-monkeypatched attempt.
+    assert synced is False
+    assert last_num == 20
+    assert last_type == "E"
 
 
 def test_full_chain_stays_unsynced_when_the_real_wifi_service_reports_network_unavailable() -> None:

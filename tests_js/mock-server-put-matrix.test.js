@@ -16,6 +16,10 @@ import { collectPutFieldCases } from "./_put_field_cases.js";
 /** @typedef {import("./_put_field_cases.js").PutFieldCase & {data: MockDeviceData}} PutFieldCase */
 
 // Shared driver/module field sets - identical between devices, so only wozi's copy is exercised.
+// Currently matches zero of dev's real groups (SCD30/SGP40/BMP3XX, same three drivers as wozi - the
+// two devices' only real difference today is I2C bus pairing, which the JSON definitions don't
+// encode) - that's expected, not a bug: project-owner direction (2026-09-08) is to keep this
+// mechanism as-is for when dev gains its own unique sensor(s) later, not to prune it now.
 const DEV_UNIQUE_GROUPS = new Set(["SHTC3", "MPRLS", "ISL29125"]);
 
 // GET never reflects what this generic matrix's "resubmit -> Unchanged"/"valid value -> reflected

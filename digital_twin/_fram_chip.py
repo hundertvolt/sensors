@@ -1,5 +1,6 @@
-"""Digital-twin chip fake for the MB85RS64V FRAM chip (SPI) — answers `asy_fram_driver.py`'s exact opcode/CS-session shape (RDID/RDSR/WRSR/WREN/WRDI/READ/WRITE); independently reimplemented, not shared with `tests/_fram_chip_fake.py`.
-Persists only via explicit `save_state()`; see `digital_twin/README.md`'s "FRAM persistence" section."""
+"""Digital-twin chip fake for a FRAM chip (SPI) — answers `asy_fram_driver.py`'s exact opcode/CS-
+session shape; independently reimplemented, not shared with `tests/_fram_chip_fake.py`. `size`/
+`rdid_response` default to wozi's MB85RS64V; `machine.py` overrides both for dev's MB85RS2MTA."""
 
 from _fault_injection import FaultInjector
 
@@ -22,27 +23,19 @@ _OPCODE_RDID = 0x9F
 _WEL_BIT = 0x02
 _DEFAULT_RDID = bytes([0x04, 0x7F, 0x03, 0x02])  # real MB85RS64V device ID (datasheets/fram/)
 
-_SAVE_CHUNK_SIZE = 512  # bytes per chunk when streaming the memory image out to disk in save_state()
-# below - avoids ever allocating one contiguous string for the whole buffer. Found by actually
-# running the real assembled system against this twin for the first time during baseline
-# verification: json.dump({"memory_hex": bytes(self.memory).hex()}) needs one
-# contiguous ~2*size-byte allocation (16385 bytes for the real 0x2000-byte FRAM) - reproduced as a
-# deterministic MemoryError after a few seconds of the real task supervisor running (real asyncio
-# tasks/timers/HTTP handling churn the heap enough to fragment it) even with ~1.5MB of *total*
-# gc.mem_free() still available, and an extra gc.collect() right before the call doesn't help
-# (MicroPython's GC coalesces freed blocks but never relocates live ones, so this fragmentation
-# isn't reclaimable). Chunked writes only ever need one small chunk contiguous at a time.
+_SAVE_CHUNK_SIZE = 512  # bytes per chunk streamed to disk in save_state() - avoids one contiguous
+# allocation for the whole buffer. See digital_twin/README.md's "FRAM persistence" for the real
+# MemoryError this fixed.
 
-_LOAD_CHUNK_CHARS = 1024  # hex characters per chunk when streaming the memory image back in from
-# disk in _load_state() below - the read-side mirror of _SAVE_CHUNK_SIZE above, same reasoning.
+_LOAD_CHUNK_CHARS = 1024  # hex chars per chunk in _load_state() - read-side mirror of the above.
 
 
 class FramChip:
-    def __init__(self, size: int = 0x2000, state_path: "str | None" = None) -> None:
+    def __init__(self, size: int = 0x2000, state_path: "str | None" = None, rdid_response: "bytes | None" = None) -> None:
         self.size = size
         self.state_path = state_path
         self.status = 0x00
-        self.rdid_response = _DEFAULT_RDID
+        self.rdid_response = _DEFAULT_RDID if rdid_response is None else rdid_response
         self.fault = FaultInjector()
         self.memory = bytearray(size)
         self._pending_op: int | None = None
@@ -64,13 +57,8 @@ class FramChip:
         except OSError:
             return  # no persisted state yet - start from a blank chip, matches a factory-fresh part
         try:
-            # Hand-parsed, not json.load() - the read-side mirror of save_state()'s own fix
-            # (_SAVE_CHUNK_SIZE's comment): json.load() would materialize the whole memory_hex
-            # value as one contiguous string (16385 bytes for the real 0x2000-byte FRAM), the same
-            # fragmentation risk class as the fixed save_state() bug, just on the read path -
-            # lower-probability in practice (this only ever runs once, at construction, before any
-            # live churn has fragmented the heap) but the same latent shape, found by this session's
-            # own follow-up audit of the fixed bug's pattern rather than a reproduced failure.
+            # Hand-parsed, not json.load() - same contiguous-allocation risk as save_state()'s own
+            # fixed bug, avoided here on the read path too (see _SAVE_CHUNK_SIZE's own comment).
             header = f.read(128)  # the '{"size": N, "memory_hex": "' prefix is always well under this
             marker = '"memory_hex": "'
             idx = header.find(marker)

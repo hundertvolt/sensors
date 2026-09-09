@@ -10,7 +10,7 @@
  *   description?: string, min?: number, max?: number, minLength?: number, maxLength?: number,
  *   mask?: boolean, options?: EnumOption[], specialValues?: SpecialValue[],
  *   subFields?: FieldDef[], onLabel?: string, offLabel?: string,
- *   format?: "gmtimestruct", float?: boolean,
+ *   format?: "gmtimestruct", float?: boolean, dispatch?: boolean, defaultValue?: unknown,
  * }} FieldDef
  * @typedef {{key: string, label: string, fields: FieldDef[], submit?: boolean, submitLabel?: string}} FieldGroup
  * @typedef {{key: string, label: string, kind: "errcount", modules: {key: string, label: string}[]}} ErrcountGroup
@@ -40,23 +40,35 @@
 
 import { fetchWithTimeout } from "./poll-manager.js";
 
-// A "number"-kind field's real server-side type is Python int by default; float?: true marks the
-// few fields that are actually Python float. config_manager.py's coerce_numeric()/
-// type_or_range_error() (SPECIFICATION.md Part A.8) accepts a JSON int for a float field
-// unconditionally (a blanket accept - every int is exactly representable as a float), but a
-// float field's own value is never subject to the int-only "no fractional part" check - so this
-// flag's only remaining job (js/mock-server.js's coerceAndValidate()) is telling an int-typed
-// field apart from a float-typed one so a fractional value is rejected only where it should be.
+// float?: true marks a "number"-kind field whose real server-side type is Python float, not the
+// int default (SPECIFICATION.md Part A.8) - tells coerceAndValidate() when a fractional value is
+// actually valid.
 
-// errcount history shape matches src/print_log.py's get_log()/asy_webserver_service.py's
-// _shape_errcount_entry() exactly: no per-entry timestamp exists anywhere in the real system, and
-// "type" ("N"=no error/placeholder slot, "E"=error, "W"=warning) is never shown as text - only used
-// to color "num" (js/templates.js's buildErrcountGroup(), html/style.css's
-// .history-entry[data-err-type] rules). "num" is a raw errno the backend never attaches a
-// human-meaning catalog to.
+// errcount history shape matches print_log.py/asy_webserver_service.py exactly: no per-entry
+// timestamp exists; "type" ("N"/"E"/"W") only colors "num" (a raw errno), never shown as text.
+
+// dispatch?: true marks a toggle/enum field the backend always re-runs fresh, never compares
+// against a stored value (SPECIFICATION.md Part H.6's dispatch-only list) - collectGroupBody()
+// must always resubmit it, unlike an ordinary sparse-omitted-when-unchanged persisted field.
+
+// defaultValue is a field's safe synthetic baseline for when GET never reports a real value (a
+// command with no persisted state, e.g. SCD30's ContMeas) - see resolveFieldValue() below.
 
 /** The only schema major version this build of the renderer understands. */
 export const SUPPORTED_SCHEMA_MAJOR = 1;
+
+/**
+ * A field's effective current value: the real value from `currentValues` when GET reported one,
+ * otherwise `field.defaultValue`, otherwise `undefined`. Callers use this instead of reading
+ * `currentValues[field.key]` directly, so rendering and change-comparison never drift apart.
+ * @param {FieldDef} field
+ * @param {Record<string, unknown>} currentValues
+ * @returns {unknown}
+ */
+export function resolveFieldValue(field, currentValues) {
+    const value = currentValues[field.key];
+    return value !== undefined ? value : field.defaultValue;
+}
 
 /**
  * @param {unknown} data
@@ -86,9 +98,8 @@ export function validateDefinitions(data) {
     if (typeof defs.landingSection !== "string") {
         problems.push("landingSection is missing");
     }
-    // Falls back to for any section that omits its own pollIntervalMs (js/render.js's
-    // startPolling() call) - a missing/non-positive value would otherwise reach setTimeout() as
-    // undefined/0/negative, firing an unthrottled tight polling loop instead of failing loudly here.
+    // A missing/non-positive value would otherwise reach setTimeout() as undefined/0/negative,
+    // firing an unthrottled tight polling loop instead of failing loudly here.
     if (typeof defs.defaultPollIntervalMs !== "number" || !(defs.defaultPollIntervalMs > 0)) {
         problems.push("defaultPollIntervalMs must be a positive number");
     }
@@ -151,22 +162,16 @@ export function validateDefinitions(data) {
 /**
  * @param {string} path
  * @param {HTMLElement | null} [inlinedEl] a `<script type="application/json">` element already
- *   present in the page carrying this same data, or `null`/omitted if none - see this module's own
- *   docstring update below. Never queried from `document` here (this file, like every other js/*.js
- *   module, only ever touches DOM elements it's handed - html/index.html's own inline script is
- *   the one place that calls `document.getElementById(...)`, matching every other element it
- *   already passes down to startApp()).
+ *   present in the page carrying this same data, or `null`/omitted if none. Never queried from
+ *   `document` here - callers pass the element down, matching this module's usual convention.
  * @returns {Promise<SiteDefinitions>}
  */
 export async function loadDefinitions(path, inlinedEl) {
     let data;
     if (inlinedEl) {
-        // A real device build inlines its own definitions.json straight into index.html at build
-        // time (scripts/build_website.sh's own "Inlining" comment) instead of shipping it as a
-        // separately-fetched file - cuts one connection off every page load. Dev/preview mode
-        // (html/index.html itself, unbuilt) never has this element, so `inlinedEl` is always
-        // `null` there and this branch is simply never taken - the fetch path below is exercised
-        // identically to before.
+        // A real device build inlines definitions.json straight into index.html (cuts one
+        // connection per page load); dev/preview mode never has this element, so the fetch path
+        // below runs unchanged.
         try {
             data = JSON.parse(inlinedEl.textContent ?? "");
         } catch (error) {
