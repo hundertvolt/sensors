@@ -75,6 +75,31 @@ divergence between them is expected).
 - **Watchdog stays fixed** (hardcoded 8000ms, uniform, never per-device — settled project rule, not
   revisited here).
 - **Real hardware flashing is out of scope for this entire initiative.**
+- **Build-time tooling (the generator, `definitions.json` builder, and any other build-chain
+  script — Sessions 3/4/6) gets a fundamentally different error-handling contract than the
+  runtime sensor/service code it emits (project owner's explicit direction, 2026-09-09).** Runtime
+  `src/` code degrades gracefully and never raises (SPECIFICATION.md Part D.2) because a device
+  has to keep running unattended for years — a build script has no such constraint and must do the
+  opposite: **detect any error that would make a correct build impossible — a misconfigured
+  definition file, a wrong/missing/copy-pasted TOML field, an unresolvable `_WIRING` reference, a
+  naming collision with no disambiguating `name_ext`, a dependency cycle, anything structurally
+  invalid — and abort the whole build immediately, never emitting a partial or corrupted result.**
+  Every such abort must fail loudly: a clear, human-readable message naming the specific device
+  variant, the specific TOML file/field/line at fault, and what's wrong with it — never a bare
+  traceback or a silent skip. A build script that "degrades gracefully" past a real configuration
+  error is a bug, not a feature — the entire point is that a bad config must never silently produce
+  firmware/a website that looks fine but doesn't match its own TOML.
+  **Every build function needs its own unit test suite** (this is host-side CPython/pytest tooling,
+  matching `tests_scripts/`'s existing precedent — Part E.1's "real MicroPython interpreter"
+  rationale is about `src/`-target code specifically and doesn't apply here), covering: correct
+  output for valid input, and — the harder, more important half — that every documented error case
+  above is actually detected and produces the specific abort/message it's supposed to, not just
+  "doesn't crash." Aim for real coverage of the error-handling paths themselves (via
+  `scripts/test.sh --coverage`'s existing pipeline, Part E.5), not just the happy path — an
+  untested error branch is exactly the kind of thing that silently stops firing the day the code
+  around it changes. Each session building a piece of this tooling (3, 4, 6) owns writing this test
+  suite as part of that session's own "done" criteria, the same TDD-first step-session workflow
+  CLAUDE.md already requires.
 
 ## Device TOML schema (Session 1 deliverable — shape only, not the 6 real files)
 
