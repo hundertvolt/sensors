@@ -266,13 +266,14 @@ are a related, still-open question for Session 3.
 
 **Settled by this schema**: the two top-level shapes above, `[[instance]]` for optional modules
 only, `name_ext`'s default-empty-means-unchanged rule, `[instance.wiring]`'s shape (a flat
-`{field = "instance name"}` table for a required single-instance reference, or a
-`[instance.wiring.<name>]` sub-table of `{source, field}` for an optional getter reference),
-`[device.wiring]` as the mandatory-infra-side mirror of `[instance.wiring]`, the standing "every
-real cross-instance link is TOML-visible" rule and its two exclusions (see "Core design decisions"
-above), that a getter/optional-producer reference defaults to disabled when absent rather than
-erroring (unlike a required reference like `comp_source`), and that an `address` field only exists
-for a driver kind whose chip actually has one.
+`{field = "driver[_name_ext]"}` table for a required single-instance reference, or a
+`[instance.wiring.<name>]` sub-table of `{source, field}` for an optional getter reference — see
+"Build/generator script quality bar" below for exactly what that identifier means and why it isn't
+`instance_name()`), `[device.wiring]` as the mandatory-infra-side mirror of `[instance.wiring]`,
+the standing "every real cross-instance link is TOML-visible" rule and its two exclusions (see
+"Core design decisions" above), that a getter/optional-producer reference defaults to disabled when
+absent rather than erroring (unlike a required reference like `comp_source`), and that an `address`
+field only exists for a driver kind whose chip actually has one.
 
 **Session 2 done**: the 6 real files live at `devices/<device>.toml`. The six `device.name` values
 are `Wozi`/`Dev`/`Arzi`/`Klkizi`/`Grkizi`/`Schlafzi`, feeding `hostname = "SensorStation<name>"`.
@@ -396,6 +397,22 @@ proceed rather than degrading:
   Every one of these must produce a specific, human-readable error naming the two colliding
   declarations (which instance/bus, which field, which value) — never a generic "build failed" and
   never a silent pick of one over the other.
+- **A wiring reference (`comp_source`, `signal_sink`, `fram_target`, `led_target`, every
+  `[instance.wiring.<name>]`/`[device.wiring]` field) resolves against the TOML's own
+  `driver`+`name_ext` identity — never against `instance_name()`/each driver's own `_NAME`
+  constant, and the two must never be conflated.** These are two unrelated naming spaces: the TOML
+  identifier is the literal `driver` string as written (`"notification"`, `"scd30"`, ...) plus
+  `_<name_ext>` when set; `instance_name()`'s result (REST dict keys/config filenames/error-log
+  keys, C.14.1) is built from the driver's own `_NAME` module constant instead, which is **not**
+  reliably `driver.upper()` — confirmed directly: `asy_notification_service.py`'s `_NAME =
+  const("NOTIFY")`, not `"NOTIFICATION"`. A generator that resolved a wiring string by matching it
+  against `instance_name()` output would silently fail to resolve exactly this case. The correct
+  (and only sound) implementation: the generator already builds a `(driver, name_ext) ->
+  constructed instance` map to instantiate every `[[instance]]` entry in the first place: a wiring
+  reference resolves against that same map, purely at build time, and hands the consumer the
+  already-constructed Python object directly — `instance_name()`/`_NAME` never enters wiring
+  resolution at all, since it exists to serve a completely different concern (what the running
+  firmware calls that instance over REST).
 - **Driver-declared bus requirements are enforced via a `# @requires` comment tag, never a real
   Python variable.** A driver whose correctness depends on a property of the bus it's wired to
   (e.g. `asy_scd30_driver.py`'s clock-stretch timeout requirement — today only satisfied by hand,
