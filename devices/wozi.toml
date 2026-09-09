@@ -1,0 +1,99 @@
+# wozi.toml - exemplary/base device config; never physically flashed, correctness comes from
+# tests/, not a bench (CLAUDE.md).
+# Wiring sourced from src/sensortask_wozi.py's build_system().
+
+[device]
+name = "Wozi"
+hostname = "SensorStationWozi"
+hotspot_password = "12345678"
+# Mandatory infra (wifi/ntp/system) tuning - required, not modeled as [[instance]] entries.
+conn_fail_to_hotspot = 5
+hotspot_time_min = 8
+
+# Mandatory-infra-to-instance links; each field optional, absence disables that feature.
+[device.wiring]
+led_target = "neopixel"
+fram_target = "fram"
+
+# SCD30 clock-stretch headroom (datasheet: up to 150ms/day, past rp2's 50ms default).
+[bus.i2c0]
+scl_pin = 13
+sda_pin = 12
+frequency = 50000
+timeout = 200000
+
+[bus.i2c1]
+scl_pin = 19
+sda_pin = 18
+frequency = 50000
+
+[bus.spi0]
+sck_pin = 2
+mosi_pin = 3
+miso_pin = 4
+
+# --- sensor drivers ---------------------------------------------------------------------------
+
+[[instance]]
+driver = "scd30"
+name_ext = ""
+bus = "i2c0"
+irq_pin = 8
+trigger_sec = 3
+
+[instance.wiring]
+fram_target = "fram"
+
+[[instance]]
+driver = "sgp40"
+name_ext = ""
+bus = "i2c1"
+
+[instance.wiring]
+comp_source = "scd30"
+fram_target = "fram"
+
+[[instance]]
+driver = "bmp3xx"
+name_ext = ""
+bus = "i2c1"
+address = 0x77
+
+[instance.wiring]
+fram_target = "fram"
+
+# --- singleton services ------------------------------------------------------------------------
+
+[[instance]]
+driver = "fram"
+bus = "spi0"
+cs_pin = 1
+# MB85RS64V, 8KB.
+max_size = 0x2000
+
+[[instance]]
+driver = "neopixel"
+pin = 15
+
+[instance.wiring]
+fram_target = "fram"
+
+[[instance]]
+driver = "notification"
+
+[instance.wiring]
+signal_sink = "neopixel"
+fram_target = "fram"
+
+# Per-signal getters - each optional; absence disables that specific warning signal.
+[instance.wiring.warn_co2]
+source = "scd30"
+field = "CO2"
+
+[instance.wiring.warn_voc]
+source = "sgp40"
+field = "VOC"
+
+[instance.wiring.warn_hum]
+source = "scd30"
+field = "Hum"

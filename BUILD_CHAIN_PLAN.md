@@ -65,6 +65,18 @@ the generator/website builder/CI matrix should validate its own work against the
   constructed Python object and passes it directly into the consumer's constructor. No
   "provides" registry needed — an instance either is the expected class or it isn't, checked
   directly.
+- **Every real cross-instance link gets a TOML-visible `[instance.wiring]`/`[device.wiring]`
+  field — none stay hardcoded in `build_system()`.** Covers `sgp40.comp_source`,
+  `notification.signal_sink`/`warn_co2`/`warn_voc`/`warn_hum`, and `fram_target` on every
+  driver/service with an optional `fram=`/`fram_storage=` argument (`scd30`, `sgp40`, `bmp3xx`,
+  `neopixel`, `notification`, plus `device.wiring.fram_target` for `SystemService`'s own `fram=`)
+  and `device.wiring.led_target` for WiFi's `conn.set_ext_led(pixel)`. Each field is individually
+  optional; absence disables that specific link rather than erroring — wiring only some of a
+  device's instances to FRAM and not others is a deliberate degree of freedom. **Excluded**: links
+  between two mandatory-infrastructure modules (both endpoints always exist unconditionally, so
+  there's no real presence/absence choice), and `WebserverService`'s `sensors=`/`settings=`/
+  `maintenance_sensors=`/`is_hotspot_active=` arguments, which enumerate whichever instances a
+  device's TOML already declares rather than naming one specific instance.
 - **No getters, no callback functions in generated code.** A consumer holds a direct reference to
   the producer's existing concurrency-safe value holder (SPECIFICATION.md Part G's "locked state"
   primitive) and reads `.value` directly when needed — eliminating the
@@ -113,51 +125,52 @@ the generator/website builder/CI matrix should validate its own work against the
 
 ## Device TOML schema (Session 1 deliverable — shape only, not the 6 real files)
 
-The shape every device's TOML file follows once Session 2 writes the real ones. Not itself
-authoritative production config — an illustrative, heavily-commented example, kept here since this
-doc is this initiative's own shared, living reference (its own front matter: "update it as
-decisions evolve"). References the mechanism `src/` now has after Session 1 (`config_manager.py`'s
-`instance_name()`, `WiringSchema`; `base_classes.py`'s `name_ext`/`get_error_sources()`/
-`get_loggers()`; each driver's own `_WIRING` — see `SPECIFICATION.md` Part C.14 for the full
-mechanism reference).
+The shape every device's TOML file follows (the 6 real files live at `devices/<device>.toml`).
+Uses the mechanism `src/` has after Session 1 (`config_manager.py`'s `instance_name()`,
+`WiringSchema`; `base_classes.py`'s `name_ext`/`get_error_sources()`/`get_loggers()`; each driver's
+own `_WIRING` — full mechanism reference: `SPECIFICATION.md` Part C.14).
 
-Two top-level shapes: a single `[device]` table (identity/network facts, not repeated) and a
-uniform `[[instance]]` array of tables — **every** constructed module is an instance, not just
-sensor drivers: a singleton service (WiFi, NTP, SystemService, FRAM, Neopixel,
-NotificationCoordinator) still varies per device by its own pin/bus/chip-size facts (confirmed
-directly: `sensortask_wozi.py`'s FRAM is an 8KB `MB85RS64V` on `spi0`/cs `1`; `sensortask_dev.py`'s
-is a 256KB `MB85RS2MTA` on a differently-pinned `spi0`/cs `5` — a real per-device fact, not a
-sensor-only concern), so there is no second, special-cased declaration mechanism for "the modules
-every device always has." A device variant that lacks a given singleton (if one ever does) simply
-omits that `[[instance]]` entry — the same absence-means-absent handling a missing sensor already
-gets.
+Two top-level shapes: a single `[device]` table (identity/network facts, plus mandatory-infra
+tuning and wiring — see below) and a uniform `[[instance]]` array of tables. **The `[[instance]]`
+array models optional modules only** — driver-level sensors, plus singleton services that vary or
+could someday be absent per device: FRAM, Neopixel, NotificationCoordinator.
+
+**WiFi, NTP, and SystemService are mandatory infrastructure and are never `[[instance]]`
+entries** — every buildable device has all three unconditionally, so there is no
+presence-or-absence question for the schema to encode. Their own per-device-tunable knobs (WiFi's
+`conn_fail_to_hotspot`/`hotspot_time_min`; NTP/SystemService have none today) live directly in
+`[device]`, and their crosslinks to optional instances live in `[device.wiring]`
+(`led_target`/`fram_target`, both optional). Both `[device]` tuning fields are **required, not
+defaulted**: a device TOML missing either is a build-time error, the same fail-loud contract
+"Build/generator script quality bar" below gives every other structurally-broken definitions file.
+
+The webserver — also unconditional — is never modeled as an instance either: its constructor takes
+no independent per-device facts, only references to whichever other instances the TOML already
+declares, so there's nothing for a `[[instance]]` entry to carry.
+
+A device variant that lacks a given *optional* singleton simply omits that `[[instance]]` entry —
+the same absence-means-absent handling a missing sensor gets. WiFi/NTP/SystemService are never
+optional and never omitted.
 
 ```toml
-# example-device.toml - illustrative shape only (Session 2 writes the 6 real files: dev, wozi,
-# arzi, klkizi, grkizi, schlafzi - see this doc's own "Target device variants").
+# example-device.toml - illustrative shape only; the 6 real files are devices/*.toml.
 
 [device]
-# "SensorStation<name>" is the base stub (CLAUDE.md/this doc's own "Core design decisions") - this
-# field supplies just the <name> part.
-name = "Wozi"
-# Default hostname AND the hotspot AP's own SSID (src/asy_wifi_service.py's essid=hostname - no
-# separate SSID field exists or is needed, confirmed directly against that module).
-hostname = "SensorStationWozi"
-# Per-device hotspot AP password (src/asy_wifi_service.py's HotspotPW config field, added this
-# session) - defaults to the existing hardcoded "12345678" if omitted (CLAUDE.md's accepted-risk
-# credential note); a device TOML may override it, but never needs to.
-hotspot_password = "12345678"
+name = "Wozi"                              # feeds hostname = "SensorStation<name>"
+hostname = "SensorStationWozi"             # also the hotspot AP's own SSID
+hotspot_password = "12345678"              # accepted-risk default (CLAUDE.md)
+conn_fail_to_hotspot = 5                   # mandatory-infra tuning, required
+hotspot_time_min = 8
 
-# One table per bus an [[instance]] entry below can reference by id. Every I2C/SPI pin, frequency,
-# and per-bus timeout override lives here - no hardcoded pins anywhere in generated or
-# hand-written driver-wiring code (this doc's own "Core design decisions").
+[device.wiring]
+led_target = "neopixel"                    # optional; WiFi status LED
+fram_target = "fram"                       # optional; SystemService's own error log
+
 [bus.i2c0]
 scl_pin = 13
 sda_pin = 12
 frequency = 50000
-# SCD30-specific: up to 150ms/day clock stretching, past rp2's 50ms default (SPECIFICATION.md Part
-# A.7) - a per-bus override, not a per-instance one, since it's a property of what shares this bus.
-timeout = 200000
+timeout = 200000                           # SCD30 clock-stretch headroom
 
 [bus.i2c1]
 scl_pin = 19
@@ -168,52 +181,38 @@ frequency = 50000
 sck_pin = 2
 mosi_pin = 3
 miso_pin = 4
-cs_pin = 1
 
-# --- sensor drivers (SensorReader/SensorReaderConfig subclasses - can repeat) ---------------
+# --- sensor drivers (SensorReader/SensorReaderConfig subclasses - can repeat) -------------------
 
 [[instance]]
-driver = "scd30"           # maps to a real driver class the generator resolves statically -
-# never a dynamic import (SPECIFICATION.md Part F.1). Per this doc's own "Acceptance criteria"
-# above, this resolution should be derived from the existing asy_<name>_driver.py -> <Name>_Reader
-# naming convention (SPECIFICATION.md Part C.5), not a separate hand-maintained lookup table -
-# not built in this session.
-name_ext = ""               # optional, default "" - instance_name()'s own default-unchanged case
-# (SPECIFICATION.md Part C.14.1): produces the plain "SCD30" REST/config/error-log key. Every
-# driver kind that can have more than one instance per device accepts this field; a singleton
-# service kind (see below) doesn't declare it at all.
+driver = "scd30"                           # resolved to its class via naming convention, not a
+name_ext = ""                              # lookup table (SPECIFICATION.md Part C.5)
 bus = "i2c0"
 irq_pin = 8
 trigger_sec = 3
-# No `address` field: SCD30 has no logically-selectable I2C address (hardwired per
-# datasheets/scd30/..._Interface_Description.pdf) - only a chip with a real address-select
-# mechanism gets this field (see bmp3xx below).
+
+[instance.wiring]
+fram_target = "fram"                       # optional
 
 [[instance]]
 driver = "sgp40"
 name_ext = ""
 bus = "i2c1"
-# _WIRING-declared cross-instance dependency (SPECIFICATION.md Part C.14.2): names another
-# [[instance]]'s own resolved name (its `driver` + `name_ext`, not a Python identifier) - the
-# generator resolves this to that instance's already-constructed object and checks it's actually
-# an SCD30_Reader (asy_sgp40_driver.py's own `_WIRING = (("comp_source", SCD30_Reader),)`),
-# erroring at build time on a type mismatch or an unresolvable name - not built in this session.
+
 [instance.wiring]
-comp_source = "scd30"
+comp_source = "scd30"                      # required; _WIRING-declared cross-instance dependency
+fram_target = "fram"                       # optional
 
 [[instance]]
 driver = "bmp3xx"
 name_ext = ""
 bus = "i2c1"
-# BMP388/BMP390 support a real address-select pin (SDO), so this driver kind does get an address
-# field - two legal values, 0x76/0x77 (datasheets/bmp3xx/...).
-address = 0x77
+address = 0x77                             # only chips with a real address-select pin get this
 
-# A second SCD30 on a different bus/pins - the multi-instance case this whole mechanism exists for
-# (project owner's own "two SCD30s, or the multi-differential-pressure-sensor case" example). Its
-# name_ext disambiguates every one of REST dict keys/config filename/error-log key at once
-# (instance_name()'s single resolved name, threaded through all three - SPECIFICATION.md C.14.1):
-# "SCD30_fan_pressure", not a second, colliding "SCD30".
+[instance.wiring]
+fram_target = "fram"
+
+# A second SCD30 on a different bus - name_ext disambiguates every derived name at once.
 [[instance]]
 driver = "scd30"
 name_ext = "fan_pressure"
@@ -221,50 +220,75 @@ bus = "i2c1"
 irq_pin = 9
 trigger_sec = 3
 
-# --- singleton services (never more than one per device, but still per-device-configurable) -----
+# --- optional singleton services -----------------------------------------------------------------
 
 [[instance]]
 driver = "fram"
 bus = "spi0"
 cs_pin = 1
-max_size = 0x2000            # MB85RS64V (8KB) here; dev's own real file uses 0x40000 (MB85RS2MTA,
-# 256KB) - a real per-chip fact, confirmed directly against both existing sensortask-*.py files,
-# not a hypothetical.
+max_size = 0x2000                          # per-chip fact, varies per device
 
 [[instance]]
 driver = "neopixel"
 pin = 15
 
-[[instance]]
-driver = "wifi"
-conn_fail_to_hotspot = 5
-hotspot_time_min = 8
-
-[[instance]]
-driver = "ntp"
-
-[[instance]]
-driver = "system"
+[instance.wiring]
+fram_target = "fram"
 
 [[instance]]
 driver = "notification"
-# NotificationSignal registrations (WarnCO2/WarnVOC/WarnHum today) are a related but separate
-# mechanism from _WIRING (SPECIFICATION.md C.14.3) - resolved at register()-call time, after every
-# producer already exists, so they don't need their own _WIRING declaration; how the generator
-# expresses "register WarnCO2 against the scd30 instance's CO2 field" from this table is Session
-# 3's own design question, not settled here.
+
+[instance.wiring]
+signal_sink = "neopixel"                   # required; not yet resolvable by _WIRING as specified -
+fram_target = "fram"                       # see note below
+
+# Per-signal getters - each optional; absence disables that specific warning signal.
+[instance.wiring.warn_co2]
+source = "scd30"
+field = "CO2"
+
+[instance.wiring.warn_voc]
+source = "sgp40"
+field = "VOC"
+
+[instance.wiring.warn_hum]
+source = "scd30"
+field = "Hum"
 ```
 
-**What this session settles**: the two top-level shapes above, the uniform `[[instance]]`
-convention (singleton services included, not special-cased), `name_ext`'s default-empty-means-
-unchanged rule, `[instance.wiring]`'s shape (a flat `{toml_field_name = "another instance's
-resolved name"}` table), and that an address field only exists for a driver kind whose chip
-actually has one (checked per datasheet, not assumed).
+Open question, not settled by this schema: `_WIRING`'s documented contract resolves a reference to
+the whole constructed instance, but `NotificationCoordinator.__init__`'s `request_signal_cb` wants
+one specific bound method off it (`pixel.request_signal`), not the `NeopixelDriver` instance
+itself. Whether this gets solved by extending `_WIRING`'s tuple shape, generator-side
+special-casing, or something else is left open — `asy_notification_service.py` declares no
+`_WIRING` tuple yet either. Each notification signal's own threshold default/range and flash color
+are a related, still-open question for Session 3.
 
-**What Session 2 does**: write the 6 real files (`dev`, `wozi`, `arzi`, `klkizi`, `grkizi`,
-`schlafzi`) from this shape, using the wiring facts already gathered from
-`src/sensortask_wozi.py`, `src/sensortask_dev.py`, `modules/sensortask-arzi.py`,
-`modules/sensortask-neu.py`.
+**Settled by this schema**: the two top-level shapes above, `[[instance]]` for optional modules
+only, `name_ext`'s default-empty-means-unchanged rule, `[instance.wiring]`'s shape (a flat
+`{field = "driver[_name_ext]"}` table for a required single-instance reference, or a
+`[instance.wiring.<name>]` sub-table of `{source, field}` for an optional getter reference — see
+"Build/generator script quality bar" below for exactly what that identifier means and why it isn't
+`instance_name()`), `[device.wiring]` as the mandatory-infra-side mirror of `[instance.wiring]`,
+the standing "every real cross-instance link is TOML-visible" rule and its two exclusions (see
+"Core design decisions" above), that a getter/optional-producer reference defaults to disabled when
+absent rather than erroring (unlike a required reference like `comp_source`), and that an `address`
+field only exists for a driver kind whose chip actually has one.
+
+**Session 2 done**: the 6 real files live at `devices/<device>.toml`. The six `device.name` values
+are `Wozi`/`Dev`/`Arzi`/`Klkizi`/`Grkizi`/`Schlafzi`, feeding `hostname = "SensorStation<name>"`.
+Every device's `hotspot_password` is the accepted-risk default (`"12345678"`, CLAUDE.md). `wozi`/
+`dev` are the only two with a `bmp3xx` instance; `klkizi`/`grkizi`/`schlafzi` share byte-for-byte
+identical wiring (only `device.name`/`hostname` differ), sourced from `modules/sensortask-neu.py`.
+Every SCD30-carrying `i2c0` bus gets `timeout = 200000` clock-stretch headroom
+(`src/asy_i2c_driver.py` supports it; the legacy `asy_i2c_driver.py` arzi/neu were built against did
+not).
+
+A minimal shape/collision smoke-test suite lives at `tests_scripts/test_device_tomls.py` (parses as
+valid TOML, matches this schema's shape, and re-implements — by hand, since no generator/validator
+exists yet — the global-GPIO-pin/per-bus-address/instance-name collision checks below against these
+6 real files specifically; **not** a substitute for Session 3's own full validator and its
+malformed-fixture test coverage).
 
 **What Session 3 (the generator) does, not settled here**: resolving the `driver` string to its
 Python class — per this doc's own "Acceptance criteria" above, derived from the existing
@@ -340,8 +364,10 @@ proceed rather than degrading:
 - **Detect and react to every error class that would make a real build impossible** —
   misconfigured/malformed TOML, an unresolved wiring reference, a driver-class/type mismatch, a
   REST/config-name collision with no disambiguating extension, a missing required pin/bus field, a
-  copy-paste duplicate, or any other structurally broken definitions file. Typical real-world
-  causes: misconfigured definition files, and plain wrong/missing/copy-pasted fields.
+  missing or incomplete mandatory-infra field in `[device]` (`conn_fail_to_hotspot`/
+  `hotspot_time_min`, required, not defaulted — see "Device TOML schema" above), a copy-paste
+  duplicate, or any other structurally broken definitions file. Typical
+  real-world causes: misconfigured definition files, and plain wrong/missing/copy-pasted fields.
 - **Global-resource-collision checks are their own error class and must not be skipped.**
   Overlapping bus addresses, double-claimed pin numbers, and any other double-definition of a
   resource meant to be exclusive are *syntactically valid, individually valid-looking fields that
@@ -371,6 +397,35 @@ proceed rather than degrading:
   Every one of these must produce a specific, human-readable error naming the two colliding
   declarations (which instance/bus, which field, which value) — never a generic "build failed" and
   never a silent pick of one over the other.
+- **A wiring reference (`comp_source`, `signal_sink`, `fram_target`, `led_target`, every
+  `[instance.wiring.<name>]`/`[device.wiring]` field) resolves against the TOML's own
+  `driver`+`name_ext` identity — never against `instance_name()`/each driver's own `_NAME`
+  constant, and the two must never be conflated.** These are two unrelated naming spaces: the TOML
+  identifier is the literal `driver` string as written (`"notification"`, `"scd30"`, ...) plus
+  `_<name_ext>` when set; `instance_name()`'s result (REST dict keys/config filenames/error-log
+  keys, C.14.1) is built from the driver's own `_NAME` module constant instead, which is **not**
+  reliably `driver.upper()` — confirmed directly: `asy_notification_service.py`'s `_NAME =
+  const("NOTIFY")`, not `"NOTIFICATION"`. A generator that resolved a wiring string by matching it
+  against `instance_name()` output would silently fail to resolve exactly this case. The correct
+  (and only sound) implementation: the generator already builds a `(driver, name_ext) ->
+  constructed instance` map to instantiate every `[[instance]]` entry in the first place: a wiring
+  reference resolves against that same map, purely at build time, and hands the consumer the
+  already-constructed Python object directly — `instance_name()`/`_NAME` never enters wiring
+  resolution at all, since it exists to serve a completely different concern (what the running
+  firmware calls that instance over REST).
+- **Driver-declared bus requirements are enforced via a `# @requires` comment tag, never a real
+  Python variable.** A driver whose correctness depends on a property of the bus it's wired to
+  (e.g. `asy_scd30_driver.py`'s clock-stretch timeout requirement — today only satisfied by hand,
+  per device TOML) declares it as a module-level comment, not a module-level constant: nothing the
+  running firmware itself ever reads should become a real frozen-bytecode value just to serve this
+  generator — the same reasoning behind `BACKLOG.md`'s `@web`/`@web-group` website-definitions
+  sketch, whose tag-family convention this reuses rather than inventing a second one. Grammar: `#
+  @requires bus.<field><op><value>` (e.g. `# @requires bus.timeout>=200000`), placed at module
+  level near `_WIRING`/`_VAL_*`. The generator parses driver source files as text for these tags
+  (never imports+introspects for this), resolves the instance's own `bus = "..."` TOML reference to
+  its `[bus.*]` table, and evaluates the tag's predicate against that table's actual field value —
+  silently continuing if satisfied, failing loudly (naming the device, instance, bus, field, and
+  expected-vs-actual value) if not, the same as every other check in this section.
 - **Never produce a corrupted or partial build.** On any detected error, abort the entire build
   immediately — no partial `build/<device>/` output left behind that could be mistaken for a real
   artifact.
