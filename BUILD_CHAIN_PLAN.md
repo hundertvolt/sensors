@@ -101,3 +101,21 @@ divergence between them is expected).
 Every session works on its own branch off `claude/automated-build-chain-nuzumw` (this branch), not
 `main`, and opens its PR against this branch. This branch merges into `main` only once every
 session has landed and the whole chain is verified end-to-end.
+
+## Merge-back review checklist
+
+Applied, rigorously and step by step, to every spun-off session's PR before it merges into this
+branch — not a one-time check, repeated on every incoming merge:
+
+1. **Reasonableness/efficiency/expectations** — does the result actually match what that session
+   was scoped and primed to do, and is it a sensible, non-bloated way of doing it?
+2. **Scope leakage** — did the session implement something that properly belongs to a *different*
+   (usually later) session, whether to reach a self-contained working result or by
+   misunderstanding its own scope boundary? If so, note it here and explicitly flag it to that
+   later session when it's spun off — not as "this is already done, keep it," but as "question
+   whether this is actually the right way and adapt if required." A later session inheriting
+   earlier work must not blindly accept it just because it's already there.
+3. **CI-fix legitimacy** — if a session's own PR had to fix a CI failure, confirm the fix landed in
+   the actual source, not by weakening or working around the test. A test changed because the
+   source legitimately changed is fine, but only if the test isn't made less strict in the
+   process.
