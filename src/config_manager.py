@@ -36,12 +36,24 @@ if TYPE_CHECKING:
     ConfigSchema = tuple[FieldSchema, ...]
 
     # A driver's declaration of a live cross-instance dependency it needs at construction time:
-    # (toml_field_name, required_driver_class) - see instance_name()'s own module-level comment
-    # and SPECIFICATION.md Part C.14 for the full convention. The generator (not built here) reads
-    # this to resolve toml_field_name to an already-constructed producer instance of the named
-    # class, topologically sorting every device's instance list so a producer is always
-    # constructed before any consumer that names it.
-    WiringSchema = tuple[tuple[str, type], ...]
+    # (toml_field_name, required_driver_class, target, required, mode) - see instance_name()'s own
+    # module-level comment and SPECIFICATION.md Part C.14.2 for the full convention. The generator
+    # (buildgen/, Session 3 of BUILD_CHAIN_PLAN.md) reads this to resolve toml_field_name to an
+    # already-constructed producer instance of the named class, topologically sorting every
+    # device's instance list so a producer is always constructed before any consumer that names it.
+    # `target`/`mode` say how the resolved instance is actually handed to the consumer:
+    #   mode="kwarg": the instance itself is passed as a constructor kwarg named `target`
+    #     (every existing case - `fram=`/`fram_storage=`/`comp_source=`).
+    #   mode="attr": the instance's `target` attribute/bound method is passed instead of the
+    #     instance itself (NotificationCoordinator's `request_signal_cb` wants
+    #     `pixel.request_signal`, not `pixel`).
+    #   mode="setter": `<consumer>.<target>(<resolved instance>)` is called once, after both
+    #     already exist (AsyConnTime.set_ext_led() - device.wiring.led_target).
+    # Purely additive over C.14.2's original 2-element shape - no existing driver's __init__
+    # signature changed to add this, `_WIRING` itself is never read at runtime (TYPE_CHECKING-only
+    # alias, buildgen/ AST-parses the literal tuple from source instead - see buildgen/wiring.py).
+    WiringField = tuple[str, type, str, bool, str]
+    WiringSchema = tuple[WiringField, ...]
 
 from print_log import PrintLogHistory
 

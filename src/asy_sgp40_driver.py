@@ -17,6 +17,7 @@ from struct import unpack_from
 from machine import Timer
 from micropython import const
 
+from asy_fram_manager import AsyFramManager
 from asy_i2c_driver import I2CDevice
 from asy_scd30_driver import SCD30_Reader
 from base_classes import Lockable, SensorReaderConfig
@@ -33,7 +34,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
     from typing import Any
 
-    from asy_fram_manager import AsyFramChunkTimestampedBuffer, AsyFramManager
+    from asy_fram_manager import AsyFramChunkTimestampedBuffer
     from asy_i2c_driver import I2C
     from config_manager import WiringSchema
 
@@ -59,11 +60,17 @@ _NAME = const("SGP40")
 SGP40 = namedtuple("SGP40", ("VOC", "Raw", "TS"))
 _FIELDS = const(("VOC", "Raw", "TS"))  # kept in sync with SGP40's own fields above
 
-# This driver's one live cross-instance dependency (SPECIFICATION.md Part C.14): the
+# This driver's live cross-instance dependencies (SPECIFICATION.md Part C.14): the
 # temperature/humidity compensation source, which must be an SCD30_Reader (the only sensor on this
-# system exposing both fields live) - resolved by a future generator to an already-constructed
-# instance and passed as comp_source below, never a getter/callback.
-_WIRING: "WiringSchema" = (("comp_source", SCD30_Reader),)
+# system exposing both fields live), plus the optional FRAM backup target - both resolved by
+# buildgen/ (Session 3 of BUILD_CHAIN_PLAN.md) to an already-constructed instance, passed directly
+# (comp_source is a required constructor kwarg; fram_target maps to this driver's own
+# fram_storage= kwarg, named differently for historical reasons - see buildgen/buildspec.py), never
+# a getter/callback.
+_WIRING: "WiringSchema" = (
+    ("comp_source", SCD30_Reader, "comp_source", True, "kwarg"),
+    ("fram_target", AsyFramManager, "fram_storage", False, "kwarg"),
+)
 
 
 class SGP40_Reader(SensorReaderConfig):

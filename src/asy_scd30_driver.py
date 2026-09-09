@@ -36,7 +36,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
     from typing import Any
 
-    from config_manager import ConfigSchema
+    from config_manager import ConfigSchema, WiringSchema
 
 
 _SCD30_DEFAULT_ADDR = const(0x61)
@@ -67,6 +67,15 @@ _NAME = const("SCD30")
 # infer field names from a literal at the call site, not through a variable indirection.
 SCD30 = namedtuple("SCD30", ("CO2", "Temp", "Hum", "WetBulb", "DewPoint", "TS"))
 _FIELDS = const(("CO2", "Temp", "Hum", "WetBulb", "DewPoint", "TS"))  # kept in sync with SCD30's own fields above
+
+# Datasheets/scd30/..._Interface_Description.pdf p.2: clock stretching is normally <=30ms but can
+# reach 150ms once/day for internal calibration, past rp2's own I2C timeout default (50ms) - every
+# device TOML's own bus.i2c*.timeout comment already cites this same fact (see e.g. devices/
+# wozi.toml, src/sensortask_wozi.py's own build_system()). Enforced here as a real, generator-
+# checked build requirement (BUILD_CHAIN_PLAN.md's "Build/generator script quality bar") instead of
+# only a comment a device TOML author has to remember by hand.
+# @requires bus.timeout>=200000
+_WIRING: "WiringSchema" = (("fram_target", AsyFramManager, "fram", False, "kwarg"),)
 
 if TYPE_CHECKING:
     SCDResults = tuple[float | None, float | None, float | None, int | None]  # CO2, temperature, humidity, timestamp

@@ -1266,13 +1266,46 @@ disambiguating extension); this session only makes the naming mechanism itself c
 ### C.14.2 The `_WIRING` tuple convention
 
 A driver that needs a live cross-instance value at construction time declares a `_WIRING:
-"WiringSchema"` tuple next to its `_VAL_*` schema tuples: `_WIRING = ((toml_field_name,
-required_driver_class),)` — e.g. `asy_sgp40_driver.py`'s `_WIRING = (("comp_source",
-SCD30_Reader),)`. `WiringSchema = tuple[tuple[str, type], ...]` (`config_manager.py`, `TYPE_CHECKING`-
-only). This reuses the existing tuple-based declaration convention (`ConfigSchema`) rather than
-inventing new machinery; there is no separate "provides" registry — a constructed instance either
-is the required class or it isn't, checked directly by whoever resolves the reference (the future
-generator, not this session).
+"WiringSchema"` tuple next to its `_VAL_*` schema tuples. **Extended by Session 3 of
+BUILD_CHAIN_PLAN.md** (the `buildgen/` generator) from this Part's original 2-element shape to a
+5-element one, resolving that plan's own two open `_WIRING`-coverage questions (full rationale:
+that session's PR description) — purely additive, no existing driver's constructor signature
+changed to make this possible:
+
+```
+_WIRING: "WiringSchema" = ((toml_field_name, required_driver_class, target, required, mode), ...)
+```
+
+`WiringField = tuple[str, type, str, bool, str]`, `WiringSchema = tuple[WiringField, ...]`
+(`config_manager.py`, `TYPE_CHECKING`-only — `_WIRING`'s own value is a real, live runtime tuple,
+just never read by anything at runtime; `buildgen/wiring.py` AST-parses it from source instead of
+importing). `target`/`mode` say how the resolved producer instance is actually handed to the
+consumer:
+
+- `mode="kwarg"`: the instance itself is passed as a constructor kwarg named `target` — every
+  original case (`asy_sgp40_driver.py`'s `_WIRING = (("comp_source", SCD30_Reader, "comp_source",
+  True, "kwarg"), ("fram_target", AsyFramManager, "fram_storage", False, "kwarg"))`, and the same
+  shape on every other `fram_target`-wirable driver).
+- `mode="attr"`: the instance's `target` attribute/bound method is passed instead of the instance
+  itself — `asy_notification_service.py`'s `signal_sink` resolves to `pixel.request_signal`, not
+  `pixel`, satisfying `NotificationCoordinator.__init__`'s existing `request_signal_cb` parameter
+  (left unchanged) while still keeping the *TOML-visible* link a direct instance reference, per
+  BUILD_CHAIN_PLAN.md's "no getters, no callback functions in generated code" — the callback shape
+  survives only as the one hand-written driver's own constructor parameter, never as
+  generator-authored wiring.
+- `mode="setter"`: `<consumer>.<target>(<resolved producer>)` is called once, after both already
+  exist, instead of at construction time — `asy_wifi_service.py`'s `AsyConnTime._WIRING =
+  (("led_target", NeopixelDriver, "set_ext_led", False, "setter"),)`, matching
+  `set_ext_led()`'s own already-existing post-construction-call shape exactly.
+
+This reuses the existing tuple-based declaration convention (`ConfigSchema`) rather than inventing
+new machinery; there is no separate "provides" registry — a constructed instance either is the
+required class or it isn't, checked directly by whoever resolves the reference (`buildgen/`,
+comparing the TOML's own `driver`/`name_ext` identity against `_WIRING`'s `producer_class`, never
+against `instance_name()`/`_NAME` — see C.14.1's own naming-space distinction).
+`[device.wiring]`'s two mandatory-infra-side fields (`led_target`/`fram_target`) resolve against
+`_WIRING` declared on the *consumer* class instead (`AsyConnTime`/`SystemService`), since neither
+is ever an `[[instance]]` entry itself.
 
 **The constructor parameter itself is a direct reference to the producer's own instance** — passed
 positionally/by keyword with the same name as `_WIRING`'s field (`comp_source` above) — **not a
@@ -1297,10 +1330,12 @@ real coupling cycle at the object-graph level.
 producer's already-built Python object, the producer must be constructed first. `sensortask_wozi.py`
 now constructs `scd_reader` before `sgp_reader` for exactly this reason (A.7's construction order) —
 a real, deliberate reordering of wozi's FRAM chunk allocation order, safe only because wozi is never
-physically flashed (CLAUDE.md). A future generator topologically sorts a device's whole instance
-list by `_WIRING` dependency (not raw TOML declaration order) and rejects a cycle as a build-time
-error; `_WIRING`'s shape (an explicit, introspectable `(field, class)` pair) is what makes that
-sort possible — not built in this session.
+physically flashed (CLAUDE.md). `buildgen/graph.py` (Session 3) topologically sorts a device's
+whole instance list by `_WIRING` dependency (kwarg/attr modes only — a "setter"-mode reference is a
+post-construction call, so it never gates construction order) plus two fixed mandatory-infra edges
+and one conditional one (`sysfunct` needs its own `device.wiring.fram_target` instance, if set),
+and rejects a cycle as a build-time error; `_WIRING`'s shape (an explicit, introspectable 5-tuple)
+is what makes that sort possible.
 
 **Ordering hazard #2 (live data availability)**: independent async tasks mean a consumer's first
 read can happen before the producer's first real measurement completes. Every producer's

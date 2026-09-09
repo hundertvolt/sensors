@@ -10,6 +10,8 @@ from collections import namedtuple
 
 from micropython import const
 
+from asy_fram_manager import AsyFramManager
+from asy_neopixel_driver import NeopixelDriver
 from base_classes import LockedCounter, SensorReaderConfig
 from config_manager import make_dict, name_cfg, schema_names
 
@@ -22,8 +24,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
     from typing import Any, Protocol
 
-    from asy_fram_manager import AsyFramManager
-    from config_manager import ConfigSchema
+    from config_manager import ConfigSchema, WiringSchema
 
     class _ValueSource(Protocol):
         # Structural stand-in for a NotificationSignal's producer (SPECIFICATION.md Part C.10's
@@ -33,6 +34,17 @@ if TYPE_CHECKING:
 
 _MAX_OVERRIDE_TIME = const(3600)
 _NAME = const("NOTIFY")
+
+# This driver's live cross-instance dependencies (SPECIFICATION.md Part C.14): the LED it signals
+# through (required - resolved by buildgen/, Session 3 of BUILD_CHAIN_PLAN.md - "attr" mode: the
+# resolved NeopixelDriver instance's own request_signal bound method is passed as
+# request_signal_cb, not the instance itself, per BUILD_CHAIN_PLAN.md's "no getters, no callback
+# functions in generated code" - the callback-shaped constructor parameter itself stays as-is, only
+# how the generator supplies it changes), plus the optional FRAM backup target.
+_WIRING: "WiringSchema" = (
+    ("signal_sink", NeopixelDriver, "request_signal", True, "attr"),
+    ("fram_target", AsyFramManager, "fram", False, "kwarg"),
+)
 
 # Own schema, "Led" prefix dropped (matches asy_wifi_service.py/asy_sgp40_driver.py's own field
 # naming convention - see CLAUDE.md's "Current architecture" note on this deliberate wire-format

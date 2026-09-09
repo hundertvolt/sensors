@@ -256,13 +256,17 @@ source = "scd30"
 field = "Hum"
 ```
 
-Open question, not settled by this schema: `_WIRING`'s documented contract resolves a reference to
-the whole constructed instance, but `NotificationCoordinator.__init__`'s `request_signal_cb` wants
-one specific bound method off it (`pixel.request_signal`), not the `NeopixelDriver` instance
-itself. Whether this gets solved by extending `_WIRING`'s tuple shape, generator-side
-special-casing, or something else is left open — `asy_notification_service.py` declares no
-`_WIRING` tuple yet either. Each notification signal's own threshold default/range and flash color
-are a related, still-open question for Session 3.
+**Resolved by Session 3** (previously open here): `_WIRING`'s tuple shape is extended from 2 to 5
+elements — `(toml_field_name, required_driver_class, target, required, mode)` — where `mode`
+(`"kwarg"`/`"attr"`/`"setter"`) says how the resolved producer is actually handed to the consumer.
+`signal_sink` uses `mode="attr"`: the generator resolves it to `pixel.request_signal` (the bound
+method `NotificationCoordinator.__init__`'s existing `request_signal_cb` parameter wants), not the
+`NeopixelDriver` instance itself — no change to that constructor's own signature. `led_target` uses
+`mode="setter"`: `conn.set_ext_led(pixel)` is emitted once, after both already exist, instead of at
+construction time. Full rationale, and why this is purely additive (no existing driver's
+constructor signature changed): SPECIFICATION.md Part C.14.2 and this session's own PR description.
+Each notification signal's own threshold default/range and flash color: also resolved — see
+"Session 3 done" below.
 
 **Settled by this schema**: the two top-level shapes above, `[[instance]]` for optional modules
 only, `name_ext`'s default-empty-means-unchanged rule, `[instance.wiring]`'s shape (a flat
@@ -290,18 +294,84 @@ exists yet — the global-GPIO-pin/per-bus-address/instance-name collision check
 6 real files specifically; **not** a substitute for Session 3's own full validator and its
 malformed-fixture test coverage).
 
-**What Session 3 (the generator) does, not settled here**: resolving the `driver` string to its
-Python class — per this doc's own "Acceptance criteria" above, derived from the existing
-`asy_<name>_driver.py` → `<Name>_Reader` naming convention rather than a separate hand-maintained
-lookup table, falling back to an explicit table only for a driver that genuinely can't follow the
-naming pattern; topologically sorting `[[instance]]` entries by `[instance.wiring]`/`_WIRING`
-dependency and rejecting a cycle; erroring at build time on a naming collision with no
-disambiguating `name_ext`; resolving `NotificationSignal` registrations from this table; emitting
-the real `sensortask_<device>.py` + boot entry; and the full **global resource-collision
-validation pass** below — every one of these is a real build blocker per the fail-loud contract
-above, not a warning, and not built in this session.
+**Session 3 done**: the generator lives at `buildgen/` (a new top-level CPython package, never
+imported by `src/` — chosen over putting it under `scripts/` specifically so it joins
+`pyproject.toml`'s ruff/mypy scope under the full quality bar immediately, per that doc's own #10
+below, rather than inheriting `scripts/`'s/`toolchain/`'s documented legacy gap). `buildgen.
+generate.generate_device(toml_path, src_dir, ext_dir)` runs the full pipeline (`buildgen.validate.
+build_model()` → `buildgen.graph.build_construction_order()` → `buildgen.codegen.
+generate_module_source()`/`generate_boot_entry_source()`) and returns the generated
+`sensortask_<device>.py`-equivalent + boot-entry source as strings, plus
+`buildgen.frozen_modules.compute_frozen_modules()`'s module set — callers (this session's own
+tests; a future Session 6) decide whether/where to write them. Concretely:
 
-**Global resource-collision validation is required of Session 3** (project owner's explicit
+- **`driver` → class**: `buildgen.driver_registry.resolve_driver()` AST-parses (never imports —
+  `src/` modules need real `machine`/`neopixel`/`asyncio.ThreadSafeFlag`, unavailable under plain
+  CPython) `asy_<name>_driver.py` for a `SensorReader`/`SensorReaderConfig` subclass; a fallback
+  table (`fram`/`neopixel`/`notification` — none of the three follows the file-naming convention or
+  is a `SensorReader` subclass) covers the one named exception the acceptance criteria itself
+  allows. Also determines whether the resolved class needs `await <instance>.setup()` called
+  (`SensorReaderConfig` base, or a bare `async def setup` on the class) — again by AST inspection,
+  not a hand-maintained table.
+- **Topological construction order**: `buildgen.graph.build_construction_order()` — see
+  SPECIFICATION.md Part C.14.2's updated account.
+- **Wiring resolution**: strictly against the TOML's own `driver`/`name_ext` identity, never
+  `instance_name()`/`_NAME` (confirmed via a dedicated `parse_name_constant()` check that
+  `NotificationCoordinator`'s own `_NAME` really is `"NOTIFY"`, not `"NOTIFICATION"` —
+  `tests_scripts/test_buildgen_driver_registry.py::test_parse_name_constant_confirms_notify_is_not_notification`).
+- **Global resource-collision validation**: `buildgen.validate.build_model()` — schema shape,
+  global GPIO exclusivity, per-bus address exclusivity (including the two-hardwired-address-
+  instances-with-no-`address`-field case, scoped per `(bus, driver kind)` so two *different*
+  fixed-address chip types sharing a bus correctly doesn't false-positive), instance-name collision,
+  bus-id collision (TOML's own duplicate-key rule already covers this), and every wiring-reference/
+  mandatory-`[device]`-field/required-instance-field check — every failure is a `buildgen.errors.
+  BuildError` naming the device/instance/field responsible, never a generic failure or a raw
+  traceback.
+- **`# @requires bus.<field><op><value>`**: `buildgen.requires_tag` — text-parsed from driver
+  source, never a real Python value. Added to `src/asy_scd30_driver.py`
+  (`# @requires bus.timeout>=200000`, its own real clock-stretch requirement — the datasheet
+  citation this session's `_WIRING` addition sits next to was already independently verified and
+  cited in multiple already-reviewed places, e.g. `src/sensortask_wozi.py`'s own construction-order
+  comment).
+- **Notification signal catalog**: each notification signal's own threshold default/range and
+  flash color (BUILD_CHAIN_PLAN's own previously-open question) is a fixed, generator-owned catalog
+  (`buildgen.codegen._KNOWN_SIGNALS`) covering `warn_co2`/`warn_voc`/`warn_hum` — every real device
+  TOML today uses identical values with no per-device override in the schema, so hardcoding them in
+  the generator (not per-device) mirrors exactly what `src/sensortask_wozi.py`/`sensortask_dev.py`
+  already do. A `warn_*` key outside this catalog is a fail-loud `BuildError`, not a silent
+  no-op — flagged here as a genuine future TOML-schema extension point, not solved by this session.
+- **Frozen-module selection**: `buildgen.frozen_modules.compute_frozen_modules()` — AST-scanned
+  transitive `import`/`from...import` closure, seeded from a fixed core set plus each device's own
+  declared driver modules, `TYPE_CHECKING` blocks stripped. Computes *which modules*; wiring that
+  list into the real `freeze()`/`scripts/build_firmware.py` call is Session 6's job.
+- **Mandatory synthetic "novel combination" fixture**: `tests_scripts/buildgen_fixtures/
+  novel_combo.toml` — two `SCD30`s (multi-instance, name_ext-disambiguated), `SGP40` compensated
+  from the *second* one, `BMP3xx` at the alternate hardwired-address value, and `Notification`
+  wired to only one of the three `warn_*` signals — a pin/bus/wiring layout none of the 6 real
+  devices use, proving the generator's full pipeline succeeds from this one new file alone.
+- **Correctness proof depth** (this doc's own former open question 3): generated output is proven
+  syntactically valid Python (`ast.parse()`) matching the documented construction-order/wiring
+  shape, via `tests_scripts/test_buildgen_generate.py` against all 6 real devices plus the
+  synthetic fixture — **not** executed under the real MicroPython Unix-port interpreter. Decided
+  against going further: `buildgen/` is deliberately AST-only, never importing `src/` (real
+  MicroPython-only names aren't available under plain CPython) — actually booting a generated
+  module needs the same hardware-fake environment Session 5's digital-twin generalization is
+  explicitly tasked with building; attempting a shallow version of that here risked exactly the
+  scope-leakage this doc's merge-back checklist flags.
+- **Not built here** (deliberately, per this session's own scope): wiring the generator into
+  `scripts/build_firmware.py`/`boot_entry/*.py`, replacing either hand-written `sensortask_wozi.py`/
+  `sensortask_dev.py` file, website `definitions.json` generation, digital-twin generalization, the
+  CI matrix, versioning, the closing consistency pass — all later sessions' own jobs, per the
+  session breakdown below.
+
+Full test coverage (TDD, written first): `tests_scripts/test_buildgen_driver_registry.py`,
+`test_buildgen_wiring.py`, `test_buildgen_requires_tag.py`, `test_buildgen_frozen_modules.py`,
+`test_buildgen_graph.py`, `test_buildgen_validate.py` (every abort condition, driven by
+deliberately malformed fixtures built from `tests_scripts/_toml_fixtures.py`'s `base_doc()` — never
+just incidentally exercised by the 6 real device TOMLs happening to be valid), and
+`test_buildgen_generate.py` (end-to-end, all 6 real devices + the synthetic fixture).
+
+**Global resource-collision validation, required of Session 3** (project owner's explicit
 direction, 2026-09-09) — the full requirement, including the two schema-level fields this example
 TOML above already reflects (buses as top-level entries owning their own shared wire pins,
 `[instance.wiring]` as the one place a cross-instance reference lives), is in "Build/generator
@@ -318,8 +388,9 @@ script quality bar" below, not repeated here.
 2. **The 6 real device TOML files**, built from the wiring facts already gathered from
    `src/sensortask_wozi.py`, `src/sensortask_dev.py`, `modules/sensortask-arzi.py`,
    `modules/sensortask-neu.py`.
-3. **Python generator** (`sensortask_<device>.py` + boot entry) — topological construction
+3. **Done. Python generator** (`sensortask_<device>.py` + boot entry) — topological construction
    ordering, dependency-driven frozen-module selection, generic definitions-file-derived tests.
+   Lives at `buildgen/`; see "Session 3 done" above for the full account.
 4. **Website `definitions.json` generator** — resolves BACKLOG.md's `@web`/`@web-group` open
    sub-questions, combined with each device's TOML instance list.
 5. **Digital twin generalization** — consumes the Session 3 generated module directly, replacing

@@ -15,6 +15,7 @@ from machine import bootloader as system_bootloader
 from machine import reset as system_reset
 from micropython import const
 
+from asy_fram_manager import AsyFramManager
 from base_classes import LockedCounter
 from config_manager import ConfigManager, schema_names
 from print_log import make_logger
@@ -28,8 +29,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
     from typing import Any
 
-    from asy_fram_manager import AsyFramManager
-    from config_manager import ConfigSchema, WriteValidity
+    from config_manager import ConfigSchema, WiringSchema, WriteValidity
     from print_log import PrintLogHistory
 
 _RESET_DELAY = const(4)  # seconds between reset command and execution (keep < watchdog timeout!)
@@ -40,6 +40,12 @@ _TASK_CHECK_TIME = const(2)  # seconds period to check running tasks (keep << wa
 _TASK_FAIL_INCREMENT = const(100)  # absolute value important for decrease time,...
 _TASK_FAIL_MAX = const(300)  # ...ratio important for triggering reset (multiple errors)
 _NAME = const("SYSTEM")
+
+# This service's one optional live cross-instance dependency (SPECIFICATION.md Part C.14): its own
+# FRAM error-log target, resolved by buildgen/ (Session 3 of BUILD_CHAIN_PLAN.md, from
+# [device.wiring].fram_target - SystemService is mandatory infra, never an [[instance]] entry
+# itself) to an already-constructed instance, passed directly as this service's own fram= kwarg.
+_WIRING: "WiringSchema" = (("fram_target", AsyFramManager, "fram", False, "kwarg"),)
 
 # General, module-independent system-settings schema (config_SYSTEM.cfg, via _NAME above) - see
 # SPECIFICATION.md Part C.5 for the setSGP/setBMP history this superseded. DebugLevel is the first
