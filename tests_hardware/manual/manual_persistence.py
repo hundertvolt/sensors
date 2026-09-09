@@ -1,9 +1,6 @@
-"""Manual tests, Part 2 category C (tmp_hardware_test_candidates.md items 6, 7, 7b): genuine power
-loss, distinct from the automated tier's own soft/hard-reset-only persistence tests
-(tests_hardware/flash/test_reboot_persistence.py) - neither a soft reset nor mpremote's DTR-based
-hard reset can reproduce the specific failure modes only a real, physical power interruption can:
-torn writes mid-flight, and whatever the real MB85RS64V/SCD30 do (or don't) preserve across a
-genuine supply-voltage loss rather than a controlled reset sequence."""
+"""Manual tests: genuine power loss, distinct from test_reboot_persistence.py's soft/hard-reset-
+only persistence tests - neither reset mechanism can reproduce a torn mid-flight write or what the
+real MB85RS64V/SCD30 preserve across a genuine supply-voltage loss."""
 
 from __future__ import annotations
 
