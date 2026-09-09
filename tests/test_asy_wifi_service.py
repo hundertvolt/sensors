@@ -2629,6 +2629,30 @@ def test_start_hotspot_valid_config_activates_the_ap() -> None:
     assert {"essid": "SensorNode", "password": "12345678"} in _wlan(client).config_calls
 
 
+def test_start_hotspot_uses_the_configured_hotspot_password_not_the_default() -> None:
+    # HotspotPW is per-device configurable (SPECIFICATION.md Part C.14) - proves a genuinely
+    # non-default value written through cfgmgr actually reaches wlan.config(), not just that the
+    # schema default happens to match every other test's hardcoded "12345678" expectation.
+    client = make_client()
+    ok, results = run(client.cfgmgr.write_config({"HotspotPW": "customhotspotpw1"}, client.get_cfg_schema()))
+    assert ok is True
+    assert results["HotspotPW"] == "Valid"
+
+    async def fake_select(_mode: "Any") -> None:
+        return None
+
+    client._select_wifi_mode = fake_select  # type: ignore[method-assign, assignment]  # deliberate monkeypatch
+
+    async def scenario() -> None:
+        await client._start_hotspot()
+        assert client.dns_server_task is not None
+        await _cancel(client.dns_server_task)
+
+    run(scenario())
+    assert client.hw_op_failed is False
+    assert {"essid": "SensorNode", "password": "customhotspotpw1"} in _wlan(client).config_calls
+
+
 # ---------------------------------------------------------------------------
 # Task/timer resource leak regression: _run_hotspot_mode() calls _start_hotspot() every loop
 # iteration where wlan.status() != network.STAT_GOT_IP.

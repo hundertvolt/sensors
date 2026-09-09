@@ -744,6 +744,25 @@ def test_read_sgp_inf_compensation_humidity_is_caught_not_propagated() -> None:
     assert err_count >= 1
 
 
+def test_read_sgp_comp_source_get_data_raising_is_caught_not_propagated() -> None:
+    # Distinct from the NaN/Inf tests above (comp_source.get_data() succeeds but returns bad
+    # values): here get_data() itself raises - comp_source is caller-supplied and only
+    # structurally, not nominally, typed (SPECIFICATION.md Part C.14), so this can't be ruled out
+    # statically even though the real SCD30_Reader.get_data() never raises. Previously untested:
+    # _FakeCompSource's own raise_exc flag existed with no test ever setting it.
+    reader = make_reader()
+    reader.comp_source = _FakeCompSource(raise_exc=True)  # type: ignore[assignment]
+    run(reader.pr.setup())
+    data, compensated, serialized = run(reader._read_sgp(None, False, False))
+    assert data == SGP40(None, None, None)
+    assert compensated is False  # comp_data fell back to [None, None] before the availability check
+    assert serialized is False
+    log = run(reader.get_error_counter())
+    err_count = log["SGP40"]["ErrCount"]
+    assert isinstance(err_count, int)
+    assert err_count >= 1
+
+
 def test_run_backup_genuine_fram_write_failure_is_logged_as_an_error() -> None:
     # Distinct from the "no NTP yet" deferral path
     # (test_fram_backup_without_ntp_sync_is_deferred_not_lost): here NTP is synced and require_ntp
