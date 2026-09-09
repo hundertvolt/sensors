@@ -10,27 +10,24 @@
 name = "Klkizi"
 hostname = "SensorStationKlkizi"
 hotspot_password = "12345678"
-
 # Mandatory infrastructure tuning - wifi/ntp/system are never modeled as [[instance]] entries
 # (every buildable device has them, unconditionally; the TOML models optional modules only -
-# BUILD_CHAIN_PLAN.md's own schema decision, 2026-09-09). Required, not defaulted: a device TOML
-# missing either field below is a build-time error, same fail-loud contract as everything else in
-# this file (tests_scripts/test_device_tomls.py's check_system_config_present_and_valid enforces
-# this by hand until Session 3's generator exists). modules/sensortask-neu.py:
-# `conn = asy_conn_time(..., conn_fail_to_hotspot=5, hotspot_time_min=8, ...)`.
-[system_config]
+# BUILD_CHAIN_PLAN.md's own schema decision). Required, not defaulted: a device TOML missing either
+# field below is a build-time error (tests_scripts/test_device_tomls.py's
+# check_device_infra_fields_present_and_valid enforces this by hand until Session 3's generator
+# exists). modules/sensortask-neu.py: `conn = asy_conn_time(..., conn_fail_to_hotspot=5,
+# hotspot_time_min=8, ...)`.
 conn_fail_to_hotspot = 5
 hotspot_time_min = 8
 
-# Mandatory-infra-to-optional-instance wiring (project owner's direction, 2026-09-09) - both
-# optional, absence disables the feature rather than erroring, same treatment as every
-# [instance.wiring] getter. led_target: modules/sensortask-neu.py's own `conn.set_ext_led(pixel)`
-# (WiFi status indication on the neopixel). fram_target:
-# `sysfunct = System_Service(conn.ntp_issynced, storage_pause=fram.set_pause, ...)` (SystemService's
-# own persistent-storage pause hookup). Mandatory-to-mandatory links are never wired here - both
-# endpoints always exist unconditionally on every device, so there's no real presence-or-absence
-# choice to encode, unlike these two.
-[system_config.wiring]
+# Mandatory-infra-to-optional-instance wiring - both fields optional, absence disables the feature
+# rather than erroring, same treatment as every [instance.wiring] getter. led_target:
+# modules/sensortask-neu.py's own `conn.set_ext_led(pixel)` (WiFi status indication on the
+# neopixel). fram_target: `sysfunct = System_Service(conn.ntp_issynced, storage_pause=fram.set_pause,
+# ...)` (SystemService's own persistent-storage pause hookup). Mandatory-to-mandatory links are
+# never wired here - both endpoints always exist unconditionally on every device, so there's no
+# real presence-or-absence choice to encode, unlike these two.
+[device.wiring]
 led_target = "neopixel"
 fram_target = "fram"
 

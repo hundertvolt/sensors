@@ -10,10 +10,11 @@ collision) - checked by hand here since no automated validator exists yet (this 
 
 The TOML models *optional* modules only. WiFi/NTP/SystemService are mandatory infrastructure (every
 buildable device has all three unconditionally) and are never `[[instance]]` entries - their own
-per-device-tunable knobs live in a required `[system_config]` table instead (BUILD_CHAIN_PLAN.md's
-"Device TOML schema", revised 2026-09-09). This suite checks both directions of that rule: the
-required table is present and valid, and the three mandatory driver kinds never leak into
-`[[instance]]`.
+per-device-tunable knobs live directly in `[device]` instead, alongside its identity fields
+(BUILD_CHAIN_PLAN.md's "Device TOML schema", revised 2026-09-09 - originally a separate
+`[system_config]` table, folded into `[device]` as redundant). This suite checks both directions of
+that rule: the required fields are present and valid, and the three mandatory driver kinds never
+leak into `[[instance]]`.
 
 Every collision-detection rule is exercised twice: once against each of the 6 real files (the
 correct-path case - proving no rule false-positives on real data) and once against a small
@@ -42,18 +43,18 @@ _MULTI_INSTANCE_CAPABLE_DRIVERS = {"scd30", "sgp40", "bmp3xx"}
 _SINGLETON_DRIVERS = {"fram", "neopixel", "notification"}
 # Mandatory infrastructure - present on every real device, but never modeled as [[instance]]
 # entries at all (BUILD_CHAIN_PLAN.md's "Device TOML schema" - the TOML models optional modules
-# only). Tuned instead via the required [system_config] table.
+# only). Tuned instead via required fields directly in [device].
 _MANDATORY_INFRA_DRIVERS = {"wifi", "ntp", "system"}
-_REQUIRED_SYSTEM_CONFIG_FIELDS = ("conn_fail_to_hotspot", "hotspot_time_min")
+_REQUIRED_DEVICE_INFRA_FIELDS = ("conn_fail_to_hotspot", "hotspot_time_min")
 # Every driver/service kind whose promoted src/ constructor takes an optional fram=/fram_storage=
 # argument (BUILD_CHAIN_PLAN.md's "Core design decisions", 2026-09-09 crosslink-audit revision) may
 # declare an optional [instance.wiring].fram_target - absent means that instance keeps a plain
 # in-RAM log instead of a build error.
 _FRAM_WIRABLE_INSTANCE_DRIVERS = {"scd30", "sgp40", "bmp3xx", "neopixel", "notification"}
-# The mandatory-infra-side mirror of [instance.wiring] - both optional, absence disables the
-# feature. led_target: WiFi's own status-LED indicator. fram_target: SystemService's own error
-# log/pause hookup.
-_SYSTEM_CONFIG_WIRING = {"led_target": "neopixel", "fram_target": "fram"}
+# The mandatory-infra-side mirror of [instance.wiring], under [device.wiring] - both optional,
+# absence disables the feature. led_target: WiFi's own status-LED indicator. fram_target:
+# SystemService's own error log/pause hookup.
+_DEVICE_WIRING = {"led_target": "neopixel", "fram_target": "fram"}
 
 _REQUIRED_BUS_PIN_FIELDS = {
     "i2c": {"scl_pin", "sda_pin"},
@@ -238,39 +239,41 @@ def check_fram_wiring_resolves_if_present(doc: dict, label: str) -> None:
         assert ("fram", "") in instances, f"{label}: {inst['driver']}'s fram_target references 'fram' but no such instance exists"
 
 
-def check_system_config_wiring_resolves_if_present(doc: dict, label: str) -> None:
+def check_device_wiring_resolves_if_present(doc: dict, label: str) -> None:
     # Mandatory-infra-to-optional-instance links (WiFi's led_target, SystemService's fram_target)
-    # live under [system_config.wiring] since neither WiFi nor SystemService is an [[instance]].
-    # Both optional, same absence-disables treatment as every other getter-shaped wiring field.
+    # live under [device.wiring] since neither WiFi nor SystemService is an [[instance]]. Both
+    # optional, same absence-disables treatment as every other getter-shaped wiring field.
     instances = {(inst["driver"], inst.get("name_ext", "")): inst for inst in doc["instance"]}
-    wiring = doc.get("system_config", {}).get("wiring", {})
-    for field, expected_driver in _SYSTEM_CONFIG_WIRING.items():
+    wiring = doc.get("device", {}).get("wiring", {})
+    for field, expected_driver in _DEVICE_WIRING.items():
         if field not in wiring:
             continue  # optional - absent disables the feature, not an error
         target = wiring[field]
-        assert target == expected_driver, f"{label}: system_config.wiring.{field} is {target!r}, expected {expected_driver!r}"
-        assert (target, "") in instances, f"{label}: system_config.wiring.{field} references {target!r} but no such instance exists"
+        assert target == expected_driver, f"{label}: device.wiring.{field} is {target!r}, expected {expected_driver!r}"
+        assert (target, "") in instances, f"{label}: device.wiring.{field} references {target!r} but no such instance exists"
 
 
 def check_no_mandatory_infra_modeled_as_instance(doc: dict, label: str) -> None:
     # wifi/ntp/system are mandatory infrastructure - the TOML models optional modules only
     # (BUILD_CHAIN_PLAN.md's "Device TOML schema", revised 2026-09-09) - so none of them may ever
-    # appear in [[instance]], not even redundantly alongside [system_config].
+    # appear in [[instance]], not even redundantly alongside [device]'s own infra fields.
     drivers = {inst["driver"] for inst in doc["instance"]}
     leaked = drivers & _MANDATORY_INFRA_DRIVERS
-    assert not leaked, f"{label}: {sorted(leaked)} modeled as [[instance]] - mandatory infrastructure belongs in [system_config], never as an instance"
+    assert not leaked, f"{label}: {sorted(leaked)} modeled as [[instance]] - mandatory infrastructure belongs in [device], never as an instance"
 
 
-def check_system_config_present_and_valid(doc: dict, label: str) -> None:
-    # WiFi's own per-device-tunable knobs (conn_fail_to_hotspot/hotspot_time_min) live here since
-    # wifi itself isn't an [[instance]]. Required, not defaulted - a missing field is a build-time
-    # error (BUILD_CHAIN_PLAN.md's "Build/generator script quality bar" fail-loud contract), so this
-    # check fails loudly too rather than falling back to some assumed default value.
-    cfg = doc.get("system_config")
-    assert cfg is not None, f"{label}: no [system_config] table - required for mandatory wifi/ntp/system tuning"
-    for field in _REQUIRED_SYSTEM_CONFIG_FIELDS:
-        assert field in cfg, f"{label}: [system_config] is missing required field {field!r}"
-        assert isinstance(cfg[field], int) and not isinstance(cfg[field], bool), f"{label}: [system_config].{field} must be an int, got {cfg[field]!r}"
+def check_device_infra_fields_present_and_valid(doc: dict, label: str) -> None:
+    # WiFi's own per-device-tunable knobs (conn_fail_to_hotspot/hotspot_time_min) live directly in
+    # [device] since wifi itself isn't an [[instance]] (merged from an originally-separate
+    # [system_config] table - BUILD_CHAIN_PLAN.md's "Device TOML schema", revised 2026-09-09).
+    # Required, not defaulted - a missing field is a build-time error (BUILD_CHAIN_PLAN.md's
+    # "Build/generator script quality bar" fail-loud contract), so this check fails loudly too
+    # rather than falling back to some assumed default value.
+    cfg = doc.get("device")
+    assert cfg is not None, f"{label}: no [device] table"
+    for field in _REQUIRED_DEVICE_INFRA_FIELDS:
+        assert field in cfg, f"{label}: [device] is missing required field {field!r}"
+        assert isinstance(cfg[field], int) and not isinstance(cfg[field], bool), f"{label}: [device].{field} must be an int, got {cfg[field]!r}"
 
 
 # --- shape/parse tests, run against the 6 real files --------------------------------------------
@@ -357,8 +360,8 @@ def test_fram_wiring_resolves_if_present(devices_dir: Path, device: str):
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
-def test_system_config_wiring_resolves_if_present(devices_dir: Path, device: str):
-    check_system_config_wiring_resolves_if_present(_load(devices_dir, device), device)
+def test_device_wiring_resolves_if_present(devices_dir: Path, device: str):
+    check_device_wiring_resolves_if_present(_load(devices_dir, device), device)
 
 
 def test_every_real_device_declares_fram_wiring_on_every_wirable_instance(devices_dir: Path):
@@ -370,7 +373,7 @@ def test_every_real_device_declares_fram_wiring_on_every_wirable_instance(device
         for inst in doc["instance"]:
             if inst["driver"] in _FRAM_WIRABLE_INSTANCE_DRIVERS:
                 assert inst.get("wiring", {}).get("fram_target") == "fram", f"{device}: {inst['driver']} is missing fram_target"
-        assert doc["system_config"]["wiring"] == _SYSTEM_CONFIG_WIRING, f"{device}: unexpected system_config.wiring"
+        assert doc["device"]["wiring"] == _DEVICE_WIRING, f"{device}: unexpected device.wiring"
 
 
 def test_every_real_device_declares_all_three_notification_signals(devices_dir: Path):
@@ -404,8 +407,8 @@ def test_no_mandatory_infra_modeled_as_instance(devices_dir: Path, device: str):
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
-def test_system_config_present_and_valid(devices_dir: Path, device: str):
-    check_system_config_present_and_valid(_load(devices_dir, device), device)
+def test_device_infra_fields_present_and_valid(devices_dir: Path, device: str):
+    check_device_infra_fields_present_and_valid(_load(devices_dir, device), device)
 
 
 def test_bmp3xx_only_present_on_wozi_and_dev(devices_dir: Path):
@@ -436,8 +439,10 @@ def test_klkizi_grkizi_schlafzi_share_identical_wiring(devices_dir: Path):
 # just enough to trigger exactly one violation - built from wozi's own real shape so every check's
 # "everything else about this doc is fine" assumption holds.
 _BASE_DOC: dict = {
-    "device": {"name": "Test", "hostname": "SensorStationTest", "hotspot_password": "x"},
-    "system_config": {
+    "device": {
+        "name": "Test",
+        "hostname": "SensorStationTest",
+        "hotspot_password": "x",
         "conn_fail_to_hotspot": 5,
         "hotspot_time_min": 8,
         "wiring": {"led_target": "neopixel", "fram_target": "fram"},
@@ -481,12 +486,12 @@ def test_base_doc_fixture_itself_passes_every_check():
     check_notification_wiring_resolves_to_a_real_neopixel_instance(doc, "base")
     check_notification_signal_wiring_resolves_if_present(doc, "base")
     check_fram_wiring_resolves_if_present(doc, "base")
-    check_system_config_wiring_resolves_if_present(doc, "base")
+    check_device_wiring_resolves_if_present(doc, "base")
     check_no_global_gpio_pin_collision(doc, "base")
     check_no_per_bus_address_collision(doc, "base")
     check_no_instance_name_collision(doc, "base")
     check_no_mandatory_infra_modeled_as_instance(doc, "base")
-    check_system_config_present_and_valid(doc, "base")
+    check_device_infra_fields_present_and_valid(doc, "base")
 
 
 def test_detects_missing_bus_wire_pin():
@@ -674,32 +679,32 @@ def test_detects_mandatory_infra_modeled_as_instance(mandatory_driver: str):
         check_no_mandatory_infra_modeled_as_instance(doc, "base")
 
 
-def test_detects_missing_system_config_table():
+def test_detects_device_table_missing_entirely():
     doc = _base_doc()
-    del doc["system_config"]
-    with pytest.raises(AssertionError, match=r"no \[system_config\] table"):
-        check_system_config_present_and_valid(doc, "base")
+    del doc["device"]
+    with pytest.raises(AssertionError, match=r"no \[device\] table"):
+        check_device_infra_fields_present_and_valid(doc, "base")
 
 
-def test_detects_system_config_missing_conn_fail_to_hotspot():
+def test_detects_device_missing_conn_fail_to_hotspot():
     doc = _base_doc()
-    del doc["system_config"]["conn_fail_to_hotspot"]
+    del doc["device"]["conn_fail_to_hotspot"]
     with pytest.raises(AssertionError, match="missing required field 'conn_fail_to_hotspot'"):
-        check_system_config_present_and_valid(doc, "base")
+        check_device_infra_fields_present_and_valid(doc, "base")
 
 
-def test_detects_system_config_missing_hotspot_time_min():
+def test_detects_device_missing_hotspot_time_min():
     doc = _base_doc()
-    del doc["system_config"]["hotspot_time_min"]
+    del doc["device"]["hotspot_time_min"]
     with pytest.raises(AssertionError, match="missing required field 'hotspot_time_min'"):
-        check_system_config_present_and_valid(doc, "base")
+        check_device_infra_fields_present_and_valid(doc, "base")
 
 
-def test_detects_system_config_field_wrong_type():
+def test_detects_device_infra_field_wrong_type():
     doc = _base_doc()
-    doc["system_config"]["hotspot_time_min"] = "eight"
+    doc["device"]["hotspot_time_min"] = "eight"
     with pytest.raises(AssertionError, match="must be an int"):
-        check_system_config_present_and_valid(doc, "base")
+        check_device_infra_fields_present_and_valid(doc, "base")
 
 
 def test_allows_fram_wiring_to_be_entirely_absent_on_any_instance():
@@ -725,27 +730,27 @@ def test_detects_fram_wiring_referencing_a_nonexistent_instance():
         check_fram_wiring_resolves_if_present(doc, "base")
 
 
-def test_allows_system_config_wiring_to_be_entirely_absent():
+def test_allows_device_wiring_to_be_entirely_absent():
     doc = _base_doc()
-    del doc["system_config"]["wiring"]
-    check_system_config_wiring_resolves_if_present(doc, "base")  # must not raise
+    del doc["device"]["wiring"]
+    check_device_wiring_resolves_if_present(doc, "base")  # must not raise
 
 
 def test_allows_only_one_of_led_target_or_fram_target_to_be_present():
     doc = _base_doc()
-    del doc["system_config"]["wiring"]["fram_target"]
-    check_system_config_wiring_resolves_if_present(doc, "base")  # must not raise
+    del doc["device"]["wiring"]["fram_target"]
+    check_device_wiring_resolves_if_present(doc, "base")  # must not raise
 
 
-def test_detects_system_config_wiring_pointing_at_the_wrong_driver():
+def test_detects_device_wiring_pointing_at_the_wrong_driver():
     doc = _base_doc()
-    doc["system_config"]["wiring"]["led_target"] = "fram"
+    doc["device"]["wiring"]["led_target"] = "fram"
     with pytest.raises(AssertionError, match="expected 'neopixel'"):
-        check_system_config_wiring_resolves_if_present(doc, "base")
+        check_device_wiring_resolves_if_present(doc, "base")
 
 
-def test_detects_system_config_wiring_referencing_a_nonexistent_instance():
+def test_detects_device_wiring_referencing_a_nonexistent_instance():
     doc = _base_doc()
     doc["instance"] = [i for i in doc["instance"] if i["driver"] != "neopixel"]
     with pytest.raises(AssertionError, match="no such instance exists"):
-        check_system_config_wiring_resolves_if_present(doc, "base")
+        check_device_wiring_resolves_if_present(doc, "base")

@@ -65,7 +65,7 @@ the generator/website builder/CI matrix should validate its own work against the
   constructed Python object and passes it directly into the consumer's constructor. No
   "provides" registry needed — an instance either is the expected class or it isn't, checked
   directly.
-- **Every real cross-instance link gets a TOML-visible `[instance.wiring]`/`[system_config.wiring]`
+- **Every real cross-instance link gets a TOML-visible `[instance.wiring]`/`[device.wiring]`
   field — none stay hardcoded in `build_system()`** (project owner's explicit direction,
   2026-09-09): it must "stay freely configurable," varying from device to device, not just today's
   6 real files' shared choice. A full audit of `sensortask_wozi.py`'s/`sensortask_dev.py`'s
@@ -73,10 +73,10 @@ the generator/website builder/CI matrix should validate its own work against the
   precedent), `notification.signal_sink`/`notification.warn_co2`/`warn_voc`/`warn_hum` (Session 2),
   and a `fram_target` field on every driver/service that takes an optional `fram=`/`fram_storage=`
   constructor argument (`scd30`, `sgp40`, `bmp3xx`, `neopixel`, `notification`, plus
-  `system_config.wiring.fram_target` for `SystemService`'s own `fram=`) — each individually
+  `device.wiring.fram_target` for `SystemService`'s own `fram=`) — each individually
   optional, absent means that instance keeps a plain in-RAM log instead of a FRAM-backed one rather
   than a build error; wiring only some of a device's instances to FRAM and not others is a
-  deliberate degree of freedom, not an inconsistency to flag. `system_config.wiring.led_target`
+  deliberate degree of freedom, not an inconsistency to flag. `device.wiring.led_target`
   covers WiFi's own `conn.set_ext_led(pixel)` the same way. **Two categories are deliberately
   excluded**, confirmed directly against the same audit, not just assumed exempt: (1) a link
   between two mandatory-infrastructure modules (e.g. `AsyNtpClient`'s 3-argument dependency on
@@ -162,9 +162,12 @@ Every buildable device has all three unconditionally: there is no real variant t
 connectivity, time sync, or the task supervisor/watchdog, so — unlike a sensor or an optional
 peripheral — there is no presence-or-absence question for the schema to encode. Their own
 per-device-tunable knobs (today: WiFi's `conn_fail_to_hotspot`/`hotspot_time_min`; NTP/SystemService
-have none) live instead in one top-level `[system_config]` table, **required, not defaulted**: a
-device TOML missing either field is a build-time error, the same fail-loud contract "Build/
-generator script quality bar" below gives every other structurally-broken-definitions-file case.
+have none) live directly in `[device]` instead — merged there rather than kept as a second,
+separate top-level table, since both hold the same kind of thing: singleton, per-device,
+non-instance facts (project owner's direction, 2026-09-09, folding the originally-separate
+`[system_config]` table into `[device]` as redundant). **Required, not defaulted**: a device TOML
+missing either field is a build-time error, the same fail-loud contract "Build/generator script
+quality bar" below gives every other structurally-broken-definitions-file case.
 
 The same reasoning is why the webserver — also unconditional, present on every device — was never
 modeled as an instance either, even before this revision: its own constructor takes no independent
@@ -192,25 +195,25 @@ hostname = "SensorStationWozi"
 # session) - defaults to the existing hardcoded "12345678" if omitted (CLAUDE.md's accepted-risk
 # credential note); a device TOML may override it, but never needs to.
 hotspot_password = "12345678"
-
 # Mandatory infrastructure tuning - WiFi/NTP/SystemService are never [[instance]] entries (every
 # buildable device has all three unconditionally; see this doc's "Device TOML schema" intro above
-# for the full reasoning). Required, not defaulted: a device TOML missing either field below is a
-# build-time error (this doc's own "Build/generator script quality bar" fail-loud contract).
-[system_config]
+# for the full reasoning). Merged directly into [device] (project owner's direction, 2026-09-09) -
+# a separate [system_config] table would have duplicated what [device] already is: singleton,
+# per-device, non-instance facts. Required, not defaulted: a device TOML missing either field below
+# is a build-time error (this doc's own "Build/generator script quality bar" fail-loud contract).
 conn_fail_to_hotspot = 5   # src/asy_wifi_service.py's AsyWifiService constructor param, same name.
 hotspot_time_min = 8       # ditto. NTP/SystemService have no tunable fields today, so nothing of
 # theirs lives here yet - this table only ever grows if/when they do.
 
-# Mandatory-infra-to-optional-instance wiring (project owner's direction, 2026-09-09): the same
-# [instance.wiring] treatment, scoped here because WiFi/SystemService aren't [[instance]] entries.
-# Both fields are optional - absence disables the feature rather than being a build error. WiFi's
-# own LED status indicator (`conn.set_ext_led(pixel)`) and SystemService's own error-log/pause
-# hookup (`fram=fram`) are the only two such links that exist today (see "Core design decisions"
-# above's ALL-crosslinks-wired rule and its own list of what's deliberately excluded - links
-# between two mandatory modules, e.g. NTP's/SystemService's own dependency on WiFi, since both
-# endpoints always exist unconditionally and so are never a real per-device choice).
-[system_config.wiring]
+# Mandatory-infra-to-optional-instance wiring: the same [instance.wiring] treatment, scoped under
+# [device] because WiFi/SystemService aren't [[instance]] entries. Both fields are optional -
+# absence disables the feature rather than being a build error. WiFi's own LED status indicator
+# (`conn.set_ext_led(pixel)`) and SystemService's own error-log/pause hookup (`fram=fram`) are the
+# only two such links that exist today (see "Core design decisions" above's ALL-crosslinks-wired
+# rule and its own list of what's deliberately excluded - links between two mandatory modules, e.g.
+# NTP's/SystemService's own dependency on WiFi, since both endpoints always exist unconditionally
+# and so are never a real per-device choice).
+[device.wiring]
 led_target = "neopixel"
 fram_target = "fram"
 
@@ -384,10 +387,10 @@ field = "Hum"
 
 **What this session settles**: the two top-level shapes above, the `[[instance]]` convention for
 *optional* modules (WiFi/NTP/SystemService excluded — mandatory infrastructure, tuned instead via
-`[system_config]`), `name_ext`'s default-empty-means-unchanged rule, `[instance.wiring]`'s shape (a
-flat `{toml_field_name = "another instance's resolved name"}` table for a single-instance
-reference, or a `[instance.wiring.<name>]` sub-table of `{source = "...", field = "..."}` for a
-getter reference), `[system_config.wiring]` as the mandatory-infra-side mirror of
+plain fields directly in `[device]`), `name_ext`'s default-empty-means-unchanged rule,
+`[instance.wiring]`'s shape (a flat `{toml_field_name = "another instance's resolved name"}` table
+for a single-instance reference, or a `[instance.wiring.<name>]` sub-table of `{source = "...",
+field = "..."}` for a getter reference), `[device.wiring]` as the mandatory-infra-side mirror of
 `[instance.wiring]`, the standing "every real cross-instance link is TOML-visible, none hardcoded"
 rule and its two exclusions (mandatory-to-mandatory links; a `WebserverService`-style reference
 derived from "every instance that exists" rather than one named instance), that any wiring
@@ -458,12 +461,25 @@ unwired. All 6 files gained a `fram_target = "fram"` field in each such instance
 today (WiFi's own status LED, SystemService's own error log). Every field is individually optional,
 by explicit request ("having the possibility of only wiring some, but not all instances to actual
 FRAM is a degree of freedom I want to have") — every real device wires all of them today, but
-nothing in the schema requires that. A minimal shape/collision smoke-test suite lives at
-`tests_scripts/test_device_tomls.py` (parses as valid TOML, matches this schema's shape — including
-every wiring field introduced across all four revisions above — and re-implements — by hand, since
-no generator/validator exists yet — the global-GPIO-pin/per-bus-address/instance-name collision
-checks below against these 6 real files specifically; **not** a substitute for Session 3's own full
-validator and its malformed-fixture test coverage).
+nothing in the schema requires that.
+
+**Revision 5, same session (2026-09-09)**: the project owner noticed `[device]` and
+`[system_config]` had grown redundant — both are singleton, per-device, non-instance tables, so
+having two was an unnecessary split rather than a meaningful distinction. `[system_config]`'s
+fields were folded directly into `[device]` (`conn_fail_to_hotspot`/`hotspot_time_min` now sit
+alongside `name`/`hostname`/`hotspot_password`), and `[system_config.wiring]` became
+`[device.wiring]`. Purely a location change — every value, and the individually-optional-field
+behavior from Revision 4, stayed exactly the same; `test_device_tomls.py`'s own check functions/
+constants were renamed to match (`check_device_infra_fields_present_and_valid`,
+`check_device_wiring_resolves_if_present`) rather than left referring to a table that no longer
+exists.
+
+A minimal shape/collision smoke-test suite lives at `tests_scripts/test_device_tomls.py` (parses as
+valid TOML, matches this schema's shape — including every wiring field introduced across all five
+revisions above — and re-implements — by hand, since no generator/validator exists yet — the
+global-GPIO-pin/per-bus-address/instance-name collision checks below against these 6 real files
+specifically; **not** a substitute for Session 3's own full validator and its malformed-fixture
+test coverage).
 
 **What Session 3 (the generator) does, not settled here**: resolving the `driver` string to its
 Python class — per this doc's own "Acceptance criteria" above, derived from the existing
@@ -539,8 +555,9 @@ proceed rather than degrading:
 - **Detect and react to every error class that would make a real build impossible** —
   misconfigured/malformed TOML, an unresolved wiring reference, a driver-class/type mismatch, a
   REST/config-name collision with no disambiguating extension, a missing required pin/bus field, a
-  missing or incomplete `[system_config]` table (required, not defaulted — see "Device TOML schema"
-  above), a copy-paste duplicate, or any other structurally broken definitions file. Typical
+  missing or incomplete mandatory-infra field in `[device]` (`conn_fail_to_hotspot`/
+  `hotspot_time_min`, required, not defaulted — see "Device TOML schema" above), a copy-paste
+  duplicate, or any other structurally broken definitions file. Typical
   real-world causes: misconfigured definition files, and plain wrong/missing/copy-pasted fields.
 - **Global-resource-collision checks are their own error class and must not be skipped.**
   Overlapping bus addresses, double-claimed pin numbers, and any other double-definition of a
