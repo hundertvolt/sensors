@@ -293,10 +293,12 @@ branch — not a one-time check, repeated on every incoming merge:
 
 ## Build/generator script quality bar
 
-Binds every session that writes build/generation logic — Session 1's wiring/schema validator,
-Session 3's Python code generator, Session 4's website `definitions.json` generator, and Session
-6's CI orchestration around them. Distinct from the sensor-code quality bar in one key way: a
-build script's job includes catching every way its own input could be wrong, and refusing to
+Binds every session that writes build/generation logic — Session 3's Python code generator (which
+validates a device's TOML against Session 1's own `_WIRING`/`instance_name()` runtime mechanism;
+Session 1 itself builds only that mechanism, not a validator — no device TOML exists yet at that
+point, so there's nothing to validate), Session 4's website `definitions.json` generator, and
+Session 6's CI orchestration around them. Distinct from the sensor-code quality bar in one key way:
+a build script's job includes catching every way its own input could be wrong, and refusing to
 proceed rather than degrading:
 
 - **Detect and react to every error class that would make a real build impossible** —
