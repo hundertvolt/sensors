@@ -87,3 +87,11 @@ pin = 15
 
 [[instance]]
 driver = "notification"
+
+# Explicit, TOML-visible wiring - today notification always drives the neopixel instance (currently
+# a hardcoded `pixel.request_signal` constructor argument in build_system(), not resolved via
+# _WIRING at all). Generator-side resolution isn't settled yet - see BUILD_CHAIN_PLAN.md's own
+# schema section for why (NotificationCoordinator wants pixel.request_signal specifically, not the
+# whole NeopixelDriver instance _WIRING's documented contract would hand it).
+[instance.wiring]
+signal_sink = "neopixel"

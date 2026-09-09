@@ -170,6 +170,22 @@ def check_no_instance_name_collision(doc: dict, label: str) -> None:
     assert len(names) == len(set(names)), f"{label}: instance name collision in {names}"
 
 
+def check_notification_wiring_resolves_to_a_real_neopixel_instance(doc: dict, label: str) -> None:
+    # notify_service = NotificationCoordinator(pixel.request_signal, ...) is currently a hardcoded
+    # Python constructor argument in build_system(), not resolved via _WIRING at all
+    # (asy_notification_service.py declares no _WIRING tuple). This TOML-level [instance.wiring]
+    # reference makes that dependency explicit ahead of a future device that might wire
+    # notification to a different sink (BUILD_CHAIN_PLAN.md's "Device TOML schema", 2026-09-09) -
+    # its generator-side resolution mechanism is deliberately left open there, not settled here.
+    instances = {(inst["driver"], inst.get("name_ext", "")): inst for inst in doc["instance"]}
+    notif_key = ("notification", "")
+    assert notif_key in instances, f"{label}: no notification instance found"
+    wiring = instances[notif_key].get("wiring")
+    assert wiring is not None, f"{label}: notification instance has no [instance.wiring] table"
+    assert wiring.get("signal_sink") == "neopixel", f"{label}: notification's wiring.signal_sink is {wiring.get('signal_sink')!r}, expected 'neopixel'"
+    assert ("neopixel", "") in instances, f"{label}: notification's signal_sink references 'neopixel' but no such instance exists"
+
+
 def check_no_mandatory_infra_modeled_as_instance(doc: dict, label: str) -> None:
     # wifi/ntp/system are mandatory infrastructure - the TOML models optional modules only
     # (BUILD_CHAIN_PLAN.md's "Device TOML schema", revised 2026-09-09) - so none of them may ever
@@ -260,6 +276,11 @@ def test_sgp40_wiring_resolves_to_a_real_scd30_instance(devices_dir: Path, devic
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_notification_wiring_resolves_to_a_real_neopixel_instance(devices_dir: Path, device: str):
+    check_notification_wiring_resolves_to_a_real_neopixel_instance(_load(devices_dir, device), device)
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_no_global_gpio_pin_collision(devices_dir: Path, device: str):
     check_no_global_gpio_pin_collision(_load(devices_dir, device), device)
 
@@ -324,6 +345,7 @@ _BASE_DOC: dict = {
         {"driver": "sgp40", "name_ext": "", "bus": "i2c1", "wiring": {"comp_source": "scd30"}},
         {"driver": "fram", "bus": "spi0", "cs_pin": 1, "max_size": 0x2000},
         {"driver": "neopixel", "pin": 15},
+        {"driver": "notification", "wiring": {"signal_sink": "neopixel"}},
     ],
 }
 
@@ -340,6 +362,7 @@ def test_base_doc_fixture_itself_passes_every_check():
     check_every_instance_referencing_a_bus_uses_a_declared_bus(doc, "base")
     check_every_declared_bus_is_used_by_some_instance(doc, "base")
     check_sgp40_wiring_resolves_to_a_real_scd30_instance(doc, "base")
+    check_notification_wiring_resolves_to_a_real_neopixel_instance(doc, "base")
     check_no_global_gpio_pin_collision(doc, "base")
     check_no_per_bus_address_collision(doc, "base")
     check_no_instance_name_collision(doc, "base")
@@ -420,6 +443,27 @@ def test_detects_sgp40_wiring_referencing_a_nonexistent_instance():
     doc["instance"] = [i for i in doc["instance"] if i["driver"] != "scd30"]
     with pytest.raises(AssertionError, match="no such instance exists"):
         check_sgp40_wiring_resolves_to_a_real_scd30_instance(doc, "base")
+
+
+def test_detects_notification_missing_its_wiring_table():
+    doc = _base_doc()
+    del doc["instance"][4]["wiring"]
+    with pytest.raises(AssertionError, match=r"no \[instance.wiring\] table"):
+        check_notification_wiring_resolves_to_a_real_neopixel_instance(doc, "base")
+
+
+def test_detects_notification_wiring_pointing_at_the_wrong_driver():
+    doc = _base_doc()
+    doc["instance"][4]["wiring"]["signal_sink"] = "fram"
+    with pytest.raises(AssertionError, match="expected 'neopixel'"):
+        check_notification_wiring_resolves_to_a_real_neopixel_instance(doc, "base")
+
+
+def test_detects_notification_wiring_referencing_a_nonexistent_instance():
+    doc = _base_doc()
+    doc["instance"] = [i for i in doc["instance"] if i["driver"] != "neopixel"]
+    with pytest.raises(AssertionError, match="no such instance exists"):
+        check_notification_wiring_resolves_to_a_real_neopixel_instance(doc, "base")
 
 
 def test_detects_a_bus_wire_pin_reused_by_another_bus():

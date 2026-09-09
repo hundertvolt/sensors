@@ -275,6 +275,25 @@ pin = 15
 
 [[instance]]
 driver = "notification"
+
+# Makes notification's dependency on a signal sink explicit in the TOML (project owner's direction,
+# 2026-09-09) - today that's always the neopixel instance, but a future device might drive
+# notifications a different way entirely (e.g. a network call) instead of an LED, so this is
+# declared the same way sgp40's comp_source is: a plain instance-name reference, not hardcoded.
+# NOT YET RESOLVABLE by the generator as specified: _WIRING's documented contract (this doc's "Core
+# design decisions" above) resolves a reference to the *whole* constructed instance and passes it
+# directly into the consumer's constructor, but `NotificationCoordinator.__init__`'s
+# `request_signal_cb` param wants one specific bound coroutine method off that instance
+# (`pixel.request_signal`, confirmed directly against src/asy_notification_service.py's own
+# signature and src/asy_neopixel_driver.py's own `async def request_signal(self, r, g, b, t)`), not
+# the instance itself. Whether that gets solved by extending `_WIRING`'s tuple shape with an
+# optional attribute-name element, generator-side special-casing, or something else is left open -
+# deliberately not settled by this session ("no refactor of notification or neopixel" scope,
+# 2026-09-09); `asy_notification_service.py` itself declares no `_WIRING` tuple yet either (unlike
+# `asy_sgp40_driver.py`), for the same reason.
+[instance.wiring]
+signal_sink = "neopixel"
+
 # NotificationSignal registrations (WarnCO2/WarnVOC/WarnHum today) are a related but separate
 # mechanism from _WIRING (SPECIFICATION.md C.14.3) - resolved at register()-call time, after every
 # producer already exists, so they don't need their own _WIRING declaration; how the generator
