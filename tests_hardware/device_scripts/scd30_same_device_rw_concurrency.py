@@ -1,7 +1,6 @@
-"""Isolated-driver device script: the ONE script in this test group allowed to issue a real
-NVM-persisted write to the SCD30 (set_ambient_pressure(), doubling as "trigger continuous
-measurement" - real write-wear budget). Also serves the same-device concurrency proof
-(SPECIFICATION.md Part C.8) - see tests_hardware/flash/conftest.py's session-scoped fixture."""
+"""Isolated-driver device script: the ONE script allowed to issue a real NVM-persisted write to the
+SCD30 (set_ambient_pressure(), doubling as "trigger continuous measurement"). Also serves the
+same-device concurrency proof (SPECIFICATION.md Part C.8) - see flash/conftest.py's fixture."""
 
 import asyncio
 

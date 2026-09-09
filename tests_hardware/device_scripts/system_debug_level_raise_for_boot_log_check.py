@@ -1,7 +1,6 @@
-"""Isolated-driver device script, phase 1/3 for the boot-import-mechanism check
-(test_reboot_persistence.py). Raises SYSTEM DebugLevel to 3 (_LOG_ONCE) so the next hard_reset()'s
-boot-chatter lines actually emit - backs up the real prior value first (never a hardcoded restore
-target) so system_debug_level_restore_after_boot_log_check.py can put it back exactly."""
+"""Isolated-driver device script, phase 1/3 for the boot-import-mechanism check. Raises SYSTEM
+DebugLevel to 3 (_LOG_ONCE) so the next hard_reset()'s boot-chatter lines actually emit - backs up
+the real prior value first (never a hardcoded restore target) so its restore-phase sibling can put it back exactly."""
 
 import asyncio
 

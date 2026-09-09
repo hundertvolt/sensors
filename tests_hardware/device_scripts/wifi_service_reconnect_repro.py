@@ -1,28 +1,6 @@
-"""Isolated-driver diagnostic script #2 (NOT part of the routine test suite) for REAL FINDING #4 in
-tests_hardware/bench/test_network_resilience.py. Diagnostic #1
-(wifi_reconnect_after_failed_attempts_repro.py) drove raw `network` module calls directly and found
-NO degradation (a real reconnect after 5 failed attempts + an AP round-trip completed in ~3s, same
-as a clean control) - ruling out the CYW43 chip/firmware itself. This script instead drives the REAL
-src/asy_wifi_service.py AsyConnTime class's own real task loop (wlan_connect(), its own locking,
-its own config-read-then-connect sequencing) directly, bypassing only the REST/webserver layer and
-the bench-side role-reversal dance - to narrow down whether the bug is in this class's own
-orchestration around a real reconnect-after-hotspot-fallback sequence.
-
-Debug level is forced to 5 (_LOG_ALL) so every internal `.all()`-level state transition prints, not
-just event/warning/error-level ones - see this class's own _run_sta_mode()/_poll_sta_connect_status()
-for what that surfaces (WLAN idle/connecting/obtaining IP/etc, once per wifi_refresh_sec cycle).
-
-Uses the DUT's own real, already-persisted config file (cfg_path="") for Country/Hostname/PW - only
-SSID is deliberately overwritten mid-run via the exact same _set_dict_cfg() persistence path the
-real REST layer's _apply_settings_groups() uses, then restored the same way - never touches REST
-or NetworkManager on the bench side at all.
-
-Run via `mpremote run <this>` (no `soft-reset` chained - board is left with a REAL background
-asyncio task running via this ad-hoc asy_wifi_service.AsyConnTime instance, NOT the real
-sensortask_wozi.py-driven system - hard_reset() afterward to resume normal operation). Prints one
-timestamped line per real state change, plus periodic heartbeats, until either reconnected or a
-generous ceiling is hit.
-"""
+"""Isolated-driver diagnostic script #2 (NOT part of the routine test suite) - diagnostic #1 found no
+degradation at the raw `network` level, so this drives the real asy_wifi_service.AsyConnTime task
+loop directly (bypassing only REST/webserver) to narrow down its own reconnect orchestration. Run via `mpremote run <this>` (no soft-reset chain); hard_reset() afterward."""
 
 import asyncio
 import time

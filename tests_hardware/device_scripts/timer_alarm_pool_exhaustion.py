@@ -1,10 +1,6 @@
-"""Isolated-driver device script for flash-tier candidate A.3 (tmp_hardware_test_candidates.md):
-construct real machine.Timer objects until Timer.init() raises OSError(ENOMEM) once the RP2040's
-real hardware alarm pool is exhausted - SPECIFICATION.md Part F.2's already-verified claim
-(confirmed against real ports/rp2/machine_timer.c source: Timer.init()'s documented failure mode
-is exactly OSError(MP_ENOMEM) when alarm_pool_add_alarm_in_us() reports the pool exhausted), never
-exercised against real silicon before this. Run via `mpremote run <this> soft-reset`.
-Prints exactly one line: "RESULT: PASS constructed=<n> errno=<e>" or "RESULT: FAIL <reason>"."""
+"""Isolated-driver device script: constructs real machine.Timer objects until Timer.init() raises
+OSError(ENOMEM) once the RP2040's real hardware alarm pool is exhausted - confirming
+SPECIFICATION.md Part F.2's claim against real silicon."""
 
 import errno
 

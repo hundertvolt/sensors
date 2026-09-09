@@ -1,7 +1,6 @@
 """Isolated-driver device script: real-hardware regression test for the SGP40 general-call reset
-hazard (SPECIFICATION.md Part C.8) - runs concurrent SCD30 reads against repeated SGP40 initialize()
-cycles (each ending in a real general-call broadcast) and checks for CRC/OSError corruption plus
-continuous measurement still advancing (>= 2 distinct CO2 values)."""
+hazard (SPECIFICATION.md Part C.8) - runs concurrent SCD30 reads against repeated SGP40
+initialize() cycles and checks for CRC/OSError corruption plus measurement still advancing."""
 
 import asyncio
 

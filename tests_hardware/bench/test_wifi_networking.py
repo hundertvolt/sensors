@@ -82,36 +82,19 @@ def test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing(board:
     # observable equivalent of "NTP sync failure doesn't block the rest of build_system()".
     assert "CFGMGR_" in joined or "FRAM" in joined, f"system did not appear to finish booting with NTP blocked:\n{joined}"
 
-    # Bounded recovery retry, same rationale as conftest.py's dut_ip fixture: a hard_reset() every
-    # so often lands on a real, disclosed CYW43-firmware/AP-state characteristic (see that
-    # fixture's own docstring) rather than this test's own NTP-unreachable scenario - one more
-    # kick_all_stations()+hard_reset() cycle before treating it as a real failure.
+    # Bounded recovery retry, same rationale as conftest.py's dut_ip fixture: a hard_reset()
+    # occasionally lands on a real, disclosed CYW43-firmware/AP-state characteristic rather than
+    # this test's own scenario - one more retry cycle before treating it as a real failure.
     try:
         wait_until(lambda: _http_ok(dut_ip), timeout_s=60.0, poll_interval_s=3.0, description="DUT reachable over REST again after the hard_reset() above")
     except TimeoutError:
         bench.kick_all_stations()
         board.hard_reset()
         wait_until(lambda: _http_ok(dut_ip), timeout_s=60.0, poll_interval_s=3.0, description="DUT reachable over REST again (after one recovery hard_reset() retry - see this test's own comment)")
-    # REAL FINDING, fixed 2026-09-04 - this assertion's own reasoning only traced ONE of two
-    # independent error-logging paths in asy_ntp_client.py, so it was wrong the whole time, not the
-    # real system: `_handle_ntp_sync_failure()`'s own errno=16/errno=17 retry-logging block is indeed
-    # gated on `ntp_issynced()` and correctly never fires on a first-ever unresponsive server. But
-    # `AsyNtpClient` also extends `base_classes.py`'s `SensorReaderConfig`, whose *separate*,
-    # coarser `_error_check()` consecutive-failure-streak counter (SPECIFICATION.md Part C.7) is
-    # NOT gated on ntp_issynced() at all - confirmed directly against real source (base_classes.py
-    # lines ~213-225) - and fires unconditionally on every failed real sync attempt regardless of
-    # sync history: `errno=1` ("Error counter increased to N") on each one, `errno=2` ("Maximum
-    # error count reached!") once past `max_module_error` (5 by default), then asy_ntp_client.py's
-    # own `errno=20` ("Giving up after repeated sync failures, restarting task") from the outer loop
-    # that wraps this same counter. A 90s window with the NTP port genuinely, persistently blocked
-    # is real, sustained failure - exactly what this mechanism exists to detect and report, so
-    # seeing all three fire is the module working correctly, not a bug. Confirmed directly on real
-    # hardware: this exact scenario reliably produces 8x errno=1, 1x errno=2, 1x errno=20 under
-    # `assert_module_error_log_empty`'s old blanket-emptiness check - it never could have passed for
-    # a genuinely unreachable server, only for one that failed faster than one `_error_check()` cycle
-    # could register (a false pass, not evidence of correct handling). Checking for the real,
-    # expected outcome instead: the module must actually notice and report giving up, not silently
-    # spin forever - a missing errno=20 here would be the real bug this test should be catching.
+    # `_error_check()`'s coarser consecutive-failure counter (SPECIFICATION.md Part C.7, not gated
+    # on ntp_issynced()) fires unconditionally on every failed sync attempt, ending in errno=20
+    # ("Giving up after repeated sync failures") - the real, expected outcome for a persistently
+    # blocked port, not a bug. See tests_hardware/README.md for the full since-fixed test-bug account.
     assert_module_error_log_contains(dut_ip, "NTP", 20, "E")
 
 

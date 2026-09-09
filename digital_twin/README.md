@@ -67,7 +67,9 @@ Kept completely separate so nothing here can accidentally affect the determinist
   around the Unix port's own BSD sockets, so it transparently reaches the real network once
   "connected". `ifconfig()` reports a plausible static address rather than a discovered one (this
   MicroPython build's `socket.socket` has no `getsockname()`) — harmless, since nothing in `src/`
-  constructs a socket from that value.
+  constructs a socket from that value. **AP-mode fidelity gap**: `WLAN.active()`/`config()` don't
+  simulate address assignment on hotspot activation, so `ifconfig()[0]` reads `"0.0.0.0"` in AP
+  mode instead of a realistic address — real hardware's cyw43 driver does return a real IP here.
 - `_http_client.py` — minimal hand-rolled HTTP/1.1 client over `asyncio.open_connection()`, used to
   drive real requests against `WebserverService` in Unix-port integration runs (no HTTP client
   library is frozen into the pinned Unix-port build). Every response it sees is `Connection: close`

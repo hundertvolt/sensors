@@ -1,10 +1,6 @@
-"""Isolated-driver device script, phase 3/3 for the boot-import-mechanism check - see
-system_debug_level_raise_for_boot_log_check.py's own docstring for the full design, including the
-real finding (a hardcoded "restore to 0" here used to clobber a board legitimately left at a higher
-DebugLevel for the rest of a real test session). Restores the real, persisted SYSTEM DebugLevel to
-whatever it actually was before that script ran - read back from the dedicated backup file it
-wrote, never a hardcoded assumption. Run from a `finally` block in the driving test so a failed
-assertion never leaves the board's real config changed."""
+"""Isolated-driver device script, phase 3/3 for the boot-import-mechanism check. Restores the real
+SYSTEM DebugLevel to whatever it actually was before the raise-phase sibling ran - read back from
+its backup file, never a hardcoded assumption. Run from a `finally` block in the driving test."""
 
 import asyncio
 

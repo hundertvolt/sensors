@@ -1,22 +1,6 @@
-"""Isolated-driver diagnostic script (NOT part of the routine test suite - a one-off repro built to
-investigate REAL FINDING #4 in tests_hardware/bench/test_network_resilience.py's
-test_garbage_ssid_via_rest_config_is_handled_gracefully: the DUT reconnecting to a real, known-good
-SSID after a real STAT_NO_AP_FOUND failure history + AP-mode round-trip took 5-10+ minutes in
-practice, versus ~20s for the exact same leave-AP-mode-and-reconnect mechanism triggered without any
-real prior failed connection attempts.
-
-This script isolates the variable directly at the `network` module level (no asy_wifi_service.py,
-no REST, no webserver, no bench-side WiFi role-reversal) - CONTROL: connect to the real SSID from a
-clean slate. TREATMENT, same session: 5 real failed connects to a nonexistent SSID (mirroring
-asy_wifi_service.py's own _poll_sta_connect_status()/wifi_refresh_sec cadence exactly), then a real
-AP-mode round-trip (mirroring _configure_hotspot_ap()/_switch_wlan_mode()), then reconnect to the
-SAME real SSID again, timed the same way. Chatty: every poll prints a timestamp + wlan.status().
-
-Run via `mpremote run <this>` (deliberately NOT chained with `soft-reset` at the end - see this
-script's own final print for why leaving the board in this state, rather than triggering a reboot
-via the chain, matters here). Recover the board afterward via a real hard_reset() (harness.py) to
-resume normal main.py operation - this script never touches config files, so a normal boot reads
-back the DUT's real, unmodified config."""
+"""Isolated-driver diagnostic script (NOT part of the routine test suite) - a one-off repro of why
+reconnecting to a known-good SSID after a failure history + AP-mode round-trip took 5-10+ minutes
+versus ~20s with no prior failures. Run via `mpremote run <this>` (no soft-reset chain); recover afterward via hard_reset()."""
 
 import time
 

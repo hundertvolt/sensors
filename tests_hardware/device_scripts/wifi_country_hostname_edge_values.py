@@ -1,16 +1,6 @@
-"""Isolated-driver device script, gap fix: real network.country()/network.hostname() behavior for
-schema-valid-but-functionally-bogus values. asy_wifi_service.py's own _VAL_CTRY/_VAL_HOST
-(("Country", "str", "DE", 2, 2, None) / ("Hostname", "str", "SensorNode", 1, 32, None)) only bound
-length/type, never format - a syntactically-valid-length value that is not a real ISO country code,
-or a Hostname whose *character* count passes the 32-char cap but whose UTF-8 *byte* count exceeds
-network.hostname()'s real 32-byte cap (see that schema's own "32 = network.hostname()'s real cap"
-comment), both pass REST validation today. Both calls live inside asy_wifi_service.py's own
-_trigger_sta_connect()'s try/except (errno=13) - testing them here, directly and in isolation, over
-mpremote exec (no REST/real WiFi bridge needed) avoids ever risking a real hotspot-fallback cascade,
-unlike a REST-level test would (see tests_hardware/bench/test_network_resilience.py's own garbage-
-SSID test for why that one stops short of hotspot fallback for exactly this reason).
-
-Run via `mpremote run <this> soft-reset`. Prints one "RESULT: ..." line per case."""
+"""Isolated-driver device script: real network.country()/network.hostname() behavior for
+schema-valid-but-functionally-bogus values (a non-ISO country code; a Hostname whose char count
+passes the schema cap but whose UTF-8 byte count exceeds the real 32-byte cap) - tested in isolation to avoid a real hotspot cascade."""
 
 import network
 

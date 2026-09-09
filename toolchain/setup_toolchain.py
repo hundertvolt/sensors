@@ -4,14 +4,9 @@
 # dependencies = []
 # ///
 """
-Single-command installer/updater for the MicroPython RP2040/Pico W firmware build
-environment (MicroPython + matching pico-sdk + matching picotool + ARM cross-toolchain), plus
-a host-side MicroPython Unix port build used for running tests under the real interpreter
-later (see BACKLOG.md's "Self-contained venv via uv" — this is the "setup script that builds/
-installs the MicroPython Unix port interpreter" it describes). That Unix port binary is always
-built with MICROPY_PY_SYS_SETTRACE=1 (see build_unix_port()) so it backs both plain
-`scripts/test.sh` and `scripts/test.sh --coverage` — the RP2040 firmware build never gets this
-flag, it's dev/test tooling only.
+Single-command installer/updater for the MicroPython RP2040/Pico W firmware build environment
+(MicroPython + matching pico-sdk/picotool + ARM cross-toolchain), plus a host-side MicroPython
+Unix port build used for running tests. See SPECIFICATION.md Part B for the full picture.
 
 Usage (from anywhere, via uv — no venv/pip setup needed):
 
@@ -20,28 +15,6 @@ Usage (from anywhere, via uv — no venv/pip setup needed):
     uv run toolchain/setup_toolchain.py --micropython-ref v1.26.1
     uv run toolchain/setup_toolchain.py --clean           # wipe build dirs, then rebuild from scratch
     uv run toolchain/setup_toolchain.py test              # re-verify an existing install, offline
-
-Re-running this same command against an existing toolchain directory is how updates work:
-it fetches, checks out whatever ref is now pinned, re-derives the matching pico-sdk/picotool
-versions, and rebuilds only what's needed.
-
-Two design decisions shape most of the code below, both explained at length in
-SPECIFICATION.md Part B.3 ("How it works"):
-  - Only the MicroPython ref is a hand-picked version (see versions.toml). The pico-sdk and
-    picotool versions are *derived* from it (derive_pico_sdk_commit / derive_picotool_ref)
-    instead of being tracked as separate pins that could quietly drift out of sync.
-  - Every build subprocess runs in an explicitly constructed environment (build_env /
-    network_env), never the caller's raw shell — so a leftover CFLAGS, a shadowing ~/bin/cmake,
-    or some other locally-installed thing can't silently change what gets built.
-
-Verification (run_verification_sequence()) proves the toolchain actually works, rather than just
-asserting the pieces are probably fine: it freezes one small test module as bytecode into both
-the Unix port and the RP2 firmware, then imports it inside the Unix port and checks the result —
-proof that the whole freeze pipeline (mpy-cross -> FROZEN_MANIFEST -> firmware) works end to end,
-not just that mpy-cross alone compiles something. See its docstring for the exact step order and
-SPECIFICATION.md Part B.6 ("Verification") for the rationale.
-
-See SPECIFICATION.md Part B for the full picture (what this does and does not cover).
 """
 
 from __future__ import annotations
@@ -58,34 +31,18 @@ import tempfile
 import tomllib
 from pathlib import Path
 
-# Confirmed GCC >=14 false positive (not a real bug): GCC's array-bounds analyzer misjudges the
-# trailing-byte loop in mbedtls_xor() (library/common.h), inlined into ctr_drbg.c - flagged
-# upstream as Mbed-TLS/mbedtls's own GCC14 issue and Debian bug #1085354 ("mbedtls FTBFS on
-# arm64 with gcc 14"), fixed only in mbedtls 3.6.6 by adding compile-time bailouts purely to
-# appease the analyzer. The MicroPython ref pinned in versions.toml vendors its own mbedtls
-# submodule commit, predating that fix, so this recurs on any host whose default GCC is >=14
-# (confirmed live on a Raspberry Pi OS/Debian trixie host, GCC 14.2) even though it never
-# surfaced on this project's Ubuntu 24.04 "noble" (GCC 13.x) verification baseline - see
-# SPECIFICATION.md Part B.7. Suppressed outright (not just downgraded from error to warning)
-# because both build_unix_port() and build_firmware() below treat any "warning:" in build output
-# as a hard failure, matching this project's zero-warnings bar. Harmless to pass unconditionally
-# on GCC <14 too, where this warning class never fires anyway.
-#
-# NOT YET FIXED UPSTREAM as of when this was added - GCC's own bugzilla report for this exact
-# false positive (https://gcc.gnu.org/bugzilla/show_bug.cgi?id=121044, filed against GCC 14.3.0)
-# was still UNCONFIRMED, i.e. not accepted as a bug GCC intends to fix. See SPECIFICATION.md Part
-# B.7.1 for the full periodic-recheck instructions before ever removing this workaround.
+# Confirmed GCC >=14 false positive in mbedtls_xor(), not a real bug (SPECIFICATION.md Part B.7);
+# suppressed outright since build_unix_port()/build_firmware() treat any "warning:" as a hard
+# failure. See Part B.7.1 for the periodic-recheck instructions before ever removing this.
 _MBEDTLS_GCC14_ARRAY_BOUNDS_WORKAROUND = "-Wno-array-bounds"
 
 MICROPYTHON_URL = "https://github.com/micropython/micropython.git"
 PICO_SDK_URL = "https://github.com/raspberrypi/pico-sdk.git"
 PICOTOOL_URL = "https://github.com/raspberrypi/picotool.git"
 
-# The single module used throughout the frozen-bytecode verification chain (see
-# run_verification_sequence()): one source of truth compiled/frozen/imported everywhere, rather
-# than separate throwaway samples for "does mpy-cross work" vs. "does freezing work". Runs real
-# checks on import (arithmetic, a comprehension, exception handling, a stdlib module) and exposes
-# RESULT so callers can prove the import produced an actual value, not just that it didn't crash.
+# The single module used throughout run_verification_sequence()'s chain - one source of truth,
+# rather than separate throwaway samples per step. RESULT lets callers prove the import produced
+# an actual value, not just that it didn't crash.
 FROZEN_VERIFY_MODULE = "frozen_verify_test"
 FROZEN_VERIFY_PY = '''\
 import sys
@@ -114,25 +71,15 @@ def log(msg: str) -> None:
     print(f"\n== {msg}", flush=True)
 
 
-# Every subprocess this script runs gets this fixed, deterministic PATH and a small
-# allowlist of ambient variables — never the caller's raw environment. Deliberately an
-# allowlist, not a blocklist: CC/CXX/CFLAGS/LDFLAGS/MAKEFLAGS, CMAKE_*, PICO_SDK_PATH/
-# PICO_BOARD, PYTHONPATH, and anything else not listed here are all dropped, and a fixed
-# PATH means a shadowing binary earlier in the caller's PATH (a stray ~/bin/cmake, a
-# different gcc-arm-none-eabi build, an old picotool) can never be picked up instead of
-# the one this script itself just installed. Nothing here is trusted from the caller's
-# shell/profile to silently change what gets built, with what flags, or using what tools.
+# A fixed, deterministic PATH and a small allowlist of ambient variables - never the caller's raw
+# environment, so nothing in their shell/profile can silently change what gets built or with what
+# (SPECIFICATION.md Part B.4).
 BUILD_ENV_ALLOWLIST = ("HOME", "USER", "LOGNAME", "TERM", "TMPDIR")
 BUILD_ENV_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
-# LANG/LC_ALL are deliberately *not* in the allowlist above and forced to C.UTF-8 instead of
-# passed through: build_firmware()/build_mpy_cross() detect failures by grepping build output
-# for the literal English "error:"/"warning:" (gcc/make don't offer a machine-readable
-# success/failure signal beyond exit code + freeform text). GCC and binutils *can* emit
-# translated diagnostics via gettext catalogs on a system where the caller's locale has one
-# installed — inheriting the caller's LANG/LC_ALL would risk a real warning silently not
-# matching those English-only patterns. C.UTF-8 keeps UTF-8 text handling (unlike plain "C")
-# while guaranteeing English tool output every time, regardless of the caller's own locale.
+# LANG/LC_ALL are forced to C.UTF-8, not passed through: build failure detection greps build
+# output for literal English "error:"/"warning:", which a translated gettext locale could evade
+# (SPECIFICATION.md Part B.7).
 BUILD_ENV_LOCALE = "C.UTF-8"
 
 # On top of the base allowlist, git/apt calls (and the rp2 "submodules" Makefile target,
@@ -370,22 +317,10 @@ def build_firmware(micropython_dir: Path, board: str, jobs: int, frozen_manifest
 
 
 def build_unix_port(micropython_dir: Path, jobs: int, frozen_manifest: Path | None = None) -> Path:
-    """Builds the "standard" variant (the default, and the one with the most complete feature
-    set) - see ports/unix/README.md. Requires mpy-cross to already be built (build_mpy_cross()
-    must run first); the Makefile also depends on it directly, but re-checking a build that's
-    already current is a no-op, not wasted work. Pass frozen_manifest the same way as
-    build_firmware() above; omit it for a vanilla build.
-
-    Always built with MICROPY_PY_SYS_SETTRACE=1 -- off by default even in the standard variant
-    (see py/mpconfig.h) -- so this one binary backs both plain `scripts/test.sh` and
-    `scripts/test.sh --coverage` (tests/_coverage_runner.py installs a sys.settrace line tracer
-    scoped to src/ before running each test file). There is no separate coverage-only build:
-    compiling settrace support in adds an inert hook check in the bytecode dispatch loop when
-    sys.settrace() is never called, not a behavior change, and this Unix port is dev/test tooling
-    only, never what ships -- ports/rp2's build_firmware() never gets this flag, so the deployed
-    RP2040 firmware is entirely unaffected. Verified directly during development, not assumed:
-    running the full tests/test_*.py suite against a settrace-enabled build with sys.settrace
-    never actually invoked produced results identical to a plain build."""
+    """Builds the "standard" Unix port variant. Requires mpy-cross already built. Pass
+    frozen_manifest the same way as build_firmware(); omit it for a vanilla build. Always built
+    with MICROPY_PY_SYS_SETTRACE=1 (CLAUDE.md's "Code quality tooling" section) so this one binary
+    backs both plain and --coverage test runs; ports/rp2's build never gets this flag."""
     label = "with the frozen verification module" if frozen_manifest else "standard, unchanged"
     log(f"Building the MicroPython Unix port ({label})")
     unix_dir = micropython_dir / "ports" / "unix"
@@ -513,30 +448,8 @@ def clean_frozen_verification_build_dirs(toolchain_dir: Path, board: str) -> Non
 
 
 def run_verification_sequence(micropython_dir: Path, toolchain_dir: Path, board: str, jobs: int) -> tuple[Path, Path]:
-    """The frozen-bytecode verification chain described in SPECIFICATION.md Part B.6's "Verification" -
-    each step must succeed before the next starts (a SetupError from any run()/build_*() call
-    aborts the whole sequence, so this is enforced by the exception propagating, not by checking
-    a return code by hand):
-
-      1. create a test .py file
-      2. build mpy-cross
-      3. cross-compile the test file standalone (proves mpy-cross itself works)
-      4. build the Unix port with the test file frozen in
-      5. import the frozen module inside the Unix port and check its result
-         -> mpy-cross and the Unix port build are now both verified
-      6. build the RP2 port with the same test file frozen in (build-only: there's no RP2
-         hardware here to run it on, so a clean build is the whole check)
-      7. clean up everything steps 4-6 left behind
-      8. build a vanilla (non-frozen) Unix port - this becomes the standing test rig for
-         everything that follows (see BACKLOG.md's "Self-contained venv via uv")
-
-    Deliberately does not rebuild a vanilla RP2 firmware.uf2 afterward: nothing in this project
-    is ever actually flashed from a "vanilla, no project code" image, so step 6's from-scratch,
-    zero-errors/zero-warnings build with the frozen module already *is* the real proof that the
-    ARM toolchain/pico-sdk/picotool combination works - freezing extra bytecode only adds to a
-    build, it can't make an otherwise-broken one succeed, so this result is a strict superset of
-    what a vanilla build would have proven anyway.
-    """
+    """The 8-step frozen-bytecode verification chain, each step gating the next (SPECIFICATION.md
+    Part B.6 has the full account, including why no separate vanilla RP2 build is also kept)."""
     with tempfile.TemporaryDirectory() as tmp:
         test_dir = Path(tmp)
 
@@ -865,19 +778,11 @@ def generate_bench_ap_credentials() -> tuple[str, str]:
 
 
 def ensure_br_netfilter() -> None:
-    """Idempotent: loads br_netfilter and enables net.bridge.bridge-nf-call-iptables=1, both
-    persisted across a reboot - REAL FINDING, confirmed directly on a real bench run: this
-    bridge's own DUT traffic is switched at Layer 2 (br0-wifi-ap <-> br0-eth0 via br0), and without
-    br_netfilter loaded, iptables' FORWARD/nat-PREROUTING chains never see any of it at all -
-    `lsmod | grep br_netfilter` was empty and the sysctl didn't even exist. This made every one of
-    bench_control.py's iptables-based fault-injection methods (block_udp_ports(),
-    redirect_udp_port_to_local()) a complete no-op: real DUT traffic flowed straight through
-    untouched. redirect_udp_port_to_local()'s own docstring already flagged this exact mechanism as
-    "NEEDS VERIFICATION ON FIRST REAL RUN" - this was that verification, and it failed until this
-    fix. Runs on every `env --tier bench` call (not gated behind bench_ap_exists()) since it's a
-    host-kernel-level setting independent of whether the bridge connection profile itself already
-    exists - a bridge created before this fix would otherwise stay broken even after an "idempotent"
-    re-run."""
+    """Idempotent: loads br_netfilter and enables net.bridge.bridge-nf-call-iptables=1, without
+    which iptables never sees this bridge's Layer-2-switched DUT traffic at all, making
+    bench_control.py's iptables-based fault injection a silent no-op (SPECIFICATION.md Part B.13).
+    Runs on every `env --tier bench` call, not gated behind bench_ap_exists(), since it's a
+    host-kernel setting independent of whether the bridge profile already exists."""
     run(["sudo", "modprobe", "br_netfilter"])
     run(["sudo", "sysctl", "-w", "net.bridge.bridge-nf-call-iptables=1"])
 
@@ -903,19 +808,10 @@ def ensure_br_netfilter() -> None:
 
 
 def ensure_bench_bridge(uplink_iface: str | None, wifi_iface: str | None, ssid: str | None, password: str | None) -> str:
-    """Idempotent: this bridge+AP is real, persistent host infrastructure that survives a
-    reboot (dev_legacy/README.md) - if br0-wifi-ap already exists, it's left completely alone
-    and this just reports its current SSID, rather than recreating (and re-randomizing) a
-    bench network that other in-flight work may already depend on. Only a genuinely missing
-    bridge gets created, using explicit --ssid/--password if given, otherwise freshly generated
-    ones. `wifi-sec.pmf disable` and the WPA2/AES-only tuning below are load-bearing for the
-    Pico W's cyw43439 chip - see dev_legacy/README.md's own note on this. Also always ensures
-    br_netfilter (see ensure_br_netfilter()'s own docstring) and pins the AP to a fixed 2.4GHz
-    channel (see the channel comment below) - both run unconditionally, even when the bridge
-    connection profile already exists, since they're independent host/radio-level settings a
-    pre-existing bridge could still be missing. Also checks (but never auto-repairs) the bridge's
-    own MAC address against the uplink interface's real hardware MAC - see the mismatch-warning
-    block below for why this one is flag-only, not self-healing like the channel check."""
+    """Idempotent: if br0-wifi-ap already exists it's left alone (just reports its SSID), never
+    recreated. br_netfilter and the fixed 2.4GHz channel are still (re-)enforced unconditionally
+    since a pre-existing bridge could be missing either; a bridge MAC mismatch is flagged, never
+    auto-repaired (SPECIFICATION.md Part B.13)."""
     ensure_br_netfilter()
 
     if bench_ap_exists():
@@ -929,14 +825,9 @@ def ensure_bench_bridge(uplink_iface: str | None, wifi_iface: str | None, ssid: 
             log(f"Bench AP channel is {current_channel!r}, not the fixed 6 - repairing")
             run(["sudo", "nmcli", "connection", "modify", BENCH_AP_CONN, "802-11-wireless.channel", "6"])
             run(["sudo", "nmcli", "connection", "up", BENCH_AP_CONN])
-        # REAL FINDING (2026-09-04 bench Pi4 lockout incident, CLAUDE.md's "Hard rules"): a bridge
-        # created without pinning bridge.mac-address presents a NetworkManager-synthesized MAC that
-        # can drift across the bridge's own lifetime - the router's static DHCP reservation (keyed
-        # to whatever MAC it saw when the reservation was made) then silently orphans, and the host
-        # gets a new pool address plus a synthesized `PC-<mac>` hostname instead of its real one.
-        # Flag-only, not auto-repaired: changing a live bridge's MAC requires cycling the very
-        # interface this SSH session's own route may depend on - the same risk class as the
-        # incident this check exists to prevent, so it needs a human decision, not silent action.
+        # A synthesized (unpinned) bridge MAC can drift, silently orphaning the router's static
+        # DHCP reservation (SPECIFICATION.md Part B.13). Flag-only: repairing a live bridge's MAC
+        # risks cycling the interface this SSH session depends on, so it needs a human decision.
         eth_iface = run(["nmcli", "-g", "connection.interface-name", "connection", "show", BENCH_ETH_CONN]).strip()
         try:
             real_mac = get_interface_mac(eth_iface)
@@ -1009,17 +900,10 @@ def ensure_bench_bridge(uplink_iface: str | None, wifi_iface: str | None, ssid: 
 
 
 def run_project_dependency_install(repo_root: Path, skip_npm: bool) -> None:
-    """The Python (`uv sync`) and, where applicable, website (`npm ci`) dev-tooling dependency
-    installs every tier needs - see README.md's "Code quality tooling"/"Website tooling"
-    sections. Missing npm/no package.json is a soft skip, not a failure: the website tooling is
-    optional for a pure sensor-firmware workflow.
-
-    Deliberately runs with env=None (inherit the caller's real environment), unlike every other
-    subprocess in this script: build_env()/network_env()'s fixed, deterministic PATH exists to
-    stop a stray shadowing binary from silently changing what the ARM/firmware toolchain builds
-    with - but it would just as reliably hide the caller's own `uv`/`npm` install (e.g. under
-    `~/.local/bin`, `~/.nvm/...`, `~/.cargo/bin`), which is exactly the binary that must be
-    found here (confirmed directly: network_env()'s PATH doesn't contain either in practice)."""
+    """The Python (`uv sync`) and website (`npm ci`, when applicable) dev-tooling installs every
+    tier needs. Missing npm/no package.json is a soft skip. Deliberately runs with env=None
+    (inherit the caller's environment), unlike every other subprocess here, since build_env()'s
+    fixed PATH would just as reliably hide the caller's own uv/npm install."""
     log("Installing Python project dependencies (uv sync)")
     run(["uv", "sync"], cwd=repo_root)
     if skip_npm:
@@ -1063,13 +947,8 @@ def run_env(args: argparse.Namespace, versions_path: Path, versions: dict) -> in
     ensure_network_manager(args.skip_apt)
     ensure_iproute2(args.skip_apt)
     ensure_iptables(args.skip_apt)
-    # REAL FINDING, fixed: this used to have its own separate bench_ap_exists() short-circuit
-    # here, bypassing ensure_bench_bridge() (and everything it does - br_netfilter, the channel
-    # self-heal) entirely whenever a bridge already existed - confirmed directly, a real re-run
-    # against an already-configured bridge never even ran the new br_netfilter/channel fixes
-    # below. Always call ensure_bench_bridge() now - it already handles the already-exists case
-    # itself (including lazy interface detection only when actually creating a bridge), so there
-    # is exactly one place this logic lives, not two that can silently drift apart.
+    # Always call ensure_bench_bridge() - it already handles the already-exists case itself, so
+    # there's exactly one place this logic lives, not a separate short-circuit that could drift.
     ssid = ensure_bench_bridge(args.uplink_iface, args.wifi_iface, args.ssid, args.password)
     log(f"Bench environment ready: bridge {BENCH_BRIDGE_CONN!r} up, hosted AP SSID {ssid!r}")
     return 0

@@ -1,7 +1,6 @@
 """Isolated-driver device script: RP2040's real firmware is MICROPY_FLOAT_IMPL_FLOAT (24-bit
-mantissa, SPECIFICATION.md Part F.1) - the Unix-port test rig uses doubles and cannot reproduce this
-boundary. Targets config_manager.coerce_numeric()'s int->float path: it always accepts an int->float
-coercion, so the real assertion is whether the *stored value* silently lost precision."""
+mantissa, SPECIFICATION.md Part F.1) - the Unix-port test rig uses doubles and can't reproduce this.
+Targets coerce_numeric()'s int->float path: always accepted, so the real check is lost precision."""
 
 import sys
 
