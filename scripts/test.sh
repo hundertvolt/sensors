@@ -108,7 +108,12 @@ scripts/build_website.sh wozi frozen_modules/frozen_website_wozi.py
 # ~1 minute with a warm toolchain) ARM firmware compile it gates stays opt-in for fast local
 # iteration - .github/workflows/ci.yml's firmware-build-verify job is what actually sets it.
 echo "== Running tests_scripts/ (CPython-side build-tooling tests)"
-uv run pytest tests_scripts -q
+# Captured rather than left to `set -e` so a failure here still lets the (much slower) MicroPython
+# suite below run to completion - one full-run summary beats an early abort mid-report.
+tests_scripts_result="PASS"
+if ! uv run pytest tests_scripts -q; then
+    tests_scripts_result="FAIL"
+fi
 
 raw_dir=""
 if [ "$coverage" = "1" ]; then
@@ -150,6 +155,8 @@ failed=0
 # every test file still runs under the same GC the real target uses either way.
 per_file_timeout_s="${PER_FILE_TIMEOUT_S:-180}"
 max_attempts=3
+failed_files=()
+passed_count=0
 for test_file in tests/test_*.py; do
     echo "== Running $test_file"
     # .frozen must be included explicitly: MICROPYPATH replaces MicroPython's default sys.path
@@ -171,6 +178,7 @@ for test_file in tests/test_*.py; do
             ec=$?
         fi
         if [ "$ec" -eq 0 ]; then
+            passed_count=$((passed_count + 1))
             break
         elif [ "$ec" -eq 124 ] && [ "$attempt" -lt "$max_attempts" ]; then
             echo "== $test_file exceeded ${per_file_timeout_s}s on attempt $attempt/$max_attempts - retrying in case of transient runner contention" >&2
@@ -180,6 +188,7 @@ for test_file in tests/test_*.py; do
                 echo "== $test_file exceeded ${per_file_timeout_s}s on all $max_attempts attempts - treating as a real failure instead of hanging the job" >&2
             fi
             failed=1
+            failed_files+=("$test_file")
             break
         fi
     done
@@ -192,4 +201,27 @@ if [ "$coverage" = "1" ]; then
     uv run scripts/_render_coverage.py --raw-dir "$raw_dir" --src-dir digital_twin --html-dir htmlcov_digital_twin --xml-file coverage_digital_twin.xml --markdown-file coverage_summary_digital_twin.md
 fi
 
+# One rolled-up summary at the very end - each test_*.py file and tests_scripts/ already print
+# their own pass/fail as they run, but nothing aggregated that across the whole suite before this;
+# a failure earlier in a long run was otherwise easy to miss without scrolling back through the log.
+total_files=$((passed_count + ${#failed_files[@]}))
+echo ""
+echo "== Test summary =="
+echo "tests_scripts/ (CPython/pytest): $tests_scripts_result"
+echo "tests/test_*.py (MicroPython Unix port): $passed_count/$total_files files passed"
+if [ "${#failed_files[@]}" -gt 0 ]; then
+    echo "Failed files:"
+    for f in "${failed_files[@]}"; do
+        echo "  - $f"
+    done
+fi
+if [ "$failed" -eq 0 ] && [ "$tests_scripts_result" = "PASS" ]; then
+    echo "Result: ALL PASSED"
+else
+    echo "Result: FAILED"
+fi
+
+if [ "$tests_scripts_result" = "FAIL" ]; then
+    failed=1
+fi
 exit "$failed"
