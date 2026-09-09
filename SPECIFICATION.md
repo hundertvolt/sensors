@@ -288,14 +288,23 @@ on-chip layout and must stay identical across firmware versions (A.4's determini
 5. `spi0 = asy_spi_driver.SPI(...)`.
 6. `fram = AsyFramManager(spi0, 1, max_size=0x2000, ...)` — no chunk of its own.
 7. `sysfunct = SystemService(ntp.ntp_issynced, watchdog=watchdog, fram=fram, ...)` — **FRAM chunk 1**.
-8. `sgp_reader = SGP40_Reader(i2c1, sgp_comp_callback, fram_storage=fram,
-   fram_ntp_callback=ntp.ntp_issynced, ...)` — **chunks 2-3** (error log, then VOC backup).
-9. `bmp_reader = BMP3xx_Reader(i2c1, ..., fram=fram, ...)` — **chunk 4**.
-10. `scd_reader = SCD30_Reader(i2c0, 8, trigger_sec=3, ..., fram=fram, ...)` — **chunk 5**; no
-    config schema (params live on-sensor).
+8. `scd_reader = SCD30_Reader(i2c0, 8, trigger_sec=3, ..., fram=fram, ...)` — **chunk 2**; no
+   config schema (params live on-sensor). Constructed before `sgp_reader` (ordering-hazard #1,
+   Part C.14): `sgp_reader` holds a direct reference to this already-built object as its
+   `comp_source`, so the producer must exist first — a pure Python name-resolution requirement,
+   not a FRAM one (chunk order is random-access and doesn't itself care), but the two facts are
+   deliberately kept in the same relative order here for readability. `wozi` is never physically
+   flashed (CLAUDE.md), so reordering carries no deployed-data-loss risk.
+9. `sgp_reader = SGP40_Reader(i2c1, scd_reader, fram_storage=fram,
+   fram_ntp_callback=ntp.ntp_issynced, ...)` — **chunks 3-4** (error log, then VOC backup).
+   `scd_reader` is passed directly as `comp_source` (Part C.14) — no wrapping callback.
+10. `bmp_reader = BMP3xx_Reader(i2c1, ..., fram=fram, ...)` — **chunk 5**. No cross-instance wiring
+    dependency of its own on `wozi` (SCD30's `AmbPres` stays a static config value even though
+    `wozi` physically has a live BMP388 — A.4's own note), so unconstrained by ordering-hazard #1.
 11. `pixel = NeopixelDriver(15, fram=fram, ...)` — **chunk 6**.
 12. `notify_service = NotificationCoordinator(pixel.request_signal, ntp.cettime, fram=fram, ...)`,
-    staged `register()` ×3 then `finalize()` — **chunk 7**.
+    staged `register()` ×3 (each a direct `(source, field)` reference — `scd_reader`/`"CO2"`,
+    `sgp_reader`/`"VOC"`, `scd_reader`/`"Hum"`, Part C.14) then `finalize()` — **chunk 7**.
 13. `conn.set_ext_led(pixel)`.
 14. `app = Microdot(); webserver = WebserverService(app, sensors=(...), ..., static_mount="/html",
     is_hotspot_active=conn.is_hotspot_active, host=web_host, port=web_port)` — **no `fram=`**
@@ -308,7 +317,7 @@ on-chip layout and must stay identical across firmware versions (A.4's determini
     already run, satisfied by batching at the end. `scd_reader.setup()` isn't in this batch (no
     local config).
 
-**Real FRAM chunk order**: SystemService → SGP40 error log → SGP40 VOC backup → BMP3xx → SCD30 →
+**Real FRAM chunk order**: SystemService → SCD30 → SGP40 error log → SGP40 VOC backup → BMP3xx →
 Neopixel → NotificationCoordinator. Seven chunks — every module with a FRAM-backed error log uses
 it; must stay in this relative order. `src/` has no earlier on-chip layout to preserve.
 
@@ -319,16 +328,29 @@ everywhere.
 **Task/timer starter collection** (`_collect_task_starters()`/`_collect_timer_starters()`, from
 `main()`): every module's `get_task_starters()`/`get_timer_starters()` is called uniformly.
 
-**Debug-level registry** (`_collect_level_setters()`, `SystemService.set_level_setters()`/
-`_apply_level()`): collects every logger's bound `set_level` method into one registry at boot;
-`_apply_level()` calls each wrapped in its own `try/except Exception`. Calling `set_level()` at any
-time is safe (no interrupt handler touches logging, `self.level` is a single atomic-store `int`).
+**Error-source/debug-level fan-in** (`_collect_error_sources()`/`_collect_level_setters()`, Part
+C.14): generic, not hand-enumerated — every constructed module's own `get_error_sources()`/
+`get_loggers()` is called uniformly and the results flattened, the same "every module discovered
+through a uniform method, never by name" shape `_collect_task_starters()`/
+`_collect_timer_starters()` already used. `get_error_sources()` returns `[self]` plus any nested
+error-logging sub-object a module owns (a `SensorReaderConfig`'s own `.cfgmgr`, `AsyConnTime`'s own
+`.dns_server`); `get_loggers()` is the same shape for `PrintLogHistory` instances, feeding
+`SystemService.set_level_setters()`/`_apply_level()`'s registry (each wrapped in its own
+`try/except Exception`; calling `set_level()` at any time is safe — no interrupt handler touches
+logging, `self.level` is a single atomic-store `int`).
 
-**Dependency graph**: `ntp` holds `conn`'s bound methods; `notify_service` holds
-`pixel.request_signal`/`ntp.cettime`; `conn` holds `pixel`; `sgp_reader` holds `ntp.ntp_issynced`.
-Every module constructs its own `ConfigManager`/`PrintLog` internally — no cross-module config
-sharing. No `src/` module imports another by name to reach a sibling — every dependency is
-constructor-injected, so the graph is a clean DAG at the import level.
+**Dependency graph**: `ntp` holds `conn`'s bound methods; `notify_service` holds direct references
+to `scd_reader`/`sgp_reader` (its registered `NotificationSignal`s' `source`) plus
+`pixel.request_signal`/`ntp.cettime`; `conn` holds `pixel`; `sgp_reader` holds `ntp.ntp_issynced`
+and a direct reference to `scd_reader` (its `comp_source`, Part C.14) — the one place a `src/`
+module imports another driver module by class name (`from asy_scd30_driver import SCD30_Reader`,
+for `_WIRING`'s own class reference and this constructor parameter's type), a deliberate, narrow
+exception to "no cross-driver imports" for a purely one-directional, no-cycle type reference: a
+consumer driver may import a producer driver's class, never the reverse, which is exactly the same
+direction the topological construction order above already requires. Every module still
+constructs its own `ConfigManager`/`PrintLog` internally — no cross-module config sharing, and
+every *instance*-level dependency (as opposed to this one class-level `_WIRING` reference) stays
+constructor-injected, so the object graph is still a clean DAG at that level.
 
 Full coverage: `tests/test_sensortask_wozi.py`.
 
@@ -726,15 +748,20 @@ Sensirion source 1:1 (F.4), casing intentionally non-compliant.
 
 One file per sensor. Within it:
 
-- `_NAME = const("<SENSOR>")` — the dict key everywhere (`get_dict_data()`/`get_dict_cfg()`/
-  `get_error_counter()`, every `err_s(_NAME, ...)`).
+- `_NAME = const("<SENSOR>")` — this driver type's fixed base name. `self.name` (`instance_name
+  (_NAME, name_ext)`, C.14.1) is the real dict key everywhere at runtime (`get_dict_data()`/
+  `get_dict_cfg()`/`get_error_counter()`, every `err_s(...)`'s implicit `self.pr.name` prefix) —
+  identical to `_NAME` whenever `name_ext` is empty (every driver's default), diverging only for a
+  second same-type instance.
 - `<SENSOR> = namedtuple("<SENSOR>", (...))` — measurement shape, ending in a `TS` timestamp field.
   Field names become `make_dict()`'s keys (C.6).
 - **`_NAME`'s string and the namedtuple's type-name string must be identical, always** — define
   the two next to each other. A class with no namedtuple (`NeopixelDriver`) is exempt by
   construction.
 - `_VAL_<ABBREV> = const((("<Field>", "<type>", default, min, max, special),))` — one schema tuple
-  per config field (C.5).
+  per config field (C.5). `_WIRING: "WiringSchema" = ((toml_field_name, required_driver_class),)`
+  — one tuple per live cross-instance dependency this driver's constructor needs (C.14.2); omit
+  entirely if the driver has none.
 - `<Sensor>_DeviceSession(Lockable)` — pure boilerplate, identical in all three drivers:
   ```python
   class <Sensor>_DeviceSession(Lockable):
@@ -744,8 +771,9 @@ One file per sensor. Within it:
   ```
   Copy verbatim (swap `I2CDevice`/`SPIDevice`).
 - `<Sensor>_I2C`/`_SPI` (layer 2), `<Sensor>_Reader` (layer 3). `*_Reader` constructor order (match
-  exactly): bus handle, sensor-specific addressing/pins/callbacks, `trigger_sec: int = <n>` (only
-  if configurable — SGP40 isn't, C.11 item 6), `max_module_error: int = 5`, then (if
+  exactly): bus handle, sensor-specific addressing/pins/callbacks/cross-instance wiring references
+  (`_WIRING`-declared parameters, C.14.2), `trigger_sec: int = <n>` (only if configurable — SGP40
+  isn't, C.11 item 6), `max_module_error: int = 5`, `name_ext: str = ""` (C.14.1), then (if
   `SensorReaderConfig`) `cfg_path: str = ""`, FRAM param(s), `history_length: int = 10`,
   `debug: int | None = None`. **`max_module_error` is a generic failure-streak threshold, not
   I2C-specific** — `asy_wifi_service.py`/`asy_ntp_client.py` (no I2C) use it too via
@@ -1188,6 +1216,126 @@ raise is a structural necessity of `async with`, not a precedent extending elsew
 readiness question needs a gate** — `AsyFramManager.get_chunk()` is pure bookkeeping, safe before
 `setup()`; add a gate only where construction genuinely has an unready window.
 
+## C.14 Instance naming, cross-instance wiring, and error/logger fan-in
+
+Session 1 of the device-genericization initiative (`BUILD_CHAIN_PLAN.md`) — the mechanism a future
+per-device generator (not built yet) will drive from each device's TOML. Applies to
+`SensorReader`/`SensorReaderConfig` subclasses (the layer that can realistically have more than one
+instance per device, e.g. two SCD30s, or several differential-pressure sensors); singleton services
+(WiFi/NTP/SystemService/Neopixel/NotificationCoordinator/FRAM/the DNS server/the webserver) are
+deliberately out of scope for the *naming* part below — never more than one per device by
+construction — but do participate in the *fan-in* part, since that generalizes independently of
+multi-instancing.
+
+### C.14.1 Instance naming
+
+Every `SensorReader`/`SensorReaderConfig` constructor takes a `name_ext: str = ""` parameter,
+forwarded to `super().__init__(..., name_ext=name_ext)`. `config_manager.py`'s `instance_name(base,
+ext) -> str` is the one place the rule is implemented: an empty extension (every driver's default
+today) reproduces the driver's own fixed base name unchanged; a non-empty one appends `"_" + ext`.
+`base_classes.py`'s `SensorReader.__init__` resolves this once into `self.name`, before either the
+`logger=`-reuse or fresh-`make_logger()` branch, so `self.pr.name`/`self.name` always agree.
+`SensorReaderConfig.__init__` then uses `self.name` (not the raw `name` argument) for **both** the
+on-flash config filename (`config_<self.name>.cfg`) and the `ConfigManager`'s own `"CFGMGR_<self.
+name>"` logger — so a name extension threads through the config filename automatically, with no
+separate mechanism needed.
+
+**REST dict keys must use `self.name` too, not a driver's `_NAME` module constant.** This was a
+real, confirmed gap found during this session's audit: every `get_dict_cfg()` across the three
+promoted drivers called `self._get_dict_cfg(_NAME, ...)` with the *literal* constant, and every
+`get_dict_data()` called `make_dict(data, _FIELDS)`, which itself introspects `type(nt).__name__`
+— the namedtuple's own fixed class name — neither keyed off `self.name` at all. With only one
+instance per driver type in the system today, `self.name == _NAME == type(nt).__name__` always, so
+this was invisible; a second same-type instance would have silently collided both REST dict keys
+under the first instance's name. Fixed by threading `self.name` through both: `make_dict()` gained
+an optional `name: str | None = None` override (`None` keeps today's introspection behavior, for
+any caller that never needs more than one instance), and every `get_dict_cfg()` uses `self.name`
+in place of the old `_NAME` literal — applied uniformly across every promoted driver's
+`get_dict_cfg()`/`get_dict_data()`, including singletons (`AsyConnTime`/`AsyNtpClient`/
+`NotificationCoordinator`), for D.10 consistency even though a singleton's `self.name` never
+actually differs from its own `_NAME`.
+
+The default (empty extension) case reproduces every existing path/filename/dict-key byte-for-byte
+— covered by `tests/test_config_manager.py`'s `instance_name()` tests and each driver's own
+`name_ext`-default regression test.
+
+**Collision detection across a whole device's instance list is not built here** — that's the future
+generator's job (it errors at build time when two instances would resolve to the same name with no
+disambiguating extension); this session only makes the naming mechanism itself correct and usable.
+
+### C.14.2 The `_WIRING` tuple convention
+
+A driver that needs a live cross-instance value at construction time declares a `_WIRING:
+"WiringSchema"` tuple next to its `_VAL_*` schema tuples: `_WIRING = ((toml_field_name,
+required_driver_class),)` — e.g. `asy_sgp40_driver.py`'s `_WIRING = (("comp_source",
+SCD30_Reader),)`. `WiringSchema = tuple[tuple[str, type], ...]` (`config_manager.py`, `TYPE_CHECKING`-
+only). This reuses the existing tuple-based declaration convention (`ConfigSchema`) rather than
+inventing new machinery; there is no separate "provides" registry — a constructed instance either
+is the required class or it isn't, checked directly by whoever resolves the reference (the future
+generator, not this session).
+
+**The constructor parameter itself is a direct reference to the producer's own instance** — passed
+positionally/by keyword with the same name as `_WIRING`'s field (`comp_source` above) — **not a
+getter or callback function.** The consumer reads the producer's own already-concurrency-safe
+`get_data()` (`SensorReader`'s existing `_datalock`-guarded namedtuple — C.4.2 — is itself the
+"locked state" value holder here; no new per-field `LockedValue` was introduced) directly, inline,
+wherever the value is needed. This eliminates a real category of hand-written wrapper functions
+that used to exist purely to close over a producer reference: `sensortask_wozi.py`'s
+`sgp_comp_callback()` (SGP40's temperature/humidity compensation input) is gone, replaced by
+`SGP40_Reader.__init__`'s `comp_source: SCD30_Reader` parameter and a direct `await
+self.comp_source.get_data()` call inside `_read_sgp()`.
+
+**A `_WIRING` reference is the one deliberate exception to "no `src/` driver module imports another
+by name"** (A.7's dependency-graph note): `asy_sgp40_driver.py` imports `SCD30_Reader` from
+`asy_scd30_driver.py` at module level, both for `_WIRING`'s own class reference and this
+constructor parameter's type annotation. This is a purely one-directional, no-cycle class-level
+reference — a consumer driver may import a producer driver's class, never the reverse — the same
+direction the topological construction order below already requires, so it doesn't reintroduce a
+real coupling cycle at the object-graph level.
+
+**Ordering hazard #1 (object existence)**: since the consumer's constructor call references the
+producer's already-built Python object, the producer must be constructed first. `sensortask_wozi.py`
+now constructs `scd_reader` before `sgp_reader` for exactly this reason (A.7's construction order) —
+a real, deliberate reordering of wozi's FRAM chunk allocation order, safe only because wozi is never
+physically flashed (CLAUDE.md). A future generator topologically sorts a device's whole instance
+list by `_WIRING` dependency (not raw TOML declaration order) and rejects a cycle as a build-time
+error; `_WIRING`'s shape (an explicit, introspectable `(field, class)` pair) is what makes that
+sort possible — not built in this session.
+
+**Ordering hazard #2 (live data availability)**: independent async tasks mean a consumer's first
+read can happen before the producer's first real measurement completes. Every producer's
+measurement holder already has a safe, defined initial value at construction — every `*_Reader`
+constructs its namedtuple with every field `None` before any real read (`SCD30(None, None, None,
+None, None, None)` etc., C.4.1) — so `get_data()` is always safe to call immediately, returning a
+namedtuple whose individual fields may be `None`. Every direct-reference consumer audited this
+session already tolerates that as a normal, expected input, not an exceptional one: `SGP40_Reader.
+_read_sgp()` catches the `float(None)` this produces and falls back to uncompensated operation
+(A.4's already-documented behavior); `NotificationCoordinator._check_one()` treats a `None` field
+as "not triggered," not an error.
+
+### C.14.3 Error-source and logger fan-in (N-to-1)
+
+Every module callable from a top-level `_collect_error_sources()`/`_collect_level_setters()`
+(`sensortask_wozi.py`'s shape — a future per-device generator emits the equivalent for any device)
+implements `get_error_sources(self) -> list[Any]` and `get_loggers(self) -> list[PrintLogHistory]`,
+structurally (duck-typed — matches `asy_webserver_service.py`'s own `_ModuleLike` `Protocol`
+precedent, not a forced inheritance relationship). `base_classes.py`'s `SensorReader` provides the
+default (`[self]` / `[self.pr]`); `SensorReaderConfig` extends it with its own `self.cfgmgr` (`[self,
+self.cfgmgr]` / `[self.pr, self.cfgmgr.pr]`); `AsyConnTime` extends it once more with its
+independently-logged `self.dns_server`. A non-`SensorReader` singleton (`AsyFramManager`,
+`NeopixelDriver`, `SystemService`, `captive_dns.DNSServer`, `WebserverService`) implements the same
+two methods directly, matching the same shape without inheriting from `SensorReader`.
+
+This replaces `_collect_error_sources()`/`_collect_level_setters()`'s old hand-enumerated lists
+(every module *and* every module's own nested `.cfgmgr`/`.dns_server`, listed by a human who had to
+already know which module owned what) with a plain loop calling `get_error_sources()`/
+`get_loggers()` uniformly on each top-level module — the same "every module discovered through a
+uniform method, never hand-copied" shape `_collect_task_starters()`/`_collect_timer_starters()`
+already used for task/timer starters. `NotificationCoordinator`'s own registered `NotificationSignal`
+fan-in (C.14.2's `source`/`field` direct references) is a related but separate mechanism: those are
+resolved at `register()` call time, already after every producer exists, so they need no `_WIRING`
+declaration of their own.
+
 ---
 
 # Part D — `src/` Production-Quality Checklist
@@ -1520,6 +1668,13 @@ real hard reset (B.11). RP2040: dual-core Cortex-M0+ @ up to 133MHz, 264KB SRAM,
 2×UART, 8×PIO. Pico W's littlefs partition (~848KB) is smaller than plain Pico's (~1.37MB) purely
 because the CYW43 firmware blobs make the image larger.
 
+**Dynamic imports (`__import__`, `importlib`) must never be used anywhere in this codebase** —
+project owner's explicit, standing rule, not just a style preference. Every import stays a real,
+static `import`/`from ... import` statement, AST-scannable without executing any code — this is
+what lets a future build-time tool (e.g. a per-device frozen-module selector deriving its module
+set from the transitive closure of real imports) work by pure static analysis. `importlib` isn't
+frozen into this project's own manifest today regardless, but the rule holds independent of that.
+
 **A soft `machine.Timer` callback (the default — no `hard=True` anywhere) can be silently dropped,
 not just delayed** — `mp_sched_schedule()` drops it if MicroPython's fixed-depth scheduler queue
 (depth 8 on rp2, shared by every soft timer/IRQ) is full, with no exception and no way to detect a
@@ -1527,6 +1682,14 @@ dropped vs. not-yet-run callback. A periodic timer self-heals next tick; a one-s
 again. A software-timeout mitigation for this was considered and rejected (it would just race the
 real hardware watchdog every deployment already arms) — don't re-propose without a materially
 different justification.
+
+**Iterable unpacking inside a list/tuple/set *display* (`[*a, b]`) raises `SyntaxError: *x must
+be assignment target` at parse/compile time on this project's pinned MicroPython** — confirmed
+directly against the real Unix-port interpreter (both a plain function call and a `super()` call as
+the starred expression fail identically, so this isn't super()-specific). Use list concatenation
+instead (`a + [b]`) — the established pattern project-wide (`base_classes.py`'s/`asy_wifi_service.
+py`'s `get_error_sources()`/`get_loggers()`, Part C.14.3). Iterable unpacking in a *function call*'s
+argument list (`f(*a, b)`) is unaffected — this gap is specifically about list/tuple/set displays.
 
 **`[x] * n` (list repeat) can segfault the interpreter for n in roughly 2⁶¹-2⁶³** (below that it
 raises `MemoryError` like `bytearray(n)`; at/above 2⁶³, `OverflowError` — the gap is likely an
@@ -1712,6 +1875,15 @@ backend-only or frontend-only validation/coercion policy change in this project.
 - **Cross-language mirror: `js/` must encode the same policy `src/` enforces for anything it
   simulates** — `js/mock-server.js` must match the real `src/` endpoint field for field, bound for
   bound; a `src/`-side policy change and its `js/` mirror are one change, not two.
+- **Per-instance naming** — `config_manager.py`'s `instance_name()`, never a hand-rolled
+  string-concatenation/f-string. See Part C.14.1.
+- **Cross-instance wiring declaration** — a `_WIRING: "WiringSchema"` tuple next to a driver's
+  `_VAL_*` schema tuples, resolved into a direct constructor-injected reference to the producer's
+  own instance (never a getter/callback function). See Part C.14.2.
+- **N-to-1 error-source/logger fan-in** — every top-level module implements `get_error_sources()`/
+  `get_loggers()` (structurally, `base_classes.py` provides the default for `SensorReader`/
+  `SensorReaderConfig`); an aggregator calls these uniformly instead of hand-enumerating each
+  module's own nested sub-objects. See Part C.14.3.
 
 ## G.3 Re-validating the existing project against this Part
 

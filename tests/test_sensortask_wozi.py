@@ -332,10 +332,12 @@ def test_fram_chunk_allocation_order_matches_the_documented_seven_chunk_sequence
         AsyFramManager.get_chunk = real_get_chunk  # type: ignore[method-assign]
         AsyFramManager.get_timestamped_chunk = real_get_timestamped_chunk  # type: ignore[method-assign]
 
-    # SystemService(chunk) -> SGP40 own log(chunk) -> SGP40 VOC backup(timestamped) ->
-    # BMP3xx_Reader(chunk) -> SCD30_Reader(chunk) -> NeopixelDriver(chunk) ->
-    # NotificationCoordinator(chunk), in that order, unconditionally.
-    assert calls == ["chunk", "chunk", "timestamped", "chunk", "chunk", "chunk", "chunk"]
+    # SystemService(chunk) -> SCD30_Reader(chunk) -> SGP40 own log(chunk) -> SGP40 VOC backup
+    # (timestamped) -> BMP3xx_Reader(chunk) -> NeopixelDriver(chunk) ->
+    # NotificationCoordinator(chunk), in that order, unconditionally. SCD30 now constructs before
+    # SGP40 (ordering-hazard #1, SPECIFICATION.md Part A.7/C.14 - SGP40 holds a direct reference to
+    # scd_reader as its comp_source, so the producer must exist first).
+    assert calls == ["chunk", "chunk", "chunk", "timestamped", "chunk", "chunk", "chunk"]
 
 
 def test_fram_chunks_are_all_successfully_allocated_not_out_of_memory() -> None:

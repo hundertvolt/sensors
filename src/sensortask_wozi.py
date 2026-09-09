@@ -75,41 +75,6 @@ webserver: "WebserverService | None" = None
 timers_running: "ThreadSafeFlag | None" = None
 
 
-async def sgp_comp_callback() -> "list[float | None]":
-    assert scd_reader is not None  # only ever registered on sgp_reader after build_system() runs
-    # get_data() never returns None (SCD30_Reader.get_data() -> SCD30) - only its Temp/Hum fields
-    # can individually be None (pre-first-read sentinel state); float(None) raises, caught below.
-    data = await scd_reader.get_data()
-    try:
-        return [float(data.Temp), float(data.Hum)]
-    except Exception:
-        return [None, None]
-
-
-async def co2_value_callback() -> "int | float | None":
-    assert scd_reader is not None  # only ever registered on notify_service after build_system() runs
-    scd_data = await scd_reader.get_data()
-    if scd_data is None or scd_data.CO2 is None:
-        return None
-    return float(scd_data.CO2)
-
-
-async def voc_value_callback() -> "int | float | None":
-    assert sgp_reader is not None  # only ever registered on notify_service after build_system() runs
-    sgp_data = await sgp_reader.get_data()
-    if sgp_data is None or sgp_data.VOC is None:
-        return None
-    return int(sgp_data.VOC)
-
-
-async def hum_value_callback() -> "int | float | None":
-    assert scd_reader is not None  # only ever registered on notify_service after build_system() runs
-    scd_data = await scd_reader.get_data()
-    if scd_data is None or scd_data.Hum is None:
-        return None
-    return float(scd_data.Hum)
-
-
 def _gmtimestruct_to_dict(t: "Any") -> "dict[str, int] | None":  # t: a GMTimeStruct/8-tuple or None
     if t is None:
         return None
@@ -232,38 +197,26 @@ async def _notification_status() -> "dict[str, Any]":
 
 
 def _collect_error_sources() -> "list[Any]":
-    # Every module + every ConfigManager instance ("CFGMGR_<name>") - same 16-owner enumeration as
-    # _collect_level_setters() below (one entry per logger in the whole constructed object graph),
-    # just the owning objects themselves rather than their bound set_level() methods. Feeds
+    # Generic fan-in (SPECIFICATION.md Part C.14): every constructed module's own
+    # get_error_sources() is the authoritative list for that module (itself, plus any nested
+    # error-logging sub-object it owns, e.g. a SensorReaderConfig's .cfgmgr or AsyConnTime's own
+    # .dns_server) - called uniformly here, not hand-enumerated per module the way this used to
+    # duplicate _collect_level_setters()'s own tribal knowledge of which module owns what. Feeds
     # WebserverService's error_sources= registration list (its /status "errcount" aggregation).
     assert conn is not None and ntp is not None and fram is not None and sysfunct is not None
     assert sgp_reader is not None and bmp_reader is not None and scd_reader is not None
     assert pixel is not None and notify_service is not None
-    return [
-        conn,
-        conn.cfgmgr,
-        conn.dns_server,
-        ntp,
-        ntp.cfgmgr,
-        fram,
-        sysfunct,
-        sysfunct.cfgmgr,
-        sgp_reader,
-        sgp_reader.cfgmgr,
-        bmp_reader,
-        bmp_reader.cfgmgr,
-        scd_reader,
-        pixel,
-        notify_service,
-        notify_service.cfgmgr,
-    ]
+    sources: list[Any] = []
+    for module in (conn, ntp, fram, sysfunct, sgp_reader, bmp_reader, scd_reader, pixel, notify_service):
+        sources.extend(module.get_error_sources())
+    return sources
 
 
 def _collect_level_setters() -> "list[Callable[[int], None]]":
-    # Every logger in the whole constructed object graph, not just each module's own top-level
-    # self.pr - the nested ConfigManager.pr each ConfigManager-backed module owns internally
-    # ("CFGMGR_<NAME>"), and AsyConnTime's own separately-named dns_server.pr ("DNSSRV", not
-    # covered by conn.pr - see SPECIFICATION.md Part A.7). Owner requirement: a general, system-wide debug
+    # Same generic-fan-in shape as _collect_error_sources() above, for the system-wide debug-level
+    # registry instead: every constructed module's own get_loggers() names every PrintLogHistory it
+    # owns (itself, plus any nested one - a ConfigManager's own "CFGMGR_<NAME>", AsyConnTime's own
+    # separately-named dns_server.pr "DNSSRV"). Owner requirement: a general, system-wide debug
     # level should actually be system-wide, not miss half the loggers in the system - but each
     # logger's own set_level() (already existing on every PrintLog) is what gets called, not a
     # shared mutable value. Mirrors _collect_task_starters()/_collect_timer_starters()'s own shape:
@@ -272,25 +225,10 @@ def _collect_level_setters() -> "list[Callable[[int], None]]":
     assert conn is not None and ntp is not None and fram is not None and sysfunct is not None
     assert sgp_reader is not None and bmp_reader is not None and scd_reader is not None
     assert pixel is not None and notify_service is not None and webserver is not None
-    return [
-        conn.pr.set_level,
-        conn.cfgmgr.pr.set_level,
-        conn.dns_server.pr.set_level,
-        ntp.pr.set_level,
-        ntp.cfgmgr.pr.set_level,
-        fram.pr.set_level,
-        sysfunct.pr.set_level,
-        sysfunct.cfgmgr.pr.set_level,
-        sgp_reader.pr.set_level,
-        sgp_reader.cfgmgr.pr.set_level,
-        bmp_reader.pr.set_level,
-        bmp_reader.cfgmgr.pr.set_level,
-        scd_reader.pr.set_level,  # no cfgmgr - SCD30 has no config schema (params live on-sensor, see CLAUDE.md)
-        pixel.pr.set_level,  # no cfgmgr - no config schema (owner-confirmed, see SPECIFICATION.md A.4)
-        notify_service.pr.set_level,
-        notify_service.cfgmgr.pr.set_level,
-        webserver.pr.set_level,  # no cfgmgr - no config schema (own safety constants only, see BACKLOG.md)
-    ]
+    setters: list[Callable[[int], None]] = []
+    for module in (conn, ntp, fram, sysfunct, sgp_reader, bmp_reader, scd_reader, pixel, notify_service, webserver):
+        setters.extend(logger.set_level for logger in module.get_loggers())
+    return setters
 
 
 async def build_system(
@@ -334,21 +272,30 @@ async def build_system(
     fram = AsyFramManager(spi0, 1, max_size=0x2000, debug=debug)
     # FRAM chunk 1.
     sysfunct = SystemService(ntp.ntp_issynced, watchdog=watchdog, fram=fram, cfg_path=cfg_path, debug=debug)
-    # FRAM chunks 2 (own error log) and 3 (VOC backup) - both allocated inside SGP40_Reader.__init__
+    # FRAM chunk 2. Constructed before sgp_reader now (see SPECIFICATION.md Part A.7/C.14's
+    # ordering-hazard #1: a consumer's constructor references its producer's already-built Python
+    # object directly, so the producer must exist first) - sgp_reader below holds a direct
+    # reference to this object as its comp_source, replacing the old sgp_comp_callback() closure.
+    # wozi is never physically flashed (CLAUDE.md), so there is no deployed on-chip FRAM layout
+    # this reorder could break - only internal self-consistency matters, kept exactly in sync with
+    # the "Real FRAM chunk order" list below.
+    scd_reader = SCD30_Reader(i2c0, 8, trigger_sec=3, max_module_error=_MAX_MODULE_ERROR, fram=fram, debug=debug)
+    # FRAM chunks 3 (own error log) and 4 (VOC backup) - both allocated inside SGP40_Reader.__init__
     # itself, in that sub-order (see SPECIFICATION.md Part A.7 for the full FRAM chunk order).
     sgp_reader = SGP40_Reader(
         i2c1,
-        sgp_comp_callback,
+        scd_reader,  # comp_source: direct reference to scd_reader's own get_data(), read live
+        # every read cycle (SPECIFICATION.md Part C.14) - no wrapping callback.
         fram_storage=fram,
         fram_ntp_callback=ntp.ntp_issynced,
         max_module_error=_MAX_MODULE_ERROR,
         cfg_path=cfg_path,
         debug=debug,
     )
-    # FRAM chunk 4.
+    # FRAM chunk 5. No cross-instance wiring dependency of its own on wozi (SCD30's AmbPres stays a
+    # static config value even though wozi physically has a live BMP388 - see SPECIFICATION.md Part
+    # A.4's own note), so its position here is otherwise unconstrained.
     bmp_reader = BMP3xx_Reader(i2c1, max_module_error=_MAX_MODULE_ERROR, cfg_path=cfg_path, fram=fram, debug=debug)
-    # FRAM chunk 5.
-    scd_reader = SCD30_Reader(i2c0, 8, trigger_sec=3, max_module_error=_MAX_MODULE_ERROR, fram=fram, debug=debug)
     # FRAM chunk 6.
     pixel = NeopixelDriver(15, fram=fram, debug=debug)
     # Staged registration (asy_notification_service.py's own module docstring): construct every
@@ -364,9 +311,14 @@ async def build_system(
         fram=fram,
         debug=debug,
     )
-    notify_service.register(NotificationSignal("WarnCO2", co2_value_callback, _FIELD_WARN_CO2, (1, 0, 0)))
-    notify_service.register(NotificationSignal("WarnVOC", voc_value_callback, _FIELD_WARN_VOC, (0, 1, 0)))
-    notify_service.register(NotificationSignal("WarnHum", hum_value_callback, _FIELD_WARN_HUM, (0, 0, 1)))
+    # Direct (source, field) references (SPECIFICATION.md Part C.14), replacing the old
+    # co2_value_callback()/voc_value_callback()/hum_value_callback() closures as a category -
+    # NotificationCoordinator reads notif.source.get_data() and pulls notif.field off the result
+    # itself (asy_notification_service.py's _check_one()), tolerating None (not yet measured) the
+    # same way those closures already did.
+    notify_service.register(NotificationSignal("WarnCO2", scd_reader, "CO2", _FIELD_WARN_CO2, (1, 0, 0)))
+    notify_service.register(NotificationSignal("WarnVOC", sgp_reader, "VOC", _FIELD_WARN_VOC, (0, 1, 0)))
+    notify_service.register(NotificationSignal("WarnHum", scd_reader, "Hum", _FIELD_WARN_HUM, (0, 0, 1)))
     notify_service.finalize()
     conn.set_ext_led(pixel)  # callback for wifi led - after both conn and pixel exist
 

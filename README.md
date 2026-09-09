@@ -626,6 +626,17 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   directly at `SPECIFICATION.md`'s Parts C, D, E, and B respectively — they held no content of
   their own by then, just a "moved here" pointer.
 
+**`BUILD_CHAIN_PLAN.md`** (working doc, active for the device-genericization initiative):
+
+- **[`BUILD_CHAIN_PLAN.md`](BUILD_CHAIN_PLAN.md)** — the shared plan for making `src/`, the
+  website, the build chain, and the test chain fully device-generic (every device-specific fact
+  in exactly one TOML file per device variant): target device list, core design decisions, the
+  device TOML schema, and the dependency-ordered session breakdown every session spun off
+  `claude/automated-build-chain-nuzumw` works against. Updated as decisions evolve across that
+  branch's sessions; expected to fold into `SPECIFICATION.md`/be deleted once the whole chain lands
+  and merges into `main`, matching this repo's usual temporary-planning-doc lifecycle (see the
+  deleted-docs list at the end of this section).
+
 **`DEVICE_REFERENCE.md`** (permanent, end-user-facing):
 
 - **[`DEVICE_REFERENCE.md`](DEVICE_REFERENCE.md)** — notes for configuring/operating a deployed

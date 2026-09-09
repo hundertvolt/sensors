@@ -2,9 +2,9 @@
 mocking boundary as test_asy_scd30_driver.py's own integration-level tests) feeding a real asy_notification_service.py.NotificationCoordinator, driving a real asy_neopixel_driver.py.NeopixelDriver.
 Exercises how a genuine hardware fault on one driver (SCD30) does NOT propagate into a sibling driver's (NOTIFY's) own error accounting, matching SPECIFICATION.md Part C.7's "each driver owns its own error log" separation of concerns.
 """
-# The get_value() wrapper mirrors src/sensortask_wozi.py's own
-# co2_value_callback()/hum_value_callback() exactly (reproduced locally rather than imported, to
-# keep this test independent of that module's own full construction sequence). Only tests/neopixel.py's
+# Each NotificationSignal below holds a direct (source, field) reference to the same scd_reader
+# instance (SPECIFICATION.md Part C.14.2), mirroring src/sensortask_wozi.py's own real registration
+# shape. Only tests/neopixel.py's
 # fake write surface and tests/machine.py's fake I2C bus are mocked; every layer above the raw I2C
 # transaction (SCD30_Reader's own protocol/error handling, the notify poll loop, gating,
 # NeopixelDriver's arbitration/ramp) runs for real.
@@ -141,33 +141,14 @@ def data_frame(co2: float, temperature: float, humidity: float) -> bytes:
     return bytes(frame)
 
 
-async def co2_value_callback(scd_reader: SCD30_Reader) -> "int | float | None":
-    # Verbatim mirror of src/sensortask_wozi.py's own co2_value_callback() body.
-    scd_data = await scd_reader.get_data()
-    if scd_data is None or scd_data.CO2 is None:
-        return None
-    return float(scd_data.CO2)
-
-
-async def hum_value_callback(scd_reader: SCD30_Reader) -> "int | float | None":
-    # Verbatim mirror of src/sensortask_wozi.py's own hum_value_callback() body -
-    # same SCD30_Reader instance backs both WarnCO2 and WarnHum in the real wiring (one sensor,
-    # two notification signals off its own .Hum/.CO2 fields), but no test file exercised the real
-    # WarnHum chain before this one - only WarnCO2 had integration coverage.
-    scd_data = await scd_reader.get_data()
-    if scd_data is None or scd_data.Hum is None:
-        return None
-    return float(scd_data.Hum)
-
-
 def make_stack(scd_reader: SCD30_Reader) -> "tuple[NeopixelDriver, NotificationCoordinator]":
+    # Direct (source, field) reference (SPECIFICATION.md Part C.14.2), same SCD30_Reader instance
+    # backing both WarnCO2 and WarnHum in the real wiring (one sensor, two notification signals off
+    # its own .CO2/.Hum fields) - mirrors src/sensortask_wozi.py's own real registration shape.
     pixel = NeopixelDriver(0, neopixel_freq=100)
 
-    async def get_co2() -> "int | float | None":
-        return await co2_value_callback(scd_reader)
-
     notify = NotificationCoordinator(pixel.request_signal, _local_time, cfg_path=_tmp_cfg_dir())
-    signal = NotificationSignal("WarnCO2", get_co2, (("WarnCO2", "int", 1600, 0, 3000, None),), (1, 0, 0))
+    signal = NotificationSignal("WarnCO2", scd_reader, "CO2", (("WarnCO2", "int", 1600, 0, 3000, None),), (1, 0, 0))
     notify.register(signal)
     notify.finalize()
     run(notify.cfgmgr.setup())
@@ -180,11 +161,8 @@ def make_hum_stack(scd_reader: SCD30_Reader) -> "tuple[NeopixelDriver, Notificat
     # avoids the two signals' ramps overlapping in the same pixel.pixel.writes trace.
     pixel = NeopixelDriver(0, neopixel_freq=100)
 
-    async def get_hum() -> "int | float | None":
-        return await hum_value_callback(scd_reader)
-
     notify = NotificationCoordinator(pixel.request_signal, _local_time, cfg_path=_tmp_cfg_dir())
-    signal = NotificationSignal("WarnHum", get_hum, (("WarnHum", "float", 65.0, 0.0, 100.0, None),), (0, 0, 1))
+    signal = NotificationSignal("WarnHum", scd_reader, "Hum", (("WarnHum", "float", 65.0, 0.0, 100.0, None),), (0, 0, 1))
     notify.register(signal)
     notify.finalize()
     run(notify.cfgmgr.setup())
@@ -231,7 +209,7 @@ def test_real_sensor_reading_above_threshold_flows_through_to_a_real_ramp() -> N
 
 def test_real_humidity_reading_above_threshold_flows_through_to_a_real_ramp() -> None:
     # Same real read chain as the WarnCO2 test above, driving WarnHum instead - the one other real
-    # signal this SCD30_Reader instance backs in the actual wiring (see hum_value_callback() above).
+    # signal this SCD30_Reader instance backs in the actual wiring (see make_hum_stack() above).
     scd_reader, i2c = make_scd_reader()
     i2c.read_queue.append(register_frame(1))
     i2c.read_queue.append(data_frame(800.0, 22.0, 70.0))  # CO2 well under threshold, Hum above the 65.0 default

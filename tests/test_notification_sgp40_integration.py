@@ -10,6 +10,7 @@ Only tests/neopixel.py's fake write surface and tests/machine.py's fake I2C bus 
 
 import asyncio
 import os
+from collections import namedtuple
 
 from asy_i2c_driver import I2C
 from asy_neopixel_driver import NeopixelDriver
@@ -126,33 +127,30 @@ def _word(value: int) -> bytes:
     return payload + bytes([_crc8(payload)])
 
 
-async def _comp_data() -> "list[float | None]":
-    return [25.0, 50.0]
+_CompReading = namedtuple("_CompReading", ("Temp", "Hum"))
+
+
+class _FakeCompSource:
+    # Structural stand-in for comp_source: SCD30_Reader (SPECIFICATION.md Part C.14) - only
+    # get_data() is exercised, matching test_asy_sgp40_driver.py's own identical fixture.
+    async def get_data(self) -> "Any":
+        return _CompReading(25.0, 50.0)
 
 
 def make_sgp_reader() -> "tuple[SGP40_Reader, Any]":
     i2c = I2C(1, scl_pin=19, sda_pin=18, frequency=50000)
-    reader = SGP40_Reader(i2c, _comp_data, max_module_error=2, cfg_path=_tmp_cfg_dir())
+    reader = SGP40_Reader(i2c, _FakeCompSource(), max_module_error=2, cfg_path=_tmp_cfg_dir())  # type: ignore[arg-type]
     run(reader.pr.setup())
     return reader, reader.sgp.i2c_sgp40.i2c_device.i2c._i2c
 
 
-async def voc_value_callback(sgp_reader: SGP40_Reader) -> "int | float | None":
-    # Verbatim mirror of src/sensortask_wozi.py's own voc_value_callback() body.
-    sgp_data = await sgp_reader.get_data()
-    if sgp_data is None or sgp_data.VOC is None:
-        return None
-    return int(sgp_data.VOC)
-
-
 def make_stack(sgp_reader: SGP40_Reader) -> "tuple[NeopixelDriver, NotificationCoordinator]":
+    # Direct (source, field) reference (SPECIFICATION.md Part C.14.2), mirrors
+    # src/sensortask_wozi.py's own real registration shape.
     pixel = NeopixelDriver(0, neopixel_freq=100)
 
-    async def get_voc() -> "int | float | None":
-        return await voc_value_callback(sgp_reader)
-
     notify = NotificationCoordinator(pixel.request_signal, _local_time, cfg_path=_tmp_cfg_dir())
-    signal = NotificationSignal("WarnVOC", get_voc, (("WarnVOC", "int", 350, 0, 500, None),), (0, 1, 0))
+    signal = NotificationSignal("WarnVOC", sgp_reader, "VOC", (("WarnVOC", "int", 350, 0, 500, None),), (0, 1, 0))
     notify.register(signal)
     notify.finalize()
     run(notify.cfgmgr.setup())
@@ -263,8 +261,8 @@ def test_i2c_bus_fault_degrades_to_not_triggered_and_stays_isolated_to_sgp40s_ow
     assert notify_log["NOTIFY"]["ErrCount"] == 0
     # neopixel_signal()'s own startup sets a defined (0,0,0) off state once, unconditionally -
     # nothing beyond that single boot-time write, since no signal was ever triggered (data.VOC is
-    # None on a faulted cycle, so voc_value_callback() returns None - never counted as "above
-    # threshold").
+    # None on a faulted cycle, so _check_one()'s getattr(data, "VOC") reads None - never counted as
+    # "above threshold").
     assert [w[0] for w in pixel.pixel.writes] == [(0, 0, 0)]
 
 

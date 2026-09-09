@@ -20,10 +20,16 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
-    from typing import Any
+    from typing import Any, Protocol
 
     from asy_fram_manager import AsyFramManager
     from config_manager import ConfigSchema
+
+    class _ValueSource(Protocol):
+        # Structural stand-in for a NotificationSignal's producer (SPECIFICATION.md Part C.10's
+        # typing convention) - any *_Reader exposing the same get_data() -> NamedTuple contract
+        # every driver already has (C.4.2). Only get_data() is used here.
+        async def get_data(self) -> "Any": ...
 
 _MAX_OVERRIDE_TIME = const(3600)
 _NAME = const("NOTIFY")
@@ -59,13 +65,19 @@ class NotificationSignal:
     def __init__(
         self,
         name: str,
-        get_value: "Callable[[], Coroutine[Any, Any, int | float | None]]",
+        source: "_ValueSource",
+        field: str,
         field_schema: "ConfigSchema",
         color: "tuple[int, int, int]",
         above: bool = True,
     ) -> None:
         self.name = name
-        self.get_value = get_value
+        # Direct reference to the producer's own get_data() (SPECIFICATION.md Part C.14) plus the
+        # field to read off its namedtuple result - no wrapping getter/callback function. Replaces
+        # the old get_value: Callable parameter (sensortask_wozi.py's co2_value_callback()/
+        # voc_value_callback()/hum_value_callback() as a category).
+        self.source = source
+        self.field = field
         self.field_schema = field_schema
         self.color = color  # per-channel weight (0/1), scaled by FlashBri at trigger time
         self.above = above
@@ -136,10 +148,15 @@ class NotificationCoordinator(SensorReaderConfig):
             return None
 
     async def _check_one(self, notif: NotificationSignal) -> bool:
-        try:  # caller-supplied callback, could legitimately misbehave
-            value = await notif.get_value()
+        # Direct read of the producer's own get_data() (SPECIFICATION.md Part C.14) - get_data()
+        # never raises, but the specific field can legitimately be None (not yet measured, or the
+        # producer's own error streak gave up) - a normal, expected input here, not exceptional.
+        value: int | float | None
+        try:
+            data = await notif.source.get_data()
+            value = getattr(data, notif.field, None)
         except Exception as e:
-            await self.pr.err_s(notif.name, "Value callback failed:", e, errno=10)
+            await self.pr.err_s(notif.name, "Value read failed:", e, errno=10)
             value = None
         notif.last_value = value
         if value is None:
@@ -151,7 +168,11 @@ class NotificationCoordinator(SensorReaderConfig):
             notif.triggered = False
             return False
         threshold = thresholds[0]  # exactly one field - register() rejects any other shape
-        triggered = (value >= threshold) if notif.above else (value <= threshold)
+        # float(value): getattr()'s own return is untyped even after the None-check above (the
+        # field name is dynamic, not a literal) - narrows to a real numeric comparison the same way
+        # every removed value_callback() used to explicitly cast its own return.
+        numeric_value = float(value)
+        triggered = (numeric_value >= threshold) if notif.above else (numeric_value <= threshold)
         notif.triggered = triggered
         return triggered
 
@@ -187,14 +208,14 @@ class NotificationCoordinator(SensorReaderConfig):
 
     async def get_dict_data(self) -> dict[str, dict[str, int | float | str | bool | None]]:
         data = await self.get_data()
-        return make_dict(data, _FIELDS)
+        return make_dict(data, _FIELDS, name=self.name if self._finalized else _NAME)
 
     async def get_dict_cfg(self) -> dict[str, dict[str, int | float | str | bool | None]]:
         if not self._finalized:  # self.cfg_schema doesn't exist yet - same caller-ordering guard as get_data()
             return {_NAME: {}}
         # self.cfg_schema is already the full combined schema (own fields + every registered
         # signal's field) - built once, inside finalize() - so this covers everything in one call.
-        return await self._get_dict_cfg(_NAME, self.cfg_schema)
+        return await self._get_dict_cfg(self.name, self.cfg_schema)
 
     async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[str]]]:
         if not self._finalized:  # self.pr doesn't exist yet - same caller-ordering guard as get_data()

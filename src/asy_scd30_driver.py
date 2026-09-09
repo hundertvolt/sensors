@@ -79,6 +79,7 @@ class SCD30_Reader(SensorReader):
         irq_pin: int,
         trigger_sec: int = 3,
         max_module_error: int = 5,
+        name_ext: str = "",
         fram: AsyFramManager | None = None,
         history_length: int = 10,
         debug: int | None = None,
@@ -90,6 +91,7 @@ class SCD30_Reader(SensorReader):
             history_length=history_length,
             debug=debug,
             name=_NAME,
+            name_ext=name_ext,
         )
         self.scd = SCD30_I2C(i2c)
         self.irq_pin = Pin(irq_pin, mode=Pin.IN)
@@ -194,11 +196,11 @@ class SCD30_Reader(SensorReader):
 
     async def get_dict_data(self) -> dict[str, dict[str, int | float | str | bool | None]]:
         data = await self.get_data()
-        return make_dict(data, _FIELDS)
+        return make_dict(data, _FIELDS, name=self.name)
 
     async def get_dict_cfg(self) -> dict[str, dict[str, int | float | str | bool | None]]:
         return await self._get_dict_cfg(
-            _NAME,
+            self.name,
             _VAL_TO + _VAL_MI + _VAL_AP + _VAL_ALT + _VAL_CAL + _VAL_SC,
             callback=self._read_sensor_dict,
         )

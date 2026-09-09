@@ -90,6 +90,7 @@ class BMP3xx_Reader(SensorReaderConfig):
         address: int = 0x77,
         trigger_sec: int = 1,
         max_module_error: int = 5,
+        name_ext: str = "",
         cfg_path: str = "",
         fram: "AsyFramManager | None" = None,
         history_length: int = 10,
@@ -100,6 +101,7 @@ class BMP3xx_Reader(SensorReaderConfig):
             max_module_error,
             _NAME,
             _VAL_SI + _VAL_POV + _VAL_TOV + _VAL_FC + _VAL_PO + _VAL_TO + _VAL_SLO + _VAL_ATM,
+            name_ext=name_ext,
             cfg_path=cfg_path,
             fram=fram,
             history_length=history_length,
@@ -274,11 +276,11 @@ class BMP3xx_Reader(SensorReaderConfig):
 
     async def get_dict_data(self) -> dict[str, dict[str, int | float | str | bool | None]]:
         data = await self.get_data()
-        return make_dict(data, _FIELDS)
+        return make_dict(data, _FIELDS, name=self.name)
 
     async def get_dict_cfg(self) -> dict[str, dict[str, int | float | str | bool | None]]:
         return await self._get_dict_cfg(
-            _NAME,
+            self.name,
             _VAL_SI + _VAL_POV + _VAL_TOV + _VAL_FC + _VAL_PO + _VAL_TO + _VAL_SLO + _VAL_ATM,
             callback=self._read_sensor_dict,
         )

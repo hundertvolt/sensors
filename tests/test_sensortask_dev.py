@@ -316,9 +316,10 @@ def test_fram_chunk_allocation_order_matches_the_documented_seven_chunk_sequence
         AsyFramManager.get_chunk = real_get_chunk  # type: ignore[method-assign]
         AsyFramManager.get_timestamped_chunk = real_get_timestamped_chunk  # type: ignore[method-assign]
 
-    # SystemService -> SGP40 log -> SGP40 VOC backup(timestamped) -> BMP3xx -> SCD30 -> Neopixel ->
-    # NotificationCoordinator, matching sensortask_wozi.py's own build_system() order.
-    assert calls == ["chunk", "chunk", "timestamped", "chunk", "chunk", "chunk", "chunk"]
+    # SystemService -> SCD30 -> SGP40 log -> SGP40 VOC backup(timestamped) -> BMP3xx -> Neopixel ->
+    # NotificationCoordinator, matching sensortask_wozi.py's own build_system() order (SCD30 before
+    # SGP40 - ordering-hazard #1, SPECIFICATION.md Part A.7/C.14).
+    assert calls == ["chunk", "chunk", "chunk", "timestamped", "chunk", "chunk", "chunk"]
 
 
 def test_fram_chunks_are_all_successfully_allocated_not_out_of_memory() -> None:

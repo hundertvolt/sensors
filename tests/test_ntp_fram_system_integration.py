@@ -631,13 +631,12 @@ def make_scd30_reader(max_module_error: int = 1) -> SCD30_Reader:
     return SCD30_Reader(i2c, irq_pin=5, max_module_error=max_module_error)
 
 
-async def _no_comp_data() -> "list[float | None]":
-    return [None, None]
-
-
 def make_sgp40_reader(cfg_path: str, max_module_error: int = 1) -> SGP40_Reader:
     i2c = I2C(1, scl_pin=19, sda_pin=18, frequency=50000)
-    reader = SGP40_Reader(i2c, _no_comp_data, max_module_error=max_module_error, cfg_path=cfg_path)
+    # A real SCD30_Reader as comp_source (SPECIFICATION.md Part C.14) - never read()/setup(), so
+    # its own get_data() just returns its unmeasured-sentinel namedtuple (every field None),
+    # matching what _no_comp_data() used to return directly.
+    reader = SGP40_Reader(i2c, make_scd30_reader(), max_module_error=max_module_error, cfg_path=cfg_path)
     run(reader.cfgmgr.setup())
     return reader
 

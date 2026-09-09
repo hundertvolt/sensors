@@ -4,6 +4,7 @@ Fills the gap test_notification_scd30_integration.py/test_notification_sgp40_int
 import asyncio
 import os
 import struct
+from collections import namedtuple
 
 from asy_i2c_driver import I2C
 from asy_neopixel_driver import NeopixelDriver
@@ -152,14 +153,6 @@ def data_frame(co2: float, temperature: float, humidity: float) -> bytes:
     return bytes(frame)
 
 
-async def co2_value_callback(scd_reader: SCD30_Reader) -> "int | float | None":
-    # Verbatim mirror of src/sensortask_wozi.py's own co2_value_callback() body.
-    scd_data = await scd_reader.get_data()
-    if scd_data is None or scd_data.CO2 is None:
-        return None
-    return float(scd_data.CO2)
-
-
 def drive_scd_cycle(reader: SCD30_Reader) -> "Any":
     # Exactly what read_loop() itself does per cycle (see asy_scd30_driver.py) - driven directly
     # instead of through the full irq/timer machinery, same convention as the sibling files.
@@ -188,23 +181,24 @@ def _word(value: int) -> bytes:
     return payload + bytes([_crc8(payload)])
 
 
-async def _comp_data() -> "list[float | None]":
-    return [25.0, 50.0]
+_CompReading = namedtuple("_CompReading", ("Temp", "Hum"))
+
+
+class _FakeCompSource:
+    # Structural stand-in for comp_source: SCD30_Reader (SPECIFICATION.md Part C.14) - a fixed
+    # value independent of this test's own real scd_reader, matching the removed _comp_data()
+    # stub's own fixed [25.0, 50.0] return exactly (scd_reader's real reading is deliberately not
+    # used here - _settle_and_spike() below needs 200 compensated SGP40 cycles well before this
+    # test ever drives scd_reader for its own real measurement).
+    async def get_data(self) -> "Any":
+        return _CompReading(25.0, 50.0)
 
 
 def make_sgp_reader() -> "tuple[SGP40_Reader, Any]":
     i2c = I2C(1, scl_pin=19, sda_pin=18, frequency=50000)
-    reader = SGP40_Reader(i2c, _comp_data, max_module_error=2, cfg_path=_tmp_cfg_dir("sgp"))
+    reader = SGP40_Reader(i2c, _FakeCompSource(), max_module_error=2, cfg_path=_tmp_cfg_dir("sgp"))  # type: ignore[arg-type]
     run(reader.pr.setup())
     return reader, reader.sgp.i2c_sgp40.i2c_device.i2c._i2c
-
-
-async def voc_value_callback(sgp_reader: SGP40_Reader) -> "int | float | None":
-    # Verbatim mirror of src/sensortask_wozi.py's own voc_value_callback() body.
-    sgp_data = await sgp_reader.get_data()
-    if sgp_data is None or sgp_data.VOC is None:
-        return None
-    return int(sgp_data.VOC)
 
 
 def _drive_sgp_cycle(reader: SGP40_Reader, fake_bus: "Any", raw: int) -> "Any":
@@ -232,17 +226,13 @@ def _settle_and_spike(reader: SGP40_Reader, fake_bus: "Any") -> "Any":
 
 
 def make_dual_stack(scd_reader: SCD30_Reader, sgp_reader: SGP40_Reader) -> "tuple[NeopixelDriver, NotificationCoordinator]":
+    # Direct (source, field) references (SPECIFICATION.md Part C.14.2), mirrors
+    # src/sensortask_wozi.py's own real registration shape.
     pixel = NeopixelDriver(0, neopixel_freq=100)
 
-    async def get_co2() -> "int | float | None":
-        return await co2_value_callback(scd_reader)
-
-    async def get_voc() -> "int | float | None":
-        return await voc_value_callback(sgp_reader)
-
     notify = NotificationCoordinator(pixel.request_signal, _local_time, cfg_path=_tmp_cfg_dir("notify"))
-    co2_signal = NotificationSignal("WarnCO2", get_co2, (("WarnCO2", "int", 1600, 0, 3000, None),), (1, 0, 0))
-    voc_signal = NotificationSignal("WarnVOC", get_voc, (("WarnVOC", "int", 350, 0, 500, None),), (0, 1, 0))
+    co2_signal = NotificationSignal("WarnCO2", scd_reader, "CO2", (("WarnCO2", "int", 1600, 0, 3000, None),), (1, 0, 0))
+    voc_signal = NotificationSignal("WarnVOC", sgp_reader, "VOC", (("WarnVOC", "int", 350, 0, 500, None),), (0, 1, 0))
     notify.register(co2_signal)
     notify.register(voc_signal)
     notify.finalize()
