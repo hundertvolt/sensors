@@ -66,30 +66,17 @@ the generator/website builder/CI matrix should validate its own work against the
   "provides" registry needed — an instance either is the expected class or it isn't, checked
   directly.
 - **Every real cross-instance link gets a TOML-visible `[instance.wiring]`/`[device.wiring]`
-  field — none stay hardcoded in `build_system()`** (project owner's explicit direction,
-  2026-09-09): it must "stay freely configurable," varying from device to device, not just today's
-  6 real files' shared choice. A full audit of `sensortask_wozi.py`'s/`sensortask_dev.py`'s
-  `build_system()` against this rule found: `sgp40.comp_source` (already wired, Session 1's own
-  precedent), `notification.signal_sink`/`notification.warn_co2`/`warn_voc`/`warn_hum` (Session 2),
-  and a `fram_target` field on every driver/service that takes an optional `fram=`/`fram_storage=`
-  constructor argument (`scd30`, `sgp40`, `bmp3xx`, `neopixel`, `notification`, plus
-  `device.wiring.fram_target` for `SystemService`'s own `fram=`) — each individually
-  optional, absent means that instance keeps a plain in-RAM log instead of a FRAM-backed one rather
-  than a build error; wiring only some of a device's instances to FRAM and not others is a
-  deliberate degree of freedom, not an inconsistency to flag. `device.wiring.led_target`
-  covers WiFi's own `conn.set_ext_led(pixel)` the same way. **Two categories are deliberately
-  excluded**, confirmed directly against the same audit, not just assumed exempt: (1) a link
-  between two mandatory-infrastructure modules (e.g. `AsyNtpClient`'s 3-argument dependency on
-  `AsyWifiService`, `SystemService`'s dependency on `AsyNtpClient`'s `ntp_issynced`,
-  `NotificationCoordinator`'s dependency on `AsyNtpClient`'s `cettime` for its own timekeeping) —
-  both endpoints always exist unconditionally on every device (WiFi/NTP/SystemService are never
-  optional, see "Device TOML schema" below), so there is no real presence-or-absence choice for a
-  TOML field to express; the generator always resolves these the same way, on every device. (2) A
-  reference derived from "every instance of a kind that happens to exist" rather than one specific
-  named instance — `WebserverService`'s own `sensors=`/`settings=`/`maintenance_sensors=`/
-  `is_hotspot_active=` arguments enumerate whichever sensor/service instances a device's TOML
-  already declares; there is no separate per-device *choice* of which ones to include beyond what
-  the instance list itself already says, so this stays generator-derived, not a named wiring field.
+  field — none stay hardcoded in `build_system()`.** Covers `sgp40.comp_source`,
+  `notification.signal_sink`/`warn_co2`/`warn_voc`/`warn_hum`, and `fram_target` on every
+  driver/service with an optional `fram=`/`fram_storage=` argument (`scd30`, `sgp40`, `bmp3xx`,
+  `neopixel`, `notification`, plus `device.wiring.fram_target` for `SystemService`'s own `fram=`)
+  and `device.wiring.led_target` for WiFi's `conn.set_ext_led(pixel)`. Each field is individually
+  optional; absence disables that specific link rather than erroring — wiring only some of a
+  device's instances to FRAM and not others is a deliberate degree of freedom. **Excluded**: links
+  between two mandatory-infrastructure modules (both endpoints always exist unconditionally, so
+  there's no real presence/absence choice), and `WebserverService`'s `sensors=`/`settings=`/
+  `maintenance_sensors=`/`is_hotspot_active=` arguments, which enumerate whichever instances a
+  device's TOML already declares rather than naming one specific instance.
 - **No getters, no callback functions in generated code.** A consumer holds a direct reference to
   the producer's existing concurrency-safe value holder (SPECIFICATION.md Part G's "locked state"
   primitive) and reads `.value` directly when needed — eliminating the
@@ -138,95 +125,52 @@ the generator/website builder/CI matrix should validate its own work against the
 
 ## Device TOML schema (Session 1 deliverable — shape only, not the 6 real files)
 
-The shape every device's TOML file follows once Session 2 writes the real ones. Not itself
-authoritative production config — an illustrative, heavily-commented example, kept here since this
-doc is this initiative's own shared, living reference (its own front matter: "update it as
-decisions evolve"). References the mechanism `src/` now has after Session 1 (`config_manager.py`'s
-`instance_name()`, `WiringSchema`; `base_classes.py`'s `name_ext`/`get_error_sources()`/
-`get_loggers()`; each driver's own `_WIRING` — see `SPECIFICATION.md` Part C.14 for the full
-mechanism reference).
+The shape every device's TOML file follows (the 6 real files live at `devices/<device>.toml`).
+Uses the mechanism `src/` has after Session 1 (`config_manager.py`'s `instance_name()`,
+`WiringSchema`; `base_classes.py`'s `name_ext`/`get_error_sources()`/`get_loggers()`; each driver's
+own `_WIRING` — full mechanism reference: `SPECIFICATION.md` Part C.14).
 
-Two top-level shapes: a single `[device]` table (identity/network facts, not repeated) and a
-uniform `[[instance]]` array of tables. **The TOML models optional modules only** — driver-level
-sensors, plus singleton services that themselves vary per device or could someday be entirely
-absent: FRAM (`sensortask_wozi.py`'s is an 8KB `MB85RS64V` on `spi0`/cs `1`; `sensortask_dev.py`'s
-is a 256KB `MB85RS2MTA` on a differently-pinned `spi0`/cs `5` — a real per-device fact), Neopixel
-(its own data pin varies per device), NotificationCoordinator (today wired to a Neopixel in every
-real device, but a genuinely optional software capability a future device could lack or wire to a
-different sink entirely).
+Two top-level shapes: a single `[device]` table (identity/network facts, plus mandatory-infra
+tuning and wiring — see below) and a uniform `[[instance]]` array of tables. **The `[[instance]]`
+array models optional modules only** — driver-level sensors, plus singleton services that vary or
+could someday be absent per device: FRAM, Neopixel, NotificationCoordinator.
 
 **WiFi, NTP, and SystemService are mandatory infrastructure and are never `[[instance]]`
-entries** (project owner's explicit direction, 2026-09-09, revising this doc's own earlier draft,
-which had modeled them as instances too — corrected before it ever reached a real device TOML).
-Every buildable device has all three unconditionally: there is no real variant that omits network
-connectivity, time sync, or the task supervisor/watchdog, so — unlike a sensor or an optional
-peripheral — there is no presence-or-absence question for the schema to encode. Their own
-per-device-tunable knobs (today: WiFi's `conn_fail_to_hotspot`/`hotspot_time_min`; NTP/SystemService
-have none) live directly in `[device]` instead — merged there rather than kept as a second,
-separate top-level table, since both hold the same kind of thing: singleton, per-device,
-non-instance facts (project owner's direction, 2026-09-09, folding the originally-separate
-`[system_config]` table into `[device]` as redundant). **Required, not defaulted**: a device TOML
-missing either field is a build-time error, the same fail-loud contract "Build/generator script
-quality bar" below gives every other structurally-broken-definitions-file case.
+entries** — every buildable device has all three unconditionally, so there is no
+presence-or-absence question for the schema to encode. Their own per-device-tunable knobs (WiFi's
+`conn_fail_to_hotspot`/`hotspot_time_min`; NTP/SystemService have none today) live directly in
+`[device]`, and their crosslinks to optional instances live in `[device.wiring]`
+(`led_target`/`fram_target`, both optional). Both `[device]` tuning fields are **required, not
+defaulted**: a device TOML missing either is a build-time error, the same fail-loud contract
+"Build/generator script quality bar" below gives every other structurally-broken definitions file.
 
-The same reasoning is why the webserver — also unconditional, present on every device — was never
-modeled as an instance either, even before this revision: its own constructor takes no independent
-per-device facts at all, only references to whichever other instances the TOML already declares
-(`WebserverService(app, sensors=(scd_reader, bmp_reader, sgp_reader), settings=[...])`-style
-composition over the already-resolved instance graph) — there was never anything for a
-`[[instance]]` entry to carry for it in the first place.
+The webserver — also unconditional — is never modeled as an instance either: its constructor takes
+no independent per-device facts, only references to whichever other instances the TOML already
+declares, so there's nothing for a `[[instance]]` entry to carry.
 
-A device variant that lacks a given *optional* singleton (if one ever does) simply omits that
-`[[instance]]` entry — the same absence-means-absent handling a missing sensor already gets. This
-does not extend to WiFi/NTP/SystemService, which are never optional and never omitted.
+A device variant that lacks a given *optional* singleton simply omits that `[[instance]]` entry —
+the same absence-means-absent handling a missing sensor gets. WiFi/NTP/SystemService are never
+optional and never omitted.
 
 ```toml
-# example-device.toml - illustrative shape only (Session 2 writes the 6 real files: dev, wozi,
-# arzi, klkizi, grkizi, schlafzi - see this doc's own "Target device variants").
+# example-device.toml - illustrative shape only; the 6 real files are devices/*.toml.
 
 [device]
-# "SensorStation<name>" is the base stub (CLAUDE.md/this doc's own "Core design decisions") - this
-# field supplies just the <name> part.
-name = "Wozi"
-# Default hostname AND the hotspot AP's own SSID (src/asy_wifi_service.py's essid=hostname - no
-# separate SSID field exists or is needed, confirmed directly against that module).
-hostname = "SensorStationWozi"
-# Per-device hotspot AP password (src/asy_wifi_service.py's HotspotPW config field, added this
-# session) - defaults to the existing hardcoded "12345678" if omitted (CLAUDE.md's accepted-risk
-# credential note); a device TOML may override it, but never needs to.
-hotspot_password = "12345678"
-# Mandatory infrastructure tuning - WiFi/NTP/SystemService are never [[instance]] entries (every
-# buildable device has all three unconditionally; see this doc's "Device TOML schema" intro above
-# for the full reasoning). Merged directly into [device] (project owner's direction, 2026-09-09) -
-# a separate [system_config] table would have duplicated what [device] already is: singleton,
-# per-device, non-instance facts. Required, not defaulted: a device TOML missing either field below
-# is a build-time error (this doc's own "Build/generator script quality bar" fail-loud contract).
-conn_fail_to_hotspot = 5   # src/asy_wifi_service.py's AsyWifiService constructor param, same name.
-hotspot_time_min = 8       # ditto. NTP/SystemService have no tunable fields today, so nothing of
-# theirs lives here yet - this table only ever grows if/when they do.
+name = "Wozi"                              # feeds hostname = "SensorStation<name>"
+hostname = "SensorStationWozi"             # also the hotspot AP's own SSID
+hotspot_password = "12345678"              # accepted-risk default (CLAUDE.md)
+conn_fail_to_hotspot = 5                   # mandatory-infra tuning, required
+hotspot_time_min = 8
 
-# Mandatory-infra-to-optional-instance wiring: the same [instance.wiring] treatment, scoped under
-# [device] because WiFi/SystemService aren't [[instance]] entries. Both fields are optional -
-# absence disables the feature rather than being a build error. WiFi's own LED status indicator
-# (`conn.set_ext_led(pixel)`) and SystemService's own error-log/pause hookup (`fram=fram`) are the
-# only two such links that exist today (see "Core design decisions" above's ALL-crosslinks-wired
-# rule and its own list of what's deliberately excluded - links between two mandatory modules, e.g.
-# NTP's/SystemService's own dependency on WiFi, since both endpoints always exist unconditionally
-# and so are never a real per-device choice).
 [device.wiring]
-led_target = "neopixel"
-fram_target = "fram"
+led_target = "neopixel"                    # optional; WiFi status LED
+fram_target = "fram"                       # optional; SystemService's own error log
 
-# One table per bus an [[instance]] entry below can reference by id. Every I2C/SPI pin, frequency,
-# and per-bus timeout override lives here - no hardcoded pins anywhere in generated or
-# hand-written driver-wiring code (this doc's own "Core design decisions").
 [bus.i2c0]
 scl_pin = 13
 sda_pin = 12
 frequency = 50000
-# SCD30-specific: up to 150ms/day clock stretching, past rp2's 50ms default (SPECIFICATION.md Part
-# A.7) - a per-bus override, not a per-instance one, since it's a property of what shares this bus.
-timeout = 200000
+timeout = 200000                           # SCD30 clock-stretch headroom
 
 [bus.i2c1]
 scl_pin = 19
@@ -237,71 +181,38 @@ frequency = 50000
 sck_pin = 2
 mosi_pin = 3
 miso_pin = 4
-# No cs_pin/frequency here: cs_pin is each instance's own *exclusive* resource (see this doc's own
-# "Build/generator script quality bar" schema-shape requirement below - a bus table owns only its
-# shared wire pins), and asy_spi_driver.SPI has no frequency parameter at all (confirmed directly
-# against src/asy_spi_driver.py's own SPI.__init__/init()) - unlike asy_i2c_driver.I2C, which does
-# and so every [bus.i2c*] table above does carry one. Session 2 found this exact duplication (a
-# stray cs_pin = 1 sitting in both this table and the fram instance below) in an earlier draft of
-# this same illustrative example and corrected it here rather than carrying the inconsistency into
-# the 6 real files at devices/*.toml.
 
-# --- sensor drivers (SensorReader/SensorReaderConfig subclasses - can repeat) ---------------
+# --- sensor drivers (SensorReader/SensorReaderConfig subclasses - can repeat) -------------------
 
 [[instance]]
-driver = "scd30"           # maps to a real driver class the generator resolves statically -
-# never a dynamic import (SPECIFICATION.md Part F.1). Per this doc's own "Acceptance criteria"
-# above, this resolution should be derived from the existing asy_<name>_driver.py -> <Name>_Reader
-# naming convention (SPECIFICATION.md Part C.5), not a separate hand-maintained lookup table -
-# not built in this session.
-name_ext = ""               # optional, default "" - instance_name()'s own default-unchanged case
-# (SPECIFICATION.md Part C.14.1): produces the plain "SCD30" REST/config/error-log key. Every
-# driver kind that can have more than one instance per device accepts this field; a singleton
-# service kind (see below) doesn't declare it at all.
+driver = "scd30"                           # resolved to its class via naming convention, not a
+name_ext = ""                              # lookup table (SPECIFICATION.md Part C.5)
 bus = "i2c0"
 irq_pin = 8
 trigger_sec = 3
-# No `address` field: SCD30 has no logically-selectable I2C address (hardwired per
-# datasheets/scd30/..._Interface_Description.pdf) - only a chip with a real address-select
-# mechanism gets this field (see bmp3xx below).
 
-# fram_target - optional (project owner's direction, 2026-09-09): a device TOML may leave this
-# instance unwired to FRAM entirely, falling back to a plain in-RAM PrintLog for its own error log
-# instead of a build error. This degree of freedom - wiring only some instances to FRAM, not all of
-# them uniformly - is deliberate, not an oversight.
 [instance.wiring]
-fram_target = "fram"
+fram_target = "fram"                       # optional
 
 [[instance]]
 driver = "sgp40"
 name_ext = ""
 bus = "i2c1"
-# _WIRING-declared cross-instance dependency (SPECIFICATION.md Part C.14.2): names another
-# [[instance]]'s own resolved name (its `driver` + `name_ext`, not a Python identifier) - the
-# generator resolves this to that instance's already-constructed object and checks it's actually
-# an SCD30_Reader (asy_sgp40_driver.py's own `_WIRING = (("comp_source", SCD30_Reader),)`),
-# erroring at build time on a type mismatch or an unresolvable name - not built in this session.
+
 [instance.wiring]
-comp_source = "scd30"
-fram_target = "fram"   # optional, same as scd30's own above - also covers this driver's VOC backup
-# chunk, not just its error log (src/asy_sgp40_driver.py's own fram_storage= constructor param).
+comp_source = "scd30"                      # required; _WIRING-declared cross-instance dependency
+fram_target = "fram"                       # optional
 
 [[instance]]
 driver = "bmp3xx"
 name_ext = ""
 bus = "i2c1"
-# BMP388/BMP390 support a real address-select pin (SDO), so this driver kind does get an address
-# field - two legal values, 0x76/0x77 (datasheets/bmp3xx/...).
-address = 0x77
+address = 0x77                             # only chips with a real address-select pin get this
 
 [instance.wiring]
-fram_target = "fram"   # optional, same treatment as scd30/sgp40 above.
+fram_target = "fram"
 
-# A second SCD30 on a different bus/pins - the multi-instance case this whole mechanism exists for
-# (project owner's own "two SCD30s, or the multi-differential-pressure-sensor case" example). Its
-# name_ext disambiguates every one of REST dict keys/config filename/error-log key at once
-# (instance_name()'s single resolved name, threaded through all three - SPECIFICATION.md C.14.1):
-# "SCD30_fan_pressure", not a second, colliding "SCD30".
+# A second SCD30 on a different bus - name_ext disambiguates every derived name at once.
 [[instance]]
 driver = "scd30"
 name_ext = "fan_pressure"
@@ -309,64 +220,29 @@ bus = "i2c1"
 irq_pin = 9
 trigger_sec = 3
 
-# --- optional singleton services (never more than one per device, but still per-device- ----------
-# --- configurable, or could someday be entirely absent - see this doc's "Device TOML schema" ------
-# --- intro above for why WiFi/NTP/SystemService don't belong in this list) ------------------------
+# --- optional singleton services -----------------------------------------------------------------
 
 [[instance]]
 driver = "fram"
 bus = "spi0"
 cs_pin = 1
-max_size = 0x2000            # MB85RS64V (8KB) here; dev's own real file uses 0x40000 (MB85RS2MTA,
-# 256KB) - a real per-chip fact, confirmed directly against both existing sensortask-*.py files,
-# not a hypothetical.
+max_size = 0x2000                          # per-chip fact, varies per device
 
 [[instance]]
 driver = "neopixel"
 pin = 15
 
 [instance.wiring]
-fram_target = "fram"   # optional, same treatment as scd30/sgp40/bmp3xx above.
+fram_target = "fram"
 
 [[instance]]
 driver = "notification"
 
-# Makes notification's dependency on a signal sink explicit in the TOML (project owner's direction,
-# 2026-09-09) - today that's always the neopixel instance, but a future device might drive
-# notifications a different way entirely (e.g. a network call) instead of an LED, so this is
-# declared the same way sgp40's comp_source is: a plain instance-name reference, not hardcoded.
-# NOT YET RESOLVABLE by the generator as specified: _WIRING's documented contract (this doc's "Core
-# design decisions" above) resolves a reference to the *whole* constructed instance and passes it
-# directly into the consumer's constructor, but `NotificationCoordinator.__init__`'s
-# `request_signal_cb` param wants one specific bound coroutine method off that instance
-# (`pixel.request_signal`, confirmed directly against src/asy_notification_service.py's own
-# signature and src/asy_neopixel_driver.py's own `async def request_signal(self, r, g, b, t)`), not
-# the instance itself. Whether that gets solved by extending `_WIRING`'s tuple shape with an
-# optional attribute-name element, generator-side special-casing, or something else is left open -
-# deliberately not settled by this session ("no refactor of notification or neopixel" scope,
-# 2026-09-09); `asy_notification_service.py` itself declares no `_WIRING` tuple yet either (unlike
-# `asy_sgp40_driver.py`), for the same reason.
 [instance.wiring]
-signal_sink = "neopixel"
-fram_target = "fram"   # optional, same treatment as every other instance above.
+signal_sink = "neopixel"                   # required; not yet resolvable by _WIRING as specified -
+fram_target = "fram"                       # see note below
 
-# Notification's own per-signal getters (project owner's direction, 2026-09-09) - the same
-# treatment as signal_sink above, extended to what was previously hardcoded inside
-# notify_service.register(NotificationSignal("WarnCO2", scd_reader, "CO2", ...)) calls in
-# build_system(). Confirmed directly against both code paths this TOML schema covers: the
-# refactored sensortask_wozi.py/sensortask_dev.py register exactly these three
-# (WarnCO2<-scd30.CO2, WarnVOC<-sgp40.VOC, WarnHum<-scd30.Hum), and the legacy
-# modules/sensortask-arzi.py/sensortask-neu.py's own (differently-mechanized, pre-refactor)
-# airqualMeasCallback() sources the identical three values the identical way
-# (`[scd_data[_SCD30_CO2], sgp_data[_SGP40_VOC], scd_data[_SCD30_Humidity]]`) - not assumed to
-# match, checked.
-#
-# Each one is OPTIONAL, unlike signal_sink: a device TOML may omit any of the three sub-tables
-# below entirely, or reference an instance this device doesn't have. Either way the generator must
-# simply not register that one notification signal on this device - disabled by default, not a
-# build-time error. This is the same absence-means-absent handling this schema already gives a
-# missing optional instance (see this doc's "Device TOML schema" intro above), now applied at the
-# level of one instance's individual wired getters rather than the instance's own presence.
+# Per-signal getters - each optional; absence disables that specific warning signal.
 [instance.wiring.warn_co2]
 source = "scd30"
 field = "CO2"
@@ -378,108 +254,40 @@ field = "VOC"
 [instance.wiring.warn_hum]
 source = "scd30"
 field = "Hum"
-
-# Each signal's own threshold default/range and flash color (_FIELD_WARN_CO2's (0, 3000, ...)-style
-# range, the (1, 0, 0)-style RGB tuple) are a related but still-separate, still-open question - not
-# settled by this addition, which covers only the source+field getter half. How the generator
-# expresses either from this table is Session 3's own design question.
 ```
 
-**What this session settles**: the two top-level shapes above, the `[[instance]]` convention for
-*optional* modules (WiFi/NTP/SystemService excluded — mandatory infrastructure, tuned instead via
-plain fields directly in `[device]`), `name_ext`'s default-empty-means-unchanged rule,
-`[instance.wiring]`'s shape (a flat `{toml_field_name = "another instance's resolved name"}` table
-for a single-instance reference, or a `[instance.wiring.<name>]` sub-table of `{source = "...",
-field = "..."}` for a getter reference), `[device.wiring]` as the mandatory-infra-side mirror of
-`[instance.wiring]`, the standing "every real cross-instance link is TOML-visible, none hardcoded"
-rule and its two exclusions (mandatory-to-mandatory links; a `WebserverService`-style reference
-derived from "every instance that exists" rather than one named instance), that any wiring
-reference shaped as a getter/optional-producer reference defaults to "disabled" when absent or
-unresolvable rather than a build-time error (unlike a required single-instance reference like
-`comp_source`), and that an address field only exists for a driver kind whose chip actually has one
-(checked per datasheet, not assumed).
+Open question, not settled by this schema: `_WIRING`'s documented contract resolves a reference to
+the whole constructed instance, but `NotificationCoordinator.__init__`'s `request_signal_cb` wants
+one specific bound method off it (`pixel.request_signal`), not the `NeopixelDriver` instance
+itself. Whether this gets solved by extending `_WIRING`'s tuple shape, generator-side
+special-casing, or something else is left open — `asy_notification_service.py` declares no
+`_WIRING` tuple yet either. Each notification signal's own threshold default/range and flash color
+are a related, still-open question for Session 3.
 
-**What Session 2 does**: write the 6 real files (`dev`, `wozi`, `arzi`, `klkizi`, `grkizi`,
-`schlafzi`) from this shape, using the wiring facts already gathered from
-`src/sensortask_wozi.py`, `src/sensortask_dev.py`, `modules/sensortask-arzi.py`,
-`modules/sensortask-neu.py`.
+**Settled by this schema**: the two top-level shapes above, `[[instance]]` for optional modules
+only, `name_ext`'s default-empty-means-unchanged rule, `[instance.wiring]`'s shape (a flat
+`{field = "instance name"}` table for a required single-instance reference, or a
+`[instance.wiring.<name>]` sub-table of `{source, field}` for an optional getter reference),
+`[device.wiring]` as the mandatory-infra-side mirror of `[instance.wiring]`, the standing "every
+real cross-instance link is TOML-visible" rule and its two exclusions (see "Core design decisions"
+above), that a getter/optional-producer reference defaults to disabled when absent rather than
+erroring (unlike a required reference like `comp_source`), and that an `address` field only exists
+for a driver kind whose chip actually has one.
 
-**Session 2 done**: the 6 real files live at `devices/<device>.toml` (a new top-level directory,
-not specified elsewhere in this doc before now — chosen as the natural sibling of
-`toolchain/versions.toml`'s own top-level-config precedent; Session 3's generator should read from
-here). The six `device.name` values are `Wozi`/`Dev`/`Arzi`/`Klkizi`/`Grkizi`/`Schlafzi` (plain
-capitalized device id, feeding `hostname = "SensorStation<name>"` per this doc's own convention).
-Every device's `hotspot_password` is the existing accepted-risk default (`"12345678"`, CLAUDE.md) —
-no device has a reason to differ. `wozi`/`dev` are the only two with a `bmp3xx` instance (confirmed
-directly: neither `modules/sensortask-arzi.py` nor `modules/sensortask-neu.py` imports/constructs
-one); `klkizi`/`grkizi`/`schlafzi` share byte-for-byte identical wiring (only `device.name`/
-`hostname` differ), all sourced from `modules/sensortask-neu.py` alone, per this doc's own device
-list. One real fact this session applied consistently that the pre-refactor legacy files couldn't:
-`arzi`/`klkizi`/`grkizi`/`schlafzi`'s SCD30-carrying `i2c0` bus now gets the same `timeout = 200000`
-clock-stretch headroom `wozi`/`dev` already have — the old, pre-refactor `asy_i2c_driver.py`
-(`python/IndividualDrivers/asy_i2c_driver.py`) never had a `timeout` parameter at all, so its
-absence in the legacy arzi/neu files was a driver limitation, not a considered decision that this
-chip-level datasheet fact (datasheets/scd30/..._Interface_Description.pdf) doesn't apply there too;
-`src/asy_i2c_driver.py` (what these TOML files target) does support it. **Revision 1, same session
-(2026-09-09)**: the project owner (this doc's own author) reviewed the first draft of these 6 files
-and rejected modeling WiFi/NTP/SystemService as `[[instance]]` entries — they're mandatory
-infrastructure, not optional modules, so the TOML shouldn't carry them at all; see "Device TOML
-schema" above for the corrected shape. All 6 files were revised to drop those three `[[instance]]`
-blocks and add a `[system_config]` table (`conn_fail_to_hotspot = 5`, `hotspot_time_min = 8` —
-unchanged values, just relocated) instead.
-
-**Revision 2, same session (2026-09-09)**: the project owner asked for notification's own
-dependency on a signal sink made explicit too (previously a hardcoded `pixel.request_signal`
-constructor argument), the same way `sgp40`'s `comp_source` already is. All 6 files gained
-`[instance.wiring] signal_sink = "neopixel"` on their `notification` instance. Flagged, not
-resolved: `_WIRING`'s documented contract hands the consumer the whole resolved instance, but
-`NotificationCoordinator`'s constructor wants one specific bound method off it
-(`pixel.request_signal`), not the `NeopixelDriver` instance itself — left as an open question per
-this session's explicit "no refactor of notification or neopixel" scope, recorded in "Device TOML
-schema" above rather than guessed at.
-
-**Revision 3, same session (2026-09-09)**: the project owner also asked for notification's own
-per-signal getters (`WarnCO2`/`WarnVOC`/`WarnHum` — previously hardcoded inside
-`notify_service.register(NotificationSignal(...))` calls in `build_system()`) wired up explicitly
-the same way, plus a default-disables-the-signal behavior when one is left unwired. All 6 files
-gained three `[instance.wiring.warn_co2/warn_voc/warn_hum]` sub-tables on their `notification`
-instance (`{source = "scd30"/"sgp40", field = "CO2"/"VOC"/"Hum"}`), confirmed against both the
-refactored and legacy source paths (see "Device TOML schema" above for the exact evidence) — every
-real device declares all three today, since every real device has both `scd30` and `sgp40`; the
-disables-when-absent behavior exists in the schema for a future device that might not.
-
-**Revision 4, same session (2026-09-09)**: the project owner generalized Revisions 2/3 into a
-standing rule — **every** real cross-instance link gets a TOML-visible wiring field, none stay
-hardcoded, and it must "stay freely configurable" device to device (see "Core design decisions"
-above for the rule itself and what it deliberately excludes). A full audit of
-`sensortask_wozi.py`'s/`sensortask_dev.py`'s `build_system()` against this rule found one more
-recurring pattern: every driver/service that takes an optional `fram=`/`fram_storage=` constructor
-argument (`scd30`, `sgp40`, `bmp3xx`, `neopixel`, `notification`, `SystemService`) was doing so
-unwired. All 6 files gained a `fram_target = "fram"` field in each such instance's own
-`[instance.wiring]` table, plus a new `[system_config.wiring]` table (`led_target = "neopixel"`,
-`fram_target = "fram"`) covering the two mandatory-infra-to-optional-instance links that exist
-today (WiFi's own status LED, SystemService's own error log). Every field is individually optional,
-by explicit request ("having the possibility of only wiring some, but not all instances to actual
-FRAM is a degree of freedom I want to have") — every real device wires all of them today, but
-nothing in the schema requires that.
-
-**Revision 5, same session (2026-09-09)**: the project owner noticed `[device]` and
-`[system_config]` had grown redundant — both are singleton, per-device, non-instance tables, so
-having two was an unnecessary split rather than a meaningful distinction. `[system_config]`'s
-fields were folded directly into `[device]` (`conn_fail_to_hotspot`/`hotspot_time_min` now sit
-alongside `name`/`hostname`/`hotspot_password`), and `[system_config.wiring]` became
-`[device.wiring]`. Purely a location change — every value, and the individually-optional-field
-behavior from Revision 4, stayed exactly the same; `test_device_tomls.py`'s own check functions/
-constants were renamed to match (`check_device_infra_fields_present_and_valid`,
-`check_device_wiring_resolves_if_present`) rather than left referring to a table that no longer
-exists.
+**Session 2 done**: the 6 real files live at `devices/<device>.toml`. The six `device.name` values
+are `Wozi`/`Dev`/`Arzi`/`Klkizi`/`Grkizi`/`Schlafzi`, feeding `hostname = "SensorStation<name>"`.
+Every device's `hotspot_password` is the accepted-risk default (`"12345678"`, CLAUDE.md). `wozi`/
+`dev` are the only two with a `bmp3xx` instance; `klkizi`/`grkizi`/`schlafzi` share byte-for-byte
+identical wiring (only `device.name`/`hostname` differ), sourced from `modules/sensortask-neu.py`.
+Every SCD30-carrying `i2c0` bus gets `timeout = 200000` clock-stretch headroom
+(`src/asy_i2c_driver.py` supports it; the legacy `asy_i2c_driver.py` arzi/neu were built against did
+not).
 
 A minimal shape/collision smoke-test suite lives at `tests_scripts/test_device_tomls.py` (parses as
-valid TOML, matches this schema's shape — including every wiring field introduced across all five
-revisions above — and re-implements — by hand, since no generator/validator exists yet — the
-global-GPIO-pin/per-bus-address/instance-name collision checks below against these 6 real files
-specifically; **not** a substitute for Session 3's own full validator and its malformed-fixture
-test coverage).
+valid TOML, matches this schema's shape, and re-implements — by hand, since no generator/validator
+exists yet — the global-GPIO-pin/per-bus-address/instance-name collision checks below against these
+6 real files specifically; **not** a substitute for Session 3's own full validator and its
+malformed-fixture test coverage).
 
 **What Session 3 (the generator) does, not settled here**: resolving the `driver` string to its
 Python class — per this doc's own "Acceptance criteria" above, derived from the existing

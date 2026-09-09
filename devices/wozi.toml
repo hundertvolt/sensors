@@ -1,46 +1,27 @@
-# wozi.toml - the exemplary/base variant (never physically flashed; correctness comes from
-# tests/, not a bench - CLAUDE.md). Wiring facts sourced directly from src/sensortask_wozi.py's
-# own build_system() (BUILD_CHAIN_PLAN.md Session 2 - see that file's own construction-order
-# comments for the datasheet/timing rationale behind each value below).
+# wozi.toml - exemplary/base device config; never physically flashed, correctness comes from
+# tests/, not a bench (CLAUDE.md).
+# Wiring sourced from src/sensortask_wozi.py's build_system().
 
 [device]
 name = "Wozi"
 hostname = "SensorStationWozi"
 hotspot_password = "12345678"
-# Mandatory infrastructure tuning - wifi/ntp/system are never modeled as [[instance]] entries
-# (every buildable device has them, unconditionally; the TOML models optional modules only -
-# BUILD_CHAIN_PLAN.md's own schema decision). Required, not defaulted: a device TOML missing either
-# field below is a build-time error (tests_scripts/test_device_tomls.py's
-# check_device_infra_fields_present_and_valid enforces this by hand until Session 3's generator
-# exists). src/sensortask_wozi.py: `conn = AsyWifiService(..., conn_fail_to_hotspot=5,
-# hotspot_time_min=8, ...)`.
+# Mandatory infra (wifi/ntp/system) tuning - required, not modeled as [[instance]] entries.
 conn_fail_to_hotspot = 5
 hotspot_time_min = 8
 
-# Mandatory-infra-to-optional-instance wiring - both fields optional, absence disables the feature
-# rather than erroring, same treatment as every [instance.wiring] getter. led_target:
-# src/sensortask_wozi.py's `conn.set_ext_led(pixel)` (WiFi status indication on the neopixel).
-# fram_target: `sysfunct = SystemService(..., fram=fram, ...)` (SystemService's own error log).
-# Mandatory-to-mandatory links (e.g. NTP's/SystemService's own dependency on WiFi) are never wired
-# here - both endpoints always exist unconditionally on every device, so there's no real
-# presence-or-absence choice to encode, unlike these two.
+# Mandatory-infra-to-instance links; each field optional, absence disables that feature.
 [device.wiring]
 led_target = "neopixel"
 fram_target = "fram"
 
-# SCD30 lives on i2c0 here (src/sensortask_wozi.py: `i2c0 = asy_i2c_driver.I2C(0, 13, 12, ...)`,
-# `scd_reader = SCD30_Reader(i2c0, 8, ...)`). timeout=200000 (200ms) is the SCD30-datasheet-driven
-# clock-stretch headroom (datasheets/scd30/..._Interface_Description.pdf p.2: up to 150ms/day for
-# internal calibration, past rp2's own 50ms default) - a property of what shares this bus, not a
-# per-instance field.
+# SCD30 clock-stretch headroom (datasheet: up to 150ms/day, past rp2's 50ms default).
 [bus.i2c0]
 scl_pin = 13
 sda_pin = 12
 frequency = 50000
 timeout = 200000
 
-# SGP40 + BMP3xx share this bus here (src/sensortask_wozi.py: `i2c1 = asy_i2c_driver.I2C(1, 19,
-# 18, ...)`); neither needs the SCD30 clock-stretch headroom, so no timeout override.
 [bus.i2c1]
 scl_pin = 19
 sda_pin = 18
@@ -60,9 +41,6 @@ bus = "i2c0"
 irq_pin = 8
 trigger_sec = 3
 
-# fram_target - optional, absence disables this instance's own FRAM-backed error log (falls back
-# to a plain in-RAM PrintLog) rather than being a build error. src/sensortask_wozi.py:
-# `scd_reader = SCD30_Reader(..., fram=fram, ...)`.
 [instance.wiring]
 fram_target = "fram"
 
@@ -73,22 +51,14 @@ bus = "i2c1"
 
 [instance.wiring]
 comp_source = "scd30"
-# fram_target - optional, same as scd30's own above. src/sensortask_wozi.py:
-# `sgp_reader = SGP40_Reader(..., fram_storage=fram, ...)` - also covers its VOC backup chunk, not
-# just its error log.
 fram_target = "fram"
 
 [[instance]]
 driver = "bmp3xx"
 name_ext = ""
 bus = "i2c1"
-# BMP3xx_Reader's own default (src/asy_bmp3xx_driver.py: `address: int = 0x77`) - neither
-# sensortask_wozi.py's own BMP3xx_Reader(...) call passes an explicit address, so 0x77 (one of the
-# two SDO-strapping-selectable values per datasheets/bmp3xx/) applies here.
 address = 0x77
 
-# fram_target - optional, same treatment as scd30/sgp40 above. src/sensortask_wozi.py:
-# `bmp_reader = BMP3xx_Reader(..., fram=fram, ...)`.
 [instance.wiring]
 fram_target = "fram"
 
@@ -98,37 +68,24 @@ fram_target = "fram"
 driver = "fram"
 bus = "spi0"
 cs_pin = 1
-# MB85RS64V, 8KB (src/sensortask_wozi.py: `fram = AsyFramManager(spi0, 1, max_size=0x2000, ...)`).
+# MB85RS64V, 8KB.
 max_size = 0x2000
 
 [[instance]]
 driver = "neopixel"
 pin = 15
 
-# fram_target - optional, same treatment as scd30/sgp40/bmp3xx above. src/sensortask_wozi.py:
-# `pixel = NeopixelDriver(15, fram=fram, ...)`.
 [instance.wiring]
 fram_target = "fram"
 
 [[instance]]
 driver = "notification"
 
-# Explicit, TOML-visible wiring - today notification always drives the neopixel instance (currently
-# a hardcoded `pixel.request_signal` constructor argument in build_system(), not resolved via
-# _WIRING at all). Generator-side resolution isn't settled yet - see BUILD_CHAIN_PLAN.md's own
-# schema section for why (NotificationCoordinator wants pixel.request_signal specifically, not the
-# whole NeopixelDriver instance _WIRING's documented contract would hand it).
 [instance.wiring]
 signal_sink = "neopixel"
-# fram_target - optional, same treatment as every other instance above. src/sensortask_wozi.py:
-# `notify_service = NotificationCoordinator(..., fram=fram, ...)`.
 fram_target = "fram"
 
-# Per-signal getters - optional (BUILD_CHAIN_PLAN.md's "Device TOML schema"): a device TOML may
-# omit any of these three, which disables that specific warning signal on this device rather than
-# being a build error. src/sensortask_wozi.py: `notify_service.register(NotificationSignal(
-# "WarnCO2", scd_reader, "CO2", ...))` / `("WarnVOC", sgp_reader, "VOC", ...)` /
-# `("WarnHum", scd_reader, "Hum", ...)`.
+# Per-signal getters - each optional; absence disables that specific warning signal.
 [instance.wiring.warn_co2]
 source = "scd30"
 field = "CO2"

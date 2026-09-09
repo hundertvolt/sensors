@@ -1,25 +1,6 @@
-"""Smoke/shape/collision checks for devices/*.toml (BUILD_CHAIN_PLAN.md Session 2's own
-deliverable - the 6 real device config files). This is deliberately NOT the full generator
-validation pass (misconfigured/malformed-TOML abort paths, driver-class resolution, topological
-sort) - that's Session 3's own build-tooling quality bar, run against a generator that doesn't
-exist yet. This suite only proves the 6 real files parse as valid TOML, match the documented shape
-(BUILD_CHAIN_PLAN.md's "Device TOML schema"), and are free of the resource collisions a human
-author could introduce (global GPIO-pin exclusivity, per-bus address exclusivity, instance-name
-collision) - checked by hand here since no automated validator exists yet (this initiative's own
-"Global-resource-collision awareness" priming note).
-
-The TOML models *optional* modules only. WiFi/NTP/SystemService are mandatory infrastructure (every
-buildable device has all three unconditionally) and are never `[[instance]]` entries - their own
-per-device-tunable knobs live directly in `[device]` instead, alongside its identity fields
-(BUILD_CHAIN_PLAN.md's "Device TOML schema", revised 2026-09-09 - originally a separate
-`[system_config]` table, folded into `[device]` as redundant). This suite checks both directions of
-that rule: the required fields are present and valid, and the three mandatory driver kinds never
-leak into `[[instance]]`.
-
-Every collision-detection rule is exercised twice: once against each of the 6 real files (the
-correct-path case - proving no rule false-positives on real data) and once against a small
-synthetic doc engineered to violate exactly that rule (the error-handling case - proving the check
-actually fires and isn't just vacuously true because the real data happens to be clean)."""
+"""Shape/collision smoke tests for devices/*.toml against BUILD_CHAIN_PLAN.md's schema (optional
+modules only in [[instance]]; wifi/ntp/system are mandatory infra, tuned via [device] instead).
+Hand-implements the collision checks until Session 3's generator/validator exists."""
 
 import copy
 from pathlib import Path
@@ -29,31 +10,20 @@ import tomllib
 
 DEVICE_NAMES = ["dev", "wozi", "arzi", "klkizi", "grkizi", "schlafzi"]
 
-# Every device is expected to declare exactly these optional-module driver kinds, plus scd30 and
-# sgp40 (every real device has both - BUILD_CHAIN_PLAN.md's priming note). bmp3xx is present only
-# on wozi/dev (see _DEVICES_WITH_BMP3XX below) - the one real per-device sensor-set difference today.
-# wifi/ntp/system are deliberately excluded - mandatory infrastructure, never [[instance]] entries
-# (see module docstring and _MANDATORY_INFRA_DRIVERS below).
+# Optional-module driver kinds every device declares, plus scd30/sgp40 (every device has both).
+# bmp3xx is present only on wozi/dev. wifi/ntp/system are mandatory infra, never [[instance]].
 _ALWAYS_PRESENT_DRIVERS = {"scd30", "sgp40", "fram", "neopixel", "notification"}
 _DEVICES_WITH_BMP3XX = {"wozi", "dev"}
-# Driver kinds that can have more than one instance per device (BUILD_CHAIN_PLAN.md's schema:
-# "Every driver kind that can have more than one instance per device accepts this [name_ext]
-# field; a singleton service kind ... doesn't declare it at all").
+# Driver kinds that can have more than one instance per device.
 _MULTI_INSTANCE_CAPABLE_DRIVERS = {"scd30", "sgp40", "bmp3xx"}
 _SINGLETON_DRIVERS = {"fram", "neopixel", "notification"}
-# Mandatory infrastructure - present on every real device, but never modeled as [[instance]]
-# entries at all (BUILD_CHAIN_PLAN.md's "Device TOML schema" - the TOML models optional modules
-# only). Tuned instead via required fields directly in [device].
+# Mandatory infrastructure - present on every device, never modeled as [[instance]]; tuned via
+# required fields directly in [device].
 _MANDATORY_INFRA_DRIVERS = {"wifi", "ntp", "system"}
 _REQUIRED_DEVICE_INFRA_FIELDS = ("conn_fail_to_hotspot", "hotspot_time_min")
-# Every driver/service kind whose promoted src/ constructor takes an optional fram=/fram_storage=
-# argument (BUILD_CHAIN_PLAN.md's "Core design decisions", 2026-09-09 crosslink-audit revision) may
-# declare an optional [instance.wiring].fram_target - absent means that instance keeps a plain
-# in-RAM log instead of a build error.
+# Driver/service kinds whose fram=/fram_storage= wiring is individually optional.
 _FRAM_WIRABLE_INSTANCE_DRIVERS = {"scd30", "sgp40", "bmp3xx", "neopixel", "notification"}
-# The mandatory-infra-side mirror of [instance.wiring], under [device.wiring] - both optional,
-# absence disables the feature. led_target: WiFi's own status-LED indicator. fram_target:
-# SystemService's own error log/pause hookup.
+# Mandatory-infra-side mirror of [instance.wiring], under [device.wiring] - both fields optional.
 _DEVICE_WIRING = {"led_target": "neopixel", "fram_target": "fram"}
 
 _REQUIRED_BUS_PIN_FIELDS = {
@@ -80,9 +50,7 @@ def _bus_kind(bus_name: str) -> str:
 
 
 # --- reusable collision/shape checks (each raises AssertionError on the first violation found) --
-# Extracted as standalone functions, rather than inlined per-test, so the negative-path tests below
-# can exercise the exact same logic against small synthetic docs - proving each check actually
-# fires on bad input, not just that it stays silent on the 6 real (already-clean) files.
+# Standalone functions so the negative-path tests below can exercise the same logic on synthetic docs.
 
 
 def check_bus_tables_declare_their_required_wire_pins(doc: dict, label: str) -> None:
@@ -94,17 +62,11 @@ def check_bus_tables_declare_their_required_wire_pins(doc: dict, label: str) -> 
         missing = required - bus_table.keys()
         assert not missing, f"{label}: bus.{bus_name} is missing required field(s) {missing}"
         if kind == "i2c":
-            # asy_i2c_driver.I2C takes a real frequency param; asy_spi_driver.SPI has no
-            # frequency parameter at all (confirmed directly against src/asy_spi_driver.py's own
-            # SPI.__init__/init() - real RP2040 SPI here has no configurable clock rate exposed by
-            # this driver), so spi buses never carry this field.
+            # asy_i2c_driver.I2C takes a frequency param; asy_spi_driver.SPI has none.
             assert isinstance(bus_table.get("frequency"), int), f"{label}: bus.{bus_name} (i2c) is missing an int frequency"
         else:
             assert "frequency" not in bus_table, f"{label}: bus.{bus_name} (spi) declares frequency - asy_spi_driver.SPI has no such parameter"
-        # cs_pin is an instance-exclusive resource (its own instance's CS pin), never a bus-shared
-        # field - BUILD_CHAIN_PLAN.md's own "Build/generator script quality bar" schema-shape
-        # requirement; kept out of every bus table here even though an earlier draft of the plan's
-        # own illustrative example inconsistently duplicated it there too (fixed in this same PR).
+        # cs_pin is an instance-exclusive resource, never a bus-shared field.
         assert "cs_pin" not in bus_table, f"{label}: bus.{bus_name} declares cs_pin - that belongs on the owning instance, not the shared bus"
 
 
@@ -138,9 +100,7 @@ def check_sgp40_wiring_resolves_to_a_real_scd30_instance(doc: dict, label: str) 
 
 
 def check_no_global_gpio_pin_collision(doc: dict, label: str) -> None:
-    # One flat namespace per device (BUILD_CHAIN_PLAN.md's "Global-resource-collision awareness"):
-    # every bus's own wire pins, plus every instance's exclusive cs_pin/irq_pin/pin. `address` is
-    # deliberately excluded - it's a per-bus logical address, not a physical GPIO pin.
+    # One flat GPIO namespace per device; `address` excluded - it's per-bus logical, not physical.
     claims: dict[int, str] = {}
 
     def claim(pin: object, owner: str) -> None:
@@ -181,12 +141,7 @@ def check_no_instance_name_collision(doc: dict, label: str) -> None:
 
 
 def check_notification_wiring_resolves_to_a_real_neopixel_instance(doc: dict, label: str) -> None:
-    # notify_service = NotificationCoordinator(pixel.request_signal, ...) is currently a hardcoded
-    # Python constructor argument in build_system(), not resolved via _WIRING at all
-    # (asy_notification_service.py declares no _WIRING tuple). This TOML-level [instance.wiring]
-    # reference makes that dependency explicit ahead of a future device that might wire
-    # notification to a different sink (BUILD_CHAIN_PLAN.md's "Device TOML schema", 2026-09-09) -
-    # its generator-side resolution mechanism is deliberately left open there, not settled here.
+    # signal_sink is a required, TOML-visible reference to the neopixel instance.
     instances = {(inst["driver"], inst.get("name_ext", "")): inst for inst in doc["instance"]}
     notif_key = ("notification", "")
     assert notif_key in instances, f"{label}: no notification instance found"
@@ -204,11 +159,7 @@ _NOTIFICATION_SIGNAL_WIRING = {
 
 
 def check_notification_signal_wiring_resolves_if_present(doc: dict, label: str) -> None:
-    # Each of notification's per-signal getters is optional (BUILD_CHAIN_PLAN.md's "Device TOML
-    # schema", 2026-09-09): a device TOML may omit any of the three - that disables the
-    # corresponding warning signal on this device rather than being a build error, the same
-    # absence-means-absent handling this schema already gives a missing optional instance. When
-    # present, though, it must resolve to the expected driver kind/field, not just any instance.
+    # Each per-signal getter is optional; absence disables that warning signal rather than erroring.
     instances = {(inst["driver"], inst.get("name_ext", "")): inst for inst in doc["instance"]}
     notif = next((inst for inst in doc["instance"] if inst["driver"] == "notification"), None)
     assert notif is not None, f"{label}: no notification instance found"
@@ -223,10 +174,7 @@ def check_notification_signal_wiring_resolves_if_present(doc: dict, label: str) 
 
 
 def check_fram_wiring_resolves_if_present(doc: dict, label: str) -> None:
-    # fram_target is optional on every instance that can declare it (project owner's direction,
-    # 2026-09-09: "having the possibility of only wiring some, but not all instances to actual FRAM
-    # is a degree of freedom I want to have") - absence means that instance keeps a plain in-RAM
-    # log instead of a build error. When present, it must resolve to a real fram instance.
+    # fram_target is optional per instance; when present it must resolve to a real fram instance.
     instances = {(inst["driver"], inst.get("name_ext", "")): inst for inst in doc["instance"]}
     for inst in doc["instance"]:
         if inst["driver"] not in _FRAM_WIRABLE_INSTANCE_DRIVERS:
@@ -240,9 +188,7 @@ def check_fram_wiring_resolves_if_present(doc: dict, label: str) -> None:
 
 
 def check_device_wiring_resolves_if_present(doc: dict, label: str) -> None:
-    # Mandatory-infra-to-optional-instance links (WiFi's led_target, SystemService's fram_target)
-    # live under [device.wiring] since neither WiFi nor SystemService is an [[instance]]. Both
-    # optional, same absence-disables treatment as every other getter-shaped wiring field.
+    # Mandatory-infra-to-optional-instance links, under [device.wiring]; both fields optional.
     instances = {(inst["driver"], inst.get("name_ext", "")): inst for inst in doc["instance"]}
     wiring = doc.get("device", {}).get("wiring", {})
     for field, expected_driver in _DEVICE_WIRING.items():
@@ -254,21 +200,14 @@ def check_device_wiring_resolves_if_present(doc: dict, label: str) -> None:
 
 
 def check_no_mandatory_infra_modeled_as_instance(doc: dict, label: str) -> None:
-    # wifi/ntp/system are mandatory infrastructure - the TOML models optional modules only
-    # (BUILD_CHAIN_PLAN.md's "Device TOML schema", revised 2026-09-09) - so none of them may ever
-    # appear in [[instance]], not even redundantly alongside [device]'s own infra fields.
+    # wifi/ntp/system must never appear as [[instance]] entries.
     drivers = {inst["driver"] for inst in doc["instance"]}
     leaked = drivers & _MANDATORY_INFRA_DRIVERS
     assert not leaked, f"{label}: {sorted(leaked)} modeled as [[instance]] - mandatory infrastructure belongs in [device], never as an instance"
 
 
 def check_device_infra_fields_present_and_valid(doc: dict, label: str) -> None:
-    # WiFi's own per-device-tunable knobs (conn_fail_to_hotspot/hotspot_time_min) live directly in
-    # [device] since wifi itself isn't an [[instance]] (merged from an originally-separate
-    # [system_config] table - BUILD_CHAIN_PLAN.md's "Device TOML schema", revised 2026-09-09).
-    # Required, not defaulted - a missing field is a build-time error (BUILD_CHAIN_PLAN.md's
-    # "Build/generator script quality bar" fail-loud contract), so this check fails loudly too
-    # rather than falling back to some assumed default value.
+    # Required, not defaulted - a missing or wrong-typed field is a build-time error.
     cfg = doc.get("device")
     assert cfg is not None, f"{label}: no [device] table"
     for field in _REQUIRED_DEVICE_INFRA_FIELDS:
@@ -311,8 +250,6 @@ def test_instance_list_has_the_expected_driver_kinds(devices_dir: Path, device: 
     if device in _DEVICES_WITH_BMP3XX:
         expected.add("bmp3xx")
     assert set(drivers) == expected, f"{device}: instance driver set {sorted(set(drivers))} != expected {sorted(expected)}"
-    # No duplicate driver kind anywhere - none of the 6 real devices has two instances of the same
-    # driver type today (BUILD_CHAIN_PLAN.md priming note).
     assert len(drivers) == len(set(drivers)), f"{device}: duplicate driver kind in instance list"
 
 
@@ -365,9 +302,7 @@ def test_device_wiring_resolves_if_present(devices_dir: Path, device: str):
 
 
 def test_every_real_device_declares_fram_wiring_on_every_wirable_instance(devices_dir: Path):
-    # Not a schema requirement (fram_target is individually optional per instance - see the check
-    # above) but a fact about these 6 real devices specifically: every one wires every FRAM-capable
-    # instance to its one real FRAM chip today.
+    # Fact about the 6 real devices, not a schema requirement - fram_target is individually optional.
     for device in DEVICE_NAMES:
         doc = _load(devices_dir, device)
         for inst in doc["instance"]:
@@ -377,9 +312,7 @@ def test_every_real_device_declares_fram_wiring_on_every_wirable_instance(device
 
 
 def test_every_real_device_declares_all_three_notification_signals(devices_dir: Path):
-    # Not a schema requirement (each is individually optional - see the check above) but a fact
-    # about these 6 real devices specifically: every one has both scd30 and sgp40, so every one
-    # declares all three today.
+    # Fact about the 6 real devices, not a schema requirement - each signal is individually optional.
     for device in DEVICE_NAMES:
         doc = _load(devices_dir, device)
         notif = next(inst for inst in doc["instance"] if inst["driver"] == "notification")
@@ -412,8 +345,6 @@ def test_device_infra_fields_present_and_valid(devices_dir: Path, device: str):
 
 
 def test_bmp3xx_only_present_on_wozi_and_dev(devices_dir: Path):
-    # arzi/klkizi/grkizi/schlafzi have no BMP3xx at all (confirmed directly against
-    # modules/sensortask-arzi.py / modules/sensortask-neu.py - neither imports/constructs one).
     for device in DEVICE_NAMES:
         doc = _load(devices_dir, device)
         drivers = {inst["driver"] for inst in doc["instance"]}
@@ -421,9 +352,7 @@ def test_bmp3xx_only_present_on_wozi_and_dev(devices_dir: Path):
 
 
 def test_klkizi_grkizi_schlafzi_share_identical_wiring(devices_dir: Path):
-    # Currently identical hardware to each other (README.md/BUILD_CHAIN_PLAN.md) - only device
-    # identity (name/hostname) may differ between the three, everything else (buses, instances)
-    # must be byte-for-byte identical.
+    # Only device identity (name/hostname) may differ; everything else must be byte-for-byte identical.
     docs = {name: _load(devices_dir, name) for name in ("klkizi", "grkizi", "schlafzi")}
     for doc in docs.values():
         del doc["device"]["name"]
@@ -432,12 +361,9 @@ def test_klkizi_grkizi_schlafzi_share_identical_wiring(devices_dir: Path):
     assert bodies[0] == bodies[1] == bodies[2]
 
 
-# --- error-handling tests: each check above must actually fire on bad input, not just stay -------
-# --- silent because the 6 real files happen to be clean ------------------------------------------
+# --- error-handling tests: each check above must actually fire on bad input ----------------------
 
-# A minimal, otherwise-valid single-device doc that every negative test starts from and mutates
-# just enough to trigger exactly one violation - built from wozi's own real shape so every check's
-# "everything else about this doc is fine" assumption holds.
+# A minimal, otherwise-valid single-device doc; each negative test mutates it to trigger one violation.
 _BASE_DOC: dict = {
     "device": {
         "name": "Test",
@@ -476,8 +402,7 @@ def _base_doc() -> dict:
 
 
 def test_base_doc_fixture_itself_passes_every_check():
-    # Guards the negative tests below against a broken fixture: if this one fails, every "does the
-    # check correctly detect a violation" test downstream is meaningless.
+    # Guards the negative tests below against a broken fixture.
     doc = _base_doc()
     check_bus_tables_declare_their_required_wire_pins(doc, "base")
     check_every_instance_referencing_a_bus_uses_a_declared_bus(doc, "base")
@@ -591,8 +516,6 @@ def test_detects_notification_wiring_referencing_a_nonexistent_instance():
 
 
 def test_allows_a_notification_signal_getter_to_be_entirely_absent():
-    # The default-disables-the-signal mechanism (BUILD_CHAIN_PLAN.md's "Device TOML schema",
-    # 2026-09-09): omitting a per-signal getter must not be an error, unlike signal_sink itself.
     doc = _base_doc()
     del doc["instance"][4]["wiring"]["warn_hum"]
     check_notification_signal_wiring_resolves_if_present(doc, "base")  # must not raise
@@ -649,9 +572,7 @@ def test_detects_two_instances_sharing_an_address_on_the_same_bus():
 
 
 def test_allows_the_same_address_on_two_different_buses():
-    # Per-bus address exclusivity is scoped, not global (BUILD_CHAIN_PLAN.md's own "Build/
-    # generator script quality bar") - the same address value on two different buses must not
-    # false-positive.
+    # Per-bus address exclusivity is scoped, not global.
     doc = _base_doc()
     doc["instance"].append({"driver": "bmp3xx", "name_ext": "", "bus": "i2c1", "address": 0x77})
     doc["instance"].append({"driver": "bmp3xx", "name_ext": "second", "bus": "i2c0", "address": 0x77})
@@ -708,8 +629,7 @@ def test_detects_device_infra_field_wrong_type():
 
 
 def test_allows_fram_wiring_to_be_entirely_absent_on_any_instance():
-    # The degree of freedom the project owner explicitly asked for: some instances may be wired to
-    # FRAM and others not, on the same device.
+    # Some instances may be wired to FRAM and others not, on the same device.
     doc = _base_doc()
     del doc["instance"][0]["wiring"]["fram_target"]  # scd30
     del doc["instance"][3]["wiring"]["fram_target"]  # neopixel
