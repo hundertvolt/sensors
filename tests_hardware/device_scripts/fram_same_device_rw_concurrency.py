@@ -1,26 +1,6 @@
-"""Isolated-driver device script, flash-tier: FRAM's own same-device concurrency proof - "ongoing
-read, incoming write" (SPECIFICATION.md Part C.8's device-session lock model), the same property
-scd30_same_device_rw_concurrency.py/bmp3xx_same_device_rw_concurrency.py already prove for their
-own chips. FRAM has no NVM write-wear concern at all (unlike SCD30): the real MB85RS2MTA datasheet
-(datasheets/fram/MB85RS2MTA-DS501-00032-3v0-E.pdf p.1) states 10^13 read/write operations per byte
-endurance - even higher-margin than BMP3xx's own "volatile register, no wear at all" reasoning, and
-confirmed from the actual datasheet rather than assumed.
-
-Unlike SCD30/SGP40, FRAM's own get_values()/set_values() require the *caller* to already hold the
-device's own outer Lockable lock (asy_fram_driver.py's own "every real caller only ever reaches
-these through this object's own asy_lock" comment) - so unlike those two scripts, this one wraps
-each logical operation in `async with fram:` itself, matching how AsyFramManager (the real
-production caller) always does.
-
-This bench unit wires FRAM to SPI0 (sck=2, mosi=3, miso=4), CS=GPIO5, a 256KB MB85RS2MTA chip - see
-sensortask_dev.py's own construction comment for the real wiring this mirrors.
-
-Uses the raw FRAM_SPI protocol class directly, never AsyFramManager - same reasoning as the other
-same-device scripts in this group: no ConfigManager/RP2040 flash I/O anywhere in this script, and no
-disturbance to the live system's own real FRAM chunk layout (this script never touches main.py's
-own object graph at all - see harness.py's run_isolated() docstring).
-
-Run via `mpremote run <this> soft-reset`."""
+"""Isolated-driver device script: FRAM's own same-device concurrency proof - "ongoing read, incoming
+write" (SPECIFICATION.md Part C.8). FRAM has no NVM write-wear concern (10^13 ops/byte, datasheets/
+fram/). get_values()/set_values() require the caller to already hold the outer Lockable lock."""
 
 import asyncio
 

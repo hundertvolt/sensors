@@ -1,27 +1,6 @@
-"""Isolated-driver device script, flash-tier: proves the SCD30 device-session lock
-(SCD30_DeviceSession, src/asy_scd30_driver.py) actually serializes two concurrent multi-transaction
-sequences against the SAME device, so they can't interleave and corrupt each other - the real-
-hardware counterpart to SPECIFICATION.md Part C.8's documented model, closing the gap that the
-mock-level tests (tests/test_asy_i2c_driver.py's "asyncio interlock" section) only ever exercise the
-raw bus lock with a synthetic instrumented counter, never a real device's own CRC-8-protected wire
-protocol under genuine concurrent access.
-
-Two coroutines run concurrently against one SCD30_I2C instance for a fixed iteration count each:
-  - reader: repeated read_measurement() (a 2-3 step sequence: data-ready poll, optionally a command
-    write, optionally an 18-byte CRC-8 checked burst read - see asy_scd30_driver.py's own comments).
-  - snapshotter: repeated get_config_snapshot() (5 separate CRC-8 checked register reads held under
-    one device-session lock, per its own torn-read-closing docstring).
-Both paths are CRC-8 protected (crc_checks.py) - if the device-session lock didn't actually
-serialize these two sequences, an interleaved write/read from the other coroutine landing mid-
-sequence would very likely scramble the register-address/response byte framing and trip a CRC
-failure (RuntimeError) or a bus NAK (OSError), not silently succeed. Zero exceptions and every
-reading staying within datasheet-plausible bounds (same bounds as scd30_plausibility_read.py) is the
-proof of no corruption. Read-only throughout - no persisted config is mutated, no restore needed.
-
-This bench unit wires SCD30 to I2C1 (scl=15, sda=14) - see scd30_plausibility_read.py's own
-docstring for the real i2c.scan() confirmation this was checked against.
-
-Run via `mpremote run <this> soft-reset`."""
+"""Isolated-driver device script: proves the SCD30 device-session lock serializes two concurrent
+multi-transaction sequences against the SAME device (real-hardware counterpart to SPECIFICATION.md
+Part C.8). Both paths are CRC-8 protected, so interleaving corruption would trip a CRC/NAK, not silently succeed."""
 
 import asyncio
 

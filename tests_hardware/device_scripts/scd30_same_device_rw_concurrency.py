@@ -1,36 +1,7 @@
-"""Isolated-driver device script, flash-tier: the ONE and only script in this whole bus-hazard test
-group allowed to issue a real NVM-persisted write to the SCD30 (`set_ambient_pressure()`, which
-doubles as "trigger continuous measurement" - see asy_scd30_driver.py's own comment). Real-hardware
-safety constraint, explicit project-owner direction: the SCD30's own on-chip NVM has a real write-
-wear budget, so this whole test group must write it "not more than once per test suite run" - every
-other real SCD30 setter (measurement interval, temperature offset, altitude, forced recalibration,
-self-calibration) is also NVM-persisted per that same file's own comments, so none of them are used
-anywhere in this bus-hazard test group either, not just this one.
-
-This single write also directly serves the "same-device concurrency: ongoing read, incoming write"
-proof (SPECIFICATION.md Part C.8's device-session lock model) the project owner asked every device
-be covered for: a burst of concurrent read_measurement() calls runs while this one write is issued
-partway through, and the assertion is the same as every other same-device concurrency test in this
-suite - zero exceptions/CRC failures across every read, proving the device-session lock serialized
-the write against the in-flight reads rather than corrupting one of them.
-
-Every OTHER flash-tier script that needs SCD30 producing real fresh data (bus_concurrency_cross_
-device_scd30_sgp40.py, sgp40_general_call_reset_hazard.py, bus_topology_autodetect_and_hazard_
-sweep.py) depends on tests_hardware/flash/conftest.py's own session-scoped
-`scd30_continuous_measurement_triggered` fixture, which runs *this* script exactly once per pytest
-session and never again - see that fixture's own docstring. Continuous measurement, once triggered,
-is real on-chip NVM state that survives every subsequent separate `mpremote run` invocation for the
-rest of the session (and beyond, until explicitly stopped or the chip is reset to factory defaults),
-which is what makes triggering it exactly once here sufficient for the whole test group.
-
-Uses the raw SCD30_I2C protocol class directly, never SCD30_Reader - no ConfigManager, no RP2040
-flash file I/O anywhere in this script (the project owner's second real-hardware caveat: heavy
-write/concurrency testing must exercise the real production driver that does the actual bus
-arbitration/locking, without touching the RP2040's own persisted config storage). SCD30_I2C *is*
-that production driver (the DUT for this whole test group) - SCD30_Reader is the higher config/
-FRAM-owning layer this script deliberately never constructs.
-
-Run via `mpremote run <this> soft-reset`."""
+"""Isolated-driver device script: the ONE script in this test group allowed to issue a real
+NVM-persisted write to the SCD30 (set_ambient_pressure(), doubling as "trigger continuous
+measurement" - real write-wear budget). Also serves the same-device concurrency proof
+(SPECIFICATION.md Part C.8) - see tests_hardware/flash/conftest.py's session-scoped fixture."""
 
 import asyncio
 

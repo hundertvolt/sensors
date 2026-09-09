@@ -31,7 +31,11 @@ Kept completely separate so nothing here can accidentally affect the determinist
   a real GPIO pin is one fixed physical resource and chip fakes and drivers may each construct their
   own `Pin` object for the same id — this is exactly why the two profiles' differing SCD30 IRQ pin
   numbers (8 vs. 11) matter: the chip fake's own `rdy_pin` must be constructed with the same id the
-  real driver's own IRQ `Pin` uses, or a simulated edge never reaches its handler.
+  real driver's own IRQ `Pin` uses, or a simulated edge never reaches its handler. `I2C.log`/
+  `SPI.log` (an ad-hoc introspection aid nothing in `tests/`/`digital_twin/` reads today) is bounded
+  to the most recent 200 entries (`_LOG_MAXLEN`) - an unbounded list here was a real memory leak,
+  found once a run drove enough real transactions for the list's own backing-array growth to need a
+  large contiguous reallocation that failed with a genuine `MemoryError` on a fragmented heap.
 - `_sgp40_chip.py` / `_scd30_chip.py` / `_bmp3xx_chip.py` — one chip fake per sensor, each verified
   against its own datasheet in `datasheets/` for the raw transaction shape and sensible value
   ranges. `_scd30_chip.py`'s RDY pin fires a real rising edge on its own internal measurement-
@@ -39,9 +43,13 @@ Kept completely separate so nothing here can accidentally affect the determinist
   explicit `save_state()`/on-construction load JSON persistence for its five NVM-backed settings
   (see "SCD30 persistence" below) — the same `state_path` design `_fram_chip.py` uses, applied to a
   handful of scalars instead of the whole memory image.
-- `_fram_chip.py` — the MB85RS64V FRAM chip's SPI opcode protocol (WREN/WRDI/RDSR/WRSR/READ/WRITE/
-  RDID), plus explicit `save_state()`/on-construction load JSON persistence (see "FRAM persistence"
-  below).
+- `_fram_chip.py` — the FRAM chip's SPI opcode protocol (WREN/WRDI/RDSR/WRSR/READ/WRITE/RDID), plus
+  explicit `save_state()`/on-construction load JSON persistence (see "FRAM persistence" below).
+  Models both real chips this project ships: wozi's 8KB MB85RS64V (default) and dev's 256KB
+  MB85RS2MTA (`configure_i2c_wiring("dev")` selects it via `rdid_response=`/`size=`) - `machine.py`'s
+  `_wire_spi_device()` picking the wrong one regardless of wiring profile was a real bug (fixed
+  2026-09-04): dev's own `AsyFramManager.setup()` silently failed its device-ID check every twin
+  run, caught and swallowed by its own broad `except Exception`.
 - `unix_port_poll_prewarm.py` — a workaround for a confirmed, real dangling-pointer bug in the
   pinned MicroPython v1.28.0 Unix port's `extmod/modselect.c` (see "Known gaps / follow-ups" below
   for the full account). Called as the first statement of `run_wozi_integration.py`'s and
@@ -179,6 +187,15 @@ finally:
 Omitting `configure_fram_state_path()` (or passing `None`) runs the FRAM twin in-memory only, which
 is what every unit test in `tests/test_digital_twin_fram.py` does by constructing `FramChip`
 directly (that file never goes through `machine.SPI` at all).
+
+**`save_state()`/`_load_state()` stream the memory image in fixed-size chunks (512 bytes / 1024 hex
+chars), never materializing one contiguous string for the whole buffer.** Found via a real
+`MemoryError` during baseline verification: `json.dump({"memory_hex": bytes(self.memory).hex()})`
+needs one contiguous ~2x-size-byte allocation (16385 bytes for a real 0x2000-byte FRAM) - reproduced
+deterministically after a few seconds of the real task supervisor running (real asyncio churn
+fragments the heap) even with ~1.5MB of *total* `gc.mem_free()` still available, since MicroPython's
+GC coalesces freed blocks but never relocates live ones. Chunked reads/writes only ever need one
+small chunk contiguous at a time.
 
 ### SCD30 persistence
 

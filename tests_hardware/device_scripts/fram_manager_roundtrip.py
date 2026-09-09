@@ -1,23 +1,6 @@
-"""Isolated-driver device script, flash-tier gap fix: AsyFramManager/FRAM_SPI (asy_fram_manager.py/
-asy_fram_driver.py) against the real MB85RS2MTA SPI FRAM chip - the "FRAM working at all" gap (no
-automated real-hardware test of this chip existed before this file; the pre-existing reboot-
-persistence tests in flash/test_reboot_persistence.py exercise config_manager's littlefs-backed
-storage, a structurally different mechanism - see that file's own module docstring).
-
-Exercises the real chain a production chunk owner (SystemService, BMP3xx_Reader, SCD30_Reader, ...)
-actually goes through: fram.setup() (a real SPI RDID probe, verifying manufacturer/product ID
-against the datasheet-documented values - see asy_fram_driver.py's _KNOWN_PRODUCT_IDS), get_chunk()
-(the dual-copy/CRC allocator), chunk.write()/chunk.read() (real SPI read/write transactions, CRC8
-add-then-check, dual-copy comparison). A deterministic non-trivial byte pattern (not all-zero/
-all-0xFF) is used so a real round trip is actually being verified, not just "some bytes came back".
-
-This bench unit's FRAM chip is a 256KB MB85RS2MTA at CS=GPIO5, not the deployed wozi unit's 8KB
-MB85RS64V at CS=GPIO1 (dev_legacy/README.md's own wiring table) - confirmed directly against this
-bench's live main.py and a real RDID probe (cs=5 returns the MB85RS2MTA's real product ID bytes
-0x48/0x03 - asy_fram_driver.py's own _KNOWN_PRODUCT_IDS[0x40000]; cs=1 returns nothing on this
-unit).
-
-Run via `mpremote run <this> soft-reset`."""
+"""Isolated-driver device script: AsyFramManager/FRAM_SPI against the real MB85RS2MTA SPI FRAM chip
+- exercises the real chunk-owner chain (fram.setup()'s RDID probe, get_chunk()'s dual-copy/CRC
+allocator, chunk.write()/read()) with a deterministic non-trivial byte pattern."""
 
 import asyncio
 

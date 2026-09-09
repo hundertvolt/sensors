@@ -1,5 +1,6 @@
-"""Regression test for CLAUDE.md's/BACKLOG.md's reset invariant: every deliberate reset goes through SystemService._reboot() (pauses FRAM first, then waits) and WDT() is constructed exactly once, hardcoded, in each device's own sensortask_<device>.py entry-point file (e.g. sensortask_wozi.py, sensortask_dev.py) -
-a new call site anywhere else would reintroduce a not-paused-first reset race or a circumventable watchdog."""
+"""Regression test: every reset goes through SystemService._reboot(), and WDT() is constructed
+exactly once per sensortask_<device>.py entry point - a new call site elsewhere would reintroduce
+a not-paused-first reset race or a circumventable watchdog."""
 
 import os
 

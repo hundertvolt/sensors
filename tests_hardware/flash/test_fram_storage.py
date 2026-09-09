@@ -1,8 +1,6 @@
-"""Flash-tier automated tests, gap fix found on a later audit pass (see tests_hardware/README.md's
-"gaps found and closed" section): real MB85RS64V SPI FRAM chip coverage. Before this file, zero
-automated real-hardware tests referenced AsyFramManager/asy_fram_driver at all - the pre-existing
-reboot-persistence tests (flash/test_reboot_persistence.py) exercise config_manager's littlefs-
-backed storage, a structurally different mechanism from this real external SPI chip."""
+"""Flash-tier automated tests: real MB85RS64V SPI FRAM chip coverage (AsyFramManager/
+asy_fram_driver) - a structurally different mechanism from test_reboot_persistence.py's
+littlefs-backed config storage."""
 
 from __future__ import annotations
 

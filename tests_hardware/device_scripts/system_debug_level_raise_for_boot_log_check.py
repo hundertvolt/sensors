@@ -1,32 +1,7 @@
 """Isolated-driver device script, phase 1/3 for the boot-import-mechanism check
-(tests_hardware/flash/test_reboot_persistence.py::test_boot_import_mechanism_actually_boots_the_real_system).
-
-REAL FINDING this exists to work around: at a low SYSTEM DebugLevel (e.g. this project's own
-production-quiet default, 0), every pr.one()-level boot-chatter line (ConfigManager's "JSON Data in
-config file... found", the per-module CFGMGR_/FRAM announcements the test looks for) is
-unconditionally suppressed (print_log.py: `def one(self, ...): if self.level >= _LOG_ONCE: ...`,
-_LOG_ONCE=3) - confirmed directly against real source, not assumed. Raises the real, persisted
-SYSTEM DebugLevel to 3 (_LOG_ONCE) so the very next real hard_reset()'s boot sequence actually
-emits the lines this test checks for.
-
-SECOND REAL FINDING, fixed: an earlier version of this pair hardcoded "restore to 0" on the way
-back out, which silently undid whatever DebugLevel the board was actually meant to be running at
-for the rest of a real test session - tests_hardware/README.md's own "Known assumptions" entry on
-this documents the whole bench tier needs DebugLevel>=5 to function at all, so a board legitimately
-left at 5 for testing would get clobbered back to 0 by this test alone, breaking every bench test
-that runs after it. Fixed: this script backs up whatever the *real, current* DebugLevel actually is
-(not an assumption) to a dedicated test-only config file before changing anything, so the companion
-script `system_debug_level_restore_after_boot_log_check.py` can restore the exact original value
-afterward, not a hardcoded guess. If the current level is already >= 3, nothing is changed at all
-(the backup is still written, so restore is always a correct no-op/no-change in that case too).
-
-Writes to the real config_SYSTEM.cfg (system_service.py's own production config file) only when a
-change is actually needed - the backup itself uses a dedicated test-only file
-(config_HWTEST_DEBUGLEVEL_BACKUP.cfg), the same "never collide with a real driver's own file"
-convention reboot_persist_write.py already established in this same directory. The SYSTEM schema
-tuple below is hand-copied verbatim from system_service.py's own `_VAL_DEBUG_LEVEL` (a
-`micropython.const()`-wrapped tuple, not importable across modules in a frozen build - see
-SPECIFICATION.md Part F.1)."""
+(test_reboot_persistence.py). Raises SYSTEM DebugLevel to 3 (_LOG_ONCE) so the next hard_reset()'s
+boot-chatter lines actually emit - backs up the real prior value first (never a hardcoded restore
+target) so system_debug_level_restore_after_boot_log_check.py can put it back exactly."""
 
 import asyncio
 

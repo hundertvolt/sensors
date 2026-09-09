@@ -1,56 +1,6 @@
-"""Isolated-driver device script, flash-tier: real-hardware GPIO-level fault injection against
-FRAM's own CS pin - closing BACKLOG.md's FRAM bus-recovery gap without needing the separate
-programmable GPIO fault-injection harness open question 8 flags as "not currently provisioned".
-Project-owner-proposed technique (2026-09-04): the RP2040 already fully owns FRAM's own CS pin as a
-plain, software-toggled machine.Pin (asy_spi_driver.py's SPIDevice.cs_pin - not a peripheral-managed
-hardware-CS line), so a self-contained on-device script can race it directly, no external fault
-hardware needed at all.
-
-**Why a CS race, not a mid-byte interrupt**: confirmed directly against asy_spi_driver.py's real
-source before designing this - SPIDevice.write()/readinto() have no `await` inside their own bodies
-at all (each is `async def` purely for API-shape consistency, calling the real synchronous
-machine.SPI.write()/readinto() with no internal yield point), so two back-to-back
-`await spidev.write(...)` calls within the same `async with self._spidev` block (e.g. FRAM_SPI._write()'s
-own opcode-header-then-data-payload sequence) can never actually be interleaved by another asyncio
-task - MicroPython's cooperative scheduler only switches tasks at a genuine yield. The one real,
-confirmed yield point in this whole call chain is inside SPIDevice.__aenter__() itself:
-`await asyncio.sleep(0.001)`, which runs *after* CS is already asserted but *before* control ever
-returns to the caller to send the opcode. Both hijack scenarios below race exactly that window: a
-second task, already scheduled and ready to run the instant the first one yields, forces CS back
-high before the real operation's opcode/data ever gets clocked out - the real SPI peripheral has no
-protocol-level awareness of CS state at all (confirmed against asy_spi_driver.py's own header
-comment: "real RP2040 SPI transfers have no ACK/NAK concept... write()/readinto() never raise"), so
-the operation "succeeds" completely silently from the driver's own perspective while the chip,
-correctly deselected per its own datasheet ("When CS is 'H' level, device is in deselect (standby)
-status... Inputs from other pins are ignored" - datasheets/fram/MB85RS2MTA-DS501-00032-3v0-E.pdf
-p.2), never receives or transmits a single real bit of it.
-
-**Confirmed empirically, not assumed (2026-09-04, this exact bench unit)**: 5/5 real trials of each
-scenario landed identically every time - this is a *deterministic* race, not a flaky timing gamble,
-because MicroPython's asyncio scheduler is cooperative and the synchronization below (cs_yanker does
-exactly one `await asyncio.sleep(0)` before acting, guaranteeing it's next-in-line the instant
-victim_writer/victim_reader yields inside __aenter__) depends on scheduling *order*, not wall-clock
-timing luck. Both outcomes below are therefore asserted as hard, unconditional requirements, not
-soft/observational - a race that silently missed its window must fail this script loudly, per the
-project owner's own explicit direction, not be reported as a shrugged-off alternate outcome:
-  - **Write hijack**: the write must never reach the chip at all - real memory at the target address
-    must show the *original* data, completely unchanged, after the race. (Confirmed real outcome:
-    the write silently "succeeds" from the driver's own perspective - no exception - while genuinely
-    changing nothing.)
-  - **Read hijack**: the returned data must NOT be the real, correct value - a coincidentally
-    "sensible" result here would mean the race didn't actually intercept anything.  (Confirmed real
-    outcome, 5/5 trials: the buffer comes back all zero bytes, never a raised exception and never
-    the real seeded pattern - MISO's real electrical state while the chip's own SO pin is high-Z
-    during deselect, not a driver-level error.)
-
-Both scenarios end with the same two-part recovery proof: verify_present() must succeed cleanly (the
-chip's own SPI protocol state machine must never be left wedged by a CS-based interruption - it's
-the protocol's own built-in deselect/reset mechanism, not an exotic fault), and a completely fresh
-write+read round trip at a different address must work normally afterward too.
-
-This bench unit wires FRAM to SPI0 (sck=2, mosi=3, miso=4), CS=GPIO5, a 256KB MB85RS2MTA chip.
-
-Run via `mpremote run <this> soft-reset`."""
+"""Isolated-driver device script: real-hardware GPIO-level fault injection against FRAM's CS pin -
+races CS deassertion against an in-flight write/read (no external fault hardware needed - the
+RP2040 already owns CS as a software-toggled Pin). See tests_hardware/README.md's FRAM CS-hijack finding."""
 
 import asyncio
 
@@ -73,9 +23,8 @@ _POST_RECOVERY_PATTERN = bytes(range(0x40, 0x50))
 
 async def _cs_yank_race(fram: FRAM_SPI, victim: "object") -> bool:
     """Shared race harness for both scenarios below. Returns whether the yanker actually ran before
-    the victim's own __aenter__ sleep elapsed - a cheap, necessary-but-not-sufficient sanity check;
-    the real proof each caller relies on is its own outcome-based assertion afterward, per this
-    script's own module docstring."""
+    the victim's own __aenter__ sleep elapsed - necessary but not sufficient; each caller's own
+    outcome-based assertion afterward is the real proof."""
     cs_forced_high_early = False
 
     async def cs_yanker() -> None:
@@ -144,9 +93,8 @@ async def _main() -> None:
         async with fram:
             write_readback = bytearray(16)
             write_readback_ok = await fram.get_values(write_readback, addr_start=_WRITE_RACE_ADDR)
-        # HARD requirement (project owner direction, 2026-09-04): the hijacked write must never
-        # have reached the chip - anything else means the race missed its window and this script
-        # tested nothing real.
+        # Hard requirement: the hijacked write must never have reached the chip - anything else
+        # means the race missed its window and this script tested nothing real.
         if not write_readback_ok or bytes(write_readback) != _ORIGINAL_PATTERN:
             failures.append(
                 f"write hijack: expected original data {_ORIGINAL_PATTERN.hex()} untouched (write_raised={write_raised!r}), "
@@ -177,13 +125,9 @@ async def _main() -> None:
         if not yanker_ran:
             failures.append("read hijack: cs_yanker() never actually ran before victim_reader() completed - race did not land, nothing was tested")
         else:
-            # HARD requirement (project owner direction, 2026-09-04): a hijacked read must never
-            # return the real, correct data - either it raises, or it comes back implausible/wrong.
-            # A "sensible", correct-looking result here would mean the race missed its window.
-            # Confirmed real outcome on this bench unit (5/5 trials): never raises, always comes
-            # back all zero bytes (MISO's real electrical state while the chip's own SO pin is
-            # high-Z during deselect) - not asserted as that *exact* value, since a different
-            # unit/wiring could float differently, only that it must not equal the real data.
+            # Hard requirement: a hijacked read must never return the real, correct data - a
+            # "sensible" result here would mean the race missed its window. Not asserted against a
+            # specific wrong value (a different unit could float differently on a deselected MISO).
             if read_raised is None and bytes(hijacked_read_buf) == _READ_SEED_PATTERN:
                 failures.append(f"read hijack: got back the real seeded data {_READ_SEED_PATTERN.hex()} with no exception - the race did not reliably intercept the read")
         wdt.feed()

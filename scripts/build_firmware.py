@@ -3,35 +3,9 @@
 # requires-python = ">=3.11"
 # dependencies = []
 # ///
-"""Assembles a real, deployable firmware.uf2 from src/ + ext/microdot.py + the real website
-(scripts/build_website.sh) for one device (SPECIFICATION.md Part B.11). This script's own
-automated checks (this module's own docstring used to say so) are build-only - "compiles clean and
-produces a firmware.uf2", not an on-device functional check - but `tests_hardware/flash/
-test_toolchain_flash_boot.py::test_real_uf2_reflash_and_boot_smoke_test` (gated behind
-`--allow-flash-cycle`, a deliberate real flash cycle) DOES exercise this script's own output on
-real hardware, and the first time it actually ran (this session) it immediately caught a real bug
-here - see build_stage_dir()'s own comment for the full account (a UF2 that "built clean" per this
-script's own checks left the board unable to mount its filesystem or run any application at all).
-Treat this script's own success as necessary, not sufficient, for a real device to actually boot.
-
-What gets frozen: each device's boot_entry/<device>_boot.py content is frozen under the literal
-name "main.py", NOT imported from a custom _boot.py - this is load-bearing, not a style choice
-(confirmed directly against the pinned v1.28.0 source): `ports/rp2/main.c`'s own boot sequence is
-`pyexec_frozen_module("_boot.py", ...)` -> `pyexec_file_if_exists("boot.py")` -> `mp_usbd_init()` ->
-`pyexec_file_if_exists("main.py")` - USB is only initialized *after* the frozen `_boot.py` module
-call *returns*. A `_boot.py` that blocks forever (as this script used to do, importing
-`{device}_boot` from inside a custom `_boot.py` whose own `asyncio.run(main())` never returns)
-means USB never initializes at all, on every real hard reset - independently confirmed as a known,
-documented rp2-port behavior via `micropython/micropython#15230` (upstream maintainer: "after a
-hard reset USB isn't initialised until after boot.py finishes running... put the program in
-main.py instead of boot.py"). `pyexec_file_if_exists()` checks the frozen module table before the
-filesystem (`shared/runtime/pyexec.c`), so freezing `<device>_boot.py`'s content under "main.py" is
-picked up automatically with no custom `_boot.py` needed at all - this script now reuses the
-board's default manifest.py unchanged (same as every other device's stock boot sequence), rather
-than re-stating its `require()`s by hand. This repo's own top-level modules/_boot.py is never read,
-copied from, or touched by this script, per CLAUDE.md's hard rule - unaffected either way, since
-the stock manifest freezes the *port's* `ports/rp2/modules/_boot.py`, not this repo's own file of
-the same name.
+"""Assembles a real, deployable firmware.uf2 from src/ + ext/microdot.py + the real website for one
+device (SPECIFICATION.md Part B.11, including why boot_entry/<device>_boot.py is frozen under the
+literal name "main.py"). A clean build is necessary, not sufficient, for a device to actually boot.
 
 Usage (from anywhere, via uv):
 
@@ -159,24 +133,10 @@ def main() -> int:
         manifest_path = tmp_path / "manifest.py"
         manifest_path.write_text(_MANIFEST_TEMPLATE.format(board=board, stage_dir=str(stage_dir)))
 
-        # st.build_firmware() already wipes ports/rp2/build-{board} unconditionally before every
-        # call (its own shutil.rmtree()) - the one directory that doesn't self-clean per build is
-        # mpy-cross's own build/ (st.build_mpy_cross() relies on make's incremental rebuild
-        # instead, same as toolchain/setup_toolchain.py's own default flow). Wiped here too so a
-        # firmware build never depends on a previous session's mpy-cross artifacts.
-        #
-        # REAL FINDING, confirmed via CI (firmware-build-verify): wiping mpy-cross/build/ alone,
-        # without an explicit rebuild, breaks the rp2 port's own BUILD_FROZEN_CONTENT step - it
-        # invokes mpy-cross as an implicit sub-build to cross-compile the frozen manifest, which
-        # (from a wiped build/ dir specifically) fails to regenerate `mp_qstr_frozen_const_pool`,
-        # a linker error ("undefined reference to `mp_qstr_frozen_const_pool'") that only surfaces
-        # here, never in a plain `st.build_mpy_cross()` standalone call. st.clean_build_dirs()
-        # never hits this: every one of its callers immediately follows it with a full setup() that
-        # explicitly calls st.build_mpy_cross() again (its own step 2) before anything else ever
-        # touches mpy-cross - the earlier comment here ("mirrors st.clean_build_dirs()'s own
-        # handling") only mirrored the wipe half of that pattern, not the required rebuild half.
-        # Fixed the same way: rebuild mpy-cross explicitly, through the same already-proven
-        # st.build_mpy_cross() path, right after wiping it and before it's ever needed again.
+        # mpy-cross's own build/ doesn't self-clean per build (unlike ports/rp2/build-{board}), so
+        # it's wiped here too - but must be explicitly rebuilt right after, not left to the rp2
+        # port's own implicit sub-build, which fails from a freshly-wiped dir (see SPECIFICATION.md
+        # Part B.11's mpy-cross-rebuild finding).
         mpy_cross_build_dir = micropython_dir / "mpy-cross" / "build"
         if mpy_cross_build_dir.exists():
             log(f"Cleaning {mpy_cross_build_dir} before rebuilding")

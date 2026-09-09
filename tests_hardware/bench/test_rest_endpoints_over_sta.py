@@ -1,13 +1,6 @@
-"""Bench-tier automated tests, gap fix found on a later audit pass (see tests_hardware/README.md's
-"gaps found and closed" section): the real website and a real multi-sensor value-sanity check, both
-served over the *normal* STA/bridge network path. Before this file, the only "GET /" check anywhere
-in this tier was inside test_hotspot_role_reversal.py's hotspot-mode-only scenario, and no test
-anywhere checked GET /measurements' actual sensor *values* across all three sensors together (only
-HTTP status/shape - see test_end_to_end_timing.py's own concurrent-burst test, and BACKLOG.md/
-asy_webserver_service.py's own _get_measurements()/_get_sensors() docstring for the flat-dict shape
-this relies on). Bounds mirror the flash-tier isolated-driver plausibility scripts' own datasheet-
-sourced bounds (device_scripts/{scd30,bmp3xx,sgp40_voc_algorithm_quality}*.py) - loose plausibility,
-not exact-reference calibration."""
+"""Bench-tier automated tests: the real website and a real multi-sensor value-sanity check over
+the *normal* STA/bridge network path (see tests_hardware/README.md). Bounds mirror the flash-tier
+isolated-driver plausibility scripts' own datasheet-sourced bounds - loose plausibility, not exact-reference calibration."""
 
 from __future__ import annotations
 

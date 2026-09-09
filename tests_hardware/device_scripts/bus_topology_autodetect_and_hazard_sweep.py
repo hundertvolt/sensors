@@ -1,36 +1,6 @@
-"""Isolated-driver device script, flash-tier: live-detects this real board's actual I2C topology
-(never assumes it - a real bench's wiring can drift from any declared registry) and, driven purely
-by what it actually finds, runs the "closest possible simulation" hazard checks the project owner
-asked for when a real second device isn't physically present to prove interference against:
-
-1. **Address/command sweep** - every known device address (KNOWN_ADDRESSES below, mirroring
-   tests_hardware/bus_topology.py's own KNOWN_ADDRESSES - keep the two in sync) is probed directly
-   on every bus, whether or not it was actually discovered there by scan() - proving the real bus
-   master (asy_i2c_driver.I2C/the RP2040 hardware I2C peripheral) handles an address for a
-   *declared-but-physically-absent* device with a clean NAK/OSError, never a hang. This is exactly
-   "the bus master starting a transaction with a device using its address although the device is
-   not present" the project owner asked for.
-2. **Reserved-range sweep** - every I2C-spec-reserved address (0x00-0x07, 0x78-0x7F) is probed on
-   every bus too, confirming the bus master survives addressing them cleanly (general call 0x00
-   included - already covered in depth by sgp40_general_call_reset_hazard.py; this sweep's own job
-   is the *other* seven reserved addresses, which nothing else in this tier ever touches).
-3. **Self-hazard, single-device-bus case** - for any bus where scan() finds exactly one KNOWN
-   device (this bench's real i2c0/BMP3xx-alone case today), that device's own real reads run
-   concurrently with a rogue general-call broadcast loop issued directly by this script (not by any
-   real SGP40 - there may be none on this bus) - "issuing rogue broadcasts mid-transaction" even
-   with no second real device to observe corruption in: the device under test observing its *own*
-   read survive is the proof. Real-hardware counterpart of tests/test_bus_hazard_multi_device.py's
-   own test_general_call_absent_sibling_bmp3xx_alone_on_the_bus_survives_a_broadcast_too.
-
-**Auto-detection, not hardcoded assumptions**: this script never assumes which bus has which
-device - it scans first, classifies what it finds, and adapts. Add a new device to
-KNOWN_ADDRESSES/_read_once_handlers below when a new bus-facing driver is promoted to src/ (see
-tests_hardware/bus_topology.py's own "Standing rule") - everything else here already generalizes.
-
-SCD30 NVM-write budget: this script only ever *reads* SCD30 (never a setter) - see
-scd30_same_device_rw_concurrency.py's own docstring for the one write this whole test group makes.
-
-Run via `mpremote run <this> soft-reset`."""
+"""Isolated-driver device script: live-detects this board's actual I2C topology and runs an
+address/command sweep, a reserved-address-range sweep, and (for a lone known device on a bus) a
+self-hazard broadcast-vs-read check. Keep KNOWN_ADDRESSES in sync with tests_hardware/bus_topology.py."""
 
 import asyncio
 

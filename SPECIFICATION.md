@@ -715,6 +715,12 @@ settings (no live telemetry in any of them).
     entry per registered module plus one per `ConfigManager` instance, `CFGMGR_<name>` — `"counter"`
     always present, `"history"` present exactly when that logger persists `ErrNum`/`ErrType`
     entries).
+- **Real production bug, found and fixed**: `_get_measurements()`/`_get_sensors()` must build their
+  result with `.update()`, never `result[name] = await module.get_dict_data()` — every real driver's
+  `get_dict_data()`/`get_dict_cfg()` already returns a `{name: {...}}`-shaped dict keyed by its own
+  name, so indexing by name on top of that doubled it into `{"SCD30": {"SCD30": {...}}}` for every
+  sensor on real hardware. Masked in tests by `_FakeModule`'s already-flat fake return shape; found
+  via a real user report, not caught by any test at the time.
 - **PUT shapes** — one sparse JSON body per endpoint, no `cmd` envelope: any field present is
   applied, any field/sub-object omitted is left untouched, unknown fields are silently ignored
   (`ConfigManager.write_config()`/`_set_dict_cfg()`'s existing per-key tolerance, extended to be the
@@ -2344,6 +2350,13 @@ and its config read-back comes back silently wrong/empty.
   per-class one. This aggregation has since landed: see A.8 above for `/status`'s `errcount`
   sub-structure, which folds every registered module's (and every `ConfigManager`'s) own logger
   into one response.
+- **Real bug, found and fixed**: `DNSServer`'s own `pr.setup()` must be called explicitly —
+  `asy_wifi_service.py`'s `wlan_connect()` calling `self.pr.setup()` for its own logger doesn't cover
+  `self.dns_server.pr`, a separate `PrintLogHistory` instance. Without it, every
+  `dns_server.pr.err_s()`/`wrn_s()` call degraded to `"PrintLog: Uninitialized, call setup first!"`
+  forever, never actually logging/persisting — affects real hardware falling back to hotspot mode,
+  not twin-specific. Fixed by calling `await self.dns_server.pr.setup()` before `dns_server.run()` is
+  ever started.
 - **Silent-failure-masking convention: a teardown/cleanup method on a class with no logger of its
   own must return `bool` (success/failure), not `None`, so its caller — which does have a
   logger — can observe and log the failure instead of a bare `except Exception: pass` silently
@@ -3714,6 +3727,18 @@ this Part — see this document's front matter for that tradeoff.
     reasoning those comments exist for), but genuinely worth knowing before treating an on-device
     traceback's line number as a literal `src/` line number - re-derive the real line via the same
     strip (`python3 -c "..." strip_type_checking_blocks(...)`) instead of assuming a 1:1 mapping.
+- **`asyncio.run()`'s `KeyboardInterrupt` handling has a real gap while every task is parked in the
+  scheduler's own poll wait, confirmed directly against the pinned v1.28.0 Unix port**:
+  `extmod/asyncio/core.py`'s `run_until_complete()` only catches `(CancelledError, Exception)` in
+  its scheduler loop — `KeyboardInterrupt` is a `BaseException`, not an `Exception` subclass, so a
+  real SIGINT delivered while every task is parked in `_io_queue.wait_io_event()` (the common
+  "serving forever, Ctrl-C to stop" state) propagates straight out of `asyncio.run()` without ever
+  resuming/unwinding the suspended coroutine frame — any `try`/`finally` cleanup inside it never
+  runs. `digital_twin/run_wozi_integration.py`/`run_dev_integration.py`'s own `__main__` blocks work
+  around this by re-running the same cleanup (`machine.flush_fram()`/`flush_scd30()`) from plain
+  synchronous code in an outer `except KeyboardInterrupt:`, which the module-level chip singletons
+  these read don't need an event loop to reach — harmless as a no-op if the coroutine's own
+  `finally` already ran (an interrupt landing mid-bytecode-execution instead of parked).
 - **Always check current MicroPython and Microdot documentation before asserting how an API
   behaves** — do not rely on training-data memory for either. This has already caught real
   discrepancies once; treat it as a standing requirement for every session, not a one-time step.
@@ -3820,6 +3845,19 @@ through the real object graph). Was tracked as BACKLOG.md's own open question 6 
 was completed and the item closed there (2026-09-08) — this Part is now its permanent, self-contained
 home; BACKLOG.md keeps only a closed pointer, for the several `tests_hardware/`/`tests/` code
 comments that still cite it by that number.
+
+**`network.STAT_GOT_IP` is not STA-only — an AP interface reports it too, confirmed directly
+against the pinned MicroPython/cyw43-driver C source**: `extmod/network_cyw43.c`'s `.status()` is
+one generic function for both AP and STA interfaces, and `cyw43_lwip.c`'s
+`cyw43_tcpip_link_status()` returns `CYW43_LINK_UP` (numerically 3, same value as
+`network.STAT_GOT_IP`) for *any* interface whose netif has a bound IPv4 address — an AP's own
+self-assigned address counts just as much as a STA interface's DHCP-leased one. Consequence for
+`asy_wifi_service.py`'s `_run_hotspot_mode()`: its `status != network.STAT_GOT_IP` branch (which
+calls `_configure_hotspot_ap()`) is only true on the first tick after entering hotspot mode — once
+the AP is up, `wlan.status()` reports `STAT_GOT_IP` and every subsequent tick takes the
+`_manage_hotspot_stations()` branch instead, matching real bench logs. `_configure_hotspot_ap()`'s
+own `if not self.wlan.active():` guard against redundant reconfiguration is kept as low-risk defense
+in depth regardless, not because this fact points to any specific observed flakiness.
 
 **This backstop is inherently safe, confirmed directly against the code, not assumed**: every real
 `ConfigManager.write_config()` call in `src/` is reachable only through the REST PUT path
@@ -4648,6 +4686,17 @@ build their existing small `result` dict exactly as before (this loop itself was
 risk) and route it through this one function instead of returning it directly. `/status` itself is
 untouched — its own sub-sections need their own per-fragment dumps before coalescing (module-scoped
 data, not one flat dict already assembled), so `_build_status_pieces()` stays exactly as it was.
+
+**Why byte-budget batching, not per-module or per-section, for `/status`'s own "sensors"/"errcount"
+sections**: one piece for the whole section (the original design) scales with real module count (17
+on real hardware), reaching ~4.9KB — almost as large as the pre-streaming ~5.7KB whole-aggregate
+`MemoryError` this redesign exists to avoid. One piece per module instead would fix that, but would
+push the transmitted piece count up to ~module-count, close to the ~20-piece count already measured
+(Part F.1) to cause a real +53% throughput regression, since `WebserverService._serve()` wraps every
+single stream write in its own `asyncio.wait_for()` (`_TimeoutStreamProxy`) — fragmenting one response
+into ~20 pieces multiplies that fixed per-call overhead by ~20. Batching by a byte budget instead of
+module count bounds both at once: each piece stays well under any size ever observed to fail, and the
+piece count stays low regardless of how many modules are registered.
 
 **`_MAX_STATUS_PIECE_BYTES = 1024`'s real headroom, confirmed on real target hardware (2026-09-08)**:
 a temporary on-device probe (attempting a real `bytearray()` allocation at each of a descending list

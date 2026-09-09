@@ -1,21 +1,14 @@
 """Construction/wiring tests for sensortask_dev.py's build_system() - full parity with
-tests/test_sensortask_wozi.py's own coverage (DEV_HARDWARE_BASELINE_PLAN.md decision 6), adapted to
-the dev bench's own pins/FRAM size. See SPECIFICATION.md Part A.7 for the general
-construction-order/FRAM-chunk-order/setup-batch/dependency-graph reference this file verifies
-against - sensortask_dev.py mirrors sensortask_wozi.py's own shape exactly, just wired differently.
-Also covers the webserver's own real wiring (a real Microdot() app + WebserverService, every module's
-registrations) - deep per-route behavior stays tests/test_asy_webserver_service.py's job; this file
-only checks the real driver objects were registered correctly."""
+tests/test_sensortask_wozi.py's own coverage, adapted to the dev bench's pins/FRAM size (see
+SPECIFICATION.md Part A.7 for the shared construction-order/FRAM-chunk/setup-batch reference)."""
 
 import asyncio
 import json
 import os
 import sys
 
-# Same convention as tests/test_asy_webserver_service.py's own module docstring: scripts/test.sh's
-# MICROPYPATH deliberately excludes ext/, and sensortask_dev now transitively imports microdot
-# (via asy_webserver_service.py) - extending sys.path here reaches the real, vendored
-# ext/microdot.py without touching MICROPYPATH/pyproject.toml/scripts/test.sh.
+# scripts/test.sh's MICROPYPATH excludes ext/; sensortask_dev transitively imports microdot, so
+# this reaches the real vendored ext/microdot.py without touching MICROPYPATH.
 sys.path.insert(0, "ext")
 
 import machine  # noqa: E402
@@ -44,16 +37,9 @@ if TYPE_CHECKING:
 
 
 class _FakeMB85RS2MTA(FakeMB85RS64V):
-    # The dev bench's real FRAM chip (dev_legacy/README.md's wiring table) is a 256KB MB85RS2MTA,
-    # not wozi's 8KB MB85RS64V - FakeMB85RS64V's own default rdid_response models the 8KB chip's
-    # real ID (product ID bytes 0x03, 0x02), which would mismatch this variant's own
-    # max_size=0x40000 -> expected product ID 0x4803 lookup (asy_fram_driver.py's
-    # _KNOWN_PRODUCT_IDS) and push every FRAM-backed module into degraded (uninitialized) mode by
-    # default. Real hardware finding (SPECIFICATION.md Part C.3.1): MB85RS2MTA reports product ID
-    # bytes 0x48, 0x03. tests/test_asy_fram_driver.py's own make_fram() reuses the same base fake
-    # and overrides rdid_response by hand after construction for its max_size=0x40000 cases - not
-    # possible here, since sensortask_dev.build_system() constructs the chip internally with no
-    # post-construction hook before its own setup() batch runs, hence this small subclass instead.
+    # dev's real FRAM chip is a 256KB MB85RS2MTA (product ID 0x48 0x03, SPECIFICATION.md Part
+    # C.3.1), not wozi's 8KB MB85RS64V the base fake models by default. A subclass, not a
+    # post-construction override, since build_system() constructs the chip with no such hook.
     def __init__(self, *args: "Any", **kwargs: "Any") -> None:
         super().__init__(*args, **kwargs)
         self.rdid_response = bytes([0x04, 0x7F, 0x48, 0x03])
@@ -75,19 +61,15 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to complet
 
 
 def status_body(res: "Any") -> bytes:
-    # GET /status streams from a plain list of already-json.dumps()-encoded fragments now (see
-    # asy_webserver_service.py's _get_status()/_build_status_pieces()) - drains it the way a real
-    # client naturally would, so every existing json.loads(...) assertion on a GET /status response
-    # keeps working unchanged.
+    # GET /status streams from a list of already-json.dumps()-encoded fragments; drain it back
+    # into one body so existing json.loads(...) assertions keep working unchanged.
     return drain_json_response_body(res.body)
 
 
 # ---------------------------------------------------------------------------
-# Per-test config-file isolation - same pattern as test_sensortask_wozi.py's own _tmp_cfg_dir():
-# build_system() constructs five real ConfigManager-backed modules (conn, ntp, sgp_reader,
-# bmp_reader, notify_service), each of which writes/reads a real config_<NAME>.cfg file at its
-# cfg_path - repeated calls across test_* functions in this one process must not collide on the
-# same files, and must not touch the real repo-root config files either.
+# Per-test config-file isolation, same pattern as test_sensortask_wozi.py's own _tmp_cfg_dir(): the
+# five real ConfigManager-backed modules build_system() constructs must not collide across test_*
+# functions in this one process, nor touch the real repo-root config files.
 # ---------------------------------------------------------------------------
 
 _TMP_DIR = "tests/_tmp"
@@ -136,10 +118,8 @@ def _tmp_cfg_dir() -> str:
 
 
 # ---------------------------------------------------------------------------
-# _sweep_stale_tmp_dirs() itself - regression coverage for the actual bug (a later
-# scripts/test.sh run silently reusing an earlier run's persisted config files), not just a
-# re-assertion of the pre-existing "config write applies" expectation the FAIL output already
-# covered indirectly. See _sweep_stale_tmp_dirs()'s own comment above for the full root-cause story.
+# _sweep_stale_tmp_dirs() itself - regression coverage for the stale-persisted-config-reuse bug
+# its own comment above describes.
 # ---------------------------------------------------------------------------
 
 
@@ -223,12 +203,9 @@ def test_build_system_constructs_every_legacy_named_module() -> None:
 
 
 def test_scd30s_own_i2c_bus_uses_a_clock_stretch_timeout_wide_enough_for_it() -> None:
-    # SCD30 documents up to 150ms of clock stretching once per day for internal calibration
-    # (datasheets/scd30/..._Interface_Description.pdf p.2) - rp2's own I2C timeout default is
-    # 50ms (DEFAULT_I2C_TIMEOUT, ports/rp2/machine_i2c.c), so whichever bus SCD30 sits on must
-    # override it or that expected stretch surfaces as a spurious OSError roughly once a day.
-    # Looked up through scd_reader itself (not assumed to be any particular bus) - dev wires SCD30
-    # to i2c1 (wozi: i2c0) - this test stays correct either way.
+    # SCD30 documents up to 150ms clock stretching once a day (datasheet p.2); rp2's I2C timeout
+    # default is 50ms, so SCD30's bus must override it or that stretch surfaces as a spurious
+    # OSError. Looked up via scd_reader itself so this stays correct regardless of which bus.
     run(sensortask_dev.build_system(cfg_path=_tmp_cfg_dir()))
     assert sensortask_dev.scd_reader is not None
     scd_bus = sensortask_dev.scd_reader.scd.i2c_scd30.i2c_device.i2c
@@ -277,13 +254,9 @@ def test_build_system_web_host_and_port_are_overridable() -> None:
 
 
 def test_main_forwards_web_host_and_port_to_build_system() -> None:
-    # main() itself (not just build_system()) must accept and forward the override - the real
-    # entry point calls sensortask_dev.main(), never build_system() directly. Fakes
-    # start_timers()/ntp_force_sync()/start_and_check_tasks() the same way
-    # test_main_calls_start_timers_then_force_sync_then_start_and_check_tasks_in_order() already
-    # does, and for the same reason (see that test's own comment): start_timers()'s real
-    # Timer-sequencing chain never completes under tests/machine.py's fake, which only fires
-    # Timer callbacks via manual .trigger() - awaiting it for real here would hang.
+    # main() (the real entry point) must forward the override too, not just build_system(). Fakes
+    # start_timers()/ntp_force_sync()/start_and_check_tasks() since start_timers()'s real
+    # Timer-sequencing chain never completes under tests/machine.py's manual-.trigger()-only fake.
     from asy_ntp_client import AsyNtpClient
     from system_service import SystemService
 
@@ -315,9 +288,8 @@ def test_main_forwards_web_host_and_port_to_build_system() -> None:
 
 
 # ---------------------------------------------------------------------------
-# FRAM chunk order - seven chunks, exact relative sequence. Doesn't need to match wozi's own
-# sequence (DEV_HARDWARE_BASELINE_PLAN.md decision 3) - only needs to stay stable across rebuilds
-# of this same file, which sensortask_dev.py achieves by mirroring wozi's own construction order.
+# FRAM chunk order - seven chunks, exact relative sequence, stable across rebuilds by mirroring
+# wozi's own construction order.
 # ---------------------------------------------------------------------------
 
 
@@ -344,19 +316,15 @@ def test_fram_chunk_allocation_order_matches_the_documented_seven_chunk_sequence
         AsyFramManager.get_chunk = real_get_chunk  # type: ignore[method-assign]
         AsyFramManager.get_timestamped_chunk = real_get_timestamped_chunk  # type: ignore[method-assign]
 
-    # SystemService(chunk) -> SGP40 own log(chunk) -> SGP40 VOC backup(timestamped) ->
-    # BMP3xx_Reader(chunk) -> SCD30_Reader(chunk) -> NeopixelDriver(chunk) ->
-    # NotificationCoordinator(chunk), in that order, unconditionally - same order as
-    # sensortask_wozi.py's own build_system() (mirrored deliberately, see that module's own
-    # comment - not a hard requirement, just the simplest choice for an identical sensor set).
+    # SystemService -> SGP40 log -> SGP40 VOC backup(timestamped) -> BMP3xx -> SCD30 -> Neopixel ->
+    # NotificationCoordinator, matching sensortask_wozi.py's own build_system() order.
     assert calls == ["chunk", "chunk", "timestamped", "chunk", "chunk", "chunk", "chunk"]
 
 
 def test_fram_chunks_are_all_successfully_allocated_not_out_of_memory() -> None:
     run(sensortask_dev.build_system(cfg_path=_tmp_cfg_dir()))
-    # Every FRAM-chunk-owning module's own PrintLogHistoryStore/AsyFramTimestampedChunk degrades to
-    # in-memory-only on allocation failure rather than raising (base_classes.py's own contract) -
-    # assert the happy path actually got real FRAM-backed chunks, not a silently-degraded one.
+    # Each chunk-owning module degrades to in-memory-only on allocation failure rather than
+    # raising; assert the happy path actually got real FRAM-backed chunks, not a silent degrade.
     assert sensortask_dev.sysfunct is not None
     assert sensortask_dev.sgp_reader is not None
     assert sensortask_dev.bmp_reader is not None
@@ -387,11 +355,9 @@ class _DeadFramChip(_FakeMB85RS2MTA):
 
 
 def test_build_system_never_insists_on_fram_hardware_being_available() -> None:
-    # Owner requirement: no module may insist on FRAM availability - every currently FRAM-backed
-    # error log must keep working in plain RAM, and SGP40 specifically must keep running (skipping
-    # backup/restore entirely) without FRAM. Exercises the *whole* construction chain with a dead
-    # chip, not just one driver in isolation (asy_sgp40_driver.py's/print_log.py's own test suites
-    # already cover each class's own degraded-mode contract at the unit level in more depth).
+    # No module may insist on FRAM: every FRAM-backed error log keeps working in plain RAM, and
+    # SGP40 keeps running (skipping backup/restore) - exercised through the whole construction
+    # chain with a dead chip, not just per-driver in isolation.
     real_spi_class = asy_spi_driver._SPI
     asy_spi_driver._SPI = _DeadFramChip  # type: ignore[misc]
     try:
@@ -411,10 +377,8 @@ def test_build_system_never_insists_on_fram_hardware_being_available() -> None:
     assert sensortask_dev.pixel is not None
     assert sensortask_dev.notify_service is not None
 
-    # Every FRAM-chunk-owning module's own logger still allocated a chunk (pure bookkeeping,
-    # SPECIFICATION.md C.13 - doesn't require setup() to have succeeded) but stays functional in
-    # degraded mode rather than raising - matches test_fram_integration.py's own established
-    # "reader.pr.fram is not None, just permanently hardware-unusable" pattern.
+    # Each logger still allocated a chunk (pure bookkeeping, SPECIFICATION.md C.13) but stays
+    # functional in degraded mode rather than raising.
     assert isinstance(sensortask_dev.sysfunct.pr, PrintLogHistoryStore)
     run(sensortask_dev.sysfunct.pr.err_s("boom", errno=1))  # never raises despite the dead chip
     assert run(sensortask_dev.sysfunct.get_error_counter())["SYSTEM"]["ErrCount"] == 1  # still counted in memory
@@ -516,11 +480,8 @@ def test_setup_batch_runs_sysfunct_then_fram_then_conn_then_ntp_then_sgp_then_bm
         NotificationCoordinator.setup = real_notify_setup  # type: ignore[method-assign]
         NotificationCoordinator.finalize = real_notify_finalize  # type: ignore[method-assign]
 
-    # notify_finalize runs during synchronous construction, before any setup() call; sysfunct is
-    # first *within* the async setup() batch - resolves the real persisted debug level as early as
-    # possible (this module's own docstring). conn/ntp were both built before fram/sysfunct but are
-    # placed after them here too, matching sysfunct's/fram's own already-fixed positions; conn before
-    # ntp mirrors their own real construction order.
+    # notify_finalize runs during sync construction, before any setup() call; sysfunct is first
+    # within the async setup() batch to resolve the persisted debug level as early as possible.
     assert calls == ["notify_finalize", "sysfunct", "fram", "conn", "ntp", "sgp", "bmp", "notify_setup"]
 
 
@@ -534,10 +495,8 @@ def test_notify_service_cfgmgr_exists_once_build_system_completes() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Debug level - persisted on sysfunct, pushed live to every logger's own set_level() through a
-# registry collected once at boot (owner requirement: general, system-wide, not per-module - but
-# no shared mutable value anywhere; see SPECIFICATION.md Part A.7's "Debug-level registry"
-# section and _collect_level_setters() for the full logger list).
+# Debug level - persisted on sysfunct, pushed live to every logger via a registry collected once
+# at boot (SPECIFICATION.md Part A.7's "Debug-level registry" section).
 # ---------------------------------------------------------------------------
 
 
@@ -572,11 +531,8 @@ def test_collect_level_setters_returns_one_entry_per_logger_in_the_object_graph(
     setters = sensortask_dev._collect_level_setters()
     loggers = _all_loggers()
     assert len(setters) == len(loggers)
-    # Each collected setter really is that logger's own bound set_level - confirmed by behavior
-    # (bound-method identity isn't guaranteed, matching this file's own established convention for
-    # checking bound methods elsewhere): calling it must change that exact logger's own level.
-    # Index-based, not zip() - avoids a silent length-mismatch footgun on top of the explicit
-    # length assert above.
+    # Each collected setter really is that logger's own bound set_level, confirmed by behavior
+    # (bound-method identity isn't guaranteed): calling it must change that exact logger's level.
     for i in range(len(loggers)):
         loggers[i].set_level(PrintLog.level_off())
         setters[i](PrintLog.level_info())
@@ -586,10 +542,8 @@ def test_collect_level_setters_returns_one_entry_per_logger_in_the_object_graph(
 def test_debug_seed_value_is_the_starting_level_before_setup_resolves_the_persisted_one() -> None:
     run(sensortask_dev.build_system(cfg_path=_tmp_cfg_dir(), debug=PrintLog.level_warn()))
     assert sensortask_dev.sysfunct is not None
-    # First boot - no persisted value yet, so sysfunct.setup() writes and resolves the schema
-    # default (0), then pushes it out through the registry - overriding the debug= seed every
-    # individual module's own logger was constructed with. Matches test_system_service.py's own
-    # test_setup_resolves_cfgmgr_and_leaves_debug_level_at_the_default_on_first_boot.
+    # First boot - no persisted value yet, so sysfunct.setup() resolves the schema default (0) and
+    # pushes it out, overriding the debug= seed every logger was constructed with.
     assert sensortask_dev.sysfunct.get_debug_level() == 0
     for pr in _all_loggers():
         assert pr.get_level() == 0, f"{pr.name!r} still shows the debug= seed, not the resolved default"
@@ -631,14 +585,9 @@ def test_collect_task_starters_includes_every_constructed_module() -> None:
     starters = sensortask_dev._collect_task_starters()
     assert len(starters) > 0
     assert all(callable(s) for s in starters)
-    # No Microdot/webserver task in Step 1 (owner-confirmed - refined plan
-    # Q2, Step 2's job entirely).
     assert not any("webserver" in getattr(s, "__name__", "").lower() for s in starters)
-    # Each real module's own get_task_starters() output is present. MicroPython bound methods
-    # don't expose __self__ (confirmed directly against the real Unix-port interpreter - a
-    # CPython-only introspection assumption), but they do compare equal when bound to the same
-    # (instance, function) pair, so membership via == still proves each owner actually contributed
-    # its own starters to the combined list, not just that the total count happens to match.
+    # MicroPython bound methods don't expose __self__, but they compare equal when bound to the
+    # same (instance, function) pair, so membership via == still proves each owner contributed.
     for owner in (
         sensortask_dev.scd_reader,
         sensortask_dev.bmp_reader,
@@ -655,12 +604,9 @@ def test_collect_task_starters_includes_every_constructed_module() -> None:
 
 
 def test_collect_timer_starters_includes_every_constructed_module() -> None:
-    # Every constructed module is checked here, not just the ones that currently contribute a real
-    # timer (matches test_collect_task_starters_includes_every_constructed_module's own uniform
-    # ownership check) - pixel/notify_service/webserver all currently return [] from their own
-    # get_timer_starters(), but this test still proves _collect_timer_starters() actually calls
-    # each of them (rather than picking modules by name), since a future Timer added to any of the
-    # three would otherwise silently never run.
+    # Every constructed module is checked, not just ones with a real timer today - proves
+    # _collect_timer_starters() calls each module rather than picking by name, so a future Timer
+    # added to pixel/notify_service/webserver (all currently []) won't silently never run.
     run(sensortask_dev.build_system(cfg_path=_tmp_cfg_dir()))
     starters = sensortask_dev._collect_timer_starters()
     assert len(starters) > 0
@@ -691,12 +637,8 @@ def test_collect_task_starters_never_touches_start_and_check_tasks() -> None:
 
 # ---------------------------------------------------------------------------
 # main()'s own composition - build_system() -> start_timers() -> ntp_force_sync() ->
-# start_and_check_tasks(), in that order. start_timers()'s real Timer-sequencing mechanism and
-# start_and_check_tasks()'s real supervisor loop are each already thoroughly covered by
-# test_system_service.py directly - this test fakes both out (they'd otherwise need real
-# wall-clock-firing Timers, which tests/machine.py's fake only fires via manual .trigger(), or
-# block forever) to verify main() itself wires the pieces together in the right order, matching
-# sensortask_wozi.py's own main() shape, without re-proving either subsystem's own internals here.
+# start_and_check_tasks(), in order. Fakes the latter two (test_system_service.py already covers
+# their internals directly) since real Timer-firing/an infinite supervisor loop would hang here.
 # ---------------------------------------------------------------------------
 
 
@@ -738,12 +680,8 @@ def test_main_calls_start_timers_then_force_sync_then_start_and_check_tasks_in_o
 
 
 # ---------------------------------------------------------------------------
-# Webserver wiring - build_system() also constructs a real Microdot() app + WebserverService,
-# registering every real driver's SettingsGroup/status_source/system_cmd/notification_led/
-# maintenance_sensor/error_source. These tests check the *real* registrations landed correctly
-# (right module, right fields, right hooks) - not the generic dispatch/aggregation logic itself,
-# which tests/test_asy_webserver_service.py's own uniform-fake suite already covers in full depth
-# (its own endpoint-design decision).
+# Webserver wiring - checks build_system()'s real driver registrations landed correctly (right
+# module/fields/hooks); generic dispatch/aggregation logic is test_asy_webserver_service.py's job.
 # ---------------------------------------------------------------------------
 
 
@@ -757,9 +695,8 @@ def _dispatch(method: str, path: str, json_body: "dict[str, Any] | None" = None)
 
 
 def test_webserver_pr_is_ram_only_not_fram_backed() -> None:
-    # Deliberate decision (see build_system()'s own comment): a warning on every per-call/outer-cap
-    # reclaim could churn far faster than any sensor's rare-hardware-fault log - keeping it RAM-only
-    # also preserves the seven-chunk FRAM allocation order (see SPECIFICATION.md Part A.7) unchanged.
+    # Deliberate: a per-call/outer-cap reclaim warning could churn far faster than a sensor's rare
+    # hardware-fault log, and RAM-only preserves the seven-chunk FRAM order (Part A.7) unchanged.
     run(sensortask_dev.build_system(cfg_path=_tmp_cfg_dir()))
     assert sensortask_dev.webserver is not None
     assert isinstance(sensortask_dev.webserver.pr, PrintLogHistory)
@@ -969,13 +906,8 @@ def test_webserver_status_put_reset_errors_clears_a_real_modules_history() -> No
 
 # ---------------------------------------------------------------------------
 # Captive-portal hotspot-mode redirect wiring (SPECIFICATION.md Part A.5/A.7) - confirms
-# `is_hotspot_active=conn.is_hotspot_active` (build_system()'s own real WebserverService(...) call)
-# actually reaches the real, wired conn instance, through the real construction graph - not a fake
-# callback like tests/test_asy_webserver_service.py's own Section G.2 coverage. No real WiFi task is
-# started here (deliberately - see test_digital_twin_real_website_integration.py's own note for the
-# same reasoning): conn._conn_phase is set directly, the same test-seam convention this file's own
-# test_webserver_networking_put_ssid_group_reconnects_but_led_group_alone_does_not() and others
-# already use for a real driver's internal state.
+# build_system()'s real `is_hotspot_active=conn.is_hotspot_active` reaches the real conn instance,
+# not a fake callback. No real WiFi task runs; conn._conn_phase is set directly instead.
 # ---------------------------------------------------------------------------
 
 

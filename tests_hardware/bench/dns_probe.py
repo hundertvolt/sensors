@@ -1,8 +1,6 @@
-"""Minimal, dependency-free DNS query/response helpers for the captive-DNS checks in
-test_hotspot_role_reversal.py (HARDWARE_TEST_PLAN.md §11.5 stage 3) - hand-rolled rather than
-pulling in dnspython (not a project dependency, and this only needs a single fixed query shape),
-matching this project's own preference for small hand-rolled protocol code over a new dependency
-(see digital_twin/_http_client.py's own module docstring for the same reasoning applied to HTTP)."""
+"""Minimal, dependency-free DNS query/response helpers for test_hotspot_role_reversal.py's
+captive-DNS checks - hand-rolled rather than pulling in dnspython, matching this project's
+preference for small hand-rolled protocol code over a new dependency."""
 
 from __future__ import annotations
 
@@ -15,8 +13,7 @@ _DNS_PORT = 53
 
 def build_query(hostname: str) -> bytes:
     """A single-question, standard A-record query - the exact shape src/captive_dns.py's
-    DNSQuery/DNSServer expects (confirmed by reading that module in full during this session's own
-    HARDWARE_TEST_PLAN.md §11.1 research)."""
+    DNSQuery/DNSServer expects."""
     txn_id = secrets.token_bytes(2)
     header = txn_id + bytes([0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])  # standard query, 1 question
     question = b""

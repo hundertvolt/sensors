@@ -428,14 +428,10 @@ class Timer:
     ONE_SHOT = 0
     PERIODIC = 1
 
-    # Class-level registry, not per-instance: records every real Timer() *construction* across a
-    # test's process lifetime, so a test can assert none happened (e.g. system_service.py's own
-    # _timer_sequencer() now reuses a single preallocated self.sequencer_timer via repeated .init()
-    # calls rather than constructing a fresh Timer() per chain step - see CLAUDE.md/SPECIFICATION.md
-    # Part F.1: an unstored Timer object is GC-eligible before its own ONE_SHOT callback ever fires
-    # on real hardware, which is exactly the bug this preallocate-and-reuse pattern avoids). Tests
-    # must clear this between test functions (all_timers.clear()) since it otherwise persists across
-    # a whole test file's process lifetime.
+    # Class-level registry, not per-instance: records every real Timer() *construction*, so a test
+    # can assert none happened (e.g. system_service.py's _timer_sequencer() reusing one preallocated
+    # Timer via .init() instead - SPECIFICATION.md Part F.1). Tests must clear this between test
+    # functions (all_timers.clear()) since it otherwise persists across the whole process lifetime.
     all_timers: "list[Timer]" = []
 
     # Test-only fault injection, off by default: real rp2 Timer.init() calls

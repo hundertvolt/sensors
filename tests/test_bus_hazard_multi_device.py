@@ -1,19 +1,6 @@
 """Mock-level (tests/machine.py fake I2C) bus-hazard/concurrency regression suite - the fast,
-deterministic, every-CI-run counterpart to tests_hardware/flash/test_bus_concurrency.py's real-
-hardware proof of the same SPECIFICATION.md Part C.8 locking model. Covers what a real-hardware run
-can't cheaply cover on every push: byte-exact wire-log proof that same-device operations never
-interleave, genuine cross-device interleaving with correct final results, the SGP40 general-call
-broadcast landing mid a sibling's own transaction, and a full address/command sweep across every
-promoted I2C driver's public API.
-
-**Standing rule - read before adding a new I2C-facing driver to src/:** add a
-`test_<driver>_never_touches_any_address_but_its_own` function for it (section 4 below - see the
-existing SCD30/BMP3xx/SGP40 ones for the pattern), and, if the new driver issues any
-non-addressed-to-itself bus operation like SGP40's general call, extend section 3 with its own
-concurrent-hazard test too. This is the "flag it here so it's never silently missed" enforcement
-point for CLAUDE.md's src/ bird's-eye-scan requirement, applied to the bus-hazard surface
-specifically - see SPECIFICATION.md Part C.8's own note on this.
-"""
+deterministic tier of SPECIFICATION.md Part C.8's bus-hazard coverage. See Part C.8 for the
+standing rule on extending this file when a new I2C-facing driver is added."""
 
 import asyncio
 import struct
@@ -172,8 +159,8 @@ async def _settle(n: int = 8) -> None:
 
 
 # ---------------------------------------------------------------------------
-# 1. Same-device concurrency: a read in flight must never interleave, at the wire-byte level,
-#    with a concurrent write to the SAME device (SCD30_DeviceSession's own device-session lock).
+# 1. Same-device concurrency: a read must never interleave, at the wire-byte level, with a
+#    concurrent write to the SAME device.
 # ---------------------------------------------------------------------------
 
 
@@ -183,22 +170,10 @@ _CMD_SET_TEMPERATURE_OFFSET = b"\x54\x03"
 
 
 def _parse_scd30_log(log: list, read_iterations: int) -> None:
-    # Precise, command-byte-based proof that same-device operations never interleave on the wire -
-    # NOT a before/after log-length "span" comparison (an earlier version of this test used that
-    # and produced a false positive: a coroutine legitimately *blocked* waiting for the
-    # device-session lock naturally has its own outer await span overlap whoever currently holds
-    # it - that's proof of correct serialization, not evidence of interleaving, since nothing that
-    # blocked coroutine does can append to the log until the lock is actually released).
-    #
-    # SCD30's own three commands used in this test are wire-distinguishable by their first two
-    # payload bytes (asy_scd30_driver.py's own _CMD_* constants), so the log can be parsed into
-    # non-overlapping runs: a read_measurement() cycle is always exactly
-    # [writeto(GET_DATA_READY), readfrom_into, writeto(READ_MEASUREMENT), readfrom_into] as one
-    # atomic 4-entry group (this test always seeds "data ready", so the short 2-entry not-ready
-    # path never applies); set_temperature_offset() is always exactly
-    # [writeto(SET_TEMPERATURE_OFFSET)] as one atomic 1-entry group. If the device-session lock
-    # ever let the two interleave, this parse fails outright - a stray or out-of-place entry has
-    # nowhere valid to go, rather than silently producing a plausible-looking wrong grouping.
+    # Command-byte-based proof that same-device ops never interleave on the wire: parses the log
+    # into non-overlapping runs and fails outright on any stray/out-of-place entry. A simpler
+    # before/after log-length "span" check was tried and rejected - a coroutine legitimately
+    # blocked on the lock naturally overlaps the holder's span, which is correct serialization.
     reads_parsed = 0
     writes_parsed = 0
     i = 0
@@ -255,8 +230,7 @@ def test_same_device_scd30_concurrent_read_and_write_never_interleave_on_the_wir
 
 # ---------------------------------------------------------------------------
 # 2. Cross-device concurrency: two DIFFERENT devices sharing one bus (BMP3xx + SGP40 on i2c1,
-#    matching production wozi wiring - see sensortask_wozi.py) must genuinely interleave (not
-#    fully serialize), and each must still produce fully correct, uncorrupted results.
+#    matching wozi's wiring) must genuinely interleave, not fully serialize, and both must stay correct.
 # ---------------------------------------------------------------------------
 
 
@@ -298,28 +272,19 @@ def test_cross_device_bmp3xx_and_sgp40_interleave_and_both_stay_correct() -> Non
         assert abs(temperature - _BMP_EXPECTED_TEMPERATURE) < 1e-6
     assert all(raw == 0x8000 for raw in sgp_results)
 
-    # Genuine interleaving proof: the two devices' own addressed log entries must not form two
-    # separate contiguous blocks (one fully before the other) - if they did, the bus lock's
-    # fine-grained per-transaction scope (SPECIFICATION.md Part C.8) would not actually be letting
-    # them interleave, just accidentally running one after the other in full.
-    # BMP3xx uses readfrom_mem/writeto_mem (register-address-based); SGP40 uses writeto/readfrom_into
-    # (raw command-based) - both op families must be counted, or BMP3xx's own entries silently drop
-    # out of this check entirely (found the hard way: an earlier version only checked
-    # writeto/readfrom_into and always reported "1 switch" - BMP3xx's own address never appeared at
-    # all, not because it wasn't interleaving, but because none of its ops were being counted).
+    # Genuine interleaving proof: addressed log entries must not form two separate contiguous
+    # blocks (one fully before the other). Both op families (BMP3xx's readfrom_mem/writeto_mem,
+    # SGP40's writeto/readfrom_into) must be counted or BMP3xx's entries silently drop out.
     addressed = [entry[1] for entry in fake_bus.log if entry[0] in ("writeto", "readfrom_into", "readfrom_mem", "writeto_mem")]
-    # Plain index-based comparison, not zip(strict=...) - confirmed directly against the real
-    # MicroPython Unix-port interpreter that its builtin zip() doesn't accept keyword arguments at
-    # all (TypeError), unlike CPython 3.10+'s strict= parameter ruff's B905 rule would otherwise ask for.
+    # Plain index-based comparison, not zip(strict=...): MicroPython's builtin zip() doesn't accept
+    # keyword arguments (confirmed against the pinned Unix-port interpreter).
     switches = sum(1 for i in range(len(addressed) - 1) if addressed[i] != addressed[i + 1])
     assert switches >= 2, f"only {switches} address switch(es) across the whole run - looks fully serialized, not interleaved: {addressed}"
 
 
 # ---------------------------------------------------------------------------
-# 3. General-call broadcast hazard: SGP40's _reset() (true I2C general call, datasheet Table 17)
-#    landing concurrently with BMP3xx's own multi-step read must not corrupt or interrupt it -
-#    the mock-level regression counterpart of tests_hardware/flash/test_bus_concurrency.py's
-#    real-hardware test (see SPECIFICATION.md Part C.8's own "Known structural gap" note).
+# 3. General-call broadcast hazard: SGP40's _reset() (true I2C general call) landing concurrently
+#    with BMP3xx's own multi-step read must not corrupt or interrupt it.
 # ---------------------------------------------------------------------------
 
 
@@ -362,13 +327,9 @@ def test_sgp40_general_call_reset_does_not_disturb_a_concurrent_bmp3xx_read() ->
 
 
 def test_general_call_absent_sibling_bmp3xx_alone_on_the_bus_survives_a_broadcast_too() -> None:
-    # The "closest possible simulation when a real second device isn't present" case the project
-    # owner asked for: BMP3xx is the *only* device on this bus (matching dev's real i2c0 wiring -
-    # sensortask_dev.py), and the bus master itself still issues a general-call broadcast (as if a
-    # future SGP40 were added to this same bus) mid a BMP3xx read. No SGP40_I2C instance exists at
-    # all here - the broadcast is issued directly against the raw I2C wrapper, the same way
-    # SGP40_I2C._reset() itself does, to prove BMP3xx alone tolerates it regardless of who's doing
-    # the broadcasting.
+    # BMP3xx is the only device on this bus (matching dev's real i2c0 wiring); the broadcast is
+    # issued directly against the raw I2C wrapper (no SGP40_I2C instance) to prove BMP3xx alone
+    # tolerates a general call regardless of who issues it.
     i2c = make_i2c(0)  # matches dev's real i2c0 port id
     bmp = BMP3XX_I2C(i2c, address=_BMP_ADDR)
     fake_bus = fake(i2c)
@@ -401,9 +362,8 @@ def test_general_call_absent_sibling_bmp3xx_alone_on_the_bus_survives_a_broadcas
 
 
 # ---------------------------------------------------------------------------
-# 4. Address/command sweep: every promoted I2C driver's public API, exercised end to end, must
-#    never touch any address other than its own configured one - except SGP40's own documented
-#    general call (0x00), which must appear *only* from _reset(), nowhere else.
+# 4. Address/command sweep: every promoted I2C driver's public API must never touch any address
+#    other than its own configured one, except SGP40's documented general call (0x00) from _reset().
 # ---------------------------------------------------------------------------
 
 
@@ -511,39 +471,24 @@ def test_sgp40_touches_only_its_own_address_except_reset_which_touches_only_the_
         run(exercise_non_reset())
 
     touched = _touched_addresses(fake_bus)
-    # setup() itself calls initialize() -> _reset(), so 0x00 is expected here too - the real
-    # assertion (0x00 appears *only* via _reset()'s own single documented call site) is proven by
-    # test_sgp40_general_call_reset_does_not_disturb_a_concurrent_bmp3xx_read and
-    # tests/test_asy_sgp40_driver.py's own test_reset_writes_single_byte_to_general_call_address_zero
-    # / test_reset_tolerates_nak_at_general_call_address; this sweep's own job is narrower - confirm
-    # no *third*, unexpected address ever shows up beyond {own address, general call}.
+    # setup() calls initialize() -> _reset(), so 0x00 is expected here too; this sweep's job is
+    # only to confirm no *third*, unexpected address shows up beyond {own address, general call}.
     assert touched <= {_SGP_ADDR, _GENERAL_CALL_ADDR}, f"SGP40_I2C touched unexpected address(es): {touched - {_SGP_ADDR, _GENERAL_CALL_ADDR}}"
     assert not _is_reserved(_SGP_ADDR)
 
 
 def test_no_reserved_i2c_address_collides_with_any_promoted_devices_own_address() -> None:
-    # A permanent regression guard for any *future* device addition (CLAUDE.md's "never forget"
-    # rule, SPECIFICATION.md Part C.8) - a new driver whose default address accidentally falls in
-    # a reserved I2C range would be caught here immediately, before it ever reaches real hardware.
+    # Regression guard for future device additions (SPECIFICATION.md Part C.8): a new driver whose
+    # default address falls in a reserved I2C range is caught here before reaching real hardware.
     for name, address in (("SCD30", _SCD_ADDR), ("BMP3xx", _BMP_ADDR), ("SGP40", _SGP_ADDR)):
         assert not _is_reserved(address), f"{name}'s own address {address:#x} falls inside a reserved I2C range"
 
 
 # ---------------------------------------------------------------------------
-# 5. FRAM (SPI) - the one promoted bus-facing device with no I2C address concept and no bus-
-#    sharing: sections 2 (cross-device interleave) and 3 (general-call broadcast) don't apply -
-#    both wozi and dev wire exactly one SPI device to its own dedicated bus (sensortask_wozi.py/
-#    sensortask_dev.py's own construction comments). Same-device concurrency (this section) is
-#    therefore FRAM's whole applicable slice of this file's own standing rule (see this module's
-#    own docstring) - previously missing entirely, a real gap against that rule fixed here.
-#    Proven by outcome (final memory state, every read exactly matches what it should), not
-#    wire-log byte parsing like section 1's SCD30 test: FakeMB85RS64V's own write()/readinto()
-#    (tests/_fram_chip_fake.py) don't feed tests/machine.py's shared SPI.log at all (they fully
-#    override the base fake's methods rather than delegating to them) - but its own internal
-#    _pending_op/_pending_addr two-phase opcode/data state machine is itself corruption-sensitive:
-#    a read's opcode phase landing between a write's own opcode-phase and data-phase calls would
-#    silently misroute the write's data bytes to the wrong branch, which a plain "did the right
-#    bytes end up in the right place" assertion below would still catch directly.
+# 5. FRAM (SPI) - no I2C address concept and no bus-sharing (sections 2/3 don't apply), so
+#    same-device concurrency is its whole applicable slice of this file's standing rule. Proven by
+#    outcome (final memory state) rather than wire-log parsing, since FakeMB85RS64V overrides the
+#    base fake's methods and doesn't feed the shared SPI.log.
 # ---------------------------------------------------------------------------
 
 

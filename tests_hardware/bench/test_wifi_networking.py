@@ -1,14 +1,6 @@
-"""Bench-tier automated tests, Part 1 category B subset (tmp_hardware_test_candidates.md items 7,
-8, 9, 12 - real STA connect, real NTP, real DNS, real NTP-timeout-under-loss). Items 10/11 (real
-captive-DNS answering a real external client, real unprivileged bind(53)) are deliberately NOT
-duplicated here - tmp_hardware_test_candidates.md's own cross-reference already says
-HARDWARE_TEST_PLAN.md §11's role-reversal scenario supersedes them with a much deeper design
-(stage 3, §11.5 items 8-13 in tests_hardware/bench/test_hotspot_role_reversal.py), and that
-cross-reference is honored here rather than re-implemented independently.
-
-All items in this file use passive observation (harness.Board.tail_log()) of the live, normally-
-booting system rather than exec()/run_isolated() - see run_isolated()'s own docstring for why the
-latter can't be trusted not to disturb a real WiFi association mid-test."""
+"""Bench-tier automated tests: real STA connect, real NTP, real DNS, and NTP-timeout-under-loss
+over genuine lwIP/UDP (real captive-DNS/bind(53) lives in test_hotspot_role_reversal.py instead).
+Uses passive observation (Board.tail_log()), not exec()/run_isolated() - see run_isolated()."""
 
 from __future__ import annotations
 
@@ -24,16 +16,12 @@ from harness import Board, wait_until
 
 
 def test_real_sta_connect_reaches_established_after_a_hard_reset(board: Board, bench: BenchBridge, dut_ip: str) -> None:
-    # dut_ip (session-scoped) already proves a real STA connection was reached at least once this
-    # session - this test's own value is confirming it happens again, cleanly, from a cold boot.
+    # dut_ip (session-scoped) already proves a real STA connection was reached once this session -
+    # this test's own value is confirming it happens again, cleanly, from a cold boot.
     #
-    # kick_all_stations() first: the dominant real cause of a hard_reset()-triggered reconnect
-    # failing on this bench rig is a stale AP-side station-table entry for the DUT's own MAC, left
-    # over because a hard reset never sends a clean 802.11 deauth (see tests_hardware/README.md's
-    # "Known assumptions and open findings" - A/B test: 10/10 fallback without this, 10/10 clean
-    # connects with it - see bench_control.BenchBridge.kick_client()'s own docstring for the full account). This test is
-    # the primary regression coverage for that exact scenario, so it must clear stale AP state the
-    # same way dut_ip's own fixture now does, not just document the finding elsewhere.
+    # kick_all_stations() first: a stale AP-side station-table entry for the DUT's MAC is the
+    # dominant cause of a hard_reset()-triggered reconnect failing here - see kick_client()'s own
+    # docstring. This is the primary regression coverage for that exact scenario.
     bench.kick_all_stations()
     board.hard_reset()
     lines = board.tail_log(duration_s=45.0)
@@ -43,9 +31,8 @@ def test_real_sta_connect_reaches_established_after_a_hard_reset(board: Board, b
 
 
 # ---------------------------------------------------------------------------
-# Item 8 - real NTP round-trip over genuine lwIP/UDP (BACKLOG.md open question #5's single most
-# explicitly flagged gap). The twin's _unix_port_udp_addr_shim.py only papers over Unix-port-only
-# quirks to let the code execute; this is the first time the real rp2/lwIP transport is exercised.
+# Real NTP round-trip over genuine lwIP/UDP - the first time the real rp2/lwIP transport is
+# exercised (the twin's _unix_port_udp_addr_shim.py only papers over Unix-port-only quirks).
 # ---------------------------------------------------------------------------
 
 
@@ -58,7 +45,7 @@ def test_real_ntp_sync_succeeds_over_genuine_udp(board: Board) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Item 9 - real DNS resolution via asy_dns_client.py's own resolver, same rationale as item 8.
+# Real DNS resolution via asy_dns_client.py's own resolver, same rationale as the NTP test above.
 # ---------------------------------------------------------------------------
 
 
@@ -69,21 +56,16 @@ def test_real_dns_resolution_succeeds_over_genuine_udp(board: Board) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Item 12 - real NTP-unreachable timeout under genuine network jitter/loss, scripted via a
-# temporary iptables DROP on UDP 123 (bench_control.BenchBridge.block_udp_ports()) - no physical
-# action needed, unlike a naive reading of "network jitter/loss" might suggest.
+# Real NTP-unreachable timeout under genuine network loss, scripted via a temporary iptables DROP
+# on UDP 123 (block_udp_ports()) - no physical action needed.
 # ---------------------------------------------------------------------------
 
 
 def test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing(board: Board, bench: BenchBridge, dut_ip: str) -> None:
-    # Doubles as this tier's own real-hardware proof for BACKLOG.md open question 6 (closed
-    # 2026-09-04, "investigated, no src/ change"): the real STA link stays fully up and
-    # wlan.isconnected() genuinely True throughout (only UDP 123 is blocked, not the AP itself),
-    # so this is the real-hardware shape of "isconnected()==True but a specific downstream
-    # operation is unreachable" - see
-    # tests/test_ntp_wifi_dns_integration.py::test_full_chain_degrades_cleanly_when_wifi_reports_connected_but_the_ntp_server_never_answers
-    # for the same property proven at the mock/unit level through the real network_available()
-    # chain.
+    # Doubles as this tier's real-hardware proof for BACKLOG.md open question 6: the STA link
+    # stays fully up (only UDP 123 is blocked, not the AP) - the real-hardware shape of
+    # "isconnected()==True but a specific downstream operation is unreachable", the same property
+    # tests/test_ntp_wifi_dns_integration.py proves at the mock/unit level.
     reset_all_error_logs(dut_ip)
     bench.block_udp_ports([123])
     try:

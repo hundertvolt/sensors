@@ -1,7 +1,6 @@
-"""Minimal, dependency-free NTP reply-crafting helper for the connected-socket source-address-
-filtering check in test_network_resilience.py (BACKLOG.md's open question #5) - hand-rolled rather
-than pulling in a dependency, matching this project's own preference for small hand-rolled
-protocol code over a new one (see dns_probe.py's own module docstring for the same reasoning)."""
+"""Minimal, dependency-free NTP reply-crafting helper for test_network_resilience.py's
+connected-socket source-address-filtering check (see dns_probe.py for the same hand-rolled-over-
+imported-dependency approach)."""
 
 from __future__ import annotations
 
@@ -11,10 +10,8 @@ _NTP_EPOCH_DELTA = 2208988800  # 1900 -> 1970, matches src/asy_ntp_client.py's o
 
 
 def build_reply(unix_time: int) -> bytes:
-    """A single, standard-shaped 48-byte NTP server reply (stratum 1, synchronized) whose Transmit
-    Timestamp encodes `unix_time` - the exact fields src/asy_ntp_client.py's own _parse_ntp_reply()
-    reads (leap indicator + stratum from byte 0/1, big-endian seconds from bytes 40:44; every other
-    field, including Origin Timestamp, is confirmed unchecked by that method, so left at 0)."""
+    """A standard 48-byte NTP server reply (stratum 1) whose Transmit Timestamp encodes `unix_time` -
+    the only fields src/asy_ntp_client.py's _parse_ntp_reply() actually reads."""
     header = bytes([0x24, 0x01, 0x06, 0xEC])  # LI=0, VN=4, Mode=4 (server); stratum=1; poll=6; precision=0xEC
     root_delay = b"\x00\x00\x00\x00"
     root_dispersion = b"\x00\x00\x00\x00"

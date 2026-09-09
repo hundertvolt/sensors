@@ -1,18 +1,6 @@
-"""Isolated-driver device script, flash-tier gap fix: PrintLogHistoryStore (print_log.py) - the
-FRAM-backed error/warning history every FRAM-chunk-owning module in production uses (SystemService,
-BMP3xx_Reader, SCD30_Reader, SGP40_Reader's own err_s()/wrn_s() calls) - against the real
-MB85RS2MTA chip this bench unit carries (CS=GPIO5, not the deployed wozi unit's MB85RS64V at
-CS=GPIO1 - dev_legacy/README.md's own wiring table). The "FRAM error storage working" gap: no
-automated real-hardware test of this mechanism existed before this file.
-
-Drives make_logger()'s own real FRAM path (print_log.py's shared fram-vs-memory selection - the
-same factory every production module goes through, not a hand-rolled PrintLogHistoryStore
-construction), records one real error via err_s(), then simulates a fresh boot the same way
-sgp40_fram_backup_restore.py does (a brand new AsyFramManager Python object against the same real
-chip, landing on the same physical chunk 0 address) and confirms get_log() reports the recorded
-error read back from the real chip, not from in-process state.
-
-Run via `mpremote run <this> soft-reset`."""
+"""Isolated-driver device script: PrintLogHistoryStore (print_log.py), the FRAM-backed error/
+warning history every FRAM-chunk-owning module uses, against the real MB85RS2MTA chip. Records an
+error via err_s(), simulates a fresh boot (a new AsyFramManager), and confirms get_log() reads it back from the chip."""
 
 import asyncio
 

@@ -1,36 +1,7 @@
-"""Isolated-driver device script, flash-tier: real-hardware regression test for the SGP40 general-
-call reset hazard found while auditing SPECIFICATION.md Part C.8's locking model (see this session's
-own bus-hazard report). SGP40_I2C._reset() (src/asy_sgp40_driver.py) sends `i2c.i2c.writeto(0x00,
-b"\\x06")` - a genuine I2C general-call broadcast to the reserved address 0x00, which the SGP40
-datasheet (datasheets/sgp40/Sensirion_Gas_Sensors_Datasheet_SGP40.pdf, Table 17, p.14) documents as
-"resetting all devices connected to the same I2C bus". This fires on every SGP40 task-supervisor
-restart during normal running operation (SGP40_Reader.read_loop() -> _init_sgp() -> setup() ->
-initialize() -> _reset(), and system_service.py's start_and_check_tasks() restarts any task that
-returns), not just at cold boot - so a sibling device on the same bus could in principle be disrupted
-mid-transaction by a broadcast neither our software locking model nor the sibling's own firmware is
-guaranteed to know about.
-
-De-risking already done by reading the actual datasheets (not memory/web search, per CLAUDE.md):
-neither the SCD30 Interface Description/Datasheet nor the BMP388/BMP384 datasheets document any
-general-call/broadcast-address listening behavior - both sensors' only documented reset mechanisms
-are addressed commands to their own I2C address. This script is the real-hardware confirmation of
-that datasheet-based prediction, for the pairing this dev bench's own bench-tested wiring actually
-puts on one shared bus: SCD30 + SGP40 on I2C1 (sensortask_dev.py's own wiring comment - NOT the same
-pairing as production wozi, which puts SGP40 + BMP3xx together instead; see this session's Part 1
-report for the full wiring-divergence finding and why both pairings independently check out against
-their respective datasheets).
-
-Mechanism: one coroutine continuously runs SCD30 read_measurement() cycles (CRC-8 protected -
-corruption from an ill-timed broadcast landing mid-sequence would very likely trip a CRC failure or
-bus NAK, not silently succeed) while a second coroutine repeatedly drives SGP40 through its real
-production reset path (initialize(), which ends with _reset()'s own general-call broadcast) at the
-same time. If SCD30 secretly does honor the general call (undocumented), continuous measurement
-would be wiped mid-run and reads would start failing/going stale; if the broadcast's own bus-level
-electrical transition corrupts an in-flight SCD30 transaction's timing, CRC failures or OSErrors
-would surface directly. Zero errors and every reading staying within plausible bounds throughout
-(including immediately after each broadcast) is the proof this hazard is not live on this bus.
-
-Run via `mpremote run <this> soft-reset`."""
+"""Isolated-driver device script: real-hardware regression test for the SGP40 general-call reset
+hazard (SPECIFICATION.md Part C.8) - runs concurrent SCD30 reads against repeated SGP40 initialize()
+cycles (each ending in a real general-call broadcast) and checks for CRC/OSError corruption plus
+continuous measurement still advancing (>= 2 distinct CO2 values)."""
 
 import asyncio
 
@@ -110,14 +81,10 @@ async def _main() -> None:
     if scd_completed == 0:
         failures.append("SCD30 completed zero read cycles during the whole run - loop never progressed")
     failures.extend(scd_errors[:10])
-    # The run spans ~8 SGP40 reset cycles (~1.5s each, ~12s+ total) - several times the SCD30's own
-    # ~2s default measurement interval, so continuous measurement genuinely advancing should produce
-    # at least a couple of distinct CO2 values (real sensor noise alone almost guarantees more than
-    # one even in a perfectly stable room). A single unchanging value for the whole run is the
-    # concrete signal that continuous measurement silently stopped advancing - e.g. because the
-    # general-call broadcast actually did reset SCD30's continuous-measurement state, undocumented -
-    # not proven by a CRC failure (that only catches the broadcast corrupting a transaction already
-    # in flight, not a clean-looking reset landing between transactions).
+    # The run spans several SCD30 measurement intervals, so genuinely advancing measurement should
+    # produce >= 2 distinct CO2 values; a single unchanging value signals it silently stopped
+    # advancing (e.g. an undocumented general-call reset) - not caught by a CRC failure alone, since
+    # that only catches corruption of a transaction already in flight.
     if len(distinct_co2_values) < 2:
         failures.append(
             f"only {len(distinct_co2_values)} distinct CO2 value(s) seen across {scd_completed} reads over "

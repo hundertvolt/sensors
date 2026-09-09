@@ -35,6 +35,14 @@ applies to the one non-Adafruit file below. The following `src/` files are deriv
 - `src/asy_sgp40_driver.py` — from Adafruit's
   [`Adafruit_CircuitPython_SGP40`](https://github.com/adafruit/Adafruit_CircuitPython_SGP40),
   © 2020 Bryan Siepert for Adafruit Industries, MIT.
+- `src/asy_fram_driver.py` — opcode/register-constant naming and the write-enable/write/
+  write-disable method shape follow Adafruit's
+  [`Adafruit_CircuitPython_FRAM`](https://github.com/adafruit/Adafruit_CircuitPython_FRAM),
+  © 2018 Michael Schroeder for Adafruit Industries, MIT (its SPI variant, `adafruit_fram.FRAM`
+  with an `spi` argument, not the I2C default). RDID-based dual-chip detection and the
+  asyncio/MicroPython restructuring are this project's own addition, cross-checked against the
+  Fujitsu MB85RS64V/MB85RS2MTA datasheets rather than Adafruit's driver (which targets a
+  different, smaller Fujitsu part with no RDID check at all).
 - `src/asy_ntp_client.py` — the core NTP protocol handling (the `0x1B`-first-byte 48-byte query,
   `struct.unpack("!I", msg[40:44])` timestamp read, NTP/Unix epoch-delta subtraction, and
   critically the `RTC().datetime((tm[0], tm[1], tm[2], tm[6] + 1, tm[3], tm[4], tm[5], 0))` idiom

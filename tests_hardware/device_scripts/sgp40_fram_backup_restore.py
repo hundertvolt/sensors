@@ -1,43 +1,6 @@
-"""Isolated-driver device script, flash-tier gap fix: the real SGP40 VOC-state FRAM backup/restore
-pathway (asy_sgp40_driver.py's SGP40_Reader.ts_storage, an AsyFramTimestampedChunk from
-asy_fram_manager.py) against the real MB85RS2MTA FRAM chip this bench unit carries (CS=GPIO5, not
-the deployed wozi unit's MB85RS64V at CS=GPIO1) and the real SGP40 on I2C1 GPIO15/14 (not GPIO19/18
-- dev_legacy/README.md's own wiring table, confirmed directly against this bench's live main.py and
-real i2c.scan()/RDID probes) - the "FRAM backup working" gap.
-
-Drives the real production read_loop() end to end, not synthetic internal calls: reader1 runs
-until its own natural backup schedule fires (BackupPeriod defaults to 1 minute -> 60 real read
-cycles at SGP40's fixed 1s trigger period - see asy_sgp40_driver.py's _check_storage()/_run_backup()),
-writing real algorithm state to the real chip. A second AsyFramManager/SGP40_Reader pair (fram_b/
-reader2) then simulates a fresh boot: allocated_size starts at 0 again for a *new* AsyFramManager
-Python object (exactly what a real reboot's own fresh build_system() call does - CLAUDE.md's own
-FRAM-chunk-instantiation-order contract), so reader2's ts_storage chunk lands at the identical real
-FRAM byte address reader1's did, without needing an actual board reboot (the real chip's bytes are
-untouched by a plain object-level "restart" either way). reader2's own SGPWaitTimeNTP-driven
-voc_init (default 30, set in _init_sgp()) triggers a real deserialize attempt on its very first
-read cycle, matching real first-boot behavior.
-
-fram_ntp_callback is a fixed stub always reporting synced=True (this script has no real NTP
-subsystem running) - exercises the real timestamped-backup path deterministically rather than
-depending on this script's own wall-clock coincidentally landing after some real NTP sync.
-
-REAL FINDING, fixed: an earlier draft never initialized reader1.cfgmgr/reader2.cfgmgr at all - no
-setup() call, no primed cache. _check_storage()'s very first step is `await self.cfgmgr.
-get_int_values(...)`, which returns None whenever `cfgmgr.valid` is False (confirmed directly:
-real hardware printed "SGP40 Error reading config data!" every single cycle and the backup counter
-never even started incrementing, since that early-return happens before the counter logic runs) -
-so a backup could never fire regardless of how long the script waited; the original ~90s timeout
-guess was never actually the problem. Fixed per dev_legacy/README.md's own documented pattern for
-diagnostic scripts that must not write to the RP2040's own real flash: prime `cfgmgr.valid = True`
-and `cfgmgr._cache = {...}` directly with the schema's own defaults, instead of calling
-`cfgmgr.setup()` (which would do a real littlefs file write/read).
-
-Run via `mpremote run <this> soft-reset`. Takes ~90s (60s to the first natural backup trigger, plus
-restore-cycle margin) - well past the RP2040 hardware watchdog's 8.388s ceiling
-(SPECIFICATION.md Part F.1), and `run_isolated()`'s soft reset stops the live system's own feed
-loop (system_service.py) without resetting that hardware timer (confirmed against
-ports/rp2/machine_wdt.c), so this script re-arms/feeds its own WDT handle during every long wait
-rather than relying on anything outside itself."""
+"""Isolated-driver device script: the real SGP40 VOC-state FRAM backup/restore pathway against the
+real chip. reader1 runs until its backup schedule fires; a second reader simulates a fresh boot at
+the same FRAM address and must restore it. See tests_hardware/README.md's cfgmgr-priming note."""
 
 import asyncio
 

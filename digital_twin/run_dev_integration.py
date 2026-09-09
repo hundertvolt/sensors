@@ -1,5 +1,6 @@
-"""End-to-end entry point for the digital twin's "full Unix-port integration" run against the dev-bench variant: boots the real `sensortask_dev` object graph against the real twin buses, then drives real HTTP traffic against the real `WebserverService`. Mirrors `digital_twin/run_wozi_integration.py` exactly (DEV_HARDWARE_BASELINE_PLAN.md decision 4) - only the underlying module and its own bus wiring differ. Not a `tests/test_*.py` file — it can serve forever, which would hang `scripts/test.sh`'s glob loop.
-`--soak`/`--soak-cycles` opt into a bounded HTTP+memory-trend check (see `_soak()`'s own comment for the methodology); a bare, no-flags run just serves forever. See `digital_twin/README.md`'s "Swapping the twin in" section for the full reference."""
+"""Dev-variant end-to-end digital-twin entry point - mirrors `run_wozi_integration.py` exactly,
+only the underlying module and bus wiring differ. Not a `tests/test_*.py` file - it can serve
+forever. See `digital_twin/README.md`'s "Swapping the twin in" section for the full reference."""
 
 import asyncio
 import gc
@@ -191,13 +192,8 @@ async def _wait_until_built(timeout_s: float = 10.0) -> None:
 
 
 async def _wait_until_serving(host: str, port: int, timeout_s: float = 10.0) -> None:
-    # webserver being constructed (waited for above) only means build_system() finished - the real
-    # socket doesn't actually bind until sensortask_dev.main()'s own start_and_check_tasks()
-    # reaches the webserver's own task starter, which can be delayed by up to
-    # len(task_starters)-1 * its own per-starter stagger (system_service.py's own startup loop) -
-    # confirmed directly (a fixed post-build sleep alone raced ECONNREFUSED here). Retrying the
-    # real connection is simpler and more robust than trying to predict that stagger's timing, and
-    # matches what a real client (e.g. a browser) would face during this same brief window anyway.
+    # The real socket doesn't bind until start_and_check_tasks() reaches the webserver's own
+    # staggered task starter - retrying the connection is simpler than predicting that timing.
     async def poll() -> None:
         while True:
             try:
@@ -323,13 +319,9 @@ async def main(config: RunConfig) -> "dict[str, Any]":
         assert sensortask_dev.i2c0 is not None and sensortask_dev.i2c1 is not None and sensortask_dev.spi0 is not None
         assert sensortask_dev.conn is not None and sensortask_dev.watchdog is not None
         # asy_i2c_driver.I2C/asy_spi_driver.SPI wrap the real machine.I2C/machine.SPI at their own
-        # private _i2c/_spi attributes (confirmed directly against those modules' own __init__) -
-        # the twin's own chip-fake registry (.devices/.device) lives on the wrapped object, not the
-        # wrapper - same real gap digital_twin/launch.py never had to deal with (it constructs
-        # machine.I2C/machine.SPI directly, with no asy_*_driver wrapper in between). Each wrapper's
-        # own _i2c/_spi is only None before init() runs (asy_i2c_driver.I2C.__init__ calls it
-        # itself, unconditionally) - always set by the time build_system() returns, just not
-        # statically provable from the type alone.
+        # private _i2c/_spi attributes - the twin's chip-fake registry (.devices/.device) lives on
+        # the wrapped object. Always set by the time build_system() returns, just not statically
+        # provable from the type alone.
         assert sensortask_dev.i2c0._i2c is not None and sensortask_dev.i2c1._i2c is not None and sensortask_dev.spi0._spi is not None
         # dev_legacy/README.md's wiring table (this bench unit, not wozi's): SCD30 and SGP40 share
         # i2c1; BMP3xx sits alone on i2c0 (wozi: SCD30 alone on i2c0, SGP40+BMP3xx sharing i2c1).
@@ -377,28 +369,18 @@ async def main(config: RunConfig) -> "dict[str, Any]":
         elif config.duration > 0:
             await asyncio.sleep(config.duration)
     finally:
-        # Unconditional (not just under --soak, unlike the summary print above) - an external
-        # observer (e.g. scripts/_digital_twin_ci_suite.py) driving this as a subprocess has no
-        # in-process access to sensortask_dev.watchdog itself, so this printed line is the only way
-        # to confirm the watchdog never (or did) starve on any run, soak or not. Called here, before
-        # main_task.cancel()/await below rather than after: confirmed by direct reproduction that a
-        # real SIGINT shutdown reliably never reaches any statement placed after that cancel/await
-        # pair - the watchdog's own counter value is unaffected by cancellation timing either way, so
-        # reading it this early costs nothing. This still isn't the only call site needed: it covers
-        # every path THIS finally block actually runs for, but not the "parked in the scheduler's own
-        # poll wait" SIGINT case the __main__ block below's own comment documents, where this whole
-        # finally block never runs at all - _print_wdt_status() is called from both places for that
-        # reason, the same duplication flush_fram()/flush_scd30() already need and already have below.
+        # Unconditional, not just under --soak: an external observer driving this as a subprocess
+        # has no in-process access to sensortask_dev.watchdog otherwise. Called before
+        # main_task.cancel()/await, since a real SIGINT shutdown never reaches a statement placed
+        # after that pair - see the __main__ block below for the other call site this needs (a
+        # SIGINT that lands while parked in the scheduler's own poll wait skips this whole block).
         _print_wdt_status()
         main_task.cancel()
         try:
             await main_task
         except (asyncio.CancelledError, KeyboardInterrupt):
-            # A real SIGINT (this script's own documented Ctrl-C shutdown path) can be re-delivered
-            # while this cleanup await is still in flight - confirmed by direct reproduction: without
-            # catching KeyboardInterrupt here too, the second interrupt propagated straight out of
-            # this finally block, skipping flush_fram()/flush_scd30() below entirely and losing the
-            # whole run's FRAM/SCD30 state. Already shutting down either way, nothing more to do.
+            # A second SIGINT can arrive while this cleanup await is still in flight - without
+            # catching it here too, it would propagate out, skipping the flush calls below.
             pass
         machine.flush_fram()
         machine.flush_scd30()
@@ -412,22 +394,11 @@ if __name__ == "__main__":
     try:
         _summary = asyncio.run(main(_config))
     except KeyboardInterrupt:
-        # Confirmed by direct reproduction against the pinned MicroPython v1.28.0 Unix port:
-        # extmod/asyncio/core.py's run_until_complete() only catches (CancelledError, Exception) in
-        # its scheduler loop - KeyboardInterrupt is a BaseException, not an Exception subclass, so a
-        # real SIGINT delivered while every task is parked in the scheduler's own
-        # _io_queue.wait_io_event() poll call (the common case this script's own "Serving forever -
-        # Ctrl+C to stop" state deliberately sits in) propagates straight out of asyncio.run() without
-        # ever resuming/unwinding main()'s suspended coroutine frame - its own try/finally around
-        # machine.flush_fram()/flush_scd30() never runs. Calling them again here, from plain
-        # synchronous code that's guaranteed to run on every real interrupt, is the actual fix - the
-        # module-level chip singletons these read (_current_fram_chip/_current_scd30_chip) don't need
-        # the event loop at all. A harmless no-op if main()'s own finally already ran (e.g. an
-        # interrupt landing while a task was genuinely mid-bytecode-execution, not parked).
+        # asyncio.run()'s own KeyboardInterrupt gap while parked in the scheduler's poll wait - see
+        # SPECIFICATION.md Part F.1. A harmless no-op if main()'s own finally already ran.
         machine.flush_fram()
         machine.flush_scd30()
-        _print_wdt_status()  # same "parked in scheduler poll" gap as flush_fram()/flush_scd30()
-        # above - see main()'s own finally block for the primary call site and why both are needed.
+        _print_wdt_status()
         print("digital_twin/run_dev_integration.py: interrupted")
     if _summary is not None and _summary["failures"]:
         sys.exit(1)

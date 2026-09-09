@@ -1,36 +1,6 @@
-"""Isolated-driver device script, flash-tier gap fix: real SGP40 raw-signal readings driven through
-the real voc_algorithm.py (src/voc_algorithm.py, Sensirion's Gas Index Algorithm port) end to end -
-closes the "no automated SGP40 coverage" and "no automated VOC-algorithm-quality coverage" gaps
-together, since this driver has no way to exercise one without the other (measure_index_and_raw()
-always runs raw signal straight through the algorithm - see asy_sgp40_driver.py).
-
-Two things checked, both datasheet/source-grounded, not exact-reference-calibrated (that needs a
-human-supplied VOC stimulus - see tests_hardware/manual/manual_sensor_accuracy.py item 10):
-  1. Plausibility: VOC index in [0, 500] (voc_algorithm.py's vocalgorithm_process() returns exactly
-     0 during the documented 45s initial blackout - self.params.mvoc_index stays 0 - then clamps to
-     >=0.5 -> round()s to >=1 after that; Sensirion's own datasheet documents the steady-state range
-     as 1-500, Figure 8). Raw in [0, 65535] (a 16-bit I2C readout, structurally bounded).
-  2. Basic quality/stability: once real post-blackout samples are captured, they must not be stuck
-     (all-identical, suggesting a frozen/non-responsive algorithm or sensor) or erratic (a single-step
-     jump implausibly larger than the algorithm's own adaptive-lowpass smoothing would ever produce
-     for real, continuously-sampled air) - a sanity check on the algorithm actually running against
-     real hardware, not a numerical-accuracy claim.
-
-This bench unit wires SGP40 to I2C1 on GPIO15/14 (scl/sda), not GPIO19/18 as production wozi does
-(dev_legacy/README.md's own wiring table) - confirmed directly against this bench's live main.py
-and a real i2c.scan() (0x59 on I2C1(15,14), nothing on I2C1(19,18)).
-No FRAM storage (fram_storage=None) - this script only exercises the algorithm/raw-signal path;
-see fram-backed backup/restore coverage in fram_manager_roundtrip.py / sgp40_fram_backup_restore.py.
-A fixed [25.0, 50.0] degC/%RH compensation callback stands in for the real SCD30 cross-callback
-(sensortask_wozi.py's sgp_comp_callback) - datasheet-documented compensation defaults (Table 10),
-not a value this driver treats specially.
-
-Run via `mpremote run <this> soft-reset`. Takes ~70s (45s blackout + sampling window) - not
-instant, unlike the other plausibility scripts in this directory, and well past the RP2040
-hardware watchdog's 8.388s ceiling (SPECIFICATION.md Part F.1); `run_isolated()`'s soft reset stops
-the live system's own feed loop (system_service.py) without resetting that hardware timer
-(confirmed against ports/rp2/machine_wdt.c), so this script re-arms/feeds its own WDT handle
-during every long wait rather than relying on anything outside itself."""
+"""Isolated-driver device script: real SGP40 raw-signal readings driven through the real
+voc_algorithm.py end to end. Checks VOC in [0,500]/Raw in [0,65535] post-blackout (45s), and basic
+stability (not stuck, no implausible single-step jump) - a sanity check, not an accuracy claim."""
 
 import asyncio
 

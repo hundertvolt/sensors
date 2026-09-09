@@ -189,8 +189,7 @@ def test_build_system_constructs_every_legacy_named_module() -> None:
     run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
     # Bare module-level attributes - Step 2 (and this test) reaches every long-lived object the
     # same way the legacy reference file's own module-level names would be reached. Shared shape
-    # with the twin's own equivalent test (tests/_shared_rest_roundtrip.py) - see
-    # HARDWARE_TEST_PLAN.md §2.2 for why this pair was the one genuine near-duplicate here.
+    # with the twin's own equivalent test (tests/_shared_rest_roundtrip.py).
     assert_named_modules_constructed(
         sensortask_wozi,
         (
@@ -755,8 +754,7 @@ def test_webserver_pr_is_ram_only_not_fram_backed() -> None:
 
 
 def test_webserver_measurements_and_sensors_get_include_every_real_sensor() -> None:
-    # Shared shape with the twin's own equivalent check (tests/_shared_rest_roundtrip.py) - see
-    # HARDWARE_TEST_PLAN.md §2.2 for why this pair was the one genuine near-duplicate here.
+    # Shared shape with the twin's own equivalent check (tests/_shared_rest_roundtrip.py).
     run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
     res = _dispatch("GET", "/measurements")
     assert res.status_code == 200

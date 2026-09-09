@@ -1,14 +1,7 @@
-"""Isolated-driver device script, phase 1/2, for flash-tier candidate C.13: writes a real
-ConfigManager-backed value to a dedicated test-only config file (never a real driver's own file -
-config_HWTEST_REBOOT.cfg collides with nothing in src/), then the host triggers a genuine
-machine.reset() (see harness.Board.reset_via_machine_reset() - a real reboot, not
-machine.soft_reset()) and reboot_persist_read.py (run after the board comes back) confirms the
-written value survived on real littlefs. Deliberately a dedicated schema/file rather than reusing
-any real driver's own config file or reaching into the live system's already-running object graph -
-see this file's own module docstring in the test file that drives it
-(tests_hardware/flash/test_reboot_persistence.py) for why. Run via `mpremote run <this>` with
-soft_reset_after=False (the host must NOT soft-reset here - that would defeat the point immediately,
-before the real hard reset even happens)."""
+"""Isolated-driver device script, phase 1/2: writes a real ConfigManager-backed value to a dedicated
+test-only config file (collides with no real driver's own file), then the host triggers a genuine
+machine.reset() and reboot_persist_read.py confirms it survived on real littlefs. Run with
+soft_reset_after=False - a soft-reset here would defeat the point before the real reset happens."""
 
 import asyncio
 

@@ -311,34 +311,9 @@ class AsyConnTime(SensorReaderConfig):
             await self.pr.err_s("Error activating hotspot AP:", e, errno=12)
 
     def _configure_hotspot_ap(self, country: str, hostname: str) -> None:
-        # CORRECTED (2026-09-08, verified directly against the pinned MicroPython/cyw43-driver C
-        # source, not assumed): a stale comment used to live here claiming "_run_hotspot_mode()
-        # calls _start_hotspot() (and so this method) again every loop iteration ... STAT_GOT_IP is
-        # a STA-only status an AP interface never reports." That's factually wrong on this pinned
-        # version - extmod/network_cyw43.c's own `.status()` is one generic function for both AP and
-        # STA interfaces (network_cyw43_status() -> cyw43_tcpip_link_status()), and
-        # lib/cyw43-driver/src/cyw43_lwip.c's cyw43_tcpip_link_status() returns CYW43_LINK_UP
-        # (numerically 3, the same value as network.STAT_GOT_IP) for *any* interface whose netif has
-        # a bound IPv4 address - true for an AP interface's own self-assigned address just as much as
-        # a STA interface's DHCP-leased one. So in real steady-state operation,
-        # `_run_hotspot_mode()`'s `status != network.STAT_GOT_IP` branch (the one that calls this
-        # method) is only true on the *first* tick after entering hotspot mode - once the AP is up
-        # and has its address, `wlan.status()` reports STAT_GOT_IP and `_run_hotspot_mode()` takes
-        # the other branch (`_manage_hotspot_stations()`) from then on, matching what this project's
-        # own real bench logs actually show ("Hotspot mode is active" from that other branch
-        # repeating, never this method's own "WLAN hotspot was started" line).
-        #
-        # The `if not self.wlan.active():` guard below is kept anyway, as real, low-risk defense in
-        # depth matching the evident original intent (the `pr.one(...)` log call's own name - "one" -
-        # already signals a log-once-per-entry expectation): if this method is ever genuinely
-        # re-entered while the AP is still active (a real status flicker, or the rare case this
-        # project's own test-side retry logic can trigger), it now skips redundant
-        # essid/password/active(True) reapplication instead of repeating it - still fully
-        # self-healing if the interface was ever externally deactivated, since active() would then
-        # correctly report False again. This is not confirmed to be the cause of any specific
-        # observed real-hardware flakiness (that theory, based on the now-corrected comment above,
-        # is retracted - see BACKLOG.md) - it's kept purely because skipping genuinely unnecessary
-        # reconfiguration is strictly better regardless, and matches the code's own evident intent.
+        # Only reached on the first tick after entering hotspot mode in normal operation - see
+        # SPECIFICATION.md Part F.2 for why STAT_GOT_IP isn't STA-only. The active() guard below is
+        # kept regardless, as low-risk defense against redundant reconfiguration on genuine re-entry.
         if not self.wlan.active():
             network.country(country)  # Country
             network.hostname(hostname)  # Hostname
@@ -655,16 +630,10 @@ class AsyConnTime(SensorReaderConfig):
     async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[str]]]:
         return await self.pr.get_log()
 
-    # Locking convention for this class's WLAN-observing getters (BACKLOG.md's own flagged
-    # inconsistency - documented, not redesigned, since both shapes are genuinely needed): a method
-    # whose own docstring/comment says "caller must already hold wifi_mode_lock" (network_available()
-    # below) is meant to be called from INSIDE a caller's own already-locked critical section - it
-    # never checks .locked() itself, since the caller holding it is the whole point. Every method
-    # below this comment instead checks self.wifi_mode_lock.locked() itself and degrades to a "don't
-    # know yet" sentinel (None/False) - these are the public, callable-from-anywhere getters, never
-    # meant to be wrapped in the caller's own lock. A new getter must pick one shape deliberately, not
-    # copy whichever neighbor happens to be closest - get_dns_server_ip() once returned an
-    # unconditional None because it didn't.
+    # Locking convention for these getters (see SPECIFICATION.md Part C.8's "Known inconsistency"):
+    # network_available() below assumes the caller already holds wifi_mode_lock; every getter below
+    # this comment checks .locked() itself instead and degrades to None/False. A new getter must
+    # pick one shape deliberately, not copy whichever neighbor happens to be closest.
     def get_wlan_ifconfig(self) -> tuple[str, str, str, str] | None:
         if self.wifi_mode_lock.locked():
             return None
@@ -745,14 +714,8 @@ class AsyConnTime(SensorReaderConfig):
     async def wlan_connect(self) -> None:
         await self.pr.setup()  # required for all logged warnings and errors (base_classes.py's own
         # __init__ never calls this - matches every _init_<sensor>() in the three promoted drivers)
-        await self.dns_server.pr.setup()  # dns_server is its own separate PrintLogHistory instance
-        # (captive_dns.py's DNSServer, own construction, not covered by self.pr.setup() above) -
-        # self.dns_server.run() is only ever started later in this same function's own hotspot-
-        # activation path, so this is always called before it. Found during baseline
-        # verification: every dns_server.pr.err_s()/wrn_s() call degraded to
-        # "PrintLog: Uninitialized, call setup first!" forever (never actually logging/persisting)
-        # since nothing ever called this - real hardware falling back to hotspot mode has the
-        # identical gap, not twin-specific.
+        await self.dns_server.pr.setup()  # its own separate PrintLogHistory, not covered by
+        # self.pr.setup() above - see SPECIFICATION.md Part C.7 for the real bug this fixed.
         self._err_cnt_internal = 0  # fresh failure streak each task (re)start, same as _init_<sensor>()
         self._reset_wlan_connect_state()
         await self._apply_initial_led_config()

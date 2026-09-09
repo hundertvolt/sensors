@@ -1,55 +1,6 @@
-"""Isolated-driver device script for flash-tier candidate F.21: one real SCD30 reading, checked
-against datasheet-sourced sane bounds (plausibility only, not an exact reference - see Part 2 item
-9's manual reference-calibrated variant for that). Bounds sourced directly from
-datasheets/scd30/Sensirion_CO2_Sensors_SCD30_Datasheet.pdf Tables 1-3, not assumed from memory:
-  CO2:      measurement range 400-10'000 ppm (Table 1), but per the project owner's own domain
-            knowledge this 400 ppm figure is a typical calibration reference point, not a hard
-            physical floor - real readings in the 300s are unremarkable (a real one at 368.17 was
-            observed on this bench's very first post-boot sample and is not a fault). CO2_MIN_PPM
-            is set to 200 instead: below that is suspicious (though still not necessarily a bus
-            fault), and an exact 0 would be extremely strange.
-  Humidity: measurement range 0-100 %RH (Table 2)
-  Temperature: measurement range -40-70 degC (Table 3) - the sensor's own *measurement* range, not
-              its 0-50 degC *accuracy-specified* range, since a real bench/office environment is
-              expected to sit well inside the accuracy range anyway and this check is deliberately
-              loose (plausibility, not precision).
-This bench unit wires SCD30 to I2C1 (scl=15, sda=14) with IRQ/RDY on GPIO11, not I2C0/GPIO8 -
-dev_legacy/README.md's own wiring table (wozi's deployed wiring puts SCD30 on I2C0/GPIO8 instead;
-this bench moved it to I2C1 alongside SGP40). Confirmed directly against this bench's own live
-main.py (build_system()) and a real i2c.scan() (0x61 on I2C1(15,14), nothing on I2C0(13,12) besides
-BMP3xx/MPRLS) before fixing this script's earlier wrong assumption that it was exercising "the real
-production wiring" - it wasn't; it was silently probing the wrong bus on this specific unit. The
-`frequency=50000, timeout=200000` values themselves are unaffected by this fix (same on both buses,
-per asy_i2c_driver.I2C's own construction and this bench's main.py).
-
-Correction (see this session's own history): an earlier draft of this script polled get_data()
-without ever starting read_loop()/scd_init_irq()/the IRQ timer - get_data() only ever returns
-whatever _store_scd() last wrote via _set_meas_data(), which only ever happens from inside
-read_loop() (base_classes.py's SensorReader._get_meas_data()/_set_meas_data(), confirmed by reading
-both files directly), so that draft could only ever have printed FAIL, never a real reading. Fixed
-by actually starting the reader's real task graph (start_timer() + read_loop() + scd_init_irq(), the
-same three calls sensortask_wozi.py's own get_task_starters()/get_timer_starters() wiring makes)
-before polling.
-
-Run via `mpremote run <this> soft-reset`. Worst case (~90 x 0.5s settle poll + 30 x 0.5s final poll)
-is ~60s, past the RP2040 hardware watchdog's 8.388s ceiling (SPECIFICATION.md Part F.1);
-`run_isolated()`'s soft reset stops the live system's own feed loop (system_service.py) without
-resetting that hardware timer (confirmed against ports/rp2/machine_wdt.c), so this script feeds its
-own WDT handle once per poll rather than relying on anything outside itself.
-
-REAL FINDING (2026-09-08): `SCD30_Reader.read_loop()` -> `_init_scd()` -> `scd.setup()` ->
-`scd.reset()` (asy_scd30_driver.py) sends the SCD30's own soft-reset command (0xD304) over I2C
-every time this script runs - a genuine sensor-level reset, not just an RP2040 one - then waits only
-the documented ~2.5s *boot* time before continuous measurement resumes. Taking the very first
-available reading after that (the original behavior here) can catch the sensor mid-settling: a real
-run on this bench read CO2=162.79 ppm (below the datasheet's own accurate range) immediately after
-such a reset and failed the plausibility check on an otherwise-healthy sensor - not a bus/wiring
-fault, just an unconverged transient. `datasheets/scd30/Sensirion_CO2_Sensors_SCD30_Datasheet.pdf`'s
-own response-time spec (tau63%, time to reach 63% of a step change) is >10s, and
-`Sensirion_CO2_Sensors_SCD30_Low_Power_Mode.pdf`'s Appendix A shows response time at this script's
-~3s sampling interval (trigger_sec=3, close to its "2s/5s" bucket) staying under ~40s - so this
-script now discards readings for a `_SETTLE_S` window before taking the one that actually gets
-checked, rather than accepting the first non-None value."""
+"""Isolated-driver device script: one real SCD30 reading checked against datasheet-sourced sane
+bounds (CO2 200-10000 ppm, below the datasheet's 400 floor since sub-400 readings are real and
+unremarkable; Hum 0-100%RH; Temp -40-70 degC). Discards readings during the post-reset settle window (tau63% >10s)."""
 
 import asyncio
 
@@ -72,8 +23,8 @@ async def _main() -> None:
     read_task = asyncio.create_task(reader.read_loop())
     init_irq_task = asyncio.create_task(reader.scd_init_irq())
 
-    # Let the sensor's own post-reset response-time settle before trusting any reading (see the
-    # REAL FINDING above) - readings seen during this window are deliberately discarded.
+    # Let the sensor's own post-reset response-time settle (see module docstring) before trusting
+    # any reading - readings seen during this window are deliberately discarded.
     for _ in range(int(_SETTLE_S / 0.5)):
         wdt.feed()
         await asyncio.sleep(0.5)

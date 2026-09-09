@@ -15,14 +15,9 @@ sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comme
 import _http_client  # noqa: E402
 from _unix_port_udp_addr_shim import patch_asy_udp_socket_for_unix_port  # noqa: E402
 
-# Must run before anything constructs a real AsyUDPSocket (captive_dns.py's DNSServer, built inside
-# AsyConnTime.__init__ during sensortask_wozi.build_system() below): this MicroPython Unix-port
-# build's socket.bind()/connect()/sendto() reject a plain (host, port) tuple - the same quirk
-# tests/test_asy_udp_socket.py's own make_addr() documents - and AsyUDPSocket's own plain-tuple
-# addr is correct, untouched production code for the real rp2 target, so the workaround belongs
-# here, twin-side, not in src/. Same convention digital_twin/run_wozi_integration.py's own main()
-# uses. Only this file's own hotspot/DNS section below (real UDP round trip) actually needs this;
-# every other test in this file is unaffected by the patch being applied unconditionally.
+# Must run before AsyUDPSocket is constructed (DNSServer, inside AsyConnTime.__init__ below): this
+# Unix-port build rejects a plain (host, port) tuple in bind()/connect()/sendto() (SPECIFICATION.md
+# Part A.10), a twin-side workaround since AsyUDPSocket's own addr is correct production code.
 patch_asy_udp_socket_for_unix_port()
 
 # digital_twin's own fake machine module - configure_fram_state_path()/flush_fram(), used only by
@@ -141,20 +136,16 @@ def _make_dns_query(labels: "list[str]", query_id: bytes = b"\x12\x34") -> bytes
 
 async def _query_dns_and_get_answer_ip(query: bytes, timeout_s: float = 5.0) -> str:
     # Genuine end-to-end DNS round trip against the real conn.dns_server_task's real AsyUDPSocket
-    # (bound at ("0.0.0.0", 53) - captive_dns.py's own DNSServer.__init__, unchanged by this
-    # feature). Uses tests/test_asy_udp_socket.py's own AdversarialPeer.recv() polling shape (a
-    # real, independent socket.socket(), non-blocking + select.poll() + a bounded ticks_ms() loop,
-    # cooperatively yielding via asyncio.sleep_ms() so the server task's own recvfrom()/sendto()
-    # actually get scheduled) rather than a plain socket.recv(), since this MicroPython Unix-port
-    # build's socket module is not guaranteed to support settimeout() the way CPython's does.
+    # (bound at ("0.0.0.0", 53)). Uses the same non-blocking socket.socket()+select.poll()+bounded
+    # ticks_ms() polling shape as tests/test_asy_udp_socket.py's AdversarialPeer.recv(), since this
+    # Unix-port build's socket module isn't guaranteed to support settimeout().
     peer = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     peer.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     peer.setblocking(False)
     data: bytes = b""
     try:
-        # This MicroPython Unix-port build's sendto() rejects a plain (host, port) tuple - the
-        # resolved getaddrinfo() address object is required instead (same quirk
-        # tests/test_asy_udp_socket.py's own make_addr()/resolve_addr() document and work around).
+        # sendto() rejects a plain (host, port) tuple here; the resolved getaddrinfo() address is
+        # required instead (same quirk tests/test_asy_udp_socket.py's make_addr() works around).
         addr = socket.getaddrinfo("127.0.0.1", 53)[0][-1]
         peer.sendto(query, addr)
         poller = select.poll()
@@ -162,11 +153,8 @@ async def _query_dns_and_get_answer_ip(query: bytes, timeout_s: float = 5.0) -> 
         t0 = time.ticks_ms()
         ready = False
         while True:
-            # Check the actual per-fd event flags, not just ipoll()'s truthiness: a returned entry
-            # can carry POLLERR/POLLHUP with no POLLIN set (src/asy_udp_socket.py's own real
-            # ready() does the same `event & mask` check for exactly this reason) - confirmed
-            # directly that treating any non-empty ipoll() result as "data is ready" here raised
-            # OSError(EAGAIN) from the following recv/recvfrom call.
+            # Check the actual per-fd event flags, not just ipoll()'s truthiness: an entry can
+            # carry POLLERR/POLLHUP with no POLLIN set, which otherwise raised OSError(EAGAIN).
             for _, event in poller.ipoll(0):
                 if event & select.POLLIN:
                     ready = True
@@ -180,9 +168,8 @@ async def _query_dns_and_get_answer_ip(query: bytes, timeout_s: float = 5.0) -> 
             await asyncio.sleep_ms(5)
     finally:
         peer.close()
-    # DNSQuery.response()'s own fixed layout (tests/test_captive_dns.py's own
-    # test_response_builds_expected_packet_for_valid_domain confirms this byte-for-byte): the
-    # answer's 4 raw IPv4 bytes are always the last 4 bytes of the packet, regardless of query shape.
+    # DNSQuery.response()'s fixed layout: the answer's 4 raw IPv4 bytes are always the last 4
+    # bytes of the packet (tests/test_captive_dns.py confirms this byte-for-byte).
     return ".".join(str(b) for b in data[-4:])
 
 
@@ -205,13 +192,9 @@ async def _wait_until(predicate: "Callable[[], bool]", timeout_s: float, interva
 
 
 def test_build_system_boots_against_the_real_twin_buses_without_exception() -> None:
-    # Confirms every FRAM chunk (see SPECIFICATION.md Part A.7 for the seven-chunk order) still allocates cleanly
-    # against the twin's own real FramChip, not just tests/machine.py's fake - a real gap nothing
-    # before this file ever exercised (Step 1/2's own tests/test_sensortask_wozi.py never touches
-    # digital_twin at all). Shared shape with the mock's own equivalent test
-    # (tests/_shared_rest_roundtrip.py) - see HARDWARE_TEST_PLAN.md §2.2 for why this pair was the
-    # one genuine near-duplicate here; this list adds "webserver" over the mock's own tuple since
-    # this file's whole point is exercising real HTTP against it.
+    # Confirms every FRAM chunk (SPECIFICATION.md Part A.7) allocates cleanly against the twin's
+    # real FramChip, not just tests/machine.py's fake. Shared shape with the mock's own equivalent
+    # test (tests/_shared_rest_roundtrip.py); adds "webserver" since this file exercises real HTTP.
     run(_boot(_next_test_port()))
     assert_named_modules_constructed(
         sensortask_wozi,
@@ -247,11 +230,8 @@ def test_every_get_endpoint_is_reachable_over_real_http_and_shaped_correctly() -
         task = await _start_webserver()
         try:
             # Shared shape with the mock's own equivalent check (tests/_shared_rest_roundtrip.py) -
-            # see HARDWARE_TEST_PLAN.md §2.2 for why this pair was the one genuine near-duplicate
-            # here (real bug found via a real user report: every driver's own get_dict_data()
-            # already returns a {name: {...}} self-wrapped shape, and _get_measurements()/
-            # _get_sensors() used to index that by name again - see src/asy_webserver_service.py's
-            # own comments there for the full account).
+            # regression guard for the {name: {name: {...}}} self-wrapping bug (see
+            # asy_webserver_service.py's comments).
             res = await _http_client.fetch("127.0.0.1", port, "GET", "/measurements")
             assert res.status_code == 200
             assert_sensor_payload_not_self_wrapped(res.json(), {"SCD30", "BMP3XX", "SGP40"})
@@ -617,10 +597,8 @@ def test_wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server_a
         pixel_task = pixel.start_asy_neopixel_led_overl()  # the one real pixel task that turns
         # conn's own on()/off()/toggle() LED calls into real committed NeoPixel frames.
         wifi_task = conn.start_asy_wlan_connect()
-        webserver_task = await _start_webserver()  # real WebserverService(..., is_hotspot_active=
-        # conn.is_hotspot_active) wiring (sensortask_wozi.py's own build_system()) - free coverage
-        # once this test already drives conn into real hotspot mode below (see SPECIFICATION.md
-        # Part A.5): no twin-side network.py simulation change needed.
+        webserver_task = await _start_webserver()  # real is_hotspot_active=conn.is_hotspot_active
+        # wiring (SPECIFICATION.md Part A.5) - free coverage once this test drives real hotspot mode.
         try:
             await asyncio.sleep(0.2)  # let wlan_connect()'s own synchronous prefix
             # (_reset_wlan_connect_state(), which unconditionally zeroes connection_failures) run
@@ -644,24 +622,14 @@ def test_wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server_a
             assert conn.led is pixel
             assert len(pixel.pixel.writes) > 0, "the real status LED never actually wrote a frame"
             assert conn.is_hotspot_active() is True
-            # Networking level, combined: a genuine DNS query against the real, already-running
-            # conn.dns_server_task (bound to real port 53 - captive_dns.py's DNSServer.__init__,
-            # unchanged by this feature) resolves to the AP's own IP, exactly like a real captive
-            # portal's DNS spoofing (src/captive_dns.py, untouched by this PR). Read live from
-            # conn.wlan.ifconfig() rather than hardcoded: digital_twin/network.py's fake WLAN never
-            # updates its ifconfig() on AP activation (confirmed by reading it directly - active()
-            # only flips a bool, config() only logs its kwargs), so this currently resolves to
-            # "0.0.0.0" rather than a realistic AP address - a twin-fidelity gap worth knowing about,
-            # not a real product bug (real hardware's cyw43 driver does return the real configured AP
-            # IP here) and not something this PR's own scope touches.
+            # A genuine DNS query against the real, already-running conn.dns_server_task resolves
+            # to the AP's own IP, read live from conn.wlan.ifconfig() (currently "0.0.0.0" - a
+            # twin-fidelity gap, see digital_twin/README.md - not a real product bug).
             answer_ip = await _query_dns_and_get_answer_ip(_make_dns_query(["captive", "example"]))
             assert answer_ip == conn.wlan.ifconfig()[0]
-            # Real end-to-end captive-portal redirect: a real HTTP request, through the real
-            # webserver, consulting the real conn.is_hotspot_active() now that hotspot mode is
-            # genuinely active - not a unit-level fake callback like test_asy_webserver_service.py's
-            # own Section G.2 coverage. Combined with the real DNS query above, this proves the full
-            # captive-portal networking mechanism (DNS spoof + HTTP redirect) end-to-end in one real,
-            # organically-triggered hotspot scenario.
+            # Real end-to-end captive-portal redirect through the real webserver, consulting the
+            # real conn.is_hotspot_active() - not a unit-level fake callback. Combined with the DNS
+            # query above, proves the full captive-portal mechanism end-to-end.
             res = await _http_client.fetch("127.0.0.1", port, "GET", "/generate_204")
             assert res.status_code == 302
             assert res.headers["Location"] == "/"
@@ -763,14 +731,9 @@ def test_sgp40_voc_backup_survives_a_simulated_reboot_through_the_real_fram_chun
 
 
 # ---------------------------------------------------------------------------
-# Recombination test (2026-09-04, project owner's own explicit request): the reboot-survival test
-# above always flush_fram()s right after the one real backup it triggers, before ever simulating a
-# reboot - it proves the happy persistence path, not what happens if a real crash/power-loss lands
-# *between* a real write landing in the twin's own in-memory FRAM image and the next periodic/
-# explicit flush to persistent storage ever running. This is the twin-tier analogue of
-# tests_hardware/flash/test_bus_concurrency.py's own real hard-reset-race-during-write test (a real
-# RP2040 reset instead of a real chip-level fault) - see that test's device script for the full
-# real-hardware account and its own honest scope limits.
+# Unlike the reboot-survival test above (which flush_fram()s right after its one backup), this
+# proves what happens if a crash lands *between* a write landing in FRAM and the next flush - the
+# twin-tier analogue of tests_hardware/flash/test_bus_concurrency.py's hard-reset-race test.
 # ---------------------------------------------------------------------------
 
 
@@ -780,9 +743,8 @@ def test_sgp40_voc_backup_unflushed_write_is_lost_but_the_system_recovers_cleanl
         state_path = cfg_path + "fram_state.json"
         machine.configure_fram_state_path(state_path)
         try:
-            # --- Boot 1: real construction, one real backup, flushed - this becomes the durable
-            # "last known good" state everything below checks against. Same setup shape as the
-            # reboot-survival test above. ---
+            # Boot 1: real construction, one real backup, flushed - the durable "last known good"
+            # state everything below checks against.
             await sensortask_wozi.build_system(cfg_path=cfg_path, web_host="127.0.0.1", web_port=_next_test_port())
             assert sensortask_wozi.sgp_reader is not None and sensortask_wozi.scd_reader is not None
             sgp1 = sensortask_wozi.sgp_reader
@@ -801,13 +763,9 @@ def test_sgp40_voc_backup_unflushed_write_is_lost_but_the_system_recovers_cleanl
             with open(state_path) as f:
                 flushed_state = f.read()
 
-            # --- A second, real backup happens through the exact same real chain, genuinely
-            # mutating the twin's own in-memory FRAM image - but this one is deliberately never
-            # flushed, simulating a real crash/power-loss landing after this write's own real effect
-            # already took place in RAM but before the next periodic/explicit flush to persistent
-            # storage ever ran (the closest twin-tier analogue to the flash-tier reset race's own
-            # "reset lands mid-write" scenario - here the write itself always completes cleanly, but
-            # never gets durably persisted). ---
+            # A second real backup mutates the twin's in-memory FRAM image but is deliberately
+            # never flushed - simulating a crash/power-loss after the write lands in RAM but
+            # before the next flush to persistent storage ever runs.
             task2 = sgp1.start_asy_read()
             try:
                 sgp1.backup_counter = 59
@@ -819,18 +777,16 @@ def test_sgp40_voc_backup_unflushed_write_is_lost_but_the_system_recovers_cleanl
                 unflushed_check = f.read()
             assert unflushed_check == flushed_state, "the second backup's own write leaked onto disk despite never being flushed - flush_fram() may no longer be the only real persistence trigger"
 
-            # --- Simulated crash-reboot: rebuild the whole real object graph fresh from the SAME
-            # state_path, which (by design, per the assertion above) still only ever held boot 1's
-            # flushed content - the second backup's own real, already-applied write is genuinely
-            # lost, exactly as a real un-flushed write would be lost to a real power cycle. ---
+            # Simulated crash-reboot: rebuild the object graph fresh from the SAME state_path,
+            # which still only holds boot 1's flushed content - the second backup's write is
+            # genuinely lost, exactly as an un-flushed write would be lost to a real power cycle.
             await sensortask_wozi.build_system(cfg_path=cfg_path, web_host="127.0.0.1", web_port=_next_test_port())
             assert sensortask_wozi.sgp_reader is not None and sensortask_wozi.scd_reader is not None
             assert sensortask_wozi.sgp_reader is not sgp1  # genuinely fresh object, not memory surviving in-process
             sgp2 = sensortask_wozi.sgp_reader
             await sensortask_wozi.scd_reader._set_meas_data(SCD30(800, 22.0, 45.0, None, None, None))
 
-            # --- Restore, through the real chain again - the system must boot and restore cleanly
-            # against the last *flushed* state, with no crash and no trace of the lost write. ---
+            # Restore must succeed cleanly against the last *flushed* state, with no trace of the lost write.
             task3 = sgp2.start_asy_read()
             try:
                 await asyncio.sleep(2.5)

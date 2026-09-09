@@ -1,33 +1,6 @@
-"""Isolated-driver device script, bottom-level hardware-function gap fix: FRAM_SPI's real
-write-protect status-register round trip (asy_fram_driver.py's set_write_protected()/
-get_write_protected(), the WPEN|BP0|BP1 bits - same status-register mechanism datasheeted for both
-Fujitsu FRAM chips this project uses) against the real MB85RS2MTA chip this bench unit carries
-(CS=GPIO5, not the deployed wozi unit's MB85RS64V at CS=GPIO1 - dev_legacy/README.md's own wiring
-table, confirmed directly against this bench's live main.py and a real RDID probe) - not just "can
-a chunk be written", but "does the real WP hardware mechanism actually gate a real write, and can
-it be turned back off again".
-
-No error-log check for the blocked write itself (unlike bench/test_network_resilience.py's fault-
-injection tests): flash tier has no network, so there is no /status to check against at all here;
-separately, FRAM_SPI._write()'s own write-protected rejection calls the plain self.pr.wrn() (not
-wrn_s()), confirmed directly - never persisted to the history this device script's own chunk shares
-with fram_error_log_roundtrip.py, so nothing would show up there either way.
-
-REAL FINDING, flagged not fixed (a real src/ interaction, not a test bug once found): a chunk
-read() cannot be performed while the chip is write-protected - _AsyBaseFramChunk._read_chunk()'s
-own busy/idle status-byte protocol needs to WRITE a transient busy marker before it reads data
-(asy_fram_manager.py's _handle_status_bytes()/_set_check_sb(), gated the same as any other write by
-FRAM_SPI._write()'s get_write_protected() check), so a real write-protected chip makes chunk.read()
-return None too, not just chunk.write(). Confirmed directly against real hardware (an earlier draft
-of this script tried to read the chunk immediately after the blocked write, still under
-protection, and got None every time - not a script bug in the read/compare logic itself). This
-script therefore only reads back the data *after* clearing write protection again - clearing
-protection is a status-register-only operation that cannot itself alter the stored bytes, so this
-still fully verifies "the blocked write left the data unchanged," just not literally
-mid-protection. Whether "reads also blocked while write-protected" is the intended, accepted
-behavior of the busy-flag protocol is a project-owner call, not decided here.
-
-Run via `mpremote run <this> soft-reset`."""
+"""Isolated-driver device script: FRAM_SPI's real write-protect status-register round trip
+(WPEN|BP0|BP1) against the real chip - does WP actually gate a write, and can it be cleared again.
+See BACKLOG.md's open question on chunk.read() also being blocked while write-protected."""
 
 import asyncio
 
@@ -83,11 +56,9 @@ async def _main() -> None:
             print("RESULT: FAIL get_write_protected() still reports True after set_write_protected(False)")
             return
 
-        # Verified only now, after clearing protection - see this file's own module docstring:
-        # chunk.read() itself needs write access (a transient busy-status byte) and would return
-        # None while still protected, regardless of whether the data was actually left unchanged.
-        # Clearing protection can't itself alter the stored bytes, so this still proves the blocked
-        # write above left the data untouched.
+        # Verified only after clearing protection - chunk.read() itself needs write access (a
+        # transient busy-status byte) and returns None while still protected (see BACKLOG.md).
+        # Clearing protection can't alter stored bytes, so this still proves the write was blocked.
         readback = await chunk.read()
         if readback is None or bytes(readback) != PATTERN_A:
             print(f"RESULT: FAIL data changed despite write protection having been active: read {None if readback is None else bytes(readback).hex()}")

@@ -1,9 +1,6 @@
-"""Flash-tier automated tests, Part 1 category E/G subset (tmp_hardware_test_candidates.md items
-19, 20, 23) - real toolchain/flash/boot checks, run after the one-time physical setup
-(HARDWARE_TEST_PLAN.md §6.1). Item 20 (a real UF2 flash-and-boot smoke test) is gated behind
-`--allow-flash-cycle` and its own `flash_cycle` marker - it IS the one deliberate re-provisioning
-flash HARDWARE_TEST_PLAN.md §6.1 allows, never something the routine automated pass should trigger
-on its own."""
+"""Flash-tier automated tests: real toolchain/flash/boot checks, run after the one-time physical
+setup. The real UF2 flash-and-boot smoke test is gated behind `--allow-flash-cycle` and its own
+`flash_cycle` marker - a deliberate re-provisioning flash, never triggered by a routine run."""
 
 from __future__ import annotations
 
@@ -31,15 +28,9 @@ def test_mpremote_connection_is_stable_across_repeated_calls(board: Board) -> No
 
 
 def test_env_tier_flash_recurring_run_is_idempotent(board: Board) -> None:
-    # REAL FINDING: "idempotent" here means "same result on a re-run," not "fast" - run_setup()
-    # (SPECIFICATION.md Part B.3) always re-verifies from scratch: a fresh git fetch, a full
-    # picotool CMake+make rebuild (build_and_install_picotool() unconditionally rmtree()s its own
-    # build dir first), and a full mpy-cross/Unix-port/firmware freeze-verify pass - never a
-    # no-op short-circuit. Confirmed directly: a real run on this bench's Raspberry Pi 4 took
-    # ~481s wall clock (8m33s of CPU time across 4 cores) with nothing else needing to change -
-    # the original 300s timeout was calibrated for faster (x86, or more cores) dev/CI hardware,
-    # not a Pi4 doing real parallel compilation. 1200s leaves comfortable headroom without being
-    # so generous a genuine hang would go unnoticed for a very long time.
+    # "Idempotent" means "same result on a re-run," not "fast" - run_setup() always re-verifies from
+    # scratch (fresh git fetch, full picotool rebuild, full mpy-cross/Unix-port/firmware pass), which
+    # takes ~481s wall clock on this bench's Pi4; 1200s leaves headroom without masking a real hang.
     proc = subprocess.run(
         ["uv", "run", "toolchain/setup_toolchain.py", "env", "--tier", "flash", "--device", board.device],
         cwd=REPO_ROOT,
@@ -60,7 +51,7 @@ def test_env_tier_flash_recurring_run_is_idempotent(board: Board) -> None:
 @pytest.mark.flash_cycle
 def test_real_uf2_reflash_and_boot_smoke_test(board: Board, request: pytest.FixtureRequest) -> None:
     if not request.config.getoption("--allow-flash-cycle"):
-        pytest.skip("this IS a real flash cycle (HARDWARE_TEST_PLAN.md §6.1) - pass --allow-flash-cycle to deliberately run it")
+        pytest.skip("this IS a real flash cycle - pass --allow-flash-cycle to deliberately run it")
 
     # dev, never wozi - wozi is never physically flashed (CLAUDE.md's hard rule), and its
     # hardcoded pins don't match this bench's real wiring.
@@ -76,14 +67,9 @@ def test_real_uf2_reflash_and_boot_smoke_test(board: Board, request: pytest.Fixt
     assert uf2_path.exists(), f"build_firmware.py reported success but {uf2_path} doesn't exist"
 
     board.enter_bootloader()  # drops the already-running board into BOOTSEL/mass-storage mode
-    # REAL FINDING, fixed (2026-09-04): this comment used to claim "a plain bounded wait" here, but
-    # no such wait was ever actually implemented - picotool was called immediately after
-    # enter_bootloader() with zero delay, racing the real USB BOOTSEL re-enumeration. Confirmed
-    # directly, real hardware: a real run failed with picotool's own "No accessible RP-series
-    # devices in BOOTSEL mode were found" (exit 249) - not a flaky one-off, a genuine missing-wait
-    # bug. Retried here (bounded, short interval) rather than a single fixed sleep, since picotool
-    # itself has no internal retry of its own for this - a real BOOTSEL enumeration delay varies by
-    # run, and a bounded retry adapts to that instead of guessing one fixed number.
+    # picotool has no internal retry for USB BOOTSEL re-enumeration (calling it immediately after
+    # enter_bootloader() can race it, failing with exit 249) - bounded retry here instead of one
+    # fixed sleep, since the real enumeration delay varies by run.
     load: subprocess.CompletedProcess[str] | None = None
     for _attempt in range(5):
         load = subprocess.run(

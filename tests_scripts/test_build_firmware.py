@@ -1,8 +1,7 @@
 """Tests scripts/build_firmware.py (SPECIFICATION.md Part B.11's real firmware.uf2 assembly
-script). Fast tests cover its own logic (_MANIFEST_TEMPLATE content, build_stage_dir()'s file
-assembly - including its per-device boot-module selection, DEV_HARDWARE_BASELINE_PLAN.md
-decision 2 - CLI error paths) without the real, minutes-long ARM compile - see
-test_real_firmware_build_produces_a_valid_uf2's own comment for the one test that does that."""
+script). Fast tests cover its own logic (_MANIFEST_TEMPLATE content, build_stage_dir()'s
+per-device boot-module selection, CLI error paths) without the real, minutes-long ARM compile -
+see test_real_firmware_build_produces_a_valid_uf2's own comment for the one test that does that."""
 
 import importlib.util
 import os
@@ -25,8 +24,8 @@ def build_firmware(repo_root):
 
 
 def test_build_stage_dir_rejects_a_device_with_no_boot_entry_file(build_firmware, tmp_path):
-    # DEV_HARDWARE_BASELINE_PLAN.md decision 2's own explicit requirement: fail loud, before
-    # staging anything, rather than silently falling back to some other device's boot module.
+    # Fail loud, before staging anything, rather than silently falling back to some other
+    # device's boot module.
     with pytest.raises(RuntimeError, match="no-such-device"):
         build_firmware.build_stage_dir(tmp_path, "no-such-device")
 
@@ -57,9 +56,8 @@ def test_build_stage_dir_assembles_every_expected_file(build_firmware, repo_root
     # boot_entry/<device>_boot.py is staged under the name "main.py" (see
     # scripts/build_firmware.py's own docstring for why this is load-bearing, not cosmetic), copied
     # verbatim content-wise, not modules/_boot.py (the protected file) - confirmed by content match
-    # against the real source, not just filename presence. This is also the regression coverage
-    # DEV_HARDWARE_BASELINE_PLAN.md decision 2 asked for: each device stages its own, distinct boot
-    # module content - not silently falling back to wozi's.
+    # against the real source, not just filename presence: each device stages its own, distinct
+    # boot module content, not silently falling back to wozi's.
     boot_entry_file = repo_root / "boot_entry" / f"{device}_boot.py"
     assert (tmp_path / "main.py").read_text() == boot_entry_file.read_text()
     other_device = "dev" if device == "wozi" else "wozi"

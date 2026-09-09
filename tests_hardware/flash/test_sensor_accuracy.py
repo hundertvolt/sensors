@@ -1,10 +1,6 @@
-"""Flash-tier automated test, Part 1 category F (tmp_hardware_test_candidates.md item 21): real
-SCD30 CO2/temperature/humidity plausibility (sane bounds, not exact-reference calibration - see
-tests_hardware/manual/manual_sensor_accuracy.py's item 9/10 for the reference-calibrated
-variant that needs a human-supplied known-good reading). Also covers the same plausibility check
-for BMP3xx and SGP40 (incl. the VOC algorithm itself) - a real gap found on a later audit pass
-(see tests_hardware/README.md's "gaps found and closed" section): SCD30 was the only sensor with
-any automated real-hardware value check at all."""
+"""Flash-tier automated tests: real SCD30/BMP3xx/SGP40 (incl. VOC algorithm) reading plausibility
+(sane datasheet bounds, not exact-reference calibration - see
+tests_hardware/manual/manual_sensor_accuracy.py for the reference-calibrated variant)."""
 
 from __future__ import annotations
 

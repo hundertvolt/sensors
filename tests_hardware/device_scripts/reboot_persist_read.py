@@ -1,9 +1,6 @@
-"""Isolated-driver device script, phase 2/2 for flash-tier candidate C.13 - see
-reboot_persist_write.py's own docstring for the full design. Run after a genuine machine.reset()
-(not soft_reset) following that script. Constructs a fresh ConfigManager against the exact same
-config_HWTEST_REBOOT.cfg/schema and confirms the marker value written before the reboot is still
-there - the real write_config() -> real littlefs -> a fresh ConfigManager.setup() read path,
-exercised across a genuine reboot, not just a raw file peek."""
+"""Isolated-driver device script, phase 2/2 (see reboot_persist_write.py). Runs after a genuine
+machine.reset() and confirms the marker value written before reboot survived via a fresh
+ConfigManager.setup() read - the real write_config() -> littlefs -> read path across a real reboot."""
 
 import asyncio
 

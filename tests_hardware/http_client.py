@@ -1,10 +1,6 @@
-"""Host-side (CPython, stdlib `urllib.request` only - no new dependency, matching this project's
-own preference for hand-rolled-over-imported seen in digital_twin/_http_client.py) HTTP client for
-bench-tier live-system checks (HARDWARE_TEST_PLAN.md §4's "flash/bench live-system adapter").
-Deliberately mirrors digital_twin/_http_client.py's own `HttpResponse`/`fetch()` shape (status_code,
-.json(), method/path/json_body signature) closely enough that a shared-behavior function written
-against one translates directly to the other, even though this one is synchronous/blocking (CPython
-has no asyncio event loop running in a pytest test body) where the twin's is a coroutine."""
+"""Host-side (CPython stdlib `urllib.request` only) HTTP client for bench-tier live-system checks -
+mirrors digital_twin/_http_client.py's `HttpResponse`/`fetch()` shape closely enough that a
+shared-behavior function written against one translates directly to the other, though synchronous."""
 
 from __future__ import annotations
 
@@ -38,8 +34,6 @@ def fetch(host: str, port: int, method: str, path: str, json_body: dict[str, Any
             body = response.read()
             return HttpResponse(response.status, dict(response.headers), body)
     except urllib.error.HTTPError as exc:
-        # A non-2xx response is still a real, meaningful HTTP response for this codebase's own REST
-        # conventions (e.g. a validation failure comes back as a real JSON body with a real status
-        # code, not just an exception) - surfaced the same way a successful response would be,
-        # rather than forcing every caller to catch HTTPError for what's often the expected path.
+        # A non-2xx response is still a meaningful REST response here (e.g. a validation failure has
+        # a real JSON body) - surface it like a success instead of forcing callers to catch HTTPError.
         return HttpResponse(exc.code, dict(exc.headers or {}), exc.read())

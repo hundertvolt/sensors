@@ -1,15 +1,6 @@
-"""Isolated-driver device script, flash-tier, phase 2 of 2 - runs after the board has come back up
-from the real hardware reset fram_reset_race_during_write_seed_and_race.py's own reset_yanker()
-triggered mid-write (see that script's own docstring for the full design and honest scope). Proves:
-the raced write never landed (target region still shows the original, pre-race content), neither
-guard region was disturbed (no wild corruption spread beyond the write in progress), a fresh
-verify_present() succeeds (the chip's own SPI protocol state machine isn't left wedged - matching
-fram_cs_hijack_fault_injection_and_recovery.py's own recovery proof), and a completely clean write
-+read round trip at a separate address works normally afterward too - including proving the stray
-SET WEL latch left behind by the interrupted session (see phase 1's own docstring) causes no
-problem for this next real write.
-
-Run via ordinary board.run_isolated(this_script) - a normal isolated-driver call, unlike phase 1."""
+"""Isolated-driver device script, phase 2 of 2 - runs after the board comes back from the real
+hardware reset seed_and_race.py's reset_yanker() triggered mid-write. Proves the raced write never
+landed, neither guard region was disturbed, and the driver fully recovers afterward."""
 
 import asyncio
 
@@ -51,8 +42,7 @@ async def _main() -> None:
     async with fram:
         target = bytearray(16)
         ok = await fram.get_values(target, addr_start=_TARGET_ADDR)
-    # HARD requirement, same standing rule as the CS-hijack race: the raced write must never have
-    # reached the chip - the target region must still show its real, original, pre-race content.
+    # Hard requirement: the raced write must never have reached the chip.
     if not ok or bytes(target) != _ORIGINAL_TARGET_PATTERN:
         failures.append(f"target region was NOT left at its original content: expected {_ORIGINAL_TARGET_PATTERN.hex()}, got {bytes(target).hex()} (ok={ok}) - the reset-raced write may have partially or fully landed")
     wdt.feed()
@@ -64,10 +54,8 @@ async def _main() -> None:
         failures.append(f"guard-after region disturbed: expected {_GUARD_AFTER_PATTERN.hex()}, got {bytes(guard_after).hex()} (ok={ok})")
     wdt.feed()
 
-    # Recovery: verify_present() (not lock-wrapped - self-acquires internally, asyncio.Lock isn't
-    # reentrant) must succeed cleanly, then a completely fresh write+read round trip must work
-    # normally - including proving the stray SET WEL left over from the interrupted session (phase
-    # 1's own docstring) doesn't wedge the very next real write.
+    # verify_present() is not lock-wrapped - it self-acquires internally (asyncio.Lock isn't
+    # reentrant); a fresh write+read at a separate address confirms full recovery.
     recovered = await fram.verify_present()
     wdt.feed()
     if not recovered:

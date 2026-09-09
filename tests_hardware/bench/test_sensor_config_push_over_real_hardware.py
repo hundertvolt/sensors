@@ -1,16 +1,6 @@
-"""Bench-tier automated tests, gap fix: real PUT /sensors config pushes against real hardware -
-the "integration checks currently running on mocks shall be done for real wherever possible" ask
-(tests/test_setter_microdot_integration.py exercises this exact REST path against a fake sensor
-module; this file is its real-hardware counterpart). A "Valid" result in the response is direct
-evidence the real live-push callback (asy_bmp3xx_driver.py's set_pressure_oversampling()/
-set_temperature_oversampling()/set_filter_coefficient(), asy_sgp40_driver.py's reset_voc()) ran
-a real I2C write against real hardware and didn't fail - base_classes.py's _set_dict_cfg() only
-reports "Valid" once persistence succeeded AND the push callback itself returned True. A follow-up
-GET /sensors confirms the values were actually applied on the real sensor (BMP3XX_I2C.get_config_snapshot()
-reads the real OSR/CONFIG registers back), not just accepted.
-
-SCD30 has no live-push config fields at all (asy_scd30_driver.py registers no _push_callbacks
-entries - confirmed directly) - there is nothing to add a real-push-parity test for on that sensor."""
+"""Bench-tier automated tests: real PUT /sensors config pushes against real hardware, the
+real-hardware counterpart to tests/test_setter_microdot_integration.py's mock. A "Valid" result
+plus a follow-up GET /sensors confirms the live-push callback ran a real I2C write and it stuck."""
 
 from __future__ import annotations
 
@@ -25,6 +15,9 @@ from harness import Board
 # settings (_OSR_SETTINGS=(1,2,4,8,16,32), _IIR_SETTINGS=(0,1,3,7,15,31,63,127)) - a real change
 # must actually take effect on the real hardware for this test to mean anything.
 _BMP3XX_TEST_VALUES = {"PressOvers": 4, "TempOvers": 2, "FiltCoeff": 3}
+
+# SCD30 has no live-push config fields at all (asy_scd30_driver.py registers no _push_callbacks) -
+# nothing to add a real-push-parity test for on that sensor.
 
 
 def test_bmp3xx_oversampling_and_filter_push_over_real_rest_and_readback(board: Board, dut_ip: str) -> None:
@@ -52,9 +45,8 @@ def test_bmp3xx_oversampling_and_filter_push_over_real_rest_and_readback(board: 
         restore_results = restore_res.json()["result"]["BMP3XX"]
         assert all(v == "Valid" for v in restore_results.values()), f"restoring original BMP3XX config was rejected: {restore_results!r}"
 
-    # A fully valid push-and-restore round trip is not a fault - config_manager.py's own errno=12
-    # (see test_network_resilience.py's nonsense-field-values test) only fires on a rejected
-    # key, which none of these were. Both BMP3XX and its own CFGMGR_BMP3XX log are checked.
+    # A fully valid push-and-restore round trip is not a fault - config_manager.py's errno=12 only
+    # fires on a rejected key, which none of these were.
     assert_module_error_log_empty(dut_ip, "BMP3XX")
     assert_module_error_log_empty(dut_ip, "CFGMGR_BMP3XX")
 

@@ -1,9 +1,6 @@
-"""Shared background UDP responder for network-fault-injection tests (BACKLOG.md's open question
-#5, "real-hardware verification gap for asy_udp_socket.py/captive_dns.py" - real garbage-response
-robustness, not just real unreachability, had no coverage in this tier before this file). Binds a
-local UDP socket, replies to every datagram received with a fixed garbage payload until stopped -
-used by both the NTP and DNS garbage-response tests via bench_control.BenchBridge's
-redirect_udp_port_to_local()/clear_udp_port_redirect()."""
+"""Shared background UDP responder for network-fault-injection tests: binds a local UDP socket and
+replies to every datagram with a fixed garbage payload until stopped, used by the NTP/DNS
+garbage-response tests via bench_control.BenchBridge's UDP-port-redirect helpers."""
 
 from __future__ import annotations
 

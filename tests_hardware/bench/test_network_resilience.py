@@ -1,24 +1,7 @@
-"""Bench-tier automated tests, gap fix found via a direct project-owner audit question about
-networking robustness against the real API/website/internals: real WiFi outage/flap while already
-connected, real NTP/DNS servers answering with garbage instead of being merely unreachable
-(BACKLOG.md's open question #5), the real webserver's own max_connections=4 ceiling actually
-degrading cleanly at/above that limit, real GET/PUT nonsense requests over the *normal* network (the
-pre-existing malformed-request check in test_hotspot_role_reversal.py is hotspot-mode-only and
-GET-only), and slowloris-style/abruptly-broken connections. See this file's own per-test docstrings
-for the exact real source each design decision is grounded against.
-
-Deliberately NOT covered here, and why: DHCP flakiness/slowness/rubbish responses. The DUT's DHCP
-*client* behavior is entirely inside MicroPython's own lwIP network stack (no project code of this
-repo's own runs it - confirmed by there being no DHCP-handling code anywhere in src/), so it's the
-same "outside this project's own code, real backstop elsewhere" bucket CLAUDE.md already places
-I2C-bus-wedge recovery in. Unlike ap_down()/ap_up() (fully reversible via nmcli in seconds) or the
-UDP-port redirects below (a plain iptables rule, trivially removed), the bench bridge's own DHCP
-server is NetworkManager's managed dnsmasq instance with no exposed per-request delay/corruption
-knob - standing up a custom rogue DHCP responder to fake one risks leaving the DUT without any valid
-lease at all, in a way nothing in this tier could then recover from short of physical intervention
-(unlike the hotspot role-reversal scenario's own disclosed permanent-WLAN-deactivation risk, which
-at least clears with a plain hard_reset()). Flagged as a deliberate scope decision, not silently
-skipped."""
+"""Bench-tier automated tests for real WiFi outage/flap, NTP/DNS servers answering with garbage
+(BACKLOG.md open question #5), the webserver's max_connections=4 ceiling, malformed REST requests,
+and slowloris/abrupt disconnects - DHCP-client flakiness is deliberately out of scope (see BACKLOG.md).
+"""
 
 from __future__ import annotations
 
@@ -38,17 +21,10 @@ from harness import Board, HardwareTestFailure, wait_until
 from rogue_udp_responder import RogueUdpResponder
 
 # ---------------------------------------------------------------------------
-# WiFi outage / flap while already in a real, established STA connection.
-#
-# Grounded against src/asy_wifi_service.py's own _on_sta_disconnected(): once _conn_phase is
-# _PHASE_STA_ESTABLISHED (which it necessarily already is here - the dut_ip fixture only ever
-# returns once a real STA connection was reached), a disconnect takes the "retrying previously
-# successful connection in one minute" branch - a plain 60s-interval retry loop that never
-# increments connection_failures and never reaches the hotspot-fallback path at all. This is a
-# structurally different, safer branch than the "never-yet-connected" one HARDWARE_TEST_PLAN.md
-# §11's role-reversal scenario exercises - confirmed directly, not assumed, before designing these
-# two tests around it (an outage this size could otherwise have risked tripping that scenario's own
-# disclosed permanent-WLAN-deactivation risk, which does not apply here).
+# WiFi outage/flap while already in a real, established STA connection. Per
+# src/asy_wifi_service.py's _on_sta_disconnected(), an established-connection disconnect takes the
+# safe "retry in 60s" branch - it never increments connection_failures or reaches hotspot
+# fallback, confirmed directly before designing these two tests around it.
 # ---------------------------------------------------------------------------
 
 
@@ -64,31 +40,12 @@ def test_real_wifi_outage_and_recovery_while_in_normal_sta_mode(board: Board, be
         bench.ap_up()
         bench.kick_all_stations()  # clears any stale AP-side entry - see this module's own finding below
 
-    # REAL FINDING, not fully explained by AP-side stale state alone (confirmed directly against
-    # real hardware, with the project owner's own prior field observation matching): the CYW43
-    # firmware appears to attempt reconnection *internally* on a real link disruption without
-    # reliably surfacing that through `wlan.isconnected()`/`wlan.status()` - the only signals
-    # `asy_wifi_service.py`'s own `_wlan_isconnected_or_false()` has to work with (confirmed
-    # directly: it's a bare pass-through to `wlan.isconnected()`, no independent reachability
-    # check anywhere in that module). Observed directly: `iw station dump` showed the DUT
-    # continuously "associated: yes" with a multi-hundred-second connected-time spanning an entire
-    # `ap_down()`/`ap_up()` outage, while a real `arping` probe got zero responses and the webserver
-    # was genuinely unreachable - i.e. the link *looked* fine to both sides' bookkeeping while
-    # actually being dead, and neither `kick_all_stations()` above nor `_on_sta_disconnected()`'s
-    # own retry logic (which never fires if `isconnected()` never reports False) reliably clears it.
-    # This is a real, disclosed architectural gap worth a project-owner conversation about whether
-    # `asy_wifi_service.py` should add an independent reachability check - not something to fix
-    # blind here.
-    #
-    # By project-owner direction, this test's own "recovery" isn't limited to the graceful
-    # established-connection retry path: a real `hard_reset()` (a genuine chip power-cycle,
-    # confirmed to reliably clear this specific CYW43-firmware characteristic) is itself an
-    # accepted, real recovery mechanism in this codebase (the same standing "hardware watchdog is
-    # the accepted backstop" principle CLAUDE.md already applies to a wedged I2C bus, applied here
-    # to a wedged WiFi link) - so this test treats reconnecting via a fallback hard_reset() as a
-    # genuine pass, not a failure, while still recording which path was actually taken so a
-    # consistently-graceful vs. consistently-needs-hard_reset() pattern stays visible over time
-    # rather than silently blurred together.
+    # REAL FINDING: the CYW43 firmware can appear associated (isconnected()==True, iw showing
+    # "associated: yes") while the link is actually dead - neither kick_all_stations() nor
+    # _on_sta_disconnected()'s own retry logic reliably clears this (see tests_hardware/README.md
+    # for the full evidence; a disclosed architectural gap, not fixed blind here). By project-owner
+    # direction, a fallback hard_reset() counts as a genuine pass (CLAUDE.md's WiFi-backstop
+    # principle) - which path was actually taken is still recorded via the RESULT NOTE prints below.
     recovered_via_hard_reset = False
     recovery_started = time.monotonic()
     try:
@@ -150,19 +107,9 @@ def test_real_wifi_flaps_repeatedly_without_wedging_the_system(board: Board, ben
 
 
 def _assert_wifi_log_has_only_benign_ap_not_found_warning(dut_ip: str) -> None:
-    """REAL FINDING, fixed 2026-09-04: both WiFi-outage tests above used to assert the WIFI error/
-    warning log stays completely empty after a graceful (non-hard_reset()) recovery, reasoning that
-    `_on_sta_disconnected()`'s ESTABLISHED branch (see either test's own docstring) calls only
-    `pr.evt()` - true, but that's only ONE of the paths a real outage can take. `_run_sta_mode()`'s
-    own outer loop (`wifi_refresh_sec`=5s cadence) calls `_attempt_sta_connect()` ->
-    `_poll_sta_connect_status()` independently of that 60s sleep whenever a poll happens to observe
-    `isconnected()` as False - and if that active retry's own 5s sub-poll window lands while the
-    real AP is still down, `wlan.status()` genuinely returns `STAT_NO_AP_FOUND`, correctly logging
-    `wrn_s("WLAN access point not found", wrnno=5)` (confirmed directly against real source,
-    src/asy_wifi_service.py's `_poll_sta_connect_status()`). Confirmed on real hardware: a genuine
-    15s outage reliably produced exactly this one warning even on a fully graceful recovery - a
-    correct, accurate report of a real transient condition, not a bug. Tolerate that one specific
-    warning; anything else (any error, or a different warning) still fails this check."""
+    """Tolerates exactly one benign "WLAN access point not found" warning (wrnno=5) after a
+    graceful recovery - a real, correctly-logged transient condition from an active retry poll
+    landing mid-outage, not a bug (see tests_hardware/README.md). Anything else still fails."""
     entry = get_errcount(dut_ip).get("WIFI", {})
     history = entry.get("history", [])
     # "N" entries are print_log.py's own "nothing recorded" padding (get_log()'s own encoding) -
@@ -179,18 +126,10 @@ def _sta_reconnected(dut_ip: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Real packet loss/latency/corruption/duplication/reordering (tc netem,
-# bench_control.py's inject_network_degradation()) - a genuinely different fault shape than every
-# other test in this file: block_udp_ports()/redirect_udp_port_to_local() above and ap_down()
-# elsewhere are all binary (a link/port is either fully working or fully blocked/redirected) or a
-# wholesale substitution (a rogue responder's own fabricated reply); this instead perturbs *real*
-# packets on a real link. BACKLOG.md's "network fault injection" item, re-scoped 2026-09-04 once
-# the binary cases above turned out to already be covered - this is what was actually still
-# missing. Parameter ranges below are grounded in researched real-world figures, not arbitrary:
-# "congested WiFi" is typically modeled around ~30ms delay/~20ms jitter with 0.5-5% loss, and a
-# genuinely poor/lossy link around 150-200ms(+/-40ms) delay with ~15% loss (Calomel.org's own
-# published network-emulation reference figures, corroborated by multiple independent tc-netem
-# testing guides - see this session's own research citations, 2026-09-04).
+# Real packet loss/latency/corruption/duplication/reordering (bench_control.py's
+# inject_network_degradation()) - perturbs real packets on a real link, unlike the binary
+# block/redirect fault injection elsewhere in this file. Parameter ranges are grounded in
+# researched real-world WiFi figures, not arbitrary - see tests_hardware/README.md.
 # ---------------------------------------------------------------------------
 
 
@@ -227,10 +166,9 @@ def test_real_operations_survive_and_recover_under_sustained_packet_loss_and_lat
 
 
 def test_real_operations_unaffected_by_light_realistic_wifi_congestion(board: Board, bench: BenchBridge, dut_ip: str) -> None:
-    # The "everyday" end of the researched range (30ms delay, 20ms jitter, 0.5-5% loss) - unlike the
-    # sustained/severe test above, real requests here should just succeed, first try, without
-    # needing any special retry tolerance - this is what "gracefully handles normal WiFi noise"
-    # actually means, not just "doesn't outright fail under a worst case".
+    # The "everyday" end of the researched range (30ms delay, 20ms jitter, 0.5-5% loss) - unlike
+    # the sustained/severe test above, requests here should just succeed first try, with no
+    # special retry tolerance needed.
     reset_all_error_logs(dut_ip)
     bench.inject_network_degradation(loss_pct=2, delay_ms=30, jitter_ms=20)
     try:
@@ -244,11 +182,9 @@ def test_real_operations_unaffected_by_light_realistic_wifi_congestion(board: Bo
 
 
 def test_real_operations_survive_real_packet_corruption(board: Board, bench: BenchBridge, dut_ip: str) -> None:
-    # A genuinely different fault than the NTP/DNS "rogue responder" tests below: corrupt() flips a
-    # random bit inside an otherwise-real, otherwise-legitimate packet (a real radio-level bit
-    # error) rather than substituting a wholly fabricated payload - real UDP/TCP checksums should
-    # catch this and simply drop/retransmit, but that's exactly the property this test confirms
-    # rather than assumes.
+    # Unlike the rogue-responder tests below, corrupt() flips a random bit inside an otherwise-real
+    # packet (a radio-level bit error) - real UDP/TCP checksums should catch and drop/retransmit
+    # it, which is exactly the property this test confirms rather than assumes.
     reset_all_error_logs(dut_ip)
     bench.inject_network_degradation(corrupt_pct=5)
     try:
@@ -275,13 +211,9 @@ def test_real_operations_survive_real_packet_corruption(board: Board, bench: Ben
 
 
 def test_real_operations_survive_duplicated_and_reordered_packets(board: Board, bench: BenchBridge, dut_ip: str) -> None:
-    # A real duplicated or out-of-order UDP/TCP delivery - genuinely possible on real WiFi (frame
-    # retransmission racing the original, multipath/rate-adaptation reordering), and a different
-    # hazard class than loss/latency/corruption: does a duplicate or late-arriving response ever get
-    # mismatched against a *different*, later pending request/session than the one it actually
-    # answers? `reorder` needs an existing `delay` to be meaningful (man tc-netem: without one,
-    # there's nothing for a reordered packet to overtake) - a light delay is included for exactly
-    # that reason, not as an additional stressor of its own.
+    # A real duplicated/out-of-order UDP delivery - checks whether a duplicate or late reply ever
+    # gets mismatched against a different, later pending request. `reorder` needs an existing
+    # `delay` to be meaningful (man tc-netem) - the light delay here is for that, not as its own stressor.
     reset_all_error_logs(dut_ip)
     bench.inject_network_degradation(delay_ms=20, duplicate_pct=10, reorder_pct=25)
     try:
@@ -308,15 +240,10 @@ def test_real_operations_survive_duplicated_and_reordered_packets(board: Board, 
 
 
 def test_ntp_recovers_via_its_own_retry_timer_after_a_transient_outage_with_no_reboot(board: Board, bench: BenchBridge, dut_ip: str) -> None:
-    # Real-hardware form of tests/test_asy_ntp_client.py::test_integration_recovers_on_retry_after_
-    # one_dropped_request: proves the real retry-timer mechanism itself (not a fresh boot) recovers
-    # from one *transient* outage, as opposed to every other outage/failure test in this tier, which
-    # forces a fresh boot (hard_reset()) against an already-bad server/link. A precise, guaranteed
-    # full block (block_udp_ports(), not a probabilistic netem loss) is the right primitive here -
-    # this test needs the outage to reliably outlast asy_ntp_client.py's own 5s _NTP_CONN_TIMEOUT
-    # (so the attempt genuinely fails) while still clearing well inside its 15s _NTP_RETRY_INTERV
-    # (so the following retry lands on a clean network), a timing window a probabilistic loss
-    # percentage can't guarantee the way a real, total block can.
+    # Real-hardware form of tests/test_asy_ntp_client.py's retry-after-one-dropped-request test:
+    # proves the retry-timer mechanism itself (no reboot) recovers from one transient outage.
+    # block_udp_ports() (a guaranteed full block) is used, not netem loss, so the outage reliably
+    # outlasts _NTP_CONN_TIMEOUT (5s) while clearing well inside _NTP_RETRY_INTERV (15s).
     get_before = http_client.fetch(dut_ip, 80, "GET", "/networking", timeout_s=10.0)
     assert get_before.status_code == 200, f"GET /networking failed: {get_before.status_code} {get_before.body!r}"
     original_host = get_before.json()["NTP_Host"]
@@ -325,10 +252,9 @@ def test_ntp_recovers_via_its_own_retry_timer_after_a_transient_outage_with_no_r
         status = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).json()
         return status.get("networking", {}).get("NtpSynced") is True
 
-    # REAL FINDING: dut_ip's own fixture only waits for real HTTP reachability, not specifically
-    # for NTP to have finished syncing - confirmed directly, a real run's own NtpLastSyncAge showed
-    # sync completing only ~12s before this check, after dut_ip had already returned. A precondition
-    # genuinely worth waiting for, not asserting instantly.
+    # dut_ip only waits for HTTP reachability, not specifically for NTP sync to finish - confirmed
+    # directly (NtpLastSyncAge showed sync completing only ~12s after dut_ip returned), so this is
+    # a real precondition worth waiting for, not asserting instantly.
     wait_until(_synced, timeout_s=30.0, poll_interval_s=2.0, description="test precondition: DUT to report NTP-synced before this test's own transient-outage fault starts")
     reset_all_error_logs(dut_ip)
 
@@ -379,30 +305,11 @@ def test_ntp_server_sends_garbage_instead_of_a_valid_response(board: Board, benc
     crash_markers = [ln for ln in lines if "Traceback" in ln]
     assert not crash_markers, "a garbage NTP response crashed the system instead of being rejected cleanly:\n" + "\n".join(crash_markers)
     assert "CFGMGR_" in joined or "FRAM" in joined, f"system did not appear to finish booting with a garbage-answering NTP server:\n{joined}"
-    # REAL FINDING, fixed: asy_ntp_client.py's own _parse_ntp_reply() does log "Malformed NTP
-    # response, treating as no response:", errno=15 for a too-short/unparseable reply (confirmed
-    # directly against that method's own source) - but checking for it via the REST /status
-    # errcount history afterward is unreliable: that history is a fixed 10-entry rolling window
-    # (print_log.py's PrintLogHistory), and a full 90s of continued garbage responses generates
-    # many more than 10 error events (each retry also logs its own generic errno=1/2/20
-    # bookkeeping - base_classes.py's shared error-counter convention, "Error counter increased
-    # to"/"Maximum error count reached"/"Giving up after repeated sync failures") - confirmed
-    # directly: the specific errno=15 entries get evicted by later retries within the same 90s
-    # window before this test ever gets to check. The live log text captured above has no such
-    # limit - checking it directly for the real, distinctive printed line is unambiguous.
-    # REAL FINDING, fixed: this test's own _GARBAGE_PAYLOAD is 63 bytes - long enough for
-    # _parse_ntp_reply()'s msg[40:44] transmit-timestamp slice to succeed structurally (NTP's
-    # minimum packet size is 48 bytes; the malformed/too-short path needs a reply shorter than the
-    # 44 bytes that slice needs), so it doesn't raise IndexError/hit the "Malformed NTP response"
-    # (errno=15) branch at all - confirmed directly, on real hardware, once redirect_udp_port_to_
-    # local() actually started reaching the DUT (see this file's own br_netfilter finding).
-    # Instead, the arbitrary ASCII bytes landing in the timestamp field produce an out-of-range
-    # value, correctly hitting "Implausible NTP time, rejecting:" (errno=14) instead - an equally
-    # valid "garbage rejected cleanly" outcome, just a different validation branch than the
-    # original guess assumed. _handle_ntp_sync_failure()'s own "Invalid NTP time received!" fires
-    # for either branch (and for a genuine no-response timeout too), so checking for it is the
-    # robust, payload-shape-independent way to confirm a real sync attempt was made and rejected -
-    # not pinned to which specific validation path this particular payload happens to hit.
+    # Checked via the live tail_log text, not the REST errcount history, which is a fixed
+    # 10-entry rolling window that a full 90s of garbage responses evicts (see
+    # tests_hardware/README.md). Checks for "Invalid NTP time received!" specifically because it
+    # fires for either real rejection branch this 63-byte payload can hit (errno=14 or 15) -
+    # payload-shape-independent, not pinned to which branch this particular payload happens to hit.
     assert "Invalid NTP time received!" in joined, f"no sign of a rejected NTP sync attempt observed - the garbage payload may not have reached the DUT at all:\n{joined}"
 
     # Bounded recovery retry - see test_wifi_networking.py's own equivalent comment.
@@ -438,14 +345,9 @@ def test_dns_server_sends_garbage_instead_of_a_valid_response(board: Board, benc
         bench.kick_all_stations()
         board.hard_reset()
         wait_until(lambda: _sta_reconnected(dut_ip), timeout_s=60.0, poll_interval_s=3.0, description="DUT reachable over REST again (after one recovery hard_reset() retry)")
-    # There is no standalone DNS-client error log to check: asy_dns_client.py's resolve_ipv4() is a
-    # plain function (no PrintLogHistory of its own), called directly from asy_ntp_client.py's
-    # _resolve_ntp_server() - confirmed directly. A garbage DNS reply fails _parse_response()'s own
-    # sanity checks (too short/wrong transaction ID/QR unset) the same as no reply at all, so
-    # resolve_ipv4() exhausts every server (including the real 8.8.8.8/1.1.1.1 fallbacks - this
-    # redirect matches on --dport 53 regardless of destination, so those are caught too) and returns
-    # None, landing on "NTP" module's own errno=12 ("No valid NTP server") - not a garbage-specific
-    # code, since resolve_ipv4() itself never distinguishes "no answer" from "answer I can't parse".
+    # No standalone DNS-client error log exists (resolve_ipv4() is a plain function, no
+    # PrintLogHistory of its own) - a garbage reply fails the same sanity checks as no reply at
+    # all, so resolve_ipv4() exhausts every server and lands on "NTP" module's own errno=12.
     try:
         assert_module_error_log_contains(dut_ip, "NTP", 12, "E")
     finally:
@@ -453,35 +355,21 @@ def test_dns_server_sends_garbage_instead_of_a_valid_response(board: Board, benc
 
 
 # ---------------------------------------------------------------------------
-# Connected-socket source-address filtering - the one specific claim in BACKLOG.md's open question
-# #5 the two garbage-response tests above never actually exercised. Both of those redirect to a
-# *local* rogue responder via DNAT; on the return path, Linux conntrack's own reverse-NAT rewrites
-# the reply's source back to the real, originally-contacted NTP_Host/DNS server before it ever
-# reaches the DUT (confirmed by reading how DNAT+conntrack handles the return leg of a redirected
-# flow) - so the DUT's connected AsyUDPSocket never actually sees an apparent-wrong-source reply
-# there, whether or not it would reject one. This test instead learns the DUT's own real ephemeral
-# source port for one in-flight request via a real wire-level `tcpdump` capture on the DUT-facing
-# radio (bench_control.BenchBridge.start_udp_source_capture()/read_captured_udp_source_port() - see
-# that method's own docstring for why a *local-delivery* capture via redirect_udp_port_to_local()
-# was tried first and abandoned: real, reproducible, confirmed via a live iptables packet-counter
-# comparison, not a guess) and sends a crafted, otherwise-valid NTP reply straight at (dut_ip, that
-# port) from this bench host's own real IP - a genuinely different source than the connected
-# socket's own true peer, with no DNAT/conntrack path involved at all, while the DUT's real request
-# is left completely alone (no block/redirect of any kind - the spoofed reply just races the real
-# one, which is fine either way: if source filtering works, the spoofed reply is dropped regardless
-# of timing and the real sync succeeds normally). No IP spoofing/raw sockets needed: the DUT is the
-# intended destination of this plain sendto(), not any port this test touches.
+# Connected-socket source-address filtering (BACKLOG.md open question #5) - the garbage-response
+# tests above never actually exercise this, since DNAT+conntrack rewrites the reply's source back
+# to the real server before the DUT sees it. This test instead captures the DUT's real ephemeral
+# source port via tcpdump (see bench_control.start_udp_source_capture()) and sends a spoofed reply
+# straight at it from this host's own real IP, with the DUT's real request left alone - no
+# IP spoofing/raw sockets needed, since the DUT is this plain sendto()'s real destination.
 # ---------------------------------------------------------------------------
 
 _NTP_SPOOF_INJECTED_UNIX_TIME = 2524608000  # 2050-01-01T00:00:00Z - decades from any real "now", safely inside _parse_ntp_reply()'s own 2025-2100 plausibility window
 
 
 def test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source(board: Board, bench: BenchBridge, dut_ip: str) -> None:
-    # If AsyUDPSocket's connect()'d client socket only accepts datagrams from its true peer, a
-    # reply from anywhere else must be silently dropped by the DUT's own lwIP stack before it ever
-    # reaches recvfrom() - unambiguously checkable via GET /status's real UtcTime, since a real
-    # *accepted* reply's crafted Transmit Timestamp (2050-01-01) directly sets the RTC
-    # (src/asy_ntp_client.py's _parse_ntp_reply(), confirmed by reading that method in full).
+    # A connect()'d client socket that only accepts datagrams from its true peer must silently drop
+    # a reply from anywhere else - checkable via GET /status's UtcTime, since an accepted reply's
+    # crafted Transmit Timestamp (2050-01-01) directly sets the RTC (asy_ntp_client.py's _parse_ntp_reply()).
     get_before = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0)
     assert get_before.status_code == 200, f"GET /status failed: {get_before.status_code} {get_before.body!r}"
     year_before = get_before.json()["system"]["UtcTime"]["year"]
@@ -489,11 +377,9 @@ def test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source(board: B
 
     reset_all_error_logs(dut_ip)
     try:
-        # Bounded retry of the whole capture attempt (not just the usual post-test reachability
-        # wait): this bench's own well-documented ~1-in-3ish reachability hiccup (BACKLOG.md open
-        # question 9) means an individual hard_reset() occasionally lands in hotspot fallback
-        # instead, sending no real STA-side UDP traffic through this radio at all for tcpdump to
-        # ever see.
+        # Bounded retry of the whole capture attempt: this bench's known ~1-in-3 reachability
+        # hiccup (BACKLOG.md open question 9) can land a hard_reset() in hotspot fallback instead,
+        # sending no STA-side UDP traffic for tcpdump to see.
         dut_ephemeral_port = None
         attempts_made = 0
         for _attempt in range(3):
@@ -528,16 +414,11 @@ def test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source(board: B
 
 
 # ---------------------------------------------------------------------------
-# A config-level NTP fault, not a network-level one (project-owner suggestion): with a completely
-# normal, already-connected WiFi link, PUT a garbage NTP_Host via the real REST API, confirm the
-# real DNS-resolution failure this causes is handled cleanly (not a crash), then PUT a real,
-# sensible host back and confirm NTP actually recovers. This exercises a different code path than
-# the two DNS/NTP tests above: those force a *fresh boot* (hard_reset()) with an already-bad
-# server, so `_handle_ntp_sync_failure()`'s own `if await self.ntp_issynced():` guard is never
-# reached (confirmed directly, that method's own module comment: the block is gated on a *re*-sync
-# failure after a prior successful sync). This test starts from a real, already-synced state
-# (dut_ip only ever returns once NTP has had a real chance to sync), so a bad `NTP_Host` here is a
-# genuine re-sync failure - the other branch of that same guard, previously untested.
+# A config-level NTP fault, not a network-level one: PUT a garbage NTP_Host over REST on an
+# already-connected link, confirm the resulting DNS failure degrades cleanly, then restore and
+# confirm recovery. Unlike the DNS/NTP tests above (which force a fresh boot with an already-bad
+# server), this starts already-synced, exercising the previously-untested re-sync-failure branch
+# of `_handle_ntp_sync_failure()`'s `if await self.ntp_issynced():` guard.
 # ---------------------------------------------------------------------------
 
 # RFC 2606 reserves .invalid specifically so it can never resolve to a real address - a genuine,
@@ -582,42 +463,17 @@ def test_garbage_ntp_host_via_rest_config_degrades_and_recovers_cleanly(board: B
         assert restore_res.status_code == 200, f"failed to restore original NTP_Host {original_host!r}: {restore_res.status_code} {restore_res.body!r}"
         assert restore_res.json()["result"].get("NTP_Host") == "Valid", f"restoring the original NTP_Host was rejected: {restore_res.json()!r}"
 
-    # Recovery: once a real, resolvable host is configured again, the next forced resync
-    # (post_asy_fct fires on this restore PUT too, per handle_set_cmd()'s "fires if ANY field in
-    # this call validated" rule - already confirmed directly, HARDWARE_TEST_PLAN.md §11.6) must
-    # actually succeed - checked via NtpSynced, not just "no error logged" (a sync that silently
-    # never re-attempted would otherwise look identical to one that attempted and failed silently).
-    #
-    # REAL FINDING, fixed 2026-09-04 - this test could never pass at all, not just "flaky": NtpSynced
-    # is not a field of GET /networking (that endpoint returns the config schema only - SSID/PW/
-    # NTP_Host/etc.) - it's only ever exposed under GET /status's nested "networking" status object
-    # (sensortask_dev.py/sensortask_wozi.py's own _networking_status(), wired in via
-    # status_sources={"networking": _networking_status}). The old check read
-    # `GET /networking`'s response `.get("NtpSynced")`, which is always `None` regardless of real
-    # sync state, so `_synced()` could structurally never return True - every prior run of this test
-    # was guaranteed to exhaust both the 30s wait and the 120s post-hard_reset() retry, no matter how
-    # healthy the real WiFi/NTP link actually was. This is the exact same category of bug
-    # tests_hardware/README.md's "Lesson from a since-fixed test bug" entry already documents and
-    # fixed once for a sibling test's "Mode" field - never applied here until now. Confirmed directly
-    # on real hardware: querying GET /status right after this exact PUT sequence showed
-    # `networking.NtpSynced: true` with `NtpLastSyncAge` well under a minute - the resync mechanism
-    # itself, and the real WiFi link, were both fine the whole time. The "WiFi reconnect flakiness"
-    # explanation this comment used to carry (attributing the timeout to BACKLOG.md open question 6)
-    # was itself a misdiagnosis built on a check that could never succeed in the first place - don't
-    # re-attribute a future real, structural failure here to WiFi flakiness without first confirming
-    # this fixed check is what's actually being used.
+    # Recovery: the next forced resync (post_asy_fct fires on this restore PUT too) must actually
+    # succeed - checked via NtpSynced under GET /status's nested "networking" object, not
+    # GET /networking (config schema only, no NtpSynced field - see tests_hardware/README.md for
+    # the since-fixed test bug this replaced, the same category as the "Mode" field fix below).
     def _synced() -> bool:
         status = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).json()
         return status.get("networking", {}).get("NtpSynced") is True
 
-    # The hard_reset() fallback below (mirroring every other real-reboot test in this tier's own
-    # bounded-retry pattern) is kept as a genuine defensive measure against a real, if rare, WiFi
-    # hiccup - but its own timing (120s, and the "observed a real successful sync land at ~84s of
-    # WiFi uptime" reasoning that used to justify it) was measured against the broken check above
-    # and is therefore not trustworthy evidence of anything; kept as a reasonable, not
-    # measurement-derived, bound. With the check now actually correct, a real resync is expected to
-    # land well inside the first 30s in the overwhelming majority of runs - a run that needs this
-    # fallback at all is worth a second look, not an expected/tolerated outcome.
+    # hard_reset() fallback is a defensive measure against a rare real WiFi hiccup - a resync is
+    # expected well inside the first 30s in the overwhelming majority of runs; needing this
+    # fallback at all is worth a second look, not an expected outcome.
     try:
         wait_until(_synced, timeout_s=30.0, poll_interval_s=2.0, description=f"NTP to report synced again after restoring a real NTP_Host ({original_host!r})")
     except TimeoutError:
@@ -635,26 +491,11 @@ def _ntp_error_log_contains(dut_ip: str, errno: int) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Malicious-but-schema-valid REST config value #2: a real-format SSID that no AP on this bench
-# broadcasts. asy_wifi_service.py's own _VAL_SSID schema (("SSID", "str", "", 0, 32, None)) only
-# bounds length, same gap as _VAL_NH's NTP_Host above - any 0-32 char string passes.
-#
-# Aims to stop short of the real hotspot-fallback transition (asy_wifi_service.py's
-# _register_sta_connection_failure(), reached after conn_fail_to_hotspot=5 consecutive
-# STAT_NO_AP_FOUND failures, ~50s at this service's own wifi_refresh_sec=5s cadence) - once the DUT
-# actually switches to AP/hotspot mode its own IP changes and dut_ip stops being reachable at all,
-# so this test's own value (a real STAT_NO_AP_FOUND cycle degrading gracefully: no crash, REST stays
-# responsive) is already fully observable well before that.
-#
-# REAL FINDING: that ~50s budget is tighter than it looks and was blown at least once in practice -
-# real per-attempt timing jitter (this test's own reset_all_error_logs()/PUT/GET round trips, plus
-# the connect attempts themselves) can push the sequence into hotspot fallback anyway. When that
-# happens, REST-restoring the original SSID over dut_ip is impossible until the DUT is reachable
-# again - exactly the scenario tests_hardware/bench/test_hotspot_role_reversal.py exists to handle
-# (bench temporarily joins the DUT's own hotspot) - so this test falls back to that same mechanism
-# rather than assuming the happy path, matching this tier's established "a recovery path counts as
-# a pass, not a failure" convention (test_network_resilience.py's own WiFi-outage tests, harness.py's
-# hard_reset()-fallback pattern).
+# A real-format SSID that no AP on this bench broadcasts - _VAL_SSID's schema only bounds length
+# (0-32 chars), same gap as NTP_Host above. Aims to stay short of the ~50s hotspot-fallback
+# transition (dut_ip stops being reachable once the DUT switches to AP mode), but real timing
+# jitter can blow that budget - if it does, this test falls back to joining the DUT's own hotspot
+# (test_hotspot_role_reversal.py's mechanism), matching this tier's "a recovery path is a pass" convention.
 # ---------------------------------------------------------------------------
 
 _GARBAGE_SSID = "wozi-test-net-does-not-exist"  # <=32 chars (_VAL_SSID's own cap) - real 2.4GHz-legal SSID format/length, just not broadcast by anything on this bench
@@ -695,25 +536,11 @@ def test_garbage_ssid_via_rest_config_is_handled_gracefully(board: Board, bench:
         _restore_ssid_over(dut_ip, original_ssid)
     else:
         # Fallback: join the DUT's own AP once it reaches real hotspot fallback, to restore over
-        # that instead, exactly like test_hotspot_role_reversal.py's own joined_hotspot fixture.
-        #
-        # REAL FINDING #1: unlike that fixture (which forces hotspot mode itself via SSID="" and
-        # then sleeps a fixed 2s margin before joining), this path reaches hotspot mode indirectly
-        # (the real connection_failures streak, ~30-50s from the garbage-SSID PUT above - this
-        # test's own 15s tail_log observation above already ate into that budget) and has no
-        # equivalent "moment zero" to sleep a fixed margin after - a join attempted right as
-        # "Permanently no WLAN connection - activating hotspot!" is logged can race
-        # asy_wifi_service.py's own _configure_hotspot_ap() actually bringing the radio up, failing
-        # with nmcli's own "Wi-Fi network could not be found." Fixed by polling
-        # bench.is_ssid_visible() (a real scan) with a generous budget instead of guessing a short
-        # fixed delay - see that method's own docstring for the full account.
-        #
-        # REAL FINDING #2: everything from ap_down() through join_dut_hotspot() must be inside the
-        # SAME try/finally as the rest of this branch, not just the join-and-restore steps after
-        # it - confirmed directly: an earlier version left ap_down()/is_ssid_visible() outside the
-        # try, so a real is_ssid_visible() timeout (finding #1, before it was fixed) raised past
-        # this whole branch with the bridge AP left down and never restored, turning one flaky
-        # timeout into a fully stranded bench needing manual recovery.
+        # that instead (like test_hotspot_role_reversal.py's joined_hotspot fixture). Polls
+        # is_ssid_visible() with a generous budget rather than a fixed delay, since this path
+        # reaches hotspot mode indirectly with no "moment zero" to sleep a margin after (see
+        # tests_hardware/README.md). ap_down() through join_dut_hotspot() stays inside this same
+        # try/finally so a timeout here can't strand the bridge AP down.
         try:
             bench.ap_down()  # is_ssid_visible() needs the radio free to scan - see its own docstring
             wait_until(
@@ -722,13 +549,9 @@ def test_garbage_ssid_via_rest_config_is_handled_gracefully(board: Board, bench:
                 poll_interval_s=2.0,
                 description=f"DUT's own hotspot ({original_hostname!r}) to become scannable",
             )
-            # REAL FINDING #3: is_ssid_visible() being True one moment doesn't guarantee
-            # `nmcli device wifi connect`'s own internal (re)scan sees it a moment later - a
-            # freshly-started AP's beacon interval means visibility can still be intermittent right
-            # after it first appears. Confirmed directly: a join attempted immediately after a
-            # successful is_ssid_visible() check still failed once with nmcli's "Wi-Fi network
-            # could not be found." ap_down() is idempotent (see its own docstring) so retrying the
-            # whole join here is safe.
+            # A freshly-started AP's beacon interval means is_ssid_visible()==True doesn't
+            # guarantee nmcli's own internal rescan sees it a moment later - retry the join
+            # (ap_down() is idempotent, see its own docstring).
             for attempt in range(3):
                 try:
                     bench.join_dut_hotspot(original_hostname, _HOTSPOT_PASSWORD, timeout_s=45.0)
@@ -745,27 +568,10 @@ def test_garbage_ssid_via_rest_config_is_handled_gracefully(board: Board, bench:
             bench.leave_dut_hotspot_and_restore_bridge()
         bench.kick_all_stations()
 
-    # REAL FINDING #4 - a genuine test bug, not a hardware issue (the whole "several-minutes-to-
-    # never reconnects" saga chased at length before finding this): `GET /networking` returns ONLY
-    # the WiFi settings-group's own fields (SSID/PW/Country/Hostname/NTP_Host/...) -
-    # asy_webserver_service.py's own _get_networking() = _get_settings_flat("networking") iterates
-    # self._settings[...] (SettingsGroup registrations) only, never the status_sources dict. "Mode"
-    # is exclusively a field of `GET /status`'s nested "networking" object
-    # (sensortask_wozi.py's _networking_status()), confirmed directly by querying both endpoints on
-    # real hardware. An earlier version of this check called
-    # `http_client.fetch(dut_ip, 80, "GET", "/networking", ...).json().get("Mode")` - a field that
-    # endpoint never has - so it was unconditionally `None`, and `None == "STA"` is always False:
-    # this check could never pass, regardless of how long the DUT had actually been reconnected or
-    # how large a timeout was given (up to 900s tried). The DUT itself was reconnecting normally the
-    # entire time - confirmed directly, repeatedly: `iw dev wlan0 station dump` and a real HTTP
-    # `GET /status` both showed a long-stable, fully healthy connection immediately after this test's
-    # own check had already given up and raised TimeoutError. Multiple earlier (wrong) theories
-    # chased at length before finding this - a CYW43 "phantom disconnect" state, accumulated bench/
-    # NetworkManager state, dut_ip fixture churn carryover - are real, separately-confirmed
-    # mechanisms in general (see tests_hardware/README.md's "Known assumptions and open findings"),
-    # but were not what was actually happening in this specific test; none of the "fixes" tried for them (multiple hard_reset()
-    # retries, a settle delay, a full physical power-cycle of both this Pi4 and the DUT) had any
-    # effect, which in hindsight makes sense since the check itself could never have passed regardless.
+    # "Mode" is a field of GET /status's nested "networking" object, not GET /networking (config
+    # schema only) - a since-fixed test bug that made this check structurally unable to pass
+    # regardless of real DUT health (see tests_hardware/README.md for the full account, including
+    # the other, real mechanisms this was originally misattributed to).
     def _reconnected_over_bridge() -> bool:
         return http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).json()["networking"].get("Mode") == "STA"
 
@@ -796,15 +602,11 @@ def _restore_ssid_over(host: str, original_ssid: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# The real webserver connection ceiling (asy_webserver_service.py's WebserverService(max_connections=4),
-# one slot of margin below the confirmed lwIP MEMP_NUM_TCP_PCB=5 rp2-port ceiling) actually degrades
-# cleanly at and above the limit - not just under light concurrency (test_end_to_end_timing.py's own
-# 8-client burst test never holds connections open long enough to occupy more than a couple of real
-# slots at once, since every response completes and closes almost immediately).
-#
-# _open_conns is incremented the instant a TCP connection is accepted (_serve()'s own first line,
-# before any byte is read) - a bare connect() with nothing sent yet already occupies a real slot,
-# which is what lets this test hold exactly 4 slots open deterministically.
+# The real webserver connection ceiling (max_connections=4, one slot below lwIP's
+# MEMP_NUM_TCP_PCB=5) actually degrades cleanly at and above the limit - unlike
+# test_end_to_end_timing.py's light-concurrency burst test, which never holds enough slots open at
+# once. _open_conns increments the instant a TCP connection is accepted (before any byte is read),
+# so a bare connect() with nothing sent already occupies a real slot.
 # ---------------------------------------------------------------------------
 
 _MAX_CONNECTIONS = 4
@@ -812,17 +614,9 @@ _MAX_CONNECTIONS = 4
 
 def test_connections_at_and_above_the_real_socket_limit_degrade_cleanly(dut_ip: str) -> None:
     reset_all_error_logs(dut_ip)
-    # REAL FINDING, fixed: reset_all_error_logs()'s own PUT /status closes cleanly from the
-    # client's side (urllib's `with urlopen(...)` context manager) the instant this call returns,
-    # but that doesn't mean the RP2040's own single-core MicroPython asyncio has already run
-    # _serve()'s finally block and decremented _open_conns for that connection yet - confirmed
-    # directly: without a settle here, this test consistently (not just occasionally) fails,
-    # because its own 4 "held" sockets below start from an _open_conns baseline that isn't
-    # actually 0 yet, shifting every slot by one for the rest of the test (a bounded retry around
-    # the "extra" connection alone - see below - can't fix this, since the 4 held sockets are
-    # never reopened between attempts). A clean, timing-isolated repro of this whole sequence
-    # without any reset_all_error_logs() call at all succeeded first-try, confirming this call is
-    # exactly the missing settle point, not a deeper protocol-level issue.
+    # The preceding PUT /status closing client-side doesn't mean the RP2040's own asyncio has run
+    # _serve()'s finally block and decremented _open_conns yet - without this settle, the 4 "held"
+    # sockets below start from a nonzero baseline, shifting every slot by one (confirmed directly).
     time.sleep(1.0)
     held: list[socket.socket] = []
     extra: socket.socket | None = None
@@ -832,20 +626,10 @@ def test_connections_at_and_above_the_real_socket_limit_degrade_cleanly(dut_ip: 
             sock.settimeout(10.0)
             sock.connect((dut_ip, 80))
             held.append(sock)
-        # REAL FINDING, fixed: a real TCP connect() completing (the kernel's own 3-way handshake)
-        # does not mean the RP2040's own single-core MicroPython asyncio accept loop has already
-        # run _serve() and incremented _open_conns for that connection yet - those are two
-        # different events, and the second can lag under real load (WiFi driver work, sensor
-        # tasks). Confirmed directly: a fixed settle isn't a reliable bound either way (0.5s and
-        # 2.0s both reproduced the same failure at least once, but a clean, timing-isolated repro
-        # of this exact sequence also succeeded first-try at 2.0s) - the "extra" (5th) connection
-        # sometimes gets admitted into the real Microdot app layer (a genuine "400 bad request" -
-        # this test never sends a valid HTTP request on it - not the expected silent reject)
-        # because the accept loop hadn't caught up to all 4 held connections yet. This is a genuine
-        # timing race, not a hard invariant violation, so - matching this tier's established
-        # pattern for real hardware timing races elsewhere (e.g. joined_hotspot's own bounded
-        # retry around join_dut_hotspot()) - a bounded retry with a fresh "extra" socket each time
-        # is the principled fix, not chasing an ever-larger fixed sleep.
+        # A completed TCP connect() doesn't mean the RP2040's own accept loop has run _serve() and
+        # incremented _open_conns yet - can lag under real load, occasionally admitting the "extra"
+        # (5th) connection into the app layer instead of rejecting it. A genuine timing race, so a
+        # bounded retry with a fresh socket (below) is used, not an ever-larger fixed sleep.
         time.sleep(2.0)
 
         for attempt in range(3):
@@ -883,12 +667,8 @@ def test_connections_at_and_above_the_real_socket_limit_degrade_cleanly(dut_ip: 
             extra.close()
 
     # Once the held connections release their slots, the server must serve normally again.
-    # REAL FINDING, fixed: closing 5 real sockets near-simultaneously (this test's own finally
-    # block above) can transiently reset a brand new connection attempted immediately afterward
-    # (ConnectionResetError, unhandled by a bare fetch()) - the same class of real accept-loop-lag
-    # timing this test already accounts for elsewhere (see the settle comments above). wait_until()
-    # already treats a raising check_fn as "not yet ready, retry" per its own docstring, so this
-    # gives the server a real chance to settle rather than asserting on the very next instant.
+    # Closing 5 sockets near-simultaneously can transiently reset a brand-new connection right
+    # after (ConnectionResetError) - wait_until() retries past that instead of asserting instantly.
     wait_until(
         lambda: http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200,
         timeout_s=15.0,
@@ -902,13 +682,10 @@ def test_connections_at_and_above_the_real_socket_limit_degrade_cleanly(dut_ip: 
 
 
 # ---------------------------------------------------------------------------
-# Nonsense GET/PUT requests over the *normal* network (the pre-existing malformed-request check in
+# Nonsense GET/PUT requests over the *normal* network (the existing check in
 # test_hotspot_role_reversal.py is hotspot-mode-only, GET-only, and doesn't assert response shape).
-# Grounded against asy_webserver_service.py's own _body_as_dict()/_ERROR_SHAPES/_shaped_error_handler
-# and base_classes.py's _set_dict_cfg() - see this module's own docstring for the exact envelope
-# each case below produces. None of these mutate any real persisted config: a schema-rejected field
-# is marked "Invalid" and never reaches ConfigManager.write_config() at all (base_classes.py's own
-# `if results.get(key) != "Valid": continue` push-callback gate).
+# None of these mutate persisted config: a schema-rejected field is marked "Invalid" and never
+# reaches ConfigManager.write_config() (base_classes.py's push-callback gate).
 # ---------------------------------------------------------------------------
 
 
@@ -992,12 +769,8 @@ def test_put_nonsense_field_values_are_marked_invalid_not_crashed(dut_ip: str) -
     # Nothing above should have changed anything real - confirm the server is still fully healthy.
     assert http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200, "webserver unresponsive after nonsense PUT field values"
 
-    # config_manager.py's own write_config(): a type/range-rejected key logs "- Type / range error
-    # in <key> - skipping!", errno=12, on *that module's own* "CFGMGR_<NAME>" logger (confirmed
-    # directly) - a separate registration from "BMP3XX" itself (asy_webserver_service.py's own
-    # _collect_error_sources() registers both bmp_reader and bmp_reader.cfgmgr independently).
-    # Always in-RAM only (ConfigManager's own PrintLogHistory(name=...) never takes fram=), but
-    # still real and REST-visible while the system is running, which is all this checks.
+    # A rejected key logs errno=12 on its own separate "CFGMGR_<NAME>" logger, not "BMP3XX" itself
+    # (config_manager.py's write_config()) - in-RAM only, but still real and REST-visible.
     try:
         errcount = get_errcount(dut_ip)
         cfgmgr_entry = errcount.get("CFGMGR_BMP3XX", {})
@@ -1008,11 +781,8 @@ def test_put_nonsense_field_values_are_marked_invalid_not_crashed(dut_ip: str) -
 
 
 # ---------------------------------------------------------------------------
-# Stale/slowloris-paced/abruptly-broken connections. Grounded against asy_webserver_service.py's
-# own _serve(): the outer asyncio.wait_for(..., outer_cap_s) (production default 15.0s, confirmed
-# not overridden by sensortask_wozi.py's own WebserverService() call) is specifically what bounds a
-# Slowloris-paced client that never completes its own request - see that method's own comment on
-# the asyncio.TimeoutError branch.
+# Stale/slowloris-paced/abruptly-broken connections. _serve()'s outer asyncio.wait_for(...,
+# outer_cap_s=15.0) is what bounds a Slowloris-paced client that never completes its request.
 # ---------------------------------------------------------------------------
 
 
@@ -1022,16 +792,10 @@ def test_slowloris_style_partial_request_is_reclaimed_by_the_outer_timeout(dut_i
         sock.settimeout(30.0)  # generous relative to production's own outer_cap_s=15.0
         sock.connect((dut_ip, 80))
         sock.sendall(b"GET /status HTTP/1.1\r\nHost: x\r\n")
-        # A genuine Slowloris pace, not a single long stall: asy_webserver_service.py's own
-        # _TimeoutStreamProxy (confirmed directly, its own module comment) wraps each individual
-        # readline() in its own per_call_timeout_s=5.0 wait_for - a single stall over 5s hits *that*
-        # timeout first, which Microdot's own handle_request() silently absorbs and recovers from by
-        # writing its own ordinary response (a genuinely different, separately-real outcome, not
-        # what this test means to exercise). Trickling one extra header line every 3s instead keeps
-        # every individual readline() well under 5s each, while the cumulative time across 6 of them
-        # (18s) exceeds outer_cap_s=15.0 - this is what actually reaches the *outer*
-        # asyncio.wait_for(handle_request(...), outer_cap_s) backstop, exactly the "Slowloris-paced
-        # client no single per-call timeout alone would catch" case that mechanism's own comment names.
+        # A genuine Slowloris pace, not one long stall: _TimeoutStreamProxy wraps each readline()
+        # in its own per_call_timeout_s=5.0, so a single stall over 5s would hit that instead.
+        # Trickling one header line every 3s keeps each readline() under 5s while the 18s
+        # cumulative total exceeds outer_cap_s=15.0 - reaching the outer timeout specifically.
         try:
             for i in range(6):
                 sock.sendall(f"X-Pad-{i}: 1\r\n".encode())
@@ -1045,11 +809,8 @@ def test_slowloris_style_partial_request_is_reclaimed_by_the_outer_timeout(dut_i
     assert response == b"", f"a genuinely Slowloris-paced request (no single stall over 5s, 18s cumulative) was not reclaimed by the outer timeout: {response!r}"
 
     assert http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200, "webserver unresponsive after a slowloris-style trickle-fed request"
-    # _serve()'s own `except asyncio.TimeoutError as e: await self.pr.wrn_s("Connection reclaimed
-    # (timed out):", e, wrnno=2)` (confirmed directly) - the outer wait_for(outer_cap_s) itself
-    # timing out. Same wrnno as _TimeoutStreamProxy._bounded()'s own per-call-timeout log call, by
-    # coincidence of both sharing wrnno=2 - not load-bearing for this test either way, since this
-    # design specifically avoids ever triggering the per-call path at all.
+    # _serve()'s outer wait_for(outer_cap_s) timeout logs wrnno=2 - this test's pacing avoids ever
+    # triggering the (also wrnno=2) per-call timeout path instead, so the wrnno is unambiguous here.
     try:
         assert_module_error_log_contains(dut_ip, "WEBSERVER", 2, "W")
     finally:
@@ -1069,12 +830,6 @@ def test_abrupt_disconnect_mid_response_does_not_hang_the_server(dut_ip: str) ->
     # connection above would otherwise only surface as a slow, cumulative degradation over many
     # such events, not an immediate, obvious failure of this one check alone.
     assert http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200, "webserver unresponsive after a client disconnected abruptly mid-response"
-    # No hard assertion on WEBSERVER's error log here, deliberately: _serve()'s own `except OSError
-    # as e: await self.pr.wrn_s("Connection reclaimed (socket error):", e, wrnno=3)` (confirmed
-    # directly) is the real path a broken-pipe write would land on, but whether the server is still
-    # mid-write when this RST actually lands is a genuine timing race, not a deterministic outcome -
-    # /measurements is small enough that the DUT may well have already finished writing and closed
-    # cleanly on its own before the RST arrives, in which case wrnno=3 legitimately never fires. Not
-    # asserted either way to avoid a flaky test; the reachability check above is this test's real
-    # assertion, matching the same "no error/warning" outcome if the race goes that way.
+    # No hard assertion on WEBSERVER's error log: whether the server is still mid-write when this
+    # RST lands (wrnno=3) is a genuine timing race, not deterministic - asserting either way risks flakiness.
     reset_all_error_logs(dut_ip)  # hygiene regardless of which way the race went

@@ -1,31 +1,6 @@
-"""Declarative bus-topology registry for tests_hardware/ - the host-side mirror of
-digital_twin/machine.py's `_wire_i2c_devices()`/`_wire_spi_device()`, which is the canonical
-per-variant wiring declaration (cross-checked automatically on every push by
-tests/test_digital_twin_bus_hazard_concurrency.py's own real build_system() boot - a wiring typo
-there fails loudly with a real NAK, not a silent gap). This file exists because tests_hardware/ is
-host-side CPython/pytest and cannot import that MicroPython-only module directly.
-
-This bench's real board always runs the `dev` build - wozi is never physically flashed
-(CLAUDE.md's hard rule) - so DEV_I2C_BUSES/DEV_SPI is what every flash/bench test should expect.
-WOZI_I2C_BUSES/WOZI_SPI is kept here for documentation parity only (never bench-tested; the digital
-twin is the real verification tier for that variant).
-
-**No flash/bench device script imports this file** (device_scripts/ are single, self-contained
-files transmitted via `mpremote run` - no sibling-file imports possible, confirmed against every
-existing script). Each device script that needs this topology keeps its own small inline copy of
-KNOWN_ADDRESSES (with a comment pointing back here) and, more importantly, live-verifies its own
-assumptions via a real `i2c.scan()` before doing anything else - see
-device_scripts/bus_topology_autodetect_and_hazard_sweep.py's own docstring for the auto-detection
-mechanism this enables, which is what actually makes this tier resilient to *undeclared* wiring
-changes and future devices, not this file's own declared data alone.
-
-**Standing rule - read before adding a new bus-facing device to src/, or wiring one onto an
-existing bus:** update this file's KNOWN_ADDRESSES/DEV_I2C_BUSES/WOZI_I2C_BUSES, the matching entry
-in digital_twin/machine.py's `_wire_i2c_devices()`, and every device-script's own inline
-KNOWN_ADDRESSES copy - a device missing from KNOWN_ADDRESSES here still gets picked up by
-i2c.scan()'s live auto-detection (reported as "unknown@0xNN"), so nothing silently disappears, but
-its bus-hazard coverage stays generic/unlabeled until this registry catches up. See
-SPECIFICATION.md Part C.8's own note on this."""
+"""Declarative bus-topology registry for tests_hardware/ - host-side mirror of digital_twin/
+machine.py's wiring declaration (dev is the only bench-tested variant; wozi is documentation-only).
+See SPECIFICATION.md Part C.8 for the update-this-file-too rule when wiring a new device."""
 
 from __future__ import annotations
 

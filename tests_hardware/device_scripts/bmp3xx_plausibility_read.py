@@ -1,41 +1,6 @@
-"""Isolated-driver device script, flash-tier gap fix: one real BMP3xx reading, checked against
-datasheet-sourced sane bounds (plausibility only, not exact reference - same convention as
-scd30_plausibility_read.py). Bounds sourced from datasheets/bmp3xx/ (BST-BMP388-DS001/
-BST-BMP384-DS003) Table 2's operating range: pressure 300-1250 hPa, temperature -40-85 degC -
-also src/asy_bmp3xx_driver.py's own BMP3XX_I2C._read() already rejects a reading outside this
-same range (ValueError), so a successful real read is redundantly checked here as independent
-evidence, not because the driver could plausibly hand back an out-of-range value. SLPres
-(math_helpers.altitude_baro(), sea-level-corrected pressure - despite the function's own name
-being about altitude, it reduces station pressure to sea level, not the other way around; see
-that function's own comment) uses the same 300-1250 hPa bound: loose/plausible, not exact.
-
-This bench unit wires BMP3xx to I2C0 (scl=13, sda=12), not I2C1 (dev_legacy/README.md's own
-wiring table - this bench's BMP3xx is on I2C0 alongside MPRLS, while wozi's deployed wiring puts
-it on I2C1 instead). Confirmed directly against this bench's own live main.py (build_system())
-and a real i2c.scan() (0x77 on I2C0, nothing on I2C1(19,18)) before fixing this script's earlier
-wrong assumption that it was exercising "the real production wiring" - it wasn't; it was silently
-probing an empty bus on this specific unit.
-
-REAL FINDING, fixed: like sgp40_fram_backup_restore.py's own finding, this script never
-initialized reader.cfgmgr - no setup() call, no primed cache. BMP3xx_Reader._init_bmp() (called
-from read_loop()) reads its own oversampling/filter/sample-interval config via
-`self.cfgmgr.get_int_values(...)` as its very first real step; with cfgmgr.valid left False this
-returns None, _init_bmp() logs "Error reading config data!" (errno=12) and returns False, and
-read_loop() never proceeds to a real sensor read at all - confirmed directly on real hardware with
-debug=5 (this exact log line printed every time, get_data() staying (None, None, None, None) for
-the entire 10s+ this was watched). This was masked in an earlier pass: the script's own final
-`task.cancel(); await task` cleanup ran unconditionally regardless of whether a reading was ever
-obtained, so a real CancelledError-swallowing bug (fixed separately, see the except clause below)
-produced the same visible test failure and hid this actual root cause underneath it. Fixed the
-same way as sgp40_fram_backup_restore.py: prime `cfgmgr.valid`/`_cache` directly (dev_legacy/
-README.md's documented no-real-flash-write pattern) with the schema's own defaults, never
-`cfgmgr.setup()`.
-
-Run via `mpremote run <this> soft-reset`. Worst case (30 x 0.5s poll) is ~15s, past the RP2040
-hardware watchdog's 8.388s ceiling (SPECIFICATION.md Part F.1); `run_isolated()`'s soft reset stops
-the live system's own feed loop (system_service.py) without resetting that hardware timer
-(confirmed against ports/rp2/machine_wdt.c), so this script feeds its own WDT handle once per poll
-rather than relying on anything outside itself."""
+"""Isolated-driver device script: one real BMP3xx reading, checked against datasheet-sourced sane
+bounds (300-1250 hPa, -40 to 85 degC - datasheets/bmp3xx/ Table 2). Primes reader.cfgmgr directly
+(no real flash I/O) - see tests_hardware/README.md's device-script cfgmgr-priming note."""
 
 import asyncio
 
@@ -65,6 +30,8 @@ async def _main() -> None:
     read_task = reader.start_asy_read()
 
     data = None
+    # ~15s worst case exceeds the 8.388s hardware WDT ceiling; soft-reset doesn't reset that timer,
+    # so this script feeds it manually rather than relying on anything outside itself.
     for _ in range(30):  # ~15s at 0.5s polling - generous relative to a forced-mode conversion's own <=~130ms
         data = await reader.get_data()
         if data.Pres is not None:

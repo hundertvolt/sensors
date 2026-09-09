@@ -1,14 +1,6 @@
-"""Strips `if TYPE_CHECKING:` blocks - and their defining `try: from typing import TYPE_CHECKING /
-except ImportError: TYPE_CHECKING = False` header (CLAUDE.md's D.6 typing convention) - out of a
-module's source text before it's frozen/mpy-cross-compiled. `mpy-cross` does not dead-code-eliminate
-these the way it does an `if micropython.const(0):` branch (confirmed empirically, see BACKLOG.md's
-now-resolved "Firmware build script should strip if TYPE_CHECKING: blocks..." item and
-SPECIFICATION.md Part B.11): the guarded imports/Protocol classes/type aliases fully survive into
-the .mpy bytecode, qstrs included, purely as compiled-in dead weight the RP2040 never executes -
-stripping them from the temp staged copy (never the real src/ext files) measured ~3.6KB saved
-across the files promoted to src/ at the time. Safe because nothing on this platform ever does
-runtime annotation introspection - see CLAUDE.md's "Platform target" section.
-"""
+"""Strips `if TYPE_CHECKING:` blocks and their try/except ImportError header out of a module's
+source before it's frozen/mpy-cross-compiled - `mpy-cross` doesn't dead-code-eliminate these
+(SPECIFICATION.md Part B.11), so they'd otherwise survive into the .mpy bytecode as dead weight."""
 
 from __future__ import annotations
 
@@ -27,14 +19,9 @@ def _is_bare_type_checking_test(test: ast.expr) -> bool:
 
 
 def _is_type_checking_import_guard(node: ast.Try) -> bool:
-    """Matches exactly this codebase's D.6 convention:
-    ```
-    try:
-        from typing import TYPE_CHECKING
-    except ImportError:
-        TYPE_CHECKING = False
-    ```
-    Never a general `try/except ImportError` guarding something else - those are left alone."""
+    """Matches exactly this codebase's `try: from typing import TYPE_CHECKING / except
+    ImportError: TYPE_CHECKING = False` convention - never a general try/except guarding
+    something else, which is left alone."""
     if node.orelse or node.finalbody or len(node.body) != 1 or len(node.handlers) != 1:
         return False
     (stmt,) = node.body
@@ -78,13 +65,9 @@ class _TypeCheckingStripper(ast.NodeTransformer):
 
 
 def strip_type_checking_blocks(source: str) -> str:
-    """Returns `source` with every bare `if TYPE_CHECKING:`/`if mod.TYPE_CHECKING:` block (no
-    `elif`/`else`) and its defining try/except ImportError header removed. Re-parses the
-    transformed output as a validity check before returning it (BACKLOG.md's documented
-    algorithm) - raises SyntaxError, never silently, if that check fails. Source with no such
-    blocks is returned completely unchanged (byte-for-byte), not round-tripped through
-    `ast.unparse()`, so files that never used this pattern (e.g. `ext/microdot.py`) stage
-    identically to before."""
+    """Returns `source` with every bare `if TYPE_CHECKING:` block (no `elif`/`else`) and its
+    try/except ImportError header removed, re-parsing the output to fail loudly on a bad
+    transform. Source with no such blocks is returned byte-for-byte unchanged."""
     tree = ast.parse(source)
     stripper = _TypeCheckingStripper()
     stripped_tree = stripper.visit(tree)

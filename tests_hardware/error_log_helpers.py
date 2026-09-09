@@ -1,23 +1,6 @@
-"""Shared /status errcount helpers for fault-injection tests across this tier - the project owner's
-own standing policy: reset before a test, confirm any deliberately-provoked fault actually produced
-the expected error/warning entry (not just "the system didn't crash"), then reset again so a real
-bench rig's live error history isn't left showing a test's own faults.
-
-Shape reference (asy_webserver_service.py's own `_shape_errcount_entry()` - NOT the same shape as
-print_log.py's raw `get_log()`, which several device_scripts/ files consume directly instead):
-    GET /status -> {"errcount": {"<ModuleName>": {"counter": int, "history": [{"num": int, "type": "E"|"W"|"N"}, ...]}, ...}}
-"type" is "E" (an err_s() call) or "W" (a wrn_s() call) - print_log.py's own PrintLogHistory.get_log()
-encoding. Module names are each module's own `.name` (asy_webserver_service.py's `_index_by_name()`) -
-e.g. "WIFI", "NTP", "BMP3XX", "CFGMGR_BMP3XX" (a *separate* entry from "BMP3XX" itself - every
-ConfigManager instance registers its own, always in-RAM only, config_manager.py's own
-`PrintLogHistory(name="CFGMGR_"+name)` never takes a fram= argument at all, confirmed directly).
-
-Not every module's log is FRAM-backed (SPECIFICATION.md Part A.7's 7-chunk enumeration is the
-complete list - every ConfigManager's own "CFGMGR_*" log, plus WIFI/NTP themselves, are always
-in-RAM only, confirmed directly against sensortask_wozi.py's own construction calls: neither
-AsyConnTime() nor AsyNtpClient() is ever passed fram=). These helpers check the same real,
-REST-exposed value either way - the durability difference doesn't change what a live check can
-observe, only whether it would still be there after a real reboot."""
+"""Shared /status errcount helpers for fault-injection tests: reset before a test, confirm a
+provoked fault produced the expected error/warning entry, then reset again. Shape: GET /status ->
+{"errcount": {"<ModuleName>": {"counter": int, "history": [...]}}} - see SPECIFICATION.md Part A.7."""
 
 from __future__ import annotations
 

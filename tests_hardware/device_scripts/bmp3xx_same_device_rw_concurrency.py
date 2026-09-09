@@ -1,27 +1,6 @@
-"""Isolated-driver device script, flash-tier: BMP3xx's own same-device concurrency proof - "ongoing
-read, incoming write" (SPECIFICATION.md Part C.8's device-session lock model). Unlike SCD30, BMP3xx's
-own OSR/CONFIG registers are volatile (SRAM-backed, reset on power loss - confirmed against
-datasheets/bmp3xx/bst-bmp388-ds001.pdf sec 4.3.16-4.3.20, no NVM/EEPROM config store documented
-anywhere in this chip), so repeated real writes here carry none of SCD30's real NVM-wear concern -
-this script writes freely, many times, unlike scd30_same_device_rw_concurrency.py's own
-exactly-once budget.
-
-Two coroutines run concurrently against one BMP3XX_I2C instance: a burst of full forced-mode reads
-(get_pressure_and_temperature(), each its own multi-step device-session-locked trigger/poll/burst-
-read sequence), and a burst of real oversampling/filter-coefficient writes. Neither this chip's
-protocol nor this test has CRC framing (unlike SCD30/SGP40) - correctness is proven by BMP3XX_I2C's
-own datasheet-range rejection (_read() raises ValueError outside sec 1 Table 2's operating range) and
-by confirming every write is actually readable back afterward, unmixed with a concurrently-in-flight
-read's own register access.
-
-Uses the raw BMP3XX_I2C protocol class directly, never BMP3xx_Reader - see
-scd30_same_device_rw_concurrency.py's own docstring for why (no ConfigManager/RP2040 flash I/O
-anywhere in this script - the project owner's real-hardware caveat).
-
-This bench unit wires BMP3xx to I2C0 (scl=13, sda=12) - see bmp3xx_plausibility_read.py's own
-docstring for the real i2c.scan() confirmation this was checked against.
-
-Run via `mpremote run <this> soft-reset`."""
+"""Isolated-driver device script: BMP3xx's same-device concurrency proof - "ongoing read, incoming
+write" (SPECIFICATION.md Part C.8). BMP3xx's OSR/CONFIG registers are volatile (no NVM), so unlike
+SCD30 this writes freely; correctness is proven by datasheet-range rejection plus write-readback."""
 
 import asyncio
 

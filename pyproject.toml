@@ -131,8 +131,7 @@ files = ["src", "tests", "digital_twin"]
 # sys.path.insert(0, "digital_twin"), never src/), so this whole subsystem's tests are a
 # self-contained scope that belongs entirely to digital_twin/typecheck.ini's own dedicated pass
 # (below), not split across both. run_wozi_integration.py, run_dev_integration.py (its per-device
-# sibling - DEV_HARDWARE_BASELINE_PLAN.md decision 4) and
-# segfault_stress_repro.py (the segfault-repro tool, see digital_twin/README.md) are the
+# sibling) and segfault_stress_repro.py (the segfault-repro tool, see digital_twin/README.md) are the
 # files that genuinely need both universes at once - each imports its own sensortask_* module
 # (src/) and machine/network (digital_twin/'s own richer twin API, not the real board stub) in the
 # same file -

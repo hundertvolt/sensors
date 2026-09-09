@@ -1,5 +1,6 @@
-"""Stage 1 standalone prototype — dev-bench sibling of `src/sensortask_wozi.py` (see that module's own docstring for the shared shape). `build_system()` constructs every module as bare module-level globals, in FRAM-chunk-preserving order, then runs the grouped `await x.setup()` batch; `main()` starts the task/timer supervisor.
-Wired for the physical "dev" RP2040 bench unit's own confirmed-correct pins (`dev_legacy/README.md`'s wiring table), not wozi's — same three sensors (SCD30/BMP3xx/SGP40), different bus/pin assignment. Importing this module never blocks - the real "import triggers boot" behavior lives in `boot_entry/dev_boot.py` instead. See SPECIFICATION.md Part A.7 for the full construction-order/dependency-graph rationale this mirrors."""
+"""Dev-bench sibling of `src/sensortask_wozi.py` - same shape, same three sensors (SCD30/BMP3xx/SGP40),
+wired for the "dev" bench unit's own pins (`dev_legacy/README.md`'s wiring table) instead of wozi's.
+See SPECIFICATION.md Part A.7 for the construction-order rationale this mirrors."""
 
 import asyncio
 import time
@@ -286,8 +287,9 @@ def _collect_level_setters() -> "list[Callable[[int], None]]":
 async def build_system(
     *, cfg_path: str = "", debug: int | None = None, web_host: str = "0.0.0.0", web_port: int = 80
 ) -> None:
-    """Construct every module and run the grouped `setup()` batch; independently callable/testable — no task starting, no infinite loop, always returns.
-    `cfg_path` isolates on-disk config files (e.g. for tests); `web_host`/`web_port` override the real `0.0.0.0`/`80` production default. Wired for the dev bench's own pins (`dev_legacy/README.md`'s wiring table) - see SPECIFICATION.md Part A.7 for the general construction-order rationale this mirrors from sensortask_wozi.py."""
+    """Construct every module and run the grouped `setup()` batch - no task starting, no infinite
+    loop, always returns. `cfg_path`/`web_host`/`web_port` override on-disk/production defaults for
+    tests. Wired for the dev bench's own pins - see SPECIFICATION.md Part A.7 for the rationale."""
     global watchdog, conn, ntp, i2c0, i2c1, spi0, fram, sysfunct
     global sgp_reader, bmp_reader, scd_reader, pixel, notify_service, webserver, timers_running
 

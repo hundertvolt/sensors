@@ -1,30 +1,6 @@
-"""Isolated-driver device script, flash-tier: proves two DIFFERENT devices sharing one physical I2C
-bus (SCD30 + SGP40 on I2C1 on this dev bench - see sensortask_dev.py's own wiring comment: "i2c1
-(15, 14) carries SCD30 + SGP40, sharing the bus") genuinely interleave under concurrent access rather
-than fully serializing one behind the other - the real-hardware counterpart to SPECIFICATION.md
-Part C.8's documented bus-lock-is-per-transaction-not-per-sequence design. Closes the gap that no
-existing test (mock or real-hardware) proves the fine-grained bus lock actually allows this, only
-that it doesn't crash.
-
-Mechanism: SGP40_I2C.initialize() (src/asy_sgp40_driver.py) runs a serial-number read (~3ms delay),
-a self-test (~500ms delay), then a soft reset (~1000ms delay) - each of those three steps only holds
-the shared bus lock (I2C.async_lock) for the single short bus transaction itself; the long
-delay_ms/await asyncio.sleep() windows in between run with the bus lock fully released (only SGP40's
-OWN independent device-session lock, i2c_sgp40, is held across the whole call). SCD30's own
-read_measurement() calls are gated by a completely independent device-session lock (i2c_scd30), so
-if the bus-level locking is working as designed, several SCD30 read_measurement() calls should be
-able to run to completion *during* SGP40's long self-test/reset sleep windows. If a regression ever
-widened SGP40's bus-lock hold to span its whole initialize() call (or merged the two device-session
-locks), SCD30 would be shut out for the full ~1.5s of every SGP40 cycle instead - this script proves
-that isn't happening by recording wall-clock start/end timestamps for both sides (single-threaded
-cooperative asyncio - safe to append to shared lists with no extra locking) and checking how many
-SCD30 reads actually landed fully inside an SGP40 window.
-
-This is a genuine interleaving proof (timing-based), not just a "nothing crashed" check - see
-bus_concurrency_same_device_scd30.py for the complementary same-device serialization proof (CRC-
-failure-based, since same-device interleaving is a correctness hazard, not a speed one).
-
-Run via `mpremote run <this> soft-reset`."""
+"""Isolated-driver device script: proves SCD30+SGP40, sharing one physical I2C bus (I2C1 on this dev
+bench), genuinely interleave rather than serialize - real-hardware counterpart to SPECIFICATION.md
+Part C.8's bus-lock-is-per-transaction model. Timing-based: checks SCD30 reads landing inside an SGP40 window."""
 
 import asyncio
 import time

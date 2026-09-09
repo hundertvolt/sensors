@@ -16,17 +16,10 @@ const REST_PATHS = /** @type {const} */ ([
 const SYSTEM_CMDS = ["reboot", "bootloader", "mempause"];
 const PAUSE_TIME_MAX = 3600; // matches src/asy_webserver_service.py's own _PAUSE_TIME_MAX
 
-// Three /sensors fields with real, documented hardware quirks (SPECIFICATION.md Part H.4;
-// src/asy_scd30_driver.py's _set_dict_cfg()/get_forced_recalibration_reference(),
-// src/asy_sgp40_driver.py's _push_reset_voc()): each is a direct hardware dispatch re-run
-// whenever actually submitted, never compared against a stored value ("Unchanged" can never fire)
-// and never persisted the way an ordinary settings field is - modeled here instead of falling
-// through to the generic store-and-echo path, which would wrongly report "Unchanged" on a resubmit
-// and echo back whatever was just PUT rather than the real GET-readback quirk below. `ContMeas`
-// (unlike `ForceCalRef`/`SGPResetVOC`) is no longer `dispatch: true` in the FieldDef schema - its
-// own `defaultValue: true` (js/definitions.js) means js/render.js's collectGroupBody() now
-// sparse-omits it whenever untouched instead of resubmitting it on every unrelated group Apply, so
-// it reaches this dispatch path far less often, only on a genuine deliberate change.
+// Three /sensors fields with real, documented hardware quirks (SPECIFICATION.md Part H.4): each
+// is a direct hardware dispatch re-run whenever submitted, never compared against a stored value
+// or persisted like an ordinary settings field - modeled here instead of the generic store-and-echo
+// path, which would wrongly report "Unchanged" and echo back the raw PUT.
 const SENSOR_QUIRK_FIELDS = new Set(["ForceCalRef", "ContMeas", "SGPResetVOC"]);
 
 /**
@@ -36,23 +29,14 @@ const SENSOR_QUIRK_FIELDS = new Set(["ForceCalRef", "ContMeas", "SGPResetVOC"]);
  */
 function coerceAndValidate(field, rawValue) {
     if (field.kind === "number") {
-        // No Number(rawValue) coercion: config_manager.py's type_or_range_error() does a strict
-        // Python type() check before ever looking at magnitude, so a JSON string (even a
-        // numeric-looking one like "42") is rejected outright server-side, never parsed. Garbage
-        // text js/render.js's readInputValue() sends through unparsed (its own NaN-passthrough
-        // fix) reaches here as a non-number too, so it still correctly ends up Invalid - just via
-        // this type check now, not a NaN check.
+        // No Number(rawValue) coercion: the real backend does a strict type() check before ever
+        // looking at magnitude, so a JSON string (even "42") is rejected outright, never parsed.
         if (typeof rawValue !== "number" || !Number.isFinite(rawValue)) {
             return { valid: false, value: rawValue };
         }
-        // Mirrors config_manager.py's coerce_numeric()/type_or_range_error() int<->float policy
-        // (SPECIFICATION.md Part A.8): a field not marked field.float is int-typed server-side and
-        // accepts only a value with no fractional part - not truncated/rounded, rejected outright,
-        // same treatment as out-of-range. A float-typed field accepts any finite value regardless
-        // of whether it's whole or fractional (int -> float is a blanket accept). JS has no
-        // separate int/float runtime type to begin with, so unlike the old literal-shape check
-        // (scanNumericLiteralShapes(), now removed), only the value's own integrality matters -
-        // "5" and "5.0" both parse to the identical JS number, and both are now judged the same way.
+        // Mirrors the real int<->float policy (SPECIFICATION.md Part A.8): a field not marked
+        // field.float is int-typed and rejects any fractional value outright, same as out-of-range;
+        // a float-typed field accepts any finite value, whole or fractional.
         if (field.float !== true && !Number.isInteger(rawValue)) {
             return { valid: false, value: rawValue };
         }
@@ -79,13 +63,8 @@ function coerceAndValidate(field, rawValue) {
     }
     if (field.kind === "enum") {
         // Compare as-sent, not string-coerced: an enum's real value can be numeric (e.g. BMP3XX's
-        // PressOvers) - a real backend expects that type back, not "4" where it wrote 4. Every
-        // currently-declared numeric enum is itself a plain type_or_range_error()-backed int field
-        // with a special-value list (SPECIFICATION.md Part A.8's schema-comment grammar sketch,
-        // "kind: enum" derivation), so it needs the same int-only strictness (reject a fractional
-        // value) as an ordinary int-typed number field - unlike SystemCmd, whose string-valued
-        // options never reach coerceAndValidate() at all (dispatched separately via
-        // SYSTEM_CMDS.includes(), no type_or_range_error involved).
+        // PressOvers), and needs the same int-only strictness as an ordinary int field (unlike
+        // SystemCmd's string-valued options, dispatched separately via SYSTEM_CMDS.includes()).
         if (typeof rawValue === "number" && !Number.isInteger(rawValue)) {
             return { valid: false, value: rawValue };
         }
@@ -179,14 +158,9 @@ function applySparsePut(body, fieldDefs, storedConfig) {
 }
 
 /**
- * Dispatches a client-supplied number into `dest[destKey]`: range-validated (rejecting non-finite/
- * out-of-range as "Invalid") but never compared against a stored value - matches a real dispatched
- * action (SystemCmd, PauseTime), which the real backend re-runs fresh every call and never reports
- * "Unchanged" for, unlike a genuine persisted setting. This helper's only current caller
- * (PauseTime) is int-typed server-side (`_dispatch_notification_pause()` now reuses
- * config_manager.py's own type_or_range_error() against a synthetic FieldSchema,
- * SPECIFICATION.md Part A.8) - a fractional value is rejected, an integral one accepted, same
- * int<->float coercion policy as any other int-typed field.
+ * Dispatches a client-supplied number into `dest[destKey]`: range-validated but never compared
+ * against a stored value, matching a real dispatched action (PauseTime) that never reports
+ * "Unchanged" the way a genuine persisted setting does.
  * @param {unknown} rawValue
  * @param {number} min
  * @param {number} max
@@ -212,14 +186,8 @@ const LIGHT_CMD_LED_T_MAX = 60.0;
 
 /**
  * Dispatches lightCmdLED (SPECIFICATION.md Part A.8): a fire-and-forget flash command, never a
- * persisted setting - matches src/asy_webserver_service.py's _dispatch_notification_led() +
- * src/sensortask_wozi.py's _notification_led_callback() exactly: "Invalid" only when the payload
- * isn't an object at all, "Failed" when r/g/b is missing/non-numeric/fractional/out-of-range
- * (0-255) or t is missing/non-numeric/out-of-range (0.5-60.0) - config_manager.py's
- * coerce_numeric()/type_or_range_error() policy (SPECIFICATION.md Part A.8): r/g/b are int-typed
- * and reject a fractional value the same way any other int-typed field does; t is float-typed and
- * accepts any finite in-range value. Legacy rejected out-of-range r/g/b/t outright too - the
- * promoted src/ backend used to silently clamp/floor instead, now closed to match.
+ * persisted setting. "Invalid" only when the payload isn't an object; "Failed" when r/g/b
+ * (int, 0-255) or t (float, 0.5-60.0) is missing/wrong-typed/out-of-range.
  * @param {unknown} rawValue
  * @returns {string}
  */
@@ -248,12 +216,9 @@ function dispatchLightCmdLed(rawValue) {
 }
 
 /**
- * Validates+dispatches one of SENSOR_QUIRK_FIELDS' PUT value exactly like the real driver's own
- * type_or_range_error()-then-direct-hardware-write path: "Valid"/"Invalid" only (never "Failed" -
- * there's no real I2C bus here to fail), and never written to storedConfig, so a later GET falls
- * through to applySensorQuirksForGet()'s own override/omission for these three keys instead of
- * echoing back whatever was just PUT. `field` is undefined when this device's schema doesn't
- * declare the key at all - treated the same as applySparsePut()'s own unknown-field tolerance.
+ * Validates+dispatches one SENSOR_QUIRK_FIELDS PUT value: "Valid"/"Invalid" only (no real I2C bus
+ * to fail), never written to storedConfig so a later GET falls through to
+ * applySensorQuirksForGet()'s own override/omission instead of echoing the raw PUT.
  * @param {import("./definitions.js").FieldDef | undefined} field
  * @param {unknown} rawValue
  * @returns {string | undefined}
@@ -266,11 +231,9 @@ function dispatchSensorQuirkField(field, rawValue) {
 }
 
 /**
- * Applies SENSOR_QUIRK_FIELDS' real GET-readback behavior to a /sensors response: `ForceCalRef`
- * always reports the fixed constant 400 regardless of what was last applied (SCD30's own volatile-
- * register limitation - get_forced_recalibration_reference()'s own docstring); `ContMeas`/
- * `SGPResetVOC` are omitted entirely, matching get_dict_cfg()'s explicit schema exclusion for both
- * (neither is ever in ConfigManager's cache to read back in the first place).
+ * Applies SENSOR_QUIRK_FIELDS' real GET-readback behavior: `ForceCalRef` always reports the fixed
+ * constant 400 (SCD30's volatile-register limitation); `ContMeas`/`SGPResetVOC` are omitted
+ * entirely, matching the real schema's exclusion of both.
  * @param {Record<string, Record<string, unknown>>} sensorsConfig
  * @returns {Record<string, Record<string, unknown>>}
  */

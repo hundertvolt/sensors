@@ -1,28 +1,6 @@
 """Flash-tier automated tests: real-hardware confirmation of SPECIFICATION.md Part C.8's I2C
-concurrency/locking model (device-session lock serializes same-device multi-transaction sequences;
-the bus lock is fine-grained enough to let different devices on a shared bus genuinely interleave),
-a regression test for the SGP40 general-call reset broadcast hazard found while auditing that model,
-same-device read-vs-write concurrency for every promoted sensor, and a live-topology-autodetecting
-address/reserved-range/self-hazard sweep. Closes a real gap: nothing in this tier previously spun up
-concurrent coroutines against real hardware to prove the locking model holds under real contention
-(only mock-level tests exist for the raw bus-lock mechanism - tests/test_asy_i2c_driver.py's
-"asyncio interlock" section - none of which touch a real device's own CRC-8-protected wire protocol,
-a second real device sharing the bus, or a real write racing a real read).
-
-Uses this dev bench's own real wiring (sensortask_dev.py): SCD30 + SGP40 share I2C1 (scl=15,
-sda=14); BMP3xx sits alone on I2C0. Production wozi wiring pairs SGP40 with BMP3xx instead (SCD30
-alone) - see this session's own Part 1 bus-hazard report for why both pairings independently check
-out against their respective datasheets, and why the dev-bench pairing tested here is still valid
-evidence for wozi too (CLAUDE.md's own "a passing dev-bench result is treated as valid for wozi too,
-provided the code under test is genuinely dev-native" rule - these device scripts use dev's own
-correct pins via sensortask_dev.py's own wiring comments, never wozi's hardcoded build). wozi's own
-SGP40+BMP3xx pairing gets its real, complete verification from
-tests/test_digital_twin_bus_hazard_concurrency.py instead, since wozi is never physically flashed.
-
-**SCD30 real-hardware NVM-write budget**: every test below that needs SCD30 producing real fresh
-data depends on `scd30_continuous_measurement_triggered` (tests_hardware/flash/conftest.py) -
-session-scoped, so the one real NVM-persisted write it makes (via
-scd30_same_device_rw_concurrency.py) happens at most once no matter how many of these tests run."""
+concurrency/locking model, a regression test for the SGP40 general-call reset hazard, same-device
+read/write concurrency per sensor, and a live-topology address/reserved-range/self-hazard sweep."""
 
 from __future__ import annotations
 
