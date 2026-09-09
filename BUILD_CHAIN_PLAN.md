@@ -258,7 +258,39 @@ actually has one (checked per datasheet, not assumed).
 lookup table; topologically sorting `[[instance]]` entries by `[instance.wiring]`/`_WIRING`
 dependency and rejecting a cycle; erroring at build time on a naming collision with no
 disambiguating `name_ext`; resolving `NotificationSignal` registrations from this table; emitting
-the real `sensortask_<device>.py` + boot entry.
+the real `sensortask_<device>.py` + boot entry; and the full **global resource-collision
+validation pass** below — every one of these is a real build blocker per the fail-loud contract
+above, not a warning, and not built in this session.
+
+**Global resource-collision validation (Session 3, required — project owner's explicit direction,
+2026-09-09)**: the single hardest class of build-time error to catch, because each individual field
+involved is independently syntactically valid — the corruption only exists in the *combination*,
+across the whole device's TOML, not in any one `[[instance]]`/`[bus.*]` table read in isolation. A
+schema-level check (right type, right range) can't see this at all; it needs a dedicated pass that
+builds a flat map of every physical resource a device's TOML claims and rejects any resource
+claimed twice. At minimum:
+- **Pin reuse across *anything*** — two `[[instance]]`/`[bus.*]` entries naming the same GPIO for
+  any purpose (an SCL/SDA/SCK/MOSI/MISO/CS pin, an IRQ pin, the Neopixel pin, an LED pin, ...),
+  including a bus's own pins colliding with a *different* bus's pins or with a plain digital
+  instance pin — not just two same-typed pins colliding with each other.
+- **I2C/SPI address collision on the same bus** — two instances both wired to the same `bus = "..."`
+  resolving to the same address (either both give the same explicit `address`, or two
+  hardwired-address instances of the same chip type share a bus with no way to distinguish them at
+  all — itself a real, catchable misconfiguration, not just an address-field mismatch).
+- **Instance name collision** (C.14.1's own case, restated here as one instance of this same general
+  category) — two instances resolving to the same `instance_name(driver_base, name_ext)`.
+- **Any other single-owner resource claimed twice** — a `cs_pin` reused across two SPI chips on the
+  same bus without independent chip-select being possible, a bus id (`bus.i2c0`) defined more than
+  once, a `[instance.wiring]` field naming an instance that doesn't exist or exists but is the wrong
+  driver type (already covered above, listed here for completeness of "same category, different
+  shape").
+Every one of these must produce a specific, human-readable error naming the two colliding
+declarations (which instance/bus, which field, which value) — never a generic "build failed," and
+never a silent pick of one over the other. This validation pass is exactly the kind of build
+function this doc's own "Build-time tooling" bullet (above) requires a dedicated unit test suite
+for: one test per collision category above, each proving the specific error fires on a
+deliberately corrupted fixture TOML, plus proving a clean, non-colliding TOML produces no false
+positive.
 
 ## Session breakdown (dependency-ordered)
 
