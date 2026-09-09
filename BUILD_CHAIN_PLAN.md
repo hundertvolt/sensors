@@ -396,6 +396,19 @@ proceed rather than degrading:
   Every one of these must produce a specific, human-readable error naming the two colliding
   declarations (which instance/bus, which field, which value) — never a generic "build failed" and
   never a silent pick of one over the other.
+- **Driver-declared bus requirements are enforced via a `# @requires` comment tag, never a real
+  Python variable.** A driver whose correctness depends on a property of the bus it's wired to
+  (e.g. `asy_scd30_driver.py`'s clock-stretch timeout requirement — today only satisfied by hand,
+  per device TOML) declares it as a module-level comment, not a module-level constant: nothing the
+  running firmware itself ever reads should become a real frozen-bytecode value just to serve this
+  generator — the same reasoning behind `BACKLOG.md`'s `@web`/`@web-group` website-definitions
+  sketch, whose tag-family convention this reuses rather than inventing a second one. Grammar: `#
+  @requires bus.<field><op><value>` (e.g. `# @requires bus.timeout>=200000`), placed at module
+  level near `_WIRING`/`_VAL_*`. The generator parses driver source files as text for these tags
+  (never imports+introspects for this), resolves the instance's own `bus = "..."` TOML reference to
+  its `[bus.*]` table, and evaluates the tag's predicate against that table's actual field value —
+  silently continuing if satisfied, failing loudly (naming the device, instance, bus, field, and
+  expected-vs-actual value) if not, the same as every other check in this section.
 - **Never produce a corrupted or partial build.** On any detected error, abort the entire build
   immediately — no partial `build/<device>/` output left behind that could be mistaken for a real
   artifact.
