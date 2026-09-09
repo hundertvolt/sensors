@@ -447,6 +447,13 @@ def test_detects_cs_pin_on_a_bus_table():
         check_bus_tables_declare_their_required_wire_pins(doc, "base")
 
 
+def test_detects_no_bus_declared_at_all():
+    doc = _base_doc()
+    doc["bus"] = {}
+    with pytest.raises(AssertionError, match="no bus declared"):
+        check_bus_tables_declare_their_required_wire_pins(doc, "base")
+
+
 def test_bus_kind_rejects_an_unrecognized_bus_id():
     with pytest.raises(AssertionError, match="unrecognized bus id"):
         _bus_kind("uart0")
@@ -494,6 +501,13 @@ def test_detects_sgp40_wiring_referencing_a_nonexistent_instance():
         check_sgp40_wiring_resolves_to_a_real_scd30_instance(doc, "base")
 
 
+def test_detects_sgp40_instance_missing_entirely():
+    doc = _base_doc()
+    doc["instance"] = [i for i in doc["instance"] if i["driver"] != "sgp40"]
+    with pytest.raises(AssertionError, match="no unextended sgp40 instance found"):
+        check_sgp40_wiring_resolves_to_a_real_scd30_instance(doc, "base")
+
+
 def test_detects_notification_missing_its_wiring_table():
     doc = _base_doc()
     del doc["instance"][4]["wiring"]
@@ -513,6 +527,20 @@ def test_detects_notification_wiring_referencing_a_nonexistent_instance():
     doc["instance"] = [i for i in doc["instance"] if i["driver"] != "neopixel"]
     with pytest.raises(AssertionError, match="no such instance exists"):
         check_notification_wiring_resolves_to_a_real_neopixel_instance(doc, "base")
+
+
+def test_detects_notification_instance_missing_entirely():
+    doc = _base_doc()
+    doc["instance"] = [i for i in doc["instance"] if i["driver"] != "notification"]
+    with pytest.raises(AssertionError, match="no notification instance found"):
+        check_notification_wiring_resolves_to_a_real_neopixel_instance(doc, "base")
+
+
+def test_detects_notification_instance_missing_entirely_for_signal_wiring():
+    doc = _base_doc()
+    doc["instance"] = [i for i in doc["instance"] if i["driver"] != "notification"]
+    with pytest.raises(AssertionError, match="no notification instance found"):
+        check_notification_signal_wiring_resolves_if_present(doc, "base")
 
 
 def test_allows_a_notification_signal_getter_to_be_entirely_absent():
@@ -540,6 +568,20 @@ def test_detects_notification_signal_wiring_referencing_a_nonexistent_instance()
     doc["instance"] = [i for i in doc["instance"] if i["driver"] != "scd30"]
     with pytest.raises(AssertionError, match="no such instance exists"):
         check_notification_signal_wiring_resolves_if_present(doc, "base")
+
+
+def test_detects_a_non_int_pin_value():
+    doc = _base_doc()
+    doc["bus"]["i2c0"]["scl_pin"] = "13"
+    with pytest.raises(AssertionError, match="is not an int"):
+        check_no_global_gpio_pin_collision(doc, "base")
+
+
+def test_detects_a_bool_pin_value():
+    doc = _base_doc()
+    doc["instance"][3]["pin"] = True  # bool is an int subclass in Python - must still be rejected
+    with pytest.raises(AssertionError, match="is not an int"):
+        check_no_global_gpio_pin_collision(doc, "base")
 
 
 def test_detects_a_bus_wire_pin_reused_by_another_bus():
