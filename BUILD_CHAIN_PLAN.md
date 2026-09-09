@@ -317,3 +317,76 @@ positive.
 Every session works on its own branch off `claude/automated-build-chain-nuzumw` (this branch), not
 `main`, and opens its PR against this branch. This branch merges into `main` only once every
 session has landed and the whole chain is verified end-to-end.
+
+## Merge-back review checklist
+
+Applied, rigorously and step by step, to every spun-off session's PR before it merges into this
+branch — not a one-time check, repeated on every incoming merge:
+
+1. **Reasonableness/efficiency/expectations** — does the result actually match what that session
+   was scoped and primed to do, and is it a sensible, non-bloated way of doing it?
+2. **Scope leakage** — did the session implement something that properly belongs to a *different*
+   (usually later) session, whether to reach a self-contained working result or by
+   misunderstanding its own scope boundary? If so, note it here and explicitly flag it to that
+   later session when it's spun off — not as "this is already done, keep it," but as "question
+   whether this is actually the right way and adapt if required." A later session inheriting
+   earlier work must not blindly accept it just because it's already there.
+3. **CI-fix legitimacy** — if a session's own PR had to fix a CI failure, confirm the fix landed in
+   the actual source, not by weakening or working around the test. A test changed because the
+   source legitimately changed is fine, but only if the test isn't made less strict in the
+   process.
+
+## Build/generator script quality bar
+
+Binds every session that writes build/generation logic — Session 1's wiring/schema validator,
+Session 3's Python code generator, Session 4's website `definitions.json` generator, and Session
+6's CI orchestration around them. Distinct from the sensor-code quality bar in one key way: a
+build script's job includes catching every way its own input could be wrong, and refusing to
+proceed rather than degrading:
+
+- **Detect and react to every error class that would make a real build impossible** —
+  misconfigured/malformed TOML, an unresolved wiring reference, a driver-class/type mismatch, a
+  REST/config-name collision with no disambiguating extension, a missing required pin/bus field, a
+  copy-paste duplicate, or any other structurally broken definitions file. Typical real-world
+  causes: misconfigured definition files, and plain wrong/missing/copy-pasted fields.
+- **Global-resource-collision checks are their own error class and must not be skipped.**
+  Overlapping bus addresses, double-claimed pin numbers, and any other double-definition of a
+  resource meant to be exclusive are *syntactically valid, individually valid-looking fields that
+  are still wrong in the whole-file view* — they can only be caught by a cross-instance pass over
+  the entire device, never by validating one field at a time. Concretely:
+  - **Schema shape**: model each bus (`i2c0`/`i2c1`/`spi0`-style peripheral instantiation) as its
+    own top-level entry owning its own shared wire pins (SCL/SDA, SCK/MOSI/MISO), separate from
+    each instance's own *exclusive* resources (its address on that bus, its CS pin, its IRQ pin) —
+    mirrors how the real code already builds a bus once and passes it into each device
+    constructor. This lets the validator use schema shape to tell "shared by design" apart from
+    "must be exclusive," rather than guessing per field.
+  - **Global GPIO-pin exclusivity**: one flat namespace across the whole device — every bus's wire
+    pins, every instance's CS pin, every instance's IRQ pin, every standalone peripheral pin
+    (Neopixel data, any future direct-GPIO driver). A physical pin wired to two different signals
+    is always an error, regardless of what role either signal plays.
+  - **Per-bus address exclusivity**: scoped, not global — two instances on the *same* bus can't
+    share an address, but the same address value on two *different* buses is legitimate and must
+    not false-positive.
+- **Never produce a corrupted or partial build.** On any detected error, abort the entire build
+  immediately — no partial `build/<device>/` output left behind that could be mistaken for a real
+  artifact.
+- **Fail loudly, clearly, and human-readably.** A plain, actionable message naming exactly what's
+  wrong and where (which device, which instance, which field) — not a raw traceback, not a silent
+  wrong-default fallback. This is the build-tooling equivalent of CLAUDE.md's "flag, don't silently
+  change" convention.
+- **Tested to the same bar as `src/` code**: correct-path functioning, full error-handling-path
+  coverage (every abort condition above gets its own test, driven by deliberately malformed
+  fixture definition files — not just incidentally exercised by the six real device TOMLs
+  happening to be valid), and code coverage. Follows the already-established `tests_scripts/`
+  convention (pytest, real CPython — CLAUDE.md's "Code quality tooling" section already documents
+  this as the home for host-only build-tooling tests, distinct from `src/`'s real-MicroPython-
+  interpreter suite) rather than inventing a new test harness.
+- Newly-built generator/validator modules join `pyproject.toml`'s ruff/mypy scope alongside
+  `src/`/`tests/`/`digital_twin/` — this is fresh code, not pre-existing legacy `scripts/`/
+  `toolchain/` tooling, so it starts under the full quality bar rather than inheriting CLAUDE.md's
+  documented (and still separately-decided) gap for that legacy tooling.
+
+This is the same "each module/function tested exactly one time" CI principle already agreed,
+applied to error-handling paths specifically: a build/generator function's abort conditions are
+themselves testable units, not just incidentally covered by the real device TOMLs happening to be
+valid.
