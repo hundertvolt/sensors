@@ -294,18 +294,50 @@ driver = "notification"
 [instance.wiring]
 signal_sink = "neopixel"
 
-# NotificationSignal registrations (WarnCO2/WarnVOC/WarnHum today) are a related but separate
-# mechanism from _WIRING (SPECIFICATION.md C.14.3) - resolved at register()-call time, after every
-# producer already exists, so they don't need their own _WIRING declaration; how the generator
-# expresses "register WarnCO2 against the scd30 instance's CO2 field" from this table is Session
-# 3's own design question, not settled here.
+# Notification's own per-signal getters (project owner's direction, 2026-09-09) - the same
+# treatment as signal_sink above, extended to what was previously hardcoded inside
+# notify_service.register(NotificationSignal("WarnCO2", scd_reader, "CO2", ...)) calls in
+# build_system(). Confirmed directly against both code paths this TOML schema covers: the
+# refactored sensortask_wozi.py/sensortask_dev.py register exactly these three
+# (WarnCO2<-scd30.CO2, WarnVOC<-sgp40.VOC, WarnHum<-scd30.Hum), and the legacy
+# modules/sensortask-arzi.py/sensortask-neu.py's own (differently-mechanized, pre-refactor)
+# airqualMeasCallback() sources the identical three values the identical way
+# (`[scd_data[_SCD30_CO2], sgp_data[_SGP40_VOC], scd_data[_SCD30_Humidity]]`) - not assumed to
+# match, checked.
+#
+# Each one is OPTIONAL, unlike signal_sink: a device TOML may omit any of the three sub-tables
+# below entirely, or reference an instance this device doesn't have. Either way the generator must
+# simply not register that one notification signal on this device - disabled by default, not a
+# build-time error. This is the same absence-means-absent handling this schema already gives a
+# missing optional instance (see this doc's "Device TOML schema" intro above), now applied at the
+# level of one instance's individual wired getters rather than the instance's own presence.
+[instance.wiring.warn_co2]
+source = "scd30"
+field = "CO2"
+
+[instance.wiring.warn_voc]
+source = "sgp40"
+field = "VOC"
+
+[instance.wiring.warn_hum]
+source = "scd30"
+field = "Hum"
+
+# Each signal's own threshold default/range and flash color (_FIELD_WARN_CO2's (0, 3000, ...)-style
+# range, the (1, 0, 0)-style RGB tuple) are a related but still-separate, still-open question - not
+# settled by this addition, which covers only the source+field getter half. How the generator
+# expresses either from this table is Session 3's own design question.
 ```
 
 **What this session settles**: the two top-level shapes above, the `[[instance]]` convention for
 *optional* modules (WiFi/NTP/SystemService excluded — mandatory infrastructure, tuned instead via
 `[system_config]`), `name_ext`'s default-empty-means-unchanged rule, `[instance.wiring]`'s shape (a
-flat `{toml_field_name = "another instance's resolved name"}` table), and that an address field
-only exists for a driver kind whose chip actually has one (checked per datasheet, not assumed).
+flat `{toml_field_name = "another instance's resolved name"}` table for a single-instance
+reference, or a `[instance.wiring.<name>]` sub-table of `{source = "...", field = "..."}` for a
+getter reference), that a getter-shaped wiring reference is optional and defaults to "disabled" when
+absent or unresolvable (unlike a plain instance reference, which is required), and that an address
+field only exists for a driver kind whose chip actually has one (checked per datasheet, not
+assumed).
 
 **What Session 2 does**: write the 6 real files (`dev`, `wozi`, `arzi`, `klkizi`, `grkizi`,
 `schlafzi`) from this shape, using the wiring facts already gathered from
@@ -341,6 +373,17 @@ appear as instances — and re-implements — by hand, since no generator/valida
 global-GPIO-pin/per-bus-address/instance-name collision checks below against these 6 real files
 specifically; **not** a substitute for Session 3's own full validator and its malformed-fixture
 test coverage).
+
+**Revision 2, same session (2026-09-09)**: the project owner also asked for notification's own
+per-signal getters (`WarnCO2`/`WarnVOC`/`WarnHum` — previously hardcoded inside
+`notify_service.register(NotificationSignal(...))` calls in `build_system()`) wired up explicitly
+the same way `sgp40`'s `comp_source` already is, plus a default-disables-the-signal behavior when
+one is left unwired. All 6 files gained three `[instance.wiring.warn_co2/warn_voc/warn_hum]`
+sub-tables on their `notification` instance (`{source = "scd30"/"sgp40", field = "CO2"/"VOC"/
+"Hum"}`), confirmed against both the refactored and legacy source paths (see "Device TOML schema"
+above for the exact evidence) — every real device declares all three today, since every real device
+has both `scd30` and `sgp40`; the disables-when-absent behavior exists in the schema for a future
+device that might not.
 
 **What Session 3 (the generator) does, not settled here**: resolving the `driver` string to its
 Python class — per this doc's own "Acceptance criteria" above, derived from the existing

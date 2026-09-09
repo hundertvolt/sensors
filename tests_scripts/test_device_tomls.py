@@ -186,6 +186,32 @@ def check_notification_wiring_resolves_to_a_real_neopixel_instance(doc: dict, la
     assert ("neopixel", "") in instances, f"{label}: notification's signal_sink references 'neopixel' but no such instance exists"
 
 
+_NOTIFICATION_SIGNAL_WIRING = {
+    "warn_co2": ("scd30", "CO2"),
+    "warn_voc": ("sgp40", "VOC"),
+    "warn_hum": ("scd30", "Hum"),
+}
+
+
+def check_notification_signal_wiring_resolves_if_present(doc: dict, label: str) -> None:
+    # Each of notification's per-signal getters is optional (BUILD_CHAIN_PLAN.md's "Device TOML
+    # schema", 2026-09-09): a device TOML may omit any of the three - that disables the
+    # corresponding warning signal on this device rather than being a build error, the same
+    # absence-means-absent handling this schema already gives a missing optional instance. When
+    # present, though, it must resolve to the expected driver kind/field, not just any instance.
+    instances = {(inst["driver"], inst.get("name_ext", "")): inst for inst in doc["instance"]}
+    notif = next((inst for inst in doc["instance"] if inst["driver"] == "notification"), None)
+    assert notif is not None, f"{label}: no notification instance found"
+    wiring = notif.get("wiring", {})
+    for key, (expected_driver, expected_field) in _NOTIFICATION_SIGNAL_WIRING.items():
+        sig = wiring.get(key)
+        if sig is None:
+            continue  # optional - absent disables this signal on this device, not an error
+        assert sig.get("source") == expected_driver, f"{label}: [instance.wiring.{key}].source is {sig.get('source')!r}, expected {expected_driver!r}"
+        assert sig.get("field") == expected_field, f"{label}: [instance.wiring.{key}].field is {sig.get('field')!r}, expected {expected_field!r}"
+        assert (sig["source"], "") in instances, f"{label}: notification's {key}.source references {sig['source']!r} but no such instance exists"
+
+
 def check_no_mandatory_infra_modeled_as_instance(doc: dict, label: str) -> None:
     # wifi/ntp/system are mandatory infrastructure - the TOML models optional modules only
     # (BUILD_CHAIN_PLAN.md's "Device TOML schema", revised 2026-09-09) - so none of them may ever
@@ -281,6 +307,21 @@ def test_notification_wiring_resolves_to_a_real_neopixel_instance(devices_dir: P
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_notification_signal_wiring_resolves_if_present(devices_dir: Path, device: str):
+    check_notification_signal_wiring_resolves_if_present(_load(devices_dir, device), device)
+
+
+def test_every_real_device_declares_all_three_notification_signals(devices_dir: Path):
+    # Not a schema requirement (each is individually optional - see the check above) but a fact
+    # about these 6 real devices specifically: every one has both scd30 and sgp40, so every one
+    # declares all three today.
+    for device in DEVICE_NAMES:
+        doc = _load(devices_dir, device)
+        notif = next(inst for inst in doc["instance"] if inst["driver"] == "notification")
+        assert set(notif["wiring"]) == {"signal_sink", *_NOTIFICATION_SIGNAL_WIRING}, f"{device}: unexpected notification wiring keys"
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_no_global_gpio_pin_collision(devices_dir: Path, device: str):
     check_no_global_gpio_pin_collision(_load(devices_dir, device), device)
 
@@ -345,7 +386,15 @@ _BASE_DOC: dict = {
         {"driver": "sgp40", "name_ext": "", "bus": "i2c1", "wiring": {"comp_source": "scd30"}},
         {"driver": "fram", "bus": "spi0", "cs_pin": 1, "max_size": 0x2000},
         {"driver": "neopixel", "pin": 15},
-        {"driver": "notification", "wiring": {"signal_sink": "neopixel"}},
+        {
+            "driver": "notification",
+            "wiring": {
+                "signal_sink": "neopixel",
+                "warn_co2": {"source": "scd30", "field": "CO2"},
+                "warn_voc": {"source": "sgp40", "field": "VOC"},
+                "warn_hum": {"source": "scd30", "field": "Hum"},
+            },
+        },
     ],
 }
 
@@ -363,6 +412,7 @@ def test_base_doc_fixture_itself_passes_every_check():
     check_every_declared_bus_is_used_by_some_instance(doc, "base")
     check_sgp40_wiring_resolves_to_a_real_scd30_instance(doc, "base")
     check_notification_wiring_resolves_to_a_real_neopixel_instance(doc, "base")
+    check_notification_signal_wiring_resolves_if_present(doc, "base")
     check_no_global_gpio_pin_collision(doc, "base")
     check_no_per_bus_address_collision(doc, "base")
     check_no_instance_name_collision(doc, "base")
@@ -464,6 +514,35 @@ def test_detects_notification_wiring_referencing_a_nonexistent_instance():
     doc["instance"] = [i for i in doc["instance"] if i["driver"] != "neopixel"]
     with pytest.raises(AssertionError, match="no such instance exists"):
         check_notification_wiring_resolves_to_a_real_neopixel_instance(doc, "base")
+
+
+def test_allows_a_notification_signal_getter_to_be_entirely_absent():
+    # The default-disables-the-signal mechanism (BUILD_CHAIN_PLAN.md's "Device TOML schema",
+    # 2026-09-09): omitting a per-signal getter must not be an error, unlike signal_sink itself.
+    doc = _base_doc()
+    del doc["instance"][4]["wiring"]["warn_hum"]
+    check_notification_signal_wiring_resolves_if_present(doc, "base")  # must not raise
+
+
+def test_detects_notification_signal_wiring_wrong_source():
+    doc = _base_doc()
+    doc["instance"][4]["wiring"]["warn_voc"]["source"] = "scd30"
+    with pytest.raises(AssertionError, match="expected 'sgp40'"):
+        check_notification_signal_wiring_resolves_if_present(doc, "base")
+
+
+def test_detects_notification_signal_wiring_wrong_field():
+    doc = _base_doc()
+    doc["instance"][4]["wiring"]["warn_co2"]["field"] = "Hum"
+    with pytest.raises(AssertionError, match="expected 'CO2'"):
+        check_notification_signal_wiring_resolves_if_present(doc, "base")
+
+
+def test_detects_notification_signal_wiring_referencing_a_nonexistent_instance():
+    doc = _base_doc()
+    doc["instance"] = [i for i in doc["instance"] if i["driver"] != "scd30"]
+    with pytest.raises(AssertionError, match="no such instance exists"):
+        check_notification_signal_wiring_resolves_if_present(doc, "base")
 
 
 def test_detects_a_bus_wire_pin_reused_by_another_bus():

@@ -91,3 +91,20 @@ driver = "notification"
 # whole NeopixelDriver instance _WIRING's documented contract would hand it).
 [instance.wiring]
 signal_sink = "neopixel"
+
+# Per-signal getters - optional (BUILD_CHAIN_PLAN.md's "Device TOML schema"): a device TOML may
+# omit any of these three, which disables that specific warning signal on this device rather than
+# being a build error. src/sensortask_wozi.py: `notify_service.register(NotificationSignal(
+# "WarnCO2", scd_reader, "CO2", ...))` / `("WarnVOC", sgp_reader, "VOC", ...)` /
+# `("WarnHum", scd_reader, "Hum", ...)`.
+[instance.wiring.warn_co2]
+source = "scd30"
+field = "CO2"
+
+[instance.wiring.warn_voc]
+source = "sgp40"
+field = "VOC"
+
+[instance.wiring.warn_hum]
+source = "scd30"
+field = "Hum"
