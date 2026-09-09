@@ -174,8 +174,10 @@ cs_pin = 1
 
 [[instance]]
 driver = "scd30"           # maps to a real driver class the generator resolves statically -
-# never a dynamic import (SPECIFICATION.md Part F.1) - e.g. via a small, hand-maintained
-# driver-name -> class table, not built in this session.
+# never a dynamic import (SPECIFICATION.md Part F.1). Per this doc's own "Acceptance criteria"
+# above, this resolution should be derived from the existing asy_<name>_driver.py -> <Name>_Reader
+# naming convention (SPECIFICATION.md Part C.5), not a separate hand-maintained lookup table -
+# not built in this session.
 name_ext = ""               # optional, default "" - instance_name()'s own default-unchanged case
 # (SPECIFICATION.md Part C.14.1): produces the plain "SCD30" REST/config/error-log key. Every
 # driver kind that can have more than one instance per device accepts this field; a singleton
@@ -264,8 +266,11 @@ actually has one (checked per datasheet, not assumed).
 `src/sensortask_wozi.py`, `src/sensortask_dev.py`, `modules/sensortask-arzi.py`,
 `modules/sensortask-neu.py`.
 
-**What Session 3 (the generator) does, not settled here**: the `driver` string → Python class
-lookup table; topologically sorting `[[instance]]` entries by `[instance.wiring]`/`_WIRING`
+**What Session 3 (the generator) does, not settled here**: resolving the `driver` string to its
+Python class — per this doc's own "Acceptance criteria" above, derived from the existing
+`asy_<name>_driver.py` → `<Name>_Reader` naming convention rather than a separate hand-maintained
+lookup table, falling back to an explicit table only for a driver that genuinely can't follow the
+naming pattern; topologically sorting `[[instance]]` entries by `[instance.wiring]`/`_WIRING`
 dependency and rejecting a cycle; erroring at build time on a naming collision with no
 disambiguating `name_ext`; resolving `NotificationSignal` registrations from this table; emitting
 the real `sensortask_<device>.py` + boot entry; and the full **global resource-collision
