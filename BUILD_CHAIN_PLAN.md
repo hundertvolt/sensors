@@ -168,7 +168,14 @@ frequency = 50000
 sck_pin = 2
 mosi_pin = 3
 miso_pin = 4
-cs_pin = 1
+# No cs_pin/frequency here: cs_pin is each instance's own *exclusive* resource (see this doc's own
+# "Build/generator script quality bar" schema-shape requirement below - a bus table owns only its
+# shared wire pins), and asy_spi_driver.SPI has no frequency parameter at all (confirmed directly
+# against src/asy_spi_driver.py's own SPI.__init__/init()) - unlike asy_i2c_driver.I2C, which does
+# and so every [bus.i2c*] table above does carry one. Session 2 found this exact duplication (a
+# stray cs_pin = 1 sitting in both this table and the fram instance below) in an earlier draft of
+# this same illustrative example and corrected it here rather than carrying the inconsistency into
+# the 6 real files at devices/*.toml.
 
 # --- sensor drivers (SensorReader/SensorReaderConfig subclasses - can repeat) ---------------
 
@@ -265,6 +272,29 @@ actually has one (checked per datasheet, not assumed).
 `schlafzi`) from this shape, using the wiring facts already gathered from
 `src/sensortask_wozi.py`, `src/sensortask_dev.py`, `modules/sensortask-arzi.py`,
 `modules/sensortask-neu.py`.
+
+**Session 2 done**: the 6 real files live at `devices/<device>.toml` (a new top-level directory,
+not specified elsewhere in this doc before now — chosen as the natural sibling of
+`toolchain/versions.toml`'s own top-level-config precedent; Session 3's generator should read from
+here). The six `device.name` values are `Wozi`/`Dev`/`Arzi`/`Klkizi`/`Grkizi`/`Schlafzi` (plain
+capitalized device id, feeding `hostname = "SensorStation<name>"` per this doc's own convention).
+Every device's `hotspot_password` is the existing accepted-risk default (`"12345678"`, CLAUDE.md) —
+no device has a reason to differ. `wozi`/`dev` are the only two with a `bmp3xx` instance (confirmed
+directly: neither `modules/sensortask-arzi.py` nor `modules/sensortask-neu.py` imports/constructs
+one); `klkizi`/`grkizi`/`schlafzi` share byte-for-byte identical wiring (only `device.name`/
+`hostname` differ), all sourced from `modules/sensortask-neu.py` alone, per this doc's own device
+list. One real fact this session applied consistently that the pre-refactor legacy files couldn't:
+`arzi`/`klkizi`/`grkizi`/`schlafzi`'s SCD30-carrying `i2c0` bus now gets the same `timeout = 200000`
+clock-stretch headroom `wozi`/`dev` already have — the old, pre-refactor `asy_i2c_driver.py`
+(`python/IndividualDrivers/asy_i2c_driver.py`) never had a `timeout` parameter at all, so its
+absence in the legacy arzi/neu files was a driver limitation, not a considered decision that this
+chip-level datasheet fact (datasheets/scd30/..._Interface_Description.pdf) doesn't apply there too;
+`src/asy_i2c_driver.py` (what these TOML files target) does support it. A minimal shape/collision
+smoke-test suite lives at `tests_scripts/test_device_tomls.py` (parses as valid TOML, matches this
+schema's shape, and re-implements — by hand, since no generator/validator exists yet — the
+global-GPIO-pin/per-bus-address/instance-name collision checks below against these 6 real files
+specifically; **not** a substitute for Session 3's own full validator and its malformed-fixture
+test coverage).
 
 **What Session 3 (the generator) does, not settled here**: resolving the `driver` string to its
 Python class — per this doc's own "Acceptance criteria" above, derived from the existing

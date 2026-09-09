@@ -1,0 +1,85 @@
+# wozi.toml - the exemplary/base variant (never physically flashed; correctness comes from
+# tests/, not a bench - CLAUDE.md). Wiring facts sourced directly from src/sensortask_wozi.py's
+# own build_system() (BUILD_CHAIN_PLAN.md Session 2 - see that file's own construction-order
+# comments for the datasheet/timing rationale behind each value below).
+
+[device]
+name = "Wozi"
+hostname = "SensorStationWozi"
+hotspot_password = "12345678"
+
+# SCD30 lives on i2c0 here (src/sensortask_wozi.py: `i2c0 = asy_i2c_driver.I2C(0, 13, 12, ...)`,
+# `scd_reader = SCD30_Reader(i2c0, 8, ...)`). timeout=200000 (200ms) is the SCD30-datasheet-driven
+# clock-stretch headroom (datasheets/scd30/..._Interface_Description.pdf p.2: up to 150ms/day for
+# internal calibration, past rp2's own 50ms default) - a property of what shares this bus, not a
+# per-instance field.
+[bus.i2c0]
+scl_pin = 13
+sda_pin = 12
+frequency = 50000
+timeout = 200000
+
+# SGP40 + BMP3xx share this bus here (src/sensortask_wozi.py: `i2c1 = asy_i2c_driver.I2C(1, 19,
+# 18, ...)`); neither needs the SCD30 clock-stretch headroom, so no timeout override.
+[bus.i2c1]
+scl_pin = 19
+sda_pin = 18
+frequency = 50000
+
+[bus.spi0]
+sck_pin = 2
+mosi_pin = 3
+miso_pin = 4
+
+# --- sensor drivers ---------------------------------------------------------------------------
+
+[[instance]]
+driver = "scd30"
+name_ext = ""
+bus = "i2c0"
+irq_pin = 8
+trigger_sec = 3
+
+[[instance]]
+driver = "sgp40"
+name_ext = ""
+bus = "i2c1"
+
+[instance.wiring]
+comp_source = "scd30"
+
+[[instance]]
+driver = "bmp3xx"
+name_ext = ""
+bus = "i2c1"
+# BMP3xx_Reader's own default (src/asy_bmp3xx_driver.py: `address: int = 0x77`) - neither
+# sensortask_wozi.py's own BMP3xx_Reader(...) call passes an explicit address, so 0x77 (one of the
+# two SDO-strapping-selectable values per datasheets/bmp3xx/) applies here.
+address = 0x77
+
+# --- singleton services ------------------------------------------------------------------------
+
+[[instance]]
+driver = "fram"
+bus = "spi0"
+cs_pin = 1
+# MB85RS64V, 8KB (src/sensortask_wozi.py: `fram = AsyFramManager(spi0, 1, max_size=0x2000, ...)`).
+max_size = 0x2000
+
+[[instance]]
+driver = "neopixel"
+pin = 15
+
+[[instance]]
+driver = "wifi"
+conn_fail_to_hotspot = 5
+hotspot_time_min = 8
+
+[[instance]]
+driver = "ntp"
+
+[[instance]]
+driver = "system"
+
+[[instance]]
+driver = "notification"

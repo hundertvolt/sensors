@@ -1,0 +1,89 @@
+# dev.toml - the bench rig only (never validates wozi's own hardcoded pins - CLAUDE.md's "Per-variant
+# sensortask-*.py generator" hard rule). Wiring facts sourced directly from
+# src/sensortask_dev.py's own build_system() (BUILD_CHAIN_PLAN.md Session 2).
+
+[device]
+name = "Dev"
+hostname = "SensorStationDev"
+hotspot_password = "12345678"
+
+# BMP3xx sits alone on i2c0 here (src/sensortask_dev.py: `i2c0 = asy_i2c_driver.I2C(0, 13, 12,
+# ...)`) - reverse of wozi's own bus pairing, deliberate (SPECIFICATION.md Part C.8's bus-hazard
+# cross-device-interleaving concern). No SCD30 on this bus, so no clock-stretch timeout override
+# needed - port default (50ms) is fine for BMP3xx.
+[bus.i2c0]
+scl_pin = 13
+sda_pin = 12
+frequency = 50000
+
+# SCD30 + SGP40 share this bus here (src/sensortask_dev.py: `i2c1 = asy_i2c_driver.I2C(1, 15, 14,
+# ...)`). timeout=200000 (200ms): same SCD30-datasheet-driven clock-stretch headroom as wozi's own
+# i2c0 (datasheets/scd30/..._Interface_Description.pdf p.2), just on the other bus here.
+[bus.i2c1]
+scl_pin = 15
+sda_pin = 14
+frequency = 50000
+timeout = 200000
+
+[bus.spi0]
+sck_pin = 2
+mosi_pin = 3
+miso_pin = 4
+
+# --- sensor drivers ---------------------------------------------------------------------------
+
+[[instance]]
+driver = "scd30"
+name_ext = ""
+bus = "i2c1"
+# IRQ/RDY = GPIO11 on this bench unit (wozi: GPIO8) - src/sensortask_dev.py:
+# `scd_reader = SCD30_Reader(i2c1, 11, ...)`.
+irq_pin = 11
+trigger_sec = 3
+
+[[instance]]
+driver = "sgp40"
+name_ext = ""
+bus = "i2c1"
+
+[instance.wiring]
+comp_source = "scd30"
+
+[[instance]]
+driver = "bmp3xx"
+name_ext = ""
+bus = "i2c0"
+# BMP3xx_Reader's own default (src/asy_bmp3xx_driver.py: `address: int = 0x77`) - neither
+# sensortask_dev.py's own BMP3xx_Reader(...) call passes an explicit address, so 0x77 applies here
+# too (datasheets/bmp3xx/ - SDO-strapping-selectable, same value as wozi's own unit).
+address = 0x77
+
+# --- singleton services ------------------------------------------------------------------------
+
+[[instance]]
+driver = "fram"
+bus = "spi0"
+cs_pin = 5
+# MB85RS2MTA, 256KB (src/sensortask_dev.py: `fram = AsyFramManager(spi0, 5, max_size=0x40000,
+# ...)`) - a real per-chip fact, not wozi's own 8KB chip.
+max_size = 0x40000
+
+[[instance]]
+driver = "neopixel"
+# GPIO18 on this bench unit (wozi: GPIO15) - src/sensortask_dev.py: `pixel = NeopixelDriver(18,
+# ...)`.
+pin = 18
+
+[[instance]]
+driver = "wifi"
+conn_fail_to_hotspot = 5
+hotspot_time_min = 8
+
+[[instance]]
+driver = "ntp"
+
+[[instance]]
+driver = "system"
+
+[[instance]]
+driver = "notification"

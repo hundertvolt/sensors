@@ -1,0 +1,84 @@
+# arzi.toml - distinct wiring from the "neu" family (BUILD_CHAIN_PLAN.md's own device-list note).
+# Wiring facts sourced directly from modules/sensortask-arzi.py (still on the old, pre-refactor
+# asy_i2c_driver.py/asy_FRAM_manager - read for its wiring facts only, same as a datasheet, per
+# this initiative's priming instructions; not a coding style reference, not edited).
+
+[device]
+name = "Arzi"
+hostname = "SensorStationArzi"
+hotspot_password = "12345678"
+
+# SCD30 lives on i2c0 here (modules/sensortask-arzi.py: `i2c0 = asy_i2c_driver.I2C(0, 13, 12,
+# ...)`, `scd_reader = SCD30_Reader(i2c0, 8, ...)`). timeout=200000 (200ms): same SCD30-datasheet
+# clock-stretch headroom as wozi/dev's own SCD30 bus (datasheets/scd30/
+# ..._Interface_Description.pdf p.2) - not present in the legacy file itself since the old,
+# pre-refactor asy_i2c_driver.py never had a timeout parameter at all (confirmed directly:
+# python/IndividualDrivers/asy_i2c_driver.py's own I2C.__init__ takes only
+# portId/sclPin/sdaPin/frequency), not because the chip's own requirement was ever different -
+# src/asy_i2c_driver.py (what these TOML files target) does support it, so this applies the same
+# real chip fact already established for wozi/dev.
+[bus.i2c0]
+scl_pin = 13
+sda_pin = 12
+frequency = 50000
+timeout = 200000
+
+# SGP40 lives alone on this bus here (modules/sensortask-arzi.py: `i2c1 = asy_i2c_driver.I2C(1,
+# 27, 26, ...)`) - arzi has no BMP3xx at all (confirmed directly: no BMP3xx import/construction
+# anywhere in modules/sensortask-arzi.py, only SCD30 + SGP40 + Neopixel + FRAM + the singleton
+# services).
+[bus.i2c1]
+scl_pin = 27
+sda_pin = 26
+frequency = 50000
+
+[bus.spi0]
+sck_pin = 2
+mosi_pin = 3
+miso_pin = 4
+
+# --- sensor drivers ---------------------------------------------------------------------------
+
+[[instance]]
+driver = "scd30"
+name_ext = ""
+bus = "i2c0"
+irq_pin = 8
+trigger_sec = 3
+
+[[instance]]
+driver = "sgp40"
+name_ext = ""
+bus = "i2c1"
+
+[instance.wiring]
+comp_source = "scd30"
+
+# No bmp3xx instance - arzi has no BMP3xx (see [bus.i2c1] comment above).
+
+# --- singleton services ------------------------------------------------------------------------
+
+[[instance]]
+driver = "fram"
+bus = "spi0"
+# modules/sensortask-arzi.py: `fram = asy_FRAM_manager(spi0, 1, max_size=0x2000, ...)`.
+cs_pin = 1
+max_size = 0x2000
+
+[[instance]]
+driver = "neopixel"
+pin = 15
+
+[[instance]]
+driver = "wifi"
+conn_fail_to_hotspot = 5
+hotspot_time_min = 8
+
+[[instance]]
+driver = "ntp"
+
+[[instance]]
+driver = "system"
+
+[[instance]]
+driver = "notification"
