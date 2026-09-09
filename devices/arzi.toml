@@ -19,6 +19,18 @@ hotspot_password = "12345678"
 conn_fail_to_hotspot = 5
 hotspot_time_min = 8
 
+# Mandatory-infra-to-optional-instance wiring (project owner's direction, 2026-09-09) - both
+# optional, absence disables the feature rather than erroring, same treatment as every
+# [instance.wiring] getter. led_target: modules/sensortask-arzi.py's own
+# `conn.set_ext_led(pixel)` (WiFi status indication on the neopixel). fram_target:
+# `sysfunct = System_Service(conn.ntp_issynced, storage_pause=fram.set_pause, ...)` (SystemService's
+# own persistent-storage pause hookup). Mandatory-to-mandatory links are never wired here - both
+# endpoints always exist unconditionally on every device, so there's no real presence-or-absence
+# choice to encode, unlike these two.
+[system_config.wiring]
+led_target = "neopixel"
+fram_target = "fram"
+
 # SCD30 lives on i2c0 here (modules/sensortask-arzi.py: `i2c0 = asy_i2c_driver.I2C(0, 13, 12,
 # ...)`, `scd_reader = SCD30_Reader(i2c0, 8, ...)`). timeout=200000 (200ms): same SCD30-datasheet
 # clock-stretch headroom as wozi/dev's own SCD30 bus (datasheets/scd30/
@@ -57,6 +69,15 @@ bus = "i2c0"
 irq_pin = 8
 trigger_sec = 3
 
+# fram_target - optional, absence disables this instance's own FRAM-backed error log (falls back
+# to a plain in-RAM PrintLog) rather than being a build error. The promoted src/asy_scd30_driver.py
+# this TOML targets supports FRAM-backed logging generically (SPECIFICATION.md's shared-primitive
+# catalog); wired here since this device has exactly one FRAM chip available for it (confirmed real
+# and shared - modules/sensortask-arzi.py's own `fram.set_pause`/`fram.get_timestamped_chunk` usage
+# below).
+[instance.wiring]
+fram_target = "fram"
+
 [[instance]]
 driver = "sgp40"
 name_ext = ""
@@ -64,6 +85,10 @@ bus = "i2c1"
 
 [instance.wiring]
 comp_source = "scd30"
+# fram_target - optional, same treatment as scd30's own above. modules/sensortask-arzi.py:
+# `sgp_backup = fram.get_timestamped_chunk(_SGP40_Memsize, conn.ntp_issynced)` confirms this
+# device's real FRAM chip is already used for SGP40's own VOC backup in the legacy code too.
+fram_target = "fram"
 
 # No bmp3xx instance - arzi has no BMP3xx (see [bus.i2c1] comment above).
 
@@ -80,6 +105,11 @@ max_size = 0x2000
 driver = "neopixel"
 pin = 15
 
+# fram_target - optional, same treatment as scd30/sgp40 above. The promoted
+# src/asy_neopixel_driver.py this TOML targets supports FRAM-backed logging generically.
+[instance.wiring]
+fram_target = "fram"
+
 [[instance]]
 driver = "notification"
 
@@ -90,6 +120,11 @@ driver = "notification"
 # whole NeopixelDriver instance _WIRING's documented contract would hand it).
 [instance.wiring]
 signal_sink = "neopixel"
+# fram_target - optional, same treatment as every other instance above. modules/sensortask-arzi.py:
+# `sysfunct = System_Service(conn.ntp_issynced, storage_pause=fram.set_pause, ...)` confirms this
+# device's real FRAM chip is already relied on by its own airquality-signal-adjacent system service
+# in the legacy code too.
+fram_target = "fram"
 
 # Per-signal getters - optional (BUILD_CHAIN_PLAN.md's "Device TOML schema"): a device TOML may
 # omit any of these three, which disables that specific warning signal on this device rather than

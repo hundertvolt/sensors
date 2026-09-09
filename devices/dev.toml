@@ -18,6 +18,17 @@ hotspot_password = "12345678"
 conn_fail_to_hotspot = 5
 hotspot_time_min = 8
 
+# Mandatory-infra-to-optional-instance wiring (project owner's direction, 2026-09-09) - both
+# optional, absence disables the feature rather than erroring, same treatment as every
+# [instance.wiring] getter. led_target: src/sensortask_dev.py's `conn.set_ext_led(pixel)` (WiFi
+# status indication on the neopixel). fram_target: `sysfunct = SystemService(..., fram=fram, ...)`
+# (SystemService's own error log). Mandatory-to-mandatory links (e.g. NTP's/SystemService's own
+# dependency on WiFi) are never wired here - both endpoints always exist unconditionally on every
+# device, so there's no real presence-or-absence choice to encode, unlike these two.
+[system_config.wiring]
+led_target = "neopixel"
+fram_target = "fram"
+
 # BMP3xx sits alone on i2c0 here (src/sensortask_dev.py: `i2c0 = asy_i2c_driver.I2C(0, 13, 12,
 # ...)`) - reverse of wozi's own bus pairing, deliberate (SPECIFICATION.md Part C.8's bus-hazard
 # cross-device-interleaving concern). No SCD30 on this bus, so no clock-stretch timeout override
@@ -52,6 +63,12 @@ bus = "i2c1"
 irq_pin = 11
 trigger_sec = 3
 
+# fram_target - optional, absence disables this instance's own FRAM-backed error log (falls back
+# to a plain in-RAM PrintLog) rather than being a build error. src/sensortask_dev.py:
+# `scd_reader = SCD30_Reader(..., fram=fram, ...)`.
+[instance.wiring]
+fram_target = "fram"
+
 [[instance]]
 driver = "sgp40"
 name_ext = ""
@@ -59,6 +76,10 @@ bus = "i2c1"
 
 [instance.wiring]
 comp_source = "scd30"
+# fram_target - optional, same as scd30's own above. src/sensortask_dev.py:
+# `sgp_reader = SGP40_Reader(..., fram_storage=fram, ...)` - also covers its VOC backup chunk, not
+# just its error log.
+fram_target = "fram"
 
 [[instance]]
 driver = "bmp3xx"
@@ -68,6 +89,11 @@ bus = "i2c0"
 # sensortask_dev.py's own BMP3xx_Reader(...) call passes an explicit address, so 0x77 applies here
 # too (datasheets/bmp3xx/ - SDO-strapping-selectable, same value as wozi's own unit).
 address = 0x77
+
+# fram_target - optional, same treatment as scd30/sgp40 above. src/sensortask_dev.py:
+# `bmp_reader = BMP3xx_Reader(..., fram=fram, ...)`.
+[instance.wiring]
+fram_target = "fram"
 
 # --- singleton services ------------------------------------------------------------------------
 
@@ -85,6 +111,11 @@ driver = "neopixel"
 # ...)`.
 pin = 18
 
+# fram_target - optional, same treatment as scd30/sgp40/bmp3xx above. src/sensortask_dev.py:
+# `pixel = NeopixelDriver(18, fram=fram, ...)`.
+[instance.wiring]
+fram_target = "fram"
+
 [[instance]]
 driver = "notification"
 
@@ -95,6 +126,9 @@ driver = "notification"
 # whole NeopixelDriver instance _WIRING's documented contract would hand it).
 [instance.wiring]
 signal_sink = "neopixel"
+# fram_target - optional, same treatment as every other instance above. src/sensortask_dev.py:
+# `notify_service = NotificationCoordinator(..., fram=fram, ...)`.
+fram_target = "fram"
 
 # Per-signal getters - optional (BUILD_CHAIN_PLAN.md's "Device TOML schema"): a device TOML may
 # omit any of these three, which disables that specific warning signal on this device rather than

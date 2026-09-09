@@ -45,6 +45,15 @@ _SINGLETON_DRIVERS = {"fram", "neopixel", "notification"}
 # only). Tuned instead via the required [system_config] table.
 _MANDATORY_INFRA_DRIVERS = {"wifi", "ntp", "system"}
 _REQUIRED_SYSTEM_CONFIG_FIELDS = ("conn_fail_to_hotspot", "hotspot_time_min")
+# Every driver/service kind whose promoted src/ constructor takes an optional fram=/fram_storage=
+# argument (BUILD_CHAIN_PLAN.md's "Core design decisions", 2026-09-09 crosslink-audit revision) may
+# declare an optional [instance.wiring].fram_target - absent means that instance keeps a plain
+# in-RAM log instead of a build error.
+_FRAM_WIRABLE_INSTANCE_DRIVERS = {"scd30", "sgp40", "bmp3xx", "neopixel", "notification"}
+# The mandatory-infra-side mirror of [instance.wiring] - both optional, absence disables the
+# feature. led_target: WiFi's own status-LED indicator. fram_target: SystemService's own error
+# log/pause hookup.
+_SYSTEM_CONFIG_WIRING = {"led_target": "neopixel", "fram_target": "fram"}
 
 _REQUIRED_BUS_PIN_FIELDS = {
     "i2c": {"scl_pin", "sda_pin"},
@@ -212,6 +221,37 @@ def check_notification_signal_wiring_resolves_if_present(doc: dict, label: str) 
         assert (sig["source"], "") in instances, f"{label}: notification's {key}.source references {sig['source']!r} but no such instance exists"
 
 
+def check_fram_wiring_resolves_if_present(doc: dict, label: str) -> None:
+    # fram_target is optional on every instance that can declare it (project owner's direction,
+    # 2026-09-09: "having the possibility of only wiring some, but not all instances to actual FRAM
+    # is a degree of freedom I want to have") - absence means that instance keeps a plain in-RAM
+    # log instead of a build error. When present, it must resolve to a real fram instance.
+    instances = {(inst["driver"], inst.get("name_ext", "")): inst for inst in doc["instance"]}
+    for inst in doc["instance"]:
+        if inst["driver"] not in _FRAM_WIRABLE_INSTANCE_DRIVERS:
+            continue
+        wiring = inst.get("wiring", {})
+        if "fram_target" not in wiring:
+            continue  # optional - absent is allowed
+        target = wiring["fram_target"]
+        assert target == "fram", f"{label}: {inst['driver']}'s wiring.fram_target is {target!r}, expected 'fram'"
+        assert ("fram", "") in instances, f"{label}: {inst['driver']}'s fram_target references 'fram' but no such instance exists"
+
+
+def check_system_config_wiring_resolves_if_present(doc: dict, label: str) -> None:
+    # Mandatory-infra-to-optional-instance links (WiFi's led_target, SystemService's fram_target)
+    # live under [system_config.wiring] since neither WiFi nor SystemService is an [[instance]].
+    # Both optional, same absence-disables treatment as every other getter-shaped wiring field.
+    instances = {(inst["driver"], inst.get("name_ext", "")): inst for inst in doc["instance"]}
+    wiring = doc.get("system_config", {}).get("wiring", {})
+    for field, expected_driver in _SYSTEM_CONFIG_WIRING.items():
+        if field not in wiring:
+            continue  # optional - absent disables the feature, not an error
+        target = wiring[field]
+        assert target == expected_driver, f"{label}: system_config.wiring.{field} is {target!r}, expected {expected_driver!r}"
+        assert (target, "") in instances, f"{label}: system_config.wiring.{field} references {target!r} but no such instance exists"
+
+
 def check_no_mandatory_infra_modeled_as_instance(doc: dict, label: str) -> None:
     # wifi/ntp/system are mandatory infrastructure - the TOML models optional modules only
     # (BUILD_CHAIN_PLAN.md's "Device TOML schema", revised 2026-09-09) - so none of them may ever
@@ -311,6 +351,28 @@ def test_notification_signal_wiring_resolves_if_present(devices_dir: Path, devic
     check_notification_signal_wiring_resolves_if_present(_load(devices_dir, device), device)
 
 
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_fram_wiring_resolves_if_present(devices_dir: Path, device: str):
+    check_fram_wiring_resolves_if_present(_load(devices_dir, device), device)
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_system_config_wiring_resolves_if_present(devices_dir: Path, device: str):
+    check_system_config_wiring_resolves_if_present(_load(devices_dir, device), device)
+
+
+def test_every_real_device_declares_fram_wiring_on_every_wirable_instance(devices_dir: Path):
+    # Not a schema requirement (fram_target is individually optional per instance - see the check
+    # above) but a fact about these 6 real devices specifically: every one wires every FRAM-capable
+    # instance to its one real FRAM chip today.
+    for device in DEVICE_NAMES:
+        doc = _load(devices_dir, device)
+        for inst in doc["instance"]:
+            if inst["driver"] in _FRAM_WIRABLE_INSTANCE_DRIVERS:
+                assert inst.get("wiring", {}).get("fram_target") == "fram", f"{device}: {inst['driver']} is missing fram_target"
+        assert doc["system_config"]["wiring"] == _SYSTEM_CONFIG_WIRING, f"{device}: unexpected system_config.wiring"
+
+
 def test_every_real_device_declares_all_three_notification_signals(devices_dir: Path):
     # Not a schema requirement (each is individually optional - see the check above) but a fact
     # about these 6 real devices specifically: every one has both scd30 and sgp40, so every one
@@ -318,7 +380,7 @@ def test_every_real_device_declares_all_three_notification_signals(devices_dir: 
     for device in DEVICE_NAMES:
         doc = _load(devices_dir, device)
         notif = next(inst for inst in doc["instance"] if inst["driver"] == "notification")
-        assert set(notif["wiring"]) == {"signal_sink", *_NOTIFICATION_SIGNAL_WIRING}, f"{device}: unexpected notification wiring keys"
+        assert set(notif["wiring"]) == {"signal_sink", "fram_target", *_NOTIFICATION_SIGNAL_WIRING}, f"{device}: unexpected notification wiring keys"
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
@@ -375,21 +437,26 @@ def test_klkizi_grkizi_schlafzi_share_identical_wiring(devices_dir: Path):
 # "everything else about this doc is fine" assumption holds.
 _BASE_DOC: dict = {
     "device": {"name": "Test", "hostname": "SensorStationTest", "hotspot_password": "x"},
-    "system_config": {"conn_fail_to_hotspot": 5, "hotspot_time_min": 8},
+    "system_config": {
+        "conn_fail_to_hotspot": 5,
+        "hotspot_time_min": 8,
+        "wiring": {"led_target": "neopixel", "fram_target": "fram"},
+    },
     "bus": {
         "i2c0": {"scl_pin": 13, "sda_pin": 12, "frequency": 50000, "timeout": 200000},
         "i2c1": {"scl_pin": 19, "sda_pin": 18, "frequency": 50000},
         "spi0": {"sck_pin": 2, "mosi_pin": 3, "miso_pin": 4},
     },
     "instance": [
-        {"driver": "scd30", "name_ext": "", "bus": "i2c0", "irq_pin": 8, "trigger_sec": 3},
-        {"driver": "sgp40", "name_ext": "", "bus": "i2c1", "wiring": {"comp_source": "scd30"}},
+        {"driver": "scd30", "name_ext": "", "bus": "i2c0", "irq_pin": 8, "trigger_sec": 3, "wiring": {"fram_target": "fram"}},
+        {"driver": "sgp40", "name_ext": "", "bus": "i2c1", "wiring": {"comp_source": "scd30", "fram_target": "fram"}},
         {"driver": "fram", "bus": "spi0", "cs_pin": 1, "max_size": 0x2000},
-        {"driver": "neopixel", "pin": 15},
+        {"driver": "neopixel", "pin": 15, "wiring": {"fram_target": "fram"}},
         {
             "driver": "notification",
             "wiring": {
                 "signal_sink": "neopixel",
+                "fram_target": "fram",
                 "warn_co2": {"source": "scd30", "field": "CO2"},
                 "warn_voc": {"source": "sgp40", "field": "VOC"},
                 "warn_hum": {"source": "scd30", "field": "Hum"},
@@ -413,6 +480,8 @@ def test_base_doc_fixture_itself_passes_every_check():
     check_sgp40_wiring_resolves_to_a_real_scd30_instance(doc, "base")
     check_notification_wiring_resolves_to_a_real_neopixel_instance(doc, "base")
     check_notification_signal_wiring_resolves_if_present(doc, "base")
+    check_fram_wiring_resolves_if_present(doc, "base")
+    check_system_config_wiring_resolves_if_present(doc, "base")
     check_no_global_gpio_pin_collision(doc, "base")
     check_no_per_bus_address_collision(doc, "base")
     check_no_instance_name_collision(doc, "base")
@@ -631,3 +700,52 @@ def test_detects_system_config_field_wrong_type():
     doc["system_config"]["hotspot_time_min"] = "eight"
     with pytest.raises(AssertionError, match="must be an int"):
         check_system_config_present_and_valid(doc, "base")
+
+
+def test_allows_fram_wiring_to_be_entirely_absent_on_any_instance():
+    # The degree of freedom the project owner explicitly asked for: some instances may be wired to
+    # FRAM and others not, on the same device.
+    doc = _base_doc()
+    del doc["instance"][0]["wiring"]["fram_target"]  # scd30
+    del doc["instance"][3]["wiring"]["fram_target"]  # neopixel
+    check_fram_wiring_resolves_if_present(doc, "base")  # must not raise
+
+
+def test_detects_fram_wiring_pointing_at_the_wrong_driver():
+    doc = _base_doc()
+    doc["instance"][0]["wiring"]["fram_target"] = "neopixel"
+    with pytest.raises(AssertionError, match="expected 'fram'"):
+        check_fram_wiring_resolves_if_present(doc, "base")
+
+
+def test_detects_fram_wiring_referencing_a_nonexistent_instance():
+    doc = _base_doc()
+    doc["instance"] = [i for i in doc["instance"] if i["driver"] != "fram"]
+    with pytest.raises(AssertionError, match="no such instance exists"):
+        check_fram_wiring_resolves_if_present(doc, "base")
+
+
+def test_allows_system_config_wiring_to_be_entirely_absent():
+    doc = _base_doc()
+    del doc["system_config"]["wiring"]
+    check_system_config_wiring_resolves_if_present(doc, "base")  # must not raise
+
+
+def test_allows_only_one_of_led_target_or_fram_target_to_be_present():
+    doc = _base_doc()
+    del doc["system_config"]["wiring"]["fram_target"]
+    check_system_config_wiring_resolves_if_present(doc, "base")  # must not raise
+
+
+def test_detects_system_config_wiring_pointing_at_the_wrong_driver():
+    doc = _base_doc()
+    doc["system_config"]["wiring"]["led_target"] = "fram"
+    with pytest.raises(AssertionError, match="expected 'neopixel'"):
+        check_system_config_wiring_resolves_if_present(doc, "base")
+
+
+def test_detects_system_config_wiring_referencing_a_nonexistent_instance():
+    doc = _base_doc()
+    doc["instance"] = [i for i in doc["instance"] if i["driver"] != "neopixel"]
+    with pytest.raises(AssertionError, match="no such instance exists"):
+        check_system_config_wiring_resolves_if_present(doc, "base")
