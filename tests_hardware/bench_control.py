@@ -85,9 +85,8 @@ class BenchBridge:
 
     def kick_client(self, mac_address: str) -> None:
         """Forcibly clears one associated station's table entry by MAC via `iw` (this bench's AP
-        backend has no per-client kick command of its own). Fixes the dominant real cause of WiFi
-        reconnection flakiness - a stale AP-side entry surviving a hard_reset() power-cycle (see
-        tests_hardware/README.md's "Known assumptions and open findings" for the full evidence)."""
+        has no per-client kick command). Fixes the dominant cause of WiFi reconnection flakiness -
+        a stale AP-side entry surviving a hard_reset() power-cycle (see tests_hardware/README.md)."""
         iface = self.wifi_iface()
         proc = subprocess.run(["sudo", "iw", "dev", iface, "station", "del", mac_address], capture_output=True, text=True, timeout=10.0)
         if proc.returncode != 0:
@@ -115,10 +114,9 @@ class BenchBridge:
             _run_iptables(["-D", "FORWARD", "-p", "udp", "--dport", str(port), "-j", "DROP", "-m", "comment", "--comment", comment], allow_missing=True)
 
     def redirect_udp_port_to_local(self, port: int, local_port: int, comment: str = "sensors-bench-fault-injection") -> None:
-        """Redirects UDP traffic for `port` (as forwarded through this bridge) to a local rogue
-        responder on 127.0.0.1:<local_port> instead of the real upstream - simulates a garbage-
-        response server, rather than block_udp_ports()'s "silently unreachable" fault (BACKLOG.md
-        open question #5). A standard `nat` table PREROUTING DNAT-to-loopback pattern."""
+        """Redirects UDP traffic for `port` to a local rogue responder on 127.0.0.1:<local_port> -
+        simulates a garbage-response server, unlike block_udp_ports()'s "silently unreachable"
+        fault (BACKLOG.md open question #5). A standard `nat` PREROUTING DNAT-to-loopback pattern."""
         _run_iptables(["-t", "nat", "-A", "PREROUTING", "-p", "udp", "--dport", str(port), "-j", "DNAT", "--to-destination", f"127.0.0.1:{local_port}", "-m", "comment", "--comment", comment])
 
     def clear_udp_port_redirect(self, port: int, local_port: int, comment: str = "sensors-bench-fault-injection") -> None:
@@ -127,10 +125,9 @@ class BenchBridge:
         _run_iptables(["-t", "nat", "-D", "PREROUTING", "-p", "udp", "--dport", str(port), "-j", "DNAT", "--to-destination", f"127.0.0.1:{local_port}", "-m", "comment", "--comment", comment], allow_missing=True)
 
     def start_udp_source_capture(self, src_host: str, dst_port: int, iface: str | None = None) -> subprocess.Popen[str]:
-        """Starts a real `tcpdump -c 1` on `iface` (default wifi_iface()), filtered to the first
-        UDP datagram from `src_host` to `dst_port` - a real wire-level capture of the DUT's own
-        outbound request, working around a local-delivery gap in redirect_udp_port_to_local()
-        (see tests_hardware/README.md). Pair with read_captured_udp_source_port() to get the result."""
+        """Starts a real `tcpdump -c 1` on `iface`, filtered to the first UDP datagram from
+        `src_host` to `dst_port` - works around a local-delivery gap in redirect_udp_port_to_local()
+        (see tests_hardware/README.md). Pair with read_captured_udp_source_port()."""
         target_iface = iface or self.wifi_iface()
         return subprocess.Popen(
             ["sudo", "timeout", "60", "tcpdump", "-i", target_iface, "-nn", "-l", "-c", "1", "udp", "and", "src", "host", src_host, "and", "dst", "port", str(dst_port)],
@@ -165,9 +162,8 @@ class BenchBridge:
         reorder_pct: float | None = None,
     ) -> None:
         """Real packet loss/latency/corruption/duplication/reordering via `tc netem` on
-        `wifi_iface()` only (confirmed not to affect eth0/br0 - see tests_hardware/README.md).
-        Uses `qdisc replace`, not `add` (a default qdisc already exists); a second call replaces
-        prior impairments rather than stacking with them."""
+        `wifi_iface()` only (doesn't affect eth0/br0). Uses `qdisc replace`, not `add` - a second
+        call replaces prior impairments rather than stacking with them."""
         if loss_pct is None and delay_ms is None and corrupt_pct is None and duplicate_pct is None and reorder_pct is None:
             raise ValueError("inject_network_degradation() needs at least one impairment")
         netem_args = []
@@ -197,19 +193,16 @@ class BenchBridge:
 
     def is_ssid_visible(self, ssid: str) -> bool:
         """A real, fresh (`--rescan yes`) scan for `ssid` on the AP radio - confirms a DUT-hosted
-        hotspot is actually beaconing before joining it, instead of racing a fixed sleep after the
-        DUT's own log line (see tests_hardware/README.md). Requires ap_down() already called -
-        this single-radio bench can't scan while still hosting br0-wifi-ap as an AP."""
+        hotspot is actually beaconing before joining it, instead of racing a fixed sleep. Requires
+        ap_down() already called - this single-radio bench can't scan while still hosting an AP."""
         iface = self.wifi_iface()
         output = _nmcli("-t", "-f", "SSID", "device", "wifi", "list", "ifname", iface, "--rescan", "yes", timeout_s=15.0)
         return ssid in output.splitlines()
 
     def join_dut_hotspot(self, ssid: str, password: str, *, timeout_s: float = 30.0) -> None:
-        """Stops hosting `br0-wifi-ap` and joins the DUT's own hotspot as a client, via a fresh,
-        clearly-named temporary connection profile bound to the same physical radio. Deletes any
-        leftover profile of the same name first - a stale one makes a retry fail more confusingly
-        (see tests_hardware/README.md). Callers reaching hotspot mode organically should confirm
-        is_ssid_visible() first."""
+        """Stops hosting `br0-wifi-ap` and joins the DUT's own hotspot as a client, via a fresh
+        temporary connection profile bound to the same radio. Deletes any leftover profile of the
+        same name first - a stale one makes a retry fail more confusingly (see tests_hardware/README.md)."""
         iface = self.wifi_iface()
         self.ap_down()
         try:

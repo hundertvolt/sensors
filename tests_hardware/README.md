@@ -429,8 +429,8 @@ tests closed these (54 -> 65, `bench/test_network_resilience.py` plus two new
   not overridden anywhere in `sensortask_wozi.py`) - the exact mechanism the code's own comment says
   bounds "a Slowloris-paced client no single per-call timeout alone would catch".
 
-**Deliberately not covered, and why** (see `test_network_resilience.py`'s own module docstring for
-the full account): DHCP flakiness/slowness/rubbish responses. The DUT's DHCP *client* behavior lives
+**Deliberately not covered, and why**: DHCP flakiness/slowness/rubbish responses. The DUT's DHCP
+*client* behavior lives
 entirely inside MicroPython's own lwIP stack, not this project's own code (no DHCP-handling code
 anywhere in `src/`) - the same "outside this project's own code, a different backstop applies"
 bucket CLAUDE.md already places I2C-bus-wedge recovery in. Unlike `ap_down()`/`ap_up()` (fully
@@ -543,3 +543,102 @@ the read loop fails silently (visible only at `debug=5`, e.g. "Error reading con
 ever attempting a real sensor read. Found independently in `bmp3xx_plausibility_read.py` and
 `sgp40_fram_backup_restore.py`. Never call `cfgmgr.setup()` in such scripts - that performs a real
 littlefs file write/read.
+
+## Sixth pass - the `dut_ip()` fixture's retry/recovery methodology, and other bench-harness findings
+
+`conftest.py`'s session-scoped `dut_ip()` fixture gates nearly every bench test, so its retry logic
+carries more real-hardware findings than any other piece of harness code in this tier - recorded
+here in full since the code comment that used to carry them had to shrink to a pointer:
+
+1. Early WiFi reconnection flakiness on this bench unit was undiagnosed; a single bad boot used to
+   fail this session-scoped fixture outright, cascading into every other bench test. Fixed with one
+   bounded `hard_reset()` retry.
+2. A real STA IP does not mean the webserver is serving: `sensortask_wozi.main()` starts the
+   webserver task only after `ntp_force_sync()` (bounded by a 20s `asyncio.wait_for()`), so up to
+   ~20s can pass with a connected IP but nothing on port 80. Fixed by waiting for real HTTP
+   reachability, not just link connectivity.
+3. Polling for an IP via `board.exec()` in a loop is self-defeating: `mpremote`'s raw-REPL entry
+   always performs an implicit `machine.soft_reset()` (confirmed against `transport_serial.py`'s
+   `enter_raw_repl(soft_reset=True)`), which tears down the whole running Python VM/heap per
+   MicroPython's `ports/rp2/main.c`, killing whatever WiFi reconnection attempt was in progress on
+   every single poll.
+4. A single (not looped) `board.exec()` call is *also* unsafe: entering raw REPL sets
+   `pyexec_mode_kind` to `RAW_REPL`; the soft-reset boot path in `ports/rp2/main.c` only re-runs
+   `main.py` when that's `FRIENDLY_REPL`. A trailing `soft-reset` command returns to an idle
+   friendly-REPL *prompt* only - it does not retroactively make the already-completed soft-reset's
+   boot sequence recheck that condition, so `main.py` stays stopped regardless. Confirmed via an A/B
+   test: `exec` alone, `exec ... soft-reset`, and `run <script> soft-reset` all left the board
+   silent (no `main.py` output) afterward. Only a genuine `hard_reset()` (real `machine.reset()`)
+   reliably resumes normal auto-boot, since the RP2040 restarts from its own reset vector where
+   `pyexec_mode_kind` starts fresh at its compiled-in `FRIENDLY_REPL` default.
+5. **Dominant root cause, found via a real-hardware A/B test**: the WiFi reconnection flakiness is
+   overwhelmingly a stale AP-side station-table entry - the bench AP backend (NetworkManager's
+   internal `wpa_supplicant`, confirmed not a separate `hostapd` process) still lists the DUT's MAC
+   as associated from before a `hard_reset()` (a real power-cycle, no clean 802.11 deauth frame
+   sent), and a fresh association attempt racing against that stale entry doesn't reliably get
+   treated as a clean new session. **10/10 trials fell back to hotspot mode with the stale entry
+   left in place; 10/10 trials connected cleanly once `kick_all_stations()` cleared it immediately
+   before each `hard_reset()`.** Not a `src/` bug - `asy_wifi_service.py`'s own retry/hotspot-fallback
+   logic is textbook-correct given what the CYW43 firmware reports; the AP's own stale bookkeeping
+   is what was wrong, and only this bench-host-side harness can see or fix it. Caveat: a device
+   WDT-looping in the field would hit the same stale-entry pattern against a real router with no
+   bench harness able to `kick_client()` on its behalf - this fix makes bench testing representative
+   of a *clean* reconnect, not proof the field scenario is risk-free.
+6. Neither retry above helps if the real cause is stale stored WiFi credentials (e.g. the bridge was
+   just recreated with a fresh random SSID/password) - the DUT organically falls back to its own
+   hotspot every time. Fixed by `_recover_stale_dut_credentials()`: joins the DUT's own hotspot
+   fallback as a client, PUTs the bench AP's real current SSID/password to it (read via
+   `BenchBridge.ap_password()`'s `--show-secrets` nmcli query), then restores the bridge - reusing
+   the exact mechanism `test_hotspot_role_reversal.py`'s own stage 6 exercises by hand.
+
+The fixture's current implementation: watches passively via `board.tail_log()` for
+`asy_wifi_service.py`'s real log lines ("WLAN connection established" / "Permanently no WLAN
+connection - activating hotspot!"); reading the actual IP still needs one `board.exec()` call
+(unavoidable), always immediately followed by `board.hard_reset()`.
+
+**`bench_control.py`'s `redirect_udp_port_to_local()` - a DNAT-to-loopback local-delivery gap**: the
+DNAT-to-127.0.0.1 redirect itself is real (the `nat` table's own per-rule packet counter confirms
+every redirected datagram is matched), but delivery to a local listening socket on the resulting
+address/port was repeatedly, reproducibly absent on this bench's real environment -
+`net.ipv4.conf.*.route_localnet` reads 0 (disabled) on every interface here, the documented Linux
+behavior for "DNAT to 127.0.0.1 from a non-loopback ingress interface." Confirmed via a live
+comparison: a background `iptables -t nat -L PREROUTING -n -v` poll showed the rule's packet counter
+climbing in real time while a live-bound listening socket on the same redirected port received
+nothing, across several independent `hard_reset()` cycles. `start_udp_source_capture()`/
+`read_captured_udp_source_port()` (real wire-level `tcpdump` capture) exists specifically to work
+around this - no local delivery needed at all.
+
+**`bench_control.py`'s `is_ssid_visible()`/`join_dut_hotspot()` real-hardware timing**: `is_ssid_visible()`
+being True one moment doesn't guarantee `nmcli device wifi connect`'s own internal (re)scan still
+sees it a moment later - an isolated repro (2026-09-08) showed this can persist across several
+consecutive attempts, not just one. `_join_dut_hotspot_with_reverify_retry()`'s reverify window is
+30s/2s (widened from an original 15s/1s that let a `TimeoutError` escape uncaught, crashing the
+retry loop on attempt 1 instead of exhausting all attempts) and catches `TimeoutError` alongside
+`HardwareTestFailure`. A repro with both fixes in place still occasionally exhausted 3 attempts once;
+tracing into `src/asy_wifi_service.py` found a plausible (not confirmed) explanation:
+`_configure_hotspot_ap()` re-runs `wlan.config()`+`wlan.active(True)` on every `_run_hotspot_mode()`
+loop iteration for as long as no client is connected (every `wifi_refresh_sec`, 5s default) - a real,
+code-confirmed periodic reconfiguration cadence that could plausibly cause a brief beacon gap
+(unconfirmed on real CYW43 firmware, out of scope for a bench-test stability fix). Widening
+`attempts` (not touching `src/` on an unconfirmed hypothesis) was the chosen response.
+
+**The manual-test runner's duplicate-module-instance bug**: running `python3
+tests_hardware/manual/runner.py` directly makes Python load that file as the `__main__` module,
+while every `test_*.py`'s `from runner import register, ...` imports a *separate* module instance
+literally named `runner` (found on `sys.path`) - two distinct module objects, each with its own
+separate `_REGISTRY` list. Decorators in the test files populate the `runner`-named instance's
+registry; `main()` running as `__main__` reads its own, different, permanently-empty one. Result: a
+silent no-op - exit 0, zero output, `--list` showing nothing, no exception anywhere to point at the
+cause. Confirmed directly by tracing both module instances' `id()`/`_REGISTRY` in a running
+interpreter. Fixed by `__main__.py`: always imports `runner.py` as a plain module, never running it
+as `__main__` itself - run `uv run python tests_hardware/manual/__main__.py`, never `runner.py`
+directly.
+
+**Manual-test conventions** (`tests_hardware/manual/runner.py`'s helper functions):
+`print_instruction()` before the window that depends on it, not after. Timing is human-executable on
+a breadboard test device (tens of seconds, chosen per what's physically involved), never a value
+carried over from an automated/simulated test. `confirm()` waits for explicit human confirmation
+wherever the console survives the step; `countdown()` is reserved for genuine power-cycle cases
+where it doesn't. `state_expected_outcome()` prints what "passed" should look like before the
+script's own verdict, for tests that end in a human visual/instrument check rather than a
+script-only assertion.

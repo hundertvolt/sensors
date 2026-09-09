@@ -25,10 +25,9 @@ def build_query(hostname: str) -> bytes:
 
 
 def query(server_ip: str, hostname: str, timeout_s: float = 5.0, raw_query: bytes | None = None) -> bytes | None:
-    """Sends `raw_query` (or a freshly-built one for `hostname`) to `server_ip:53` over UDP and
-    returns the raw response bytes, or None on timeout - never raises on a timeout, since "no
-    response" is itself a real, assertable outcome for several of this file's own tests (a
-    malformed/off-subnet query is expected to get silently dropped, not answered)."""
+    """Sends `raw_query` (or a freshly-built one for `hostname`) to `server_ip:53` over UDP,
+    returning the raw response or None on timeout - never raises, since "no response" is itself a
+    real, assertable outcome (a malformed/off-subnet query should be silently dropped)."""
     payload = raw_query if raw_query is not None else build_query(hostname)[0]
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
         sock.settimeout(timeout_s)
@@ -42,9 +41,8 @@ def query(server_ip: str, hostname: str, timeout_s: float = 5.0, raw_query: byte
 
 def extract_answer_ip(response: bytes) -> str | None:
     """Parses just enough of a standard single-answer A-record response to pull out the answered
-    IPv4 address - src/captive_dns.py's own DNSQuery.response() always answers with exactly one
-    A record (confirmed by reading that module in full), so this deliberately doesn't handle the
-    general multi-answer/multi-type case."""
+    IPv4 address - src/captive_dns.py always answers with exactly one A record, so this doesn't
+    handle the general multi-answer/multi-type case."""
     if len(response) < 12:
         return None
     ancount = struct.unpack(">H", response[6:8])[0]

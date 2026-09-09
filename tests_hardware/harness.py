@@ -26,9 +26,8 @@ BENCH_AP_CONN = "br0-wifi-ap"
 
 def _usb_reset_device(device: str) -> bool:
     """Unbind/rebind `device`'s USB device from the kernel `usb` driver - same effect as a
-    physical unplug/replug, recovering a wedged raw-REPL-entry state seen on this bench (see
-    tests_hardware/README.md). Returns True if a reset was attempted (caller should retry after a
-    settle delay), False if the device path couldn't be resolved. Needs root."""
+    physical unplug/replug, recovering a wedged raw-REPL-entry state (see tests_hardware/README.md).
+    Returns True if a reset was attempted, False if the device path couldn't be resolved."""
     name = Path(device).name  # e.g. "ttyACM0"
     sys_tty_device = Path("/sys/class/tty") / name / "device"
     if not sys_tty_device.exists():
@@ -104,9 +103,8 @@ class Board:
 
     def _mpremote(self, *args: str, timeout_s: float | None = None, allow_recovery: bool = True) -> MpremoteResult:
         """Runs one `uv run mpremote connect <device> ...` call, retrying past known transient
-        USB-settle-race connection failures right after a prior mpremote subprocess exits (see
-        tests_hardware/README.md). `allow_recovery=False` (is_reachable()'s own use) skips the
-        retry, so polling for a real, expected disconnect gets the honest state, not a masked one."""
+        USB-settle-race connection failures (see tests_hardware/README.md). `allow_recovery=False`
+        (is_reachable()'s own use) skips retry, so a real expected disconnect isn't masked."""
         cmd = ["uv", "run", "mpremote", "connect", self.device, *args]
         transient_markers = ("may be in use by another program", "could not enter raw repl", "could not open")
         grace_deadline = time.monotonic() + 10.0
@@ -174,10 +172,9 @@ class Board:
         return result.stdout
 
     def run_isolated(self, script_path: str | Path, *, soft_reset_after: bool = True, timeout_s: float | None = None) -> str:
-        """Isolated-driver mode: `mpremote run <script>` interrupts the auto-started system into
-        raw REPL to run `script_path` against real frozen `src/` drivers - always soft-resets on
-        entry and re-arms the watchdog first; never leaves `main.py` running (see
-        tests_hardware/README.md for the full findings this is built on)."""
+        """Isolated-driver mode: `mpremote run <script>` interrupts the system into raw REPL to
+        run `script_path` against real frozen `src/` drivers, re-arming the watchdog first - never
+        leaves `main.py` running afterward (see tests_hardware/README.md)."""
         args = ["exec", "import machine; machine.WDT(timeout=8000)", "run", str(script_path)]
         if soft_reset_after:
             args.append("soft-reset")
@@ -217,10 +214,9 @@ class Board:
         self._mpremote("exec", "import machine; machine.bootloader()", timeout_s=10.0)
 
     def tail_log(self, duration_s: float, baudrate: int = 115200) -> list[str]:
-        """Passively captures whatever the live, auto-booted system prints over `duration_s`
-        seconds without interrupting it - unlike exec()/run_isolated() (see tests_hardware/README.md
-        for why those always Ctrl-C first). Retries a transient post-hard_reset() USB-settle
-        read/open failure within a bounded grace window before raising HardwareNotAvailable."""
+        """Passively captures what the live system prints over `duration_s`, without interrupting
+        it (unlike exec()/run_isolated(), which always Ctrl-C first - see tests_hardware/README.md).
+        Retries a transient post-hard_reset() USB-settle failure before raising HardwareNotAvailable."""
         grace_deadline = time.monotonic() + 10.0
         overall_deadline = time.monotonic() + duration_s
         lines: list[str] = []

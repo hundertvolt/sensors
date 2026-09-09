@@ -87,10 +87,9 @@ _DUT_HOTSPOT_PASSWORD = "12345678"  # hardcoded in src/asy_wifi_service.py's _co
 
 
 def _recover_stale_dut_credentials(bench: BenchBridge) -> None:
-    """Last-resort recovery for dut_ip(): if the DUT can't join the bench AP even after two
-    hard_reset() retries, stale stored WiFi credentials are the likely cause (e.g. the bridge was
-    recreated with a fresh SSID/password). Joins the DUT's own hotspot fallback and PUTs the
-    bench AP's current credentials to it - see tests_hardware/README.md for the full method."""
+    """Last-resort recovery for dut_ip(): if the DUT can't join the bench AP after two hard_reset()
+    retries, stale stored WiFi credentials are the likely cause - joins the DUT's own hotspot
+    fallback and PUTs the bench AP's current credentials to it (see tests_hardware/README.md)."""
     wait_until(
         lambda: bench.is_ssid_visible(_DUT_DEFAULT_HOSTNAME),
         timeout_s=30.0,
@@ -115,10 +114,9 @@ def _recover_stale_dut_credentials(bench: BenchBridge) -> None:
 
 @pytest.fixture(scope="session")
 def dut_ip(board: Board, bench: BenchBridge) -> str:
-    """The DUT's real STA-mode IP on the bench bridge network, for live-system HTTP checks.
-    Retries hard_reset()+kick_all_stations() through known reconnect flakiness, then falls back
-    to stale-credential recovery; see tests_hardware/README.md's "Known assumptions and open
-    findings" for the full findings trail this fixture's retry logic is built on."""
+    """The DUT's real STA-mode IP on the bench bridge network, for live-system HTTP checks. Retries
+    hard_reset()+kick_all_stations() through known reconnect flakiness, then falls back to
+    stale-credential recovery - see tests_hardware/README.md for the full findings trail."""
     ip_holder: list[str] = []
 
     def _read_ip_and_resume() -> bool:

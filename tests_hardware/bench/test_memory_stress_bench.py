@@ -1,7 +1,6 @@
-"""Bench-tier automated tests: real firmware memory behavior under real HTTP soak traffic (needs a
-reachable network client, unavailable on flash tier). Doesn't sample gc.mem_free() directly since
-exec() would interrupt the live system - instead generates HTTP load over WiFi while passively
-tail_log()-watching for a MemoryError traceback or an unexpected mid-soak reboot."""
+"""Bench-tier automated tests: real firmware memory behavior under HTTP soak traffic (needs a
+reachable network, unavailable on flash tier) - generates load over WiFi while passively
+tail_log()-watching for a MemoryError or an unexpected mid-soak reboot."""
 
 from __future__ import annotations
 
@@ -104,10 +103,9 @@ def test_real_hardware_survives_max_speed_hammer_load_without_memoryerror_or_reb
 
 @pytest.mark.long_soak
 def test_real_hardware_survives_extended_max_speed_hammer_load_with_fram_diagnostics_preserved(board: Board, dut_ip: str, request: pytest.FixtureRequest) -> None:
-    """Long-duration (--soak-tier mid = 600s, matching the duration that preceded the one real
-    WDT_RESET this project has observed) form of the bounded test above, for tracing a recurrence:
-    captures FRAM-backed errcount in the assertion message itself before any cleanup clears it
-    (CLAUDE.md's standing rule - that history is the one evidence a reboot doesn't erase)."""
+    """Long-duration form (--soak-tier mid = 600s, matching the one real WDT_RESET this project
+    has observed) of the bounded test above - captures FRAM-backed errcount in the assertion
+    message before any cleanup clears it (CLAUDE.md's standing rule)."""
     tier = request.config.getoption("--soak-tier")
     if tier is None:
         pytest.skip("real extended max-speed hammer load - run via scripts/run_bench_soak_tests.sh --tier mid (600s, matching the original WDT-reset investigation's own duration)")
