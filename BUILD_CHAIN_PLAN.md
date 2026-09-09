@@ -75,31 +75,10 @@ divergence between them is expected).
 - **Watchdog stays fixed** (hardcoded 8000ms, uniform, never per-device — settled project rule, not
   revisited here).
 - **Real hardware flashing is out of scope for this entire initiative.**
-- **Build-time tooling (the generator, `definitions.json` builder, and any other build-chain
-  script — Sessions 3/4/6) gets a fundamentally different error-handling contract than the
-  runtime sensor/service code it emits (project owner's explicit direction, 2026-09-09).** Runtime
-  `src/` code degrades gracefully and never raises (SPECIFICATION.md Part D.2) because a device
-  has to keep running unattended for years — a build script has no such constraint and must do the
-  opposite: **detect any error that would make a correct build impossible — a misconfigured
-  definition file, a wrong/missing/copy-pasted TOML field, an unresolvable `_WIRING` reference, a
-  naming collision with no disambiguating `name_ext`, a dependency cycle, anything structurally
-  invalid — and abort the whole build immediately, never emitting a partial or corrupted result.**
-  Every such abort must fail loudly: a clear, human-readable message naming the specific device
-  variant, the specific TOML file/field/line at fault, and what's wrong with it — never a bare
-  traceback or a silent skip. A build script that "degrades gracefully" past a real configuration
-  error is a bug, not a feature — the entire point is that a bad config must never silently produce
-  firmware/a website that looks fine but doesn't match its own TOML.
-  **Every build function needs its own unit test suite** (this is host-side CPython/pytest tooling,
-  matching `tests_scripts/`'s existing precedent — Part E.1's "real MicroPython interpreter"
-  rationale is about `src/`-target code specifically and doesn't apply here), covering: correct
-  output for valid input, and — the harder, more important half — that every documented error case
-  above is actually detected and produces the specific abort/message it's supposed to, not just
-  "doesn't crash." Aim for real coverage of the error-handling paths themselves (via
-  `scripts/test.sh --coverage`'s existing pipeline, Part E.5), not just the happy path — an
-  untested error branch is exactly the kind of thing that silently stops firing the day the code
-  around it changes. Each session building a piece of this tooling (3, 4, 6) owns writing this test
-  suite as part of that session's own "done" criteria, the same TDD-first step-session workflow
-  CLAUDE.md already requires.
+- **Build-time tooling gets a fundamentally different error-handling contract than the runtime
+  code it emits** — detect every error that would make a build impossible and abort loudly rather
+  than degrade. Full requirement, including the mandatory unit-test-suite bar: see "Build/
+  generator script quality bar" below.
 
 ## Device TOML schema (Session 1 deliverable — shape only, not the 6 real files)
 
@@ -262,35 +241,11 @@ the real `sensortask_<device>.py` + boot entry; and the full **global resource-c
 validation pass** below — every one of these is a real build blocker per the fail-loud contract
 above, not a warning, and not built in this session.
 
-**Global resource-collision validation (Session 3, required — project owner's explicit direction,
-2026-09-09)**: the single hardest class of build-time error to catch, because each individual field
-involved is independently syntactically valid — the corruption only exists in the *combination*,
-across the whole device's TOML, not in any one `[[instance]]`/`[bus.*]` table read in isolation. A
-schema-level check (right type, right range) can't see this at all; it needs a dedicated pass that
-builds a flat map of every physical resource a device's TOML claims and rejects any resource
-claimed twice. At minimum:
-- **Pin reuse across *anything*** — two `[[instance]]`/`[bus.*]` entries naming the same GPIO for
-  any purpose (an SCL/SDA/SCK/MOSI/MISO/CS pin, an IRQ pin, the Neopixel pin, an LED pin, ...),
-  including a bus's own pins colliding with a *different* bus's pins or with a plain digital
-  instance pin — not just two same-typed pins colliding with each other.
-- **I2C/SPI address collision on the same bus** — two instances both wired to the same `bus = "..."`
-  resolving to the same address (either both give the same explicit `address`, or two
-  hardwired-address instances of the same chip type share a bus with no way to distinguish them at
-  all — itself a real, catchable misconfiguration, not just an address-field mismatch).
-- **Instance name collision** (C.14.1's own case, restated here as one instance of this same general
-  category) — two instances resolving to the same `instance_name(driver_base, name_ext)`.
-- **Any other single-owner resource claimed twice** — a `cs_pin` reused across two SPI chips on the
-  same bus without independent chip-select being possible, a bus id (`bus.i2c0`) defined more than
-  once, a `[instance.wiring]` field naming an instance that doesn't exist or exists but is the wrong
-  driver type (already covered above, listed here for completeness of "same category, different
-  shape").
-Every one of these must produce a specific, human-readable error naming the two colliding
-declarations (which instance/bus, which field, which value) — never a generic "build failed," and
-never a silent pick of one over the other. This validation pass is exactly the kind of build
-function this doc's own "Build-time tooling" bullet (above) requires a dedicated unit test suite
-for: one test per collision category above, each proving the specific error fires on a
-deliberately corrupted fixture TOML, plus proving a clean, non-colliding TOML produces no false
-positive.
+**Global resource-collision validation is required of Session 3** (project owner's explicit
+direction, 2026-09-09) — the full requirement, including the two schema-level fields this example
+TOML above already reflects (buses as top-level entries owning their own shared wire pins,
+`[instance.wiring]` as the one place a cross-instance reference lives), is in "Build/generator
+script quality bar" below, not repeated here.
 
 ## Session breakdown (dependency-ordered)
 
@@ -366,7 +321,18 @@ proceed rather than degrading:
     is always an error, regardless of what role either signal plays.
   - **Per-bus address exclusivity**: scoped, not global — two instances on the *same* bus can't
     share an address, but the same address value on two *different* buses is legitimate and must
-    not false-positive.
+    not false-positive. Covers both an explicit `address` clash and two hardwired-address instances
+    of the same chip type sharing a bus with no way to distinguish them at all — itself a real,
+    catchable misconfiguration even with no `address` field involved.
+  - **Instance name collision** — two instances resolving to the same
+    `instance_name(driver_base, name_ext)` (C.14.1) is this same category's naming-namespace case.
+  - **Any other single-owner resource claimed twice** — a bus id (`bus.i2c0`) defined more than
+    once, or an `[instance.wiring]`/`_WIRING` field naming an instance that doesn't exist or is the
+    wrong driver type (a specific case of "unresolved reference"/"type mismatch" above, restated
+    here for completeness of this category).
+  Every one of these must produce a specific, human-readable error naming the two colliding
+  declarations (which instance/bus, which field, which value) — never a generic "build failed" and
+  never a silent pick of one over the other.
 - **Never produce a corrupted or partial build.** On any detected error, abort the entire build
   immediately — no partial `build/<device>/` output left behind that could be mistaken for a real
   artifact.
