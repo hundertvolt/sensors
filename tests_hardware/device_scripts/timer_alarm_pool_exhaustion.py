@@ -24,5 +24,5 @@ finally:
     for t in timers:
         try:
             t.deinit()
-        except Exception:  # noqa: BLE001 - best-effort cleanup, never let a deinit failure mask the real result above
+        except Exception:
             pass

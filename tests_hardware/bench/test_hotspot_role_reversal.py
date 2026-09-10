@@ -212,7 +212,7 @@ def test_malformed_truncated_packet_is_silently_dropped(joined_hotspot: str) -> 
         "source address needs either a raw socket (CAP_NET_RAW) or a second network namespace with "
         "a routable off-subnet address, neither confirmed practical here yet. Flagged rather than "
         "guessed at - implement once a concrete spoofing mechanism is confirmed to work."
-    )
+    ),
 )
 def test_spoofed_off_subnet_source_address_is_ignored(joined_hotspot: str) -> None:
     raise AssertionError("should never run - see skip reason")

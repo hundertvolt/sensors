@@ -51,7 +51,7 @@ async def _main() -> None:
                     scd_errors.append(f"iter {i}: Hum={hum!r} outside plausible bounds")
                 if temp is not None and not (TEMP_MIN_C <= temp <= TEMP_MAX_C):
                     scd_errors.append(f"iter {i}: Temp={temp!r} outside plausible bounds")
-            except Exception as e:  # noqa: BLE001 - any exception is itself the corruption signal this script exists to catch
+            except Exception as e:
                 scd_errors.append(f"iter {i}: {type(e).__name__}: {e}")
             scd_completed += 1
             i += 1
@@ -67,7 +67,7 @@ async def _main() -> None:
             try:
                 await sgp.initialize()  # real production path: ends with _reset()'s general-call broadcast
                 sgp_completed += 1
-            except Exception as e:  # noqa: BLE001 - SGP40's own init failing is worth surfacing too, though not this script's main question
+            except Exception as e:
                 sgp_errors.append(f"iter {i}: {type(e).__name__}: {e}")
             wdt.feed()
         stop = True
@@ -87,7 +87,7 @@ async def _main() -> None:
     if len(distinct_co2_values) < 2:
         failures.append(
             f"only {len(distinct_co2_values)} distinct CO2 value(s) seen across {scd_completed} reads over "
-            f"{sgp_completed} SGP40 reset cycles - continuous measurement may have silently stopped advancing"
+            f"{sgp_completed} SGP40 reset cycles - continuous measurement may have silently stopped advancing",
         )
 
     if failures:
@@ -95,7 +95,7 @@ async def _main() -> None:
     else:
         print(
             f"RESULT: PASS scd30_reads={scd_completed} sgp40_reset_cycles={sgp_completed} "
-            f"distinct_co2_values={len(distinct_co2_values)} - zero corruption/errors, measurement kept advancing"
+            f"distinct_co2_values={len(distinct_co2_values)} - zero corruption/errors, measurement kept advancing",
         )
 
 

@@ -41,7 +41,7 @@ async def _main() -> None:
         read_task.cancel()
         try:
             await read_task
-        except (asyncio.CancelledError, Exception):  # noqa: BLE001 - CancelledError (real hardware confirmed: MicroPython's, like CPython's, subclasses BaseException, not Exception - SPECIFICATION.md Part F.2) or whatever the loop itself raised
+        except (asyncio.CancelledError, Exception):
             pass
 
     # Wait out the documented blackout window before sampling for real data.

@@ -30,7 +30,7 @@ async def _probe(i2c: "asy_i2c_driver.I2C", address: int) -> "str | None":
         return None  # ACKed - either a real device answered, or (0x00 only) the general call always "succeeds"
     except OSError:
         return None  # clean NAK/timeout - exactly what an absent device should produce
-    except Exception as e:  # noqa: BLE001 - anything else is the real finding this probe exists to catch
+    except Exception as e:
         return f"{type(e).__name__}: {e}"
 
 
@@ -41,7 +41,7 @@ async def _read_scd30_once(scd: "SCD30_I2C") -> "str | None":
     try:
         await scd.read_measurement()
         return None
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         return f"{type(e).__name__}: {e}"
 
 
@@ -51,7 +51,7 @@ async def _read_bmp3xx_once(bmp: "BMP3XX_I2C") -> "str | None":
         if not (300.0 <= pressure <= 1250.0 and -40.0 <= temperature <= 85.0):
             return f"reading outside plausible bounds: Pres={pressure} Temp={temperature}"
         return None
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         return f"{type(e).__name__}: {e}"
 
 
@@ -61,7 +61,7 @@ async def _read_sgp40_once(sgp: "SGP40_I2C") -> "str | None":
         if raw is None:
             return "measure_raw() returned None"
         return None
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         return f"{type(e).__name__}: {e}"
 
 
@@ -112,7 +112,7 @@ async def _main() -> None:
                     sgp = SGP40_I2C(i2c, address=addr)
                     await sgp.setup()
                     read_once = lambda: _read_sgp40_once(sgp)  # noqa: E731
-            except Exception as e:  # noqa: BLE001 - setup() failing here is itself worth surfacing, not silently skipping the self-hazard check
+            except Exception as e:
                 findings.append(f"bus {port_id}: {name} setup() before self-hazard check failed: {type(e).__name__}: {e}")
 
             if read_once is not None:

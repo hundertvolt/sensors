@@ -37,7 +37,7 @@ async def _main() -> None:
                     read_errors.append(f"iter {i}: Pres={pressure!r} outside plausible bounds")
                 if not (TEMP_MIN_C <= temperature <= TEMP_MAX_C):
                     read_errors.append(f"iter {i}: Temp={temperature!r} outside plausible bounds")
-            except Exception as e:  # noqa: BLE001 - any exception is itself the corruption signal this script exists to catch
+            except Exception as e:
                 read_errors.append(f"iter {i}: {type(e).__name__}: {e}")
             read_completed += 1
             if i % 5 == 0:
@@ -53,7 +53,7 @@ async def _main() -> None:
                 readback = await bmp.get_pressure_oversampling()
                 if readback != oversample:
                     write_errors.append(f"iter {i}: wrote PressOvers={oversample}, read back {readback} - torn/corrupted write")
-            except Exception as e:  # noqa: BLE001 - see reader()'s own comment
+            except Exception as e:
                 write_errors.append(f"iter {i}: {type(e).__name__}: {e}")
             write_completed += 1
 
@@ -64,7 +64,7 @@ async def _main() -> None:
     # deliberately clean avoids surprising a later, unrelated real-hardware session.
     try:
         await bmp.set_pressure_oversampling(1)
-    except Exception:  # noqa: BLE001 - best-effort cleanup only, not this script's own pass/fail signal
+    except Exception:
         pass
 
     failures = []

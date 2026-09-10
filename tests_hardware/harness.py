@@ -73,13 +73,13 @@ def wait_until(
         try:
             if check_fn():
                 return True
-        except Exception as exc:  # noqa: BLE001 - a probe against real hardware/network can raise transiently; only the final timeout below is fatal
+        except Exception as exc:
             last_exc = exc
         time.sleep(poll_interval_s)
     try:
         if check_fn():
             return True
-    except Exception as exc:  # noqa: BLE001 - same as above, one last attempt right at the deadline
+    except Exception as exc:
         last_exc = exc
     detail = f" (last error: {last_exc!r})" if last_exc is not None else ""
     raise TimeoutError(f"timed out after {timeout_s}s waiting for: {description}{detail}")

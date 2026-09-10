@@ -7,7 +7,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-
 from harness import Board
 
 _DEVICE_SCRIPTS = Path(__file__).resolve().parent.parent / "device_scripts"

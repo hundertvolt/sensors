@@ -13,10 +13,10 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # tests_hardware/ itself, for `import harness`/`import bench_control`
 
-import http_client  # noqa: E402
-from bench_control import BenchBridge  # noqa: E402
-from harness import Board, HardwareTestFailure, wait_until  # noqa: E402
-from soak_tiers import SOAK_TIER_SECONDS  # noqa: E402
+import http_client
+from bench_control import BenchBridge
+from harness import Board, HardwareTestFailure, wait_until
+from soak_tiers import SOAK_TIER_SECONDS
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
@@ -64,7 +64,7 @@ def board(request: pytest.FixtureRequest) -> Iterator[Board]:
         pytest.skip(
             f"no real board reachable at {b.device} - this fixture only runs against real hardware "
             "(see tests_hardware/README.md for provisioning). Not a failure: this tier is meant to "
-            "be collectible with nothing attached."
+            "be collectible with nothing attached.",
         )
     yield b
 
@@ -77,7 +77,7 @@ def bench(board: Board) -> Iterator[BenchBridge]:
     if not bridge.is_configured():
         pytest.skip(
             "no bench WiFi bridge configured (br0-wifi-ap missing) - run "
-            "`uv run toolchain/setup_toolchain.py env --tier bench` first (see tests_hardware/README.md)."
+            "`uv run toolchain/setup_toolchain.py env --tier bench` first (see tests_hardware/README.md).",
         )
     yield bridge
 

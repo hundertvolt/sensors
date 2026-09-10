@@ -7,7 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import runner  # noqa: E402
+import runner
 
 if __name__ == "__main__":
     sys.exit(runner.main())
