@@ -297,8 +297,8 @@ jobs:
         run: pip install uv
       - name: Sync dev dependencies
         run: uv sync
-      - name: Ruff (src/, tests/, digital_twin/, and the whole host build chain)
-        run: uv run ruff check src tests digital_twin buildgen scripts toolchain tests_scripts
+      - name: Ruff (src/, tests/, digital_twin/, tests_hardware/, and the whole host build chain)
+        run: uv run ruff check src tests digital_twin tests_hardware buildgen scripts toolchain tests_scripts
       - name: Mypy (src/, tests/, digital_twin/, tests_hardware/device_scripts/, and the whole host build chain)
         run: uv run scripts/typecheck.sh src tests tests_hardware/device_scripts
 

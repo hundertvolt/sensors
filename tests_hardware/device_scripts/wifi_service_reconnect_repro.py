@@ -22,7 +22,7 @@ t0 = time.ticks_ms()
 
 
 def log(msg: str) -> None:
-    print("[{:8.2f}s] {}".format(time.ticks_diff(time.ticks_ms(), t0) / 1000.0, msg))
+    print(f"[{time.ticks_diff(time.ticks_ms(), t0) / 1000.0:8.2f}s] {msg}")
 
 
 _PHASE_NAMES = {0: "STA_SEEKING", 1: "STA_ESTABLISHED", 2: "HOTSPOT", 3: "DEACTIVATED"}
@@ -49,7 +49,7 @@ async def main() -> None:
 
     log("--- overwriting SSID with a garbage value via the real _set_dict_cfg() path ---")
     results = await conn._set_dict_cfg({"SSID": GARBAGE_SSID}, conn.get_cfg_schema())
-    log("_set_dict_cfg(SSID=garbage) -> {}".format(results))
+    log(f"_set_dict_cfg(SSID=garbage) -> {results}")
     conn.reconnect_wifi()
     log("reconnect_wifi() called (simulates the REST post_fct firing)")
 
@@ -61,15 +61,13 @@ async def main() -> None:
         phase = conn._conn_phase
         status = conn._wlan_status_or_none()
         if phase != last_phase or status != last_status:
-            log("phase={} status={} reconn_wifi={} hw_op_failed={} conn_failures={}".format(
-                _PHASE_NAMES.get(phase, phase), status, conn.reconn_wifi, conn.hw_op_failed, conn.connection_failures
-            ))
+            log(f"phase={_PHASE_NAMES.get(phase, phase)} status={status} reconn_wifi={conn.reconn_wifi} hw_op_failed={conn.hw_op_failed} conn_failures={conn.connection_failures}")
             last_phase, last_status = phase, status
         if phase == 2:
             reached_hotspot = True
             break
         if task.done():
-            log("wlan_connect() TASK DIED: {}".format(await _task_exception(task)))
+            log(f"wlan_connect() TASK DIED: {await _task_exception(task)}")
             return
         await asyncio.sleep(1)
 
@@ -80,7 +78,7 @@ async def main() -> None:
     log("=== REACHED HOTSPOT PHASE ===")
     log("--- restoring the real SSID via the real _set_dict_cfg() path ---")
     results = await conn._set_dict_cfg({"SSID": REAL_SSID}, conn.get_cfg_schema())
-    log("_set_dict_cfg(SSID=real) -> {}".format(results))
+    log(f"_set_dict_cfg(SSID=real) -> {results}")
     t_reconnect_trigger = time.ticks_ms()
     conn.reconnect_wifi()
     log("reconnect_wifi() called (simulates the REST post_fct firing again)")
@@ -94,17 +92,15 @@ async def main() -> None:
         status = conn._wlan_status_or_none()
         reconn = conn.reconn_wifi
         if phase != last_phase or status != last_status or reconn != last_reconn:
-            log("phase={} status={} reconn_wifi={} hw_op_failed={} isconnected={}".format(
-                _PHASE_NAMES.get(phase, phase), status, reconn, conn.hw_op_failed, conn._wlan_isconnected_or_false()
-            ))
+            log(f"phase={_PHASE_NAMES.get(phase, phase)} status={status} reconn_wifi={reconn} hw_op_failed={conn.hw_op_failed} isconnected={conn._wlan_isconnected_or_false()}")
             last_phase, last_status, last_reconn = phase, status, reconn
         if conn._wlan_isconnected_or_false():
             elapsed = time.ticks_diff(time.ticks_ms(), t_reconnect_trigger) / 1000.0
-            log("=== RECONNECTED after {:.1f}s (measured from reconnect_wifi() call) ===".format(elapsed))
-            log("ifconfig: {}".format(conn.wlan.ifconfig()))
+            log(f"=== RECONNECTED after {elapsed:.1f}s (measured from reconnect_wifi() call) ===")
+            log(f"ifconfig: {conn.wlan.ifconfig()}")
             return
         if task.done():
-            log("wlan_connect() TASK DIED: {}".format(await _task_exception(task)))
+            log(f"wlan_connect() TASK DIED: {await _task_exception(task)}")
             return
         await asyncio.sleep(1)
 

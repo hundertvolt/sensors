@@ -274,11 +274,15 @@ information):
   venv). **Wired into CI** via `.github/workflows/ci.yml` (GitHub Actions), running all three on
   every push/PR. The CI pipeline does not yet include a real firmware-build stage (see
   BACKLOG.md).
-- **Scope is `src/`, `tests/`, `digital_twin/`, `tests_hardware/device_scripts/` (mypy only), and
+- **Scope is `src/`, `tests/`, `digital_twin/`, `tests_hardware/` (all of it for ruff; the
+  `device_scripts/` subtree only for mypy — the rest is host-side pytest code that imports the
+  `harness` package by path, which the main pass can't resolve), and
   the whole host-side build chain — `buildgen/`, `scripts/`, `toolchain/`, `tests_scripts/`.** The
   build chain gates the firmware every device ships, so it carries the same bar as the code it
   builds; its mypy coverage comes from `scripts/hosttools_typecheck.ini`'s own separate pass (see
-  below), never the main one. The pre-refactor deployed
+  below), never the main one. `tests_hardware/`'s own device scripts run under real MicroPython on
+  the board, so a lint autofix there is verified by compiling the changed file under the pinned
+  Unix-port interpreter, not just by ruff going quiet. The pre-refactor deployed
   codebase (`python/`, `modules/`) has no lint/type config yet; extending scope there is a separate
   future decision, not assumed by this setup. Every scope listed is expected to stay fully clean — every
   scope in this setup is fully-reviewed, freely-editable code (see "Hard rules" above), not WIP;
@@ -545,9 +549,9 @@ rm -rf "$CHROOT"
 ```
 
 **What counts as passing**: `lint.sh`/`typecheck.sh`/`scripts/test.sh` all run to completion with
-exit 0 — every scope this setup covers (`src/`, `tests/`, `digital_twin/`,
-`tests_hardware/device_scripts/`, and the host build chain: `buildgen/`, `scripts/`, `toolchain/`,
-`tests_scripts/`) is fully-reviewed code
+exit 0 — every scope this setup covers (`src/`, `tests/`, `digital_twin/`, `tests_hardware/`
+(ruff; mypy covers its `device_scripts/` subtree), and the host build chain: `buildgen/`,
+`scripts/`, `toolchain/`, `tests_scripts/`) is fully-reviewed code
 expected to stay fully clean (confirmed: both `lint.sh` and `typecheck.sh` report zero findings as
 of `improved-quality/`'s deletion), so unlike the pre-deletion state, a nonzero exit from either one
 here is a real regression to chase down, not an expected/tracked finding to compare against a
