@@ -3,25 +3,31 @@ independent of build_firmware.py's own wiring (see test_build_firmware.py for th
 
 import ast
 import importlib.util
+from pathlib import Path
+from types import ModuleType
 
 import pytest
 
 
 @pytest.fixture(scope="session")
-def strip_module(repo_root):
+def strip_module(repo_root: Path) -> ModuleType:
     module_path = repo_root / "scripts" / "_strip_type_checking.py"
     spec = importlib.util.spec_from_file_location("_strip_type_checking", module_path)
+    # spec_from_file_location() returns None for an unloadable path and spec.loader is
+    # Optional in the general case - narrowed here so a renamed/missing script fails with a
+    # clear assertion instead of an AttributeError three lines later.
+    assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
 
-def test_no_type_checking_pattern_returns_source_byte_for_byte_unchanged(strip_module):
+def test_no_type_checking_pattern_returns_source_byte_for_byte_unchanged(strip_module: ModuleType) -> None:
     source = "import os\n\n\ndef f(x: int) -> int:\n    return x + 1\n"
     assert strip_module.strip_type_checking_blocks(source) is source
 
 
-def test_strips_bare_type_checking_block_and_its_import_guard(strip_module):
+def test_strips_bare_type_checking_block_and_its_import_guard(strip_module: ModuleType) -> None:
     source = (
         "import asyncio\n\n"
         "try:\n"
@@ -42,14 +48,14 @@ def test_strips_bare_type_checking_block_and_its_import_guard(strip_module):
     ast.parse(output)  # stays syntactically valid
 
 
-def test_strips_module_attribute_type_checking_test(strip_module):
+def test_strips_module_attribute_type_checking_test(strip_module: ModuleType) -> None:
     source = "import typing\n\nif typing.TYPE_CHECKING:\n    X = 1\n\nY = 2\n"
     output = strip_module.strip_type_checking_blocks(source)
     assert "X = 1" not in output
     assert "Y = 2" in output
 
 
-def test_leaves_compound_condition_untouched(strip_module):
+def test_leaves_compound_condition_untouched(strip_module: ModuleType) -> None:
     # "if TYPE_CHECKING and something():" is not a bare test - BACKLOG.md's prototype note says
     # leave any compound condition untouched rather than guess.
     source = "if TYPE_CHECKING and extra_check():\n    Z = 1\n"
@@ -57,21 +63,21 @@ def test_leaves_compound_condition_untouched(strip_module):
     assert "Z = 1" in output
 
 
-def test_leaves_if_else_untouched(strip_module):
+def test_leaves_if_else_untouched(strip_module: ModuleType) -> None:
     source = "if TYPE_CHECKING:\n    W = 1\nelse:\n    W = 2\n"
     output = strip_module.strip_type_checking_blocks(source)
     assert "W = 1" in output
     assert "W = 2" in output
 
 
-def test_leaves_unrelated_try_except_importerror_untouched(strip_module):
+def test_leaves_unrelated_try_except_importerror_untouched(strip_module: ModuleType) -> None:
     source = "try:\n    import ujson as json\nexcept ImportError:\n    import json\n"
     output = strip_module.strip_type_checking_blocks(source)
     assert "import ujson as json" in output
     assert output is source  # nothing matched, so this is the unchanged-passthrough path
 
 
-def test_strips_multiple_type_checking_blocks_in_one_file(strip_module):
+def test_strips_multiple_type_checking_blocks_in_one_file(strip_module: ModuleType) -> None:
     source = (
         "try:\n"
         "    from typing import TYPE_CHECKING\n"
@@ -90,7 +96,7 @@ def test_strips_multiple_type_checking_blocks_in_one_file(strip_module):
     assert "def f" in output
 
 
-def test_real_src_files_round_trip_to_syntactically_valid_type_checking_free_output(strip_module, repo_root):
+def test_real_src_files_round_trip_to_syntactically_valid_type_checking_free_output(strip_module: ModuleType, repo_root: Path) -> None:
     # End-to-end proof against the actual promoted driver files that use this pattern (not just
     # synthetic snippets above) - confirms the transform handles real, full-size module content.
     # Every bare `if TYPE_CHECKING:` block must be gone; the import-guard header itself is only
