@@ -1427,11 +1427,10 @@ mypy fixes found along the way: a type-narrowing limitation in `value_wiring.py`
 by checking each AST field directly instead of via a loop over aliased variables, and ~80 now-genuinely-
 unnecessary `# type: ignore[arg-type]`/`[assignment]` comments removed across the test suite once
 `_ValueSource`'s `Protocol` typing let the existing fakes structurally satisfy the new parameter
-types without one), and `uv run pytest tests_scripts` (456 passed, 2 skipped). The full
-`scripts/test.sh` real MicroPython Unix-port suite was still running as this phase's changes were
-committed - its result follows in a same-day fixup commit if it surfaces anything (the CPython-side
-mechanical transform of every `tests/test_asy_sgp40_driver.py` call site is the one part of this
-phase not yet confirmed against the real interpreter).
+types without one), and `uv run pytest tests_scripts` (456 passed, 2 skipped). **`scripts/test.sh`'s
+full real MicroPython Unix-port suite (54/54 test files, including every mechanically-transformed
+`tests/test_asy_sgp40_driver.py` call site) confirmed passing** in a follow-up check after this
+phase's commit landed - no fixup needed.
 
 The largest, highest-risk phase — blocked on §10.1 items 1 and 2, changes an already-shipped
 constructor signature (`SGP40_Reader.__init__`), and should land last so it doesn't destabilize
