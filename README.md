@@ -112,10 +112,12 @@ never run it over a connection that depends on the bridge staying up.
 
 ## Code quality tooling
 
-Ruff and mypy checks, scoped to `src/`, `tests/`, and `digital_twin/` (the
-pre-refactor codebase — `python/`, `modules/` — isn't covered yet), shellcheck over `scripts/`,
-actionlint + zizmor over the GitHub Actions workflows, plus unit tests for `src/`, can
-be run manually. Needs Python 3.11+ (`tomllib`, stdlib only since 3.11 — `uv sync` enforces this
+Ruff and mypy checks, scoped to eight directories — `src/`, `tests/`, `digital_twin/`,
+`boot_entry/`, `toolchain/`, `scripts/`, `tests_scripts/` and `tests_hardware/` (the pre-refactor
+codebase — `python/`, `modules/` — isn't covered yet) — shellcheck over `scripts/`, actionlint +
+zizmor over the GitHub Actions workflows, plus unit tests for `src/`, can be run manually. mypy
+runs three separate passes, since the MicroPython-target scopes and the host-CPython ones need
+different stdlib stubs and cannot share one invocation. Needs Python 3.11+ (`tomllib`, stdlib only since 3.11 — `uv sync` enforces this
 automatically via `pyproject.toml`'s `requires-python`, so this only matters if `uv` has to fall
 back to whatever `python3` it finds):
 

@@ -575,9 +575,9 @@ rm -rf "$CHROOT"
 ```
 
 **What counts as passing**: `lint.sh`/`typecheck.sh`/`scripts/test.sh` all run to completion with
-exit 0 — every scope this setup covers (`src/`, `tests/`, `digital_twin/`) is fully-reviewed code
-expected to stay fully clean (confirmed: both `lint.sh` and `typecheck.sh` report zero findings as
-of `improved-quality/`'s deletion), so unlike the pre-deletion state, a nonzero exit from either one
+exit 0 — all eight scopes this setup covers (see "Code quality tooling" above) are fully-reviewed
+code expected to stay fully clean (confirmed: `lint.sh` and all three `typecheck.sh` passes report
+zero findings as of the eight-scope extension), so a nonzero exit from either one
 here is a real regression to chase down, not an expected/tracked finding to compare against a
 session sandbox's own baseline count. `scripts/test.sh`'s tests must likewise actually pass (exit
 0, every test PASS) — a test failure here is a real regression too.
