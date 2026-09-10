@@ -192,14 +192,11 @@ resolves each the same generic way `NotificationCoordinator._check_one()` alread
 `producer_class`/nominal-class-match check no longer applies to fields using this shape — the
 constraint becomes structural (source exposes an attribute named `field`), not nominal.
 
-**Open sub-question, not yet resolved**: `Temp` happens to be named identically on `SCD30` and
-`BMP3XX` today by coincidence, not by any enforced convention. Should buildgen match purely by
-attribute name (simplest, consistent with `warn_*`'s existing precedent — "does `source`'s
-`get_data()` result have an attribute named `field`"), or should each measurement field carry an
-explicit property/unit tag so a future sensor naming the same physical quantity differently (e.g.
-`"Temperature"` instead of `"Temp"`) is still recognized as interchangeable? Name-matching needs no
-new machinery; a tagging system is more robust against naming drift but doesn't exist anywhere in
-this codebase yet.
+**RESOLVED (2026-09-10)**: name-matching is sufficient — the same attribute-name check `warn_*`
+already uses ("does `source`'s `get_data()` result have an attribute named `field`"), no separate
+property/unit tag system. A future driver naming the same physical quantity differently (e.g.
+`"Temperature"` instead of `"Temp"`) simply isn't recognized as interchangeable until its field is
+renamed to match — an accepted limitation, not a gap to design around now.
 
 ## 3. To-dos (added by the project owner, 2026-09-10)
 
@@ -277,9 +274,9 @@ Plus notification's own separate per-signal mechanism (not `_WIRING`): `warn_co2
 10. **Shared-property cross-wiring — RESOLVED, generalized (2026-09-10, see §2.9)**: not scoped to
     `comp_source`/temperature specifically. Every individual measurement value must be freely
     selectable for wiring from any producer exposing that same property, uniformly, the same way
-    `warn_*` already works — full survey and the `comp_source`→per-value-field consequence are in
-    §2.9. Remaining open sub-question (§2.9's last paragraph): name-matching vs. an explicit
-    property/unit tag for cross-driver field-identity matching.
+    `warn_*` already works, matched by attribute name (§2.9's now-resolved sub-question — no
+    property/unit tag system). Full survey and the `comp_source`→per-value-field consequence are in
+    §2.9.
 11. **Bus topology** — all sensors on one shared bus vs. spread across separate buses vs. i2c+spi
     mixed.
 12. **name_ext on a singleton-adjacent instance** — giving the sole scd30 instance a non-empty
@@ -291,7 +288,6 @@ Plus notification's own separate per-signal mechanism (not `_WIRING`): `warn_co2
   TOML fixtures vs. which get covered by targeted unit tests against `validate.py`/`codegen.py`
   directly (matching the existing `test_buildgen_validate.py` pattern of driving internals
   directly for cases no real/6-device TOML can reach).
-- Resolve §2.9's name-matching-vs-unit-tag open sub-question with the project owner.
 - Design the multi-instance (axis 9) fixture set — likely extends
   `tests_scripts/buildgen_fixtures/novel_combo.toml` or adds a sibling fixture, not yet decided.
 - Once §2.9's per-value wiring shape is finalized, axis 3 (sensor↔sensor wiring) needs re-wording
