@@ -236,15 +236,29 @@ constraints.
   `UP032` (f-string) and 1 x `I001`. Extending lint scope to `tests_hardware/` is a separate
   decision, same shape as the `python/`/`modules/` one.
 - **Additional checker candidates, measured and mostly declined.** Evaluated against the real tree
-  rather than by reputation, when shellcheck/actionlint were added:
-  - **`zizmor`** (GitHub Actions security) - **50 findings, all real hardening**: 25 `unpinned-uses`
-    (actions by tag not SHA), 10 `excessive-permissions` (no `permissions:` block, so jobs get a
-    broad default token), 9 `artipacked` (checkout persists credentials into `.git/config`), 6
-    `self-repository`. The middle two are cheap, high-value wins; `unpinned-uses` carries ongoing
-    SHA-maintenance cost and deserves its own decision. **Recommended, not yet adopted.**
-  - **`import-linter`** - would turn Part C's Layer 1/2/3 architecture into an enforced gate rather
-    than a convention. Cannot be measured cold: it requires the layering contracts to be declared
-    first. **The most interesting remaining candidate.**
+  rather than by reputation, when shellcheck/actionlint/zizmor were added:
+  - **`zizmor`** (GitHub Actions security) - **adopted.** All 50 findings fixed, not suppressed:
+    `excessive-permissions` (workflow-level `permissions: {}` + per-job `contents: read`),
+    `artipacked` (`persist-credentials: false` on every checkout), and `unpinned-uses` (SHA-pinned
+    `codecov/`+`dorny/`; `actions/*` stays tag-pinned by an explicit `.github/zizmor.yml` policy,
+    since a compromise of GitHub's own org compromises the runner anyway and SHA-bumping four
+    first-party actions has real cost with no Dependabot configured). One audit is **disabled with
+    cause**: `self-repository` wants `uses: $/.github/...` (GitHub's July-2026 syntax), which
+    actionlint 1.7.12 - the other hard gate over the same files - rejects outright as invalid.
+    Revisit when actionlint learns it. Runs `--offline` so it behaves identically in CI, on a dev
+    box, and in the clean-chroot pre-push recipe.
+  - **`import-linter`** - **rejected, measured; structurally incompatible.** It validates that every
+    `root_packages` entry is a real package and refuses flat modules ("'x' is a module, not a
+    package"), and `src/` is deliberately a flat set of modules with no `__init__.py` - they are
+    copied flat alongside `ext/` and frozen into firmware. Both workarounds were tried and both
+    produce a **false green**: wrapping `src/` in a shadow package (or letting it resolve as an
+    implicit namespace package) reports `Analyzed 27 files, 0 dependencies` and marks every
+    contract KEPT, because each intra-`src/` import is a bare absolute `from base_classes import
+    ...` that resolves outside the package. Making it work would mean rewriting every import in
+    `src/` to package-relative form - an operational change to frozen firmware code, not a tooling
+    change. Note also that Part C's Layer 2/3 split lives *inside* one module per driver, so
+    import-linter could never have seen it; only the coarser module-level direction was ever in
+    reach.
   - **`vulture`** (dead code) - **rejected, measured.** All 8 of its >=80%-confidence findings are
     false positives: it cannot see through quoted annotations or `if TYPE_CHECKING:` blocks, so it
     reports `Self`/`NamedTuple`/`Iterable`/`Sequence` as unused imports and flags the no-op

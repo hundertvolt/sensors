@@ -268,12 +268,31 @@ information):
 
 - **Config lives in root `pyproject.toml`** (ruff/mypy/pytest/uv, dev-tooling only — the shipped
   code stays frozen-bytecode-only, not restructured into an installable package). Run manually via
-  `scripts/lint.sh` (ruff), `scripts/typecheck.sh` (mypy), and `scripts/test.sh` (unit tests, under
-  a real MicroPython Unix-port interpreter — see below and SPECIFICATION.md Part E); `lint.sh`/
-  `typecheck.sh` assume `ruff`/`mypy` are already on `PATH` (e.g. an activated `uv sync`-created
-  venv). **Wired into CI** via `.github/workflows/ci.yml` (GitHub Actions), running all three on
-  every push/PR. The CI pipeline does not yet include a real firmware-build stage (see
-  BACKLOG.md).
+  `scripts/lint.sh` (ruff + shellcheck + actionlint + zizmor), `scripts/typecheck.sh` (mypy), and
+  `scripts/test.sh` (unit tests, under a real MicroPython Unix-port interpreter — see below and
+  SPECIFICATION.md Part E); `lint.sh`/`typecheck.sh` assume those tools are already on `PATH` (e.g.
+  an activated `uv sync`-created venv). **Every tool is a `[dependency-groups] dev` entry, so
+  `uv sync` — and therefore `toolchain/setup_toolchain.py env --tier {generic,flash,bench}`, which
+  runs it — installs all of them automatically; nothing is installed by hand.** All are **pinned**,
+  for the same reason ruff is: `select = ["ALL"]`-style opt-in-to-everything configs turn an
+  unpinned upgrade into a hard CI failure on a rule nobody chose.
+- **Wired into CI** via `.github/workflows/ci.yml` (GitHub Actions). **Each tool is its own job/
+  stage**, so a failure names the tool directly instead of a shared "lint" job going red:
+  `lint-and-typecheck` (ruff + mypy), `shellcheck`, `actionlint`, `zizmor`, plus the test/build
+  stages (`unit-tests`, `digital-twin-e2e`, `firmware-build-verify`) and the web tier. Note
+  `unit-tests` keeps `needs: lint-and-typecheck` (the standing hang backstop below); the other lint
+  stages run in parallel and gate nothing, so one of them failing no longer silently skips the
+  whole test suite.
+- **`zizmor` audits the GitHub Actions workflows themselves** — `GITHUB_TOKEN` scope, checkout
+  credential persistence, action pinning: the one part of the supply chain ruff/mypy can't see.
+  Policy config is `.github/zizmor.yml` (only `unpinned-uses` is configured — `actions/*` may be
+  tag-pinned, everything third-party must be SHA-pinned; every other audit runs at its default).
+  Always invoked `--offline`, which skips the two audits needing the GitHub API, so it behaves
+  identically in CI, on a dev box, and in the clean-chroot recipe below. **`self-repository` is
+  deliberately `disable: true`** — it wants `uses: $/.github/...` (GitHub's July-2026 syntax) and
+  actionlint 1.7.12 rejects that as invalid, so the two gates cannot both be satisfied; revisit
+  when actionlint learns it. **Adding a SHA-pinned third-party action means bumping that SHA by
+  hand** — no Dependabot is configured.
 - **Scope is `src/`, `tests/`, and `digital_twin/`.** The pre-refactor deployed
   codebase (`python/`, `modules/`) has no lint/type config yet; extending scope there is a separate
   future decision, not assumed by this setup. All three are expected to stay fully clean — every
