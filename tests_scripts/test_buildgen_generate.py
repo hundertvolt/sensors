@@ -76,6 +76,33 @@ def test_novel_combo_construction_order_is_topologically_valid(fixtures_dir: Pat
     assert order.index(("neopixel", "")) < order.index(("notification", ""))
 
 
+def test_multi_instance_fixture_generates_successfully(fixtures_dir: Path, src_dir: Path, ext_dir: Path):
+    # Axis 9's own dedicated multi-instance fixture (§10.7 item 1): 2x scd30 + 2x sgp40 (on
+    # different buses - sgp40 has no address-select pin), one sgp40 wired entirely to a real scd30,
+    # the other mixing a cross-driver-type reference (bmp3xx's own Temp) with an explicit default -
+    # proving §2.9's "any producer exposing a matching attribute name" claim directly, not just
+    # satisfying it structurally.
+    result = generate_device(fixtures_dir / "multi_instance.toml", src_dir, ext_dir)
+    ast.parse(result.module_source)
+    ast.parse(result.boot_entry_source)
+    assert "scd30_a" in result.module_source
+    assert "scd30_b" in result.module_source
+    assert "sgp40_a" in result.module_source
+    assert "sgp40_b" in result.module_source
+    assert "temperature_source=scd30_b, temperature_field='Temp'" in result.module_source
+    assert "humidity_source=scd30_b, humidity_field='Hum'" in result.module_source
+    assert "temperature_source=bmp3xx_only, temperature_field='Temp'" in result.module_source
+    assert "humidity_source=_DefaultHumiditySource(relative_humidity=35)" in result.module_source
+    assert "_DefaultSignalSink().request_signal" in result.module_source
+    # led_target/fram_target both left unwired - conn.set_ext_led/sysfunct's fram kwarg both absent.
+    assert "conn.set_ext_led(" not in result.module_source
+    assert "SystemService(ntp.ntp_issynced, watchdog=watchdog, cfg_path=cfg_path" in result.module_source
+    # Only sgp40_a is monitored via warn_voc - exactly one NotificationSignal is registered
+    # (warn_co2/warn_hum are absent from this fixture entirely, and sgp40_b is never a warn_* source).
+    assert result.module_source.count("NotificationSignal(") == 1
+    assert "NotificationSignal('WarnVOC', sgp40_a, 'VOC'" in result.module_source
+
+
 def test_device_without_notification_or_neopixel_omits_their_wiring(tmp_path: Path, src_dir: Path, ext_dir: Path):
     doc = base_doc()
     doc["instance"] = [i for i in doc["instance"] if i["driver"] not in ("neopixel", "notification")]

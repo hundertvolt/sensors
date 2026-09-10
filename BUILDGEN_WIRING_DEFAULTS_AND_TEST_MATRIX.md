@@ -1,13 +1,16 @@
 # Buildgen wiring defaults & clean-build test matrix
 
 **Status: design discussion with the project owner, 2026-09-10. Implementation go-ahead given
-2026-09-10; §10's Phases 1-4 are now complete** — see the status notes at the top of
-§10.2/§10.3/§10.4/§10.5 for exactly what landed in each. Phases 5-6 remain unimplemented; `src/`
-has been touched only by Phase 3 (`asy_bmp3xx_driver.py`'s `_LIMITS`, `config_manager.py`'s
-`LimitsSchema` type — both inert declarations, verified against the real MicroPython Unix-port
-suite, not just `tests_scripts/`). This document exists purely to capture what was agreed before
-code is written, so none of it gets lost. Every "shall"/"will" below is a decided design intent
-except where §10's own phase notes say otherwise.
+2026-09-10; all six phases of §10's implementation plan are now complete** — see the status notes
+at the top of §10.2 through §10.7 for exactly what landed in each. Every mechanism this document
+designed (§2's wiring-defaults mechanism, §2.9's per-value generalization, §5.2's `_LIMITS`, §4.3
+axis 10's pin-legality/role checks, §6.3/§7.2(C)'s driver-onboarding hardening) is now real, tested
+code — `src/` was touched by Phase 3 (`asy_bmp3xx_driver.py`'s `_LIMITS`, inert) and Phase 5 (the
+real `SGP40_Reader` constructor signature change plus `_DefaultTemperatureSource`/
+`_DefaultHumiditySource`/`_DefaultSignalSink`, all verified against the real MicroPython Unix-port
+suite, not just `tests_scripts/`). This document remains the durable record of what was designed
+and why, kept current rather than archived — every "shall"/"will" below now describes shipped
+behavior except where a phase note says otherwise.
 
 ## 1. Background
 
@@ -1489,6 +1492,41 @@ consistency across buildgen's now-three AST-discovered driver-metadata mechanism
   reachable.
 
 ### 10.7 Phase 6 — Final cross-product enumeration, fixture buildout, and forward-pointers
+
+**Status: complete (2026-09-10).** All three items landed.
+
+1. New fixture `tests_scripts/buildgen_fixtures/multi_instance.toml` — axis 9's own dedicated
+   multi-instance case, deliberately distinct from `novel_combo.toml`: 2× scd30 **and** 2× sgp40
+   simultaneously (sgp40 has no address-select pin, so the two instances must sit on different
+   buses - a real hardware constraint this fixture's own design had to get right, not a buildgen
+   choice; a first draft put both on one bus and `_check_address_collisions()` correctly rejected
+   it, confirming the check works as designed). `sgp40_a` sources both values from one real scd30;
+   `sgp40_b` mixes a cross-driver-type reference (`bmp3xx`'s own `Temp` field - §2.9's "any producer
+   exposing a matching attribute name" claim, proven directly rather than just asserted) with an
+   explicit `{default = true, ...}` constant for humidity. `bmp3xx` keeps a `name_ext` despite being
+   the device's only instance of its driver (axis 11). Both `[device.wiring]` fields are left
+   entirely unwired (`novel_combo.toml` wires both). `signal_sink` is defaulted; only `sgp40_a` is
+   monitored via `warn_voc`. New tests: `test_multi_instance_fixture_generates_successfully`
+   (`test_buildgen_generate.py`), `test_multi_instance_fixture_respects_cross_driver_dependency`
+   (`test_buildgen_graph.py`, confirms construction order tracks the *actual* per-instance
+   dependency - `bmp3xx` before `sgp40_b`, `scd30_b` before `sgp40_a` - not just "some scd30 before
+   some sgp40"). The full literal cross-product of axes 1-8/11 was **not** enumerated as individual
+   test cases (it was never realistic to - most of it is already exercised combinatorially by the
+   fixtures/targeted tests every earlier phase already added); one further genuine gap found and
+   closed while checking for exactly this: `test_partial_instance_level_fram_wiring_is_fine` - axis
+   4's "partial" state (FRAM present, *some* fram-wirable instances wire it and others explicitly
+   don't, in the same device) had never actually been asserted on its own terms before, only
+   incidentally touched while testing something else.
+2. Forward-pointers added to `BUILD_CHAIN_PLAN.md`'s own Session 4/5 entries (not just recorded
+   here) - each now names this document explicitly and states the concrete shape change
+   (`comp_source` → `temperature_source`/`humidity_source`, plus the general `{default = true,
+   ...}` opt-in) a Session 4/5 implementer needs to know about before building against a device's
+   TOML/generated-module shape.
+3. Bus-hazard rule inapplicability - already recorded below, reconfirmed, no further action needed.
+
+Verified: `scripts/lint.sh`, `uv run pytest tests_scripts` (459 passed, 2 skipped). No `src/`
+changes this phase (fixture + test files only), so the MicroPython Unix-port suite wasn't re-run -
+nothing it covers changed.
 
 Only meaningful once axes stop shifting, i.e. after Phase 5:
 

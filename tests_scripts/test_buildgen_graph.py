@@ -47,6 +47,16 @@ def test_novel_combo_sgp40_after_both_its_independently_named_sources(repo_root:
     assert order.index(("scd30", "primary")) < order.index(("sgp40", ""))
 
 
+def test_multi_instance_fixture_respects_cross_driver_dependency(repo_root: Path, src_dir: Path, ext_dir: Path):
+    # Axis 9's richest corner (§10.7 item 1): sgp40_b's temperature_source is bmp3xx, not scd30 -
+    # construction order must respect *that* real dependency, not just "some scd30 before sgp40".
+    fixture = repo_root / "tests_scripts" / "buildgen_fixtures" / "multi_instance.toml"
+    result = generate_device(fixture, src_dir, ext_dir)
+    order = result.model.construction_order
+    assert order.index(("scd30", "b")) < order.index(("sgp40", "a"))
+    assert order.index(("bmp3xx", "only")) < order.index(("sgp40", "b"))
+
+
 def test_cycle_detection_raises(tmp_path: Path, src_dir: Path):
     # No real driver's _WIRING requires SGP40_Reader as a producer - can't construct a real cycle
     # with the actual driver set (SGP40 requiring SCD30, which would need to require SGP40 back,

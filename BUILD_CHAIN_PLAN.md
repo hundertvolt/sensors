@@ -407,9 +407,16 @@ script quality bar" below, not repeated here.
    ordering, dependency-driven frozen-module selection, generic definitions-file-derived tests.
    Lives at `buildgen/`; see "Session 3 done" above for the full account.
 4. **Website `definitions.json` generator** — resolves BACKLOG.md's `@web`/`@web-group` open
-   sub-questions, combined with each device's TOML instance list.
+   sub-questions, combined with each device's TOML instance list. **Read
+   BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md first**: its §2/§2.9 (landed 2026-09-10) changed the
+   device TOML shape a real device's instance list can carry (`comp_source` → independent
+   `temperature_source`/`humidity_source` fields, plus the general `{default = true, ...}` opt-in
+   shape now legal on any defaultable wiring field) - a definitions.json generator built against
+   the pre-2026-09-10 shape would silently miss both.
 5. **Digital twin generalization** — consumes the Session 3 generated module directly, replacing
-   `configure_i2c_wiring("wozi"|"dev")`'s 2-profile enum.
+   `configure_i2c_wiring("wozi"|"dev")`'s 2-profile enum. **Same pointer as Session 4 above** - the
+   generated module's own construction calls now use the post-§2.9 `SGP40_Reader` signature; a twin
+   boot path assuming the old one-argument `comp_source` shape will not match reality.
 6. **Build chain + CI matrix + `build/` artifact directory.**
 7. **Versioning** — firmware + website, both starting at "2.0b0".
 8. **Closing consistency pass** — bird's-eye scan across everything sessions 1-7 touched; confirm

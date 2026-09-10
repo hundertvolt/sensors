@@ -777,6 +777,18 @@ def test_device_wiring_optional_field_absent_is_fine(tmp_path: Path, src_dir: Pa
     _build(tmp_path, src_dir, doc)  # no raise
 
 
+def test_partial_instance_level_fram_wiring_is_fine(tmp_path: Path, src_dir: Path):
+    # §4.3 axis 4's "partial" state: FRAM present, some fram-wirable instances wire fram_target,
+    # others explicitly don't - every existing test either wires it uniformly (base_doc's own
+    # default) or removes it from exactly one instance while testing something unrelated. This is
+    # the first test asserting the genuinely-partial case on its own terms.
+    doc = base_doc()
+    del doc["instance"][0]["wiring"]["fram_target"]  # scd30 - unwired
+    del doc["instance"][3]["wiring"]["fram_target"]  # neopixel - unwired
+    # sgp40 (index 1) and notification (index 4) keep their fram_target wiring - genuinely partial.
+    _build(tmp_path, src_dir, doc)  # no raise
+
+
 def test_device_wiring_fram_target_left_unwired_is_fine(tmp_path: Path, src_dir: Path):
     # §7.1 #4: the mirror image of the led_target test above - FRAM is present, but nothing wires
     # [device.wiring].fram_target to it. No existing test removed just this field while keeping the
