@@ -66,34 +66,69 @@ def test_iter_comment_tokens_marks_indented_comment(tmp_path: Path) -> None:
     path.write_text("class Foo:\n    def bar(self):\n        # indented comment\n        pass\n")
     tokens = iter_comment_tokens(path, "dev", "x")
     assert len(tokens) == 1
-    assert tokens[0].line_indented is True
+    assert tokens[0].inside_block is True
 
 
 def test_iter_comment_tokens_marks_tab_indented_comment(tmp_path: Path) -> None:
     # Indentation is "the line has leading whitespace", not "the line starts with spaces".
     path = tmp_path / "asy_x_driver.py"
     path.write_text("def f():\n\t# tab-indented comment\n\tpass\n")
-    assert iter_comment_tokens(path, "dev", "x")[0].line_indented is True
+    assert iter_comment_tokens(path, "dev", "x")[0].inside_block is True
 
 
 def test_iter_comment_tokens_trailing_inline_comment_on_module_level_statement_is_not_indented(tmp_path: Path) -> None:
     # The comment token's own column is > 0 (it starts after the code on the line), but the
-    # statement itself is unindented - line_indented must reflect the *line's* own indentation, not
-    # the token's column, or a legitimate trailing "_WIRING = (...)  # @requires ..." placement
-    # would be wrongly rejected as "inside a class/function body".
+    # statement itself is unindented - inside_block must not be the token's column, or a legitimate
+    # trailing "_WIRING = (...)  # @requires ..." placement would be wrongly rejected as "inside a
+    # class/function body".
     path = tmp_path / "asy_x_driver.py"
     path.write_text("_WIRING = ()  # trailing comment\n")
     tokens = iter_comment_tokens(path, "dev", "x")
     assert len(tokens) == 1
     assert tokens[0].col > 0
-    assert tokens[0].line_indented is False
+    assert tokens[0].inside_block is False
+
+
+def test_iter_comment_tokens_bracketed_continuation_line_at_module_level_is_not_inside_a_block(tmp_path: Path) -> None:
+    # Inside a module-level statement's brackets the comment's own line is indented by style, but
+    # the statement it belongs to is not - so physical indentation is the wrong question to ask.
+    path = tmp_path / "asy_x_driver.py"
+    path.write_text("_WIRING = (\n    # @requires bus.timeout>=200000\n)\n")
+    (tok,) = iter_comment_tokens(path, "dev", "x")
+    assert (tok.lineno, tok.inside_block) == (2, False)
+
+
+def test_iter_comment_tokens_bracketed_continuation_line_inside_a_body_is_inside_a_block(tmp_path: Path) -> None:
+    # The mirror image: same bracketed shape, but the enclosing statement is itself in a body.
+    path = tmp_path / "asy_x_driver.py"
+    path.write_text("def f():\n    x = (\n        # @requires bus.timeout>=200000\n    )\n")
+    (tok,) = iter_comment_tokens(path, "dev", "x")
+    assert (tok.lineno, tok.inside_block) == (3, True)
+
+
+def test_iter_comment_tokens_module_level_comment_after_an_indented_block_is_not_inside_a_block(tmp_path: Path) -> None:
+    # Guards the reason block depth can't simply be counted from INDENT/DEDENT: the tokenizer emits
+    # no DEDENT for a comment line, so this comment is still "inside" the function by that measure.
+    path = tmp_path / "asy_x_driver.py"
+    path.write_text("def f():\n    pass\n# @requires bus.timeout>=200000\nx = 1\n")
+    (tok,) = iter_comment_tokens(path, "dev", "x")
+    assert (tok.lineno, tok.inside_block) == (3, False)
+
+
+def test_iter_comment_tokens_statement_indentation_resets_after_brackets_close(tmp_path: Path) -> None:
+    # The bracket-depth bookkeeping must unwind cleanly, or every comment after the first bracketed
+    # module-level statement would inherit a stale answer.
+    path = tmp_path / "asy_x_driver.py"
+    path.write_text("_A = (\n    1,\n)\ndef f():\n    # inner\n    pass\n# outer\n")
+    tokens = iter_comment_tokens(path, "dev", "x")
+    assert [(t.text, t.inside_block) for t in tokens] == [("# inner", True), ("# outer", False)]
 
 
 def test_iter_comment_tokens_reports_every_comment_in_source_order(tmp_path: Path) -> None:
     path = tmp_path / "asy_x_driver.py"
     path.write_text("#!/usr/bin/env python3\nx = 1  # first\n\n# second\ndef f():\n    # third\n    pass\n")
     tokens = iter_comment_tokens(path, "dev", "x")
-    assert [(t.lineno, t.text, t.line_indented) for t in tokens] == [
+    assert [(t.lineno, t.text, t.inside_block) for t in tokens] == [
         (1, "#!/usr/bin/env python3", False),
         (2, "# first", False),
         (4, "# second", False),
@@ -145,7 +180,7 @@ def test_iter_comment_tokens_line_break_lookalike_does_not_shift_later_lines(tmp
     path = tmp_path / "asy_x_driver.py"
     path.write_bytes(b"X = 'a\x0bb'\ndef f():\n    pass\n# @requires bus.timeout>=200000\n")
     (tok,) = iter_comment_tokens(path, "dev", "x")
-    assert (tok.lineno, tok.line_indented) == (4, False)
+    assert (tok.lineno, tok.inside_block) == (4, False)
 
 
 @pytest.mark.parametrize("source", ["x = ('unterminated\n", "x = (1,\n"])

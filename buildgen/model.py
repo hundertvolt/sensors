@@ -93,7 +93,16 @@ def load_device(path: Path) -> DeviceModel:
         raise BuildError(device, f"{path} did not parse to a table at the top level")
 
     instances: dict[tuple[str, str], InstanceSpec] = {}
-    for i, inst in enumerate(doc.get("instance", [])):
+    raw_instances = doc.get("instance", [])
+    if isinstance(raw_instances, dict):
+        # A single-bracket [instance] table (rather than the [[instance]] array-of-tables the
+        # schema uses) parses to a dict, whose iteration below would yield its *keys* - so every
+        # such device used to fail as "entry #0 is missing a 'driver' field", pointing at the
+        # wrong mistake entirely. Name the real one instead.
+        raise BuildError(device, "[instance] is a single table - instances are an array of tables, so each one needs double brackets: [[instance]]")
+    if not isinstance(raw_instances, list):
+        raise BuildError(device, f"[[instance]] must be an array of tables, got {raw_instances!r}")
+    for i, inst in enumerate(raw_instances):
         if not isinstance(inst, dict) or "driver" not in inst:
             raise BuildError(device, f"[[instance]] entry #{i} is missing a 'driver' field")
         if not isinstance(inst["driver"], str) or not inst["driver"]:

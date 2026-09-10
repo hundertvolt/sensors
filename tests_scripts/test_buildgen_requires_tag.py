@@ -237,15 +237,31 @@ def test_parse_requires_tags_rejects_every_broken_shape(tmp_path: Path, source: 
     [
         "class Foo:\n    def __init__(self):\n        # @requires bus.timeout>=200000\n        pass\n",  # in a method body
         "class Foo:\n    # @requires bus.timeout>=200000\n    X = 1\n",  # in a class body
-        "_WIRING = (\n    # @requires bus.timeout>=200000\n)\n",  # on a continuation line inside brackets
+        "def f():\n    x = (\n        # @requires bus.timeout>=200000\n    )\n",  # bracketed, but inside a body
     ],
 )
-def test_parse_requires_tags_rejects_indented_locations(tmp_path: Path, source: str) -> None:
+def test_parse_requires_tags_rejects_locations_inside_a_body(tmp_path: Path, source: str) -> None:
     # Location dimension: a well-formed tag hidden inside a body isn't "close to the schema" the way
-    # module-level _WIRING/_VAL_* placement is - it must fail, not silently parse. The bracketed
-    # continuation case is deliberately strict too: it fails loud rather than being accepted at a
-    # placement the grammar doesn't document.
+    # module-level _WIRING/_VAL_* placement is - it must fail, not silently parse.
     _parse_expecting(tmp_path, source, "module level")
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "_WIRING = (\n    # @requires bus.timeout>=200000\n)\n",
+        "_WIRING = (\n    ('fram_target', X, 'fram', False, 'kwarg'),\n    # @requires bus.timeout>=200000\n)\n",
+        "_LIMITS = [\n    # @requires bus.timeout>=200000\n]\n",
+        "_D = {\n    # @requires bus.timeout>=200000\n}\n",
+        "_WIRING = (\n    # @requires bus.timeout>=200000\n    (1, (2,\n        3)),\n)\n",  # nested brackets
+    ],
+)
+def test_parse_requires_tags_accepts_a_bracketed_continuation_line_at_module_level(tmp_path: Path, source: str) -> None:
+    # A tag written inside a module-level statement's own brackets is physically indented but is
+    # still module level, and sitting *inside* _WIRING's parens is about as close to the schema as
+    # a comment can get. Placement is judged by the enclosing statement, not by leading whitespace.
+    (tag,) = _parse(tmp_path, source)
+    assert (tag.field, tag.op, tag.value) == ("timeout", ">=", 200000)
 
 
 @pytest.mark.parametrize(

@@ -43,9 +43,12 @@ _KNOWN_SIGNALS: "dict[str, tuple[str, str, str, tuple[int, int, int]]]" = {
 }
 
 
-def _identifier(name: str, device: str) -> str:
+def _identifier(name: str, device: str, instance: "str | None"=None, field: "str | None"=None) -> str:
+    # instance=/field= carried through so this matches every other BuildError call site's
+    # "name exactly what and where" contract (BUILD_CHAIN_PLAN.md's quality bar) - it was the one
+    # raise in the package that named only the device.
     if not name.isidentifier() or keyword.iskeyword(name):
-        raise BuildError(device, f"{name!r} is not usable as a generated Python identifier")
+        raise BuildError(device, f"{name!r} is not usable as a generated Python identifier", instance=instance, field=field)
     return name
 
 
@@ -54,10 +57,11 @@ class _Ctx:
     model: DeviceModel
 
     def bus_var(self, bus_id: str) -> str:
-        return _identifier(bus_id, self.model.device)
+        return _identifier(bus_id, self.model.device, instance=f"bus.{bus_id}", field=bus_id)
 
     def instance_var(self, key: "tuple[str, str]") -> str:
-        return _identifier(instance_label(key), self.model.device)
+        label = instance_label(key)
+        return _identifier(label, self.model.device, instance=label, field="driver" if not key[1] else "name_ext")
 
     def default_provider_expr(self, toml_field: str, value: dict) -> str:
         # §2.6's generated-code shape: construct the default provider inline, at the exact

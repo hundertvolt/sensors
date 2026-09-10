@@ -57,6 +57,46 @@ def test_missing_required_device_field(tmp_path: Path, src_dir: Path, field: str
         _build(tmp_path, src_dir, doc)
 
 
+@pytest.mark.parametrize("value", [5, 12345678, True, ["12345678"], 1.5])
+def test_device_hotspot_password_wrong_type_rejected(tmp_path: Path, src_dir: Path, value: object) -> None:
+    # Every other [device] field was type-checked; this one had only the bare presence check, so a
+    # misformatted value built clean - the one hole in "any misformatted field must fail the build".
+    doc = base_doc()
+    doc["device"]["hotspot_password"] = value
+    with pytest.raises(BuildError, match="hotspot_password must be a string"):
+        _build(tmp_path, src_dir, doc)
+
+
+@pytest.mark.parametrize("value", ["", "short", "1234567"])
+def test_device_hotspot_password_too_short_rejected(tmp_path: Path, src_dir: Path, value: str) -> None:
+    # 8 characters is WPA2-PSK's own minimum - below it the CYW43 can't bring the hotspot up at all.
+    doc = base_doc()
+    doc["device"]["hotspot_password"] = value
+    with pytest.raises(BuildError, match="at least 8"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_device_hotspot_password_at_the_minimum_length_is_accepted(tmp_path: Path, src_dir: Path) -> None:
+    doc = base_doc()
+    doc["device"]["hotspot_password"] = "12345678"
+    assert _build(tmp_path, src_dir, doc).doc["device"]["hotspot_password"] == "12345678"
+
+
+def test_single_bracket_instance_table_names_the_real_mistake(tmp_path: Path, src_dir: Path) -> None:
+    # [instance] instead of [[instance]] parses to a dict, whose iteration yields its keys - which
+    # used to surface as "entry #0 is missing a 'driver' field", pointing at the wrong mistake.
+    path = write_text(tmp_path, "dev", '[device]\nname = "Test"\n\n[instance]\ndriver = "neopixel"\npin = 15\n')
+    with pytest.raises(BuildError, match=r"double brackets"):
+        build_model(path, src_dir)
+
+
+def test_instance_table_of_the_wrong_type_entirely_is_rejected(tmp_path: Path, src_dir: Path) -> None:
+    # Top-level key, deliberately written before the [device] header so it isn't swallowed into it.
+    path = write_text(tmp_path, "dev", 'instance = 5\n\n[device]\nname = "Test"\n')
+    with pytest.raises(BuildError, match=r"must be an array of tables"):
+        build_model(path, src_dir)
+
+
 def test_device_int_field_wrong_type(tmp_path: Path, src_dir: Path) -> None:
     doc = base_doc()
     doc["device"]["conn_fail_to_hotspot"] = "five"

@@ -42,15 +42,20 @@ _PAYLOAD_NUMBER_RE = re.compile(r"(?<![\w.])[-+]?\d")
 # first non-word character is payload, not part of the name.
 _LEADING_WORD_RE = re.compile(r"[A-Za-z_][\w-]*")
 
+# Tokens that carry no statement indentation of their own, so they never update the running
+# "is the current statement indented" answer iter_comment_tokens() tracks.
+_NON_STATEMENT_TOKENS = frozenset({tokenize.COMMENT, tokenize.NL, tokenize.NEWLINE, tokenize.INDENT, tokenize.DEDENT, tokenize.ENCODING, tokenize.ENDMARKER})
+
 
 @dataclass(frozen=True)
 class CommentToken:
     lineno: int
     col: int
     text: str
-    line_indented: bool  # the physical source line's own leading whitespace - not just this
-    # token's own column, so a trailing inline comment on a module-level statement (col > 0 but
-    # the statement itself is unindented) doesn't get mistaken for "inside a class/function body".
+    inside_block: bool  # inside a class/function body, i.e. NOT module level. Deliberately not the
+    # token's own column (a trailing comment on a module-level statement starts well past 0) nor
+    # bare physical indentation (a comment on a bracketed continuation line of a module-level
+    # statement is indented, but is still module level) - see iter_comment_tokens().
 
 
 def _levenshtein(a: str, b: str) -> int:
@@ -72,19 +77,32 @@ def _levenshtein(a: str, b: str) -> int:
 def iter_comment_tokens(path: Path, device: str, instance_label: str) -> "list[CommentToken]":
     """Every real COMMENT token in `path` - tokenize-based, not a naive per-line regex, so a "#"
     inside a string/docstring (e.g. this very module's own docstring, which quotes example tag
-    grammar) is never mistaken for a real comment."""
+    grammar) is never mistaken for a real comment. Each token carries whether it sits inside a
+    class/function body rather than at module level."""
     tokens = []
+    # Bracket depth, plus whether the statement that opened the current bracketing was itself
+    # indented: inside brackets a comment's own line is always indented by style, so its physical
+    # indentation says nothing about whether it sits at module level - the enclosing statement's
+    # does. Outside brackets the line's own indentation is the answer, and INDENT/DEDENT depth is
+    # not: the tokenizer emits no DEDENT for a comment line, so a module-level comment following an
+    # indented block still reads as depth 1 there.
+    depth = 0
+    stmt_indented = False
     try:
         with path.open("rb") as f:  # tokenize decodes it itself, honoring a PEP 263 cookie/BOM
             for tok in tokenize.tokenize(f.readline):
-                if tok.type != tokenize.COMMENT:
-                    continue
-                # tok.line is the tokenizer's own physical source line. Re-deriving it by indexing
-                # a str.splitlines() list would misalign: splitlines() also breaks on \x0b/\x0c/
-                # \u2028/..., which Python's tokenizer treats as ordinary characters, so a single
-                # such character anywhere earlier in the file shifted every later line by one and
-                # made valid module-level tags fail as "not at module level".
-                tokens.append(CommentToken(tok.start[0], tok.start[1], tok.string, tok.line[:1].isspace()))
+                if tok.type == tokenize.COMMENT:
+                    # tok.line is the tokenizer's own physical source line. Re-deriving it by
+                    # indexing a str.splitlines() list would misalign: splitlines() also breaks on
+                    # \x0b/\x0c/\u2028/..., which Python's tokenizer treats as ordinary characters,
+                    # so a single such character anywhere earlier in the file shifted every later
+                    # line by one and made valid module-level tags fail as "not at module level".
+                    inside_block = stmt_indented if depth else tok.line[:1].isspace()
+                    tokens.append(CommentToken(tok.start[0], tok.start[1], tok.string, inside_block))
+                elif tok.type == tokenize.OP and tok.string in "()[]{}":
+                    depth += 1 if tok.string in "([{" else -1
+                elif not depth and tok.type not in _NON_STATEMENT_TOKENS:
+                    stmt_indented = tok.line[:1].isspace()
     except (tokenize.TokenError, SyntaxError, IndentationError) as e:
         raise BuildError(device, f"{path} has a syntax error: {e}", instance=instance_label) from e
     return tokens

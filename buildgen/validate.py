@@ -92,6 +92,15 @@ def _check_device_table(model: DeviceModel) -> None:
             raise BuildError(model.device, f"[device].{f} must be an int, got {dev[f]!r}", field=f)
     if not (isinstance(dev["name"], str) and dev["name"]):
         raise BuildError(model.device, "[device].name must be a non-empty string", field="name")
+    # hotspot_password used to get only the bare presence check every _REQUIRED_DEVICE_FIELDS
+    # member gets, so `hotspot_password = 5` or `= ""` built clean - the one field left out of the
+    # "any misformatted field or property must fail the build" rule. The 8-character floor is
+    # WPA2-PSK's own minimum (IEEE 802.11i), i.e. a shorter one isn't a weak password, it's a
+    # hotspot the CYW43 can't bring up at all.
+    if not isinstance(dev["hotspot_password"], str):
+        raise BuildError(model.device, f"[device].hotspot_password must be a string, got {dev['hotspot_password']!r}", field="hotspot_password")
+    if len(dev["hotspot_password"]) < 8:
+        raise BuildError(model.device, f"[device].hotspot_password is {len(dev['hotspot_password'])} characters - WPA2 requires at least 8", field="hotspot_password")
     expected_hostname = "SensorStation" + dev["name"]
     if dev["hostname"] != expected_hostname:
         raise BuildError(model.device, f"[device].hostname is {dev['hostname']!r}, expected {expected_hostname!r} (SensorStation<name>)", field="hostname")
@@ -134,14 +143,24 @@ def _resolve_instances(model: DeviceModel, src_dir: Path) -> None:
     # forced to name_ext="" (below), so two of the same singleton driver always share the exact
     # same (driver, name_ext) key - model.load_device() already rejects that as a duplicate
     # [[instance]] entry before this function ever runs, making a second check here dead code.
+    # Every parse below reads and re-parses the driver's source file, so two instances of one
+    # driver did all of it twice. Cached per source path for this build: the results are pure
+    # functions of the file. A parse error still aborts the build on whichever instance hit it
+    # first - the fault is in the shared driver file, so either instance names it correctly.
+    parsed: dict[Path, tuple] = {}
     for spec in model.instances.values():
         info = resolve_driver(spec.driver, src_dir, model.device)
         spec.driver_info = info
-        spec.wiring_schema = parse_wiring(info.source_path, model.device, spec.label)
-        spec.requires_tags = parse_requires_tags(info.source_path, model.device, spec.label)
-        spec.limits_schema = parse_limits(info.source_path, model.device, spec.label)
-        spec.value_wiring_schema = parse_value_wiring(info.source_path, model.device, spec.label)
-        spec.resolved_name = _instance_name(parse_name_constant(info.source_path, model.device, spec.label), spec.name_ext)
+        if info.source_path not in parsed:
+            parsed[info.source_path] = (
+                parse_wiring(info.source_path, model.device, spec.label),
+                parse_requires_tags(info.source_path, model.device, spec.label),
+                parse_limits(info.source_path, model.device, spec.label),
+                parse_value_wiring(info.source_path, model.device, spec.label),
+                parse_name_constant(info.source_path, model.device, spec.label),
+            )
+        spec.wiring_schema, spec.requires_tags, spec.limits_schema, spec.value_wiring_schema, base_name = parsed[info.source_path]
+        spec.resolved_name = _instance_name(base_name, spec.name_ext)
 
         if spec.driver in SERVICE_DRIVERS and spec.name_ext:
             raise BuildError(model.device, f"{spec.label}: singleton service driver {spec.driver!r} must not declare name_ext", instance=spec.label, field="name_ext")

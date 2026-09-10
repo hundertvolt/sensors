@@ -58,10 +58,10 @@ def parse_requires_tags(path: Path, device: str, instance_label: str) -> tuple[R
         if m is None:
             continue
         exact_matches.add((tok.lineno, tok.col))
-        if tok.line_indented:
+        if tok.inside_block:
             raise BuildError(
                 device,
-                f"{path}:{tok.lineno}: @requires tag must be at module level (see _WIRING/_VAL_*'s own placement), not indented inside a class/function body: {tok.text.strip()!r}",
+                f"{path}:{tok.lineno}: @requires tag must be at module level (see _WIRING/_VAL_*'s own placement), not inside a class/function body: {tok.text.strip()!r}",
                 instance=instance_label,
             )
         try:
