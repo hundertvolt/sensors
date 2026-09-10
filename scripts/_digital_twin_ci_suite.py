@@ -172,7 +172,9 @@ def _spawn(micropython_bin: str, extra_args: list[str], log_path: Path) -> subpr
     log_file = open(log_path, "w")  # lifetime is the whole subprocess run, closed by caller
     cmd = [micropython_bin, "digital_twin/run_wozi_integration.py", "--host", HOST, "--port", str(PORT), *extra_args]
     print(f"== Launching: {' '.join(cmd)} (log: {log_path})")
-    proc = subprocess.Popen(  # noqa: S603 - fixed, hardcoded argv, no shell, no untrusted input
+    # Fixed argv assembled just above from the repo's own paths and this suite's own literal
+    # flags; shell=False, no untrusted input. S603 exemption is central, see pyproject.toml.
+    proc = subprocess.Popen(
         cmd,
         cwd=REPO_ROOT,
         env=env,
