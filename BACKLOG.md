@@ -231,16 +231,36 @@ constraints.
 15. **Should a transient SPI RX overrun be retried, or left to the task supervisor?** MicroPython
     1.29 added an `OSError(EIO)` raise site to rp2's SPI transfer path for *reading* transfers of
     32+ bytes (SPECIFICATION.md Part F.5.2), reachable here via `asy_fram_driver.py`'s 260-byte
-    SGP40 VOC-state read. It currently propagates uncaught out of `get_values()` →
-    `_read_chunk()`, killing the reader task, which `system_service.py` then restarts — safe, but
-    heavy-handed for a one-off bus glitch a single retry would absorb. Deliberately **not**
-    changed as part of the version bump (CLAUDE.md: flag, don't silently fix): swallowing it would
-    be wrong (the buffer holds garbage), but a bounded retry inside `asy_fram_manager.py`'s chunk
-    loop is a real option. `tests/machine.py`'s `SPI.rx_overrun`/`inject_fault()` model the fault
-    and `tests/test_asy_spi_driver.py` pins down today's behavior, so either answer is testable.
-    **Testing this error path is no longer optional** - see the "Deferred" list's own entry for the
-    three tiers still missing it; the real-hardware one is what decides this question, since
-    "transient" is not something a fake can establish.
+    SGP40 VOC-state read. **Much less pressing than it first looked.** This entry originally said
+    the overrun propagates uncaught and kills the reader task; driving it through the real stack
+    (see the live-path tests added to `tests/test_asy_fram_manager.py` and
+    `tests/test_digital_twin_bus_hazard_concurrency.py`) showed otherwise: `_read_chunk()`'s
+    blanket `except Exception` catches it, logs errno 47, and `_read()` then reads block 1, so a
+    single transient overrun is **fully absorbed** - correct data returned, block 0 repaired. Only
+    an overrun that hits both copies degrades the read to `None`, and even then nothing raises.
+    So a retry inside the chunk loop would buy little on the read path the dual-copy layer already
+    covers; the real open part is whether the *interrupted read* leaving a chunk unreadable
+    (question 16 below) should be fixed instead, which is the failure that actually costs data
+    availability. Still deliberately **not** changed (CLAUDE.md: flag, don't silently fix).
+
+16. **An interrupted chunk read leaves a FRAM chunk permanently unreadable, though its data is
+    intact.** Found by driving the SPI RX-overrun fault through the real stack, but **not specific
+    to that fault** - any exception or failure inside `asy_fram_manager.py`'s `_read_chunk()` after
+    the status bytes are marked reaches it. `_read_chunk()` writes `_STATUS_BUSY` to the block it is
+    about to read and only restores `_STATUS_IDLE` on the way out, so an interruption in between
+    leaves the block marked busy. When it hits **both** copies, every later read fails
+    `_set_check_sb()`'s status check with errno 31 ("Read status byte is not 1 but 2") **even after
+    the bus has completely recovered**. Verified end to end in both the mock and twin tiers: the
+    payload bytes are still byte-for-byte correct on the chip, the read returns `None` anyway, and
+    only a *write* clears it - so a read-mostly chunk (the SGP40 VOC state restored at boot, the NTP
+    boot signature) can stay unreadable indefinitely, since nothing in the normal flow rewrites it.
+    Not fixed here (CLAUDE.md: report cross-cutting behavior discrepancies, don't silently change
+    them), and the fix is a real design choice, not obvious: restoring `_STATUS_IDLE` in a `finally`
+    would clear it, but the busy marker exists precisely so a *torn write* is never mistaken for
+    good data, and the read path cannot always tell which one it interrupted. A narrower option is
+    to treat "both copies BUSY but CRC-valid" as recoverable on read. `tests/
+    test_asy_fram_manager.py::test_an_overrun_mid_read_leaves_the_chunk_unreadable_until_it_is_
+    rewritten` pins down today's behavior, so any answer is testable against it.
 
 ## Deferred / explicitly out-of-scope work
 - **The 1.29.0 pin has never run on real hardware.** Every 1.28→1.29 claim in SPECIFICATION.md
@@ -260,23 +280,33 @@ constraints.
   - **The 12,918 B SRAM-resident-code win** (Part F.5.3) is a linker-map measurement, not a
     measured runtime speedup - don't quote it as one until a bench timing run backs it up.
 - **The SPI RX-overrun error path shall be tested** (project owner's explicit direction,
-  2026-09-10). MicroPython 1.29's new `OSError(EIO)` raise site (SPECIFICATION.md Part F.5.2)
-  currently has coverage at exactly one of the four tiers CLAUDE.md's standing bus-hazard rule asks
-  for. What exists and what is owed:
-  - **Mock tier - done.** `tests/test_asy_spi_driver.py` pins the raise-site semantics against
-    `tests/machine.py`'s `SPI.rx_overrun`: a write never raises, a sub-32-byte read never takes the
-    DMA path so cannot overrun, and a 32+ byte read raises `OSError(EIO)` uncaught.
-  - **The live path itself - missing.** Those tests stop at `asy_spi_driver.py`. Nothing exercises
-    an overrun through `asy_fram_manager.py`'s chunk loop on the 260-byte SGP40 VOC-state read -
-    where it actually surfaces - or asserts what the reader task and `system_service.py`'s
-    supervisor then do with it. Cheapest of the four to add and the most informative, since it
-    covers the behaviour open question 15 is actually about.
-  - **Digital twin - missing.** `digital_twin/machine.py` models I2C's no-ACK `EIO` but has no SPI
-    equivalent; it needs the same fault surface `tests/machine.py`'s fake already grew.
-  - **Real hardware - missing**, and it is the tier that can actually settle open question 15: a
-    bounded retry is only the right answer if a real overrun is genuinely transient, which no
-    amount of fault injection against a fake can establish. `tests_hardware/`'s existing FRAM
-    fault-injection work (its README's "Fifth pass") is the natural home.
+  2026-09-10). MicroPython 1.29's new `OSError(EIO)` raise site (SPECIFICATION.md Part F.5.2),
+  across the tiers CLAUDE.md's standing bus-hazard rule asks for. **Three of four are now done**;
+  what they found is open question 16 above.
+  - **Mock tier, raise-site semantics - done.** `tests/test_asy_spi_driver.py`: a write never
+    raises, a sub-32-byte read never takes the DMA path so cannot overrun, a 32+ byte read raises.
+  - **Mock tier, live path - done.** `tests/test_asy_fram_manager.py`'s four live-path tests inject
+    the fault at the `machine.SPI` boundary and let it travel the real
+    `asy_spi_driver` → `asy_fram_driver.get_values()` → `_read_chunk()` chunk loop. This needed a
+    real gap closed first: `tests/_fram_chip_fake.py` overrides `readinto()` and so shadowed the
+    base fake's own fault check, leaving the bus-level knobs unreachable through the FRAM stack.
+  - **Digital twin - done.** `digital_twin/machine.py`'s SPI gained the same size-gated
+    `rx_overrun`/`rx_overrun_remaining` model (the chip-level `FaultInjector` is the wrong place:
+    it cannot express the 32-byte threshold, so it would raise on a 1-byte status read that real
+    hardware could not fail). Exercised against the real booted object graph in
+    `tests/test_digital_twin_bus_hazard_concurrency.py`.
+  - **Real hardware - still open, and it cannot be a fault-injection test.** An RX overrun is a DMA
+    timing condition; nothing reachable from Python on the device can induce one deliberately, so
+    there is no on-target equivalent of the knob the other three tiers use. What a bench run *can*
+    do, and should: confirm the 260-byte SGP40 VOC-state read still works normally at 1.29 (that
+    the DMA path is exercised at all), and test the **consequence** rather than the cause - the
+    stuck-BUSY lockout in question 16 is inducible on real hardware, by writing `_STATUS_BUSY` to
+    both of a scratch chunk's blocks through the FRAM driver directly and then attempting a read.
+    That is the test worth writing, and it belongs with `tests_hardware/`'s existing FRAM
+    fault-injection work (its README's "Fifth pass"). Deliberately not written blind: it should be
+    authored in a session that can actually run it, and after question 16 is decided, so it pins
+    down intended behavior rather than freezing a defect.
+
 - **Real-hardware re-test of the segfault fix and the memory-leak soak test — real-hardware forms
   now exist and are wired into `tests_hardware/`, but the actual long-soak run is still opt-in and
   has not yet been executed.** Corrects a stale claim (this entry used to say neither soak-test

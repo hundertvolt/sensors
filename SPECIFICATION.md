@@ -1720,11 +1720,13 @@ so a test can tell the pre- and post-re-`init()` bus apart. Nothing in `src/` ob
 after a DMA transfer it drains the FIFO, and if `SPI_SSPRIS_RORRIS` is set **and the transfer was
 reading**, it aborts the RX channel and ends with `mp_raise_OSError(MP_EIO)`.
 
-Two bounds make this precise, and both are modeled in `tests/machine.py`'s SPI fake
-(`rx_overrun` for the blanket case, `inject_fault()` for a single call — the same shape its I2C
-fake already had). The digital twin needs no new mechanism: its SPI transfers run through
-`_fram_chip.py`'s `FaultInjector`, whose `maybe_raise("readinto")` already produces an identical
-observable `OSError` — inject there, not at `digital_twin/machine.py`'s bus level.
+Two bounds make this precise, and both are modeled at the bus level in `tests/machine.py`'s SPI
+fake and in `digital_twin/machine.py`'s (`rx_overrun` for the blanket case, `rx_overrun_remaining`
+for a transient glitch the bus recovers from, plus `inject_fault()` on the test fake for a single
+call of any size — the same shape its I2C fake already had). The twin's chip-level
+`_fram_chip.py` `FaultInjector` raises an identical-looking `OSError`, but it is the wrong place
+for *this* fault: it cannot express the size threshold below, so a 1-byte status-register read
+would raise there when real hardware could not.
 
 - **Write-only transfers can still never raise** — the failure flag is only set under
   `if (!write_only)`.
@@ -1733,10 +1735,19 @@ observable `OSError` — inject there, not at `digital_twin/machine.py`'s bus le
 
 Reachable in this codebase: `asy_fram_driver.py`'s `_read_address()` reads the SGP40 VOC parameter
 chunk in one 260-byte `readinto()` (`_VOC_PARAMS_MEMSIZE` 256 + CRC32 4), well past the threshold.
-It **propagates uncaught**, matching `asy_i2c_driver.py`'s "a real `OSError` always propagates"
-contract — an overrun leaves garbage in the buffer, so reporting success would be strictly worse.
-Whether `asy_fram_manager.py` should retry a transient overrun rather than let the task supervisor
-restart the task is an open behavioral question (BACKLOG.md open question 15), not settled here.
+It propagates uncaught out of `get_values()`, matching `asy_i2c_driver.py`'s "a real `OSError`
+always propagates" contract — an overrun leaves garbage in the buffer, so reporting success would
+be strictly worse.
+
+**It does not reach the reader task, though**, and an earlier draft of this section that said it
+did was wrong. Driving the fault through the real stack (`tests/test_asy_fram_manager.py`'s
+live-path tests, mirrored in the twin tier) shows `_read_chunk()`'s blanket `except Exception`
+catching it, logging errno 47, and returning a clean failure — after which `_read()` reads block 1
+instead, so **a single transient overrun costs nothing at all**: the caller gets its data and the
+repair write restores block 0. Only an overrun hitting both copies degrades the read to `None`.
+That makes the retry question (BACKLOG.md open question 15) much less pressing than it looked —
+but the same run surfaced a genuine defect in the interrupted-read path, which is a separate,
+still-open matter: see BACKLOG.md's own entry.
 
 ### F.5.3 Free wins already compiled into the 1.29 build
 

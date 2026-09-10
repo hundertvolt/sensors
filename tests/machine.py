@@ -233,6 +233,7 @@ class SPI:
         self.log: list[tuple] = []
         self.read_queue: list[bytes] = []
         self.rx_overrun = False  # convenience: EIO on every DMA-path read, like I2C's `busy`
+        self.rx_overrun_remaining = 0  # counted counterpart: N transient overruns, then the bus recovers
         self._faults: dict[str, list[Exception]] = {}  # op name -> FIFO queue, one exception per matching call
 
     def init(
@@ -271,9 +272,15 @@ class SPI:
 
     def _maybe_raise(self, op: str, nbytes: int) -> None:
         # DMA_MIN_SIZE_THRESHOLD is 32 in ports/rp2/machine_spi.c - a shorter transfer uses the
-        # blocking software path, which has no overrun check and so cannot raise.
-        if self.rx_overrun and nbytes >= _SPI_DMA_MIN_SIZE:
-            raise OSError(errno.EIO, "SPI RX overrun")
+        # blocking software path, which has no overrun check and so cannot raise. Both knobs are
+        # gated on that, so a 1-byte status-register read stays immune however they are set;
+        # inject_fault()'s queue below is deliberately not, so a test can still target any call.
+        if nbytes >= _SPI_DMA_MIN_SIZE:
+            if self.rx_overrun:
+                raise OSError(errno.EIO, "SPI RX overrun")
+            if self.rx_overrun_remaining > 0:
+                self.rx_overrun_remaining -= 1
+                raise OSError(errno.EIO, "SPI RX overrun")
         queue = self._faults.get(op)
         if queue:
             raise queue.pop(0)

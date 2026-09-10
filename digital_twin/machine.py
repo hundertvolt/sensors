@@ -7,6 +7,7 @@ import errno
 import time
 from collections import deque
 
+_SPI_DMA_MIN_SIZE = 32  # ports/rp2/machine_spi.c's own dma_min_size_threshold - see SPI._maybe_overrun()
 _LOG_MAXLEN = 200  # I2C.log/SPI.log's own bound - see digital_twin/README.md for the real memory
 # leak this avoids; same "keep last N" convention print_log.py's own PrintLogHistory uses.
 
@@ -316,6 +317,12 @@ class SPI:
         self.deinit_called = False
         self.log: deque[tuple] = deque((), _LOG_MAXLEN)
         self.device = _wire_spi_device(id)  # public: tests reach the wired chip via spi.device
+        # MicroPython 1.29 added an RX-overrun check to rp2's SPI transfer path, reached only by
+        # *reading* transfers of 32+ bytes (SPECIFICATION.md Part F.5.2). Modelled here rather
+        # than on the chip's own FaultInjector because it is a property of the port, not the
+        # device: sticky, plus a counted form for a transient glitch the bus recovers from.
+        self.rx_overrun = False
+        self.rx_overrun_remaining = 0
 
     def init(
         self,
@@ -352,11 +359,23 @@ class SPI:
         self.log.append(("write", data))
 
     def readinto(self, buf: "bytearray | memoryview", write_value: int = 0x00) -> None:
+        self._maybe_overrun(len(buf))
         if self.device is not None:
             self.device.readinto(buf)
         else:
             buf[:] = bytes(len(buf))
         self.log.append(("readinto", len(buf), write_value))
+
+    def _maybe_overrun(self, nbytes: int) -> None:
+        # Below DMA_MIN_SIZE_THRESHOLD (32 in ports/rp2/machine_spi.c) a transfer takes the
+        # blocking software path, which has no overrun check - so a short read never raises here.
+        if nbytes < _SPI_DMA_MIN_SIZE:
+            return
+        if self.rx_overrun:
+            raise OSError(errno.EIO, "SPI RX overrun")
+        if self.rx_overrun_remaining > 0:
+            self.rx_overrun_remaining -= 1
+            raise OSError(errno.EIO, "SPI RX overrun")
 
     def write_readinto(self, buffer_out: object, buffer_in: "bytearray | memoryview") -> None:
         if len(buffer_out) != len(buffer_in):  # type: ignore[arg-type]

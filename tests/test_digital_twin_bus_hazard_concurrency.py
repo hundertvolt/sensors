@@ -12,6 +12,7 @@ import machine  # noqa: E402
 
 import sensortask_dev  # noqa: E402
 import sensortask_wozi  # noqa: E402
+from crc_checks import CRC8  # noqa: E402
 
 try:
     from typing import TYPE_CHECKING
@@ -242,6 +243,39 @@ def test_wozi_fram_recovers_after_an_injected_spi_read_fault() -> None:
         async with fram_spi:
             ok = await fram_spi.get_values(buf, addr_start=0x200)
             assert ok and bytes(buf) == b"\x05\x06\x07\x08", f"get_values() returned {bytes(buf)!r} on a clean retry after recovery, expected the real pre-fault seeded content b'\\x05\\x06\\x07\\x08'"
+
+    run_timed(scenario(), timeout_s=20.0)
+
+
+def test_wozi_fram_chunk_loop_absorbs_a_transient_spi_rx_overrun() -> None:
+    # Twin-tier form of the live-path mock tests in test_asy_fram_manager.py: same fault, but
+    # against the real twin bus and a chunk allocated from the real booted manager. One overrun
+    # costs nothing because _read chunk-reads block 1 when block 0 fails; a persistent one
+    # degrades to None instead of propagating, and leaves the chunk marked BUSY (BACKLOG.md).
+    machine.configure_i2c_wiring("wozi")
+    port = _next_test_port()
+
+    async def scenario() -> None:
+        await sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir(), web_host="127.0.0.1", web_port=port)
+        assert sensortask_wozi.fram is not None
+        manager = sensortask_wozi.fram
+        bus = manager.fram._spidev.spi._spi
+        assert bus is not None
+        chunk = manager.get_chunk(40, crc=CRC8())  # 41 B with the CRC byte - over the 32 B DMA threshold
+        assert chunk is not None
+        payload = bytes(range(40))
+        assert await chunk.write(payload)
+
+        bus.rx_overrun_remaining = 1  # one transient glitch, then the bus recovers
+        assert await chunk.read() == bytearray(payload), "a single RX overrun should be absorbed by the block-1 copy"
+        assert bus.rx_overrun_remaining == 0, "the injected overrun never actually fired"
+
+        bus.rx_overrun = True  # persistent: both copies unreadable
+        assert await chunk.read() is None, "an unrecoverable overrun must degrade, not propagate"
+        bus.rx_overrun = False
+        assert await chunk.read() is None, "chunk stays unreadable after the bus recovers - see BACKLOG.md"
+        assert await chunk.write(payload), "a write is what clears the stuck BUSY status bytes"
+        assert await chunk.read() == bytearray(payload)
 
     run_timed(scenario(), timeout_s=20.0)
 
