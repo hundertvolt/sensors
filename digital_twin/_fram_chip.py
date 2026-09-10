@@ -134,7 +134,9 @@ class FramChip:
     # _write_value: the SPI bus fills the MOSI line with it while clocking a read out, so a
     # device-side fake never reads it. Named for machine.SPI.readinto()'s own second argument,
     # which is positional-only there - no caller can pass it by keyword.
-    def readinto(self, buf: bytearray, _write_value: int = 0x00) -> None:
+    # bytearray | memoryview, matching SPI.readinto()/asy_spi_driver.py's own signature: the body
+    # only uses len(buf) and buf[:] = ..., both valid on a writable memoryview.
+    def readinto(self, buf: "bytearray | memoryview", _write_value: int = 0x00) -> None:
         self.fault.maybe_hang("readinto")
         self.fault.maybe_raise("readinto")
         if self._pending_op == _OPCODE_READ and self._pending_addr is not None:

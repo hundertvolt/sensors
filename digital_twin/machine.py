@@ -19,6 +19,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from typing import Any, Protocol
 
+    from _fram_chip import FramChip  # lazy-imported at runtime inside _wire_spi_device()
+
     class _RandomSource(Protocol):
         # Structural stand-in for the `random` module (the default) or a seeded random.Random.
         # Declares the union of what the wired chip fakes each ask for through their own narrower
@@ -284,7 +286,7 @@ _DEV_FRAM_SIZE = 0x40000  # MB85RS2MTA, 256KB - sensortask_dev.py's own AsyFramM
 _DEV_FRAM_RDID = bytes([0x04, 0x7F, 0x48, 0x03])  # manufacturer=Fujitsu, cont_code, product ID 0x4803 - asy_fram_driver.py's own _KNOWN_PRODUCT_IDS[0x40000], datasheets/fram/MB85RS2MTA-DS501-00032-3v0-E.pdf p.10
 
 
-def _wire_spi_device(bus_id: int) -> "Any | None":
+def _wire_spi_device(bus_id: int) -> "FramChip | None":
     global _current_fram_chip
     if bus_id == 0:
         from _fram_chip import FramChip

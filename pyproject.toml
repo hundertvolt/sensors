@@ -281,7 +281,14 @@ max-returns = 12
 # the privates of the module under test (that is what a unit test does), and import lazily after
 # sys.path manipulation (SPECIFICATION.md Part E.3's runner layout). Bare literals in assertions
 # are the expected value under test - naming them would hide what is being asserted.
-"tests/**" = ["S101", "SLF001", "PLC0415", "PLR2004"]
+# ARG00x: a test double must accept the REAL API's full signature, including the parameters it
+# deliberately ignores - that is what makes it a faithful double. Renaming them to `_x` is not
+# merely undesirable here, it is a hard error: mypy checks a Protocol implementation's and a
+# monkeypatched method's parameter NAMES against the real ones, so `_buf` fails [assignment]
+# outright (tests/test_sensortask_wozi.py and tests/test_asy_dns_client.py both carry comments
+# recording exactly this). Every one of the 56 ARG findings in this repo is that pattern, and
+# src/ + digital_twin/ have none - so the rule is unsatisfiable precisely where it fires.
+"tests/**" = ["S101", "SLF001", "PLC0415", "PLR2004", "ARG001", "ARG002", "ARG004", "ARG005"]
 "digital_twin/**" = ["S101", "SLF001", "PLC0415", "PLR2004"]
 # sensortask_wozi.py/sensortask_dev.py assert their module-level singletons are non-None purely to
 # narrow the type for mypy after the `global` construction step (Part A.7) - type-narrowing
@@ -302,7 +309,7 @@ max-returns = 12
 # named `id` upstream, and whose I2C.writeto()/readfrom_into() `stop` is positional-only
 # (extmod/machine_i2c.c uses MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN, i.e. kwargs are rejected). The
 # fakes must impersonate that signature exactly or they stop being faithful doubles.
-"tests/machine.py" = ["A002", "FBT001", "FBT002"]
+"tests/machine.py" = ["A002", "FBT001", "FBT002", "ANN401"]  # ANN401: category 1 above - Timer.__init__ forwards **kwargs into self.init()
 "digital_twin/machine.py" = ["A002", "FBT001", "FBT002"]
 # The `_push_*` / setter-dispatch family takes the config-VALUE union
 # (`int | float | str | bool | None`), where `bool` is one member of a JSON value type - not a
@@ -313,12 +320,39 @@ max-returns = 12
 "src/asy_sgp40_driver.py" = ["FBT001"]
 "src/asy_scd30_driver.py" = ["FBT001"]
 "src/asy_wifi_service.py" = ["S106", "FBT001"]
+# ANN401, category 1 - heterogeneous **kwargs forwarded verbatim into a callee whose keyword
+# parameters have DIFFERENT types, so no single element type can satisfy the callee's overloads.
+# print()'s stub wants `sep: str | None`, `end: str | None`, `file: SupportsWrite[str] | None` and
+# `flush: bool` simultaneously; `object`, `str` and `str | None` were each tested directly and all
+# three fail, at python_version 3.10, 3.11 AND 3.12. PEP 692's `Unpack[TypedDict]` is the real fix
+# and is unavailable: typings/stdlib/typing.pyi declares `TypedDict: object`, so it is not a type
+# at all here. The same shape applies to the three test helpers, which forward into constructors
+# with up to 21 differently-typed keyword parameters.
+"src/print_log.py" = ["ANN401"]
+"tests/test_asy_uart_driver.py" = ["ANN401"]
+"tests/test_asy_webserver_service.py" = ["ANN401"]
+# ANN401, category 2 - the asyncio.start_server() callback seam. Its stub types the callback as
+# Callable[[StreamReader, StreamWriter], ...], but MicroPython has ONE `Stream` object for both
+# directions and CPython's StreamWriter has no aclose() at all, so no annotation satisfies both the
+# stub and the real object. Everything downstream of _serve() IS fully typed; this is the single
+# Any-shaped seam, and it is a third-party stub mismatch rather than our own looseness.
+# ANN401, category 3 - `_wlan` bridges the real network.WLAN board stub to tests/network.py's fake
+# for attributes that exist only on the fake. The Any is load-bearing: it is what lets one helper
+# see both universes. A deliberate three-file family (Part D.10) - change all three together or
+# none.
+"tests/test_asy_wifi_service.py" = ["ANN401"]
+"tests/test_ntp_fram_system_integration.py" = ["ANN401"]
+"tests/test_ntp_wifi_dns_integration.py" = ["ANN401"]
+# ANN401, category 4 - this test deliberately passes a TYPE-INVALID value to prove the runtime
+# degrades cleanly. Typing the parameter honestly would make the call site a static error, which is
+# the very thing the test exists to exercise.
+"tests/test_asy_udp_socket.py" = ["ANN401"]
 "digital_twin/launch.py" = ["S105"]
 "tests/test_digital_twin_network_neopixel.py" = ["S106"]
 # asy_webserver_service.py makes the same documented Part C.5.2 `_set_dict_cfg` dispatch call as
 # api_response.py above, and asserts its static mount is non-None purely to narrow the type for
 # mypy (the route is only ever registered when it isn't None).
-"src/asy_webserver_service.py" = ["SLF001", "S101"]
+"src/asy_webserver_service.py" = ["SLF001", "S101", "ANN401"]  # ANN401: the asyncio.start_server() seam described above
 "src/sensortask_wozi.py" = ["S101"]
 "src/sensortask_dev.py" = ["S101"]
 
