@@ -17,28 +17,32 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-    from typing import Any, Literal, NamedTuple, TypeVar
+    from typing import Literal, NamedTuple, TypeVar
 
     T = TypeVar("T", int, float, str)
 
-    # One schema field: (name, type, def, min, max, special) - see module docstring. "special" is
-    # a single bypass value (exact-match exception to min/max, e.g. SCD30's AmbPres=0) or a tuple
-    # of allowed values (a discrete set, e.g. BMP3xx's OSR/IIR settings - see type_or_range_error).
+    # The project's canonical config/JSON scalar: every schema default, cached value, REST-supplied
+    # field value and _push_* dispatch payload is one of these (SPECIFICATION.md Part C.5.2 / G.2).
+    CfgValue = int | float | str | bool | None
+    # A field's "special" slot: one bypass scalar (exact-match exception to min/max, e.g. SCD30's
+    # AmbPres=0) or a tuple of allowed values (a discrete set, e.g. BMP3xx's OSR/IIR settings).
+    CfgSpecial = int | float | str | tuple[int, ...] | tuple[float, ...] | tuple[str, ...] | None
+
+    # One schema field: (name, type, def, min, max, special) - see module docstring.
     FieldSchema = tuple[
         str,
         str,
-        "int | float | str | bool | None",
+        CfgValue,
         "int | float | None",
         "int | float | None",
-        "int | float | str | tuple[int, ...] | tuple[float, ...] | tuple[str, ...] | None",
+        CfgSpecial,
     ]
     ConfigSchema = tuple[FieldSchema, ...]
 
 from print_log import PrintLogHistory
 
 
-def _special_bypass(check_val: "Any", val_special: "Any", scalar_type: type, *, check_special: bool) -> "bool | None":
+def _special_bypass(check_val: "CfgValue", val_special: "CfgSpecial", scalar_type: type, *, check_special: bool) -> "bool | None":
     # Shared by every non-bool branch of type_or_range_error: val_special is a single scalar or a
     # tuple/list of scalars (see ConfigSchema above). Returns True/False to short-circuit the
     # caller (malformed special, or a valid bypass match), or None to fall to the range check.
@@ -93,7 +97,7 @@ def make_dict(
         return {name: dict.fromkeys(fields)}
 
 
-def coerce_numeric(check_val: "Any", scalar_type: type) -> "tuple[bool, Any]":
+def coerce_numeric(check_val: "CfgValue", scalar_type: type) -> "tuple[bool, CfgValue]":
     # Intent: accept only what's exactly representable as scalar_type, in either direction (see
     # SPECIFICATION.md Part A.8) - float -> int is accepted only when the value carries no
     # fractional part, rejected otherwise, never truncated/rounded, so a fat-fingered "12.5" can't
@@ -129,8 +133,8 @@ def coerce_numeric(check_val: "Any", scalar_type: type) -> "tuple[bool, Any]":
 
 
 def type_or_range_error(
-    check_val: "Any", field: "FieldSchema", *, check_special: bool = True,
-) -> "tuple[bool, Any]":  # (True, check_val) if check_val doesn't satisfy field's own type/min/
+    check_val: "CfgValue", field: "FieldSchema", *, check_special: bool = True,
+) -> "tuple[bool, CfgValue]":  # (True, check_val) if check_val doesn't satisfy field's own type/min/
     # max(/special) schema entry (coercion included) - (False, coerced_val) otherwise, where
     # coerced_val is check_val itself unless an int<->float coercion above actually applied.
     try:
@@ -175,7 +179,7 @@ def type_or_range_error(
 
 def check_cfg_get_default(
     field: "FieldSchema",
-) -> "tuple[bool, int | float | str | bool | None]":
+) -> "tuple[bool, CfgValue]":
     try:  # returns flag if value is used for storage and if the default, if valid
         _name, _type, def_val, _min, _max, special_val = field  # wrong length/shape -> ValueError, caught below
         use_value = True
@@ -207,9 +211,9 @@ class ConfigManager:
         self.config_file = filename
         self.cfg_vals = cfg_vals
         self.valid = False
-        self._cache: dict[str, int | float | str | bool | None] = {}
+        self._cache: "dict[str, CfgValue]" = {}
 
-    async def _get_values(self, keys: "ConfigSchema") -> "list[Any] | None":
+    async def _get_values(self, keys: "ConfigSchema") -> "list[CfgValue] | None":
         if not self.valid:
             await self.pr.err_s(self.config_file, "- Config is not valid, cannot read!", errno=5)
             return None
@@ -220,7 +224,7 @@ class ConfigManager:
             await self.pr.err_s(self.config_file, "- Config read error:", e, errno=6)
             return None
 
-    async def _get_converted_values(self, keys: "ConfigSchema", converter: "Callable[[Any], T]") -> "list[T] | None":
+    async def _get_converted_values(self, keys: "ConfigSchema", converter: "type[T]") -> "list[T] | None":
         values = await self._get_values(keys)
         if values is None:
             return None
@@ -235,7 +239,7 @@ class ConfigManager:
     async def reset_error_counter(self) -> None:
         await self.pr.reset()
 
-    async def get_dict(self, keys: "list[str]") -> "dict[str, int | float | str | bool | None] | None":
+    async def get_dict(self, keys: "list[str]") -> "dict[str, CfgValue] | None":
         # Reads _cache directly - no lock needed (write_config never awaits mid-mutation, so no
         # partial state is observable here; see module docstring for the cache design).
         if not self.valid:
@@ -266,7 +270,7 @@ class ConfigManager:
         return values
 
     async def write_config(
-        self, data: "dict[str, int | float | str | bool | None]", cfg_vals: "ConfigSchema",
+        self, data: "dict[str, CfgValue]", cfg_vals: "ConfigSchema",
     ) -> "tuple[bool, WriteValidity]":
         if not self.valid:
             await self.pr.err_s(self.config_file, "- Config is not valid, cannot write!", errno=9)
@@ -324,7 +328,7 @@ class ConfigManager:
                 return True, dict_results
 
     async def setup(self) -> None:
-        data: dict[str, Any] | None = None
+        data: "dict[str, CfgValue] | None" = None
         try:
             if (os.stat(self.config_file)[0] & 0x4000) == 0:  # 0x4000 = MP_S_IFDIR, MicroPython's own
                 # stat-mode bit (extmod/vfs.h), uniform across VFS backends incl. littlefs.
@@ -352,7 +356,7 @@ class ConfigManager:
             return
 
         rewrite = False  # don't write file unless required
-        valid_cfg: dict[str, int | float | str | bool | None] = {}  # create surely valid config
+        valid_cfg: "dict[str, CfgValue]" = {}  # create surely valid config
         for key, field in defaults.items():  # iterate through default config
             use_value, default_val = check_cfg_get_default(field)  # read and selfcheck
             if default_val is None:  # invalid config, no default or special-alone value

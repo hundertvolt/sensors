@@ -217,6 +217,48 @@ constraints.
     here; a project-owner call.
 
 ## Deferred / explicitly out-of-scope work
+- **The four legacy `build-*.sh` scripts carry 28 shellcheck findings, including no shebang at
+  all.** `scripts/lint.sh` and CI run shellcheck over `scripts/` only, where all 14 modern scripts
+  are already clean - so that lane was a free ratchet. `build-arzi.sh`/`build-dev.sh`/
+  `build-neu.sh`/`build-wozi.sh` are the same pre-refactor generation as `python/`+`modules/` and
+  stay out of scope by that same standing decision. What is actually in there: **SC2148 x4** - none
+  of the four has a shebang line, so they work today only because whatever invokes them happens to
+  be bash; **SC2164 x21** - `cd` without `|| exit`, so a failed `cd` silently continues in the
+  wrong directory (in the build scripts that means writing output somewhere unintended); **SC2103
+  x5** - `cd ..` back instead of a subshell. All mechanical, none urgent, all real. Fold in
+  whenever the legacy build path is next touched.
+- **`tests_hardware/` has 32 ruff findings, 8 of them `B023` (function-uses-loop-variable).**
+  `B023` is in the enabled rule set everywhere else, so this is a real bug class sitting in an
+  unlinted scope - closures in
+  `tests_hardware/device_scripts/bus_topology_autodetect_and_hazard_sweep.py` capture the loop
+  variables `scd`/`bmp`/`sgp`/`read_once`/`self_errors`/`port_id` by reference. Benign only if
+  every closure is consumed within its own iteration, which was not verified. The rest are 23 x
+  `UP032` (f-string) and 1 x `I001`. Extending lint scope to `tests_hardware/` is a separate
+  decision, same shape as the `python/`/`modules/` one.
+- **Additional checker candidates, measured and mostly declined.** Evaluated against the real tree
+  rather than by reputation, when shellcheck/actionlint were added:
+  - **`zizmor`** (GitHub Actions security) - **50 findings, all real hardening**: 25 `unpinned-uses`
+    (actions by tag not SHA), 10 `excessive-permissions` (no `permissions:` block, so jobs get a
+    broad default token), 9 `artipacked` (checkout persists credentials into `.git/config`), 6
+    `self-repository`. The middle two are cheap, high-value wins; `unpinned-uses` carries ongoing
+    SHA-maintenance cost and deserves its own decision. **Recommended, not yet adopted.**
+  - **`import-linter`** - would turn Part C's Layer 1/2/3 architecture into an enforced gate rather
+    than a convention. Cannot be measured cold: it requires the layering contracts to be declared
+    first. **The most interesting remaining candidate.**
+  - **`vulture`** (dead code) - **rejected, measured.** All 8 of its >=80%-confidence findings are
+    false positives: it cannot see through quoted annotations or `if TYPE_CHECKING:` blocks, so it
+    reports `Self`/`NamedTuple`/`Iterable`/`Sequence` as unused imports and flags the no-op
+    `cast()` shim's required `typ` parameter.
+  - **`gitleaks`/`detect-secrets`** - **rejected, redundant.** `detect-secrets` found only the known
+    test/twin WiFi passwords and *missed* the real documented credential in `asy_wifi_service.py`
+    that ruff's `S106` catches. Ruff's `S105`/`S106` are live everywhere except the three known,
+    individually-exempted sites, which covers this better.
+  - **`codespell`** - **rejected, measured.** 1519 findings, overwhelmingly false positives on
+    domain vocabulary (`FRAM` -> "FRAME", `Pres` -> "Press", `optionEl` -> "optional").
+  - Also considered and dismissed as not applicable or redundant: `markdownlint` (fights
+    hand-formatted prose), `yamllint` (actionlint covers the only two YAML files), `hadolint` (no
+    Dockerfiles), `taplo` (two TOML files), `pip-audit`/`npm audit` (dev-only dependencies, nothing
+    ships to the device), and the many flake8/pylint-era Python tools ruff's `ALL` already subsumes.
 - **Real-hardware re-test of the segfault fix and the memory-leak soak test — real-hardware forms
   now exist and are wired into `tests_hardware/`, but the actual long-soak run is still opt-in and
   has not yet been executed.** Corrects a stale claim (this entry used to say neither soak-test

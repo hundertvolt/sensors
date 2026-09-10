@@ -22,6 +22,10 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
     from typing import Any, Protocol
 
+    # The stubs model a ticks_ms() value as an opaque type, not a plain int, precisely so it can
+    # only ever reach time.ticks_diff() - _next_sleep_secs()'s t0 is exactly such a value.
+    from _mpy_shed.time_mp import _TicksMs
+
     from asy_fram_manager import AsyFramManager
     from config_manager import ConfigSchema
 
@@ -126,7 +130,7 @@ class NotificationCoordinator(SensorReaderConfig):
             msg, wrnno = self._pending_wrn.pop(0)
             await self.pr.wrn_s(msg, wrnno=wrnno)
 
-    def _next_sleep_secs(self, interv: float, t0: int) -> float:  # t0: an opaque ticks_ms() value - only ever compared via time.ticks_diff()
+    def _next_sleep_secs(self, interv: float, t0: "_TicksMs") -> float:  # t0: an opaque ticks_ms() value - only ever compared via time.ticks_diff()
         # Isolated from monitor_loop() specifically so it's directly unit-testable without needing
         # a real elapsed time close to Interv's own 60.0s schema floor to observe the floor kick in.
         rem_interv = interv - (time.ticks_diff(time.ticks_ms(), t0) * 0.001)  # run duration so far in sec

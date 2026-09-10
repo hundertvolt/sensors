@@ -175,7 +175,7 @@ class SensorReader:
         async with self._datalock:
             return self._datastruct
 
-    async def _get_mgr_cfg(self, cfg: list[str]) -> dict[str, int | float | str | bool | None] | None:
+    async def _get_mgr_cfg(self, _cfg: list[str]) -> dict[str, int | float | str | bool | None] | None:
         return {}
 
     async def _get_dict_cfg(
