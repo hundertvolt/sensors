@@ -165,6 +165,66 @@ def test_bus_timeout_is_allowed_on_i2c(tmp_path: Path, src_dir: Path):
     _build(tmp_path, src_dir, doc)  # no raise - i2c's own optional field, no false positive
 
 
+def test_bus_timeout_wrong_type_rejected(tmp_path: Path, src_dir: Path):
+    doc = base_doc()
+    doc["bus"]["i2c0"]["timeout"] = "200000"  # quoted-in-TOML string, not an int
+    with pytest.raises(BuildError, match="timeout must be an int"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_instance_bus_field_wrong_type_rejected(tmp_path: Path, src_dir: Path):
+    doc = base_doc()
+    doc["instance"][0]["bus"] = 0  # not a string - would otherwise raise a raw TypeError/mismatch
+    with pytest.raises(BuildError, match="bus must be a string"):
+        _build(tmp_path, src_dir, doc)
+
+
+@pytest.mark.parametrize("field,bad_value", [("max_size", "8192"), ("trigger_sec", "3")])
+def test_instance_int_field_wrong_type_rejected(tmp_path: Path, src_dir: Path, field: str, bad_value: str):
+    doc = base_doc()
+    if field == "max_size":
+        doc["instance"][2][field] = bad_value  # fram
+    else:
+        doc["instance"][0][field] = bad_value  # scd30
+    with pytest.raises(BuildError, match=f"{field} must be an int"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_instance_address_field_wrong_type_rejected(tmp_path: Path, src_dir: Path):
+    doc = base_doc()
+    doc["instance"].append({"driver": "bmp3xx", "bus": "i2c0", "address": "0x77"})  # bmp3xx is address-capable
+    with pytest.raises(BuildError, match="address must be an int"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_warn_signal_source_wrong_type_rejected(tmp_path: Path, src_dir: Path):
+    doc = base_doc()
+    doc["instance"][4]["wiring"]["warn_co2"]["source"] = 42
+    with pytest.raises(BuildError, match="source/field must both be strings"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_warn_signal_field_wrong_type_rejected(tmp_path: Path, src_dir: Path):
+    doc = base_doc()
+    doc["instance"][4]["wiring"]["warn_co2"]["field"] = 42
+    with pytest.raises(BuildError, match="source/field must both be strings"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_instance_driver_field_wrong_type_rejected(tmp_path: Path, src_dir: Path):
+    doc = base_doc()
+    doc["instance"][0]["driver"] = 42
+    with pytest.raises(BuildError, match="'driver' field must be a non-empty string"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_instance_name_ext_wrong_type_rejected(tmp_path: Path, src_dir: Path):
+    doc = base_doc()
+    doc["instance"][0]["name_ext"] = 7
+    with pytest.raises(BuildError, match="'name_ext' field must be a string"):
+        _build(tmp_path, src_dir, doc)
+
+
 def test_declared_bus_never_used(tmp_path: Path, src_dir: Path):
     doc = base_doc()
     doc["bus"]["i2c1"] = {"scl_pin": 20, "sda_pin": 21, "frequency": 50000}
@@ -343,6 +403,22 @@ def test_device_wiring_optional_field_absent_is_fine(tmp_path: Path, src_dir: Pa
     doc = base_doc()
     del doc["device"]["wiring"]["led_target"]
     _build(tmp_path, src_dir, doc)  # no raise
+
+
+def test_device_wiring_required_field_missing_is_rejected(tmp_path: Path, src_dir: Path, monkeypatch: pytest.MonkeyPatch):
+    # Both real [device.wiring] fields (led_target/fram_target) are optional today, so this drives
+    # _check_device_wiring's required-field enforcement directly against a stand-in consumer table
+    # pointing at a real driver file with a genuinely required _WIRING entry (sgp40's comp_source) -
+    # the same "drive a validate.py internal directly" approach
+    # test_instance_name_collision_via_distinct_drivers_same_resolved_name() above already uses for
+    # a case none of the six real device TOMLs can exercise either.
+    import buildgen.validate as validate_mod
+    from buildgen.model import DeviceModel
+
+    monkeypatch.setitem(validate_mod._DEVICE_WIRING_CONSUMERS, "comp_source", ("asy_sgp40_driver.py", "SGP40_Reader", "comp_source"))
+    model = DeviceModel("dev", tmp_path / "dev.toml", {"device": {"wiring": {}}})
+    with pytest.raises(BuildError, match="missing required field 'comp_source'"):
+        validate_mod._check_device_wiring(model, src_dir)
 
 
 def test_requires_tag_violated(tmp_path: Path, src_dir: Path):

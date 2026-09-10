@@ -92,6 +92,13 @@ def load_device(path: Path) -> DeviceModel:
     for i, inst in enumerate(doc.get("instance", [])):
         if not isinstance(inst, dict) or "driver" not in inst:
             raise BuildError(device, f"[[instance]] entry #{i} is missing a 'driver' field")
+        if not isinstance(inst["driver"], str) or not inst["driver"]:
+            raise BuildError(device, f"[[instance]] entry #{i}'s 'driver' field must be a non-empty string, got {inst['driver']!r}")
+        if "name_ext" in inst and not isinstance(inst["name_ext"], str):
+            # Left unvalidated, a non-string name_ext crashes downstream as a raw TypeError (e.g.
+            # validate._instance_name()'s `base_name + "_" + name_ext` string concatenation) instead
+            # of this package's own fail-loud BuildError contract.
+            raise BuildError(device, f"{inst['driver']!r} instance's 'name_ext' field must be a string, got {inst['name_ext']!r}", instance=inst["driver"])
         wiring = inst.get("wiring", {})
         fields_only = {k: v for k, v in inst.items() if k != "wiring"}
         key = instance_key(inst)

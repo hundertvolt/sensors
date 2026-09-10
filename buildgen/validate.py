@@ -100,6 +100,8 @@ def _check_bus_tables(model: DeviceModel) -> "dict[str, dict]":
             raise BuildError(model.device, f"bus.{bus_name} (i2c) is missing an int frequency", field="frequency")
         if kind == "spi" and "frequency" in bus_table:
             raise BuildError(model.device, f"bus.{bus_name} (spi) declares frequency - asy_spi_driver.SPI has no such parameter", field="frequency")
+        if "timeout" in bus_table and not (isinstance(bus_table["timeout"], int) and not isinstance(bus_table["timeout"], bool)):
+            raise BuildError(model.device, f"bus.{bus_name} ({kind}) timeout must be an int, got {bus_table['timeout']!r}", field="timeout")
         unknown = set(bus_table) - _BUS_ALLOWED_FIELDS[kind]
         if unknown:
             raise BuildError(model.device, f"bus.{bus_name} ({kind}) declares unrecognized field(s) {sorted(unknown)} - typo, or copy-pasted from an unrelated bus kind?", field=sorted(unknown)[0])
@@ -131,10 +133,23 @@ def _check_required_fields(model: DeviceModel, buses: "dict[str, dict]") -> None
         for f in REQUIRED_TOML_FIELDS.get(spec.driver, ()):
             if f not in spec.fields:
                 raise BuildError(model.device, f"{spec.label} is missing required field {f!r}", instance=spec.label, field=f)
-        if spec.driver in BUS_ATTACHED_DRIVERS and spec.fields["bus"] not in buses:
-            raise BuildError(model.device, f"{spec.label} references undeclared bus {spec.fields['bus']!r}", instance=spec.label, field="bus")
+        if spec.driver in BUS_ATTACHED_DRIVERS:
+            # A non-string "bus" (e.g. a stray TOML array) would otherwise crash the membership
+            # check below with a raw "unhashable type" TypeError instead of a fail-loud BuildError.
+            if not isinstance(spec.fields["bus"], str):
+                raise BuildError(model.device, f"{spec.label}.bus must be a string, got {spec.fields['bus']!r}", instance=spec.label, field="bus")
+            if spec.fields["bus"] not in buses:
+                raise BuildError(model.device, f"{spec.label} references undeclared bus {spec.fields['bus']!r}", instance=spec.label, field="bus")
         if "address" in spec.fields and spec.driver not in ADDRESS_CAPABLE_DRIVERS:
             raise BuildError(model.device, f"{spec.label} declares an address field, but {spec.driver!r} has no address-select pin (see buildgen.buildspec.ADDRESS_CAPABLE_DRIVERS)", instance=spec.label, field="address")
+        # These three all reach codegen.py's hex()/str() argument-building unvalidated otherwise -
+        # a wrong type (e.g. a quoted "0x77" string for address) would raise a raw TypeError from
+        # hex(), or - for trigger_sec, which only ever goes through str() - silently render as a
+        # bare, unquoted Python identifier token that ast.parse() itself can't distinguish from a
+        # real int literal (BuildError catches it here instead of producing subtly-broken output).
+        for f in ("address", "max_size", "trigger_sec"):
+            if f in spec.fields and not (isinstance(spec.fields[f], int) and not isinstance(spec.fields[f], bool)):
+                raise BuildError(model.device, f"{spec.label}.{f} must be an int, got {spec.fields[f]!r}", instance=spec.label, field=f)
         # Catch-all: any field beyond "driver"/"name_ext" (structural, handled by model.py) and
         # this driver's own required+optional set is a copy-paste/typo error (BUILD_CHAIN_PLAN.md's
         # "plain wrong/missing/copy-pasted fields") - e.g. an "irq_pin" left over from copying a
@@ -258,6 +273,10 @@ def _check_instance_wiring(model: DeviceModel, src_dir: Path) -> None:
                 continue
             if not isinstance(value, dict) or "source" not in value or "field" not in value:
                 raise BuildError(model.device, f"{spec.label}'s wiring.{toml_field} must be a {{source, field}} table", instance=spec.label, field=toml_field)
+            # A non-string "source" would otherwise crash resolve_instance_key()'s `"_" in value`
+            # check with a raw TypeError instead of a fail-loud BuildError.
+            if not isinstance(value["source"], str) or not isinstance(value["field"], str):
+                raise BuildError(model.device, f"{spec.label}'s wiring.{toml_field}.source/field must both be strings", instance=spec.label, field=toml_field)
             source_key = resolve_instance_key(model, value["source"])
             if source_key not in model.instances:
                 raise BuildError(model.device, f"{spec.label}'s wiring.{toml_field}.source={value['source']!r} does not resolve to any declared instance", instance=spec.label, field=toml_field)
@@ -277,6 +296,18 @@ def _check_device_wiring(model: DeviceModel, src_dir: Path) -> None:
         if not isinstance(value, str):
             raise BuildError(model.device, f"[device.wiring].{toml_field} must be a string instance reference, got {value!r}", field=toml_field)
         _check_wiring_reference(model, wf, value, "device.wiring", toml_field)
+
+    # Required-field enforcement, mirroring _check_instance_wiring's own pass below - both known
+    # device-wiring fields are optional today, so this was previously untested/untriggered dead
+    # code potential; kept in sync so a future required _WIRING entry on conn/sysfunct can't
+    # silently go unenforced the way [instance.wiring]'s required fields already are.
+    for toml_field, (module_file, _class_name, consumer_label) in _DEVICE_WIRING_CONSUMERS.items():
+        if toml_field in wiring:
+            continue
+        schema = parse_wiring(src_dir / module_file, model.device, consumer_label)
+        wf = _resolve_wiring_field(schema, toml_field)
+        if wf is not None and wf.required:
+            raise BuildError(model.device, f"[device.wiring] is missing required field {toml_field!r}", field=toml_field)
 
 
 def _check_requires_tags(model: DeviceModel, buses: "dict[str, dict]") -> None:
