@@ -437,7 +437,14 @@ script quality bar" below, not repeated here.
    `configure_i2c_wiring("wozi"|"dev")`'s 2-profile enum. **Same pointer as Session 4 above** - the
    generated module's own construction calls now use the post-§2.9 `SGP40_Reader` signature; a twin
    boot path assuming the old one-argument `comp_source` shape will not match reality.
-6. **Build chain + CI matrix + `build/` artifact directory.**
+6. **Build chain + CI matrix + `build/` artifact directory.** **Flagged by Session 3's merge-back
+   review, per the checklist above:** Session 3 was scoped not to touch `src/sensortask_wozi.py`/
+   `sensortask_dev.py`, and did not delete or replace them — but its Phase 5 change to
+   `SGP40_Reader.__init__` forced a call-site update in both (one construction call each,
+   `comp_source` → the four per-value arguments). That is a forced cascade, not an early attempt at
+   this session's job; treat both files as still fully yours to replace, and question the shape
+   rather than inheriting it. Same session also reflowed `scripts/build_firmware.py`'s module
+   docstring under CLAUDE.md's 3-line header cap — docstring text only, no functional change.
 7. **Versioning** — firmware + website, both starting at "2.0b0".
 8. **Closing consistency pass** — bird's-eye scan across everything sessions 1-7 touched; confirm
    zero device-specific content remains outside the 6 TOML files.
