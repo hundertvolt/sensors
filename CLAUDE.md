@@ -477,6 +477,28 @@ information):
   `src/` is the defect, not the type error. mypy itself cannot express that rule (it only ever sees
   a suppression already written), so `scripts/lint.sh` enforces it with a grep guard that fails the
   lint gate. `src/` carries zero of these today; keep it that way rather than silencing a finding.
+- **`# noqa: E402` belongs only on files with a real statement before their imports.** Several
+  `tests/` files must set `sys.path` before importing the module under test, and ruff **exempts
+  `sys.path` manipulation from E402 outright** (verified directly, 2026-09-10) — so those files
+  need no suppression. What does trigger it is any *other* statement first, e.g.
+  `test_digital_twin_sensortask_integration.py`'s `patch_asy_udp_socket_for_unix_port()` call, and
+  only those files carry the `# noqa`. This is not an inconsistency to tidy up: adding the
+  suppression to a `sys.path`-only file makes `RUF100` (unused-noqa, live via `select = ["ALL"]`)
+  fail the lint gate, so the two groups genuinely have to differ.
+- **A merge that touches `uv.lock` can silently bypass the tool pins — always re-verify after
+  one.** `uv.lock` is a plain text file, so git merges it line by line: a branch that pins the
+  tools and a branch that only refreshes versions produce a lock carrying **one side's
+  `specifier = "=="` metadata and the other side's resolved `[[package]] version` blocks**. That
+  file is self-contradictory, and neither guard catches it — `uv lock --check` compares
+  `pyproject.toml` against the lock's *manifest* section only, never the manifest against the
+  *resolved* versions, so it exits 0; and `uv sync` installs from the resolved blocks, so the venv
+  silently gets a version the pin forbids. Confirmed directly here (2026-09-10): merging main's
+  external-module refresh produced a lock reading `ruff specifier = "==0.15.21"` next to
+  `ruff version = "0.16.6"`, `uv lock --check` passed, and `uv sync` installed 0.16.6 — under
+  `select = ["ALL"]` that is exactly the unchosen-rule hard-fail the pin exists to prevent (it
+  surfaced 174 `CPY001` findings). **After any merge that touches `uv.lock`, run `uv sync` and
+  check the installed `ruff --version`/`mypy --version` against `pyproject.toml`'s pins**, rather
+  than trusting `uv lock --check`; re-run `uv lock` to rewrite the file if they disagree.
 - **MicroPython stubs**: `micropython-rp2-rpi_pico_w-stubs` (PyPI, board/version-specific, pulls in
   `micropython-stdlib-stubs`). Published by the same project as
   [`josverl/micropython-stubs`](https://github.com/josverl/micropython-stubs) — PyPI is just its
