@@ -416,7 +416,7 @@ no_site_packages = true
 # A bare glob in `files` (e.g. "src/*.py") gets pre-expanded to an explicit file list, which
 # `exclude` can't then prune - passing the directory itself is what makes `exclude` actually take
 # effect during mypy's own directory walk.
-files = ["src", "tests", "digital_twin", "boot_entry"]
+files = ["src", "tests", "digital_twin", "boot_entry", "tests_hardware/device_scripts"]
 # tests/network.py: a bare top-level
 # `network.py` sitting inside a `files`-scanned root starts winning module resolution over
 # typings/'s real `network` stub *project-wide*, not just within tests/ - confirmed directly: with
