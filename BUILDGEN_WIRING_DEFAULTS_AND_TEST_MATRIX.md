@@ -254,11 +254,12 @@ stops applying to those two once the split happens.
 
 ### 4.2 Hard structural constraints (things that prune the matrix, not things the matrix tests as "invalid")
 
-- ~~sgp40 present ⇒ scd30 present~~ — **superseded by §2**: once the defaults mechanism lands,
-  sgp40 is legal with or without scd30 present (explicit default `comp_source` when scd30 is
-  absent or simply not wired).
-- ~~notification present ⇒ neopixel present~~ — **superseded by §2**: same, via
-  `_DefaultSignalSink`.
+- ~~sgp40 present ⇒ scd30 present~~ — **superseded by §2/§2.9 (landed, Phase 5, 2026-09-10)**:
+  sgp40 is legal with or without scd30 present (explicit `{default = true, ...}` opt-in on
+  `temperature_source`/`humidity_source` independently, when no live source is wired for that
+  value).
+- ~~notification present ⇒ neopixel present~~ — **superseded by §2 (landed, Phase 5,
+  2026-09-10)**: same, via `_DefaultSignalSink`.
 - FRAM absent ⇒ every `fram_target`-shaped field is forced to its absent state (nothing to wire
   to) — this one's a genuine physical impossibility, **not** solved by §2's mechanism (§2 is
   specifically for `required=True` fields; `fram_target` is `required=False` everywhere, so "FRAM
@@ -274,8 +275,10 @@ so there's no longer a separate "is this interchangeable across drivers" questio
 "how is this one field wired." Folded into axis 3 below; every real detail from both old axes is
 preserved, not dropped.
 
-1. **Sensor population** — which of {scd30, sgp40, bmp3xx} are present. With §2 landed, all 8
-   subsets of the 3-element set become legal (no more sgp40⇒scd30 pruning).
+1. **Sensor population** — which of {scd30, sgp40, bmp3xx} are present. **Since §2/§2.9 landed
+   (Phase 5, 2026-09-10)**: all 8 subsets of the 3-element set are legal — no more sgp40⇒scd30
+   pruning (confirmed: `test_sgp40_without_any_scd30_using_both_defaults`,
+   `tests_scripts/test_buildgen_validate.py`).
 2. **FRAM presence** — with / without.
 3. **Per-value measurement wiring** (§2.9's generalized mechanism — today concretely: sgp40's
    `temperature_source`/`humidity_source`, independently). Per value, per consuming instance:
@@ -1341,6 +1344,94 @@ independently/first if convenient.
   proposed fixture); the `instance_label` collision direct-internals test.
 
 ### 10.6 Phase 5 — Wiring defaults + §2.9's per-value generalization (buildgen + real `src/` behavior change)
+
+**Status: complete (2026-09-10).** Every sub-item below landed. New `buildgen/defaults.py`
+(AST-discovers a driver's `_Default<Field>` classes - `__init__` signature is the schema, per
+§2.4) and `buildgen/value_wiring.py` (AST-parses `_VALUE_WIRING`, mirroring `wiring.py`'s pattern).
+`validate.py` gained `_check_default_selection()`/`_check_default_value_selection()`/
+`_check_value_wiring()` plus a shared `_check_source_field_reference()` helper (factored out of the
+pre-existing `warn_*` logic, now shared with the new per-value mechanism). `graph.py`'s
+construction-order edges: a `{default: true, ...}` selection contributes no edge (§2.6); the
+`warn_*`-only "source" edge generalized to any dict-shaped wiring value with a `source` key,
+covering `_VALUE_WIRING` fields too with no separate loop. `codegen.py` gained
+`default_provider_expr()`/`value_wiring_kwargs()` on `_Ctx`, inline default-provider construction
+(§2.6), and conditional per-instance/per-notification default-class imports.
+
+**`src/` changes**: `asy_notification_service.py` gained `_DefaultSignalSink` (zero constructor
+args - `find_default_class`'s own return-empty-params path for a class with no explicit `__init__`,
+a real gap found and fixed while writing this: the first draft raised `BuildError` for "no
+`__init__`", which is wrong since a class needing no extra keys legitimately has none).
+`asy_sgp40_driver.py`: `_WIRING`'s `comp_source` entry removed entirely; new `_VALUE_WIRING`
+(`temperature_source`/`humidity_source`, both `required=True`); `SGP40_Reader.__init__` changed
+from one `comp_source: SCD30_Reader` parameter to four (`temperature_source`, `temperature_field`,
+`humidity_source`, `humidity_field`), each pair resolved independently via
+`getattr(await source.get_data(), field_name)` in `_read_sgp()` (the same pattern
+`NotificationCoordinator._check_one()` already uses); `_DefaultTemperatureSource`/
+`_DefaultHumiditySource` added, each a self-contained constant-wrapping class with **no
+cross-module import at all** (avoiding the frozen-modules static-import constraint this document
+flagged during planning, by construction rather than by discipline). The now-unnecessary
+`from asy_scd30_driver import SCD30_Reader` import was removed from `asy_sgp40_driver.py` entirely
+- confirmed via `buildgen/frozen_modules.py`'s own seeding logic that this doesn't regress a real
+device's frozen-module set (SCD30 is already pulled in directly whenever a real `scd30` instance is
+declared, independent of sgp40's own imports).
+
+**Real cascading updates, not scoped down**: both hand-written `sensortask_wozi.py`/
+`sensortask_dev.py` (their `SGP40_Reader(...)` construction calls); all six real `devices/*.toml`
+(`comp_source = "scd30"` → `[instance.wiring.temperature_source]`/`[instance.wiring.humidity_source]`
+sub-tables); the independent pre-buildgen `tests_scripts/test_device_tomls.py` smoke suite (its own
+hand-rolled `check_sgp40_wiring_resolves_to_real_sources()`); every `tests_scripts/test_buildgen_*.py`
+reference to `comp_source` (`test_buildgen_wiring.py`, `test_buildgen_validate.py`,
+`test_buildgen_generate.py`, `test_buildgen_graph.py` - including
+`test_novel_combo_sgp40_after_both_its_independently_named_sources`, upgraded to prove *both*
+`novel_combo.toml`'s scd30 instances gate construction order now, since temperature/humidity are
+independently sourced there); `tests/test_asy_sgp40_driver.py` (every one of its ~70
+`SGP40_Reader(...)`/`.comp_source =` call sites, mechanically transformed to the new signature -
+see the commit for the exact substitution) plus the same in `tests/test_ntp_fram_system_integration.py`,
+`tests/test_notification_sgp40_integration.py`, `tests/test_notification_scd30_sgp40_integration.py`,
+`tests/test_setter_microdot_integration.py`; two new dedicated test files,
+`tests_scripts/test_buildgen_defaults.py` and `tests_scripts/test_buildgen_value_wiring.py`
+(mirroring `test_buildgen_wiring.py`'s AST-parser coverage style); new validate-level tests for the
+`{default = true, ...}` opt-in itself (both fields, both unknown-key rejections, and the full "SGP40
+with no SCD30 at all, both values defaulted" scenario from §1's original motivating example) and a
+codegen-level test confirming the inline-construction shape.
+
+**Real, previously-invisible fixture bug found and fixed while doing this** (same spirit as
+Phase 2's `novel_combo.toml` finding): `novel_combo.toml`'s own `comp_source` had always pointed at
+`scd30_secondary` only - once split into independent fields, this became an opportunity (not just a
+mechanical rename) to make the fixture genuinely richer per axis 9's own "richest corner" framing -
+temperature from `scd30_secondary`, humidity from `scd30_primary`, so both real scd30 instances now
+gate sgp40's construction order, proving §2.9's independence claim the fixture's own purpose exists
+to prove.
+
+**Documentation sync** (§10.6 item 4's own flagged deliverable, done in the same phase, not
+deferred): `SPECIFICATION.md` Part C.14.2 (the `_WIRING` kwarg/reference examples, the
+cross-driver-import exception's own canonical example) and Part C.14.3 (extended with a new
+"Generalized per-value measurement wiring" subsection); `BUILD_CHAIN_PLAN.md`'s "Core design
+decisions"/schema example/quality-bar sections. Every remaining `comp_source` mention repo-wide is
+now correctly historical/contextual ("used to be", "old", "earlier") - confirmed via a repo-wide
+grep pass, not assumed.
+
+**Deliberately left alone, flagged rather than silently touched**: `tests_hardware/device_scripts/
+sgp40_voc_algorithm_quality.py`/`sgp40_fram_backup_restore.py` (real-hardware bench scripts) both
+construct `SGP40_Reader` with a bare async function (`_fixed_comp`) as the old positional
+`comp_source` argument - this was already structurally broken against the *pre-existing* driver API
+too (`_read_sgp()` has always called `.get_data()` on it, which a plain function doesn't have), so
+it predates this session and isn't a regression this phase introduced. Left unfixed rather than
+silently repaired mid-refactor, since fixing it properly means also correcting `_fixed_comp`'s own
+shape (a separate, pre-existing bug), not just updating call-site syntax - flagged for a future
+session with real-hardware go-ahead to pick up, per CLAUDE.md's "flag, don't silently fix unrelated
+things" rule.
+
+**Verified**: `scripts/lint.sh`, `scripts/typecheck.sh` (all three passes - two real, load-bearing
+mypy fixes found along the way: a type-narrowing limitation in `value_wiring.py`'s own parser fixed
+by checking each AST field directly instead of via a loop over aliased variables, and ~80 now-genuinely-
+unnecessary `# type: ignore[arg-type]`/`[assignment]` comments removed across the test suite once
+`_ValueSource`'s `Protocol` typing let the existing fakes structurally satisfy the new parameter
+types without one), and `uv run pytest tests_scripts` (456 passed, 2 skipped). The full
+`scripts/test.sh` real MicroPython Unix-port suite was still running as this phase's changes were
+committed - its result follows in a same-day fixup commit if it surfaces anything (the CPython-side
+mechanical transform of every `tests/test_asy_sgp40_driver.py` call site is the one part of this
+phase not yet confirmed against the real interpreter).
 
 The largest, highest-risk phase — blocked on §10.1 items 1 and 2, changes an already-shipped
 constructor signature (`SGP40_Reader.__init__`), and should land last so it doesn't destabilize

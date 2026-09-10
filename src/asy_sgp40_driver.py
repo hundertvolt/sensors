@@ -19,7 +19,6 @@ from micropython import const
 
 from asy_fram_manager import AsyFramManager
 from asy_i2c_driver import I2CDevice
-from asy_scd30_driver import SCD30_Reader
 from base_classes import Lockable, SensorReaderConfig
 from config_manager import make_dict, name_cfg
 from crc_checks import CRC8, CRC32
@@ -32,11 +31,19 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
-    from typing import Any
+    from typing import Any, Protocol
 
     from asy_fram_manager import AsyFramChunkTimestampedBuffer
     from asy_i2c_driver import I2C
-    from config_manager import WiringSchema
+    from config_manager import ValueWiringSchema, WiringSchema
+
+    class _ValueSource(Protocol):
+        # Structural stand-in for temperature_source/humidity_source's producer
+        # (BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md §2.9) - any *_Reader (or a `_Default*`
+        # fallback provider, see below) exposing the same get_data() -> NamedTuple contract every
+        # driver already has (SPECIFICATION.md C.4.2). Only get_data() is used here - same shape as
+        # asy_notification_service.py's own _ValueSource.
+        async def get_data(self) -> "Any": ...
 
 # roughly the time how often the data written to the FRAM is verified.
 # less a data safety feature here but rather a check if communication and integrity is generally okay
@@ -60,24 +67,63 @@ _NAME = const("SGP40")
 SGP40 = namedtuple("SGP40", ("VOC", "Raw", "TS"))
 _FIELDS = const(("VOC", "Raw", "TS"))  # kept in sync with SGP40's own fields above
 
-# This driver's live cross-instance dependencies (SPECIFICATION.md Part C.14): the
-# temperature/humidity compensation source, which must be an SCD30_Reader (the only sensor on this
-# system exposing both fields live), plus the optional FRAM backup target - both resolved by
-# buildgen/ (Session 3 of BUILD_CHAIN_PLAN.md) to an already-constructed instance, passed directly
-# (comp_source is a required constructor kwarg; fram_target maps to this driver's own
-# fram_storage= kwarg, named differently for historical reasons - see buildgen/buildspec.py), never
-# a getter/callback.
-_WIRING: "WiringSchema" = (
-    ("comp_source", SCD30_Reader, "comp_source", True, "kwarg"),
-    ("fram_target", AsyFramManager, "fram_storage", False, "kwarg"),
+# This driver's live cross-instance dependencies (SPECIFICATION.md Part C.14): the optional FRAM
+# backup target, resolved by buildgen/ (Session 3 of BUILD_CHAIN_PLAN.md) to an already-constructed
+# instance, passed directly (fram_target maps to this driver's own fram_storage= kwarg, named
+# differently for historical reasons - see buildgen/buildspec.py), never a getter/callback.
+# The temperature/humidity compensation source used to be one whole-object comp_source field here
+# (required=True, fixed to SCD30_Reader) - BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md §2.9
+# generalized it into two independent per-value fields below (_VALUE_WIRING), each freely wireable
+# from *any* instance exposing a matching attribute name, not fixed to one producer class.
+_WIRING: "WiringSchema" = (("fram_target", AsyFramManager, "fram_storage", False, "kwarg"),)
+
+# Per-value measurement wiring (§2.9): (toml_field, source_kwarg, field_kwarg, required) - each
+# resolves independently, the same generic {source, field} shape asy_notification_service.py's
+# warn_* fields already use, matched by attribute name alone (no fixed producer_class). Both
+# required=True (an SGP40 with no compensation data at all needs an explicit default opt-in, per
+# §2's wiring-defaults mechanism - see _DefaultTemperatureSource/_DefaultHumiditySource below).
+_VALUE_WIRING: "ValueWiringSchema" = (
+    ("temperature_source", "temperature_source", "temperature_field", True),
+    ("humidity_source", "humidity_source", "humidity_field", True),
 )
+
+_ConstValue = namedtuple("_ConstValue", ("value",))
+
+
+class _DefaultTemperatureSource:
+    """§2's wiring-defaults mechanism, opted into via [instance.wiring].temperature_source =
+    {default = true, temperature = 25} - a constant compensation fallback when no live temperature
+    source is wired. 25 degC matches SGP40_I2C.measure_raw()'s own datasheet-documented default
+    (Table 9). Every `_Default*` provider's get_data() returns an object exposing exactly one
+    attribute named "value" (a fixed, hardcoded contract - see BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md
+    §10.1 item 1), so buildgen always resolves a defaulted per-value field as (provider, "value")."""
+
+    def __init__(self, temperature: float = 25) -> None:
+        self._data = _ConstValue(float(temperature))
+
+    async def get_data(self) -> "_ConstValue":
+        return self._data
+
+
+class _DefaultHumiditySource:
+    """Same mechanism as _DefaultTemperatureSource, for relative humidity - 50%RH matches
+    SGP40_I2C.measure_raw()'s own datasheet-documented default (Table 9)."""
+
+    def __init__(self, relative_humidity: float = 50) -> None:
+        self._data = _ConstValue(float(relative_humidity))
+
+    async def get_data(self) -> "_ConstValue":
+        return self._data
 
 
 class SGP40_Reader(SensorReaderConfig):
     def __init__(
         self,
         i2c: "I2C",
-        comp_source: "SCD30_Reader",
+        temperature_source: "_ValueSource",
+        temperature_field: str,
+        humidity_source: "_ValueSource",
+        humidity_field: str,
         max_module_error: int = 5,
         name_ext: str = "",
         cfg_path: str = "",
@@ -108,10 +154,15 @@ class SGP40_Reader(SensorReaderConfig):
         # real values are always set by _init_sgp() before read_loop() ever reads these
         self.voc_init = 0
         self.voc_write = 0
-        # Direct reference to the producer's own concurrency-safe value holder (its get_data(),
+        # Direct reference to each producer's own concurrency-safe value holder (its get_data(),
         # already _datalock-guarded - SPECIFICATION.md Part C.14/G.2), not a wrapping getter
-        # function - _read_sgp() reads Temp/Hum off it directly every cycle.
-        self.comp_source = comp_source
+        # function - _read_sgp() reads temperature_field/humidity_field off each directly every
+        # cycle, resolved independently (§2.9's per-value generalization) - the two may be the same
+        # producer instance (the common case, both off one SCD30) or two different ones.
+        self.temperature_source = temperature_source
+        self.temperature_field = temperature_field
+        self.humidity_source = humidity_source
+        self.humidity_field = humidity_field
         if fram_storage is None or fram_ntp_callback is None:
             self.ts_storage = None
         else:
@@ -193,14 +244,22 @@ class SGP40_Reader(SensorReaderConfig):
                 if not self._reset_fram_cleared:
                     await self.pr.err_s("Error clearing FRAM!", errno=15)
 
-        # Direct read of the producer's own get_data() (SPECIFICATION.md Part C.14) - no wrapping
-        # callback. get_data() never raises, but Temp/Hum can individually be None (SCD30 hasn't
-        # completed its first real measurement yet, or its own error streak gave up) - float(None)
-        # raises, so that's still guarded here, matching this driver's own SGP40-degrades-
-        # uncompensated-when-SCD30-is-down documented behavior (SPECIFICATION.md Part A.4).
+        # Direct read of each producer's own get_data() (SPECIFICATION.md Part C.14), resolved
+        # independently by attribute name (§2.9's per-value generalization - the same getattr()
+        # resolution asy_notification_service.py's own _check_one() already uses for warn_*) - no
+        # wrapping callback. get_data() never raises, but the named field can individually be None
+        # (the producer hasn't completed its first real measurement yet, or its own error streak
+        # gave up) - float(None) raises, so that's still guarded here, matching this driver's own
+        # SGP40-degrades-uncompensated-when-its-source-is-down documented behavior
+        # (SPECIFICATION.md Part A.4). A single try/except covers both reads: either failing is the
+        # same "no usable compensation data this cycle" outcome, whichever source is responsible.
         try:
-            scd_data = await self.comp_source.get_data()
-            comp_data: list[int | float | None] = [float(scd_data.Temp), float(scd_data.Hum)]
+            temp_data = await self.temperature_source.get_data()
+            hum_data = await self.humidity_source.get_data()
+            comp_data: list[int | float | None] = [
+                float(getattr(temp_data, self.temperature_field)),
+                float(getattr(hum_data, self.humidity_field)),
+            ]
         except Exception as e:
             await self.pr.err_s("Compensation data read failed:", e, errno=18)
             comp_data = [None, None]

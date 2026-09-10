@@ -18,6 +18,7 @@ module)."""
 import keyword
 from dataclasses import dataclass
 
+from buildgen.defaults import default_class_name
 from buildgen.errors import BuildError
 from buildgen.model import DeviceModel, InstanceSpec, instance_label, resolve_instance_key
 from buildgen.wiring import WiringField
@@ -58,11 +59,35 @@ class _Ctx:
     def instance_var(self, key: "tuple[str, str]") -> str:
         return _identifier(instance_label(key), self.model.device)
 
+    def default_provider_expr(self, toml_field: str, value: dict) -> str:
+        # §2.6's generated-code shape: construct the default provider inline, at the exact
+        # call-site the real wiring expression would occupy - never a separate named global.
+        class_name = default_class_name(toml_field)
+        kwargs = ", ".join(f"{k}={v!r}" for k, v in value.items() if k != "default")
+        return f"{class_name}({kwargs})"
+
     def wiring_expr(self, spec: InstanceSpec, wf: WiringField) -> str:
         value = spec.wiring[wf.toml_field]
+        if isinstance(value, dict) and value.get("default") is True:
+            provider_expr = self.default_provider_expr(wf.toml_field, value)
+            return provider_expr if wf.mode == "kwarg" else f"{provider_expr}.{wf.target}"
         target_key = resolve_instance_key(self.model, value)
         var = self.instance_var(target_key)
         return var if wf.mode == "kwarg" else f"{var}.{wf.target}"
+
+    def value_wiring_kwargs(self, spec: InstanceSpec, toml_field: str) -> "list[tuple[str, str]]":
+        # §2.9's per-value measurement wiring: resolves to either a real {source, field} reference
+        # (any producer, matched by attribute name) or an explicit default provider - always
+        # (source_kwarg, field_kwarg) rendered as a pair, mirroring how _DefaultTemperatureSource/
+        # _DefaultHumiditySource's get_data() always exposes a single "value" attribute (§10.1 item 1).
+        vwf = next(f for f in spec.value_wiring_schema if f.toml_field == toml_field)
+        value = spec.wiring[toml_field]
+        if isinstance(value, dict) and value.get("default") is True:
+            provider_expr = self.default_provider_expr(toml_field, value)
+            return [(vwf.source_kwarg, provider_expr), (vwf.field_kwarg, repr("value"))]
+        source_key = resolve_instance_key(self.model, value["source"])
+        source_var = self.instance_var(source_key)
+        return [(vwf.source_kwarg, source_var), (vwf.field_kwarg, repr(value["field"]))]
 
 
 def _wf(spec: InstanceSpec, toml_field: str) -> "WiringField | None":
@@ -74,6 +99,14 @@ def _wf(spec: InstanceSpec, toml_field: str) -> "WiringField | None":
 
 def _kw(pairs: "list[tuple[str, str]]") -> str:
     return ", ".join(f"{k}={v}" for k, v in pairs)
+
+
+def _defaulted_wiring_fields(spec: InstanceSpec) -> "list[str]":
+    # Every TOML field on this instance that opted into §2's wiring-defaults mechanism
+    # ({default = true, ...}) - covers both _WIRING-based (signal_sink) and _VALUE_WIRING-based
+    # (temperature_source/humidity_source) fields uniformly, since both live in spec.wiring the
+    # same way. Used to decide which _Default<Field> classes this instance's import line needs.
+    return [f for f, v in spec.wiring.items() if isinstance(v, dict) and v.get("default") is True]
 
 
 def _build_call(spec: InstanceSpec, ctx: _Ctx) -> str:
@@ -96,9 +129,9 @@ def _build_call(spec: InstanceSpec, ctx: _Ctx) -> str:
             kw.append(fram_kw)
         kw.append(("debug", "debug"))
     elif driver == "sgp40":
-        comp_wf = _wf(spec, "comp_source")
-        assert comp_wf is not None
-        pos = [ctx.bus_var(f["bus"]), ctx.wiring_expr(spec, comp_wf)]
+        pos = [ctx.bus_var(f["bus"])]
+        kw.extend(ctx.value_wiring_kwargs(spec, "temperature_source"))
+        kw.extend(ctx.value_wiring_kwargs(spec, "humidity_source"))
         kw.append(("max_module_error", "_MAX_MODULE_ERROR"))
         if spec.name_ext:
             kw.append(("name_ext", repr(spec.name_ext)))
@@ -195,9 +228,12 @@ def generate_module_source(model: DeviceModel, construction_order: "list") -> st
         assert spec.driver_info is not None
         if spec.driver == "notification":
             continue  # imported below, together with NotificationSignal
-        lines.append(f"from {spec.driver_info.module} import {spec.driver_info.class_name}")
+        extra = "".join(f", {default_class_name(f)}" for f in _defaulted_wiring_fields(spec))
+        lines.append(f"from {spec.driver_info.module} import {spec.driver_info.class_name}{extra}")
     if "notification" in have:
-        lines.append("from asy_notification_service import NotificationCoordinator, NotificationSignal")
+        notif_extra_spec = next(s for s in instances.values() if s.driver == "notification")
+        notif_extra = "".join(f", {default_class_name(f)}" for f in _defaulted_wiring_fields(notif_extra_spec))
+        lines.append(f"from asy_notification_service import NotificationCoordinator, NotificationSignal{notif_extra}")
     lines.append("from asy_ntp_client import AsyNtpClient")
     lines.append("from asy_webserver_service import SettingsGroup, WebserverService")
     lines.append("from asy_wifi_service import AsyConnTime")

@@ -27,8 +27,8 @@ def test_wozi_construction_order_matches_reference_ordering_constraints(repo_roo
     order = [n if isinstance(n, str) else f"{n[0]}_{n[1]}" if n[1] else n[0] for n in result.model.construction_order]
     # src/sensortask_wozi.py's own real, hand-verified construction order (SPECIFICATION.md Part
     # A.7): conn/ntp before fram/sysfunct, fram before sysfunct (SystemService's own fram= kwarg),
-    # scd30 before sgp40 (comp_source), every fram-wired instance after fram, notification last
-    # (signal_sink -> neopixel, and every warn_* source already built).
+    # scd30 before sgp40 (temperature_source/humidity_source, §2.9), every fram-wired instance
+    # after fram, notification last (signal_sink -> neopixel, and every warn_* source already built).
     assert order.index("conn") < order.index("ntp") < order.index("sysfunct")
     assert order.index("fram") < order.index("sysfunct")
     assert order.index("scd30") < order.index("sgp40")
@@ -37,27 +37,27 @@ def test_wozi_construction_order_matches_reference_ordering_constraints(repo_roo
     assert order.index("sgp40") < order.index("notification")
 
 
-def test_novel_combo_sgp40_after_its_named_comp_source(repo_root: Path, src_dir: Path, ext_dir: Path):
+def test_novel_combo_sgp40_after_both_its_independently_named_sources(repo_root: Path, src_dir: Path, ext_dir: Path):
+    # §2.9: temperature_source=scd30_secondary and humidity_source=scd30_primary are two
+    # independent wiring edges - sgp40 must be constructed after *both*, not just one.
     fixture = repo_root / "tests_scripts" / "buildgen_fixtures" / "novel_combo.toml"
     result = generate_device(fixture, src_dir, ext_dir)
     order = result.model.construction_order
     assert order.index(("scd30", "secondary")) < order.index(("sgp40", ""))
-    # comp_source is scd30_secondary, not scd30_primary - construction order must not accidentally
-    # depend on primary too (there's no wiring edge to it).
-    assert ("scd30", "primary") in order
+    assert order.index(("scd30", "primary")) < order.index(("sgp40", ""))
 
 
 def test_cycle_detection_raises(tmp_path: Path, src_dir: Path):
-    # asy_sgp40_driver.py's own comp_source _WIRING requires an SCD30_Reader - can't construct a
-    # real cycle with the actual driver set (SGP40 requiring SCD30 which requires SGP40 back isn't
-    # expressible in real _WIRING declarations), so this drives build_construction_order() directly
-    # against a synthetic DeviceModel whose two instances depend on each other.
+    # No real driver's _WIRING requires SGP40_Reader as a producer - can't construct a real cycle
+    # with the actual driver set (SGP40 requiring SCD30, which would need to require SGP40 back,
+    # isn't expressible in real _WIRING declarations), so this drives build_construction_order()
+    # directly against a synthetic DeviceModel whose two instances depend on each other.
     from buildgen.wiring import WiringField
 
     doc = base_doc()
     model = build_model(write_doc(tmp_path, "dev", doc), src_dir)
-    a = model.instances[("scd30", "")]  # sgp40 already depends on scd30 (comp_source, base_doc's own wiring)
-    a.wiring_schema = (WiringField("comp_source", "SGP40_Reader", "comp_source", True, "kwarg"),)
-    a.wiring["comp_source"] = "sgp40"
+    a = model.instances[("scd30", "")]  # sgp40 already depends on scd30 (temperature_source/humidity_source, base_doc's own wiring)
+    a.wiring_schema = (WiringField("fake_dep", "SGP40_Reader", "fake_dep", True, "kwarg"),)
+    a.wiring["fake_dep"] = "sgp40"
     with pytest.raises(BuildError, match="cycle"):
         build_construction_order(model)

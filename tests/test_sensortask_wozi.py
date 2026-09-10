@@ -336,7 +336,7 @@ def test_fram_chunk_allocation_order_matches_the_documented_seven_chunk_sequence
     # (timestamped) -> BMP3xx_Reader(chunk) -> NeopixelDriver(chunk) ->
     # NotificationCoordinator(chunk), in that order, unconditionally. SCD30 now constructs before
     # SGP40 (ordering-hazard #1, SPECIFICATION.md Part A.7/C.14 - SGP40 holds a direct reference to
-    # scd_reader as its comp_source, so the producer must exist first).
+    # scd_reader as its temperature_source/humidity_source, so the producer must exist first).
     assert calls == ["chunk", "chunk", "chunk", "timestamped", "chunk", "chunk", "chunk"]
 
 

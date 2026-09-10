@@ -46,6 +46,17 @@ _WIRING: "WiringSchema" = (
     ("fram_target", AsyFramManager, "fram", False, "kwarg"),
 )
 
+
+class _DefaultSignalSink:
+    """§2's wiring-defaults mechanism (BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md), opted into via
+    [instance.wiring].signal_sink = {default = true} - a no-op LED sink for a notification setup
+    that shouldn't blink any LED. request_signal's own signature/return-value contract matches
+    NeopixelDriver.request_signal exactly, since codegen's existing attr-mode rendering
+    (f"{var}.{wf.target}") needs no mode-specific special-casing for a defaulted attr-mode field."""
+
+    async def request_signal(self, r: int, g: int, b: int, t: float) -> bool:
+        return False
+
 # Own schema, "Led" prefix dropped (matches asy_wifi_service.py/asy_sgp40_driver.py's own field
 # naming convention - see CLAUDE.md's "Current architecture" note on this deliberate wire-format
 # change). Ranges/defaults mirror the legacy REST handler's own already-validated bounds.

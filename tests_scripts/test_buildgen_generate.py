@@ -52,15 +52,16 @@ def test_real_device_boot_entry_imports_the_right_module(repo_root: Path, src_di
 def test_novel_combo_fixture_generates_successfully(fixtures_dir: Path, src_dir: Path, ext_dir: Path):
     # The mandatory synthetic "novel combination" fixture (BUILD_CHAIN_PLAN.md's acceptance
     # criteria #2): existing drivers mixed in a layout none of the 6 real devices use (two SCD30s,
-    # SGP40 compensated from the second one, BMP3xx at the alternate address, a partial
-    # notification signal set) - proving the generator's generality, not just the 6 hand-verified
-    # real files.
+    # SGP40 independently compensated - temperature from the second SCD30, humidity from the first
+    # (§2.9) - BMP3xx at the alternate address, a partial notification signal set) - proving the
+    # generator's generality, not just the 6 hand-verified real files.
     result = generate_device(fixtures_dir / "novel_combo.toml", src_dir, ext_dir)
     ast.parse(result.module_source)
     ast.parse(result.boot_entry_source)
     assert "scd30_primary" in result.module_source
     assert "scd30_secondary" in result.module_source
-    assert "SGP40_Reader(i2c1, scd30_secondary" in result.module_source
+    assert "SGP40_Reader(i2c1, temperature_source=scd30_secondary, temperature_field='Temp'" in result.module_source
+    assert "humidity_source=scd30_primary, humidity_field='Hum'" in result.module_source
     # Only warn_co2 is wired - warn_voc/warn_hum must not appear at all.
     assert "WarnCO2" in result.module_source
     assert "WarnVOC" not in result.module_source
@@ -86,6 +87,23 @@ def test_device_without_notification_or_neopixel_omits_their_wiring(tmp_path: Pa
     assert '"notification":' not in result.module_source.split("status_sources=")[1].split("\n")[0] if "status_sources=" in result.module_source else True
 
 
+def test_wiring_defaults_generate_inline_provider_construction(tmp_path: Path, src_dir: Path, ext_dir: Path):
+    # §2.6's generated-code shape: the default provider is constructed inline, at the exact
+    # call-site the real wiring expression would occupy, with no separate named global.
+    doc = base_doc()
+    doc["instance"][4]["wiring"]["signal_sink"] = {"default": True}
+    doc["instance"][1]["wiring"]["temperature_source"] = {"default": True, "temperature": 20}
+    result = generate_device(write_doc(tmp_path, "with_defaults", doc), src_dir, ext_dir)
+    ast.parse(result.module_source)
+    assert "_DefaultSignalSink().request_signal" in result.module_source
+    assert "temperature_source=_DefaultTemperatureSource(temperature=20)" in result.module_source
+    # Every defaulted per-value field always resolves to (provider, "value") - the fixed contract
+    # every _Default<Field> class's get_data() follows (§10.1 item 1) - not the real field name.
+    assert "temperature_field='value'" in result.module_source
+    # humidity_source stays a real reference - not defaulted in this fixture.
+    assert "humidity_source=scd30, humidity_field='Hum'" in result.module_source
+
+
 def test_device_level_led_target_unwired_omits_set_ext_led(tmp_path: Path, src_dir: Path, ext_dir: Path):
     # §7.1 #5: test_device_wiring_optional_field_absent_is_fine (test_buildgen_validate.py) already
     # confirms validate.py accepts neopixel-present-but-led_target-unwired - but nothing confirmed
@@ -100,7 +118,7 @@ def test_device_level_led_target_unwired_omits_set_ext_led(tmp_path: Path, src_d
 def test_device_without_sgp40_omits_maintenance_sensors(tmp_path: Path, src_dir: Path, ext_dir: Path):
     doc = base_doc()
     doc["instance"] = [i for i in doc["instance"] if i["driver"] != "sgp40"]
-    del doc["instance"][0]["wiring"]  # nothing else references sgp40's comp_source now
+    del doc["instance"][0]["wiring"]  # scd30's own optional fram_target - unrelated to sgp40's removal
     result = generate_device(write_doc(tmp_path, "nosgp40", doc), src_dir, ext_dir)
     ast.parse(result.module_source)
     assert "maintenance_sensors=" not in result.module_source

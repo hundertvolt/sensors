@@ -40,9 +40,14 @@ def build_construction_order(model: DeviceModel) -> "list[Node]":
             value = spec.wiring.get(wf.toml_field)
             if value is None:
                 continue  # optional and absent - validate.py already confirmed required ones are present
+            if isinstance(value, dict) and value.get("default") is True:
+                continue  # §2's wiring-defaults mechanism - no producer instance to depend on
             deps[spec.key].add(resolve_instance_key(model, value))
-        for toml_field, value in spec.wiring.items():
-            if toml_field.startswith("warn_") and isinstance(value, dict) and "source" in value:
+        # {source, field} references - warn_* (SPECIFICATION.md Part C.14.3) and §2.9's generalized
+        # per-value measurement wiring share this exact shape, so one loop covers both; a
+        # {default: true, ...} selection has no "source" key at all, naturally excluded here too.
+        for value in spec.wiring.values():
+            if isinstance(value, dict) and "source" in value:
                 deps[spec.key].add(resolve_instance_key(model, value["source"]))
 
     # Stable priority tie-break: mandatory infra first (in its own fixed order), then original TOML

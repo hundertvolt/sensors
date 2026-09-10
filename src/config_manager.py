@@ -43,7 +43,7 @@ if TYPE_CHECKING:
     # device's instance list so a producer is always constructed before any consumer that names it.
     # `target`/`mode` say how the resolved instance is actually handed to the consumer:
     #   mode="kwarg": the instance itself is passed as a constructor kwarg named `target`
-    #     (every existing case - `fram=`/`fram_storage=`/`comp_source=`).
+    #     (every case - `fram=`/`fram_storage=`).
     #   mode="attr": the instance's `target` attribute/bound method is passed instead of the
     #     instance itself (NotificationCoordinator's `request_signal_cb` wants
     #     `pixel.request_signal`, not `pixel`).
@@ -52,6 +52,9 @@ if TYPE_CHECKING:
     # Purely additive over C.14.2's original 2-element shape - no existing driver's __init__
     # signature changed to add this, `_WIRING` itself is never read at runtime (TYPE_CHECKING-only
     # alias, buildgen/ AST-parses the literal tuple from source instead - see buildgen/wiring.py).
+    # SGP40's old whole-object comp_source (mode="kwarg") is no longer a _WIRING entry at all -
+    # BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md §2.9 generalized it into independent per-value
+    # fields resolved by ValueWiringSchema below instead.
     WiringField = tuple[str, type, str, bool, str]
     WiringSchema = tuple[WiringField, ...]
 
@@ -65,6 +68,14 @@ if TYPE_CHECKING:
     LimitConstraint = tuple[int | float | None, int | float | None] | frozenset[int]
     LimitField = tuple[str, LimitConstraint]
     LimitsSchema = tuple[LimitField, ...]
+
+    # A driver's declaration of a per-value measurement-wiring field (BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md
+    # §2.9): (toml_field, source_kwarg, field_kwarg, required) - generalizes the {source, field}
+    # shape warn_* already used (above) to any module consuming one scalar value out of another
+    # module's get_data() result, matched by attribute name alone rather than a fixed producer
+    # class. AST-parsed the same way _WIRING is (buildgen/value_wiring.py).
+    ValueWiringField = tuple[str, str, str, bool]
+    ValueWiringSchema = tuple[ValueWiringField, ...]
 
 from print_log import PrintLogHistory
 

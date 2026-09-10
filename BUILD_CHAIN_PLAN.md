@@ -66,7 +66,10 @@ the generator/website builder/CI matrix should validate its own work against the
   "provides" registry needed — an instance either is the expected class or it isn't, checked
   directly.
 - **Every real cross-instance link gets a TOML-visible `[instance.wiring]`/`[device.wiring]`
-  field — none stay hardcoded in `build_system()`.** Covers `sgp40.comp_source`,
+  field — none stay hardcoded in `build_system()`.** Covers `sgp40.temperature_source`/
+  `.humidity_source` (originally one whole-object `comp_source` field; generalized into two
+  independent per-value fields by BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md §2.9, 2026-09-10 -
+  see that document for the full mechanism, including the `{default = true, ...}` fallback opt-in),
   `notification.signal_sink`/`warn_co2`/`warn_voc`/`warn_hum`, and `fram_target` on every
   driver/service with an optional `fram=`/`fram_storage=` argument (`scd30`, `sgp40`, `bmp3xx`,
   `neopixel`, `notification`, plus `device.wiring.fram_target` for `SystemService`'s own `fram=`)
@@ -200,8 +203,18 @@ name_ext = ""
 bus = "i2c1"
 
 [instance.wiring]
-comp_source = "scd30"                      # required; _WIRING-declared cross-instance dependency
 fram_target = "fram"                       # optional
+
+# Per-value measurement wiring (§2.9 of BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md), replacing
+# the original single, required, _WIRING-declared whole-object comp_source field above: each
+# independently required (or explicitly defaulted via {default = true, ...}).
+[instance.wiring.temperature_source]
+source = "scd30"
+field = "Temp"
+
+[instance.wiring.humidity_source]
+source = "scd30"
+field = "Hum"
 
 [[instance]]
 driver = "bmp3xx"
@@ -276,8 +289,10 @@ only, `name_ext`'s default-empty-means-unchanged rule, `[instance.wiring]`'s sha
 `instance_name()`), `[device.wiring]` as the mandatory-infra-side mirror of `[instance.wiring]`,
 the standing "every real cross-instance link is TOML-visible" rule and its two exclusions (see
 "Core design decisions" above), that a getter/optional-producer reference defaults to disabled when
-absent rather than erroring (unlike a required reference like `comp_source`), and that an `address`
-field only exists for a driver kind whose chip actually has one.
+absent rather than erroring (unlike a required reference like `signal_sink`, or `temperature_source`/
+`humidity_source` without an explicit `{default = true, ...}` opt-in - see
+BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md §2), and that an `address` field only exists for a
+driver kind whose chip actually has one.
 
 **Session 2 done**: the 6 real files live at `devices/<device>.toml`. The six `device.name` values
 are `Wozi`/`Dev`/`Arzi`/`Klkizi`/`Grkizi`/`Schlafzi`, feeding `hostname = "SensorStation<name>"`.
@@ -468,8 +483,8 @@ proceed rather than degrading:
   Every one of these must produce a specific, human-readable error naming the two colliding
   declarations (which instance/bus, which field, which value) — never a generic "build failed" and
   never a silent pick of one over the other.
-- **A wiring reference (`comp_source`, `signal_sink`, `fram_target`, `led_target`, every
-  `[instance.wiring.<name>]`/`[device.wiring]` field) resolves against the TOML's own
+- **A wiring reference (`temperature_source`, `humidity_source`, `signal_sink`, `fram_target`,
+  `led_target`, every `[instance.wiring.<name>]`/`[device.wiring]` field) resolves against the TOML's own
   `driver`+`name_ext` identity — never against `instance_name()`/each driver's own `_NAME`
   constant, and the two must never be conflated.** These are two unrelated naming spaces: the TOML
   identifier is the literal `driver` string as written (`"notification"`, `"scd30"`, ...) plus

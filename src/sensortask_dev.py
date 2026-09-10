@@ -269,7 +269,8 @@ async def build_system(
     # FRAM chunk 2. IRQ/RDY = GPIO11 on this bench unit (wozi: GPIO8); SCD30 sits on i2c1 here
     # (wozi: i2c0). Constructed before sgp_reader now (ordering-hazard #1, SPECIFICATION.md Part
     # C.14/A.7 - mirrors sensortask_wozi.py's own reorder exactly): sgp_reader holds a direct
-    # reference to this object as its comp_source, so the producer must exist first.
+    # reference to this object as its temperature_source/humidity_source, so the producer must
+    # exist first.
     scd_reader = SCD30_Reader(i2c1, 11, trigger_sec=3, max_module_error=_MAX_MODULE_ERROR, fram=fram, debug=debug)
     # FRAM chunks 3 (own error log) and 4 (VOC backup) - both allocated inside SGP40_Reader.__init__
     # itself, in that sub-order (mirrors sensortask_wozi.py's own construction order - see
@@ -277,7 +278,10 @@ async def build_system(
     # in wozi's own wiring.
     sgp_reader = SGP40_Reader(
         i2c1,
-        scd_reader,  # comp_source: direct reference, no wrapping callback (Part C.14).
+        temperature_source=scd_reader,  # direct reference, no wrapping callback (Part C.14 / §2.9)
+        temperature_field="Temp",
+        humidity_source=scd_reader,
+        humidity_field="Hum",
         fram_storage=fram,
         fram_ntp_callback=ntp.ntp_issynced,
         max_module_error=_MAX_MODULE_ERROR,

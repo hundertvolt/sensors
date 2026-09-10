@@ -10,15 +10,18 @@ human-readable reason the build was aborted, not a generic failure.
 returns a `DeviceModel` whose every instance is fully resolved and every collision/reference check
 already passed - safe to hand straight to `buildgen.graph`/`buildgen.codegen`."""
 
+import ast
 from pathlib import Path
 
 from buildgen.buildspec import ADDRESS_CAPABLE_DRIVERS, ALLOWED_INSTANCE_FIELDS, BUS_ATTACHED_DRIVERS, FIXED_ADDRESS_DRIVERS, REQUIRED_TOML_FIELDS
+from buildgen.defaults import default_class_defines_attr, default_class_name, default_init_params, find_default_class
 from buildgen.driver_registry import SERVICE_DRIVERS, parse_name_constant, resolve_driver
 from buildgen.errors import BuildError
 from buildgen.limits import parse_limits
 from buildgen.model import DeviceModel, InstanceSpec, instance_label, load_device, resolve_instance_key
 from buildgen.pico_gpio import I2C_ROLE, SPI_ROLE, gpio_exists
 from buildgen.requires_tag import check_requires_tags, parse_requires_tags
+from buildgen.value_wiring import ValueWiringField, parse_value_wiring
 from buildgen.wiring import WiringField, parse_wiring
 
 _BUS_WIRE_FIELDS = {
@@ -137,6 +140,7 @@ def _resolve_instances(model: DeviceModel, src_dir: Path) -> None:
         spec.wiring_schema = parse_wiring(info.source_path, model.device, spec.label)
         spec.requires_tags = parse_requires_tags(info.source_path, model.device, spec.label)
         spec.limits_schema = parse_limits(info.source_path, model.device, spec.label)
+        spec.value_wiring_schema = parse_value_wiring(info.source_path, model.device, spec.label)
         spec.resolved_name = _instance_name(parse_name_constant(info.source_path, model.device, spec.label), spec.name_ext)
 
         if spec.driver in SERVICE_DRIVERS and spec.name_ext:
@@ -357,14 +361,88 @@ def _check_wiring_reference(model: DeviceModel, wf: WiringField, target_key_str:
         )
 
 
+def _check_source_field_reference(model: DeviceModel, value: object, consumer_label: str, toml_field: str) -> None:
+    # Shared by warn_*'s per-signal getters and _VALUE_WIRING's per-value measurement wiring (§2.9)
+    # - both are the same generic {source, field} shape, resolved by attribute name alone rather
+    # than a fixed producer_class.
+    if not isinstance(value, dict) or "source" not in value or "field" not in value:
+        raise BuildError(model.device, f"{consumer_label}'s wiring.{toml_field} must be a {{source, field}} table", instance=consumer_label, field=toml_field)
+    # A non-string "source" would otherwise crash resolve_instance_key()'s `"_" in value` check
+    # with a raw TypeError instead of a fail-loud BuildError.
+    if not isinstance(value["source"], str) or not isinstance(value["field"], str):
+        raise BuildError(model.device, f"{consumer_label}'s wiring.{toml_field}.source/field must both be strings", instance=consumer_label, field=toml_field)
+    source_key = resolve_instance_key(model, value["source"])
+    if source_key not in model.instances:
+        raise BuildError(model.device, f"{consumer_label}'s wiring.{toml_field}.source={value['source']!r} does not resolve to any declared instance", instance=consumer_label, field=toml_field)
+
+
+def _check_default_provider_params(model: DeviceModel, spec: InstanceSpec, toml_field: str, value: dict) -> ast.ClassDef:
+    # Shared by _WIRING-based defaults (signal_sink) and _VALUE_WIRING-based defaults
+    # (temperature_source/humidity_source) - §2.4's "the class definition IS the schema": a
+    # `_Default<Field>`'s own `__init__` signature says what keys a `{default = true, ...}`
+    # sub-table may/must carry, discovered via AST the same way _WIRING/_LIMITS already are.
+    assert spec.driver_info is not None
+    class_node = find_default_class(spec.driver_info.source_path, model.device, spec.label, toml_field)
+    if class_node is None:
+        raise BuildError(
+            model.device,
+            f"{spec.label}'s wiring.{toml_field} opts into the default, but {spec.driver_info.source_path.name} defines no {default_class_name(toml_field)} class",
+            instance=spec.label,
+            field=toml_field,
+        )
+    params = default_init_params(class_node, spec.driver_info.source_path, model.device, spec.label)
+    allowed = {p.name for p in params}
+    required = {p.name for p in params if not p.has_default}
+    given = set(value) - {"default"}
+    unknown = given - allowed
+    if unknown:
+        raise BuildError(model.device, f"{spec.label}'s wiring.{toml_field} default sub-table has unrecognized key(s) {sorted(unknown)} for {class_node.name}", instance=spec.label, field=toml_field)
+    missing = required - given
+    if missing:
+        raise BuildError(model.device, f"{spec.label}'s wiring.{toml_field} default sub-table is missing required key(s) {sorted(missing)} for {class_node.name}", instance=spec.label, field=toml_field)
+    return class_node
+
+
+def _check_default_selection(model: DeviceModel, spec: InstanceSpec, wf: WiringField, toml_field: str, value: dict) -> None:
+    class_node = _check_default_provider_params(model, spec, toml_field, value)
+    # §2.8's second open question, resolved "yes" for attr-mode _WIRING fields only (signal_sink):
+    # verify the default provider actually defines the target attribute/method - same
+    # fail-loud-at-generation-time philosophy as every other buildgen/ check. The generalized
+    # per-value mechanism (_VALUE_WIRING) needs no equivalent check - every _Default<Field> there
+    # follows one fixed, hardcoded "get_data() returns an object with a .value attribute" contract
+    # instead (see _check_default_value_selection below).
+    if wf.mode == "attr" and not default_class_defines_attr(class_node, wf.target):
+        raise BuildError(
+            model.device,
+            f"{spec.label}'s wiring.{toml_field} default provider {class_node.name} defines no {wf.target!r} attribute/method - required for 'attr' mode wiring",
+            instance=spec.label,
+            field=toml_field,
+        )
+
+
+def _check_default_value_selection(model: DeviceModel, spec: InstanceSpec, vwf: ValueWiringField) -> None:
+    value = spec.wiring[vwf.toml_field]
+    assert isinstance(value, dict)
+    _check_default_provider_params(model, spec, vwf.toml_field, value)
+
+
 def _check_instance_wiring(model: DeviceModel, src_dir: Path) -> None:
     for spec in model.instances.values():
+        value_wiring_fields = {vwf.toml_field for vwf in spec.value_wiring_schema}
         for toml_field, value in spec.wiring.items():
             if toml_field.startswith("warn_"):
                 continue  # per-signal getters (source/field pairs) - checked separately below
+            if toml_field in value_wiring_fields:
+                continue  # _VALUE_WIRING field (§2.9) - checked separately by _check_value_wiring()
             wf = _resolve_wiring_field(spec.wiring_schema, toml_field)
             if wf is None:
                 raise BuildError(model.device, f"{spec.label} declares wiring.{toml_field}, but its driver has no matching _WIRING entry", instance=spec.label, field=toml_field)
+            # §2's wiring-defaults mechanism: a {default = true, ...} sub-table opts out of
+            # resolving a real instance reference entirely - branch at the very top, before any
+            # string-only handling runs (§10.1 item 1's resolved branch-point decision).
+            if isinstance(value, dict) and value.get("default") is True:
+                _check_default_selection(model, spec, wf, toml_field, value)
+                continue
             if not isinstance(value, str):
                 raise BuildError(model.device, f"{spec.label}'s wiring.{toml_field} must be a string instance reference, got {value!r}", instance=spec.label, field=toml_field)
             _check_wiring_reference(model, wf, value, spec.label, toml_field)
@@ -379,15 +457,24 @@ def _check_instance_wiring(model: DeviceModel, src_dir: Path) -> None:
         for toml_field, value in spec.wiring.items():
             if not toml_field.startswith("warn_"):
                 continue
-            if not isinstance(value, dict) or "source" not in value or "field" not in value:
-                raise BuildError(model.device, f"{spec.label}'s wiring.{toml_field} must be a {{source, field}} table", instance=spec.label, field=toml_field)
-            # A non-string "source" would otherwise crash resolve_instance_key()'s `"_" in value`
-            # check with a raw TypeError instead of a fail-loud BuildError.
-            if not isinstance(value["source"], str) or not isinstance(value["field"], str):
-                raise BuildError(model.device, f"{spec.label}'s wiring.{toml_field}.source/field must both be strings", instance=spec.label, field=toml_field)
-            source_key = resolve_instance_key(model, value["source"])
-            if source_key not in model.instances:
-                raise BuildError(model.device, f"{spec.label}'s wiring.{toml_field}.source={value['source']!r} does not resolve to any declared instance", instance=spec.label, field=toml_field)
+            _check_source_field_reference(model, value, spec.label, toml_field)
+
+
+def _check_value_wiring(model: DeviceModel) -> None:
+    # §2.9's per-value measurement wiring: each field independently resolves to either a real
+    # {source, field} reference (any producer, matched by attribute name) or an explicit
+    # {default = true, ...} opt-in (§2) - never silently defaulted just because it's absent.
+    for spec in model.instances.values():
+        for vwf in spec.value_wiring_schema:
+            value = spec.wiring.get(vwf.toml_field)
+            if value is None:
+                if vwf.required:
+                    raise BuildError(model.device, f"{spec.label} is missing required wiring.{vwf.toml_field}", instance=spec.label, field=vwf.toml_field)
+                continue
+            if isinstance(value, dict) and value.get("default") is True:
+                _check_default_value_selection(model, spec, vwf)
+                continue
+            _check_source_field_reference(model, value, spec.label, vwf.toml_field)
 
 
 def _check_device_wiring(model: DeviceModel, src_dir: Path) -> None:
@@ -441,6 +528,7 @@ def build_model(toml_path: Path, src_dir: Path) -> DeviceModel:
     _check_gpio_collisions(model, buses)
     _check_address_collisions(model)
     _check_instance_wiring(model, src_dir)
+    _check_value_wiring(model)
     _check_device_wiring(model, src_dir)
     _check_requires_tags(model, buses)
     return model

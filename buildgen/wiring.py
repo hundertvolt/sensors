@@ -8,15 +8,16 @@ Extends C.14.2's original 2-element `(toml_field, producer_class)` shape to 5 el
 `(toml_field, producer_class, target, required, mode)` - resolving BUILD_CHAIN_PLAN.md's two open
 `_WIRING`-coverage questions (see this session's PR description for the full rationale):
   - mode="kwarg": the resolved producer instance is passed as a constructor kwarg named `target`
-    (covers every existing `fram=`/`fram_storage=`/`comp_source=` case).
+    (covers every `fram=`/`fram_storage=` case).
   - mode="attr": the resolved producer instance's `target` attribute/bound method is passed as the
     value instead of the instance itself (NotificationCoordinator's `request_signal_cb` wants
     `pixel.request_signal`, not `pixel` itself - this is `signal_sink`'s resolution).
   - mode="setter": `<consumer>.<target>(<resolved producer>)` is called once, after both already
     exist (AsyConnTime's `set_ext_led()` - `[device.wiring].led_target`).
-This is purely additive to every existing driver's own constructor signature - no `src/` driver's
-`__init__` changed to make this possible, so `sensortask_wozi.py`/`sensortask_dev.py` (hand-written,
-out of this session's scope) stay byte-for-byte unaffected."""
+`_WIRING` no longer covers per-value measurement wiring (SGP40's old whole-object `comp_source`) -
+BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md §2.9 generalized that into independent
+`temperature_source`/`humidity_source` fields, resolved generically by attribute name via
+`buildgen.value_wiring`'s own `_VALUE_WIRING` tuple instead, the same shape `warn_*` already used."""
 
 import ast
 from dataclasses import dataclass

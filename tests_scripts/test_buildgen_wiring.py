@@ -15,10 +15,11 @@ def src_dir(repo_root: Path) -> Path:
     return repo_root / "src"
 
 
-def test_parse_wiring_sgp40_comp_source_and_fram_target(src_dir: Path):
+def test_parse_wiring_sgp40_fram_target(src_dir: Path):
+    # comp_source is no longer a _WIRING entry at all - §2.9 generalized it into independent
+    # per-value fields, resolved by buildgen.value_wiring instead (see test_buildgen_value_wiring.py).
     fields = parse_wiring(src_dir / "asy_sgp40_driver.py", "dev", "sgp40")
-    assert WiringField("comp_source", "SCD30_Reader", "comp_source", True, "kwarg") in fields
-    assert WiringField("fram_target", "AsyFramManager", "fram_storage", False, "kwarg") in fields
+    assert fields == (WiringField("fram_target", "AsyFramManager", "fram_storage", False, "kwarg"),)
 
 
 def test_parse_wiring_notification_signal_sink_is_attr_mode(src_dir: Path):

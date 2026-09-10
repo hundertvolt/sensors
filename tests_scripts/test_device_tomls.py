@@ -89,14 +89,23 @@ def check_singleton_drivers_never_declare_name_ext(doc: dict, label: str) -> Non
             assert "name_ext" not in inst, f"{label}: singleton driver {inst['driver']!r} declares name_ext - singleton service kinds never do"
 
 
-def check_sgp40_wiring_resolves_to_a_real_scd30_instance(doc: dict, label: str) -> None:
+# sgp40's per-value measurement wiring (BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md §2.9):
+# temperature_source/humidity_source are independent {source, field} references, generalized from
+# the old single whole-object comp_source field - every real device today sources both off scd30.
+_SGP40_VALUE_WIRING = {"temperature_source": "Temp", "humidity_source": "Hum"}
+
+
+def check_sgp40_wiring_resolves_to_real_sources(doc: dict, label: str) -> None:
     instances = {(inst["driver"], inst.get("name_ext", "")): inst for inst in doc["instance"]}
     sgp40_key = ("sgp40", "")
     assert sgp40_key in instances, f"{label}: no unextended sgp40 instance found"
     wiring = instances[sgp40_key].get("wiring")
     assert wiring is not None, f"{label}: sgp40 instance has no [instance.wiring] table"
-    assert wiring.get("comp_source") == "scd30", f"{label}: sgp40's wiring.comp_source is {wiring.get('comp_source')!r}, expected 'scd30'"
-    assert ("scd30", "") in instances, f"{label}: sgp40's comp_source references 'scd30' but no such instance exists"
+    for key, expected_field in _SGP40_VALUE_WIRING.items():
+        sig = wiring.get(key)
+        assert sig is not None, f"{label}: sgp40 instance has no wiring.{key}"
+        assert sig.get("field") == expected_field, f"{label}: [instance.wiring.{key}].field is {sig.get('field')!r}, expected {expected_field!r}"
+        assert (sig.get("source"), "") in instances, f"{label}: sgp40's {key} references {sig.get('source')!r} but no such instance exists"
 
 
 def check_no_global_gpio_pin_collision(doc: dict, label: str) -> None:
@@ -278,7 +287,7 @@ def test_every_declared_bus_is_used_by_some_instance(devices_dir: Path, device: 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_sgp40_wiring_resolves_to_a_real_scd30_instance(devices_dir: Path, device: str):
-    check_sgp40_wiring_resolves_to_a_real_scd30_instance(_load(devices_dir, device), device)
+    check_sgp40_wiring_resolves_to_real_sources(_load(devices_dir, device), device)
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
@@ -380,7 +389,16 @@ _BASE_DOC: dict = {
     },
     "instance": [
         {"driver": "scd30", "name_ext": "", "bus": "i2c0", "irq_pin": 8, "trigger_sec": 3, "wiring": {"fram_target": "fram"}},
-        {"driver": "sgp40", "name_ext": "", "bus": "i2c1", "wiring": {"comp_source": "scd30", "fram_target": "fram"}},
+        {
+            "driver": "sgp40",
+            "name_ext": "",
+            "bus": "i2c1",
+            "wiring": {
+                "temperature_source": {"source": "scd30", "field": "Temp"},
+                "humidity_source": {"source": "scd30", "field": "Hum"},
+                "fram_target": "fram",
+            },
+        },
         {"driver": "fram", "bus": "spi0", "cs_pin": 1, "max_size": 0x2000},
         {"driver": "neopixel", "pin": 15, "wiring": {"fram_target": "fram"}},
         {
@@ -407,7 +425,7 @@ def test_base_doc_fixture_itself_passes_every_check():
     check_bus_tables_declare_their_required_wire_pins(doc, "base")
     check_every_instance_referencing_a_bus_uses_a_declared_bus(doc, "base")
     check_every_declared_bus_is_used_by_some_instance(doc, "base")
-    check_sgp40_wiring_resolves_to_a_real_scd30_instance(doc, "base")
+    check_sgp40_wiring_resolves_to_real_sources(doc, "base")
     check_notification_wiring_resolves_to_a_real_neopixel_instance(doc, "base")
     check_notification_signal_wiring_resolves_if_present(doc, "base")
     check_fram_wiring_resolves_if_present(doc, "base")
@@ -484,28 +502,31 @@ def test_detects_sgp40_missing_its_wiring_table():
     doc = _base_doc()
     del doc["instance"][1]["wiring"]
     with pytest.raises(AssertionError, match="no \\[instance.wiring\\] table"):
-        check_sgp40_wiring_resolves_to_a_real_scd30_instance(doc, "base")
+        check_sgp40_wiring_resolves_to_real_sources(doc, "base")
 
 
-def test_detects_sgp40_wiring_pointing_at_the_wrong_driver():
+def test_detects_sgp40_wiring_with_the_wrong_field_name():
+    # §2.9: any source exposing a matching attribute name is structurally valid (no fixed producer
+    # class to check against) - this smoke suite instead checks the real devices' own convention
+    # (temperature_source always reads "Temp"), so a field-name typo is what it can actually catch.
     doc = _base_doc()
-    doc["instance"][1]["wiring"]["comp_source"] = "bmp3xx"
-    with pytest.raises(AssertionError, match="expected 'scd30'"):
-        check_sgp40_wiring_resolves_to_a_real_scd30_instance(doc, "base")
+    doc["instance"][1]["wiring"]["temperature_source"]["field"] = "Temperature"
+    with pytest.raises(AssertionError, match="expected 'Temp'"):
+        check_sgp40_wiring_resolves_to_real_sources(doc, "base")
 
 
 def test_detects_sgp40_wiring_referencing_a_nonexistent_instance():
     doc = _base_doc()
     doc["instance"] = [i for i in doc["instance"] if i["driver"] != "scd30"]
     with pytest.raises(AssertionError, match="no such instance exists"):
-        check_sgp40_wiring_resolves_to_a_real_scd30_instance(doc, "base")
+        check_sgp40_wiring_resolves_to_real_sources(doc, "base")
 
 
 def test_detects_sgp40_instance_missing_entirely():
     doc = _base_doc()
     doc["instance"] = [i for i in doc["instance"] if i["driver"] != "sgp40"]
     with pytest.raises(AssertionError, match="no unextended sgp40 instance found"):
-        check_sgp40_wiring_resolves_to_a_real_scd30_instance(doc, "base")
+        check_sgp40_wiring_resolves_to_real_sources(doc, "base")
 
 
 def test_detects_notification_missing_its_wiring_table():

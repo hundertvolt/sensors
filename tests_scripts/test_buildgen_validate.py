@@ -643,31 +643,82 @@ def test_instance_wiring_bogus_key_rejected(tmp_path: Path, src_dir: Path):
 
 
 def test_wiring_value_not_a_string(tmp_path: Path, src_dir: Path):
+    # Exercises _check_wiring_reference()'s own type check via notification's signal_sink - the
+    # required, producer-class-constrained _WIRING field base_doc() has now that sgp40's own
+    # comp_source has been generalized away by §2.9 (see test_buildgen_value_wiring.py for that).
     doc = base_doc()
-    doc["instance"][1]["wiring"]["comp_source"] = 42
+    doc["instance"][4]["wiring"]["signal_sink"] = 42
     with pytest.raises(BuildError, match="must be a string instance reference"):
         _build(tmp_path, src_dir, doc)
 
 
 def test_wiring_reference_unresolved(tmp_path: Path, src_dir: Path):
     doc = base_doc()
-    doc["instance"][1]["wiring"]["comp_source"] = "does_not_exist"
+    doc["instance"][4]["wiring"]["signal_sink"] = "does_not_exist"
     with pytest.raises(BuildError, match="does not resolve to any declared instance"):
         _build(tmp_path, src_dir, doc)
 
 
 def test_wiring_reference_wrong_class(tmp_path: Path, src_dir: Path):
     doc = base_doc()
-    doc["instance"][1]["wiring"]["comp_source"] = "fram"  # fram is AsyFramManager, not SCD30_Reader
-    with pytest.raises(BuildError, match="requires a SCD30_Reader"):
+    doc["instance"][4]["wiring"]["signal_sink"] = "fram"  # fram is AsyFramManager, not NeopixelDriver
+    with pytest.raises(BuildError, match="requires a NeopixelDriver"):
         _build(tmp_path, src_dir, doc)
 
 
 def test_required_wiring_field_missing(tmp_path: Path, src_dir: Path):
     doc = base_doc()
-    del doc["instance"][1]["wiring"]["comp_source"]
-    with pytest.raises(BuildError, match="missing required wiring.comp_source"):
+    del doc["instance"][4]["wiring"]["signal_sink"]
+    with pytest.raises(BuildError, match="missing required wiring.signal_sink"):
         _build(tmp_path, src_dir, doc)
+
+
+def test_signal_sink_default_opt_in_is_fine(tmp_path: Path, src_dir: Path):
+    # §1's original motivating scenario: a notification setup that shouldn't blink any LED.
+    doc = base_doc()
+    doc["instance"][4]["wiring"]["signal_sink"] = {"default": True}
+    _build(tmp_path, src_dir, doc)  # no raise
+
+
+def test_signal_sink_default_with_unknown_key_rejected(tmp_path: Path, src_dir: Path):
+    # _DefaultSignalSink takes zero constructor args - any extra key is unrecognized.
+    doc = base_doc()
+    doc["instance"][4]["wiring"]["signal_sink"] = {"default": True, "bogus_key": 5}
+    with pytest.raises(BuildError, match="unrecognized key"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_temperature_source_default_opt_in_is_fine(tmp_path: Path, src_dir: Path):
+    doc = base_doc()
+    doc["instance"][1]["wiring"]["temperature_source"] = {"default": True, "temperature": 20}
+    _build(tmp_path, src_dir, doc)  # no raise - humidity_source stays a real reference
+
+
+def test_humidity_source_default_opt_in_is_fine(tmp_path: Path, src_dir: Path):
+    doc = base_doc()
+    doc["instance"][1]["wiring"]["humidity_source"] = {"default": True}
+    _build(tmp_path, src_dir, doc)  # no raise - default's own temperature param keeps its own default
+
+
+def test_temperature_source_default_with_unknown_key_rejected(tmp_path: Path, src_dir: Path):
+    doc = base_doc()
+    doc["instance"][1]["wiring"]["temperature_source"] = {"default": True, "bogus_key": 5}
+    with pytest.raises(BuildError, match="unrecognized key"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_sgp40_without_any_scd30_using_both_defaults(tmp_path: Path, src_dir: Path):
+    # §1's original motivating scenario: an SGP40 with genuinely no SCD30 at all, defaulting both
+    # compensation values via explicit {default = true} opt-ins.
+    doc = base_doc()
+    doc["instance"] = [i for i in doc["instance"] if i["driver"] != "scd30"]
+    doc["instance"][0]["wiring"] = {  # sgp40, now index 0
+        "temperature_source": {"default": True, "temperature": 22},
+        "humidity_source": {"default": True},
+        "fram_target": "fram",
+    }
+    del doc["instance"][3]["wiring"]["warn_co2"]  # notification, now index 3 - referenced scd30
+    _build(tmp_path, src_dir, doc)  # no raise
 
 
 def test_optional_wiring_field_absent_is_fine(tmp_path: Path, src_dir: Path):
@@ -738,16 +789,17 @@ def test_device_wiring_fram_target_left_unwired_is_fine(tmp_path: Path, src_dir:
 def test_device_wiring_required_field_missing_is_rejected(tmp_path: Path, src_dir: Path, monkeypatch: pytest.MonkeyPatch):
     # Both real [device.wiring] fields (led_target/fram_target) are optional today, so this drives
     # _check_device_wiring's required-field enforcement directly against a stand-in consumer table
-    # pointing at a real driver file with a genuinely required _WIRING entry (sgp40's comp_source) -
-    # the same "drive a validate.py internal directly" approach
-    # test_instance_name_collision_via_distinct_drivers_same_resolved_name() above already uses for
-    # a case none of the six real device TOMLs can exercise either.
+    # pointing at a real driver file with a genuinely required _WIRING entry (notification's
+    # signal_sink - sgp40's old comp_source, this test's original stand-in, no longer exists as a
+    # _WIRING entry at all since §2.9 generalized it away) - the same "drive a validate.py internal
+    # directly" approach test_instance_name_collision_via_distinct_drivers_same_resolved_name()
+    # above already uses for a case none of the six real device TOMLs can exercise either.
     import buildgen.validate as validate_mod
     from buildgen.model import DeviceModel
 
-    monkeypatch.setitem(validate_mod._DEVICE_WIRING_CONSUMERS, "comp_source", ("asy_sgp40_driver.py", "SGP40_Reader", "comp_source"))
+    monkeypatch.setitem(validate_mod._DEVICE_WIRING_CONSUMERS, "signal_sink", ("asy_notification_service.py", "NotificationCoordinator", "signal_sink"))
     model = DeviceModel("dev", tmp_path / "dev.toml", {"device": {"wiring": {}}})
-    with pytest.raises(BuildError, match="missing required field 'comp_source'"):
+    with pytest.raises(BuildError, match="missing required field 'signal_sink'"):
         validate_mod._check_device_wiring(model, src_dir)
 
 

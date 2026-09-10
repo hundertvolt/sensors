@@ -185,18 +185,28 @@ _CompReading = namedtuple("_CompReading", ("Temp", "Hum"))
 
 
 class _FakeCompSource:
-    # Structural stand-in for comp_source: SCD30_Reader (SPECIFICATION.md Part C.14) - a fixed
-    # value independent of this test's own real scd_reader, matching the removed _comp_data()
-    # stub's own fixed [25.0, 50.0] return exactly (scd_reader's real reading is deliberately not
-    # used here - _settle_and_spike() below needs 200 compensated SGP40 cycles well before this
-    # test ever drives scd_reader for its own real measurement).
+    # Structural stand-in for temperature_source/humidity_source (SPECIFICATION.md Part C.14,
+    # BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md §2.9) - a fixed value independent of this test's
+    # own real scd_reader, matching the removed _comp_data() stub's own fixed [25.0, 50.0] return
+    # exactly (scd_reader's real reading is deliberately not used here - _settle_and_spike() below
+    # needs 200 compensated SGP40 cycles well before this test ever drives scd_reader for its own
+    # real measurement).
     async def get_data(self) -> "Any":
         return _CompReading(25.0, 50.0)
 
 
 def make_sgp_reader() -> "tuple[SGP40_Reader, Any]":
     i2c = I2C(1, scl_pin=19, sda_pin=18, frequency=50000)
-    reader = SGP40_Reader(i2c, _FakeCompSource(), max_module_error=2, cfg_path=_tmp_cfg_dir("sgp"))  # type: ignore[arg-type]
+    comp = _FakeCompSource()
+    reader = SGP40_Reader(
+        i2c,
+        temperature_source=comp,
+        temperature_field="Temp",
+        humidity_source=comp,
+        humidity_field="Hum",
+        max_module_error=2,
+        cfg_path=_tmp_cfg_dir("sgp"),
+    )
     run(reader.pr.setup())
     return reader, reader.sgp.i2c_sgp40.i2c_device.i2c._i2c
 

@@ -13,6 +13,7 @@ from buildgen.driver_registry import DriverInfo
 from buildgen.errors import BuildError
 from buildgen.limits import LimitField
 from buildgen.requires_tag import RequiresTag
+from buildgen.value_wiring import ValueWiringField
 from buildgen.wiring import WiringField
 
 
@@ -40,6 +41,7 @@ class InstanceSpec:
     wiring_schema: "tuple[WiringField, ...]" = ()
     requires_tags: "tuple[RequiresTag, ...]" = ()
     limits_schema: "tuple[LimitField, ...]" = ()
+    value_wiring_schema: "tuple[ValueWiringField, ...]" = ()
     resolved_name: str | None = None  # instance_name(_NAME, name_ext) - filled in by validate.py
 
     @property

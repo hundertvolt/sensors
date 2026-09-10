@@ -275,7 +275,8 @@ async def build_system(
     # FRAM chunk 2. Constructed before sgp_reader now (see SPECIFICATION.md Part A.7/C.14's
     # ordering-hazard #1: a consumer's constructor references its producer's already-built Python
     # object directly, so the producer must exist first) - sgp_reader below holds a direct
-    # reference to this object as its comp_source, replacing the old sgp_comp_callback() closure.
+    # reference to this object as its temperature_source/humidity_source, replacing the old
+    # sgp_comp_callback() closure.
     # wozi is never physically flashed (CLAUDE.md), so there is no deployed on-chip FRAM layout
     # this reorder could break - only internal self-consistency matters, kept exactly in sync with
     # the "Real FRAM chunk order" list below.
@@ -284,8 +285,10 @@ async def build_system(
     # itself, in that sub-order (see SPECIFICATION.md Part A.7 for the full FRAM chunk order).
     sgp_reader = SGP40_Reader(
         i2c1,
-        scd_reader,  # comp_source: direct reference to scd_reader's own get_data(), read live
-        # every read cycle (SPECIFICATION.md Part C.14) - no wrapping callback.
+        temperature_source=scd_reader,  # direct reference to scd_reader's own get_data(), read
+        temperature_field="Temp",  # live every read cycle (SPECIFICATION.md Part C.14 / §2.9) -
+        humidity_source=scd_reader,  # no wrapping callback. Both resolve off the same producer
+        humidity_field="Hum",  # here, but independently - each could name a different source.
         fram_storage=fram,
         fram_ntp_callback=ntp.ntp_issynced,
         max_module_error=_MAX_MODULE_ERROR,

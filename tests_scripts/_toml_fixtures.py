@@ -28,7 +28,16 @@ def base_doc() -> dict:
             },
             "instance": [
                 {"driver": "scd30", "name_ext": "", "bus": "i2c0", "irq_pin": 8, "trigger_sec": 3, "wiring": {"fram_target": "fram"}},
-                {"driver": "sgp40", "name_ext": "", "bus": "i2c0", "wiring": {"comp_source": "scd30", "fram_target": "fram"}},
+                {
+                    "driver": "sgp40",
+                    "name_ext": "",
+                    "bus": "i2c0",
+                    "wiring": {
+                        "temperature_source": {"source": "scd30", "field": "Temp"},
+                        "humidity_source": {"source": "scd30", "field": "Hum"},
+                        "fram_target": "fram",
+                    },
+                },
                 {"driver": "fram", "bus": "spi0", "cs_pin": 1, "max_size": 8192},
                 {"driver": "neopixel", "pin": 15, "wiring": {"fram_target": "fram"}},
                 {
