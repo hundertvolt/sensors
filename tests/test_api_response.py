@@ -274,8 +274,8 @@ def test_handle_set_cmd_both_hooks_fire_together_when_provided() -> None:
 
         run(
             ar.handle_set_cmd(
-                reader, {"SampleInterv": 42}, _VAL_SI, post_fct=lambda: sync_calls.append(1), post_asy_fct=post
-            )
+                reader, {"SampleInterv": 42}, _VAL_SI, post_fct=lambda: sync_calls.append(1), post_asy_fct=post,
+            ),
         )
         assert sync_calls == [1]
         assert async_calls == [1]

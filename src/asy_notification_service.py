@@ -120,7 +120,7 @@ class NotificationCoordinator(SensorReaderConfig):
         # Isolated from monitor_loop() specifically so it's directly unit-testable without needing
         # a real elapsed time close to Interv's own 60.0s schema floor to observe the floor kick in.
         rem_interv = interv - (time.ticks_diff(time.ticks_ms(), t0) * 0.001)  # run duration so far in sec
-        return rem_interv if rem_interv >= 0.1 else 0.1
+        return max(rem_interv, 0.1)
 
     def _now(self) -> int | None:
         try:
@@ -259,10 +259,9 @@ class NotificationCoordinator(SensorReaderConfig):
                 if self._auto_active:
                     self._auto_active = False
                     self.pr.evt("LED Override active.")
-            else:
-                if not self._auto_active:
-                    self._auto_active = True
-                    self.pr.evt("LED Override off.")
+            elif not self._auto_active:
+                self._auto_active = True
+                self.pr.evt("LED Override off.")
             await asyncio.sleep(1)
 
     async def monitor_loop(self) -> None:

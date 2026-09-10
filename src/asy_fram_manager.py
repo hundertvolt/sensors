@@ -208,7 +208,7 @@ class _AsyBaseFramChunk:
         return uninit
 
     async def _handle_status_bytes(
-        self, fram: FRAM_SPI, addr: int, val: int, check_idle: bool, err: int
+        self, fram: FRAM_SPI, addr: int, val: int, check_idle: bool, err: int,
     ) -> bool | None:
         st_addr = addr + self.size + self.crc.length()
         # check_idle=False only needs 2 tightly packed errnos (one failure mode); check_idle=True
@@ -465,11 +465,11 @@ class AsyFramTimestampedChunk(_AsyBaseFramChunk):
 
     def get_buffer(self) -> AsyFramChunkTimestampedBuffer:
         return AsyFramChunkTimestampedBuffer(
-            struct.calcsize(_TS_FMT), self.size - struct.calcsize(_TS_FMT), self.crc.length()
+            struct.calcsize(_TS_FMT), self.size - struct.calcsize(_TS_FMT), self.crc.length(),
         )  # uses ts size and data size separately
 
     async def write(
-        self, data: bytes | bytearray, require_ntp: bool = False, override_pause: bool = False
+        self, data: bytes | bytearray, require_ntp: bool = False, override_pause: bool = False,
     ) -> tuple[bool, int | None, bool]:
         buf = self.get_buffer()  # preallocate buffer for payload and crc length
         dbuf = buf.get_data_buf()
@@ -532,7 +532,7 @@ class AsyFramTimestampedChunk(_AsyBaseFramChunk):
         return ts, age, bytearray(dbuf)
 
     async def read_into(
-        self, buf: AsyFramChunkTimestampedBuffer, override_pause: bool = False
+        self, buf: AsyFramChunkTimestampedBuffer, override_pause: bool = False,
     ) -> tuple[bool, int | None, int | None]:
         bbuf = buf.get_buf()
         if bbuf is None:
@@ -570,7 +570,7 @@ class AsyFramTimestampedChunk(_AsyBaseFramChunk):
 
 class AsyFramManager:
     def __init__(
-        self, spi_bus: SPI, spi_cs: int, max_size: int = 0x2000, history_length: int = 10, debug: int | None = None
+        self, spi_bus: SPI, spi_cs: int, max_size: int = 0x2000, history_length: int = 10, debug: int | None = None,
     ) -> None:
         self.pr = PrintLogHistory(history_length, debug, name=_NAME)
         self.name = _NAME  # matches self.pr.name - the _ModuleLike registration shape
@@ -587,7 +587,7 @@ class AsyFramManager:
         return self._pause
 
     def get_chunk(
-        self, size: int, crc: CRC_Base | None = None, verify: int = 0, check_length: int = 8
+        self, size: int, crc: CRC_Base | None = None, verify: int = 0, check_length: int = 8,
     ) -> AsyFramChunk | None:
         if size == 0:  # a chunk storing nothing is never a sensible request, regardless of crc
             self.pr.err("Zero-size chunk requested, rejected!")

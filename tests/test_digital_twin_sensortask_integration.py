@@ -12,8 +12,8 @@ sys.path.insert(0, "ext")  # same convention as test_sensortask_wozi.py's own co
 # real, vendored ext/microdot.py that sensortask_wozi.py transitively imports.
 sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comment for why
 
-import _http_client  # noqa: E402
-from _unix_port_udp_addr_shim import patch_asy_udp_socket_for_unix_port  # noqa: E402
+import _http_client
+from _unix_port_udp_addr_shim import patch_asy_udp_socket_for_unix_port
 
 # Must run before AsyUDPSocket is constructed (DNSServer, inside AsyConnTime.__init__ below): this
 # Unix-port build rejects a plain (host, port) tuple in bind()/connect()/sendto() (SPECIFICATION.md

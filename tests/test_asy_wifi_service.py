@@ -180,7 +180,7 @@ class _RaiseOnArm:
         Timer.raise_on_arm = True
         return self
 
-    def __exit__(self, *exc_info: "Any") -> None:
+    def __exit__(self, *exc_info: object) -> None:
         Timer.raise_on_arm = False
         Timer.raise_on_arm_exc = OSError
 
@@ -262,7 +262,7 @@ class _FastAsyncSleep:
         asyncio.sleep = _fast  # type: ignore[assignment]  # deliberate monkeypatch, not a real caller mismatch
         return self
 
-    def __exit__(self, *exc_info: "Any") -> None:
+    def __exit__(self, *exc_info: object) -> None:
         asyncio.sleep = self._real_sleep
 
 
@@ -557,7 +557,7 @@ def test_get_dict_cfg_returns_all_none_values_when_config_manager_is_invalid() -
     # regardless of whether the underlying ConfigManager itself is valid (confirmed directly).
     client = make_invalid_cfg_client()
     result = run(client.get_dict_cfg())
-    expected: dict[str, str | None] = {key: None for key in _WIFI_KEYS}
+    expected: dict[str, str | None] = dict.fromkeys(_WIFI_KEYS)
     expected["PW"] = "********"
     assert result == {"WIFI": expected}
 
@@ -780,7 +780,7 @@ def test_set_dict_cfg_multiple_invalid_fields_reported_independently() -> None:
             # no-push outcome True would trivially produce.
             {"Hostname": "NewHost", "PW": "short", "Country": "United States", "LedWifiOn": False},
             client.get_cfg_schema(),
-        )
+        ),
     )
     assert results == {"Hostname": "Valid", "PW": "Invalid", "Country": "Invalid", "LedWifiOn": "Valid"}
     assert client.led is None  # pushed: LedWifiOn=False turns the LED off and clears it
@@ -797,7 +797,7 @@ def test_set_dict_cfg_multiple_invalid_fields_reported_independently() -> None:
 
 def test_pw_empty_string_is_valid_via_the_open_network_special_bypass() -> None:
     client = make_client_with_json(
-        '{"SSID": "MyNetwork", "PW": "", "Country": "US", "Hostname": "TestNode", "LedWifiOn": false}'
+        '{"SSID": "MyNetwork", "PW": "", "Country": "US", "Hostname": "TestNode", "LedWifiOn": false}',
     )
     values = run(client.cfgmgr.get_dict(["PW"]))
     assert values == {"PW": ""}
@@ -1502,7 +1502,7 @@ def test_deactivate_wlan_permanently_sets_state_even_when_the_hardware_call_rais
 def test_print_wlan_diagnostics_does_not_raise_on_success() -> None:
     print(
         "(expected) debug=5 makes the fresh ConfigManager below log its normal first-use config-file "
-        "creation, then the real WLAN diagnostics dump below is the point of this test"
+        "creation, then the real WLAN diagnostics dump below is the point of this test",
     )
     client = make_client(debug=5)  # PrintLog.level_info() - pr.all() actually prints, not gated off
     _wlan(client)._ifconfig = ("10.0.0.5", "255.255.255.0", "10.0.0.1", "8.8.8.8")

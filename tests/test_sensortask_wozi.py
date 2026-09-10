@@ -12,18 +12,18 @@ import sys
 # ext/microdot.py without touching MICROPYPATH/pyproject.toml/scripts/test.sh.
 sys.path.insert(0, "ext")
 
-import machine  # noqa: E402
-from _fram_chip_fake import FakeMB85RS64V  # noqa: E402
-from _shared_rest_roundtrip import (  # noqa: E402
+import machine
+from _fram_chip_fake import FakeMB85RS64V
+from _shared_rest_roundtrip import (
     assert_named_modules_constructed,
     assert_sensor_payload_not_self_wrapped,
     drain_json_response_body,
 )
-from microdot import Request  # type: ignore[import-not-found]  # noqa: E402
+from microdot import Request  # type: ignore[import-not-found]
 
-import asy_spi_driver  # noqa: E402
-import sensortask_wozi  # noqa: E402
-from print_log import PrintLog, PrintLogHistory, PrintLogHistoryStore  # noqa: E402
+import asy_spi_driver
+import sensortask_wozi
+from print_log import PrintLog, PrintLogHistory, PrintLogHistoryStore
 
 # Same one-process-per-test-file swap as every other asy_fram_*-touching test file (see their own
 # comments) - sensortask_wozi.build_system() constructs a real SPI-backed AsyFramManager.

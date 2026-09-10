@@ -71,7 +71,7 @@ class _RaisingFramManager:
         self.raise_on_get_chunk = raise_on_get_chunk
 
     def get_chunk(
-        self, size: int, crc: "CRC_Base | None" = None, verify: int = 0, check_length: int = 8
+        self, size: int, crc: "CRC_Base | None" = None, verify: int = 0, check_length: int = 8,
     ) -> "_RaisingFramChunk | None":
         if self.raise_on_get_chunk:
             raise RuntimeError("simulated allocation failure")

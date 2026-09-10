@@ -819,9 +819,8 @@ def test_reentrant_acquisition_on_the_same_device_deadlocks_and_cleans_up() -> N
     device = I2CDevice(i2c, 0x50)
 
     async def reentrant() -> None:
-        async with device:
-            async with device:
-                pass
+        async with device, device:
+            pass
 
     async def scenario() -> bool:
         try:

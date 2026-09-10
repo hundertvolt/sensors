@@ -18,8 +18,8 @@ sys.path.insert(0, "ext")  # run_wozi_integration.py transitively imports sensor
 # asy_webserver_service -> microdot - same convention test_sensortask_wozi.py's own comment uses.
 sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comment for why
 
-import _http_client as http_client  # noqa: E402
-from run_wozi_integration import RunConfig, _soak, main, parse_args  # noqa: E402
+import _http_client as http_client
+from run_wozi_integration import RunConfig, _soak, main, parse_args
 
 
 def run(coro: "Coroutine[Any, Any, T]") -> "T":

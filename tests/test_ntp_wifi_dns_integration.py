@@ -338,7 +338,7 @@ class _RedirectNtpNetworking:
         ntpmod.AsyUDPSocket = _Resolving  # type: ignore[assignment, misc]
         return self
 
-    def __exit__(self, *exc_info: "Any") -> None:
+    def __exit__(self, *exc_info: object) -> None:
         ntpmod._NTP_UDP_PORT = self._original_port
         ntpmod.AsyUDPSocket = self._original_socket_cls  # type: ignore[misc]
 

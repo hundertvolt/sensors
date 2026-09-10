@@ -373,7 +373,7 @@ class Timer:
             self.init(**kwargs)
 
     def init(
-        self, *, period: int = -1, mode: int = PERIODIC, callback: "Callable[[Timer], None] | None" = None
+        self, *, period: int = -1, mode: int = PERIODIC, callback: "Callable[[Timer], None] | None" = None,
     ) -> None:
         self.deinit()  # cancel any previously-armed schedule before re-arming
         self.period = period
@@ -418,7 +418,7 @@ _WDT_TIMEOUT_MAX_MS = 8388  # RP2040 hard cap: 0xffffff / 2 / 1000 (ports/rp2/ma
 
 class WDT:
     def __init__(
-        self, id: int = 0, timeout: int = 5000, *, on_would_trigger: "Callable[[WDT], None] | None" = None
+        self, id: int = 0, timeout: int = 5000, *, on_would_trigger: "Callable[[WDT], None] | None" = None,
     ) -> None:
         if id != 0:
             raise ValueError(f"WDT({id}) doesn't exist")

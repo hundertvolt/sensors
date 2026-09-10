@@ -19,8 +19,8 @@ import machine
 from _unix_port_udp_addr_shim import patch_asy_udp_socket_for_unix_port
 from launch import (
     _parse_wifi_outcome,  # deliberately reused, not reimplemented - see digital_twin/README.md
-    parse_fault_spec,  # noqa: F401 - re-exported for callers that only need the spec parser
-    parse_hang_spec,  # noqa: F401 - re-exported for callers that only need the spec parser
+    parse_fault_spec,
+    parse_hang_spec,
 )
 from unix_port_poll_prewarm import prewarm_poll_set
 
@@ -124,11 +124,11 @@ def parse_args(argv: "list[str]") -> RunConfig:
             port = int(_pop_value(remaining, arg))
         elif arg == "--fram-state-path":
             value = _pop_value(remaining, arg)
-            fram_state_path = value if value else None  # "" means in-memory only, matches
+            fram_state_path = value or None  # "" means in-memory only, matches
             # machine.configure_fram_state_path(None)'s own documented meaning.
         elif arg == "--scd30-state-path":
             value = _pop_value(remaining, arg)
-            scd30_state_path = value if value else None  # same "" convention as --fram-state-path above
+            scd30_state_path = value or None  # same "" convention as --fram-state-path above
         elif arg == "--seed":
             seed = int(_pop_value(remaining, arg))
         elif arg == "--fault":
@@ -251,13 +251,13 @@ async def _soak(host: str, port: int, cycles: int) -> "list[str]":
             f"digital_twin/run_dev_integration.py memory trend: baseline={mem_samples[0]} "
             f"min={min(per_cycle_samples)} max={max(per_cycle_samples)} early_avg={early_avg:.0f} "
             f"late_avg={late_avg:.0f} trend={trend:.0f} tolerance={_MEM_TREND_TOLERANCE_BYTES} "
-            f"quarter_size={quarter} samples={len(per_cycle_samples)}"
+            f"quarter_size={quarter} samples={len(per_cycle_samples)}",
         )
         if trend > _MEM_TREND_TOLERANCE_BYTES:
             failures.append(
                 f"gc.mem_free() trend declined by {trend:.0f} bytes (early_avg={early_avg:.0f} -> "
                 f"late_avg={late_avg:.0f}) over {cycles} cycles, exceeding the "
-                f"{_MEM_TREND_TOLERANCE_BYTES}-byte tolerance"
+                f"{_MEM_TREND_TOLERANCE_BYTES}-byte tolerance",
             )
     return failures
 
@@ -306,11 +306,11 @@ async def main(config: RunConfig) -> "dict[str, Any]":
         f"digital_twin/run_dev_integration.py starting - host={config.host!r} port={config.port!r} "
         f"fram_state_path={config.fram_state_path!r} scd30_state_path={config.scd30_state_path!r} "
         f"seed={config.seed!r} soak_cycles={config.soak_cycles!r} "
-        f"duration={config.duration!r} faults={config.faults!r} hangs={config.hangs!r} wifi_outcomes={config.wifi_outcomes!r}"
+        f"duration={config.duration!r} faults={config.faults!r} hangs={config.hangs!r} wifi_outcomes={config.wifi_outcomes!r}",
     )
 
     main_task = asyncio.get_event_loop().create_task(
-        sensortask_dev.main(cfg_path=_CONFIG_DIR, web_host=config.host, web_port=config.port)
+        sensortask_dev.main(cfg_path=_CONFIG_DIR, web_host=config.host, web_port=config.port),
     )
     summary: dict[str, Any] = {"failures": [], "would_have_triggered_count": 0}
     try:

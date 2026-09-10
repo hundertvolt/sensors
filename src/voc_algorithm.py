@@ -196,8 +196,7 @@ class VOCAlgorithm:
     def _f16(self, x: float) -> int:
         if x >= 0:
             return int((x) * 65536.0 + 0.5)
-        else:
-            return int((x) * 65536.0 - 0.5)
+        return int((x) * 65536.0 - 0.5)
 
     def _fix16_from_int(self, a: float) -> int:
         return int(a * _FIX16_ONE)
@@ -285,7 +284,7 @@ class VOCAlgorithm:
         bit = 1 << 30
         while bit > num:
             bit >>= 2
-        for n in range(0, 2):
+        for n in range(2):
             while bit:
                 if num >= result + bit:
                     num = num - (result + bit) & 0xFFFFFFFF
@@ -319,7 +318,7 @@ class VOCAlgorithm:
             exp_values = self._exp_pos_values
         res = _FIX16_ONE
         arg = _FIX16_ONE
-        for i in range(0, 4):
+        for i in range(4):
             while x >= arg:
                 res = self._fix16_mul(res, exp_values[i])
                 x -= arg
@@ -389,20 +388,20 @@ class VOCAlgorithm:
         self.params.m_mean_variance_estimator_std = std_initial
         self.params.m_mean_variance_estimator_gamma = self._fix16_div(
             self._f16(
-                _VOCALGORITHM_MEAN_VARIANCE_ESTIMATOR__GAMMA_SCALING * (_VOCALGORITHM_SAMPLING_INTERVAL / 3600.0)
+                _VOCALGORITHM_MEAN_VARIANCE_ESTIMATOR__GAMMA_SCALING * (_VOCALGORITHM_SAMPLING_INTERVAL / 3600.0),
             ),
             (tau_mean_variance_hours + self._f16(_VOCALGORITHM_SAMPLING_INTERVAL / 3600.0)),
         )
         self.params.m_mean_variance_estimator_gamma_initial_mean = self._f16(
 
                 (_VOCALGORITHM_MEAN_VARIANCE_ESTIMATOR__GAMMA_SCALING * _VOCALGORITHM_SAMPLING_INTERVAL)
-                / (_VOCALGORITHM_TAU_INITIAL_MEAN + _VOCALGORITHM_SAMPLING_INTERVAL)
+                / (_VOCALGORITHM_TAU_INITIAL_MEAN + _VOCALGORITHM_SAMPLING_INTERVAL),
 
         )
         self.params.m_mean_variance_estimator_gamma_initial_variance = self._f16(
 
                 (_VOCALGORITHM_MEAN_VARIANCE_ESTIMATOR__GAMMA_SCALING * _VOCALGORITHM_SAMPLING_INTERVAL)
-                / (_VOCALGORITHM_TAU_INITIAL_VARIANCE + _VOCALGORITHM_SAMPLING_INTERVAL)
+                / (_VOCALGORITHM_TAU_INITIAL_VARIANCE + _VOCALGORITHM_SAMPLING_INTERVAL),
 
         )
         self.params.m_mean_variance_estimator_gamma_mean = self._f16(0.0)
@@ -441,7 +440,7 @@ class VOCAlgorithm:
             self._f16(_VOCALGORITHM_INITI_TRANSITION_MEAN),
         )
         sigmoid_gamma_mean = self._vocalgorithm__mean_variance_estimator___sigmoid__process(
-            self.params.m_mean_variance_estimator_uptime_gamma
+            self.params.m_mean_variance_estimator_uptime_gamma,
         )
         gamma_mean = self.params.m_mean_variance_estimator_gamma + (
             self._fix16_mul(
@@ -456,7 +455,7 @@ class VOCAlgorithm:
             self._fix16_mul(
                 self._f16(_VOCALGORITHM_GATING_THRESHOLD_INITIAL - _VOCALGORITHM_GATING_THRESHOLD),
                 self._vocalgorithm__mean_variance_estimator___sigmoid__process(
-                    self.params.m_mean_variance_estimator_uptime_gating
+                    self.params.m_mean_variance_estimator_uptime_gating,
                 ),
             )
         )
@@ -476,7 +475,7 @@ class VOCAlgorithm:
         )
 
         sigmoid_gamma_variance = self._vocalgorithm__mean_variance_estimator___sigmoid__process(
-            self.params.m_mean_variance_estimator_uptime_gamma
+            self.params.m_mean_variance_estimator_uptime_gamma,
         )
 
         gamma_variance = self.params.m_mean_variance_estimator_gamma + (
@@ -493,7 +492,7 @@ class VOCAlgorithm:
             self._fix16_mul(
                 self._f16(_VOCALGORITHM_GATING_THRESHOLD_INITIAL - _VOCALGORITHM_GATING_THRESHOLD),
                 self._vocalgorithm__mean_variance_estimator___sigmoid__process(
-                    self.params.m_mean_variance_estimator_uptime_gating
+                    self.params.m_mean_variance_estimator_uptime_gating,
                 ),
             )
         )
@@ -526,8 +525,7 @@ class VOCAlgorithm:
             )
         )
 
-        if self.params.m_mean_variance_estimator_gating_duration_minutes < self._f16(0.0):
-            self.params.m_mean_variance_estimator_gating_duration_minutes = self._f16(0.0)
+        self.params.m_mean_variance_estimator_gating_duration_minutes = max(self.params.m_mean_variance_estimator_gating_duration_minutes, self._f16(0.0))
 
         if (
             self.params.m_mean_variance_estimator_gating_duration_minutes
@@ -571,7 +569,7 @@ class VOCAlgorithm:
                                 self._f16(_VOCALGORITHM_MEAN_VARIANCE_ESTIMATOR__GAMMA_SCALING)
                                 - self.params.m_mean_variance_estimator__gamma_variance
                             ),
-                        )
+                        ),
 
                 ),
                 self._fix16_sqrt(
@@ -607,7 +605,7 @@ class VOCAlgorithm:
                                 ),
                                 delta_sgp,
                             )
-                        )
+                        ),
 
                 ),
             )
@@ -617,7 +615,7 @@ class VOCAlgorithm:
 
     def _vocalgorithm__mean_variance_estimator___sigmoid__init(self) -> None:
         self._vocalgorithm__mean_variance_estimator___sigmoid__set_parameters(
-            self._f16(0.0), self._f16(0.0), self._f16(0.0)
+            self._f16(0.0), self._f16(0.0), self._f16(0.0),
         )
 
     def _vocalgorithm__mean_variance_estimator___sigmoid__set_parameters(self, L: int, X0: int, K: int) -> None:
@@ -632,13 +630,12 @@ class VOCAlgorithm:
         )
         if x < self._f16(-50.0):
             return self.params.m_mean_variance_estimator_sigmoid_l
-        elif x > self._f16(50.0):
+        if x > self._f16(50.0):
             return self._f16(0.0)
-        else:
-            return self._fix16_div(
-                self.params.m_mean_variance_estimator_sigmoid_l,
-                (self._f16(1.0) + self._fix16_exp(x)),
-            )
+        return self._fix16_div(
+            self.params.m_mean_variance_estimator_sigmoid_l,
+            (self._f16(1.0) + self._fix16_exp(x)),
+        )
 
     def _vocalgorithm__mox_model__init(self) -> None:
         self._vocalgorithm__mox_model__set_parameters(self._f16(1.0), self._f16(0.0))
@@ -671,48 +668,46 @@ class VOCAlgorithm:
         )
         if x < self._f16(-50.0):
             return self._f16(_VOCALGORITHM_SIGMOID_L)
-        elif x > self._f16(50.0):
+        if x > self._f16(50.0):
             return self._f16(0.0)
-        else:
-            if sample >= self._f16(0.0):
-                shift = self._fix16_div(
-                    (
-                        self._f16(_VOCALGORITHM_SIGMOID_L)
-                        - (self._fix16_mul(self._f16(5.0), self.params.m_sigmoid_scaled_offset))
-                    ),
-                    self._f16(4.0),
+        if sample >= self._f16(0.0):
+            shift = self._fix16_div(
+                (
+                    self._f16(_VOCALGORITHM_SIGMOID_L)
+                    - (self._fix16_mul(self._f16(5.0), self.params.m_sigmoid_scaled_offset))
+                ),
+                self._f16(4.0),
+            )
+            return (
+                self._fix16_div(
+                    (self._f16(_VOCALGORITHM_SIGMOID_L) + shift),
+                    (self._f16(1.0) + self._fix16_exp(x)),
                 )
-                return (
-                    self._fix16_div(
-                        (self._f16(_VOCALGORITHM_SIGMOID_L) + shift),
-                        (self._f16(1.0) + self._fix16_exp(x)),
-                    )
-                ) - shift
-            else:
-                return self._fix16_mul(
-                    (
-                        self._fix16_div(
-                            self.params.m_sigmoid_scaled_offset,
-                            self._f16(_VOCALGORITHM_VOC_INDEX_OFFSET_DEFAULT),
-                        )
-                    ),
-                    (
-                        self._fix16_div(
-                            self._f16(_VOCALGORITHM_SIGMOID_L),
-                            (self._f16(1.0) + self._fix16_exp(x)),
-                        )
-                    ),
+            ) - shift
+        return self._fix16_mul(
+            (
+                self._fix16_div(
+                    self.params.m_sigmoid_scaled_offset,
+                    self._f16(_VOCALGORITHM_VOC_INDEX_OFFSET_DEFAULT),
                 )
+            ),
+            (
+                self._fix16_div(
+                    self._f16(_VOCALGORITHM_SIGMOID_L),
+                    (self._f16(1.0) + self._fix16_exp(x)),
+                )
+            ),
+        )
 
     def _vocalgorithm__adaptive_lowpass__init(self) -> None:
         self._vocalgorithm__adaptive_lowpass__set_parameters()
 
     def _vocalgorithm__adaptive_lowpass__set_parameters(self) -> None:
         self.params.m_adaptive_lowpass_a1 = self._f16(
-            _VOCALGORITHM_SAMPLING_INTERVAL / (_VOCALGORITHM_LP_TAU_FAST + _VOCALGORITHM_SAMPLING_INTERVAL)
+            _VOCALGORITHM_SAMPLING_INTERVAL / (_VOCALGORITHM_LP_TAU_FAST + _VOCALGORITHM_SAMPLING_INTERVAL),
         )
         self.params.m_adaptive_lowpass_a2 = self._f16(
-            _VOCALGORITHM_SAMPLING_INTERVAL / (_VOCALGORITHM_LP_TAU_SLOW + _VOCALGORITHM_SAMPLING_INTERVAL)
+            _VOCALGORITHM_SAMPLING_INTERVAL / (_VOCALGORITHM_LP_TAU_SLOW + _VOCALGORITHM_SAMPLING_INTERVAL),
         )
         self.params.m_adaptive_lowpass_initialized = 0
 
@@ -742,7 +737,7 @@ class VOCAlgorithm:
             abs_delta = -abs_delta
         F1 = self._fix16_exp(self._fix16_mul(self._f16(_VOCALGORITHM_LP_ALPHA), abs_delta))
         tau_a = (self._fix16_mul(self._f16(_VOCALGORITHM_LP_TAU_SLOW - _VOCALGORITHM_LP_TAU_FAST), F1)) + self._f16(
-            _VOCALGORITHM_LP_TAU_FAST
+            _VOCALGORITHM_LP_TAU_FAST,
         )
         a3 = self._fix16_div(
             self._f16(_VOCALGORITHM_SAMPLING_INTERVAL),
@@ -784,8 +779,7 @@ class VOCAlgorithm:
             self.params.mvoc_index = self._vocalgorithm__mox_model__process(self.params.msraw)
             self.params.mvoc_index = self._vocalgorithm__sigmoid_scaled__process(self.params.mvoc_index)
             self.params.mvoc_index = self._vocalgorithm__adaptive_lowpass__process(self.params.mvoc_index)
-            if self.params.mvoc_index < self._f16(0.5):
-                self.params.mvoc_index = self._f16(0.5)
+            self.params.mvoc_index = max(self.params.mvoc_index, self._f16(0.5))
             if self.params.msraw > self._f16(0.0):
                 self._vocalgorithm__mean_variance_estimator__process(self.params.msraw, self.params.mvoc_index)
                 self._vocalgorithm__mox_model__set_parameters(

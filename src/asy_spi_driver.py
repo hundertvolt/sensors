@@ -58,16 +58,16 @@ class SPI:
 
     def write(self, buf: bytes | bytearray | memoryview) -> None:
         if self._spi is None:
-            return None
+            return
         self._spi.write(buf)  # rp2: always returns None (confirmed against extmod/machine_spi.c)
-        return None
+        return
 
     def readinto(self, buf: bytearray | memoryview, write_value: int = 0x00) -> None:
         # SPI is full-duplex - reading still clocks write_value out on MOSI meanwhile.
         if self._spi is None:
-            return None
+            return
         self._spi.readinto(buf, write_value)
-        return None
+        return
 
     def write_readinto(
         self,
@@ -77,12 +77,12 @@ class SPI:
         # Full-duplex simultaneous transfer: buffer_out/buffer_in must match length, or
         # machine.SPI.write_readinto() raises ValueError, caught below and turned into None.
         if self._spi is None:
-            return None
+            return
         try:
             self._spi.write_readinto(buffer_out, buffer_in)
         except ValueError:  # length mismatch
-            return None
-        return None
+            return
+        return
 
 
 class SPIDevice(Lockable):

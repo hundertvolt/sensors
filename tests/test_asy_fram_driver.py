@@ -34,7 +34,7 @@ def make_bus() -> SPI:
 
 
 def make_fram(
-    max_size: int = 0x2000, wp: bool = False, wp_pin: int | None = None
+    max_size: int = 0x2000, wp: bool = False, wp_pin: int | None = None,
 ) -> tuple[FRAM_SPI, FakeMB85RS64V]:
     bus = make_bus()
     fram = FRAM_SPI(bus, 1, logger=PrintLogHistory(name="TESTFRAM"), wp=wp, wp_pin=wp_pin, max_size=max_size)
@@ -364,8 +364,7 @@ def test_write_aborts_and_does_not_touch_memory_when_wren_is_disturbed() -> None
 
     async def scenario() -> bool:
         async with fram:
-            ok = await fram.set_values(b"bad!", 0x00)
-        return ok
+            return await fram.set_values(b"bad!", 0x00)
 
     ok = run(scenario())
     assert ok is False
@@ -378,8 +377,7 @@ def test_write_succeeds_normally_when_wrdi_is_not_disturbed() -> None:
 
     async def scenario() -> bool:
         async with fram:
-            ok = await fram.set_values(b"ok!!", 0x00)
-        return ok
+            return await fram.set_values(b"ok!!", 0x00)
 
     assert run(scenario()) is True
     assert chip.wel is False  # WRDI cleared it as expected
@@ -395,8 +393,7 @@ def test_write_retries_wrdi_once_and_recovers_when_first_wrdi_is_disturbed() -> 
 
     async def scenario() -> bool:
         async with fram:
-            ok = await fram.set_values(b"ok!!", 0x00)
-        return ok
+            return await fram.set_values(b"ok!!", 0x00)
 
     ok = run(scenario())
     assert ok is True  # the payload write itself still succeeded
@@ -415,8 +412,7 @@ def test_write_reports_data_written_even_if_wrdi_stays_stuck_after_retry() -> No
 
     async def scenario() -> bool:
         async with fram:
-            ok = await fram.set_values(b"ok!!", 0x00)
-        return ok
+            return await fram.set_values(b"ok!!", 0x00)
 
     ok = run(scenario())
     assert ok is True
@@ -512,8 +508,7 @@ def test_write_protected_blocks_subsequent_writes() -> None:
     async def scenario() -> bool:
         assert await fram.set_write_protected(True) is True
         async with fram:
-            ok = await fram.set_values(b"nope", 0x00)
-        return ok
+            return await fram.set_values(b"nope", 0x00)
 
     ok = run(scenario())
     assert ok is False
@@ -669,8 +664,7 @@ def test_verify_present_bounded_wait_returns_false_instead_of_hanging_when_lock_
 
     async def scenario() -> bool:
         async with fram:
-            nested = await fram.verify_present()
-        return nested
+            return await fram.verify_present()
 
     result = run(scenario())
     assert result is False
@@ -846,8 +840,7 @@ def test_bus_deinit_mid_operation_raises_uncaught_runtimeerror() -> None:
 
     async def scenario() -> bool:
         async with fram:
-            ok = await fram.get_values(bytearray(1), 0)
-        return ok
+            return await fram.get_values(bytearray(1), 0)
 
     try:
         run(scenario())
@@ -874,8 +867,7 @@ def test_corrupted_write_payload_bytes_are_undetectable_at_this_layer_by_design(
 
     async def scenario() -> bool:
         async with fram:
-            ok = await fram.set_values(b"good", 0x00)
-        return ok
+            return await fram.set_values(b"good", 0x00)
 
     ok = run(scenario())
     assert ok is True  # the driver reports success - it has no way to know otherwise
@@ -1017,8 +1009,7 @@ def test_write_wel_did_not_set_logs_a_persisted_warning() -> None:
 
     async def scenario() -> bool:
         async with fram:
-            ok = await fram.set_values(b"bad!", 0x00)
-        return ok
+            return await fram.set_values(b"bad!", 0x00)
 
     assert run(scenario()) is False
     assert 0x80 + 82 in fram.pr.history  # wrn_s()'s history entries are offset by _NO_WRN (0x80)
@@ -1044,8 +1035,7 @@ def test_wrdi_stuck_after_retry_logs_a_persisted_warning() -> None:
 
     async def scenario() -> bool:
         async with fram:
-            ok = await fram.set_values(b"ok!!", 0x00)
-        return ok
+            return await fram.set_values(b"ok!!", 0x00)
 
     ok = run(scenario())
     assert ok is True  # the payload write itself still succeeded, only WEL housekeeping is stuck

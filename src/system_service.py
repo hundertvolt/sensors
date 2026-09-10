@@ -211,7 +211,7 @@ class SystemService:
 
         while True:
             no_fail = True
-            for n in range(0, len(tasks)):
+            for n in range(len(tasks)):
                 if tasks[n] is None or tasks[n].done():  # type: ignore[union-attr]
                     if tasks[n] is not None:
                         await self._log_dead_task(tasks[n], n)  # type: ignore[arg-type]
@@ -219,7 +219,7 @@ class SystemService:
                     tasks[n] = await self._start_task(task_starters[n], n)
                     no_fail = False
                     await self.pr.wrn_s(
-                        "Task ended - attempting restart, error counter increased to", task_errors, wrnno=n + 1
+                        "Task ended - attempting restart, error counter increased to", task_errors, wrnno=n + 1,
                     )
 
             if no_fail:
@@ -283,7 +283,7 @@ class SystemService:
         return {} if result is None else result
 
     async def _set_dict_cfg(
-        self, data: "dict[str, int | float | str | bool | None]", cfg_vals: "ConfigSchema"
+        self, data: "dict[str, int | float | str | bool | None]", cfg_vals: "ConfigSchema",
     ) -> "WriteValidity":
         # Persist via cfgmgr, then re-resolve/push DebugLevel out through the level-setter registry -
         # set_debug_level() below is now just this call for its own one-field case, kept as a named,
@@ -293,7 +293,7 @@ class SystemService:
         # provably in sync with cfgmgr's own persisted value after any accepted request.
         persisted, results = await self.cfgmgr.write_config(data, cfg_vals)
         if not persisted:
-            return {key: "Failed" for key in data}
+            return dict.fromkeys(data, "Failed")
         if results.get("DebugLevel") in ("Valid", "Unchanged"):
             level = await self.cfgmgr.get_int_values(_VAL_DEBUG_LEVEL)
             if level is not None:

@@ -16,8 +16,8 @@ if TYPE_CHECKING:
 
 sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comment for why
 
-from _crc8 import crc8, word  # noqa: E402
-from _scd30_chip import Scd30Chip  # noqa: E402
+from _crc8 import crc8, word
+from _scd30_chip import Scd30Chip
 
 _TMP_DIR = "tests/_tmp"
 
@@ -230,9 +230,9 @@ def test_default_ranges_stay_inside_the_datasheets_own_documented_ranges() -> No
     # Sensirion_CO2_Sensors_SCD30_Datasheet.pdf: CO2 accuracy-guaranteed 400-10'000ppm, humidity
     # 0-100%RH, temperature -40-70 degC. The twin's own defaults must be sensible sub-ranges.
     chip = Scd30Chip(auto_refresh=False)
-    assert 400 <= chip._min_co2 and chip._max_co2 <= 10000
-    assert 0 <= chip._min_hum and chip._max_hum <= 100
-    assert -40 <= chip._min_temp and chip._max_temp <= 70
+    assert chip._min_co2 >= 400 and chip._max_co2 <= 10000
+    assert chip._min_hum >= 0 and chip._max_hum <= 100
+    assert chip._min_temp >= -40 and chip._max_temp <= 70
 
 
 def test_rdy_pin_goes_high_on_new_reading_and_fires_a_registered_rising_edge_handler() -> None:

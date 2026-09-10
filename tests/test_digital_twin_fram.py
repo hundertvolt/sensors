@@ -6,7 +6,7 @@ import sys
 
 sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comment for why
 
-from _fram_chip import FramChip  # noqa: E402
+from _fram_chip import FramChip
 
 _OPCODE_WREN = 0x06
 _OPCODE_WRDI = 0x04

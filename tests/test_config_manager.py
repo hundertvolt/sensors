@@ -1134,8 +1134,8 @@ def test_configmanager_large_mixed_type_schema() -> None:
         }
         ok, results = run(
             mgr.write_config(
-                {"Count": 9, "Offset": 2.5, "Name": "xyz", "Enabled": False, "I1": 50}, _LARGE_MIXED_SCHEMA
-            )
+                {"Count": 9, "Offset": 2.5, "Name": "xyz", "Enabled": False, "I1": 50}, _LARGE_MIXED_SCHEMA,
+            ),
         )
         assert ok is True
         assert results == {
@@ -1788,7 +1788,7 @@ def test_write_config_multiple_keys_mixed_outcomes_in_one_call() -> None:
                     "Ghost": 1,  # invalid - not in the schema at all
                 },
                 _SCHEMA,
-            )
+            ),
         )
         assert ok is True
         assert results == {

@@ -25,7 +25,7 @@ sys.path.insert(0, "ext")
 
 # ext/ isn't on this project's mypy search path yet (see pyproject.toml's [tool.mypy]) - same gap
 # as src/asy_webserver_service.py's own import of this module.
-from microdot import Microdot, Request  # type: ignore[import-not-found]  # noqa: E402
+from microdot import Microdot, Request  # type: ignore[import-not-found]
 
 import api_response as ar
 import config_manager as cm
@@ -177,7 +177,7 @@ async def _simulated_set_network_endpoint(client: AsyConnTime, request: "Any") -
     fields = {k: v for k, v in data.items() if k != "cmd"}
     net_schema = _wifi_field_schema(client, ("SSID", "PW", "Country", "Hostname"))
     return await ar.handle_set_cmd(
-        client, fields, net_schema, post_fct=client.reconnect_wifi, ok_descr="Network settings updated"
+        client, fields, net_schema, post_fct=client.reconnect_wifi, ok_descr="Network settings updated",
     )
 
 
@@ -207,7 +207,7 @@ def test_mocked_request_fine_data_applies_and_reports_ok() -> None:
 def test_mocked_request_partially_fine_data_reports_mixed_per_field_results() -> None:
     client = make_wifi_client()
     req = _FakeRequest(
-        {"cmd": "setNetwork", "Hostname": "NewHost", "SSID": "MyNet", "PW": "short", "Country": "United States"}
+        {"cmd": "setNetwork", "Hostname": "NewHost", "SSID": "MyNet", "PW": "short", "Country": "United States"},
     )
     resp = run(_simulated_set_network_endpoint(client, req))
     assert resp["res"] == "OK"  # still overall OK - per-field detail lives in "result"
@@ -356,7 +356,7 @@ def test_real_microdot_setter_end_to_end_valid_request() -> None:
     client = make_wifi_client()
     app = _wifi_app(client)
     req = _make_request(
-        app, "PUT", "/net/cmd", {"cmd": "setNetwork", "Hostname": "RealHost", "SSID": "RealNet", "PW": "supersecret", "Country": "US"}
+        app, "PUT", "/net/cmd", {"cmd": "setNetwork", "Hostname": "RealHost", "SSID": "RealNet", "PW": "supersecret", "Country": "US"},
     )
     res = run(app.dispatch_request(req))
     assert res.status_code == 200
@@ -548,7 +548,7 @@ def test_real_microdot_getter_end_to_end_returns_schema_defaults() -> None:
             "NTP_Interv_H": 12,
             "GMTOffset": 3600,
             "DSTOffset": 3600,
-        }
+        },
     }
 
 

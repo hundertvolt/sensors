@@ -183,7 +183,7 @@ class _RaiseOnArm:
         Timer.raise_on_arm = True
         return self
 
-    def __exit__(self, *exc_info: "Any") -> None:
+    def __exit__(self, *exc_info: object) -> None:
         Timer.raise_on_arm = False
         Timer.raise_on_arm_exc = OSError
 
@@ -349,7 +349,7 @@ def test_get_dict_cfg_returns_schema_defaults_wrapped_in_ntp_key() -> None:
             "NTP_Interv_H": 12,
             "GMTOffset": 3600,
             "DSTOffset": 3600,
-        }
+        },
     }
 
 
@@ -363,7 +363,7 @@ def test_get_dict_cfg_reflects_a_customized_on_disk_config() -> None:
             "NTP_Interv_H": 6,
             "GMTOffset": 7200,
             "DSTOffset": 3600,
-        }
+        },
     }
 
 
@@ -377,7 +377,7 @@ def test_get_dict_cfg_returns_all_none_values_when_config_manager_is_invalid() -
             "NTP_Interv_H": None,
             "GMTOffset": None,
             "DSTOffset": None,
-        }
+        },
     }
 
 
@@ -928,7 +928,7 @@ class _RecordingUDPSocket:
         pass
 
     async def write_and_recvfrom(
-        self, msg: "bytes | bytearray", buf: int, timeout_ms: int = -1, tries: int = 1
+        self, msg: "bytes | bytearray", buf: int, timeout_ms: int = -1, tries: int = 1,
     ) -> "tuple[bytes | None, tuple[str, int] | None]":
         _RecordingUDPSocket.calls.append(timeout_ms)
         return None, None
@@ -1585,7 +1585,7 @@ def test_cettime_mktime_or_gmtime_failure_returns_none_not_raise() -> None:
     client = _client_with_offsets(3600, 3600)
     run(client._set_synced(True))
     result = _run_cettime_with_fixed_now(
-        client, _mid_month_now(1), raise_exc=OverflowError("past rp2's ~2037 range")
+        client, _mid_month_now(1), raise_exc=OverflowError("past rp2's ~2037 range"),
     )
     assert result is None
 
@@ -2098,7 +2098,7 @@ class _RedirectNtpNetworking:
         ntpmod.AsyUDPSocket = _Resolving  # type: ignore[assignment, misc]
         return self
 
-    def __exit__(self, *exc_info: "Any") -> None:
+    def __exit__(self, *exc_info: object) -> None:
         ntpmod._NTP_UDP_PORT = self._original_port
         ntpmod.AsyUDPSocket = self._original_socket_cls  # type: ignore[misc]
 

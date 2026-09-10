@@ -77,7 +77,7 @@ def schema_dict(schema: "ConfigSchema") -> "dict[str, FieldSchema]":  # {field_n
 
 
 def make_dict(
-    nt: "NamedTuple", fields: "tuple[str, ...]"
+    nt: "NamedTuple", fields: "tuple[str, ...]",
 ) -> "dict[str, dict[str, int | float | str | None]]":  # {type_name: {field: value}} - fields is the same
     # literal tuple the caller's own namedtuple(name, fields) was built from (rp2's build ROM level
     # is MICROPY_CONFIG_ROM_LEVEL_EXTRA_FEATURES, one level below the MICROPY_CONFIG_ROM_LEVEL_
@@ -90,7 +90,7 @@ def make_dict(
     try:
         return {name: {field: getattr(nt, field) for field in fields}}
     except Exception:
-        return {name: {field: None for field in fields}}
+        return {name: dict.fromkeys(fields)}
 
 
 def coerce_numeric(check_val: "Any", scalar_type: type) -> "tuple[bool, Any]":
@@ -129,7 +129,7 @@ def coerce_numeric(check_val: "Any", scalar_type: type) -> "tuple[bool, Any]":
 
 
 def type_or_range_error(
-    check_val: "Any", field: "FieldSchema", check_special: bool = True
+    check_val: "Any", field: "FieldSchema", check_special: bool = True,
 ) -> "tuple[bool, Any]":  # (True, check_val) if check_val doesn't satisfy field's own type/min/
     # max(/special) schema entry (coercion included) - (False, coerced_val) otherwise, where
     # coerced_val is check_val itself unless an int<->float coercion above actually applied.
@@ -265,7 +265,7 @@ class ConfigManager:
         return values
 
     async def write_config(
-        self, data: "dict[str, int | float | str | bool | None]", cfg_vals: "ConfigSchema"
+        self, data: "dict[str, int | float | str | bool | None]", cfg_vals: "ConfigSchema",
     ) -> "tuple[bool, WriteValidity]":
         if not self.valid:
             await self.pr.err_s(self.config_file, "- Config is not valid, cannot write!", errno=9)

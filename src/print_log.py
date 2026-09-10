@@ -33,7 +33,7 @@ if TYPE_CHECKING:
 
     class _FramManager(Protocol):
         def get_chunk(
-            self, size: int, crc: "CRC_Base | None" = None, verify: int = 0, check_length: int = 8
+            self, size: int, crc: "CRC_Base | None" = None, verify: int = 0, check_length: int = 8,
         ) -> "_FramChunk | None": ...
 
 
@@ -63,9 +63,7 @@ class PrintLog:
         return self.level
 
     def set_level(self, level: int | None) -> None:  # clamps to the valid [off, all] range instead of rejecting
-        if level is None:
-            self.level = _LOG_OFF
-        elif level < _LOG_OFF:
+        if level is None or level < _LOG_OFF:
             self.level = _LOG_OFF
         elif level > _LOG_ALL:
             self.level = _LOG_ALL
@@ -256,9 +254,7 @@ class PrintLogHistoryStore(PrintLogHistory):
     async def setup(self) -> None:
         if self.fram is None or self.initialized:
             return
-        if await self._read():
-            self.initialized = True
-        elif await self._write():
+        if await self._read() or await self._write():
             self.initialized = True
         else:
             self._diag("PrintLog: FRAM setup failed!")

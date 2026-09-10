@@ -32,9 +32,10 @@ async def _wait_until_serving(host: str, port: int, timeout_s: float = 10.0) -> 
         while True:
             try:
                 await _http_client.fetch(host, port, "GET", "/")
-                return
             except OSError:
                 await asyncio.sleep_ms(50)
+            else:
+                return
 
     await asyncio.wait_for(poll(), timeout_s)
 
@@ -80,7 +81,7 @@ async def main(n_clients: int, n_requests: int, n_rounds: int, host: str, port: 
     machine.configure_fram_state_path(None)
     machine.configure_scd30_state_path(None)
     main_task = asyncio.get_event_loop().create_task(
-        sensortask_wozi.main(cfg_path=_CONFIG_DIR, web_host=host, web_port=port)
+        sensortask_wozi.main(cfg_path=_CONFIG_DIR, web_host=host, web_port=port),
     )
     try:
         await _wait_until_built()

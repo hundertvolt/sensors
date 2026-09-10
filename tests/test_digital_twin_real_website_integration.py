@@ -17,7 +17,7 @@ sys.path.insert(0, "digital_twin")
 # v1.28.0 source, py/builtinimport.c's process_import_at_level(), same lookup CPython does) - so
 # pre-registering "frozen_html" here makes sensortask_wozi.py's own top-level `import frozen_html`
 # bind to the real website instead of resolving frozen_modules/frozen_html.py's html_stub build.
-import frozen_website_wozi  # type: ignore[import-not-found]  # noqa: E402  # mounts /html with the real website content
+import frozen_website_wozi  # type: ignore[import-not-found]  # mounts /html with the real website content
 
 sys.modules["frozen_html"] = frozen_website_wozi
 

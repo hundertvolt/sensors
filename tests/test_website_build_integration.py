@@ -18,10 +18,10 @@ import sys
 
 sys.path.insert(0, "ext")
 
-import frozen_website_wozi  # type: ignore[import-not-found]  # noqa: E402,F401  # mounts /html on import
-from microdot import Microdot, Request  # type: ignore[import-not-found]  # noqa: E402
+import frozen_website_wozi  # type: ignore[import-not-found]  # noqa: F401  # mounts /html on import
+from microdot import Microdot, Request  # type: ignore[import-not-found]
 
-from asy_webserver_service import WebserverService  # noqa: E402
+from asy_webserver_service import WebserverService
 
 try:
     from typing import TYPE_CHECKING
@@ -139,7 +139,7 @@ def test_bundled_js_contains_every_production_module_with_no_leftover_local_impo
     # way) was caught only by manually tracing the build, not by this test.
     for line in body.split(b"\n"):
         assert not line.startswith(b"import "), line
-        assert not (line.startswith(b"export ") and b" from \"./" in line), line
+        assert not (line.startswith(b"export ") and b' from "./' in line), line
 
 
 def test_js_app_js_is_the_real_production_entry_not_the_prototype() -> None:

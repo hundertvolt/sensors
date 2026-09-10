@@ -9,8 +9,6 @@ try:
 except ImportError:  # typing has no runtime presence on MicroPython, on-device or in the Unix-port test build
     TYPE_CHECKING = False
 
-if TYPE_CHECKING:
-    pass
 
 _OPCODE_WREN = 0x06
 _OPCODE_WRDI = 0x04

@@ -22,8 +22,8 @@ if TYPE_CHECKING:
 # rather than a scripts/test.sh/MICROPYPATH change.
 sys.path.insert(0, "digital_twin")
 
-import machine  # noqa: E402 - whole-module import, needed for the live reset_count/bootloader_count globals below
-from machine import (  # noqa: E402
+import machine
+from machine import (
     I2C,
     RTC,
     SPI,
@@ -166,7 +166,7 @@ def test_configure_scd30_state_path_and_flush_scd30_round_trip_settings() -> Non
     import os
 
     sys.path.insert(0, "digital_twin")
-    from _crc8 import crc8, word  # noqa: E402
+    from _crc8 import crc8, word
 
     path = "tests/_tmp/scd30_machine_wiring.json"
     try:

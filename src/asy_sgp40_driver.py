@@ -99,7 +99,7 @@ class SGP40_Reader(SensorReaderConfig):
                 # matters more here since __init__ runs before any task supervisor exists to
                 # catch an escaped exception.
                 self.ts_storage = fram_storage.get_timestamped_chunk(
-                    VOCAlgorithm.get_params_memsize(), fram_ntp_callback, crc=CRC32()
+                    VOCAlgorithm.get_params_memsize(), fram_ntp_callback, crc=CRC32(),
                 )  # timestamped backup storage (FRAM)
             except Exception:
                 self.ts_storage = None
@@ -154,7 +154,7 @@ class SGP40_Reader(SensorReaderConfig):
         return buf, serialize, deserialize, (backup_period, backup_maxage, wait_ntp)
 
     async def _read_sgp(
-        self, buf: "AsyFramChunkTimestampedBuffer | None", serialize: bool, deserialize: bool
+        self, buf: "AsyFramChunkTimestampedBuffer | None", serialize: bool, deserialize: bool,
     ) -> tuple[SGP40, bool, bool]:
         # Snapshotted once at entry so a concurrent reset_voc(True) (e.g. a REST handler) only
         # ever affects the *next* cycle, never this one.
@@ -254,7 +254,7 @@ class SGP40_Reader(SensorReaderConfig):
 
         if cfg_values[0] > 0:  # backup verification period setting
             await self.ts_storage.set_verify(
-                int(math.ceil((10 * _FRAM_VERIFY_MINS) / cfg_values[0]) * 0.1)  # SGPBackupPeriod
+                int(math.ceil((10 * _FRAM_VERIFY_MINS) / cfg_values[0]) * 0.1),  # SGPBackupPeriod
             )
 
         if cfg_values[1] >= 1:  # more than 1s waittime for ntp
@@ -284,17 +284,16 @@ class SGP40_Reader(SensorReaderConfig):
             await self.pr.wrn_s("Backup loaded without timestamp", wrnno=11)
             self.voc_init = 0
             ts = -1  # means valid data, no timestamp
-        else:  # backup has valid timestamp
-            if age is None:
-                if self.voc_init > 0:
-                    self.pr.evt("Backup with timestamp found, NTP wait time:", self.voc_init)
-                    return False
-            else:
-                self.pr.one("Backup with timestamp loaded")
-                self.voc_init = 0
-                if cfg_values[1] > 0 and age > (60 * cfg_values[1]):  # SGPBackupMaxAge
-                    await self.pr.wrn_s("Backup is too old", wrnno=12)
-                    return False
+        elif age is None:
+            if self.voc_init > 0:
+                self.pr.evt("Backup with timestamp found, NTP wait time:", self.voc_init)
+                return False
+        else:
+            self.pr.one("Backup with timestamp loaded")
+            self.voc_init = 0
+            if cfg_values[1] > 0 and age > (60 * cfg_values[1]):  # SGPBackupMaxAge
+                await self.pr.wrn_s("Backup is too old", wrnno=12)
+                return False
 
         self.restored_from = ts
         return True
@@ -352,7 +351,7 @@ class SGP40_Reader(SensorReaderConfig):
         await self._set_meas_data(data)
         self.pr.all("data stored")
 
-    async def _push_reset_voc(self, value: int | float | str | bool | None) -> bool:
+    async def _push_reset_voc(self, value: float | str | bool | None) -> bool:
         # Narrows _push_callbacks' wide value type to reset_voc's real bool parameter. Deliberately
         # does NOT forward reset_voc()'s own return value: it uses False for "no-op" (see its own
         # docstring), not "push failed" (SPECIFICATION.md C.5.2) - always reports success once typed.
@@ -558,7 +557,7 @@ class SGP40_I2C:
             return None, None, False, False
 
         (voc_index, serialized, deserialized) = self._voc_algorithm.vocalgorithm_proc_ser_des(
-            raw, buf, serialize=serialize, deserialize=deserialize, offset=offset
+            raw, buf, serialize=serialize, deserialize=deserialize, offset=offset,
         )
         return voc_index, raw, serialized, deserialized
 

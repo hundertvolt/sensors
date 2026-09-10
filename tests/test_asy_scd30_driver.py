@@ -186,8 +186,8 @@ def test_read_measurement_data_matches_datasheet_worked_example() -> None:
                 0x43, 0xDB, 0xCB, 0x8C, 0x2E, 0x8F,  # CO2
                 0x41, 0xD9, 0x70, 0xE7, 0xFF, 0xF5,  # Temperature
                 0x42, 0x43, 0xBF, 0x3A, 0x1B, 0x74,  # Humidity
-            ]
-        )
+            ],
+        ),
     )
     run(scd.read_measurement())
     assert abs((scd._co2 or 0) - 439.09) < 0.01

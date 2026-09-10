@@ -122,7 +122,7 @@ class Bmp3xxChip:
     def _trigger_measurement(self) -> None:
         self._temp_c = self._clamp(self._temp_c + self._random.uniform(-self._temp_step_c, self._temp_step_c), self._min_temp_c, self._max_temp_c)
         self._pressure_hpa = self._clamp(
-            self._pressure_hpa + self._random.uniform(-self._pressure_step_hpa, self._pressure_step_hpa), self._min_pressure_hpa, self._max_pressure_hpa
+            self._pressure_hpa + self._random.uniform(-self._pressure_step_hpa, self._pressure_step_hpa), self._min_pressure_hpa, self._max_pressure_hpa,
         )
         target_temp = self._temp_c
         target_pressure_pa = self._pressure_hpa * 100.0
@@ -139,7 +139,7 @@ class Bmp3xxChip:
                 adc_t_i & 0xFF,
                 (adc_t_i >> 8) & 0xFF,
                 (adc_t_i >> 16) & 0xFF,
-            ]
+            ],
         )
         self._status = _STATUS_CMD_RDY | _STATUS_DATA_READY
 
@@ -165,9 +165,8 @@ class Bmp3xxChip:
             self._osr = data[0]
         elif reg_addr == _REGISTER_CONFIG:
             self._config = data[0]
-        elif reg_addr == _REGISTER_CMD:
-            if data and data[0] == _CMD_SOFT_RESET:
-                self._status = _STATUS_CMD_RDY
+        elif reg_addr == _REGISTER_CMD and data and data[0] == _CMD_SOFT_RESET:
+            self._status = _STATUS_CMD_RDY
         # any other register: real hardware would just silently accept/ignore it too.
 
     def handle_readfrom_mem(self, reg_addr: int, nbytes: int) -> bytes:

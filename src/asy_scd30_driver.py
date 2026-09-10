@@ -152,7 +152,7 @@ class SCD30_Reader(SensorReader):
                 WetBulb=math_helpers.wet_bulb_temperature(results[1], results[2]),
                 DewPoint=math_helpers.dew_point(results[1], results[2]),
                 TS=results[3],
-            )
+            ),
         )
         self.pr.all("data stored")
 
@@ -216,7 +216,7 @@ class SCD30_Reader(SensorReader):
         return _VAL_TO + _VAL_MI + _VAL_AP + _VAL_ALT + _VAL_CAL + _VAL_SC
 
     async def _set_dict_cfg(
-        self, data: dict[str, int | float | str | bool | None], cfg_vals: "ConfigSchema"
+        self, data: dict[str, int | float | str | bool | None], cfg_vals: "ConfigSchema",
     ) -> dict[str, str]:
         # Schema-driven generic setter, structurally mirroring base_classes.SensorReaderConfig's own
         # _set_dict_cfg() validate-against-schema/dispatch-by-name shape (decided gap closure -
@@ -311,50 +311,56 @@ class SCD30_Reader(SensorReader):
     async def set_measurement_interval(self, value: int) -> bool:
         try:
             await self.scd.set_measurement_interval(value)
-            return True
         except Exception as e:
             await self.pr.err_s("Error setting measurement interval:", e, errno=15)
             return False
+        else:
+            return True
 
     async def set_self_calibration_enabled(self, enabled: bool) -> bool:
         try:
             await self.scd.set_self_calibration_enabled(enabled)
-            return True
         except Exception as e:
             await self.pr.err_s("Error setting self calibration enabled:", e, errno=17)
             return False
+        else:
+            return True
 
-    async def set_ambient_pressure(self, pressure_mbar: int | float) -> bool:
+    async def set_ambient_pressure(self, pressure_mbar: float) -> bool:
         try:
             await self.scd.set_ambient_pressure(pressure_mbar)
-            return True
         except Exception as e:
             await self.pr.err_s("Error setting ambient pressure:", e, errno=19)
             return False
+        else:
+            return True
 
     async def set_altitude(self, altitude: int) -> bool:
         try:
             await self.scd.set_altitude(altitude)
-            return True
         except Exception as e:
             await self.pr.err_s("Error setting altitude:", e, errno=21)
             return False
+        else:
+            return True
 
-    async def set_temperature_offset(self, offset: int | float) -> bool:
+    async def set_temperature_offset(self, offset: float) -> bool:
         try:
             await self.scd.set_temperature_offset(offset)
-            return True
         except Exception as e:
             await self.pr.err_s("Error setting temperature offset:", e, errno=23)
             return False
+        else:
+            return True
 
     async def set_forced_recalibration_reference(self, reference_value: int) -> bool:
         try:
             await self.scd.set_forced_recalibration_reference(reference_value)
-            return True
         except Exception as e:
             await self.pr.err_s("Error setting forced recalibration reference:", e, errno=25)
             return False
+        else:
+            return True
 
     async def read_loop(self) -> bool:
         if not await self._init_scd():
@@ -388,10 +394,11 @@ class SCD30_Reader(SensorReader):
             return False
         try:
             await self.scd.stop_continuous_measurement()
-            return True
         except Exception as e:
             await self.pr.err_s("Error stopping continuous measurement:", e, errno=13)
             return False
+        else:
+            return True
 
 
 class SCD30_DeviceSession(Lockable):  # lock for consecutive i2c communication and self._buffer
@@ -412,9 +419,8 @@ class SCD30_I2C:
         self._co2: float | None = None
 
     async def _send_command(self, command: int, arguments: int | None = None) -> None:
-        async with self.i2c_scd30 as scd30:
-            async with scd30.i2c_device as i2c:
-                await self._send_dev_command(i2c, command, arguments)
+        async with self.i2c_scd30 as scd30, scd30.i2c_device as i2c:
+            await self._send_dev_command(i2c, command, arguments)
 
     async def _send_dev_command(self, i2c: I2CDevice, command: int, arguments: int | None = None) -> None:
         # if there is an argument, calculate the CRC and include it as well.
@@ -431,9 +437,8 @@ class SCD30_I2C:
         await asyncio.sleep(0.05)  # delay for response
 
     async def _read_register(self, reg_addr: int) -> int:
-        async with self.i2c_scd30 as scd30:
-            async with scd30.i2c_device as i2c:
-                ret = await self._read_dev_register(i2c, reg_addr)
+        async with self.i2c_scd30 as scd30, scd30.i2c_device as i2c:
+            ret = await self._read_dev_register(i2c, reg_addr)
         return ret
 
     async def _read_dev_register(self, i2c: I2CDevice, reg_addr: int) -> int:
@@ -476,14 +481,13 @@ class SCD30_I2C:
         # and post-write values (BACKLOG.md's SCD30_Reader.get_dict_cfg() torn-read entry). Same
         # "allowed to raise" layer as every other SCD30_I2C method - a mid-batch fault fails the whole
         # snapshot rather than a mix of fresh and stale fields.
-        async with self.i2c_scd30 as scd30:
-            async with scd30.i2c_device as i2c:
-                temp_offset = await self._read_dev_register(i2c, _CMD_SET_TEMPERATURE_OFFSET) / 100.0
-                measurement_interval = await self._read_dev_register(i2c, _CMD_SET_MEASUREMENT_INTERVAL)
-                ambient_pressure = await self._read_dev_register(i2c, _CMD_CONTINUOUS_MEASUREMENT)
-                altitude = await self._read_dev_register(i2c, _CMD_SET_ALTITUDE_COMPENSATION)
-                frc = await self._read_dev_register(i2c, _CMD_SET_FORCED_RECALIBRATION_FACTOR)
-                self_cal = await self._read_dev_register(i2c, _CMD_AUTOMATIC_SELF_CALIBRATION) == 1
+        async with self.i2c_scd30 as scd30, scd30.i2c_device as i2c:
+            temp_offset = await self._read_dev_register(i2c, _CMD_SET_TEMPERATURE_OFFSET) / 100.0
+            measurement_interval = await self._read_dev_register(i2c, _CMD_SET_MEASUREMENT_INTERVAL)
+            ambient_pressure = await self._read_dev_register(i2c, _CMD_CONTINUOUS_MEASUREMENT)
+            altitude = await self._read_dev_register(i2c, _CMD_SET_ALTITUDE_COMPENSATION)
+            frc = await self._read_dev_register(i2c, _CMD_SET_FORCED_RECALIBRATION_FACTOR)
+            self_cal = await self._read_dev_register(i2c, _CMD_AUTOMATIC_SELF_CALIBRATION) == 1
         return temp_offset, measurement_interval, ambient_pressure, altitude, frc, self_cal
 
     async def get_CO2(self) -> float | None:
@@ -509,7 +513,7 @@ class SCD30_I2C:
         if enabled:
             await asyncio.sleep(0.01)
 
-    async def set_ambient_pressure(self, pressure_mbar: int | float) -> None:
+    async def set_ambient_pressure(self, pressure_mbar: float) -> None:
         # 0x0010 doubles as "trigger continuous measurement" and is NVM-persisted (Interface
         # Description 1.4.1). Validated before truncating - int(-0.5) == 0 would otherwise slip
         # through as the "disable" value instead of being rejected; NaN is rejected explicitly too.
@@ -526,7 +530,7 @@ class SCD30_I2C:
             raise ValueError("altitude must be from 0 to 65535 meters")
         await self._send_command(_CMD_SET_ALTITUDE_COMPENSATION, int(altitude))
 
-    async def set_temperature_offset(self, offset: float | int) -> None:
+    async def set_temperature_offset(self, offset: float) -> None:
         # NVM-persisted - survives reset() and power cycles. NaN rejected explicitly first - see
         # set_ambient_pressure()'s comment.
         if offset != offset:  # NaN is the only value unequal to itself
@@ -541,9 +545,8 @@ class SCD30_I2C:
         await self._send_command(_CMD_SET_FORCED_RECALIBRATION_FACTOR, reference_value)
 
     async def setup(self) -> None:
-        async with self.i2c_scd30 as scd30:
-            async with scd30.i2c_device as i2c:
-                await i2c.setup()
+        async with self.i2c_scd30 as scd30, scd30.i2c_device as i2c:
+            await i2c.setup()
         # CRC-valid firmware-version read confirms a real SCD30 is responding (matches
         # BMP3xx/SGP40's identity checks) - the version value itself isn't checked.
         await self._read_register(_CMD_READ_FIRMWARE_VERSION)

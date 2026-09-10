@@ -8,10 +8,10 @@ import sys
 sys.path.insert(0, "ext")  # same convention as test_digital_twin_sensortask_integration.py's own comment
 sys.path.insert(0, "digital_twin")
 
-import machine  # noqa: E402
+import machine
 
-import sensortask_dev  # noqa: E402
-import sensortask_wozi  # noqa: E402
+import sensortask_dev
+import sensortask_wozi
 
 try:
     from typing import TYPE_CHECKING

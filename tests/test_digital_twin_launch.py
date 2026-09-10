@@ -16,9 +16,9 @@ if TYPE_CHECKING:
 
 sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comment for why
 
-import machine  # noqa: E402
-import network  # noqa: E402
-from launch import LaunchConfig, main, parse_args, parse_fault_spec  # noqa: E402
+import machine
+import network
+from launch import LaunchConfig, main, parse_args, parse_fault_spec
 
 
 def run(coro: "Coroutine[Any, Any, T]") -> "T":
@@ -191,7 +191,7 @@ def test_parse_args_combines_every_flag_together() -> None:
             "--no-wdt-feed",
             "--duration",
             "1.5",
-        ]
+        ],
     )
     assert config.seed == 7
     assert config.fram_state_path == "tests/_tmp/launch_fram.bin"

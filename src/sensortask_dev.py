@@ -285,7 +285,7 @@ def _collect_level_setters() -> "list[Callable[[int], None]]":
 
 
 async def build_system(
-    *, cfg_path: str = "", debug: int | None = None, web_host: str = "0.0.0.0", web_port: int = 80
+    *, cfg_path: str = "", debug: int | None = None, web_host: str = "0.0.0.0", web_port: int = 80,
 ) -> None:
     """Construct every module and run the grouped `setup()` batch - no task starting, no infinite
     loop, always returns. `cfg_path`/`web_host`/`web_port` override on-disk/production defaults for

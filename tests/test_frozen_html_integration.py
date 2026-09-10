@@ -12,10 +12,10 @@ import sys
 # ext/microdot.py without touching MICROPYPATH/pyproject.toml/scripts/test.sh.
 sys.path.insert(0, "ext")
 
-import frozen_html  # type: ignore[import-not-found]  # noqa: E402,F401  # mounts /html on import
-from microdot import Microdot, Request  # type: ignore[import-not-found]  # noqa: E402
+import frozen_html  # type: ignore[import-not-found]  # noqa: F401  # mounts /html on import
+from microdot import Microdot, Request  # type: ignore[import-not-found]
 
-from asy_webserver_service import WebserverService  # noqa: E402
+from asy_webserver_service import WebserverService
 
 try:
     from typing import TYPE_CHECKING

@@ -55,6 +55,12 @@ _FIELDS = const(("Mode", "Connected", "IP", "TS"))  # kept in sync with WIFI's o
 _STA_DISCONNECT_WAIT_ITERS = const(20)  # 20 * 0.5s = 10s max wait for isconnected() to clear -
 # bounds _disconnect_sta_and_wait()'s loop; a real disconnect() completes far faster than this.
 
+# Expected field counts of the config reads and of WLAN.ifconfig()'s fixed 4-tuple, checked before
+# unpacking so a short/missing config degrades instead of raising.
+_HOTSPOT_CFG_FIELDS = const(2)  # _VAL_CTRY + _VAL_HOST
+_STA_CFG_FIELDS = const(4)  # _VAL_SSID + _VAL_PW + _VAL_CTRY + _VAL_HOST
+_IFCONFIG_FIELDS = const(4)  # (ip, netmask, gateway, dns)
+
 # self._conn_phase - the connection state machine. Not importable as a module attribute once
 # const()-folded (see tests/test_asy_wifi_service.py's own mirrored copy), same tradeoff as every
 # constant here.
@@ -173,11 +179,12 @@ class AsyConnTime(SensorReaderConfig):
             # stations command needs no other status commands close before (and does not support "async with"!)
             stations = self.wlan.status("stations")
             self.pr.all("Connected stations:", stations)
-            return stations  # type: ignore[return-value]  # stub types status(str) as int; real AP-mode "stations" returns a list per MicroPython docs
         except Exception as e:  # observation-tier (polled every wifi_refresh_sec while hotspot is
             # active) - see _wlan_status_or_none()'s comment on why this stays silent, not err_s()
             self.pr.err("Could not fetch connected clients:", e)
             return []
+        else:
+            return stations  # type: ignore[return-value]  # stub types status(str) as int; real AP-mode "stations" returns a list per MicroPython docs
         finally:
             self._release_wifi_lock()
 
@@ -293,7 +300,7 @@ class AsyConnTime(SensorReaderConfig):
         try:
             led_cfg = await self._read_wifi_led_cfg()
             wifi_cfg = await self.cfgmgr.get_str_values(_VAL_CTRY + _VAL_HOST)
-            if wifi_cfg is None or led_cfg is None or len(wifi_cfg) != 2:
+            if wifi_cfg is None or led_cfg is None or len(wifi_cfg) != _HOTSPOT_CFG_FIELDS:
                 await self.pr.wrn_s("Missing WLAN configuration!", wrnno=2)
                 await self.set_wifi_led(False)
             else:
@@ -379,7 +386,7 @@ class AsyConnTime(SensorReaderConfig):
         led_cfg = await self._read_wifi_led_cfg()
         await self.set_wifi_led(False if led_cfg is None else led_cfg)
         wifi_cfg = await self.cfgmgr.get_str_values(_VAL_SSID + _VAL_PW + _VAL_CTRY + _VAL_HOST)
-        if wifi_cfg is None or len(wifi_cfg) != 4:
+        if wifi_cfg is None or len(wifi_cfg) != _STA_CFG_FIELDS:
             await self.pr.wrn_s("Missing WLAN configuration!", wrnno=3)
             return
         ssid, pw, country, hostname = wifi_cfg
@@ -396,11 +403,12 @@ class AsyConnTime(SensorReaderConfig):
             self.wlan.active(True)
             self.wlan.config(pm=0xA11140)  # disable power-save mode
             self.wlan.connect(ssid, pw)
-            return True
         except Exception as e:
             self.hw_op_failed = True
             await self.pr.err_s("Error attempting STA connect:", e, errno=13)
             return False
+        else:
+            return True
 
     def _on_sta_connected(self) -> None:
         self.pr.one("WLAN connection established")
@@ -448,13 +456,13 @@ class AsyConnTime(SensorReaderConfig):
         ip = None
         try:
             ifcfg = self.wlan.ifconfig()
-            if len(ifcfg) == 4:
+            if len(ifcfg) == _IFCONFIG_FIELDS:
                 ip = ifcfg[0]
         except Exception as e:  # observation-tier - see _wlan_status_or_none()'s comment
             self.pr.err("wlan.ifconfig() failed:", e)
         await self._set_meas_data(WIFI(mode, connected, ip, self._now()))
 
-    async def _push_wifi_led(self, value: int | float | str | bool | None) -> bool:
+    async def _push_wifi_led(self, value: float | str | bool | None) -> bool:
         # Narrows _push_callbacks' wide value type to set_wifi_led's real bool parameter - the
         # isinstance check is defense-in-depth, not a scenario a real (schema-validated) caller hits.
         if not isinstance(value, bool):
@@ -624,7 +632,7 @@ class AsyConnTime(SensorReaderConfig):
 
     async def get_dict_cfg(self) -> dict[str, dict[str, int | float | str | bool | None]]:
         return await self._get_dict_cfg(
-            _NAME, _VAL_SSID + _VAL_PW + _VAL_CTRY + _VAL_HOST + _VAL_LED, callback=self._mask_pw
+            _NAME, _VAL_SSID + _VAL_PW + _VAL_CTRY + _VAL_HOST + _VAL_LED, callback=self._mask_pw,
         )
 
     async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[str]]]:
@@ -642,8 +650,8 @@ class AsyConnTime(SensorReaderConfig):
         except Exception as e:  # observation-tier - see _wlan_status_or_none()'s comment
             self.pr.err("wlan.ifconfig() failed:", e)
             return None
-        if len(ifcfg) == 4:
-            return ifcfg[0:4]
+        if len(ifcfg) == _IFCONFIG_FIELDS:
+            return ifcfg[0:_IFCONFIG_FIELDS]
         return None  # type: ignore[unreachable]  # defensive: real WLAN.ifconfig() is a fixed 4-tuple per the stub
 
     def get_dns_server_ip(self) -> str | None:
@@ -735,7 +743,7 @@ class AsyConnTime(SensorReaderConfig):
                 # matching a Reader's read_loop() returning False.
                 if not await self._error_check((None,), condition=self.hw_op_failed):
                     await self.pr.err_s(
-                        "Giving up after repeated WLAN hardware failures, restarting task.", errno=17
+                        "Giving up after repeated WLAN hardware failures, restarting task.", errno=17,
                     )
                     return
             await asyncio.sleep(self.wifi_refresh_sec)

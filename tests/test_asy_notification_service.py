@@ -152,7 +152,7 @@ class _FastAsyncSleep:
         asyncio.sleep = _fast  # type: ignore[assignment]  # deliberate monkeypatch, not a real caller mismatch
         return self
 
-    def __exit__(self, *exc_info: "Any") -> None:
+    def __exit__(self, *exc_info: object) -> None:
         asyncio.sleep = self._real_sleep
 
 
@@ -170,7 +170,7 @@ def make_coordinator(
 
 
 def make_signal(
-    name: str = "WarnCO2", above: bool = True, value: "int | float | None" = 1000, color: "tuple[int, int, int]" = (1, 0, 0)
+    name: str = "WarnCO2", above: bool = True, value: "int | float | None" = 1000, color: "tuple[int, int, int]" = (1, 0, 0),
 ) -> "tuple[NotificationSignal, FakeValue]":
     fv = FakeValue(value)
     field_schema = ((name, "int", 1600, 0, 3000, None),)
@@ -1008,7 +1008,7 @@ def test_sleep_window_boundaries_inclusive() -> None:
         clock.value = _FakeTime(hour, minute)
         cb.calls.clear()
         await coordinator._set_dict_cfg(
-            {"OnH": 10, "OnM": 0, "OffH": 18, "OffM": 0, "Interv": 3600.0, "FlashDur": 0.01}, coordinator.get_cfg_schema()
+            {"OnH": 10, "OnM": 0, "OffH": 18, "OffM": 0, "Interv": 3600.0, "FlashDur": 0.01}, coordinator.get_cfg_schema(),
         )
         task = coordinator.start_asy_notify_monitor()
         await _one_cycle(coordinator, task)
@@ -1039,7 +1039,7 @@ def test_sleep_window_just_after_off_bound_is_excluded() -> None:
 
     async def scenario() -> None:
         await coordinator._set_dict_cfg(
-            {"OnH": 10, "OnM": 0, "OffH": 18, "OffM": 0, "Interv": 3600.0, "FlashDur": 0.01}, coordinator.get_cfg_schema()
+            {"OnH": 10, "OnM": 0, "OffH": 18, "OffM": 0, "Interv": 3600.0, "FlashDur": 0.01}, coordinator.get_cfg_schema(),
         )
         task = coordinator.start_asy_notify_monitor()
         await _one_cycle(coordinator, task)

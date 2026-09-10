@@ -124,7 +124,7 @@ _CAL_RAW = bytes(
         4285,  # P9
         22,  # P10
         -60,  # P11
-    )
+    ),
 )
 _ADC_P = 8300000
 _ADC_T = 8500000
@@ -1373,8 +1373,8 @@ def test_store_bmp_falls_back_to_default_compensation_values_when_config_unreada
     seed_data(i2c, _adc_to_data6(_ADC_P, _ADC_T))
     ok, results_valid = run(
         reader.cfgmgr.write_config(
-            {"PressOffset": 10.0, "TempOffset": 2.0, "SeaLevelOffs": 100.0, "MeanAtmTemp": 25.0}, _FULL_SCHEMA
-        )
+            {"PressOffset": 10.0, "TempOffset": 2.0, "SeaLevelOffs": 100.0, "MeanAtmTemp": 25.0}, _FULL_SCHEMA,
+        ),
     )
     assert ok is True
     assert all(status == "Valid" for status in results_valid.values())
@@ -1408,7 +1408,7 @@ def test_store_bmp_falls_back_to_default_compensation_values_when_config_unreada
     # MeanAtmTemp fallback (15.0) has no observable effect at this height offset, by construction.
     assert fallback.SLPres == results[0]
     assert fallback.SLPres != compensated.SLPres  # the stored 100.0 offset really did change it
-    assert fallback.TS == results[2]  # timestamp is passed through untouched either way
+    assert results[2] == fallback.TS  # timestamp is passed through untouched either way
 
 
 def test_reader_read_error_check_threshold_and_self_heal() -> None:
@@ -1674,8 +1674,8 @@ def test_set_dict_cfg_multi_field_discrete_and_continuous_together() -> None:
     seed_err(i2c, 0x00)
     results = run(
         reader._set_dict_cfg(
-            {"PressOvers": 20, "FiltCoeff": 15, "PressOffset": 12.5}, reader.get_cfg_schema()
-        )
+            {"PressOvers": 20, "FiltCoeff": 15, "PressOffset": 12.5}, reader.get_cfg_schema(),
+        ),
     )
     assert results == {"PressOvers": "Invalid", "FiltCoeff": "Valid", "PressOffset": "Valid"}
     assert run(reader.bmp.get_filter_coefficient()) == 15

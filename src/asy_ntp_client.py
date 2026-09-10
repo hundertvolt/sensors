@@ -62,6 +62,9 @@ _NTP_LI_UNSYNCHRONIZED = const(3)  # RFC 5905 Leap Indicator top-2-bits: 3 = ser
 _NTP_STRATUM_INVALID = const(0)  # RFC 5905/4330 stratum 0 = Kiss-o'-Death packet. Its Transmit
 # Timestamp is typically all-zero, which lands inside the plausibility window above.
 
+_TIME_OFFSET_COUNT = const(2)  # cettime() reads exactly GMTOffset + DSTOffset
+_GMTIME_FIELDS = const(8)  # time.gmtime()'s tuple width, matching GMTimeStruct's own field count
+
 # Schema tuples for ConfigManager.get_*_values() - min/max mirror the already-validated bounds the
 # deployed, pre-refactor REST handler uses; defaults are the only source of truth for a fresh config_NTP.cfg.
 _VAL_NH = const((("NTP_Host", "str", "pool.ntp.org", 3, 1024, None),))
@@ -226,7 +229,7 @@ class AsyNtpClient(SensorReaderConfig):
                 # Server says its own clock is unsynchronized, or this is a Kiss-o'-Death packet -
                 # never a genuine time source, regardless of its Transmit Timestamp.
                 await self.pr.wrn_s(
-                    "NTP reply unsynchronized or Kiss-of-Death, rejecting:", leap_indicator, stratum, wrnno=2
+                    "NTP reply unsynchronized or Kiss-of-Death, rejecting:", leap_indicator, stratum, wrnno=2,
                 )
                 return None
             raw_seconds = struct.unpack("!I", msg[40:44])[0]
@@ -241,12 +244,13 @@ class AsyNtpClient(SensorReaderConfig):
             self.pr.all("Received NTP time:", ntp_time)
             tm = time.gmtime(ntp_time)
             RTC().datetime((tm[0], tm[1], tm[2], tm[6] + 1, tm[3], tm[4], tm[5], 0))
-            return tm
         except (IndexError, OverflowError, ValueError, OSError) as e:
             # malformed/truncated reply (MicroPython's struct raises plain ValueError, not
             # struct.error) or an out-of-range timestamp - treat like no response.
             await self.pr.err_s("Malformed NTP response, treating as no response:", e, errno=15)
             return None
+        else:
+            return tm
 
     async def _handle_ntp_sync_failure(self) -> None:
         self.pr.all("Invalid NTP time received!")
@@ -349,15 +353,15 @@ class AsyNtpClient(SensorReaderConfig):
         if not (await self.ntp_issynced()):
             return None
         time_offs = await self.cfgmgr.get_int_values(_VAL_GMT + _VAL_DST)
-        if time_offs is None or len(time_offs) != 2:
+        if time_offs is None or len(time_offs) != _TIME_OFFSET_COUNT:
             return None
         try:
             year = time.gmtime()[0]  # get current year
             HHMarch = time.mktime(
-                (year, 3, (31 - (int(5 * year / 4 + 4)) % 7), 1, 0, 0, 0, 0, 0)
+                (year, 3, (31 - (int(5 * year / 4 + 4)) % 7), 1, 0, 0, 0, 0, 0),
             )  # Time of March change to CEST
             HHOctober = time.mktime(
-                (year, 10, (31 - (int(5 * year / 4 + 1)) % 7), 1, 0, 0, 0, 0, 0)
+                (year, 10, (31 - (int(5 * year / 4 + 1)) % 7), 1, 0, 0, 0, 0, 0),
             )  # Time of October change to CET
             now = time.time()
             if now < HHMarch:  # we are before last sunday of march
@@ -371,7 +375,7 @@ class AsyNtpClient(SensorReaderConfig):
             # exactly like "not ready" instead of crashing the caller.
             await self.pr.err_s("Time calculation failed:", e, errno=19)
             return None
-        if len(cet) == 8:
+        if len(cet) == _GMTIME_FIELDS:
             return GMTimeStruct(*cet)
         return None
 

@@ -6,7 +6,7 @@ import sys
 
 sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comment for why
 
-from _bmp3xx_chip import Bmp3xxChip  # noqa: E402
+from _bmp3xx_chip import Bmp3xxChip
 
 
 def _read(chip: Bmp3xxChip, reg: int, nbytes: int) -> bytes:
@@ -161,8 +161,8 @@ def test_default_range_stays_inside_the_drivers_own_operating_range_check() -> N
     # asy_bmp3xx_driver.py's own _read() rejects anything outside 300-1250 hPa / -40-85 degC
     # (datasheet sec 1, Table 2) - the twin's defaults must be a sensible sub-range of that.
     chip = Bmp3xxChip()
-    assert 300.0 <= chip._min_pressure_hpa and chip._max_pressure_hpa <= 1250.0
-    assert -40.0 <= chip._min_temp_c and chip._max_temp_c <= 85.0
+    assert chip._min_pressure_hpa >= 300.0 and chip._max_pressure_hpa <= 1250.0
+    assert chip._min_temp_c >= -40.0 and chip._max_temp_c <= 85.0
 
 
 def test_a_fresh_reading_is_drawn_on_every_forced_mode_trigger() -> None:

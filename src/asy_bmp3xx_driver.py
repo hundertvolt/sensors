@@ -206,27 +206,27 @@ class BMP3xx_Reader(SensorReaderConfig):
                 math_helpers.altitude_baro(p_comp, -comp_values[2], comp_values[3]),
                 # local pressure, -BMPSeaLevelOffs, BMPMeanAtmTemp
                 results[2],  # timestamp
-            )
+            ),
         )
         self.pr.all("data stored")
         return
 
-    async def _push_trigger_secs(self, value: int | float | str | bool | None) -> bool:
+    async def _push_trigger_secs(self, value: float | str | bool | None) -> bool:
         if type(value) is not int:
             return False
         return await self.set_trigger_secs(value)
 
-    async def _push_pressure_oversampling(self, value: int | float | str | bool | None) -> bool:
+    async def _push_pressure_oversampling(self, value: float | str | bool | None) -> bool:
         if type(value) is not int:
             return False
         return await self.set_pressure_oversampling(value)
 
-    async def _push_temperature_oversampling(self, value: int | float | str | bool | None) -> bool:
+    async def _push_temperature_oversampling(self, value: float | str | bool | None) -> bool:
         if type(value) is not int:
             return False
         return await self.set_temperature_oversampling(value)
 
-    async def _push_filter_coefficient(self, value: int | float | str | bool | None) -> bool:
+    async def _push_filter_coefficient(self, value: float | str | bool | None) -> bool:
         if type(value) is not int:
             return False
         return await self.set_filter_coefficient(value)
@@ -307,7 +307,7 @@ class BMP3xx_Reader(SensorReaderConfig):
             await self.pr.err_s("Error reading filter coefficient:", e, errno=19)
             return None
 
-    async def set_trigger_secs(self, value: int | float) -> bool:
+    async def set_trigger_secs(self, value: float) -> bool:
         try:
             # int(float('inf'))/int(float('-inf')) raise OverflowError, not ValueError - confirmed
             # against the real MicroPython Unix-port interpreter; +-inf is a legitimate int | float

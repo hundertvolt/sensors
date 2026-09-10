@@ -124,7 +124,7 @@ def make_conn() -> AsyConnTime:
 
 
 def make_ntp(
-    conn: AsyConnTime, ntp_host: str, ntp_fetch_timeout_ms: int = 5000, max_module_error: int = 5
+    conn: AsyConnTime, ntp_host: str, ntp_fetch_timeout_ms: int = 5000, max_module_error: int = 5,
 ) -> AsyNtpClient:
     # Exactly sensortask-wozi.py's own wiring: conn.get_wifi_mode_lock()/network_available/
     # get_dns_server_ip passed straight through as ntp's own constructor arguments - the real bound
@@ -218,7 +218,7 @@ class _RedirectNtpNetworking:
         ntpmod.AsyUDPSocket = _Resolving  # type: ignore[assignment, misc]
         return self
 
-    def __exit__(self, *exc_info: "Any") -> None:
+    def __exit__(self, *exc_info: object) -> None:
         ntpmod._NTP_UDP_PORT = self._original_port
         ntpmod.AsyUDPSocket = self._original_socket_cls  # type: ignore[misc]
 

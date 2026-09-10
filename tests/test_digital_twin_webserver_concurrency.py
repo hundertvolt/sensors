@@ -33,9 +33,9 @@ sys.path.insert(0, "ext")  # reaches the real, vendored ext/microdot.py - same c
 # test_digital_twin_sensortask_integration.py's own comment.
 sys.path.insert(0, "digital_twin")
 
-import _http_client  # noqa: E402
+import _http_client
 
-import sensortask_wozi  # noqa: E402
+import sensortask_wozi
 
 try:
     from typing import TYPE_CHECKING
@@ -162,7 +162,7 @@ async def _still_serving(host: str, port: int, timeout_s: float = 5.0) -> bool:
         try:
             if await asyncio.wait_for(_healthy_request(host, port), 2.0) == 200:
                 return True
-        except Exception:  # noqa: BLE001 - any failure just means "not yet", keep retrying
+        except Exception:
             pass
         if time.ticks_diff(time.ticks_ms(), start) >= timeout_s * 1000:
             return False
@@ -602,7 +602,7 @@ def test_realistic_mixed_polling_and_a_concurrent_real_config_write() -> None:
         try:
             async def _writes() -> "list[int]":
                 return list(
-                    await asyncio.gather(_real_config_write("127.0.0.1", port, 5), _real_config_write("127.0.0.1", port, 6))
+                    await asyncio.gather(_real_config_write("127.0.0.1", port, 5), _real_config_write("127.0.0.1", port, 6)),
                 )
 
             openhab_result, write_results = await asyncio.gather(_openhab_poll("127.0.0.1", port), _writes())

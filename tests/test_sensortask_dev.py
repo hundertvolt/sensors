@@ -11,18 +11,18 @@ import sys
 # this reaches the real vendored ext/microdot.py without touching MICROPYPATH.
 sys.path.insert(0, "ext")
 
-import machine  # noqa: E402
-from _fram_chip_fake import FakeMB85RS64V  # noqa: E402
-from _shared_rest_roundtrip import (  # noqa: E402
+import machine
+from _fram_chip_fake import FakeMB85RS64V
+from _shared_rest_roundtrip import (
     assert_named_modules_constructed,
     assert_sensor_payload_not_self_wrapped,
     drain_json_response_body,
 )
-from microdot import Request  # type: ignore[import-not-found]  # noqa: E402
+from microdot import Request  # type: ignore[import-not-found]
 
-import asy_spi_driver  # noqa: E402
-import sensortask_dev  # noqa: E402
-from print_log import PrintLog, PrintLogHistory, PrintLogHistoryStore  # noqa: E402
+import asy_spi_driver
+import sensortask_dev
+from print_log import PrintLog, PrintLogHistory, PrintLogHistoryStore
 
 try:
     from typing import TYPE_CHECKING

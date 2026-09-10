@@ -54,7 +54,7 @@ def parse_fault_spec(spec: str) -> "tuple[str, str, int]":
     if device == "wlan":
         raise ValueError(
             "--fault wlan:... does not support :TIMES - network.WLAN.raise_on has no repeat limit of its own, "
-            "the fault stays armed until cleared"
+            "the fault stays armed until cleared",
         )
     try:
         times = int(parts[2])
@@ -224,7 +224,7 @@ def _decode_bmp3xx_calibration(raw: bytes) -> "tuple[tuple[float, float, float],
 
 
 def _forward_bmp3xx(
-    temp_calib: "tuple[float, float, float]", pressure_calib: "tuple[float, ...]", adc_p: int, adc_t: int
+    temp_calib: "tuple[float, float, float]", pressure_calib: "tuple[float, ...]", adc_p: int, adc_t: int,
 ) -> "tuple[float, float]":
     t1, t2, t3 = temp_calib
     p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11 = pressure_calib
@@ -353,7 +353,7 @@ async def main(config: "LaunchConfig") -> "dict[str, Any]":
     print(
         f"digital_twin/launch.py starting - seed={config.seed!r} fram_state_path={config.fram_state_path!r} "
         f"scd30_state_path={config.scd30_state_path!r} no_wdt_feed={config.no_wdt_feed!r} "
-        f"duration={config.duration!r} faults={config.faults!r} hangs={config.hangs!r} wifi_outcomes={config.wifi_outcomes!r}"
+        f"duration={config.duration!r} faults={config.faults!r} hangs={config.hangs!r} wifi_outcomes={config.wifi_outcomes!r}",
     )
 
     watchdog = WDT(timeout=8000)

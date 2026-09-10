@@ -115,7 +115,7 @@ class DNSServer:
                     await self.pr.wrn_s("Invalid DNS request data or address, not sending response.", wrnno=2)
                     await asyncio.sleep(recv_fail_backoff_s)
                     recv_fail_backoff_s = min(
-                        recv_fail_backoff_s * _RECV_FAIL_BACKOFF_MULTIPLIER, _RECV_FAIL_BACKOFF_MAX_S
+                        recv_fail_backoff_s * _RECV_FAIL_BACKOFF_MULTIPLIER, _RECV_FAIL_BACKOFF_MAX_S,
                     )
 
             except asyncio.CancelledError:

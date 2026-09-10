@@ -81,7 +81,7 @@ class _RaisingFramManager:
         self.raise_on_get_chunk = raise_on_get_chunk
 
     def get_chunk(
-        self, size: int, crc: "CRC_Base | None" = None, verify: int = 0, check_length: int = 8
+        self, size: int, crc: "CRC_Base | None" = None, verify: int = 0, check_length: int = 8,
     ) -> "_RaisingFramChunk | None":
         if self.raise_on_get_chunk:
             raise RuntimeError("simulated allocation failure")
@@ -1431,7 +1431,7 @@ def test_set_dict_cfg_recover_failed_push_correction_write_exception_is_caught()
             self._write_calls = 0
 
         async def _set_mgr_cfg(
-            self, data: "dict[str, int | float | str | bool | None]", cfg_vals: "cm.ConfigSchema"
+            self, data: "dict[str, int | float | str | bool | None]", cfg_vals: "cm.ConfigSchema",
         ) -> "tuple[bool, cm.WriteValidity]":
             self._write_calls += 1
             if self._write_calls == 1:
@@ -1489,7 +1489,7 @@ def test_set_dict_cfg_multiple_fields_recover_independently_via_different_rungs(
         results = run(reader._set_dict_cfg({"SampleInterv": 99, "SelfCal": False}, combined))
         assert results == {"SampleInterv": "Failed", "SelfCal": "Failed"}
         assert run(reader._get_dict_cfg("Sensor", combined)) == {
-            "Sensor": {"SampleInterv": 77, "SelfCal": True}
+            "Sensor": {"SampleInterv": 77, "SelfCal": True},
         }
     finally:
         _remove(path_prefix + "config_pushfailmulti.cfg")
@@ -1629,7 +1629,7 @@ def test_set_dict_cfg_set_mgr_cfg_override_raising_marks_every_field_failed() ->
     # not just its result, could misbehave on a misbehaving subclass override.
     class RaisingSetMgrCfgReader(SensorReaderConfig):
         async def _set_mgr_cfg(
-            self, data: "dict[str, int | float | str | bool | None]", cfg_vals: "cm.ConfigSchema"
+            self, data: "dict[str, int | float | str | bool | None]", cfg_vals: "cm.ConfigSchema",
         ) -> "tuple[bool, cm.WriteValidity]":
             raise RuntimeError("simulated persistence failure")
 
@@ -1652,7 +1652,7 @@ def test_set_dict_cfg_set_mgr_cfg_override_malformed_result_marks_every_field_fa
     # AttributeError, uncaught - base_classes.py's own contract is that no method here ever raises).
     class MalformedSetMgrCfgReader(SensorReaderConfig):
         async def _set_mgr_cfg(
-            self, data: "dict[str, int | float | str | bool | None]", cfg_vals: "cm.ConfigSchema"
+            self, data: "dict[str, int | float | str | bool | None]", cfg_vals: "cm.ConfigSchema",
         ) -> "tuple[bool, cm.WriteValidity]":
             return True, "not a dict"  # type: ignore[return-value]  # deliberately malformed, simulating a misbehaving override
 
@@ -1677,7 +1677,7 @@ def test_set_dict_cfg_set_mgr_cfg_override_missing_key_marks_it_failed() -> None
     # reported, breaking the "every field reported independently" contract this file documents.
     class MissingKeySetMgrCfgReader(SensorReaderConfig):
         async def _set_mgr_cfg(
-            self, data: "dict[str, int | float | str | bool | None]", cfg_vals: "cm.ConfigSchema"
+            self, data: "dict[str, int | float | str | bool | None]", cfg_vals: "cm.ConfigSchema",
         ) -> "tuple[bool, cm.WriteValidity]":
             return True, {}  # reports success but never mentions any of the requested keys
 

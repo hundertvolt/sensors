@@ -48,6 +48,12 @@ _SR_WP_MASK = const(0x8C)  # WPEN | BP1 | BP0
 _SR_WP_SET = const(0x8C)
 _SR_WP_CLEAR = const(0x00)
 
+# Address-buffer geometry: one opcode byte plus the chip's own address width. A chip larger than
+# a 16-bit address space needs three address bytes rather than two.
+_ADDR_16BIT_MAX = const(0xFFFF)
+_ADDR_BUF_24BIT = const(4)
+_ADDR_BUF_16BIT = const(3)
+
 # Generous headroom over a real transaction's low-single-digit-ms cost, while still bounding an
 # accidental lock-reentry to a finite wait. Not test-monkeypatchable: MicroPython inlines const()
 # at every use site regardless of name (verified directly), so the one test needing this waits it out.
@@ -76,7 +82,7 @@ class FRAM_SPI(Lockable):
         # reaches these through this object's own asy_lock (Lockable), serializing access.
         self._id_buf = bytearray(4)
         self._status_buf = bytearray(1)
-        self._addr_buf = bytearray(4) if self._max_size > 0xFFFF else bytearray(3)
+        self._addr_buf = bytearray(_ADDR_BUF_24BIT) if self._max_size > _ADDR_16BIT_MAX else bytearray(_ADDR_BUF_16BIT)
 
     async def _check_device_id(self) -> bool:
         expected_prod_id = _KNOWN_PRODUCT_IDS.get(self._max_size)
@@ -142,7 +148,7 @@ class FRAM_SPI(Lockable):
         # Buffer width is fixed once in __init__ from max_size, which is trusted, not re-derived
         # from _check_device_id() - see SPECIFICATION.md Part C.3.1's FRAM_SPI bullet.
         buffer = self._addr_buf
-        if len(buffer) == 4:  # > 16bit address
+        if len(buffer) == _ADDR_BUF_24BIT:  # > 16bit address
             buffer[1] = (addr >> 16) & 0xFF
             buffer[2] = (addr >> 8) & 0xFF
             buffer[3] = addr & 0xFF

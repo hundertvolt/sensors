@@ -402,7 +402,7 @@ def test_run_ignores_off_subnet_request_then_answers_next_on_subnet_request() ->
         [
             (query, ("10.0.0.9", 5000)),  # off the configured 127.0.0.0/8 subnet
             (query, ("127.0.0.5", 5001)),  # on-subnet
-        ]
+        ],
     )
 
     async def scenario() -> list[tuple[bytes, tuple[str, int]]]:
@@ -427,7 +427,7 @@ def test_run_ignores_source_address_that_is_not_a_valid_ipv4_string() -> None:
         [
             (query, ("not-an-ip", 5000)),
             (query, ("127.0.0.5", 5001)),
-        ]
+        ],
     )
 
     async def scenario() -> list[tuple[bytes, tuple[str, int]]]:
@@ -450,7 +450,7 @@ def test_run_ignores_malformed_query_without_stalling() -> None:
         [
             (b"\x00\x00", ("127.0.0.5", 5000)),  # too short to parse
             (make_query(["a", "io"]), ("127.0.0.5", 5001)),
-        ]
+        ],
     )
 
     async def scenario() -> tuple[list[tuple[bytes, tuple[str, int]]], int]:
@@ -513,7 +513,7 @@ def test_run_continues_after_sendto_reports_failure() -> None:
         [
             (query, ("127.0.0.5", 5000)),
             (query, ("127.0.0.5", 5001)),
-        ]
+        ],
     )
     fake.sendto_results = [None]  # first reply "fails", matching sendto()'s documented None sentinel
 
@@ -921,7 +921,7 @@ def test_run_backs_off_on_a_genuinely_unexpected_exception_then_recovers() -> No
         [
             (query, ("127.0.0.5", 5000)),
             (query, ("127.0.0.5", 5001)),
-        ]
+        ],
     )
 
     async def scenario() -> "tuple[list[tuple[bytes, tuple[str, int]]], int]":
@@ -1017,7 +1017,7 @@ def test_run_recv_backoff_resets_after_a_successful_receive() -> None:
             (query, ("127.0.0.5", 5000)),  # real data received - must reset the backoff
             (None, None),
             (None, None),
-        ]
+        ],
     )
 
     async def scenario() -> list[int]:

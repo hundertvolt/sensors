@@ -32,7 +32,7 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to complet
 
 
 def make_ntp_stub(
-    synced: bool = False, raise_exc: "Exception | None" = None
+    synced: bool = False, raise_exc: "Exception | None" = None,
 ) -> "tuple[Callable[[], Coroutine[Any, Any, bool]], list[int]]":
     calls = [0]
 
@@ -85,7 +85,7 @@ class _FastAsyncSleep:
         asyncio.sleep = _fast  # type: ignore[assignment]  # deliberate monkeypatch, not a real caller mismatch
         return self
 
-    def __exit__(self, *exc_info: "Any") -> None:
+    def __exit__(self, *exc_info: object) -> None:
         asyncio.sleep = self._real_sleep
 
 
@@ -108,7 +108,7 @@ class _RaiseOnArm:
         Timer.raise_on_arm = True
         return self
 
-    def __exit__(self, *exc_info: "Any") -> None:
+    def __exit__(self, *exc_info: object) -> None:
         Timer.raise_on_arm = False
         Timer.raise_on_arm_exc = OSError
 
