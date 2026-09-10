@@ -7,6 +7,7 @@ import errno
 import time
 from collections import deque
 
+_SPI_DMA_MIN_SIZE = 32  # ports/rp2/machine_spi.c's own dma_min_size_threshold - see SPI._maybe_overrun()
 _LOG_MAXLEN = 200  # I2C.log/SPI.log's own bound - see digital_twin/README.md for the real memory
 # leak this avoids; same "keep last N" convention print_log.py's own PrintLogHistory uses.
 
@@ -204,6 +205,10 @@ class I2C:
         self.devices = _wire_i2c_devices(id)  # public: tests reach a wired chip via i2c.devices[addr]
 
     def deinit(self) -> None:
+        # Real rp2 machine.I2C.deinit() only exists from MicroPython 1.29 on, and even there the
+        # port's .deinit protocol slot is NULL - a silent no-op that leaves the peripheral and its
+        # pins exactly as they were (SPECIFICATION.md Part F.5). Every bus operation below stays
+        # working afterwards on purpose; the flag only records that the call was forwarded.
         self.deinit_called = True
 
     def scan(self) -> "list[int]":
@@ -312,6 +317,12 @@ class SPI:
         self.deinit_called = False
         self.log: deque[tuple] = deque((), _LOG_MAXLEN)
         self.device = _wire_spi_device(id)  # public: tests reach the wired chip via spi.device
+        # MicroPython 1.29 added an RX-overrun check to rp2's SPI transfer path, reached only by
+        # *reading* transfers of 32+ bytes (SPECIFICATION.md Part F.5.2). Modelled here rather
+        # than on the chip's own FaultInjector because it is a property of the port, not the
+        # device: sticky, plus a counted form for a transient glitch the bus recovers from.
+        self.rx_overrun = False
+        self.rx_overrun_remaining = 0
 
     def init(
         self,
@@ -337,6 +348,8 @@ class SPI:
         self.log.append(("init", baudrate, polarity, phase, bits, firstbit))
 
     def deinit(self) -> None:
+        # Same NULL-slot no-op as I2C.deinit() above, and on rp2 SPI it has always been one
+        # (SPECIFICATION.md Part F.5) - the flag only records that the call was forwarded.
         self.deinit_called = True
 
     def write(self, buf: object) -> None:
@@ -346,11 +359,23 @@ class SPI:
         self.log.append(("write", data))
 
     def readinto(self, buf: "bytearray | memoryview", write_value: int = 0x00) -> None:
+        self._maybe_overrun(len(buf))
         if self.device is not None:
             self.device.readinto(buf)
         else:
             buf[:] = bytes(len(buf))
         self.log.append(("readinto", len(buf), write_value))
+
+    def _maybe_overrun(self, nbytes: int) -> None:
+        # Below DMA_MIN_SIZE_THRESHOLD (32 in ports/rp2/machine_spi.c) a transfer takes the
+        # blocking software path, which has no overrun check - so a short read never raises here.
+        if nbytes < _SPI_DMA_MIN_SIZE:
+            return
+        if self.rx_overrun:
+            raise OSError(errno.EIO, "SPI RX overrun")
+        if self.rx_overrun_remaining > 0:
+            self.rx_overrun_remaining -= 1
+            raise OSError(errno.EIO, "SPI RX overrun")
 
     def write_readinto(self, buffer_out: object, buffer_in: "bytearray | memoryview") -> None:
         if len(buffer_out) != len(buffer_in):  # type: ignore[arg-type]
@@ -411,7 +436,8 @@ class Timer:
 
 
 _WDT_TIMEOUT_MAX_MS = 8388  # RP2040 hard cap: 0xffffff / 2 / 1000 (ports/rp2/machine_wdt.c) - see
-# SPECIFICATION.md Part F.1. Confirmed directly against the pinned v1.28.0 source (not guessed):
+# SPECIFICATION.md Part F.1. Confirmed directly against the pinned v1.29.0 source (not guessed;
+# 1.29 added a separate 16777ms RP2350 branch, but the RP2040 cap is unchanged):
 # WDT(timeout=N) for N above this raises ValueError("timeout exceeds 8388"); WDT(id != 0) raises
 # ValueError too ("WDT(%d) doesn't exist") - rp2 only ever implements id 0. Both matched here.
 

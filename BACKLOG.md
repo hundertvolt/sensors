@@ -58,30 +58,36 @@ constraints.
 
 1. `modules/_boot.py`'s `import sensortask.py` (literal `.py`) — works reliably on real hardware
    (pinned to MicroPython 1.26), but MicroPython's documented freeze/import behavior says it should
-   raise `ImportError`. **The 1.28 mechanism itself is now confirmed, not a mystery**: traced
-   directly through the pinned v1.28.0 source (`tools/mpy-tool.py`'s frozen-name generation,
+   raise `ImportError`. **The mechanism itself is now confirmed, not a mystery**: traced
+   directly through the pinned source (`tools/mpy-tool.py`'s frozen-name generation,
    `py/frozenmod.c`'s exact-match lookup, `py/builtinimport.c`'s `stat_module()`/
-   `process_import_at_level()`) - a plain `import sensortask` (no `.py`) is unambiguously correct
-   under 1.28: `stat_module()` auto-appends `.py` before matching against the frozen table, while a
+   `process_import_at_level()`) - a plain `import sensortask` (no `.py`) is unambiguously correct:
+   `stat_module()` auto-appends `.py` before matching against the frozen table, while a
    dotted `import sensortask.py` requires "sensortask" to resolve as a *package* (have `__path__`),
-   which a flat frozen file never does, so it should raise. `boot_entry/wozi_boot.py` (the
-   refactor's own 1.28-targeted entry point) already does `from sensortask_wozi import main` - the
-   correct form - so there's nothing to fix on the refactor side. **`modules/_boot.py` itself stays
-   untouched**: it targets the currently-deployed 1.26 firmware, a different version whose own
-   import machinery hasn't been separately verified here - CLAUDE.md's hard rule (don't touch
-   without real 1.26 hardware testing first) still applies, and extrapolating from the 1.28 trace
-   above would be exactly the "changing it blind" risk that rule exists to prevent.
+   which a flat frozen file never does, so it should raise. **Re-verified at v1.29.0**: `mpy-tool.py`
+   did change (`short_name` is now `".".join(name.split(".")[:-1])` rather than a literal `.py`
+   strip, plus a new non-ASCII module-name rejection), but the frozen name it produces for a flat
+   `foo.py` is identical, and `py/frozenmod.c` is untouched - the analysis stands unchanged.
+   `boot_entry/wozi_boot.py` (the refactor's own entry point) already does
+   `from sensortask_wozi import main` - the correct form - so there's nothing to fix on the
+   refactor side. **`modules/_boot.py` itself stays untouched**: it targets the currently-deployed
+   1.26 firmware, a different version whose own import machinery hasn't been separately verified
+   here - CLAUDE.md's hard rule (don't touch without real 1.26 hardware testing first) still
+   applies, and extrapolating from the 1.28/1.29 trace above would be exactly the "changing it
+   blind" risk that rule exists to prevent.
 2. Config-schema migration is a real data-loss risk on the *current deployed* codebase —
    `ConfigManager` overwrites the entire config file with hardcoded defaults the moment one key is
    missing, so a firmware update adding a config key could silently wipe WiFi credentials/tuned
    values. **Decided: not patched on the current codebase** — accepted (reconfigure via web UI
    after a key-adding update). The refactor's per-sensor config model avoids this failure mode
    structurally, not by patching the current global-JSON codebase.
-3. MicroPython version target vs. upstream drift — deployed units run 1.26; upstream stable is
-   1.28.0 as of the last check. **Decided**: deployed code stays pinned to 1.26 until a deliberate
-   reflash campaign; the refactor is where the version target moves forward. 1.27→1.28 rp2-port
-   changes checked so far look RP2350-specific, not RP2040-breaking, but not exhaustively checked
-   against every module — re-check whenever the refactor picks a landing version.
+3. MicroPython version target vs. upstream drift — deployed units run 1.26; the refactor now pins
+   **1.29.0**, the newest stable. **Decided**: deployed code stays pinned to 1.26 until a deliberate
+   reflash campaign; the refactor is where the version target moves forward. The full 1.28→1.29
+   audit is in SPECIFICATION.md Part F.5 (two real findings, several free wins, the rest ruled out);
+   the toolchain builds `RPI_PICO_W` firmware at 1.29.0 from scratch with no patches. Earlier
+   1.27→1.28 rp2-port changes were RP2350-specific, not RP2040-breaking. Re-run F.1's standing
+   re-check whenever the pin moves again.
 4. Does `config_manager.py`'s `write_config()` need long-block-lock-style coordination? **Decided
    by the project owner: no** — a write is fast enough not to matter, and it never happens on its
    own/automatically anyway (only ever triggered by a real user interaction via the REST layer),
@@ -215,8 +221,74 @@ constraints.
     chip makes `chunk.read()` return `None` too, not just `chunk.write()` — confirmed directly on
     real hardware (`tests_hardware/device_scripts/fram_write_protect_roundtrip.py`). Not decided
     here; a project-owner call.
+14. **Adopt `machine.mem_backup()` for reset forensics?** New in 1.29, on by default on rp2, and
+    confirmed present in this project's own built firmware: 28 bytes of watchdog-scratch storage
+    that survives a WDT reset and `machine.reset()`, lost only on power-off — SPECIFICATION.md
+    Part F.5.4. That is exactly the reset class the 2026-09-08 `WDT_RESET` post-mortem couldn't
+    diagnose, and unlike the FRAM logs it costs zero wear. Needs a project-owner call on what to
+    record (last supervisor phase? last tick? failing task id?) and where the write belongs. Not
+    started.
+15. **Should a transient SPI RX overrun be retried, or left to the task supervisor?** MicroPython
+    1.29 added an `OSError(EIO)` raise site to rp2's SPI transfer path for *reading* transfers of
+    32+ bytes (SPECIFICATION.md Part F.5.2), reachable here via `asy_fram_driver.py`'s 260-byte
+    SGP40 VOC-state read. **Much less pressing than it first looked.** This entry originally said
+    the overrun propagates uncaught and kills the reader task; driving it through the real stack
+    (see the live-path tests added to `tests/test_asy_fram_manager.py` and
+    `tests/test_digital_twin_bus_hazard_concurrency.py`) showed otherwise: `_read_chunk()`'s
+    blanket `except Exception` catches it, logs errno 47, and `_read()` then reads block 1, so a
+    single transient overrun is **fully absorbed** - correct data returned, block 0 repaired. Only
+    an overrun that hits both copies degrades the read to `None`, and even then nothing raises.
+    So a retry inside the chunk loop would buy little on a read path the dual-copy layer already
+    covers. Still deliberately **not** changed (CLAUDE.md: flag, don't silently fix). Note that the
+    interrupted read *does* leave the chunk marked busy and unreadable until rewritten - that is
+    intended behavior, not a second bug to weigh here: see SPECIFICATION.md Part A.4's FRAM entry.
 
 ## Deferred / explicitly out-of-scope work
+- **The 1.29.0 pin has never run on real hardware.** Every 1.28→1.29 claim in SPECIFICATION.md
+  Part F.5 was established from upstream source, the built `firmware.elf.map`, or the Unix-port
+  twin - the audit session had no real-hardware go-ahead, so no 1.29 firmware has ever been flashed
+  to the dev bench. The build itself *is* verified (`RPI_PICO_W` from scratch, no patches, real
+  `firmware.uf2` for both variants) and the deployed units stay on 1.26 regardless (open question
+  3), so nothing is blocked - but 1.29 is not field-proven until a dev-bench run says so. Three
+  things want on-target confirmation specifically, beyond just running the existing suites:
+  - **The new SPI `OSError(EIO)` raise site** (Part F.5.2, open question 15) - so far only ever
+    exercised against `tests/machine.py`'s fake. Its live path is `asy_fram_driver.py`'s 260-byte
+    SGP40 VOC-state read; a bench run at minimum confirms that path still reads correctly at 1.29,
+    and answering #15 properly needs a real overrun observed, not a simulated one.
+  - **That `I2C.deinit()`/`SPI.deinit()` really are silent no-ops** (Part F.5.1) - read out of the
+    port's protocol tables, never observed on a live bus. `tests_hardware/flash/
+    test_bus_concurrency.py` is the natural place to pin it down.
+  - **The 12,918 B SRAM-resident-code win** (Part F.5.3) is a linker-map measurement, not a
+    measured runtime speedup - don't quote it as one until a bench timing run backs it up.
+- **The SPI RX-overrun error path shall be tested** (project owner's explicit direction,
+  2026-09-10). MicroPython 1.29's new `OSError(EIO)` raise site (SPECIFICATION.md Part F.5.2),
+  across the tiers CLAUDE.md's standing bus-hazard rule asks for. **Three of four are now done**;
+  what they found is open question 16 above.
+  - **Mock tier, raise-site semantics - done.** `tests/test_asy_spi_driver.py`: a write never
+    raises, a sub-32-byte read never takes the DMA path so cannot overrun, a 32+ byte read raises.
+  - **Mock tier, live path - done.** `tests/test_asy_fram_manager.py`'s four live-path tests inject
+    the fault at the `machine.SPI` boundary and let it travel the real
+    `asy_spi_driver` → `asy_fram_driver.get_values()` → `_read_chunk()` chunk loop. This needed a
+    real gap closed first: `tests/_fram_chip_fake.py` overrides `readinto()` and so shadowed the
+    base fake's own fault check, leaving the bus-level knobs unreachable through the FRAM stack.
+  - **Digital twin - done.** `digital_twin/machine.py`'s SPI gained the same size-gated
+    `rx_overrun`/`rx_overrun_remaining` model (the chip-level `FaultInjector` is the wrong place:
+    it cannot express the 32-byte threshold, so it would raise on a 1-byte status read that real
+    hardware could not fail). Exercised against the real booted object graph in
+    `tests/test_digital_twin_bus_hazard_concurrency.py`.
+  - **Real hardware - still open, and it cannot be a fault-injection test.** An RX overrun is a DMA
+    timing condition; nothing reachable from Python on the device can induce one deliberately, so
+    there is no on-target equivalent of the knob the other three tiers use. What a bench run *can*
+    do, and should: confirm the 260-byte SGP40 VOC-state read still works normally at 1.29 (that
+    the DMA path is exercised at all), and test the **consequence** rather than the cause - the
+    busy-status lockout an interrupted read leaves behind *is* inducible on real hardware, by
+    writing `_STATUS_BUSY` to both of a scratch chunk's blocks through the FRAM driver directly and
+    then attempting a read - pinning down intended behavior (SPECIFICATION.md Part A.4's FRAM
+    entry) on target, where the destructive readout it guards against is real rather than modelled.
+    That is the test worth writing, and it belongs with `tests_hardware/`'s existing FRAM
+    fault-injection work (its README's "Fifth pass"). Not written blind here: it should be authored
+    in a session that can actually run it.
+
 - **Real-hardware re-test of the segfault fix and the memory-leak soak test — real-hardware forms
   now exist and are wired into `tests_hardware/`, but the actual long-soak run is still opt-in and
   has not yet been executed.** Corrects a stale claim (this entry used to say neither soak-test

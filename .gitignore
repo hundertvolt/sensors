@@ -7,6 +7,9 @@ modules/config.json
 node_modules/
 
 # Vitest browser-mode failure screenshots (js/tests_js) - regenerated per run, not build output.
+# Vitest 5 moved these from .vitest-attachments/ to .vitest/attachments/; both are listed so a
+# checkout still ignores whatever an older local install leaves behind.
+.vitest/
 .vitest-attachments/
 tests_js/__screenshots__/
 

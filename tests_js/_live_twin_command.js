@@ -90,12 +90,28 @@ async function stopTwin(proc) {
     // (FRAM/SCD30 flush) only runs on KeyboardInterrupt - a plain SIGTERM would skip it, same
     // reasoning as scripts/_digital_twin_ci_suite.py's own _shutdown().
     proc.kill("SIGINT");
-    await Promise.race([
-        new Promise((resolve) => {
-            proc.once("exit", resolve);
-        }),
-        sleep(SHUTDOWN_TIMEOUT_MS).then(() => proc.kill("SIGKILL")),
-    ]);
+    // The SIGKILL fallback timer is cleared once the child is actually gone. A plain
+    // `Promise.race([exit, sleep(...)])` leaves the setTimeout pending after the race settles, and
+    // a pending timer keeps Node's event loop alive - which surfaced as Vitest's "Tests closed
+    // successfully but something prevents Vite server from exiting" (its own close timeout is
+    // 10s, shorter than this 15s one) on every run touching a live-twin file.
+    /** @type {ReturnType<typeof setTimeout> | undefined} */
+    let killTimer;
+    try {
+        await Promise.race([
+            new Promise((resolve) => {
+                proc.once("exit", resolve);
+            }),
+            new Promise((resolve) => {
+                killTimer = setTimeout(() => {
+                    proc.kill("SIGKILL");
+                    resolve(undefined);
+                }, SHUTDOWN_TIMEOUT_MS);
+            }),
+        ]);
+    } finally {
+        clearTimeout(killTimer);
+    }
 }
 
 /**

@@ -22,6 +22,7 @@ from launch import (
     parse_fault_spec,  # noqa: F401 - re-exported for callers that only need the spec parser
     parse_hang_spec,  # noqa: F401 - re-exported for callers that only need the spec parser
 )
+from unix_port_gc_unwedge import unwedge_heap_after_interrupt
 from unix_port_poll_prewarm import prewarm_poll_set
 
 import sensortask_dev
@@ -396,6 +397,7 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         # asyncio.run()'s own KeyboardInterrupt gap while parked in the scheduler's poll wait - see
         # SPECIFICATION.md Part F.1. A harmless no-op if main()'s own finally already ran.
+        unwedge_heap_after_interrupt()
         machine.flush_fram()
         machine.flush_scd30()
         _print_wdt_status()

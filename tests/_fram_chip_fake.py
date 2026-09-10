@@ -1,5 +1,5 @@
 """Stateful fake for the MB85RS64V FRAM chip itself, on top of tests/machine.py's fake `machine.SPI` (raw bus only) - interprets the real opcode stream (RDID/RDSR/WRSR/WREN/WRDI/READ/WRITE) so FRAM_SPI's own logic runs for real against it, per SPECIFICATION.md Part E.4's mocking boundary.
-WEL semantics are verified directly against the MB85RS64V datasheet (DS501-00015-4v0-E). Fault-injection knobs simulate one transaction's effect being eaten by a bus disturbance, not "unplug the whole bus" - see each knob's own comment below."""
+WEL semantics are verified directly against the MB85RS64V datasheet (DS501-00015-4v0-E). Fault-injection knobs simulate one transaction's effect being eaten by a bus disturbance, not "unplug the whole bus" - see each knob's own comment below; the inherited machine.SPI bus-level knobs (rx_overrun/inject_fault) reach this chip too, via readinto()."""
 
 from machine import SPI as FakeSPI
 
@@ -103,6 +103,12 @@ class FakeMB85RS64V(FakeSPI):
             self._pending_op = _OPCODE_RDID
 
     def readinto(self, buf: bytearray | memoryview, write_value: int = 0x00) -> None:
+        # Overriding readinto() shadows the base fake's own bus-level fault check, so call it
+        # explicitly: without this, machine.SPI's rx_overrun/inject_fault knobs are unreachable
+        # through the FRAM stack and the 1.29 RX-overrun path can only be tested one layer up.
+        # Raising before the buffer is filled matches the base fake; on real hardware an overrun
+        # leaves partial garbage there, which is why the caller must not trust it either way.
+        self._maybe_raise("readinto", len(buf))
         if self._pending_op == _OPCODE_READ and self._pending_addr is not None:
             n = len(buf)
             buf[:] = self.memory[self._pending_addr : self._pending_addr + n]

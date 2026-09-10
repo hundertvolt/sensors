@@ -891,8 +891,8 @@ def test_configmanager_raw_nan_token_treated_as_corrupt_not_a_raise() -> None:
 
 
 def test_configmanager_value_omitted_json_quirk_self_heals() -> None:
-    # A genuine MicroPython v1.28.0 json.load() leniency, confirmed directly against the pinned
-    # interpreter and distinct from the already-tested "unterminated" case (fixed upstream in 2025,
+    # A genuine MicroPython json.load() leniency, re-confirmed directly against the pinned
+    # v1.29.0 interpreter and distinct from the already-tested "unterminated" case (fixed upstream in 2025,
     # commit 9ef16b466 - that fix only covers a missing closing brace/bracket). A value omitted
     # before a comma/closing brace doesn't raise here - it desyncs the parser into a wrong/mangled
     # dict instead (e.g. `{"Count": , "Offset": 1.5}` silently parses to `{"Count": "Offset"}`).
