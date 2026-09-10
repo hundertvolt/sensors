@@ -366,6 +366,12 @@ max-returns = 12
 "src/asy_webserver_service.py" = ["SLF001", "S101", "ANN401"]  # ANN401: the asyncio.start_server() seam described above
 "src/sensortask_wozi.py" = ["S101"]
 "src/sensortask_dev.py" = ["S101"]
+# build_firmware.py's single subprocess call is the repo's OWN scripts/build_website.sh, addressed
+# by an absolute path built from REPO_ROOT, with shell=False and check=True - a build driver
+# invoking the sibling build step it exists to orchestrate. S603 fires on every subprocess call
+# whose argv is not a bare literal, so there is no code shape that satisfies it here; the rule stays
+# live everywhere else, where a genuinely externally-supplied argv could appear.
+"scripts/build_firmware.py" = ["S603"]
 
 [tool.mypy]
 # 'linux' + follow_imports=silent + mypy_path/custom_typeshed_dir=typings are the
