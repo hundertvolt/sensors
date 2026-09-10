@@ -7,7 +7,7 @@ import sys
 sys.path.insert(0, "/")  # frozen src/ modules are already importable without this on real firmware;
 # kept only for parity with how isolated-driver scripts are documented to work
 
-from config_manager import coerce_numeric  # type: ignore[import-not-found]
+from config_manager import coerce_numeric
 
 failures = []
 

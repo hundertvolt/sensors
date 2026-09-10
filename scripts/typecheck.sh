@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# Runs mypy against src/, tests/, and digital_twin/ (pyproject.toml's [tool.mypy] `files` - see
-# scripts/lint.sh for the same scope). Pass explicit paths (e.g. `scripts/typecheck.sh src tests`)
-# to check only those instead - used by CI's lint-and-typecheck job to gate on just src/tests/,
-# leaving digital_twin/ to its own dedicated second pass below (see .github/workflows/ci.yml).
+# Runs mypy against src/, tests/, digital_twin/, and tests_hardware/device_scripts/ (pyproject.toml's
+# [tool.mypy] `files` - note this is NOT the same scope as scripts/lint.sh's ruff invocation, which
+# doesn't cover tests_hardware/device_scripts/ yet). Pass explicit paths (e.g.
+# `scripts/typecheck.sh src tests tests_hardware/device_scripts`) to check only those instead -
+# used by CI's lint-and-typecheck job to gate on just that set, leaving digital_twin/ to its own
+# dedicated second pass below (see .github/workflows/ci.yml).
 # Assumes mypy is already installed and on PATH; uses
 # `uv` (assumed on PATH, same as toolchain/setup_toolchain.py) only to populate typings/, an
 # isolated directory holding just the MicroPython stub package - see pyproject.toml's [tool.mypy]
@@ -101,6 +103,18 @@ if [ "$twin_status" -ne 0 ]; then
     echo "error: digital_twin/typecheck.ini's dedicated pass found real findings - this scope is expected to stay fully clean." >&2
 fi
 
-if [ "$main_status" -ne 0 ] || [ "$twin_status" -ne 0 ]; then
+# The host-side build chain (buildgen/, scripts/, toolchain/, tests_scripts/) gets a THIRD,
+# separate mypy invocation, always run regardless of "$@" - see scripts/hosttools_typecheck.ini's
+# own docstring for why: all of it is genuinely CPython-target host tooling (real stdlib
+# tomllib/ast/subprocess, no machine/network/neopixel at all), so it needs mypy's real bundled
+# typeshed, not the MicroPython-stub-replaced one the main pass above uses. Same "no tolerance for
+# pre-existing debt" treatment as digital_twin/ above.
+hosttools_status=0
+mypy --config-file scripts/hosttools_typecheck.ini buildgen scripts toolchain tests_scripts || hosttools_status=$?
+if [ "$hosttools_status" -ne 0 ]; then
+    echo "error: scripts/hosttools_typecheck.ini's dedicated pass found real findings - this scope is expected to stay fully clean." >&2
+fi
+
+if [ "$main_status" -ne 0 ] || [ "$twin_status" -ne 0 ] || [ "$hosttools_status" -ne 0 ]; then
     exit 1
 fi

@@ -1,11 +1,12 @@
 """Deterministic unit tests for digital_twin/run_dev_integration.py's own parse_args()/_soak()/
-main() - the dev-variant sibling of test_digital_twin_run_wozi_integration.py. Needed because this
-file's own module docstring says it "mirrors run_wozi_integration.py exactly" but its parse_args(),
-_soak(), _apply_fault()/_apply_hang(), and main() are each an independently-duplicated copy, not a
-shared import from launch.py - a bug introduced only in this copy (wrong default, wrong chip
-address in main()'s own `chips` dict, a soak-loop regression) would not be caught by the wozi test
-file, which only imports run_wozi_integration. _http_client.py's own parsing is shared and already
-fully covered there, so it isn't repeated here."""
+main() - the dev-variant sibling of test_digital_twin_run_wozi_integration.py."""
+
+# Needed because that file's own docstring says it "mirrors run_wozi_integration.py exactly" while
+# its parse_args(), _soak(), _apply_fault()/_apply_hang() and main() are each an independently
+# duplicated copy, not a shared import from launch.py - so a bug introduced only in this copy (a
+# wrong default, a wrong chip address in main()'s own `chips` dict, a soak-loop regression) is
+# invisible to the wozi test file, which only imports run_wozi_integration. _http_client.py's own
+# parsing is shared and already fully covered there, so it isn't repeated here.
 
 import asyncio
 import sys

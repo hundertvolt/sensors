@@ -6,6 +6,14 @@ import time
 
 import machine
 
+try:
+    from typing import TYPE_CHECKING
+except ImportError:  # typing has no runtime presence on MicroPython, on-device or in the Unix-port test build
+    TYPE_CHECKING = False
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
 N_TIMERS = 10
 TIMER_PERIOD_MS = 2
 BUSY_WAIT_MS = 100
@@ -14,8 +22,8 @@ HEAL_WINDOW_MS = 500
 fire_counts = [0] * N_TIMERS
 
 
-def _make_cb(i: int):
-    def _cb(_t) -> None:
+def _make_cb(i: int) -> "Callable[[machine.Timer], None]":
+    def _cb(_t: "machine.Timer") -> None:
         fire_counts[i] += 1
 
     return _cb

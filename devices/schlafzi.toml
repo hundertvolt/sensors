@@ -50,8 +50,15 @@ name_ext = ""
 bus = "i2c1"
 
 [instance.wiring]
-comp_source = "scd30"
 fram_target = "fram"
+
+[instance.wiring.temperature_source]
+source = "scd30"
+field = "Temp"
+
+[instance.wiring.humidity_source]
+source = "scd30"
+field = "Hum"
 
 # --- singleton services ------------------------------------------------------------------------
 

@@ -636,8 +636,9 @@ _SgpComp = namedtuple("_SgpComp", ("Temp", "Hum"))
 
 
 class _FakeCompSource:
-    # Structural stand-in for comp_source: SCD30_Reader (SPECIFICATION.md Part C.14) - only
-    # get_data() is exercised, matching test_asy_sgp40_driver.py's own identical fixture.
+    # Structural stand-in for temperature_source/humidity_source (SPECIFICATION.md Part C.14,
+    # BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md §2.9) - only get_data() is exercised, matching
+    # test_asy_sgp40_driver.py's own identical fixture.
     async def get_data(self) -> "Any":
         return _SgpComp(25.0, 50.0)
 
@@ -647,7 +648,16 @@ def make_sgp_reader() -> "tuple[SGP40_Reader, I2C]":
     # integration.py's make_sgp_reader(): a real SGP40_Reader over the real asy_i2c_driver.py I2C
     # wrapper, mocked only at tests/machine.py's raw-bus boundary.
     i2c = I2C(1, scl_pin=19, sda_pin=18, frequency=50000)
-    reader = SGP40_Reader(i2c, _FakeCompSource(), max_module_error=5, cfg_path=_tmp_cfg_dir())  # type: ignore[arg-type]
+    comp = _FakeCompSource()
+    reader = SGP40_Reader(
+        i2c,
+        temperature_source=comp,
+        temperature_field="Temp",
+        humidity_source=comp,
+        humidity_field="Hum",
+        max_module_error=5,
+        cfg_path=_tmp_cfg_dir(),
+    )
     run(reader.cfgmgr.setup())
     return reader, i2c
 

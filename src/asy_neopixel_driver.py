@@ -11,6 +11,7 @@ import neopixel
 from machine import Pin
 from micropython import const
 
+from asy_fram_manager import AsyFramManager
 from print_log import PrintLogHistory, make_logger
 
 try:
@@ -22,9 +23,13 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from typing import Any
 
-    from asy_fram_manager import AsyFramManager
 
 _NAME = const("NEOPIXEL")
+
+# This driver's one optional live cross-instance dependency (SPECIFICATION.md Part C.14): its own
+# FRAM backup target, resolved by buildgen/ (Session 3 of BUILD_CHAIN_PLAN.md) to an
+# already-constructed instance, passed directly as this driver's own fram= kwarg.
+# @wiring fram_target AsyFramManager fram optional kwarg
 
 
 def _clamp_byte(value: "int | float") -> int:

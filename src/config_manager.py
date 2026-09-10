@@ -35,13 +35,12 @@ if TYPE_CHECKING:
     ]
     ConfigSchema = tuple[FieldSchema, ...]
 
-    # A driver's declaration of a live cross-instance dependency it needs at construction time:
-    # (toml_field_name, required_driver_class) - see instance_name()'s own module-level comment
-    # and SPECIFICATION.md Part C.14 for the full convention. The generator (not built here) reads
-    # this to resolve toml_field_name to an already-constructed producer instance of the named
-    # class, topologically sorting every device's instance list so a producer is always
-    # constructed before any consumer that names it.
-    WiringSchema = tuple[tuple[str, type], ...]
+    # A driver's own generator-facing metadata - what it can be wired to, and what domains its
+    # TOML fields have - is NOT declared here, and deliberately isn't a Python value at all: it
+    # lives in `# @wiring`/`# @value-wiring`/`# @limits` comment tags beside the schema it
+    # describes, because nothing the running firmware reads should become a real frozen-bytecode
+    # value just to serve the generator (BUILD_CHAIN_PLAN.md's quality bar). See
+    # SPECIFICATION.md Part C.14.2 for the grammars and buildgen/wiring.py for the parser.
 
 from print_log import PrintLogHistory
 

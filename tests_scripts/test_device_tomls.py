@@ -89,14 +89,23 @@ def check_singleton_drivers_never_declare_name_ext(doc: dict, label: str) -> Non
             assert "name_ext" not in inst, f"{label}: singleton driver {inst['driver']!r} declares name_ext - singleton service kinds never do"
 
 
-def check_sgp40_wiring_resolves_to_a_real_scd30_instance(doc: dict, label: str) -> None:
+# sgp40's per-value measurement wiring (BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md §2.9):
+# temperature_source/humidity_source are independent {source, field} references, generalized from
+# the old single whole-object comp_source field - every real device today sources both off scd30.
+_SGP40_VALUE_WIRING = {"temperature_source": "Temp", "humidity_source": "Hum"}
+
+
+def check_sgp40_wiring_resolves_to_real_sources(doc: dict, label: str) -> None:
     instances = {(inst["driver"], inst.get("name_ext", "")): inst for inst in doc["instance"]}
     sgp40_key = ("sgp40", "")
     assert sgp40_key in instances, f"{label}: no unextended sgp40 instance found"
     wiring = instances[sgp40_key].get("wiring")
     assert wiring is not None, f"{label}: sgp40 instance has no [instance.wiring] table"
-    assert wiring.get("comp_source") == "scd30", f"{label}: sgp40's wiring.comp_source is {wiring.get('comp_source')!r}, expected 'scd30'"
-    assert ("scd30", "") in instances, f"{label}: sgp40's comp_source references 'scd30' but no such instance exists"
+    for key, expected_field in _SGP40_VALUE_WIRING.items():
+        sig = wiring.get(key)
+        assert sig is not None, f"{label}: sgp40 instance has no wiring.{key}"
+        assert sig.get("field") == expected_field, f"{label}: [instance.wiring.{key}].field is {sig.get('field')!r}, expected {expected_field!r}"
+        assert (sig.get("source"), "") in instances, f"{label}: sgp40's {key} references {sig.get('source')!r} but no such instance exists"
 
 
 def check_no_global_gpio_pin_collision(doc: dict, label: str) -> None:
@@ -218,18 +227,18 @@ def check_device_infra_fields_present_and_valid(doc: dict, label: str) -> None:
 # --- shape/parse tests, run against the 6 real files --------------------------------------------
 
 
-def test_all_six_device_files_exist(devices_dir: Path):
+def test_all_six_device_files_exist(devices_dir: Path) -> None:
     found = {p.stem for p in devices_dir.glob("*.toml")}
     assert found == set(DEVICE_NAMES), f"devices/ should hold exactly the 6 real device TOML files, found {found}"
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
-def test_parses_as_valid_toml(devices_dir: Path, device: str):
+def test_parses_as_valid_toml(devices_dir: Path, device: str) -> None:
     _load(devices_dir, device)  # raises tomllib.TOMLDecodeError on malformed TOML
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
-def test_device_table_shape(devices_dir: Path, device: str):
+def test_device_table_shape(devices_dir: Path, device: str) -> None:
     doc = _load(devices_dir, device)
     dev_table = doc["device"]
     assert isinstance(dev_table["name"], str) and dev_table["name"]
@@ -238,12 +247,12 @@ def test_device_table_shape(devices_dir: Path, device: str):
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
-def test_bus_tables_declare_their_required_wire_pins(devices_dir: Path, device: str):
+def test_bus_tables_declare_their_required_wire_pins(devices_dir: Path, device: str) -> None:
     check_bus_tables_declare_their_required_wire_pins(_load(devices_dir, device), device)
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
-def test_instance_list_has_the_expected_driver_kinds(devices_dir: Path, device: str):
+def test_instance_list_has_the_expected_driver_kinds(devices_dir: Path, device: str) -> None:
     doc = _load(devices_dir, device)
     drivers = [inst["driver"] for inst in doc["instance"]]
     expected = set(_ALWAYS_PRESENT_DRIVERS)
@@ -254,7 +263,7 @@ def test_instance_list_has_the_expected_driver_kinds(devices_dir: Path, device: 
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
-def test_multi_instance_capable_drivers_declare_name_ext(devices_dir: Path, device: str):
+def test_multi_instance_capable_drivers_declare_name_ext(devices_dir: Path, device: str) -> None:
     doc = _load(devices_dir, device)
     for inst in doc["instance"]:
         if inst["driver"] in _MULTI_INSTANCE_CAPABLE_DRIVERS:
@@ -262,46 +271,46 @@ def test_multi_instance_capable_drivers_declare_name_ext(devices_dir: Path, devi
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
-def test_singleton_drivers_never_declare_name_ext(devices_dir: Path, device: str):
+def test_singleton_drivers_never_declare_name_ext(devices_dir: Path, device: str) -> None:
     check_singleton_drivers_never_declare_name_ext(_load(devices_dir, device), device)
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
-def test_every_instance_referencing_a_bus_uses_a_declared_bus(devices_dir: Path, device: str):
+def test_every_instance_referencing_a_bus_uses_a_declared_bus(devices_dir: Path, device: str) -> None:
     check_every_instance_referencing_a_bus_uses_a_declared_bus(_load(devices_dir, device), device)
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
-def test_every_declared_bus_is_used_by_some_instance(devices_dir: Path, device: str):
+def test_every_declared_bus_is_used_by_some_instance(devices_dir: Path, device: str) -> None:
     check_every_declared_bus_is_used_by_some_instance(_load(devices_dir, device), device)
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
-def test_sgp40_wiring_resolves_to_a_real_scd30_instance(devices_dir: Path, device: str):
-    check_sgp40_wiring_resolves_to_a_real_scd30_instance(_load(devices_dir, device), device)
+def test_sgp40_wiring_resolves_to_a_real_scd30_instance(devices_dir: Path, device: str) -> None:
+    check_sgp40_wiring_resolves_to_real_sources(_load(devices_dir, device), device)
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
-def test_notification_wiring_resolves_to_a_real_neopixel_instance(devices_dir: Path, device: str):
+def test_notification_wiring_resolves_to_a_real_neopixel_instance(devices_dir: Path, device: str) -> None:
     check_notification_wiring_resolves_to_a_real_neopixel_instance(_load(devices_dir, device), device)
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
-def test_notification_signal_wiring_resolves_if_present(devices_dir: Path, device: str):
+def test_notification_signal_wiring_resolves_if_present(devices_dir: Path, device: str) -> None:
     check_notification_signal_wiring_resolves_if_present(_load(devices_dir, device), device)
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
-def test_fram_wiring_resolves_if_present(devices_dir: Path, device: str):
+def test_fram_wiring_resolves_if_present(devices_dir: Path, device: str) -> None:
     check_fram_wiring_resolves_if_present(_load(devices_dir, device), device)
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
-def test_device_wiring_resolves_if_present(devices_dir: Path, device: str):
+def test_device_wiring_resolves_if_present(devices_dir: Path, device: str) -> None:
     check_device_wiring_resolves_if_present(_load(devices_dir, device), device)
 
 
-def test_every_real_device_declares_fram_wiring_on_every_wirable_instance(devices_dir: Path):
+def test_every_real_device_declares_fram_wiring_on_every_wirable_instance(devices_dir: Path) -> None:
     # Fact about the 6 real devices, not a schema requirement - fram_target is individually optional.
     for device in DEVICE_NAMES:
         doc = _load(devices_dir, device)
@@ -311,7 +320,7 @@ def test_every_real_device_declares_fram_wiring_on_every_wirable_instance(device
         assert doc["device"]["wiring"] == _DEVICE_WIRING, f"{device}: unexpected device.wiring"
 
 
-def test_every_real_device_declares_all_three_notification_signals(devices_dir: Path):
+def test_every_real_device_declares_all_three_notification_signals(devices_dir: Path) -> None:
     # Fact about the 6 real devices, not a schema requirement - each signal is individually optional.
     for device in DEVICE_NAMES:
         doc = _load(devices_dir, device)
@@ -320,38 +329,38 @@ def test_every_real_device_declares_all_three_notification_signals(devices_dir: 
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
-def test_no_global_gpio_pin_collision(devices_dir: Path, device: str):
+def test_no_global_gpio_pin_collision(devices_dir: Path, device: str) -> None:
     check_no_global_gpio_pin_collision(_load(devices_dir, device), device)
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
-def test_no_per_bus_address_collision(devices_dir: Path, device: str):
+def test_no_per_bus_address_collision(devices_dir: Path, device: str) -> None:
     check_no_per_bus_address_collision(_load(devices_dir, device), device)
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
-def test_no_instance_name_collision(devices_dir: Path, device: str):
+def test_no_instance_name_collision(devices_dir: Path, device: str) -> None:
     check_no_instance_name_collision(_load(devices_dir, device), device)
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
-def test_no_mandatory_infra_modeled_as_instance(devices_dir: Path, device: str):
+def test_no_mandatory_infra_modeled_as_instance(devices_dir: Path, device: str) -> None:
     check_no_mandatory_infra_modeled_as_instance(_load(devices_dir, device), device)
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
-def test_device_infra_fields_present_and_valid(devices_dir: Path, device: str):
+def test_device_infra_fields_present_and_valid(devices_dir: Path, device: str) -> None:
     check_device_infra_fields_present_and_valid(_load(devices_dir, device), device)
 
 
-def test_bmp3xx_only_present_on_wozi_and_dev(devices_dir: Path):
+def test_bmp3xx_only_present_on_wozi_and_dev(devices_dir: Path) -> None:
     for device in DEVICE_NAMES:
         doc = _load(devices_dir, device)
         drivers = {inst["driver"] for inst in doc["instance"]}
         assert ("bmp3xx" in drivers) == (device in _DEVICES_WITH_BMP3XX)
 
 
-def test_klkizi_grkizi_schlafzi_share_identical_wiring(devices_dir: Path):
+def test_klkizi_grkizi_schlafzi_share_identical_wiring(devices_dir: Path) -> None:
     # Only device identity (name/hostname) may differ; everything else must be byte-for-byte identical.
     docs = {name: _load(devices_dir, name) for name in ("klkizi", "grkizi", "schlafzi")}
     for doc in docs.values():
@@ -380,7 +389,16 @@ _BASE_DOC: dict = {
     },
     "instance": [
         {"driver": "scd30", "name_ext": "", "bus": "i2c0", "irq_pin": 8, "trigger_sec": 3, "wiring": {"fram_target": "fram"}},
-        {"driver": "sgp40", "name_ext": "", "bus": "i2c1", "wiring": {"comp_source": "scd30", "fram_target": "fram"}},
+        {
+            "driver": "sgp40",
+            "name_ext": "",
+            "bus": "i2c1",
+            "wiring": {
+                "temperature_source": {"source": "scd30", "field": "Temp"},
+                "humidity_source": {"source": "scd30", "field": "Hum"},
+                "fram_target": "fram",
+            },
+        },
         {"driver": "fram", "bus": "spi0", "cs_pin": 1, "max_size": 0x2000},
         {"driver": "neopixel", "pin": 15, "wiring": {"fram_target": "fram"}},
         {
@@ -401,13 +419,13 @@ def _base_doc() -> dict:
     return copy.deepcopy(_BASE_DOC)
 
 
-def test_base_doc_fixture_itself_passes_every_check():
+def test_base_doc_fixture_itself_passes_every_check() -> None:
     # Guards the negative tests below against a broken fixture.
     doc = _base_doc()
     check_bus_tables_declare_their_required_wire_pins(doc, "base")
     check_every_instance_referencing_a_bus_uses_a_declared_bus(doc, "base")
     check_every_declared_bus_is_used_by_some_instance(doc, "base")
-    check_sgp40_wiring_resolves_to_a_real_scd30_instance(doc, "base")
+    check_sgp40_wiring_resolves_to_real_sources(doc, "base")
     check_notification_wiring_resolves_to_a_real_neopixel_instance(doc, "base")
     check_notification_signal_wiring_resolves_if_present(doc, "base")
     check_fram_wiring_resolves_if_present(doc, "base")
@@ -419,193 +437,196 @@ def test_base_doc_fixture_itself_passes_every_check():
     check_device_infra_fields_present_and_valid(doc, "base")
 
 
-def test_detects_missing_bus_wire_pin():
+def test_detects_missing_bus_wire_pin() -> None:
     doc = _base_doc()
     del doc["bus"]["i2c0"]["sda_pin"]
     with pytest.raises(AssertionError, match="missing required field"):
         check_bus_tables_declare_their_required_wire_pins(doc, "base")
 
 
-def test_detects_i2c_bus_missing_frequency():
+def test_detects_i2c_bus_missing_frequency() -> None:
     doc = _base_doc()
     del doc["bus"]["i2c0"]["frequency"]
     with pytest.raises(AssertionError, match="frequency"):
         check_bus_tables_declare_their_required_wire_pins(doc, "base")
 
 
-def test_detects_spi_bus_with_a_frequency_field():
+def test_detects_spi_bus_with_a_frequency_field() -> None:
     doc = _base_doc()
     doc["bus"]["spi0"]["frequency"] = 1000000
     with pytest.raises(AssertionError, match="has no such parameter"):
         check_bus_tables_declare_their_required_wire_pins(doc, "base")
 
 
-def test_detects_cs_pin_on_a_bus_table():
+def test_detects_cs_pin_on_a_bus_table() -> None:
     doc = _base_doc()
     doc["bus"]["spi0"]["cs_pin"] = 1
     with pytest.raises(AssertionError, match="cs_pin"):
         check_bus_tables_declare_their_required_wire_pins(doc, "base")
 
 
-def test_detects_no_bus_declared_at_all():
+def test_detects_no_bus_declared_at_all() -> None:
     doc = _base_doc()
     doc["bus"] = {}
     with pytest.raises(AssertionError, match="no bus declared"):
         check_bus_tables_declare_their_required_wire_pins(doc, "base")
 
 
-def test_bus_kind_rejects_an_unrecognized_bus_id():
+def test_bus_kind_rejects_an_unrecognized_bus_id() -> None:
     with pytest.raises(AssertionError, match="unrecognized bus id"):
         _bus_kind("uart0")
 
 
-def test_detects_instance_referencing_an_undeclared_bus():
+def test_detects_instance_referencing_an_undeclared_bus() -> None:
     doc = _base_doc()
     doc["instance"][0]["bus"] = "i2c9"
     with pytest.raises(AssertionError, match="undeclared bus"):
         check_every_instance_referencing_a_bus_uses_a_declared_bus(doc, "base")
 
 
-def test_detects_an_orphan_declared_bus():
+def test_detects_an_orphan_declared_bus() -> None:
     doc = _base_doc()
     doc["bus"]["i2c2"] = {"scl_pin": 20, "sda_pin": 21, "frequency": 50000}
     with pytest.raises(AssertionError, match="never referenced"):
         check_every_declared_bus_is_used_by_some_instance(doc, "base")
 
 
-def test_detects_a_singleton_driver_wrongly_declaring_name_ext():
+def test_detects_a_singleton_driver_wrongly_declaring_name_ext() -> None:
     doc = _base_doc()
     doc["instance"][2]["name_ext"] = ""  # fram is a singleton driver kind
     with pytest.raises(AssertionError, match="name_ext"):
         check_singleton_drivers_never_declare_name_ext(doc, "base")
 
 
-def test_detects_sgp40_missing_its_wiring_table():
+def test_detects_sgp40_missing_its_wiring_table() -> None:
     doc = _base_doc()
     del doc["instance"][1]["wiring"]
     with pytest.raises(AssertionError, match="no \\[instance.wiring\\] table"):
-        check_sgp40_wiring_resolves_to_a_real_scd30_instance(doc, "base")
+        check_sgp40_wiring_resolves_to_real_sources(doc, "base")
 
 
-def test_detects_sgp40_wiring_pointing_at_the_wrong_driver():
+def test_detects_sgp40_wiring_with_the_wrong_field_name() -> None:
+    # §2.9: any source exposing a matching attribute name is structurally valid (no fixed producer
+    # class to check against) - this smoke suite instead checks the real devices' own convention
+    # (temperature_source always reads "Temp"), so a field-name typo is what it can actually catch.
     doc = _base_doc()
-    doc["instance"][1]["wiring"]["comp_source"] = "bmp3xx"
-    with pytest.raises(AssertionError, match="expected 'scd30'"):
-        check_sgp40_wiring_resolves_to_a_real_scd30_instance(doc, "base")
+    doc["instance"][1]["wiring"]["temperature_source"]["field"] = "Temperature"
+    with pytest.raises(AssertionError, match="expected 'Temp'"):
+        check_sgp40_wiring_resolves_to_real_sources(doc, "base")
 
 
-def test_detects_sgp40_wiring_referencing_a_nonexistent_instance():
+def test_detects_sgp40_wiring_referencing_a_nonexistent_instance() -> None:
     doc = _base_doc()
     doc["instance"] = [i for i in doc["instance"] if i["driver"] != "scd30"]
     with pytest.raises(AssertionError, match="no such instance exists"):
-        check_sgp40_wiring_resolves_to_a_real_scd30_instance(doc, "base")
+        check_sgp40_wiring_resolves_to_real_sources(doc, "base")
 
 
-def test_detects_sgp40_instance_missing_entirely():
+def test_detects_sgp40_instance_missing_entirely() -> None:
     doc = _base_doc()
     doc["instance"] = [i for i in doc["instance"] if i["driver"] != "sgp40"]
     with pytest.raises(AssertionError, match="no unextended sgp40 instance found"):
-        check_sgp40_wiring_resolves_to_a_real_scd30_instance(doc, "base")
+        check_sgp40_wiring_resolves_to_real_sources(doc, "base")
 
 
-def test_detects_notification_missing_its_wiring_table():
+def test_detects_notification_missing_its_wiring_table() -> None:
     doc = _base_doc()
     del doc["instance"][4]["wiring"]
     with pytest.raises(AssertionError, match=r"no \[instance.wiring\] table"):
         check_notification_wiring_resolves_to_a_real_neopixel_instance(doc, "base")
 
 
-def test_detects_notification_wiring_pointing_at_the_wrong_driver():
+def test_detects_notification_wiring_pointing_at_the_wrong_driver() -> None:
     doc = _base_doc()
     doc["instance"][4]["wiring"]["signal_sink"] = "fram"
     with pytest.raises(AssertionError, match="expected 'neopixel'"):
         check_notification_wiring_resolves_to_a_real_neopixel_instance(doc, "base")
 
 
-def test_detects_notification_wiring_referencing_a_nonexistent_instance():
+def test_detects_notification_wiring_referencing_a_nonexistent_instance() -> None:
     doc = _base_doc()
     doc["instance"] = [i for i in doc["instance"] if i["driver"] != "neopixel"]
     with pytest.raises(AssertionError, match="no such instance exists"):
         check_notification_wiring_resolves_to_a_real_neopixel_instance(doc, "base")
 
 
-def test_detects_notification_instance_missing_entirely():
+def test_detects_notification_instance_missing_entirely() -> None:
     doc = _base_doc()
     doc["instance"] = [i for i in doc["instance"] if i["driver"] != "notification"]
     with pytest.raises(AssertionError, match="no notification instance found"):
         check_notification_wiring_resolves_to_a_real_neopixel_instance(doc, "base")
 
 
-def test_detects_notification_instance_missing_entirely_for_signal_wiring():
+def test_detects_notification_instance_missing_entirely_for_signal_wiring() -> None:
     doc = _base_doc()
     doc["instance"] = [i for i in doc["instance"] if i["driver"] != "notification"]
     with pytest.raises(AssertionError, match="no notification instance found"):
         check_notification_signal_wiring_resolves_if_present(doc, "base")
 
 
-def test_allows_a_notification_signal_getter_to_be_entirely_absent():
+def test_allows_a_notification_signal_getter_to_be_entirely_absent() -> None:
     doc = _base_doc()
     del doc["instance"][4]["wiring"]["warn_hum"]
     check_notification_signal_wiring_resolves_if_present(doc, "base")  # must not raise
 
 
-def test_detects_notification_signal_wiring_wrong_source():
+def test_detects_notification_signal_wiring_wrong_source() -> None:
     doc = _base_doc()
     doc["instance"][4]["wiring"]["warn_voc"]["source"] = "scd30"
     with pytest.raises(AssertionError, match="expected 'sgp40'"):
         check_notification_signal_wiring_resolves_if_present(doc, "base")
 
 
-def test_detects_notification_signal_wiring_wrong_field():
+def test_detects_notification_signal_wiring_wrong_field() -> None:
     doc = _base_doc()
     doc["instance"][4]["wiring"]["warn_co2"]["field"] = "Hum"
     with pytest.raises(AssertionError, match="expected 'CO2'"):
         check_notification_signal_wiring_resolves_if_present(doc, "base")
 
 
-def test_detects_notification_signal_wiring_referencing_a_nonexistent_instance():
+def test_detects_notification_signal_wiring_referencing_a_nonexistent_instance() -> None:
     doc = _base_doc()
     doc["instance"] = [i for i in doc["instance"] if i["driver"] != "scd30"]
     with pytest.raises(AssertionError, match="no such instance exists"):
         check_notification_signal_wiring_resolves_if_present(doc, "base")
 
 
-def test_detects_a_non_int_pin_value():
+def test_detects_a_non_int_pin_value() -> None:
     doc = _base_doc()
     doc["bus"]["i2c0"]["scl_pin"] = "13"
     with pytest.raises(AssertionError, match="is not an int"):
         check_no_global_gpio_pin_collision(doc, "base")
 
 
-def test_detects_a_bool_pin_value():
+def test_detects_a_bool_pin_value() -> None:
     doc = _base_doc()
     doc["instance"][3]["pin"] = True  # bool is an int subclass in Python - must still be rejected
     with pytest.raises(AssertionError, match="is not an int"):
         check_no_global_gpio_pin_collision(doc, "base")
 
 
-def test_detects_a_bus_wire_pin_reused_by_another_bus():
+def test_detects_a_bus_wire_pin_reused_by_another_bus() -> None:
     doc = _base_doc()
     doc["bus"]["i2c1"]["scl_pin"] = 13  # collides with i2c0's own scl_pin
     with pytest.raises(AssertionError, match="claimed twice"):
         check_no_global_gpio_pin_collision(doc, "base")
 
 
-def test_detects_an_instance_cs_pin_reusing_a_bus_wire_pin():
+def test_detects_an_instance_cs_pin_reusing_a_bus_wire_pin() -> None:
     doc = _base_doc()
     doc["instance"][2]["cs_pin"] = 13  # collides with i2c0's own scl_pin
     with pytest.raises(AssertionError, match="claimed twice"):
         check_no_global_gpio_pin_collision(doc, "base")
 
 
-def test_detects_two_instances_claiming_the_same_pin():
+def test_detects_two_instances_claiming_the_same_pin() -> None:
     doc = _base_doc()
     doc["instance"][3]["pin"] = 1  # neopixel's pin collides with fram's own cs_pin
     with pytest.raises(AssertionError, match="claimed twice"):
         check_no_global_gpio_pin_collision(doc, "base")
 
 
-def test_detects_two_instances_sharing_an_address_on_the_same_bus():
+def test_detects_two_instances_sharing_an_address_on_the_same_bus() -> None:
     doc = _base_doc()
     doc["instance"].append({"driver": "bmp3xx", "name_ext": "", "bus": "i2c1", "address": 0x77})
     doc["instance"].append({"driver": "bmp3xx", "name_ext": "second", "bus": "i2c1", "address": 0x77})
@@ -613,7 +634,7 @@ def test_detects_two_instances_sharing_an_address_on_the_same_bus():
         check_no_per_bus_address_collision(doc, "base")
 
 
-def test_allows_the_same_address_on_two_different_buses():
+def test_allows_the_same_address_on_two_different_buses() -> None:
     # Per-bus address exclusivity is scoped, not global.
     doc = _base_doc()
     doc["instance"].append({"driver": "bmp3xx", "name_ext": "", "bus": "i2c1", "address": 0x77})
@@ -621,56 +642,56 @@ def test_allows_the_same_address_on_two_different_buses():
     check_no_per_bus_address_collision(doc, "base")  # must not raise
 
 
-def test_detects_two_instances_resolving_to_the_same_name():
+def test_detects_two_instances_resolving_to_the_same_name() -> None:
     doc = _base_doc()
     doc["instance"].append({"driver": "scd30", "name_ext": "", "bus": "i2c1", "irq_pin": 9, "trigger_sec": 3})
     with pytest.raises(AssertionError, match="instance name collision"):
         check_no_instance_name_collision(doc, "base")
 
 
-def test_allows_two_same_driver_instances_disambiguated_by_name_ext():
+def test_allows_two_same_driver_instances_disambiguated_by_name_ext() -> None:
     doc = _base_doc()
     doc["instance"].append({"driver": "scd30", "name_ext": "fan_pressure", "bus": "i2c1", "irq_pin": 9, "trigger_sec": 3})
     check_no_instance_name_collision(doc, "base")  # must not raise
 
 
 @pytest.mark.parametrize("mandatory_driver", sorted(_MANDATORY_INFRA_DRIVERS))
-def test_detects_mandatory_infra_modeled_as_instance(mandatory_driver: str):
+def test_detects_mandatory_infra_modeled_as_instance(mandatory_driver: str) -> None:
     doc = _base_doc()
     doc["instance"].append({"driver": mandatory_driver})
     with pytest.raises(AssertionError, match="mandatory infrastructure"):
         check_no_mandatory_infra_modeled_as_instance(doc, "base")
 
 
-def test_detects_device_table_missing_entirely():
+def test_detects_device_table_missing_entirely() -> None:
     doc = _base_doc()
     del doc["device"]
     with pytest.raises(AssertionError, match=r"no \[device\] table"):
         check_device_infra_fields_present_and_valid(doc, "base")
 
 
-def test_detects_device_missing_conn_fail_to_hotspot():
+def test_detects_device_missing_conn_fail_to_hotspot() -> None:
     doc = _base_doc()
     del doc["device"]["conn_fail_to_hotspot"]
     with pytest.raises(AssertionError, match="missing required field 'conn_fail_to_hotspot'"):
         check_device_infra_fields_present_and_valid(doc, "base")
 
 
-def test_detects_device_missing_hotspot_time_min():
+def test_detects_device_missing_hotspot_time_min() -> None:
     doc = _base_doc()
     del doc["device"]["hotspot_time_min"]
     with pytest.raises(AssertionError, match="missing required field 'hotspot_time_min'"):
         check_device_infra_fields_present_and_valid(doc, "base")
 
 
-def test_detects_device_infra_field_wrong_type():
+def test_detects_device_infra_field_wrong_type() -> None:
     doc = _base_doc()
     doc["device"]["hotspot_time_min"] = "eight"
     with pytest.raises(AssertionError, match="must be an int"):
         check_device_infra_fields_present_and_valid(doc, "base")
 
 
-def test_allows_fram_wiring_to_be_entirely_absent_on_any_instance():
+def test_allows_fram_wiring_to_be_entirely_absent_on_any_instance() -> None:
     # Some instances may be wired to FRAM and others not, on the same device.
     doc = _base_doc()
     del doc["instance"][0]["wiring"]["fram_target"]  # scd30
@@ -678,40 +699,40 @@ def test_allows_fram_wiring_to_be_entirely_absent_on_any_instance():
     check_fram_wiring_resolves_if_present(doc, "base")  # must not raise
 
 
-def test_detects_fram_wiring_pointing_at_the_wrong_driver():
+def test_detects_fram_wiring_pointing_at_the_wrong_driver() -> None:
     doc = _base_doc()
     doc["instance"][0]["wiring"]["fram_target"] = "neopixel"
     with pytest.raises(AssertionError, match="expected 'fram'"):
         check_fram_wiring_resolves_if_present(doc, "base")
 
 
-def test_detects_fram_wiring_referencing_a_nonexistent_instance():
+def test_detects_fram_wiring_referencing_a_nonexistent_instance() -> None:
     doc = _base_doc()
     doc["instance"] = [i for i in doc["instance"] if i["driver"] != "fram"]
     with pytest.raises(AssertionError, match="no such instance exists"):
         check_fram_wiring_resolves_if_present(doc, "base")
 
 
-def test_allows_device_wiring_to_be_entirely_absent():
+def test_allows_device_wiring_to_be_entirely_absent() -> None:
     doc = _base_doc()
     del doc["device"]["wiring"]
     check_device_wiring_resolves_if_present(doc, "base")  # must not raise
 
 
-def test_allows_only_one_of_led_target_or_fram_target_to_be_present():
+def test_allows_only_one_of_led_target_or_fram_target_to_be_present() -> None:
     doc = _base_doc()
     del doc["device"]["wiring"]["fram_target"]
     check_device_wiring_resolves_if_present(doc, "base")  # must not raise
 
 
-def test_detects_device_wiring_pointing_at_the_wrong_driver():
+def test_detects_device_wiring_pointing_at_the_wrong_driver() -> None:
     doc = _base_doc()
     doc["device"]["wiring"]["led_target"] = "fram"
     with pytest.raises(AssertionError, match="expected 'neopixel'"):
         check_device_wiring_resolves_if_present(doc, "base")
 
 
-def test_detects_device_wiring_referencing_a_nonexistent_instance():
+def test_detects_device_wiring_referencing_a_nonexistent_instance() -> None:
     doc = _base_doc()
     doc["instance"] = [i for i in doc["instance"] if i["driver"] != "neopixel"]
     with pytest.raises(AssertionError, match="no such instance exists"):

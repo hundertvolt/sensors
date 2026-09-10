@@ -3,19 +3,16 @@
 # requires-python = ">=3.11"
 # dependencies = []
 # ///
-"""
-Single-command installer/updater for the MicroPython RP2040/Pico W firmware build environment
-(MicroPython + matching pico-sdk/picotool + ARM cross-toolchain), plus a host-side MicroPython
-Unix port build used for running tests. See SPECIFICATION.md Part B for the full picture.
+"""Single-command installer/updater for the MicroPython RP2040/Pico W firmware build environment
+(MicroPython + matching pico-sdk/picotool + ARM cross-toolchain), plus the host-side MicroPython
+Unix port build the test suite runs on. See SPECIFICATION.md Part B for the full picture."""
 
-Usage (from anywhere, via uv — no venv/pip setup needed):
-
-    uv run toolchain/setup_toolchain.py
-    uv run toolchain/setup_toolchain.py --latest          # bump to newest stable MicroPython
-    uv run toolchain/setup_toolchain.py --micropython-ref v1.26.1
-    uv run toolchain/setup_toolchain.py --clean           # wipe build dirs, then rebuild from scratch
-    uv run toolchain/setup_toolchain.py test              # re-verify an existing install, offline
-"""
+# Usage (from anywhere, via uv - no venv/pip setup needed):
+#     uv run toolchain/setup_toolchain.py
+#     uv run toolchain/setup_toolchain.py --latest          # bump to newest stable MicroPython
+#     uv run toolchain/setup_toolchain.py --micropython-ref v1.26.1
+#     uv run toolchain/setup_toolchain.py --clean           # wipe build dirs, then rebuild
+#     uv run toolchain/setup_toolchain.py test              # re-verify an existing install, offline
 
 from __future__ import annotations
 
@@ -28,8 +25,9 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import tomllib
 from pathlib import Path
+
+import tomllib
 
 # Confirmed GCC >=14 false positive in mbedtls_xor(), not a real bug (SPECIFICATION.md Part B.7);
 # suppressed outright since build_unix_port()/build_firmware() treat any "warning:" as a hard

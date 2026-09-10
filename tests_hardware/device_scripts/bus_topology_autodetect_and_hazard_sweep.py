@@ -65,6 +65,54 @@ async def _read_sgp40_once(sgp: "SGP40_I2C") -> "str | None":
         return f"{type(e).__name__}: {e}"
 
 
+async def _self_hazard_check(i2c: "asy_i2c_driver.I2C", port_id: int, address: int) -> "list[str]":
+    """A lone known device on a bus, read repeatedly while general-call broadcasts race those
+    reads. A module-level function rather than an inline block so no closure here captures the
+    caller's bus-loop variables (ruff B023) - everything it needs is a parameter."""
+    name = KNOWN_ADDRESSES[address]
+    # Each protocol object is constructed and set up exactly once, outside the read loop - unlike
+    # BMP3xx/SGP40, a freshly-constructed object per call would never have run setup() and would
+    # crash on its own cached calibration/CRC state (BMP3xx's _temp_calib/_pressure_calib in
+    # particular, only populated by setup()).
+    read_once = None
+    try:
+        if address == 0x61:
+            scd = SCD30_I2C(i2c, address=address)
+            read_once = lambda: _read_scd30_once(scd)  # noqa: E731
+        elif address == 0x77:
+            bmp = BMP3XX_I2C(i2c, address=address)
+            await bmp.setup()
+            read_once = lambda: _read_bmp3xx_once(bmp)  # noqa: E731
+        elif address == 0x59:
+            sgp = SGP40_I2C(i2c, address=address)
+            await sgp.setup()
+            read_once = lambda: _read_sgp40_once(sgp)  # noqa: E731
+    except Exception as e:  # noqa: BLE001 - setup() failing here is itself worth surfacing, not silently skipping the self-hazard check
+        return [f"bus {port_id}: {name} setup() before self-hazard check failed: {type(e).__name__}: {e}"]
+
+    if read_once is None:
+        return []
+    self_errors: list[str] = []
+
+    async def reads() -> None:
+        for i in range(8):
+            err = await read_once()
+            if err is not None:
+                self_errors.append(f"bus {port_id} {name} self-hazard read {i}: {err}")
+            await asyncio.sleep(0)
+
+    async def broadcasts() -> None:
+        for _ in range(3):
+            try:
+                i2c.writeto(GENERAL_CALL_ADDRESS, b"\x06")
+            except OSError:
+                pass
+            await asyncio.sleep(0.2)
+
+    await asyncio.wait_for(asyncio.gather(reads(), broadcasts()), 30.0)
+    return self_errors
+
+
 async def _main() -> None:
     wdt = machine.WDT(timeout=8000)
     findings: list[str] = []
@@ -91,50 +139,10 @@ async def _main() -> None:
                 findings.append(f"bus {port_id}: probing reserved address {hex(addr)} misbehaved: {err}")
         wdt.feed()
 
-        # 3. Self-hazard for a lone known device. Each protocol object is constructed and set up
-        # exactly once, outside the read loop - unlike BMP3xx/SGP40, a freshly-constructed object
-        # per call would never have run setup() and would crash on its own cached calibration/CRC
-        # state (BMP3xx's _temp_calib/_pressure_calib in particular, only populated by setup()).
+        # 3. Self-hazard for a lone known device.
         known_here = [addr for addr in scan if addr in KNOWN_ADDRESSES]
         if len(known_here) == 1:
-            addr = known_here[0]
-            name = KNOWN_ADDRESSES[addr]
-            read_once = None
-            try:
-                if addr == 0x61:
-                    scd = SCD30_I2C(i2c, address=addr)
-                    read_once = lambda: _read_scd30_once(scd)  # noqa: E731
-                elif addr == 0x77:
-                    bmp = BMP3XX_I2C(i2c, address=addr)
-                    await bmp.setup()
-                    read_once = lambda: _read_bmp3xx_once(bmp)  # noqa: E731
-                elif addr == 0x59:
-                    sgp = SGP40_I2C(i2c, address=addr)
-                    await sgp.setup()
-                    read_once = lambda: _read_sgp40_once(sgp)  # noqa: E731
-            except Exception as e:  # noqa: BLE001 - setup() failing here is itself worth surfacing, not silently skipping the self-hazard check
-                findings.append(f"bus {port_id}: {name} setup() before self-hazard check failed: {type(e).__name__}: {e}")
-
-            if read_once is not None:
-                self_errors: list[str] = []
-
-                async def reads() -> None:
-                    for i in range(8):
-                        err = await read_once()
-                        if err is not None:
-                            self_errors.append(f"bus {port_id} {name} self-hazard read {i}: {err}")
-                        await asyncio.sleep(0)
-
-                async def broadcasts() -> None:
-                    for _ in range(3):
-                        try:
-                            i2c.writeto(GENERAL_CALL_ADDRESS, b"\x06")
-                        except OSError:
-                            pass
-                        await asyncio.sleep(0.2)
-
-                await asyncio.wait_for(asyncio.gather(reads(), broadcasts()), 30.0)
-                findings.extend(self_errors)
+            findings.extend(await _self_hazard_check(i2c, port_id, known_here[0]))
         wdt.feed()
 
     summary = ", ".join(f"bus {b}: {sorted(d.values())}" for b, d in all_discovered.items())

@@ -1,7 +1,6 @@
 """Boots the real sensortask_wozi object graph (digital_twin) with the REAL website - not
 html_stub - wired in as `frozen_html`, and proves it over real HTTP: the Unix-port counterpart to
-scripts/build_firmware.py's real ARM build (SPECIFICATION.md Part B.11), runnable and checkable
-here where the ARM build can only be compiled, never executed."""
+scripts/build_firmware.py's real ARM build, which can only be compiled here, never executed."""
 
 import asyncio
 import json

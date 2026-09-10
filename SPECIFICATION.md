@@ -291,13 +291,16 @@ on-chip layout and must stay identical across firmware versions (A.4's determini
 8. `scd_reader = SCD30_Reader(i2c0, 8, trigger_sec=3, ..., fram=fram, ...)` — **chunk 2**; no
    config schema (params live on-sensor). Constructed before `sgp_reader` (ordering-hazard #1,
    Part C.14): `sgp_reader` holds a direct reference to this already-built object as its
-   `comp_source`, so the producer must exist first — a pure Python name-resolution requirement,
-   not a FRAM one (chunk order is random-access and doesn't itself care), but the two facts are
-   deliberately kept in the same relative order here for readability. `wozi` is never physically
-   flashed (CLAUDE.md), so reordering carries no deployed-data-loss risk.
-9. `sgp_reader = SGP40_Reader(i2c1, scd_reader, fram_storage=fram,
+   `temperature_source`/`humidity_source`, so the producer must exist first — a pure Python
+   name-resolution requirement, not a FRAM one (chunk order is random-access and doesn't itself
+   care), but the two facts are deliberately kept in the same relative order here for readability.
+   `wozi` is never physically flashed (CLAUDE.md), so reordering carries no deployed-data-loss risk.
+9. `sgp_reader = SGP40_Reader(i2c1, temperature_source=scd_reader, temperature_field="Temp",
+   humidity_source=scd_reader, humidity_field="Hum", fram_storage=fram,
    fram_ntp_callback=ntp.ntp_issynced, ...)` — **chunks 3-4** (error log, then VOC backup).
-   `scd_reader` is passed directly as `comp_source` (Part C.14) — no wrapping callback.
+   `scd_reader` is passed directly as both value sources (C.14.3's generalized per-value
+   measurement wiring) — no wrapping callback; the two fields resolve independently, so a future
+   device could compensate temperature and humidity from two different sensors.
 10. `bmp_reader = BMP3xx_Reader(i2c1, ..., fram=fram, ...)` — **chunk 5**. No cross-instance wiring
     dependency of its own on `wozi` (SCD30's `AmbPres` stays a static config value even though
     `wozi` physically has a live BMP388 — A.4's own note), so unconstrained by ordering-hazard #1.
@@ -342,15 +345,14 @@ logging, `self.level` is a single atomic-store `int`).
 **Dependency graph**: `ntp` holds `conn`'s bound methods; `notify_service` holds direct references
 to `scd_reader`/`sgp_reader` (its registered `NotificationSignal`s' `source`) plus
 `pixel.request_signal`/`ntp.cettime`; `conn` holds `pixel`; `sgp_reader` holds `ntp.ntp_issynced`
-and a direct reference to `scd_reader` (its `comp_source`, Part C.14) — the one place a `src/`
-module imports another driver module by class name (`from asy_scd30_driver import SCD30_Reader`,
-for `_WIRING`'s own class reference and this constructor parameter's type), a deliberate, narrow
-exception to "no cross-driver imports" for a purely one-directional, no-cycle type reference: a
-consumer driver may import a producer driver's class, never the reverse, which is exactly the same
-direction the topological construction order above already requires. Every module still
-constructs its own `ConfigManager`/`PrintLog` internally — no cross-module config sharing, and
-every *instance*-level dependency (as opposed to this one class-level `_WIRING` reference) stays
-constructor-injected, so the object graph is still a clean DAG at that level.
+and direct references to `scd_reader` (its `temperature_source`/`humidity_source`, Part C.14.3).
+Since C.14.3's per-value measurement wiring resolves any producer purely by attribute name
+(`getattr(data, field_name)`), `asy_sgp40_driver.py` needs **no** static import of
+`asy_scd30_driver` at all — a real change from the mechanism's earlier, whole-object `comp_source`
+shape, which did import `SCD30_Reader` by name for its fixed constructor-parameter type. Every
+module still constructs its own `ConfigManager`/`PrintLog` internally — no cross-module config
+sharing, and every *instance*-level dependency stays constructor-injected, so the object graph is
+still a clean DAG at that level.
 
 Full coverage: `tests/test_sensortask_wozi.py`.
 
@@ -1266,41 +1268,89 @@ disambiguating extension); this session only makes the naming mechanism itself c
 ### C.14.2 The `_WIRING` tuple convention
 
 A driver that needs a live cross-instance value at construction time declares a `_WIRING:
-"WiringSchema"` tuple next to its `_VAL_*` schema tuples: `_WIRING = ((toml_field_name,
-required_driver_class),)` — e.g. `asy_sgp40_driver.py`'s `_WIRING = (("comp_source",
-SCD30_Reader),)`. `WiringSchema = tuple[tuple[str, type], ...]` (`config_manager.py`, `TYPE_CHECKING`-
-only). This reuses the existing tuple-based declaration convention (`ConfigSchema`) rather than
-inventing new machinery; there is no separate "provides" registry — a constructed instance either
-is the required class or it isn't, checked directly by whoever resolves the reference (the future
-generator, not this session).
+"WiringSchema"` tuple next to its `_VAL_*` schema tuples. **Extended by Session 3 of
+BUILD_CHAIN_PLAN.md** (the `buildgen/` generator) from this Part's original 2-element shape to a
+5-element one, resolving that plan's own two open `_WIRING`-coverage questions (full rationale:
+that session's PR description) — purely additive, no existing driver's constructor signature
+changed to make this possible:
+
+```
+# @wiring <toml_field> <ProducerClass> <target> <required|optional> <kwarg|attr|setter>
+```
+
+**A comment, never a real Python value** — placed at module level beside the schema it describes.
+Nothing the running firmware itself ever reads should become a real frozen-bytecode value just to
+serve the generator (BUILD_CHAIN_PLAN.md's quality bar), and this declaration is read only by
+`buildgen/wiring.py`. It was a real `_WIRING` tuple until 2026-09-10; converting it, plus
+`_VALUE_WIRING`, `_LIMITS` and the `TYPE_CHECKING` type aliases that described them, took 3,576
+bytes out of `src/`'s frozen bytecode. Every element is a bare word, and dropping any one of the
+five makes the tag fail the build loud rather than parse as "no tag here" (`tag_comments.py`).
+`target`/`mode` say how the resolved producer instance is actually handed to the consumer:
+
+- `mode="kwarg"`: the instance itself is passed as a constructor kwarg named `target` — e.g.
+  `asy_sgp40_driver.py`'s `# @wiring fram_target AsyFramManager fram_storage optional kwarg`, the
+  same shape on every other `fram_target`-wirable driver. (SGP40's own
+  compensation-source dependency used to be a second wiring entry here, `comp_source` — see the
+  generalized per-value mechanism below, which replaced it.)
+- `mode="attr"`: the instance's `target` attribute/bound method is passed instead of the instance
+  itself — `asy_notification_service.py`'s `signal_sink` resolves to `pixel.request_signal`, not
+  `pixel`, satisfying `NotificationCoordinator.__init__`'s existing `request_signal_cb` parameter
+  (left unchanged) while still keeping the *TOML-visible* link a direct instance reference, per
+  BUILD_CHAIN_PLAN.md's "no getters, no callback functions in generated code" — the callback shape
+  survives only as the one hand-written driver's own constructor parameter, never as
+  generator-authored wiring.
+- `mode="setter"`: `<consumer>.<target>(<resolved producer>)` is called once, after both already
+  exist, instead of at construction time — `asy_wifi_service.py`'s
+  `# @wiring led_target NeopixelDriver set_ext_led optional setter`, matching `set_ext_led()`'s own
+  already-existing post-construction-call shape exactly.
+
+This reuses the existing comment-tag family (`@requires`, and the planned `@web`) rather than
+inventing new machinery; there is no separate "provides" registry — a constructed instance either is the
+required class or it isn't, checked directly by whoever resolves the reference (`buildgen/`,
+comparing the TOML's own `driver`/`name_ext` identity against `_WIRING`'s `producer_class`, never
+against `instance_name()`/`_NAME` — see C.14.1's own naming-space distinction).
+`[device.wiring]`'s two mandatory-infra-side fields (`led_target`/`fram_target`) resolve against
+`_WIRING` declared on the *consumer* class instead (`AsyConnTime`/`SystemService`), since neither
+is ever an `[[instance]]` entry itself.
 
 **The constructor parameter itself is a direct reference to the producer's own instance** — passed
-positionally/by keyword with the same name as `_WIRING`'s field (`comp_source` above) — **not a
-getter or callback function.** The consumer reads the producer's own already-concurrency-safe
-`get_data()` (`SensorReader`'s existing `_datalock`-guarded namedtuple — C.4.2 — is itself the
-"locked state" value holder here; no new per-field `LockedValue` was introduced) directly, inline,
-wherever the value is needed. This eliminates a real category of hand-written wrapper functions
-that used to exist purely to close over a producer reference: `sensortask_wozi.py`'s
-`sgp_comp_callback()` (SGP40's temperature/humidity compensation input) is gone, replaced by
-`SGP40_Reader.__init__`'s `comp_source: SCD30_Reader` parameter and a direct `await
-self.comp_source.get_data()` call inside `_read_sgp()`.
+positionally/by keyword with the same name as `_WIRING`'s field (e.g. `fram_target`'s
+`fram_storage` kwarg) — **not a getter or callback function.** The consumer reads the producer's
+own already-concurrency-safe `get_data()` (`SensorReader`'s existing `_datalock`-guarded namedtuple
+— C.4.2 — is itself the "locked state" value holder here; no new per-field `LockedValue` was
+introduced) directly, inline, wherever the value is needed. This eliminates a real category of
+hand-written wrapper functions that used to exist purely to close over a producer reference:
+`sensortask_wozi.py`'s `sgp_comp_callback()` (SGP40's temperature/humidity compensation input) is
+gone, replaced first by a `_WIRING`-declared `comp_source: SCD30_Reader` parameter, and — once
+BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md §2.9 generalized per-value measurement wiring to every
+module consuming one scalar out of another's `get_data()` result — by the independent
+`temperature_source`/`temperature_field`/`humidity_source`/`humidity_field` parameters described in
+C.14.3 below, resolved via `getattr(data, field_name)` inside `_read_sgp()` rather than a
+whole-object reference fixed to one producer class.
 
-**A `_WIRING` reference is the one deliberate exception to "no `src/` driver module imports another
-by name"** (A.7's dependency-graph note): `asy_sgp40_driver.py` imports `SCD30_Reader` from
-`asy_scd30_driver.py` at module level, both for `_WIRING`'s own class reference and this
-constructor parameter's type annotation. This is a purely one-directional, no-cycle class-level
-reference — a consumer driver may import a producer driver's class, never the reverse — the same
-direction the topological construction order below already requires, so it doesn't reintroduce a
-real coupling cycle at the object-graph level.
+**A `_WIRING` reference is a deliberate, narrow exception to "no `src/` driver module imports
+another by name"** (A.7's dependency-graph note): e.g. `asy_notification_service.py` imports
+`NeopixelDriver` from `asy_neopixel_driver.py` at module level, for `_WIRING`'s own `signal_sink`
+class reference, and every `fram_target`-wirable driver similarly imports `AsyFramManager`. This is
+a purely one-directional, no-cycle class-level reference — a consumer driver may import a producer
+driver's class, never the reverse — the same direction the topological construction order below
+already requires, so it doesn't reintroduce a real coupling cycle at the object-graph level.
+`asy_sgp40_driver.py` used to be the canonical example of this (importing `SCD30_Reader` for its
+old `comp_source` parameter's type) — §2.9's generalization removed that import entirely, since a
+per-value producer is now resolved structurally (by attribute name) rather than nominally (by
+class), so `asy_sgp40_driver.py` no longer needs to know its compensation source's concrete type at
+all.
 
 **Ordering hazard #1 (object existence)**: since the consumer's constructor call references the
 producer's already-built Python object, the producer must be constructed first. `sensortask_wozi.py`
 now constructs `scd_reader` before `sgp_reader` for exactly this reason (A.7's construction order) —
 a real, deliberate reordering of wozi's FRAM chunk allocation order, safe only because wozi is never
-physically flashed (CLAUDE.md). A future generator topologically sorts a device's whole instance
-list by `_WIRING` dependency (not raw TOML declaration order) and rejects a cycle as a build-time
-error; `_WIRING`'s shape (an explicit, introspectable `(field, class)` pair) is what makes that
-sort possible — not built in this session.
+physically flashed (CLAUDE.md). `buildgen/graph.py` (Session 3) topologically sorts a device's
+whole instance list by `_WIRING` dependency (kwarg/attr modes only — a "setter"-mode reference is a
+post-construction call, so it never gates construction order) plus two fixed mandatory-infra edges
+and one conditional one (`sysfunct` needs its own `device.wiring.fram_target` instance, if set),
+and rejects a cycle as a build-time error; `_WIRING`'s shape (an explicit, introspectable 5-tuple)
+is what makes that sort possible.
 
 **Ordering hazard #2 (live data availability)**: independent async tasks mean a consumer's first
 read can happen before the producer's first real measurement completes. Every producer's
@@ -1332,9 +1382,26 @@ already know which module owned what) with a plain loop calling `get_error_sourc
 `get_loggers()` uniformly on each top-level module — the same "every module discovered through a
 uniform method, never hand-copied" shape `_collect_task_starters()`/`_collect_timer_starters()`
 already used for task/timer starters. `NotificationCoordinator`'s own registered `NotificationSignal`
-fan-in (C.14.2's `source`/`field` direct references) is a related but separate mechanism: those are
-resolved at `register()` call time, already after every producer exists, so they need no `_WIRING`
-declaration of their own.
+fan-in (`source`/`field` direct references) is a related but separate mechanism from `_WIRING`
+(C.14.2): those are resolved at `register()` call time, already after every producer exists, so
+they need no `_WIRING` declaration of their own.
+
+**Generalized per-value measurement wiring (BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md §2.9,
+2026-09-10)**: `NotificationSignal`'s `(source, field)` shape — resolve one named attribute off
+another module's `get_data()` result, matched structurally rather than by a fixed producer class —
+isn't specific to notification signals. `asy_sgp40_driver.py`'s `SGP40_Reader.__init__` uses the
+same shape twice, independently, for its own compensation inputs: `temperature_source`/
+`temperature_field` and `humidity_source`/`humidity_field` (replacing the earlier `_WIRING`-declared,
+whole-object `comp_source: SCD30_Reader` parameter — see C.14.2's own note). `_read_sgp()` resolves
+each the same way `NotificationCoordinator._check_one()` already does:
+`getattr(await source.get_data(), field_name, None)`. The two fields may name the same producer
+instance (the common case — every real `devices/*.toml` compensates both off one `SCD30_Reader`) or
+two different ones, entirely independently. `buildgen/`'s own `_VALUE_WIRING` driver declaration
+(parallel to `_WIRING`, parsed by `buildgen/value_wiring.py`) says which constructor kwargs a
+per-value TOML field resolves to and whether it's required; a required field with nothing wired can
+still build clean via an explicit `{default = true, ...}` opt-in (the wiring-defaults mechanism,
+same document §2) — `_DefaultTemperatureSource`/`_DefaultHumiditySource` provide a constant
+fallback duck-typed to the same `get_data()` contract.
 
 ---
 

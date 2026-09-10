@@ -66,7 +66,10 @@ the generator/website builder/CI matrix should validate its own work against the
   "provides" registry needed — an instance either is the expected class or it isn't, checked
   directly.
 - **Every real cross-instance link gets a TOML-visible `[instance.wiring]`/`[device.wiring]`
-  field — none stay hardcoded in `build_system()`.** Covers `sgp40.comp_source`,
+  field — none stay hardcoded in `build_system()`.** Covers `sgp40.temperature_source`/
+  `.humidity_source` (originally one whole-object `comp_source` field; generalized into two
+  independent per-value fields by BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md §2.9, 2026-09-10 -
+  see that document for the full mechanism, including the `{default = true, ...}` fallback opt-in),
   `notification.signal_sink`/`warn_co2`/`warn_voc`/`warn_hum`, and `fram_target` on every
   driver/service with an optional `fram=`/`fram_storage=` argument (`scd30`, `sgp40`, `bmp3xx`,
   `neopixel`, `notification`, plus `device.wiring.fram_target` for `SystemService`'s own `fram=`)
@@ -200,8 +203,18 @@ name_ext = ""
 bus = "i2c1"
 
 [instance.wiring]
-comp_source = "scd30"                      # required; _WIRING-declared cross-instance dependency
 fram_target = "fram"                       # optional
+
+# Per-value measurement wiring (§2.9 of BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md), replacing
+# the original single, required, _WIRING-declared whole-object comp_source field above: each
+# independently required (or explicitly defaulted via {default = true, ...}).
+[instance.wiring.temperature_source]
+source = "scd30"
+field = "Temp"
+
+[instance.wiring.humidity_source]
+source = "scd30"
+field = "Hum"
 
 [[instance]]
 driver = "bmp3xx"
@@ -256,13 +269,17 @@ source = "scd30"
 field = "Hum"
 ```
 
-Open question, not settled by this schema: `_WIRING`'s documented contract resolves a reference to
-the whole constructed instance, but `NotificationCoordinator.__init__`'s `request_signal_cb` wants
-one specific bound method off it (`pixel.request_signal`), not the `NeopixelDriver` instance
-itself. Whether this gets solved by extending `_WIRING`'s tuple shape, generator-side
-special-casing, or something else is left open — `asy_notification_service.py` declares no
-`_WIRING` tuple yet either. Each notification signal's own threshold default/range and flash color
-are a related, still-open question for Session 3.
+**Resolved by Session 3** (previously open here): `_WIRING`'s tuple shape is extended from 2 to 5
+elements — `(toml_field_name, required_driver_class, target, required, mode)` — where `mode`
+(`"kwarg"`/`"attr"`/`"setter"`) says how the resolved producer is actually handed to the consumer.
+`signal_sink` uses `mode="attr"`: the generator resolves it to `pixel.request_signal` (the bound
+method `NotificationCoordinator.__init__`'s existing `request_signal_cb` parameter wants), not the
+`NeopixelDriver` instance itself — no change to that constructor's own signature. `led_target` uses
+`mode="setter"`: `conn.set_ext_led(pixel)` is emitted once, after both already exist, instead of at
+construction time. Full rationale, and why this is purely additive (no existing driver's
+constructor signature changed): SPECIFICATION.md Part C.14.2 and this session's own PR description.
+Each notification signal's own threshold default/range and flash color: also resolved — see
+"Session 3 done" below.
 
 **Settled by this schema**: the two top-level shapes above, `[[instance]]` for optional modules
 only, `name_ext`'s default-empty-means-unchanged rule, `[instance.wiring]`'s shape (a flat
@@ -272,8 +289,10 @@ only, `name_ext`'s default-empty-means-unchanged rule, `[instance.wiring]`'s sha
 `instance_name()`), `[device.wiring]` as the mandatory-infra-side mirror of `[instance.wiring]`,
 the standing "every real cross-instance link is TOML-visible" rule and its two exclusions (see
 "Core design decisions" above), that a getter/optional-producer reference defaults to disabled when
-absent rather than erroring (unlike a required reference like `comp_source`), and that an `address`
-field only exists for a driver kind whose chip actually has one.
+absent rather than erroring (unlike a required reference like `signal_sink`, or `temperature_source`/
+`humidity_source` without an explicit `{default = true, ...}` opt-in - see
+BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md §2), and that an `address` field only exists for a
+driver kind whose chip actually has one.
 
 **Session 2 done**: the 6 real files live at `devices/<device>.toml`. The six `device.name` values
 are `Wozi`/`Dev`/`Arzi`/`Klkizi`/`Grkizi`/`Schlafzi`, feeding `hostname = "SensorStation<name>"`.
@@ -290,18 +309,104 @@ exists yet — the global-GPIO-pin/per-bus-address/instance-name collision check
 6 real files specifically; **not** a substitute for Session 3's own full validator and its
 malformed-fixture test coverage).
 
-**What Session 3 (the generator) does, not settled here**: resolving the `driver` string to its
-Python class — per this doc's own "Acceptance criteria" above, derived from the existing
-`asy_<name>_driver.py` → `<Name>_Reader` naming convention rather than a separate hand-maintained
-lookup table, falling back to an explicit table only for a driver that genuinely can't follow the
-naming pattern; topologically sorting `[[instance]]` entries by `[instance.wiring]`/`_WIRING`
-dependency and rejecting a cycle; erroring at build time on a naming collision with no
-disambiguating `name_ext`; resolving `NotificationSignal` registrations from this table; emitting
-the real `sensortask_<device>.py` + boot entry; and the full **global resource-collision
-validation pass** below — every one of these is a real build blocker per the fail-loud contract
-above, not a warning, and not built in this session.
+**Session 3 done** (the mechanisms below are the end state, after the six implementation phases
+recorded in `BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md` §10 — read that document before building
+anything against a device TOML's or a generated module's shape): the generator lives at `buildgen/` (a new top-level CPython package, never
+imported by `src/` — chosen over putting it under `scripts/` specifically so it joins
+`pyproject.toml`'s ruff/mypy scope under the full quality bar immediately, per that doc's own #10
+below, rather than inheriting `scripts/`'s/`toolchain/`'s documented legacy gap). `buildgen.
+generate.generate_device(toml_path, src_dir, ext_dir)` runs the full pipeline (`buildgen.validate.
+build_model()` → `buildgen.graph.build_construction_order()` → `buildgen.codegen.
+generate_module_source()`/`generate_boot_entry_source()`) and returns the generated
+`sensortask_<device>.py`-equivalent + boot-entry source as strings, plus
+`buildgen.frozen_modules.compute_frozen_modules()`'s module set — callers (this session's own
+tests; a future Session 6) decide whether/where to write them. Concretely:
 
-**Global resource-collision validation is required of Session 3** (project owner's explicit
+- **`driver` → class**: `buildgen.driver_registry.resolve_driver()` AST-parses (never imports —
+  `src/` modules need real `machine`/`neopixel`/`asyncio.ThreadSafeFlag`, unavailable under plain
+  CPython) `asy_<name>_driver.py` for a `SensorReader`/`SensorReaderConfig` subclass; a fallback
+  table (`fram`/`neopixel`/`notification` — none of the three follows the file-naming convention or
+  is a `SensorReader` subclass) covers the one named exception the acceptance criteria itself
+  allows. Also determines whether the resolved class needs `await <instance>.setup()` called
+  (`SensorReaderConfig` base, or a bare `async def setup` on the class) — again by AST inspection,
+  not a hand-maintained table.
+- **Topological construction order**: `buildgen.graph.build_construction_order()` — see
+  SPECIFICATION.md Part C.14.2's updated account.
+- **Wiring resolution**: strictly against the TOML's own `driver`/`name_ext` identity, never
+  `instance_name()`/`_NAME` (confirmed via a dedicated `parse_name_constant()` check that
+  `NotificationCoordinator`'s own `_NAME` really is `"NOTIFY"`, not `"NOTIFICATION"` —
+  `tests_scripts/test_buildgen_driver_registry.py::test_parse_name_constant_confirms_notify_is_not_notification`).
+- **Global resource-collision validation**: `buildgen.validate.build_model()` — schema shape,
+  global GPIO exclusivity, per-bus address exclusivity (including the two-hardwired-address-
+  instances-with-no-`address`-field case, scoped per `(bus, driver kind)` so two *different*
+  fixed-address chip types sharing a bus correctly doesn't false-positive), instance-name collision,
+  bus-id collision (TOML's own duplicate-key rule already covers this), and every wiring-reference/
+  mandatory-`[device]`-field/required-instance-field check — every failure is a `buildgen.errors.
+  BuildError` naming the device/instance/field responsible, never a generic failure or a raw
+  traceback.
+- **`# @requires bus.<field><op><value>`**: `buildgen.requires_tag`, on the shared
+  `buildgen.tag_comments` scanner (tokenize-based, typo-tolerant near-miss detection — see the
+  quality bar's standing rule for the whole tag family) — text-parsed from driver source, never a
+  real Python value. Three tags across two drivers today: `asy_scd30_driver.py`'s
+  `bus.timeout>=200000` (its real clock-stretch requirement) and `bus.frequency<=100000`
+  (Interface Description p.2, "Maximal I2C speed is 100 kHz"), and `asy_sgp40_driver.py`'s
+  `bus.frequency<=400000` (datasheet Table 3's fSCL max). A bus shared by both is held to the
+  stricter of the two. `bmp3xx` is deliberately untagged — its datasheet supports every I2C mode,
+  so any bound would be invented rather than documented.
+- **Per-field domains — `# @limits`**: `buildgen.limits` parses `<field> <min>..<max>` or
+  `<field> in {a, b}`. Only `asy_bmp3xx_driver.py` declares one today (`address` ∈ {0x76, 0x77}, `trigger_sec` ∈ [1, 3600],
+  both from constants already in that file) — no invented bounds anywhere.
+- **Wiring defaults and per-value measurement wiring**: `buildgen.defaults` AST-discovers a
+  driver's `_Default<Field>` classes (the `__init__` signature *is* the schema for a
+  `{default = true, ...}` TOML sub-table), and `buildgen.value_wiring` parses `# @value-wiring` —
+  independent per-value `{source, field}` fields resolved by attribute name, replacing SGP40's old
+  whole-object `comp_source`. See BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md §2/§2.9.
+- **Pin legality and role**: `buildgen.pico_gpio` holds the Pico W's fixed GPIO→peripheral table
+  (datasheet Figure 2), so every claimed pin device-wide is checked for real existence and
+  non-reserved status, and each bus's own wire pins additionally for the right peripheral index
+  *and* role — catching a transposed `scl_pin`/`sda_pin` pair, not just an illegal pin.
+- **Notification signal catalog**: each notification signal's own threshold default/range and
+  flash color (BUILD_CHAIN_PLAN's own previously-open question) is a fixed, generator-owned catalog
+  (`buildgen.codegen._KNOWN_SIGNALS`) covering `warn_co2`/`warn_voc`/`warn_hum` — every real device
+  TOML today uses identical values with no per-device override in the schema, so hardcoding them in
+  the generator (not per-device) mirrors exactly what `src/sensortask_wozi.py`/`sensortask_dev.py`
+  already do. A `warn_*` key outside this catalog is a fail-loud `BuildError`, not a silent
+  no-op — flagged here as a genuine future TOML-schema extension point, not solved by this session.
+- **Frozen-module selection**: `buildgen.frozen_modules.compute_frozen_modules()` — AST-scanned
+  transitive `import`/`from...import` closure, seeded from a fixed core set plus each device's own
+  declared driver modules, `TYPE_CHECKING` blocks stripped. Computes *which modules*; wiring that
+  list into the real `freeze()`/`scripts/build_firmware.py` call is Session 6's job.
+- **Mandatory synthetic "novel combination" fixture**: `tests_scripts/buildgen_fixtures/
+  novel_combo.toml` — two `SCD30`s (multi-instance, name_ext-disambiguated), `SGP40` taking its
+  temperature from one and its humidity from the *other*, `BMP3xx` at the alternate
+  hardwired-address value, and `Notification` wired to only one of the three `warn_*` signals — a
+  pin/bus/wiring layout none of the 6 real devices use, proving the generator's full pipeline
+  succeeds from this one new file alone. A second fixture, `multi_instance.toml`, adds 2× scd30 and
+  2× sgp40 at once, a cross-driver-type value reference (`bmp3xx`'s own `Temp`) and an explicit
+  `{default = true, ...}` constant.
+- **Correctness proof depth** (this doc's own former open question 3): generated output is proven
+  syntactically valid Python (`ast.parse()`) matching the documented construction-order/wiring
+  shape, via `tests_scripts/test_buildgen_generate.py` against all 6 real devices plus the
+  synthetic fixture — **not** executed under the real MicroPython Unix-port interpreter. Decided
+  against going further: `buildgen/` is deliberately AST-only, never importing `src/` (real
+  MicroPython-only names aren't available under plain CPython) — actually booting a generated
+  module needs the same hardware-fake environment Session 5's digital-twin generalization is
+  explicitly tasked with building; attempting a shallow version of that here risked exactly the
+  scope-leakage this doc's merge-back checklist flags.
+- **Not built here** (deliberately, per this session's own scope): wiring the generator into
+  `scripts/build_firmware.py`/`boot_entry/*.py`, replacing either hand-written `sensortask_wozi.py`/
+  `sensortask_dev.py` file, website `definitions.json` generation, digital-twin generalization, the
+  CI matrix, versioning, the closing consistency pass — all later sessions' own jobs, per the
+  session breakdown below.
+
+Full test coverage (TDD, written first): `tests_scripts/test_buildgen_driver_registry.py`,
+`test_buildgen_wiring.py`, `test_buildgen_requires_tag.py`, `test_buildgen_frozen_modules.py`,
+`test_buildgen_graph.py`, `test_buildgen_validate.py` (every abort condition, driven by
+deliberately malformed fixtures built from `tests_scripts/_toml_fixtures.py`'s `base_doc()` — never
+just incidentally exercised by the 6 real device TOMLs happening to be valid), and
+`test_buildgen_generate.py` (end-to-end, all 6 real devices + the synthetic fixture).
+
+**Global resource-collision validation, required of Session 3** (project owner's explicit
 direction, 2026-09-09) — the full requirement, including the two schema-level fields this example
 TOML above already reflects (buses as top-level entries owning their own shared wire pins,
 `[instance.wiring]` as the one place a cross-instance reference lives), is in "Build/generator
@@ -318,13 +423,28 @@ script quality bar" below, not repeated here.
 2. **The 6 real device TOML files**, built from the wiring facts already gathered from
    `src/sensortask_wozi.py`, `src/sensortask_dev.py`, `modules/sensortask-arzi.py`,
    `modules/sensortask-neu.py`.
-3. **Python generator** (`sensortask_<device>.py` + boot entry) — topological construction
+3. **Done. Python generator** (`sensortask_<device>.py` + boot entry) — topological construction
    ordering, dependency-driven frozen-module selection, generic definitions-file-derived tests.
+   Lives at `buildgen/`; see "Session 3 done" above for the full account.
 4. **Website `definitions.json` generator** — resolves BACKLOG.md's `@web`/`@web-group` open
-   sub-questions, combined with each device's TOML instance list.
+   sub-questions, combined with each device's TOML instance list. **Read
+   BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md first**: its §2/§2.9 (landed 2026-09-10) changed the
+   device TOML shape a real device's instance list can carry (`comp_source` → independent
+   `temperature_source`/`humidity_source` fields, plus the general `{default = true, ...}` opt-in
+   shape now legal on any defaultable wiring field) - a definitions.json generator built against
+   the pre-2026-09-10 shape would silently miss both.
 5. **Digital twin generalization** — consumes the Session 3 generated module directly, replacing
-   `configure_i2c_wiring("wozi"|"dev")`'s 2-profile enum.
-6. **Build chain + CI matrix + `build/` artifact directory.**
+   `configure_i2c_wiring("wozi"|"dev")`'s 2-profile enum. **Same pointer as Session 4 above** - the
+   generated module's own construction calls now use the post-§2.9 `SGP40_Reader` signature; a twin
+   boot path assuming the old one-argument `comp_source` shape will not match reality.
+6. **Build chain + CI matrix + `build/` artifact directory.** **Flagged by Session 3's merge-back
+   review, per the checklist above:** Session 3 was scoped not to touch `src/sensortask_wozi.py`/
+   `sensortask_dev.py`, and did not delete or replace them — but its Phase 5 change to
+   `SGP40_Reader.__init__` forced a call-site update in both (one construction call each,
+   `comp_source` → the four per-value arguments). That is a forced cascade, not an early attempt at
+   this session's job; treat both files as still fully yours to replace, and question the shape
+   rather than inheriting it. Same session also reflowed `scripts/build_firmware.py`'s module
+   docstring under CLAUDE.md's 3-line header cap — docstring text only, no functional change.
 7. **Versioning** — firmware + website, both starting at "2.0b0".
 8. **Closing consistency pass** — bird's-eye scan across everything sessions 1-7 touched; confirm
    zero device-specific content remains outside the 6 TOML files.
@@ -397,8 +517,8 @@ proceed rather than degrading:
   Every one of these must produce a specific, human-readable error naming the two colliding
   declarations (which instance/bus, which field, which value) — never a generic "build failed" and
   never a silent pick of one over the other.
-- **A wiring reference (`comp_source`, `signal_sink`, `fram_target`, `led_target`, every
-  `[instance.wiring.<name>]`/`[device.wiring]` field) resolves against the TOML's own
+- **A wiring reference (`temperature_source`, `humidity_source`, `signal_sink`, `fram_target`,
+  `led_target`, every `[instance.wiring.<name>]`/`[device.wiring]` field) resolves against the TOML's own
   `driver`+`name_ext` identity — never against `instance_name()`/each driver's own `_NAME`
   constant, and the two must never be conflated.** These are two unrelated naming spaces: the TOML
   identifier is the literal `driver` string as written (`"notification"`, `"scd30"`, ...) plus
@@ -426,6 +546,79 @@ proceed rather than degrading:
   its `[bus.*]` table, and evaluates the tag's predicate against that table's actual field value —
   silently continuing if satisfied, failing loudly (naming the device, instance, bus, field, and
   expected-vs-actual value) if not, the same as every other check in this section.
+- **Every driver-declared fact the running firmware never reads is a comment tag, not a Python
+  value** (project owner's ruling, 2026-09-10, restating the rule the `@requires` bullet above
+  already stated). The question was raised against `_LIMITS`, whose defence was that it is
+  structured data with a natural Python home; the ruling is that the original rule holds and the
+  subject matter of the fact doesn't change it. Applied consistently, it caught three declarations,
+  all now converted:
+  - `_WIRING` → `# @wiring <toml_field> <ProducerClass> <target> <required|optional>
+    <kwarg|attr|setter>`
+  - `_VALUE_WIRING` → `# @value-wiring <toml_field> <source_kwarg> <field_kwarg>
+    <required|optional>`
+  - `_LIMITS` → `# @limits <field> <min>..<max>` or `# @limits <field> in {a, b}` (`*` on either
+    side of a range means that side is unchecked; `min == max` is an exact-value requirement)
+
+  Confirmed by direct grep before converting: none of the three had a single runtime read anywhere
+  in `src/`. What the rule does **not** catch is a `_Default<Field>` class — the generated module
+  imports and constructs those (`_DefaultHumiditySource(relative_humidity=35)`), so they are live
+  code, not metadata, and stay Python. The generator still reads their `__init__` signature by AST,
+  but that is reading real code's shape rather than a constant planted for it to find.
+
+  Measured, so the payoff is on record rather than assumed: the three tuples plus the
+  `TYPE_CHECKING` type aliases that described them (`WiringSchema`/`LimitsSchema`/
+  `ValueWiringSchema`, real compiled statements on-device since `TYPE_CHECKING` is `False` at
+  runtime) came to **3,576 bytes** of `src/`'s frozen bytecode, about 2.6% of it. Two imports went
+  with them — `asy_notification_service.py` and `asy_wifi_service.py` each imported
+  `NeopixelDriver` solely to name it in `_WIRING` — with no change to any device's computed frozen
+  module set, confirmed by regenerating all six.
+
+  What a comment costs in exchange is that the interpreter validates nothing: a typo'd or partial
+  tag is invisible unless something looks for it. That is what `buildgen/tag_comments.py` is for,
+  and why every family registered there carries its own payload-shape predicate — a single shared
+  heuristic goes blind on whichever shape it wasn't written for, which is the exact silent miss
+  the mechanism exists to prevent.
+- **Standing rule for every tag in this comment-tag family (project owner's explicit direction, not
+  scoped to `@requires` alone): a tag that's present, or close to present with a typo, must be
+  verified correct in every dimension — exact wording, location, format, content, validity — or
+  fail the build loud, never be silently treated as "no tag here, nothing to check."** A comment
+  isn't Python the interpreter validates for you; a driver author can misspell `@requires` as
+  `@require`, drop the `bus.` prefix, use a bare `=` instead of `==`, or bury the tag inside a
+  method body where it's no longer "near the schema" it's meant to describe — every one of those
+  must raise a `BuildError`, the same as a real malformed field would. `buildgen/tag_comments.py`
+  is the shared mechanism (`KNOWN_TAG_NAMES` registry, tokenize-based comment scanning so a `#`
+  inside a string/docstring is never mistaken for a real comment, edit-distance typo matching, and
+  a payload-shape gate so ordinary prose that happens to mention a tag's name isn't misflagged) —
+  `buildgen/requires_tag.py` is built on it today; whichever session eventually builds the
+  `@web`/`@web-group` website-definitions parser (`BACKLOG.md`'s sketch) must build on the same
+  module, not reinvent a second, less-tested detector. Each tag-family's own unit tests must cover
+  the whole matrix, not a sample of it, split by which side of the accept/reject line a case sits
+  on. **The accept side carries the full dimensionality** — every operator against every value
+  shape, every legal spacing variant, every legal placement, and none/one/several tags per file —
+  because a build that silently accepts the wrong thing is the exact failure the tag exists to
+  prevent. **The reject side covers each dimension once and does not recombine** — an abort is an
+  abort, so a typo'd tag name crossed with a wrong operator proves nothing the two separate cases
+  don't. The dimensions to walk: *wording* (the name typo'd by an insertion, deletion, substitution
+  or transposition, mis-cased, or with the `@` sigil dropped outright, plus the edit-distance
+  boundary just outside tolerance, which must stay silent), *format* (each structural piece
+  individually wrong — missing `bus.` prefix, bare `=`, operator dropped, value dropped, trailing
+  junk), *location* (indented into a class or method body, or onto a bracketed continuation line),
+  *content* (a value that isn't a number), *validity* (each operator satisfied **and** violated
+  against a real bus table, plus a missing field, a falsy-but-present value, and a non-comparable
+  type), *scanning* (tag-shaped text inside a string or docstring, an unreadable file encoding, an
+  unparseable file — the last two must fail as a `BuildError`, never a raw traceback), and — the
+  false-positive checks that make the whole mechanism trustworthy — realistic prose that merely
+  mentions the tag's name and an unrelated `@`-word, neither of which may raise. Every dimension
+  above also has to be walked in the *dropped-piece* direction, not just the *wrong-piece* one: the
+  three holes this bar's own first implementation still had (a dropped operator, a dropped value,
+  and a dropped `@`, each silently parsing to "no tag declared") were only found by enumerating the
+  grammar element by element and deleting each in turn. `tests_scripts/test_buildgen_tag_comments.py` and
+  `tests_scripts/test_buildgen_requires_tag.py` are the concrete reference implementation of this
+  bar - motivated by the same failure pattern (not the same mechanism) as a real incident earlier in
+  this session: an actual driver signature change silently broke two `tests_hardware/device_scripts/`
+  call sites for a full day, undetected only because nothing in that scope was ever checked at all.
+  A malformed comment-tag silently parsing to "no tag declared" is the same class of risk one layer
+  down - present-but-wrong content that nothing verifies.
 - **Never produce a corrupted or partial build.** On any detected error, abort the entire build
   immediately — no partial `build/<device>/` output left behind that could be mistaken for a real
   artifact.

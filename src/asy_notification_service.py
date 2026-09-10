@@ -10,6 +10,7 @@ from collections import namedtuple
 
 from micropython import const
 
+from asy_fram_manager import AsyFramManager
 from base_classes import LockedCounter, SensorReaderConfig
 from config_manager import make_dict, name_cfg, schema_names
 
@@ -22,7 +23,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
     from typing import Any, Protocol
 
-    from asy_fram_manager import AsyFramManager
     from config_manager import ConfigSchema
 
     class _ValueSource(Protocol):
@@ -33,6 +33,26 @@ if TYPE_CHECKING:
 
 _MAX_OVERRIDE_TIME = const(3600)
 _NAME = const("NOTIFY")
+
+# This driver's live cross-instance dependencies (SPECIFICATION.md Part C.14): the LED it signals
+# through (required - resolved by buildgen/, Session 3 of BUILD_CHAIN_PLAN.md - "attr" mode: the
+# resolved NeopixelDriver instance's own request_signal bound method is passed as
+# request_signal_cb, not the instance itself, per BUILD_CHAIN_PLAN.md's "no getters, no callback
+# functions in generated code" - the callback-shaped constructor parameter itself stays as-is, only
+# how the generator supplies it changes), plus the optional FRAM backup target.
+# @wiring signal_sink NeopixelDriver request_signal required attr
+# @wiring fram_target AsyFramManager fram optional kwarg
+
+
+class _DefaultSignalSink:
+    """§2's wiring-defaults mechanism (BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md), opted into via
+    [instance.wiring].signal_sink = {default = true} - a no-op LED sink for a notification setup
+    that shouldn't blink any LED. request_signal's own signature/return-value contract matches
+    NeopixelDriver.request_signal exactly, since codegen's existing attr-mode rendering
+    (f"{var}.{wf.target}") needs no mode-specific special-casing for a defaulted attr-mode field."""
+
+    async def request_signal(self, r: int, g: int, b: int, t: float) -> bool:
+        return False
 
 # Own schema, "Led" prefix dropped (matches asy_wifi_service.py/asy_sgp40_driver.py's own field
 # naming convention - see CLAUDE.md's "Current architecture" note on this deliberate wire-format

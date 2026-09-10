@@ -58,7 +58,7 @@ async def _main() -> None:
         await asyncio.sleep(0)
         machine.reset()  # never returns - real RP2040 hardware reset, immediate
 
-    await asyncio.wait_for(asyncio.gather(reset_yanker(), victim_writer()), 30.0)  # type: ignore[arg-type]
+    await asyncio.wait_for(asyncio.gather(reset_yanker(), victim_writer()), 30.0)
     # Unreachable in the successful case (machine.reset() halts the runtime first). If this DOES
     # print, the race missed its window - the phase-2 verify script's guard-region check catches that.
     print("RESULT: FAIL reset_yanker() never actually fired before victim_writer() completed - race did not land, nothing was tested")

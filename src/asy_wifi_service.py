@@ -58,6 +58,14 @@ _NAME = const("WIFI")
 WIFI = namedtuple("WIFI", ("Mode", "Connected", "IP", "TS"))
 _FIELDS = const(("Mode", "Connected", "IP", "TS"))  # kept in sync with WIFI's own fields above
 
+# This service's one optional live cross-instance dependency (SPECIFICATION.md Part C.14): the
+# status LED it drives, resolved by buildgen/ (Session 3 of BUILD_CHAIN_PLAN.md, from
+# [device.wiring].led_target - AsyConnTime is mandatory infra, never an [[instance]] entry itself)
+# to an already-constructed NeopixelDriver instance. "setter" mode: set_ext_led() is a
+# post-construction call (see set_ext_led() below), not a constructor kwarg - the generator emits
+# `conn.set_ext_led(<resolved instance>)` once, after both already exist.
+# @wiring led_target NeopixelDriver set_ext_led optional setter
+
 _STA_DISCONNECT_WAIT_ITERS = const(20)  # 20 * 0.5s = 10s max wait for isconnected() to clear -
 # bounds _disconnect_sta_and_wait()'s loop; a real disconnect() completes far faster than this.
 

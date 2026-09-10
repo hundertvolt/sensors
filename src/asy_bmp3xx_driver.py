@@ -16,6 +16,7 @@ from machine import Timer
 from micropython import const
 
 import math_helpers
+from asy_fram_manager import AsyFramManager
 from asy_i2c_driver import I2C, I2CDevice
 from base_classes import Lockable, LockedValue, SensorReaderConfig
 from config_manager import make_dict, name_cfg
@@ -29,7 +30,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from typing import Any
 
-    from asy_fram_manager import AsyFramManager
 
 
 _BMP388_CHIP_ID = const(0x50)  # also reported by BMP384 (datasheet sec 4.3.1); BMP390 differs
@@ -79,6 +79,18 @@ _NAME = const("BMP3XX")
 # infer field names from a literal at the call site, not through a variable indirection.
 BMP3XX = namedtuple("BMP3XX", ("Pres", "Temp", "SLPres", "TS"))
 _FIELDS = const(("Pres", "Temp", "SLPres", "TS"))  # kept in sync with BMP3XX's own fields above
+
+# This driver's one optional live cross-instance dependency (SPECIFICATION.md Part C.14): its own
+# FRAM backup target, resolved by buildgen/ (Session 3 of BUILD_CHAIN_PLAN.md) to an
+# already-constructed instance, passed directly as this driver's own fram= kwarg.
+# @wiring fram_target AsyFramManager fram optional kwarg
+
+# Driver-declared value domains (BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md §5.2), read by
+# buildgen/limits.py from these tags - the bounds are kept in sync with _MIN_TRIGGER_SECS/
+# _MAX_TRIGGER_SECS above by hand, since a comment can't reference a name.
+# BMP388/390's SDO pin selects the address: exactly 0x76 (pulled low) or 0x77 (pulled high).
+# @limits address in {0x76, 0x77}
+# @limits trigger_sec 1..3600
 if TYPE_CHECKING:
     BMPResults = tuple[float | None, float | None, int | None]  # pressure, temperature, timestamp
 
