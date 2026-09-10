@@ -532,3 +532,151 @@ config variant" should mean:
 - Resolve the §5.1 #3/#5 open item (an explicit test for a bogus `[instance.wiring]` key with no
   `_WIRING` match and no `warn_` prefix) and the §5.3 case-sensitivity/self-reference open
   questions before considering this section closed.
+
+## 6. Human-factors scenario: a new user hand-authoring a TOML for a new sensor
+
+The project owner's prompt: think through what someone actually *does* wrong when hand-writing a
+new device TOML with a mix of new and duplicate hardware — copy-paste, typos, single-character
+slips, case, misread datasheets — and find what's **not yet in §4/§5**. Verified directly against
+`buildgen/` source (not guessed) rather than just imagined; several items below sharpen or correct
+earlier sections' framing based on what this pass actually found in the code.
+
+### 6.1 A hard boundary: physical/semantic mismatches buildgen can never see
+
+The single biggest class of realistic new-user error, and one no amount of TOML validation can
+ever catch, because `buildgen` only ever sees the text file, never the physical board:
+
+- **Copy-paste a whole `[[instance]]` block for a genuinely new sensor, update the bus/pins/
+  name_ext correctly, but forget to change `driver = "scd30"`** to the new driver name. If the
+  copied block's pins/bus genuinely don't collide with the original (easy, if it's meant for a
+  different bus anyway), **nothing in §4 or §5 catches this** — `_check_address_collisions()`'s
+  fixed-address-driver check is scoped to `(bus, driver)` pairs, so two same-driver instances on
+  *different* buses are indistinguishable from a legitimate axis-9 multi-instance device. The build
+  succeeds; the generated firmware just doesn't match the physical board (it thinks there are two
+  SCD30s and zero of the new chip).
+- **The same mistake one level down, specific to "some identical hardware"**: with two real SCD30
+  instances (`name_ext = "a"`/`"b"`) already present, copy-pasting a *wiring* block (e.g. sgp40's
+  `temperature_source`) and forgetting to update which one it points at. `_check_wiring_reference()`
+  only checks the reference *resolves* and is the *right class* (§5.3 already notes this for the
+  wrong-driver-entirely case) — when there are multiple valid instances of the *correct* class, it
+  structurally cannot know which one is the "right" one; that's a build-time-unknowable fact about
+  the real board. Worth keeping distinct from the point above: that one is "wrong driver entirely,"
+  this one is "right driver, wrong specific instance among duplicates" — the sharper, more
+  interesting failure mode once real duplicate hardware is involved.
+- **A misread datasheet address that's still a *legal* value.** BMP388/390's SDO-pin address
+  selection is exactly two values, 0x76 (low) or 0x77 (high) — `address = 0x76` in the TOML while
+  the board's SDO pin is actually wired high is a real, plausible datasheet-reading mistake that
+  produces a perfectly well-typed, perfectly *legal* (once §5.2's proposed enumerated-choices check
+  exists) address value that's simply wrong for the real board. No TOML-only check can ever catch
+  this - it needs a real-hardware oracle. **This project already has exactly that oracle for
+  BMP3XX**, confirmed by reading `asy_bmp3xx_driver.py`: `setup()` reads the chip's real `CHIPID`
+  register and requires it match `_BMP388_CHIP_ID`/`_BMP390_CHIP_ID` (0x50/0x60,
+  datasheet-documented), raising `RuntimeError` on mismatch — a wrong-address BMP3XX would either
+  NAK entirely (if nothing answers at that address) or, worse, silently talk to a *different* real
+  chip that happens to share the bus and answer at that address, but the chip-ID check catches
+  the "answered, but it's not really a BMP3XX" case either way. **Asymmetry worth noting, not
+  claiming it's wrong**: `asy_scd30_driver.py`/`asy_sgp40_driver.py`'s own `setup()` methods have no
+  equivalent chip-ID verification (no `CHIP_ID`/`WHO_AM_I`-style constant found in either file) —
+  whether that's because their datasheets don't expose a comparable ID register, or simply hasn't
+  been added, isn't something this design-only pass resolved; flagged as an observation for the
+  project owner, not a confirmed gap.
+- **Physical-header-pin-number vs. GPIO-number confusion** — grounds *why* the already-flagged
+  §4.3 axis 10 / §5.1 #7 "pin that doesn't fit its bus" gap is so easy to hit by accident, not a new
+  gap itself. The Pico W datasheet documents two entirely different numbering schemes for the same
+  physical pins: Figure 2 (GPIO function pinout, "GP12"/"GP13"/etc.) and Figure 4 (bare physical pin
+  position, 1-40, silkscreen-printed on the board) — e.g. physical pin 6 *is* GP4, not GP6. A new
+  user reading the physical board's silkscreen while filling in `scl_pin`/`sda_pin` can easily write
+  the physical pin number where a GPIO number belongs, producing a value that's still a
+  perfectly-plausible-looking small int, possibly even a *legally I2C-capable* GPIO by coincidence,
+  just not the one physically wired. This is the concrete, realistic root cause the abstract
+  "pin doesn't fit its bus" gap needs a test fixture for, not a distinct mechanism.
+
+### 6.2 Confirmed already covered (verified this pass) — including one correction to §5.2
+
+- **`# @requires bus.<field><op><value>` already solves the "copied a bus table but the new
+  sensor needs a stricter bus setting" scenario** — checked `buildgen/requires_tag.py` and
+  `src/asy_scd30_driver.py` directly: SCD30's own module carries `# @requires
+  bus.timeout>=200000` (its datasheet's clock-stretch headroom), enforced by
+  `check_requires_tags()` against whichever bus table the instance actually references. So: copy an
+  existing `[bus.i2c1]` (say, bmp3xx's, no `timeout` override) to host a *new* SCD30 instance and
+  forget to add the timeout override — **this already fails loud**, correctly. This narrows §5.2's
+  scope: the proposed min/max mechanism there is about a field's own *absolute* legal range
+  (frequency, trigger_sec, an address value), while `@requires` already covers the *conditional,
+  cross-object* case ("this bus needs field X to satisfy some comparison, but only because this
+  particular driver is attached to it") — two different, already-partly-solved problems, not one
+  gap. §5.2 should be read as extending the *unconditional* field-range side only.
+- **Whitespace/invisible-character typos** (a trailing space in `driver = "scd30 "` or
+  `comp_source = "scd30 "`) fail today, but via the *existing* "unknown driver"/"does not resolve to
+  any declared instance" errors — not a distinct mechanism, just confirming the funnel catches this
+  common real-world typo too.
+- **Wrong TOML nesting** (`[instance]` instead of `[[instance]]`, or `[[bus.i2c0]]` instead of
+  `[bus.i2c0]`) already fails — traced both through the actual parse path: `[instance]` makes
+  `doc["instance"]` a dict, so `enumerate(doc.get("instance", []))` degrades to iterating dict keys
+  as bare strings, which fails `isinstance(inst, dict)` and raises; `[[bus.i2c0]]` makes
+  `doc["bus"]["i2c0"]` a list, and `_check_bus_tables()` already has an explicit `isinstance(...,
+  dict)` guard for exactly this. **Message-quality note, not a coverage gap**: the `[instance]`
+  case reports "entry #0 is missing a 'driver' field," which is technically true but doesn't point
+  at the real mistake (wrong table syntax) — a new user would likely be confused rather than helped
+  by this specific message. Worth keeping in mind if error messages are ever revisited, not
+  something to fix as part of this design-only phase.
+- **An illegal generated-code identifier** (`name_ext` or a bus id containing a character that
+  can't be part of a Python identifier, e.g. a hyphen from copy-pasting a device name verbatim) —
+  already fails, via `codegen.py`'s `_identifier()` (`name.isidentifier()`/`keyword.iskeyword()`).
+  **Minor consistency note**: this is the one `BuildError` site in the whole reviewed codebase that
+  doesn't pass `instance=`/`field=` (unlike essentially every `validate.py` check), and it fires at
+  codegen time rather than validate time — cosmetic, not a functional gap, but worth a look if
+  `BuildError` call-site consistency is ever audited.
+
+### 6.3 A genuinely new gap: onboarding a brand-new driver isn't a single-source-of-truth operation
+
+The scenario the project owner's framing points straight at — "a new sensor" — surfaces something
+none of §4/§5 considered: adding a new sensor **driver module** to `src/` (not just a new TOML
+instance of an existing driver) requires updating **two independently-maintained sources of truth**,
+confirmed by reading both:
+
+- `buildgen/driver_registry.py`'s `resolve_driver()` is fully automatic — it AST-discovers a new
+  `asy_<name>_driver.py`'s `SensorReader`/`SensorReaderConfig` subclass with zero hand-maintenance,
+  by design (its own docstring: "one small, explicit fact... nothing else").
+- `buildgen/buildspec.py`'s `REQUIRED_TOML_FIELDS`/`OPTIONAL_TOML_FIELDS`/`ALLOWED_INSTANCE_FIELDS`/
+  `ADDRESS_CAPABLE_DRIVERS`/`FIXED_ADDRESS_DRIVERS` are **not** — its own docstring already admits
+  this is "the one piece of hand-maintained per-driver knowledge" — a new driver needs a new entry
+  added by hand, or its instances are validated against an *empty* schema.
+
+Traced the actual failure mode for a forgotten `buildspec.py` entry directly in
+`_check_required_fields()`: `REQUIRED_TOML_FIELDS.get(spec.driver, ())` and
+`ALLOWED_INSTANCE_FIELDS.get(spec.driver, frozenset())` both use `.get()` with an empty default, so
+there's no raw crash — but an unregistered driver's *every* TOML field (including a perfectly
+legitimate `bus = "i2c0"`) gets flagged by the unknown-field catch-all, since the allowed set is
+empty. **The build does fail loud, but with a misleading message** ("declares unrecognized
+field(s) ['bus', ...] for driver 'newchip'") that looks like a TOML typo rather than what it
+actually is (buildgen doesn't know this driver's schema at all). One real edge case where it
+wouldn't even fail: a hypothetical new driver needing *zero* extra TOML fields beyond `driver`/
+`name_ext` would pass silently unregistered — low-realism for a bus-attached sensor (which always
+needs at least `bus`), but structurally possible. Not proposing a fix here (that's implementation,
+not this design phase) — just flagging that the human-factors scenario "onboarding a new sensor"
+has a real rough edge at the buildspec.py hand-maintenance boundary, worth a dedicated must-fail
+test (`driver` valid per `driver_registry` but absent from every `buildspec.py` dict) once tests are
+written.
+
+### 6.4 Subtlest version of the already-flagged pin-legality gap: role-swapped pins
+
+One more sharpening of §4.3 axis 10 / §5.1 #7, found while thinking through exactly how a new user
+would fat-finger a bus table: the Pico W's fixed GPIO table (§4.3 axis 10) assigns not just *which*
+peripheral index a pin belongs to, but a fixed *role* within it (GP12 is I2C0 **SDA**, GP13 is I2C0
+**SCL** — not interchangeable). A new user transposing the two field *values* while leaving both
+pins individually legal for the intended bus — `scl_pin = 12, sda_pin = 13` instead of the correct
+`scl_pin = 13, sda_pin = 12` — produces a bus table where every pin is still a real, legal pin for
+that I2C index, just wired to the wrong role. Any future fix for the pin-legality gap needs to check
+*role*, not just *peripheral-index membership*, or this specific (very easy) mistake would still
+slip through. Same applies to SPI's `sck_pin`/`mosi_pin`/`miso_pin` triple.
+
+### 6.5 Still to do (human-factors scenario)
+
+- No new mechanism proposed in this section beyond what §5.2 already sketches (extended, per §6.2,
+  to cover unconditional field-range/enumerated-choice checks; conditional cross-object checks
+  already exist via `@requires`).
+- §6.3's buildspec.py dual-source-of-truth gap needs its own must-fail test once implementation
+  starts: a driver resolvable by `driver_registry` but absent from `buildspec.py`'s dicts.
+  §6.4's role-swap case needs its own fixture distinct from a plain "illegal pin" fixture, once the
+  underlying pin-legality check exists.
+- Keep collecting scenarios with the project owner before finalizing which become real test files.
