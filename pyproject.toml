@@ -378,6 +378,15 @@ max-returns = 12
 "src/asy_webserver_service.py" = ["SLF001", "S101", "ANN401"]  # ANN401: the asyncio.start_server() seam described above
 "src/sensortask_wozi.py" = ["S101"]
 "src/sensortask_dev.py" = ["S101"]
+# toolchain/setup_toolchain.py IS a subprocess driver: its whole job is shelling out to git, apt,
+# make and nmcli to build the firmware toolchain, so S603 fires on the single subprocess.run() every
+# one of those calls funnels through. The rule has no satisfiable form here - the argument list is a
+# runtime-built list by definition, and the alternative it steers toward (shell=True) is strictly
+# worse. What the rule guards against is already handled structurally: run() takes an argv LIST and
+# never a shell string, so nothing is word-split or glob-expanded, and every command is assembled
+# from repo-controlled constants plus versions.toml/CLI arguments supplied by the person running the
+# installer - who could equally just run those commands themselves.
+"toolchain/setup_toolchain.py" = ["S603"]
 
 [tool.mypy]
 # 'linux' + follow_imports=silent + mypy_path/custom_typeshed_dir=typings are the
