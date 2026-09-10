@@ -75,6 +75,9 @@ _FIELDS = const(("CO2", "Temp", "Hum", "WetBulb", "DewPoint", "TS"))  # kept in 
 # checked build requirement (BUILD_CHAIN_PLAN.md's "Build/generator script quality bar") instead of
 # only a comment a device TOML author has to remember by hand.
 # @requires bus.timeout>=200000
+# Datasheet hard maximum, same source (Interface Description p.2): "Maximal I2C speed is
+# 100 kHz" - Sensirion recommends 50 kHz or less, which every device TOML uses today.
+# @requires bus.frequency<=100000
 _WIRING: "WiringSchema" = (("fram_target", AsyFramManager, "fram", False, "kwarg"),)
 
 if TYPE_CHECKING:

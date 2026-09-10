@@ -75,6 +75,11 @@ _FIELDS = const(("VOC", "Raw", "TS"))  # kept in sync with SGP40's own fields ab
 # (required=True, fixed to SCD30_Reader) - BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md §2.9
 # generalized it into two independent per-value fields below (_VALUE_WIRING), each freely wireable
 # from *any* instance exposing a matching attribute name, not fixed to one producer class.
+# datasheets/sgp40/Sensirion_Gas_Sensors_Datasheet_SGP40.pdf Table 3: fSCL max 400 kHz
+# ("standard-mode" 100 kHz / "fast-mode" 400 kHz). A generator-checked build requirement
+# rather than a comment each device TOML author has to remember - a bus this driver shares
+# with an SCD30 is held to that sensor's own stricter 100 kHz tag on top of this one.
+# @requires bus.frequency<=400000
 _WIRING: "WiringSchema" = (("fram_target", AsyFramManager, "fram_storage", False, "kwarg"),)
 
 # Per-value measurement wiring (§2.9): (toml_field, source_kwarg, field_kwarg, required) - each

@@ -864,6 +864,44 @@ def test_requires_tag_near_miss_in_a_driver_aborts_the_whole_build(tmp_path: Pat
         _build(tmp_path, staged, base_doc())
 
 
+def test_requires_tag_scd30_max_i2c_frequency_violated(tmp_path: Path, src_dir: Path) -> None:
+    # asy_scd30_driver.py's "@requires bus.frequency<=100000" (Interface Description p.2's hard
+    # datasheet maximum). Before that tag existed, an over-clocked SCD30 bus built cleanly and only
+    # misbehaved on real hardware.
+    doc = base_doc()
+    doc["bus"]["i2c0"]["frequency"] = 400000
+    with pytest.raises(BuildError, match="does not satisfy"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_requires_tag_stricter_sensor_wins_on_a_shared_bus(tmp_path: Path, src_dir: Path) -> None:
+    # scd30 and sgp40 share i2c0 in base_doc(). 200 kHz is legal for the sgp40 (400 kHz max) and
+    # illegal for the scd30 (100 kHz) - the bus must be held to the stricter of the two, which is
+    # the whole point of these being per-driver tags evaluated against the bus each one references.
+    doc = base_doc()
+    doc["bus"]["i2c0"]["frequency"] = 200000
+    with pytest.raises(BuildError, match="scd30"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_requires_tag_sgp40_max_i2c_frequency_violated(tmp_path: Path, src_dir: Path) -> None:
+    # The sgp40's own 400 kHz ceiling (datasheet Table 3), on a bus with no scd30 to mask it.
+    doc = base_doc()
+    doc["bus"]["i2c1"] = {"scl_pin": 27, "sda_pin": 26, "frequency": 1000000}
+    doc["instance"][1]["bus"] = "i2c1"
+    with pytest.raises(BuildError, match="sgp40"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_requires_tag_sgp40_within_its_own_ceiling_on_a_separate_bus_builds(tmp_path: Path, src_dir: Path) -> None:
+    # The control: 400 kHz is fine for an sgp40 alone - so the rejection above is the tag firing,
+    # not the split-bus topology itself being invalid.
+    doc = base_doc()
+    doc["bus"]["i2c1"] = {"scl_pin": 27, "sda_pin": 26, "frequency": 400000}
+    doc["instance"][1]["bus"] = "i2c1"
+    _build(tmp_path, src_dir, doc)  # no raise
+
+
 def test_requires_tag_removed_entirely_still_builds(tmp_path: Path, src_dir: Path) -> None:
     # The control for the three cases above: with the tag genuinely absent (not typo'd), the same
     # build succeeds - so those aborts are the near-miss detector firing, not the staged copy.

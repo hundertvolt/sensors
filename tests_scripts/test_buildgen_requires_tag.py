@@ -180,9 +180,25 @@ def test_parse_requires_tags_field_name_shapes(tmp_path: Path, field: str) -> No
     assert tag.field == field
 
 
-def test_parse_requires_tags_scd30_clock_stretch(src_dir: Path) -> None:
-    tags = parse_requires_tags(src_dir / "asy_scd30_driver.py", "dev", "scd30")
-    assert RequiresTag("timeout", ">=", 200000, "# @requires bus.timeout>=200000") in tags
+@pytest.mark.parametrize(
+    "driver,instance,expected",
+    [
+        # Every real tag any src/ driver declares today, each traced to its own datasheet citation
+        # in the driver file itself. A driver gaining or losing one is a deliberate change that has
+        # to show up here too.
+        ("asy_scd30_driver.py", "scd30", (RequiresTag("timeout", ">=", 200000, "# @requires bus.timeout>=200000"), RequiresTag("frequency", "<=", 100000, "# @requires bus.frequency<=100000"))),
+        ("asy_sgp40_driver.py", "sgp40", (RequiresTag("frequency", "<=", 400000, "# @requires bus.frequency<=400000"),)),
+    ],
+)
+def test_parse_requires_tags_real_drivers(src_dir: Path, driver: str, instance: str, expected: "tuple[RequiresTag, ...]") -> None:
+    assert parse_requires_tags(src_dir / driver, "dev", instance) == expected
+
+
+def test_no_other_src_driver_declares_an_unnoticed_tag(src_dir: Path) -> None:
+    # The near-miss detector only fires on comments that *look* like tags; this is the other half -
+    # a tag added to some other driver without a test here would otherwise go unrecorded.
+    tagged = {p.name for p in sorted(src_dir.glob("*.py")) if parse_requires_tags(p, "dev", "x")}
+    assert tagged == {"asy_scd30_driver.py", "asy_sgp40_driver.py"}
 
 
 # ---------------------------------------------------------------------------
