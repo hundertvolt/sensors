@@ -679,4 +679,177 @@ slip through. Same applies to SPI's `sck_pin`/`mosi_pin`/`miso_pin` triple.
   starts: a driver resolvable by `driver_registry` but absent from `buildspec.py`'s dicts.
   §6.4's role-swap case needs its own fixture distinct from a plain "illegal pin" fixture, once the
   underlying pin-legality check exists.
+- **Confirmed by the project owner (2026-09-10): §6.4's pin-role check is scoped work, to be added**
+  — not just a flagged observation anymore. **Also confirmed: this project targets the Pico W
+  alone** — no second board's GPIO-to-peripheral table to support, so the eventual pin-legality/role
+  mechanism (§4.3 axis 10, §5.1 #7, §6.4) can hardcode the one fixed table already transcribed from
+  the datasheet in §4.3, rather than being designed as board-parameterized from the start.
 - Keep collecting scenarios with the project owner before finalizing which become real test files.
+
+## 7. Cross-checking §4/§5 against the actual test suite (`tests_scripts/test_buildgen_*.py`)
+
+The project owner's prompt: given everything already designed in §4 (valid state space) and §5
+(must-fail matrix), read the **actual, already-existing** `buildgen/` implementation and its real
+test suite (`tests_scripts/test_buildgen_validate.py`/`test_buildgen_wiring.py`/
+`test_buildgen_graph.py`/`test_buildgen_generate.py`/`test_buildgen_driver_registry.py`/
+`test_buildgen_requires_tag.py`, plus `_toml_fixtures.py`'s `base_doc()` and the mandatory
+`novel_combo.toml` fixture) and find (a) logically-valid combinations from §4 that nothing in that
+suite currently exercises, and (b) invalid inputs that could still slip through un-caught, or are
+probably caught but have no test locking that behavior in. This is a code+test audit, not new
+design — every item below was verified by reading the actual test file and the actual
+`buildgen/validate.py`/`buildgen/codegen.py`/`buildgen/model.py` source this pass, not inferred from
+§4/§5's own prose.
+
+### 7.1 Valid cases with no test today
+
+1. **FRAM entirely absent (axis 2 "without").** Every real `devices/*.toml`, `base_doc()`, and
+   `novel_combo.toml` always includes a `fram` instance. No test builds a doc with the `fram`
+   instance *and* its `spi0` bus table both removed (removing only the instance would leave `spi0`
+   "declared but never referenced" and fail for an unrelated reason) and confirms a clean build with
+   every `fram_target` field consequently just absent. This is a logically simpler case than §4.4's
+   already-flagged "no buses at all" gap — FRAM-absent-but-sensors-present is buildable *today*,
+   just never exercised.
+2. **Single shared I2C bus with no SPI bus at all** — only reachable once FRAM is absent (`spi0`'s
+   sole real consumer per `asy_spi_driver.py`'s own docstring), so this is the same gap as #1 viewed
+   from the bus-topology axis (§4.3 axis 10) rather than the sensor-population axis.
+3. **Notification present with zero `warn_*` signals wired** (axis 5 "none"). `base_doc()`/
+   `dev.toml`/`novel_combo.toml` always wire at least `warn_co2`. `warn_co2`/`warn_voc`/`warn_hum`
+   are each individually optional (`_check_instance_wiring`'s `warn_` handling never requires any of
+   them) — a notification instance with `signal_sink` wired but *no* `warn_*` keys at all should
+   build clean, but nothing tests it.
+4. **Device-level `fram_target` left unwired while FRAM *is* present** (axis 8 "not-wired"). Every
+   real device and fixture wires it. No test removes just `[device.wiring].fram_target` while
+   keeping the `fram` instance itself (distinct from `test_device_wiring_optional_field_absent_is_fine`,
+   which removes `led_target`, not `fram_target`).
+5. **Device-level `led_target` left unwired while neopixel *is* present, checked all the way through
+   codegen.** `test_device_wiring_optional_field_absent_is_fine` (`test_buildgen_validate.py`)
+   already confirms `validate.py` accepts this — but no `test_buildgen_generate.py` test confirms
+   the *generated module* comes out right: that `conn.set_ext_led(...)` is correctly omitted and the
+   module still `ast.parse()`s. The validate-level positive case has a test; the codegen-level
+   consequence of that same case doesn't.
+6. **Two `bmp3xx` instances on the *same* bus at the two different legal explicit addresses (0x76
+   and 0x77).** `test_per_bus_explicit_address_collision` covers the same-address-same-bus failure;
+   `test_per_bus_address_reuse_on_different_bus_is_legitimate` covers same-address-different-bus. The
+   actually-common real case — two BMP3xx sharing one bus, legitimately told apart by address, which
+   is the entire *reason* `ADDRESS_CAPABLE_DRIVERS` exists — has no positive test at all.
+7. **A pin collision between two *bus* tables** (e.g. `bus.i2c0.scl_pin` == `bus.i2c1.sda_pin`, no
+   instance involved). Confirmed by reading `_check_gpio_collisions()` (`validate.py:184-204`): it
+   claims every bus-table wire pin and every instance's `cs_pin`/`irq_pin`/`pin` into one shared
+   `claims` dict in a single pass, so a bus-vs-bus collision almost certainly already raises the same
+   "claimed twice" error — but only bus-vs-instance
+   (`test_global_gpio_pin_collision_bus_vs_instance`) and instance-vs-instance
+   (`test_global_gpio_pin_collision_two_instances`) are actually tested. A bus-vs-bus case is the one
+   pairing among the three the suite doesn't touch.
+8. **SPI bus's own required wire pins, missing individually.** `test_bus_missing_required_wire_pin`
+   only deletes `i2c0`'s `scl_pin`. `_BUS_WIRE_FIELDS["spi"] = ("sck_pin", "mosi_pin", "miso_pin")`
+   goes through the identical loop, so all three are presumably enforced the same way — but none of
+   the three has its own test (this is exactly the kind of case `@pytest.mark.parametrize` already
+   handles for the device-level required fields; the bus-level equivalent isn't parametrized across
+   both bus kinds).
+9. **`[device].name`'s own type/non-emptiness check**, exercised only implicitly. Every fixture
+   supplies a valid non-empty string `name`, and `test_hostname_mismatch` only exercises the
+   *hostname*-derivation check (which itself depends on `name` already being valid). No test sets
+   `name` to a non-string or an empty string directly, even though `_check_device_table()`
+   (`validate.py:76-77`) has a dedicated check for exactly that.
+
+### 7.2 Invalid cases that could still slip through
+
+**(A) Confirmed code gaps — would build clean today, and shouldn't:**
+
+- `[device].hotspot_password` has **no type/shape check at all**, confirmed by reading
+  `_check_device_table()` line by line: only `name`/`hostname`/the two int fields get a value check;
+  `hotspot_password` only gets the bare presence check every `_REQUIRED_DEVICE_FIELDS` member gets.
+  `hotspot_password = 5` or `hotspot_password = ""` both build clean today.
+- **No numeric field anywhere has a range check, only a type check** — confirmed directly for every
+  one of: `[device].hotspot_time_min`/`conn_fail_to_hotspot` (`_REQUIRED_DEVICE_INT_FIELDS` loop,
+  `isinstance` only), `[bus.*].frequency`/`.timeout` (`isinstance` only, no upper bound — a
+  frequency far beyond the RP2040 I2C peripheral's real capability, or `0`, or negative, all pass),
+  `[[instance]].max_size`/`.trigger_sec`/`.address` (same pattern in `_check_required_fields`,
+  covered by existing type-only tests like `test_instance_int_field_wrong_type_rejected` but not by
+  any range test). This is §5.1 #6's already-flagged gap, restated with concrete field names and
+  concrete plausible fat-finger values (a dropped digit, a leftover minus sign from a template) — the
+  kind of thing a new user genuinely does, not just a theoretical corner.
+- **`bmp3xx` `address` outside its real legal set `{0x76, 0x77}`** (e.g. `0x50`, `0`, or `0x78`) —
+  type-checked (`test_instance_address_field_wrong_type_rejected`) but never set-checked. Builds
+  clean today; on real hardware either NAKs outright or — worse — silently talks to a different chip
+  that happens to answer at that address (§6.1's chip-ID-readback note is the only real-hardware
+  backstop that exists for this today). This is §5.1 #11's "impossible address" gap, concretely
+  instantiated.
+- **A bus id with a recognized kind prefix but no real port behind it** — confirmed via `_bus_kind()`
+  (`validate.py:46-50`): it only checks `bus_name.startswith(kind)` for `kind in ("i2c", "spi")`, so
+  `"i2c2"` (RP2040 only has I2C0/I2C1), `"spi9"`, and even the bare, digit-less `"i2c"` itself (still
+  `startswith("i2c")`) all resolve to a recognized kind. `codegen.py`'s
+  `bus_id[len("i2c"):]`/`bus_id[len("spi"):]` then blindly emits whatever's left as the port number —
+  `""` for the bare-`"i2c"` case, which would only fail at real `machine.I2C()` construction time.
+- **A GPIO pin number outside the Pico W's real usable range** (negative, or ≥30, or one of the
+  wireless-reserved GP23-25/29) — only int-ness is checked anywhere a pin is claimed
+  (`_check_gpio_collisions()`'s own `claim()` helper). Same underlying gap §4.3 axis 10/§5.1 #7
+  already flag for "pin that doesn't fit its bus"; this is the simpler "pin doesn't exist at all"
+  sub-case of the same missing mechanism.
+- **Pin that's real-hardware-illegal for its bus's peripheral index, or role-swapped within an
+  otherwise-legal pair** — already flagged (§4.3 axis 10, §5.1 #7, §6.4), restated here only to keep
+  this section's "what slips through" answer complete.
+
+**(B) Probably already caught, but zero test proves it — a regression here would go unnoticed:**
+
+- A **literal duplicate key in one TOML table** (`bus = "i2c0"` twice under one `[[instance]]`) —
+  §5.1 #1 already asserts `tomllib`'s own `TOMLDecodeError` catches this, but no test in
+  `test_buildgen_validate.py` actually constructs such a file and checks it.
+- **`[instance.wiring]` bogus key** with no `_WIRING` match and no `warn_` prefix — §5.1 #5 already
+  flags this as unconfirmed by an explicit test; still true after this pass (the `wf is None` branch
+  in `_check_instance_wiring` at `validate.py:258-259` should catch it, but nothing exercises it
+  directly with a fabricated field name).
+- **Bool-for-int outside the one field already tested.** `test_device_bool_rejected_for_int_field`
+  only covers `[device].hotspot_time_min`. The identical `isinstance(x, int) and not isinstance(x,
+  bool)` pattern also guards `frequency`/`timeout` (bus level) and `address`/`max_size`/
+  `trigger_sec` (instance level), per §5.3's own note — but only the device-level field has a test
+  actually passing `true`/`false` through it.
+- **Float-for-int**, same story as bool-for-int: the pattern rejects it everywhere by construction
+  (a Python `float` is never an `int`), but no test passes e.g. `frequency = 100000.0` or `address =
+  119.0` through any field to confirm it.
+
+**(C) A genuinely new finding from this pass: two different "must be unique" identity spaces, only
+one of which is actually checked.**
+
+Confirmed by reading `validate.py`, `model.py`, and `codegen.py` together: an instance has **two
+separate name-like identities**, and only one has a dedicated collision check.
+
+- `spec.resolved_name` (from each driver's `_NAME` constant + `name_ext`, via `_instance_name()`) is
+  the REST/status-key identity — checked by `_check_instance_name_collisions()` (`validate.py:170`),
+  with its own test (`test_instance_name_collision_via_distinct_drivers_same_resolved_name`).
+- `instance_label(key)` (`model.py:26-28`, `f"{driver}_{name_ext}" if name_ext else driver`) is a
+  **different** identity — the actual Python global variable name `codegen.py` assigns each
+  instance's constructed object to (`ctx.instance_var()` → `_identifier(instance_label(key), ...)`).
+  `_identifier()` only checks the string is a *syntactically legal* Python identifier
+  (`str.isidentifier()`/not a keyword) — it never checks it's *unique* among the device's other
+  instances.
+
+With today's 6 real driver names (none contains an underscore that could line up with another
+driver+`name_ext` combination — e.g. nothing is named like `"scd30_a"`), the two identity spaces
+can't actually be made to collide, so this isn't a live bug today and isn't a "gap" in the same sense
+as (A) above. But it's structurally latent, not just theoretical: a future driver whose module name
+contains an underscore (ties back to §6.3's onboarding-a-new-driver rough edge — one more thing that
+class of change would need to get right) could produce two instances that validate cleanly
+(different `resolved_name`s, so `_check_instance_name_collisions()` passes) but silently share one
+generated Python variable — the second construction line would silently overwrite the first
+instance's global, and anything wired to the "shadowed" instance would receive the wrong live object
+at runtime, with no `BuildError` anywhere in the path. Worth a dedicated direct-internals test (same
+style as the existing `resolved_name`-collision test, since no real driver name can reach it via a
+TOML fixture) whenever this area is worked on, not urgent on its own.
+
+**One more currently-unreachable-but-real case, noted while checking (C):** §5.1 #12 ("duplicate CS
+pins on SPI") is, today, in the same boat — `_check_gpio_collisions()`'s shared `claims` dict would
+catch two `cs_pin`-bearing instances colliding, but `fram` is the *only* driver with a `cs_pin`
+field and it's a forced singleton, so the current driver catalog can never actually produce two
+`cs_pin` claims to collide. Like (C), this needs a direct-internals test against a synthetic model
+rather than a real TOML fixture if it's ever locked in, not a gap in the check itself.
+
+### 7.3 Still to do
+
+- Decide with the project owner which of §7.1's "valid but untested" cases become real fixtures vs.
+  targeted `validate.py`/`generate.py`-internals tests, matching the existing suite's own mix.
+- §7.2(C)'s identity-space finding should get a short mention added wherever §6.3's buildspec.py
+  onboarding gap eventually gets written up as an implementation task — the two are related (both
+  are "a new driver can silently violate an assumption the existing checks don't cover").
+- Keep collecting with the project owner before finalizing which of §7.1/§7.2 become real test
+  files.
