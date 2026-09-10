@@ -15,19 +15,19 @@ def src_dir(repo_root: Path) -> Path:
     return repo_root / "src"
 
 
-def test_parse_value_wiring_sgp40_temperature_and_humidity(src_dir: Path):
+def test_parse_value_wiring_sgp40_temperature_and_humidity(src_dir: Path) -> None:
     fields = parse_value_wiring(src_dir / "asy_sgp40_driver.py", "dev", "sgp40")
     assert ValueWiringField("temperature_source", "temperature_source", "temperature_field", True) in fields
     assert ValueWiringField("humidity_source", "humidity_source", "humidity_field", True) in fields
 
 
-def test_parse_value_wiring_no_value_wiring_declared_returns_empty(tmp_path: Path):
+def test_parse_value_wiring_no_value_wiring_declared_returns_empty(tmp_path: Path) -> None:
     path = tmp_path / "asy_plain_driver.py"
     path.write_text("class Plain_Reader:\n    pass\n")
     assert parse_value_wiring(path, "dev", "plain") == ()
 
 
-def test_parse_value_wiring_not_a_tuple(tmp_path: Path):
+def test_parse_value_wiring_not_a_tuple(tmp_path: Path) -> None:
     path = tmp_path / "asy_bad_driver.py"
     path.write_text('_VALUE_WIRING = "not a tuple"\n')
     with pytest.raises(BuildError, match="must be a literal tuple"):
@@ -44,14 +44,14 @@ def test_parse_value_wiring_not_a_tuple(tmp_path: Path):
         ('_VALUE_WIRING = (("x", "y", "z", "yes"),)', r"\[3\] \(required\) must be a bool literal"),
     ],
 )
-def test_parse_value_wiring_malformed_tuple_shapes(tmp_path: Path, body: str, match: str):
+def test_parse_value_wiring_malformed_tuple_shapes(tmp_path: Path, body: str, match: str) -> None:
     path = tmp_path / "asy_bad_driver.py"
     path.write_text(f"{body}\n")
     with pytest.raises(BuildError, match=match):
         parse_value_wiring(path, "dev", "bad")
 
 
-def test_parse_value_wiring_syntax_error(tmp_path: Path):
+def test_parse_value_wiring_syntax_error(tmp_path: Path) -> None:
     path = tmp_path / "asy_broken_driver.py"
     path.write_text("def f(:\n")
     with pytest.raises(BuildError, match="syntax error"):

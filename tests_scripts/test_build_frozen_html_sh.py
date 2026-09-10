@@ -4,6 +4,7 @@
 
 import os
 import subprocess
+from pathlib import Path
 
 # Assertion technique used throughout this file: freezefs (ext/freezefs/archive.py) writes each
 # archived file's mount path as a plain literal string in the generated .py, e.g.
@@ -13,7 +14,7 @@ import subprocess
 # worked.
 
 
-def _run_build_frozen_html(repo_root, output_path, html_src_dirs=None, check=True):
+def _run_build_frozen_html(repo_root: Path, output_path: Path, html_src_dirs: "str | None"=None, check: bool=True) -> "subprocess.CompletedProcess[str]":
     env = None
     if html_src_dirs is not None:
         env = {**os.environ, "HTML_SRC_DIRS": html_src_dirs}
@@ -27,7 +28,7 @@ def _run_build_frozen_html(repo_root, output_path, html_src_dirs=None, check=Tru
     )
 
 
-def test_default_html_stub_build_produces_the_expected_stub_files(repo_root, tmp_path):
+def test_default_html_stub_build_produces_the_expected_stub_files(repo_root: Path, tmp_path: Path) -> None:
     out_file = tmp_path / "frozen_html.py"
     _run_build_frozen_html(repo_root, out_file)
 
@@ -38,7 +39,7 @@ def test_default_html_stub_build_produces_the_expected_stub_files(repo_root, tmp
     assert '"/html"' in text or "'/html'" in text  # the mount target build_frozen_html.sh passes via --target
 
 
-def test_html_src_dirs_recursive_multi_dir_merge_preserves_nested_subdirectories(repo_root, tmp_path):
+def test_html_src_dirs_recursive_multi_dir_merge_preserves_nested_subdirectories(repo_root: Path, tmp_path: Path) -> None:
     # Two independent source dirs, each contributing its own subtree - mirrors how
     # scripts/build_website.sh stages html/{index.html,style.css,definitions.json} alongside a
     # nested js/ subdirectory, and how the old html_raw/general + html_raw/<device> split worked.
@@ -59,7 +60,7 @@ def test_html_src_dirs_recursive_multi_dir_merge_preserves_nested_subdirectories
         assert expected in text, expected
 
 
-def test_missing_source_dir_fails_instead_of_silently_producing_an_empty_archive(repo_root, tmp_path):
+def test_missing_source_dir_fails_instead_of_silently_producing_an_empty_archive(repo_root: Path, tmp_path: Path) -> None:
     result = _run_build_frozen_html(repo_root, tmp_path / "frozen_missing.py", html_src_dirs=str(tmp_path / "does-not-exist"), check=False)
     assert result.returncode != 0
     assert not (tmp_path / "frozen_missing.py").exists()

@@ -35,7 +35,7 @@ def fixtures_dir(repo_root: Path) -> Path:
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
-def test_real_device_generates_syntactically_valid_module(repo_root: Path, src_dir: Path, ext_dir: Path, device: str):
+def test_real_device_generates_syntactically_valid_module(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
     result = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir)
     tree = ast.parse(result.module_source, filename=f"sensortask_{device}.py")
     assert any(isinstance(n, ast.AsyncFunctionDef) and n.name == "build_system" for n in tree.body)
@@ -44,12 +44,12 @@ def test_real_device_generates_syntactically_valid_module(repo_root: Path, src_d
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
-def test_real_device_boot_entry_imports_the_right_module(repo_root: Path, src_dir: Path, ext_dir: Path, device: str):
+def test_real_device_boot_entry_imports_the_right_module(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
     result = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir)
     assert f"from sensortask_{device} import main" in result.boot_entry_source
 
 
-def test_novel_combo_fixture_generates_successfully(fixtures_dir: Path, src_dir: Path, ext_dir: Path):
+def test_novel_combo_fixture_generates_successfully(fixtures_dir: Path, src_dir: Path, ext_dir: Path) -> None:
     # The mandatory synthetic "novel combination" fixture (BUILD_CHAIN_PLAN.md's acceptance
     # criteria #2): existing drivers mixed in a layout none of the 6 real devices use (two SCD30s,
     # SGP40 independently compensated - temperature from the second SCD30, humidity from the first
@@ -68,7 +68,7 @@ def test_novel_combo_fixture_generates_successfully(fixtures_dir: Path, src_dir:
     assert "WarnHum" not in result.module_source
 
 
-def test_novel_combo_construction_order_is_topologically_valid(fixtures_dir: Path, src_dir: Path, ext_dir: Path):
+def test_novel_combo_construction_order_is_topologically_valid(fixtures_dir: Path, src_dir: Path, ext_dir: Path) -> None:
     result = generate_device(fixtures_dir / "novel_combo.toml", src_dir, ext_dir)
     order = result.model.construction_order
     assert order.index(("scd30", "secondary")) < order.index(("sgp40", ""))
@@ -76,7 +76,7 @@ def test_novel_combo_construction_order_is_topologically_valid(fixtures_dir: Pat
     assert order.index(("neopixel", "")) < order.index(("notification", ""))
 
 
-def test_multi_instance_fixture_generates_successfully(fixtures_dir: Path, src_dir: Path, ext_dir: Path):
+def test_multi_instance_fixture_generates_successfully(fixtures_dir: Path, src_dir: Path, ext_dir: Path) -> None:
     # Axis 9's own dedicated multi-instance fixture (§10.7 item 1): 2x scd30 + 2x sgp40 (on
     # different buses - sgp40 has no address-select pin), one sgp40 wired entirely to a real scd30,
     # the other mixing a cross-driver-type reference (bmp3xx's own Temp) with an explicit default -
@@ -103,7 +103,7 @@ def test_multi_instance_fixture_generates_successfully(fixtures_dir: Path, src_d
     assert "NotificationSignal('WarnVOC', sgp40_a, 'VOC'" in result.module_source
 
 
-def test_device_without_notification_or_neopixel_omits_their_wiring(tmp_path: Path, src_dir: Path, ext_dir: Path):
+def test_device_without_notification_or_neopixel_omits_their_wiring(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
     doc = base_doc()
     doc["instance"] = [i for i in doc["instance"] if i["driver"] not in ("neopixel", "notification")]
     del doc["device"]["wiring"]["led_target"]
@@ -114,7 +114,7 @@ def test_device_without_notification_or_neopixel_omits_their_wiring(tmp_path: Pa
     assert '"notification":' not in result.module_source.split("status_sources=")[1].split("\n")[0] if "status_sources=" in result.module_source else True
 
 
-def test_wiring_defaults_generate_inline_provider_construction(tmp_path: Path, src_dir: Path, ext_dir: Path):
+def test_wiring_defaults_generate_inline_provider_construction(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
     # §2.6's generated-code shape: the default provider is constructed inline, at the exact
     # call-site the real wiring expression would occupy, with no separate named global.
     doc = base_doc()
@@ -131,7 +131,7 @@ def test_wiring_defaults_generate_inline_provider_construction(tmp_path: Path, s
     assert "humidity_source=scd30, humidity_field='Hum'" in result.module_source
 
 
-def test_device_level_led_target_unwired_omits_set_ext_led(tmp_path: Path, src_dir: Path, ext_dir: Path):
+def test_device_level_led_target_unwired_omits_set_ext_led(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
     # §7.1 #5: test_device_wiring_optional_field_absent_is_fine (test_buildgen_validate.py) already
     # confirms validate.py accepts neopixel-present-but-led_target-unwired - but nothing confirmed
     # the generated module itself comes out right (conn.set_ext_led(...) correctly omitted).
@@ -142,7 +142,7 @@ def test_device_level_led_target_unwired_omits_set_ext_led(tmp_path: Path, src_d
     assert "conn.set_ext_led(" not in result.module_source
 
 
-def test_device_without_sgp40_omits_maintenance_sensors(tmp_path: Path, src_dir: Path, ext_dir: Path):
+def test_device_without_sgp40_omits_maintenance_sensors(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
     doc = base_doc()
     doc["instance"] = [i for i in doc["instance"] if i["driver"] != "sgp40"]
     del doc["instance"][0]["wiring"]  # scd30's own optional fram_target - unrelated to sgp40's removal
@@ -151,7 +151,7 @@ def test_device_without_sgp40_omits_maintenance_sensors(tmp_path: Path, src_dir:
     assert "maintenance_sensors=" not in result.module_source
 
 
-def test_build_error_reports_device_and_field(tmp_path: Path, src_dir: Path):
+def test_build_error_reports_device_and_field(tmp_path: Path, src_dir: Path) -> None:
     doc = base_doc()
     del doc["device"]["hotspot_time_min"]
     path = write_doc(tmp_path, "broken_device", doc)
@@ -161,7 +161,7 @@ def test_build_error_reports_device_and_field(tmp_path: Path, src_dir: Path):
     assert "hotspot_time_min" in str(exc_info.value)
 
 
-def test_cli_writes_module_and_boot_entry_to_out_dir(repo_root: Path, tmp_path: Path):
+def test_cli_writes_module_and_boot_entry_to_out_dir(repo_root: Path, tmp_path: Path) -> None:
     from buildgen.generate import main
 
     out_dir = tmp_path / "out"
@@ -172,7 +172,7 @@ def test_cli_writes_module_and_boot_entry_to_out_dir(repo_root: Path, tmp_path: 
     ast.parse((out_dir / "sensortask_wozi.py").read_text())
 
 
-def test_cli_prints_module_source_without_out_dir(repo_root: Path, capsys: pytest.CaptureFixture):
+def test_cli_prints_module_source_without_out_dir(repo_root: Path, capsys: pytest.CaptureFixture) -> None:
     from buildgen.generate import main
 
     exit_code = main([str(repo_root / "devices" / "wozi.toml")])
@@ -181,7 +181,7 @@ def test_cli_prints_module_source_without_out_dir(repo_root: Path, capsys: pytes
     assert "async def build_system(" in captured.out
 
 
-def test_cli_reports_build_error_on_stderr_and_exits_nonzero(tmp_path: Path, capsys: pytest.CaptureFixture):
+def test_cli_reports_build_error_on_stderr_and_exits_nonzero(tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
     from buildgen.generate import main
 
     doc = base_doc()
@@ -193,7 +193,7 @@ def test_cli_reports_build_error_on_stderr_and_exits_nonzero(tmp_path: Path, cap
     assert "hotspot_time_min" in captured.err
 
 
-def test_hostname_and_hotspot_password_are_not_yet_wired_into_generated_code(repo_root: Path, src_dir: Path, ext_dir: Path):
+def test_hostname_and_hotspot_password_are_not_yet_wired_into_generated_code(repo_root: Path, src_dir: Path, ext_dir: Path) -> None:
     # Documents a real, pre-existing gap found during this session's own review (see
     # buildgen/validate.py's _check_device_table() comment for the full account): [device].name/
     # hostname/hotspot_password are validated (presence, shape, the SensorStation<name> formula)

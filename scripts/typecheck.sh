@@ -103,18 +103,18 @@ if [ "$twin_status" -ne 0 ]; then
     echo "error: digital_twin/typecheck.ini's dedicated pass found real findings - this scope is expected to stay fully clean." >&2
 fi
 
-# buildgen/'s own type-check is a THIRD, separate mypy invocation, always run regardless of "$@" -
-# see buildgen/typecheck.ini's own docstring for why: buildgen/ is genuinely CPython-target host
-# tooling (real stdlib tomllib/ast, no machine/network/neopixel at all), so it needs mypy's real
-# bundled typeshed, not the MicroPython-stub-replaced one the main pass above uses. buildgen/ is
-# fresh code (BUILD_CHAIN_PLAN.md's Session 3), starting under the full quality bar immediately -
-# same "no tolerance for pre-existing debt" treatment as digital_twin/ above.
-buildgen_status=0
-mypy --config-file buildgen/typecheck.ini buildgen || buildgen_status=$?
-if [ "$buildgen_status" -ne 0 ]; then
-    echo "error: buildgen/typecheck.ini's dedicated pass found real findings - this scope is expected to stay fully clean." >&2
+# The host-side build chain (buildgen/, scripts/, toolchain/, tests_scripts/) gets a THIRD,
+# separate mypy invocation, always run regardless of "$@" - see scripts/hosttools_typecheck.ini's
+# own docstring for why: all of it is genuinely CPython-target host tooling (real stdlib
+# tomllib/ast/subprocess, no machine/network/neopixel at all), so it needs mypy's real bundled
+# typeshed, not the MicroPython-stub-replaced one the main pass above uses. Same "no tolerance for
+# pre-existing debt" treatment as digital_twin/ above.
+hosttools_status=0
+mypy --config-file scripts/hosttools_typecheck.ini buildgen scripts toolchain tests_scripts || hosttools_status=$?
+if [ "$hosttools_status" -ne 0 ]; then
+    echo "error: scripts/hosttools_typecheck.ini's dedicated pass found real findings - this scope is expected to stay fully clean." >&2
 fi
 
-if [ "$main_status" -ne 0 ] || [ "$twin_status" -ne 0 ] || [ "$buildgen_status" -ne 0 ]; then
+if [ "$main_status" -ne 0 ] || [ "$twin_status" -ne 0 ] || [ "$hosttools_status" -ne 0 ]; then
     exit 1
 fi

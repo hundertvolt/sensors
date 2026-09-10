@@ -28,8 +28,9 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import tomllib
 from pathlib import Path
+
+import tomllib
 
 # Confirmed GCC >=14 false positive in mbedtls_xor(), not a real bug (SPECIFICATION.md Part B.7);
 # suppressed outright since build_unix_port()/build_firmware() treat any "warning:" as a hard

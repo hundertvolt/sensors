@@ -63,7 +63,7 @@ def _parse_expecting(tmp_path: Path, source: str, match: str) -> None:
 
 @pytest.mark.parametrize("op", _OPS)
 @pytest.mark.parametrize("raw,expected,expected_type", _VALUES)
-def test_parse_requires_tags_operator_value_cross_product(tmp_path: Path, op: str, raw: str, expected: "int | float", expected_type: type):
+def test_parse_requires_tags_operator_value_cross_product(tmp_path: Path, op: str, raw: str, expected: "int | float", expected_type: type) -> None:
     (tag,) = _parse(tmp_path, f"# @requires bus.timeout{op}{raw}\n")
     assert (tag.field, tag.op, tag.value) == ("timeout", op, expected)
     assert type(tag.value) is expected_type  # int stays int - "0" must not silently become 0.0
@@ -88,7 +88,7 @@ def test_parse_requires_tags_operator_value_cross_product(tmp_path: Path, op: st
         "#\t@requires bus.timeout>=200000\n",  # tab instead of a space
     ],
 )
-def test_parse_requires_tags_format_variants(tmp_path: Path, source: str):
+def test_parse_requires_tags_format_variants(tmp_path: Path, source: str) -> None:
     (tag,) = _parse(tmp_path, source)
     assert (tag.field, tag.op, tag.value) == ("timeout", ">=", 200000)
 
@@ -110,7 +110,7 @@ def test_parse_requires_tags_format_variants(tmp_path: Path, source: str):
         "def f():\n    pass\n\n\n# @requires bus.timeout>=200000\n",  # after a function body, back at column 0
     ],
 )
-def test_parse_requires_tags_valid_locations(tmp_path: Path, source: str):
+def test_parse_requires_tags_valid_locations(tmp_path: Path, source: str) -> None:
     (tag,) = _parse(tmp_path, source)
     assert (tag.field, tag.op, tag.value) == ("timeout", ">=", 200000)
 
@@ -120,34 +120,34 @@ def test_parse_requires_tags_valid_locations(tmp_path: Path, source: str):
 # ---------------------------------------------------------------------------
 
 
-def test_parse_requires_tags_none_declared(tmp_path: Path):
+def test_parse_requires_tags_none_declared(tmp_path: Path) -> None:
     assert _parse(tmp_path, "class Plain_Reader:\n    pass\n") == ()
 
 
-def test_parse_requires_tags_two_distinct_fields_in_source_order(tmp_path: Path):
+def test_parse_requires_tags_two_distinct_fields_in_source_order(tmp_path: Path) -> None:
     tags = _parse(tmp_path, "# @requires bus.timeout>=200000\n# @requires bus.frequency<=100000\n")
     assert [(t.field, t.op, t.value) for t in tags] == [("timeout", ">=", 200000), ("frequency", "<=", 100000)]
 
 
-def test_parse_requires_tags_same_field_bounded_from_both_sides(tmp_path: Path):
+def test_parse_requires_tags_same_field_bounded_from_both_sides(tmp_path: Path) -> None:
     # A range is expressed as two tags on the same field - both must survive, not collapse.
     tags = _parse(tmp_path, "# @requires bus.frequency>=50000\n# @requires bus.frequency<=400000\n")
     assert [(t.op, t.value) for t in tags] == [(">=", 50000), ("<=", 400000)]
 
 
-def test_parse_requires_tags_exact_duplicates_are_both_kept(tmp_path: Path):
+def test_parse_requires_tags_exact_duplicates_are_both_kept(tmp_path: Path) -> None:
     # Redundant, but harmless and self-consistent: the checker just evaluates the same thing twice.
     tags = _parse(tmp_path, "# @requires bus.timeout>=200000\n# @requires bus.timeout>=200000\n")
     assert len(tags) == 2
 
 
-def test_parse_requires_tags_a_valid_tag_does_not_excuse_a_near_miss_beside_it(tmp_path: Path):
+def test_parse_requires_tags_a_valid_tag_does_not_excuse_a_near_miss_beside_it(tmp_path: Path) -> None:
     # The exact-match bookkeeping parse_requires_tags() hands the near-miss detector is per comment
     # position, not "this file already had a valid tag" - a half-migrated driver still fails.
     _parse_expecting(tmp_path, "# @requires bus.timeout>=200000\n# @require bus.frequency>=100000\n", "misspelled @requires tag")
 
 
-def test_parse_requires_tags_line_break_lookalike_does_not_fake_an_indented_tag(tmp_path: Path):
+def test_parse_requires_tags_line_break_lookalike_does_not_fake_an_indented_tag(tmp_path: Path) -> None:
     # Regression guard, end to end: a \x0b anywhere earlier in the file used to shift the scan's
     # idea of every later line, rejecting this perfectly valid module-level tag as "not at module
     # level". See test_buildgen_tag_comments.py for the mechanism.
@@ -157,7 +157,7 @@ def test_parse_requires_tags_line_break_lookalike_does_not_fake_an_indented_tag(
     assert (tag.field, tag.op, tag.value) == ("timeout", ">=", 200000)
 
 
-def test_parse_requires_tags_among_ordinary_comments_and_tag_shaped_strings(tmp_path: Path):
+def test_parse_requires_tags_among_ordinary_comments_and_tag_shaped_strings(tmp_path: Path) -> None:
     source = (
         '"""Docstring mentioning # @requires bus.frequency>=999999 as an example."""\n'
         "# an ordinary comment\n"
@@ -175,12 +175,12 @@ def test_parse_requires_tags_among_ordinary_comments_and_tag_shaped_strings(tmp_
 
 
 @pytest.mark.parametrize("field", ["timeout", "clock_stretch_us", "pin0", "_reserved"])
-def test_parse_requires_tags_field_name_shapes(tmp_path: Path, field: str):
+def test_parse_requires_tags_field_name_shapes(tmp_path: Path, field: str) -> None:
     (tag,) = _parse(tmp_path, f"# @requires bus.{field}>=1\n")
     assert tag.field == field
 
 
-def test_parse_requires_tags_scd30_clock_stretch(src_dir: Path):
+def test_parse_requires_tags_scd30_clock_stretch(src_dir: Path) -> None:
     tags = parse_requires_tags(src_dir / "asy_scd30_driver.py", "dev", "scd30")
     assert RequiresTag("timeout", ">=", 200000, "# @requires bus.timeout>=200000") in tags
 
@@ -212,7 +212,7 @@ def test_parse_requires_tags_scd30_clock_stretch(src_dir: Path):
         ("# @requires bus.timeout>=1.2.3\n", "malformed @requires value"),
     ],
 )
-def test_parse_requires_tags_rejects_every_broken_shape(tmp_path: Path, source: str, match: str):
+def test_parse_requires_tags_rejects_every_broken_shape(tmp_path: Path, source: str, match: str) -> None:
     _parse_expecting(tmp_path, source, match)
 
 
@@ -224,7 +224,7 @@ def test_parse_requires_tags_rejects_every_broken_shape(tmp_path: Path, source: 
         "_WIRING = (\n    # @requires bus.timeout>=200000\n)\n",  # on a continuation line inside brackets
     ],
 )
-def test_parse_requires_tags_rejects_indented_locations(tmp_path: Path, source: str):
+def test_parse_requires_tags_rejects_indented_locations(tmp_path: Path, source: str) -> None:
     # Location dimension: a well-formed tag hidden inside a body isn't "close to the schema" the way
     # module-level _WIRING/_VAL_* placement is - it must fail, not silently parse. The bracketed
     # continuation case is deliberately strict too: it fails loud rather than being accepted at a
@@ -245,7 +245,7 @@ def test_parse_requires_tags_rejects_indented_locations(tmp_path: Path, source: 
         'X = "# @requires bus.timeout>=200000"\n',  # inside a string literal
     ],
 )
-def test_parse_requires_tags_leaves_non_tags_alone(tmp_path: Path, source: str):
+def test_parse_requires_tags_leaves_non_tags_alone(tmp_path: Path, source: str) -> None:
     assert _parse(tmp_path, source) == ()
 
 
@@ -265,7 +265,7 @@ def test_parse_requires_tags_leaves_non_tags_alone(tmp_path: Path, source: str):
         ("<", 100, 200, True), ("<", 100, 100, False),
     ],
 )
-def test_check_requires_tags_every_operator_both_ways(op: str, actual: int, value: int, satisfied: bool):
+def test_check_requires_tags_every_operator_both_ways(op: str, actual: int, value: int, satisfied: bool) -> None:
     tags = (RequiresTag("timeout", op, value, f"@requires bus.timeout{op}{value}"),)
     if satisfied:
         check_requires_tags(tags, {"timeout": actual}, "dev", "scd30", "i2c0")  # no raise
@@ -275,12 +275,12 @@ def test_check_requires_tags_every_operator_both_ways(op: str, actual: int, valu
 
 
 @pytest.mark.parametrize("actual,value", [(100, 99.5), (100.5, 100), (100.0, 100)])
-def test_check_requires_tags_mixed_int_float_comparison(actual: "int | float", value: "int | float"):
+def test_check_requires_tags_mixed_int_float_comparison(actual: "int | float", value: "int | float") -> None:
     tags = (RequiresTag("frequency", ">=", value, "@requires bus.frequency>=x"),)
     check_requires_tags(tags, {"frequency": actual}, "dev", "scd30", "i2c0")  # no raise
 
 
-def test_check_requires_tags_zero_is_a_present_value_not_a_missing_field():
+def test_check_requires_tags_zero_is_a_present_value_not_a_missing_field() -> None:
     # bus_table.get() returning a falsy 0 must go down the comparison path, not the "missing field"
     # path - a `if not actual` bug here would report the wrong error for a perfectly valid table.
     check_requires_tags((RequiresTag("offset", "==", 0, "@requires bus.offset==0"),), {"offset": 0}, "dev", "scd30", "i2c0")
@@ -288,14 +288,14 @@ def test_check_requires_tags_zero_is_a_present_value_not_a_missing_field():
         check_requires_tags((RequiresTag("offset", "!=", 0, "@requires bus.offset!=0"),), {"offset": 0}, "dev", "scd30", "i2c0")
 
 
-def test_check_requires_tags_missing_bus_field():
+def test_check_requires_tags_missing_bus_field() -> None:
     tags = (RequiresTag("timeout", ">=", 200000, "@requires bus.timeout>=200000"),)
     with pytest.raises(BuildError, match="is missing field"):
         check_requires_tags(tags, {}, "dev", "scd30", "i2c0")
 
 
 @pytest.mark.parametrize("actual", ["200ms", [200000], {"us": 200000}, None])
-def test_check_requires_tags_wrong_type_fails_loud_not_a_raw_traceback(actual: object):
+def test_check_requires_tags_wrong_type_fails_loud_not_a_raw_traceback(actual: object) -> None:
     # A malformed TOML value (e.g. "200ms" where an int is expected) must produce a clean
     # BuildError, not an uncaught TypeError from comparing str >= int. A None value is
     # indistinguishable from an absent key here, and reports as the missing field it effectively is.
@@ -305,7 +305,7 @@ def test_check_requires_tags_wrong_type_fails_loud_not_a_raw_traceback(actual: o
         check_requires_tags(tags, {"timeout": actual}, "dev", "scd30", "i2c0")
 
 
-def test_check_requires_tags_reports_the_first_violated_tag_of_several():
+def test_check_requires_tags_reports_the_first_violated_tag_of_several() -> None:
     tags = (
         RequiresTag("timeout", ">=", 200000, "@requires bus.timeout>=200000"),
         RequiresTag("frequency", "<=", 100000, "@requires bus.frequency<=100000"),
@@ -314,7 +314,7 @@ def test_check_requires_tags_reports_the_first_violated_tag_of_several():
         check_requires_tags(tags, {"timeout": 250000, "frequency": 400000}, "dev", "scd30", "i2c0")
 
 
-def test_check_requires_tags_all_satisfied():
+def test_check_requires_tags_all_satisfied() -> None:
     tags = (
         RequiresTag("timeout", ">=", 200000, "@requires bus.timeout>=200000"),
         RequiresTag("frequency", "<=", 400000, "@requires bus.frequency<=400000"),

@@ -22,7 +22,7 @@ def ext_dir(repo_root: Path) -> Path:
     return repo_root / "ext"
 
 
-def test_wozi_construction_order_matches_reference_ordering_constraints(repo_root: Path, src_dir: Path, ext_dir: Path):
+def test_wozi_construction_order_matches_reference_ordering_constraints(repo_root: Path, src_dir: Path, ext_dir: Path) -> None:
     result = generate_device(repo_root / "devices" / "wozi.toml", src_dir, ext_dir)
     order = [n if isinstance(n, str) else f"{n[0]}_{n[1]}" if n[1] else n[0] for n in result.model.construction_order]
     # src/sensortask_wozi.py's own real, hand-verified construction order (SPECIFICATION.md Part
@@ -37,7 +37,7 @@ def test_wozi_construction_order_matches_reference_ordering_constraints(repo_roo
     assert order.index("sgp40") < order.index("notification")
 
 
-def test_novel_combo_sgp40_after_both_its_independently_named_sources(repo_root: Path, src_dir: Path, ext_dir: Path):
+def test_novel_combo_sgp40_after_both_its_independently_named_sources(repo_root: Path, src_dir: Path, ext_dir: Path) -> None:
     # §2.9: temperature_source=scd30_secondary and humidity_source=scd30_primary are two
     # independent wiring edges - sgp40 must be constructed after *both*, not just one.
     fixture = repo_root / "tests_scripts" / "buildgen_fixtures" / "novel_combo.toml"
@@ -47,7 +47,7 @@ def test_novel_combo_sgp40_after_both_its_independently_named_sources(repo_root:
     assert order.index(("scd30", "primary")) < order.index(("sgp40", ""))
 
 
-def test_multi_instance_fixture_respects_cross_driver_dependency(repo_root: Path, src_dir: Path, ext_dir: Path):
+def test_multi_instance_fixture_respects_cross_driver_dependency(repo_root: Path, src_dir: Path, ext_dir: Path) -> None:
     # Axis 9's richest corner (§10.7 item 1): sgp40_b's temperature_source is bmp3xx, not scd30 -
     # construction order must respect *that* real dependency, not just "some scd30 before sgp40".
     fixture = repo_root / "tests_scripts" / "buildgen_fixtures" / "multi_instance.toml"
@@ -57,7 +57,7 @@ def test_multi_instance_fixture_respects_cross_driver_dependency(repo_root: Path
     assert order.index(("bmp3xx", "only")) < order.index(("sgp40", "b"))
 
 
-def test_cycle_detection_raises(tmp_path: Path, src_dir: Path):
+def test_cycle_detection_raises(tmp_path: Path, src_dir: Path) -> None:
     # No real driver's _WIRING requires SGP40_Reader as a producer - can't construct a real cycle
     # with the actual driver set (SGP40 requiring SCD30, which would need to require SGP40 back,
     # isn't expressible in real _WIRING declarations), so this drives build_construction_order()

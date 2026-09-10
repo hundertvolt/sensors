@@ -15,38 +15,38 @@ def src_dir(repo_root: Path) -> Path:
     return repo_root / "src"
 
 
-def test_parse_limits_bmp3xx_address_and_trigger_sec(src_dir: Path):
+def test_parse_limits_bmp3xx_address_and_trigger_sec(src_dir: Path) -> None:
     fields = parse_limits(src_dir / "asy_bmp3xx_driver.py", "dev", "bmp3xx")
     assert LimitField("address", frozenset({0x76, 0x77})) in fields
     assert LimitField("trigger_sec", None, 1, 3600) in fields
 
 
-def test_parse_limits_no_limits_declared_returns_empty(tmp_path: Path):
+def test_parse_limits_no_limits_declared_returns_empty(tmp_path: Path) -> None:
     path = tmp_path / "asy_plain_driver.py"
     path.write_text("class Plain_Reader:\n    pass\n")
     assert parse_limits(path, "dev", "plain") == ()
 
 
-def test_parse_limits_not_a_tuple(tmp_path: Path):
+def test_parse_limits_not_a_tuple(tmp_path: Path) -> None:
     path = tmp_path / "asy_bad_driver.py"
     path.write_text('_LIMITS = "not a tuple"\n')
     with pytest.raises(BuildError, match="must be a literal tuple"):
         parse_limits(path, "dev", "bad")
 
 
-def test_parse_limits_negative_bound(tmp_path: Path):
+def test_parse_limits_negative_bound(tmp_path: Path) -> None:
     path = tmp_path / "asy_neg_driver.py"
     path.write_text('_LIMITS = (("x", (-10, 10)),)\n')
     assert parse_limits(path, "dev", "neg") == (LimitField("x", None, -10, 10),)
 
 
-def test_parse_limits_one_sided_bound(tmp_path: Path):
+def test_parse_limits_one_sided_bound(tmp_path: Path) -> None:
     path = tmp_path / "asy_one_sided_driver.py"
     path.write_text('_LIMITS = (("x", (0, None)),)\n')
     assert parse_limits(path, "dev", "one_sided") == (LimitField("x", None, 0, None),)
 
 
-def test_parse_limits_float_bound(tmp_path: Path):
+def test_parse_limits_float_bound(tmp_path: Path) -> None:
     path = tmp_path / "asy_float_driver.py"
     path.write_text('_LIMITS = (("x", (0.5, 99.5)),)\n')
     assert parse_limits(path, "dev", "float") == (LimitField("x", None, 0.5, 99.5),)
@@ -63,14 +63,14 @@ def test_parse_limits_float_bound(tmp_path: Path):
         ('_LIMITS = (("x", frozenset({"a", "b"})),)', r"\[1\] \(constraint\) must be a"),
     ],
 )
-def test_parse_limits_malformed_tuple_shapes(tmp_path: Path, body: str, match: str):
+def test_parse_limits_malformed_tuple_shapes(tmp_path: Path, body: str, match: str) -> None:
     path = tmp_path / "asy_bad_driver.py"
     path.write_text(f"{body}\n")
     with pytest.raises(BuildError, match=match):
         parse_limits(path, "dev", "bad")
 
 
-def test_parse_limits_syntax_error(tmp_path: Path):
+def test_parse_limits_syntax_error(tmp_path: Path) -> None:
     path = tmp_path / "asy_broken_driver.py"
     path.write_text("def f(:\n")
     with pytest.raises(BuildError, match="syntax error"):

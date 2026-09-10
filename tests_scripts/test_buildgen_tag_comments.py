@@ -38,7 +38,7 @@ def _check(tokens: "list[CommentToken]", exact: "set[tuple[int, int]] | None" = 
 # ---------------------------------------------------------------------------
 
 
-def test_iter_comment_tokens_finds_a_real_comment(tmp_path: Path):
+def test_iter_comment_tokens_finds_a_real_comment(tmp_path: Path) -> None:
     path = tmp_path / "asy_x_driver.py"
     path.write_text("# a real comment\nx = 1\n")
     tokens = iter_comment_tokens(path, "dev", "x")
@@ -46,7 +46,7 @@ def test_iter_comment_tokens_finds_a_real_comment(tmp_path: Path):
     assert tokens[0] == CommentToken(1, 0, "# a real comment", False)
 
 
-def test_iter_comment_tokens_ignores_hash_inside_string_literal(tmp_path: Path):
+def test_iter_comment_tokens_ignores_hash_inside_string_literal(tmp_path: Path) -> None:
     # A naive per-line regex would mistake this for a comment - tokenize-based scanning knows it's
     # inside a string literal and correctly finds zero real comments.
     path = tmp_path / "asy_x_driver.py"
@@ -54,14 +54,14 @@ def test_iter_comment_tokens_ignores_hash_inside_string_literal(tmp_path: Path):
     assert iter_comment_tokens(path, "dev", "x") == []
 
 
-def test_iter_comment_tokens_ignores_hash_inside_docstring(tmp_path: Path):
+def test_iter_comment_tokens_ignores_hash_inside_docstring(tmp_path: Path) -> None:
     # The multi-line sibling of the case above - this module's own docstring quotes tag grammar.
     path = tmp_path / "asy_x_driver.py"
     path.write_text('"""Doc.\n# @requires bus.timeout>=200000\n"""\nx = 1\n')
     assert iter_comment_tokens(path, "dev", "x") == []
 
 
-def test_iter_comment_tokens_marks_indented_comment(tmp_path: Path):
+def test_iter_comment_tokens_marks_indented_comment(tmp_path: Path) -> None:
     path = tmp_path / "asy_x_driver.py"
     path.write_text("class Foo:\n    def bar(self):\n        # indented comment\n        pass\n")
     tokens = iter_comment_tokens(path, "dev", "x")
@@ -69,14 +69,14 @@ def test_iter_comment_tokens_marks_indented_comment(tmp_path: Path):
     assert tokens[0].line_indented is True
 
 
-def test_iter_comment_tokens_marks_tab_indented_comment(tmp_path: Path):
+def test_iter_comment_tokens_marks_tab_indented_comment(tmp_path: Path) -> None:
     # Indentation is "the line has leading whitespace", not "the line starts with spaces".
     path = tmp_path / "asy_x_driver.py"
     path.write_text("def f():\n\t# tab-indented comment\n\tpass\n")
     assert iter_comment_tokens(path, "dev", "x")[0].line_indented is True
 
 
-def test_iter_comment_tokens_trailing_inline_comment_on_module_level_statement_is_not_indented(tmp_path: Path):
+def test_iter_comment_tokens_trailing_inline_comment_on_module_level_statement_is_not_indented(tmp_path: Path) -> None:
     # The comment token's own column is > 0 (it starts after the code on the line), but the
     # statement itself is unindented - line_indented must reflect the *line's* own indentation, not
     # the token's column, or a legitimate trailing "_WIRING = (...)  # @requires ..." placement
@@ -89,7 +89,7 @@ def test_iter_comment_tokens_trailing_inline_comment_on_module_level_statement_i
     assert tokens[0].line_indented is False
 
 
-def test_iter_comment_tokens_reports_every_comment_in_source_order(tmp_path: Path):
+def test_iter_comment_tokens_reports_every_comment_in_source_order(tmp_path: Path) -> None:
     path = tmp_path / "asy_x_driver.py"
     path.write_text("#!/usr/bin/env python3\nx = 1  # first\n\n# second\ndef f():\n    # third\n    pass\n")
     tokens = iter_comment_tokens(path, "dev", "x")
@@ -101,25 +101,25 @@ def test_iter_comment_tokens_reports_every_comment_in_source_order(tmp_path: Pat
     ]
 
 
-def test_iter_comment_tokens_last_line_without_trailing_newline(tmp_path: Path):
+def test_iter_comment_tokens_last_line_without_trailing_newline(tmp_path: Path) -> None:
     path = tmp_path / "asy_x_driver.py"
     path.write_text("x = 1\n# @requires bus.timeout>=200000")
     assert iter_comment_tokens(path, "dev", "x")[0].lineno == 2
 
 
-def test_iter_comment_tokens_empty_file(tmp_path: Path):
+def test_iter_comment_tokens_empty_file(tmp_path: Path) -> None:
     path = tmp_path / "asy_x_driver.py"
     path.write_text("")
     assert iter_comment_tokens(path, "dev", "x") == []
 
 
-def test_iter_comment_tokens_handles_utf8_bom(tmp_path: Path):
+def test_iter_comment_tokens_handles_utf8_bom(tmp_path: Path) -> None:
     path = tmp_path / "asy_x_driver.py"
     path.write_bytes(b"\xef\xbb\xbf# @requires bus.timeout>=200000\nx = 1\n")
     assert iter_comment_tokens(path, "dev", "x")[0].text == "# @requires bus.timeout>=200000"
 
 
-def test_iter_comment_tokens_honors_a_pep263_coding_cookie(tmp_path: Path):
+def test_iter_comment_tokens_honors_a_pep263_coding_cookie(tmp_path: Path) -> None:
     # Perfectly valid Python that a plain read_text() can't decode - the scan reads source the way
     # the interpreter does (cookie/BOM aware), so a legal driver file is never rejected for it.
     path = tmp_path / "asy_x_driver.py"
@@ -127,7 +127,7 @@ def test_iter_comment_tokens_honors_a_pep263_coding_cookie(tmp_path: Path):
     assert [t.text for t in iter_comment_tokens(path, "dev", "x")][1:] == ["# caf\xe9", "# @requires bus.timeout>=200000"]
 
 
-def test_iter_comment_tokens_undecodable_source_fails_loud_not_a_raw_traceback(tmp_path: Path):
+def test_iter_comment_tokens_undecodable_source_fails_loud_not_a_raw_traceback(tmp_path: Path) -> None:
     # Non-UTF-8 bytes with no cookie declaring them - Python's own tokenizer calls this a missing
     # encoding declaration. An abort either way, but it must surface as a BuildError like every
     # other one, not a raw decoding traceback out of the middle of the generator.
@@ -137,7 +137,7 @@ def test_iter_comment_tokens_undecodable_source_fails_loud_not_a_raw_traceback(t
         iter_comment_tokens(path, "dev", "x")
 
 
-def test_iter_comment_tokens_line_break_lookalike_does_not_shift_later_lines(tmp_path: Path):
+def test_iter_comment_tokens_line_break_lookalike_does_not_shift_later_lines(tmp_path: Path) -> None:
     # Regression guard: str.splitlines() also breaks on \x0b/\x0c/\u2028/\u2029/\x85, which
     # Python's tokenizer treats as ordinary characters. Deriving each comment's physical line by
     # indexing a splitlines() list therefore shifted every line after one of those characters,
@@ -149,7 +149,7 @@ def test_iter_comment_tokens_line_break_lookalike_does_not_shift_later_lines(tmp
 
 
 @pytest.mark.parametrize("source", ["x = ('unterminated\n", "x = (1,\n"])
-def test_iter_comment_tokens_syntax_error_raises_build_error_not_raw_traceback(tmp_path: Path, source: str):
+def test_iter_comment_tokens_syntax_error_raises_build_error_not_raw_traceback(tmp_path: Path, source: str) -> None:
     path = tmp_path / "asy_x_driver.py"
     path.write_text(source)
     with pytest.raises(BuildError, match="syntax error"):
@@ -181,7 +181,7 @@ def test_iter_comment_tokens_syntax_error_raises_build_error_not_raw_traceback(t
         ("# 200000 is the floor", (None, False)),  # a digit doesn't open a tag name
     ],
 )
-def test_find_leading_word(text: str, expected: "tuple[str | None, bool]"):
+def test_find_leading_word(text: str, expected: "tuple[str | None, bool]") -> None:
     assert find_leading_word(text) == expected
 
 
@@ -200,7 +200,7 @@ def test_find_leading_word(text: str, expected: "tuple[str | None, bool]"):
         ("param", "requires", 7),
     ],
 )
-def test_levenshtein(a: str, b: str, expected: int):
+def test_levenshtein(a: str, b: str, expected: int) -> None:
     assert _levenshtein(a, b) == expected
     assert _levenshtein(b, a) == expected  # symmetric
 
@@ -211,7 +211,7 @@ def test_levenshtein(a: str, b: str, expected: int):
 
 
 @pytest.mark.parametrize("op", [">=", "<=", "==", "!=", "=", ">", "<"])
-def test_looks_like_tag_payload_every_operator(op: str):
+def test_looks_like_tag_payload_every_operator(op: str) -> None:
     assert looks_like_tag_payload(f"# @requires bus.timeout{op}200000") is True
 
 
@@ -228,7 +228,7 @@ def test_looks_like_tag_payload_every_operator(op: str):
         ("# @requires a bit more care here", False),
     ],
 )
-def test_looks_like_tag_payload(text: str, expected: bool):
+def test_looks_like_tag_payload(text: str, expected: bool) -> None:
     assert looks_like_tag_payload(text) is expected
 
 
@@ -237,7 +237,7 @@ def test_looks_like_tag_payload(text: str, expected: bool):
 # ---------------------------------------------------------------------------
 
 
-def test_check_for_near_miss_tags_flags_exact_keyword_bad_structure():
+def test_check_for_near_miss_tags_flags_exact_keyword_bad_structure() -> None:
     with pytest.raises(BuildError, match="malformed @requires tag"):
         _check([_tok("# @requires timeout>=200000")])  # missing "bus." prefix
 
@@ -246,42 +246,42 @@ def test_check_for_near_miss_tags_flags_exact_keyword_bad_structure():
     "word",
     ["require", "requiress", "requirez", "requries", "requir"],  # delete/insert/substitute/transpose/distance-2
 )
-def test_check_for_near_miss_tags_flags_every_typo_shape(word: str):
+def test_check_for_near_miss_tags_flags_every_typo_shape(word: str) -> None:
     with pytest.raises(BuildError, match="misspelled @requires tag"):
         _check([_tok(f"# @{word} bus.timeout>=200000")])
 
 
-def test_check_for_near_miss_tags_flags_wrong_case_as_the_exact_tag():
+def test_check_for_near_miss_tags_flags_wrong_case_as_the_exact_tag() -> None:
     # Case is folded before matching, so "@REQUIRES" is the exact tag spelled wrong, not a typo.
     with pytest.raises(BuildError, match="malformed @requires tag"):
         _check([_tok("# @REQUIRES bus.timeout>=200000")])
 
 
-def test_check_for_near_miss_tags_flags_missing_at_sigil():
+def test_check_for_near_miss_tags_flags_missing_at_sigil() -> None:
     with pytest.raises(BuildError, match="leading '@' missing"):
         _check([_tok("# requires bus.timeout>=200000")])
 
 
-def test_check_for_near_miss_tags_flags_exact_keyword_with_only_a_number():
+def test_check_for_near_miss_tags_flags_exact_keyword_with_only_a_number() -> None:
     # Both the "bus." prefix and the operator dropped - an exact tag name is strong enough evidence
     # on its own that a bare number counts as payload, or this would be silently invisible.
     with pytest.raises(BuildError, match="malformed @requires tag"):
         _check([_tok("# @requires timeout 200000")])
 
 
-def test_check_for_near_miss_tags_flags_an_indented_near_miss_too():
+def test_check_for_near_miss_tags_flags_an_indented_near_miss_too() -> None:
     # Wrong location *and* wrong spelling still has to fail on the spelling - the location check
     # lives in each tag's own parser and only ever sees well-formed tags.
     with pytest.raises(BuildError, match="misspelled @requires tag"):
         _check([_tok("# @require bus.timeout>=200000", lineno=3, col=8, indented=True)])
 
 
-def test_check_for_near_miss_tags_reports_the_offending_line_number():
+def test_check_for_near_miss_tags_reports_the_offending_line_number() -> None:
     with pytest.raises(BuildError, match=r"x\.py:7:"):
         _check([_tok("# ordinary"), _tok("# @require bus.timeout>=200000", lineno=7)])
 
 
-def test_check_for_near_miss_tags_ignores_prose_without_payload_shape():
+def test_check_for_near_miss_tags_ignores_prose_without_payload_shape() -> None:
     # Mirrors a real near-collision found in this repo (buildgen/validate.py's own comment: "...
     # required by that driver's own @requires tag, not here)." wrapped across #-lines) - a comment
     # that opens with "@requires" but carries no field/operator/value shape at all must never be
@@ -300,26 +300,26 @@ def test_check_for_near_miss_tags_ignores_prose_without_payload_shape():
         "#",
     ],
 )
-def test_check_for_near_miss_tags_stays_silent(text: str):
+def test_check_for_near_miss_tags_stays_silent(text: str) -> None:
     _check([_tok(text)])  # no raise
 
 
-def test_check_for_near_miss_tags_skips_already_exact_matched_tokens():
+def test_check_for_near_miss_tags_skips_already_exact_matched_tokens() -> None:
     _check([_tok("# @requires bus.timeout>=200000")], exact={(1, 0)})  # no raise - already counted
 
 
-def test_check_for_near_miss_tags_still_flags_a_second_bad_tag_beside_a_good_one():
+def test_check_for_near_miss_tags_still_flags_a_second_bad_tag_beside_a_good_one() -> None:
     # The exact-match skip is per (lineno, col), not "this file already had a valid tag".
     tokens = [_tok("# @requires bus.timeout>=200000", lineno=1), _tok("# @require bus.frequency>=100000", lineno=2)]
     with pytest.raises(BuildError, match="misspelled @requires tag"):
         _check(tokens, exact={(1, 0)})
 
 
-def test_check_for_near_miss_tags_empty_token_list():
+def test_check_for_near_miss_tags_empty_token_list() -> None:
     _check([])  # no raise
 
 
-def test_check_for_near_miss_tags_typo_tolerance_narrows_for_a_short_tag_name(monkeypatch: pytest.MonkeyPatch):
+def test_check_for_near_miss_tags_typo_tolerance_narrows_for_a_short_tag_name(monkeypatch: pytest.MonkeyPatch) -> None:
     # Two edits away from a 3-letter name is most of the dictionary, so a short tag name (the
     # planned "@web") tolerates only one - otherwise adding it to the registry would start failing
     # builds over unrelated @-words. "wet" is one edit from "web"; "wed"/"we" would be too.

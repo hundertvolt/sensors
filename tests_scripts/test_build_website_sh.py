@@ -3,9 +3,10 @@ excluded) complementing tests/test_website_build_integration.py, which proves th
 is correct. Same literal-path-string grep technique as test_build_frozen_html_sh.py."""
 
 import subprocess
+from pathlib import Path
 
 
-def _run_build_website(repo_root, device, output_path, check=True):
+def _run_build_website(repo_root: Path, device: str, output_path: Path, check: bool=True) -> "subprocess.CompletedProcess[str]":
     return subprocess.run(
         ["scripts/build_website.sh", device, str(output_path)],
         cwd=repo_root,
@@ -15,7 +16,7 @@ def _run_build_website(repo_root, device, output_path, check=True):
     )
 
 
-def test_wozi_device_stages_the_expected_files_renamed_and_flattened(repo_root, tmp_path):
+def test_wozi_device_stages_the_expected_files_renamed_and_flattened(repo_root: Path, tmp_path: Path) -> None:
     out_file = tmp_path / "frozen_website_wozi.py"
     _run_build_website(repo_root, "wozi", out_file)
 
@@ -48,7 +49,7 @@ def test_wozi_device_stages_the_expected_files_renamed_and_flattened(repo_root, 
         assert not_staged not in text, not_staged
 
 
-def test_prototype_only_files_are_never_staged(repo_root, tmp_path):
+def test_prototype_only_files_are_never_staged(repo_root: Path, tmp_path: Path) -> None:
     out_file = tmp_path / "frozen_website_wozi.py"
     _run_build_website(repo_root, "wozi", out_file)
 
@@ -57,7 +58,7 @@ def test_prototype_only_files_are_never_staged(repo_root, tmp_path):
         assert unexpected not in text, unexpected
 
 
-def test_unknown_device_fails_with_no_matching_definitions_file(repo_root, tmp_path):
+def test_unknown_device_fails_with_no_matching_definitions_file(repo_root: Path, tmp_path: Path) -> None:
     out_file = tmp_path / "frozen_missing.py"
     result = _run_build_website(repo_root, "no-such-device", out_file, check=False)
 
@@ -66,7 +67,7 @@ def test_unknown_device_fails_with_no_matching_definitions_file(repo_root, tmp_p
     assert not out_file.exists()
 
 
-def test_every_real_js_and_html_file_is_accounted_for_by_the_staging_script(repo_root):
+def test_every_real_js_and_html_file_is_accounted_for_by_the_staging_script(repo_root: Path) -> None:
     # scripts/build_website.sh's cp lists (html root files, production js/ modules) are hand-kept,
     # not derived from directory contents - a new html/*.html or js/*.js file added later would
     # silently ship without it (or without a deliberate "stays prototype-only" decision) with no
@@ -85,7 +86,7 @@ def test_every_real_js_and_html_file_is_accounted_for_by_the_staging_script(repo
         assert name in script_text, f"js/{name} exists but isn't referenced by build_website.sh"
 
 
-def test_output_path_argument_is_forwarded_to_build_frozen_html(repo_root, tmp_path):
+def test_output_path_argument_is_forwarded_to_build_frozen_html(repo_root: Path, tmp_path: Path) -> None:
     # A distinctive, non-default output path proves scripts/build_website.sh really forwards its
     # second argument through to scripts/build_frozen_html.sh rather than always writing to the
     # default frozen_modules/frozen_html.py location.

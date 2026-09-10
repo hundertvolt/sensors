@@ -20,18 +20,18 @@ def ext_dir(repo_root: Path) -> Path:
     return repo_root / "ext"
 
 
-def test_wozi_frozen_modules_include_every_declared_driver(repo_root: Path, src_dir: Path, ext_dir: Path):
+def test_wozi_frozen_modules_include_every_declared_driver(repo_root: Path, src_dir: Path, ext_dir: Path) -> None:
     result = generate_device(repo_root / "devices" / "wozi.toml", src_dir, ext_dir)
     for driver_module in ("asy_scd30_driver", "asy_sgp40_driver", "asy_bmp3xx_driver", "asy_fram_manager", "asy_neopixel_driver", "asy_notification_service"):
         assert driver_module in result.frozen_modules
 
 
-def test_frozen_modules_include_core_set(repo_root: Path, src_dir: Path, ext_dir: Path):
+def test_frozen_modules_include_core_set(repo_root: Path, src_dir: Path, ext_dir: Path) -> None:
     result = generate_device(repo_root / "devices" / "wozi.toml", src_dir, ext_dir)
     assert CORE_MODULES <= result.frozen_modules
 
 
-def test_frozen_modules_include_transitive_dependency(repo_root: Path, src_dir: Path, ext_dir: Path):
+def test_frozen_modules_include_transitive_dependency(repo_root: Path, src_dir: Path, ext_dir: Path) -> None:
     # asy_sgp40_driver.py imports voc_algorithm.py and crc_checks.py directly - neither is in
     # CORE_MODULES nor a driver module itself, so this only passes if the transitive closure
     # actually walks imports, not just the seed set.
@@ -40,12 +40,12 @@ def test_frozen_modules_include_transitive_dependency(repo_root: Path, src_dir: 
     assert "crc_checks" in result.frozen_modules
 
 
-def test_frozen_modules_include_ext_microdot(repo_root: Path, src_dir: Path, ext_dir: Path):
+def test_frozen_modules_include_ext_microdot(repo_root: Path, src_dir: Path, ext_dir: Path) -> None:
     result = generate_device(repo_root / "devices" / "wozi.toml", src_dir, ext_dir)
     assert "microdot" in result.frozen_modules
 
 
-def test_frozen_modules_exclude_type_checking_only_import(tmp_path: Path):
+def test_frozen_modules_exclude_type_checking_only_import(tmp_path: Path) -> None:
     # A module only reachable through an `if TYPE_CHECKING:` block never executes on-device
     # (MicroPython has no runtime typing module) - it must not be pulled into the closure.
     (tmp_path / "config_manager.py").write_text("")
@@ -77,7 +77,7 @@ def test_frozen_modules_exclude_type_checking_only_import(tmp_path: Path):
     assert "type_only_dep" not in frozen
 
 
-def test_frozen_modules_real_import_is_included(tmp_path: Path):
+def test_frozen_modules_real_import_is_included(tmp_path: Path) -> None:
     (tmp_path / "config_manager.py").write_text("")
     (tmp_path / "base_classes.py").write_text("")
     (tmp_path / "print_log.py").write_text("")

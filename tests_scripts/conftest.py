@@ -2,9 +2,11 @@
 See CLAUDE.md's "Code quality tooling" for why this suite runs under CPython/pytest rather than
 the real MicroPython Unix-port interpreter tests/ uses (SPECIFICATION.md Part E.1)."""
 
+import importlib.util
 import os
 import sys
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
@@ -29,3 +31,16 @@ def micropython_dir() -> Path:
     # real checkout here before this suite runs (see build_stage_dir()'s own rp2.py copy).
     toolchain_dir = Path(os.environ.get("PICO_TOOLCHAIN_DIR", Path.home() / "pico-toolchain"))
     return toolchain_dir / "micropython"
+
+
+def load_script_module(module_path: Path, name: str) -> ModuleType:
+    """Imports a standalone `uv run`-style script (scripts/*.py, toolchain/*.py - not package
+    members) as a real module, so its functions can be exercised directly rather than only through
+    subprocess/CLI behavior. Fails loud: importlib returns None for both the spec and its loader
+    rather than raising, and an unguarded attribute error on those reads as an unrelated bug."""
+    spec = importlib.util.spec_from_file_location(name, module_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"couldn't build an import spec for {module_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module

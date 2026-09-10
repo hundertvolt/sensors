@@ -274,14 +274,19 @@ information):
   venv). **Wired into CI** via `.github/workflows/ci.yml` (GitHub Actions), running all three on
   every push/PR. The CI pipeline does not yet include a real firmware-build stage (see
   BACKLOG.md).
-- **Scope is `src/`, `tests/`, and `digital_twin/`.** The pre-refactor deployed
+- **Scope is `src/`, `tests/`, `digital_twin/`, `tests_hardware/device_scripts/` (mypy only), and
+  the whole host-side build chain — `buildgen/`, `scripts/`, `toolchain/`, `tests_scripts/`.** The
+  build chain gates the firmware every device ships, so it carries the same bar as the code it
+  builds; its mypy coverage comes from `scripts/hosttools_typecheck.ini`'s own separate pass (see
+  below), never the main one. The pre-refactor deployed
   codebase (`python/`, `modules/`) has no lint/type config yet; extending scope there is a separate
-  future decision, not assumed by this setup. All three are expected to stay fully clean — every
+  future decision, not assumed by this setup. Every scope listed is expected to stay fully clean — every
   scope in this setup is fully-reviewed, freely-editable code (see "Hard rules" above), not WIP;
   there's no tracked-debt scope left to compare `digital_twin/` against since `improved-quality/`
   was deleted (see "Hard rules" above). `digital_twin/`'s own
   type-check is a **separate** mypy invocation (`digital_twin/typecheck.ini`, run unconditionally by
-  `scripts/typecheck.sh` regardless of its own args) rather than folded into the main
+  `scripts/typecheck.sh` regardless of its own args — as is `scripts/hosttools_typecheck.ini`'s
+  build-chain pass) rather than folded into the main
   `[tool.mypy]` pass — mypy resolves each bare `machine`/`network`/`neopixel` module name to exactly
   one file per run, so this package's own hardware fakes and the real `typings/` board stubs can
   never both be checked correctly in one invocation. `digital_twin/machine.py`/`network.py`/
@@ -308,10 +313,14 @@ information):
   build_firmware.py`), none of which are MicroPython-target code, so the real-interpreter rationale
   above doesn't apply to them; see `tests_scripts/conftest.py`'s own docstring. `scripts/test.sh`
   runs both: the MicroPython suite as described above, plus `uv run pytest tests_scripts` as one
-  more step before it. `tests_scripts/` isn't in `pyproject.toml`'s `[tool.mypy]`/`[tool.ruff]`
-  scope, matching the existing decision that `scripts/`/`toolchain/` (the dev-tooling scripts these
-  tests exercise) aren't linted/type-checked either — extending that scope is a separate future
-  decision, not assumed here.
+  more step before it. `tests_scripts/` — together with `scripts/`, `toolchain/` and `buildgen/`, the
+  host-side build chain it exercises — **is** linted and type-checked (project owner's direction:
+  "add all build scripts to the full CI"), but through `scripts/hosttools_typecheck.ini`'s
+  dedicated mypy pass rather than the main `[tool.mypy]` one: all of it is genuinely CPython-target
+  host tooling needing mypy's real bundled typeshed, not the MicroPython-stub-replaced one
+  `custom_typeshed_dir` installs for `src/` (`tomllib` alone doesn't exist in that stub subset).
+  Same "two resolution universes can't coexist in one run" isolation `digital_twin/typecheck.ini`
+  already establishes for its own, different reason.
 - **`scripts/test.sh --coverage` reports `src/` line coverage; it never gates anything** — no
   threshold is enforced anywhere, by design (confirmed directly, not a placeholder for a future
   gate). Since `coverage.py` only runs under CPython while `src/` only ever runs
@@ -532,7 +541,9 @@ rm -rf "$CHROOT"
 ```
 
 **What counts as passing**: `lint.sh`/`typecheck.sh`/`scripts/test.sh` all run to completion with
-exit 0 — every scope this setup covers (`src/`, `tests/`, `digital_twin/`) is fully-reviewed code
+exit 0 — every scope this setup covers (`src/`, `tests/`, `digital_twin/`,
+`tests_hardware/device_scripts/`, and the host build chain: `buildgen/`, `scripts/`, `toolchain/`,
+`tests_scripts/`) is fully-reviewed code
 expected to stay fully clean (confirmed: both `lint.sh` and `typecheck.sh` report zero findings as
 of `improved-quality/`'s deletion), so unlike the pre-deletion state, a nonzero exit from either one
 here is a real regression to chase down, not an expected/tracked finding to compare against a
