@@ -15,6 +15,7 @@ from pathlib import Path
 from buildgen.buildspec import ADDRESS_CAPABLE_DRIVERS, ALLOWED_INSTANCE_FIELDS, BUS_ATTACHED_DRIVERS, FIXED_ADDRESS_DRIVERS, REQUIRED_TOML_FIELDS
 from buildgen.driver_registry import SERVICE_DRIVERS, parse_name_constant, resolve_driver
 from buildgen.errors import BuildError
+from buildgen.limits import parse_limits
 from buildgen.model import DeviceModel, InstanceSpec, instance_label, load_device, resolve_instance_key
 from buildgen.pico_gpio import I2C_ROLE, SPI_ROLE, gpio_exists
 from buildgen.requires_tag import check_requires_tags, parse_requires_tags
@@ -135,6 +136,7 @@ def _resolve_instances(model: DeviceModel, src_dir: Path) -> None:
         spec.driver_info = info
         spec.wiring_schema = parse_wiring(info.source_path, model.device, spec.label)
         spec.requires_tags = parse_requires_tags(info.source_path, model.device, spec.label)
+        spec.limits_schema = parse_limits(info.source_path, model.device, spec.label)
         spec.resolved_name = _instance_name(parse_name_constant(info.source_path, model.device, spec.label), spec.name_ext)
 
         if spec.driver in SERVICE_DRIVERS and spec.name_ext:
@@ -147,6 +149,19 @@ def _instance_name(base_name: str, name_ext: str) -> str:
 
 def _check_required_fields(model: DeviceModel, buses: "dict[str, dict]") -> None:
     for spec in model.instances.values():
+        # §6.3/§8.4/§10.5 item 1: a driver that resolves via driver_registry.resolve_driver() (it's
+        # a real asy_<name>_driver.py with a SensorReader/SensorReaderConfig subclass, or a known
+        # _OVERRIDES service) but has no entry in buildspec.py's own hand-maintained dicts would
+        # otherwise fall through .get(spec.driver, ()) / .get(spec.driver, frozenset()) below and
+        # have every one of its real fields flagged as "unrecognized" - technically fail-loud, but
+        # with a message that looks like a TOML typo rather than what it actually is. Named
+        # explicitly here so a driver-onboarding gap reports its real cause.
+        if spec.driver not in REQUIRED_TOML_FIELDS:
+            raise BuildError(
+                model.device,
+                f"{spec.label}: driver {spec.driver!r} resolves via buildgen.driver_registry but has no entry in buildgen.buildspec's REQUIRED_TOML_FIELDS/ALLOWED_INSTANCE_FIELDS - a new driver needs a buildspec.py entry added by hand (see buildspec.py's own module docstring)",
+                instance=spec.label,
+            )
         for f in REQUIRED_TOML_FIELDS.get(spec.driver, ()):
             if f not in spec.fields:
                 raise BuildError(model.device, f"{spec.label} is missing required field {f!r}", instance=spec.label, field=f)
@@ -177,6 +192,33 @@ def _check_required_fields(model: DeviceModel, buses: "dict[str, dict]") -> None
             raise BuildError(model.device, f"{spec.label} declares unrecognized field(s) {sorted(unknown)} for driver {spec.driver!r}", instance=spec.label, field=sorted(unknown)[0])
 
 
+def _check_limits(model: DeviceModel) -> None:
+    # A driver-declared _LIMITS field only ever names an already-type-checked int field
+    # (_check_required_fields runs before this in build_model()'s pipeline) - no isinstance guard
+    # needed here the way _check_gpio_collisions' claim() needs one for raw, unchecked TOML input.
+    for spec in model.instances.values():
+        for lf in spec.limits_schema:
+            if lf.toml_field not in spec.fields:
+                continue
+            value = spec.fields[lf.toml_field]
+            if lf.choices is not None:
+                if value not in lf.choices:
+                    raise BuildError(
+                        model.device,
+                        f"{spec.label}.{lf.toml_field}={value!r} is not one of this driver's legal values {sorted(lf.choices)}",
+                        instance=spec.label,
+                        field=lf.toml_field,
+                    )
+                continue
+            if (lf.min is not None and value < lf.min) or (lf.max is not None and value > lf.max):
+                raise BuildError(
+                    model.device,
+                    f"{spec.label}.{lf.toml_field}={value!r} is outside this driver's legal range ({lf.min}, {lf.max})",
+                    instance=spec.label,
+                    field=lf.toml_field,
+                )
+
+
 def _check_all_buses_used(model: DeviceModel, buses: "dict[str, dict]") -> None:
     used = {spec.fields["bus"] for spec in model.instances.values() if "bus" in spec.fields}
     orphans = set(buses) - used
@@ -196,6 +238,25 @@ def _check_instance_name_collisions(model: DeviceModel) -> None:
                 instance=spec.label,
             )
         seen[spec.resolved_name] = spec.label
+
+
+def _check_instance_label_collisions(model: DeviceModel) -> None:
+    # §7.2(C)/§8.5/§10.5 item 2: instance_label() (the codegen-time Python-variable identity,
+    # f"{driver}_{name_ext}" if name_ext else driver) is a different identity space from
+    # resolved_name (the REST-key identity, already checked above) - unreachable with today's 6 real
+    # driver names (none contains an underscore that could line up with another driver+name_ext
+    # combination), but structurally latent for a future driver whose module name does.
+    seen: dict[str, tuple[str, str]] = {}
+    for key in model.instances:
+        label = instance_label(key)
+        existing = seen.get(label)
+        if existing is not None:
+            raise BuildError(
+                model.device,
+                f"instance_label collision: {key!r} and {existing!r} both resolve to the generated Python variable name {label!r} - rename one driver module or its name_ext",
+                instance=instance_label(key),
+            )
+        seen[label] = key
 
 
 def _check_gpio_collisions(model: DeviceModel, buses: "dict[str, dict]") -> None:
@@ -373,8 +434,10 @@ def build_model(toml_path: Path, src_dir: Path) -> DeviceModel:
     buses = _check_bus_tables(model)
     _resolve_instances(model, src_dir)
     _check_required_fields(model, buses)
+    _check_limits(model)
     _check_all_buses_used(model, buses)
     _check_instance_name_collisions(model)
+    _check_instance_label_collisions(model)
     _check_gpio_collisions(model, buses)
     _check_address_collisions(model)
     _check_instance_wiring(model, src_dir)

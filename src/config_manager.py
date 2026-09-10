@@ -55,6 +55,17 @@ if TYPE_CHECKING:
     WiringField = tuple[str, type, str, bool, str]
     WiringSchema = tuple[WiringField, ...]
 
+    # A driver's declaration of a real, already-documented-in-code domain a TOML field's value must
+    # satisfy (BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md §5.2): (toml_field, constraint), where
+    # constraint is either a (min, max) tuple (each a number or None - that side unchecked, min==max
+    # an exact-value requirement) or a frozenset of exact legal int values (e.g. BMP388/390's
+    # address-select pin: exactly 0x76 or 0x77). AST-parsed the same way _WIRING is (buildgen/limits.py)
+    # - never a blanket requirement for every numeric field to declare bounds, only ones with a real
+    # constraint already established elsewhere in the same file.
+    LimitConstraint = tuple[int | float | None, int | float | None] | frozenset[int]
+    LimitField = tuple[str, LimitConstraint]
+    LimitsSchema = tuple[LimitField, ...]
+
 from print_log import PrintLogHistory
 
 

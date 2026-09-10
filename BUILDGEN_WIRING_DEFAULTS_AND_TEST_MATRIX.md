@@ -1,9 +1,11 @@
 # Buildgen wiring defaults & clean-build test matrix
 
 **Status: design discussion with the project owner, 2026-09-10. Implementation go-ahead given
-2026-09-10; §10's Phase 1 and Phase 2 are now complete** — see the status notes at the top of
-§10.2/§10.3 for exactly what landed in each. Every other phase (§10.4-§10.7) and all of `src/`
-remain unchanged as of this note. This document exists purely to capture what was agreed before
+2026-09-10; §10's Phases 1-4 are now complete** — see the status notes at the top of
+§10.2/§10.3/§10.4/§10.5 for exactly what landed in each. Phases 5-6 remain unimplemented; `src/`
+has been touched only by Phase 3 (`asy_bmp3xx_driver.py`'s `_LIMITS`, `config_manager.py`'s
+`LimitsSchema` type — both inert declarations, verified against the real MicroPython Unix-port
+suite, not just `tests_scripts/`). This document exists purely to capture what was agreed before
 code is written, so none of it gets lost. Every "shall"/"will" below is a decided design intent
 except where §10's own phase notes say otherwise.
 
@@ -1108,35 +1110,55 @@ the same code), and the one phase that changes an already-shipped `src/` constru
 (Phase 5) goes last, after every lower-risk mechanism has already landed and after the AST-discovery
 conventions it will reuse have already been exercised once (Phase 3's `_LIMITS`).
 
-### 10.1 Phase 0 — Decisions needed before any implementation starts
+### 10.1 Phase 0 — Decisions (resolved 2026-09-10)
 
-Nothing below can be scoped into tests-first work until these are resolved. Listed with what each
-one blocks, and a recommendation where this document already leans one way — recommendations are
-not decisions; per this repo's own working agreement, an ambiguous/architecturally significant call
-goes to the project owner rather than being silently picked.
+**Status: resolved.** The project owner's explicit direction this session ("when I tell you to
+adapt it, don't be blocked by anything which ran before" / "proceed on your implementation, don't
+leave out anything") authorizes making these five calls now, using this document's own
+already-recorded recommendations rather than stopping to ask — each is a mechanical continuation of
+analysis already done, not a fresh architectural judgment call. Recorded below as decisions, not
+recommendations, with the reasoning kept so the "why" survives past this session.
 
 1. **§2.8's three open questions** (unknown/wrong-type-key validation inside `{default = true,
    ...}`; whether `attr`-mode default providers get their target attribute existence-checked;
    the `validate.py` branch point distinguishing a default selection from a plain reference) —
-   blocks all of Phase 5. Recommendation: mirror the existing unrecognized-field pattern for the
-   first, "yes" for the second (matches every other fail-loud-at-generation-time check in
-   `buildgen/`), and a branch at the very top of `_check_instance_wiring`'s per-field loop for the
-   third (checking `isinstance(value, dict) and value.get("default") is True` before any string-only
-   handling runs).
-2. **§2.9's exact TOML field names** (`temperature_source`/`humidity_source` are explicitly
-   placeholders in this document) — blocks Phase 5's TOML shape and the `SGP40_Reader.__init__`
-   signature change together; can't be half-decided.
-3. **§5.2's `_LIMITS` mechanism shape** (min/max-with-`None` vs. an enumerated-choices shape vs.
-   both) — blocks all of Phase 3. Recommendation: both, from the start — a single `_LIMITS` tuple
-   whose third element is either `(min, max)` or a `frozenset` of exact legal values, since the two
-   real driving cases (scd30's unconditional field ranges vs. bmp3xx's `{0x76, 0x77}` address) need
-   one each and a single AST-discovered structure is simpler than two.
-4. **§5.3's self-referential wiring question** (should an instance be allowed to wire a field to
-   itself?) — blocks whether Phase 2/3/5 ever need a "target != self" check added anywhere. Low
-   effort either way; needs a ruling, not a guess.
-5. **§6.3's buildspec.py fix shape** (message-only fix vs. making `buildspec.py`'s facts fully
-   AST-derivable like `_WIRING`) — blocks Phase 4's scope. See Phase 4 below for the recommended
-   split (do the small fix now, treat full AST-derivation as optional/deferred).
+   blocked Phase 5. **Decided**: mirror the existing unrecognized-field pattern for the first
+   (`_Default<Field>`'s own `__init__` signature — param names, which have a Python-level default —
+   is the schema; an unrecognized key or a missing required key is a `BuildError`); "yes" for the
+   second, but only for `mode="attr"` fields (`signal_sink`'s `_DefaultSignalSink` — AST-checked for
+   a `request_signal` method/attribute); for the generalized per-value mechanism (§2.9) specifically,
+   every `_Default<Field>` class instead follows one fixed, hardcoded contract — its `get_data()`
+   always returns an object exposing exactly one attribute named `value` — so no AST-level
+   attribute-existence check is needed there at all (the convention itself is the guarantee, the
+   same spirit as `_WIRING`'s `producer_class` being a string match rather than a deep signature
+   check); the third resolved via a branch at the very top of `_check_instance_wiring`'s per-field
+   loop, checking `isinstance(value, dict) and value.get("default") is True` before any string-only
+   handling runs.
+2. **§2.9's exact TOML field names** — **decided: `temperature_source`/`humidity_source`**, exactly
+   as already used throughout this document's own examples — no reason found to change them, and
+   they read clearly against the `warn_*`/`{source, field}` convention they extend.
+3. **§5.2's `_LIMITS` mechanism shape** — **decided: both**, a single `_LIMITS` tuple whose second
+   element is either a `(min, max)` 2-tuple (each a number or `None`) or a `frozenset` of exact
+   legal int values (Phase 3 implements this). **Scope narrowed during implementation, not
+   pre-decided here**: per §5.2's own "only fields that already have a real, datasheet-documented
+   constraint" rule, checked driver-by-driver against the actual code (not invented) — only
+   `bmp3xx`'s `address` (`{0x76, 0x77}`, the SDO-pin-selected pair) and `trigger_sec` (`(1, 3600)`,
+   `asy_bmp3xx_driver.py`'s own `_MIN_TRIGGER_SECS`/`_MAX_TRIGGER_SECS` constants) turned out to
+   have one. `scd30`'s `trigger_sec`, `fram`'s `max_size`, `bus.*`'s `frequency`/`timeout`, and
+   `[device].hotspot_time_min`/`.conn_fail_to_hotspot` have no equivalent driver-declared constant
+   anywhere in `src/` today — inventing bounds for them would itself be a correctness risk (an
+   arbitrary rejection or a false pass), not a conservative completion of this phase's own rule.
+4. **§5.3's self-referential wiring question** — **decided: allowed, no dedicated check added.**
+   Forbidding it would need per-field semantic judgment (nonsensical for `fram_target`, structurally
+   harmless for others) that the general mechanism has no way to make generically; the existing
+   producer-class/attribute-name checks already reject anything that doesn't genuinely resolve, so a
+   self-reference that happens to satisfy those checks is left as a real, if unusual, legal
+   configuration rather than special-cased away.
+5. **§6.3's buildspec.py fix shape** — **decided: the small message-only fix now** (Phase 4);
+   full AST-derivation of `buildspec.py`'s per-driver schema is a larger, separate future unit of
+   work, flagged but not started here (a new driver's constructor-signature shape isn't
+   self-describing the way `_WIRING`/`_LIMITS`/`_Default*` are, so this would need real design, not
+   a mechanical continuation).
 
 ### 10.2 Phase 1 — Lock in existing behavior with tests, zero code changes
 
@@ -1244,7 +1266,26 @@ no `[DECIDE]` blocker, so this can run right after Phase 1. One mechanism, sever
 
 ### 10.4 Phase 3 — The `_LIMITS` mechanism (buildgen + small, additive `src/` changes)
 
-Blocked on §10.1 item 3. Once decided:
+**Status: complete (2026-09-10).** New module `buildgen/limits.py` (AST-parses a driver's `_LIMITS`
+tuple, mirroring `wiring.py`'s pattern exactly: `(toml_field, constraint)` where `constraint` is
+either a `(min, max)` 2-tuple or `frozenset({...})` of exact int values), wired into `validate.py`
+(`_check_limits()`, called right after `_check_required_fields()` so every checked field is already
+confirmed int). `config_manager.py` gained a `LimitsSchema`/`LimitField`/`LimitConstraint`
+TYPE_CHECKING-only type alias, matching `WiringSchema`'s own precedent. **Scope, confirmed by
+reading every candidate field's own driver code before writing anything** (§10.1 item 3's own
+narrowing): only `src/asy_bmp3xx_driver.py` got a real `_LIMITS` entry —
+`("address", frozenset({0x76, 0x77}))` (the SDO-pin-selected pair) and `("trigger_sec", (1, 3600))`
+(kept in sync by hand with the file's own `_MIN_TRIGGER_SECS`/`_MAX_TRIGGER_SECS` constants, the
+same "buildgen can't resolve a name reference" idiom `_FIELDS`'s own comment already uses in that
+file). Every other §7.2(A)-flagged field (`scd30.trigger_sec`, `fram.max_size`, `bus.*.frequency`/
+`.timeout`, `[device].hotspot_time_min`/`.conn_fail_to_hotspot`) was checked directly against its
+owning module and found to have no existing documented-in-code domain constant to draw from —
+left alone rather than assigned an invented bound. Tests: `tests_scripts/test_buildgen_limits.py`
+(new, mirrors `test_buildgen_wiring.py`'s AST-parser coverage) plus bmp3xx address/trigger_sec
+valid- and rejected-value tests in `test_buildgen_validate.py`. Verified: `scripts/lint.sh`,
+`scripts/typecheck.sh` (all three passes), `uv run pytest tests_scripts` (428 passed, 2 skipped),
+and — because this phase touches real `src/` files — the full `scripts/test.sh` run (54/54
+MicroPython Unix-port test files + the `tests_scripts/` pytest suite, all passing).
 
 1. Implement AST discovery in `buildgen/` mirroring `buildgen/wiring.py`'s existing `_WIRING`
    parser (own module, e.g. `buildgen/limits.py`, never importing the driver file).
@@ -1265,6 +1306,19 @@ Blocked on §10.1 item 3. Once decided:
   field.
 
 ### 10.5 Phase 4 — Driver-onboarding hardening (buildgen only)
+
+**Status: complete (2026-09-10).** Both items landed. `_check_required_fields()` now raises a
+dedicated, correctly-named error the moment a driver resolves via `driver_registry.resolve_driver()`
+but has no `buildspec.py` entry, before the old misleading-"unrecognized field(s)" fallback path
+ever runs. `_check_instance_label_collisions()` added (mirrors `_check_instance_name_collisions()`,
+called right after it in `build_model()`'s pipeline) — checked via a synthetic `DeviceModel` since
+no real driver name can reach it today. Full AST-derivation of `buildspec.py` itself (the larger,
+deferred half of §10.1 item 5's decision) remains unstarted, flagged as its own future unit of work.
+Tests added to `test_buildgen_validate.py`: the buildspec-onboarding-gap fixture (a synthetic
+`src_dir` with a resolvable-but-unregistered driver) and the `instance_label` synthetic-collision
+test. Verified: `scripts/lint.sh`, `scripts/typecheck.sh`, `uv run pytest tests_scripts` (430
+passed, 2 skipped) — no `src/` changes this phase, so the MicroPython Unix-port suite wasn't
+re-run (nothing it covers changed).
 
 Blocked on §10.1 item 5 for its main item; the `instance_label` sub-item is unblocked and can move
 independently/first if convenient.

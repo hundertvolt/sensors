@@ -269,6 +269,22 @@ def test_unknown_driver(tmp_path: Path, src_dir: Path):
         _build(tmp_path, src_dir, doc)
 
 
+def test_driver_resolvable_but_missing_buildspec_entry_reports_the_real_cause(tmp_path: Path):
+    # §6.3/§8.4/§10.5 item 1: a driver that resolves fine via driver_registry (a real
+    # asy_<name>_driver.py with a SensorReader subclass) but has no buildspec.py entry at all -
+    # must fail loud, naming the real cause, not report every one of its fields as "unrecognized".
+    custom_src = tmp_path / "src"
+    custom_src.mkdir()
+    (custom_src / "asy_bogus2_driver.py").write_text('_NAME = "BOGUS2"\n\n\nclass Bogus2_Reader(SensorReader):\n    pass\n')
+    doc = {
+        "device": {"name": "Test", "hostname": "SensorStationTest", "hotspot_password": "12345678", "conn_fail_to_hotspot": 5, "hotspot_time_min": 8},
+        "bus": {},
+        "instance": [{"driver": "bogus2"}],
+    }
+    with pytest.raises(BuildError, match="has no entry in buildgen.buildspec"):
+        _build(tmp_path, custom_src, doc, name="bogus2dev")
+
+
 def test_instance_missing_required_field(tmp_path: Path, src_dir: Path):
     doc = base_doc()
     del doc["instance"][0]["irq_pin"]
@@ -455,6 +471,22 @@ def test_instance_name_collision_via_distinct_drivers_same_resolved_name(tmp_pat
         _check_instance_name_collisions(model)
 
 
+def test_instance_label_collision_synthetic(tmp_path: Path, src_dir: Path):
+    # §7.2(C)/§10.5 item 2: instance_label() (the generated Python-variable identity) has no
+    # uniqueness check of its own distinct from resolved_name's - unreachable via any real driver
+    # name today (none contains an underscore that lines up with another driver+name_ext
+    # combination), so this drives _check_instance_label_collisions() directly against a synthetic
+    # model, the same style as the resolved_name-collision test above.
+    from buildgen.model import DeviceModel, InstanceSpec
+    from buildgen.validate import _check_instance_label_collisions
+
+    model = DeviceModel("dev", tmp_path / "dev.toml", {})
+    model.instances[("foo_bar", "")] = InstanceSpec("foo_bar", "", {}, {}, 0)
+    model.instances[("foo", "bar")] = InstanceSpec("foo", "bar", {}, {}, 1)
+    with pytest.raises(BuildError, match="instance_label collision"):
+        _check_instance_label_collisions(model)
+
+
 def test_gpio_collision_cs_pin_synthetic_two_instances(tmp_path: Path, src_dir: Path):
     # §5.1 #12: duplicate CS pins on SPI is already subsumed by _check_gpio_collisions()'s shared
     # claims dict, but today only `fram` has a cs_pin field and it's a forced singleton - no real
@@ -549,6 +581,38 @@ def test_two_fixed_address_different_drivers_same_bus_do_not_collide(tmp_path: P
     # different chip types have different real fixed addresses, so this must NOT raise.
     doc = base_doc()
     _build(tmp_path, src_dir, doc)
+
+
+@pytest.mark.parametrize("bad_address", [0x50, 0, 0x78])
+def test_bmp3xx_address_outside_legal_set_rejected(tmp_path: Path, src_dir: Path, bad_address: int):
+    # Phase 3 (§5.1 #11/§10.4): bmp3xx's address is well-typed and hardware-plausible but not one
+    # of the two real SDO-pin-selected values - a datasheet-reading mistake, not a TOML mistake.
+    doc = base_doc()
+    doc["instance"].append({"driver": "bmp3xx", "bus": "i2c0", "address": bad_address})
+    with pytest.raises(BuildError, match="not one of this driver's legal values"):
+        _build(tmp_path, src_dir, doc)
+
+
+@pytest.mark.parametrize("legal_address", [0x76, 0x77])
+def test_bmp3xx_address_in_legal_set_is_fine(tmp_path: Path, src_dir: Path, legal_address: int):
+    doc = base_doc()
+    doc["instance"].append({"driver": "bmp3xx", "bus": "i2c0", "address": legal_address})
+    _build(tmp_path, src_dir, doc)  # no raise
+
+
+@pytest.mark.parametrize("bad_trigger", [0, 3601, -1])
+def test_bmp3xx_trigger_sec_outside_legal_range_rejected(tmp_path: Path, src_dir: Path, bad_trigger: int):
+    doc = base_doc()
+    doc["instance"].append({"driver": "bmp3xx", "bus": "i2c0", "address": 0x77, "trigger_sec": bad_trigger})
+    with pytest.raises(BuildError, match="outside this driver's legal range"):
+        _build(tmp_path, src_dir, doc)
+
+
+@pytest.mark.parametrize("legal_trigger", [1, 3600, 60])
+def test_bmp3xx_trigger_sec_in_legal_range_is_fine(tmp_path: Path, src_dir: Path, legal_trigger: int):
+    doc = base_doc()
+    doc["instance"].append({"driver": "bmp3xx", "bus": "i2c0", "address": 0x77, "trigger_sec": legal_trigger})
+    _build(tmp_path, src_dir, doc)  # no raise
 
 
 def test_two_bmp3xx_same_bus_different_legal_addresses_is_fine(tmp_path: Path, src_dir: Path):

@@ -30,7 +30,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from typing import Any
 
-    from config_manager import WiringSchema
+    from config_manager import LimitsSchema, WiringSchema
 
 
 _BMP388_CHIP_ID = const(0x50)  # also reported by BMP384 (datasheet sec 4.3.1); BMP390 differs
@@ -85,6 +85,14 @@ _FIELDS = const(("Pres", "Temp", "SLPres", "TS"))  # kept in sync with BMP3XX's 
 # FRAM backup target, resolved by buildgen/ (Session 3 of BUILD_CHAIN_PLAN.md) to an
 # already-constructed instance, passed directly as this driver's own fram= kwarg.
 _WIRING: "WiringSchema" = (("fram_target", AsyFramManager, "fram", False, "kwarg"),)
+
+# Driver-declared value domains (BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md §5.2), AST-discovered
+# by buildgen/limits.py - kept in sync with _MIN_TRIGGER_SECS/_MAX_TRIGGER_SECS above by hand
+# (buildgen never imports this file - same "can't resolve a name reference" idiom as _FIELDS above).
+_LIMITS: "LimitsSchema" = (
+    ("address", frozenset({0x76, 0x77})),  # BMP388/390's SDO pin: exactly 0x76 (low) or 0x77 (high)
+    ("trigger_sec", (1, 3600)),
+)
 if TYPE_CHECKING:
     BMPResults = tuple[float | None, float | None, int | None]  # pressure, temperature, timestamp
 
