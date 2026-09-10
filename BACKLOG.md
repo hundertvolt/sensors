@@ -217,6 +217,31 @@ constraints.
     here; a project-owner call.
 
 ## Deferred / explicitly out-of-scope work
+- **`buildgen/buildspec.py`'s per-driver schema is hand-maintained — making it AST-derivable is a
+  separate, unstarted unit of work.** Everything else `buildgen/` needs from a driver is derived
+  from `src/` automatically (the class itself via `driver_registry.py`'s naming convention,
+  `_WIRING`, `_VALUE_WIRING`, `_LIMITS`, `_Default*`); `buildspec.py`'s "which TOML fields does this
+  driver require/allow, does it sit on a bus, does it have a selectable address" dicts are the one
+  exception, because Session 2's shipped TOML field names (`pin`, `cs_pin`, ...) and `src/`'s
+  constructor parameter names (`neopixel_pin`, `spi_cs`, ...) are two independently-evolved naming
+  spaces with no rule connecting them. So adding a 7th driver means editing one table by hand, and
+  forgetting to is a real (if now clearly-reported) failure. **The small half is already done**: a
+  driver that resolves via `driver_registry` but has no `buildspec.py` entry raises a dedicated
+  error naming that as the cause, instead of reporting every one of its real fields as
+  "unrecognized" (BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md §10.1 item 5, §10.5). The large half —
+  deriving the schema from each driver's own constructor signature, or from a new declarative tuple
+  beside `_WIRING` — needs real design, not a mechanical continuation, and hasn't been started.
+- **`[device].name`/`hostname`/`hotspot_password` are validated but never wired into any boot
+  path.** Confirmed against both the generator and the hand-written `sensortask_wozi.py`: neither
+  has a constructor-time injection point for them. `Hostname`/`HotspotPW` are ConfigManager-
+  persisted runtime values with one hardcoded shared default (`"SensorNode"`/`"12345678"` —
+  `asy_wifi_service.py`'s `_VAL_HOST`/`_VAL_HOTSPOT_PW`), identical in every device's frozen build,
+  so **every device today actually boots as `SensorNode`**, whatever its `devices/*.toml` says. The
+  TOML values are schema-checked and otherwise inert. Fixing it needs either a `src/` constructor-
+  time override mechanism or a build-artifact config-seeding step (Session 6's territory) — not a
+  `buildgen/`-only change. A tripwire test (`test_hostname_and_hotspot_password_are_not_yet_wired_
+  into_generated_code`) and a code comment in `validate.py` hold the current state in place so the
+  gap can't quietly change shape unnoticed.
 - **Real-hardware re-test of the segfault fix and the memory-leak soak test — real-hardware forms
   now exist and are wired into `tests_hardware/`, but the actual long-soak run is still opt-in and
   has not yet been executed.** Corrects a stale claim (this entry used to say neither soak-test

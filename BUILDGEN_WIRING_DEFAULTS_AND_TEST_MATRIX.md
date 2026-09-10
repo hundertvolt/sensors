@@ -382,7 +382,13 @@ preserved, not dropped.
 11. **name_ext on a singleton-adjacent instance** — giving the sole scd30 instance a non-empty
     `name_ext` anyway (legal, just unusual).
 
-### 4.4 Still to do
+### 4.4 Still to do — CLOSED (2026-09-10)
+
+**Every item below landed in §10's Phases 1, 2 and 6; kept for the reasoning, not as open work.**
+The cross-product decision was made in Phase 6 (fixtures for the combinations that interact,
+targeted internals tests for the ones no real TOML can reach), axis 9's fixture set is
+`tests_scripts/buildgen_fixtures/multi_instance.toml`, and both "real gaps found while grounding
+axis 10" were fixed in Phase 2 (`buildgen/pico_gpio.py` plus the relaxed `[bus.*]` requirement).
 
 - Enumerate the actual cross-product of axes 1-8 and 11 (pruned by §4.2) — **corrected during the
   2026-09-10 bird's-eye pass**: axis 11 (name_ext on a singleton-adjacent instance) had silently
@@ -579,7 +585,15 @@ config variant" should mean:
   the shape that currently can't build at all today because of the unconditional `[bus.*]`
   requirement.
 
-### 5.4 Still to do (must-fail matrix)
+### 5.4 Still to do (must-fail matrix) — CLOSED (2026-09-10)
+
+**Resolved by §10's Phases 0-4; kept for the reasoning.** §5.2's mechanism shape was decided in
+Phase 0 item 3 (both shapes: a `(min, max)` 2-tuple or a `frozenset` of exact values) and built in
+Phase 3; the negative fixtures/internals tests were written in Phases 1-3; §5.1 #3/#5's bogus-key
+test landed in Phase 1 (`test_instance_wiring_bogus_key_rejected`); §5.3's self-reference question
+was decided in Phase 0 item 4 (allowed, no dedicated check). The one item that reached the end
+unscheduled - `[device].hotspot_password` having no type/shape check at all - was found by a
+transcript audit afterwards and fixed then.
 
 - Decide the §5.2 mechanism shape (min/max vs. enumerated choices vs. both) with the project owner
   before any implementation.
@@ -728,7 +742,11 @@ that I2C index, just wired to the wrong role. Any future fix for the pin-legalit
 *role*, not just *peripheral-index membership*, or this specific (very easy) mistake would still
 slip through. Same applies to SPI's `sck_pin`/`mosi_pin`/`miso_pin` triple.
 
-### 6.5 Still to do (human-factors scenario)
+### 6.5 Still to do (human-factors scenario) — CLOSED (2026-09-10)
+
+**Resolved by §10's Phases 2 and 4; kept for the reasoning.** §6.3's buildspec dual-source-of-truth
+gap got its message fix and its must-fail fixture in Phase 4 (full AST-derivation stays deferred -
+see BACKLOG.md); §6.4's pin-role check and its own fixtures landed in Phase 2.
 
 - No new mechanism proposed in this section beyond what §5.2 already sketches (extended, per §6.2,
   to cover unconditional field-range/enumerated-choice checks; conditional cross-object checks
@@ -902,7 +920,12 @@ field and it's a forced singleton, so the current driver catalog can never actua
 `cs_pin` claims to collide. Like (C), this needs a direct-internals test against a synthetic model
 rather than a real TOML fixture if it's ever locked in, not a gap in the check itself.
 
-### 7.3 Still to do
+### 7.3 Still to do — CLOSED (2026-09-10)
+
+**Resolved by §10's Phases 1, 4 and 6; kept for the reasoning.** The fixture-vs-internals-test
+split was settled case by case as those phases wrote them; §7.2(C)'s identity-space finding became
+`_check_instance_label_collisions()` in Phase 4, alongside the buildspec onboarding fix it is
+related to.
 
 - Decide with the project owner which of §7.1's "valid but untested" cases become real fixtures vs.
   targeted `validate.py`/`generate.py`-internals tests, matching the existing suite's own mix.
@@ -925,9 +948,23 @@ what §2/§4/§5/§6/§7 already found, so none of it gets lost or has to be re-
 2026-09-10 bird's-eye pass so there's no ambiguity about which list is authoritative**: those four
 subsections remain the local, in-context next-steps for their own section; §8 is the flattened,
 cross-referenced master index over all of them plus §2's mechanism — read §8 to find everything at
-once, read the local "Still to do" for a given section's own framing/context. Neither is stale
-relative to the other as of this pass; if they ever diverge, the more specific local section wins
-and §8 needs updating to match.
+once, read the local "Still to do" for a given section's own framing/context. If they ever diverge,
+the more specific local section wins and §8 needs updating to match.
+
+> **STATUS, 2026-09-10 — this whole section is CLOSED.** Every `[FIX]`/`[TEST]`/`[DECIDE]` item
+> below was implemented, tested or decided by §10's Phases 0-6, with three exceptions, each now
+> tracked where it won't be lost when this document is eventually retired:
+> - `[FIX] [TEST]` §8.3's `[device].hotspot_password` type/shape check — the one item no phase ever
+>   picked up. Found by a transcript audit after Phase 6 and **fixed then**, along with §8.4's two
+>   `[COSMETIC]` message items (`_identifier()`'s missing `instance=`/`field=`, and the misleading
+>   error for a single-bracket `[instance]` table).
+> - The larger, deliberately-deferred half of §8.4's buildspec item — making `buildspec.py`'s
+>   per-driver schema AST-derivable — is **open work, recorded in BACKLOG.md**, not here.
+> - The `_LIMITS`-vs-comment-tag question raised against §5.2's mechanism is **decided**: see
+>   `BUILD_CHAIN_PLAN.md`'s quality bar, "which of the two forms a new driver-declared fact takes".
+>
+> The per-item text below is kept verbatim as the record of what was found and why — read it as
+> history plus rationale, not as a work list.
 
 ### 8.0 The standing contract every `[FIX]` below must be built to (already settled, not new)
 
@@ -953,7 +990,7 @@ output is produced. **Every `[FIX]` item below must hold to this exact same bar*
 only warns, or that lets generation proceed past a detected problem, would violate a rule that
 already governs every check that exists today — not a new bar being raised for new code specifically.
 
-### 8.1 §2's wiring-defaults mechanism — entirely unimplemented
+### 8.1 §2's wiring-defaults mechanism — implemented in full by Phase 5 (was: entirely unimplemented)
 
 - **[FIX] [DECIDE]** The whole `_Default<Field>` provider mechanism (§2.1-§2.7): AST-discovery of
   `_Default<ToMLFieldInPascalCase>.__init__`, the `{default = true, ...}` TOML shape, inline
@@ -973,7 +1010,7 @@ already governs every check that exists today — not a new bar being raised for
   own `tests/` coverage — functioning, resilience, and coverage — to the same bar as any other
   `src/` promotion, not a buildgen-only shortcut.
 
-### 8.2 §4's clean-build matrix gaps
+### 8.2 §4's clean-build matrix gaps — all closed by Phase 2
 
 - **[FIX] [TEST]** No-buses-at-all is currently unbuildable (`_check_bus_tables()` unconditionally
   requires `[bus.*]`), even though "no sensors, no FRAM" is a logically valid, simplest-possible
@@ -993,7 +1030,7 @@ already governs every check that exists today — not a new bar being raised for
 - **[FIX] [TEST]** Bus id with a recognized kind prefix but no real port behind it (`i2c2`, bare
   `i2c`, `spi9`) — `_bus_kind()` only checks the prefix, confirmed via direct code read.
 
-### 8.3 §5's must-fail matrix gaps
+### 8.3 §5's must-fail matrix gaps — closed by Phases 0-3, except the hotspot_password item (see the section status above)
 
 - **[TEST]** §5.1 #1: literal duplicate key in one TOML table — code (via `tomllib`) is believed
   correct; no test constructs one.
@@ -1026,7 +1063,7 @@ already governs every check that exists today — not a new bar being raised for
 - **[FIX] [TEST]** §5.3: empty `[[instance]]` array / fully empty device — same underlying fix as
   §8.2's "no buses at all" gap, not a separate mechanism.
 
-### 8.4 §6's human-factors findings
+### 8.4 §6's human-factors findings — closed by Phase 4 and the post-Phase-6 audit; buildspec AST-derivation deferred to BACKLOG.md
 
 - **[FIX] [DECIDE]** §6.3: `buildspec.py`'s hand-maintained schema is a second, independently
   fallible source of truth alongside `driver_registry.py`'s fully-automatic one — a new driver
@@ -1045,7 +1082,7 @@ already governs every check that exists today — not a new bar being raised for
   holds; this is only about the error naming exactly what/where per that same contract's second
   bullet).
 
-### 8.5 §7's test-suite cross-check findings
+### 8.5 §7's test-suite cross-check findings — all closed by Phases 1, 2, 4 and 6
 
 - **[TEST]** §7.1's nine valid-but-currently-untested combinations, all needing either a fixture or
   a targeted internals test (no code fix implied unless writing the test reveals an actual bug):
@@ -1229,7 +1266,7 @@ required peripheral index and role (SDA vs SCL, MISO vs SCK vs MOSI — closes �
 gap in the same pass). All three changes verified against every real `devices/*.toml` (all six
 pass unchanged — the fixed table was checked against their real pin values *before* writing the
 check, not after) and confirmed via `scripts/lint.sh`/`scripts/typecheck.sh` (clean, including
-`buildgen/typecheck.ini`'s dedicated pass) and `uv run pytest tests_scripts` (404 passed, 2
+`buildgen/typecheck.ini`'s dedicated pass - since renamed `scripts/hosttools_typecheck.ini`) and `uv run pytest tests_scripts` (404 passed, 2
 skipped). **One pre-existing latent bug this phase's own check surfaced and fixed**: the mandatory
 synthetic `novel_combo.toml` fixture's `[bus.spi0]` declared `sck_pin=10, mosi_pin=11, miso_pin=12`
 — all three real SPI1-block pins, mislabeled as `spi0`, silently wrong ever since Session 3 because
@@ -1414,16 +1451,17 @@ decisions"/schema example/quality-bar sections. Every remaining `comp_source` me
 now correctly historical/contextual ("used to be", "old", "earlier") - confirmed via a repo-wide
 grep pass, not assumed.
 
-**Deliberately left alone, flagged rather than silently touched**: `tests_hardware/device_scripts/
-sgp40_voc_algorithm_quality.py`/`sgp40_fram_backup_restore.py` (real-hardware bench scripts) both
-construct `SGP40_Reader` with a bare async function (`_fixed_comp`) as the old positional
-`comp_source` argument - this was already structurally broken against the *pre-existing* driver API
-too (`_read_sgp()` has always called `.get_data()` on it, which a plain function doesn't have), so
-it predates this session and isn't a regression this phase introduced. Left unfixed rather than
-silently repaired mid-refactor, since fixing it properly means also correcting `_fixed_comp`'s own
-shape (a separate, pre-existing bug), not just updating call-site syntax - flagged for a future
-session with real-hardware go-ahead to pick up, per CLAUDE.md's "flag, don't silently fix unrelated
-things" rule.
+**Flagged during this phase, fixed immediately after it** (recorded here so the sequence isn't
+misread later): `tests_hardware/device_scripts/sgp40_voc_algorithm_quality.py`/
+`sgp40_fram_backup_restore.py` both constructed `SGP40_Reader` with a bare async function
+(`_fixed_comp`) as the old positional `comp_source` argument - already structurally broken against
+the *pre-existing* driver API too (`_read_sgp()` has always called `.get_data()` on it, which a
+plain function doesn't have), so it predated this session rather than being a regression this phase
+introduced. Both were repaired in commit `a1550f7` (each `_fixed_comp` replaced by a `_FixedSource`
+class exposing the real `get_data() -> object with .value` contract), and the recurrence path was
+closed in `227e7a9` by putting `tests_hardware/device_scripts/` permanently into mypy's scope - an
+ad hoc run reproduced all six errors against the old code and none against the fix. The whole of
+`tests_hardware/` later joined ruff's scope too.
 
 **Verified**: `scripts/lint.sh`, `scripts/typecheck.sh` (all three passes - two real, load-bearing
 mypy fixes found along the way: a type-narrowing limitation in `value_wiring.py`'s own parser fixed

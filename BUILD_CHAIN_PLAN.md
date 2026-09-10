@@ -309,7 +309,9 @@ exists yet — the global-GPIO-pin/per-bus-address/instance-name collision check
 6 real files specifically; **not** a substitute for Session 3's own full validator and its
 malformed-fixture test coverage).
 
-**Session 3 done**: the generator lives at `buildgen/` (a new top-level CPython package, never
+**Session 3 done** (the mechanisms below are the end state, after the six implementation phases
+recorded in `BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md` §10 — read that document before building
+anything against a device TOML's or a generated module's shape): the generator lives at `buildgen/` (a new top-level CPython package, never
 imported by `src/` — chosen over putting it under `scripts/` specifically so it joins
 `pyproject.toml`'s ruff/mypy scope under the full quality bar immediately, per that doc's own #10
 below, rather than inheriting `scripts/`'s/`toolchain/`'s documented legacy gap). `buildgen.
@@ -342,12 +344,28 @@ tests; a future Session 6) decide whether/where to write them. Concretely:
   mandatory-`[device]`-field/required-instance-field check — every failure is a `buildgen.errors.
   BuildError` naming the device/instance/field responsible, never a generic failure or a raw
   traceback.
-- **`# @requires bus.<field><op><value>`**: `buildgen.requires_tag` — text-parsed from driver
-  source, never a real Python value. Added to `src/asy_scd30_driver.py`
-  (`# @requires bus.timeout>=200000`, its own real clock-stretch requirement — the datasheet
-  citation this session's `_WIRING` addition sits next to was already independently verified and
-  cited in multiple already-reviewed places, e.g. `src/sensortask_wozi.py`'s own construction-order
-  comment).
+- **`# @requires bus.<field><op><value>`**: `buildgen.requires_tag`, on the shared
+  `buildgen.tag_comments` scanner (tokenize-based, typo-tolerant near-miss detection — see the
+  quality bar's standing rule for the whole tag family) — text-parsed from driver source, never a
+  real Python value. Three tags across two drivers today: `asy_scd30_driver.py`'s
+  `bus.timeout>=200000` (its real clock-stretch requirement) and `bus.frequency<=100000`
+  (Interface Description p.2, "Maximal I2C speed is 100 kHz"), and `asy_sgp40_driver.py`'s
+  `bus.frequency<=400000` (datasheet Table 3's fSCL max). A bus shared by both is held to the
+  stricter of the two. `bmp3xx` is deliberately untagged — its datasheet supports every I2C mode,
+  so any bound would be invented rather than documented.
+- **Per-field domains — `_LIMITS`**: `buildgen.limits` AST-parses `(toml_field, constraint)`, the
+  constraint either a `(min, max)` 2-tuple or a `frozenset` of exact legal ints. Only
+  `asy_bmp3xx_driver.py` declares one today (`address` ∈ {0x76, 0x77}, `trigger_sec` ∈ [1, 3600],
+  both from constants already in that file) — no invented bounds anywhere.
+- **Wiring defaults and per-value measurement wiring**: `buildgen.defaults` AST-discovers a
+  driver's `_Default<Field>` classes (the `__init__` signature *is* the schema for a
+  `{default = true, ...}` TOML sub-table), and `buildgen.value_wiring` parses `_VALUE_WIRING` —
+  independent per-value `{source, field}` fields resolved by attribute name, replacing SGP40's old
+  whole-object `comp_source`. See BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md §2/§2.9.
+- **Pin legality and role**: `buildgen.pico_gpio` holds the Pico W's fixed GPIO→peripheral table
+  (datasheet Figure 2), so every claimed pin device-wide is checked for real existence and
+  non-reserved status, and each bus's own wire pins additionally for the right peripheral index
+  *and* role — catching a transposed `scl_pin`/`sda_pin` pair, not just an illegal pin.
 - **Notification signal catalog**: each notification signal's own threshold default/range and
   flash color (BUILD_CHAIN_PLAN's own previously-open question) is a fixed, generator-owned catalog
   (`buildgen.codegen._KNOWN_SIGNALS`) covering `warn_co2`/`warn_voc`/`warn_hum` — every real device
@@ -360,10 +378,13 @@ tests; a future Session 6) decide whether/where to write them. Concretely:
   declared driver modules, `TYPE_CHECKING` blocks stripped. Computes *which modules*; wiring that
   list into the real `freeze()`/`scripts/build_firmware.py` call is Session 6's job.
 - **Mandatory synthetic "novel combination" fixture**: `tests_scripts/buildgen_fixtures/
-  novel_combo.toml` — two `SCD30`s (multi-instance, name_ext-disambiguated), `SGP40` compensated
-  from the *second* one, `BMP3xx` at the alternate hardwired-address value, and `Notification`
-  wired to only one of the three `warn_*` signals — a pin/bus/wiring layout none of the 6 real
-  devices use, proving the generator's full pipeline succeeds from this one new file alone.
+  novel_combo.toml` — two `SCD30`s (multi-instance, name_ext-disambiguated), `SGP40` taking its
+  temperature from one and its humidity from the *other*, `BMP3xx` at the alternate
+  hardwired-address value, and `Notification` wired to only one of the three `warn_*` signals — a
+  pin/bus/wiring layout none of the 6 real devices use, proving the generator's full pipeline
+  succeeds from this one new file alone. A second fixture, `multi_instance.toml`, adds 2× scd30 and
+  2× sgp40 at once, a cross-driver-type value reference (`bmp3xx`'s own `Temp`) and an explicit
+  `{default = true, ...}` constant.
 - **Correctness proof depth** (this doc's own former open question 3): generated output is proven
   syntactically valid Python (`ast.parse()`) matching the documented construction-order/wiring
   shape, via `tests_scripts/test_buildgen_generate.py` against all 6 real devices plus the
@@ -519,6 +540,27 @@ proceed rather than degrading:
   its `[bus.*]` table, and evaluates the tag's predicate against that table's actual field value —
   silently continuing if satisfied, failing loudly (naming the device, instance, bus, field, and
   expected-vs-actual value) if not, the same as every other check in this section.
+- **Which of the two forms a new driver-declared fact takes — a real `_`-prefixed tuple, or a
+  comment tag — is decided by what the fact is *about*, not by whether the firmware reads it**
+  (settled 2026-09-10, after the question was raised on `_LIMITS` specifically). None of
+  `_WIRING`/`_VALUE_WIRING`/`_LIMITS`/`_Default*` is read at runtime either, so "the firmware never
+  reads it" cannot be the dividing line, and the frozen-bytecode cost it points at was measured
+  rather than argued: stripping `asy_bmp3xx_driver.py`'s entire `_LIMITS` tuple changes its
+  `mpy-cross` output by **71 bytes** (10062 → 9991), against a >2 MB flash budget. The real line:
+  - **A declaration states a property of this module's own schema** — which of its constructor
+    parameters are wireable (`_WIRING`, `_VALUE_WIRING`), what domain one of its own TOML fields
+    has (`_LIMITS`), what a default provider's keys are (`_Default*`). It is structured, typed,
+    multi-element data that has a natural Python home right beside the schema it describes, so real
+    syntax carries it: the AST parser stays trivial, ruff and mypy see it, and a malformed one is a
+    `SyntaxError` the interpreter itself catches before any generator runs.
+  - **A comment tag states a constraint about an object this module does not own** — the bus it
+    happens to be attached to (`@requires`), the website that renders it (the planned `@web`). There
+    is no module-level Python object to hang it on, so a real constant would be pure cost with no
+    syntax checking to buy back, and the near-miss detector (`buildgen/tag_comments.py`) exists
+    precisely because a comment gets none of the interpreter's own validation for free.
+  So `_LIMITS` stays a tuple, and a future per-field domain belongs there too; a future
+  cross-object predicate (a second bus property, a display/website fact) is a tag, built on
+  `tag_comments.py` rather than on a second detector.
 - **Standing rule for every tag in this comment-tag family (project owner's explicit direction, not
   scoped to `@requires` alone): a tag that's present, or close to present with a typo, must be
   verified correct in every dimension — exact wording, location, format, content, validity — or
