@@ -853,3 +853,176 @@ rather than a real TOML fixture if it's ever locked in, not a gap in the check i
   are "a new driver can silently violate an assumption the existing checks don't cover").
 - Keep collecting with the project owner before finalizing which of §7.1/§7.2 become real test
   files.
+
+## 8. Consolidated status: every finding from this whole brainstorming (2026-09-10)
+
+Every item found across §2/§4/§5/§6/§7 above, in one place, each tagged with what it still needs:
+**[FIX]** buildgen code needs a new or extended check that doesn't exist today; **[TEST]** the
+underlying behavior is believed correct already, but no test proves it — a regression here would go
+unnoticed; **[DECIDE]** blocked on an open design question the project owner has to resolve before
+either FIX or TEST work can be scoped; **[COSMETIC]** a real but non-blocking message-quality note.
+Several items carry more than one tag. Nothing in this section is new analysis — it's an index into
+what §2/§4/§5/§6/§7 already found, so none of it gets lost or has to be re-derived later.
+
+### 8.0 The standing contract every `[FIX]` below must be built to (already settled, not new)
+
+The project owner's restated requirement — every failure must cancel the whole build, never let an
+invalid build complete, and always fail with a clear, human-readable message pointing at exactly
+what to revise — is not a new rule this document is introducing. It's `BUILD_CHAIN_PLAN.md`'s own
+"Build/generator script quality bar" section, settled before Session 3 ever started:
+
+- *"Never produce a corrupted or partial build. On any detected error, abort the entire build
+  immediately — no partial `build/<device>/` output left behind that could be mistaken for a real
+  artifact."*
+- *"Fail loudly, clearly, and human-readably. A plain, actionable message naming exactly what's
+  wrong and where (which device, which instance, which field) — not a raw traceback, not a silent
+  wrong-default fallback."*
+
+Confirmed directly against the actual code (not just the plan doc) while building §5/§7 above: every
+existing check in `buildgen/validate.py` already raises `buildgen.errors.BuildError` with
+`instance=`/`field=` naming exactly what's wrong (the one confirmed exception is `codegen.py`'s
+`_identifier()`, §6.2/8.4 below — cosmetic, not a partial-build risk, since it still raises). There
+is no code path in the current implementation that degrades, warns-and-continues, or emits partial
+output on error — `build_model()`/`generate_device()` either fully succeed or raise before any
+output is produced. **Every `[FIX]` item below must hold to this exact same bar**: a new check that
+only warns, or that lets generation proceed past a detected problem, would violate a rule that
+already governs every check that exists today — not a new bar being raised for new code specifically.
+
+### 8.1 §2's wiring-defaults mechanism — entirely unimplemented
+
+- **[FIX] [DECIDE]** The whole `_Default<Field>` provider mechanism (§2.1-§2.7): AST-discovery of
+  `_Default<ToMLFieldInPascalCase>.__init__`, the `{default = true, ...}` TOML shape, inline
+  construction at the wiring call-site (§2.6), and `graph.py`'s "no construction-order edge for a
+  default selection" branch.
+- **[FIX] [DECIDE]** §2.9's generalization: splitting `comp_source` into independent per-value
+  fields (placeholder names `temperature_source`/`humidity_source`), the generic name-matched
+  `{source, field}` resolution `warn_*` already uses, extended to every measurement-value wiring
+  field project-wide — plus the real `src/` change this requires (`SGP40_Reader.__init__` moving
+  from one `comp_source` parameter to two independent value-getters).
+- **[DECIDE]** §2.8's three open implementation questions (unknown/wrong-type keys inside a
+  `{default = true, ...}` sub-table; whether an `attr`-mode default provider's target attribute
+  gets verified to exist; the exact `validate.py` branch point distinguishing a default selection
+  from a plain reference) must be resolved before either FIX can start.
+- **[TEST]** §3's own standing requirement: every `src/` change this mechanism needs
+  (`_DefaultCompSource`, `_DefaultSignalSink`, the two-value-getter `SGP40_Reader` change) gets its
+  own `tests/` coverage — functioning, resilience, and coverage — to the same bar as any other
+  `src/` promotion, not a buildgen-only shortcut.
+
+### 8.2 §4's clean-build matrix gaps
+
+- **[FIX] [TEST]** No-buses-at-all is currently unbuildable (`_check_bus_tables()` unconditionally
+  requires `[bus.*]`), even though "no sensors, no FRAM" is a logically valid, simplest-possible
+  device shape.
+- **[FIX] [TEST]** Bus pins are never checked against the RP2040's real, fixed per-GPIO
+  I2C0/I2C1/SPI0/SPI1 capability table (§4.3 axis 10's own transcription of Pico W datasheet Figure
+  2/4) — an illegal pin currently only fails at real `machine.I2C()`/`machine.SPI()` construction
+  time, not as a `BuildError`.
+- **[FIX] [TEST]** Pin **role** within an otherwise-legal pair (§6.4 — `scl_pin`/`sda_pin` or
+  `sck_pin`/`mosi_pin`/`miso_pin` transposed) needs checking, not just peripheral-index membership —
+  **confirmed by the project owner this session as scoped work**, folds into the same fix as the
+  bullet above (one mechanism, both checks).
+- **[FIX] [TEST]** Bus id with a recognized kind prefix but no real port behind it (`i2c2`, bare
+  `i2c`, `spi9`) — `_bus_kind()` only checks the prefix, confirmed via direct code read.
+
+### 8.3 §5's must-fail matrix gaps
+
+- **[TEST]** §5.1 #1: literal duplicate key in one TOML table — code (via `tomllib`) is believed
+  correct; no test constructs one.
+- **[FIX] [TEST]** §5.1 #4: `[device].hotspot_password` has no type/shape check at all (only
+  presence). Same bullet also covers the general array/inline-table-where-scalar-expected gap
+  (`pin = [5]`, `bus = ["i2c0"]`) for every field not already covered.
+- **[TEST]** §5.1 #5: `[instance.wiring]` bogus-key catch-all (`wiring.frobnicate = "x"`, no
+  `_WIRING` match, no `warn_` prefix) — the `wf is None` branch should already catch this; no test
+  exercises it.
+- **[FIX] [DECIDE]** §5.1 #6 / §5.2: driver-declared value range/exact-value checking (scd30's
+  `timeout` headroom is a floor `@requires` already covers conditionally — see §6.2's correction —
+  but nothing checks an *unconditional* sane range on `frequency`/`timeout`/`trigger_sec`/
+  `max_size`/`hotspot_time_min`/`conn_fail_to_hotspot`, per §7.2(A)'s concrete field list). Needs
+  the `_LIMITS`-style mechanism sketched in §5.2, **not agreed/implemented** — min/max-with-`None`
+  shape vs. an enumerated-choices shape (or both) is the blocking decision.
+- **[FIX] [TEST] [DECIDE]** §5.1 #11: impossible `address` value (bmp3xx outside `{0x76, 0x77}`) —
+  same blocked mechanism as the bullet above (an enumerated set, not a range, so needs whichever of
+  §5.2's two shapes — or both — gets decided).
+- **[TEST]** §5.1 #12: duplicate CS pins on SPI — the existing global-pin-collision check already
+  subsumes this structurally, but the current driver catalog can't produce two `cs_pin`-bearing
+  instances to exercise it (`fram` is the only one and it's a forced singleton) — needs a
+  direct-internals test against a synthetic model, the same style as
+  `test_instance_name_collision_via_distinct_drivers_same_resolved_name`, not a real TOML fixture.
+- **[TEST]** §5.3: bool-for-int and float-for-int are only tested on one device-level field
+  (`hotspot_time_min`); the identical `isinstance` pattern also guards `frequency`/`timeout`
+  (bus level) and `address`/`max_size`/`trigger_sec` (instance level) with no test per field.
+- **[DECIDE]** §5.3: self-referential wiring (an instance's own wiring field pointing at itself) —
+  genuinely unresolved whether this should be invalid at all; needs a project-owner ruling before
+  it can become either a FIX or a confirmed non-issue.
+- **[FIX] [TEST]** §5.3: empty `[[instance]]` array / fully empty device — same underlying fix as
+  §8.2's "no buses at all" gap, not a separate mechanism.
+
+### 8.4 §6's human-factors findings
+
+- **[FIX] [DECIDE]** §6.3: `buildspec.py`'s hand-maintained schema is a second, independently
+  fallible source of truth alongside `driver_registry.py`'s fully-automatic one — a new driver
+  registered in one but not the other currently fails loud, but with a misleading message. Needs a
+  decision: make `buildspec.py`'s facts AST-derivable the way `_WIRING`/`_Default*` already are, or
+  (smaller fix) special-case the error message when a driver resolves via `driver_registry` but is
+  absent from every `buildspec.py` dict, so it names the real cause instead of looking like a TOML
+  typo. **[TEST]** either way: a driver resolvable by `driver_registry` but unregistered in
+  `buildspec.py` needs its own must-fail fixture.
+- **[COSMETIC]** §6.2: the `[instance]`-instead-of-`[[instance]]` mistake already fails, but with a
+  message ("missing a 'driver' field") that doesn't point at the real mistake (wrong table syntax).
+  Not a coverage gap — a message-wording improvement only, if error messages are ever revisited.
+- **[COSMETIC] [FIX]** §6.2: `codegen.py`'s `_identifier()` is the one `BuildError` call site in the
+  reviewed codebase that doesn't pass `instance=`/`field=` like every other check does — small,
+  mechanical consistency fix, not a functional gap (it already raises, so §8.0's contract already
+  holds; this is only about the error naming exactly what/where per that same contract's second
+  bullet).
+
+### 8.5 §7's test-suite cross-check findings
+
+- **[TEST]** §7.1's nine valid-but-currently-untested combinations, all needing either a fixture or
+  a targeted internals test (no code fix implied unless writing the test reveals an actual bug):
+  FRAM entirely absent; the single-I2C-no-SPI topology that implies; notification with zero `warn_*`
+  wired; device-level `fram_target` left unwired with FRAM present; device-level `led_target` left
+  unwired all the way through codegen (not just validate); two bmp3xx on one bus at 0x76/0x77;
+  bus-vs-bus pin collision; SPI's own required pins missing individually; `[device].name`'s own
+  type/non-emptiness check.
+- **[FIX] [TEST]** §7.2(A)'s concrete field list for the §5.2 range-check mechanism (folded into
+  §8.3's `_LIMITS` bullet above, listed there in full so it isn't duplicated here) plus the
+  confirmed-gap bus-port-suffix/GPIO-range/pin-fit items (already in §8.2).
+- **[TEST]** §7.2(B): duplicate-TOML-key test, `[instance.wiring]` bogus-key test, and
+  bool/float-for-int per field — all the same items as §8.3's corresponding bullets, cross-referenced
+  here since §7 is where they were re-confirmed against the actual test suite.
+- **[FIX] [TEST]** §7.2(C): `instance_label()` (the codegen-time Python-variable identity) has no
+  uniqueness check of its own — only `resolved_name` (the REST-key identity) does. Currently
+  unreachable with the 6 real driver names, but structurally latent for a future driver whose module
+  name contains an underscore. Needs a `_check_instance_label_collisions()`-equivalent (or folded
+  into the existing `_check_instance_name_collisions()`), tested the same direct-internals way as
+  §8.3's CS-pin bullet (no real driver name can reach it via a TOML fixture today).
+
+## 9. Scope boundary: does a successfully-generated build artifact get run through the test suite?
+
+Confirmed directly against `BUILD_CHAIN_PLAN.md` (not assumed): **the project owner's recollection
+is correct — this is explicitly out of the current (Session 3) scope, and is planned for later
+sessions, not this one.**
+
+- Session 3's own "Correctness proof depth" note states this plainly: generated output is proven
+  syntactically valid Python (`ast.parse()`) matching the documented construction-order/wiring shape
+  — **not executed under the real MicroPython Unix-port interpreter.** `buildgen/` is deliberately
+  AST-only and never imports `src/`, so it structurally cannot boot what it generates itself.
+- **Session 5 ("Digital twin generalization")** is explicitly tasked with this: *"consumes the
+  Session 3 generated module directly, replacing `configure_i2c_wiring("wozi"|"dev")`'s 2-profile
+  enum"* — this is what actually boots a generated module under the digital-twin hardware-fake
+  environment, the same environment `tests/test_digital_twin_*.py` already exercises for the
+  hand-written `sensortask_wozi.py`/`sensortask_dev.py` files today.
+- **Session 6 ("Build chain + CI matrix + `build/` artifact directory")** is where this presumably
+  gets wired into an actual end-to-end pipeline — generate, then run the full test suite (including
+  the digital-twin boot) against what was generated, per device, in CI. `BUILD_CHAIN_PLAN.md`'s own
+  "Testing" bullet under "Core design decisions" already anticipates this shape: *"only the
+  device-specific slice (generated wiring module, generated website definitions, digital-twin boot
+  of that config) runs once per device in CI."*
+
+So: nothing in this whole brainstorming session (§2-§8 above) should be read as needing a
+Session-3-scope fix to "run generated code through tests" — that capability doesn't exist yet by
+design, and every `[TEST]` tag in §8 above means a `buildgen/`-level test (validating the TOML/the
+generated *source text*, under `tests_scripts/`, real CPython), never a test that boots the
+generated module. Whether/how §8's eventual fixes also need a corresponding digital-twin-boot test
+once Session 5 lands is that session's own question to pick up, not this document's to resolve now.
