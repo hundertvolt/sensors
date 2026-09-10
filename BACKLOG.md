@@ -281,9 +281,12 @@ constraints.
   false-positiving on ordinary prose) rather than a second, separately-tested detector - add `"web"`/
   `"web-group"` to its `KNOWN_TAG_NAMES` registry and give the new grammar its own strict-format
   module next to `requires_tag.py`. `tests_scripts/test_buildgen_tag_comments.py` and
-  `tests_scripts/test_buildgen_requires_tag.py` are the reference test shape to mirror: a
-  correctly-formed tag, a typo of the tag name, each structural piece individually wrong, the tag
-  placed somewhere other than module level, and a realistic false-positive case that must not raise.
+  `tests_scripts/test_buildgen_requires_tag.py` are the reference test shape to mirror, and
+  BUILD_CHAIN_PLAN.md's "Build/generator script quality bar" spells out the matrix they implement:
+  the accept side carried at full dimensionality (every operator x every value shape, every legal
+  spacing variant, every legal placement, none/one/several tags per file), the reject side one case
+  per dimension, and each grammar element deleted in turn — a dropped operator, value or sigil is
+  the shape that silently degrades to "no tag declared".
 - **Per-variant `sensortask-*.py` generator — not yet built (the automated version specifically;
   one real, hand-written second variant now exists).** SPECIFICATION.md Part A.3 already names the
   automated generator as a real planned direction (one setup-definition file → every variant's

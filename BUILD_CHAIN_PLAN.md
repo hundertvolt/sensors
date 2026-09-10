@@ -533,12 +533,27 @@ proceed rather than degrading:
   `buildgen/requires_tag.py` is built on it today; whichever session eventually builds the
   `@web`/`@web-group` website-definitions parser (`BACKLOG.md`'s sketch) must build on the same
   module, not reinvent a second, less-tested detector. Each tag-family's own unit tests must cover
-  all five dimensions explicitly: a correctly-formed tag (content), a common typo of the tag name
-  itself (presence/wording), the tag with each structural piece individually wrong — wrong prefix,
-  wrong operator, missing value (format), the tag placed somewhere other than module level near its
-  schema (location), and — the false-positive check that makes the whole mechanism trustworthy — a
-  realistic prose comment that happens to mention the tag's name but carries no real payload, which
-  must *not* raise. `tests_scripts/test_buildgen_tag_comments.py` and
+  the whole matrix, not a sample of it, split by which side of the accept/reject line a case sits
+  on. **The accept side carries the full dimensionality** — every operator against every value
+  shape, every legal spacing variant, every legal placement, and none/one/several tags per file —
+  because a build that silently accepts the wrong thing is the exact failure the tag exists to
+  prevent. **The reject side covers each dimension once and does not recombine** — an abort is an
+  abort, so a typo'd tag name crossed with a wrong operator proves nothing the two separate cases
+  don't. The dimensions to walk: *wording* (the name typo'd by an insertion, deletion, substitution
+  or transposition, mis-cased, or with the `@` sigil dropped outright, plus the edit-distance
+  boundary just outside tolerance, which must stay silent), *format* (each structural piece
+  individually wrong — missing `bus.` prefix, bare `=`, operator dropped, value dropped, trailing
+  junk), *location* (indented into a class or method body, or onto a bracketed continuation line),
+  *content* (a value that isn't a number), *validity* (each operator satisfied **and** violated
+  against a real bus table, plus a missing field, a falsy-but-present value, and a non-comparable
+  type), *scanning* (tag-shaped text inside a string or docstring, an unreadable file encoding, an
+  unparseable file — the last two must fail as a `BuildError`, never a raw traceback), and — the
+  false-positive checks that make the whole mechanism trustworthy — realistic prose that merely
+  mentions the tag's name and an unrelated `@`-word, neither of which may raise. Every dimension
+  above also has to be walked in the *dropped-piece* direction, not just the *wrong-piece* one: the
+  three holes this bar's own first implementation still had (a dropped operator, a dropped value,
+  and a dropped `@`, each silently parsing to "no tag declared") were only found by enumerating the
+  grammar element by element and deleting each in turn. `tests_scripts/test_buildgen_tag_comments.py` and
   `tests_scripts/test_buildgen_requires_tag.py` are the concrete reference implementation of this
   bar - motivated by the same failure pattern (not the same mechanism) as a real incident earlier in
   this session: an actual driver signature change silently broke two `tests_hardware/device_scripts/`

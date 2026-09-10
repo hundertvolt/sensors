@@ -25,12 +25,20 @@ KNOWN_TAG_NAMES = ("requires",)
 # "reqiures"), not so wide it starts matching unrelated short @-words by coincidence.
 _MAX_TYPO_DISTANCE = 2
 
-# A (dotted-or-bare) identifier followed by a comparison-like operator and a value - the rough
-# shape every real tag's payload has, loose enough to survive a missing dot or a bare "=" typo.
-# Gates near-miss detection so an ordinary prose comment that happens to open with "@requires"
-# (e.g. "@requires a bit more care here") is never mistaken for a malformed tag - see
-# test_buildgen_tag_comments.py's false-positive coverage.
-_TAG_PAYLOAD_SHAPE_RE = re.compile(r"\b[\w.]+\s*(>=|<=|==|!=|=|>|<)\s*\S+")
+# The rough shape every real tag's payload has, in two alternative forms - an identifier followed
+# by a comparison-like operator (value deliberately optional, so a truncated "bus.timeout>=" still
+# counts as an attempt), or a dotted reference plus a number (so a tag whose operator was dropped
+# entirely, "bus.timeout 200000", isn't silently invisible either). Gates near-miss detection so an
+# ordinary prose comment that happens to open with "@requires" (e.g. "@requires a bit more care
+# here") is never mistaken for a malformed tag - see test_buildgen_tag_comments.py's
+# false-positive coverage.
+_PAYLOAD_OPERATOR_RE = re.compile(r"\b[\w.]+\s*(>=|<=|==|!=|=|>|<)")
+_PAYLOAD_DOTTED_RE = re.compile(r"\b\w+\.\w+")
+_PAYLOAD_NUMBER_RE = re.compile(r"(?<![\w.])[-+]?\d")
+
+# A tag name is a word, optionally hyphenated (the planned "@web-group" shape) - anything after the
+# first non-word character is payload, not part of the name.
+_LEADING_WORD_RE = re.compile(r"[A-Za-z_][\w-]*")
 
 
 @dataclass(frozen=True)
@@ -63,7 +71,11 @@ def iter_comment_tokens(path: Path, device: str, instance_label: str) -> "list[C
     """Every real COMMENT token in `path` - tokenize-based, not a naive per-line regex, so a "#"
     inside a string/docstring (e.g. this very module's own docstring, which quotes example tag
     grammar) is never mistaken for a real comment."""
-    lines = path.read_text().splitlines()
+    try:
+        with tokenize.open(path) as src:  # honors a PEP 263 coding cookie/BOM, unlike read_text()
+            lines = src.read().splitlines()
+    except (UnicodeDecodeError, LookupError, SyntaxError) as e:
+        raise BuildError(device, f"{path} has an unreadable text encoding: {e}", instance=instance_label) from e
     tokens = []
     try:
         with path.open("rb") as f:
@@ -79,16 +91,34 @@ def iter_comment_tokens(path: Path, device: str, instance_label: str) -> "list[C
     return tokens
 
 
+def find_leading_word(comment_text: str) -> "tuple[str | None, bool]":
+    """The comment's opening word plus whether it carried the "@" sigil - "@" itself is one of the
+    dimensions a typo can drop, so the two are reported separately rather than the sigil being a
+    precondition for seeing the word at all."""
+    stripped = comment_text.lstrip("#").strip()
+    at_sign = stripped.startswith("@")
+    if at_sign:
+        stripped = stripped[1:].lstrip()
+    # The word stops at the first non-word character, so "@requires:"/"@requires(bus.x>=1)" still
+    # read as "requires" rather than as some unrecognizable near-word.
+    m = _LEADING_WORD_RE.match(stripped)
+    return (m.group(0) if m else None, at_sign)
+
+
 def find_tag_word(comment_text: str) -> "str | None":
     """Extracts the bare @-word from a comment (e.g. "requires" from "# @requires bus.x>=1").
     Returns None if the comment doesn't open with an @-word at all - not a tag attempt, just an
     ordinary comment that happens to contain "@" somewhere in its prose."""
-    stripped = comment_text.lstrip("#").strip()
-    if not stripped.startswith("@"):
-        return None
-    word = stripped[1:].split(None, 1)[0] if len(stripped) > 1 else ""
-    word = word.rstrip(":()[]{}")  # a stray "@requires:"/"@requires(" trailing punctuation
-    return word or None
+    word, at_sign = find_leading_word(comment_text)
+    return word if at_sign else None
+
+
+def looks_like_tag_payload(comment_text: str) -> bool:
+    """Whether a comment carries the rough field/operator/value shape of a real tag - the gate that
+    keeps ordinary prose merely *mentioning* a tag name from being treated as a broken tag."""
+    if _PAYLOAD_OPERATOR_RE.search(comment_text):
+        return True
+    return bool(_PAYLOAD_DOTTED_RE.search(comment_text) and _PAYLOAD_NUMBER_RE.search(comment_text))
 
 
 def check_for_near_miss_tags(tokens: "list[CommentToken]", path: Path, device: str, instance_label: str, exact_matches: "set[tuple[int, int]]") -> None:
@@ -103,12 +133,24 @@ def check_for_near_miss_tags(tokens: "list[CommentToken]", path: Path, device: s
     for tok in tokens:
         if (tok.lineno, tok.col) in exact_matches:
             continue
-        word = find_tag_word(tok.text)
-        if word is None or not _TAG_PAYLOAD_SHAPE_RE.search(tok.text):
+        word, at_sign = find_leading_word(tok.text)
+        if word is None:
             continue
+        structured = looks_like_tag_payload(tok.text)
+        # An exact tag name is strong evidence on its own, so a bare number is enough of a payload
+        # for it ("@requires timeout 200000" - both the "bus." prefix and the operator dropped).
+        # A merely typo'd word gets no such leniency: it needs the full structured shape.
+        exact_evidence = structured or bool(_PAYLOAD_NUMBER_RE.search(tok.text))
         lower = word.lower()
         for known in KNOWN_TAG_NAMES:
             if lower == known:
-                raise BuildError(device, f"{path}:{tok.lineno}: malformed @{known} tag (doesn't match the required grammar): {tok.text.strip()!r}", instance=instance_label)
-            if _levenshtein(lower, known) <= _MAX_TYPO_DISTANCE:
+                if not exact_evidence:
+                    continue
+                if at_sign:
+                    raise BuildError(device, f"{path}:{tok.lineno}: malformed @{known} tag (doesn't match the required grammar): {tok.text.strip()!r}", instance=instance_label)
+                raise BuildError(device, f"{path}:{tok.lineno}: comment looks like an @{known} tag with its leading '@' missing: {tok.text.strip()!r}", instance=instance_label)
+            # A typo'd word is only ever a near miss *with* the sigil: "required"/"require" are
+            # within edit distance 2 of "requires" but are also ordinary English a prose comment can
+            # legitimately open with, so demanding the "@" there is what keeps this false-positive free.
+            if at_sign and structured and _levenshtein(lower, known) <= _MAX_TYPO_DISTANCE:
                 raise BuildError(device, f"{path}:{tok.lineno}: comment looks like a misspelled @{known} tag: {tok.text.strip()!r}", instance=instance_label)

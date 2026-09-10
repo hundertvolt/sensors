@@ -18,7 +18,11 @@ from typing import Any
 from buildgen.errors import BuildError
 from buildgen.tag_comments import check_for_near_miss_tags, iter_comment_tokens
 
-_TAG_RE = re.compile(r"#\s*@requires\s+bus\.(?P<field>\w+)\s*(?P<op>>=|<=|==|!=|>|<)\s*(?P<value>\S+)")
+# "#+" so a "## @requires ..." section-style comment is accepted rather than reported as
+# malformed; the value may not start with an operator character, so a truncated
+# "bus.timeout>=" fails as a malformed *tag* instead of silently re-splitting into op ">"
+# and value "=".
+_TAG_RE = re.compile(r"#+\s*@requires\s+bus\.(?P<field>\w+)\s*(?P<op>>=|<=|==|!=|>|<)\s*(?P<value>[^\s<>=!]\S*)")
 
 _OPS: dict[str, Callable[[Any, Any], bool]] = {
     ">=": operator.ge,

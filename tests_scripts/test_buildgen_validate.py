@@ -3,6 +3,7 @@
 deliberately malformed fixture built from _toml_fixtures.base_doc() - never just incidentally
 exercised by the six real device TOMLs happening to be valid."""
 
+import shutil
 from pathlib import Path
 
 import pytest
@@ -833,3 +834,37 @@ def test_requires_tag_satisfied(tmp_path: Path, src_dir: Path):
     doc = base_doc()
     doc["bus"]["i2c0"]["timeout"] = 250000
     _build(tmp_path, src_dir, doc)  # no raise
+
+
+def _staged_src_with_scd30_tag(tmp_path: Path, src_dir: Path, replacement: str) -> Path:
+    """A writable copy of src/ whose scd30 driver carries `replacement` in place of its real
+    `# @requires` tag - the only way to exercise a broken tag end-to-end through build_model()."""
+    staged = tmp_path / "staged_src"
+    shutil.copytree(src_dir, staged)
+    driver = staged / "asy_scd30_driver.py"
+    driver.write_text(driver.read_text().replace("# @requires bus.timeout>=200000", replacement))
+    return staged
+
+
+@pytest.mark.parametrize(
+    "replacement,match",
+    [
+        ("# @require bus.timeout>=200000", "misspelled @requires tag"),  # typo'd tag word
+        ("# requires bus.timeout>=200000", "leading '@' missing"),  # sigil dropped
+        ("# @requires bus.timeout 200000", "malformed @requires tag"),  # operator dropped
+    ],
+)
+def test_requires_tag_near_miss_in_a_driver_aborts_the_whole_build(tmp_path: Path, src_dir: Path, replacement: str, match: str):
+    # The near-miss detector has to be reachable from build_model(), not just from its own unit
+    # tests: a tag that silently degrades to "no tag declared" is exactly the bug it exists to
+    # prevent, and this driver's real tag is the one the base fixture's bus table is sized for.
+    staged = _staged_src_with_scd30_tag(tmp_path, src_dir, replacement)
+    with pytest.raises(BuildError, match=match):
+        _build(tmp_path, staged, base_doc())
+
+
+def test_requires_tag_removed_entirely_still_builds(tmp_path: Path, src_dir: Path):
+    # The control for the three cases above: with the tag genuinely absent (not typo'd), the same
+    # build succeeds - so those aborts are the near-miss detector firing, not the staged copy.
+    staged = _staged_src_with_scd30_tag(tmp_path, src_dir, "# no requirement declared")
+    _build(tmp_path, staged, base_doc())  # no raise
