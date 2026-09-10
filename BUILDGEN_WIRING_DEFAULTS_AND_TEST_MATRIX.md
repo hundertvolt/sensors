@@ -349,3 +349,186 @@ preserved, not dropped.
      package's fail-loud `BuildError` contract.
 - Keep collecting axes/combinations with the project owner before finalizing which become real
   test files.
+
+## 5. Must-fail matrix (negative/mutation testing)
+
+**Framing, different from §4**: §4 is a *state-space* matrix — combinations of axis choices that
+must all build clean. This section is a *mutation* matrix — the project owner's own framing is
+"must fail **independently from any config variants**": take any point in §4's clean-build space
+(any device, any axis combination) and apply exactly one of the corruptions below to it; the build
+must fail, every time, regardless of which clean baseline it was applied to. These are two
+orthogonal test dimensions, not one more axis bolted onto §4 — a fixture generator for this section
+can start from *any* already-valid TOML and mutate it, rather than needing its own combinatorial
+space.
+
+Every category below is annotated against current `buildgen/validate.py`/`buildgen/buildspec.py`
+coverage as of this session (`already covered` = a real check exists today and a test could target
+it now; `gap` = confirmed unvalidated, would either silently pass or crash raw instead of
+`BuildError`).
+
+### 5.1 The project owner's list, as given
+
+1. **Any duplicate field or property.** Two sub-cases with different mechanisms:
+   - Same key twice in one TOML table (`bus = "i2c0"` appearing twice under one `[[instance]]`) —
+     **already covered**, but not by `buildgen` at all: `tomllib` itself rejects this as invalid
+     TOML (`TOMLDecodeError`) before `buildgen` ever sees the doc, and `load_device()` wraps that
+     into a `BuildError`. Same for a duplicate `[bus.i2c0]` table declared twice, or a duplicate
+     `[device]` table.
+   - A duplicate `[[instance]]` *entry* for the same driver+name_ext pair (legal TOML — arrays can
+     repeat) — **already covered**, `load_device()`'s own explicit check (`model.py`, "duplicate
+     [[instance]] entry").
+2. **Any missing field or property** — **already covered** at every level found so far: `[device]`
+   (`_check_device_table`'s `_REQUIRED_DEVICE_FIELDS` loop), `[bus.*]` (`_check_bus_tables`'s
+   per-kind wire-pin/frequency loop), `[[instance]]` (`_check_required_fields`'s
+   `REQUIRED_TOML_FIELDS` loop), `[instance.wiring]` (`_check_instance_wiring`'s required-`_WIRING`
+   loop), `[device.wiring]` (`_check_device_wiring`'s required-field loop, this session's own
+   earlier addition).
+3. **Any misspelled field or property** — mechanically the same failure path as #5 (unexpected
+   field): a misspelling *is* an unrecognized-field name from `buildgen`'s point of view, there's
+   no separate "did you mean" mechanism and none is proposed. Listed as its own bullet here only
+   because it's a distinct real-world *cause*, not a distinct *check* — one test fixture per level
+   (device/bus/instance/wiring) covers both #3 and #5 at once.
+4. **Any misformatted field or property** (wrong type/shape) — **partially covered, real gaps
+   remain.** Covered today: bus `frequency`/`timeout` (int), instance `address`/`max_size`/
+   `trigger_sec` (int, non-bool), `bus`/`driver`/`name_ext` (string), `[instance.wiring]` string
+   fields (must be `str`), `warn_*` sub-tables (must be `{source, field}` dict with both string).
+   **Gap**: `[device]`'s `hotspot_password` has no type check at all (only `name`/`hostname` do);
+   no field anywhere checks for a TOML array/inline-table where a scalar is expected beyond the
+   specific fields already listed (e.g. `bus = ["i2c0"]`, `pin = [5]`) — falls through to a raw
+   `TypeError`/wrong-shape crash instead of `BuildError` for any field not already covered above.
+5. **Any unexpected field or property** — **already covered** at `[device]`, `[bus.*]`, and
+   `[[instance]]` level (all three have an explicit `unknown = set(...) - ALLOWED...` check).
+   **Gap**: `[instance.wiring]` has no equivalent "reject a wiring sub-key with no matching
+   `_WIRING` entry and no `warn_` prefix" catch-all beyond what `_resolve_wiring_field` already
+   raises for named fields — worth a dedicated test confirming an entirely bogus
+   `wiring.frobnicate = "x"` fails (should already fail via the `wf is None` branch in
+   `_check_instance_wiring`, but not yet an explicit test per this document's search).
+6. **A "special property" set incorrectly (e.g. i2c timeout for scd30)** — range/exact-value
+   validation. **Confirmed gap, and a new mechanism the project owner is explicitly requesting**,
+   not just a missing test: today `timeout`/`frequency`/`address`/`max_size`/`trigger_sec` are only
+   checked for *type* (int), never for being a *sane value* of that type (a `frequency = -5` or
+   `timeout = 999999999` currently builds clean). See §5.2 for the proposed min/max mechanism this
+   would need — **design sketch only, not agreed/implemented**.
+7. **Impossible configs**: non-existent buses, non-existent pins, pins that don't fit their bus,
+   any pin double-used anywhere in the device.
+   - Non-existent bus reference (`bus = "i2c9"` on an instance) — **already covered**,
+     `_check_required_fields`'s `spec.fields["bus"] not in buses` check.
+   - Pin double-used anywhere (bus pins vs. bus pins, bus pins vs. instance `cs_pin`/`irq_pin`/
+     `pin`, instance vs. instance) — **already covered**, `_check_gpio_collisions()` claims every
+     pin device-wide into one dict and raises on any second claim.
+   - Non-existent pin (a GPIO number the Pico W doesn't expose at all, e.g. 30+, or negative) —
+     **gap**, only int-type is checked, never range.
+   - Pin that doesn't fit its bus (silicon-wise illegal for that bus's I2C0/I2C1/SPI0/SPI1 index,
+     or one of GP22/28 with no bus function, or one of the GP23-25/29 wireless-reserved pins) —
+     **gap**, this is §4.3 axis 10's already-flagged finding, restated here as a must-fail case
+     rather than a must-build case: the *same* underlying missing check would need to both permit
+     the legal combinations in axis 10 and reject the illegal ones here — one implementation, two
+     matrix entries.
+   - Bus name with a recognized kind prefix but a nonexistent port suffix (`[bus.i2c2]` — RP2040
+     only has I2C0/I2C1; `[bus.spi7]`) — **gap, newly found while drafting this section**:
+     `_bus_kind()` only checks the *prefix* (`"i2c"`/`"spi"`) is recognized, never that the
+     trailing digit is a real port index; `codegen.py`'s `bus_id[len("i2c"):]` then blindly emits
+     `asy_i2c_driver.I2C(2, ...)` for `"i2c2"`, which would only fail on real hardware. Same family
+     of gap as the pin-legality one above, one level up (bus identity itself vs. its pins).
+8. **Unknown selected modules** (`driver = "bogus_chip"`) — **already covered**,
+   `driver_registry.resolve_driver()` raises for a driver name with no matching module (verified by
+   its own existing tests per this session's earlier work; not re-verified line-by-line here).
+9. **Missing properties or settings** — same as #2, listed again by the project owner for emphasis;
+   no new mechanism, folded in.
+10. **Wrong properties and settings** (nonsense content, out-of-range values, missing values) —
+    union of #4 (misformatted) and #6 (out-of-range) above; no separate mechanism.
+11. **Duplicate sensors on the same I2C bus without distinguishing addresses, or with identical
+    addresses, or with impossible addresses** — three sub-cases:
+    - Two fixed-address instances of the *same* driver sharing a bus with neither declaring
+      `address` — **already covered**, `_check_address_collisions()`'s `per_bus_driver_fixed`
+      branch (`FIXED_ADDRESS_DRIVERS` — scd30/sgp40 today; bmp3xx is address-capable, not fixed).
+    - Two instances on the same bus with identical *explicit* `address` values — **already
+      covered**, `_check_address_collisions()`'s `per_bus_explicit` branch.
+    - An **impossible** address (an int that isn't actually a legal, chip-datasheet-documented
+      address for that driver — e.g. BMP388/390's SDO pin only ever selects 0x76 or 0x77, so
+      `address = 0x50` is real-hardware-impossible even though it's a well-typed int on a
+      `ADDRESS_CAPABLE_DRIVERS` member) — **confirmed gap**, and the project owner's own note ("this
+      might require a systematically findable address inside the modules") is exactly right: today
+      `_check_required_fields` only checks `address` is an int, never that it's a member of the
+      chip's real legal set. See §5.2 — this is the same shape of problem as #6 (a driver-declared
+      constraint buildgen needs to discover, not hand-maintain), not a separate mechanism.
+12. **Duplicate CS pins on SPI** — the project owner's own note is correct: this is already
+    subsumed by #7's global pin-collision check (`cs_pin` is one of the three fields
+    `_check_gpio_collisions()` claims per-instance), so no separate mechanism or test category is
+    needed here — just confirmed as in-scope of the existing check, not a new one.
+
+### 5.2 New mechanism sketch: driver-declared value constraints (design-only, not agreed)
+
+Items #6 and #11's "impossible address" both need the same underlying capability: a **numeric or
+enumerated legal-value constraint that lives in the driver module itself** (`src/`), discovered by
+`buildgen` via AST rather than hand-maintained in `buildgen/buildspec.py` — the same discovery
+philosophy already settled for `_WIRING`/`_Default*` in §2. Strawman only, following that existing
+shape (naming/exact form **not** decided, needs the project owner's go-ahead like everything else
+in this document):
+
+- A module-level structure alongside a driver's `_WIRING` tuple, e.g. `_LIMITS`, holding one entry
+  per constrained TOML field: `(toml_field, min, max)`, where `min`/`max` are each either a number
+  or `None` (`None` = that side unchecked). `min == max` expresses an exact-value requirement (the
+  project owner's own framing) rather than needing a separate "exact value" shape.
+- For an **enumerated** legal set rather than a contiguous range (BMP388/390's address: exactly
+  `{0x76, 0x77}`, not a min/max span) — the min/max shape alone can't express this. Open question,
+  not resolved here: either a separate `_CHOICES`-style structure parallel to `_LIMITS`, or
+  `_LIMITS` gaining a third shape (an explicit tuple/set of legal values instead of a min/max pair).
+  Needs a decision before implementation, not before continuing to collect matrix entries.
+- `buildgen` would AST-parse this the same way `buildgen/wiring.py` already parses `_WIRING` —
+  never importing the driver module, matching the established never-import design philosophy.
+- Scope, following §2.7's precedent for the wiring-defaults mechanism: only fields that already
+  have a real, datasheet-documented constraint need this (scd30's `timeout` headroom, bmp3xx's
+  `address`) — not a blanket requirement for every numeric TOML field to declare bounds.
+
+### 5.3 Additional must-fail possibilities found while drafting this section
+
+Beyond the project owner's own list, thinking through what else "must fail independently from any
+config variant" should mean:
+
+- **Bool-for-int confusion** — TOML `true`/`false` parse to Python `bool`, a subtype of `int`.
+  Every existing int-type check already guards this explicitly (`isinstance(x, int) and not
+  isinstance(x, bool)`) — confirmed already covered everywhere the pattern is used, worth a test
+  per such field rather than just trusting the pattern held everywhere it was copy-pasted.
+- **Float-for-int** (`frequency = 100000.0`) — same `isinstance(x, int)` checks already reject this
+  (a Python `float` is never an `int` instance) — already covered, same "worth testing per field"
+  note as above.
+- **Array/inline-table where a scalar is expected, and vice versa** (`pin = [5]`,
+  `[instance.wiring] comp_source = ["scd30"]` instead of a bare string) — partially covered per
+  §5.1 #4's gap note; worth its own fixture per field family (device/bus/instance/wiring) rather
+  than assuming one test generalizes.
+- **Case-sensitivity of `driver =`** (`"SCD30"` vs `"scd30"`) — checked directly while drafting
+  this section: **already covered**, and not actually a distinct mechanism from #8. `resolve_driver()`
+  builds the module filename directly from the TOML string (`f"asy_{driver}_driver.py"`) and does a
+  real filesystem lookup — on this project's case-sensitive filesystem, `"SCD30"` looks for
+  `asy_SCD30_driver.py`, finds nothing, and raises the same "unknown driver" `BuildError` as any
+  other nonexistent driver name. No separate case-folding/matching logic exists to have a bug in.
+- **A wiring reference resolving to a real instance of the wrong driver type** (e.g.
+  `signal_sink = "scd30"` — a real, declared instance, but not a `NeopixelDriver`) — **already
+  covered** for named `_WIRING` fields (`_check_wiring_reference`'s `producer_class` check,
+  confirmed while drafting §5.1). **Not** covered for `warn_*`'s generic `{source, field}` shape —
+  by §2.9's own design this is inherent (any instance exposing a matching attribute name is valid
+  by construction, there's no fixed "correct producer class" to check against at build time), so
+  this isn't a gap, just a documented boundary of what build-time validation can ever catch for the
+  generalized per-value mechanism versus what only fails at runtime if the named attribute is
+  genuinely absent from the source's `get_data()` result.
+- **Self-referential wiring** (an instance's own wiring field pointing at itself) — not yet checked
+  anywhere found so far; whether this is actually invalid depends on the field (a sensor wiring its
+  own `fram_target` to itself is nonsensical, but nothing about the general mechanism forbids it
+  structurally) — flagged as a real open question, not yet a confirmed gap or confirmed non-issue.
+- **Empty `[[instance]]` array or entirely empty device** (no `[[instance]]` key at all) — ties
+  directly into §4.3 axis 10's "no buses at all" gap finding: an empty-instance device is exactly
+  the shape that currently can't build at all today because of the unconditional `[bus.*]`
+  requirement.
+
+### 5.4 Still to do (must-fail matrix)
+
+- Decide the §5.2 mechanism shape (min/max vs. enumerated choices vs. both) with the project owner
+  before any implementation.
+- Write the actual negative fixtures/targeted-internals tests once the project owner gives the go-
+  ahead — likely mostly targeted `validate.py`-internals tests (matching the existing
+  `test_buildgen_validate.py` pattern), since most single-field corruptions don't need a whole new
+  TOML fixture file, just one mutated copy of an existing valid one.
+- Resolve the §5.1 #3/#5 open item (an explicit test for a bogus `[instance.wiring]` key with no
+  `_WIRING` match and no `warn_` prefix) and the §5.3 case-sensitivity/self-reference open
+  questions before considering this section closed.
