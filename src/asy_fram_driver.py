@@ -66,6 +66,7 @@ class FRAM_SPI(Lockable):
         spi_bus: SPI,
         spi_cs: int,
         logger: PrintLogHistory,
+        *,
         wp: bool = False,
         wp_pin: int | None = None,
         max_size: int = 0x2000,
@@ -195,7 +196,7 @@ class FRAM_SPI(Lockable):
             return False
         return await self._write(addr_start, buf)
 
-    async def set_write_protected(self, value: bool) -> bool:
+    async def set_write_protected(self, *, value: bool) -> bool:
         # Always protects the entire array (BP0+BP1) - per-block ranges are unused.
         if not self.initialized:
             await self.pr.err_s("FRAM not initialized, run setup first!", errno=94)

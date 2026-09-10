@@ -122,7 +122,7 @@ class BMP3xx_Reader(SensorReaderConfig):
         # Bare Timer() is valid on rp2 (id defaults to -1) despite the installed stub package
         # requiring a positional id - a stub inaccuracy, not a code bug.
         self.trigger_timer = Timer()
-        self.trigger_period = LockedValue(int(trigger_sec))
+        self.trigger_period = LockedValue(init_value=int(trigger_sec))
         self.trigger_counter = 0
         # PressOffset/TempOffset/SeaLevelOffs/MeanAtmTemp are persist-only compensation-math inputs
         # (nothing to push); SampleInterv and the three hardware-facing fields have a live effect.

@@ -600,14 +600,14 @@ def test_led_toggle_is_a_noop_when_no_led_selected() -> None:
 def test_set_wifi_led_true_selects_the_ext_led_when_no_gpio_pin() -> None:
     led = FakeLED()
     client = make_client(ext_led=led)
-    run(client.set_wifi_led(True))
+    run(client.set_wifi_led(status=True))
     assert client.led is led
 
 
 def test_led_on_calls_the_selected_leds_on() -> None:
     led = FakeLED()
     client = make_client(ext_led=led)
-    run(client.set_wifi_led(True))
+    run(client.set_wifi_led(status=True))
     client._led_on()
     assert led.on_calls == 1
 
@@ -615,7 +615,7 @@ def test_led_on_calls_the_selected_leds_on() -> None:
 def test_led_off_calls_the_selected_leds_off_and_does_not_recurse() -> None:
     led = FakeLED()
     client = make_client(ext_led=led)
-    run(client.set_wifi_led(True))
+    run(client.set_wifi_led(status=True))
     client._led_off()
     assert led.off_calls == 1
     assert led.on_calls == 0
@@ -624,7 +624,7 @@ def test_led_off_calls_the_selected_leds_off_and_does_not_recurse() -> None:
 def test_led_toggle_calls_the_selected_leds_toggle() -> None:
     led = FakeLED()
     client = make_client(ext_led=led)
-    run(client.set_wifi_led(True))
+    run(client.set_wifi_led(status=True))
     client._led_toggle()
     assert led.toggle_calls == 1
 
@@ -632,8 +632,8 @@ def test_led_toggle_calls_the_selected_leds_toggle() -> None:
 def test_set_wifi_led_false_turns_the_led_off_and_clears_it() -> None:
     led = FakeLED()
     client = make_client(ext_led=led)
-    run(client.set_wifi_led(True))
-    run(client.set_wifi_led(False))
+    run(client.set_wifi_led(status=True))
+    run(client.set_wifi_led(status=False))
     assert led.off_calls == 1
     assert client.led is None
 
@@ -645,7 +645,7 @@ def test_led_on_degrades_gracefully_when_a_misbehaving_ext_led_raises() -> None:
     led = FakeLED()
     led.raise_on["on"] = RuntimeError("simulated misbehaving ext_led")
     client = make_client(ext_led=led)
-    run(client.set_wifi_led(True))
+    run(client.set_wifi_led(status=True))
     client._led_on()  # must not raise
 
 
@@ -653,7 +653,7 @@ def test_led_off_degrades_gracefully_when_a_misbehaving_ext_led_raises() -> None
     led = FakeLED()
     led.raise_on["off"] = RuntimeError("simulated misbehaving ext_led")
     client = make_client(ext_led=led)
-    run(client.set_wifi_led(True))
+    run(client.set_wifi_led(status=True))
     client._led_off()  # must not raise
 
 
@@ -661,7 +661,7 @@ def test_led_toggle_degrades_gracefully_when_a_misbehaving_ext_led_raises() -> N
     led = FakeLED()
     led.raise_on["toggle"] = RuntimeError("simulated misbehaving ext_led")
     client = make_client(ext_led=led)
-    run(client.set_wifi_led(True))
+    run(client.set_wifi_led(status=True))
     client._led_toggle()  # must not raise
 
 
@@ -670,8 +670,8 @@ def test_set_wifi_led_returns_true_uniform_setter_contract() -> None:
     # can't actually fail (pure attribute assignment plus _led_off()'s own already-defensive
     # degrade-on-raise), so it's always True - but the contract itself must hold everywhere.
     client = make_client(ext_led=FakeLED())
-    assert run(client.set_wifi_led(True)) is True
-    assert run(client.set_wifi_led(False)) is True
+    assert run(client.set_wifi_led(status=True)) is True
+    assert run(client.set_wifi_led(status=False)) is True
 
 
 def test_flash_led_off_cancelled_mid_off_phase_still_leaves_the_led_on() -> None:
@@ -685,7 +685,7 @@ def test_flash_led_off_cancelled_mid_off_phase_still_leaves_the_led_on() -> None
     # is driven by scheduling steps instead of ~3s of wall clock.
     led = FakeLED()
     client = make_client(ext_led=led)
-    run(client.set_wifi_led(True))
+    run(client.set_wifi_led(status=True))
 
     async def scenario() -> None:
         task = asyncio.create_task(client._flash_led_off())
@@ -871,14 +871,14 @@ def test_get_data_reflects_the_initial_never_connected_state() -> None:
 
 def test_get_data_returns_the_cached_snapshot_not_a_live_query() -> None:
     client = make_client()
-    run(client._set_meas_data(WIFI("STA", True, "10.0.0.5", 12345)))
+    run(client._set_meas_data(WIFI(Mode="STA", Connected=True, IP="10.0.0.5", TS=12345)))
     data = run(client.get_data())
-    assert data == WIFI("STA", True, "10.0.0.5", 12345)
+    assert data == WIFI(Mode="STA", Connected=True, IP="10.0.0.5", TS=12345)
 
 
 def test_get_dict_data_wraps_get_data_under_the_wifi_key() -> None:
     client = make_client()
-    run(client._set_meas_data(WIFI("AP", False, None, 999)))
+    run(client._set_meas_data(WIFI(Mode="AP", Connected=False, IP=None, TS=999)))
     dict_data = run(client.get_dict_data())
     assert dict_data == {"WIFI": {"Mode": "AP", "Connected": False, "IP": None, "TS": 999}}
 
@@ -891,7 +891,7 @@ def test_get_dict_data_wraps_get_data_under_the_wifi_key() -> None:
 def test_update_wifi_snapshot_sta_mode_reports_ip_from_ifconfig() -> None:
     client = make_client()
     _wlan(client)._ifconfig = ("192.168.1.42", "255.255.255.0", "192.168.1.1", "8.8.8.8")
-    run(client._update_wifi_snapshot(True))
+    run(client._update_wifi_snapshot(connected=True))
     data = run(client.get_data())
     assert data.Mode == "STA"
     assert data.Connected is True
@@ -901,7 +901,7 @@ def test_update_wifi_snapshot_sta_mode_reports_ip_from_ifconfig() -> None:
 def test_update_wifi_snapshot_hotspot_mode_reports_ap() -> None:
     client = make_client()
     client._conn_phase = _PHASE_HOTSPOT
-    run(client._update_wifi_snapshot(True))
+    run(client._update_wifi_snapshot(connected=True))
     data = run(client.get_data())
     assert data.Mode == "AP"
 
@@ -909,7 +909,7 @@ def test_update_wifi_snapshot_hotspot_mode_reports_ap() -> None:
 def test_update_wifi_snapshot_degrades_to_none_ip_when_ifconfig_raises() -> None:
     client = make_client()
     _wlan(client).raise_on["ifconfig"] = OSError("simulated ifconfig failure")
-    run(client._update_wifi_snapshot(False))  # must not raise
+    run(client._update_wifi_snapshot(connected=False))  # must not raise
     data = run(client.get_data())
     assert data.IP is None
     assert data.Connected is False
@@ -1224,7 +1224,7 @@ def test_reconnect_wifi_sets_the_trigger_and_tears_down_hotspot_bookkeeping() ->
 def test_hotspot_client_connected_stops_the_shutoff_timer_and_turns_the_led_on() -> None:
     led = FakeLED()
     client = make_client(ext_led=led)
-    run(client.set_wifi_led(True))
+    run(client.set_wifi_led(status=True))
     client.hotspot_timer.init(period=5000, mode=Timer.ONE_SHOT, callback=lambda b: None)
     client._hotspot_client_connected()
     assert client.hotspot_timer.deinit_called is True
@@ -1522,7 +1522,7 @@ def test_print_wlan_diagnostics_degrades_gracefully_when_ifconfig_raises() -> No
 def test_on_sta_connected_updates_state_and_turns_led_on() -> None:
     led = FakeLED()
     client = make_client(ext_led=led)
-    run(client.set_wifi_led(True))
+    run(client.set_wifi_led(status=True))
     client.connection_failures = 3
     client._on_sta_connected()
     assert client._conn_phase == _PHASE_STA_ESTABLISHED
@@ -1962,7 +1962,7 @@ def test_reset_wlan_connect_state_degrades_to_reconn_wifi_true_on_exception() ->
 def test_reset_wlan_connect_state_turns_the_led_off() -> None:
     led = FakeLED()
     client = make_client(ext_led=led)
-    run(client.set_wifi_led(True))
+    run(client.set_wifi_led(status=True))
     client._led_on()
     client._reset_wlan_connect_state()
     assert led.off_calls == 1
@@ -2503,7 +2503,7 @@ def test_update_wifi_snapshot_sets_ts_none_when_now_overflows() -> None:
     original_time = asy_wifi_service.time
     asy_wifi_service.time = _OverflowingTime()  # type: ignore[assignment]  # deliberate monkeypatch, not a real caller mismatch
     try:
-        run(client._update_wifi_snapshot(True))
+        run(client._update_wifi_snapshot(connected=True))
     finally:
         asy_wifi_service.time = original_time
     data = run(client.get_data())

@@ -552,7 +552,7 @@ class _MemoryErrorOnceSocketModule:
     SOL_SOCKET = socket.SOL_SOCKET
     SO_REUSEADDR = socket.SO_REUSEADDR
 
-    def socket(self, af: int, type: int) -> "Any":
+    def socket(self, af: int, sock_type: int) -> "Any":
         raise MemoryError("simulated allocation failure")
 
 
@@ -953,7 +953,7 @@ class _RaisingSocketModule:
     SOL_SOCKET = socket.SOL_SOCKET
     SO_REUSEADDR = socket.SO_REUSEADDR
 
-    def socket(self, af: int, type: int) -> "Any":
+    def socket(self, af: int, sock_type: int) -> "Any":
         raise OSError("simulated resource exhaustion")
 
 

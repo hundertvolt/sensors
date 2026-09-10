@@ -34,7 +34,7 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to complet
 
 
 def make_ntp_stub(
-    synced: bool = False, raise_exc: "Exception | None" = None,
+    *, synced: bool = False, raise_exc: "Exception | None" = None,
 ) -> "tuple[Callable[[], Coroutine[Any, Any, bool]], list[int]]":
     calls = [0]
 
@@ -135,9 +135,9 @@ def test_init_uses_fram_backed_logging_and_wires_storage_pause_when_fram_given()
     assert svc.pr.name == "SYSTEM"
     # Bound-method identity isn't guaranteed (each attribute access can mint a fresh bound-method
     # object) - confirm by behavior instead: calling svc.storage_pause must reach manager's own state.
-    svc.storage_pause(True)
+    svc.storage_pause(value=True)
     assert manager.get_pause() is True
-    svc.storage_pause(False)
+    svc.storage_pause(value=False)
     assert manager.get_pause() is False
 
 

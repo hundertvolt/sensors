@@ -26,10 +26,15 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
-    from typing import Any
+    from typing import Any, Protocol
 
     from asy_fram_manager import AsyFramManager
     from config_manager import ConfigSchema, WriteValidity
+
+    # Keyword-only call shape of AsyFramManager.set_pause(), which a plain Callable[...] alias
+    # cannot express - same structural-Protocol convention as print_log.py's _FramChunk.
+    class _StoragePause(Protocol):
+        def __call__(self, *, value: bool) -> None: ...
 
 _RESET_DELAY = const(4)  # seconds between reset command and execution (keep < watchdog timeout!)
 _MAX_STORAGE_PAUSE = const(3600)  # one hour max pause for FRAM
@@ -59,7 +64,7 @@ class SystemService:
         cfg_path: str = "",
     ) -> None:
         # callback for starting and stopping permanent storage communication
-        self.storage_pause: Callable[[bool], None] | None = None
+        self.storage_pause: _StoragePause | None = None
         self.pr = make_logger(fram, history_length, debug, _NAME)
         self.name = _NAME  # matches self.pr.name - the _ModuleLike registration shape
         # asy_webserver_service.py's registration lists key on (error_sources=/settings=).
@@ -109,7 +114,7 @@ class SystemService:
         self.storage_timer.deinit()
         self.pr.evt(message)
         if self.storage_pause is not None:
-            self.storage_pause(True)
+            self.storage_pause(value=True)
             self.pr.evt("Storage paused")
         try:
             self.reset_timer.init(period=_RESET_DELAY * 1000, mode=Timer.ONE_SHOT, callback=lambda b: action())
@@ -337,21 +342,21 @@ class SystemService:
             self.storage_timer.deinit()
             if duration == 0:
                 self.pr.evt("Storage immediately unpaused.")
-                self.storage_pause(False)
+                self.storage_pause(value=False)
             else:
                 self.pr.evt("Storage paused for", duration, "seconds.")
-                self.storage_pause(True)
+                self.storage_pause(value=True)
                 storage_pause = self.storage_pause  # local capture: mypy can't narrow a closed-over self attribute
                 try:
                     self.storage_timer.init(
                         period=duration * 1000,
                         mode=Timer.ONE_SHOT,
-                        callback=lambda b: storage_pause(False),
+                        callback=lambda b: storage_pause(value=False),
                     )
                 except (OSError, MemoryError) as e:  # alarm-pool exhaustion (ENOMEM) - without the auto-unpause timer,
                     # storage would stay paused forever; safer to abort the pause than risk that.
                     self.pr.err("Could not arm auto-unpause timer, aborting pause:", e)
-                    storage_pause(False)
+                    storage_pause(value=False)
 
     async def status_counter(self) -> None:
         await self.uptime.set_value(0)

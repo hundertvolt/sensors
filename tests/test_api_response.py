@@ -47,7 +47,7 @@ class _FakeRequest:
     # Minimal stand-in for microdot.Request, mocking only the one boundary parse_cmd_request
     # actually touches (the .json property) - same mocking-boundary convention tests/machine.py
     # uses for real hardware buses.
-    def __init__(self, json_value: "Any", raise_instead: bool = False) -> None:
+    def __init__(self, json_value: "Any", *, raise_instead: bool = False) -> None:
         self._json_value = json_value
         self._raise_instead = raise_instead
 

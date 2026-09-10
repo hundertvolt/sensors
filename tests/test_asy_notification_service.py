@@ -170,7 +170,7 @@ def make_coordinator(
 
 
 def make_signal(
-    name: str = "WarnCO2", above: bool = True, value: "int | float | None" = 1000, color: "tuple[int, int, int]" = (1, 0, 0),
+    name: str = "WarnCO2", *, above: bool = True, value: "int | float | None" = 1000, color: "tuple[int, int, int]" = (1, 0, 0),
 ) -> "tuple[NotificationSignal, FakeValue]":
     fv = FakeValue(value)
     field_schema = ((name, "int", 1600, 0, 3000, None),)
@@ -414,7 +414,7 @@ def test_each_field_wrong_type_rejected() -> None:
 
     async def scenario() -> None:
         assert await write_one("OnH", "10") == "Invalid"  # str instead of int
-        assert await write_one("OnH", True) == "Invalid"  # bool instead of int - type(), not isinstance()
+        assert await write_one("OnH", value=True) == "Invalid"  # bool instead of int - type(), not isinstance()
         assert await write_one("Interv", 100) == "Valid"  # int accepted for a float field, coerced (SPECIFICATION.md Part A.8)
         assert await write_one("FlashDur", "2.0") == "Invalid"  # str instead of float
         assert await write_one("AutoOn", 1) == "Invalid"  # int instead of bool
@@ -590,11 +590,11 @@ def test_fram_backed_variant_survives_a_reboot() -> None:
         def get_data_buf(self) -> bytearray:
             return self.buf
 
-        async def write_into(self, buf: "Any", override_pause: bool = False) -> bool:
+        async def write_into(self, buf: "Any", *, override_pause: bool = False) -> bool:
             self.buf[:] = buf.get_data_buf()
             return True
 
-        async def read_into(self, buf: "Any", override_pause: bool = False) -> bool:
+        async def read_into(self, buf: "Any", *, override_pause: bool = False) -> bool:
             buf.get_data_buf()[:] = self.buf
             return True
 
@@ -1381,7 +1381,7 @@ def test_now_mktime_overflow_returns_none_and_stores_a_none_timestamp() -> None:
     asy_notification_service.time = _OverflowingTime()  # type: ignore[assignment]  # deliberate monkeypatch, not a real caller mismatch
     try:
         assert coordinator._now() is None
-        run(coordinator._store_notif_data(True))
+        run(coordinator._store_notif_data(any_triggered=True))
     finally:
         asy_notification_service.time = original_time
     assert run(coordinator.get_data()) == (True, None)
@@ -1397,7 +1397,7 @@ def test_now_gmtime_raising_returns_none_and_stores_a_none_timestamp() -> None:
     asy_notification_service.time = _RaisingGmtime()  # type: ignore[assignment]  # deliberate monkeypatch, not a real caller mismatch
     try:
         assert coordinator._now() is None
-        run(coordinator._store_notif_data(False))
+        run(coordinator._store_notif_data(any_triggered=False))
     finally:
         asy_notification_service.time = original_time
     assert run(coordinator.get_data()) == (False, None)

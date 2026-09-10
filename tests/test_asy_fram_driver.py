@@ -34,7 +34,7 @@ def make_bus() -> SPI:
 
 
 def make_fram(
-    max_size: int = 0x2000, wp: bool = False, wp_pin: int | None = None,
+    max_size: int = 0x2000, *, wp: bool = False, wp_pin: int | None = None,
 ) -> tuple[FRAM_SPI, FakeMB85RS64V]:
     bus = make_bus()
     fram = FRAM_SPI(bus, 1, logger=PrintLogHistory(name="TESTFRAM"), wp=wp, wp_pin=wp_pin, max_size=max_size)
@@ -454,9 +454,9 @@ def test_write_protected_verified_round_trip() -> None:
     run(setup_fram(fram))
 
     async def scenario() -> tuple[bool, bool, bool, bool]:
-        set_true = await fram.set_write_protected(True)
+        set_true = await fram.set_write_protected(value=True)
         get_true = await fram.get_write_protected()
-        set_false = await fram.set_write_protected(False)
+        set_false = await fram.set_write_protected(value=False)
         get_false = await fram.get_write_protected()
         return set_true, get_true, set_false, get_false
 
@@ -471,7 +471,7 @@ def test_write_protected_readback_mismatch_returns_false_and_does_not_update_cac
     chip.drop_wrsr = True  # simulated bus disturbance: WRSR's status byte never actually lands
 
     async def scenario() -> bool:
-        return await fram.set_write_protected(True)
+        return await fram.set_write_protected(value=True)
 
     ok = run(scenario())
     assert ok is False
@@ -489,7 +489,7 @@ def test_set_write_protected_fails_cleanly_when_wren_is_disturbed() -> None:
     chip.drop_wren = True  # simulated bus disturbance: WREN opcode never actually latches
 
     async def scenario() -> bool:
-        return await fram.set_write_protected(True)
+        return await fram.set_write_protected(value=True)
 
     ok = run(scenario())
     assert ok is False
@@ -506,7 +506,7 @@ def test_write_protected_blocks_subsequent_writes() -> None:
     run(setup_fram(fram))
 
     async def scenario() -> bool:
-        assert await fram.set_write_protected(True) is True
+        assert await fram.set_write_protected(value=True) is True
         async with fram:
             return await fram.set_values(b"nope", 0x00)
 
@@ -528,7 +528,7 @@ def test_set_write_protected_before_setup_returns_false() -> None:
     fram, _chip = make_fram()
 
     async def scenario() -> bool:
-        return await fram.set_write_protected(True)
+        return await fram.set_write_protected(value=True)
 
     assert run(scenario()) is False
 
@@ -538,7 +538,7 @@ def test_wp_pin_drives_real_pin_and_get_reads_pin_not_cache() -> None:
     run(setup_fram(fram))
 
     async def scenario() -> tuple[int | None, bool]:
-        ok = await fram.set_write_protected(True)
+        ok = await fram.set_write_protected(value=True)
         assert fram._wp_pin is not None
         return fram._wp_pin.value(), ok
 
@@ -553,9 +553,9 @@ def test_wp_pin_get_write_protected_reads_active_low_pin_correctly() -> None:
     run(setup_fram(fram))
 
     async def scenario() -> tuple[bool, bool]:
-        await fram.set_write_protected(True)
+        await fram.set_write_protected(value=True)
         protected = await fram.get_write_protected()
-        await fram.set_write_protected(False)
+        await fram.set_write_protected(value=False)
         unprotected = await fram.get_write_protected()
         return protected, unprotected
 
@@ -573,11 +573,11 @@ def test_wp_pin_protection_can_be_toggled_off_again_after_being_enabled() -> Non
     fram, chip = make_fram(wp_pin=7)
     run(setup_fram(fram))
 
-    async def toggle(value: bool) -> bool:
-        return await fram.set_write_protected(value)
+    async def toggle(*, value: bool) -> bool:
+        return await fram.set_write_protected(value=value)
 
     for value in (True, False, True, False):
-        assert run(toggle(value)) is True
+        assert run(toggle(value=value)) is True
         assert fram._wp_pin is not None
         assert fram._wp_pin.value() == (0 if value else 1)  # WP active-low
         assert (chip.status & 0x8C) == (0x8C if value else 0x00)
@@ -592,7 +592,7 @@ def test_wp_pin_restored_to_prior_asserted_level_when_wrsr_readback_fails() -> N
     run(setup_fram(fram))
 
     async def protect() -> bool:
-        return await fram.set_write_protected(True)
+        return await fram.set_write_protected(value=True)
 
     assert run(protect()) is True
     assert fram._wp_pin is not None
@@ -600,7 +600,7 @@ def test_wp_pin_restored_to_prior_asserted_level_when_wrsr_readback_fails() -> N
     chip.drop_wrsr = True  # simulated bus disturbance: WRSR's status byte never actually lands
 
     async def unprotect() -> bool:
-        return await fram.set_write_protected(False)
+        return await fram.set_write_protected(value=False)
 
     ok = run(unprotect())
     assert ok is False
@@ -703,7 +703,7 @@ def test_write_protected_still_reports_success_even_if_wel_stays_stuck_after_ret
     chip.drop_next_wrdi = 2  # both the original WRDI and the one retry are disturbed
 
     async def scenario() -> bool:
-        return await fram.set_write_protected(True)
+        return await fram.set_write_protected(value=True)
 
     ok = run(scenario())
     assert ok is True
@@ -973,7 +973,7 @@ def test_set_write_protected_before_setup_logs_a_persisted_error() -> None:
     fram, _chip = make_fram()
 
     async def scenario() -> bool:
-        return await fram.set_write_protected(True)
+        return await fram.set_write_protected(value=True)
 
     assert run(scenario()) is False
     assert fram.pr.err_count == 1
@@ -986,7 +986,7 @@ def test_write_protected_readback_mismatch_logs_a_persisted_error() -> None:
     chip.drop_wrsr = True  # simulated bus disturbance: WRSR's status byte never actually lands
 
     async def scenario() -> bool:
-        return await fram.set_write_protected(True)
+        return await fram.set_write_protected(value=True)
 
     assert run(scenario()) is False
     assert 95 in fram.pr.history
@@ -1021,7 +1021,7 @@ def test_set_write_protected_wel_did_not_set_logs_a_persisted_warning() -> None:
     chip.drop_wren = True  # simulated bus disturbance: WREN opcode never actually latches
 
     async def scenario() -> bool:
-        return await fram.set_write_protected(True)
+        return await fram.set_write_protected(value=True)
 
     assert run(scenario()) is False
     assert 0x80 + 83 in fram.pr.history  # wrn_s()'s history entries are offset by _NO_WRN (0x80)
@@ -1048,7 +1048,7 @@ def test_write_protected_and_access_not_locked_stay_on_non_persisted_logging() -
     # contract violation, not a hardware fault). Neither should touch the persisted history.
     fram, _chip = make_fram()
     run(setup_fram(fram))
-    assert run(fram.set_write_protected(True)) is True
+    assert run(fram.set_write_protected(value=True)) is True
 
     async def scenario() -> tuple[bool, bool]:
         no_lock = await fram.get_values(bytearray(1), 0)  # no `async with fram:` wrapper

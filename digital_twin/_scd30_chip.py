@@ -54,6 +54,7 @@ class Scd30Chip:
         hum_step: float = 3.0,
         measurement_interval_s: int = 2,
         rdy_pin: "Any | None" = None,
+        *,
         auto_refresh: bool = True,
         state_path: "str | None" = None,
     ) -> None:

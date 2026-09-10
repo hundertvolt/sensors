@@ -253,7 +253,7 @@ def test_rdy_pin_goes_high_on_new_reading_and_fires_a_registered_rising_edge_han
             self._value = 1 if x else 0
             return None
 
-        def irq(self, handler: "Callable[[_FakePin], None] | None" = None, trigger: int = IRQ_RISING | IRQ_FALLING, hard: bool = False) -> None:
+        def irq(self, handler: "Callable[[_FakePin], None] | None" = None, trigger: int = IRQ_RISING | IRQ_FALLING, *, hard: bool = False) -> None:
             self._handler = handler
             self._trigger = trigger
 

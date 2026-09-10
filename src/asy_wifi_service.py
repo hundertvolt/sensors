@@ -262,11 +262,11 @@ class AsyConnTime(SensorReaderConfig):
     async def _apply_initial_led_config(self) -> None:
         led_cfg = await self._read_wifi_led_cfg()
         if led_cfg is None:
-            await self.set_wifi_led(False)
+            await self.set_wifi_led(status=False)
             self._conn_phase = _PHASE_DEACTIVATED
             await self.pr.wrn_s("Missing WLAN configuration!", wrnno=1)
         else:
-            await self.set_wifi_led(led_cfg)
+            await self.set_wifi_led(status=led_cfg)
 
     async def _leave_hotspot_mode(self) -> None:
         self._conn_phase = _PHASE_STA_SEEKING
@@ -302,9 +302,9 @@ class AsyConnTime(SensorReaderConfig):
             wifi_cfg = await self.cfgmgr.get_str_values(_VAL_CTRY + _VAL_HOST)
             if wifi_cfg is None or led_cfg is None or len(wifi_cfg) != _HOTSPOT_CFG_FIELDS:
                 await self.pr.wrn_s("Missing WLAN configuration!", wrnno=2)
-                await self.set_wifi_led(False)
+                await self.set_wifi_led(status=False)
             else:
-                await self.set_wifi_led(led_cfg)
+                await self.set_wifi_led(status=led_cfg)
                 await self._activate_hotspot_ap(wifi_cfg[0], wifi_cfg[1])
             self.hotspot_started_once = True
         finally:
@@ -384,7 +384,7 @@ class AsyConnTime(SensorReaderConfig):
     async def _attempt_sta_connect(self) -> None:
         self.pr.evt("Establishing WLAN connection")
         led_cfg = await self._read_wifi_led_cfg()
-        await self.set_wifi_led(False if led_cfg is None else led_cfg)
+        await self.set_wifi_led(status=False if led_cfg is None else led_cfg)
         wifi_cfg = await self.cfgmgr.get_str_values(_VAL_SSID + _VAL_PW + _VAL_CTRY + _VAL_HOST)
         if wifi_cfg is None or len(wifi_cfg) != _STA_CFG_FIELDS:
             await self.pr.wrn_s("Missing WLAN configuration!", wrnno=3)
@@ -451,7 +451,7 @@ class AsyConnTime(SensorReaderConfig):
             self.hw_op_failed = True
             await self.pr.err_s("Error deactivating WLAN:", e, errno=16)
 
-    async def _update_wifi_snapshot(self, connected: bool) -> None:
+    async def _update_wifi_snapshot(self, *, connected: bool) -> None:
         mode = "AP" if self._conn_phase == _PHASE_HOTSPOT else "STA"
         ip = None
         try:
@@ -467,7 +467,7 @@ class AsyConnTime(SensorReaderConfig):
         # isinstance check is defense-in-depth, not a scenario a real (schema-validated) caller hits.
         if not isinstance(value, bool):
             return False
-        return await self.set_wifi_led(value)
+        return await self.set_wifi_led(status=value)
 
     def _release_wifi_lock(self) -> None:
         try:
@@ -694,9 +694,9 @@ class AsyConnTime(SensorReaderConfig):
         return self._conn_phase == _PHASE_HOTSPOT
 
     def set_ext_led(self, ext_led: "LEDControl") -> None:  # for post-setting ext_led at any time
-        self.ext_led = ext_led  # if called even after init, call set_wifi_led(True) to init LED
+        self.ext_led = ext_led  # if called even after init, call set_wifi_led(status=True) to init LED
 
-    async def set_wifi_led(self, status: bool) -> bool:
+    async def set_wifi_led(self, *, status: bool) -> bool:
         # Uniform setter return contract (project-wide decision): always True here - pure attribute
         # assignment plus _led_off()'s own already-defensive degrade-on-raise, nothing to reject.
         if status:  # try to turn on
@@ -754,7 +754,7 @@ class AsyConnTime(SensorReaderConfig):
             await self.time_counter_trigger_event.wait()
             if self._conn_phase == _PHASE_DEACTIVATED:
                 await self.wifi_uptime.set_value(0)
-                await self._update_wifi_snapshot(False)
+                await self._update_wifi_snapshot(connected=False)
                 continue
             await self.wifi_mode_lock.acquire()
             try:
@@ -763,6 +763,6 @@ class AsyConnTime(SensorReaderConfig):
                     await self.wifi_uptime.increment()
                 else:
                     await self.wifi_uptime.set_value(0)
-                await self._update_wifi_snapshot(connected)
+                await self._update_wifi_snapshot(connected=connected)
             finally:
                 self._release_wifi_lock()

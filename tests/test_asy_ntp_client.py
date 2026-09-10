@@ -491,9 +491,9 @@ def test_now_returns_none_on_os_error() -> None:
 
 def test_set_synced_to_true_preserves_last_sync_age_and_ts() -> None:
     client = make_client()
-    run(client._set_last_sync_age(42))
+    run(client._set_last_sync_age(value=42))
     before = run(client.get_data())
-    run(client._set_synced(True))
+    run(client._set_synced(value=True))
     after = run(client.get_data())
     assert after.Synced is True
     assert after.LastSyncAge == 42
@@ -502,9 +502,9 @@ def test_set_synced_to_true_preserves_last_sync_age_and_ts() -> None:
 
 def test_set_synced_to_false_preserves_last_sync_age() -> None:
     client = make_client()
-    run(client._set_synced(True))
-    run(client._set_last_sync_age(7))
-    run(client._set_synced(False))
+    run(client._set_synced(value=True))
+    run(client._set_last_sync_age(value=7))
+    run(client._set_synced(value=False))
     data = run(client.get_data())
     assert data.Synced is False
     assert data.LastSyncAge == 7
@@ -512,8 +512,8 @@ def test_set_synced_to_false_preserves_last_sync_age() -> None:
 
 def test_set_last_sync_age_preserves_synced_flag_when_true() -> None:
     client = make_client()
-    run(client._set_synced(True))
-    run(client._set_last_sync_age(99))
+    run(client._set_synced(value=True))
+    run(client._set_last_sync_age(value=99))
     data = run(client.get_data())
     assert data.Synced is True
     assert data.LastSyncAge == 99
@@ -521,8 +521,8 @@ def test_set_last_sync_age_preserves_synced_flag_when_true() -> None:
 
 def test_set_last_sync_age_to_none_preserves_synced_flag() -> None:
     client = make_client()
-    run(client._set_synced(True))
-    run(client._set_last_sync_age(None))
+    run(client._set_synced(value=True))
+    run(client._set_last_sync_age(value=None))
     data = run(client.get_data())
     assert data.Synced is True
     assert data.LastSyncAge is None
@@ -539,21 +539,21 @@ def test_increment_last_sync_age_from_none_yields_one() -> None:
 
 def test_increment_last_sync_age_from_a_real_value_adds_one() -> None:
     client = make_client()
-    run(client._set_last_sync_age(10))
+    run(client._set_last_sync_age(value=10))
     result = run(client._increment_last_sync_age())
     assert result == 11
 
 
 def test_increment_last_sync_age_clamps_at_uint32_max() -> None:
     client = make_client()
-    run(client._set_last_sync_age(0xFFFFFFFF))
+    run(client._set_last_sync_age(value=0xFFFFFFFF))
     result = run(client._increment_last_sync_age())
     assert result == 0xFFFFFFFF  # clamped, not wrapped/overflowed
 
 
 def test_increment_last_sync_age_preserves_synced_flag() -> None:
     client = make_client()
-    run(client._set_synced(True))
+    run(client._set_synced(value=True))
     run(client._increment_last_sync_age())
     data = run(client.get_data())
     assert data.Synced is True
@@ -652,7 +652,7 @@ def test_ntp_force_sync_resets_last_sync_retries_and_fires_the_sync_trigger() ->
     client = make_client()
 
     async def scenario() -> bool:
-        await client._set_last_sync_age(5)
+        await client._set_last_sync_age(value=5)
         client.ntp_retries = 2
         await client.ntp_force_sync()
         assert await client.get_last_ntp_sync() is None
@@ -1241,7 +1241,7 @@ def test_handle_sync_failure_while_never_synced_does_not_arm_a_retry() -> None:
 
 def test_handle_sync_failure_while_synced_arms_a_retry_and_increments_the_counter() -> None:
     client = make_client()
-    run(client._set_synced(True))
+    run(client._set_synced(value=True))
     run(client._handle_ntp_sync_failure())
     assert client.ntp_retries == 1
     assert client.ntp_retry_timer.mode == Timer.ONE_SHOT
@@ -1250,7 +1250,7 @@ def test_handle_sync_failure_while_synced_arms_a_retry_and_increments_the_counte
 
 def test_handle_sync_failure_retry_timer_fires_the_sync_trigger() -> None:
     client = make_client()
-    run(client._set_synced(True))
+    run(client._set_synced(value=True))
     run(client._handle_ntp_sync_failure())
 
     async def scenario() -> bool:
@@ -1267,7 +1267,7 @@ def test_handle_sync_failure_retry_timer_fires_the_sync_trigger() -> None:
 
 def test_handle_sync_failure_gives_up_after_max_retries() -> None:
     client = make_client()
-    run(client._set_synced(True))
+    run(client._set_synced(value=True))
     client.ntp_retries = 3  # _NTP_SYNC_RETRIES: const(), compiled away
     run(client._handle_ntp_sync_failure())
     assert client.ntp_retries == 0
@@ -1276,7 +1276,7 @@ def test_handle_sync_failure_gives_up_after_max_retries() -> None:
 
 def test_handle_sync_failure_degrades_gracefully_when_alarm_pool_exhausted() -> None:
     client = make_client()
-    run(client._set_synced(True))
+    run(client._set_synced(value=True))
     with _RaiseOnArm():
         run(client._handle_ntp_sync_failure())  # must not raise despite the timer failing to arm
     assert client.ntp_retries == 0  # given up this cycle rather than left stuck
@@ -1288,7 +1288,7 @@ def test_handle_sync_failure_degrades_gracefully_on_a_memory_error() -> None:
     # same errno=16 is persisted (this site logs via the async err_s(), unlike the two starters above).
     client = make_client()
     run(client.pr.setup())
-    run(client._set_synced(True))
+    run(client._set_synced(value=True))
     with _RaiseOnArm(MemoryError):
         run(client._handle_ntp_sync_failure())  # must not raise despite the timer failing to arm
     assert client.ntp_retries == 0  # given up this cycle rather than left stuck
@@ -1364,7 +1364,7 @@ def test_ntp_time_hours_counter_does_not_retrigger_while_synced_and_under_interv
     client = make_client_with_json(json_text)
 
     async def scenario() -> bool:
-        await client._set_synced(True)
+        await client._set_synced(value=True)
         task = asyncio.create_task(client.ntp_time_hours_counter())
         await _tick(client.ntp_timer_trigger_event, 1)  # one tick, well under 1h / 10s-per-tick
         try:
@@ -1388,7 +1388,7 @@ def test_ntp_time_hours_counter_retriggers_once_interval_elapses() -> None:
     client = make_client_with_json(json_text)
 
     async def scenario() -> bool:
-        await client._set_synced(True)
+        await client._set_synced(value=True)
         task = asyncio.create_task(client.ntp_time_hours_counter())
         await _tick(client.ntp_timer_trigger_event, 360)
         try:
@@ -1414,7 +1414,7 @@ def test_ntp_time_hours_counter_marks_out_of_sync_past_the_async_interval_multip
     client = make_client_with_json(json_text)
 
     async def scenario() -> bool:
-        await client._set_synced(True)
+        await client._set_synced(value=True)
         task = asyncio.create_task(client.ntp_time_hours_counter())
         await asyncio.sleep(0)  # let the task run past its own `self.ntp_sec_count = 0` reset first
         client.ntp_sec_count = 3 * 1 * 60 * 60  # _NTP_ASYNC_INTERV(3) * 1h * 3600 - const(), compiled away
@@ -1443,7 +1443,7 @@ def test_ntp_time_hours_counter_never_naturally_reaches_the_async_interval_multi
     client = make_client_with_json(json_text)
 
     async def scenario() -> bool:
-        await client._set_synced(True)
+        await client._set_synced(value=True)
         task = asyncio.create_task(client.ntp_time_hours_counter())
         # 3 full 1h/360-tick cycles - well past where the 3x(=3h) threshold would sit if sec_count
         # were ever allowed to accumulate past a single 1x cycle.
@@ -1531,7 +1531,7 @@ def test_cettime_returns_none_when_not_synced() -> None:
 
 def test_cettime_returns_none_when_config_missing() -> None:
     client = make_invalid_cfg_client()
-    run(client._set_synced(True))
+    run(client._set_synced(value=True))
     assert run(client.cettime()) is None
 
 
@@ -1546,7 +1546,7 @@ def _run_cettime_with_fixed_now(client: AsyNtpClient, fixed_now: int, raise_exc:
 
 def test_cettime_before_march_boundary_applies_gmt_offset_only() -> None:
     client = _client_with_offsets(3600, 3600)
-    run(client._set_synced(True))
+    run(client._set_synced(value=True))
     fixed_now = _mid_month_now(1)
     result = _run_cettime_with_fixed_now(client, fixed_now)
     assert result is not None
@@ -1555,7 +1555,7 @@ def test_cettime_before_march_boundary_applies_gmt_offset_only() -> None:
 
 def test_cettime_between_march_and_october_applies_gmt_plus_dst_offset() -> None:
     client = _client_with_offsets(3600, 3600)
-    run(client._set_synced(True))
+    run(client._set_synced(value=True))
     fixed_now = _mid_month_now(7)
     result = _run_cettime_with_fixed_now(client, fixed_now)
     assert result is not None
@@ -1564,7 +1564,7 @@ def test_cettime_between_march_and_october_applies_gmt_plus_dst_offset() -> None
 
 def test_cettime_after_october_boundary_applies_gmt_offset_only() -> None:
     client = _client_with_offsets(3600, 3600)
-    run(client._set_synced(True))
+    run(client._set_synced(value=True))
     fixed_now = _mid_month_now(12)
     result = _run_cettime_with_fixed_now(client, fixed_now)
     assert result is not None
@@ -1573,7 +1573,7 @@ def test_cettime_after_october_boundary_applies_gmt_offset_only() -> None:
 
 def test_cettime_zero_offsets_are_accepted_not_rejected() -> None:
     client = _client_with_offsets(0, 0)
-    run(client._set_synced(True))
+    run(client._set_synced(value=True))
     fixed_now = _mid_month_now(1)
     result = _run_cettime_with_fixed_now(client, fixed_now)
     assert result is not None
@@ -1582,7 +1582,7 @@ def test_cettime_zero_offsets_are_accepted_not_rejected() -> None:
 
 def test_cettime_negative_offsets_are_accepted_not_rejected() -> None:
     client = _client_with_offsets(-3600, -3600)
-    run(client._set_synced(True))
+    run(client._set_synced(value=True))
     fixed_now = _mid_month_now(7)
     result = _run_cettime_with_fixed_now(client, fixed_now)
     assert result is not None
@@ -1591,7 +1591,7 @@ def test_cettime_negative_offsets_are_accepted_not_rejected() -> None:
 
 def test_cettime_mktime_or_gmtime_failure_returns_none_not_raise() -> None:
     client = _client_with_offsets(3600, 3600)
-    run(client._set_synced(True))
+    run(client._set_synced(value=True))
     result = _run_cettime_with_fixed_now(
         client, _mid_month_now(1), raise_exc=OverflowError("past rp2's ~2037 range"),
     )
@@ -1617,7 +1617,7 @@ class _ShortGmtimeTime:
 
 def test_cettime_returns_none_when_gmtime_result_has_the_wrong_length() -> None:
     client = _client_with_offsets(3600, 3600)
-    run(client._set_synced(True))
+    run(client._set_synced(value=True))
     original_time = ntpmod.time
     ntpmod.time = _ShortGmtimeTime(_mid_month_now(1))  # type: ignore[assignment]
     try:
@@ -1636,7 +1636,7 @@ def test_time_counter_increments_while_synced() -> None:
     client = make_client()
 
     async def scenario() -> "int | None":
-        await client._set_synced(True)
+        await client._set_synced(value=True)
         task = asyncio.create_task(client.time_counter())
         await _tick(client.time_counter_trigger_event, 3)
         value = await client.get_last_ntp_sync()
@@ -1716,7 +1716,7 @@ def test_run_sync_attempt_network_available_raising_persists_a_warning() -> None
 
 def test_run_sync_attempt_missing_config_marks_not_synced_and_returns() -> None:
     client = make_client()
-    run(client._set_synced(True))
+    run(client._set_synced(value=True))
 
     async def fake_get_cfg() -> "Any":
         return None
@@ -2241,7 +2241,7 @@ def test_integration_recovers_on_retry_after_one_dropped_request() -> None:
     client = make_integration_client()
     reply = make_ntp_reply(int(time.time()))
 
-    async def _wait_synced(target: bool) -> None:
+    async def _wait_synced(*, target: bool) -> None:
         for _ in range(200):
             if await client.ntp_issynced() == target:
                 return
@@ -2255,7 +2255,7 @@ def test_integration_recovers_on_retry_after_one_dropped_request() -> None:
                 client.ntp_sync_trigger_event.set()
                 first_reply_task = asyncio.create_task(server.serve_once(reply))
                 await asyncio.wait_for(first_reply_task, 5)
-                await _wait_synced(True)
+                await _wait_synced(target=True)
                 assert await client.ntp_issynced() is True  # confirmed synced once via a real round trip
 
                 await client.ntp_force_sync()  # trigger a second attempt
@@ -2269,7 +2269,7 @@ def test_integration_recovers_on_retry_after_one_dropped_request() -> None:
                 client.ntp_retry_timer.trigger()  # fire the scheduled retry immediately, not after 15s
                 second_reply_task = asyncio.create_task(server.serve_once(reply))
                 await asyncio.wait_for(second_reply_task, 5)
-                await _wait_synced(True)
+                await _wait_synced(target=True)
                 synced = await client.ntp_issynced()
                 task.cancel()
                 try:

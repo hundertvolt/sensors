@@ -159,9 +159,9 @@ class SGP40_Reader(SensorReaderConfig):
         return buf, serialize, deserialize, (backup_period, backup_maxage, wait_ntp)
 
     async def _read_sgp(
-        self, buf: "AsyFramChunkTimestampedBuffer | None", serialize: bool, deserialize: bool,
+        self, buf: "AsyFramChunkTimestampedBuffer | None", *, serialize: bool, deserialize: bool,
     ) -> tuple[SGP40, bool, bool]:
-        # Snapshotted once at entry so a concurrent reset_voc(True) (e.g. a REST handler) only
+        # Snapshotted once at entry so a concurrent reset_voc(flag=True) (e.g. a REST handler) only
         # ever affects the *next* cycle, never this one.
         reset_now = self.reset
         if reset_now:
@@ -272,6 +272,7 @@ class SGP40_Reader(SensorReaderConfig):
     async def _run_restore(
         self,
         buf: "AsyFramChunkTimestampedBuffer | None",
+        *,
         deserialize: bool,
         cfg_values: tuple[int, int, int] | None,
     ) -> bool:
@@ -305,6 +306,7 @@ class SGP40_Reader(SensorReaderConfig):
     async def _run_backup(
         self,
         buf: "AsyFramChunkTimestampedBuffer | None",
+        *,
         serialize: bool,
         cfg_values: tuple[int, int, int] | None,
     ) -> None:
@@ -361,7 +363,7 @@ class SGP40_Reader(SensorReaderConfig):
         # docstring), not "push failed" (SPECIFICATION.md C.5.2) - always reports success once typed.
         if not isinstance(value, bool):
             return False
-        await self.reset_voc(value)
+        await self.reset_voc(flag=value)
         return True
 
     def start_asy_read(self) -> asyncio.Task[bool]:
@@ -408,7 +410,7 @@ class SGP40_Reader(SensorReaderConfig):
     async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[str]]]:
         return await self.pr.get_log()
 
-    async def reset_voc(self, flag: bool) -> bool:
+    async def reset_voc(self, *, flag: bool) -> bool:
         # Uniform setter return contract (project-wide decision): True = applied, False = no-op.
         # flag=False deliberately does nothing (see test_reset_voc_false_is_a_no_op's own contract
         # note) - only flag=True actually triggers a reset.
@@ -429,12 +431,12 @@ class SGP40_Reader(SensorReaderConfig):
             await self.trigger_event.wait()  # wait for read trigger event
             self.pr.evt("sensor trigger")
             buf, serialize, deserialize, cfg_values = await self._check_storage()
-            deserialize = await self._run_restore(buf, deserialize, cfg_values)  # check for available backup data
-            data, compensated, serialize = await self._read_sgp(buf, serialize, deserialize)  # read data
+            deserialize = await self._run_restore(buf, deserialize=deserialize, cfg_values=cfg_values)  # check for available backup data
+            data, compensated, serialize = await self._read_sgp(buf, serialize=serialize, deserialize=deserialize)  # read data
             if not await self._error_check(data, condition=compensated):  # check and count errors
                 return False  # break and restart if too many errors
             await self._store_sgp(data)  # store data in result buffer
-            await self._run_backup(buf, serialize, cfg_values)  # store backup if data was issued
+            await self._run_backup(buf, serialize=serialize, cfg_values=cfg_values)  # store backup if data was issued
 
 
 class SGP40_DeviceSession(Lockable):  # lock for consecutive i2c communication and self._command_buffer
@@ -539,6 +541,7 @@ class SGP40_I2C:
         self,
         temperature: float = 25,
         relative_humidity: float = 50,
+        *,
         reset: bool = False,
         buf: bytearray | memoryview | None = None,
         serialize: bool = False,

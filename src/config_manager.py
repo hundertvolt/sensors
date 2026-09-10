@@ -38,7 +38,7 @@ if TYPE_CHECKING:
 from print_log import PrintLogHistory
 
 
-def _special_bypass(check_val: "Any", val_special: "Any", scalar_type: type, check_special: bool) -> "bool | None":
+def _special_bypass(check_val: "Any", val_special: "Any", scalar_type: type, *, check_special: bool) -> "bool | None":
     # Shared by every non-bool branch of type_or_range_error: val_special is a single scalar or a
     # tuple/list of scalars (see ConfigSchema above). Returns True/False to short-circuit the
     # caller (malformed special, or a valid bypass match), or None to fall to the range check.
@@ -129,7 +129,7 @@ def coerce_numeric(check_val: "Any", scalar_type: type) -> "tuple[bool, Any]":
 
 
 def type_or_range_error(
-    check_val: "Any", field: "FieldSchema", check_special: bool = True,
+    check_val: "Any", field: "FieldSchema", *, check_special: bool = True,
 ) -> "tuple[bool, Any]":  # (True, check_val) if check_val doesn't satisfy field's own type/min/
     # max(/special) schema entry (coercion included) - (False, coerced_val) otherwise, where
     # coerced_val is check_val itself unless an int<->float coercion above actually applied.
@@ -141,7 +141,7 @@ def type_or_range_error(
             if not ok:
                 return True, check_val
             if val_special is not None:
-                bypass = _special_bypass(check_val, val_special, int, check_special)
+                bypass = _special_bypass(check_val, val_special, int, check_special=check_special)
                 if bypass is not None:
                     return bypass, check_val
             if type(val_max) is int and type(val_min) is int and val_min <= check_val <= val_max:
@@ -151,7 +151,7 @@ def type_or_range_error(
             if not ok:
                 return True, check_val
             if val_special is not None:
-                bypass = _special_bypass(check_val, val_special, float, check_special)
+                bypass = _special_bypass(check_val, val_special, float, check_special=check_special)
                 if bypass is not None:
                     return bypass, check_val
             if type(val_max) is float and type(val_min) is float and val_min <= check_val <= val_max:
@@ -160,7 +160,7 @@ def type_or_range_error(
             if type(check_val) is not str:
                 return True, check_val
             if val_special is not None:
-                bypass = _special_bypass(check_val, val_special, str, check_special)
+                bypass = _special_bypass(check_val, val_special, str, check_special=check_special)
                 if bypass is not None:
                     return bypass, check_val
             if type(val_max) is int and type(val_min) is int and val_min <= len(check_val) <= val_max:

@@ -364,7 +364,7 @@ def test_pause_blocks_persisted_write_but_in_memory_error_tracking_still_works()
     reader = SensorReader(Meas(1.0, 1), 3, fram=manager)
     run(reader.pr.setup())
     before = bytes(chip.memory)
-    manager.set_pause(True)
+    manager.set_pause(value=True)
 
     async def scenario() -> int:
         await reader.pr.err_s("paused write", errno=11)

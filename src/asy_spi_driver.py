@@ -94,6 +94,7 @@ class SPIDevice(Lockable):
         self,
         spi: SPI,
         cs_pin: int,
+        *,
         cs_active_value: bool = False,
         baudrate: int = 1000000,
         polarity: int = 0,

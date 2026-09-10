@@ -211,7 +211,7 @@ async def voc_value_callback(sgp_reader: SGP40_Reader) -> "int | float | None":
 
 def _drive_sgp_cycle(reader: SGP40_Reader, fake_bus: "Any", raw: int) -> "Any":
     fake_bus.read_queue.append(_word(raw))
-    data, compensated, _serialized = run(reader._read_sgp(None, False, False))
+    data, compensated, _serialized = run(reader._read_sgp(None, serialize=False, deserialize=False))
     run(reader._error_check(data, condition=compensated))
     run(reader._store_sgp(data))
     return data

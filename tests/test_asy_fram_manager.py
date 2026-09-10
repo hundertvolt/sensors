@@ -395,9 +395,9 @@ def test_manager_get_pause_reflects_set_pause_directly() -> None:
     # window - see BACKLOG.md).
     manager, _chip = make_manager()
     assert manager.get_pause() is False
-    manager.set_pause(True)
+    manager.set_pause(value=True)
     assert manager.get_pause() is True
-    manager.set_pause(False)
+    manager.set_pause(value=False)
     assert manager.get_pause() is False
 
 
@@ -407,7 +407,7 @@ def test_manager_pause_blocks_chunk_operations_without_override() -> None:
     chunk = manager.get_chunk(4, crc=CRC_Pass())
     assert chunk is not None
     run(chunk.write(b"data"))
-    manager.set_pause(True)
+    manager.set_pause(value=True)
 
     async def scenario() -> tuple[bool, bytearray | None]:
         write_ok = await chunk.write(b"else")
@@ -418,7 +418,7 @@ def test_manager_pause_blocks_chunk_operations_without_override() -> None:
     assert write_ok is False
     assert read_result is None  # refused, not "no data" - but collapses to the same sentinel
 
-    manager.set_pause(False)
+    manager.set_pause(value=False)
 
     async def confirm() -> bytearray | None:
         return await chunk.read()
@@ -431,7 +431,7 @@ def test_override_pause_bypasses_manager_pause() -> None:
     run(setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRC_Pass())
     assert chunk is not None
-    manager.set_pause(True)
+    manager.set_pause(value=True)
 
     async def scenario() -> tuple[bool, bytearray | None]:
         write_ok = await chunk.write(b"data", override_pause=True)
@@ -812,7 +812,7 @@ def test_write_fails_cleanly_when_fram_is_write_protected() -> None:
     assert chunk is not None
 
     async def scenario() -> tuple[bool, bool, dict]:
-        protect_ok = await manager.fram.set_write_protected(True)
+        protect_ok = await manager.fram.set_write_protected(value=True)
         write_ok = await chunk.write(b"data")
         errs = await manager.get_error_counter()
         return protect_ok, write_ok, errs
@@ -982,7 +982,7 @@ def test_clear_while_paused_is_refused_without_override() -> None:
     chunk = manager.get_chunk(4, crc=CRC_Pass())
     assert chunk is not None
     run(chunk.write(b"data"))
-    manager.set_pause(True)
+    manager.set_pause(value=True)
 
     async def scenario() -> tuple[bool, bytearray | None]:
         cleared = await chunk.clear()
@@ -1000,7 +1000,7 @@ def test_clear_override_pause_bypasses_manager_pause() -> None:
     chunk = manager.get_chunk(4, crc=CRC_Pass())
     assert chunk is not None
     run(chunk.write(b"data"))
-    manager.set_pause(True)
+    manager.set_pause(value=True)
 
     async def scenario() -> tuple[bool, bytearray | None]:
         cleared = await chunk.clear(override_pause=True)
@@ -1116,7 +1116,7 @@ def test_timestamped_chunk_respects_manager_pause_and_override() -> None:
     run(setup_manager(manager))
     chunk = manager.get_timestamped_chunk(4, _synced, crc=CRC_Pass())
     assert chunk is not None
-    manager.set_pause(True)
+    manager.set_pause(value=True)
 
     async def scenario() -> tuple[bool, tuple[int | None, int | None, bytearray | None]]:
         _ntp_synced, _utc, write_ok = await chunk.write(b"data")
@@ -1127,7 +1127,7 @@ def test_timestamped_chunk_respects_manager_pause_and_override() -> None:
     assert write_ok is False  # _write's own pause guard refuses, same as AsyFramChunk
     assert read_result == (None, None, None)
 
-    manager.set_pause(False)
+    manager.set_pause(value=False)
 
     async def with_override() -> tuple[bool, tuple[int | None, int | None, bytearray | None]]:
         _ntp_synced, _utc, write_ok = await chunk.write(b"data", override_pause=True)
@@ -1945,9 +1945,9 @@ def test_chunk_get_pause_reflects_the_manager_wide_pause_flag() -> None:
     chunk = manager.get_chunk(4, crc=CRC_Pass())
     assert chunk is not None
     assert run(chunk.get_pause()) is False
-    manager.set_pause(True)
+    manager.set_pause(value=True)
     assert run(chunk.get_pause()) is True
-    manager.set_pause(False)
+    manager.set_pause(value=False)
 
 
 def test_chunk_get_size_returns_the_requested_payload_size() -> None:

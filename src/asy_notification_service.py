@@ -62,6 +62,7 @@ class NotificationSignal:
         get_value: "Callable[[], Coroutine[Any, Any, int | float | None]]",
         field_schema: "ConfigSchema",
         color: "tuple[int, int, int]",
+        *,
         above: bool = True,
     ) -> None:
         self.name = name
@@ -162,7 +163,7 @@ class NotificationCoordinator(SensorReaderConfig):
         except Exception as e:
             await self.pr.err_s(notif.name, "request_signal_cb failed:", e, errno=13)
 
-    async def _store_notif_data(self, any_triggered: bool) -> None:
+    async def _store_notif_data(self, *, any_triggered: bool) -> None:
         await self._set_meas_data(NOTIFY(any_triggered, self._now()))
 
     def start_asy_notify_monitor(self) -> "asyncio.Task[None]":
@@ -182,7 +183,7 @@ class NotificationCoordinator(SensorReaderConfig):
     async def get_data(self) -> NOTIFY:
         # Narrows to this Reader's concrete NOTIFY - see SPECIFICATION.md C.4.2's get_data() convention.
         if not self._finalized:  # finalize() hasn't run yet - self._datastruct doesn't exist; caller-ordering
-            return NOTIFY(False, None)  # bug, defense-in-depth only
+            return NOTIFY(Triggered=False, TS=None)  # bug, defense-in-depth only
         return await self._get_meas_data()  # type: ignore[return-value]
 
     async def get_dict_data(self) -> dict[str, dict[str, int | float | str | bool | None]]:
@@ -228,7 +229,7 @@ class NotificationCoordinator(SensorReaderConfig):
             self._reject_registration("(coordinator)", "finalize() called again, ignoring", 4)
             return
         super().__init__(
-            NOTIFY(False, None),
+            NOTIFY(Triggered=False, TS=None),
             self._max_module_error,
             _NAME,
             self._combined_schema(),
@@ -309,7 +310,7 @@ class NotificationCoordinator(SensorReaderConfig):
                                     any_triggered = True
                                     await self._trigger_signal(notif, flash_bri, flash_dur)
                                     await asyncio.sleep(2 * flash_dur)
-                await self._store_notif_data(any_triggered)
+                await self._store_notif_data(any_triggered=any_triggered)
             # consecutive-failure-streak give-up, matching every other Reader's own read_loop() shape -
             # max_module_error is otherwise accepted and stored but never actually enforced.
             if not await self._error_check((None,), condition=cfg_read_failed):

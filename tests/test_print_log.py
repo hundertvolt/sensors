@@ -45,7 +45,7 @@ class _RaisingFramChunk:
     # independent of what the concrete AsyFramManager currently guarantees (its own _write_chunk/
     # _read_chunk wrap their entire bodies in try/except - confirmed by asy_fram_manager.py's own
     # src/ promotion audit - so write_into()/read_into() can no longer actually raise through it).
-    def __init__(self, raise_on_write: bool = False, raise_on_read: bool = False) -> None:
+    def __init__(self, *, raise_on_write: bool = False, raise_on_read: bool = False) -> None:
         self.raise_on_write = raise_on_write
         self.raise_on_read = raise_on_read
 
@@ -54,19 +54,19 @@ class _RaisingFramChunk:
 
         return LockableBuffer(6, data_start=0, data_length=6)
 
-    async def write_into(self, buf: "Any", override_pause: bool = False) -> bool:
+    async def write_into(self, buf: "Any", *, override_pause: bool = False) -> bool:
         if self.raise_on_write:
             raise RuntimeError("simulated write failure")
         return True
 
-    async def read_into(self, buf: "Any", override_pause: bool = False) -> bool:
+    async def read_into(self, buf: "Any", *, override_pause: bool = False) -> bool:
         if self.raise_on_read:
             raise RuntimeError("simulated read failure")
         return True
 
 
 class _RaisingFramManager:
-    def __init__(self, chunk: "_RaisingFramChunk | None", raise_on_get_chunk: bool = False) -> None:
+    def __init__(self, chunk: "_RaisingFramChunk | None", *, raise_on_get_chunk: bool = False) -> None:
         self._chunk = chunk
         self.raise_on_get_chunk = raise_on_get_chunk
 

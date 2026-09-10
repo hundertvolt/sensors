@@ -136,7 +136,7 @@ def make_ntp_client() -> AsyNtpClient:
 
 class _FakeRequest:
     # Same minimal stand-in as test_api_response.py's own - mocks only the .json property boundary.
-    def __init__(self, json_value: "Any", raise_instead: bool = False) -> None:
+    def __init__(self, json_value: "Any", *, raise_instead: bool = False) -> None:
         self._json_value = json_value
         self._raise_instead = raise_instead
 

@@ -787,6 +787,7 @@ class VOCAlgorithm:
         self,
         sraw: int,
         buf: bytearray | memoryview | None = None,
+        *,
         serialize: bool = False,
         deserialize: bool = False,
         offset: int = 0,

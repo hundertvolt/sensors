@@ -123,6 +123,7 @@ class LaunchConfig:
         faults: "list[tuple[str, str, int]] | None" = None,
         hangs: "list[tuple[str, str, float, int]] | None" = None,
         wifi_outcomes: "list[int] | None" = None,
+        *,
         no_wdt_feed: bool = False,
         duration: "float | None" = None,
     ) -> None:
@@ -279,7 +280,7 @@ def _read_bmp3xx(i2c1: "I2C") -> "tuple[float, float]":
     return _forward_bmp3xx(temp_calib, pressure_calib, adc_p, adc_t)
 
 
-async def _wdt_feeder(watchdog: "WDT", no_wdt_feed: bool) -> None:
+async def _wdt_feeder(watchdog: "WDT", *, no_wdt_feed: bool) -> None:
     while True:
         if not no_wdt_feed:
             watchdog.feed()
@@ -384,7 +385,7 @@ async def main(config: "LaunchConfig") -> "dict[str, Any]":
         print("WLAN: startup failed:", e)
 
     tasks = [
-        asyncio.get_event_loop().create_task(_wdt_feeder(watchdog, config.no_wdt_feed)),
+        asyncio.get_event_loop().create_task(_wdt_feeder(watchdog, no_wdt_feed=config.no_wdt_feed)),
         asyncio.get_event_loop().create_task(_wifi_watcher(wlan)),
         asyncio.get_event_loop().create_task(_sensor_loop(i2c0, i2c1, summary)),
     ]

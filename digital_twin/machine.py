@@ -163,31 +163,31 @@ def configure_i2c_wiring(profile: str) -> None:
     _i2c_wiring_profile = profile
 
 
-def _wire_i2c_devices(id: int) -> "dict[int, Any]":
+def _wire_i2c_devices(bus_id: int) -> "dict[int, Any]":
     global _current_scd30_chip
     from _bmp3xx_chip import Bmp3xxChip
     from _scd30_chip import Scd30Chip
     from _sgp40_chip import Sgp40Chip
 
     if _i2c_wiring_profile == "dev":
-        # dev_legacy/README.md's wiring table: i2c0 (id=0) carries BMP3xx alone; i2c1 (id=1)
+        # dev_legacy/README.md's wiring table: i2c0 (bus_id=0) carries BMP3xx alone; i2c1 (bus_id=1)
         # carries SCD30 (IRQ/RDY=GPIO11) + SGP40 sharing the bus - the reverse pairing from wozi's
         # own layout below.
-        if id == 0:
+        if bus_id == 0:
             return {0x77: Bmp3xxChip(random_source=_random_source)}
-        if id == 1:
+        if bus_id == 1:
             chip = Scd30Chip(rdy_pin=Pin(11, mode=Pin.IN), random_source=_random_source, state_path=_scd30_state_path)
             _current_scd30_chip = chip
             return {0x61: chip, 0x59: Sgp40Chip(random_source=_random_source)}
         return {}
 
-    # "wozi" (default): i2c0 (id=0) carries SCD30 alone (IRQ/RDY=GPIO8); i2c1 (id=1) carries
+    # "wozi" (default): i2c0 (bus_id=0) carries SCD30 alone (IRQ/RDY=GPIO8); i2c1 (bus_id=1) carries
     # SGP40 + BMP3xx sharing the bus.
-    if id == 0:
+    if bus_id == 0:
         chip = Scd30Chip(rdy_pin=Pin(8, mode=Pin.IN), random_source=_random_source, state_path=_scd30_state_path)
         _current_scd30_chip = chip
         return {0x61: chip}
-    if id == 1:
+    if bus_id == 1:
         return {0x59: Sgp40Chip(random_source=_random_source), 0x77: Bmp3xxChip(random_source=_random_source)}
     return {}
 
@@ -267,9 +267,9 @@ _DEV_FRAM_SIZE = 0x40000  # MB85RS2MTA, 256KB - sensortask_dev.py's own AsyFramM
 _DEV_FRAM_RDID = bytes([0x04, 0x7F, 0x48, 0x03])  # manufacturer=Fujitsu, cont_code, product ID 0x4803 - asy_fram_driver.py's own _KNOWN_PRODUCT_IDS[0x40000], datasheets/fram/MB85RS2MTA-DS501-00032-3v0-E.pdf p.10
 
 
-def _wire_spi_device(id: int) -> "Any | None":
+def _wire_spi_device(bus_id: int) -> "Any | None":
     global _current_fram_chip
-    if id == 0:
+    if bus_id == 0:
         from _fram_chip import FramChip
 
         # Mirrors _wire_i2c_devices()'s own profile branch above - see digital_twin/README.md's

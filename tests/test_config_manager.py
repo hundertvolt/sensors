@@ -276,10 +276,10 @@ def test_coerce_numeric_bool_excluded_from_both_directions() -> None:
     # every branch - it must never coerce into int OR float, and never pass the same-type check
     # for either, even though `isinstance(True, int)` and `isinstance(True, float)` would both
     # otherwise be misleading here.
-    assert cm.coerce_numeric(True, int) == (False, True)
-    assert cm.coerce_numeric(False, int) == (False, False)
-    assert cm.coerce_numeric(True, float) == (False, True)
-    assert cm.coerce_numeric(False, float) == (False, False)
+    assert cm.coerce_numeric(check_val=True, scalar_type=int) == (False, True)
+    assert cm.coerce_numeric(check_val=False, scalar_type=int) == (False, False)
+    assert cm.coerce_numeric(check_val=True, scalar_type=float) == (False, True)
+    assert cm.coerce_numeric(check_val=False, scalar_type=float) == (False, False)
 
 
 def test_coerce_numeric_wrong_type_entirely_rejected() -> None:
@@ -397,14 +397,14 @@ def test_type_or_range_error_int_field_still_rejects_bool() -> None:
     # bool must never be coerced into an int field even though `type(True) is bool` sits in
     # Python's int-subclass hierarchy - type() (not isinstance()) already excludes it.
     field: cm.FieldSchema = ("X", "int", None, 0, 10, None)
-    assert cm.type_or_range_error(True, field)[0] is True
-    assert cm.type_or_range_error(False, field)[0] is True
+    assert cm.type_or_range_error(check_val=True, field=field)[0] is True
+    assert cm.type_or_range_error(check_val=False, field=field)[0] is True
 
 
 def test_type_or_range_error_float_field_still_rejects_bool() -> None:
     field: cm.FieldSchema = ("X", "float", None, 0.0, 10.0, None)
-    assert cm.type_or_range_error(True, field)[0] is True
-    assert cm.type_or_range_error(False, field)[0] is True
+    assert cm.type_or_range_error(check_val=True, field=field)[0] is True
+    assert cm.type_or_range_error(check_val=False, field=field)[0] is True
 
 
 def test_type_or_range_error_int_field_coerced_float_still_honors_special_bypass() -> None:
@@ -593,7 +593,7 @@ def test_type_or_range_error_str_zero_length_boundary() -> None:
 
 def test_type_or_range_error_bool_additional_wrong_types() -> None:
     field: cm.FieldSchema = ("X", "bool", None, None, None, None)
-    assert cm.type_or_range_error(False, field)[0] is False
+    assert cm.type_or_range_error(check_val=False, field=field)[0] is False
     assert cm.type_or_range_error(0, field)[0] is True  # int, not bool
     assert cm.type_or_range_error(1.0, field)[0] is True
     assert cm.type_or_range_error("true", field)[0] is True
@@ -646,8 +646,8 @@ def test_type_or_range_error_bool_ignores_nonsensical_min_max() -> None:
     # A bool field has no range concept - min/max are simply never read, so garbage values there
     # (an authoring mistake, e.g. copy-pasted from an int field) don't affect a genuinely valid bool.
     field: cm.FieldSchema = ("X", "bool", None, 5, 10, None)
-    assert cm.type_or_range_error(True, field)[0] is False
-    assert cm.type_or_range_error(False, field)[0] is False
+    assert cm.type_or_range_error(check_val=True, field=field)[0] is False
+    assert cm.type_or_range_error(check_val=False, field=field)[0] is False
 
 
 def test_type_or_range_error_bool_value_against_int_field_rejected() -> None:
@@ -655,8 +655,8 @@ def test_type_or_range_error_bool_value_against_int_field_rejected() -> None:
     # would treat True/False as ints too, since bool subclasses int) - the reverse direction of the
     # existing "int value against a bool field" tests above.
     field: cm.FieldSchema = ("X", "int", None, 0, 10, None)
-    assert cm.type_or_range_error(True, field)[0] is True
-    assert cm.type_or_range_error(False, field)[0] is True
+    assert cm.type_or_range_error(check_val=True, field=field)[0] is True
+    assert cm.type_or_range_error(check_val=False, field=field)[0] is True
 
 
 def test_type_or_range_error_str_length_counts_unicode_codepoints_not_bytes() -> None:
@@ -669,7 +669,7 @@ def test_type_or_range_error_str_length_counts_unicode_codepoints_not_bytes() ->
 
 def test_type_or_range_error_bool() -> None:
     field: cm.FieldSchema = ("X", "bool", None, None, None, None)
-    assert cm.type_or_range_error(True, field)[0] is False
+    assert cm.type_or_range_error(check_val=True, field=field)[0] is False
     assert cm.type_or_range_error(1, field)[0] is True  # int, not bool - `type() is bool` rejects it
 
 
@@ -774,7 +774,7 @@ def test_type_or_range_error_bool_ignores_malformed_special_for_a_genuinely_vali
     # a bool to bypass - so a wrong-typed special only ever surfaces via check_cfg_get_default's
     # own self-check (previous test), never by rejecting an otherwise-valid bool value outright.
     # Longstanding, deliberate asymmetry (see BACKLOG.md), not new to the tuple schema.
-    assert cm.type_or_range_error(True, ("X", "bool", None, None, None, 1))[0] is False
+    assert cm.type_or_range_error(check_val=True, field=("X", "bool", None, None, None, 1))[0] is False
 
 
 def test_schema_dict_non_string_name_quirk() -> None:
@@ -2111,7 +2111,7 @@ class _MemoryErrorJson:
     # Only the call actually under test raises - the other one falls through to the real json
     # module, so each test exercises exactly one of the two guarded call sites rather than
     # accidentally failing the whole setup()/write_config() chain twice over.
-    def __init__(self, raise_on_dump: bool = False, raise_on_load: bool = False) -> None:
+    def __init__(self, *, raise_on_dump: bool = False, raise_on_load: bool = False) -> None:
         self.raise_on_dump = raise_on_dump
         self.raise_on_load = raise_on_load
 

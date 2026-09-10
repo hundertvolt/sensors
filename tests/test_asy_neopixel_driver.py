@@ -471,11 +471,11 @@ class _FakeFramChunk:
     def get_data_buf(self) -> bytearray:
         return self.buf
 
-    async def write_into(self, buf: "Any", override_pause: bool = False) -> bool:
+    async def write_into(self, buf: "Any", *, override_pause: bool = False) -> bool:
         self.buf[:] = buf.get_data_buf()
         return True
 
-    async def read_into(self, buf: "Any", override_pause: bool = False) -> bool:
+    async def read_into(self, buf: "Any", *, override_pause: bool = False) -> bool:
         buf.get_data_buf()[:] = self.buf
         return True
 
@@ -538,7 +538,7 @@ def test_clamp_byte_direct() -> None:
     assert _clamp_byte(256) == 255
     assert _clamp_byte(300) == 255
     assert _clamp_byte(3.9) == 3  # int() truncates, matches every other rgb value in this file
-    assert _clamp_byte(True) == 1  # bool is a legitimate int subtype for a byte value
+    assert _clamp_byte(value=True) == 1  # bool is a legitimate int subtype for a byte value
     # int(float('inf'))/int(float('-inf')) raise OverflowError specifically, not ValueError -
     # confirmed directly against the real MicroPython 1.28.0 Unix-port interpreter. Regression test
     # for the gap _clamp_byte()'s original except (TypeError, ValueError) clause missed entirely.

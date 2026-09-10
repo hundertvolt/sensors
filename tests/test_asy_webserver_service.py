@@ -164,7 +164,7 @@ class _ScriptedReader:
     # After the scripted chunks are exhausted, further reads hang forever (never resolve) unless
     # eof=True, in which case they raise EOFError/return b"" - matching real Stream behavior for a
     # clean peer close vs. a genuinely wedged/silent one.
-    def __init__(self, chunks: "list[tuple[float, bytes]]", eof: bool = False) -> None:
+    def __init__(self, chunks: "list[tuple[float, bytes]]", *, eof: bool = False) -> None:
         self._chunks = list(chunks)
         self._buf = b""
         self._eof = eof
@@ -222,7 +222,7 @@ class _ClosedReader:
 
 
 class _ScriptedWriter:
-    def __init__(self, hang_close: bool = False, fail_with: "Exception | None" = None) -> None:
+    def __init__(self, *, hang_close: bool = False, fail_with: "Exception | None" = None) -> None:
         self.written = b""
         self.close_called = False
         self.wait_closed_called = False

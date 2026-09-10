@@ -24,7 +24,7 @@ def make_spi() -> SPI:
     return SPI(0, sck_pin=2, mosi_pin=3, miso_pin=4)
 
 
-def make_device(spi: SPI, cs_pin: int = 1, cs_active_value: bool = False, call_setup: bool = True) -> SPIDevice:
+def make_device(spi: SPI, cs_pin: int = 1, *, cs_active_value: bool = False, call_setup: bool = True) -> SPIDevice:
     # call_setup=True by default so every test gets a real-world-shaped device (every actual
     # caller calls setup() before first use) without needing its own boilerplate; pass False for
     # tests specifically about the pre-setup state or setup() itself.

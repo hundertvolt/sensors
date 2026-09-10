@@ -54,6 +54,7 @@ class RunConfig:
         faults: "list[tuple[str, str, int]] | None" = None,
         hangs: "list[tuple[str, str, float, int]] | None" = None,
         wifi_outcomes: "list[int] | None" = None,
+        *,
         soak: bool = False,
         soak_cycles: int = _SOAK_CYCLES_DEFAULT,
         duration: "float | None" = None,

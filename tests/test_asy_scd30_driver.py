@@ -895,14 +895,14 @@ def test_reader_set_then_get_altitude_round_trips_through_real_i2c_frames() -> N
 def test_reader_stop_continuous_measurement_true_is_a_pure_noop() -> None:
     reader = make_reader()
     i2c = reader_fake_i2c(reader)
-    assert run(reader.stop_continuous_measurement(True)) is False
+    assert run(reader.stop_continuous_measurement(value=True)) is False
     assert len(i2c.log) == 0
 
 
 def test_reader_stop_continuous_measurement_false_sends_the_real_stop_command() -> None:
     reader = make_reader()
     i2c = reader_fake_i2c(reader)
-    assert run(reader.stop_continuous_measurement(False)) is True
+    assert run(reader.stop_continuous_measurement(value=False)) is True
     assert i2c.log[-1] == ("writeto", _ADDR, bytes([0x01, 0x04]), True)
 
 
@@ -911,7 +911,7 @@ def test_reader_stop_continuous_measurement_false_returns_false_on_bus_fault() -
     reader_fake_i2c(reader).nak_addresses.add(_ADDR)
 
     async def scenario() -> "tuple[bool, dict]":
-        ok = await reader.stop_continuous_measurement(False)
+        ok = await reader.stop_continuous_measurement(value=False)
         return ok, await reader.get_error_counter()
 
     ok, log = run(scenario())
@@ -920,7 +920,7 @@ def test_reader_stop_continuous_measurement_false_returns_false_on_bus_fault() -
 
 
 def test_set_dict_cfg_reports_contmeas_true_as_valid_not_failed() -> None:
-    # Regression test: stop_continuous_measurement(True)'s own contract returns False for its
+    # Regression test: stop_continuous_measurement(value=True)'s own contract returns False for its
     # pure-no-op case (see test_reader_stop_continuous_measurement_true_is_a_pure_noop above), and
     # a first version of this method's ContMeas dispatch forwarded that return value straight into
     # the generic "Valid"/"Failed" mapping, unlike improved-quality/sensortask-wozi.py's own removed

@@ -256,12 +256,12 @@ class SCD30_Reader(SensorReader):
         for key, value in data.items():
             if key == "ContMeas":
                 if isinstance(value, bool):
-                    # stop_continuous_measurement(True) is a legitimate, already-tested pure no-op
+                    # stop_continuous_measurement(value=True) is a legitimate, already-tested pure no-op
                     # (see test_reader_stop_continuous_measurement_true_is_a_pure_noop) whose own
                     # contract returns False for it, meaning "nothing to do", not "failed" - only a
                     # real stop attempt (value=False) can genuinely fail (a bus fault). Normalize
                     # here before the generic "Valid"/"Failed" mapping below ever sees it.
-                    applied = await self.stop_continuous_measurement(value)
+                    applied = await self.stop_continuous_measurement(value=value)
                     results[key] = "Valid" if (applied or value) else "Failed"
                 else:
                     results[key] = "Invalid"
@@ -403,7 +403,7 @@ class SCD30_Reader(SensorReader):
     # Selected low-level driver forwards below: each failure is logged via self.pr (not swallowed
     # silently) so a transient bus fault on a REST-triggered config get/set stays visible in the
     # sensor's own error history, not just a bare None/False back to the caller.
-    async def stop_continuous_measurement(self, value: bool) -> bool:
+    async def stop_continuous_measurement(self, *, value: bool) -> bool:
         # value is the desired ContMeas state; True (keep running) is a no-op, only False stops it.
         if value:
             return False

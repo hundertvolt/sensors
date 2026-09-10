@@ -185,7 +185,7 @@ def _drive_one_cycle(reader: SGP40_Reader, fake_bus: "Any", raw: int) -> "Any":
     # asy_sgp40_driver.py) - driven directly instead of through the full trigger/timer machinery,
     # which is already exhaustively covered by test_asy_sgp40_driver.py's own tests.
     fake_bus.read_queue.append(_word(raw))
-    data, compensated, _serialized = run(reader._read_sgp(None, False, False))
+    data, compensated, _serialized = run(reader._read_sgp(None, serialize=False, deserialize=False))
     run(reader._error_check(data, condition=compensated))
     run(reader._store_sgp(data))
     return data
@@ -244,7 +244,7 @@ def test_i2c_bus_fault_degrades_to_not_triggered_and_stays_isolated_to_sgp40s_ow
         # nested asyncio.run() call segfaults the interpreter (see test_notification_scd30_
         # integration.py's own comment on this exact gotcha - found the hard way while writing
         # this test, not copied defensively).
-        data, compensated, _serialized = await sgp_reader._read_sgp(None, False, False)  # the fault happens inside here
+        data, compensated, _serialized = await sgp_reader._read_sgp(None, serialize=False, deserialize=False)  # the fault happens inside here
         await sgp_reader._error_check(data, condition=compensated)
         await sgp_reader._store_sgp(data)
 

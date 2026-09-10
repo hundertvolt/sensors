@@ -26,6 +26,7 @@ class Sgp40Chip:
         min_raw: int = 26000,
         max_raw: int = 34000,
         raw_step: int = 1000,
+        *,
         corrupt_next_reply: bool = False,
     ) -> None:
         self._random = random_source if random_source is not None else _random_module

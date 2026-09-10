@@ -55,7 +55,7 @@ class _RaisingFramChunk:
     # just the concrete AsyFramManager - whose own _write_chunk/_read_chunk wrap their entire
     # bodies in try/except (confirmed by asy_fram_manager.py's own src/ promotion audit), so
     # write_into()/read_into() can no longer actually raise through it.
-    def __init__(self, raise_on_write: bool = False, raise_on_read: bool = False) -> None:
+    def __init__(self, *, raise_on_write: bool = False, raise_on_read: bool = False) -> None:
         self.raise_on_write = raise_on_write
         self.raise_on_read = raise_on_read
 
@@ -64,19 +64,19 @@ class _RaisingFramChunk:
 
         return _LB(6, data_start=0, data_length=6)
 
-    async def write_into(self, buf: "Any", override_pause: bool = False) -> bool:
+    async def write_into(self, buf: "Any", *, override_pause: bool = False) -> bool:
         if self.raise_on_write:
             raise RuntimeError("simulated write failure")
         return True
 
-    async def read_into(self, buf: "Any", override_pause: bool = False) -> bool:
+    async def read_into(self, buf: "Any", *, override_pause: bool = False) -> bool:
         if self.raise_on_read:
             raise RuntimeError("simulated read failure")
         return True
 
 
 class _RaisingFramManager:
-    def __init__(self, chunk: "_RaisingFramChunk | None", raise_on_get_chunk: bool = False) -> None:
+    def __init__(self, chunk: "_RaisingFramChunk | None", *, raise_on_get_chunk: bool = False) -> None:
         self._chunk = chunk
         self.raise_on_get_chunk = raise_on_get_chunk
 
@@ -380,7 +380,7 @@ def test_lockedflag_init_value() -> None:
 
 
 def test_lockedvalue_roundtrip_int_and_float() -> None:
-    value = LockedValue(0)
+    value = LockedValue(init_value=0)
     run(value.set_value(42))
     assert run(value.get_value()) == 42
     run(value.set_value(3.5))
@@ -390,7 +390,7 @@ def test_lockedvalue_roundtrip_int_and_float() -> None:
 def test_lockedvalue_roundtrip_inf_and_nan() -> None:
     # Unusual but typed-valid float content: LockedValue does no range clamping (unlike
     # LockedCounter), so these must simply round-trip untouched.
-    value = LockedValue(0.0)
+    value = LockedValue(init_value=0.0)
     run(value.set_value(float("inf")))
     assert run(value.get_value()) == float("inf")
     run(value.set_value(float("nan")))

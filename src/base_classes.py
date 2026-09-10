@@ -82,7 +82,7 @@ class LockableBuffer(Lockable):
 
 
 class LockedCounter:
-    def __init__(self, init_value: int | None = 0x00, max_val: int = 0xFF) -> None:
+    def __init__(self, *, init_value: int | None = 0x00, max_val: int = 0xFF) -> None:
         # A negative max_val is a dev-time-typo risk, never a real call-site input - clamped to 0
         # here so the counter's own [0, max_val] invariant holds for every value, rather than letting
         # _clamp collapse every value to the negative max_val itself.
@@ -118,7 +118,7 @@ class LockedCounter:
 
 
 class LockedFlag:
-    def __init__(self, init_value: bool = False) -> None:
+    def __init__(self, *, init_value: bool = False) -> None:
         self.value = init_value
         self.value_lock = asyncio.Lock()
 
@@ -136,7 +136,7 @@ class LockedFlag:
 
 
 class LockedValue:
-    def __init__(self, init_value: float) -> None:
+    def __init__(self, *, init_value: float) -> None:
         self.value = init_value
         self.value_lock = asyncio.Lock()
 
@@ -211,7 +211,7 @@ class SensorReader:
         async with self._datalock:
             self._datastruct = data
 
-    async def _error_check(self, results: "MeasDataType", condition: bool = True) -> bool:
+    async def _error_check(self, results: "MeasDataType", *, condition: bool = True) -> bool:
         # Shared consecutive-failure-streak counter - see SPECIFICATION.md Part C.7's
         # _error_check() bullet for the full contract.
         if any(res is None for res in results) and condition:
