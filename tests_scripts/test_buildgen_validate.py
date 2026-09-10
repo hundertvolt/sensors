@@ -31,6 +31,15 @@ def test_malformed_toml_syntax(tmp_path: Path, src_dir: Path):
         build_model(path, src_dir)
 
 
+def test_literal_duplicate_toml_key_in_one_table_rejected(tmp_path: Path, src_dir: Path):
+    # §5.1 #1's first sub-case: tomllib itself rejects a repeated key in one table before buildgen
+    # ever sees the parsed doc - load_device() wraps that TOMLDecodeError into the same BuildError
+    # as any other malformed-syntax input. Not exercised by any existing test until now.
+    path = write_text(tmp_path, "dev", '[device]\nname = "Test"\nname = "Test2"\n')
+    with pytest.raises(BuildError, match="not valid TOML"):
+        build_model(path, src_dir)
+
+
 def test_missing_device_table(tmp_path: Path, src_dir: Path):
     doc = base_doc()
     del doc["device"]
@@ -67,6 +76,16 @@ def test_hostname_mismatch(tmp_path: Path, src_dir: Path):
         _build(tmp_path, src_dir, doc)
 
 
+@pytest.mark.parametrize("bad_name", [5, ""])
+def test_device_name_invalid_rejected(tmp_path: Path, src_dir: Path, bad_name: object):
+    # §7.1 #9: [device].name's own type/non-emptiness check, exercised only implicitly by every
+    # other fixture supplying a valid name today.
+    doc = base_doc()
+    doc["device"]["name"] = bad_name
+    with pytest.raises(BuildError, match="non-empty string"):
+        _build(tmp_path, src_dir, doc)
+
+
 def test_no_bus_table(tmp_path: Path, src_dir: Path):
     doc = base_doc()
     doc["bus"] = {}
@@ -78,6 +97,16 @@ def test_bus_missing_required_wire_pin(tmp_path: Path, src_dir: Path):
     doc = base_doc()
     del doc["bus"]["i2c0"]["scl_pin"]
     with pytest.raises(BuildError, match="missing required field 'scl_pin'"):
+        _build(tmp_path, src_dir, doc)
+
+
+@pytest.mark.parametrize("field", ["sck_pin", "mosi_pin", "miso_pin"])
+def test_spi_bus_missing_required_wire_pin(tmp_path: Path, src_dir: Path, field: str):
+    # §7.1 #8: only i2c0's scl_pin was individually tested; asy_spi_driver.SPI's three required
+    # wire pins go through the identical _BUS_WIRE_FIELDS loop but had no test of their own.
+    doc = base_doc()
+    del doc["bus"]["spi0"][field]
+    with pytest.raises(BuildError, match=f"missing required field {field!r}"):
         _build(tmp_path, src_dir, doc)
 
 
@@ -172,6 +201,24 @@ def test_bus_timeout_wrong_type_rejected(tmp_path: Path, src_dir: Path):
         _build(tmp_path, src_dir, doc)
 
 
+@pytest.mark.parametrize("bad_value", [True, 250000.0])
+def test_bus_timeout_bool_or_float_rejected(tmp_path: Path, src_dir: Path, bad_value: object):
+    # §5.3/§7.2(B): the isinstance(x, int) and not isinstance(x, bool) pattern is only exercised by
+    # one device-level field (hotspot_time_min) today; this locks the same guard in on bus timeout.
+    doc = base_doc()
+    doc["bus"]["i2c0"]["timeout"] = bad_value
+    with pytest.raises(BuildError, match="timeout must be an int"):
+        _build(tmp_path, src_dir, doc)
+
+
+@pytest.mark.parametrize("bad_value", [True, 50000.0])
+def test_bus_frequency_bool_or_float_rejected(tmp_path: Path, src_dir: Path, bad_value: object):
+    doc = base_doc()
+    doc["bus"]["i2c0"]["frequency"] = bad_value
+    with pytest.raises(BuildError, match="missing an int frequency"):
+        _build(tmp_path, src_dir, doc)
+
+
 def test_instance_bus_field_wrong_type_rejected(tmp_path: Path, src_dir: Path):
     doc = base_doc()
     doc["instance"][0]["bus"] = 0  # not a string - would otherwise raise a raw TypeError/mismatch
@@ -193,6 +240,27 @@ def test_instance_int_field_wrong_type_rejected(tmp_path: Path, src_dir: Path, f
 def test_instance_address_field_wrong_type_rejected(tmp_path: Path, src_dir: Path):
     doc = base_doc()
     doc["instance"].append({"driver": "bmp3xx", "bus": "i2c0", "address": "0x77"})  # bmp3xx is address-capable
+    with pytest.raises(BuildError, match="address must be an int"):
+        _build(tmp_path, src_dir, doc)
+
+
+@pytest.mark.parametrize("field,bad_value", [("max_size", True), ("max_size", 8192.0), ("trigger_sec", True), ("trigger_sec", 3.0)])
+def test_instance_int_field_bool_or_float_rejected(tmp_path: Path, src_dir: Path, field: str, bad_value: object):
+    # §5.3/§7.2(B): the same isinstance guard as test_instance_int_field_wrong_type_rejected above,
+    # but for bool/float (both plausible copy-paste mistakes) rather than a quoted string.
+    doc = base_doc()
+    if field == "max_size":
+        doc["instance"][2][field] = bad_value  # fram
+    else:
+        doc["instance"][0][field] = bad_value  # scd30
+    with pytest.raises(BuildError, match=f"{field} must be an int"):
+        _build(tmp_path, src_dir, doc)
+
+
+@pytest.mark.parametrize("bad_value", [True, 119.0])
+def test_instance_address_field_bool_or_float_rejected(tmp_path: Path, src_dir: Path, bad_value: object):
+    doc = base_doc()
+    doc["instance"].append({"driver": "bmp3xx", "bus": "i2c0", "address": bad_value})
     with pytest.raises(BuildError, match="address must be an int"):
         _build(tmp_path, src_dir, doc)
 
@@ -256,6 +324,21 @@ def test_instance_name_collision_via_distinct_drivers_same_resolved_name(tmp_pat
         _check_instance_name_collisions(model)
 
 
+def test_gpio_collision_cs_pin_synthetic_two_instances(tmp_path: Path, src_dir: Path):
+    # §5.1 #12: duplicate CS pins on SPI is already subsumed by _check_gpio_collisions()'s shared
+    # claims dict, but today only `fram` has a cs_pin field and it's a forced singleton - no real
+    # TOML can produce two cs_pin-bearing instances to collide. Drives the check directly against a
+    # synthetic model instead, the same style as the resolved_name-collision test above.
+    from buildgen.model import DeviceModel, InstanceSpec
+    from buildgen.validate import _check_gpio_collisions
+
+    model = DeviceModel("dev", tmp_path / "dev.toml", {})
+    model.instances[("fram", "a")] = InstanceSpec("fram", "a", {"cs_pin": 9}, {}, 0)
+    model.instances[("fram", "b")] = InstanceSpec("fram", "b", {"cs_pin": 9}, {}, 1)
+    with pytest.raises(BuildError, match="claimed twice"):
+        _check_gpio_collisions(model, {})
+
+
 def test_singleton_service_declared_twice(tmp_path: Path, src_dir: Path):
     # A singleton service is always forced to name_ext="" (see the next test), so two declarations
     # of the same one always collide as an exact-duplicate [[instance]] entry - caught by
@@ -287,6 +370,17 @@ def test_global_gpio_pin_collision_bus_vs_instance(tmp_path: Path, src_dir: Path
 def test_global_gpio_pin_collision_two_instances(tmp_path: Path, src_dir: Path):
     doc = base_doc()
     doc["instance"][0]["irq_pin"] = doc["instance"][3]["pin"]  # scd30.irq_pin == neopixel.pin
+    with pytest.raises(BuildError, match="claimed twice"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_global_gpio_pin_collision_bus_vs_bus(tmp_path: Path, src_dir: Path):
+    # §7.1 #7: _check_gpio_collisions() claims every bus-table wire pin into one shared dict, so a
+    # bus-vs-bus collision (no instance involved) should already raise - only bus-vs-instance and
+    # instance-vs-instance had a test until now. Both buses stay used by their real instances, so
+    # this isolates the pin-collision path from the separate "declared but never used" check.
+    doc = base_doc()
+    doc["bus"]["i2c0"]["scl_pin"] = doc["bus"]["spi0"]["sck_pin"]
     with pytest.raises(BuildError, match="claimed twice"):
         _build(tmp_path, src_dir, doc)
 
@@ -323,9 +417,29 @@ def test_two_fixed_address_different_drivers_same_bus_do_not_collide(tmp_path: P
     _build(tmp_path, src_dir, doc)
 
 
+def test_two_bmp3xx_same_bus_different_legal_addresses_is_fine(tmp_path: Path, src_dir: Path):
+    # §7.1 #6: the actually-common real case ADDRESS_CAPABLE_DRIVERS exists for - two bmp3xx on one
+    # bus, told apart by their two legal SDO-pin addresses - had no positive test until now (only
+    # the same-address collision and different-bus reuse cases were covered).
+    doc = base_doc()
+    doc["instance"].append({"driver": "bmp3xx", "name_ext": "a", "bus": "i2c0", "address": 0x76})
+    doc["instance"].append({"driver": "bmp3xx", "name_ext": "b", "bus": "i2c0", "address": 0x77})
+    _build(tmp_path, src_dir, doc)  # no raise
+
+
 def test_wiring_field_not_declared_by_driver(tmp_path: Path, src_dir: Path):
     doc = base_doc()
     doc["instance"][2]["wiring"] = {"comp_source": "scd30"}  # fram has no _WIRING entry named comp_source
+    with pytest.raises(BuildError, match="no matching _WIRING entry"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_instance_wiring_bogus_key_rejected(tmp_path: Path, src_dir: Path):
+    # §5.1 #5/§7.2(B): an entirely fabricated [instance.wiring] key with no _WIRING match and no
+    # warn_ prefix - the `wf is None` branch should already catch this; no test exercised it
+    # directly with a name that isn't just "the wrong driver's own real field" (the test above).
+    doc = base_doc()
+    doc["instance"][0]["wiring"]["frobnicate"] = "scd30"  # scd30 has no such field at all
     with pytest.raises(BuildError, match="no matching _WIRING entry"):
         _build(tmp_path, src_dir, doc)
 
@@ -361,6 +475,15 @@ def test_required_wiring_field_missing(tmp_path: Path, src_dir: Path):
 def test_optional_wiring_field_absent_is_fine(tmp_path: Path, src_dir: Path):
     doc = base_doc()
     del doc["instance"][1]["wiring"]["fram_target"]
+    _build(tmp_path, src_dir, doc)  # no raise
+
+
+def test_notification_present_with_zero_warn_signals_is_fine(tmp_path: Path, src_dir: Path):
+    # §7.1 #3: warn_co2/warn_voc/warn_hum are each individually optional - a notification instance
+    # with signal_sink wired but no warn_* keys at all should build clean. base_doc() always wires
+    # warn_co2, so this was never actually exercised.
+    doc = base_doc()
+    del doc["instance"][4]["wiring"]["warn_co2"]
     _build(tmp_path, src_dir, doc)  # no raise
 
 
@@ -402,6 +525,15 @@ def test_device_wiring_reference_wrong_class(tmp_path: Path, src_dir: Path):
 def test_device_wiring_optional_field_absent_is_fine(tmp_path: Path, src_dir: Path):
     doc = base_doc()
     del doc["device"]["wiring"]["led_target"]
+    _build(tmp_path, src_dir, doc)  # no raise
+
+
+def test_device_wiring_fram_target_left_unwired_is_fine(tmp_path: Path, src_dir: Path):
+    # §7.1 #4: the mirror image of the led_target test above - FRAM is present, but nothing wires
+    # [device.wiring].fram_target to it. No existing test removed just this field while keeping the
+    # fram instance itself.
+    doc = base_doc()
+    del doc["device"]["wiring"]["fram_target"]
     _build(tmp_path, src_dir, doc)  # no raise
 
 

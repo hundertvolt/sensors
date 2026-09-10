@@ -86,6 +86,17 @@ def test_device_without_notification_or_neopixel_omits_their_wiring(tmp_path: Pa
     assert '"notification":' not in result.module_source.split("status_sources=")[1].split("\n")[0] if "status_sources=" in result.module_source else True
 
 
+def test_device_level_led_target_unwired_omits_set_ext_led(tmp_path: Path, src_dir: Path, ext_dir: Path):
+    # §7.1 #5: test_device_wiring_optional_field_absent_is_fine (test_buildgen_validate.py) already
+    # confirms validate.py accepts neopixel-present-but-led_target-unwired - but nothing confirmed
+    # the generated module itself comes out right (conn.set_ext_led(...) correctly omitted).
+    doc = base_doc()
+    del doc["device"]["wiring"]["led_target"]
+    result = generate_device(write_doc(tmp_path, "no_led_target", doc), src_dir, ext_dir)
+    ast.parse(result.module_source)
+    assert "conn.set_ext_led(" not in result.module_source
+
+
 def test_device_without_sgp40_omits_maintenance_sensors(tmp_path: Path, src_dir: Path, ext_dir: Path):
     doc = base_doc()
     doc["instance"] = [i for i in doc["instance"] if i["driver"] != "sgp40"]

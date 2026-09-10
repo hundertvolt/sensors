@@ -1,11 +1,11 @@
 # Buildgen wiring defaults & clean-build test matrix
 
-**Status: design discussion with the project owner, 2026-09-10. Nothing here is implemented yet** —
-`buildgen/` and `src/` are unchanged as of this file's creation. This document exists purely to
-capture what was agreed before any code is written, so none of it gets lost. Every "shall"/"will"
-below is a decided design intent, not a description of current code. Implementation needs an
-explicit go-ahead from the project owner before it starts (given directly, same as any other
-real-hardware-adjacent or scope-expanding decision in this repo).
+**Status: design discussion with the project owner, 2026-09-10. Implementation go-ahead given
+2026-09-10; §10's Phase 1 (test-only, zero production-code changes) is now complete** — see the
+status note at the top of §10.2 for exactly what landed. Every other phase (§10.3-§10.7) and all of
+`src/` remain unchanged as of this note. This document exists purely to capture what was agreed
+before code is written, so none of it gets lost. Every "shall"/"will" below is a decided design
+intent except where §10's own phase notes say otherwise.
 
 ## 1. Background
 
@@ -1139,6 +1139,28 @@ goes to the project owner rather than being silently picked.
    split (do the small fix now, treat full AST-derivation as optional/deferred).
 
 ### 10.2 Phase 1 — Lock in existing behavior with tests, zero code changes
+
+**Status: complete (2026-09-10).** Every item below except the two explicitly-deferred FRAM-absent
+sub-cases has a passing test now, added to `tests_scripts/test_buildgen_validate.py` and
+`tests_scripts/test_buildgen_generate.py` with zero changes to `buildgen/`/`src/` (confirmed:
+`git diff --stat` for this phase touches only the two `tests_scripts/` files). Full suite
+(`uv run pytest tests_scripts`) passes: 388 passed, 2 skipped (the 2 skips are pre-existing/
+unrelated). New test names, for cross-reference against §7.1/§7.2(B)/§5.1#12 below:
+`test_notification_present_with_zero_warn_signals_is_fine`,
+`test_device_wiring_fram_target_left_unwired_is_fine`,
+`test_device_level_led_target_unwired_omits_set_ext_led` (in `test_buildgen_generate.py`),
+`test_two_bmp3xx_same_bus_different_legal_addresses_is_fine`,
+`test_global_gpio_pin_collision_bus_vs_bus`, `test_spi_bus_missing_required_wire_pin` (parametrized),
+`test_device_name_invalid_rejected` (parametrized), `test_literal_duplicate_toml_key_in_one_table_rejected`,
+`test_instance_wiring_bogus_key_rejected`, `test_bus_timeout_bool_or_float_rejected`,
+`test_bus_frequency_bool_or_float_rejected`, `test_instance_int_field_bool_or_float_rejected`
+(parametrized), `test_instance_address_field_bool_or_float_rejected` (parametrized),
+`test_gpio_collision_cs_pin_synthetic_two_instances`. **Deferred to Phase 2, not forgotten**: §7.1
+items 1-2 (FRAM entirely absent, and the single-I2C-no-SPI topology it implies) still can't be
+tested — `_check_bus_tables()`'s unconditional `[bus.*]`-required raise (Phase 2's own scope) blocks
+constructing that fixture at all. Everything else originally scoped to Phase 1 is done; no new gaps
+were found while writing these tests (every one of the "probably already caught" §7.2(B) cases did
+in fact already pass on the first try, confirming that analysis was correct, not just hopeful).
 
 Pure test-writing against `validate.py`/`codegen.py`/`model.py` exactly as they stand today — no
 `[DECIDE]` blockers, touches no production code, and builds the regression safety net every later
