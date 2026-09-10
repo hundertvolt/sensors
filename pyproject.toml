@@ -23,8 +23,8 @@ dev = [
     # the build the moment ruff adds a rule - on a rule nobody chose. Mypy is pinned for the same
     # reason. Bump both deliberately, re-running scripts/lint.sh + scripts/typecheck.sh, the same
     # way toolchain/versions.toml's MicroPython ref is bumped.
-    "mypy==2.3.0",
-    "ruff==0.15.21",
+    "mypy==2.3.1",
+    "ruff==0.16.6",
     "pytest",
     "mpremote",
     # Stub-only package: tests_hardware/harness.py talks to the real board over pyserial (pulled in
@@ -264,6 +264,14 @@ ignore = [
     # src/ and ext/ are copied flat into one directory and frozen together (CLAUDE.md hard rule),
     # so there are no packages and no __init__.py anywhere by design.
     "INP001",
+
+    # ---- Contradicts CLAUDE.md's own documentation rule (continued) ----
+    # CPY001 wants a copyright notice at the top of every file. This repo has none anywhere, by
+    # design: a module gets ONE header block capped at 3 lines, and third-party attribution lives
+    # in THIRD_PARTY_LICENSES.md rather than being restated per file. Enabling it would prepend a
+    # notice to all 174 files in scope. Stabilised out of preview in ruff 0.16.6 - the first rule
+    # the deliberate-bump policy above has actually had to decide on.
+    "CPY001",
 ]
 
 # D203/D211 and D212/D213 are mutually exclusive pairs; picking a convention resolves each pair

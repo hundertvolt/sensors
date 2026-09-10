@@ -293,7 +293,7 @@ class AdversarialPeer:
         t0 = time.ticks_ms()
         while True:
             if poller.ipoll(0):
-                return self.sock.recvfrom(bufsize)
+                return self.sock.recvfrom(bufsize)  # type: ignore[return-value]  # AF_INET only, see asy_udp_socket.py
             if time.ticks_diff(time.ticks_ms(), t0) > timeout_ms:
                 raise OSError("AdversarialPeer.recv() timed out")
             await asyncio.sleep_ms(5)

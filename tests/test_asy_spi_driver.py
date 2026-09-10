@@ -1,4 +1,5 @@
 import asyncio
+import errno
 
 from machine import SPI as FakeSPI
 
@@ -10,7 +11,7 @@ except ImportError:  # typing isn't available on the real MicroPython test inter
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Coroutine
+    from collections.abc import Callable, Coroutine
     from typing import Any, TypeVar
 
     T = TypeVar("T")
@@ -39,23 +40,42 @@ def fake(spi: SPI) -> FakeSPI:
 
 
 # ---------------------------------------------------------------------------
-# init / deinit - real hardware deinit(), not just dropping the reference
+# init / deinit - dropping the reference IS the state change; the forwarded
+# machine.SPI.deinit() is a no-op on rp2 (SPECIFICATION.md Part F.5)
 # ---------------------------------------------------------------------------
 
 
-def test_deinit_calls_real_hardware_deinit() -> None:
+def test_deinit_forwards_to_machine_spi_and_drops_the_reference() -> None:
     spi = make_spi()
     mock = fake(spi)
     spi.deinit()
-    assert mock.deinit_called is True
-    assert spi._spi is None
+    assert mock.deinit_called is True  # forwarded, even though rp2 implements it as a no-op
+    assert spi._spi is None  # this is what actually makes the wrapper report "bus unavailable"
+
+
+def test_forwarded_machine_spi_deinit_does_not_disable_the_underlying_bus() -> None:
+    # Pins down the real rp2 semantics the fake models: machine.SPI's .deinit protocol slot is
+    # NULL, so the peripheral keeps running and every raw bus op still works. Only
+    # asy_spi_driver.SPI's own dropped reference makes operations no-op - reattaching the same
+    # underlying bus object proves the hardware side was never actually torn down.
+    spi = make_spi()
+    mock = fake(spi)
+    spi.deinit()
+    mock.read_queue.append(b"\xaa\xbb")
+    buf = bytearray(2)
+    mock.readinto(buf)
+    assert buf == bytearray(b"\xaa\xbb")  # underlying bus still fully alive
+    spi._spi = mock
+    mock.read_queue.append(b"\xcc\xdd")
+    spi.readinto(buf)
+    assert buf == bytearray(b"\xcc\xdd")
 
 
 def test_double_deinit_is_idempotent() -> None:
     spi = make_spi()
     mock = fake(spi)
     spi.deinit()
-    spi.deinit()  # must not touch the (already gone) bus a second time
+    spi.deinit()  # the wrapper's own `is not None` guard, not anything the hardware enforces
     assert mock.deinit_count == 1
 
 
@@ -148,8 +168,9 @@ def test_write_readinto_mismatched_buffer_lengths_returns_none_instead_of_raisin
 def test_disconnected_wire_is_undetectable_reads_whatever_is_on_the_bus_not_an_exception() -> None:
     # Real, deliberately-not-simulated irregular condition: unlike I2C's NAK, SPI has no ACK, so a
     # physically disconnected MISO/clock wire is invisible at this layer on real RP2040 hardware
-    # (confirmed: extmod/machine_spi.c's blocking transfer path has no error return at all once
-    # the bus is constructed - see the module docstring and BACKLOG.md's asy_spi_driver.py entry).
+    # (confirmed against ports/rp2/machine_spi.c at v1.29.0: the only failure it reports is an RX
+    # overrun on a 32+ byte read, which a silent wire never produces - see the module docstring,
+    # SPECIFICATION.md Part F.5.2, and BACKLOG.md open question 15).
     # This test proves that documented claim as a regression, not just a comment: with nothing
     # primed in the fake's read_queue (modeling a device that never drives MISO), readinto() and
     # write_readinto() still succeed and hand back zero-filled bytes instead of raising anything -
@@ -443,6 +464,9 @@ def test_reinit_mid_session_switches_to_a_fresh_bus() -> None:
     assert old_writes == [("write", b"first")]
     assert old_mock.log[-1] == ("deinit",)  # init() deinits the old bus before swapping it out
     assert fake(spi).log[-1] == ("write", b"second")
+    # Fake-only: real rp2 machine.SPI(id) returns one static per-bus singleton, so a re-init would
+    # hand back the *same* object. tests/machine.py deliberately diverges here (see its own note)
+    # so a test can tell the pre- and post-re-init bus apart; nothing in src/ depends on either.
     assert fake(spi) is not old_mock
 
 
@@ -659,6 +683,80 @@ def test_same_device_used_from_two_concurrent_tasks_serializes_too() -> None:
 
     run(scenario())
     assert max_concurrent == 1
+
+
+# ---------------------------------------------------------------------------
+# RX overrun: the one real hardware fault an rp2 SPI transfer can raise, added
+# in MicroPython 1.29 (SPECIFICATION.md Part F.5)
+# ---------------------------------------------------------------------------
+
+
+def test_write_cannot_raise_rx_overrun_even_on_a_long_transfer() -> None:
+    # ports/rp2/machine_spi.c only sets its failure flag when dest != NULL, so a write-only
+    # transfer has no failure path at all regardless of length - the fake models that by keying
+    # the overrun off readinto/write_readinto only.
+    spi = make_spi()
+    fake(spi).rx_overrun = True
+    spi.write(bytes(64))  # must not raise
+
+
+def test_short_reads_never_take_the_dma_path_so_cannot_overrun() -> None:
+    # Transfers below ports/rp2/machine_spi.c's dma_min_size_threshold (32) use the blocking
+    # software path, which has no overrun check.
+    spi = make_spi()
+    fake(spi).rx_overrun = True
+    spi.readinto(bytearray(31))  # must not raise
+    spi.write_readinto(bytes(31), bytearray(31))  # must not raise
+
+
+def test_long_read_overrun_raises_oserror_eio_uncaught() -> None:
+    # Deliberately NOT swallowed: a transfer that overran left garbage in the buffer, so
+    # reporting success would be worse than raising. Matches asy_i2c_driver.py's own "a real
+    # OSError always propagates" contract.
+    spi = make_spi()
+    fake(spi).rx_overrun = True
+    raised = 0
+    # Annotated rather than left to inference: a bare lambda is an untyped callable, which
+    # --strict's disallow_untyped_calls rejects at the call() site below.
+    calls: tuple[Callable[[], None], ...] = (lambda: spi.readinto(bytearray(32)), lambda: spi.write_readinto(bytes(32), bytearray(32)))
+    for call in calls:
+        try:
+            call()
+        except OSError as e:
+            raised += 1
+            assert e.errno == errno.EIO
+    assert raised == 2
+
+
+def test_write_readinto_checks_length_mismatch_before_the_overrun() -> None:
+    # Real machine.SPI.write_readinto() validates lengths before starting any transfer, so a
+    # mismatch still yields the wrapper's None, never an OSError.
+    spi = make_spi()
+    fake(spi).rx_overrun = True
+    buf = bytearray(32)
+    spi.write_readinto(bytes(64), buf)  # must not raise; the wrapper swallows the ValueError
+    assert buf == bytearray(32)  # untouched: no transfer ever started
+
+
+def test_device_read_propagates_rx_overrun_and_still_releases_the_lock() -> None:
+    # The session wrapper must not turn a real bus error into a stuck lock or a deasserted-CS
+    # leak - the same guarantee test_exception_inside_session_still_releases_the_lock proves for
+    # an arbitrary exception, checked here for the one the hardware itself can raise.
+    spi = make_spi()
+    device = make_device(spi)
+    fake(spi).inject_fault("readinto", OSError(errno.EIO, "SPI RX overrun"))
+
+    async def scenario() -> "int | None":
+        caught = None
+        try:
+            async with device:
+                await device.readinto(bytearray(64))
+        except OSError as e:
+            caught = e.errno
+        assert not spi.async_lock.locked()
+        return caught
+
+    assert run(scenario()) == errno.EIO
 
 
 # ---------------------------------------------------------------------------

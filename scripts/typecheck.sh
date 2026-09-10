@@ -82,6 +82,37 @@ EOF
     exit 1
 fi
 
+# Two verified regressions in micropython-stdlib-stubs 1.29.0.post1/.post2 that upstream has no
+# fixed release for yet. Both are repaired here, at the stub tree, rather than papered over with
+# `type: ignore` comments in our own code - the code is correct on the real interpreter in both
+# cases, and a stub defect is not ours to encode into src/. Each repair is conditional on the
+# defect still being present, so it silently stops doing anything once upstream re-ships.
+#
+# 1. An incomplete rename in stdlib/_asyncio.pyi: `Future` was privatised to `_Future`, and the
+#    stdlib/asyncio/futures.pyi that re-exported it under the public name was dropped from the
+#    wheel - but stdlib/asyncio/tasks.pyi still does `from .futures import Future` and
+#    stdlib/asyncio/__init__.pyi still does `from .futures import *`, and _asyncio.pyi's own
+#    docstring still describes the re-export as existing. With both importers dangling, `Future`
+#    degrades to Any, `_FutureLike[_T]` collapses, and every `asyncio.wait_for()`/`gather()`
+#    result in this repo becomes un-inferable ("Need type annotation", "Returning Any"). The
+#    one-line file below restores exactly the re-export the rest of the package still expects.
+# 2. builtins.pyi has `NotImplemented: _NotImplementedType` commented out, so `NotImplemented` is
+#    undefined for mypy. MicroPython genuinely has it, and honors it from `__eq__` correctly
+#    (verified directly against the pinned Unix-port interpreter: `A() == 5` is False, not the
+#    truthy NotImplemented object) - see SPECIFICATION.md Part F.5.5. The substitution is
+#    line-ending agnostic: this stub ships with CRLF endings.
+# Both repairs also check that the file they target is where they expect it. If a future stub
+# release restructures the tree, they skip rather than fail the whole type-check on a path that
+# no longer exists.
+asyncio_futures="typings/stdlib/asyncio/futures.pyi"
+if [ -d "typings/stdlib/asyncio" ] && [ ! -e "$asyncio_futures" ]; then
+    printf '%s\n' 'from _asyncio import _Future as Future' > "$asyncio_futures"
+fi
+builtins_stub="typings/stdlib/builtins.pyi"
+if [ -f "$builtins_stub" ] && grep -q '^# NotImplemented: _NotImplementedType' "$builtins_stub"; then
+    sed -i 's/^# \(NotImplemented: _NotImplementedType\)/\1/' "$builtins_stub"
+fi
+
 # Extra args (if any) override pyproject.toml's [tool.mypy] `files` for this invocation - e.g.
 # CI's lint-and-typecheck job passes `src tests` to gate on just that scope, without changing
 # what a plain `scripts/typecheck.sh` checks locally (see .github/workflows/ci.yml).

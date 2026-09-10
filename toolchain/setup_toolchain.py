@@ -150,7 +150,7 @@ def ensure_apt_packages(packages: list[str], *, skip: bool) -> None:
 
 def is_sha(ref: str) -> bool:
     """True for a raw commit hash (e.g. a pico-sdk pin read out of a git tree) as opposed to
-    a tag/branch name (e.g. "v1.28.0"). The two need different checkout handling below: tags
+    a tag/branch name (e.g. "v1.29.0"). The two need different checkout handling below: tags
     are always fetched by `git fetch --tags`, but an arbitrary commit might not be reachable
     that way and needs fetching directly by its hash instead."""
     return bool(re.fullmatch(r"[0-9a-f]{7,40}", ref))

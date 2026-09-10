@@ -139,9 +139,18 @@ registration API and A.9's `HTML_SRC_DIRS` are shaped around it). Real-hardware 
   `asy_ntp_client.py`).
 - `asy_fram_driver.py`/`asy_fram_manager.py` — raw SPI FRAM driver + chunk allocator with dual-copy
   redundancy (arzi/neu/wozi). `src/`'s promoted versions: each chunk stores two copies plus a
-  busy/idle status byte guarding reads and writes (MB85RS64V reads are destructive internally, so a
-  power loss mid-read is as real a risk as mid-write); "both copies valid but different" is a hard
-  failure (no generation counter), never guessed. `AsyFramTimestampedChunk.write()`/`write_into()`
+  busy/idle status byte guarding reads and writes (MB85RS64V reads are destructive internally — the
+  datasheet's own endurance note says total reads *and* writes set the endurance limit "as an FRAM
+  memory operates with destructive readout mechanism", i.e. every read is internally a
+  read-then-restore — so a power loss mid-read is as real a risk as mid-write). The consequence is
+  intended and worth stating outright, since it looks like a bug from the outside: `_read_chunk()`
+  marks a block busy before reading and only restores idle on the way out, so an interruption in
+  between leaves it marked, and an interruption hitting *both* copies makes every later read fail
+  the status check (errno 31) even once the bus is healthy again — the payload bytes may still read
+  back intact, but an interrupted restore means they cannot be trusted, so refusing them is
+  correct. Only a write clears it. Pinned down by `tests/test_asy_fram_manager.py`'s
+  `test_an_overrun_mid_read_leaves_the_chunk_unreadable_until_it_is_rewritten`; don't "fix" it.
+  "Both copies valid but different" is a hard failure (no generation counter), never guessed. `AsyFramTimestampedChunk.write()`/`write_into()`
   return `(ntp_synced, utc, success)` — `success` is third, not first; don't reorder. `AsyFramManager`
   is a bump-pointer allocator: instantiation order is on-chip layout and must stay identical across
   firmware versions for existing data to decode correctly.
@@ -401,6 +410,17 @@ static_mount="/html")` registers the static route pair.
 `tests/test_asy_webserver_service.py`'s Section G exercises the generic route-wiring against a
 synthetic fixture. The real, non-stub website is Part H.
 
+**`scripts/test.sh` and `npm test` both write `frozen_modules/frozen_html.py`, with different
+content — never run the two concurrently.** `scripts/test.sh` puts the *stub* there (and the real
+wozi site in the separately-named `frozen_website_wozi.py`); `npm`'s `pretest` hook runs
+`scripts/build_website.sh wozi` with no output argument, which defaults to that same
+`frozen_html.py` and stages the *real* site. Interleaving them makes whichever suite loses the race
+fail confusingly — `test_frozen_html_integration.py` 404s on stub-only paths, or
+`tests_js/live-backend*.test.js` times out waiting for a real section in the placeholder page. Both
+are harmless artifacts of a local run, not regressions; CI never hits this (each tier is its own
+runner). Run one suite at a time locally, and drive the JS side through `npm test` so its `pretest`
+hook actually stages the right content.
+
 ## A.10 Digital twin (hardware simulator)
 
 `digital_twin/` fakes `machine`/`network`/`neopixel` at the same raw bus-transaction mocking
@@ -583,7 +603,7 @@ PATH]` assembles a real `firmware.uf2` from `src/` + `ext/microdot.py` + the rea
 build-only. Every device needs its own `boot_entry/<device>_boot.py`.
 
 **That entry point is frozen under the literal name `"main.py"`, NOT imported from a custom
-`_boot.py` — load-bearing**, confirmed against pinned v1.28.0: `ports/rp2/main.c`'s boot sequence
+`_boot.py` — load-bearing**, re-confirmed against pinned v1.29.0: `ports/rp2/main.c`'s boot sequence
 is `pyexec_frozen_module("_boot.py", ...) → pyexec_file_if_exists("boot.py") → mp_usbd_init() →
 pyexec_file_if_exists("main.py")` — USB initializes only *after* the frozen `_boot.py` call
 returns. A custom `_boot.py` whose `asyncio.run(main())` never returns (this script's earlier
@@ -769,9 +789,10 @@ call site already holds the relevant lock, so a shared-buffer fix would be safe 
 - A real bus/protocol failure — `OSError` (NAK/timeout/gone), a CRC mismatch, an out-of-range bit
   field — propagates as an exception (D.2's raw-bus-call carve-out).
 - **This carve-out's fault surface is bus-specific.** `asy_i2c_driver.py` raises `OSError`;
-  `asy_spi_driver.py`'s `write()`/`readinto()` **cannot raise at all** on rp2 (no ACK/NAK,
-  confirmed against `extmod/machine_spi.c`) — `write_readinto()` is the exception, a caller-input
-  `ValueError` already caught/turned into `None` there.
+  `asy_spi_driver.py`'s `write()` **cannot raise at all** on rp2 (no ACK/NAK, and the write-only
+  path has no failure flag), while `readinto()`/`write_readinto()` can raise `OSError(EIO)` on a
+  32+ byte RX overrun since MicroPython 1.29 (F.5.2). `write_readinto()` additionally turns a
+  caller-input `ValueError` into `None`.
 - `setup()` verifies identity (chip-ID register for BMP3xx, CRC-valid firmware version for SCD30,
   serial-number + self-test for SGP40) and raises if the sensor doesn't respond — fails loudly once
   at boot rather than degrading silently forever.
@@ -813,10 +834,11 @@ the two lock layers collapse without losing distinction — the accepted shape f
 point-to-point wrapper); **CRC framing lives in the bus-wrapper class itself** (no natural layer 2
 above a point-to-point link to own it instead); **`cancel_read_timeout()`** is a legitimate
 externally-triggerable cancel for another coroutine's unbounded wait (a plain `asyncio.Event`
-handshake); **raise contract** (verified against `ports/rp2/machine_uart.c` at v1.28.0): a
+handshake); **raise contract** (re-verified against `ports/rp2/machine_uart.c` at v1.29.0): a
 hardware framing/parity/overrun error is never raised — delivered corrupted, dropped, or skipped
 silently instead, and `write()` can short-write — a third position distinct from I2C (raises) and
-SPI (cannot raise), already matched correctly (every method returns a sentinel).
+SPI (writes cannot raise; 32+ byte reads can, since 1.29 — F.5.2), already matched correctly (every
+method returns a sentinel).
 
 ## C.4 Layer 3: `*_Reader(SensorReader | SensorReaderConfig)`
 
@@ -1228,8 +1250,9 @@ weight for a scenario that can't occur. Do verify `NaN`/`inf` (real sensor fault
 degrade cleanly through range checks — confirm, don't assume, and test it. Walk the function line
 by line to confirm the exception net is complete. **Specialty: raw hardware bus-transaction calls
 are the one deliberate exception to "never raises"** — a real `OSError` is allowed to propagate out
-of a low-level bus driver; verify every upstream caller actually catches what it can raise. **This
-`OSError` surface is I2C-specific — don't assume it applies to SPI**, which genuinely cannot raise.
+of a low-level bus driver; verify every upstream caller actually catches what it can raise. **The
+`OSError` surface differs per bus, so check the specific one** — I2C raises broadly; SPI raises
+only from a 32+ byte read (F.5.2), never from a write; UART never raises from a transfer at all.
 
 ## D.3 Stability for indefinite, unattended operation
 
@@ -1276,7 +1299,7 @@ pass unchanged. A genuine pass, not a mandate to rewrite for style.
 ## D.9 Check against current MicroPython, not the version this code predates
 
 Much of this codebase predates MicroPython 1.20; the build target has moved to the latest stable
-(currently v1.28.0). Check the changelog between whatever the code targeted and the current pin for
+(currently v1.29.0 — the last pass's findings are catalogued in Part F.5). Check the changelog between whatever the code targeted and the current pin for
 relevant changes — note findings even when nothing needs to change. Look for old `u`-prefixed
 module names (`uasyncio`, `ustruct`) — a clear tell of pre-consolidation code. Same "without
 changing functionality" constraint as D.8 for a pure modernization; a genuine semantic difference
@@ -1513,9 +1536,10 @@ complementary.
 ## F.1 Core platform facts
 
 Deployed units run **MicroPython 1.26** on **Pico W (RP2040)**; code ships as **frozen bytecode**,
-not loaded from a filesystem at runtime — CPython-only stdlib behavior cannot be assumed. Upstream
-has moved to v1.28.0 stable; the refactor targets whatever's most recent stable at the time, using
-new features, not just reproducing 1.26-era behavior. MicroPython 1.26 bundles pico-sdk 2.1.1;
+not loaded from a filesystem at runtime — CPython-only stdlib behavior cannot be assumed. The
+refactor pins **v1.29.0** (`toolchain/versions.toml`) and targets whatever's most recent stable at
+the time, using new features, not just reproducing 1.26-era behavior. F.5 catalogs what 1.29
+changed for this codebase. MicroPython 1.26 bundles pico-sdk 2.1.1;
 since pico-sdk 2.0.0, a standalone `picotool` must match its major.minor or the build fails.
 `machine.WDT` hard-caps at **8388ms**; current code uses `WDT(timeout=8000)` (388ms margin) — don't
 casually increase without re-checking the cap. **USB (`mp_usbd_init()`) initializes only *after*
@@ -1549,7 +1573,9 @@ beyond either threshold silently rounds. `coerce_numeric()`'s int→float direct
 (A.8) — accepted, since no real schema field's bounds go near it.
 
 **`struct.pack()`/`pack_into()` silently zero-pad or truncate on a mismatch instead of raising**,
-unlike CPython — validate shape before packing if it matters.
+unlike CPython — validate shape before packing if it matters. Still true on 1.29: the overflow
+checks added to `py/binary.c` are gated behind `MICROPY_PREVIEW_VERSION_2`, so they only turn on in
+a V2.0 preview build. Expect this fact to flip when upstream ships 2.0.
 
 **A `micropython.const()`-wrapped value does not survive as an importable module attribute in a
 frozen build** — `mpy-cross` inlines every `const()` value at each use site rather than leaving a
@@ -1663,6 +1689,190 @@ literal, the opposite policy.** `voc_algorithm.py` is a direct port of Sensirion
 reference implementation — internal naming traces the original C source 1:1 so it stays diffable
 against Sensirion's own reference. A genuine bug fix or behavior-preserving optimization (D.8) is
 still in scope; a stylistic rewrite is not.
+
+## F.5 MicroPython 1.29 delta (audited 2026-09-10, `v1.28.0..v1.29.0`)
+
+Everything here was read out of upstream source at the two tags, or measured on the firmware
+`toolchain/setup_toolchain.py` actually builds — not taken from changelog prose.
+
+### F.5.1 `machine.I2C.deinit()`/`machine.SPI.deinit()` do not deactivate an rp2 bus
+
+**Both are no-ops on this port**, and both were previously documented in this repo as if they
+tore the hardware down. The generic `machine_i2c_deinit()`/`machine_spi_deinit()` in
+`extmod/` only call through to a `.deinit` slot on the port's protocol struct; rp2's
+`machine_i2c_p`/`machine_spi_p` (`ports/rp2/machine_i2c.c`, `ports/rp2/machine_spi.c`) never set
+that slot, and `mp_machine_soft_i2c_p` sets it to `NULL` explicitly. The peripheral keeps running
+and the pins keep their `GPIO_FUNC_I2C`/`SPI` assignment.
+
+Two consequences the wrappers now state accurately:
+
+- **There is no way to release an rp2 I2C/SPI bus from Python.** `machine.I2C(id)`/`machine.SPI(id)`
+  return a **static per-bus singleton** (`&machine_i2c_obj[id]`, `&machine_spi_obj[id]`), so
+  re-constructing reconfigures the same object rather than allocating a new one — nothing leaks on
+  a re-`init()`, and nothing is reclaimable on a `deinit()`. `asy_i2c_driver.I2C.deinit()` /
+  `asy_spi_driver.SPI.deinit()` still matter, but only because dropping `self._i2c`/`self._spi`
+  is what puts the wrapper into its documented "bus unavailable" state.
+- **`machine.I2C.deinit()` did not exist at all before 1.29** — `machine_i2c_locals_dict_table[]`
+  at `v1.28.0` has no `deinit` entry, so the call raises `AttributeError` there. That gives
+  `asy_i2c_driver.py` a hard **1.29 floor** on its `deinit()` path (unreachable from a fresh
+  construct, since `_i2c` starts `None`; reachable via an explicit `deinit()` or a re-`init()`).
+  `machine.SPI.deinit()` has existed for far longer, as a no-op the whole time.
+
+`machine.UART.deinit()`, `machine.Timer.deinit()` and `network.WLAN.deinit()` are **real** on rp2
+(`uart_deinit()`, `alarm_pool_cancel_alarm()`, `cyw43_deinit()` respectively) — the wrappers'
+claims about those three are correct and unchanged.
+
+`tests/machine.py` and `digital_twin/machine.py` model the no-op faithfully: their `deinit()`
+records the call but leaves every bus operation working, exactly like hardware. One deliberate
+divergence stays: both fakes hand back a **fresh object** per construction rather than a singleton,
+so a test can tell the pre- and post-re-`init()` bus apart. Nothing in `src/` observes bus identity.
+
+### F.5.2 rp2 SPI reads can now raise `OSError(EIO)`
+
+`ports/rp2/machine_spi.c`'s `machine_spi_transfer()` gained an RX-overrun check (upstream #18471):
+after a DMA transfer it drains the FIFO, and if `SPI_SSPRIS_RORRIS` is set **and the transfer was
+reading**, it aborts the RX channel and ends with `mp_raise_OSError(MP_EIO)`.
+
+Two bounds make this precise, and both are modeled at the bus level in `tests/machine.py`'s SPI
+fake and in `digital_twin/machine.py`'s (`rx_overrun` for the blanket case, `rx_overrun_remaining`
+for a transient glitch the bus recovers from, plus `inject_fault()` on the test fake for a single
+call of any size — the same shape its I2C fake already had). The twin's chip-level
+`_fram_chip.py` `FaultInjector` raises an identical-looking `OSError`, but it is the wrong place
+for *this* fault: it cannot express the size threshold below, so a 1-byte status-register read
+would raise there when real hardware could not.
+
+- **Write-only transfers can still never raise** — the failure flag is only set under
+  `if (!write_only)`.
+- **Only transfers of ≥ 32 bytes are affected** — `dma_min_size_threshold` is 32; anything shorter
+  uses `spi_write_read_blocking()`, which has no overrun check.
+
+Reachable in this codebase: `asy_fram_driver.py`'s `_read_address()` reads the SGP40 VOC parameter
+chunk in one 260-byte `readinto()` (`_VOC_PARAMS_MEMSIZE` 256 + CRC32 4), well past the threshold.
+It propagates uncaught out of `get_values()`, matching `asy_i2c_driver.py`'s "a real `OSError`
+always propagates" contract — an overrun leaves garbage in the buffer, so reporting success would
+be strictly worse.
+
+**It does not reach the reader task, though**, and an earlier draft of this section that said it
+did was wrong. Driving the fault through the real stack (`tests/test_asy_fram_manager.py`'s
+live-path tests, mirrored in the twin tier) shows `_read_chunk()`'s blanket `except Exception`
+catching it, logging errno 47, and returning a clean failure — after which `_read()` reads block 1
+instead, so **a single transient overrun costs nothing at all**: the caller gets its data and the
+repair write restores block 0. Only an overrun hitting both copies degrades the read to `None`.
+That makes the retry question (BACKLOG.md open question 15) much less pressing than it looked.
+
+The same run also leaves the chunk marked busy and unreadable until rewritten, which is **intended
+behavior, not a defect** — an interrupted read means an interrupted internal restore on a
+destructive-readout part, so the data cannot be trusted even when it reads back intact. Part A.4's
+FRAM entry has the full account.
+
+### F.5.3 Free wins already compiled into the 1.29 build
+
+- **The interpreter core now genuinely runs from SRAM.** 1.28's rp2 linker rule for SRAM code
+  placement never matched its object suffixes, so the intended placement silently never happened.
+  Fixed upstream; verified in this project's own `firmware.elf.map`, where `py/vm.c.o`,
+  `py/parse.c.o` and `py/gc.c.o` sit at `0x2000xxxx` inside an `EXCLUDE_FILE(...)` clause. Cost,
+  measured off that map: **12,918 B** of RAM no longer available as Python GC heap (vm 5,040,
+  parse 3,298, gc 2,676, the linker's own 1,504, plus ~400 of libc/libm/libgcc helpers the same
+  rule excludes) — relevant to every Part I budget.
+- **`-fno-math-errno`** is now on for the rp2 port (verified in the build's CMake flags), so
+  `math.sqrt` compiles to the hardware instruction. `math_helpers.py` uses it twice;
+  `voc_algorithm.py`'s `_fix16_sqrt` is pure integer and unaffected.
+
+### F.5.4 `machine.mem_backup()` — new, unused, and the one worth adopting
+
+New in 1.29 and **enabled by default on rp2** (`MICROPY_PY_MACHINE_MEM_BACKUP`); confirmed present
+in this project's own built firmware (`strings firmware.elf | grep -x mem_backup`) and declared in
+the 1.29 stubs. Backed by the RP2040 watchdog scratch registers: **28 bytes** across two regions
+(`scratch[0..3]` and `scratch[5..7]`; `scratch[4]` is reserved by the pico-sdk), `itemsize=4`,
+returned as a writable `memoryview`. **Survives a WDT reset, `machine.reset()` and a deepsleep
+wake; lost on power-off.**
+
+That is exactly the reset class the 2026-09-08 `WDT_RESET` investigation could not diagnose (see
+CLAUDE.md's FRAM-log rule). A few bytes of last-phase/last-tick breadcrumb written on every
+supervisor tick would survive it at zero flash and zero FRAM wear. Not adopted yet — tracked as
+BACKLOG.md open question 14.
+
+### F.5.5 Two defects in the 1.29 stub package, repaired at install time
+
+`micropython-rp2-rpi_pico_w-stubs` 1.29.0.post1 (pulling `micropython-stdlib-stubs`
+1.29.0.post1/.post2) ships two defects that together accounted for **every one of the 26 findings**
+the version bump surfaced across both mypy passes. `scripts/typecheck.sh` repairs both right after
+installing into `typings/`, each guarded on the defect still being present so it no-ops once
+upstream re-ships:
+
+- **An incomplete rename.** `stdlib/_asyncio.pyi` privatised `Future` to `_Future` and
+  `stdlib/asyncio/futures.pyi` — which re-exported it under the public name — was dropped from the
+  wheel, but `asyncio/tasks.pyi` still does `from .futures import Future`, `asyncio/__init__.pyi`
+  still does `from .futures import *`, and `_asyncio.pyi`'s own docstring still describes the
+  re-export as existing. With both importers dangling, `Future` degrades to `Any`, `_FutureLike[_T]`
+  collapses, and every `asyncio.wait_for()`/`gather()` result in this repo becomes un-inferable.
+- **`NotImplemented` is commented out** of `stdlib/builtins.pyi`. MicroPython genuinely has it and
+  honors it from `__eq__` — verified directly on the pinned Unix-port interpreter: with an `__eq__`
+  returning `NotImplemented` for a foreign type, `A() == 5` is `False`, not the truthy
+  `NotImplemented` object.
+
+Repairing the stubs is deliberate, and preferred over `type: ignore` comments in `src/`/
+`digital_twin/`: the code is correct on the real interpreter in both cases, and
+`warn_unused_ignores = true` would turn every such comment into a failure the day upstream fixes
+this. The one place a `type: ignore` *is* right is `asy_udp_socket.py`'s `recvfrom()` — there the
+1.29 stub got genuinely *more* precise (its address is now socket's full `_Address` union, IPv6's
+4-tuple and AF_UNIX's `str` included), and our AF_INET-only narrowing is the thing that needs
+declaring.
+
+### F.5.6 Smaller 1.29 facts, and the non-events
+
+- **`X: int = const(...)` now folds.** `py/parse.c`'s `fold_constants()` handles `RULE_annassign`,
+  so a PEP 526-annotated `const()` no longer leaves a real module global behind. Verified
+  empirically on both interpreters: `_A: int = const(60)` leaves `"_A" in globals()` `True` on
+  1.28, `False` on 1.29. Buys nothing for typing (`const()`'s stub is already `Const_T -> Const_T`);
+  it removes a 1.28 footgun. This project's 21 `const()`-using files are all unannotated.
+- `int.to_bytes(signed=True)` is new; the one `to_bytes` call in `src/` is always non-negative.
+- `MICROPY_C_HEAP_SIZE` is now settable from the make command line — a knob for trading C heap
+  against Python heap without a custom board directory.
+- mpy-cross gained `-X no-source-lines`; it would shrink frozen bytecode at the cost of traceback
+  line numbers. Not worth it at current flash headroom.
+- **`extmod/asyncio/` is byte-identical between the two tags** (`git diff --stat` empty) — no new
+  primitives, and specifically **no timeout/cancellation support added to `socket.getaddrinfo()`**.
+  F.2's status is unchanged, which is exactly the check F.1's standing practice calls for.
+- **Zero commits** to `py/profile.c`, `py/modsys.c`, `extmod/modselect.c`, `shared/timeutils/`,
+  `ports/rp2/datetime_patch.c` or `ports/unix/modtime.c` — the E.3 `select.poll()` GH-Actions hang
+  cause and the `TZ=UTC` Unix-port fact both stand.
+- The upstream I2C `WRITE1` transfer fix is behind `MICROPY_PY_MACHINE_I2C_TRANSFER_WRITE1`, which
+  rp2 leaves at 0. DHCP's new `send_router` option defaults to `true` and isn't Python-visible, so
+  the captive portal is unaffected. `gc.mem_free()`/`mem_alloc()` still call the slow `gc_info()`
+  (`gc_info_fast()` is C-only). The RP2350 watchdog ~16 s fix is RP2350-only — the 8388 ms cap in
+  F.1 stands.
+- `SOCK_RAW` is now default-on and present in the built firmware. Noted only; F.2 settles the
+  reachability-probe question.
+
+## F.6 A SIGINT during `gc_collect()` can wedge the Unix-port heap
+
+**Not a 1.29 regression** — measured at the same ~5% rate on Unix ports built from both `v1.28.0`
+and `v1.29.0`, and `py/gc.c`'s locking path is unchanged between the tags. Found because it failed
+one run of the digital-twin CI suite (2026-09-10); documented here because the symptom is deeply
+misleading and the obvious fix is the wrong one.
+
+**Mechanism.** `gc_collect_start_common()` sets `GC_COLLECT_FLAG` (bit 0) in
+`MP_STATE_THREAD(gc_lock_depth)`; `gc_collect_end()` clears it on the way out. A SIGINT-driven
+`KeyboardInterrupt` raised inside that window `nlr_jump`s past the clear, so the flag stays set for
+the rest of the process. `gc_alloc()` returns `NULL` whenever `gc_lock_depth > 0`, and
+`m_malloc_fail()` then reports **`MemoryError: memory allocation failed, heap is locked`** — for
+*every* subsequent allocation, including the ones a `except KeyboardInterrupt:` shutdown handler
+needs. The message is misleading twice over: nothing in this project ever calls
+`micropython.heap_lock()`, and the heap is not full (`gc.mem_free()` read 1.7 MB at one captured
+failure — it is purely the stuck flag).
+
+**The recovery is `gc.collect()`, and only `gc.collect()`.** It re-enters
+`gc_collect_start_common()` and leaves through `gc_collect_end()`, which clears the flag properly;
+it needs no allocation of its own, so it works while the heap is locked. Verified 3/3 on captured
+failures. **`micropython.heap_unlock()` is not a substitute** — it subtracts
+`1 << GC_LOCK_DEPTH_SHIFT` from a `gc_lock_depth` holding only the 1-bit collect flag, leaving it
+negative and still "locked".
+
+`digital_twin/unix_port_gc_unwedge.py` packages this, alongside `unix_port_poll_prewarm.py`'s
+similar Unix-port-quirk workaround; both digital-twin runners call it first in their
+`except KeyboardInterrupt:` handler, before `flush_fram()`/`flush_scd30()`. **`src/` needs nothing**
+— it has no `KeyboardInterrupt` shutdown path, and rp2 has no SIGINT.
 
 ---
 

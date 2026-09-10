@@ -179,7 +179,10 @@ class AsyUDPSocket:
     async def recvfrom(self, buf: int, timeout_ms: int = -1) -> tuple[bytes | None, tuple[str, int] | None]:
         if await self.ready(select.POLLIN, timeout_ms=timeout_ms) and self.sock is not None:
             try:
-                return self.sock.recvfrom(buf)
+                # The 1.29 stub types recvfrom()'s address as socket's full _Address union
+                # (AF_INET6's 4-tuple and AF_UNIX's str included). This socket is always
+                # AF_INET/SOCK_DGRAM (see _open()), so the 2-tuple is the only reachable shape.
+                return self.sock.recvfrom(buf)  # type: ignore[return-value]
             except (OSError, MemoryError, TypeError):  # TypeError: a malformed buf (e.g. a str)
                 pass
         return None, None

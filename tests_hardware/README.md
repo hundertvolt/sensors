@@ -98,6 +98,12 @@ point at a flagged assumption being wrong, not at a real product bug. Resolved i
 through, kept (not deleted) so a reader mid-investigation doesn't wonder whether something was ever
 a live question:
 
+- **The bench has never run MicroPython 1.29.0.** The refactor's pin moved 1.28.0 → 1.29.0 in an
+  audit session with no real-hardware go-ahead, so every finding behind it (SPECIFICATION.md Part
+  F.5) is source-, map-file- or twin-derived and the board still runs whatever was last flashed.
+  Flash the dev bench deliberately before reading any run as a 1.29 result, and see BACKLOG.md's
+  "Deferred" list for the three items that specifically want on-target confirmation (the new SPI
+  RX-overrun raise site, the `deinit()` no-ops, the SRAM-placement win).
 - ~~Does `mpremote`'s implicit soft-reset re-execute `modules/_boot.py`/`boot.py`/`main.py`?~~ —
   **resolved: no.** Confirmed against the pinned MicroPython C source and empirically on real
   hardware: only a genuine `hard_reset()` resumes the live system; `exec()`/`run_isolated()` never

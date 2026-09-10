@@ -368,7 +368,7 @@ class FakeDNSServer:
             readable = any(event & select.POLLIN for _fd, event in poller.ipoll(0))
             if readable:
                 try:
-                    query, addr = self.sock.recvfrom(512)
+                    query, addr = self.sock.recvfrom(512)  # type: ignore[assignment]  # AF_INET only, see asy_udp_socket.py
                 except OSError:
                     pass
             if query is None:

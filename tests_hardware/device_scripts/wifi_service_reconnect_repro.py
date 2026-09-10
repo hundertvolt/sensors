@@ -49,7 +49,7 @@ async def main() -> None:
             reached_hotspot = True
             break
         if task.done():
-            log(f"wlan_connect() TASK DIED: {task.data}")  # type: ignore[attr-defined]  # real API (modasyncio.c task_attr), undeclared by the stub
+            log(f"wlan_connect() TASK DIED: {task.data}")  # `data` is the terminating exception, set by asyncio/core.py's run_until_complete()
             return
         await asyncio.sleep(1)
 
@@ -82,7 +82,7 @@ async def main() -> None:
             log(f"ifconfig: {conn.wlan.ifconfig()}")
             return
         if task.done():
-            log(f"wlan_connect() TASK DIED: {task.data}")  # type: ignore[attr-defined]  # real API (modasyncio.c task_attr), undeclared by the stub
+            log(f"wlan_connect() TASK DIED: {task.data}")  # `data` is the terminating exception, set by asyncio/core.py's run_until_complete()
             return
         await asyncio.sleep(1)
 

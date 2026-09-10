@@ -75,12 +75,25 @@ async function stopTwin(proc) {
         return;
     }
     proc.kill("SIGINT"); // graceful shutdown path - see tests_js/_live_twin_command.js's own comment
-    await Promise.race([
-        new Promise((resolve) => {
-            proc.once("exit", resolve);
-        }),
-        sleep(SHUTDOWN_TIMEOUT_MS).then(() => proc.kill("SIGKILL")),
-    ]);
+    // Timer cleared once the child is gone, so it can't hold Node's event loop open - same
+    // reasoning as _live_twin_command.js's stopTwin(), see its comment.
+    /** @type {ReturnType<typeof setTimeout> | undefined} */
+    let killTimer;
+    try {
+        await Promise.race([
+            new Promise((resolve) => {
+                proc.once("exit", resolve);
+            }),
+            new Promise((resolve) => {
+                killTimer = setTimeout(() => {
+                    proc.kill("SIGKILL");
+                    resolve(undefined);
+                }, SHUTDOWN_TIMEOUT_MS);
+            }),
+        ]);
+    } finally {
+        clearTimeout(killTimer);
+    }
 }
 
 /** @type {import("node:child_process").ChildProcess | null} */

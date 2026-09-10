@@ -23,6 +23,7 @@ from launch import (
     parse_fault_spec,
     parse_hang_spec,
 )
+from unix_port_gc_unwedge import unwedge_heap_after_interrupt
 from unix_port_poll_prewarm import prewarm_poll_set
 
 import sensortask_wozi
@@ -458,7 +459,8 @@ if __name__ == "__main__":
     try:
         _summary = asyncio.run(main(_config))
     except KeyboardInterrupt:
-        # Confirmed by direct reproduction against the pinned MicroPython v1.28.0 Unix port:
+        # Confirmed by direct reproduction against the pinned MicroPython Unix port (v1.28.0,
+        # re-checked at v1.29.0 - extmod/asyncio/ is byte-identical between the two tags):
         # extmod/asyncio/core.py's run_until_complete() only catches (CancelledError, Exception) in
         # its scheduler loop - KeyboardInterrupt is a BaseException, not an Exception subclass, so a
         # real SIGINT delivered while every task is parked in the scheduler's own
@@ -470,6 +472,7 @@ if __name__ == "__main__":
         # module-level chip singletons these read (_current_fram_chip/_current_scd30_chip) don't need
         # the event loop at all. A harmless no-op if main()'s own finally already ran (e.g. an
         # interrupt landing while a task was genuinely mid-bytecode-execution, not parked).
+        unwedge_heap_after_interrupt()
         machine.flush_fram()
         machine.flush_scd30()
         _print_wdt_status()  # same "parked in scheduler poll" gap as flush_fram()/flush_scd30()

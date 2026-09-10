@@ -2077,6 +2077,143 @@ def test_read_into_treats_unpack_from_failure_as_an_uninitialized_timestamp() ->
     assert age is None
 
 
+# ---------------------------------------------------------------------------
+# MicroPython 1.29's SPI RX-overrun raise site, driven through the real live path: the fault is
+# injected at the machine.SPI boundary and travels asy_spi_driver -> asy_fram_driver.get_values()
+# -> _read_chunk's chunk loop, so what these pin down is the stack's actual behaviour rather than
+# one layer's contract. See SPECIFICATION.md Part F.5.2 and BACKLOG.md's own entry.
+# ---------------------------------------------------------------------------
+
+
+def test_rx_overrun_on_block_0s_payload_read_is_absorbed_by_the_dual_copy_recovery() -> None:
+    # The headline live-path result: one transient overrun costs nothing. _read_chunk's blanket
+    # except catches the OSError, _read falls through to block 1, and the caller gets its data.
+    manager, chip = make_manager()
+    run(setup_manager(manager))
+    chunk = manager.get_chunk(40, crc=CRC8())  # 41 bytes with CRC - over the 32-byte DMA threshold
+    assert chunk is not None
+    payload = bytes(range(40))
+    run(chunk.write(payload))
+    chip.rx_overrun_remaining = 1  # exactly one DMA-path read raises, then the bus recovers
+
+    async def scenario() -> "tuple[bytearray | None, ErrorLog]":
+        result = await chunk.read()
+        return result, await manager.get_error_counter()
+
+    result, errs = run(scenario())
+    assert result == bytearray(payload)  # correct data, from block 1
+    assert chip.rx_overrun_remaining == 0  # the overrun really did fire
+    assert 47 in errs["FRAM"]["ErrNum"]  # _read_chunk's "General read error", not an escaped raise
+
+
+def test_rx_overrun_on_every_payload_read_fails_cleanly_instead_of_killing_the_caller() -> None:
+    # Both copies unreadable is the genuinely unrecoverable case - it must still degrade to a
+    # None result rather than propagate, since an escaping OSError would take the reader task
+    # down and leave system_service.py's supervisor to restart it.
+    manager, chip = make_manager()
+    run(setup_manager(manager))
+    chunk = manager.get_chunk(40, crc=CRC8())
+    assert chunk is not None
+    run(chunk.write(bytes(range(40))))
+    chip.rx_overrun = True  # sticky: every DMA-path read raises, both blocks
+
+    async def scenario() -> "tuple[bytearray | None, ErrorLog]":
+        result = await chunk.read()  # must not raise
+        return result, await manager.get_error_counter()
+
+    result, errs = run(scenario())
+    assert result is None
+    assert 47 in errs["FRAM"]["ErrNum"]
+
+
+def test_a_sub_threshold_chunk_is_immune_to_a_bus_wide_overrun() -> None:
+    # The 32-byte DMA threshold is a property of the live path too, not just the fake: a small
+    # chunk's payload read and every 1-byte status-register read stay on the software path, so a
+    # bus-wide overrun cannot touch them. This is why the fault needs a big chunk to reproduce.
+    manager, chip = make_manager()
+    run(setup_manager(manager))
+    chunk = manager.get_chunk(4, crc=CRC8())  # 5 bytes total - under the threshold
+    assert chunk is not None
+    run(chunk.write(b"good"))
+    chip.rx_overrun = True
+
+    async def scenario() -> "tuple[bytearray | None, ErrorLog]":
+        result = await chunk.read()
+        return result, await manager.get_error_counter()
+
+    result, errs = run(scenario())
+    assert result == bytearray(b"good")
+    assert 47 not in errs["FRAM"]["ErrNum"]  # nothing raised at all
+
+
+def test_an_overrun_leaves_the_spi_bus_itself_reusable_rather_than_wedged() -> None:
+    # The failure path runs through two `async with` blocks (the manager's chunk lock and
+    # SPIDevice's CS/bus lock). If either leaked, one overrun would wedge the shared SPI bus for
+    # every other device on it - a far worse outcome than the failed read itself. It does not:
+    # a second chunk reads normally once the bus recovers.
+    manager, chip = make_manager()
+    run(setup_manager(manager))
+    broken = manager.get_chunk(40, crc=CRC8())
+    other = manager.get_chunk(40, crc=CRC8())
+    assert broken is not None and other is not None
+    payload = bytes(range(40))
+    run(broken.write(payload))
+    run(other.write(payload))
+    spidev = broken.fram._spidev
+    chip.rx_overrun = True
+
+    async def scenario() -> "tuple[bytearray | None, bool, bool, bytearray | None]":
+        failed = await broken.read()
+        cs_released = bool(spidev.cs_pin.value()) == (not spidev.cs_active_value)
+        lock_released = not spidev.asy_lock.locked()
+        chip.rx_overrun = False  # bus recovers
+        return failed, cs_released, lock_released, await other.read()
+
+    failed, cs_released, lock_released, untouched = run(scenario())
+    assert failed is None
+    assert cs_released  # CS deasserted by SPIDevice.__aexit__ despite the exception
+    assert lock_released
+    assert untouched == bytearray(payload)  # the bus itself is fine
+
+
+def test_an_overrun_mid_read_leaves_the_chunk_unreadable_until_it_is_rewritten() -> None:
+    # Intended behavior, not a defect (SPECIFICATION.md Part A.4's FRAM entry): _read_chunk marks a
+    # block BUSY before reading and only restores IDLE on the way out, so an interruption in
+    # between leaves both copies marked. MB85RS64V reads are destructive internally, so an
+    # interrupted read is an interrupted restore - the bytes may read back intact and still not be
+    # trustworthy, which is why every later read is refused (errno 31) until a write clears it.
+    manager, chip = make_manager()
+    run(setup_manager(manager))
+    chunk = manager.get_chunk(40, crc=CRC8())
+    assert chunk is not None
+    payload = bytes(range(40))
+    run(chunk.write(payload))
+    addr0, addr1 = chunk.block_addr
+    status0 = addr0 + 41  # layout is [data][crc][status 1][status 2]; 40 payload + 1 CRC8 byte
+    status1 = addr1 + 41
+    assert (chip.memory[status0], chip.memory[status1]) == (_STATUS_IDLE, _STATUS_IDLE)
+    chip.rx_overrun = True
+
+    async def scenario() -> "tuple[bytearray | None, tuple[int, int], bytes, bytearray | None, ErrorLog, bool]":
+        failed = await chunk.read()
+        # Sampled here, before the repairing write below puts the status bytes back to IDLE.
+        left_as = (chip.memory[status0], chip.memory[status1])
+        data_on_chip = bytes(chip.memory[addr0 : addr0 + 40])
+        chip.rx_overrun = False  # the bus recovers completely
+        still_failing = await chunk.read()
+        errs = await manager.get_error_counter()
+        repaired = await chunk.write(payload) and (await chunk.read()) == bytearray(payload)
+        return failed, left_as, data_on_chip, still_failing, errs, repaired
+
+    failed, left_as, data_on_chip, still_failing, errs, repaired = run(scenario())
+    assert failed is None
+    assert left_as == (_STATUS_BUSY, _STATUS_BUSY)
+    assert data_on_chip == payload  # the data itself was never damaged
+    assert still_failing is None  # ...and is refused anyway, deliberately
+    assert 31 in errs["FRAM"]["ErrNum"]  # "Read status byte is not 1 but 2"
+    assert repaired  # a write is the only thing that clears it
+
+
 if __name__ == "__main__":
     import microtest
 

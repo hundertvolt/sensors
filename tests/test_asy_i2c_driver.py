@@ -32,16 +32,31 @@ def fake(i2c: I2C) -> FakeI2C:
 
 
 # ---------------------------------------------------------------------------
-# init / deinit - real hardware deinit(), not just dropping the reference
+# init / deinit - dropping the reference IS the state change; the forwarded
+# machine.I2C.deinit() is a no-op on rp2 (SPECIFICATION.md Part F.5)
 # ---------------------------------------------------------------------------
 
 
-def test_deinit_calls_real_hardware_deinit() -> None:
+def test_deinit_forwards_to_machine_i2c_and_drops_the_reference() -> None:
     i2c = make_i2c()
     mock = fake(i2c)
     i2c.deinit()
-    assert mock.deinit_called is True
-    assert i2c._i2c is None
+    assert mock.deinit_called is True  # forwarded, even though rp2 implements it as a no-op
+    assert i2c._i2c is None  # this is what actually makes the wrapper report "bus unavailable"
+
+
+def test_forwarded_machine_i2c_deinit_does_not_disable_the_underlying_bus() -> None:
+    # Pins down the real rp2 semantics the fake models: machine.I2C.deinit() leaves the .deinit
+    # protocol slot NULL, so the peripheral keeps running and every raw bus op still works. Only
+    # asy_i2c_driver.I2C's own dropped reference makes operations no-op - reattaching the same
+    # underlying bus object proves the hardware side was never actually torn down.
+    i2c = make_i2c()
+    mock = fake(i2c)
+    mock.registers[(0x50, 0x00)] = bytearray(b"\x01\x02")
+    i2c.deinit()
+    assert mock.readfrom_mem(0x50, 0x00, 2) == b"\x01\x02"  # underlying bus still fully alive
+    i2c._i2c = mock
+    assert i2c.get_register_struct(0x50, 0x00, ">H") == 0x0102
 
 
 def test_reinit_deinits_the_previous_bus_first() -> None:
@@ -553,7 +568,7 @@ def test_double_deinit_is_idempotent() -> None:
     i2c = make_i2c()
     mock = fake(i2c)
     i2c.deinit()
-    i2c.deinit()  # must not touch the (already gone) bus a second time
+    i2c.deinit()  # the wrapper's own `is not None` guard, not anything the hardware enforces
     assert mock.deinit_count == 1
 
 
@@ -590,6 +605,9 @@ def test_reinit_mid_session_switches_to_a_fresh_bus() -> None:
     assert old_mock.log[0] == ("writeto", 0x50, b"first", True)
     assert old_mock.log[-1] == ("deinit",)  # init() deinits the old bus before swapping it out
     assert fake(i2c).log[-1] == ("writeto", 0x50, b"second", True)
+    # Fake-only: real rp2 machine.I2C(id) returns one static per-bus singleton, so a re-init would
+    # hand back the *same* object. tests/machine.py deliberately diverges here (see its own note)
+    # so a test can tell the pre- and post-re-init bus apart; nothing in src/ depends on either.
     assert fake(i2c) is not old_mock
 
 

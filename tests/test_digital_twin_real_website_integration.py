@@ -14,7 +14,7 @@ sys.path.insert(0, "digital_twin")
 
 # Must run before `import sensortask_wozi` below: MicroPython's import machinery checks
 # sys.modules by name before touching the filesystem (confirmed directly against the pinned
-# v1.28.0 source, py/builtinimport.c's process_import_at_level(), same lookup CPython does) - so
+# v1.29.0 source, py/builtinimport.c's process_import_at_level(), same lookup CPython does) - so
 # pre-registering "frozen_html" here makes sensortask_wozi.py's own top-level `import frozen_html`
 # bind to the real website instead of resolving frozen_modules/frozen_html.py's html_stub build.
 import frozen_website_wozi  # type: ignore[import-not-found]  # mounts /html with the real website content
