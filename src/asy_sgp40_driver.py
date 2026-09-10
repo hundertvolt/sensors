@@ -375,7 +375,7 @@ class SGP40_Reader(SensorReaderConfig):
             self.trigger_timer.init(
                 period=1000,
                 mode=Timer.PERIODIC,
-                callback=lambda b: self.trigger_event.set(),
+                callback=lambda _b: self.trigger_event.set(),
             )
         except (OSError, MemoryError) as e:  # alarm-pool exhaustion (ENOMEM) - degrades gracefully
             # instead of crashing the caller (this sensor just never gets triggered this cycle).

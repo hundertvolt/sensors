@@ -117,7 +117,7 @@ class SystemService:
             self.storage_pause(value=True)
             self.pr.evt("Storage paused")
         try:
-            self.reset_timer.init(period=_RESET_DELAY * 1000, mode=Timer.ONE_SHOT, callback=lambda b: action())
+            self.reset_timer.init(period=_RESET_DELAY * 1000, mode=Timer.ONE_SHOT, callback=lambda _b: action())
         except (OSError, MemoryError) as e:  # alarm-pool exhaustion (ENOMEM) - falls back to the same watchdog-starve
             # backstop start_and_check_tasks() already uses past _TASK_FAIL_MAX.
             self.pr.err("Could not arm reset timer, stopping watchdog feed instead:", e)
@@ -158,7 +158,7 @@ class SystemService:
                 self.sequencer_timer.init(
                     period=delay,
                     mode=Timer.ONE_SHOT,
-                    callback=lambda b: self._timer_sequencer(timers, counter=counter),
+                    callback=lambda _b: self._timer_sequencer(timers, counter=counter),
                 )
             except (OSError, MemoryError) as e:  # alarm-pool exhaustion (ENOMEM) - stop sequencing rather than
                 # leaving start_timers() waiting on timers_running forever.
@@ -195,7 +195,7 @@ class SystemService:
 
     def start_uptime_timer(self) -> None:
         try:
-            self.uptime_timer.init(period=1000, mode=Timer.PERIODIC, callback=lambda b: self.uptime_event.set())
+            self.uptime_timer.init(period=1000, mode=Timer.PERIODIC, callback=lambda _b: self.uptime_event.set())
         except (OSError, MemoryError) as e:  # alarm-pool exhaustion (ENOMEM) - degrades gracefully rather than rebooting;
             # only uptime/boot-signature stay unresolved this boot.
             self.pr.err("Could not arm uptime timer:", e)
@@ -351,7 +351,7 @@ class SystemService:
                     self.storage_timer.init(
                         period=duration * 1000,
                         mode=Timer.ONE_SHOT,
-                        callback=lambda b: storage_pause(value=False),
+                        callback=lambda _b: storage_pause(value=False),
                     )
                 except (OSError, MemoryError) as e:  # alarm-pool exhaustion (ENOMEM) - without the auto-unpause timer,
                     # storage would stay paused forever; safer to abort the pause than risk that.

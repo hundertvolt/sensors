@@ -20,10 +20,19 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
-    from typing import Any
+    from typing import Any, Protocol
 
     from asy_fram_manager import AsyFramManager
     from config_manager import ConfigSchema
+
+    # Structural Protocol for whatever local-time struct the caller's callback returns
+    # (SPECIFICATION.md Part C.10's typing convention) - read-only, so a namedtuple
+    # (asy_ntp_client.py's GMTimeStruct, the production wiring) satisfies it too.
+    class _LocalTime(Protocol):
+        @property
+        def hour(self) -> int: ...
+        @property
+        def minute(self) -> int: ...
 
 _MAX_OVERRIDE_TIME = const(3600)
 _NAME = const("NOTIFY")
@@ -79,7 +88,7 @@ class NotificationCoordinator(SensorReaderConfig):
     def __init__(
         self,
         request_signal_cb: "Callable[[int, int, int, float], Coroutine[Any, Any, bool]]",
-        local_time_callback: "Callable[[], Coroutine[Any, Any, Any]]",
+        local_time_callback: "Callable[[], Coroutine[Any, Any, _LocalTime | None]]",
         max_module_error: int = 5,
         cfg_path: str = "",
         fram: "AsyFramManager | None" = None,
@@ -117,7 +126,7 @@ class NotificationCoordinator(SensorReaderConfig):
             msg, wrnno = self._pending_wrn.pop(0)
             await self.pr.wrn_s(msg, wrnno=wrnno)
 
-    def _next_sleep_secs(self, interv: float, t0: "Any") -> float:  # t0: an opaque ticks_ms() value, not a plain int
+    def _next_sleep_secs(self, interv: float, t0: int) -> float:  # t0: an opaque ticks_ms() value - only ever compared via time.ticks_diff()
         # Isolated from monitor_loop() specifically so it's directly unit-testable without needing
         # a real elapsed time close to Interv's own 60.0s schema floor to observe the floor kick in.
         rem_interv = interv - (time.ticks_diff(time.ticks_ms(), t0) * 0.001)  # run duration so far in sec
@@ -129,7 +138,7 @@ class NotificationCoordinator(SensorReaderConfig):
         except (OverflowError, OSError):  # rp2's mktime()/gmtime() raise past its ~2037 32-bit epoch range
             return None
 
-    async def _safe_local_time(self) -> "Any":
+    async def _safe_local_time(self) -> "_LocalTime | None":
         try:  # caller-supplied callback, could legitimately misbehave
             return await self._local_time_callback()
         except Exception as e:
