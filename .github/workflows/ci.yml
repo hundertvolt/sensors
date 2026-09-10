@@ -330,7 +330,7 @@ jobs:
       - name: Ruff (src/, tests/, digital_twin/)
         run: uv run ruff check src tests digital_twin boot_entry toolchain scripts tests_scripts tests_hardware
       - name: Mypy (src/, tests/, digital_twin/)
-        run: uv run scripts/typecheck.sh src tests boot_entry
+        run: uv run scripts/typecheck.sh src tests boot_entry tests_hardware/device_scripts
 
   shellcheck:
     # Own stage, not a step inside lint-and-typecheck: each tool gets its own independently
