@@ -5,7 +5,7 @@
   "description": "Dev-tooling config and source for the sensors website (html/, js/, tests_js/, mockdata/), not an installable package.",
   "type": "module",
   "scripts": {
-    "lint": "eslint js tests_js scripts html",
+    "lint": "eslint js tests_js scripts html eslint.config.js vitest.config.js",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json",
     "pretest": "scripts/build_website.sh wozi",
     "test": "vitest run",

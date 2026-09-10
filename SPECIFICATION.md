@@ -2145,7 +2145,10 @@ real-interpreter test principle; **`@vitest/coverage-v8`** (report-only, no thre
 conditions on `web-lint-and-typecheck`/`web-unit-tests` — deliberately not a second workflow file
 with its own trigger-level filter (which can leave a PR stuck on a required check that never
 fires). Web CI runs only against `html/`, `js/`, `tests_js/`, `scripts/*.mjs`, `mockdata/`, and its
-own config files. Root `.nvmrc` pins the Node version.
+own config files — `eslint.config.js`/`vitest.config.js` are not just trigger paths but are
+themselves linted (their own `files` block in `eslint.config.js`, Node globals, the same
+`BUG_CATCHING_RULES` as `scripts/**/*.mjs`), so the linter is not held to a weaker standard than
+the code it checks. Root `.nvmrc` pins the Node version.
 
 ### H.8.1 JSDoc typedef imports across the browser/Node split
 

@@ -171,6 +171,21 @@ export default [
         rules: BUG_CATCHING_RULES,
     },
     {
+        // This repo's own root-level tooling config. Without this block they match no `files`
+        // entry and so get only js.configs.recommended, not BUG_CATCHING_RULES - the linter would
+        // be holding its own config to a weaker standard than the code it lints. Node globals:
+        // both are loaded by the Node process, never shipped to a browser.
+        files: ["eslint.config.js", "vitest.config.js"],
+        languageOptions: {
+            ecmaVersion: "latest",
+            sourceType: "module",
+            globals: {
+                ...globals.node,
+            },
+        },
+        rules: BUG_CATCHING_RULES,
+    },
+    {
         // Standalone Node scripts under scripts/ (e.g. cross_browser_smoke.mjs) - real Node
         // process, same reasoning/globals as the two Vitest command files above.
         files: ["scripts/**/*.mjs"],
