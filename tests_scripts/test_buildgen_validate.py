@@ -946,3 +946,143 @@ def test_requires_tag_removed_entirely_still_builds(tmp_path: Path, src_dir: Pat
     # build succeeds - so those aborts are the near-miss detector firing, not the staged copy.
     staged = _staged_src_with_scd30_tag(tmp_path, src_dir, "# no requirement declared")
     _build(tmp_path, staged, base_doc())  # no raise
+
+
+# ---------------------------------------------------------------------------------------------
+# Error-path coverage sweep (2026-09-10): every abort below was reachable but had no test of its
+# own - found by running the suite under coverage.py and reading each uncovered `raise`, rather
+# than by reading the code and assuming.
+# ---------------------------------------------------------------------------------------------
+
+
+def _staged_src(tmp_path: Path, src_dir: Path, filename: str, old: str, new: str) -> Path:
+    """A writable copy of src/ with one substitution applied to one driver file."""
+    staged = tmp_path / "staged_src"
+    if not staged.exists():
+        shutil.copytree(src_dir, staged)
+    target = staged / filename
+    text = target.read_text()
+    assert old in text, f"{filename} no longer contains {old!r}"
+    target.write_text(text.replace(old, new, 1))
+    return staged
+
+
+_MINIMAL_DEVICE_TABLE = (
+    '[device]\nname = "Test"\nhostname = "SensorStationTest"\nhotspot_password = "12345678"\n'
+    "conn_fail_to_hotspot = 5\nhotspot_time_min = 8\n"
+)
+
+
+def test_bus_table_is_not_a_table_at_all(tmp_path: Path, src_dir: Path) -> None:
+    # Written by hand rather than through the fixture writer, which can only serialize a real table.
+    path = write_text(tmp_path, "dev", "bus = 5\n\n" + _MINIMAL_DEVICE_TABLE)
+    with pytest.raises(BuildError, match=r"\[bus\] must be a table of bus tables"):
+        build_model(path, src_dir)
+
+
+def test_single_bus_entry_is_not_a_table(tmp_path: Path, src_dir: Path) -> None:
+    path = write_text(tmp_path, "dev", _MINIMAL_DEVICE_TABLE + "\n[bus]\ni2c0 = 5\n")
+    with pytest.raises(BuildError, match="bus.i2c0 is not a table"):
+        build_model(path, src_dir)
+
+
+@pytest.mark.parametrize("value", ["13", 13.0, True, [13]])
+def test_pin_value_of_a_non_int_type_is_rejected(tmp_path: Path, src_dir: Path, value: object) -> None:
+    # Every pin claim is type-checked before it is looked up in the GPIO table - otherwise a string
+    # pin would sail past gpio_exists() straight into a raw TypeError.
+    doc = base_doc()
+    doc["bus"]["i2c0"]["scl_pin"] = value
+    with pytest.raises(BuildError, match="is not an int"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_default_selection_when_the_driver_defines_no_default_class(tmp_path: Path, src_dir: Path) -> None:
+    staged = _staged_src(tmp_path, src_dir, "asy_sgp40_driver.py", "class _DefaultTemperatureSource:", "class _RenamedAway:")
+    doc = base_doc()
+    doc["instance"][1]["wiring"]["temperature_source"] = {"default": True, "temperature": 25.0}
+    path = write_doc(tmp_path, "dev", doc)
+    with pytest.raises(BuildError, match="defines no _DefaultTemperatureSource class"):
+        build_model(path, staged)
+
+
+def test_default_sub_table_missing_a_required_key(tmp_path: Path, src_dir: Path) -> None:
+    # The provider's own __init__ signature is the schema: a parameter with no Python-level default
+    # is a required TOML key.
+    staged = _staged_src(tmp_path, src_dir, "asy_sgp40_driver.py", "def __init__(self, temperature: float = 25) -> None:", "def __init__(self, temperature: float) -> None:")
+    doc = base_doc()
+    doc["instance"][1]["wiring"]["temperature_source"] = {"default": True}
+    path = write_doc(tmp_path, "dev", doc)
+    with pytest.raises(BuildError, match="missing required key"):
+        build_model(path, staged)
+
+
+def test_attr_mode_default_provider_without_the_target_attribute(tmp_path: Path, src_dir: Path) -> None:
+    # signal_sink is "attr" mode, so its default provider must actually define request_signal.
+    staged = _staged_src(tmp_path, src_dir, "asy_notification_service.py", "async def request_signal(", "async def renamed_away(")
+    doc = base_doc()
+    doc["instance"][4]["wiring"]["signal_sink"] = {"default": True}
+    path = write_doc(tmp_path, "dev", doc)
+    with pytest.raises(BuildError, match="defines no 'request_signal' attribute/method"):
+        build_model(path, staged)
+
+
+def test_required_value_wiring_field_left_unwired(tmp_path: Path, src_dir: Path) -> None:
+    doc = base_doc()
+    del doc["instance"][1]["wiring"]["temperature_source"]
+    with pytest.raises(BuildError, match="missing required wiring.temperature_source"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_optional_value_wiring_field_may_be_absent(tmp_path: Path, src_dir: Path) -> None:
+    # The mirror of the case above: an optional per-value field simply isn't wired, and the build
+    # proceeds. No driver in src/ declares one today, so the tag is staged onto sgp40.
+    staged = _staged_src(
+        tmp_path,
+        src_dir,
+        "asy_sgp40_driver.py",
+        "# @value-wiring humidity_source humidity_source humidity_field required",
+        "# @value-wiring humidity_source humidity_source humidity_field optional",
+    )
+    doc = base_doc()
+    del doc["instance"][1]["wiring"]["humidity_source"]
+    path = write_doc(tmp_path, "dev", doc)
+    build_model(path, staged)  # no raise
+
+
+def test_device_wiring_field_with_no_matching_tag_on_the_consumer(tmp_path: Path, src_dir: Path) -> None:
+    staged = _staged_src(tmp_path, src_dir, "asy_wifi_service.py", "# @wiring led_target NeopixelDriver set_ext_led optional setter", "")
+    path = write_doc(tmp_path, "dev", base_doc())
+    with pytest.raises(BuildError, match="has no matching @wiring tag"):
+        build_model(path, staged)
+
+
+@pytest.mark.parametrize("value", [5, True, ["neopixel"], {"target": "neopixel"}])
+def test_device_wiring_value_must_be_a_string_reference(tmp_path: Path, src_dir: Path, value: object) -> None:
+    doc = base_doc()
+    doc["device"]["wiring"]["led_target"] = value
+    if isinstance(value, dict):
+        pytest.skip("an inline table can't be produced by this fixture writer")
+    with pytest.raises(BuildError, match="must be a string instance reference"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_driver_declaring_requires_tags_but_sitting_on_no_bus(tmp_path: Path, src_dir: Path) -> None:
+    # A bus requirement on a driver with no bus field is a contradiction the build must name, not
+    # silently skip. neopixel is the only driver with no bus at all, so the tag is staged onto it.
+    staged = _staged_src(tmp_path, src_dir, "asy_neopixel_driver.py", "# @wiring fram_target", "# @requires bus.frequency<=100000\n# @wiring fram_target")
+    path = write_doc(tmp_path, "dev", base_doc())
+    with pytest.raises(BuildError, match="declares @requires bus tags but has no 'bus' field"):
+        build_model(path, staged)
+
+
+def test_unreadable_device_file_fails_loud(tmp_path: Path, src_dir: Path) -> None:
+    # A directory where a TOML file was expected - an OSError that must surface as a BuildError.
+    (tmp_path / "dev.toml").mkdir()
+    with pytest.raises(BuildError, match="could not read"):
+        build_model(tmp_path / "dev.toml", src_dir)
+
+
+def test_instance_entry_without_a_driver_key(tmp_path: Path, src_dir: Path) -> None:
+    path = write_text(tmp_path, "dev", '[device]\nname = "Test"\n\n[[instance]]\nname_ext = "x"\n')
+    with pytest.raises(BuildError, match=r"entry #0 is missing a 'driver' field"):
+        build_model(path, src_dir)

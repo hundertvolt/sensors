@@ -498,7 +498,7 @@ def _check_device_wiring(model: DeviceModel, src_dir: Path) -> None:
         schema = parse_wiring(src_dir / module_file, model.device, consumer_label)
         wf = _resolve_wiring_field(schema, toml_field)
         if wf is None:
-            raise BuildError(model.device, f"[device.wiring].{toml_field} declared, but {module_file} has no matching _WIRING entry", field=toml_field)
+            raise BuildError(model.device, f"[device.wiring].{toml_field} declared, but {module_file} has no matching @wiring tag", field=toml_field)
         if not isinstance(value, str):
             raise BuildError(model.device, f"[device.wiring].{toml_field} must be a string instance reference, got {value!r}", field=toml_field)
         _check_wiring_reference(model, wf, value, "device.wiring", toml_field)

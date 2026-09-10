@@ -204,3 +204,86 @@ def test_hostname_and_hotspot_password_are_not_yet_wired_into_generated_code(rep
     result = generate_device(repo_root / "devices" / "wozi.toml", src_dir, ext_dir)
     assert "SensorStationWozi" not in result.module_source
     assert "12345678" not in result.module_source
+
+
+def test_bmp3xx_trigger_sec_is_rendered_into_the_constructor_call(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
+    # trigger_sec is declared only on scd30 in every real device and fixture, so bmp3xx's own
+    # trigger_sec rendering had never been exercised - despite Phase 3 giving bmp3xx a
+    # `@limits trigger_sec 1..3600` domain specifically. Found by an error-path coverage sweep.
+    doc = base_doc()
+    doc["instance"].append({"driver": "bmp3xx", "bus": "i2c0", "address": 0x77, "trigger_sec": 42, "wiring": {"fram_target": "fram"}})
+    result = generate_device(write_doc(tmp_path, "dev", doc), src_dir, ext_dir)
+    assert "trigger_sec=42" in result.module_source
+    ast.parse(result.module_source)
+
+
+def test_unknown_warn_signal_is_a_fail_loud_build_error(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
+    # The generator owns a fixed catalog of notification signals; a warn_* key outside it must
+    # abort and name the catalog, never be silently dropped from the generated module.
+    doc = base_doc()
+    doc["instance"][4]["wiring"]["warn_bogus"] = {"source": "scd30", "field": "CO2"}
+    with pytest.raises(BuildError, match="built-in signal catalog"):
+        generate_device(write_doc(tmp_path, "dev", doc), src_dir, ext_dir)
+
+
+def test_identifier_rejects_a_name_python_could_not_use(src_dir: Path) -> None:
+    # No real bus id or instance label can reach this today (both are drawn from closed sets), so
+    # it is driven directly - it is the one guard standing between a bad name and generated source
+    # that would not parse.
+    from buildgen.codegen import _identifier
+
+    for bad in ("class", "not-an-identifier", "9leading_digit", ""):
+        with pytest.raises(BuildError, match="not usable as a generated Python identifier"):
+            _identifier(bad, "dev")
+    assert _identifier("i2c0", "dev") == "i2c0"
+
+
+def test_codegen_has_no_build_recipe_for_an_unknown_driver(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
+    # driver_registry can resolve a driver that codegen has no constructor recipe for - the build
+    # must say exactly that, and name where to add one.
+    from buildgen.codegen import _build_call, _Ctx
+    from buildgen.validate import build_model
+
+    # Driven at the _build_call() level: an instance of such a driver can't be carried through a
+    # whole build, because _check_required_fields() rejects a driver with no buildspec.py entry
+    # long before codegen sees it (the onboarding-gap check added in Phase 4).
+    model = build_model(write_doc(tmp_path, "dev", base_doc()), src_dir)
+    spec = model.instances[("scd30", "")]
+    spec.driver = "not_a_real_driver"
+    with pytest.raises(BuildError, match="no build recipe for driver"):
+        _build_call(spec, _Ctx(model))
+
+
+def test_cli_entry_point_writes_both_files_and_exits_zero(tmp_path: Path, repo_root: Path) -> None:
+    # The one real entry point a person invokes by hand. Run as a subprocess so the __main__ guard
+    # and the process exit code are both genuinely exercised, not just main()'s return value.
+    import subprocess
+    import sys
+
+    out = tmp_path / "out"
+    result = subprocess.run(
+        [sys.executable, "-m", "buildgen.generate", str(repo_root / "devices" / "wozi.toml"), "--out-dir", str(out)],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert (out / "sensortask_wozi.py").is_file()
+    assert (out / "wozi_boot.py").is_file()
+    ast.parse((out / "sensortask_wozi.py").read_text())
+
+
+def test_cli_entry_point_reports_a_build_error_and_exits_nonzero(tmp_path: Path, repo_root: Path) -> None:
+    import subprocess
+    import sys
+
+    bad = write_doc(tmp_path, "dev", {"device": {"name": "Test"}})
+    result = subprocess.run(
+        [sys.executable, "-m", "buildgen.generate", str(bad)],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 1
+    assert "buildgen:" in result.stderr  # a human-readable reason, never a raw traceback
+    assert "Traceback" not in result.stderr

@@ -102,3 +102,22 @@ def test_frozen_modules_real_import_is_included(tmp_path: Path) -> None:
 
     frozen = compute_frozen_modules(model, tmp_path)
     assert "real_dep" in frozen
+
+
+def test_a_seed_module_with_no_file_on_disk_contributes_no_imports(tmp_path: Path) -> None:
+    # The closure walk asks each module for its own imports; one with no .py file anywhere in the
+    # roots contributes nothing rather than raising, so a stale seed name can't break a build.
+    from buildgen.frozen_modules import _local_imports_of
+
+    assert _local_imports_of("no_such_module", (tmp_path,)) == set()
+
+
+def test_an_import_cycle_between_two_modules_terminates(tmp_path: Path) -> None:
+    # The frontier skips anything already in the closure - without that, two modules importing each
+    # other would loop forever rather than resolving.
+    (tmp_path / "mod_a.py").write_text("import mod_b\n")
+    (tmp_path / "mod_b.py").write_text("import mod_a\n")
+    from buildgen.frozen_modules import _local_imports_of
+
+    assert _local_imports_of("mod_a", (tmp_path,)) == {"mod_b"}
+    assert _local_imports_of("mod_b", (tmp_path,)) == {"mod_a"}

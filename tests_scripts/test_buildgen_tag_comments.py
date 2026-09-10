@@ -391,3 +391,12 @@ def test_each_family_recognizes_its_own_payload_shape_and_not_prose(text: str, f
     # silent miss the near-miss detector exists to prevent - so each family gates on its own shape.
     (spec,) = [s for s in tag_comments.KNOWN_TAGS if s.name == family]
     assert spec.looks_like_payload(text) is expected
+
+
+def test_looks_like_tag_payload_accepts_an_explicit_family(tmp_path: Path) -> None:
+    # The helper defaults to @requires' own shape; passing a family switches it to that family's
+    # predicate, which is how each grammar module gates its own near-miss detection.
+    (wiring,) = [s for s in tag_comments.KNOWN_TAGS if s.name == "wiring"]
+    text = "# @wiring fram_target AsyFramManager fram optional kwarg"
+    assert tag_comments.looks_like_tag_payload(text, wiring) is True
+    assert tag_comments.looks_like_tag_payload(text) is False  # no operator - not @requires-shaped
