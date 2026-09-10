@@ -141,6 +141,11 @@ class I2C:
             raise queue.pop(0)
 
     def deinit(self) -> None:
+        # Real rp2 machine.I2C.deinit() exists only from MicroPython 1.29 on, and even there the
+        # port leaves the protocol's .deinit slot NULL - it is a silent no-op that neither stops
+        # the peripheral nor releases the pins (SPECIFICATION.md Part F.5). This fake therefore
+        # deliberately leaves every bus operation working afterwards, exactly like real hardware;
+        # the counters below only record that asy_i2c_driver.py forwarded the call.
         self.deinit_called = True
         self.deinit_count += 1
         self.log.append(("deinit",))
@@ -183,12 +188,18 @@ class I2C:
         self.log.append(("writeto_mem", address, memaddr, bytes(buf), addrsize))  # type: ignore[call-overload]
 
 
+# ports/rp2/machine_spi.c's own `dma_min_size_threshold`: a transfer shorter than this never
+# touches DMA, so it can never hit the RX-overrun check MicroPython 1.29 added there.
+_SPI_DMA_MIN_SIZE = 32
+
+
 class SPI:
     # Real RP2040 SPI error behavior (confirmed against extmod/machine_spi.c and ports/rp2/
-    # machine_spi.c, not guessed): unlike I2C, SPI has no ACK/NAK concept, and the rp2 hardware SPI
-    # transfer path has no error return at all - once constructed, write()/readinto() genuinely
-    # cannot raise anything, so there's no NAK/busy-style fault-injection surface to model for
-    # those two, unlike I2C above. write_readinto() is the one exception - see its own comment.
+    # machine_spi.c at v1.29.0, not guessed): SPI has no ACK/NAK concept, so write() genuinely
+    # cannot raise. A *reading* transfer of 32+ bytes takes the DMA path, where MicroPython 1.29
+    # added an RX-overrun check that raises OSError(EIO) - modeled by rx_overrun/inject_fault() below,
+    # this fake's counterpart to I2C's nak_addresses/busy. write_readinto() also raises ValueError
+    # on mismatched lengths - see its own comment. Full analysis: SPECIFICATION.md Part F.5.
     #
     # No registers/addressing (SPI has none) - a test primes what readinto()/write_readinto()
     # "receive" from the simulated downstream device via read_queue, a FIFO of byte strings.
@@ -221,6 +232,8 @@ class SPI:
         self.deinit_count = 0
         self.log: list[tuple] = []
         self.read_queue: list[bytes] = []
+        self.rx_overrun = False  # convenience: EIO on every DMA-path read, like I2C's `busy`
+        self._faults: dict[str, list[Exception]] = {}  # op name -> FIFO queue, one exception per matching call
 
     def init(
         self,
@@ -250,7 +263,26 @@ class SPI:
             self.firstbit = firstbit
         self.log.append(("init", baudrate, polarity, phase, bits, firstbit))
 
+    def inject_fault(self, op: str, exc: Exception, times: int = 1) -> None:
+        # Same shape as I2C.inject_fault() above: queues `exc` for the next `times` calls to the
+        # named op (readinto or write_readinto). write() is deliberately not injectable - the real
+        # write-only path has no failure mode to model.
+        self._faults.setdefault(op, []).extend([exc] * times)
+
+    def _maybe_raise(self, op: str, nbytes: int) -> None:
+        # DMA_MIN_SIZE_THRESHOLD is 32 in ports/rp2/machine_spi.c - a shorter transfer uses the
+        # blocking software path, which has no overrun check and so cannot raise.
+        if self.rx_overrun and nbytes >= _SPI_DMA_MIN_SIZE:
+            raise OSError(errno.EIO, "SPI RX overrun")
+        queue = self._faults.get(op)
+        if queue:
+            raise queue.pop(0)
+
     def deinit(self) -> None:
+        # Real rp2 machine.SPI.deinit() leaves the protocol's .deinit slot NULL: a silent no-op
+        # that neither stops the peripheral nor releases the pins (SPECIFICATION.md Part F.5).
+        # This fake therefore deliberately leaves every bus operation working afterwards, exactly
+        # like real hardware; the counters only record that asy_spi_driver.py forwarded the call.
         self.deinit_called = True
         self.deinit_count += 1
         self.log.append(("deinit",))
@@ -263,6 +295,7 @@ class SPI:
         self.log.append(("write", bytes(buf)))  # type: ignore[call-overload]
 
     def readinto(self, buf: bytearray | memoryview, write_value: int = 0x00) -> None:
+        self._maybe_raise("readinto", len(buf))
         data = self._next_read_bytes(len(buf))
         buf[:] = data
         self.log.append(("readinto", len(buf), write_value))
@@ -272,6 +305,7 @@ class SPI:
         # and soft SPI): raises ValueError before any transfer if the two buffers' lengths differ.
         if len(buffer_out) != len(buffer_in):  # type: ignore[arg-type]
             raise ValueError("buffers must be the same length")
+        self._maybe_raise("write_readinto", len(buffer_in))
         data = self._next_read_bytes(len(buffer_in))
         buffer_in[:] = data
         self.log.append(("write_readinto", bytes(buffer_out)))  # type: ignore[call-overload]
@@ -319,7 +353,7 @@ class UART(io.IOBase):
         invert: int = 0,
     ) -> None:
         # Real mp_machine_uart_make_new()/init_helper() validation (confirmed against
-        # ports/rp2/machine_uart.c, v1.28.0 - real numeric constants, not guessed), in the same
+        # ports/rp2/machine_uart.c, v1.29.0 - real numeric constants, not guessed), in the same
         # order the real source checks it (id, then invert, then rxbuf, then txbuf - matters for
         # which exception surfaces first when more than one field is invalid at once). A value below
         # MIN_BUFFER_SIZE (32) silently clamps up instead of raising - not modeled here since it
@@ -436,7 +470,7 @@ class Timer:
 
     # Test-only fault injection, off by default: real rp2 Timer.init() calls
     # alarm_pool_add_alarm_in_us() and raises OSError(ENOMEM) if the alarm pool is exhausted
-    # (confirmed directly against ports/rp2/machine_timer.c, v1.28.0) - a bare Timer() with no
+    # (confirmed directly against ports/rp2/machine_timer.c, v1.29.0) - a bare Timer() with no
     # args never hits this path at all (real machine_timer_make_new() only calls the init helper
     # when args/kwargs are actually given), matching the `if kwargs` gate below. Tests must reset
     # this to False afterward - it's a shared class attribute, not per-instance.
@@ -483,7 +517,7 @@ class Timer:
 class RTC:
     # Minimal fake for asy_ntp_client.py's RTC().datetime((...)) call: stores/returns whatever
     # 8-tuple it's given, no validation - confirmed directly against the real
-    # ports/rp2/machine_rtc.c (v1.28.0) that the real setter reads all 8 elements but only ever
+    # ports/rp2/machine_rtc.c (v1.29.0) that the real setter reads all 8 elements but only ever
     # uses indices 0/1/2/4/5/6 (year/month/day/hour/minute/second); index 3 (weekday) is extracted
     # and never used/validated/written anywhere - so there's no real weekday-validity behavior for
     # this fake to model in the first place (see BACKLOG.md for the fuller history: an earlier,

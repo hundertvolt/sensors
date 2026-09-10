@@ -152,9 +152,10 @@ class I2C:
         frequency: int,
         timeout: int | None = None,
     ) -> None:
-        # deinit() first so re-init can't leak a claimed peripheral/pins. timeout=None omits the
-        # kwarg entirely instead of duplicating machine.I2C's own default, so it can't drift out
-        # of sync with whatever that default actually is.
+        # deinit() first so a re-init always goes through the same "bus unavailable" state a
+        # caller-visible deinit() produces, rather than swapping self._i2c under live readers.
+        # timeout=None omits the kwarg entirely instead of duplicating machine.I2C's own default,
+        # so it can't drift out of sync with whatever that default actually is.
         self.deinit()
         if timeout is None:
             self._i2c = _I2C(port_id, sda=Pin(sda_pin), scl=Pin(scl_pin), freq=frequency)
@@ -162,8 +163,10 @@ class I2C:
             self._i2c = _I2C(port_id, sda=Pin(sda_pin), scl=Pin(scl_pin), freq=frequency, timeout=timeout)
 
     def deinit(self) -> None:
-        # machine.I2C.deinit() actually deactivates the hardware bus - not just dropping the
-        # Python reference, which left the peripheral/pins claimed.
+        # machine.I2C.deinit() does NOT deactivate the rp2 hardware bus - it is forwarded for
+        # portability/forward-compatibility only, and dropping self._i2c is what actually puts
+        # this wrapper into its documented "bus unavailable" state. See SPECIFICATION.md Part
+        # F.5 for why (and for the hard MicroPython 1.29 floor this call carries).
         if self._i2c is not None:
             self._i2c.deinit()
             self._i2c = None

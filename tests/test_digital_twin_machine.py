@@ -280,7 +280,7 @@ def test_wdt_feed_increments_count() -> None:
 
 
 def test_wdt_rejects_a_nonzero_id() -> None:
-    # Confirmed directly against the pinned v1.28.0 ports/rp2/machine_wdt.c source: rp2 only ever
+    # Confirmed directly against the pinned v1.29.0 ports/rp2/machine_wdt.c source: rp2 only ever
     # implements id 0 - WDT(id=1) raises ValueError("WDT(1) doesn't exist") on real hardware.
     try:
         WDT(id=1)

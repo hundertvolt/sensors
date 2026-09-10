@@ -58,30 +58,36 @@ constraints.
 
 1. `modules/_boot.py`'s `import sensortask.py` (literal `.py`) — works reliably on real hardware
    (pinned to MicroPython 1.26), but MicroPython's documented freeze/import behavior says it should
-   raise `ImportError`. **The 1.28 mechanism itself is now confirmed, not a mystery**: traced
-   directly through the pinned v1.28.0 source (`tools/mpy-tool.py`'s frozen-name generation,
+   raise `ImportError`. **The mechanism itself is now confirmed, not a mystery**: traced
+   directly through the pinned source (`tools/mpy-tool.py`'s frozen-name generation,
    `py/frozenmod.c`'s exact-match lookup, `py/builtinimport.c`'s `stat_module()`/
-   `process_import_at_level()`) - a plain `import sensortask` (no `.py`) is unambiguously correct
-   under 1.28: `stat_module()` auto-appends `.py` before matching against the frozen table, while a
+   `process_import_at_level()`) - a plain `import sensortask` (no `.py`) is unambiguously correct:
+   `stat_module()` auto-appends `.py` before matching against the frozen table, while a
    dotted `import sensortask.py` requires "sensortask" to resolve as a *package* (have `__path__`),
-   which a flat frozen file never does, so it should raise. `boot_entry/wozi_boot.py` (the
-   refactor's own 1.28-targeted entry point) already does `from sensortask_wozi import main` - the
-   correct form - so there's nothing to fix on the refactor side. **`modules/_boot.py` itself stays
-   untouched**: it targets the currently-deployed 1.26 firmware, a different version whose own
-   import machinery hasn't been separately verified here - CLAUDE.md's hard rule (don't touch
-   without real 1.26 hardware testing first) still applies, and extrapolating from the 1.28 trace
-   above would be exactly the "changing it blind" risk that rule exists to prevent.
+   which a flat frozen file never does, so it should raise. **Re-verified at v1.29.0**: `mpy-tool.py`
+   did change (`short_name` is now `".".join(name.split(".")[:-1])` rather than a literal `.py`
+   strip, plus a new non-ASCII module-name rejection), but the frozen name it produces for a flat
+   `foo.py` is identical, and `py/frozenmod.c` is untouched - the analysis stands unchanged.
+   `boot_entry/wozi_boot.py` (the refactor's own entry point) already does
+   `from sensortask_wozi import main` - the correct form - so there's nothing to fix on the
+   refactor side. **`modules/_boot.py` itself stays untouched**: it targets the currently-deployed
+   1.26 firmware, a different version whose own import machinery hasn't been separately verified
+   here - CLAUDE.md's hard rule (don't touch without real 1.26 hardware testing first) still
+   applies, and extrapolating from the 1.28/1.29 trace above would be exactly the "changing it
+   blind" risk that rule exists to prevent.
 2. Config-schema migration is a real data-loss risk on the *current deployed* codebase —
    `ConfigManager` overwrites the entire config file with hardcoded defaults the moment one key is
    missing, so a firmware update adding a config key could silently wipe WiFi credentials/tuned
    values. **Decided: not patched on the current codebase** — accepted (reconfigure via web UI
    after a key-adding update). The refactor's per-sensor config model avoids this failure mode
    structurally, not by patching the current global-JSON codebase.
-3. MicroPython version target vs. upstream drift — deployed units run 1.26; upstream stable is
-   1.28.0 as of the last check. **Decided**: deployed code stays pinned to 1.26 until a deliberate
-   reflash campaign; the refactor is where the version target moves forward. 1.27→1.28 rp2-port
-   changes checked so far look RP2350-specific, not RP2040-breaking, but not exhaustively checked
-   against every module — re-check whenever the refactor picks a landing version.
+3. MicroPython version target vs. upstream drift — deployed units run 1.26; the refactor now pins
+   **1.29.0**, the newest stable. **Decided**: deployed code stays pinned to 1.26 until a deliberate
+   reflash campaign; the refactor is where the version target moves forward. The full 1.28→1.29
+   audit is in SPECIFICATION.md Part F.5 (two real findings, several free wins, the rest ruled out);
+   the toolchain builds `RPI_PICO_W` firmware at 1.29.0 from scratch with no patches. Earlier
+   1.27→1.28 rp2-port changes were RP2350-specific, not RP2040-breaking. Re-run F.1's standing
+   re-check whenever the pin moves again.
 4. Does `config_manager.py`'s `write_config()` need long-block-lock-style coordination? **Decided
    by the project owner: no** — a write is fast enough not to matter, and it never happens on its
    own/automatically anyway (only ever triggered by a real user interaction via the REST layer),
@@ -215,6 +221,23 @@ constraints.
     chip makes `chunk.read()` return `None` too, not just `chunk.write()` — confirmed directly on
     real hardware (`tests_hardware/device_scripts/fram_write_protect_roundtrip.py`). Not decided
     here; a project-owner call.
+14. **Adopt `machine.mem_backup()` for reset forensics?** New in 1.29, on by default on rp2, and
+    confirmed present in this project's own built firmware: 28 bytes of watchdog-scratch storage
+    that survives a WDT reset and `machine.reset()`, lost only on power-off — SPECIFICATION.md
+    Part F.5.4. That is exactly the reset class the 2026-09-08 `WDT_RESET` post-mortem couldn't
+    diagnose, and unlike the FRAM logs it costs zero wear. Needs a project-owner call on what to
+    record (last supervisor phase? last tick? failing task id?) and where the write belongs. Not
+    started.
+15. **Should a transient SPI RX overrun be retried, or left to the task supervisor?** MicroPython
+    1.29 added an `OSError(EIO)` raise site to rp2's SPI transfer path for *reading* transfers of
+    32+ bytes (SPECIFICATION.md Part F.5.2), reachable here via `asy_fram_driver.py`'s 260-byte
+    SGP40 VOC-state read. It currently propagates uncaught out of `get_values()` →
+    `_read_chunk()`, killing the reader task, which `system_service.py` then restarts — safe, but
+    heavy-handed for a one-off bus glitch a single retry would absorb. Deliberately **not**
+    changed as part of the version bump (CLAUDE.md: flag, don't silently fix): swallowing it would
+    be wrong (the buffer holds garbage), but a bounded retry inside `asy_fram_manager.py`'s chunk
+    loop is a real option. `tests/machine.py`'s `SPI.rx_overrun`/`inject_fault()` model the fault
+    and `tests/test_asy_spi_driver.py` pins down today's behavior, so either answer is testable.
 
 ## Deferred / explicitly out-of-scope work
 - **Real-hardware re-test of the segfault fix and the memory-leak soak test — real-hardware forms

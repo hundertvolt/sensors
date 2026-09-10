@@ -1,10 +1,11 @@
 """Async wrapper around machine.SPI: SPI (bus primitives) plus SPIDevice (per-device, lock-scoped
 CS-pin wrapper). Sole consumer: asy_fram_driver.py's FRAM_SPI.
 """
-# Unlike I2C, real RP2040 SPI transfers have no ACK/NAK concept once the bus is constructed, so
-# write()/readinto() never raise; write_readinto() is the one exception (ValueError on mismatched
-# buffer lengths, caught and turned into None). One-time setup (__init__/init(), configure()) is
-# exempt and may raise.
+# Real RP2040 SPI has no ACK/NAK concept, so write() cannot raise; a *reading* transfer of 32+
+# bytes can, since MicroPython 1.29, raise OSError(EIO) on an RX overrun, which propagates like
+# I2C's does. write_readinto() additionally turns machine.SPI's own ValueError on mismatched
+# buffer lengths into None. Setup (__init__/init(), configure()) is exempt and may raise.
+# Full raise-site analysis: SPECIFICATION.md Part F.5.
 
 import asyncio
 
@@ -29,13 +30,15 @@ class SPI:
         self.init(port_id, sck_pin, mosi_pin, miso_pin)
 
     def init(self, port_id: int, sck_pin: int, mosi_pin: int, miso_pin: int) -> None:
-        # deinit() first so re-init can't leak a claimed peripheral/pins.
+        # deinit() first so a re-init always goes through the same "bus unavailable" state a
+        # caller-visible deinit() produces, rather than swapping self._spi under live readers.
         self.deinit()
         self._spi = _SPI(port_id, sck=Pin(sck_pin), mosi=Pin(mosi_pin), miso=Pin(miso_pin))
 
     def deinit(self) -> None:
-        # Deactivates the real hardware bus; a bound method on a constructed object, so it
-        # can't raise AttributeError.
+        # machine.SPI.deinit() does NOT deactivate the rp2 hardware bus - it is forwarded for
+        # portability only, and dropping self._spi is what actually puts this wrapper into its
+        # documented "bus unavailable" state. See SPECIFICATION.md Part F.5.
         if self._spi is not None:
             self._spi.deinit()
             self._spi = None
@@ -63,7 +66,8 @@ class SPI:
         return None
 
     def readinto(self, buf: bytearray | memoryview, write_value: int = 0x00) -> None:
-        # SPI is full-duplex - reading still clocks write_value out on MOSI meanwhile.
+        # SPI is full-duplex - reading still clocks write_value out on MOSI meanwhile. An
+        # OSError(EIO) from a 32+ byte RX overrun propagates uncaught, same as I2C's does.
         if self._spi is None:
             return None
         self._spi.readinto(buf, write_value)
@@ -76,6 +80,7 @@ class SPI:
     ) -> None:
         # Full-duplex simultaneous transfer: buffer_out/buffer_in must match length, or
         # machine.SPI.write_readinto() raises ValueError, caught below and turned into None.
+        # OSError(EIO) from a 32+ byte RX overrun is deliberately not caught - it propagates.
         if self._spi is None:
             return None
         try:

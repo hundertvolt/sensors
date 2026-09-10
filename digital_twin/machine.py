@@ -204,6 +204,10 @@ class I2C:
         self.devices = _wire_i2c_devices(id)  # public: tests reach a wired chip via i2c.devices[addr]
 
     def deinit(self) -> None:
+        # Real rp2 machine.I2C.deinit() only exists from MicroPython 1.29 on, and even there the
+        # port's .deinit protocol slot is NULL - a silent no-op that leaves the peripheral and its
+        # pins exactly as they were (SPECIFICATION.md Part F.5). Every bus operation below stays
+        # working afterwards on purpose; the flag only records that the call was forwarded.
         self.deinit_called = True
 
     def scan(self) -> "list[int]":
@@ -337,6 +341,8 @@ class SPI:
         self.log.append(("init", baudrate, polarity, phase, bits, firstbit))
 
     def deinit(self) -> None:
+        # Same NULL-slot no-op as I2C.deinit() above, and on rp2 SPI it has always been one
+        # (SPECIFICATION.md Part F.5) - the flag only records that the call was forwarded.
         self.deinit_called = True
 
     def write(self, buf: object) -> None:
@@ -411,7 +417,8 @@ class Timer:
 
 
 _WDT_TIMEOUT_MAX_MS = 8388  # RP2040 hard cap: 0xffffff / 2 / 1000 (ports/rp2/machine_wdt.c) - see
-# SPECIFICATION.md Part F.1. Confirmed directly against the pinned v1.28.0 source (not guessed):
+# SPECIFICATION.md Part F.1. Confirmed directly against the pinned v1.29.0 source (not guessed;
+# 1.29 added a separate 16777ms RP2350 branch, but the RP2040 cap is unchanged):
 # WDT(timeout=N) for N above this raises ValueError("timeout exceeds 8388"); WDT(id != 0) raises
 # ValueError too ("WDT(%d) doesn't exist") - rp2 only ever implements id 0. Both matched here.
 

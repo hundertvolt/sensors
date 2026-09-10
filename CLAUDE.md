@@ -14,13 +14,14 @@ if one you need isn't there rather than falling back to web search/training memo
 
 ## Platform target
 
-**The concrete facts** — MicroPython 1.26/RP2040 specifics, the WDT 8388ms cap, RP2040 hardware
-specs, the soft-Timer-callback-drop gotcha, the `[x] * n` segfault range, `Timer.init()`'s
-`OSError(ENOMEM)` case, the `MemoryError`-isn't-an-`OSError`-subclass rule, `struct.pack()`'s
-silent truncation — **live in `SPECIFICATION.md`'s Part F (Platform Target & MicroPython Runtime
-Facts).** Read Part F before any platform-facing code work; don't rely on memory of it, and don't
-re-derive these from training memory or general Python knowledge — they were confirmed against
-real MicroPython source, not assumed.
+**The concrete facts** — MicroPython 1.26/RP2040 specifics, what the 1.29 pin changed (Part F.5),
+the WDT 8388ms cap, RP2040 hardware specs, the soft-Timer-callback-drop gotcha, the `[x] * n`
+segfault range, `Timer.init()`'s `OSError(ENOMEM)` case, the
+`MemoryError`-isn't-an-`OSError`-subclass rule, `struct.pack()`'s silent truncation — **live in
+`SPECIFICATION.md`'s Part F (Platform Target & MicroPython Runtime Facts).** Read Part F before
+any platform-facing code work; don't rely on memory of it, and don't re-derive these from training
+memory or general Python knowledge — they were confirmed against real MicroPython source, not
+assumed.
 
 Two standing AI-session practices (not facts, kept here since they're instructions, not
 information):
@@ -38,7 +39,10 @@ information):
   `socket.getaddrinfo()` — see SPECIFICATION.md Part F.2 for its current
   can't-be-timeout-wrapped status, which is exactly the kind of fact a version bump could change
   and silently invalidate). This is a standing practice, not a one-time pass — repeat it every time
-  `toolchain/versions.toml`'s MicroPython `ref` moves.
+  `toolchain/versions.toml`'s MicroPython `ref` moves. **Last run: 1.28.0 → 1.29.0, 2026-09-10;
+  results in SPECIFICATION.md Part F.5** — including what it found (`I2C`/`SPI` `deinit()` are
+  no-ops on rp2, a new `OSError(EIO)` raise site on 32+ byte SPI reads) and what it ruled out
+  (`extmod/asyncio/` byte-identical between the tags, so `getaddrinfo()`'s status is unchanged).
 
 ## Hard rules
 
@@ -84,11 +88,18 @@ information):
   extension stripped, so this *looks* like it should raise `ModuleNotFoundError` — the mechanism
   is genuinely unresolved (see BACKLOG.md #1). Changing it blind risks breaking every deployed
   unit's autostart.
-- **`python/CommonDrivers/microdot.py` is vendored third-party code** — verified to match current
-  upstream Microdot exactly (`send_file()` signature, `Request.json` behavior). Don't restyle or
-  "clean up" it; if you need to change its behavior, treat that as a deliberate fork decision, not
-  routine editing. **`ext/microdot.py` is the same policy applied to the refactor target**: a plain,
-  unmodified vendored copy of upstream Microdot (pinned to tag `v2.6.2`), replacing the
+- **`python/CommonDrivers/microdot.py` is vendored third-party code.** Don't restyle or "clean
+  up" it; if you need to change its behavior, treat that as a deliberate fork decision, not
+  routine editing. **It is not, however, current** — an earlier note here claimed it matched
+  current upstream exactly; re-checked against every upstream tag on 2026-09-10, it's an
+  *untagged snapshot between `v2.0.1` and `v2.1.0`* (it carries v2.1.0's `functools.partial`
+  dispatch, `max_age is not None`, `.gz` extension handling and the `URLPattern`
+  `segments`/`regex` rewrite, but not the rest), leaving it ~441 lines behind the `v2.6.2` that
+  `ext/microdot.py` pins. Unmodified relative to that snapshot, as far as can be told — no local
+  fork, just old. Bringing the *deployed* tree forward is a reflash-campaign decision, not a
+  drive-by edit (BACKLOG.md). **`ext/microdot.py` is the same policy applied to the refactor
+  target**: a plain, unmodified vendored copy of upstream Microdot (pinned to tag `v2.6.2` and
+  verified byte-identical to it on 2026-09-10), replacing the
   `improved-quality/microdot.py` copy that had drifted into an unintentional fork (removed). No
   edits, no restyling, ever — any behavior change needed is handled by wrapping/calling it from our
   own code (see "Microdot / REST layer" below), never by touching this file. `src/` and `ext/` are
@@ -365,6 +376,17 @@ information):
   the `system_service.py` `_timer_sequencer()` Timer-GC fix above: before that fix, `start_timers()`
   hung forever, so `start_and_check_tasks()` never even got called and no sibling tasks ever
   existed to leak — the soak test's own bounded-completion path was previously unreachable.
+- **Known intermittent-`MemoryError` cause #2, fixed**: a real SIGINT landing inside a
+  `gc_collect()` leaves the MicroPython Unix port's heap **permanently locked** — the stuck
+  `GC_COLLECT_FLAG` makes every later allocation fail with `MemoryError: memory allocation failed,
+  heap is locked`, on a heap that is mostly free. Measured at ~5% of interrupts on Unix ports built
+  from both `v1.28.0` and `v1.29.0`, so **not** a version-bump regression; it surfaced as one failed
+  `Run 4: clean shutdown (exit code 1)` in `scripts/run_digital_twin_ci.sh`. Fixed by
+  `digital_twin/unix_port_gc_unwedge.py`, called first in both twin runners'
+  `except KeyboardInterrupt:` handlers. **The recovery is `gc.collect()`, not
+  `micropython.heap_unlock()`** — the two lock states need opposite recoveries and the obvious one
+  is wrong here. Full mechanism and evidence: SPECIFICATION.md Part F.6. Don't re-diagnose a
+  "heap is locked" `MemoryError` at twin shutdown as a project memory bug.
 - **Known intermittent-`MemoryError` cause, fixed**: `scripts/test.sh` runs every `tests/test_*.py`
   file as one Unix-port process for all its test functions, sharing one heap — a file whose several
   heaviest tests each build the whole real `sensortask_wozi.build_system()` object graph (one test
@@ -390,7 +412,7 @@ information):
   — the project owner wants ruff to flag existing bare excepts as a tracked to-do, not silence them
   before they're fixed (test-driven-development framing, confirmed directly).
 - **Union type annotations: always PEP 604 `X | Y` (and `X | None`), never `typing.Union[...]`.**
-  Confirmed safe at runtime on both the deployed 1.26 pin and the refactor's 1.28.0 target by
+  Confirmed safe at runtime on both the deployed 1.26 pin and the refactor's 1.29.0 target by
   testing directly against the pinned Unix-port interpreter (`int | None` in an unquoted, executed
   annotation works with no import needed) — MicroPython parses but never evaluates annotation
   expressions at all, so this isn't even a runtime-support question, just a style one. `typing.Union`
@@ -427,16 +449,34 @@ information):
   project-wide to `tests/machine.py`'s fake module, not the real `typings/machine.pyi` board stub**
   — confirmed directly by running `mypy src` alone (no `tests` in scope): the real stub's `Timer`
   class has no zero-argument constructor overload (every overload requires a positional `id: int`
-  first argument) and doesn't declare `I2C.deinit()` at all, so an `src`-only run raises 13 errors
-  across `asy_ntp_client.py`/`asy_sgp40_driver.py`/`asy_scd30_driver.py`/`asy_bmp3xx_driver.py`
-  (bare `Timer()` construction) and `asy_i2c_driver.py` (`self._i2c.deinit()`) that never surface in
-  the actual, documented `mypy src tests` invocation. Both are real, working MicroPython patterns
-  (bare `Timer()` allocate-now/`init()`-later is valid runtime usage; `I2C.deinit()` releases the
-  peripheral's pins) — this is a **gap in the third-party `micropython-rp2-rpi_pico_w-stubs`
-  package**, not a bug in any promoted driver, and `tests/machine.py`'s fake happens to model both
-  correctly. Net effect: harmless today, but worth knowing that the real board stub's coverage is
-  incomplete for these two APIs specifically if a future `src`-only or `--strict`-adjacent
-  type-check run is ever added.
+  first argument), so an `src`-only run raises 12 `call-overload` errors across `system_service.py`
+  (4), `asy_ntp_client.py` (3), `asy_wifi_service.py` (2), `asy_sgp40_driver.py`,
+  `asy_scd30_driver.py` and `asy_bmp3xx_driver.py` that never surface in the actual, documented
+  `mypy src tests` invocation. Bare `Timer()` allocate-now/`init()`-later **is** valid runtime
+  usage, so this one is a genuine **gap in the third-party `micropython-rp2-rpi_pico_w-stubs`
+  package**, not a bug in any promoted driver, and `tests/machine.py`'s fake models it correctly.
+  Worth knowing if a future `src`-only or `--strict`-adjacent type-check run is ever added.
+  - **The `I2C.deinit()` half of this note was backwards and has been corrected** (audited against
+    upstream source at both tags, 2026-09-10). The 1.28 stub was *right* not to declare it:
+    `machine.I2C` had no `deinit` at all before MicroPython 1.29. The 1.29 stub now declares it —
+    but rp2 leaves the protocol's `.deinit` slot `NULL`, so the method mypy now accepts is a
+    **silent no-op on real hardware**, as `machine.SPI.deinit()` always has been on this port. Full
+    account, including what actually releases an rp2 bus (nothing — the objects are static per-bus
+    singletons) and which `deinit()`s *are* real (`UART`, `Timer`, `WLAN`): SPECIFICATION.md Part
+    F.5.1. `src/asy_i2c_driver.py`, `src/asy_spi_driver.py`, `tests/machine.py` and
+    `digital_twin/machine.py` all state the real semantics now.
+- **`scripts/typecheck.sh` repairs two verified defects in the MicroPython stub package after
+  installing it** (added with the 1.29 bump; see the script's own comment for the full account).
+  `micropython-stdlib-stubs` 1.29.0.post1/.post2 privatised `_asyncio.Future` to `_Future` and
+  dropped the `asyncio/futures.pyi` that re-exported it, while `asyncio/tasks.pyi` and
+  `asyncio/__init__.pyi` still import from it — leaving `Future` as `Any`, collapsing
+  `_FutureLike[_T]`, and making every `asyncio.wait_for()`/`gather()` result in this repo
+  un-inferable; and `builtins.pyi` has `NotImplemented` commented out, though MicroPython genuinely
+  has it and honors it from `__eq__` (verified against the pinned Unix-port interpreter). Together
+  these accounted for **all 26** findings the bump surfaced. Both repairs are conditional on the
+  defect still being present, so they no-op once upstream re-ships — **don't replace them with
+  `type: ignore` comments in `src/`/`digital_twin/`**: the code is correct on real hardware in both
+  cases, and `warn_unused_ignores = true` would then fail the day the stubs are fixed.
 - **`improved-quality/microdot.py` no longer exists** — it was a confirmed *unintentional* fork of
   vendored Microdot, removed and replaced with a fresh, unmodified sync at `ext/microdot.py`
   (pinned to tag `v2.6.2`; see "Hard rules" above and "Microdot / REST layer" below). See
@@ -497,7 +537,7 @@ else
     echo 'export LANG=C.UTF-8 LC_ALL=C.UTF-8 DEBIAN_FRONTEND=noninteractive' > "$CHROOT/root/proxy-env.sh"
 fi
 
-chroot "$CHROOT" /bin/bash -c "source /root/proxy-env.sh && apt-get update && apt-get install -y --no-install-recommends git curl ca-certificates python3 python3-venv python3-pip sudo"
+chroot "$CHROOT" /bin/bash -c "source /root/proxy-env.sh && apt-get update && apt-get install -y --no-install-recommends git curl ca-certificates python3 python3-venv python3-pip sudo libcap2-bin"
 chroot "$CHROOT" /bin/bash -c "source /root/proxy-env.sh && pip install --break-system-packages uv"
 # sudo is not part of debootstrap --variant=minbase, but toolchain/setup_toolchain.py's
 # ensure_apt_packages() unconditionally shells out to it (see toolchain/versions.toml's
@@ -506,6 +546,11 @@ chroot "$CHROOT" /bin/bash -c "source /root/proxy-env.sh && pip install --break-
 # sudo rights but isn't already root) never hits this. A plain chroot session runs as root, where
 # apt-get wouldn't need sudo at all, but the script always prepends it regardless - so installing
 # the package is the correct fix here, not stripping sudo from the script for a root-only case.
+# libcap2-bin is the same class of gap, found the same way (a real run, 2026-09-10): it provides
+# setcap, which scripts/test.sh needs to grant CAP_NET_BIND_SERVICE for the real port-53 DNS
+# server test. Priority-important on a real Ubuntu install, so a normal dev box always has it;
+# --variant=minbase does not. Without it the run dies at "setcap: command not found" *after* the
+# whole toolchain has already built - so add it up front rather than discovering it 20 minutes in.
 
 # Per-verification: copy the CURRENT working tree (uncommitted changes included - this is a
 # pre-push gate, not a post-push audit) into the chroot, then run the exact documented workflow

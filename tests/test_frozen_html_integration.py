@@ -34,7 +34,7 @@ def _decompress(body: "Any") -> bytes:
     # send_file() responses stream their body from a file-like object (VfsFrozen.open()'s own
     # BytesIO), not raw bytes - .read() first to get the real gzip bytes off the wire, matching what
     # a real HTTP client would receive. deflate.DeflateIO with AUTO auto-detects the gzip header
-    # (confirmed directly against the pinned v1.28.0 Unix-port build) - the same mechanism
+    # (confirmed directly against the pinned v1.29.0 Unix-port build) - the same mechanism
     # ffsmount.py's own VfsFrozen.open() would use for a freezefs-level --compress entry, applied
     # here to our own gzip-Content-Encoding bytes instead, since this project never uses freezefs's
     # own --compress (see CLAUDE.md).
