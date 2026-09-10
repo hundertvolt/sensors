@@ -27,4 +27,15 @@ actionlint || status=1
 # .github/zizmor.yml.
 zizmor --offline .github/ || status=1
 
+# `method-assign` stays globally enabled and is suppressed inline where tests/ and digital_twin/
+# monkeypatch a method - that IS the project's mocking mechanism (no unittest.mock on MicroPython),
+# and a central override would blanket-exempt those scopes instead of marking each real site.
+# Shipped src/ code has no business doing it at all, so mypy's own gate cannot express the rule:
+# it only ever sees a suppression that is already there. Project owner's direction - src/ carries
+# zero of these today and must stay that way.
+if grep -rn "type: ignore\[[^]]*method-assign" src/; then
+    echo "error: src/ must never suppress method-assign - reassigning a method on shipped firmware code is the defect, not the type error." >&2
+    status=1
+fi
+
 exit "$status"

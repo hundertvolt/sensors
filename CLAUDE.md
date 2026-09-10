@@ -468,6 +468,15 @@ information):
   decorators make every handler they wrap "untyped" no matter how well the handler itself is
   annotated. Does **not** disable the `assignment` error code — the old `improved-quality/mypy.ini`
   did, though that was never a deliberate choice.
+- **`method-assign` stays globally enabled, and `src/` must never suppress it** (project owner's
+  direction). `tests/` and `digital_twin/` reassign methods to mock them — that IS the project's
+  mocking mechanism, MicroPython having no `unittest.mock` — and each of those ~157 sites carries
+  its own inline `# type: ignore[method-assign]` rather than a central `[[tool.mypy.overrides]]`
+  exemption, deliberately: a scope-wide override would stop marking the individual real sites.
+  Shipped firmware code has no business reassigning a method at all, so a suppression appearing in
+  `src/` is the defect, not the type error. mypy itself cannot express that rule (it only ever sees
+  a suppression already written), so `scripts/lint.sh` enforces it with a grep guard that fails the
+  lint gate. `src/` carries zero of these today; keep it that way rather than silencing a finding.
 - **MicroPython stubs**: `micropython-rp2-rpi_pico_w-stubs` (PyPI, board/version-specific, pulls in
   `micropython-stdlib-stubs`). Published by the same project as
   [`josverl/micropython-stubs`](https://github.com/josverl/micropython-stubs) — PyPI is just its
