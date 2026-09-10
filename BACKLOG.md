@@ -238,6 +238,9 @@ constraints.
     be wrong (the buffer holds garbage), but a bounded retry inside `asy_fram_manager.py`'s chunk
     loop is a real option. `tests/machine.py`'s `SPI.rx_overrun`/`inject_fault()` model the fault
     and `tests/test_asy_spi_driver.py` pins down today's behavior, so either answer is testable.
+    **Testing this error path is no longer optional** - see the "Deferred" list's own entry for the
+    three tiers still missing it; the real-hardware one is what decides this question, since
+    "transient" is not something a fake can establish.
 
 ## Deferred / explicitly out-of-scope work
 - **The 1.29.0 pin has never run on real hardware.** Every 1.28→1.29 claim in SPECIFICATION.md
@@ -256,6 +259,24 @@ constraints.
     test_bus_concurrency.py` is the natural place to pin it down.
   - **The 12,918 B SRAM-resident-code win** (Part F.5.3) is a linker-map measurement, not a
     measured runtime speedup - don't quote it as one until a bench timing run backs it up.
+- **The SPI RX-overrun error path shall be tested** (project owner's explicit direction,
+  2026-09-10). MicroPython 1.29's new `OSError(EIO)` raise site (SPECIFICATION.md Part F.5.2)
+  currently has coverage at exactly one of the four tiers CLAUDE.md's standing bus-hazard rule asks
+  for. What exists and what is owed:
+  - **Mock tier - done.** `tests/test_asy_spi_driver.py` pins the raise-site semantics against
+    `tests/machine.py`'s `SPI.rx_overrun`: a write never raises, a sub-32-byte read never takes the
+    DMA path so cannot overrun, and a 32+ byte read raises `OSError(EIO)` uncaught.
+  - **The live path itself - missing.** Those tests stop at `asy_spi_driver.py`. Nothing exercises
+    an overrun through `asy_fram_manager.py`'s chunk loop on the 260-byte SGP40 VOC-state read -
+    where it actually surfaces - or asserts what the reader task and `system_service.py`'s
+    supervisor then do with it. Cheapest of the four to add and the most informative, since it
+    covers the behaviour open question 15 is actually about.
+  - **Digital twin - missing.** `digital_twin/machine.py` models I2C's no-ACK `EIO` but has no SPI
+    equivalent; it needs the same fault surface `tests/machine.py`'s fake already grew.
+  - **Real hardware - missing**, and it is the tier that can actually settle open question 15: a
+    bounded retry is only the right answer if a real overrun is genuinely transient, which no
+    amount of fault injection against a fake can establish. `tests_hardware/`'s existing FRAM
+    fault-injection work (its README's "Fifth pass") is the natural home.
 - **Real-hardware re-test of the segfault fix and the memory-leak soak test — real-hardware forms
   now exist and are wired into `tests_hardware/`, but the actual long-soak run is still opt-in and
   has not yet been executed.** Corrects a stale claim (this entry used to say neither soak-test
