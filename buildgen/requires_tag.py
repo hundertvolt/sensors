@@ -10,12 +10,14 @@ from pathlib import Path
 from typing import Any
 
 from buildgen.errors import BuildError
-from buildgen.tag_comments import check_for_near_miss_tags, iter_comment_tokens
+from buildgen.tag_comments import KNOWN_TAGS, check_for_near_miss_tags, iter_comment_tokens
 
 # "#+" so a "## @requires ..." section-style comment is accepted rather than reported as
 # malformed; the value may not start with an operator character, so a truncated
 # "bus.timeout>=" fails as a malformed *tag* instead of silently re-splitting into op ">"
 # and value "=".
+_SPECS = tuple(spec for spec in KNOWN_TAGS if spec.name == "requires")
+
 _TAG_RE = re.compile(r"#+\s*@requires\s+bus\.(?P<field>\w+)\s*(?P<op>>=|<=|==|!=|>|<)\s*(?P<value>[^\s<>=!]\S*)")
 
 _OPS: dict[str, Callable[[Any, Any], bool]] = {
@@ -63,7 +65,7 @@ def parse_requires_tags(path: Path, device: str, instance_label: str) -> tuple[R
         except ValueError:
             raise BuildError(device, f"{path}:{tok.lineno}: malformed @requires value {m.group('value')!r}", instance=instance_label) from None
         tags.append(RequiresTag(m.group("field"), m.group("op"), value, m.group(0).strip()))
-    check_for_near_miss_tags(tokens, path, device, instance_label, exact_matches)
+    check_for_near_miss_tags(tokens, path, device, instance_label, exact_matches, _SPECS)
     return tuple(tags)
 
 

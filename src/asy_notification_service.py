@@ -11,7 +11,6 @@ from collections import namedtuple
 from micropython import const
 
 from asy_fram_manager import AsyFramManager
-from asy_neopixel_driver import NeopixelDriver
 from base_classes import LockedCounter, SensorReaderConfig
 from config_manager import make_dict, name_cfg, schema_names
 
@@ -24,7 +23,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
     from typing import Any, Protocol
 
-    from config_manager import ConfigSchema, WiringSchema
+    from config_manager import ConfigSchema
 
     class _ValueSource(Protocol):
         # Structural stand-in for a NotificationSignal's producer (SPECIFICATION.md Part C.10's
@@ -41,10 +40,8 @@ _NAME = const("NOTIFY")
 # request_signal_cb, not the instance itself, per BUILD_CHAIN_PLAN.md's "no getters, no callback
 # functions in generated code" - the callback-shaped constructor parameter itself stays as-is, only
 # how the generator supplies it changes), plus the optional FRAM backup target.
-_WIRING: "WiringSchema" = (
-    ("signal_sink", NeopixelDriver, "request_signal", True, "attr"),
-    ("fram_target", AsyFramManager, "fram", False, "kwarg"),
-)
+# @wiring signal_sink NeopixelDriver request_signal required attr
+# @wiring fram_target AsyFramManager fram optional kwarg
 
 
 class _DefaultSignalSink:

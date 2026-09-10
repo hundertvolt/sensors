@@ -1,12 +1,22 @@
-"""AST-parses a driver module's `_LIMITS` tuple - `(toml_field, constraint)`, the constraint either
-a `(min, max)` 2-tuple (either side `None` = unchecked) or a `frozenset` of exact legal ints - for a
-field's own unconditional domain (BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md §5.2)."""
+"""Parses a driver module's `# @limits <field> <min>..<max>` / `# @limits <field> in {a, b}` comment
+tags - a field's own unconditional domain, either a range (`*` on either side means that side is
+unchecked, and `min == max` an exact value) or an enumerated set of legal ints."""
 
-import ast
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
 from buildgen.errors import BuildError
+from buildgen.tag_comments import KNOWN_TAGS, check_for_near_miss_tags, iter_comment_tokens
+
+_SPECS = tuple(spec for spec in KNOWN_TAGS if spec.name == "limits")
+
+# Past the field name the payload is interpreted by hand below, so a broken bound reports which
+# half is wrong rather than the whole line just failing to match. It must still carry range or
+# choice-set punctuation to match at all, or an ordinary sentence that happens to start with
+# "@limits" would be read as a tag with an unintelligible domain instead of as the prose it is.
+_TAG_RE = re.compile(r"#+\s*@limits\s+(?P<field>\w+)\s+(?=.*(?:\.\.|[{}]))(?P<payload>\S.*?)\s*$")
+_SET_RE = re.compile(r"^in\s*\{(?P<values>[^{}]*)\}$")
 
 
 @dataclass(frozen=True)
@@ -17,86 +27,71 @@ class LimitField:
     max: "int | float | None" = None
 
 
-class _NotNumeric:
-    pass
+def _number(raw: str, path: Path, lineno: int, device: str, driver: str, what: str) -> "int | float":
+    try:
+        return int(raw, 0)  # base 0 so a hex address literal (0x76) reads as itself
+    except ValueError:
+        pass
+    try:
+        return float(raw)
+    except ValueError:
+        raise BuildError(device, f"{path}:{lineno}: @limits {what} {raw!r} is not a number", instance=driver) from None
 
 
-_NOT_NUMERIC = _NotNumeric()
+def _parse_payload(payload: str, path: Path, lineno: int, device: str, driver: str, field: str) -> "LimitField":
+    set_match = _SET_RE.match(payload)
+    if set_match is not None:
+        raw_values = [v.strip() for v in set_match.group("values").split(",") if v.strip()]
+        if not raw_values:
+            raise BuildError(device, f"{path}:{lineno}: @limits {field} declares an empty choice set - no value could ever be legal", instance=driver, field=field)
+        choices = set()
+        for raw in raw_values:
+            value = _number(raw, path, lineno, device, driver, "choice")
+            if not isinstance(value, int):
+                raise BuildError(device, f"{path}:{lineno}: @limits {field} choice {raw!r} must be an int, not a float", instance=driver, field=field)
+            choices.add(value)
+        return LimitField(field, frozenset(choices))
 
-
-def _find_limits_value(tree: ast.Module) -> ast.expr | None:
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.Assign, ast.AnnAssign)):
-            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
-            if any(isinstance(t, ast.Name) and t.id == "_LIMITS" for t in targets):
-                return node.value
-    return None
-
-
-def _parse_bound(node: ast.expr) -> "int | float | None | _NotNumeric":
-    if isinstance(node, ast.Constant):
-        if node.value is None:
-            return None
-        if isinstance(node.value, bool):
-            return _NOT_NUMERIC
-        if isinstance(node.value, (int, float)):
-            return node.value
-        return _NOT_NUMERIC
-    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub):
-        inner = _parse_bound(node.operand)
-        if isinstance(inner, (int, float)):
-            return -inner
-        return _NOT_NUMERIC
-    return _NOT_NUMERIC
-
-
-def _parse_choices(node: ast.expr) -> "frozenset[int] | None":
-    if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "frozenset" and len(node.args) == 1):
-        return None
-    container = node.args[0]
-    if not isinstance(container, (ast.Set, ast.List, ast.Tuple)):
-        return None
-    values: list[int] = []
-    for elt in container.elts:
-        bound = _parse_bound(elt)
-        if not isinstance(bound, int):
-            return None
-        values.append(bound)
-    return frozenset(values)
+    parts = payload.split("..")
+    if len(parts) != 2:
+        raise BuildError(
+            device,
+            f"{path}:{lineno}: @limits {field} payload {payload!r} is neither a range (<min>..<max>, '*' for unbounded) nor a choice set (in {{a, b}})",
+            instance=driver,
+            field=field,
+        )
+    low_raw, high_raw = (p.strip() for p in parts)
+    if not low_raw or not high_raw:
+        raise BuildError(device, f"{path}:{lineno}: @limits {field} range {payload!r} is missing one of its bounds - use '*' for an unbounded side", instance=driver, field=field)
+    low = None if low_raw == "*" else _number(low_raw, path, lineno, device, driver, "min")
+    high = None if high_raw == "*" else _number(high_raw, path, lineno, device, driver, "max")
+    if low is None and high is None:
+        raise BuildError(device, f"{path}:{lineno}: @limits {field} declares '*..*', which checks nothing - drop the tag instead", instance=driver, field=field)
+    if low is not None and high is not None and low > high:
+        raise BuildError(device, f"{path}:{lineno}: @limits {field} range {low}..{high} is inverted - no value could ever be legal", instance=driver, field=field)
+    return LimitField(field, None, low, high)
 
 
 def parse_limits(path: Path, device: str, driver: str) -> "tuple[LimitField, ...]":
-    try:
-        tree = ast.parse(path.read_text(), filename=str(path))
-    except SyntaxError as e:
-        raise BuildError(device, f"{path} has a syntax error: {e}", instance=driver) from e
-
-    value_node = _find_limits_value(tree)
-    if value_node is None:
-        return ()
-    if not isinstance(value_node, ast.Tuple):
-        raise BuildError(device, f"{path}: _LIMITS must be a literal tuple", instance=driver)
-
+    tokens = iter_comment_tokens(path, device, driver)
     fields = []
-    for i, elt in enumerate(value_node.elts):
-        label = f"_LIMITS[{i}]"
-        if not isinstance(elt, ast.Tuple) or len(elt.elts) != 2:
-            raise BuildError(device, f"{path}: {label} must be a 2-tuple (toml_field, constraint)", instance=driver)
-        f_field, f_constraint = elt.elts
-        if not (isinstance(f_field, ast.Constant) and isinstance(f_field.value, str)):
-            raise BuildError(device, f"{path}: {label}[0] (toml_field) must be a string literal", instance=driver)
-
-        choices = _parse_choices(f_constraint)
-        if choices is not None:
-            fields.append(LimitField(f_field.value, choices))
+    exact_matches: set[tuple[int, int]] = set()
+    for tok in tokens:
+        m = _TAG_RE.fullmatch(tok.text.strip())
+        if m is None:
             continue
-
-        if not (isinstance(f_constraint, ast.Tuple) and len(f_constraint.elts) == 2):
-            raise BuildError(device, f"{path}: {label}[1] (constraint) must be a (min, max) 2-tuple or frozenset({{...}}) of ints", instance=driver)
-        min_node, max_node = f_constraint.elts
-        min_val = _parse_bound(min_node)
-        max_val = _parse_bound(max_node)
-        if isinstance(min_val, _NotNumeric) or isinstance(max_val, _NotNumeric):
-            raise BuildError(device, f"{path}: {label}[1]'s (min, max) entries must each be a number literal or None", instance=driver)
-        fields.append(LimitField(f_field.value, None, min_val, max_val))
+        exact_matches.add((tok.lineno, tok.col))
+        if tok.inside_block:
+            raise BuildError(
+                device,
+                f"{path}:{tok.lineno}: @limits tag must be at module level, not inside a class/function body: {tok.text.strip()!r}",
+                instance=driver,
+            )
+        fields.append(_parse_payload(m.group("payload"), path, tok.lineno, device, driver, m.group("field")))
+    seen: set[str] = set()
+    for f in fields:
+        if f.toml_field in seen:
+            raise BuildError(device, f"{path}: declares two @limits tags for {f.toml_field!r} - one domain per field", instance=driver, field=f.toml_field)
+        seen.add(f.toml_field)
+    check_for_near_miss_tags(tokens, path, device, driver, exact_matches, _SPECS)
     return tuple(fields)

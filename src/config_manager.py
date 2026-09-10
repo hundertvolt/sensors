@@ -35,47 +35,12 @@ if TYPE_CHECKING:
     ]
     ConfigSchema = tuple[FieldSchema, ...]
 
-    # A driver's declaration of a live cross-instance dependency it needs at construction time:
-    # (toml_field_name, required_driver_class, target, required, mode) - see instance_name()'s own
-    # module-level comment and SPECIFICATION.md Part C.14.2 for the full convention. The generator
-    # (buildgen/, Session 3 of BUILD_CHAIN_PLAN.md) reads this to resolve toml_field_name to an
-    # already-constructed producer instance of the named class, topologically sorting every
-    # device's instance list so a producer is always constructed before any consumer that names it.
-    # `target`/`mode` say how the resolved instance is actually handed to the consumer:
-    #   mode="kwarg": the instance itself is passed as a constructor kwarg named `target`
-    #     (every case - `fram=`/`fram_storage=`).
-    #   mode="attr": the instance's `target` attribute/bound method is passed instead of the
-    #     instance itself (NotificationCoordinator's `request_signal_cb` wants
-    #     `pixel.request_signal`, not `pixel`).
-    #   mode="setter": `<consumer>.<target>(<resolved instance>)` is called once, after both
-    #     already exist (AsyConnTime.set_ext_led() - device.wiring.led_target).
-    # Purely additive over C.14.2's original 2-element shape - no existing driver's __init__
-    # signature changed to add this, `_WIRING` itself is never read at runtime (TYPE_CHECKING-only
-    # alias, buildgen/ AST-parses the literal tuple from source instead - see buildgen/wiring.py).
-    # SGP40's old whole-object comp_source (mode="kwarg") is no longer a _WIRING entry at all -
-    # BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md §2.9 generalized it into independent per-value
-    # fields resolved by ValueWiringSchema below instead.
-    WiringField = tuple[str, type, str, bool, str]
-    WiringSchema = tuple[WiringField, ...]
-
-    # A driver's declaration of a real, already-documented-in-code domain a TOML field's value must
-    # satisfy (BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md §5.2): (toml_field, constraint), where
-    # constraint is either a (min, max) tuple (each a number or None - that side unchecked, min==max
-    # an exact-value requirement) or a frozenset of exact legal int values (e.g. BMP388/390's
-    # address-select pin: exactly 0x76 or 0x77). AST-parsed the same way _WIRING is (buildgen/limits.py)
-    # - never a blanket requirement for every numeric field to declare bounds, only ones with a real
-    # constraint already established elsewhere in the same file.
-    LimitConstraint = tuple[int | float | None, int | float | None] | frozenset[int]
-    LimitField = tuple[str, LimitConstraint]
-    LimitsSchema = tuple[LimitField, ...]
-
-    # A driver's declaration of a per-value measurement-wiring field (BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md
-    # §2.9): (toml_field, source_kwarg, field_kwarg, required) - generalizes the {source, field}
-    # shape warn_* already used (above) to any module consuming one scalar value out of another
-    # module's get_data() result, matched by attribute name alone rather than a fixed producer
-    # class. AST-parsed the same way _WIRING is (buildgen/value_wiring.py).
-    ValueWiringField = tuple[str, str, str, bool]
-    ValueWiringSchema = tuple[ValueWiringField, ...]
+    # A driver's own generator-facing metadata - what it can be wired to, and what domains its
+    # TOML fields have - is NOT declared here, and deliberately isn't a Python value at all: it
+    # lives in `# @wiring`/`# @value-wiring`/`# @limits` comment tags beside the schema it
+    # describes, because nothing the running firmware reads should become a real frozen-bytecode
+    # value just to serve the generator (BUILD_CHAIN_PLAN.md's quality bar). See
+    # SPECIFICATION.md Part C.14.2 for the grammars and buildgen/wiring.py for the parser.
 
 from print_log import PrintLogHistory
 

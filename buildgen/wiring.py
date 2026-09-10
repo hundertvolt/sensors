@@ -1,21 +1,25 @@
-"""AST-parses a driver module's `_WIRING` tuple, `(toml_field, producer_class, target, required,
-mode)` - SPECIFICATION.md Part C.14.2 documents the shape and all three modes. Never imported: only
-the literal shape is needed, never the class objects it references."""
+"""Parses a driver module's `# @wiring <toml_field> <ProducerClass> <target> <required|optional>
+<kwarg|attr|setter>` comment tags (SPECIFICATION.md Part C.14.2 documents the shape and all three
+modes) - a comment, never a real Python value, per BUILD_CHAIN_PLAN.md's quality bar."""
 
-import ast
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
 from buildgen.errors import BuildError
+from buildgen.tag_comments import KNOWN_TAGS, check_for_near_miss_tags, iter_comment_tokens
 
-_VALID_MODES = {"kwarg", "attr", "setter"}
+_MODES = ("kwarg", "attr", "setter")
+_SPECS = tuple(spec for spec in KNOWN_TAGS if spec.name == "wiring")
+
+# Every element is its own capture group with its own alternation, so dropping any one of the five
+# leaves the line matching no tag at all - which check_for_near_miss_tags() then reports as a
+# malformed @wiring tag rather than letting it pass as "no tag here".
+_TAG_RE = re.compile(
+    r"#+\s*@wiring\s+(?P<toml_field>\w+)\s+(?P<producer_class>\w+)\s+(?P<target>\w+)\s+(?P<required>required|optional)\s+(?P<mode>kwarg|attr|setter)\s*$"
+)
 
 
-# mode decides how the resolved producer reaches its consumer (SPECIFICATION.md Part C.14.2):
-# "kwarg" passes the instance as a constructor kwarg named `target`; "attr" passes the instance's
-# `target` attribute/bound method instead (signal_sink wants `pixel.request_signal`, not `pixel`);
-# "setter" calls `<consumer>.<target>(<producer>)` once, after both exist, so it gates nothing in
-# construction order. Per-value measurement wiring is _VALUE_WIRING's, not _WIRING's (value_wiring.py).
 @dataclass(frozen=True)
 class WiringField:
     toml_field: str
@@ -23,53 +27,41 @@ class WiringField:
     target: str
     required: bool
     mode: str  # "kwarg" | "attr" | "setter"
+    # mode decides how the resolved producer reaches its consumer (SPECIFICATION.md Part C.14.2):
+    # "kwarg" passes the instance as a constructor kwarg named `target`; "attr" passes the
+    # instance's `target` attribute/bound method instead (signal_sink wants `pixel.request_signal`,
+    # not `pixel`); "setter" calls `<consumer>.<target>(<producer>)` once, after both exist, so it
+    # gates nothing in construction order. Per-value measurement wiring is _VALUE_WIRING's
+    # (value_wiring.py), not this tag's.
 
 
-def _class_name(node: ast.expr) -> str | None:
-    if isinstance(node, ast.Name):
-        return node.id
-    if isinstance(node, ast.Attribute):
-        return node.attr
-    return None
-
-
-def _find_wiring_value(tree: ast.Module) -> ast.expr | None:
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.Assign, ast.AnnAssign)):
-            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
-            if any(isinstance(t, ast.Name) and t.id == "_WIRING" for t in targets):
-                return node.value
-    return None
-
-
-def parse_wiring(path: Path, device: str, driver: str) -> tuple[WiringField, ...]:
-    try:
-        tree = ast.parse(path.read_text(), filename=str(path))
-    except SyntaxError as e:
-        raise BuildError(device, f"{path} has a syntax error: {e}", instance=driver) from e
-
-    value_node = _find_wiring_value(tree)
-    if value_node is None:
-        return ()
-    if not isinstance(value_node, ast.Tuple):
-        raise BuildError(device, f"{path}: _WIRING must be a literal tuple", instance=driver)
-
+def parse_wiring(path: Path, device: str, driver: str) -> "tuple[WiringField, ...]":
+    tokens = iter_comment_tokens(path, device, driver)
     fields = []
-    for i, elt in enumerate(value_node.elts):
-        label = f"_WIRING[{i}]"
-        if not isinstance(elt, ast.Tuple) or len(elt.elts) != 5:
-            raise BuildError(device, f"{path}: {label} must be a 5-tuple (toml_field, producer_class, target, required, mode)", instance=driver)
-        f_field, f_class, f_target, f_required, f_mode = elt.elts
-        if not (isinstance(f_field, ast.Constant) and isinstance(f_field.value, str)):
-            raise BuildError(device, f"{path}: {label}[0] (toml_field) must be a string literal", instance=driver)
-        class_name = _class_name(f_class)
-        if class_name is None:
-            raise BuildError(device, f"{path}: {label}[1] (producer_class) must be a plain class reference", instance=driver)
-        if not (isinstance(f_target, ast.Constant) and isinstance(f_target.value, str)):
-            raise BuildError(device, f"{path}: {label}[2] (target) must be a string literal", instance=driver)
-        if not (isinstance(f_required, ast.Constant) and isinstance(f_required.value, bool)):
-            raise BuildError(device, f"{path}: {label}[3] (required) must be a bool literal", instance=driver)
-        if not (isinstance(f_mode, ast.Constant) and isinstance(f_mode.value, str) and f_mode.value in _VALID_MODES):
-            raise BuildError(device, f"{path}: {label}[4] (mode) must be one of {sorted(_VALID_MODES)}", instance=driver)
-        fields.append(WiringField(f_field.value, class_name, f_target.value, bool(f_required.value), f_mode.value))
+    exact_matches: set[tuple[int, int]] = set()
+    for tok in tokens:
+        m = _TAG_RE.fullmatch(tok.text.strip())
+        if m is None:
+            continue
+        exact_matches.add((tok.lineno, tok.col))
+        if tok.inside_block:
+            raise BuildError(
+                device,
+                f"{path}:{tok.lineno}: @wiring tag must be at module level, not inside a class/function body: {tok.text.strip()!r}",
+                instance=driver,
+            )
+        fields.append(WiringField(m.group("toml_field"), m.group("producer_class"), m.group("target"), m.group("required") == "required", m.group("mode")))
+    duplicate = _first_duplicate([f.toml_field for f in fields])
+    if duplicate is not None:
+        raise BuildError(device, f"{path}: declares two @wiring tags for {duplicate!r} - each TOML field is wired exactly once", instance=driver, field=duplicate)
+    check_for_near_miss_tags(tokens, path, device, driver, exact_matches, _SPECS)
     return tuple(fields)
+
+
+def _first_duplicate(names: "list[str]") -> "str | None":
+    seen: set[str] = set()
+    for name in names:
+        if name in seen:
+            return name
+        seen.add(name)
+    return None

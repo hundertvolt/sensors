@@ -36,7 +36,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
     from typing import Any
 
-    from config_manager import ConfigSchema, WiringSchema
+    from config_manager import ConfigSchema
 
 
 _SCD30_DEFAULT_ADDR = const(0x61)
@@ -78,7 +78,7 @@ _FIELDS = const(("CO2", "Temp", "Hum", "WetBulb", "DewPoint", "TS"))  # kept in 
 # Datasheet hard maximum, same source (Interface Description p.2): "Maximal I2C speed is
 # 100 kHz" - Sensirion recommends 50 kHz or less, which every device TOML uses today.
 # @requires bus.frequency<=100000
-_WIRING: "WiringSchema" = (("fram_target", AsyFramManager, "fram", False, "kwarg"),)
+# @wiring fram_target AsyFramManager fram optional kwarg
 
 if TYPE_CHECKING:
     SCDResults = tuple[float | None, float | None, float | None, int | None]  # CO2, temperature, humidity, timestamp

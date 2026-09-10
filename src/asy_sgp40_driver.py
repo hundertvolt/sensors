@@ -35,7 +35,6 @@ if TYPE_CHECKING:
 
     from asy_fram_manager import AsyFramChunkTimestampedBuffer
     from asy_i2c_driver import I2C
-    from config_manager import ValueWiringSchema, WiringSchema
 
     class _ValueSource(Protocol):
         # Structural stand-in for temperature_source/humidity_source's producer
@@ -80,17 +79,15 @@ _FIELDS = const(("VOC", "Raw", "TS"))  # kept in sync with SGP40's own fields ab
 # rather than a comment each device TOML author has to remember - a bus this driver shares
 # with an SCD30 is held to that sensor's own stricter 100 kHz tag on top of this one.
 # @requires bus.frequency<=400000
-_WIRING: "WiringSchema" = (("fram_target", AsyFramManager, "fram_storage", False, "kwarg"),)
+# @wiring fram_target AsyFramManager fram_storage optional kwarg
 
-# Per-value measurement wiring (§2.9): (toml_field, source_kwarg, field_kwarg, required) - each
-# resolves independently, the same generic {source, field} shape asy_notification_service.py's
-# warn_* fields already use, matched by attribute name alone (no fixed producer_class). Both
-# required=True (an SGP40 with no compensation data at all needs an explicit default opt-in, per
-# §2's wiring-defaults mechanism - see _DefaultTemperatureSource/_DefaultHumiditySource below).
-_VALUE_WIRING: "ValueWiringSchema" = (
-    ("temperature_source", "temperature_source", "temperature_field", True),
-    ("humidity_source", "humidity_source", "humidity_field", True),
-)
+# Per-value measurement wiring (§2.9) - each field resolves independently, the same generic
+# {source, field} shape asy_notification_service.py's warn_* fields already use, matched by
+# attribute name alone (no fixed producer class). Both required: an SGP40 with no compensation
+# data at all needs an explicit default opt-in, per §2's wiring-defaults mechanism - see
+# _DefaultTemperatureSource/_DefaultHumiditySource below.
+# @value-wiring temperature_source temperature_source temperature_field required
+# @value-wiring humidity_source humidity_source humidity_field required
 
 _ConstValue = namedtuple("_ConstValue", ("value",))
 

@@ -13,7 +13,6 @@ import network
 from machine import Pin, Timer
 from micropython import const
 
-from asy_neopixel_driver import NeopixelDriver
 from base_classes import LockedCounter, SensorReaderConfig
 from captive_dns import DNSServer
 from config_manager import make_dict
@@ -28,7 +27,6 @@ if TYPE_CHECKING:
     from typing import Any, Protocol
 
     from asy_fram_manager import AsyFramManager
-    from config_manager import WiringSchema
     from print_log import PrintLogHistory
 
     # Structural Protocol for a caller-supplied LED (SPECIFICATION.md Part C.10's typing convention).
@@ -66,7 +64,7 @@ _FIELDS = const(("Mode", "Connected", "IP", "TS"))  # kept in sync with WIFI's o
 # to an already-constructed NeopixelDriver instance. "setter" mode: set_ext_led() is a
 # post-construction call (see set_ext_led() below), not a constructor kwarg - the generator emits
 # `conn.set_ext_led(<resolved instance>)` once, after both already exist.
-_WIRING: "WiringSchema" = (("led_target", NeopixelDriver, "set_ext_led", False, "setter"),)
+# @wiring led_target NeopixelDriver set_ext_led optional setter
 
 _STA_DISCONNECT_WAIT_ITERS = const(20)  # 20 * 0.5s = 10s max wait for isconnected() to clear -
 # bounds _disconnect_sta_and_wait()'s loop; a real disconnect() completes far faster than this.

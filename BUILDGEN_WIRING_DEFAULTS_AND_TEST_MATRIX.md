@@ -1133,6 +1133,20 @@ generated *source text*, under `tests_scripts/`, real CPython), never a test tha
 generated module. Whether/how §8's eventual fixes also need a corresponding digital-twin-boot test
 once Session 5 lands is that session's own question to pick up, not this document's to resolve now.
 
+## 9a. Declarations converted to comment tags (2026-09-10, project owner's ruling)
+
+Everything below written as `_WIRING`, `_VALUE_WIRING` or `_LIMITS` describes a mechanism that is
+now a **comment tag**, not a Python tuple - `# @wiring`, `# @value-wiring`, `# @limits`
+respectively. The rule is BUILD_CHAIN_PLAN.md's own, restated by the project owner: nothing the
+running firmware never reads should become a real frozen-bytecode value just to serve the
+generator. Only the declaration *form* changed; every semantic this document records about them -
+the 5-element wiring shape and its three modes, per-value `{source, field}` resolution, the
+min/max-or-choice-set domain - is unchanged, as are `buildgen`'s own `WiringField`/
+`ValueWiringField`/`LimitField` dataclasses and every consumer of them. `_Default<Field>` classes
+are untouched: the generated module constructs them, so they are live code, not metadata.
+Grammars and the full accept/reject matrix: `SPECIFICATION.md` Part C.14.2 and
+`tests_scripts/test_buildgen_{wiring,value_wiring,limits}.py`.
+
 ## 10. Implementation plan (2026-09-10)
 
 The project owner's ask: sequence everything §2-§8 found into an ordered, dependency-aware plan

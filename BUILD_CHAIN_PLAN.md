@@ -353,13 +353,12 @@ tests; a future Session 6) decide whether/where to write them. Concretely:
   `bus.frequency<=400000` (datasheet Table 3's fSCL max). A bus shared by both is held to the
   stricter of the two. `bmp3xx` is deliberately untagged — its datasheet supports every I2C mode,
   so any bound would be invented rather than documented.
-- **Per-field domains — `_LIMITS`**: `buildgen.limits` AST-parses `(toml_field, constraint)`, the
-  constraint either a `(min, max)` 2-tuple or a `frozenset` of exact legal ints. Only
-  `asy_bmp3xx_driver.py` declares one today (`address` ∈ {0x76, 0x77}, `trigger_sec` ∈ [1, 3600],
+- **Per-field domains — `# @limits`**: `buildgen.limits` parses `<field> <min>..<max>` or
+  `<field> in {a, b}`. Only `asy_bmp3xx_driver.py` declares one today (`address` ∈ {0x76, 0x77}, `trigger_sec` ∈ [1, 3600],
   both from constants already in that file) — no invented bounds anywhere.
 - **Wiring defaults and per-value measurement wiring**: `buildgen.defaults` AST-discovers a
   driver's `_Default<Field>` classes (the `__init__` signature *is* the schema for a
-  `{default = true, ...}` TOML sub-table), and `buildgen.value_wiring` parses `_VALUE_WIRING` —
+  `{default = true, ...}` TOML sub-table), and `buildgen.value_wiring` parses `# @value-wiring` —
   independent per-value `{source, field}` fields resolved by attribute name, replacing SGP40's old
   whole-object `comp_source`. See BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md §2/§2.9.
 - **Pin legality and role**: `buildgen.pico_gpio` holds the Pico W's fixed GPIO→peripheral table
@@ -540,27 +539,38 @@ proceed rather than degrading:
   its `[bus.*]` table, and evaluates the tag's predicate against that table's actual field value —
   silently continuing if satisfied, failing loudly (naming the device, instance, bus, field, and
   expected-vs-actual value) if not, the same as every other check in this section.
-- **Which of the two forms a new driver-declared fact takes — a real `_`-prefixed tuple, or a
-  comment tag — is decided by what the fact is *about*, not by whether the firmware reads it**
-  (settled 2026-09-10, after the question was raised on `_LIMITS` specifically). None of
-  `_WIRING`/`_VALUE_WIRING`/`_LIMITS`/`_Default*` is read at runtime either, so "the firmware never
-  reads it" cannot be the dividing line, and the frozen-bytecode cost it points at was measured
-  rather than argued: stripping `asy_bmp3xx_driver.py`'s entire `_LIMITS` tuple changes its
-  `mpy-cross` output by **71 bytes** (10062 → 9991), against a >2 MB flash budget. The real line:
-  - **A declaration states a property of this module's own schema** — which of its constructor
-    parameters are wireable (`_WIRING`, `_VALUE_WIRING`), what domain one of its own TOML fields
-    has (`_LIMITS`), what a default provider's keys are (`_Default*`). It is structured, typed,
-    multi-element data that has a natural Python home right beside the schema it describes, so real
-    syntax carries it: the AST parser stays trivial, ruff and mypy see it, and a malformed one is a
-    `SyntaxError` the interpreter itself catches before any generator runs.
-  - **A comment tag states a constraint about an object this module does not own** — the bus it
-    happens to be attached to (`@requires`), the website that renders it (the planned `@web`). There
-    is no module-level Python object to hang it on, so a real constant would be pure cost with no
-    syntax checking to buy back, and the near-miss detector (`buildgen/tag_comments.py`) exists
-    precisely because a comment gets none of the interpreter's own validation for free.
-  So `_LIMITS` stays a tuple, and a future per-field domain belongs there too; a future
-  cross-object predicate (a second bus property, a display/website fact) is a tag, built on
-  `tag_comments.py` rather than on a second detector.
+- **Every driver-declared fact the running firmware never reads is a comment tag, not a Python
+  value** (project owner's ruling, 2026-09-10, restating the rule the `@requires` bullet above
+  already stated). The question was raised against `_LIMITS`, whose defence was that it is
+  structured data with a natural Python home; the ruling is that the original rule holds and the
+  subject matter of the fact doesn't change it. Applied consistently, it caught three declarations,
+  all now converted:
+  - `_WIRING` → `# @wiring <toml_field> <ProducerClass> <target> <required|optional>
+    <kwarg|attr|setter>`
+  - `_VALUE_WIRING` → `# @value-wiring <toml_field> <source_kwarg> <field_kwarg>
+    <required|optional>`
+  - `_LIMITS` → `# @limits <field> <min>..<max>` or `# @limits <field> in {a, b}` (`*` on either
+    side of a range means that side is unchecked; `min == max` is an exact-value requirement)
+
+  Confirmed by direct grep before converting: none of the three had a single runtime read anywhere
+  in `src/`. What the rule does **not** catch is a `_Default<Field>` class — the generated module
+  imports and constructs those (`_DefaultHumiditySource(relative_humidity=35)`), so they are live
+  code, not metadata, and stay Python. The generator still reads their `__init__` signature by AST,
+  but that is reading real code's shape rather than a constant planted for it to find.
+
+  Measured, so the payoff is on record rather than assumed: the three tuples plus the
+  `TYPE_CHECKING` type aliases that described them (`WiringSchema`/`LimitsSchema`/
+  `ValueWiringSchema`, real compiled statements on-device since `TYPE_CHECKING` is `False` at
+  runtime) came to **3,576 bytes** of `src/`'s frozen bytecode, about 2.6% of it. Two imports went
+  with them — `asy_notification_service.py` and `asy_wifi_service.py` each imported
+  `NeopixelDriver` solely to name it in `_WIRING` — with no change to any device's computed frozen
+  module set, confirmed by regenerating all six.
+
+  What a comment costs in exchange is that the interpreter validates nothing: a typo'd or partial
+  tag is invisible unless something looks for it. That is what `buildgen/tag_comments.py` is for,
+  and why every family registered there carries its own payload-shape predicate — a single shared
+  heuristic goes blind on whichever shape it wasn't written for, which is the exact silent miss
+  the mechanism exists to prevent.
 - **Standing rule for every tag in this comment-tag family (project owner's explicit direction, not
   scoped to `@requires` alone): a tag that's present, or close to present with a typo, must be
   verified correct in every dimension — exact wording, location, format, content, validity — or

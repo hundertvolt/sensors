@@ -1275,19 +1275,22 @@ that session's PR description) — purely additive, no existing driver's constru
 changed to make this possible:
 
 ```
-_WIRING: "WiringSchema" = ((toml_field_name, required_driver_class, target, required, mode), ...)
+# @wiring <toml_field> <ProducerClass> <target> <required|optional> <kwarg|attr|setter>
 ```
 
-`WiringField = tuple[str, type, str, bool, str]`, `WiringSchema = tuple[WiringField, ...]`
-(`config_manager.py`, `TYPE_CHECKING`-only — `_WIRING`'s own value is a real, live runtime tuple,
-just never read by anything at runtime; `buildgen/wiring.py` AST-parses it from source instead of
-importing). `target`/`mode` say how the resolved producer instance is actually handed to the
-consumer:
+**A comment, never a real Python value** — placed at module level beside the schema it describes.
+Nothing the running firmware itself ever reads should become a real frozen-bytecode value just to
+serve the generator (BUILD_CHAIN_PLAN.md's quality bar), and this declaration is read only by
+`buildgen/wiring.py`. It was a real `_WIRING` tuple until 2026-09-10; converting it, plus
+`_VALUE_WIRING`, `_LIMITS` and the `TYPE_CHECKING` type aliases that described them, took 3,576
+bytes out of `src/`'s frozen bytecode. Every element is a bare word, and dropping any one of the
+five makes the tag fail the build loud rather than parse as "no tag here" (`tag_comments.py`).
+`target`/`mode` say how the resolved producer instance is actually handed to the consumer:
 
 - `mode="kwarg"`: the instance itself is passed as a constructor kwarg named `target` — e.g.
-  `asy_sgp40_driver.py`'s `_WIRING = (("fram_target", AsyFramManager, "fram_storage", False,
-  "kwarg"),)`, the same shape on every other `fram_target`-wirable driver. (SGP40's own
-  compensation-source dependency used to be a second `_WIRING` entry here, `comp_source` — see the
+  `asy_sgp40_driver.py`'s `# @wiring fram_target AsyFramManager fram_storage optional kwarg`, the
+  same shape on every other `fram_target`-wirable driver. (SGP40's own
+  compensation-source dependency used to be a second wiring entry here, `comp_source` — see the
   generalized per-value mechanism below, which replaced it.)
 - `mode="attr"`: the instance's `target` attribute/bound method is passed instead of the instance
   itself — `asy_notification_service.py`'s `signal_sink` resolves to `pixel.request_signal`, not
@@ -1297,12 +1300,12 @@ consumer:
   survives only as the one hand-written driver's own constructor parameter, never as
   generator-authored wiring.
 - `mode="setter"`: `<consumer>.<target>(<resolved producer>)` is called once, after both already
-  exist, instead of at construction time — `asy_wifi_service.py`'s `AsyConnTime._WIRING =
-  (("led_target", NeopixelDriver, "set_ext_led", False, "setter"),)`, matching
-  `set_ext_led()`'s own already-existing post-construction-call shape exactly.
+  exist, instead of at construction time — `asy_wifi_service.py`'s
+  `# @wiring led_target NeopixelDriver set_ext_led optional setter`, matching `set_ext_led()`'s own
+  already-existing post-construction-call shape exactly.
 
-This reuses the existing tuple-based declaration convention (`ConfigSchema`) rather than inventing
-new machinery; there is no separate "provides" registry — a constructed instance either is the
+This reuses the existing comment-tag family (`@requires`, and the planned `@web`) rather than
+inventing new machinery; there is no separate "provides" registry — a constructed instance either is the
 required class or it isn't, checked directly by whoever resolves the reference (`buildgen/`,
 comparing the TOML's own `driver`/`name_ext` identity against `_WIRING`'s `producer_class`, never
 against `instance_name()`/`_NAME` — see C.14.1's own naming-space distinction).

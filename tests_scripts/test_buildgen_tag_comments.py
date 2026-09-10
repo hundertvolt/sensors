@@ -357,7 +357,37 @@ def test_check_for_near_miss_tags_typo_tolerance_narrows_for_a_short_tag_name(mo
     # Two edits away from a 3-letter name is most of the dictionary, so a short tag name (the
     # planned "@web") tolerates only one - otherwise adding it to the registry would start failing
     # builds over unrelated @-words. "wet" is one edit from "web"; "wed"/"we" would be too.
-    monkeypatch.setattr(tag_comments, "KNOWN_TAG_NAMES", ("web",))
+    web = tag_comments.TagSpec("web", lambda text: tag_comments.looks_like_tag_payload(text))
+    monkeypatch.setattr(tag_comments, "KNOWN_TAGS", (web,))
     with pytest.raises(BuildError, match="misspelled @web tag"):
         _check([_tok("# @wet name=x")])
     _check([_tok("# @net name=x")])  # two edits away - no raise
+
+
+def test_known_tag_names_mirrors_the_registry() -> None:
+    # KNOWN_TAG_NAMES is the convenience view; KNOWN_TAGS is the real registry the scan walks.
+    assert tag_comments.KNOWN_TAG_NAMES == tuple(spec.name for spec in tag_comments.KNOWN_TAGS)
+
+
+@pytest.mark.parametrize(
+    "text,family,expected",
+    [
+        ("# @wiring fram_target AsyFramManager fram optional kwarg", "wiring", True),
+        # With the sigil, any bare-word payload counts - that is what catches a tag whose elements
+        # were dropped, at the accepted cost of flagging the prose nobody writes ("@wiring is what
+        # this module needs"). Sentence punctuation still rules a comment out immediately.
+        ("# @wiring is what this module needs, more of it", "wiring", False),
+        ("# wiring is what this module needs more of", "wiring", False),
+        ("# @value-wiring temperature_source temperature_source temperature_field required", "value-wiring", True),
+        ("# @limits trigger_sec 1..3600", "limits", True),
+        ("# @limits address in {0x76, 0x77}", "limits", True),
+        ("# @limits are checked elsewhere in this file", "limits", False),
+        ("# @requires bus.timeout>=200000", "requires", True),
+        ("# @requires a bit more care here", "requires", False),
+    ],
+)
+def test_each_family_recognizes_its_own_payload_shape_and_not_prose(text: str, family: str, expected: bool) -> None:
+    # A single shared heuristic would go blind on whichever shape it wasn't written for - the exact
+    # silent miss the near-miss detector exists to prevent - so each family gates on its own shape.
+    (spec,) = [s for s in tag_comments.KNOWN_TAGS if s.name == family]
+    assert spec.looks_like_payload(text) is expected

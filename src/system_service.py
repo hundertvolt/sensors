@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
     from typing import Any
 
-    from config_manager import ConfigSchema, WiringSchema, WriteValidity
+    from config_manager import ConfigSchema, WriteValidity
     from print_log import PrintLogHistory
 
 _RESET_DELAY = const(4)  # seconds between reset command and execution (keep < watchdog timeout!)
@@ -45,7 +45,7 @@ _NAME = const("SYSTEM")
 # FRAM error-log target, resolved by buildgen/ (Session 3 of BUILD_CHAIN_PLAN.md, from
 # [device.wiring].fram_target - SystemService is mandatory infra, never an [[instance]] entry
 # itself) to an already-constructed instance, passed directly as this service's own fram= kwarg.
-_WIRING: "WiringSchema" = (("fram_target", AsyFramManager, "fram", False, "kwarg"),)
+# @wiring fram_target AsyFramManager fram optional kwarg
 
 # General, module-independent system-settings schema (config_SYSTEM.cfg, via _NAME above) - see
 # SPECIFICATION.md Part C.5 for the setSGP/setBMP history this superseded. DebugLevel is the first
