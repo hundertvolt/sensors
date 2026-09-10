@@ -1,13 +1,6 @@
-"""The Pico W's real, fixed GPIO-to-peripheral mapping (RP-008312-DS-2-pico-w-datasheet.pdf,
-Figure 2, printed p.4 - transcribed and verified directly against the datasheet, not from
-training memory; see BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md §4.3 axis 10 for the full
-derivation, including the GP23/24/25/29-reserved inference). This project targets the Pico W
-alone (project owner confirmed) so this table is a fixed constant, not board-parameterized.
-
-Two independent facts per claimed pin: whether the GPIO number itself is a real, usable pin
-(0-29, excluding the four wireless-reserved numbers) - applies to every claimed pin device-wide -
-and, for a bus's own wire pins only, which peripheral index and role (SDA/SCL, MISO/CSn/SCK/MOSI)
-that specific GPIO is hardwired to."""
+"""The Pico W's real, fixed GPIO-to-peripheral mapping, transcribed from
+RP-008312-DS-2-pico-w-datasheet.pdf Figure 2 (printed p.4) - see
+BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md §4.3 axis 10 for the full derivation."""
 
 WIRELESS_RESERVED_GPIOS = frozenset({23, 24, 25, 29})
 _GPIO_MIN = 0

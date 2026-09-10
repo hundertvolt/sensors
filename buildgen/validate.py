@@ -1,14 +1,6 @@
-"""The full validation pass (BUILD_CHAIN_PLAN.md's "Build/generator script quality bar"):
-structural shape, every global-resource-collision class, and wiring-reference resolution. Builds
-on `buildgen.model.load_device()`'s already-parsed `DeviceModel`, filling in each `InstanceSpec`'s
-`driver_info`/`wiring_schema`/`requires_tags`/`resolved_name` along the way. Every check here
-raises `buildgen.errors.BuildError` naming the device/instance/field responsible - never a bare
-`assert` - so a caller (the CPython test suite, or a future real build script) gets one specific,
-human-readable reason the build was aborted, not a generic failure.
-
-`build_model()` is the single entry point: call it, and either it raises (details above) or it
-returns a `DeviceModel` whose every instance is fully resolved and every collision/reference check
-already passed - safe to hand straight to `buildgen.graph`/`buildgen.codegen`."""
+"""The full validation pass (BUILD_CHAIN_PLAN.md's quality bar): structural shape, every
+global-resource-collision class, and wiring-reference resolution. `build_model()` either raises a
+`BuildError` naming device/instance/field, or returns a fully-resolved, safe-to-generate model."""
 
 import ast
 from pathlib import Path

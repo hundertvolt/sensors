@@ -1,7 +1,6 @@
-"""Tests for buildgen.validate: the full fail-loud validation pass (BUILD_CHAIN_PLAN.md's
-"Build/generator script quality bar"). Every abort condition gets its own test, driven by a
-deliberately malformed fixture built from _toml_fixtures.base_doc() - never just incidentally
-exercised by the six real device TOMLs happening to be valid."""
+"""Tests for buildgen.validate, the full fail-loud validation pass. Every abort condition gets its
+own test, driven by a deliberately malformed fixture built from _toml_fixtures.base_doc() - never
+just incidentally exercised by the six real device TOMLs happening to be valid."""
 
 import shutil
 from pathlib import Path

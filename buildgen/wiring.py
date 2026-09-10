@@ -1,23 +1,6 @@
-"""Parses a driver module's `_WIRING` tuple (SPECIFICATION.md Part C.14.2) directly from its
-source via AST - never imported (see driver_registry.py's own module docstring for why). `_WIRING`
-is a real, live tuple at runtime (unlike the TYPE_CHECKING-only `WiringSchema`/`WiringField` alias
-it's annotated with in config_manager.py) but this generator only ever needs its literal shape,
-never the actual class objects it references.
-
-Extends C.14.2's original 2-element `(toml_field, producer_class)` shape to 5 elements -
-`(toml_field, producer_class, target, required, mode)` - resolving BUILD_CHAIN_PLAN.md's two open
-`_WIRING`-coverage questions (see this session's PR description for the full rationale):
-  - mode="kwarg": the resolved producer instance is passed as a constructor kwarg named `target`
-    (covers every `fram=`/`fram_storage=` case).
-  - mode="attr": the resolved producer instance's `target` attribute/bound method is passed as the
-    value instead of the instance itself (NotificationCoordinator's `request_signal_cb` wants
-    `pixel.request_signal`, not `pixel` itself - this is `signal_sink`'s resolution).
-  - mode="setter": `<consumer>.<target>(<resolved producer>)` is called once, after both already
-    exist (AsyConnTime's `set_ext_led()` - `[device.wiring].led_target`).
-`_WIRING` no longer covers per-value measurement wiring (SGP40's old whole-object `comp_source`) -
-BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md §2.9 generalized that into independent
-`temperature_source`/`humidity_source` fields, resolved generically by attribute name via
-`buildgen.value_wiring`'s own `_VALUE_WIRING` tuple instead, the same shape `warn_*` already used."""
+"""AST-parses a driver module's `_WIRING` tuple, `(toml_field, producer_class, target, required,
+mode)` - SPECIFICATION.md Part C.14.2 documents the shape and all three modes. Never imported: only
+the literal shape is needed, never the class objects it references."""
 
 import ast
 from dataclasses import dataclass
@@ -28,6 +11,11 @@ from buildgen.errors import BuildError
 _VALID_MODES = {"kwarg", "attr", "setter"}
 
 
+# mode decides how the resolved producer reaches its consumer (SPECIFICATION.md Part C.14.2):
+# "kwarg" passes the instance as a constructor kwarg named `target`; "attr" passes the instance's
+# `target` attribute/bound method instead (signal_sink wants `pixel.request_signal`, not `pixel`);
+# "setter" calls `<consumer>.<target>(<producer>)` once, after both exist, so it gates nothing in
+# construction order. Per-value measurement wiring is _VALUE_WIRING's, not _WIRING's (value_wiring.py).
 @dataclass(frozen=True)
 class WiringField:
     toml_field: str

@@ -1,16 +1,12 @@
-"""Per-driver "what does this need from the TOML" facts: which TOML fields are required, which
-drivers sit on a bus at all, and which bus-attached drivers have a real, TOML-configurable
-`address` field (SPECIFICATION.md's own schema note: "A device address field only exists for chips
-with a logically-selectable address" - checked against each chip's datasheet by Session 2, not
-re-derived here).
+"""Per-driver "what does this need from the TOML" facts: required/optional fields, which drivers
+sit on a bus, and which have a real TOML-configurable `address` (SPECIFICATION.md's schema note -
+datasheet-checked by Session 2, not re-derived here)."""
 
-This is the one piece of hand-maintained per-driver knowledge beyond driver-class resolution
-(buildgen.driver_registry) and `_WIRING` (buildgen.wiring) - necessary because Session 2's already-
-shipped TOML field names (`pin`, `cs_pin`, `irq_pin`, `bus`, ...) and `src/`'s own constructor
-parameter names (`neopixel_pin`, `spi_cs`, `irq_pin`, ...) are two independently-evolved naming
-spaces, the same kind of split BUILD_CHAIN_PLAN.md's quality bar already documents for wiring
-identity vs instance_name(). See this session's PR description for why this couldn't be derived
-automatically the way driver-class resolution and `_WIRING` are."""
+# The one hand-maintained per-driver table in this package - driver-class resolution
+# (driver_registry.py) and `_WIRING`/`_LIMITS`/`_Default*` are all AST-derived from src/ instead.
+# It can't be: Session 2's already-shipped TOML field names ("pin", "cs_pin", ...) and src/'s own
+# constructor parameter names ("neopixel_pin", "spi_cs", ...) are two independently-evolved naming
+# spaces, so there is no rule to derive one from the other. Adding a driver means adding a row here.
 
 # TOML fields every instance of this driver must declare (beyond "driver"/"name_ext", which
 # model.py itself already requires/defaults) - a missing one is a build-time error

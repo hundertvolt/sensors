@@ -1,8 +1,9 @@
-"""Shared TOML-fixture helpers for tests_scripts/test_buildgen_*.py: a minimal valid device dict
-(base_doc()) plus a small purpose-built serializer (dump_toml()) so negative-path tests can mutate
-the dict programmatically (delete a required field, duplicate a bus id, ...) instead of hand-editing
-dozens of near-identical TOML text blobs. Not a general TOML writer - only covers the shape
-buildgen/'s own schema uses (BUILD_CHAIN_PLAN.md's "Device TOML schema")."""
+"""Shared TOML fixtures for tests_scripts/test_buildgen_*.py: a minimal valid device dict
+(base_doc()) plus a small serializer (dump_toml()), so a negative-path test mutates a dict instead
+of hand-editing another near-identical TOML blob."""
+
+# dump_toml() is not a general TOML writer - it covers only the shape buildgen/'s own schema uses
+# (BUILD_CHAIN_PLAN.md's "Device TOML schema"), which is all these fixtures ever need.
 
 import copy
 import json

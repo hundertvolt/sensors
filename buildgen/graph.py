@@ -1,11 +1,6 @@
-"""Topological construction ordering (BUILD_CHAIN_PLAN.md's "ordering hazard #1"/SPECIFICATION.md
-Part C.14.2): a consumer's constructor call references its producer's already-built Python object
-directly, so the producer must be constructed first. Sorts by `_WIRING` dependency (kwarg/attr
-modes only - "setter" wiring, e.g. `conn.set_ext_led(pixel)`, is a post-construction call emitted
-once everything already exists, so it never gates construction order - see codegen.py) plus two
-fixed mandatory-infra edges (`ntp` needs `conn`, `sysfunct` needs `ntp`) and one conditional one
-(`sysfunct` needs its `device.wiring.fram_target` instance, if set). Rejects a cycle as a
-build-time error, per BUILD_CHAIN_PLAN.md's own explicit requirement."""
+"""Topological construction ordering (BUILD_CHAIN_PLAN.md's "ordering hazard #1", SPECIFICATION.md
+Part C.14.2): a consumer references its producer's already-built object, so the producer is
+constructed first. Rejects a cycle as a build-time error."""
 
 from typing import TypeAlias
 

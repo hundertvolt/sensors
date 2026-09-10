@@ -1,9 +1,6 @@
-"""AST-discovers a driver module's `_Default<ToMLFieldInPascalCase>` classes (§2 of
-BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md) - the wiring-defaults mechanism's own schema-by-
-construction: the class's `__init__` signature (param names, each with or without a Python-level
-default) IS the schema for what keys a `{default = true, ...}` TOML sub-table may/must carry.
-Never imported (same never-import design as every other buildgen/ discovery module - see
-driver_registry.py's own docstring for why)."""
+"""AST-discovers a driver module's `_Default<ToMLFieldInPascalCase>` classes - the wiring-defaults
+mechanism's schema-by-construction, where the class's own `__init__` signature IS the schema for a
+`{default = true, ...}` TOML sub-table (BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md §2)."""
 
 import ast
 from dataclasses import dataclass

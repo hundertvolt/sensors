@@ -1,7 +1,9 @@
 """Tests scripts/build_firmware.py (SPECIFICATION.md Part B.11's real firmware.uf2 assembly
-script). Fast tests cover its own logic (_MANIFEST_TEMPLATE content, build_stage_dir()'s
-per-device boot-module selection, CLI error paths) without the real, minutes-long ARM compile -
-see test_real_firmware_build_produces_a_valid_uf2's own comment for the one test that does that."""
+script) - its own logic (_MANIFEST_TEMPLATE, build_stage_dir()'s per-device boot-module selection,
+CLI error paths) without the minutes-long ARM compile."""
+
+# The one test that does run the real ARM build carries its own comment - see
+# test_real_firmware_build_produces_a_valid_uf2.
 
 import os
 import subprocess

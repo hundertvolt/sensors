@@ -1,8 +1,6 @@
-"""Loads a device TOML into the generator's own working model: `load_device()` parses the file
-(wrapping `tomllib.TOMLDecodeError` into the same fail-loud `BuildError` every other check in this
-package raises); `InstanceSpec`/`DeviceModel` carry a `[[instance]]` entry (plus, once
-`validate.build_model()` has run, its resolved driver/wiring/`@requires` facts) through the rest of
-the pipeline (validation, topological sort, code generation) as one shared shape."""
+"""Loads a device TOML into this package's working model: `load_device()` parses the file (every
+failure wrapped into the same fail-loud `BuildError`), and `InstanceSpec`/`DeviceModel` carry each
+`[[instance]]` entry and its later-resolved facts through validation, sorting and codegen."""
 
 from dataclasses import dataclass, field
 from pathlib import Path

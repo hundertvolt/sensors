@@ -1,11 +1,6 @@
-"""Parses a driver module's `_VALUE_WIRING` tuple via AST (§2.9 of
-BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md): per-value measurement wiring, generalizing the
-`{source, field}` shape `asy_notification_service.py`'s `warn_*` fields already used to every
-module that consumes one scalar value out of another module's `get_data()` result - not tied to a
-fixed `producer_class`, matched by attribute name alone (the same "any instance exposing a matching
-attribute name is valid" resolution `warn_*` already uses). Each entry:
-`(toml_field, source_kwarg, field_kwarg, required)` - never imported, same never-import design as
-`buildgen.wiring`."""
+"""AST-parses a driver module's `_VALUE_WIRING` tuple - `(toml_field, source_kwarg, field_kwarg,
+required)` - the per-value measurement wiring that generalizes `warn_*`'s `{source, field}` shape to
+any module consuming one scalar out of another's `get_data()` (matrix doc §2.9)."""
 
 import ast
 from dataclasses import dataclass

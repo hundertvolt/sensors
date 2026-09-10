@@ -1,11 +1,10 @@
-"""End-to-end tests: buildgen.generate.generate_device() against all 6 real devices/*.toml plus
-the mandatory synthetic "novel combination" fixture (BUILD_CHAIN_PLAN.md's acceptance criteria
-#2) - proving the full pipeline (validate -> topological sort -> code generation) succeeds from
-one TOML file with zero code changes elsewhere. Correctness proof scope (documented in this
-session's PR description): generated output is syntactically valid Python matching the documented
-construction-order/wiring shape, checked via ast.parse() and structural inspection - not executed
-under a real interpreter (Session 5's digital-twin generalization is what actually boots a
-generated module)."""
+"""End-to-end: buildgen.generate.generate_device() against all 6 real devices/*.toml plus the
+mandatory synthetic "novel combination" fixture (BUILD_CHAIN_PLAN.md acceptance criteria #2) -
+the full validate -> sort -> generate pipeline from one TOML file, no code changes elsewhere."""
+
+# Correctness-proof scope: generated output is proven syntactically valid Python matching the
+# documented construction-order/wiring shape (ast.parse() + structural inspection), never executed
+# under a real interpreter - booting a generated module is Session 5's digital-twin work.
 
 import ast
 from pathlib import Path

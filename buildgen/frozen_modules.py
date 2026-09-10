@@ -1,16 +1,6 @@
-"""Dependency-driven frozen-module selection (BUILD_CHAIN_PLAN.md's "Core design decisions"):
-seed from the device's declared driver list plus a fixed always-included core set, then take the
-transitive closure of real `import`/`from...import` statements, AST-scanned, `TYPE_CHECKING`
-blocks stripped first (those never execute on-device - MicroPython has no runtime `typing` module,
-CLAUDE.md's Platform Target section - so a module only reachable through one isn't a real frozen
-dependency). Never a dynamic import - `importlib`/`__import__` are disallowed project-wide
-(SPECIFICATION.md Part F.1) and this generator doesn't attempt to resolve one if it somehow
-appeared; an unresolvable local-looking import is left alone (not silently dropped, not guessed at)
-since only genuinely local (present-as-a-.py-file) names are ever added to the result at all.
-
-This computes *which modules* a device needs; actually wiring that list into the real
-`freeze()`/`scripts/build_firmware.py` call is a later session's job (BUILD_CHAIN_PLAN.md's own
-session breakdown - Session 6), not this one's."""
+"""Dependency-driven frozen-module selection (BUILD_CHAIN_PLAN.md's "Core design decisions"): the
+transitive `import`/`from...import` closure, AST-scanned, seeded from the device's declared drivers
+plus a fixed core set. Computes *which* modules; feeding them to freeze() is Session 6's job."""
 
 import ast
 from pathlib import Path

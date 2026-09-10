@@ -1,13 +1,6 @@
-"""Shared "specially formatted comment near a schema" scanning infrastructure - the general
-mechanism behind buildgen/requires_tag.py's `# @requires ...` tags today, and the planned
-`# @web`/`# @web-group` website-definition tags (BACKLOG.md's "Website definitions-file
-autogeneration" sketch) tomorrow. Standing rule (project owner's explicit direction, not just for
-`@requires`): a typo'd or misplaced attempt at one of these tags must never be silently invisible -
-a comment that's present, or close to present, must be verified correct in every dimension (exact
-wording, location, format, content) or fail the build loud - never silently treated as "no tag
-here, nothing to check". See check_for_near_miss_tags()'s own docstring for the concrete incident
-this generalizes from.
-"""
+"""Shared "specially formatted comment near a schema" scanning infrastructure: the mechanism
+behind `# @requires` today and the planned `# @web`/`# @web-group` tags tomorrow, and the standing
+rule that a near-miss attempt at one must fail the build loud (BUILD_CHAIN_PLAN.md's quality bar)."""
 
 import re
 import tokenize

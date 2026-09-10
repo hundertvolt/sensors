@@ -1,11 +1,11 @@
 """Tests toolchain/setup_toolchain.py's `env` subcommand (tiered generic/flash/bench dev
-environment setup) in isolation - the pure-Python detection/idempotency/argument-parsing logic,
-mocked against fake /sys trees and a fake run(), never real hardware, sudo, or network. See
-dev_legacy/README.md for what "flash"/"bench" mean and the manual nmcli recipe this automates.
-End-to-end real-hardware behavior (USB auto-detection against a real board, the actual bridge/AP
-working) is proven on the real bench unit, not here - see the module docstring's own account of
-why this split exists (SPECIFICATION.md Part E.1's "real interpreter, not stubs" principle
-applies the same way to "real hardware, not this suite" for anything USB/network-hardware-facing)."""
+environment setup) in isolation: the pure-Python detection/idempotency/argument-parsing logic,
+mocked against fake /sys trees and a fake run() - never real hardware, sudo, or network."""
+
+# dev_legacy/README.md defines what "flash"/"bench" mean and holds the manual nmcli recipe this
+# automates. End-to-end real-hardware behavior (USB auto-detection against a real board, the bridge
+# and AP actually working) is proven on the real bench unit instead - the same "real thing, not
+# stubs" split SPECIFICATION.md Part E.1 draws for the interpreter.
 
 import os
 import subprocess

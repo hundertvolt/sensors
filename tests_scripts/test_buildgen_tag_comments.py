@@ -1,7 +1,6 @@
-"""Tests for buildgen.tag_comments: the shared "specially formatted comment near a schema"
-scanning infrastructure behind buildgen/requires_tag.py's `# @requires ...` tag (and, later, the
-planned `# @web`/`# @web-group` website-definition tags - BACKLOG.md). Standing rule under test: a
-typo'd or misplaced tag attempt must fail loud, never be silently treated as "no tag here"."""
+"""Tests for buildgen.tag_comments, the shared "specially formatted comment near a schema"
+scanner behind `# @requires` (and the planned `# @web`/`# @web-group` tags). Standing rule under
+test: a typo'd or misplaced attempt must fail loud, never read as "no tag here"."""
 
 # Matrix dimensions covered in this file (the shared mechanism, unit level - the full end-to-end
 # grammar cross-product for the one real tag built on it lives in test_buildgen_requires_tag.py):

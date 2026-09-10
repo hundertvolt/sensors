@@ -3,15 +3,13 @@
 # requires-python = ">=3.11"
 # dependencies = []
 # ///
-"""Assembles a real, deployable firmware.uf2 from src/ + ext/microdot.py + the real website for one
-device (SPECIFICATION.md Part B.11, including why boot_entry/<device>_boot.py is frozen under the
-literal name "main.py"). A clean build is necessary, not sufficient, for a device to actually boot.
+"""Assembles a real, deployable firmware.uf2 from src/ + ext/microdot.py + the real website for
+one device (SPECIFICATION.md Part B.11, including why boot_entry/<device>_boot.py is frozen under
+the literal name "main.py"). A clean build is necessary, not sufficient, for a device to boot."""
 
-Usage (from anywhere, via uv):
-
-    uv run scripts/build_firmware.py wozi
-    uv run scripts/build_firmware.py wozi --output build/firmware-wozi.uf2
-"""
+# Usage (from anywhere, via uv):
+#     uv run scripts/build_firmware.py wozi
+#     uv run scripts/build_firmware.py wozi --output build/firmware-wozi.uf2
 
 from __future__ import annotations
 

@@ -1,12 +1,6 @@
 """Parses driver-declared bus requirements from the `# @requires bus.<field><op><value>` comment
-tag (BUILD_CHAIN_PLAN.md's "Build/generator script quality bar") - a plain comment, deliberately
-never a real Python value: nothing the running firmware itself reads should become a real
-frozen-bytecode constant just to serve this generator. Grammar: `# @requires bus.<field><op><value>`
-placed at module level near `_WIRING`/`_VAL_*`, e.g. `# @requires bus.timeout>=200000`.
-
-A typo'd or misplaced attempt at this tag must never be silently invisible - buildgen/tag_comments.py's
-standing rule, not specific to this tag. See that module's check_for_near_miss_tags() docstring for
-the concrete incident this generalizes from."""
+tag placed at module level near `_WIRING`/`_VAL_*` (BUILD_CHAIN_PLAN.md's quality bar) - a plain
+comment, never a real Python value, and never silently invisible (see tag_comments.py)."""
 
 import operator
 import re

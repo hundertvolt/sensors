@@ -1,12 +1,6 @@
-"""Resolves a device TOML's `driver = "<name>"` string to its real `src/` Python class -
-BUILD_CHAIN_PLAN.md's acceptance criteria #1: "one small, explicit fact... nothing else". Primary
-rule: the existing `asy_<name>_driver.py` -> `<Name>_Reader` naming convention (SPECIFICATION.md
-Part C.2/C.5), discovered by AST-parsing the file - never imported (`src/` modules import
-`machine`/`neopixel`/`asyncio.ThreadSafeFlag`, real MicroPython-only names this host-side CPython
-tool can't import), and never by guessing the class name's casing (`BMP3xx_Reader` isn't
-`"bmp3xx".upper() + "_Reader"`). Falls back to an explicit table only for a driver that genuinely
-can't follow the file-naming pattern (singleton services with no `asy_<name>_driver.py` file, or
-whose class isn't a `SensorReader`/`SensorReaderConfig` subclass at all)."""
+"""Resolves a device TOML's `driver = "<name>"` to its real `src/` class via the existing
+`asy_<name>_driver.py` -> `<Name>_Reader` convention (SPECIFICATION.md Part C.2/C.5), AST-parsed -
+BUILD_CHAIN_PLAN.md acceptance criteria #1. An explicit table covers the named exceptions."""
 
 import ast
 from dataclasses import dataclass

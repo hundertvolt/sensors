@@ -1,7 +1,8 @@
 """Real-socket concurrent-connection regression coverage for WebserverService, booted against the
-real digital_twin buses - genuinely concurrent TCP connections, not
-tests/test_asy_webserver_service.py Section F's in-process _serve()-against-fakes tests. See
-SPECIFICATION.md Part H.7 and this module's own comments below for the full rationale."""
+real digital_twin buses - genuinely concurrent TCP connections, unlike
+tests/test_asy_webserver_service.py Section F's in-process _serve()-against-fakes tests."""
+
+# See SPECIFICATION.md Part H.7 and this module's own comments below for the full rationale.
 
 # Every existing test client in this project before this file (curl, Python's http.client,
 # digital_twin/_http_client.py itself) has always issued exactly one request at a time, so nothing

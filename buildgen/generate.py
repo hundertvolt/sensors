@@ -1,9 +1,6 @@
-"""Top-level orchestration: `generate_device()` runs the full pipeline (validate -> topologically
-sort -> generate source) for one device TOML and returns the generated module/boot-entry source as
-strings - callers decide whether/where to write them (this session's own tests write to a tmp_path;
-wiring this into the real `build/<device>/` output tree is Session 6's job, not this one's - see
-BUILD_CHAIN_PLAN.md's session breakdown). A thin CLI wrapper is included for convenience/manual
-use, not because any other part of this repo calls it yet."""
+"""Top-level orchestration: `generate_device()` runs validate -> topological sort -> codegen for
+one device TOML and returns the module/boot-entry source as strings; callers decide where to write
+them (Session 6 owns the real `build/<device>/` tree). The CLI wrapper is for manual use."""
 
 import argparse
 import sys

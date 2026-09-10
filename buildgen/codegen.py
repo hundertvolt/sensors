@@ -1,19 +1,6 @@
-"""Code generation: emits the equivalent of a hand-written `sensortask_<device>.py`
-(SPECIFICATION.md Part A.7's construction-order shape) plus its `boot_entry/<device>_boot.py`
-sibling, from a fully-validated `DeviceModel` (`buildgen.validate.build_model()`) and its
-topological construction order (`buildgen.graph.build_construction_order()`).
-
-The construction/wiring core (watchdog/conn/ntp/buses, each instance in dependency order, every
-`_WIRING` reference resolved, notification's `register()`/`finalize()`, `device.wiring`'s
-"setter"-mode calls) is templated directly from the TOML's own facts - this is the part this
-session's own tests hold to the same bar as the validator. The webserver/task-supervisor tail is
-genuinely uniform boilerplate across every device - `sensortask_wozi.py`/`sensortask_dev.py` are
-byte-for-byte the same shape (confirmed directly diffing the two; only pin/wiring constants
-differ) - so it's emitted from a fixed template too, parameterized only by which optional
-instances exist; see this session's PR description for how deep this session's own correctness
-proof goes for that slice specifically (syntactic validity + structural shape, not execution under
-a real interpreter - Session 5's digital-twin generalization is what actually boots a generated
-module)."""
+"""Emits the equivalent of a hand-written `sensortask_<device>.py` (SPECIFICATION.md Part A.7's
+construction-order shape) plus its `boot_entry/<device>_boot.py` sibling, from a validated
+`DeviceModel` and its construction order (`buildgen.graph.build_construction_order()`)."""
 
 import keyword
 from dataclasses import dataclass

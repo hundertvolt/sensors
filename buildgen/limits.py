@@ -1,16 +1,6 @@
-"""Parses a driver module's `_LIMITS` tuple directly via AST - never imported (same never-import
-design as every other buildgen/ discovery module; see driver_registry.py's own docstring for why).
-Each entry is `(toml_field, constraint)`, where `constraint` is either a `(min, max)` 2-tuple (each
-a number literal or `None`, meaning that side is unchecked - `min == max` expresses an exact-value
-requirement) or `frozenset({...})` of exact legal int values, for a driver-declared, real,
-already-documented-in-code domain a TOML field's value must satisfy (e.g. BMP388/390's
-address-select pin: exactly 0x76 or 0x77).
-
-Scope (BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md §5.2/§10.1 item 3): only fields with a genuine,
-already-documented constraint get a `_LIMITS` entry - never an invented bound. `@requires` tags
-(requires_tag.py) already cover the separate, conditional/cross-object case (a bus needs a stricter
-setting only because a specific driver is attached to it); `_LIMITS` is for a field's own
-unconditional domain."""
+"""AST-parses a driver module's `_LIMITS` tuple - `(toml_field, constraint)`, the constraint either
+a `(min, max)` 2-tuple (either side `None` = unchecked) or a `frozenset` of exact legal ints - for a
+field's own unconditional domain (BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md §5.2)."""
 
 import ast
 from dataclasses import dataclass
