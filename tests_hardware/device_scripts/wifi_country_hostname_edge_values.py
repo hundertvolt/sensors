@@ -12,7 +12,7 @@ try:
     network.country("XX")
     readback = network.country()
     print(f"RESULT: country('XX') PASS accepted, readback={readback!r}")
-except Exception as e:  # noqa: BLE001 - reporting whatever real hardware/firmware actually raises, not guessing the type up front
+except Exception as e:
     print(f"RESULT: country('XX') PASS raised {type(e).__name__}: {e}")
 
 # Case 2: restore a real country before the hostname case, so it doesn't run under a bogus
@@ -31,7 +31,7 @@ try:
         print(f"RESULT: hostname(64 UTF-8 bytes) PASS accepted verbatim, readback={readback!r}")
     else:
         print(f"RESULT: hostname(64 UTF-8 bytes) PASS silently altered, readback={readback!r}")
-except Exception as e:  # noqa: BLE001 - same rationale as case 1
+except Exception as e:
     print(f"RESULT: hostname(64 UTF-8 bytes) PASS raised {type(e).__name__}: {e}")
 
 # The interpreter itself must still be alive and responsive after both cases - the actual pass

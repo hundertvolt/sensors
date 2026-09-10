@@ -4,11 +4,13 @@ plus a follow-up GET /sensors confirms the live-push callback ran a real I2C wri
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import http_client
 from error_log_helpers import assert_module_error_log_empty, reset_all_error_logs
-from harness import Board
+
+if TYPE_CHECKING:
+    from harness import Board
 
 # Deliberately different from every driver default (_VAL_POV/_VAL_TOV/_VAL_FC in
 # asy_bmp3xx_driver.py: PressOvers=1, TempOvers=1, FiltCoeff=0) and all real, allowed discrete

@@ -34,7 +34,7 @@ def assert_module_error_log_nonempty(dut_ip: str, module_name: str) -> None:
 
 
 def assert_module_error_log_contains(dut_ip: str, module_name: str, num: int, kind: str) -> None:
-    """kind is "E" (err_s()) or "W" (wrn_s())."""
+    """Kind is "E" (err_s()) or "W" (wrn_s())."""
     counts = get_errcount(dut_ip)
     entry = counts.get(module_name)
     assert entry is not None, f"{module_name!r} not present in /status errcount at all: {counts!r}"

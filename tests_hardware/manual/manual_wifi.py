@@ -13,7 +13,7 @@ from runner import confirm, confirm_pass, print_instruction, register, state_exp
     "[USB+WiFi][MANUAL]",
 )
 def test_real_sta_fail_hotspot_fallback_second_client() -> None:
-    print_instruction("This test needs the DUT already in (or about to enter) hotspot fallback mode - e.g. after PUT /networking {\"SSID\": \"\"}.")
+    print_instruction('This test needs the DUT already in (or about to enter) hotspot fallback mode - e.g. after PUT /networking {"SSID": ""}.')
     state_expected_outcome("a hotspot named after the DUT's configured Hostname appears in your phone/laptop's WiFi list within ~30s.")
     confirm("Trigger hotspot fallback now (or wait for it to happen organically), then press Enter once you're watching for the AP to appear")
     print_instruction("On your phone/laptop, scan for WiFi networks and join the DUT's hotspot (password: 12345678) within 60 seconds.")

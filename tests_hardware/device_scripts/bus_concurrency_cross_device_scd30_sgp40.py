@@ -39,7 +39,7 @@ async def _main() -> None:
             try:
                 await scd.read_measurement()
                 scd_windows.append((start, time.ticks_ms()))
-            except Exception as e:  # noqa: BLE001 - a real bus fault here is itself worth surfacing
+            except Exception as e:
                 scd_errors.append(f"iter {i}: {type(e).__name__}: {e}")
             i += 1
             if i % 10 == 0:
@@ -52,7 +52,7 @@ async def _main() -> None:
             try:
                 await sgp.initialize()
                 sgp_windows.append((start, time.ticks_ms()))
-            except Exception as e:  # noqa: BLE001 - see scd_loop()'s own comment
+            except Exception as e:
                 sgp_errors.append(f"iter {i}: {type(e).__name__}: {e}")
             wdt.feed()
         stop = True
@@ -65,7 +65,7 @@ async def _main() -> None:
     interleaved_total = 0
     windows_with_interleaving = 0
     for sgp_start, sgp_end in sgp_windows:
-        count = sum(1 for s, e in scd_windows if s >= sgp_start and e <= sgp_end)
+        count = sum(1 for s, e in scd_windows if time.ticks_diff(s, sgp_start) >= 0 and time.ticks_diff(e, sgp_end) <= 0)
         interleaved_total += count
         if count > 0:
             windows_with_interleaving += 1
@@ -83,12 +83,12 @@ async def _main() -> None:
         failures.append(
             "zero SCD30 reads completed inside any SGP40 initialize() window - bus/device-session "
             "locking is not allowing cross-device interleaving (possible regression: bus lock held "
-            "too broadly, or device-session locks accidentally shared)"
+            "too broadly, or device-session locks accidentally shared)",
         )
     elif interleaved_total < len(sgp_windows):
         failures.append(
             f"only {interleaved_total} interleaved SCD30 completions across {len(sgp_windows)} SGP40 "
-            "windows - less interleaving than expected, worth a closer look even though not zero"
+            "windows - less interleaving than expected, worth a closer look even though not zero",
         )
 
     if failures:
@@ -96,7 +96,7 @@ async def _main() -> None:
     else:
         print(
             f"RESULT: PASS scd30_reads={len(scd_windows)} sgp40_cycles={len(sgp_windows)} "
-            f"interleaved_completions={interleaved_total} windows_with_interleaving={windows_with_interleaving}/{len(sgp_windows)}"
+            f"interleaved_completions={interleaved_total} windows_with_interleaving={windows_with_interleaving}/{len(sgp_windows)}",
         )
 
 

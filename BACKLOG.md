@@ -214,7 +214,9 @@ constraints.
     protocol needs to WRITE a transient busy marker before it reads data, so a real write-protected
     chip makes `chunk.read()` return `None` too, not just `chunk.write()` — confirmed directly on
     real hardware (`tests_hardware/device_scripts/fram_write_protect_roundtrip.py`). Not decided
-    here; a project-owner call.
+    here; a project-owner call. **The observation predates `ca767ba`**, which broke that script's
+    own call sites (see the Deferred list below) - it has not been runnable since, and the repaired
+    version has not been re-run, so treat the finding as recorded-but-unrefreshed.
 
 ## Deferred / explicitly out-of-scope work
 - **The four legacy `build-*.sh` scripts carry 28 shellcheck findings, including no shebang at
@@ -227,14 +229,31 @@ constraints.
   wrong directory (in the build scripts that means writing output somewhere unintended); **SC2103
   x5** - `cd ..` back instead of a subshell. All mechanical, none urgent, all real. Fold in
   whenever the legacy build path is next touched.
-- **`tests_hardware/` has 32 ruff findings, 8 of them `B023` (function-uses-loop-variable).**
-  `B023` is in the enabled rule set everywhere else, so this is a real bug class sitting in an
-  unlinted scope - closures in
-  `tests_hardware/device_scripts/bus_topology_autodetect_and_hazard_sweep.py` capture the loop
-  variables `scd`/`bmp`/`sgp`/`read_once`/`self_errors`/`port_id` by reference. Benign only if
-  every closure is consumed within its own iteration, which was not verified. The rest are 23 x
-  `UP032` (f-string) and 1 x `I001`. Extending lint scope to `tests_hardware/` is a separate
-  decision, same shape as the `python/`/`modules/` one.
+- **`tests_hardware/device_scripts/`'s two real-hardware bugs are fixed but NOT re-run on the
+  bench.** Moving that directory into the MicroPython mypy pass (commit 08529d1) is what surfaced
+  them; both are grounded in source, not inferred, but neither has been executed against real
+  hardware since:
+  - `fram_write_protect_roundtrip.py` called `set_write_protected(False)` positionally at four
+    sites. `ca767ba` ("wave 2 - FBT/A002 signature changes") made that parameter keyword-only in
+    `src/asy_fram_driver.py` and never updated this caller, so every run since has raised
+    `TypeError` on the script's first call. Now `set_write_protected(value=...)`.
+  - `wifi_service_reconnect_repro.py` called `task.exception()`. MicroPython's `Task` has no such
+    method - `extmod/modasyncio.c`'s `task_attr` exposes only `coro`/`data`/`state`/`done`/
+    `cancel`/`ph_key` - so the line raised `AttributeError` at exactly the moment it was trying to
+    report why a task died. Now `task.data`, which `extmod/asyncio/core.py`'s
+    `run_until_complete()` sets to the terminating exception. Carries a `# type: ignore
+    [attr-defined]`: the attribute is real, the stub package just does not declare it.
+  A flash-tier run should confirm both, whenever one is next scheduled.
+- **`mypy tests_hardware/device_scripts` run STANDALONE reports two `Timer()` findings that no
+  gate ever sees.** Both `timer_alarm_pool_exhaustion.py` and `scheduler_saturation_drop.py`
+  construct a bare `machine.Timer()`, which is valid runtime usage the third-party board stub does
+  not model (it requires a positional `id`). This is the same stub gap CLAUDE.md's "Code quality
+  tooling" section already records for `src/`'s four drivers plus `I2C.deinit()`, and it has the
+  same resolution: every invocation the project actually runs - CI's `scripts/typecheck.sh src
+  tests boot_entry tests_hardware/device_scripts` and a bare local `scripts/typecheck.sh` - includes
+  `tests/`, whose `tests/machine.py` fake models `Timer()` correctly and wins module resolution.
+  Worth knowing before anyone runs mypy over that directory on its own and reads the result as a
+  regression.
 - **Additional checker candidates, measured and mostly declined.** Evaluated against the real tree
   rather than by reputation, when shellcheck/actionlint/zizmor were added:
   - **`zizmor`** (GitHub Actions security) - **adopted.** All 50 findings fixed, not suppressed:

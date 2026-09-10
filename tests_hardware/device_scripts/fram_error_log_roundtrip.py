@@ -61,7 +61,8 @@ async def _main() -> None:
     if err_count != 1:
         print(f"RESULT: FAIL restored ErrCount={err_count!r}, expected 1 (real FRAM read did not reflect the recorded error)")
         return
-    if TEST_ERRNO not in err_num or err_type[err_num.index(TEST_ERRNO)] != "E":
+    positions = [i for i, num in enumerate(err_num) if num == TEST_ERRNO]
+    if not positions or err_type[positions[0]] != "E":
         print(f"RESULT: FAIL restored history does not contain errno={TEST_ERRNO} as type 'E': ErrNum={err_num!r} ErrType={err_type!r}")
         return
 

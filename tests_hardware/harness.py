@@ -8,11 +8,14 @@ from __future__ import annotations
 import os
 import subprocess
 import time
-from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import serial
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -39,21 +42,21 @@ def _usb_reset_device(device: str) -> bool:
     usb_device_dir = resolved.parent
     usb_id = usb_device_dir.name
     try:
-        subprocess.run(["sudo", "tee", "/sys/bus/usb/drivers/usb/unbind"], input=usb_id, capture_output=True, text=True, timeout=10.0)
+        subprocess.run(["sudo", "tee", "/sys/bus/usb/drivers/usb/unbind"], input=usb_id, capture_output=True, text=True, timeout=10.0, check=False)
         time.sleep(2.0)
-        subprocess.run(["sudo", "tee", "/sys/bus/usb/drivers/usb/bind"], input=usb_id, capture_output=True, text=True, timeout=10.0)
+        subprocess.run(["sudo", "tee", "/sys/bus/usb/drivers/usb/bind"], input=usb_id, capture_output=True, text=True, timeout=10.0, check=False)
         time.sleep(3.0)
     except (subprocess.TimeoutExpired, OSError):
         return False
     return True
 
 
-class HardwareNotAvailable(RuntimeError):
+class HardwareNotAvailableError(RuntimeError):
     """Raised when a real board/bench isn't reachable. conftest.py's fixtures turn this into a
     skip, not a failure, so this tier stays collectible with nothing attached."""
 
 
-class HardwareTestFailure(AssertionError):
+class HardwareTestFailureError(AssertionError):
     """Raised for a genuine real-hardware assertion failure - deliberately a plain AssertionError
     subclass so pytest reports it like any other failed assertion, not a framework-level error."""
 
@@ -73,13 +76,13 @@ def wait_until(
         try:
             if check_fn():
                 return True
-        except Exception as exc:  # noqa: BLE001 - a probe against real hardware/network can raise transiently; only the final timeout below is fatal
+        except Exception as exc:
             last_exc = exc
         time.sleep(poll_interval_s)
     try:
         if check_fn():
             return True
-    except Exception as exc:  # noqa: BLE001 - same as above, one last attempt right at the deadline
+    except Exception as exc:
         last_exc = exc
     detail = f" (last error: {last_exc!r})" if last_exc is not None else ""
     raise TimeoutError(f"timed out after {timeout_s}s waiting for: {description}{detail}")
@@ -117,11 +120,12 @@ class Board:
                     capture_output=True,
                     text=True,
                     timeout=timeout_s or self.default_timeout_s,
+                    check=False,
                 )
             except FileNotFoundError as exc:
-                raise HardwareNotAvailable(f"uv/mpremote not on PATH: {exc}") from exc
+                raise HardwareNotAvailableError(f"uv/mpremote not on PATH: {exc}") from exc
             except subprocess.TimeoutExpired as exc:
-                raise HardwareTestFailure(f"mpremote {' '.join(args)} timed out after {timeout_s or self.default_timeout_s}s") from exc
+                raise HardwareTestFailureError(f"mpremote {' '.join(args)} timed out after {timeout_s or self.default_timeout_s}s") from exc
             transient = proc.returncode != 0 and any(marker in proc.stderr.lower() for marker in transient_markers)
             if not transient or not allow_recovery:
                 return MpremoteResult(proc.returncode, proc.stdout, proc.stderr)
@@ -145,7 +149,7 @@ class Board:
         # already-running system - use is_device_present() instead (see README for the finding).
         try:
             result = self._mpremote("exec", "print('mpremote-ok')", timeout_s=10.0, allow_recovery=False)
-        except (HardwareNotAvailable, HardwareTestFailure):
+        except (HardwareNotAvailableError, HardwareTestFailureError):
             return False
         return result.returncode == 0 and "mpremote-ok" in result.stdout
 
@@ -168,7 +172,7 @@ class Board:
         if result.returncode != 0:
             # Both streams included: a device-side traceback prints on mpremote's stdout, not
             # stderr, and would otherwise be silently dropped.
-            raise HardwareTestFailure(f"mpremote exec {expr!r} failed (exit {result.returncode}):\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}")
+            raise HardwareTestFailureError(f"mpremote exec {expr!r} failed (exit {result.returncode}):\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}")
         return result.stdout
 
     def run_isolated(self, script_path: str | Path, *, soft_reset_after: bool = True, timeout_s: float | None = None) -> str:
@@ -182,7 +186,7 @@ class Board:
         if result.returncode != 0:
             # See exec()'s own comment: a device-side traceback lands on mpremote's stdout, not
             # stderr - both are included here for the same reason.
-            raise HardwareTestFailure(f"mpremote run {script_path} failed (exit {result.returncode}):\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}")
+            raise HardwareTestFailureError(f"mpremote run {script_path} failed (exit {result.returncode}):\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}")
         return result.stdout
 
     def run_isolated_expect_reset(self, script_path: str | Path, timeout_s: float | None = None) -> None:
@@ -195,7 +199,7 @@ class Board:
     def soft_reset(self) -> None:
         result = self._mpremote("soft-reset", timeout_s=15.0)
         if result.returncode != 0:
-            raise HardwareTestFailure(f"mpremote soft-reset failed (exit {result.returncode}):\n{result.stderr}")
+            raise HardwareTestFailureError(f"mpremote soft-reset failed (exit {result.returncode}):\n{result.stderr}")
 
     def hard_reset(self) -> None:
         """The `reset` shortcut (DTR-line hardware reset, never a flash) - used for genuine
@@ -203,7 +207,7 @@ class Board:
         wouldn't exercise the real boot path."""
         result = self._mpremote("reset", timeout_s=15.0)
         if result.returncode != 0:
-            raise HardwareTestFailure(f"mpremote reset failed (exit {result.returncode}):\n{result.stderr}")
+            raise HardwareTestFailureError(f"mpremote reset failed (exit {result.returncode}):\n{result.stderr}")
 
     def enter_bootloader(self) -> None:
         """`machine.bootloader()` triggered remotely - drops the board into BOOTSEL mode for
@@ -216,7 +220,7 @@ class Board:
     def tail_log(self, duration_s: float, baudrate: int = 115200) -> list[str]:
         """Passively captures what the live system prints over `duration_s`, without interrupting
         it (unlike exec()/run_isolated(), which always Ctrl-C first - see tests_hardware/README.md).
-        Retries a transient post-hard_reset() USB-settle failure before raising HardwareNotAvailable."""
+        Retries a transient post-hard_reset() USB-settle failure before raising HardwareNotAvailableError."""
         grace_deadline = time.monotonic() + 10.0
         overall_deadline = time.monotonic() + duration_s
         lines: list[str] = []
@@ -227,9 +231,9 @@ class Board:
                         raw = port.readline()
                         if raw:
                             lines.append(raw.decode("utf-8", errors="replace").rstrip("\r\n"))
-                return lines
             except serial.SerialException as exc:
                 if time.monotonic() >= grace_deadline:
-                    raise HardwareNotAvailable(f"could not read {self.device} for passive log tailing: {exc}") from exc
+                    raise HardwareNotAvailableError(f"could not read {self.device} for passive log tailing: {exc}") from exc
                 time.sleep(0.5)
-        return lines
+            else:
+                return lines

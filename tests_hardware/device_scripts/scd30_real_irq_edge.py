@@ -35,7 +35,7 @@ async def _main() -> None:
     for task in (read_task, init_irq_task):
         try:
             await task
-        except (asyncio.CancelledError, Exception):  # noqa: BLE001 - CancelledError (real hardware confirmed: MicroPython's, like CPython's, subclasses BaseException, not Exception - SPECIFICATION.md Part F.2) or whatever the loop itself raised, not this script's concern once we have our own answer above
+        except (asyncio.CancelledError, Exception):
             pass
 
     if data is not None and data.CO2 is not None:

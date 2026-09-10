@@ -43,7 +43,7 @@ async def _main() -> None:
         task.cancel()
         try:
             await task
-        except (asyncio.CancelledError, Exception):  # noqa: BLE001 - CancelledError (real hardware confirmed: MicroPython's, like CPython's, subclasses BaseException, not Exception - SPECIFICATION.md Part F.2) or whatever the loop itself raised, not this script's concern once we have our own answer above
+        except (asyncio.CancelledError, Exception):
             pass
 
     if data is None or data.Pres is None:

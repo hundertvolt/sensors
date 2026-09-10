@@ -34,7 +34,7 @@ async def _run_until_cancelled(reader: SGP40_Reader, duration_s: float, wdt: mac
     task.cancel()
     try:
         await task
-    except (asyncio.CancelledError, Exception):  # noqa: BLE001 - CancelledError (real hardware confirmed: MicroPython's, like CPython's, subclasses BaseException, not Exception - SPECIFICATION.md Part F.2) or whatever the loop itself raised
+    except (asyncio.CancelledError, Exception):
         pass
 
 

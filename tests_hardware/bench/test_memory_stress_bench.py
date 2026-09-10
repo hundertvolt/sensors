@@ -5,12 +5,15 @@ tail_log()-watching for a MemoryError or an unexpected mid-soak reboot."""
 from __future__ import annotations
 
 import threading
+from typing import TYPE_CHECKING
 
 import http_client
 import pytest
 from error_log_helpers import get_errcount, reset_all_error_logs
-from harness import Board
 from soak_tiers import SOAK_TIER_SECONDS
+
+if TYPE_CHECKING:
+    from harness import Board
 
 # The six FRAM-backed modules (SPECIFICATION.md Part A.7) - WIFI/NTP/every CFGMGR_* logger are
 # RAM-only. CLAUDE.md's standing rule: read these before clearing state on any unexpected error.

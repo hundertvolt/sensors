@@ -27,6 +27,13 @@ dev = [
     "ruff==0.15.21",
     "pytest",
     "mpremote",
+    # Stub-only package: tests_hardware/harness.py talks to the real board over pyserial (pulled in
+    # by mpremote above), and host_typecheck.ini's pass has no stubs for it otherwise. PINNED for
+    # the same reason as the tools above, even though it ships no runtime code: a stub release can
+    # change a declared signature and start producing new mypy errors, which hard-fails CI on a
+    # change nobody chose. Not being a rule set does not stop it being a gate input. Bump it
+    # deliberately, re-running scripts/lint.sh + scripts/typecheck.sh, exactly like ruff/mypy.
+    "types-pyserial==3.5.0.20260712",
     # shellcheck and actionlint ship their real binaries inside these pip wrappers, so they install
     # automatically with every `uv sync` - which is what `toolchain/setup_toolchain.py env --tier
     # {generic,flash,bench}` already runs for every tier. Nothing extra to install by hand, and both
@@ -400,6 +407,41 @@ max-returns = 12
 # from repo-controlled constants plus versions.toml/CLI arguments supplied by the person running the
 # installer - who could equally just run those commands themselves.
 "toolchain/setup_toolchain.py" = ["S603"]
+# ---- tests_hardware/ (real-hardware tier) ----
+# S603/S607: driving real hardware from the host IS this tier's job, and it has exactly one way to
+# do it - shelling out to the vendor/OS CLIs (`mpremote`, `picotool`, `nmcli`, `iw`, `iptables`,
+# `tc`, `tee`). Every argument list is assembled from repo constants plus the fixture-supplied
+# serial-device path, never from network or user input, and each tool is deliberately resolved
+# from PATH because `toolchain/setup_toolchain.py` is what puts it there (uv-managed venv for
+# mpremote, apt for the rest - see tests_hardware/README.md's prerequisites); hardcoding absolute
+# paths would break the documented provisioning recipe on any host that installs them elsewhere.
+"tests_hardware/harness.py" = ["S603", "S607"]
+"tests_hardware/bench_control.py" = ["S603", "S607"]
+"tests_hardware/flash/test_toolchain_flash_boot.py" = ["S603", "S607"]
+"tests_hardware/manual/manual_toolchain.py" = ["S603", "S607"]
+# S310: a fixed `http://` URL this module builds itself from a bench-LAN host/port pair, so the
+# `file:`/custom-scheme exposure the rule warns about is unreachable - there is no attacker-supplied
+# scheme to audit.
+"tests_hardware/http_client.py" = ["S310"]
+# S112: the same reasoning the global S110 ignore already records, for `continue` instead of `pass`.
+# This test injects real packet loss/delay on the bench bridge and then hammers the REST API from
+# several threads; individual request failures ARE the injected fault, and the assertions are about
+# torn/corrupted config reads, not about which request happened to fail. Logging them would change
+# what the test emits and drown the real finding.
+"tests_hardware/bench/test_bus_concurrency_under_api_load.py" = ["S112"]
+# S105/S106: the DUT's own hotspot fallback password, hardcoded in src/asy_wifi_service.py's
+# _configure_hotspot_ap() and exempted there already (see the "three KNOWN, already-accepted
+# hardcoded-credential sites" note above). A test that joins that hotspot has to know the same
+# literal; these are copies of an accepted risk, not new credentials. Exempted per-file so S105/S106
+# still catch a credential added anywhere else in the tier.
+"tests_hardware/conftest.py" = ["S105"]
+"tests_hardware/bench/test_hotspot_role_reversal.py" = ["S105"]
+"tests_hardware/bench/test_network_resilience.py" = ["S105"]
+"tests_hardware/device_scripts/wifi_reconnect_after_failed_attempts_repro.py" = ["S106"]
+# RUF007: device_scripts/ is MicroPython firmware-target code uploaded to the board and run there
+# (see tests_hardware/README.md) - `itertools` does not exist in the rp2 port at all, so
+# `itertools.pairwise()` is unimplementable, exactly like the global RUF005/RUF037/FURB122 entries.
+"tests_hardware/device_scripts/**" = ["RUF007"]
 
 [tool.mypy]
 # 'linux' + follow_imports=silent + mypy_path/custom_typeshed_dir=typings are the
