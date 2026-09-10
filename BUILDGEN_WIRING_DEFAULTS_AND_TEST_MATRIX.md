@@ -251,11 +251,25 @@ Plus notification's own separate per-signal mechanism (not `_WIRING`): `warn_co2
 
 ### 4.3 Axes collected so far
 
+**Merge note (2026-09-10)**: the old axis 3 ("sensor↔sensor wiring, sgp40's `comp_source`
+specifically") and old axis 10 ("shared-property cross-wiring") are now one axis — §2.9 generalized
+`comp_source` into independent per-value fields, matched by attribute name across *any* producer,
+so there's no longer a separate "is this interchangeable across drivers" question distinct from
+"how is this one field wired." Folded into axis 3 below; every real detail from both old axes is
+preserved, not dropped.
+
 1. **Sensor population** — which of {scd30, sgp40, bmp3xx} are present. With §2 landed, all 8
    subsets of the 3-element set become legal (no more sgp40⇒scd30 pruning).
 2. **FRAM presence** — with / without.
-3. **Sensor↔sensor wiring** (sgp40's `comp_source` specifically) — real scd30 reference / explicit
-   default with TOML-authored constants / not applicable when sgp40 absent.
+3. **Per-value measurement wiring** (§2.9's generalized mechanism — today concretely: sgp40's
+   `temperature_source`/`humidity_source`, independently). Per value, per consuming instance:
+   - a real reference to **any** instance whose `get_data()` exposes a matching attribute name —
+     not restricted to one hardcoded producer class (temperature: scd30 *or* bmp3xx, matched by
+     the shared `Temp` attribute name, §2.9);
+   - an explicit default with TOML-authored constants (§2);
+   - not applicable when the consuming driver itself is absent (e.g. no sgp40 present at all).
+   "Full / partial / none" wiring density (the project owner's original framing) now means: across
+   every value a present consumer needs, how many are real references vs. explicit defaults.
 4. **Sensor↔FRAM wiring** (`fram_target` on scd30/sgp40/bmp3xx/neopixel) — full (every present
    instance wires it) / partial (some do, some don't) / none (FRAM present but nothing wires to
    it) / N/A (FRAM absent).
@@ -263,23 +277,19 @@ Plus notification's own separate per-signal mechanism (not `_WIRING`): `warn_co2
    individually gated on whether a suitable `source` instance (scd30 for CO2/Hum, sgp40 for VOC)
    is present at all.
 6. **Notification↔neopixel wiring** (`signal_sink`) — real neopixel reference / explicit no-op
-   default.
+   default (§2).
 7. **Device-level `led_target`** (conn↔neopixel) — wired / not-wired, when neopixel present.
 8. **Device-level `fram_target`** (sysfunct↔FRAM) — wired / not-wired, when FRAM present.
-9. **Multi-instance variants** — 2× scd30, 2× sgp40 (name_ext-disambiguated) — where sensor↔sensor
-   wiring (axis 3) becomes a genuinely free per-instance choice: each sgp40 instance can
-   independently point at a different scd30 instance, the same scd30 instance, or use the explicit
-   default — this is where "full vs. partial wiring against different sensors measuring the same
-   property" lives.
-10. **Shared-property cross-wiring — RESOLVED, generalized (2026-09-10, see §2.9)**: not scoped to
-    `comp_source`/temperature specifically. Every individual measurement value must be freely
-    selectable for wiring from any producer exposing that same property, uniformly, the same way
-    `warn_*` already works, matched by attribute name (§2.9's now-resolved sub-question — no
-    property/unit tag system). Full survey and the `comp_source`→per-value-field consequence are in
-    §2.9.
-11. **Bus topology** — all sensors on one shared bus vs. spread across separate buses vs. i2c+spi
+9. **Multi-instance variants** — 2× scd30, 2× sgp40, plus bmp3xx (name_ext-disambiguated where
+   needed) — where axis 3 becomes a genuinely free *per-instance* choice, richer than the
+   single-instance case: each sgp40 instance's `temperature_source` can independently point at any
+   scd30 instance, at bmp3xx, at the same source another sgp40 instance uses, or use the explicit
+   default — independently of what its `humidity_source` does. This is where "full vs. partial
+   wiring against different sensors measuring the same property," across multiple instances of
+   multiple driver types, actually lives — the richest corner of the whole matrix.
+10. **Bus topology** — all sensors on one shared bus vs. spread across separate buses vs. i2c+spi
     mixed.
-12. **name_ext on a singleton-adjacent instance** — giving the sole scd30 instance a non-empty
+11. **name_ext on a singleton-adjacent instance** — giving the sole scd30 instance a non-empty
     `name_ext` anyway (legal, just unusual).
 
 ### 4.4 Still to do
@@ -290,8 +300,5 @@ Plus notification's own separate per-signal mechanism (not `_WIRING`): `warn_co2
   directly for cases no real/6-device TOML can reach).
 - Design the multi-instance (axis 9) fixture set — likely extends
   `tests_scripts/buildgen_fixtures/novel_combo.toml` or adds a sibling fixture, not yet decided.
-- Once §2.9's per-value wiring shape is finalized, axis 3 (sensor↔sensor wiring) needs re-wording
-  in terms of it (temperature_source/humidity_source independently, not one comp_source choice) —
-  not yet done here.
 - Keep collecting axes/combinations with the project owner before finalizing which become real
   test files.
