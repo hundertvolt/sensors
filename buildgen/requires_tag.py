@@ -2,7 +2,11 @@
 tag (BUILD_CHAIN_PLAN.md's "Build/generator script quality bar") - a plain comment, deliberately
 never a real Python value: nothing the running firmware itself reads should become a real
 frozen-bytecode constant just to serve this generator. Grammar: `# @requires bus.<field><op><value>`
-placed at module level near `_WIRING`/`_VAL_*`, e.g. `# @requires bus.timeout>=200000`."""
+placed at module level near `_WIRING`/`_VAL_*`, e.g. `# @requires bus.timeout>=200000`.
+
+A typo'd or misplaced attempt at this tag must never be silently invisible - buildgen/tag_comments.py's
+standing rule, not specific to this tag. See that module's check_for_near_miss_tags() docstring for
+the concrete incident this generalizes from."""
 
 import operator
 import re
@@ -12,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from buildgen.errors import BuildError
+from buildgen.tag_comments import check_for_near_miss_tags, iter_comment_tokens
 
 _TAG_RE = re.compile(r"#\s*@requires\s+bus\.(?P<field>\w+)\s*(?P<op>>=|<=|==|!=|>|<)\s*(?P<value>\S+)")
 
@@ -41,16 +46,26 @@ def _coerce(raw: str) -> "int | float":
 
 
 def parse_requires_tags(path: Path, device: str, instance_label: str) -> tuple[RequiresTag, ...]:
+    tokens = iter_comment_tokens(path, device, instance_label)
     tags = []
-    for lineno, line in enumerate(path.read_text().splitlines(), start=1):
-        m = _TAG_RE.search(line)
+    exact_matches: set[tuple[int, int]] = set()
+    for tok in tokens:
+        m = _TAG_RE.fullmatch(tok.text.strip())
         if m is None:
             continue
+        exact_matches.add((tok.lineno, tok.col))
+        if tok.line_indented:
+            raise BuildError(
+                device,
+                f"{path}:{tok.lineno}: @requires tag must be at module level (see _WIRING/_VAL_*'s own placement), not indented inside a class/function body: {tok.text.strip()!r}",
+                instance=instance_label,
+            )
         try:
             value = _coerce(m.group("value"))
         except ValueError:
-            raise BuildError(device, f"{path}:{lineno}: malformed @requires value {m.group('value')!r}", instance=instance_label) from None
+            raise BuildError(device, f"{path}:{tok.lineno}: malformed @requires value {m.group('value')!r}", instance=instance_label) from None
         tags.append(RequiresTag(m.group("field"), m.group("op"), value, m.group(0).strip()))
+    check_for_near_miss_tags(tokens, path, device, instance_label, exact_matches)
     return tuple(tags)
 
 

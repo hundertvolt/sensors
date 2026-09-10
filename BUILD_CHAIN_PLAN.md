@@ -519,6 +519,32 @@ proceed rather than degrading:
   its `[bus.*]` table, and evaluates the tag's predicate against that table's actual field value —
   silently continuing if satisfied, failing loudly (naming the device, instance, bus, field, and
   expected-vs-actual value) if not, the same as every other check in this section.
+- **Standing rule for every tag in this comment-tag family (project owner's explicit direction, not
+  scoped to `@requires` alone): a tag that's present, or close to present with a typo, must be
+  verified correct in every dimension — exact wording, location, format, content, validity — or
+  fail the build loud, never be silently treated as "no tag here, nothing to check."** A comment
+  isn't Python the interpreter validates for you; a driver author can misspell `@requires` as
+  `@require`, drop the `bus.` prefix, use a bare `=` instead of `==`, or bury the tag inside a
+  method body where it's no longer "near the schema" it's meant to describe — every one of those
+  must raise a `BuildError`, the same as a real malformed field would. `buildgen/tag_comments.py`
+  is the shared mechanism (`KNOWN_TAG_NAMES` registry, tokenize-based comment scanning so a `#`
+  inside a string/docstring is never mistaken for a real comment, edit-distance typo matching, and
+  a payload-shape gate so ordinary prose that happens to mention a tag's name isn't misflagged) —
+  `buildgen/requires_tag.py` is built on it today; whichever session eventually builds the
+  `@web`/`@web-group` website-definitions parser (`BACKLOG.md`'s sketch) must build on the same
+  module, not reinvent a second, less-tested detector. Each tag-family's own unit tests must cover
+  all five dimensions explicitly: a correctly-formed tag (content), a common typo of the tag name
+  itself (presence/wording), the tag with each structural piece individually wrong — wrong prefix,
+  wrong operator, missing value (format), the tag placed somewhere other than module level near its
+  schema (location), and — the false-positive check that makes the whole mechanism trustworthy — a
+  realistic prose comment that happens to mention the tag's name but carries no real payload, which
+  must *not* raise. `tests_scripts/test_buildgen_tag_comments.py` and
+  `tests_scripts/test_buildgen_requires_tag.py` are the concrete reference implementation of this
+  bar - motivated by the same failure pattern (not the same mechanism) as a real incident earlier in
+  this session: an actual driver signature change silently broke two `tests_hardware/device_scripts/`
+  call sites for a full day, undetected only because nothing in that scope was ever checked at all.
+  A malformed comment-tag silently parsing to "no tag declared" is the same class of risk one layer
+  down - present-but-wrong content that nothing verifies.
 - **Never produce a corrupted or partial build.** On any detected error, abort the entire build
   immediately — no partial `build/<device>/` output left behind that could be mistaken for a real
   artifact.

@@ -271,7 +271,19 @@ constraints.
   construction-site wiring (which already states the same grouping, risking silent drift if tagged
   twice); a full formal grammar (escaping a `"` inside a quoted value, etc.) was deliberately not
   attempted, since the sketch's job was proving the *shape* of the idea against real code, not being
-  implementation-ready.
+  implementation-ready. **Standing requirement for whoever builds the real parser** (BUILD_CHAIN_PLAN.md's
+  "Build/generator script quality bar," project owner's explicit direction): a `@web`/`@web-group` tag
+  that's present, or close to present with a typo, must be verified correct in every dimension - exact
+  wording, location, format, content, validity - or fail the build loud, the same bar `@requires`
+  already meets. Build on `buildgen/tag_comments.py` (the shared comment-tag-scanning mechanism
+  `buildgen/requires_tag.py` already uses - tokenize-based so a `#` inside a string/docstring is
+  never mistaken for a real comment, edit-distance typo matching, a payload-shape gate against
+  false-positiving on ordinary prose) rather than a second, separately-tested detector - add `"web"`/
+  `"web-group"` to its `KNOWN_TAG_NAMES` registry and give the new grammar its own strict-format
+  module next to `requires_tag.py`. `tests_scripts/test_buildgen_tag_comments.py` and
+  `tests_scripts/test_buildgen_requires_tag.py` are the reference test shape to mirror: a
+  correctly-formed tag, a typo of the tag name, each structural piece individually wrong, the tag
+  placed somewhere other than module level, and a realistic false-positive case that must not raise.
 - **Per-variant `sensortask-*.py` generator — not yet built (the automated version specifically;
   one real, hand-written second variant now exists).** SPECIFICATION.md Part A.3 already names the
   automated generator as a real planned direction (one setup-definition file → every variant's

@@ -71,3 +71,64 @@ def test_check_requires_tags_wrong_type_fails_loud_not_a_raw_traceback():
     tags = (RequiresTag("timeout", ">=", 200000, "@requires bus.timeout>=200000"),)
     with pytest.raises(BuildError, match="not comparable"):
         check_requires_tags(tags, {"timeout": "200ms"}, "dev", "scd30", "i2c0")
+
+
+# ---------------------------------------------------------------------------
+# "Present, or close to present, with typos" - a typo'd/malformed/misplaced @requires attempt must
+# fail the build loud, never be silently treated as "no tag declared" (buildgen/tag_comments.py's
+# standing rule). Complements test_buildgen_tag_comments.py's own unit-level coverage of the shared
+# mechanism with full parse_requires_tags() end-to-end coverage of the one real tag that uses it.
+# ---------------------------------------------------------------------------
+
+
+def test_parse_requires_tags_missing_s_typo_raises(tmp_path: Path):
+    path = tmp_path / "asy_x_driver.py"
+    path.write_text("# @require bus.timeout>=200000\n")
+    with pytest.raises(BuildError, match="misspelled @requires tag"):
+        parse_requires_tags(path, "dev", "x")
+
+
+def test_parse_requires_tags_wrong_case_typo_raises(tmp_path: Path):
+    path = tmp_path / "asy_x_driver.py"
+    path.write_text("# @Requires bus.timeout>=200000\n")
+    with pytest.raises(BuildError, match="malformed @requires tag"):
+        parse_requires_tags(path, "dev", "x")
+
+
+def test_parse_requires_tags_missing_bus_prefix_raises(tmp_path: Path):
+    path = tmp_path / "asy_x_driver.py"
+    path.write_text("# @requires timeout>=200000\n")
+    with pytest.raises(BuildError, match="malformed @requires tag"):
+        parse_requires_tags(path, "dev", "x")
+
+
+def test_parse_requires_tags_single_equals_typo_raises(tmp_path: Path):
+    path = tmp_path / "asy_x_driver.py"
+    path.write_text("# @requires bus.timeout=200000\n")
+    with pytest.raises(BuildError, match="malformed @requires tag"):
+        parse_requires_tags(path, "dev", "x")
+
+
+def test_parse_requires_tags_indented_inside_function_raises(tmp_path: Path):
+    # Location dimension: a well-formed tag hidden inside a method body isn't "close to the
+    # schema" the way module-level _WIRING/_VAL_* placement is - must fail, not silently parse.
+    path = tmp_path / "asy_x_driver.py"
+    path.write_text("class Foo:\n    def __init__(self):\n        # @requires bus.timeout>=200000\n        pass\n")
+    with pytest.raises(BuildError, match="module level"):
+        parse_requires_tags(path, "dev", "x")
+
+
+def test_parse_requires_tags_prose_mentioning_the_tag_by_name_is_not_flagged(tmp_path: Path):
+    # Regression guard for a real near-collision found in this repo: buildgen/validate.py has a
+    # multi-line prose comment that happens to wrap so one line reads "# @requires tag, not
+    # here)." - carries no field/operator/value payload, so it must never be mistaken for a
+    # malformed tag attempt.
+    path = tmp_path / "asy_x_driver.py"
+    path.write_text("# explains something, only actually\n# required by that driver's own\n# @requires tag, not here).\nx = 1\n")
+    assert parse_requires_tags(path, "dev", "x") == ()
+
+
+def test_parse_requires_tags_unrelated_at_word_is_not_flagged(tmp_path: Path):
+    path = tmp_path / "asy_x_driver.py"
+    path.write_text("# @param bus.timeout>=200000\n")
+    assert parse_requires_tags(path, "dev", "x") == ()
