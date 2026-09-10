@@ -101,6 +101,17 @@ if [ "$twin_status" -ne 0 ]; then
     echo "error: digital_twin/typecheck.ini's dedicated pass found real findings - this scope is expected to stay fully clean." >&2
 fi
 
-if [ "$main_status" -ne 0 ] || [ "$twin_status" -ne 0 ]; then
+# scripts/, toolchain/, tests_scripts/ and tests_hardware/ are host CPython, not MicroPython, so
+# they need a THIRD invocation for the same reason the twin needs its second one: the main pass
+# above replaces mypy's typeshed with the MicroPython stubs (custom_typeshed_dir), which have no
+# `ast`/`argparse`/`pathlib`/`subprocess`, so every stdlib import in those four scopes would report
+# as missing. Always run, regardless of "$@" - see host_typecheck.ini's own header.
+host_status=0
+mypy --config-file host_typecheck.ini || host_status=$?
+if [ "$host_status" -ne 0 ]; then
+    echo "error: host_typecheck.ini's dedicated pass found real findings - this scope is expected to stay fully clean." >&2
+fi
+
+if [ "$main_status" -ne 0 ] || [ "$twin_status" -ne 0 ] || [ "$host_status" -ne 0 ]; then
     exit 1
 fi

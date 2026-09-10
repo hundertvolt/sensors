@@ -10,7 +10,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 status=0
 
-ruff check src tests digital_twin || status=1
+ruff check src tests digital_twin boot_entry toolchain scripts tests_scripts tests_hardware || status=1
 
 # scripts/ only, deliberately NOT the four legacy build-*.sh at the repo root: those belong to the
 # same pre-refactor generation as python//modules/ and are out of lint scope by the same standing
