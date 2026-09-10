@@ -478,8 +478,9 @@ def test_recvfrom_respects_timeout_against_a_realistically_delayed_genuine_reply
             _, client_addr = await peer.recv(64)
             assert client_addr is not None
 
-            asyncio.create_task(peer.send_after(client_addr, b"in-time", delay_ms=40))
+            in_time_sender = asyncio.create_task(peer.send_after(client_addr, b"in-time", delay_ms=40))
             in_time, _ = await client.recvfrom(64, timeout_ms=300)
+            await in_time_sender  # already finished - the reply above is what it sent
 
             too_late_sender = asyncio.create_task(peer.send_after(client_addr, b"too-late", delay_ms=300))
             too_late, _ = await client.recvfrom(64, timeout_ms=100)
@@ -900,9 +901,10 @@ def test_cancellation_propagates_out_of_recvfrom() -> None:
             task.cancel()
             try:
                 await task
-                return False  # should never get here
             except asyncio.CancelledError:
                 return True
+            else:
+                return False  # should never get here
         finally:
             await server.disconnect()
 
@@ -1030,12 +1032,15 @@ def test_async_context_manager_disconnects_on_exit() -> None:
 def test_async_context_manager_disconnects_even_on_exception() -> None:
     addr = make_addr()
 
+    def boom() -> None:  # raised from a helper, so the raise isn't lexically inside the try below
+        raise ValueError("boom")
+
     async def scenario() -> AsyUDPSocket:
         sock = AsyUDPSocket(addr, mode="server")
         try:
             async with sock:
                 await sock._connect()
-                raise ValueError("boom")
+                boom()
         except ValueError:
             pass
         return sock
@@ -1239,7 +1244,7 @@ def test_dns_server_pattern_sendto_failure_does_not_corrupt_subsequent_serving()
             await server.sendto(b"reply to nobody", unreachable_client_addr)  # never raises either way
 
             peer.sock.sendto(b"next real query", addr)
-            data, from_addr = await server.recvfrom(64, timeout_ms=500)
+            _data, from_addr = await server.recvfrom(64, timeout_ms=500)
             assert from_addr is not None
             await server.sendto(b"real reply", from_addr)
             reply, _ = await peer.recv(64, timeout_ms=500)
@@ -1649,9 +1654,10 @@ def test_ready_cancellation_still_propagates_through_the_new_try_except() -> Non
             task.cancel()
             try:
                 await task
-                return False  # should never get here
             except asyncio.CancelledError:
                 return True
+            else:
+                return False  # should never get here
         finally:
             await sock.disconnect()
 

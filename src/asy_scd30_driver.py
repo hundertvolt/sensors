@@ -58,6 +58,21 @@ _VAL_AP = const((("AmbPres", "int", None, 700, 1400, 0),))
 _VAL_ALT = const((("Altitude", "int", None, 0, 65535, None),))
 _VAL_CAL = const((("ForceCalRef", "int", None, 400, 2000, None),))
 _VAL_SC = const((("SelfCal", "bool", None, None, None, None),))
+
+# Same datasheet limits the _VAL_* schema entries above carry, named for the driver's own argument
+# validation (Interface Description sections 1.4.1-1.4.6).
+_MEAS_INTERVAL_MIN = const(2)
+_MEAS_INTERVAL_MAX = const(1800)
+_AMB_PRESSURE_MIN = const(700)
+_AMB_PRESSURE_MAX = const(1400)
+_ALTITUDE_MAX = const(65535)
+_TEMP_OFFSET_MAX = const(655.35)
+_FORCED_RECAL_MIN = const(400)
+_FORCED_RECAL_MAX = const(2000)
+# A 16-bit word on this bus is 2 payload bytes plus one CRC-8 byte - what CRC8.add_into()/
+# check_from() return on success (total written / payload length respectively).
+_WORD_BYTES = const(2)
+_WORD_CRC_BYTES = const(3)
 # Deliberately no _VAL_* entry for "ContMeas" - the SCD30 can't report whether continuous
 # measurement is currently running, so it can't join this schema the way the other fields do.
 # No local default either: these params are stored on the sensor itself, not cached locally.
@@ -430,7 +445,7 @@ class SCD30_I2C:
         if arguments is not None:
             self._buffer[2] = arguments >> 8
             self._buffer[3] = arguments & 0xFF
-            if await self.crc.add_into(self._buffer, 2, start=2) != 3:
+            if await self.crc.add_into(self._buffer, 2, start=2) != _WORD_CRC_BYTES:
                 raise RuntimeError("CRC generation failed!")
             end_byte = 5
         await i2c.write(self._buffer, end=end_byte)
@@ -438,8 +453,7 @@ class SCD30_I2C:
 
     async def _read_register(self, reg_addr: int) -> int:
         async with self.i2c_scd30 as scd30, scd30.i2c_device as i2c:
-            ret = await self._read_dev_register(i2c, reg_addr)
-        return ret
+            return await self._read_dev_register(i2c, reg_addr)
 
     async def _read_dev_register(self, i2c: I2CDevice, reg_addr: int) -> int:
         self._buffer[0] = reg_addr >> 8
@@ -449,7 +463,7 @@ class SCD30_I2C:
         # delay clears the datasheet's >3ms minimum (Interface Description 1.4.4).
         await asyncio.sleep(0.05)
         await i2c.readinto(self._buffer, end=3)
-        if await self.crc.check_from(self._buffer, 3) != 2:
+        if await self.crc.check_from(self._buffer, 3) != _WORD_BYTES:
             raise RuntimeError("CRC check failed while reading data")
         return cast(int, unpack_from(">H", self._buffer)[0])
 
@@ -503,7 +517,7 @@ class SCD30_I2C:
 
     async def set_measurement_interval(self, value: int) -> None:
         # NVM-persisted - survives reset() and power cycles.
-        if value < 2 or value > 1800:
+        if value < _MEAS_INTERVAL_MIN or value > _MEAS_INTERVAL_MAX:
             raise ValueError("measurement_interval must be from 2-1800 seconds")
         await self._send_command(_CMD_SET_MEASUREMENT_INTERVAL, value)
 
@@ -519,14 +533,14 @@ class SCD30_I2C:
         # through as the "disable" value instead of being rejected; NaN is rejected explicitly too.
         if pressure_mbar != pressure_mbar:  # NaN is the only value unequal to itself
             raise ValueError("ambient_pressure must not be NaN")
-        if pressure_mbar != 0 and (pressure_mbar > 1400 or pressure_mbar < 700):
+        if pressure_mbar != 0 and (pressure_mbar > _AMB_PRESSURE_MAX or pressure_mbar < _AMB_PRESSURE_MIN):
             raise ValueError("ambient_pressure must be from 700 to 1400 mBar")
         await self._send_command(_CMD_CONTINUOUS_MEASUREMENT, int(pressure_mbar))
 
     async def set_altitude(self, altitude: int) -> None:
         # NVM-persisted. Validated before truncating - see set_ambient_pressure()'s comment for
         # why int(-0.5) == 0 would otherwise slip through.
-        if altitude < 0 or altitude > 65535:
+        if altitude < 0 or altitude > _ALTITUDE_MAX:
             raise ValueError("altitude must be from 0 to 65535 meters")
         await self._send_command(_CMD_SET_ALTITUDE_COMPENSATION, int(altitude))
 
@@ -535,12 +549,12 @@ class SCD30_I2C:
         # set_ambient_pressure()'s comment.
         if offset != offset:  # NaN is the only value unequal to itself
             raise ValueError("temperature_offset must not be NaN")
-        if offset < 0 or offset > 655.35:
+        if offset < 0 or offset > _TEMP_OFFSET_MAX:
             raise ValueError("temperature_offset must be from 0 to 655.35 degrees Celsius")
         await self._send_command(_CMD_SET_TEMPERATURE_OFFSET, int(offset * 100))
 
     async def set_forced_recalibration_reference(self, reference_value: int) -> None:
-        if reference_value < 400 or reference_value > 2000:
+        if reference_value < _FORCED_RECAL_MIN or reference_value > _FORCED_RECAL_MAX:
             raise ValueError("forced_recalibration_reference must be from 400 to 2000 ppm")
         await self._send_command(_CMD_SET_FORCED_RECALIBRATION_FACTOR, reference_value)
 
@@ -582,7 +596,7 @@ class SCD30_I2C:
 
             crcs_good = True
             for i in range(0, 18, 3):
-                if await self.crc.check_from(self._buffer, 3, start=i) == 2:
+                if await self.crc.check_from(self._buffer, 3, start=i) == _WORD_BYTES:
                     continue
                 crcs_good = False
             if not crcs_good:

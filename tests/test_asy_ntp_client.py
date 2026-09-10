@@ -28,6 +28,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
     from typing import Any, TypeVar
 
+    from typing_extensions import Self
+
     T = TypeVar("T")
 
 
@@ -178,7 +180,7 @@ class _RaiseOnArm:
     def __init__(self, exc: "type[BaseException]" = OSError) -> None:
         self._exc = exc
 
-    def __enter__(self) -> "_RaiseOnArm":
+    def __enter__(self) -> "Self":
         Timer.raise_on_arm_exc = self._exc
         Timer.raise_on_arm = True
         return self
@@ -577,9 +579,10 @@ def test_start_ntp_timer_fires_the_trigger_event() -> None:
         client.ntp_timer.trigger()
         try:
             await asyncio.wait_for(client.ntp_timer_trigger_event.wait(), 0.2)
-            return True
         except asyncio.TimeoutError:
             return False
+        else:
+            return True
 
     assert run(scenario())
 
@@ -656,9 +659,10 @@ def test_ntp_force_sync_resets_last_sync_retries_and_fires_the_sync_trigger() ->
         assert client.ntp_retries == 0
         try:
             await asyncio.wait_for(client.ntp_sync_trigger_event.wait(), 0.2)
-            return True
         except asyncio.TimeoutError:
             return False
+        else:
+            return True
 
     assert run(scenario())
 
@@ -1250,9 +1254,10 @@ def test_handle_sync_failure_retry_timer_fires_the_sync_trigger() -> None:
         client.ntp_retry_timer.trigger()
         try:
             await asyncio.wait_for(client.ntp_sync_trigger_event.wait(), 0.2)
-            return True
         except asyncio.TimeoutError:
             return False
+        else:
+            return True
 
     assert run(scenario())
 
@@ -1620,7 +1625,7 @@ def test_cettime_returns_none_when_gmtime_result_has_the_wrong_length() -> None:
 
 
 # ---------------------------------------------------------------------------
-# time_counter()
+# time_counter() - the synced-clock second counter
 # ---------------------------------------------------------------------------
 
 
@@ -2081,7 +2086,7 @@ class _RedirectNtpNetworking:
     def __init__(self, port: int) -> None:
         self._port = port
 
-    def __enter__(self) -> "_RedirectNtpNetworking":
+    def __enter__(self) -> "Self":
         self._original_port = ntpmod._NTP_UDP_PORT
         self._original_socket_cls = ntpmod.AsyUDPSocket
         ntpmod._NTP_UDP_PORT = self._port

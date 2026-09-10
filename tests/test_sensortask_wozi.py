@@ -997,9 +997,9 @@ def test_webserver_status_put_reset_errors_clears_a_real_modules_history() -> No
 # actually reaches the real, wired conn instance, through the real construction graph - not a fake
 # callback like tests/test_asy_webserver_service.py's own Section G.2 coverage. No real WiFi task is
 # started here (deliberately - see test_digital_twin_real_website_integration.py's own note for the
-# same reasoning): conn._conn_phase is set directly, the same test-seam convention this file's own
-# test_webserver_networking_put_ssid_group_reconnects_but_led_group_alone_does_not() and others
-# already use for a real driver's internal state.
+# same reasoning): conn._conn_phase is set directly, the same test-seam convention this file's
+# own test_webserver_networking_put_ssid_group_reconnects_but_led_group_alone_does_not() and
+# others already use for a real driver's internal state.
 # ---------------------------------------------------------------------------
 
 

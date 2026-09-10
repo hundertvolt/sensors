@@ -21,6 +21,8 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 if TYPE_CHECKING:
     from types import TracebackType
 
+    from typing_extensions import Self
+
 
 class SPI:
     def __init__(self, port_id: int, sck_pin: int, mosi_pin: int, miso_pin: int) -> None:
@@ -110,7 +112,7 @@ class SPIDevice(Lockable):
         self.firstbit = firstbit
         self.initialized = False  # cs_pin isn't configured as an output until setup() runs
 
-    async def __aenter__(self) -> "SPIDevice":
+    async def __aenter__(self) -> "Self":
         # Pin.value() writes the GPIO register unconditionally regardless of direction, so
         # entering before setup() would silently fail to assert CS rather than raise.
         if not self.initialized:

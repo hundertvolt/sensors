@@ -274,10 +274,11 @@ def _wire_spi_device(id: int) -> "Any | None":
 
         # Mirrors _wire_i2c_devices()'s own profile branch above - see digital_twin/README.md's
         # "What's here" section for the real chip-identity bug this fixed.
-        if _i2c_wiring_profile == "dev":
-            chip = FramChip(size=_DEV_FRAM_SIZE, state_path=_fram_state_path, rdid_response=_DEV_FRAM_RDID)
-        else:
-            chip = FramChip(state_path=_fram_state_path)
+        chip = (
+            FramChip(size=_DEV_FRAM_SIZE, state_path=_fram_state_path, rdid_response=_DEV_FRAM_RDID)
+            if _i2c_wiring_profile == "dev"
+            else FramChip(state_path=_fram_state_path)
+        )
         _current_fram_chip = chip
         return chip
     return None

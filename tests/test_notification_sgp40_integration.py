@@ -25,6 +25,8 @@ if TYPE_CHECKING:
     from collections.abc import Coroutine
     from typing import Any, TypeVar
 
+    from typing_extensions import Self
+
     T = TypeVar("T")
 
 
@@ -37,7 +39,7 @@ class _FastAsyncSleep:
     # real command-delay sleeps (tens of ms each) would otherwise make the ~180-cycle baseline-settle
     # + threshold-spike sequence below take upward of 15s per test. asyncio.sleep is a shared,
     # process-wide function, restored on exit regardless of how the `with` block exits.
-    def __enter__(self) -> "_FastAsyncSleep":
+    def __enter__(self) -> "Self":
         self._real_sleep = asyncio.sleep
 
         async def _fast(_seconds: float) -> None:

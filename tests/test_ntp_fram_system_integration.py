@@ -37,6 +37,8 @@ if TYPE_CHECKING:
     from collections.abc import Coroutine
     from typing import Any, TypeVar
 
+    from typing_extensions import Self
+
     T = TypeVar("T")
 
 
@@ -201,7 +203,7 @@ class _RedirectNtpNetworking:
     def __init__(self, port: int) -> None:
         self._port = port
 
-    def __enter__(self) -> "_RedirectNtpNetworking":
+    def __enter__(self) -> "Self":
         self._original_port = ntpmod._NTP_UDP_PORT
         self._original_socket_cls = ntpmod.AsyUDPSocket
         ntpmod._NTP_UDP_PORT = self._port

@@ -696,7 +696,7 @@ def test_two_signals_failures_share_one_errno_but_distinct_names_in_message() ->
 
 
 # ---------------------------------------------------------------------------
-# _check_one()
+# _check_one
 # ---------------------------------------------------------------------------
 
 
@@ -777,7 +777,7 @@ def test_check_one_infinite_value_triggers_in_the_expected_direction() -> None:
 
 def test_check_one_none_value_is_not_triggered_no_crash() -> None:
     coordinator, _clock, _cb = make_coordinator()
-    signal, fv = make_signal("WarnCO2", value=None)
+    signal, _fv = make_signal("WarnCO2", value=None)
     coordinator.register(signal)
     coordinator.finalize()
     run(coordinator.cfgmgr.setup())
@@ -1206,7 +1206,7 @@ def test_set_override_led_above_the_max_clamps_and_reads_back_clamped() -> None:
 
 
 def test_malformed_own_config_read_degrades_gracefully_and_keeps_retrying() -> None:
-    coordinator, clock, cb = make_coordinator()
+    coordinator, clock, _cb = make_coordinator()
     clock.value = _FakeTime(12, 0)
     signal, _fv = make_signal("WarnCO2", value=2000)
     coordinator.register(signal)
@@ -1262,7 +1262,7 @@ def test_next_sleep_secs_floors_at_point_one_when_elapsed_exceeds_interv() -> No
 
 
 def test_zero_registered_signals_just_sleeps_no_crash() -> None:
-    coordinator, clock, cb = make_coordinator()
+    coordinator, clock, _cb = make_coordinator()
     clock.value = _FakeTime(12, 0)
     coordinator.finalize()
     run(coordinator.cfgmgr.setup())

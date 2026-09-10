@@ -303,11 +303,12 @@ class _AsyBaseFramChunk:
                     await cb(None, None, num_iterations)
                     return False, 0
                 await cb(buf_slice, global_slice, num_iterations)
-                return False, length
             except Exception as e:
                 await self.pr.err_s("General read error in _read_chunk:", e, errno=47)
                 await cb(None, None, 0)
                 return False, 0
+            else:
+                return False, length
         # Unreachable in practice (every path above returns; __aexit__ never suppresses) - kept
         # because mypy can't statically rule that out and treats the fall-through as live.
         return False, 0

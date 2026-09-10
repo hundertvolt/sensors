@@ -67,7 +67,7 @@ export const SUPPORTED_SCHEMA_MAJOR = 1;
  */
 export function resolveFieldValue(field, currentValues) {
     const value = currentValues[field.key];
-    return value !== undefined ? value : field.defaultValue;
+    return value === undefined ? field.defaultValue : value;
 }
 
 /**
@@ -115,10 +115,10 @@ export function validateDefinitions(data) {
             continue;
         }
         const s = /** @type {Record<string, unknown>} */ (section);
-        if (typeof s.key !== "string") {
-            problems.push(`${where}.key is missing`);
-        } else {
+        if (typeof s.key === "string") {
             sectionKeys.add(s.key);
+        } else {
+            problems.push(`${where}.key is missing`);
         }
         if (typeof s.label !== "string") {
             problems.push(`${where}.label is missing`);

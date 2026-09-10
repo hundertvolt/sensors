@@ -444,7 +444,7 @@ def test_override_pause_bypasses_manager_pause() -> None:
 
 
 # ---------------------------------------------------------------------------
-# clear()
+# clear - zeroing both copies of a chunk
 # ---------------------------------------------------------------------------
 
 
@@ -1993,7 +1993,7 @@ def test_timestamped_chunk_buffer_get_crc_buf_returns_the_trailing_crc_slice() -
 # unpack_from() can't actually fail through real use (_TS_FMT's buffer is always allocated at
 # exactly struct.calcsize(_TS_FMT), and utc is always a plain non-negative int), so this
 # monkeypatches asy_fram_manager's own `struct` module reference the same way
-# test_ntp_boot_signature_mktime_overflow_returns_none_and_logs_once (tests/test_system_service.py)
+# see test_ntp_boot_signature_mktime_overflow_returns_none_and_logs_once, in tests/test_system_service.py,
 # fakes `time` for its own otherwise-unreachable branch.
 # ---------------------------------------------------------------------------
 

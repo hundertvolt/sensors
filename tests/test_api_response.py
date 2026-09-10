@@ -3,7 +3,6 @@ import os
 from collections import namedtuple
 
 import api_response as ar
-import config_manager as cm
 from base_classes import SensorReaderConfig
 
 try:
@@ -14,6 +13,8 @@ except ImportError:  # typing isn't available on the real MicroPython test inter
 if TYPE_CHECKING:
     from collections.abc import Coroutine
     from typing import Any, TypeVar
+
+    import config_manager as cm
 
     T = TypeVar("T")
 

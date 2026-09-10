@@ -188,9 +188,10 @@ def check_cfg_get_default(
         is_error, coerced_val = type_or_range_error(def_val, field, check_special=True)
         if is_error:
             return True, None  # self-check of defaults
-        return use_value, coerced_val
     except Exception:  # malformed field record
         return True, None
+    else:
+        return use_value, coerced_val
 
 
 if TYPE_CHECKING:
@@ -292,7 +293,7 @@ class ConfigManager:
                         await self.pr.err_s(self.config_file, "- Type / range error in", key, "- skipping!", errno=12)
                         dict_results[key] = "Invalid"
                         continue
-                    value = coerced_value  # use the coerced (e.g. int->float) shape for storage below
+                    # coerced_value (not the caller's raw one) is the shape stored below - e.g. int->float
                     if not use_value:
                         dict_results[key] = "Valid"
                         self.pr.evt(self.config_file, "- Key", key, "is valid but not in storage, skipping.")
@@ -301,8 +302,8 @@ class ConfigManager:
                         dict_results[key] = "Failed"
                         await self.pr.err_s(self.config_file, "- Key", key, "not found in config file, ignoring!", errno=13)
                         continue
-                    if new_cache[key] != value:
-                        new_cache[key] = value
+                    if new_cache[key] != coerced_value:
+                        new_cache[key] = coerced_value
                         dict_results[key] = "Valid"
                         changed = True
                     else:
@@ -314,12 +315,13 @@ class ConfigManager:
                     json.dump(new_cache, f)
                 self._cache = new_cache  # only commit once the write has actually succeeded
                 self.pr.evt(self.config_file, "- Config data was written.")
-                return True, dict_results
             except (MemoryError, OSError, ValueError, AttributeError) as e:  # file errors, a non-dict
                 # `data` param (AttributeError on .items()), or json.dump() exhausting the heap;
                 # ValueError is defensive since dump() no longer reads/reparses json here.
                 await self.pr.err_s(self.config_file, "- Error writing config data:", e, errno=14)
                 return False, {}
+            else:
+                return True, dict_results
 
     async def setup(self) -> None:
         data: dict[str, Any] | None = None
@@ -396,8 +398,6 @@ class ConfigManager:
             self._cache = valid_cfg
             self.valid = True
             self.pr.one("Default data was written in", self.config_file, "- config is ready.")
-            return
         except (MemoryError, OSError, TypeError) as e:  # write failed, filename isn't a string, or
             # json.dump() exhausts the heap serializing valid_cfg
             await self.pr.err_s("Error writing config", self.config_file, "- config is not valid:", e, errno=4)
-            return

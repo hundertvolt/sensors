@@ -284,8 +284,8 @@ class NotificationCoordinator(SensorReaderConfig):
                 cfg_int is None
                 or cfg_float is None
                 or cfg_bool is None
-                or len(cfg_int) != 5
-                or len(cfg_float) != 2
+                or len(cfg_int) != len(_VAL_INT_FIELDS)
+                or len(cfg_float) != len(_VAL_FLOAT_FIELDS)
                 or len(cfg_bool) != 1
             ):
                 cfg_read_failed = True

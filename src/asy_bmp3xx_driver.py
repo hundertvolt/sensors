@@ -50,6 +50,14 @@ _ERR_CMD = const(0x02)  # ERR_REG bit 1 "cmd_err": command execution failed (dat
 _STATUS_CMD_RDY = const(0x10)  # STATUS bit 4: command decoder ready for a new CMD (sec 4.3.3)
 _STATUS_DATA_READY = const(0x60)  # STATUS bits 5+6: drdy_press | drdy_temp (sec 4.3.3)
 
+_PT_BURST_LEN = const(6)  # one burst read covers pressure + temperature, 3 bytes each (sec 4.3.4)
+
+# Datasheet sec 1, Table 2 operating ranges - the plausibility gate on a compensated reading.
+_OP_PRESS_MIN_HPA = const(300.0)
+_OP_PRESS_MAX_HPA = const(1250.0)
+_OP_TEMP_MIN_C = const(-40.0)
+_OP_TEMP_MAX_C = const(85.0)
+
 _CMD_RDY_TIMEOUT_MS = const(50)  # cmd_rdy clears near-instantly outside an in-flight command
 _MEAS_TIMEOUT_MS = const(300)  # datasheet sec 3.9.2: max ~129ms at x32/x32 osr; generous margin
 
@@ -73,6 +81,9 @@ _VAL_PO = const((("PressOffset", "float", 0.0, -500.0, 500.0, None),))
 _VAL_TO = const((("TempOffset", "float", 0.0, -10.0, 10.0, None),))
 _VAL_SLO = const((("SeaLevelOffs", "float", 0.0, -1000.0, 5000.0, None),))
 _VAL_ATM = const((("MeanAtmTemp", "float", 15.0, -50.0, 50.0, None),))
+
+_N_INT_CFG = const(4)  # SampleInterv + PressOvers + TempOvers + FiltCoeff
+_N_FLOAT_CFG = const(4)  # PressOffset + TempOffset + SeaLevelOffs + MeanAtmTemp
 
 _NAME = const("BMP3XX")
 # Kept as a literal tuple inline (not `_FIELDS` below) because mypy's namedtuple plugin can only
@@ -170,7 +181,7 @@ class BMP3xx_Reader(SensorReaderConfig):
         self.pr.one("Setting sensor config at startup.")
 
         cfg_values = await self.cfgmgr.get_int_values(_VAL_SI + _VAL_POV + _VAL_TOV + _VAL_FC)
-        if cfg_values is None or len(cfg_values) != 4:
+        if cfg_values is None or len(cfg_values) != _N_INT_CFG:
             await self.pr.err_s("Error reading config data!", errno=12)
             return False  # error
 
@@ -192,11 +203,11 @@ class BMP3xx_Reader(SensorReaderConfig):
             return  # don't run on invalid data
 
         comp_values = await self.cfgmgr.get_float_values(_VAL_PO + _VAL_TO + _VAL_SLO + _VAL_ATM)
-        if comp_values is None or len(comp_values) != 4:
+        if comp_values is None or len(comp_values) != _N_FLOAT_CFG:
             comp_values = [0.0, 0.0, 0.0, 15.0]
             await self.pr.err_s("Error reading config data!", errno=14)
 
-        # results: (pressure, temperature, timestamp)
+        # results holds pressure, temperature and timestamp, in that order
         p_comp = results[0] - comp_values[0]  # pressure - BMPPressOffset
         t_comp = results[1] - comp_values[1]  # temperature - BMPTempOffset
         await self._set_meas_data(
@@ -324,26 +335,26 @@ class BMP3xx_Reader(SensorReaderConfig):
     async def set_pressure_oversampling(self, oversample: int) -> bool:
         try:
             await self.bmp.set_pressure_oversampling(oversample)
-            return True
         except Exception as e:
             await self.pr.err_s("Error setting pressure oversampling:", e, errno=16)
             return False
+        return True
 
     async def set_temperature_oversampling(self, oversample: int) -> bool:
         try:
             await self.bmp.set_temperature_oversampling(oversample)
-            return True
         except Exception as e:
             await self.pr.err_s("Error setting temperature oversampling:", e, errno=18)
             return False
+        return True
 
     async def set_filter_coefficient(self, coef: int) -> bool:
         try:
             await self.bmp.set_filter_coefficient(coef)
-            return True
         except Exception as e:
             await self.pr.err_s("Error setting filter coefficient:", e, errno=20)
             return False
+        return True
 
     async def read_loop(self) -> bool:
         if not await self._init_bmp():  # init sensor at startup
@@ -375,9 +386,8 @@ class BMP3XX_I2C:
         # Shared by get_pressure_oversampling()/get_temperature_oversampling() - osr_p and osr_t
         # are both 3-bit fields in the same OSR register (datasheet sec 4.3.17), differing only in
         # start_bit (0 vs 3).
-        async with self.i2c_bmp3xx as bmp3xx:  # device session
-            async with bmp3xx.i2c_device as i2c:  # bus session
-                osr = await i2c.get_bits(3, _REGISTER_OSR, start_bit)
+        async with self.i2c_bmp3xx as bmp3xx, bmp3xx.i2c_device as i2c:
+            osr = await i2c.get_bits(3, _REGISTER_OSR, start_bit)
         if osr is None:
             raise OSError(f"failed to read OSR bit-field at bit {start_bit}")
         # Datasheet sec 4.3.17 only documents encodings 0-5 (x1..x32); 6/7 are reserved and could
@@ -407,7 +417,7 @@ class BMP3XX_I2C:
             # Get ADC values
             async with bmp3xx.i2c_device as i2c:  # bus session
                 data = await i2c.get_register_struct(_REGISTER_PRESSUREDATA, "6s")
-        if not isinstance(data, bytes) or len(data) != 6:
+        if not isinstance(data, bytes) or len(data) != _PT_BURST_LEN:
             raise OSError("unexpected data burst read result")
         adc_p = data[2] << 16 | data[1] << 8 | data[0]
         adc_t = data[5] << 16 | data[4] << 8 | data[3]
@@ -447,7 +457,7 @@ class BMP3XX_I2C:
         # Rejects a reading outside the datasheet's own operating range (sec 1, Table 2). This bus
         # has no CRC framing, unlike SCD30/SGP40, so a bit flip in the burst read (or a NaN/inf from
         # the arithmetic) is otherwise undetectable - treated as a failed read by the caller.
-        if not (300.0 <= pressure_hpa <= 1250.0 and -40.0 <= temperature <= 85.0):
+        if not (_OP_PRESS_MIN_HPA <= pressure_hpa <= _OP_PRESS_MAX_HPA and _OP_TEMP_MIN_C <= temperature <= _OP_TEMP_MAX_C):
             raise ValueError(f"reading outside operating range (p={pressure_hpa} hPa, t={temperature} degC)")
         return pressure, temperature
 
@@ -455,9 +465,8 @@ class BMP3XX_I2C:
         return (await self._read_register(register, 1))[0]
 
     async def _read_register(self, register: int, length: int) -> bytes:
-        async with self.i2c_bmp3xx as bmp3xx:  # device session
-            async with bmp3xx.i2c_device as i2c:  # bus session
-                value = await i2c.get_register_struct(register, f"{length}s")
+        async with self.i2c_bmp3xx as bmp3xx, bmp3xx.i2c_device as i2c:
+            value = await i2c.get_register_struct(register, f"{length}s")
         if not isinstance(value, bytes) or len(value) != length:
             raise OSError(f"failed to read {length} bytes from register {register:#x}")
         return value
@@ -468,9 +477,8 @@ class BMP3XX_I2C:
         # get_bits()/set_bits() do their own read-modify-write with no await in between, so this
         # is atomic against a concurrent call setting the OSR register's *other* 3-bit field -
         # unlike the previous hand-rolled read-then-write pair, which was not.
-        async with self.i2c_bmp3xx as bmp3xx:  # device session
-            async with bmp3xx.i2c_device as i2c:  # bus session
-                await i2c.set_bits(3, _REGISTER_OSR, start_bit, _OSR_SETTINGS.index(oversample))
+        async with self.i2c_bmp3xx as bmp3xx, bmp3xx.i2c_device as i2c:
+            await i2c.set_bits(3, _REGISTER_OSR, start_bit, _OSR_SETTINGS.index(oversample))
 
     async def _read_coefficients(self) -> None:
         # Read & save the calibration coefficients.
@@ -549,9 +557,8 @@ class BMP3XX_I2C:
         return await self._get_osr_setting(3)
 
     async def get_filter_coefficient(self) -> int:
-        async with self.i2c_bmp3xx as bmp3xx:  # device session
-            async with bmp3xx.i2c_device as i2c:  # bus session
-                iir = await i2c.get_bits(3, _REGISTER_CONFIG, 1)
+        async with self.i2c_bmp3xx as bmp3xx, bmp3xx.i2c_device as i2c:
+            iir = await i2c.get_bits(3, _REGISTER_CONFIG, 1)
         if iir is None:
             raise OSError("failed to read filter coefficient")
         # See _get_osr_setting()'s own comment on why this needs an explicit int narrowing.
@@ -565,11 +572,10 @@ class BMP3XX_I2C:
         # BMP3xx_Reader.get_dict_cfg() torn-read entry). Same "allowed to raise" layer as every other
         # BMP3XX_I2C method - a mid-batch fault fails the whole snapshot rather than a mix of fresh
         # and stale fields.
-        async with self.i2c_bmp3xx as bmp3xx:  # device session
-            async with bmp3xx.i2c_device as i2c:  # bus session
-                osr_p = await i2c.get_bits(3, _REGISTER_OSR, 0)
-                osr_t = await i2c.get_bits(3, _REGISTER_OSR, 3)
-                iir = await i2c.get_bits(3, _REGISTER_CONFIG, 1)
+        async with self.i2c_bmp3xx as bmp3xx, bmp3xx.i2c_device as i2c:
+            osr_p = await i2c.get_bits(3, _REGISTER_OSR, 0)
+            osr_t = await i2c.get_bits(3, _REGISTER_OSR, 3)
+            iir = await i2c.get_bits(3, _REGISTER_CONFIG, 1)
         if osr_p is None or osr_t is None or iir is None:
             raise OSError("failed to read oversampling/filter bit-fields")
         if osr_p >= len(_OSR_SETTINGS) or osr_t >= len(_OSR_SETTINGS):
@@ -588,14 +594,12 @@ class BMP3XX_I2C:
     async def set_filter_coefficient(self, coef: int) -> None:
         if coef not in _IIR_SETTINGS:
             raise ValueError(f"Filter coefficient must be one of: {_IIR_SETTINGS}")
-        async with self.i2c_bmp3xx as bmp3xx:  # device session
-            async with bmp3xx.i2c_device as i2c:  # bus session
-                await i2c.set_bits(3, _REGISTER_CONFIG, 1, _IIR_SETTINGS.index(coef))
+        async with self.i2c_bmp3xx as bmp3xx, bmp3xx.i2c_device as i2c:
+            await i2c.set_bits(3, _REGISTER_CONFIG, 1, _IIR_SETTINGS.index(coef))
 
     async def setup(self, sea_level_pressure: float = 1013.25, wait_time: float = 0.002) -> None:
-        async with self.i2c_bmp3xx as bmp3xx:  # device session
-            async with bmp3xx.i2c_device as i2c:  # bus session
-                await i2c.setup()
+        async with self.i2c_bmp3xx as bmp3xx, bmp3xx.i2c_device as i2c:
+            await i2c.setup()
         chip_id = await self._read_byte(_REGISTER_CHIPID)
         if chip_id not in (_BMP388_CHIP_ID, _BMP390_CHIP_ID):
             raise RuntimeError(f"Failed to find BMP3XX! Chip ID {hex(chip_id)}")

@@ -102,11 +102,12 @@ export const pollManager = new PollManager();
  */
 export function startPolling(pollOnce, intervalMs) {
     let stopped = false;
-    let timeoutId = /** @type {ReturnType<typeof setTimeout> | undefined} */ (undefined);
+    /** @type {ReturnType<typeof setTimeout> | undefined} */
+    let timeoutId;
 
     const tick = async () => {
         if (stopped) {
-            // Defensive only: today tick() is only ever invoked by void tick() below (stopped
+            // Defensive only: today tick() is only ever invoked by the tick() call below (stopped
             // starts false) or by the setTimeout scheduled just below, itself gated on !stopped -
             // kept in case a future caller invokes tick() directly.
             return;
@@ -121,7 +122,7 @@ export function startPolling(pollOnce, intervalMs) {
         }
     };
 
-    void tick();
+    tick();
 
     return () => {
         stopped = true;

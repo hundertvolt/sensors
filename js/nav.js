@@ -31,7 +31,7 @@ export function initNav({ defs, appShellEl, drawerEl, hamburgerEl, backdropEl, o
     };
 
     for (const link of /** @type {NodeListOf<HTMLElement>} */ (drawerEl.querySelectorAll("[data-section-key]"))) {
-        const sectionKey = link.dataset.sectionKey;
+        const { sectionKey } = link.dataset;
         if (sectionKey === undefined) {
             continue; // defensive only: buildNavDrawer() always sets this on every link it builds
         }

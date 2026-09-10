@@ -450,7 +450,7 @@ def test_bus_busy_surfaces_as_etimedout() -> None:
     i2c = make_i2c()
     fake(i2c).busy = True
     ops = (
-        lambda: i2c.scan(),
+        i2c.scan,
         lambda: i2c.writeto(0x50, b"x"),
         lambda: i2c.readfrom_into(0x50, bytearray(1)),
         lambda: i2c.get_bits(0x50, 1, 0x00, 0),
@@ -739,10 +739,13 @@ def test_exception_inside_session_still_releases_the_lock() -> None:
     i2c = make_i2c()
     device = I2CDevice(i2c, 0x50)
 
+    def boom() -> None:  # raised from a helper, so the raise isn't lexically inside the try below
+        raise RuntimeError("boom")
+
     async def scenario() -> None:
         try:
             async with device:
-                raise RuntimeError("boom")
+                boom()
         except RuntimeError:
             pass
         assert not i2c.async_lock.locked()
@@ -825,9 +828,10 @@ def test_reentrant_acquisition_on_the_same_device_deadlocks_and_cleans_up() -> N
     async def scenario() -> bool:
         try:
             await asyncio.wait_for(reentrant(), 0.2)
-            return False
         except asyncio.TimeoutError:
             return True
+        else:
+            return False
 
     assert run(scenario())
     assert not i2c.async_lock.locked()

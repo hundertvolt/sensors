@@ -33,6 +33,9 @@ if TYPE_CHECKING:
     from types import TracebackType
     from typing import Literal
 
+    from typing_extensions import Self
+
+_ADDR_TUPLE_LEN = const(2)  # a plain (host, port) address tuple
 _RETRY_BACKOFF_S = const(0.5)  # pause between a failed connect()/bind() (or setup) attempt and the next
 
 
@@ -49,7 +52,7 @@ class AsyUDPSocket:
         # addr may also be a pre-resolved opaque sockaddr (bytes/bytearray), not just a tuple -
         # this file passes it through untouched to connect()/bind()/sendto().
         if isinstance(addr, tuple):
-            if not (len(addr) == 2 and isinstance(addr[0], str) and isinstance(addr[1], int)):
+            if not (len(addr) == _ADDR_TUPLE_LEN and isinstance(addr[0], str) and isinstance(addr[1], int)):
                 raise TypeError(f"addr tuple must be (host: str, port: int), got {addr!r}")
         elif not isinstance(addr, (bytes, bytearray)):  # type: ignore[unreachable]  # real at runtime
             raise TypeError(f"addr must be a (host: str, port: int) tuple or a pre-resolved sockaddr, got {addr!r}")
@@ -64,7 +67,7 @@ class AsyUDPSocket:
         self._conn_tries = conn_tries
         self._connect_lock = asyncio.Lock()
 
-    async def __aenter__(self) -> "AsyUDPSocket":
+    async def __aenter__(self) -> "Self":
         return self
 
     async def __aexit__(

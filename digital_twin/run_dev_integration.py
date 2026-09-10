@@ -198,9 +198,10 @@ async def _wait_until_serving(host: str, port: int, timeout_s: float = 10.0) -> 
         while True:
             try:
                 await _http_client.fetch(host, port, "GET", "/")
-                return
             except OSError:
                 await asyncio.sleep_ms(50)
+            else:
+                return
 
     await asyncio.wait_for(poll(), timeout_s)
 

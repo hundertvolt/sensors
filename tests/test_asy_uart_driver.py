@@ -365,7 +365,7 @@ def test_async_with_acquires_and_releases_lock() -> None:
 
 
 # ---------------------------------------------------------------------------
-# ready() / cancel_read_timeout()
+# ready / cancel_read_timeout
 # ---------------------------------------------------------------------------
 
 
@@ -852,10 +852,13 @@ def test_writefrom_retries_after_a_short_write_until_everything_is_sent() -> Non
 def test_exception_inside_session_still_releases_the_lock() -> None:
     uart = make_uart()
 
+    def boom() -> None:  # raised from a helper, so the raise isn't lexically inside the try below
+        raise RuntimeError("boom")
+
     async def scenario() -> None:
         try:
             async with uart:
-                raise RuntimeError("boom")
+                boom()
         except RuntimeError:
             pass
         assert not uart.asy_lock.locked()
@@ -963,9 +966,10 @@ def test_reentrant_acquisition_deadlocks_and_cleans_up() -> None:
     async def scenario() -> bool:
         try:
             await asyncio.wait_for(reentrant(), 0.2)
-            return False
         except asyncio.TimeoutError:
             return True
+        else:
+            return False
 
     assert run(scenario())
     assert not uart.asy_lock.locked()

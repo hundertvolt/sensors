@@ -60,7 +60,7 @@ def _wlan(client: AsyConnTime) -> "Any":
     # ordering constructs tests/network.py's fake instead, which exposes several test-only
     # attributes (raise_on, _status, _ifconfig, _stations, ...) the real stub has no reason to
     # declare. Narrows to Any once, here, so every test below can reach those without its own
-    # per-site # type: ignore.
+    # per-site `# type: ignore`.
     return client.wlan
 
 
@@ -1653,8 +1653,8 @@ def test_attempt_sta_connect_empty_ssid_forces_immediate_hotspot_fallback() -> N
 
 # ---------------------------------------------------------------------------
 # _run_sta_mode() / _get_hotspot_stations() / _manage_hotspot_stations() / _run_hotspot_mode() /
-# _leave_hotspot_mode() / _wait_for_sta_disconnect() / _handle_reconnect_trigger() - the
-# orchestration layer around wlan_connect()'s main loop, previously only exercised indirectly
+# _leave_hotspot_mode() / _wait_for_sta_disconnect() / _handle_reconnect_trigger() -
+# the orchestration layer around wlan_connect()'s main loop, previously only exercised indirectly
 # through the full loop (with these helpers themselves faked out) or not at all.
 # ---------------------------------------------------------------------------
 
