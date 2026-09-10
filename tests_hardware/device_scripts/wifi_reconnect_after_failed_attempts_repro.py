@@ -22,7 +22,7 @@ def log(msg: str) -> None:
 
 
 def status_name(status: "int | None") -> str:
-    names = {
+    names: dict[int | None, str] = {
         network.STAT_IDLE: "IDLE",
         network.STAT_CONNECTING: "CONNECTING",
         _STAT_OBTAINING_IP: "OBTAINING_IP",

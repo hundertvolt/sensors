@@ -28,7 +28,7 @@ async def _main() -> None:
     # Always leave the real chip unprotected on exit, regardless of where a failure occurs -
     # a stuck-protected chip would silently break every other FRAM-owning module's writes.
     try:
-        if not await fram.fram.set_write_protected(False):  # known starting state, ignore whatever was set before
+        if not await fram.fram.set_write_protected(value=False):  # known starting state, ignore whatever was set before
             print("RESULT: FAIL could not clear write protection to establish a known starting state")
             return
 
@@ -36,7 +36,7 @@ async def _main() -> None:
             print("RESULT: FAIL baseline write (unprotected) failed - real chip not writable at all")
             return
 
-        if not await fram.fram.set_write_protected(True):
+        if not await fram.fram.set_write_protected(value=True):
             print("RESULT: FAIL set_write_protected(True) failed against the real chip")
             return
         if not await fram.fram.get_write_protected():
@@ -49,7 +49,7 @@ async def _main() -> None:
             print("RESULT: FAIL chunk.write() succeeded while the real chip was write-protected")
             return
 
-        if not await fram.fram.set_write_protected(False):
+        if not await fram.fram.set_write_protected(value=False):
             print("RESULT: FAIL set_write_protected(False) failed against the real chip")
             return
         if await fram.fram.get_write_protected():
@@ -71,7 +71,7 @@ async def _main() -> None:
             print(f"RESULT: FAIL write after un-protecting did not take effect: read {None if readback is None else bytes(readback).hex()}")
             return
     finally:
-        await fram.fram.set_write_protected(False)
+        await fram.fram.set_write_protected(value=False)
 
     print("RESULT: PASS real write protection blocked a write while active and allowed one once cleared")
 

@@ -10,6 +10,14 @@ import asy_spi_driver
 from asy_fram_driver import FRAM_SPI
 from print_log import PrintLogHistory
 
+try:
+    from typing import TYPE_CHECKING
+except ImportError:  # typing has no runtime presence on MicroPython, on-device or in the Unix-port test build
+    TYPE_CHECKING = False
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable
+
 _WRITE_RACE_ADDR = 0x9000  # scratch addresses, disjoint from every other device script's own regions
 _READ_RACE_ADDR = 0x9100
 _POST_RECOVERY_ADDR_WRITE_HIJACK = 0x9200
@@ -21,7 +29,7 @@ _READ_SEED_PATTERN = bytes(range(0x60, 0x70))  # deliberately distinct from ever
 _POST_RECOVERY_PATTERN = bytes(range(0x40, 0x50))
 
 
-async def _cs_yank_race(fram: FRAM_SPI, victim: "object") -> bool:
+async def _cs_yank_race(fram: FRAM_SPI, victim: "Awaitable[None]") -> bool:
     """Shared race harness for both scenarios below. Returns whether the yanker actually ran before
     the victim's own __aenter__ sleep elapsed - necessary but not sufficient; each caller's own
     outcome-based assertion afterward is the real proof."""
@@ -33,7 +41,7 @@ async def _cs_yank_race(fram: FRAM_SPI, victim: "object") -> bool:
         fram._spidev.cs_pin.value(not fram._spidev.cs_active_value)  # deassert
         cs_forced_high_early = True
 
-    await asyncio.wait_for(asyncio.gather(cs_yanker(), victim), 30.0)  # type: ignore[arg-type]
+    await asyncio.wait_for(asyncio.gather(cs_yanker(), victim), 30.0)
     return cs_forced_high_early
 
 

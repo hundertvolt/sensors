@@ -21,6 +21,9 @@ async def _main() -> None:
         print("RESULT: FAIL could not read the current DebugLevel before changing it")
         return
     previous_level = current["DebugLevel"]
+    if not isinstance(previous_level, int):  # get_dict() returns the config-value union; the schema says int
+        print(f"RESULT: FAIL DebugLevel read back as {previous_level!r}, not an int")
+        return
 
     backup_mgr = cm.ConfigManager(_BACKUP_PATH, _BACKUP_SCHEMA, "HWTEST")
     await backup_mgr.setup()

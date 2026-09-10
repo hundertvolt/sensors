@@ -65,7 +65,7 @@ async def _main() -> None:
     interleaved_total = 0
     windows_with_interleaving = 0
     for sgp_start, sgp_end in sgp_windows:
-        count = sum(1 for s, e in scd_windows if s >= sgp_start and e <= sgp_end)
+        count = sum(1 for s, e in scd_windows if time.ticks_diff(s, sgp_start) >= 0 and time.ticks_diff(e, sgp_end) <= 0)
         interleaved_total += count
         if count > 0:
             windows_with_interleaving += 1
