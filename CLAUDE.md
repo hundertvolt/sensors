@@ -351,7 +351,15 @@ information):
 - **Standing backstop: hanging tests are never allowed.** `scripts/test.sh`/`ci.yml` enforce a
   per-file `timeout`+retry, `stdbuf -oL -eL` line buffering, and `needs: lint-and-typecheck` job
   sequencing regardless of any specific hang's root cause — keep all three even after a specific
-  hang is fixed.
+  hang is fixed. **The `needs:` edge is for SEQUENCING only — `unit-tests` and
+  `firmware-build-verify` carry `if: ${{ !cancelled() }}` so they still run when the job they
+  follow fails.** `needs:` alone also implies success-gating, which was never chosen here (that
+  job's own comment says the sequencing "isn't required" for the hang) and is actively harmful: a
+  red `lint-and-typecheck` silently SKIPS every Python test lane. That is not hypothetical — it is
+  why `unit-tests`, `digital-twin-e2e` and `firmware-build-verify` had never once run on the branch
+  that introduced `select = ["ALL"]`, and it concealed that for the branch's whole life. Keep the
+  sequencing; never restore the gating. `digital-twin-e2e` is the deliberate exception — its
+  `needs: unit-tests` comment states fail-fast as the actual intent, so it stays gated.
 - **Known hang cause, fixed**: a MicroPython Unix-port `select.poll()`/`ioctl()` call against a
   non-fd Python object (e.g. `tests/machine.py`'s pure-Python fake-stream `ioctl()`) never detects
   readiness on GitHub Actions runners specifically (not reproducible locally) — any test awaiting a

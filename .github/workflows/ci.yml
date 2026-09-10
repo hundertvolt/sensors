@@ -416,7 +416,17 @@ jobs:
     # observed 6-hour hang before timeout-minutes existed - see CLAUDE.md's "CI hang investigation"
     # note). With a warm toolchain cache, a healthy run takes ~8-9 minutes total (plain + coverage
     # passes combined - confirmed by direct local measurement).
+    #
+    # `if: !cancelled()` keeps the `needs:` edge above (so the serialization the standing backstop
+    # asks for is intact) while dropping the SUCCESS gating that `needs:` otherwise implies. That
+    # gating was never a deliberate choice - it is a side effect of the sequencing - and it is
+    # actively harmful: a red lint job silently SKIPS this job, so a lint finding hides every
+    # test result behind it. That is not hypothetical; it is exactly why unit-tests,
+    # digital-twin-e2e and firmware-build-verify had never once run on the branch that introduced
+    # `select = ["ALL"]`, and it hid that fact for the entire life of that branch. Lint and tests
+    # answer different questions; a failure of one must not erase the answer to the other.
     needs: lint-and-typecheck
+    if: ${{ !cancelled() }}
     permissions:
       contents: read
     runs-on: ubuntu-latest
@@ -533,7 +543,14 @@ jobs:
     # that job instead of serializing after it. The ARM cross-compiler itself (gcc-arm-none-eabi
     # and friends) is a separate apt install, not part of that cached directory - see the
     # dedicated step below for why it still has to run here even on a cache hit.
+    #
+    # `if: !cancelled()` for the same reason as unit-tests above, and it applies with extra force
+    # here: the dependency stated above is a CACHE dependency, not a correctness one, so gating the
+    # firmware compile on whether the unit tests passed masks one independent finding behind
+    # another. digital-twin-e2e deliberately keeps its own success gating - its `needs:` comment
+    # states fail-fast as the actual intent - so it is left alone.
     needs: unit-tests
+    if: ${{ !cancelled() }}
     permissions:
       contents: read
     runs-on: ubuntu-latest
