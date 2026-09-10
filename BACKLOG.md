@@ -240,6 +240,22 @@ constraints.
     and `tests/test_asy_spi_driver.py` pins down today's behavior, so either answer is testable.
 
 ## Deferred / explicitly out-of-scope work
+- **The 1.29.0 pin has never run on real hardware.** Every 1.28→1.29 claim in SPECIFICATION.md
+  Part F.5 was established from upstream source, the built `firmware.elf.map`, or the Unix-port
+  twin - the audit session had no real-hardware go-ahead, so no 1.29 firmware has ever been flashed
+  to the dev bench. The build itself *is* verified (`RPI_PICO_W` from scratch, no patches, real
+  `firmware.uf2` for both variants) and the deployed units stay on 1.26 regardless (open question
+  3), so nothing is blocked - but 1.29 is not field-proven until a dev-bench run says so. Three
+  things want on-target confirmation specifically, beyond just running the existing suites:
+  - **The new SPI `OSError(EIO)` raise site** (Part F.5.2, open question 15) - so far only ever
+    exercised against `tests/machine.py`'s fake. Its live path is `asy_fram_driver.py`'s 260-byte
+    SGP40 VOC-state read; a bench run at minimum confirms that path still reads correctly at 1.29,
+    and answering #15 properly needs a real overrun observed, not a simulated one.
+  - **That `I2C.deinit()`/`SPI.deinit()` really are silent no-ops** (Part F.5.1) - read out of the
+    port's protocol tables, never observed on a live bus. `tests_hardware/flash/
+    test_bus_concurrency.py` is the natural place to pin it down.
+  - **The 12,918 B SRAM-resident-code win** (Part F.5.3) is a linker-map measurement, not a
+    measured runtime speedup - don't quote it as one until a bench timing run backs it up.
 - **Real-hardware re-test of the segfault fix and the memory-leak soak test — real-hardware forms
   now exist and are wired into `tests_hardware/`, but the actual long-soak run is still opt-in and
   has not yet been executed.** Corrects a stale claim (this entry used to say neither soak-test
