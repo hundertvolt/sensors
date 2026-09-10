@@ -506,8 +506,12 @@ else
     echo 'export LANG=C.UTF-8 LC_ALL=C.UTF-8 DEBIAN_FRONTEND=noninteractive' > "$CHROOT/root/proxy-env.sh"
 fi
 
-chroot "$CHROOT" /bin/bash -c "source /root/proxy-env.sh && apt-get update && apt-get install -y --no-install-recommends git curl ca-certificates python3 python3-venv python3-pip sudo"
+chroot "$CHROOT" /bin/bash -c "source /root/proxy-env.sh && apt-get update && apt-get install -y --no-install-recommends git curl ca-certificates python3 python3-venv python3-pip sudo libcap2-bin"
 chroot "$CHROOT" /bin/bash -c "source /root/proxy-env.sh && pip install --break-system-packages uv"
+# libcap2-bin is missing for the same reason: scripts/test.sh grants CAP_NET_BIND_SERVICE to the
+# Unix-port binary via setcap (the real port-53 DNS-server test needs it) and dies with
+# "setcap: command not found" without it - after having already built the whole toolchain, so the
+# failure lands minutes in. Confirmed by hitting it (2026-09-10).
 # sudo is not part of debootstrap --variant=minbase, but toolchain/setup_toolchain.py's
 # ensure_apt_packages() unconditionally shells out to it (see toolchain/versions.toml's
 # apt_packages, used by both its `setup`/`test` subcommands) - without it, `scripts/test.sh`
