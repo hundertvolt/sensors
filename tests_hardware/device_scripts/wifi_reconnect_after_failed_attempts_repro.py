@@ -17,12 +17,14 @@ _STAT_OBTAINING_IP = 2  # matches asy_wifi_service.py's own module-level constan
 t0 = time.ticks_ms()
 
 
-def log(msg):
+def log(msg: str) -> None:
     print("[{:8.2f}s] {}".format(time.ticks_diff(time.ticks_ms(), t0) / 1000.0, msg))
 
 
-def status_name(status):
-    names = {
+def status_name(status: int | None) -> str:
+    if status is None:
+        return "UNKNOWN({})".format(status)
+    names: dict[int, str] = {
         network.STAT_IDLE: "IDLE",
         network.STAT_CONNECTING: "CONNECTING",
         _STAT_OBTAINING_IP: "OBTAINING_IP",
@@ -34,10 +36,10 @@ def status_name(status):
     return names.get(status, "UNKNOWN({})".format(status))
 
 
-def wait_for_outcome(wlan, max_polls, poll_ms, label):
+def wait_for_outcome(wlan: "network.WLAN", max_polls: int, poll_ms: int, label: str) -> int | None:
     """Chatty poll loop, same shape as asy_wifi_service.py's own _poll_sta_connect_status() but
     logging every single poll (not just on entry) and returning the final status seen."""
-    last = None
+    last: int | None = None
     for i in range(max_polls):
         try:
             status = wlan.status()

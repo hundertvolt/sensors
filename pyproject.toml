@@ -35,14 +35,24 @@ dev = [
 # instead: an isolated directory containing only the stubs, nothing else.
 
 # Checks currently cover src/ (fully-reviewed, freely-editable code - see CLAUDE.md), tests/
-# (their unit tests), and digital_twin/ (the hardware simulator, SPECIFICATION.md Part A.10 - same
-# fully-reviewed status as src/). The pre-refactor deployed codebase (python/, modules/) isn't in
-# scope yet and has no lint/type config of its own right now. `improved-quality/` - the WIP
-# code-quality refactor staging area this cleanup effort originally started against, including its
-# own ad hoc improved-quality/mypy.ini and improved-quality/pycheck.sh (retired in favor of this
-# file) - has since been deleted in full: every file it held was either promoted into src/ once
-# fully reviewed/tested, or (its last remaining file, sensortask-wozi.py) confirmed fully
-# superseded by src/sensortask_wozi.py + src/asy_webserver_service.py and removed outright.
+# (their unit tests), digital_twin/ (the hardware simulator, SPECIFICATION.md Part A.10 - same
+# fully-reviewed status as src/), and tests_hardware/device_scripts/ (the isolated-driver scripts
+# that get frozen and run directly on real MicroPython hardware via mpremote, importing src/
+# driver modules by name the same way sensortask_*.py does - the rest of tests_hardware/, the
+# CPython-side pytest harness that drives mpremote/serial/nmcli, stays out of scope, same reasoning
+# as scripts/toolchain/ below). Added after a real driver constructor signature change
+# (SGP40_Reader's comp_source -> temperature_source/humidity_source) silently broke two of these
+# scripts for a full day - undetected because this whole directory was outside both lint/type
+# scope and CI, and only ever runs against real hardware behind an explicit per-session go-ahead
+# (tests_hardware/device_scripts/sgp40_voc_algorithm_quality.py's own git history is the concrete
+# case: mypy reproduces the exact break immediately once this directory is in scope). The
+# pre-refactor deployed codebase (python/, modules/) isn't in scope yet and has no lint/type config
+# of its own right now. `improved-quality/` - the WIP code-quality refactor staging area this
+# cleanup effort originally started against, including its own ad hoc improved-quality/mypy.ini and
+# improved-quality/pycheck.sh (retired in favor of this file) - has since been deleted in full:
+# every file it held was either promoted into src/ once fully reviewed/tested, or (its last
+# remaining file, sensortask-wozi.py) confirmed fully superseded by src/sensortask_wozi.py +
+# src/asy_webserver_service.py and removed outright.
 
 [tool.ruff]
 # Deliberately 3.10, not >=3.11 like [project]'s requires-python above: this is the syntax floor
@@ -101,7 +111,7 @@ no_site_packages = true
 # A bare glob in `files` (e.g. "src/*.py") gets pre-expanded to an explicit file list, which
 # `exclude` can't then prune - passing the directory itself is what makes `exclude` actually take
 # effect during mypy's own directory walk.
-files = ["src", "tests", "digital_twin"]
+files = ["src", "tests", "digital_twin", "tests_hardware/device_scripts"]
 # tests/network.py: a bare top-level
 # `network.py` sitting inside a `files`-scanned root starts winning module resolution over
 # typings/'s real `network` stub *project-wide*, not just within tests/ - confirmed directly: with

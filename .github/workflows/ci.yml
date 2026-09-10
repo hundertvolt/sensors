@@ -266,21 +266,26 @@ jobs:
         run: node scripts/cross_browser_smoke.mjs
 
   lint-and-typecheck:
-    # Gates on src/, tests/, digital_twin/, and buildgen/ (pyproject.toml's [tool.mypy]/
-    # [tool.ruff] default scope plus buildgen/'s own separate mypy pass - all fully-reviewed,
-    # expected to stay clean). Passing explicit paths to scripts/typecheck.sh overrides
-    # pyproject.toml's `files`/default target for that one invocation without changing what a
-    # plain `scripts/lint.sh`/`scripts/typecheck.sh` checks locally (still full-scope: see
-    # scripts/typecheck.sh's `mypy "$@"` and ruff's own CLI-args-override-config behavior).
-    # digital_twin/ and buildgen/ are NOT in the `ruff check`/`scripts/typecheck.sh` args below the
-    # way src/tests are - see pyproject.toml's [tool.mypy] exclude comment, digital_twin/
-    # typecheck.ini's own docstring, and buildgen/typecheck.ini's own docstring for why mypy needs
-    # a wholly separate invocation for each (digital_twin/: bare `machine`/`network`/`neopixel`
-    # module names can only resolve one way per mypy run; buildgen/: genuinely CPython-target host
-    # tooling, needs mypy's real bundled typeshed instead of the MicroPython-stub-replaced one);
-    # scripts/typecheck.sh already runs both second passes unconditionally, regardless of "$@", so
-    # the Mypy step below gates on both without needing them named here explicitly. Ruff has no
-    # such per-run resolution conflict, so every scope is just named directly.
+    # Gates on src/, tests/, digital_twin/, and buildgen/ for ruff, plus tests_hardware/
+    # device_scripts/ for mypy only (pyproject.toml's [tool.mypy]/[tool.ruff] default scope plus
+    # buildgen/'s own separate mypy pass - all fully-reviewed, expected to stay clean).
+    # tests_hardware/device_scripts/ isn't in ruff's scope yet (pre-existing style/bug findings
+    # there still need their own pass - see pyproject.toml's [tool.mypy] comment for why mypy's
+    # scope was extended there first: a real driver signature change silently broke two of these
+    # scripts for a day, caught only once this scope existed). Passing explicit paths to
+    # scripts/typecheck.sh overrides pyproject.toml's `files`/default target for that one
+    # invocation without changing what a plain `scripts/lint.sh`/`scripts/typecheck.sh` checks
+    # locally (still full-scope: see scripts/typecheck.sh's `mypy "$@"` and ruff's own
+    # CLI-args-override-config behavior). digital_twin/ and buildgen/ are NOT in the
+    # `ruff check`/`scripts/typecheck.sh` args below the way src/tests are - see pyproject.toml's
+    # [tool.mypy] exclude comment, digital_twin/typecheck.ini's own docstring, and
+    # buildgen/typecheck.ini's own docstring for why mypy needs a wholly separate invocation for
+    # each (digital_twin/: bare `machine`/`network`/`neopixel` module names can only resolve one
+    # way per mypy run; buildgen/: genuinely CPython-target host tooling, needs mypy's real bundled
+    # typeshed instead of the MicroPython-stub-replaced one); scripts/typecheck.sh already runs
+    # both second passes unconditionally, regardless of "$@", so the Mypy step below gates on both
+    # without needing them named here explicitly. Ruff has no such per-run resolution conflict, so
+    # every scope is just named directly.
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -291,8 +296,8 @@ jobs:
         run: uv sync
       - name: Ruff (src/, tests/, digital_twin/, buildgen/)
         run: uv run ruff check src tests digital_twin buildgen
-      - name: Mypy (src/, tests/, digital_twin/, buildgen/)
-        run: uv run scripts/typecheck.sh src tests
+      - name: Mypy (src/, tests/, digital_twin/, buildgen/, tests_hardware/device_scripts/)
+        run: uv run scripts/typecheck.sh src tests tests_hardware/device_scripts
 
   unit-tests:
     # Tests run under a real MicroPython Unix-port interpreter, not CPython - see

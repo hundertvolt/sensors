@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# Runs mypy against src/, tests/, and digital_twin/ (pyproject.toml's [tool.mypy] `files` - see
-# scripts/lint.sh for the same scope). Pass explicit paths (e.g. `scripts/typecheck.sh src tests`)
-# to check only those instead - used by CI's lint-and-typecheck job to gate on just src/tests/,
-# leaving digital_twin/ to its own dedicated second pass below (see .github/workflows/ci.yml).
+# Runs mypy against src/, tests/, digital_twin/, and tests_hardware/device_scripts/ (pyproject.toml's
+# [tool.mypy] `files` - note this is NOT the same scope as scripts/lint.sh's ruff invocation, which
+# doesn't cover tests_hardware/device_scripts/ yet). Pass explicit paths (e.g.
+# `scripts/typecheck.sh src tests tests_hardware/device_scripts`) to check only those instead -
+# used by CI's lint-and-typecheck job to gate on just that set, leaving digital_twin/ to its own
+# dedicated second pass below (see .github/workflows/ci.yml).
 # Assumes mypy is already installed and on PATH; uses
 # `uv` (assumed on PATH, same as toolchain/setup_toolchain.py) only to populate typings/, an
 # isolated directory holding just the MicroPython stub package - see pyproject.toml's [tool.mypy]
