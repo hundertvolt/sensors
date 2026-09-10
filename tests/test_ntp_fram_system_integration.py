@@ -46,7 +46,7 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to complet
     return asyncio.run(coro)
 
 
-def _wlan(conn: AsyConnTime) -> "Any":
+def _wlan(conn: AsyConnTime) -> "Any":  # Any is the point here, not an omission - see below
     # Narrows to Any once, here, matching test_asy_wifi_service.py's/test_ntp_wifi_dns_integration.py's
     # own identical helper - see their comments for why (tests/network.py's fake vs. the real stub).
     return conn.wlan
