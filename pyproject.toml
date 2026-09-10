@@ -299,7 +299,11 @@ max-returns = 12
 # tests_scripts/ (pytest, host CPython - the build tooling's own suite) and tests_hardware/ (pytest
 # against real hardware) are test suites with exactly the same properties as tests/ above, so they
 # get the same exemption set rather than a different one.
-"tests_scripts/**" = ["S101", "SLF001", "PLC0415", "PLR2004", "ARG001", "ARG002", "ARG004", "ARG005"]
+# S603 is tests_scripts/-only on top of that: running the repo's own build scripts as real
+# subprocesses IS what this suite verifies (SPECIFICATION.md Part B.11's build-chain checks), and
+# every argv it assembles is an in-repo script path plus literal flags - there is no untrusted
+# input for the rule to protect against, and no in-code form of the call that satisfies it.
+"tests_scripts/**" = ["S101", "SLF001", "PLC0415", "PLR2004", "ARG001", "ARG002", "ARG004", "ARG005", "S603"]
 "tests_hardware/**" = ["S101", "SLF001", "PLC0415", "PLR2004", "ARG001", "ARG002", "ARG004", "ARG005"]
 # sensortask_wozi.py/sensortask_dev.py assert their module-level singletons are non-None purely to
 # narrow the type for mypy after the `global` construction step (Part A.7) - type-narrowing
@@ -322,6 +326,14 @@ max-returns = 12
 # fakes must impersonate that signature exactly or they stop being faithful doubles.
 "tests/machine.py" = ["A002", "FBT001", "FBT002", "ANN401"]  # ANN401: category 1 above - Timer.__init__ forwards **kwargs into self.init()
 "digital_twin/machine.py" = ["A002", "FBT001", "FBT002"]
+# Same faithful-double reasoning, one level up: test_setup_toolchain_env.py monkeypatches
+# toolchain/setup_toolchain.py's own `run(cmd, cwd=None, check=True, env=None)` with local
+# fake_run() recorders. A double has to accept the signature it intercepts exactly, `check`'s
+# positional boolean default included - making it keyword-only in the double alone would turn any
+# future positional call site in the real module into a spurious TypeError instead of a recorded
+# call. Only the four fake_run() doubles need this; the file's own plain helpers take their
+# boolean flags keyword-only as usual.
+"tests_scripts/test_setup_toolchain_env.py" = ["FBT001", "FBT002"]
 # The `_push_*` / setter-dispatch family takes the config-VALUE union
 # (`int | float | str | bool | None`), where `bool` is one member of a JSON value type - not a
 # boolean flag. They are invoked through Part C.5.2's documented single-positional-argument
