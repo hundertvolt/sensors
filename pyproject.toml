@@ -199,6 +199,16 @@ ignore = [
     # directly on the pinned interpreter).
     "FURB122",
 
+    # ---- Polices call sites into APIs this project does not own ----
+    # FBT001/FBT002 stay ENABLED: they govern the DEFINITION side, which is ours to control, and
+    # every boolean parameter this project defines is now keyword-only. FBT003 is the call side,
+    # and the calls that remain are into C-implemented MicroPython/stdlib entry points that reject
+    # keyword arguments outright - `wlan.active(True)`, `socket.setblocking(False)`,
+    # `Pin.value(True)`, `deflate.DeflateIO(stream, fmt, wbits, True)`. Ruff cannot tell those from
+    # our own APIs. Its remaining value is low anyway: passing a bool positionally to one of our own
+    # functions is now a TypeError the test suite catches, not a style slip lint has to find.
+    "FBT003",
+
     # ---- Deliberate, documented idiom ----
     # `pressure_mbar != pressure_mbar` is the NaN test in asy_scd30_driver.py, commented as such at
     # both sites. math.isnan() would satisfy the rule at the cost of a function call per reading,
@@ -288,7 +298,21 @@ max-returns = 12
 # password is an accepted risk, only exploitable within physical WiFi range of a unit that has
 # already lost its real WiFi - not to be "fixed" by rotating it without the owner's direction).
 # Exempted per-file rather than globally so S105/S106 still catch a credential added ANYWHERE else.
-"src/asy_wifi_service.py" = ["S106"]
+# The `machine` fakes mirror MicroPython's own public constructors, whose parameter really is
+# named `id` upstream, and whose I2C.writeto()/readfrom_into() `stop` is positional-only
+# (extmod/machine_i2c.c uses MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN, i.e. kwargs are rejected). The
+# fakes must impersonate that signature exactly or they stop being faithful doubles.
+"tests/machine.py" = ["A002", "FBT001", "FBT002"]
+"digital_twin/machine.py" = ["A002", "FBT001", "FBT002"]
+# The `_push_*` / setter-dispatch family takes the config-VALUE union
+# (`int | float | str | bool | None`), where `bool` is one member of a JSON value type - not a
+# boolean flag. They are invoked through Part C.5.2's documented single-positional-argument
+# `_push_callbacks` contract, so a keyword-only parameter would break the dispatch signature that
+# every registered callback shares (Part D.10 forbids splitting the family).
+"src/asy_bmp3xx_driver.py" = ["FBT001"]
+"src/asy_sgp40_driver.py" = ["FBT001"]
+"src/asy_scd30_driver.py" = ["FBT001"]
+"src/asy_wifi_service.py" = ["S106", "FBT001"]
 "digital_twin/launch.py" = ["S105"]
 "tests/test_digital_twin_network_neopixel.py" = ["S106"]
 # asy_webserver_service.py makes the same documented Part C.5.2 `_set_dict_cfg` dispatch call as
