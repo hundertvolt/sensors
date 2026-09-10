@@ -1087,3 +1087,237 @@ design, and every `[TEST]` tag in §8 above means a `buildgen/`-level test (vali
 generated *source text*, under `tests_scripts/`, real CPython), never a test that boots the
 generated module. Whether/how §8's eventual fixes also need a corresponding digital-twin-boot test
 once Session 5 lands is that session's own question to pick up, not this document's to resolve now.
+
+## 10. Implementation plan (2026-09-10)
+
+The project owner's ask: sequence everything §2-§8 found into an ordered, dependency-aware plan
+covering both `buildgen/` and `src/`, and surface anything the planning pass itself finds missing.
+**This section is the plan, not the implementation** — writing code still needs the explicit
+go-ahead this document has required from the start (see the file header). Each phase below is sized
+to match this repo's own standing "step-session workflow" (CLAUDE.md: refine scope → clarifying
+questions → tests first (TDD) → implementation → coverage → stop and report) and is meant to be one
+reviewable, independently-verifiable unit — lint/typecheck/test clean, its own commit(s) — before the
+next phase starts, the same granularity `BUILD_CHAIN_PLAN.md`'s own session breakdown already uses.
+
+### 10.0 Ordering principle
+
+Phases are sorted by **dependency, then risk**: anything blocked on an open `[DECIDE]` question
+comes after that question is resolved; among unblocked work, the smallest-blast-radius,
+easiest-to-verify items go first (building a regression safety net before anything riskier touches
+the same code), and the one phase that changes an already-shipped `src/` constructor signature
+(Phase 5) goes last, after every lower-risk mechanism has already landed and after the AST-discovery
+conventions it will reuse have already been exercised once (Phase 3's `_LIMITS`).
+
+### 10.1 Phase 0 — Decisions needed before any implementation starts
+
+Nothing below can be scoped into tests-first work until these are resolved. Listed with what each
+one blocks, and a recommendation where this document already leans one way — recommendations are
+not decisions; per this repo's own working agreement, an ambiguous/architecturally significant call
+goes to the project owner rather than being silently picked.
+
+1. **§2.8's three open questions** (unknown/wrong-type-key validation inside `{default = true,
+   ...}`; whether `attr`-mode default providers get their target attribute existence-checked;
+   the `validate.py` branch point distinguishing a default selection from a plain reference) —
+   blocks all of Phase 5. Recommendation: mirror the existing unrecognized-field pattern for the
+   first, "yes" for the second (matches every other fail-loud-at-generation-time check in
+   `buildgen/`), and a branch at the very top of `_check_instance_wiring`'s per-field loop for the
+   third (checking `isinstance(value, dict) and value.get("default") is True` before any string-only
+   handling runs).
+2. **§2.9's exact TOML field names** (`temperature_source`/`humidity_source` are explicitly
+   placeholders in this document) — blocks Phase 5's TOML shape and the `SGP40_Reader.__init__`
+   signature change together; can't be half-decided.
+3. **§5.2's `_LIMITS` mechanism shape** (min/max-with-`None` vs. an enumerated-choices shape vs.
+   both) — blocks all of Phase 3. Recommendation: both, from the start — a single `_LIMITS` tuple
+   whose third element is either `(min, max)` or a `frozenset` of exact legal values, since the two
+   real driving cases (scd30's unconditional field ranges vs. bmp3xx's `{0x76, 0x77}` address) need
+   one each and a single AST-discovered structure is simpler than two.
+4. **§5.3's self-referential wiring question** (should an instance be allowed to wire a field to
+   itself?) — blocks whether Phase 2/3/5 ever need a "target != self" check added anywhere. Low
+   effort either way; needs a ruling, not a guess.
+5. **§6.3's buildspec.py fix shape** (message-only fix vs. making `buildspec.py`'s facts fully
+   AST-derivable like `_WIRING`) — blocks Phase 4's scope. See Phase 4 below for the recommended
+   split (do the small fix now, treat full AST-derivation as optional/deferred).
+
+### 10.2 Phase 1 — Lock in existing behavior with tests, zero code changes
+
+Pure test-writing against `validate.py`/`codegen.py`/`model.py` exactly as they stand today — no
+`[DECIDE]` blockers, touches no production code, and builds the regression safety net every later
+phase benefits from. Do this first.
+
+- §7.1's nine valid-but-untested combinations (FRAM entirely absent + the single-I2C-no-SPI
+  topology it implies; notification with zero `warn_*` wired; device-level `fram_target`/
+  `led_target` left unwired with the target present, the `led_target` one all the way through
+  `generate.py`; two bmp3xx on one bus at 0x76/0x77; a bus-vs-bus pin collision; SPI's own required
+  pins missing individually; `[device].name`'s own type/non-emptiness check).
+  - **Verified during this planning pass, not left as an open risk**: the FRAM-absent case's two
+    natural follow-on questions are both already safe. `src/asy_webserver_service.py`'s
+    `WebserverService.__init__` already defaults `sensors: Sequence[_ModuleLike] = ()` — an
+    empty-sensors device needs no `src/` change. `_check_all_buses_used(model, {})` (`validate.py:
+    163-167`) computes `orphans = set() - set() = set()` and simply doesn't raise — confirmed by
+    reading it directly, not assumed. Both are ready to test against as soon as Phase 2 relaxes the
+    unconditional `[bus.*]` requirement (see below); until then this specific pair of sub-cases waits
+    on Phase 2, the rest of the list doesn't.
+- §7.2(B)'s probably-already-caught cases (literal duplicate TOML key; `[instance.wiring]` bogus key
+  with no `_WIRING` match and no `warn_` prefix; bool-for-int and float-for-int on every field beyond
+  the one device-level field already tested).
+- §5.1 #12's CS-pin-collision direct-internals test (synthetic `DeviceModel`, same style as
+  `test_instance_name_collision_via_distinct_drivers_same_resolved_name`, since the real driver
+  catalog can't produce two `cs_pin`-bearing instances).
+
+### 10.3 Phase 2 — Pin legality, pin role, and "no buses at all" (buildgen only, no `src/` changes)
+
+Fully specified already (§4.3 axis 10, corrected/completed during the 2026-09-10 bird's-eye pass) —
+no `[DECIDE]` blocker, so this can run right after Phase 1. One mechanism, several call sites:
+
+1. Hardcode the fixed Pico-W GPIO→peripheral/role table from §4.3 axis 10 (I2C0/I2C1 SDA/SCL pairs,
+   SPI0/SPI1 RX/CSn/SCK/TX blocks, GP22/28's no-bus-function status, GP23-25/29's reserved status,
+   the ≥30/negative nonexistent-number case) as a small buildgen-internal constant — this project
+   targets the Pico W alone (project owner confirmed, §6.5), so no board-parameterization needed.
+2. Extend `_check_gpio_collisions()` (or a new check run alongside it) so **every** claimed pin
+   device-wide — bus wire pins and instance-exclusive `cs_pin`/`irq_pin`/`pin` alike — is checked
+   against that table's existence/reserved-set half (§4.3's own scope note: this part applies
+   uniformly, not just to bus tables).
+3. Add the bus-specific half: each bus table's declared pins must match its own peripheral index
+   *and role* (SDA vs. SCL, RX vs. CSn vs. SCK vs. TX) — this is what catches both "wrong bus" and
+   the role-swap case (§6.4, confirmed scoped work).
+4. Fix `_bus_kind()` to validate the port suffix is a real index (I2C0/I2C1, SPI0/SPI1), not just
+   that the prefix matches — closes the `"i2c2"`/bare-`"i2c"` gap.
+5. Relax `_check_bus_tables()`'s unconditional `[bus.*]`-required raise so a device with zero
+   bus-attached instances (no sensors, no FRAM) can build — confirmed safe downstream per Phase 1's
+   verification note above.
+- Tests: every §4.3-axis-10/§5.1-#7/§6.4 valid **and** invalid case belongs here — the legal
+  two-I2C/two-SPI/mixed topologies, GP2/GP3-on-i2c0 (silicon-illegal), GP22/GP28 (no bus function),
+  GP24 (wireless-reserved) on *any* pin field, GPIO 30/-1 (nonexistent), the role-swap case, the
+  bus-port-suffix case, and the FRAM-absent/no-buses-at-all pair carried over from Phase 1.
+
+### 10.4 Phase 3 — The `_LIMITS` mechanism (buildgen + small, additive `src/` changes)
+
+Blocked on §10.1 item 3. Once decided:
+
+1. Implement AST discovery in `buildgen/` mirroring `buildgen/wiring.py`'s existing `_WIRING`
+   parser (own module, e.g. `buildgen/limits.py`, never importing the driver file).
+2. Add `_LIMITS` declarations to the driver files with a real, datasheet-documented constraint:
+   bmp3xx's `address` (enumerated `{0x76, 0x77}`), and the unconditional-range fields found in
+   §7.2(A) — `[bus.*].frequency`/`.timeout`, `[[instance]].max_size`/`.trigger_sec`,
+   `[device].hotspot_time_min`/`.conn_fail_to_hotspot` — each needs its own real range grounded in
+   the relevant datasheet or `src/` constructor's own accepted domain, not an arbitrary guess; this
+   is real research work per field, not a mechanical add.
+3. Wire the check into `validate.py`, following the same "one implementation, permits the legal
+   values and rejects the rest" shape already used for the pin table in Phase 2.
+4. Per §3's standing to-do: every `_LIMITS`-carrying `src/` change gets checked against
+   `SPECIFICATION.md` Part C/D and its own `tests/` coverage (functioning + resilience + coverage),
+   not just a buildgen-side test — even though `_LIMITS` tuples themselves are inert data (no runtime
+   behavior change to the driver), CLAUDE.md's "bird's-eye scan over `src/`" rule still applies
+   since these are new module-level declarations landing in already-reviewed files.
+- Tests: §5.1 #6/#11 and §7.2(A)'s concrete field list, both valid-value and rejected-value cases per
+  field.
+
+### 10.5 Phase 4 — Driver-onboarding hardening (buildgen only)
+
+Blocked on §10.1 item 5 for its main item; the `instance_label` sub-item is unblocked and can move
+independently/first if convenient.
+
+1. **`buildspec.py` dual-source-of-truth (§6.3/§8.4)** — do the small fix now regardless of which
+   way item 5 is decided: special-case `_check_required_fields()`'s error message when a driver
+   resolves via `driver_registry.resolve_driver()` but has no entry in `buildspec.py`'s dicts, so it
+   names the real cause ("driver 'X' has no buildspec.py schema entry") instead of looking like a
+   TOML typo. Treat "make `buildspec.py` fully AST-derivable" as a larger, optional follow-on — it
+   would need every driver file to declare its own schema-equivalent structure (constructor
+   signature inspection or a new declarative tuple), which is a bigger, more invasive change than
+   this planning pass should pre-decide; flag it to the project owner as a separate future unit of
+   work rather than bundling it here.
+2. **`instance_label()` uniqueness (§7.2(C))** — add a `_check_instance_label_collisions()`
+   alongside the existing `_check_instance_name_collisions()` (or fold into it), since both are
+   fundamentally "a new/renamed driver can silently violate an assumption the existing checks don't
+   cover." Currently unreachable via any real TOML (needs a direct-internals synthetic-model test,
+   same style as §5.1 #12's).
+- Tests: a driver resolvable by `driver_registry` but absent from `buildspec.py` (§6.3's own
+  proposed fixture); the `instance_label` collision direct-internals test.
+
+### 10.6 Phase 5 — Wiring defaults + §2.9's per-value generalization (buildgen + real `src/` behavior change)
+
+The largest, highest-risk phase — blocked on §10.1 items 1 and 2, changes an already-shipped
+constructor signature (`SGP40_Reader.__init__`), and should land last so it doesn't destabilize
+anything Phases 1-4 just finished stabilizing. Sequenced after Phase 3 specifically so its own
+AST-discovery code can follow whatever conventions Phase 3's `_LIMITS` parser settles into, for
+consistency across buildgen's now-three AST-discovered driver-metadata mechanisms (`_WIRING`,
+`_LIMITS`, `_Default*`).
+
+1. Resolve the two Phase-0 decisions (field names, the three §2.8 sub-questions) into a final,
+   written spec before writing any code — this is exactly the kind of case CLAUDE.md's step-session
+   workflow's step 2 ("ask up to 10 clarifying questions... raise a blocking decision at any point")
+   exists for.
+2. `src/` changes, TDD (tests first, per CLAUDE.md's standing workflow):
+   - `_DefaultSignalSink` (`asy_notification_service.py`) — self-contained, no cross-module import,
+     lowest risk; a good first sub-step within this phase to prove out the pattern before touching
+     `SGP40_Reader`'s actual constructor.
+   - `SGP40_Reader.__init__`'s move from one `comp_source: SCD30_Reader` parameter to two
+     independent per-value getters (§2.9), plus the two `_Default*` providers those fields need.
+     **New implementation constraint found during this planning pass, not previously flagged
+     anywhere in §2-§9**: whatever a default provider's return value shape ends up being (reusing
+     `asy_scd30_driver.py`'s `SCD30` namedtuple, per §2.5's worked example, or a fresh minimal
+     duck-typed value), any cross-module import it needs **must be a real, static, top-level
+     `import`/`from...import` statement — never lazy/conditional/dynamic**. Verified directly against
+     `buildgen/frozen_modules.py`: its transitive frozen-module closure is seeded from each device's
+     *declared instances* (`model.instances.values()`, not "every driver mentioned anywhere"), so a
+     device with `sgp40` but no `scd30` instance only picks up `asy_scd30_driver` in the frozen set
+     because `_collect_imports()` walks `asy_sgp40_driver.py`'s own real, unconditional import
+     statements — a dynamic import would silently break this (and is separately disallowed
+     project-wide, SPECIFICATION.md Part F.1). Confirmed safe **provided** this constraint is
+     respected; not yet a bug, but a concrete thing Phase 5's implementation must get right and this
+     document had not previously examined.
+   - `_read_sgp()`'s resolution logic generalized the same way `NotificationCoordinator._check_one()`
+     already resolves `(source, field)` pairs (§2.9).
+3. `buildgen/` changes: `_Default<Field>` AST discovery, the `{default = true, ...}` TOML shape and
+   its validation (§2.8's now-resolved branch point), inline construction in `codegen.py`, the
+   no-construction-order-edge branch in `graph.py`, and the generalized `{source, field}` resolution
+   for measurement-value wiring fields project-wide (not hardcoded to sgp40's two fields — the same
+   "build it generically once" reasoning `warn_*` already followed).
+4. **Documentation sync, now an explicit deliverable of this phase, not an afterthought** (found
+   while planning, not previously called out anywhere in §2-§9): `SPECIFICATION.md` Part C.14
+   documents today's `_WIRING`/`required=True` semantics as current fact — once this phase lands,
+   Part C.14 describes a mechanism that no longer matches the code. Same for `BUILD_CHAIN_PLAN.md`'s
+   "Core design decisions" (`_WIRING`'s `(toml_field_name, required_driver_class)` framing) and
+   "Session 3 done" section. Per CLAUDE.md's working agreement ("when a fact in this file... turns
+   out to be stale... update the doc in the same session"), both need a follow-up edit as part of
+   this phase's own scope, not a separately-remembered task.
+5. Per §3's standing to-do: full `SPECIFICATION.md` Part D checklist and `tests/` coverage
+   (functioning/resilience/coverage) for every touched `src/` file, plus the CLAUDE.md-mandated
+   bird's-eye scan over the whole of `src/` once these land (triggered by any new file/class
+   addition, not just a new file).
+6. Once this phase lands, axis 1 (all 8 sensor-population subsets legal) and axis 6 (real
+   `signal_sink` vs. explicit no-op default) in §4.3 stop being conditional on "once §2 lands" —
+   update those axis descriptions to drop the hedge.
+- Tests: §2's own worked-design tests, the full per-value-wiring axis-3/axis-9 richness §4.3 already
+  describes, and re-running Phase 1's FRAM/no-scd30-population tests now that they're actually
+  reachable.
+
+### 10.7 Phase 6 — Final cross-product enumeration, fixture buildout, and forward-pointers
+
+Only meaningful once axes stop shifting, i.e. after Phase 5:
+
+1. §4.4's original to-do: enumerate the actual cross-product of axes 1-8 and 11 (pruned by §4.2),
+   decide fixtures vs. targeted internals tests; design axis 9's multi-instance fixture set (likely
+   a sibling to `novel_combo.toml`, per §4.4's own note).
+2. **Forward-pointers for later sessions, found while planning, not previously recorded anywhere in
+   this document**: Session 4 (website `definitions.json` generator) and Session 5 (digital twin
+   generalization) both consume a device's TOML/generated-module shape directly; §2.9's per-value
+   wiring split (`comp_source` → `temperature_source`/`humidity_source`) is a real shape change
+   either of those sessions could get blindsided by if this document's existence isn't surfaced to
+   them. Not this session's fix — recorded here so a future session spinning off `BUILD_CHAIN_PLAN.md`
+   for Session 4/5 has a pointer to read this file first.
+3. **Considered and confirmed not applicable, recorded so it isn't silently skipped**: CLAUDE.md's
+   "a new bus-facing device gets bus-hazard test coverage across all four test tiers" rule does not
+   apply to this whole plan — `buildgen/` generates wiring for already-reviewed bus-facing drivers,
+   it doesn't add a new physical device/chip type itself, so there's no new bus-hazard surface for
+   that rule to cover.
+
+### 10.8 Summary ordering
+
+**0 (decisions) → 1 (lock in existing behavior) → 2 (pin legality/role/no-buses-at-all) → 3
+(`_LIMITS`) → 4 (driver-onboarding hardening) → 5 (wiring defaults + per-value generalization) → 6
+(final enumeration + doc sync + forward-pointers).** Phases 2/3/4 have no dependency on each other
+and could in principle reorder or run concurrently across sessions; they're sequenced 2-3-4 here by
+risk/size (smallest, most-fully-specified first), not by a hard requirement. Phase 5 is the one hard
+"must be last" — everything else is safer to have landed first, and its own decisions (§10.1 items 1
+and 2) are the most involved to resolve.
