@@ -28,6 +28,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from typing import Any
 
 import tomllib
 
@@ -120,7 +121,7 @@ def run(cmd: list[str], cwd: Path | None = None, *, check: bool = True, env: dic
     return result.stdout
 
 
-def load_versions(path: Path) -> dict:
+def load_versions(path: Path) -> dict[str, Any]:
     with path.open("rb") as f:
         return tomllib.load(f)
 
@@ -509,7 +510,7 @@ def print_verification_summary(board: str, mpy_cross_binary: Path, unix_binary: 
     return 0
 
 
-def run_setup(args: argparse.Namespace, versions_path: Path, versions: dict) -> int:
+def run_setup(args: argparse.Namespace, versions_path: Path, versions: dict[str, Any]) -> int:
     """Install or update. The steps below are exactly "How it works" in SPECIFICATION.md Part B.3:
     pin MicroPython -> derive pico-sdk -> derive picotool -> install the ARM toolchain -> build
     everything in an isolated environment -> verify. ensure_repo_at_ref() doubles as the update
@@ -562,7 +563,7 @@ def run_setup(args: argparse.Namespace, versions_path: Path, versions: dict) -> 
     return print_verification_summary(board, mpy_cross_binary, unix_binary)
 
 
-def run_test(args: argparse.Namespace, versions: dict) -> int:
+def run_test(args: argparse.Namespace, versions: dict[str, Any]) -> int:
     """Re-verify an existing install, offline: just run_verification_sequence() again against
     whatever is already checked out — see the module docstring and SPECIFICATION.md Part B.3's "How it
     works" for why apt/git network access is never needed here."""
@@ -928,7 +929,7 @@ def run_project_dependency_install(repo_root: Path, *, skip_npm: bool) -> None:
     run(["npm", "ci"], cwd=repo_root)
 
 
-def run_env(args: argparse.Namespace, versions_path: Path, versions: dict) -> int:
+def run_env(args: argparse.Namespace, versions_path: Path, versions: dict[str, Any]) -> int:
     """Tiered dev-environment setup (README.md's environment-tiers table): each tier is a
     strict superset of the one before it.
 

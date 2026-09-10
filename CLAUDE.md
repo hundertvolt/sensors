@@ -293,9 +293,10 @@ information):
   actionlint 1.7.12 rejects that as invalid, so the two gates cannot both be satisfied; revisit
   when actionlint learns it. **Adding a SHA-pinned third-party action means bumping that SHA by
   hand** — no Dependabot is configured.
-- **Scope is `src/`, `tests/`, and `digital_twin/`.** The pre-refactor deployed
+- **Scope is eight directories**: `src/`, `tests/`, `digital_twin/`, `boot_entry/`, `toolchain/`,
+  `scripts/`, `tests_scripts/` and `tests_hardware/`. The pre-refactor deployed
   codebase (`python/`, `modules/`) has no lint/type config yet; extending scope there is a separate
-  future decision, not assumed by this setup. All three are expected to stay fully clean — every
+  future decision, not assumed by this setup. All eight are expected to stay fully clean — every
   scope in this setup is fully-reviewed, freely-editable code (see "Hard rules" above), not WIP;
   there's no tracked-debt scope left to compare `digital_twin/` against since `improved-quality/`
   was deleted (see "Hard rules" above). `digital_twin/`'s own
@@ -327,10 +328,10 @@ information):
   build_firmware.py`), none of which are MicroPython-target code, so the real-interpreter rationale
   above doesn't apply to them; see `tests_scripts/conftest.py`'s own docstring. `scripts/test.sh`
   runs both: the MicroPython suite as described above, plus `uv run pytest tests_scripts` as one
-  more step before it. `tests_scripts/` isn't in `pyproject.toml`'s `[tool.mypy]`/`[tool.ruff]`
-  scope, matching the existing decision that `scripts/`/`toolchain/` (the dev-tooling scripts these
-  tests exercise) aren't linted/type-checked either — extending that scope is a separate future
-  decision, not assumed here.
+  more step before it. `tests_scripts/` is in lint/typecheck scope, like
+  `scripts/`/`toolchain/` (the dev-tooling scripts these tests exercise) — all three are checked by
+  `host_typecheck.ini`'s real-CPython pass, not the MicroPython one, and carry the same
+  `per-file-ignores` block `tests/` does.
 - **`scripts/test.sh --coverage` reports `src/` line coverage; it never gates anything** — no
   threshold is enforced anywhere, by design (confirmed directly, not a placeholder for a future
   gate). Since `coverage.py` only runs under CPython while `src/` only ever runs
@@ -429,11 +430,22 @@ information):
   `Union[...]` usages that do exist today are confined to `python/` (deployed, frozen, no lint
   config at all) — leave those alone under the usual out-of-scope-editing hard rule; don't drive-by
   "fix" `Union` → `|` in a file you're not otherwise promoting/refactoring.
-- **mypy is stricter than default, short of `--strict`** (`disallow_untyped_defs`,
-  `check_untyped_defs`, `warn_return_any`, `warn_unreachable`, `strict_equality`, etc., but not
-  `disallow_any_generics`/`disallow_untyped_calls`/`disallow_subclassing_any`). Does **not** disable
-  the `assignment` error code — the old `improved-quality/mypy.ini` did, though that was never a
-  deliberate choice.
+- **mypy runs full `--strict`, minus exactly one flag.** All three configs set `strict = true`
+  (spelled that way, not as the individual flags, so a deliberate mypy version bump surfaces any
+  newly added strict check as a finding to decide on), plus `no_implicit_optional`/`warn_unreachable`
+  which aren't part of `--strict`. **The one exemption is `no_implicit_reexport`, and only in the
+  `[tool.mypy]` pass** — `tests/` mocks by reassigning a module's imported names
+  (`asy_ntp_client.time = FakeTime()`, `asy_udp_socket.socket = ...`), which is the project's actual
+  mocking mechanism since MicroPython has no `unittest.mock`; enforcing the flag would mean 175
+  inline ignores in `tests/` or adding `__all__`/re-export aliases to shipped `src/` modules purely
+  to satisfy a test-only check. `digital_twin/typecheck.ini` and `host_typecheck.ini` both run
+  `--strict` with that flag ON. One further narrow exemption lives in a central
+  `[[tool.mypy.overrides]]` block: `disallow_untyped_decorators` is off for
+  `tests/test_setter_microdot_integration.py`, the only file that registers real Microdot routes —
+  vendored `ext/microdot.py` is unannotated and must never be edited, so its `@app.get()`/`@app.put()`
+  decorators make every handler they wrap "untyped" no matter how well the handler itself is
+  annotated. Does **not** disable the `assignment` error code — the old `improved-quality/mypy.ini`
+  did, though that was never a deliberate choice.
 - **MicroPython stubs**: `micropython-rp2-rpi_pico_w-stubs` (PyPI, board/version-specific, pulls in
   `micropython-stdlib-stubs`). Published by the same project as
   [`josverl/micropython-stubs`](https://github.com/josverl/micropython-stubs) — PyPI is just its

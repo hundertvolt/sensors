@@ -65,7 +65,7 @@ class WLAN:
         self.connect_calls: deque[tuple[Any, Any]] = deque((), _CALL_LOG_MAXLEN)
         self.deinit_called = False
         self.disconnect_called = False
-        self._connect_task: asyncio.Task | None = None
+        self._connect_task: asyncio.Task[None] | None = None
         self._scripted_outcomes: list[int] = []
         # Test/Step-5-run fault injection - method name -> exception to raise once armed, same
         # shape as every chip fake's FaultInjector in this package.

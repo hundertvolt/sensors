@@ -219,7 +219,7 @@ class I2C:
         self.freq = freq
         self.timeout = timeout
         self.deinit_called = False
-        self.log: deque[tuple] = deque((), _LOG_MAXLEN)
+        self.log: deque[tuple[Any, ...]] = deque((), _LOG_MAXLEN)
         self.devices = _wire_i2c_devices(id)  # public: tests reach a wired chip via i2c.devices[addr]
 
     def deinit(self) -> None:
@@ -330,7 +330,7 @@ class SPI:
         self.bits = bits
         self.firstbit = firstbit
         self.deinit_called = False
-        self.log: deque[tuple] = deque((), _LOG_MAXLEN)
+        self.log: deque[tuple[Any, ...]] = deque((), _LOG_MAXLEN)
         self.device = _wire_spi_device(id)  # public: tests reach the wired chip via spi.device
 
     def init(
@@ -390,7 +390,7 @@ class Timer:
         self.period = -1
         self.mode = self.PERIODIC
         self.callback: Callable[[Timer], None] | None = None
-        self._task: asyncio.Task | None = None
+        self._task: asyncio.Task[None] | None = None
         # Spelled out rather than **kwargs-forwarded so the accepted settings are statically
         # checked; the guard keeps real machine_timer_make_new()'s "init helper only runs when the
         # constructor was actually given settings" behavior for a bare Timer().
@@ -464,7 +464,7 @@ class WDT:
         # on every would-have-triggered notification, so bounded the same way.
         self.would_have_triggered_log: deque[int] = deque((), _LOG_MAXLEN)
         self._on_would_trigger = on_would_trigger
-        self._task: asyncio.Task | None = None
+        self._task: asyncio.Task[None] | None = None
         self._armed_at_ms: Any | None = None  # an opaque ticks_ms() value, not a plain int
         self._arm()
 
@@ -504,12 +504,12 @@ class WDT:
 class RTC:
     # One physical peripheral - class-level shared state, matches real singleton hardware (and
     # tests/machine.py's own identical convention).
-    _shared_datetime: tuple = (2000, 1, 1, 0, 0, 0, 0, 0)
+    _shared_datetime: "tuple[int, ...]" = (2000, 1, 1, 0, 0, 0, 0, 0)
 
     def __init__(self, id: int = 0) -> None:
         self.id = id
 
-    def datetime(self, dt: "tuple | None" = None) -> "tuple":
+    def datetime(self, dt: "tuple[int, ...] | None" = None) -> "tuple[int, ...]":
         # Return type matches typings/machine.pyi's own RTC.datetime signature (always `Tuple`,
         # not Optional) even on the set path, where real hardware returns nothing meaningful -
         # simplifies the common get-after-set call pattern without a getter/setter @overload split.

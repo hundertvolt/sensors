@@ -26,7 +26,9 @@ except ImportError:  # typing isn't available on the real MicroPython test inter
 
 if TYPE_CHECKING:
     from collections.abc import Coroutine
-    from typing import Any, TypeVar
+    from typing import Any, Literal, TypeVar
+
+    from print_log import ErrorLog
 
     T = TypeVar("T")
 
@@ -165,7 +167,7 @@ async def _cancel(task: "asyncio.Task[Any]") -> None:
         pass
 
 
-def _last_err(counter: "dict[str, dict[str, int | list[int] | list[str]]]", field: str) -> "int | str | None":
+def _last_err(counter: "ErrorLog", field: 'Literal["ErrNum", "ErrType"]') -> "int | str | None":
     # Same helper as tests/test_asy_ntp_client.py's own _last_err() - duplicated, not imported,
     # matching this file's existing convention of small per-file test helpers (e.g.
     # _sweep_stale_tmp_dirs above).

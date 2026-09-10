@@ -16,7 +16,16 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from typing import Any, Protocol, TypeVar
+    from typing import Any, Protocol, TypedDict, TypeVar
+
+    # The envelope get_log()/get_error_counter() return project-wide - one entry per module name.
+    # Declared here (their only shared definition) and imported by every module that returns one.
+    class ErrEntry(TypedDict):
+        ErrCount: int
+        ErrNum: list[int]
+        ErrType: list[str]
+
+    ErrorLog = dict[str, ErrEntry]
 
     from base_classes import LockableBuffer
     from crc_checks import CRC_Base
@@ -167,7 +176,7 @@ class PrintLogHistory(PrintLog):
         if not await self._write():
             self._diag("PrintLog: History write failed!")
 
-    async def get_log(self, name: str | None = None) -> dict[str, dict[str, int | list[int] | list[str]]]:
+    async def get_log(self, name: str | None = None) -> "ErrorLog":
         # Reverses _store_err()'s encoding: 0x00/0x80 are "nothing recorded"; else shift back by
         # _NO_ERR/_NO_WRN to recover the original error/warning code. name=None falls back to
         # self.name (every real src/ call site relies on this); tests still pass an explicit override.

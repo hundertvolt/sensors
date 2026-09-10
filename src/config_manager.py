@@ -20,6 +20,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from typing import Any, Literal, NamedTuple, TypeVar
 
+    from print_log import ErrorLog
+
     T = TypeVar("T", int, float, str)
 
     # The project's canonical config/JSON scalar: every schema default, cached value, REST-supplied
@@ -237,7 +239,7 @@ class ConfigManager:
         except (TypeError, ValueError):
             return None
 
-    async def get_error_counter(self) -> "dict[str, dict[str, int | list[int] | list[str]]]":
+    async def get_error_counter(self) -> "ErrorLog":
         return await self.pr.get_log()
 
     async def reset_error_counter(self) -> None:

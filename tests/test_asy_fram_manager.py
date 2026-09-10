@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from typing import Any, TypeVar
 
     T = TypeVar("T")
+    from print_log import ErrorLog
 
 # Real on-chip constant values (asy_fram_manager.py's own _STATUS_* are micropython.const() and
 # compiled away - not importable - so these are hardcoded, matching test_asy_fram_driver.py's own
@@ -215,7 +216,7 @@ def test_corrupted_block0_status_falls_back_to_block1_and_self_heals_block0() ->
     chunk = manager.get_chunk(4, crc=CRC_Pass())
     assert chunk is not None
 
-    async def scenario() -> tuple[bytearray | None, dict]:
+    async def scenario() -> "tuple[bytearray | None, ErrorLog]":
         await chunk.write(b"good")
         addr0, _addr1 = chunk.block_addr
         # Simulate power loss mid-write: block 0 left with status BUSY (never reached the final
@@ -272,7 +273,7 @@ def test_status_byte_holding_an_unrecognized_garbage_value_is_treated_the_same_a
     chip.memory[addr0 + 4] = garbage
     chip.memory[addr0 + 5] = garbage
 
-    async def scenario() -> tuple[bytearray | None, dict]:
+    async def scenario() -> "tuple[bytearray | None, ErrorLog]":
         result = await chunk.read()
         errs = await manager.get_error_counter()
         return result, errs
@@ -314,7 +315,7 @@ def test_crc8_detects_corrupted_trailer_byte_itself_not_just_payload() -> None:
     crc_byte_addr = addr0 + chunk.size + chunk.crc.length() - 1  # the trailer byte itself
     chip.memory[crc_byte_addr] ^= 0xFF
 
-    async def scenario() -> tuple[bytearray | None, dict]:
+    async def scenario() -> "tuple[bytearray | None, ErrorLog]":
         result = await chunk.read()
         errs = await manager.get_error_counter()
         return result, errs
@@ -522,7 +523,7 @@ def test_timestamped_corrupted_timestamp_byte_self_heals_when_crc_protected() ->
     addr0, _addr1 = chunk.block_addr
     chip.memory[addr0] ^= 0xFF  # first byte of the on-chip timestamp field itself
 
-    async def scenario() -> tuple[int | None, bytearray | None, dict]:
+    async def scenario() -> "tuple[int | None, bytearray | None, ErrorLog]":
         ts, _age, data = await chunk.read()
         errs = await manager.get_error_counter()
         return ts, data, errs
@@ -546,7 +547,7 @@ def test_timestamped_corrupted_timestamp_byte_hard_fails_without_crc() -> None:
     addr0, _addr1 = chunk.block_addr
     chip.memory[addr0] ^= 0xFF
 
-    async def scenario() -> tuple[int | None, int | None, bytearray | None, dict]:
+    async def scenario() -> "tuple[int | None, int | None, bytearray | None, ErrorLog]":
         ts, age, data = await chunk.read()
         errs = await manager.get_error_counter()
         return ts, age, data, errs
@@ -723,7 +724,7 @@ def test_oversized_write_logs_errno_84_not_colliding_with_clears_errno_80() -> N
     chunk = manager.get_chunk(4, crc=CRC_Pass())
     assert chunk is not None
 
-    async def scenario() -> dict:
+    async def scenario() -> "ErrorLog":
         await chunk.write(b"toolong!")
         return await manager.get_error_counter()
 
@@ -748,7 +749,7 @@ def test_write_fails_cleanly_when_chip_drops_wren_latch() -> None:
     assert chunk is not None
     chip.drop_wren = True
 
-    async def scenario() -> tuple[bool, dict]:
+    async def scenario() -> "tuple[bool, ErrorLog]":
         write_ok = await chunk.write(b"data")
         result = await manager.get_error_counter()
         return write_ok, result
@@ -770,7 +771,7 @@ def test_read_fails_cleanly_when_chip_drops_wren_latch() -> None:
     run(chunk.write(b"good"))
     chip.drop_wren = True
 
-    async def scenario() -> tuple[bytearray | None, dict]:
+    async def scenario() -> "tuple[bytearray | None, ErrorLog]":
         result = await chunk.read()
         errs = await manager.get_error_counter()
         return result, errs
@@ -790,7 +791,7 @@ def test_clear_fails_cleanly_when_chip_drops_wren_latch() -> None:
     run(chunk.write(b"good"))
     chip.drop_wren = True
 
-    async def scenario() -> tuple[bool, dict]:
+    async def scenario() -> "tuple[bool, ErrorLog]":
         cleared = await chunk.clear()
         errs = await manager.get_error_counter()
         return cleared, errs
@@ -811,7 +812,7 @@ def test_write_fails_cleanly_when_fram_is_write_protected() -> None:
     chunk = manager.get_chunk(4, crc=CRC_Pass())
     assert chunk is not None
 
-    async def scenario() -> tuple[bool, bool, dict]:
+    async def scenario() -> "tuple[bool, bool, ErrorLog]":
         protect_ok = await manager.fram.set_write_protected(value=True)
         write_ok = await chunk.write(b"data")
         errs = await manager.get_error_counter()
@@ -837,7 +838,7 @@ def test_operations_fail_cleanly_once_fram_chip_goes_uninitialized_mid_run() -> 
     run(chunk.write(b"good"))
     manager.fram.initialized = False
 
-    async def scenario() -> tuple[bool, bytearray | None, bool, dict]:
+    async def scenario() -> "tuple[bool, bytearray | None, bool, ErrorLog]":
         write_ok = await chunk.write(b"data")
         read_result = await chunk.read()
         cleared = await chunk.clear()
@@ -868,7 +869,7 @@ def test_read_fails_when_both_blocks_have_crc_invalid_payloads() -> None:
     chip.memory[addr0] ^= 0xFF
     chip.memory[addr1] ^= 0xFF
 
-    async def scenario() -> tuple[bytearray | None, dict]:
+    async def scenario() -> "tuple[bytearray | None, ErrorLog]":
         result = await chunk.read()
         errs = await manager.get_error_counter()
         return result, errs
@@ -923,7 +924,7 @@ def test_read_fails_when_self_heal_write_to_block0_fails() -> None:
 
     chunk._write_chunk = failing_write_chunk  # type: ignore[method-assign]
 
-    async def scenario() -> tuple[bytearray | None, dict]:
+    async def scenario() -> "tuple[bytearray | None, ErrorLog]":
         result = await chunk.read()
         errs = await manager.get_error_counter()
         return result, errs
@@ -951,7 +952,7 @@ def test_read_fails_when_self_heal_write_to_block1_fails() -> None:
 
     chunk._write_chunk = failing_write_chunk  # type: ignore[method-assign]
 
-    async def scenario() -> tuple[bytearray | None, dict]:
+    async def scenario() -> "tuple[bytearray | None, ErrorLog]":
         result = await chunk.read()
         errs = await manager.get_error_counter()
         return result, errs
@@ -1283,7 +1284,7 @@ def test_setup_fails_cleanly_when_device_id_does_not_match() -> None:
     manager, chip = make_manager()
     chip.rdid_response = bytes([0xFF, 0xFF, 0xFF, 0xFF])
 
-    async def scenario() -> tuple[bool, dict]:
+    async def scenario() -> "tuple[bool, ErrorLog]":
         ok = await manager.setup()
         errs = await manager.get_error_counter()
         return ok, errs
@@ -1306,7 +1307,7 @@ def test_chunk_operations_fail_cleanly_when_the_underlying_bus_is_deinitialized_
     run(chunk.write(b"good"))
     manager.fram._spidev.spi.deinit()
 
-    async def scenario() -> tuple[bool, bytearray | None, bool, dict]:
+    async def scenario() -> "tuple[bool, bytearray | None, bool, ErrorLog]":
         write_ok = await chunk.write(b"data")
         read_result = await chunk.read()
         cleared = await chunk.clear()
@@ -1430,7 +1431,7 @@ def test_disagreeing_status_bytes_within_one_block_are_treated_as_invalid_and_se
     chip.memory[addr0 + 4] = _STATUS_UNINIT
     chip.memory[addr0 + 5] = _STATUS_IDLE
 
-    async def scenario() -> tuple[bytearray | None, dict]:
+    async def scenario() -> "tuple[bytearray | None, ErrorLog]":
         result = await chunk.read()
         errs = await manager.get_error_counter()
         return result, errs
@@ -1459,7 +1460,7 @@ def test_write_verify_reports_the_distinct_errno_when_only_block_1_fails_verific
 
     chunk._compare_with = failing_compare_with  # type: ignore[method-assign]
 
-    async def scenario() -> tuple[bool, dict]:
+    async def scenario() -> "tuple[bool, ErrorLog]":
         write_ok = await chunk.write(b"data")
         errs = await manager.get_error_counter()
         return write_ok, errs
@@ -1566,7 +1567,7 @@ def test_write_fails_cleanly_when_block_1s_write_itself_fails() -> None:
 
     chunk._write_chunk = failing_write_chunk  # type: ignore[method-assign]
 
-    async def scenario() -> tuple[bool, dict]:
+    async def scenario() -> "tuple[bool, ErrorLog]":
         ok = await chunk.write(b"data")
         errs = await manager.get_error_counter()
         return ok, errs
@@ -1617,7 +1618,7 @@ def test_handle_status_bytes_fails_cleanly_when_only_the_second_byte_write_fails
 
     chunk.fram.set_values = failing_set_values  # type: ignore[method-assign]
 
-    async def scenario() -> tuple[bool, dict]:
+    async def scenario() -> "tuple[bool, ErrorLog]":
         ok = await chunk.write(b"data")
         errs = await manager.get_error_counter()
         return ok, errs
@@ -1641,7 +1642,7 @@ def test_write_chunk_fails_cleanly_when_crc_computation_itself_fails() -> None:
 
     chunk.crc.add_into = failing_add_into  # type: ignore[method-assign]
 
-    async def scenario() -> tuple[bool, dict]:
+    async def scenario() -> "tuple[bool, ErrorLog]":
         ok = await chunk.write(b"data")
         errs = await manager.get_error_counter()
         return ok, errs
@@ -1668,7 +1669,7 @@ def test_write_chunk_fails_cleanly_when_the_payload_write_itself_fails() -> None
 
     chunk.fram.set_values = failing_set_values  # type: ignore[method-assign]
 
-    async def scenario() -> tuple[bool, dict]:
+    async def scenario() -> "tuple[bool, ErrorLog]":
         ok = await chunk.write(b"data")
         errs = await manager.get_error_counter()
         return ok, errs
@@ -1697,7 +1698,7 @@ def test_read_chunk_self_heals_from_block_1_when_block_0s_payload_read_itself_fa
 
     chunk.fram.get_values = failing_get_values  # type: ignore[method-assign]
 
-    async def scenario() -> tuple[bytearray | None, dict]:
+    async def scenario() -> "tuple[bytearray | None, ErrorLog]":
         result = await chunk.read()
         errs = await manager.get_error_counter()
         return result, errs
@@ -1721,7 +1722,7 @@ def test_read_chunk_fails_cleanly_when_incremental_crc_update_itself_fails() -> 
 
     chunk.crc.run_inc = failing_run_inc  # type: ignore[method-assign]
 
-    async def scenario() -> tuple[bytearray | None, dict]:
+    async def scenario() -> "tuple[bytearray | None, ErrorLog]":
         result = await chunk.read()
         errs = await manager.get_error_counter()
         return result, errs
@@ -1757,7 +1758,7 @@ def test_read_chunk_fails_cleanly_when_the_final_idle_status_write_itself_fails(
 
     chunk.fram.set_values = failing_set_values  # type: ignore[method-assign]
 
-    async def scenario() -> tuple[bytearray | None, dict]:
+    async def scenario() -> "tuple[bytearray | None, ErrorLog]":
         result = await chunk.read()
         errs = await manager.get_error_counter()
         return result, errs
@@ -1784,7 +1785,7 @@ def test_clear_chunk_fails_cleanly_when_the_data_wipe_write_itself_fails() -> No
 
     chunk.fram.set_values = failing_set_values  # type: ignore[method-assign]
 
-    async def scenario() -> tuple[bool, dict]:
+    async def scenario() -> "tuple[bool, ErrorLog]":
         ok = await chunk.clear()
         errs = await manager.get_error_counter()
         return ok, errs
@@ -1827,7 +1828,7 @@ def test_timestamped_write_data_larger_than_buffer_fails_with_errno_81() -> None
     chunk = manager.get_timestamped_chunk(2, _synced, crc=CRC_Pass())
     assert chunk is not None
 
-    async def scenario() -> tuple[tuple[bool, int | None, bool], dict]:
+    async def scenario() -> "tuple[tuple[bool, int | None, bool], ErrorLog]":
         result = await chunk.write(b"toolong")
         errs = await manager.get_error_counter()
         return result, errs
@@ -1921,7 +1922,7 @@ def test_manager_reset_error_counter_clears_history() -> None:
     chunk = manager.get_chunk(4, crc=CRC_Pass())
     assert chunk is not None
 
-    async def scenario() -> tuple[dict, dict]:
+    async def scenario() -> "tuple[ErrorLog, ErrorLog]":
         await chunk.write(b"toolongdata")  # errno=84, oversized - just to populate some history
         before = await manager.get_error_counter()
         await manager.reset_error_counter()

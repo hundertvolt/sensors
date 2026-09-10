@@ -24,6 +24,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
     from typing import Any
 
+    from print_log import ErrorLog
+
 _STATUS_UNINIT = const(0x00)
 _STATUS_IDLE = const(0x01)
 _STATUS_BUSY = const(0x02)
@@ -579,7 +581,7 @@ class AsyFramManager:
         self._pause = False
         self.fram = FRAM_SPI(spi_bus, spi_cs, max_size=self.size, logger=self.pr)
 
-    async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[str]]]:
+    async def get_error_counter(self) -> "ErrorLog":
         return await self.pr.get_log()
 
     def get_pause(self) -> bool:

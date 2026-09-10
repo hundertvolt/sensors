@@ -45,7 +45,7 @@ async def _cs_yank_race(fram: FRAM_SPI, victim: "Awaitable[None]") -> bool:
     return cs_forced_high_early
 
 
-async def _assert_recovery(fram: FRAM_SPI, addr: int, wdt: machine.WDT) -> list:
+async def _assert_recovery(fram: FRAM_SPI, addr: int, wdt: machine.WDT) -> list[str]:
     failures = []
     recovered = await fram.verify_present()  # not wrapped in `async with fram:` - self-acquires the same outer lock internally (asyncio.Lock isn't reentrant)
     wdt.feed()

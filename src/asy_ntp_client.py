@@ -39,6 +39,7 @@ if TYPE_CHECKING:
     from typing import Any
 
     from asy_fram_manager import AsyFramManager
+    from print_log import ErrorLog
 
 _NTP_ASYNC_INTERV = const(3)  # 3 times interval considered as out of sync
 _NTP_CHECK_INTERV = const(10)  # seconds to count for NTP status update
@@ -337,7 +338,7 @@ class AsyNtpClient(SensorReaderConfig):
     async def get_dict_cfg(self) -> dict[str, dict[str, int | float | str | bool | None]]:
         return await self._get_dict_cfg(_NAME, _VAL_NH + _VAL_NOS + _VAL_NIH + _VAL_GMT + _VAL_DST)
 
-    async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[str]]]:
+    async def get_error_counter(self) -> "ErrorLog":
         return await self.pr.get_log()
 
     async def get_last_ntp_sync(self) -> int | None:  # None = never synced yet

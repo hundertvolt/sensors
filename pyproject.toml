@@ -544,20 +544,33 @@ show_error_context = true
 show_column_numbers = true
 pretty = true
 
-# Stricter than mypy's defaults, but short of --strict: catches missing/incomplete annotations
-# and unsound Optional/Any/equality handling without the noisier --strict-only checks
-# (disallow_any_generics, disallow_untyped_calls, disallow_subclassing_any) that add little value
-# here. Deliberately does NOT set disable_error_code = assignment (the old
-# improved-quality/mypy.ini did; BACKLOG.md records that this was never a deliberate choice).
-disallow_untyped_defs = true
-disallow_incomplete_defs = true
-check_untyped_defs = true
+# Full --strict, minus exactly one flag (see no_implicit_reexport below). Spelled as `strict`
+# rather than the individual flags so a deliberate mypy version bump surfaces any newly added
+# strict check as a finding to decide on, which is the same reasoning that pins the tool at all.
+# Deliberately does NOT set disable_error_code = assignment (the old improved-quality/mypy.ini
+# did; BACKLOG.md records that this was never a deliberate choice).
+strict = true
+# Not part of --strict; kept from the pre-strict config because both remain useful here.
 no_implicit_optional = true
-warn_return_any = true
-warn_redundant_casts = true
-warn_unused_ignores = true
 warn_unreachable = true
-strict_equality = true
+# The one --strict flag this scope cannot adopt. tests/ mock by reassigning a module's imported
+# names (asy_ntp_client.time = FakeTime(), asy_udp_socket.socket = ..., 21 more for _SPI and 17
+# for AsyUDPSocket) - there is no unittest.mock under MicroPython, so this IS the project's
+# mocking mechanism, not a shortcut. Enforcing it would mean 175 inline ignores in tests/ or
+# adding __all__/re-export aliases to shipped src/ modules purely to satisfy a test-only check.
+# digital_twin/typecheck.ini and host_typecheck.ini both run full --strict with this flag ON;
+# only this pass, which is the one that sees tests/, needs the exemption.
+no_implicit_reexport = false
+
+[[tool.mypy.overrides]]
+# ext/microdot.py is vendored, unannotated upstream code that must never be edited (CLAUDE.md's
+# own hard rule), so its @app.get()/@app.put() decorators are untyped and --strict's
+# disallow_untyped_decorators marks every route handler they wrap as untyped too. The handlers
+# here are themselves fully annotated; this is the only file in any scope that registers real
+# Microdot routes, so the exemption stays central and one module wide rather than 7 inline
+# ignores. Revisit if Microdot ever ships type hints.
+module = "test_setter_microdot_integration"
+disallow_untyped_decorators = false
 
 [tool.pytest.ini_options]
 # src/'s own MicroPython-target tests never run under pytest - per BACKLOG.md's "Self-contained

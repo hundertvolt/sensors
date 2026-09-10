@@ -30,6 +30,7 @@ if TYPE_CHECKING:
     from typing import Any
 
     from asy_fram_manager import AsyFramManager
+    from print_log import ErrorLog
 
 
 _BMP388_CHIP_ID = const(0x50)  # also reported by BMP384 (datasheet sec 4.3.1); BMP390 differs
@@ -294,7 +295,7 @@ class BMP3xx_Reader(SensorReaderConfig):
             callback=self._read_sensor_dict,
         )
 
-    async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[str]]]:
+    async def get_error_counter(self) -> "ErrorLog":
         return await self.pr.get_log()
 
     async def get_pressure_oversampling(self) -> int | None:

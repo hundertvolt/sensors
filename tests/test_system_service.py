@@ -1071,7 +1071,7 @@ def test_start_and_check_tasks_logs_the_real_exception_of_a_crashed_task() -> No
         run(scenario())
     assert call_count[0] >= 2
     log = run(svc.get_error_counter())["SYSTEM"]
-    assert 5 in log["ErrNum"]  # type: ignore[operator]  # _log_dead_task's own errno=5, distinct from wrn_s's own wrnno
+    assert 5 in log["ErrNum"]  # _log_dead_task's own errno=5, distinct from wrn_s's own wrnno
 
 
 def test_start_and_check_tasks_logs_a_self_cancelled_task_as_a_persisted_error() -> None:
@@ -1109,7 +1109,7 @@ def test_start_and_check_tasks_logs_a_self_cancelled_task_as_a_persisted_error()
         run(scenario())
     assert call_count[0] >= 2
     log = run(svc.get_error_counter())["SYSTEM"]
-    assert 6 in log["ErrNum"]  # type: ignore[operator]  # _log_dead_task's own errno=6 for a self-cancelled task
+    assert 6 in log["ErrNum"]  # _log_dead_task's own errno=6 for a self-cancelled task
     assert svc.pr.err_count >= 2  # the errno=6 entry plus the routine "Task ended" warning
 
 
@@ -1140,7 +1140,7 @@ def test_start_and_check_tasks_clean_task_return_does_not_log_a_spurious_excepti
     with _FastAsyncSleep():
         run(scenario())
     log = run(svc.get_error_counter())["SYSTEM"]
-    assert 5 not in log["ErrNum"]  # type: ignore[operator]  # no real exception occurred - errno=5 must never fire
+    assert 5 not in log["ErrNum"]  # no real exception occurred - errno=5 must never fire
 
 
 def test_start_and_check_tasks_gives_up_and_reboots_past_the_failure_budget() -> None:

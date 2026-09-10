@@ -25,6 +25,7 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 
 if TYPE_CHECKING:
     from asy_fram_manager import AsyFramManager
+    from print_log import ErrorLog
 
 _NAME = const("DNSSRV")
 
@@ -71,7 +72,7 @@ class DNSServer:
         # trust on the caller. run() filters to the AP's own subnet before ever replying.
         self.udps = AsyUDPSocket(("0.0.0.0", 53), mode="server")
 
-    async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[str]]]:
+    async def get_error_counter(self) -> "ErrorLog":
         return await self.pr.get_log()
 
     async def reset_error_counter(self) -> None:

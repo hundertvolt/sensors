@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from typing import Any, Protocol
 
     from asy_fram_manager import AsyFramManager
+    from print_log import ErrorLog
 
     # Structural Protocol for a caller-supplied LED (SPECIFICATION.md Part C.10's typing convention).
     class LEDControl(Protocol):
@@ -635,7 +636,7 @@ class AsyConnTime(SensorReaderConfig):
             _NAME, _VAL_SSID + _VAL_PW + _VAL_CTRY + _VAL_HOST + _VAL_LED, callback=self._mask_pw,
         )
 
-    async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[str]]]:
+    async def get_error_counter(self) -> "ErrorLog":
         return await self.pr.get_log()
 
     # Locking convention for these getters (see SPECIFICATION.md Part C.8's "Known inconsistency"):

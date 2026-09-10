@@ -9,25 +9,21 @@ constraints.
 
 ## Refactor targets not yet done
 
-- **`boot_entry/` isn't in `pyproject.toml`'s lint/typecheck `files` scope yet.**
-  `boot_entry/wozi_boot.py` is the real, deliberately-separate blocking-import firmware entry point
-  for `src/sensortask_wozi.py` (see that module's own docstring and `SPECIFICATION.md` Part A.7).
-  Manually confirmed clean today (`ruff check`/`mypy` both pass under the existing config), but not
-  part of `scripts/lint.sh`/`scripts/typecheck.sh`/CI's default scan until `pyproject.toml`'s scan
-  scope is extended - fold this in next time `pyproject.toml` is touched for another reason.
 - **No CI firmware-build stage yet for the legacy `build-*.sh` scripts.** The *new*, `src/`-based
   toolchain (`scripts/build_firmware.py`, `SPECIFICATION.md` Part B.11) already has this
   (`.github/workflows/ci.yml`'s `firmware-build-verify` job builds a real `firmware.uf2` on every
   push/PR) - the legacy `python/`+`build-*.sh` pipeline is a separate, still-uncovered path.
-- **Mypy shall be configured to disallow `Any` types** (owner-specified, not yet implemented). The
-  closest existing option is `disallow_any_explicit`; `pyproject.toml` deliberately stops short of
-  it and the other `--strict`-only checks today. `Any` appears ~190 times across 47 files in
-  `src/`/`tests/` - a large share is test-file monkeypatch/wrapper classes duck-typing a real
-  MicroPython object, but a real, growing share is now legitimate `src/`-side usage too
-  (`print_log.py`'s variadic logging methods, `config_manager.py`'s generic value-checking helpers,
-  opaque `ticks_ms()`-typed values) - turning this on needs both a typing strategy for the test
-  wrappers (e.g. `Protocol` classes + `__getattr__` delegation) and a decision on how to type the
-  genuinely-variadic/opaque `src/` cases, not just a flag flip.
+- **Mypy shall be configured to disallow `Any` types** (owner-specified). Mostly addressed, but
+  not by the flag it was originally written about: all three passes now run full `--strict`
+  (`disallow_any_generics` included), so no *implicit* `Any` from a bare `dict`/`list`/`tuple`
+  survives anywhere in scope. What is still open is `disallow_any_explicit` - 226 findings in the
+  main pass, 45 in `digital_twin/`, 17 in the host pass - plus `disallow_any_unimported` (54, main
+  pass only). Explicit `Any` appears 107 times in `src/` and 213 in `tests/`. A large share of the
+  test-side uses are monkeypatch/wrapper classes duck-typing a real MicroPython object; the `src/`
+  side is largely legitimate (`print_log.py`'s variadic logging methods, `config_manager.py`'s
+  generic value-checking helpers, opaque `ticks_ms()`-typed values). Turning `disallow_any_explicit`
+  on still needs a typing strategy for the test wrappers (e.g. `Protocol` classes + `__getattr__`
+  delegation) and a decision on the genuinely-variadic/opaque `src/` cases - not just a flag flip.
 - **FRAM has no periodic/triggered *production* re-probe policy.** `verify_present()`/
   `set_write_protected()` (bus-hazard-tested across all four tiers, confirmed correct under real
   fault injection - see CLAUDE.md's bus-hazard hard rule) have zero real callers in `src/` - an

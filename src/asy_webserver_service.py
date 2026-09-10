@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     import config_manager as cm
     from api_response import _RequestLike  # the shared microdot.Request stand-in (Part G.1: reuse, never reimplement)
     from asy_fram_manager import AsyFramManager
-    from print_log import PrintLogHistory
+    from print_log import ErrorLog, PrintLogHistory
 
     _T = TypeVar("_T")
 
@@ -44,7 +44,7 @@ if TYPE_CHECKING:
         async def get_dict_data(self) -> "dict[str, Any]": ...
         async def get_dict_cfg(self) -> "dict[str, Any]": ...
         async def _set_dict_cfg(self, data: "dict[str, Any]", cfg_vals: "cm.ConfigSchema") -> "dict[str, str]": ...
-        async def get_error_counter(self) -> "dict[str, dict[str, Any]]": ...
+        async def get_error_counter(self) -> "ErrorLog": ...
         async def reset_error_counter(self) -> None: ...
 
     class _ClosableStream(Protocol):
@@ -567,7 +567,7 @@ class WebserverService:
             await self.pr.err_s("Status stream source failed:", name, e, errno=6)
             return '{"error":"unavailable"}'
 
-    async def _dump_errcount_entry(self, get_log_fct: "Callable[[], Coroutine[Any, Any, dict[str, dict[str, Any]]]]", name: str) -> str:
+    async def _dump_errcount_entry(self, get_log_fct: "Callable[[], Coroutine[Any, Any, ErrorLog]]", name: str) -> str:
         try:  # see _dump_status_source()'s own comment - identical reasoning, different source kind.
             raw = await get_log_fct()
         except Exception as e:
@@ -690,15 +690,17 @@ class WebserverService:
         # asy_neopixel_driver.py's/asy_notification_service.py's own identical precedent; found
         # missing entirely during the Step 7 audit, unlike those two).
 
-    async def get_error_counter(self) -> "dict[str, dict[str, Any]]":
+    async def get_error_counter(self) -> "ErrorLog":
         return await self.pr.get_log()
 
     async def reset_error_counter(self) -> None:
         await self.pr.reset()
 
 
-def _shape_errcount_entry(raw: "dict[str, dict[str, Any]]", name: str) -> "dict[str, Any]":
-    entry = raw.get(name, {})
+def _shape_errcount_entry(raw: "ErrorLog", name: str) -> "dict[str, Any]":
+    entry = raw.get(name)
+    if entry is None:  # module never logged anything - the same empty shape the old {} default produced
+        return {"counter": 0, "history": []}
     err_num = entry.get("ErrNum", [])
     err_type = entry.get("ErrType", [])
     return {

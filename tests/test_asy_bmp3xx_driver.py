@@ -49,7 +49,10 @@ if TYPE_CHECKING:
 
     from typing_extensions import Self
 
+    from asy_bmp3xx_driver import BMPResults  # (pressure, temperature, timestamp), the driver's own alias
+
     T = TypeVar("T")
+    from print_log import ErrorLog
 
 
 def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
@@ -566,7 +569,7 @@ def test_read_bmp_logs_and_degrades_when_the_data_burst_returns_an_unexpected_re
     seed_data(i2c, _adc_to_data6(_ADC_P, _ADC_T))
     assert run(reader._init_bmp())
 
-    async def scenario() -> "tuple[tuple, dict]":
+    async def scenario() -> "tuple[BMPResults, ErrorLog]":
         results = await reader._read_bmp()
         await reader._store_bmp(results)
         return results, await reader.get_error_counter()
@@ -916,7 +919,7 @@ def test_reader_set_trigger_secs_logs_and_does_not_raise_on_bad_value() -> None:
     # value would raise straight out of it instead of being logged like its siblings.
     reader = make_reader("bad_trigger")  # bus is irrelevant - set_trigger_secs never touches it
 
-    async def scenario() -> dict:
+    async def scenario() -> "ErrorLog":
         await reader.set_trigger_secs("not-a-number")  # type: ignore[arg-type]
         await reader.pr.setup()
         return await reader.get_error_counter()
@@ -952,7 +955,7 @@ def test_reader_set_trigger_secs_rejects_out_of_range_values() -> None:
     run(reader.set_trigger_secs(30))  # establish a known-good baseline value first
     for bad in (0, -1, 3601, 100000):
 
-        async def scenario(value: int = bad) -> dict:
+        async def scenario(value: int = bad) -> "ErrorLog":
             await reader.set_trigger_secs(value)
             await reader.pr.setup()
             return await reader.get_error_counter()
@@ -971,7 +974,7 @@ def test_reader_set_trigger_secs_rejects_inf_and_nan() -> None:
     run(reader.set_trigger_secs(30))  # establish a known-good baseline value first
     for bad in (float("inf"), float("-inf"), float("nan")):
 
-        async def scenario(value: float = bad) -> dict:
+        async def scenario(value: float = bad) -> "ErrorLog":
             await reader.set_trigger_secs(value)
             await reader.pr.setup()
             return await reader.get_error_counter()
@@ -1003,7 +1006,7 @@ def test_init_bmp_soft_degrades_on_out_of_range_stored_sample_interval() -> None
     assert run(reader._init_bmp()) is True  # doesn't fail the whole init over this
     assert run(reader.get_pressure_oversampling()) == 1  # other config values still applied
 
-    async def error_counter() -> dict:
+    async def error_counter() -> "ErrorLog":
         return await reader.get_error_counter()
 
     counters = run(error_counter())["BMP3XX"]
@@ -1013,7 +1016,7 @@ def test_init_bmp_soft_degrades_on_out_of_range_stored_sample_interval() -> None
 def test_reader_get_pressure_oversampling_logs_and_returns_none_on_bus_failure() -> None:
     reader = make_reader("get_pov")
 
-    async def scenario() -> "tuple[int | None, dict]":
+    async def scenario() -> "tuple[int | None, ErrorLog]":
         value = await reader.get_pressure_oversampling()
         await reader.pr.setup()
         counters = await reader.get_error_counter()
@@ -1027,7 +1030,7 @@ def test_reader_get_pressure_oversampling_logs_and_returns_none_on_bus_failure()
 def test_reader_set_pressure_oversampling_logs_and_returns_false_on_bus_failure() -> None:
     reader = make_reader("set_pov")
 
-    async def scenario() -> "tuple[bool, dict]":
+    async def scenario() -> "tuple[bool, ErrorLog]":
         ok = await reader.set_pressure_oversampling(8)
         await reader.pr.setup()
         counters = await reader.get_error_counter()
@@ -1331,7 +1334,7 @@ def test_init_bmp_fails_and_logs_when_setup_raises() -> None:
     seed_calibration(i2c)
     seed_status(i2c, 0x10 | 0x60)
 
-    async def scenario() -> "tuple[bool, dict]":
+    async def scenario() -> "tuple[bool, ErrorLog]":
         ok = await reader._init_bmp()
         counters = await reader.get_error_counter()
         return ok, counters
@@ -1350,7 +1353,7 @@ def test_init_bmp_fails_and_logs_when_config_data_unreadable() -> None:
     seed_err(i2c, 0x00)
     reader.cfgmgr.valid = False  # simulate an unreadable/corrupted per-sensor config file
 
-    async def scenario() -> "tuple[bool, dict]":
+    async def scenario() -> "tuple[bool, ErrorLog]":
         ok = await reader._init_bmp()
         counters = await reader.get_error_counter()
         return ok, counters
@@ -1394,7 +1397,7 @@ def test_store_bmp_falls_back_to_default_compensation_values_when_config_unreada
 
     reader.cfgmgr.valid = False  # simulate an unreadable/corrupted per-sensor config file
 
-    async def scenario() -> dict:
+    async def scenario() -> "ErrorLog":
         await reader._store_bmp(results)
         return await reader.get_error_counter()
 
@@ -1447,7 +1450,7 @@ def test_reader_error_counter_reflects_read_failures_via_print_log() -> None:
     seed_status(i2c, 0x10 | 0x60)
     seed_err(i2c, 0x00)
 
-    async def scenario() -> dict:
+    async def scenario() -> "ErrorLog":
         assert await reader._init_bmp()
         fake(i2c).nak_addresses.add(_ADDR)
         await reader._read_bmp()  # errno=11, "Lesefehler:"
@@ -1496,7 +1499,7 @@ def test_reader_uses_fram_backed_print_log_when_fram_provided() -> None:
     reader = BMP3xx_Reader(i2c, address=_ADDR, cfg_path=cfg_path, fram=manager)
     assert isinstance(reader.pr, PrintLogHistoryStore)
 
-    async def scenario() -> dict:
+    async def scenario() -> "ErrorLog":
         # _init_bmp()'s real call order: self.pr.setup() always runs first ("required for all
         # logged warnings and errors", per its own comment) - PrintLogHistoryStore.setup() is a
         # no-op until initialized, so a logged error before setup() would never actually persist.
@@ -1518,7 +1521,7 @@ def test_reader_uses_fram_backed_print_log_when_fram_provided() -> None:
     run(manager2.setup())
     rebooted_reader = BMP3xx_Reader(i2c, address=_ADDR, cfg_path=cfg_path, fram=manager2)
 
-    async def reboot_scenario() -> dict:
+    async def reboot_scenario() -> "ErrorLog":
         await rebooted_reader.pr.setup()  # loads persisted history from FRAM
         return await rebooted_reader.get_error_counter()
 
@@ -1916,7 +1919,7 @@ def test_reader_set_temperature_oversampling_applies_the_value_and_returns_true(
 def test_reader_set_temperature_oversampling_logs_and_returns_false_on_bus_failure() -> None:
     reader = make_reader("set_tov_fail")
 
-    async def scenario() -> "tuple[bool, dict]":
+    async def scenario() -> "tuple[bool, ErrorLog]":
         ok = await reader.set_temperature_oversampling(4)
         await reader.pr.setup()
         counters = await reader.get_error_counter()
@@ -1936,7 +1939,7 @@ def test_reader_set_filter_coefficient_applies_the_value_and_returns_true() -> N
 def test_reader_set_filter_coefficient_logs_and_returns_false_on_bus_failure() -> None:
     reader = make_reader("set_fc_fail")
 
-    async def scenario() -> "tuple[bool, dict]":
+    async def scenario() -> "tuple[bool, ErrorLog]":
         ok = await reader.set_filter_coefficient(31)
         await reader.pr.setup()
         counters = await reader.get_error_counter()

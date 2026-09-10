@@ -171,7 +171,7 @@ _CMD_READ_MEASUREMENT = b"\x03\x00"
 _CMD_SET_TEMPERATURE_OFFSET = b"\x54\x03"
 
 
-def _parse_scd30_log(log: list, read_iterations: int) -> None:
+def _parse_scd30_log(log: "list[tuple[Any, ...]]", read_iterations: int) -> None:
     # Command-byte-based proof that same-device ops never interleave on the wire: parses the log
     # into non-overlapping runs and fails outright on any stray/out-of-place entry. A simpler
     # before/after log-length "span" check was tried and rejected - a coroutine legitimately
@@ -369,7 +369,7 @@ def test_general_call_absent_sibling_bmp3xx_alone_on_the_bus_survives_a_broadcas
 # ---------------------------------------------------------------------------
 
 
-def _touched_addresses(fake_bus: FakeI2C) -> set:
+def _touched_addresses(fake_bus: FakeI2C) -> set[int]:
     return {entry[1] for entry in fake_bus.log if entry[0] in ("writeto", "readfrom_into", "readfrom_mem", "writeto_mem")}
 
 

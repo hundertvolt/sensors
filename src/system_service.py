@@ -30,6 +30,7 @@ if TYPE_CHECKING:
 
     from asy_fram_manager import AsyFramManager
     from config_manager import ConfigSchema, WriteValidity
+    from print_log import ErrorLog
 
     # Keyword-only call shape of AsyFramManager.set_pause(), which a plain Callable[...] alias
     # cannot express - same structural-Protocol convention as print_log.py's _FramChunk.
@@ -262,7 +263,7 @@ class SystemService:
         # stable for the rest of this boot, so a later change means a reboot happened.
         return await self.boot_signature.get_value()
 
-    async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[str]]]:
+    async def get_error_counter(self) -> "ErrorLog":
         return await self.pr.get_log()
 
     async def setup(self) -> None:

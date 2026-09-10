@@ -25,9 +25,11 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 
 if TYPE_CHECKING:
     from collections.abc import Coroutine
-    from typing import Any, TypeVar
+    from typing import Any, Literal, TypeVar
 
     from typing_extensions import Self
+
+    from print_log import ErrorLog
 
     T = TypeVar("T")
 
@@ -71,7 +73,7 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to complet
     return asyncio.run(coro)
 
 
-def _last_err(counter: "dict[str, dict[str, int | list[int] | list[str]]]", field: str) -> "int | str":
+def _last_err(counter: "ErrorLog", field: 'Literal["ErrNum", "ErrType"]') -> "int | str":
     # ErrNum/ErrType are list-shaped once _error_check()/err_s() has run at least once - same
     # helper as test_asy_wifi_service.py's/test_asy_ntp_client.py's own, scoped to "SGP40".
     value = counter["SGP40"][field]

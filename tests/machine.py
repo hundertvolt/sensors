@@ -117,7 +117,7 @@ class I2C:
         self.timeout = timeout
         self.deinit_called = False
         self.deinit_count = 0
-        self.log: list[tuple] = []
+        self.log: list[tuple[Any, ...]] = []
         self.registers: dict[tuple[int, int], bytearray] = {}
         self.read_queue: list[bytes] = []
         self.nak_addresses: set[int] = set()  # convenience: EIO (no ACK) on every op to this address
@@ -219,7 +219,7 @@ class SPI:
         self.firstbit = firstbit
         self.deinit_called = False
         self.deinit_count = 0
-        self.log: list[tuple] = []
+        self.log: list[tuple[Any, ...]] = []
         self.read_queue: list[bytes] = []
 
     def init(
@@ -356,7 +356,7 @@ class UART(io.IOBase):
         self.invert = invert
         self.deinit_called = False
         self.deinit_count = 0
-        self.log: list[tuple] = []
+        self.log: list[tuple[Any, ...]] = []
         self.rx_queue = bytearray()
         self.writable = True
         self.write_limit: int | None = None  # test-only: caps bytes accepted per write() call - see write()
@@ -494,12 +494,12 @@ class RTC:
     # so a test must be able to construct a fresh RTC() after the fact and still read back what an
     # earlier RTC() instance set, exactly like the real singleton would.
     raise_exc: "Exception | None" = None  # test-only fault injection, shared class attribute like Timer.raise_on_arm
-    _shared_datetime: tuple = (2000, 1, 1, 0, 0, 0, 0, 0)
+    _shared_datetime: "tuple[int, ...]" = (2000, 1, 1, 0, 0, 0, 0, 0)
 
     def __init__(self, id: int = 0) -> None:
         self.id = id
 
-    def datetime(self, dt: "tuple | None" = None) -> "tuple | None":
+    def datetime(self, dt: "tuple[int, ...] | None" = None) -> "tuple[int, ...] | None":
         if RTC.raise_exc is not None:
             raise RTC.raise_exc
         if dt is None:

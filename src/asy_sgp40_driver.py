@@ -34,6 +34,7 @@ if TYPE_CHECKING:
 
     from asy_fram_manager import AsyFramChunkTimestampedBuffer, AsyFramManager
     from asy_i2c_driver import I2C
+    from print_log import ErrorLog
 
 # roughly the time how often the data written to the FRAM is verified.
 # less a data safety feature here but rather a check if communication and integrity is generally okay
@@ -407,7 +408,7 @@ class SGP40_Reader(SensorReaderConfig):
         # all-or-nothing per requested key, so including it here would break this whole read.
         return await self._get_dict_cfg(_NAME, _VAL_BP + _VAL_BMAX + _VAL_WT)
 
-    async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[str]]]:
+    async def get_error_counter(self) -> "ErrorLog":
         return await self.pr.get_log()
 
     async def reset_voc(self, *, flag: bool) -> bool:

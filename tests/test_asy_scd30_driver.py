@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from typing import Any, TypeVar
 
     T = TypeVar("T")
+    from print_log import ErrorLog
 
 
 def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
@@ -801,7 +802,7 @@ def test_reader_getters_log_the_correct_errno_on_bus_nak() -> None:
     reader = make_reader()
     reader_fake_i2c(reader).nak_addresses.add(_ADDR)
 
-    async def scenario() -> dict:
+    async def scenario() -> "ErrorLog":
         await reader.get_measurement_interval()
         await reader.get_self_calibration_enabled()
         await reader.get_ambient_pressure()
@@ -821,7 +822,7 @@ def test_reader_setters_log_the_correct_errno_on_bus_nak() -> None:
     reader = make_reader()
     reader_fake_i2c(reader).nak_addresses.add(_ADDR)
 
-    async def scenario() -> dict:
+    async def scenario() -> "ErrorLog":
         await reader.set_measurement_interval(10)
         await reader.set_self_calibration_enabled(True)
         await reader.set_ambient_pressure(1000)
@@ -910,7 +911,7 @@ def test_reader_stop_continuous_measurement_false_returns_false_on_bus_fault() -
     reader = make_reader()
     reader_fake_i2c(reader).nak_addresses.add(_ADDR)
 
-    async def scenario() -> "tuple[bool, dict]":
+    async def scenario() -> "tuple[bool, ErrorLog]":
         ok = await reader.stop_continuous_measurement(value=False)
         return ok, await reader.get_error_counter()
 
@@ -1129,7 +1130,7 @@ def test_get_dict_cfg_snapshot_is_atomic_against_a_concurrent_config_write() -> 
     for value in (450, 10, 1000, 200, 400, 1):  # TempOffs, MeasInt, AmbPres, Altitude, ForceCalRef, SelfCal
         i2c.read_queue.append(register_frame(value))
 
-    async def scenario() -> "tuple[dict, list]":
+    async def scenario() -> "tuple[dict[str, dict[str, int | float | str | bool | None]], list[tuple[Any, ...]]]":
         with _FastAsyncSleep():
             read_task = asyncio.create_task(reader.get_dict_cfg())
             await _settle(3)  # let the read task acquire the lock and begin its first register read

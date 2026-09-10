@@ -26,11 +26,12 @@ except ImportError:  # typing isn't available on the real MicroPython test inter
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
-    from typing import Any, NoReturn, TypeVar
+    from typing import Any, Literal, NoReturn, TypeVar
 
     from typing_extensions import Self
 
     from asy_ntp_client import GMTimeStruct
+    from print_log import ErrorLog
 
     T = TypeVar("T")
 
@@ -39,7 +40,7 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to complet
     return asyncio.run(coro)
 
 
-def _last_err(counter: "dict[str, dict[str, int | list[int] | list[str]]]", field: str) -> "int | str":
+def _last_err(counter: "ErrorLog", field: 'Literal["ErrNum", "ErrType"]') -> "int | str":
     value = counter["NTP"][field]  # ErrNum/ErrType are list-shaped once _error_check() has run once
     assert isinstance(value, list)
     return value[-1]
@@ -1989,7 +1990,7 @@ def test_asy_ntp_time_gives_up_after_repeated_sync_failures_and_persists_errno_2
 
     client._run_ntp_sync_attempt = failing_attempt  # type: ignore[assignment, method-assign]
 
-    async def scenario() -> "dict[str, dict[str, int | list[int] | list[str]]]":
+    async def scenario() -> "ErrorLog":
         task = asyncio.create_task(client.asy_ntp_time())
         for _ in range(3):  # one trigger per would-be failure cycle - max_module_error=2 gives up on the 3rd
             client.ntp_sync_trigger_event.set()

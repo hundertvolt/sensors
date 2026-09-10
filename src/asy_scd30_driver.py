@@ -37,6 +37,7 @@ if TYPE_CHECKING:
     from typing import Any, TypeVar
 
     from config_manager import ConfigSchema
+    from print_log import ErrorLog
 
     T = TypeVar("T")  # narrows a struct.unpack() result for the cast() shim above
 
@@ -280,7 +281,7 @@ class SCD30_Reader(SensorReader):
             results[key] = "Valid" if await setter(coerced_value) else "Failed"
         return results
 
-    async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[str]]]:
+    async def get_error_counter(self) -> "ErrorLog":
         return await self.pr.get_log()
 
     async def get_measurement_interval(self) -> int | None:

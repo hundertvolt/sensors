@@ -28,6 +28,7 @@ if TYPE_CHECKING:
 
     from asy_fram_manager import AsyFramManager
     from config_manager import ConfigSchema
+    from print_log import ErrorLog
 
     # Structural Protocol for whatever local-time struct the caller's callback returns
     # (SPECIFICATION.md Part C.10's typing convention) - read-only, so a namedtuple
@@ -210,7 +211,7 @@ class NotificationCoordinator(SensorReaderConfig):
         # signal's field) - built once, inside finalize() - so this covers everything in one call.
         return await self._get_dict_cfg(_NAME, self.cfg_schema)
 
-    async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[str]]]:
+    async def get_error_counter(self) -> "ErrorLog":
         if not self._finalized:  # self.pr doesn't exist yet - same caller-ordering guard as get_data()
             return {_NAME: {"ErrCount": 0, "ErrNum": [], "ErrType": []}}
         return await self.pr.get_log()

@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from typing import Any
 
     from asy_fram_manager import AsyFramManager
+    from print_log import ErrorLog
 
 _NAME = const("NEOPIXEL")
 _MIN_SIGNAL_S = const(0.1)  # floor for a signal's ramp duration; also the NaN/garbage fallback
@@ -102,7 +103,7 @@ class NeopixelDriver:
         return []  # no machine.Timer anywhere in this file (SPECIFICATION.md C.9 shape, kept
         # empty rather than omitted so callers can treat every driver uniformly)
 
-    async def get_error_counter(self) -> "dict[str, dict[str, int | list[int] | list[str]]]":
+    async def get_error_counter(self) -> "ErrorLog":
         return await self.pr.get_log()
 
     async def reset_error_counter(self) -> None:

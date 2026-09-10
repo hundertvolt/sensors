@@ -36,9 +36,11 @@ except ImportError:  # typing isn't available on the real MicroPython test inter
 
 if TYPE_CHECKING:
     from collections.abc import Coroutine
-    from typing import Any, NoReturn, TypeVar
+    from typing import Any, Literal, NoReturn, TypeVar
 
     from typing_extensions import Self
+
+    from print_log import ErrorLog
 
     T = TypeVar("T")
 
@@ -47,7 +49,7 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to complet
     return asyncio.run(coro)
 
 
-def _last_err(counter: "dict[str, dict[str, int | list[int] | list[str]]]", field: str) -> "int | str":
+def _last_err(counter: "ErrorLog", field: 'Literal["ErrNum", "ErrType"]') -> "int | str":
     # ErrNum/ErrType are list-shaped once _error_check() has run at least once - same helper as
     # test_asy_ntp_client.py's own, scoped to this file's "WIFI" key instead of "NTP".
     value = counter["WIFI"][field]
@@ -2165,7 +2167,7 @@ def test_wlan_connect_gives_up_after_repeated_hardware_failures_and_persists_err
 
     client._run_sta_mode = failing_run_sta_mode  # type: ignore[method-assign]  # deliberate monkeypatch
 
-    async def scenario() -> "dict[str, dict[str, int | list[int] | list[str]]]":
+    async def scenario() -> "ErrorLog":
         task = asyncio.create_task(client.wlan_connect())
         await asyncio.wait_for(task, 2.0)  # must actually complete, not loop forever
         return await client.get_error_counter()
