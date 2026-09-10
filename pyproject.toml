@@ -205,10 +205,13 @@ ignore = [
     # which Part D.4 argues against.
     "PLR0124",
 
-    # ---- Documented accepted risks, decided by the project owner ----
-    # The webserver binds 0.0.0.0 deliberately; the hotspot fallback password is a known, accepted,
-    # physically-scoped risk (CLAUDE.md hard rule - not to be "fixed" by rotating it).
-    "S104", "S105", "S106",
+    # ---- Documented accepted risk, decided by the project owner ----
+    # The webserver binds 0.0.0.0 deliberately.
+    "S104",
+    # NOTE: S105/S106 (hardcoded password) are deliberately NOT ignored globally. CLAUDE.md makes
+    # "never commit real credentials" a hard rule, so these rules have to stay live to catch a NEW
+    # one; blanket-ignoring them would silently disable the only automated check backing that rule.
+    # The three known, already-accepted sites are exempted individually in per-file-ignores below.
 
     # ---- Identifiers deliberately mirror the datasheet / reference algorithm ----
     # SPECIFICATION.md Part D.1 requires the code to visibly match the authoritative source, and
@@ -281,6 +284,13 @@ max-returns = 12
 # Part C.5.2 documents that setter-dispatch contract by name, so the underscore is part of a
 # published interface here rather than a private-access slip.
 "src/api_response.py" = ["SLF001"]
+# The three KNOWN, already-accepted hardcoded-credential sites (CLAUDE.md: the hotspot fallback
+# password is an accepted risk, only exploitable within physical WiFi range of a unit that has
+# already lost its real WiFi - not to be "fixed" by rotating it without the owner's direction).
+# Exempted per-file rather than globally so S105/S106 still catch a credential added ANYWHERE else.
+"src/asy_wifi_service.py" = ["S106"]
+"digital_twin/launch.py" = ["S105"]
+"tests/test_digital_twin_network_neopixel.py" = ["S106"]
 # asy_webserver_service.py makes the same documented Part C.5.2 `_set_dict_cfg` dispatch call as
 # api_response.py above, and asserts its static mount is non-None purely to narrow the type for
 # mypy (the route is only ever registered when it isn't None).
