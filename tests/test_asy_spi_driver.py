@@ -229,9 +229,10 @@ def test_configure_raises_not_implemented_for_lsb_firstbit() -> None:
         await spi.async_lock.acquire()
         try:
             spi.configure(firstbit=FakeSPI.LSB)
-            return False
         except NotImplementedError:
             return True
+        else:
+            return False
         finally:
             spi.async_lock.release()
 
@@ -277,9 +278,10 @@ def test_aenter_raises_if_setup_was_never_called() -> None:
         try:
             async with device:
                 pass
-            return False
         except RuntimeError:
             return True
+        else:
+            return False
 
     assert run(scenario())
     assert not spi.async_lock.locked()  # never even attempted to acquire - fails before that
@@ -459,9 +461,10 @@ def test_aenter_releases_the_lock_if_configure_raises() -> None:
         try:
             async with device:
                 pass
-            return False
         except RuntimeError:
             return True
+        else:
+            return False
 
     assert run(scenario())
     assert not spi.async_lock.locked()  # released, not leaked
@@ -733,9 +736,10 @@ def test_reentrant_acquisition_on_the_same_device_deadlocks_and_cleans_up() -> N
     async def scenario() -> bool:
         try:
             await asyncio.wait_for(reentrant(), 0.2)
-            return False
         except asyncio.TimeoutError:
             return True
+        else:
+            return False
 
     assert run(scenario())
     assert not spi.async_lock.locked()

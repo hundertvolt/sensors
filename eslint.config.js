@@ -14,8 +14,9 @@ import html from "eslint-plugin-html";
 // bans (no-bitwise, no-plusplus, one-var, func-style, id-length, sort-keys, no-ternary,
 // no-magic-numbers, no-undefined, no-continue) deliberately left out: they fight this codebase's
 // hand-chosen style without catching anything. Verified rule-by-rule against the installed
-// eslint (10.8.1) - every rule below currently reports zero findings, so this locks in the
-// discipline that already exists rather than declaring a cleanup backlog.
+// eslint (10.8.1). Almost all of these already reported zero findings, so this mostly locks in
+// discipline the codebase already had; the handful that did fire were fixed in js//tests_js/
+// rather than switched off.
 const BUG_CATCHING_RULES = {
     // --- correctness / likely bugs ---
     "array-callback-return": "error",
@@ -111,9 +112,13 @@ const BUG_CATCHING_RULES = {
     "prefer-spread": "error",
     "prefer-template": "error",
 
-    // --- console is not the browser bundle's output channel ---
+    // --- console.log is debug residue; console.error/warn are real diagnostics ---
+    // js/poll-manager.js's "Poll failed:" is the poll loop's ONLY failure diagnostic and is
+    // directly asserted by tests_js/poll-manager.test.js; tests_js/live-backend.test.js's skip
+    // warning is the documented reason that check skipped itself. Banning those would delete
+    // real signal, so the ban is scoped to console.log and friends rather than all of console.
     // (scripts/*.mjs is a CLI tool where console IS the output - overridden in its own block below)
-    "no-console": "error",
+    "no-console": ["error", { allow: ["error", "warn"] }],
 
     // --- complexity ceilings, pinned at this codebase's CURRENT measured maximum so they gate
     // REGRESSION rather than demand a rewrite of already-working code. Mirrors pyproject.toml's

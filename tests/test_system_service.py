@@ -24,6 +24,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
     from typing import Any, TypeVar
 
+    from typing_extensions import Self
+
     T = TypeVar("T")
 
 
@@ -76,7 +78,7 @@ class _FastAsyncSleep:
     # to drive a handful of supervisor cycles. asyncio.sleep is a shared, process-wide function
     # (unlike the per-module `time` swap above, there's exactly one to patch); restored on
     # __exit__ regardless of how the `with` block exits.
-    def __enter__(self) -> "_FastAsyncSleep":
+    def __enter__(self) -> "Self":
         self._real_sleep = asyncio.sleep
 
         async def _fast(_seconds: float) -> None:
@@ -103,7 +105,7 @@ class _RaiseOnArm:
     def __init__(self, exc: "type[BaseException]" = OSError) -> None:
         self._exc = exc
 
-    def __enter__(self) -> "_RaiseOnArm":
+    def __enter__(self) -> "Self":
         Timer.raise_on_arm_exc = self._exc
         Timer.raise_on_arm = True
         return self
@@ -1078,7 +1080,7 @@ def test_start_and_check_tasks_logs_a_self_cancelled_task_as_a_persisted_error()
 
         async def _c() -> None:
             if attempt == 1:
-                raise asyncio.CancelledError()
+                raise asyncio.CancelledError
             await asyncio.sleep(3600)  # second attempt: stay alive so the loop settles
 
         return asyncio.create_task(_c())

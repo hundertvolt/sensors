@@ -188,7 +188,7 @@ def test_get_states_set_states_round_trip_mean_and_std() -> None:
     fresh.vocalgorithm_init()
     fresh._vocalgorithm_set_states(state0, state1)
     assert fresh.params.msraw == state0
-    got0, got1 = fresh._vocalgorithm_get_states()
+    _got0, got1 = fresh._vocalgorithm_get_states()
     assert got1 == state1
 
 

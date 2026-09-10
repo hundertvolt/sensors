@@ -462,7 +462,7 @@ class AsyConnTime(SensorReaderConfig):
             self.pr.err("wlan.ifconfig() failed:", e)
         await self._set_meas_data(WIFI(mode, connected, ip, self._now()))
 
-    async def _push_wifi_led(self, value: float | str | bool | None) -> bool:
+    async def _push_wifi_led(self, value: int | float | str | bool | None) -> bool:
         # Narrows _push_callbacks' wide value type to set_wifi_led's real bool parameter - the
         # isinstance check is defense-in-depth, not a scenario a real (schema-validated) caller hits.
         if not isinstance(value, bool):
@@ -651,8 +651,8 @@ class AsyConnTime(SensorReaderConfig):
             self.pr.err("wlan.ifconfig() failed:", e)
             return None
         if len(ifcfg) == _IFCONFIG_FIELDS:
-            return ifcfg[0:_IFCONFIG_FIELDS]
-        return None  # type: ignore[unreachable]  # defensive: real WLAN.ifconfig() is a fixed 4-tuple per the stub
+            return ifcfg[0:4]
+        return None  # defensive: real WLAN.ifconfig() is a fixed 4-tuple per the stub
 
     def get_dns_server_ip(self) -> str | None:
         # The DHCP-assigned DNS server to try first, before any fallback list. Reuses

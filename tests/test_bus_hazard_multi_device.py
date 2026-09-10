@@ -403,7 +403,7 @@ def test_scd30_never_touches_any_address_but_its_own() -> None:
         ):
             try:
                 await call()
-            except Exception:
+            except Exception:  # only the addresses *touched* matter for this sweep, not success
                 pass
 
     with _FastAsyncSleep():
@@ -438,7 +438,7 @@ def test_bmp3xx_never_touches_any_address_but_its_own() -> None:
         ):
             try:
                 await call()
-            except Exception:
+            except Exception:  # see test_scd30's own comment
                 pass
 
     with _FastAsyncSleep():
@@ -466,7 +466,7 @@ def test_sgp40_touches_only_its_own_address_except_reset_which_touches_only_the_
         ):
             try:
                 await call()
-            except Exception:
+            except Exception:  # see test_scd30's own comment
                 pass
 
     with _FastAsyncSleep():

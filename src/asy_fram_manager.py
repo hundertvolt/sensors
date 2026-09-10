@@ -309,9 +309,6 @@ class _AsyBaseFramChunk:
                 return False, 0
             else:
                 return False, length
-        # Unreachable in practice (every path above returns; __aexit__ never suppresses) - kept
-        # because mypy can't statically rule that out and treats the fall-through as live.
-        return False, 0
 
     async def _clear_chunk(self, addr: int) -> bool:
         async with self.fram as fram:

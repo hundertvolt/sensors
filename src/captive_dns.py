@@ -38,16 +38,19 @@ _RECV_FAIL_BACKOFF_INITIAL_S = const(0.5)
 _RECV_FAIL_BACKOFF_MAX_S = const(5.0)
 _RECV_FAIL_BACKOFF_MULTIPLIER = const(2)
 
+_IPV4_OCTETS = const(4)  # RFC 791 section 3.2 dotted-quad shape, used by _ipv4_to_int() below
+_IPV4_OCTET_MAX = const(255)
+
 
 def _ipv4_to_int(ip: str) -> int | None:
     # RFC 791 section 3.2 dotted-quad -> 32-bit big-endian form, for subnet math below. Never
     # raises for a malformed-but-str value; matches asy_dns_client.py's _is_ipv4_literal().
     parts = ip.split(".")
-    if len(parts) != 4:
+    if len(parts) != _IPV4_OCTETS:
         return None
     octets = []
     for part in parts:
-        if not part.isdigit() or not (0 <= int(part) <= 255):
+        if not part.isdigit() or not (0 <= int(part) <= _IPV4_OCTET_MAX):
             return None
         octets.append(int(part))
     a, b, c, d = octets

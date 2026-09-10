@@ -88,10 +88,7 @@ def _index_by_name(items: "Iterable[_ModuleLike]") -> "dict[str, _ModuleLike]":
 
 
 def _index_pairs(items: "Iterable[tuple[str, MaintenanceFct]]") -> "dict[str, MaintenanceFct]":
-    result: dict[str, MaintenanceFct] = {}
-    for name, fct in items:
-        result[name] = fct
-    return result
+    return dict(items)
 
 
 def _coalesce_json_fragments(parts: "list[str]", max_bytes: int = _MAX_STATUS_PIECE_BYTES) -> "list[str]":

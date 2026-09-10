@@ -30,7 +30,6 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from types import TracebackType
     from typing import Literal
 
     from typing_extensions import Self
@@ -72,10 +71,10 @@ class AsyUDPSocket:
 
     async def __aexit__(
         self,
-        exc_type: "type[BaseException] | None",
-        exc_val: "BaseException | None",
-        exc_tb: "TracebackType | None",
-    ) -> bool:
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: object,  # `object`, not TracebackType: the precise name only exists under TYPE_CHECKING
+    ) -> "Literal[False]":
         await self.disconnect()
         return False
 

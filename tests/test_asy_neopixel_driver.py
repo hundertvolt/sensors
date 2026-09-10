@@ -72,7 +72,7 @@ def test_get_error_counter_reflects_a_real_logged_error() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Overlay (on/off/toggle)
+# Overlay behavior: on, off and toggle
 # ---------------------------------------------------------------------------
 
 
@@ -160,13 +160,14 @@ def test_overlay_write_deferred_while_ramp_holds_the_overlay_lock() -> None:
         # request_signal() only awaits until the request is queued, not until the ramp itself
         # finishes (see this file's own module docstring) - create_task here is just to keep the
         # scenario reading top-to-bottom; awaiting it directly would return just as fast.
-        asyncio.create_task(driver.request_signal(10, 0, 0, 0.1))
+        ramp = asyncio.create_task(driver.request_signal(10, 0, 0, 0.1))
         await asyncio.sleep(0.02)  # ramp has started, is mid-animation, holds led_overl_lock
         assert driver.led_overl_lock.locked() is True
         driver.on()  # queued, must not write yet - the lock is still held by the ramp
         await asyncio.sleep(0)
         assert (99, 99, 99) not in [w[0] for w in _pixel(driver).writes]
         await asyncio.sleep(0.2)  # let the ramp fully finish and the overlay task pick up the restore
+        await ramp  # long since returned (it only queues) - awaited so no task reference dangles
         await _cancel_all(tasks)
 
     run(scenario())
@@ -355,13 +356,14 @@ def test_led_signal_returns_true_while_a_previous_request_is_already_animating()
 
     async def scenario() -> bool:
         tasks = await _start_all_tasks(driver)
-        asyncio.create_task(driver.request_signal(10, 0, 0, 0.3))  # long-ish ramp, still running below
+        ramp = asyncio.create_task(driver.request_signal(10, 0, 0, 0.3))  # long-ish ramp, still running below
         await asyncio.sleep(0.02)
         assert driver.start_signal_event.is_set() is True  # an animation is genuinely in progress
         assert driver.start_signal_lock.locked() is False  # released right after queuing
         assert driver.ext_start_signal.is_set() is False  # led_signal()'s own slot is free
         result = driver.led_signal(0, 10, 0, 0.1)
         await asyncio.sleep(0.6)  # let both ramps fully finish
+        await ramp  # long since returned (it only queues) - awaited so no task reference dangles
         await _cancel_all(tasks)
         return result
 
@@ -427,13 +429,14 @@ def test_overlay_calls_during_active_ramp_only_become_visible_after_ramp_finishe
         # See test_overlay_write_deferred_while_ramp_holds_the_overlay_lock's comment: request_signal()
         # returns once queued, not once the ramp finishes - sleep for the ramp's real duration instead
         # of awaiting the coroutine itself.
-        asyncio.create_task(driver.request_signal(10, 0, 0, 0.15))
+        ramp = asyncio.create_task(driver.request_signal(10, 0, 0, 0.15))
         await asyncio.sleep(0.02)
         driver.on()  # requested mid-ramp
         driver.off()  # and immediately reversed - only the final requested state should ever show
         await asyncio.sleep(0.02)
         assert (88, 88, 88) not in [w[0] for w in _pixel(driver).writes]  # not visible mid-ramp
         await asyncio.sleep(0.3)
+        await ramp  # long since returned (it only queues) - awaited so no task reference dangles
         await _cancel_all(tasks)
 
     run(scenario())

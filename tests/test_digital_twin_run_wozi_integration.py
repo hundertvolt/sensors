@@ -31,7 +31,7 @@ def run_timed(coro: "Coroutine[Any, Any, T]", timeout_s: float = 5.0) -> "T":
 
 
 # ---------------------------------------------------------------------------
-# _http_client.build_request()
+# _http_client.build_request() - request byte assembly
 # ---------------------------------------------------------------------------
 
 
@@ -65,7 +65,7 @@ def test_build_request_includes_the_host_header() -> None:
 
 
 # ---------------------------------------------------------------------------
-# _http_client.parse_status_line()
+# _http_client.parse_status_line() - status-line parsing
 # ---------------------------------------------------------------------------
 
 
@@ -83,7 +83,7 @@ def test_parse_status_line_rejects_a_malformed_line() -> None:
 
 
 # ---------------------------------------------------------------------------
-# _http_client.parse_header_line()
+# _http_client.parse_header_line() - header-line parsing
 # ---------------------------------------------------------------------------
 
 
@@ -102,7 +102,7 @@ def test_parse_header_line_returns_none_for_the_blank_terminator() -> None:
 
 
 # ---------------------------------------------------------------------------
-# HttpResponse.json()
+# HttpResponse.json() - response-body decoding
 # ---------------------------------------------------------------------------
 
 
@@ -238,7 +238,7 @@ def test_main_runs_a_tiny_bounded_soak_with_an_injected_fault_and_returns_a_clea
 
 
 # ---------------------------------------------------------------------------
-# run_wozi_integration.parse_args()
+# run_wozi_integration.parse_args() - CLI argument parsing
 # ---------------------------------------------------------------------------
 
 

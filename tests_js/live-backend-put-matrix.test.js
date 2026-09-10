@@ -67,7 +67,7 @@ afterAll(async () => {
 });
 
 if (boot.skipped) {
-    it.skip(`live-backend PUT matrix (skipped: ${boot.reason})`, () => {});
+    it.skip(`live-backend PUT matrix (skipped: ${boot.reason})`, () => { /* never runs: a skipped placeholder needs no body */ });
 } else {
     describe.each(CASES)("live PUT $sectionKey/$groupKey/$field.key ($field.kind)", (testCase) => {
         const { sectionKey, groupKey, field } = testCase;
@@ -77,7 +77,7 @@ if (boot.skipped) {
         // here so every probe below (resubmit-unchanged gating, the toggle "opposite" state, the
         // enum "every other option" list) reasons about the same effective current value the real
         // UI does, not the raw possibly-undefined GET value alone.
-        let currentValue = testCase.currentValue !== undefined ? testCase.currentValue : field.defaultValue;
+        let currentValue = testCase.currentValue === undefined ? field.defaultValue : testCase.currentValue;
 
         /**
          * Fills+applies `value` through the real UI, then confirms it rendered correctly both
@@ -184,8 +184,7 @@ if (boot.skipped) {
         }
 
         if (field.kind === "number") {
-            const min = /** @type {number} */ (field.min);
-            const max = /** @type {number} */ (field.max);
+            const { min, max } = /** @type {{min: number, max: number}} */ (field);
             const mid = min + (max - min) / 2;
             // wholeRange (cosmetic probe-value shape) and isFloat (the real accept/reject-fractional
             // decision) are deliberately separate flags - WarnHum's range is whole-numbered but the
@@ -242,12 +241,16 @@ if (boot.skipped) {
                 await applyAndExpectRendered(value, "Valid");
             });
 
+            // Declared outside the loop so the per-case body never closes over the loop itself:
+            // `currentValue` is reassigned by applyAndExpectRendered() and must stay late-bound.
+            /** @param {import("../js/definitions.js").SpecialValue} special */
+            const specialValueProbe = (special) => async () => {
+                await applyAndExpectRendered(special.value, special.value === currentValue ? "ValidOrUnchanged" : "Valid");
+            };
             for (const special of field.specialValues ?? []) {
                 it(
                     `accepts the declared special value ${special.value} ("${special.meaning}"), rendered correctly`,
-                    async () => {
-                        await applyAndExpectRendered(special.value, special.value === currentValue ? "ValidOrUnchanged" : "Valid");
-                    },
+                    specialValueProbe(special),
                     CASE_TIMEOUT_MS,
                 );
             }
@@ -255,7 +258,7 @@ if (boot.skipped) {
 
         if (field.kind === "string") {
             const minLength = field.minLength ?? 0;
-            const maxLength = /** @type {number} */ (field.maxLength);
+            const { maxLength } = /** @type {{maxLength: number}} */ (field);
             const validLengths = [...new Set([Math.max(minLength, 1), Math.min(minLength + 3, maxLength), maxLength])];
 
             // minLength === 1's own "too short" probe is the empty string - same untouched-input

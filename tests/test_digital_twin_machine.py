@@ -29,9 +29,9 @@ from machine import (
     SPI,
     WDT,
     Pin,
-    SimulatedBootloaderEntry,
-    SimulatedReboot,
-    SimulatedReset,
+    SimulatedBootloaderEntryError,
+    SimulatedRebootError,
+    SimulatedResetError,
     Timer,
     bootloader,
     reset,
@@ -371,7 +371,7 @@ def test_wdt_would_have_triggered_log_records_the_feed_count_at_each_notificatio
 def test_wdt_on_would_trigger_callback_fires_with_the_wdt_instance() -> None:
     async def scenario() -> "list[WDT]":
         seen: list[WDT] = []
-        _wdt = WDT(timeout=150, on_would_trigger=lambda w: seen.append(w))
+        _wdt = WDT(timeout=150, on_would_trigger=seen.append)
         for _ in range(200):
             if seen:
                 return seen
@@ -386,8 +386,8 @@ def test_reset_increments_the_module_counter_then_raises_simulated_reset() -> No
     before = machine.reset_count
     try:
         reset()
-        raise AssertionError("expected SimulatedReset")
-    except SimulatedReset:
+        raise AssertionError("expected SimulatedResetError")
+    except SimulatedResetError:
         pass
     assert machine.reset_count == before + 1
 
@@ -396,19 +396,19 @@ def test_bootloader_increments_the_module_counter_then_raises_simulated_bootload
     before = machine.bootloader_count
     try:
         bootloader()
-        raise AssertionError("expected SimulatedBootloaderEntry")
-    except SimulatedBootloaderEntry:
+        raise AssertionError("expected SimulatedBootloaderEntryError")
+    except SimulatedBootloaderEntryError:
         pass
     assert machine.bootloader_count == before + 1
 
 
 def test_simulated_reset_and_bootloader_entry_are_both_simulated_reboot() -> None:
-    assert issubclass(SimulatedReset, SimulatedReboot)
-    assert issubclass(SimulatedBootloaderEntry, SimulatedReboot)
+    assert issubclass(SimulatedResetError, SimulatedRebootError)
+    assert issubclass(SimulatedBootloaderEntryError, SimulatedRebootError)
     try:
         reset()
-        raise AssertionError("expected SimulatedReboot")
-    except SimulatedReboot:
+        raise AssertionError("expected SimulatedRebootError")
+    except SimulatedRebootError:
         pass  # caught via the base class, not the specific subclass
 
 
@@ -455,7 +455,7 @@ def test_timer_reinit_from_within_its_own_callback_does_not_raise() -> None:
             timer.init(period=10, mode=Timer.ONE_SHOT, callback=lambda t: _chain(t, counter + 1))
 
     async def scenario() -> None:
-        timer.init(period=10, mode=Timer.ONE_SHOT, callback=lambda t: _chain(t))
+        timer.init(period=10, mode=Timer.ONE_SHOT, callback=_chain)
         for _ in range(100):  # generous relative to the 10ms period, matches the sibling test below
             if len(steps) >= 3:
                 return

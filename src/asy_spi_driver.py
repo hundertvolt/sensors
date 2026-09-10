@@ -19,7 +19,7 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from types import TracebackType
+    from typing import Literal
 
     from typing_extensions import Self
 
@@ -137,10 +137,10 @@ class SPIDevice(Lockable):
 
     async def __aexit__(
         self,
-        exc_type: "type[BaseException] | None",
-        exc_val: "BaseException | None",
-        exc_tb: "TracebackType | None",
-    ) -> bool:
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: object,  # `object`, not TracebackType: the precise name only exists under TYPE_CHECKING
+    ) -> "Literal[False]":
         # params are only forwarded to super().__aexit__(), never inspected. CS deassert runs
         # first, while the lock is still held.
         self.cs_pin.value(not self.cs_active_value)

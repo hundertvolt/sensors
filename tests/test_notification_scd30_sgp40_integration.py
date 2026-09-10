@@ -21,6 +21,8 @@ if TYPE_CHECKING:
     from collections.abc import Coroutine
     from typing import Any, TypeVar
 
+    from typing_extensions import Self
+
     T = TypeVar("T")
 
 
@@ -31,7 +33,7 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to complet
 class _FastAsyncSleep:
     # Same technique as test_notification_sgp40_integration.py's own _FastAsyncSleep - SGP40's
     # baseline-settle sequence below needs this regardless of which other sensor is also in play.
-    def __enter__(self) -> "_FastAsyncSleep":
+    def __enter__(self) -> "Self":
         self._real_sleep = asyncio.sleep
 
         async def _fast(_seconds: float) -> None:

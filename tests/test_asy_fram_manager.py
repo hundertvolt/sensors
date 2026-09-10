@@ -1992,9 +1992,10 @@ def test_timestamped_chunk_buffer_get_crc_buf_returns_the_trailing_crc_slice() -
 # write_into()/read_into() timestamp pack/unpack exception handling - struct.pack_into()/
 # unpack_from() can't actually fail through real use (_TS_FMT's buffer is always allocated at
 # exactly struct.calcsize(_TS_FMT), and utc is always a plain non-negative int), so this
-# monkeypatches asy_fram_manager's own `struct` module reference the same way
-# see test_ntp_boot_signature_mktime_overflow_returns_none_and_logs_once, in tests/test_system_service.py,
-# fakes `time` for its own otherwise-unreachable branch.
+# monkeypatches asy_fram_manager's own `struct` module reference the same way that
+# tests/test_system_service.py's own
+# test_ntp_boot_signature_mktime_overflow_returns_none_and_logs_once fakes `time` for its own
+# otherwise-unreachable branch.
 # ---------------------------------------------------------------------------
 
 

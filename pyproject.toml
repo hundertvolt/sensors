@@ -18,10 +18,23 @@ package = false
 
 [dependency-groups]
 dev = [
-    "mypy",
-    "ruff",
+    # ruff/mypy are PINNED, not floating: [tool.ruff.lint]'s `select = ["ALL"]` below opts into
+    # every rule ruff ships, and CI gates on zero findings, so an unpinned upgrade would hard-fail
+    # the build the moment ruff adds a rule - on a rule nobody chose. Mypy is pinned for the same
+    # reason. Bump both deliberately, re-running scripts/lint.sh + scripts/typecheck.sh, the same
+    # way toolchain/versions.toml's MicroPython ref is bumped.
+    "mypy==2.3.0",
+    "ruff==0.15.21",
     "pytest",
     "mpremote",
+    # shellcheck and actionlint ship their real binaries inside these pip wrappers, so they install
+    # automatically with every `uv sync` - which is what `toolchain/setup_toolchain.py env --tier
+    # {generic,flash,bench}` already runs for every tier. Nothing extra to install by hand, and both
+    # are pinned for the same reason as ruff/mypy above.
+    # NOTE: actionlint-py fetches its binary from the GitHub release page at install time, so a
+    # fully offline `uv sync` will not get it (fine for CI and the chroot recipe, both networked).
+    "shellcheck-py==0.11.0.1",
+    "actionlint-py==1.7.12.24",
 ]
 
 # RPI_PICO_W-specific MicroPython stubs (version auto-derived by scripts/typecheck.sh from
@@ -133,11 +146,58 @@ ignore = [
     "S110",
 
     # ---- Not expressible on the target runtime ----
+    # RUF005 rewrites `a + (b,)` into `(*a, b)`. MicroPython has NO PEP 448 star-unpacking in
+    # tuple/list displays at all - `[*a, 3]` is a hard `SyntaxError: *x must be assignment target`
+    # on the pinned interpreter (verified directly, not assumed). Every RUF005 autofix in this
+    # codebase would be a runtime break, so the rule can never be enabled here.
+    "RUF005",
+    # RUF037 rewrites `deque((), N)` into `deque(maxlen=N)`. MicroPython's deque takes NO keyword
+    # arguments (`TypeError: function doesn't take keyword arguments`, verified directly) and
+    # requires the positional iterable - the flagged form is the only one that runs on-device.
+    "RUF037",
+    # RUF012 demands an UNQUOTED `ClassVar[...]` annotation (the quoted form does not satisfy it).
+    # Unquoting a TYPE_CHECKING-only name then trips TC004, which demands a runtime
+    # `from typing import ClassVar` - and `typing` is not importable at runtime on MicroPython, nor
+    # is `from __future__ import annotations` available (no __future__ module). The two rules are
+    # mutually unsatisfiable on this target, so RUF012 loses.
+    "RUF012",
+
     # PYI024 wants typing.NamedTuple in place of collections.namedtuple. `typing` is not importable
     # at runtime on MicroPython at all (Part D.6 - typing utilities live behind `if TYPE_CHECKING`),
     # and a NamedTuple base class is a RUNTIME base class, so it cannot be guarded that way. The
     # collections.namedtuple form is the only one that runs on-device.
     "PYI024",
+
+    # ---- Stub-file conventions that are wrong for runtime code ----
+    # The PYI rules describe .pyi stubs. PYI041 says `int | float` is redundant because of the
+    # numeric tower - true in a stub, false here: every `_push_*` dispatch callback discriminates
+    # `type(value) is not int` at RUNTIME, so `int` is load-bearing, and collapsing it makes mypy
+    # (with warn_unreachable) call the int branch dead. It also splits a deliberately uniform
+    # six-member callback family that Part D.10 requires to share one shape.
+    "PYI041",
+    # PYI034 wants `__enter__`/`__new__` to return `Self`. `typing.Self` is gated behind
+    # `sys.version_info >= (3, 11)` in the stub package while python_version is 3.10 (the checked
+    # code's real syntax floor), and the `@final` escape hatch needs a RUNTIME `typing` import,
+    # which MicroPython cannot do. Unimplementable on both counts.
+    "PYI034",
+
+    # ---- More "the fix would itself be a behavior change" ----
+    # TRY301 wants the raise abstracted into an inner function - a closure allocation on a firmware
+    # error path (Part D.4), and in the SPI tests the `raise` inside `async with` IS the thing under
+    # test.
+    "TRY301",
+    # SIM115's `with open(...)` puts the read inside the guard, so an OSError during read/close
+    # would newly be swallowed where today it propagates.
+    "SIM115",
+    # PLW1641 would make RunConfig hashable, where it is currently unhashable in both runtimes and
+    # nothing hashes it.
+    "PLW1641",
+
+    # ---- Not expressible on the target runtime (continued) ----
+    # FURB122 rewrites a write loop into `f.writelines()`, which does not exist on MicroPython file
+    # objects (`AttributeError: 'TextIOWrapper' object has no attribute 'writelines'`, verified
+    # directly on the pinned interpreter).
+    "FURB122",
 
     # ---- Deliberate, documented idiom ----
     # `pressure_mbar != pressure_mbar` is the NaN test in asy_scd30_driver.py, commented as such at
@@ -213,6 +273,18 @@ max-returns = 12
 # sensortask_wozi.py/sensortask_dev.py assert their module-level singletons are non-None purely to
 # narrow the type for mypy after the `global` construction step (Part A.7) - type-narrowing
 # statements, not runtime validation of untrusted input.
+# tests/_coverage_runner.py runs each test file via exec() into a custom namespace under
+# sys.settrace - that IS the collection mechanism (SPECIFICATION.md Part E.5), documented in the
+# file's own header; there is no non-exec form of it.
+"tests/_coverage_runner.py" = ["S102"]
+# api_response.py calls the reader's `_set_dict_cfg` across objects by design - SPECIFICATION.md
+# Part C.5.2 documents that setter-dispatch contract by name, so the underscore is part of a
+# published interface here rather than a private-access slip.
+"src/api_response.py" = ["SLF001"]
+# asy_webserver_service.py makes the same documented Part C.5.2 `_set_dict_cfg` dispatch call as
+# api_response.py above, and asserts its static mount is non-None purely to narrow the type for
+# mypy (the route is only ever registered when it isn't None).
+"src/asy_webserver_service.py" = ["SLF001", "S101"]
 "src/sensortask_wozi.py" = ["S101"]
 "src/sensortask_dev.py" = ["S101"]
 

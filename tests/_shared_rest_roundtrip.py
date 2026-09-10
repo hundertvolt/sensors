@@ -34,7 +34,5 @@ def drain_json_response_body(body: "Any") -> bytes:
     asserting on json.loads() of a complete body either way."""
     if isinstance(body, bytes):
         return body
-    chunks = []
-    for chunk in body:
-        chunks.append(chunk.encode() if isinstance(chunk, str) else chunk)
+    chunks = [chunk.encode() if isinstance(chunk, str) else chunk for chunk in body]
     return b"".join(chunks)

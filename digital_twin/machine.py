@@ -495,17 +495,17 @@ class RTC:
         return RTC._shared_datetime
 
 
-class SimulatedReboot(Exception):
+class SimulatedRebootError(Exception):
     # Base class for both twin-only reboot exceptions below - lets a Step 5 harness catch either
-    # kind uniformly (`except SimulatedReboot:`) or distinguish them when it needs to.
+    # kind uniformly (`except SimulatedRebootError:`) or distinguish them when it needs to.
     pass
 
 
-class SimulatedReset(SimulatedReboot):
+class SimulatedResetError(SimulatedRebootError):
     pass
 
 
-class SimulatedBootloaderEntry(SimulatedReboot):
+class SimulatedBootloaderEntryError(SimulatedRebootError):
     pass
 
 
@@ -518,13 +518,13 @@ def reset() -> None:
     # (it would just kill the test/Step-5 process), so it raises instead: the counter below still
     # increments first (useful even though the call "never returns" on real hardware either - a
     # harness catching the exception can still inspect "how many times did this happen"), then
-    # SimulatedReset propagates to whatever caller is meant to observe "a reboot happened here".
+    # SimulatedResetError propagates to whatever caller is meant to observe "a reboot happened here".
     global reset_count
     reset_count += 1
-    raise SimulatedReset("machine.reset() called - the twin does not actually restart the process")
+    raise SimulatedResetError("machine.reset() called - the twin does not actually restart the process")
 
 
 def bootloader() -> None:
     global bootloader_count
     bootloader_count += 1
-    raise SimulatedBootloaderEntry("machine.bootloader() called - the twin does not actually restart the process")
+    raise SimulatedBootloaderEntryError("machine.bootloader() called - the twin does not actually restart the process")

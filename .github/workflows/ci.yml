@@ -181,11 +181,20 @@ jobs:
         continue-on-error: true
       - name: Add coverage summary to job summary
         if: hashFiles('coverage-output.txt') != ''
+        # Quoted heredocs (not `echo '...'`) so the literal markdown backticks need no quoting
+        # gymnastics, and one grouped redirect instead of four - both flagged by actionlint's
+        # embedded shellcheck (SC2016/SC2129).
         run: |
-          echo '### JS coverage (`js/`)' >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
-          tail -n 15 coverage-output.txt >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          {
+            cat <<'MD_FENCE_OPEN'
+          ### JS coverage (`js/`)
+          ```
+          MD_FENCE_OPEN
+            tail -n 15 coverage-output.txt
+            cat <<'MD_FENCE_CLOSE'
+          ```
+          MD_FENCE_CLOSE
+          } >> "$GITHUB_STEP_SUMMARY"
         continue-on-error: true
       - name: Upload HTML coverage report artifact
         if: hashFiles('coverage/index.html') != ''
@@ -289,6 +298,15 @@ jobs:
         run: uv sync
       - name: Ruff (src/, tests/, digital_twin/)
         run: uv run ruff check src tests digital_twin
+      # shellcheck covers scripts/ only - the four legacy build-*.sh at the repo root are the same
+      # pre-refactor generation as python//modules/ and out of lint scope by that same standing
+      # decision (see BACKLOG.md). actionlint checks this workflow and the composite action, and
+      # additionally runs shellcheck over every `run:` block, which is why it is sequenced after
+      # shellcheck is on PATH. Both install via `uv sync` from pyproject.toml's [dependency-groups].
+      - name: Shellcheck (scripts/)
+        run: uv run shellcheck scripts/*.sh
+      - name: Actionlint (.github/workflows/)
+        run: uv run actionlint
       - name: Mypy (src/, tests/, digital_twin/)
         run: uv run scripts/typecheck.sh src tests
 

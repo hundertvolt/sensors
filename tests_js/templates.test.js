@@ -79,7 +79,11 @@ describe("buildField", () => {
      */
     function hintText(el) {
         const nodes = el.querySelectorAll(".field-description");
-        return nodes[nodes.length - 1].textContent;
+        const last = nodes[nodes.length - 1];
+        if (last === undefined) {
+            throw new Error("Expected at least one .field-description");
+        }
+        return last.textContent;
     }
 
     it("shows a min/max range hint for an editable number field", () => {
@@ -443,9 +447,13 @@ describe("buildNavDrawer", () => {
         expect(mustQuery(drawerEl, ".nav-drawer-heading").textContent).toBe("wozi");
         const links = /** @type {NodeListOf<HTMLElement>} */ (drawerEl.querySelectorAll("[data-section-key]"));
         expect(links).toHaveLength(2);
-        expect(links[0].dataset.sectionKey).toBe("measurements");
+        const [firstLink] = links;
+        if (firstLink === undefined) {
+            throw new Error("Expected a [data-section-key] link");
+        }
+        expect(firstLink.dataset.sectionKey).toBe("measurements");
         // No listener attached yet - clicking must not throw and must have no observable effect.
-        expect(() => links[0].click()).not.toThrow();
+        expect(() => firstLink.click()).not.toThrow();
     });
 });
 

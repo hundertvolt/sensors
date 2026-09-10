@@ -12,7 +12,7 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from typing import Any
+    from typing import Any, ClassVar
 
 
 class Pin:
@@ -432,7 +432,7 @@ class Timer:
     # can assert none happened (e.g. system_service.py's _timer_sequencer() reusing one preallocated
     # Timer via .init() instead - SPECIFICATION.md Part F.1). Tests must clear this between test
     # functions (all_timers.clear()) since it otherwise persists across the whole process lifetime.
-    all_timers: "list[Timer]" = []
+    all_timers: "ClassVar[list[Timer]]" = []
 
     # Test-only fault injection, off by default: real rp2 Timer.init() calls
     # alarm_pool_add_alarm_in_us() and raises OSError(ENOMEM) if the alarm pool is exhausted

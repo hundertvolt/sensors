@@ -921,20 +921,23 @@ def test_fetch_ntp_reply_invalid_addr_returns_none() -> None:
     assert result is None
 
 
+# Recorder shared by every _RecordingUDPSocket instance below - module-level rather than a class
+# attribute so the shared mutable state is explicit at the point it lives.
+_recording_udp_calls: "list[int]" = []
+
+
 class _RecordingUDPSocket:
     # Stands in for asy_udp_socket.AsyUDPSocket - records the timeout_ms _fetch_ntp_reply() passes
     # to write_and_recvfrom(), proving ntp_fetch_timeout_ms is this instance's own configured value
     # (see asy_ntp_client.py's own constructor comment) reaching the real call, not a hardcoded
     # module constant.
-    calls: "list[int]" = []
-
     def __init__(self, addr: "Any", mode: str = "client", conn_tries: int = 1) -> None:
         pass
 
     async def write_and_recvfrom(
         self, msg: "bytes | bytearray", buf: int, timeout_ms: int = -1, tries: int = 1,
     ) -> "tuple[bytes | None, tuple[str, int] | None]":
-        _RecordingUDPSocket.calls.append(timeout_ms)
+        _recording_udp_calls.append(timeout_ms)
         return None, None
 
     async def disconnect(self) -> None:
@@ -944,13 +947,13 @@ class _RecordingUDPSocket:
 def test_fetch_ntp_reply_forwards_the_constructors_own_fetch_timeout() -> None:
     client = make_client(ntp_fetch_timeout_ms=9999)
     original = ntpmod.AsyUDPSocket
-    _RecordingUDPSocket.calls = []
+    _recording_udp_calls.clear()
     ntpmod.AsyUDPSocket = _RecordingUDPSocket  # type: ignore[assignment, misc]
     try:
         run(client._fetch_ntp_reply(("127.0.0.1", 123)))
     finally:
         ntpmod.AsyUDPSocket = original  # type: ignore[misc]
-    assert _RecordingUDPSocket.calls == [9999]
+    assert _recording_udp_calls == [9999]
 
 
 def test_fetch_ntp_reply_ipv6_shaped_four_tuple_addr_returns_none() -> None:

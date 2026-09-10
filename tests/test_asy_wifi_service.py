@@ -38,6 +38,8 @@ if TYPE_CHECKING:
     from collections.abc import Coroutine
     from typing import Any, TypeVar
 
+    from typing_extensions import Self
+
     T = TypeVar("T")
 
 
@@ -175,7 +177,7 @@ class _RaiseOnArm:
     def __init__(self, exc: "type[BaseException]" = OSError) -> None:
         self._exc = exc
 
-    def __enter__(self) -> "_RaiseOnArm":
+    def __enter__(self) -> "Self":
         Timer.raise_on_arm_exc = self._exc
         Timer.raise_on_arm = True
         return self
@@ -253,7 +255,7 @@ class _FastAsyncSleep:
     # time around deinit/reinit) - far too slow for a plain test. Same technique as
     # test_asy_bmp3xx_driver.py's/test_asy_sgp40_driver.py's own _FastAsyncSleep. asyncio.sleep is a
     # shared, process-wide function, restored on exit regardless of how the `with` block exits.
-    def __enter__(self) -> "_FastAsyncSleep":
+    def __enter__(self) -> "Self":
         self._real_sleep = asyncio.sleep
 
         async def _fast(_seconds: float) -> None:

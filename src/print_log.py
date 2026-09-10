@@ -170,7 +170,7 @@ class PrintLogHistory(PrintLog):
         err_num = []
         err_type = []
         for errno in self.history:
-            if errno == _NO_ERR or errno == _NO_WRN:
+            if errno in (_NO_ERR, _NO_WRN):
                 err_num.append(errno)
                 err_type.append("N")
             elif errno <= _MAX_ERR:
@@ -247,9 +247,10 @@ class PrintLogHistoryStore(PrintLogHistory):
                 return False
             self.err_count = struct.unpack_from(self._HDR_FMT, dbuf, 0)[0]
             self.history.extend(struct.unpack_from(self._history_fmt, dbuf, self._HDR_SIZE))
-            return True
         except Exception:
             return False
+        else:
+            return True
 
     async def setup(self) -> None:
         if self.fram is None or self.initialized:

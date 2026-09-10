@@ -590,7 +590,7 @@ describe("renderSection", () => {
         // manual restore is needed here.
         const mockedFetch = window.fetch;
         let putSent = false;
-        window.fetch = async (input, init) => {
+        window.fetch = (input, init) => {
             if (String(input) === "/system" && init?.method === "PUT") {
                 putSent = true;
             }
@@ -793,10 +793,10 @@ describe("renderSection", () => {
 
     it("shows a visible error banner when a GET response body is empty", async () => {
         const originalFetch = window.fetch;
-        window.fetch = async (input) => {
+        window.fetch = (input) => {
             const url = typeof input === "string" ? input : input.toString();
             if (url === "/measurements") {
-                return new Response("", { status: 200 });
+                return Promise.resolve(new Response("", { status: 200 }));
             }
             return originalFetch(input);
         };
@@ -825,10 +825,10 @@ describe("renderSection", () => {
     it("surfaces the server's own descr text when the notification section's /status sub-fetch returns a shaped HTTP error", async () => {
         uninstall = installMockFetch(DEFS, DATA);
         const mockedFetch = window.fetch;
-        window.fetch = async (input, init) => {
+        window.fetch = (input, init) => {
             const url = typeof input === "string" ? input : input.toString();
             if (url === "/status") {
-                return new Response(JSON.stringify({ res: "ERR", code: 4, descr: "Not found", result: {} }), { status: 404 });
+                return Promise.resolve(new Response(JSON.stringify({ res: "ERR", code: 4, descr: "Not found", result: {} }), { status: 404 }));
             }
             return mockedFetch(input, init);
         };
@@ -845,10 +845,10 @@ describe("renderSection", () => {
         // /notification - a failure in that second call must surface too, not be swallowed.
         uninstall = installMockFetch(DEFS, DATA);
         const mockedFetch = window.fetch;
-        window.fetch = async (input, init) => {
+        window.fetch = (input, init) => {
             const url = typeof input === "string" ? input : input.toString();
             if (url === "/status") {
-                throw new TypeError("Failed to fetch (simulated)");
+                return Promise.reject(new TypeError("Failed to fetch (simulated)"));
             }
             return mockedFetch(input, init);
         };
@@ -882,11 +882,11 @@ describe("renderSection", () => {
         };
         let callCount = 0;
         const originalFetch = window.fetch;
-        window.fetch = async (input) => {
+        window.fetch = (input) => {
             const url = typeof input === "string" ? input : input.toString();
             if (url === "/measurements") {
                 callCount += 1;
-                return new Response(JSON.stringify({ SCD30: { Model: callCount === 1 ? "B" : "A" } }), { status: 200 });
+                return Promise.resolve(new Response(JSON.stringify({ SCD30: { Model: callCount === 1 ? "B" : "A" } }), { status: 200 }));
             }
             return originalFetch(input);
         };

@@ -5,7 +5,6 @@ from collections import namedtuple
 from _fram_chip_fake import FakeMB85RS64V
 
 import asy_spi_driver
-import config_manager as cm
 from asy_fram_manager import AsyFramManager
 from asy_spi_driver import SPI
 from base_classes import (
@@ -31,6 +30,7 @@ if TYPE_CHECKING:
     from collections.abc import Coroutine
     from typing import Any, TypeVar
 
+    import config_manager as cm
     from base_classes import LockableBuffer as _LockableBufferType
     from crc_checks import CRC_Base
 
@@ -258,13 +258,11 @@ def test_lockablebuffer_zero_length_data_region_is_valid() -> None:
 def test_lockablebuffer_is_still_lockable() -> None:
     buf = LockableBuffer(4)
 
-    async def scenario() -> bool:
-        locked_inside = False
+    async def scenario() -> None:
         async with buf:
-            locked_inside = buf.asy_lock.locked()
-        return locked_inside
+            assert buf.asy_lock.locked()  # held for the whole block, same as a plain Lockable
 
-    assert run(scenario())
+    run(scenario())
 
 
 def test_lockablebuffer_is_a_lockable_instance() -> None:

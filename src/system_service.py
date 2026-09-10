@@ -155,10 +155,11 @@ class SystemService:
                     mode=Timer.ONE_SHOT,
                     callback=lambda b: self._timer_sequencer(timers, counter=counter),
                 )
-                return
             except (OSError, MemoryError) as e:  # alarm-pool exhaustion (ENOMEM) - stop sequencing rather than
                 # leaving start_timers() waiting on timers_running forever.
                 self.pr.err("Could not schedule the next timer starter, stopping early:", e)
+            else:
+                return
         self.pr.one("All timers running.")
         self.timers_running.set()
 

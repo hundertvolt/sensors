@@ -19,7 +19,7 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
-    from typing import Any, NamedTuple, TypeVar
+    from typing import Any, Literal, NamedTuple, TypeVar
 
     from typing_extensions import Self
 
@@ -42,7 +42,9 @@ class Lockable:
         exc_type: type[BaseException] | None,
         exc_val: BaseException | None,
         exc_tb: object,  # `object`, not TracebackType: the precise name only exists under TYPE_CHECKING
-    ) -> bool:
+    ) -> "Literal[False]":  # Literal, not bool: this CM never suppresses, and saying so lets mypy
+        # see the code after an `async with` as unreachable instead of demanding a redundant
+        # trailing return on every caller (SPECIFICATION.md Part D.7).
         try:
             self.asy_lock.release()
         except RuntimeError:  # in case it's already released somehow

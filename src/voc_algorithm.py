@@ -46,6 +46,12 @@ _FIX16_MAXIMUM = const(0x7FFFFFFF)
 _FIX16_MINIMUM = const(0x80000000)
 _FIX16_OVERFLOW = const(0x80000000)
 _FIX16_ONE = const(0x00010000)
+_FIX16_FRACTION_MAX = const(65535)  # 16-bit remainder check in _fix16_sqrt()
+
+# vocalgorithm_process()'s own sraw guard/clamp bounds - bare literals in the C reference, named here
+_SRAW_VALID_MAX = const(65000)
+_SRAW_CLAMP_MIN = const(20001)
+_SRAW_CLAMP_MAX = const(52767)
 
 _VOC_PARAMS_MEMSIZE = const(256)  # 32 * 8 bytes
 
@@ -129,9 +135,10 @@ class DFRobot_vocalgorithmParams:
                 self.m_adaptive_lowpass_x2,
                 self.m_adaptive_lowpass_x3,
             )
-            return True
         except Exception:
             return False
+        else:
+            return True
 
     def unpack_from(self, buf: bytes | bytearray | memoryview, offset: int = 0) -> bool:
         try:
@@ -208,15 +215,9 @@ class VOCAlgorithm:
         inarg0 = int(inarg0)
         inarg1 = int(inarg1)
         A = inarg0 >> 16
-        if inarg0 < 0:
-            B = (inarg0 & 0xFFFFFFFF) & 0xFFFF
-        else:
-            B = inarg0 & 0xFFFF
+        B = (inarg0 & 0xFFFFFFFF) & 0xFFFF if inarg0 < 0 else inarg0 & 0xFFFF
         C = inarg1 >> 16
-        if inarg1 < 0:
-            D = (inarg1 & 0xFFFFFFFF) & 0xFFFF
-        else:
-            D = inarg1 & 0xFFFF
+        D = (inarg1 & 0xFFFFFFFF) & 0xFFFF if inarg1 < 0 else inarg1 & 0xFFFF
         AC = A * C
         AD_CB = A * D + C * B
         BD = B * D
@@ -241,14 +242,8 @@ class VOCAlgorithm:
         b = int(b)
         if b == 0:
             return _FIX16_MINIMUM
-        if a >= 0:
-            remainder = a
-        else:
-            remainder = (a * (-1)) & 0xFFFFFFFF
-        if b >= 0:
-            divider = b
-        else:
-            divider = (b * (-1)) & 0xFFFFFFFF
+        remainder = a if a >= 0 else (a * (-1)) & 0xFFFFFFFF
+        divider = b if b >= 0 else (b * (-1)) & 0xFFFFFFFF
         quotient = 0
         bit = 0x10000
         while divider < remainder:
@@ -293,7 +288,7 @@ class VOCAlgorithm:
                     result = result >> 1
                 bit >>= 2
             if n == 0:
-                if num > 65535:
+                if num > _FIX16_FRACTION_MAX:
                     num = (num - result) & 0xFFFFFFFF
                     num = ((num << 16) - 0x8000) & 0xFFFFFFFF
                     result = ((result << 16) + 0x8000) & 0xFFFFFFFF
@@ -525,7 +520,9 @@ class VOCAlgorithm:
             )
         )
 
-        self.params.m_mean_variance_estimator_gating_duration_minutes = max(self.params.m_mean_variance_estimator_gating_duration_minutes, self._f16(0.0))
+        self.params.m_mean_variance_estimator_gating_duration_minutes = max(
+            self.params.m_mean_variance_estimator_gating_duration_minutes, self._f16(0.0),
+        )
 
         if (
             self.params.m_mean_variance_estimator_gating_duration_minutes
@@ -553,10 +550,8 @@ class VOCAlgorithm:
                 (sraw - self.params.m_mean_variance_estimator_mean),
                 self._f16(_VOCALGORITHM_MEAN_VARIANCE_ESTIMATOR__GAMMA_SCALING),
             )
-            if delta_sgp < self._f16(0.0):
-                c = self.params.m_mean_variance_estimator_std - delta_sgp
-            else:
-                c = self.params.m_mean_variance_estimator_std + delta_sgp
+            std = self.params.m_mean_variance_estimator_std
+            c = std - delta_sgp if delta_sgp < self._f16(0.0) else std + delta_sgp
             additional_scaling = self._f16(1.0)
             if c > self._f16(1440.0):
                 additional_scaling = self._f16(4.0)
@@ -770,11 +765,11 @@ class VOCAlgorithm:
         if self.params.muptime <= self._f16(_VOCALGORITHM_INITIAL_BLACKOUT):
             self.params.muptime = self.params.muptime + self._f16(_VOCALGORITHM_SAMPLING_INTERVAL)
         else:
-            if (sraw > 0) and (sraw < 65000):
-                if sraw < 20001:
-                    sraw = 20001
-                elif sraw > 52767:
-                    sraw = 52767
+            if (sraw > 0) and (sraw < _SRAW_VALID_MAX):
+                if sraw < _SRAW_CLAMP_MIN:
+                    sraw = _SRAW_CLAMP_MIN
+                elif sraw > _SRAW_CLAMP_MAX:
+                    sraw = _SRAW_CLAMP_MAX
                 self.params.msraw = self._fix16_from_int(sraw - 20000)
             self.params.mvoc_index = self._vocalgorithm__mox_model__process(self.params.msraw)
             self.params.mvoc_index = self._vocalgorithm__sigmoid_scaled__process(self.params.mvoc_index)
@@ -786,8 +781,7 @@ class VOCAlgorithm:
                     self._vocalgorithm__mean_variance_estimator__get_std(),
                     self._vocalgorithm__mean_variance_estimator__get_mean(),
                 )
-        voc_index = self._fix16_cast_to_int(self.params.mvoc_index + self._f16(0.5))
-        return voc_index
+        return self._fix16_cast_to_int(self.params.mvoc_index + self._f16(0.5))
 
     def vocalgorithm_proc_ser_des(
         self,

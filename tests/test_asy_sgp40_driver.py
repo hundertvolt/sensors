@@ -1,5 +1,4 @@
-"""Mocks only the raw I2C bus transaction level (tests/machine.py's fake machine.I2C, extended with a read_queue for word-oriented protocols - see its own inline comment), matching SPECIFICATION.md Part E.4's mocking boundary: asy_sgp40_driver.py's own protocol/CRC/locking logic and voc_algorithm.py's real VOCAlgorithm run unmocked.
-"""
+"""Mocks only the raw I2C bus transaction level (tests/machine.py's fake machine.I2C, extended with a read_queue for word-oriented protocols - see its own inline comment), matching SPECIFICATION.md Part E.4's mocking boundary: asy_sgp40_driver.py's own protocol/CRC/locking logic and voc_algorithm.py's real VOCAlgorithm run unmocked."""
 # FRAM-backed backup/restore tests use the real AsyFramManager against tests/_fram_chip_fake.py's
 # simulated chip, matching tests/test_fram_integration.py's own pattern.
 
@@ -27,6 +26,8 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 if TYPE_CHECKING:
     from collections.abc import Coroutine
     from typing import Any, TypeVar
+
+    from typing_extensions import Self
 
     T = TypeVar("T")
 
@@ -447,7 +448,7 @@ class _RaiseOnArm:
     def __init__(self, exc: "type[BaseException]" = OSError) -> None:
         self._exc = exc
 
-    def __enter__(self) -> "_RaiseOnArm":
+    def __enter__(self) -> "Self":
         Timer.raise_on_arm_exc = self._exc
         Timer.raise_on_arm = True
         return self
@@ -1214,7 +1215,7 @@ class _FastAsyncSleep:
     # read_loop() through several full cycles. asyncio.sleep is a shared, process-wide function
     # (same technique as tests/test_system_service.py's own _FastAsyncSleep), restored on exit
     # regardless of how the `with` block exits.
-    def __enter__(self) -> "_FastAsyncSleep":
+    def __enter__(self) -> "Self":
         self._real_sleep = asyncio.sleep
 
         async def _fast(_seconds: float) -> None:

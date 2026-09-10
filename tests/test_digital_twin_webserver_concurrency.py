@@ -142,7 +142,7 @@ async def _flaky_connection(host: str, port: int) -> None:
     line, no Host header), then disconnects without ever completing it - exercises the same
     EOFError/timeout reclaim path a real client on a lossy network or a killed browser tab would
     trigger (WebserverService._serve(), src/asy_webserver_service.py)."""
-    reader, writer = await asyncio.open_connection(host, port)
+    _reader, writer = await asyncio.open_connection(host, port)
     try:
         writer.write(b"GET / HTTP/1.1\r\n")
         await writer.drain()
@@ -629,9 +629,10 @@ def test_realistic_mixed_traffic_above_the_connection_ceiling_degrades_gracefull
             async def _get_tolerant(path: str) -> "int | str":
                 try:
                     res = await _http_client.fetch("127.0.0.1", port, "GET", path)
-                    return res.status_code
                 except OSError:
                     return "rejected"
+                else:
+                    return res.status_code
 
             async def page_load_tolerant() -> "list[int | str]":
                 return list(await asyncio.gather(_get_tolerant("/"), _get_tolerant("/style.css")))

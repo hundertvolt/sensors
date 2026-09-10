@@ -587,8 +587,8 @@ Watch `/status`'s `errcount` section for each affected module's counter to tick 
 few seconds — that's the fault having fired, been logged, and recovered from. A device-wide
 task-failure streak beyond `system_service.py`'s own threshold triggers a real reboot request too
 (logged as `SYSTEM ... reboot triggered!` at `DebugLevel >= 4`) - on real hardware this actually
-restarts the unit; the twin can't do that (`machine.reset()` raises `SimulatedReset` instead, which
-is expected and harmless - see `SimulatedReboot`'s own comment in `digital_twin/machine.py`), so the same process keeps serving
+restarts the unit; the twin can't do that (`machine.reset()` raises `SimulatedResetError` instead, which
+is expected and harmless - see `SimulatedRebootError`'s own comment in `digital_twin/machine.py`), so the same process keeps serving
 afterward instead of restarting, which is fine for continuing this walkthrough.
 
 ## Further reading

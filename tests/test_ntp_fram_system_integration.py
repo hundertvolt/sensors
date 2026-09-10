@@ -10,7 +10,6 @@ import time
 
 import network
 from _fram_chip_fake import FakeMB85RS64V
-from machine import I2C as FakeI2C
 
 import asy_ntp_client as ntpmod
 import asy_spi_driver
@@ -37,6 +36,7 @@ if TYPE_CHECKING:
     from collections.abc import Coroutine
     from typing import Any, TypeVar
 
+    from machine import I2C as FakeI2C
     from typing_extensions import Self
 
     T = TypeVar("T")
@@ -568,12 +568,12 @@ def test_fram_timestamped_chunk_torn_write_self_heals_with_a_real_ntp_derived_ti
 # ---------------------------------------------------------------------------
 # SystemService supervising a real *sensor* Reader task, not just the ntp one above -
 # get_task_starters()/start_asy_read() are proven individually (test_asy_bmp3xx_driver.py's own
-# test_get_task_starters_returns_read_and_trigger_starters/test_start_asy_read_returns_a_real_task,
-# added alongside a coverage audit that found neither had ever been called at all before), but
-# nothing proves the same starter still works once it's wired through the real, generic
-# start_and_check_tasks() every sensortask-*.py device actually uses - the exact seam
-# test_system_service_restarts_a_real_ntp_task_that_genuinely_gives_up above already proves for
-# AsyNtpClient's own task, generalized here to a sensor driver.
+# test_get_task_starters_returns_read_and_trigger_starters and
+# test_start_asy_read_returns_a_real_task, added alongside a coverage audit that found neither had
+# ever been called at all before), but nothing proves the same starter still works once it's wired
+# through the real, generic start_and_check_tasks() every sensortask-*.py device actually uses -
+# the exact seam test_system_service_restarts_a_real_ntp_task_that_genuinely_gives_up above
+# already proves for AsyNtpClient's own task, generalized here to a sensor driver.
 # ---------------------------------------------------------------------------
 
 _BMP_ADDR = 0x77
