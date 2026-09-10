@@ -34,6 +34,14 @@ into the constructor of the driver's own built-in default provider.
 
 ### 2.2 TOML shape
 
+**Note (added during the 2026-09-10 bird's-eye pass): every `comp_source`-specific example in this
+subsection through §2.6 predates §2.9's per-value split and is superseded by it the same way §2.5
+already flags for its own worked example** — `comp_source` itself stops existing as a single
+whole-object field. Kept as-is below because the *shape* each example establishes (the
+`{default = true, ...}` sub-table convention, the `_Default<Field>` naming pattern, inline
+construction at the call-site) carries over unchanged to §2.9's split fields
+(`temperature_source`/`humidity_source`) — only the specific field name `comp_source` does not.
+
 Reuses the sub-table convention `[instance.wiring]`'s `warn_*` fields already established
 (`{source = ..., field = ...}`), keyed by a literal `default = true` instead:
 
@@ -236,6 +244,12 @@ renamed to match — an accepted limitation, not a gap to design around now.
 Plus notification's own separate per-signal mechanism (not `_WIRING`): `warn_co2`/`warn_voc`/
 `warn_hum`, each an independently optional `{source, field}` sub-table.
 
+**Note**: this table is *today's* ground truth (current code, nothing implemented from this document
+yet), so `comp_source` correctly still appears as one whole-object field here. Once §2.9 lands,
+this row is replaced by two independent per-value rows (`temperature_source`/`humidity_source`,
+placeholder names) with no fixed `producer_class` — see §2.9 for why the "Producer type" column
+stops applying to those two once the split happens.
+
 ### 4.2 Hard structural constraints (things that prune the matrix, not things the matrix tests as "invalid")
 
 - ~~sgp40 present ⇒ scd30 present~~ — **superseded by §2**: once the defaults mechanism lands,
@@ -302,23 +316,56 @@ preserved, not dropped.
       alternate I2C0/I2C1 every 2 GPIOs (GP0/1→I2C0, GP2/3→I2C1, GP4/5→I2C0, GP6/7→I2C1, GP8/9→I2C0,
       GP10/11→I2C1, GP12/13→I2C0, GP14/15→I2C1, GP16/17→I2C0, GP18/19→I2C1, GP20/21→I2C0,
       GP26/27→I2C1), always even-GPIO=SDA/odd-GPIO=SCL within a pair. GP22 and GP28 have no I2C
-      function at all; GP23-25/29 are reserved for the onboard CYW43439 wireless SPI link (datasheet
-      p.7) and must never be claimed by a device's own bus/instance pins. A legal two-I2C-bus device
-      picks one pair from the I2C0 set and one from the I2C1 set (today's real devices, e.g.
-      `devices/wozi.toml`, do exactly this: `bus.i2c0` on GP12/GP13, `bus.i2c1` on GP26/GP27).
+      function at all (confirmed directly re-reading Figure 2 during the 2026-09-10 bird's-eye
+      pass: GP22 carries no function label beyond plain GPIO, GP28 carries only `ADC2`). GP23-25/29
+      are never claimed by a device's own bus/instance pins at all — **precision note, corrected
+      during this bird's-eye pass**: the datasheet's text never names GP23/24/25/29 explicitly (a
+      full-text search of the PDF for each found zero hits; the earlier "(datasheet p.7)" citation
+      for this was simply wrong — p.7 is the mechanical-spec/physical-pin-numbering section,
+      unrelated). This is an **inference** from Figure 2 (p.4) itself: those four GPIO numbers
+      never appear anywhere on the 40-pin header pinout, and nothing else on the board exposes
+      them. Two independent things corroborate the inference rather than just resting on absence:
+      (1) p.4's own bullet list says the board "Exposes 26 multi-function 3.3 V general purpose I/O
+      (GPIO)" — the header's own labeled pins are exactly GP0-22 plus GP26-28, 26 pins, so the 4
+      unlisted numbers (23/24/25/29) are exactly RP2040's other 4 GPIOs (0-29 is 30 total); (2) §3.8
+      "Wireless interface" (pp.17-18) confirms *why*, even without naming pin numbers: "the wireless
+      interface is connected via SPI to the RP2040... due to pin limitations, some of the wireless
+      interface pins are shared" (the CLK/VSYS-monitor share and the DIN/DOUT/IRQ share it
+      describes). Net effect on this document's own claims: unchanged (GP23-25/29 still must never
+      be claimed by a device's own bus/instance pins), only the citation and the "how do we know
+      this" framing are corrected. A legal two-I2C-bus device picks one pair from the I2C0 set and
+      one from the I2C1 set (today's real devices, e.g. `devices/wozi.toml`, do exactly this:
+      `bus.i2c0` on GP12/GP13, `bus.i2c1` on GP26/GP27).
       **Gap**: `_check_gpio_collisions()` only enforces device-wide pin-number uniqueness — it never
       checks a bus's declared `scl_pin`/`sda_pin` against this fixed table at all, so e.g. a
       `bus.i2c0` table wired to GP2/GP3 (silicon-wise, an I2C1-only pair) or to GP22 (no I2C function
       at all) currently passes `buildgen` cleanly and would only fail at real-hardware
       `machine.I2C()` construction time — a raw runtime error, not this package's fail-loud
       `BuildError` contract. Same gap applies symmetrically to SPI below. Flagged for §4.4.
+      **Scope note, added this pass**: the GP23-25/29-reserved and nonexistent-GPIO-number
+      (§5.1 #7's separate "≥30 or negative" case) exclusions apply to **every** claimed pin
+      device-wide, not just bus wire pins — an `irq_pin`/`cs_pin`/neopixel `pin` set to GP24 is
+      exactly as wrong as a bus `scl_pin` set to GP24, even though an IRQ/CS/data pin has no
+      peripheral *role* to validate the way a bus wire pin does. `_check_gpio_collisions()` already
+      claims both categories (bus wire pins and instance-exclusive pins) into one shared dict today,
+      so the eventual fix for this half is naturally one check applied uniformly there; only the
+      *peripheral-index/role* legality check below is inherently bus-pin-specific.
     - **One or two SPI buses**, same grounding. SPI-capable pins run in fixed 4-GPIO blocks with a
       fixed RX/CSn/SCK/TX role assignment, alternating SPI0/SPI1 by block: GP0-3 and GP4-7 are both
       SPI0 (RX/CSn/SCK/TX respectively within each block), GP8-11 and GP12-15 are both SPI1,
-      GP16-19 is SPI0 again. `asy_spi_driver.SPI.__init__` takes `sck_pin`/`mosi_pin`/`miso_pin`
-      only (no CS — that's an instance-exclusive `cs_pin`, per `_check_bus_tables()`'s own
-      `cs_pin` rejection), so a legal SPI bus table needs its three pins' TX/RX/SCK roles to all
-      belong to the *same* SPI peripheral index, per this table. Today's real devices use exactly
+      GP16-19 is SPI0 again. **GP20-22 and GP26-28 have no SPI function at all** (confirmed directly
+      re-reading Figure 2 this pass — completeness fix: this was previously left implicit by the
+      list simply stopping at GP19, the same way the I2C bullet above already states GP22/28's
+      absence of I2C function explicitly rather than by omission). `asy_spi_driver.SPI.__init__`
+      takes `sck_pin`/`mosi_pin`/`miso_pin` only (no CS — that's an instance-exclusive `cs_pin`, per
+      `_check_bus_tables()`'s own `cs_pin` rejection), so a legal SPI bus table needs its three
+      pins' TX/RX/SCK roles to all belong to the *same* SPI peripheral index, per this table —
+      **confirmed against real usage this pass**: `devices/dev.toml`'s own `bus.spi0`
+      (`sck_pin=2, mosi_pin=3, miso_pin=4`) draws its three pins from two different 4-GPIO blocks
+      (GP0-3 and GP4-7) that are both SPI0, and that's legal precisely because the constraint is
+      "same peripheral index," not "same contiguous block" — each RP2040 GPIO's function-select mux
+      is independent, so any SPI0-capable RX/TX/SCK-labeled pin can be mixed with any other
+      SPI0-capable one regardless of which block it's drawn from. Today's real devices use exactly
       one SPI bus (`bus.spi0`, FRAM-only — `asy_spi_driver.py`'s own docstring: "Sole consumer:
       asy_fram_driver.py's FRAM_SPI"); a second, SPI1-routed bus is logically legal but unexercised
       by any real `devices/*.toml` today.
@@ -329,10 +376,13 @@ preserved, not dropped.
 
 ### 4.4 Still to do
 
-- Enumerate the actual cross-product of axes 1-8 (pruned by §4.2), decide which become individual
-  TOML fixtures vs. which get covered by targeted unit tests against `validate.py`/`codegen.py`
-  directly (matching the existing `test_buildgen_validate.py` pattern of driving internals
-  directly for cases no real/6-device TOML can reach).
+- Enumerate the actual cross-product of axes 1-8 and 11 (pruned by §4.2) — **corrected during the
+  2026-09-10 bird's-eye pass**: axis 11 (name_ext on a singleton-adjacent instance) had silently
+  fallen out of this bullet's range when axes 9/10 were split off into their own dedicated
+  bullets below; it belongs with 1-8, not with either special-cased axis. Decide which become
+  individual TOML fixtures vs. which get covered by targeted unit tests against
+  `validate.py`/`codegen.py` directly (matching the existing `test_buildgen_validate.py` pattern of
+  driving internals directly for cases no real/6-device TOML can reach).
 - Design the multi-instance (axis 9) fixture set — likely extends
   `tests_scripts/buildgen_fixtures/novel_combo.toml` or adds a sibling fixture, not yet decided.
 - **Two real gaps found while grounding axis 10 against the Pico W datasheet (2026-09-10),
@@ -863,6 +913,13 @@ unnoticed; **[DECIDE]** blocked on an open design question the project owner has
 either FIX or TEST work can be scoped; **[COSMETIC]** a real but non-blocking message-quality note.
 Several items carry more than one tag. Nothing in this section is new analysis — it's an index into
 what §2/§4/§5/§6/§7 already found, so none of it gets lost or has to be re-derived later.
+**Clarifying how this relates to §4.4/§5.4/§6.5/§7.3's own "Still to do" lists, added during the
+2026-09-10 bird's-eye pass so there's no ambiguity about which list is authoritative**: those four
+subsections remain the local, in-context next-steps for their own section; §8 is the flattened,
+cross-referenced master index over all of them plus §2's mechanism — read §8 to find everything at
+once, read the local "Still to do" for a given section's own framing/context. Neither is stale
+relative to the other as of this pass; if they ever diverge, the more specific local section wins
+and §8 needs updating to match.
 
 ### 8.0 The standing contract every `[FIX]` below must be built to (already settled, not new)
 
@@ -916,7 +973,11 @@ already governs every check that exists today — not a new bar being raised for
 - **[FIX] [TEST]** Bus pins are never checked against the RP2040's real, fixed per-GPIO
   I2C0/I2C1/SPI0/SPI1 capability table (§4.3 axis 10's own transcription of Pico W datasheet Figure
   2/4) — an illegal pin currently only fails at real `machine.I2C()`/`machine.SPI()` construction
-  time, not as a `BuildError`.
+  time, not as a `BuildError`. Two sub-parts, per §4.3's own scope note: (a) is this GPIO number
+  real and not one of GP23-25/29 (wireless-reserved) — applies to **every** claimed pin device-wide,
+  bus and instance-exclusive (`irq_pin`/`cs_pin`/neopixel `pin`) alike; (b) does this specific bus's
+  pin assignment match its peripheral index and role (SDA vs SCL, RX vs TX vs SCK) — inherently
+  bus-pin-only, since an IRQ/CS/data pin has no peripheral role to check.
 - **[FIX] [TEST]** Pin **role** within an otherwise-legal pair (§6.4 — `scl_pin`/`sda_pin` or
   `sck_pin`/`mosi_pin`/`miso_pin` transposed) needs checking, not just peripheral-index membership —
   **confirmed by the project owner this session as scoped work**, folds into the same fix as the
