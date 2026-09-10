@@ -705,7 +705,7 @@ def _shape_errcount_entry(raw: "ErrorLog", name: str) -> "dict[str, Any]":
     err_type = entry.get("ErrType", [])
     return {
         "counter": entry.get("ErrCount", 0),
-        "history": [{"num": n, "type": t} for n, t in zip(err_num, err_type)],  # noqa: B905
+        "history": [{"num": n, "type": t} for n, t in zip(err_num, err_type)],  # noqa: B905 - MicroPython zip() rejects strict=, ErrEntry keeps both lists in step
         # No strict= (ruff B905): MicroPython's zip() rejects it (CPython 3.10+-only) - see
         # src/asy_fram_manager.py's identical precedent.
     }

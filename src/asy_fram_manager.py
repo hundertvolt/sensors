@@ -182,7 +182,7 @@ class _AsyBaseFramChunk:
             else:
                 # No strict= (ruff B905): MicroPython's zip() rejects it (CPython 3.10+-only); bs/gs
                 # always span the same chunk_size by construction (see _read_chunk), so no truncation risk.
-                for bsi, gsi in zip(range(bs[0], bs[1]), range(gs[0], gs[1])):  # noqa: B905
+                for bsi, gsi in zip(range(bs[0], bs[1]), range(gs[0], gs[1])):  # noqa: B905 - MicroPython zip() rejects strict=, equal lengths by construction
                     match = match and (mvt[bsi] == mvb[gsi])
 
         uninit, valid_bytes = await self._read_chunk(temp, addr, cb)
