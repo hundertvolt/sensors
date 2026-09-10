@@ -26,6 +26,7 @@ def test_first_ever_uf2_flash_of_a_blank_board() -> None:
         capture_output=True,
         text=True,
         timeout=600,
+        check=False,
     )
     if build.returncode != 0:
         raise AssertionError(f"scripts/build_firmware.py failed (exit {build.returncode}):\n{build.stdout}\n{build.stderr}")
@@ -38,7 +39,7 @@ def test_first_ever_uf2_flash_of_a_blank_board() -> None:
     confirm("Press Enter once you've confirmed the mass-storage device appeared")
 
     print_instruction("Copying the UF2 to the mass-storage device now via picotool.")
-    load = subprocess.run(["sudo", "picotool", "load", "-x", "-v", str(uf2_path)], cwd=REPO_ROOT, capture_output=True, text=True, timeout=120)
+    load = subprocess.run(["sudo", "picotool", "load", "-x", "-v", str(uf2_path)], cwd=REPO_ROOT, capture_output=True, text=True, timeout=120, check=False)
     if load.returncode != 0:
         raise AssertionError(f"picotool load -x -v {uf2_path} failed (exit {load.returncode}):\n{load.stdout}\n{load.stderr}")
     state_expected_outcome("the board reboots on its own into the real firmware and starts running normally (visible in a serial monitor as the usual boot log lines).")

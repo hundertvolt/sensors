@@ -4,9 +4,13 @@ F.3. Flash tier has no network client; the real-HTTP-soak variant is bench/test_
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import pytest
-from harness import Board
 from soak_tiers import SOAK_TIER_SECONDS
+
+if TYPE_CHECKING:
+    from harness import Board
 
 
 @pytest.mark.long_soak

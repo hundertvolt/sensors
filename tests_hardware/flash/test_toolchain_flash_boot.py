@@ -37,6 +37,7 @@ def test_env_tier_flash_recurring_run_is_idempotent(board: Board) -> None:
         capture_output=True,
         text=True,
         timeout=1200,
+        check=False,
     )
     assert proc.returncode == 0, f"env --tier flash re-run failed (exit {proc.returncode}):\nstdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
 
@@ -62,6 +63,7 @@ def test_real_uf2_reflash_and_boot_smoke_test(board: Board, request: pytest.Fixt
         capture_output=True,
         text=True,
         timeout=600,
+        check=False,
     )
     assert build.returncode == 0, f"scripts/build_firmware.py failed (exit {build.returncode}):\n{build.stdout}\n{build.stderr}"
     assert uf2_path.exists(), f"build_firmware.py reported success but {uf2_path} doesn't exist"
@@ -78,6 +80,7 @@ def test_real_uf2_reflash_and_boot_smoke_test(board: Board, request: pytest.Fixt
             capture_output=True,
             text=True,
             timeout=120,
+            check=False,
         )
         if load.returncode == 0:
             break

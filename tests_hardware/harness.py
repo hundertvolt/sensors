@@ -8,11 +8,14 @@ from __future__ import annotations
 import os
 import subprocess
 import time
-from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import serial
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -39,9 +42,9 @@ def _usb_reset_device(device: str) -> bool:
     usb_device_dir = resolved.parent
     usb_id = usb_device_dir.name
     try:
-        subprocess.run(["sudo", "tee", "/sys/bus/usb/drivers/usb/unbind"], input=usb_id, capture_output=True, text=True, timeout=10.0)
+        subprocess.run(["sudo", "tee", "/sys/bus/usb/drivers/usb/unbind"], input=usb_id, capture_output=True, text=True, timeout=10.0, check=False)
         time.sleep(2.0)
-        subprocess.run(["sudo", "tee", "/sys/bus/usb/drivers/usb/bind"], input=usb_id, capture_output=True, text=True, timeout=10.0)
+        subprocess.run(["sudo", "tee", "/sys/bus/usb/drivers/usb/bind"], input=usb_id, capture_output=True, text=True, timeout=10.0, check=False)
         time.sleep(3.0)
     except (subprocess.TimeoutExpired, OSError):
         return False
@@ -117,6 +120,7 @@ class Board:
                     capture_output=True,
                     text=True,
                     timeout=timeout_s or self.default_timeout_s,
+                    check=False,
                 )
             except FileNotFoundError as exc:
                 raise HardwareNotAvailable(f"uv/mpremote not on PATH: {exc}") from exc

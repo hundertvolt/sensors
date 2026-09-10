@@ -7,14 +7,18 @@ from __future__ import annotations
 
 import os
 import time
-from collections.abc import Iterator
+from typing import TYPE_CHECKING
 
 import dns_probe
 import http_client
 import pytest
-from bench_control import BenchBridge
 from error_log_helpers import assert_module_error_log_empty, reset_all_error_logs
 from harness import Board, HardwareTestFailure, wait_until
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
+    from bench_control import BenchBridge
 
 pytestmark = pytest.mark.role_reversal
 

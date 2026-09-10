@@ -4,8 +4,12 @@ isolated-driver plausibility scripts' own datasheet-sourced bounds - loose plaus
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import http_client
-from harness import Board
+
+if TYPE_CHECKING:
+    from harness import Board
 
 CO2_MIN_PPM, CO2_MAX_PPM = 400, 10_000
 HUMIDITY_MIN_RH, HUMIDITY_MAX_RH = 0.0, 100.0

@@ -6,8 +6,8 @@ nothing attached. See tests_hardware/README.md for how a dedicated hardware sess
 from __future__ import annotations
 
 import sys
-from collections.abc import Iterator
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -17,6 +17,9 @@ import http_client
 from bench_control import BenchBridge
 from harness import Board, HardwareTestFailure, wait_until
 from soak_tiers import SOAK_TIER_SECONDS
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:

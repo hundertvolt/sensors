@@ -7,9 +7,11 @@ from __future__ import annotations
 import argparse
 import sys
 import time
-from collections.abc import Callable
 from pathlib import Path
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # tests_hardware/, for `import harness`/`import bench_control`/`import http_client`
 

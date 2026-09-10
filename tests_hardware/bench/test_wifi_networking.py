@@ -4,10 +4,14 @@ Uses passive observation (Board.tail_log()), not exec()/run_isolated() - see run
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import http_client
-from bench_control import BenchBridge
 from error_log_helpers import assert_module_error_log_contains, reset_all_error_logs
 from harness import Board, wait_until
+
+if TYPE_CHECKING:
+    from bench_control import BenchBridge
 
 # ---------------------------------------------------------------------------
 # Item 7 - real STA connect/disconnect against a genuine AP: real SEEKING->ESTABLISHED

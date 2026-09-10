@@ -7,10 +7,10 @@ from __future__ import annotations
 
 import socket
 import time
+from typing import TYPE_CHECKING
 
 import http_client
 import ntp_probe
-from bench_control import BenchBridge
 from error_log_helpers import (
     assert_module_error_log_contains,
     assert_module_error_log_empty,
@@ -19,6 +19,9 @@ from error_log_helpers import (
 )
 from harness import Board, HardwareTestFailure, wait_until
 from rogue_udp_responder import RogueUdpResponder
+
+if TYPE_CHECKING:
+    from bench_control import BenchBridge
 
 # ---------------------------------------------------------------------------
 # WiFi outage/flap while already in a real, established STA connection. Per
