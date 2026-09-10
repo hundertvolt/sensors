@@ -86,10 +86,141 @@ def test_device_name_invalid_rejected(tmp_path: Path, src_dir: Path, bad_name: o
         _build(tmp_path, src_dir, doc)
 
 
-def test_no_bus_table(tmp_path: Path, src_dir: Path):
+def test_empty_bus_table_with_bus_attached_instances_still_fails(tmp_path: Path, src_dir: Path):
+    # Phase 2 (§10.3): [bus.*] being empty/absent is no longer unconditionally rejected - but
+    # base_doc()'s scd30/sgp40/fram instances still reference "i2c0"/"spi0", so this now fails
+    # downstream via the ordinary undeclared-bus check instead of a blanket "no bus table" error.
     doc = base_doc()
     doc["bus"] = {}
-    with pytest.raises(BuildError, match=r"no \[bus\.\*\] table declared"):
+    with pytest.raises(BuildError, match="undeclared bus"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_no_buses_and_no_instances_is_a_valid_minimal_device(tmp_path: Path, src_dir: Path):
+    # §4.3 axis 10 / §7.1 items 1-2, unblocked by Phase 2: a device with zero bus-attached
+    # instances (no sensors, no FRAM at all) is a logically valid, simplest-possible shape.
+    doc = base_doc()
+    doc["bus"] = {}
+    doc["instance"] = []
+    doc["device"]["wiring"] = {}
+    _build(tmp_path, src_dir, doc)  # no raise
+
+
+def test_fram_entirely_absent_with_single_i2c_bus_is_fine(tmp_path: Path, src_dir: Path):
+    # §7.1 items 1-2, deferred from Phase 1 pending this same relaxation: FRAM absent means spi0
+    # (its sole real consumer) is also absent, leaving a single shared I2C bus with no SPI at all.
+    doc = base_doc()
+    doc["instance"] = [i for i in doc["instance"] if i["driver"] != "fram"]
+    for inst in doc["instance"]:
+        inst.get("wiring", {}).pop("fram_target", None)
+    doc["device"]["wiring"].pop("fram_target", None)
+    del doc["bus"]["spi0"]
+    _build(tmp_path, src_dir, doc)  # no raise
+
+
+def test_bus_id_with_unrecognized_kind_prefix_rejected(tmp_path: Path, src_dir: Path):
+    doc = base_doc()
+    doc["bus"]["i2c9"] = doc["bus"].pop("i2c0")
+    doc["instance"][0]["bus"] = "i2c9"
+    doc["instance"][1]["bus"] = "i2c9"
+    with pytest.raises(BuildError, match="not a real Pico W bus"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_bus_id_bare_kind_with_no_port_digit_rejected(tmp_path: Path, src_dir: Path):
+    # §5.1 #7/§7.2(A): "i2c" alone still starts with the recognized "i2c" prefix - the old
+    # startswith()-only check let this through; the fixed real-id table closes it.
+    doc = base_doc()
+    doc["bus"]["i2c"] = doc["bus"].pop("i2c0")
+    doc["instance"][0]["bus"] = "i2c"
+    doc["instance"][1]["bus"] = "i2c"
+    with pytest.raises(BuildError, match="not a real Pico W bus"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_two_i2c_buses_legal_topology(tmp_path: Path, src_dir: Path):
+    # §4.3 axis 10: one pair from the I2C0 set, one from the I2C1 set - the same shape every real
+    # device already uses (e.g. devices/wozi.toml), driven directly at the validate level here.
+    doc = base_doc()
+    doc["bus"]["i2c1"] = {"scl_pin": 19, "sda_pin": 18, "frequency": 50000}
+    doc["instance"][1]["bus"] = "i2c1"  # sgp40 moves off the shared i2c0 bus
+    _build(tmp_path, src_dir, doc)  # no raise
+
+
+def test_spi1_is_a_legal_peripheral_index(tmp_path: Path, src_dir: Path):
+    # spi1 is logically legal but unexercised by any real devices/*.toml today (§4.3 axis 10) -
+    # `fram` (the sole real SPI-attached driver, per asy_spi_driver.py's own docstring) is a forced
+    # singleton, so there's no way to have two SPI buses simultaneously *used* by real drivers; this
+    # instead proves spi1 itself resolves correctly by moving the one fram instance onto it.
+    doc = base_doc()
+    doc["instance"][0]["irq_pin"] = 21  # free up GP8 (block8-11's MISO pin) from scd30's default
+    del doc["bus"]["spi0"]
+    doc["bus"]["spi1"] = {"sck_pin": 10, "mosi_pin": 11, "miso_pin": 8}  # real spi1-block pins
+    doc["instance"][2]["bus"] = "spi1"  # fram
+    _build(tmp_path, src_dir, doc)  # no raise
+
+
+def test_i2c_pin_belonging_to_the_other_i2c_index_rejected(tmp_path: Path, src_dir: Path):
+    # GP2/GP3 are a real, legal I2C pair - just I2C1's, not I2C0's. Silicon-illegal for bus.i2c0.
+    doc = base_doc()
+    doc["bus"]["i2c0"]["scl_pin"] = 3
+    doc["bus"]["i2c0"]["sda_pin"] = 2
+    with pytest.raises(BuildError, match="is wired to i2c1, not i2c0"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_i2c_pin_role_transposed_rejected(tmp_path: Path, src_dir: Path):
+    # §6.4: both pins are real, legal GP12/13 for i2c0 - just swapped (scl<->sda).
+    doc = base_doc()
+    doc["bus"]["i2c0"]["scl_pin"] = 12
+    doc["bus"]["i2c0"]["sda_pin"] = 13
+    with pytest.raises(BuildError, match="pins transposed"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_spi_pin_role_transposed_rejected(tmp_path: Path, src_dir: Path):
+    doc = base_doc()
+    doc["bus"]["spi0"]["sck_pin"] = 3  # real SPI0 pin, but MOSI's, not SCK's
+    doc["bus"]["spi0"]["mosi_pin"] = 2  # SCK's
+    with pytest.raises(BuildError, match="pins transposed"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_gpio_with_no_i2c_function_rejected(tmp_path: Path, src_dir: Path):
+    # GP22 is a real, usable GPIO (not wireless-reserved) that simply has no I2C function.
+    doc = base_doc()
+    doc["bus"]["i2c0"]["scl_pin"] = 22
+    with pytest.raises(BuildError, match="has no I2C function"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_gpio_with_no_spi_function_rejected(tmp_path: Path, src_dir: Path):
+    doc = base_doc()
+    doc["bus"]["spi0"]["sck_pin"] = 28  # ADC2-only, no SPI function
+    with pytest.raises(BuildError, match="has no SPI function"):
+        _build(tmp_path, src_dir, doc)
+
+
+@pytest.mark.parametrize("field,value", [("irq_pin", 24), ("pin", 25), ("cs_pin", 23)])
+def test_wireless_reserved_gpio_rejected_on_any_pin_field(tmp_path: Path, src_dir: Path, field: str, value: int):
+    # GP23/24/25/29 - the scope note in §4.3: applies to every claimed pin device-wide, not just
+    # bus wire pins (irq_pin/pin/cs_pin here have no peripheral role to check, only existence).
+    doc = base_doc()
+    if field == "irq_pin":
+        doc["instance"][0][field] = value  # scd30
+    elif field == "pin":
+        doc["instance"][3][field] = value  # neopixel
+    else:
+        doc["instance"][2][field] = value  # fram
+    with pytest.raises(BuildError, match="not a usable Pico W GPIO"):
+        _build(tmp_path, src_dir, doc)
+
+
+@pytest.mark.parametrize("value", [30, -1])
+def test_nonexistent_gpio_number_rejected(tmp_path: Path, src_dir: Path, value: int):
+    doc = base_doc()
+    doc["instance"][3]["pin"] = value  # neopixel
+    with pytest.raises(BuildError, match="not a usable Pico W GPIO"):
         _build(tmp_path, src_dir, doc)
 
 
@@ -379,8 +510,11 @@ def test_global_gpio_pin_collision_bus_vs_bus(tmp_path: Path, src_dir: Path):
     # bus-vs-bus collision (no instance involved) should already raise - only bus-vs-instance and
     # instance-vs-instance had a test until now. Both buses stay used by their real instances, so
     # this isolates the pin-collision path from the separate "declared but never used" check.
+    # GP4 is individually legal for both roles claimed here (i2c0's SDA *and* spi0's MISO, per the
+    # real Figure 2 table) - picked deliberately so Phase 2's pin-role check doesn't fire first and
+    # mask the plain double-claim this test means to isolate.
     doc = base_doc()
-    doc["bus"]["i2c0"]["scl_pin"] = doc["bus"]["spi0"]["sck_pin"]
+    doc["bus"]["i2c0"]["sda_pin"] = doc["bus"]["spi0"]["miso_pin"]
     with pytest.raises(BuildError, match="claimed twice"):
         _build(tmp_path, src_dir, doc)
 
@@ -395,7 +529,7 @@ def test_per_bus_explicit_address_collision(tmp_path: Path, src_dir: Path):
 
 def test_per_bus_address_reuse_on_different_bus_is_legitimate(tmp_path: Path, src_dir: Path):
     doc = base_doc()
-    doc["bus"]["i2c1"] = {"scl_pin": 26, "sda_pin": 27, "frequency": 50000}
+    doc["bus"]["i2c1"] = {"scl_pin": 27, "sda_pin": 26, "frequency": 50000}  # real i2c1 SDA/SCL pair (Phase 2)
     doc["instance"].append({"driver": "bmp3xx", "name_ext": "a", "bus": "i2c0", "address": 0x77})
     doc["instance"].append({"driver": "bmp3xx", "name_ext": "b", "bus": "i2c1", "address": 0x77})
     _build(tmp_path, src_dir, doc)  # no raise - different buses, same address value is fine

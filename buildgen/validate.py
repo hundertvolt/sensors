@@ -16,12 +16,25 @@ from buildgen.buildspec import ADDRESS_CAPABLE_DRIVERS, ALLOWED_INSTANCE_FIELDS,
 from buildgen.driver_registry import SERVICE_DRIVERS, parse_name_constant, resolve_driver
 from buildgen.errors import BuildError
 from buildgen.model import DeviceModel, InstanceSpec, instance_label, load_device, resolve_instance_key
+from buildgen.pico_gpio import I2C_ROLE, SPI_ROLE, gpio_exists
 from buildgen.requires_tag import check_requires_tags, parse_requires_tags
 from buildgen.wiring import WiringField, parse_wiring
 
 _BUS_WIRE_FIELDS = {
     "i2c": ("scl_pin", "sda_pin"),
     "spi": ("sck_pin", "mosi_pin", "miso_pin"),
+}
+# Real RP2040 bus identities - Pico W exposes exactly two I2C and two SPI peripheral indices, never
+# an arbitrary digit (closes the "i2c2"/bare-"i2c" gap - _bus_kind() used to only check the prefix).
+_VALID_BUS_IDS = {"i2c0": "i2c", "i2c1": "i2c", "spi0": "spi", "spi1": "spi"}
+# bus-table field name -> (role table, the role that field must resolve to). Both fields of a kind
+# always appear together in _BUS_WIRE_FIELDS/_BUS_ALLOWED_FIELDS, so a bus table never mixes kinds.
+_BUS_PIN_ROLE: "dict[str, tuple[dict[int, tuple[str, str]], str]]" = {
+    "scl_pin": (I2C_ROLE, "scl"),
+    "sda_pin": (I2C_ROLE, "sda"),
+    "sck_pin": (SPI_ROLE, "sck"),
+    "mosi_pin": (SPI_ROLE, "mosi"),
+    "miso_pin": (SPI_ROLE, "miso"),
 }
 # Every field a bus table of this kind may declare, in total - its own required wire pins plus
 # "frequency" (both i2c/asy_i2c_driver.I2C's own required param, checked separately above for a
@@ -44,10 +57,10 @@ _DEVICE_WIRING_CONSUMERS = {"led_target": ("asy_wifi_service.py", "AsyConnTime",
 
 
 def _bus_kind(bus_name: str, device: str) -> str:
-    for kind in _BUS_WIRE_FIELDS:
-        if bus_name.startswith(kind):
-            return kind
-    raise BuildError(device, f"bus id {bus_name!r} doesn't start with a recognized kind (i2c/spi)", field=bus_name)
+    kind = _VALID_BUS_IDS.get(bus_name)
+    if kind is None:
+        raise BuildError(device, f"bus id {bus_name!r} is not a real Pico W bus - valid ids are {sorted(_VALID_BUS_IDS)}", field=bus_name)
+    return kind
 
 
 def _check_device_table(model: DeviceModel) -> None:
@@ -84,9 +97,13 @@ def _check_device_table(model: DeviceModel) -> None:
 
 
 def _check_bus_tables(model: DeviceModel) -> "dict[str, dict]":
-    buses = model.doc.get("bus")
-    if not isinstance(buses, dict) or not buses:
-        raise BuildError(model.device, "no [bus.*] table declared")
+    # A device with zero bus-attached instances (no sensors, no FRAM) is a logically valid,
+    # simplest-possible shape - [bus.*] is allowed to be absent/empty entirely. If any instance
+    # *does* need a bus, _check_required_fields()'s "references undeclared bus" check catches that
+    # downstream; this function only validates the shape of whatever bus tables are actually there.
+    buses = model.doc.get("bus", {})
+    if not isinstance(buses, dict):
+        raise BuildError(model.device, f"[bus] must be a table of bus tables, got {buses!r}")
     for bus_name, bus_table in buses.items():
         if not isinstance(bus_table, dict):
             raise BuildError(model.device, f"bus.{bus_name} is not a table", field=bus_name)
@@ -189,6 +206,15 @@ def _check_gpio_collisions(model: DeviceModel, buses: "dict[str, dict]") -> None
             return
         if not (isinstance(pin, int) and not isinstance(pin, bool)):
             raise BuildError(model.device, f"{owner}.{field} value {pin!r} is not an int", instance=owner, field=field)
+        # Applies to every claimed pin device-wide (bus wire pins and instance-exclusive
+        # cs_pin/irq_pin/pin alike) - real GPIO number, not one of the wireless-reserved four.
+        if not gpio_exists(pin):
+            raise BuildError(
+                model.device,
+                f"{owner}.{field}=GP{pin} is not a usable Pico W GPIO - must be 0-29, excluding the wireless-reserved GP23/24/25/29",
+                instance=owner,
+                field=field,
+            )
         existing = claims.get(pin)
         if existing is not None:
             raise BuildError(model.device, f"GPIO{pin} claimed twice - by {existing!r} and by {owner!r} ({field})", instance=owner, field=field)
@@ -196,8 +222,29 @@ def _check_gpio_collisions(model: DeviceModel, buses: "dict[str, dict]") -> None
 
     for bus_name, bus_table in buses.items():
         for f in ("scl_pin", "sda_pin", "sck_pin", "mosi_pin", "miso_pin"):
-            if f in bus_table:
-                claim(bus_table[f], f"bus.{bus_name}", f)
+            if f not in bus_table:
+                continue
+            pin = bus_table[f]
+            claim(pin, f"bus.{bus_name}", f)
+            # Bus-pin-only: this specific GPIO must be hardwired to *this* bus's own peripheral
+            # index, in the *role* this field claims (SDA vs SCL, MISO vs SCK vs MOSI) - not just
+            # any legal, unclaimed GPIO. cs_pin/irq_pin/neopixel's "pin" have no peripheral role to
+            # check (see the claim() call below), so this half only runs for bus wire pins.
+            role_table, expected_role = _BUS_PIN_ROLE[f]
+            info = role_table.get(pin)
+            if info is None:
+                kind = "I2C" if role_table is I2C_ROLE else "SPI"
+                raise BuildError(model.device, f"bus.{bus_name}.{f}=GP{pin} has no {kind} function on the Pico W", instance=f"bus.{bus_name}", field=f)
+            actual_bus, actual_role = info
+            if actual_bus != bus_name:
+                raise BuildError(model.device, f"bus.{bus_name}.{f}=GP{pin} is wired to {actual_bus}, not {bus_name}", instance=f"bus.{bus_name}", field=f)
+            if actual_role != expected_role:
+                raise BuildError(
+                    model.device,
+                    f"bus.{bus_name}.{f}=GP{pin} is {bus_name}'s {actual_role.upper()} pin, not its {expected_role.upper()} pin - pins transposed?",
+                    instance=f"bus.{bus_name}",
+                    field=f,
+                )
     for spec in model.instances.values():
         for f in ("cs_pin", "irq_pin", "pin"):
             if f in spec.fields:

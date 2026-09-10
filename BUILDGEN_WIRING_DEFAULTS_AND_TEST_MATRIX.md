@@ -1,11 +1,11 @@
 # Buildgen wiring defaults & clean-build test matrix
 
 **Status: design discussion with the project owner, 2026-09-10. Implementation go-ahead given
-2026-09-10; §10's Phase 1 (test-only, zero production-code changes) is now complete** — see the
-status note at the top of §10.2 for exactly what landed. Every other phase (§10.3-§10.7) and all of
-`src/` remain unchanged as of this note. This document exists purely to capture what was agreed
-before code is written, so none of it gets lost. Every "shall"/"will" below is a decided design
-intent except where §10's own phase notes say otherwise.
+2026-09-10; §10's Phase 1 and Phase 2 are now complete** — see the status notes at the top of
+§10.2/§10.3 for exactly what landed in each. Every other phase (§10.4-§10.7) and all of `src/`
+remain unchanged as of this note. This document exists purely to capture what was agreed before
+code is written, so none of it gets lost. Every "shall"/"will" below is a decided design intent
+except where §10's own phase notes say otherwise.
 
 ## 1. Background
 
@@ -1187,6 +1187,36 @@ phase benefits from. Do this first.
   catalog can't produce two `cs_pin`-bearing instances).
 
 ### 10.3 Phase 2 — Pin legality, pin role, and "no buses at all" (buildgen only, no `src/` changes)
+
+**Status: complete (2026-09-10).** New module `buildgen/pico_gpio.py` (the fixed Pico W GPIO
+table: `I2C_ROLE`/`SPI_ROLE` per-pin peripheral-index-and-role maps, `WIRELESS_RESERVED_GPIOS`,
+`gpio_exists()`), wired into `buildgen/validate.py`: `_bus_kind()` now checks against a real,
+closed `_VALID_BUS_IDS` set instead of a prefix `startswith()` (closes the `"i2c2"`/bare-`"i2c"`
+gap); `_check_bus_tables()` no longer unconditionally requires `[bus.*]` — an absent/empty bus
+table is legal as long as nothing references one (enforced downstream by the existing
+undeclared-bus check, unchanged); `_check_gpio_collisions()` extended so every claimed pin
+(bus wire pins and instance-exclusive `cs_pin`/`irq_pin`/`pin` alike) is checked for real
+existence/non-reserved status, and a bus's own wire pins are additionally checked against their
+required peripheral index and role (SDA vs SCL, MISO vs SCK vs MOSI — closes §6.4's role-swap
+gap in the same pass). All three changes verified against every real `devices/*.toml` (all six
+pass unchanged — the fixed table was checked against their real pin values *before* writing the
+check, not after) and confirmed via `scripts/lint.sh`/`scripts/typecheck.sh` (clean, including
+`buildgen/typecheck.ini`'s dedicated pass) and `uv run pytest tests_scripts` (404 passed, 2
+skipped). **One pre-existing latent bug this phase's own check surfaced and fixed**: the mandatory
+synthetic `novel_combo.toml` fixture's `[bus.spi0]` declared `sck_pin=10, mosi_pin=11, miso_pin=12`
+— all three real SPI1-block pins, mislabeled as `spi0`, silently wrong ever since Session 3 because
+no check existed to catch it. Fixed to a genuinely SPI0-legal, still-novel combination
+(`sck_pin=18, mosi_pin=19, miso_pin=4`, mixing two different real SPI0 blocks in a way no real
+device does). **One pre-existing test fixture bug also fixed for the same reason**:
+`test_per_bus_address_reuse_on_different_bus_is_legitimate`'s synthetic `i2c1` table had
+`scl_pin`/`sda_pin` transposed relative to the real hardware pairing every actual device already
+uses correctly — cosmetically harmless before this phase (nothing checked it), a real failure
+after. New tests added to `tests_scripts/test_buildgen_validate.py`: the no-buses/no-instances
+positive case, the two FRAM-absent/single-I2C cases deferred from Phase 1, bus-id-rejection cases
+(unrecognized prefix, bare kind with no port digit), two-I2C/legal-SPI1 topology positive cases,
+wrong-peripheral-index rejection (I2C0 pins used on an `i2c1`-declared bus and vice versa),
+role-transposition rejection (I2C and SPI), no-bus-function rejection (GP22/GP28), wireless-reserved
+rejection on every pin-field kind (not just bus pins), and out-of-range GPIO number rejection.
 
 Fully specified already (§4.3 axis 10, corrected/completed during the 2026-09-10 bird's-eye pass) —
 no `[DECIDE]` blocker, so this can run right after Phase 1. One mechanism, several call sites:
