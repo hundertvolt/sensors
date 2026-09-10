@@ -576,7 +576,7 @@ def test_garbage_ssid_via_rest_config_is_handled_gracefully(board: Board, bench:
     # regardless of real DUT health (see tests_hardware/README.md for the full account, including
     # the other, real mechanisms this was originally misattributed to).
     def _reconnected_over_bridge() -> bool:
-        return http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).json()["networking"].get("Mode") == "STA"
+        return bool(http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).json()["networking"].get("Mode") == "STA")
 
     try:
         wait_until(_reconnected_over_bridge, timeout_s=60.0, poll_interval_s=3.0, description=f"Mode to return to 'STA' after restoring the real SSID ({original_ssid!r})")

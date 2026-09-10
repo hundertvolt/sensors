@@ -48,7 +48,7 @@ def hotspot_ssid(board: Board, dut_ip: str) -> str:
     a fully deterministic SSID derivation, with no scan/discovery needed."""
     res = http_client.fetch(dut_ip, 80, "GET", "/networking")
     assert res.status_code == 200, f"GET /networking failed before starting the scenario: {res.status_code}"
-    hostname = res.json().get("Hostname")
+    hostname: str | None = res.json().get("Hostname")
     assert hostname, f"GET /networking returned no Hostname to derive the hotspot SSID from: {res.json()!r}"
     return hostname
 

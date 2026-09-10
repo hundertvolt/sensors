@@ -27,6 +27,12 @@ dev = [
     "ruff==0.15.21",
     "pytest",
     "mpremote",
+    # Stub-only package: tests_hardware/harness.py talks to the real board over pyserial (pulled in
+    # by mpremote above), and host_typecheck.ini's pass has no stubs for it otherwise. Unpinned
+    # deliberately - a stub package carries no runtime behaviour, and typeshed stub releases track
+    # the library rather than ruff/mypy's own rule sets, so a bump cannot fail CI on a rule nobody
+    # chose (the reason every tool above IS pinned).
+    "types-pyserial",
     # shellcheck and actionlint ship their real binaries inside these pip wrappers, so they install
     # automatically with every `uv sync` - which is what `toolchain/setup_toolchain.py env --tier
     # {generic,flash,bench}` already runs for every tier. Nothing extra to install by hand, and both

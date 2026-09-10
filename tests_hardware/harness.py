@@ -237,4 +237,3 @@ class Board:
                 time.sleep(0.5)
             else:
                 return lines
-        return lines

@@ -227,14 +227,30 @@ constraints.
   wrong directory (in the build scripts that means writing output somewhere unintended); **SC2103
   x5** - `cd ..` back instead of a subshell. All mechanical, none urgent, all real. Fold in
   whenever the legacy build path is next touched.
-- **`tests_hardware/` has 32 ruff findings, 8 of them `B023` (function-uses-loop-variable).**
-  `B023` is in the enabled rule set everywhere else, so this is a real bug class sitting in an
-  unlinted scope - closures in
-  `tests_hardware/device_scripts/bus_topology_autodetect_and_hazard_sweep.py` capture the loop
-  variables `scd`/`bmp`/`sgp`/`read_once`/`self_errors`/`port_id` by reference. Benign only if
-  every closure is consumed within its own iteration, which was not verified. The rest are 23 x
-  `UP032` (f-string) and 1 x `I001`. Extending lint scope to `tests_hardware/` is a separate
-  decision, same shape as the `python/`/`modules/` one.
+- **`tests_hardware/device_scripts/` has no type-checked home yet, and giving it one surfaces a
+  real latent bug.** The rest of `tests_hardware/` is now fully clean under both `ruff check
+  tests_hardware` and `mypy --config-file host_typecheck.ini tests_hardware` (the `B023` closure
+  capture flagged here previously is fixed: every closure in
+  `bus_topology_autodetect_and_hazard_sweep.py` binds its loop values as default arguments). But
+  `device_scripts/` is MicroPython firmware-target code - uploaded by `mpremote run`, executed by
+  the board - so the host pass's real typeshed can only ever report `machine`/`time.ticks_ms()`/
+  `import asy_i2c_driver` as unresolvable; it is excluded there with that reasoning recorded in
+  `host_typecheck.ini`. Checked against the MicroPython pass instead (`mypy src tests boot_entry
+  tests_hardware/device_scripts`, i.e. `typings` + `src` on `mypy_path`) the count drops from ~140
+  noise reports to **16 concrete findings**, which is what makes this worth doing properly:
+  - **A real, guaranteed `TypeError` on real hardware**: `fram_write_protect_roundtrip.py` calls
+    `fram.fram.set_write_protected(False)` positionally at four sites, but
+    `src/asy_fram_driver.py`'s `set_write_protected(self, *, value: bool)` has been keyword-only
+    since the `FBT001` pass. The script cannot run at all as written. Fixing it is a behaviour
+    change (a test that currently raises would start actually exercising the chip), so it is left
+    for a session that can run the flash tier against the real bench.
+  - The other 12: two MicroPython-stub gaps (`asyncio.Task.exception()` is undeclared;
+    `time.ticks_ms()`'s `_TicksMs` is not orderable), three now-unused `# type: ignore` comments,
+    and a handful of config-read locals mypy widens to `str | int | None` that need an explicit
+    local annotation.
+  Doing the move means adding `tests_hardware/device_scripts` to `pyproject.toml`'s `[tool.mypy]`
+  `files` **and** to the `scripts/typecheck.sh src tests boot_entry` argument list in
+  `.github/workflows/ci.yml` - otherwise the main pass checks it locally but never in CI.
 - **Additional checker candidates, measured and mostly declined.** Evaluated against the real tree
   rather than by reputation, when shellcheck/actionlint/zizmor were added:
   - **`zizmor`** (GitHub Actions security) - **adopted.** All 50 findings fixed, not suppressed:

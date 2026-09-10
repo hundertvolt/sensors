@@ -144,7 +144,7 @@ class BenchBridge:
         returning `src_port` - or None if nothing matched within `timeout_s` (bounded either way
         by the process's own `-c 1`/`timeout 60`)."""
         try:
-            line = proc.stdout.readline() if proc.stdout is not None else ""  # type: ignore[union-attr]
+            line = proc.stdout.readline() if proc.stdout is not None else ""
         finally:
             proc.wait(timeout=max(timeout_s, 5.0))
         # e.g. "14:35:23.753510 IP 192.168.85.57.55718 > 162.159.200.123.123: NTPv3, ..." - the
