@@ -3,6 +3,7 @@ voc_algorithm.py end to end. Checks VOC in [0,500]/Raw in [0,65535] post-blackou
 stability (not stuck, no implausible single-step jump) - a sanity check, not an accuracy claim."""
 
 import asyncio
+from collections import namedtuple
 
 import machine
 
@@ -17,9 +18,19 @@ SAMPLE_INTERVAL_S = 2.0
 MAX_SINGLE_STEP_JUMP = 300  # generous relative to the algorithm's own adaptive-lowpass smoothing
 _WDT_FEED_INTERVAL_S = 2.0  # comfortably under the 8.388s hardware ceiling
 
+_FixedValue = namedtuple("_FixedValue", ("value",))
 
-async def _fixed_comp() -> list[float | None]:
-    return [25.0, 50.0]  # datasheet Table 10 compensation defaults - fixed, not sensor-derived
+
+class _FixedSource:
+    """Local temperature_source/humidity_source stand-in (BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md
+    §2.9): a fixed, not sensor-derived, datasheet Table 10 compensation default - same get_data() ->
+    object-with-.value contract asy_sgp40_driver.py's own _Default* providers use."""
+
+    def __init__(self, value: float) -> None:
+        self._data = _FixedValue(value)
+
+    async def get_data(self) -> "_FixedValue":
+        return self._data
 
 
 async def _sleep_feeding_wdt(duration_s: float, wdt: machine.WDT) -> None:
@@ -33,7 +44,17 @@ async def _sleep_feeding_wdt(duration_s: float, wdt: machine.WDT) -> None:
 async def _main() -> None:
     wdt = machine.WDT(timeout=8000)  # matches src/system_service.py's own production value
     i2c1 = asy_i2c_driver.I2C(1, 15, 14, frequency=50000)
-    reader = SGP40_Reader(i2c1, _fixed_comp, max_module_error=999, fram_storage=None, fram_ntp_callback=None, debug=None)
+    reader = SGP40_Reader(
+        i2c1,
+        _FixedSource(25.0),
+        "value",
+        _FixedSource(50.0),
+        "value",
+        max_module_error=999,
+        fram_storage=None,
+        fram_ntp_callback=None,
+        debug=None,
+    )
     reader.start_timer()  # 1s fixed period - the algorithm's own sampling interval assumption
     read_task = reader.start_asy_read()
 

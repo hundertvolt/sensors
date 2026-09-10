@@ -3,6 +3,7 @@ real chip. reader1 runs until its backup schedule fires; a second reader simulat
 the same FRAM address and must restore it. See tests_hardware/README.md's cfgmgr-priming note."""
 
 import asyncio
+from collections import namedtuple
 
 import machine
 
@@ -15,9 +16,19 @@ BACKUP_WAIT_S = 75.0  # 60s to the first natural BackupPeriod=1min trigger, plus
 RESTORE_WAIT_S = 10.0
 _WDT_FEED_INTERVAL_S = 2.0  # comfortably under the 8.388s hardware ceiling
 
+_FixedValue = namedtuple("_FixedValue", ("value",))
 
-async def _fixed_comp() -> list[float | None]:
-    return [25.0, 50.0]  # datasheet Table 10 compensation defaults
+
+class _FixedSource:
+    """Local temperature_source/humidity_source stand-in (BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md
+    §2.9): a fixed, not sensor-derived, datasheet Table 10 compensation default - same get_data() ->
+    object-with-.value contract asy_sgp40_driver.py's own _Default* providers use."""
+
+    def __init__(self, value: float) -> None:
+        self._data = _FixedValue(value)
+
+    async def get_data(self) -> "_FixedValue":
+        return self._data
 
 
 async def _always_synced() -> bool:
@@ -48,7 +59,17 @@ async def _main() -> None:
         print("RESULT: FAIL fram_a.setup() failed - real FRAM chip not responding on spi0/cs5")
         return
 
-    reader1 = SGP40_Reader(i2c1, _fixed_comp, max_module_error=999, fram_storage=fram_a, fram_ntp_callback=_always_synced, debug=None)
+    reader1 = SGP40_Reader(
+        i2c1,
+        _FixedSource(25.0),
+        "value",
+        _FixedSource(50.0),
+        "value",
+        max_module_error=999,
+        fram_storage=fram_a,
+        fram_ntp_callback=_always_synced,
+        debug=None,
+    )
     if reader1.ts_storage is None:
         print("RESULT: FAIL reader1.ts_storage allocation failed - no FRAM chunk to back up into")
         return
@@ -74,7 +95,17 @@ async def _main() -> None:
         print("RESULT: FAIL fram_b.setup() failed - real FRAM chip not responding on second probe")
         return
 
-    reader2 = SGP40_Reader(i2c1, _fixed_comp, max_module_error=999, fram_storage=fram_b, fram_ntp_callback=_always_synced, debug=None)
+    reader2 = SGP40_Reader(
+        i2c1,
+        _FixedSource(25.0),
+        "value",
+        _FixedSource(50.0),
+        "value",
+        max_module_error=999,
+        fram_storage=fram_b,
+        fram_ntp_callback=_always_synced,
+        debug=None,
+    )
     if reader2.ts_storage is None:
         print("RESULT: FAIL reader2.ts_storage allocation failed - no FRAM chunk to restore from")
         return
