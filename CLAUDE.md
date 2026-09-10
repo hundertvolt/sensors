@@ -524,7 +524,7 @@ else
     echo 'export LANG=C.UTF-8 LC_ALL=C.UTF-8 DEBIAN_FRONTEND=noninteractive' > "$CHROOT/root/proxy-env.sh"
 fi
 
-chroot "$CHROOT" /bin/bash -c "source /root/proxy-env.sh && apt-get update && apt-get install -y --no-install-recommends git curl ca-certificates python3 python3-venv python3-pip sudo"
+chroot "$CHROOT" /bin/bash -c "source /root/proxy-env.sh && apt-get update && apt-get install -y --no-install-recommends git curl ca-certificates python3 python3-venv python3-pip sudo libcap2-bin"
 chroot "$CHROOT" /bin/bash -c "source /root/proxy-env.sh && pip install --break-system-packages uv"
 # sudo is not part of debootstrap --variant=minbase, but toolchain/setup_toolchain.py's
 # ensure_apt_packages() unconditionally shells out to it (see toolchain/versions.toml's
@@ -533,6 +533,10 @@ chroot "$CHROOT" /bin/bash -c "source /root/proxy-env.sh && pip install --break-
 # sudo rights but isn't already root) never hits this. A plain chroot session runs as root, where
 # apt-get wouldn't need sudo at all, but the script always prepends it regardless - so installing
 # the package is the correct fix here, not stripping sudo from the script for a root-only case.
+# libcap2-bin is missing for the same reason (not in --variant=minbase): scripts/test.sh grants
+# CAP_NET_BIND_SERVICE to the built Unix-port binary so the real port-53 DNS-server test can bind,
+# and without it the run dies with "setcap: command not found" AFTER the whole toolchain build,
+# minutes in. Confirmed directly, 2026-09-10.
 
 # Per-verification: copy the CURRENT working tree (uncommitted changes included - this is a
 # pre-push gate, not a post-push audit) into the chroot, then run the exact documented workflow

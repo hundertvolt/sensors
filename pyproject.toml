@@ -378,6 +378,19 @@ max-returns = 12
 "src/asy_webserver_service.py" = ["SLF001", "S101", "ANN401"]  # ANN401: the asyncio.start_server() seam described above
 "src/sensortask_wozi.py" = ["S101"]
 "src/sensortask_dev.py" = ["S101"]
+# build_firmware.py's single subprocess call is the repo's OWN scripts/build_website.sh, addressed
+# by an absolute path built from REPO_ROOT, with shell=False and check=True - a build driver
+# invoking the sibling build step it exists to orchestrate. S603 fires on every subprocess call
+# whose argv is not a bare literal, so there is no code shape that satisfies it here; the rule stays
+# live everywhere else, where a genuinely externally-supplied argv could appear.
+"scripts/build_firmware.py" = ["S603"]
+# _digital_twin_ci_suite.py spawns the Unix-port interpreter on the repo's own
+# digital_twin/run_wozi_integration.py, with shell=False and an argv built from the resolved
+# interpreter path, repo-relative script path, this suite's own HOST/PORT constants and its own
+# literal --fault/--wifi-outcome flags. Same shape and same reasoning as build_firmware.py above;
+# it previously carried an inline `# noqa: S603`, migrated here so every exemption in this repo
+# lives in one place with a stated reason, per this block's own header.
+"scripts/_digital_twin_ci_suite.py" = ["S603"]
 # toolchain/setup_toolchain.py IS a subprocess driver: its whole job is shelling out to git, apt,
 # make and nmcli to build the firmware toolchain, so S603 fires on the single subprocess.run() every
 # one of those calls funnels through. The rule has no satisfiable form here - the argument list is a
