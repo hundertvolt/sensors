@@ -20,16 +20,9 @@ from pathlib import Path
 
 import pytest
 
+import buildgen.tag_comments as tag_comments
 from buildgen.errors import BuildError
-from buildgen.tag_comments import (
-    CommentToken,
-    _levenshtein,
-    check_for_near_miss_tags,
-    find_leading_word,
-    find_tag_word,
-    iter_comment_tokens,
-    looks_like_tag_payload,
-)
+from buildgen.tag_comments import CommentToken, _levenshtein, check_for_near_miss_tags, find_leading_word, iter_comment_tokens, looks_like_tag_payload
 
 
 def _tok(text: str, lineno: int = 1, col: int = 0, indented: bool = False) -> CommentToken:
@@ -135,12 +128,24 @@ def test_iter_comment_tokens_honors_a_pep263_coding_cookie(tmp_path: Path):
 
 
 def test_iter_comment_tokens_undecodable_source_fails_loud_not_a_raw_traceback(tmp_path: Path):
-    # Non-UTF-8 bytes with no cookie declaring them: an abort either way, but it must surface as a
-    # BuildError like every other one, not a raw UnicodeDecodeError traceback out of the generator.
+    # Non-UTF-8 bytes with no cookie declaring them - Python's own tokenizer calls this a missing
+    # encoding declaration. An abort either way, but it must surface as a BuildError like every
+    # other one, not a raw decoding traceback out of the middle of the generator.
     path = tmp_path / "asy_x_driver.py"
     path.write_bytes(b"# caf\xe9\nx = 1\n")
-    with pytest.raises(BuildError, match="unreadable text encoding"):
+    with pytest.raises(BuildError, match="encoding declaration"):
         iter_comment_tokens(path, "dev", "x")
+
+
+def test_iter_comment_tokens_line_break_lookalike_does_not_shift_later_lines(tmp_path: Path):
+    # Regression guard: str.splitlines() also breaks on \x0b/\x0c/\u2028/\u2029/\x85, which
+    # Python's tokenizer treats as ordinary characters. Deriving each comment's physical line by
+    # indexing a splitlines() list therefore shifted every line after one of those characters,
+    # reporting an unindented module-level tag as indented - a valid driver rejected outright.
+    path = tmp_path / "asy_x_driver.py"
+    path.write_bytes(b"X = 'a\x0bb'\ndef f():\n    pass\n# @requires bus.timeout>=200000\n")
+    (tok,) = iter_comment_tokens(path, "dev", "x")
+    assert (tok.lineno, tok.line_indented) == (4, False)
 
 
 @pytest.mark.parametrize("source", ["x = ('unterminated\n", "x = (1,\n"])
@@ -178,23 +183,6 @@ def test_iter_comment_tokens_syntax_error_raises_build_error_not_raw_traceback(t
 )
 def test_find_leading_word(text: str, expected: "tuple[str | None, bool]"):
     assert find_leading_word(text) == expected
-
-
-@pytest.mark.parametrize(
-    "text,expected",
-    [
-        ("# @requires bus.timeout>=200000", "requires"),
-        ("# @Requires bus.timeout>=200000", "Requires"),
-        ("# @requires: bus.timeout>=200000", "requires"),
-        ("# just a note", None),
-        ("# see the @requires tag above", None),  # doesn't *open* with @ - mid-sentence mention
-        ("# requires bus.timeout>=200000", None),  # no sigil - find_tag_word is the @-only view
-        ("#", None),
-        ("# @", None),
-    ],
-)
-def test_find_tag_word(text: str, expected: "str | None"):
-    assert find_tag_word(text) == expected
 
 
 @pytest.mark.parametrize(
@@ -329,3 +317,13 @@ def test_check_for_near_miss_tags_still_flags_a_second_bad_tag_beside_a_good_one
 
 def test_check_for_near_miss_tags_empty_token_list():
     _check([])  # no raise
+
+
+def test_check_for_near_miss_tags_typo_tolerance_narrows_for_a_short_tag_name(monkeypatch: pytest.MonkeyPatch):
+    # Two edits away from a 3-letter name is most of the dictionary, so a short tag name (the
+    # planned "@web") tolerates only one - otherwise adding it to the registry would start failing
+    # builds over unrelated @-words. "wet" is one edit from "web"; "wed"/"we" would be too.
+    monkeypatch.setattr(tag_comments, "KNOWN_TAG_NAMES", ("web",))
+    with pytest.raises(BuildError, match="misspelled @web tag"):
+        _check([_tok("# @wet name=x")])
+    _check([_tok("# @net name=x")])  # two edits away - no raise

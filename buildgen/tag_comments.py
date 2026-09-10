@@ -22,8 +22,10 @@ from buildgen.errors import BuildError
 KNOWN_TAG_NAMES = ("requires",)
 
 # Generous enough to catch one missing/extra/swapped letter (e.g. "require", "requries",
-# "reqiures"), not so wide it starts matching unrelated short @-words by coincidence.
-_MAX_TYPO_DISTANCE = 2
+# "reqiures"), scaled down for a short tag name: two edits away from a 3-4 letter name (the planned
+# "@web") is most of the dictionary, so a short name only tolerates one.
+def _max_typo_distance(tag_name: str) -> int:
+    return 1 if len(tag_name) <= 4 else 2
 
 # The rough shape every real tag's payload has, in two alternative forms - an identifier followed
 # by a comparison-like operator (value deliberately optional, so a truncated "bus.timeout>=" still
@@ -71,21 +73,18 @@ def iter_comment_tokens(path: Path, device: str, instance_label: str) -> "list[C
     """Every real COMMENT token in `path` - tokenize-based, not a naive per-line regex, so a "#"
     inside a string/docstring (e.g. this very module's own docstring, which quotes example tag
     grammar) is never mistaken for a real comment."""
-    try:
-        with tokenize.open(path) as src:  # honors a PEP 263 coding cookie/BOM, unlike read_text()
-            lines = src.read().splitlines()
-    except (UnicodeDecodeError, LookupError, SyntaxError) as e:
-        raise BuildError(device, f"{path} has an unreadable text encoding: {e}", instance=instance_label) from e
     tokens = []
     try:
-        with path.open("rb") as f:
+        with path.open("rb") as f:  # tokenize decodes it itself, honoring a PEP 263 cookie/BOM
             for tok in tokenize.tokenize(f.readline):
                 if tok.type != tokenize.COMMENT:
                     continue
-                lineno, col = tok.start
-                line = lines[lineno - 1] if 0 < lineno <= len(lines) else ""
-                indented = line[: len(line) - len(line.lstrip())] != ""
-                tokens.append(CommentToken(lineno, col, tok.string, indented))
+                # tok.line is the tokenizer's own physical source line. Re-deriving it by indexing
+                # a str.splitlines() list would misalign: splitlines() also breaks on \x0b/\x0c/
+                # \u2028/..., which Python's tokenizer treats as ordinary characters, so a single
+                # such character anywhere earlier in the file shifted every later line by one and
+                # made valid module-level tags fail as "not at module level".
+                tokens.append(CommentToken(tok.start[0], tok.start[1], tok.string, tok.line[:1].isspace()))
     except (tokenize.TokenError, SyntaxError, IndentationError) as e:
         raise BuildError(device, f"{path} has a syntax error: {e}", instance=instance_label) from e
     return tokens
@@ -103,14 +102,6 @@ def find_leading_word(comment_text: str) -> "tuple[str | None, bool]":
     # read as "requires" rather than as some unrecognizable near-word.
     m = _LEADING_WORD_RE.match(stripped)
     return (m.group(0) if m else None, at_sign)
-
-
-def find_tag_word(comment_text: str) -> "str | None":
-    """Extracts the bare @-word from a comment (e.g. "requires" from "# @requires bus.x>=1").
-    Returns None if the comment doesn't open with an @-word at all - not a tag attempt, just an
-    ordinary comment that happens to contain "@" somewhere in its prose."""
-    word, at_sign = find_leading_word(comment_text)
-    return word if at_sign else None
 
 
 def looks_like_tag_payload(comment_text: str) -> bool:
@@ -145,12 +136,12 @@ def check_for_near_miss_tags(tokens: "list[CommentToken]", path: Path, device: s
         for known in KNOWN_TAG_NAMES:
             if lower == known:
                 if not exact_evidence:
-                    continue
+                    break  # prose merely naming this tag - and not a typo of any other one either
                 if at_sign:
                     raise BuildError(device, f"{path}:{tok.lineno}: malformed @{known} tag (doesn't match the required grammar): {tok.text.strip()!r}", instance=instance_label)
                 raise BuildError(device, f"{path}:{tok.lineno}: comment looks like an @{known} tag with its leading '@' missing: {tok.text.strip()!r}", instance=instance_label)
             # A typo'd word is only ever a near miss *with* the sigil: "required"/"require" are
             # within edit distance 2 of "requires" but are also ordinary English a prose comment can
             # legitimately open with, so demanding the "@" there is what keeps this false-positive free.
-            if at_sign and structured and _levenshtein(lower, known) <= _MAX_TYPO_DISTANCE:
+            if at_sign and structured and _levenshtein(lower, known) <= _max_typo_distance(known):
                 raise BuildError(device, f"{path}:{tok.lineno}: comment looks like a misspelled @{known} tag: {tok.text.strip()!r}", instance=instance_label)

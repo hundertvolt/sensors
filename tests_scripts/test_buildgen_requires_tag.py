@@ -141,6 +141,22 @@ def test_parse_requires_tags_exact_duplicates_are_both_kept(tmp_path: Path):
     assert len(tags) == 2
 
 
+def test_parse_requires_tags_a_valid_tag_does_not_excuse_a_near_miss_beside_it(tmp_path: Path):
+    # The exact-match bookkeeping parse_requires_tags() hands the near-miss detector is per comment
+    # position, not "this file already had a valid tag" - a half-migrated driver still fails.
+    _parse_expecting(tmp_path, "# @requires bus.timeout>=200000\n# @require bus.frequency>=100000\n", "misspelled @requires tag")
+
+
+def test_parse_requires_tags_line_break_lookalike_does_not_fake_an_indented_tag(tmp_path: Path):
+    # Regression guard, end to end: a \x0b anywhere earlier in the file used to shift the scan's
+    # idea of every later line, rejecting this perfectly valid module-level tag as "not at module
+    # level". See test_buildgen_tag_comments.py for the mechanism.
+    path = tmp_path / "asy_x_driver.py"
+    path.write_bytes(b"X = 'a\x0bb'\ndef f():\n    pass\n# @requires bus.timeout>=200000\n")
+    (tag,) = parse_requires_tags(path, "dev", "x")
+    assert (tag.field, tag.op, tag.value) == ("timeout", ">=", 200000)
+
+
 def test_parse_requires_tags_among_ordinary_comments_and_tag_shaped_strings(tmp_path: Path):
     source = (
         '"""Docstring mentioning # @requires bus.frequency>=999999 as an example."""\n'
