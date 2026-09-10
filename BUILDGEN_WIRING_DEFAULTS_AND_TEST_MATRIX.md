@@ -288,7 +288,42 @@ preserved, not dropped.
    wiring against different sensors measuring the same property," across multiple instances of
    multiple driver types, actually lives — the richest corner of the whole matrix.
 10. **Bus topology** — all sensors on one shared bus vs. spread across separate buses vs. i2c+spi
-    mixed.
+    mixed, grounded against the real RP2040/Pico W GPIO-to-peripheral mapping (datasheets/pico
+    w/RP-008312-DS-2-pico-w-datasheet.pdf, Figure 2, p.4 — read directly for this, not from
+    training memory):
+    - **No buses at all** — no `[bus.*]` table, no bus-attached instance (no sensors, no FRAM).
+      Today `_check_bus_tables()` (`buildgen/validate.py`) unconditionally `raise`s
+      `"no [bus.*] table declared"` if `[bus.*]` is absent entirely — so this combination, despite
+      being logically the simplest possible device, is currently **unbuildable** as-is. Flagged as
+      a real gap for §4.4, not something to fix in this design-only phase.
+    - **One or two I2C buses**, each a legal GPIO pin pair for its own peripheral index. RP2040
+      fixes, per pin, which of I2C0/I2C1 (if either) it can reach — never an arbitrary software
+      choice. Reading straight off Figure 2: I2C-capable pins run in fixed SDA/SCL pairs that
+      alternate I2C0/I2C1 every 2 GPIOs (GP0/1→I2C0, GP2/3→I2C1, GP4/5→I2C0, GP6/7→I2C1, GP8/9→I2C0,
+      GP10/11→I2C1, GP12/13→I2C0, GP14/15→I2C1, GP16/17→I2C0, GP18/19→I2C1, GP20/21→I2C0,
+      GP26/27→I2C1), always even-GPIO=SDA/odd-GPIO=SCL within a pair. GP22 and GP28 have no I2C
+      function at all; GP23-25/29 are reserved for the onboard CYW43439 wireless SPI link (datasheet
+      p.7) and must never be claimed by a device's own bus/instance pins. A legal two-I2C-bus device
+      picks one pair from the I2C0 set and one from the I2C1 set (today's real devices, e.g.
+      `devices/wozi.toml`, do exactly this: `bus.i2c0` on GP12/GP13, `bus.i2c1` on GP26/GP27).
+      **Gap**: `_check_gpio_collisions()` only enforces device-wide pin-number uniqueness — it never
+      checks a bus's declared `scl_pin`/`sda_pin` against this fixed table at all, so e.g. a
+      `bus.i2c0` table wired to GP2/GP3 (silicon-wise, an I2C1-only pair) or to GP22 (no I2C function
+      at all) currently passes `buildgen` cleanly and would only fail at real-hardware
+      `machine.I2C()` construction time — a raw runtime error, not this package's fail-loud
+      `BuildError` contract. Same gap applies symmetrically to SPI below. Flagged for §4.4.
+    - **One or two SPI buses**, same grounding. SPI-capable pins run in fixed 4-GPIO blocks with a
+      fixed RX/CSn/SCK/TX role assignment, alternating SPI0/SPI1 by block: GP0-3 and GP4-7 are both
+      SPI0 (RX/CSn/SCK/TX respectively within each block), GP8-11 and GP12-15 are both SPI1,
+      GP16-19 is SPI0 again. `asy_spi_driver.SPI.__init__` takes `sck_pin`/`mosi_pin`/`miso_pin`
+      only (no CS — that's an instance-exclusive `cs_pin`, per `_check_bus_tables()`'s own
+      `cs_pin` rejection), so a legal SPI bus table needs its three pins' TX/RX/SCK roles to all
+      belong to the *same* SPI peripheral index, per this table. Today's real devices use exactly
+      one SPI bus (`bus.spi0`, FRAM-only — `asy_spi_driver.py`'s own docstring: "Sole consumer:
+      asy_fram_driver.py's FRAM_SPI"); a second, SPI1-routed bus is logically legal but unexercised
+      by any real `devices/*.toml` today.
+    - i2c+spi mixed (today's real shape: `i2c0` + `i2c1` + `spi0` together) remains a distinct,
+      already-covered sub-case of the above, not a separate axis.
 11. **name_ext on a singleton-adjacent instance** — giving the sole scd30 instance a non-empty
     `name_ext` anyway (legal, just unusual).
 
@@ -300,5 +335,17 @@ preserved, not dropped.
   directly for cases no real/6-device TOML can reach).
 - Design the multi-instance (axis 9) fixture set — likely extends
   `tests_scripts/buildgen_fixtures/novel_combo.toml` or adds a sibling fixture, not yet decided.
+- **Two real gaps found while grounding axis 10 against the Pico W datasheet (2026-09-10),
+  design-only for now, not fixed**:
+  1. `_check_bus_tables()` unconditionally requires at least one `[bus.*]` table — a device with
+     no bus-attached instance at all (no sensors, no FRAM) can't build today, even though it's a
+     logically valid, simplest-possible shape under axis 1/2's "no sensors" × "no FRAM" corner.
+  2. Buses' declared pins are never checked against the RP2040's fixed per-GPIO I2C0/I2C1/SPI0/SPI1
+     capability table — only device-wide pin-number uniqueness is enforced
+     (`_check_gpio_collisions()`). An `scl_pin`/`sda_pin`/`sck_pin`/`mosi_pin`/`miso_pin`
+     combination that's real-hardware-illegal for its bus's own peripheral index (or that claims
+     GP22/28, or the GP23-25/29 wireless-reserved pins) currently passes `buildgen` and would only
+     surface as a raw runtime error from `machine.I2C()`/`machine.SPI()` on real hardware, not this
+     package's fail-loud `BuildError` contract.
 - Keep collecting axes/combinations with the project owner before finalizing which become real
   test files.
