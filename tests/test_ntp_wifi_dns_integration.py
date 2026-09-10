@@ -35,7 +35,7 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to complet
     return asyncio.run(coro)
 
 
-def _wlan(conn: AsyConnTime) -> "Any":
+def _wlan(conn: AsyConnTime) -> "Any":  # Any is the point here, not an omission - see below
     # _wlan(conn) is typed against the real network.WLAN stub (see pyproject.toml's own
     # tests/network.py exclude comment); at runtime MICROPYPATH ordering constructs
     # tests/network.py's fake instead, which exposes test-only attributes (raise_on, _status,
@@ -328,11 +328,14 @@ class _RedirectNtpNetworking:
         real_cls = self._original_socket_cls
 
         class _Resolving:
-            def __init__(self, addr: "Any", mode: str = "client", conn_tries: int = 1) -> None:
+            def __init__(self, addr: "tuple[str, int]", mode: str = "client", conn_tries: int = 1) -> None:
                 resolved = socket.getaddrinfo(addr[0], addr[1])[0][-1]
                 self._real = real_cls(resolved, mode=mode, conn_tries=conn_tries)  # type: ignore[arg-type]
 
-            def __getattr__(self, name: str) -> "Any":
+            # `object`, not Any: every attribute reached through this wrapper is used by
+            # asy_ntp_client.py's own code, which type-checks against the real AsyUDPSocket class
+            # it was monkeypatched over - nothing in this file touches the delegated result.
+            def __getattr__(self, name: str) -> object:
                 return getattr(self._real, name)
 
         ntpmod.AsyUDPSocket = _Resolving  # type: ignore[assignment, misc]

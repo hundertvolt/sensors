@@ -29,14 +29,22 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from typing import Any
+    from collections.abc import Coroutine
+    from typing import Any, Protocol, TypeVar
+
+    T = TypeVar("T")
+
+    class _ResponseBody(Protocol):
+        # send_file() streams its body from a file-like object, not raw bytes - .read() is the
+        # only thing _decompress() below ever needs off it.
+        def read(self) -> bytes: ...
 
 
-def run(coro: "Any") -> "Any":
+def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
     return asyncio.run(coro)
 
 
-def _decompress(body: "Any") -> bytes:
+def _decompress(body: "_ResponseBody") -> bytes:
     # See test_frozen_html_integration.py's own _decompress() for the full rationale - identical
     # mechanism, applied here to the real website's gzip-Content-Encoding bytes instead.
     import io

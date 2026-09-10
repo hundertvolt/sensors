@@ -54,7 +54,7 @@ class _StepPoller:
     def __init__(self, steps: "list[int | Any]") -> None:
         self._steps = list(steps)
 
-    def ipoll(self, timeout_ms: int) -> "list[tuple[None, int]]":
+    def ipoll(self, _timeout_ms: int) -> "list[tuple[None, int]]":  # asy_uart_driver.py calls ipoll(0) positionally
         step = self._steps.pop(0) if len(self._steps) > 1 else self._steps[-1]
         event = step() if callable(step) else step
         return [(None, event)] if event else []
@@ -285,7 +285,7 @@ def test_deinit_calls_real_hardware_deinit_and_clears_poller() -> None:
 
 
 class _RaisingUnregisterPoller:
-    def unregister(self, obj: "object") -> None:
+    def unregister(self, _obj: "object") -> None:  # asy_uart_driver.py calls unregister() positionally
         raise OSError("simulated poller unregister failure")
 
 
@@ -993,10 +993,10 @@ class _MemoryErrorCRC:
     def length(self) -> int:
         return self._real.length()
 
-    async def add(self, bytearr: bytearray, init: "int | None" = None) -> bytearray | None:
+    async def add(self, _bytearr: bytearray, _init: "int | None" = None) -> bytearray | None:  # both called positionally
         raise MemoryError("simulated allocation failure")
 
-    async def check(self, bytearr: bytearray, init: "int | None" = None) -> bytearray | None:
+    async def check(self, _bytearr: bytearray, _init: "int | None" = None) -> bytearray | None:
         raise MemoryError("simulated allocation failure")
 
 
@@ -1020,7 +1020,7 @@ class _NoneCRC:
     def length(self) -> int:
         return 0
 
-    async def add(self, bytearr: bytearray, init: "int | None" = None) -> bytearray | None:
+    async def add(self, _bytearr: bytearray, _init: "int | None" = None) -> bytearray | None:  # called positionally
         return None
 
 

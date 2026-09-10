@@ -29,14 +29,16 @@ try:
 except ImportError:  # typing has no runtime presence on MicroPython, on-device or in the Unix-port test build
     TYPE_CHECKING = False
 
-    def cast(typ: object, val: "Any") -> "Any":  # type: ignore[no-redef]  # no-op at runtime either way
+    def cast(_typ: object, val: "T") -> "T":  # type: ignore[no-redef]  # no-op at runtime either way
         return val
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
-    from typing import Any
+    from typing import Any, TypeVar
 
     from config_manager import ConfigSchema
+
+    T = TypeVar("T")  # narrows a struct.unpack() result for the cast() shim above
 
 
 _SCD30_DEFAULT_ADDR = const(0x61)
@@ -184,14 +186,14 @@ class SCD30_Reader(SensorReader):
             self.start_trigger_timer.init(
                 period=500,
                 mode=Timer.PERIODIC,
-                callback=lambda b: self.start_trigger_event.set(),
+                callback=lambda _b: self.start_trigger_event.set(),
             )
         except (OSError, MemoryError) as e:  # alarm-pool exhaustion (ENOMEM) - degrades gracefully
             # instead of crashing the caller (this sensor just never gets triggered this cycle).
             self.pr.err("Could not start timer:", e)
         self.irq_pin.irq(
             trigger=self.irq_pin.IRQ_RISING,
-            handler=lambda b: self.irq_trigger_event.set(),
+            handler=lambda _b: self.irq_trigger_event.set(),
         )
 
     def get_task_starters(self) -> "list[Callable[[], asyncio.Task[Any]]]":

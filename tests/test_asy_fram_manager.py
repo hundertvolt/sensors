@@ -2000,7 +2000,9 @@ def test_timestamped_chunk_buffer_get_crc_buf_returns_the_trailing_crc_slice() -
 
 
 class _RaisingPackInto:
-    def pack_into(self, fmt: str, buf: object, offset: int, *values: object) -> None:
+    # asy_fram_manager.py calls struct.pack_into()/unpack_from() positionally, so the ignored
+    # arguments of the raising stand-in below carry no name contract.
+    def pack_into(self, _fmt: str, _buf: object, _offset: int, *_values: object) -> None:
         raise ValueError("simulated pack_into failure")
 
     def unpack_from(self, fmt: str, buf: object, offset: int = 0) -> tuple[int, ...]:
@@ -2042,7 +2044,7 @@ class _RaisingUnpackFrom:
 
         _real_struct.pack_into(fmt, buf, offset, *values)
 
-    def unpack_from(self, fmt: str, buf: object, offset: int = 0) -> tuple[int, ...]:
+    def unpack_from(self, _fmt: str, _buf: object, _offset: int = 0) -> tuple[int, ...]:
         raise ValueError("simulated unpack_from failure")
 
     def calcsize(self, fmt: str) -> int:

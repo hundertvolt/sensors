@@ -36,7 +36,7 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":
     return asyncio.run(coro)
 
 
-def status_body(res: "Any") -> bytes:
+def status_body(res: "Response") -> bytes:
     # GET /status streams from a plain list of already-json.dumps()-encoded fragments now (see
     # asy_webserver_service.py's _get_status()/_build_status_pieces()) - drains it the way a real
     # client naturally would, so every existing json.loads(...) assertion on a GET /status response
@@ -68,12 +68,12 @@ class _FakeLogger:
         self.history: list[tuple[int, str]] = []
         self.reset_calls = 0
 
-    async def err_s(self, *args: "Any", errno: int = 0, **kwargs: "Any") -> None:
+    async def err_s(self, *_args: object, errno: int = 0, **_kwargs: object) -> None:
         self.err_count += 1
         if errno:
             self.history.append((errno, "E"))
 
-    async def wrn_s(self, *args: "Any", wrnno: int = 0, **kwargs: "Any") -> None:
+    async def wrn_s(self, *_args: object, wrnno: int = 0, **_kwargs: object) -> None:
         self.err_count += 1
         if wrnno:
             self.history.append((wrnno, "W"))
@@ -205,7 +205,7 @@ class _HangingReader:
         await asyncio.Event().wait()
         return b""  # unreachable
 
-    async def readexactly(self, n: int) -> bytes:
+    async def readexactly(self, _n: int) -> bytes:
         await asyncio.Event().wait()
         return b""  # unreachable
 
@@ -217,7 +217,7 @@ class _ClosedReader:
     async def readline(self) -> bytes:
         return b""
 
-    async def readexactly(self, n: int) -> bytes:
+    async def readexactly(self, _n: int) -> bytes:
         raise EOFError
 
 
@@ -245,7 +245,7 @@ class _ScriptedWriter:
         if self._hang_close:
             await asyncio.Event().wait()
 
-    def get_extra_info(self, name: str) -> "Any":
+    def get_extra_info(self, name: str) -> object:
         return ("127.0.0.1", 54321) if name == "peername" else None
 
 
@@ -257,7 +257,9 @@ def _request_bytes(method: str, path: str, body: bytes = b"", extra_headers: "di
     return f"{method} {path} HTTP/1.1\r\n{header_lines}\r\n".encode() + body
 
 
-def _make_service(**kwargs: "Any") -> "tuple[WebserverService, Microdot]":
+def _make_service(**kwargs: "Any") -> "tuple[WebserverService, Microdot]":  # Any: forwarded
+    # verbatim into WebserverService's own 21 differently-typed keyword parameters, which no single
+    # non-Any **kwargs element type can express before PEP 692's Unpack (3.11+).
     app = Microdot()
     kwargs.setdefault("max_content_length", 4096)
     kwargs.setdefault("max_connections", 3)
@@ -576,7 +578,7 @@ def test_system_put_systemcmd_raising_callback_returns_failed_not_an_exception()
     # e.g. asy_notification_service.py's request_signal_cb) and could legitimately misbehave;
     # previously unguarded here, so a raise would escape all the way out of the route handler
     # instead of degrading to a clean "Failed" result with a persisted, diagnosable errno.
-    async def system_cmd(cmd: str) -> bool:
+    async def system_cmd(_cmd: str) -> bool:
         raise RuntimeError("simulated system_cmd failure")
 
     service, app = _make_service(system_cmd=system_cmd)
@@ -706,7 +708,7 @@ def test_notification_put_pause_time_reported_invalid_when_no_handler_registered
 
 
 def test_notification_put_pause_time_reported_invalid_when_not_an_int() -> None:
-    async def notification_pause(secs: int) -> bool:
+    async def notification_pause(_secs: int) -> bool:
         return True
 
     notif = _FakeModule("NOTIF", schema=(("OnH", "int", 8, 0, 23, None),), values={"OnH": 8})
@@ -769,7 +771,7 @@ def test_notification_put_pause_time_reported_invalid_when_out_of_range() -> Non
 def test_notification_put_pause_time_raising_callback_returns_failed_not_an_exception() -> None:
     # notification_pause is a caller-supplied callback and could legitimately misbehave, the same as
     # system_cmd/notification_led (see their own identical raising-callback tests above).
-    async def notification_pause(secs: int) -> bool:
+    async def notification_pause(_secs: int) -> bool:
         raise RuntimeError("simulated notification_pause failure")
 
     notif = _FakeModule("NOTIF", schema=(("OnH", "int", 8, 0, 23, None),), values={"OnH": 8})
@@ -796,7 +798,7 @@ def test_notification_put_light_cmd_led_reported_invalid_when_no_handler_registe
 
 
 def test_notification_put_light_cmd_led_reported_invalid_when_payload_is_not_a_dict() -> None:
-    async def notification_led(payload: "dict[str, Any]") -> bool:
+    async def notification_led(_payload: "dict[str, Any]") -> bool:
         return True
 
     notif = _FakeModule("NOTIF", schema=(("OnH", "int", 8, 0, 23, None),), values={"OnH": 8})
@@ -812,7 +814,7 @@ def test_notification_put_light_cmd_led_raising_callback_returns_failed_not_an_e
     # notification_led is a caller-supplied callback and could legitimately misbehave, the same as
     # system_cmd (see test_system_put_systemcmd_raising_callback_returns_failed_not_an_exception's
     # own comment) - previously unguarded here too.
-    async def notification_led(payload: "dict[str, Any]") -> bool:
+    async def notification_led(_payload: "dict[str, Any]") -> bool:
         raise RuntimeError("simulated notification_led failure")
 
     notif = _FakeModule("NOTIF", schema=(("OnH", "int", 8, 0, 23, None),), values={"OnH": 8})
@@ -1428,7 +1430,7 @@ def test_serve_absorbs_an_eoferror_raised_directly_by_handle_request() -> None:
     # app.handle_request() to prove _serve()'s except EOFError clause actually degrades cleanly.
     service, app = _make_service()
 
-    async def _raise_eof(reader: "Any", writer: "Any") -> None:
+    async def _raise_eof(_reader: object, _writer: object) -> None:
         raise EOFError
 
     app.handle_request = _raise_eof
@@ -1441,7 +1443,7 @@ def test_serve_absorbs_an_oserror_raised_directly_by_handle_request() -> None:
     # a genuine real-hardware socket failure is the only real trigger, so exercised directly here.
     service, app = _make_service()
 
-    async def _raise_os(reader: "Any", writer: "Any") -> None:
+    async def _raise_os(_reader: object, _writer: object) -> None:
         raise OSError("simulated socket failure")
 
     app.handle_request = _raise_os
@@ -1452,7 +1454,7 @@ def test_serve_absorbs_an_oserror_raised_directly_by_handle_request() -> None:
 def test_serve_absorbs_an_unexpected_exception_raised_directly_by_handle_request() -> None:
     service, app = _make_service()
 
-    async def _raise_boom(reader: "Any", writer: "Any") -> None:
+    async def _raise_boom(_reader: object, _writer: object) -> None:
         raise RuntimeError("simulated unexpected bug")
 
     app.handle_request = _raise_boom
@@ -2256,7 +2258,7 @@ _HAMMER_PIECE_BUDGET = 1200  # same generous margin over _MAX_STATUS_PIECE_BYTES
 # coalescing test above - not an exact byte count, just "nowhere near" an unbounded aggregate.
 
 
-def _assert_body_is_bounded_stream(res: "Any", path: str) -> bytes:
+def _assert_body_is_bounded_stream(res: "Response", path: str) -> bytes:
     # A route hammer test asserting only on the final assembled JSON (json.loads(status_body(res)))
     # cannot tell a genuinely-streamed, bounded-piece response apart from a reverted
     # `return result` that Microdot's own Response.__init__ turns into one plain json.dumps() string

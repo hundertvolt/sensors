@@ -23,14 +23,22 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from typing import Any
+    from collections.abc import Coroutine
+    from typing import Any, Protocol, TypeVar
+
+    T = TypeVar("T")
+
+    class _ResponseBody(Protocol):
+        # send_file() streams its body from a file-like object, not raw bytes - .read() is the
+        # only thing _decompress() below ever needs off it.
+        def read(self) -> bytes: ...
 
 
-def run(coro: "Any") -> "Any":
+def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
     return asyncio.run(coro)
 
 
-def _decompress(body: "Any") -> bytes:
+def _decompress(body: "_ResponseBody") -> bytes:
     # send_file() responses stream their body from a file-like object (VfsFrozen.open()'s own
     # BytesIO), not raw bytes - .read() first to get the real gzip bytes off the wire, matching what
     # a real HTTP client would receive. deflate.DeflateIO with AUTO auto-detects the gzip header

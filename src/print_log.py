@@ -97,23 +97,26 @@ class PrintLog:
     def level_info() -> int:
         return _LOG_ALL
 
-    def err(self, *args: object, **kwargs: "str | None") -> None:
+    # **kwargs is forwarded verbatim into print(), whose stub carries CPython's file=/flush=
+    # keywords: no non-Any element type can satisfy that overload set (PEP 692's Unpack needs 3.11,
+    # and typings/'s own typing.pyi declares TypedDict as a bare object). *args is plain `object`.
+    def err(self, *args: object, **kwargs: "Any") -> None:
         if self.level >= _LOG_ERR:
             print(self.name, *args, **kwargs)
 
-    def wrn(self, *args: object, **kwargs: "str | None") -> None:
+    def wrn(self, *args: object, **kwargs: "Any") -> None:
         if self.level >= _LOG_WARN:
             print(self.name, *args, **kwargs)
 
-    def one(self, *args: object, **kwargs: "str | None") -> None:
+    def one(self, *args: object, **kwargs: "Any") -> None:
         if self.level >= _LOG_ONCE:
             print(self.name, *args, **kwargs)
 
-    def evt(self, *args: object, **kwargs: "str | None") -> None:
+    def evt(self, *args: object, **kwargs: "Any") -> None:
         if self.level >= _LOG_EVENT:
             print(self.name, *args, **kwargs)
 
-    def all(self, *args: object, **kwargs: "str | None") -> None:
+    def all(self, *args: object, **kwargs: "Any") -> None:
         if self.level >= _LOG_ALL:
             print(self.name, *args, **kwargs)
 
@@ -187,12 +190,12 @@ class PrintLogHistory(PrintLog):
     async def setup(self) -> None:  # no persistence to load in the pure in-memory case
         self.initialized = True
 
-    async def err_s(self, *args: object, errno: int = _NO_ERR, **kwargs: "str | None") -> None:
+    async def err_s(self, *args: object, errno: int = _NO_ERR, **kwargs: "Any") -> None:
         await self._store_err(_NO_ERR, _MAX_ERR, errno)
         if self.level >= _LOG_ERR:
             print(self.name, *args, **kwargs)
 
-    async def wrn_s(self, *args: object, wrnno: int = _NO_ERR, **kwargs: "str | None") -> None:
+    async def wrn_s(self, *args: object, wrnno: int = _NO_ERR, **kwargs: "Any") -> None:
         await self._store_err(_NO_WRN, _MAX_WRN, wrnno)
         if self.level >= _LOG_WARN:
             print(self.name, *args, **kwargs)

@@ -2115,15 +2115,19 @@ class _MemoryErrorJson:
         self.raise_on_dump = raise_on_dump
         self.raise_on_load = raise_on_load
 
-    def dump(self, obj: "Any", stream: "Any") -> None:
+    # `stream` is `object`: it is only handed straight back to the real json module, whose own
+    # stub types it as IOBase_mp | Incomplete. load() returns `object` for the same reason - every
+    # consumer (config_manager.setup()) isinstance-checks the result before using it.
+    def dump(self, obj: "dict[str, cm.CfgValue]", stream: object) -> None:
         if self.raise_on_dump:
             raise MemoryError("simulated allocation failure")
         json.dump(obj, stream)
 
-    def load(self, stream: "Any") -> "Any":
+    def load(self, stream: object) -> object:
         if self.raise_on_load:
             raise MemoryError("simulated allocation failure")
-        return json.load(stream)
+        decoded: object = json.load(stream)
+        return decoded
 
 
 def test_write_config_memoryerror_from_json_dump_leaves_cache_unchanged() -> None:

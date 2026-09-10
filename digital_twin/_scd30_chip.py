@@ -15,15 +15,17 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 if TYPE_CHECKING:
     from typing import Protocol
 
+    from machine import Timer  # type-only: the runtime import of Timer stays inside _start_timer()
+
     class _RandomSource(Protocol):
         # Structural stand-in for the `random` module (the default) or a seeded random.Random -
         # machine.py's configure_random_source() seam. Only uniform() is ever called here.
         def uniform(self, a: float, b: float) -> float: ...
 
     class _RdyPin(Protocol):
-        # Structural stand-in for machine.py's own Pin - only its twin-only simulate_edge() is
-        # ever called here, and importing machine.py itself would close an import cycle.
-        def simulate_edge(self, new_value: object) -> None: ...
+        # Structural stand-in for machine.py's Pin (and any test's own pin fake) - only the
+        # twin-only simulate_edge() is ever called here.
+        def simulate_edge(self, new_value: int) -> None: ...
 
 _CMD_CONTINUOUS_MEASUREMENT = 0x0010
 _CMD_STOP_CONTINUOUS_MEASUREMENT = 0x0104
@@ -91,7 +93,7 @@ class Scd30Chip:
         self._rdy_pin = rdy_pin
         self.fault = FaultInjector()
         self.corrupt_next_measurement = False
-        self._timer: Any | None = None
+        self._timer: Timer | None = None
         self.state_path = state_path
         self._load_state()  # may override the *_s/_ambient_pressure/_altitude/_temp_offset_raw/
         # _asc_enabled defaults just set above - never the co2/temp/hum draws below, see class docstring

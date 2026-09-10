@@ -13,6 +13,8 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 if TYPE_CHECKING:
     from typing import Any
 
+    import network
+
 import _http_client
 import machine
 from _unix_port_udp_addr_shim import patch_asy_udp_socket_for_unix_port
@@ -193,7 +195,7 @@ def parse_args(argv: "list[str]") -> RunConfig:
     )
 
 
-def _apply_fault(device: str, op: str, times: int, chips: "dict[str, Any]", wlan: "Any") -> None:
+def _apply_fault(device: str, op: str, times: int, chips: "dict[str, Any]", wlan: "network.WLAN") -> None:
     # Same shape as digital_twin/launch.py's own _apply_fault() - reads the real bus objects
     # sensortask_wozi.build_system() actually constructed rather than launch.py's own local vars.
     import errno

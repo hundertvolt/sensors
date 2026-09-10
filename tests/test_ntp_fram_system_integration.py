@@ -210,11 +210,11 @@ class _RedirectNtpNetworking:
         real_cls = self._original_socket_cls
 
         class _Resolving:
-            def __init__(self, addr: "Any", mode: str = "client", conn_tries: int = 1) -> None:
+            def __init__(self, addr: "tuple[str, int]", mode: str = "client", conn_tries: int = 1) -> None:
                 resolved = socket.getaddrinfo(addr[0], addr[1])[0][-1]
                 self._real = real_cls(resolved, mode=mode, conn_tries=conn_tries)  # type: ignore[arg-type]
 
-            def __getattr__(self, name: str) -> "Any":
+            def __getattr__(self, name: str) -> object:
                 return getattr(self._real, name)
 
         ntpmod.AsyUDPSocket = _Resolving  # type: ignore[assignment, misc]
@@ -486,7 +486,7 @@ def test_system_service_restarts_a_real_ntp_task_that_genuinely_gives_up() -> No
 
     original_resolver = ntpmod.resolve_ipv4
 
-    async def always_fails(*_args: "Any", **_kwargs: "Any") -> "str | None":
+    async def always_fails(*_args: object, **_kwargs: object) -> "str | None":
         return None  # every real resolution attempt fails instantly - no real network wait needed
 
     ntpmod.resolve_ipv4 = always_fails

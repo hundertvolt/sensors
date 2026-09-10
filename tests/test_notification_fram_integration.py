@@ -31,6 +31,8 @@ if TYPE_CHECKING:
     from collections.abc import Coroutine
     from typing import Any, TypeVar
 
+    from asy_notification_service import _LocalTime  # the callback contract this file's stub fills
+
     T = TypeVar("T")
 
 _FIELD_WARN_CO2 = (("WarnCO2", "int", 1600, 0, 3000, None),)
@@ -113,11 +115,11 @@ async def _value_stub() -> "int | None":
     return None
 
 
-async def _local_time_stub() -> "Any":
+async def _local_time_stub() -> "_LocalTime | None":
     return None
 
 
-async def _request_signal_stub(r: int, g: int, b: int, t: float) -> bool:
+async def _request_signal_stub(_r: int, _g: int, _b: int, _t: float) -> bool:
     return True
 
 

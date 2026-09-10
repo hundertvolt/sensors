@@ -264,7 +264,7 @@ class AsyNtpClient(SensorReaderConfig):
                     self.ntp_retry_timer.init(
                         period=_NTP_RETRY_INTERV * 1000,
                         mode=Timer.ONE_SHOT,
-                        callback=lambda b: self.ntp_sync_trigger_event.set(),
+                        callback=lambda _b: self.ntp_sync_trigger_event.set(),
                     )
                     self.ntp_retries += 1
                 except (OSError, MemoryError) as e:  # alarm-pool exhaustion (ENOMEM) - give up this retry cycle rather
@@ -298,7 +298,7 @@ class AsyNtpClient(SensorReaderConfig):
             self.ntp_timer.init(
                 period=_NTP_CHECK_INTERV * 1000,
                 mode=Timer.PERIODIC,
-                callback=lambda b: self.ntp_timer_trigger_event.set(),
+                callback=lambda _b: self.ntp_timer_trigger_event.set(),
             )
         except (OSError, MemoryError) as e:  # alarm-pool exhaustion (ENOMEM, see CLAUDE.md) - degrades gracefully;
             # NTP refresh scheduling just never starts rather than crashing the caller.
@@ -309,7 +309,7 @@ class AsyNtpClient(SensorReaderConfig):
             self.counter_timer.init(
                 period=1000,
                 mode=Timer.PERIODIC,
-                callback=lambda b: self.time_counter_trigger_event.set(),
+                callback=lambda _b: self.time_counter_trigger_event.set(),
             )
         except (OSError, MemoryError) as e:  # alarm-pool exhaustion (ENOMEM) - same graceful degradation as start_ntp_timer()
             self.pr.err("Could not start counter timer:", e)

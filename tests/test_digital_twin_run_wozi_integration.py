@@ -121,7 +121,7 @@ def test_http_response_json_decodes_the_body() -> None:
 # ---------------------------------------------------------------------------
 
 
-async def _canned_server(reader: "Any", writer: "Any") -> None:
+async def _canned_server(reader: "asyncio.StreamReader", writer: "asyncio.StreamWriter") -> None:
     await reader.readline()  # request line - ignored, this fake always answers the same way
     while True:
         line = await reader.readline()
@@ -160,7 +160,7 @@ def test_fetch_round_trips_a_real_request_through_a_real_socket() -> None:
 # ---------------------------------------------------------------------------
 
 
-async def _reset_immediately_server(reader: "Any", writer: "Any") -> None:
+async def _reset_immediately_server(_reader: "asyncio.StreamReader", writer: "asyncio.StreamWriter") -> None:
     # Never reads the request, never writes a response, closes immediately - the same "closed with
     # nothing written at all" shape WebserverService._serve()'s own reject-when-full path produces
     # (its own _close_writer() helper: writer.close() then await writer.wait_closed()).

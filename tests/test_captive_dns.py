@@ -12,7 +12,7 @@ except ImportError:  # typing isn't available on the real MicroPython test inter
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Coroutine
+    from collections.abc import Callable, Coroutine
     from typing import Any, TypeVar
 
     T = TypeVar("T")
@@ -339,7 +339,9 @@ class _FakeUDPS:
         # time.ticks_diff(), never used as plain ints.
         self.recv_call_times_ms: list[Any] = []
 
-    async def recvfrom(self, bufsize: int, timeout_ms: int = -1) -> tuple[bytes | None, tuple[str, int] | None]:
+    # DNSServer only ever calls recvfrom(4096)/sendto(packet, addr) - neither the buffer size nor
+    # a timeout is passed by keyword or read by this double, so both carry the unused-marker prefix.
+    async def recvfrom(self, _bufsize: int, _timeout_ms: int = -1) -> tuple[bytes | None, tuple[str, int] | None]:
         self.recv_call_times_ms.append(time.ticks_ms())
         if self._incoming:
             data, addr = self._incoming.pop(0)
@@ -348,7 +350,7 @@ class _FakeUDPS:
         await asyncio.sleep(3600)  # simulates "no more traffic" - cancellable, never busy-loops
         return None, None
 
-    async def sendto(self, packet: bytes, addr: tuple[str, int], timeout_ms: int = -1) -> int | None:
+    async def sendto(self, packet: bytes, addr: tuple[str, int], _timeout_ms: int = -1) -> int | None:
         result = self.sendto_results.pop(0) if self.sendto_results else len(packet)
         self.sent.append((packet, addr))
         return result
@@ -358,7 +360,7 @@ class _FakeUDPS:
         return self.disconnect_ok
 
 
-async def _wait_until(predicate: "Any", timeout_ms: int = 1000) -> bool:
+async def _wait_until(predicate: "Callable[[], bool]", timeout_ms: int = 1000) -> bool:
     t0 = time.ticks_ms()
     while not predicate():
         if time.ticks_diff(time.ticks_ms(), t0) > timeout_ms:
@@ -367,7 +369,7 @@ async def _wait_until(predicate: "Any", timeout_ms: int = 1000) -> bool:
     return True
 
 
-async def _cancel(task: "Any") -> None:
+async def _cancel(task: "asyncio.Task[Any]") -> None:
     task.cancel()
     try:
         await task
@@ -694,10 +696,13 @@ def test_run_rejects_multiple_simultaneous_invalid_server_ip_and_netmask_recombi
 def test_run_rejects_non_str_server_ip_or_netmask() -> None:
     # A non-str value still raises (via _ipv4_to_int's own ip.split()) - this class's public
     # `str`-typed signature relies on that, same as asy_dns_client.py's _is_ipv4_literal() callers.
-    for bad_ip, bad_netmask in ((None, "255.0.0.0"), ("192.168.4.1", 123), ([1, 2, 3, 4], b"255.0.0.0")):
+    # Any lives on the bad-value table, not on scenario()'s parameters: they keep run()'s own
+    # declared str types, which is exactly the contract this test proves is enforced at runtime.
+    bad_pairs: tuple[tuple[Any, Any], ...] = ((None, "255.0.0.0"), ("192.168.4.1", 123), ([1, 2, 3, 4], b"255.0.0.0"))
+    for bad_ip, bad_netmask in bad_pairs:
         server = DNSServer()
 
-        async def scenario(srv: "DNSServer" = server, ip: "Any" = bad_ip, netmask: "Any" = bad_netmask) -> None:
+        async def scenario(srv: "DNSServer" = server, ip: str = bad_ip, netmask: str = bad_netmask) -> None:
             await srv.run(ip, netmask)
 
         try:
@@ -906,7 +911,7 @@ def test_run_backs_off_on_a_genuinely_unexpected_exception_then_recovers() -> No
     calls = {"n": 0}
 
     class _FlakyDNSQuery:
-        def __init__(self, data: bytes, pr: "Any") -> None:
+        def __init__(self, data: bytes, pr: "PrintLogHistory") -> None:
             calls["n"] += 1
             if calls["n"] == 1:
                 raise RuntimeError("simulated unexpected failure")

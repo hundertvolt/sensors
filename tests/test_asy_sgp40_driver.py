@@ -1539,8 +1539,10 @@ class _AlwaysFailCRC:
     # Minimal fake matching CRC_Base.add_into()'s signature/contract just enough to force the
     # "computation failed" branch measure_raw() must now handle - crc_checks.py's own real CRC8
     # can't actually be made to fail add_into() through measure_raw()'s fixed, always-sufficient
-    # buffer shape (see BACKLOG.md), so this is the only way to reach that path at all.
-    async def add_into(self, buffer: bytearray, size: int, start: int = 0, init: int | None = None) -> int | None:
+    # buffer shape (see BACKLOG.md), so this is the only way to reach that path at all. `start`
+    # keeps its name unprefixed even though this double ignores it: measure_raw() passes it by
+    # keyword (start=2/start=5), so renaming it would be a TypeError at the call site.
+    async def add_into(self, _buffer: bytearray, _size: int, start: int = 0, _init: int | None = None) -> int | None:
         return None
 
 
@@ -1633,7 +1635,7 @@ def test_reader_survives_get_timestamped_chunk_raising_instead_of_returning_none
     manager, _chip, _spi_bus = make_fram_manager()
     run(manager.setup())
 
-    def raising_get_timestamped_chunk(*args: object, **kwargs: object) -> None:
+    def raising_get_timestamped_chunk(*_args: object, **_kwargs: object) -> None:
         raise RuntimeError("simulated allocation failure")
 
     manager.get_timestamped_chunk = raising_get_timestamped_chunk  # type: ignore[method-assign]
@@ -2007,7 +2009,7 @@ def test_read_loop_returns_false_when_init_fails() -> None:
 
 
 class _NoneReadWord:
-    async def __call__(self, *args: object, **kwargs: object) -> None:
+    async def __call__(self, *_args: object, **_kwargs: object) -> None:
         return None
 
 
@@ -2051,7 +2053,7 @@ class _FailSecondAddIntoCRC:
     # humidity, 5 for temperature) - test_measure_raw_add_into_failure_returns_none_not_raise above
     # already covers the first (humidity) call failing; this covers the second (temperature) call's
     # own, separate None-check.
-    async def add_into(self, buffer: bytearray, size: int, start: int = 0, init: int | None = None) -> int | None:
+    async def add_into(self, _buffer: bytearray, size: int, start: int = 0, _init: int | None = None) -> int | None:
         return None if start == 5 else size
 
 

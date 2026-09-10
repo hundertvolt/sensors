@@ -131,7 +131,10 @@ class FramChip:
         elif opcode == _OPCODE_RDID:
             self._pending_op = _OPCODE_RDID
 
-    def readinto(self, buf: bytearray, write_value: int = 0x00) -> None:
+    # _write_value: the SPI bus fills the MOSI line with it while clocking a read out, so a
+    # device-side fake never reads it. Named for machine.SPI.readinto()'s own second argument,
+    # which is positional-only there - no caller can pass it by keyword.
+    def readinto(self, buf: bytearray, _write_value: int = 0x00) -> None:
         self.fault.maybe_hang("readinto")
         self.fault.maybe_raise("readinto")
         if self._pending_op == _OPCODE_READ and self._pending_addr is not None:

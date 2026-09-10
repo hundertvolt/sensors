@@ -234,13 +234,14 @@ class _FakeStruct:
     # never actually be reached through any real malformed format string. Faked here by
     # substituting asy_i2c_driver's own module-level `struct` name, the same technique this
     # project's other test files use for their own otherwise-unreachable guards.
-    def __init__(self, unpack_result: "Any") -> None:
+    def __init__(self, unpack_result: "tuple[Any, ...] | Exception") -> None:
         self._unpack_result = unpack_result
 
     def calcsize(self, fmt: str) -> int:
         return struct.calcsize(fmt)
 
-    def unpack(self, fmt: str, buf: object) -> "Any":
+    def unpack(self, _fmt: str, _buf: object) -> "tuple[Any, ...]":  # struct.unpack()'s own two
+        # arguments are positional-only (a C function), so nothing can name them at a call site.
         if isinstance(self._unpack_result, Exception):
             raise self._unpack_result
         return self._unpack_result

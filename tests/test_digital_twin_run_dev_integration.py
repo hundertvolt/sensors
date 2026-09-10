@@ -42,7 +42,7 @@ def run_timed(coro: "Coroutine[Any, Any, T]", timeout_s: float = 5.0) -> "T":
 # ---------------------------------------------------------------------------
 
 
-async def _reset_immediately_server(reader: "Any", writer: "Any") -> None:
+async def _reset_immediately_server(_reader: "asyncio.StreamReader", writer: "asyncio.StreamWriter") -> None:
     writer.close()
     await writer.wait_closed()
 

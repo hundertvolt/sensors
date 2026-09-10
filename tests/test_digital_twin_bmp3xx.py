@@ -17,7 +17,7 @@ def _write(chip: Bmp3xxChip, reg: int, data: "list[int]") -> None:
     chip.handle_writeto_mem(reg, bytes(data))
 
 
-def _decode_temp_pressure(chip: "Bmp3xxChip | None", cal_raw: bytes) -> "tuple[float, float, float, tuple[float, ...]]":
+def _decode_temp_pressure(_chip: "Bmp3xxChip | None", cal_raw: bytes) -> "tuple[float, float, float, tuple[float, ...]]":
     coeff = struct.unpack("<HHbhhbbHHbbhbb", cal_raw)
     t1 = coeff[0] / 2**-8.0
     t2 = coeff[1] / 2**30.0

@@ -24,7 +24,7 @@ class Pin:
     IRQ_FALLING = 0x04
     IRQ_RISING = 0x08
 
-    def __init__(self, id: int, mode: int = -1, pull: int = -1, *, value: "Any" = None) -> None:
+    def __init__(self, id: int, mode: int = -1, pull: int = -1, *, value: object = None) -> None:
         # Real rp2 Pin() raises for a genuinely invalid id (confirmed against ports/rp2/
         # machine_pin.c: TypeError for a non-int identifier, ValueError for one outside the
         # RP2040's real GPIO0-28 range) - validated here (previously not at all) since this is a

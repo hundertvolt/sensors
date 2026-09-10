@@ -22,8 +22,9 @@ except ImportError:  # typing isn't available on the real MicroPython test inter
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
-    from typing import Any, TypeVar
+    from typing import Any, NoReturn, TypeVar
 
+    from machine import WDT
     from typing_extensions import Self
 
     T = TypeVar("T")
@@ -47,10 +48,19 @@ def make_ntp_stub(
     return _ntp, calls
 
 
-def make_service(ntp: "Callable[[], Coroutine[Any, Any, bool]] | None" = None, **kwargs: "Any") -> SystemService:
+def make_service(  # parameters/defaults after ntp mirror SystemService.__init__()'s own
+    ntp: "Callable[[], Coroutine[Any, Any, bool]] | None" = None,
+    watchdog: "WDT | None" = None,
+    fram: "AsyFramManager | None" = None,
+    history_length: int = 10,
+    debug: int | None = None,
+    cfg_path: str = "",
+) -> SystemService:
     if ntp is None:
         ntp, _calls = make_ntp_stub(synced=False)
-    return SystemService(ntp, **kwargs)
+    return SystemService(
+        ntp, watchdog=watchdog, fram=fram, history_length=history_length, debug=debug, cfg_path=cfg_path,
+    )
 
 
 def make_fram_manager(max_size: int = 0x2000) -> "tuple[AsyFramManager, FakeMB85RS64V]":
@@ -240,12 +250,12 @@ class _OverflowingTime:
     # time.mktime = ... raises AttributeError) - can't monkeypatch an attribute onto it, so this
     # replaces system_service's own module-level `time` name instead (a plain, mutable module
     # global, unlike the builtin module it points to).
-    def gmtime(self) -> "Any":
+    def gmtime(self) -> "tuple[int, ...]":
         import time as _real_time
 
         return _real_time.gmtime()
 
-    def mktime(self, _t: "Any") -> int:
+    def mktime(self, _t: "tuple[int, ...]") -> "NoReturn":
         raise OverflowError("past rp2's ~2037 32-bit epoch range")
 
 
@@ -266,10 +276,10 @@ class _RaisingGmtime:
     # Same monkeypatch technique as _OverflowingTime above, but faulting the other call inside the
     # same try block (time.gmtime() itself) instead of mktime() - both calls share one try/except,
     # so this proves the guard isn't accidentally only reachable from the mktime() half of the line.
-    def gmtime(self) -> "Any":
+    def gmtime(self) -> "NoReturn":
         raise OSError("RTC read failed")
 
-    def mktime(self, _t: "Any") -> int:
+    def mktime(self, _t: "tuple[int, ...]") -> "NoReturn":
         raise AssertionError("must not be reached - gmtime() itself already raised")
 
 
@@ -1276,7 +1286,7 @@ def test_one_bad_setter_does_not_stop_the_rest_of_the_registry() -> None:
     # callback could misbehave, and one failure must not take down the others.
     calls: list[int] = []
 
-    def _raising_setter(value: int) -> None:
+    def _raising_setter(_value: int) -> None:
         raise RuntimeError("simulated bad setter")
 
     svc = make_service(cfg_path=_tmp_cfg_dir())

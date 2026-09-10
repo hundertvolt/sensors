@@ -108,7 +108,7 @@ async def hum_value_callback() -> "int | float | None":
     return float(scd_data.Hum)
 
 
-def _gmtimestruct_to_dict(t: "Any") -> "dict[str, int] | None":  # t: a GMTimeStruct/8-tuple or None
+def _gmtimestruct_to_dict(t: "tuple[int, ...] | None") -> "dict[str, int] | None":  # asy_ntp_client.GMTimeStruct or time.gmtime()
     if t is None:
         return None
     return {

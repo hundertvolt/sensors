@@ -357,7 +357,7 @@ class AsyConnTime(SensorReaderConfig):
                     # Only sets a flag - no business logic inside the Timer IRQ callback itself
                     # (C.9). The actual reconnect_wifi() call happens in _watch_hotspot_timeout(),
                     # a normal asyncio coroutine awaiting this ThreadSafeFlag.
-                    callback=lambda b: self.hotspot_timeout_trigger_event.set(),
+                    callback=lambda _b: self.hotspot_timeout_trigger_event.set(),
                 )
                 self.hotspot_timer_running = True  # try to reconnect once after hotspot time if no client connected (maybe router reboot after power loss)
                 self.hotspot_timer_ticks_since_armed = 0
@@ -605,7 +605,7 @@ class AsyConnTime(SensorReaderConfig):
             self.counter_timer.init(
                 period=1000,
                 mode=Timer.PERIODIC,
-                callback=lambda b: self.time_counter_trigger_event.set(),
+                callback=lambda _b: self.time_counter_trigger_event.set(),
             )
         except (OSError, MemoryError) as e:  # alarm-pool exhaustion (ENOMEM) - degrades gracefully
             # instead of crashing the caller (uptime counting just never starts this cycle).

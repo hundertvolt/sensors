@@ -31,7 +31,7 @@ def _run() -> int:
     out_path = sys.argv[2]
     hits: dict[str, dict[int, bool]] = {}
 
-    def local_trace(frame: "FrameType", event: str, arg: object) -> "Callable[..., object]":
+    def local_trace(frame: "FrameType", event: str, _arg: object) -> "Callable[..., object]":
         if event == "line":
             filename = frame.f_code.co_filename
             if filename.startswith(_TRACED_PREFIXES):
@@ -42,7 +42,7 @@ def _run() -> int:
                 lines[frame.f_lineno] = True
         return local_trace
 
-    def global_trace(frame: "FrameType", event: str, arg: object) -> "Callable[..., object] | None":
+    def global_trace(frame: "FrameType", event: str, _arg: object) -> "Callable[..., object] | None":
         if event == "call" and frame.f_code.co_filename.startswith(_TRACED_PREFIXES):
             return local_trace
         return None

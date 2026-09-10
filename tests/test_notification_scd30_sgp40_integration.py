@@ -21,7 +21,11 @@ if TYPE_CHECKING:
     from collections.abc import Coroutine
     from typing import Any, TypeVar
 
+    from machine import I2C as FakeI2C  # the raw fake bus behind asy_i2c_driver.I2C, same alias every driver test uses
     from typing_extensions import Self
+
+    from asy_scd30_driver import SCDResults
+    from asy_sgp40_driver import SGP40
 
     T = TypeVar("T")
 
@@ -162,7 +166,7 @@ async def co2_value_callback(scd_reader: SCD30_Reader) -> "int | float | None":
     return float(scd_data.CO2)
 
 
-def drive_scd_cycle(reader: SCD30_Reader) -> "Any":
+def drive_scd_cycle(reader: SCD30_Reader) -> "SCDResults":
     # Exactly what read_loop() itself does per cycle (see asy_scd30_driver.py) - driven directly
     # instead of through the full irq/timer machinery, same convention as the sibling files.
     results = run(reader._read_scd())
@@ -194,11 +198,13 @@ async def _comp_data() -> "list[float | None]":
     return [25.0, 50.0]
 
 
-def make_sgp_reader() -> "tuple[SGP40_Reader, Any]":
+def make_sgp_reader() -> "tuple[SGP40_Reader, FakeI2C]":
     i2c = I2C(1, scl_pin=19, sda_pin=18, frequency=50000)
     reader = SGP40_Reader(i2c, _comp_data, max_module_error=2, cfg_path=_tmp_cfg_dir("sgp"))
     run(reader.pr.setup())
-    return reader, reader.sgp.i2c_sgp40.i2c_device.i2c._i2c
+    fake_bus = reader.sgp.i2c_sgp40.i2c_device.i2c._i2c
+    assert fake_bus is not None  # type-narrowing only - I2C() always builds its raw bus
+    return reader, fake_bus
 
 
 async def voc_value_callback(sgp_reader: SGP40_Reader) -> "int | float | None":
@@ -209,7 +215,7 @@ async def voc_value_callback(sgp_reader: SGP40_Reader) -> "int | float | None":
     return int(sgp_data.VOC)
 
 
-def _drive_sgp_cycle(reader: SGP40_Reader, fake_bus: "Any", raw: int) -> "Any":
+def _drive_sgp_cycle(reader: SGP40_Reader, fake_bus: "FakeI2C", raw: int) -> "SGP40":
     fake_bus.read_queue.append(_word(raw))
     data, compensated, _serialized = run(reader._read_sgp(None, serialize=False, deserialize=False))
     run(reader._error_check(data, condition=compensated))
@@ -217,7 +223,7 @@ def _drive_sgp_cycle(reader: SGP40_Reader, fake_bus: "Any", raw: int) -> "Any":
     return data
 
 
-def _settle_and_spike(reader: SGP40_Reader, fake_bus: "Any") -> "Any":
+def _settle_and_spike(reader: SGP40_Reader, fake_bus: "FakeI2C") -> "SGP40":
     # See test_notification_sgp40_integration.py's own top-of-file comment for the calibration note
     # this two-phase sequence relies on.
     for _ in range(160):

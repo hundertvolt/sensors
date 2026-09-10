@@ -25,7 +25,10 @@ if TYPE_CHECKING:
     from collections.abc import Coroutine
     from typing import Any, TypeVar
 
+    from machine import I2C as _MachineI2C  # tests/machine.py's fake bus, under the driver's own I2C wrapper
     from typing_extensions import Self
+
+    from asy_sgp40_driver import SGP40
 
     T = TypeVar("T")
 
@@ -180,7 +183,7 @@ async def _cancel_all(tasks: "list[asyncio.Task[None]]") -> None:
             pass
 
 
-def _drive_one_cycle(reader: SGP40_Reader, fake_bus: "Any", raw: int) -> "Any":
+def _drive_one_cycle(reader: SGP40_Reader, fake_bus: "_MachineI2C", raw: int) -> "SGP40":
     # Exactly what read_loop() itself does per cycle when no FRAM backup is configured (see
     # asy_sgp40_driver.py) - driven directly instead of through the full trigger/timer machinery,
     # which is already exhaustively covered by test_asy_sgp40_driver.py's own tests.
@@ -191,7 +194,7 @@ def _drive_one_cycle(reader: SGP40_Reader, fake_bus: "Any", raw: int) -> "Any":
     return data
 
 
-def _settle_and_spike(reader: SGP40_Reader, fake_bus: "Any") -> "Any":
+def _settle_and_spike(reader: SGP40_Reader, fake_bus: "_MachineI2C") -> "SGP40":
     # Phase 1: settle the algorithm's learned baseline under a constant raw signal (see module
     # docstring's calibration note - _VOCALGORITHM_INITIAL_BLACKOUT=45 plus settling time).
     for _ in range(160):

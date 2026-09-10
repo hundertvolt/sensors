@@ -136,12 +136,12 @@ def make_ntp_client() -> AsyNtpClient:
 
 class _FakeRequest:
     # Same minimal stand-in as test_api_response.py's own - mocks only the .json property boundary.
-    def __init__(self, json_value: "Any", *, raise_instead: bool = False) -> None:
+    def __init__(self, json_value: object, *, raise_instead: bool = False) -> None:
         self._json_value = json_value
         self._raise_instead = raise_instead
 
     @property
-    def json(self) -> "Any":
+    def json(self) -> object:  # matches api_response.py's own _RequestLike Protocol
         if self._raise_instead:
             raise ValueError("malformed body")
         return self._json_value
@@ -169,7 +169,7 @@ def _wifi_field_schema(client: AsyConnTime, keys: "tuple[str, ...]") -> "cm.Conf
     return tuple(fields[k] for k in keys if k in fields)
 
 
-async def _simulated_set_network_endpoint(client: AsyConnTime, request: "Any") -> "ar.ResponseEnvelope":
+async def _simulated_set_network_endpoint(client: AsyConnTime, request: "ar._RequestLike") -> "ar.ResponseEnvelope":
     data, err = ar.parse_cmd_request(request, ["setNetwork"])
     if err is not None:
         return err
@@ -181,7 +181,7 @@ async def _simulated_set_network_endpoint(client: AsyConnTime, request: "Any") -
     )
 
 
-async def _simulated_set_wifi_led_endpoint(client: AsyConnTime, request: "Any") -> "ar.ResponseEnvelope":
+async def _simulated_set_wifi_led_endpoint(client: AsyConnTime, request: "ar._RequestLike") -> "ar.ResponseEnvelope":
     data, err = ar.parse_cmd_request(request, ["setWiFiLED"])
     if err is not None:
         return err
@@ -414,7 +414,7 @@ def test_real_microdot_handler_raising_is_caught_by_microdots_own_blanket_catch(
     app = Microdot()
 
     @app.put("/boom")
-    async def boom(request: Request) -> None:
+    async def boom(_request: Request) -> None:  # Microdot passes it positionally
         raise RuntimeError("simulated handler bug")
 
     print("(expected) the traceback below is Microdot's own internal exception logging, triggered on purpose")
@@ -528,7 +528,7 @@ def _ntp_getter_app(client: AsyNtpClient) -> Microdot:
     app = Microdot()
 
     @app.get("/time/config")
-    async def timing_config(request: Request) -> "dict[str, dict[str, Any]]":
+    async def timing_config(_request: Request) -> "dict[str, dict[str, Any]]":  # Microdot passes it positionally
         return await client.get_dict_cfg()
 
     return app
@@ -776,7 +776,7 @@ async def _scd_apply_field(
     return "Valid" if applied else "Failed"
 
 
-async def _simulated_set_scd_endpoint(reader: SCD30_Reader, request: "Any") -> "ar.ResponseEnvelope":
+async def _simulated_set_scd_endpoint(reader: SCD30_Reader, request: "ar._RequestLike") -> "ar.ResponseEnvelope":
     data, err = ar.parse_cmd_request(request, ["setSCD"])
     if err is not None:
         return err

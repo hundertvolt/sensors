@@ -8,17 +8,10 @@ no real `neopixel` module (confirmed directly: `import neopixel` raises ImportEr
 # records every `NeoPixel[i] = rgb` / `.write()` call, letting tests assert on the actual sequence
 # of colors committed to the pixel.
 
-try:
-    from typing import TYPE_CHECKING
-except ImportError:  # typing has no runtime presence on MicroPython, on-device or in the Unix-port test build
-    TYPE_CHECKING = False
-
-if TYPE_CHECKING:
-    from typing import Any
-
 
 class NeoPixel:
-    def __init__(self, pin: "Any", n: int, bpp: int = 3) -> None:
+    # pin is stored but never read here (a real neopixel.NeoPixel bit-bangs it) - pure pass-through.
+    def __init__(self, pin: object, n: int, bpp: int = 3) -> None:
         self.pin = pin
         self.n = n
         self.bpp = bpp

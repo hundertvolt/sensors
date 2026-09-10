@@ -36,7 +36,7 @@ except ImportError:  # typing isn't available on the real MicroPython test inter
 
 if TYPE_CHECKING:
     from collections.abc import Coroutine
-    from typing import Any, TypeVar
+    from typing import Any, NoReturn, TypeVar
 
     from typing_extensions import Self
 
@@ -214,11 +214,27 @@ def make_client(
     return client
 
 
-def make_client_with_json(json_text: str, **kwargs: "Any") -> AsyConnTime:
+def make_client_with_json(  # parameters/defaults mirror make_client() above, minus its cfg_path
+    json_text: str,
+    conn_fail_to_hotspot: int = 5,
+    ext_led: "FakeLED | None" = None,
+    wifi_refresh_sec: int = 5,
+    hotspot_time_min: int = 5,
+    max_module_error: int = 5,
+    debug: "int | None" = None,
+) -> AsyConnTime:
     cfg_path = _tmp_cfg_dir()
     with open(cfg_path + "config_WIFI.cfg", "w") as f:
         f.write(json_text)
-    return make_client(cfg_path=cfg_path, **kwargs)
+    return make_client(
+        conn_fail_to_hotspot=conn_fail_to_hotspot,
+        ext_led=ext_led,
+        wifi_refresh_sec=wifi_refresh_sec,
+        hotspot_time_min=hotspot_time_min,
+        max_module_error=max_module_error,
+        cfg_path=cfg_path,
+        debug=debug,
+    )
 
 
 def make_invalid_cfg_client() -> AsyConnTime:
@@ -1225,7 +1241,7 @@ def test_hotspot_client_connected_stops_the_shutoff_timer_and_turns_the_led_on()
     led = FakeLED()
     client = make_client(ext_led=led)
     run(client.set_wifi_led(status=True))
-    client.hotspot_timer.init(period=5000, mode=Timer.ONE_SHOT, callback=lambda b: None)
+    client.hotspot_timer.init(period=5000, mode=Timer.ONE_SHOT, callback=lambda _b: None)
     client._hotspot_client_connected()
     assert client.hotspot_timer.deinit_called is True
     assert led.on_calls == 1
@@ -1624,7 +1640,7 @@ def test_start_hotspot_missing_config_persists_wrnno_2() -> None:
     client = make_invalid_cfg_client()
     run(client.pr.setup())
 
-    async def fake_select(_mode: "Any") -> None:
+    async def fake_select(_mode: int) -> None:
         return None  # skips the real mode-switch dance (and its real asyncio.sleep()s) entirely
 
     client._select_wifi_mode = fake_select  # type: ignore[method-assign, assignment]  # deliberate monkeypatch
@@ -1761,7 +1777,7 @@ def test_get_hotspot_stations_degrades_to_empty_list_on_exception() -> None:
 def test_manage_hotspot_stations_with_a_client_connected_stops_the_shutoff_timer() -> None:
     client = make_client()
     _wlan(client)._stations = [(b"\xaa\xbb\xcc\xdd\xee\xff",)]
-    client.hotspot_timer.init(period=5000, mode=Timer.ONE_SHOT, callback=lambda b: None)
+    client.hotspot_timer.init(period=5000, mode=Timer.ONE_SHOT, callback=lambda _b: None)
     run(client._manage_hotspot_stations())
     assert client.hotspot_timer.deinit_called is True
 
@@ -1804,7 +1820,7 @@ def test_leave_hotspot_mode_switches_back_to_sta_and_cancels_dns_task() -> None:
     client._conn_phase = _PHASE_HOTSPOT
     select_calls: list[Any] = []
 
-    async def fake_select(mode: "Any") -> None:
+    async def fake_select(mode: int) -> None:
         select_calls.append(mode)
 
     client._select_wifi_mode = fake_select  # type: ignore[method-assign]  # deliberate monkeypatch
@@ -2149,7 +2165,7 @@ def test_wlan_connect_gives_up_after_repeated_hardware_failures_and_persists_err
 
     client._run_sta_mode = failing_run_sta_mode  # type: ignore[method-assign]  # deliberate monkeypatch
 
-    async def scenario() -> "Any":
+    async def scenario() -> "dict[str, dict[str, int | list[int] | list[str]]]":
         task = asyncio.create_task(client.wlan_connect())
         await asyncio.wait_for(task, 2.0)  # must actually complete, not loop forever
         return await client.get_error_counter()
@@ -2478,12 +2494,12 @@ class _OverflowingTime:
     # Same monkeypatch technique as test_system_service.py's own _OverflowingTime: asy_wifi_service's
     # module-level `time` name is a plain, mutable module global (unlike the real `time` builtin
     # module, which is read-only and can't have attributes assigned onto it directly).
-    def gmtime(self) -> "Any":
+    def gmtime(self) -> "tuple[int, ...]":
         import time as _real_time
 
         return _real_time.gmtime()
 
-    def mktime(self, _t: "Any") -> int:
+    def mktime(self, _t: "tuple[int, ...]") -> "NoReturn":
         raise OverflowError("past rp2's ~2037 32-bit epoch range")
 
 
@@ -2604,7 +2620,7 @@ def test_poll_sta_connect_status_obtaining_ip_logs_and_keeps_polling() -> None:
 def test_start_hotspot_valid_config_activates_the_ap() -> None:
     client = make_client()
 
-    async def fake_select(_mode: "Any") -> None:
+    async def fake_select(_mode: int) -> None:
         return None  # skips the real mode-switch dance (and its real asyncio.sleep()s) entirely
 
     client._select_wifi_mode = fake_select  # type: ignore[method-assign, assignment]  # deliberate monkeypatch
@@ -2651,12 +2667,12 @@ def test_start_hotspot_valid_config_activates_the_ap() -> None:
 def test_start_hotspot_does_not_leak_a_dns_server_task_when_called_again_while_already_running() -> None:
     client = make_client()
 
-    async def fake_select(_mode: "Any") -> None:
+    async def fake_select(_mode: int) -> None:
         return None
 
     client._select_wifi_mode = fake_select  # type: ignore[method-assign, assignment]  # deliberate monkeypatch
 
-    async def scenario() -> "Any":
+    async def scenario() -> None:
         # Mirrors _run_hotspot_mode() calling _start_hotspot() again on a later loop iteration
         # while wlan.status() still isn't STAT_GOT_IP - the real, reachable repeated-call shape.
         await client._start_hotspot()
@@ -2679,7 +2695,7 @@ def test_start_hotspot_starts_a_fresh_dns_server_task_if_the_previous_one_alread
     # .done()` convention.
     client = make_client()
 
-    async def fake_select(_mode: "Any") -> None:
+    async def fake_select(_mode: int) -> None:
         return None
 
     client._select_wifi_mode = fake_select  # type: ignore[method-assign, assignment]  # deliberate monkeypatch

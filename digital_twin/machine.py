@@ -17,7 +17,24 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from typing import Any
+    from typing import Any, Protocol
+
+    class _RandomSource(Protocol):
+        # Structural stand-in for the `random` module (the default) or a seeded random.Random.
+        # Declares the union of what the wired chip fakes each ask for through their own narrower
+        # _RandomSource, since configure_random_source() hands one object to all of them.
+        def uniform(self, a: float, b: float) -> float: ...
+        def randint(self, a: int, b: int) -> int: ...
+        def getrandbits(self, k: int) -> int: ...
+
+    class _I2CDevice(Protocol):
+        # The four transaction shapes this bus forwards to a wired chip fake. Each fake implements
+        # only the subset its real counterpart answers (I2C.devices stays Any-valued so tests can
+        # still reach chip-specific state), so this describes the bus's expectation, not a guarantee.
+        def handle_writeto(self, data: bytes) -> None: ...
+        def handle_readfrom_into(self, nbytes: int) -> bytes: ...
+        def handle_readfrom_mem(self, reg_addr: int, nbytes: int) -> bytes: ...
+        def handle_writeto_mem(self, reg_addr: int, data: bytes) -> None: ...
 
 
 class Pin:
@@ -35,7 +52,7 @@ class Pin:
         # needs to for isolation - mirrors tests/machine.py's own Timer.all_timers.clear() convention.
         cls._registry.clear()
 
-    def __new__(cls, id: int, *args: object, **kwargs: object) -> "Pin":
+    def __new__(cls, id: int, *_args: object, **_kwargs: object) -> "Pin":
         if not isinstance(id, int):
             raise TypeError("Pin id must be an int")
         if not (0 <= id <= 28):
@@ -48,7 +65,7 @@ class Pin:
         cls._registry[id] = instance
         return instance
 
-    def __init__(self, id: int, mode: int = -1, pull: int = -1, *, value: "Any" = None) -> None:
+    def __init__(self, id: int, mode: int = -1, pull: int = -1, *, value: object = None) -> None:
         if self._initialized:
             # Re-binding to an already-registered physical pin - apply init()-style settings
             # (leave-unchanged-if-omitted) without wiping the pin's current electrical state.
@@ -113,10 +130,10 @@ class Pin:
             self._irq_handler(self)
 
 
-_random_source: "Any | None" = None
+_random_source: "_RandomSource | None" = None
 
 
-def configure_random_source(source: "Any | None") -> None:
+def configure_random_source(source: "_RandomSource | None") -> None:
     # Same module-level-hook pattern as configure_fram_state_path() below, applied to sensor value
     # walks instead of FRAM persistence: called once, before build_system()-equivalent code
     # constructs i2c0/i2c1, by whatever entry point wants every wired chip's value walk to share one
@@ -209,8 +226,8 @@ class I2C:
     def scan(self) -> "list[int]":
         return sorted(self.devices.keys())
 
-    def _device_or_nak(self, address: int) -> "Any":
-        device = self.devices.get(address)
+    def _device_or_nak(self, address: int) -> "_I2CDevice":
+        device: _I2CDevice | None = self.devices.get(address)
         if device is None:
             raise OSError(errno.EIO, "no ACK from device")
         return device
@@ -235,7 +252,7 @@ class I2C:
         device = self._device_or_nak(address)
         data = device.handle_readfrom_mem(memaddr, nbytes)
         self.log.append(("readfrom_mem", address, memaddr, nbytes, addrsize))
-        return data  # type: ignore[no-any-return]  # device is duck-typed (Any), see _device_or_nak
+        return data
 
     def writeto_mem(self, address: int, memaddr: int, buf: object, *, addrsize: int = 8) -> None:
         device = self._device_or_nak(address)
@@ -364,14 +381,19 @@ class Timer:
     ONE_SHOT = 0
     PERIODIC = 1
 
-    def __init__(self, id: int = -1, **kwargs: "Any") -> None:
+    def __init__(
+        self, id: int = -1, *, period: int = -1, mode: int = PERIODIC, callback: "Callable[[Timer], None] | None" = None,
+    ) -> None:
         self.id = id
         self.period = -1
         self.mode = self.PERIODIC
         self.callback: Callable[[Timer], None] | None = None
         self._task: asyncio.Task | None = None
-        if kwargs:
-            self.init(**kwargs)
+        # Spelled out rather than **kwargs-forwarded so the accepted settings are statically
+        # checked; the guard keeps real machine_timer_make_new()'s "init helper only runs when the
+        # constructor was actually given settings" behavior for a bare Timer().
+        if period != -1 or mode != self.PERIODIC or callback is not None:
+            self.init(period=period, mode=mode, callback=callback)
 
     def init(
         self, *, period: int = -1, mode: int = PERIODIC, callback: "Callable[[Timer], None] | None" = None,

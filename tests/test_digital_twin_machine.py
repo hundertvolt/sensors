@@ -82,7 +82,7 @@ def test_pin_simulate_edge_to_the_same_value_does_not_fire_the_irq_handler() -> 
     fired: list[int] = []
     pin = Pin(23)
     pin.off()
-    pin.irq(handler=lambda p: fired.append(1), trigger=Pin.IRQ_RISING | Pin.IRQ_FALLING)
+    pin.irq(handler=lambda _p: fired.append(1), trigger=Pin.IRQ_RISING | Pin.IRQ_FALLING)
     pin.simulate_edge(0)  # already 0 - not a real transition, must be a no-op
     assert fired == []
 
@@ -115,6 +115,8 @@ def test_configure_random_source_threads_through_to_newly_wired_chips() -> None:
     Pin.reset_registry()
     try:
 
+        # a/b/k keep their names (and stay unused): configure_random_source() takes machine.py's
+        # own _RandomSource Protocol, which mypy matches structurally by parameter name.
         class _FixedRandom:
             def uniform(self, a: float, b: float) -> float:
                 return a
@@ -421,7 +423,7 @@ def test_rtc_datetime_round_trips() -> None:
 def test_timer_deinit_stops_further_callbacks() -> None:
     calls: list[int] = []
     timer = Timer()
-    timer.init(period=20, mode=Timer.PERIODIC, callback=lambda t: calls.append(1))
+    timer.init(period=20, mode=Timer.PERIODIC, callback=lambda _t: calls.append(1))
 
     async def scenario() -> "tuple[int, int]":
         await asyncio.sleep_ms(60)
@@ -474,7 +476,7 @@ def test_timer_deinit_outside_a_running_event_loop_does_not_raise() -> None:
     # asyncio.run() in progress) hits immediately. deinit() must treat that the same as "definitely
     # not my own callback", not let the RuntimeError propagate.
     timer = Timer()
-    timer.init(period=1000, mode=Timer.ONE_SHOT, callback=lambda t: None)
+    timer.init(period=1000, mode=Timer.ONE_SHOT, callback=lambda _t: None)
     timer.deinit()  # must not raise, called with no event loop running
 
 
@@ -486,7 +488,7 @@ def test_timer_fires_for_real_on_a_short_period() -> None:
     timer = Timer()
 
     async def scenario() -> None:
-        timer.init(period=20, mode=Timer.ONE_SHOT, callback=lambda t: fired.append(1))
+        timer.init(period=20, mode=Timer.ONE_SHOT, callback=lambda _t: fired.append(1))
         for _ in range(100):  # up to ~2s total, generous relative to the 20ms period
             if fired:
                 return

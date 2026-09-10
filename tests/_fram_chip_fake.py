@@ -102,7 +102,7 @@ class FakeMB85RS64V(FakeSPI):
         elif opcode == _OPCODE_RDID:
             self._pending_op = _OPCODE_RDID
 
-    def readinto(self, buf: bytearray | memoryview, write_value: int = 0x00) -> None:
+    def readinto(self, buf: bytearray | memoryview, _write_value: int = 0x00) -> None:
         if self._pending_op == _OPCODE_READ and self._pending_addr is not None:
             n = len(buf)
             buf[:] = self.memory[self._pending_addr : self._pending_addr + n]

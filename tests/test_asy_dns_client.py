@@ -7,12 +7,15 @@ import asy_dns_client
 from asy_dns_client import _build_query, _is_ipv4_literal, _parse_response, resolve_ipv4
 
 try:
-    from typing import TYPE_CHECKING
+    from typing import TYPE_CHECKING, cast
 except ImportError:  # typing isn't available on the real MicroPython test interpreter
     TYPE_CHECKING = False
 
+    def cast(_typ: object, val: "T") -> "T":  # type: ignore[no-redef]  # no-op at runtime either way
+        return val
+
 if TYPE_CHECKING:
-    from collections.abc import Coroutine
+    from collections.abc import Callable, Coroutine
     from typing import Any, Literal, TypeVar
 
     T = TypeVar("T")
@@ -32,13 +35,16 @@ def make_port() -> int:  # a fresh loopback port per call, so tests never conten
     return _next_port
 
 
-def _resolved(host: str, port: int) -> "Any":
+def _resolved(host: str, port: int) -> "tuple[str, int]":
     # Same Unix-port-only quirk as test_asy_udp_socket.py's own make_addr(): this build's raw
     # socket.bind()/connect()/sendto() reject a plain (host, port) tuple - only getaddrinfo()'s own
     # resolved (opaque, non-indexable) object works here. Used only for FakeDNSServer's real raw
     # socket below and by _ResolvingAsyUDPSocket - resolve_ipv4() itself is never handed anything
     # but plain host strings/int ports, matching its real typed signature.
-    return socket.getaddrinfo(host, port)[0][-1]
+    # cast, not a bare return: the stub types getaddrinfo()'s sockaddr slot as the IPv4 2-tuple or
+    # IPv6's 4-tuple, and this project is IPv4-only (AsyUDPSocket's own addr type) - same narrowing
+    # digital_twin/_unix_port_udp_addr_shim.py's _resolve_plain_addr() makes for the same call.
+    return cast("tuple[str, int]", socket.getaddrinfo(host, port)[0][-1])
 
 
 class _ResolvingAsyUDPSocket:
@@ -52,7 +58,10 @@ class _ResolvingAsyUDPSocket:
     def __init__(self, addr: "tuple[str, int]", mode: 'Literal["client", "server"]' = "client", conn_tries: int = 1) -> None:
         self._real = _RealAsyUDPSocket(_resolved(addr[0], addr[1]), mode=mode, conn_tries=conn_tries)
 
-    def __getattr__(self, name: str) -> "Any":
+    # `object`, not Any: every attribute reached through this wrapper is used by
+    # asy_dns_client.py's own production code, which type-checks against the real AsyUDPSocket
+    # class it was monkeypatched over - nothing in this file touches the delegated result.
+    def __getattr__(self, name: str) -> object:
         return getattr(self._real, name)
 
 
@@ -341,7 +350,7 @@ class FakeDNSServer:
         self.sock.setblocking(False)
         self.received: list[bytes] = []
 
-    async def answer_once(self, build_response: "Any", timeout_ms: int = 2000) -> None:
+    async def answer_once(self, build_response: "Callable[[bytes], bytes | None]", timeout_ms: int = 2000) -> None:
         # Waits for one query, records it, then replies with whatever build_response(query) returns.
         # Must check the actual returned event bitmask, not just ipoll()'s truthiness - confirmed
         # directly that this build's ipoll(0) reports a registered socket as "ready" on every tick
@@ -405,7 +414,7 @@ def test_resolve_ipv4_garbage_reply_returns_none_not_an_exception() -> None:
     async def scenario() -> "str | None":
         server = FakeDNSServer(_HOST, port)
         try:
-            responder = asyncio.create_task(server.answer_once(lambda q: b"\x00\x01not-a-real-dns-reply-at-all"))
+            responder = asyncio.create_task(server.answer_once(lambda _q: b"\x00\x01not-a-real-dns-reply-at-all"))
             result = await resolve_ipv4("pool.ntp.org", dns_servers=(_HOST,), port=port, timeout_ms=300, tries=1)
             await responder
             return result
@@ -514,7 +523,7 @@ def test_resolve_ipv4_no_servers_at_all_and_no_reachable_fallback_returns_none()
 
 
 class _RaisingOsModule:
-    def urandom(self, n: int) -> bytes:
+    def urandom(self, _n: int) -> bytes:  # asy_dns_client.py calls os.urandom(2) positionally
         raise MemoryError("simulated allocation failure")
 
 
@@ -544,6 +553,9 @@ class _RaisingAsyUDPSocket:
     # _ResolvingAsyUDPSocket wrapper (installed module-wide above) resolves the address through
     # socket.getaddrinfo() before ever reaching AsyUDPSocket's real type check, which would raise a
     # different exception (OSError) at a different layer than the one this guard actually targets.
+    # mode/conn_tries keep their names (and stay unused): resolve_ipv4() constructs this double as
+    # AsyUDPSocket((server, port), mode="client"), i.e. by keyword, and conn_tries stays spelled the
+    # same way so the double keeps impersonating AsyUDPSocket's real constructor exactly.
     def __init__(self, addr: "tuple[str, int]", mode: str = "client", conn_tries: int = 1) -> None:
         raise TypeError(f"simulated malformed addr: {addr!r}")
 
@@ -571,6 +583,9 @@ def test_resolve_ipv4_parse_response_raising_bounds_error_returns_none() -> None
     # prove resolve_ipv4() itself degrades cleanly (moves on / returns None) if it ever did.
     original_parse = asy_dns_client._parse_response
 
+    # rsp/query keep their names: this double is assigned onto asy_dns_client._parse_response,
+    # so mypy checks its parameter NAMES against the real function's (an underscore prefix is
+    # a hard [assignment] error). Both are unused by design - it raises before reading them.
     def raising_parse(rsp: "bytes | bytearray", query: "bytes | bytearray") -> "str | None":
         raise IndexError("simulated residual bounds-math failure")
 

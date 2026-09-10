@@ -19,8 +19,13 @@ except ImportError:  # typing isn't available on the real MicroPython test inter
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Coroutine
+    from collections.abc import Container, Coroutine
+    from types import ModuleType
     from typing import Any, TypeVar
+
+    from machine import WDT
+
+    from asy_wifi_service import AsyConnTime
 
     T = TypeVar("T")
 
@@ -91,7 +96,7 @@ async def _cancel(task: "asyncio.Task[Any]") -> None:
         pass
 
 
-async def _feed_watchdog_periodically(watchdog: "Any") -> None:
+async def _feed_watchdog_periodically(watchdog: "WDT") -> None:
     while True:
         watchdog.feed()
         await asyncio.sleep(1.0)
@@ -100,7 +105,7 @@ async def _feed_watchdog_periodically(watchdog: "Any") -> None:
 _GENERAL_CALL_ENTRY = ("writeto", 0x00, b"\x06", True)
 
 
-async def _run_real_task_graph_and_assert_healthy(module: "Any", shared_bus_log: "Any", run_seconds: float) -> None:
+async def _run_real_task_graph_and_assert_healthy(module: "ModuleType", shared_bus_log: "Container[object]", run_seconds: float) -> None:
     # Shared scenario body for both variants: starts the real timer/task starters build_system()
     # itself would, then asserts the run produced fresh data from every sensor and never starved
     # the watchdog - not just "didn't crash".
@@ -246,7 +251,7 @@ def test_wozi_fram_recovers_after_an_injected_spi_read_fault() -> None:
     run_timed(scenario(), timeout_s=20.0)
 
 
-async def _wait_established_then_flap_once(conn: "Any") -> None:
+async def _wait_established_then_flap_once(conn: "AsyConnTime") -> None:
     # A single disconnect, not repeated flapping: the ESTABLISHED retry branch is a genuine,
     # non-fast-forwardable 60s sleep (SPECIFICATION.md Part E.5.1), so repeated flapping isn't
     # CI-time-reasonable here - tests_hardware/bench/test_network_resilience.py covers that on

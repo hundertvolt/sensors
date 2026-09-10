@@ -1387,7 +1387,7 @@ class _WrongLengthCRC:
     def length(self) -> int:
         return 1
 
-    async def add_into(self, buffer: bytearray, size: int, start: int = 0, init: "int | None" = None) -> int:
+    async def add_into(self, _buffer: bytearray, _size: int, start: int = 0, _init: "int | None" = None) -> int:  # start stays named: SCD30_I2C passes start=2
         return 0  # never matches the expected size+crc_length total
 
 

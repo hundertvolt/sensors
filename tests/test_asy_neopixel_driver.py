@@ -11,6 +11,10 @@ if TYPE_CHECKING:
     from collections.abc import Coroutine
     from typing import Any, TypeVar
 
+    import neopixel
+
+    from crc_checks import CRC_Base
+
     T = TypeVar("T")
 
 
@@ -18,9 +22,9 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to complet
     return asyncio.run(coro)
 
 
-def _pixel(driver: NeopixelDriver) -> "Any":
-    # tests/neopixel.py's fake, reached through the driver's own attribute - same narrowing
-    # convention as test_asy_wifi_service.py's own _wlan() helper.
+def _pixel(driver: NeopixelDriver) -> "neopixel.NeoPixel":
+    # tests/neopixel.py's fake, reached through the driver's own attribute - that fake is what
+    # `neopixel` resolves to here (it is not excluded from mypy, unlike tests/network.py).
     return driver.pixel
 
 
@@ -465,17 +469,17 @@ class _FakeFramChunk:
     def __init__(self) -> None:
         self.buf = bytearray(64)
 
-    def get_buffer(self) -> "Any":
+    def get_buffer(self) -> "_FakeFramChunk":
         return self
 
     def get_data_buf(self) -> bytearray:
         return self.buf
 
-    async def write_into(self, buf: "Any", *, override_pause: bool = False) -> bool:
+    async def write_into(self, buf: "_FakeFramChunk", *, override_pause: bool = False) -> bool:
         self.buf[:] = buf.get_data_buf()
         return True
 
-    async def read_into(self, buf: "Any", *, override_pause: bool = False) -> bool:
+    async def read_into(self, buf: "_FakeFramChunk", *, override_pause: bool = False) -> bool:
         buf.get_data_buf()[:] = self.buf
         return True
 
@@ -484,7 +488,7 @@ class _FakeFramManager:
     def __init__(self, chunk: "_FakeFramChunk") -> None:
         self.chunk = chunk
 
-    def get_chunk(self, size: int, crc: "Any" = None, verify: int = 0, check_length: int = 8) -> "_FakeFramChunk":
+    def get_chunk(self, size: int, crc: "CRC_Base | None" = None, verify: int = 0, check_length: int = 8) -> "_FakeFramChunk":
         return self.chunk
 
 
