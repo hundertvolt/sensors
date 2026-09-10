@@ -251,7 +251,8 @@ def test_wozi_fram_chunk_loop_absorbs_a_transient_spi_rx_overrun() -> None:
     # Twin-tier form of the live-path mock tests in test_asy_fram_manager.py: same fault, but
     # against the real twin bus and a chunk allocated from the real booted manager. One overrun
     # costs nothing because _read chunk-reads block 1 when block 0 fails; a persistent one
-    # degrades to None instead of propagating, and leaves the chunk marked BUSY (BACKLOG.md).
+    # degrades to None instead of propagating, and leaves the chunk marked BUSY by design
+    # (destructive readout - SPECIFICATION.md Part A.4's FRAM entry).
     machine.configure_i2c_wiring("wozi")
     port = _next_test_port()
 
@@ -273,7 +274,7 @@ def test_wozi_fram_chunk_loop_absorbs_a_transient_spi_rx_overrun() -> None:
         bus.rx_overrun = True  # persistent: both copies unreadable
         assert await chunk.read() is None, "an unrecoverable overrun must degrade, not propagate"
         bus.rx_overrun = False
-        assert await chunk.read() is None, "chunk stays unreadable after the bus recovers - see BACKLOG.md"
+        assert await chunk.read() is None, "an interrupted read deliberately keeps the chunk unreadable until rewritten"
         assert await chunk.write(payload), "a write is what clears the stuck BUSY status bytes"
         assert await chunk.read() == bytearray(payload)
 

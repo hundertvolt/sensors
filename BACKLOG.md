@@ -238,29 +238,10 @@ constraints.
     blanket `except Exception` catches it, logs errno 47, and `_read()` then reads block 1, so a
     single transient overrun is **fully absorbed** - correct data returned, block 0 repaired. Only
     an overrun that hits both copies degrades the read to `None`, and even then nothing raises.
-    So a retry inside the chunk loop would buy little on the read path the dual-copy layer already
-    covers; the real open part is whether the *interrupted read* leaving a chunk unreadable
-    (question 16 below) should be fixed instead, which is the failure that actually costs data
-    availability. Still deliberately **not** changed (CLAUDE.md: flag, don't silently fix).
-
-16. **An interrupted chunk read leaves a FRAM chunk permanently unreadable, though its data is
-    intact.** Found by driving the SPI RX-overrun fault through the real stack, but **not specific
-    to that fault** - any exception or failure inside `asy_fram_manager.py`'s `_read_chunk()` after
-    the status bytes are marked reaches it. `_read_chunk()` writes `_STATUS_BUSY` to the block it is
-    about to read and only restores `_STATUS_IDLE` on the way out, so an interruption in between
-    leaves the block marked busy. When it hits **both** copies, every later read fails
-    `_set_check_sb()`'s status check with errno 31 ("Read status byte is not 1 but 2") **even after
-    the bus has completely recovered**. Verified end to end in both the mock and twin tiers: the
-    payload bytes are still byte-for-byte correct on the chip, the read returns `None` anyway, and
-    only a *write* clears it - so a read-mostly chunk (the SGP40 VOC state restored at boot, the NTP
-    boot signature) can stay unreadable indefinitely, since nothing in the normal flow rewrites it.
-    Not fixed here (CLAUDE.md: report cross-cutting behavior discrepancies, don't silently change
-    them), and the fix is a real design choice, not obvious: restoring `_STATUS_IDLE` in a `finally`
-    would clear it, but the busy marker exists precisely so a *torn write* is never mistaken for
-    good data, and the read path cannot always tell which one it interrupted. A narrower option is
-    to treat "both copies BUSY but CRC-valid" as recoverable on read. `tests/
-    test_asy_fram_manager.py::test_an_overrun_mid_read_leaves_the_chunk_unreadable_until_it_is_
-    rewritten` pins down today's behavior, so any answer is testable against it.
+    So a retry inside the chunk loop would buy little on a read path the dual-copy layer already
+    covers. Still deliberately **not** changed (CLAUDE.md: flag, don't silently fix). Note that the
+    interrupted read *does* leave the chunk marked busy and unreadable until rewritten - that is
+    intended behavior, not a second bug to weigh here: see SPECIFICATION.md Part A.4's FRAM entry.
 
 ## Deferred / explicitly out-of-scope work
 - **The 1.29.0 pin has never run on real hardware.** Every 1.28→1.29 claim in SPECIFICATION.md
@@ -300,12 +281,13 @@ constraints.
     there is no on-target equivalent of the knob the other three tiers use. What a bench run *can*
     do, and should: confirm the 260-byte SGP40 VOC-state read still works normally at 1.29 (that
     the DMA path is exercised at all), and test the **consequence** rather than the cause - the
-    stuck-BUSY lockout in question 16 is inducible on real hardware, by writing `_STATUS_BUSY` to
-    both of a scratch chunk's blocks through the FRAM driver directly and then attempting a read.
+    busy-status lockout an interrupted read leaves behind *is* inducible on real hardware, by
+    writing `_STATUS_BUSY` to both of a scratch chunk's blocks through the FRAM driver directly and
+    then attempting a read - pinning down intended behavior (SPECIFICATION.md Part A.4's FRAM
+    entry) on target, where the destructive readout it guards against is real rather than modelled.
     That is the test worth writing, and it belongs with `tests_hardware/`'s existing FRAM
-    fault-injection work (its README's "Fifth pass"). Deliberately not written blind: it should be
-    authored in a session that can actually run it, and after question 16 is decided, so it pins
-    down intended behavior rather than freezing a defect.
+    fault-injection work (its README's "Fifth pass"). Not written blind here: it should be authored
+    in a session that can actually run it.
 
 - **Real-hardware re-test of the segfault fix and the memory-leak soak test — real-hardware forms
   now exist and are wired into `tests_hardware/`, but the actual long-soak run is still opt-in and

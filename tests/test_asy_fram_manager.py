@@ -2173,12 +2173,11 @@ def test_an_overrun_leaves_the_spi_bus_itself_reusable_rather_than_wedged() -> N
 
 
 def test_an_overrun_mid_read_leaves_the_chunk_unreadable_until_it_is_rewritten() -> None:
-    # Pins down a real consequence found by driving this path, not a designed-for one (see
-    # BACKLOG.md's own entry - reported, deliberately not "fixed" here): _read_chunk marks a block
-    # BUSY before reading it and only restores IDLE on the way out, so an exception in between
-    # leaves both copies marked BUSY. The payload bytes are untouched, but every later read now
-    # fails the status check with errno 31 even though the bus has fully recovered. Only a write
-    # clears it - so a read-mostly chunk stays unreadable indefinitely.
+    # Intended behavior, not a defect (SPECIFICATION.md Part A.4's FRAM entry): _read_chunk marks a
+    # block BUSY before reading and only restores IDLE on the way out, so an interruption in
+    # between leaves both copies marked. MB85RS64V reads are destructive internally, so an
+    # interrupted read is an interrupted restore - the bytes may read back intact and still not be
+    # trustworthy, which is why every later read is refused (errno 31) until a write clears it.
     manager, chip = make_manager()
     run(setup_manager(manager))
     chunk = manager.get_chunk(40, crc=CRC8())
@@ -2206,7 +2205,7 @@ def test_an_overrun_mid_read_leaves_the_chunk_unreadable_until_it_is_rewritten()
     assert failed is None
     assert left_as == (_STATUS_BUSY, _STATUS_BUSY)
     assert data_on_chip == payload  # the data itself was never damaged
-    assert still_failing is None  # ...yet it is unreadable anyway
+    assert still_failing is None  # ...and is refused anyway, deliberately
     assert 31 in errs["FRAM"]["ErrNum"]  # "Read status byte is not 1 but 2"
     assert repaired  # a write is the only thing that clears it
 

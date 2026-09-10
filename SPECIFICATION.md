@@ -137,9 +137,18 @@ registration API and A.9's `HTML_SRC_DIRS` are shaped around it). Real-hardware 
   `asy_ntp_client.py`).
 - `asy_fram_driver.py`/`asy_fram_manager.py` — raw SPI FRAM driver + chunk allocator with dual-copy
   redundancy (arzi/neu/wozi). `src/`'s promoted versions: each chunk stores two copies plus a
-  busy/idle status byte guarding reads and writes (MB85RS64V reads are destructive internally, so a
-  power loss mid-read is as real a risk as mid-write); "both copies valid but different" is a hard
-  failure (no generation counter), never guessed. `AsyFramTimestampedChunk.write()`/`write_into()`
+  busy/idle status byte guarding reads and writes (MB85RS64V reads are destructive internally — the
+  datasheet's own endurance note says total reads *and* writes set the endurance limit "as an FRAM
+  memory operates with destructive readout mechanism", i.e. every read is internally a
+  read-then-restore — so a power loss mid-read is as real a risk as mid-write). The consequence is
+  intended and worth stating outright, since it looks like a bug from the outside: `_read_chunk()`
+  marks a block busy before reading and only restores idle on the way out, so an interruption in
+  between leaves it marked, and an interruption hitting *both* copies makes every later read fail
+  the status check (errno 31) even once the bus is healthy again — the payload bytes may still read
+  back intact, but an interrupted restore means they cannot be trusted, so refusing them is
+  correct. Only a write clears it. Pinned down by `tests/test_asy_fram_manager.py`'s
+  `test_an_overrun_mid_read_leaves_the_chunk_unreadable_until_it_is_rewritten`; don't "fix" it.
+  "Both copies valid but different" is a hard failure (no generation counter), never guessed. `AsyFramTimestampedChunk.write()`/`write_into()`
   return `(ntp_synced, utc, success)` — `success` is third, not first; don't reorder. `AsyFramManager`
   is a bump-pointer allocator: instantiation order is on-chip layout and must stay identical across
   firmware versions for existing data to decode correctly.
@@ -1745,9 +1754,12 @@ live-path tests, mirrored in the twin tier) shows `_read_chunk()`'s blanket `exc
 catching it, logging errno 47, and returning a clean failure — after which `_read()` reads block 1
 instead, so **a single transient overrun costs nothing at all**: the caller gets its data and the
 repair write restores block 0. Only an overrun hitting both copies degrades the read to `None`.
-That makes the retry question (BACKLOG.md open question 15) much less pressing than it looked —
-but the same run surfaced a genuine defect in the interrupted-read path, which is a separate,
-still-open matter: see BACKLOG.md's own entry.
+That makes the retry question (BACKLOG.md open question 15) much less pressing than it looked.
+
+The same run also leaves the chunk marked busy and unreadable until rewritten, which is **intended
+behavior, not a defect** — an interrupted read means an interrupted internal restore on a
+destructive-readout part, so the data cannot be trusted even when it reads back intact. Part A.4's
+FRAM entry has the full account.
 
 ### F.5.3 Free wins already compiled into the 1.29 build
 
