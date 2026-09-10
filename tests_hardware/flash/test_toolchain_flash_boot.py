@@ -8,7 +8,7 @@ import subprocess
 import time
 
 import pytest
-from harness import REPO_ROOT, Board, HardwareTestFailure, wait_until
+from harness import REPO_ROOT, Board, HardwareTestFailureError, wait_until
 
 # ---------------------------------------------------------------------------
 # Item 23 - scripts/mpremote_connect.sh connection-stability baseline. Cheap, run first: every
@@ -87,6 +87,6 @@ def test_real_uf2_reflash_and_boot_smoke_test(board: Board, request: pytest.Fixt
         time.sleep(2.0)
     assert load is not None
     if load.returncode != 0:
-        raise HardwareTestFailure(f"picotool load -x -v {uf2_path} failed after 5 attempts (exit {load.returncode}):\n{load.stdout}\n{load.stderr}")
+        raise HardwareTestFailureError(f"picotool load -x -v {uf2_path} failed after 5 attempts (exit {load.returncode}):\n{load.stdout}\n{load.stderr}")
 
     wait_until(board.is_reachable, timeout_s=30.0, poll_interval_s=1.0, description="board reachable again after real UF2 reflash")

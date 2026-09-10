@@ -13,7 +13,7 @@ import dns_probe
 import http_client
 import pytest
 from error_log_helpers import assert_module_error_log_empty, reset_all_error_logs
-from harness import Board, HardwareTestFailure, wait_until
+from harness import Board, HardwareTestFailureError, wait_until
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -30,15 +30,14 @@ def _join_dut_hotspot_with_reverify_retry(bench: BenchBridge, ssid: str, passwor
     for attempt in range(attempts):
         try:
             bench.join_dut_hotspot(ssid, password, timeout_s=45.0)
-            return
-        except HardwareTestFailure:
+        except HardwareTestFailureError:
             if attempt == attempts - 1:
                 raise
             try:
                 wait_until(lambda: bench.is_ssid_visible(ssid), timeout_s=30.0, poll_interval_s=2.0, description=f"DUT's own hotspot ({ssid!r}) to be freshly scannable again before retrying the join")
             except TimeoutError:
                 pass  # fall through and retry the join anyway - it may still succeed, and the
-                # join's own next HardwareTestFailure (or success) is the real signal either way
+                # join's own next HardwareTestFailureError (or success) is the real signal either way
 
 _HOTSPOT_PASSWORD = "12345678"  # hardcoded in src/asy_wifi_service.py's _configure_hotspot_ap()
 
@@ -292,7 +291,7 @@ def test_nonsense_path_redirects_to_root_over_the_hotspot_link(joined_hotspot: s
                 response += chunk
         except TimeoutError:
             pass
-    assert response.startswith(b"HTTP/1.0 302") or response.startswith(b"HTTP/1.1 302"), f"GET to a nonsense path over the hotspot link did not return 302: {response!r}"
+    assert response.startswith((b"HTTP/1.0 302", b"HTTP/1.1 302")), f"GET to a nonsense path over the hotspot link did not return 302: {response!r}"
     assert b"Location: /\r\n" in response or b"location: /\r\n" in response, f"redirect Location header was not '/': {response!r}"
     # Matches the STA-mode test's own "a routine response must not log an error" assertion, applied
     # to the new hotspot-mode redirect path.

@@ -57,7 +57,7 @@ async def _main() -> None:
         nonlocal snapshot_completed
         for i in range(SNAPSHOTTER_ITERATIONS):
             try:
-                temp_offset, meas_int, amb_pres, altitude, frc, self_cal = await scd.get_config_snapshot()
+                _temp_offset, meas_int, _amb_pres, _altitude, frc, _self_cal = await scd.get_config_snapshot()
                 if not (2 <= meas_int <= 1800):
                     snapshot_errors.append(f"iter {i}: MeasInt={meas_int!r} outside valid schema range")
                 if not (400 <= frc <= 2000):

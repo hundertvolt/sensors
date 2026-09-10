@@ -11,6 +11,14 @@ from asy_bmp3xx_driver import BMP3XX_I2C
 from asy_scd30_driver import SCD30_I2C
 from asy_sgp40_driver import SGP40_I2C
 
+try:
+    from typing import TYPE_CHECKING
+except ImportError:  # typing has no runtime presence on MicroPython, on-device or in the Unix-port test build
+    TYPE_CHECKING = False
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
 KNOWN_ADDRESSES = {0x61: "SCD30", 0x59: "SGP40", 0x77: "BMP3xx"}
 GENERAL_CALL_ADDRESS = 0x00
 RESERVED_RANGES = ((0x00, 0x07), (0x78, 0x7F))
@@ -27,11 +35,12 @@ async def _probe(i2c: "asy_i2c_driver.I2C", address: int) -> "str | None":
     # than the general call), or a description of anything else that happened.
     try:
         i2c.writeto(address, b"")
-        return None  # ACKed - either a real device answered, or (0x00 only) the general call always "succeeds"
     except OSError:
         return None  # clean NAK/timeout - exactly what an absent device should produce
     except Exception as e:
         return f"{type(e).__name__}: {e}"
+    else:
+        return None  # ACKed - either a real device answered, or (0x00 only) the general call always "succeeds"
 
 
 async def _read_scd30_once(scd: "SCD30_I2C") -> "str | None":
@@ -40,9 +49,10 @@ async def _read_scd30_once(scd: "SCD30_I2C") -> "str | None":
     # particular device, which the lone-device self-hazard branch below never assumes either way.
     try:
         await scd.read_measurement()
-        return None
     except Exception as e:
         return f"{type(e).__name__}: {e}"
+    else:
+        return None
 
 
 async def _read_bmp3xx_once(bmp: "BMP3XX_I2C") -> "str | None":
@@ -50,9 +60,10 @@ async def _read_bmp3xx_once(bmp: "BMP3XX_I2C") -> "str | None":
         pressure, temperature = await bmp.get_pressure_and_temperature()
         if not (300.0 <= pressure <= 1250.0 and -40.0 <= temperature <= 85.0):
             return f"reading outside plausible bounds: Pres={pressure} Temp={temperature}"
-        return None
     except Exception as e:
         return f"{type(e).__name__}: {e}"
+    else:
+        return None
 
 
 async def _read_sgp40_once(sgp: "SGP40_I2C") -> "str | None":
@@ -60,9 +71,10 @@ async def _read_sgp40_once(sgp: "SGP40_I2C") -> "str | None":
         raw = await sgp.measure_raw(temperature=25, relative_humidity=50)
         if raw is None:
             return "measure_raw() returned None"
-        return None
     except Exception as e:
         return f"{type(e).__name__}: {e}"
+    else:
+        return None
 
 
 async def _main() -> None:
@@ -78,10 +90,10 @@ async def _main() -> None:
         wdt.feed()
 
         # 1. Address sweep: every known address, present or not.
-        for addr in KNOWN_ADDRESSES:
+        for addr, known_name in KNOWN_ADDRESSES.items():
             err = await _probe(i2c, addr)
             if err is not None:
-                findings.append(f"bus {port_id}: probing known address {hex(addr)} ({KNOWN_ADDRESSES[addr]}) misbehaved: {err}")
+                findings.append(f"bus {port_id}: probing known address {hex(addr)} ({known_name}) misbehaved: {err}")
         wdt.feed()
 
         # 2. Reserved-range sweep (excluding the general call, covered elsewhere in depth).
@@ -103,29 +115,36 @@ async def _main() -> None:
             try:
                 if addr == 0x61:
                     scd = SCD30_I2C(i2c, address=addr)
-                    read_once = lambda: _read_scd30_once(scd)  # noqa: E731
+                    read_once = lambda scd=scd: _read_scd30_once(scd)  # noqa: E731
                 elif addr == 0x77:
                     bmp = BMP3XX_I2C(i2c, address=addr)
                     await bmp.setup()
-                    read_once = lambda: _read_bmp3xx_once(bmp)  # noqa: E731
+                    read_once = lambda bmp=bmp: _read_bmp3xx_once(bmp)  # noqa: E731
                 elif addr == 0x59:
                     sgp = SGP40_I2C(i2c, address=addr)
                     await sgp.setup()
-                    read_once = lambda: _read_sgp40_once(sgp)  # noqa: E731
+                    read_once = lambda sgp=sgp: _read_sgp40_once(sgp)  # noqa: E731
             except Exception as e:
                 findings.append(f"bus {port_id}: {name} setup() before self-hazard check failed: {type(e).__name__}: {e}")
 
             if read_once is not None:
                 self_errors: list[str] = []
 
-                async def reads() -> None:
+                # Default arguments, not closure captures: each definition has to keep the values
+                # from its OWN loop iteration (B023).
+                async def reads(
+                    read_once: "Callable[[], Awaitable[str | None]]" = read_once,
+                    self_errors: "list[str]" = self_errors,
+                    port_id: int = port_id,
+                    name: str = name,
+                ) -> None:
                     for i in range(8):
                         err = await read_once()
                         if err is not None:
                             self_errors.append(f"bus {port_id} {name} self-hazard read {i}: {err}")
                         await asyncio.sleep(0)
 
-                async def broadcasts() -> None:
+                async def broadcasts(i2c: "asy_i2c_driver.I2C" = i2c) -> None:
                     for _ in range(3):
                         try:
                             i2c.writeto(GENERAL_CALL_ADDRESS, b"\x06")

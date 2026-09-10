@@ -13,14 +13,14 @@ REAL_SSID = "sensors-bench-ap"
 t0 = time.ticks_ms()
 
 
-def log(msg):
+def log(msg: str) -> None:
     print(f"[{time.ticks_diff(time.ticks_ms(), t0) / 1000.0:8.2f}s] {msg}")
 
 
 _PHASE_NAMES = {0: "STA_SEEKING", 1: "STA_ESTABLISHED", 2: "HOTSPOT", 3: "DEACTIVATED"}
 
 
-async def main():
+async def main() -> None:
     conn = asy_wifi_service.AsyConnTime(debug=5)
     await conn.setup()
     await conn.pr.setup()

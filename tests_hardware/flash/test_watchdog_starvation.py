@@ -7,7 +7,7 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-from harness import Board, HardwareTestFailure, wait_until
+from harness import Board, HardwareTestFailureError, wait_until
 
 DEVICE_SCRIPTS = Path(__file__).resolve().parent.parent / "device_scripts"
 
@@ -17,7 +17,7 @@ def test_watchdog_starvation_triggers_a_real_hardware_reset(board: Board) -> Non
     try:
         board.run_isolated(DEVICE_SCRIPTS / "watchdog_starvation_reset.py", timeout_s=15.0)
         raise AssertionError("run_isolated() returned normally - the watchdog never fired (the device script should never return)")
-    except HardwareTestFailure:
+    except HardwareTestFailureError:
         pass  # expected: the connection dies mid-script when the watchdog resets the board
 
     elapsed = time.monotonic() - start

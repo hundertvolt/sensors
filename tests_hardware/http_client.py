@@ -17,8 +17,11 @@ class HttpResponse:
     headers: dict[str, str]
     body: bytes
 
-    def json(self) -> Any:
-        return json.loads(self.body)
+    def json(self) -> dict[str, Any]:
+        # Same narrowing digital_twin/_http_client.py's own json() makes: every endpoint this tier
+        # talks to answers with a JSON object, never a bare array/scalar.
+        result: dict[str, Any] = json.loads(self.body)
+        return result
 
 
 def fetch(host: str, port: int, method: str, path: str, json_body: dict[str, Any] | None = None, timeout_s: float = 10.0) -> HttpResponse:
@@ -30,7 +33,7 @@ def fetch(host: str, port: int, method: str, path: str, json_body: dict[str, Any
         headers["Content-Type"] = "application/json"
     request = urllib.request.Request(url, data=data, headers=headers, method=method)
     try:
-        with urllib.request.urlopen(request, timeout=timeout_s) as response:  # noqa: S310 - fixed http:// scheme, a real LAN device we constructed the URL for ourselves, never user-controlled input
+        with urllib.request.urlopen(request, timeout=timeout_s) as response:
             body = response.read()
             return HttpResponse(response.status, dict(response.headers), body)
     except urllib.error.HTTPError as exc:

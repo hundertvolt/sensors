@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))  # tests_hardware/ itse
 
 import http_client
 from bench_control import BenchBridge
-from harness import Board, HardwareTestFailure, wait_until
+from harness import Board, HardwareTestFailureError, wait_until
 from soak_tiers import SOAK_TIER_SECONDS
 
 if TYPE_CHECKING:
@@ -106,11 +106,11 @@ def _recover_stale_dut_credentials(bench: BenchBridge) -> None:
         password = bench.ap_password()
         res = http_client.fetch(gateway, 80, "PUT", "/networking", {"SSID": ssid, "PW": password}, timeout_s=10.0)
         if res.status_code != 200:
-            raise HardwareTestFailure(f"PUT /networking during automatic stale-credential recovery failed: {res.status_code} {res.body!r}")
+            raise HardwareTestFailureError(f"PUT /networking during automatic stale-credential recovery failed: {res.status_code} {res.body!r}")
         result = res.json().get("result", {})
         accepted = {"Valid", "Unchanged"}
         if result.get("SSID") not in accepted or result.get("PW") not in accepted:
-            raise HardwareTestFailure(f"PUT /networking during automatic stale-credential recovery was rejected: {result!r}")
+            raise HardwareTestFailureError(f"PUT /networking during automatic stale-credential recovery was rejected: {result!r}")
     finally:
         bench.leave_dut_hotspot_and_restore_bridge()
 
@@ -150,11 +150,11 @@ def dut_ip(board: Board, bench: BenchBridge) -> str:
         lines = board.tail_log(duration_s=timeout_s)
         joined = "\n".join(lines)
         if "Permanently no WLAN connection" in joined:
-            raise HardwareTestFailure(f"DUT fell back to hotspot mode instead of establishing a real STA connection:\n{joined}")
+            raise HardwareTestFailureError(f"DUT fell back to hotspot mode instead of establishing a real STA connection:\n{joined}")
         if "WLAN connection established" not in joined:
             raise TimeoutError(f"no 'WLAN connection established' observed within {timeout_s}s of passive log observation:\n{joined}")
         if not _read_ip_and_resume():
-            raise HardwareTestFailure(f"log showed 'WLAN connection established' but a follow-up check found no real IP:\n{joined}")
+            raise HardwareTestFailureError(f"log showed 'WLAN connection established' but a follow-up check found no real IP:\n{joined}")
 
     def _wait_for_ip_and_http(timeout_s: float, description_suffix: str = "") -> None:
         _wait_for_sta_ip(timeout_s)
@@ -170,12 +170,12 @@ def dut_ip(board: Board, bench: BenchBridge) -> str:
     board.hard_reset()  # only a real hard_reset() reliably resumes normal auto-boot; soft reset leaves main.py stopped (README)
     try:
         _wait_for_ip_and_http(60.0)
-    except (TimeoutError, HardwareTestFailure):
+    except (TimeoutError, HardwareTestFailureError):
         bench.kick_all_stations()
         board.hard_reset()
         try:
             _wait_for_ip_and_http(60.0, description_suffix=" (after one hard_reset() retry - see this fixture's own docstring)")
-        except (TimeoutError, HardwareTestFailure):
+        except (TimeoutError, HardwareTestFailureError):
             # Neither retry helps if the DUT has stale stored WiFi credentials (e.g. bridge
             # recreated with a fresh SSID/password) - falls back to stale-credential recovery.
             _recover_stale_dut_credentials(bench)

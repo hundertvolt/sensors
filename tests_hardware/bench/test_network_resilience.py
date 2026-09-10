@@ -17,7 +17,7 @@ from error_log_helpers import (
     get_errcount,
     reset_all_error_logs,
 )
-from harness import Board, HardwareTestFailure, wait_until
+from harness import Board, HardwareTestFailureError, wait_until
 from rogue_udp_responder import RogueUdpResponder
 
 if TYPE_CHECKING:
@@ -117,7 +117,7 @@ def _assert_wifi_log_has_only_benign_ap_not_found_warning(dut_ip: str) -> None:
     history = entry.get("history", [])
     # "N" entries are print_log.py's own "nothing recorded" padding (get_log()'s own encoding) -
     # always present, filling out the fixed-size ring, and not a real log line at all.
-    unexpected = [h for h in history if h.get("type") not in ("N",) and not (h.get("type") == "W" and h.get("num") == 5)]
+    unexpected = [h for h in history if h.get("type") != "N" and not (h.get("type") == "W" and h.get("num") == 5)]
     assert not unexpected, f"WIFI error log had unexpected entries beyond the known-benign wrnno=5: {unexpected!r} (full: {entry!r})"
 
 
@@ -559,7 +559,7 @@ def test_garbage_ssid_via_rest_config_is_handled_gracefully(board: Board, bench:
                 try:
                     bench.join_dut_hotspot(original_hostname, _HOTSPOT_PASSWORD, timeout_s=45.0)
                     break
-                except HardwareTestFailure:
+                except HardwareTestFailureError:
                     if attempt == 2:
                         raise
                     time.sleep(3.0)
