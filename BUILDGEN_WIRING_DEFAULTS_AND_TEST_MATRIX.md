@@ -90,6 +90,12 @@ default provider duck-type-identical to a real `SCD30_Reader.get_data()` result 
 bespoke shape. 25°C/50%RH matches `SGP40_I2C.measure_raw()`'s own datasheet-documented defaults
 (Table 9) — not arbitrary.
 
+**Superseded by §2.9 below**: this worked example treats `comp_source` as one field pointing at a
+whole producer object. The project owner has since decided that every individual measurement value
+(temperature, humidity, ...) must be independently source-selectable, so `comp_source` actually
+splits into two per-value fields rather than staying one whole-object reference — see §2.9. Kept
+here as the smaller worked example that motivated the generalization, not as the final design.
+
 **`asy_notification_service.py`** — `mode="attr"`, target `request_signal`. Because codegen's
 existing attr-mode rendering is just `f"{var}.{wf.target}"`, a default provider that exposes an
 attribute/method of the *same name* as `wf.target` needs **no mode-specific special-casing** in
@@ -140,6 +146,60 @@ all; omitting the field already produces a clean build today.
   parallel "resolve a default selection" path, or a shared branch point right at the top (a
   `{default: true, ...}` value vs. a plain string value are distinguished before any instance
   resolution is attempted).
+
+### 2.9 Generalization (confirmed by project owner, 2026-09-10): uniform per-value wiring for every measurement
+
+Not limited to SGP40's `comp_source`. **Every individual measurement value must be freely
+selectable for wiring, from any producer that exposes that same physical property/unit —
+independent of which whole producer object it happens to live on.** This is not new machinery:
+`asy_notification_service.py`'s `warn_*` fields already work exactly this way (`{source, field}`,
+`NotificationCoordinator` resolving `source.get_data()` then reading `field` off it dynamically,
+tolerant of any field name). The decision is to apply that same shape everywhere a module consumes
+one scalar value out of another module's `get_data()` result, not just for notification signals.
+
+**Full measurement-surface survey** (every real `namedtuple` in `src/`, confirmed directly,
+2026-09-10):
+
+| Producer (`src/` module)     | Measurement fields (excluding `TS`) |
+|-------------------------------|---------------------------------------|
+| `SCD30` (`asy_scd30_driver.py`)   | `CO2`, `Temp`, `Hum`, `WetBulb`, `DewPoint` |
+| `BMP3XX` (`asy_bmp3xx_driver.py`) | `Pres`, `Temp`, `SLPres` |
+| `SGP40` (`asy_sgp40_driver.py`)   | `VOC`, `Raw` |
+
+**Only genuine overlap today: `Temp`** (`SCD30.Temp` / `BMP3XX.Temp` — identical attribute name
+already, confirmed directly, not by convention/enforcement — see the open question below). Every
+other field is single-sourced right now (`CO2`/`Hum`/`WetBulb`/`DewPoint` only on `SCD30`;
+`Pres`/`SLPres` only on `BMP3XX`; `VOC`/`Raw` only on `SGP40`). So the *practical* effect today is
+scoped to `SGP40`'s two compensation inputs, but the **mechanism itself must be written generically
+in buildgen** (uniform `{source, field}` resolution, no per-property special-casing, no hardcoded
+`producer_class`) so a future driver exposing a matching field name becomes wireable automatically
+with zero buildgen changes — the same reason `warn_*` was already built generically rather than as
+three hardcoded CO2/VOC/Hum cases.
+
+**Consequence for `comp_source`**: splits into two independent per-value wiring fields (exact TOML
+field names still open — `temperature_source`/`humidity_source` used as placeholders below):
+
+```toml
+[instance.wiring]
+temperature_source = {source = "bmp3xx", field = "Temp"}    # e.g. compensate from BMP3xx's Temp instead of SCD30's
+humidity_source = {default = true, value = 50}               # no live humidity source wired - constant fallback
+```
+
+This is a real `src/` behavior change beyond §2's original scope: `SGP40_Reader.__init__` moves
+from one `comp_source: SCD30_Reader` parameter to two independent value-getters, and `_read_sgp()`
+resolves each the same generic way `NotificationCoordinator._check_one()` already resolves a
+`(source, field)` pair, instead of one direct `self.comp_source.get_data()` call. `_WIRING`'s
+`producer_class`/nominal-class-match check no longer applies to fields using this shape — the
+constraint becomes structural (source exposes an attribute named `field`), not nominal.
+
+**Open sub-question, not yet resolved**: `Temp` happens to be named identically on `SCD30` and
+`BMP3XX` today by coincidence, not by any enforced convention. Should buildgen match purely by
+attribute name (simplest, consistent with `warn_*`'s existing precedent — "does `source`'s
+`get_data()` result have an attribute named `field`"), or should each measurement field carry an
+explicit property/unit tag so a future sensor naming the same physical quantity differently (e.g.
+`"Temperature"` instead of `"Temp"`) is still recognized as interchangeable? Name-matching needs no
+new machinery; a tagging system is more robust against naming drift but doesn't exist anywhere in
+this codebase yet.
 
 ## 3. To-dos (added by the project owner, 2026-09-10)
 
@@ -214,13 +274,12 @@ Plus notification's own separate per-signal mechanism (not `_WIRING`): `warn_co2
    independently point at a different scd30 instance, the same scd30 instance, or use the explicit
    default — this is where "full vs. partial wiring against different sensors measuring the same
    property" lives.
-10. **Shared-property cross-wiring** — Temperature is measured by both `scd30` and `bmp3xx`
-    (`SCD30`'s `Temp` field and `BMPResults`' `temperature` field), but only `SCD30_Reader` is a
-    legal `comp_source` producer class today (`_WIRING`'s `producer_class` is hardcoded to
-    `SCD30_Reader`, not a shared protocol/base). **Open question, not yet raised with the project
-    owner**: should `comp_source` ever legally resolve to a `BMP3xx_Reader` instead, or does
-    "measuring the same property" stay purely a matrix-testing observation (two sensors happen to
-    both report Temp) without implying they're interchangeable as a `comp_source` producer?
+10. **Shared-property cross-wiring — RESOLVED, generalized (2026-09-10, see §2.9)**: not scoped to
+    `comp_source`/temperature specifically. Every individual measurement value must be freely
+    selectable for wiring from any producer exposing that same property, uniformly, the same way
+    `warn_*` already works — full survey and the `comp_source`→per-value-field consequence are in
+    §2.9. Remaining open sub-question (§2.9's last paragraph): name-matching vs. an explicit
+    property/unit tag for cross-driver field-identity matching.
 11. **Bus topology** — all sensors on one shared bus vs. spread across separate buses vs. i2c+spi
     mixed.
 12. **name_ext on a singleton-adjacent instance** — giving the sole scd30 instance a non-empty
@@ -232,8 +291,11 @@ Plus notification's own separate per-signal mechanism (not `_WIRING`): `warn_co2
   TOML fixtures vs. which get covered by targeted unit tests against `validate.py`/`codegen.py`
   directly (matching the existing `test_buildgen_validate.py` pattern of driving internals
   directly for cases no real/6-device TOML can reach).
-- Resolve axis 10's open question with the project owner.
+- Resolve §2.9's name-matching-vs-unit-tag open sub-question with the project owner.
 - Design the multi-instance (axis 9) fixture set — likely extends
   `tests_scripts/buildgen_fixtures/novel_combo.toml` or adds a sibling fixture, not yet decided.
+- Once §2.9's per-value wiring shape is finalized, axis 3 (sensor↔sensor wiring) needs re-wording
+  in terms of it (temperature_source/humidity_source independently, not one comp_source choice) —
+  not yet done here.
 - Keep collecting axes/combinations with the project owner before finalizing which become real
   test files.
