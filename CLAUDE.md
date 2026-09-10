@@ -533,10 +533,10 @@ chroot "$CHROOT" /bin/bash -c "source /root/proxy-env.sh && pip install --break-
 # sudo rights but isn't already root) never hits this. A plain chroot session runs as root, where
 # apt-get wouldn't need sudo at all, but the script always prepends it regardless - so installing
 # the package is the correct fix here, not stripping sudo from the script for a root-only case.
-# libcap2-bin is missing for the same reason (not in --variant=minbase): scripts/test.sh grants
-# CAP_NET_BIND_SERVICE to the built Unix-port binary so the real port-53 DNS-server test can bind,
-# and without it the run dies with "setcap: command not found" AFTER the whole toolchain build,
-# minutes in. Confirmed directly, 2026-09-10.
+# libcap2-bin (setcap, for scripts/test.sh's CAP_NET_BIND_SERVICE grant) is in
+# toolchain/versions.toml's apt_packages, so a from-scratch run installs it on its own; it is
+# listed here too because a REUSED chroot whose toolchain is already built skips that install step
+# entirely, and setcap's absence then only surfaces minutes in. Confirmed directly, 2026-09-10.
 
 # Per-verification: copy the CURRENT working tree (uncommitted changes included - this is a
 # pre-push gate, not a post-push audit) into the chroot, then run the exact documented workflow
