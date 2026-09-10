@@ -3,14 +3,6 @@ Unlike WLAN, no behavioral change from the `tests/` shape was needed: real `NeoP
 
 from collections import deque
 
-try:
-    from typing import TYPE_CHECKING
-except ImportError:  # typing has no runtime presence on MicroPython, on-device or in the Unix-port test build
-    TYPE_CHECKING = False
-
-if TYPE_CHECKING:
-    from typing import Any
-
 _WRITES_MAXLEN = 200  # ad-hoc introspection aid, same shape as digital_twin/machine.py's own
 # I2C.log/SPI.log (see that file's own _LOG_MAXLEN comment for the full reasoning) - write() runs
 # on every tick of src/asy_neopixel_driver.py's own signal loop for the life of the process, so an
@@ -19,7 +11,9 @@ _WRITES_MAXLEN = 200  # ad-hoc introspection aid, same shape as digital_twin/mac
 
 
 class NeoPixel:
-    def __init__(self, pin: "Any", n: int, bpp: int = 3) -> None:
+    # `pin` is stored for introspection only and never touched - a real machine.Pin from
+    # asy_neopixel_driver.py, None from the twin's own tests - so `object` covers both exactly.
+    def __init__(self, pin: object, n: int, bpp: int = 3) -> None:
         self.pin = pin
         self.n = n
         self.bpp = bpp
