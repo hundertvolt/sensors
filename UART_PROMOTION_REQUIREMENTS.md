@@ -39,7 +39,8 @@ concretely demands of *this* module and how it will be checked.
 | 2.2 | The legacy `asy_uart.AsyUART` import is replaced by `asy_uart_driver.UART`. Their method sets differ — every call site is re-derived from the promoted driver's real signatures, not assumed | D.9, D.14 |
 | 2.3 | No session/protocol class split (`*_DeviceSession` + `*_I2C`). C.3.2 settles this for a point-to-point link: one merged class, because there is no bus-sharing concept and the two lock layers collapse without losing distinction | C.3.2 |
 | 2.4 | This is **not** a sensor driver: no namedtuple measurement shape, no `make_dict()`, no `get_data()`/`get_dict_data()`. Registering it as a `sensors=` module would be wrong | C.4.2, J.1 |
-| 2.5 | Whether it subclasses `SensorReader` is a real decision, not a default — see §19.1 | C.4.3, C.7 |
+| 2.5 | **Not a `SensorReader` subclass** (owner decision, 2026-09-11): plain class owning a `PrintLogHistory`, the `captive_dns.DNSServer`/`SystemService` shape. Its `errno`/`wrnno` numbering is nevertheless aligned to the `SensorReader` reservation anyway — see 4.4 | Owner decision, C.4.3 |
+| 2.6 | A consecutive-failure-streak give-up is still required for any owned long-running task (6.8). Without `SensorReader` there is no inherited `_error_check()`, so the streak counter is written here — modelled explicitly on `_error_check()`'s contract (increment on failure, decrement on success, give up past the threshold), with `max_module_error` as its constructor parameter and the same name/semantics | C.7, C.9 |
 
 ## 3. Construction contract
 
@@ -47,7 +48,9 @@ concretely demands of *this* module and how it will be checked.
 |---|---|---|
 | 3.1 | Constructor parameter order follows the project convention: the bus handle first, then module-specific parameters, then `max_module_error` (if used), then `fram`, `history_length`, `debug`, `name`/`logger` | C.2 |
 | 3.2 | `debug` is `int | None` (a log *level*), never the legacy `bool`. `self.debug` disappears entirely | C.7, print_log.py |
-| 3.3 | Logger injection is supported both ways: construct one via `make_logger(fram, history_length, debug, name)`, **or** accept a caller-supplied `logger=` and reach through to it, exactly as `SensorReader.__init__` does | G.2, base_classes.py |
+| 3.3 | **Logger injection is supported both ways, and this is the settled decision** (owner, 2026-09-11): `fram=`/`history_length=`/`debug=`/`name=` construct one via `make_logger()`, **or** a caller-supplied `logger=` reaches through to an upstream instance's own. The shape is copied from `SensorReader.__init__` (`if logger is not None: self.pr = logger else: self.pr = make_logger(...)`); the live precedent for the reach-through half is `AsyFramManager` handing `self.pr` down to `FRAM_SPI` and to every chunk | Owner decision, G.2, base_classes.py |
+| 3.3a | **`fram=` is optional but always possible**, the project-wide default for every non-FRAM module: passing it selects `PrintLogHistoryStore`, omitting it selects `PrintLogHistory`, and `make_logger()` already makes that choice. No FRAM-specific code is written here | Owner decision, C.7 |
+| 3.3b | **`name` is a constructor parameter with `_NAME` only as its default.** This is the first logger-owning service module that can legitimately exist more than once on one device (dev runs two — 16.9), so a hardcoded single identity would merge two instances' error histories into one stream. `ConfigManager(path, schema, name)` is the precedent | C.2, 16.9 |
 | 3.4 | `role` is a constructor parameter. It is not inferable and has no safe default that suits both ends | J.2 |
 | 3.5 | `__init__` is synchronous and allocates only: no `await`, no I/O, no bus touch. Anything needing an await goes in `async def setup()` behind the standard `self.initialized` gate | C.13 |
 | 3.6 | `self.name` is set and equals `self.pr.name` — the `_ModuleLike` registration shape the webserver keys on | asy_webserver_service.py, captive_dns.py |
@@ -59,7 +62,10 @@ concretely demands of *this* module and how it will be checked.
 | 4.1 | **Every one of the ~30 `if self.debug: print(...)` sites is replaced by the injected logger.** Trace/info → `pr.all()`/`pr.evt()`/`pr.one()`; anything that should count → `pr.err_s(..., errno=N)`/`pr.wrn_s(..., wrnno=N)` | C.7, G.2 |
 | 4.2 | **No bespoke counter mechanism is added.** The `PrintLogHistory` error history *is* the protocol's diagnostic counter, surfaced through `/status`'s `errcount`, with optional FRAM backing — free, once the logger is in place | Owner direction, C.7 |
 | 4.3 | `err_s`/`wrn_s` are **async**. A synchronous call site (a `Timer` callback, a sync validation helper) may only use the non-persisting `pr.err()`/`pr.wrn()`; if a hot path cannot afford the await, the failure is still recorded — it does not silently drop to `pr.all()` | print_log.py, system_service.py |
-| 4.4 | The module gets its own `errno`/`wrnno` catalog, grouped by method, added to `SPECIFICATION.md` C.7.1's running table in the same change. The starting number depends on §19.1 | C.7 |
+| 4.4 | **`errno` numbering starts at 10 and `wrnno` at 10, aligned to the `SensorReader` reservation even though this module does not subclass it** (owner direction, 2026-09-11): `base_classes.py` owns `errno` 1-9 and `wrnno` 1-2, and `api_response.py`'s `handle_set_cmd()` owns the fixed cross-module slot `errno=99`. Alignment is for conformity and clash avoidance, and under 3.3 it is not merely cosmetic — see 4.4a. `asy_sgp40_driver.py` (`errno` 10-18, `wrnno` 10-14) is the fully-conformant precedent | Owner direction, C.7 |
+| 4.4a | **A shared logger is a shared numbering space.** When `logger=` reaches through, this module's codes land in the owner's single history stream under the owner's name, so the catalog must be **disjoint from that owner's own**, not merely ≥10. `AsyFramManager` (10-88) / `FRAM_SPI` (89-98) partitioning one stream is the reference | C.7, 3.3 |
+| 4.4b | The three fixed common slots are honored where applicable: `10` = init failed, `11` = the module's primary periodic operation failed, `12` = a persisted-config read at init failed (not applicable here — leave `12` unused rather than reassigning it) | C.7 |
+| 4.4c | The catalog is added to `SPECIFICATION.md` C.7.1's running table in the same change, one row, grouped by method | C.7 |
 | 4.5 | `async def get_error_counter(self) -> "ErrorLog"` returning `await self.pr.get_log()`, and `async def reset_error_counter(self) -> None` calling `await self.pr.reset()` — both annotated with the shared `ErrorLog` type, never a re-spelled dict | G.2 |
 | 4.6 | `await self.pr.setup()` is called once, at the start of whatever long-running task the module owns (or in `setup()` if it owns none) — without it FRAM persistence stays inert | base_classes.py, C.13 |
 | 4.7 | A failure is never swallowed: no `except Exception: return None` without a logged `err_s`/`wrn_s` | C.7 |
@@ -215,7 +221,10 @@ to G.2 in the same change.
 | 15.9 | Wedge coverage — the point of §6: a peer that never stops talking, a dropped write-gate callback, a peer that goes silent mid-train, a cancel arriving during each wait state. Every one must terminate | D.3, D.5 |
 | 15.10 | Integration tests drive the real chain, not just the module in isolation, if it is wired into a variant's task graph | D.12 |
 | 15.11 | No test may hang: the per-file `timeout`+retry and forced `sys.exit()` backstops stay in place | CLAUDE.md |
-| 15.12 | Bus-hazard coverage across the four tiers is **not** triggered by this module — it is neither I2C nor SPI and shares no bus. State this explicitly rather than leaving it looking forgotten | C.8's standing rule |
+| 15.12 | **Comm-hazard coverage across the four tiers applies here too** (owner direction, 2026-09-11), as the UART-shaped analogue of C.8's standing bus-hazard rule — with one structural difference: a UART link has **exactly two participants, never more and never fewer**, so there is no multi-device interleaving or address-sweep dimension. What replaces each: (a) *same-instance concurrency* — two tasks initiating on one instance at once, and a `clear()`/`cancel_read_timeout()` racing an in-flight transaction, must serialize on the session lock or be refused, never corrupt a frame; (b) *both-participants-transmitting* — out of contract by design (no arbitration, J.2), so the test proves it is **detected and recovered from**, not that it works; (c) *frame/field sweep* — every `CMD`, `SIZE`, `CHUNKS`, `CUR_CHUNK` and `UID` value across its legal and illegal range, replacing the I2C address sweep | Owner direction, C.8 |
+| 15.13 | Tier coverage: **mock** (byte-exact wire log of a two-instance exchange plus the field sweep), **twin** (two instances under genuine concurrent task load), **flash** (real hardware over dev's permanent UART0↔UART1 crossover jumper — `tests_hardware/flash/`), **bench** (the same link under full HTTP/API load). `tests_hardware/bus_topology.py` gains the UART link's declaration alongside its I2C/SPI ones | C.8, E.6.1 |
+| 15.14 | **Hardware fault injection is in scope as future work, and the harness must not preclude it**: the two-participant model makes real injection possible (pull a line, invert it, inject noise, desync the baud rate) in a way a shared multi-drop bus does not. Structure the flash/bench tier so an injection adapter can be added without reshaping the tests, per E.6.2's capability-adapter pattern | Owner direction, E.6.2 |
+| 15.15 | The real-hardware write-safety constraints still apply: no test may touch the RP2040's own flash filesystem, and if an instance's logger is FRAM-backed its writes count against the NVM budget — construct the module directly rather than through a variant's full task graph where that matters | C.8 |
 
 ## 16. Pipeline and wiring
 
@@ -225,10 +234,13 @@ to G.2 in the same change.
 | 16.2 | A digital-twin counterpart is **required, same session, not deferred**: a twin-side UART fake wired into `digital_twin/machine.py`, plus `tests/test_digital_twin_*.py` coverage | C.11 item 9, A.10 |
 | 16.3 | If the module is wired into a variant: add it to that variant's `_collect_error_sources()` and `_collect_level_setters()` in `sensortask_*.py` — the level registry is per-*logger*, so a nested logger counts separately | A.7 |
 | 16.4 | If wired, register it as an `error_sources=` module on `WebserverService`, satisfying `_ModuleLike` (`name`, `pr`, `get_error_counter()`, `reset_error_counter()`) | A.7, A.8 |
-| 16.5 | If wired, add `{key, label}` to `html/definitions/<variant>.json`'s errcount module list and mirror it on the `js/` side — a `src/`-side change and its `js/` mirror are one change, not two. A module with no definitions entry stays invisible on the website indefinitely | H.6, G.2, C.11 item 9 |
-| 16.6 | If the logger is FRAM-backed, it consumes a chunk, and **`AsyFramManager` is a bump-pointer allocator — instantiation order is on-chip layout.** It must be constructed last, or every deployed unit's persisted logs shift address and are invalidated | A.7, A.4 |
+| 16.5 | **The website side is solved upstream of this module — the module's own obligation is to provide the means, identically to every other module that already does**: a `name` matching `self.pr.name`, `get_error_counter()` returning the shared `ErrorLog` envelope, and `reset_error_counter()`. Adding `{key, label}` to `html/definitions/<variant>.json`'s errcount list is then the wiring layer's job, one entry per instance (16.9), and the `src/`/`js/` mirror stays one change | Owner clarification, H.6, G.2 |
+| 16.6 | A FRAM-backed logger consumes a chunk, and **`AsyFramManager` is a bump-pointer allocator — instantiation order is on-chip layout.** Both instances are therefore constructed **after** every existing dev module, appending to dev's chunk order rather than inserting into it; two FRAM-backed instances mean two new chunks | A.7, A.4 |
 | 16.7 | The `UART` bus instance is constructed with a single-digit `poll_wait_ms` (12.6), and its pins avoid GPIO24/25 and GPIO28/29 — wireless-reserved on Pico W, and inside a UART pin-mux group, so either pair silently collides with WiFi | J.6, asy_uart_driver.py |
 | 16.8 | After any merge touching `uv.lock`, re-verify the tool pins with `uv sync` + `ruff --version`/`mypy --version` — `uv lock --check` does not catch a merged-apart lock | CLAUDE.md |
+| 16.9 | **The target variant is `dev`** (owner decision, 2026-09-11), wired as **two instances on one board** — one initiator on UART0, one responder on UART1 — across the bench rig's permanent TX↔RX crossover jumper (GP0↔GP9, GP1↔GP8), which exists for exactly this purpose. That makes J.7's self-compatibility property physically testable, not just modelled. Pin pairs: UART0 tx=GPIO0/rx=GPIO1, UART1 tx=GPIO8/rx=GPIO9 — clear of the wireless-reserved GPIO24/25 and GPIO28/29 groups (16.7) | Owner decision, J.7, `dev_legacy/README.md` |
+| 16.10 | **UART0 on dev is mutually exclusive between the crossover jumper (GPIO0/1) and the BME688/BSEC coprocessor (GPIO16/17)** — one peripheral, one pin pair at a time. No BME688 driver exists in `src/`, so this costs nothing today, but it must be recorded where the dev wiring is declared rather than discovered later | `dev_legacy/README.md` |
+| 16.11 | Two instances mean two entries everywhere the wiring enumerates modules: `_collect_error_sources()`, `_collect_level_setters()`, the webserver's `error_sources=` list, and the definitions file's errcount list. Each needs a distinct `name` (3.3b) | A.7, 16.5 |
 
 ## 17. Documentation obligations, same change
 
@@ -275,34 +287,41 @@ Line references are `python/IndividualDrivers/asy_uart_comm.py` as it stands tod
 | 263 | ACK built through `_build_msg()`, allocating a fully padded frame per ACK | 7.2, 7.9 |
 | (absent) | `name`, `get_error_counter()`, `reset_error_counter()`, `get_task_starters()`, `get_timer_starters()`, `setup()`, role gate, parameter validation | 3.6, 4.5, 9.1, 10.1-10.2, 8.6 |
 
-## 19. Decisions still open
+## 19. Decisions
 
-Blocking — the answer changes the module's structure, so it is needed before the tests are written:
+Settled by the project owner, 2026-09-11:
 
-1. **Base class.** Plain class with an injected `make_logger()` (the `captive_dns.DNSServer`/
-   `SystemService` shape, `errno` numbering free to start at 1), or `SensorReader` subclass to reuse
-   `_error_check()`'s consecutive-failure-streak give-up (which forces `errno` numbering to start at
-   10 and drags in a measurement-data structure the module has no use for). `NotificationCoordinator`
-   is the precedent for taking `SensorReader` for `_error_check()` alone — and for having to
-   renumber when it collided with the reserved base range.
-2. **Logger backing.** FRAM-backed (persists a link fault across a reboot, but consumes a chunk and
-   must therefore be constructed **last**, per 16.6) or RAM-only (the `WebserverService` precedent —
-   deliberately RAM-only to keep the seven-chunk order unchanged).
-3. **Which variant, if any, wires it.** Neither `wozi` nor `dev` has a UART peer today. If none
-   does yet, 16.3-16.5 are deferred with an explicit note rather than silently skipped — but the
-   module then has no live caller, which is exactly the state `asy_uart_driver.py` is already in.
+1. **Base class / logger.** Not a `SensorReader` subclass. It owns a `PrintLogHistory` and supports
+   both construction routes — `fram=`/`history_length=`/`debug=`/`name=` through `make_logger()`,
+   or a `logger=` reach-through to an upstream instance's own, the way `AsyFramManager` hands
+   `self.pr` down to `FRAM_SPI` and its chunks. Consequences: the streak counter `_error_check()`
+   would have supplied is written here instead (2.6), and a shared logger means a shared numbering
+   space (4.4a).
+2. **FRAM backing.** Optional but always possible, exactly as project-wide — `fram=` selects
+   `PrintLogHistoryStore`, omitting it selects `PrintLogHistory`, and `make_logger()` already makes
+   that choice. Consequence: a FRAM-backed instance appends to dev's chunk order, never inserts
+   into it (16.6).
+3. **Target variant.** `dev`, wired as two instances across the bench rig's permanent UART0↔UART1
+   crossover jumper (16.9-16.11).
+4. **`errno`/`wrnno` numbering.** Aligned to the `SensorReader` reservation regardless of the base
+   class — `errno` from 10, `wrnno` from 10 (4.4). Modules currently not aligned are recorded in
+   BACKLOG.md as a separate fix, not corrected drive-by from this branch.
+5. **Comm-hazard testing.** In scope across all four tiers, in the two-participant shape, with
+   hardware fault injection as future work the harness must not preclude (15.12-15.15).
+6. **Website.** Solved upstream; this module's obligation is to provide the same means every other
+   module does (16.5).
 
-Non-blocking — needed before the affected code is written, not before the scope is settled:
+Still open — needed before the affected code is written, not before the tests are scoped:
 
-4. **CRC ownership** (changelog A11's open question): `UART_Comm` takes CRC ownership with the bus
+7. **CRC ownership** (changelog A11's open question): `UART_Comm` takes CRC ownership with the bus
    driver configured `CRC_Pass`, or `asy_uart_driver.py` gains a framing-codec concept. Only forced
    if COBS framing is adopted; not to be decided implicitly.
-5. **`uart_listen()`'s return contract** — the three-tuple's shape on every path, including the
+8. **`uart_listen()`'s return contract** — the three-tuple's shape on every path, including the
    currently-undefined fall-through.
-6. **`uart_get()`'s empty-payload result** — a genuinely empty payload is a distinct outcome from
+9. **`uart_get()`'s empty-payload result** — a genuinely empty payload is a distinct outcome from
    failure (J.4); the API must express that distinction.
-7. **The lost-final-ACK case** — whether "sent, unconfirmed" is surfaced as its own outcome or
-   folded into failure. It is a two-generals situation, so the honest answer may be a third state.
+10. **The lost-final-ACK case** — whether "sent, unconfirmed" is surfaced as its own outcome or
+    folded into failure. It is a two-generals situation, so the honest answer may be a third state.
 
 ## 20. Done criteria
 
@@ -312,9 +331,10 @@ inspection:
 - `scripts/lint.sh`, `scripts/typecheck.sh` (all three passes) and `scripts/test.sh` exit 0 with
   zero findings, and the finding count on untouched files is unchanged.
 - Every §15 test tier exists and passes, loopback and fault injection included, under the real
-  MicroPython Unix-port interpreter.
+  MicroPython Unix-port interpreter; the flash/bench comm-hazard tiers run clean on the dev bench
+  over the real crossover jumper, under the project owner's own go-ahead.
 - §18's table is fully struck through — every listed violation actually fixed, not deferred.
-- The three blocking decisions in §19 are answered by the project owner and reflected in the code.
+- §19's four remaining open questions are answered and reflected in the code.
 - `SPECIFICATION.md`, `UART_C_PORT_CHANGELOG.md`, `BACKLOG.md` and README.md's doc map are updated
   in the same change set.
 - A bird's-eye scan across the whole of `src/` has been re-run after the file lands, covering Part

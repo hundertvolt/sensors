@@ -249,6 +249,29 @@ constraints.
     interrupted read *does* leave the chunk marked busy and unreadable until rewritten - that is
     intended behavior, not a second bug to weigh here: see SPECIFICATION.md Part A.4's FRAM entry.
 
+16. **Seven `src/` modules number `errno`/`wrnno` inside the range `base_classes.py` reserves.**
+   Part C.7 reserves `errno` 1-9 and `wrnno` 1-2 for `SensorReader`/`SensorReaderConfig`, and
+   `api_response.py`'s `handle_set_cmd()` owns the fixed cross-module slot `errno=99`; the project
+   owner's standing direction (2026-09-11) is that **every** module aligns to that reservation for
+   conformity and clash avoidance, whether or not it subclasses `SensorReader`. Audited across
+   `src/`: `config_manager.py` (`errno` 1-14, `wrnno` 1-6), `system_service.py` (`errno` 1-6, plus
+   its dynamic `wrnno = n + 1`), `asy_webserver_service.py` (`errno` 1-6, `wrnno` 1-5),
+   `captive_dns.py` (`errno` 1-3, `wrnno` 1-3), `asy_wifi_service.py` (`wrnno` 1-7),
+   `asy_ntp_client.py` (`wrnno` 1-3), `asy_notification_service.py` (`wrnno` 1-5 - its `errno` was
+   already renumbered to 10-13 for exactly this reason). Conformant today:
+   `asy_sgp40_driver.py` (`errno` 10-18, `wrnno` 10-14), `asy_bmp3xx_driver.py`,
+   `asy_scd30_driver.py`, `asy_fram_manager.py`/`asy_fram_driver.py`.
+   **No live clash exists** - none of the seven currently shares a logger with a `SensorReader`
+   instance, so the reserved codes never reach the same history stream. It becomes a real defect
+   the moment one of them gains a `logger=` reach-through, which is exactly the pattern
+   `AsyFramManager`/`FRAM_SPI` already use and which the UART promotion adopts. **Where to fix**:
+   a renumbering pass is mechanical but not free - every changed code is a persisted value in
+   deployed units' FRAM histories and appears in `SPECIFICATION.md` C.7.1's table, the errcount
+   UI's raw `num`, and existing tests. Needs an owner decision on whether to renumber in place
+   (invalidating persisted history semantics for those modules on the next deployment) or only on
+   each module's next substantial touch. Flagged, deliberately not fixed drive-by - see CLAUDE.md's
+   "flag, don't silently change" rule.
+
 ## Deferred / explicitly out-of-scope work
 - **The 1.29.0 pin has never run on real hardware.** Every 1.28→1.29 claim in SPECIFICATION.md
   Part F.5 was established from upstream source, the built `firmware.elf.map`, or the Unix-port
