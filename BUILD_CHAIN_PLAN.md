@@ -1102,8 +1102,17 @@ script quality bar" below, not repeated here.
       `run_generic_integration.py` in both the CI suite and `scripts/run_unix_port_integration.sh`.
       Their own unique remaining coverage (`_http_client.py`'s pure request/response-parsing tests,
       `unix_port_gc_unwedge.py`'s own tests) moved into two new dedicated per-module files
-      (`tests/test_http_client.py`, `tests/test_unix_port_gc_unwedge.py`) rather than being deleted
-      with them, matching every other module's own one-file-per-module test convention. Three JS
+      (`tests/test_digital_twin_http_client.py`, `tests/test_digital_twin_unix_port_gc_unwedge.py`)
+      rather than being deleted with them, matching every other module's own one-file-per-module
+      test convention. Both files import `digital_twin/`-only modules exclusively (same shape as
+      every other `test_digital_twin_*.py` file - `pyproject.toml`'s `[tool.mypy]` exclude comment),
+      so they're named to match that pattern from the start: CI's `lint-and-typecheck` job runs the
+      main mypy pass without `digital_twin` on its scan roots, and the `test_digital_twin_.*\.py$`
+      exclude is what keeps files like these out of that pass so `digital_twin/typecheck.ini`'s own
+      dedicated pass (which does include them, via its `tests/test_digital_twin_*.py` argument)
+      checks them instead - confirmed the hard way when the initial `test_http_client.py`/
+      `test_unix_port_gc_unwedge.py` names missed the glob and broke CI's `lint-and-typecheck` job
+      with two `import-not-found` errors. Three JS
       spawn sites (`tests_js/_live_twin_command.js`, `tests_js/_live_matrix_command.js`,
       `scripts/cross_browser_smoke.mjs`) that hardcoded `digital_twin/run_wozi_integration.py`
       directly were updated to spawn `run_generic_integration.py --module sensortask_wozi
