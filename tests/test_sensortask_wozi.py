@@ -561,11 +561,15 @@ def _all_loggers() -> "list[Any]":
         w.fram.pr,
         w.sysfunct.pr,
         w.sysfunct.cfgmgr.pr,
+        # scd30 before sgp40 before bmp3xx: matches buildgen's own construction/collection order
+        # (topological - sgp40 depends on scd30 as its temperature/humidity source, so scd30 is
+        # built and collected first), not the hand-written file's old, unrelated ordering choice.
+        # This test pairs setters[i] with loggers[i] by index, so this order is load-bearing.
+        w.scd30.pr,
         w.sgp40.pr,
         w.sgp40.cfgmgr.pr,
         w.bmp3xx.pr,
         w.bmp3xx.cfgmgr.pr,
-        w.scd30.pr,
         w.neopixel.pr,
         w.notification.pr,
         w.notification.cfgmgr.pr,
