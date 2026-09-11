@@ -1,5 +1,6 @@
 import asyncio
 import select
+import time
 
 from machine import UART as FakeUART
 
@@ -1587,6 +1588,115 @@ def test_single_shot_reads_clamp_to_what_is_buffered_and_report_nothing_as_none(
     # Nothing buffered: the documented None, and no zero-length call handed to the peripheral.
     assert run(empty_scenario()) is None
     assert asked_readinto == [], f"a read was issued with an empty buffer: {asked_readinto}"
+
+
+# ---------------------------------------------------------------------------
+# ready() is this driver's one yield point, and it has two poll rates
+# ---------------------------------------------------------------------------
+# Every read loop above reaches the peripheral through ready(), so "ready() always yields" is what
+# bounds how long any of them can hold the event loop. The clamp alone made the stall worse without
+# it, because ipoll() reports the mask with no await of its own (SPECIFICATION.md Part F.5.8).
+
+
+def test_ready_yields_even_when_the_mask_is_already_satisfied() -> None:
+    uart = make_uart()  # this poller reports the mask on its very first ipoll() call
+    ran: list[int] = []
+
+    async def competitor() -> None:
+        ran.append(1)
+
+    async def scenario() -> bool:
+        async with uart:
+            other = asyncio.create_task(competitor())  # runnable, but only if ready() yields
+            got = await uart.ready(select.POLLIN, timeout_ms=100)
+            assert ran, "ready() returned True without yielding: a read loop through it cannot be preempted"
+            await other
+            return got
+
+    assert run(scenario()) is True
+
+
+def test_a_deadlineless_wait_polls_at_the_idle_rate_and_a_bounded_one_does_not() -> None:
+    # A wait with no deadline is an idle listener waiting for traffic that may never come; one with
+    # a deadline is inside a transaction. Two not-ready rounds separate the two rates (F.5.9).
+    async def wait_on(uart: UART, timeout_ms: int) -> int:
+        async with uart:
+            t0 = time.ticks_ms()
+            assert await uart.ready(select.POLLIN, timeout_ms=timeout_ms) is True
+            return time.ticks_diff(time.ticks_ms(), t0)
+
+    idle = make_uart(poll_wait_ms=1, poll_idle_ms=40)
+    idle.poller = _StepPoller([0, 0, select.POLLIN])  # type: ignore[assignment]
+    assert run(wait_on(idle, -1)) >= 2 * 40
+
+    bounded = make_uart(poll_wait_ms=1, poll_idle_ms=40)
+    bounded.poller = _StepPoller([0, 0, select.POLLIN])  # type: ignore[assignment]
+    assert run(wait_on(bounded, 1000)) < 40
+
+
+def test_uncounted_reads_are_clamped_to_what_is_buffered_too() -> None:
+    # read()/readinto() with no count asked the peripheral for the whole buffer, and every byte of
+    # that which has not arrived costs the same synchronous timeout_char wait as a counted read.
+    uart = make_uart()
+    fk = fake(uart)
+    fk.feed_rx(b"hi")
+    asked_read = _record_requests(fk, "read")
+
+    async def read_scenario() -> bytes | None:
+        async with uart:
+            return await uart.read()
+
+    assert run(read_scenario()) == b"hi"
+    assert asked_read[0] == 2, f"read() asked for {asked_read[0]}, not the 2 bytes buffered"
+
+    uart2 = make_uart()
+    fk2 = fake(uart2)
+    fk2.feed_rx(b"hi")
+    asked_into = _record_requests(fk2, "readinto")
+
+    async def readinto_scenario() -> int | None:
+        async with uart2:
+            return await uart2.readinto(bytearray(64))
+
+    assert run(readinto_scenario()) == 2
+    assert asked_into[0] == 2, f"readinto() asked for {asked_into[0]}, not the 2 bytes buffered"
+
+
+def test_readline_does_not_probe_an_empty_buffer() -> None:
+    # readline() has no count to clamp, so it gates on any() instead: the C read would otherwise
+    # spin out its EAGAIN probe on every empty call, for the ~1ms it takes ticks_ms() to advance.
+    uart = make_uart()  # POLLIN always set by this poller, nothing queued behind it
+    fk = fake(uart)
+
+    async def scenario() -> bytes | None:
+        async with uart:
+            return await uart.readline()
+
+    assert run(scenario()) is None
+    assert not [entry for entry in fk.log if entry[0] == "readline"], fk.log
+
+
+def test_a_whole_frame_read_never_asks_for_a_byte_that_has_not_arrived() -> None:
+    # The whole-driver version of the per-path assertions above: the fake counts the bytes a real
+    # peripheral would have blocked on, so one number covers every path a frame read goes through.
+    FakeUART.would_have_blocked_bytes = 0
+    uart = make_uart()
+    fk = fake(uart)
+    fk.feed_rx(b"ab")
+
+    def feed_rest_and_ready() -> int:
+        fk.feed_rx(b"cdefgh")
+        return select.POLLIN
+
+    uart.poller = _StepPoller([select.POLLIN, feed_rest_and_ready])  # type: ignore[assignment]
+    buf = bytearray(8)
+
+    async def scenario() -> int | None:
+        async with uart:
+            return await uart.readinto_until_complete(buf, 8, start_timeout_ms=200, timeout_ms=200)
+
+    assert run(scenario()) == 8
+    assert FakeUART.would_have_blocked_bytes == 0, FakeUART.would_have_blocked_bytes
 
 
 if __name__ == "__main__":

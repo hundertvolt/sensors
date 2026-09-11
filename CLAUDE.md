@@ -196,12 +196,16 @@ information):
   `machine.UART.read()/readinto()` wait out `timeout_char` for every byte asked for that has not
   arrived yet, inside `mp_event_handle_nowait()`, which never yields — so a plain "read the whole
   frame after `POLLIN`" holds the loop for the frame's entire wire time (measured: 4.4ms per
-  53-byte frame at 115200 baud). The fix needs **both** a clamp to `uart.any()` and a real yield
-  between rounds; the clamp alone is *worse*, because `ready()` returns `True` with no `await` and
-  the block simply moves into a Python loop. Full account and the measured before/after:
-  SPECIFICATION.md Part F.5.8 — which also states why this must **not** be generalised to
-  `asy_i2c_driver.py`/`asy_spi_driver.py`, whose peripherals expose no partial-read API to clamp to
-  (that case stays F.2's watchdog backstop).
+  53-byte frame at 115200 baud). The fix needs **both** a clamp to `uart.any()` on every read and a
+  real yield between rounds; the clamp alone is *worse*, because `ready()` returns `True` with no
+  `await` and the block simply moves into a Python loop. The yield lives in `ready()` itself, which
+  every read loop goes through, so the invariant is one guarantee in one place rather than a
+  per-call-site obligation. **The mirror-image failure is just as forbidden**: `ready()` polls, so a
+  listener waiting on traffic that may never come must not idle at the transaction rate — an
+  instance takes a second, slower `poll_idle_ms` for a wait with no deadline (Part F.5.9). Full
+  account and the measured before/after: SPECIFICATION.md Parts F.5.8 and F.5.9 — F.5.8 also states
+  why this must **not** be generalised to `asy_i2c_driver.py`/`asy_spi_driver.py`, whose peripherals
+  expose no partial-read API to clamp to (that case stays F.2's watchdog backstop).
 - **A new bus-facing (I2C/SPI) device gets bus-hazard test coverage across all four test tiers that
   apply to it — never forget this** (project owner's explicit, standing direction): same-device
   read-vs-write concurrency, cross-device interleaving if it shares a bus in either variant, and an

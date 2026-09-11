@@ -27,6 +27,9 @@ PAYLOAD_SIZE = 48
 TIMEOUT_MS = 1000
 BAUDRATE = 115200
 POLL_WAIT_MS = 2
+# Mirrors sensortask_dev.py's own pair: 2ms while a transaction is in flight, 50ms while the line
+# is idle. A bench run that used one rate would not be exercising the shipped configuration.
+POLL_IDLE_MS = 50
 BUF_BYTES = 512
 # Every wait below is bounded and feeds as it goes: a link that never answers parks the listener in
 # uart_listen()'s one unbounded read, and waiting that out outlasts the watchdog, so a wiring fault
@@ -78,8 +81,8 @@ async def _join_listener(wdt: "machine.WDT", responder: UART_Comm, listener: "as
 
 async def _main() -> None:
     wdt = machine.WDT(timeout=8000)
-    uart0 = asy_uart_driver.UART(0, 0, 1, baudrate=BAUDRATE, rxbuf=BUF_BYTES, txbuf=BUF_BYTES, poll_wait_ms=POLL_WAIT_MS)
-    uart1 = asy_uart_driver.UART(1, 8, 9, baudrate=BAUDRATE, rxbuf=BUF_BYTES, txbuf=BUF_BYTES, poll_wait_ms=POLL_WAIT_MS)
+    uart0 = asy_uart_driver.UART(0, 0, 1, baudrate=BAUDRATE, rxbuf=BUF_BYTES, txbuf=BUF_BYTES, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_IDLE_MS)
+    uart1 = asy_uart_driver.UART(1, 8, 9, baudrate=BAUDRATE, rxbuf=BUF_BYTES, txbuf=BUF_BYTES, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_IDLE_MS)
     initiator = UART_Comm(uart0, ROLE_INITIATOR, payload_size=PAYLOAD_SIZE, timeout=TIMEOUT_MS, name="UART_INIT")
     responder = UART_Comm(
         uart1,

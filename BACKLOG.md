@@ -305,24 +305,21 @@ constraints.
    "flag, don't silently change" rule.
 
 ## Deferred / explicitly out-of-scope work
-- **OPEN, BLOCKING A GREEN SUITE: `tests/test_digital_twin_run_dev_integration.py`'s bounded-soak
-  test times out after this branch's `asy_uart_driver.py` read clamp.** Bisected to `_buffered()`
-  (not the yield, not the twin's new `any()`); it is a slowdown, not a hang — the same run completes
-  cleanly in ~66s against the test's own 60s budget. The baseline number was never captured, which
-  is the next step. **Full investigation state, including what was ruled out and the candidate
-  resolutions, is in `UART_BENCH_SESSION_HANDOVER.md` §4** — read that before touching it, and in
-  particular do not resolve it by reverting the clamp, which would restore a measured 4.4ms
-  synchronous block of the event loop on real hardware.
-- **The UART fakes do not model a real read's per-byte wait, which is why the unit/twin tiers could
-  not have caught the loop-stall defect** (found on the bench 2026-09-11, fixed in
-  `asy_uart_driver.py`, SPECIFICATION.md Part F.5.8). `tests/machine.py`'s and
-  `digital_twin/machine.py`'s `UART.readinto()` return `min(nbytes, len(rx_queue))` immediately;
-  the real peripheral instead waits out `timeout_char` for every byte the caller asked for that has
-  not arrived, holding the asyncio loop for the whole frame. Both fakes now expose `any()`, which is
-  what the driver's clamp reads, so the fixed code is exercised - but a *regression* would still
-  pass both tiers silently. Modelling the wait properly (a fake that refuses to hand back bytes the
-  link has not delivered yet, and records the stall a caller asking past that point would have
-  taken) is the real close-out, and is a test-infrastructure change worth its own scope.
+- **A digital-twin soak's wall clock is set by GC timing, so it must never be bisected to a code
+  change** (established 2026-09-11 after one was — see SPECIFICATION.md Part E.7 for the measurement
+  and the inverted control). Not open work: the finding itself is the resolution, and
+  `tests/test_digital_twin_run_dev_integration.py`'s budget now sits above the whole observed range
+  rather than inside it. Left here because the trap is easy to fall into a second time: the numbers
+  are stable to within 0.3s per build, which reads exactly like a real signal.
+- **The UART fakes still do not *wait* the way a real read does, deliberately.** They serve what
+  they hold and return, where the peripheral would wait out `timeout_char` for every byte the caller
+  asked for that has not arrived (SPECIFICATION.md Part F.5.8). Making them actually wait would turn
+  a real-time defect into a slow test; both instead count the stall they would have taken, as
+  `UART.would_have_blocked_bytes`, held to identical semantics by `tests/_uart_link_contract.py` and
+  asserted at zero across a whole frame read. That closes the regression gap this entry was opened
+  for. What remains genuinely unmodelled is the *duration* — a fake cannot tell a caller how many
+  milliseconds of event loop an over-ask would have cost, only how many bytes it was over by. Only
+  the bench tier measures the milliseconds, and F.5.8's table is that measurement.
 - **The bench tier's H4 "a transfer completes while the API is hammered" claim is currently
   vacuous, because nothing on the live `dev` system ever initiates one.**
   `tests_hardware/bench/test_uart_link_under_api_load.py` hammers `/status` and `/measurements` and

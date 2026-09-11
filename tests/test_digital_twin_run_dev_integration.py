@@ -83,7 +83,10 @@ def test_main_runs_a_tiny_bounded_soak_with_an_injected_fault_and_returns_a_clea
         duration=0.0,
         faults=[("sgp40", "writeto", 3)],
     )
-    summary = run_timed(main(config), timeout_s=60.0)
+    # 120s, not the wozi sibling's 60s: this run's wall clock is set by where GC collections land,
+    # measured at 44.1-61.5s across variants of a module it never executes a changed line of (Part
+    # E.7). A liveness backstop belongs above the whole observed range, not near it.
+    summary = run_timed(main(config), timeout_s=120.0)
     non_memory_failures = [f for f in summary["failures"] if "gc.mem_free()" not in f]
     assert non_memory_failures == []
     assert summary["would_have_triggered_count"] == 0

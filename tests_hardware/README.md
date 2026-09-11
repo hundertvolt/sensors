@@ -134,6 +134,12 @@ a live question:
   go, and use `UART_Comm.clear()` - the module's own documented unstick - to free a parked listener.
   The same run now reports `GET returned None ... errno 20` (initiator, no ACK) and `errno 22`
   (responder, read timeout), which is the diagnosis a bench session actually needs.
+- **Both crossover device scripts poll at two rates, matching `sensortask_dev.py`**: `POLL_WAIT_MS`
+  (2 ms) for a transaction in flight, `POLL_IDLE_MS` (50 ms) for a listener waiting on a frame that
+  may never come (SPECIFICATION.md Part F.5.9). A script that used one rate would not be exercising
+  the shipped configuration, which is the whole point of the flash tier. The practical consequence
+  for a bench session: a responder notices the first byte of a frame up to 50 ms late by design, so
+  a measured first-frame latency on this rig includes that and is not a link fault.
 - **`asy_uart_driver.UART.deinit()` does not release the GPIO function select, so a script that
   inits a UART on different pins poisons that peripheral until the next hard reset.** Confirmed the
   hard way (2026-09-11): a throwaway diagnostic that put UART1 on GP4/GP5 left those pins muxed to

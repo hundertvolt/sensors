@@ -666,8 +666,18 @@ class UART(io.IOBase):
         self._pump()
         return len(self.rx_queue)
 
+    # Bytes a read asked for that had not arrived. On real hardware each one costs a synchronous
+    # timeout_char wait inside the C read, never yielding to asyncio (SPECIFICATION.md Part F.5.8);
+    # these fakes serve what they hold and return, so the stall is counted here instead of taken.
+    would_have_blocked_bytes = 0
+
+    def _count_overask(self, asked: int) -> None:
+        if asked > len(self.rx_queue):
+            UART.would_have_blocked_bytes += asked - len(self.rx_queue)
+
     def read(self, nbytes: int | None = None) -> bytes | None:
         self._pump()
+        self._count_overask(len(self.rx_queue) if nbytes is None else nbytes)
         n = len(self.rx_queue) if nbytes is None else min(nbytes, len(self.rx_queue))
         if n == 0:
             return None
@@ -677,6 +687,7 @@ class UART(io.IOBase):
 
     def readinto(self, buf: "bytearray | memoryview", nbytes: int | None = None) -> int | None:
         self._pump()
+        self._count_overask(len(buf) if nbytes is None else min(nbytes, len(buf)))
         n = len(buf) if nbytes is None else min(nbytes, len(buf))
         n = min(n, len(self.rx_queue))
         if n == 0:

@@ -1324,10 +1324,11 @@ Both follow CLAUDE.md's "flag, don't silently change" rule.
 Each verified by running it, not by inspection. **Status as of this branch:**
 
 - `scripts/lint.sh`, `scripts/typecheck.sh` (all three passes) and `scripts/test.sh` exit 0 with zero
-  findings, and the finding count on untouched files is unchanged. **Not currently true**: lint and
-  all three typecheck passes are clean, but `scripts/test.sh` is at 59/60 files — the hardware
-  session's driver fix regressed one digital-twin soak test into a timeout. See
-  `UART_BENCH_SESSION_HANDOVER.md` §4; the branch was pushed red on the owner's direction.
+  findings, and the finding count on untouched files is unchanged. (Briefly untrue: the hardware
+  session pushed at 59/60 on the owner's direction, with one digital-twin soak test timing out. That
+  was not a regression in the driver fix — the run never executes a line of the changed code, and
+  the soak's wall clock turned out to be set by GC timing rather than by work done. Measurement, the
+  inverted control, and the raised budget: SPECIFICATION.md Part E.7.)
 - Every item above has its function tests **and** its failure tests. I3.4's revert-and-confirm pass
   was run over seven substantive fixes — the latched cancel handshake, exact `CMD` matching, the
   zero-filled padding, the bounded drain, the deferred final ACK, chunk 1's `SIZE` rule, and the role
@@ -1346,10 +1347,18 @@ Each verified by running it, not by inspection. **Status as of this branch:**
   The first run found three real problems. Two are fixed code: the device scripts' listener joins
   outlasted their own watchdog, so a link fault reset the board instead of naming the failing check
   (tests_hardware/README.md); and `asy_uart_driver.py` held the asyncio loop for a whole frame's
-  wire time on every read — the only one with new unit tests pinning it, three of them, verified by
-  reverting the fix and requiring each to fail (SPECIFICATION.md Part F.5.8). The third is a
-  hardware property, documented rather than fixed: a UART re-inited on other pins keeps them muxed
-  after `deinit()` and poisons that peripheral until a hard reset (tests_hardware/README.md).
+  wire time on every read (SPECIFICATION.md Part F.5.8). The third is a hardware property,
+  documented rather than fixed: a UART re-inited on other pins keeps them muxed after `deinit()` and
+  poisons that peripheral until a hard reset (tests_hardware/README.md).
+  A follow-up pass extended the read fix and added the mirror-image one. The clamp had reached four
+  of the six read paths; it now covers all of them, and the per-round yield moved into `ready()`,
+  which every read loop already goes through, so "no path reaches a read without having just
+  yielded" is one guarantee in one place. `ready()` also gained a second, slower poll rate for a
+  wait with no deadline, because an idle responder polling at the single-digit `poll_wait_ms` Part
+  J.6 requires costs a scheduler round trip every 2 ms forever — 14 039 idle poll rounds over one
+  twin soak against 839 after (Part F.5.9). Eight unit tests pin the two together, each verified by
+  reverting the fix and requiring it to fail, and both UART fakes now count the stall an over-ask
+  would have taken so the mock tier catches a regression the bench previously had to.
   **H4's function test is, however, still vacuous** — it asserts the link logged no errors while the
   API was hammered, but nothing on a live `dev` system ever initiates a transfer
   (`uart_initiator.get_task_starters()` is deliberately empty), so it proves an idle link stays idle

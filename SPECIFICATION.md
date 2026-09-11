@@ -1596,6 +1596,39 @@ complementary.
 
 ---
 
+## E.7 A digital-twin soak's wall clock measures GC timing, not the code under test
+
+`digital_twin/run_*_integration.py`'s bounded soak drives ~294 real HTTP requests through the whole
+constructed object graph. Its duration is **deterministic per build and meaningless across builds**:
+it is set by where `gc` collections land on the Unix port's 8 MB heap, and that moves with heap
+layout, which moves with almost any source change.
+
+Measured on the dev variant (2026-09-11), same probe, same host, interleaved, three rounds each,
+against three versions of `src/asy_uart_driver.py`:
+
+| `asy_uart_driver.py` | Soak wall clock | `_buffered()` calls during the run |
+|---|---|---|
+| before the F.5.8 clamp | 44.07 / 44.07 / 44.07 s | — |
+| with the clamp | 58.43 / 58.33 / 58.56 s | **0** |
+| with the clamp and F.5.9's idle rate | 61.49 / 61.79 / 61.24 s | **0** |
+
+The changed code is never executed during that run: the link is idle, so `ready()` never returns
+`True` and no read path is entered at all — confirmed by instrumenting the module itself, not
+inferred. Adding three counter increments to an *unchanged* version reproduces the slow figure on
+its own. And calling `gc.threshold(-1)` for the duration of the soak **inverts the ordering**
+(44.07 s → 57.7 s, 61.5 s → 44.5 s), which is what identifies the mechanism.
+
+Two consequences, both load-bearing:
+
+- **Never bisect a twin soak's runtime to a code change.** It will produce a confident, stable,
+  wrong answer — it did once (2026-09-11), attributing a regression to a function with zero call
+  sites reached. Count the operation you actually care about instead: F.5.9's finding was
+  established by counting poll rounds (14 039 → 839), which is a property of the code rather than
+  of the allocator.
+- **A soak test's own `wait_for()` budget is a liveness backstop, not a performance assertion**, so
+  it belongs above the whole observed range rather than near it —
+  `tests/test_digital_twin_run_dev_integration.py` allows 120 s for a 44-62 s run.
+
 # Part F — Platform Target & MicroPython Runtime Facts
 
 ## F.1 Core platform facts
@@ -1994,18 +2027,27 @@ state).
 **The fix has two halves, and the first alone is worse than useless.**
 
 1. *Ask only for what is already buffered.* `mp_machine_uart_any()` drains the RX FIFO into the ring
-   and returns its fill level, so it never under-reports what a preceding `POLLIN` saw; clamping
-   every counted read to it means the per-byte wait loop is never entered.
-   `asy_uart_driver.UART._buffered()` is that clamp, on all four counted read paths (`read()`,
-   `readinto()`, `read_until_complete()`, `readinto_until_complete()`).
-2. *Yield between rounds.* With the clamp alone the stall did not improve — it got **worse**,
-   measured at 14.6ms. `ready()` returns `True` with **no `await` at all** whenever `ipoll()`
-   already reports the mask, so a frame still mid-flight was simply read in a Python loop with no
-   yield point: the same block, reimplemented one level up and slower than the C busy-wait it
-   replaced. `_yield_between_rounds()` (`await asyncio.sleep_ms(0)`) runs after any round that did
-   not complete the request. `_read_delimited()` is the same shape one byte at a time — it yields
-   every `_DELIMITED_YIELD_BYTES` (16) instead of per byte, since a task switch every ~87us of wire
-   time buys nothing.
+   and returns its fill level, and the documented contract is exactly the property needed — "the
+   number of characters that can be read without blocking" — so a read clamped to it never enters
+   the per-byte wait loop. `asy_uart_driver.UART._buffered()` is that clamp, and **every** read in
+   the module goes through it: the four counted paths (`read()`, `readinto()`,
+   `read_until_complete()`, `readinto_until_complete()`), the two uncounted ones (`read(None)` and
+   `readinto(buf)` asked the peripheral for the whole buffer, which blocks for every byte of it that
+   has not arrived), and `_read_delimited()`'s one-byte read, which was still issued against an
+   empty ring where the C read spins out its `EAGAIN` probe. `readline()` has no count to clamp and
+   gates on `any()` instead. The docs' lower-bound wording ("may return 1 even if there is more than
+   one character available") costs nothing here: under-reporting only ever means another round.
+2. *Yield on the way out of `ready()`.* With the clamp alone the stall did not improve — it got
+   **worse**, measured at 14.6ms. `ready()` returned `True` with **no `await` at all** whenever
+   `ipoll()` already reported the mask, so a frame still mid-flight was simply read in a Python loop
+   with no yield point: the same block, reimplemented one level up and slower than the C busy-wait
+   it replaced. Every read loop in the module reaches the peripheral through `ready()`, so the yield
+   belongs there and nowhere else — `await asyncio.sleep_ms(0)` immediately before it returns
+   `True`. That makes it one guarantee in one place instead of an obligation each call site has to
+   remember: **no path through this driver reaches a read without having just yielded.**
+   `_read_delimited()` is the one loop that consumes buffered bytes without going back through
+   `ready()`, so it yields every `_DELIMITED_YIELD_BYTES` (16) — a task switch every ~1.4ms of wire
+   time rather than every ~87us.
 
 A zero-length round additionally falls back to `sleep_ms(poll_wait_ms)`, so the retry can never
 become an unyielding spin on `ready()` even if `any()` ever disagreed with `POLLIN`.
@@ -2029,11 +2071,16 @@ the measurement means anything. An A/B on one firmware (defeating `_buffered()` 
 for the whole frame again) moves the end-to-end worst loop gap from 3.1ms to 6.3ms, confirming the
 same thing from the other direction.
 
-**Why no test caught it.** `tests/machine.py`'s and `digital_twin/machine.py`'s UART fakes return
-`min(nbytes, len(rx_queue))` and never wait — they model a non-blocking read the real peripheral
-does not provide. Both now expose `any()` (the twin's pumps its link first, mirroring the real
-FIFO drain), but modelling the *blocking* itself is still open (BACKLOG.md). This is precisely the
-class `UART_PROMOTION_REQUIREMENTS.md` H3.3 predicted the flash tier would be the one to find.
+**Why no test caught it, and what now does.** `tests/machine.py`'s and `digital_twin/machine.py`'s
+UART fakes return `min(nbytes, len(rx_queue))` and never wait — they model a non-blocking read the
+real peripheral does not provide, so the defect was invisible to every tier below the bench. This is
+precisely the class `UART_PROMOTION_REQUIREMENTS.md` H3.3 predicted the flash tier would find.
+Making the fakes actually *wait* would only turn a real-time defect into a slow test; both instead
+**count the stall they would have taken**. `UART.would_have_blocked_bytes` accumulates every byte a
+read asked for that had not arrived, the two models are held to identical counting by
+`tests/_uart_link_contract.py`, and a whole-frame read through the driver asserts it stays at zero.
+A regression of the clamp now fails in the mock tier as a number, in the same shape as the twin's
+own `WDT.would_have_triggered_count`.
 
 **This does not generalise to `asy_i2c_driver.py`/`asy_spi_driver.py`, and must not be applied
 there.** A UART read is fixable only because the peripheral offers a genuinely non-blocking path —
@@ -2048,6 +2095,36 @@ short-writes rather than waiting once `timeout` (0 here) elapses, and `_write_al
 `POLLOUT` and retries. Its theoretical worst case is the ~1 ms it takes `ticks_ms()` to advance,
 never a frame time — and measured at 171 us for a whole 53-byte frame, since a `txbuf` with room
 takes the lot in one copy and the wire drains by interrupt.
+
+### F.5.9 An idle `ready()` poll is a permanent CPU cost, not a free wait
+
+Same layer as F.5.8 and the same owner rule behind it, but the opposite failure: not a wait that
+blocks, a wait that never stops working. `asy_uart_driver.UART.ready()` waits by polling —
+`ipoll(0)`, then `sleep_ms(poll_wait_ms)`, round after round. For a transaction in flight that is
+correct and deliberate: Part J.6 requires a single-digit `poll_wait_ms` precisely because poll
+granularity, not baud rate, dominates a stop-and-wait exchange's throughput. For a *listener* it is
+not. A responder parked in `uart_listen()` is waiting on a frame that may not come for hours, and at
+2 ms it pays a scheduler round trip every 2 ms for the whole of that time. This board's own round
+trip measures 400-900 us (F.5.8's noise floor), so an idle listener holds a quarter to a half of the
+event loop while the wire is silent — on the same core as the sensor tasks and the webserver.
+
+Counted in the digital twin's dev soak, which runs the real `sensortask_dev` graph including both
+`UART_Comm` instances: **14 039 poll rounds** over a ~60 s run with one rate, against **839** with
+the idle rate below. (Count the rounds, not the soak's wall clock — see Part E.7 for why that number
+is not usable here.)
+
+**The fix is a second poll rate, selected by whether the wait carries a deadline.** `ready(mask,
+timeout_ms)` polls at `poll_wait_ms` when `timeout_ms > 0` and at `poll_idle_ms` otherwise, because
+a wait with no deadline is by construction an idle listener — `_read_frame(device, -1)` inside
+`uart_listen()` is the only one this protocol issues — while a wait with a deadline is inside a
+transaction whose latency budget is that deadline. Nothing else moves: once the first byte lands,
+every remaining wait in that frame carries `timeout` and runs at the fast rate.
+
+`poll_idle_ms` bounds how late the first byte of a frame is noticed, so it belongs well under the
+peer's own reply timeout. The dev bench uses 50 ms against `_UART_TIMEOUT_MS = 1000` — a twentieth
+of the budget the initiator allows for an ACK, and a 17x cut in idle task switches. A wiring that
+leaves it unset keeps the single rate the driver always had, so this is opt-in per instance rather
+than a change to every existing caller.
 
 ## F.6 A SIGINT during `gc_collect()` can wedge the Unix-port heap
 
@@ -2731,6 +2808,13 @@ move 480 bytes over an 11.5 kB/s link — about 4 % of link capacity, of which t
 majority is poll latency. **A `UART` instance driving this protocol must therefore be constructed
 with a single-digit `poll_wait_ms`**; leaving the default in place makes every other efficiency
 property of the protocol irrelevant.
+
+**That rate is for a transaction, and a responder must not idle at it.** A listener waiting on a
+frame that may never come pays one scheduler round trip per poll for as long as it waits, which at
+2 ms is a large and permanent share of the event loop (Part F.5.9). The same instance therefore
+takes a second, slower `poll_idle_ms` for a wait with no deadline — 50 ms on the dev bench. It is
+the first-byte notice latency, so it must stay well under the peer's `timeout`: the initiator's ACK
+budget has to cover it, the frame read and the reply.
 
 **`rxbuf` is checked at construction against two independent floors**, because stop-and-wait means a
 *complete* frame can land before the reader is next scheduled, and a frame whose tail the driver

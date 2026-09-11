@@ -57,10 +57,11 @@ _NTP_FETCH_TIMEOUT_MS = const(5000)  # timeout for the actual NTP request/reply 
 _UART_PAYLOAD_SIZE = const(48)
 _UART_TIMEOUT_MS = const(1000)
 _UART_BAUDRATE = const(115200)
-# Single-digit by requirement: ready() yields for poll_wait_ms between readiness checks, and at the
-# 20ms default that poll granularity - not baud rate or protocol overhead - dominates throughput
-# for a stop-and-wait exchange (SPECIFICATION.md Part J.6).
+# Single-digit by requirement: poll granularity, not baud rate, dominates a stop-and-wait exchange's
+# throughput (Part J.6). That is the in-transaction rate; idling at it burns a task switch every 2ms
+# forever, so a quiet line polls at a twentieth of _UART_TIMEOUT_MS instead (Part F.5.9).
 _UART_POLL_WAIT_MS = const(2)
+_UART_POLL_IDLE_MS = const(50)
 # Sized from the real frame, not left at the driver default: a whole framed frame is 5 + 48 = 53
 # bytes, and one poll interval at 115200 baud admits about 80 bytes. Below either floor the tail of
 # a frame is silently dropped and the result is indistinguishable from a link fault (C2.9/C2.10).
@@ -436,10 +437,10 @@ async def build_system(
     # allocator, so instantiation order is the on-chip layout. Both take no fram=, so Part A.7's
     # seven-chunk order is untouched; the webserver's error_sources= list needs them to exist first.
     uart0 = asy_uart_driver.UART(
-        0, 0, 1, baudrate=_UART_BAUDRATE, rxbuf=_UART_BUF_BYTES, txbuf=_UART_BUF_BYTES, poll_wait_ms=_UART_POLL_WAIT_MS,
+        0, 0, 1, baudrate=_UART_BAUDRATE, rxbuf=_UART_BUF_BYTES, txbuf=_UART_BUF_BYTES, poll_wait_ms=_UART_POLL_WAIT_MS, poll_idle_ms=_UART_POLL_IDLE_MS,
     )
     uart1 = asy_uart_driver.UART(
-        1, 8, 9, baudrate=_UART_BAUDRATE, rxbuf=_UART_BUF_BYTES, txbuf=_UART_BUF_BYTES, poll_wait_ms=_UART_POLL_WAIT_MS,
+        1, 8, 9, baudrate=_UART_BAUDRATE, rxbuf=_UART_BUF_BYTES, txbuf=_UART_BUF_BYTES, poll_wait_ms=_UART_POLL_WAIT_MS, poll_idle_ms=_UART_POLL_IDLE_MS,
     )
     # Distinct peripheral ids: constructing both on one id would re-init the first's peripheral and
     # leave one link object silently owning nothing (G1.8). Roles are structural - exactly one side

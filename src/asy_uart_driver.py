@@ -54,6 +54,7 @@ class UART(Lockable):
         timeout_char: int = 1,
         invert: int = 0,
         poll_wait_ms: int = 20,
+        poll_idle_ms: int | None = None,
         crc: CRC_Base | None = None,
         framing: Framing_Base | None = None,
     ) -> None:
@@ -61,6 +62,10 @@ class UART(Lockable):
         self.poller: select.poll | None = None
         super().__init__()
         self.poll_wait_ms = poll_wait_ms
+        # The rate a deadline-less wait polls at: it stops an idle listener costing a task switch
+        # every poll_wait_ms forever, and it bounds how late a frame's first byte is noticed, so it
+        # belongs well under the peer's reply timeout. None keeps the single rate this always had.
+        self.poll_idle_ms = poll_wait_ms if poll_idle_ms is None else poll_idle_ms
         # A cancel request is latched and acknowledged by publishing the request number it served.
         # Two monotonic counters rather than an Event: one acknowledgement stays visible to every
         # waiting canceller, and a second request cannot re-clear one nobody has observed yet.
@@ -111,22 +116,13 @@ class UART(Lockable):
 
     @staticmethod
     def _buffered(uart: "_UART", want: int) -> int:
-        # machine.UART.read/readinto wait out timeout_char for EVERY byte asked for that has not
-        # arrived yet, and that wait is synchronous (mp_event_handle_nowait(), never an asyncio
-        # yield) - measured at 4.4ms of held loop for one 53-byte frame at 115200 baud. Asking only
-        # for what is already buffered is what keeps this driver's reads non-blocking.
+        # Every read below goes through here. machine.UART.read/readinto wait out timeout_char per
+        # byte asked for that has not arrived, synchronously - 4.4ms of held loop for one 53-byte
+        # frame at 115200 baud. any() is documented as what reads without blocking (F.5.8).
         try:
             return min(want, uart.any())
         except (OSError, MemoryError):  # never-raises contract - see the module docstring
             return 0
-
-    @staticmethod
-    async def _yield_between_rounds() -> None:
-        # The clamp above stops the C read from waiting, but ready() returns True with no await at
-        # all while POLLIN still stands, so a frame still mid-flight would be read in a Python loop
-        # with no yield point - the same stall, only slower. sleep_ms(0) re-queues behind whatever
-        # else is runnable, which is what keeps a multi-round frame read off the event loop's back.
-        await asyncio.sleep_ms(0)
 
     async def _write_all(self, uart: "_UART", buf: bytearray | memoryview) -> bool:
         # rp2 uart.write() can short-write instead of raising, so retry with what is left - the
@@ -160,7 +156,7 @@ class UART(Lockable):
         while True:
             if size >= bound:
                 return None  # no delimiter within a whole worst-case frame: a decode failure
-            got = uart.readinto(view[size : size + 1], 1)  # one buffered byte at most: never waits
+            got = uart.readinto(view[size : size + 1], 1) if self._buffered(uart, 1) else None
             if got is None or got == 0:
                 if not await self.ready(select.POLLIN, timeout_ms=timeout):
                     return None  # ready() timed out or was cancelled
@@ -169,8 +165,8 @@ class UART(Lockable):
             timeout = timeout_ms
             if buf[size] != delimiter:
                 size += 1
-                if not size % _DELIMITED_YIELD_BYTES:  # see _yield_between_rounds(): this loop is
-                    await self._yield_between_rounds()  # the same shape, one byte per round
+                if not size % _DELIMITED_YIELD_BYTES:  # this loop consumes a buffered byte per
+                    await asyncio.sleep_ms(0)  # round without ever reaching ready()'s own yield
                 continue
             if self._skip_to_delimiter:  # B2.2: the fragment a resync landed in the middle of
                 self._skip_to_delimiter = False
@@ -265,11 +261,15 @@ class UART(Lockable):
         return True
 
     async def ready(self, mask: int, timeout_ms: int = -1) -> bool:
-        # Busy-polls ipoll(0), yielding via sleep_ms(poll_wait_ms), until mask is satisfied, a
-        # cancel is requested, or timeout_ms elapses (<=0 waits forever). Defensive against a
-        # concurrent deinit() nulling self.poller mid-loop.
+        # Busy-polls ipoll(0), sleeping between rounds, until mask is satisfied, a cancel is
+        # requested, or timeout_ms elapses (<=0 waits forever). Defensive against a concurrent
+        # deinit() nulling self.poller mid-loop.
         if self._uart is None or self.poller is None:
             return False
+        # A deadline-less wait is an idle listener; one with a deadline is inside a transaction
+        # whose latency budget is that deadline. Polling both at poll_wait_ms is what made an idle
+        # responder cost a third of the event loop with nothing on the wire at all (F.5.9).
+        wait_ms = self.poll_wait_ms if timeout_ms > 0 else self.poll_idle_ms
         t0 = time.ticks_ms()
         while True:
             if self.poller is None:  # a concurrent deinit() can null this mid-loop
@@ -281,17 +281,23 @@ class UART(Lockable):
                 self._ack_cancel()
                 return False
             try:
-                res = self.poller.ipoll(0)
-                for _, event in res:
-                    if event & mask:
-                        return True
+                got = 0
+                for _, event in self.poller.ipoll(0):
+                    got |= event
+                if got & mask:
+                    break
                 if (timeout_ms > 0) and (time.ticks_diff(time.ticks_ms(), t0) > timeout_ms):
                     return False
-                await asyncio.sleep_ms(self.poll_wait_ms)
+                await asyncio.sleep_ms(wait_ms)
             except (OSError, MemoryError, TypeError):
                 # TypeError: a malformed mask/timeout_ms - not caught by callers' own except
                 # clauses, since those only wrap the real UART call, not this await.
                 return False
+        # The one yield every read loop relies on: ipoll() reports the mask with no await of its
+        # own, so a caller looping ready()->read()->ready() over a frame still in flight would hold
+        # the event loop for the whole transmission - the clamp above alone made that worse (F.5.8).
+        await asyncio.sleep_ms(0)
+        return True
 
     async def read(self, nbytes: int | None = None, timeout_ms: int = -1) -> bytes | None:
         uart = self._active_uart()
@@ -299,9 +305,7 @@ class UART(Lockable):
             return None
         if not await self.ready(select.POLLIN, timeout_ms=timeout_ms):
             return None
-        if nbytes is None:
-            return uart.read()
-        want = self._buffered(uart, nbytes)
+        want = self._buffered(uart, self.rxbuf if nbytes is None else nbytes)
         return uart.read(want) if want else None
 
     async def read_until_complete(
@@ -338,8 +342,6 @@ class UART(Lockable):
                 except MemoryError:
                     return None
                 timeout = timeout_ms  # once started, use the regular timeout for the remaining parts
-                if len(msg) < nbytes:
-                    await self._yield_between_rounds()
             else:
                 return None  # ready() timed out or was cancelled
         try:
@@ -353,9 +355,7 @@ class UART(Lockable):
             return None
         if not await self.ready(select.POLLIN, timeout_ms=timeout_ms):
             return None
-        if nbytes is None:
-            return uart.readinto(buf)
-        want = self._buffered(uart, nbytes)
+        want = self._buffered(uart, len(buf) if nbytes is None else nbytes)
         return uart.readinto(buf, want) if want else None
 
     async def readinto_until_complete(
@@ -387,8 +387,6 @@ class UART(Lockable):
                     return None
                 size += nb
                 timeout = timeout_ms  # once started, use the regular timeout for the remaining parts
-                if size < nbytes:
-                    await self._yield_between_rounds()
             else:
                 return None  # ready() timed out or was cancelled
         return await self.crc.check_from(buf, size=size)
@@ -399,7 +397,7 @@ class UART(Lockable):
             return None
         if not await self.ready(select.POLLIN, timeout_ms=timeout_ms):
             return None
-        return uart.readline()
+        return uart.readline() if self._buffered(uart, 1) else None
 
     async def readline_until_complete(self, start_timeout_ms: int = -1, timeout_ms: int = -1) -> bytearray | None:
         # No CRC framing here (unlike the other *_until_complete methods) - readline() is for
@@ -411,6 +409,9 @@ class UART(Lockable):
         msg = bytearray()
         while True:
             if await self.ready(select.POLLIN, timeout_ms=timeout):
+                if not self._buffered(uart, 1):  # see read_until_complete()'s own comment
+                    await asyncio.sleep_ms(self.poll_wait_ms)
+                    continue
                 add = uart.readline()  # reads until b"\n" or the buffer runs empty
                 if add is None:
                     return None

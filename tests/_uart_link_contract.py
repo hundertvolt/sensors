@@ -192,6 +192,21 @@ def check_readinto_returns_none_when_empty(make: "LinkFactory") -> None:
     assert b.readinto(bytearray(4)) is None
 
 
+def check_overask_is_counted_not_taken(make: "LinkFactory") -> None:
+    # Both models serve what they hold and return; the real peripheral would instead wait out
+    # timeout_char per missing byte without yielding (F.5.8). The count is the shared stand-in for
+    # that stall, so a driver regression shows up as a number rather than as a slow test.
+    a, b, link = make()
+    type(b).would_have_blocked_bytes = 0
+    a.write(b"xy")
+    link.settle()
+    assert b.read(5) == b"xy"
+    assert type(b).would_have_blocked_bytes == 3
+    assert b.read(4) is None
+    assert type(b).would_have_blocked_bytes == 7
+    type(b).would_have_blocked_bytes = 0
+
+
 ALL_CHECKS = (
     check_byte_moves_one_way,
     check_both_directions_independent,
@@ -211,4 +226,5 @@ ALL_CHECKS = (
     check_wire_log_records_what_was_delivered,
     check_readinto_moves_the_same_bytes,
     check_readinto_returns_none_when_empty,
+    check_overask_is_counted_not_taken,
 )
