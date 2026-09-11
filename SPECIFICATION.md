@@ -19,6 +19,7 @@ would recreate the scattering problem this document exists to fix).
 - **Part G** — Shared Pattern & Primitive Reuse
 - **Part H** — Website (JS/HTML/CSS) Architecture
 - **Part I** — Memory-Safety Audit & Discipline
+- **Part J** — UART Message Protocol (`asy_uart_comm.py`)
 
 ---
 
@@ -2282,3 +2283,146 @@ range (I.1), and `_MAX_STATUS_PIECE_BYTES`'s real headroom (I.3).
 `tests_hardware/bench/test_memory_stress_bench.py` carries the permanent real-hardware regression
 coverage (a 120s always-run hammer test plus a `long_soak`-gated 600s variant) — nothing from this
 audit remains open pending hardware.
+
+---
+
+# Part J — UART Message Protocol (`asy_uart_comm.py`)
+
+The wire protocol and role model of the point-to-point UART message transport being promoted from
+`python/IndividualDrivers/asy_uart_comm.py`. No vendor document or prior specification exists — this
+Part **is** the specification, reconstructed from the field-proven legacy implementation and
+confirmed by the project owner (2026-09-11). Read it before changing anything about the protocol.
+
+## J.1 Scope and the two-implementation contract
+
+The module is **standalone and self-contained** — a general message transport over a point-to-point
+serial link, with no sensor, device or application semantics of its own. Command IDs, payload layouts
+and expected sizes all belong to the caller. Its first use case (a BME688/BSEC coprocessor) is
+explicitly *not* part of its scope and does not constrain its design.
+
+**A second implementation of this protocol exists in C**, running on the Arduino peer. It mirrors the
+Python implementation's *intended* behavior and is owner-validated over many real transmissions — but
+**how far that mirroring extends to the known flaws is unverified**: it may share some, not others,
+and may have introduced its own. Establishing that is future work, never an assumption to build on.
+The C source is not yet in this repo; importing and reconciling it is a future session's job
+(BACKLOG.md). Until then:
+
+- **Every protocol-level change is logged in `UART_C_PORT_CHANGELOG.md`** — a temporary file, deleted
+  once the C side is reconciled. A change is protocol-level ("Class A") if it alters the bytes
+  emitted, which received frames are accepted vs. rejected, or any timing the peer depends on;
+  everything else is Class B and is logged too, as explicitly-no-C-impact.
+- **Prefer Class A changes that only tighten receiver validation, never ones that change emitted
+  bytes.** A receiver-strictness change rejects only frames a *conforming* peer never sends, so a
+  mixed-version pair (new Python ↔ old C) keeps working and the peer's reflash can happen in either
+  order — **conditional on the C side actually conforming, which each such change must re-verify
+  against the C source once it is imported.** A change to emitted bytes is a coordinated flag-day
+  needing an explicit owner decision.
+
+## J.2 Role model
+
+**One side is constructed as the initiator, the other as the responder. This is not a symmetric peer
+protocol, and initiation is restricted to one side by construction** — there is no collision
+arbitration anywhere in the design, so simultaneous initiation is out of contract rather than a case
+to handle.
+
+Role governs *who may start a transaction*, not data direction: a responder still transmits a
+complete payload train when answering a GET, and acknowledges every frame it receives. An initiator
+uses `uart_get()`/`uart_set()` and never listens; a responder uses `uart_listen()` and never
+initiates.
+
+## J.3 Frame format
+
+Every frame is exactly `5 + payload_size` bytes, the payload field zero-padded to its full width.
+There is no delimiter, no length prefix and no escaping: **the fixed size is the framing**, which is
+what lets a receiver take a whole frame as one fixed-length read and verify it in one go. CRC framing
+is not part of this layer — it is configured on the `UART` bus object and appended/verified/stripped
+transparently below it (CRC-16/CCITT-FALSE in every real configuration).
+
+| Offset | Field | Semantics |
+|---|---|---|
+| 0 | `UID` | Per-frame nonce, incremented per transmitted frame, wrapping `0xFE → 0`. Matches an ACK to the frame it acknowledges; carries no stream-ordering meaning. |
+| 1 | `CMD` | `ACK 0x01`, `GET 0x02`, `SET 0x04`. |
+| 2 | `SIZE` | Bytes of the payload field actually used (`0 … payload_size`). |
+| 3 | `CHUNKS` | Total frames in this train (`1 … 0xFF`). |
+| 4 | `CUR_CHUNK` | This frame's index within the train, 1-based. |
+| 5… | payload | `SIZE` meaningful bytes, zero-padded to `payload_size`. |
+
+An ACK frame carries the acknowledged frame's `UID`, `SIZE = 0`, `CHUNKS = 1`, `CUR_CHUNK = 1`.
+
+## J.4 Transactions
+
+A logical message is a **chunk train**. Chunk 1 is always the command header: its payload is the
+single command-ID byte, `SIZE = 1`. Chunks 2…N carry the data. **Every frame is individually
+acknowledged before the next is sent** — stop-and-wait at frame granularity, never more than one
+frame in flight, no windowing and no NAK.
+
+**SET (initiator → responder)** — `CHUNKS = ceil(len(payload) / payload_size) + 1`, floored at 2, so
+even a payload-less command still has one data chunk to acknowledge and is confirmed end-to-end
+rather than merely heard. Each chunk gets a fresh `UID`.
+
+**GET (initiator → responder)** — the initiator sends a one-chunk GET train whose payload is the
+command ID; the responder answers with a **SET train in the opposite direction** whose chunk 1 echoes
+that same ID. A GET answer is therefore literally a SET transfer, which is why two primitives (send a
+train / receive a train) cover all four directions, and why the responder's GET branch and the
+initiator's SET path are the same code.
+
+**Receiving a train** — validate each frame (command, chunk index exactly as expected, `SIZE` within
+bounds), append `SIZE` payload bytes, acknowledge. `SIZE = 0` on chunk 2 means a genuinely empty
+payload, a distinct outcome from failure. An expected total size may be supplied — *don't care*,
+*exactly empty*, or *exactly N* — enforced both incrementally (reject as soon as the running total
+would overshoot) and finally (exact match).
+
+**Rejection is signalled by withholding an ACK.** There is no NAK. The final chunk's acknowledgement
+is deliberately deferred until after the total-size check passes, so a sender learns its transfer was
+rejected by timing out rather than by a reply.
+
+## J.5 Timing, flow control and recovery
+
+**Two-level timeouts.** Waiting for a *new* message is either unbounded (a responder listening) or
+bounded by `timeout` (an initiator awaiting a reply); once a frame has begun arriving, the inter-part
+timeout is always `timeout`. A half-received frame must complete promptly or the whole frame is
+abandoned — the anti-desync rule.
+
+**Recovery is quiesce-and-resync, never retransmission.** Nothing is ever re-sent. On any fault — CRC
+failure (the frame simply never completes), unexpected chunk index, size mismatch, missing ACK — the
+side that noticed drains its receive path until the line has been quiet for `1.5 × timeout`, then
+holds off initiating for a further `1.5 × timeout`. With no framing marker to resync against, this
+mutual silence is what gets both sides back onto a clean frame boundary. **Both constants are part of
+the contract** (J.1's Class A rule) — a peer draining for less can transmit into the other's drain
+window.
+
+The write hold-off gates *initiating* transmissions only: acknowledgements are always sent, so a side
+keeps confirming the peer's traffic while backing off from its own.
+
+**Unsticking from outside.** A listening responder blocks indefinitely while holding the bus lock, so
+the only safe interruption comes from another task: cancel the in-flight read from outside the lock
+and let that read's own failure path perform the drain, or — if nothing was in flight — take the lock
+and drain directly. This is why `asy_uart_driver.py` keeps `cancel_read_timeout()` and infers "a read
+is in flight" from the lock rather than a flag of its own (C.3.2).
+
+## J.6 Deployment parameters
+
+`payload_size` and `timeout` are **agreed out of band and must match on both ends** — nothing is
+negotiated. `payload_size` must be in `1 … 255` (`SIZE`/`CHUNKS` are single bytes; a zero-width
+payload has no room for the command ID). A mismatch desyncs the link outright, so an out-of-range
+value must never be silently clamped — C.13's readiness-gate treatment instead. Maximum transferable
+payload is `(0xFF - 1) × payload_size`.
+
+## J.7 Testing: the loopback model
+
+**Self-compatibility is a required, tested property**: one Python instance as initiator and one as
+responder must interoperate perfectly. The dev bench embodies this physically (the permanent
+UART0↔UART1 crossover jumper, `dev_legacy/README.md`), and it must also be reproducible without
+hardware, at **the `machine.UART` level — below `asy_uart_driver.py`** — in `tests/machine.py` (unit
+tier) and `digital_twin/machine.py` (twin tier, which has no `UART` at all today). The link is
+modelled per direction, with byte-stream fault injection: dropped/corrupted bytes, mid-frame
+truncation, injected noise, delayed delivery, stalled TX readiness, short writes, duplicated frames,
+receive-buffer overrun, and one-sided silence.
+
+**Constraint — a loopback harness must never register a fake UART with a real `select.poll()`.** The
+Unix port does not re-evaluate a Python object's `ioctl()` after registration (the reason
+`tests/test_asy_uart_driver.py`'s `_StepPoller` exists, and the cause of a CI-only hang — CLAUDE.md's
+"Known hang cause"), and `digital_twin/unix_port_poll_prewarm.py` records a related `modselect.c`
+segfault with non-fd poll objects. The mock layer therefore supplies a paired poller stand-in
+re-querying each fake's `ioctl()` per call, installed by reassigning `uart.poller` after construction
+— the project's established mocking mechanism, keeping `src/` free of a testability seam.

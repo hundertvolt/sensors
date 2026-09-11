@@ -50,6 +50,13 @@ constraints.
   forward out of this order already, once `math_helpers.py` cleared the `src/` bar, and that's now
   standing practice for every new file, not a one-off.
 
+- **The UART protocol's C implementation is not in this repo yet.** It runs on the Arduino peer and
+  is the protocol's second implementation (SPECIFICATION.md Part J). A future session imports it,
+  then reconciles it against `UART_C_PORT_CHANGELOG.md` — the running log of protocol changes made
+  during the Python module's `src/` promotion — re-verifying each entry's conformance assumption
+  against the real C source. That log file is deleted once the reconciliation is done; this entry
+  comes out with it.
+
 ## Open questions (need owner input or further investigation)
 
 1. `modules/_boot.py`'s `import sensortask.py` (literal `.py`) — works reliably on real hardware
@@ -467,10 +474,11 @@ constraints.
   good-looking on major mobile/desktop browsers" goal still wants at least one real human pass on
   real Safari and a real mobile device, which no automation here can substitute for.
 - **UART sensor integration — confirmed staying unwired, not just deferred.** `asy_uart_driver.py`
-  is promoted to `src/` but deliberately not wired into any `sensortask-*.py`; `asy_uart_comm.py`
-  (its one real consumer) is its own separate, still out-of-scope promotion. Not a legacy deployed
-  feature, so wiring it in would be a scope addition beyond feature-parity, not a postponed fix -
-  owner-confirmed this stays as-is.
+  and `asy_uart_comm.py` (its one real consumer, promotion in progress — SPECIFICATION.md Part J)
+  are deliberately not wired into any `sensortask-*.py`. Not a legacy deployed feature, so wiring
+  one in would be a scope addition beyond feature-parity, not a postponed fix - owner-confirmed this
+  stays as-is. The protocol module is standalone by design: its BME688/BSEC first use case is
+  explicitly out of scope and is **not** part of this promotion.
 - **Owner requirement for the final wiring stage — fulfilled, entry kept only until the large
   post-merge audit closes.** Every `sensortask-*.py` built as part of the real rewrite needs a full
   Unix-port equivalent, runnable on a local computer, with whatever hardware is physically

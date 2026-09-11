@@ -629,6 +629,14 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   directly at `SPECIFICATION.md`'s Parts C, D, E, and B respectively — they held no content of
   their own by then, just a "moved here" pointer.
 
+**Temporary docs** (deleted once their purpose is served):
+
+- **[`UART_C_PORT_CHANGELOG.md`](UART_C_PORT_CHANGELOG.md)** — the running log of UART-protocol
+  changes that must be mirrored into the Arduino peer's C implementation of the same protocol (plus
+  the Python-internal changes explicitly recorded as having no C impact). Carries those decisions
+  across the gap until that C source is imported into this repo and reconciled, then gets deleted.
+  The protocol itself is specified in `SPECIFICATION.md` Part J, which is permanent.
+
 **`DEVICE_REFERENCE.md`** (permanent, end-user-facing):
 
 - **[`DEVICE_REFERENCE.md`](DEVICE_REFERENCE.md)** — notes for configuring/operating a deployed

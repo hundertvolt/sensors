@@ -105,6 +105,21 @@ information):
   own code (see "Microdot / REST layer" below), never by touching this file. `src/` and `ext/` are
   copied flat into one directory and frozen together for the refactored firmware build, which is why
   they live at the same directory depth in the repo.
+- **The UART message protocol (`asy_uart_comm.py`, promotion in progress) has a second
+  implementation in C on the Arduino peer — so its wire format, accept/reject rules and recovery
+  timings are a two-implementation contract, not this repo's to change unilaterally.** The protocol
+  itself is specified in SPECIFICATION.md Part J; **every change made to it gets an entry in
+  `UART_C_PORT_CHANGELOG.md`** (a temporary file, deleted once the C side is imported and
+  reconciled), classified as protocol-level ("must be mirrored in C") or Python-internal ("no C
+  impact") — the second class is logged too, so a future session doesn't re-derive it. Prefer a
+  protocol-level change that only tightens *receiver* validation over one that alters emitted bytes:
+  the former keeps a mixed-version pair working, the latter is a coordinated flag-day needing the
+  owner's decision. **The C side's conformance is expected but unverified** — it mirrors the Python
+  implementation's intended behavior, but may not share every known flaw and may have its own, so
+  every Class A entry must be re-verified against the real C source once it lands. Two further
+  standing facts: the module is **standalone/self-contained** (its BME688/BSEC first use case is out
+  of scope and constrains nothing), and it is **strictly initiator/responder, never a symmetric
+  peer** — there is no collision arbitration, so simultaneous initiation is out of contract.
 - **`dev` config is a bench rig only** — its quirks (e.g. LED/Neopixel REST routes referencing an
   object that's never instantiated) are explicitly out of scope. Don't fix them as if they were
   bugs.
