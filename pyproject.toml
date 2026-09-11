@@ -101,6 +101,13 @@ line-length = 320
 # is exactly what pins ruff in [dependency-groups] above - see that comment.
 select = ["ALL"]
 
+# "×" (U+00D7 MULTIPLICATION SIGN) is real, intentional content, not an accidental homoglyph: the
+# `# @web ... special:N="×N"` tags in asy_bmp3xx_driver.py (buildgen's website-definitions
+# generator, BUILD_CHAIN_PLAN.md Session 4) carry it verbatim into html/definitions/*.json's own
+# oversampling option labels (`{"value": 1, "label": "×1"}`, already the hand-written files' real
+# content) - RUF003 would otherwise flag every occurrence as a suspected ASCII "x" look-alike.
+allowed-confusables = ["×"]
+
 ignore = [
     # ---- Hand-chosen line breaks (see [tool.ruff] above) ----
     "E501",  # line length - not enforced

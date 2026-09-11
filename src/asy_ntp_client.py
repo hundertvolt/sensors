@@ -74,6 +74,18 @@ _VAL_NIH = const((("NTP_Interv_H", "int", 12, 1, 24, None),))
 _VAL_GMT = const((("GMTOffset", "int", 3600, -43200, 43200, None),))
 _VAL_DST = const((("DSTOffset", "int", 3600, -43200, 43200, None),))
 
+# @web-group section=networking submitGroup=ntp label="NTP Time Sync" submit=true
+# @web NTP_Host section=networking submitGroup=ntp label="NTP Server Address"
+# @web NTP_Offset_S section=networking submitGroup=ntp label="NTP Offset" unit="s" description="Added to Unix time; affects system time and all timestamps."
+# @web NTP_Interv_H section=networking submitGroup=ntp label="NTP Sync Interval" unit="h"
+
+# Contributed into system_service.py's own "settings" group (System Settings card) - GMTOffset/
+# DSTOffset are real cettime() inputs owned by this module, not system_service.py, even though they
+# render on the System page (system_service.py's own @web-group section=system submitGroup=settings
+# tag is the sole declaration for that group; this file only adds fields to it).
+# @web GMTOffset section=system submitGroup=settings label="GMT Offset" unit="s" description="Timezone offset to GMT; affects local time only."
+# @web DSTOffset section=system submitGroup=settings label="DST Offset" unit="s" description="Daylight Savings offset; affects local time only."
+
 _NAME = const("NTP")
 # Kept as a literal tuple inline (not `_FIELDS` below) because mypy's namedtuple plugin can only
 # infer field names from a literal at the call site, not through a variable indirection.

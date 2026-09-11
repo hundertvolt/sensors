@@ -70,6 +70,31 @@ def _looks_like_limits_payload(text: str) -> bool:
     return bool(_PAYLOAD_DOMAIN_START_RE.match(words[1]))
 
 
+def _looks_like_web_payload(text: str) -> bool:
+    # A `@web` tag is "<FieldName> key=value ...": a leading bare identifier, then at least one
+    # real key=value pair. Mirrors _looks_like_limits_payload's two-branch shape: the field name
+    # surviving alone (every key=value pair dropped) is still an attempt, and so is every
+    # key=value pair surviving while the field name itself was dropped (the first "word" then
+    # looks like "label=..." rather than a bare identifier).
+    _, words = _payload_words(text)
+    if not words:
+        return False
+    if not _PAYLOAD_WORD_RE.match(words[0]):
+        return bool(_PAYLOAD_KV_RE.search(" ".join(words)))
+    if len(words) == 1:
+        return True
+    return bool(_PAYLOAD_KV_RE.search(" ".join(words[1:])))
+
+
+def _looks_like_web_group_payload(text: str) -> bool:
+    # A `@web-group` tag has no leading field-name token at all - every word is (or should be) part
+    # of a key=value pair, so a single "does anything here look like key=value" check is enough.
+    _, words = _payload_words(text)
+    if not words:
+        return False
+    return bool(_PAYLOAD_KV_RE.search(" ".join(words)))
+
+
 def _looks_like_requires_attempt(text: str) -> bool:
     # An exact "@requires" is strong evidence by itself, so a bare number is payload enough for it
     # ("@requires timeout 200000" - both the "bus." prefix and the operator dropped). This
@@ -95,6 +120,8 @@ KNOWN_TAGS = (
     TagSpec("wiring", _looks_like_wiring_payload),
     TagSpec("value-wiring", _looks_like_wiring_payload),
     TagSpec("limits", _looks_like_limits_payload),
+    TagSpec("web", _looks_like_web_payload),
+    TagSpec("web-group", _looks_like_web_group_payload),
 )
 KNOWN_TAG_NAMES = tuple(spec.name for spec in KNOWN_TAGS)
 
@@ -117,6 +144,11 @@ def _max_typo_distance(tag_name: str) -> int:
 _PAYLOAD_OPERATOR_RE = re.compile(r"\b[\w.]+\s*(>=|<=|==|!=|=|>|<)")
 _PAYLOAD_DOTTED_RE = re.compile(r"\b\w+\.\w+")
 _PAYLOAD_NUMBER_RE = re.compile(r"(?<![\w.])[-+]?\d")
+
+# A @web/@web-group key=value pair, e.g. "label=" or "special:0=" - deliberately not anchored to
+# a specific key name, since any of them appearing is already strong evidence of an attempt (see
+# _PAYLOAD_OPERATOR_RE's own comment: nobody writes "word=" in ordinary English prose).
+_PAYLOAD_KV_RE = re.compile(r"\b[A-Za-z_][\w:.-]*=")
 
 # A tag name is a word, optionally hyphenated (the planned "@web-group" shape) - anything after the
 # first non-word character is payload, not part of the name.

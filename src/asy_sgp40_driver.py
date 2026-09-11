@@ -62,6 +62,12 @@ _N_SETUP_CFG = const(2)  # value count of the _VAL_BP + _VAL_WT batch read below
 # from get_dict_cfg()'s own schema argument below - this key is never in ConfigManager's _cache.
 _VAL_RESET = const((("SGPResetVOC", "bool", None, None, None, True),))
 
+# @web-group section=sensors submitGroup=self label="SGP40 — VOC Index" submit=true
+# @web BackupPeriod section=sensors submitGroup=self label="VOC Index Backup Interval" unit="min" special:0="Backups off"
+# @web BackupMaxAge section=sensors submitGroup=self label="VOC Index Backup Max Age" unit="min" special:0="Use all found backups"
+# @web WaitTimeNTP section=sensors submitGroup=self label="VOC Index NTP Wait Time" unit="s" special:0="Never wait for NTP sync"
+# @web SGPResetVOC section=sensors submitGroup=self label="Reset VOC Index" description="Only 'On' has effect. Resets the VOC algorithm and deletes the current backup." dispatch=true
+
 _NAME = const("SGP40")
 # VOC/Raw/TS also doubles as the full result of a read (see _read_sgp/_store_sgp) - no separate
 # results type needed, unlike asy_scd30_driver.py's SCDResults, which carries derived fields SGP40
@@ -70,6 +76,11 @@ _NAME = const("SGP40")
 # infer field names from a literal at the call site, not through a variable indirection.
 SGP40 = namedtuple("SGP40", ("VOC", "Raw", "TS"))
 _FIELDS = const(("VOC", "Raw", "TS"))  # kept in sync with SGP40's own fields above
+
+# @web-group section=measurements submitGroup=self label="SGP40 — VOC Index"
+# @web VOC section=measurements submitGroup=self kind=readonly label="VOC Index"
+# @web Raw section=measurements submitGroup=self kind=readonly label="VOC Raw" unit="ticks"
+# @web TS section=measurements submitGroup=self kind=readonly label="Timestamp" unit="s"
 
 # This driver's live cross-instance dependencies (SPECIFICATION.md Part C.14): the optional FRAM
 # backup target, resolved by buildgen/ (Session 3 of BUILD_CHAIN_PLAN.md) to an already-constructed

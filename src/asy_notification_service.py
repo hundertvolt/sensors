@@ -80,6 +80,25 @@ _VAL_INTERV = const((("Interv", "float", 300.0, 60.0, 3600.0, None),))
 _VAL_FLASH_DUR = const((("FlashDur", "float", 2.0, 0.5, 10.0, None),))
 _VAL_AUTO_ON = const((("AutoOn", "bool", True, None, None, None),))
 
+# WarnCO2/WarnVOC/WarnHum (registered per-signal at runtime, not one of this file's own _VAL_*
+# constants - see finalize()/_combined_schema() above) render in this same group too; their web
+# metadata is buildgen.definitions._WARN_SIGNAL_WEB_CATALOG, the generator-owned parallel of
+# buildgen.codegen._KNOWN_SIGNALS (BUILD_CHAIN_PLAN.md's quality bar: neither is a real per-device
+# fact this file could tag - every device using a given signal wires it to the same threshold).
+# Literal submitGroup ("autoConfig"), not the "self" instance-resolved-name sentinel scd30/sgp40/
+# bmp3xx use: NotificationCoordinator is a singleton service (driver_registry.SERVICE_DRIVERS -
+# never more than one per device), so there is no multi-instance disambiguation need, and the
+# hand-written definitions files already established this literal key.
+# @web-group section=notification submitGroup=autoConfig label="Automatic Notification Configuration" submit=true
+# @web AutoOn section=notification submitGroup=autoConfig label="Automatic Notifications" description="Auto On must be before Off, on the same day."
+# @web OnH section=notification submitGroup=autoConfig label="Auto On Hour"
+# @web OnM section=notification submitGroup=autoConfig label="Auto On Minute"
+# @web OffH section=notification submitGroup=autoConfig label="Auto Off Hour"
+# @web OffM section=notification submitGroup=autoConfig label="Auto Off Minute"
+# @web FlashBri section=notification submitGroup=autoConfig label="Flash Brightness"
+# @web Interv section=notification submitGroup=autoConfig label="Flash Interval" unit="s"
+# @web FlashDur section=notification submitGroup=autoConfig label="Flash Duration" unit="s"
+
 _VAL_INT_FIELDS = _VAL_ON_H + _VAL_ON_M + _VAL_OFF_H + _VAL_OFF_M + _VAL_FLASH_BRI
 _VAL_FLOAT_FIELDS = _VAL_INTERV + _VAL_FLASH_DUR
 _VAL_BOOL_FIELDS = _VAL_AUTO_ON
