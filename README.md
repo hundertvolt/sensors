@@ -636,6 +636,10 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   the Python-internal changes explicitly recorded as having no C impact). Carries those decisions
   across the gap until that C source is imported into this repo and reconciled, then gets deleted.
   The protocol itself is specified in `SPECIFICATION.md` Part J, which is permanent.
+- **[`UART_PROMOTION_REQUIREMENTS.md`](UART_PROMOTION_REQUIREMENTS.md)** — the refined scope of the
+  UART module's `src/` promotion: every standard the promoted file has to meet, derived from
+  `SPECIFICATION.md` Parts C/D/F/G/I/J and CLAUDE.md, plus the map of what the legacy file currently
+  violates and which decisions are still open. Deleted once the promotion is merged.
 
 **`DEVICE_REFERENCE.md`** (permanent, end-user-facing):
 
