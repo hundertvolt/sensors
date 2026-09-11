@@ -1012,7 +1012,7 @@ def test_webserver_status_put_reset_errors_clears_a_real_modules_history() -> No
 
 
 def test_webserver_status_put_reset_errors_is_not_undone_by_a_fram_loggers_later_setup() -> None:
-    # BACKLOG.md #16's boot window, reproduced exactly. Every FRAM-backed logger runs its own
+    # SPECIFICATION.md Part C.7's boot window, reproduced exactly. Every FRAM-backed logger runs its own
     # pr.setup() from inside its task - SGP40's lives in read_loop()'s _init_sgp() - while the
     # webserver's own task answers as soon as start_server() returns. So a ResetErrors PUT can land
     # while the chunk still holds the previous boot's history and the RAM-side logger is still

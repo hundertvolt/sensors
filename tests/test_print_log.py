@@ -477,7 +477,7 @@ def test_printloghistorystore_err_s_before_setup_does_not_touch_fram() -> None:
 
 
 def test_printloghistorystore_reset_before_setup_persists_the_cleared_state_anyway() -> None:
-    # BACKLOG.md #16: reset() deliberately has no "uninitialized" guard. A cleared ring is not
+    # SPECIFICATION.md Part C.7: reset() deliberately has no "uninitialized" guard. A cleared ring is not
     # stale state - it is precisely what the caller asked to persist - so it goes to FRAM straight
     # away, which is what stops a later setup() restoring the old history over the top.
     manager, chip = make_fram_manager()
@@ -490,7 +490,7 @@ def test_printloghistorystore_reset_before_setup_persists_the_cleared_state_anyw
 
 
 def test_printloghistorystore_reset_during_the_boot_window_is_not_undone_by_the_later_setup() -> None:
-    # The whole point of BACKLOG.md #16: every FRAM-backed logger runs its own pr.setup() from
+    # The whole point of SPECIFICATION.md Part C.7's boot window: every FRAM-backed logger runs its own pr.setup() from
     # inside its task, so the webserver can answer a ResetErrors PUT before that has happened.
     # The reset must survive the setup() that follows it, not be silently rolled back.
     manager, chip = make_fram_manager()

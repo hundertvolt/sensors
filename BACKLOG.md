@@ -167,17 +167,13 @@ constraints.
    raising the cap without also addressing headroom, not just a RAM-per-buffer cost argument.
    **Owner's call, 2026-09-11: keep deferred** - stays as-is, revisit only if a real deployment
    symptom makes it pressing.
-8. **Two real-hardware bench-rig capabilities, flagged as "not currently provisioned" during the
-   original `tests_hardware/` design discussion, each gating one test candidate from `[MANUAL]` to
-   `[AUTO]`** (migrated from the now-deleted `HARDWARE_TEST_PLAN.md` — see SPECIFICATION.md Part
-   E.6 for the surrounding architecture these would extend): a programmable GPIO fault-injection
-   harness on the bench rig, which would upgrade the "genuinely wedged I2C bus → watchdog backstop"
-   manual test to automated; and a dedicated second WiFi test client on the bench rig (today's bench
-   host has only the one WiFi adapter, already hosting the AP), which would upgrade "real end-to-end
-   hotspot session" from a manual test to automated. **Decided (project owner, 2026-09-11): hardware
-   fault injection is planned for later — deferred, not dropped.** Both test candidates stay
-   `[MANUAL]` until the rig exists; don't re-propose building it, and don't work around its absence
-   with a software-only substitute that claims the same coverage.
+8. **Two bench-rig capabilities would each move one test candidate from `[MANUAL]` to `[AUTO]` —
+   deferred, planned for later (project owner, 2026-09-11).** A programmable GPIO fault-injection
+   harness (upgrades the "genuinely wedged I2C bus → watchdog backstop" test) and a dedicated
+   second WiFi test client (upgrades the real end-to-end hotspot session; today's host has one
+   adapter, already hosting the AP). Both stay `[MANUAL]` until the rig exists — don't re-propose
+   building it, and don't substitute a software-only stand-in claiming the same coverage. Migrated
+   from the deleted `HARDWARE_TEST_PLAN.md`; surrounding architecture in SPECIFICATION.md Part E.6.
 9. **WiFi-reconnect flakiness across the bench suite - root-caused and fixed at the root (was
    tracked here as several separate-looking symptoms; all traced to a small number of real
    causes).** A missing `BENCH_AP_PASSWORD` env var used to cascade into ~25 unrelated-looking test
@@ -207,12 +203,8 @@ constraints.
     investigation unless it recurs under normal operation; a `dmesg -T -w`-concurrent capture
     technique is ready to reuse for a real correlated timestamp if it ever does.
 11. **CLAUDE.md's "Pre-push verification" recipe had no GCC>=14 host target — CLOSED
-    (2026-09-11).** Project owner's call: add it, *alongside* noble rather than replacing it. Both
-    targets are now required by that section, which carries the trixie deltas (the `debootstrap`
-    suite/mirror and the Debian-shaped `sources.list`), the `debootstrap`-script and no-`universe`
-    caveats, and the `gcc --version` check that confirms which compiler actually landed. The
-    trixie leg is already satisfied for the current tree: the 2026-09-11 from-scratch build, lint,
-    typecheck and unit run happened on this bench Pi4, which is Debian trixie / GCC 14.2.
+    (2026-09-11).** Owner's call: add it alongside noble, not instead of it. Both targets are now
+    required by that section, which carries the trixie deltas and the `gcc --version` check.
 12. **Does `machine.soft_reset()` reset the RP2040 hardware counter `time.ticks_ms()` derives
     from? - ANSWERED on real hardware (2026-09-11): no, but the question was aimed at the wrong
     mechanism.** Two `mpremote exec` reads 3s apart returned 25769 and 29136 ms (delta 3367): the
@@ -226,35 +218,15 @@ constraints.
     than via soft-reset semantics - each poll costs ~8s of uptime and restarts the count. Any real
     multi-day run needs the poll to re-feed or disable the watchdog, or to observe passively
     (`tail_log()`) instead.
-13. **"Reads also blocked while the chip is write-protected" — ANSWERED and CLOSED
-    (project owner, 2026-09-11): intended, accepted, now a defined and asserted behavior.**
-    `_AsyBaseFramChunk._read_chunk()` must WRITE a transient busy marker before it reads, so write
-    protection gates `chunk.read()` exactly as it gates `chunk.write()`. It is an access gate, not
-    data loss — the stored bytes survive and read back intact once protection is cleared. Written
-    up in SPECIFICATION.md Part A.4's FRAM entry (including the two properties that distinguish it
-    from the pause gate: it fails *at* the chip, and `override_pause=True` does not bypass it), and
-    asserted at every tier that can reach it — mock
-    (`test_read_is_also_blocked_while_write_protected_and_the_data_survives_it` plus
-    `test_write_protect_gate_still_reaches_the_bus_unlike_the_pause_gate`), twin
-    (`test_wozi_write_protect_blocks_reads_too_and_the_data_survives_it`) and flash/bench
-    (`fram_write_protect_roundtrip.py`, now asserting the blocked read instead of only noting it).
-    That script also closed a related gap found while answering this: every other check stops at
-    `FRAM_SPI._write()`'s own software guard, so none of them proved the *silicon* refuses
-    anything. It now desyncs the driver's cached `_wp` from the still-protected chip and issues a
-    real WREN+WRITE; the bytes come back unchanged, so the BP0|BP1 protection itself is confirmed
-    on hardware and not merely the driver's early return. Only the bench/flash tier can make that
-    claim - the mock and twin chip fakes both stop at the driver guard too.
-
-14. **Adopt `machine.mem_backup()` for reset forensics?** New in 1.29, on by default on rp2, and
-    confirmed present in this project's own built firmware: 28 bytes of watchdog-scratch storage
-    that survives a WDT reset and `machine.reset()`, lost only on power-off — SPECIFICATION.md
-    Part F.5.4. That is exactly the reset class the 2026-09-08 `WDT_RESET` post-mortem couldn't
-    diagnose, and unlike the FRAM logs it costs zero wear. **Decided (project owner, 2026-09-11):
-    not adopted in normal code.** There is no hard reason to carry it systematically, and a
-    breadcrumb written on every supervisor tick is cost with no current customer. It stays
-    documented as a diagnostic tool to reach for *if* a severe, hard-to-debug reset shows up that
-    the FRAM logs cannot explain — at which point it is a deliberate, temporary instrumentation
-    step, not a standing feature. Don't re-propose it as normal-path code.
+13. **Is "reads also blocked while the chip is write-protected" intended? — CLOSED
+    (2026-09-11).** Yes: intended and accepted, an access gate rather than data loss. Full
+    behaviour, the two properties distinguishing it from the pause gate, and the tier coverage
+    (including the silicon-level check only the bench tier can make): SPECIFICATION.md Part A.4's
+    FRAM entry.
+14. **Adopt `machine.mem_backup()` for reset forensics? — CLOSED (2026-09-11).** No, not in
+    normal code; it stays a diagnostic tool to reach for if a severe, hard-to-debug reset ever
+    appears that the FRAM logs cannot explain. Capability and decision:
+    SPECIFICATION.md Part F.5.4.
 15. **Should a transient SPI RX overrun be retried, or left to the task supervisor?** MicroPython
     1.29 added an `OSError(EIO)` raise site to rp2's SPI transfer path for *reading* transfers of
     32+ bytes (SPECIFICATION.md Part F.5.2), reachable here via `asy_fram_driver.py`'s 260-byte
@@ -270,32 +242,10 @@ constraints.
     interrupted read *does* leave the chunk marked busy and unreadable until rewritten - that is
     intended behavior, not a second bug to weigh here: see SPECIFICATION.md Part A.4's FRAM entry.
 16. **A `ResetErrors` PUT landing in the boot window used to clear some modules' error logs and
-    silently fail on others — FIXED (2026-09-11), project owner's call.**
-    **Why the window exists** (unchanged, and not itself a defect): every FRAM-backed logger calls
-    its own `await self.pr.setup()` from *inside its task*, not from `build_system()`'s grouped
-    `setup()` batch — SGP40/BMP3XX/SCD30 in `read_loop()`'s `_init_*()`, NEOPIXEL in
-    `neopixel_signal()`, NOTIFY in `monitor_loop()`, SYSTEM in `start_and_check_tasks()`. The
-    webserver's own task does the same in `_run()` and does nothing else before
-    `asyncio.start_server()`, while every `_init_*()` first does real I2C work. So the server is
-    accepting requests while some loggers are still uninitialized, and which ones is decided by
-    task-scheduling order.
-    **What used to happen.** `print_log.py`'s `reset()` cleared the RAM ring and `err_count`, then
-    returned early when `not self.initialized`. The uninitialized modules therefore skipped the
-    FRAM write and their own `setup()` restored the old history straight over the cleared ring,
-    while the already-initialized ones were genuinely cleared — a *partial* clear behind a `200`,
-    leaving the error logs inconsistent across modules.
-    **The fix** (one guard, in `PrintLogHistory.reset()`): a cleared ring is not stale state to be
-    kept away from FRAM — it is exactly what the caller asked to persist. `reset()` now writes
-    unconditionally and marks the logger initialized *once that write succeeds*, so the later
-    `setup()` returns early instead of restoring. A failed write leaves `initialized` False, so
-    `setup()` still runs normally afterwards and nothing is wrongly claimed. `_store_err()`'s own
-    uninitialized guard is untouched — a half-filled ring from before the restore genuinely is
-    stale state, and that is the case the guard was written for.
-    Covered at every tier: mock (`tests/test_print_log.py`'s three new cases,
-    `tests/test_sensortask_wozi.py` through the real webserver route), twin
-    (`tests/test_digital_twin_sensortask_integration.py`, over a real socket against the real twin
-    chip) and flash (`device_scripts/fram_error_log_reset_during_boot_window.py` on the real chip).
-    All four fail against the pre-fix code, verified directly.
+    silently fail on others — FIXED (2026-09-11).** `PrintLogHistory.reset()` now writes
+    unconditionally and claims initialization only once that write succeeds. Mechanism, the
+    deliberate asymmetry against `_store_err()`'s own guard, and the tier coverage:
+    SPECIFICATION.md Part C.7.
 
 ## Deferred / explicitly out-of-scope work
 - **The 1.29.0 pin is now field-proven on the dev bench (2026-09-11).** Real `dev` firmware built
@@ -316,15 +266,11 @@ constraints.
     succeeds after `machine.SPI.deinit()`; the same script also confirms the static per-bus
     singleton claim (`machine.I2C(id) is machine.I2C(id)`) that the two fakes deliberately diverge
     from. Previously only fake-vs-fake agreement.
-  - **The 12,918 B SRAM-resident-code change (Part F.5.3) - settled 2026-09-11, project owner's
-    call: the question is RAM, not speed.** It is upstream's change, not ours, and nothing in this
-    codebase executes differently because of it (frozen bytecode still lives in and is read from
-    flash; what moved is the interpreter's own machine code). So the linker-map figure stays a
-    *cost* entry and is never to be quoted as a measured speedup - no timing run is wanted. The
-    headroom it leaves IS now measured on real hardware and gated by
+  - **The SRAM-resident-code change - settled 2026-09-11, project owner's call: the question is
+    RAM, not speed.** No timing run is wanted, and the linker-map figure is never to be quoted as a
+    measured speedup. The headroom it leaves is now measured on real hardware and gated by
     `tests_hardware/flash/test_memory_stress.py`'s
-    `test_real_gc_heap_headroom_survives_a_full_system_build`: 130,224 B free, 115,536 B largest
-    contiguous block after a real `build_system()`. Numbers and reasoning in Part F.5.3.
+    `test_real_gc_heap_headroom_survives_a_full_system_build`; figures and reasoning in Part F.5.3.
 - **The SPI RX-overrun error path shall be tested** (project owner's explicit direction,
   2026-09-10). MicroPython 1.29's new `OSError(EIO)` raise site (SPECIFICATION.md Part F.5.2),
   across the tiers CLAUDE.md's standing bus-hazard rule asks for. **All four are now done**;

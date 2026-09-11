@@ -1,6 +1,6 @@
 """Isolated-driver device script: a ResetErrors landing before a FRAM-backed logger's own
 pr.setup() has run must still stick - the reset is persisted and the later setup() must not restore
-the old history over it. BACKLOG.md #16, on the real chip rather than a fake one."""
+the old history over it. SPECIFICATION.md Part C.7, on the real chip rather than a fake one."""
 
 import asyncio
 

@@ -213,7 +213,7 @@ class PrintLogHistory(PrintLog):
         # No `not self.initialized` guard here, unlike _store_err() above: a cleared ring isn't
         # stale state to keep away from FRAM, it's exactly what the caller asked to persist.
         # Claiming initialization once that write succeeds makes a later setup() return early
-        # instead of restoring over it - see BACKLOG.md #16. A failed write leaves it False.
+        # instead of restoring over it - see SPECIFICATION.md Part C.7. A failed write leaves it False.
         self.history.extend([_NO_ERR] * len(self.history))
         self.err_count = 0
         if not await self._write():

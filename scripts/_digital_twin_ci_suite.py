@@ -560,7 +560,7 @@ def _run_5c_storage_paused_shutdown_never_loses_the_error_log(micropython_bin: s
         _check(condition=_mem_paused() is False, msg="Run 5c: the storage pause did NOT survive the reboot (it is RAM-only by design)")
         # The restored history must not be a read-only relic: a ResetErrors PUT has to clear it on
         # the chip. Deliberately issued after the poll above confirmed setup() ran, so this checks
-        # the ordinary case; a reset issued *before* setup() is covered separately (BACKLOG.md #16
+        # the ordinary case; a reset issued *before* setup() is covered separately (Part C.7
         # - it persists straight away now and the later setup() must not undo it).
         status, _ = _http("PUT", "/status", {"ResetErrors": True})
         _check(condition=status == _HTTP_OK, msg=f"Run 5c: PUT /status ResetErrors accepted (status {status})")

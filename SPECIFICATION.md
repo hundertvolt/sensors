@@ -162,24 +162,19 @@ registration API and A.9's `HTML_SRC_DIRS` are shaped around it). Real-hardware 
   ~1-in-8 unpaused rate). Covered at every tier — `tests/test_fram_integration.py` (both blocks
   torn), `scripts/_digital_twin_ci_suite.py` runs 5b/5c, and
   `tests_hardware/flash/test_fram_storage.py`'s reset-race pair on real silicon.
-  **Write protection gates reads too, and that is intended** (project owner, 2026-09-11): because
-  `_read_chunk()` has to WRITE the transient busy marker before it may read, a genuinely
-  write-protected chip makes `chunk.read()` return `None` as surely as it makes `chunk.write()`
-  return `False` — confirmed on real silicon. It is an *access* gate, not data loss: the stored
-  bytes are untouched and come back intact the moment protection is cleared. Two things tell it
-  apart from the pause gate, and both are asserted: write protection fails *at* the chip (the
-  status byte is read off the bus first, then the marker write is refused — errno 32 for each
-  block, then warning 72), where `set_pause()` short-circuits before SPI ever runs; and
-  `override_pause=True` bypasses only the manager's own pause flag, never the chip's protection.
-  Covered at mock (`tests/test_asy_fram_manager.py`'s
-  `test_read_is_also_blocked_while_write_protected_and_the_data_survives_it` plus the
-  reaches-the-bus discriminator), twin
-  (`tests/test_digital_twin_bus_hazard_concurrency.py`) and flash
-  (`device_scripts/fram_write_protect_roundtrip.py`) tiers. One claim only the real chip can
-  settle, and now does: all three tiers' write checks stop at the driver's own guard, so to reach
-  the silicon the flash script desyncs the cached `_wp` from the still-protected chip and sends a
-  genuine WREN+WRITE — the bytes are unchanged afterwards, so BP0|BP1 really does refuse it. Both
-  chip fakes stop at the driver guard, so neither can prove this.
+  **Write protection gates reads too, and that is intended** (project owner, 2026-09-11):
+  `_read_chunk()` must WRITE the transient busy marker before it may read, so a write-protected
+  chip makes `chunk.read()` return `None` as surely as it makes `chunk.write()` return `False`. An
+  *access* gate, not data loss — the stored bytes are untouched and come back intact once
+  protection is cleared. Two properties separate it from the pause gate, both asserted: it fails
+  *at* the chip (the status byte is clocked off the bus first, then the marker write is refused —
+  errno 32 per block, then warning 72) where `set_pause()` short-circuits before SPI runs; and
+  `override_pause=True` bypasses only the manager's pause flag, never the chip's protection.
+  Asserted at mock, twin and flash tiers. One claim only real silicon can settle, and the flash
+  tier does: every tier's write check stops at the driver's own guard, so
+  `device_scripts/fram_write_protect_roundtrip.py` desyncs the cached `_wp` from the
+  still-protected chip and sends a genuine WREN+WRITE — the bytes never land, so BP0|BP1 itself
+  refuses it. Both chip fakes stop at the driver guard and cannot prove this.
   "Both copies valid but different" is a hard failure (no generation counter), never guessed. `AsyFramTimestampedChunk.write()`/`write_into()`
   return `(ntp_synced, utc, success)` — `success` is third, not first; don't reorder. `AsyFramManager`
   is a bump-pointer allocator: instantiation order is on-chip layout and must stay identical across
@@ -1050,6 +1045,20 @@ survives everything except an explicit reset, including a reflash — before tre
 `make_logger(fram, history_length, debug, name)` for a non-`SensorReader` class
 (`system_service.py`'s `SystemService`).
 
+**`reset()` writes unconditionally; `_store_err()` does not.** The asymmetry is deliberate.
+`_store_err()` refuses to touch FRAM before `setup()` has run — a half-filled ring written over a
+not-yet-restored chunk is stale state. A cleared ring is the opposite: it is exactly what the
+caller asked to persist, so `reset()` writes it straight away and marks the logger initialized once
+that write succeeds, which makes the later `setup()` return early instead of restoring over it. A
+failed write leaves `initialized` False and `setup()` still runs normally. Without this, a
+`ResetErrors` landing in the boot window was silently undone: every FRAM-backed logger runs its own
+`pr.setup()` from *inside its task* (SGP40/BMP3XX/SCD30 in `read_loop()`'s `_init_*()`, NEOPIXEL in
+`neopixel_signal()`, NOTIFY in `monitor_loop()`, SYSTEM in `start_and_check_tasks()`) while the
+webserver's task does nothing before `start_server()` — so the server answers while some loggers
+are uninitialized, and which ones is decided by task-scheduling order. The result was a *partial*
+clear behind a `200`, inconsistent across modules. Fixed 2026-09-11; covered at the mock, twin and
+flash tiers.
+
 Log-level methods, two tiers: `pr.one`/`pr.evt`/`pr.all` (sync, print-only, no history) for
 info/trace; `pr.err_s`/`pr.wrn_s` (async, persist to history/FRAM) for anything counting against
 `get_error_counter()`; `pr.err`/`pr.wrn` (sync, non-persisting) for a genuinely sync call site
@@ -1835,8 +1844,11 @@ wake; lost on power-off.**
 
 That is exactly the reset class the 2026-09-08 `WDT_RESET` investigation could not diagnose (see
 CLAUDE.md's FRAM-log rule). A few bytes of last-phase/last-tick breadcrumb written on every
-supervisor tick would survive it at zero flash and zero FRAM wear. Not adopted yet — tracked as
-BACKLOG.md open question 14.
+supervisor tick would survive it at zero flash and zero FRAM wear. **Deliberately not adopted**
+(project owner, 2026-09-11): there is no standing reason to carry it, and a breadcrumb written
+every tick is cost with no current customer. It stays documented here as a tool to reach for *if* a
+severe, hard-to-debug reset appears that the FRAM logs cannot explain — deliberate, temporary
+instrumentation, never normal-path code.
 
 ### F.5.5 Two defects in the 1.29 stub package, repaired at install time
 

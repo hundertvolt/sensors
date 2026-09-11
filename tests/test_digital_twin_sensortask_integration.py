@@ -320,7 +320,8 @@ def test_put_round_trips_through_a_real_twin_backed_driver_over_real_http() -> N
 
 
 def test_reset_errors_over_real_http_is_not_undone_by_a_fram_loggers_later_setup() -> None:
-    # Twin-tier form of BACKLOG.md #16, over a real socket against the real twin FRAM chip. Only
+    # Twin-tier form of SPECIFICATION.md Part C.7's boot-window contract, over a real socket
+    # against the real twin FRAM chip. Only
     # the webserver task is started here, exactly like the boot window it models: every sensor
     # task's own pr.setup() (SGP40's lives in read_loop()'s _init_sgp()) has not run, so the chunk
     # still holds the previous boot's history while the RAM-side logger is uninitialized.

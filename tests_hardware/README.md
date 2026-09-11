@@ -98,12 +98,28 @@ point at a flagged assumption being wrong, not at a real product bug. Resolved i
 through, kept (not deleted) so a reader mid-investigation doesn't wonder whether something was ever
 a live question:
 
-- **The bench has never run MicroPython 1.29.0.** The refactor's pin moved 1.28.0 → 1.29.0 in an
-  audit session with no real-hardware go-ahead, so every finding behind it (SPECIFICATION.md Part
-  F.5) is source-, map-file- or twin-derived and the board still runs whatever was last flashed.
-  Flash the dev bench deliberately before reading any run as a 1.29 result, and see BACKLOG.md's
-  "Deferred" list for the three items that specifically want on-target confirmation (the new SPI
-  RX-overrun raise site, the `deinit()` no-ops, the SRAM-placement win).
+- ~~The bench has never run MicroPython 1.29.0.~~ — **resolved (2026-09-11): it has, repeatedly.**
+  Real `dev` firmware built from `src/` and flashed, with the flash, bench and mid soak tiers all
+  run clean against it. All three items that wanted on-target confirmation are answered: the SPI
+  RX-overrun raise site and the `deinit()` no-ops (both in BACKLOG.md's "Deferred" list), and the
+  SRAM-placement change, now measured rather than inferred (SPECIFICATION.md Part F.5.3).
+- **A hardware run overwrites the production modules' FRAM chunks — never read an error log as
+  firmware evidence straight after one.** `AsyFramManager` is a deterministic bump allocator (a
+  required property, SPECIFICATION.md Part A.4), so a device script's own first chunk *is*
+  production's first chunk. Usually the next boot's `_read()` just fails on the size/CRC mismatch
+  and the log honestly reads empty — but a script leaving a well-formed chunk behind fabricates a
+  plausible one. `fram_error_log_reset_race_seed_and_race.py` seeds three `errno=5` entries into
+  what is physically SystemService's chunk, which reads back as SYSTEM's own
+  `"Task N ended with exception"` (chased down as real on 2026-09-11; it was test data). CLAUDE.md's
+  "read the FRAM logs before clearing" rule assumes a board that has been running normally — check
+  what was last run against this one first.
+- **A device script that reads error-log content clears its chunk at the START, never at the end.**
+  Clearing first is what makes a run deterministic: the chunk is real persistent storage, so
+  without it a script inherits the previous run's ring and its assertions drift silently. Clearing
+  at the end would destroy the evidence of what the script just did. Residue is the accepted
+  outcome; the caveat above is how a reader avoids misreading it.
+  `fram_error_log_reset_race_verify.py` is the one deliberate exception — it exists to read what
+  the raced reset left behind, so a baseline wipe would erase the thing under test.
 - ~~Does `mpremote`'s implicit soft-reset re-execute `modules/_boot.py`/`boot.py`/`main.py`?~~ —
   **resolved: no.** Confirmed against the pinned MicroPython C source and empirically on real
   hardware: only a genuine `hard_reset()` resumes the live system; `exec()`/`run_isolated()` never
@@ -352,52 +368,6 @@ A follow-up clarification then widened scope further, on the same audit thread: 
 parity, but (1) bottom-level hardware *function* checks, not just readings, and (2) a real-hardware
 counterpart for every mock-driven integration test in `tests/` "wherever possible". Two more
 additions from that:
-
-### FRAM device scripts overwrite the production modules' own chunks — read this before trusting an error log
-
-`AsyFramManager` is a deterministic bump allocator, and that is a required property, not an
-accident (SPECIFICATION.md Part A.4's chunk-determinism rule): the Nth `get_chunk()` call of a
-given size always lands at the same address. An isolated-driver device script builds its own
-`AsyFramManager` over the *same real chip*, so **its first chunk is production's first chunk.**
-Production's order is SystemService → SGP40 error log → SGP40 VOC backup → BMP3xx → SCD30 →
-Neopixel → NotificationCoordinator (Part A.7), and every FRAM-backed error log is a
-`get_chunk(2 + history_length, crc=CRC8())` — which is exactly what `make_logger()` in a device
-script allocates too. Nine scripts in `device_scripts/` allocate chunks this way.
-
-Two consequences, and the second one has already caused a real misreading:
-
-- **A device-script run destroys whatever the production modules had persisted there.** Usually
-  harmless: a mismatched size or CRC makes the next boot's `_read()` fail, `_write()` stores an
-  empty ring, and the log honestly reads "nothing recorded".
-- **A script that leaves a *well-formed* chunk behind fabricates plausible diagnostic history.**
-  `fram_error_log_reset_race_seed_and_race.py` seeds three `errno=5` entries into what is
-  physically SystemService's chunk, and `[5, 5, 5]` is one of its accepted end states — so the
-  next boot restores it and `GET /status` reports **SYSTEM: 3 errors, errno 5**, which in
-  SystemService's own namespace reads as `"Task N ended with exception"`. Observed and chased down
-  on 2026-09-11; it is test data, not a task failure.
-
-So: **an error log read after a flash- or bench-tier run is not evidence about the firmware.**
-CLAUDE.md's "read the FRAM logs before clearing anything" rule still stands — it is aimed at a
-unit that has been running normally. Check what has been run against the board first.
-
-**Standing rule for a device script that reads or asserts on error-log content: clear the chunk at
-the START, never at the end.** Clearing first is what makes the run deterministic — the chunk is
-real persistent storage, so without it a script inherits whatever a previous run left behind and
-its assertions silently drift (this has already bitten once: a seeded ring accumulating across runs
-until the history no longer matched). Clearing at the end is the opposite of useful — what the
-script leaves behind is the evidence of what it just did, and a run that wipes it destroys the only
-record of a failure that has already happened. Residue is the accepted outcome; the fix for
-misreading it is knowing a hardware run happened, which is what this section is for.
-
-The three scripts that read error-log content all do this today — `fram_error_log_roundtrip.py`,
-`fram_error_log_reset_race_seed_and_race.py` (which also verifies the cleared baseline before
-seeding, since its assertions depend on an exact ring) and
-`fram_error_log_reset_during_boot_window.py`. `fram_error_log_reset_race_verify.py` is the one
-deliberate exception, and has to be: it runs after the raced reset specifically to read what
-survived, so clearing first would erase the thing under test. Scripts working on plain data chunks
-(`fram_manager_roundtrip.py`, `fram_busy_status_lockout.py`, `fram_pause_unpause_and_gating.py`,
-`fram_write_protect_roundtrip.py`, `bus_deinit_is_a_noop_on_real_hardware.py`) establish the same
-baseline by writing their own pattern first, which is the equivalent discipline.
 
 - **FRAM write protection actually gates a real write, a real read, and does so in silicon**
   (`device_scripts/fram_write_protect_roundtrip.py`, `flash/test_fram_storage.py`): sets the real

@@ -119,24 +119,20 @@ information):
   specific mismatch (`scripts/build_firmware.py wozi` — wozi's hardcoded pins — flashed onto the dev
   bench) produced two false "bugs" once (see BACKLOG.md's "Per-variant `sensortask-*.py` generator" entry) — it
   isn't a shortcut for testing wozi, it's testing nothing at all, and must not be repeated.
-- **The legacy tree is reference-only, forever — it never gets work of any kind** (project
-  owner, 2026-09-11). `python/`, `modules/` and the four `build-*.sh` scripts exist to be *read*:
-  to check what the deployed system actually does and how a driver behaved in the field. Nothing
-  in this repo's quality apparatus is ever extended to them — no lint/typecheck scope, no CI
-  build stage, no shellcheck cleanup, no tests, no refactor. A finding *about* legacy code is
-  worth recording only when it explains current behavior; it is never a to-do. Don't propose
-  closing any of these gaps — the gap is the decision. (The one exception already carved out
-  above stands: `modules/_boot.py`'s `import sensortask.py` is not to be "fixed" either.)
-- **No unit tests against the current (deployed, pre-refactor) codebase — `python/`, `modules/`.**
-  The agreed plan is: fully understand the current system first, confirm what's already
-  promoted into `src/`, and write tests as part of that refactor — not before, and
-  not against the current code. This does **not** contradict SPECIFICATION.md Part E's testing
-  requirements (tests under a real MicroPython Unix-port interpreter, `uv`-managed venv, mocking
-  boundary, etc.) — those describe what the *refactored* code must eventually have. **First
-  concrete instance**: `src/math_helpers.py` has a full `tests/test_math_helpers.py` suite,
-  running under a real MicroPython Unix-port interpreter per that plan (see "Code quality tooling"
-  below) — this rule is about not testing the old `python/`/`modules/` code, not about deferring
-  all tests indefinitely.
+- **The legacy tree is reference-only, forever — it never gets work of any kind** (project owner,
+  2026-09-11). `python/`, `modules/` and the four `build-*.sh` scripts exist to be *read*: to check
+  what the deployed system actually does, and how a driver behaved in the field. Nothing in this
+  repo's quality apparatus is ever extended to them — no lint/typecheck scope, no CI build stage,
+  no shellcheck cleanup, no tests, no refactor. A finding *about* legacy code is worth recording
+  only when it explains current behavior; it is never a to-do. Don't propose closing any of these
+  gaps — the gap is the decision. `modules/_boot.py`'s `import sensortask.py` (above) is this same
+  rule applied to one specific file, not an exception to it.
+  **On tests specifically**, since that half predates the rest: the agreed plan is to understand
+  the current system first, confirm what is already promoted into `src/`, and write tests as part
+  of that refactor. This does **not** contradict SPECIFICATION.md Part E's testing requirements —
+  those describe what the *refactored* code must eventually have, and `src/math_helpers.py` +
+  `tests/test_math_helpers.py` were the first instance of exactly that. The rule is "never test
+  the old `python/`/`modules/` code", not "defer all tests".
 - **Don't touch `sensors/config.json`-equivalent files or commit any real credentials.** A
   `.gitignore` covers per-device config/build artifacts, but still be deliberate about what you
   stage. **The one known real credential already in this repo**: a hardcoded hotspot fallback
@@ -573,8 +569,8 @@ information):
 anything else touching the dev-tooling/build-environment setup**, verify it end-to-end inside a
 genuinely clean chroot — not just in whatever sandbox this session happens to be running in.
 **Two targets, both required**: Ubuntu 24.04 "noble" (GCC 13.x, the OS the project's docs target)
-and Debian trixie (GCC 14.x, what the bench Pi4 actually runs) — see "Second target" below for why
-one is not enough. A session sandbox typically already has Python 3.11+, `uv`, build tools, etc.
+and Debian trixie (GCC 14.x, what the bench Pi4 actually runs) — see "The trixie target" below
+for why one is not enough. A session sandbox typically already has Python 3.11+, `uv`, build tools, etc.
 pre-installed, which can mask real gaps. **This already caught a real bug once**: a
 `requires-python = ">=3.10"` that let `uv sync` build a venv without `tomllib` (stdlib only since
 3.11), invisible in a sandbox whose default Python happened to already be 3.11+, and only found by
@@ -583,7 +579,7 @@ skip it just because "it worked in this session's sandbox."
 
 **Recipe** (needs root; mirrors how `toolchain/setup_toolchain.py`'s own "verified from scratch"
 claims were checked — see SPECIFICATION.md Part B.7, "Evidence this actually works"). Shown for
-noble; "Second target" below gives the two lines that differ for trixie and nothing else does:
+noble; "The trixie target" below gives the two lines that differ for trixie, and nothing else does:
 
 ```bash
 # One-time: build a clean Ubuntu 24.04 (noble) chroot with nothing preinstalled beyond the
@@ -666,24 +662,14 @@ umount "$CHROOT"/dev/pts "$CHROOT"/dev "$CHROOT"/sys "$CHROOT"/proc
 rm -rf "$CHROOT"
 ```
 
-**What counts as passing**: `lint.sh`/`typecheck.sh`/`scripts/test.sh` all run to completion with
-exit 0 — all eight scopes this setup covers (see "Code quality tooling" above) are fully-reviewed
-code expected to stay fully clean (confirmed: `lint.sh` and all three `typecheck.sh` passes report
-zero findings as of the eight-scope extension), so a nonzero exit from either one
-here is a real regression to chase down, not an expected/tracked finding to compare against a
-session sandbox's own baseline count. `scripts/test.sh`'s tests must likewise actually pass (exit
-0, every test PASS) — a test failure here is a real regression too.
-What would fail this: a raw Python traceback, an "installation failed" from `uv`/`pip`/`apt`, a
-`scripts/test.sh` build failure, or any other mismatch against the ordinary-sandbox run — that
-mismatch is exactly how the `tomllib`/`requires-python` gap was found in the first place.
-
-**Second target: Debian trixie (GCC >= 14).** The noble chroot above pins GCC 13.x, and a
-compiler-version-sensitive build break is invisible to it — confirmed the hard way: the mbedtls
-`mbedtls_xor()` `-Warray-bounds` false positive (SPECIFICATION.md Part B.7.1, worked around by
-`_MBEDTLS_GCC14_ARRAY_BOUNDS_WORKAROUND` in `toolchain/setup_toolchain.py`) is a GCC >= 14
+**The trixie target, and why noble alone is not enough.** The noble chroot above pins GCC 13.x,
+so a compiler-version-sensitive build break is invisible to it — confirmed the hard way: the
+mbedtls `mbedtls_xor()` `-Warray-bounds` false positive (SPECIFICATION.md Part B.7.1, worked around
+by `_MBEDTLS_GCC14_ARRAY_BOUNDS_WORKAROUND` in `toolchain/setup_toolchain.py`) is a GCC >= 14
 diagnostic, and the build treats any `warning:` as a hard failure — so noble never saw it. It was
-found by building on a real Debian trixie host, outside this recipe. Noble is kept, not replaced — it is the documented target OS, and a gap that only appears
-on the *older* compiler would be just as invisible from trixie alone. Run both.
+found by building on a real Debian trixie host, outside this recipe. Noble is kept, not replaced:
+it is the documented target OS, and a gap appearing only on the *older* compiler would be just as
+invisible from trixie alone. Run both.
 
 Everything in the recipe above is identical for trixie except the `debootstrap` invocation and the
 `sources.list` it writes (Debian's component and security-suite names differ from Ubuntu's):
@@ -706,10 +692,19 @@ it already. And Debian has no `universe`, so the `main`-only lists above are com
 Check the compiler actually landed as expected before trusting the run:
 `chroot "$CHROOT" gcc --version` must report 14.x (or newer), and the noble one 13.x.
 
-**Already satisfied for the current tree (2026-09-11)**: the full from-scratch toolchain build,
-lint, typecheck and unit suite were run on this bench Pi4, which *is* Debian trixie / GCC 14.2 —
-so the trixie leg of this gate is met for everything in the tree as of that date, and only future
-changes to the setup need it re-run.
+The trixie leg was last satisfied on 2026-09-11 by a full from-scratch build plus every suite on
+the bench Pi4 itself, which runs trixie / GCC 14.2.
+
+**What counts as passing**: `lint.sh`/`typecheck.sh`/`scripts/test.sh` all run to completion with
+exit 0 — all eight scopes this setup covers (see "Code quality tooling" above) are fully-reviewed
+code expected to stay fully clean (confirmed: `lint.sh` and all three `typecheck.sh` passes report
+zero findings as of the eight-scope extension), so a nonzero exit from either one
+here is a real regression to chase down, not an expected/tracked finding to compare against a
+session sandbox's own baseline count. `scripts/test.sh`'s tests must likewise actually pass (exit
+0, every test PASS) — a test failure here is a real regression too.
+What would fail this: a raw Python traceback, an "installation failed" from `uv`/`pip`/`apt`, a
+`scripts/test.sh` build failure, or any other mismatch against the ordinary-sandbox run — that
+mismatch is exactly how the `tomllib`/`requires-python` gap was found in the first place.
 
 **Changes to `toolchain/setup_toolchain.py` or `toolchain/versions.toml` itself need a second,
 separate verification, not just the recipe above** — that recipe only exercises `scripts/lint.sh`/
