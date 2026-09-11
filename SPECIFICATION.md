@@ -2334,9 +2334,24 @@ initiates.
 
 Every frame is exactly `5 + payload_size` bytes, the payload field zero-padded to its full width.
 There is no delimiter, no length prefix and no escaping: **the fixed size is the framing**, which is
-what lets a receiver take a whole frame as one fixed-length read and verify it in one go. CRC framing
-is not part of this layer — it is configured on the `UART` bus object and appended/verified/stripped
-transparently below it (CRC-16/CCITT-FALSE in every real configuration).
+what lets a receiver take a whole frame as one fixed-length read and verify it in one go.
+
+CRC framing is **optional and not part of this layer** — it is configured on the `UART` bus object
+and appended/verified/stripped transparently below it, and `CRC_Pass`'s zero length makes every
+framing calculation degrade to the no-CRC case automatically, so this layer is entirely CRC-agnostic.
+Without a CRC, the only integrity checking left is this layer's own structural validation (command,
+chunk index, size bounds, ACK `UID` match).
+
+**The CRC algorithm and its byte order are part of the wire contract and must be specified, never
+inherited.** The field-proven legacy configuration — `python/IndividualDrivers/asy_uart.py`'s own
+`CRC16`, which is what the C peer mirrors — is an LSB-first/right-shifting variant over poly `0x1021`
+with init `0xFFFF`, appended in the platform's **native** byte order; that is *not* CRC-16/CCITT-FALSE,
+and it interoperates between the two peers only because both happen to be little-endian.
+`src/crc_checks.py`'s `CRC16` is a genuine MSB-first CRC-16/CCITT-FALSE appended big-endian. **The two
+are not wire-compatible** — verified directly: each is self-consistent (residue zero over payload+CRC)
+and each rejects the other's frames. Moving this module onto `src/`'s driver therefore changes the
+bytes on the wire, which is a coordinated flag-day rather than a receiver-strictness change
+(`UART_C_PORT_CHANGELOG.md` A7).
 
 | Offset | Field | Semantics |
 |---|---|---|
