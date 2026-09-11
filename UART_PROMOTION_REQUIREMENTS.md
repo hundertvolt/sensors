@@ -1345,3 +1345,36 @@ Each verified by running it, not by inspection. **Status as of this branch:**
 - The bird's-eye scan over `src/` has been re-run after the file lands, with any cross-file
   discrepancy reported and discussed rather than silently fixed.
 - The file reads as if it had always been part of `src/` (§0).
+
+---
+
+## J — Post-promotion audit pass (2026-09-11)
+
+A second pass over every promoted and changed file, cross-checked against MicroPython v1.29.0's own
+`ports/rp2/machine_uart.c` and `py/stream.c` rather than against memory. Six defects, each
+reproduced against the real interpreter before being fixed and each now pinned by a named test.
+
+| # | What was wrong | How it showed | Closed by |
+|---|---|---|---|
+| J1 | **A command id outside `0..255` was silently truncated onto the wire.** `bytearray[0] = 0x101` does not raise on this platform — it stores `0x01`. `uart_set(0x101, ...)` therefore sent a *different, valid* command, the peer executed it, and the call returned `True` | Measured: `uart_set(0x101)` → wire CMD byte `0x01`, result `True` | `_check_cmd_id()`, `errno` 34, refused before any frame is built (`test_an_out_of_range_command_id_is_refused_not_truncated`) |
+| J2 | **Four public entry points raised `TypeError` out of a module contracted never to raise** — a non-integer `size`/`exp_size` reached an `int` comparison, a non-buffer payload reached `len()`, an immutable `bytes` destination reached a slice assignment mid-train, after the peer had already been acknowledged | Measured: `uart_get(1, "5")`, `uart_set_into(1, b"abc", "2")`, `uart_set(1, 5)`, `uart_get_into(1, b"..")` | `_check_size()`/`_check_buffer()`; the responder's own callback returns were already type-checked (F4.3), the caller's were not |
+| J3 | **A caller's negative `exp_size` silently became the module's internal "don't care" sentinel**, turning an exact-size GET into an unchecked one | `uart_get(1, -5)` returned the full payload instead of refusing | Same guard; `_accept_set()` already rejected the equivalent from a callback, so this was an inconsistency as well as a bug |
+| J4 | **C3.8's repeat-suppression was defeated in practice.** Deduplicating the `errno` did not help, because every fault also resyncs and the resync warning was persisted unconditionally — refilling the bounded FRAM history with recovery chatter and evicting the entry naming the cause, the exact loss C6.3 names | Measured over 5 identical faults: 1 persisted `errno`, **5** persisted resync warnings; the `errno` is evicted entirely by fault 10 | `_episode_wrn()`: `wrnno` 10/11 persist at most once per fault episode. Now 2 entries, not 6 |
+| J5 | **A callback declining a command id was logged under the resync `wrnno`**, so the history could not distinguish "the peer asked for something unimplemented" from "the link broke" | Both appeared as `W:10` | Its own `wrnno` 14 |
+| J6 | **The owned listen loop discarded every received payload.** `_listen_loop()` consumed the `ListenResult` and dropped it, so a responder wired the documented way (`get_task_starters()`) could never see a SET's data at all — evidenced by `sensortask_dev.py`'s `uart_last_echo`, declared and never assignable | The dev bench's ECHO command could only ever answer empty | Optional `message_callback`, dispatched through the same guarded path as every other callback; `CMD_ACK`/`CMD_GET`/`CMD_SET` made public in the same round, since `ListenResult.cmd` already handed callers a value they had no name for |
+
+Two further defects were found outside `src/`, in this branch's own test infrastructure:
+
+| # | What was wrong | Closed by |
+|---|---|---|
+| J7 | **`tests/machine.py`'s fakes kept an unbounded call log** — ~18 entries per fake per transaction, ~2.6 kB retained. It masked every attempt to measure the protocol's own allocation behaviour and would surface on a long run as a `MemoryError` *inside the code under test*. `digital_twin/machine.py` had already bounded its own logs; `tests/` had not | `_CallLog`, bounded and counting its drops. It has to stay a `list`, not a `deque`: these tests index `[-1]`, compare `== []` and call `clear()`, none of which MicroPython's deque supports |
+| J8 | **A nested `asyncio.run()` segfaults the Unix port** whenever another task is parked in the shared queue — it does not raise CPython's `RuntimeError`. Introduced by this pass's own first draft of the long-run test, which called a fixture builder that runs its own `asyncio.run()` from inside a coroutine. Deterministic, uncatchable, and not heap- or load-dependent, so the file simply dies mid-run with no summary line | Fixture built in synchronous scope. Reduced to a 12-line reproducer and recorded in CLAUDE.md; audited across `tests/`, `digital_twin/` and `src/` — no other call site does it |
+
+**What the audit confirmed rather than changed.** `src/` retains **zero bytes per transaction**,
+measured over 100 transactions with the fakes' recorders neutralised and now pinned by
+`test_a_long_run_of_transactions_retains_no_memory`. Read against the real rp2 source: a
+framing/parity/overrun fault never raises (the bytes are delivered as data, which is what the
+CRC and the validation rules are for); `read`/`readinto` return `None` for `EAGAIN` rather than
+raising; `write()` may short-write or return `None`, both of which `_write_all()` already handles;
+and no call site uses `flush()`, the one `machine.UART` method that can raise `OSError(ETIMEDOUT)`.
+Four further findings were reviewed and deliberately left alone — see BACKLOG.md's deferred list.

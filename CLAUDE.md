@@ -432,6 +432,21 @@ information):
   the `system_service.py` `_timer_sequencer()` Timer-GC fix above: before that fix, `start_timers()`
   hung forever, so `start_and_check_tasks()` never even got called and no sibling tasks ever
   existed to leak — the soak test's own bounded-completion path was previously unreachable.
+- **Known segfault cause, fixed**: a **nested `asyncio.run()` while any other task is still parked
+  in the shared task queue segfaults the MicroPython Unix port** - it does not raise the
+  `RuntimeError: asyncio.run() cannot be called from a running event loop` CPython would. `run()`
+  installs a fresh event loop and task queue; the outer loop's already-queued tasks then belong to
+  the replaced queue, and resuming the outer loop walks freed pointers. Reduced to a 12-line
+  reproducer (`create_task()` a parked sleeper, then `asyncio.run()` inside the running coroutine),
+  and **not** load-, heap-size- or timing-dependent: it is deterministic and uncatchable, so
+  `microtest.py`'s own `except Exception` never sees it and the file simply dies mid-run with no
+  summary line. **Rule: a test helper that calls `asyncio.run()` (this repo's `run()` wrappers in
+  `tests/_uart_comm_harness.py` and friends, and anything calling `hazard_pair()`/`build_pair()`
+  style builders that run their own setup) must only ever be called from synchronous test-function
+  scope, never from inside a coroutine** - build the fixture at the top of the test, then pass it
+  into the one coroutine `run()` drives. Audited across `tests/`, `digital_twin/` and `src/`: no
+  other call site does this. Don't re-diagnose a test file that segfaults partway through with no
+  `N/N passed` line as a memory bug in the code under test.
 - **Known intermittent-`MemoryError` cause #2, fixed**: a real SIGINT landing inside a
   `gc_collect()` leaves the MicroPython Unix port's heap **permanently locked** — the stuck
   `GC_COLLECT_FLAG` makes every later allocation fail with `MemoryError: memory allocation failed,

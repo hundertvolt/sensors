@@ -1089,7 +1089,7 @@ is expected; only overlap *within* one row matters.
 | `asy_webserver_service.py` (`WEBSERVER`) | 1-6 | 1-5 | 1=unexpected exception in dispatch, 2=`system_cmd` callback, 3=`notification_led` callback, 4=uncaught exception via `errorhandler(Exception)`, 5=`notification_pause` callback, 6=one `/status` streamed-fragment source failed. `wrnno` 1-5=connection-lifecycle reclaim reasons. |
 | `asy_neopixel_driver.py` | — | — | No persisted logging. |
 | `asy_i2c_driver.py`/`asy_spi_driver.py`, `asy_udp_socket.py`, `asy_dns_client.py` (client) | — | — | Deliberately no logging — every failure surfaces to exactly one upstream owner. Coverage audit closed, no gaps. |
-| `asy_uart_comm.py` (`UART`, `_NAME` only as the default) | 10-33 | 10-13 | 10-16=construction refusals (payload_size, timeout, role, bus handle, allocation, rxbuf, missing callback), 17=not-ready gate, 18=role refusal, 19=frame validation, 20=missing/mismatched ACK, 21=write, 22=read timeout, 23=payload too large, 24=destination allocation, 25=size mismatch, 26=callback, 27=re-entrant call, 28=wrong frame kind, 29=GET id mismatch, 30=listen loop, 31=peer initiated simultaneously, 32=bytes arriving but no frame ever valid (a CRC/baud/`payload_size` mismatch), 33=streamed chunk short-filled. `wrnno` 10=resync, 11=drain bound reached, 12=fault episode cleared, 13=driver cancel un-acknowledged. Numbered from 10 to stay clear of `base_classes.py`'s reservation even though this is not a `SensorReader` subclass, and disjoint from any owner's own range where the logger is reached through. |
+| `asy_uart_comm.py` (`UART`, `_NAME` only as the default) | 10-34 | 10-14 | 10-16=construction refusals (payload_size, timeout, role, bus handle, allocation, rxbuf, missing callback), 17=not-ready gate, 18=role refusal, 19=frame validation, 20=missing/mismatched ACK, 21=write, 22=read timeout, 23=payload too large, 24=destination allocation, 25=size mismatch, 26=callback, 27=re-entrant call, 28=wrong frame kind, 29=GET id mismatch, 30=listen loop, 31=peer initiated simultaneously, 32=bytes arriving but no frame ever valid (a CRC/baud/`payload_size` mismatch), 33=streamed chunk short-filled, 34=a caller's own argument refused (command id outside a byte, a non-integer or negative size, a non-buffer payload or destination). `wrnno` 10=resync, 11=drain bound reached, 12=fault episode cleared, 13=driver cancel un-acknowledged, 14=a callback declined a command id. **10 and 11 are persisted at most once per fault episode** — deduping only the `errno` left every fault still persisting its own resync warning, which refilled the bounded history and evicted the entry naming the cause. Numbered from 10 to stay clear of `base_classes.py`'s reservation even though this is not a `SensorReader` subclass, and disjoint from any owner's own range where the logger is reached through. |
 | `asy_uart_driver.py` | — | — | Deliberately no logging — every failure surfaces to its one upstream owner (`asy_uart_comm.py`), the same treatment the other bus drivers get. `cancel_unacknowledged` is a plain counter that owner reads and logs under its own `wrnno` 13. |
 
 ## C.8 Concurrency & locking model
@@ -1860,6 +1860,28 @@ declaring.
   F.1 stands.
 - `SOCK_RAW` is now default-on and present in the built firmware. Noted only; F.2 settles the
   reachability-probe question.
+
+### F.5.7 `machine.UART.deinit()` leaves the RX ring buffer unrooted — re-init by construction
+
+Read out of `ports/rp2/machine_uart.c` at `v1.29.0` while auditing the UART promotion, not from a
+changelog. It changes nothing about how this project behaves today, but it is the reason one line
+of `asy_uart_driver.py` has to stay the way it is.
+
+`mp_machine_uart_deinit()` clears `MP_STATE_PORT(rp2_uart_rx_buffer[id])` and its TX twin — the
+`MP_REGISTER_ROOT_POINTER` entries that make those ring buffers reachable to the GC — but leaves
+`self->read_buffer.buf` in the static `machine_uart_obj[]` entry still pointing at them. A static C
+struct is not scanned, so after `deinit()` the buffers are garbage that the object still holds a
+pointer to. Calling `uart.init(...)` again does **not** repair it: the reallocation is guarded by
+`if (self->read_buffer.buf == NULL)`, which is false, and the root pointer is never restored — so
+the UART IRQ handler resumes writing into memory the collector is free to hand out.
+
+The escape is that `mp_machine_uart_make_new()` sets `read_buffer.buf = NULL` itself, so
+**constructing a fresh `machine.UART(id, ...)` always reallocates and re-roots**, while
+`uart.init()` on a previously deinit'd object does not. `asy_uart_driver.UART.init()` therefore
+calls `machine.UART(...)` rather than `self._uart.init(...)`, and that choice is load-bearing
+rather than stylistic — `tests_hardware/device_scripts/uart_crossover_recovery.py`'s injector
+deinits and re-inits a live port, which is exactly the sequence that would otherwise corrupt the
+heap on real hardware.
 
 ## F.6 A SIGINT during `gc_collect()` can wedge the Unix-port heap
 

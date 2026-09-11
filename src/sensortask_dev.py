@@ -29,7 +29,7 @@ from asy_notification_service import NotificationCoordinator, NotificationSignal
 from asy_ntp_client import AsyNtpClient
 from asy_scd30_driver import SCD30_Reader
 from asy_sgp40_driver import SGP40_Reader
-from asy_uart_comm import ROLE_INITIATOR, ROLE_RESPONDER, UART_Comm
+from asy_uart_comm import CMD_SET, ROLE_INITIATOR, ROLE_RESPONDER, UART_Comm
 from asy_webserver_service import SettingsGroup, WebserverService
 from asy_wifi_service import AsyConnTime
 from system_service import SystemService
@@ -119,6 +119,15 @@ def _uart_set_callback(cmd_id: int) -> "tuple[bool, int | None]":
     # Accepts a SET across the jumper. Returns (valid, expected_size); None means "don't care",
     # which is what a bench echo wants.
     return (cmd_id == _UART_CMD_ECHO), None
+
+
+def _uart_message_callback(cmd_id: int, cmd: int, payload: "bytearray | None") -> None:
+    # The owned listen loop's delivery point: without it the received payload has nowhere to go,
+    # and the ECHO command above could only ever answer empty. The cmd check matters - an answered
+    # GET for the same id also lands here, carrying no payload, and would blank the stored value.
+    global uart_last_echo
+    if cmd == CMD_SET and cmd_id == _UART_CMD_ECHO:
+        uart_last_echo = payload
 
 
 async def sgp_comp_callback() -> "list[float | None]":
@@ -459,6 +468,7 @@ async def build_system(
         timeout=_UART_TIMEOUT_MS,
         get_callback=_uart_get_callback,
         set_callback=_uart_set_callback,
+        message_callback=_uart_message_callback,
         debug=debug,
         name="UART_RESP",
     )

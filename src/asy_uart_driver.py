@@ -184,6 +184,9 @@ class UART(Lockable):
     ) -> None:
         # deinit() first so re-init can't leak a claimed peripheral/pins or a stale poll
         # registration - matches asy_spi_driver.py's/asy_i2c_driver.py's own init() pattern.
+        # The _UART(...) below must stay a *construction*, never self._uart.init(...): rp2's
+        # deinit() unroots the RX/TX ring buffers without clearing the pointers to them, and only
+        # make_new() repairs that - see SPECIFICATION.md Part F.5.7.
         self.deinit()
         # Kept as plain attributes because machine.UART exposes neither back: a protocol layer
         # above has to size its own frames against the real receive buffer and the real baud rate

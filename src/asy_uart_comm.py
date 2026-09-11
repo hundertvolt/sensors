@@ -47,6 +47,12 @@ if TYPE_CHECKING:
         # Consumes one chunk's payload; returns True to continue.
         def __call__(self, chunk: int, buf: memoryview) -> object: ...
 
+    class _MessageCallback(Protocol):
+        # Hands the owned listen loop's completed transaction to its owner. Without it a responder
+        # wired the documented way - get_task_starters() - can never see a SET's payload at all,
+        # because the loop is what consumes the ListenResult.
+        def __call__(self, cmd_id: int, cmd: int, payload: "bytearray | None") -> object: ...
+
     # What a payload can be on the way out, and what a destination can be on the way in - the
     # union is the real contract, so nothing here has to fall back to Any.
     Readable = bytes | bytearray | memoryview
@@ -58,9 +64,12 @@ _NAME = const("UART")
 ROLE_INITIATOR = const("initiator")
 ROLE_RESPONDER = const("responder")
 
-_CMD_ACK = const(0x01)
-_CMD_GET = const(0x02)
-_CMD_SET = const(0x04)
+# Public because ListenResult.cmd hands one of GET/SET straight to a caller, who would
+# otherwise have no name for the value it just received. ACK never reaches a ListenResult but
+# is named alongside them rather than split across two conventions.
+CMD_ACK = const(0x01)
+CMD_GET = const(0x02)
+CMD_SET = const(0x04)
 
 _HEADER_LEN = const(5)
 _MSG_UID = const(0)
@@ -90,6 +99,7 @@ _BACKOFF_MAX_MULT = const(5)  # cap = 5 x timeout, matching captive_dns.py's own
 _DIAG_RESYNC_STREAK = const(2)  # resyncs with bytes seen but no frame ever valid before D2.5 fires
 _MIN_CHUNKS = const(2)  # even a payload-less command carries one data chunk, so it can be confirmed
 _CALLBACK_PAIR_LEN = const(2)  # every callback returns exactly (valid, value)
+_CMD_ID_MAX = const(0xFF)  # a command id is one payload byte, so this is its whole range
 
 # errno catalog - 10 upward, aligned to base_classes.py's SensorReader reservation even though this
 # is not a subclass (owner direction). Kept disjoint from any owner's own range when a logger is
@@ -118,15 +128,17 @@ _ERR_LISTEN_LOOP = const(30)
 _ERR_PEER_INITIATED = const(31)
 _ERR_LINK_UNINTELLIGIBLE = const(32)
 _ERR_STREAM_SHORT = const(33)
+_ERR_BAD_ARG = const(34)
 _ERRNO_MIN = const(10)
-_ERRNO_MAX = const(33)
+_ERRNO_MAX = const(34)
 
 _WRN_RESYNC = const(10)
 _WRN_DRAIN_BOUND = const(11)
 _WRN_FAULT_CLEARED = const(12)
 _WRN_CANCEL_UNACKED = const(13)
+_WRN_CMD_REJECTED = const(14)
 _WRNNO_MIN = const(10)
-_WRNNO_MAX = const(13)
+_WRNNO_MAX = const(14)
 
 # One allocation per logical message, never per frame (decision 8). Returned on every path,
 # including the ones that fail - _LISTEN_FAILED is preallocated so even a MemoryError-degraded
@@ -150,6 +162,7 @@ class UART_Comm:
         timeout: int = 1000,
         get_callback: "_GetCallback | None" = None,
         set_callback: "_SetCallback | None" = None,
+        message_callback: "_MessageCallback | None" = None,
         fram: "AsyFramManager | None" = None,
         history_length: int = 10,
         debug: int | None = None,
@@ -168,6 +181,9 @@ class UART_Comm:
         self.timeout = timeout
         self.get_callback = get_callback
         self.set_callback = set_callback
+        # Optional, unlike the other two: a GET-only responder has nothing to deliver, so an
+        # absent one is not a construction error (C6.2 covers only the unanswerable case).
+        self.message_callback = message_callback
         self.initialized = False
         self.uid = 0
         self._busy = False  # F4.9: asyncio.Lock is not reentrant, so re-entry is refused, not awaited
@@ -176,6 +192,7 @@ class UART_Comm:
         self._holdoff_deadline = time.ticks_ms()  # only meaningful while _holdoff_active is set
         self._last_errno = 0  # C3.8: a repeated identical fault escalates once, then stops persisting
         self._fault_streak = 0
+        self._episode_events = 0  # C3.8 applied to the recovery warnings, not just the errno
         self._valid_frames = 0
         self._blind_resyncs = 0  # D2.5/D2.6: resyncs that saw bytes but never a valid frame
         self._backoff_initial_ms = max(timeout // 2, 1)
@@ -225,7 +242,9 @@ class UART_Comm:
     def _allocate(self) -> "tuple[LockableBuffer, LockableBuffer, bytearray, bytearray, bytearray]":
         # Everything the steady state needs, allocated once from configuration: two frame buffers
         # (TX and RX must be separate, C4.2), the ACK scratch, the zero-padding source, and the
-        # one-byte command-id scratch. Frame traffic allocates nothing after this.
+        # one-byte command-id scratch. No buffer is allocated per frame after this - what a
+        # transaction still allocates is short-lived slices that die immediately, measured at zero
+        # bytes *retained* per transaction by test_uart_comm_hazard.py's own long-run check.
         if self.uart is None or self._init_errno == _ERR_PAYLOAD_SIZE:
             size = _HEADER_LEN  # a refused construction still needs well-formed attributes
             room = size
@@ -242,7 +261,7 @@ class UART_Comm:
             return tx, rx, bytearray(0), bytearray(0), bytearray(0)
         # An ACK's shape is fixed, so only its UID is ever written again (D5.3).
         if len(ack) >= _HEADER_LEN:
-            ack[_MSG_CMD] = _CMD_ACK
+            ack[_MSG_CMD] = CMD_ACK
             ack[_MSG_SIZE] = 0
             ack[_MSG_CHUNKS] = 1
             ack[_MSG_CUR_CHUNK] = 1
@@ -270,9 +289,21 @@ class UART_Comm:
             await self.pr.wrn_s("Link recovered after", self._fault_streak, "repeats of errno", self._last_errno, wrnno=_WRN_FAULT_CLEARED)
         self._clear_fault_state()
 
+    async def _episode_wrn(self, wrnno: int, *args: object) -> None:
+        # C3.8's rule, applied to the warnings a fault drags along with it. Deduping only the errno
+        # was not enough: every fault also resyncs, and an unconditionally persisted resync warning
+        # refills the bounded history by itself - evicting the one entry that says what actually
+        # broke. One persisted warning per episode, the rest visible but not persisted.
+        if self._episode_events:
+            self.pr.wrn(*args)
+        else:
+            await self.pr.wrn_s(*args, wrnno=wrnno)
+        self._episode_events += 1
+
     def _clear_fault_state(self) -> None:
         self._last_errno = 0
         self._fault_streak = 0
+        self._episode_events = 0
 
     # ---- readiness and role gates ---------------------------------------------------------
 
@@ -295,6 +326,37 @@ class UART_Comm:
             return False
         return True
 
+    async def _check_cmd_id(self, cmd_id: object) -> bool:
+        # A command id is written straight into a payload byte, and bytearray assignment truncates
+        # silently on this platform - 0x101 goes out as 0x01, a *different, valid* command the peer
+        # then executes, and the call reports success. The same silent-truncation reasoning
+        # _prepare_tx() spells out for the header fields; nothing else was enforcing it here.
+        if isinstance(cmd_id, int) and 0 <= cmd_id <= _CMD_ID_MAX:
+            return True
+        await self._err(_ERR_BAD_ARG, "command id", cmd_id, "is not a byte value")
+        return False
+
+    async def _check_size(self, size: object, *, allow_none: bool) -> bool:
+        # A non-int size reaches a comparison or a len() and raises TypeError straight out of a
+        # module contracted never to raise; a negative one silently became "don't care" (F2.1's
+        # own sentinel), so a caller's typo turned an exact-size GET into an unchecked one.
+        if size is None:
+            if allow_none:
+                return True
+        elif isinstance(size, int) and size >= 0:
+            return True
+        await self._err(_ERR_BAD_ARG, "size", size, "is not a non-negative integer")
+        return False
+
+    async def _check_buffer(self, buf: object, *, writable: bool) -> bool:
+        # The responder already type-checks what a callback hands back (F4.3); the public entry
+        # points trusted their caller instead, so a str or an int reached the frame builder.
+        kinds: tuple[type, ...] = (bytearray, memoryview) if writable else (bytes, bytearray, memoryview)
+        if buf is None or isinstance(buf, kinds):
+            return True
+        await self._err(_ERR_BAD_ARG, "buffer is a", type(buf).__name__, "not a byte buffer")
+        return False
+
     # ---- frame construction ----------------------------------------------------------------
 
     def _prepare_tx(self, uid: int, cmd: int, chunks: int, cur_chunk: int, data: "Readable | None", size: int) -> bool:
@@ -303,7 +365,7 @@ class UART_Comm:
         buf = self._tx.get_buf()
         if buf is None:
             return False
-        if not (0 <= uid <= _UID_MAX) or cmd not in (_CMD_ACK, _CMD_GET, _CMD_SET):
+        if not (0 <= uid <= _UID_MAX) or cmd not in (CMD_ACK, CMD_GET, CMD_SET):
             return False
         if not (1 <= chunks <= _CHUNKS_MAX) or not (1 <= cur_chunk <= chunks):
             return False
@@ -339,13 +401,13 @@ class UART_Comm:
         if buf is None or len(buf) < self.frame_size:
             return _ERR_FRAME_INVALID  # D4.12: length checked before any indexing
         cmd = buf[_MSG_CMD]
-        if cmd not in (_CMD_ACK, _CMD_GET, _CMD_SET):
+        if cmd not in (CMD_ACK, CMD_GET, CMD_SET):
             return _ERR_FRAME_INVALID  # D4.1: exact match, never a bitmask
         if cmd != exp_cmd:
             return _ERR_WRONG_KIND  # D4.10/D4.11: each read site declares what it expects
         if buf[_MSG_UID] > _UID_MAX:
             return _ERR_FRAME_INVALID  # D3.3: a conforming peer never emits 0xFF
-        if cmd == _CMD_ACK:
+        if cmd == CMD_ACK:
             return self._validate_ack(buf, exp_uid)
         return self._validate_data(buf, cmd, exp_chunk, exp_chunks, exp_uid)
 
@@ -376,7 +438,7 @@ class UART_Comm:
         if cur == 1:
             if size != 1:
                 return _ERR_FRAME_INVALID  # D4.4: else the command id comes from a padding byte
-            if cmd == _CMD_SET and chunks < _MIN_CHUNKS:
+            if cmd == CMD_SET and chunks < _MIN_CHUNKS:
                 return _ERR_FRAME_INVALID  # D4.7: a SET with no data chunk to acknowledge
         elif cur < chunks:
             if size != self.payload_size:
@@ -445,7 +507,7 @@ class UART_Comm:
         total = 0
         while True:
             if time.ticks_diff(time.ticks_ms(), start) > bound_ms:
-                await self.pr.wrn_s("Drain bound reached, resyncing anyway", wrnno=_WRN_DRAIN_BOUND)
+                await self._episode_wrn(_WRN_DRAIN_BOUND, "Drain bound reached, resyncing anyway")
                 break
             got = await device.readinto(buf, len(buf), timeout_ms=wait_ms)
             if got is None:  # the line has been quiet for a whole window
@@ -459,7 +521,7 @@ class UART_Comm:
             return
         self._in_resync = True
         try:
-            await self.pr.wrn_s("Resyncing the link", wrnno=_WRN_RESYNC)
+            await self._episode_wrn(_WRN_RESYNC, "Resyncing the link")
             drained = await self._drain(device)
             self._hold_off_writes()
             if self.uart is not None:
@@ -511,7 +573,7 @@ class UART_Comm:
             await self._err(_ERR_NO_ACK, "no ACK for frame", cur_chunk)
             await self._resync(device)
             return False
-        err = self._validate(self._rx.get_buf(), _CMD_ACK, 1, 1, uid)
+        err = self._validate(self._rx.get_buf(), CMD_ACK, 1, 1, uid)
         if err:
             if err == _ERR_WRONG_KIND:
                 # The peer initiated while this side was mid-transaction. Out of contract - there
@@ -571,7 +633,7 @@ class UART_Comm:
             await self._err(_ERR_PAYLOAD_TOO_LARGE, "payload of", total, "bytes needs more than", _CHUNKS_MAX, "chunks")
             return False  # F1.1: rejected before the first frame, never partially sent
         self._cmd_buf[0] = cmd_id
-        if not await self._write_frame_with_ack(device, _CMD_SET, chunks, 1, self._cmd_buf, 1):
+        if not await self._write_frame_with_ack(device, CMD_SET, chunks, 1, self._cmd_buf, 1):
             return False
         view = None if payload is None else memoryview(payload)  # F1.2: sliced, never re-sliced as bytes
         sent = 0
@@ -588,7 +650,7 @@ class UART_Comm:
                 sent += written
                 continue
             data = view[sent : sent + size] if (view is not None and size) else None
-            if not await self._write_frame_with_ack(device, _CMD_SET, chunks, cur, data, size):
+            if not await self._write_frame_with_ack(device, CMD_SET, chunks, cur, data, size):
                 return False
             sent += size
         return True
@@ -615,7 +677,7 @@ class UART_Comm:
         # around it in place rather than copying the payload in a second time.
         await self._await_write_gate()
         uid = _next_uid(self.uid)
-        if not self._prepare_tx(uid, _CMD_SET, chunks, cur, None, size):
+        if not self._prepare_tx(uid, CMD_SET, chunks, cur, None, size):
             await self._err(_ERR_FRAME_INVALID, "could not build streamed frame", cur)
             return False
         self.uid = uid
@@ -630,7 +692,7 @@ class UART_Comm:
             await self._err(_ERR_NO_ACK, "no ACK for streamed frame", cur)
             await self._resync(device)
             return False
-        err = self._validate(self._rx.get_buf(), _CMD_ACK, 1, 1, uid)
+        err = self._validate(self._rx.get_buf(), CMD_ACK, 1, 1, uid)
         if err:
             await self._err(err, "invalid ACK for streamed frame", cur)
             await self._resync(device)
@@ -652,7 +714,7 @@ class UART_Comm:
                 await self._resync(device)
                 return None
             rx = self._rx.get_buf()
-            err = self._validate(rx, _CMD_SET, cur, chunks, _next_uid(prev_uid))
+            err = self._validate(rx, CMD_SET, cur, chunks, _next_uid(prev_uid))
             if err or rx is None:
                 await self._err(err or _ERR_FRAME_INVALID, "invalid frame at chunk", cur)
                 await self._resync(device)
@@ -710,12 +772,16 @@ class UART_Comm:
         # Thin wrapper over the zero-copy form, the way AsyFramChunk.write() wraps write_into():
         # the hot path must not be the one that allocates (F6.4). A None payload is treated as
         # zero length without allocating an empty bytearray for it (F1.4).
-        return await self.uart_set_into(set_id, payload, 0 if payload is None else len(payload))
+        # size=None means "the whole buffer", computed *after* uart_set_into() has type-checked it:
+        # taking len() here would raise on a non-buffer payload before any validation ran.
+        return await self.uart_set_into(set_id, payload, None)
 
     async def uart_set_into(self, set_id: int, buf: "Readable | None", size: int | None = None) -> bool:
         # buf is borrowed for the call's duration and never retained past it (F1.5/F6.5); this
         # instance's own uses are serialized by the session lock.
         if not await self._gate(ROLE_INITIATOR):
+            return False
+        if not await self._check_cmd_id(set_id) or not await self._check_buffer(buf, writable=False) or not await self._check_size(size, allow_none=True):
             return False
         bus = self.uart
         if bus is None:
@@ -739,8 +805,7 @@ class UART_Comm:
         bus = self.uart
         if bus is None:
             return False
-        if not isinstance(total_size, int) or total_size < 0:
-            await self._err(_ERR_SIZE_MISMATCH, "invalid streamed total size", total_size)
+        if not await self._check_cmd_id(set_id) or not await self._check_size(total_size, allow_none=False):
             return False
         self._busy = True
         try:
@@ -774,6 +839,8 @@ class UART_Comm:
         if buf is None:
             await self._err(_ERR_ALLOC, "uart_get_into called with no destination buffer")
             return None
+        if not await self._check_buffer(buf, writable=True):
+            return None
         result = await self._run_get(get_id, exp_size, dest=buf)
         return None if result is None else result[0]
 
@@ -788,6 +855,8 @@ class UART_Comm:
         # written plus the buffer this call allocated itself, if any - so only uart_get() has to
         # care about right-sizing, and the _into/stream forms never allocate at all.
         if not await self._gate(ROLE_INITIATOR):
+            return None
+        if not await self._check_cmd_id(get_id) or not await self._check_size(exp_size, allow_none=True):
             return None
         bus = self.uart
         if bus is None:
@@ -804,7 +873,7 @@ class UART_Comm:
     ) -> "tuple[int, bytearray | None] | None":
         want = -1 if exp_size is None else exp_size
         self._cmd_buf[0] = get_id
-        if not await self._write_frame_with_ack(device, _CMD_GET, 1, 1, self._cmd_buf, 1):
+        if not await self._write_frame_with_ack(device, CMD_GET, 1, 1, self._cmd_buf, 1):
             return None
         # The answer is a SET train in the opposite direction (J.4), which is why one pair of
         # primitives covers all four directions and why this is the responder's own SET path.
@@ -846,7 +915,7 @@ class UART_Comm:
             await self._resync(device)
             return None
         rx = self._rx.get_buf()
-        err = self._validate(rx, _CMD_SET, 1, None, None)
+        err = self._validate(rx, CMD_SET, 1, None, None)
         if err or rx is None:
             await self._err(err or _ERR_FRAME_INVALID, "invalid answer to GET", get_id)
             await self._resync(device)
@@ -893,7 +962,7 @@ class UART_Comm:
         if rx is None:
             return _LISTEN_FAILED
         cmd = rx[_MSG_CMD]
-        exp = _CMD_GET if cmd == _CMD_GET else _CMD_SET
+        exp = CMD_GET if cmd == CMD_GET else CMD_SET
         err = self._validate(rx, exp, 1, None, None)
         if err:
             await self._err(err, "unexpected frame while listening")
@@ -903,7 +972,7 @@ class UART_Comm:
         uid = rx[_MSG_UID]
         chunks = rx[_MSG_CHUNKS]
         await self._note_valid_frame()
-        if cmd == _CMD_GET:
+        if cmd == CMD_GET:
             return await self._answer_get(device, get_cb, cmd_id, uid)
         return await self._accept_set(device, set_cb, cmd_id, uid, chunks)
 
@@ -921,21 +990,21 @@ class UART_Comm:
         if not valid:
             # F3.3: a distinct outcome, not silence - the caller is told which command was asked
             # for and that the answer was withheld, while the peer learns it by timing out.
-            await self.pr.wrn_s("get_callback rejected command", cmd_id, wrnno=_WRN_RESYNC)
+            await self.pr.wrn_s("get_callback rejected command", cmd_id, wrnno=_WRN_CMD_REJECTED)
             await self._resync(device)
-            return ListenResult(None, _CMD_GET, None)
+            return ListenResult(None, CMD_GET, None)
         if payload is not None and not isinstance(payload, (bytes, bytearray, memoryview)):
             # F4.3: the payload's type is part of the return shape, so it is checked rather than
             # trusted - a str or an int here would otherwise reach the frame builder.
             await self._err(_ERR_CALLBACK, "get_callback returned a non-buffer payload for", cmd_id)
             await self._resync(device)
-            return ListenResult(None, _CMD_GET, None)
+            return ListenResult(None, CMD_GET, None)
         # The answer runs through the internal unlocked SET path, so the role gate that refuses
         # uart_set() on a responder does not stop a responder from ever answering anything (F5.2).
         total = 0 if payload is None else len(payload)
         if not await self._send_train(device, cmd_id, payload, total, None):
-            return ListenResult(None, _CMD_GET, None)
-        return ListenResult(cmd_id, _CMD_GET, None)
+            return ListenResult(None, CMD_GET, None)
+        return ListenResult(cmd_id, CMD_GET, None)
 
     async def _accept_set(self, device: "UART", set_cb: "_SetCallback", cmd_id: int, uid: int, chunks: int) -> ListenResult:
         if not await self._send_ack(device, uid):
@@ -949,39 +1018,39 @@ class UART_Comm:
             return _LISTEN_FAILED
         valid, exp_size = pair
         if not valid:
-            await self.pr.wrn_s("set_callback rejected command", cmd_id, wrnno=_WRN_RESYNC)
+            await self.pr.wrn_s("set_callback rejected command", cmd_id, wrnno=_WRN_CMD_REJECTED)
             await self._resync(device)
-            return ListenResult(None, _CMD_SET, None)
+            return ListenResult(None, CMD_SET, None)
         want = -1 if exp_size is None else exp_size
         if not isinstance(want, int) or want < -1 or want > (_CHUNKS_MAX - 1) * self.payload_size:
             await self._err(_ERR_CALLBACK, "set_callback asked for an impossible size", exp_size)  # F4.4
             await self._resync(device)
-            return ListenResult(None, _CMD_SET, None)
+            return ListenResult(None, CMD_SET, None)
         room = self._dest_size(chunks, want)
         if room is None:
             await self._err(_ERR_SIZE_MISMATCH, "expected", want, "bytes, train can carry at most", (chunks - 1) * self.payload_size)
             await self._resync(device)
-            return ListenResult(None, _CMD_SET, None)
+            return ListenResult(None, CMD_SET, None)
         try:  # allocated before any data chunk is acknowledged (F2.2)
             dest = bytearray(room)
         except (MemoryError, OverflowError):
             await self._err(_ERR_DEST_ALLOC, "could not allocate", room, "bytes for the incoming train")
             await self._resync(device)
-            return ListenResult(None, _CMD_SET, None)
+            return ListenResult(None, CMD_SET, None)
         written = await self._recv_train(device, dest, want, None, chunks, uid)
         if written is None:
-            return ListenResult(None, _CMD_SET, None)
+            return ListenResult(None, CMD_SET, None)
         if written == 0:
             # F2.5/decision 9: a genuinely empty payload is a distinct outcome from failure, and
             # the two must not collapse - the cmd_id is what says the message actually arrived.
-            return ListenResult(cmd_id, _CMD_SET, None)
+            return ListenResult(cmd_id, CMD_SET, None)
         if written == len(dest):
-            return ListenResult(cmd_id, _CMD_SET, dest)
+            return ListenResult(cmd_id, CMD_SET, dest)
         try:
-            return ListenResult(cmd_id, _CMD_SET, bytearray(memoryview(dest)[0:written]))
+            return ListenResult(cmd_id, CMD_SET, bytearray(memoryview(dest)[0:written]))
         except (MemoryError, OverflowError):
             await self._err(_ERR_DEST_ALLOC, "could not right-size the received train")
-            return ListenResult(None, _CMD_SET, None)
+            return ListenResult(None, CMD_SET, None)
 
     # ---- lifecycle -------------------------------------------------------------------------------------
 
@@ -1005,6 +1074,7 @@ class UART_Comm:
             # persisting it would put an entry in the FRAM history on every single boot,
             # indistinguishable there from a real fault.
             self.pr.one("Drained", drained, "stale bytes at setup")
+        self._clear_fault_state()  # a boot-time drain must not count as an episode's first event
         self.initialized = True
         self.pr.one("UART link ready as", self.role)
         return True
@@ -1018,6 +1088,10 @@ class UART_Comm:
             try:
                 result = await self.uart_listen()
                 if result.cmd_id is not None:
+                    if self.message_callback is not None:
+                        # Through the guarded dispatch like every other callback, so an owner's
+                        # raise cannot kill the loop the supervisor would then restart (C6.6).
+                        await self._call(self.message_callback, result.cmd_id, result.cmd, result.payload)
                     backoff = self._backoff_initial_ms  # C6.4: a clean transaction resets it
                     continue
             except Exception as e:  # uart_listen() is contracted never to raise; a contract is not an enforcement

@@ -298,6 +298,27 @@ constraints.
    "flag, don't silently change" rule.
 
 ## Deferred / explicitly out-of-scope work
+- **Four UART-audit findings reviewed and deliberately left as they are** (audit pass over the
+  promotion, 2026-09-11 - every other finding from that pass was fixed and tested):
+  - **A responder's `set_callback` returning `None` ("don't care") lets the *peer* size a heap
+    allocation.** `_accept_set()` allocates `(CHUNKS - 1) x payload_size` from the peer-declared
+    `CHUNKS`, i.e. up to ~64 kB at `payload_size = 255`. It is caught (`MemoryError`/`OverflowError`
+    → logged, resync, no partial delivery) and so sits correctly on CLAUDE.md's
+    catch→degrade→restart→watchdog ladder, but a callback that *declares* its expected size caps it
+    instead of trusting the peer - worth preferring in any new responder.
+  - **`asy_uart_driver.UART.deinit()`/`init()` do not respect the session lock.** Calling either
+    while a read is in flight would leave the in-flight code holding a reference to a deinit'd
+    peripheral. No caller does: `UART_Comm` never deinits, and the one place that does
+    (`tests_hardware/device_scripts/uart_crossover_recovery.py`'s injector) does it between
+    exchanges. A guard was not added because `init()` calls `deinit()` itself, so refusing while
+    locked would change construction semantics for a hazard nothing currently reaches.
+  - **`UART_Comm.setup()` called a second time while its own listen loop is running would
+    deadlock** on the bus lock the loop holds during its unbounded read. Nothing calls it twice -
+    `system_service.py` runs the setup batch before any task starts - so no guard was invented for
+    a caller that does not exist.
+  - **One `Framing_COBS` instance shared between two drivers would corrupt both**, since its
+    long-lived scratch is per-instance, not per-call. Every construction site makes its own; noted
+    because the failure would be silent if one ever did not.
 - **The 1.29.0 pin has never run on real hardware.** Every 1.28→1.29 claim in SPECIFICATION.md
   Part F.5 was established from upstream source, the built `firmware.elf.map`, or the Unix-port
   twin - the audit session had no real-hardware go-ahead, so no 1.29 firmware has ever been flashed

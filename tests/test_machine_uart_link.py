@@ -164,6 +164,39 @@ def test_each_link_is_freshly_constructed() -> None:
     assert b2.read() == b"ok"
 
 
+# ---- the fakes' own call log (audit pass) ---------------------------------------------------
+
+
+def test_the_call_log_is_bounded_and_says_when_it_dropped() -> None:
+    # A plain list grew forever: measured at ~18 entries per fake per protocol transaction, which
+    # exhausts the interpreter heap on a long run and surfaces as a MemoryError inside the code
+    # under test, not here. Bounded now, and the drop is visible rather than silent.
+    from machine import _LOG_MAXLEN  # the bound is the fake's own, never repeated here
+
+    uart, _b, _link = make_link()
+    for index in range(_LOG_MAXLEN * 2):
+        uart.log.append(("synthetic", index))
+    assert len(uart.log) <= _LOG_MAXLEN, len(uart.log)
+    assert uart.log.dropped > 0
+    # The forms every existing assertion uses must all still work on the bounded log.
+    assert uart.log[-1] == ("synthetic", _LOG_MAXLEN * 2 - 1)
+    assert [entry for entry in uart.log if entry[0] == "synthetic"]
+    uart.log.clear()
+    assert uart.log == []
+
+
+def test_a_long_run_keeps_the_fake_log_from_growing_without_bound() -> None:
+    # The functional half: real traffic, not synthetic appends.
+    uart, other, _link = make_link()
+    from machine import _LOG_MAXLEN
+
+    for _ in range(_LOG_MAXLEN):
+        uart.write(b"xy")
+        other.read()
+    assert len(uart.log) <= _LOG_MAXLEN
+    assert len(other.log) <= _LOG_MAXLEN
+
+
 if __name__ == "__main__":
     import microtest
 

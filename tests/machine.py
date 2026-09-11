@@ -93,6 +93,29 @@ class Pin:
             self._irq_handler(self)
 
 
+_LOG_MAXLEN = 4096  # entries kept per fake call log; see _CallLog for why it is bounded at all
+
+
+class _CallLog(list):  # type: ignore[type-arg]
+    # A plain list grows forever. That was harmless while only I2C/SPI drivers logged a handful of
+    # calls per test, but a UART fake driven by the protocol records ~18 entries per transaction,
+    # so a long run exhausts the interpreter's heap - surfacing as a MemoryError inside the code
+    # under test rather than here, the misdiagnosis CLAUDE.md's own flaky-MemoryError note warns
+    # about. digital_twin/machine.py already bounds its own logs with a deque; a deque cannot be
+    # used here because these tests index [-1], compare == [] and call clear(), none of which
+    # MicroPython's deque supports - so this keeps a list and drops the oldest half when full.
+    def __init__(self) -> None:
+        super().__init__()
+        self.dropped = 0  # assertable: a test reading the whole log can tell it is not the whole log
+
+    def append(self, entry: "tuple[Any, ...]") -> None:
+        if len(self) >= _LOG_MAXLEN:
+            half = _LOG_MAXLEN // 2
+            del self[:half]
+            self.dropped += half
+        super().append(entry)
+
+
 class I2C:
     # Real RP2040 I2C error codes (confirmed against ports/rp2/machine_i2c.c, not guessed): the
     # hardware I2C driver only ever raises OSError(errno.EIO) - covers a NAK/no response and any
@@ -117,7 +140,7 @@ class I2C:
         self.timeout = timeout
         self.deinit_called = False
         self.deinit_count = 0
-        self.log: list[tuple[Any, ...]] = []
+        self.log = _CallLog()
         self.registers: dict[tuple[int, int], bytearray] = {}
         self.read_queue: list[bytes] = []
         self.nak_addresses: set[int] = set()  # convenience: EIO (no ACK) on every op to this address
@@ -230,7 +253,7 @@ class SPI:
         self.firstbit = firstbit
         self.deinit_called = False
         self.deinit_count = 0
-        self.log: list[tuple[Any, ...]] = []
+        self.log = _CallLog()
         self.read_queue: list[bytes] = []
         self.rx_overrun = False  # convenience: EIO on every DMA-path read, like I2C's `busy`
         self.rx_overrun_remaining = 0  # counted counterpart: N transient overruns, then the bus recovers
@@ -397,7 +420,7 @@ class UART(io.IOBase):
         self.invert = invert
         self.deinit_called = False
         self.deinit_count = 0
-        self.log: list[tuple[Any, ...]] = []
+        self.log = _CallLog()
         self.rx_queue = bytearray()
         self.writable = True
         self.write_limit: int | None = None  # test-only: caps bytes accepted per write() call - see write()

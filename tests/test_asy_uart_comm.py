@@ -252,7 +252,9 @@ def test_no_errno_literal_bypasses_the_catalog() -> None:
     for keyword in ("errno=", "wrnno="):
         for part in source.split(keyword)[1:]:
             value = part.split(")")[0].split(",")[0].strip()
-            assert value.startswith(("_ERR_", "_WRN_", "errno", "self.")), f"{keyword}{value} is not a catalog name"
+            # "errno"/"wrnno" are the two helpers that forward a caller's catalog code on
+            # (_err and _episode_wrn); a bare number is still rejected, which is the point.
+            assert value.startswith(("_ERR_", "_WRN_", "errno", "wrnno", "self.")), f"{keyword}{value} is not a catalog name"
 
 
 # C4 - frame buffers and scratch allocation
@@ -1169,6 +1171,188 @@ def test_a_streamed_total_size_must_be_declared() -> None:
     # F7.6: CHUNKS has to be in chunk 1, so an unknown length is out of scope by design.
     pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()))
     assert run(pair.initiator.uart_set_stream(1, -1, lambda chunk, buf: 0)) is False
+
+
+# ---- caller-supplied arguments (audit pass) ------------------------------------------------------
+# Every case below was confirmed against the real interpreter before the guard existed: each one
+# either raised out of a module contracted never to raise, or - worse - succeeded while sending
+# something other than what was asked for.
+
+
+def test_an_out_of_range_command_id_is_refused_not_truncated() -> None:
+    # bytearray assignment truncates silently on this platform, so 0x101 went out as 0x01 - a
+    # different, valid command the peer executed while the call reported success. The header
+    # fields were already guarded against exactly this (_prepare_tx); the command id was not.
+    pair = run(build_pair(get_callback=echo_get(b"hi"), set_callback=accept_set()))
+    assert run(pair.with_listener(pair.initiator.uart_set(0x101, b"x")), limit=20) is False
+    assert pair.wire_from_initiator() == b"", "a refused command id must not put a frame on the wire"
+    assert run(pair.initiator.uart_set(-1, b"x")) is False
+    assert run(pair.initiator.uart_get(0x100)) is None
+    assert run(pair.initiator.uart_set_stream(256, 0, lambda chunk, buf: 0)) is False
+
+
+def test_a_non_integer_command_id_returns_a_sentinel_instead_of_raising() -> None:
+    pair = run(build_pair(get_callback=echo_get(b"hi"), set_callback=accept_set()))
+    assert run(pair.initiator.uart_get("banner")) is None  # type: ignore[arg-type]
+    assert run(pair.initiator.uart_set(None, b"x")) is False  # type: ignore[arg-type]
+
+
+def test_a_non_integer_size_returns_a_sentinel_instead_of_raising() -> None:
+    # Both of these reached a comparison against an int and raised TypeError straight through.
+    pair = run(build_pair(get_callback=echo_get(b"hi"), set_callback=accept_set()))
+    assert run(pair.initiator.uart_set_into(1, b"abc", "2")) is False  # type: ignore[arg-type]
+    assert run(pair.initiator.uart_get(1, "5")) is None  # type: ignore[arg-type]
+
+
+def test_a_negative_expected_size_is_refused_not_read_as_dont_care() -> None:
+    # -1 is the module's own internal "don't care" sentinel. A caller's negative exp_size used to
+    # land on it, silently turning an exact-size GET into an unchecked one.
+    pair = run(build_pair(get_callback=echo_get(b"hello"), set_callback=accept_set()))
+    assert run(pair.with_listener(pair.initiator.uart_get(1, -5)), limit=20) is None
+    # The contrast case: None really does mean don't care, and still works.
+    assert run(pair.with_listener(pair.initiator.uart_get(1)), limit=20) == bytearray(b"hello")
+
+
+def test_a_non_buffer_payload_returns_a_sentinel_instead_of_raising() -> None:
+    # len(5) and "abc"[0:n] both raise TypeError; the responder's own get_callback payload was
+    # already type-checked (F4.3), the initiator's was not.
+    pair = run(build_pair(get_callback=echo_get(b"hi"), set_callback=accept_set()))
+    assert run(pair.initiator.uart_set(1, 5)) is False  # type: ignore[arg-type]
+    assert run(pair.initiator.uart_set(1, "abc")) is False  # type: ignore[arg-type]
+
+
+def test_an_immutable_destination_is_refused_before_the_train_starts() -> None:
+    # bytes has no slice assignment, so this failed mid-train with a TypeError after the peer had
+    # already been acknowledged - the worst possible moment to discover it.
+    pair = run(build_pair(get_callback=echo_get(b"hi"), set_callback=accept_set()))
+    assert run(pair.initiator.uart_get_into(1, b"\x00\x00")) is None  # type: ignore[arg-type]
+    assert pair.wire_from_initiator() == b""
+
+
+def test_a_refused_argument_is_logged_with_its_own_errno() -> None:
+    pair = run(build_pair(get_callback=echo_get(b"hi"), set_callback=accept_set()))
+    assert run(pair.initiator.uart_set(0x101, b"x")) is False
+    log = run(pair.initiator.get_error_counter())["UART_A"]
+    assert "E" in log["ErrType"], log
+    assert 34 in log["ErrNum"], log  # _ERR_BAD_ARG
+
+
+# ---- fault-episode history discipline (audit pass) -----------------------------------------------
+
+
+def test_a_repeating_fault_does_not_bury_the_errno_under_resync_warnings() -> None:
+    # C3.8 deduped the errno but not the resync each fault drags along with it, so a permanently
+    # faulty link still refilled the bounded history - evicting the one entry that says what
+    # broke. Measured before the fix: 5 identical faults produced 1 errno and 5 resync warnings.
+    pair = run(build_pair(get_callback=echo_get(b"hi"), set_callback=accept_set()))
+    pair.link.direction_from(pair.fake_b).silent = True  # the peer never answers
+    for _ in range(5):
+        run(pair.initiator.uart_set(1, b"x"), limit=20)
+    log = run(pair.initiator.get_error_counter())["UART_A"]
+    # Index-based, not zip(strict=...): MicroPython's builtin zip() does not accept it, which is
+    # the same reason test_bus_hazard_multi_device.py pairs its own lists this way.
+    recorded = [(log["ErrType"][i], log["ErrNum"][i]) for i in range(len(log["ErrNum"])) if log["ErrType"][i] != "N"]
+    assert recorded.count(("E", 20)) == 1, recorded  # _ERR_NO_ACK, persisted once
+    assert recorded.count(("W", 10)) == 1, recorded  # _WRN_RESYNC, once per episode
+    assert len(recorded) == 2, recorded
+
+
+def test_a_recovered_link_starts_a_fresh_episode() -> None:
+    # The suppression is per episode, not permanent: once the link works again, the next fault
+    # must be persisted in full or the history stops recording anything at all.
+    pair = run(build_pair(get_callback=echo_get(b"hi"), set_callback=accept_set()))
+    direction = pair.link.direction_from(pair.fake_b)
+    direction.silent = True
+    run(pair.initiator.uart_set(1, b"x"), limit=20)
+    run(pair.initiator.uart_set(1, b"x"), limit=20)
+    direction.silent = False
+    run(pair.responder.clear())
+    run(pair.initiator.clear())
+    assert run(pair.with_listener(pair.initiator.uart_set(1, b"x")), limit=20) is True
+    direction.silent = True
+    run(pair.initiator.uart_set(1, b"x"), limit=20)
+    log = run(pair.initiator.get_error_counter())["UART_A"]
+    # Index-based, not zip(strict=...): MicroPython's builtin zip() does not accept it, which is
+    # the same reason test_bus_hazard_multi_device.py pairs its own lists this way.
+    recorded = [(log["ErrType"][i], log["ErrNum"][i]) for i in range(len(log["ErrNum"])) if log["ErrType"][i] != "N"]
+    assert recorded.count(("W", 10)) == 2, recorded  # one resync warning per episode, two episodes
+
+
+def test_a_rejected_command_is_distinguishable_from_a_link_fault() -> None:
+    # Both used _WRN_RESYNC, so a history entry could not tell "the peer asked for something this
+    # side does not implement" from "the link broke" - the exact diagnostic loss C3.8 is about.
+    def only_one(cmd_id: int) -> "tuple[bool, bytes | None]":
+        return (cmd_id == 1), None
+
+    pair = run(build_pair(get_callback=only_one, set_callback=accept_set()))
+    run(pair.with_listener(pair.initiator.uart_get(2)), limit=20)
+    log = run(pair.responder.get_error_counter())["UART_B"]
+    # Index-based, not zip(strict=...): MicroPython's builtin zip() does not accept it, which is
+    # the same reason test_bus_hazard_multi_device.py pairs its own lists this way.
+    recorded = [(log["ErrType"][i], log["ErrNum"][i]) for i in range(len(log["ErrNum"])) if log["ErrType"][i] != "N"]
+    assert ("W", 14) in recorded, recorded  # _WRN_CMD_REJECTED, its own code
+
+
+# ---- the owned listen loop's delivery point (audit pass) -----------------------------------------
+
+
+def test_the_owned_listen_loop_delivers_a_received_payload() -> None:
+    # Without this the loop consumed the ListenResult and dropped it: a responder wired the
+    # documented way (get_task_starters()) could never see a SET's data at all.
+    seen: list[Any] = []
+
+    def record(cmd_id: int, cmd: int, payload: "bytearray | None") -> None:
+        seen.append((cmd_id, cmd, None if payload is None else bytes(payload)))
+
+    pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set(), message_callback=record))
+
+    async def exchange() -> bool:
+        starter = pair.responder.get_task_starters()[0]
+        task = starter()
+        try:
+            return await pair.initiator.uart_set(7, b"payload")
+        finally:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:  # expected; anything else is a real failure
+                pass
+
+    assert run(exchange(), limit=20) is True
+    assert seen == [(7, _CMD_SET, b"payload")], seen
+
+
+def test_a_raising_message_callback_does_not_kill_the_listen_loop() -> None:
+    # C6.6's reasoning applies to this callback too: it is owner-supplied code running inside the
+    # loop the supervisor would otherwise restart as a task death.
+    def explode(cmd_id: int, cmd: int, payload: "bytearray | None") -> None:
+        raise ValueError("owner code")
+
+    pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set(), message_callback=explode))
+
+    async def exchange() -> "tuple[bool, bool]":
+        starter = pair.responder.get_task_starters()[0]
+        task = starter()
+        try:
+            first = await pair.initiator.uart_set(7, b"one")
+            second = await pair.initiator.uart_set(7, b"two")
+            return first, second
+        finally:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+    assert run(exchange(), limit=20) == (True, True), "the loop must survive its owner's raise"
+
+
+def test_a_responder_without_a_message_callback_is_still_constructible() -> None:
+    # Optional by design: a GET-only responder has nothing to deliver, so its absence is not the
+    # unanswerable-request case C6.2 refuses at construction.
+    pair = run(build_pair(get_callback=echo_get(b"hi"), set_callback=accept_set()))
+    assert pair.responder.message_callback is None
+    assert pair.responder.initialized is True
 
 
 if __name__ == "__main__":

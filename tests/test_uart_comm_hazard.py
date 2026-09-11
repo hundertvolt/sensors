@@ -401,6 +401,65 @@ def test_a_receive_overrun_recovers_to_a_working_exchange() -> None:
     assert recovered is True
 
 
+# ---- steady-state memory (audit pass) --------------------------------------------------------
+
+_WARMUP = 20
+_MEASURED = 100
+
+
+def _scrub(pair: Pair) -> None:
+    # The link's wire log is scaffolding a test reads back, not something the protocol retains.
+    for direction in (pair.link.a_to_b, pair.link.b_to_a):
+        direction.wire_log = bytearray()
+
+
+async def _listen_rounds(pair: Pair, rounds: int) -> None:
+    for _ in range(rounds):
+        await pair.responder.uart_listen()
+
+
+async def _measure_retention(pair: Pair) -> "tuple[int, float]":
+    import gc
+
+    listener = asyncio.create_task(_listen_rounds(pair, _WARMUP + _MEASURED + 1))
+    payload = bytes(_PAYLOAD * 3)
+    done = 0
+    for _ in range(_WARMUP):  # every path taken at least once before the heap is sampled
+        done += 1 if await pair.initiator.uart_set(1, payload) else 0
+        _scrub(pair)
+    gc.collect()
+    before = gc.mem_alloc()
+    for _ in range(_MEASURED):
+        done += 1 if await pair.initiator.uart_set(1, payload) else 0
+        _scrub(pair)
+    gc.collect()
+    grew = (gc.mem_alloc() - before) / _MEASURED
+    listener.cancel()
+    try:
+        await listener
+    except asyncio.CancelledError:  # expected; anything else is a real failure
+        pass
+    return done, grew
+
+
+def test_a_long_run_of_transactions_retains_no_memory() -> None:
+    # CLAUDE.md's memory-safety ladder in its most direct form: a link that runs for weeks has no
+    # backstop below the watchdog, so the steady state must not grow the heap at all. Found by
+    # measurement rather than review - the first attempt measured ~2.6 kB retained per
+    # transaction, which turned out to be tests/machine.py's own then-unbounded call log, not
+    # anything in src/. The fakes' recorders are neutralised so the number is src/'s alone.
+    # The pair is built out here, not inside the coroutine: hazard_pair() runs its own asyncio.run(),
+    # and nesting that inside a running loop segfaults the interpreter rather than raising.
+    pair = hazard_pair()
+    for fake in (pair.fake_a, pair.fake_b):
+        fake.log.append = lambda entry: None  # type: ignore[method-assign]
+    completed, per_transaction = run(_measure_retention(pair), limit=120)
+    assert completed == _WARMUP + _MEASURED, completed
+    # A strict zero would be brittle against interpreter-internal caches; one frame of slack still
+    # catches any real per-transaction retention long before it could matter on the target.
+    assert per_transaction < _FRAME, f"{per_transaction} bytes retained per transaction"
+
+
 if __name__ == "__main__":
     import microtest
 
