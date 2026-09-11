@@ -1,21 +1,6 @@
-"""Parses the website-definitions comment-tag family: `# @web <Field> key=value ...` (per-field
-metadata) and `# @web-group section=... submitGroup=... label=... [submit=true] [submitLabel=...]`
-(per-UI-card metadata), placed at module level near whatever real code owns that field/group
-(BACKLOG.md's `@web`/`@web-group` sketch; BUILD_CHAIN_PLAN.md's quality bar). Built on
-`buildgen.tag_comments`, the same shared scanning/near-miss mechanism `requires_tag.py` uses -
-never a second, separately-tested detector.
-
-Deviations from the BACKLOG.md sketch's own grammar (documented there as "not implementation-ready"
-- these are this module's own resolution): `@web` carries its field name as a leading bare token
-(matching `@wiring`/`@limits`/`@requires`'s own convention) rather than a `field=` key; every tag
-states `section=`/`submitGroup=` explicitly rather than relying on file position, since a field's
-group/section is not always inferable from where in the file it happens to sit (e.g. `ContMeas` has
-no nearby schema tuple at all). `submitGroup=self` is a reserved value meaning "this instance's own
-single group for this section" - the generator (`buildgen/definitions.py`) substitutes the real
-per-instance resolved name; any other value is a literal, device-wide group key used by
-mandatory-infrastructure files (WiFi/NTP/System) that declare more than one group per file/section.
-Escaping a literal `"` inside a quoted value is, like the sketch itself, deliberately not supported.
-"""
+"""Parses the `# @web <Field> key=value ...` / `# @web-group key=value ...` website-definitions
+comment-tag family, built on `buildgen.tag_comments`'s shared scanning/near-miss mechanism (never a
+second, separately-tested detector). Grammar and design rationale: SPECIFICATION.md Part H.5.1."""
 
 import re
 from dataclasses import dataclass

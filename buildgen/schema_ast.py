@@ -1,10 +1,6 @@
-"""Best-effort AST extraction of a driver's real `ConfigSchema`/`FieldSchema`-shaped module-level
-constants (`config_manager.py`'s own `(name, type, default, min, max, special)` tuple, see
-`src/config_manager.py`'s module docstring) - never imported, matching every other `buildgen`
-driver-source scan (`buildgen.driver_registry`). This is real code the running firmware already
-reads, not a comment tag: `buildgen.definitions` uses it to infer a website field's `kind`/`min`/
-`max`/discrete-choice set automatically, so a `# @web` tag only needs to supply what the schema
-tuple genuinely can't (label, unit, description, a discrete option's human-readable meaning)."""
+"""Best-effort, never-imported AST extraction of a driver's real `ConfigSchema`/`FieldSchema`
+constant - same never-import policy as `buildgen.driver_registry`. Used by
+`buildgen.definitions`; design rationale: SPECIFICATION.md Part H.5.1."""
 
 import ast
 from pathlib import Path
@@ -45,13 +41,9 @@ def _field_schema_from_tuple(tup: "tuple[object, ...]") -> "tuple[str, FieldSche
 
 
 def extract_field_schemas(source_path: Path) -> "dict[str, FieldSchema]":
-    """Every module-level `NAME = const((("field", "type", default, min, max, special),))`
-    (`ConfigSchema`-of-one, the project's own `_VAL_*` convention) or bare
-    `NAME: "cm.FieldSchema" = ("field", "type", default, min, max, special)` assignment in
-    `source_path`, keyed by the field's own name - not by the constant's Python name, which callers
-    never need. Anything else (a driver's many other module-level constants) is silently skipped:
-    this is a best-effort enrichment pass over real code the language itself already validated, not
-    a comment tag subject to the tag family's own "near miss must fail loud" rule."""
+    """Every `ConfigSchema`-of-one or bare `FieldSchema` assignment in `source_path`, keyed by
+    field name (not the constant's own Python name). Anything else is silently skipped - a
+    best-effort pass over already-validated code, not a comment tag."""
     tree = ast.parse(source_path.read_text(encoding="utf-8"))
     consts: dict[str, ast.expr] = {}
     for node in tree.body:

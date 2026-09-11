@@ -531,6 +531,44 @@ script quality bar" below, not repeated here.
      real BMP3xx oversampling option labels (`"×1"`, matching the existing hand-written JSON
      exactly) use U+00D7 MULTIPLICATION SIGN, which RUF003 otherwise flags as a suspected ASCII "x"
      look-alike inside the `# @web ... special:N="×N"` tags carrying it.
+   - **Post-merge self-audit found and fixed three gaps** (project owner asked for a paragraph-by-
+     paragraph check against SPECIFICATION.md/this plan/the test-completeness bar/documentation
+     rules - none of these were caught by the original PR's own review or by CI):
+     - `buildgen/web_tag.py`/`schema_ast.py`/`definitions.py`'s module docstrings, plus both new
+       test files' own docstrings, had drifted well past CLAUDE.md's hard 3-line header-comment cap
+       (up to 22 lines) - the exact "website-facing facts" that same rule says belong in
+       SPECIFICATION.md instead. Fixed by adding **SPECIFICATION.md Part H.5.1** (the architecture/
+       rationale content that used to live in those docstrings) and trimming every docstring to a
+       short pointer at it; H.5's own stale "Autogeneration is not yet built" line is corrected too.
+       The two test files' "Matrix dimensions" blocks moved from inside the docstring to a plain
+       `#`-comment block below it, matching `test_buildgen_requires_tag.py`'s own established
+       pattern (that file was never in violation - it already split the two).
+     - `buildgen/schema_ast.py` had **zero dedicated unit tests** - unlike every sibling AST-scanning
+       module (`buildgen.driver_registry` included, the module its own docstring says it matches).
+       Its real behavior (both assignment shapes, `const()`-wrapped `Name` resolution, negative
+       numbers, list-vs-tuple literals, and the silent-skip paths for an unresolvable name/
+       unsupported node/non-numeric negation) was previously proven only incidentally, through
+       `generate_definitions()`'s own golden-file tests happening to exercise some of it. Fixed with
+       `tests_scripts/test_buildgen_schema_ast.py` (17 tests, synthetic + a real-driver spot check
+       against `asy_bmp3xx_driver.py`'s `_OSR_SETTINGS`/`_IIR_SETTINGS`-resolving fields).
+     - `test_buildgen_web_tag.py`'s own matrix had real holes against the standing tag-family bar:
+       no coverage of the `_WebGrammarError` "dropped-piece" path (trailing junk, a dropped value, a
+       duplicate key) for either `@web` or `@web-group`, no edit-distance-boundary "stays silent"
+       case for either family's own typo tolerance, no "valid tag beside a near-miss" regression
+       guard, and real-driver spot checks thin everywhere but scd30/bmp3xx. Closed with 17 more
+       tests (66 → 83), including exhaustive field-name-set checks for the five previously
+       under-covered real driver files.
+     - **Flagged, not fixed** (pre-existing, out of this session's scope, genuinely ambiguous):
+       `buildgen/tag_comments.py`'s `iter_comment_tokens`/`check_for_near_miss_tags` docstrings
+       already exceeded the 3-line cap before this session (Session 3) - a cross-file consistency
+       discrepancy to flag per CLAUDE.md's "flag, don't silently fix" rule, not this session's tag
+       family's own docstring to correct. Separately, SPECIFICATION.md H.5's own claim that
+       `dispatch: true` covers "H.6, minus `ContMeas`" doesn't match the real hand-written
+       `wozi.json`: `lightCmdLED`/`PauseTime` are both in H.6's dispatch-only list but carry no
+       `dispatch: true` in the actual JSON (only `SystemCmd`/`ResetErrors`/`SGPResetVOC` do) -
+       `buildgen/definitions.py` faithfully reproduces the real, golden behavior either way, so this
+       is a pre-existing spec-vs-reality mismatch to resolve with the project owner, not a
+       generator bug.
 5. **Digital twin generalization** — consumes the Session 3 generated module directly, replacing
    `configure_i2c_wiring("wozi"|"dev")`'s 2-profile enum. **Same pointer as Session 4 above** - the
    generated module's own construction calls now use the post-§2.9 `SGP40_Reader` signature; a twin

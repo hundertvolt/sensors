@@ -1,10 +1,6 @@
 """Tests for buildgen.definitions: the website `definitions.json` generator (SPECIFICATION.md Part
-H.5, BACKLOG.md's `@web`/`@web-group` sketch). Golden-file tests compare the generated output for
-`wozi`/`dev` against the already-checked-against-real-code hand-written `html/definitions/*.json`
-files (order-insensitive - list order is this generator's own choice, not part of the schema);
-structural tests cover per-device instance variation (BMP3XX present/absent) and the mandatory
-synthetic fixtures; a shape-validation helper mirrors `js/definitions.js`'s own `validateDefinitions()`
-so every generated device is proven loadable without needing a Node/Vitest round trip from here."""
+H.5/H.5.1) - golden-file comparison against the hand-written `html/definitions/*.json`, plus a
+`js/definitions.js`-`validateDefinitions()`-equivalent shape check for every real device."""
 
 import json
 from pathlib import Path

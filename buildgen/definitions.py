@@ -1,25 +1,6 @@
 """Generates a device's website `definitions.json` (SPECIFICATION.md Part H.5) from a validated
-`DeviceModel` plus the `# @web`/`# @web-group` comment tags on the `src/` files that own each
-field/group (`buildgen.web_tag`). Resolves BACKLOG.md's `@web`/`@web-group` open sub-questions -
-see this module's own comments at each decision point, and BUILD_CHAIN_PLAN.md's "Session 4 done"
-account for the summary.
-
-**What is tag-derived versus generator-owned, and why** (BACKLOG.md's open question 1): a field or
-group gets a `# @web`/`# @web-group` tag only when it is genuinely per-driver, per-instance data -
-the six sensor drivers' own measurement/config fields, the mandatory-infrastructure files' own
-config fields (WiFi/NTP/System), and NotificationCoordinator's own schedule fields. Everything else
-in a real definitions.json is either (a) pure REST-routing/section-skeleton fact that never varies
-by device (`_SECTION_SKELETON` below - matches H.4's "six REST endpoints, 1:1" architecture, not a
-per-driver fact at all) or (b) a dispatch-only, webserver-level field with no real per-device
-variation and no natural single owning driver file (`SystemCmd`, `PauseTime`, `lightCmdLED`,
-`ResetErrors`, the status-section's own live-readonly field lists) - these are generator-owned fixed
-catalogs below, the same precedent `buildgen.codegen._KNOWN_SIGNALS` already set for the warn_*
-notification thresholds (BUILD_CHAIN_PLAN.md: "hardcoding them in the generator... mirrors exactly
-what src/sensortask_wozi.py/sensortask_dev.py already do"). `_WARN_SIGNAL_WEB_CATALOG` below is this
-module's own parallel of that same catalog (label/unit metadata, not the Python-source-literal
-`buildgen.codegen` needs) - kept in sync by cross-reference, not import, since the two modules need
-genuinely different shapes for the same three keys.
-"""
+`DeviceModel` plus the `# @web`/`# @web-group` tags on the `src/` files that own each field/group
+(`buildgen.web_tag`). Architecture and design rationale: SPECIFICATION.md Part H.5.1."""
 
 from pathlib import Path
 from typing import Any
@@ -32,8 +13,8 @@ from buildgen.web_tag import SELF_GROUP, WebFieldTag, WebGroupTag, parse_web_gro
 SCHEMA_VERSION = "1.0.0"
 
 # Fixed, generator-owned REST-endpoint skeleton (H.4: "Nav grouping: Mirrors the 6 REST endpoints
-# 1:1") - never per-device data, so never tag-derived (see module docstring). "groups" is filled in
-# per device below; "notification" is appended only when a `notification` instance exists.
+# 1:1") - never per-device data, so never tag-derived (SPECIFICATION.md Part H.5.1). "groups" is
+# filled in per device below; "notification" is appended only when a `notification` instance exists.
 _SECTION_SKELETON: "tuple[dict[str, Any], ...]" = (
     {"key": "measurements", "label": "Measurements", "description": "Live sensor readings, refreshed automatically.", "rest": {"get": "/measurements"}, "pollGroup": "live"},
     {"key": "sensors", "label": "Sensors", "description": "Per-sensor configuration. Each card applies independently.", "rest": {"get": "/sensors", "put": "/sensors"}, "pollGroup": "settings"},
@@ -59,7 +40,7 @@ _WARN_SIGNAL_WEB_CATALOG: "dict[str, dict[str, Any]]" = {
 }
 
 # Dispatch-only, webserver-level fields with no real per-device variation and no single owning
-# driver file (BACKLOG.md open question 1 - see module docstring). `lightCmdLED`'s own bounds
+# driver file (SPECIFICATION.md Part H.5.1). `lightCmdLED`'s own bounds
 # mirror asy_webserver_service.py's `_dispatch_notification_led()`/sensortask_wozi.py's
 # `_FIELD_LED_R/G/B/T` (universal across every device); `SystemCmd` mirrors
 # asy_webserver_service.py's `_SYSTEM_CMDS`; `PauseTime` mirrors its own `_PAUSE_TIME_FIELD`.

@@ -1,24 +1,23 @@
 """Tests for buildgen.web_tag: the `# @web <Field> key=value ...` / `# @web-group key=value ...`
 comment-tag parsers (BUILD_CHAIN_PLAN.md's "Build/generator script quality bar" - the same bar
-test_buildgen_requires_tag.py already covers for `@requires`, mirrored here for the newer family).
+test_buildgen_requires_tag.py already covers for `@requires`, mirrored here for the newer family)."""
 
-Matrix dimensions:
-  D1 field name     plain, CamelCase, digit-bearing, underscored (single-char "r"/"g"/"b" too)
-  D2 key=value      quoted string, bareword, boolean (true/false), special:<value>="<meaning>"
-                     (repeated), unknown key rejected, missing required key(s) rejected
-  D3 format         spacing around "#"/the tag word/"="; "##" section style; quoted vs bareword;
-                     dropped-piece direction (trailing junk, a dropped value, a duplicate key)
-  D4 location       top of file, after a docstring, among imports, trailing inline, last line with
-                     no trailing newline, inside a class/function body (rejected)
-  D5 multiplicity   none, one, several fields, duplicate (section, submitGroup, field) rejected, a
-                     valid tag does not excuse a near-miss beside it
-  D6 web-group      required keys, submit=/submitLabel=, duplicate (section, submitGroup) rejected,
-                     the same dropped-piece grammar failures as @web
-  D7 near-miss      "@" dropped, field name dropped (web only), tag name typo'd, wrong-family
-                     cross-contamination avoided, the edit-distance boundary just outside each
-                     family's own tolerance (which must stay silent)
-  D8 real drivers   every src/ file this session tagged parses to the exact expected tags
-"""
+# Matrix dimensions:
+#   D1 field name     plain, CamelCase, digit-bearing, underscored (single-char "r"/"g"/"b" too)
+#   D2 key=value      quoted string, bareword, boolean (true/false), special:<value>="<meaning>"
+#                     (repeated), unknown key rejected, missing required key(s) rejected
+#   D3 format         spacing around "#"/the tag word/"="; "##" section style; quoted vs bareword;
+#                     dropped-piece direction (trailing junk, a dropped value, a duplicate key)
+#   D4 location       top of file, after a docstring, among imports, trailing inline, last line
+#                     with no trailing newline, inside a class/function body (rejected)
+#   D5 multiplicity   none, one, several fields, duplicate (section, submitGroup, field) rejected,
+#                     a valid tag does not excuse a near-miss beside it
+#   D6 web-group      required keys, submit=/submitLabel=, duplicate (section, submitGroup)
+#                     rejected, the same dropped-piece grammar failures as @web
+#   D7 near-miss      "@" dropped, field name dropped (web only), tag name typo'd, wrong-family
+#                     cross-contamination avoided, the edit-distance boundary just outside each
+#                     family's own tolerance (which must stay silent)
+#   D8 real drivers   every src/ file this session tagged parses to the exact expected tags
 
 from pathlib import Path
 
