@@ -274,6 +274,14 @@ against its actual source, not docs/memory.
 rather than reconstructing from training memory/web search. If a needed one isn't there and can't
 be fetched, say so explicitly.
 
+**RP2040**: `datasheets/pico w/` holds the Pico W *board* datasheet only — the RP2040 *silicon*
+datasheet is not in the repo, so its GPIO function-mux table is not readable here. For a pin-mux
+question the authoritative substitute is the pinned MicroPython source itself
+(`ports/rp2/machine_uart.c`'s `IS_VALID_PERIPH`/`IS_VALID_TX`/`IS_VALID_RX`, and the equivalent
+macros in `machine_i2c.c`/`machine_spi.c`), which the toolchain checkout always has — not a web
+search. The board datasheet does cover what is board-specific: p.8 lists GPIO23/24/25/29 as the
+pins the wireless chip takes.
+
 **BMP390**: `datasheets/bmp3xx/` holds BMP384/BMP388 but not BMP390. The project owner has confirmed
 the whole family shares the same register map/protocol, so `asy_bmp3xx_driver.py` treating BMP390's
 `0x60` chip ID the same as the other two is correct — the PDF's absence is a documentation gap only.
@@ -1593,6 +1601,17 @@ unlike CPython — validate shape before packing if it matters. Still true on 1.
 checks added to `py/binary.c` are gated behind `MICROPY_PREVIEW_VERSION_2`, so they only turn on in
 a V2.0 preview build. Expect this fact to flip when upstream ships 2.0.
 
+**Slice assignment has two different length contracts, and neither raises where you expect.** A
+`bytearray` destination *resizes* on a length mismatch exactly as CPython's does — `b[0:2] = <3
+bytes>` grows the object and shifts everything after it, silently — while a `memoryview`
+destination raises `ValueError: lhs and rhs should be compatible`. Both measured on the pinned
+Unix-port interpreter. Code copying a computed span into a buffer must therefore bound-check the
+span itself (`asy_uart_comm.py`'s `written + size > len(dest)` guard); the destination's own type
+will not do it. **There is also no `memoryview.readonly` attribute on MicroPython** — the way to
+tell a writable destination from `memoryview(b"...")` without allocating or mutating anything is a
+zero-length slice assignment (`buf[0:0] = b""`), which raises `TypeError` on a read-only view and
+succeeds on every writable one.
+
 **A `micropython.const()`-wrapped value does not survive as an importable module attribute in a
 frozen build** — `mpy-cross` inlines every `const()` value at each use site rather than leaving a
 real bound name. A one-off script needing a promoted driver's `const()`-wrapped schema tuple must
@@ -1873,7 +1892,10 @@ of `asy_uart_driver.py` has to stay the way it is.
 struct is not scanned, so after `deinit()` the buffers are garbage that the object still holds a
 pointer to. Calling `uart.init(...)` again does **not** repair it: the reallocation is guarded by
 `if (self->read_buffer.buf == NULL)`, which is false, and the root pointer is never restored — so
-the UART IRQ handler resumes writing into memory the collector is free to hand out.
+the UART IRQ handler resumes writing into memory the collector is free to hand out. The one
+exception is an `init()` that asks for a **different** `rxbuf`/`txbuf` size: that branch sets
+`buf = NULL` itself before the guard runs, so the buffer is reallocated and re-rooted. Re-initing
+with the same parameters — the ordinary case, and the one a recovery path takes — does not.
 
 The escape is that `mp_machine_uart_make_new()` sets `read_buffer.buf = NULL` itself, so
 **constructing a fresh `machine.UART(id, ...)` always reallocates and re-roots**, while
@@ -2565,7 +2587,8 @@ property of the protocol irrelevant.
 silently dropped is indistinguishable from a link fault: one whole framed frame (at
 `payload_size = 255` that is 260 bytes against the driver's own 256-byte default, so the maximum
 legal `payload_size` overruns the default outright), and one poll interval's worth of arrivals
-(`baud/10 × (poll_wait_ms + jitter)` — about 230 bytes at 115200 baud and the 20 ms default). Too
+(`baud/10 × (poll_wait_ms + jitter)` — about 288 bytes at 115200 baud, the 20 ms default and the
+5 ms of scheduling slack the module adds; 230 without that slack). Too
 small is a readiness-gate refusal with its own errno, never a silent degradation. `timeout` has a
 floor too: below `2 × poll_wait_ms` plus the measured worst-case GC pause, an ordinary collection
 reads as a link fault and the link resyncs continuously under memory pressure.
@@ -2608,8 +2631,10 @@ callback must return the complete answer as one buffer before the first frame go
 The module therefore follows Part G.2's buffer-ownership primitive, in the same paired shape
 `asy_fram_manager.py` uses (all of the following is implemented, not proposed):
 
-- **Two long-lived frame buffers per instance**, `LockableBuffer(5 + payload_size, data_start=5,
-  data_length=payload_size)`, allocated once from configuration: `get_buf()` is what the bus driver's
+- **Two long-lived frame buffers per instance**, `LockableBuffer(framing.max_encoded(5 +
+  payload_size + crc_length), data_start=5, data_length=payload_size)`, allocated once from
+  configuration — the buffer holds what goes *on the wire*, so it has to carry the CRC the bus
+  driver appends and any codec overhead above it, not just the `5 + payload_size` frame: `get_buf()` is what the bus driver's
   `writefrom()`/`readinto_until_complete()` operate on, `get_data_buf()` is the payload region. Header
   fields are written in place by index. Steady-state frame traffic allocates nothing.
 - **Paired transfer APIs.** `uart_set(id, data)`/`uart_get(id)` keep today's allocate-and-copy

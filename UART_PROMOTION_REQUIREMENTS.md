@@ -1409,3 +1409,63 @@ both instances individually in `_collect_error_sources()` and `_collect_level_se
 returning `bool` while the caller discards it matches `asy_fram_manager.py`'s own precedent, and a
 `setup()` that failed leaves `_listen_loop()` returning at once, which is the supervisor's
 restart-then-reboot ladder working as intended, not a hole.
+
+## L — Specification conformance pass (2026-09-11)
+
+`SPECIFICATION.md` read Part by Part against every file this branch touches, with the platform
+claims re-derived from primary sources rather than from the earlier passes' own notes: the pinned
+MicroPython v1.29.0 tree (`ports/rp2/machine_uart.c`, `ports/rp2/machine_spi.c`), the Unix-port
+interpreter for runtime semantics, and `datasheets/pico w/`'s board datasheet. One defect, four
+documentation corrections, one code-comment correction, and one allocation-shape improvement.
+
+| # | What was wrong | How it showed | Closed by |
+|---|---|---|---|
+| L1 | **A partial allocation failure passed construction.** `_allocate()` wraps the ACK, zero-pad and command-id scratch in one `try`, so a heap that ran out *after* the two `LockableBuffer`s succeeded returns three zero-length buffers — and `__init__` checked only `self._tx.get_buf() is None` | Measured on the degraded object: construction accepted (`_init_errno == 0`), `setup()` returned `True`, the first padded frame **shrank the long-lived TX buffer from 13 bytes to 7** while `_prepare_tx()` still returned `True`, and the command-id write raised `IndexError` out of a never-raise module | `_buffers_ready()` checks all five, so the construction is refused with `errno` 14 and the readiness gate never opens (`test_a_partially_failed_allocation_refuses_construction_outright`) |
+
+**The runtime fact behind L1, now in Part F.1.** A MicroPython `bytearray` slice assignment
+*resizes* on a length mismatch, exactly as CPython's does — it does not raise — while the same
+assignment into a `memoryview` raises `ValueError`. That is what turned an empty pad buffer into a
+silently shortened frame buffer rather than an error. Measured on the pinned Unix-port interpreter,
+alongside the absence of any `memoryview.readonly` attribute that K2's probe already works around.
+
+**Documentation corrected against primary sources.**
+
+- **J.8** described the frame buffers as `LockableBuffer(5 + payload_size, ...)`. The code sizes
+  them `framing.max_encoded(5 + payload_size + crc_length)`, and has to: the buffer holds what goes
+  on the wire, including the CRC the bus driver appends underneath the codec.
+- **J.6**'s second `rxbuf` floor quoted "about 230 bytes at 115200 baud and the 20 ms default" next
+  to a formula that includes scheduling jitter. With the module's own 5 ms of slack the figure is
+  288; 230 is the no-slack number. Corrected in the spec and in the test comment repeating it.
+- **F.5.7** said `uart.init()` never repairs the unrooted RX ring buffer. True for a re-init with
+  the same parameters — the ordinary case, and the one a recovery path takes — but
+  `mp_machine_uart_init_helper()` sets `read_buffer.buf = NULL` itself when the requested
+  `rxbuf`/`txbuf` *differs*, which forces a fresh, re-rooted allocation. The clause is now stated,
+  and it strengthens rather than weakens the "construct, never `init()`" rule.
+- **A.6** now records that the RP2040 *silicon* datasheet is not in `datasheets/` (only the Pico W
+  *board* datasheet, which carries no GPIO function-mux table), and names the authoritative
+  substitute: the pinned MicroPython port's own `IS_VALID_PERIPH`/`IS_VALID_TX`/`IS_VALID_RX`
+  macros. `tests/machine.py`'s note that the mapping came "via public web search" is replaced with
+  that derivation — UART0 owns 0/1, 12/13, 16/17, 28/29 and UART1 owns 4/5, 8/9, 20/21, 24/25.
+- **README.md** still described `SPECIFICATION.md` as lettered Parts A–H; it runs A–J.
+
+**A code comment that was half wrong.** `asy_uart_driver.py` and `sensortask_dev.py` both warned
+that "GPIO24/25 and GPIO28/29 are wireless-reserved on Pico W". The board datasheet (p.8) lists the
+internal-function pins as GPIO23/24/25/29 — **GPIO28 is an ordinary free user GPIO**. The advice is
+unchanged (each pair still has a taken half, and a UART needs both), but the reason now names the
+right pin.
+
+**One improvement, not a defect.** `_recv_train()`'s destination copy and `_prepare_tx()`'s padding
+copy sliced a `bytearray` directly, building a fresh up-to-`payload_size` object for every chunk of
+every train — the repeated same-shaped allocation Part I.1 says to avoid on a non-compacting heap.
+Both now copy through a `memoryview`, which is also what the sibling push branch already did.
+
+**Flagged, deliberately not changed** (CLAUDE.md's "report, don't silently fix"):
+
+- **D.15's "private methods first, then public" is not what `src/` actually does.** `UART_Comm`
+  interleaves them (a public `clear()` among the recovery helpers; the listen/GET internals after
+  the public API), and so do `system_service.py` and `asy_scd30_driver.py`, both promoted long
+  before this branch — they group by feature instead. Either D.15 or three files are wrong; that is
+  a convention decision, not a drive-by reorder.
+- **`uart_get_into()`/`uart_get_stream()` validate their destination/callback before the readiness
+  gate**, while `uart_set_into()`/`uart_set_stream()` gate first. Both are correct; they just log a
+  different `errno` when a module is both unready and called with a bad argument.

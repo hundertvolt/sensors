@@ -619,7 +619,7 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   architecture spec, the `src/` production-quality checklist, testing & coverage,
   MicroPython/RP2040 platform-target facts, the cross-cutting shared-pattern/primitive-reuse
   catalog, and the website's own architecture — all in one place, organized into lettered Parts
-  (A-H) for different needs. Produced by a first-pass doc-scatter cleanup that merged
+  (A-J) for different needs. Produced by a first-pass doc-scatter cleanup that merged
   `DRIVER_SPEC.md`, `src/README.md`, `tests/README.md`, `toolchain/README.md`, most of this
   file's former "Repository layout"/"Architecture at a glance"/"Refactor in progress"/"Build
   process" content, and the spec-shaped parts of `CLAUDE.md`/`BACKLOG.md` into one document. Start

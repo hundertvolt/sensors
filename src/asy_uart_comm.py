@@ -220,7 +220,7 @@ class UART_Comm:
         self._backoff_initial_ms = max(backoff_base // 2, 1)
         self._backoff_max_ms = max(backoff_base * _BACKOFF_MAX_MULT, self._backoff_initial_ms)
         self._tx, self._rx, self._ack, self._zero, self._cmd_buf = self._allocate()
-        if self._init_errno == 0 and self._tx.get_buf() is None:
+        if self._init_errno == 0 and not self._buffers_ready(payload):
             self._init_errno = _ERR_ALLOC
         if self._init_errno:
             # __init__ is sync, so the persisted entry is written by setup(); this is the
@@ -286,6 +286,22 @@ class UART_Comm:
             ack[_MSG_CHUNKS] = 1
             ack[_MSG_CUR_CHUNK] = 1
         return tx, rx, ack, zero, cmd_buf
+
+    def _buffers_ready(self, payload: int) -> bool:
+        # Every buffer, not only the TX frame. _allocate() catches MemoryError around the three
+        # scratch buffers as a group, so a heap that ran out *after* the two frame buffers succeeded
+        # leaves zero-length ones behind - and that passed construction and opened the readiness
+        # gate. Measured on the degraded object: the first padded frame shrank the long-lived TX
+        # buffer from 13 bytes to 7 (a bytearray slice assignment resizes on a length mismatch,
+        # Part F.1) while _prepare_tx() still reported success, and writing the command id into the
+        # empty scratch raised IndexError straight out of a module contracted never to raise.
+        return (
+            self._tx.get_buf() is not None
+            and self._rx.get_buf() is not None
+            and len(self._ack) >= self.frame_size
+            and len(self._zero) >= payload
+            and len(self._cmd_buf) >= 1
+        )
 
     # ---- logging --------------------------------------------------------------------------
 
@@ -408,7 +424,7 @@ class UART_Comm:
             buf[_MSG_PAYLOAD : _MSG_PAYLOAD + size] = data[0:size]
         pad = self.payload_size - size
         if pad:  # D1.4/C4.3: from the preallocated zero buffer, so no remnant is ever transmitted
-            buf[_MSG_PAYLOAD + size : _MSG_PAYLOAD + self.payload_size] = self._zero[0:pad]
+            buf[_MSG_PAYLOAD + size : _MSG_PAYLOAD + self.payload_size] = memoryview(self._zero)[0:pad]
         return True
 
     def _chunk_count(self, total: int) -> int | None:
@@ -736,7 +752,11 @@ class UART_Comm:
                     await self._err(_ERR_SIZE_MISMATCH, "destination too small at chunk", cur)
                     await self._resync(device)
                     return None
-                dest[written : written + size] = rx[_MSG_PAYLOAD : _MSG_PAYLOAD + size]
+                # Through a memoryview, like the push branch above: slicing the bytearray directly
+                # would build a fresh payload_size-sized copy for every chunk of every train, which
+                # is exactly the repeated same-shaped allocation Part I.1 says to avoid on a
+                # non-compacting heap. The view costs two fixed-size objects instead.
+                dest[written : written + size] = memoryview(rx)[_MSG_PAYLOAD : _MSG_PAYLOAD + size]
             written += size
             await self._note_valid_frame()
             if cur == chunks:

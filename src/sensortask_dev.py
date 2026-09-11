@@ -56,8 +56,9 @@ _NTP_FETCH_TIMEOUT_MS = const(5000)  # timeout for the actual NTP request/reply 
 # physically testable rather than only modelled. Both instances are constructed from these same
 # constants - payload_size and timeout are out-of-band agreements that must match on both ends, and
 # nothing is negotiated, so a single source for them is what stops a local mismatch (G1.6).
-# GPIO24/25 and GPIO28/29 are deliberately avoided: both pairs fall inside a UART pin-mux group and
-# are wireless-reserved on Pico W, so either would silently collide with WiFi.
+# GPIO24/25 (UART1) and GPIO28/29 (UART0) are deliberately avoided: the Pico W datasheet gives
+# GPIO23/24/25/29 to the wireless chip, so each of those pairs has a taken half and would collide
+# with WiFi - GPIO28 alone is free, but a UART needs both halves of its pair.
 # Note for whoever adds a BME688 here: its BSEC coprocessor wants UART0 on GPIO16/17, and one
 # peripheral can serve one pin pair - it cannot coexist with this jumper's own UART0 claim.
 _UART_PAYLOAD_SIZE = const(48)

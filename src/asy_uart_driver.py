@@ -2,8 +2,9 @@
 base_classes.Lockable so a read/write exchange runs atomically under `async with`. Optional
 per-instance CRC framing (crc_checks.py's CRC_Base family) plus a pluggable frame codec (framing_codecs.py) on read_until_complete/readinto_until_complete/write/writefrom.
 """
-# Whoever wires it in: GPIO24/25 and GPIO28/29 fall inside a UART pin-mux group and are
-# wireless-reserved on Pico W - picking either pair for tx_pin/rx_pin silently collides with WiFi.
+# Whoever wires it in: GPIO24/25 (UART1) and GPIO28/29 (UART0) are valid pin-mux pairs, but the
+# Pico W datasheet (p.8) hands GPIO23/24/25/29 to the wireless chip - so either pair collides with
+# WiFi through one of its halves, even though GPIO28 on its own is an ordinary free user GPIO.
 #
 # A hardware-level framing/parity/overrun fault on rp2 never raises (see SPECIFICATION.md C.3.2) -
 # every method here returns a plain None/False sentinel instead, never raises.

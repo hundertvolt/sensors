@@ -35,6 +35,7 @@ _CHUNKS = 3
 _CUR = 4
 _PAYLOAD = 5
 _FRAME = 5 + PAYLOAD_SIZE
+_ERR_ALLOC = 14  # asy_uart_comm.py's own _ERR_ALLOC; const() folds the name out of that module
 
 
 def make_comm(**kwargs: "Any") -> UART_Comm:
@@ -134,8 +135,8 @@ def test_maximum_payload_size_against_the_default_rxbuf_is_refused() -> None:
 
 
 def test_rxbuf_too_small_for_one_poll_interval_is_refused() -> None:
-    # C2.10: at 115200 baud a 20ms poll interval admits ~230 bytes, so a 64-byte rxbuf loses the
-    # tail of anything sustained even though a single frame would fit.
+    # C2.10: at 115200 baud a 20ms poll interval plus the module's 5ms of scheduling slack admits
+    # ~288 bytes, so a 64-byte rxbuf loses the tail of anything sustained even though a frame fits.
     driver = UART(0, tx_pin=0, rx_pin=1, baudrate=115200, poll_wait_ms=20, rxbuf=64)
     driver.poller = LinkPoller(driver._uart)  # type: ignore[assignment,arg-type]
     assert UART_Comm(driver, ROLE_INITIATOR, payload_size=8, timeout=TIMEOUT_MS)._init_errno != 0
@@ -282,6 +283,28 @@ def test_a_failed_buffer_allocation_degrades_every_entry_point() -> None:
     comm._rx.buf = None
     assert run(comm.uart_set(1, b"x")) is False
     assert run(comm.uart_get(1)) is None
+
+
+def test_a_partially_failed_allocation_refuses_construction_outright() -> None:
+    # _allocate() catches MemoryError around the three scratch buffers as a group, so a heap that
+    # ran out after the two frame buffers succeeded returns zero-length ones. Checking only the TX
+    # frame let that object pass construction and open the readiness gate: the first padded frame
+    # then shrank the long-lived TX buffer (a bytearray slice assignment resizes on a length
+    # mismatch) and the command-id write raised IndexError out of a never-raise module.
+    real_allocate = UART_Comm._allocate
+
+    def starved(self: UART_Comm) -> "Any":
+        tx, rx, _ack, _zero, _cmd = real_allocate(self)
+        return tx, rx, bytearray(0), bytearray(0), bytearray(0)
+
+    UART_Comm._allocate = starved  # type: ignore[method-assign]
+    try:
+        comm = make_comm()
+    finally:
+        UART_Comm._allocate = real_allocate  # type: ignore[method-assign]
+    assert comm._init_errno == _ERR_ALLOC
+    assert run(comm.setup()) is False, "the gate must stay shut, so nothing reaches the short buffers"
+    assert run(comm.uart_set(1, b"x")) is False
 
 
 def test_padding_is_zero_filled_from_the_preallocated_buffer() -> None:

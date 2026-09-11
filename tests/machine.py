@@ -393,9 +393,12 @@ class UART(io.IOBase):
         # them either. **Deliberately not modeled**: real hardware also validates that tx/rx are
         # GPIO pins actually muxable to the *chosen* UART peripheral's TX/RX role - that table lives
         # in the RP2040 silicon datasheet, which isn't in this repo's datasheets/ folder (only the
-        # Pico W *board* datasheet is); the mapping was found via public web search, not the
-        # authoritative datasheet PDF, so it isn't encoded here as a raise condition - flagged per
-        # CLAUDE.md rather than silently assumed. The existing generic Pin(id) range check
+        # Pico W *board* datasheet is). The mapping is no longer a web-search guess: it reads out of
+        # the pinned MicroPython source itself (ports/rp2/machine_uart.c's IS_VALID_PERIPH/IS_VALID_TX/
+        # IS_VALID_RX at v1.29.0 - TX is pin % 4 == 0, RX pin % 4 == 1, and ((pin + 4) & 8) >> 3
+        # picks the peripheral, giving UART0 0/1, 12/13, 16/17, 28/29 and UART1 4/5, 8/9, 20/21,
+        # 24/25). It still isn't encoded here as a raise condition - every test picks legal pins, and
+        # adding the check would only reject wiring this fake never sees. The generic Pin(id) range check
         # (0 <= id <= 28) still applies before a pin ever reaches UART(), since asy_uart_driver.py's
         # own init() always constructs Pin(tx_pin)/Pin(rx_pin) first.
         if id not in (0, 1):
