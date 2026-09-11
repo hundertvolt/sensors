@@ -185,6 +185,11 @@ class UART(Lockable):
         # deinit() first so re-init can't leak a claimed peripheral/pins or a stale poll
         # registration - matches asy_spi_driver.py's/asy_i2c_driver.py's own init() pattern.
         self.deinit()
+        # Kept as plain attributes because machine.UART exposes neither back: a protocol layer
+        # above has to size its own frames against the real receive buffer and the real baud rate
+        # (a frame that does not fit rxbuf loses its tail silently), and cannot ask the peripheral.
+        self.rxbuf = rxbuf
+        self.baudrate = baudrate
         self._uart = _UART(
             port_id,
             baudrate=baudrate,

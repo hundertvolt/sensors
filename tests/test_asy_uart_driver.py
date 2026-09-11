@@ -436,6 +436,17 @@ def test_cancel_read_timeout_unblocks_a_pending_wait() -> None:
     assert cancelled is True
 
 
+def test_rxbuf_and_baudrate_are_readable_back() -> None:
+    # A protocol layer above has to size frames against the real receive buffer and baud rate,
+    # and machine.UART exposes neither - so this driver remembers what it was constructed with.
+    uart = make_uart(rxbuf=512, baudrate=115200)
+    assert uart.rxbuf == 512
+    assert uart.baudrate == 115200
+    uart.init(0, 0, 1, rxbuf=1024, baudrate=9600)
+    assert uart.rxbuf == 1024
+    assert uart.baudrate == 9600
+
+
 # ---------------------------------------------------------------------------
 # B3 - optional-buffer gaps and caller-buffer validation
 # ---------------------------------------------------------------------------
