@@ -243,25 +243,30 @@ constraints.
     intended behavior, not a second bug to weigh here: see SPECIFICATION.md Part A.4's FRAM entry.
 
 ## Deferred / explicitly out-of-scope work
-- **The 1.29.0 pin has never run on real hardware.** Every 1.28→1.29 claim in SPECIFICATION.md
-  Part F.5 was established from upstream source, the built `firmware.elf.map`, or the Unix-port
-  twin - the audit session had no real-hardware go-ahead, so no 1.29 firmware has ever been flashed
-  to the dev bench. The build itself *is* verified (`RPI_PICO_W` from scratch, no patches, real
-  `firmware.uf2` for both variants) and the deployed units stay on 1.26 regardless (open question
-  3), so nothing is blocked - but 1.29 is not field-proven until a dev-bench run says so. Three
-  things want on-target confirmation specifically, beyond just running the existing suites:
-  - **The new SPI `OSError(EIO)` raise site** (Part F.5.2, open question 15) - so far only ever
-    exercised against `tests/machine.py`'s fake. Its live path is `asy_fram_driver.py`'s 260-byte
-    SGP40 VOC-state read; a bench run at minimum confirms that path still reads correctly at 1.29,
-    and answering #15 properly needs a real overrun observed, not a simulated one.
-  - **That `I2C.deinit()`/`SPI.deinit()` really are silent no-ops** (Part F.5.1) - read out of the
-    port's protocol tables, never observed on a live bus. `tests_hardware/flash/
-    test_bus_concurrency.py` is the natural place to pin it down.
-  - **The 12,918 B SRAM-resident-code win** (Part F.5.3) is a linker-map measurement, not a
-    measured runtime speedup - don't quote it as one until a bench timing run backs it up.
+- **The 1.29.0 pin is now field-proven on the dev bench (2026-09-11).** Real `dev` firmware built
+  from `src/` and flashed; `sys.implementation` on target reports `(1, 29, 0)` / `_mpy=4870` /
+  `RPI_PICO_W`. Flash tier (25 passed), bench tier (85 passed) and the mid soak tier (4 passed) all
+  ran clean against it. Deployed units stay on 1.26 regardless (open question 3). Of the three items
+  that wanted on-target confirmation beyond just running the existing suites, **two are now closed**:
+  - **The new SPI `OSError(EIO)` raise site** (Part F.5.2, open question 15) - **confirmed as far as
+    target allows.** Its live path, `asy_fram_driver.py`'s 260-byte SGP40 VOC-state read, passes on
+    real hardware at 1.29, so the DMA path is genuinely exercised. Answering #15 properly still
+    needs a real overrun *observed*, which no Python-level knob can induce; the consequence is
+    covered instead - see the RX-overrun entry below.
+  - **That `I2C.deinit()`/`SPI.deinit()` really are silent no-ops** (Part F.5.1) - **done
+    (2026-09-11)**, pinned down exactly where this entry suggested, by
+    `device_scripts/bus_deinit_is_a_noop_on_real_hardware.py` +
+    `test_i2c_and_spi_deinit_are_silent_noops_and_each_bus_id_is_a_singleton`. On live silicon an
+    `i2c.scan()` returns the identical device list after `deinit()` and a real FRAM read still
+    succeeds after `machine.SPI.deinit()`; the same script also confirms the static per-bus
+    singleton claim (`machine.I2C(id) is machine.I2C(id)`) that the two fakes deliberately diverge
+    from. Previously only fake-vs-fake agreement.
+  - **Still open: the 12,918 B SRAM-resident-code win** (Part F.5.3) is a linker-map measurement,
+    not a measured runtime speedup - don't quote it as one until a bench timing run backs it up.
+    The 2026-09-11 bench session deliberately did not time it.
 - **The SPI RX-overrun error path shall be tested** (project owner's explicit direction,
   2026-09-10). MicroPython 1.29's new `OSError(EIO)` raise site (SPECIFICATION.md Part F.5.2),
-  across the tiers CLAUDE.md's standing bus-hazard rule asks for. **Three of four are now done**;
+  across the tiers CLAUDE.md's standing bus-hazard rule asks for. **All four are now done**;
   what they found is open question 15 above.
   - **Mock tier, raise-site semantics - done.** `tests/test_asy_spi_driver.py`: a write never
     raises, a sub-32-byte read never takes the DMA path so cannot overrun, a 32+ byte read raises.
@@ -275,18 +280,18 @@ constraints.
     it cannot express the 32-byte threshold, so it would raise on a 1-byte status read that real
     hardware could not fail). Exercised against the real booted object graph in
     `tests/test_digital_twin_bus_hazard_concurrency.py`.
-  - **Real hardware - still open, and it cannot be a fault-injection test.** An RX overrun is a DMA
-    timing condition; nothing reachable from Python on the device can induce one deliberately, so
-    there is no on-target equivalent of the knob the other three tiers use. What a bench run *can*
-    do, and should: confirm the 260-byte SGP40 VOC-state read still works normally at 1.29 (that
-    the DMA path is exercised at all), and test the **consequence** rather than the cause - the
-    busy-status lockout an interrupted read leaves behind *is* inducible on real hardware, by
-    writing `_STATUS_BUSY` to both of a scratch chunk's blocks through the FRAM driver directly and
-    then attempting a read - pinning down intended behavior (SPECIFICATION.md Part A.4's FRAM
-    entry) on target, where the destructive readout it guards against is real rather than modelled.
-    That is the test worth writing, and it belongs with `tests_hardware/`'s existing FRAM
-    fault-injection work (its README's "Fifth pass"). Not written blind here: it should be authored
-    in a session that can actually run it.
+  - **Real hardware - done (2026-09-11), and deliberately not a fault-injection test.** An RX
+    overrun is a DMA timing condition; nothing reachable from Python on the device can induce one,
+    so there is no on-target equivalent of the knob the other three tiers use. Both halves of what
+    a bench run *can* do are now covered: the 260-byte SGP40 VOC-state read (the only path in this
+    codebase past the 32-byte DMA threshold) passes on target at 1.29 via
+    `tests_hardware/flash/test_fram_storage.py`'s existing backup/restore test, proving the DMA
+    path is exercised at all; and the **consequence** rather than the cause is now pinned down by
+    `device_scripts/fram_busy_status_lockout.py` + `test_both_blocks_left_busy_lock_the_real_chunk_
+    until_it_is_rewritten`, which writes `_STATUS_BUSY` into both blocks' status bytes through the
+    real driver and confirms the chunk reads back `None` with a real error logged, then recovers on
+    a rewrite - the intended destructive-readout protection of SPECIFICATION.md Part A.4's FRAM
+    entry, now proven on the real chip rather than only modelled.
 
 - **The four legacy `build-*.sh` scripts carry 28 shellcheck findings, including no shebang at
   all.** `scripts/lint.sh` and CI run shellcheck over `scripts/` only, where all 14 modern scripts
