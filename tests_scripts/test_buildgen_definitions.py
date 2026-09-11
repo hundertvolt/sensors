@@ -45,7 +45,7 @@ def _normalize(obj: object) -> object:
         return {k: _normalize(v) for k, v in obj.items()}
     if isinstance(obj, list):
         normalized = [_normalize(item) for item in obj]
-        dicts: "list[dict[str, object]]" = [item for item in normalized if isinstance(item, dict)]
+        dicts: list[dict[str, object]] = [item for item in normalized if isinstance(item, dict)]
         if len(dicts) == len(normalized) and dicts:
             sort_key = "key" if "key" in dicts[0] else "value"
             if all(sort_key in item for item in dicts):
