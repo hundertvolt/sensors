@@ -2355,14 +2355,29 @@ bytes on the wire, which is a coordinated flag-day rather than a receiver-strict
 
 | Offset | Field | Semantics |
 |---|---|---|
-| 0 | `UID` | Per-frame nonce, incremented per transmitted frame, wrapping `0xFE → 0`. Matches an ACK to the frame it acknowledges; carries no stream-ordering meaning. |
+| 0 | `UID` | Per-frame nonce, incremented per transmitted frame, wrapping `0xFE → 0`. Matches an ACK to the frame it acknowledges; carries no stream-ordering meaning. **Never `0xFF`** — see below. |
 | 1 | `CMD` | `ACK 0x01`, `GET 0x02`, `SET 0x04`. |
 | 2 | `SIZE` | Bytes of the payload field actually used (`0 … payload_size`). |
 | 3 | `CHUNKS` | Total frames in this train (`1 … 0xFF`). |
 | 4 | `CUR_CHUNK` | This frame's index within the train, 1-based. |
 | 5… | payload | `SIZE` meaningful bytes, zero-padded to `payload_size`. |
 
-An ACK frame carries the acknowledged frame's `UID`, `SIZE = 0`, `CHUNKS = 1`, `CUR_CHUNK = 1`.
+An ACK frame carries the acknowledged frame's `UID`, `SIZE = 0`, `CHUNKS = 1`, `CUR_CHUNK = 1`. An
+ACK echoes the received `UID` and does not consume one of the sender's own.
+
+**`0xFF` is deliberately kept out of the `UID` space** (author-confirmed rationale, 2026-09-11): it is
+a free off-by-one safety barrier, so that any implementation adding 1 to a UID it just received — in
+either language — stays inside the byte rather than rolling over uncontrolled. The only route to `0`
+is the controlled wrap. Two further properties follow, both worth preserving:
+
+- The value space (`0 … 0xFE`, 255 values) is **exactly** as large as the longest possible train
+  (`CHUNKS` maxes at 255, one UID consumed per frame), so no UID repeats within a single train and a
+  stale ACK from an earlier frame of the same transfer can never be mistaken for the current one.
+- Any code predicting the *next* expected UID must reuse the same controlled wrap, never a bare `+1`,
+  which mispredicts precisely at the `0xFE → 0` boundary.
+
+Do not "fix" the wrap to `0xFF`: it removes the barrier and the no-repeat-within-a-train property
+together.
 
 ## J.4 Transactions
 
