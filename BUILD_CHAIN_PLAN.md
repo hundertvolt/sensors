@@ -569,10 +569,121 @@ script quality bar" below, not repeated here.
        `buildgen/definitions.py` faithfully reproduces the real, golden behavior either way, so this
        is a pre-existing spec-vs-reality mismatch to resolve with the project owner, not a
        generator bug.
-5. **Digital twin generalization** — consumes the Session 3 generated module directly, replacing
-   `configure_i2c_wiring("wozi"|"dev")`'s 2-profile enum. **Same pointer as Session 4 above** - the
-   generated module's own construction calls now use the post-§2.9 `SGP40_Reader` signature; a twin
-   boot path assuming the old one-argument `comp_source` shape will not match reality.
+5. **Done. Digital twin generalization** — consumes the Session 3 generated module directly,
+   replacing `configure_i2c_wiring("wozi"|"dev")`'s 2-profile enum.
+
+   **Session 5 done**: the twin's I2C/SPI wiring is now driven by a plain, JSON-serializable wiring
+   plan instead of a hardcoded `if profile == "dev": ... else: ...` branch.
+   - **`buildgen/twin_wiring.py`'s `compute_twin_wiring(model)`** (host-side, CPython, mirrors
+     `buildgen/definitions.py`'s own "take an already-`build_model()`-validated `DeviceModel`, return
+     a plain dict" shape) walks `model.instances.values()`, and for every `BUS_ATTACHED_DRIVERS`
+     member emits `{"driver", "name_ext", "address", ["irq_pin"]}` per I2C attachment (grouped by bus
+     name) or `{"driver": "fram", "name_ext", "max_size"}` per SPI bus. Two facts a `DeviceModel`
+     structurally can't carry (per `buildgen.buildspec.FIXED_ADDRESS_DRIVERS`'s own "no TOML address
+     field at all" rule) get a small, explicitly-named twin-side exception table instead: scd30/
+     sgp40's own fixed hardware address (`FIXED_ADDRESSES = {"scd30": 0x61, "sgp40": 0x59}`, matching
+     `src/asy_scd30_driver.py`'s/`asy_sgp40_driver.py`'s own hardcoded defaults - the same "a chip's
+     real electrical identity has to be told, not derived" shape `driver_registry._OVERRIDES` already
+     uses), and FRAM's real RDID reply bytes (not TOML-visible at all - only `max_size` is;
+     `digital_twin/machine.py`'s `_FRAM_RDID_BY_MAX_SIZE` keys the one currently-known non-default
+     RDID, dev's 256KB MB85RS2MTA, by size as the best available proxy, falling back to `FramChip`'s
+     own default RDID for every other size - flagged as a real, narrow limitation rather than
+     silently assumed exact).
+   - **`digital_twin/machine.py`**: `configure_wiring(plan)` is the new generic entry point (replaces
+     `_wire_i2c_devices()`'s/`_wire_spi_device()`'s own profile branch with a plan-driven dispatch
+     over a small hand-maintained `driver -> chip fake class` table, `_build_i2c_chip()` - the one
+     part of this mechanism that can't be auto-derived, matching the project owner's own "a
+     genuinely new chip type still needs someone to hand-write its digital-twin chip fake" carve-out
+     for every driver already in play today: scd30/sgp40/bmp3xx/fram, so none needed writing here).
+     `configure_i2c_wiring("wozi"|"dev")` becomes pure sugar over `configure_wiring()`, fed from a
+     `_LEGACY_WIRING_PLANS` table kept as plain literal data (not derived by calling `buildgen` at
+     import time - this module runs under the MicroPython Unix port, which has no `tomllib` at all).
+     `tests_scripts/test_buildgen_twin_wiring.py` cross-checks `compute_twin_wiring()` against that
+     literal table for both real devices, so the two can never silently drift apart.
+   - **`digital_twin/run_generic_integration.py`** (new): boots any `sensortask_<device>` module -
+     most usefully a freshly-`buildgen.generate.generate_device()`-generated one written to disk by
+     the caller first - against a `--wiring-plan` JSON file, resolving it via `__import__(--module)`
+     rather than a static `import sensortask_wozi`. Its `_collect_chips()` is the generalized form of
+     `run_wozi_integration.py`'s/`run_dev_integration.py`'s own hardcoded
+     `{"scd30": sensortask_wozi.i2c0._i2c.devices[0x61], ...}` fault-injection lookup dict (this
+     mission's item 4): it walks the same wiring plan `configure_wiring()` was given and resolves
+     each attachment's own bus variable on the booted module by name. A driver with more than one
+     instance on one device (e.g. `novel_combo.toml`'s two `scd30`s) is reachable unambiguously only
+     via its own `driver_nameext` key; the plain driver-name key still exists too (first instance
+     wins), since `launch.py`'s `parse_fault_spec()`/`parse_hang_spec()` (reused unchanged here, per
+     `digital_twin/README.md`'s own "deliberately reused, not reimplemented" convention) only ever
+     speak the plain-driver-name vocabulary and can't address one specific instance among several at
+     all - a real, narrow limitation of the *fault-injection CLI*, not of the wiring mechanism itself.
+   - **Design decision (this mission's item 3 - resolved, not left open)**:
+     `run_wozi_integration.py`/`run_dev_integration.py` stay exactly as they were - thin,
+     device-specific wrappers that keep booting the hand-written `sensortask_wozi.py`/
+     `sensortask_dev.py` - rather than being rewritten onto the new generic mechanism. Reasoning:
+     they're still Session 6's to retire (see below), still the actual driver behind
+     `scripts/run_digital_twin_ci.sh`'s 11-run CI suite and dozens of `tests/test_digital_twin_*.py`
+     files, and every one of those already passes today - touching either file for a generalization
+     whose whole point is *not* to be device-specific would be a pure regression risk for zero
+     payoff. `digital_twin/launch.py` is left alone for the same "different, static-demo use case"
+     reason its own module docstring already gives (a `src/`-free raw-bus-read demo, no
+     `sensortask_*` import at all - never in scope for this mission's "2-profile enum" target). The
+     generalization instead landed as one new, genuinely generic sibling
+     (`run_generic_integration.py`) that reaches **beyond** wozi/dev - proven directly against both
+     real devices' own freshly-generated modules *and* the two mandatory synthetic fixtures
+     (`novel_combo.toml`, `multi_instance.toml` - Session 3's own proof-of-generality pair), a wider
+     device set than either hand-written entry point ever covered.
+   - **Correctness proof, at the depth this mission actually asked for**: Session 3's own
+     "correctness proof depth" note stopped at `ast.parse()` - generated code was never actually
+     *run*. `tests_scripts/test_digital_twin_generated_boot.py` closes that gap: it generates a
+     device (via `buildgen.generate.generate_device()`), writes the module source and a
+     `compute_twin_wiring()`-derived JSON plan to a temp dir, spawns the real MicroPython Unix-port
+     binary running `run_generic_integration.py` against them (same subprocess-over-real-HTTP pattern
+     `scripts/_digital_twin_ci_suite.py` already uses for the hand-written wozi module), and asserts
+     a real `GET` against five real REST endpoints all return 200 - for all 6 real devices (`wozi`,
+     `dev`, `arzi`, `klkizi`, `grkizi`, `schlafzi`) plus the `novel_combo`/`multi_instance` synthetic
+     fixtures - the full "ideally every" bar this mission's own write-up set, not just the two real
+     devices with a hand-written `sensortask_*.py` to fall back on. This is the first point in the
+     whole initiative a generated module has ever actually booted and served real traffic, not just
+     parsed.
+   - **A real bug this proof depth actually caught, and fixed**: every generated module crashed on
+     boot with `AttributeError: 'AsyFramManager' object has no attribute 'get_task_starters'` the
+     first time this session's own boot test ran it - `buildgen/codegen.py`'s `_emit_collectors()`
+     put every constructed module, `fram` included, into the same `modules` list used by all four
+     collector loops (`_collect_error_sources`/`_collect_level_setters`/`_collect_task_starters`/
+     `_collect_timer_starters`) uniformly. `AsyFramManager` genuinely has no `get_task_starters()`/
+     `get_timer_starters()` at all (a synchronous flash-backed store owns no `asyncio` task or
+     `Timer` of its own) - confirmed directly against `src/asy_fram_manager.py`'s own method list,
+     and against every hand-written `sensortask_wozi.py`/`sensortask_dev.py`, whose own
+     `_collect_task_starters()`/`_collect_timer_starters()` already exclude `fram` from exactly
+     those two loops while still including it in the error-source/level-setter ones. Fixed by
+     computing a second `task_timer_modules` list (the same `modules` list, minus `fram`'s own
+     instance variable when a `fram` instance exists) and using it for just those two loops -
+     `_collect_error_sources()`/`_collect_level_setters()` are unaffected. This is exactly the kind
+     of bug `ast.parse()`-only correctness proof structurally cannot see (the generated syntax was
+     always valid Python; only actually *running* `main()` reaches the broken call), and exactly why
+     this session's mission specified running generated code, not just parsing it. Landed as a
+     forced, minimal, narrowly-scoped fix to `buildgen/codegen.py` itself - not a workaround in
+     `digital_twin/`, and not deferred - per this plan's own "forced cascade, not an early attempt
+     at [a later session's] job" precedent (see Session 6's own entry below for where that phrase
+     first appears): fixing it was required to deliver this session's own actual mission
+     (proving generated code boots), and every one of Session 3's/Session 4's own existing tests
+     (golden-file comparisons, shape validation, the synthetic-fixture generation checks) still pass
+     unchanged - confirmed directly, not assumed.
+   - **Not built here** (flagged, not silently absorbed, per the merge-back checklist): wiring this
+     generalized boot path into `scripts/run_digital_twin_ci.sh`/CI, extending that CI suite's own
+     11-run matrix to `dev`/generated devices, or retiring `run_wozi_integration.py`/
+     `run_dev_integration.py`/`sensortask_wozi.py`/`sensortask_dev.py` outright - all explicitly
+     Session 6's ("Build chain + CI matrix") job per this plan's own session breakdown, and its
+     "Testing" design decision already anticipates the exact shape this session's own
+     `test_digital_twin_generated_boot.py` proves works: *"only the device-specific slice (generated
+     wiring module, generated website definitions, digital-twin boot of that config) runs once per
+     device in CI."* A genuinely new digital-twin chip fake was not needed either - every driver in
+     play across the 6 real devices and both synthetic fixtures (`scd30`/`sgp40`/`bmp3xx`/`fram`)
+     already had one. **One real, narrow limitation flagged rather than fixed**: `machine.py`'s
+     `_current_scd30_chip`/`flush_scd30()` (and the equivalent FRAM pair) are single-chip globals -
+     a device with more than one SCD30 instance (both synthetic fixtures) only ever persists the
+     *last-wired* one's NVM settings across a simulated reboot; every other twin behavior for such a
+     device is unaffected (proven directly by `test_digital_twin_generated_boot.py`'s own boot+REST
+     smoke test), and a real multi-instance-persistence fix is out of this mission's own scope
+     (nothing in BUILD_CHAIN_PLAN.md ever asked for it, and no real device needs it today).
 6. **Build chain + CI matrix + `build/` artifact directory.** **Flagged by Session 3's merge-back
    review, per the checklist above:** Session 3 was scoped not to touch `src/sensortask_wozi.py`/
    `sensortask_dev.py`, and did not delete or replace them — but its Phase 5 change to
@@ -581,6 +692,18 @@ script quality bar" below, not repeated here.
    this session's job; treat both files as still fully yours to replace, and question the shape
    rather than inheriting it. Same session also reflowed `scripts/build_firmware.py`'s module
    docstring under CLAUDE.md's 3-line header cap — docstring text only, no functional change.
+   **Explicit finish criterion (project owner's direction, 2026-09-11): this session ends with zero
+   static `src/sensortask_*.py` files left in the repo, and with the *entire* existing digital-twin
+   test suite — not only `scripts/run_digital_twin_ci.sh`'s own matrix, but every
+   `tests/test_digital_twin_*.py` file that today hardcodes `sensortask_wozi`/`sensortask_dev`
+   (bus-hazard concurrency, webserver concurrency, the sensortask/notification/NTP/FRAM integration
+   families, `test_sensortask_wozi.py`/`test_sensortask_dev.py` themselves) — generalized to run
+   against a freshly-`buildgen`-generated module for all 6 real device variants, via
+   `run_generic_integration.py`'s own mechanism (Session 5), not narrowed to a boot+REST smoke
+   check. Once the hand-written files are gone there is no separate "wozi test suite" left to keep
+   scoped to wozi alone; every one of these tests' own scenario logic applies unchanged, generalized
+   to which device it boots. This may span more than one session if the volume warrants it, but the
+   requirement holds until it's actually done, not just staged.**
 7. **Versioning** — firmware + website, both starting at "2.0b0".
 8. **Closing consistency pass** — bird's-eye scan across everything sessions 1-7 touched; confirm
    zero device-specific content remains outside the 6 TOML files.

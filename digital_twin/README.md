@@ -18,15 +18,19 @@ Kept completely separate so nothing here can accidentally affect the determinist
   schedule via an internal `asyncio` task, not `_thread` (upstream's own `_thread.rst` docs state
   outright that it "is highly experimental and its API is not yet fully settled" — not a fit for
   load-bearing behavior here, and every real `Timer` callback in this codebase is already trivial
-  enough that true preemption buys nothing). `I2C`/`SPI` wire one of two selectable bus-layout
-  profiles (`configure_i2c_wiring("wozi" | "dev")`, called once before any bus is constructed —
-  default `"wozi"` if never called, so every caller that predates this option keeps its exact prior
-  behavior unchanged): `"wozi"` mirrors `sensortask_wozi.build_system()`'s own construction
-  (`I2C(0, ...)` carries the SCD30 at `0x61`, `I2C(1, ...)` carries the SGP40 at `0x59` and BMP3xx at
-  `0x77`), `"dev"` mirrors `sensortask_dev.build_system()`'s own reversed layout instead (`I2C(0,
-  ...)` carries the BMP3xx at `0x77` alone, `I2C(1, ...)` carries the SCD30 at `0x61` — IRQ/RDY pin
-  11, not wozi's 8 — and SGP40 at `0x59`); `SPI(0, ...)` carries the FRAM chip either way. Any other
-  address NAKs — a real bus with a fixed, known set of devices on it, not an unbounded fixture. `Pin`
+  enough that true preemption buys nothing). `I2C`/`SPI` wire per a generic **wiring plan**
+  (`configure_wiring(plan)`, called once before any bus is constructed — a plain
+  `{"buses": {...}, "spi": {...}}` dict in the exact shape `buildgen.twin_wiring.compute_twin_wiring()`
+  produces from a device's own TOML/`DeviceModel`, see "Booting a generated device" below).
+  `configure_i2c_wiring("wozi" | "dev")` still exists as pure sugar over two literal plans kept in
+  `machine._LEGACY_WIRING_PLANS` (default `"wozi"` if neither is ever called, so every caller that
+  predates `configure_wiring()` keeps its exact prior behavior unchanged): `"wozi"` mirrors
+  `sensortask_wozi.build_system()`'s own construction (`I2C(0, ...)` carries the SCD30 at `0x61`,
+  `I2C(1, ...)` carries the SGP40 at `0x59` and BMP3xx at `0x77`), `"dev"` mirrors
+  `sensortask_dev.build_system()`'s own reversed layout instead (`I2C(0, ...)` carries the BMP3xx at
+  `0x77` alone, `I2C(1, ...)` carries the SCD30 at `0x61` — IRQ/RDY pin 11, not wozi's 8 — and SGP40
+  at `0x59`); `SPI(0, ...)` carries the FRAM chip either way. Any other address NAKs — a real bus
+  with a fixed, known set of devices on it, not an unbounded fixture. `Pin`
   identity is shared by id (`Pin(8)` constructed twice returns the same underlying pin state), since
   a real GPIO pin is one fixed physical resource and chip fakes and drivers may each construct their
   own `Pin` object for the same id — this is exactly why the two profiles' differing SCD30 IRQ pin
@@ -91,6 +95,12 @@ Kept completely separate so nothing here can accidentally affect the determinist
   orchestrator shape (soak/fault-injection/`--duration`-forever), boots `sensortask_dev.build_system()`
   against `configure_i2c_wiring("dev")` instead. No dedicated wrapper script exists yet (see
   "Swapping the twin in" below for direct invocation).
+- `run_generic_integration.py` — boots **any** `sensortask_<device>` module (most usefully a
+  freshly-`buildgen.generate.generate_device()`-generated one) against a `--wiring-plan` JSON file,
+  resolving it via `__import__(--module)` instead of a static `import sensortask_wozi`. Deliberately
+  leaner than the two device-specific entry points above (no `--soak`, no default state-persistence
+  paths) — proving a generated module boots and serves real HTTP is this file's whole job; see
+  "Booting a generated device" below.
 
 Every chip fake exposes a `.fault` (`FaultInjector`) surface for provoking a bus NAK/CRC-corruption/
 timeout on demand — off/clean by default. Same surface also carries `inject_hang()`/`maybe_hang()`,
@@ -175,6 +185,56 @@ MICROPYPATH="src:digital_twin:ext:frozen_modules:.frozen" <micropython-unix-port
 
 Same flag vocabulary, same `frozen_modules`/`MICROPYPATH`-ordering requirements as
 `run_wozi_integration.py` above.
+
+### Booting a generated device
+
+`run_generic_integration.py` boots **any** device — not just wozi/dev — by consuming a Session-3
+`buildgen.generate.generate_device()`-generated module directly, replacing
+`configure_i2c_wiring("wozi"|"dev")`'s 2-profile enum with a wiring plan derived from that device's
+own TOML (BUILD_CHAIN_PLAN.md's Session 5 write-up has the full design account). Two things have to
+be produced **host-side, in a plain CPython process**, before this file's own MicroPython process can
+even start — `buildgen` needs `tomllib`, which the MicroPython Unix port doesn't have:
+
+```python
+from pathlib import Path
+import json
+from buildgen.generate import generate_device
+from buildgen.twin_wiring import compute_twin_wiring
+
+generated = generate_device(Path("devices/novel_combo.toml"), Path("src"), Path("ext"))
+# In tests_scripts/buildgen_fixtures/ for the two synthetic fixtures - devices/ for a real one.
+Path("/tmp/twin_boot/sensortask_novel_combo.py").write_text(generated.module_source)
+Path("/tmp/twin_boot/wiring_plan.json").write_text(json.dumps(compute_twin_wiring(generated.model)))
+```
+
+Then the MicroPython process, with the generated module's own directory placed **first** on
+`MICROPYPATH` (so `import sensortask_novel_combo` resolves to the freshly-generated file, not any
+same-named file under `src/` — real for `wozi`/`dev`, which already have hand-written
+`src/sensortask_wozi.py`/`sensortask_dev.py`; every other import the generated module itself needs,
+e.g. `asy_i2c_driver`, still falls through to `src/`):
+
+```bash
+MICROPYPATH="/tmp/twin_boot:src:digital_twin:ext:.frozen" <micropython-unix-port-binary> \
+    digital_twin/run_generic_integration.py --module sensortask_novel_combo \
+    --wiring-plan /tmp/twin_boot/wiring_plan.json --device novel_combo --host 127.0.0.1 --port 8080
+```
+
+`tests_scripts/test_digital_twin_generated_boot.py` does exactly this (via `subprocess.Popen`, the
+same pattern `scripts/_digital_twin_ci_suite.py` already uses for the hand-written wozi module) for
+all 6 real devices (`wozi`, `dev`, `arzi`, `klkizi`, `grkizi`, `schlafzi`) plus both mandatory
+synthetic fixtures (`novel_combo.toml`, `multi_instance.toml`), asserting a real `GET` against five
+real REST endpoints all return 200 — the first point in this initiative a generated module has
+actually been *run*, not just `ast.parse()`d.
+`run_generic_integration.py`'s own fault/hang chip lookup (`_collect_chips()`) is the generalized
+form of `run_wozi_integration.py`'s/`run_dev_integration.py`'s hardcoded
+`{"scd30": sensortask_wozi.i2c0._i2c.devices[0x61], ...}` dict — it walks the same wiring plan
+`configure_wiring()` was given instead of a hand-picked `i2c0`/`i2c1` literal.
+
+`run_wozi_integration.py`/`run_dev_integration.py`/`launch.py` are **not** rewritten onto this
+generic mechanism — they stay exactly as they are, thin/device-specific, still the real driver behind
+the 11-run automated CI suite below and dozens of `tests/test_digital_twin_*.py` files. Retiring them
+in favor of the fully generic path (once the real build chain/CI matrix exists) is explicitly
+Session 6's job, not this one's — see BUILD_CHAIN_PLAN.md's Session 5 write-up for the full reasoning.
 
 ### FRAM persistence
 
@@ -448,12 +508,15 @@ started with. For a new **I2C** sensor this is a small, mechanical addition:
      `handle_writeto_mem()`/`handle_readfrom_mem()` (register-addressed protocols like BMP3xx's)
      answering the *exact* raw transaction shape the real `*_I2C` driver class sends — confirmed
      directly against that file's own source, never assumed.
-2. Wire it into `machine.py`'s `_wire_i2c_devices()`: add the new chip to the `dict` for whichever
-   bus id (`0` or `1`) the real wiring puts it on, under the matching `_i2c_wiring_profile` branch
-   (`"wozi"` or `"dev"` — cross-check `src/sensortask_wozi.py`'s/`src/sensortask_dev.py`'s own
-   `build_system()` for the real pin/address assignment, since the two profiles put sensors on
-   different buses), or add a new `if id == N:` branch if it lands on a bus id neither profile
-   already uses on that bus.
+2. Wire it into `machine.py`'s `_build_i2c_chip()`: add an `if driver == "<name>":` branch
+   constructing the new chip fake (the wiring plan itself — which bus, which address — is already
+   generic and needs no per-chip code; see "Booting a generated device" above). If the chip's real
+   I2C address is hardwired (no TOML `address` field — `buildgen.buildspec.FIXED_ADDRESS_DRIVERS`),
+   add it to `buildgen/twin_wiring.py`'s own `FIXED_ADDRESSES` table too, matching the real driver's
+   own hardcoded default address. If it lands on `machine.py`'s two hardcoded legacy "wozi"/"dev"
+   profiles as well (a real driver promoted for one of those two devices specifically), add the
+   matching entry to `_LEGACY_WIRING_PLANS` too — cross-check `src/sensortask_wozi.py`'s/
+   `src/sensortask_dev.py`'s own `build_system()` for the real pin/address assignment.
 3. Add `tests/test_digital_twin_<name>.py` — deterministic unit tests of the chip fake in isolation
    (no real `machine.I2C` involved, matching every existing `tests/test_digital_twin_{sgp40,scd30,
    bmp3xx}.py`) — then extend `tests/test_digital_twin_machine.py`'s own dispatch tests if the new

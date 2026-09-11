@@ -357,7 +357,11 @@ max-returns = 12
 # (extmod/machine_i2c.c uses MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN, i.e. kwargs are rejected). The
 # fakes must impersonate that signature exactly or they stop being faithful doubles.
 "tests/machine.py" = ["A002", "FBT001", "FBT002", "ANN401"]  # ANN401: category 1 above - Timer.__init__ forwards **kwargs into self.init()
-"digital_twin/machine.py" = ["A002", "FBT001", "FBT002"]
+# ANN401 here: _build_i2c_chip()'s own return type is deliberately Any, not the stricter
+# _I2CDevice Protocol I2C.devices is typed with - see that function's own comment (no single real
+# chip fake implements every _I2CDevice method; it's I2C.devices' own "the bus's expectation, not a
+# guarantee" stand-in).
+"digital_twin/machine.py" = ["A002", "FBT001", "FBT002", "ANN401"]
 # Same faithful-double reasoning, one level up: test_setup_toolchain_env.py monkeypatches
 # toolchain/setup_toolchain.py's own `run(cmd, cwd=None, check=True, env=None)` with local
 # fake_run() recorders. A double has to accept the signature it intercepts exactly, `check`'s
@@ -417,6 +421,14 @@ max-returns = 12
 "tests/test_notification_scd30_sgp40_integration.py" = ["ANN401"]
 "tests/test_notification_sgp40_integration.py" = ["ANN401"]
 "tests/test_setter_microdot_integration.py" = ["ANN401"]
+# ANN401, category 6 - a dynamically `__import__()`ed module object (run_generic_integration.py's
+# own `--module` flag) has no static type at all - that genericness is this file's whole point, so
+# there is no fixed shape (`types.ModuleType` would type-check but reject every `.i2c0`/`.conn`/
+# `.watchdog`/`.webserver` attribute access this file actually needs). Same reasoning one level up:
+# test_buildgen_twin_wiring.py's `digital_twin_machine` fixture bridges the real digital_twin/
+# machine.py module into a CPython/pytest test the same way, for the same structural reason.
+"digital_twin/run_generic_integration.py" = ["ANN401"]
+"tests_scripts/test_buildgen_twin_wiring.py" = ["ANN401"]
 "digital_twin/launch.py" = ["S105"]
 "tests/test_digital_twin_network_neopixel.py" = ["S106"]
 # asy_webserver_service.py makes the same documented Part C.5.2 `_set_dict_cfg` dispatch call as
@@ -580,6 +592,7 @@ exclude = [
     "digital_twin/launch\\.py$",
     "digital_twin/run_wozi_integration\\.py$",
     "digital_twin/run_dev_integration\\.py$",
+    "digital_twin/run_generic_integration\\.py$",
     "digital_twin/segfault_stress_repro\\.py$",
     "tests/test_digital_twin_.*\\.py$",
 ]
