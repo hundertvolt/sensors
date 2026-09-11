@@ -24,23 +24,24 @@ sys.path.insert(0, str(REPO_ROOT))
 from buildgen.errors import BuildError  # noqa: E402
 from buildgen.generate import generate_device  # noqa: E402
 
-# Every real device (devices/*.toml) - not just wozi/dev, the two consumed by tests today, so the
-# mechanism is proven fully general and future test-generalization work has every device's module
-# already sitting on disk to import.
-DEVICES = ("wozi", "dev", "arzi", "klkizi", "grkizi", "schlafzi")
-
 
 def main() -> int:
     out_dir = REPO_ROOT / "build" / "generated_src"
     out_dir.mkdir(parents=True, exist_ok=True)
-    for device in DEVICES:
+    # Every real device (devices/*.toml) - not just wozi/dev, the two consumed by tests today, so
+    # the mechanism is proven fully general and future test-generalization work has every device's
+    # module already sitting on disk to import. Discovered from the directory, not a hand-kept
+    # list, so a 7th device never needs a second edit here to actually get generated.
+    device_tomls = sorted(REPO_ROOT.glob("devices/*.toml"))
+    for device_toml in device_tomls:
+        device = device_toml.stem
         try:
-            generated = generate_device(REPO_ROOT / "devices" / f"{device}.toml", REPO_ROOT / "src", REPO_ROOT / "ext")
+            generated = generate_device(device_toml, REPO_ROOT / "src", REPO_ROOT / "ext")
         except BuildError as e:
             print(f"error: {e}", file=sys.stderr)
             return 1
         (out_dir / f"sensortask_{device}.py").write_text(generated.module_source)
-    print(f"Generated {len(DEVICES)} device module(s) into {out_dir}")
+    print(f"Generated {len(device_tomls)} device module(s) into {out_dir}")
     return 0
 
 

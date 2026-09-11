@@ -258,16 +258,21 @@ constraints.
   deriving the schema from each driver's own constructor signature, or from a new declarative tuple
   beside `_WIRING` — needs real design, not a mechanical continuation, and hasn't been started.
 - **`[device].name`/`hostname`/`hotspot_password` are validated but never wired into any boot
-  path.** Confirmed against both the generator and the hand-written `sensortask_wozi.py`: neither
-  has a constructor-time injection point for them. `Hostname`/`HotspotPW` are ConfigManager-
+  path.** Confirmed against the generator (`buildgen.generate.generate_device()`): neither
+  `AsyConnTime.__init__` nor any generated `sensortask_<device>.py` has a constructor-time
+  injection point for them. `Hostname`/`HotspotPW` are ConfigManager-
   persisted runtime values with one hardcoded shared default (`"SensorNode"`/`"12345678"` —
   `asy_wifi_service.py`'s `_VAL_HOST`/`_VAL_HOTSPOT_PW`), identical in every device's frozen build,
   so **every device today actually boots as `SensorNode`**, whatever its `devices/*.toml` says. The
-  TOML values are schema-checked and otherwise inert. Fixing it needs either a `src/` constructor-
-  time override mechanism or a build-artifact config-seeding step (Session 6's territory) — not a
-  `buildgen/`-only change. A tripwire test (`test_hostname_and_hotspot_password_are_not_yet_wired_
-  into_generated_code`) and a code comment in `validate.py` hold the current state in place so the
-  gap can't quietly change shape unnoticed.
+  TOML values are schema-checked and otherwise inert. **Still not fixed as of Session 6** (build
+  chain + CI matrix + digital-twin test generalization) — that session's own finish criterion was
+  eliminating the hand-written `sensortask_wozi.py`/`sensortask_dev.py` entry points, not this gap.
+  Fixing it needs either a `src/` constructor-time override mechanism (`asy_wifi_service.py`'s
+  `AsyConnTime.__init__` would need real `hostname=`/`hotspot_password=` parameters — several
+  existing tests assert the literal `"SensorNode"`/`"12345678"` defaults) or a build-artifact
+  config-seeding step — not a `buildgen/`-only change. A tripwire test
+  (`test_hostname_and_hotspot_password_are_not_yet_wired_into_generated_code`) and a code comment in
+  `validate.py` hold the current state in place so the gap can't quietly change shape unnoticed.
 - **The 1.29.0 pin has never run on real hardware.** Every 1.28→1.29 claim in SPECIFICATION.md
   Part F.5 was established from upstream source, the built `firmware.elf.map`, or the Unix-port
   twin - the audit session had no real-hardware go-ahead, so no 1.29 firmware has ever been flashed
@@ -345,7 +350,7 @@ constraints.
   not model (it requires a positional `id`). This is the same stub gap CLAUDE.md's "Code quality
   tooling" section already records for `src/`'s four drivers plus `I2C.deinit()`, and it has the
   same resolution: every invocation the project actually runs - CI's `scripts/typecheck.sh src
-  tests boot_entry tests_hardware/device_scripts` and a bare local `scripts/typecheck.sh` - includes
+  tests tests_hardware/device_scripts` and a bare local `scripts/typecheck.sh` - includes
   `tests/`, whose `tests/machine.py` fake models `Timer()` correctly and wins module resolution.
   Worth knowing before anyone runs mypy over that directory on its own and reads the result as a
   regression.
@@ -430,8 +435,8 @@ constraints.
   Generating `html/definitions/<device>.json` for real (replacing the two hand-written files,
   producing one for the four devices that don't have one yet, and wiring it into
   `scripts/build_website.sh`/CI) is still Session 6's own job, not done by this entry's resolution.
-- **Per-variant `sensortask-*.py` generator — not yet built (the automated version specifically;
-  one real, hand-written second variant now exists).** SPECIFICATION.md Part A.3 already names the
+- **Per-variant `sensortask-*.py` generator — built (`buildgen`, BUILD_CHAIN_PLAN.md's Session 6),
+  entry kept only until its own two follow-ups below close.** SPECIFICATION.md Part A.3 already names the
   automated generator as a real planned direction (one setup-definition file → every variant's
   `sensortask-*.py`/website pair), shaped for by A.8's registration-API/A.9's `HTML_SRC_DIRS`
   mechanisms. `src/sensortask_dev.py` (2026-09-03) is the first
@@ -439,30 +444,38 @@ constraints.
   same three sensors as wozi (SCD30 + BMP3xx + SGP40), built and flashed for real via
   `scripts/build_firmware.py dev`/`boot_entry/dev_boot.py`, confirmed clean on real hardware
   (6.5-minute stability window, real sensor readings, real captive-portal redirect). It's an
-  interim baseline, not the generator itself — deliberately not over-invested in permanence, meant
-  to be replaced once the generator lands. Two concrete requirements for whenever the generator is
-  actually built, so they aren't lost
-  between now and then: (1) any hardware-presence-conditioned wiring `sensortask_wozi.py` currently
-  hardcodes for its own fixed sensor set — which FRAM chunks get allocated (Part A.7's seven-chunk
-  order is wozi-specific) and any sensor-specific bus parameter (e.g. SCD30's own I2C
-  clock-stretch `timeout=200000`) — must be derived from the target variant's actual module set,
-  not copied verbatim into a variant lacking that sensor; (2) **every generated variant needs its
-  own real unit tests** (owner requirement - a generated `sensortask-*.py` is exactly as much "real
-  code" as a hand-written one, same Part D bar applies; the build script that generates the
-  `sensortask-*.py`/test pair is also the natural place to activate/select which of the generated
-  tests actually run for a given variant, rather than a separate manual step), and those tests must
-  themselves check which sensors/FRAM a given variant actually has before asserting anything
-  sensor- or FRAM-specific — asserting e.g. `scd_reader.pr.fram is not None` unconditionally against
-  a variant with no SCD30 (or no FRAM at all) would either hard-fail on a module that was never
-  supposed to exist, or - the sharper risk - pass vacuously for the wrong reason if the assertion is
-  generated loosely enough to skip rather than genuinely check. A variant-specific test also can't
-  hardcode *which bus* a sensor sits on (SCD30 is wired to `i2c0` on wozi, but a different variant
-  could wire it to `i2c1` or a third bus entirely) — it must look the bus up through the sensor's
-  own object graph (e.g. `scd_reader.scd.i2c_scd30.i2c_device.i2c`), never assume a specific
-  `i2cN` name. `tests/test_sensortask_wozi.py`'s own
-  `test_scd30s_own_i2c_bus_uses_a_clock_stretch_timeout_wide_enough_for_it` is the worked example
-  this generalizes from (both the bus lookup and the FRAM assertions), not a template to copy
-  unconditionally. **Resolved (2026-09-03): `scripts/build_firmware.py dev` is now the real,
+  interim baseline, not the generator itself — deliberately not over-invested in permanence, and has
+  since been superseded by the generator, `buildgen` (Session 6; `src/sensortask_dev.py` itself is
+  deleted, generated fresh at build time now). Two concrete requirements were raised for whenever the
+  generator got built, and their current status: (1) any hardware-presence-conditioned wiring the old
+  hand-written `sensortask_wozi.py` used to hardcode for its own fixed sensor set — which FRAM chunks
+  get allocated (Part A.7's seven-chunk order is wozi-specific) and any sensor-specific bus parameter
+  (e.g. SCD30's own I2C clock-stretch `timeout=200000`) — had to be derived from the target variant's
+  actual module set, not copied verbatim into a variant lacking that sensor. **Resolved**:
+  `buildgen.generate.generate_device()` derives both from each device's own `devices/<device>.toml`
+  (`fram_target`, per-bus `timeout`, confirmed directly against `buildgen/codegen.py`) — no variant
+  copies another's values. (2) **every generated variant needs its own real unit tests** (owner
+  requirement - a generated `sensortask-*.py` is exactly as much "real code" as a hand-written one,
+  same Part D bar applies), and those tests must themselves check which sensors/FRAM a given variant
+  actually has before asserting anything sensor- or FRAM-specific — asserting e.g.
+  `scd_reader.pr.fram is not None` unconditionally against a variant with no SCD30 (or no FRAM at
+  all) would either hard-fail on a module that was never supposed to exist, or - the sharper risk -
+  pass vacuously for the wrong reason if the assertion is generated loosely enough to skip rather
+  than genuinely check. A variant-specific test also can't hardcode *which bus* a sensor sits on
+  (SCD30 is wired to `i2c0` on wozi, but a different variant could wire it to `i2c1` or a third bus
+  entirely) — it must look the bus up through the sensor's own object graph (e.g.
+  `scd_reader.scd.i2c_scd30.i2c_device.i2c`), never assume a specific `i2cN` name.
+  `tests/test_sensortask_wozi.py`'s own
+  `test_scd30s_own_i2c_bus_uses_a_clock_stretch_timeout_wide_enough_for_it` remains the worked
+  example this generalizes from (both the bus lookup and the FRAM assertions). **Partially done**:
+  `firmware-build-verify`'s 6-device CI matrix and `tests_scripts/test_digital_twin_generated_boot.py`
+  prove every real device's generated module boots and serves real REST traffic, but the deeper
+  per-variant whitebox parameterization this requirement actually calls for (presence-conditioned
+  sensor/FRAM assertions, bus-graph lookups, across the ~10 files that exercise
+  `sensortask_wozi`/`sensortask_dev` today) is still open — BUILD_CHAIN_PLAN.md's Session 6 account,
+  "Not done" item 2, has the full breakdown of what's left and why part of it is a genuine judgment
+  call flagged to the project owner rather than a mechanical rename. **Resolved (2026-09-03):
+  `scripts/build_firmware.py dev` is now the real,
   correct, confirmed-working way to build/flash for the dev bench** — device-parametrized boot-entry
   selection (`boot_entry/<device>_boot.py`) is real, and the earlier "wozi's own pins forced onto
   dev hardware" mismatch that produced noise mistaken for real bugs (once tracked as the open
@@ -493,7 +506,7 @@ constraints.
   whole wired-together sensortask can be exercised as close to the real target as possible without
   physical hardware. **Fulfilled**: `digital_twin/` is the lowest-level-mocking module this
   requirement calls for (see `SPECIFICATION.md` Part A.10), and `scripts/run_unix_port_integration.sh`
-  runs the whole wired-together `src/sensortask_wozi.py` against it end to end (see
+  runs the whole wired-together (buildgen-generated) `sensortask_wozi.py` against it end to end (see
   `digital_twin/README.md`'s "Swapping the twin in for a Unix-port run" section). This entry should
   come out once the whole effort's large post-merge audit closes, per this file's own stated
   resolved-item policy — not yet removed on its own, since that audit hasn't closed yet.
@@ -525,8 +538,8 @@ constraints.
   see SPECIFICATION.md Part C.8 for the full account. Still not picked up: a rename to make
   `network_available()`'s already-held-lock contract visible in its own name (e.g.
   `network_available_locked()`) was considered but not done — nothing blocks it now that
-  `improved-quality/sensortask-wozi.py` is deleted, but `src/sensortask_wozi.py` itself still calls
-  it by the current name, so this remains a real (if small) call-site update.
+  `improved-quality/sensortask-wozi.py` is deleted, but `buildgen/codegen.py` itself still generates
+  a call to it by the current name, so this remains a real (if small) call-site update.
 - **`asy_i2c_driver.py`'s `get_bits`/`set_bits`/`get_register_struct` still call the allocating
   `readfrom_mem()` rather than zero-copy `readfrom_mem_into()`** — no real caller needs the
   zero-copy path yet, but worth doing before `asy_isl29125_driver.py` (its one plausible future

@@ -63,8 +63,33 @@ def test_unknown_device_fails_with_no_matching_definitions_file(repo_root: Path,
     result = _run_build_website(repo_root, "no-such-device", out_file, check=False)
 
     assert result.returncode != 0
-    assert "no-such-device" in result.stderr
+    # Both halves of the fallback's own failure message - it's genuinely missing both a
+    # hand-written definitions file AND a devices/<device>.toml to generate one from.
+    assert "html/definitions/no-such-device.json" in result.stderr
+    assert "devices/no-such-device.toml" in result.stderr
     assert not out_file.exists()
+
+
+def test_device_without_a_hand_written_definitions_file_generates_one_via_buildgen(repo_root: Path, tmp_path: Path) -> None:
+    # arzi/klkizi/grkizi/schlafzi have no html/definitions/<device>.json at all (only wozi/dev do) -
+    # scripts/build_website.sh falls back to generating one on the fly via buildgen instead of
+    # failing, which is what actually lets scripts/build_firmware.py build these 4 devices at all
+    # (BUILD_CHAIN_PLAN.md's Session 6 account). Picks "arzi" as a concrete stand-in for all four.
+    definitions_file = repo_root / "html" / "definitions" / "arzi.json"
+    assert not definitions_file.exists(), "sanity: this test's whole premise is that arzi has no hand-written definitions.json"
+
+    out_file = tmp_path / "frozen_website_arzi.py"
+    _run_build_website(repo_root, "arzi", out_file)
+
+    text = out_file.read_text()
+    assert "/index.html.gz" in text
+    assert "/js/app.js.gz" in text
+    # The generated definitions.json must be inlined into index.html, exactly like the two
+    # hand-written ones - never staged as its own separate frozen file. Regression guard: an
+    # earlier version of this fallback wrote the generated file directly into the served stage
+    # directory instead of a separate scratch directory, and it reappeared here as a stray
+    # /definitions.json.gz (scripts/build_website.sh's own "scratch_dir" comment).
+    assert "/definitions.json.gz" not in text
 
 
 def test_every_real_js_and_html_file_is_accounted_for_by_the_staging_script(repo_root: Path) -> None:

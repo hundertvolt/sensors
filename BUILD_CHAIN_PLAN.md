@@ -808,6 +808,72 @@ script quality bar" below, not repeated here.
      (e.g. `conn: "AsyConnTime | None"` → `conn: "Any | None"`), which made one pre-existing `# type:
      ignore[union-attr]` in `test_digital_twin_sensortask_integration.py` provably unused under
      `digital_twin/typecheck.ini`'s own `--strict` pass - removed, with a comment explaining why.
+   - **Two more real bugs found via CI's own first real-interpreter/real-browser runs, neither
+     reproducible in this session's own sandbox** (no outbound `apt` access there to build the real
+     MicroPython Unix-port toolchain, so `scripts/test.sh`'s MicroPython suite and the JS live-twin
+     harnesses could only be proven correct by pushing and watching CI, not run directly first):
+     - **A logger-collection *ordering* mismatch**: `_collect_level_setters()` (and every other
+       collector) iterates its module tuple in construction order, which `buildgen`'s topological
+       sort produces as `scd30, sgp40, bmp3xx` (`sgp40` depends on `scd30`'s own measurements, so
+       `scd30` is built - and collected - first); the hand-written files' own collectors used an
+       unrelated, different order (`sgp40, bmp3xx, scd30`), which `test_sensortask_wozi.py`'s/
+       `test_sensortask_dev.py`'s own `_all_loggers()` helper still mirrored after the rename above.
+       `test_collect_level_setters_returns_one_entry_per_logger_in_the_object_graph` pairs
+       `setters[i]` with `loggers[i]` by index, so this order is load-bearing - CI's real-interpreter
+       run caught it directly (the length assertion passed at 17==17, but per-index
+       `level_info()` propagation then failed on a mismatched pair). Fixed by reordering
+       `_all_loggers()` in both files to match; every other consumer of that helper, and every test
+       using a module tuple for membership only (not index-paired), was already order-independent.
+     - **Three missed `MICROPYPATH` spawn sites**: `tests_js/_live_twin_command.js`,
+       `tests_js/_live_matrix_command.js`, and `scripts/cross_browser_smoke.mjs` each spawn
+       `digital_twin/run_wozi_integration.py` directly with their own hardcoded `MICROPYPATH`
+       constant, missed in the first pass since the earlier grep sweep for spawn sites only covered
+       `.py`/`.sh`/`.md` files, not `.js`/`.mjs`. CI's `web-unit-tests`/`web-cross-browser-smoke`
+       jobs failed with "digital twin never started serving" - `import sensortask_wozi` had nothing
+       to resolve to. Fixed by adding the same `build/generated_src` segment to all three, and
+       wiring `scripts/_generate_sensortask_modules.py` into `package.json`'s `pretest`/
+       `pretest:coverage` hooks and the `web-cross-browser-smoke` CI job (the two places that
+       needed their own explicit generation step, not already covered by another script's own call).
+   - **A real, pre-existing comment inaccuracy found during this session's own self-review** (after
+     the PR was already green): the blind rename above briefly turned a `test_sensortask_wozi.py`
+     comment citing the *legacy*, pre-refactor `modules/sensortask-wozi.py`'s own real
+     `pixel.set_override_led()` call into `neopixel.set_override_led()` - that legacy file genuinely
+     uses `pixel` as its own variable name and was never touched by this session, so the citation
+     needed to stay `pixel`; fixed back, and the file was grepped afresh for any other renamed-token
+     collision against a `modules/`/`improved-quality/`-citing comment (none found). One further,
+     opposite-direction cosmetic gap fixed in the same pass: `test_digital_twin_sensortask_
+     integration.py`'s own `conn.set_ext_led(pixel)` comment - describing the *generated* module's
+     real construction wiring, not legacy code - had been deliberately left alone during the
+     surgical `pixel`/`.pixel` edit and was accurate for the hand-written file but stale for the
+     generated one (whose own call is `conn.set_ext_led(neopixel)`); updated to match. Also added,
+     during this same pass, the `scripts/build_website.sh` fallback-generation test coverage that
+     had been proven only manually and via the slow `firmware-build-verify (arzi)` CI leg, never by
+     a fast dedicated unit test: `tests_scripts/test_build_website_sh.py::
+     test_device_without_a_hand_written_definitions_file_generates_one_via_buildgen` (including a
+     regression guard for the stray-`/definitions.json.gz` bug documented above) and direct CLI
+     coverage for `buildgen.definitions.main()` in `tests_scripts/test_buildgen_definitions.py`
+     (success writing to `--out`, stdout printing when it's omitted, and the `BuildError` → exit-1
+     path) - mirroring `buildgen.generate`'s own already-existing CLI test coverage.
+   - **A second, later self-review pass found six more stale doc references**, all a currently-false
+     technical claim rather than acceptable historical narrative (the "describes what was true then"
+     exception this same account already applies elsewhere does not cover these - each one describes
+     the *current* system, wrongly): `README.md`'s "Code quality tooling" section still said "nine
+     directories"/listed `boot_entry/` (the same fix CLAUDE.md itself already got); `BACKLOG.md`
+     line ~347 quoted CI's mypy invocation as including `boot_entry`, which `.github/workflows/
+     ci.yml` no longer does; `digital_twin/README.md`'s "adding a new chip" walkthrough told the
+     reader to cross-check pin/address assignment against `src/sensortask_wozi.py`'s/`src/
+     sensortask_dev.py`'s own `build_system()` - both deleted this session - redirected to
+     `devices/wozi.toml`'s/`devices/dev.toml`'s own fields instead; `buildgen/validate.py`'s
+     known-gap comment and `BACKLOG.md`'s own mirror of it both still said "neither `AsyConnTime.
+     __init__` nor any hand-written `sensortask_*.py`" and cited `src/sensortask_wozi.py` by name -
+     updated to describe the generated module and to state plainly the gap is **still not fixed as
+     of this same Session 6** (this session's own finish criterion was retiring the hand-written
+     files, not this); and `BACKLOG.md`'s "Per-variant `sensortask-*.py` generator" entry still read
+     "not yet built" even though this session's own `buildgen` work is exactly that generator -
+     rewritten to state it's built, with its own two "concrete requirements" given real status
+     (FRAM/bus-parameter derivation from `devices/*.toml`: resolved, confirmed directly against
+     `buildgen/codegen.py`; full per-variant whitebox test parameterization: still open, pointing
+     here to this same "Not done" item 2 rather than re-describing it).
    - **A real coverage gap closed**: `tests/test_reset_call_site_invariant.py`'s own
      `test_wdt_constructed_only_in_sensortask_entry_point_files()` scans committed `src/*.py` files
      and skips anything named `sensortask_*.py` - now permanently vacuous (nothing in `src/` is ever

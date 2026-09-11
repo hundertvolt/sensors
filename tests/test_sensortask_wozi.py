@@ -973,7 +973,7 @@ def test_webserver_notification_put_light_cmd_led_accepts_upper_boundary_rgb_and
 
 
 def test_webserver_notification_put_pause_time_dispatches_to_the_real_coordinator() -> None:
-    # Regression test: the legacy `pauseAutoLED` override-countdown command (neopixel.set_override_led()
+    # Regression test: the legacy `pauseAutoLED` override-countdown command (pixel.set_override_led()
     # in modules/sensortask-wozi.py) had no equivalent wiring at all in the promoted REST layer until
     # this fix - _notification_pause_callback()/notification_pause= closes that gap.
     run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))

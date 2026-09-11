@@ -1,6 +1,6 @@
 """Emits the equivalent of a hand-written `sensortask_<device>.py` (SPECIFICATION.md Part A.7's
-construction-order shape) plus its `boot_entry/<device>_boot.py` sibling, from a validated
-`DeviceModel` and its construction order (`buildgen.graph.build_construction_order()`)."""
+construction-order shape) plus its boot-entry sibling, from a validated `DeviceModel` and its
+construction order (`buildgen.graph.build_construction_order()`)."""
 
 import keyword
 from dataclasses import dataclass

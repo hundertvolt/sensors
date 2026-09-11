@@ -530,8 +530,8 @@ started with. For a new **I2C** sensor this is a small, mechanical addition:
    add it to `buildgen/twin_wiring.py`'s own `FIXED_ADDRESSES` table too, matching the real driver's
    own hardcoded default address. If it lands on `machine.py`'s two hardcoded legacy "wozi"/"dev"
    profiles as well (a real driver promoted for one of those two devices specifically), add the
-   matching entry to `_LEGACY_WIRING_PLANS` too — cross-check `src/sensortask_wozi.py`'s/
-   `src/sensortask_dev.py`'s own `build_system()` for the real pin/address assignment.
+   matching entry to `_LEGACY_WIRING_PLANS` too — cross-check `devices/wozi.toml`'s/
+   `devices/dev.toml`'s own fields for the real pin/address assignment.
 3. Add `tests/test_digital_twin_<name>.py` — deterministic unit tests of the chip fake in isolation
    (no real `machine.I2C` involved, matching every existing `tests/test_digital_twin_{sgp40,scd30,
    bmp3xx}.py`) — then extend `tests/test_digital_twin_machine.py`'s own dispatch tests if the new

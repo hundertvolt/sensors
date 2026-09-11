@@ -112,8 +112,8 @@ never run it over a connection that depends on the bridge staying up.
 
 ## Code quality tooling
 
-Ruff and mypy checks, scoped to nine directories — `src/`, `tests/`, `digital_twin/`,
-`boot_entry/`, `buildgen/`, `toolchain/`, `scripts/`, `tests_scripts/` and `tests_hardware/` (the
+Ruff and mypy checks, scoped to eight directories — `src/`, `tests/`, `digital_twin/`,
+`buildgen/`, `toolchain/`, `scripts/`, `tests_scripts/` and `tests_hardware/` (the
 pre-refactor codebase — `python/`, `modules/` — isn't covered yet) — shellcheck over `scripts/`, actionlint +
 zizmor over the GitHub Actions workflows, plus unit tests for `src/`, can be run manually. mypy
 runs three separate passes, since the MicroPython-target scopes and the host-CPython ones need

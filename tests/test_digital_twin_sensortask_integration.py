@@ -570,8 +570,8 @@ def test_start_and_check_tasks_restarts_a_real_dead_task_from_the_real_full_task
 # ---------------------------------------------------------------------------
 # WiFi hotspot/DNS/LED chain, end-to-end (BACKLOG.md "Whole-system integration test scope") - a real
 # STA connect failure driving AsyConnTime through a real STA -> hotspot mode transition, starting a
-# real DNSServer task, with the real WiFi-status LED (conn.set_ext_led(pixel), build_system()'s own
-# construction step 13) actually driven by the real state machine along the way.
+# real DNSServer task, with the real WiFi-status LED (conn.set_ext_led(neopixel), build_system()'s
+# own construction step 13) actually driven by the real state machine along the way.
 # ---------------------------------------------------------------------------
 
 

@@ -29,8 +29,9 @@
 # Also (re)builds frozen_modules/frozen_html.py via scripts/build_frozen_html.sh before every run -
 # the website-placeholder module (SPECIFICATION.md Part A.9), which every generated
 # sensortask_<device>.py imports unconditionally at module level. Lives in its own frozen_modules/
-# MICROPYPATH segment, not ".frozen/" - see build_frozen_html.sh's own comment for why that exact name can't hold a real,
-# importable file (it's a hardcoded MicroPython sentinel, confirmed against py/builtinimport.c).
+# MICROPYPATH segment, not ".frozen/" - see build_frozen_html.sh's own comment for why that exact
+# name can't hold a real, importable file (it's a hardcoded MicroPython sentinel, confirmed against
+# py/builtinimport.c).
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
