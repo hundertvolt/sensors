@@ -319,6 +319,34 @@ def test_put_round_trips_through_a_real_twin_backed_driver_over_real_http() -> N
     run_timed(scenario(), timeout_s=10.0)
 
 
+def test_reset_errors_over_real_http_is_not_undone_by_a_fram_loggers_later_setup() -> None:
+    # Twin-tier form of BACKLOG.md #16, over a real socket against the real twin FRAM chip. Only
+    # the webserver task is started here, exactly like the boot window it models: every sensor
+    # task's own pr.setup() (SGP40's lives in read_loop()'s _init_sgp()) has not run, so the chunk
+    # still holds the previous boot's history while the RAM-side logger is uninitialized.
+    port = _next_test_port()
+
+    async def scenario() -> None:
+        await _boot(port)
+        assert sensortask_wozi.sgp_reader is not None
+        sgp = sensortask_wozi.sgp_reader
+        await sgp.pr.setup()
+        await sgp.pr.err_s("simulated", errno=99)
+        sgp.pr.initialized = False  # bytes on the real twin chip, RAM side not yet set up
+        task = await _start_webserver()
+        try:
+            res = await _http_client.fetch("127.0.0.1", port, "PUT", "/status", {"ResetErrors": True})
+            assert res.status_code == 200
+            await sgp.pr.setup()  # ... and only now does _init_sgp() get there
+            log = await sgp.get_error_counter()
+            assert log["SGP40"]["ErrCount"] == 0
+            assert 99 not in log["SGP40"]["ErrNum"], "setup() restored the pre-reset history over a reset that returned 200"
+        finally:
+            await _cancel(task)
+
+    run_timed(scenario(), timeout_s=10.0)
+
+
 def test_put_pause_time_round_trips_and_counts_down_over_real_http() -> None:
     # The special-case endpoint pairing this restores: PUT /notification (the settings/command
     # endpoint) sets the override countdown, GET /status (the live/polling endpoint) reports its

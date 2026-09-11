@@ -353,11 +353,42 @@ parity, but (1) bottom-level hardware *function* checks, not just readings, and 
 counterpart for every mock-driven integration test in `tests/` "wherever possible". Two more
 additions from that:
 
-- **FRAM write protection actually gates a real write** (`device_scripts/
-  fram_write_protect_roundtrip.py`, `flash/test_fram_storage.py`): sets the real WPEN|BP0|BP1
-  status-register bits, confirms a real write is genuinely rejected while protected and succeeds
-  once cleared again - not just "can a chunk be written at all" (the roundtrip test above already
-  covers that).
+### FRAM device scripts overwrite the production modules' own chunks — read this before trusting an error log
+
+`AsyFramManager` is a deterministic bump allocator, and that is a required property, not an
+accident (SPECIFICATION.md Part A.4's chunk-determinism rule): the Nth `get_chunk()` call of a
+given size always lands at the same address. An isolated-driver device script builds its own
+`AsyFramManager` over the *same real chip*, so **its first chunk is production's first chunk.**
+Production's order is SystemService → SGP40 error log → SGP40 VOC backup → BMP3xx → SCD30 →
+Neopixel → NotificationCoordinator (Part A.7), and every FRAM-backed error log is a
+`get_chunk(2 + history_length, crc=CRC8())` — which is exactly what `make_logger()` in a device
+script allocates too. Nine scripts in `device_scripts/` allocate chunks this way.
+
+Two consequences, and the second one has already caused a real misreading:
+
+- **A device-script run destroys whatever the production modules had persisted there.** Usually
+  harmless: a mismatched size or CRC makes the next boot's `_read()` fail, `_write()` stores an
+  empty ring, and the log honestly reads "nothing recorded".
+- **A script that leaves a *well-formed* chunk behind fabricates plausible diagnostic history.**
+  `fram_error_log_reset_race_seed_and_race.py` seeds three `errno=5` entries into what is
+  physically SystemService's chunk, and `[5, 5, 5]` is one of its accepted end states — so the
+  next boot restores it and `GET /status` reports **SYSTEM: 3 errors, errno 5**, which in
+  SystemService's own namespace reads as `"Task N ended with exception"`. Observed and chased down
+  on 2026-09-11; it is test data, not a task failure.
+
+So: **an error log read after a flash- or bench-tier run is not evidence about the firmware.**
+CLAUDE.md's "read the FRAM logs before clearing anything" rule still stands — it is aimed at a
+unit that has been running normally. Check what has been run against the board first.
+
+- **FRAM write protection actually gates a real write, a real read, and does so in silicon**
+  (`device_scripts/fram_write_protect_roundtrip.py`, `flash/test_fram_storage.py`): sets the real
+  WPEN|BP0|BP1 status-register bits, then checks three things - a write is rejected while
+  protected and succeeds once cleared again (not just "can a chunk be written at all", which the
+  roundtrip test above already covers); a *read* is rejected too, because `_read_chunk()` must
+  write a transient busy marker first (intended behavior, SPECIFICATION.md Part A.4's FRAM entry,
+  asserted identically at the mock and twin tiers); and - the part no fake can reach - the chip
+  itself refuses, not merely the driver's own guard, proven by desyncing the cached `_wp` from the
+  still-protected chip and sending a real WREN+WRITE whose bytes never land.
 - **Real PUT /sensors config pushes** (`bench/test_sensor_config_push_over_real_hardware.py`): the
   real-hardware counterpart to `tests/test_setter_microdot_integration.py`'s mock-driven coverage.
   BMP3xx's oversampling/filter-coefficient fields are pushed to non-default values over a real REST

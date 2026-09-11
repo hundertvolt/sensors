@@ -379,6 +379,36 @@ def test_wozi_storage_pause_gates_the_real_twin_chip_and_override_still_reaches_
     run_timed(scenario(), timeout_s=20.0)
 
 
+def test_wozi_write_protect_blocks_reads_too_and_the_data_survives_it() -> None:
+    # Twin-tier parity for the mock tier's own pair of write-protect tests, and the accepted,
+    # intended behavior the flash tier confirms against real silicon: _read_chunk() has to WRITE a
+    # transient busy marker before reading, so write protection gates read() as well as write().
+    # Different in kind from the pause gate above - that one refuses before the bus, this one
+    # refuses at the chip - and, crucially, non-destructive: the bytes come back once it is cleared.
+    machine.configure_i2c_wiring("wozi")
+
+    async def scenario() -> None:
+        await sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir(), web_host="127.0.0.1", web_port=_next_test_port())
+        assert sensortask_wozi.fram is not None
+        manager = sensortask_wozi.fram
+        chunk = manager.get_chunk(16, crc=CRC8())
+        assert chunk is not None
+        payload = bytes(range(16))
+        assert await chunk.write(payload)
+
+        assert await manager.fram.set_write_protected(value=True) is True
+        assert await manager.fram.get_write_protected() is True
+        assert await chunk.write(bytes(range(100, 116))) is False
+        assert await chunk.read() is None, "a write-protected chunk read succeeded - the busy-marker write cannot have happened"
+        # override_pause only bypasses the manager's own pause flag, never the chip's protection.
+        assert await chunk.read(override_pause=True) is None
+
+        assert await manager.fram.set_write_protected(value=False) is True
+        assert bytes(await chunk.read() or b"") == payload, "the refusal damaged the stored bytes - it is supposed to be an access gate only"
+
+    run_timed(scenario(), timeout_s=20.0)
+
+
 def test_wozi_storage_pause_short_circuits_before_the_bus_so_an_injected_fault_survives() -> None:
     # Twin-tier form of test_asy_fram_manager.py's own ordering test: _read() consults the pause
     # flag before touching SPI, so a queued overrun must still be there afterwards. Uses the

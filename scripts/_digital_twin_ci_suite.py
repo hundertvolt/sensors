@@ -559,9 +559,9 @@ def _run_5c_storage_paused_shutdown_never_loses_the_error_log(micropython_bin: s
         _check(condition=entry.get("counter", 0) >= _SGP40_BOUNDED_FAULT_COUNT, msg=f"Run 5c: SGP40's persisted error COUNT was restored too, not just the history ring ({entry!r})")
         _check(condition=_mem_paused() is False, msg="Run 5c: the storage pause did NOT survive the reboot (it is RAM-only by design)")
         # The restored history must not be a read-only relic: a ResetErrors PUT has to clear it on
-        # the chip. Only meaningful AFTER the poll above confirmed setup() ran - a reset issued
-        # before it is dropped by design (print_log.py's "don't write stale state to FRAM before
-        # setup()" guard) and the restore then puts the old history straight back.
+        # the chip. Deliberately issued after the poll above confirmed setup() ran, so this checks
+        # the ordinary case; a reset issued *before* setup() is covered separately (BACKLOG.md #16
+        # - it persists straight away now and the later setup() must not undo it).
         status, _ = _http("PUT", "/status", {"ResetErrors": True})
         _check(condition=status == _HTTP_OK, msg=f"Run 5c: PUT /status ResetErrors accepted (status {status})")
         entry = _errcount("SGP40")

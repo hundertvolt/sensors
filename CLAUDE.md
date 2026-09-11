@@ -119,6 +119,14 @@ information):
   specific mismatch (`scripts/build_firmware.py wozi` — wozi's hardcoded pins — flashed onto the dev
   bench) produced two false "bugs" once (see BACKLOG.md's "Per-variant `sensortask-*.py` generator" entry) — it
   isn't a shortcut for testing wozi, it's testing nothing at all, and must not be repeated.
+- **The legacy tree is reference-only, forever — it never gets work of any kind** (project
+  owner, 2026-09-11). `python/`, `modules/` and the four `build-*.sh` scripts exist to be *read*:
+  to check what the deployed system actually does and how a driver behaved in the field. Nothing
+  in this repo's quality apparatus is ever extended to them — no lint/typecheck scope, no CI
+  build stage, no shellcheck cleanup, no tests, no refactor. A finding *about* legacy code is
+  worth recording only when it explains current behavior; it is never a to-do. Don't propose
+  closing any of these gaps — the gap is the decision. (The one exception already carved out
+  above stands: `modules/_boot.py`'s `import sensortask.py` is not to be "fixed" either.)
 - **No unit tests against the current (deployed, pre-refactor) codebase — `python/`, `modules/`.**
   The agreed plan is: fully understand the current system first, confirm what's already
   promoted into `src/`, and write tests as part of that refactor — not before, and
@@ -221,7 +229,14 @@ information):
   hygiene) had already overwritten every FRAM-backed log's history, permanently losing whatever
   evidence might have existed. The same check applies inside the digital twin
   (`digital_twin/_fram_chip.py` models the same chunked FRAM layout) — check before clearing there
-  too, not just on real hardware.
+  too, not just on real hardware. **One caveat, found the hard way (2026-09-11): this rule assumes
+  a board that has been running normally.** An isolated-driver device script builds its own
+  `AsyFramManager` over the same chip, and the allocator is deterministic, so its first chunk *is*
+  production's first chunk — a flash/bench-tier run overwrites the real error logs, and a script
+  leaving a well-formed chunk behind fabricates a plausible-looking one (a seeded `errno=5` read
+  back as SYSTEM's `"Task N ended with exception"`, chased down as if real). Before treating a
+  FRAM-backed log as evidence, check what has been run against that board;
+  `tests_hardware/README.md` has the full mechanism.
 
 ## Working agreements
 
@@ -552,12 +567,14 @@ information):
   (pinned to tag `v2.6.2`; see "Hard rules" above and "Microdot / REST layer" below). See
   BACKLOG.md's "Deferred" list for the resulting dead `pyproject.toml` exclude entry.
 
-## Pre-push verification (clean Ubuntu 24.04)
+## Pre-push verification (clean chroot: Ubuntu 24.04 **and** Debian trixie)
 
 **Before pushing any change to `pyproject.toml`, `scripts/`, `toolchain/versions.toml`, or
 anything else touching the dev-tooling/build-environment setup**, verify it end-to-end inside a
-genuinely clean Ubuntu 24.04 environment — not just in whatever sandbox this session happens to
-be running in. A session sandbox typically already has Python 3.11+, `uv`, build tools, etc.
+genuinely clean chroot — not just in whatever sandbox this session happens to be running in.
+**Two targets, both required**: Ubuntu 24.04 "noble" (GCC 13.x, the OS the project's docs target)
+and Debian trixie (GCC 14.x, what the bench Pi4 actually runs) — see "Second target" below for why
+one is not enough. A session sandbox typically already has Python 3.11+, `uv`, build tools, etc.
 pre-installed, which can mask real gaps. **This already caught a real bug once**: a
 `requires-python = ">=3.10"` that let `uv sync` build a venv without `tomllib` (stdlib only since
 3.11), invisible in a sandbox whose default Python happened to already be 3.11+, and only found by
@@ -565,7 +582,8 @@ actually testing under a 3.10 interpreter. Treat this as a standing QA step, not
 skip it just because "it worked in this session's sandbox."
 
 **Recipe** (needs root; mirrors how `toolchain/setup_toolchain.py`'s own "verified from scratch"
-claims were checked — see SPECIFICATION.md Part B.7, "Evidence this actually works"):
+claims were checked — see SPECIFICATION.md Part B.7, "Evidence this actually works"). Shown for
+noble; "Second target" below gives the two lines that differ for trixie and nothing else does:
 
 ```bash
 # One-time: build a clean Ubuntu 24.04 (noble) chroot with nothing preinstalled beyond the
@@ -658,6 +676,40 @@ session sandbox's own baseline count. `scripts/test.sh`'s tests must likewise ac
 What would fail this: a raw Python traceback, an "installation failed" from `uv`/`pip`/`apt`, a
 `scripts/test.sh` build failure, or any other mismatch against the ordinary-sandbox run — that
 mismatch is exactly how the `tomllib`/`requires-python` gap was found in the first place.
+
+**Second target: Debian trixie (GCC >= 14).** The noble chroot above pins GCC 13.x, and a
+compiler-version-sensitive build break is invisible to it — confirmed the hard way: the mbedtls
+`mbedtls_xor()` `-Warray-bounds` false positive (SPECIFICATION.md Part B.7.1, worked around by
+`_MBEDTLS_GCC14_ARRAY_BOUNDS_WORKAROUND` in `toolchain/setup_toolchain.py`) is a GCC >= 14
+diagnostic, and the build treats any `warning:` as a hard failure — so noble never saw it. It was
+found by building on a real Debian trixie host, outside this recipe. Noble is kept, not replaced — it is the documented target OS, and a gap that only appears
+on the *older* compiler would be just as invisible from trixie alone. Run both.
+
+Everything in the recipe above is identical for trixie except the `debootstrap` invocation and the
+`sources.list` it writes (Debian's component and security-suite names differ from Ubuntu's):
+
+```bash
+CHROOT=/tmp/trixie-chroot
+debootstrap --variant=minbase trixie "$CHROOT" http://deb.debian.org/debian
+
+cat > "$CHROOT/etc/apt/sources.list" <<'EOF'
+deb http://deb.debian.org/debian trixie main
+deb http://deb.debian.org/debian trixie-updates main
+deb http://security.debian.org/debian-security trixie-security main
+EOF
+```
+
+Two practical notes. `debootstrap` needs a script for the suite it is asked to build, so an
+Ubuntu *host* may not know `trixie` — `ln -s /usr/share/debootstrap/scripts/sid
+/usr/share/debootstrap/scripts/trixie` is the usual fix; a Debian trixie host (the bench Pi4) has
+it already. And Debian has no `universe`, so the `main`-only lists above are complete, not trimmed.
+Check the compiler actually landed as expected before trusting the run:
+`chroot "$CHROOT" gcc --version` must report 14.x (or newer), and the noble one 13.x.
+
+**Already satisfied for the current tree (2026-09-11)**: the full from-scratch toolchain build,
+lint, typecheck and unit suite were run on this bench Pi4, which *is* Debian trixie / GCC 14.2 —
+so the trixie leg of this gate is met for everything in the tree as of that date, and only future
+changes to the setup need it re-run.
 
 **Changes to `toolchain/setup_toolchain.py` or `toolchain/versions.toml` itself need a second,
 separate verification, not just the recipe above** — that recipe only exercises `scripts/lint.sh`/

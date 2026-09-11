@@ -70,12 +70,26 @@ def test_error_log_history_is_all_or_nothing_across_a_reset_raced_chunk_write(bo
 
 
 # ---------------------------------------------------------------------------
-# Bottom-level hardware function: the real WPEN|BP0|BP1 write-protect mechanism actually gates a
-# real write and can be cleared again - not just "can a chunk be written at all".
+# The error log's own boot window: a ResetErrors landing before a FRAM-backed logger has run its
+# own pr.setup() must still be persisted, and must survive that setup() (BACKLOG.md #16). Mirrored
+# at the mock tier (tests/test_print_log.py, tests/test_sensortask_wozi.py) and the twin tier
+# (tests/test_digital_twin_sensortask_integration.py); this is the same claim on the real chip.
 # ---------------------------------------------------------------------------
 
 
-def test_write_protection_actually_gates_a_real_write(board: Board) -> None:
+def test_error_log_reset_during_the_boot_window_is_persisted_and_not_undone(board: Board) -> None:
+    _run_and_assert_pass(board, "fram_error_log_reset_during_boot_window.py", timeout_s=60.0, label="FRAM error-log boot-window reset check")
+
+
+# ---------------------------------------------------------------------------
+# Bottom-level hardware function: the real WPEN|BP0|BP1 write-protect mechanism actually gates a
+# real write AND a real read, and can be cleared again - not just "can a chunk be written at all".
+# Reads being gated too is intended, accepted behavior (SPECIFICATION.md Part A.4's FRAM entry),
+# asserted identically at the mock and twin tiers.
+# ---------------------------------------------------------------------------
+
+
+def test_write_protection_actually_gates_a_real_write_and_a_real_read(board: Board) -> None:
     _run_and_assert_pass(board, "fram_write_protect_roundtrip.py", timeout_s=30.0, label="FRAM write-protect roundtrip")
 
 

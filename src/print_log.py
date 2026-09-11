@@ -210,14 +210,17 @@ class PrintLogHistory(PrintLog):
             print(self.name, *args, **kwargs)
 
     async def reset(self) -> None:
+        # No `not self.initialized` guard here, unlike _store_err() above: a cleared ring isn't
+        # stale state to keep away from FRAM, it's exactly what the caller asked to persist.
+        # Claiming initialization once that write succeeds makes a later setup() return early
+        # instead of restoring over it - see BACKLOG.md #16. A failed write leaves it False.
         self.history.extend([_NO_ERR] * len(self.history))
         self.err_count = 0
-        if not self.initialized:
-            # Same "return regardless of self.level" reasoning as _store_err() above.
-            self._diag("PrintLog: Uninitialized, call setup first!")
-            return
         if not await self._write():
+            # Same "regardless of self.level" reasoning as _store_err() above.
             self._diag("PrintLog: History reset write failed!")
+            return
+        self.initialized = True
 
 
 class PrintLogHistoryStore(PrintLogHistory):

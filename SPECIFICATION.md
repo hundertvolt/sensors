@@ -162,6 +162,24 @@ registration API and A.9's `HTML_SRC_DIRS` are shaped around it). Real-hardware 
   ~1-in-8 unpaused rate). Covered at every tier — `tests/test_fram_integration.py` (both blocks
   torn), `scripts/_digital_twin_ci_suite.py` runs 5b/5c, and
   `tests_hardware/flash/test_fram_storage.py`'s reset-race pair on real silicon.
+  **Write protection gates reads too, and that is intended** (project owner, 2026-09-11): because
+  `_read_chunk()` has to WRITE the transient busy marker before it may read, a genuinely
+  write-protected chip makes `chunk.read()` return `None` as surely as it makes `chunk.write()`
+  return `False` — confirmed on real silicon. It is an *access* gate, not data loss: the stored
+  bytes are untouched and come back intact the moment protection is cleared. Two things tell it
+  apart from the pause gate, and both are asserted: write protection fails *at* the chip (the
+  status byte is read off the bus first, then the marker write is refused — errno 32 for each
+  block, then warning 72), where `set_pause()` short-circuits before SPI ever runs; and
+  `override_pause=True` bypasses only the manager's own pause flag, never the chip's protection.
+  Covered at mock (`tests/test_asy_fram_manager.py`'s
+  `test_read_is_also_blocked_while_write_protected_and_the_data_survives_it` plus the
+  reaches-the-bus discriminator), twin
+  (`tests/test_digital_twin_bus_hazard_concurrency.py`) and flash
+  (`device_scripts/fram_write_protect_roundtrip.py`) tiers. One claim only the real chip can
+  settle, and now does: all three tiers' write checks stop at the driver's own guard, so to reach
+  the silicon the flash script desyncs the cached `_wp` from the still-protected chip and sends a
+  genuine WREN+WRITE — the bytes are unchanged afterwards, so BP0|BP1 really does refuse it. Both
+  chip fakes stop at the driver guard, so neither can prove this.
   "Both copies valid but different" is a hard failure (no generation counter), never guessed. `AsyFramTimestampedChunk.write()`/`write_into()`
   return `(ntp_synced, utc, success)` — `success` is third, not first; don't reorder. `AsyFramManager`
   is a bump-pointer allocator: instantiation order is on-chip layout and must stay identical across
@@ -1785,7 +1803,23 @@ FRAM entry has the full account.
   `py/parse.c.o` and `py/gc.c.o` sit at `0x2000xxxx` inside an `EXCLUDE_FILE(...)` clause. Cost,
   measured off that map: **12,918 B** of RAM no longer available as Python GC heap (vm 5,040,
   parse 3,298, gc 2,676, the linker's own 1,504, plus ~400 of libc/libm/libgcc helpers the same
-  rule excludes) — relevant to every Part I budget.
+  rule excludes) — relevant to every Part I budget. **Note this is purely a cost entry here:** the
+  *benefit* (SRAM beats XIP flash for the hot interpreter loop) is upstream's rationale, has never
+  been timed on this bench, and must not be quoted as a measured speedup.
+  **What it actually leaves, measured on the real dev board at 1.29.0 (2026-09-11)** — the check
+  that matters, since the cost lands entirely in static RAM rather than in any runtime behavior.
+  The build reports `RAM: 66,792 B / 256 KB (25.48%)` static; a real `build_system()` on hardware
+  then leaves **130,224 B free with a 115,536 B largest obtainable single block** (148,448/146,112
+  before the build), at MicroPython's own reactive-only `gc.threshold(-1)` default — a proactive
+  threshold changes neither figure. Against a largest known single allocation of ~5.7 KB (`GET
+  /status`, itself streamed in 1 KB fragments since Part I.3), that is ample. Kept honest by
+  `tests_hardware/flash/test_memory_stress.py`'s
+  `test_real_gc_heap_headroom_survives_a_full_system_build`, which asserts floors of 100,000 B
+  free and 80,000 B contiguous so a future bump relocating more code into SRAM shows up as a test
+  failure rather than as slow attrition. The comparable 1.28 figure is the 2026-09-08 hammer-load
+  `mem_free` floor of 91,312 B (Part I.5), which is a *loaded* floor, not an at-rest one — the two
+  are not directly comparable, and measuring a loaded floor at 1.29 would need `mem_free` exposed
+  over REST, which is deliberately not done.
 - **`-fno-math-errno`** is now on for the rp2 port (verified in the build's CMake flags), so
   `math.sqrt` compiles to the hardware instruction. `math_helpers.py` uses it twice;
   `voc_algorithm.py`'s `_fix16_sqrt` is pure integer and unaffected.
@@ -2293,4 +2327,8 @@ was confirmed on real target hardware (2026-09-08): `gc.threshold(32768)` (real 
 range (I.1), and `_MAX_STATUS_PIECE_BYTES`'s real headroom (I.3).
 `tests_hardware/bench/test_memory_stress_bench.py` carries the permanent real-hardware regression
 coverage (a 120s always-run hammer test plus a `long_soak`-gated 600s variant) — nothing from this
-audit remains open pending hardware.
+audit remains open pending hardware. Those assert the *outcome* (no `MemoryError`, no reboot,
+enough requests through); the headroom the system starts from is asserted separately by
+`tests_hardware/flash/test_memory_stress.py`'s `test_real_gc_heap_headroom_survives_a_full_system_build`
+(Part F.5.3 for the 1.29 figures). Note the 91,312 B above is a *loaded* floor and the F.5.3
+numbers are at rest — don't compare them directly.

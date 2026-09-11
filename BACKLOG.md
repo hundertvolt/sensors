@@ -9,28 +9,32 @@ constraints.
 
 ## Refactor targets not yet done
 
-- **No CI firmware-build stage yet for the legacy `build-*.sh` scripts.** The *new*, `src/`-based
-  toolchain (`scripts/build_firmware.py`, `SPECIFICATION.md` Part B.11) already has this
-  (`.github/workflows/ci.yml`'s `firmware-build-verify` job builds a real `firmware.uf2` on every
-  push/PR) - the legacy `python/`+`build-*.sh` pipeline is a separate, still-uncovered path.
 - **Mypy shall be configured to disallow `Any` types** (owner-specified). Mostly addressed, but
   not by the flag it was originally written about: all three passes now run full `--strict`
   (`disallow_any_generics` included), so no *implicit* `Any` from a bare `dict`/`list`/`tuple`
-  survives anywhere in scope. What is still open is `disallow_any_explicit` - 226 findings in the
-  main pass, 45 in `digital_twin/`, 17 in the host pass - plus `disallow_any_unimported` (54, main
+  survives anywhere in scope. **Deferred to a dedicated future session (project owner, 2026-09-11)
+  - not to be picked up as part of unrelated work.** **None of this is a pipeline finding** -
+  `disallow_any_explicit` is *off* in all three configs, so lint/typecheck/CI are green; the counts
+  below are what would appear if it were switched on. Re-measured 2026-09-11: **224 in the main
+  `src`+`tests` pass** and **115 in the host pass** (up from the 17 recorded before
+  `tests_hardware/` joined that scope);
+  `digital_twin/` was not re-measured, previously 45. Plus `disallow_any_unimported` (54, main
   pass only). Explicit `Any` appears 107 times in `src/` and 213 in `tests/`. A large share of the
   test-side uses are monkeypatch/wrapper classes duck-typing a real MicroPython object; the `src/`
   side is largely legitimate (`print_log.py`'s variadic logging methods, `config_manager.py`'s
   generic value-checking helpers, opaque `ticks_ms()`-typed values). Turning `disallow_any_explicit`
   on still needs a typing strategy for the test wrappers (e.g. `Protocol` classes + `__getattr__`
   delegation) and a decision on the genuinely-variadic/opaque `src/` cases - not just a flag flip.
-- **FRAM has no periodic/triggered *production* re-probe policy.** `verify_present()`/
-  `set_write_protected()` (bus-hazard-tested across all four tiers, confirmed correct under real
-  fault injection - see CLAUDE.md's bus-hazard hard rule) have zero real callers in `src/` - an
-  explicit, undecided design question (who calls `verify_present()`, on what trigger) for whenever
-  it's actually wanted.
+- **FRAM's `verify_present()`/`set_write_protected()` stay in `src/` — SETTLED, do not re-raise.**
+  They have zero callers in `src/` today and that is fine: "zero callers now, maybe callers
+  tomorrow" is the whole point, and both are bus-hazard-tested across all four tiers and confirmed
+  correct under real fault injection (CLAUDE.md's bus-hazard hard rule). The project owner has
+  decided this more than once; it is not an open design question, and no future session should
+  re-propose removing them or ask again who is supposed to call them.
 - **No standardized timeout/cancellation mechanism yet for blocking calls that genuinely can be
-  timeout-wrapped** (FRAM SPI transactions, `src/asy_udp_socket.py`'s own `select.poll`-driven
+  timeout-wrapped. PRIORITIZED (project owner, 2026-09-11): to be done soon** — ahead of the other
+  items in this section, not whenever it next comes up. The calls in question: FRAM SPI
+  transactions and `src/asy_udp_socket.py`'s own `select.poll`-driven
   `ready()`/`write_and_recvfrom()` — anything that isn't a raw blocking `machine.I2C` call
   mid-transaction, which can't be interrupted regardless; see CLAUDE.md's "wedged I2C bus" hard
   rule for why that case is different and already decided, and why `socket.getaddrinfo()` turned
@@ -45,10 +49,10 @@ constraints.
 - **Rough sequencing, not a committed plan**: (1) dev/build environment setup (genericized
   `build-*.sh`/toolchain paths) — everything else touching CI/firmware depends on this; (2) the
   structural patterns above (per-sensor config, generalized error-counter bookkeeping) are largely
-  done; (3) bus/sensor error-recovery robustness items above, which build on that structure; (4)
-  remaining tooling/CI (the firmware-build stage) — mypy/ruff/stubs/Unix-port-tests were pulled
-  forward out of this order already, once `math_helpers.py` cleared the `src/` bar, and that's now
-  standing practice for every new file, not a one-off.
+  done; (3) bus/sensor error-recovery robustness items above, which build on that structure — the
+  standardized timeout/cancellation mechanism is the next one of these to pick up. mypy/ruff/stubs/
+  Unix-port-tests were pulled forward out of this order already, once `math_helpers.py` cleared the
+  `src/` bar, and that's now standing practice for every new file, not a one-off.
 
 ## Open questions (need owner input or further investigation)
 
@@ -170,8 +174,10 @@ constraints.
    harness on the bench rig, which would upgrade the "genuinely wedged I2C bus → watchdog backstop"
    manual test to automated; and a dedicated second WiFi test client on the bench rig (today's bench
    host has only the one WiFi adapter, already hosting the AP), which would upgrade "real end-to-end
-   hotspot session" from a manual test to automated. Neither is assumed worth building — flag to
-   the project owner as an explicit choice, not a default plan, if either ever becomes relevant.
+   hotspot session" from a manual test to automated. **Decided (project owner, 2026-09-11): hardware
+   fault injection is planned for later — deferred, not dropped.** Both test candidates stay
+   `[MANUAL]` until the rig exists; don't re-propose building it, and don't work around its absence
+   with a software-only substitute that claims the same coverage.
 9. **WiFi-reconnect flakiness across the bench suite - root-caused and fixed at the root (was
    tracked here as several separate-looking symptoms; all traced to a small number of real
    causes).** A missing `BENCH_AP_PASSWORD` env var used to cascade into ~25 unrelated-looking test
@@ -200,13 +206,13 @@ constraints.
     re-check) found no correlated cause on either the Pi4 or rp2 side. Not worth further
     investigation unless it recurs under normal operation; a `dmesg -T -w`-concurrent capture
     technique is ready to reuse for a real correlated timestamp if it ever does.
-11. **CLAUDE.md's "Pre-push verification" clean-chroot recipe has no GCC>=14 host target.** The
-    existing recipe only builds an Ubuntu 24.04 "noble" chroot (GCC 13.x), which is exactly why the
-    real mbedtls `-Warray-bounds` false positive (`SPECIFICATION.md` Part B.7.1, fixed via
-    `_MBEDTLS_GCC14_ARRAY_BOUNDS_WORKAROUND`) wasn't caught by it — that bug was only found by
-    testing directly on a Debian trixie (GCC 14.2) bench host outside this recipe. Whether to add a
-    second trixie/GCC>=14 chroot target to the standing recipe (and if so, alongside or replacing
-    noble) is an open choice for the project owner, not decided or built here.
+11. **CLAUDE.md's "Pre-push verification" recipe had no GCC>=14 host target — CLOSED
+    (2026-09-11).** Project owner's call: add it, *alongside* noble rather than replacing it. Both
+    targets are now required by that section, which carries the trixie deltas (the `debootstrap`
+    suite/mirror and the Debian-shaped `sources.list`), the `debootstrap`-script and no-`universe`
+    caveats, and the `gcc --version` check that confirms which compiler actually landed. The
+    trixie leg is already satisfied for the current tree: the 2026-09-11 from-scratch build, lint,
+    typecheck and unit run happened on this bench Pi4, which is Debian trixie / GCC 14.2.
 12. **Does `machine.soft_reset()` reset the RP2040 hardware counter `time.ticks_ms()` derives
     from? - ANSWERED on real hardware (2026-09-11): no, but the question was aimed at the wrong
     mechanism.** Two `mpremote exec` reads 3s apart returned 25769 and 29136 ms (delta 3367): the
@@ -220,23 +226,35 @@ constraints.
     than via soft-reset semantics - each poll costs ~8s of uptime and restarts the count. Any real
     multi-day run needs the poll to re-feed or disable the watchdog, or to observe passively
     (`tail_log()`) instead.
-13. **Is "reads also blocked while the chip is write-protected" the intended, accepted behavior of
-    `FRAM_SPI`'s busy-flag protocol?** `_AsyBaseFramChunk._read_chunk()`'s busy/idle status-byte
-    protocol needs to WRITE a transient busy marker before it reads data, so a real write-protected
-    chip makes `chunk.read()` return `None` too, not just `chunk.write()` — confirmed directly on
-    real hardware (`tests_hardware/device_scripts/fram_write_protect_roundtrip.py`). Not decided
-    here; a project-owner call. **Refreshed 2026-09-11**: the repaired script has now been re-run -
-    `test_write_protection_actually_gates_a_real_write` passed in a full bench-tier run - so the
-    recorded-but-unrefreshed caveat is resolved and the observation stands as current. The behaviour
-    question itself (is reads-also-blocked intended?) is still an open owner call.
+13. **"Reads also blocked while the chip is write-protected" — ANSWERED and CLOSED
+    (project owner, 2026-09-11): intended, accepted, now a defined and asserted behavior.**
+    `_AsyBaseFramChunk._read_chunk()` must WRITE a transient busy marker before it reads, so write
+    protection gates `chunk.read()` exactly as it gates `chunk.write()`. It is an access gate, not
+    data loss — the stored bytes survive and read back intact once protection is cleared. Written
+    up in SPECIFICATION.md Part A.4's FRAM entry (including the two properties that distinguish it
+    from the pause gate: it fails *at* the chip, and `override_pause=True` does not bypass it), and
+    asserted at every tier that can reach it — mock
+    (`test_read_is_also_blocked_while_write_protected_and_the_data_survives_it` plus
+    `test_write_protect_gate_still_reaches_the_bus_unlike_the_pause_gate`), twin
+    (`test_wozi_write_protect_blocks_reads_too_and_the_data_survives_it`) and flash/bench
+    (`fram_write_protect_roundtrip.py`, now asserting the blocked read instead of only noting it).
+    That script also closed a related gap found while answering this: every other check stops at
+    `FRAM_SPI._write()`'s own software guard, so none of them proved the *silicon* refuses
+    anything. It now desyncs the driver's cached `_wp` from the still-protected chip and issues a
+    real WREN+WRITE; the bytes come back unchanged, so the BP0|BP1 protection itself is confirmed
+    on hardware and not merely the driver's early return. Only the bench/flash tier can make that
+    claim - the mock and twin chip fakes both stop at the driver guard too.
 
 14. **Adopt `machine.mem_backup()` for reset forensics?** New in 1.29, on by default on rp2, and
     confirmed present in this project's own built firmware: 28 bytes of watchdog-scratch storage
     that survives a WDT reset and `machine.reset()`, lost only on power-off — SPECIFICATION.md
     Part F.5.4. That is exactly the reset class the 2026-09-08 `WDT_RESET` post-mortem couldn't
-    diagnose, and unlike the FRAM logs it costs zero wear. Needs a project-owner call on what to
-    record (last supervisor phase? last tick? failing task id?) and where the write belongs. Not
-    started.
+    diagnose, and unlike the FRAM logs it costs zero wear. **Decided (project owner, 2026-09-11):
+    not adopted in normal code.** There is no hard reason to carry it systematically, and a
+    breadcrumb written on every supervisor tick is cost with no current customer. It stays
+    documented as a diagnostic tool to reach for *if* a severe, hard-to-debug reset shows up that
+    the FRAM logs cannot explain — at which point it is a deliberate, temporary instrumentation
+    step, not a standing feature. Don't re-propose it as normal-path code.
 15. **Should a transient SPI RX overrun be retried, or left to the task supervisor?** MicroPython
     1.29 added an `OSError(EIO)` raise site to rp2's SPI transfer path for *reading* transfers of
     32+ bytes (SPECIFICATION.md Part F.5.2), reachable here via `asy_fram_driver.py`'s 260-byte
@@ -251,18 +269,33 @@ constraints.
     covers. Still deliberately **not** changed (CLAUDE.md: flag, don't silently fix). Note that the
     interrupted read *does* leave the chunk marked busy and unreadable until rewritten - that is
     intended behavior, not a second bug to weigh here: see SPECIFICATION.md Part A.4's FRAM entry.
-16. **A `ResetErrors` PUT that lands before the FRAM-backed loggers finish `setup()` is silently
-    dropped, and the restore then puts the old history straight back.** Found while making the
-    digital-twin suite's error-persistence checks sound (2026-09-11). The webserver starts answering
-    well before every `PrintLogHistoryStore.setup()` has run, and `print_log.py`'s `reset()` returns
-    early with a `_diag()` when `not self.initialized` - deliberately, so stale state is never
-    written to FRAM before the restore has happened. The consequence is that a `PUT /status
-    {"ResetErrors": true}` issued in that startup window clears only the RAM ring, is never
-    persisted, and is then overwritten by `setup()`'s own `_read()` - a client gets a `200` and the
-    history reappears seconds later. Narrow (a boot-window race only), and the guard it comes from
-    is correct in itself, so nothing was changed - flagged, not fixed, per CLAUDE.md. Options if it
-    ever matters: defer the webserver's start until the loggers are initialized, queue a pending
-    reset to apply after `setup()`, or answer `503` for a reset issued before initialization.
+16. **A `ResetErrors` PUT landing in the boot window used to clear some modules' error logs and
+    silently fail on others — FIXED (2026-09-11), project owner's call.**
+    **Why the window exists** (unchanged, and not itself a defect): every FRAM-backed logger calls
+    its own `await self.pr.setup()` from *inside its task*, not from `build_system()`'s grouped
+    `setup()` batch — SGP40/BMP3XX/SCD30 in `read_loop()`'s `_init_*()`, NEOPIXEL in
+    `neopixel_signal()`, NOTIFY in `monitor_loop()`, SYSTEM in `start_and_check_tasks()`. The
+    webserver's own task does the same in `_run()` and does nothing else before
+    `asyncio.start_server()`, while every `_init_*()` first does real I2C work. So the server is
+    accepting requests while some loggers are still uninitialized, and which ones is decided by
+    task-scheduling order.
+    **What used to happen.** `print_log.py`'s `reset()` cleared the RAM ring and `err_count`, then
+    returned early when `not self.initialized`. The uninitialized modules therefore skipped the
+    FRAM write and their own `setup()` restored the old history straight over the cleared ring,
+    while the already-initialized ones were genuinely cleared — a *partial* clear behind a `200`,
+    leaving the error logs inconsistent across modules.
+    **The fix** (one guard, in `PrintLogHistory.reset()`): a cleared ring is not stale state to be
+    kept away from FRAM — it is exactly what the caller asked to persist. `reset()` now writes
+    unconditionally and marks the logger initialized *once that write succeeds*, so the later
+    `setup()` returns early instead of restoring. A failed write leaves `initialized` False, so
+    `setup()` still runs normally afterwards and nothing is wrongly claimed. `_store_err()`'s own
+    uninitialized guard is untouched — a half-filled ring from before the restore genuinely is
+    stale state, and that is the case the guard was written for.
+    Covered at every tier: mock (`tests/test_print_log.py`'s three new cases,
+    `tests/test_sensortask_wozi.py` through the real webserver route), twin
+    (`tests/test_digital_twin_sensortask_integration.py`, over a real socket against the real twin
+    chip) and flash (`device_scripts/fram_error_log_reset_during_boot_window.py` on the real chip).
+    All four fail against the pre-fix code, verified directly.
 
 ## Deferred / explicitly out-of-scope work
 - **The 1.29.0 pin is now field-proven on the dev bench (2026-09-11).** Real `dev` firmware built
@@ -283,9 +316,15 @@ constraints.
     succeeds after `machine.SPI.deinit()`; the same script also confirms the static per-bus
     singleton claim (`machine.I2C(id) is machine.I2C(id)`) that the two fakes deliberately diverge
     from. Previously only fake-vs-fake agreement.
-  - **Still open: the 12,918 B SRAM-resident-code win** (Part F.5.3) is a linker-map measurement,
-    not a measured runtime speedup - don't quote it as one until a bench timing run backs it up.
-    The 2026-09-11 bench session deliberately did not time it.
+  - **The 12,918 B SRAM-resident-code change (Part F.5.3) - settled 2026-09-11, project owner's
+    call: the question is RAM, not speed.** It is upstream's change, not ours, and nothing in this
+    codebase executes differently because of it (frozen bytecode still lives in and is read from
+    flash; what moved is the interpreter's own machine code). So the linker-map figure stays a
+    *cost* entry and is never to be quoted as a measured speedup - no timing run is wanted. The
+    headroom it leaves IS now measured on real hardware and gated by
+    `tests_hardware/flash/test_memory_stress.py`'s
+    `test_real_gc_heap_headroom_survives_a_full_system_build`: 130,224 B free, 115,536 B largest
+    contiguous block after a real `build_system()`. Numbers and reasoning in Part F.5.3.
 - **The SPI RX-overrun error path shall be tested** (project owner's explicit direction,
   2026-09-10). MicroPython 1.29's new `OSError(EIO)` raise site (SPECIFICATION.md Part F.5.2),
   across the tiers CLAUDE.md's standing bus-hazard rule asks for. **All four are now done**;
@@ -315,16 +354,6 @@ constraints.
     a rewrite - the intended destructive-readout protection of SPECIFICATION.md Part A.4's FRAM
     entry, now proven on the real chip rather than only modelled.
 
-- **The four legacy `build-*.sh` scripts carry 28 shellcheck findings, including no shebang at
-  all.** `scripts/lint.sh` and CI run shellcheck over `scripts/` only, where all 14 modern scripts
-  are already clean - so that lane was a free ratchet. `build-arzi.sh`/`build-dev.sh`/
-  `build-neu.sh`/`build-wozi.sh` are the same pre-refactor generation as `python/`+`modules/` and
-  stay out of scope by that same standing decision. What is actually in there: **SC2148 x4** - none
-  of the four has a shebang line, so they work today only because whatever invokes them happens to
-  be bash; **SC2164 x21** - `cd` without `|| exit`, so a failed `cd` silently continues in the
-  wrong directory (in the build scripts that means writing output somewhere unintended); **SC2103
-  x5** - `cd ..` back instead of a subshell. All mechanical, none urgent, all real. Fold in
-  whenever the legacy build path is next touched.
 - **`tests_hardware/device_scripts/`'s two real-hardware bugs are fixed but NOT re-run on the
   bench.** Moving that directory into the MicroPython mypy pass (commit 08529d1) is what surfaced
   them; both are grounded in source, not inferred, but neither has been executed against real
