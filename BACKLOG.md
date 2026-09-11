@@ -205,20 +205,28 @@ constraints.
     testing directly on a Debian trixie (GCC 14.2) bench host outside this recipe. Whether to add a
     second trixie/GCC>=14 chroot target to the standing recipe (and if so, alongside or replacing
     noble) is an open choice for the project owner, not decided or built here.
-12. **Does `machine.soft_reset()` reset the RP2040 hardware counter `time.ticks_ms()` derives from?**
-    If it does, any `board.exec()` call spaced across `tests_hardware/flash/
-    test_bus_electrical_timing.py::test_ticks_ms_real_2pow30_rollover`'s multi-day wait would itself
-    corrupt the measurement (each such call interrupts via Ctrl-C, not soft-reset, unless mpremote's
-    own `_auto_soft_reset` default fires one). Confirm on the first real run of that test before
-    trusting its result.
+12. **Does `machine.soft_reset()` reset the RP2040 hardware counter `time.ticks_ms()` derives
+    from? - ANSWERED on real hardware (2026-09-11): no, but the question was aimed at the wrong
+    mechanism.** Two `mpremote exec` reads 3s apart returned 25769 and 29136 ms (delta 3367): the
+    soft reset mpremote performs on raw-REPL entry leaves the counter running, because it is
+    free-running hardware time.
+    **The real hazard is the watchdog, not the soft reset.** An `mpremote exec` stops `main.py`, so
+    nothing feeds the WDT and the board takes a genuine *hard* reset ~8s later - which DOES reset
+    the counter. Measured directly: two reads 12s apart returned 1368364 then 5323 ms, the second
+    being time since the intervening WDT reset. So `test_ticks_ms_real_2pow30_rollover`'s multi-day
+    `board.exec()` polling still corrupts its own measurement, just via the WDT hard reset rather
+    than via soft-reset semantics - each poll costs ~8s of uptime and restarts the count. Any real
+    multi-day run needs the poll to re-feed or disable the watchdog, or to observe passively
+    (`tail_log()`) instead.
 13. **Is "reads also blocked while the chip is write-protected" the intended, accepted behavior of
     `FRAM_SPI`'s busy-flag protocol?** `_AsyBaseFramChunk._read_chunk()`'s busy/idle status-byte
     protocol needs to WRITE a transient busy marker before it reads data, so a real write-protected
     chip makes `chunk.read()` return `None` too, not just `chunk.write()` — confirmed directly on
     real hardware (`tests_hardware/device_scripts/fram_write_protect_roundtrip.py`). Not decided
-    here; a project-owner call. **The observation predates `ca767ba`**, which broke that script's
-    own call sites (see the Deferred list below) - it has not been runnable since, and the repaired
-    version has not been re-run, so treat the finding as recorded-but-unrefreshed.
+    here; a project-owner call. **Refreshed 2026-09-11**: the repaired script has now been re-run -
+    `test_write_protection_actually_gates_a_real_write` passed in a full bench-tier run - so the
+    recorded-but-unrefreshed caveat is resolved and the observation stands as current. The behaviour
+    question itself (is reads-also-blocked intended?) is still an open owner call.
 
 14. **Adopt `machine.mem_backup()` for reset forensics?** New in 1.29, on by default on rp2, and
     confirmed present in this project's own built firmware: 28 bytes of watchdog-scratch storage
