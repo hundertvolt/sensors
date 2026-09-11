@@ -150,6 +150,18 @@ registration API and A.9's `HTML_SRC_DIRS` are shaped around it). Real-hardware 
   back intact, but an interrupted restore means they cannot be trusted, so refusing them is
   correct. Only a write clears it. Pinned down by `tests/test_asy_fram_manager.py`'s
   `test_an_overrun_mid_read_leaves_the_chunk_unreadable_until_it_is_rewritten`; don't "fix" it.
+  **What this costs at the error-log layer, and the decision on it** (project owner, 2026-09-11):
+  when both copies are left marked, `PrintLogHistoryStore.setup()`'s `_read()` fails and its
+  `_write()` fallback stores the empty ring, so an abrupt reset mid-write **loses that module's whole
+  persisted error history**. Measured in the digital twin at roughly 1 abrupt restart in 8. That is
+  **accepted** — no recovery scheme is wanted for a reboot that catches the chip mid-operation; the
+  invariant that must hold instead is that the loss is *all-or-nothing*, never a partial or garbled
+  restore. A *commanded* reboot is the case that must never lose anything, and already doesn't:
+  `system_service.py`'s `_reboot()` pauses permanent storage before resetting, which gates every
+  `_write()`/`_read()`/`clear()` so nothing can be in flight (measured 20/20 in the twin against the
+  ~1-in-8 unpaused rate). Covered at every tier — `tests/test_fram_integration.py` (both blocks
+  torn), `scripts/_digital_twin_ci_suite.py` runs 5b/5c, and
+  `tests_hardware/flash/test_fram_storage.py`'s reset-race pair on real silicon.
   "Both copies valid but different" is a hard failure (no generation counter), never guessed. `AsyFramTimestampedChunk.write()`/`write_into()`
   return `(ntp_synced, utc, success)` — `success` is third, not first; don't reorder. `AsyFramManager`
   is a bump-pointer allocator: instantiation order is on-chip layout and must stay identical across

@@ -161,6 +161,8 @@ constraints.
    concrete confirmation that concurrent request handling can already push the heap into real,
    if transient, near-exhaustion troughs at the *current* `max_connections=4` - a data point against
    raising the cap without also addressing headroom, not just a RAM-per-buffer cost argument.
+   **Owner's call, 2026-09-11: keep deferred** - stays as-is, revisit only if a real deployment
+   symptom makes it pressing.
 8. **Two real-hardware bench-rig capabilities, flagged as "not currently provisioned" during the
    original `tests_hardware/` design discussion, each gating one test candidate from `[MANUAL]` to
    `[AUTO]`** (migrated from the now-deleted `HARDWARE_TEST_PLAN.md` — see SPECIFICATION.md Part
@@ -249,6 +251,18 @@ constraints.
     covers. Still deliberately **not** changed (CLAUDE.md: flag, don't silently fix). Note that the
     interrupted read *does* leave the chunk marked busy and unreadable until rewritten - that is
     intended behavior, not a second bug to weigh here: see SPECIFICATION.md Part A.4's FRAM entry.
+16. **A `ResetErrors` PUT that lands before the FRAM-backed loggers finish `setup()` is silently
+    dropped, and the restore then puts the old history straight back.** Found while making the
+    digital-twin suite's error-persistence checks sound (2026-09-11). The webserver starts answering
+    well before every `PrintLogHistoryStore.setup()` has run, and `print_log.py`'s `reset()` returns
+    early with a `_diag()` when `not self.initialized` - deliberately, so stale state is never
+    written to FRAM before the restore has happened. The consequence is that a `PUT /status
+    {"ResetErrors": true}` issued in that startup window clears only the RAM ring, is never
+    persisted, and is then overwritten by `setup()`'s own `_read()` - a client gets a `200` and the
+    history reappears seconds later. Narrow (a boot-window race only), and the guard it comes from
+    is correct in itself, so nothing was changed - flagged, not fixed, per CLAUDE.md. Options if it
+    ever matters: defer the webserver's start until the loggers are initialized, queue a pending
+    reset to apply after `setup()`, or answer `503` for a reset issued before initialization.
 
 ## Deferred / explicitly out-of-scope work
 - **The 1.29.0 pin is now field-proven on the dev bench (2026-09-11).** Real `dev` firmware built

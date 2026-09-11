@@ -8,6 +8,8 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from harness import wait_until
+
 if TYPE_CHECKING:
     from harness import Board
 
@@ -49,6 +51,22 @@ def test_sgp40_voc_state_backs_up_to_and_restores_from_the_real_chip(board: Boar
 
 def test_error_log_history_persists_in_the_real_chip_across_a_simulated_reboot(board: Board) -> None:
     _run_and_assert_pass(board, "fram_error_log_roundtrip.py", timeout_s=30.0, label="FRAM error log roundtrip")
+
+
+def test_error_log_history_is_all_or_nothing_across_a_reset_raced_chunk_write(board: Board) -> None:
+    # The other half of the claim above: that one simulates a fresh boot with a new manager object
+    # in the SAME process, so it never actually restarts and can only ever show the happy path.
+    # A real reset landing mid-chunk-write is the case that matters, and losing the whole history to
+    # it is accepted behavior (project owner's call, 2026-09-11 - no recovery scheme wanted): an
+    # interrupted write leaves a status byte at _STATUS_BUSY, PrintLogHistoryStore.setup()'s _read()
+    # then fails, and its _write() fallback stores the empty ring. Measured in the digital twin at
+    # roughly 1 abrupt restart in 8. What must never happen - and is what this asserts on silicon -
+    # is a PARTIAL or garbled restore, which would mean the dual-block + CRC + busy-flag protocol
+    # had failed at its actual job. Chunk-level counterpart to test_bus_concurrency.py's own
+    # raw-driver test_fram_hard_reset_race_during_write_and_recovery.
+    board.run_isolated_expect_reset(DEVICE_SCRIPTS / "fram_error_log_reset_race_seed_and_race.py", timeout_s=30.0)
+    wait_until(board.is_reachable, timeout_s=30.0, poll_interval_s=1.0, description="board reachable again after the reset-raced error-log write")
+    _run_and_assert_pass(board, "fram_error_log_reset_race_verify.py", timeout_s=60.0, label="FRAM error-log reset-race all-or-nothing check")
 
 
 # ---------------------------------------------------------------------------
