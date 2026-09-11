@@ -179,7 +179,7 @@ def test_collect_chips_skips_a_bus_var_the_module_never_constructed() -> None:
     # A generated device that has no i2c1 at all (e.g. every sensor lives on i2c0) must not crash
     # _collect_chips() just because plan["buses"] happens to be empty for i2c1 - getattr()'s own
     # default handles a bus name the module never set as an attribute in the first place too.
-    plan: "dict[str, Any]" = {"buses": {"i2c1": []}, "spi": {}}
+    plan: dict[str, Any] = {"buses": {"i2c1": []}, "spi": {}}
     module = _FakeModule()
     assert _collect_chips(module, plan) == {}
 
