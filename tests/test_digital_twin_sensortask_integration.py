@@ -990,7 +990,18 @@ for _param_name, _param_fn in _PARAM_SCENARIOS:
 
         def _make_test(fn: "Callable[[str], None]" = _param_fn, device: str = _device) -> "Callable[[], None]":
             def test() -> None:
-                fn(device)
+                try:
+                    fn(device)
+                finally:
+                    # This section's own 18 generated tests (3 scenarios x 6 devices) each build a
+                    # whole real build_system() object graph, on top of the ~11 heavier tests above
+                    # in this same file/process - confirmed the hard way (BUILD_CHAIN_PLAN.md's
+                    # Session 6.2): without this, dev's 256KB FRAM chip fake intermittently raised a
+                    # real MemoryError, garbage from earlier generated tests outpacing MicroPython's
+                    # own gc.threshold(32768)-triggered collection at this file's now-higher test
+                    # volume. Same fix as test_digital_twin_webserver_concurrency.py's own generated
+                    # tests use, for the same reason.
+                    gc.collect()
 
             return test
 
