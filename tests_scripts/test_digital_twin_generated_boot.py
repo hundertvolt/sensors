@@ -159,14 +159,14 @@ def test_synthetic_fixture_boots_and_serves_over_real_http(
     assert failures == []
 
 
-@pytest.mark.parametrize("device", ["wozi", "dev"])
+@pytest.mark.parametrize("device", ["wozi", "dev", "arzi", "klkizi", "grkizi", "schlafzi"])
 def test_real_device_boots_its_generated_module_and_serves_over_real_http(
     repo_root: Path, micropython_bin: Path, src_dir: Path, ext_dir: Path, tmp_path: Path, device: str,
 ) -> None:
-    # The two real devices' own TOML, generated fresh here rather than imported as the hand-written
-    # src/sensortask_wozi.py/sensortask_dev.py digital_twin/run_wozi_integration.py/
-    # run_dev_integration.py boot - this is the actual proof that Session 3's generator produces a
-    # module that runs, not just one that ast.parse()s.
+    # Every real device's own TOML (not just wozi/dev, the two with a hand-written
+    # src/sensortask_<device>.py of their own), generated fresh here - this is the actual proof that
+    # Session 3's generator produces a module that runs, for every real device, not just one that
+    # ast.parse()s (BUILD_CHAIN_PLAN.md's Session 5 write-up: "ideally every" entry point).
     device_toml = repo_root / "devices" / f"{device}.toml"
     port = _free_port()
     failures = _boot_generated_device(repo_root, micropython_bin, src_dir, ext_dir, device_toml, tmp_path, port)

@@ -221,9 +221,10 @@ MICROPYPATH="/tmp/twin_boot:src:digital_twin:ext:.frozen" <micropython-unix-port
 
 `tests_scripts/test_digital_twin_generated_boot.py` does exactly this (via `subprocess.Popen`, the
 same pattern `scripts/_digital_twin_ci_suite.py` already uses for the hand-written wozi module) for
-`wozi`, `dev`, and both mandatory synthetic fixtures (`novel_combo.toml`, `multi_instance.toml`),
-asserting a real `GET` against five real REST endpoints all return 200 — the first point in this
-initiative a generated module has actually been *run*, not just `ast.parse()`d.
+all 6 real devices (`wozi`, `dev`, `arzi`, `klkizi`, `grkizi`, `schlafzi`) plus both mandatory
+synthetic fixtures (`novel_combo.toml`, `multi_instance.toml`), asserting a real `GET` against five
+real REST endpoints all return 200 — the first point in this initiative a generated module has
+actually been *run*, not just `ast.parse()`d.
 `run_generic_integration.py`'s own fault/hang chip lookup (`_collect_chips()`) is the generalized
 form of `run_wozi_integration.py`'s/`run_dev_integration.py`'s hardcoded
 `{"scd30": sensortask_wozi.i2c0._i2c.devices[0x61], ...}` dict — it walks the same wiring plan

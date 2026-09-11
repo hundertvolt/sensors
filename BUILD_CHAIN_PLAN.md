@@ -637,9 +637,12 @@ script quality bar" below, not repeated here.
      `compute_twin_wiring()`-derived JSON plan to a temp dir, spawns the real MicroPython Unix-port
      binary running `run_generic_integration.py` against them (same subprocess-over-real-HTTP pattern
      `scripts/_digital_twin_ci_suite.py` already uses for the hand-written wozi module), and asserts
-     a real `GET` against five real REST endpoints all return 200 - for `wozi`, `dev`, `novel_combo`,
-     and `multi_instance`. This is the first point in the whole initiative a generated module has
-     ever actually booted and served real traffic, not just parsed.
+     a real `GET` against five real REST endpoints all return 200 - for all 6 real devices (`wozi`,
+     `dev`, `arzi`, `klkizi`, `grkizi`, `schlafzi`) plus the `novel_combo`/`multi_instance` synthetic
+     fixtures - the full "ideally every" bar this mission's own write-up set, not just the two real
+     devices with a hand-written `sensortask_*.py` to fall back on. This is the first point in the
+     whole initiative a generated module has ever actually booted and served real traffic, not just
+     parsed.
    - **A real bug this proof depth actually caught, and fixed**: every generated module crashed on
      boot with `AttributeError: 'AsyFramManager' object has no attribute 'get_task_starters'` the
      first time this session's own boot test ran it - `buildgen/codegen.py`'s `_emit_collectors()`
