@@ -10,7 +10,7 @@ import asyncio
 import machine
 
 import asy_uart_driver
-from asy_uart_comm import ROLE_INITIATOR, ROLE_RESPONDER, UART_Comm
+from asy_uart_comm import ROLE_INITIATOR, ROLE_RESPONDER, ListenResult, UART_Comm
 
 try:
     from typing import TYPE_CHECKING
@@ -28,6 +28,11 @@ TIMEOUT_MS = 1000
 BAUDRATE = 115200
 POLL_WAIT_MS = 2
 BUF_BYTES = 512
+# Every wait below is bounded and feeds as it goes: a link that never answers parks the listener in
+# uart_listen()'s one unbounded read, and waiting that out outlasts the watchdog, so a wiring fault
+# resets the board instead of naming the failing check (measured on deliberately unjumpered pins).
+JOIN_STEP_MS = 100
+JOIN_BUDGET_MS = 2000
 
 _CMD_BANNER = 0x01
 _CMD_ECHO = 0x02
@@ -47,6 +52,28 @@ def get_callback(cmd_id: int) -> "tuple[bool, bytes | None]":
 
 def set_callback(cmd_id: int) -> "tuple[bool, int | None]":
     return (cmd_id == _CMD_ECHO), None
+
+
+async def _settled(wdt: "machine.WDT", task: "asyncio.Task[ListenResult]") -> bool:
+    # Polls rather than asyncio.wait_for(): the watchdog has to be fed while waiting, and a bounded
+    # poll is the only shape that both waits and feeds.
+    for _ in range(JOIN_BUDGET_MS // JOIN_STEP_MS):
+        if task.done():
+            return True
+        wdt.feed()
+        await asyncio.sleep_ms(JOIN_STEP_MS)
+    return task.done()
+
+
+async def _join_listener(wdt: "machine.WDT", responder: UART_Comm, listener: "asyncio.Task[ListenResult]") -> None:
+    # clear() is the module's own documented unstick for a listener parked in that unbounded read
+    # (SPECIFICATION.md Part J.5) - it cannot finish on its own once its frame never arrived.
+    if await _settled(wdt, listener):
+        return
+    await responder.clear()
+    if not await _settled(wdt, listener):
+        listener.cancel()
+        await _settled(wdt, listener)
 
 
 async def _main() -> None:
@@ -74,10 +101,8 @@ async def _main() -> None:
         try:
             return await work
         finally:
-            try:
-                await asyncio.wait_for(listener, 10)
-            except asyncio.TimeoutError:
-                listener.cancel()
+            wdt.feed()  # the transaction above has its own timeout/resync budget to spend first
+            await _join_listener(wdt, responder, listener)
 
     if not failures:
         answer = await exchange(initiator.uart_get(_CMD_BANNER))

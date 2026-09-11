@@ -77,10 +77,12 @@ constraints.
   asked for: an import-scanning builder that selects `sensortask_dev` pulls `asy_uart_comm` in behind
   it. Independently, today's `scripts/build_firmware.py` globs and freezes all of `src/*.py`, so a
   dev firmware built with it contains the module either way. **The H3/H4 hardware tiers are therefore
-  not blocked** — they are written (`tests_hardware/flash/test_uart_crossover.py` with its two device
-  scripts, and `tests_hardware/bench/test_uart_link_under_api_load.py`) and should run against a dev
-  firmware built today, given the hardware and the owner's go-ahead; their skip guards remain only as
-  a clear diagnostic if some future firmware genuinely lacks the module.
+  not blocked, and have now been run** (2026-09-11, dev bench, owner's go-ahead in-session):
+  `tests_hardware/flash/test_uart_crossover.py` 2/2 and
+  `tests_hardware/bench/test_uart_link_under_api_load.py` 2/2, against a dev firmware built from the
+  branch and flashed for the purpose. Neither skip guard fired, which independently confirms
+  `asy_uart_comm` does reach a dev build behind `sensortask_dev`; they remain only as a diagnostic if
+  some future firmware genuinely lacks the module.
   What is left for the integration session is a design question this branch should not answer for it:
   whether the auto-builder's selection model wants the variant entry point to carry the link (as it
   does now), or a separate selectable `uart_crossover` unit so the link can be included or omitted
@@ -303,6 +305,41 @@ constraints.
    "flag, don't silently change" rule.
 
 ## Deferred / explicitly out-of-scope work
+- **OPEN, BLOCKING A GREEN SUITE: `tests/test_digital_twin_run_dev_integration.py`'s bounded-soak
+  test times out after this branch's `asy_uart_driver.py` read clamp.** Bisected to `_buffered()`
+  (not the yield, not the twin's new `any()`); it is a slowdown, not a hang — the same run completes
+  cleanly in ~66s against the test's own 60s budget. The baseline number was never captured, which
+  is the next step. **Full investigation state, including what was ruled out and the candidate
+  resolutions, is in `UART_BENCH_SESSION_HANDOVER.md` §4** — read that before touching it, and in
+  particular do not resolve it by reverting the clamp, which would restore a measured 4.4ms
+  synchronous block of the event loop on real hardware.
+- **The UART fakes do not model a real read's per-byte wait, which is why the unit/twin tiers could
+  not have caught the loop-stall defect** (found on the bench 2026-09-11, fixed in
+  `asy_uart_driver.py`, SPECIFICATION.md Part F.5.8). `tests/machine.py`'s and
+  `digital_twin/machine.py`'s `UART.readinto()` return `min(nbytes, len(rx_queue))` immediately;
+  the real peripheral instead waits out `timeout_char` for every byte the caller asked for that has
+  not arrived, holding the asyncio loop for the whole frame. Both fakes now expose `any()`, which is
+  what the driver's clamp reads, so the fixed code is exercised - but a *regression* would still
+  pass both tiers silently. Modelling the wait properly (a fake that refuses to hand back bytes the
+  link has not delivered yet, and records the stall a caller asking past that point would have
+  taken) is the real close-out, and is a test-infrastructure change worth its own scope.
+- **The bench tier's H4 "a transfer completes while the API is hammered" claim is currently
+  vacuous, because nothing on the live `dev` system ever initiates one.**
+  `tests_hardware/bench/test_uart_link_under_api_load.py` hammers `/status` and `/measurements` and
+  then asserts `UART_INIT`/`UART_RESP` logged no errors - but `sensortask_dev.py` registers
+  `uart_initiator.get_task_starters()` as deliberately empty (the role decides the task set), so the
+  only live link task is the responder's listen loop, parked waiting for a peer that never speaks.
+  The test therefore proves an idle link stays idle, not that link work and request handling
+  coexist, which is what `UART_PROMOTION_REQUIREMENTS.md` H4 actually specifies. Closing it needs a
+  way to drive the initiator on a running system, and the shape of that is an owner decision rather
+  than a test detail: a dev-only command route registered on `app` before `WebserverService` claims
+  `/<path:filename>` (H4.2 explicitly permits a command-only, never-persisted `PUT`), or a periodic
+  dev-only initiator task, or extending `_SYSTEM_CMDS` - the first keeps the shared webserver
+  untouched, the last does not. Deliberately not decided here.
+  **Owner direction (2026-09-11): H4 applies sensibly once a full bench-tier run is actually
+  started, which is the next session's job.** This session ran the UART tests alone, on purpose, so
+  the observation above is what an isolated run can show; revisit the claim in the context of a
+  whole bench run rather than treating it as a defect in the test on its own.
 - **Four UART-audit findings reviewed and deliberately left as they are** (audit pass over the
   promotion, 2026-09-11 - every other finding from that pass was fixed and tested):
   - **A responder's `set_callback` returning `None` ("don't care") lets the *peer* size a heap

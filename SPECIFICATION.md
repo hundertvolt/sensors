@@ -1965,6 +1965,90 @@ rather than stylistic — `tests_hardware/device_scripts/uart_crossover_recovery
 deinits and re-inits a live port, which is exactly the sequence that would otherwise corrupt the
 heap on real hardware.
 
+### F.5.8 `machine.UART.read()/readinto()` block the asyncio loop for bytes not yet arrived
+
+Read out of `ports/rp2/machine_uart.c` at `v1.29.0` and then **measured on the dev bench's own
+crossover jumper**, because the consequence is a real-time property no code review makes obvious.
+
+`mp_machine_uart_read()` loops once per requested byte. When the RX ring is empty it waits — and
+that wait is `mp_event_handle_nowait()`, which runs scheduled callbacks but **never yields to
+asyncio**. The per-byte budget is `self->timeout` for the first byte and `self->timeout_char`
+(this project's drivers pass `1`) for every one after it. A byte at 115200 baud arrives every
+~87 us, comfortably inside that 1 ms, so the loop never times out mid-frame: it simply spins,
+synchronously, until the whole requested count has arrived. `select.poll()` does not protect
+against this — `mp_machine_uart_ioctl()` reports `POLLIN` as soon as the FIFO holds *one* byte.
+
+Measured across the jumper, asking for a whole 53-byte frame the moment `POLLIN` first fires:
+
+| Trial | Bytes buffered at `POLLIN` | `readinto(buf, 53)` returned | CPU held, synchronously |
+|---|---|---|---|
+| 0 | 3 | 53 | 4195 us |
+| 1-4 | 2 | 53 | 4370-4405 us |
+
+Against a wire time of ~4600 us for that frame — i.e. the read holds the loop for essentially the
+entire remaining transmission. **Nothing else in the event loop runs for that whole span**, which
+is exactly what the UART driver and protocol module are required never to do (owner direction,
+2026-09-11: they may time out and handle it, but may never block synchronously, not even in a wait
+state).
+
+**The fix has two halves, and the first alone is worse than useless.**
+
+1. *Ask only for what is already buffered.* `mp_machine_uart_any()` drains the RX FIFO into the ring
+   and returns its fill level, so it never under-reports what a preceding `POLLIN` saw; clamping
+   every counted read to it means the per-byte wait loop is never entered.
+   `asy_uart_driver.UART._buffered()` is that clamp, on all four counted read paths (`read()`,
+   `readinto()`, `read_until_complete()`, `readinto_until_complete()`).
+2. *Yield between rounds.* With the clamp alone the stall did not improve — it got **worse**,
+   measured at 14.6ms. `ready()` returns `True` with **no `await` at all** whenever `ipoll()`
+   already reports the mask, so a frame still mid-flight was simply read in a Python loop with no
+   yield point: the same block, reimplemented one level up and slower than the C busy-wait it
+   replaced. `_yield_between_rounds()` (`await asyncio.sleep_ms(0)`) runs after any round that did
+   not complete the request. `_read_delimited()` is the same shape one byte at a time — it yields
+   every `_DELIMITED_YIELD_BYTES` (16) instead of per byte, since a task switch every ~87us of wire
+   time buys nothing.
+
+A zero-length round additionally falls back to `sleep_ms(poll_wait_ms)`, so the retry can never
+become an unyielding spin on `ready()` even if `any()` ever disagreed with `POLLIN`.
+
+**Measured result, both halves in place.** The honest measurement is the *longest single
+non-yielding call*, not a loop-latency probe: an `asyncio` probe task cannot distinguish "the loop
+is idle waiting on a timer" from "the loop is blocked", and the driver's own cooperative
+`sleep_ms(poll_wait_ms)` waits put both at the same ~2ms. Timing the C calls directly does
+distinguish them:
+
+| Call, in-flight 53-byte frame | Worst single synchronous span |
+|---|---|
+| `uart.readinto(buf, 53)` — before, asking for the whole frame | 4195-4405 us |
+| `uart.readinto(buf, any())` — after, clamped | **278 us** |
+| `uart.any()` | 72 us |
+| `uart.write(53B)` | 171 us |
+
+For scale, this board's own scheduler noise floor — the worst gap a `sleep_ms(0)` probe sees with
+no UART activity at all — is 400-900us, so the clamped read is already below the point at which
+the measurement means anything. An A/B on one firmware (defeating `_buffered()` at runtime to ask
+for the whole frame again) moves the end-to-end worst loop gap from 3.1ms to 6.3ms, confirming the
+same thing from the other direction.
+
+**Why no test caught it.** `tests/machine.py`'s and `digital_twin/machine.py`'s UART fakes return
+`min(nbytes, len(rx_queue))` and never wait — they model a non-blocking read the real peripheral
+does not provide. Both now expose `any()` (the twin's pumps its link first, mirroring the real
+FIFO drain), but modelling the *blocking* itself is still open (BACKLOG.md). This is precisely the
+class `UART_PROMOTION_REQUIREMENTS.md` H3.3 predicted the flash tier would be the one to find.
+
+**This does not generalise to `asy_i2c_driver.py`/`asy_spi_driver.py`, and must not be applied
+there.** A UART read is fixable only because the peripheral offers a genuinely non-blocking path —
+`POLLIN` plus `any()` report what has already arrived, so the driver can take exactly that and come
+back. `machine.I2C`/`machine.SPI` expose no equivalent: a transfer is one synchronous transaction
+with no partial-read API to clamp to, so an SCD30's 18-byte read *is* a ~1.8ms synchronous span by
+construction. That is the case Part F.2 already settles — the hardware watchdog is the accepted
+backstop, and no I2C-level timeout mechanism is to be proposed for it.
+
+The write side is the same shape but bounded, and needed no change: `mp_machine_uart_write()`
+short-writes rather than waiting once `timeout` (0 here) elapses, and `_write_all()` gates on
+`POLLOUT` and retries. Its theoretical worst case is the ~1 ms it takes `ticks_ms()` to advance,
+never a frame time — and measured at 171 us for a whole 53-byte frame, since a `txbuf` with room
+takes the lot in one copy and the wire drains by interrupt.
+
 ## F.6 A SIGINT during `gc_collect()` can wedge the Unix-port heap
 
 **Not a 1.29 regression** — measured at the same ~5% rate on Unix ports built from both `v1.28.0`

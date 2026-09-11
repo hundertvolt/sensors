@@ -659,6 +659,13 @@ class UART(io.IOBase):
         if UART._live.get(self.id) is self:
             del UART._live[self.id]
 
+    def any(self) -> int:
+        # Real machine.UART.any() drains the RX FIFO before counting, so it never under-reports
+        # what a preceding POLLIN saw - _pump() is this fake's equivalent, and omitting it would
+        # make asy_uart_driver's read clamp (which calls this) starve on a link with bytes in it.
+        self._pump()
+        return len(self.rx_queue)
+
     def read(self, nbytes: int | None = None) -> bytes | None:
         self._pump()
         n = len(self.rx_queue) if nbytes is None else min(nbytes, len(self.rx_queue))

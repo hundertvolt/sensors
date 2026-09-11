@@ -32,6 +32,11 @@ _LF = const(0x0A)  # b"\n"[0] - readline_until_complete's own-line terminator
 # only a genuinely wedged one reaches this bound, and it is what makes the call provably terminating.
 _CANCEL_ACK_TIMEOUT_MS = const(1000)
 
+# How many bytes _read_delimited() consumes between yields. It must read one byte per call (a wider
+# read would swallow the next frame's head), so yielding per byte would cost a task switch every
+# ~87us of wire time at 115200 baud; 16 bounds the loop's hold at ~1.4ms instead.
+_DELIMITED_YIELD_BYTES = const(16)
+
 
 class UART(Lockable):
     def __init__(
@@ -104,6 +109,25 @@ class UART(Lockable):
             return None
         return self._uart
 
+    @staticmethod
+    def _buffered(uart: "_UART", want: int) -> int:
+        # machine.UART.read/readinto wait out timeout_char for EVERY byte asked for that has not
+        # arrived yet, and that wait is synchronous (mp_event_handle_nowait(), never an asyncio
+        # yield) - measured at 4.4ms of held loop for one 53-byte frame at 115200 baud. Asking only
+        # for what is already buffered is what keeps this driver's reads non-blocking.
+        try:
+            return min(want, uart.any())
+        except (OSError, MemoryError):  # never-raises contract - see the module docstring
+            return 0
+
+    @staticmethod
+    async def _yield_between_rounds() -> None:
+        # The clamp above stops the C read from waiting, but ready() returns True with no await at
+        # all while POLLIN still stands, so a frame still mid-flight would be read in a Python loop
+        # with no yield point - the same stall, only slower. sleep_ms(0) re-queues behind whatever
+        # else is runnable, which is what keeps a multi-round frame read off the event loop's back.
+        await asyncio.sleep_ms(0)
+
     async def _write_all(self, uart: "_UART", buf: bytearray | memoryview) -> bool:
         # rp2 uart.write() can short-write instead of raising, so retry with what is left - the
         # write-side counterpart of read_until_complete()'s loop. The view is re-sliced only after a
@@ -136,7 +160,7 @@ class UART(Lockable):
         while True:
             if size >= bound:
                 return None  # no delimiter within a whole worst-case frame: a decode failure
-            got = uart.readinto(view[size : size + 1], 1)
+            got = uart.readinto(view[size : size + 1], 1)  # one buffered byte at most: never waits
             if got is None or got == 0:
                 if not await self.ready(select.POLLIN, timeout_ms=timeout):
                     return None  # ready() timed out or was cancelled
@@ -145,6 +169,8 @@ class UART(Lockable):
             timeout = timeout_ms
             if buf[size] != delimiter:
                 size += 1
+                if not size % _DELIMITED_YIELD_BYTES:  # see _yield_between_rounds(): this loop is
+                    await self._yield_between_rounds()  # the same shape, one byte per round
                 continue
             if self._skip_to_delimiter:  # B2.2: the fragment a resync landed in the middle of
                 self._skip_to_delimiter = False
@@ -275,7 +301,8 @@ class UART(Lockable):
             return None
         if nbytes is None:
             return uart.read()
-        return uart.read(nbytes)
+        want = self._buffered(uart, nbytes)
+        return uart.read(want) if want else None
 
     async def read_until_complete(
         self, nbytes: int, start_timeout_ms: int = -1, timeout_ms: int = -1,
@@ -299,7 +326,11 @@ class UART(Lockable):
         msg = bytearray()
         while len(msg) < nbytes:
             if await self.ready(select.POLLIN, timeout_ms=timeout):
-                add = uart.read(nbytes - len(msg))
+                want = self._buffered(uart, nbytes - len(msg))
+                if not want:  # POLLIN without a readable byte: yield rather than spin on ready()
+                    await asyncio.sleep_ms(self.poll_wait_ms)
+                    continue
+                add = uart.read(want)
                 if add is None:
                     return None
                 try:
@@ -307,6 +338,8 @@ class UART(Lockable):
                 except MemoryError:
                     return None
                 timeout = timeout_ms  # once started, use the regular timeout for the remaining parts
+                if len(msg) < nbytes:
+                    await self._yield_between_rounds()
             else:
                 return None  # ready() timed out or was cancelled
         try:
@@ -322,7 +355,8 @@ class UART(Lockable):
             return None
         if nbytes is None:
             return uart.readinto(buf)
-        return uart.readinto(buf, nbytes)
+        want = self._buffered(uart, nbytes)
+        return uart.readinto(buf, want) if want else None
 
     async def readinto_until_complete(
         self, buf: bytearray, nbytes: int, start_timeout_ms: int = -1, timeout_ms: int = -1,
@@ -344,11 +378,17 @@ class UART(Lockable):
         buf_mv = memoryview(buf)
         while size < nbytes:
             if await self.ready(select.POLLIN, timeout_ms=timeout):
-                nb = uart.readinto(buf_mv[size:], nbytes - size)
+                want = self._buffered(uart, nbytes - size)
+                if not want:  # see read_until_complete()'s own comment - yield, never spin
+                    await asyncio.sleep_ms(self.poll_wait_ms)
+                    continue
+                nb = uart.readinto(buf_mv[size:], want)
                 if nb is None:
                     return None
                 size += nb
                 timeout = timeout_ms  # once started, use the regular timeout for the remaining parts
+                if size < nbytes:
+                    await self._yield_between_rounds()
             else:
                 return None  # ready() timed out or was cancelled
         return await self.crc.check_from(buf, size=size)

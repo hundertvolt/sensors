@@ -1324,7 +1324,10 @@ Both follow CLAUDE.md's "flag, don't silently change" rule.
 Each verified by running it, not by inspection. **Status as of this branch:**
 
 - `scripts/lint.sh`, `scripts/typecheck.sh` (all three passes) and `scripts/test.sh` exit 0 with zero
-  findings, and the finding count on untouched files is unchanged.
+  findings, and the finding count on untouched files is unchanged. **Not currently true**: lint and
+  all three typecheck passes are clean, but `scripts/test.sh` is at 59/60 files — the hardware
+  session's driver fix regressed one digital-twin soak test into a timeout. See
+  `UART_BENCH_SESSION_HANDOVER.md` §4; the branch was pushed red on the owner's direction.
 - Every item above has its function tests **and** its failure tests. I3.4's revert-and-confirm pass
   was run over seven substantive fixes — the latched cancel handshake, exact `CMD` matching, the
   zero-filled padding, the bounded drain, the deferred final ACK, chunk 1's `SIZE` rule, and the role
@@ -1334,11 +1337,24 @@ Each verified by running it, not by inspection. **Status as of this branch:**
   buys is the diagnostic split between "not a command at all" and "a command, but not the one due
   here" — the second being the peer's own contract violation that E1.3 reports under its own errno.
   A test now pins that, and all seven fixes are proven.
-- The flash and bench comm-hazard tiers (H3/H4) are **written**. Their *authoring* is this branch's
-  done criterion; their first run needs real hardware and the project owner's go-ahead given directly
-  in that session, which no branch can satisfy on its own. They are **not** blocked on a build
-  dependency — that earlier claim was corrected once G1's wiring made `sensortask_dev.py` the
-  upstream module whose absence the claim rested on.
+- The flash and bench comm-hazard tiers (H3/H4) have now been **run on real hardware**
+  (2026-09-11, dev bench, owner's go-ahead in-session): `tests_hardware/flash/test_uart_crossover.py`
+  2/2 and `tests_hardware/bench/test_uart_link_under_api_load.py` 2/2, against a `dev` firmware built
+  from this branch and flashed for the purpose. They were **not** blocked on a build dependency —
+  that earlier claim was corrected once G1's wiring made `sensortask_dev.py` the upstream module
+  whose absence the claim rested on.
+  The first run found three real problems. Two are fixed code: the device scripts' listener joins
+  outlasted their own watchdog, so a link fault reset the board instead of naming the failing check
+  (tests_hardware/README.md); and `asy_uart_driver.py` held the asyncio loop for a whole frame's
+  wire time on every read — the only one with new unit tests pinning it, three of them, verified by
+  reverting the fix and requiring each to fail (SPECIFICATION.md Part F.5.8). The third is a
+  hardware property, documented rather than fixed: a UART re-inited on other pins keeps them muxed
+  after `deinit()` and poisons that peripheral until a hard reset (tests_hardware/README.md).
+  **H4's function test is, however, still vacuous** — it asserts the link logged no errors while the
+  API was hammered, but nothing on a live `dev` system ever initiates a transfer
+  (`uart_initiator.get_task_starters()` is deliberately empty), so it proves an idle link stays idle
+  rather than that link work and request handling coexist. Closing it needs an owner decision on how
+  to drive the initiator over HTTP; the options are in BACKLOG.md and nothing has been wired.
 - §4's table is fully struck through — every listed violation actually fixed, not deferred.
 - `SPECIFICATION.md`, `UART_C_PORT_CHANGELOG.md`, `BACKLOG.md` and README.md's doc map are updated in
   the same change set.

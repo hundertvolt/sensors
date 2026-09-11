@@ -10,7 +10,7 @@ import asyncio
 import machine
 
 import asy_uart_driver
-from asy_uart_comm import ROLE_INITIATOR, ROLE_RESPONDER, UART_Comm
+from asy_uart_comm import ROLE_INITIATOR, ROLE_RESPONDER, ListenResult, UART_Comm
 
 try:
     from typing import TYPE_CHECKING
@@ -29,6 +29,11 @@ BAUDRATE = 115200
 POLL_WAIT_MS = 2
 BUF_BYTES = 512
 _CMD_ECHO = 0x02
+# Every wait below is bounded and feeds as it goes: a link that never answers parks the listener in
+# uart_listen()'s one unbounded read, and waiting that out outlasts the watchdog, so an injected
+# fault resets the board instead of naming the failing check (measured on unjumpered pins).
+JOIN_STEP_MS = 100
+JOIN_BUDGET_MS = 2000
 
 
 class PeripheralInjector:
@@ -80,15 +85,30 @@ def _build(payload_size_b: int) -> "tuple[asy_uart_driver.UART, asy_uart_driver.
     return uart0, uart1, initiator, responder
 
 
-async def _exchange(responder: UART_Comm, work: "Coroutine[Any, Any, T]") -> "T":
+async def _settled(wdt: "machine.WDT", task: "asyncio.Task[ListenResult]") -> bool:
+    # Polls rather than asyncio.wait_for(): the watchdog has to be fed while waiting, and a bounded
+    # poll is the only shape that both waits and feeds.
+    for _ in range(JOIN_BUDGET_MS // JOIN_STEP_MS):
+        if task.done():
+            return True
+        wdt.feed()
+        await asyncio.sleep_ms(JOIN_STEP_MS)
+    return task.done()
+
+
+async def _exchange(wdt: "machine.WDT", responder: UART_Comm, work: "Coroutine[Any, Any, T]") -> "T":
     listener = asyncio.create_task(responder.uart_listen())
     try:
         return await work
     finally:
-        try:
-            await asyncio.wait_for(listener, 12)
-        except asyncio.TimeoutError:
-            listener.cancel()
+        wdt.feed()  # the transaction above has its own timeout/resync budget to spend first
+        # clear() is the module's own documented unstick for a listener parked in that unbounded
+        # read (SPECIFICATION.md Part J.5) - it cannot finish on its own once its frame never came.
+        if not await _settled(wdt, listener):
+            await responder.clear()
+            if not await _settled(wdt, listener):
+                listener.cancel()
+                await _settled(wdt, listener)
 
 
 async def _main() -> None:
@@ -101,13 +121,13 @@ async def _main() -> None:
     injector = PeripheralInjector(uart1, 1, 8, 9)
 
     injector.silence()
-    if await _exchange(responder, initiator.uart_set(_CMD_ECHO, b"lost")) is not False:
+    if await _exchange(wdt, responder, initiator.uart_set(_CMD_ECHO, b"lost")) is not False:
         failures.append("a transfer into a silent peer reported success")
     wdt.feed()
 
     injector.restore()
     await responder.clear()
-    if await _exchange(responder, initiator.uart_set(_CMD_ECHO, b"back")) is not True:
+    if await _exchange(wdt, responder, initiator.uart_set(_CMD_ECHO, b"back")) is not True:
         failures.append("the link did not recover after the peer returned")
     wdt.feed()
     uart0.deinit()
@@ -119,7 +139,7 @@ async def _main() -> None:
     uart0, uart1, initiator, responder = _build(PAYLOAD_SIZE + 8)
     await initiator.setup()
     await responder.setup()
-    if await _exchange(responder, initiator.uart_set(_CMD_ECHO, b"mismatched")) is not False:
+    if await _exchange(wdt, responder, initiator.uart_set(_CMD_ECHO, b"mismatched")) is not False:
         failures.append("a payload_size mismatch was not detected")
     counts = await initiator.get_error_counter()
     if "UART_INIT" not in counts or not counts["UART_INIT"]["ErrCount"]:

@@ -113,6 +113,36 @@ a live question:
   `"Task N ended with exception"` (chased down as real on 2026-09-11; it was test data). CLAUDE.md's
   "read the FRAM logs before clearing" rule assumes a board that has been running normally — check
   what was last run against this one first.
+- **The UART crossover tiers have been run on real hardware (2026-09-11) and pass: flash 2/2,
+  bench 2/2.** They were run *in isolation*, not as part of a full tier sweep, which is the next
+  session's job. Two things a later session should know about that run. The board had to be
+  reflashed first — it was carrying a pre-UART `dev` build, so `asy_uart_comm` was simply absent and
+  neither tier could run; `uv run scripts/build_firmware.py dev` + `picotool load -x -v` fixed it,
+  and neither tier's skip guard fired afterwards. And the bench tier's own "a transfer completes
+  while the API is hammered" claim is, on an isolated run, vacuous: nothing on a live `dev` system
+  ever initiates a transfer (`uart_initiator.get_task_starters()` is deliberately empty), so it
+  currently asserts that an idle link stays idle. See BACKLOG.md, including the owner's direction to
+  revisit it in the context of a full bench run.
+- **A device script's every wait must stay inside its own watchdog window, or a link fault reports
+  as a reset instead of a result.** `tests_hardware/device_scripts/uart_crossover_*.py` arm an 8s
+  `machine.WDT` and used to join their responder task with `asyncio.wait_for(listener, 10/12)`.
+  That join can never complete on its own when the frame never arrived - `uart_listen()` parks in
+  its one legitimate unbounded read - so the watchdog fired first and the run died with an
+  `mpremote` I/O error and no `RESULT:` line at all. Found (2026-09-11) by running the exchange
+  script with UART1 deliberately moved to unjumpered pins, i.e. by simulating the exact wiring fault
+  this tier exists to catch. Both scripts now poll `task.done()` in bounded steps, feeding as they
+  go, and use `UART_Comm.clear()` - the module's own documented unstick - to free a parked listener.
+  The same run now reports `GET returned None ... errno 20` (initiator, no ACK) and `errno 22`
+  (responder, read timeout), which is the diagnosis a bench session actually needs.
+- **`asy_uart_driver.UART.deinit()` does not release the GPIO function select, so a script that
+  inits a UART on different pins poisons that peripheral until the next hard reset.** Confirmed the
+  hard way (2026-09-11): a throwaway diagnostic that put UART1 on GP4/GP5 left those pins muxed to
+  UART1 after `deinit()`. UART1's RX input then kept being taken from the floating GP5 instead of
+  the jumpered GP9, so **every subsequent run of the real crossover tests failed** - deterministically,
+  and across `mpremote`'s own soft resets, which do not restore pin defaults. A `mpremote reset`
+  (real hard reset) cleared it immediately. The shipped scripts always use GP8/GP9 and never hit
+  this, but any ad-hoc device script that moves a UART's pins must hard-reset the board afterwards
+  before its results - or the next test's - mean anything.
 - **A device script that reads error-log content clears its chunk at the START, never at the end.**
   Clearing first is what makes a run deterministic: the chunk is real persistent storage, so
   without it a script inherits the previous run's ring and its assertions drift silently. Clearing

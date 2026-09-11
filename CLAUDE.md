@@ -190,6 +190,18 @@ information):
 - **Long-blocking operations must not stall timing-sensitive work** — standing design principle
   for all new code; full reasoning (including the retired `get_long_block_lock()` mechanism) is in
   SPECIFICATION.md Part F.3.
+- **`asy_uart_driver.py` and `asy_uart_comm.py` may never block the asyncio loop — not even in a
+  wait state.** They may time out and handle it; they may not wait synchronously (project owner,
+  2026-09-11). This is sharper than F.3's general principle and is easy to violate by accident:
+  `machine.UART.read()/readinto()` wait out `timeout_char` for every byte asked for that has not
+  arrived yet, inside `mp_event_handle_nowait()`, which never yields — so a plain "read the whole
+  frame after `POLLIN`" holds the loop for the frame's entire wire time (measured: 4.4ms per
+  53-byte frame at 115200 baud). The fix needs **both** a clamp to `uart.any()` and a real yield
+  between rounds; the clamp alone is *worse*, because `ready()` returns `True` with no `await` and
+  the block simply moves into a Python loop. Full account and the measured before/after:
+  SPECIFICATION.md Part F.5.8 — which also states why this must **not** be generalised to
+  `asy_i2c_driver.py`/`asy_spi_driver.py`, whose peripherals expose no partial-read API to clamp to
+  (that case stays F.2's watchdog backstop).
 - **A new bus-facing (I2C/SPI) device gets bus-hazard test coverage across all four test tiers that
   apply to it — never forget this** (project owner's explicit, standing direction): same-device
   read-vs-write concurrency, cross-device interleaving if it shares a bus in either variant, and an

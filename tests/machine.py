@@ -427,6 +427,12 @@ class UART(io.IOBase):
         self.deinit_count += 1
         self.log.append(("deinit",))
 
+    def any(self) -> int:
+        # Real machine.UART.any(): bytes already in the RX ring. asy_uart_driver clamps every
+        # counted read to it, because the real peripheral would otherwise wait out timeout_char
+        # per not-yet-arrived byte synchronously, without ever yielding to asyncio.
+        return len(self.rx_queue)
+
     def read(self, nbytes: int | None = None) -> bytes | None:
         n = len(self.rx_queue) if nbytes is None else min(nbytes, len(self.rx_queue))
         if n == 0:  # real UART: None on no data available, matches MP_EAGAIN (see module docstring)

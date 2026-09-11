@@ -1493,6 +1493,102 @@ def test_read_until_complete_returns_none_on_crc_check_memoryerror() -> None:
 # successfully across multiple rounds, proving the guard doesn't break normal accumulation.
 
 
+# ---------------------------------------------------------------------------
+# Counted reads never ask the peripheral for bytes that have not arrived
+# ---------------------------------------------------------------------------
+# Real machine.UART.read()/readinto() wait out timeout_char for every requested byte still in
+# flight, synchronously, without ever yielding to asyncio - measured at 4.4ms of held event loop
+# per 53-byte frame on the dev bench (SPECIFICATION.md Part F.5.8). The clamp to any() is what
+# keeps this driver non-blocking, so these tests pin the *request*, which the fake cannot.
+
+
+def _record_requests(fk: FakeUART, method: str) -> "list[int | None]":
+    # Wraps the fake's own read method to capture the nbytes the driver asks for. The fake serves
+    # min(nbytes, queued) either way, so only the request distinguishes a clamped call from one
+    # that would have blocked on real hardware.
+    asked: list[int | None] = []
+    original = getattr(fk, method)
+
+    def spy(buf_or_n: "Any" = None, nbytes: "int | None" = None) -> "Any":
+        asked.append(nbytes if method == "readinto" else buf_or_n)
+        return original(buf_or_n, nbytes) if method == "readinto" else original(buf_or_n)
+
+    setattr(fk, method, spy)  # the project's mocking mechanism - MicroPython has no unittest.mock
+    return asked
+
+
+def test_readinto_until_complete_never_asks_for_more_than_is_buffered() -> None:
+    uart = make_uart()
+    fk = fake(uart)
+    fk.feed_rx(b"ab")  # only two of the five bytes have "arrived" when POLLIN first fires
+
+    def feed_rest_and_ready() -> int:
+        fk.feed_rx(b"cde")
+        return select.POLLIN
+
+    uart.poller = _StepPoller([select.POLLIN, feed_rest_and_ready])  # type: ignore[assignment]
+    asked = _record_requests(fk, "readinto")
+    buf = bytearray(5)
+
+    async def scenario() -> int | None:
+        async with uart:
+            return await uart.readinto_until_complete(buf, 5, start_timeout_ms=200, timeout_ms=200)
+
+    assert run(scenario()) == 5
+    assert bytes(buf) == b"abcde"
+    # The first round must ask for 2, not 5: asking for 5 is exactly the call that blocks the loop
+    # for the three bytes still on the wire.
+    assert asked[0] == 2, f"first round asked for {asked[0]}, not the 2 bytes actually buffered"
+    assert all(n is not None and n <= 5 for n in asked), f"a round asked past the frame: {asked}"
+
+
+def test_read_until_complete_never_asks_for_more_than_is_buffered() -> None:
+    uart = make_uart()
+    fk = fake(uart)
+    fk.feed_rx(b"ab")
+
+    def feed_rest_and_ready() -> int:
+        fk.feed_rx(b"cde")
+        return select.POLLIN
+
+    uart.poller = _StepPoller([select.POLLIN, feed_rest_and_ready])  # type: ignore[assignment]
+    asked = _record_requests(fk, "read")
+
+    async def scenario() -> bytearray | None:
+        async with uart:
+            return await uart.read_until_complete(5, start_timeout_ms=200, timeout_ms=200)
+
+    assert run(scenario()) == bytearray(b"abcde")
+    assert asked[0] == 2, f"first round asked for {asked[0]}, not the 2 bytes actually buffered"
+
+
+def test_single_shot_reads_clamp_to_what_is_buffered_and_report_nothing_as_none() -> None:
+    uart = make_uart()
+    fk = fake(uart)
+    fk.feed_rx(b"xyz")
+    asked_read = _record_requests(fk, "read")
+
+    async def read_scenario() -> bytes | None:
+        async with uart:
+            return await uart.read(64)  # asks far past what has arrived
+
+    assert run(read_scenario()) == b"xyz"
+    assert asked_read[0] == 3, f"read() asked for {asked_read[0]}, not the 3 bytes buffered"
+
+    uart2 = make_uart()
+    fk2 = fake(uart2)
+    asked_readinto = _record_requests(fk2, "readinto")
+    buf = bytearray(8)
+
+    async def empty_scenario() -> int | None:
+        async with uart2:  # POLLIN is always set by make_uart()'s poller, but nothing is queued
+            return await uart2.readinto(buf, 8)
+
+    # Nothing buffered: the documented None, and no zero-length call handed to the peripheral.
+    assert run(empty_scenario()) is None
+    assert asked_readinto == [], f"a read was issued with an empty buffer: {asked_readinto}"
+
+
 if __name__ == "__main__":
     import microtest
 
