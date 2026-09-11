@@ -1,6 +1,8 @@
 # wozi.toml - exemplary/base device config; never physically flashed, correctness comes from
 # tests/, not a bench (CLAUDE.md).
-# Wiring sourced from src/sensortask_wozi.py's build_system().
+# Wiring originally sourced from the hand-written src/sensortask_wozi.py's build_system(), since
+# retired (BUILD_CHAIN_PLAN.md's Session 6) - this file is now the source of truth buildgen reads
+# from, not the other way around.
 
 [device]
 name = "Wozi"

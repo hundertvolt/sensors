@@ -49,7 +49,10 @@ information):
 - **`improved-quality/` (the refactor's WIP staging directory) has been fully retired and
   deleted.** Every file it ever held was either promoted into `src/` once fully reviewed/tested,
   or — its last remaining file, `sensortask-wozi.py` — confirmed fully superseded by
-  `src/sensortask_wozi.py` + `src/asy_webserver_service.py` (construction/wiring and REST routing
+  `src/sensortask_wozi.py` (that file itself has since been retired too — every device's own
+  `sensortask_<device>.py` is now `buildgen`-generated at build time, never committed to `src/` —
+  BUILD_CHAIN_PLAN.md's Session 6 finish criterion; the construction/wiring facts described below
+  live in `devices/*.toml` now) + `src/asy_webserver_service.py` (construction/wiring and REST routing
   both independently rebuilt there, more generically, with real gaps in the old file fixed along
   the way — e.g. `conn.setup()`/`ntp.setup()` were never called anywhere in the old flow) and
   removed outright, not just left in place. Its old "don't edit source files without a scoped
@@ -119,16 +122,20 @@ information):
   specific mismatch (`scripts/build_firmware.py wozi` — wozi's hardcoded pins — flashed onto the dev
   bench) produced two false "bugs" once (see BACKLOG.md's "Per-variant `sensortask-*.py` generator" entry) — it
   isn't a shortcut for testing wozi, it's testing nothing at all, and must not be repeated.
-- **No unit tests against the current (deployed, pre-refactor) codebase — `python/`, `modules/`.**
-  The agreed plan is: fully understand the current system first, confirm what's already
-  promoted into `src/`, and write tests as part of that refactor — not before, and
-  not against the current code. This does **not** contradict SPECIFICATION.md Part E's testing
-  requirements (tests under a real MicroPython Unix-port interpreter, `uv`-managed venv, mocking
-  boundary, etc.) — those describe what the *refactored* code must eventually have. **First
-  concrete instance**: `src/math_helpers.py` has a full `tests/test_math_helpers.py` suite,
-  running under a real MicroPython Unix-port interpreter per that plan (see "Code quality tooling"
-  below) — this rule is about not testing the old `python/`/`modules/` code, not about deferring
-  all tests indefinitely.
+- **The legacy tree is reference-only, forever — it never gets work of any kind** (project owner,
+  2026-09-11). `python/`, `modules/` and the four `build-*.sh` scripts exist to be *read*: to check
+  what the deployed system actually does, and how a driver behaved in the field. Nothing in this
+  repo's quality apparatus is ever extended to them — no lint/typecheck scope, no CI build stage,
+  no shellcheck cleanup, no tests, no refactor. A finding *about* legacy code is worth recording
+  only when it explains current behavior; it is never a to-do. Don't propose closing any of these
+  gaps — the gap is the decision. `modules/_boot.py`'s `import sensortask.py` (above) is this same
+  rule applied to one specific file, not an exception to it.
+  **On tests specifically**, since that half predates the rest: the agreed plan is to understand
+  the current system first, confirm what is already promoted into `src/`, and write tests as part
+  of that refactor. This does **not** contradict SPECIFICATION.md Part E's testing requirements —
+  those describe what the *refactored* code must eventually have, and `src/math_helpers.py` +
+  `tests/test_math_helpers.py` were the first instance of exactly that. The rule is "never test
+  the old `python/`/`modules/` code", not "defer all tests".
 - **Don't touch `sensors/config.json`-equivalent files or commit any real credentials.** A
   `.gitignore` covers per-device config/build artifacts, but still be deliberate about what you
   stage. **The one known real credential already in this repo**: a hardcoded hotspot fallback
@@ -221,7 +228,14 @@ information):
   hygiene) had already overwritten every FRAM-backed log's history, permanently losing whatever
   evidence might have existed. The same check applies inside the digital twin
   (`digital_twin/_fram_chip.py` models the same chunked FRAM layout) — check before clearing there
-  too, not just on real hardware.
+  too, not just on real hardware. **One caveat, found the hard way (2026-09-11): this rule assumes
+  a board that has been running normally.** An isolated-driver device script builds its own
+  `AsyFramManager` over the same chip, and the allocator is deterministic, so its first chunk *is*
+  production's first chunk — a flash/bench-tier run overwrites the real error logs, and a script
+  leaving a well-formed chunk behind fabricates a plausible-looking one (a seeded `errno=5` read
+  back as SYSTEM's `"Task N ended with exception"`, chased down as if real). Before treating a
+  FRAM-backed log as evidence, check what has been run against that board;
+  `tests_hardware/README.md` has the full mechanism.
 
 ## Working agreements
 
@@ -304,11 +318,11 @@ information):
   actionlint 1.7.12 rejects that as invalid, so the two gates cannot both be satisfied; revisit
   when actionlint learns it. **Adding a SHA-pinned third-party action means bumping that SHA by
   hand** — no Dependabot is configured.
-- **Scope is nine directories**: `src/`, `tests/`, `digital_twin/`, `boot_entry/`, `buildgen/` (the
+- **Scope is eight directories**: `src/`, `tests/`, `digital_twin/`, `buildgen/` (the
   device-TOML-to-firmware-module generator, BUILD_CHAIN_PLAN.md's Session 3), `toolchain/`,
   `scripts/`, `tests_scripts/` and `tests_hardware/` — `tests_hardware/` in full for ruff; only its
   `device_scripts/` subtree (real MicroPython code pushed to the board, checked alongside
-  `src/`/`tests/`/`boot_entry/` in the main mypy pass) for mypy, since the rest of `tests_hardware/`
+  `src/`/`tests/` in the main mypy pass) for mypy, since the rest of `tests_hardware/`
   is host-side pytest code that goes through `host_typecheck.ini`'s dedicated pass below instead
   (see that file's own docstring). `buildgen/` follows the same split as `digital_twin/`: ruff
   checks it directly, but mypy needs `host_typecheck.ini`'s own separate invocation (below) since
@@ -316,7 +330,7 @@ information):
   walks driver source via the real stdlib `ast`, never imports `src/` itself (real MicroPython-only
   names like `machine`/`neopixel` aren't available under plain CPython there). The pre-refactor
   deployed codebase (`python/`, `modules/`) has no lint/type config yet; extending scope there is a
-  separate future decision, not assumed by this setup. All nine are expected to stay fully clean — every
+  separate future decision, not assumed by this setup. All eight are expected to stay fully clean — every
   scope in this setup is fully-reviewed, freely-editable code (see "Hard rules" above), not WIP;
   there's no tracked-debt scope left to compare `digital_twin/` against since `improved-quality/`
   was deleted (see "Hard rules" above). `digital_twin/`'s own
@@ -568,12 +582,14 @@ information):
   (pinned to tag `v2.6.2`; see "Hard rules" above and "Microdot / REST layer" below). See
   BACKLOG.md's "Deferred" list for the resulting dead `pyproject.toml` exclude entry.
 
-## Pre-push verification (clean Ubuntu 24.04)
+## Pre-push verification (clean chroot: Ubuntu 24.04 **and** Debian trixie)
 
 **Before pushing any change to `pyproject.toml`, `scripts/`, `toolchain/versions.toml`, or
 anything else touching the dev-tooling/build-environment setup**, verify it end-to-end inside a
-genuinely clean Ubuntu 24.04 environment — not just in whatever sandbox this session happens to
-be running in. A session sandbox typically already has Python 3.11+, `uv`, build tools, etc.
+genuinely clean chroot — not just in whatever sandbox this session happens to be running in.
+**Two targets, both required**: Ubuntu 24.04 "noble" (GCC 13.x, the OS the project's docs target)
+and Debian trixie (GCC 14.x, what the bench Pi4 actually runs) — see "The trixie target" below
+for why one is not enough. A session sandbox typically already has Python 3.11+, `uv`, build tools, etc.
 pre-installed, which can mask real gaps. **This already caught a real bug once**: a
 `requires-python = ">=3.10"` that let `uv sync` build a venv without `tomllib` (stdlib only since
 3.11), invisible in a sandbox whose default Python happened to already be 3.11+, and only found by
@@ -581,7 +597,8 @@ actually testing under a 3.10 interpreter. Treat this as a standing QA step, not
 skip it just because "it worked in this session's sandbox."
 
 **Recipe** (needs root; mirrors how `toolchain/setup_toolchain.py`'s own "verified from scratch"
-claims were checked — see SPECIFICATION.md Part B.7, "Evidence this actually works"):
+claims were checked — see SPECIFICATION.md Part B.7, "Evidence this actually works"). Shown for
+noble; "The trixie target" below gives the two lines that differ for trixie, and nothing else does:
 
 ```bash
 # One-time: build a clean Ubuntu 24.04 (noble) chroot with nothing preinstalled beyond the
@@ -668,10 +685,43 @@ umount "$CHROOT"/dev/pts "$CHROOT"/dev "$CHROOT"/sys "$CHROOT"/proc
 rm -rf "$CHROOT"
 ```
 
+**The trixie target, and why noble alone is not enough.** The noble chroot above pins GCC 13.x,
+so a compiler-version-sensitive build break is invisible to it — confirmed the hard way: the
+mbedtls `mbedtls_xor()` `-Warray-bounds` false positive (SPECIFICATION.md Part B.7.1, worked around
+by `_MBEDTLS_GCC14_ARRAY_BOUNDS_WORKAROUND` in `toolchain/setup_toolchain.py`) is a GCC >= 14
+diagnostic, and the build treats any `warning:` as a hard failure — so noble never saw it. It was
+found by building on a real Debian trixie host, outside this recipe. Noble is kept, not replaced:
+it is the documented target OS, and a gap appearing only on the *older* compiler would be just as
+invisible from trixie alone. Run both.
+
+Everything in the recipe above is identical for trixie except the `debootstrap` invocation and the
+`sources.list` it writes (Debian's component and security-suite names differ from Ubuntu's):
+
+```bash
+CHROOT=/tmp/trixie-chroot
+debootstrap --variant=minbase trixie "$CHROOT" http://deb.debian.org/debian
+
+cat > "$CHROOT/etc/apt/sources.list" <<'EOF'
+deb http://deb.debian.org/debian trixie main
+deb http://deb.debian.org/debian trixie-updates main
+deb http://security.debian.org/debian-security trixie-security main
+EOF
+```
+
+Two practical notes. `debootstrap` needs a script for the suite it is asked to build, so an
+Ubuntu *host* may not know `trixie` — `ln -s /usr/share/debootstrap/scripts/sid
+/usr/share/debootstrap/scripts/trixie` is the usual fix; a Debian trixie host (the bench Pi4) has
+it already. And Debian has no `universe`, so the `main`-only lists above are complete, not trimmed.
+Check the compiler actually landed as expected before trusting the run:
+`chroot "$CHROOT" gcc --version` must report 14.x (or newer), and the noble one 13.x.
+
+The trixie leg was last satisfied on 2026-09-11 by a full from-scratch build plus every suite on
+the bench Pi4 itself, which runs trixie / GCC 14.2.
+
 **What counts as passing**: `lint.sh`/`typecheck.sh`/`scripts/test.sh` all run to completion with
-exit 0 — all nine scopes this setup covers (see "Code quality tooling" above) are fully-reviewed
+exit 0 — all eight scopes this setup covers (see "Code quality tooling" above) are fully-reviewed
 code expected to stay fully clean (confirmed: `lint.sh` and all three `typecheck.sh` passes report
-zero findings as of the nine-scope extension), so a nonzero exit from either one
+zero findings as of the eight-scope extension), so a nonzero exit from either one
 here is a real regression to chase down, not an expected/tracked finding to compare against a
 session sandbox's own baseline count. `scripts/test.sh`'s tests must likewise actually pass (exit
 0, every test PASS) — a test failure here is a real regression too.

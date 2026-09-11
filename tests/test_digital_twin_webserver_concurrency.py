@@ -35,7 +35,6 @@ sys.path.insert(0, "ext")  # reaches the real, vendored ext/microdot.py - same c
 sys.path.insert(0, "digital_twin")
 
 import _http_client
-
 import sensortask_wozi
 
 try:

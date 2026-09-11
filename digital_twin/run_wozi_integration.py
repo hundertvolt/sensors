@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 
 import _http_client
 import machine
+import sensortask_wozi
 from _unix_port_udp_addr_shim import patch_asy_udp_socket_for_unix_port
 from launch import (
     _parse_wifi_outcome,  # deliberately reused, not reimplemented - see digital_twin/README.md
@@ -25,8 +26,6 @@ from launch import (
 )
 from unix_port_gc_unwedge import unwedge_heap_after_interrupt
 from unix_port_poll_prewarm import prewarm_poll_set
-
-import sensortask_wozi
 
 _DEFAULT_FRAM_STATE_PATH = "digital_twin/fram_state.json"
 _DEFAULT_SCD30_STATE_PATH = "digital_twin/scd30_state.json"  # same folder as the FRAM state file

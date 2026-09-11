@@ -68,16 +68,25 @@ def _check_device_table(model: DeviceModel) -> None:
     # KNOWN GAP, discovered during this session's own review, pre-existing (not introduced here):
     # `name`/`hostname`/`hotspot_password` are validated below (presence, shape, the
     # SensorStation<name> derivation formula) but this generator never actually wires any of the
-    # three into generated code - neither AsyConnTime.__init__ nor any hand-written
-    # sensortask_*.py has a constructor-time injection point for them. Hostname/HotspotPW are
-    # ConfigManager-persisted runtime values with a single hardcoded shared default
-    # ("SensorNode"/"12345678" - asy_wifi_service.py's own _VAL_HOST/_VAL_HOTSPOT_PW), identical
-    # across every device's frozen build; confirmed directly that src/sensortask_wozi.py doesn't
-    # set them either. So today, every device (hand-written or generated) actually boots with
-    # hostname "SensorNode", not "SensorStationWozi" etc., regardless of what devices/*.toml says.
+    # three into generated code - neither AsyConnTime.__init__ nor any generated
+    # sensortask_<device>.py (buildgen.generate.generate_device(), Session 6) has a constructor-time
+    # injection point for them. Hostname/HotspotPW are ConfigManager-persisted runtime values with a
+    # single hardcoded shared default ("SensorNode"/"12345678" - asy_wifi_service.py's own
+    # _VAL_HOST/_VAL_HOTSPOT_PW), identical across every device's frozen build; confirmed directly
+    # that no generated sensortask_<device>.py sets them either. So today, every device actually
+    # boots with hostname "SensorNode", not "SensorStationWozi" etc., regardless of what
+    # devices/*.toml says.
     # Flagged in this session's PR rather than silently left implicit - fixing it needs either a
     # `src/` constructor-time override mechanism (out of this session's narrow-additive-only scope)
-    # or a build-artifact-tree config-seeding step (Session 6's territory), not a buildgen/-only fix.
+    # or a build-artifact-tree config-seeding step, not a buildgen/-only fix. STILL NOT FIXED as of
+    # BUILD_CHAIN_PLAN.md's Session 6 (build chain + CI matrix + digital-twin test generalization) -
+    # that session's own explicit finish criterion was eliminating the hand-written
+    # src/sensortask_wozi.py/sensortask_dev.py entry points and generalizing the digital-twin test
+    # suite, not closing this gap; `src/asy_wifi_service.py`'s `AsyConnTime.__init__` would need a
+    # real constructor parameter for `hostname=`/`hotspot_password=` (a heavily-tested core driver
+    # change, several existing tests assert the literal "SensorNode"/"12345678" defaults) before
+    # buildgen could pass devices/*.toml's own values through - a real, separately-scoped piece of
+    # work, not attempted here.
     dev = model.doc.get("device")
     if not isinstance(dev, dict):
         raise BuildError(model.device, "missing [device] table")

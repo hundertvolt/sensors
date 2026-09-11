@@ -269,3 +269,38 @@ def test_no_notification_instance_omits_notification_section(src_dir: Path) -> N
     generated = generate_definitions(model, src_dir)
     assert "notification" not in {s["key"] for s in generated["sections"]}
     assert {s["key"] for s in generated["sections"]} == {"measurements", "sensors", "networking", "system", "status"}
+
+
+# ---------------------------------------------------------------------------
+# CLI (scripts/build_website.sh's own build-time invocation, and manual use) -
+# mirrors test_buildgen_generate.py's own CLI coverage.
+# ---------------------------------------------------------------------------
+
+
+def test_cli_writes_definitions_json_to_out(repo_root: Path, tmp_path: Path) -> None:
+    from buildgen.definitions import main
+
+    out_file = tmp_path / "wozi.json"
+    exit_code = main([str(repo_root / "devices" / "wozi.toml"), "--out", str(out_file)])
+    assert exit_code == 0
+    written = json.loads(out_file.read_text())
+    assert written["device"]["id"] == "wozi"
+    assert written == generate_definitions(build_model(repo_root / "devices" / "wozi.toml", repo_root / "src"), repo_root / "src")
+
+
+def test_cli_prints_to_stdout_when_out_is_omitted(repo_root: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    from buildgen.definitions import main
+
+    exit_code = main([str(repo_root / "devices" / "wozi.toml")])
+    assert exit_code == 0
+    printed = json.loads(capsys.readouterr().out)
+    assert printed["device"]["id"] == "wozi"
+
+
+def test_cli_reports_a_build_error_and_exits_nonzero(repo_root: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    from buildgen.definitions import main
+
+    missing_toml = tmp_path / "no-such-device.toml"
+    exit_code = main([str(missing_toml)])
+    assert exit_code == 1
+    assert "buildgen:" in capsys.readouterr().err

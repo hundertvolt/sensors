@@ -2,21 +2,24 @@
 # Dedicated entry point for the digital twin's "full Unix-port integration" run -
 # digital_twin/run_wozi_integration.py, run against the real digital_twin buses under the real
 # MicroPython Unix-port interpreter. Deliberately separate from scripts/test.sh: the twin needs its
-# own MICROPYPATH ("src:digital_twin:ext:frozen_modules:.frozen") that never carries a "tests"
-# segment (digital_twin/README.md's own "never together" rule - see that doc's "Swapping the twin
-# in for a Unix-port run" section), and run_wozi_integration.py can run forever (no
-# --duration - a real browser on this machine should be able to reach it), which
-# would hang scripts/test.sh's own default tests/test_*.py glob loop if it were discovered there
-# instead.
+# own MICROPYPATH ("build/generated_src:src:digital_twin:ext:frozen_modules:.frozen") that never
+# carries a "tests" segment (digital_twin/README.md's own "never together" rule - see that doc's
+# "Swapping the twin in for a Unix-port run" section), and run_wozi_integration.py can run forever
+# (no --duration - a real browser on this machine should be able to reach it), which would hang
+# scripts/test.sh's own default tests/test_*.py glob loop if it were discovered there instead.
 #
-# "ext" is required here (unlike scripts/test.sh's own MICROPYPATH) because src/sensortask_wozi.py
-# unconditionally imports vendored ext/microdot.py - every tests/test_*.py file that needs it works
-# around scripts/test.sh's own ext-less MICROPYPATH with its own per-file
+# "ext" is required here (unlike scripts/test.sh's own MICROPYPATH) because every generated
+# sensortask_<device>.py unconditionally imports vendored ext/microdot.py - every tests/test_*.py
+# file that needs it works around scripts/test.sh's own ext-less MICROPYPATH with its own per-file
 # sys.path.insert(0, "ext") (see e.g. tests/test_sensortask_wozi.py's own comment), but this is the
 # real standalone entry point, not a test file, so it needs the real fix here instead. Found by
 # actually running this script standalone for the first time (a manual baseline-verification pass) -
 # every prior verification of this file went through the test-harness sys.path.insert() workaround
 # instead, which silently masked the gap.
+#
+# "build/generated_src" is required for the same reason scripts/test.sh needs it: no static
+# src/sensortask_wozi.py exists any more (BUILD_CHAIN_PLAN.md's Session 6 finish criterion) - it's
+# generated fresh below, via buildgen, into this gitignored directory instead.
 #
 # Usage:
 #   scripts/run_unix_port_integration.sh                        # just launch + serve forever, no flags
@@ -65,5 +68,8 @@ fi
 echo "== Building the real wozi website into frozen_modules/frozen_html.py"
 scripts/build_website.sh wozi
 
+echo "== Generating buildgen device modules into build/generated_src/"
+uv run scripts/_generate_sensortask_modules.py
+
 echo "== Running digital_twin/run_wozi_integration.py"
-MICROPYPATH="src:digital_twin:ext:frozen_modules:.frozen" "$micropython_bin" digital_twin/run_wozi_integration.py "$@"
+MICROPYPATH="build/generated_src:src:digital_twin:ext:frozen_modules:.frozen" "$micropython_bin" digital_twin/run_wozi_integration.py "$@"

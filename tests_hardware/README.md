@@ -98,12 +98,28 @@ point at a flagged assumption being wrong, not at a real product bug. Resolved i
 through, kept (not deleted) so a reader mid-investigation doesn't wonder whether something was ever
 a live question:
 
-- **The bench has never run MicroPython 1.29.0.** The refactor's pin moved 1.28.0 → 1.29.0 in an
-  audit session with no real-hardware go-ahead, so every finding behind it (SPECIFICATION.md Part
-  F.5) is source-, map-file- or twin-derived and the board still runs whatever was last flashed.
-  Flash the dev bench deliberately before reading any run as a 1.29 result, and see BACKLOG.md's
-  "Deferred" list for the three items that specifically want on-target confirmation (the new SPI
-  RX-overrun raise site, the `deinit()` no-ops, the SRAM-placement win).
+- ~~The bench has never run MicroPython 1.29.0.~~ — **resolved (2026-09-11): it has, repeatedly.**
+  Real `dev` firmware built from `src/` and flashed, with the flash, bench and mid soak tiers all
+  run clean against it. All three items that wanted on-target confirmation are answered: the SPI
+  RX-overrun raise site and the `deinit()` no-ops (both in BACKLOG.md's "Deferred" list), and the
+  SRAM-placement change, now measured rather than inferred (SPECIFICATION.md Part F.5.3).
+- **A hardware run overwrites the production modules' FRAM chunks — never read an error log as
+  firmware evidence straight after one.** `AsyFramManager` is a deterministic bump allocator (a
+  required property, SPECIFICATION.md Part A.4), so a device script's own first chunk *is*
+  production's first chunk. Usually the next boot's `_read()` just fails on the size/CRC mismatch
+  and the log honestly reads empty — but a script leaving a well-formed chunk behind fabricates a
+  plausible one. `fram_error_log_reset_race_seed_and_race.py` seeds three `errno=5` entries into
+  what is physically SystemService's chunk, which reads back as SYSTEM's own
+  `"Task N ended with exception"` (chased down as real on 2026-09-11; it was test data). CLAUDE.md's
+  "read the FRAM logs before clearing" rule assumes a board that has been running normally — check
+  what was last run against this one first.
+- **A device script that reads error-log content clears its chunk at the START, never at the end.**
+  Clearing first is what makes a run deterministic: the chunk is real persistent storage, so
+  without it a script inherits the previous run's ring and its assertions drift silently. Clearing
+  at the end would destroy the evidence of what the script just did. Residue is the accepted
+  outcome; the caveat above is how a reader avoids misreading it.
+  `fram_error_log_reset_race_verify.py` is the one deliberate exception — it exists to read what
+  the raced reset left behind, so a baseline wipe would erase the thing under test.
 - ~~Does `mpremote`'s implicit soft-reset re-execute `modules/_boot.py`/`boot.py`/`main.py`?~~ —
   **resolved: no.** Confirmed against the pinned MicroPython C source and empirically on real
   hardware: only a genuine `hard_reset()` resumes the live system; `exec()`/`run_isolated()` never
@@ -277,8 +293,9 @@ a live question:
   and hanging forever. `scripts/run_flash_hardware_suite.sh`/`run_bench_hardware_suite.sh` are
   scoped to avoid this either way, but the naming is the structural backstop.
 - **Reusable real-hardware GC/fragmentation-instrumentation technique**: a temporary async probe
-  task added to `boot_entry/<device>_boot.py` (never committed - `git diff` confirmed clean after
-  reverting, real production firmware rebuilt+reflashed before finishing), printing a fixed-format
+  task added to the boot entry (`boot_entry/<device>_boot.py` at the time this was written; that
+  directory is retired now - BUILD_CHAIN_PLAN.md's Session 6 - so add it to the staged `main.py`
+  a build produces, before flashing, and never commit the edit), printing a fixed-format
   line every N ms/every real event, captured via direct `pyserial` reads (`Board.tail_log()`, never
   `mpremote exec()` against a live system - that soft-resets it, wiping the very state being
   measured). Used for `gc.mem_free()` sampling + collection detection, real per-collection pause
@@ -353,11 +370,15 @@ parity, but (1) bottom-level hardware *function* checks, not just readings, and 
 counterpart for every mock-driven integration test in `tests/` "wherever possible". Two more
 additions from that:
 
-- **FRAM write protection actually gates a real write** (`device_scripts/
-  fram_write_protect_roundtrip.py`, `flash/test_fram_storage.py`): sets the real WPEN|BP0|BP1
-  status-register bits, confirms a real write is genuinely rejected while protected and succeeds
-  once cleared again - not just "can a chunk be written at all" (the roundtrip test above already
-  covers that).
+- **FRAM write protection actually gates a real write, a real read, and does so in silicon**
+  (`device_scripts/fram_write_protect_roundtrip.py`, `flash/test_fram_storage.py`): sets the real
+  WPEN|BP0|BP1 status-register bits, then checks three things - a write is rejected while
+  protected and succeeds once cleared again (not just "can a chunk be written at all", which the
+  roundtrip test above already covers); a *read* is rejected too, because `_read_chunk()` must
+  write a transient busy marker first (intended behavior, SPECIFICATION.md Part A.4's FRAM entry,
+  asserted identically at the mock and twin tiers); and - the part no fake can reach - the chip
+  itself refuses, not merely the driver's own guard, proven by desyncing the cached `_wp` from the
+  still-protected chip and sending a real WREN+WRITE whose bytes never land.
 - **Real PUT /sensors config pushes** (`bench/test_sensor_config_push_over_real_hardware.py`): the
   real-hardware counterpart to `tests/test_setter_microdot_integration.py`'s mock-driven coverage.
   BMP3xx's oversampling/filter-coefficient fields are pushed to non-default values over a real REST

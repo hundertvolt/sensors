@@ -115,6 +115,14 @@ if [ -f "$builtins_stub" ] && grep -q '^# NotImplemented: _NotImplementedType' "
     sed -i 's/^# \(NotImplemented: _NotImplementedType\)/\1/' "$builtins_stub"
 fi
 
+# tests/test_sensortask_wozi.py/test_sensortask_dev.py (in `files` below) statically `import
+# sensortask_wozi`/`sensortask_dev` - neither file exists in src/ any more (BUILD_CHAIN_PLAN.md's
+# Session 6 finish criterion), so mypy needs build/generated_src/ (this pass's own mypy_path entry,
+# pyproject.toml's [tool.mypy]) populated before it runs, same as scripts/test.sh's own real
+# MicroPython-interpreter run needs it on MICROPYPATH.
+echo "== Generating buildgen device modules into build/generated_src/ (for import resolution)"
+uv run scripts/_generate_sensortask_modules.py
+
 # Extra args (if any) override pyproject.toml's [tool.mypy] `files` for this invocation - e.g.
 # CI's lint-and-typecheck job passes `src tests` to gate on just that scope, without changing
 # what a plain `scripts/typecheck.sh` checks locally (see .github/workflows/ci.yml).

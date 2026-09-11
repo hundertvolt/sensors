@@ -77,7 +77,9 @@ dev = [
 # cleanup effort originally started against, including its own ad hoc improved-quality/mypy.ini and
 # improved-quality/pycheck.sh (retired in favor of this file) - has since been deleted in full:
 # every file it held was either promoted into src/ once fully reviewed/tested, or (its last
-# remaining file, sensortask-wozi.py) confirmed fully superseded by src/sensortask_wozi.py +
+# remaining file, sensortask-wozi.py) confirmed fully superseded by src/sensortask_wozi.py (that
+# file itself has since been retired too - every device's own sensortask_<device>.py is now
+# buildgen-generated at build time, never committed to src/ - BUILD_CHAIN_PLAN.md's Session 6) +
 # src/asy_webserver_service.py and removed outright.
 
 [tool.ruff]
@@ -435,8 +437,6 @@ max-returns = 12
 # api_response.py above, and asserts its static mount is non-None purely to narrow the type for
 # mypy (the route is only ever registered when it isn't None).
 "src/asy_webserver_service.py" = ["SLF001", "S101", "ANN401"]  # ANN401: the asyncio.start_server() seam described above
-"src/sensortask_wozi.py" = ["S101"]
-"src/sensortask_dev.py" = ["S101"]
 # build_firmware.py's single subprocess call is the repo's OWN scripts/build_website.sh, addressed
 # by an absolute path built from REPO_ROOT, with shell=False and check=True - a build driver
 # invoking the sibling build step it exists to orchestrate. S603 fires on every subprocess call
@@ -517,7 +517,14 @@ follow_imports = "silent"
 # issues (it's explicitly labeled Beta upstream) don't get reported as if they were findings in
 # our code, while their declared types are still fully used for checking our code's calls.
 follow_imports_for_stubs = true
-mypy_path = ["typings", "src"]
+# build/generated_src: tests/test_sensortask_wozi.py/test_sensortask_dev.py (and no other file in
+# this pass's own `files` below) statically `import sensortask_wozi`/`sensortask_dev` - neither
+# hand-written file exists in src/ any more (BUILD_CHAIN_PLAN.md's Session 6 finish criterion), so
+# this points mypy at the same buildgen-generated, gitignored location scripts/test.sh's own
+# MICROPYPATH resolves them from - scripts/typecheck.sh runs scripts/_generate_sensortask_modules.py
+# first so the directory is actually populated before mypy runs. No collision risk: this directory
+# holds only sensortask_<device>.py files, none of which exist under src/.
+mypy_path = ["typings", "src", "build/generated_src"]
 custom_typeshed_dir = "typings"
 # Without this, mypy also auto-discovers the dev venv's own packages (mypy/ruff/pytest's own
 # runtime dependencies, e.g. typing_extensions) as importable modules and tries to type-check
@@ -527,7 +534,7 @@ no_site_packages = true
 # A bare glob in `files` (e.g. "src/*.py") gets pre-expanded to an explicit file list, which
 # `exclude` can't then prune - passing the directory itself is what makes `exclude` actually take
 # effect during mypy's own directory walk.
-files = ["src", "tests", "digital_twin", "boot_entry", "tests_hardware/device_scripts"]
+files = ["src", "tests", "digital_twin", "tests_hardware/device_scripts"]
 # tests/network.py: a bare top-level
 # `network.py` sitting inside a `files`-scanned root starts winning module resolution over
 # typings/'s real `network` stub *project-wide*, not just within tests/ - confirmed directly: with

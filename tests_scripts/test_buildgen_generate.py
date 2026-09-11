@@ -43,6 +43,18 @@ def test_real_device_generates_syntactically_valid_module(repo_root: Path, src_d
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_real_device_constructs_watchdog_exactly_once(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
+    # The CPython-side half of tests/test_reset_call_site_invariant.py's own
+    # test_wdt_constructed_only_in_sensortask_entry_point_files(): that test scans committed
+    # src/*.py files and skips anything named sensortask_*.py, which is now vacuous (no
+    # sensortask_<device>.py is ever committed to src/ any more - BUILD_CHAIN_PLAN.md's Session 6
+    # finish criterion) - so the generated module's own single WDT() construction site needs its
+    # own, separate proof instead of relying on that skip ever actually exercising it again.
+    result = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir)
+    assert result.module_source.count("WDT(") == 1
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_real_device_boot_entry_imports_the_right_module(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
     result = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir)
     assert f"from sensortask_{device} import main" in result.boot_entry_source

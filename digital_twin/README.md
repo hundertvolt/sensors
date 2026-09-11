@@ -3,14 +3,15 @@
 A set of fake `machine`/`network`/`neopixel` modules, sitting at the same raw I2C/SPI
 bus-transaction mocking boundary `tests/machine.py` establishes for unit tests, but built for a
 different purpose: real-time-firing `Timer`s and randomized-but-plausible sensor values, so the full
-assembled `src/sensortask_wozi.py`/`src/sensortask_dev.py` prototypes can run under the real
-MicroPython Unix-port interpreter and behave like they're attached to real hardware — not just
-satisfy a hand-driven test double. See SPECIFICATION.md Part A.10 for how this fits into the rest of
-the architecture, and Part C.11 point 9 for the per-driver "add a matching chip fake" requirement.
+assembled, buildgen-generated `sensortask_wozi.py`/`sensortask_dev.py` device modules can run under
+the real MicroPython Unix-port interpreter and behave like they're attached to real hardware — not
+just satisfy a hand-driven test double. See SPECIFICATION.md Part A.10 for how this fits into the
+rest of the architecture, and Part C.11 point 9 for the per-driver "add a matching chip fake"
+requirement.
 
 **Not `tests/machine.py`, does not import it, and is never imported by anything in `tests/`.**
 Kept completely separate so nothing here can accidentally affect the deterministic unit-test suite
-`scripts/test.sh` runs by default (`MICROPYPATH="src:tests:frozen_modules:.frozen"`).
+`scripts/test.sh` runs by default (`MICROPYPATH="build/generated_src:src:tests:frozen_modules:.frozen"`).
 
 ## What's here
 
@@ -109,12 +110,14 @@ below's `--hang` section) — distinct from a bounded, immediately-raised fault.
 
 ## Swapping the twin in for a Unix-port run
 
-`src/sensortask_wozi.py` needs **zero twin-awareness** — no `if` branch anywhere distinguishing real
-hardware from simulated. The swap is pure `MICROPYPATH` ordering, the same mechanism
-`tests/machine.py` already uses transparently for the unit-test suite. `run_wozi_integration.py`
-also drives real HTTP over real sockets against the real `WebserverService` — never Microdot's
-`app.dispatch_request()` bypass, the same "full HTTP" standard the real system meets. The dedicated
-entry point, `scripts/run_unix_port_integration.sh`, does exactly this:
+The generated `sensortask_wozi.py` (built fresh by `buildgen` from `devices/wozi.toml` — no static
+copy is committed any more, BUILD_CHAIN_PLAN.md's Session 6 finish criterion) needs **zero
+twin-awareness** — no `if` branch anywhere distinguishing real hardware from simulated. The swap is
+pure `MICROPYPATH` ordering, the same mechanism `tests/machine.py` already uses transparently for
+the unit-test suite. `run_wozi_integration.py` also drives real HTTP over real sockets against the
+real `WebserverService` — never Microdot's `app.dispatch_request()` bypass, the same "full HTTP"
+standard the real system meets. The dedicated entry point, `scripts/run_unix_port_integration.sh`,
+does exactly this:
 
 ```bash
 scripts/run_unix_port_integration.sh                      # just launch + serve forever, no flags
@@ -123,30 +126,35 @@ scripts/run_unix_port_integration.sh --soak --duration 0   # same, but exits rig
 scripts/run_unix_port_integration.sh --fault sgp40:writeto # manual fault-injection exploration
 ```
 
-Under the hood (builds the toolchain, then builds the real `wozi` website into
+Under the hood (builds the toolchain, generates every device's `sensortask_<device>.py` into
+`build/generated_src/` via `scripts/_generate_sensortask_modules.py` — see "Booting a generated
+device" below for the general mechanism this is built on — then builds the real `wozi` website into
 `frozen_modules/frozen_html.py` via `scripts/build_website.sh wozi` — **not**
 `scripts/build_frozen_html.sh`'s own `html_stub` default; this is the twin's normal, default
 wiring, matching what a real deployed unit actually serves, not a placeholder — then runs
-`digital_twin/run_wozi_integration.py` — the real orchestrator, not `boot_entry/wozi_boot.py`
+`digital_twin/run_wozi_integration.py` — the real orchestrator, not the generated boot entry
 directly, since it also needs to drive the soak/fault-injection/`--duration`-forever logic around
 `sensortask_wozi.main()`, not just block on it):
 
 ```bash
-MICROPYPATH="src:digital_twin:ext:frozen_modules:.frozen" <micropython-unix-port-binary> digital_twin/run_wozi_integration.py [flags]
+MICROPYPATH="build/generated_src:src:digital_twin:ext:frozen_modules:.frozen" <micropython-unix-port-binary> digital_twin/run_wozi_integration.py [flags]
 ```
 
-`frozen_modules` is required here too (see `SPECIFICATION.md` Part A.9 for the full pipeline) —
-`src/sensortask_wozi.py` does an unconditional module-level `import frozen_html`, which
-resolves from that segment (see `scripts/build_frozen_html.sh`'s own comment for why it can't be
-`.frozen` itself). Omitting it fails the run at import time with `ImportError: no module named
-'frozen_html'` before any twin code ever runs. `digital_twin` sits between `src` and
-`frozen_modules`/`.frozen` — never together with plain `tests` on the same `MICROPYPATH` (that would
-let `tests/machine.py`/`tests/network.py`/`tests/neopixel.py` shadow this package's own same-named
-modules, or vice versa, depending on ordering — the two are meant to never be on the same path at
-once). This is a **separate** invocation from `scripts/test.sh`'s own
-`"src:tests:frozen_modules:.frozen"` — `scripts/run_unix_port_integration.sh` is not part of
-`scripts/test.sh`'s own default `tests/test_*.py` glob loop (it can run forever in `--duration`-
-omitted/manual mode, which would hang that loop if it were discovered there instead).
+`build/generated_src` is listed first so `import sensortask_wozi` resolves to the freshly
+buildgen-generated module, not any same-named file that might otherwise be found later on this
+path — no static `src/sensortask_wozi.py` exists any more. `frozen_modules` is required here too
+(see `SPECIFICATION.md` Part A.9 for the full pipeline) — the generated `sensortask_wozi.py` does an
+unconditional module-level `import frozen_html`, which resolves from that segment (see
+`scripts/build_frozen_html.sh`'s own comment for why it can't be `.frozen` itself). Omitting it
+fails the run at import time with `ImportError: no module named 'frozen_html'` before any twin code
+ever runs. `digital_twin` sits between `src` and `frozen_modules`/`.frozen` — never together with
+plain `tests` on the same `MICROPYPATH` (that would let `tests/machine.py`/`tests/network.py`/
+`tests/neopixel.py` shadow this package's own same-named modules, or vice versa, depending on
+ordering — the two are meant to never be on the same path at once). This is a **separate**
+invocation from `scripts/test.sh`'s own `"build/generated_src:src:tests:frozen_modules:.frozen"` —
+`scripts/run_unix_port_integration.sh` is not part of `scripts/test.sh`'s own default
+`tests/test_*.py` glob loop (it can run forever in `--duration`-omitted/manual mode, which would
+hang that loop if it were discovered there instead).
 
 `digital_twin/run_wozi_integration.py` reuses this file's own `launch.py`'s `parse_fault_spec()`/
 `_parse_wifi_outcome()` directly (same device/op/wifi-outcome vocabulary), and defaults to
@@ -177,10 +185,12 @@ fakes, which happened to return an already-flat shape. See `_flatten_cfg_values(
 
 `run_dev_integration.py` mirrors `run_wozi_integration.py` exactly — only the booted module and bus
 wiring differ — but has no dedicated `scripts/run_*.sh` wrapper yet. Invoke it directly, building the
-`dev` website first (`scripts/build_website.sh dev`, not `wozi`):
+`dev` website first (`scripts/build_website.sh dev`, not `wozi`) and generating every device's module
+into `build/generated_src/` first (`uv run scripts/_generate_sensortask_modules.py` — same step
+`scripts/run_unix_port_integration.sh` runs for you):
 
 ```bash
-MICROPYPATH="src:digital_twin:ext:frozen_modules:.frozen" <micropython-unix-port-binary> digital_twin/run_dev_integration.py [flags]
+MICROPYPATH="build/generated_src:src:digital_twin:ext:frozen_modules:.frozen" <micropython-unix-port-binary> digital_twin/run_dev_integration.py [flags]
 ```
 
 Same flag vocabulary, same `frozen_modules`/`MICROPYPATH`-ordering requirements as
@@ -209,8 +219,13 @@ Path("/tmp/twin_boot/wiring_plan.json").write_text(json.dumps(compute_twin_wirin
 
 Then the MicroPython process, with the generated module's own directory placed **first** on
 `MICROPYPATH` (so `import sensortask_novel_combo` resolves to the freshly-generated file, not any
-same-named file under `src/` — real for `wozi`/`dev`, which already have hand-written
-`src/sensortask_wozi.py`/`sensortask_dev.py`; every other import the generated module itself needs,
+same-named file that might otherwise be found elsewhere on this path — every real device is
+generated exactly the same way now, including `wozi`/`dev`; no device has a hand-written
+`sensortask_<device>.py` any more, BUILD_CHAIN_PLAN.md's Session 6 finish criterion. `scripts/test.sh`/
+`scripts/run_unix_port_integration.sh`/`scripts/run_digital_twin_ci.sh` all generate into the fixed
+`build/generated_src/` directory via `scripts/_generate_sensortask_modules.py` rather than a fresh
+temp directory per run, purely because those callers need `wozi`'s/`dev`'s modules to exist at a
+predictable path before any test file runs; every other import the generated module itself needs,
 e.g. `asy_i2c_driver`, still falls through to `src/`):
 
 ```bash
@@ -335,7 +350,7 @@ placeholder). Must succeed before any test phase runs.
 **Test**: hands off to `scripts/_digital_twin_ci_suite.py`, a self-contained `uv run` CPython
 script (stdlib-only — no `uv sync` needed) that drives `digital_twin/run_wozi_integration.py` as a
 real subprocess, over real HTTP/UDP (`http.client`/`socket`, not `_http_client.py` — this script
-runs under CPython, not the twin's own MicroPython process), through eleven real, sequential
+runs under CPython, not the twin's own MicroPython process), through thirteen real, sequential
 subprocess runs on a fixed port (`18080`, distinct from the manual entry point's `8080` default, so
 both can run side by side without colliding):
 
@@ -361,17 +376,47 @@ both can run side by side without colliding):
    correct outcome under the current architecture: `--fault` only ever produces bounded,
    immediately-raised `OSError`s, never an indefinite hang, so nothing here can actually block the
    event loop long enough to matter — see run 10 below for the one scenario that can.
-4. **Reboot fault-free — bus-fault persistence-correctness sweep** — checks *both* directions for
-   every module run 3 faulted: SGP40's count should have persisted (FRAM-backed,
-   `PrintLogHistoryStore` — see `src/print_log.py`); SCD30/BMP3XX/FRAM's counts should have reset to
-   `0` (in-memory-only by design — SPECIFICATION.md Part A.7). A bug in either direction is real and
-   would be caught here.
+4. **Reboot fault-free — what must reset, and that every faulted bus comes back** —
+   SCD30/BMP3XX/FRAM's counts must have reset to `0` (in-memory-only by design — SPECIFICATION.md
+   Part A.7), and all three sensors must produce real readings again after a run in which every
+   bus, the FRAM included, was faulted throughout. This run deliberately does **not** claim SGP40's
+   FRAM-backed history survived run 3 — it cannot, because run 3's own matrix faults `fram:write`,
+   so the chip is unwritable for that whole run. The check that used to stand here (`counter > 0`)
+   was unsound twice over: `counter` counts `"W"` as well as `"E"`, so it was only ever satisfied by
+   a *fresh* warning from this run's own boot, and waiting on that warning is a host-speed race
+   (it lands before the sample on an x86 runner, after it on the project's bench Pi4). The real
+   persistence claim lives in run 5b instead.
 5. **Clean boot, a small *bounded* fault** (`sgp40:writeto:3`, not sustained) — the other half of
    the self-healing story run 3 alone can't show: not just "doesn't crash while still broken," but
    "comes back once the fault clears." Confirms the real error count stops climbing once the 3
    queued failures are exhausted (a driver's own "recovered" notice is itself logged as a warning,
    not an error — this suite counts `"E"`-typed history entries specifically, not the raw combined
    counter, to avoid mistaking a recovery notice for a new failure) and that measurements resume.
+   **5b. Reboot straight onto run 5's state, fault-free — the restore is all-or-nothing.** Run 5
+   left exactly three `"E"` entries on a *healthy* chip, write-through (`print_log.py`'s
+   `_store_err()` writes on every push — there is no deferred flush to race), so they should come
+   back. But run 5 shut down abruptly, and that can catch a chunk write in flight: both status bytes
+   go to `_STATUS_BUSY` before the payload is touched, so an interrupted write leaves them there,
+   `PrintLogHistoryStore.setup()`'s `_read()` then fails, and its `_write()` fallback stores the
+   empty ring. Measured here at roughly **1 abrupt restart in 8**. That loss is **accepted
+   behavior** (project owner's call, 2026-09-11 — no recovery scheme wanted for a reboot that
+   catches the chip mid-operation), so this run asserts the invariant that does hold
+   unconditionally: the restore is all-or-nothing, never partial and never garbled, which is the
+   dual-block + CRC + busy-flag protocol's actual job.
+   **5c. A commanded reboot, taken with storage paused — the case that must never lose anything.**
+   Production's own `system_service._reboot()` pauses permanent storage before it resets, precisely
+   so no FRAM chunk operation can be in flight across the restart; `PUT /system {"SystemCmd":
+   "mempause"}` is that same pause over REST. With it held, none of `_write()`/`_read()`/`clear()`
+   can start, no status byte can be left `_STATUS_BUSY`, and the restore is deterministic —
+   measured **20/20** against the ~1-in-8 loss of run 5b's unpaused shutdown. This is what makes
+   the pair sound: 5b alone would pass even if persistence never worked at all (an empty ring
+   satisfies all-or-nothing), which is exactly the hole the old run 4 check had. 5c also confirms
+   the pause itself does *not* survive the reboot (RAM-only by design) and that a `ResetErrors` PUT
+   genuinely clears the restored history on the chip — issued only *after* polling for the restore,
+   because a reset arriving before the loggers finish `setup()` is dropped by design and the
+   restore then puts the old history straight back. The same all-or-nothing claim is mirrored at the
+   mock tier (`tests/test_fram_integration.py`) and on real silicon
+   (`tests_hardware/flash/test_fram_storage.py`'s reset-race test).
 6. **Clean boot, configure a real SSID** (persisted) — needed for run 7's genuine STA-connect-
    failure cycle, not the `SSID==""` unconfigured shortcut.
 7. **Reboot with 5 scripted `"no access point found"` WiFi outcomes** — drives the real STA →
@@ -515,8 +560,8 @@ started with. For a new **I2C** sensor this is a small, mechanical addition:
    add it to `buildgen/twin_wiring.py`'s own `FIXED_ADDRESSES` table too, matching the real driver's
    own hardcoded default address. If it lands on `machine.py`'s two hardcoded legacy "wozi"/"dev"
    profiles as well (a real driver promoted for one of those two devices specifically), add the
-   matching entry to `_LEGACY_WIRING_PLANS` too — cross-check `src/sensortask_wozi.py`'s/
-   `src/sensortask_dev.py`'s own `build_system()` for the real pin/address assignment.
+   matching entry to `_LEGACY_WIRING_PLANS` too — cross-check `devices/wozi.toml`'s/
+   `devices/dev.toml`'s own fields for the real pin/address assignment.
 3. Add `tests/test_digital_twin_<name>.py` — deterministic unit tests of the chip fake in isolation
    (no real `machine.I2C` involved, matching every existing `tests/test_digital_twin_{sgp40,scd30,
    bmp3xx}.py`) — then extend `tests/test_digital_twin_machine.py`'s own dispatch tests if the new

@@ -11,9 +11,8 @@ import sys
 
 import _http_client
 import machine
-from unix_port_poll_prewarm import prewarm_poll_set
-
 import sensortask_wozi
+from unix_port_poll_prewarm import prewarm_poll_set
 
 _CONFIG_DIR = "digital_twin/config/"
 _ENDPOINTS = ("/measurements", "/sensors", "/networking", "/system", "/notification", "/status", "/")

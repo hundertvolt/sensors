@@ -112,8 +112,8 @@ never run it over a connection that depends on the bridge staying up.
 
 ## Code quality tooling
 
-Ruff and mypy checks, scoped to nine directories — `src/`, `tests/`, `digital_twin/`,
-`boot_entry/`, `buildgen/`, `toolchain/`, `scripts/`, `tests_scripts/` and `tests_hardware/` (the
+Ruff and mypy checks, scoped to eight directories — `src/`, `tests/`, `digital_twin/`,
+`buildgen/`, `toolchain/`, `scripts/`, `tests_scripts/` and `tests_hardware/` (the
 pre-refactor codebase — `python/`, `modules/` — isn't covered yet) — shellcheck over `scripts/`, actionlint +
 zizmor over the GitHub Actions workflows, plus unit tests for `src/`, can be run manually. mypy
 runs three separate passes, since the MicroPython-target scopes and the host-CPython ones need
@@ -461,10 +461,10 @@ and repeatable where noted:
 - `--fram-state-path PATH` — persist the FRAM twin's contents to a JSON file across runs, instead of
   in-memory only.
 
-This standalone launcher is twin-only (no `src/` import). To instead run the real
-`src/sensortask_wozi.py` prototype against the twin, see `digital_twin/README.md`'s own
-"Swapping the twin in for a Unix-port run" section — that's a separate `MICROPYPATH`-based
-invocation, not this launcher.
+This standalone launcher is twin-only (no `src/` import). To instead run the real, buildgen-generated
+`sensortask_wozi.py` prototype against the twin, see `digital_twin/README.md`'s own "Swapping the
+twin in for a Unix-port run" section — that's a separate `MICROPYPATH`-based invocation, not this
+launcher.
 
 **Automated CI suite** — the manual walkthrough below turned into an unattended, CI-gating check:
 drives `digital_twin/run_wozi_integration.py` through five real subprocess runs (fresh boot, every
@@ -487,8 +487,8 @@ adding a new chip fake when a new sensor driver lands: **`digital_twin/README.md
 
 ### Manual baseline verification walkthrough
 
-A copy-paste sequence for manually checking the real assembled system (`src/sensortask_wozi.py`,
-unchanged) against the digital twin, end to end, over real HTTP — the same walkthrough used to
+A copy-paste sequence for manually checking the real assembled system (the buildgen-generated
+`sensortask_wozi.py`) against the digital twin, end to end, over real HTTP — the same walkthrough used to
 establish this project's own known-working baseline (build → boot → set log level → reboot with
 that level persisted → boot again with bus faults injected). Run each block from the repo root;
 `curl` and a browser both work against `http://127.0.0.1:8080` while a run is up.
@@ -639,6 +639,10 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   branch's sessions; expected to fold into `SPECIFICATION.md`/be deleted once the whole chain lands
   and merges into `main`, matching this repo's usual temporary-planning-doc lifecycle (see the
   deleted-docs list at the end of this section).
+- **[`BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md`](BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md)** —
+  design record for `buildgen`'s wiring-defaults mechanism, per-value generalization, and driver-
+  onboarding hardening; every mechanism it designed has since shipped, so it's kept current as a
+  durable design record rather than archived, same lifecycle as `BUILD_CHAIN_PLAN.md` above.
 
 **`DEVICE_REFERENCE.md`** (permanent, end-user-facing):
 
