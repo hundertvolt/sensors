@@ -24,8 +24,14 @@ emitted bytes.** A receiver-strictness change rejects only frames a *conforming*
 new-Python ↔ old-C keeps working and the Arduino reflash can happen in either order. That safety
 argument is conditional on the C side genuinely conforming, so **each Class A entry must be
 re-verified against the real C source when it lands** — the "verify in C" column says what to check.
-A change that alters emitted bytes is a coordinated flag-day and needs an explicit owner decision
-before it is made.
+A change that alters emitted bytes is a coordinated flag-day, and **the project owner has decided
+(2026-09-11) that the Python side may lead it**: changing Python behaviour is allowable without
+waiting for the C implementation, provided every change is recorded here for the reconciliation
+session. The receiver-strictness preference above is therefore a *preference*, no longer a gate — but
+the flag-day consequence still has to be stated per entry, because an emitted-bytes change means the
+link does not work at all against an un-reflashed peer, rather than working in degraded form. Where a
+change would strand a deployed Arduino, the entry says so and names the interim (usually: run the
+link with CRC disabled, or keep the peer on the legacy build until it is reflashed).
 
 Status values: `proposed` (agreed in principle, not yet implemented), `applied-python` (live in
 `src/`, pending the C side), `reconciled` (done on both sides — entry can be removed).
@@ -36,11 +42,15 @@ Status values: `proposed` (agreed in principle, not yet implemented), `applied-p
 |---|---|---|---|---|
 | A1 | `CMD` validated by exact match against `ACK`/`GET`/`SET`, not by bitmask (`&`) | Today `0x06`/`0x03` pass validation and then match no dispatch branch, so a malformed frame is silently mishandled instead of rejected | Whether the C receiver also masks; whether the C sender can ever emit a multi-bit `CMD` | proposed |
 | A2 | Reject a train whose declared `CHUNKS` changes between frames | Today a peer can truncate a transfer mid-train by re-declaring the total | That the C sender writes a constant `CHUNKS` across every frame of a train | proposed |
-| A3 | Validate `UID` on data chunks, not just on ACKs | Today only ACK↔frame matching checks `UID`; a stale or duplicated data frame is invisible | **Blocking**: whether the C sender increments `UID` per chunk exactly as Python does (expected, unverified). Do not implement until confirmed | proposed, blocked |
+| A3 | Validate `UID` on data chunks, not just on ACKs | Today only ACK↔frame matching checks `UID`; a stale or duplicated data frame is invisible | Whether the C sender increments `UID` per chunk exactly as Python does (expected, unverified) — and, if it does not, that this validation is what will surface it | proposed |
 | A4 | Recovery constants stay exactly as they are: drain until quiet for `1.5 × timeout`, then hold off initiating for a further `1.5 × timeout` | Not a change — recorded so the C side is known to be bound by the same constants. A peer draining for less transmits into the other's drain window | That the C side uses the same two durations, and that they are derived from its own `timeout` the same way | proposed (no-change) |
 | A5 | Bound the receive-drain loop (today unbounded) | A peer that keeps transmitting keeps the drain looping forever | That the bound chosen is never shorter than the C side's own drain window | proposed |
 | A8 | `UID` is never emitted as `0xFF`; the counter wraps `0xFE → 0` | Not a change — an author-confirmed invariant, recorded so neither side loses it. It is a deliberate off-by-one barrier so any `+1` on a received UID cannot roll over uncontrolled, and it keeps the UID space exactly as large as the longest train (no UID repeats within one transfer) | That the C counter also stops at `0xFE`, and that nothing there predicts the next UID with a bare `+1` instead of the same controlled wrap | proposed (invariant) |
-| A7 | **The on-wire CRC changes algorithm and byte order**: `asy_uart.py`'s LSB-first variant over poly `0x1021`, packed native-endian → `crc_checks.py`'s MSB-first CRC-16/CCITT-FALSE, packed big-endian | Not a deliberate change — inherited from `asy_uart_driver.py`'s own promotion, which had no callers, so nobody noticed. Verified directly: each is self-consistent (residue zero), each rejects the other's frames | **The one entry so far that alters emitted bytes, so the either-order safety argument does not apply — both ends must be changed and reflashed together.** The C side's CRC routine must be replaced wholesale. Needs an explicit owner decision before implementing; the alternative is keeping the legacy algorithm available in `crc_checks.py` and configuring the link with it | proposed, **owner decision needed** |
+| A7 | **The on-wire CRC changes algorithm and byte order**: `asy_uart.py`'s LSB-first variant over poly `0x1021`, packed native-endian → `crc_checks.py`'s MSB-first CRC-16/CCITT-FALSE, packed big-endian | Not a deliberate change — inherited from `asy_uart_driver.py`'s own promotion, which had no callers, so nobody noticed. Verified directly: each is self-consistent (residue zero), each rejects the other's frames | **The one entry so far that alters emitted bytes, so the either-order safety argument does not apply — both ends must be changed and reflashed together.** The C side's CRC routine must be replaced wholesale. **Owner decision, 2026-09-11: Python leads.** The promoted `crc_checks.py` algorithm stands and the C routine is replaced at reconciliation. Interim for a deployed peer: run the link with `CRC_Pass` (requirement "CRC optional" makes this a supported configuration, not a workaround) until both ends are reflashed together | proposed, owner-decided |
+| A9 | Add a `NAK` command value, sent on a frame the receiver rejects | Today a rejected frame produces silence, so the fault costs both sides a full quiesce-and-resync (`3 × timeout`, ~3 s at the defaults) before anything can proceed. A NAK collapses that to one frame time | **Degrades safely in the one direction that matters**: a peer that does not know `NAK` fails its `CMD` validation on the frame, rejects it, and resyncs — exactly what it would have done on timeout, just sooner. Verify the C receiver's unknown-`CMD` path really does reject-and-resync rather than mishandle (this is A1's fall-through bug on the C side, if it has it) | proposed |
+| A10 | Shorten the `ACK` frame to a bare 5-byte header, dropping its `payload_size` bytes of padding | An ACK carries nothing but padding today, and that padding is half of all airtime (J.6: 43.6 % → 77.4 % asymptotic efficiency, a 1.77× airtime reduction). **Frame length stays unambiguous with no framing machinery**: every read site already knows which kind it expects — the write path always awaits an ACK, the read path always awaits a data frame | That the C side's ACK read/write sites are likewise context-determined and not a single shared fixed-length frame routine. Alters emitted bytes: flag day | proposed |
+| A11 | Replace fixed-length framing with COBS-delimited variable-length frames | Turns resync from *temporal* into *structural*: scan to the next `0x00` and the receiver is aligned on the next frame, so worst-case recovery drops from `3 × timeout` to roughly one frame time. That removes the cooldown, which removes the write-gate timer, which removes B2's wedge mode at the source. It also makes a `payload_size` mismatch — today the one configuration error the self-healing design cannot heal, see A6 — detectable *and* recoverable. Throughput lands near A10's, so the case for it is resilience, not speed | Largest change of any entry; the whole C framing layer is replaced. Alters emitted bytes: flag day. **Open design question before this is proposed for real** — CRC currently lives in `asy_uart_driver.py` and is computed over a fixed byte count, but COBS requires the order build → CRC → encode → delimiter on write and the reverse on read, so either `UART_Comm` takes ownership of the CRC (bus driver configured with `CRC_Pass`) or the bus driver gains a framing-codec concept. Not to be decided implicitly | proposed, design question open |
+| A12 | Validate the full `SIZE` invariant per chunk position, not just `0 ≤ SIZE ≤ payload_size` | The sender's `SIZE` pattern is fully determined by construction and almost none of it is checked today: chunk 1 must be exactly 1 (the command ID) — currently unchecked, so a `SIZE=0` first chunk silently yields command ID 0 from a padding byte; chunks 2…N−1 must be exactly `payload_size` — currently unchecked, so a short middle chunk silently corrupts the payload; `SIZE == 0` is legal only on the final chunk of a two-chunk train. Each closes a *silent corruption* path, not a crash path | That the C sender emits the same pattern — in particular that its first chunk always declares `SIZE = 1`, and that it never short-fills a non-final chunk | proposed |
 | A6 | `payload_size` constrained to `1 … 255`, identical on both ends, never silently clamped | `SIZE`/`CHUNKS` are single bytes; a zero-width payload cannot carry the command ID. A mismatch desyncs the link outright | That the C side's compile-time constant is within range and matches the Python deployment value | proposed (constraint) |
 
 ## Class B — Python-internal, explicitly no C impact
@@ -54,3 +64,31 @@ Status values: `proposed` (agreed in principle, not yet implemented), `applied-p
 | B5 | `print_log.py` logger instead of `debug`-gated `print()` | Observability only |
 | B6 | Preallocated TX/RX frame buffers, `memoryview` chunking | Allocation strategy; identical bytes emitted |
 | B7 | Typing, lint cleanups, and the mechanics of parameter validation (readiness gate vs. clamp) | Internal; the *constraint* itself is A6 |
+| B8 | Structural role enforcement — `role` is a constructor parameter and the initiation entry points refuse on a responder (J.2) | Removes a way for *this* implementation's caller to violate the role model; a conforming peer's traffic is unchanged. The C side is free to enforce it however it likes, or not at all |
+| B9 | Buffer ownership per Part G.2: one `LockableBuffer` per frame, paired `write`/`write_into` and `read`/`read_into` APIs, plus chunk-at-a-time callback forms so a large transfer never exists whole in RAM (J.8) | Python API and allocation strategy only. The wire sequence is byte-for-byte identical whether the payload came from a caller's buffer, a pull callback, or a copy — the peer cannot observe which |
+| B10 | Logger injection (`fram=`/`history_length=`/`debug=`/`name=`/`logger=`, `make_logger()`), replacing every `debug`-gated `print()`; failure paths use `err_s(..., errno=N)` | Observability only (supersedes B5's narrower framing). Worth its own entry because it is also where the protocol's diagnostic counters come from: the existing `PrintLogHistory` error history *is* the counter, surfaced through `/status`'s `errcount` with optional FRAM backing, so no bespoke counter mechanism is added. The module needs its own errno range in the Part A.7 layout |
+
+## Settled questions
+
+**Can COBS's `0x00` delimiter be confused with a natural `UID` rollover to `0x00`? No — not by
+convention, but by construction.** COBS's defining guarantee is that its *encoded output contains no
+`0x00` byte at all, for any input whatsoever*: the encoder replaces every zero byte in the frame with
+an offset-to-the-next-zero, and emits only length prefixes (always ≥ 1) and non-zero data bytes. A
+`UID` of `0x00`, a CRC of `0x0000`, an all-zero payload — none of them can produce a delimiter byte,
+because none of them survive encoding as a literal zero.
+
+This matters beyond the `UID`: a reserved-value convention could never have worked here anyway, since
+the frame carries arbitrary caller payload and a CRC, neither of which we can keep clear of any
+chosen delimiter value. Only an encoding that provably eliminates the delimiter value can frame this
+protocol, which is precisely why COBS (or an equivalent) is the candidate rather than "pick a byte
+nobody sends".
+
+Verified directly rather than taken on trust (2026-09-11): a reference encoder/decoder over 20 010
+cases — including all-zero frames, 254-byte zero runs, `UID` ∈ {`0x00`, `0xFE`, `0xFF`} protocol
+frames with zero CRC and zero payload, and 20 000 random buffers up to 600 bytes — produced **zero
+encoded outputs containing `0x00`** and **zero round-trip mismatches**. Overhead measured as
+`1 + ceil(n/254)` bytes including the delimiter, i.e. exactly 2 bytes for a 55-byte frame.
+
+**The `0xFF` `UID` barrier (A8) is unaffected either way.** It exists to stop a `+1` on a received
+UID from rolling over uncontrolled, which is a counter property, not a framing one — it neither
+conflicts with nor substitutes for delimiter framing, and stays in force under every option above.

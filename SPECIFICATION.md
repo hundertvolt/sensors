@@ -1930,6 +1930,30 @@ backend-only or frontend-only validation/coercion policy change in this project.
   `# type: ignore[operator]` (three of which it removed outright).
 - **Driver layering/naming/config-schema/error-handling/concurrency/timer shape** — Part C, for a
   sensor driver specifically; complementary to this Part.
+- **Buffer ownership and zero-copy region handoff** — `base_classes.py`'s `LockableBuffer`, plus the
+  paired-API shape every buffer-holding module in `src/` already follows. A module that moves bytes
+  owns **one** contiguous allocation per logical record, sized once from configuration, and hands out
+  `memoryview` slices of its regions (`get_buf()`, `get_data_buf()`, and a per-class accessor per
+  further region) rather than returning freshly allocated copies. Three rules follow, and they are
+  what separates the `src/` implementations from their `python/` ancestors:
+  - **Every transfer method comes in pairs** — `write(data)`/`write_into(buf)` and
+    `read()`/`read_into(buf)`: the convenience form allocates and copies, the `_into`/`_from` form
+    takes a caller-owned buffer and neither allocates nor copies. `asy_fram_manager.py`'s
+    `AsyFramChunk` is the reference shape.
+  - **Serialisation writes into a caller-supplied buffer at an offset, never into a returned tuple
+    or bytes** — `voc_algorithm.py`'s `pack_into(buf, offset)`/`unpack_from(buf, offset)` replacing
+    the legacy `get_states()`/`set_states()` tuple pack.
+  - **A failed allocation degrades to a `None` buffer, never an exception** — `LockableBuffer`
+    catches `MemoryError`/`OverflowError` in its own constructor and leaves `self.buf = None`, and
+    every consumer's first act is `if buf is None: return False`.
+  The composition this buys is the actual point, and it is already live end to end:
+  `asy_sgp40_driver.py` takes one `AsyFramChunkBuffer` from the FRAM chunk, passes its
+  `get_data_buf()` memoryview down to `vocalgorithm_proc_ser_des()`, which `struct.pack_into()`s the
+  algorithm state **directly into the FRAM chunk's payload region**, and the chunk then writes itself
+  out — one allocation, zero copies, across three module layers. Long-lived per-instance scratch
+  buffers (`asy_fram_driver.py`'s `_id_buf`/`_status_buf`/`_addr_buf`, `asy_sgp40_driver.py`'s
+  `_measure_command`) are the same rule applied to fixed-size command/status traffic, replacing the
+  legacy per-call `bytearray([...])`.
 - **Memory-bounded streaming of a dict-shaped GET response** — `_stream_dict_response()` (Part I).
   Any route whose response scales with device configuration returns `await
   _stream_dict_response(result)` instead of `return result`.
@@ -2330,6 +2354,15 @@ complete payload train when answering a GET, and acknowledges every frame it rec
 uses `uart_get()`/`uart_set()` and never listens; a responder uses `uart_listen()` and never
 initiates.
 
+**The role is enforced structurally, not by convention.** The role is a constructor parameter, and
+the initiation entry points refuse on the wrong role (C.13's readiness-gate treatment — a logged
+refusal returning the module's normal failure sentinel, never an exception). Holding the session lock
+for the duration of one `uart_listen()` call is *not* sufficient on its own: the lock is released
+between calls, so an application could otherwise interleave an initiation into a responder's listen
+loop and produce exactly the simultaneous initiation the design has no arbitration for. The
+responder's own answer to a GET is unaffected — it runs through the internal unlocked SET path, not
+through the public `uart_set()` entry point that the role gate covers.
+
 ## J.3 Frame format
 
 Every frame is exactly `5 + payload_size` bytes, the payload field zero-padded to its full width.
@@ -2438,6 +2471,24 @@ payload has no room for the command ID). A mismatch desyncs the link outright, s
 value must never be silently clamped — C.13's readiness-gate treatment instead. Maximum transferable
 payload is `(0xFF - 1) × payload_size`.
 
+**Wire cost.** Every frame is exactly `5 + payload_size + crc` bytes, ACKs included — an ACK carries
+no payload but transmits `payload_size` bytes of padding regardless. At the defaults
+(`payload_size=48`, CRC16) a chunk exchange therefore costs `55 + 55 = 110` bytes of airtime to move
+48 payload bytes: 21.8 % efficiency for a single-chunk transfer, 39.7 % at 480 bytes, and an
+asymptote of **43.6 %**. This is accepted for the intended traffic (short bursts between two
+participants) and is not on its own a reason to change the wire format — see
+`UART_C_PORT_CHANGELOG.md` A10/A11 for the two candidates that would.
+
+**Poll granularity dominates throughput, not baud rate or protocol overhead.**
+`asy_uart_driver.py`'s `ready()` yields via `asyncio.sleep_ms(poll_wait_ms)` between readiness
+checks, defaulting to **20 ms**. A 55-byte frame takes 4.8 ms on the wire at 115200 baud but costs
+one or more whole poll intervals to notice, in each direction, for every frame of a stop-and-wait
+exchange. Measured against the defaults, a 480-byte transfer spends roughly 1.1 s of wall clock to
+move 480 bytes over an 11.5 kB/s link — about 4 % of link capacity, of which the overwhelming
+majority is poll latency. **A `UART` instance driving this protocol must therefore be constructed
+with a single-digit `poll_wait_ms`**; leaving the default in place makes every other efficiency
+property of the protocol irrelevant.
+
 ## J.7 Testing: the loopback model
 
 **Self-compatibility is a required, tested property**: one Python instance as initiator and one as
@@ -2456,3 +2507,40 @@ Unix port does not re-evaluate a Python object's `ioctl()` after registration (t
 segfault with non-fd poll objects. The mock layer therefore supplies a paired poller stand-in
 re-querying each fake's `ioctl()` per call, installed by reassigning `uart.poller` after construction
 — the project's established mocking mechanism, keeping `src/` free of a testability seam.
+
+## J.8 Memory model
+
+**The protocol chunks the wire; the API must chunk the memory too.** Splitting a payload into frames
+is what lets a transfer cross a peer's small UART buffers, but it does nothing for RAM if both
+endpoints still have to materialise the whole payload at once — and the legacy implementation does
+exactly that: the receiver grows `res` by `+=` across the whole train (254 reallocations and a ~2×
+peak at the final copy for a maximum 12192-byte transfer, on a 264 kB device), and a responder's GET
+callback must return the complete answer as one buffer before the first frame goes out. Requirement
+"large payloads over little buffers" is only half-met until this is fixed.
+
+The module therefore follows Part G.2's buffer-ownership primitive, in the same paired shape
+`asy_fram_manager.py` uses:
+
+- **Two long-lived frame buffers per instance**, `LockableBuffer(5 + payload_size, data_start=5,
+  data_length=payload_size)`, allocated once from configuration: `get_buf()` is what the bus driver's
+  `writefrom()`/`readinto_until_complete()` operate on, `get_data_buf()` is the payload region. Header
+  fields are written in place by index. Steady-state frame traffic allocates nothing.
+- **Paired transfer APIs.** `uart_set(id, data)`/`uart_get(id)` keep today's allocate-and-copy
+  convenience for small payloads; `_into`/`_from` counterparts take a caller-owned buffer, and a
+  callback form drives a chunk at a time so a large transfer can stream to or from FRAM/flash without
+  ever existing in RAM as a whole.
+- **Preallocate from `CHUNKS`, never grow.** The total upper bound `CHUNKS × payload_size` is known
+  the moment the first frame of a train arrives, and the exact size is known whenever the caller
+  passed `exp_size` — neither case justifies an incrementally grown accumulator.
+- **A failed allocation degrades to the module's normal failure sentinel** and the quiesce-and-resync
+  path, never an exception (J.1).
+
+One consequence is worth stating because it is counterintuitive: a received frame is read whole into
+the instance's RX frame buffer and its payload region then slice-assigned into the destination, and
+*not* read header-first so the payload can land directly at its final offset. The two-stage read
+would save one ≤`payload_size` memcpy but costs an extra `ready()` round — one whole `poll_wait_ms`
+(J.6) — and, with CRC enabled, is not available at all, since the CRC covers the frame as a unit.
+
+**Padding must be zero-filled from a preallocated zero buffer**, not from a freshly built one. Today
+the full-length framing means every frame carries `payload_size - size` unused bytes; leaving them
+unwritten would transmit the previous frame's payload remnants.
