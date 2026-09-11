@@ -419,11 +419,13 @@ a module must offer to be wired into a variant at all.
 | C5.3 | Listen loop never returns and never yields | Starves the event loop, including the Neopixel animation | Every wait is an `await`; no busy spin without a yield |
 | C5.4 | An initiator-role instance exposes a listen task | Both ends initiate; the protocol has no arbitration for that | `get_task_starters()` returns `[]` for an initiator — the role decides the task set |
 | C5.5 | `reset_error_counter()` resets the history but not an internal streak counter | A reset the caller expects to be total is not | Resets everything this module counts, the way `SensorReader.reset_error_counter()` resets both |
+| C5.6 | Bytes left in the driver's `rxbuf` from before `setup()` — a peer mid-train, or a peer that outlived this side's reset | The first read lands mid-frame, so a live link logs a spurious fault on every boot; E4 recovers it, but the noise is indistinguishable from a real one in the FRAM history | `setup()` drains the receive path once, bounded exactly as E4.1 bounds its own drain, before the gate opens. A boot-time drain is not a fault and is not counted |
 
 **Function tests.** `[mock]` both starter lists are returned and are the right shape per role;
-`setup()` flips the gate; a reset clears count and history.
+`setup()` flips the gate; a reset clears count and history; `setup()` leaves the receive path empty.
 **Failure tests.** `[mock]` an injected permanent link fault does not make the listen loop return;
-a readiness failure does.
+a readiness failure does; `[mock]` C5.6's pre-seeded partial frame is drained by `setup()` without
+raising the error counter, and the first real transfer afterwards succeeds.
 
 **Sources.** C.9, C.13, A.7.
 
