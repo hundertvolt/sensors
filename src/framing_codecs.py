@@ -20,8 +20,14 @@ class Framing_Base:
     # Pass-through by construction: every method below is the identity, and a subclass overrides
     # only what it actually changes. Mirrors crc_checks.py's CRC_Base/CRC_Pass split, so a caller
     # can hold either family behind one dispatch table.
-    def __init__(self, max_frame: int = 0) -> None:
+    def __init__(self, max_frame: int = 0, run_length: int = 0, trailer: int = 0) -> None:
+        # Parameterized the way crc_checks.py's CRC_Base is, so a subclass supplies constants
+        # rather than reimplementing the arithmetic: run_length is the longest span one code byte
+        # can describe (0 = the frame carries no code bytes at all) and trailer the delimiter bytes
+        # appended after it.
         self.max_frame = max(max_frame, 0)
+        self.run_length = max(run_length, 0)
+        self.trailer = max(trailer, 0)
         self.allocations = 0  # long-lived scratch allocations; 1 at most, never per frame
 
     def ready(self) -> bool:  # False once a scratch allocation has failed (B2.8)
@@ -34,7 +40,10 @@ class Framing_Base:
         return None
 
     def overhead(self, size: int) -> int:
-        return 0
+        # Integer arithmetic only: no float division on a target without an FPU.
+        if self.run_length <= 0:
+            return self.trailer
+        return (size // self.run_length) + 1 + self.trailer
 
     def max_encoded(self, size: int) -> int:
         return size + self.overhead(size)
@@ -62,7 +71,7 @@ class Framing_Pass(Framing_Base):
     # The explicit no-op, named so a construction site states the choice rather than relying on a
     # default - the same reason crc_checks.py spells out CRC_Pass.
     def __init__(self) -> None:
-        super().__init__(0)
+        super().__init__(0, run_length=0, trailer=0)  # no code bytes, no delimiter, no overhead
 
     def _checked(self, buf: bytearray, size: int) -> bool:
         return 0 <= size <= len(buf)  # no max_frame bound applies when nothing is reframed
@@ -72,7 +81,7 @@ class Framing_COBS(Framing_Base):
     # Consistent Overhead Byte Stuffing: the encoded form provably contains no 0x00, so a single
     # 0x00 delimiter frames it unambiguously whatever the payload, CRC or UID happen to be.
     def __init__(self, max_frame: int) -> None:
-        super().__init__(max_frame)
+        super().__init__(max_frame, run_length=_COBS_RUN_LEN, trailer=1)
         # One long-lived scratch, sized for the worst case from max_frame - never per frame (B2.5).
         self._scratch: bytearray | None = None
         if max_frame > 0:
@@ -90,11 +99,6 @@ class Framing_COBS(Framing_Base):
 
     def delimiter(self) -> int | None:
         return COBS_DELIMITER
-
-    def overhead(self, size: int) -> int:
-        # One code byte per run of up to 254 bytes, plus the trailing delimiter. Integer
-        # arithmetic throughout: no float division on a target without an FPU.
-        return (size // _COBS_RUN_LEN) + 2
 
     def _checked(self, buf: bytearray, size: int) -> bool:
         return self.ready() and 0 <= size <= len(buf) and size <= self.max_frame

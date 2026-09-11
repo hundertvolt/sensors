@@ -401,7 +401,7 @@ class UART(io.IOBase):
         self.rx_queue = bytearray()
         self.writable = True
         self.write_limit: int | None = None  # test-only: caps bytes accepted per write() call - see write()
-        self._link: "UARTLink | None" = None  # set by UARTLink() - see its own docstring
+        self._link: UARTLink | None = None  # set by UARTLink() - see its own docstring
 
     def feed_rx(self, data: bytes) -> None:  # test helper: queue bytes as if received over the wire
         self.rx_queue += data
@@ -476,8 +476,8 @@ class _LinkDirection:
     def __init__(self, capacity: int) -> None:
         self.capacity = capacity  # far-side FIFO bound; overflow drops the newest bytes
         self.silent = False  # one-sided silence
-        self.drop_indices: "set[int]" = set()
-        self.corrupt_indices: "dict[int, int]" = {}  # stream offset -> xor mask, length-preserving
+        self.drop_indices: set[int] = set()
+        self.corrupt_indices: dict[int, int] = {}  # stream offset -> xor mask, length-preserving
         self.truncate_after: int | None = None  # cut this direction's stream after N offered bytes
         self.noise_before_next = bytearray()  # injected once, ahead of the next delivery
         self.delay = False  # hold delivered bytes until UARTLink.release_delayed()

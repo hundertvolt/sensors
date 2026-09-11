@@ -418,8 +418,8 @@ class _LinkDirection:
         self.capacity = capacity
         self.baudrate = baudrate
         self.silent = False
-        self.drop_indices: "set[int]" = set()
-        self.corrupt_indices: "dict[int, int]" = {}
+        self.drop_indices: set[int] = set()
+        self.corrupt_indices: dict[int, int] = {}
         self.truncate_after: int | None = None
         self.noise_before_next = bytearray()
         self.delay = False
@@ -428,7 +428,7 @@ class _LinkDirection:
         self.delivered = 0
         self.dropped_overrun = 0
         self.pending = bytearray()  # held by the delay knob
-        self.in_flight: "deque[tuple[int, int]]" = deque((), 64)  # (due_us, byte)
+        self.in_flight: deque[tuple[int, int]] = deque((), 64)  # (due_us, byte)
         self.wire_log = bytearray()
 
     def byte_time_us(self) -> int:
@@ -462,6 +462,11 @@ class UARTLink:
         self.endpoints = (uart_a, uart_b)
         self.a_to_b = _LinkDirection(uart_b.rxbuf if capacity_a_to_b is None else capacity_a_to_b, uart_a.baudrate)
         self.b_to_a = _LinkDirection(uart_a.rxbuf if capacity_b_to_a is None else capacity_b_to_a, uart_b.baudrate)
+        # Wire time is kept as a plain microsecond offset from one epoch captured here, via
+        # ticks_diff(), rather than as raw ticks values: the arithmetic below mixes it with byte
+        # durations, and ticks values are opaque. A twin run longer than ticks_us()' own period
+        # would need re-anchoring; no test comes close.
+        self._epoch_us = time.ticks_us()
         self._next_free_us = [0, 0]  # per direction: when the wire is idle again
         uart_a._link = self
         uart_b._link = self
@@ -479,22 +484,25 @@ class UARTLink:
             raise ValueError("UART is not an endpoint of this link")
         return self.b_to_a if self._index(uart) == 0 else self.a_to_b
 
+    def _now_us(self) -> int:
+        return time.ticks_diff(time.ticks_us(), self._epoch_us)
+
     def _schedule(self, index: int, direction: "_LinkDirection", data: bytearray) -> None:
-        now = time.ticks_us()
-        due = now if time.ticks_diff(self._next_free_us[index], now) < 0 else self._next_free_us[index]
+        now = self._now_us()
+        due = max(now, self._next_free_us[index])
         step = direction.byte_time_us()
         for byte in data:
-            due = time.ticks_add(due, step)
+            due += step
             direction.in_flight.append((due, byte))
         self._next_free_us[index] = due
 
     def _advance(self) -> None:
         # Moves every byte whose wire time has elapsed into the destination FIFO. Called from each
         # endpoint's own read path, so time only ever advances as the consumer actually runs.
-        now = time.ticks_us()
+        now = self._now_us()
         for index, direction in ((0, self.a_to_b), (1, self.b_to_a)):
             dest = self.endpoints[1 - index]
-            while direction.in_flight and time.ticks_diff(direction.in_flight[0][0], now) <= 0:
+            while direction.in_flight and direction.in_flight[0][0] <= now:
                 _due, byte = direction.in_flight.popleft()
                 if len(dest.rx_queue) >= direction.capacity:
                     direction.dropped_overrun += 1
@@ -595,7 +603,7 @@ class UART(io.IOBase):
         self.rx_queue = bytearray()
         self.writable = True
         self.write_limit: int | None = None
-        self._link: "UARTLink | None" = None
+        self._link: UARTLink | None = None
         UART._live[id] = self
 
     def _pump(self) -> None:

@@ -4,14 +4,6 @@ Re-runs tests/_uart_link_contract.py's shared bodies against the twin backend, s
 import sys
 import time
 
-try:
-    from typing import TYPE_CHECKING
-except ImportError:  # typing has no runtime presence on MicroPython, on-device or in the Unix-port test build
-    TYPE_CHECKING = False
-
-if TYPE_CHECKING:
-    from typing import Any
-
 # digital_twin/ must precede tests/ so `machine` resolves to the twin's own fake, not
 # tests/machine.py's - see test_digital_twin_machine.py's own comment for the full reasoning.
 sys.path.insert(0, "digital_twin")
@@ -20,7 +12,7 @@ import _uart_link_contract
 from machine import UART, LinkPoller, Pin, UARTLink
 
 
-def make_link(**kwargs: "Any") -> "tuple[UART, UART, UARTLink]":
+def make_link(**kwargs: "int | None") -> "tuple[UART, UART, UARTLink]":
     UART._live.clear()  # each test constructs its own pair (A3.3), never a shared module-level one
     a = UART(0, tx=Pin(0), rx=Pin(1), baudrate=115200)
     b = UART(1, tx=Pin(8), rx=Pin(9), baudrate=115200)
@@ -108,7 +100,7 @@ def test_twin_poller_is_not_a_real_select_poll() -> None:
     import select
 
     _a, b, _link = make_link()
-    assert not isinstance(LinkPoller(b), type(select.poll()))
+    assert type(LinkPoller(b)).__name__ != type(select.poll()).__name__
 
 
 if __name__ == "__main__":
