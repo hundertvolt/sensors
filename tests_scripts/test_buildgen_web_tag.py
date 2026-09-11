@@ -6,13 +6,17 @@ Matrix dimensions:
   D1 field name     plain, CamelCase, digit-bearing, underscored (single-char "r"/"g"/"b" too)
   D2 key=value      quoted string, bareword, boolean (true/false), special:<value>="<meaning>"
                      (repeated), unknown key rejected, missing required key(s) rejected
-  D3 format         spacing around "#"/the tag word/"="; "##" section style; quoted vs bareword
+  D3 format         spacing around "#"/the tag word/"="; "##" section style; quoted vs bareword;
+                     dropped-piece direction (trailing junk, a dropped value, a duplicate key)
   D4 location       top of file, after a docstring, among imports, trailing inline, last line with
                      no trailing newline, inside a class/function body (rejected)
-  D5 multiplicity   none, one, several fields, duplicate (section, submitGroup, field) rejected
-  D6 web-group      required keys, submit=/submitLabel=, duplicate (section, submitGroup) rejected
+  D5 multiplicity   none, one, several fields, duplicate (section, submitGroup, field) rejected, a
+                     valid tag does not excuse a near-miss beside it
+  D6 web-group      required keys, submit=/submitLabel=, duplicate (section, submitGroup) rejected,
+                     the same dropped-piece grammar failures as @web
   D7 near-miss      "@" dropped, field name dropped (web only), tag name typo'd, wrong-family
-                     cross-contamination avoided
+                     cross-contamination avoided, the edit-distance boundary just outside each
+                     family's own tolerance (which must stay silent)
   D8 real drivers   every src/ file this session tagged parses to the exact expected tags
 """
 
@@ -109,6 +113,26 @@ def test_parse_web_tags_invalid_bool_rejected(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# D2/D3 dropped-piece grammar failures: a malformed key=value payload must fail loud via
+# _WebGrammarError -> "malformed @web tag", the same "dropped piece" direction
+# test_buildgen_requires_tag.py already walks for @requires (trailing junk, a dropped value).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        '# @web X section=sensors submitGroup=self label="L" trailingjunk\n',  # no "=" at all
+        "# @web X section=sensors submitGroup=self label=\n",  # value dropped entirely
+        '# @web X section=sensors submitGroup=self label="L" label="L2"\n',  # duplicate plain key
+        '# @web X section=sensors submitGroup=self label="L" special:1="A" special:1="B"\n',  # duplicate special key
+    ],
+)
+def test_parse_web_tags_rejects_malformed_payload_shapes(tmp_path: Path, source: str) -> None:
+    _parse_expecting(tmp_path, source, "malformed @web tag")
+
+
+# ---------------------------------------------------------------------------
 # D3 format/spacing variants
 # ---------------------------------------------------------------------------
 
@@ -194,6 +218,17 @@ def test_parse_web_tags_same_field_name_different_group_is_not_a_duplicate(tmp_p
     assert len(tags) == 2
 
 
+def test_parse_web_tags_a_valid_tag_does_not_excuse_a_near_miss_beside_it(tmp_path: Path) -> None:
+    # Mirrors test_parse_requires_tags_a_valid_tag_does_not_excuse_a_near_miss_beside_it: the
+    # exact-match bookkeeping parse_web_tags() hands the near-miss detector is per comment
+    # position, not "this file already had a valid tag" - a half-migrated driver still fails.
+    _parse_expecting(
+        tmp_path,
+        '# @web A section=sensors submitGroup=self label="A"\n# @wb B section=sensors submitGroup=self label="B"\n',
+        "misspelled @web tag",
+    )
+
+
 # ---------------------------------------------------------------------------
 # D6 @web-group
 # ---------------------------------------------------------------------------
@@ -236,6 +271,22 @@ def test_parse_web_group_tags_different_submit_group_same_section_is_not_a_dupli
         '# @web-group section=networking submitGroup=identity label="Identity"\n# @web-group section=networking submitGroup=wifiLed label="LED"\n',
     )
     assert len(tags) == 2
+
+
+def test_parse_web_group_tags_invalid_submit_bool_rejected(tmp_path: Path) -> None:
+    _parse_group_expecting(tmp_path, '# @web-group section=sensors submitGroup=self label="L" submit=yes\n', "must be true or false")
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        '# @web-group section=sensors submitGroup=self label="L" trailingjunk\n',  # no "=" at all
+        "# @web-group section=sensors submitGroup=self label=\n",  # value dropped entirely
+        '# @web-group section=sensors submitGroup=self label="L" label="L2"\n',  # duplicate key
+    ],
+)
+def test_parse_web_group_tags_rejects_malformed_payload_shapes(tmp_path: Path, source: str) -> None:
+    _parse_group_expecting(tmp_path, source, "malformed @web-group tag")
 
 
 # ---------------------------------------------------------------------------
@@ -289,6 +340,20 @@ def test_parse_web_group_tags_rejects_near_misses(tmp_path: Path, source: str, m
     _parse_group_expecting(tmp_path, source, match)
 
 
+def test_parse_web_tags_edit_distance_just_outside_tolerance_stays_silent(tmp_path: Path) -> None:
+    # "web" is <=4 letters, so _max_typo_distance() only tolerates one typo. "wax" is edit distance
+    # 2 from "web" (two substitutions) - structured like a real payload, but too far to be a typo of
+    # this family's name, so it must be left alone entirely (mirrors
+    # test_parse_requires_tags_leaves_non_tags_alone's own "@requi" edit-distance-3 case).
+    assert _parse(tmp_path, '# @wax X section=sensors submitGroup=self label="L"\n') == ()
+
+
+def test_parse_web_group_tags_edit_distance_just_outside_tolerance_stays_silent(tmp_path: Path) -> None:
+    # "web-group" is >4 letters, so tolerance is 2. "xyz-group" is edit distance 3 from "web-group"
+    # (three substitutions in the "web"/"xyz" part) - just outside it, so it must stay silent too.
+    assert _parse_group(tmp_path, '# @xyz-group section=sensors submitGroup=self label="L"\n') == ()
+
+
 # ---------------------------------------------------------------------------
 # D8 real drivers - a spot check that every tagged src/ file parses as expected
 # ---------------------------------------------------------------------------
@@ -319,6 +384,53 @@ def test_parse_web_tags_real_bmp3xx_enum_specials(src_dir: Path) -> None:
     tags = parse_web_tags(src_dir / "asy_bmp3xx_driver.py", "dev", "bmp3xx")
     filt_coeff = next(t for t in tags if t.field_name == "FiltCoeff")
     assert dict(filt_coeff.special) == {"0": "Off", "1": "1", "3": "3", "7": "7", "15": "15", "31": "31", "63": "63", "127": "127"}
+
+
+def test_parse_web_tags_real_bmp3xx_field_names(src_dir: Path) -> None:
+    tags = parse_web_tags(src_dir / "asy_bmp3xx_driver.py", "dev", "bmp3xx")
+    assert {t.field_name for t in tags if t.section == "sensors"} == {
+        "SampleInterv", "PressOvers", "TempOvers", "FiltCoeff", "PressOffset", "TempOffset", "SeaLevelOffs", "MeanAtmTemp",
+    }
+    assert {t.field_name for t in tags if t.section == "measurements"} == {"Pres", "Temp", "SLPres", "TS"}
+
+
+def test_parse_web_tags_real_sgp40_field_names_and_specials(src_dir: Path) -> None:
+    # This is the file BUILD_CHAIN_PLAN.md flags as the real generator-behavior finding: each of
+    # these three fields has a documented "0 means X" meaning despite an ordinary (special=None)
+    # schema tuple, so the tag's own special: entries - not the schema - must survive parsing.
+    tags = parse_web_tags(src_dir / "asy_sgp40_driver.py", "dev", "sgp40")
+    assert {t.field_name for t in tags if t.section == "sensors"} == {"BackupPeriod", "BackupMaxAge", "WaitTimeNTP", "SGPResetVOC"}
+    assert {t.field_name for t in tags if t.section == "measurements"} == {"VOC", "Raw", "TS"}
+    by_name = {t.field_name: t for t in tags}
+    assert dict(by_name["BackupPeriod"].special) == {"0": "Backups off"}
+    assert dict(by_name["BackupMaxAge"].special) == {"0": "Use all found backups"}
+    assert dict(by_name["WaitTimeNTP"].special) == {"0": "Never wait for NTP sync"}
+    assert by_name["SGPResetVOC"].dispatch is True
+
+
+def test_parse_web_tags_real_wifi_field_names(src_dir: Path) -> None:
+    tags = parse_web_tags(src_dir / "asy_wifi_service.py", "dev", "wifi")
+    assert {t.field_name for t in tags if t.submit_group == "identity"} == {"SSID", "PW", "Country", "Hostname"}
+    assert {t.field_name for t in tags if t.submit_group == "wifiLed"} == {"LedWifiOn"}
+    assert next(t for t in tags if t.field_name == "PW").mask is True
+
+
+def test_parse_web_tags_real_ntp_field_names(src_dir: Path) -> None:
+    tags = parse_web_tags(src_dir / "asy_ntp_client.py", "dev", "ntp")
+    assert {t.field_name for t in tags if t.section == "networking"} == {"NTP_Host", "NTP_Offset_S", "NTP_Interv_H"}
+    # GMTOffset/DSTOffset are real asy_ntp_client.py fields that render on the System page instead
+    # (BUILD_CHAIN_PLAN.md) - a cross-file section/group assignment, not a mistake to "fix".
+    assert {t.field_name for t in tags if t.section == "system"} == {"GMTOffset", "DSTOffset"}
+
+
+def test_parse_web_tags_real_system_field_names(src_dir: Path) -> None:
+    tags = parse_web_tags(src_dir / "system_service.py", "dev", "system")
+    assert {t.field_name for t in tags} == {"DebugLevel"}
+
+
+def test_parse_web_tags_real_notification_field_names(src_dir: Path) -> None:
+    tags = parse_web_tags(src_dir / "asy_notification_service.py", "dev", "notification")
+    assert {t.field_name for t in tags} == {"AutoOn", "OnH", "OnM", "OffH", "OffM", "FlashBri", "Interv", "FlashDur"}
 
 
 @pytest.mark.parametrize(
