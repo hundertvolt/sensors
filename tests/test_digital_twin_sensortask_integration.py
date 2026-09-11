@@ -801,6 +801,45 @@ def test_sgp40_voc_backup_unflushed_write_is_lost_but_the_system_recovers_cleanl
     run_timed(scenario(), timeout_s=30.0)
 
 
+def test_mempause_over_real_http_reaches_the_real_fram_manager_and_unpauses() -> None:
+    # The REST -> SystemService.pause_permanent_storage() -> AsyFramManager.set_pause() wiring,
+    # through the real booted object graph and a real HTTP request. The mock tier proves the pause
+    # LOGIC and the flash tier proves the real chip gating plus the real auto-unpause timer; what
+    # this tier adds is that the wiring between them holds in CI, on every push, rather than only
+    # in a bench session. Deliberately does not wait out an auto-unpause: the REST command's
+    # duration is a hardcoded 300s that no client can shorten (asy_webserver_service.py forwards
+    # the enum string only), so the unpause half is driven through the same SystemService call the
+    # command itself reaches.
+    port = _next_test_port()
+
+    async def scenario() -> None:
+        await _boot(port)
+        assert sensortask_wozi.fram is not None
+        assert sensortask_wozi.sysfunct is not None
+        task = await _start_webserver()
+        try:
+            res = await _http_client.fetch("127.0.0.1", port, "GET", "/status")
+            assert res.json()["system"]["MemPaused"] is False
+
+            res = await _http_client.fetch("127.0.0.1", port, "PUT", "/system", {"SystemCmd": "mempause"})
+            assert res.status_code == 200
+
+            # Both the live object and the REST view must agree - a status field reporting a
+            # different flag than the manager actually holds would be the real defect here.
+            assert sensortask_wozi.fram.get_pause() is True
+            res = await _http_client.fetch("127.0.0.1", port, "GET", "/status")
+            assert res.json()["system"]["MemPaused"] is True
+
+            sensortask_wozi.sysfunct.pause_permanent_storage(0)  # the immediate-unpause branch
+            assert sensortask_wozi.fram.get_pause() is False
+            res = await _http_client.fetch("127.0.0.1", port, "GET", "/status")
+            assert res.json()["system"]["MemPaused"] is False
+        finally:
+            await _cancel(task)
+
+    run_timed(scenario(), timeout_s=20.0)
+
+
 if __name__ == "__main__":
     import microtest
 

@@ -59,3 +59,30 @@ def test_error_log_history_persists_in_the_real_chip_across_a_simulated_reboot(b
 
 def test_write_protection_actually_gates_a_real_write(board: Board) -> None:
     _run_and_assert_pass(board, "fram_write_protect_roundtrip.py", timeout_s=30.0, label="FRAM write-protect roundtrip")
+
+
+# ---------------------------------------------------------------------------
+# The storage-pause gate (system_service.pause_permanent_storage()/AsyFramManager.set_pause()).
+# The mock tier already covers the clamp/re-arm/abort-on-arm-failure logic exhaustively, but it
+# fakes machine.Timer - so "the real ONE_SHOT auto-unpause actually fires on an rp2 alarm pool" and
+# "a pause genuinely stops the bus write reaching the chip" are both hardware-only claims.
+# ---------------------------------------------------------------------------
+
+
+def test_storage_pause_gates_the_real_chip_and_the_real_auto_unpause_timer_fires(board: Board) -> None:
+    # ~20s of real waiting inside the script (the 2s/2s/6s auto-unpause windows plus margins, and
+    # the exhausted-alarm-pool step's own window), so the timeout is generous relative to that
+    # rather than to the script's negligible compute.
+    _run_and_assert_pass(board, "fram_pause_unpause_and_gating.py", timeout_s=90.0, label="FRAM pause/unpause gating")
+
+
+# ---------------------------------------------------------------------------
+# The busy-status lockout: the real-hardware half of the SPI RX-overrun coverage BACKLOG.md tracks.
+# The overrun itself is a DMA timing condition no Python-level knob can induce on target, so this
+# tests its consequence instead - which IS inducible, and is the behaviour that actually protects a
+# destructive-readout part. Mock and twin tiers already cover it; this closes the hardware tier.
+# ---------------------------------------------------------------------------
+
+
+def test_both_blocks_left_busy_lock_the_real_chunk_until_it_is_rewritten(board: Board) -> None:
+    _run_and_assert_pass(board, "fram_busy_status_lockout.py", timeout_s=45.0, label="FRAM busy-status lockout")
