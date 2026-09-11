@@ -45,6 +45,7 @@ concretely demands of *this* module and how it will be checked.
 | 2.6 | **`_error_check()` is not reimplemented here** — G.1 forbids re-rolling an established primitive, and a private method on a class this module doesn't subclass cannot be reused. It is also the wrong primitive: `_error_check()`'s give-up exists so the task supervisor can re-run `_init_<sensor>()` and re-initialize hardware, and this module owns no hardware to re-initialize — a restart would accomplish nothing the quiesce-and-resync has not already done | G.1, C.4.1 |
 | 2.6a | **The listen loop escalates by capped exponential backoff instead**, `captive_dns.py`'s `DNSServer.run()` shape (0.5s → 5s cap, reset on success) — C.9's cascading-recovery-storm convention, which exists precisely for a loop whose failures return sentinels rather than raising, so no outer `except` ever fires | C.9 |
 | 2.6b | The loop returns (letting the supervisor restart it) **only on a readiness failure** — no bus handle, `setup()` never ran, role mismatch — never on a link fault, which is self-healing by design | C.13, J.5 |
+| 2.7 | `uart_listen()` returns a module-level **namedtuple** (`cmd_id`, `cmd`, `payload`), every path returning it explicitly. Its one allocation is **per logical message, not per frame** — a 255-chunk train still allocates exactly one — so §7's zero-allocation requirement, which is about steady-state *frame* traffic, is untouched. C.6's `make_dict()` repr-parsing landmine does not apply: this namedtuple is never serialized | Owner decision, C.6, J.8 |
 
 ## 3. Construction contract
 
@@ -320,17 +321,24 @@ Settled by the project owner, 2026-09-11:
 6. **Website.** Solved upstream; this module's obligation is to provide the same means every other
    module does (16.5).
 
-Still open — needed before the affected code is written, not before the tests are scoped:
-
-7. **CRC ownership** (changelog A11's open question): `UART_Comm` takes CRC ownership with the bus
-   driver configured `CRC_Pass`, or `asy_uart_driver.py` gains a framing-codec concept. Only forced
-   if COBS framing is adopted; not to be decided implicitly.
-8. **`uart_listen()`'s return contract** — the three-tuple's shape on every path, including the
-   currently-undefined fall-through.
-9. **`uart_get()`'s empty-payload result** — a genuinely empty payload is a distinct outcome from
-   failure (J.4); the API must express that distinction.
-10. **The lost-final-ACK case** — whether "sent, unconfirmed" is surfaced as its own outcome or
-    folded into failure. It is a two-generals situation, so the honest answer may be a third state.
+7. **CRC/framing ownership** (changelog A11's open question): **`asy_uart_driver.py` gains a
+   framing-codec concept** — "frame in, frame out" with a pluggable codec (none / COBS), CRC
+   staying underneath it where it already lives. Not `UART_Comm` taking CRC ownership, and not a
+   deferral. This is the largest consequence of this round: it makes A11 structurally possible,
+   reusable by any future framed protocol, and it means a real extension to an already-promoted,
+   already-tested file — see 20.1-20.6.
+8. **`uart_listen()`'s return contract**: a **namedtuple**, not a bare three-tuple — call sites read
+   `res.cmd_id` rather than `res[0]`, and every path returns it explicitly, including the
+   currently-undefined fall-through. See 2.7 for why its allocation does not conflict with §7.
+9. **`uart_get()`'s empty-payload result**: `None` means failure, a zero-length result means a
+   genuinely empty payload — which the legacy code already does by accident, since it discards the
+   internal `filled` flag. The `_into`/callback forms mirror it as `None` on failure vs. 0 bytes
+   written. Nothing to build; it must be *documented as contract* and covered by a test that fails
+   if the two ever collapse into one.
+10. **The lost-final-ACK case**: folded into failure, as today — `uart_set()` returns `False`. A
+    caller cannot act differently on "delivered but unconfirmed" than on "not delivered", this
+    protocol has no retransmission to hang a third state off, and the application-level answer
+    (re-issue, or ask) is the same either way.
 
 ## 20. Changes permitted in `asy_uart_driver.py`
 
@@ -347,7 +355,30 @@ zero-allocation counterpart of `read_until_complete()`, `writefrom(buf, size)` o
 `readinto()` covers the drain path. Using these instead of their allocating siblings is §7's
 requirement, not a driver change. Do not add a parallel API next to them.
 
-**Candidate gaps this scan actually found**, none yet confirmed as blocking:
+**Required: the framing-codec concept** (owner decision, 2026-09-11 — §19.7). The driver learns
+"frame in, frame out" with a pluggable codec, CRC keeping its current position underneath it:
+
+- 20.1 The codec is a constructor-injected object with a `CRC_Base`-shaped contract — same family
+  resemblance, so a dispatch table can treat every codec identically, and a pass-through codec is
+  the default exactly as `CRC_Pass` is (D.10). A codec that does nothing must make every framing
+  calculation degrade to today's fixed-size case automatically.
+- 20.2 Write order is build → CRC → encode → delimiter; read order is the exact reverse. The codec
+  therefore wraps the CRC, never replaces it, and `UART_Comm` stays CRC-agnostic as J.3 already
+  requires.
+- 20.3 **Every** read/write method gets the same treatment, not just the ones COBS needs — D.10
+  applies hardest here, and a half-codec'd API is a worse outcome than none.
+- 20.4 The codec's own buffers follow §20's optional-buffer scheme. Encoding is not in-place
+  (COBS output is longer than its input), so the worst case is one extra buffer per direction,
+  sized once from `payload_size` and owned long-lived, never per frame.
+- 20.5 A read framed by a delimiter is **length-unknown until the delimiter arrives**, which is a
+  different read loop from `read_until_complete()`'s known-`nbytes` one — it needs its own bound
+  (a maximum frame length) so a peer that never sends a delimiter cannot wedge it (§6.1's rule,
+  applied one layer down).
+- 20.6 The codec mechanism itself is Class B (no wire effect while the pass-through codec is
+  selected). **Selecting COBS is Class A and a flag day** — changelog A11, whose "open design
+  question" this answer closes.
+
+**Candidate gaps this scan found beyond the codec**, none yet confirmed as blocking:
 
 - `_write_all()` re-slices `memoryview(buf)[sent:]` on every retry round, allocating a memoryview
   object per iteration. Only matters on a short-writing link; an offset-carrying inner write would
