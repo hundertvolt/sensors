@@ -61,20 +61,26 @@ constraints.
   running the C side exists and can be connected to the dev board, so the reconciliation session can
   test the two implementations against each other for real rather than only reading them side by
   side.
-- **The auto-builder needs an importable, selectable `uart_crossover` module before a dev firmware
-  can exercise the UART link.** The parallel automatic-build work resolves dependencies by scanning
-  imports and pulling in whatever the selected modules require. `asy_uart_comm.py` is a *submodule*,
-  not an include-selectable one, and it has no upstream module today — nor does it need one for bare
-  testing. So a dev build that should exercise the bench crossover jumper has nothing that would
-  cause the module to be included at all. The fix belongs to the auto-builder integration, not to the
-  UART promotion: a selectable module named `uart_crossover` that constructs the two instances across
-  the jumper and pulls `asy_uart_comm` in behind it. **No file, no code and no placeholder is wanted
-  in the promotion branch** — this entry exists so the integration session finds the requirement
-  instead of discovering a silently UART-less firmware. It is also the enabler for the promotion's
-  own H3/H4 tiers: those are now **written** (`tests_hardware/flash/test_uart_crossover.py` with its
-  two device scripts, and `tests_hardware/bench/test_uart_link_under_api_load.py`) and skip with an
-  explicit message naming this entry until a firmware containing the module can be built. Their
-  authoring is done; their first green run is what this entry gates.
+- **Auto-builder: decide whether `sensortask_dev` importing `asy_uart_comm` is selection enough, or
+  whether a separate selectable `uart_crossover` unit is still wanted.** The original requirement was
+  recorded (owner, 2026-09-11) as: `asy_uart_comm.py` is a *submodule*, not an include-selectable
+  one, with no upstream module, so a dev build meant to exercise the crossover jumper had nothing
+  that would cause it to be included at all — hence a selectable `uart_crossover` module constructing
+  the two instances across the jumper.
+  **That premise has since changed, and the change is worth stating plainly rather than leaving the
+  original entry to mislead the integration session.** `src/sensortask_dev.py` now constructs both
+  instances itself (SPECIFICATION.md Part A.7 step 13b), so it *is* the upstream module the entry
+  asked for: an import-scanning builder that selects `sensortask_dev` pulls `asy_uart_comm` in behind
+  it. Independently, today's `scripts/build_firmware.py` globs and freezes all of `src/*.py`, so a
+  dev firmware built with it contains the module either way. **The H3/H4 hardware tiers are therefore
+  not blocked** — they are written (`tests_hardware/flash/test_uart_crossover.py` with its two device
+  scripts, and `tests_hardware/bench/test_uart_link_under_api_load.py`) and should run against a dev
+  firmware built today, given the hardware and the owner's go-ahead; their skip guards remain only as
+  a clear diagnostic if some future firmware genuinely lacks the module.
+  What is left for the integration session is a design question this branch should not answer for it:
+  whether the auto-builder's selection model wants the variant entry point to carry the link (as it
+  does now), or a separate selectable `uart_crossover` unit so the link can be included or omitted
+  independently of `sensortask_dev`. Still **no file, no code and no placeholder** added here for it.
 
 ## Open questions (need owner input or further investigation)
 

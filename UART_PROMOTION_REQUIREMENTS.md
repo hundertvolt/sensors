@@ -1063,11 +1063,15 @@ cannot reach.
 **Spec.** Real hardware, dev bench, over the permanent jumper, under the project owner's go-ahead
 given directly in the running session.
 
-**Blocked on the auto-builder, not on this branch.** `asy_uart_comm.py` is a submodule, not an
-include-selectable one, and it has no upstream module — so nothing pulls it into a dev firmware
-today. A selectable `uart_crossover` module is what makes this tier runnable; it belongs to the
-auto-builder integration and is recorded in BACKLOG.md, deliberately with no file, code or
-placeholder on this branch. H3 and H4 are written now and run once that lands.
+**No longer blocked — the premise changed during the work, and saying so matters more than the
+tidiness of the original note.** It was recorded that `asy_uart_comm.py` is a submodule with no
+upstream module, so nothing would pull it into a dev firmware. G1's own wiring is what changed that:
+`sensortask_dev.py` now constructs both instances, so it *is* that upstream module, and an
+import-scanning builder selecting `sensortask_dev` pulls the protocol in behind it. Independently,
+today's `scripts/build_firmware.py` globs and freezes all of `src/*.py`. This tier should therefore
+run against a dev firmware built today, given the hardware and the owner's go-ahead. Its skip guard
+stays only as a clear diagnostic if a firmware ever genuinely lacks the module. What remains open is
+a design question for the auto-builder integration, not a blocker (BACKLOG.md).
 
 **Purpose.** Real timing, real UART peripheral behaviour, real `poll_wait_ms` latency — the three
 things no fake reproduces.
@@ -1105,7 +1109,7 @@ mismatched `payload_size` fails loudly rather than silently corrupting.
 **Failure tests.** `[bench]` an injected link fault does not disturb the API, and an API overload
 does not corrupt a transfer.
 
-**Sources.** C.8 tier 4, E.6.1. Gated by the same `uart_crossover` build dependency as H3.
+**Sources.** C.8 tier 4, E.6.1. Same build situation as H3: not gated, skip guard as diagnostic only.
 
 ### H5 — Fault-injection adapter seam
 
@@ -1304,10 +1308,13 @@ Both follow CLAUDE.md's "flag, don't silently change" rule.
   B1.2) — a defect in already-promoted code, in the exact mechanism J.5 designates as the recovery
   route for a blocked listener. It is a prerequisite for E5, so this branch must fix it; it is
   reported rather than folded in quietly.
-- **The auto-builder has no way to include this module in a dev firmware** — BACKLOG.md. It is a
-  submodule, not include-selectable, with no upstream module; a selectable `uart_crossover` module is
-  what a dev build exercising the crossover jumper needs. Owner's direction: record it, add nothing
-  here — no file, no code, no placeholder. It is H3/H4's gating dependency.
+- **The auto-builder's `uart_crossover` requirement, as originally recorded, no longer holds** —
+  BACKLOG.md. It was recorded that nothing would pull this submodule into a dev firmware; G1's wiring
+  made `sensortask_dev.py` exactly the upstream module that was missing, and `build_firmware.py`
+  freezes all of `src/*.py` regardless. H3/H4 are therefore not gated. What is left is a genuine
+  design question for the integration session — whether the variant entry point should carry the link
+  or a separate selectable unit should — and this branch deliberately does not answer it: still no
+  file, no code, no placeholder.
 - **Seven `src/` modules number `errno`/`wrnno` inside the range `base_classes.py` reserves** —
   BACKLOG.md item 16. No live clash today; a real defect the moment any of them gains a `logger=`
   reach-through, which is precisely the pattern this module adopts.
@@ -1318,13 +1325,20 @@ Each verified by running it, not by inspection. **Status as of this branch:**
 
 - `scripts/lint.sh`, `scripts/typecheck.sh` (all three passes) and `scripts/test.sh` exit 0 with zero
   findings, and the finding count on untouched files is unchanged.
-- Every item above has its function tests **and** its failure tests, and every `Fx.y` row has at
-  least one test that fails if its handling is removed (I3.4).
-- The flash and bench comm-hazard tiers (H3/H4) are **written**, and run clean on the dev bench over
-  the real crossover jumper once the auto-builder can produce a firmware containing the module
-  (BACKLOG.md's `uart_crossover` entry) — under the project owner's go-ahead given directly in that
-  session. Their *authoring* is this branch's done criterion; their *first green run* is gated on a
-  dependency outside it, and that gap is stated rather than quietly dropped.
+- Every item above has its function tests **and** its failure tests. I3.4's revert-and-confirm pass
+  was run over seven substantive fixes — the latched cancel handshake, exact `CMD` matching, the
+  zero-filled padding, the bounded drain, the deferred final ACK, chunk 1's `SIZE` rule, and the role
+  gate — reverting each in turn and requiring a *named* test to fail. It found one real gap on the
+  first run: reverting exact `CMD` matching to the legacy bitmask broke nothing, because the
+  expected-command check that follows already forces exactness. What the membership test uniquely
+  buys is the diagnostic split between "not a command at all" and "a command, but not the one due
+  here" — the second being the peer's own contract violation that E1.3 reports under its own errno.
+  A test now pins that, and all seven fixes are proven.
+- The flash and bench comm-hazard tiers (H3/H4) are **written**. Their *authoring* is this branch's
+  done criterion; their first run needs real hardware and the project owner's go-ahead given directly
+  in that session, which no branch can satisfy on its own. They are **not** blocked on a build
+  dependency — that earlier claim was corrected once G1's wiring made `sensortask_dev.py` the
+  upstream module whose absence the claim rested on.
 - §4's table is fully struck through — every listed violation actually fixed, not deferred.
 - `SPECIFICATION.md`, `UART_C_PORT_CHANGELOG.md`, `BACKLOG.md` and README.md's doc map are updated in
   the same change set.

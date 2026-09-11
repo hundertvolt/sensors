@@ -456,6 +456,20 @@ def test_a_multi_bit_command_is_rejected_rather_than_falling_through() -> None:
         assert comm._validate(build_frame(cmd=bad), _CMD_SET, 1, None, None) != 0
 
 
+def test_an_undefined_command_is_distinguished_from_a_valid_but_unexpected_one() -> None:
+    # The exact-match membership test is what separates "this is not a command at all" from "this
+    # is a command, but not the one due here" - and only the second is the peer's own contract
+    # violation, which E1.3 reports under its own errno precisely so it is findable in a log. A
+    # bitmask collapses the two, since 0x06 shares bits with both GET and SET; the safety property
+    # alone is already covered by the expected-command check, so this is what makes D4.1 load-bearing.
+    comm = make_comm()
+    undefined = comm._validate(build_frame(cmd=0x06), _CMD_ACK, 1, 1, 1)
+    wrong_kind = comm._validate(build_frame(cmd=_CMD_SET), _CMD_ACK, 1, 1, 1)
+    assert undefined != 0
+    assert wrong_kind != 0
+    assert undefined != wrong_kind, "an undefined command and a wrong-kind one must log differently"
+
+
 def test_a_changed_chunks_total_is_rejected() -> None:
     # D4.2: otherwise a peer truncates a transfer mid-train by re-declaring the total, and the
     # receiver reports success on partial data.
