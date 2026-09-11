@@ -177,7 +177,7 @@ class UART(Lockable):
         return uart.read(nbytes)
 
     async def read_until_complete(
-        self, nbytes: int, start_timeout_ms: int = -1, timeout_ms: int = -1
+        self, nbytes: int, start_timeout_ms: int = -1, timeout_ms: int = -1,
     ) -> bytearray | None:
         # Reads exactly nbytes (+ CRC, if configured) across as many ready()/read() rounds as it
         # takes, then verifies/strips the trailing CRC in one go.
@@ -215,7 +215,7 @@ class UART(Lockable):
         return uart.readinto(buf, nbytes)
 
     async def readinto_until_complete(
-        self, buf: bytearray, nbytes: int, start_timeout_ms: int = -1, timeout_ms: int = -1
+        self, buf: bytearray, nbytes: int, start_timeout_ms: int = -1, timeout_ms: int = -1,
     ) -> int | None:
         # readinto() counterpart of read_until_complete(): fills buf in place instead of
         # allocating a new bytearray per call.

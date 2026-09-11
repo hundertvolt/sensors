@@ -12,7 +12,7 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from typing import Any
+    from typing import Any, ClassVar
 
 
 class Pin:
@@ -24,7 +24,7 @@ class Pin:
     IRQ_FALLING = 0x04
     IRQ_RISING = 0x08
 
-    def __init__(self, id: int, mode: int = -1, pull: int = -1, *, value: "Any" = None) -> None:
+    def __init__(self, id: int, mode: int = -1, pull: int = -1, *, value: object = None) -> None:
         # Real rp2 Pin() raises for a genuinely invalid id (confirmed against ports/rp2/
         # machine_pin.c: TypeError for a non-int identifier, ValueError for one outside the
         # RP2040's real GPIO0-28 range) - validated here (previously not at all) since this is a
@@ -117,7 +117,7 @@ class I2C:
         self.timeout = timeout
         self.deinit_called = False
         self.deinit_count = 0
-        self.log: list[tuple] = []
+        self.log: list[tuple[Any, ...]] = []
         self.registers: dict[tuple[int, int], bytearray] = {}
         self.read_queue: list[bytes] = []
         self.nak_addresses: set[int] = set()  # convenience: EIO (no ACK) on every op to this address
@@ -230,7 +230,7 @@ class SPI:
         self.firstbit = firstbit
         self.deinit_called = False
         self.deinit_count = 0
-        self.log: list[tuple] = []
+        self.log: list[tuple[Any, ...]] = []
         self.read_queue: list[bytes] = []
         self.rx_overrun = False  # convenience: EIO on every DMA-path read, like I2C's `busy`
         self.rx_overrun_remaining = 0  # counted counterpart: N transient overruns, then the bus recovers
@@ -397,7 +397,7 @@ class UART(io.IOBase):
         self.invert = invert
         self.deinit_called = False
         self.deinit_count = 0
-        self.log: list[tuple] = []
+        self.log: list[tuple[Any, ...]] = []
         self.rx_queue = bytearray()
         self.writable = True
         self.write_limit: int | None = None  # test-only: caps bytes accepted per write() call - see write()
@@ -473,7 +473,7 @@ class Timer:
     # can assert none happened (e.g. system_service.py's _timer_sequencer() reusing one preallocated
     # Timer via .init() instead - SPECIFICATION.md Part F.1). Tests must clear this between test
     # functions (all_timers.clear()) since it otherwise persists across the whole process lifetime.
-    all_timers: "list[Timer]" = []
+    all_timers: "ClassVar[list[Timer]]" = []
 
     # Test-only fault injection, off by default: real rp2 Timer.init() calls
     # alarm_pool_add_alarm_in_us() and raises OSError(ENOMEM) if the alarm pool is exhausted
@@ -535,12 +535,12 @@ class RTC:
     # so a test must be able to construct a fresh RTC() after the fact and still read back what an
     # earlier RTC() instance set, exactly like the real singleton would.
     raise_exc: "Exception | None" = None  # test-only fault injection, shared class attribute like Timer.raise_on_arm
-    _shared_datetime: tuple = (2000, 1, 1, 0, 0, 0, 0, 0)
+    _shared_datetime: "tuple[int, ...]" = (2000, 1, 1, 0, 0, 0, 0, 0)
 
     def __init__(self, id: int = 0) -> None:
         self.id = id
 
-    def datetime(self, dt: "tuple | None" = None) -> "tuple | None":
+    def datetime(self, dt: "tuple[int, ...] | None" = None) -> "tuple[int, ...] | None":
         if RTC.raise_exc is not None:
             raise RTC.raise_exc
         if dt is None:

@@ -16,25 +16,37 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from typing import Any, Protocol
+    from typing import Any, Protocol, TypedDict, TypeVar
+
+    # The envelope get_log()/get_error_counter() return project-wide - one entry per module name.
+    # Declared here (their only shared definition) and imported by every module that returns one.
+    class ErrEntry(TypedDict):
+        ErrCount: int
+        ErrNum: list[int]
+        ErrType: list[str]
+
+    ErrorLog = dict[str, ErrEntry]
 
     from base_classes import LockableBuffer
     from crc_checks import CRC_Base
 
+    # _BufT ties get_buffer()'s result to write_into()/read_into()'s parameter, which is all this
+    # file ever does with a buffer: each real chunk class pairs itself with its own LockableBuffer
+    # subclass, so a single shared buffer type here would be contravariantly incompatible with them.
+    _BufT = TypeVar("_BufT", bound="LockableBuffer")
+
     # Narrow structural Protocols for the FRAM slice this file calls - kept even now that
     # asy_fram_manager.py is promoted to src/, avoiding a real runtime import cycle (it imports
     # PrintLogHistory from here) and decoupling from its concrete chunk shapes.
-    class _FramChunk(Protocol):
-        def get_buffer(self) -> "LockableBuffer": ...
-        # Any: real chunk classes narrow buf's type in a way that's contravariantly incompatible
-        # with a shared Protocol type here; this file only round-trips buf, never inspects it.
-        async def write_into(self, buf: "Any", override_pause: bool = False) -> bool: ...
-        async def read_into(self, buf: "Any", override_pause: bool = False) -> bool: ...
+    class _FramChunk(Protocol[_BufT]):
+        def get_buffer(self) -> "_BufT": ...
+        async def write_into(self, buf: "_BufT", *, override_pause: bool = False) -> bool: ...
+        async def read_into(self, buf: "_BufT", *, override_pause: bool = False) -> bool: ...
 
     class _FramManager(Protocol):
         def get_chunk(
-            self, size: int, crc: "CRC_Base | None" = None, verify: int = 0, check_length: int = 8
-        ) -> "_FramChunk | None": ...
+            self, size: int, crc: "CRC_Base | None" = None, verify: int = 0, check_length: int = 8,
+        ) -> "_FramChunk[Any] | None": ...
 
 
 # defs for PrintLog
@@ -63,9 +75,7 @@ class PrintLog:
         return self.level
 
     def set_level(self, level: int | None) -> None:  # clamps to the valid [off, all] range instead of rejecting
-        if level is None:
-            self.level = _LOG_OFF
-        elif level < _LOG_OFF:
+        if level is None or level < _LOG_OFF:
             self.level = _LOG_OFF
         elif level > _LOG_ALL:
             self.level = _LOG_ALL
@@ -96,23 +106,26 @@ class PrintLog:
     def level_info() -> int:
         return _LOG_ALL
 
-    def err(self, *args: "Any", **kwargs: "Any") -> None:
+    # **kwargs is forwarded verbatim into print(), whose stub carries CPython's file=/flush=
+    # keywords: no non-Any element type can satisfy that overload set (PEP 692's Unpack needs 3.11,
+    # and typings/'s own typing.pyi declares TypedDict as a bare object). *args is plain `object`.
+    def err(self, *args: object, **kwargs: "Any") -> None:
         if self.level >= _LOG_ERR:
             print(self.name, *args, **kwargs)
 
-    def wrn(self, *args: "Any", **kwargs: "Any") -> None:
+    def wrn(self, *args: object, **kwargs: "Any") -> None:
         if self.level >= _LOG_WARN:
             print(self.name, *args, **kwargs)
 
-    def one(self, *args: "Any", **kwargs: "Any") -> None:
+    def one(self, *args: object, **kwargs: "Any") -> None:
         if self.level >= _LOG_ONCE:
             print(self.name, *args, **kwargs)
 
-    def evt(self, *args: "Any", **kwargs: "Any") -> None:
+    def evt(self, *args: object, **kwargs: "Any") -> None:
         if self.level >= _LOG_EVENT:
             print(self.name, *args, **kwargs)
 
-    def all(self, *args: "Any", **kwargs: "Any") -> None:
+    def all(self, *args: object, **kwargs: "Any") -> None:
         if self.level >= _LOG_ALL:
             print(self.name, *args, **kwargs)
 
@@ -138,7 +151,7 @@ class PrintLogHistory(PrintLog):
     async def _read(self) -> bool:
         return True
 
-    def _diag(self, *args: "Any") -> None:  # internal-failure prints, gated on any logging being enabled at all
+    def _diag(self, *args: object) -> None:  # internal-failure prints, gated on any logging being enabled at all
         if self.level > _LOG_OFF:
             print(self.name, *args)
 
@@ -163,7 +176,7 @@ class PrintLogHistory(PrintLog):
         if not await self._write():
             self._diag("PrintLog: History write failed!")
 
-    async def get_log(self, name: str | None = None) -> dict[str, dict[str, int | list[int] | list[str]]]:
+    async def get_log(self, name: str | None = None) -> "ErrorLog":
         # Reverses _store_err()'s encoding: 0x00/0x80 are "nothing recorded"; else shift back by
         # _NO_ERR/_NO_WRN to recover the original error/warning code. name=None falls back to
         # self.name (every real src/ call site relies on this); tests still pass an explicit override.
@@ -172,7 +185,7 @@ class PrintLogHistory(PrintLog):
         err_num = []
         err_type = []
         for errno in self.history:
-            if errno == _NO_ERR or errno == _NO_WRN:
+            if errno in (_NO_ERR, _NO_WRN):
                 err_num.append(errno)
                 err_type.append("N")
             elif errno <= _MAX_ERR:
@@ -186,12 +199,12 @@ class PrintLogHistory(PrintLog):
     async def setup(self) -> None:  # no persistence to load in the pure in-memory case
         self.initialized = True
 
-    async def err_s(self, *args: "Any", errno: int = _NO_ERR, **kwargs: "Any") -> None:
+    async def err_s(self, *args: object, errno: int = _NO_ERR, **kwargs: "Any") -> None:
         await self._store_err(_NO_ERR, _MAX_ERR, errno)
         if self.level >= _LOG_ERR:
             print(self.name, *args, **kwargs)
 
-    async def wrn_s(self, *args: "Any", wrnno: int = _NO_ERR, **kwargs: "Any") -> None:
+    async def wrn_s(self, *args: object, wrnno: int = _NO_ERR, **kwargs: "Any") -> None:
         await self._store_err(_NO_WRN, _MAX_WRN, wrnno)
         if self.level >= _LOG_WARN:
             print(self.name, *args, **kwargs)
@@ -219,7 +232,7 @@ class PrintLogHistoryStore(PrintLogHistory):
         size = self._HDR_SIZE + len(self.history)  # each "B" is exactly 1 byte
         try:  # broad on purpose: defense-in-depth against the Protocol in the abstract, not this one
             # concrete, audited-to-never-raise implementation (see module docstring)
-            self.fram: _FramChunk | None = fram.get_chunk(size, crc=CRC8())
+            self.fram: _FramChunk[Any] | None = fram.get_chunk(size, crc=CRC8())
         except Exception:
             self.fram = None
         if self.fram is None:
@@ -249,16 +262,15 @@ class PrintLogHistoryStore(PrintLogHistory):
                 return False
             self.err_count = struct.unpack_from(self._HDR_FMT, dbuf, 0)[0]
             self.history.extend(struct.unpack_from(self._history_fmt, dbuf, self._HDR_SIZE))
-            return True
         except Exception:
             return False
+        else:
+            return True
 
     async def setup(self) -> None:
         if self.fram is None or self.initialized:
             return
-        if await self._read():
-            self.initialized = True
-        elif await self._write():
+        if await self._read() or await self._write():
             self.initialized = True
         else:
             self._diag("PrintLog: FRAM setup failed!")

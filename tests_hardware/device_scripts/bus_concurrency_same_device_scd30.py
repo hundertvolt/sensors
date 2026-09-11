@@ -47,7 +47,7 @@ async def _main() -> None:
                     reader_errors.append(f"iter {i}: Hum={hum!r} outside plausible bounds")
                 if temp is not None and not (TEMP_MIN_C <= temp <= TEMP_MAX_C):
                     reader_errors.append(f"iter {i}: Temp={temp!r} outside plausible bounds")
-            except Exception as e:  # noqa: BLE001 - any exception here is itself the corruption signal this script exists to catch
+            except Exception as e:
                 reader_errors.append(f"iter {i}: {type(e).__name__}: {e}")
             reader_completed += 1
             if i % 10 == 0:
@@ -57,12 +57,12 @@ async def _main() -> None:
         nonlocal snapshot_completed
         for i in range(SNAPSHOTTER_ITERATIONS):
             try:
-                temp_offset, meas_int, amb_pres, altitude, frc, self_cal = await scd.get_config_snapshot()
+                _temp_offset, meas_int, _amb_pres, _altitude, frc, _self_cal = await scd.get_config_snapshot()
                 if not (2 <= meas_int <= 1800):
                     snapshot_errors.append(f"iter {i}: MeasInt={meas_int!r} outside valid schema range")
                 if not (400 <= frc <= 2000):
                     snapshot_errors.append(f"iter {i}: ForceCalRef={frc!r} outside valid schema range")
-            except Exception as e:  # noqa: BLE001 - see reader()'s own comment
+            except Exception as e:
                 snapshot_errors.append(f"iter {i}: {type(e).__name__}: {e}")
             snapshot_completed += 1
             if i % 5 == 0:
@@ -83,7 +83,7 @@ async def _main() -> None:
     else:
         print(
             f"RESULT: PASS reader={reader_completed}/{READER_ITERATIONS} "
-            f"snapshotter={snapshot_completed}/{SNAPSHOTTER_ITERATIONS} both clean, no CRC/bus faults"
+            f"snapshotter={snapshot_completed}/{SNAPSHOTTER_ITERATIONS} both clean, no CRC/bus faults",
         )
 
 

@@ -13,8 +13,6 @@ import asyncio
 import os
 import struct
 
-from machine import I2C as FakeI2C
-
 from asy_i2c_driver import I2C
 from asy_neopixel_driver import NeopixelDriver
 from asy_notification_service import NotificationCoordinator, NotificationSignal
@@ -29,6 +27,8 @@ except ImportError:  # typing isn't available on the real MicroPython test inter
 if TYPE_CHECKING:
     from collections.abc import Coroutine
     from typing import Any, TypeVar
+
+    from machine import I2C as FakeI2C
 
     T = TypeVar("T")
 

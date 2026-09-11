@@ -620,7 +620,7 @@ sees it a moment later - an isolated repro (2026-09-08) showed this can persist 
 consecutive attempts, not just one. `_join_dut_hotspot_with_reverify_retry()`'s reverify window is
 30s/2s (widened from an original 15s/1s that let a `TimeoutError` escape uncaught, crashing the
 retry loop on attempt 1 instead of exhausting all attempts) and catches `TimeoutError` alongside
-`HardwareTestFailure`. A repro with both fixes in place still occasionally exhausted 3 attempts once;
+`HardwareTestFailureError`. A repro with both fixes in place still occasionally exhausted 3 attempts once;
 tracing into `src/asy_wifi_service.py` found a plausible (not confirmed) explanation:
 `_configure_hotspot_ap()` re-runs `wlan.config()`+`wlan.active(True)` on every `_run_hotspot_mode()`
 loop iteration for as long as no client is connected (every `wifi_refresh_sec`, 5s default) - a real,

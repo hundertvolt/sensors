@@ -8,10 +8,12 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+    from types import ModuleType
     from typing import Any
 
 
-def assert_named_modules_constructed(module: "Any", names: "tuple[str, ...]") -> None:
+def assert_named_modules_constructed(module: "ModuleType", names: "tuple[str, ...]") -> None:
     """Shared "build_system() wired up every long-lived object" check. Takes the name tuple as a
     parameter since the two callers' tuples differ by one entry (`webserver`)."""
     for name in names:
@@ -28,13 +30,11 @@ def assert_sensor_payload_not_self_wrapped(payload: "dict[str, Any]", expected_n
         assert fields, f"{name} returned no fields at all"
 
 
-def drain_json_response_body(body: "Any") -> bytes:
+def drain_json_response_body(body: "bytes | Iterable[str | bytes]") -> bytes:
     """Drains a response body - plain bytes, or the synchronous list_iterator some streamed
     routes use (see SPECIFICATION.md Part F.1) - into one bytes object, so tests can keep
     asserting on json.loads() of a complete body either way."""
     if isinstance(body, bytes):
         return body
-    chunks = []
-    for chunk in body:
-        chunks.append(chunk.encode() if isinstance(chunk, str) else chunk)
+    chunks = [chunk.encode() if isinstance(chunk, str) else chunk for chunk in body]
     return b"".join(chunks)

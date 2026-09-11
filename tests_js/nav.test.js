@@ -38,7 +38,7 @@ describe("initNav", () => {
     it("builds the drawer from definitions and toggles nav-open when the hamburger is clicked", () => {
         elements = mount();
         const { appShellEl, drawerEl, hamburgerEl, backdropEl } = elements;
-        initNav({ defs: DEFS, appShellEl, drawerEl, hamburgerEl, backdropEl, onSelect: () => {} });
+        initNav({ defs: DEFS, appShellEl, drawerEl, hamburgerEl, backdropEl, onSelect: () => { /* this test only checks drawer mechanics, not selection */ } });
 
         expect(drawerEl.querySelectorAll("[data-section-key]")).toHaveLength(2);
         expect(appShellEl.classList.contains("nav-open")).toBe(false);
@@ -55,7 +55,7 @@ describe("initNav", () => {
     it("closes the drawer when the backdrop is clicked", () => {
         elements = mount();
         const { appShellEl, drawerEl, hamburgerEl, backdropEl } = elements;
-        initNav({ defs: DEFS, appShellEl, drawerEl, hamburgerEl, backdropEl, onSelect: () => {} });
+        initNav({ defs: DEFS, appShellEl, drawerEl, hamburgerEl, backdropEl, onSelect: () => { /* this test only checks drawer mechanics, not selection */ } });
 
         hamburgerEl.click();
         expect(appShellEl.classList.contains("nav-open")).toBe(true);
@@ -68,7 +68,7 @@ describe("initNav", () => {
     it("closes the drawer on Escape", () => {
         elements = mount();
         const { appShellEl, drawerEl, hamburgerEl, backdropEl } = elements;
-        initNav({ defs: DEFS, appShellEl, drawerEl, hamburgerEl, backdropEl, onSelect: () => {} });
+        initNav({ defs: DEFS, appShellEl, drawerEl, hamburgerEl, backdropEl, onSelect: () => { /* this test only checks drawer mechanics, not selection */ } });
 
         hamburgerEl.click();
         expect(appShellEl.classList.contains("nav-open")).toBe(true);
@@ -94,7 +94,7 @@ describe("initNav", () => {
     it("returned setCurrentNav marks exactly one link aria-current, moving it between calls", () => {
         elements = mount();
         const { appShellEl, drawerEl, hamburgerEl, backdropEl } = elements;
-        const setCurrentNav = initNav({ defs: DEFS, appShellEl, drawerEl, hamburgerEl, backdropEl, onSelect: () => {} });
+        const setCurrentNav = initNav({ defs: DEFS, appShellEl, drawerEl, hamburgerEl, backdropEl, onSelect: () => { /* this test only checks drawer mechanics, not selection */ } });
 
         setCurrentNav("measurements");
         const measurementsLink = /** @type {HTMLElement} */ (drawerEl.querySelector('[data-section-key="measurements"]'));

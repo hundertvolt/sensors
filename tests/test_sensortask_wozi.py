@@ -12,18 +12,18 @@ import sys
 # ext/microdot.py without touching MICROPYPATH/pyproject.toml/scripts/test.sh.
 sys.path.insert(0, "ext")
 
-import machine  # noqa: E402
-from _fram_chip_fake import FakeMB85RS64V  # noqa: E402
-from _shared_rest_roundtrip import (  # noqa: E402
+import machine
+from _fram_chip_fake import FakeMB85RS64V
+from _shared_rest_roundtrip import (
     assert_named_modules_constructed,
     assert_sensor_payload_not_self_wrapped,
     drain_json_response_body,
 )
-from microdot import Request  # type: ignore[import-not-found]  # noqa: E402
+from microdot import Request, Response  # type: ignore[import-not-found]
 
-import asy_spi_driver  # noqa: E402
-import sensortask_wozi  # noqa: E402
-from print_log import PrintLog, PrintLogHistory, PrintLogHistoryStore  # noqa: E402
+import asy_spi_driver
+import sensortask_wozi
+from print_log import PrintLog, PrintLogHistory, PrintLogHistoryStore
 
 # Same one-process-per-test-file swap as every other asy_fram_*-touching test file (see their own
 # comments) - sensortask_wozi.build_system() constructs a real SPI-backed AsyFramManager.
@@ -41,8 +41,12 @@ except ImportError:  # typing isn't available on the real MicroPython test inter
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Coroutine
+    from collections.abc import Callable, Coroutine
     from typing import Any, TypeVar
+
+    from asy_fram_manager import AsyFramChunk, AsyFramTimestampedChunk
+    from base_classes import SensorReaderConfig
+    from crc_checks import CRC_Base
 
     T = TypeVar("T")
 
@@ -51,7 +55,7 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to complet
     return asyncio.run(coro)
 
 
-def status_body(res: "Any") -> bytes:
+def status_body(res: "Response") -> bytes:
     # GET /status streams from a plain list of already-json.dumps()-encoded fragments now (see
     # asy_webserver_service.py's _get_status()/_build_status_pieces()) - drains it the way a real
     # client naturally would, so every existing json.loads(...) assertion on a GET /status response
@@ -281,13 +285,13 @@ def test_main_forwards_web_host_and_port_to_build_system() -> None:
     real_force_sync = AsyNtpClient.ntp_force_sync
     real_start_and_check = SystemService.start_and_check_tasks
 
-    async def _fake_start_timers(self: "Any", timers: "Any") -> None:
+    async def _fake_start_timers(self: "SystemService", timers: "list[Callable[[], None]]") -> None:
         pass
 
-    async def _fake_force_sync(self: "Any") -> None:
+    async def _fake_force_sync(self: "AsyNtpClient") -> None:
         pass
 
-    async def _fake_start_and_check(self: "Any", task_starters: "Any") -> None:
+    async def _fake_start_and_check(self: "SystemService", task_starters: "list[Callable[[], asyncio.Task[Any]]]") -> None:
         pass  # never loops - this test only cares that build_system() received the override
 
     SystemService.start_timers = _fake_start_timers  # type: ignore[method-assign]
@@ -316,13 +320,24 @@ def test_fram_chunk_allocation_order_matches_the_documented_seven_chunk_sequence
     real_get_chunk = AsyFramManager.get_chunk
     real_get_timestamped_chunk = AsyFramManager.get_timestamped_chunk
 
-    def _tracking_get_chunk(self: "AsyFramManager", *args: "Any", **kwargs: "Any") -> "Any":
+    # Both wrappers restate AsyFramManager's own signature verbatim rather than forwarding
+    # *args/**kwargs - same call for every caller, and it keeps the parameter types real.
+    def _tracking_get_chunk(
+        self: "AsyFramManager", size: int, crc: "CRC_Base | None" = None, verify: int = 0, check_length: int = 8,
+    ) -> "AsyFramChunk | None":
         calls.append("chunk")
-        return real_get_chunk(self, *args, **kwargs)
+        return real_get_chunk(self, size, crc, verify, check_length)
 
-    def _tracking_get_timestamped_chunk(self: "AsyFramManager", *args: "Any", **kwargs: "Any") -> "Any":
+    def _tracking_get_timestamped_chunk(
+        self: "AsyFramManager",
+        size: int,
+        ntp_sync_callback: "Callable[[], Coroutine[Any, Any, bool]]",
+        crc: "CRC_Base | None" = None,
+        verify: int = 0,
+        check_length: int = 8,
+    ) -> "AsyFramTimestampedChunk | None":
         calls.append("timestamped")
-        return real_get_timestamped_chunk(self, *args, **kwargs)
+        return real_get_timestamped_chunk(self, size, ntp_sync_callback, crc, verify, check_length)
 
     AsyFramManager.get_chunk = _tracking_get_chunk  # type: ignore[method-assign]
     AsyFramManager.get_timestamped_chunk = _tracking_get_timestamped_chunk  # type: ignore[method-assign]
@@ -368,7 +383,7 @@ class _DeadFramChip(FakeMB85RS64V):
     # Same technique as test_fram_integration.py's own
     # test_sensorreader_runs_in_degraded_mode_when_fram_setup_never_succeeded: a real device-ID
     # mismatch (not just fram=None) - the chip responds, just never comes up as an MB85RS64V.
-    def __init__(self, *args: "Any", **kwargs: "Any") -> None:
+    def __init__(self, *args: object, **kwargs: object) -> None:
         super().__init__(*args, **kwargs)
         self.rdid_response = bytes([0xFF, 0xFF, 0xFF, 0xFF])
 
@@ -451,35 +466,37 @@ def test_setup_batch_runs_sysfunct_then_fram_then_conn_then_ntp_then_sgp_then_bm
     real_notify_setup = NotificationCoordinator.setup
     real_notify_finalize = NotificationCoordinator.finalize
 
-    async def _tracking_sysfunct_setup(self: "Any") -> "Any":
+    async def _tracking_sysfunct_setup(self: "SystemService") -> None:
         calls.append("sysfunct")
         return await real_sysfunct_setup(self)
 
-    async def _tracking_fram_setup(self: "Any") -> "Any":
+    async def _tracking_fram_setup(self: "AsyFramManager") -> bool:
         calls.append("fram")
         return await real_fram_setup(self)
 
-    async def _tracking_conn_setup(self: "Any") -> "Any":
+    # conn/ntp/sgp/bmp all inherit setup() from SensorReaderConfig, so that - not the concrete
+    # subclass - is the type of the class attribute each override is assigned to below.
+    async def _tracking_conn_setup(self: "SensorReaderConfig") -> None:
         calls.append("conn")
         return await real_conn_setup(self)
 
-    async def _tracking_ntp_setup(self: "Any") -> "Any":
+    async def _tracking_ntp_setup(self: "SensorReaderConfig") -> None:
         calls.append("ntp")
         return await real_ntp_setup(self)
 
-    async def _tracking_sgp_setup(self: "Any") -> "Any":
+    async def _tracking_sgp_setup(self: "SensorReaderConfig") -> None:
         calls.append("sgp")
         return await real_sgp_setup(self)
 
-    async def _tracking_bmp_setup(self: "Any") -> "Any":
+    async def _tracking_bmp_setup(self: "SensorReaderConfig") -> None:
         calls.append("bmp")
         return await real_bmp_setup(self)
 
-    async def _tracking_notify_setup(self: "Any") -> "Any":
+    async def _tracking_notify_setup(self: "NotificationCoordinator") -> None:
         calls.append("notify_setup")
         return await real_notify_setup(self)
 
-    def _tracking_notify_finalize(self: "Any") -> "Any":
+    def _tracking_notify_finalize(self: "NotificationCoordinator") -> None:
         calls.append("notify_finalize")
         return real_notify_finalize(self)
 
@@ -696,13 +713,16 @@ def test_main_calls_start_timers_then_force_sync_then_start_and_check_tasks_in_o
     real_force_sync = AsyNtpClient.ntp_force_sync
     real_start_and_check = SystemService.start_and_check_tasks
 
-    async def _fake_start_timers(self: "Any", timers: "Any") -> None:
+    # self/timers/task_starters keep their names (and stay unused): these are assigned onto the
+    # real class attributes below, so mypy checks their parameter NAMES against the real methods'
+    # (an underscore prefix is a hard [assignment] error, not covered by the method-assign ignore).
+    async def _fake_start_timers(self: "SystemService", timers: "list[Callable[[], None]]") -> None:
         calls.append("start_timers")
 
-    async def _fake_force_sync(self: "Any") -> None:
+    async def _fake_force_sync(self: "AsyNtpClient") -> None:
         calls.append("force_sync")
 
-    async def _fake_start_and_check(self: "Any", task_starters: "Any") -> None:
+    async def _fake_start_and_check(self: "SystemService", task_starters: "list[Callable[[], asyncio.Task[Any]]]") -> None:
         calls.append("start_and_check_tasks")
         # Deliberately never loops - the real implementation runs forever; this proves main()
         # reaches this call, not that the supervisor loop itself behaves (test_system_service.py's
@@ -734,7 +754,7 @@ def test_main_calls_start_timers_then_force_sync_then_start_and_check_tasks_in_o
 # ---------------------------------------------------------------------------
 
 
-def _dispatch(method: str, path: str, json_body: "dict[str, Any] | None" = None) -> "Any":
+def _dispatch(method: str, path: str, json_body: "dict[str, Any] | None" = None) -> "Response":
     assert sensortask_wozi.webserver is not None
     app = sensortask_wozi.webserver._app
     body = b"" if json_body is None else json.dumps(json_body).encode()
@@ -997,9 +1017,9 @@ def test_webserver_status_put_reset_errors_clears_a_real_modules_history() -> No
 # actually reaches the real, wired conn instance, through the real construction graph - not a fake
 # callback like tests/test_asy_webserver_service.py's own Section G.2 coverage. No real WiFi task is
 # started here (deliberately - see test_digital_twin_real_website_integration.py's own note for the
-# same reasoning): conn._conn_phase is set directly, the same test-seam convention this file's own
-# test_webserver_networking_put_ssid_group_reconnects_but_led_group_alone_does_not() and others
-# already use for a real driver's internal state.
+# same reasoning): conn._conn_phase is set directly, the same test-seam convention this file's
+# own test_webserver_networking_put_ssid_group_reconnects_but_led_group_alone_does_not() and
+# others already use for a real driver's internal state.
 # ---------------------------------------------------------------------------
 
 

@@ -8,7 +8,7 @@ except ImportError:  # typing isn't available on the real MicroPython test inter
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Coroutine
+    from collections.abc import Coroutine, Iterator
     from typing import Any, TypeVar
 
     T = TypeVar("T")
@@ -744,10 +744,12 @@ class _MemoryErrorOnCopyBuffer:
     def __len__(self) -> int:
         return len(self._real)
 
-    def __iter__(self) -> "Any":
+    def __iter__(self) -> "Iterator[int]":
         return iter(self._real)
 
-    def __getitem__(self, item: "Any") -> "Any":
+    # check()'s only indexing is the trailing-CRC strip, bytearr[0 : len(bytearr) - num_bytes] -
+    # a slice, returning a bytearray on the real type this stands in for.
+    def __getitem__(self, item: slice) -> bytearray:
         raise MemoryError("simulated allocation failure")
 
 

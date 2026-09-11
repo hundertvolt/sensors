@@ -36,7 +36,7 @@ def test_real_fram_persistence_across_power_cycle() -> None:
 )
 def test_real_scd30_nvm_persistence_across_power_cycle() -> None:
     marker = 7
-    print_instruction(f"Trigger a real SCD30 NVM write now, e.g. PUT /sensors {{\"SCD30\": {{\"MeasInt\": {marker}}}}} against {_DUT_IP_HINT}, and confirm it returns 200/Valid.")
+    print_instruction(f'Trigger a real SCD30 NVM write now, e.g. PUT /sensors {{"SCD30": {{"MeasInt": {marker}}}}} against {_DUT_IP_HINT}, and confirm it returns 200/Valid.')
     confirm("Press Enter once the write has completed and returned a real 200 response")
     print_instruction("Now physically disconnect the board's power supply entirely (removes power to the SCD30 too, not just the RP2040). You have 20 seconds.")
     countdown(20, "Cut power to the board (and SCD30) now")
@@ -66,6 +66,6 @@ def test_genuine_power_loss_mid_write() -> None:
         "the write was genuinely interrupted and the board recovers cleanly with its PREVIOUS valid "
         "value intact (no corruption, no crash, no unreadable config) - what's NOT acceptable is a "
         "crash on boot, a config file that fails to parse, or a value that's neither the old nor the "
-        "new one (a genuinely torn/corrupted write)."
+        "new one (a genuinely torn/corrupted write).",
     )
     confirm("Press Enter once you've checked GET /notification and confirmed one of the two acceptable outcomes above (not the unacceptable one)")

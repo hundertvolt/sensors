@@ -25,6 +25,7 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 
 if TYPE_CHECKING:
     from asy_fram_manager import AsyFramManager
+    from print_log import ErrorLog
 
 _NAME = const("DNSSRV")
 
@@ -38,16 +39,19 @@ _RECV_FAIL_BACKOFF_INITIAL_S = const(0.5)
 _RECV_FAIL_BACKOFF_MAX_S = const(5.0)
 _RECV_FAIL_BACKOFF_MULTIPLIER = const(2)
 
+_IPV4_OCTETS = const(4)  # RFC 791 section 3.2 dotted-quad shape, used by _ipv4_to_int() below
+_IPV4_OCTET_MAX = const(255)
+
 
 def _ipv4_to_int(ip: str) -> int | None:
     # RFC 791 section 3.2 dotted-quad -> 32-bit big-endian form, for subnet math below. Never
     # raises for a malformed-but-str value; matches asy_dns_client.py's _is_ipv4_literal().
     parts = ip.split(".")
-    if len(parts) != 4:
+    if len(parts) != _IPV4_OCTETS:
         return None
     octets = []
     for part in parts:
-        if not part.isdigit() or not (0 <= int(part) <= 255):
+        if not part.isdigit() or not (0 <= int(part) <= _IPV4_OCTET_MAX):
             return None
         octets.append(int(part))
     a, b, c, d = octets
@@ -68,7 +72,7 @@ class DNSServer:
         # trust on the caller. run() filters to the AP's own subnet before ever replying.
         self.udps = AsyUDPSocket(("0.0.0.0", 53), mode="server")
 
-    async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[str]]]:
+    async def get_error_counter(self) -> "ErrorLog":
         return await self.pr.get_log()
 
     async def reset_error_counter(self) -> None:
@@ -115,7 +119,7 @@ class DNSServer:
                     await self.pr.wrn_s("Invalid DNS request data or address, not sending response.", wrnno=2)
                     await asyncio.sleep(recv_fail_backoff_s)
                     recv_fail_backoff_s = min(
-                        recv_fail_backoff_s * _RECV_FAIL_BACKOFF_MULTIPLIER, _RECV_FAIL_BACKOFF_MAX_S
+                        recv_fail_backoff_s * _RECV_FAIL_BACKOFF_MULTIPLIER, _RECV_FAIL_BACKOFF_MAX_S,
                     )
 
             except asyncio.CancelledError:

@@ -65,7 +65,7 @@ class WLAN:
         self.connect_calls: deque[tuple[Any, Any]] = deque((), _CALL_LOG_MAXLEN)
         self.deinit_called = False
         self.disconnect_called = False
-        self._connect_task: asyncio.Task | None = None
+        self._connect_task: asyncio.Task[None] | None = None
         self._scripted_outcomes: list[int] = []
         # Test/Step-5-run fault injection - method name -> exception to raise once armed, same
         # shape as every chip fake's FaultInjector in this package.
@@ -107,7 +107,7 @@ class WLAN:
             self._status = outcome
             self._ifconfig = ("0.0.0.0", "0.0.0.0", "0.0.0.0", "0.0.0.0")
 
-    def connect(self, ssid: "Any" = None, password: "Any" = None) -> None:
+    def connect(self, ssid: "str | None" = None, password: "str | None" = None) -> None:
         self._maybe_raise("connect")
         self.connect_calls.append((ssid, password))
         self._status = STAT_CONNECTING
@@ -132,7 +132,8 @@ class WLAN:
         self._maybe_raise("isconnected")
         return self._connected
 
-    def status(self, param: "str | None" = None) -> "Any":
+    def status(self, param: "str | None" = None) -> "int | list[Any]":  # "stations" returns the
+    # station list, every other query an int - matching real WLAN.status() (SPECIFICATION.md A.4).
         self._maybe_raise("status")
         if param == "rssi":
             return self._rssi
@@ -140,7 +141,7 @@ class WLAN:
             return self._stations
         return self._status
 
-    def config(self, **kwargs: "Any") -> None:
+    def config(self, **kwargs: object) -> None:  # recorded verbatim, never inspected
         self._maybe_raise("config")
         self.config_calls.append(kwargs)
 

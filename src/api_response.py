@@ -24,9 +24,10 @@ if TYPE_CHECKING:
 
     class _RequestLike(Protocol):
         # Structural stand-in for microdot.Request - not on this project's mypy search path
-        # (SPECIFICATION.md Part C.10's typing convention).
+        # (SPECIFICATION.md Part C.10's typing convention). Shared with asy_webserver_service.py,
+        # which reaches for the same one member; `object` is the parsed body's real static shape.
         @property
-        def json(self) -> "Any": ...
+        def json(self) -> object: ...
 
 # handle_set_cmd()'s own defense-in-depth errno, always logged onto whatever caller-supplied
 # SensorReaderConfig's own self.pr this is called with (see SPECIFICATION.md Part C.7) - never a

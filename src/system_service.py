@@ -26,10 +26,16 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
-    from typing import Any
+    from typing import Any, Protocol
 
     from asy_fram_manager import AsyFramManager
     from config_manager import ConfigSchema, WriteValidity
+    from print_log import ErrorLog
+
+    # Keyword-only call shape of AsyFramManager.set_pause(), which a plain Callable[...] alias
+    # cannot express - same structural-Protocol convention as print_log.py's _FramChunk.
+    class _StoragePause(Protocol):
+        def __call__(self, *, value: bool) -> None: ...
 
 _RESET_DELAY = const(4)  # seconds between reset command and execution (keep < watchdog timeout!)
 _MAX_STORAGE_PAUSE = const(3600)  # one hour max pause for FRAM
@@ -59,7 +65,7 @@ class SystemService:
         cfg_path: str = "",
     ) -> None:
         # callback for starting and stopping permanent storage communication
-        self.storage_pause: Callable[[bool], None] | None = None
+        self.storage_pause: _StoragePause | None = None
         self.pr = make_logger(fram, history_length, debug, _NAME)
         self.name = _NAME  # matches self.pr.name - the _ModuleLike registration shape
         # asy_webserver_service.py's registration lists key on (error_sources=/settings=).
@@ -109,10 +115,10 @@ class SystemService:
         self.storage_timer.deinit()
         self.pr.evt(message)
         if self.storage_pause is not None:
-            self.storage_pause(True)
+            self.storage_pause(value=True)
             self.pr.evt("Storage paused")
         try:
-            self.reset_timer.init(period=_RESET_DELAY * 1000, mode=Timer.ONE_SHOT, callback=lambda b: action())
+            self.reset_timer.init(period=_RESET_DELAY * 1000, mode=Timer.ONE_SHOT, callback=lambda _b: action())
         except (OSError, MemoryError) as e:  # alarm-pool exhaustion (ENOMEM) - falls back to the same watchdog-starve
             # backstop start_and_check_tasks() already uses past _TASK_FAIL_MAX.
             self.pr.err("Could not arm reset timer, stopping watchdog feed instead:", e)
@@ -153,12 +159,13 @@ class SystemService:
                 self.sequencer_timer.init(
                     period=delay,
                     mode=Timer.ONE_SHOT,
-                    callback=lambda b: self._timer_sequencer(timers, counter=counter),
+                    callback=lambda _b: self._timer_sequencer(timers, counter=counter),
                 )
-                return
             except (OSError, MemoryError) as e:  # alarm-pool exhaustion (ENOMEM) - stop sequencing rather than
                 # leaving start_timers() waiting on timers_running forever.
                 self.pr.err("Could not schedule the next timer starter, stopping early:", e)
+            else:
+                return
         self.pr.one("All timers running.")
         self.timers_running.set()
 
@@ -189,7 +196,7 @@ class SystemService:
 
     def start_uptime_timer(self) -> None:
         try:
-            self.uptime_timer.init(period=1000, mode=Timer.PERIODIC, callback=lambda b: self.uptime_event.set())
+            self.uptime_timer.init(period=1000, mode=Timer.PERIODIC, callback=lambda _b: self.uptime_event.set())
         except (OSError, MemoryError) as e:  # alarm-pool exhaustion (ENOMEM) - degrades gracefully rather than rebooting;
             # only uptime/boot-signature stay unresolved this boot.
             self.pr.err("Could not arm uptime timer:", e)
@@ -211,7 +218,7 @@ class SystemService:
 
         while True:
             no_fail = True
-            for n in range(0, len(tasks)):
+            for n in range(len(tasks)):
                 if tasks[n] is None or tasks[n].done():  # type: ignore[union-attr]
                     if tasks[n] is not None:
                         await self._log_dead_task(tasks[n], n)  # type: ignore[arg-type]
@@ -219,7 +226,7 @@ class SystemService:
                     tasks[n] = await self._start_task(task_starters[n], n)
                     no_fail = False
                     await self.pr.wrn_s(
-                        "Task ended - attempting restart, error counter increased to", task_errors, wrnno=n + 1
+                        "Task ended - attempting restart, error counter increased to", task_errors, wrnno=n + 1,
                     )
 
             if no_fail:
@@ -256,7 +263,7 @@ class SystemService:
         # stable for the rest of this boot, so a later change means a reboot happened.
         return await self.boot_signature.get_value()
 
-    async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[str]]]:
+    async def get_error_counter(self) -> "ErrorLog":
         return await self.pr.get_log()
 
     async def setup(self) -> None:
@@ -283,7 +290,7 @@ class SystemService:
         return {} if result is None else result
 
     async def _set_dict_cfg(
-        self, data: "dict[str, int | float | str | bool | None]", cfg_vals: "ConfigSchema"
+        self, data: "dict[str, int | float | str | bool | None]", cfg_vals: "ConfigSchema",
     ) -> "WriteValidity":
         # Persist via cfgmgr, then re-resolve/push DebugLevel out through the level-setter registry -
         # set_debug_level() below is now just this call for its own one-field case, kept as a named,
@@ -293,7 +300,7 @@ class SystemService:
         # provably in sync with cfgmgr's own persisted value after any accepted request.
         persisted, results = await self.cfgmgr.write_config(data, cfg_vals)
         if not persisted:
-            return {key: "Failed" for key in data}
+            return dict.fromkeys(data, "Failed")
         if results.get("DebugLevel") in ("Valid", "Unchanged"):
             level = await self.cfgmgr.get_int_values(_VAL_DEBUG_LEVEL)
             if level is not None:
@@ -336,21 +343,21 @@ class SystemService:
             self.storage_timer.deinit()
             if duration == 0:
                 self.pr.evt("Storage immediately unpaused.")
-                self.storage_pause(False)
+                self.storage_pause(value=False)
             else:
                 self.pr.evt("Storage paused for", duration, "seconds.")
-                self.storage_pause(True)
+                self.storage_pause(value=True)
                 storage_pause = self.storage_pause  # local capture: mypy can't narrow a closed-over self attribute
                 try:
                     self.storage_timer.init(
                         period=duration * 1000,
                         mode=Timer.ONE_SHOT,
-                        callback=lambda b: storage_pause(False),
+                        callback=lambda _b: storage_pause(value=False),
                     )
                 except (OSError, MemoryError) as e:  # alarm-pool exhaustion (ENOMEM) - without the auto-unpause timer,
                     # storage would stay paused forever; safer to abort the pause than risk that.
                     self.pr.err("Could not arm auto-unpause timer, aborting pause:", e)
-                    storage_pause(False)
+                    storage_pause(value=False)
 
     async def status_counter(self) -> None:
         await self.uptime.set_value(0)

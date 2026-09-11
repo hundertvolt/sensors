@@ -139,8 +139,7 @@ describe.each(CASES)("PUT $device $sectionKey/$groupKey/$field.key ($field.kind)
     });
 
     if (field.kind === "number") {
-        const min = /** @type {number} */ (field.min);
-        const max = /** @type {number} */ (field.max);
+        const { min, max } = /** @type {{min: number, max: number}} */ (field);
         const mid = min + (max - min) / 2;
 
         it.each(
@@ -223,7 +222,7 @@ describe.each(CASES)("PUT $device $sectionKey/$groupKey/$field.key ($field.kind)
 
     if (field.kind === "string") {
         const minLength = field.minLength ?? 0;
-        const maxLength = /** @type {number} */ (field.maxLength);
+        const { maxLength } = /** @type {{maxLength: number}} */ (field);
         const validLengths = [...new Set([Math.max(minLength, 1), Math.min(minLength + 3, maxLength), maxLength])];
 
         it.each(validLengths.map((len) => "x".repeat(len)).filter((v) => v !== currentValue))(
@@ -251,6 +250,7 @@ describe.each(CASES)("PUT $device $sectionKey/$groupKey/$field.key ($field.kind)
 
     if (field.kind === "enum") {
         const options = field.options ?? [];
+        const firstOptionValue = options[0]?.value;
         it.each(options.map((o) => o.value).filter((v) => v !== currentValue))(
             "accepts option %s (a valid value distributed across the option set): Valid, and it gets persisted",
             async (value) => {
@@ -261,18 +261,18 @@ describe.each(CASES)("PUT $device $sectionKey/$groupKey/$field.key ($field.kind)
         );
 
         it("rejects a value that isn't one of the declared options: Invalid, not persisted", async () => {
-            const bogus = typeof options[0]?.value === "number" ? -999999 : "not-a-real-option";
+            const bogus = typeof firstOptionValue === "number" ? -999999 : "not-a-real-option";
             const { status, getBody } = await putAndGet(testCase, literalOf(bogus));
             expect(status).toBe("Invalid");
             expect(currentValueIn(getBody, testCase)).toBe(currentValue);
         });
 
-        if (typeof options[0]?.value === "number") {
+        if (typeof firstOptionValue === "number") {
             it("rejects a fractional value for this numeric enum field: Invalid, not persisted (mock-server.js's coerceAndValidate() enum branch, SPECIFICATION.md Part A.8 - every declared numeric enum is itself a plain int field server-side)", async () => {
                 // Every currently-declared numeric enum's own real options are whole numbers
                 // (BMP3XX's oversampling/filter settings) - a fractional value can never coincide
                 // with one, so this is unconditionally a genuine rejection, not an accidental match.
-                const fractional = /** @type {number} */ (options[0].value) + 0.5;
+                const fractional = firstOptionValue + 0.5;
                 const { status, getBody } = await putAndGet(testCase, literalOf(fractional));
                 expect(status).toBe("Invalid");
                 expect(currentValueIn(getBody, testCase)).toBe(currentValue);

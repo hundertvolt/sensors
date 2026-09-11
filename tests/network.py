@@ -8,14 +8,6 @@ real network module (confirmed directly: `import network` raises ImportError). R
 # asy_wifi_service.py's comparisons is what actually matters for a test double, not bit-for-bit
 # fidelity to a real chip.
 
-try:
-    from typing import TYPE_CHECKING
-except ImportError:  # typing has no runtime presence on MicroPython, on-device or in the Unix-port test build
-    TYPE_CHECKING = False
-
-if TYPE_CHECKING:
-    from typing import Any
-
 STA_IF = 0
 AP_IF = 1
 
@@ -49,10 +41,12 @@ class WLAN:
         self._connected = False
         self._status = STAT_IDLE
         self._ifconfig = ("0.0.0.0", "255.255.255.0", "0.0.0.0", "0.0.0.0")
-        self._stations: list[Any] = []
+        # A real AP-mode status("stations") returns a list of per-station tuples starting with the
+        # MAC bytes - the fake keeps that shape, since that is what src/ actually walks.
+        self._stations: list[tuple[bytes, ...]] = []
         self._rssi = -50
-        self.config_calls: list[dict[str, Any]] = []
-        self.connect_calls: list[tuple[Any, Any]] = []
+        self.config_calls: list[dict[str, object]] = []
+        self.connect_calls: list[tuple[str | None, str | None]] = []
         self.deinit_called = False
         self.disconnect_called = False
         # test-only fault injection - method name -> exception to raise once armed, same spirit as
@@ -70,7 +64,7 @@ class WLAN:
             self._active = bool(value)
         return self._active
 
-    def connect(self, ssid: "Any" = None, password: "Any" = None) -> None:
+    def connect(self, ssid: "str | None" = None, password: "str | None" = None) -> None:
         self._maybe_raise("connect")
         self.connect_calls.append((ssid, password))
 
@@ -87,7 +81,7 @@ class WLAN:
         self._maybe_raise("isconnected")
         return self._connected
 
-    def status(self, param: "str | None" = None) -> "Any":
+    def status(self, param: "str | None" = None) -> "int | list[tuple[bytes, ...]]":
         self._maybe_raise("status")
         if param == "rssi":
             return self._rssi
@@ -95,7 +89,7 @@ class WLAN:
             return self._stations
         return self._status
 
-    def config(self, **kwargs: "Any") -> None:
+    def config(self, **kwargs: object) -> None:
         self._maybe_raise("config")
         self.config_calls.append(kwargs)
 

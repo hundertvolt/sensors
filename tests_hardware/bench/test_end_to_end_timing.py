@@ -6,11 +6,14 @@ from __future__ import annotations
 
 import threading
 import time
+from typing import TYPE_CHECKING
 
 import http_client
-from bench_control import BenchBridge
 from error_log_helpers import assert_module_error_log_empty, reset_all_error_logs
 from harness import Board, wait_until
+
+if TYPE_CHECKING:
+    from bench_control import BenchBridge
 
 # ---------------------------------------------------------------------------
 # Real SystemService._reboot() sequencing: storage_pause()-then-wait genuinely completes before

@@ -7,42 +7,51 @@ import importlib.util
 import os
 import subprocess
 import sys
+from pathlib import Path
+from types import ModuleType
 
 import pytest
 
 
 @pytest.fixture(scope="session")
-def build_firmware(repo_root):
+def build_firmware(repo_root: Path) -> ModuleType:
     """Imports scripts/build_firmware.py as a real module (it's a `uv run`-style standalone
     script, not a package member) so build_stage_dir()/_MANIFEST_TEMPLATE can be checked
     directly instead of only through subprocess/CLI behavior."""
     module_path = repo_root / "scripts" / "build_firmware.py"
     spec = importlib.util.spec_from_file_location("build_firmware", module_path)
+    # spec_from_file_location() returns None for an unloadable path and spec.loader is
+    # Optional in the general case - narrowed here so a renamed/missing script fails with a
+    # clear assertion instead of an AttributeError three lines later.
+    assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
 
-def test_build_stage_dir_rejects_a_device_with_no_boot_entry_file(build_firmware, tmp_path):
+def test_build_stage_dir_rejects_a_device_with_no_boot_entry_file(build_firmware: ModuleType, tmp_path: Path) -> None:
     # Fail loud, before staging anything, rather than silently falling back to some other
     # device's boot module.
     with pytest.raises(RuntimeError, match="no-such-device"):
         build_firmware.build_stage_dir(tmp_path, "no-such-device")
 
 
-def test_manifest_template_includes_the_default_board_manifest_and_freezes_stage_dir(build_firmware):
+def test_manifest_template_includes_the_default_board_manifest_and_freezes_stage_dir(build_firmware: ModuleType, tmp_path: Path) -> None:
     # Unlike this script's own previous approach (a custom _boot.py, which meant skipping the
     # default board manifest entirely to avoid a colliding second freeze() of "_boot.py" - see
     # SPECIFICATION.md Part F.1 for why that broke USB entirely), each device's boot module is now
     # frozen under "main.py" instead, so the default manifest (asyncio/neopixel/bundle-networking/
     # ... plus the stock, always-returns _boot.py + rp2.py) is reused unchanged.
-    manifest = build_firmware._MANIFEST_TEMPLATE.format(board="RPI_PICO_W", stage_dir="/tmp/some-stage-dir")
+    # str(), not the Path itself: the template interpolates {stage_dir!r} and build_firmware.py's
+    # own call site passes str(stage_dir), so a Path here would render as PosixPath('...').
+    stage_dir = str(tmp_path / "some-stage-dir")
+    manifest = build_firmware._MANIFEST_TEMPLATE.format(board="RPI_PICO_W", stage_dir=stage_dir)
     assert 'include("$(PORT_DIR)/boards/RPI_PICO_W/manifest.py")' in manifest
-    assert "freeze('/tmp/some-stage-dir')" in manifest
+    assert f"freeze('{stage_dir}')" in manifest
 
 
 @pytest.mark.parametrize("device", ["wozi", "dev"])
-def test_build_stage_dir_assembles_every_expected_file(build_firmware, repo_root, tmp_path, device):
+def test_build_stage_dir_assembles_every_expected_file(build_firmware: ModuleType, repo_root: Path, tmp_path: Path, device: str) -> None:
     build_firmware.build_stage_dir(tmp_path, device)
 
     staged = {p.name for p in tmp_path.iterdir()}
@@ -67,7 +76,7 @@ def test_build_stage_dir_assembles_every_expected_file(build_firmware, repo_root
 
 
 @pytest.mark.parametrize("device", ["wozi", "dev"])
-def test_build_stage_dir_strips_type_checking_blocks_from_staged_src_files(build_firmware, repo_root, tmp_path, device):
+def test_build_stage_dir_strips_type_checking_blocks_from_staged_src_files(build_firmware: ModuleType, repo_root: Path, tmp_path: Path, device: str) -> None:
     # config_manager.py is a real, known if TYPE_CHECKING: user (BACKLOG.md's measured baseline
     # for this saving) - its staged copy must have the guard stripped even though the real src/
     # file (never touched by this build) keeps it, per CLAUDE.md's hard rule against editing src/
@@ -79,7 +88,7 @@ def test_build_stage_dir_strips_type_checking_blocks_from_staged_src_files(build
 
 
 @pytest.mark.parametrize("device", ["wozi", "dev"])
-def test_build_stage_dir_frozen_html_contains_the_real_website_not_the_stub(build_firmware, tmp_path, device):
+def test_build_stage_dir_frozen_html_contains_the_real_website_not_the_stub(build_firmware: ModuleType, tmp_path: Path, device: str) -> None:
     build_firmware.build_stage_dir(tmp_path, device)
     frozen_html_text = (tmp_path / "frozen_html.py").read_text()
     assert "/index.html.gz" in frozen_html_text
@@ -91,7 +100,7 @@ def test_build_stage_dir_frozen_html_contains_the_real_website_not_the_stub(buil
     assert "/js/app.js.gz" in frozen_html_text
 
 
-def _run_cli(repo_root, args, check=False):
+def _run_cli(repo_root: Path, args: list[str], *, check: bool = False) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, "scripts/build_firmware.py", *args],
         cwd=repo_root,
@@ -101,13 +110,13 @@ def _run_cli(repo_root, args, check=False):
     )
 
 
-def test_cli_missing_definitions_file_fails_fast(repo_root, tmp_path):
+def test_cli_missing_definitions_file_fails_fast(repo_root: Path, tmp_path: Path) -> None:
     result = _run_cli(repo_root, ["no-such-device", "--output", str(tmp_path / "out.uf2")])
     assert result.returncode != 0
     assert "no-such-device" in result.stderr
 
 
-def test_cli_missing_toolchain_dir_fails_before_attempting_a_build(repo_root, tmp_path):
+def test_cli_missing_toolchain_dir_fails_before_attempting_a_build(repo_root: Path, tmp_path: Path) -> None:
     result = _run_cli(
         repo_root,
         ["wozi", "--output", str(tmp_path / "out.uf2"), "--toolchain-dir", str(tmp_path / "no-toolchain-here")],
@@ -123,7 +132,7 @@ def test_cli_missing_toolchain_dir_fails_before_attempting_a_build(repo_root, tm
     reason="real ARM firmware compile, several minutes - opt in with RUN_SLOW_FIRMWARE_BUILD=1 "
     "(see .github/workflows/ci.yml's firmware-build-verify job, which sets it)",
 )
-def test_real_firmware_build_produces_a_valid_uf2(repo_root, tmp_path, device):
+def test_real_firmware_build_produces_a_valid_uf2(repo_root: Path, tmp_path: Path, device: str) -> None:
     # The actual end-to-end proof SPECIFICATION.md Part B.11 asked for: a real src/-based
     # firmware.uf2, built by the exact same script/manifest a device build would use, not just its
     # staging logic checked in isolation above. Needs the real toolchain already installed

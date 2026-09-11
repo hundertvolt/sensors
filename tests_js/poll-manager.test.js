@@ -32,7 +32,7 @@ describe("pollManager", () => {
     });
 
     it("parses the JSON body and reports ok/status", async () => {
-        window.fetch = vi.fn(async () => new Response(JSON.stringify({ hello: "world" }), { status: 200 }));
+        window.fetch = vi.fn(() => Promise.resolve(new Response(JSON.stringify({ hello: "world" }), { status: 200 })));
 
         const result = await pollManager.request("/x");
 
@@ -45,7 +45,7 @@ describe("pollManager", () => {
         // A genuine transmission error (truncated/corrupted response), not something the server
         // itself would ever intentionally send - see SPECIFICATION.md Part H.4's "PUT/GET error
         // handling" row.
-        window.fetch = vi.fn(async () => new Response("{not valid json", { status: 200 }));
+        window.fetch = vi.fn(() => Promise.resolve(new Response("{not valid json", { status: 200 })));
 
         let caught;
         try {
@@ -66,7 +66,7 @@ describe("pollManager", () => {
                 controller.error(new Error("simulated stream failure"));
             },
         });
-        window.fetch = vi.fn(async () => new Response(erroringStream, { status: 200 }));
+        window.fetch = vi.fn(() => Promise.resolve(new Response(erroringStream, { status: 200 })));
 
         let caught;
         try {
@@ -110,7 +110,7 @@ describe("pollManager", () => {
         // fetch() that never settles must still eventually be treated as a failure.
         window.fetch = vi
             .fn()
-            .mockImplementationOnce(() => new Promise(() => {}))
+            .mockImplementationOnce(() => new Promise(() => { /* never settles: simulates a hung connection */ }))
             .mockResolvedValueOnce(new Response(JSON.stringify({ second: true }), { status: 200 }));
 
         const hung = pollManager.request("/hangs", undefined, 5000);
@@ -125,7 +125,7 @@ describe("pollManager", () => {
 
     it("isBusy reflects whether a request is currently in flight", async () => {
         /** @type {(value?: unknown) => void} */
-        let resolveFetch = () => {};
+        let resolveFetch = () => { /* replaced below, once the pending fetch exists */ };
         window.fetch = vi.fn(
             () =>
                 new Promise((resolve) => {
@@ -148,7 +148,7 @@ describe("pollManager", () => {
         let capturedSignal;
         window.fetch = vi.fn((_url, init) => {
             capturedSignal = /** @type {RequestInit} */ (init).signal ?? undefined;
-            return new Promise(() => {});
+            return new Promise(() => { /* never settles: simulates a hung connection */ });
         });
 
         const hung = pollManager.request("/hangs", undefined, 1000);
@@ -166,7 +166,7 @@ describe("startPolling", () => {
         vi.useFakeTimers();
         let callCount = 0;
         /** @type {(value?: unknown) => void} */
-        let resolveCurrent = () => {};
+        let resolveCurrent = () => { /* replaced below, by the first poll's own resolver */ };
 
         const stop = startPolling(async () => {
             callCount += 1;
@@ -195,12 +195,12 @@ describe("startPolling", () => {
 
     it("logs and keeps polling when pollOnce rejects, instead of stopping the loop", async () => {
         vi.useFakeTimers();
-        const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+        const consoleError = vi.spyOn(console, "error").mockImplementation(() => { /* swallow the logged failure - this test asserts on the spy */ });
         let callCount = 0;
 
-        const stop = startPolling(async () => {
+        const stop = startPolling(() => {
             callCount += 1;
-            throw new Error("boom");
+            return Promise.reject(new Error("boom"));
         }, 10);
 
         await vi.advanceTimersByTimeAsync(0);

@@ -1,7 +1,7 @@
 import sys
 
 
-def run(namespace: dict) -> None:
+def run(namespace: dict[str, object]) -> None:
     # A minimal test collector/runner, not the CPython stdlib `unittest`: it isn't part of the
     # MicroPython Unix port's default "standard" build, and pulling it in via mip would add a
     # network dependency to every test run. Just enough to run test_*() functions, report

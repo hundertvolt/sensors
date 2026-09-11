@@ -9,25 +9,21 @@ constraints.
 
 ## Refactor targets not yet done
 
-- **`boot_entry/` isn't in `pyproject.toml`'s lint/typecheck `files` scope yet.**
-  `boot_entry/wozi_boot.py` is the real, deliberately-separate blocking-import firmware entry point
-  for `src/sensortask_wozi.py` (see that module's own docstring and `SPECIFICATION.md` Part A.7).
-  Manually confirmed clean today (`ruff check`/`mypy` both pass under the existing config), but not
-  part of `scripts/lint.sh`/`scripts/typecheck.sh`/CI's default scan until `pyproject.toml`'s scan
-  scope is extended - fold this in next time `pyproject.toml` is touched for another reason.
 - **No CI firmware-build stage yet for the legacy `build-*.sh` scripts.** The *new*, `src/`-based
   toolchain (`scripts/build_firmware.py`, `SPECIFICATION.md` Part B.11) already has this
   (`.github/workflows/ci.yml`'s `firmware-build-verify` job builds a real `firmware.uf2` on every
   push/PR) - the legacy `python/`+`build-*.sh` pipeline is a separate, still-uncovered path.
-- **Mypy shall be configured to disallow `Any` types** (owner-specified, not yet implemented). The
-  closest existing option is `disallow_any_explicit`; `pyproject.toml` deliberately stops short of
-  it and the other `--strict`-only checks today. `Any` appears ~190 times across 47 files in
-  `src/`/`tests/` - a large share is test-file monkeypatch/wrapper classes duck-typing a real
-  MicroPython object, but a real, growing share is now legitimate `src/`-side usage too
-  (`print_log.py`'s variadic logging methods, `config_manager.py`'s generic value-checking helpers,
-  opaque `ticks_ms()`-typed values) - turning this on needs both a typing strategy for the test
-  wrappers (e.g. `Protocol` classes + `__getattr__` delegation) and a decision on how to type the
-  genuinely-variadic/opaque `src/` cases, not just a flag flip.
+- **Mypy shall be configured to disallow `Any` types** (owner-specified). Mostly addressed, but
+  not by the flag it was originally written about: all three passes now run full `--strict`
+  (`disallow_any_generics` included), so no *implicit* `Any` from a bare `dict`/`list`/`tuple`
+  survives anywhere in scope. What is still open is `disallow_any_explicit` - 226 findings in the
+  main pass, 45 in `digital_twin/`, 17 in the host pass - plus `disallow_any_unimported` (54, main
+  pass only). Explicit `Any` appears 107 times in `src/` and 213 in `tests/`. A large share of the
+  test-side uses are monkeypatch/wrapper classes duck-typing a real MicroPython object; the `src/`
+  side is largely legitimate (`print_log.py`'s variadic logging methods, `config_manager.py`'s
+  generic value-checking helpers, opaque `ticks_ms()`-typed values). Turning `disallow_any_explicit`
+  on still needs a typing strategy for the test wrappers (e.g. `Protocol` classes + `__getattr__`
+  delegation) and a decision on the genuinely-variadic/opaque `src/` cases - not just a flag flip.
 - **FRAM has no periodic/triggered *production* re-probe policy.** `verify_present()`/
   `set_write_protected()` (bus-hazard-tested across all four tiers, confirmed correct under real
   fault injection - see CLAUDE.md's bus-hazard hard rule) have zero real callers in `src/` - an
@@ -220,7 +216,10 @@ constraints.
     protocol needs to WRITE a transient busy marker before it reads data, so a real write-protected
     chip makes `chunk.read()` return `None` too, not just `chunk.write()` — confirmed directly on
     real hardware (`tests_hardware/device_scripts/fram_write_protect_roundtrip.py`). Not decided
-    here; a project-owner call.
+    here; a project-owner call. **The observation predates `ca767ba`**, which broke that script's
+    own call sites (see the Deferred list below) - it has not been runnable since, and the repaired
+    version has not been re-run, so treat the finding as recorded-but-unrefreshed.
+
 14. **Adopt `machine.mem_backup()` for reset forensics?** New in 1.29, on by default on rp2, and
     confirmed present in this project's own built firmware: 28 bytes of watchdog-scratch storage
     that survives a WDT reset and `machine.reset()`, lost only on power-off — SPECIFICATION.md
@@ -263,7 +262,7 @@ constraints.
 - **The SPI RX-overrun error path shall be tested** (project owner's explicit direction,
   2026-09-10). MicroPython 1.29's new `OSError(EIO)` raise site (SPECIFICATION.md Part F.5.2),
   across the tiers CLAUDE.md's standing bus-hazard rule asks for. **Three of four are now done**;
-  what they found is open question 16 above.
+  what they found is open question 15 above.
   - **Mock tier, raise-site semantics - done.** `tests/test_asy_spi_driver.py`: a write never
     raises, a sub-32-byte read never takes the DMA path so cannot overrun, a 32+ byte read raises.
   - **Mock tier, live path - done.** `tests/test_asy_fram_manager.py`'s four live-path tests inject
@@ -289,6 +288,80 @@ constraints.
     fault-injection work (its README's "Fifth pass"). Not written blind here: it should be authored
     in a session that can actually run it.
 
+- **The four legacy `build-*.sh` scripts carry 28 shellcheck findings, including no shebang at
+  all.** `scripts/lint.sh` and CI run shellcheck over `scripts/` only, where all 14 modern scripts
+  are already clean - so that lane was a free ratchet. `build-arzi.sh`/`build-dev.sh`/
+  `build-neu.sh`/`build-wozi.sh` are the same pre-refactor generation as `python/`+`modules/` and
+  stay out of scope by that same standing decision. What is actually in there: **SC2148 x4** - none
+  of the four has a shebang line, so they work today only because whatever invokes them happens to
+  be bash; **SC2164 x21** - `cd` without `|| exit`, so a failed `cd` silently continues in the
+  wrong directory (in the build scripts that means writing output somewhere unintended); **SC2103
+  x5** - `cd ..` back instead of a subshell. All mechanical, none urgent, all real. Fold in
+  whenever the legacy build path is next touched.
+- **`tests_hardware/device_scripts/`'s two real-hardware bugs are fixed but NOT re-run on the
+  bench.** Moving that directory into the MicroPython mypy pass (commit 08529d1) is what surfaced
+  them; both are grounded in source, not inferred, but neither has been executed against real
+  hardware since:
+  - `fram_write_protect_roundtrip.py` called `set_write_protected(False)` positionally at four
+    sites. `ca767ba` ("wave 2 - FBT/A002 signature changes") made that parameter keyword-only in
+    `src/asy_fram_driver.py` and never updated this caller, so every run since has raised
+    `TypeError` on the script's first call. Now `set_write_protected(value=...)`.
+  - `wifi_service_reconnect_repro.py` called `task.exception()`. MicroPython's `Task` has no such
+    method - `extmod/modasyncio.c`'s `task_attr` exposes only `coro`/`data`/`state`/`done`/
+    `cancel`/`ph_key` - so the line raised `AttributeError` at exactly the moment it was trying to
+    report why a task died. Now `task.data`, which `extmod/asyncio/core.py`'s
+    `run_until_complete()` sets to the terminating exception. The 1.28 stub package did not
+    declare `data` and the line needed a `# type: ignore[attr-defined]`; the 1.29.0 stubs do
+    declare it, so the ignore is gone.
+  A flash-tier run should confirm both, whenever one is next scheduled.
+- **`mypy tests_hardware/device_scripts` run STANDALONE reports two `Timer()` findings that no
+  gate ever sees.** Both `timer_alarm_pool_exhaustion.py` and `scheduler_saturation_drop.py`
+  construct a bare `machine.Timer()`, which is valid runtime usage the third-party board stub does
+  not model (it requires a positional `id`). This is the same stub gap CLAUDE.md's "Code quality
+  tooling" section already records for `src/`'s four drivers plus `I2C.deinit()`, and it has the
+  same resolution: every invocation the project actually runs - CI's `scripts/typecheck.sh src
+  tests boot_entry tests_hardware/device_scripts` and a bare local `scripts/typecheck.sh` - includes
+  `tests/`, whose `tests/machine.py` fake models `Timer()` correctly and wins module resolution.
+  Worth knowing before anyone runs mypy over that directory on its own and reads the result as a
+  regression.
+- **Additional checker candidates, measured and mostly declined.** Evaluated against the real tree
+  rather than by reputation, when shellcheck/actionlint/zizmor were added:
+  - **`zizmor`** (GitHub Actions security) - **adopted.** All 50 findings fixed, not suppressed:
+    `excessive-permissions` (workflow-level `permissions: {}` + per-job `contents: read`),
+    `artipacked` (`persist-credentials: false` on every checkout), and `unpinned-uses` (SHA-pinned
+    `codecov/`+`dorny/`; `actions/*` stays tag-pinned by an explicit `.github/zizmor.yml` policy,
+    since a compromise of GitHub's own org compromises the runner anyway and SHA-bumping four
+    first-party actions has real cost with no Dependabot configured). One audit is **disabled with
+    cause**: `self-repository` wants `uses: $/.github/...` (GitHub's July-2026 syntax), which
+    actionlint 1.7.12 - the other hard gate over the same files - rejects outright as invalid.
+    Revisit when actionlint learns it. Runs `--offline` so it behaves identically in CI, on a dev
+    box, and in the clean-chroot pre-push recipe.
+  - **`import-linter`** - **rejected, measured; structurally incompatible.** It validates that every
+    `root_packages` entry is a real package and refuses flat modules ("'x' is a module, not a
+    package"), and `src/` is deliberately a flat set of modules with no `__init__.py` - they are
+    copied flat alongside `ext/` and frozen into firmware. Both workarounds were tried and both
+    produce a **false green**: wrapping `src/` in a shadow package (or letting it resolve as an
+    implicit namespace package) reports `Analyzed 27 files, 0 dependencies` and marks every
+    contract KEPT, because each intra-`src/` import is a bare absolute `from base_classes import
+    ...` that resolves outside the package. Making it work would mean rewriting every import in
+    `src/` to package-relative form - an operational change to frozen firmware code, not a tooling
+    change. Note also that Part C's Layer 2/3 split lives *inside* one module per driver, so
+    import-linter could never have seen it; only the coarser module-level direction was ever in
+    reach.
+  - **`vulture`** (dead code) - **rejected, measured.** All 8 of its >=80%-confidence findings are
+    false positives: it cannot see through quoted annotations or `if TYPE_CHECKING:` blocks, so it
+    reports `Self`/`NamedTuple`/`Iterable`/`Sequence` as unused imports and flags the no-op
+    `cast()` shim's required `typ` parameter.
+  - **`gitleaks`/`detect-secrets`** - **rejected, redundant.** `detect-secrets` found only the known
+    test/twin WiFi passwords and *missed* the real documented credential in `asy_wifi_service.py`
+    that ruff's `S106` catches. Ruff's `S105`/`S106` are live everywhere except the three known,
+    individually-exempted sites, which covers this better.
+  - **`codespell`** - **rejected, measured.** 1519 findings, overwhelmingly false positives on
+    domain vocabulary (`FRAM` -> "FRAME", `Pres` -> "Press", `optionEl` -> "optional").
+  - Also considered and dismissed as not applicable or redundant: `markdownlint` (fights
+    hand-formatted prose), `yamllint` (actionlint covers the only two YAML files), `hadolint` (no
+    Dockerfiles), `taplo` (two TOML files), `pip-audit`/`npm audit` (dev-only dependencies, nothing
+    ships to the device), and the many flake8/pylint-era Python tools ruff's `ALL` already subsumes.
 - **Real-hardware re-test of the segfault fix and the memory-leak soak test — real-hardware forms
   now exist and are wired into `tests_hardware/`, but the actual long-soak run is still opt-in and
   has not yet been executed.** Corrects a stale claim (this entry used to say neither soak-test

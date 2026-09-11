@@ -3,7 +3,6 @@ import os
 from collections import namedtuple
 
 import api_response as ar
-import config_manager as cm
 from base_classes import SensorReaderConfig
 
 try:
@@ -14,6 +13,8 @@ except ImportError:  # typing isn't available on the real MicroPython test inter
 if TYPE_CHECKING:
     from collections.abc import Coroutine
     from typing import Any, TypeVar
+
+    import config_manager as cm
 
     T = TypeVar("T")
 
@@ -46,12 +47,12 @@ class _FakeRequest:
     # Minimal stand-in for microdot.Request, mocking only the one boundary parse_cmd_request
     # actually touches (the .json property) - same mocking-boundary convention tests/machine.py
     # uses for real hardware buses.
-    def __init__(self, json_value: "Any", raise_instead: bool = False) -> None:
+    def __init__(self, json_value: object, *, raise_instead: bool = False) -> None:
         self._json_value = json_value
         self._raise_instead = raise_instead
 
     @property
-    def json(self) -> "Any":
+    def json(self) -> object:  # matches api_response.py's own _RequestLike Protocol
         if self._raise_instead:
             raise ValueError("malformed body")
         return self._json_value
@@ -274,8 +275,8 @@ def test_handle_set_cmd_both_hooks_fire_together_when_provided() -> None:
 
         run(
             ar.handle_set_cmd(
-                reader, {"SampleInterv": 42}, _VAL_SI, post_fct=lambda: sync_calls.append(1), post_asy_fct=post
-            )
+                reader, {"SampleInterv": 42}, _VAL_SI, post_fct=lambda: sync_calls.append(1), post_asy_fct=post,
+            ),
         )
         assert sync_calls == [1]
         assert async_calls == [1]

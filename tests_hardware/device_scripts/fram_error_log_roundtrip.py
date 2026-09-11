@@ -49,19 +49,16 @@ async def _main() -> None:
         print(f"RESULT: FAIL get_log() returned no entry for {LOG_NAME!r}: {log!r}")
         return
 
-    # get_log()'s return type covers all three keys with one int|list[int]|list[str] union (same
-    # shape tests/test_asy_ntp_client.py's own _last_err() helper narrows) - isinstance-checked
-    # here rather than indexed blind.
+    # print_log.py's ErrEntry types all three fields exactly (ErrCount int, ErrNum list[int],
+    # ErrType list[str]), so the shape needs no isinstance re-check before use here.
     err_count = entry["ErrCount"]
     err_num = entry["ErrNum"]
     err_type = entry["ErrType"]
-    if not isinstance(err_count, int) or not isinstance(err_num, list) or not isinstance(err_type, list):
-        print(f"RESULT: FAIL get_log() returned unexpected field types: {entry!r}")
-        return
     if err_count != 1:
         print(f"RESULT: FAIL restored ErrCount={err_count!r}, expected 1 (real FRAM read did not reflect the recorded error)")
         return
-    if TEST_ERRNO not in err_num or err_type[err_num.index(TEST_ERRNO)] != "E":
+    positions = [i for i, num in enumerate(err_num) if num == TEST_ERRNO]
+    if not positions or err_type[positions[0]] != "E":
         print(f"RESULT: FAIL restored history does not contain errno={TEST_ERRNO} as type 'E': ErrNum={err_num!r} ErrType={err_type!r}")
         return
 

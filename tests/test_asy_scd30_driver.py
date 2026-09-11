@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from typing import Any, TypeVar
 
     T = TypeVar("T")
+    from print_log import ErrorLog
 
 
 def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
@@ -186,8 +187,8 @@ def test_read_measurement_data_matches_datasheet_worked_example() -> None:
                 0x43, 0xDB, 0xCB, 0x8C, 0x2E, 0x8F,  # CO2
                 0x41, 0xD9, 0x70, 0xE7, 0xFF, 0xF5,  # Temperature
                 0x42, 0x43, 0xBF, 0x3A, 0x1B, 0x74,  # Humidity
-            ]
-        )
+            ],
+        ),
     )
     run(scd.read_measurement())
     assert abs((scd._co2 or 0) - 439.09) < 0.01
@@ -801,7 +802,7 @@ def test_reader_getters_log_the_correct_errno_on_bus_nak() -> None:
     reader = make_reader()
     reader_fake_i2c(reader).nak_addresses.add(_ADDR)
 
-    async def scenario() -> dict:
+    async def scenario() -> "ErrorLog":
         await reader.get_measurement_interval()
         await reader.get_self_calibration_enabled()
         await reader.get_ambient_pressure()
@@ -821,7 +822,7 @@ def test_reader_setters_log_the_correct_errno_on_bus_nak() -> None:
     reader = make_reader()
     reader_fake_i2c(reader).nak_addresses.add(_ADDR)
 
-    async def scenario() -> dict:
+    async def scenario() -> "ErrorLog":
         await reader.set_measurement_interval(10)
         await reader.set_self_calibration_enabled(True)
         await reader.set_ambient_pressure(1000)
@@ -895,14 +896,14 @@ def test_reader_set_then_get_altitude_round_trips_through_real_i2c_frames() -> N
 def test_reader_stop_continuous_measurement_true_is_a_pure_noop() -> None:
     reader = make_reader()
     i2c = reader_fake_i2c(reader)
-    assert run(reader.stop_continuous_measurement(True)) is False
+    assert run(reader.stop_continuous_measurement(value=True)) is False
     assert len(i2c.log) == 0
 
 
 def test_reader_stop_continuous_measurement_false_sends_the_real_stop_command() -> None:
     reader = make_reader()
     i2c = reader_fake_i2c(reader)
-    assert run(reader.stop_continuous_measurement(False)) is True
+    assert run(reader.stop_continuous_measurement(value=False)) is True
     assert i2c.log[-1] == ("writeto", _ADDR, bytes([0x01, 0x04]), True)
 
 
@@ -910,8 +911,8 @@ def test_reader_stop_continuous_measurement_false_returns_false_on_bus_fault() -
     reader = make_reader()
     reader_fake_i2c(reader).nak_addresses.add(_ADDR)
 
-    async def scenario() -> "tuple[bool, dict]":
-        ok = await reader.stop_continuous_measurement(False)
+    async def scenario() -> "tuple[bool, ErrorLog]":
+        ok = await reader.stop_continuous_measurement(value=False)
         return ok, await reader.get_error_counter()
 
     ok, log = run(scenario())
@@ -920,7 +921,7 @@ def test_reader_stop_continuous_measurement_false_returns_false_on_bus_fault() -
 
 
 def test_set_dict_cfg_reports_contmeas_true_as_valid_not_failed() -> None:
-    # Regression test: stop_continuous_measurement(True)'s own contract returns False for its
+    # Regression test: stop_continuous_measurement(value=True)'s own contract returns False for its
     # pure-no-op case (see test_reader_stop_continuous_measurement_true_is_a_pure_noop above), and
     # a first version of this method's ContMeas dispatch forwarded that return value straight into
     # the generic "Valid"/"Failed" mapping, unlike improved-quality/sensortask-wozi.py's own removed
@@ -1129,7 +1130,7 @@ def test_get_dict_cfg_snapshot_is_atomic_against_a_concurrent_config_write() -> 
     for value in (450, 10, 1000, 200, 400, 1):  # TempOffs, MeasInt, AmbPres, Altitude, ForceCalRef, SelfCal
         i2c.read_queue.append(register_frame(value))
 
-    async def scenario() -> "tuple[dict, list]":
+    async def scenario() -> "tuple[dict[str, dict[str, int | float | str | bool | None]], list[tuple[Any, ...]]]":
         with _FastAsyncSleep():
             read_task = asyncio.create_task(reader.get_dict_cfg())
             await _settle(3)  # let the read task acquire the lock and begin its first register read
@@ -1387,7 +1388,7 @@ class _WrongLengthCRC:
     def length(self) -> int:
         return 1
 
-    async def add_into(self, buffer: bytearray, size: int, start: int = 0, init: "int | None" = None) -> int:
+    async def add_into(self, _buffer: bytearray, _size: int, start: int = 0, _init: "int | None" = None) -> int:  # start stays named: SCD30_I2C passes start=2
         return 0  # never matches the expected size+crc_length total
 
 

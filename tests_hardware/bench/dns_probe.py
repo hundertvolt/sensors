@@ -11,7 +11,7 @@ import struct
 _DNS_PORT = 53
 
 
-def build_query(hostname: str) -> bytes:
+def build_query(hostname: str) -> tuple[bytes, bytes]:
     """A single-question, standard A-record query - the exact shape src/captive_dns.py's
     DNSQuery/DNSServer expects."""
     txn_id = secrets.token_bytes(2)

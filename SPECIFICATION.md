@@ -105,8 +105,10 @@ scripts/                 lint.sh/typecheck.sh/test.sh, build_frozen_html.sh, run
 ## A.3 Refactor status
 
 Targets the latest *stable* MicroPython/pico-sdk/picotool/Microdot, expands error handling/fault
-recovery, adds unit tests/mypy/ruff/CI (lint/type-check/unit-tests today; a firmware build CI stage
-is planned, BACKLOG.md). Files land in `src/` once reviewed against Part D.
+recovery, adds unit tests/mypy/ruff/CI (ruff, mypy, shellcheck, actionlint and zizmor each as their own
+stage, plus unit-tests, digital-twin-e2e and a real `firmware.uf2` build; the still-uncovered path
+is the legacy `python/`+`build-*.sh` pipeline, BACKLOG.md). Files land in `src/` once reviewed
+against Part D.
 
 Prototype covers `src/sensortask_wozi.py` ("wozi", A.7) and `src/sensortask_dev.py` (dev bench,
 physically flashed, B.11/H.5) — not yet `arzi`/`neu`. Goal: same top-level features as today's
@@ -1369,8 +1371,10 @@ Unit tests for `src/`. Get the current count with `ls tests/test_*.py | wc -l` a
 
 Tests run under a **real MicroPython interpreter** (the Unix port), not CPython plus
 MicroPython-flavored stubs. `scripts/test.sh` shells out to a built Unix-port binary directly, once
-per `tests/test_*.py`, and checks its exit code. `pytest` stays in the dev dependency group for
-possible future CPython-side orchestration; nothing uses it yet.
+per `tests/test_*.py`, and checks its exit code. `pytest` covers the host-only side instead:
+`tests_scripts/` exercises the build tooling (`scripts/build_firmware.py`, `build_frozen_html.sh`,
+`build_website.sh`) under real CPython, since none of that is MicroPython-target code.
+`scripts/test.sh` runs both suites, pytest first.
 
 ## E.2 Test framework
 
@@ -1914,6 +1918,15 @@ backend-only or frontend-only validation/coercion policy change in this project.
   lock.
 - **Per-module logging/error-history** — `print_log.py`'s `make_logger()`/`PrintLog`/
   `PrintLogHistory`/`PrintLogHistoryStore`, never a bespoke print-based counter.
+- **The error-log envelope type** — `print_log.py`'s `ErrorLog` (`dict[str, ErrEntry]`, where
+  `ErrEntry` is a `TypedDict` of `ErrCount: int`/`ErrNum: list[int]`/`ErrType: list[str]`), declared
+  once under that module's `TYPE_CHECKING` block and imported by every module that returns one.
+  Anything returning a `get_log()`/`get_error_counter()` result annotates it `"ErrorLog"` — never
+  a re-spelled `dict[str, dict[str, int | list[int] | list[str]]]` or `dict[str, dict[str, Any]]`.
+  Both loose spellings were in use across 12 `src/` files and 7 test files before the `--strict`
+  pass unified them; because a `TypedDict` types each key exactly, the precise form is also what
+  lets callers write `entry["ErrNum"][-1]` without an `isinstance` narrowing dance or an
+  `# type: ignore[operator]` (three of which it removed outright).
 - **Driver layering/naming/config-schema/error-handling/concurrency/timer shape** — Part C, for a
   sensor driver specifically; complementary to this Part.
 - **Memory-bounded streaming of a dict-shaped GET response** — `_stream_dict_response()` (Part I).
@@ -2132,7 +2145,10 @@ real-interpreter test principle; **`@vitest/coverage-v8`** (report-only, no thre
 conditions on `web-lint-and-typecheck`/`web-unit-tests` — deliberately not a second workflow file
 with its own trigger-level filter (which can leave a PR stuck on a required check that never
 fires). Web CI runs only against `html/`, `js/`, `tests_js/`, `scripts/*.mjs`, `mockdata/`, and its
-own config files. Root `.nvmrc` pins the Node version.
+own config files — `eslint.config.js`/`vitest.config.js` are not just trigger paths but are
+themselves linted (their own `files` block in `eslint.config.js`, Node globals, the same
+`BUG_CATCHING_RULES` as `scripts/**/*.mjs`), so the linter is not held to a weaker standard than
+the code it checks. Root `.nvmrc` pins the Node version.
 
 ### H.8.1 JSDoc typedef imports across the browser/Node split
 

@@ -8,9 +8,12 @@ from __future__ import annotations
 import re
 import subprocess
 import time
-from collections.abc import Iterable
+from typing import TYPE_CHECKING
 
-from harness import BENCH_AP_CONN, BENCH_ETH_CONN, HardwareNotAvailable, HardwareTestFailure
+from harness import BENCH_AP_CONN, BENCH_ETH_CONN, HardwareNotAvailableError, HardwareTestFailureError
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 # A distinct, obviously-temporary connection name for the role-reversal client profile - never
 # reused for anything else, and always torn down (nmcli connection delete) once the scenario ends,
@@ -20,13 +23,13 @@ ROLE_REVERSAL_CLIENT_CONN = "sensors-bench-dut-client-tmp"
 
 def _nmcli(*args: str, timeout_s: float = 30.0) -> str:
     try:
-        proc = subprocess.run(["sudo", "nmcli", *args], capture_output=True, text=True, timeout=timeout_s)
+        proc = subprocess.run(["sudo", "nmcli", *args], capture_output=True, text=True, timeout=timeout_s, check=False)
     except FileNotFoundError as exc:
-        raise HardwareNotAvailable(f"nmcli not on PATH: {exc}") from exc
+        raise HardwareNotAvailableError(f"nmcli not on PATH: {exc}") from exc
     except subprocess.TimeoutExpired as exc:
-        raise HardwareTestFailure(f"nmcli {' '.join(args)} timed out after {timeout_s}s") from exc
+        raise HardwareTestFailureError(f"nmcli {' '.join(args)} timed out after {timeout_s}s") from exc
     if proc.returncode != 0:
-        raise HardwareTestFailure(f"nmcli {' '.join(args)} failed (exit {proc.returncode}): {proc.stderr.strip()}")
+        raise HardwareTestFailureError(f"nmcli {' '.join(args)} failed (exit {proc.returncode}): {proc.stderr.strip()}")
     return proc.stdout
 
 
@@ -38,7 +41,7 @@ class BenchBridge:
     def is_configured(self) -> bool:
         try:
             out = _nmcli("-t", "-f", "NAME", "connection", "show", timeout_s=15.0)
-        except (HardwareNotAvailable, HardwareTestFailure):
+        except (HardwareNotAvailableError, HardwareTestFailureError):
             return False
         return self.ap_conn in out.splitlines()
 
@@ -49,7 +52,7 @@ class BenchBridge:
         out = _nmcli("-g", "connection.interface-name", "connection", "show", self.ap_conn)
         iface = out.strip()
         if not iface:
-            raise HardwareTestFailure(f"{self.ap_conn!r} has no interface-name set - was it created by ensure_bench_bridge()?")
+            raise HardwareTestFailureError(f"{self.ap_conn!r} has no interface-name set - was it created by ensure_bench_bridge()?")
         return iface
 
     def ap_ssid(self) -> str:
@@ -70,7 +73,7 @@ class BenchBridge:
         # earlier attempt in the same loop already took it down but failed a later step.
         try:
             _nmcli("connection", "down", self.ap_conn)
-        except HardwareTestFailure as e:
+        except HardwareTestFailureError as e:
             if "is not an active connection" not in str(e):
                 raise
 
@@ -88,9 +91,9 @@ class BenchBridge:
         has no per-client kick command). Fixes the dominant cause of WiFi reconnection flakiness -
         a stale AP-side entry surviving a hard_reset() power-cycle (see tests_hardware/README.md)."""
         iface = self.wifi_iface()
-        proc = subprocess.run(["sudo", "iw", "dev", iface, "station", "del", mac_address], capture_output=True, text=True, timeout=10.0)
+        proc = subprocess.run(["sudo", "iw", "dev", iface, "station", "del", mac_address], capture_output=True, text=True, timeout=10.0, check=False)
         if proc.returncode != 0:
-            raise HardwareTestFailure(f"iw dev {iface} station del {mac_address} failed: {proc.stderr.strip()}")
+            raise HardwareTestFailureError(f"iw dev {iface} station del {mac_address} failed: {proc.stderr.strip()}")
 
     def kick_all_stations(self) -> None:
         """Clears every currently-associated station's table entry on this AP interface - call
@@ -141,7 +144,7 @@ class BenchBridge:
         returning `src_port` - or None if nothing matched within `timeout_s` (bounded either way
         by the process's own `-c 1`/`timeout 60`)."""
         try:
-            line = proc.stdout.readline() if proc.stdout is not None else ""  # type: ignore[union-attr]
+            line = proc.stdout.readline() if proc.stdout is not None else ""
         finally:
             proc.wait(timeout=max(timeout_s, 5.0))
         # e.g. "14:35:23.753510 IP 192.168.85.57.55718 > 162.159.200.123.123: NTPv3, ..." - the
@@ -207,7 +210,7 @@ class BenchBridge:
         self.ap_down()
         try:
             _nmcli("connection", "delete", ROLE_REVERSAL_CLIENT_CONN)
-        except HardwareTestFailure:
+        except HardwareTestFailureError:
             pass  # no leftover profile from an earlier call - fine, nothing to clean up
         _nmcli(
             "device", "wifi", "connect", ssid, "password", password,
@@ -222,7 +225,7 @@ class BenchBridge:
         iface = iface or self.wifi_iface()
         out = _nmcli("-g", "IP4.ADDRESS", "device", "show", iface).strip()
         if not out:
-            raise HardwareTestFailure(f"{iface} has no IPv4 address - DHCP lease not (yet) obtained")
+            raise HardwareTestFailureError(f"{iface} has no IPv4 address - DHCP lease not (yet) obtained")
         return out.split("/")[0].splitlines()[0]
 
     def gateway_ip(self, iface: str | None = None) -> str:
@@ -232,7 +235,7 @@ class BenchBridge:
         iface = iface or self.wifi_iface()
         out = _nmcli("-g", "IP4.GATEWAY", "device", "show", iface).strip()
         if not out:
-            raise HardwareTestFailure(f"{iface} has no IPv4 gateway - DHCP lease not (yet) obtained")
+            raise HardwareTestFailureError(f"{iface} has no IPv4 gateway - DHCP lease not (yet) obtained")
         return out
 
     def leave_dut_hotspot_and_restore_bridge(self) -> None:
@@ -241,21 +244,21 @@ class BenchBridge:
         association) - restoring the bridge is what matters, not who noticed first."""
         try:
             _nmcli("connection", "delete", ROLE_REVERSAL_CLIENT_CONN)
-        except HardwareTestFailure:
+        except HardwareTestFailureError:
             pass  # already gone/never came up - fine, restoring the bridge below is what matters
         self.ap_up()
 
 
 def _run_iptables(args: list[str], *, allow_missing: bool = False) -> None:
-    proc = subprocess.run(["sudo", "iptables", *args], capture_output=True, text=True, timeout=10.0)
+    proc = subprocess.run(["sudo", "iptables", *args], capture_output=True, text=True, timeout=10.0, check=False)
     if proc.returncode != 0 and not allow_missing:
-        raise HardwareTestFailure(f"iptables {' '.join(args)} failed: {proc.stderr.strip()}")
+        raise HardwareTestFailureError(f"iptables {' '.join(args)} failed: {proc.stderr.strip()}")
 
 
 def _run_tc(args: list[str], *, allow_missing: bool = False) -> None:
-    proc = subprocess.run(["sudo", "tc", *args], capture_output=True, text=True, timeout=10.0)
+    proc = subprocess.run(["sudo", "tc", *args], capture_output=True, text=True, timeout=10.0, check=False)
     if proc.returncode != 0 and not allow_missing:
-        raise HardwareTestFailure(f"tc {' '.join(args)} failed: {proc.stderr.strip()}")
+        raise HardwareTestFailureError(f"tc {' '.join(args)} failed: {proc.stderr.strip()}")
 
 
 _MAC_RE = re.compile(r"^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$")
@@ -269,9 +272,9 @@ def bench_associated_station_macs(iface: str) -> list[str]:
     """MAC addresses currently associated to `iface` while it's hosting the AP (`iw dev <iface>
     station dump`) - used by kick_client() callers to find a real MAC, and to confirm the DUT's
     own station list reflects reality."""
-    proc = subprocess.run(["iw", "dev", iface, "station", "dump"], capture_output=True, text=True, timeout=10.0)
+    proc = subprocess.run(["iw", "dev", iface, "station", "dump"], capture_output=True, text=True, timeout=10.0, check=False)
     if proc.returncode != 0:
-        raise HardwareTestFailure(f"iw dev {iface} station dump failed: {proc.stderr.strip()}")
+        raise HardwareTestFailureError(f"iw dev {iface} station dump failed: {proc.stderr.strip()}")
     return [line.split()[1] for line in proc.stdout.splitlines() if line.startswith("Station")]
 
 

@@ -279,15 +279,35 @@ information):
 
 - **Config lives in root `pyproject.toml`** (ruff/mypy/pytest/uv, dev-tooling only — the shipped
   code stays frozen-bytecode-only, not restructured into an installable package). Run manually via
-  `scripts/lint.sh` (ruff), `scripts/typecheck.sh` (mypy), and `scripts/test.sh` (unit tests, under
-  a real MicroPython Unix-port interpreter — see below and SPECIFICATION.md Part E); `lint.sh`/
-  `typecheck.sh` assume `ruff`/`mypy` are already on `PATH` (e.g. an activated `uv sync`-created
-  venv). **Wired into CI** via `.github/workflows/ci.yml` (GitHub Actions), running all three on
-  every push/PR. The CI pipeline does not yet include a real firmware-build stage (see
-  BACKLOG.md).
-- **Scope is `src/`, `tests/`, and `digital_twin/`.** The pre-refactor deployed
+  `scripts/lint.sh` (ruff + shellcheck + actionlint + zizmor), `scripts/typecheck.sh` (mypy), and
+  `scripts/test.sh` (unit tests, under a real MicroPython Unix-port interpreter — see below and
+  SPECIFICATION.md Part E); `lint.sh`/`typecheck.sh` assume those tools are already on `PATH` (e.g.
+  an activated `uv sync`-created venv). **Every tool is a `[dependency-groups] dev` entry, so
+  `uv sync` — and therefore `toolchain/setup_toolchain.py env --tier {generic,flash,bench}`, which
+  runs it — installs all of them automatically; nothing is installed by hand.** All are **pinned**,
+  for the same reason ruff is: `select = ["ALL"]`-style opt-in-to-everything configs turn an
+  unpinned upgrade into a hard CI failure on a rule nobody chose.
+- **Wired into CI** via `.github/workflows/ci.yml` (GitHub Actions). **Each tool is its own job/
+  stage**, so a failure names the tool directly instead of a shared "lint" job going red:
+  `lint-and-typecheck` (ruff + mypy), `shellcheck`, `actionlint`, `zizmor`, plus the test/build
+  stages (`unit-tests`, `digital-twin-e2e`, `firmware-build-verify`) and the web tier. Note
+  `unit-tests` keeps `needs: lint-and-typecheck` (the standing hang backstop below); the other lint
+  stages run in parallel and gate nothing, so one of them failing no longer silently skips the
+  whole test suite.
+- **`zizmor` audits the GitHub Actions workflows themselves** — `GITHUB_TOKEN` scope, checkout
+  credential persistence, action pinning: the one part of the supply chain ruff/mypy can't see.
+  Policy config is `.github/zizmor.yml` (only `unpinned-uses` is configured — `actions/*` may be
+  tag-pinned, everything third-party must be SHA-pinned; every other audit runs at its default).
+  Always invoked `--offline`, which skips the two audits needing the GitHub API, so it behaves
+  identically in CI, on a dev box, and in the clean-chroot recipe below. **`self-repository` is
+  deliberately `disable: true`** — it wants `uses: $/.github/...` (GitHub's July-2026 syntax) and
+  actionlint 1.7.12 rejects that as invalid, so the two gates cannot both be satisfied; revisit
+  when actionlint learns it. **Adding a SHA-pinned third-party action means bumping that SHA by
+  hand** — no Dependabot is configured.
+- **Scope is eight directories**: `src/`, `tests/`, `digital_twin/`, `boot_entry/`, `toolchain/`,
+  `scripts/`, `tests_scripts/` and `tests_hardware/`. The pre-refactor deployed
   codebase (`python/`, `modules/`) has no lint/type config yet; extending scope there is a separate
-  future decision, not assumed by this setup. All three are expected to stay fully clean — every
+  future decision, not assumed by this setup. All eight are expected to stay fully clean — every
   scope in this setup is fully-reviewed, freely-editable code (see "Hard rules" above), not WIP;
   there's no tracked-debt scope left to compare `digital_twin/` against since `improved-quality/`
   was deleted (see "Hard rules" above). `digital_twin/`'s own
@@ -319,10 +339,10 @@ information):
   build_firmware.py`), none of which are MicroPython-target code, so the real-interpreter rationale
   above doesn't apply to them; see `tests_scripts/conftest.py`'s own docstring. `scripts/test.sh`
   runs both: the MicroPython suite as described above, plus `uv run pytest tests_scripts` as one
-  more step before it. `tests_scripts/` isn't in `pyproject.toml`'s `[tool.mypy]`/`[tool.ruff]`
-  scope, matching the existing decision that `scripts/`/`toolchain/` (the dev-tooling scripts these
-  tests exercise) aren't linted/type-checked either — extending that scope is a separate future
-  decision, not assumed here.
+  more step before it. `tests_scripts/` is in lint/typecheck scope, like
+  `scripts/`/`toolchain/` (the dev-tooling scripts these tests exercise) — all three are checked by
+  `host_typecheck.ini`'s real-CPython pass, not the MicroPython one, and carry the same
+  `per-file-ignores` block `tests/` does.
 - **`scripts/test.sh --coverage` reports `src/` line coverage; it never gates anything** — no
   threshold is enforced anywhere, by design (confirmed directly, not a placeholder for a future
   gate). Since `coverage.py` only runs under CPython while `src/` only ever runs
@@ -343,7 +363,15 @@ information):
 - **Standing backstop: hanging tests are never allowed.** `scripts/test.sh`/`ci.yml` enforce a
   per-file `timeout`+retry, `stdbuf -oL -eL` line buffering, and `needs: lint-and-typecheck` job
   sequencing regardless of any specific hang's root cause — keep all three even after a specific
-  hang is fixed.
+  hang is fixed. **The `needs:` edge is for SEQUENCING only — `unit-tests` and
+  `firmware-build-verify` carry `if: ${{ !cancelled() }}` so they still run when the job they
+  follow fails.** `needs:` alone also implies success-gating, which was never chosen here (that
+  job's own comment says the sequencing "isn't required" for the hang) and is actively harmful: a
+  red `lint-and-typecheck` silently SKIPS every Python test lane. That is not hypothetical — it is
+  why `unit-tests`, `digital-twin-e2e` and `firmware-build-verify` had never once run on the branch
+  that introduced `select = ["ALL"]`, and it concealed that for the branch's whole life. Keep the
+  sequencing; never restore the gating. `digital-twin-e2e` is the deliberate exception — its
+  `needs: unit-tests` comment states fail-fast as the actual intent, so it stays gated.
 - **Known hang cause, fixed**: a MicroPython Unix-port `select.poll()`/`ioctl()` call against a
   non-fd Python object (e.g. `tests/machine.py`'s pure-Python fake-stream `ioctl()`) never detects
   readiness on GitHub Actions runners specifically (not reproducible locally) — any test awaiting a
@@ -424,11 +452,53 @@ information):
   `Union[...]` usages that do exist today are confined to `python/` (deployed, frozen, no lint
   config at all) — leave those alone under the usual out-of-scope-editing hard rule; don't drive-by
   "fix" `Union` → `|` in a file you're not otherwise promoting/refactoring.
-- **mypy is stricter than default, short of `--strict`** (`disallow_untyped_defs`,
-  `check_untyped_defs`, `warn_return_any`, `warn_unreachable`, `strict_equality`, etc., but not
-  `disallow_any_generics`/`disallow_untyped_calls`/`disallow_subclassing_any`). Does **not** disable
-  the `assignment` error code — the old `improved-quality/mypy.ini` did, though that was never a
-  deliberate choice.
+- **mypy runs full `--strict`, minus exactly one flag.** All three configs set `strict = true`
+  (spelled that way, not as the individual flags, so a deliberate mypy version bump surfaces any
+  newly added strict check as a finding to decide on), plus `no_implicit_optional`/`warn_unreachable`
+  which aren't part of `--strict`. **The one exemption is `no_implicit_reexport`, and only in the
+  `[tool.mypy]` pass** — `tests/` mocks by reassigning a module's imported names
+  (`asy_ntp_client.time = FakeTime()`, `asy_udp_socket.socket = ...`), which is the project's actual
+  mocking mechanism since MicroPython has no `unittest.mock`; enforcing the flag would mean 175
+  inline ignores in `tests/` or adding `__all__`/re-export aliases to shipped `src/` modules purely
+  to satisfy a test-only check. `digital_twin/typecheck.ini` and `host_typecheck.ini` both run
+  `--strict` with that flag ON. One further narrow exemption lives in a central
+  `[[tool.mypy.overrides]]` block: `disallow_untyped_decorators` is off for
+  `tests/test_setter_microdot_integration.py`, the only file that registers real Microdot routes —
+  vendored `ext/microdot.py` is unannotated and must never be edited, so its `@app.get()`/`@app.put()`
+  decorators make every handler they wrap "untyped" no matter how well the handler itself is
+  annotated. Does **not** disable the `assignment` error code — the old `improved-quality/mypy.ini`
+  did, though that was never a deliberate choice.
+- **`method-assign` stays globally enabled, and `src/` must never suppress it** (project owner's
+  direction). `tests/` and `digital_twin/` reassign methods to mock them — that IS the project's
+  mocking mechanism, MicroPython having no `unittest.mock` — and each of those ~157 sites carries
+  its own inline `# type: ignore[method-assign]` rather than a central `[[tool.mypy.overrides]]`
+  exemption, deliberately: a scope-wide override would stop marking the individual real sites.
+  Shipped firmware code has no business reassigning a method at all, so a suppression appearing in
+  `src/` is the defect, not the type error. mypy itself cannot express that rule (it only ever sees
+  a suppression already written), so `scripts/lint.sh` enforces it with a grep guard that fails the
+  lint gate. `src/` carries zero of these today; keep it that way rather than silencing a finding.
+- **`# noqa: E402` belongs only on files with a real statement before their imports.** Several
+  `tests/` files must set `sys.path` before importing the module under test, and ruff **exempts
+  `sys.path` manipulation from E402 outright** (verified directly, 2026-09-10) — so those files
+  need no suppression. What does trigger it is any *other* statement first, e.g.
+  `test_digital_twin_sensortask_integration.py`'s `patch_asy_udp_socket_for_unix_port()` call, and
+  only those files carry the `# noqa`. This is not an inconsistency to tidy up: adding the
+  suppression to a `sys.path`-only file makes `RUF100` (unused-noqa, live via `select = ["ALL"]`)
+  fail the lint gate, so the two groups genuinely have to differ.
+- **A merge that touches `uv.lock` can silently bypass the tool pins — always re-verify after
+  one.** `uv.lock` is a plain text file, so git merges it line by line: a branch that pins the
+  tools and a branch that only refreshes versions produce a lock carrying **one side's
+  `specifier = "=="` metadata and the other side's resolved `[[package]] version` blocks**. That
+  file is self-contradictory, and neither guard catches it — `uv lock --check` compares
+  `pyproject.toml` against the lock's *manifest* section only, never the manifest against the
+  *resolved* versions, so it exits 0; and `uv sync` installs from the resolved blocks, so the venv
+  silently gets a version the pin forbids. Confirmed directly here (2026-09-10): merging main's
+  external-module refresh produced a lock reading `ruff specifier = "==0.15.21"` next to
+  `ruff version = "0.16.6"`, `uv lock --check` passed, and `uv sync` installed 0.16.6 — under
+  `select = ["ALL"]` that is exactly the unchosen-rule hard-fail the pin exists to prevent (it
+  surfaced 174 `CPY001` findings). **After any merge that touches `uv.lock`, run `uv sync` and
+  check the installed `ruff --version`/`mypy --version` against `pyproject.toml`'s pins**, rather
+  than trusting `uv lock --check`; re-run `uv lock` to rewrite the file if they disagree.
 - **MicroPython stubs**: `micropython-rp2-rpi_pico_w-stubs` (PyPI, board/version-specific, pulls in
   `micropython-stdlib-stubs`). Published by the same project as
   [`josverl/micropython-stubs`](https://github.com/josverl/micropython-stubs) — PyPI is just its
@@ -549,8 +619,10 @@ chroot "$CHROOT" /bin/bash -c "source /root/proxy-env.sh && pip install --break-
 # libcap2-bin is the same class of gap, found the same way (a real run, 2026-09-10): it provides
 # setcap, which scripts/test.sh needs to grant CAP_NET_BIND_SERVICE for the real port-53 DNS
 # server test. Priority-important on a real Ubuntu install, so a normal dev box always has it;
-# --variant=minbase does not. Without it the run dies at "setcap: command not found" *after* the
-# whole toolchain has already built - so add it up front rather than discovering it 20 minutes in.
+# --variant=minbase does not, and without it the run dies at "setcap: command not found" *after*
+# the whole toolchain has already built. It is now in toolchain/versions.toml's apt_packages, so a
+# from-scratch run installs it on its own - it stays listed here because a REUSED chroot whose
+# toolchain is already built skips that install step entirely and hits the same late failure.
 
 # Per-verification: copy the CURRENT working tree (uncommitted changes included - this is a
 # pre-push gate, not a post-push audit) into the chroot, then run the exact documented workflow
@@ -577,9 +649,9 @@ rm -rf "$CHROOT"
 ```
 
 **What counts as passing**: `lint.sh`/`typecheck.sh`/`scripts/test.sh` all run to completion with
-exit 0 — every scope this setup covers (`src/`, `tests/`, `digital_twin/`) is fully-reviewed code
-expected to stay fully clean (confirmed: both `lint.sh` and `typecheck.sh` report zero findings as
-of `improved-quality/`'s deletion), so unlike the pre-deletion state, a nonzero exit from either one
+exit 0 — all eight scopes this setup covers (see "Code quality tooling" above) are fully-reviewed
+code expected to stay fully clean (confirmed: `lint.sh` and all three `typecheck.sh` passes report
+zero findings as of the eight-scope extension), so a nonzero exit from either one
 here is a real regression to chase down, not an expected/tracked finding to compare against a
 session sandbox's own baseline count. `scripts/test.sh`'s tests must likewise actually pass (exit
 0, every test PASS) — a test failure here is a real regression too.

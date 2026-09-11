@@ -14,6 +14,15 @@
 import json
 import sys
 
+try:
+    from typing import TYPE_CHECKING
+except ImportError:  # typing has no runtime presence on MicroPython, on-device or in the Unix-port test build
+    TYPE_CHECKING = False
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    from types import FrameType
+
 _TRACED_PREFIXES = ("src/", "digital_twin/")
 
 
@@ -22,7 +31,7 @@ def _run() -> int:
     out_path = sys.argv[2]
     hits: dict[str, dict[int, bool]] = {}
 
-    def local_trace(frame, event, arg):  # type: ignore[no-untyped-def]
+    def local_trace(frame: "FrameType", event: str, _arg: object) -> "Callable[..., object]":
         if event == "line":
             filename = frame.f_code.co_filename
             if filename.startswith(_TRACED_PREFIXES):
@@ -33,7 +42,7 @@ def _run() -> int:
                 lines[frame.f_lineno] = True
         return local_trace
 
-    def global_trace(frame, event, arg):  # type: ignore[no-untyped-def]
+    def global_trace(frame: "FrameType", event: str, _arg: object) -> "Callable[..., object] | None":
         if event == "call" and frame.f_code.co_filename.startswith(_TRACED_PREFIXES):
             return local_trace
         return None

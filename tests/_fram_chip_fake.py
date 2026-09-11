@@ -102,7 +102,7 @@ class FakeMB85RS64V(FakeSPI):
         elif opcode == _OPCODE_RDID:
             self._pending_op = _OPCODE_RDID
 
-    def readinto(self, buf: bytearray | memoryview, write_value: int = 0x00) -> None:
+    def readinto(self, buf: bytearray | memoryview, _write_value: int = 0x00) -> None:
         # Overriding readinto() shadows the base fake's own bus-level fault check, so call it
         # explicitly: without this, machine.SPI's rx_overrun/inject_fault knobs are unreachable
         # through the FRAM stack and the 1.29 RX-overrun path can only be tested one layer up.

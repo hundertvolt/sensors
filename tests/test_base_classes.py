@@ -5,7 +5,6 @@ from collections import namedtuple
 from _fram_chip_fake import FakeMB85RS64V
 
 import asy_spi_driver
-import config_manager as cm
 from asy_fram_manager import AsyFramManager
 from asy_spi_driver import SPI
 from base_classes import (
@@ -31,6 +30,7 @@ if TYPE_CHECKING:
     from collections.abc import Coroutine
     from typing import Any, TypeVar
 
+    import config_manager as cm
     from base_classes import LockableBuffer as _LockableBufferType
     from crc_checks import CRC_Base
 
@@ -55,33 +55,43 @@ class _RaisingFramChunk:
     # just the concrete AsyFramManager - whose own _write_chunk/_read_chunk wrap their entire
     # bodies in try/except (confirmed by asy_fram_manager.py's own src/ promotion audit), so
     # write_into()/read_into() can no longer actually raise through it.
-    def __init__(self, raise_on_write: bool = False, raise_on_read: bool = False) -> None:
+    def __init__(self, *, raise_on_write: bool = False, raise_on_read: bool = False) -> None:
         self.raise_on_write = raise_on_write
         self.raise_on_read = raise_on_read
 
+    # Every parameter below keeps its exact name (and stays unused): both doubles implement
+    # print_log.py's own _FramChunk/_FramManager Protocols, which mypy matches structurally by
+    # parameter name (proven in tests/test_print_log.py's copy, where the same doubles are
+    # passed to a Protocol-typed parameter), and print_log.py calls get_chunk(size, crc=CRC8())
+    # by keyword on top of that.
     def get_buffer(self) -> "_LockableBufferType":
         from base_classes import LockableBuffer as _LB
 
         return _LB(6, data_start=0, data_length=6)
 
-    async def write_into(self, buf: "Any", override_pause: bool = False) -> bool:
+    async def write_into(self, buf: "_LockableBufferType", *, override_pause: bool = False) -> bool:
         if self.raise_on_write:
             raise RuntimeError("simulated write failure")
         return True
 
-    async def read_into(self, buf: "Any", override_pause: bool = False) -> bool:
+    async def read_into(self, buf: "_LockableBufferType", *, override_pause: bool = False) -> bool:
         if self.raise_on_read:
             raise RuntimeError("simulated read failure")
         return True
 
 
 class _RaisingFramManager:
-    def __init__(self, chunk: "_RaisingFramChunk | None", raise_on_get_chunk: bool = False) -> None:
+    def __init__(self, chunk: "_RaisingFramChunk | None", *, raise_on_get_chunk: bool = False) -> None:
         self._chunk = chunk
         self.raise_on_get_chunk = raise_on_get_chunk
 
+    # Every parameter below keeps its exact name (and stays unused): both doubles implement
+    # print_log.py's own _FramChunk/_FramManager Protocols, which mypy matches structurally by
+    # parameter name (proven in tests/test_print_log.py's copy, where the same doubles are
+    # passed to a Protocol-typed parameter), and print_log.py calls get_chunk(size, crc=CRC8())
+    # by keyword on top of that.
     def get_chunk(
-        self, size: int, crc: "CRC_Base | None" = None, verify: int = 0, check_length: int = 8
+        self, size: int, crc: "CRC_Base | None" = None, verify: int = 0, check_length: int = 8,
     ) -> "_RaisingFramChunk | None":
         if self.raise_on_get_chunk:
             raise RuntimeError("simulated allocation failure")
@@ -258,13 +268,11 @@ def test_lockablebuffer_zero_length_data_region_is_valid() -> None:
 def test_lockablebuffer_is_still_lockable() -> None:
     buf = LockableBuffer(4)
 
-    async def scenario() -> bool:
-        locked_inside = False
+    async def scenario() -> None:
         async with buf:
-            locked_inside = buf.asy_lock.locked()
-        return locked_inside
+            assert buf.asy_lock.locked()  # held for the whole block, same as a plain Lockable
 
-    assert run(scenario())
+    run(scenario())
 
 
 def test_lockablebuffer_is_a_lockable_instance() -> None:
@@ -382,7 +390,7 @@ def test_lockedflag_init_value() -> None:
 
 
 def test_lockedvalue_roundtrip_int_and_float() -> None:
-    value = LockedValue(0)
+    value = LockedValue(init_value=0)
     run(value.set_value(42))
     assert run(value.get_value()) == 42
     run(value.set_value(3.5))
@@ -392,7 +400,7 @@ def test_lockedvalue_roundtrip_int_and_float() -> None:
 def test_lockedvalue_roundtrip_inf_and_nan() -> None:
     # Unusual but typed-valid float content: LockedValue does no range clamping (unlike
     # LockedCounter), so these must simply round-trip untouched.
-    value = LockedValue(0.0)
+    value = LockedValue(init_value=0.0)
     run(value.set_value(float("inf")))
     assert run(value.get_value()) == float("inf")
     run(value.set_value(float("nan")))
@@ -563,7 +571,7 @@ def test_get_dict_cfg_mgr_cfg_extra_key_is_still_merged_and_warned() -> None:
     # overridable extension point as callback, so an override returning unrequested keys must be
     # merged-and-warned the same way, not silently swallowed just because it's the other code path.
     class ExtraKeyMgrCfgReader(SensorReader):
-        async def _get_mgr_cfg(self, cfg: "list[str]") -> "dict[str, int | float | str | None] | None":
+        async def _get_mgr_cfg(self, _cfg: "list[str]") -> "dict[str, int | float | str | None] | None":
             return {"SampleInterv": 5, "Unexpected": 1}
 
     reader = ExtraKeyMgrCfgReader(Meas(20.0, 50), max_module_error=3)
@@ -586,7 +594,7 @@ def test_get_dict_cfg_mgr_cfg_update_exception_is_caught() -> None:
     # statically enforced on a runtime-misbehaving subclass) - a value that isn't actually
     # dict-like must not let ret[name].update(sensor_conf) raise out of _get_dict_cfg.
     class BadMgrCfgReader(SensorReader):
-        async def _get_mgr_cfg(self, cfg: "list[str]") -> "dict[str, int | float | str | None] | None":
+        async def _get_mgr_cfg(self, _cfg: "list[str]") -> "dict[str, int | float | str | None] | None":
             return 42  # type: ignore[return-value]
 
     reader = BadMgrCfgReader(Meas(20.0, 50), max_module_error=3)
@@ -837,7 +845,7 @@ def test_get_mgr_cfg_logs_a_cross_reference_line_before_calling_into_cfgmgr() ->
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "crossrefget", _VAL_SI, cfg_path=path_prefix)
         run(reader.cfgmgr.setup())
         evt_calls: list[tuple[Any, ...]] = []
-        reader.pr.evt = lambda *args, **kwargs: evt_calls.append(args)  # type: ignore[method-assign]
+        reader.pr.evt = lambda *args, **_kwargs: evt_calls.append(args)  # type: ignore[method-assign]
         run(reader._get_mgr_cfg(["SampleInterv"]))
         assert len(evt_calls) == 1
     finally:
@@ -1027,7 +1035,7 @@ def test_set_mgr_cfg_logs_a_cross_reference_line_before_calling_into_cfgmgr() ->
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "crossrefset", _VAL_SI, cfg_path=path_prefix)
         run(reader.cfgmgr.setup())
         evt_calls: list[tuple[Any, ...]] = []
-        reader.pr.evt = lambda *args, **kwargs: evt_calls.append(args)  # type: ignore[method-assign]
+        reader.pr.evt = lambda *args, **_kwargs: evt_calls.append(args)  # type: ignore[method-assign]
         run(reader._set_mgr_cfg({"SampleInterv": 42}, _VAL_SI))
         assert len(evt_calls) == 1
     finally:
@@ -1082,10 +1090,10 @@ def test_set_dict_cfg_push_callback_returning_false_marks_the_field_failed() -> 
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "pushfail", _VAL_SI, cfg_path=path_prefix)
         run(reader.cfgmgr.setup())
 
-        async def push_ok(value: "int | float | str | bool | None") -> bool:
+        async def push_ok(_value: "int | float | str | bool | None") -> bool:
             return True
 
-        async def push_fail(value: "int | float | str | bool | None") -> bool:
+        async def push_fail(_value: "int | float | str | bool | None") -> bool:
             return False
 
         # Establish a stored value (5) distinct from both the incoming request (42) and the schema
@@ -1111,7 +1119,7 @@ def test_set_dict_cfg_push_callback_raising_marks_the_field_failed_and_logs() ->
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "pushraise", _VAL_SI, cfg_path=path_prefix)
         run(reader.cfgmgr.setup())
 
-        async def push(value: "int | float | str | bool | None") -> bool:
+        async def push(_value: "int | float | str | bool | None") -> bool:
             raise RuntimeError("sensor push failed")
 
         reader._push_callbacks["SampleInterv"] = push
@@ -1133,10 +1141,10 @@ def test_set_dict_cfg_failed_push_recovers_via_getter_when_registered() -> None:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "pushfailgetter", _VAL_SI, cfg_path=path_prefix)
         run(reader.cfgmgr.setup())
 
-        async def push_ok(value: "int | float | str | bool | None") -> bool:
+        async def push_ok(_value: "int | float | str | bool | None") -> bool:
             return True
 
-        async def push_fail(value: "int | float | str | bool | None") -> bool:
+        async def push_fail(_value: "int | float | str | bool | None") -> bool:
             return False
 
         async def getter() -> "int | float | str | bool | None":
@@ -1163,10 +1171,10 @@ def test_set_dict_cfg_failed_push_falls_back_to_old_value_when_getter_raises() -
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "pushfailgetterraise", _VAL_SI, cfg_path=path_prefix)
         run(reader.cfgmgr.setup())
 
-        async def push_ok(value: "int | float | str | bool | None") -> bool:
+        async def push_ok(_value: "int | float | str | bool | None") -> bool:
             return True
 
-        async def push_fail(value: "int | float | str | bool | None") -> bool:
+        async def push_fail(_value: "int | float | str | bool | None") -> bool:
             return False
 
         async def bad_getter() -> "int | float | str | bool | None":
@@ -1196,10 +1204,10 @@ def test_set_dict_cfg_failed_push_getter_returning_out_of_schema_value_falls_thr
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "pushfailgetteroor", _VAL_SI, cfg_path=path_prefix)
         run(reader.cfgmgr.setup())
 
-        async def push_ok(value: "int | float | str | bool | None") -> bool:
+        async def push_ok(_value: "int | float | str | bool | None") -> bool:
             return True
 
-        async def push_fail(value: "int | float | str | bool | None") -> bool:
+        async def push_fail(_value: "int | float | str | bool | None") -> bool:
             return False
 
         async def oor_getter() -> "int | float | str | bool | None":
@@ -1229,10 +1237,10 @@ def test_set_dict_cfg_failed_push_getter_returning_coercible_value_is_coerced_be
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "pushfailgettercoerce", _VAL_SI, cfg_path=path_prefix)
         run(reader.cfgmgr.setup())
 
-        async def push_ok(value: "int | float | str | bool | None") -> bool:
+        async def push_ok(_value: "int | float | str | bool | None") -> bool:
             return True
 
-        async def push_fail(value: "int | float | str | bool | None") -> bool:
+        async def push_fail(_value: "int | float | str | bool | None") -> bool:
             return False
 
         async def coercible_getter() -> "int | float | str | bool | None":
@@ -1262,7 +1270,7 @@ def test_set_dict_cfg_failed_push_on_first_ever_request_recovers_to_schema_defau
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "pushfailfirst", _VAL_SI, cfg_path=path_prefix)
         run(reader.cfgmgr.setup())
 
-        async def push_fail(value: "int | float | str | bool | None") -> bool:
+        async def push_fail(_value: "int | float | str | bool | None") -> bool:
             return False
 
         reader._push_callbacks["SampleInterv"] = push_fail
@@ -1284,7 +1292,7 @@ def test_set_dict_cfg_failed_push_on_special_alone_field_skips_recovery_entirely
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "pushfailtrigger", _VAL_SPECIAL, cfg_path=path_prefix)
         run(reader.cfgmgr.setup())
 
-        async def push_fail(value: "int | float | str | bool | None") -> bool:
+        async def push_fail(_value: "int | float | str | bool | None") -> bool:
             return False
 
         async def must_not_be_called() -> "int | float | str | bool | None":
@@ -1317,7 +1325,7 @@ def test_set_dict_cfg_special_alone_field_write_never_logs_a_spurious_config_rea
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "specialnospuriouserr", _VAL_SPECIAL, cfg_path=path_prefix)
         run(reader.cfgmgr.setup())
 
-        async def push_ok(value: "int | float | str | bool | None") -> bool:
+        async def push_ok(_value: "int | float | str | bool | None") -> bool:
             return True
 
         reader._push_callbacks["Trigger"] = push_ok
@@ -1347,10 +1355,10 @@ def test_set_dict_cfg_mixed_persisted_and_special_alone_fields_in_one_request() 
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "mixedpersistedspecial", combined, cfg_path=path_prefix)
         run(reader.cfgmgr.setup())
 
-        async def push_ok(value: "int | float | str | bool | None") -> bool:
+        async def push_ok(_value: "int | float | str | bool | None") -> bool:
             return True
 
-        async def push_fail(value: "int | float | str | bool | None") -> bool:
+        async def push_fail(_value: "int | float | str | bool | None") -> bool:
             return False
 
         # Establish a known old value (5) for SampleInterv via one successful write first.
@@ -1382,7 +1390,7 @@ def test_set_dict_cfg_old_value_snapshot_read_exception_falls_back_to_default() 
     # _set_dict_cfg's own pre-write snapshot read gets identical defense: a raising override must
     # not crash the whole call, just degrade the fallback chain straight to the schema default.
     class RaisingGetMgrCfgReader(SensorReaderConfig):
-        async def _get_mgr_cfg(self, cfg: "list[str]") -> "dict[str, int | float | str | bool | None] | None":
+        async def _get_mgr_cfg(self, _cfg: "list[str]") -> "dict[str, int | float | str | bool | None] | None":
             raise RuntimeError("simulated read failure")
 
     path_prefix = _tmp_path("") + "/"
@@ -1391,7 +1399,7 @@ def test_set_dict_cfg_old_value_snapshot_read_exception_falls_back_to_default() 
         reader = RaisingGetMgrCfgReader(Meas(20.0, 50), 3, "pushfailsnapraise", _VAL_SI, cfg_path=path_prefix)
         run(reader.cfgmgr.setup())
 
-        async def push_fail(value: "int | float | str | bool | None") -> bool:
+        async def push_fail(_value: "int | float | str | bool | None") -> bool:
             return False
 
         reader._push_callbacks["SampleInterv"] = push_fail
@@ -1426,12 +1434,13 @@ def test_set_dict_cfg_recover_failed_push_correction_write_exception_is_caught()
     # defense: a second call that raises (the initial persist succeeds, only the correction fails)
     # must not crash the whole request.
     class FlakyOnSecondWriteReader(SensorReaderConfig):
-        def __init__(self, *args: "Any", **kwargs: "Any") -> None:
-            super().__init__(*args, **kwargs)
-            self._write_calls = 0
+        # Class attribute instead of an __init__ override that only forwards *args/**kwargs to
+        # super(): the first `+= 1` below rebinds it per instance, so the counter behaves
+        # identically without a signature this file would have to restate (and mistype) verbatim.
+        _write_calls = 0
 
         async def _set_mgr_cfg(
-            self, data: "dict[str, int | float | str | bool | None]", cfg_vals: "cm.ConfigSchema"
+            self, data: "dict[str, int | float | str | bool | None]", cfg_vals: "cm.ConfigSchema",
         ) -> "tuple[bool, cm.WriteValidity]":
             self._write_calls += 1
             if self._write_calls == 1:
@@ -1444,7 +1453,7 @@ def test_set_dict_cfg_recover_failed_push_correction_write_exception_is_caught()
         reader = FlakyOnSecondWriteReader(Meas(20.0, 50), 3, "pushfailcorrectionraise", _VAL_SI, cfg_path=path_prefix)
         run(reader.cfgmgr.setup())
 
-        async def push_fail(value: "int | float | str | bool | None") -> bool:
+        async def push_fail(_value: "int | float | str | bool | None") -> bool:
             return False
 
         reader._push_callbacks["SampleInterv"] = push_fail
@@ -1467,10 +1476,10 @@ def test_set_dict_cfg_multiple_fields_recover_independently_via_different_rungs(
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "pushfailmulti", combined, cfg_path=path_prefix)
         run(reader.cfgmgr.setup())
 
-        async def push_ok(value: "int | float | str | bool | None") -> bool:
+        async def push_ok(_value: "int | float | str | bool | None") -> bool:
             return True
 
-        async def push_fail(value: "int | float | str | bool | None") -> bool:
+        async def push_fail(_value: "int | float | str | bool | None") -> bool:
             return False
 
         async def getter() -> "int | float | str | bool | None":
@@ -1489,7 +1498,7 @@ def test_set_dict_cfg_multiple_fields_recover_independently_via_different_rungs(
         results = run(reader._set_dict_cfg({"SampleInterv": 99, "SelfCal": False}, combined))
         assert results == {"SampleInterv": "Failed", "SelfCal": "Failed"}
         assert run(reader._get_dict_cfg("Sensor", combined)) == {
-            "Sensor": {"SampleInterv": 77, "SelfCal": True}
+            "Sensor": {"SampleInterv": 77, "SelfCal": True},
         }
     finally:
         _remove(path_prefix + "config_pushfailmulti.cfg")
@@ -1503,7 +1512,7 @@ def test_set_dict_cfg_invalid_value_is_reported_and_never_pushed() -> None:
         run(reader.cfgmgr.setup())
         called = False
 
-        async def push(value: "int | float | str | bool | None") -> bool:
+        async def push(_value: "int | float | str | bool | None") -> bool:
             nonlocal called
             called = True
             return True
@@ -1527,7 +1536,7 @@ def test_set_dict_cfg_unchanged_value_is_reported_and_never_pushed() -> None:
         run(reader.cfgmgr.setup())
         called = False
 
-        async def push(value: "int | float | str | bool | None") -> bool:
+        async def push(_value: "int | float | str | bool | None") -> bool:
             nonlocal called
             called = True
             return True
@@ -1565,7 +1574,7 @@ def test_set_dict_cfg_multi_field_request_reports_each_field_independently() -> 
         run(reader.cfgmgr.setup())
         pushed: list[str] = []
 
-        async def push_bool(value: "int | float | str | bool | None") -> bool:
+        async def push_bool(_value: "int | float | str | bool | None") -> bool:
             pushed.append("SelfCal")
             return True
 
@@ -1590,11 +1599,11 @@ def test_set_dict_cfg_multiple_invalid_fields_neither_pushed() -> None:
         run(reader.cfgmgr.setup())
         pushed: list[str] = []
 
-        async def push_int(value: "int | float | str | bool | None") -> bool:
+        async def push_int(_value: "int | float | str | bool | None") -> bool:
             pushed.append("SampleInterv")
             return True
 
-        async def push_bool(value: "int | float | str | bool | None") -> bool:
+        async def push_bool(_value: "int | float | str | bool | None") -> bool:
             pushed.append("SelfCal")
             return True
 
@@ -1629,7 +1638,7 @@ def test_set_dict_cfg_set_mgr_cfg_override_raising_marks_every_field_failed() ->
     # not just its result, could misbehave on a misbehaving subclass override.
     class RaisingSetMgrCfgReader(SensorReaderConfig):
         async def _set_mgr_cfg(
-            self, data: "dict[str, int | float | str | bool | None]", cfg_vals: "cm.ConfigSchema"
+            self, _data: "dict[str, int | float | str | bool | None]", _cfg_vals: "cm.ConfigSchema",
         ) -> "tuple[bool, cm.WriteValidity]":
             raise RuntimeError("simulated persistence failure")
 
@@ -1652,7 +1661,7 @@ def test_set_dict_cfg_set_mgr_cfg_override_malformed_result_marks_every_field_fa
     # AttributeError, uncaught - base_classes.py's own contract is that no method here ever raises).
     class MalformedSetMgrCfgReader(SensorReaderConfig):
         async def _set_mgr_cfg(
-            self, data: "dict[str, int | float | str | bool | None]", cfg_vals: "cm.ConfigSchema"
+            self, _data: "dict[str, int | float | str | bool | None]", _cfg_vals: "cm.ConfigSchema",
         ) -> "tuple[bool, cm.WriteValidity]":
             return True, "not a dict"  # type: ignore[return-value]  # deliberately malformed, simulating a misbehaving override
 
@@ -1677,7 +1686,7 @@ def test_set_dict_cfg_set_mgr_cfg_override_missing_key_marks_it_failed() -> None
     # reported, breaking the "every field reported independently" contract this file documents.
     class MissingKeySetMgrCfgReader(SensorReaderConfig):
         async def _set_mgr_cfg(
-            self, data: "dict[str, int | float | str | bool | None]", cfg_vals: "cm.ConfigSchema"
+            self, _data: "dict[str, int | float | str | bool | None]", _cfg_vals: "cm.ConfigSchema",
         ) -> "tuple[bool, cm.WriteValidity]":
             return True, {}  # reports success but never mentions any of the requested keys
 
@@ -1717,7 +1726,7 @@ def test_set_dict_cfg_push_callbacks_default_to_empty_and_are_per_instance() -> 
         assert reader1._push_callbacks == {}
         assert reader1._push_callbacks is not reader2._push_callbacks
 
-        async def push(value: "int | float | str | bool | None") -> bool:
+        async def push(_value: "int | float | str | bool | None") -> bool:
             return True
 
         reader1._push_callbacks["SampleInterv"] = push

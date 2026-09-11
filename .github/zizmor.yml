@@ -1,0 +1,26 @@
+# zizmor (GitHub Actions security audit) config - see scripts/lint.sh, which runs it offline over
+# .github/ on every lint pass. Only `unpinned-uses` is configured; every other audit runs at its
+# own default, deliberately, so a new zizmor release surfaces new checks as findings to triage
+# rather than as strictness this project never noticed it was missing (same reasoning as
+# pyproject.toml's `select = ["ALL"]` for ruff).
+rules:
+  unpinned-uses:
+    config:
+      policies:
+        # GitHub's own first-party actions: a tag is enough. A compromise of the `actions/*` org
+        # would compromise the whole platform this CI already trusts to run the jobs at all, so SHA
+        # pinning buys nothing here - and would cost a SHA bump on every one of the four actions
+        # every time upstream cuts a release, with no Dependabot configured to do it.
+        actions/*: ref-pin
+        # Everything genuinely third-party (codecov/, dorny/) must be SHA-pinned: a force-pushed
+        # tag on one of these is exactly the tj-actions/changed-files supply-chain attack, and
+        # neither is under GitHub's own control. Two actions, so the bump cost is real but small.
+        "*": hash-pin
+  self-repository:
+    # Disabled, not fixed: zizmor wants `uses: $/.github/...` (GitHub's self-repository syntax,
+    # new in July 2026) instead of `uses: ./.github/...`. actionlint 1.7.12 - the other hard gate
+    # over these same files - rejects `$/...` outright as "invalid format because ref is missing",
+    # so the two tools cannot both be satisfied today. `./...` is what actually runs, and the
+    # audit is Low severity (it buys pinning-policy enforceability, not a fix for a live hole).
+    # Revisit once actionlint learns the syntax; the six call sites are all one composite action.
+    disable: true

@@ -9,6 +9,13 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Deny-by-default for the automatic GITHUB_TOKEN: without this block every job inherits whatever
+# the repo/org default is, which is frequently write-scoped. No job here pushes, comments, or
+# calls the API - the codecov steps upload over their own token and are continue-on-error - so
+# `contents: read` per job is the whole requirement. Enforced by zizmor's excessive-permissions
+# audit (scripts/lint.sh).
+permissions: {}
+
 jobs:
   web-changes:
     # Gates the web-CI tier below on whether this push/PR actually touches the website's own
@@ -18,13 +25,17 @@ jobs:
     # status check that never fires because the whole workflow never triggered - see
     # SPECIFICATION.md Part H.8). The existing Python jobs below are untouched and keep running on every
     # trigger regardless of this job's result.
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
       web: ${{ steps.filter.outputs.web }}
     steps:
       - uses: actions/checkout@v7
-      - uses: dorny/paths-filter@v3
+        with:
+          persist-credentials: false
+      - uses: dorny/paths-filter@15192bc058cc28a13dbf6cde61f19e18988b7af6 # v3
         id: filter
         with:
           filters: |
@@ -50,10 +61,14 @@ jobs:
     # Python-side counterpart).
     needs: web-changes
     if: needs.web-changes.outputs.web == 'true'
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v5
         with:
           node-version-file: .nvmrc
@@ -85,10 +100,14 @@ jobs:
     # mock-server.js-only.
     needs: [web-changes, web-lint-and-typecheck]
     if: needs.web-changes.outputs.web == 'true'
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v5
         with:
           node-version-file: .nvmrc
@@ -142,10 +161,14 @@ jobs:
   web-coverage:
     needs: [web-changes, web-unit-tests]
     if: needs.web-changes.outputs.web == 'true'
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v5
         with:
           node-version-file: .nvmrc
@@ -181,11 +204,20 @@ jobs:
         continue-on-error: true
       - name: Add coverage summary to job summary
         if: hashFiles('coverage-output.txt') != ''
+        # Quoted heredocs (not `echo '...'`) so the literal markdown backticks need no quoting
+        # gymnastics, and one grouped redirect instead of four - both flagged by actionlint's
+        # embedded shellcheck (SC2016/SC2129).
         run: |
-          echo '### JS coverage (`js/`)' >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
-          tail -n 15 coverage-output.txt >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          {
+            cat <<'MD_FENCE_OPEN'
+          ### JS coverage (`js/`)
+          ```
+          MD_FENCE_OPEN
+            tail -n 15 coverage-output.txt
+            cat <<'MD_FENCE_CLOSE'
+          ```
+          MD_FENCE_CLOSE
+          } >> "$GITHUB_STEP_SUMMARY"
         continue-on-error: true
       - name: Upload HTML coverage report artifact
         if: hashFiles('coverage/index.html') != ''
@@ -208,10 +240,14 @@ jobs:
     # caught a regression (same fail-fast reasoning as digital-twin-e2e's own needs: unit-tests).
     needs: [web-changes, web-unit-tests]
     if: needs.web-changes.outputs.web == 'true'
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v5
         with:
           node-version-file: .nvmrc
@@ -279,18 +315,82 @@ jobs:
     # runs that second pass unconditionally, regardless of "$@", so the Mypy step below gates on
     # digital_twin/ too without needing it named here explicitly. Ruff has no such per-run
     # resolution conflict, so it's just named directly alongside src/tests.
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Install uv
         run: pip install uv
       - name: Sync dev dependencies
         run: uv sync
       - name: Ruff (src/, tests/, digital_twin/)
-        run: uv run ruff check src tests digital_twin
+        run: uv run ruff check src tests digital_twin boot_entry toolchain scripts tests_scripts tests_hardware
       - name: Mypy (src/, tests/, digital_twin/)
-        run: uv run scripts/typecheck.sh src tests
+        run: uv run scripts/typecheck.sh src tests boot_entry tests_hardware/device_scripts
+
+  shellcheck:
+    # Own stage, not a step inside lint-and-typecheck: each tool gets its own independently
+    # red/green check run. scripts/lint.sh still runs all of them together for local use.
+    # Covers scripts/ only - the four legacy build-*.sh at the repo root are the same pre-refactor
+    # generation as python//modules/ and out of lint scope by that same standing decision (they
+    # carry 28 findings of their own, including no shebang at all - see BACKLOG.md).
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install uv
+        run: pip install uv
+      - name: Sync dev dependencies
+        run: uv sync
+      - name: Shellcheck (scripts/)
+        run: uv run shellcheck scripts/*.sh
+
+  actionlint:
+    # Checks this workflow and the composite action for expression/context typos that otherwise
+    # only surface as a broken CI run. Also runs shellcheck over every `run:` block, which is why
+    # shellcheck-py is on PATH here too (both come from the same `uv sync`).
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install uv
+        run: pip install uv
+      - name: Sync dev dependencies
+        run: uv sync
+      - name: Actionlint (.github/)
+        run: uv run actionlint
+
+  zizmor:
+    # GitHub Actions security audit - token permissions, checkout credential persistence, action
+    # pinning. --offline skips the two audits needing the GitHub API (ref-confusion,
+    # impostor-commit) so this behaves identically here, on a dev box, and in CLAUDE.md's clean
+    # chroot recipe. Policy config: .github/zizmor.yml.
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install uv
+        run: pip install uv
+      - name: Sync dev dependencies
+        run: uv sync
+      - name: Zizmor (.github/)
+        run: uv run zizmor --offline .github/
 
   unit-tests:
     # Tests run under a real MicroPython Unix-port interpreter, not CPython - see
@@ -316,11 +416,25 @@ jobs:
     # observed 6-hour hang before timeout-minutes existed - see CLAUDE.md's "CI hang investigation"
     # note). With a warm toolchain cache, a healthy run takes ~8-9 minutes total (plain + coverage
     # passes combined - confirmed by direct local measurement).
+    #
+    # `if: !cancelled()` keeps the `needs:` edge above (so the serialization the standing backstop
+    # asks for is intact) while dropping the SUCCESS gating that `needs:` otherwise implies. That
+    # gating was never a deliberate choice - it is a side effect of the sequencing - and it is
+    # actively harmful: a red lint job silently SKIPS this job, so a lint finding hides every
+    # test result behind it. That is not hypothetical; it is exactly why unit-tests,
+    # digital-twin-e2e and firmware-build-verify had never once run on the branch that introduced
+    # `select = ["ALL"]`, and it hid that fact for the entire life of that branch. Lint and tests
+    # answer different questions; a failure of one must not erase the answer to the other.
     needs: lint-and-typecheck
+    if: ${{ !cancelled() }}
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Set up MicroPython toolchain (install uv, restore cache)
         uses: ./.github/actions/setup-micropython-toolchain
       - name: Run unit tests
@@ -347,14 +461,14 @@ jobs:
       # up. fail_ci_if_error keeps a missing/invalid token from ever failing the job either way.
       - name: Upload coverage to Codecov
         if: hashFiles('coverage.xml') != ''
-        uses: codecov/codecov-action@v7
+        uses: codecov/codecov-action@a99c28d3f0da835de33ff2feb2e15691c7b9641f # v7
         with:
           files: coverage.xml
           fail_ci_if_error: false
         continue-on-error: true
       - name: Upload digital_twin/ coverage to Codecov
         if: hashFiles('coverage_digital_twin.xml') != ''
-        uses: codecov/codecov-action@v7
+        uses: codecov/codecov-action@a99c28d3f0da835de33ff2feb2e15691c7b9641f # v7
         with:
           files: coverage_digital_twin.xml
           flags: digital_twin
@@ -392,10 +506,14 @@ jobs:
     # caught a regression) and so this job's own toolchain-cache restore, below, can hit the same
     # cache unit-tests' own unix-port-build step just populated.
     needs: unit-tests
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Set up MicroPython toolchain (install uv, restore cache)
         uses: ./.github/actions/setup-micropython-toolchain
       - name: Run digital-twin clean/build/test cycle
@@ -425,11 +543,22 @@ jobs:
     # that job instead of serializing after it. The ARM cross-compiler itself (gcc-arm-none-eabi
     # and friends) is a separate apt install, not part of that cached directory - see the
     # dedicated step below for why it still has to run here even on a cache hit.
+    #
+    # `if: !cancelled()` for the same reason as unit-tests above, and it applies with extra force
+    # here: the dependency stated above is a CACHE dependency, not a correctness one, so gating the
+    # firmware compile on whether the unit tests passed masks one independent finding behind
+    # another. digital-twin-e2e deliberately keeps its own success gating - its `needs:` comment
+    # states fail-fast as the actual intent - so it is left alone.
     needs: unit-tests
+    if: ${{ !cancelled() }}
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Set up MicroPython toolchain (install uv, restore cache)
         uses: ./.github/actions/setup-micropython-toolchain
       # A cache miss here would mean scripts/test.sh itself hasn't run yet on this exact toolchain

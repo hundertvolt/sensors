@@ -126,7 +126,7 @@ class CRC_Base:
             return None
 
     async def check_from(
-        self, buffer: bytearray, size: int | None = None, start: int = 0, init: int | None = None
+        self, buffer: bytearray, size: int | None = None, start: int = 0, init: int | None = None,
     ) -> int | None:
         # Like check(), but verifies in place within a shared buffer; returns just the payload
         # length (excluding the CRC) instead of a copy of the data.

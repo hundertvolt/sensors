@@ -249,13 +249,14 @@ class _FakeStruct:
     # never actually be reached through any real malformed format string. Faked here by
     # substituting asy_i2c_driver's own module-level `struct` name, the same technique this
     # project's other test files use for their own otherwise-unreachable guards.
-    def __init__(self, unpack_result: "Any") -> None:
+    def __init__(self, unpack_result: "tuple[Any, ...] | Exception") -> None:
         self._unpack_result = unpack_result
 
     def calcsize(self, fmt: str) -> int:
         return struct.calcsize(fmt)
 
-    def unpack(self, fmt: str, buf: object) -> "Any":
+    def unpack(self, _fmt: str, _buf: object) -> "tuple[Any, ...]":  # struct.unpack()'s own two
+        # arguments are positional-only (a C function), so nothing can name them at a call site.
         if isinstance(self._unpack_result, Exception):
             raise self._unpack_result
         return self._unpack_result
@@ -465,7 +466,7 @@ def test_bus_busy_surfaces_as_etimedout() -> None:
     i2c = make_i2c()
     fake(i2c).busy = True
     ops = (
-        lambda: i2c.scan(),
+        i2c.scan,
         lambda: i2c.writeto(0x50, b"x"),
         lambda: i2c.readfrom_into(0x50, bytearray(1)),
         lambda: i2c.get_bits(0x50, 1, 0x00, 0),
@@ -757,10 +758,13 @@ def test_exception_inside_session_still_releases_the_lock() -> None:
     i2c = make_i2c()
     device = I2CDevice(i2c, 0x50)
 
+    def boom() -> None:  # raised from a helper, so the raise isn't lexically inside the try below
+        raise RuntimeError("boom")
+
     async def scenario() -> None:
         try:
             async with device:
-                raise RuntimeError("boom")
+                boom()
         except RuntimeError:
             pass
         assert not i2c.async_lock.locked()
@@ -837,16 +841,16 @@ def test_reentrant_acquisition_on_the_same_device_deadlocks_and_cleans_up() -> N
     device = I2CDevice(i2c, 0x50)
 
     async def reentrant() -> None:
-        async with device:
-            async with device:
-                pass
+        async with device, device:
+            pass
 
     async def scenario() -> bool:
         try:
             await asyncio.wait_for(reentrant(), 0.2)
-            return False
         except asyncio.TimeoutError:
             return True
+        else:
+            return False
 
     assert run(scenario())
     assert not i2c.async_lock.locked()

@@ -18,7 +18,26 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from typing import Any
+    from typing import Any, Protocol
+
+    from _fram_chip import FramChip  # lazy-imported at runtime inside _wire_spi_device()
+
+    class _RandomSource(Protocol):
+        # Structural stand-in for the `random` module (the default) or a seeded random.Random.
+        # Declares the union of what the wired chip fakes each ask for through their own narrower
+        # _RandomSource, since configure_random_source() hands one object to all of them.
+        def uniform(self, a: float, b: float) -> float: ...
+        def randint(self, a: int, b: int) -> int: ...
+        def getrandbits(self, k: int) -> int: ...
+
+    class _I2CDevice(Protocol):
+        # The four transaction shapes this bus forwards to a wired chip fake. Each fake implements
+        # only the subset its real counterpart answers (I2C.devices stays Any-valued so tests can
+        # still reach chip-specific state), so this describes the bus's expectation, not a guarantee.
+        def handle_writeto(self, data: bytes) -> None: ...
+        def handle_readfrom_into(self, nbytes: int) -> bytes: ...
+        def handle_readfrom_mem(self, reg_addr: int, nbytes: int) -> bytes: ...
+        def handle_writeto_mem(self, reg_addr: int, data: bytes) -> None: ...
 
 
 class Pin:
@@ -36,7 +55,7 @@ class Pin:
         # needs to for isolation - mirrors tests/machine.py's own Timer.all_timers.clear() convention.
         cls._registry.clear()
 
-    def __new__(cls, id: int, *args: object, **kwargs: object) -> "Pin":
+    def __new__(cls, id: int, *_args: object, **_kwargs: object) -> "Pin":
         if not isinstance(id, int):
             raise TypeError("Pin id must be an int")
         if not (0 <= id <= 28):
@@ -49,7 +68,7 @@ class Pin:
         cls._registry[id] = instance
         return instance
 
-    def __init__(self, id: int, mode: int = -1, pull: int = -1, *, value: "Any" = None) -> None:
+    def __init__(self, id: int, mode: int = -1, pull: int = -1, *, value: object = None) -> None:
         if self._initialized:
             # Re-binding to an already-registered physical pin - apply init()-style settings
             # (leave-unchanged-if-omitted) without wiping the pin's current electrical state.
@@ -114,10 +133,10 @@ class Pin:
             self._irq_handler(self)
 
 
-_random_source: "Any | None" = None
+_random_source: "_RandomSource | None" = None
 
 
-def configure_random_source(source: "Any | None") -> None:
+def configure_random_source(source: "_RandomSource | None") -> None:
     # Same module-level-hook pattern as configure_fram_state_path() below, applied to sensor value
     # walks instead of FRAM persistence: called once, before build_system()-equivalent code
     # constructs i2c0/i2c1, by whatever entry point wants every wired chip's value walk to share one
@@ -164,31 +183,31 @@ def configure_i2c_wiring(profile: str) -> None:
     _i2c_wiring_profile = profile
 
 
-def _wire_i2c_devices(id: int) -> "dict[int, Any]":
+def _wire_i2c_devices(bus_id: int) -> "dict[int, Any]":
     global _current_scd30_chip
     from _bmp3xx_chip import Bmp3xxChip
     from _scd30_chip import Scd30Chip
     from _sgp40_chip import Sgp40Chip
 
     if _i2c_wiring_profile == "dev":
-        # dev_legacy/README.md's wiring table: i2c0 (id=0) carries BMP3xx alone; i2c1 (id=1)
+        # dev_legacy/README.md's wiring table: i2c0 (bus_id=0) carries BMP3xx alone; i2c1 (bus_id=1)
         # carries SCD30 (IRQ/RDY=GPIO11) + SGP40 sharing the bus - the reverse pairing from wozi's
         # own layout below.
-        if id == 0:
+        if bus_id == 0:
             return {0x77: Bmp3xxChip(random_source=_random_source)}
-        if id == 1:
+        if bus_id == 1:
             chip = Scd30Chip(rdy_pin=Pin(11, mode=Pin.IN), random_source=_random_source, state_path=_scd30_state_path)
             _current_scd30_chip = chip
             return {0x61: chip, 0x59: Sgp40Chip(random_source=_random_source)}
         return {}
 
-    # "wozi" (default): i2c0 (id=0) carries SCD30 alone (IRQ/RDY=GPIO8); i2c1 (id=1) carries
+    # "wozi" (default): i2c0 (bus_id=0) carries SCD30 alone (IRQ/RDY=GPIO8); i2c1 (bus_id=1) carries
     # SGP40 + BMP3xx sharing the bus.
-    if id == 0:
+    if bus_id == 0:
         chip = Scd30Chip(rdy_pin=Pin(8, mode=Pin.IN), random_source=_random_source, state_path=_scd30_state_path)
         _current_scd30_chip = chip
         return {0x61: chip}
-    if id == 1:
+    if bus_id == 1:
         return {0x59: Sgp40Chip(random_source=_random_source), 0x77: Bmp3xxChip(random_source=_random_source)}
     return {}
 
@@ -201,7 +220,7 @@ class I2C:
         self.freq = freq
         self.timeout = timeout
         self.deinit_called = False
-        self.log: deque[tuple] = deque((), _LOG_MAXLEN)
+        self.log: deque[tuple[Any, ...]] = deque((), _LOG_MAXLEN)
         self.devices = _wire_i2c_devices(id)  # public: tests reach a wired chip via i2c.devices[addr]
 
     def deinit(self) -> None:
@@ -214,8 +233,8 @@ class I2C:
     def scan(self) -> "list[int]":
         return sorted(self.devices.keys())
 
-    def _device_or_nak(self, address: int) -> "Any":
-        device = self.devices.get(address)
+    def _device_or_nak(self, address: int) -> "_I2CDevice":
+        device: _I2CDevice | None = self.devices.get(address)
         if device is None:
             raise OSError(errno.EIO, "no ACK from device")
         return device
@@ -240,7 +259,7 @@ class I2C:
         device = self._device_or_nak(address)
         data = device.handle_readfrom_mem(memaddr, nbytes)
         self.log.append(("readfrom_mem", address, memaddr, nbytes, addrsize))
-        return data  # type: ignore[no-any-return]  # device is duck-typed (Any), see _device_or_nak
+        return data
 
     def writeto_mem(self, address: int, memaddr: int, buf: object, *, addrsize: int = 8) -> None:
         device = self._device_or_nak(address)
@@ -272,17 +291,18 @@ _DEV_FRAM_SIZE = 0x40000  # MB85RS2MTA, 256KB - sensortask_dev.py's own AsyFramM
 _DEV_FRAM_RDID = bytes([0x04, 0x7F, 0x48, 0x03])  # manufacturer=Fujitsu, cont_code, product ID 0x4803 - asy_fram_driver.py's own _KNOWN_PRODUCT_IDS[0x40000], datasheets/fram/MB85RS2MTA-DS501-00032-3v0-E.pdf p.10
 
 
-def _wire_spi_device(id: int) -> "Any | None":
+def _wire_spi_device(bus_id: int) -> "FramChip | None":
     global _current_fram_chip
-    if id == 0:
+    if bus_id == 0:
         from _fram_chip import FramChip
 
         # Mirrors _wire_i2c_devices()'s own profile branch above - see digital_twin/README.md's
         # "What's here" section for the real chip-identity bug this fixed.
-        if _i2c_wiring_profile == "dev":
-            chip = FramChip(size=_DEV_FRAM_SIZE, state_path=_fram_state_path, rdid_response=_DEV_FRAM_RDID)
-        else:
-            chip = FramChip(state_path=_fram_state_path)
+        chip = (
+            FramChip(size=_DEV_FRAM_SIZE, state_path=_fram_state_path, rdid_response=_DEV_FRAM_RDID)
+            if _i2c_wiring_profile == "dev"
+            else FramChip(state_path=_fram_state_path)
+        )
         _current_fram_chip = chip
         return chip
     return None
@@ -315,7 +335,7 @@ class SPI:
         self.bits = bits
         self.firstbit = firstbit
         self.deinit_called = False
-        self.log: deque[tuple] = deque((), _LOG_MAXLEN)
+        self.log: deque[tuple[Any, ...]] = deque((), _LOG_MAXLEN)
         self.device = _wire_spi_device(id)  # public: tests reach the wired chip via spi.device
         # MicroPython 1.29 added an RX-overrun check to rp2's SPI transfer path, reached only by
         # *reading* transfers of 32+ bytes (SPECIFICATION.md Part F.5.2). Modelled here rather
@@ -388,17 +408,22 @@ class Timer:
     ONE_SHOT = 0
     PERIODIC = 1
 
-    def __init__(self, id: int = -1, **kwargs: "Any") -> None:
+    def __init__(
+        self, id: int = -1, *, period: int = -1, mode: int = PERIODIC, callback: "Callable[[Timer], None] | None" = None,
+    ) -> None:
         self.id = id
         self.period = -1
         self.mode = self.PERIODIC
         self.callback: Callable[[Timer], None] | None = None
-        self._task: asyncio.Task | None = None
-        if kwargs:
-            self.init(**kwargs)
+        self._task: asyncio.Task[None] | None = None
+        # Spelled out rather than **kwargs-forwarded so the accepted settings are statically
+        # checked; the guard keeps real machine_timer_make_new()'s "init helper only runs when the
+        # constructor was actually given settings" behavior for a bare Timer().
+        if period != -1 or mode != self.PERIODIC or callback is not None:
+            self.init(period=period, mode=mode, callback=callback)
 
     def init(
-        self, *, period: int = -1, mode: int = PERIODIC, callback: "Callable[[Timer], None] | None" = None
+        self, *, period: int = -1, mode: int = PERIODIC, callback: "Callable[[Timer], None] | None" = None,
     ) -> None:
         self.deinit()  # cancel any previously-armed schedule before re-arming
         self.period = period
@@ -444,7 +469,7 @@ _WDT_TIMEOUT_MAX_MS = 8388  # RP2040 hard cap: 0xffffff / 2 / 1000 (ports/rp2/ma
 
 class WDT:
     def __init__(
-        self, id: int = 0, timeout: int = 5000, *, on_would_trigger: "Callable[[WDT], None] | None" = None
+        self, id: int = 0, timeout: int = 5000, *, on_would_trigger: "Callable[[WDT], None] | None" = None,
     ) -> None:
         if id != 0:
             raise ValueError(f"WDT({id}) doesn't exist")
@@ -465,7 +490,7 @@ class WDT:
         # on every would-have-triggered notification, so bounded the same way.
         self.would_have_triggered_log: deque[int] = deque((), _LOG_MAXLEN)
         self._on_would_trigger = on_would_trigger
-        self._task: asyncio.Task | None = None
+        self._task: asyncio.Task[None] | None = None
         self._armed_at_ms: Any | None = None  # an opaque ticks_ms() value, not a plain int
         self._arm()
 
@@ -505,12 +530,12 @@ class WDT:
 class RTC:
     # One physical peripheral - class-level shared state, matches real singleton hardware (and
     # tests/machine.py's own identical convention).
-    _shared_datetime: tuple = (2000, 1, 1, 0, 0, 0, 0, 0)
+    _shared_datetime: "tuple[int, ...]" = (2000, 1, 1, 0, 0, 0, 0, 0)
 
     def __init__(self, id: int = 0) -> None:
         self.id = id
 
-    def datetime(self, dt: "tuple | None" = None) -> "tuple":
+    def datetime(self, dt: "tuple[int, ...] | None" = None) -> "tuple[int, ...]":
         # Return type matches typings/machine.pyi's own RTC.datetime signature (always `Tuple`,
         # not Optional) even on the set path, where real hardware returns nothing meaningful -
         # simplifies the common get-after-set call pattern without a getter/setter @overload split.
@@ -520,17 +545,17 @@ class RTC:
         return RTC._shared_datetime
 
 
-class SimulatedReboot(Exception):
+class SimulatedRebootError(Exception):
     # Base class for both twin-only reboot exceptions below - lets a Step 5 harness catch either
-    # kind uniformly (`except SimulatedReboot:`) or distinguish them when it needs to.
+    # kind uniformly (`except SimulatedRebootError:`) or distinguish them when it needs to.
     pass
 
 
-class SimulatedReset(SimulatedReboot):
+class SimulatedResetError(SimulatedRebootError):
     pass
 
 
-class SimulatedBootloaderEntry(SimulatedReboot):
+class SimulatedBootloaderEntryError(SimulatedRebootError):
     pass
 
 
@@ -543,13 +568,13 @@ def reset() -> None:
     # (it would just kill the test/Step-5 process), so it raises instead: the counter below still
     # increments first (useful even though the call "never returns" on real hardware either - a
     # harness catching the exception can still inspect "how many times did this happen"), then
-    # SimulatedReset propagates to whatever caller is meant to observe "a reboot happened here".
+    # SimulatedResetError propagates to whatever caller is meant to observe "a reboot happened here".
     global reset_count
     reset_count += 1
-    raise SimulatedReset("machine.reset() called - the twin does not actually restart the process")
+    raise SimulatedResetError("machine.reset() called - the twin does not actually restart the process")
 
 
 def bootloader() -> None:
     global bootloader_count
     bootloader_count += 1
-    raise SimulatedBootloaderEntry("machine.bootloader() called - the twin does not actually restart the process")
+    raise SimulatedBootloaderEntryError("machine.bootloader() called - the twin does not actually restart the process")

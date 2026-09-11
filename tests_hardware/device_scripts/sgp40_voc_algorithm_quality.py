@@ -41,7 +41,7 @@ async def _main() -> None:
         read_task.cancel()
         try:
             await read_task
-        except (asyncio.CancelledError, Exception):  # noqa: BLE001 - CancelledError (real hardware confirmed: MicroPython's, like CPython's, subclasses BaseException, not Exception - SPECIFICATION.md Part F.2) or whatever the loop itself raised
+        except (asyncio.CancelledError, Exception):
             pass
 
     # Wait out the documented blackout window before sampling for real data.
@@ -59,15 +59,10 @@ async def _main() -> None:
         print(f"RESULT: FAIL one or more post-blackout samples had no VOC/Raw reading - sensor not responding or not wired to i2c1: {samples}")
         return
 
-    failures = []
     voc_values = [voc for voc, _ in samples if voc is not None]
     raw_values = [raw for _, raw in samples if raw is not None]
-    for voc in voc_values:
-        if not (VOC_MIN <= voc <= VOC_MAX):
-            failures.append(f"VOC={voc!r} outside [{VOC_MIN}, {VOC_MAX}]")
-    for raw in raw_values:
-        if not (RAW_MIN <= raw <= RAW_MAX):
-            failures.append(f"Raw={raw!r} outside [{RAW_MIN}, {RAW_MAX}]")
+    failures = [f"VOC={voc!r} outside [{VOC_MIN}, {VOC_MAX}]" for voc in voc_values if not (VOC_MIN <= voc <= VOC_MAX)]
+    failures.extend(f"Raw={raw!r} outside [{RAW_MIN}, {RAW_MAX}]" for raw in raw_values if not (RAW_MIN <= raw <= RAW_MAX))
 
     if len(set(voc_values)) == 1 and len(voc_values) > 1:
         failures.append(f"all {len(voc_values)} post-blackout VOC samples were identical ({voc_values[0]}) - algorithm may be frozen/not responding to real readings")

@@ -208,7 +208,7 @@ function dispatchLightCmdLed(rawValue) {
             return "Failed";
         }
     }
-    const t = payload.t;
+    const { t } = payload;
     if (typeof t !== "number" || !Number.isFinite(t) || t < LIGHT_CMD_LED_T_MIN || t > LIGHT_CMD_LED_T_MAX) {
         return "Failed";
     }
@@ -260,7 +260,7 @@ function dropOneResultForPartialFailure(results, controls) {
         return;
     }
     controls.nextFailure = undefined;
-    const key = Object.keys(results)[0];
+    const [key] = Object.keys(results);
     if (key !== undefined) {
         delete results[key];
     }
@@ -299,7 +299,7 @@ function jitterInPlace(group) {
  * Part H.6 for the settings-group-failure rationale behind one of these variants).
  * Consumed and cleared after firing once.
  * @typedef {"network" | number | "malformed-body" | "torn-json" | "empty-body" | "partial-result"} MockFailure
- * @typedef {{nextFailure?: MockFailure}} MockFetchControls
+ * @typedef {{nextFailure?: MockFailure | undefined}} MockFetchControls
  */
 
 /**

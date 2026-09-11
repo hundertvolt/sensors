@@ -11,7 +11,7 @@ except ImportError:  # typing isn't available on the real MicroPython test inter
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Coroutine
+    from collections.abc import Callable, Coroutine
     from typing import Any, TypeVar
 
     T = TypeVar("T")
@@ -25,7 +25,7 @@ def make_spi() -> SPI:
     return SPI(0, sck_pin=2, mosi_pin=3, miso_pin=4)
 
 
-def make_device(spi: SPI, cs_pin: int = 1, cs_active_value: bool = False, call_setup: bool = True) -> SPIDevice:
+def make_device(spi: SPI, cs_pin: int = 1, *, cs_active_value: bool = False, call_setup: bool = True) -> SPIDevice:
     # call_setup=True by default so every test gets a real-world-shaped device (every actual
     # caller calls setup() before first use) without needing its own boilerplate; pass False for
     # tests specifically about the pre-setup state or setup() itself.
@@ -250,9 +250,10 @@ def test_configure_raises_not_implemented_for_lsb_firstbit() -> None:
         await spi.async_lock.acquire()
         try:
             spi.configure(firstbit=FakeSPI.LSB)
-            return False
         except NotImplementedError:
             return True
+        else:
+            return False
         finally:
             spi.async_lock.release()
 
@@ -298,9 +299,10 @@ def test_aenter_raises_if_setup_was_never_called() -> None:
         try:
             async with device:
                 pass
-            return False
         except RuntimeError:
             return True
+        else:
+            return False
 
     assert run(scenario())
     assert not spi.async_lock.locked()  # never even attempted to acquire - fails before that
@@ -483,9 +485,10 @@ def test_aenter_releases_the_lock_if_configure_raises() -> None:
         try:
             async with device:
                 pass
-            return False
         except RuntimeError:
             return True
+        else:
+            return False
 
     assert run(scenario())
     assert not spi.async_lock.locked()  # released, not leaked
@@ -713,7 +716,10 @@ def test_long_read_overrun_raises_oserror_eio_uncaught() -> None:
     spi = make_spi()
     fake(spi).rx_overrun = True
     raised = 0
-    for call in (lambda: spi.readinto(bytearray(32)), lambda: spi.write_readinto(bytes(32), bytearray(32))):
+    # Annotated rather than left to inference: a bare lambda is an untyped callable, which
+    # --strict's disallow_untyped_calls rejects at the call() site below.
+    calls: tuple[Callable[[], None], ...] = (lambda: spi.readinto(bytearray(32)), lambda: spi.write_readinto(bytes(32), bytearray(32)))
+    for call in calls:
         try:
             call()
         except OSError as e:
@@ -822,16 +828,16 @@ def test_reentrant_acquisition_on_the_same_device_deadlocks_and_cleans_up() -> N
     device = make_device(spi)
 
     async def reentrant() -> None:
-        async with device:
-            async with device:
-                pass
+        async with device, device:
+            pass
 
     async def scenario() -> bool:
         try:
             await asyncio.wait_for(reentrant(), 0.2)
-            return False
         except asyncio.TimeoutError:
             return True
+        else:
+            return False
 
     assert run(scenario())
     assert not spi.async_lock.locked()

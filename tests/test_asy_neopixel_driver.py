@@ -11,6 +11,10 @@ if TYPE_CHECKING:
     from collections.abc import Coroutine
     from typing import Any, TypeVar
 
+    import neopixel
+
+    from crc_checks import CRC_Base
+
     T = TypeVar("T")
 
 
@@ -18,9 +22,9 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to complet
     return asyncio.run(coro)
 
 
-def _pixel(driver: NeopixelDriver) -> "Any":
-    # tests/neopixel.py's fake, reached through the driver's own attribute - same narrowing
-    # convention as test_asy_wifi_service.py's own _wlan() helper.
+def _pixel(driver: NeopixelDriver) -> "neopixel.NeoPixel":
+    # tests/neopixel.py's fake, reached through the driver's own attribute - that fake is what
+    # `neopixel` resolves to here (it is not excluded from mypy, unlike tests/network.py).
     return driver.pixel
 
 
@@ -72,7 +76,7 @@ def test_get_error_counter_reflects_a_real_logged_error() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Overlay (on/off/toggle)
+# Overlay behavior: on, off and toggle
 # ---------------------------------------------------------------------------
 
 
@@ -160,13 +164,14 @@ def test_overlay_write_deferred_while_ramp_holds_the_overlay_lock() -> None:
         # request_signal() only awaits until the request is queued, not until the ramp itself
         # finishes (see this file's own module docstring) - create_task here is just to keep the
         # scenario reading top-to-bottom; awaiting it directly would return just as fast.
-        asyncio.create_task(driver.request_signal(10, 0, 0, 0.1))
+        ramp = asyncio.create_task(driver.request_signal(10, 0, 0, 0.1))
         await asyncio.sleep(0.02)  # ramp has started, is mid-animation, holds led_overl_lock
         assert driver.led_overl_lock.locked() is True
         driver.on()  # queued, must not write yet - the lock is still held by the ramp
         await asyncio.sleep(0)
         assert (99, 99, 99) not in [w[0] for w in _pixel(driver).writes]
         await asyncio.sleep(0.2)  # let the ramp fully finish and the overlay task pick up the restore
+        await ramp  # long since returned (it only queues) - awaited so no task reference dangles
         await _cancel_all(tasks)
 
     run(scenario())
@@ -355,13 +360,14 @@ def test_led_signal_returns_true_while_a_previous_request_is_already_animating()
 
     async def scenario() -> bool:
         tasks = await _start_all_tasks(driver)
-        asyncio.create_task(driver.request_signal(10, 0, 0, 0.3))  # long-ish ramp, still running below
+        ramp = asyncio.create_task(driver.request_signal(10, 0, 0, 0.3))  # long-ish ramp, still running below
         await asyncio.sleep(0.02)
         assert driver.start_signal_event.is_set() is True  # an animation is genuinely in progress
         assert driver.start_signal_lock.locked() is False  # released right after queuing
         assert driver.ext_start_signal.is_set() is False  # led_signal()'s own slot is free
         result = driver.led_signal(0, 10, 0, 0.1)
         await asyncio.sleep(0.6)  # let both ramps fully finish
+        await ramp  # long since returned (it only queues) - awaited so no task reference dangles
         await _cancel_all(tasks)
         return result
 
@@ -427,13 +433,14 @@ def test_overlay_calls_during_active_ramp_only_become_visible_after_ramp_finishe
         # See test_overlay_write_deferred_while_ramp_holds_the_overlay_lock's comment: request_signal()
         # returns once queued, not once the ramp finishes - sleep for the ramp's real duration instead
         # of awaiting the coroutine itself.
-        asyncio.create_task(driver.request_signal(10, 0, 0, 0.15))
+        ramp = asyncio.create_task(driver.request_signal(10, 0, 0, 0.15))
         await asyncio.sleep(0.02)
         driver.on()  # requested mid-ramp
         driver.off()  # and immediately reversed - only the final requested state should ever show
         await asyncio.sleep(0.02)
         assert (88, 88, 88) not in [w[0] for w in _pixel(driver).writes]  # not visible mid-ramp
         await asyncio.sleep(0.3)
+        await ramp  # long since returned (it only queues) - awaited so no task reference dangles
         await _cancel_all(tasks)
 
     run(scenario())
@@ -462,17 +469,17 @@ class _FakeFramChunk:
     def __init__(self) -> None:
         self.buf = bytearray(64)
 
-    def get_buffer(self) -> "Any":
+    def get_buffer(self) -> "_FakeFramChunk":
         return self
 
     def get_data_buf(self) -> bytearray:
         return self.buf
 
-    async def write_into(self, buf: "Any", override_pause: bool = False) -> bool:
+    async def write_into(self, buf: "_FakeFramChunk", *, override_pause: bool = False) -> bool:
         self.buf[:] = buf.get_data_buf()
         return True
 
-    async def read_into(self, buf: "Any", override_pause: bool = False) -> bool:
+    async def read_into(self, buf: "_FakeFramChunk", *, override_pause: bool = False) -> bool:
         buf.get_data_buf()[:] = self.buf
         return True
 
@@ -481,7 +488,7 @@ class _FakeFramManager:
     def __init__(self, chunk: "_FakeFramChunk") -> None:
         self.chunk = chunk
 
-    def get_chunk(self, size: int, crc: "Any" = None, verify: int = 0, check_length: int = 8) -> "_FakeFramChunk":
+    def get_chunk(self, size: int, crc: "CRC_Base | None" = None, verify: int = 0, check_length: int = 8) -> "_FakeFramChunk":
         return self.chunk
 
 
@@ -535,7 +542,7 @@ def test_clamp_byte_direct() -> None:
     assert _clamp_byte(256) == 255
     assert _clamp_byte(300) == 255
     assert _clamp_byte(3.9) == 3  # int() truncates, matches every other rgb value in this file
-    assert _clamp_byte(True) == 1  # bool is a legitimate int subtype for a byte value
+    assert _clamp_byte(value=True) == 1  # bool is a legitimate int subtype for a byte value
     # int(float('inf'))/int(float('-inf')) raise OverflowError specifically, not ValueError -
     # confirmed directly against the real MicroPython 1.28.0 Unix-port interpreter. Regression test
     # for the gap _clamp_byte()'s original except (TypeError, ValueError) clause missed entirely.

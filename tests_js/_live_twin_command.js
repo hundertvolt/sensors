@@ -77,7 +77,7 @@ function spawnTwin() {
     // process synchronously, skipping this file's own try/finally cleanup entirely. A no-op
     // listener is enough: the existing waitUntilServing()/goto() error paths already surface a
     // spawn failure via their own timeouts.
-    proc.on("error", () => {});
+    proc.on("error", () => { /* no-op by design, per the comment above */ });
     return proc;
 }
 
@@ -187,7 +187,7 @@ export async function runLiveBackendSmoke({ context }) {
     } finally {
         if (livePage) {
             livePage.removeAllListeners();
-            await livePage.close().catch(() => {});
+            await livePage.close().catch(() => { /* best-effort teardown - a page already gone is fine */ });
         }
         await stopTwin(proc);
     }

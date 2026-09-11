@@ -12,8 +12,8 @@ sys.path.insert(0, "ext")  # same convention as test_sensortask_wozi.py's own co
 # real, vendored ext/microdot.py that sensortask_wozi.py transitively imports.
 sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comment for why
 
-import _http_client  # noqa: E402
-from _unix_port_udp_addr_shim import patch_asy_udp_socket_for_unix_port  # noqa: E402
+import _http_client
+from _unix_port_udp_addr_shim import patch_asy_udp_socket_for_unix_port
 
 # Must run before AsyUDPSocket is constructed (DNSServer, inside AsyConnTime.__init__ below): this
 # Unix-port build rejects a plain (host, port) tuple in bind()/connect()/sendto() (SPECIFICATION.md
@@ -452,7 +452,7 @@ def test_a_real_bus_fault_degrades_to_a_clean_response_not_a_crash() -> None:
 # ---------------------------------------------------------------------------
 
 
-async def _feed_watchdog_periodically(watchdog: "Any") -> None:
+async def _feed_watchdog_periodically(watchdog: "machine.WDT") -> None:
     while True:
         watchdog.feed()
         await asyncio.sleep(1.0)
@@ -507,7 +507,7 @@ def test_start_and_check_tasks_restarts_a_real_dead_task_from_the_real_full_task
 
         real_start_task = SystemService._start_task
 
-        async def _tracking_start_task(self: "Any", starter: "Any", n: "int") -> "Any":
+        async def _tracking_start_task(self: "SystemService", starter: "Callable[[], asyncio.Task[Any]]", n: "int") -> "asyncio.Task[Any] | None":
             # Observes the real supervisor's own real task-(re)start calls without changing its
             # behavior at all - the same non-invasive class-method-wrap convention
             # test_sensortask_wozi.py's own FRAM-chunk-order test already uses.

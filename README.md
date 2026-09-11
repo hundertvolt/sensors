@@ -112,17 +112,20 @@ never run it over a connection that depends on the bridge staying up.
 
 ## Code quality tooling
 
-Ruff and mypy checks, scoped to `src/`, `tests/`, and `digital_twin/` (the
-pre-refactor codebase — `python/`, `modules/` — isn't covered yet), plus unit tests for `src/`, can
-be run manually. Needs Python 3.11+ (`tomllib`, stdlib only since 3.11 — `uv sync` enforces this
+Ruff and mypy checks, scoped to eight directories — `src/`, `tests/`, `digital_twin/`,
+`boot_entry/`, `toolchain/`, `scripts/`, `tests_scripts/` and `tests_hardware/` (the pre-refactor
+codebase — `python/`, `modules/` — isn't covered yet) — shellcheck over `scripts/`, actionlint +
+zizmor over the GitHub Actions workflows, plus unit tests for `src/`, can be run manually. mypy
+runs three separate passes, since the MicroPython-target scopes and the host-CPython ones need
+different stdlib stubs and cannot share one invocation. Needs Python 3.11+ (`tomllib`, stdlib only since 3.11 — `uv sync` enforces this
 automatically via `pyproject.toml`'s `requires-python`, so this only matters if `uv` has to fall
 back to whatever `python3` it finds):
 
 ```sh
-uv sync                    # one-time, and after pulling changes - installs ruff/mypy/pytest into .venv
-source .venv/bin/activate  # scripts/lint.sh and scripts/typecheck.sh assume ruff/mypy are already on PATH
+uv sync                    # one-time, and after pulling changes - installs every check tool into .venv
+source .venv/bin/activate  # scripts/lint.sh and scripts/typecheck.sh assume those tools are on PATH
 
-scripts/lint.sh            # ruff check
+scripts/lint.sh            # ruff check, plus shellcheck (scripts/) and actionlint + zizmor (.github/)
 scripts/typecheck.sh       # mypy, using MicroPython stubs matching toolchain/versions.toml (see above)
 scripts/test.sh            # runs every test in tests/, under a real MicroPython Unix-port interpreter -
                             # builds that interpreter automatically on first run (see SPECIFICATION.md Part E) -
@@ -587,8 +590,8 @@ Watch `/status`'s `errcount` section for each affected module's counter to tick 
 few seconds — that's the fault having fired, been logged, and recovered from. A device-wide
 task-failure streak beyond `system_service.py`'s own threshold triggers a real reboot request too
 (logged as `SYSTEM ... reboot triggered!` at `DebugLevel >= 4`) - on real hardware this actually
-restarts the unit; the twin can't do that (`machine.reset()` raises `SimulatedReset` instead, which
-is expected and harmless - see `SimulatedReboot`'s own comment in `digital_twin/machine.py`), so the same process keeps serving
+restarts the unit; the twin can't do that (`machine.reset()` raises `SimulatedResetError` instead, which
+is expected and harmless - see `SimulatedRebootError`'s own comment in `digital_twin/machine.py`), so the same process keeps serving
 afterward instead of restarting, which is fine for continuing this walkthrough.
 
 ## Further reading

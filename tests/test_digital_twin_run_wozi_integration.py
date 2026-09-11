@@ -19,9 +19,9 @@ sys.path.insert(0, "ext")  # run_wozi_integration.py transitively imports sensor
 # asy_webserver_service -> microdot - same convention test_sensortask_wozi.py's own comment uses.
 sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comment for why
 
-import _http_client as http_client  # noqa: E402
-from run_wozi_integration import RunConfig, _soak, main, parse_args  # noqa: E402
-from unix_port_gc_unwedge import unwedge_heap_after_interrupt  # noqa: E402
+import _http_client as http_client
+from run_wozi_integration import RunConfig, _soak, main, parse_args
+from unix_port_gc_unwedge import unwedge_heap_after_interrupt
 
 
 def run(coro: "Coroutine[Any, Any, T]") -> "T":
@@ -33,7 +33,7 @@ def run_timed(coro: "Coroutine[Any, Any, T]", timeout_s: float = 5.0) -> "T":
 
 
 # ---------------------------------------------------------------------------
-# _http_client.build_request()
+# _http_client.build_request() - request byte assembly
 # ---------------------------------------------------------------------------
 
 
@@ -67,7 +67,7 @@ def test_build_request_includes_the_host_header() -> None:
 
 
 # ---------------------------------------------------------------------------
-# _http_client.parse_status_line()
+# _http_client.parse_status_line() - status-line parsing
 # ---------------------------------------------------------------------------
 
 
@@ -85,7 +85,7 @@ def test_parse_status_line_rejects_a_malformed_line() -> None:
 
 
 # ---------------------------------------------------------------------------
-# _http_client.parse_header_line()
+# _http_client.parse_header_line() - header-line parsing
 # ---------------------------------------------------------------------------
 
 
@@ -104,7 +104,7 @@ def test_parse_header_line_returns_none_for_the_blank_terminator() -> None:
 
 
 # ---------------------------------------------------------------------------
-# HttpResponse.json()
+# HttpResponse.json() - response-body decoding
 # ---------------------------------------------------------------------------
 
 
@@ -123,7 +123,7 @@ def test_http_response_json_decodes_the_body() -> None:
 # ---------------------------------------------------------------------------
 
 
-async def _canned_server(reader: "Any", writer: "Any") -> None:
+async def _canned_server(reader: "asyncio.StreamReader", writer: "asyncio.StreamWriter") -> None:
     await reader.readline()  # request line - ignored, this fake always answers the same way
     while True:
         line = await reader.readline()
@@ -162,7 +162,7 @@ def test_fetch_round_trips_a_real_request_through_a_real_socket() -> None:
 # ---------------------------------------------------------------------------
 
 
-async def _reset_immediately_server(reader: "Any", writer: "Any") -> None:
+async def _reset_immediately_server(_reader: "asyncio.StreamReader", writer: "asyncio.StreamWriter") -> None:
     # Never reads the request, never writes a response, closes immediately - the same "closed with
     # nothing written at all" shape WebserverService._serve()'s own reject-when-full path produces
     # (its own _close_writer() helper: writer.close() then await writer.wait_closed()).
@@ -240,7 +240,7 @@ def test_main_runs_a_tiny_bounded_soak_with_an_injected_fault_and_returns_a_clea
 
 
 # ---------------------------------------------------------------------------
-# run_wozi_integration.parse_args()
+# run_wozi_integration.parse_args() - CLI argument parsing
 # ---------------------------------------------------------------------------
 
 

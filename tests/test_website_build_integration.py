@@ -18,10 +18,10 @@ import sys
 
 sys.path.insert(0, "ext")
 
-import frozen_website_wozi  # type: ignore[import-not-found]  # noqa: E402,F401  # mounts /html on import
-from microdot import Microdot, Request  # type: ignore[import-not-found]  # noqa: E402
+import frozen_website_wozi  # type: ignore[import-not-found]  # noqa: F401  # mounts /html on import
+from microdot import Microdot, Request  # type: ignore[import-not-found]
 
-from asy_webserver_service import WebserverService  # noqa: E402
+from asy_webserver_service import WebserverService
 
 try:
     from typing import TYPE_CHECKING
@@ -29,14 +29,22 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from typing import Any
+    from collections.abc import Coroutine
+    from typing import Any, Protocol, TypeVar
+
+    T = TypeVar("T")
+
+    class _ResponseBody(Protocol):
+        # send_file() streams its body from a file-like object, not raw bytes - .read() is the
+        # only thing _decompress() below ever needs off it.
+        def read(self) -> bytes: ...
 
 
-def run(coro: "Any") -> "Any":
+def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
     return asyncio.run(coro)
 
 
-def _decompress(body: "Any") -> bytes:
+def _decompress(body: "_ResponseBody") -> bytes:
     # See test_frozen_html_integration.py's own _decompress() for the full rationale - identical
     # mechanism, applied here to the real website's gzip-Content-Encoding bytes instead.
     import io
@@ -139,7 +147,7 @@ def test_bundled_js_contains_every_production_module_with_no_leftover_local_impo
     # way) was caught only by manually tracing the build, not by this test.
     for line in body.split(b"\n"):
         assert not line.startswith(b"import "), line
-        assert not (line.startswith(b"export ") and b" from \"./" in line), line
+        assert not (line.startswith(b"export ") and b' from "./' in line), line
 
 
 def test_js_app_js_is_the_real_production_entry_not_the_prototype() -> None:

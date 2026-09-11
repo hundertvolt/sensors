@@ -110,7 +110,7 @@ async def hum_value_callback() -> "int | float | None":
     return float(scd_data.Hum)
 
 
-def _gmtimestruct_to_dict(t: "Any") -> "dict[str, int] | None":  # t: a GMTimeStruct/8-tuple or None
+def _gmtimestruct_to_dict(t: "tuple[int, ...] | None") -> "dict[str, int] | None":  # asy_ntp_client.GMTimeStruct or time.gmtime()
     if t is None:
         return None
     return {
@@ -294,7 +294,7 @@ def _collect_level_setters() -> "list[Callable[[int], None]]":
 
 
 async def build_system(
-    *, cfg_path: str = "", debug: int | None = None, web_host: str = "0.0.0.0", web_port: int = 80
+    *, cfg_path: str = "", debug: int | None = None, web_host: str = "0.0.0.0", web_port: int = 80,
 ) -> None:
     """Construct every module and run the grouped `setup()` batch; independently callable/testable — no task starting, no infinite loop, always returns.
     `cfg_path` isolates on-disk config files (e.g. for tests); `web_host`/`web_port` override the real `0.0.0.0`/`80` production default. See SPECIFICATION.md Part A.7 for the full construction order."""

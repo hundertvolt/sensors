@@ -23,8 +23,10 @@ if TYPE_CHECKING:
     from typing import Any
 
     from asy_fram_manager import AsyFramManager
+    from print_log import ErrorLog
 
 _NAME = const("NEOPIXEL")
+_MIN_SIGNAL_S = const(0.1)  # floor for a signal's ramp duration; also the NaN/garbage fallback
 
 
 def _clamp_byte(value: "int | float") -> int:
@@ -101,7 +103,7 @@ class NeopixelDriver:
         return []  # no machine.Timer anywhere in this file (SPECIFICATION.md C.9 shape, kept
         # empty rather than omitted so callers can treat every driver uniformly)
 
-    async def get_error_counter(self) -> "dict[str, dict[str, int | list[int] | list[str]]]":
+    async def get_error_counter(self) -> "ErrorLog":
         return await self.pr.get_log()
 
     async def reset_error_counter(self) -> None:
@@ -144,12 +146,14 @@ class NeopixelDriver:
         while True:
             await self.start_signal_event.wait()
             self.pr.evt("Signal started.")
-            t = self.rgbt[3] if self.rgbt[3] >= 0.1 else 0.1  # time; a NaN comparison is always False, floor kicks in
+            t = self.rgbt[3]  # ramp duration
+            if not t >= _MIN_SIGNAL_S:  # `not >=`, not `<`: a NaN comparison is always False, so the floor kicks in
+                t = _MIN_SIGNAL_S
             try:
                 steps = int(t * 0.5 * self.neopixel_freq)  # num steps for one dim half
             except OverflowError:  # t is +inf
                 steps = 1
-            steps = steps if steps >= 1 else 1  # avoid 0 steps (low freq) and a divide-by-zero below
+            steps = max(steps, 1)  # avoid 0 steps (low freq) and a divide-by-zero below
             steps_inv = 1.0 / steps
             r_s = _clamp_byte(self.rgbt[0]) * steps_inv  # red
             g_s = _clamp_byte(self.rgbt[1]) * steps_inv  # green

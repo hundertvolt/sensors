@@ -20,7 +20,9 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from types import TracebackType
+    from typing import Literal
+
+    from typing_extensions import Self
 
 
 class SPI:
@@ -61,17 +63,17 @@ class SPI:
 
     def write(self, buf: bytes | bytearray | memoryview) -> None:
         if self._spi is None:
-            return None
+            return
         self._spi.write(buf)  # rp2: always returns None (confirmed against extmod/machine_spi.c)
-        return None
+        return
 
     def readinto(self, buf: bytearray | memoryview, write_value: int = 0x00) -> None:
         # SPI is full-duplex - reading still clocks write_value out on MOSI meanwhile. An
         # OSError(EIO) from a 32+ byte RX overrun propagates uncaught, same as I2C's does.
         if self._spi is None:
-            return None
+            return
         self._spi.readinto(buf, write_value)
-        return None
+        return
 
     def write_readinto(
         self,
@@ -82,12 +84,12 @@ class SPI:
         # machine.SPI.write_readinto() raises ValueError, caught below and turned into None.
         # OSError(EIO) from a 32+ byte RX overrun is deliberately not caught - it propagates.
         if self._spi is None:
-            return None
+            return
         try:
             self._spi.write_readinto(buffer_out, buffer_in)
         except ValueError:  # length mismatch
-            return None
-        return None
+            return
+        return
 
 
 class SPIDevice(Lockable):
@@ -97,6 +99,7 @@ class SPIDevice(Lockable):
         self,
         spi: SPI,
         cs_pin: int,
+        *,
         cs_active_value: bool = False,
         baudrate: int = 1000000,
         polarity: int = 0,
@@ -115,7 +118,7 @@ class SPIDevice(Lockable):
         self.firstbit = firstbit
         self.initialized = False  # cs_pin isn't configured as an output until setup() runs
 
-    async def __aenter__(self) -> "SPIDevice":
+    async def __aenter__(self) -> "Self":
         # Pin.value() writes the GPIO register unconditionally regardless of direction, so
         # entering before setup() would silently fail to assert CS rather than raise.
         if not self.initialized:
@@ -140,10 +143,10 @@ class SPIDevice(Lockable):
 
     async def __aexit__(
         self,
-        exc_type: "type[BaseException] | None",
-        exc_val: "BaseException | None",
-        exc_tb: "TracebackType | None",
-    ) -> bool:
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: object,  # `object`, not TracebackType: the precise name only exists under TYPE_CHECKING
+    ) -> "Literal[False]":
         # params are only forwarded to super().__aexit__(), never inspected. CS deassert runs
         # first, while the lock is still held.
         self.cs_pin.value(not self.cs_active_value)

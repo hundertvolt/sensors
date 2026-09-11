@@ -37,7 +37,7 @@ class I2C:
         return ((1 << num_bits) - 1) << start_bit
 
     @staticmethod
-    def _bytes_to_int(mem_value: bytes, lsb_first: bool) -> int:
+    def _bytes_to_int(mem_value: bytes, *, lsb_first: bool) -> int:
         # Shared byte-order reconstruction for get_bits()/set_bits(): lsb_first says whether
         # mem_value[0] is the least- or most-significant byte.
         reg = 0
@@ -67,6 +67,7 @@ class I2C:
         reg_addr: int,
         start_bit: int,
         reg_width: int = 1,
+        *,
         lsb_first: bool = True,
         addrsize: int | None = None,
     ) -> int | None:
@@ -74,11 +75,11 @@ class I2C:
         if self._i2c is None or not self._bitfield_range_ok(num_bits, start_bit, reg_width):
             return None
         mem_value = self._readfrom_mem(self._i2c, address, reg_addr, reg_width, addrsize)
-        reg = self._bytes_to_int(mem_value, lsb_first)
+        reg = self._bytes_to_int(mem_value, lsb_first=lsb_first)
         return (reg & self._bitmask(num_bits, start_bit)) >> start_bit
 
     def get_register_struct(
-        self, address: int, reg_addr: int, reg_format: str, addrsize: int | None = None
+        self, address: int, reg_addr: int, reg_format: str, addrsize: int | None = None,
     ) -> int | float | bytes | None:
         # Byte order comes from reg_format's own prefix (e.g. ">H"). MicroPython's struct has no
         # '?' typecode, so bool never appears in the return. A zero-field format ("" or "2x")
@@ -109,6 +110,7 @@ class I2C:
         start_bit: int,
         value: int,
         reg_width: int = 1,
+        *,
         lsb_first: bool = True,
         addrsize: int | None = None,
     ) -> None:
@@ -118,11 +120,11 @@ class I2C:
         if self._i2c is None or not self._bitfield_range_ok(num_bits, start_bit, reg_width):
             return
         mem_value = self._readfrom_mem(self._i2c, address, reg_addr, reg_width, addrsize)
-        reg = self._bytes_to_int(mem_value, lsb_first)
+        reg = self._bytes_to_int(mem_value, lsb_first=lsb_first)
         reg &= ~self._bitmask(num_bits, start_bit)
         reg |= (value & self._bitmask(num_bits, 0)) << start_bit
         self._writeto_mem(
-            self._i2c, address, reg_addr, reg.to_bytes(reg_width, "little" if lsb_first else "big"), addrsize
+            self._i2c, address, reg_addr, reg.to_bytes(reg_width, "little" if lsb_first else "big"), addrsize,
         )
 
     def set_register_struct(
@@ -130,7 +132,7 @@ class I2C:
         address: int,
         reg_addr: int,
         reg_format: str,
-        value: int | float | bytes | bytearray,
+        value: float | bytes | bytearray,
         addrsize: int | None = None,
     ) -> None:
         # Byte order comes from reg_format's own prefix, matching get_register_struct(). Unlike
@@ -183,6 +185,7 @@ class I2C:
         buf: bytearray,
         start: int = 0,
         end: int | None = None,
+        *,
         stop: bool = True,
     ) -> None:
         # machine.I2C.readfrom_into(), with a start/end slice instead of a pre-sliced buffer.
@@ -198,6 +201,7 @@ class I2C:
         buf: bytes | bytearray | str,
         start: int = 0,
         end: int | None = None,
+        *,
         stop: bool = True,
     ) -> int | None:
         # machine.I2C.writeto() return value is the ACK count. str input assumes Latin-1
@@ -223,6 +227,7 @@ class I2C:
         out_end: int | None = None,
         in_start: int = 0,
         in_end: int | None = None,
+        *,
         out_stop: bool = True,
         in_stop: bool = True,
     ) -> None:
@@ -261,15 +266,16 @@ class I2CDevice(Lockable):
         reg_addr: int,
         start_bit: int,
         reg_width: int = 1,
+        *,
         lsb_first: bool = True,
         addrsize: int | None = None,
     ) -> int | None:
         return self.i2c.get_bits(
-            self.device_address, num_bits, reg_addr, start_bit, reg_width, lsb_first, addrsize
+            self.device_address, num_bits, reg_addr, start_bit, reg_width, lsb_first=lsb_first, addrsize=addrsize,
         )
 
     async def get_register_struct(
-        self, reg_addr: int, reg_format: str, addrsize: int | None = None
+        self, reg_addr: int, reg_format: str, addrsize: int | None = None,
     ) -> int | float | bytes | None:
         return self.i2c.get_register_struct(self.device_address, reg_addr, reg_format, addrsize)
 
@@ -280,6 +286,7 @@ class I2CDevice(Lockable):
         start_bit: int,
         value: int,
         reg_width: int = 1,
+        *,
         lsb_first: bool = True,
         addrsize: int | None = None,
     ) -> None:
@@ -290,20 +297,20 @@ class I2CDevice(Lockable):
             start_bit,
             value,
             reg_width,
-            lsb_first,
-            addrsize,
+            lsb_first=lsb_first,
+            addrsize=addrsize,
         )
 
     async def set_register_struct(
         self,
         reg_addr: int,
         reg_format: str,
-        value: int | float | bytes | bytearray,
+        value: float | bytes | bytearray,
         addrsize: int | None = None,
     ) -> None:
         self.i2c.set_register_struct(self.device_address, reg_addr, reg_format, value, addrsize)
 
-    async def setup(self, probe: bool = True) -> None:
+    async def setup(self, *, probe: bool = True) -> None:
         if probe:
             await self._probe_for_device()
 
@@ -332,6 +339,7 @@ class I2CDevice(Lockable):
         out_end: int | None = None,
         in_start: int = 0,
         in_end: int | None = None,
+        *,
         out_stop: bool = True,
         in_stop: bool = True,
     ) -> None:

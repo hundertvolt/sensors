@@ -19,13 +19,13 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
-    from types import TracebackType
-    from typing import Any, NamedTuple, TypeVar
+    from typing import Any, Literal, NamedTuple, TypeVar
+
+    from typing_extensions import Self
 
     from asy_fram_manager import AsyFramManager
     from config_manager import ConfigSchema, WriteValidity
 
-    LockableType = TypeVar("LockableType", bound="Lockable")
     MeasDataType = TypeVar("MeasDataType", bound=tuple[int | float | None, ...])
 
 
@@ -33,16 +33,18 @@ class Lockable:
     def __init__(self, asy_lock: asyncio.Lock | None = None) -> None:
         self.asy_lock = asyncio.Lock() if asy_lock is None else asy_lock
 
-    async def __aenter__(self: "LockableType") -> "LockableType":
+    async def __aenter__(self) -> "Self":
         await self.asy_lock.acquire()
         return self
 
     async def __aexit__(
         self,
-        exc_type: "type[BaseException] | None",
-        exc_val: "BaseException | None",
-        exc_tb: "TracebackType | None",
-    ) -> bool:
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: object,  # `object`, not TracebackType: the precise name only exists under TYPE_CHECKING
+    ) -> "Literal[False]":  # Literal, not bool: this CM never suppresses, and saying so lets mypy
+        # see the code after an `async with` as unreachable instead of demanding a redundant
+        # trailing return on every caller (SPECIFICATION.md Part D.7).
         try:
             self.asy_lock.release()
         except RuntimeError:  # in case it's already released somehow
@@ -80,7 +82,7 @@ class LockableBuffer(Lockable):
 
 
 class LockedCounter:
-    def __init__(self, init_value: int | None = 0x00, max_val: int = 0xFF) -> None:
+    def __init__(self, *, init_value: int | None = 0x00, max_val: int = 0xFF) -> None:
         # A negative max_val is a dev-time-typo risk, never a real call-site input - clamped to 0
         # here so the counter's own [0, max_val] invariant holds for every value, rather than letting
         # _clamp collapse every value to the negative max_val itself.
@@ -102,8 +104,7 @@ class LockedCounter:
 
     async def get_value(self) -> int | None:
         async with self.value_lock:
-            ret = self.value
-        return ret
+            return self.value
 
     async def set_value(self, value: int | None) -> None:
         async with self.value_lock:
@@ -117,14 +118,13 @@ class LockedCounter:
 
 
 class LockedFlag:
-    def __init__(self, init_value: bool = False) -> None:
+    def __init__(self, *, init_value: bool = False) -> None:
         self.value = init_value
         self.value_lock = asyncio.Lock()
 
     async def get_value(self) -> bool:
         async with self.value_lock:
-            ret = self.value
-        return ret
+            return self.value
 
     async def set_true(self) -> None:
         async with self.value_lock:
@@ -136,16 +136,15 @@ class LockedFlag:
 
 
 class LockedValue:
-    def __init__(self, init_value: int | float) -> None:
+    def __init__(self, *, init_value: float) -> None:
         self.value = init_value
         self.value_lock = asyncio.Lock()
 
     async def get_value(self) -> int | float:
         async with self.value_lock:
-            ret = self.value
-        return ret
+            return self.value
 
-    async def set_value(self, value: int | float) -> None:
+    async def set_value(self, value: float) -> None:
         async with self.value_lock:
             self.value = value
 
@@ -176,7 +175,7 @@ class SensorReader:
         async with self._datalock:
             return self._datastruct
 
-    async def _get_mgr_cfg(self, cfg: list[str]) -> dict[str, int | float | str | bool | None] | None:
+    async def _get_mgr_cfg(self, _cfg: list[str]) -> dict[str, int | float | str | bool | None] | None:
         return {}
 
     async def _get_dict_cfg(
@@ -186,7 +185,7 @@ class SensorReader:
         callback: "Callable[[], Coroutine[Any, Any, dict[str, int | float | str | bool | None]]] | None" = None,
     ) -> dict[str, dict[str, int | float | str | bool | None]]:
         cfg = schema_names(cfg_vals)
-        ret: dict[str, dict[str, int | float | str | bool | None]] = {name: {key: None for key in cfg}}
+        ret: dict[str, dict[str, int | float | str | bool | None]] = {name: dict.fromkeys(cfg)}
 
         try:  # _get_mgr_cfg is an overridable extension point - the call itself, not just its result, could misbehave
             sensor_conf = await self._get_mgr_cfg(cfg)
@@ -212,7 +211,7 @@ class SensorReader:
         async with self._datalock:
             self._datastruct = data
 
-    async def _error_check(self, results: "MeasDataType", condition: bool = True) -> bool:
+    async def _error_check(self, results: "MeasDataType", *, condition: bool = True) -> bool:
         # Shared consecutive-failure-streak counter - see SPECIFICATION.md Part C.7's
         # _error_check() bullet for the full contract.
         if any(res is None for res in results) and condition:
@@ -221,10 +220,9 @@ class SensorReader:
             if self._err_cnt_internal > self.max_module_error:
                 await self.pr.err_s("Maximum error count reached!", errno=2)
                 return False  # breaking the loop triggers a task reset
-        else:
-            if self._err_cnt_internal > 0:
-                self._err_cnt_internal -= 1
-                self.pr.err("Error counter back to", self._err_cnt_internal)
+        elif self._err_cnt_internal > 0:
+            self._err_cnt_internal -= 1
+            self.pr.err("Error counter back to", self._err_cnt_internal)
         return True
 
     async def reset_error_counter(self) -> None:
@@ -233,6 +231,14 @@ class SensorReader:
         # decision relies on, and must not survive a reset the caller expects to be total.
         self._err_cnt_internal = 0
         await self.pr.reset()
+
+
+def _checked_write_results(results: "WriteValidity") -> "WriteValidity":
+    # Lives out here so the raise isn't inside _set_dict_cfg's own try block: an overriding
+    # _set_mgr_cfg could return a malformed shape, which has to surface as that try's logged failure.
+    if not isinstance(results, dict):
+        raise TypeError("_set_mgr_cfg returned a non-dict result")
+    return results
 
 
 class SensorReaderConfig(SensorReader):
@@ -266,7 +272,7 @@ class SensorReaderConfig(SensorReader):
         return await self.cfgmgr.get_dict(cfg)
 
     async def _set_mgr_cfg(
-        self, data: "dict[str, int | float | str | bool | None]", cfg_vals: "ConfigSchema"
+        self, data: "dict[str, int | float | str | bool | None]", cfg_vals: "ConfigSchema",
     ) -> "tuple[bool, WriteValidity]":
         # Overridable extension point mirroring _get_mgr_cfg - a subclass with a different
         # persistence backend can override just this and still reuse _set_dict_cfg's orchestration.
@@ -274,7 +280,7 @@ class SensorReaderConfig(SensorReader):
         return await self.cfgmgr.write_config(data, cfg_vals)
 
     async def _set_dict_cfg(
-        self, data: "dict[str, int | float | str | bool | None]", cfg_vals: "ConfigSchema"
+        self, data: "dict[str, int | float | str | bool | None]", cfg_vals: "ConfigSchema",
     ) -> "WriteValidity":
         # Setter mirror of _get_dict_cfg (see SPECIFICATION.md C.5.2): persist first, then push live only
         # changed fields with a callback. Snapshot each field's pre-write value first - the one
@@ -294,8 +300,7 @@ class SensorReaderConfig(SensorReader):
             # subclass override (mirrors _get_dict_cfg's own _get_mgr_cfg handling); the isinstance
             # check below extends that defense to a malformed return shape, not just a raise.
             persisted, results = await self._set_mgr_cfg(data, cfg_vals)
-            if not isinstance(results, dict):
-                raise TypeError("_set_mgr_cfg returned a non-dict result")
+            results = _checked_write_results(results)
         except Exception as e:
             await self.pr.err_s("Error writing config dict:", e, errno=5)
             persisted, results = False, {}
@@ -304,7 +309,7 @@ class SensorReaderConfig(SensorReader):
             # Whole-operation failure (invalid ConfigManager, or an internal write error) - nothing
             # was stored, so every requested key is "Failed", not "Invalid" (which would misleadingly
             # suggest the values themselves were the problem) and nothing is pushed live either.
-            return {key: "Failed" for key in data}
+            return dict.fromkeys(data, "Failed")
 
         for key in data:
             # Defense-in-depth: a misbehaving _set_mgr_cfg override could report persisted=True but
@@ -321,10 +326,11 @@ class SensorReaderConfig(SensorReader):
             # Push the coerced value that was actually persisted, not the caller's raw
             # pre-coercion one - see SPECIFICATION.md Part C.5.2's push-callback contract.
             field = schema_dict(cfg_vals).get(key)
+            push_value = value
             if field is not None:
-                _is_error, value = type_or_range_error(value, field)
+                _is_error, push_value = type_or_range_error(value, field)
             try:
-                pushed = await callback(value)
+                pushed = await callback(push_value)
             except Exception as e:  # callback is caller-supplied; its runtime behavior isn't statically known
                 await self.pr.err_s("Error pushing", key, "to sensor:", e, errno=6)
                 pushed = False

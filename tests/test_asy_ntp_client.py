@@ -26,7 +26,12 @@ except ImportError:  # typing isn't available on the real MicroPython test inter
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
-    from typing import Any, TypeVar
+    from typing import Any, Literal, NoReturn, TypeVar
+
+    from typing_extensions import Self
+
+    from asy_ntp_client import GMTimeStruct
+    from print_log import ErrorLog
 
     T = TypeVar("T")
 
@@ -35,7 +40,7 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to complet
     return asyncio.run(coro)
 
 
-def _last_err(counter: "dict[str, dict[str, int | list[int] | list[str]]]", field: str) -> "int | str":
+def _last_err(counter: "ErrorLog", field: 'Literal["ErrNum", "ErrType"]') -> "int | str":
     value = counter["NTP"][field]  # ErrNum/ErrType are list-shaped once _error_check() has run once
     assert isinstance(value, list)
     return value[-1]
@@ -178,12 +183,12 @@ class _RaiseOnArm:
     def __init__(self, exc: "type[BaseException]" = OSError) -> None:
         self._exc = exc
 
-    def __enter__(self) -> "_RaiseOnArm":
+    def __enter__(self) -> "Self":
         Timer.raise_on_arm_exc = self._exc
         Timer.raise_on_arm = True
         return self
 
-    def __exit__(self, *exc_info: "Any") -> None:
+    def __exit__(self, *exc_info: object) -> None:
         Timer.raise_on_arm = False
         Timer.raise_on_arm_exc = OSError
 
@@ -349,7 +354,7 @@ def test_get_dict_cfg_returns_schema_defaults_wrapped_in_ntp_key() -> None:
             "NTP_Interv_H": 12,
             "GMTOffset": 3600,
             "DSTOffset": 3600,
-        }
+        },
     }
 
 
@@ -363,7 +368,7 @@ def test_get_dict_cfg_reflects_a_customized_on_disk_config() -> None:
             "NTP_Interv_H": 6,
             "GMTOffset": 7200,
             "DSTOffset": 3600,
-        }
+        },
     }
 
 
@@ -377,7 +382,7 @@ def test_get_dict_cfg_returns_all_none_values_when_config_manager_is_invalid() -
             "NTP_Interv_H": None,
             "GMTOffset": None,
             "DSTOffset": None,
-        }
+        },
     }
 
 
@@ -458,10 +463,10 @@ class _RaisingTimeForNow:
     def __init__(self, exc: "Exception") -> None:
         self._exc = exc
 
-    def gmtime(self, *_a: "Any") -> "Any":
+    def gmtime(self, *_a: int) -> "NoReturn":
         raise self._exc
 
-    def mktime(self, *_a: "Any") -> "Any":
+    def mktime(self, *_a: "tuple[int, ...]") -> "NoReturn":
         raise self._exc
 
 
@@ -489,9 +494,9 @@ def test_now_returns_none_on_os_error() -> None:
 
 def test_set_synced_to_true_preserves_last_sync_age_and_ts() -> None:
     client = make_client()
-    run(client._set_last_sync_age(42))
+    run(client._set_last_sync_age(value=42))
     before = run(client.get_data())
-    run(client._set_synced(True))
+    run(client._set_synced(value=True))
     after = run(client.get_data())
     assert after.Synced is True
     assert after.LastSyncAge == 42
@@ -500,9 +505,9 @@ def test_set_synced_to_true_preserves_last_sync_age_and_ts() -> None:
 
 def test_set_synced_to_false_preserves_last_sync_age() -> None:
     client = make_client()
-    run(client._set_synced(True))
-    run(client._set_last_sync_age(7))
-    run(client._set_synced(False))
+    run(client._set_synced(value=True))
+    run(client._set_last_sync_age(value=7))
+    run(client._set_synced(value=False))
     data = run(client.get_data())
     assert data.Synced is False
     assert data.LastSyncAge == 7
@@ -510,8 +515,8 @@ def test_set_synced_to_false_preserves_last_sync_age() -> None:
 
 def test_set_last_sync_age_preserves_synced_flag_when_true() -> None:
     client = make_client()
-    run(client._set_synced(True))
-    run(client._set_last_sync_age(99))
+    run(client._set_synced(value=True))
+    run(client._set_last_sync_age(value=99))
     data = run(client.get_data())
     assert data.Synced is True
     assert data.LastSyncAge == 99
@@ -519,8 +524,8 @@ def test_set_last_sync_age_preserves_synced_flag_when_true() -> None:
 
 def test_set_last_sync_age_to_none_preserves_synced_flag() -> None:
     client = make_client()
-    run(client._set_synced(True))
-    run(client._set_last_sync_age(None))
+    run(client._set_synced(value=True))
+    run(client._set_last_sync_age(value=None))
     data = run(client.get_data())
     assert data.Synced is True
     assert data.LastSyncAge is None
@@ -537,21 +542,21 @@ def test_increment_last_sync_age_from_none_yields_one() -> None:
 
 def test_increment_last_sync_age_from_a_real_value_adds_one() -> None:
     client = make_client()
-    run(client._set_last_sync_age(10))
+    run(client._set_last_sync_age(value=10))
     result = run(client._increment_last_sync_age())
     assert result == 11
 
 
 def test_increment_last_sync_age_clamps_at_uint32_max() -> None:
     client = make_client()
-    run(client._set_last_sync_age(0xFFFFFFFF))
+    run(client._set_last_sync_age(value=0xFFFFFFFF))
     result = run(client._increment_last_sync_age())
     assert result == 0xFFFFFFFF  # clamped, not wrapped/overflowed
 
 
 def test_increment_last_sync_age_preserves_synced_flag() -> None:
     client = make_client()
-    run(client._set_synced(True))
+    run(client._set_synced(value=True))
     run(client._increment_last_sync_age())
     data = run(client.get_data())
     assert data.Synced is True
@@ -577,9 +582,10 @@ def test_start_ntp_timer_fires_the_trigger_event() -> None:
         client.ntp_timer.trigger()
         try:
             await asyncio.wait_for(client.ntp_timer_trigger_event.wait(), 0.2)
-            return True
         except asyncio.TimeoutError:
             return False
+        else:
+            return True
 
     assert run(scenario())
 
@@ -649,23 +655,24 @@ def test_ntp_force_sync_resets_last_sync_retries_and_fires_the_sync_trigger() ->
     client = make_client()
 
     async def scenario() -> bool:
-        await client._set_last_sync_age(5)
+        await client._set_last_sync_age(value=5)
         client.ntp_retries = 2
         await client.ntp_force_sync()
         assert await client.get_last_ntp_sync() is None
         assert client.ntp_retries == 0
         try:
             await asyncio.wait_for(client.ntp_sync_trigger_event.wait(), 0.2)
-            return True
         except asyncio.TimeoutError:
             return False
+        else:
+            return True
 
     assert run(scenario())
 
 
 def test_ntp_force_sync_deinits_a_pending_retry_timer() -> None:
     client = make_client()
-    client.ntp_retry_timer.init(period=5000, mode=Timer.ONE_SHOT, callback=lambda b: None)
+    client.ntp_retry_timer.init(period=5000, mode=Timer.ONE_SHOT, callback=lambda _b: None)
     run(client.ntp_force_sync())
     assert client.ntp_retry_timer.deinit_called is True
 
@@ -917,20 +924,24 @@ def test_fetch_ntp_reply_invalid_addr_returns_none() -> None:
     assert result is None
 
 
+# Recorder shared by every _RecordingUDPSocket instance below - module-level rather than a class
+# attribute so the shared mutable state is explicit at the point it lives.
+_recording_udp_calls: "list[int]" = []
+
+
 class _RecordingUDPSocket:
     # Stands in for asy_udp_socket.AsyUDPSocket - records the timeout_ms _fetch_ntp_reply() passes
     # to write_and_recvfrom(), proving ntp_fetch_timeout_ms is this instance's own configured value
     # (see asy_ntp_client.py's own constructor comment) reaching the real call, not a hardcoded
     # module constant.
-    calls: "list[int]" = []
-
-    def __init__(self, addr: "Any", mode: str = "client", conn_tries: int = 1) -> None:
+    def __init__(self, addr: "tuple[str, int]", mode: str = "client", conn_tries: int = 1) -> None:
         pass
 
+    # Only timeout_ms is read; the rest keep AsyUDPSocket's own parameter order/positions.
     async def write_and_recvfrom(
-        self, msg: "bytes | bytearray", buf: int, timeout_ms: int = -1, tries: int = 1
+        self, _msg: "bytes | bytearray", _buf: int, timeout_ms: int = -1, _tries: int = 1,
     ) -> "tuple[bytes | None, tuple[str, int] | None]":
-        _RecordingUDPSocket.calls.append(timeout_ms)
+        _recording_udp_calls.append(timeout_ms)
         return None, None
 
     async def disconnect(self) -> None:
@@ -940,13 +951,13 @@ class _RecordingUDPSocket:
 def test_fetch_ntp_reply_forwards_the_constructors_own_fetch_timeout() -> None:
     client = make_client(ntp_fetch_timeout_ms=9999)
     original = ntpmod.AsyUDPSocket
-    _RecordingUDPSocket.calls = []
+    _recording_udp_calls.clear()
     ntpmod.AsyUDPSocket = _RecordingUDPSocket  # type: ignore[assignment, misc]
     try:
         run(client._fetch_ntp_reply(("127.0.0.1", 123)))
     finally:
         ntpmod.AsyUDPSocket = original  # type: ignore[misc]
-    assert _RecordingUDPSocket.calls == [9999]
+    assert _recording_udp_calls == [9999]
 
 
 def test_fetch_ntp_reply_ipv6_shaped_four_tuple_addr_returns_none() -> None:
@@ -1087,7 +1098,7 @@ def test_parse_ntp_reply_arbitrary_binary_content_never_raises() -> None:
 
 
 class _OverflowingTime:
-    def gmtime(self, *_a: "Any") -> "Any":
+    def gmtime(self, *_a: int) -> "NoReturn":
         raise OverflowError("past rp2's ~2037 32-bit epoch range")
 
     def time(self) -> int:
@@ -1234,7 +1245,7 @@ def test_handle_sync_failure_while_never_synced_does_not_arm_a_retry() -> None:
 
 def test_handle_sync_failure_while_synced_arms_a_retry_and_increments_the_counter() -> None:
     client = make_client()
-    run(client._set_synced(True))
+    run(client._set_synced(value=True))
     run(client._handle_ntp_sync_failure())
     assert client.ntp_retries == 1
     assert client.ntp_retry_timer.mode == Timer.ONE_SHOT
@@ -1243,23 +1254,24 @@ def test_handle_sync_failure_while_synced_arms_a_retry_and_increments_the_counte
 
 def test_handle_sync_failure_retry_timer_fires_the_sync_trigger() -> None:
     client = make_client()
-    run(client._set_synced(True))
+    run(client._set_synced(value=True))
     run(client._handle_ntp_sync_failure())
 
     async def scenario() -> bool:
         client.ntp_retry_timer.trigger()
         try:
             await asyncio.wait_for(client.ntp_sync_trigger_event.wait(), 0.2)
-            return True
         except asyncio.TimeoutError:
             return False
+        else:
+            return True
 
     assert run(scenario())
 
 
 def test_handle_sync_failure_gives_up_after_max_retries() -> None:
     client = make_client()
-    run(client._set_synced(True))
+    run(client._set_synced(value=True))
     client.ntp_retries = 3  # _NTP_SYNC_RETRIES: const(), compiled away
     run(client._handle_ntp_sync_failure())
     assert client.ntp_retries == 0
@@ -1268,7 +1280,7 @@ def test_handle_sync_failure_gives_up_after_max_retries() -> None:
 
 def test_handle_sync_failure_degrades_gracefully_when_alarm_pool_exhausted() -> None:
     client = make_client()
-    run(client._set_synced(True))
+    run(client._set_synced(value=True))
     with _RaiseOnArm():
         run(client._handle_ntp_sync_failure())  # must not raise despite the timer failing to arm
     assert client.ntp_retries == 0  # given up this cycle rather than left stuck
@@ -1280,7 +1292,7 @@ def test_handle_sync_failure_degrades_gracefully_on_a_memory_error() -> None:
     # same errno=16 is persisted (this site logs via the async err_s(), unlike the two starters above).
     client = make_client()
     run(client.pr.setup())
-    run(client._set_synced(True))
+    run(client._set_synced(value=True))
     with _RaiseOnArm(MemoryError):
         run(client._handle_ntp_sync_failure())  # must not raise despite the timer failing to arm
     assert client.ntp_retries == 0  # given up this cycle rather than left stuck
@@ -1298,7 +1310,7 @@ def test_handle_sync_success_resets_retries_marks_synced_and_records_the_sync_ti
 
 def test_handle_sync_success_deinits_a_pending_retry_timer() -> None:
     client = make_client()
-    client.ntp_retry_timer.init(period=5000, mode=Timer.ONE_SHOT, callback=lambda b: None)
+    client.ntp_retry_timer.init(period=5000, mode=Timer.ONE_SHOT, callback=lambda _b: None)
     run(client._handle_ntp_sync_success((2026, 1, 1, 0, 0, 0, 0, 0)))
     assert client.ntp_retry_timer.deinit_called is True
 
@@ -1356,7 +1368,7 @@ def test_ntp_time_hours_counter_does_not_retrigger_while_synced_and_under_interv
     client = make_client_with_json(json_text)
 
     async def scenario() -> bool:
-        await client._set_synced(True)
+        await client._set_synced(value=True)
         task = asyncio.create_task(client.ntp_time_hours_counter())
         await _tick(client.ntp_timer_trigger_event, 1)  # one tick, well under 1h / 10s-per-tick
         try:
@@ -1380,7 +1392,7 @@ def test_ntp_time_hours_counter_retriggers_once_interval_elapses() -> None:
     client = make_client_with_json(json_text)
 
     async def scenario() -> bool:
-        await client._set_synced(True)
+        await client._set_synced(value=True)
         task = asyncio.create_task(client.ntp_time_hours_counter())
         await _tick(client.ntp_timer_trigger_event, 360)
         try:
@@ -1406,7 +1418,7 @@ def test_ntp_time_hours_counter_marks_out_of_sync_past_the_async_interval_multip
     client = make_client_with_json(json_text)
 
     async def scenario() -> bool:
-        await client._set_synced(True)
+        await client._set_synced(value=True)
         task = asyncio.create_task(client.ntp_time_hours_counter())
         await asyncio.sleep(0)  # let the task run past its own `self.ntp_sec_count = 0` reset first
         client.ntp_sec_count = 3 * 1 * 60 * 60  # _NTP_ASYNC_INTERV(3) * 1h * 3600 - const(), compiled away
@@ -1435,7 +1447,7 @@ def test_ntp_time_hours_counter_never_naturally_reaches_the_async_interval_multi
     client = make_client_with_json(json_text)
 
     async def scenario() -> bool:
-        await client._set_synced(True)
+        await client._set_synced(value=True)
         task = asyncio.create_task(client.ntp_time_hours_counter())
         # 3 full 1h/360-tick cycles - well past where the 3x(=3h) threshold would sit if sec_count
         # were ever allowed to accumulate past a single 1x cycle.
@@ -1485,12 +1497,12 @@ class _FixedNowTime:
         self._fixed_now = fixed_now
         self._raise_exc = raise_exc
 
-    def gmtime(self, *a: "Any") -> "Any":
+    def gmtime(self, *a: int) -> "tuple[int, ...]":
         if self._raise_exc is not None:
             raise self._raise_exc
         return tuple(time.gmtime(*a))[:8]
 
-    def mktime(self, t: "Any") -> int:
+    def mktime(self, t: "tuple[int, ...]") -> int:
         if self._raise_exc is not None:
             raise self._raise_exc
         return time.mktime(t)
@@ -1523,11 +1535,11 @@ def test_cettime_returns_none_when_not_synced() -> None:
 
 def test_cettime_returns_none_when_config_missing() -> None:
     client = make_invalid_cfg_client()
-    run(client._set_synced(True))
+    run(client._set_synced(value=True))
     assert run(client.cettime()) is None
 
 
-def _run_cettime_with_fixed_now(client: AsyNtpClient, fixed_now: int, raise_exc: "Exception | None" = None) -> "Any":
+def _run_cettime_with_fixed_now(client: AsyNtpClient, fixed_now: int, raise_exc: "Exception | None" = None) -> "GMTimeStruct | None":
     original_time = ntpmod.time
     ntpmod.time = _FixedNowTime(fixed_now, raise_exc)  # type: ignore[assignment]
     try:
@@ -1538,7 +1550,7 @@ def _run_cettime_with_fixed_now(client: AsyNtpClient, fixed_now: int, raise_exc:
 
 def test_cettime_before_march_boundary_applies_gmt_offset_only() -> None:
     client = _client_with_offsets(3600, 3600)
-    run(client._set_synced(True))
+    run(client._set_synced(value=True))
     fixed_now = _mid_month_now(1)
     result = _run_cettime_with_fixed_now(client, fixed_now)
     assert result is not None
@@ -1547,7 +1559,7 @@ def test_cettime_before_march_boundary_applies_gmt_offset_only() -> None:
 
 def test_cettime_between_march_and_october_applies_gmt_plus_dst_offset() -> None:
     client = _client_with_offsets(3600, 3600)
-    run(client._set_synced(True))
+    run(client._set_synced(value=True))
     fixed_now = _mid_month_now(7)
     result = _run_cettime_with_fixed_now(client, fixed_now)
     assert result is not None
@@ -1556,7 +1568,7 @@ def test_cettime_between_march_and_october_applies_gmt_plus_dst_offset() -> None
 
 def test_cettime_after_october_boundary_applies_gmt_offset_only() -> None:
     client = _client_with_offsets(3600, 3600)
-    run(client._set_synced(True))
+    run(client._set_synced(value=True))
     fixed_now = _mid_month_now(12)
     result = _run_cettime_with_fixed_now(client, fixed_now)
     assert result is not None
@@ -1565,7 +1577,7 @@ def test_cettime_after_october_boundary_applies_gmt_offset_only() -> None:
 
 def test_cettime_zero_offsets_are_accepted_not_rejected() -> None:
     client = _client_with_offsets(0, 0)
-    run(client._set_synced(True))
+    run(client._set_synced(value=True))
     fixed_now = _mid_month_now(1)
     result = _run_cettime_with_fixed_now(client, fixed_now)
     assert result is not None
@@ -1574,7 +1586,7 @@ def test_cettime_zero_offsets_are_accepted_not_rejected() -> None:
 
 def test_cettime_negative_offsets_are_accepted_not_rejected() -> None:
     client = _client_with_offsets(-3600, -3600)
-    run(client._set_synced(True))
+    run(client._set_synced(value=True))
     fixed_now = _mid_month_now(7)
     result = _run_cettime_with_fixed_now(client, fixed_now)
     assert result is not None
@@ -1583,9 +1595,9 @@ def test_cettime_negative_offsets_are_accepted_not_rejected() -> None:
 
 def test_cettime_mktime_or_gmtime_failure_returns_none_not_raise() -> None:
     client = _client_with_offsets(3600, 3600)
-    run(client._set_synced(True))
+    run(client._set_synced(value=True))
     result = _run_cettime_with_fixed_now(
-        client, _mid_month_now(1), raise_exc=OverflowError("past rp2's ~2037 range")
+        client, _mid_month_now(1), raise_exc=OverflowError("past rp2's ~2037 range"),
     )
     assert result is None
 
@@ -1597,10 +1609,10 @@ class _ShortGmtimeTime:
     def __init__(self, fixed_now: int) -> None:
         self._fixed_now = fixed_now
 
-    def gmtime(self, *a: "Any") -> "Any":
+    def gmtime(self, *a: int) -> "tuple[int, ...]":
         return tuple(time.gmtime(*a))[:7]  # one short of the real 8-element shape
 
-    def mktime(self, t: "Any") -> int:
+    def mktime(self, t: "tuple[int, ...]") -> int:
         return time.mktime(t)
 
     def time(self) -> int:
@@ -1609,7 +1621,7 @@ class _ShortGmtimeTime:
 
 def test_cettime_returns_none_when_gmtime_result_has_the_wrong_length() -> None:
     client = _client_with_offsets(3600, 3600)
-    run(client._set_synced(True))
+    run(client._set_synced(value=True))
     original_time = ntpmod.time
     ntpmod.time = _ShortGmtimeTime(_mid_month_now(1))  # type: ignore[assignment]
     try:
@@ -1620,7 +1632,7 @@ def test_cettime_returns_none_when_gmtime_result_has_the_wrong_length() -> None:
 
 
 # ---------------------------------------------------------------------------
-# time_counter()
+# time_counter() - the synced-clock second counter
 # ---------------------------------------------------------------------------
 
 
@@ -1628,7 +1640,7 @@ def test_time_counter_increments_while_synced() -> None:
     client = make_client()
 
     async def scenario() -> "int | None":
-        await client._set_synced(True)
+        await client._set_synced(value=True)
         task = asyncio.create_task(client.time_counter())
         await _tick(client.time_counter_trigger_event, 3)
         value = await client.get_last_ntp_sync()
@@ -1669,7 +1681,7 @@ def test_run_sync_attempt_network_unavailable_skips_everything_downstream() -> N
     client = make_client(network_available=lambda: False)
     reached = [False]
 
-    async def fake_get_cfg() -> "Any":
+    async def fake_get_cfg() -> "tuple[list[str], list[int]] | None":
         reached[0] = True
         return None
 
@@ -1685,7 +1697,7 @@ def test_run_sync_attempt_network_available_raising_is_treated_as_unavailable() 
     client = make_client(network_available=raiser)
     reached = [False]
 
-    async def fake_get_cfg() -> "Any":
+    async def fake_get_cfg() -> "tuple[list[str], list[int]] | None":
         reached[0] = True
         return None
 
@@ -1708,9 +1720,9 @@ def test_run_sync_attempt_network_available_raising_persists_a_warning() -> None
 
 def test_run_sync_attempt_missing_config_marks_not_synced_and_returns() -> None:
     client = make_client()
-    run(client._set_synced(True))
+    run(client._set_synced(value=True))
 
-    async def fake_get_cfg() -> "Any":
+    async def fake_get_cfg() -> "tuple[list[str], list[int]] | None":
         return None
 
     client._get_ntp_config = fake_get_cfg  # type: ignore[method-assign]
@@ -1722,10 +1734,10 @@ def test_run_sync_attempt_resolve_failure_calls_handle_failure() -> None:
     client = make_client()
     handled = [False]
 
-    async def fake_get_cfg() -> "Any":
+    async def fake_get_cfg() -> "tuple[list[str], list[int]] | None":
         return (["pool.ntp.org"], [0])
 
-    async def fake_resolve(_host: str, _dns_server: "Any") -> "Any":
+    async def fake_resolve(_host: str, _dns_server: "str | None") -> "tuple[str, int] | None":
         return None
 
     async def fake_handle_failure() -> None:
@@ -1745,10 +1757,10 @@ def test_run_sync_attempt_passes_the_given_dns_server_to_resolve_ntp_server() ->
     client = make_client()
     received: list[Any] = []
 
-    async def fake_get_cfg() -> "Any":
+    async def fake_get_cfg() -> "tuple[list[str], list[int]] | None":
         return (["pool.ntp.org"], [0])
 
-    async def fake_resolve(_host: str, dns_server: "Any") -> "Any":
+    async def fake_resolve(_host: str, dns_server: "str | None") -> "tuple[str, int] | None":
         received.append(dns_server)
         return None
 
@@ -1762,13 +1774,13 @@ def test_run_sync_attempt_fetch_failure_calls_handle_failure() -> None:
     client = make_client()
     handled = [False]
 
-    async def fake_get_cfg() -> "Any":
+    async def fake_get_cfg() -> "tuple[list[str], list[int]] | None":
         return (["pool.ntp.org"], [0])
 
-    async def fake_resolve(_host: str, _dns_server: "Any") -> "Any":
+    async def fake_resolve(_host: str, _dns_server: "str | None") -> "tuple[str, int] | None":
         return ("1.2.3.4", 123)
 
-    async def fake_fetch(_addr: "Any") -> "Any":
+    async def fake_fetch(_addr: "tuple[str, int]") -> "bytes | None":
         return None
 
     async def fake_handle_failure() -> None:
@@ -1786,16 +1798,16 @@ def test_run_sync_attempt_parse_failure_calls_handle_failure() -> None:
     client = make_client()
     handled = [False]
 
-    async def fake_get_cfg() -> "Any":
+    async def fake_get_cfg() -> "tuple[list[str], list[int]] | None":
         return (["pool.ntp.org"], [0])
 
-    async def fake_resolve(_host: str, _dns_server: "Any") -> "Any":
+    async def fake_resolve(_host: str, _dns_server: "str | None") -> "tuple[str, int] | None":
         return ("1.2.3.4", 123)
 
-    async def fake_fetch(_addr: "Any") -> "Any":
+    async def fake_fetch(_addr: "tuple[str, int]") -> "bytes | None":
         return b"garbage"
 
-    async def fake_parse(_msg: "Any", _off: "Any") -> "Any":
+    async def fake_parse(_msg: bytes, _off: int) -> "tuple[int, ...] | None":
         return None
 
     async def fake_handle_failure() -> None:
@@ -1815,19 +1827,19 @@ def test_run_sync_attempt_success_calls_handle_success_with_the_parsed_time() ->
     handled_with: list[Any] = []
     parsed_tm = (2026, 1, 1, 0, 0, 0, 0, 0)
 
-    async def fake_get_cfg() -> "Any":
+    async def fake_get_cfg() -> "tuple[list[str], list[int]] | None":
         return (["pool.ntp.org"], [0])
 
-    async def fake_resolve(_host: str, _dns_server: "Any") -> "Any":
+    async def fake_resolve(_host: str, _dns_server: "str | None") -> "tuple[str, int] | None":
         return ("1.2.3.4", 123)
 
-    async def fake_fetch(_addr: "Any") -> "Any":
+    async def fake_fetch(_addr: "tuple[str, int]") -> "bytes | None":
         return b"x" * 48
 
-    async def fake_parse(_msg: "Any", _off: "Any") -> "Any":
+    async def fake_parse(_msg: bytes, _off: int) -> "tuple[int, ...] | None":
         return parsed_tm
 
-    async def fake_handle_success(tm: "Any") -> None:
+    async def fake_handle_success(tm: "tuple[int, ...]") -> None:
         handled_with.append(tm)
 
     client._get_ntp_config = fake_get_cfg  # type: ignore[method-assign]
@@ -1851,7 +1863,7 @@ def test_asy_ntp_time_runs_one_attempt_per_trigger_and_releases_the_wifi_lock() 
     client = make_client()
     attempts = [0]
 
-    async def fake_attempt(_dns_server: "Any") -> "Any":
+    async def fake_attempt(_dns_server: "str | None") -> "tuple[tuple[int, ...] | None, bool]":
         attempts[0] += 1
         return None, True
 
@@ -1879,7 +1891,7 @@ def test_asy_ntp_time_runs_one_attempt_per_trigger_and_releases_the_wifi_lock() 
 def test_asy_ntp_time_releases_the_wifi_lock_even_if_the_attempt_raises() -> None:
     client = make_client()
 
-    async def raising_attempt(_dns_server: "Any") -> "Any":
+    async def raising_attempt(_dns_server: "str | None") -> "NoReturn":
         raise RuntimeError("simulated bug downstream")
 
     client._run_ntp_sync_attempt = raising_attempt  # type: ignore[assignment, method-assign]
@@ -1907,7 +1919,7 @@ def test_asy_ntp_time_swallows_an_already_released_wifi_lock() -> None:
     # attempt itself release the lock as a side effect, simulating that "already released" state.
     client = make_client()
 
-    async def attempt_releases_lock_itself(_dns_server: "Any") -> "Any":
+    async def attempt_releases_lock_itself(_dns_server: "str | None") -> "tuple[tuple[int, ...] | None, bool]":
         client.wifi_mode_lock.release()
         return None, True
 
@@ -1973,12 +1985,12 @@ def test_asy_ntp_time_gives_up_after_repeated_sync_failures_and_persists_errno_2
     # that completes (network was up) but never yields a parsed time counts toward this streak.
     client = make_client(max_module_error=2)
 
-    async def failing_attempt(_dns_server: "Any") -> "Any":
+    async def failing_attempt(_dns_server: "str | None") -> "tuple[tuple[int, ...] | None, bool]":
         return None, True  # network was available, but the attempt itself still failed
 
     client._run_ntp_sync_attempt = failing_attempt  # type: ignore[assignment, method-assign]
 
-    async def scenario() -> "Any":
+    async def scenario() -> "ErrorLog":
         task = asyncio.create_task(client.asy_ntp_time())
         for _ in range(3):  # one trigger per would-be failure cycle - max_module_error=2 gives up on the 3rd
             client.ntp_sync_trigger_event.set()
@@ -1998,7 +2010,7 @@ def test_asy_ntp_time_network_unavailable_cycles_never_count_toward_giving_up() 
     # well past max_module_error trigger cycles, all reporting network unavailable, without giving up.
     client = make_client(max_module_error=2)
 
-    async def unavailable_attempt(_dns_server: "Any") -> "Any":
+    async def unavailable_attempt(_dns_server: "str | None") -> "tuple[tuple[int, ...] | None, bool]":
         return None, False  # network not available - condition=False, must not count as a real failure
 
     client._run_ntp_sync_attempt = unavailable_attempt  # type: ignore[assignment, method-assign]
@@ -2027,7 +2039,7 @@ def test_asy_ntp_time_recovers_the_streak_on_alternating_failure_and_success() -
     client = make_client(max_module_error=2)
     toggle = [True]
 
-    async def alternating_attempt(_dns_server: "Any") -> "Any":
+    async def alternating_attempt(_dns_server: "str | None") -> "tuple[tuple[int, ...] | None, bool]":
         if toggle[0]:
             toggle[0] = False
             return None, True  # failure
@@ -2081,24 +2093,24 @@ class _RedirectNtpNetworking:
     def __init__(self, port: int) -> None:
         self._port = port
 
-    def __enter__(self) -> "_RedirectNtpNetworking":
+    def __enter__(self) -> "Self":
         self._original_port = ntpmod._NTP_UDP_PORT
         self._original_socket_cls = ntpmod.AsyUDPSocket
         ntpmod._NTP_UDP_PORT = self._port
         real_cls = self._original_socket_cls
 
         class _Resolving:
-            def __init__(self, addr: "Any", mode: str = "client", conn_tries: int = 1) -> None:
+            def __init__(self, addr: "tuple[str, int]", mode: str = "client", conn_tries: int = 1) -> None:
                 resolved = socket.getaddrinfo(addr[0], addr[1])[0][-1]
                 self._real = real_cls(resolved, mode=mode, conn_tries=conn_tries)  # type: ignore[arg-type]
 
-            def __getattr__(self, name: str) -> "Any":
+            def __getattr__(self, name: str) -> object:
                 return getattr(self._real, name)
 
         ntpmod.AsyUDPSocket = _Resolving  # type: ignore[assignment, misc]
         return self
 
-    def __exit__(self, *exc_info: "Any") -> None:
+    def __exit__(self, *exc_info: object) -> None:
         ntpmod._NTP_UDP_PORT = self._original_port
         ntpmod.AsyUDPSocket = self._original_socket_cls  # type: ignore[misc]
 
@@ -2233,7 +2245,7 @@ def test_integration_recovers_on_retry_after_one_dropped_request() -> None:
     client = make_integration_client()
     reply = make_ntp_reply(int(time.time()))
 
-    async def _wait_synced(target: bool) -> None:
+    async def _wait_synced(*, target: bool) -> None:
         for _ in range(200):
             if await client.ntp_issynced() == target:
                 return
@@ -2247,7 +2259,7 @@ def test_integration_recovers_on_retry_after_one_dropped_request() -> None:
                 client.ntp_sync_trigger_event.set()
                 first_reply_task = asyncio.create_task(server.serve_once(reply))
                 await asyncio.wait_for(first_reply_task, 5)
-                await _wait_synced(True)
+                await _wait_synced(target=True)
                 assert await client.ntp_issynced() is True  # confirmed synced once via a real round trip
 
                 await client.ntp_force_sync()  # trigger a second attempt
@@ -2261,7 +2273,7 @@ def test_integration_recovers_on_retry_after_one_dropped_request() -> None:
                 client.ntp_retry_timer.trigger()  # fire the scheduled retry immediately, not after 15s
                 second_reply_task = asyncio.create_task(server.serve_once(reply))
                 await asyncio.wait_for(second_reply_task, 5)
-                await _wait_synced(True)
+                await _wait_synced(target=True)
                 synced = await client.ntp_issynced()
                 task.cancel()
                 try:
