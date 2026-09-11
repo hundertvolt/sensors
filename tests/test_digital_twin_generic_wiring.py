@@ -1,7 +1,5 @@
-"""Unit tests for digital_twin/machine.py's generalized wiring engine (configure_wiring()) and its
-"wozi"/"dev" legacy sugar (configure_i2c_wiring()) - BUILD_CHAIN_PLAN.md's Session 5 write-up.
-Bus-level Pin/I2C/SPI fake behavior itself is already covered by test_digital_twin_machine.py; this
-file is scoped to the wiring-plan-to-chip-fake construction mechanism only."""
+"""Unit tests for digital_twin/machine.py's generalized wiring engine (configure_wiring()) and its "wozi"/"dev" legacy sugar (configure_i2c_wiring()) - BUILD_CHAIN_PLAN.md's Session 5 write-up.
+Bus-level Pin/I2C/SPI fake behavior itself is already covered by test_digital_twin_machine.py; this file is scoped to the wiring-plan-to-chip-fake construction mechanism only."""
 
 import sys
 
@@ -193,3 +191,9 @@ def test_default_wiring_before_any_configure_call_is_wozi() -> None:
     Pin.reset_registry()
     i2c0 = I2C(0, scl=Pin(13), sda=Pin(12), freq=50000)
     assert i2c0.scan() == [0x61]
+
+
+if __name__ == "__main__":
+    import microtest
+
+    microtest.run(globals())

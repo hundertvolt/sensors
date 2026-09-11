@@ -1,14 +1,6 @@
-"""Generic digital-twin entry point: boots ANY `sensortask_<device>` module - most usefully a
-Session-3 `buildgen.generate.generate_device()`-generated one, written to disk by the caller first
-- against a `machine.configure_wiring()`-shaped wiring-plan JSON (produced host-side by
-`buildgen.twin_wiring.compute_twin_wiring()`, since this MicroPython process has no tomllib/buildgen
-of its own - see BUILD_CHAIN_PLAN.md's Session 5 write-up). `run_wozi_integration.py`/
-`run_dev_integration.py` stay unchanged, thin, device-specific wrappers rather than being rewritten
-onto this (documented design decision, same write-up) - this file's own fault/hang chip lookup is
-the generalized form of their hardcoded `{"scd30": sensortask_wozi.i2c0._i2c.devices[0x61], ...}`.
-Not a `tests/test_*.py` file - it can serve forever; deliberately lean relative to those two siblings
-(no --soak, no default state-persistence paths) since proving a generated module boots and serves
-real HTTP is this file's whole job. See `digital_twin/README.md`'s "Swapping the twin in" section."""
+"""Generic digital-twin entry point: boots ANY `sensortask_<device>` module - most usefully a Session-3 `buildgen.generate.generate_device()`-generated one, written to disk by the caller first - against a `machine.configure_wiring()`-shaped wiring-plan JSON (produced host-side by `buildgen.twin_wiring.compute_twin_wiring()`, since this MicroPython process has no tomllib/buildgen of its own). Not a `tests/test_*.py` file - it can serve forever.
+`run_wozi_integration.py`/`run_dev_integration.py` stay unchanged, thin, device-specific wrappers rather than being rewritten onto this (documented design decision); this file's own fault/hang chip lookup is the generalized form of their hardcoded `{"scd30": sensortask_wozi.i2c0._i2c.devices[0x61], ...}`.
+See `digital_twin/README.md`'s "Booting a generated device" section and BUILD_CHAIN_PLAN.md's Session 5 write-up for the full design account."""
 
 import asyncio
 import json
@@ -37,10 +29,8 @@ from unix_port_poll_prewarm import prewarm_poll_set
 
 _CONFIG_DIR = "digital_twin/config/"
 _booted_module: "Any | None" = None  # set by main(), read by _print_wdt_status()'s two call sites -
-# same "module-level singleton the interrupted-shutdown path can still reach" shape
-# run_wozi_integration.py/run_dev_integration.py get for free from their own static
-# `import sensortask_wozi`/`import sensortask_dev`, needed here explicitly since this file's own
-# module is only known at runtime (parse_args()'s --module).
+# needed explicitly here since this file's own module is only known at runtime (parse_args()'s
+# --module), unlike run_wozi_integration.py/run_dev_integration.py's own static imports.
 
 
 class RunConfig:
@@ -181,16 +171,15 @@ def parse_args(argv: "list[str]") -> RunConfig:
 
 def _collect_chips(module: "Any", plan: "dict[str, Any]") -> "dict[str, Any]":
     # Generalizes run_wozi_integration.py's/run_dev_integration.py's own hardcoded
-    # `{"scd30": sensortask_wozi.i2c0._i2c.devices[0x61], ...}` dict: walks the same wiring plan
-    # configure_wiring() was given, resolving each attachment's own bus variable on the booted
-    # module by name instead of a hand-picked i2c0/i2c1 literal. A driver with more than one
-    # instance on this device (e.g. tests_scripts/buildgen_fixtures/novel_combo.toml's two scd30s)
-    # is reachable unambiguously only via its own "driver_nameext" key - the plain driver-name key
-    # still exists too (first instance wins), purely because parse_fault_spec()/parse_hang_spec()
-    # (launch.py) only ever speak the plain-driver-name vocabulary and can't address one specific
-    # instance among several at all.
+    # `{"scd30": sensortask_wozi.i2c0._i2c.devices[0x61], ...}` dict by walking the wiring plan and
+    # resolving each attachment's bus variable by name. A driver with more than one instance is also
+    # keyed by "driver_nameext" (the plain key still exists too, first instance wins - launch.py's
+    # parse_fault_spec()/parse_hang_spec() only ever speak the plain-driver-name vocabulary).
+    # sorted(): plan["buses"]/plan["spi"] are plain dicts, and MicroPython dicts do NOT preserve
+    # insertion order the way CPython's do (confirmed directly) - sorting by bus name is what makes
+    # "first instance wins" above actually mean "i2c0 before i2c1", not MicroPython's hash order.
     chips: dict[str, Any] = {}
-    for bus_name, attachments in plan["buses"].items():
+    for bus_name, attachments in sorted(plan["buses"].items()):
         bus = getattr(module, bus_name, None)
         if bus is None or bus._i2c is None:
             continue
@@ -201,7 +190,7 @@ def _collect_chips(module: "Any", plan: "dict[str, Any]") -> "dict[str, Any]":
             chips.setdefault(driver, chip)
             if name_ext:
                 chips[f"{driver}_{name_ext}"] = chip
-    for bus_name, attachment in plan["spi"].items():
+    for bus_name, attachment in sorted(plan["spi"].items()):
         bus = getattr(module, bus_name, None)
         if bus is None or bus._spi is None:
             continue

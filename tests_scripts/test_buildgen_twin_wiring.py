@@ -1,8 +1,4 @@
-"""Tests for buildgen.twin_wiring: the digital twin's wiring-plan generator (BUILD_CHAIN_PLAN.md's
-Session 5 write-up) - cross-checks the two real devices' generated plans against
-digital_twin/machine.py's own hand-maintained `_LEGACY_WIRING_PLANS` (so the two can never silently
-drift apart), plus shape/JSON-round-trip checks and the two synthetic fixtures (proving generality
-beyond the 6 real, hand-verified devices, same spirit as test_buildgen_definitions.py)."""
+"""Tests for buildgen.twin_wiring: the digital twin's wiring-plan generator - cross-checks the two real devices' generated plans against digital_twin/machine.py's own hand-maintained `_LEGACY_WIRING_PLANS` (so the two can never silently drift apart), plus shape/JSON-round-trip checks and the two synthetic fixtures (proving generality beyond the 6 real, hand-verified devices, same spirit as test_buildgen_definitions.py)."""
 
 import json
 import sys
@@ -27,12 +23,9 @@ def fixtures_dir(repo_root: Path) -> Path:
 
 @pytest.fixture
 def digital_twin_machine(repo_root: Path) -> Any:
-    # digital_twin/machine.py has no MicroPython-only import at module scope (asyncio/errno/time/
-    # collections.deque are all real CPython stdlib too - only individual *method bodies*, e.g.
-    # WDT._arm()'s time.ticks_ms(), use MicroPython-only APIs, never called just by importing), so
-    # plain `import machine` under this suite's own CPython/pytest process works - the same
-    # cross-check approach test_buildgen_definitions.py uses against html/definitions/*.json,
-    # applied here against machine.py's own _LEGACY_WIRING_PLANS instead of a JSON file.
+    # digital_twin/machine.py has no MicroPython-only import at module scope (only individual method
+    # bodies do), so plain `import machine` under this suite's own CPython/pytest process works -
+    # the same cross-check approach test_buildgen_definitions.py uses against html/definitions/*.json.
     digital_twin_dir = str(repo_root / "digital_twin")
     inserted = digital_twin_dir not in sys.path
     if inserted:

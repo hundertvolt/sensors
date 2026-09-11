@@ -1,12 +1,5 @@
-"""Unit tests for digital_twin/run_generic_integration.py: parse_args() (pure), _collect_chips()
-(the generalized fault/hang chip lookup - BUILD_CHAIN_PLAN.md's Session 5 write-up, item 4), and one
-real end-to-end smoke boot. The smoke test deliberately reuses the hand-written sensortask_wozi
-module plus machine's own "wozi" legacy wiring plan (JSON-dumped to a temp file) rather than a real
-buildgen-generated module - buildgen needs tomllib/CPython and can't run inside this MicroPython
-process at all (see the module docstring this file's own subject re-states); proving a genuinely
-*generated* module boots is tests_scripts/test_digital_twin_generated_boot.py's job instead. This
-file only proves run_generic_integration.py's own generic machinery (dynamic --module import, JSON
-wiring-plan loading, generalized chip lookup) works, using a well-understood module as the payload."""
+"""Unit tests for digital_twin/run_generic_integration.py: parse_args() (pure), _collect_chips() (the generalized fault/hang chip lookup), and one real end-to-end smoke boot.
+The smoke test reuses the hand-written sensortask_wozi module plus machine's own "wozi" legacy plan (JSON-dumped to a temp file), not a real buildgen-generated module - buildgen needs tomllib/CPython and can't run inside this MicroPython process at all; proving a genuinely *generated* module boots is tests_scripts/test_digital_twin_generated_boot.py's job instead. This file only proves run_generic_integration.py's own generic machinery works, using a well-understood module as the payload."""
 
 import asyncio
 import sys
@@ -224,3 +217,9 @@ def test_main_boots_sensortask_wozi_through_the_generic_path_and_serves_real_htt
         except OSError:
             pass
     assert summary["failures"] == []
+
+
+if __name__ == "__main__":
+    import microtest
+
+    microtest.run(globals())

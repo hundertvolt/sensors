@@ -33,10 +33,9 @@ def micropython_dir() -> Path:
 
 @pytest.fixture(scope="session")
 def micropython_bin(micropython_dir: Path) -> Path:
-    # Same path scripts/run_digital_twin_ci.sh's own $micropython_bin resolves to. Tests that need
-    # to actually spawn the real Unix-port interpreter (e.g. test_digital_twin_generated_boot.py)
-    # skip themselves when it isn't built yet, rather than failing the whole suite - building it is
-    # scripts/test.sh's/CI's own job (toolchain/setup_toolchain.py setup), not this fixture's.
+    # Same path scripts/run_digital_twin_ci.sh's own $micropython_bin resolves to. A test that needs
+    # to actually spawn it (e.g. test_digital_twin_generated_boot.py) skips itself when it isn't
+    # built yet, rather than failing the whole suite - building it is scripts/test.sh's/CI's job.
     path = micropython_dir / "ports" / "unix" / "build-standard" / "micropython"
     if not path.is_file():
         pytest.skip(f"MicroPython Unix port not built at {path} - run toolchain/setup_toolchain.py setup first")

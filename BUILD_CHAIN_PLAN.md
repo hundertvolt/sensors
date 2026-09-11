@@ -692,6 +692,18 @@ script quality bar" below, not repeated here.
    this session's job; treat both files as still fully yours to replace, and question the shape
    rather than inheriting it. Same session also reflowed `scripts/build_firmware.py`'s module
    docstring under CLAUDE.md's 3-line header cap — docstring text only, no functional change.
+   **Explicit finish criterion (project owner's direction, 2026-09-11): this session ends with zero
+   static `src/sensortask_*.py` files left in the repo, and with the *entire* existing digital-twin
+   test suite — not only `scripts/run_digital_twin_ci.sh`'s own matrix, but every
+   `tests/test_digital_twin_*.py` file that today hardcodes `sensortask_wozi`/`sensortask_dev`
+   (bus-hazard concurrency, webserver concurrency, the sensortask/notification/NTP/FRAM integration
+   families, `test_sensortask_wozi.py`/`test_sensortask_dev.py` themselves) — generalized to run
+   against a freshly-`buildgen`-generated module for all 6 real device variants, via
+   `run_generic_integration.py`'s own mechanism (Session 5), not narrowed to a boot+REST smoke
+   check. Once the hand-written files are gone there is no separate "wozi test suite" left to keep
+   scoped to wozi alone; every one of these tests' own scenario logic applies unchanged, generalized
+   to which device it boots. This may span more than one session if the volume warrants it, but the
+   requirement holds until it's actually done, not just staged.**
 7. **Versioning** — firmware + website, both starting at "2.0b0".
 8. **Closing consistency pass** — bird's-eye scan across everything sessions 1-7 touched; confirm
    zero device-specific content remains outside the 6 TOML files.

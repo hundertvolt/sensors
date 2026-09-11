@@ -1,33 +1,20 @@
-"""Derives the digital twin's per-device I2C/SPI wiring plan (which chip fake sits at which bus
-address) from a validated `DeviceModel` - the same shape `digital_twin/machine.py`'s
-`configure_wiring()` consumes at twin-boot time, replacing the old wozi/dev 2-profile enum
-(BUILD_CHAIN_PLAN.md's Session 5 mission). See digital_twin/README.md's twin-side half."""
+"""Derives the digital twin's per-device I2C/SPI wiring plan (which chip fake sits at which bus address) from a validated `DeviceModel` - the same shape `digital_twin/machine.py`'s `configure_wiring()` consumes at twin-boot time, replacing the old wozi/dev 2-profile enum (BUILD_CHAIN_PLAN.md's Session 5 mission).
+See `digital_twin/README.md`'s "Booting a generated device" section for the twin-side half of this mechanism."""
 
 from typing import Any
 
 from buildgen.buildspec import ADDRESS_CAPABLE_DRIVERS, BUS_ATTACHED_DRIVERS, FIXED_ADDRESS_DRIVERS
 from buildgen.model import DeviceModel
 
-# scd30/sgp40 carry no TOML `address` field at all (buildspec.py's own FIXED_ADDRESS_DRIVERS) -
-# their real I2C address is fixed in hardware (each chip's own datasheet), matching
-# src/asy_scd30_driver.py's own _SCD30_DEFAULT_ADDR=0x61 and src/asy_sgp40_driver.py's own
-# address=0x59 default. A digital-twin-only named exception (the same "a chip's own real
-# electrical identity can't be derived, it has to be told" shape buildgen.driver_registry's own
-# _OVERRIDES table already uses for driver-class resolution), not a broken generalization promise.
+# scd30/sgp40 carry no TOML `address` field (buildspec.py's own FIXED_ADDRESS_DRIVERS) - their real
+# I2C address is fixed in hardware, matching asy_scd30_driver.py's/asy_sgp40_driver.py's own
+# defaults - a twin-only named exception, not a broken generalization promise (see README.md).
 FIXED_ADDRESSES: "dict[str, int]" = {"scd30": 0x61, "sgp40": 0x59}
 
 
 def compute_twin_wiring(model: DeviceModel) -> "dict[str, Any]":
-    """A JSON-serializable wiring plan - which chip fake sits at which I2C address on which bus,
-    and which FRAM chip fake sits on which SPI bus - covering everything
-    `digital_twin/machine.py`'s `_wire_i2c_devices()`/`_wire_spi_device()` need to construct the
-    twin's bus-attached chip fakes, derived straight from `model`'s own validated bus/address/
-    driver facts rather than a second, independently hand-maintained wiring table.
-
-    Shape: {"device": str, "buses": {"i2cN": [{"driver", "name_ext", "address", ["irq_pin"]}, ...]},
-    "spi": {"spiN": {"driver": "fram", "name_ext", "max_size"}}}. Two real devices sharing one bus
-    (buildgen.validate's own address-collision check) never produce a duplicate address within one
-    bus's attachment list - this function trusts an already-`build_model()`-validated `model`."""
+    """A JSON-serializable wiring plan - which chip fake sits at which I2C address/bus, which FRAM chip on which SPI bus - covering everything `machine.py`'s `_wire_i2c_devices()`/`_wire_spi_device()` need, derived straight from `model`'s own validated facts rather than a second hand-maintained table.
+    Shape: {"device": str, "buses": {"i2cN": [{"driver", "name_ext", "address", ["irq_pin"]}, ...]}, "spi": {"spiN": {"driver": "fram", "name_ext", "max_size"}}}. Trusts an already-`build_model()`-validated `model` (no duplicate address within one bus)."""
     buses: dict[str, list[dict[str, Any]]] = {}
     spi: dict[str, dict[str, Any]] = {}
     for spec in model.instances.values():

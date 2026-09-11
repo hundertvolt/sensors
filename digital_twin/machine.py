@@ -1,6 +1,4 @@
-"""Digital-twin fake `machine` module - real-time-firing `Timer`, I2C/SPI wired to per-address chip
-simulators via `configure_wiring()` (generic, buildgen-derived plan) or `configure_i2c_wiring()`
-(the "wozi"/"dev" legacy sugar), deliberately independent of `tests/machine.py`.
+"""Digital-twin fake `machine` module - real-time-firing `Timer`, I2C/SPI wired to per-address chip simulators via `configure_wiring()` (generic, buildgen-derived plan) or `configure_i2c_wiring()` (the "wozi"/"dev" legacy sugar), deliberately independent of `tests/machine.py`.
 See `digital_twin/README.md`'s "What's here" section for the full wiring/`Pin`-identity account."""
 
 import asyncio
@@ -167,16 +165,9 @@ def flush_scd30() -> None:
         _current_scd30_chip.save_state()
 
 
-# The two real devices' own wiring, expressed in configure_wiring()'s own generic shape (defined
-# below) - kept as plain literal data (not derived by calling buildgen at import time) because this
-# module runs under the MicroPython Unix port, which has no tomllib/buildgen available at all.
-# devices/wozi.toml and devices/dev.toml are this data's real source of truth
-# (buildgen.twin_wiring.compute_twin_wiring() reproduces it from there;
-# tests_scripts/test_buildgen_twin_wiring.py cross-checks the two never drift apart).
-# configure_i2c_wiring() below is now pure sugar over this table, kept for every existing
-# "wozi"/"dev" caller (digital_twin/run_dev_integration.py, several tests/test_digital_twin_*.py
-# files) - Session 6 owns retiring it alongside the hand-written sensortask_wozi.py/
-# sensortask_dev.py it exists for (CLAUDE.md's src/ promotion rule).
+# The two real devices' own wiring, in configure_wiring()'s own generic shape - kept as plain literal
+# data (this module has no tomllib/buildgen under the MicroPython Unix port); devices/wozi.toml and
+# dev.toml are the real source of truth, cross-checked in tests_scripts/test_buildgen_twin_wiring.py.
 _LEGACY_WIRING_PLANS: "dict[str, dict[str, Any]]" = {
     "wozi": {
         "buses": {
@@ -200,21 +191,14 @@ _LEGACY_WIRING_PLANS: "dict[str, dict[str, Any]]" = {
     },
 }
 
-_wiring_plan: "dict[str, Any]" = _LEGACY_WIRING_PLANS["wozi"]  # matches the old
-# _i2c_wiring_profile = "wozi" module-level default this replaces - keeps every existing caller
-# that never calls configure_i2c_wiring()/configure_wiring() at all (e.g.
-# digital_twin/run_wozi_integration.py's own main()) unchanged.
+_wiring_plan: "dict[str, Any]" = _LEGACY_WIRING_PLANS["wozi"]  # default for every caller that never
+# calls configure_i2c_wiring()/configure_wiring() at all (e.g. run_wozi_integration.py's own main()).
 
 
 def configure_wiring(plan: "dict[str, Any]") -> None:
-    # Called once, before build_system()-equivalent code constructs i2c0/i2c1/spi0, by whatever
-    # entry point wants a generated device's own bus wiring (digital_twin/run_generic_integration.py's
-    # own main()) - a plain dict in the exact shape buildgen.twin_wiring.compute_twin_wiring()
-    # produces (JSON-round-trippable: a host-side CPython process runs buildgen against a device
-    # TOML - this MicroPython process never can, since buildgen needs tomllib - see
-    # BUILD_CHAIN_PLAN.md's Session 5 write-up). Replaces the whole plan outright, the same "last
-    # configure_*() call before construction wins" convention every other module-level hook here
-    # (configure_random_source() etc.) already uses.
+    # Called once, before build_system()-equivalent code constructs i2c0/i2c1/spi0 - a plain dict in
+    # buildgen.twin_wiring.compute_twin_wiring()'s own shape. Replaces the whole plan outright, the
+    # same "last configure_*() call before construction wins" convention every hook here already uses.
     global _wiring_plan
     if "buses" not in plan or "spi" not in plan:
         raise ValueError("wiring plan must be a dict with 'buses' and 'spi' keys - see buildgen.twin_wiring.compute_twin_wiring()'s own docstring for the shape")
@@ -233,15 +217,10 @@ def configure_i2c_wiring(profile: str) -> None:
 
 
 def _build_i2c_chip(attachment: "dict[str, Any]") -> "Any":
-    # Dispatches on the wiring plan's own "driver" string - the digital twin's own hand-maintained
-    # chip-fake catalog (CLAUDE.md's "a genuinely new chip type still needs someone to hand-write
-    # its digital-twin chip fake" - the one part of this mechanism that can't be auto-derived from a
-    # device TOML, matching buildgen.driver_registry's own named-exception shape for services).
-    # Return type is deliberately Any, not _I2CDevice: that Protocol is I2C.devices' own "the bus's
-    # expectation, not a guarantee" stand-in (its own docstring) - no single real chip fake
-    # implements all four of its methods (Scd30Chip/Sgp40Chip answer the word protocol,
-    # Bmp3xxChip the register-addressed one), the same reason _wire_i2c_devices() below was always
-    # typed dict[int, Any], never dict[int, _I2CDevice].
+    # Dispatches on the wiring plan's own "driver" string - the twin's own hand-maintained chip-fake
+    # catalog (a genuinely new chip type still needs one hand-written, CLAUDE.md's named exception).
+    # Return type is deliberately Any, not _I2CDevice: no single real chip fake implements all four
+    # of that Protocol's methods, the same reason _wire_i2c_devices() below stays dict[int, Any].
     global _current_scd30_chip
     driver = attachment["driver"]
     if driver == "scd30":
@@ -343,13 +322,9 @@ def flush_fram() -> None:
 _DEV_FRAM_SIZE = 0x40000  # MB85RS2MTA, 256KB - sensortask_dev.py's own AsyFramManager(spi0, 5, max_size=0x40000, ...)
 _DEV_FRAM_RDID = bytes([0x04, 0x7F, 0x48, 0x03])  # manufacturer=Fujitsu, cont_code, product ID 0x4803 - asy_fram_driver.py's own _KNOWN_PRODUCT_IDS[0x40000], datasheets/fram/MB85RS2MTA-DS501-00032-3v0-E.pdf p.10
 
-# Real chip-model identity (the RDID reply bytes) isn't a TOML/DeviceModel fact at all - only
-# max_size is (buildgen.twin_wiring's own wiring plan carries it straight through unchanged). Keyed
-# by size as the best available proxy: every real device's FRAM is uniquely identified by its own
-# capacity today (8KB MB85RS64V vs 256KB MB85RS2MTA), so this table only needs one entry until a
-# second same-size, different-model FRAM chip actually ships - flagged here rather than silently
-# assumed. Any size not listed falls back to FramChip's own default RDID (MB85RS64V's - wozi's own
-# chip, and every synthetic fixture's today).
+# Real chip-model identity (the RDID bytes) isn't a TOML/DeviceModel fact - only max_size is - so
+# it's keyed by size as the best available proxy (unique today: 8KB MB85RS64V vs 256KB MB85RS2MTA).
+# Any size not listed falls back to FramChip's own default RDID (MB85RS64V's - wozi's own chip).
 _FRAM_RDID_BY_MAX_SIZE: "dict[int, bytes]" = {_DEV_FRAM_SIZE: _DEV_FRAM_RDID}
 
 
