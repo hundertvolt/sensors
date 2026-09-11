@@ -516,6 +516,7 @@ def _all_loggers() -> "list[Any]":
     assert d.conn is not None and d.ntp is not None and d.fram is not None and d.sysfunct is not None
     assert d.sgp_reader is not None and d.bmp_reader is not None and d.scd_reader is not None
     assert d.pixel is not None and d.notify_service is not None and d.webserver is not None
+    assert d.uart_initiator is not None and d.uart_responder is not None
     return [
         d.conn.pr,
         d.conn.cfgmgr.pr,
@@ -533,6 +534,8 @@ def _all_loggers() -> "list[Any]":
         d.pixel.pr,
         d.notify_service.pr,
         d.notify_service.cfgmgr.pr,
+        d.uart_initiator.pr,  # the two ends of the bench rig's permanent UART crossover jumper,
+        d.uart_responder.pr,  # each with its own name so their histories never merge
         d.webserver.pr,
     ]
 
@@ -901,8 +904,11 @@ def test_webserver_status_get_reflects_the_real_object_graph() -> None:
     assert "WifiUptime" in body["networking"] and "NtpSynced" in body["networking"]
     assert "Triggered" in body["notification"] and "PauseTime" in body["notification"]
     # One entry per real module + per real ConfigManager + this service's own "WEBSERVER" entry -
-    # same 16-owner enumeration _collect_level_setters()/_collect_error_sources() both share, plus one.
-    assert len(body["errcount"]) == 17
+    # same 18-owner enumeration _collect_level_setters()/_collect_error_sources() both share, plus
+    # one. 18 rather than 16 since the bench rig's two UART crossover ends each register their own.
+    assert len(body["errcount"]) == 19
+    assert "UART_INIT" in body["errcount"]
+    assert "UART_RESP" in body["errcount"]
 
 
 def test_webserver_status_put_reset_errors_clears_a_real_modules_history() -> None:

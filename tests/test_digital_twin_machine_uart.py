@@ -24,17 +24,21 @@ def test_twin_link_satisfies_the_shared_contract() -> None:
         check(make_link)
 
 
-def test_bus_id_is_allocated_exclusively() -> None:
-    # A4.2: a second live instance on one peripheral id would silently mis-route a whole link.
-    a, _b, _link = make_link()
-    try:
-        UART(a.id, tx=Pin(0), rx=Pin(1))
-    except ValueError:
-        pass
-    else:
-        raise AssertionError("a second live UART on the same id must be refused")
-    a.deinit()
-    UART(a.id, tx=Pin(0), rx=Pin(1))  # the id is free again once the first one is deinit'd
+def test_a_second_instance_on_one_bus_id_supersedes_the_first() -> None:
+    # A4.2: real machine.UART() re-inits the peripheral rather than refusing, so what has to be
+    # modelled is that the displaced instance stops carrying bytes - a half-live one would
+    # silently mis-route a whole link.
+    a, b, link = make_link()
+    before = UART.superseded
+    replacement = UART(a.id, tx=Pin(0), rx=Pin(1))
+    assert UART.superseded == before + 1
+    assert a.deinit_called is True
+    assert a._link is None
+    assert b._link is None  # the link is broken for both ends at once, never half-attached
+    b.write(b"stale")
+    link.settle()
+    assert a.read() is None  # nothing reaches the displaced instance any more
+    assert replacement.id == a.id
 
 
 def test_delivery_takes_real_wire_time() -> None:

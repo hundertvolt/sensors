@@ -425,25 +425,33 @@ class UART_Comm:
 
     # ---- recovery ------------------------------------------------------------------------------
 
-    async def _drain(self, device: "UART") -> int:
+    async def _drain(self, device: "UART", first_ms: int | None = None) -> int:
         # Reads into the RX scratch, never read(): a degraded link allocates hardest exactly when
         # the heap is most fragmented (E4.2). Hard-bounded, so a peer that never stops transmitting
         # cannot own this loop forever (E4.1) - the legacy module's unbounded `while True`.
+        #
+        # first_ms shortens only the *first* probe, for setup()'s boot drain: there the question is
+        # whether anything is already buffered, and waiting a full quiet window to be told "no"
+        # would add 1.5 x timeout to every boot of a healthy link. The moment one byte does turn
+        # up, every later round uses the full window again, so a peer genuinely mid-train is still
+        # drained to quiet exactly as a resync drains it.
         buf = self._rx.get_buf()
         if buf is None:
             return 0
         quiet_ms = self._resync_window_ms()
         bound_ms = quiet_ms * _DRAIN_BOUND_MULT  # E4.7: derived from timeout, not from poll_wait_ms
+        wait_ms = quiet_ms if first_ms is None else max(first_ms, 1)
         start = time.ticks_ms()
         total = 0
         while True:
             if time.ticks_diff(time.ticks_ms(), start) > bound_ms:
                 await self.pr.wrn_s("Drain bound reached, resyncing anyway", wrnno=_WRN_DRAIN_BOUND)
                 break
-            got = await device.readinto(buf, len(buf), timeout_ms=quiet_ms)
+            got = await device.readinto(buf, len(buf), timeout_ms=wait_ms)
             if got is None:  # the line has been quiet for a whole window
                 break
             total += got
+            wait_ms = quiet_ms
         return total
 
     async def _resync(self, device: "UART") -> None:
@@ -991,7 +999,7 @@ class UART_Comm:
             # bytes in the driver's rxbuf. E4 would recover from it reactively, but a live link
             # would then log a fault on every boot, indistinguishable in the FRAM history from a
             # real one. A boot-time drain is not a fault and is not counted.
-            drained = await self._drain(device)
+            drained = await self._drain(device, first_ms=(bus.poll_wait_ms * 2) + _POLL_JITTER_MS)
         if drained:
             # C5.6: a boot-time drain is expected on a live link and is deliberately not counted -
             # persisting it would put an entry in the FRAM history on every single boot,

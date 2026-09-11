@@ -408,6 +408,10 @@ class SPI:
 
 
 _UART_BITS_PER_BYTE = 10  # 8N1 on the wire: one start bit, eight data bits, one stop bit
+# Bytes that have been written but whose wire time has not elapsed yet. Must comfortably exceed a
+# whole stop-and-wait exchange's worth of frames: an ACK still in flight when the next frame is
+# written would otherwise overflow this and truncate that frame mid-transmission.
+_UART_INFLIGHT_MAX = 4096
 
 
 class _LinkDirection:
@@ -428,7 +432,7 @@ class _LinkDirection:
         self.delivered = 0
         self.dropped_overrun = 0
         self.pending = bytearray()  # held by the delay knob
-        self.in_flight: deque[tuple[int, int]] = deque((), 64)  # (due_us, byte)
+        self.in_flight: deque[tuple[int, int]] = deque((), _UART_INFLIGHT_MAX)  # (due_us, byte)
         self.wire_log = bytearray()
 
     def byte_time_us(self) -> int:
@@ -493,7 +497,12 @@ class UARTLink:
         step = direction.byte_time_us()
         for byte in data:
             due += step
-            direction.in_flight.append((due, byte))
+            try:
+                direction.in_flight.append((due, byte))
+            except IndexError:
+                # A full in-flight queue is a receive overrun by another name - counted and
+                # dropped, never raised into the driver, which real hardware never does either.
+                direction.dropped_overrun += 1
         self._next_free_us[index] = due
 
     def _advance(self) -> None:
@@ -535,6 +544,17 @@ class UARTLink:
             return
         self._schedule(index, direction, shaped)
 
+    def detach(self, uart: "UART") -> None:
+        # Breaks the link for both ends at once: a half-attached link would deliver into an
+        # endpoint nothing reads from, which is the mis-routing this exists to prevent.
+        if uart not in self.endpoints:
+            return
+        for endpoint in self.endpoints:
+            endpoint._link = None
+        # Rebound rather than cleared: MicroPython's deque has no clear().
+        self.a_to_b.in_flight = deque((), _UART_INFLIGHT_MAX)
+        self.b_to_a.in_flight = deque((), _UART_INFLIGHT_MAX)
+
     def release_delayed(self) -> int:
         released = 0
         for index, direction in ((0, self.a_to_b), (1, self.b_to_a)):
@@ -557,9 +577,13 @@ class UART(io.IOBase):
     _MAX_BUFFER_SIZE = 32766
     _UART_INVERT_MASK = 3
 
-    # One live instance per peripheral id, enforced rather than assumed: the twin wires a single
-    # device per bus id, and a silently re-init'd peripheral would mis-route a whole link (A4.2).
+    # One live instance per peripheral id. Real machine.UART() on this port re-inits the
+    # peripheral rather than refusing, so constructing another instance on the same id supersedes
+    # the first - and the twin makes that explicit: the superseded object is deinit'd and detached
+    # from any link, so it cannot silently keep delivering to a stale peer while the new one
+    # believes it owns the bus. That silent mis-routing is the failure this models (A4.2).
     _live: "dict[int, UART]" = {}
+    superseded = 0  # how many instances have been displaced this way, for a test to assert on
 
     def __init__(
         self,
@@ -585,8 +609,9 @@ class UART(io.IOBase):
             raise ValueError("rxbuf too large")
         if txbuf > self._MAX_BUFFER_SIZE:
             raise ValueError("txbuf too large")
-        if id in UART._live:
-            raise ValueError(f"UART({id}) is already in use by another instance")
+        previous = UART._live.get(id)
+        if previous is not None:
+            previous._supersede()
         self.id = id
         self.tx = tx
         self.rx = rx
@@ -605,6 +630,17 @@ class UART(io.IOBase):
         self.write_limit: int | None = None
         self._link: UARTLink | None = None
         UART._live[id] = self
+
+    def _supersede(self) -> None:
+        # Displaced by a newer instance on the same peripheral id: detached from its link so no
+        # byte can reach it or leave it afterwards, and marked deinit'd so a stale reference is
+        # visibly dead rather than quietly half-alive.
+        link = self._link
+        if link is not None:
+            link.detach(self)
+        self._link = None
+        self.deinit_called = True
+        UART.superseded += 1
 
     def _pump(self) -> None:
         if self._link is not None:

@@ -277,6 +277,8 @@
                         { "key": "NEOPIXEL", "label": "Neopixel LED" },
                         { "key": "NOTIFY", "label": "Notification Service" },
                         { "key": "CFGMGR_NOTIFY", "label": "Notification Config Store" },
+                        { "key": "UART_INIT", "label": "UART Link (Initiator)" },
+                        { "key": "UART_RESP", "label": "UART Link (Responder)" },
                         { "key": "WEBSERVER", "label": "Web Server" }
                     ]
                 },

@@ -733,9 +733,9 @@ def test_clear_cancels_first_and_drains_exactly_once() -> None:
     drains = []
     original = pair.responder._drain
 
-    async def counting_drain(device: UART) -> int:
+    async def counting_drain(device: UART, first_ms: int | None = None) -> int:
         drains.append(1)
-        return await original(device)
+        return await original(device, first_ms)
 
     pair.responder._drain = counting_drain  # type: ignore[method-assign]
 

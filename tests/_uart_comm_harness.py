@@ -88,12 +88,22 @@ class Pair:
     async def with_listener(self, work: "Coroutine[Any, Any, T]", rounds: int = 1) -> "T":
         # Runs the responder's listen loop alongside the initiator's own call, which is the only
         # way a stop-and-wait exchange can make progress: both ends have to be scheduled.
+        # The initiator's call returning does not mean the responder is finished: it still has its
+        # own last read to complete. Cutting it off there would leave an unconsumed frame on the
+        # wire for the next exchange to trip over - a harness artefact, not a protocol fault - so
+        # the listener is awaited to completion and only cancelled if it genuinely stalls.
         listener = asyncio.create_task(self._listen_rounds(rounds))
         try:
             return await work
         finally:
-            await asyncio.sleep_ms(POLL_WAIT_MS * 2)  # let the responder finish its own last write
-            listener.cancel()
+            try:
+                await asyncio.wait_for(listener, 5)
+            except asyncio.TimeoutError:
+                listener.cancel()
+                try:
+                    await listener
+                except asyncio.CancelledError:  # expected; anything else is a real failure
+                    pass
 
     async def _listen_rounds(self, rounds: int) -> None:
         for _ in range(rounds):
