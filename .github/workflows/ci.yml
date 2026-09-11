@@ -283,6 +283,7 @@ jobs:
             uv run toolchain/setup_toolchain.py setup
           fi
           scripts/build_website.sh wozi
+          uv run scripts/_generate_sensortask_modules.py
       # Firefox+geckodriver (via conda-forge/micromamba - see scripts/setup_cross_browser_toolchain.sh's
       # own comment for why) is the one piece of this job's toolchain worth caching across runs: it's
       # a ~106MB download from a channel with no version-pin file to key on (deliberately unpinned,
