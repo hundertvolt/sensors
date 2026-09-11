@@ -27,10 +27,9 @@ _REQUEST_BUDGET_S = 15.0
 
 
 def _require_uart_modules(dut_ip: str) -> None:
-    # The link only exists in a firmware that actually contains asy_uart_comm, which today needs a
-    # selectable `uart_crossover` module the auto-builder can include (BACKLOG.md). Until then the
-    # two entries are simply absent from /status, which is a missing build dependency rather than a
-    # failure - this test is written now and runs unchanged once such a firmware can be built.
+    # The link only exists in a firmware that contains asy_uart_comm, which a dev build made today
+    # does (sensortask_dev imports it, and build_firmware.py freezes all of src/). Absent entries
+    # therefore mean a build to check, not a protocol failure (BACKLOG.md).
     present = get_errcount(dut_ip)
     missing = [name for name in _UART_MODULES if name not in present]
     if missing:

@@ -1,13 +1,9 @@
 """Async wrapper around machine.UART: select.poll-driven non-blocking read/write, lock-scoped via
-base_classes.Lockable so a read/write exchange runs atomically under `async with`. Optional
-per-instance CRC framing (crc_checks.py's CRC_Base family) plus a pluggable frame codec (framing_codecs.py) on read_until_complete/readinto_until_complete/write/writefrom.
-"""
-# Whoever wires it in: GPIO24/25 (UART1) and GPIO28/29 (UART0) are valid pin-mux pairs, but the
-# Pico W datasheet (p.8) hands GPIO23/24/25/29 to the wireless chip - so either pair collides with
-# WiFi through one of its halves, even though GPIO28 on its own is an ordinary free user GPIO.
-#
-# A hardware-level framing/parity/overrun fault on rp2 never raises (see SPECIFICATION.md C.3.2) -
-# every method here returns a plain None/False sentinel instead, never raises.
+base_classes.Lockable so an exchange runs atomically under `async with`. Optional per-instance CRC
+framing (crc_checks.py) plus a pluggable frame codec (framing_codecs.py) on the read/write paths."""
+# Whoever wires it in: GPIO24/25 (UART1) and GPIO28/29 (UART0) are valid pin-mux pairs, but the Pico
+# W datasheet (p.8) hands GPIO23/24/25/29 to the wireless chip, so each pair has a taken half.
+# A framing/parity/overrun fault on rp2 never raises (C.3.2); every method returns a sentinel.
 
 import asyncio
 import select
@@ -60,19 +56,17 @@ class UART(Lockable):
         self.poller: select.poll | None = None
         super().__init__()
         self.poll_wait_ms = poll_wait_ms
-        # A cancel request is latched (self.cancel) and acknowledged by publishing the request
-        # number it served. Two monotonic counters rather than an Event: an acknowledgement stays
-        # visible to every waiting canceller at once, and a second request can never re-clear one
-        # that a first canceller has not yet observed.
+        # A cancel request is latched and acknowledged by publishing the request number it served.
+        # Two monotonic counters rather than an Event: one acknowledgement stays visible to every
+        # waiting canceller, and a second request cannot re-clear one nobody has observed yet.
         self.cancel = False
         self.cancel_unacknowledged = 0  # bumped when a holder never acknowledged within the bound
         self._cancel_req = 0
         self._cancel_ack = 0
         self.crc = CRC_Pass() if crc is None else crc
-        # Write order is build -> CRC -> encode -> delimiter, read order the exact reverse, so the
-        # CRC keeps its position underneath the codec. The pass-through default emits byte-for-byte
-        # what this driver emitted before the codec existed; selecting a delimited one is a wire
-        # change (UART_C_PORT_CHANGELOG.md A11), agreed out of band like baudrate itself.
+        # Write order is build -> CRC -> encode -> delimiter, read the exact reverse, so the CRC
+        # keeps its position underneath the codec. The pass-through default is byte-for-byte what
+        # this driver emitted before; selecting a delimited one is a wire change (changelog A11).
         self.framing = Framing_Pass() if framing is None else framing
         self._skip_to_delimiter = False
         self.init(port_id, tx_pin, rx_pin, baudrate, bits, parity, stop, rxbuf, txbuf, timeout, timeout_char, invert)
@@ -83,9 +77,8 @@ class UART(Lockable):
         exc_val: BaseException | None,
         exc_tb: object,
     ) -> "Literal[False]":
-        # Acknowledging here, and not only from inside ready()'s loop, is what makes
-        # cancel_read_timeout() terminating: a request can land while the lock is held with no
-        # ready() in flight (during crc.check()'s own per-byte yields, or between two reads), and
+        # Acknowledging here, not only inside ready()'s loop, is what makes cancel_read_timeout()
+        # terminating: a request can land while the lock is held with no ready() in flight, and
         # leaving the locked region is the last point at which it can still be honoured.
         self._ack_cancel()
         return await super().__aexit__(exc_type, exc_val, exc_tb)
@@ -112,11 +105,9 @@ class UART(Lockable):
         return self._uart
 
     async def _write_all(self, uart: "_UART", buf: bytearray | memoryview) -> bool:
-        # rp2 uart.write() can short-write instead of raising - retries with whatever's left until
-        # the whole buffer is out or a real failure gives up, the write-side counterpart of
-        # read_until_complete()'s own retry-until-done loop. The view is re-sliced only once a
-        # short write has actually happened (B3.1): a complete write - the normal case - then costs
-        # no memoryview allocation at all, and a degraded link is where allocation is least welcome.
+        # rp2 uart.write() can short-write instead of raising, so retry with what is left - the
+        # write-side counterpart of read_until_complete()'s loop. The view is re-sliced only after a
+        # short write (B3.1), so the normal complete write allocates no memoryview at all.
         sent = 0
         total = len(buf)
         view = memoryview(buf)
@@ -132,10 +123,9 @@ class UART(Lockable):
     async def _read_delimited(
         self, uart: "_UART", buf: bytearray, nbytes: int, start_timeout_ms: int, timeout_ms: int,
     ) -> int | None:
-        # Reads one delimiter-terminated frame into buf, decodes it in place and verifies its CRC.
-        # One byte per readinto() on purpose: a wider read would swallow the head of the *next*
-        # frame, which a stream cannot hand back. Bounded by the codec's own worst-case encoded
-        # length (B2.1), so a peer that never sends a delimiter fails the read instead of blocking it.
+        # Reads one delimiter-terminated frame into buf, decodes in place and verifies its CRC. One
+        # byte per readinto() on purpose: a wider read would swallow the head of the next frame,
+        # which a stream cannot hand back. Bounded by the codec's worst-case length (B2.1).
         delimiter = self.framing.delimiter()
         if delimiter is None:
             return None
@@ -183,11 +173,9 @@ class UART(Lockable):
         timeout_char: int = 1,
         invert: int = 0,
     ) -> None:
-        # deinit() first so re-init can't leak a claimed peripheral/pins or a stale poll
-        # registration - matches asy_spi_driver.py's/asy_i2c_driver.py's own init() pattern.
-        # The _UART(...) below must stay a *construction*, never self._uart.init(...): rp2's
-        # deinit() unroots the RX/TX ring buffers without clearing the pointers to them, and only
-        # make_new() repairs that - see SPECIFICATION.md Part F.5.7.
+        # deinit() first so re-init cannot leak a claimed peripheral, pins or a stale poll
+        # registration, as asy_spi_driver.py/asy_i2c_driver.py do. The _UART(...) below must stay a
+        # construction, never self._uart.init(...): only make_new() re-roots the ring buffers (F.5.7).
         self.deinit()
         # Kept as plain attributes because machine.UART exposes neither back: a protocol layer
         # above has to size its own frames against the real receive buffer and the real baud rate
@@ -234,10 +222,9 @@ class UART(Lockable):
         return ok
 
     async def cancel_read_timeout(self, timeout_ms: int = _CANCEL_ACK_TIMEOUT_MS) -> bool:
-        # Lets another task abort this instance's in-flight ready()/read wait from the outside -
-        # e.g. to interrupt a stuck listen before resyncing. False means "nothing was in flight"
-        # (the lock is not held), which is what lets a caller decide to take the lock and drain
-        # itself; True means a cancel is outstanding, acknowledged or not, so the caller must not.
+        # Lets another task abort this instance's in-flight ready()/read wait from the outside.
+        # False means "nothing was in flight" (the lock is free), which is what lets a caller take
+        # the lock and drain itself; True means a cancel is outstanding, so it must not.
         if not self.asy_lock.locked():  # nothing to cancel if not in use
             return False
         self._cancel_req += 1

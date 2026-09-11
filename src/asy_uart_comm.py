@@ -1,10 +1,9 @@
 """Point-to-point UART message protocol over asy_uart_driver.UART: chunk trains, per-frame ACKs,
 quiesce-and-resync recovery. Initiator/responder by construction; see SPECIFICATION.md Part J.
 Every method returns a well-defined sentinel, never raises - a link fault is never an exception."""
-# Wire constants and recovery timings are a two-implementation contract with the C peer; every
-# change to them gets a UART_C_PORT_CHANGELOG.md entry. The write hold-off *waits* for its deadline
-# rather than refusing outright: the peer is mid-drain, so a caller told "failed" would be told so
-# about a link that is fine, and quiescing is the contract (J.5).
+# Wire constants and recovery timings are a two-implementation contract with the C peer: every
+# change to one gets a UART_C_PORT_CHANGELOG.md entry. The write hold-off waits out its deadline
+# rather than refusing, so no caller is told "failed" about a link that is merely quiescing (J.5).
 
 import asyncio
 import time
@@ -148,10 +147,9 @@ _LISTEN_FAILED = ListenResult(None, None, None)
 
 
 def _is_writable(buf: "Writable") -> bool:
-    # memoryview(b"...") is a memoryview like any other: the type check passes and the first real
-    # assignment raises, mid-train, after the peer has already been acknowledged. A zero-length
-    # slice assignment is the whole test - it allocates nothing, changes nothing, and raises in
-    # exactly the case a real one would.
+    # memoryview(b"...") passes any type check and raises only on the first real assignment, by
+    # which point the peer is already acknowledged. A zero-length slice assignment allocates
+    # nothing and raises in exactly the same case (Part F.1).
     try:
         buf[0:0] = b""
     except TypeError:
@@ -208,12 +206,9 @@ class UART_Comm:
         self._valid_frames = 0
         self._blind_resyncs = 0  # D2.5/D2.6: resyncs that saw bytes but never a valid frame
         self._init_errno = self._validate_config()
-        # Derived from locally re-checked values, never the caller's raw ones: `5 + "48"` and
-        # `"1000" // 2` both raise TypeError, and __init__ is the one entry point that cannot
-        # answer with a sentinel - there is no object yet to ask. _validate_config() returns on its
-        # first finding, so a non-integer payload_size can still be sitting there when the errno
-        # names something else entirely. The caller's own values stay untouched on self, for the
-        # log to name; a refused construction just keeps well-formed attributes, as _allocate does.
+        # Re-checked locally, never the caller's raw values: `5 + "48"` raises, and __init__ is the
+        # one entry point with no object yet to answer through a sentinel. _validate_config() stops
+        # at its first finding, so a non-integer can still be sitting here under a different errno.
         payload = self.payload_size if isinstance(self.payload_size, int) else 0
         backoff_base = self.timeout if isinstance(self.timeout, int) and self.timeout > 0 else 1
         self.frame_size = _HEADER_LEN + payload
@@ -260,11 +255,9 @@ class UART_Comm:
         return max(wire, per_poll)
 
     def _allocate(self) -> "tuple[LockableBuffer, LockableBuffer, bytearray, bytearray, bytearray]":
-        # Everything the steady state needs, allocated once from configuration: two frame buffers
-        # (TX and RX must be separate, C4.2), the ACK scratch, the zero-padding source, and the
-        # one-byte command-id scratch. No buffer is allocated per frame after this - what a
-        # transaction still allocates is short-lived slices that die immediately, measured at zero
-        # bytes *retained* per transaction by test_uart_comm_hazard.py's own long-run check.
+        # Everything the steady state needs, once: separate TX/RX frame buffers (C4.2), the ACK
+        # scratch, the zero-padding source and the command-id scratch. Nothing is allocated per
+        # frame after this - zero bytes retained per transaction, pinned by test_uart_comm_hazard.py.
         if self.uart is None or self._init_errno == _ERR_PAYLOAD_SIZE:
             size = _HEADER_LEN  # a refused construction still needs well-formed attributes
             room = size
@@ -288,13 +281,9 @@ class UART_Comm:
         return tx, rx, ack, zero, cmd_buf
 
     def _buffers_ready(self, payload: int) -> bool:
-        # Every buffer, not only the TX frame. _allocate() catches MemoryError around the three
-        # scratch buffers as a group, so a heap that ran out *after* the two frame buffers succeeded
-        # leaves zero-length ones behind - and that passed construction and opened the readiness
-        # gate. Measured on the degraded object: the first padded frame shrank the long-lived TX
-        # buffer from 13 bytes to 7 (a bytearray slice assignment resizes on a length mismatch,
-        # Part F.1) while _prepare_tx() still reported success, and writing the command id into the
-        # empty scratch raised IndexError straight out of a module contracted never to raise.
+        # Every buffer, not only the TX frame: _allocate() guards the three scratch buffers as one
+        # group, so a heap exhausted after the frame buffers leaves zero-length ones behind. That
+        # object passed the gate, then padding shrank the TX buffer and the id write raised (F.1).
         return (
             self._tx.get_buf() is not None
             and self._rx.get_buf() is not None
@@ -306,10 +295,9 @@ class UART_Comm:
     # ---- logging --------------------------------------------------------------------------
 
     async def _err(self, errno: int, *args: object) -> None:
-        # C3.8: a permanently faulty link would otherwise write FRAM on every single fault, burying
-        # every other module's history under one repeated code - and the diagnostic value of the
-        # history is what is lost, long before FRAM endurance is. Exactly two entries are persisted
-        # per fault episode: the transition in (here) and the transition back out (_fault_cleared).
+        # C3.8: a permanently faulty link would otherwise bury every other module's FRAM history
+        # under one repeated code. Exactly two entries per fault episode: the transition in (here)
+        # and the transition back out (_fault_cleared).
         if errno == self._last_errno:
             self._fault_streak += 1
             self.pr.err("Repeated errno", errno, *args)  # visible, not persisted, not counted
@@ -326,10 +314,9 @@ class UART_Comm:
         self._clear_fault_state()
 
     async def _episode_wrn(self, wrnno: int, *args: object) -> None:
-        # C3.8's rule, applied to the warnings a fault drags along with it. Deduping only the errno
-        # was not enough: every fault also resyncs, and an unconditionally persisted resync warning
-        # refills the bounded history by itself - evicting the one entry that says what actually
-        # broke. One persisted warning per episode, the rest visible but not persisted.
+        # C3.8 applied to the warnings a fault drags along: every fault also resyncs, so an
+        # unconditionally persisted resync warning refills the bounded history by itself, evicting
+        # the entry that says what broke. One persisted warning per episode, the rest visible only.
         if self._episode_events:
             self.pr.wrn(*args)
         else:
@@ -363,10 +350,9 @@ class UART_Comm:
         return True
 
     async def _check_cmd_id(self, cmd_id: object) -> bool:
-        # A command id is written straight into a payload byte, and bytearray assignment truncates
-        # silently on this platform - 0x101 goes out as 0x01, a *different, valid* command the peer
-        # then executes, and the call reports success. The same silent-truncation reasoning
-        # _prepare_tx() spells out for the header fields; nothing else was enforcing it here.
+        # A command id goes straight into a payload byte, and bytearray assignment truncates
+        # silently here - 0x101 leaves as 0x01, a different valid command the peer executes while
+        # the call reports success (the rule _prepare_tx() already states for the header fields).
         if isinstance(cmd_id, int) and 0 <= cmd_id <= _CMD_ID_MAX:
             return True
         await self._err(_ERR_BAD_ARG, "command id", cmd_id, "is not a byte value")
@@ -530,15 +516,9 @@ class UART_Comm:
     # ---- recovery ------------------------------------------------------------------------------
 
     async def _drain(self, device: "UART", first_ms: int | None = None) -> int:
-        # Reads into the RX scratch, never read(): a degraded link allocates hardest exactly when
-        # the heap is most fragmented (E4.2). Hard-bounded, so a peer that never stops transmitting
-        # cannot own this loop forever (E4.1) - the legacy module's unbounded `while True`.
-        #
-        # first_ms shortens only the *first* probe, for setup()'s boot drain: there the question is
-        # whether anything is already buffered, and waiting a full quiet window to be told "no"
-        # would add 1.5 x timeout to every boot of a healthy link. The moment one byte does turn
-        # up, every later round uses the full window again, so a peer genuinely mid-train is still
-        # drained to quiet exactly as a resync drains it.
+        # Reads into the RX scratch, never read(): a degraded link must not allocate hardest on the
+        # most fragmented heap (E4.2), and the loop is hard-bounded against a peer that never stops
+        # (E4.1). first_ms shortens only the first probe, so a healthy boot skips a full quiet wait.
         buf = self._rx.get_buf()
         if buf is None:
             return 0
@@ -582,10 +562,9 @@ class UART_Comm:
             self._in_resync = False
 
     async def clear(self) -> None:
-        # The external unstick. Cancel FIRST, outside the lock: a listening responder blocks
-        # indefinitely while holding it, so taking the lock first would deadlock against exactly
-        # the caller this exists to free (E5.1). The cancelled read's own failure path drains, so
-        # only the nothing-was-in-flight branch drains here - exactly one drain either way (E5.3).
+        # The external unstick. Cancel FIRST, outside the lock: a listening responder holds it
+        # indefinitely, so locking first would deadlock against the caller this frees (E5.1). The
+        # cancelled read drains on its own path, so only the idle branch drains here (E5.3).
         if self.uart is None:
             return
         if not await self.uart.cancel_read_timeout():
@@ -752,10 +731,9 @@ class UART_Comm:
                     await self._err(_ERR_SIZE_MISMATCH, "destination too small at chunk", cur)
                     await self._resync(device)
                     return None
-                # Through a memoryview, like the push branch above: slicing the bytearray directly
-                # would build a fresh payload_size-sized copy for every chunk of every train, which
-                # is exactly the repeated same-shaped allocation Part I.1 says to avoid on a
-                # non-compacting heap. The view costs two fixed-size objects instead.
+                # Through a memoryview, like the push branch above: slicing the bytearray would
+                # build a fresh payload_size copy per chunk - the repeated same-shaped allocation
+                # Part I.1 says to avoid on a non-compacting heap.
                 dest[written : written + size] = memoryview(rx)[_MSG_PAYLOAD : _MSG_PAYLOAD + size]
             written += size
             await self._note_valid_frame()
@@ -788,11 +766,9 @@ class UART_Comm:
     # ---- public API: initiator ---------------------------------------------------------------------
 
     async def uart_set(self, set_id: int, payload: "Readable | None" = None) -> bool:
-        # Thin wrapper over the zero-copy form, the way AsyFramChunk.write() wraps write_into():
-        # the hot path must not be the one that allocates (F6.4). A None payload is treated as
-        # zero length without allocating an empty bytearray for it (F1.4).
-        # size=None means "the whole buffer", computed *after* uart_set_into() has type-checked it:
-        # taking len() here would raise on a non-buffer payload before any validation ran.
+        # Thin wrapper over the zero-copy form, as AsyFramChunk.write() wraps write_into(): the hot
+        # path must not be the one that allocates (F6.4), and a None payload costs no bytearray
+        # (F1.4). size=None defers len() to uart_set_into(), which type-checks buf first.
         return await self.uart_set_into(set_id, payload, None)
 
     async def uart_set_into(self, set_id: int, buf: "Readable | None", size: int | None = None) -> bool:
@@ -827,10 +803,9 @@ class UART_Comm:
         if not await self._check_cmd_id(set_id) or not await self._check_size(total_size, allow_none=False):
             return False
         if pull is None:
-            # Refused here, not left to _send_train: its own no-pull branch means "the payload
-            # argument carries the data", and this entry point has no payload argument - so the
-            # train went out as total_size bytes of padding and the call reported success. Typed
-            # Optional and refused in the body, the way uart_get_into() states its own destination.
+            # Refused here, not left to _send_train: its no-pull branch means "the payload argument
+            # carries the data", and this entry point has none - so the train went out as
+            # total_size bytes of padding while the call reported success.
             await self._err(_ERR_BAD_ARG, "uart_set_stream needs a pull callback")
             return False
         self._busy = True
@@ -1095,10 +1070,9 @@ class UART_Comm:
             await self.pr.err_s("No bus handle, not starting", errno=_ERR_NO_BUS)
             return False
         async with bus as device:
-            # C5.6: a peer mid-train, or one that outlived this side's reset, leaves partial-frame
-            # bytes in the driver's rxbuf. E4 would recover from it reactively, but a live link
-            # would then log a fault on every boot, indistinguishable in the FRAM history from a
-            # real one. A boot-time drain is not a fault and is not counted.
+            # C5.6: a peer that outlived this side's reset leaves partial-frame bytes in the rxbuf.
+            # E4 would recover reactively, but then every boot of a live link logs a fault the FRAM
+            # history cannot tell from a real one. A boot drain is not a fault, and not counted.
             drained = await self._drain(device, first_ms=(bus.poll_wait_ms * 2) + _POLL_JITTER_MS)
         if drained:
             # C5.6: a boot-time drain is expected on a live link and is deliberately not counted -

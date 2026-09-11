@@ -16,11 +16,9 @@ if TYPE_CHECKING:
 DEVICE_SCRIPTS = Path(__file__).resolve().parent.parent / "device_scripts"
 RESULT_RE = re.compile(r"^RESULT: (PASS|FAIL)(.*)$", re.MULTILINE)
 
-# Both scripts import asy_uart_comm, which is a submodule with no include-selectable owner, so
-# nothing pulls it into a dev firmware today - see BACKLOG.md's `uart_crossover` entry. Until that
-# lands, `mpremote run` fails with ImportError on a board whose firmware simply does not contain
-# the module, which is a missing build dependency rather than a protocol failure. The tests are
-# written now and run unchanged once a firmware containing the module can be built.
+# Both scripts import asy_uart_comm, which a dev firmware built today does contain (sensortask_dev
+# imports it, and build_firmware.py freezes all of src/). The guard below is therefore not an
+# expected skip - it only names the cause if some future firmware lacks it (BACKLOG.md).
 _MISSING_MODULE_RE = re.compile(r"ImportError: no module named 'asy_uart_comm'")
 
 
@@ -30,8 +28,8 @@ def _run_or_skip(board: Board, script: str, timeout_s: float) -> str:
     except Exception as e:  # HardwareTestFailureError carries the device-side traceback in its text
         if _MISSING_MODULE_RE.search(str(e)):
             pytest.skip(
-                "this firmware does not contain asy_uart_comm - a selectable `uart_crossover` "
-                "module is what makes the auto-builder include it (BACKLOG.md)",
+                "this firmware does not contain asy_uart_comm - a dev build normally pulls it in "
+                "behind sensortask_dev, so check how this firmware was built (BACKLOG.md)",
             )
         raise
 

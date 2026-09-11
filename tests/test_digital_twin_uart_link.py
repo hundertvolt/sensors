@@ -70,10 +70,9 @@ def fakes() -> "tuple[TwinUART, TwinUART]":
 
 
 def build_linked_system() -> "TwinLink":
-    # The real dev object graph, then its two UART peripherals joined the way the bench rig's
-    # permanent jumper joins them (GP0<->GP9, GP1<->GP8). The pollers are swapped for the bounded
-    # stand-in afterwards: the Unix port never re-evaluates a Python object's ioctl() once it is
-    # registered with a real select.poll(), so readiness would otherwise never be seen at all.
+    # The real dev object graph, its two UART peripherals joined the way the bench jumper joins
+    # them (GP0<->GP9, GP1<->GP8). The pollers are then swapped for the bounded stand-in: a real
+    # select.poll() never re-checks a Python object's ioctl(), so readiness would never be seen.
     run(sensortask_dev.build_system(cfg_path=_tmp_cfg_dir()))
     dev = sensortask_dev
     assert dev.uart0 is not None and dev.uart1 is not None
@@ -86,10 +85,9 @@ def build_linked_system() -> "TwinLink":
 
 
 async def exchange(work: "Coroutine[Any, Any, T]") -> "T":
-    # The initiator's call returning does not mean the responder is finished: it still has its own
-    # last read to complete, and the twin link delivers by real wire time. Cutting the listener off
-    # there would leave an unconsumed frame on the wire for the next exchange to trip over - which
-    # is a harness artefact, not a protocol fault, so the harness is what has to wait.
+    # The initiator's call returning does not mean the responder is finished: it still has its last
+    # read to complete, and the twin delivers by real wire time. Cutting the listener off would
+    # strand a frame for the next exchange - a harness artefact, so the harness waits it out.
     dev = sensortask_dev
     assert dev.uart_responder is not None
     listener = asyncio.create_task(dev.uart_responder.uart_listen())

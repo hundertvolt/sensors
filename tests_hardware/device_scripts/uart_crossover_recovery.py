@@ -1,11 +1,9 @@
 """Isolated-driver device script: the failure half of the crossover-jumper tier - one-sided silence
 recovers within the specified window, and a deliberately mismatched payload_size fails loudly
 rather than silently corrupting, which is the one configuration error the design cannot self-heal."""
-# The fault knobs live behind a small injector object (H5): the flash tier drives them through the
-# peripherals themselves, and a future external injector - pulling a line, inverting it, adding
-# noise - implements the same three methods so these bodies do not have to be reshaped for it.
-# Declared inline rather than imported: `mpremote run` uploads exactly one file, so a device script
-# can only import what is frozen into the firmware.
+# The fault knobs sit behind a small injector object (H5): the flash tier drives them through the
+# peripherals themselves, and a future external injector implements the same three methods, so these
+# bodies need no reshaping. Inline because `mpremote run` uploads exactly one file.
 
 import asyncio
 

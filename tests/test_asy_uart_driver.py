@@ -37,12 +37,9 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":
 
 def make_uart(**kwargs: "Any") -> UART:
     uart = UART(0, tx_pin=0, rx_pin=1, **kwargs)
-    # Replaces the real select.poll() init() installs, for every UART in this file rather than only
-    # the ones that were noticed: the Unix port never re-evaluates a Python object's ioctl() after
-    # registration, so anything awaiting readiness through it blocks forever on a CI runner while
-    # passing locally (CLAUDE.md's known hang cause - this is the standing "never a real
-    # select.poll() behind uart.poller" rule). Always-ready by default; a test needing a specific
-    # readiness schedule reassigns uart.poller with its own _StepPoller, as several below do.
+    # Replaces the real select.poll() init() installs, for every UART in this file: the Unix port
+    # never re-checks a Python object's ioctl() after registration, so readiness waits hang on CI
+    # (CLAUDE.md). Always-ready here; tests needing a schedule reassign their own _StepPoller.
     uart.poller = _StepPoller([select.POLLIN | select.POLLOUT])  # type: ignore[assignment]
     return uart
 
@@ -456,11 +453,9 @@ def test_rxbuf_and_baudrate_are_readable_back() -> None:
 
 
 def test_no_uart_built_here_polls_through_a_real_select_poll() -> None:
-    # CLAUDE.md's standing rule, asserted rather than left to review. A real select.poll() behind
-    # uart.poller is the known CI-only hang: the Unix port never re-evaluates a Python object's
-    # ioctl() after registration, so _write_all()'s unbounded ready(POLLOUT) wait blocks forever on
-    # a runner while passing locally. That is exactly how it escaped review once - six write-path
-    # tests were green locally and timed out in CI.
+    # CLAUDE.md's standing rule, asserted rather than left to review: a real select.poll() behind
+    # uart.poller is the known CI-only hang, since _write_all()'s ready(POLLOUT) wait then blocks
+    # forever on a runner. That is how it escaped review once - six tests green locally, red in CI.
     real_poll_type = type(select.poll()).__name__
     assert type(make_uart().poller).__name__ != real_poll_type
     assert type(cobs_uart().poller).__name__ != real_poll_type
@@ -715,10 +710,9 @@ def test_resync_framing_is_inert_for_the_pass_through_codec() -> None:
 
 
 def test_cancel_during_a_completing_read_still_terminates() -> None:
-    # B1.1: the cancel arrives while the lock is held but no ready() is in flight (here, during
-    # the post-read CRC yield) and the read then completes normally. Before the fix, ready() never
-    # observed self.cancel, self.cancelled was never set, and cancel_read_timeout() awaited
-    # forever - a permanent wedge in the mechanism that exists to prevent wedges.
+    # B1.1: the cancel arrives while the lock is held but no ready() is in flight (here, during the
+    # post-read CRC yield) and the read then completes normally. Before the fix nothing ever
+    # acknowledged it and cancel_read_timeout() awaited forever - a wedge in the anti-wedge.
     uart = make_uart()
     uart.poller = _StepPoller([select.POLLIN])  # type: ignore[assignment]
     fake(uart).feed_rx(b"abcd")

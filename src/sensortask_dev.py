@@ -51,16 +51,9 @@ _DNS_TIMEOUT_MS = const(500)  # per-server, per-attempt DNS lookup budget
 _DNS_TRIES = const(1)  # retry budget per DNS server
 _NTP_FETCH_TIMEOUT_MS = const(5000)  # timeout for the actual NTP request/reply round trip
 
-# The bench rig's permanent UART0<->UART1 crossover jumper (GP0<->GP9, GP1<->GP8, see
-# dev_legacy/README.md), which exists for exactly this: it makes J.7's self-compatibility property
-# physically testable rather than only modelled. Both instances are constructed from these same
-# constants - payload_size and timeout are out-of-band agreements that must match on both ends, and
-# nothing is negotiated, so a single source for them is what stops a local mismatch (G1.6).
-# GPIO24/25 (UART1) and GPIO28/29 (UART0) are deliberately avoided: the Pico W datasheet gives
-# GPIO23/24/25/29 to the wireless chip, so each of those pairs has a taken half and would collide
-# with WiFi - GPIO28 alone is free, but a UART needs both halves of its pair.
-# Note for whoever adds a BME688 here: its BSEC coprocessor wants UART0 on GPIO16/17, and one
-# peripheral can serve one pin pair - it cannot coexist with this jumper's own UART0 claim.
+# The bench rig's permanent UART0<->UART1 crossover jumper (GP0<->GP9, GP1<->GP8, see dev_legacy/
+# README.md) makes J.7's self-compatibility property physically testable; Part J says why these pins
+# and not another legal pair. Both instances share these constants, never negotiated (G1.6).
 _UART_PAYLOAD_SIZE = const(48)
 _UART_TIMEOUT_MS = const(1000)
 _UART_BAUDRATE = const(115200)
@@ -439,17 +432,9 @@ async def build_system(
     notify_service.finalize()
     conn.set_ext_led(pixel)  # callback for wifi led - after both conn and pixel exist
 
-    # Registration-based Microdot REST/API service - built here, after every module it registers
-    # exists, exactly like conn.set_ext_led()'s own cross-wiring just above. Mirrors
-    # sensortask_wozi.py's own WebserverService(...) call exactly - only the underlying
-    # scd_reader/bmp_reader/sgp_reader/conn/ntp objects differ in their pin wiring, not this
-    # registration shape.
-    # Placed after every FRAM-allocating module and immediately before the webserver, which is
-    # what the ordering constraint is actually about: AsyFramManager is a bump-pointer allocator,
-    # so instantiation order *is* the on-chip layout. These two take no fram= (RAM-only loggers,
-    # exactly as the webserver below), so they shift nothing and Part A.7's seven-chunk order is
-    # untouched; FRAM backing stays available and would append two chunks here, never insert.
-    # They must exist before the webserver because its own error_sources= list includes them.
+    # After every FRAM-allocating module and before the webserver: AsyFramManager is a bump-pointer
+    # allocator, so instantiation order is the on-chip layout. Both take no fram=, so Part A.7's
+    # seven-chunk order is untouched; the webserver's error_sources= list needs them to exist first.
     uart0 = asy_uart_driver.UART(
         0, 0, 1, baudrate=_UART_BAUDRATE, rxbuf=_UART_BUF_BYTES, txbuf=_UART_BUF_BYTES, poll_wait_ms=_UART_POLL_WAIT_MS,
     )
@@ -474,6 +459,9 @@ async def build_system(
         name="UART_RESP",
     )
 
+    # Registration-based Microdot REST/API service, built after every module it registers exists,
+    # like conn.set_ext_led()'s cross-wiring above. Mirrors sensortask_wozi.py's WebserverService()
+    # call exactly - only the underlying reader/conn/ntp objects differ, not the registration shape.
     app = Microdot()
     webserver = WebserverService(
         app,

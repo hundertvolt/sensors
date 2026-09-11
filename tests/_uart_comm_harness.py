@@ -21,10 +21,9 @@ if TYPE_CHECKING:
 
     T = TypeVar("T")
 
-    # Every protocol callback is (cmd_id) -> (valid, value), sync or async, so the result is
-    # either the pair itself or a coroutine yielding it - `object` says exactly that. Spelled as
-    # a Protocol rather than a Callable alias so it matches asy_uart_comm.py's own named-parameter
-    # form structurally, which a positional-only Callable does not.
+    # Every protocol callback is (cmd_id) -> (valid, value), sync or async, so the result is either
+    # the pair or a coroutine yielding it - `object` says exactly that. A Protocol rather than a
+    # Callable alias, so it matches asy_uart_comm.py's named-parameter form structurally.
     class CommCallback(Protocol):
         def __call__(self, cmd_id: int) -> object: ...
 
@@ -86,12 +85,9 @@ class Pair:
         return bytes(self.link.direction_from(self.fake_b).wire_log)
 
     async def with_listener(self, work: "Coroutine[Any, Any, T]", rounds: int = 1) -> "T":
-        # Runs the responder's listen loop alongside the initiator's own call, which is the only
-        # way a stop-and-wait exchange can make progress: both ends have to be scheduled.
-        # The initiator's call returning does not mean the responder is finished: it still has its
-        # own last read to complete. Cutting it off there would leave an unconsumed frame on the
-        # wire for the next exchange to trip over - a harness artefact, not a protocol fault - so
-        # the listener is awaited to completion and only cancelled if it genuinely stalls.
+        # Runs the responder's listen loop alongside the initiator's call: a stop-and-wait exchange
+        # only progresses when both ends are scheduled. The initiator returning does not mean the
+        # responder is done, so the listener is awaited out and cancelled only if it truly stalls.
         listener = asyncio.create_task(self._listen_rounds(rounds))
         try:
             return await work

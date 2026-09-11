@@ -1,10 +1,9 @@
 """Pluggable frame codecs for asy_uart_driver.py: Framing_Pass (byte-identical no-op, the default)
 and Framing_COBS (delimiter framing, no 0x00 anywhere in an encoded frame).
 Every method returns None on invalid input or a failed allocation - never raises."""
-# Encode order on write is build -> CRC -> encode -> delimiter, and the exact reverse on read, so
-# the CRC keeps its position underneath the codec and a protocol layer above stays CRC-agnostic
-# (SPECIFICATION.md Part J.3). Selecting a delimited codec changes the bytes on the wire and is a
-# coordinated flag day - see UART_C_PORT_CHANGELOG.md A11.
+# Encode order on write is build -> CRC -> encode -> delimiter, the exact reverse on read, so the
+# CRC keeps its position underneath the codec (SPECIFICATION.md Part J.3). Selecting a delimited
+# codec changes the bytes on the wire and is a coordinated flag day - UART_C_PORT_CHANGELOG.md A11.
 
 import asyncio
 
@@ -21,10 +20,9 @@ class Framing_Base:
     # only what it actually changes. Mirrors crc_checks.py's CRC_Base/CRC_Pass split, so a caller
     # can hold either family behind one dispatch table.
     def __init__(self, max_frame: int = 0, run_length: int = 0, trailer: int = 0) -> None:
-        # Parameterized the way crc_checks.py's CRC_Base is, so a subclass supplies constants
-        # rather than reimplementing the arithmetic: run_length is the longest span one code byte
-        # can describe (0 = the frame carries no code bytes at all) and trailer the delimiter bytes
-        # appended after it.
+        # Parameterized like crc_checks.py's CRC_Base, so a subclass supplies constants rather than
+        # arithmetic: run_length is the longest span one code byte can describe (0 = no code bytes
+        # at all) and trailer the delimiter bytes appended after it.
         self.max_frame = max(max_frame, 0)
         self.run_length = max(run_length, 0)
         self.trailer = max(trailer, 0)

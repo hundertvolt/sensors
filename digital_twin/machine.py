@@ -454,10 +454,9 @@ class _LinkDirection:
 
 
 class UARTLink:
-    # Twin-fidelity byte-level crossover between two UART fakes: one FIFO per direction, the same
-    # fault knobs as the mock link, plus real wire time - a byte only becomes readable once its
-    # transmission would actually have finished at the configured baud rate. That is what keeps a
-    # timing-dependent recovery (drain, cooldown) from passing for the wrong reason (A4.3).
+    # Byte-level crossover between two UART fakes: one FIFO per direction, the mock link's fault
+    # knobs, plus real wire time - a byte becomes readable only once its transmission would have
+    # finished at the configured baud rate, so a drain or cooldown cannot pass wrongly (A4.3).
     def __init__(self, uart_a: "UART", uart_b: "UART", capacity_a_to_b: int | None = None, capacity_b_to_a: int | None = None) -> None:
         if uart_a._link is not None or uart_b._link is not None:
             raise ValueError("UART already attached to a link")
@@ -466,10 +465,9 @@ class UARTLink:
         self.endpoints = (uart_a, uart_b)
         self.a_to_b = _LinkDirection(uart_b.rxbuf if capacity_a_to_b is None else capacity_a_to_b, uart_a.baudrate)
         self.b_to_a = _LinkDirection(uart_a.rxbuf if capacity_b_to_a is None else capacity_b_to_a, uart_b.baudrate)
-        # Wire time is kept as a plain microsecond offset from one epoch captured here, via
-        # ticks_diff(), rather than as raw ticks values: the arithmetic below mixes it with byte
-        # durations, and ticks values are opaque. A twin run longer than ticks_us()' own period
-        # would need re-anchoring; no test comes close.
+        # Wire time is a plain microsecond offset from this epoch via ticks_diff(), not raw ticks:
+        # the arithmetic below mixes it with byte durations and ticks values are opaque. A run
+        # longer than ticks_us()' period would need re-anchoring; no test comes close.
         self._epoch_us = time.ticks_us()
         self._next_free_us = [0, 0]  # per direction: when the wire is idle again
         uart_a._link = self
@@ -568,20 +566,16 @@ class UARTLink:
 
 
 class UART(io.IOBase):
-    # Twin UART, deliberately independent of tests/machine.py's own (see this module's docstring)
-    # but held to the same semantics by tests/_uart_link_contract.py. io.IOBase is what lets
-    # asy_uart_driver.py's init() register it with a real select.poll() without raising; tests
-    # still reassign .poller to a bounded stand-in afterwards, since the Unix port never
-    # re-evaluates a Python object's ioctl() after registration (CLAUDE.md's known hang cause).
+    # Independent of tests/machine.py's own UART (see this module's docstring) but held to the same
+    # semantics by tests/_uart_link_contract.py. io.IOBase lets init() register it with a real
+    # select.poll(); tests still swap .poller for a bounded stand-in (CLAUDE.md's known hang cause).
     _MP_STREAM_POLL = 3  # py/stream.h
     _MAX_BUFFER_SIZE = 32766
     _UART_INVERT_MASK = 3
 
-    # One live instance per peripheral id. Real machine.UART() on this port re-inits the
-    # peripheral rather than refusing, so constructing another instance on the same id supersedes
-    # the first - and the twin makes that explicit: the superseded object is deinit'd and detached
-    # from any link, so it cannot silently keep delivering to a stale peer while the new one
-    # believes it owns the bus. That silent mis-routing is the failure this models (A4.2).
+    # One live instance per peripheral id. Real machine.UART() re-inits the peripheral rather than
+    # refusing, so a second instance on one id supersedes the first; the twin deinits and detaches
+    # the loser so it cannot keep delivering to a stale peer - the mis-routing this models (A4.2).
     _live: "dict[int, UART]" = {}
     superseded = 0  # how many instances have been displaced this way, for a test to assert on
 

@@ -1469,3 +1469,27 @@ Both now copy through a `memoryview`, which is also what the sibling push branch
 - **`uart_get_into()`/`uart_get_stream()` validate their destination/callback before the readiness
   gate**, while `uart_set_into()`/`uart_set_stream()` gate first. Both are correct; they just log a
   different `errno` when a module is both unready and called with a bad argument.
+
+## M — Comment-discipline pass (2026-09-11)
+
+CLAUDE.md's documentation bar applied to every file this branch touches: one header block per
+module, three lines at most, and inline comments as short WHY notes rather than multi-paragraph
+reasoning. Every comment block this branch added that ran past three lines — 52 of them across 14
+files, the worst at 22, 11 and 10 lines — is now three lines or fewer, and
+`src/asy_uart_driver.py`'s four-line module docstring is three. Section banners are left alone.
+
+Nothing load-bearing was dropped. Two facts that no longer fit an inline note moved into
+`SPECIFICATION.md` instead: the dev bench's pin choice, including why GPIO16/17 is left free for a
+BME688's BSEC coprocessor (Part J), and the pin-mux mapping the port macros produce — UART0 on
+0/1, 12/13, 16/17, 28/29 and UART1 on 4/5, 8/9, 20/21, 24/25 (Part A.6).
+
+**Two real defects found while reading, both in this branch's own additions.**
+
+| # | File | Defect |
+|---|---|---|
+| M1 | `src/sensortask_dev.py` | The UART wiring was inserted between the webserver's own explanatory comment and the `Microdot()` call it describes, leaving the comment attached to the wrong statement. Moved back down to the webserver. |
+| M2 | `tests_hardware/flash/test_uart_crossover.py`, `tests_hardware/bench/test_uart_link_under_api_load.py` | Both still said `asy_uart_comm` reaches no dev firmware without a selectable `uart_crossover` module, and one said so in a skip message a future session would read. Part I's own correction — `sensortask_dev.py` imports it, and `build_firmware.py` freezes all of `src/` — had reached `BACKLOG.md` but not these two comments. Corrected: the guards stay as diagnostics, not as expected skips. |
+
+Gates after the pass: `lint.sh` clean, all three `typecheck.sh` passes clean, `tests_scripts/` PASS,
+60/60 MicroPython files ALL PASSED, and the four touched `src/` modules cross-compile for armv6m
+(`asy_uart_comm.mpy` 12229 B against 12230 B before — comments carry no bytecode).

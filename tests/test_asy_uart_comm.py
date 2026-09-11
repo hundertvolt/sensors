@@ -286,11 +286,9 @@ def test_a_failed_buffer_allocation_degrades_every_entry_point() -> None:
 
 
 def test_a_partially_failed_allocation_refuses_construction_outright() -> None:
-    # _allocate() catches MemoryError around the three scratch buffers as a group, so a heap that
-    # ran out after the two frame buffers succeeded returns zero-length ones. Checking only the TX
-    # frame let that object pass construction and open the readiness gate: the first padded frame
-    # then shrank the long-lived TX buffer (a bytearray slice assignment resizes on a length
-    # mismatch) and the command-id write raised IndexError out of a never-raise module.
+    # _allocate() guards the three scratch buffers as one group, so a heap exhausted after the two
+    # frame buffers returns zero-length ones. Checking only the TX frame let that object open the
+    # gate: padding then shrank the TX buffer and the id write raised out of a never-raise module.
     real_allocate = UART_Comm._allocate
 
     def starved(self: UART_Comm) -> "Any":
@@ -484,11 +482,9 @@ def test_a_multi_bit_command_is_rejected_rather_than_falling_through() -> None:
 
 
 def test_an_undefined_command_is_distinguished_from_a_valid_but_unexpected_one() -> None:
-    # The exact-match membership test is what separates "this is not a command at all" from "this
-    # is a command, but not the one due here" - and only the second is the peer's own contract
-    # violation, which E1.3 reports under its own errno precisely so it is findable in a log. A
-    # bitmask collapses the two, since 0x06 shares bits with both GET and SET; the safety property
-    # alone is already covered by the expected-command check, so this is what makes D4.1 load-bearing.
+    # The exact-match membership test separates "not a command at all" from "a command, but not the
+    # one due here" - only the second is the peer's contract violation, which E1.3 gives its own
+    # errno. A bitmask collapses the two, since 0x06 shares bits with both GET and SET (D4.1).
     comm = make_comm()
     undefined = comm._validate(build_frame(cmd=0x06), _CMD_ACK, 1, 1, 1)
     wrong_kind = comm._validate(build_frame(cmd=_CMD_SET), _CMD_ACK, 1, 1, 1)
@@ -865,10 +861,9 @@ def test_an_oversize_payload_is_rejected_before_the_first_frame() -> None:
 
 
 def test_a_missing_ack_at_each_train_position_aborts_and_resyncs() -> None:
-    # F1.3: nothing is re-sent - that is the design, not a gap.
-    # A PAYLOAD_SIZE + 1 payload is a three-chunk train, so the responder emits three ACKs: the
-    # command header's, the middle chunk's, and the deferred final one. Each is dropped in turn by
-    # cutting the responder's direction after exactly that many whole frames.
+    # F1.3: nothing is re-sent - that is the design, not a gap. A PAYLOAD_SIZE + 1 payload is a
+    # three-chunk train, so the responder emits three ACKs (header, middle chunk, deferred final);
+    # each is dropped in turn by cutting its direction after exactly that many whole frames.
     for kept_acks in (0, 1, 2):
         pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()))
         pair.link.direction_from(pair.fake_b).truncate_after = kept_acks * _FRAME
@@ -1197,9 +1192,8 @@ def test_a_streamed_total_size_must_be_declared() -> None:
 
 
 # ---- caller-supplied arguments (audit pass) ------------------------------------------------------
-# Every case below was confirmed against the real interpreter before the guard existed: each one
-# either raised out of a module contracted never to raise, or - worse - succeeded while sending
-# something other than what was asked for.
+# Each case was confirmed against the real interpreter before its guard existed: it either raised
+# out of a module contracted never to raise, or succeeded while sending something else entirely.
 
 
 def test_an_out_of_range_command_id_is_refused_not_truncated() -> None:

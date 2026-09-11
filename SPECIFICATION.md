@@ -279,7 +279,9 @@ datasheet is not in the repo, so its GPIO function-mux table is not readable her
 question the authoritative substitute is the pinned MicroPython source itself
 (`ports/rp2/machine_uart.c`'s `IS_VALID_PERIPH`/`IS_VALID_TX`/`IS_VALID_RX`, and the equivalent
 macros in `machine_i2c.c`/`machine_spi.c`), which the toolchain checkout always has — not a web
-search. The board datasheet does cover what is board-specific: p.8 lists GPIO23/24/25/29 as the
+search. Those macros give UART TX on `pin % 4 == 0`, RX on `pin % 4 == 1` and the peripheral from
+`((pin + 4) & 8) >> 3` — so UART0 owns 0/1, 12/13, 16/17, 28/29 and UART1 owns 4/5, 8/9, 20/21,
+24/25. The board datasheet does cover what is board-specific: p.8 lists GPIO23/24/25/29 as the
 pins the wireless chip takes.
 
 **BMP390**: `datasheets/bmp3xx/` holds BMP384/BMP388 but not BMP390. The project owner has confirmed
@@ -2391,7 +2393,9 @@ above `asy_fram_driver.py`: a sync allocate-only constructor with a readiness ga
 logger by either route, `get_task_starters()`/`get_timer_starters()`/`get_error_counter()`/
 `reset_error_counter()` for generic supervision and observability, and a never-raise contract on
 every entry point. `dev` carries two instances across its crossover jumper (A.7 step 13b); `wozi`
-carries none. Everything below describes what the promoted module does, not what the legacy one
+carries none. The jumper uses UART0 on GP0/GP1 and UART1 on GP8/GP9: of the other legal pin-mux
+pairs, GPIO24/25 and GPIO28/29 each have a half the wireless chip takes (A.6), and GPIO16/17 is
+left free because a BME688's BSEC coprocessor wants UART0 there and one peripheral serves one pair. Everything below describes what the promoted module does, not what the legacy one
 did — the differences are enumerated in `UART_C_PORT_CHANGELOG.md`.
 
 ## J.1 Scope and the two-implementation contract

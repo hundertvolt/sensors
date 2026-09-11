@@ -50,10 +50,9 @@ def raw_frame(uid: int = 1, cmd: int = _CMD_SET, size: int = 1, chunks: int = 2,
 
 
 def listen_once(pair: Pair, injected: bytes) -> "tuple[Any, bytes]":
-    # Feeds one raw frame straight into the responder's receive path and returns what uart_listen()
-    # made of it together with every byte the responder put back on the wire. The wire log is the
-    # real assertion: a rejected frame must produce no ACK at all, since withholding one is the
-    # only way this protocol signals rejection.
+    # Feeds one raw frame into the responder's receive path and returns what uart_listen() made of
+    # it plus every byte it put back on the wire. The wire log is the real assertion: withholding
+    # an ACK is the only way this protocol signals rejection.
     pair.fake_b.feed_rx(injected)
     result = run(pair.responder.uart_listen(), limit=10)
     pair.link.settle()
@@ -443,13 +442,9 @@ async def _measure_retention(pair: Pair) -> "tuple[int, float]":
 
 
 def test_a_long_run_of_transactions_retains_no_memory() -> None:
-    # CLAUDE.md's memory-safety ladder in its most direct form: a link that runs for weeks has no
-    # backstop below the watchdog, so the steady state must not grow the heap at all. Found by
-    # measurement rather than review - the first attempt measured ~2.6 kB retained per
-    # transaction, which turned out to be tests/machine.py's own then-unbounded call log, not
-    # anything in src/. The fakes' recorders are neutralised so the number is src/'s alone.
-    # The pair is built out here, not inside the coroutine: hazard_pair() runs its own asyncio.run(),
-    # and nesting that inside a running loop segfaults the interpreter rather than raising.
+    # CLAUDE.md's memory-safety ladder at its most direct: a link running for weeks has no backstop
+    # below the watchdog, so the steady state must not grow the heap. The fakes' recorders are muted
+    # so the number is src/'s alone; hazard_pair() is built out here (its asyncio.run() cannot nest).
     pair = hazard_pair()
     for fake in (pair.fake_a, pair.fake_b):
         fake.log.append = lambda entry: None  # type: ignore[method-assign]

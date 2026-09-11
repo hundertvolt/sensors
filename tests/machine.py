@@ -97,13 +97,9 @@ _LOG_MAXLEN = 4096  # entries kept per fake call log; see _CallLog for why it is
 
 
 class _CallLog(list):  # type: ignore[type-arg]
-    # A plain list grows forever. That was harmless while only I2C/SPI drivers logged a handful of
-    # calls per test, but a UART fake driven by the protocol records ~18 entries per transaction,
-    # so a long run exhausts the interpreter's heap - surfacing as a MemoryError inside the code
-    # under test rather than here, the misdiagnosis CLAUDE.md's own flaky-MemoryError note warns
-    # about. digital_twin/machine.py already bounds its own logs with a deque; a deque cannot be
-    # used here because these tests index [-1], compare == [] and call clear(), none of which
-    # MicroPython's deque supports - so this keeps a list and drops the oldest half when full.
+    # A plain list grows forever. Harmless at a handful of I2C/SPI calls per test, but the UART fake
+    # records ~18 entries per transaction, so a long run exhausts the heap as a MemoryError inside
+    # the code under test. A deque cannot serve: these tests index [-1], compare == [] and clear().
     def __init__(self) -> None:
         super().__init__()
         self.dropped = 0  # assertable: a test reading the whole log can tell it is not the whole log
@@ -382,25 +378,9 @@ class UART(io.IOBase):
         timeout_char: int = 1,
         invert: int = 0,
     ) -> None:
-        # Real mp_machine_uart_make_new()/init_helper() validation (confirmed against
-        # ports/rp2/machine_uart.c, v1.29.0 - real numeric constants, not guessed), in the same
-        # order the real source checks it (id, then invert, then rxbuf, then txbuf - matters for
-        # which exception surfaces first when more than one field is invalid at once). A value below
-        # MIN_BUFFER_SIZE (32) silently clamps up instead of raising - not modeled here since it
-        # doesn't affect the raise/no-raise contract this fake needs. baudrate/bits/stop have no
-        # raising validation in real source either - a non-positive value is silently ignored
-        # (keeps the previous/hardware default) rather than rejected - so this fake doesn't validate
-        # them either. **Deliberately not modeled**: real hardware also validates that tx/rx are
-        # GPIO pins actually muxable to the *chosen* UART peripheral's TX/RX role - that table lives
-        # in the RP2040 silicon datasheet, which isn't in this repo's datasheets/ folder (only the
-        # Pico W *board* datasheet is). The mapping is no longer a web-search guess: it reads out of
-        # the pinned MicroPython source itself (ports/rp2/machine_uart.c's IS_VALID_PERIPH/IS_VALID_TX/
-        # IS_VALID_RX at v1.29.0 - TX is pin % 4 == 0, RX pin % 4 == 1, and ((pin + 4) & 8) >> 3
-        # picks the peripheral, giving UART0 0/1, 12/13, 16/17, 28/29 and UART1 4/5, 8/9, 20/21,
-        # 24/25). It still isn't encoded here as a raise condition - every test picks legal pins, and
-        # adding the check would only reject wiring this fake never sees. The generic Pin(id) range check
-        # (0 <= id <= 28) still applies before a pin ever reaches UART(), since asy_uart_driver.py's
-        # own init() always constructs Pin(tx_pin)/Pin(rx_pin) first.
+        # Real make_new()/init_helper() validation against ports/rp2/machine_uart.c v1.29.0, in the
+        # source's own order (id, invert, rxbuf, txbuf - which matters when several are invalid at
+        # once). Not modeled, none of them raising: the MIN_BUFFER_SIZE clamp, baudrate/bits/stop, pins (A.6).
         if id not in (0, 1):
             raise ValueError(f"UART({id}) doesn't exist")
         if invert & ~self._UART_INVERT_MASK:
@@ -496,9 +476,8 @@ class UART(io.IOBase):
 
 class _LinkDirection:
     # One direction of a UARTLink: the fault knobs plus the counters and wire log that make each
-    # knob's effect assertable (A3.1 - every knob is an explicit schedule, never unseeded
-    # randomness). Offsets in drop_indices/corrupt_indices are stream offsets within this
-    # direction, counted over every byte offered to it, not per write() call.
+    # knob assertable (A3.1 - every knob is an explicit schedule, never randomness). Offsets in
+    # drop_indices/corrupt_indices are stream offsets within this direction, not per write() call.
     def __init__(self, capacity: int) -> None:
         self.capacity = capacity  # far-side FIFO bound; overflow drops the newest bytes
         self.silent = False  # one-sided silence
@@ -532,10 +511,9 @@ class _LinkDirection:
 
 
 class UARTLink:
-    # Byte-level crossover between two UART fakes - one independent FIFO per direction, each with
-    # its own fault knobs (A1/A3). The fakes keep no concept of a frame: a write is appended to the
-    # far side's rx_queue and reads split wherever the reader asks. Never registers anything with a
-    # real select.poll() - use LinkPoller below (A1.2).
+    # Byte-level crossover between two UART fakes - one independent FIFO per direction with its own
+    # fault knobs (A1/A3). The fakes keep no concept of a frame: a write lands in the far side's
+    # rx_queue and reads split where the reader asks. Never uses a real poll() - see LinkPoller (A1.2).
     def __init__(self, uart_a: "UART", uart_b: "UART", capacity_a_to_b: int | None = None, capacity_b_to_a: int | None = None) -> None:
         if uart_a._link is not None or uart_b._link is not None:
             raise ValueError("UART already attached to a link")
@@ -612,10 +590,9 @@ class UARTLink:
 
 
 class LinkPoller:
-    # Bounded select.poll() stand-in for one UART fake, re-querying its ioctl() on every call
-    # (A2.2). Installed by reassigning asy_uart_driver.UART.poller after construction, keeping
-    # src/ free of a testability seam. Never wraps a real select.poll(): the Unix port does not
-    # re-evaluate a Python object's ioctl() after register(), which is CLAUDE.md's known CI hang.
+    # Bounded select.poll() stand-in for one UART fake, re-querying its ioctl() every call (A2.2).
+    # Installed by reassigning asy_uart_driver.UART.poller, keeping src/ free of a testability seam.
+    # Never wraps a real select.poll(): the port never re-checks ioctl() - CLAUDE.md's known CI hang.
     def __init__(self, uart: "UART", not_ready_calls: int = 0) -> None:
         self._uart = uart
         self._not_ready = not_ready_calls
