@@ -13,14 +13,17 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 if TYPE_CHECKING:
     from typing import Any
 
+    import network
+
 import _http_client
 import machine
 from _unix_port_udp_addr_shim import patch_asy_udp_socket_for_unix_port
 from launch import (
     _parse_wifi_outcome,  # deliberately reused, not reimplemented - see digital_twin/README.md
-    parse_fault_spec,  # noqa: F401 - re-exported for callers that only need the spec parser
-    parse_hang_spec,  # noqa: F401 - re-exported for callers that only need the spec parser
+    parse_fault_spec,
+    parse_hang_spec,
 )
+from unix_port_gc_unwedge import unwedge_heap_after_interrupt
 from unix_port_poll_prewarm import prewarm_poll_set
 
 import sensortask_wozi
@@ -80,6 +83,7 @@ class RunConfig:
         faults: "list[tuple[str, str, int]] | None" = None,
         hangs: "list[tuple[str, str, float, int]] | None" = None,
         wifi_outcomes: "list[int] | None" = None,
+        *,
         soak: bool = False,
         soak_cycles: int = _SOAK_CYCLES_DEFAULT,
         duration: "float | None" = None,
@@ -112,6 +116,10 @@ class RunConfig:
             and self.soak_cycles == other.soak_cycles
             and self.duration == other.duration
         )
+
+    # Value equality without a matching hash: spell out what CPython already does implicitly for
+    # any class defining __eq__, so the intent is explicit rather than inherited by accident.
+    __hash__ = None  # type: ignore[assignment]  # mypy has no special case for the standard unhashable-by-__eq__ idiom
 
     def __repr__(self) -> str:
         return (
@@ -150,11 +158,11 @@ def parse_args(argv: "list[str]") -> RunConfig:
             port = int(_pop_value(remaining, arg))
         elif arg == "--fram-state-path":
             value = _pop_value(remaining, arg)
-            fram_state_path = value if value else None  # "" means in-memory only, matches
+            fram_state_path = value or None  # "" means in-memory only, matches
             # machine.configure_fram_state_path(None)'s own documented meaning.
         elif arg == "--scd30-state-path":
             value = _pop_value(remaining, arg)
-            scd30_state_path = value if value else None  # same "" convention as --fram-state-path above
+            scd30_state_path = value or None  # same "" convention as --fram-state-path above
         elif arg == "--seed":
             seed = int(_pop_value(remaining, arg))
         elif arg == "--fault":
@@ -188,7 +196,7 @@ def parse_args(argv: "list[str]") -> RunConfig:
     )
 
 
-def _apply_fault(device: str, op: str, times: int, chips: "dict[str, Any]", wlan: "Any") -> None:
+def _apply_fault(device: str, op: str, times: int, chips: "dict[str, Any]", wlan: "network.WLAN") -> None:
     # Same shape as digital_twin/launch.py's own _apply_fault() - reads the real bus objects
     # sensortask_wozi.build_system() actually constructed rather than launch.py's own local vars.
     import errno
@@ -229,9 +237,10 @@ async def _wait_until_serving(host: str, port: int, timeout_s: float = 10.0) -> 
         while True:
             try:
                 await _http_client.fetch(host, port, "GET", "/")
-                return
             except OSError:
                 await asyncio.sleep_ms(50)
+            else:
+                return
 
     await asyncio.wait_for(poll(), timeout_s)
 
@@ -299,13 +308,13 @@ async def _soak(host: str, port: int, cycles: int) -> "list[str]":
             f"digital_twin/run_wozi_integration.py memory trend: baseline={mem_samples[0]} "
             f"min={min(per_cycle_samples)} max={max(per_cycle_samples)} early_avg={early_avg:.0f} "
             f"late_avg={late_avg:.0f} trend={trend:.0f} tolerance={_MEM_TREND_TOLERANCE_BYTES} "
-            f"quarter_size={quarter} samples={len(per_cycle_samples)}"
+            f"quarter_size={quarter} samples={len(per_cycle_samples)}",
         )
         if trend > _MEM_TREND_TOLERANCE_BYTES:
             failures.append(
                 f"gc.mem_free() trend declined by {trend:.0f} bytes (early_avg={early_avg:.0f} -> "
                 f"late_avg={late_avg:.0f}) over {cycles} cycles, exceeding the "
-                f"{_MEM_TREND_TOLERANCE_BYTES}-byte tolerance"
+                f"{_MEM_TREND_TOLERANCE_BYTES}-byte tolerance",
             )
     return failures
 
@@ -350,11 +359,11 @@ async def main(config: RunConfig) -> "dict[str, Any]":
         f"digital_twin/run_wozi_integration.py starting - host={config.host!r} port={config.port!r} "
         f"fram_state_path={config.fram_state_path!r} scd30_state_path={config.scd30_state_path!r} "
         f"seed={config.seed!r} soak_cycles={config.soak_cycles!r} "
-        f"duration={config.duration!r} faults={config.faults!r} hangs={config.hangs!r} wifi_outcomes={config.wifi_outcomes!r}"
+        f"duration={config.duration!r} faults={config.faults!r} hangs={config.hangs!r} wifi_outcomes={config.wifi_outcomes!r}",
     )
 
     main_task = asyncio.get_event_loop().create_task(
-        sensortask_wozi.main(cfg_path=_CONFIG_DIR, web_host=config.host, web_port=config.port)
+        sensortask_wozi.main(cfg_path=_CONFIG_DIR, web_host=config.host, web_port=config.port),
     )
     summary: dict[str, Any] = {"failures": [], "would_have_triggered_count": 0}
     try:
@@ -450,7 +459,8 @@ if __name__ == "__main__":
     try:
         _summary = asyncio.run(main(_config))
     except KeyboardInterrupt:
-        # Confirmed by direct reproduction against the pinned MicroPython v1.28.0 Unix port:
+        # Confirmed by direct reproduction against the pinned MicroPython Unix port (v1.28.0,
+        # re-checked at v1.29.0 - extmod/asyncio/ is byte-identical between the two tags):
         # extmod/asyncio/core.py's run_until_complete() only catches (CancelledError, Exception) in
         # its scheduler loop - KeyboardInterrupt is a BaseException, not an Exception subclass, so a
         # real SIGINT delivered while every task is parked in the scheduler's own
@@ -462,6 +472,7 @@ if __name__ == "__main__":
         # module-level chip singletons these read (_current_fram_chip/_current_scd30_chip) don't need
         # the event loop at all. A harmless no-op if main()'s own finally already ran (e.g. an
         # interrupt landing while a task was genuinely mid-bytecode-execution, not parked).
+        unwedge_heap_after_interrupt()
         machine.flush_fram()
         machine.flush_scd30()
         _print_wdt_status()  # same "parked in scheduler poll" gap as flush_fram()/flush_scd30()

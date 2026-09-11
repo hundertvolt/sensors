@@ -32,16 +32,31 @@ def fake(i2c: I2C) -> FakeI2C:
 
 
 # ---------------------------------------------------------------------------
-# init / deinit - real hardware deinit(), not just dropping the reference
+# init / deinit - dropping the reference IS the state change; the forwarded
+# machine.I2C.deinit() is a no-op on rp2 (SPECIFICATION.md Part F.5)
 # ---------------------------------------------------------------------------
 
 
-def test_deinit_calls_real_hardware_deinit() -> None:
+def test_deinit_forwards_to_machine_i2c_and_drops_the_reference() -> None:
     i2c = make_i2c()
     mock = fake(i2c)
     i2c.deinit()
-    assert mock.deinit_called is True
-    assert i2c._i2c is None
+    assert mock.deinit_called is True  # forwarded, even though rp2 implements it as a no-op
+    assert i2c._i2c is None  # this is what actually makes the wrapper report "bus unavailable"
+
+
+def test_forwarded_machine_i2c_deinit_does_not_disable_the_underlying_bus() -> None:
+    # Pins down the real rp2 semantics the fake models: machine.I2C.deinit() leaves the .deinit
+    # protocol slot NULL, so the peripheral keeps running and every raw bus op still works. Only
+    # asy_i2c_driver.I2C's own dropped reference makes operations no-op - reattaching the same
+    # underlying bus object proves the hardware side was never actually torn down.
+    i2c = make_i2c()
+    mock = fake(i2c)
+    mock.registers[(0x50, 0x00)] = bytearray(b"\x01\x02")
+    i2c.deinit()
+    assert mock.readfrom_mem(0x50, 0x00, 2) == b"\x01\x02"  # underlying bus still fully alive
+    i2c._i2c = mock
+    assert i2c.get_register_struct(0x50, 0x00, ">H") == 0x0102
 
 
 def test_reinit_deinits_the_previous_bus_first() -> None:
@@ -234,13 +249,14 @@ class _FakeStruct:
     # never actually be reached through any real malformed format string. Faked here by
     # substituting asy_i2c_driver's own module-level `struct` name, the same technique this
     # project's other test files use for their own otherwise-unreachable guards.
-    def __init__(self, unpack_result: "Any") -> None:
+    def __init__(self, unpack_result: "tuple[Any, ...] | Exception") -> None:
         self._unpack_result = unpack_result
 
     def calcsize(self, fmt: str) -> int:
         return struct.calcsize(fmt)
 
-    def unpack(self, fmt: str, buf: object) -> "Any":
+    def unpack(self, _fmt: str, _buf: object) -> "tuple[Any, ...]":  # struct.unpack()'s own two
+        # arguments are positional-only (a C function), so nothing can name them at a call site.
         if isinstance(self._unpack_result, Exception):
             raise self._unpack_result
         return self._unpack_result
@@ -450,7 +466,7 @@ def test_bus_busy_surfaces_as_etimedout() -> None:
     i2c = make_i2c()
     fake(i2c).busy = True
     ops = (
-        lambda: i2c.scan(),
+        i2c.scan,
         lambda: i2c.writeto(0x50, b"x"),
         lambda: i2c.readfrom_into(0x50, bytearray(1)),
         lambda: i2c.get_bits(0x50, 1, 0x00, 0),
@@ -552,7 +568,7 @@ def test_double_deinit_is_idempotent() -> None:
     i2c = make_i2c()
     mock = fake(i2c)
     i2c.deinit()
-    i2c.deinit()  # must not touch the (already gone) bus a second time
+    i2c.deinit()  # the wrapper's own `is not None` guard, not anything the hardware enforces
     assert mock.deinit_count == 1
 
 
@@ -589,6 +605,9 @@ def test_reinit_mid_session_switches_to_a_fresh_bus() -> None:
     assert old_mock.log[0] == ("writeto", 0x50, b"first", True)
     assert old_mock.log[-1] == ("deinit",)  # init() deinits the old bus before swapping it out
     assert fake(i2c).log[-1] == ("writeto", 0x50, b"second", True)
+    # Fake-only: real rp2 machine.I2C(id) returns one static per-bus singleton, so a re-init would
+    # hand back the *same* object. tests/machine.py deliberately diverges here (see its own note)
+    # so a test can tell the pre- and post-re-init bus apart; nothing in src/ depends on either.
     assert fake(i2c) is not old_mock
 
 
@@ -739,10 +758,13 @@ def test_exception_inside_session_still_releases_the_lock() -> None:
     i2c = make_i2c()
     device = I2CDevice(i2c, 0x50)
 
+    def boom() -> None:  # raised from a helper, so the raise isn't lexically inside the try below
+        raise RuntimeError("boom")
+
     async def scenario() -> None:
         try:
             async with device:
-                raise RuntimeError("boom")
+                boom()
         except RuntimeError:
             pass
         assert not i2c.async_lock.locked()
@@ -819,16 +841,16 @@ def test_reentrant_acquisition_on_the_same_device_deadlocks_and_cleans_up() -> N
     device = I2CDevice(i2c, 0x50)
 
     async def reentrant() -> None:
-        async with device:
-            async with device:
-                pass
+        async with device, device:
+            pass
 
     async def scenario() -> bool:
         try:
             await asyncio.wait_for(reentrant(), 0.2)
-            return False
         except asyncio.TimeoutError:
             return True
+        else:
+            return False
 
     assert run(scenario())
     assert not i2c.async_lock.locked()

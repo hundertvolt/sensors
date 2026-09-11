@@ -12,8 +12,9 @@ except ImportError:  # typing isn't available on the real MicroPython test inter
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Coroutine
-    from typing import Any, TypeVar
+    from collections.abc import Awaitable, Coroutine, Iterator
+    from types import ModuleType
+    from typing import Any, NoReturn, TypeVar
 
     T = TypeVar("T")
 
@@ -292,7 +293,7 @@ class AdversarialPeer:
         t0 = time.ticks_ms()
         while True:
             if poller.ipoll(0):
-                return self.sock.recvfrom(bufsize)
+                return self.sock.recvfrom(bufsize)  # type: ignore[return-value]  # AF_INET only, see asy_udp_socket.py
             if time.ticks_diff(time.ticks_ms(), t0) > timeout_ms:
                 raise OSError("AdversarialPeer.recv() timed out")
             await asyncio.sleep_ms(5)
@@ -478,8 +479,9 @@ def test_recvfrom_respects_timeout_against_a_realistically_delayed_genuine_reply
             _, client_addr = await peer.recv(64)
             assert client_addr is not None
 
-            asyncio.create_task(peer.send_after(client_addr, b"in-time", delay_ms=40))
+            in_time_sender = asyncio.create_task(peer.send_after(client_addr, b"in-time", delay_ms=40))
             in_time, _ = await client.recvfrom(64, timeout_ms=300)
+            await in_time_sender  # already finished - the reply above is what it sent
 
             too_late_sender = asyncio.create_task(peer.send_after(client_addr, b"too-late", delay_ms=300))
             too_late, _ = await client.recvfrom(64, timeout_ms=100)
@@ -504,15 +506,18 @@ class _RecordingAsyncio:
     # _RaisingSocketModule below replaces asy_udp_socket's own module-level `socket` name instead
     # of monkeypatching the real module) - wraps the real module, recording every sleep_ms()
     # duration while still actually sleeping, so ready()'s own timeout/loop logic keeps working.
-    def __init__(self, real: "Any") -> None:
+    def __init__(self, real: "ModuleType") -> None:
         self._real = real
         self.sleep_ms_calls: list[int] = []
 
-    def sleep_ms(self, ms: int) -> "Any":
+    def sleep_ms(self, ms: int) -> "Awaitable[None]":
         self.sleep_ms_calls.append(ms)
-        return self._real.sleep_ms(ms)
+        # Bound to its own local first: a module attribute is statically untyped, and this
+        # wrapper's own callers (ready()'s poll loop) do await what it hands back.
+        sleeper: Awaitable[None] = self._real.sleep_ms(ms)
+        return sleeper
 
-    def __getattr__(self, name: str) -> "Any":
+    def __getattr__(self, name: str) -> object:
         return getattr(self._real, name)
 
 
@@ -551,7 +556,7 @@ class _MemoryErrorOnceSocketModule:
     SOL_SOCKET = socket.SOL_SOCKET
     SO_REUSEADDR = socket.SO_REUSEADDR
 
-    def socket(self, af: int, type: int) -> "Any":
+    def socket(self, _af: int, _sock_type: int) -> "NoReturn":  # asy_udp_socket.py calls socket() positionally
         raise MemoryError("simulated allocation failure")
 
 
@@ -580,19 +585,19 @@ class _MemoryErrorSocketWrapper:
     # MemoryError instead of doing real I/O, proving each public method's except clause catches
     # it too, not just OSError. Everything else (close(), used by disconnect()) falls through to
     # the real socket via __getattr__.
-    def __init__(self, real: "Any") -> None:
+    def __init__(self, real: "socket.socket") -> None:
         self._real = real
 
-    def sendto(self, *a: "Any", **k: "Any") -> "Any":
+    def sendto(self, *_a: object, **_k: object) -> "NoReturn":
         raise MemoryError("simulated allocation failure")
 
-    def write(self, *a: "Any", **k: "Any") -> "Any":
+    def write(self, *_a: object, **_k: object) -> "NoReturn":
         raise MemoryError("simulated allocation failure")
 
-    def recvfrom(self, *a: "Any", **k: "Any") -> "Any":
+    def recvfrom(self, *_a: object, **_k: object) -> "NoReturn":
         raise MemoryError("simulated allocation failure")
 
-    def __getattr__(self, name: str) -> "Any":
+    def __getattr__(self, name: str) -> object:
         return getattr(self._real, name)
 
 
@@ -658,16 +663,16 @@ def test_recvfrom_returns_none_sentinel_on_memoryerror() -> None:
 class _RaisingUnregisterPoller:
     # unregister() raises - register()/ipoll() still delegate to the real poller so the rest of
     # the object's lifecycle (which already ran before this gets swapped in) is unaffected.
-    def __init__(self, real: "Any") -> None:
+    def __init__(self, real: "select.poll") -> None:
         self._real = real
 
-    def unregister(self, sock: "Any") -> None:
+    def unregister(self, _sock: "socket.socket") -> "NoReturn":  # asy_udp_socket.py calls unregister() positionally
         raise OSError("simulated unregister failure")
 
-    def register(self, *a: "Any", **k: "Any") -> "Any":
-        return self._real.register(*a, **k)
+    def register(self, *a: object, **k: object) -> None:
+        self._real.register(*a, **k)
 
-    def ipoll(self, *a: "Any", **k: "Any") -> "Any":
+    def ipoll(self, *a: object, **k: object) -> "Iterator[tuple[Any, ...]]":
         return self._real.ipoll(*a, **k)
 
 
@@ -683,6 +688,7 @@ def test_disconnect_clears_state_even_when_unregister_raises() -> None:
         await sock._connect()
         assert sock.connected
         real_poller = sock.poller
+        assert real_poller is not None  # a connected socket always has one
         sock.poller = _RaisingUnregisterPoller(real_poller)  # type: ignore[assignment]
         ok = await sock.disconnect()
         return sock.sock is None, sock.poller is None, sock.connected is False, ok
@@ -695,13 +701,13 @@ def test_disconnect_clears_state_even_when_unregister_raises() -> None:
 
 
 class _RaisingCloseSocket:
-    def __init__(self, real: "Any") -> None:
+    def __init__(self, real: "socket.socket") -> None:
         self._real = real
 
-    def close(self) -> None:
+    def close(self) -> "NoReturn":
         raise OSError("simulated close failure")
 
-    def __getattr__(self, name: str) -> "Any":
+    def __getattr__(self, name: str) -> object:
         return getattr(self._real, name)
 
 
@@ -713,6 +719,7 @@ def test_disconnect_clears_state_even_when_sock_close_raises() -> None:
         await sock._connect()
         assert sock.connected
         real_sock = sock.sock
+        assert real_sock is not None  # a connected socket always has one
         sock.sock = _RaisingCloseSocket(real_sock)  # type: ignore[assignment]
         ok = await sock.disconnect()
         return sock.sock is None, sock.poller is None, sock.connected is False, ok
@@ -731,15 +738,15 @@ class _DisconnectingPoller:
     # Wraps a real poller but nulls the owning AsyUDPSocket's self.poller the first time ipoll()
     # is called - simulates disconnect() firing concurrently on the same instance from another
     # coroutine while ready()'s poll loop is still in flight.
-    def __init__(self, owner: "AsyUDPSocket", real: "Any") -> None:
+    def __init__(self, owner: "AsyUDPSocket", real: "select.poll") -> None:
         self.owner = owner
         self._real = real
         self.fired = False
 
-    def register(self, *a: "Any", **k: "Any") -> "Any":
-        return self._real.register(*a, **k)
+    def register(self, *a: object, **k: object) -> None:
+        self._real.register(*a, **k)
 
-    def ipoll(self, *a: "Any", **k: "Any") -> "Any":
+    def ipoll(self, *a: object, **k: object) -> "Iterator[tuple[Any, ...]]":
         if not self.fired:
             self.fired = True
             self.owner.poller = None
@@ -762,6 +769,7 @@ def test_ready_survives_a_concurrent_disconnect_mid_poll_loop() -> None:
         try:
             await sock._connect()
             real_poller = sock.poller
+            assert real_poller is not None  # a connected socket always has one
             sock.poller = _DisconnectingPoller(sock, real_poller)  # type: ignore[assignment]
             return await sock.ready(select.POLLIN, timeout_ms=200, wait_time_ms=10)
         finally:
@@ -900,9 +908,10 @@ def test_cancellation_propagates_out_of_recvfrom() -> None:
             task.cancel()
             try:
                 await task
-                return False  # should never get here
             except asyncio.CancelledError:
                 return True
+            else:
+                return False  # should never get here
         finally:
             await server.disconnect()
 
@@ -951,7 +960,7 @@ class _RaisingSocketModule:
     SOL_SOCKET = socket.SOL_SOCKET
     SO_REUSEADDR = socket.SO_REUSEADDR
 
-    def socket(self, af: int, type: int) -> "Any":
+    def socket(self, _af: int, _sock_type: int) -> "NoReturn":  # asy_udp_socket.py calls socket() positionally
         raise OSError("simulated resource exhaustion")
 
 
@@ -1030,12 +1039,15 @@ def test_async_context_manager_disconnects_on_exit() -> None:
 def test_async_context_manager_disconnects_even_on_exception() -> None:
     addr = make_addr()
 
+    def boom() -> None:  # raised from a helper, so the raise isn't lexically inside the try below
+        raise ValueError("boom")
+
     async def scenario() -> AsyUDPSocket:
         sock = AsyUDPSocket(addr, mode="server")
         try:
             async with sock:
                 await sock._connect()
-                raise ValueError("boom")
+                boom()
         except ValueError:
             pass
         return sock
@@ -1239,7 +1251,7 @@ def test_dns_server_pattern_sendto_failure_does_not_corrupt_subsequent_serving()
             await server.sendto(b"reply to nobody", unreachable_client_addr)  # never raises either way
 
             peer.sock.sendto(b"next real query", addr)
-            data, from_addr = await server.recvfrom(64, timeout_ms=500)
+            _data, from_addr = await server.recvfrom(64, timeout_ms=500)
             assert from_addr is not None
             await server.sendto(b"real reply", from_addr)
             reply, _ = await peer.recv(64, timeout_ms=500)
@@ -1649,9 +1661,10 @@ def test_ready_cancellation_still_propagates_through_the_new_try_except() -> Non
             task.cancel()
             try:
                 await task
-                return False  # should never get here
             except asyncio.CancelledError:
                 return True
+            else:
+                return False  # should never get here
         finally:
             await sock.disconnect()
 

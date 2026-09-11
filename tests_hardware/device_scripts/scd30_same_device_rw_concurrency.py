@@ -41,7 +41,7 @@ async def _main() -> None:
                 temp = await scd.get_temperature()
                 if temp is not None and not (TEMP_MIN_C <= temp <= TEMP_MAX_C):
                     read_errors.append(f"iter {i}: Temp={temp!r} outside plausible bounds")
-            except Exception as e:  # noqa: BLE001 - any exception is itself the corruption signal this script exists to catch
+            except Exception as e:
                 read_errors.append(f"iter {i}: {type(e).__name__}: {e}")
             read_completed += 1
             if i % 10 == 0:
@@ -53,7 +53,7 @@ async def _main() -> None:
         try:
             # THE one NVM write for this whole test group - see this script's own module docstring.
             await scd.set_ambient_pressure(1013)
-        except Exception as e:  # noqa: BLE001 - see reader()'s own comment
+        except Exception as e:
             write_error = f"{type(e).__name__}: {e}"
         write_done = True
 

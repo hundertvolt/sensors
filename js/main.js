@@ -32,7 +32,7 @@ export async function startApp(elements) {
 
     deviceNameEl.textContent = defs.device.displayName;
 
-    let stopCurrentSection = () => {};
+    let stopCurrentSection = () => { /* no section rendered yet - replaced on the first select */ };
     const setCurrentNav = initNav({
         defs,
         appShellEl,

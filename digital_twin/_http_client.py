@@ -19,11 +19,16 @@ class HttpResponse:
         self.headers = headers
         self.body = body
 
-    def json(self) -> "Any":
-        return json.loads(self.body)
+    # Every response body this client is ever asked to decode is a JSON *object* (the REST layer's
+    # own make_response() envelope, or a flat settings dict) - hence dict, not a bare value. The
+    # value side stays Any: callers index nested levels (res.json()["notification"]["PauseTime"]),
+    # which no non-Any JSON alias can express without a cast at every call site.
+    def json(self) -> "dict[str, Any]":
+        decoded: dict[str, Any] = json.loads(self.body)  # named local, not a bare return: json.loads() is Any-typed
+        return decoded
 
 
-def build_request(method: str, path: str, host: str, json_body: "Any | None" = None) -> bytes:
+def build_request(method: str, path: str, host: str, json_body: "dict[str, object] | None" = None) -> bytes:
     body = b"" if json_body is None else json.dumps(json_body).encode()
     lines = [f"{method} {path} HTTP/1.1", f"Host: {host}", "Connection: close"]
     if json_body is not None:
@@ -49,7 +54,7 @@ def parse_header_line(line: bytes) -> "tuple[str, str] | None":
     return name.strip(), value.strip()
 
 
-async def fetch(host: str, port: int, method: str, path: str, json_body: "Any | None" = None) -> HttpResponse:
+async def fetch(host: str, port: int, method: str, path: str, json_body: "dict[str, object] | None" = None) -> HttpResponse:
     # reader/writer are the same underlying Stream object on this build (two names kept only for
     # readability/symmetry with Microdot's own convention) - close() is a no-op here, the socket
     # only actually closes via wait_closed() in the finally below.

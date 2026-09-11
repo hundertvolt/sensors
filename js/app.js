@@ -59,7 +59,7 @@ export async function startApp(elements) {
     }
     installMockFetch(defs, mockData);
 
-    let stopCurrentSection = () => {};
+    let stopCurrentSection = () => { /* no section rendered yet - replaced on the first select */ };
     const setCurrentNav = initNav({
         defs,
         appShellEl,

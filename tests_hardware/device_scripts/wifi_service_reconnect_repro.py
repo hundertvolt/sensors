@@ -7,14 +7,6 @@ import time
 
 import asy_wifi_service
 
-try:
-    from typing import TYPE_CHECKING
-except ImportError:  # typing has no runtime presence on MicroPython, on-device or in the Unix-port test build
-    TYPE_CHECKING = False
-
-if TYPE_CHECKING:
-    from typing import Any
-
 GARBAGE_SSID = "wozi-diag2-net-does-not-exist"
 REAL_SSID = "sensors-bench-ap"
 
@@ -26,16 +18,6 @@ def log(msg: str) -> None:
 
 
 _PHASE_NAMES = {0: "STA_SEEKING", 1: "STA_ESTABLISHED", 2: "HOTSPOT", 3: "DEACTIVATED"}
-
-
-async def _task_exception(task: "asyncio.Task[Any]") -> BaseException | None:
-    # MicroPython's asyncio Task has no .exception()/.result() - awaiting a done task is the only
-    # way to recover why it ended (system_service.py's own _log_dead_task() uses the same trick).
-    try:
-        await task
-    except BaseException as e:  # noqa: BLE001 - re-caught verbatim to report, not handle
-        return e
-    return None
 
 
 async def main() -> None:
@@ -67,7 +49,7 @@ async def main() -> None:
             reached_hotspot = True
             break
         if task.done():
-            log(f"wlan_connect() TASK DIED: {await _task_exception(task)}")
+            log(f"wlan_connect() TASK DIED: {task.data}")  # `data` is the terminating exception, set by asyncio/core.py's run_until_complete()
             return
         await asyncio.sleep(1)
 
@@ -100,7 +82,7 @@ async def main() -> None:
             log(f"ifconfig: {conn.wlan.ifconfig()}")
             return
         if task.done():
-            log(f"wlan_connect() TASK DIED: {await _task_exception(task)}")
+            log(f"wlan_connect() TASK DIED: {task.data}")  # `data` is the terminating exception, set by asyncio/core.py's run_until_complete()
             return
         await asyncio.sleep(1)
 

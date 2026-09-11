@@ -47,7 +47,12 @@ if TYPE_CHECKING:
     from collections.abc import Coroutine
     from typing import Any, TypeVar
 
+    from typing_extensions import Self
+
+    from asy_bmp3xx_driver import BMPResults  # (pressure, temperature, timestamp), the driver's own alias
+
     T = TypeVar("T")
+    from print_log import ErrorLog
 
 
 def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
@@ -65,7 +70,7 @@ class _FastAsyncSleep:
     # slow for a test driving read_loop() as a background task through a bounded sleep(0) pump
     # loop (same technique as test_asy_sgp40_driver.py's own _FastAsyncSleep). asyncio.sleep is a
     # shared, process-wide function, restored on exit regardless of how the `with` block exits.
-    def __enter__(self) -> "_FastAsyncSleep":
+    def __enter__(self) -> "Self":
         self._real_sleep = asyncio.sleep
 
         async def _fast(_seconds: float) -> None:
@@ -89,7 +94,7 @@ class _RaiseOnArm:
     def __init__(self, exc: "type[BaseException]" = OSError) -> None:
         self._exc = exc
 
-    def __enter__(self) -> "_RaiseOnArm":
+    def __enter__(self) -> "Self":
         FakeTimer.raise_on_arm_exc = self._exc
         FakeTimer.raise_on_arm = True
         return self
@@ -124,7 +129,7 @@ _CAL_RAW = bytes(
         4285,  # P9
         22,  # P10
         -60,  # P11
-    )
+    ),
 )
 _ADC_P = 8300000
 _ADC_T = 8500000
@@ -210,7 +215,7 @@ class _BadBurstRead:
         self._device = bmp.i2c_bmp3xx.i2c_device
         self._value = value
 
-    def __enter__(self) -> "_BadBurstRead":
+    def __enter__(self) -> "Self":
         self._real = self._device.get_register_struct
 
         async def _patched(reg_addr: int, reg_format: str, addrsize: "int | None" = None) -> "int | float | bytes | None":
@@ -396,7 +401,7 @@ def test_reset_raises_runtime_error_when_cmd_err_set() -> None:
 
 
 def test_reset_succeeds_when_err_reg_clear() -> None:
-    i2c, bmp = ready_bmp()
+    _i2c, bmp = ready_bmp()
     run(bmp.reset())  # must not raise
 
 
@@ -499,7 +504,7 @@ def test_read_waits_for_data_ready_before_burst_read() -> None:
         await flipper
         return result
 
-    pressure, temperature = run(scenario())
+    _pressure, temperature = run(scenario())
     assert abs(temperature - _EXPECTED_TEMPERATURE) < 1e-6
 
 
@@ -564,7 +569,7 @@ def test_read_bmp_logs_and_degrades_when_the_data_burst_returns_an_unexpected_re
     seed_data(i2c, _adc_to_data6(_ADC_P, _ADC_T))
     assert run(reader._init_bmp())
 
-    async def scenario() -> "tuple[tuple, dict]":
+    async def scenario() -> "tuple[BMPResults, ErrorLog]":
         results = await reader._read_bmp()
         await reader._store_bmp(results)
         return results, await reader.get_error_counter()
@@ -625,7 +630,7 @@ def test_get_altitude_computes_a_plausible_value_at_default_sea_level_pressure()
 
 
 def test_get_altitude_raises_value_error_for_zero_sea_level_pressure() -> None:
-    i2c, bmp = ready_bmp()
+    _i2c, bmp = ready_bmp()
     bmp.sea_level_pressure = 0.0
     try:
         run(bmp.get_altitude())
@@ -641,7 +646,7 @@ def test_get_altitude_raises_value_error_for_negative_sea_level_pressure() -> No
     # float") instead - the fractional exponent (** 0.190284) on a negative base produces a
     # complex number, which float() then rejects. An accidental consequence of Python's numeric
     # tower, not an intentional raise - get_altitude() now raises a clear ValueError up front.
-    i2c, bmp = ready_bmp()
+    _i2c, bmp = ready_bmp()
     bmp.sea_level_pressure = -50.0
     try:
         run(bmp.get_altitude())
@@ -658,7 +663,7 @@ def test_get_altitude_raises_value_error_for_negative_sea_level_pressure() -> No
 
 
 def test_pressure_oversampling_round_trip_every_valid_setting() -> None:
-    i2c, bmp = ready_bmp()
+    _i2c, bmp = ready_bmp()
     for value in _OSR_SETTINGS:
         run(bmp.set_pressure_oversampling(value))
         assert run(bmp.get_pressure_oversampling()) == value
@@ -677,14 +682,14 @@ def test_pressure_oversampling_rejects_invalid_values() -> None:
 
 
 def test_temperature_oversampling_round_trip_every_valid_setting() -> None:
-    i2c, bmp = ready_bmp()
+    _i2c, bmp = ready_bmp()
     for value in _OSR_SETTINGS:
         run(bmp.set_temperature_oversampling(value))
         assert run(bmp.get_temperature_oversampling()) == value
 
 
 def test_temperature_oversampling_rejects_invalid_values() -> None:
-    i2c, bmp = ready_bmp()
+    _i2c, bmp = ready_bmp()
     try:
         run(bmp.set_temperature_oversampling(7))
         raised = False
@@ -701,7 +706,7 @@ def test_pressure_and_temperature_oversampling_share_osr_register_without_clobbe
     # get_bits()/set_bits() (used now) do the read-modify-write in one call with no yield in
     # between, so setting one field can never observe or clobber a torn intermediate state of the
     # other - checked here by setting both, in each order, and confirming neither is lost.
-    i2c, bmp = ready_bmp()
+    _i2c, bmp = ready_bmp()
     run(bmp.set_pressure_oversampling(8))
     run(bmp.set_temperature_oversampling(4))
     assert run(bmp.get_pressure_oversampling()) == 8
@@ -717,7 +722,7 @@ def test_set_pressure_oversampling_holds_device_session_lock_for_the_whole_opera
     # Structural counterpart to the race-fix test above: while another operation holds the shared
     # per-sensor session lock, set_pressure_oversampling() must block entirely (not partially
     # apply) until that lock is released - it cannot observe or act on a half-finished state.
-    i2c, bmp = ready_bmp()
+    _i2c, bmp = ready_bmp()
 
     async def scenario() -> None:
         async with bmp.i2c_bmp3xx:
@@ -732,7 +737,7 @@ def test_set_pressure_oversampling_holds_device_session_lock_for_the_whole_opera
 
 
 def test_filter_coefficient_round_trip_every_valid_setting() -> None:
-    i2c, bmp = ready_bmp()
+    _i2c, bmp = ready_bmp()
     for value in _IIR_SETTINGS:
         run(bmp.set_filter_coefficient(value))
         assert run(bmp.get_filter_coefficient()) == value
@@ -914,7 +919,7 @@ def test_reader_set_trigger_secs_logs_and_does_not_raise_on_bad_value() -> None:
     # value would raise straight out of it instead of being logged like its siblings.
     reader = make_reader("bad_trigger")  # bus is irrelevant - set_trigger_secs never touches it
 
-    async def scenario() -> dict:
+    async def scenario() -> "ErrorLog":
         await reader.set_trigger_secs("not-a-number")  # type: ignore[arg-type]
         await reader.pr.setup()
         return await reader.get_error_counter()
@@ -950,7 +955,7 @@ def test_reader_set_trigger_secs_rejects_out_of_range_values() -> None:
     run(reader.set_trigger_secs(30))  # establish a known-good baseline value first
     for bad in (0, -1, 3601, 100000):
 
-        async def scenario(value: int = bad) -> dict:
+        async def scenario(value: int = bad) -> "ErrorLog":
             await reader.set_trigger_secs(value)
             await reader.pr.setup()
             return await reader.get_error_counter()
@@ -969,7 +974,7 @@ def test_reader_set_trigger_secs_rejects_inf_and_nan() -> None:
     run(reader.set_trigger_secs(30))  # establish a known-good baseline value first
     for bad in (float("inf"), float("-inf"), float("nan")):
 
-        async def scenario(value: float = bad) -> dict:
+        async def scenario(value: float = bad) -> "ErrorLog":
             await reader.set_trigger_secs(value)
             await reader.pr.setup()
             return await reader.get_error_counter()
@@ -1001,7 +1006,7 @@ def test_init_bmp_soft_degrades_on_out_of_range_stored_sample_interval() -> None
     assert run(reader._init_bmp()) is True  # doesn't fail the whole init over this
     assert run(reader.get_pressure_oversampling()) == 1  # other config values still applied
 
-    async def error_counter() -> dict:
+    async def error_counter() -> "ErrorLog":
         return await reader.get_error_counter()
 
     counters = run(error_counter())["BMP3XX"]
@@ -1011,7 +1016,7 @@ def test_init_bmp_soft_degrades_on_out_of_range_stored_sample_interval() -> None
 def test_reader_get_pressure_oversampling_logs_and_returns_none_on_bus_failure() -> None:
     reader = make_reader("get_pov")
 
-    async def scenario() -> "tuple[int | None, dict]":
+    async def scenario() -> "tuple[int | None, ErrorLog]":
         value = await reader.get_pressure_oversampling()
         await reader.pr.setup()
         counters = await reader.get_error_counter()
@@ -1025,7 +1030,7 @@ def test_reader_get_pressure_oversampling_logs_and_returns_none_on_bus_failure()
 def test_reader_set_pressure_oversampling_logs_and_returns_false_on_bus_failure() -> None:
     reader = make_reader("set_pov")
 
-    async def scenario() -> "tuple[bool, dict]":
+    async def scenario() -> "tuple[bool, ErrorLog]":
         ok = await reader.set_pressure_oversampling(8)
         await reader.pr.setup()
         counters = await reader.get_error_counter()
@@ -1080,7 +1085,7 @@ def _midpoint(kind: str, lo: "int | float", hi: "int | float") -> "int | float":
 
 
 def test_config_write_accepts_every_field_at_its_valid_boundaries_and_midpoint() -> None:
-    i2c, reader = make_clean_reader("cfg_valid")
+    _i2c, reader = make_clean_reader("cfg_valid")
     for name, (kind, lo, hi) in _FIELD_BOUNDS.items():
         for value in (lo, hi, _midpoint(kind, lo, hi)):
             ok, results = run(reader.cfgmgr.write_config({name: value}, _FULL_SCHEMA))
@@ -1092,7 +1097,7 @@ def test_config_write_accepts_every_field_at_its_valid_boundaries_and_midpoint()
 
 
 def test_config_write_rejects_single_out_of_range_field() -> None:
-    i2c, reader = make_clean_reader("cfg_single_invalid")
+    _i2c, reader = make_clean_reader("cfg_single_invalid")
     for name, (kind, lo, hi) in _FIELD_BOUNDS.items():
         step = 1 if kind == "int" else 0.1
         below = lo - step
@@ -1115,7 +1120,7 @@ def test_config_write_wrong_type_rejected_for_int_field_but_coerced_for_float_fi
     # in-range int instead of rejecting it as "wrong type" (SPECIFICATION.md Part A.8) - every
     # field in _FIELD_BOUNDS has 1 within its own [lo, hi], so this exercises acceptance, not an
     # accidental out-of-range rejection.
-    i2c, reader = make_clean_reader("cfg_wrong_type")
+    _i2c, reader = make_clean_reader("cfg_wrong_type")
     for name, (kind, _lo, _hi) in _FIELD_BOUNDS.items():
         if kind == "int":
             ok, results = run(reader.cfgmgr.write_config({name: "nope"}, _FULL_SCHEMA))
@@ -1134,14 +1139,14 @@ def test_config_write_wrong_type_rejected_for_int_field_but_coerced_for_float_fi
 def test_config_write_rejects_bool_for_int_field_despite_bool_being_an_int_subclass() -> None:
     # config_manager.py's type_or_range_error() uses `type(x) is not int`, which is strict -
     # bool's exact type is `bool`, not `int`, even though bool subclasses int in Python.
-    i2c, reader = make_clean_reader("cfg_bool_reject")
+    _i2c, reader = make_clean_reader("cfg_bool_reject")
     ok, results = run(reader.cfgmgr.write_config({"SampleInterv": True}, _FULL_SCHEMA))
     assert ok is True
     assert results["SampleInterv"] == "Invalid"
 
 
 def test_config_write_rejects_multiple_invalid_fields_while_keeping_valid_ones() -> None:
-    i2c, reader = make_clean_reader("cfg_multi_invalid")
+    _i2c, reader = make_clean_reader("cfg_multi_invalid")
     before = run(reader.cfgmgr.get_dict(_ALL_FIELD_NAMES))
     assert before is not None
     mixed: dict[str, int | float | str | bool | None] = {
@@ -1202,7 +1207,7 @@ def test_init_bmp_fails_and_logs_when_stored_oversampling_is_outside_hardware_do
 
 
 def test_config_write_accepts_every_legal_discrete_value() -> None:
-    i2c, reader = make_clean_reader("discrete_valid")
+    _i2c, reader = make_clean_reader("discrete_valid")
     for name, legal_values in _DISCRETE_FIELDS.items():
         for value in legal_values:
             ok, results = run(reader.cfgmgr.write_config({name: value}, _FULL_SCHEMA))
@@ -1216,7 +1221,7 @@ def test_config_write_accepts_every_legal_discrete_value() -> None:
 def test_write_config_rejects_a_value_outside_the_discrete_osr_domain() -> None:
     # 20 is an "in type, in old-range" int that was never a real legal OSR value (only
     # 1/2/4/8/16/32 are) - exactly the gap this validator closes.
-    i2c, reader = make_clean_reader("discrete_invalid_osr")
+    _i2c, reader = make_clean_reader("discrete_invalid_osr")
     for name in ("PressOvers", "TempOvers"):
         before = run(reader.cfgmgr.get_dict([name]))
         assert before is not None
@@ -1229,7 +1234,7 @@ def test_write_config_rejects_a_value_outside_the_discrete_osr_domain() -> None:
 
 def test_write_config_rejects_a_value_outside_the_discrete_iir_domain() -> None:
     # 100 is in the old [0, 127] range but not one of the real encoded IIR coefficients.
-    i2c, reader = make_clean_reader("discrete_invalid_iir")
+    _i2c, reader = make_clean_reader("discrete_invalid_iir")
     before = run(reader.cfgmgr.get_dict(["FiltCoeff"]))
     ok, results = run(reader.cfgmgr.write_config({"FiltCoeff": 100}, _FULL_SCHEMA))
     assert ok is True
@@ -1238,7 +1243,7 @@ def test_write_config_rejects_a_value_outside_the_discrete_iir_domain() -> None:
 
 
 def test_write_config_rejects_wrong_type_for_a_discrete_field() -> None:
-    i2c, reader = make_clean_reader("discrete_wrong_type")
+    _i2c, reader = make_clean_reader("discrete_wrong_type")
     ok, results = run(reader.cfgmgr.write_config({"PressOvers": "8"}, _FULL_SCHEMA))
     assert ok is True
     assert results["PressOvers"] == "Invalid"
@@ -1329,7 +1334,7 @@ def test_init_bmp_fails_and_logs_when_setup_raises() -> None:
     seed_calibration(i2c)
     seed_status(i2c, 0x10 | 0x60)
 
-    async def scenario() -> "tuple[bool, dict]":
+    async def scenario() -> "tuple[bool, ErrorLog]":
         ok = await reader._init_bmp()
         counters = await reader.get_error_counter()
         return ok, counters
@@ -1348,7 +1353,7 @@ def test_init_bmp_fails_and_logs_when_config_data_unreadable() -> None:
     seed_err(i2c, 0x00)
     reader.cfgmgr.valid = False  # simulate an unreadable/corrupted per-sensor config file
 
-    async def scenario() -> "tuple[bool, dict]":
+    async def scenario() -> "tuple[bool, ErrorLog]":
         ok = await reader._init_bmp()
         counters = await reader.get_error_counter()
         return ok, counters
@@ -1373,8 +1378,8 @@ def test_store_bmp_falls_back_to_default_compensation_values_when_config_unreada
     seed_data(i2c, _adc_to_data6(_ADC_P, _ADC_T))
     ok, results_valid = run(
         reader.cfgmgr.write_config(
-            {"PressOffset": 10.0, "TempOffset": 2.0, "SeaLevelOffs": 100.0, "MeanAtmTemp": 25.0}, _FULL_SCHEMA
-        )
+            {"PressOffset": 10.0, "TempOffset": 2.0, "SeaLevelOffs": 100.0, "MeanAtmTemp": 25.0}, _FULL_SCHEMA,
+        ),
     )
     assert ok is True
     assert all(status == "Valid" for status in results_valid.values())
@@ -1392,7 +1397,7 @@ def test_store_bmp_falls_back_to_default_compensation_values_when_config_unreada
 
     reader.cfgmgr.valid = False  # simulate an unreadable/corrupted per-sensor config file
 
-    async def scenario() -> dict:
+    async def scenario() -> "ErrorLog":
         await reader._store_bmp(results)
         return await reader.get_error_counter()
 
@@ -1408,7 +1413,7 @@ def test_store_bmp_falls_back_to_default_compensation_values_when_config_unreada
     # MeanAtmTemp fallback (15.0) has no observable effect at this height offset, by construction.
     assert fallback.SLPres == results[0]
     assert fallback.SLPres != compensated.SLPres  # the stored 100.0 offset really did change it
-    assert fallback.TS == results[2]  # timestamp is passed through untouched either way
+    assert results[2] == fallback.TS  # timestamp is passed through untouched either way
 
 
 def test_reader_read_error_check_threshold_and_self_heal() -> None:
@@ -1445,7 +1450,7 @@ def test_reader_error_counter_reflects_read_failures_via_print_log() -> None:
     seed_status(i2c, 0x10 | 0x60)
     seed_err(i2c, 0x00)
 
-    async def scenario() -> dict:
+    async def scenario() -> "ErrorLog":
         assert await reader._init_bmp()
         fake(i2c).nak_addresses.add(_ADDR)
         await reader._read_bmp()  # errno=11, "Lesefehler:"
@@ -1494,7 +1499,7 @@ def test_reader_uses_fram_backed_print_log_when_fram_provided() -> None:
     reader = BMP3xx_Reader(i2c, address=_ADDR, cfg_path=cfg_path, fram=manager)
     assert isinstance(reader.pr, PrintLogHistoryStore)
 
-    async def scenario() -> dict:
+    async def scenario() -> "ErrorLog":
         # _init_bmp()'s real call order: self.pr.setup() always runs first ("required for all
         # logged warnings and errors", per its own comment) - PrintLogHistoryStore.setup() is a
         # no-op until initialized, so a logged error before setup() would never actually persist.
@@ -1516,7 +1521,7 @@ def test_reader_uses_fram_backed_print_log_when_fram_provided() -> None:
     run(manager2.setup())
     rebooted_reader = BMP3xx_Reader(i2c, address=_ADDR, cfg_path=cfg_path, fram=manager2)
 
-    async def reboot_scenario() -> dict:
+    async def reboot_scenario() -> "ErrorLog":
         await rebooted_reader.pr.setup()  # loads persisted history from FRAM
         return await rebooted_reader.get_error_counter()
 
@@ -1674,8 +1679,8 @@ def test_set_dict_cfg_multi_field_discrete_and_continuous_together() -> None:
     seed_err(i2c, 0x00)
     results = run(
         reader._set_dict_cfg(
-            {"PressOvers": 20, "FiltCoeff": 15, "PressOffset": 12.5}, reader.get_cfg_schema()
-        )
+            {"PressOvers": 20, "FiltCoeff": 15, "PressOffset": 12.5}, reader.get_cfg_schema(),
+        ),
     )
     assert results == {"PressOvers": "Invalid", "FiltCoeff": "Valid", "PressOffset": "Valid"}
     assert run(reader.bmp.get_filter_coefficient()) == 15
@@ -1906,7 +1911,7 @@ def test_base_trigger_sets_trigger_event_only_once_the_configured_period_elapses
 
 
 def test_reader_set_temperature_oversampling_applies_the_value_and_returns_true() -> None:
-    i2c, reader = make_clean_reader("set_tov_ok")
+    _i2c, reader = make_clean_reader("set_tov_ok")
     assert run(reader.set_temperature_oversampling(8)) is True
     assert run(reader.bmp.get_temperature_oversampling()) == 8
 
@@ -1914,7 +1919,7 @@ def test_reader_set_temperature_oversampling_applies_the_value_and_returns_true(
 def test_reader_set_temperature_oversampling_logs_and_returns_false_on_bus_failure() -> None:
     reader = make_reader("set_tov_fail")
 
-    async def scenario() -> "tuple[bool, dict]":
+    async def scenario() -> "tuple[bool, ErrorLog]":
         ok = await reader.set_temperature_oversampling(4)
         await reader.pr.setup()
         counters = await reader.get_error_counter()
@@ -1926,7 +1931,7 @@ def test_reader_set_temperature_oversampling_logs_and_returns_false_on_bus_failu
 
 
 def test_reader_set_filter_coefficient_applies_the_value_and_returns_true() -> None:
-    i2c, reader = make_clean_reader("set_fc_ok")
+    _i2c, reader = make_clean_reader("set_fc_ok")
     assert run(reader.set_filter_coefficient(15)) is True
     assert run(reader.bmp.get_filter_coefficient()) == 15
 
@@ -1934,7 +1939,7 @@ def test_reader_set_filter_coefficient_applies_the_value_and_returns_true() -> N
 def test_reader_set_filter_coefficient_logs_and_returns_false_on_bus_failure() -> None:
     reader = make_reader("set_fc_fail")
 
-    async def scenario() -> "tuple[bool, dict]":
+    async def scenario() -> "tuple[bool, ErrorLog]":
         ok = await reader.set_filter_coefficient(31)
         await reader.pr.setup()
         counters = await reader.get_error_counter()

@@ -32,6 +32,8 @@ if TYPE_CHECKING:
     from collections.abc import Coroutine
     from typing import Any, TypeVar
 
+    from typing_extensions import Self
+
     T = TypeVar("T")
 
 
@@ -50,7 +52,7 @@ class _FastAsyncSleep:
     # Same technique as test_asy_scd30_driver.py's/test_asy_sgp40_driver.py's own _FastAsyncSleep -
     # asyncio.sleep is a shared, process-wide function, restored on exit regardless of how the
     # `with` block exits.
-    def __enter__(self) -> "_FastAsyncSleep":
+    def __enter__(self) -> "Self":
         self._real_sleep = asyncio.sleep
 
         async def _fast(_seconds: float) -> None:
@@ -169,7 +171,7 @@ _CMD_READ_MEASUREMENT = b"\x03\x00"
 _CMD_SET_TEMPERATURE_OFFSET = b"\x54\x03"
 
 
-def _parse_scd30_log(log: list, read_iterations: int) -> None:
+def _parse_scd30_log(log: "list[tuple[Any, ...]]", read_iterations: int) -> None:
     # Command-byte-based proof that same-device ops never interleave on the wire: parses the log
     # into non-overlapping runs and fails outright on any stray/out-of-place entry. A simpler
     # before/after log-length "span" check was tried and rejected - a coroutine legitimately
@@ -367,7 +369,7 @@ def test_general_call_absent_sibling_bmp3xx_alone_on_the_bus_survives_a_broadcas
 # ---------------------------------------------------------------------------
 
 
-def _touched_addresses(fake_bus: FakeI2C) -> set:
+def _touched_addresses(fake_bus: FakeI2C) -> set[int]:
     return {entry[1] for entry in fake_bus.log if entry[0] in ("writeto", "readfrom_into", "readfrom_mem", "writeto_mem")}
 
 
@@ -401,7 +403,7 @@ def test_scd30_never_touches_any_address_but_its_own() -> None:
         ):
             try:
                 await call()
-            except Exception:  # noqa: BLE001 - only the addresses *touched* matter for this sweep, not success
+            except Exception:  # only the addresses *touched* matter for this sweep, not success
                 pass
 
     with _FastAsyncSleep():
@@ -436,7 +438,7 @@ def test_bmp3xx_never_touches_any_address_but_its_own() -> None:
         ):
             try:
                 await call()
-            except Exception:  # noqa: BLE001 - see test_scd30's own comment
+            except Exception:  # see test_scd30's own comment
                 pass
 
     with _FastAsyncSleep():
@@ -464,7 +466,7 @@ def test_sgp40_touches_only_its_own_address_except_reset_which_touches_only_the_
         ):
             try:
                 await call()
-            except Exception:  # noqa: BLE001 - see test_scd30's own comment
+            except Exception:  # see test_scd30's own comment
                 pass
 
     with _FastAsyncSleep():

@@ -69,7 +69,7 @@ def parse_requires_tags(path: Path, device: str, instance_label: str) -> tuple[R
     return tuple(tags)
 
 
-def check_requires_tags(tags: "tuple[RequiresTag, ...]", bus_table: dict, device: str, instance_label: str, bus_name: str) -> None:
+def check_requires_tags(tags: "tuple[RequiresTag, ...]", bus_table: "dict[str, Any]", device: str, instance_label: str, bus_name: str) -> None:
     for tag in tags:
         actual = bus_table.get(tag.field)
         if actual is None:

@@ -6,9 +6,9 @@ import subprocess
 from pathlib import Path
 
 
-def _run_build_website(repo_root: Path, device: str, output_path: Path, check: bool=True) -> "subprocess.CompletedProcess[str]":
+def _run_build_website(repo_root: Path, device: str, output_path: Path, *, check: bool = True) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        ["scripts/build_website.sh", device, str(output_path)],
+        [str(repo_root / "scripts" / "build_website.sh"), device, str(output_path)],
         cwd=repo_root,
         capture_output=True,
         text=True,

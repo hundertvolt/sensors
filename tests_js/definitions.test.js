@@ -171,23 +171,23 @@ describe("loadDefinitions", () => {
     });
 
     it("returns the parsed definitions on a valid fetch", async () => {
-        window.fetch = vi.fn(async () => new Response(JSON.stringify(MINIMAL_VALID), { status: 200 }));
+        window.fetch = vi.fn(() => Promise.resolve(new Response(JSON.stringify(MINIMAL_VALID), { status: 200 })));
         const defs = await loadDefinitions("definitions/wozi.json");
         expect(defs.device.id).toBe("wozi");
     });
 
     it("throws on a non-ok HTTP response", async () => {
-        window.fetch = vi.fn(async () => new Response("not found", { status: 404 }));
+        window.fetch = vi.fn(() => Promise.resolve(new Response("not found", { status: 404 })));
         await expect(loadDefinitions("definitions/missing.json")).rejects.toThrow("404");
     });
 
     it("throws with the validation problems on a malformed document", async () => {
-        window.fetch = vi.fn(async () => new Response(JSON.stringify({ not: "valid" }), { status: 200 }));
+        window.fetch = vi.fn(() => Promise.resolve(new Response(JSON.stringify({ not: "valid" }), { status: 200 })));
         await expect(loadDefinitions("definitions/broken.json")).rejects.toThrow("failed definitions validation");
     });
 
     it("throws a clear message (not a raw SyntaxError) when the response isn't valid JSON (a transmission error)", async () => {
-        window.fetch = vi.fn(async () => new Response("{not valid json", { status: 200 }));
+        window.fetch = vi.fn(() => Promise.resolve(new Response("{not valid json", { status: 200 })));
         await expect(loadDefinitions("definitions/torn.json")).rejects.toThrow(/not valid json/i);
     });
 

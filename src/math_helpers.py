@@ -5,13 +5,37 @@ Every function returns None - never raises - for a None, out-of-domain, or NaN i
 
 import math
 
+from micropython import const
+
+# Per-function input-domain bounds, named here rather than inline at each comparison; each
+# function's own comment carries the source/rationale for its range. const() + a leading
+# underscore keeps them compile-time-inlined, so naming them costs no RAM on-device.
+_WB_T_MIN = const(-20.0)
+_WB_T_MAX = const(50.0)
+_WB_RH_MIN = const(5.0)
+_WB_RH_MAX = const(99.0)
+_DP_T_MIN = const(-40.0)
+_DP_T_MAX = const(50.0)
+_DP_RH_MIN = const(0.1)
+_DP_RH_MAX = const(100.0)
+_BARO_P_MIN = const(300.0)
+_BARO_P_MAX = const(1250.0)
+_BARO_DH_MIN = const(-9000.0)
+_BARO_DH_MAX = const(9000.0)
+_BARO_T_MIN = const(-40.0)
+_BARO_T_MAX = const(85.0)
+_MAGNUS_T_MIN = const(-30.0)
+_MAGNUS_T_MAX = const(40.0)
+_MAGNUS_RH_MAX = const(100.0)
+_MAGNUS_AH_MAX = const(100.0)
+
 
 def wet_bulb_temperature(temperature: float | None, humidity: float | None) -> float | None:
     # Stull (2011) empirical wet-bulb approximation. Valid domain per the paper: -20-50 degC,
     # 5-99% RH (errors grow sharply outside it, especially at low RH + low temperature together).
     if temperature is None or humidity is None:
         return None
-    if not (-20.0 <= temperature <= 50.0 and 5.0 <= humidity <= 99.0):
+    if not (_WB_T_MIN <= temperature <= _WB_T_MAX and _WB_RH_MIN <= humidity <= _WB_RH_MAX):
         return None
     try:
         return (
@@ -31,7 +55,7 @@ def dew_point(temperature: float | None, humidity: float | None) -> float | None
     # fit curves, ~1 degC apart at the switch (see test_dew_point_branch_boundary_roughly_continuous).
     if temperature is None or humidity is None:
         return None
-    if not (-40.0 <= temperature <= 50.0 and 0.1 <= humidity <= 100.0):
+    if not (_DP_T_MIN <= temperature <= _DP_T_MAX and _DP_RH_MIN <= humidity <= _DP_RH_MAX):
         return None
     if temperature >= 0:
         toffs = 243.04
@@ -53,10 +77,10 @@ def altitude_baro(p0: float | None, dh: float | None, tmean: float | None) -> fl
     # p0/tmean range matches the BMP388/390 datasheet (its only caller).
     if p0 is None or dh is None or tmean is None:
         return None
-    if not (300.0 <= p0 <= 1250.0 and -9000.0 <= dh <= 9000.0 and -40.0 <= tmean <= 85.0):
+    if not (_BARO_P_MIN <= p0 <= _BARO_P_MAX and _BARO_DH_MIN <= dh <= _BARO_DH_MAX and _BARO_T_MIN <= tmean <= _BARO_T_MAX):
         return None
     try:
-        # g = 9.80665; M = 0.0289644; T0 = 273.15; R = 8.31446261815324
+        # Inlined below: g 9.80665 m/s2, M 0.0289644 kg/mol, T0 273.15 K, R 8.31446261815324 J/(mol K)
         return p0 * math.exp(-dh * ((0.0289644 * 9.80665) / (8.31446261815324 * (tmean + 273.15))))
     except (ValueError, ArithmeticError):
         return None
@@ -66,7 +90,7 @@ def abs_humidity(temperature: float | None, humidity: float | None) -> float | N
     # Magnus-type saturation-vapor-pressure formula; a/b pick the ice- vs water-phase constants.
     if temperature is None or humidity is None:
         return None
-    if not (-30.0 <= temperature <= 40.0 and 0.0 <= humidity <= 100.0):
+    if not (_MAGNUS_T_MIN <= temperature <= _MAGNUS_T_MAX and 0.0 <= humidity <= _MAGNUS_RH_MAX):
         return None
     if temperature >= 0.0:
         a = 7.5
@@ -86,7 +110,7 @@ def rel_humidity(temperature: float | None, abs_hum: float | None) -> float | No
     # top of its domain, 40 degC/100% RH) purely to reject negative/nonsensical input.
     if temperature is None or abs_hum is None:
         return None
-    if not (-30.0 <= temperature <= 40.0 and 0.0 <= abs_hum <= 100.0):
+    if not (_MAGNUS_T_MIN <= temperature <= _MAGNUS_T_MAX and 0.0 <= abs_hum <= _MAGNUS_AH_MAX):
         return None
     if temperature >= 0.0:
         a = 7.5

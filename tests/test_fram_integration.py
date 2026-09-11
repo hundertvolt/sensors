@@ -31,6 +31,7 @@ if TYPE_CHECKING:
     from typing import Any, TypeVar
 
     T = TypeVar("T")
+    from print_log import ErrorLog
 
 Meas = namedtuple("Meas", ["temp", "hum"])
 
@@ -82,7 +83,7 @@ def test_printloghistorystore_chunk_and_a_separate_value_chunk_share_one_manager
     pr_full_end = pr_block1 + (pr_block1 - pr_block0)
     assert value_chunk.block_addr[0] == pr_full_end
 
-    async def scenario() -> tuple[dict, bool, bytearray | None]:
+    async def scenario() -> "tuple[ErrorLog, bool, bytearray | None]":
         await reader.pr.err_s("integration test error", errno=1)
         log = await reader.pr.get_log("sensor")
         buf = value_chunk.get_buffer()
@@ -119,7 +120,7 @@ def test_real_chip_fault_degrades_fram_persistence_but_keeps_in_memory_error_tra
     run(reader.pr.setup())
     chip.drop_wren = True
 
-    async def scenario() -> tuple[int, dict]:
+    async def scenario() -> "tuple[int, ErrorLog]":
         await reader.pr.err_s("boom", errno=5)
         log = await reader.pr.get_log("sensor")
         return reader.pr.err_count, log
@@ -204,7 +205,7 @@ def test_two_sensorreaders_sharing_one_manager_keep_independent_error_histories(
     assert isinstance(reader_a.pr.fram, AsyFramChunk) and isinstance(reader_b.pr.fram, AsyFramChunk)
     assert reader_a.pr.fram.block_addr != reader_b.pr.fram.block_addr
 
-    async def scenario() -> tuple[dict, dict]:
+    async def scenario() -> "tuple[ErrorLog, ErrorLog]":
         await reader_a.pr.err_s("err in a", errno=1)
         await reader_b.pr.wrn_s("wrn in b", wrnno=2)
         log_a = await reader_a.pr.get_log("a")
@@ -248,7 +249,7 @@ def test_persisted_error_log_and_value_chunk_both_survive_a_simulated_reboot() -
     value_chunk2 = manager2.get_timestamped_chunk(8, _synced, crc=CRC32())
     assert value_chunk2 is not None
 
-    async def after_reboot() -> tuple[dict, bytearray | None]:
+    async def after_reboot() -> "tuple[ErrorLog, bytearray | None]":
         log = await reader2.pr.get_log("x")
         read_buf = value_chunk2.get_buffer()
         _res, _ts, _age = await value_chunk2.read_into(read_buf)
@@ -291,7 +292,7 @@ def test_torn_write_on_printloghistorystore_chunk_self_heals_across_a_simulated_
     reader2 = SensorReader(Meas(1.0, 1), 3, fram=manager2)
     run(reader2.pr.setup())
 
-    async def scenario() -> dict:
+    async def scenario() -> "ErrorLog":
         return await reader2.pr.get_log("y")
 
     log = run(scenario())
@@ -364,7 +365,7 @@ def test_pause_blocks_persisted_write_but_in_memory_error_tracking_still_works()
     reader = SensorReader(Meas(1.0, 1), 3, fram=manager)
     run(reader.pr.setup())
     before = bytes(chip.memory)
-    manager.set_pause(True)
+    manager.set_pause(value=True)
 
     async def scenario() -> int:
         await reader.pr.err_s("paused write", errno=11)

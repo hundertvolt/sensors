@@ -1,3 +1,10 @@
 {
-    "extends": ["html-validate:recommended"]
+    "extends": [
+        "html-validate:recommended",
+        "html-validate:document",
+        "html-validate:a11y"
+    ],
+    "rules": {
+        "require-sri": ["error", { "target": "crossorigin" }]
+    }
 }

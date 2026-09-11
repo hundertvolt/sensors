@@ -14,12 +14,12 @@ from pathlib import Path
 # worked.
 
 
-def _run_build_frozen_html(repo_root: Path, output_path: Path, html_src_dirs: "str | None"=None, check: bool=True) -> "subprocess.CompletedProcess[str]":
+def _run_build_frozen_html(repo_root: Path, output_path: Path, html_src_dirs: str | None = None, *, check: bool = True) -> subprocess.CompletedProcess[str]:
     env = None
     if html_src_dirs is not None:
         env = {**os.environ, "HTML_SRC_DIRS": html_src_dirs}
     return subprocess.run(
-        ["scripts/build_frozen_html.sh", str(output_path)],
+        [str(repo_root / "scripts" / "build_frozen_html.sh"), str(output_path)],
         cwd=repo_root,
         env=env,
         capture_output=True,

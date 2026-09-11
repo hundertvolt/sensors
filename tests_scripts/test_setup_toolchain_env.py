@@ -16,7 +16,7 @@ from types import ModuleType
 from typing import NoReturn
 
 import pytest
-from conftest import load_script_module
+from _script_loader import load_script_module
 
 
 @pytest.fixture(scope="session")
@@ -25,12 +25,12 @@ def setup_toolchain(repo_root: Path) -> ModuleType:
 
 
 @pytest.fixture
-def recorded_run(monkeypatch: pytest.MonkeyPatch, setup_toolchain: ModuleType) -> "list[list[str]]":
+def recorded_run(monkeypatch: pytest.MonkeyPatch, setup_toolchain: ModuleType) -> list[list[str]]:
     """Replaces module.run with a recorder returning "" by default - lets a test inspect exactly
     which commands would have been executed without running any of them for real."""
-    calls = []
+    calls: list[list[str]] = []
 
-    def fake_run(cmd: "list[str]", cwd: "Path | None"=None, check: bool=True, env: "dict[str, str] | None"=None) -> str:
+    def fake_run(cmd: list[str], cwd: Path | None = None, check: bool = True, env: dict[str, str] | None = None) -> str:
         calls.append(cmd)
         return ""
 
@@ -41,7 +41,7 @@ def recorded_run(monkeypatch: pytest.MonkeyPatch, setup_toolchain: ModuleType) -
 # --- USB serial device detection -------------------------------------------------------------
 
 
-def _make_usb_tty(tmp_path: Path, sys_tty_dir: Path, dev_dir: Path, tty_name: str, id_vendor: str, create_dev_node: bool=True) -> None:
+def _make_usb_tty(tmp_path: Path, sys_tty_dir: Path, dev_dir: Path, tty_name: str, id_vendor: str, *, create_dev_node: bool = True) -> None:
     """Builds a minimal fake /sys/class/tty/<tty_name>/device -> .../<usb-device>/idVendor tree,
     mirroring the real kernel layout closely enough for detect_pico_serial_devices() to walk."""
     usb_device_dir = tmp_path / "sys_bus" / f"usb-device-{tty_name}"
@@ -98,7 +98,7 @@ def test_resolve_pico_device_auto_detects_single_match(setup_toolchain: ModuleTy
 
 
 def test_resolve_pico_device_raises_on_no_match(setup_toolchain: ModuleType, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(setup_toolchain, "detect_pico_serial_devices", lambda: [])
+    monkeypatch.setattr(setup_toolchain, "detect_pico_serial_devices", list)
     with pytest.raises(setup_toolchain.SetupError, match="no Raspberry Pi USB serial device found"):
         setup_toolchain.resolve_pico_device(None)
 
@@ -114,34 +114,34 @@ def test_resolve_pico_device_raises_on_ambiguous_match(setup_toolchain: ModuleTy
 
 
 class _FakeGrEntry:
-    def __init__(self, members: "list[str]") -> None:
+    def __init__(self, members: list[str]) -> None:
         self.gr_mem = members
 
 
-def test_ensure_dialout_group_skip_flag_does_nothing(setup_toolchain: ModuleType, monkeypatch: pytest.MonkeyPatch, recorded_run: "list[list[str]]") -> None:
+def test_ensure_dialout_group_skip_flag_does_nothing(setup_toolchain: ModuleType, monkeypatch: pytest.MonkeyPatch, recorded_run: list[list[str]]) -> None:
     monkeypatch.setattr(setup_toolchain.grp, "getgrnam", lambda name: pytest.fail("should not check group"))
     setup_toolchain.ensure_dialout_group(skip=True)
     assert recorded_run == []
 
 
-def test_ensure_dialout_group_already_member_does_not_call_usermod(setup_toolchain: ModuleType, monkeypatch: pytest.MonkeyPatch, recorded_run: "list[list[str]]") -> None:
+def test_ensure_dialout_group_already_member_does_not_call_usermod(setup_toolchain: ModuleType, monkeypatch: pytest.MonkeyPatch, recorded_run: list[list[str]]) -> None:
     monkeypatch.setenv("USER", "bench-user")
     monkeypatch.setattr(setup_toolchain.grp, "getgrnam", lambda name: _FakeGrEntry(["bench-user"]))
     setup_toolchain.ensure_dialout_group(skip=False)
     assert recorded_run == []
 
 
-def test_ensure_dialout_group_not_member_calls_usermod(setup_toolchain: ModuleType, monkeypatch: pytest.MonkeyPatch, recorded_run: "list[list[str]]") -> None:
+def test_ensure_dialout_group_not_member_calls_usermod(setup_toolchain: ModuleType, monkeypatch: pytest.MonkeyPatch, recorded_run: list[list[str]]) -> None:
     monkeypatch.setenv("USER", "bench-user")
     monkeypatch.setattr(setup_toolchain.grp, "getgrnam", lambda name: _FakeGrEntry([]))
     setup_toolchain.ensure_dialout_group(skip=False)
     assert recorded_run == [["sudo", "usermod", "-aG", "dialout", "bench-user"]]
 
 
-def test_ensure_dialout_group_raises_if_no_dialout_group_exists(setup_toolchain: ModuleType, monkeypatch: pytest.MonkeyPatch, recorded_run: "list[list[str]]") -> None:
+def test_ensure_dialout_group_raises_if_no_dialout_group_exists(setup_toolchain: ModuleType, monkeypatch: pytest.MonkeyPatch, recorded_run: list[list[str]]) -> None:
     monkeypatch.setenv("USER", "bench-user")
 
-    def raise_key_error(name: str) -> "NoReturn":
+    def raise_key_error(name: str) -> NoReturn:
         raise KeyError(name)
 
     monkeypatch.setattr(setup_toolchain.grp, "getgrnam", raise_key_error)
@@ -239,8 +239,8 @@ def test_detect_free_wifi_interface_raises_when_ambiguous(setup_toolchain: Modul
 # --- bench AP credentials + idempotent bridge creation --------------------------------------------
 
 
-def test_get_interface_mac_parses_real_ip_link_show_output(setup_toolchain: ModuleType, monkeypatch: pytest.MonkeyPatch, recorded_run: "list[list[str]]") -> None:
-    def fake_run(cmd: "list[str]", cwd: "Path | None"=None, check: bool=True, env: "dict[str, str] | None"=None) -> str:
+def test_get_interface_mac_parses_real_ip_link_show_output(setup_toolchain: ModuleType, monkeypatch: pytest.MonkeyPatch, recorded_run: list[list[str]]) -> None:
+    def fake_run(cmd: list[str], cwd: Path | None = None, check: bool = True, env: dict[str, str] | None = None) -> str:
         recorded_run.append(cmd)
         assert cmd == ["ip", "-o", "link", "show", "eth0"]
         return "2: eth0    <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc mq state UP mode DEFAULT group default qlen 1000\\    link/ether d8:3a:dd:28:ea:5a brd ff:ff:ff:ff:ff:ff"
@@ -250,7 +250,7 @@ def test_get_interface_mac_parses_real_ip_link_show_output(setup_toolchain: Modu
     assert setup_toolchain.get_interface_mac("eth0") == "d8:3a:dd:28:ea:5a"
 
 
-def test_get_interface_mac_raises_when_no_mac_found(setup_toolchain: ModuleType, monkeypatch: pytest.MonkeyPatch, recorded_run: "list[list[str]]") -> None:
+def test_get_interface_mac_raises_when_no_mac_found(setup_toolchain: ModuleType, monkeypatch: pytest.MonkeyPatch, recorded_run: list[list[str]]) -> None:
     monkeypatch.setattr(setup_toolchain, "run", lambda cmd, cwd=None, check=True, env=None: "")
 
     with pytest.raises(setup_toolchain.SetupError, match="eth0"):
@@ -266,16 +266,16 @@ def test_generate_bench_ap_credentials_are_fresh_and_random(setup_toolchain: Mod
     assert len(password1) >= 12
 
 
-def _fake_run_for_existing_bridge(recorded_run: "list[list[str]]", channel: str="6", eth_iface: str="eth0", bridge_mac: str="aa:bb:cc:dd:ee:ff", real_mac: str="aa:bb:cc:dd:ee:ff") -> "Callable[..., str]":
-    """A field-aware fake_run() for ensure_bench_bridge()'s "already exists" branch - dispatches
+def _fake_run_for_existing_bridge(recorded_run: list[list[str]], channel: str = "6", eth_iface: str = "eth0", bridge_mac: str = "aa:bb:cc:dd:ee:ff", real_mac: str = "aa:bb:cc:dd:ee:ff") -> Callable[..., str]:
+    r"""A field-aware fake_run() for ensure_bench_bridge()'s "already exists" branch - dispatches
     each of its three distinct `nmcli -g` queries (channel, interface-name, bridge MAC) plus the
     `ip -o link show` real-MAC lookup by their actual field/command, rather than one blanket
     return value for every `nmcli -g` call regardless of which field it asked for (which used to
-    let get_interface_mac() silently receive "6\\n" as an interface name and swallow the
+    let get_interface_mac() silently receive "6\n" as an interface name and swallow the
     resulting SetupError - never actually exercising the mismatch-detection logic this fixture
     now models directly)."""
 
-    def fake_run(cmd: "list[str]", cwd: "Path | None"=None, check: bool=True, env: "dict[str, str] | None"=None) -> str:
+    def fake_run(cmd: list[str], cwd: Path | None = None, check: bool = True, env: dict[str, str] | None = None) -> str:
         recorded_run.append(cmd)
         if cmd[:3] == ["nmcli", "-g", "802-11-wireless.channel"]:
             return f"{channel}\n"
@@ -290,7 +290,7 @@ def _fake_run_for_existing_bridge(recorded_run: "list[list[str]]", channel: str=
     return fake_run
 
 
-def test_ensure_bench_bridge_reuses_existing_ap_without_recreating(setup_toolchain: ModuleType, monkeypatch: pytest.MonkeyPatch, recorded_run: "list[list[str]]") -> None:
+def test_ensure_bench_bridge_reuses_existing_ap_without_recreating(setup_toolchain: ModuleType, monkeypatch: pytest.MonkeyPatch, recorded_run: list[list[str]]) -> None:
     # ensure_br_netfilter(), the channel self-heal check, and the MAC-mismatch check now all run
     # unconditionally on every call (see ensure_bench_bridge()'s own docstring) - channel and MAC
     # are stubbed already-correct so neither self-heal/warning branch (covered separately below)
@@ -309,7 +309,7 @@ def test_ensure_bench_bridge_reuses_existing_ap_without_recreating(setup_toolcha
     assert not any("wifi-sec.psk" in c for c in joined)
 
 
-def test_ensure_bench_bridge_self_heals_wrong_channel(setup_toolchain: ModuleType, monkeypatch: pytest.MonkeyPatch, recorded_run: "list[list[str]]") -> None:
+def test_ensure_bench_bridge_self_heals_wrong_channel(setup_toolchain: ModuleType, monkeypatch: pytest.MonkeyPatch, recorded_run: list[list[str]]) -> None:
     monkeypatch.setattr(setup_toolchain, "bench_ap_exists", lambda: True)
     monkeypatch.setattr(setup_toolchain, "existing_bench_ap_ssid", lambda: "sensors-bench-abc123")
     monkeypatch.setattr(setup_toolchain, "run", _fake_run_for_existing_bridge(recorded_run, channel="13"))  # a bridge created before the channel-pinning fix
@@ -321,7 +321,7 @@ def test_ensure_bench_bridge_self_heals_wrong_channel(setup_toolchain: ModuleTyp
     assert any(c == "sudo nmcli connection up br0-wifi-ap" for c in joined)
 
 
-def test_ensure_bench_bridge_no_channel_repair_when_already_pinned(setup_toolchain: ModuleType, monkeypatch: pytest.MonkeyPatch, recorded_run: "list[list[str]]") -> None:
+def test_ensure_bench_bridge_no_channel_repair_when_already_pinned(setup_toolchain: ModuleType, monkeypatch: pytest.MonkeyPatch, recorded_run: list[list[str]]) -> None:
     monkeypatch.setattr(setup_toolchain, "bench_ap_exists", lambda: True)
     monkeypatch.setattr(setup_toolchain, "existing_bench_ap_ssid", lambda: "sensors-bench-abc123")
     monkeypatch.setattr(setup_toolchain, "run", _fake_run_for_existing_bridge(recorded_run, channel="6"))
@@ -332,7 +332,7 @@ def test_ensure_bench_bridge_no_channel_repair_when_already_pinned(setup_toolcha
     assert not any("802-11-wireless.channel 6" in c and "modify" in c for c in joined)
 
 
-def test_ensure_bench_bridge_warns_without_auto_repairing_mac_mismatch(setup_toolchain: ModuleType, monkeypatch: pytest.MonkeyPatch, recorded_run: "list[list[str]]", capsys: "pytest.CaptureFixture[str]") -> None:
+def test_ensure_bench_bridge_warns_without_auto_repairing_mac_mismatch(setup_toolchain: ModuleType, monkeypatch: pytest.MonkeyPatch, recorded_run: list[list[str]], capsys: pytest.CaptureFixture[str]) -> None:
     # REAL FINDING, 2026-09-04 bench Pi4 lockout incident (see CLAUDE.md's "Hard rules"): a bridge
     # created before the MAC-pinning fix (or whose MAC has since drifted) must be flagged, never
     # silently auto-repaired - cycling a live bridge's MAC risks the exact same SSH-drop class of
@@ -355,7 +355,7 @@ def test_ensure_bench_bridge_warns_without_auto_repairing_mac_mismatch(setup_too
     assert "aa:bb:cc:dd:ee:ff" in captured_out
 
 
-def test_ensure_bench_bridge_no_warning_when_mac_already_matches(setup_toolchain: ModuleType, monkeypatch: pytest.MonkeyPatch, recorded_run: "list[list[str]]", capsys: "pytest.CaptureFixture[str]") -> None:
+def test_ensure_bench_bridge_no_warning_when_mac_already_matches(setup_toolchain: ModuleType, monkeypatch: pytest.MonkeyPatch, recorded_run: list[list[str]], capsys: pytest.CaptureFixture[str]) -> None:
     monkeypatch.setattr(setup_toolchain, "bench_ap_exists", lambda: True)
     monkeypatch.setattr(setup_toolchain, "existing_bench_ap_ssid", lambda: "sensors-bench-abc123")
     monkeypatch.setattr(
@@ -369,7 +369,7 @@ def test_ensure_bench_bridge_no_warning_when_mac_already_matches(setup_toolchain
     assert "WARNING" not in capsys.readouterr().out
 
 
-def test_ensure_br_netfilter_loads_module_and_persists_config(setup_toolchain: ModuleType, recorded_run: "list[list[str]]") -> None:
+def test_ensure_br_netfilter_loads_module_and_persists_config(setup_toolchain: ModuleType, recorded_run: list[list[str]]) -> None:
     setup_toolchain.ensure_br_netfilter()
 
     joined = [" ".join(c) for c in recorded_run]
@@ -379,16 +379,16 @@ def test_ensure_br_netfilter_loads_module_and_persists_config(setup_toolchain: M
     assert any("sensors-bench-br-netfilter.conf" in c and "sysctl.d" in c for c in joined)
 
 
-def _fake_run_with_real_eth0_mac(recorded_run: "list[list[str]]", mac: str="aa:bb:cc:dd:ee:ff") -> "Callable[..., str]":
-    """A fake_run() that also answers ensure_bench_bridge()'s get_interface_mac(uplink_iface)
+def _fake_run_with_real_eth0_mac(recorded_run: list[list[str]], mac: str = "aa:bb:cc:dd:ee:ff") -> Callable[..., str]:
+    r"""A fake_run() that also answers ensure_bench_bridge()'s get_interface_mac(uplink_iface)
     lookup realistically, mirroring a real `ip -o link show eth0` line closely enough for
-    get_interface_mac()'s own `link/ether\\s+(\\S+)` regex to match - the plain recorded_run
+    get_interface_mac()'s own `link/ether\s+(\S+)` regex to match - the plain recorded_run
     fixture's blanket "" default doesn't, which is exactly what made these two tests fail for
     real once get_interface_mac() was added (confirmed directly against a real CI run,
     2026-09-04): SetupError propagated uncaught through the bridge-creation path instead of
     exercising it."""
 
-    def fake_run(cmd: "list[str]", cwd: "Path | None"=None, check: bool=True, env: "dict[str, str] | None"=None) -> str:
+    def fake_run(cmd: list[str], cwd: Path | None = None, check: bool = True, env: dict[str, str] | None = None) -> str:
         recorded_run.append(cmd)
         if cmd[:4] == ["ip", "-o", "link", "show"]:
             return f"2: eth0    link/ether {mac} brd ff:ff:ff:ff:ff:ff"
@@ -397,7 +397,7 @@ def _fake_run_with_real_eth0_mac(recorded_run: "list[list[str]]", mac: str="aa:b
     return fake_run
 
 
-def test_ensure_bench_bridge_creates_with_explicit_credentials_when_missing(setup_toolchain: ModuleType, monkeypatch: pytest.MonkeyPatch, recorded_run: "list[list[str]]") -> None:
+def test_ensure_bench_bridge_creates_with_explicit_credentials_when_missing(setup_toolchain: ModuleType, monkeypatch: pytest.MonkeyPatch, recorded_run: list[list[str]]) -> None:
     monkeypatch.setattr(setup_toolchain, "bench_ap_exists", lambda: False)
     monkeypatch.setattr(setup_toolchain, "run", _fake_run_with_real_eth0_mac(recorded_run))
 
@@ -421,7 +421,7 @@ def test_ensure_bench_bridge_creates_with_explicit_credentials_when_missing(setu
     assert mac_pin_index < eth_up_index
 
 
-def test_ensure_bench_bridge_generates_credentials_when_none_given(setup_toolchain: ModuleType, monkeypatch: pytest.MonkeyPatch, recorded_run: "list[list[str]]") -> None:
+def test_ensure_bench_bridge_generates_credentials_when_none_given(setup_toolchain: ModuleType, monkeypatch: pytest.MonkeyPatch, recorded_run: list[list[str]]) -> None:
     monkeypatch.setattr(setup_toolchain, "bench_ap_exists", lambda: False)
     monkeypatch.setattr(setup_toolchain, "generate_bench_ap_credentials", lambda: ("generated-ssid", "generated-pw"))
     monkeypatch.setattr(setup_toolchain, "run", _fake_run_with_real_eth0_mac(recorded_run))
@@ -438,25 +438,25 @@ def test_ensure_bench_bridge_generates_credentials_when_none_given(setup_toolcha
 # --- project dependency install (uv sync / npm ci) -------------------------------------------------
 
 
-def test_run_project_dependency_install_skips_npm_when_flag_set(setup_toolchain: ModuleType, tmp_path: Path, recorded_run: "list[list[str]]") -> None:
+def test_run_project_dependency_install_skips_npm_when_flag_set(setup_toolchain: ModuleType, tmp_path: Path, recorded_run: list[list[str]]) -> None:
     (tmp_path / "package.json").write_text("{}")
     setup_toolchain.run_project_dependency_install(tmp_path, skip_npm=True)
     assert recorded_run == [["uv", "sync"]]
 
 
-def test_run_project_dependency_install_skips_npm_when_no_package_json(setup_toolchain: ModuleType, tmp_path: Path, recorded_run: "list[list[str]]") -> None:
+def test_run_project_dependency_install_skips_npm_when_no_package_json(setup_toolchain: ModuleType, tmp_path: Path, recorded_run: list[list[str]]) -> None:
     setup_toolchain.run_project_dependency_install(tmp_path, skip_npm=False)
     assert recorded_run == [["uv", "sync"]]
 
 
-def test_run_project_dependency_install_skips_npm_when_not_on_path(setup_toolchain: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, recorded_run: "list[list[str]]") -> None:
+def test_run_project_dependency_install_skips_npm_when_not_on_path(setup_toolchain: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, recorded_run: list[list[str]]) -> None:
     (tmp_path / "package.json").write_text("{}")
     monkeypatch.setattr(setup_toolchain.shutil, "which", lambda name: None)
     setup_toolchain.run_project_dependency_install(tmp_path, skip_npm=False)
     assert recorded_run == [["uv", "sync"]]
 
 
-def test_run_project_dependency_install_runs_npm_ci_when_available(setup_toolchain: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, recorded_run: "list[list[str]]") -> None:
+def test_run_project_dependency_install_runs_npm_ci_when_available(setup_toolchain: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, recorded_run: list[list[str]]) -> None:
     (tmp_path / "package.json").write_text("{}")
     monkeypatch.setattr(setup_toolchain.shutil, "which", lambda name: "/usr/bin/npm")
     setup_toolchain.run_project_dependency_install(tmp_path, skip_npm=False)
@@ -466,12 +466,13 @@ def test_run_project_dependency_install_runs_npm_ci_when_available(setup_toolcha
 # --- CLI wiring ---------------------------------------------------------------------------------
 
 
-def _run_cli(repo_root: Path, args: "list[str]") -> "subprocess.CompletedProcess[str]":
+def _run_cli(repo_root: Path, args: list[str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, "toolchain/setup_toolchain.py", *args],
         cwd=repo_root,
         capture_output=True,
         text=True,
+        check=False,
     )
 
 

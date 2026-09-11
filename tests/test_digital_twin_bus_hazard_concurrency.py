@@ -8,10 +8,11 @@ import sys
 sys.path.insert(0, "ext")  # same convention as test_digital_twin_sensortask_integration.py's own comment
 sys.path.insert(0, "digital_twin")
 
-import machine  # noqa: E402
+import machine
 
-import sensortask_dev  # noqa: E402
-import sensortask_wozi  # noqa: E402
+import sensortask_dev
+import sensortask_wozi
+from crc_checks import CRC8
 
 try:
     from typing import TYPE_CHECKING
@@ -19,8 +20,13 @@ except ImportError:  # typing isn't available on the real MicroPython test inter
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Coroutine
+    from collections.abc import Container, Coroutine
+    from types import ModuleType
     from typing import Any, TypeVar
+
+    from machine import WDT
+
+    from asy_wifi_service import AsyConnTime
 
     T = TypeVar("T")
 
@@ -91,7 +97,7 @@ async def _cancel(task: "asyncio.Task[Any]") -> None:
         pass
 
 
-async def _feed_watchdog_periodically(watchdog: "Any") -> None:
+async def _feed_watchdog_periodically(watchdog: "WDT") -> None:
     while True:
         watchdog.feed()
         await asyncio.sleep(1.0)
@@ -100,7 +106,7 @@ async def _feed_watchdog_periodically(watchdog: "Any") -> None:
 _GENERAL_CALL_ENTRY = ("writeto", 0x00, b"\x06", True)
 
 
-async def _run_real_task_graph_and_assert_healthy(module: "Any", shared_bus_log: "Any", run_seconds: float) -> None:
+async def _run_real_task_graph_and_assert_healthy(module: "ModuleType", shared_bus_log: "Container[object]", run_seconds: float) -> None:
     # Shared scenario body for both variants: starts the real timer/task starters build_system()
     # itself would, then asserts the run produced fresh data from every sensor and never starved
     # the watchdog - not just "didn't crash".
@@ -246,7 +252,41 @@ def test_wozi_fram_recovers_after_an_injected_spi_read_fault() -> None:
     run_timed(scenario(), timeout_s=20.0)
 
 
-async def _wait_established_then_flap_once(conn: "Any") -> None:
+def test_wozi_fram_chunk_loop_absorbs_a_transient_spi_rx_overrun() -> None:
+    # Twin-tier form of the live-path mock tests in test_asy_fram_manager.py: same fault, but
+    # against the real twin bus and a chunk allocated from the real booted manager. One overrun
+    # costs nothing because _read chunk-reads block 1 when block 0 fails; a persistent one
+    # degrades to None instead of propagating, and leaves the chunk marked BUSY by design
+    # (destructive readout - SPECIFICATION.md Part A.4's FRAM entry).
+    machine.configure_i2c_wiring("wozi")
+    port = _next_test_port()
+
+    async def scenario() -> None:
+        await sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir(), web_host="127.0.0.1", web_port=port)
+        assert sensortask_wozi.fram is not None
+        manager = sensortask_wozi.fram
+        bus = manager.fram._spidev.spi._spi
+        assert bus is not None
+        chunk = manager.get_chunk(40, crc=CRC8())  # 41 B with the CRC byte - over the 32 B DMA threshold
+        assert chunk is not None
+        payload = bytes(range(40))
+        assert await chunk.write(payload)
+
+        bus.rx_overrun_remaining = 1  # one transient glitch, then the bus recovers
+        assert await chunk.read() == bytearray(payload), "a single RX overrun should be absorbed by the block-1 copy"
+        assert bus.rx_overrun_remaining == 0, "the injected overrun never actually fired"
+
+        bus.rx_overrun = True  # persistent: both copies unreadable
+        assert await chunk.read() is None, "an unrecoverable overrun must degrade, not propagate"
+        bus.rx_overrun = False
+        assert await chunk.read() is None, "an interrupted read deliberately keeps the chunk unreadable until rewritten"
+        assert await chunk.write(payload), "a write is what clears the stuck BUSY status bytes"
+        assert await chunk.read() == bytearray(payload)
+
+    run_timed(scenario(), timeout_s=20.0)
+
+
+async def _wait_established_then_flap_once(conn: "AsyConnTime") -> None:
     # A single disconnect, not repeated flapping: the ESTABLISHED retry branch is a genuine,
     # non-fast-forwardable 60s sleep (SPECIFICATION.md Part E.5.1), so repeated flapping isn't
     # CI-time-reasonable here - tests_hardware/bench/test_network_resilience.py covers that on

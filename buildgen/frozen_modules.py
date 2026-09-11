@@ -25,7 +25,7 @@ CORE_MODULES = frozenset(
         "captive_dns",
         "system_service",
         "crc_checks",
-    }
+    },
 )
 
 
@@ -35,7 +35,7 @@ def _is_type_checking_test(test: ast.expr) -> bool:
     return isinstance(test, ast.Attribute) and test.attr == "TYPE_CHECKING"
 
 
-def _collect_imports(node: ast.AST, out: set) -> None:
+def _collect_imports(node: ast.AST, out: "set[str]") -> None:
     for child in ast.iter_child_nodes(node):
         if isinstance(child, ast.If) and _is_type_checking_test(child.test):
             continue  # never executes on-device - not a real frozen-module dependency
@@ -49,12 +49,12 @@ def _collect_imports(node: ast.AST, out: set) -> None:
             _collect_imports(child, out)
 
 
-def _local_imports_of(module: str, roots: "tuple[Path, ...]") -> set:
+def _local_imports_of(module: str, roots: "tuple[Path, ...]") -> "set[str]":
     for root in roots:
         path = root / f"{module}.py"
         if path.is_file():
             tree = ast.parse(path.read_text(), filename=str(path))
-            names: set = set()
+            names: set[str] = set()
             _collect_imports(tree, names)
             return {n for n in names if any((root2 / f"{n}.py").is_file() for root2 in roots)}
     return set()
@@ -64,7 +64,7 @@ def compute_frozen_modules(model: DeviceModel, src_dir: Path, ext_dir: "Path | N
     roots = (src_dir,) if ext_dir is None else (src_dir, ext_dir)
     seed = set(CORE_MODULES) | {spec.driver_info.module for spec in model.instances.values() if spec.driver_info is not None}
 
-    closure: set = set()
+    closure: set[str] = set()
     frontier = set(seed)
     while frontier:
         module = frontier.pop()

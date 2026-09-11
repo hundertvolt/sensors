@@ -26,7 +26,7 @@ def src_dir(repo_root: Path) -> Path:
         ("notification", "asy_notification_service", "NotificationCoordinator", "service", True),
     ],
 )
-def test_resolve_driver_real_drivers(src_dir: Path, driver: str, module: str, class_name: str, kind: str, needs_setup: bool) -> None:
+def test_resolve_driver_real_drivers(src_dir: Path, driver: str, module: str, class_name: str, kind: str, *, needs_setup: bool) -> None:
     info = resolve_driver(driver, src_dir, "dev")
     assert info == DriverInfo(driver, module, class_name, kind, src_dir / f"{module}.py", needs_setup)
 
@@ -68,7 +68,7 @@ def test_resolve_driver_override_table_missing_file(tmp_path: Path) -> None:
 
 
 def test_service_drivers_frozenset_matches_override_table() -> None:
-    assert SERVICE_DRIVERS == {"fram", "neopixel", "notification"}
+    assert {"fram", "neopixel", "notification"} == SERVICE_DRIVERS
 
 
 @pytest.mark.parametrize(

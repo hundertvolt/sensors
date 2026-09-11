@@ -19,12 +19,12 @@ const DEFS = {
  * @returns {typeof fetch}
  */
 function buildFetchStub({ definitionsOk = true } = {}) {
-    return vi.fn(async (input) => {
+    return vi.fn((input) => {
         const url = String(input);
         if (url.includes("definitions.json")) {
-            return definitionsOk ? new Response(JSON.stringify(DEFS), { status: 200 }) : new Response("not found", { status: 404 });
+            return Promise.resolve(definitionsOk ? new Response(JSON.stringify(DEFS), { status: 200 }) : new Response("not found", { status: 404 }));
         }
-        return new Response("not found", { status: 404 });
+        return Promise.resolve(new Response("not found", { status: 404 }));
     });
 }
 
@@ -114,7 +114,7 @@ describe("startApp (production entry)", () => {
     });
 
     it("shows a clear error banner (not a crash) when definitions.json is torn/truncated JSON", async () => {
-        window.fetch = vi.fn(async () => new Response("{not valid json", { status: 200 }));
+        window.fetch = vi.fn(() => Promise.resolve(new Response("{not valid json", { status: 200 })));
         elements = buildElements();
 
         await startApp(elements);

@@ -54,7 +54,7 @@ class _StepPoller:
     def __init__(self, steps: "list[int | Any]") -> None:
         self._steps = list(steps)
 
-    def ipoll(self, timeout_ms: int) -> "list[tuple[None, int]]":
+    def ipoll(self, _timeout_ms: int) -> "list[tuple[None, int]]":  # asy_uart_driver.py calls ipoll(0) positionally
         step = self._steps.pop(0) if len(self._steps) > 1 else self._steps[-1]
         event = step() if callable(step) else step
         return [(None, event)] if event else []
@@ -285,7 +285,7 @@ def test_deinit_calls_real_hardware_deinit_and_clears_poller() -> None:
 
 
 class _RaisingUnregisterPoller:
-    def unregister(self, obj: "object") -> None:
+    def unregister(self, _obj: "object") -> None:  # asy_uart_driver.py calls unregister() positionally
         raise OSError("simulated poller unregister failure")
 
 
@@ -365,7 +365,7 @@ def test_async_with_acquires_and_releases_lock() -> None:
 
 
 # ---------------------------------------------------------------------------
-# ready() / cancel_read_timeout()
+# ready / cancel_read_timeout
 # ---------------------------------------------------------------------------
 
 
@@ -396,8 +396,7 @@ def test_ready_survives_a_concurrent_deinit_mid_loop() -> None:
 
     async def scenario() -> bool:
         async with uart:
-            result = await uart.ready(select.POLLIN, timeout_ms=200)
-        return result
+            return await uart.ready(select.POLLIN, timeout_ms=200)
 
     assert run(scenario()) is False  # must not raise
 
@@ -422,8 +421,7 @@ def test_cancel_read_timeout_unblocks_a_pending_wait() -> None:
 
     async def waiter() -> bytes | None:
         async with uart:
-            result = await uart.read(timeout_ms=-1)  # waits forever unless cancelled
-        return result
+            return await uart.read(timeout_ms=-1)  # waits forever unless cancelled
 
     async def scenario() -> tuple[bytes | None, bool]:
         task = asyncio.create_task(waiter())
@@ -455,8 +453,7 @@ def test_read_returns_bytes_once_ready() -> None:
 
     async def scenario() -> bytes | None:
         async with uart:
-            result = await uart.read()
-        return result
+            return await uart.read()
 
     assert run(scenario()) == b"hello"
 
@@ -467,8 +464,7 @@ def test_read_returns_none_on_timeout() -> None:
 
     async def scenario() -> bytes | None:
         async with uart:
-            result = await uart.read(timeout_ms=20)
-        return result
+            return await uart.read(timeout_ms=20)
 
     assert run(scenario()) is None
 
@@ -480,8 +476,7 @@ def test_read_with_explicit_nbytes_reads_exactly_that_many_bytes() -> None:
 
     async def scenario() -> bytes | None:
         async with uart:
-            result = await uart.read(5)
-        return result
+            return await uart.read(5)
 
     assert run(scenario()) == b"hello"
 
@@ -494,8 +489,7 @@ def test_readinto_fills_buffer_and_returns_count() -> None:
 
     async def scenario() -> int | None:
         async with uart:
-            result = await uart.readinto(buf)
-        return result
+            return await uart.readinto(buf)
 
     assert run(scenario()) == 2
     assert bytes(buf[:2]) == b"hi"
@@ -509,8 +503,7 @@ def test_readinto_with_explicit_nbytes_reads_exactly_that_many_bytes() -> None:
 
     async def scenario() -> int | None:
         async with uart:
-            result = await uart.readinto(buf, 5)
-        return result
+            return await uart.readinto(buf, 5)
 
     assert run(scenario()) == 5
     assert bytes(buf[:5]) == b"hello"
@@ -523,8 +516,7 @@ def test_readline_returns_bytes_once_ready() -> None:
 
     async def scenario() -> bytes | None:
         async with uart:
-            result = await uart.readline()
-        return result
+            return await uart.readline()
 
     assert run(scenario()) == b"line\n"
 
@@ -539,8 +531,7 @@ def test_read_until_complete_zero_nbytes_returns_empty_immediately() -> None:
 
     async def scenario() -> bytearray | None:
         async with uart:
-            result = await uart.read_until_complete(0)
-        return result
+            return await uart.read_until_complete(0)
 
     assert run(scenario()) == bytearray()
 
@@ -558,8 +549,7 @@ def test_read_until_complete_assembles_across_multiple_rounds() -> None:
 
     async def scenario() -> bytearray | None:
         async with uart:
-            result = await uart.read_until_complete(5, start_timeout_ms=200, timeout_ms=200)
-        return result
+            return await uart.read_until_complete(5, start_timeout_ms=200, timeout_ms=200)
 
     assert run(scenario()) == bytearray(b"abcde")
 
@@ -572,8 +562,7 @@ def test_read_until_complete_default_crc_is_pass_through() -> None:
 
     async def scenario() -> bytearray | None:
         async with uart:
-            result = await uart.read_until_complete(3)
-        return result
+            return await uart.read_until_complete(3)
 
     assert run(scenario()) == bytearray(b"raw")
 
@@ -587,8 +576,7 @@ def test_read_until_complete_strips_and_verifies_real_crc() -> None:
 
     async def scenario() -> bytearray | None:
         async with uart:
-            result = await uart.read_until_complete(5)
-        return result
+            return await uart.read_until_complete(5)
 
     assert run(scenario()) == bytearray(b"hello")
 
@@ -603,8 +591,7 @@ def test_read_until_complete_bad_crc_returns_none() -> None:
 
     async def scenario() -> bytearray | None:
         async with uart:
-            result = await uart.read_until_complete(5)
-        return result
+            return await uart.read_until_complete(5)
 
     assert run(scenario()) is None
 
@@ -615,8 +602,7 @@ def test_readinto_until_complete_nbytes_too_large_for_buffer_returns_none() -> N
 
     async def scenario() -> int | None:
         async with uart:
-            result = await uart.readinto_until_complete(buf, 5)
-        return result
+            return await uart.readinto_until_complete(buf, 5)
 
     assert run(scenario()) is None
 
@@ -631,8 +617,7 @@ def test_readinto_until_complete_fills_buffer_and_strips_crc() -> None:
 
     async def scenario() -> int | None:
         async with uart:
-            result = await uart.readinto_until_complete(buf, 5)
-        return result
+            return await uart.readinto_until_complete(buf, 5)
 
     size = run(scenario())
     assert size == 5
@@ -657,8 +642,7 @@ def test_readline_until_complete_assembles_multi_part_line() -> None:
 
     async def scenario() -> bytearray | None:
         async with uart:
-            result = await uart.readline_until_complete(start_timeout_ms=200, timeout_ms=200)
-        return result
+            return await uart.readline_until_complete(start_timeout_ms=200, timeout_ms=200)
 
     assert run(scenario()) == bytearray(b"partial-line\n")
 
@@ -685,8 +669,7 @@ def test_readline_until_complete_survives_an_empty_readline_without_crashing() -
 
     async def scenario() -> bytearray | None:
         async with uart:
-            result = await uart.readline_until_complete(start_timeout_ms=200, timeout_ms=200)
-        return result
+            return await uart.readline_until_complete(start_timeout_ms=200, timeout_ms=200)
 
     assert run(scenario()) == bytearray(b"ok\n")
 
@@ -704,8 +687,7 @@ def test_write_empty_message_succeeds_without_touching_the_bus() -> None:
 
     async def scenario() -> bool:
         async with uart:
-            result = await uart.write(bytearray())
-        return result
+            return await uart.write(bytearray())
 
     assert run(scenario()) is True
     assert fake(uart).log == []
@@ -717,8 +699,7 @@ def test_write_default_crc_is_pass_through() -> None:
 
     async def scenario() -> bool:
         async with uart:
-            result = await uart.write(bytearray(b"raw"))
-        return result
+            return await uart.write(bytearray(b"raw"))
 
     assert run(scenario()) is True
     assert fake(uart).log[-1] == ("write", b"raw")
@@ -730,8 +711,7 @@ def test_write_frames_with_configured_crc() -> None:
 
     async def scenario() -> bool:
         async with uart:
-            result = await uart.write(bytearray(b"hello"))
-        return result
+            return await uart.write(bytearray(b"hello"))
 
     assert run(scenario()) is True
     op, framed = fake(uart).log[-1]
@@ -750,8 +730,7 @@ def test_write_can_be_cancelled_while_waiting_for_tx_ready() -> None:
 
     async def writer() -> bool:
         async with uart:
-            result = await uart.write(bytearray(b"x"))
-        return result
+            return await uart.write(bytearray(b"x"))
 
     async def scenario() -> tuple[bool, bool]:
         task = asyncio.create_task(writer())
@@ -777,8 +756,7 @@ def test_write_waits_until_tx_becomes_writable() -> None:
 
     async def scenario() -> bool:
         async with uart:
-            result = await uart.write(bytearray(b"x"))
-        return result
+            return await uart.write(bytearray(b"x"))
 
     assert run(scenario()) is True
     assert calls["n"] >= 2  # genuinely waited through at least one not-ready round, not a lucky first check
@@ -791,8 +769,7 @@ def test_writefrom_frames_with_crc_in_place() -> None:
 
     async def scenario() -> bool:
         async with uart:
-            result = await uart.writefrom(buf, 5)
-        return result
+            return await uart.writefrom(buf, 5)
 
     assert run(scenario()) is True
     op, written = fake(uart).log[-1]
@@ -807,8 +784,7 @@ def test_writefrom_buffer_too_small_for_crc_returns_false() -> None:
 
     async def scenario() -> bool:
         async with uart:
-            result = await uart.writefrom(buf, 5)
-        return result
+            return await uart.writefrom(buf, 5)
 
     assert run(scenario()) is False
     assert fake(uart).log == []  # rejected before ever touching the bus
@@ -826,8 +802,7 @@ def test_write_retries_after_a_short_write_until_everything_is_sent() -> None:
 
     async def scenario() -> bool:
         async with uart:
-            result = await uart.write(bytearray(b"1234567"))
-        return result
+            return await uart.write(bytearray(b"1234567"))
 
     assert run(scenario()) is True
     writes = [data for op, data in fake(uart).log if op == "write"]
@@ -844,8 +819,7 @@ def test_write_returns_false_when_uart_write_returns_none() -> None:
 
     async def scenario() -> bool:
         async with uart:
-            result = await uart.write(bytearray(b"x"))
-        return result
+            return await uart.write(bytearray(b"x"))
 
     assert run(scenario()) is False
     assert fake(uart).log == []  # nothing was ever actually recorded as sent
@@ -859,8 +833,7 @@ def test_writefrom_retries_after_a_short_write_until_everything_is_sent() -> Non
 
     async def scenario() -> bool:
         async with uart:
-            result = await uart.writefrom(buf, 5)
-        return result
+            return await uart.writefrom(buf, 5)
 
     assert run(scenario()) is True
     writes = [data for op, data in fake(uart).log if op == "write"]
@@ -879,10 +852,13 @@ def test_writefrom_retries_after_a_short_write_until_everything_is_sent() -> Non
 def test_exception_inside_session_still_releases_the_lock() -> None:
     uart = make_uart()
 
+    def boom() -> None:  # raised from a helper, so the raise isn't lexically inside the try below
+        raise RuntimeError("boom")
+
     async def scenario() -> None:
         try:
             async with uart:
-                raise RuntimeError("boom")
+                boom()
         except RuntimeError:
             pass
         assert not uart.asy_lock.locked()
@@ -984,16 +960,16 @@ def test_reentrant_acquisition_deadlocks_and_cleans_up() -> None:
     uart = make_uart()
 
     async def reentrant() -> None:
-        async with uart:
-            async with uart:
-                pass
+        async with uart, uart:
+            pass
 
     async def scenario() -> bool:
         try:
             await asyncio.wait_for(reentrant(), 0.2)
-            return False
         except asyncio.TimeoutError:
             return True
+        else:
+            return False
 
     assert run(scenario())
     assert not uart.asy_lock.locked()
@@ -1017,10 +993,10 @@ class _MemoryErrorCRC:
     def length(self) -> int:
         return self._real.length()
 
-    async def add(self, bytearr: bytearray, init: "int | None" = None) -> bytearray | None:
+    async def add(self, _bytearr: bytearray, _init: "int | None" = None) -> bytearray | None:  # both called positionally
         raise MemoryError("simulated allocation failure")
 
-    async def check(self, bytearr: bytearray, init: "int | None" = None) -> bytearray | None:
+    async def check(self, _bytearr: bytearray, _init: "int | None" = None) -> bytearray | None:
         raise MemoryError("simulated allocation failure")
 
 
@@ -1030,8 +1006,7 @@ def test_write_returns_false_on_crc_add_memoryerror() -> None:
 
     async def scenario() -> bool:
         async with uart:
-            result = await uart.write(bytearray(b"x"))
-        return result
+            return await uart.write(bytearray(b"x"))
 
     assert run(scenario()) is False
     assert fake(uart).log == []  # rejected before ever touching the bus
@@ -1045,7 +1020,7 @@ class _NoneCRC:
     def length(self) -> int:
         return 0
 
-    async def add(self, bytearr: bytearray, init: "int | None" = None) -> bytearray | None:
+    async def add(self, _bytearr: bytearray, _init: "int | None" = None) -> bytearray | None:  # called positionally
         return None
 
 
@@ -1055,8 +1030,7 @@ def test_write_returns_false_when_crc_add_returns_none() -> None:
 
     async def scenario() -> bool:
         async with uart:
-            result = await uart.write(bytearray(b"x"))
-        return result
+            return await uart.write(bytearray(b"x"))
 
     assert run(scenario()) is False
     assert fake(uart).log == []  # rejected before ever touching the bus
@@ -1072,8 +1046,7 @@ def test_read_until_complete_returns_none_on_crc_check_memoryerror() -> None:
 
     async def scenario() -> bytearray | None:
         async with uart:
-            result = await uart.read_until_complete(5)
-        return result
+            return await uart.read_until_complete(5)
 
     assert run(scenario()) is None
 

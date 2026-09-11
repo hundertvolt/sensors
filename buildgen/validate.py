@@ -9,12 +9,16 @@ from buildgen.buildspec import ADDRESS_CAPABLE_DRIVERS, ALLOWED_INSTANCE_FIELDS,
 from buildgen.defaults import default_class_defines_attr, default_class_name, default_init_params, find_default_class
 from buildgen.driver_registry import SERVICE_DRIVERS, parse_name_constant, resolve_driver
 from buildgen.errors import BuildError
-from buildgen.limits import parse_limits
-from buildgen.model import DeviceModel, InstanceSpec, instance_label, load_device, resolve_instance_key
+from buildgen.limits import LimitField, parse_limits
+from buildgen.model import DeviceModel, InstanceSpec, TomlDoc, instance_label, load_device, resolve_instance_key
 from buildgen.pico_gpio import I2C_ROLE, SPI_ROLE, gpio_exists
-from buildgen.requires_tag import check_requires_tags, parse_requires_tags
+from buildgen.requires_tag import RequiresTag, check_requires_tags, parse_requires_tags
 from buildgen.value_wiring import ValueWiringField, parse_value_wiring
 from buildgen.wiring import WiringField, parse_wiring
+
+# Cached per-driver-source-file parse results (_resolve_instances() below) - the fixed shape every
+# one of buildgen's four comment-tag parsers returns for one driver file.
+_ParsedDriverTags = tuple["tuple[WiringField, ...]", "tuple[RequiresTag, ...]", "tuple[LimitField, ...]", "tuple[ValueWiringField, ...]", str]
 
 _BUS_WIRE_FIELDS = {
     "i2c": ("scl_pin", "sda_pin"),
@@ -45,6 +49,7 @@ _BUS_ALLOWED_FIELDS = {
 _REQUIRED_DEVICE_FIELDS = ("name", "hostname", "hotspot_password", "conn_fail_to_hotspot", "hotspot_time_min")
 _REQUIRED_DEVICE_INT_FIELDS = ("conn_fail_to_hotspot", "hotspot_time_min")
 _ALLOWED_DEVICE_FIELDS = frozenset(_REQUIRED_DEVICE_FIELDS) | {"wiring"}
+_WPA2_MIN_PASSWORD_LEN = 8  # WPA2-PSK's own minimum (IEEE 802.11i)
 
 # [device.wiring] fields and which mandatory-infra consumer's own _WIRING they resolve against -
 # both fixed and known ahead of time (BUILD_CHAIN_PLAN.md's schema section: exactly these two
@@ -91,17 +96,17 @@ def _check_device_table(model: DeviceModel) -> None:
     # hotspot the CYW43 can't bring up at all.
     if not isinstance(dev["hotspot_password"], str):
         raise BuildError(model.device, f"[device].hotspot_password must be a string, got {dev['hotspot_password']!r}", field="hotspot_password")
-    if len(dev["hotspot_password"]) < 8:
-        raise BuildError(model.device, f"[device].hotspot_password is {len(dev['hotspot_password'])} characters - WPA2 requires at least 8", field="hotspot_password")
+    if len(dev["hotspot_password"]) < _WPA2_MIN_PASSWORD_LEN:
+        raise BuildError(model.device, f"[device].hotspot_password is {len(dev['hotspot_password'])} characters - WPA2 requires at least {_WPA2_MIN_PASSWORD_LEN}", field="hotspot_password")
     expected_hostname = "SensorStation" + dev["name"]
     if dev["hostname"] != expected_hostname:
         raise BuildError(model.device, f"[device].hostname is {dev['hostname']!r}, expected {expected_hostname!r} (SensorStation<name>)", field="hostname")
     unknown = set(dev) - _ALLOWED_DEVICE_FIELDS
     if unknown:
-        raise BuildError(model.device, f"[device] declares unrecognized field(s) {sorted(unknown)} - typo, or copy-pasted from an unrelated table?", field=sorted(unknown)[0])
+        raise BuildError(model.device, f"[device] declares unrecognized field(s) {sorted(unknown)} - typo, or copy-pasted from an unrelated table?", field=min(unknown))
 
 
-def _check_bus_tables(model: DeviceModel) -> "dict[str, dict]":
+def _check_bus_tables(model: DeviceModel) -> "dict[str, TomlDoc]":
     # A device with zero bus-attached instances (no sensors, no FRAM) is a logically valid,
     # simplest-possible shape - [bus.*] is allowed to be absent/empty entirely. If any instance
     # *does* need a bus, _check_required_fields()'s "references undeclared bus" check catches that
@@ -126,7 +131,7 @@ def _check_bus_tables(model: DeviceModel) -> "dict[str, dict]":
             raise BuildError(model.device, f"bus.{bus_name} ({kind}) timeout must be an int, got {bus_table['timeout']!r}", field="timeout")
         unknown = set(bus_table) - _BUS_ALLOWED_FIELDS[kind]
         if unknown:
-            raise BuildError(model.device, f"bus.{bus_name} ({kind}) declares unrecognized field(s) {sorted(unknown)} - typo, or copy-pasted from an unrelated bus kind?", field=sorted(unknown)[0])
+            raise BuildError(model.device, f"bus.{bus_name} ({kind}) declares unrecognized field(s) {sorted(unknown)} - typo, or copy-pasted from an unrelated bus kind?", field=min(unknown))
     return buses
 
 
@@ -139,7 +144,7 @@ def _resolve_instances(model: DeviceModel, src_dir: Path) -> None:
     # driver did all of it twice. Cached per source path for this build: the results are pure
     # functions of the file. A parse error still aborts the build on whichever instance hit it
     # first - the fault is in the shared driver file, so either instance names it correctly.
-    parsed: dict[Path, tuple] = {}
+    parsed: dict[Path, _ParsedDriverTags] = {}
     for spec in model.instances.values():
         info = resolve_driver(spec.driver, src_dir, model.device)
         spec.driver_info = info
@@ -162,7 +167,7 @@ def _instance_name(base_name: str, name_ext: str) -> str:
     return base_name if not name_ext else base_name + "_" + name_ext
 
 
-def _check_required_fields(model: DeviceModel, buses: "dict[str, dict]") -> None:
+def _check_required_fields(model: DeviceModel, buses: "dict[str, TomlDoc]") -> None:
     for spec in model.instances.values():
         # §6.3/§8.4/§10.5 item 1: a driver that resolves via driver_registry.resolve_driver() (it's
         # a real asy_<name>_driver.py with a SensorReader/SensorReaderConfig subclass, or a known
@@ -204,7 +209,7 @@ def _check_required_fields(model: DeviceModel, buses: "dict[str, dict]") -> None
         # never appears in any driver's own _build_call() branch.
         unknown = set(spec.fields) - {"driver", "name_ext"} - ALLOWED_INSTANCE_FIELDS.get(spec.driver, frozenset())
         if unknown:
-            raise BuildError(model.device, f"{spec.label} declares unrecognized field(s) {sorted(unknown)} for driver {spec.driver!r}", instance=spec.label, field=sorted(unknown)[0])
+            raise BuildError(model.device, f"{spec.label} declares unrecognized field(s) {sorted(unknown)} for driver {spec.driver!r}", instance=spec.label, field=min(unknown))
 
 
 def _check_limits(model: DeviceModel) -> None:
@@ -234,7 +239,7 @@ def _check_limits(model: DeviceModel) -> None:
                 )
 
 
-def _check_all_buses_used(model: DeviceModel, buses: "dict[str, dict]") -> None:
+def _check_all_buses_used(model: DeviceModel, buses: "dict[str, TomlDoc]") -> None:
     used = {spec.fields["bus"] for spec in model.instances.values() if "bus" in spec.fields}
     orphans = set(buses) - used
     if orphans:
@@ -244,7 +249,8 @@ def _check_all_buses_used(model: DeviceModel, buses: "dict[str, dict]") -> None:
 def _check_instance_name_collisions(model: DeviceModel) -> None:
     seen: dict[str, str] = {}
     for spec in model.instances.values():
-        assert spec.resolved_name is not None
+        if spec.resolved_name is None:
+            raise BuildError(model.device, "internal: resolved_name unresolved by collision-check time", instance=spec.label)
         existing = seen.get(spec.resolved_name)
         if existing is not None:
             raise BuildError(
@@ -274,7 +280,7 @@ def _check_instance_label_collisions(model: DeviceModel) -> None:
         seen[label] = key
 
 
-def _check_gpio_collisions(model: DeviceModel, buses: "dict[str, dict]") -> None:
+def _check_gpio_collisions(model: DeviceModel, buses: "dict[str, TomlDoc]") -> None:
     claims: dict[int, str] = {}
 
     def claim(pin: object, owner: str, field: str) -> None:
@@ -362,7 +368,8 @@ def _check_wiring_reference(model: DeviceModel, wf: WiringField, target_key_str:
     target = model.instances.get(target_key)
     if target is None:
         raise BuildError(model.device, f"{consumer_label}'s wiring.{toml_field}={target_key_str!r} does not resolve to any declared instance", instance=consumer_label, field=toml_field)
-    assert target.driver_info is not None
+    if target.driver_info is None:
+        raise BuildError(model.device, "internal: target.driver_info unresolved by wiring-reference-check time", instance=consumer_label, field=toml_field)
     if target.driver_info.class_name != wf.producer_class:
         raise BuildError(
             model.device,
@@ -387,12 +394,13 @@ def _check_source_field_reference(model: DeviceModel, value: object, consumer_la
         raise BuildError(model.device, f"{consumer_label}'s wiring.{toml_field}.source={value['source']!r} does not resolve to any declared instance", instance=consumer_label, field=toml_field)
 
 
-def _check_default_provider_params(model: DeviceModel, spec: InstanceSpec, toml_field: str, value: dict) -> ast.ClassDef:
+def _check_default_provider_params(model: DeviceModel, spec: InstanceSpec, toml_field: str, value: "TomlDoc") -> ast.ClassDef:
     # Shared by _WIRING-based defaults (signal_sink) and _VALUE_WIRING-based defaults
     # (temperature_source/humidity_source) - §2.4's "the class definition IS the schema": a
     # `_Default<Field>`'s own `__init__` signature says what keys a `{default = true, ...}`
     # sub-table may/must carry, discovered via AST the same way _WIRING/_LIMITS already are.
-    assert spec.driver_info is not None
+    if spec.driver_info is None:
+        raise BuildError(model.device, "internal: driver_info unresolved by default-provider-check time", instance=spec.label, field=toml_field)
     class_node = find_default_class(spec.driver_info.source_path, model.device, spec.label, toml_field)
     if class_node is None:
         raise BuildError(
@@ -414,7 +422,7 @@ def _check_default_provider_params(model: DeviceModel, spec: InstanceSpec, toml_
     return class_node
 
 
-def _check_default_selection(model: DeviceModel, spec: InstanceSpec, wf: WiringField, toml_field: str, value: dict) -> None:
+def _check_default_selection(model: DeviceModel, spec: InstanceSpec, wf: WiringField, toml_field: str, value: "TomlDoc") -> None:
     class_node = _check_default_provider_params(model, spec, toml_field, value)
     # §2.8's second open question, resolved "yes" for attr-mode _WIRING fields only (signal_sink):
     # verify the default provider actually defines the target attribute/method - same
@@ -433,11 +441,12 @@ def _check_default_selection(model: DeviceModel, spec: InstanceSpec, wf: WiringF
 
 def _check_default_value_selection(model: DeviceModel, spec: InstanceSpec, vwf: ValueWiringField) -> None:
     value = spec.wiring[vwf.toml_field]
-    assert isinstance(value, dict)
+    if not isinstance(value, dict):
+        raise BuildError(model.device, "internal: default-selection check reached with a non-table wiring value", instance=spec.label, field=vwf.toml_field)
     _check_default_provider_params(model, spec, vwf.toml_field, value)
 
 
-def _check_instance_wiring(model: DeviceModel, src_dir: Path) -> None:
+def _check_instance_wiring(model: DeviceModel) -> None:
     for spec in model.instances.values():
         value_wiring_fields = {vwf.toml_field for vwf in spec.value_wiring_schema}
         for toml_field, value in spec.wiring.items():
@@ -516,7 +525,7 @@ def _check_device_wiring(model: DeviceModel, src_dir: Path) -> None:
             raise BuildError(model.device, f"[device.wiring] is missing required field {toml_field!r}", field=toml_field)
 
 
-def _check_requires_tags(model: DeviceModel, buses: "dict[str, dict]") -> None:
+def _check_requires_tags(model: DeviceModel, buses: "dict[str, TomlDoc]") -> None:
     for spec in model.instances.values():
         if not spec.requires_tags:
             continue
@@ -538,11 +547,11 @@ def build_model(toml_path: Path, src_dir: Path) -> DeviceModel:
     _check_instance_label_collisions(model)
     _check_gpio_collisions(model, buses)
     _check_address_collisions(model)
-    _check_instance_wiring(model, src_dir)
+    _check_instance_wiring(model)
     _check_value_wiring(model)
     _check_device_wiring(model, src_dir)
     _check_requires_tags(model, buses)
     return model
 
 
-__all__ = ["build_model", "instance_label", "InstanceSpec"]
+__all__ = ["InstanceSpec", "build_model", "instance_label"]

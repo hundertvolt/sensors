@@ -11,18 +11,18 @@ import sys
 # this reaches the real vendored ext/microdot.py without touching MICROPYPATH.
 sys.path.insert(0, "ext")
 
-import machine  # noqa: E402
-from _fram_chip_fake import FakeMB85RS64V  # noqa: E402
-from _shared_rest_roundtrip import (  # noqa: E402
+import machine
+from _fram_chip_fake import FakeMB85RS64V
+from _shared_rest_roundtrip import (
     assert_named_modules_constructed,
     assert_sensor_payload_not_self_wrapped,
     drain_json_response_body,
 )
-from microdot import Request  # type: ignore[import-not-found]  # noqa: E402
+from microdot import Request, Response  # type: ignore[import-not-found]
 
-import asy_spi_driver  # noqa: E402
-import sensortask_dev  # noqa: E402
-from print_log import PrintLog, PrintLogHistory, PrintLogHistoryStore  # noqa: E402
+import asy_spi_driver
+import sensortask_dev
+from print_log import PrintLog, PrintLogHistory, PrintLogHistoryStore
 
 try:
     from typing import TYPE_CHECKING
@@ -30,8 +30,12 @@ except ImportError:  # typing isn't available on the real MicroPython test inter
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Coroutine
+    from collections.abc import Callable, Coroutine
     from typing import Any, TypeVar
+
+    from asy_fram_manager import AsyFramChunk, AsyFramTimestampedChunk
+    from base_classes import SensorReaderConfig
+    from crc_checks import CRC_Base
 
     T = TypeVar("T")
 
@@ -40,7 +44,7 @@ class _FakeMB85RS2MTA(FakeMB85RS64V):
     # dev's real FRAM chip is a 256KB MB85RS2MTA (product ID 0x48 0x03, SPECIFICATION.md Part
     # C.3.1), not wozi's 8KB MB85RS64V the base fake models by default. A subclass, not a
     # post-construction override, since build_system() constructs the chip with no such hook.
-    def __init__(self, *args: "Any", **kwargs: "Any") -> None:
+    def __init__(self, *args: object, **kwargs: object) -> None:
         super().__init__(*args, **kwargs)
         self.rdid_response = bytes([0x04, 0x7F, 0x48, 0x03])
 
@@ -60,7 +64,7 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to complet
     return asyncio.run(coro)
 
 
-def status_body(res: "Any") -> bytes:
+def status_body(res: "Response") -> bytes:
     # GET /status streams from a list of already-json.dumps()-encoded fragments; drain it back
     # into one body so existing json.loads(...) assertions keep working unchanged.
     return drain_json_response_body(res.body)
@@ -264,13 +268,13 @@ def test_main_forwards_web_host_and_port_to_build_system() -> None:
     real_force_sync = AsyNtpClient.ntp_force_sync
     real_start_and_check = SystemService.start_and_check_tasks
 
-    async def _fake_start_timers(self: "Any", timers: "Any") -> None:
+    async def _fake_start_timers(self: "SystemService", timers: "list[Callable[[], None]]") -> None:
         pass
 
-    async def _fake_force_sync(self: "Any") -> None:
+    async def _fake_force_sync(self: "AsyNtpClient") -> None:
         pass
 
-    async def _fake_start_and_check(self: "Any", task_starters: "Any") -> None:
+    async def _fake_start_and_check(self: "SystemService", task_starters: "list[Callable[[], asyncio.Task[Any]]]") -> None:
         pass  # never loops - this test only cares that build_system() received the override
 
     SystemService.start_timers = _fake_start_timers  # type: ignore[method-assign]
@@ -300,13 +304,18 @@ def test_fram_chunk_allocation_order_matches_the_documented_seven_chunk_sequence
     real_get_chunk = AsyFramManager.get_chunk
     real_get_timestamped_chunk = AsyFramManager.get_timestamped_chunk
 
-    def _tracking_get_chunk(self: "AsyFramManager", *args: "Any", **kwargs: "Any") -> "Any":
+    def _tracking_get_chunk(
+        self: "AsyFramManager", size: int, crc: "CRC_Base | None" = None, verify: int = 0, check_length: int = 8,
+    ) -> "AsyFramChunk | None":  # signature mirrors the real method it replaces - mypy checks it on assignment
         calls.append("chunk")
-        return real_get_chunk(self, *args, **kwargs)
+        return real_get_chunk(self, size, crc, verify, check_length)
 
-    def _tracking_get_timestamped_chunk(self: "AsyFramManager", *args: "Any", **kwargs: "Any") -> "Any":
+    def _tracking_get_timestamped_chunk(
+        self: "AsyFramManager", size: int, ntp_sync_callback: "Callable[[], Coroutine[Any, Any, bool]]",
+        crc: "CRC_Base | None" = None, verify: int = 0, check_length: int = 8,
+    ) -> "AsyFramTimestampedChunk | None":
         calls.append("timestamped")
-        return real_get_timestamped_chunk(self, *args, **kwargs)
+        return real_get_timestamped_chunk(self, size, ntp_sync_callback, crc, verify, check_length)
 
     AsyFramManager.get_chunk = _tracking_get_chunk  # type: ignore[method-assign]
     AsyFramManager.get_timestamped_chunk = _tracking_get_timestamped_chunk  # type: ignore[method-assign]
@@ -350,7 +359,7 @@ def test_fram_chunks_are_all_successfully_allocated_not_out_of_memory() -> None:
 class _DeadFramChip(_FakeMB85RS2MTA):
     # Same technique as test_sensortask_wozi.py's own _DeadFramChip: a real device-ID mismatch
     # (not just fram=None) - the chip responds, just never comes up as an MB85RS2MTA.
-    def __init__(self, *args: "Any", **kwargs: "Any") -> None:
+    def __init__(self, *args: object, **kwargs: object) -> None:
         super().__init__(*args, **kwargs)
         self.rdid_response = bytes([0xFF, 0xFF, 0xFF, 0xFF])
 
@@ -429,37 +438,39 @@ def test_setup_batch_runs_sysfunct_then_fram_then_conn_then_ntp_then_sgp_then_bm
     real_notify_setup = NotificationCoordinator.setup
     real_notify_finalize = NotificationCoordinator.finalize
 
-    async def _tracking_sysfunct_setup(self: "Any") -> "Any":
+    # Every self: below names the class that *declares* the replaced method, not the one it is
+    # installed on - that is the signature mypy checks each assignment against.
+    async def _tracking_sysfunct_setup(self: "SystemService") -> None:
         calls.append("sysfunct")
-        return await real_sysfunct_setup(self)
+        await real_sysfunct_setup(self)
 
-    async def _tracking_fram_setup(self: "Any") -> "Any":
+    async def _tracking_fram_setup(self: "AsyFramManager") -> bool:
         calls.append("fram")
         return await real_fram_setup(self)
 
-    async def _tracking_conn_setup(self: "Any") -> "Any":
+    async def _tracking_conn_setup(self: "SensorReaderConfig") -> None:
         calls.append("conn")
-        return await real_conn_setup(self)
+        await real_conn_setup(self)
 
-    async def _tracking_ntp_setup(self: "Any") -> "Any":
+    async def _tracking_ntp_setup(self: "SensorReaderConfig") -> None:
         calls.append("ntp")
-        return await real_ntp_setup(self)
+        await real_ntp_setup(self)
 
-    async def _tracking_sgp_setup(self: "Any") -> "Any":
+    async def _tracking_sgp_setup(self: "SensorReaderConfig") -> None:
         calls.append("sgp")
-        return await real_sgp_setup(self)
+        await real_sgp_setup(self)
 
-    async def _tracking_bmp_setup(self: "Any") -> "Any":
+    async def _tracking_bmp_setup(self: "SensorReaderConfig") -> None:
         calls.append("bmp")
-        return await real_bmp_setup(self)
+        await real_bmp_setup(self)
 
-    async def _tracking_notify_setup(self: "Any") -> "Any":
+    async def _tracking_notify_setup(self: "NotificationCoordinator") -> None:
         calls.append("notify_setup")
-        return await real_notify_setup(self)
+        await real_notify_setup(self)
 
-    def _tracking_notify_finalize(self: "Any") -> "Any":
+    def _tracking_notify_finalize(self: "NotificationCoordinator") -> None:
         calls.append("notify_finalize")
-        return real_notify_finalize(self)
+        real_notify_finalize(self)
 
     SystemService.setup = _tracking_sysfunct_setup  # type: ignore[method-assign]
     AsyFramManager.setup = _tracking_fram_setup  # type: ignore[method-assign]
@@ -652,13 +663,13 @@ def test_main_calls_start_timers_then_force_sync_then_start_and_check_tasks_in_o
     real_force_sync = AsyNtpClient.ntp_force_sync
     real_start_and_check = SystemService.start_and_check_tasks
 
-    async def _fake_start_timers(self: "Any", timers: "Any") -> None:
+    async def _fake_start_timers(self: "SystemService", timers: "list[Callable[[], None]]") -> None:
         calls.append("start_timers")
 
-    async def _fake_force_sync(self: "Any") -> None:
+    async def _fake_force_sync(self: "AsyNtpClient") -> None:
         calls.append("force_sync")
 
-    async def _fake_start_and_check(self: "Any", task_starters: "Any") -> None:
+    async def _fake_start_and_check(self: "SystemService", task_starters: "list[Callable[[], asyncio.Task[Any]]]") -> None:
         calls.append("start_and_check_tasks")
         # Deliberately never loops - the real implementation runs forever; this proves main()
         # reaches this call, not that the supervisor loop itself behaves (test_system_service.py's
@@ -686,7 +697,7 @@ def test_main_calls_start_timers_then_force_sync_then_start_and_check_tasks_in_o
 # ---------------------------------------------------------------------------
 
 
-def _dispatch(method: str, path: str, json_body: "dict[str, Any] | None" = None) -> "Any":
+def _dispatch(method: str, path: str, json_body: "dict[str, Any] | None" = None) -> "Response":
     assert sensortask_dev.webserver is not None
     app = sensortask_dev.webserver._app
     body = b"" if json_body is None else json.dumps(json_body).encode()

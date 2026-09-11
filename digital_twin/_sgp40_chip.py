@@ -12,7 +12,13 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from typing import Any
+    from typing import Protocol
+
+    class _RandomSource(Protocol):
+        # Structural stand-in for the `random` module (the default) or a seeded random.Random -
+        # machine.py's configure_random_source() seam. Only these two are ever called here.
+        def randint(self, a: int, b: int) -> int: ...
+        def getrandbits(self, k: int) -> int: ...
 
 _CMD_SERIAL_NUMBER = b"\x36\x82"
 _CMD_SELF_TEST = b"\x28\x0e"
@@ -22,10 +28,11 @@ _CMD_MEASURE_RAW = b"\x26\x0f"
 class Sgp40Chip:
     def __init__(
         self,
-        random_source: "Any | None" = None,
+        random_source: "_RandomSource | None" = None,
         min_raw: int = 26000,
         max_raw: int = 34000,
         raw_step: int = 1000,
+        *,
         corrupt_next_reply: bool = False,
     ) -> None:
         self._random = random_source if random_source is not None else _random_module

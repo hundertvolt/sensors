@@ -317,10 +317,10 @@ def test_coerce_numeric_bool_excluded_from_both_directions() -> None:
     # every branch - it must never coerce into int OR float, and never pass the same-type check
     # for either, even though `isinstance(True, int)` and `isinstance(True, float)` would both
     # otherwise be misleading here.
-    assert cm.coerce_numeric(True, int) == (False, True)
-    assert cm.coerce_numeric(False, int) == (False, False)
-    assert cm.coerce_numeric(True, float) == (False, True)
-    assert cm.coerce_numeric(False, float) == (False, False)
+    assert cm.coerce_numeric(check_val=True, scalar_type=int) == (False, True)
+    assert cm.coerce_numeric(check_val=False, scalar_type=int) == (False, False)
+    assert cm.coerce_numeric(check_val=True, scalar_type=float) == (False, True)
+    assert cm.coerce_numeric(check_val=False, scalar_type=float) == (False, False)
 
 
 def test_coerce_numeric_wrong_type_entirely_rejected() -> None:
@@ -438,14 +438,14 @@ def test_type_or_range_error_int_field_still_rejects_bool() -> None:
     # bool must never be coerced into an int field even though `type(True) is bool` sits in
     # Python's int-subclass hierarchy - type() (not isinstance()) already excludes it.
     field: cm.FieldSchema = ("X", "int", None, 0, 10, None)
-    assert cm.type_or_range_error(True, field)[0] is True
-    assert cm.type_or_range_error(False, field)[0] is True
+    assert cm.type_or_range_error(check_val=True, field=field)[0] is True
+    assert cm.type_or_range_error(check_val=False, field=field)[0] is True
 
 
 def test_type_or_range_error_float_field_still_rejects_bool() -> None:
     field: cm.FieldSchema = ("X", "float", None, 0.0, 10.0, None)
-    assert cm.type_or_range_error(True, field)[0] is True
-    assert cm.type_or_range_error(False, field)[0] is True
+    assert cm.type_or_range_error(check_val=True, field=field)[0] is True
+    assert cm.type_or_range_error(check_val=False, field=field)[0] is True
 
 
 def test_type_or_range_error_int_field_coerced_float_still_honors_special_bypass() -> None:
@@ -634,7 +634,7 @@ def test_type_or_range_error_str_zero_length_boundary() -> None:
 
 def test_type_or_range_error_bool_additional_wrong_types() -> None:
     field: cm.FieldSchema = ("X", "bool", None, None, None, None)
-    assert cm.type_or_range_error(False, field)[0] is False
+    assert cm.type_or_range_error(check_val=False, field=field)[0] is False
     assert cm.type_or_range_error(0, field)[0] is True  # int, not bool
     assert cm.type_or_range_error(1.0, field)[0] is True
     assert cm.type_or_range_error("true", field)[0] is True
@@ -687,8 +687,8 @@ def test_type_or_range_error_bool_ignores_nonsensical_min_max() -> None:
     # A bool field has no range concept - min/max are simply never read, so garbage values there
     # (an authoring mistake, e.g. copy-pasted from an int field) don't affect a genuinely valid bool.
     field: cm.FieldSchema = ("X", "bool", None, 5, 10, None)
-    assert cm.type_or_range_error(True, field)[0] is False
-    assert cm.type_or_range_error(False, field)[0] is False
+    assert cm.type_or_range_error(check_val=True, field=field)[0] is False
+    assert cm.type_or_range_error(check_val=False, field=field)[0] is False
 
 
 def test_type_or_range_error_bool_value_against_int_field_rejected() -> None:
@@ -696,8 +696,8 @@ def test_type_or_range_error_bool_value_against_int_field_rejected() -> None:
     # would treat True/False as ints too, since bool subclasses int) - the reverse direction of the
     # existing "int value against a bool field" tests above.
     field: cm.FieldSchema = ("X", "int", None, 0, 10, None)
-    assert cm.type_or_range_error(True, field)[0] is True
-    assert cm.type_or_range_error(False, field)[0] is True
+    assert cm.type_or_range_error(check_val=True, field=field)[0] is True
+    assert cm.type_or_range_error(check_val=False, field=field)[0] is True
 
 
 def test_type_or_range_error_str_length_counts_unicode_codepoints_not_bytes() -> None:
@@ -710,7 +710,7 @@ def test_type_or_range_error_str_length_counts_unicode_codepoints_not_bytes() ->
 
 def test_type_or_range_error_bool() -> None:
     field: cm.FieldSchema = ("X", "bool", None, None, None, None)
-    assert cm.type_or_range_error(True, field)[0] is False
+    assert cm.type_or_range_error(check_val=True, field=field)[0] is False
     assert cm.type_or_range_error(1, field)[0] is True  # int, not bool - `type() is bool` rejects it
 
 
@@ -815,7 +815,7 @@ def test_type_or_range_error_bool_ignores_malformed_special_for_a_genuinely_vali
     # a bool to bypass - so a wrong-typed special only ever surfaces via check_cfg_get_default's
     # own self-check (previous test), never by rejecting an otherwise-valid bool value outright.
     # Longstanding, deliberate asymmetry (see BACKLOG.md), not new to the tuple schema.
-    assert cm.type_or_range_error(True, ("X", "bool", None, None, None, 1))[0] is False
+    assert cm.type_or_range_error(check_val=True, field=("X", "bool", None, None, None, 1))[0] is False
 
 
 def test_schema_dict_non_string_name_quirk() -> None:
@@ -932,8 +932,8 @@ def test_configmanager_raw_nan_token_treated_as_corrupt_not_a_raise() -> None:
 
 
 def test_configmanager_value_omitted_json_quirk_self_heals() -> None:
-    # A genuine MicroPython v1.28.0 json.load() leniency, confirmed directly against the pinned
-    # interpreter and distinct from the already-tested "unterminated" case (fixed upstream in 2025,
+    # A genuine MicroPython json.load() leniency, re-confirmed directly against the pinned
+    # v1.29.0 interpreter and distinct from the already-tested "unterminated" case (fixed upstream in 2025,
     # commit 9ef16b466 - that fix only covers a missing closing brace/bracket). A value omitted
     # before a comma/closing brace doesn't raise here - it desyncs the parser into a wrong/mangled
     # dict instead (e.g. `{"Count": , "Offset": 1.5}` silently parses to `{"Count": "Offset"}`).
@@ -1175,8 +1175,8 @@ def test_configmanager_large_mixed_type_schema() -> None:
         }
         ok, results = run(
             mgr.write_config(
-                {"Count": 9, "Offset": 2.5, "Name": "xyz", "Enabled": False, "I1": 50}, _LARGE_MIXED_SCHEMA
-            )
+                {"Count": 9, "Offset": 2.5, "Name": "xyz", "Enabled": False, "I1": 50}, _LARGE_MIXED_SCHEMA,
+            ),
         )
         assert ok is True
         assert results == {
@@ -1829,7 +1829,7 @@ def test_write_config_multiple_keys_mixed_outcomes_in_one_call() -> None:
                     "Ghost": 1,  # invalid - not in the schema at all
                 },
                 _SCHEMA,
-            )
+            ),
         )
         assert ok is True
         assert results == {
@@ -2152,19 +2152,23 @@ class _MemoryErrorJson:
     # Only the call actually under test raises - the other one falls through to the real json
     # module, so each test exercises exactly one of the two guarded call sites rather than
     # accidentally failing the whole setup()/write_config() chain twice over.
-    def __init__(self, raise_on_dump: bool = False, raise_on_load: bool = False) -> None:
+    def __init__(self, *, raise_on_dump: bool = False, raise_on_load: bool = False) -> None:
         self.raise_on_dump = raise_on_dump
         self.raise_on_load = raise_on_load
 
-    def dump(self, obj: "Any", stream: "Any") -> None:
+    # `stream` is `object`: it is only handed straight back to the real json module, whose own
+    # stub types it as IOBase_mp | Incomplete. load() returns `object` for the same reason - every
+    # consumer (config_manager.setup()) isinstance-checks the result before using it.
+    def dump(self, obj: "dict[str, cm.CfgValue]", stream: object) -> None:
         if self.raise_on_dump:
             raise MemoryError("simulated allocation failure")
         json.dump(obj, stream)
 
-    def load(self, stream: "Any") -> "Any":
+    def load(self, stream: object) -> object:
         if self.raise_on_load:
             raise MemoryError("simulated allocation failure")
-        return json.load(stream)
+        decoded: object = json.load(stream)
+        return decoded
 
 
 def test_write_config_memoryerror_from_json_dump_leaves_cache_unchanged() -> None:

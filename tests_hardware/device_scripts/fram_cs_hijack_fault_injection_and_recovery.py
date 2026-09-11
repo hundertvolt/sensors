@@ -16,8 +16,7 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Coroutine
-    from typing import Any
+    from collections.abc import Awaitable
 
 _WRITE_RACE_ADDR = 0x9000  # scratch addresses, disjoint from every other device script's own regions
 _READ_RACE_ADDR = 0x9100
@@ -30,7 +29,7 @@ _READ_SEED_PATTERN = bytes(range(0x60, 0x70))  # deliberately distinct from ever
 _POST_RECOVERY_PATTERN = bytes(range(0x40, 0x50))
 
 
-async def _cs_yank_race(fram: FRAM_SPI, victim: "Coroutine[Any, Any, None]") -> bool:
+async def _cs_yank_race(fram: FRAM_SPI, victim: "Awaitable[None]") -> bool:
     """Shared race harness for both scenarios below. Returns whether the yanker actually ran before
     the victim's own __aenter__ sleep elapsed - necessary but not sufficient; each caller's own
     outcome-based assertion afterward is the real proof."""
@@ -46,7 +45,7 @@ async def _cs_yank_race(fram: FRAM_SPI, victim: "Coroutine[Any, Any, None]") -> 
     return cs_forced_high_early
 
 
-async def _assert_recovery(fram: FRAM_SPI, addr: int, wdt: machine.WDT) -> list:
+async def _assert_recovery(fram: FRAM_SPI, addr: int, wdt: machine.WDT) -> list[str]:
     failures = []
     recovered = await fram.verify_present()  # not wrapped in `async with fram:` - self-acquires the same outer lock internally (asyncio.Lock isn't reentrant)
     wdt.feed()
@@ -92,7 +91,7 @@ async def _main() -> None:
         try:
             async with fram:
                 await fram.set_values(_HIJACKED_WRITE_PATTERN, addr_start=_WRITE_RACE_ADDR)
-        except Exception as e:  # noqa: BLE001 - any exception here is itself part of what this script observes, not a bug in the script
+        except Exception as e:
             write_raised = e
 
     yanker_ran = await _cs_yank_race(fram, victim_writer())
@@ -107,7 +106,7 @@ async def _main() -> None:
         if not write_readback_ok or bytes(write_readback) != _ORIGINAL_PATTERN:
             failures.append(
                 f"write hijack: expected original data {_ORIGINAL_PATTERN.hex()} untouched (write_raised={write_raised!r}), "
-                f"got {bytes(write_readback).hex()} - the hijacked write was not reliably blocked"
+                f"got {bytes(write_readback).hex()} - the hijacked write was not reliably blocked",
             )
     wdt.feed()
     failures.extend(await _assert_recovery(fram, _POST_RECOVERY_ADDR_WRITE_HIJACK, wdt))
@@ -127,18 +126,17 @@ async def _main() -> None:
             try:
                 async with fram:
                     await fram.get_values(hijacked_read_buf, addr_start=_READ_RACE_ADDR)
-            except Exception as e:  # noqa: BLE001 - see victim_writer()'s own comment
+            except Exception as e:
                 read_raised = e
 
         yanker_ran = await _cs_yank_race(fram, victim_reader())
         if not yanker_ran:
             failures.append("read hijack: cs_yanker() never actually ran before victim_reader() completed - race did not land, nothing was tested")
-        else:
-            # Hard requirement: a hijacked read must never return the real, correct data - a
-            # "sensible" result here would mean the race missed its window. Not asserted against a
-            # specific wrong value (a different unit could float differently on a deselected MISO).
-            if read_raised is None and bytes(hijacked_read_buf) == _READ_SEED_PATTERN:
-                failures.append(f"read hijack: got back the real seeded data {_READ_SEED_PATTERN.hex()} with no exception - the race did not reliably intercept the read")
+        # Hard requirement: a hijacked read must never return the real, correct data - a
+        # "sensible" result here would mean the race missed its window. Not asserted against a
+        # specific wrong value (a different unit could float differently on a deselected MISO).
+        elif read_raised is None and bytes(hijacked_read_buf) == _READ_SEED_PATTERN:
+            failures.append(f"read hijack: got back the real seeded data {_READ_SEED_PATTERN.hex()} with no exception - the race did not reliably intercept the read")
         wdt.feed()
         failures.extend(await _assert_recovery(fram, _POST_RECOVERY_ADDR_READ_HIJACK, wdt))
 

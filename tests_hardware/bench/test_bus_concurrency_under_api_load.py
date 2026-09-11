@@ -6,11 +6,14 @@ from __future__ import annotations
 
 import threading
 import time
+from typing import TYPE_CHECKING
 
 import http_client
-from bench_control import BenchBridge
 from error_log_helpers import assert_module_error_log_empty, reset_all_error_logs
 from harness import Board, wait_until
+
+if TYPE_CHECKING:
+    from bench_control import BenchBridge
 
 CO2_MIN_PPM, CO2_MAX_PPM = 200, 10_000
 PRESSURE_MIN_HPA, PRESSURE_MAX_HPA = 300.0, 1250.0
@@ -37,7 +40,7 @@ def test_concurrent_get_sensors_under_real_multi_client_load_never_corrupts_or_c
         for i in range(_GET_ITERATIONS_PER_WORKER):
             try:
                 res = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=15.0)
-            except Exception as e:  # noqa: BLE001 - a real connection-level failure under load is itself worth surfacing
+            except Exception as e:
                 _record(f"worker {worker_id} iter {i}: {type(e).__name__}: {e}")
                 continue
             if res.status_code != 200:
@@ -57,7 +60,7 @@ def test_concurrent_get_sensors_under_real_multi_client_load_never_corrupts_or_c
         for i in range(_PUT_RESET_COUNT):
             try:
                 res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"SGP40": {"SGPResetVOC": True}}, timeout_s=15.0)
-            except Exception as e:  # noqa: BLE001 - see get_sensors_worker's own comment
+            except Exception as e:
                 _record(f"sgp40 reset {i}: {type(e).__name__}: {e}")
                 continue
             if res.status_code != 200 or res.json().get("result", {}).get("SGP40", {}).get("SGPResetVOC") != "Valid":
@@ -126,7 +129,7 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_light_netw
         for i in range(_GET_ITERATIONS_PER_WORKER):
             try:
                 res = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=20.0)
-            except Exception:  # noqa: BLE001 - an individual request failing under injected degradation is expected, not a finding; only data corruption below is
+            except Exception:
                 continue
             if res.status_code != 200:
                 continue
@@ -144,7 +147,7 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_light_netw
         for i in range(_PUT_RESET_COUNT):
             try:
                 res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"SGP40": {"SGPResetVOC": True}}, timeout_s=20.0)
-            except Exception:  # noqa: BLE001 - same "expected under degradation" reasoning as above
+            except Exception:
                 continue
             if res.status_code == 200:
                 result = res.json().get("result", {}).get("SGP40", {}).get("SGPResetVOC")
@@ -212,7 +215,7 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_tra
         for i in range(_GET_ITERATIONS_PER_WORKER):
             try:
                 res = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=20.0)
-            except Exception:  # noqa: BLE001 - an individual request failing during the NTP-outage window is not itself a finding, same reasoning as the network-degradation compound test above
+            except Exception:
                 continue
             if res.status_code != 200:
                 continue
@@ -230,7 +233,7 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_tra
         for i in range(_PUT_RESET_COUNT):
             try:
                 res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"SGP40": {"SGPResetVOC": True}}, timeout_s=20.0)
-            except Exception:  # noqa: BLE001 - see get_sensors_worker's own comment
+            except Exception:
                 continue
             if res.status_code == 200:
                 result = res.json().get("result", {}).get("SGP40", {}).get("SGPResetVOC")
@@ -288,7 +291,7 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_repeated_r
         for i in range(_GET_ITERATIONS_PER_WORKER):
             try:
                 res = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=20.0)
-            except Exception:  # noqa: BLE001 - an individual request failing while the real STA link is mid-flap is expected here, not itself a finding, same reasoning as the other compound tests above
+            except Exception:
                 continue
             if res.status_code != 200:
                 continue
@@ -306,7 +309,7 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_repeated_r
         for i in range(_PUT_RESET_COUNT):
             try:
                 res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"SGP40": {"SGPResetVOC": True}}, timeout_s=20.0)
-            except Exception:  # noqa: BLE001 - see get_sensors_worker's own comment
+            except Exception:
                 continue
             if res.status_code == 200:
                 result = res.json().get("result", {}).get("SGP40", {}).get("SGPResetVOC")

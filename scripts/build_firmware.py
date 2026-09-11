@@ -24,20 +24,20 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 sys.path.insert(0, str(REPO_ROOT / "toolchain"))
-import setup_toolchain as st  # noqa: E402
+import setup_toolchain as st  # type: ignore[import-not-found]  # noqa: E402
 
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
-from _strip_type_checking import strip_type_checking_blocks  # noqa: E402
+from _strip_type_checking import strip_type_checking_blocks  # type: ignore[import-not-found]  # noqa: E402
 
 # Mirrors boards/RPI_PICO_W/manifest.py + boards/manifest.py combined - the default manifest's own
 # require()s and its freeze("$(PORT_DIR)/modules") (the stock, always-returns _boot.py + rp2.py)
 # are reused unchanged; {stage_dir} freeze() below adds our own modules on top, including each
 # device's boot_entry/<device>_boot.py content staged under the literal name "main.py" (see this
 # file's own docstring for why).
-_MANIFEST_TEMPLATE = '''\
+_MANIFEST_TEMPLATE = """\
 include("$(PORT_DIR)/boards/{board}/manifest.py")
 freeze({stage_dir!r})
-'''
+"""
 
 
 def log(msg: str) -> None:

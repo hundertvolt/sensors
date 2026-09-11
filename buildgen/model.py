@@ -4,18 +4,25 @@ failure wrapped into the same fail-loud `BuildError`), and `InstanceSpec`/`Devic
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 import tomllib
 
 from buildgen.driver_registry import DriverInfo
 from buildgen.errors import BuildError
-from buildgen.limits import LimitField
-from buildgen.requires_tag import RequiresTag
-from buildgen.value_wiring import ValueWiringField
-from buildgen.wiring import WiringField
+
+if TYPE_CHECKING:
+    from buildgen.limits import LimitField
+    from buildgen.requires_tag import RequiresTag
+    from buildgen.value_wiring import ValueWiringField
+    from buildgen.wiring import WiringField
+
+# A parsed TOML table (tomllib.load()'s own return shape, and every [[instance]]/[bus.*]/[device]
+# sub-table sliced out of it) - str keys, arbitrarily nested str/int/float/bool/list/dict values.
+TomlDoc = dict[str, Any]
 
 
-def instance_key(inst: dict) -> tuple[str, str]:
+def instance_key(inst: "TomlDoc") -> tuple[str, str]:
     # The TOML's own driver/name_ext identity - deliberately never instance_name()/_NAME
     # (SPECIFICATION.md Part C.14.1's separate, unrelated naming space; see wiring.py's own
     # module docstring and BUILD_CHAIN_PLAN.md's quality-bar section for the confirmed-real bug
@@ -32,8 +39,8 @@ def instance_label(key: tuple[str, str]) -> str:
 class InstanceSpec:
     driver: str
     name_ext: str
-    fields: dict  # the raw [[instance]] table, minus "wiring"
-    wiring: dict  # the raw [instance.wiring] table (may itself hold sub-tables, e.g. warn_co2), {} if absent
+    fields: "TomlDoc"  # the raw [[instance]] table, minus "wiring"
+    wiring: "TomlDoc"  # the raw [instance.wiring] table (may itself hold sub-tables, e.g. warn_co2), {} if absent
     order_index: int  # original declaration order - stable tie-break when nothing else orders two nodes
     driver_info: DriverInfo | None = None
     wiring_schema: "tuple[WiringField, ...]" = ()
@@ -55,7 +62,7 @@ class InstanceSpec:
 class DeviceModel:
     device: str
     path: Path
-    doc: dict
+    doc: "TomlDoc"
     instances: "dict[tuple[str, str], InstanceSpec]" = field(default_factory=dict)
     construction_order: "list[str | tuple[str, str]]" = field(default_factory=list)  # "conn"/"ntp"/"sysfunct" or an instance key
 

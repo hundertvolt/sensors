@@ -18,7 +18,7 @@
 #   output_path defaults to frozen_modules/frozen_html.py - deliberately NOT .frozen/: that exact
 #   string is a hardcoded sentinel in MicroPython's own import machinery (py/builtinimport.c's
 #   MP_FROZEN_PATH_PREFIX ".frozen/") that routes straight to the compiled-in frozen-module table
-#   and never touches the real filesystem - confirmed directly against the pinned v1.28.0 source
+#   and never touches the real filesystem - confirmed directly against the pinned v1.29.0 source
 #   after a real file placed there turned out to be silently unimportable (`ImportError: no module
 #   named 'frozen_html'` even though the file was really on disk). scripts/test.sh adds
 #   frozen_modules/ as its own MICROPYPATH segment, separate from (and alongside) the real ".frozen"

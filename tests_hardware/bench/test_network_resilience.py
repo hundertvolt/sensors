@@ -7,18 +7,21 @@ from __future__ import annotations
 
 import socket
 import time
+from typing import TYPE_CHECKING
 
 import http_client
 import ntp_probe
-from bench_control import BenchBridge
 from error_log_helpers import (
     assert_module_error_log_contains,
     assert_module_error_log_empty,
     get_errcount,
     reset_all_error_logs,
 )
-from harness import Board, HardwareTestFailure, wait_until
+from harness import Board, HardwareTestFailureError, wait_until
 from rogue_udp_responder import RogueUdpResponder
+
+if TYPE_CHECKING:
+    from bench_control import BenchBridge
 
 # ---------------------------------------------------------------------------
 # WiFi outage/flap while already in a real, established STA connection. Per
@@ -114,7 +117,7 @@ def _assert_wifi_log_has_only_benign_ap_not_found_warning(dut_ip: str) -> None:
     history = entry.get("history", [])
     # "N" entries are print_log.py's own "nothing recorded" padding (get_log()'s own encoding) -
     # always present, filling out the fixed-size ring, and not a real log line at all.
-    unexpected = [h for h in history if h.get("type") not in ("N",) and not (h.get("type") == "W" and h.get("num") == 5)]
+    unexpected = [h for h in history if h.get("type") != "N" and not (h.get("type") == "W" and h.get("num") == 5)]
     assert not unexpected, f"WIFI error log had unexpected entries beyond the known-benign wrnno=5: {unexpected!r} (full: {entry!r})"
 
 
@@ -556,7 +559,7 @@ def test_garbage_ssid_via_rest_config_is_handled_gracefully(board: Board, bench:
                 try:
                     bench.join_dut_hotspot(original_hostname, _HOTSPOT_PASSWORD, timeout_s=45.0)
                     break
-                except HardwareTestFailure:
+                except HardwareTestFailureError:
                     if attempt == 2:
                         raise
                     time.sleep(3.0)
@@ -573,7 +576,7 @@ def test_garbage_ssid_via_rest_config_is_handled_gracefully(board: Board, bench:
     # regardless of real DUT health (see tests_hardware/README.md for the full account, including
     # the other, real mechanisms this was originally misattributed to).
     def _reconnected_over_bridge() -> bool:
-        return http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).json()["networking"].get("Mode") == "STA"
+        return bool(http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).json()["networking"].get("Mode") == "STA")
 
     try:
         wait_until(_reconnected_over_bridge, timeout_s=60.0, poll_interval_s=3.0, description=f"Mode to return to 'STA' after restoring the real SSID ({original_ssid!r})")

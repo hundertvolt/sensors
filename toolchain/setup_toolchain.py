@@ -26,6 +26,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from typing import Any
 
 import tomllib
 
@@ -42,7 +43,7 @@ PICOTOOL_URL = "https://github.com/raspberrypi/picotool.git"
 # rather than separate throwaway samples per step. RESULT lets callers prove the import produced
 # an actual value, not just that it didn't crash.
 FROZEN_VERIFY_MODULE = "frozen_verify_test"
-FROZEN_VERIFY_PY = '''\
+FROZEN_VERIFY_PY = """\
 import sys
 import json
 
@@ -58,7 +59,7 @@ else:
     raise SystemExit("expected ZeroDivisionError")
 
 RESULT = "FROZEN_VERIFY_OK: " + sys.implementation.name
-'''
+"""
 
 
 class SetupError(RuntimeError):
@@ -107,10 +108,10 @@ def network_env() -> dict[str, str]:
     return env
 
 
-def run(cmd: list[str], cwd: Path | None = None, check: bool = True, env: dict[str, str] | None = None) -> str:
+def run(cmd: list[str], cwd: Path | None = None, *, check: bool = True, env: dict[str, str] | None = None) -> str:
     print(f"$ {' '.join(cmd)}" + (f"   (cwd={cwd})" if cwd else ""), flush=True)
     result = subprocess.run(
-        cmd, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+        cmd, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, check=False,
     )
     print(result.stdout)
     if check and result.returncode != 0:
@@ -118,7 +119,7 @@ def run(cmd: list[str], cwd: Path | None = None, check: bool = True, env: dict[s
     return result.stdout
 
 
-def load_versions(path: Path) -> dict:
+def load_versions(path: Path) -> dict[str, Any]:
     with path.open("rb") as f:
         return tomllib.load(f)
 
@@ -129,7 +130,7 @@ def write_micropython_ref(path: Path, ref: str) -> None:
     path.write_text(new_text)
 
 
-def ensure_apt_packages(packages: list[str], skip: bool) -> None:
+def ensure_apt_packages(packages: list[str], *, skip: bool) -> None:
     if skip:
         log("Skipping apt package install (--skip-apt)")
         return
@@ -147,7 +148,7 @@ def ensure_apt_packages(packages: list[str], skip: bool) -> None:
 
 def is_sha(ref: str) -> bool:
     """True for a raw commit hash (e.g. a pico-sdk pin read out of a git tree) as opposed to
-    a tag/branch name (e.g. "v1.28.0"). The two need different checkout handling below: tags
+    a tag/branch name (e.g. "v1.29.0"). The two need different checkout handling below: tags
     are always fetched by `git fetch --tags`, but an arbitrary commit might not be reachable
     that way and needs fetching directly by its hash instead."""
     return bool(re.fullmatch(r"[0-9a-f]{7,40}", ref))
@@ -167,11 +168,12 @@ def checkout_ref(repo: Path, ref: str) -> None:
     if is_sha(ref):
         try:
             run(["git", "checkout", "--quiet", ref], cwd=repo, env=env)
-            return
         except SetupError:
             # The commit wasn't already present locally (e.g. a pico-sdk pin from a
             # MicroPython ref we haven't built before) — fetch it directly by hash.
             pass
+        else:
+            return
         run(["git", "fetch", "--quiet", "origin", ref], cwd=repo, env=env)
         run(["git", "checkout", "--quiet", "FETCH_HEAD"], cwd=repo, env=env)
     else:
@@ -189,21 +191,25 @@ def ensure_repo_at_ref(url: str, dest: Path, ref: str) -> None:
     checkout_ref(dest, ref)
 
 
+# mode, object type, sha - the three fields of a `git ls-tree` line before the tab-separated path.
+LS_TREE_FIELDS_BEFORE_PATH = 3
+
+
 def derive_pico_sdk_commit(micropython_dir: Path, mpy_ref: str) -> str:
     """The pico-sdk version to use is never chosen independently — it's read straight out of
     MicroPython's own git submodule pin at lib/pico-sdk, which is exactly the pico-sdk commit
     the firmware actually compiles against. This is the mechanism that makes "only pin
     MicroPython" (see versions.toml) possible instead of tracking two version numbers by hand."""
     out = run(["git", "ls-tree", mpy_ref, "lib/pico-sdk"], cwd=micropython_dir, env=network_env())
-    # format: "160000 commit <sha>\tlib/pico-sdk"
+    # git ls-tree prints one line shaped "160000 commit <sha>\tlib/pico-sdk"
     fields = out.split()
-    if len(fields) < 3:
+    if len(fields) < LS_TREE_FIELDS_BEFORE_PATH:
         raise SetupError(f"could not find lib/pico-sdk submodule pin for {mpy_ref}")
     return fields[2]
 
 
 def derive_picotool_ref(pico_sdk_dir: Path, pico_sdk_commit: str) -> str:
-    """picotool only needs to match pico-sdk's major.minor (not its exact commit) — but that
+    """Picotool only needs to match pico-sdk's major.minor (not its exact commit) — but that
     match is enforced at build time (a mismatch fails with "Incompatible picotool installation
     found" since pico-sdk 2.0.0), so getting it wrong isn't a style nitpick, it's a build
     failure. Resolve the derived pico-sdk commit to its nearest tag, then pick the newest
@@ -407,7 +413,7 @@ def write_freeze_manifest(manifest_path: Path, port_manifest_relpath: str) -> No
     intended test module, never the manifest.py files generated alongside it (both this one and
     the other port's, which also lives in the same tempdir - see run_verification_sequence())."""
     manifest_path.write_text(
-        f'include("$(PORT_DIR)/{port_manifest_relpath}")\nfreeze("{FROZEN_MODULE_SUBDIR}")\n'
+        f'include("$(PORT_DIR)/{port_manifest_relpath}")\nfreeze("{FROZEN_MODULE_SUBDIR}")\n',
     )
 
 
@@ -502,7 +508,7 @@ def print_verification_summary(board: str, mpy_cross_binary: Path, unix_binary: 
     return 0
 
 
-def run_setup(args: argparse.Namespace, versions_path: Path, versions: dict) -> int:
+def run_setup(args: argparse.Namespace, versions_path: Path, versions: dict[str, Any]) -> int:
     """Install or update. The steps below are exactly "How it works" in SPECIFICATION.md Part B.3:
     pin MicroPython -> derive pico-sdk -> derive picotool -> install the ARM toolchain -> build
     everything in an isolated environment -> verify. ensure_repo_at_ref() doubles as the update
@@ -532,7 +538,7 @@ def run_setup(args: argparse.Namespace, versions_path: Path, versions: dict) -> 
     if args.clean:
         clean_build_dirs(toolchain_dir, board)
 
-    ensure_apt_packages(apt_packages, args.skip_apt)
+    ensure_apt_packages(apt_packages, skip=args.skip_apt)
 
     log(f"Preparing MicroPython at {mpy_ref}")
     ensure_repo_at_ref(MICROPYTHON_URL, micropython_dir, mpy_ref)
@@ -555,7 +561,7 @@ def run_setup(args: argparse.Namespace, versions_path: Path, versions: dict) -> 
     return print_verification_summary(board, mpy_cross_binary, unix_binary)
 
 
-def run_test(args: argparse.Namespace, versions: dict) -> int:
+def run_test(args: argparse.Namespace, versions: dict[str, Any]) -> int:
     """Re-verify an existing install, offline: just run_verification_sequence() again against
     whatever is already checked out — see the module docstring and SPECIFICATION.md Part B.3's "How it
     works" for why apt/git network access is never needed here."""
@@ -567,7 +573,7 @@ def run_test(args: argparse.Namespace, versions: dict) -> int:
     if not (micropython_dir / "mpy-cross").is_dir() or not rp2_dir.is_dir():
         raise SetupError(
             f"no toolchain found at {toolchain_dir} — run `setup` first "
-            f"(e.g. `uv run toolchain/setup_toolchain.py setup`)"
+            f"(e.g. `uv run toolchain/setup_toolchain.py setup`)",
         )
 
     log(f"Testing existing toolchain at {toolchain_dir} (offline: no apt/git network access)")
@@ -637,13 +643,13 @@ def resolve_pico_device(explicit: str | None) -> Path:
     if not candidates:
         raise SetupError(
             "no Raspberry Pi USB serial device found (USB vendor ID 2e8a) - plug in the board, "
-            "or pass --device /dev/ttyACMx explicitly"
+            "or pass --device /dev/ttyACMx explicitly",
         )
     names = ", ".join(str(c) for c in candidates)
     raise SetupError(f"multiple Raspberry Pi USB serial devices found ({names}) - pass --device to pick one explicitly")
 
 
-def ensure_dialout_group(skip: bool) -> None:
+def ensure_dialout_group(*, skip: bool) -> None:
     """Non-root USB serial access needs group membership, not a one-off chmod - see README.md's
     "Real hardware access" section. Idempotent: does nothing if already a member."""
     if skip:
@@ -669,16 +675,16 @@ IPROUTE2_APT_PACKAGE = "iproute2"
 IPTABLES_APT_PACKAGE = "iptables"
 
 
-def ensure_network_manager(skip_apt: bool) -> None:
+def ensure_network_manager(*, skip_apt: bool) -> None:
     if shutil.which("nmcli"):
         return
     log("nmcli not found - installing NetworkManager")
-    ensure_apt_packages([NETWORK_MANAGER_APT_PACKAGE], skip_apt)
+    ensure_apt_packages([NETWORK_MANAGER_APT_PACKAGE], skip=skip_apt)
     if not shutil.which("nmcli"):
         raise SetupError("nmcli still not found on PATH after installing network-manager")
 
 
-def ensure_iproute2(skip_apt: bool) -> None:
+def ensure_iproute2(*, skip_apt: bool) -> None:
     """detect_uplink_interface() below needs the real `ip` command - present by default on
     essentially every real Linux host (including Raspberry Pi OS), but not guaranteed on a
     minimal/stripped-down one, so this is checked/installed the same way ensure_network_manager()
@@ -686,12 +692,12 @@ def ensure_iproute2(skip_apt: bool) -> None:
     if shutil.which("ip"):
         return
     log("'ip' command not found - installing iproute2")
-    ensure_apt_packages([IPROUTE2_APT_PACKAGE], skip_apt)
+    ensure_apt_packages([IPROUTE2_APT_PACKAGE], skip=skip_apt)
     if not shutil.which("ip"):
         raise SetupError("'ip' command still not found on PATH after installing iproute2")
 
 
-def ensure_iptables(skip_apt: bool) -> None:
+def ensure_iptables(*, skip_apt: bool) -> None:
     """tests_hardware/bench_control.py's real fault-injection helpers (block_udp_ports(),
     redirect_udp_port_to_local(), the hotspot-role-reversal AP down/up path's own comment) all
     shell out to `sudo iptables` - REAL FINDING, confirmed directly on a real bench Raspberry Pi 4
@@ -703,7 +709,7 @@ def ensure_iptables(skip_apt: bool) -> None:
     if shutil.which("iptables"):
         return
     log("'iptables' command not found - installing iptables")
-    ensure_apt_packages([IPTABLES_APT_PACKAGE], skip_apt)
+    ensure_apt_packages([IPTABLES_APT_PACKAGE], skip=skip_apt)
     if not shutil.which("iptables"):
         raise SetupError("'iptables' command still not found on PATH after installing iptables")
 
@@ -731,6 +737,10 @@ def get_interface_mac(iface: str) -> str:
     return match.group(1)
 
 
+# `nmcli -t -f DEVICE,TYPE` prints exactly the two requested colon-separated fields per line.
+NMCLI_DEVICE_STATUS_FIELDS = 2
+
+
 def detect_free_wifi_interface(exclude: str) -> str:
     """A WiFi adapter not already acting as the uplink - requires exactly one candidate for the
     same reason resolve_pico_device() does: an ambiguous pick is a hard error, not a guess."""
@@ -738,7 +748,7 @@ def detect_free_wifi_interface(exclude: str) -> str:
     candidates = []
     for line in out.strip().splitlines():
         fields = line.split(":")
-        if len(fields) != 2:
+        if len(fields) != NMCLI_DEVICE_STATUS_FIELDS:
             continue
         device, dtype = fields
         if dtype == "wifi" and device != exclude:
@@ -839,7 +849,7 @@ def ensure_bench_bridge(uplink_iface: str | None, wifi_iface: str | None, ssid: 
                 f"the old MAC will drift on the next lease renewal. Not auto-repairing (see this function's "
                 f"own docstring); fix by hand when convenient, ideally at a moment SSH access loss is "
                 f"acceptable: sudo nmcli connection modify {BENCH_BRIDGE_CONN} bridge.mac-address {real_mac} "
-                f"&& sudo nmcli connection up {BENCH_ETH_CONN}"
+                f"&& sudo nmcli connection up {BENCH_ETH_CONN}",
             )
         return current_ssid
 
@@ -897,7 +907,7 @@ def ensure_bench_bridge(uplink_iface: str | None, wifi_iface: str | None, ssid: 
     return ssid
 
 
-def run_project_dependency_install(repo_root: Path, skip_npm: bool) -> None:
+def run_project_dependency_install(repo_root: Path, *, skip_npm: bool) -> None:
     """The Python (`uv sync`) and website (`npm ci`, when applicable) dev-tooling installs every
     tier needs. Missing npm/no package.json is a soft skip. Deliberately runs with env=None
     (inherit the caller's environment), unlike every other subprocess here, since build_env()'s
@@ -917,7 +927,7 @@ def run_project_dependency_install(repo_root: Path, skip_npm: bool) -> None:
     run(["npm", "ci"], cwd=repo_root)
 
 
-def run_env(args: argparse.Namespace, versions_path: Path, versions: dict) -> int:
+def run_env(args: argparse.Namespace, versions_path: Path, versions: dict[str, Any]) -> int:
     """Tiered dev-environment setup (README.md's environment-tiers table): each tier is a
     strict superset of the one before it.
 
@@ -930,21 +940,21 @@ def run_env(args: argparse.Namespace, versions_path: Path, versions: dict) -> in
                 reach genuine internet/NTP - idempotent, see ensure_bench_bridge().
     """
     run_setup(args, versions_path, versions)
-    run_project_dependency_install(REPO_ROOT, args.skip_npm)
+    run_project_dependency_install(REPO_ROOT, skip_npm=args.skip_npm)
 
     if args.tier == "generic":
         log("Generic environment ready: Python/Node deps installed, firmware/Unix-port toolchain verified")
         return 0
 
-    ensure_dialout_group(args.skip_apt)
+    ensure_dialout_group(skip=args.skip_apt)
     device = resolve_pico_device(args.device)
     log(f"Flash environment ready: {device} reachable via scripts/mpremote_connect.sh")
     if args.tier == "flash":
         return 0
 
-    ensure_network_manager(args.skip_apt)
-    ensure_iproute2(args.skip_apt)
-    ensure_iptables(args.skip_apt)
+    ensure_network_manager(skip_apt=args.skip_apt)
+    ensure_iproute2(skip_apt=args.skip_apt)
+    ensure_iptables(skip_apt=args.skip_apt)
     # Always call ensure_bench_bridge() - it already handles the already-exists case itself, so
     # there's exactly one place this logic lives, not a separate short-circuit that could drift.
     ssid = ensure_bench_bridge(args.uplink_iface, args.wifi_iface, args.ssid, args.password)
@@ -968,7 +978,7 @@ def main() -> int:
     subparsers = parser.add_subparsers(dest="command")
 
     setup_parser = subparsers.add_parser(
-        "setup", parents=[common], help="Install or update the toolchain (default if no subcommand given)"
+        "setup", parents=[common], help="Install or update the toolchain (default if no subcommand given)",
     )
     setup_parser.add_argument("--micropython-ref", help="Override the MicroPython tag/ref to build (default: from versions.toml)")
     setup_parser.add_argument("--latest", action="store_true", help="Detect the newest stable MicroPython release and pin versions.toml to it")

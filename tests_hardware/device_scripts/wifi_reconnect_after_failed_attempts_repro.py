@@ -21,10 +21,8 @@ def log(msg: str) -> None:
     print(f"[{time.ticks_diff(time.ticks_ms(), t0) / 1000.0:8.2f}s] {msg}")
 
 
-def status_name(status: int | None) -> str:
-    if status is None:
-        return f"UNKNOWN({status})"
-    names: dict[int, str] = {
+def status_name(status: "int | None") -> str:
+    names: dict[int | None, str] = {
         network.STAT_IDLE: "IDLE",
         network.STAT_CONNECTING: "CONNECTING",
         _STAT_OBTAINING_IP: "OBTAINING_IP",
@@ -36,7 +34,7 @@ def status_name(status: int | None) -> str:
     return names.get(status, f"UNKNOWN({status})")
 
 
-def wait_for_outcome(wlan: "network.WLAN", max_polls: int, poll_ms: int, label: str) -> int | None:
+def wait_for_outcome(wlan: "network.WLAN", max_polls: int, poll_ms: int, label: str) -> "int | None":
     """Chatty poll loop, same shape as asy_wifi_service.py's own _poll_sta_connect_status() but
     logging every single poll (not just on entry) and returning the final status seen."""
     last: int | None = None
@@ -140,7 +138,7 @@ if outcome == network.STAT_GOT_IP:
     log(f"TREATMENT-RECONNECT ifconfig: {wlan.ifconfig()}")
 
 log("=== SUMMARY: CONTROL={:.1f}s TREATMENT-RECONNECT={:.1f}s (ratio {:.1f}x) ===".format(
-    control_elapsed_s, treatment_elapsed_s, treatment_elapsed_s / control_elapsed_s if control_elapsed_s > 0 else float("inf")
+    control_elapsed_s, treatment_elapsed_s, treatment_elapsed_s / control_elapsed_s if control_elapsed_s > 0 else float("inf"),
 ))
 log("=== DIAGNOSTIC END - board left connected to the real network on this ad-hoc WLAN object, "
     "NOT via a normal reboot - hard_reset() the board next to resume normal main.py operation ===")

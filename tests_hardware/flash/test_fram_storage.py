@@ -6,8 +6,10 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from harness import Board
+if TYPE_CHECKING:
+    from harness import Board
 
 DEVICE_SCRIPTS = Path(__file__).resolve().parent.parent / "device_scripts"
 RESULT_RE = re.compile(r"^RESULT: (PASS|FAIL)(.*)$", re.MULTILINE)

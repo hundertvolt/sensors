@@ -10,7 +10,6 @@ from collections import namedtuple
 
 from micropython import const
 
-from asy_fram_manager import AsyFramManager
 from base_classes import LockedCounter, SensorReaderConfig
 from config_manager import make_dict, name_cfg, schema_names
 
@@ -23,7 +22,22 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
     from typing import Any, Protocol
 
+    # The stubs model a ticks_ms() value as an opaque type, not a plain int, precisely so it can
+    # only ever reach time.ticks_diff() - _next_sleep_secs()'s t0 is exactly such a value.
+    from _mpy_shed.time_mp import _TicksMs
+
+    from asy_fram_manager import AsyFramManager
     from config_manager import ConfigSchema
+    from print_log import ErrorLog
+
+    # Structural Protocol for whatever local-time struct the caller's callback returns
+    # (SPECIFICATION.md Part C.10's typing convention) - read-only, so a namedtuple
+    # (asy_ntp_client.py's GMTimeStruct, the production wiring) satisfies it too.
+    class _LocalTime(Protocol):
+        @property
+        def hour(self) -> int: ...
+        @property
+        def minute(self) -> int: ...
 
     class _ValueSource(Protocol):
         # Structural stand-in for a NotificationSignal's producer (SPECIFICATION.md Part C.10's
@@ -89,6 +103,7 @@ class NotificationSignal:
         field: str,
         field_schema: "ConfigSchema",
         color: "tuple[int, int, int]",
+        *,
         above: bool = True,
     ) -> None:
         self.name = name
@@ -110,7 +125,7 @@ class NotificationCoordinator(SensorReaderConfig):
     def __init__(
         self,
         request_signal_cb: "Callable[[int, int, int, float], Coroutine[Any, Any, bool]]",
-        local_time_callback: "Callable[[], Coroutine[Any, Any, Any]]",
+        local_time_callback: "Callable[[], Coroutine[Any, Any, _LocalTime | None]]",
         max_module_error: int = 5,
         cfg_path: str = "",
         fram: "AsyFramManager | None" = None,
@@ -148,11 +163,11 @@ class NotificationCoordinator(SensorReaderConfig):
             msg, wrnno = self._pending_wrn.pop(0)
             await self.pr.wrn_s(msg, wrnno=wrnno)
 
-    def _next_sleep_secs(self, interv: float, t0: "Any") -> float:  # t0: an opaque ticks_ms() value, not a plain int
+    def _next_sleep_secs(self, interv: float, t0: "_TicksMs") -> float:  # t0: an opaque ticks_ms() value - only ever compared via time.ticks_diff()
         # Isolated from monitor_loop() specifically so it's directly unit-testable without needing
         # a real elapsed time close to Interv's own 60.0s schema floor to observe the floor kick in.
         rem_interv = interv - (time.ticks_diff(time.ticks_ms(), t0) * 0.001)  # run duration so far in sec
-        return rem_interv if rem_interv >= 0.1 else 0.1
+        return max(rem_interv, 0.1)
 
     def _now(self) -> int | None:
         try:
@@ -160,7 +175,7 @@ class NotificationCoordinator(SensorReaderConfig):
         except (OverflowError, OSError):  # rp2's mktime()/gmtime() raise past its ~2037 32-bit epoch range
             return None
 
-    async def _safe_local_time(self) -> "Any":
+    async def _safe_local_time(self) -> "_LocalTime | None":
         try:  # caller-supplied callback, could legitimately misbehave
             return await self._local_time_callback()
         except Exception as e:
@@ -203,7 +218,7 @@ class NotificationCoordinator(SensorReaderConfig):
         except Exception as e:
             await self.pr.err_s(notif.name, "request_signal_cb failed:", e, errno=13)
 
-    async def _store_notif_data(self, any_triggered: bool) -> None:
+    async def _store_notif_data(self, *, any_triggered: bool) -> None:
         await self._set_meas_data(NOTIFY(any_triggered, self._now()))
 
     def start_asy_notify_monitor(self) -> "asyncio.Task[None]":
@@ -223,7 +238,7 @@ class NotificationCoordinator(SensorReaderConfig):
     async def get_data(self) -> NOTIFY:
         # Narrows to this Reader's concrete NOTIFY - see SPECIFICATION.md C.4.2's get_data() convention.
         if not self._finalized:  # finalize() hasn't run yet - self._datastruct doesn't exist; caller-ordering
-            return NOTIFY(False, None)  # bug, defense-in-depth only
+            return NOTIFY(Triggered=False, TS=None)  # bug, defense-in-depth only
         return await self._get_meas_data()  # type: ignore[return-value]
 
     async def get_dict_data(self) -> dict[str, dict[str, int | float | str | bool | None]]:
@@ -237,7 +252,7 @@ class NotificationCoordinator(SensorReaderConfig):
         # signal's field) - built once, inside finalize() - so this covers everything in one call.
         return await self._get_dict_cfg(self.name, self.cfg_schema)
 
-    async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[str]]]:
+    async def get_error_counter(self) -> "ErrorLog":
         if not self._finalized:  # self.pr doesn't exist yet - same caller-ordering guard as get_data()
             return {_NAME: {"ErrCount": 0, "ErrNum": [], "ErrType": []}}
         return await self.pr.get_log()
@@ -269,7 +284,7 @@ class NotificationCoordinator(SensorReaderConfig):
             self._reject_registration("(coordinator)", "finalize() called again, ignoring", 4)
             return
         super().__init__(
-            NOTIFY(False, None),
+            NOTIFY(Triggered=False, TS=None),
             self._max_module_error,
             _NAME,
             self._combined_schema(),
@@ -300,10 +315,9 @@ class NotificationCoordinator(SensorReaderConfig):
                 if self._auto_active:
                     self._auto_active = False
                     self.pr.evt("LED Override active.")
-            else:
-                if not self._auto_active:
-                    self._auto_active = True
-                    self.pr.evt("LED Override off.")
+            elif not self._auto_active:
+                self._auto_active = True
+                self.pr.evt("LED Override off.")
             await asyncio.sleep(1)
 
     async def monitor_loop(self) -> None:
@@ -326,8 +340,8 @@ class NotificationCoordinator(SensorReaderConfig):
                 cfg_int is None
                 or cfg_float is None
                 or cfg_bool is None
-                or len(cfg_int) != 5
-                or len(cfg_float) != 2
+                or len(cfg_int) != len(_VAL_INT_FIELDS)
+                or len(cfg_float) != len(_VAL_FLOAT_FIELDS)
                 or len(cfg_bool) != 1
             ):
                 cfg_read_failed = True
@@ -351,7 +365,7 @@ class NotificationCoordinator(SensorReaderConfig):
                                     any_triggered = True
                                     await self._trigger_signal(notif, flash_bri, flash_dur)
                                     await asyncio.sleep(2 * flash_dur)
-                await self._store_notif_data(any_triggered)
+                await self._store_notif_data(any_triggered=any_triggered)
             # consecutive-failure-streak give-up, matching every other Reader's own read_loop() shape -
             # max_module_error is otherwise accepted and stored but never actually enforced.
             if not await self._error_check((None,), condition=cfg_read_failed):

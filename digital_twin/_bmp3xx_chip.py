@@ -11,7 +11,12 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from typing import Any
+    from typing import Protocol
+
+    class _RandomSource(Protocol):
+        # Structural stand-in for the `random` module (the default) or a seeded random.Random -
+        # machine.py's configure_random_source() seam. Only uniform() is ever called here.
+        def uniform(self, a: float, b: float) -> float: ...
 
 _BMP390_CHIP_ID = 0x60
 
@@ -84,7 +89,7 @@ def _invert_pressure(pressure_calib: "tuple[float, ...]", temperature: float, ta
 class Bmp3xxChip:
     def __init__(
         self,
-        random_source: "Any | None" = None,
+        random_source: "_RandomSource | None" = None,
         min_temp_c: float = 15.0,
         max_temp_c: float = 30.0,
         min_pressure_hpa: float = 950.0,
@@ -122,7 +127,7 @@ class Bmp3xxChip:
     def _trigger_measurement(self) -> None:
         self._temp_c = self._clamp(self._temp_c + self._random.uniform(-self._temp_step_c, self._temp_step_c), self._min_temp_c, self._max_temp_c)
         self._pressure_hpa = self._clamp(
-            self._pressure_hpa + self._random.uniform(-self._pressure_step_hpa, self._pressure_step_hpa), self._min_pressure_hpa, self._max_pressure_hpa
+            self._pressure_hpa + self._random.uniform(-self._pressure_step_hpa, self._pressure_step_hpa), self._min_pressure_hpa, self._max_pressure_hpa,
         )
         target_temp = self._temp_c
         target_pressure_pa = self._pressure_hpa * 100.0
@@ -139,11 +144,11 @@ class Bmp3xxChip:
                 adc_t_i & 0xFF,
                 (adc_t_i >> 8) & 0xFF,
                 (adc_t_i >> 16) & 0xFF,
-            ]
+            ],
         )
         self._status = _STATUS_CMD_RDY | _STATUS_DATA_READY
 
-    def handle_writeto(self, data: bytes) -> None:
+    def handle_writeto(self, _data: bytes) -> None:
         # asy_i2c_driver.py's I2CDevice.setup()/_probe_for_device() writes zero bytes to every I2C
         # device at construction time to check for an ACK, before any register access - real
         # hardware ACKs this fine regardless of protocol family. Found during baseline
@@ -152,7 +157,9 @@ class Bmp3xxChip:
         # writeto() -> device.handle_writeto()) raised AttributeError on every real BMP3xx boot,
         # repeatedly failing/restarting its whole reader task. Nothing else in this codebase's own
         # BMP3xx driver ever calls plain writeto() (every real register access goes through
-        # writeto_mem()), so this only needs to answer the empty-probe shape.
+        # writeto_mem()), so this only needs to answer the empty-probe shape - the payload is
+        # ignored by design, hence the underscore-prefixed parameter name (every caller, including
+        # machine.py's own dispatch, passes it positionally).
         self.fault.maybe_raise("writeto")
 
     def handle_writeto_mem(self, reg_addr: int, data: bytes) -> None:
@@ -165,9 +172,8 @@ class Bmp3xxChip:
             self._osr = data[0]
         elif reg_addr == _REGISTER_CONFIG:
             self._config = data[0]
-        elif reg_addr == _REGISTER_CMD:
-            if data and data[0] == _CMD_SOFT_RESET:
-                self._status = _STATUS_CMD_RDY
+        elif reg_addr == _REGISTER_CMD and data and data[0] == _CMD_SOFT_RESET:
+            self._status = _STATUS_CMD_RDY
         # any other register: real hardware would just silently accept/ignore it too.
 
     def handle_readfrom_mem(self, reg_addr: int, nbytes: int) -> bytes:

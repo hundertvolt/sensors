@@ -65,7 +65,7 @@ function spawnTwin() {
     );
     // See tests_js/_live_twin_command.js's own identical comment: an unhandled 'error' event would
     // otherwise crash the whole Vitest process, skipping this file's own cleanup entirely.
-    proc.on("error", () => {});
+    proc.on("error", () => { /* no-op by design, per the comment above */ });
     return proc;
 }
 
@@ -75,12 +75,25 @@ async function stopTwin(proc) {
         return;
     }
     proc.kill("SIGINT"); // graceful shutdown path - see tests_js/_live_twin_command.js's own comment
-    await Promise.race([
-        new Promise((resolve) => {
-            proc.once("exit", resolve);
-        }),
-        sleep(SHUTDOWN_TIMEOUT_MS).then(() => proc.kill("SIGKILL")),
-    ]);
+    // Timer cleared once the child is gone, so it can't hold Node's event loop open - same
+    // reasoning as _live_twin_command.js's stopTwin(), see its comment.
+    /** @type {ReturnType<typeof setTimeout> | undefined} */
+    let killTimer;
+    try {
+        await Promise.race([
+            new Promise((resolve) => {
+                proc.once("exit", resolve);
+            }),
+            new Promise((resolve) => {
+                killTimer = setTimeout(() => {
+                    proc.kill("SIGKILL");
+                    resolve(undefined);
+                }, SHUTDOWN_TIMEOUT_MS);
+            }),
+        ]);
+    } finally {
+        clearTimeout(killTimer);
+    }
 }
 
 /** @type {import("node:child_process").ChildProcess | null} */
@@ -122,7 +135,7 @@ export async function startLiveMatrix({ context }) {
         // orphans the twin subprocess for the rest of the process's lifetime, pinning PORT for
         // every subsequent run until someone manually kills it.
         if (livePage) {
-            await livePage.close().catch(() => {});
+            await livePage.close().catch(() => { /* best-effort teardown - a page already gone is fine */ });
             // eslint-disable-next-line require-atomic-updates -- see stopLiveMatrix()'s own comment below
             livePage = null;
         }
@@ -142,7 +155,7 @@ export async function startLiveMatrix({ context }) {
 // module), so the actual race the rule guards against can't happen here.
 export async function stopLiveMatrix() {
     if (livePage) {
-        await livePage.close().catch(() => {});
+        await livePage.close().catch(() => { /* best-effort teardown - a page already gone is fine */ });
         // eslint-disable-next-line require-atomic-updates -- see comment above
         livePage = null;
     }
@@ -256,7 +269,7 @@ async function pollForText(locator, expectedText, timeoutMs) {
  */
 export async function applyField(_context, { sectionKey, groupKey, fieldKey, field, value, expectRenderedValue }) {
     const page = /** @type {import("playwright").Page} */ (livePage);
-    const kind = field.kind;
+    const { kind } = field;
     await navigateToSection(sectionKey);
     const card = page.locator(`[data-group-key="${groupKey}"]`);
     await card.waitFor();

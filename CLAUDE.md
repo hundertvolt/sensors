@@ -14,13 +14,14 @@ if one you need isn't there rather than falling back to web search/training memo
 
 ## Platform target
 
-**The concrete facts** — MicroPython 1.26/RP2040 specifics, the WDT 8388ms cap, RP2040 hardware
-specs, the soft-Timer-callback-drop gotcha, the `[x] * n` segfault range, `Timer.init()`'s
-`OSError(ENOMEM)` case, the `MemoryError`-isn't-an-`OSError`-subclass rule, `struct.pack()`'s
-silent truncation — **live in `SPECIFICATION.md`'s Part F (Platform Target & MicroPython Runtime
-Facts).** Read Part F before any platform-facing code work; don't rely on memory of it, and don't
-re-derive these from training memory or general Python knowledge — they were confirmed against
-real MicroPython source, not assumed.
+**The concrete facts** — MicroPython 1.26/RP2040 specifics, what the 1.29 pin changed (Part F.5),
+the WDT 8388ms cap, RP2040 hardware specs, the soft-Timer-callback-drop gotcha, the `[x] * n`
+segfault range, `Timer.init()`'s `OSError(ENOMEM)` case, the
+`MemoryError`-isn't-an-`OSError`-subclass rule, `struct.pack()`'s silent truncation — **live in
+`SPECIFICATION.md`'s Part F (Platform Target & MicroPython Runtime Facts).** Read Part F before
+any platform-facing code work; don't rely on memory of it, and don't re-derive these from training
+memory or general Python knowledge — they were confirmed against real MicroPython source, not
+assumed.
 
 Two standing AI-session practices (not facts, kept here since they're instructions, not
 information):
@@ -38,7 +39,10 @@ information):
   `socket.getaddrinfo()` — see SPECIFICATION.md Part F.2 for its current
   can't-be-timeout-wrapped status, which is exactly the kind of fact a version bump could change
   and silently invalidate). This is a standing practice, not a one-time pass — repeat it every time
-  `toolchain/versions.toml`'s MicroPython `ref` moves.
+  `toolchain/versions.toml`'s MicroPython `ref` moves. **Last run: 1.28.0 → 1.29.0, 2026-09-10;
+  results in SPECIFICATION.md Part F.5** — including what it found (`I2C`/`SPI` `deinit()` are
+  no-ops on rp2, a new `OSError(EIO)` raise site on 32+ byte SPI reads) and what it ruled out
+  (`extmod/asyncio/` byte-identical between the tags, so `getaddrinfo()`'s status is unchanged).
 
 ## Hard rules
 
@@ -84,11 +88,18 @@ information):
   extension stripped, so this *looks* like it should raise `ModuleNotFoundError` — the mechanism
   is genuinely unresolved (see BACKLOG.md #1). Changing it blind risks breaking every deployed
   unit's autostart.
-- **`python/CommonDrivers/microdot.py` is vendored third-party code** — verified to match current
-  upstream Microdot exactly (`send_file()` signature, `Request.json` behavior). Don't restyle or
-  "clean up" it; if you need to change its behavior, treat that as a deliberate fork decision, not
-  routine editing. **`ext/microdot.py` is the same policy applied to the refactor target**: a plain,
-  unmodified vendored copy of upstream Microdot (pinned to tag `v2.6.2`), replacing the
+- **`python/CommonDrivers/microdot.py` is vendored third-party code.** Don't restyle or "clean
+  up" it; if you need to change its behavior, treat that as a deliberate fork decision, not
+  routine editing. **It is not, however, current** — an earlier note here claimed it matched
+  current upstream exactly; re-checked against every upstream tag on 2026-09-10, it's an
+  *untagged snapshot between `v2.0.1` and `v2.1.0`* (it carries v2.1.0's `functools.partial`
+  dispatch, `max_age is not None`, `.gz` extension handling and the `URLPattern`
+  `segments`/`regex` rewrite, but not the rest), leaving it ~441 lines behind the `v2.6.2` that
+  `ext/microdot.py` pins. Unmodified relative to that snapshot, as far as can be told — no local
+  fork, just old. Bringing the *deployed* tree forward is a reflash-campaign decision, not a
+  drive-by edit (BACKLOG.md). **`ext/microdot.py` is the same policy applied to the refactor
+  target**: a plain, unmodified vendored copy of upstream Microdot (pinned to tag `v2.6.2` and
+  verified byte-identical to it on 2026-09-10), replacing the
   `improved-quality/microdot.py` copy that had drifted into an unintentional fork (removed). No
   edits, no restyling, ever — any behavior change needed is handled by wrapping/calling it from our
   own code (see "Microdot / REST layer" below), never by touching this file. `src/` and `ext/` are
@@ -268,28 +279,49 @@ information):
 
 - **Config lives in root `pyproject.toml`** (ruff/mypy/pytest/uv, dev-tooling only — the shipped
   code stays frozen-bytecode-only, not restructured into an installable package). Run manually via
-  `scripts/lint.sh` (ruff), `scripts/typecheck.sh` (mypy), and `scripts/test.sh` (unit tests, under
-  a real MicroPython Unix-port interpreter — see below and SPECIFICATION.md Part E); `lint.sh`/
-  `typecheck.sh` assume `ruff`/`mypy` are already on `PATH` (e.g. an activated `uv sync`-created
-  venv). **Wired into CI** via `.github/workflows/ci.yml` (GitHub Actions), running all three on
-  every push/PR. The CI pipeline does not yet include a real firmware-build stage (see
-  BACKLOG.md).
-- **Scope is `src/`, `tests/`, `digital_twin/`, `tests_hardware/` (all of it for ruff; the
-  `device_scripts/` subtree only for mypy — the rest is host-side pytest code that imports the
-  `harness` package by path, which the main pass can't resolve), and
-  the whole host-side build chain — `buildgen/`, `scripts/`, `toolchain/`, `tests_scripts/`.** The
-  build chain gates the firmware every device ships, so it carries the same bar as the code it
-  builds; its mypy coverage comes from `scripts/hosttools_typecheck.ini`'s own separate pass (see
-  below), never the main one. `tests_hardware/`'s own device scripts run under real MicroPython on
-  the board, so a lint autofix there is verified by compiling the changed file under the pinned
-  Unix-port interpreter, not just by ruff going quiet. The pre-refactor deployed
-  codebase (`python/`, `modules/`) has no lint/type config yet; extending scope there is a separate
-  future decision, not assumed by this setup. Every scope listed is expected to stay fully clean — every
+  `scripts/lint.sh` (ruff + shellcheck + actionlint + zizmor), `scripts/typecheck.sh` (mypy), and
+  `scripts/test.sh` (unit tests, under a real MicroPython Unix-port interpreter — see below and
+  SPECIFICATION.md Part E); `lint.sh`/`typecheck.sh` assume those tools are already on `PATH` (e.g.
+  an activated `uv sync`-created venv). **Every tool is a `[dependency-groups] dev` entry, so
+  `uv sync` — and therefore `toolchain/setup_toolchain.py env --tier {generic,flash,bench}`, which
+  runs it — installs all of them automatically; nothing is installed by hand.** All are **pinned**,
+  for the same reason ruff is: `select = ["ALL"]`-style opt-in-to-everything configs turn an
+  unpinned upgrade into a hard CI failure on a rule nobody chose.
+- **Wired into CI** via `.github/workflows/ci.yml` (GitHub Actions). **Each tool is its own job/
+  stage**, so a failure names the tool directly instead of a shared "lint" job going red:
+  `lint-and-typecheck` (ruff + mypy), `shellcheck`, `actionlint`, `zizmor`, plus the test/build
+  stages (`unit-tests`, `digital-twin-e2e`, `firmware-build-verify`) and the web tier. Note
+  `unit-tests` keeps `needs: lint-and-typecheck` (the standing hang backstop below); the other lint
+  stages run in parallel and gate nothing, so one of them failing no longer silently skips the
+  whole test suite.
+- **`zizmor` audits the GitHub Actions workflows themselves** — `GITHUB_TOKEN` scope, checkout
+  credential persistence, action pinning: the one part of the supply chain ruff/mypy can't see.
+  Policy config is `.github/zizmor.yml` (only `unpinned-uses` is configured — `actions/*` may be
+  tag-pinned, everything third-party must be SHA-pinned; every other audit runs at its default).
+  Always invoked `--offline`, which skips the two audits needing the GitHub API, so it behaves
+  identically in CI, on a dev box, and in the clean-chroot recipe below. **`self-repository` is
+  deliberately `disable: true`** — it wants `uses: $/.github/...` (GitHub's July-2026 syntax) and
+  actionlint 1.7.12 rejects that as invalid, so the two gates cannot both be satisfied; revisit
+  when actionlint learns it. **Adding a SHA-pinned third-party action means bumping that SHA by
+  hand** — no Dependabot is configured.
+- **Scope is nine directories**: `src/`, `tests/`, `digital_twin/`, `boot_entry/`, `buildgen/` (the
+  device-TOML-to-firmware-module generator, BUILD_CHAIN_PLAN.md's Session 3), `toolchain/`,
+  `scripts/`, `tests_scripts/` and `tests_hardware/` — `tests_hardware/` in full for ruff; only its
+  `device_scripts/` subtree (real MicroPython code pushed to the board, checked alongside
+  `src/`/`tests/`/`boot_entry/` in the main mypy pass) for mypy, since the rest of `tests_hardware/`
+  is host-side pytest code that goes through `host_typecheck.ini`'s dedicated pass below instead
+  (see that file's own docstring). `buildgen/` follows the same split as `digital_twin/`: ruff
+  checks it directly, but mypy needs `host_typecheck.ini`'s own separate invocation (below) since
+  it's genuinely CPython-target host tooling — it parses TOML via the real stdlib `tomllib` and
+  walks driver source via the real stdlib `ast`, never imports `src/` itself (real MicroPython-only
+  names like `machine`/`neopixel` aren't available under plain CPython there). The pre-refactor
+  deployed codebase (`python/`, `modules/`) has no lint/type config yet; extending scope there is a
+  separate future decision, not assumed by this setup. All nine are expected to stay fully clean — every
   scope in this setup is fully-reviewed, freely-editable code (see "Hard rules" above), not WIP;
   there's no tracked-debt scope left to compare `digital_twin/` against since `improved-quality/`
   was deleted (see "Hard rules" above). `digital_twin/`'s own
   type-check is a **separate** mypy invocation (`digital_twin/typecheck.ini`, run unconditionally by
-  `scripts/typecheck.sh` regardless of its own args — as is `scripts/hosttools_typecheck.ini`'s
+  `scripts/typecheck.sh` regardless of its own args — as is `host_typecheck.ini`'s
   build-chain pass) rather than folded into the main
   `[tool.mypy]` pass — mypy resolves each bare `machine`/`network`/`neopixel` module name to exactly
   one file per run, so this package's own hardware fakes and the real `typings/` board stubs can
@@ -317,14 +349,16 @@ information):
   build_firmware.py`), none of which are MicroPython-target code, so the real-interpreter rationale
   above doesn't apply to them; see `tests_scripts/conftest.py`'s own docstring. `scripts/test.sh`
   runs both: the MicroPython suite as described above, plus `uv run pytest tests_scripts` as one
-  more step before it. `tests_scripts/` — together with `scripts/`, `toolchain/` and `buildgen/`, the
-  host-side build chain it exercises — **is** linted and type-checked (project owner's direction:
-  "add all build scripts to the full CI"), but through `scripts/hosttools_typecheck.ini`'s
-  dedicated mypy pass rather than the main `[tool.mypy]` one: all of it is genuinely CPython-target
-  host tooling needing mypy's real bundled typeshed, not the MicroPython-stub-replaced one
-  `custom_typeshed_dir` installs for `src/` (`tomllib` alone doesn't exist in that stub subset).
-  Same "two resolution universes can't coexist in one run" isolation `digital_twin/typecheck.ini`
-  already establishes for its own, different reason.
+  more step before it. `tests_scripts/` — together with `scripts/`, `toolchain/` and `buildgen/`,
+  the host-side build chain it exercises, plus `tests_hardware/`'s own host-CPython pytest code —
+  **is** linted and type-checked (project owner's direction: "add all build scripts to the full
+  CI"), but through `host_typecheck.ini`'s dedicated mypy pass rather than the main `[tool.mypy]`
+  one: all of it is genuinely CPython-target host tooling needing mypy's real bundled typeshed, not
+  the MicroPython-stub-replaced one `custom_typeshed_dir` installs for `src/` (`tomllib` alone
+  doesn't exist in that stub subset). Same "two resolution universes can't coexist in one run"
+  isolation `digital_twin/typecheck.ini` already establishes for its own, different reason.
+  `tests_scripts/`, `scripts/` and `toolchain/` carry the same `per-file-ignores` block `tests/`
+  does.
 - **`scripts/test.sh --coverage` reports `src/` line coverage; it never gates anything** — no
   threshold is enforced anywhere, by design (confirmed directly, not a placeholder for a future
   gate). Since `coverage.py` only runs under CPython while `src/` only ever runs
@@ -345,7 +379,15 @@ information):
 - **Standing backstop: hanging tests are never allowed.** `scripts/test.sh`/`ci.yml` enforce a
   per-file `timeout`+retry, `stdbuf -oL -eL` line buffering, and `needs: lint-and-typecheck` job
   sequencing regardless of any specific hang's root cause — keep all three even after a specific
-  hang is fixed.
+  hang is fixed. **The `needs:` edge is for SEQUENCING only — `unit-tests` and
+  `firmware-build-verify` carry `if: ${{ !cancelled() }}` so they still run when the job they
+  follow fails.** `needs:` alone also implies success-gating, which was never chosen here (that
+  job's own comment says the sequencing "isn't required" for the hang) and is actively harmful: a
+  red `lint-and-typecheck` silently SKIPS every Python test lane. That is not hypothetical — it is
+  why `unit-tests`, `digital-twin-e2e` and `firmware-build-verify` had never once run on the branch
+  that introduced `select = ["ALL"]`, and it concealed that for the branch's whole life. Keep the
+  sequencing; never restore the gating. `digital-twin-e2e` is the deliberate exception — its
+  `needs: unit-tests` comment states fail-fast as the actual intent, so it stays gated.
 - **Known hang cause, fixed**: a MicroPython Unix-port `select.poll()`/`ioctl()` call against a
   non-fd Python object (e.g. `tests/machine.py`'s pure-Python fake-stream `ioctl()`) never detects
   readiness on GitHub Actions runners specifically (not reproducible locally) — any test awaiting a
@@ -378,6 +420,17 @@ information):
   the `system_service.py` `_timer_sequencer()` Timer-GC fix above: before that fix, `start_timers()`
   hung forever, so `start_and_check_tasks()` never even got called and no sibling tasks ever
   existed to leak — the soak test's own bounded-completion path was previously unreachable.
+- **Known intermittent-`MemoryError` cause #2, fixed**: a real SIGINT landing inside a
+  `gc_collect()` leaves the MicroPython Unix port's heap **permanently locked** — the stuck
+  `GC_COLLECT_FLAG` makes every later allocation fail with `MemoryError: memory allocation failed,
+  heap is locked`, on a heap that is mostly free. Measured at ~5% of interrupts on Unix ports built
+  from both `v1.28.0` and `v1.29.0`, so **not** a version-bump regression; it surfaced as one failed
+  `Run 4: clean shutdown (exit code 1)` in `scripts/run_digital_twin_ci.sh`. Fixed by
+  `digital_twin/unix_port_gc_unwedge.py`, called first in both twin runners'
+  `except KeyboardInterrupt:` handlers. **The recovery is `gc.collect()`, not
+  `micropython.heap_unlock()`** — the two lock states need opposite recoveries and the obvious one
+  is wrong here. Full mechanism and evidence: SPECIFICATION.md Part F.6. Don't re-diagnose a
+  "heap is locked" `MemoryError` at twin shutdown as a project memory bug.
 - **Known intermittent-`MemoryError` cause, fixed**: `scripts/test.sh` runs every `tests/test_*.py`
   file as one Unix-port process for all its test functions, sharing one heap — a file whose several
   heaviest tests each build the whole real `sensortask_wozi.build_system()` object graph (one test
@@ -403,7 +456,7 @@ information):
   — the project owner wants ruff to flag existing bare excepts as a tracked to-do, not silence them
   before they're fixed (test-driven-development framing, confirmed directly).
 - **Union type annotations: always PEP 604 `X | Y` (and `X | None`), never `typing.Union[...]`.**
-  Confirmed safe at runtime on both the deployed 1.26 pin and the refactor's 1.28.0 target by
+  Confirmed safe at runtime on both the deployed 1.26 pin and the refactor's 1.29.0 target by
   testing directly against the pinned Unix-port interpreter (`int | None` in an unquoted, executed
   annotation works with no import needed) — MicroPython parses but never evaluates annotation
   expressions at all, so this isn't even a runtime-support question, just a style one. `typing.Union`
@@ -415,11 +468,53 @@ information):
   `Union[...]` usages that do exist today are confined to `python/` (deployed, frozen, no lint
   config at all) — leave those alone under the usual out-of-scope-editing hard rule; don't drive-by
   "fix" `Union` → `|` in a file you're not otherwise promoting/refactoring.
-- **mypy is stricter than default, short of `--strict`** (`disallow_untyped_defs`,
-  `check_untyped_defs`, `warn_return_any`, `warn_unreachable`, `strict_equality`, etc., but not
-  `disallow_any_generics`/`disallow_untyped_calls`/`disallow_subclassing_any`). Does **not** disable
-  the `assignment` error code — the old `improved-quality/mypy.ini` did, though that was never a
-  deliberate choice.
+- **mypy runs full `--strict`, minus exactly one flag.** All three configs set `strict = true`
+  (spelled that way, not as the individual flags, so a deliberate mypy version bump surfaces any
+  newly added strict check as a finding to decide on), plus `no_implicit_optional`/`warn_unreachable`
+  which aren't part of `--strict`. **The one exemption is `no_implicit_reexport`, and only in the
+  `[tool.mypy]` pass** — `tests/` mocks by reassigning a module's imported names
+  (`asy_ntp_client.time = FakeTime()`, `asy_udp_socket.socket = ...`), which is the project's actual
+  mocking mechanism since MicroPython has no `unittest.mock`; enforcing the flag would mean 175
+  inline ignores in `tests/` or adding `__all__`/re-export aliases to shipped `src/` modules purely
+  to satisfy a test-only check. `digital_twin/typecheck.ini` and `host_typecheck.ini` both run
+  `--strict` with that flag ON. One further narrow exemption lives in a central
+  `[[tool.mypy.overrides]]` block: `disallow_untyped_decorators` is off for
+  `tests/test_setter_microdot_integration.py`, the only file that registers real Microdot routes —
+  vendored `ext/microdot.py` is unannotated and must never be edited, so its `@app.get()`/`@app.put()`
+  decorators make every handler they wrap "untyped" no matter how well the handler itself is
+  annotated. Does **not** disable the `assignment` error code — the old `improved-quality/mypy.ini`
+  did, though that was never a deliberate choice.
+- **`method-assign` stays globally enabled, and `src/` must never suppress it** (project owner's
+  direction). `tests/` and `digital_twin/` reassign methods to mock them — that IS the project's
+  mocking mechanism, MicroPython having no `unittest.mock` — and each of those ~157 sites carries
+  its own inline `# type: ignore[method-assign]` rather than a central `[[tool.mypy.overrides]]`
+  exemption, deliberately: a scope-wide override would stop marking the individual real sites.
+  Shipped firmware code has no business reassigning a method at all, so a suppression appearing in
+  `src/` is the defect, not the type error. mypy itself cannot express that rule (it only ever sees
+  a suppression already written), so `scripts/lint.sh` enforces it with a grep guard that fails the
+  lint gate. `src/` carries zero of these today; keep it that way rather than silencing a finding.
+- **`# noqa: E402` belongs only on files with a real statement before their imports.** Several
+  `tests/` files must set `sys.path` before importing the module under test, and ruff **exempts
+  `sys.path` manipulation from E402 outright** (verified directly, 2026-09-10) — so those files
+  need no suppression. What does trigger it is any *other* statement first, e.g.
+  `test_digital_twin_sensortask_integration.py`'s `patch_asy_udp_socket_for_unix_port()` call, and
+  only those files carry the `# noqa`. This is not an inconsistency to tidy up: adding the
+  suppression to a `sys.path`-only file makes `RUF100` (unused-noqa, live via `select = ["ALL"]`)
+  fail the lint gate, so the two groups genuinely have to differ.
+- **A merge that touches `uv.lock` can silently bypass the tool pins — always re-verify after
+  one.** `uv.lock` is a plain text file, so git merges it line by line: a branch that pins the
+  tools and a branch that only refreshes versions produce a lock carrying **one side's
+  `specifier = "=="` metadata and the other side's resolved `[[package]] version` blocks**. That
+  file is self-contradictory, and neither guard catches it — `uv lock --check` compares
+  `pyproject.toml` against the lock's *manifest* section only, never the manifest against the
+  *resolved* versions, so it exits 0; and `uv sync` installs from the resolved blocks, so the venv
+  silently gets a version the pin forbids. Confirmed directly here (2026-09-10): merging main's
+  external-module refresh produced a lock reading `ruff specifier = "==0.15.21"` next to
+  `ruff version = "0.16.6"`, `uv lock --check` passed, and `uv sync` installed 0.16.6 — under
+  `select = ["ALL"]` that is exactly the unchosen-rule hard-fail the pin exists to prevent (it
+  surfaced 174 `CPY001` findings). **After any merge that touches `uv.lock`, run `uv sync` and
+  check the installed `ruff --version`/`mypy --version` against `pyproject.toml`'s pins**, rather
+  than trusting `uv lock --check`; re-run `uv lock` to rewrite the file if they disagree.
 - **MicroPython stubs**: `micropython-rp2-rpi_pico_w-stubs` (PyPI, board/version-specific, pulls in
   `micropython-stdlib-stubs`). Published by the same project as
   [`josverl/micropython-stubs`](https://github.com/josverl/micropython-stubs) — PyPI is just its
@@ -440,16 +535,34 @@ information):
   project-wide to `tests/machine.py`'s fake module, not the real `typings/machine.pyi` board stub**
   — confirmed directly by running `mypy src` alone (no `tests` in scope): the real stub's `Timer`
   class has no zero-argument constructor overload (every overload requires a positional `id: int`
-  first argument) and doesn't declare `I2C.deinit()` at all, so an `src`-only run raises 13 errors
-  across `asy_ntp_client.py`/`asy_sgp40_driver.py`/`asy_scd30_driver.py`/`asy_bmp3xx_driver.py`
-  (bare `Timer()` construction) and `asy_i2c_driver.py` (`self._i2c.deinit()`) that never surface in
-  the actual, documented `mypy src tests` invocation. Both are real, working MicroPython patterns
-  (bare `Timer()` allocate-now/`init()`-later is valid runtime usage; `I2C.deinit()` releases the
-  peripheral's pins) — this is a **gap in the third-party `micropython-rp2-rpi_pico_w-stubs`
-  package**, not a bug in any promoted driver, and `tests/machine.py`'s fake happens to model both
-  correctly. Net effect: harmless today, but worth knowing that the real board stub's coverage is
-  incomplete for these two APIs specifically if a future `src`-only or `--strict`-adjacent
-  type-check run is ever added.
+  first argument), so an `src`-only run raises 12 `call-overload` errors across `system_service.py`
+  (4), `asy_ntp_client.py` (3), `asy_wifi_service.py` (2), `asy_sgp40_driver.py`,
+  `asy_scd30_driver.py` and `asy_bmp3xx_driver.py` that never surface in the actual, documented
+  `mypy src tests` invocation. Bare `Timer()` allocate-now/`init()`-later **is** valid runtime
+  usage, so this one is a genuine **gap in the third-party `micropython-rp2-rpi_pico_w-stubs`
+  package**, not a bug in any promoted driver, and `tests/machine.py`'s fake models it correctly.
+  Worth knowing if a future `src`-only or `--strict`-adjacent type-check run is ever added.
+  - **The `I2C.deinit()` half of this note was backwards and has been corrected** (audited against
+    upstream source at both tags, 2026-09-10). The 1.28 stub was *right* not to declare it:
+    `machine.I2C` had no `deinit` at all before MicroPython 1.29. The 1.29 stub now declares it —
+    but rp2 leaves the protocol's `.deinit` slot `NULL`, so the method mypy now accepts is a
+    **silent no-op on real hardware**, as `machine.SPI.deinit()` always has been on this port. Full
+    account, including what actually releases an rp2 bus (nothing — the objects are static per-bus
+    singletons) and which `deinit()`s *are* real (`UART`, `Timer`, `WLAN`): SPECIFICATION.md Part
+    F.5.1. `src/asy_i2c_driver.py`, `src/asy_spi_driver.py`, `tests/machine.py` and
+    `digital_twin/machine.py` all state the real semantics now.
+- **`scripts/typecheck.sh` repairs two verified defects in the MicroPython stub package after
+  installing it** (added with the 1.29 bump; see the script's own comment for the full account).
+  `micropython-stdlib-stubs` 1.29.0.post1/.post2 privatised `_asyncio.Future` to `_Future` and
+  dropped the `asyncio/futures.pyi` that re-exported it, while `asyncio/tasks.pyi` and
+  `asyncio/__init__.pyi` still import from it — leaving `Future` as `Any`, collapsing
+  `_FutureLike[_T]`, and making every `asyncio.wait_for()`/`gather()` result in this repo
+  un-inferable; and `builtins.pyi` has `NotImplemented` commented out, though MicroPython genuinely
+  has it and honors it from `__eq__` (verified against the pinned Unix-port interpreter). Together
+  these accounted for **all 26** findings the bump surfaced. Both repairs are conditional on the
+  defect still being present, so they no-op once upstream re-ships — **don't replace them with
+  `type: ignore` comments in `src/`/`digital_twin/`**: the code is correct on real hardware in both
+  cases, and `warn_unused_ignores = true` would then fail the day the stubs are fixed.
 - **`improved-quality/microdot.py` no longer exists** — it was a confirmed *unintentional* fork of
   vendored Microdot, removed and replaced with a fresh, unmodified sync at `ext/microdot.py`
   (pinned to tag `v2.6.2`; see "Hard rules" above and "Microdot / REST layer" below). See
@@ -523,6 +636,13 @@ chroot "$CHROOT" /bin/bash -c "source /root/proxy-env.sh && pip install --break-
 # sudo rights but isn't already root) never hits this. A plain chroot session runs as root, where
 # apt-get wouldn't need sudo at all, but the script always prepends it regardless - so installing
 # the package is the correct fix here, not stripping sudo from the script for a root-only case.
+# libcap2-bin is the same class of gap, found the same way (a real run, 2026-09-10): it provides
+# setcap, which scripts/test.sh needs to grant CAP_NET_BIND_SERVICE for the real port-53 DNS
+# server test. Priority-important on a real Ubuntu install, so a normal dev box always has it;
+# --variant=minbase does not, and without it the run dies at "setcap: command not found" *after*
+# the whole toolchain has already built. It is now in toolchain/versions.toml's apt_packages, so a
+# from-scratch run installs it on its own - it stays listed here because a REUSED chroot whose
+# toolchain is already built skips that install step entirely and hits the same late failure.
 
 # Per-verification: copy the CURRENT working tree (uncommitted changes included - this is a
 # pre-push gate, not a post-push audit) into the chroot, then run the exact documented workflow
@@ -549,11 +669,9 @@ rm -rf "$CHROOT"
 ```
 
 **What counts as passing**: `lint.sh`/`typecheck.sh`/`scripts/test.sh` all run to completion with
-exit 0 — every scope this setup covers (`src/`, `tests/`, `digital_twin/`, `tests_hardware/`
-(ruff; mypy covers its `device_scripts/` subtree), and the host build chain: `buildgen/`,
-`scripts/`, `toolchain/`, `tests_scripts/`) is fully-reviewed code
-expected to stay fully clean (confirmed: both `lint.sh` and `typecheck.sh` report zero findings as
-of `improved-quality/`'s deletion), so unlike the pre-deletion state, a nonzero exit from either one
+exit 0 — all nine scopes this setup covers (see "Code quality tooling" above) are fully-reviewed
+code expected to stay fully clean (confirmed: `lint.sh` and all three `typecheck.sh` passes report
+zero findings as of the nine-scope extension), so a nonzero exit from either one
 here is a real regression to chase down, not an expected/tracked finding to compare against a
 session sandbox's own baseline count. `scripts/test.sh`'s tests must likewise actually pass (exit
 0, every test PASS) — a test failure here is a real regression too.

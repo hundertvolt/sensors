@@ -28,7 +28,7 @@ def test_wozi_frozen_modules_include_every_declared_driver(repo_root: Path, src_
 
 def test_frozen_modules_include_core_set(repo_root: Path, src_dir: Path, ext_dir: Path) -> None:
     result = generate_device(repo_root / "devices" / "wozi.toml", src_dir, ext_dir)
-    assert CORE_MODULES <= result.frozen_modules
+    assert result.frozen_modules >= CORE_MODULES
 
 
 def test_frozen_modules_include_transitive_dependency(repo_root: Path, src_dir: Path, ext_dir: Path) -> None:
@@ -63,7 +63,7 @@ def test_frozen_modules_exclude_type_checking_only_import(tmp_path: Path) -> Non
     (tmp_path / "crc_checks.py").write_text("")
     (tmp_path / "type_only_dep.py").write_text("")
     (tmp_path / "asy_typechecked_driver.py").write_text(
-        "try:\n    from typing import TYPE_CHECKING\nexcept ImportError:\n    TYPE_CHECKING = False\n\nif TYPE_CHECKING:\n    import type_only_dep\n"
+        "try:\n    from typing import TYPE_CHECKING\nexcept ImportError:\n    TYPE_CHECKING = False\n\nif TYPE_CHECKING:\n    import type_only_dep\n",
     )
 
     from buildgen.driver_registry import DriverInfo

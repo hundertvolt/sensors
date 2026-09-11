@@ -22,7 +22,10 @@ except ImportError:  # typing isn't available on the real MicroPython test inter
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
-    from typing import Any, TypeVar
+    from typing import Any, NoReturn, TypeVar
+
+    from machine import WDT
+    from typing_extensions import Self
 
     T = TypeVar("T")
 
@@ -32,7 +35,7 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to complet
 
 
 def make_ntp_stub(
-    synced: bool = False, raise_exc: "Exception | None" = None
+    *, synced: bool = False, raise_exc: "Exception | None" = None,
 ) -> "tuple[Callable[[], Coroutine[Any, Any, bool]], list[int]]":
     calls = [0]
 
@@ -45,10 +48,19 @@ def make_ntp_stub(
     return _ntp, calls
 
 
-def make_service(ntp: "Callable[[], Coroutine[Any, Any, bool]] | None" = None, **kwargs: "Any") -> SystemService:
+def make_service(  # parameters/defaults after ntp mirror SystemService.__init__()'s own
+    ntp: "Callable[[], Coroutine[Any, Any, bool]] | None" = None,
+    watchdog: "WDT | None" = None,
+    fram: "AsyFramManager | None" = None,
+    history_length: int = 10,
+    debug: int | None = None,
+    cfg_path: str = "",
+) -> SystemService:
     if ntp is None:
         ntp, _calls = make_ntp_stub(synced=False)
-    return SystemService(ntp, **kwargs)
+    return SystemService(
+        ntp, watchdog=watchdog, fram=fram, history_length=history_length, debug=debug, cfg_path=cfg_path,
+    )
 
 
 def make_fram_manager(max_size: int = 0x2000) -> "tuple[AsyFramManager, FakeMB85RS64V]":
@@ -76,7 +88,7 @@ class _FastAsyncSleep:
     # to drive a handful of supervisor cycles. asyncio.sleep is a shared, process-wide function
     # (unlike the per-module `time` swap above, there's exactly one to patch); restored on
     # __exit__ regardless of how the `with` block exits.
-    def __enter__(self) -> "_FastAsyncSleep":
+    def __enter__(self) -> "Self":
         self._real_sleep = asyncio.sleep
 
         async def _fast(_seconds: float) -> None:
@@ -85,7 +97,7 @@ class _FastAsyncSleep:
         asyncio.sleep = _fast  # type: ignore[assignment]  # deliberate monkeypatch, not a real caller mismatch
         return self
 
-    def __exit__(self, *exc_info: "Any") -> None:
+    def __exit__(self, *exc_info: object) -> None:
         asyncio.sleep = self._real_sleep
 
 
@@ -103,12 +115,12 @@ class _RaiseOnArm:
     def __init__(self, exc: "type[BaseException]" = OSError) -> None:
         self._exc = exc
 
-    def __enter__(self) -> "_RaiseOnArm":
+    def __enter__(self) -> "Self":
         Timer.raise_on_arm_exc = self._exc
         Timer.raise_on_arm = True
         return self
 
-    def __exit__(self, *exc_info: "Any") -> None:
+    def __exit__(self, *exc_info: object) -> None:
         Timer.raise_on_arm = False
         Timer.raise_on_arm_exc = OSError
 
@@ -133,9 +145,9 @@ def test_init_uses_fram_backed_logging_and_wires_storage_pause_when_fram_given()
     assert svc.pr.name == "SYSTEM"
     # Bound-method identity isn't guaranteed (each attribute access can mint a fresh bound-method
     # object) - confirm by behavior instead: calling svc.storage_pause must reach manager's own state.
-    svc.storage_pause(True)
+    svc.storage_pause(value=True)
     assert manager.get_pause() is True
-    svc.storage_pause(False)
+    svc.storage_pause(value=False)
     assert manager.get_pause() is False
 
 
@@ -238,12 +250,12 @@ class _OverflowingTime:
     # time.mktime = ... raises AttributeError) - can't monkeypatch an attribute onto it, so this
     # replaces system_service's own module-level `time` name instead (a plain, mutable module
     # global, unlike the builtin module it points to).
-    def gmtime(self) -> "Any":
+    def gmtime(self) -> "tuple[int, ...]":
         import time as _real_time
 
         return _real_time.gmtime()
 
-    def mktime(self, _t: "Any") -> int:
+    def mktime(self, _t: "tuple[int, ...]") -> "NoReturn":
         raise OverflowError("past rp2's ~2037 32-bit epoch range")
 
 
@@ -264,10 +276,10 @@ class _RaisingGmtime:
     # Same monkeypatch technique as _OverflowingTime above, but faulting the other call inside the
     # same try block (time.gmtime() itself) instead of mktime() - both calls share one try/except,
     # so this proves the guard isn't accidentally only reachable from the mktime() half of the line.
-    def gmtime(self) -> "Any":
+    def gmtime(self) -> "NoReturn":
         raise OSError("RTC read failed")
 
-    def mktime(self, _t: "Any") -> int:
+    def mktime(self, _t: "tuple[int, ...]") -> "NoReturn":
         raise AssertionError("must not be reached - gmtime() itself already raised")
 
 
@@ -1059,7 +1071,7 @@ def test_start_and_check_tasks_logs_the_real_exception_of_a_crashed_task() -> No
         run(scenario())
     assert call_count[0] >= 2
     log = run(svc.get_error_counter())["SYSTEM"]
-    assert 5 in log["ErrNum"]  # type: ignore[operator]  # _log_dead_task's own errno=5, distinct from wrn_s's own wrnno
+    assert 5 in log["ErrNum"]  # _log_dead_task's own errno=5, distinct from wrn_s's own wrnno
 
 
 def test_start_and_check_tasks_logs_a_self_cancelled_task_as_a_persisted_error() -> None:
@@ -1078,7 +1090,7 @@ def test_start_and_check_tasks_logs_a_self_cancelled_task_as_a_persisted_error()
 
         async def _c() -> None:
             if attempt == 1:
-                raise asyncio.CancelledError()
+                raise asyncio.CancelledError
             await asyncio.sleep(3600)  # second attempt: stay alive so the loop settles
 
         return asyncio.create_task(_c())
@@ -1097,7 +1109,7 @@ def test_start_and_check_tasks_logs_a_self_cancelled_task_as_a_persisted_error()
         run(scenario())
     assert call_count[0] >= 2
     log = run(svc.get_error_counter())["SYSTEM"]
-    assert 6 in log["ErrNum"]  # type: ignore[operator]  # _log_dead_task's own errno=6 for a self-cancelled task
+    assert 6 in log["ErrNum"]  # _log_dead_task's own errno=6 for a self-cancelled task
     assert svc.pr.err_count >= 2  # the errno=6 entry plus the routine "Task ended" warning
 
 
@@ -1128,7 +1140,7 @@ def test_start_and_check_tasks_clean_task_return_does_not_log_a_spurious_excepti
     with _FastAsyncSleep():
         run(scenario())
     log = run(svc.get_error_counter())["SYSTEM"]
-    assert 5 not in log["ErrNum"]  # type: ignore[operator]  # no real exception occurred - errno=5 must never fire
+    assert 5 not in log["ErrNum"]  # no real exception occurred - errno=5 must never fire
 
 
 def test_start_and_check_tasks_gives_up_and_reboots_past_the_failure_budget() -> None:
@@ -1274,7 +1286,7 @@ def test_one_bad_setter_does_not_stop_the_rest_of_the_registry() -> None:
     # callback could misbehave, and one failure must not take down the others.
     calls: list[int] = []
 
-    def _raising_setter(value: int) -> None:
+    def _raising_setter(_value: int) -> None:
         raise RuntimeError("simulated bad setter")
 
     svc = make_service(cfg_path=_tmp_cfg_dir())

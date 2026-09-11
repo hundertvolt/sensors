@@ -26,7 +26,7 @@ sys.path.insert(0, "ext")  # run_dev_integration.py transitively imports sensort
 # asy_webserver_service -> microdot - same convention test_sensortask_dev.py's own comment uses.
 sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comment for why
 
-from run_dev_integration import RunConfig, _soak, main, parse_args  # noqa: E402
+from run_dev_integration import RunConfig, _soak, main, parse_args
 
 
 def run_timed(coro: "Coroutine[Any, Any, T]", timeout_s: float = 5.0) -> "T":
@@ -43,7 +43,7 @@ def run_timed(coro: "Coroutine[Any, Any, T]", timeout_s: float = 5.0) -> "T":
 # ---------------------------------------------------------------------------
 
 
-async def _reset_immediately_server(reader: "Any", writer: "Any") -> None:
+async def _reset_immediately_server(_reader: "asyncio.StreamReader", writer: "asyncio.StreamWriter") -> None:
     writer.close()
     await writer.wait_closed()
 

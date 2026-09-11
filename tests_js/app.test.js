@@ -29,15 +29,15 @@ const MOCK_DATA = {
  * @returns {typeof fetch}
  */
 function buildFetchStub({ definitionsOk = true, mockDataOk = true } = {}) {
-    return vi.fn(async (input) => {
+    return vi.fn((input) => {
         const url = String(input);
         if (url.includes("definitions/wozi.json")) {
-            return definitionsOk ? new Response(JSON.stringify(DEFS), { status: 200 }) : new Response("not found", { status: 404 });
+            return Promise.resolve(definitionsOk ? new Response(JSON.stringify(DEFS), { status: 200 }) : new Response("not found", { status: 404 }));
         }
         if (url.includes("mockdata/wozi.json")) {
-            return mockDataOk ? new Response(JSON.stringify(MOCK_DATA), { status: 200 }) : new Response("server error", { status: 500 });
+            return Promise.resolve(mockDataOk ? new Response(JSON.stringify(MOCK_DATA), { status: 200 }) : new Response("server error", { status: 500 }));
         }
-        return new Response("not found", { status: 404 });
+        return Promise.resolve(new Response("not found", { status: 404 }));
     });
 }
 
@@ -131,15 +131,15 @@ describe("startApp", () => {
 
     it("shows a clear error banner (not a crash) when the mock fixture data is torn/truncated JSON", async () => {
         window.history.pushState(null, "", "?device=wozi");
-        window.fetch = vi.fn(async (input) => {
+        window.fetch = vi.fn((input) => {
             const url = String(input);
             if (url.includes("definitions/wozi.json")) {
-                return new Response(JSON.stringify(DEFS), { status: 200 });
+                return Promise.resolve(new Response(JSON.stringify(DEFS), { status: 200 }));
             }
             if (url.includes("mockdata/wozi.json")) {
-                return new Response("{not valid json", { status: 200 });
+                return Promise.resolve(new Response("{not valid json", { status: 200 }));
             }
-            return new Response("not found", { status: 404 });
+            return Promise.resolve(new Response("not found", { status: 404 }));
         });
         elements = buildElements();
 

@@ -26,7 +26,7 @@ sys.path.insert(0, "ext")
 
 # ext/ isn't on this project's mypy search path yet (see pyproject.toml's [tool.mypy]) - same gap
 # as src/asy_webserver_service.py's own import of this module.
-from microdot import Microdot, Request  # type: ignore[import-not-found]  # noqa: E402
+from microdot import Microdot, Request  # type: ignore[import-not-found]
 
 import api_response as ar
 import config_manager as cm
@@ -137,12 +137,12 @@ def make_ntp_client() -> AsyNtpClient:
 
 class _FakeRequest:
     # Same minimal stand-in as test_api_response.py's own - mocks only the .json property boundary.
-    def __init__(self, json_value: "Any", raise_instead: bool = False) -> None:
+    def __init__(self, json_value: object, *, raise_instead: bool = False) -> None:
         self._json_value = json_value
         self._raise_instead = raise_instead
 
     @property
-    def json(self) -> "Any":
+    def json(self) -> object:  # matches api_response.py's own _RequestLike Protocol
         if self._raise_instead:
             raise ValueError("malformed body")
         return self._json_value
@@ -170,7 +170,7 @@ def _wifi_field_schema(client: AsyConnTime, keys: "tuple[str, ...]") -> "cm.Conf
     return tuple(fields[k] for k in keys if k in fields)
 
 
-async def _simulated_set_network_endpoint(client: AsyConnTime, request: "Any") -> "ar.ResponseEnvelope":
+async def _simulated_set_network_endpoint(client: AsyConnTime, request: "ar._RequestLike") -> "ar.ResponseEnvelope":
     data, err = ar.parse_cmd_request(request, ["setNetwork"])
     if err is not None:
         return err
@@ -178,11 +178,11 @@ async def _simulated_set_network_endpoint(client: AsyConnTime, request: "Any") -
     fields = {k: v for k, v in data.items() if k != "cmd"}
     net_schema = _wifi_field_schema(client, ("SSID", "PW", "Country", "Hostname"))
     return await ar.handle_set_cmd(
-        client, fields, net_schema, post_fct=client.reconnect_wifi, ok_descr="Network settings updated"
+        client, fields, net_schema, post_fct=client.reconnect_wifi, ok_descr="Network settings updated",
     )
 
 
-async def _simulated_set_wifi_led_endpoint(client: AsyConnTime, request: "Any") -> "ar.ResponseEnvelope":
+async def _simulated_set_wifi_led_endpoint(client: AsyConnTime, request: "ar._RequestLike") -> "ar.ResponseEnvelope":
     data, err = ar.parse_cmd_request(request, ["setWiFiLED"])
     if err is not None:
         return err
@@ -208,7 +208,7 @@ def test_mocked_request_fine_data_applies_and_reports_ok() -> None:
 def test_mocked_request_partially_fine_data_reports_mixed_per_field_results() -> None:
     client = make_wifi_client()
     req = _FakeRequest(
-        {"cmd": "setNetwork", "Hostname": "NewHost", "SSID": "MyNet", "PW": "short", "Country": "United States"}
+        {"cmd": "setNetwork", "Hostname": "NewHost", "SSID": "MyNet", "PW": "short", "Country": "United States"},
     )
     resp = run(_simulated_set_network_endpoint(client, req))
     assert resp["res"] == "OK"  # still overall OK - per-field detail lives in "result"
@@ -357,7 +357,7 @@ def test_real_microdot_setter_end_to_end_valid_request() -> None:
     client = make_wifi_client()
     app = _wifi_app(client)
     req = _make_request(
-        app, "PUT", "/net/cmd", {"cmd": "setNetwork", "Hostname": "RealHost", "SSID": "RealNet", "PW": "supersecret", "Country": "US"}
+        app, "PUT", "/net/cmd", {"cmd": "setNetwork", "Hostname": "RealHost", "SSID": "RealNet", "PW": "supersecret", "Country": "US"},
     )
     res = run(app.dispatch_request(req))
     assert res.status_code == 200
@@ -415,7 +415,7 @@ def test_real_microdot_handler_raising_is_caught_by_microdots_own_blanket_catch(
     app = Microdot()
 
     @app.put("/boom")
-    async def boom(request: Request) -> None:
+    async def boom(_request: Request) -> None:  # Microdot passes it positionally
         raise RuntimeError("simulated handler bug")
 
     print("(expected) the traceback below is Microdot's own internal exception logging, triggered on purpose")
@@ -529,7 +529,7 @@ def _ntp_getter_app(client: AsyNtpClient) -> Microdot:
     app = Microdot()
 
     @app.get("/time/config")
-    async def timing_config(request: Request) -> "dict[str, dict[str, Any]]":
+    async def timing_config(_request: Request) -> "dict[str, dict[str, Any]]":  # Microdot passes it positionally
         return await client.get_dict_cfg()
 
     return app
@@ -549,7 +549,7 @@ def test_real_microdot_getter_end_to_end_returns_schema_defaults() -> None:
             "NTP_Interv_H": 12,
             "GMTOffset": 3600,
             "DSTOffset": 3600,
-        }
+        },
     }
 
 
@@ -793,7 +793,7 @@ async def _scd_apply_field(
     return "Valid" if applied else "Failed"
 
 
-async def _simulated_set_scd_endpoint(reader: SCD30_Reader, request: "Any") -> "ar.ResponseEnvelope":
+async def _simulated_set_scd_endpoint(reader: SCD30_Reader, request: "ar._RequestLike") -> "ar.ResponseEnvelope":
     data, err = ar.parse_cmd_request(request, ["setSCD"])
     if err is not None:
         return err

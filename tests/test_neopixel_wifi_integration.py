@@ -97,7 +97,7 @@ def test_real_neopixel_driver_on_off_toggle_through_wifi_service_ext_led() -> No
     async def scenario() -> "tuple[tuple[int, ...], tuple[int, ...], tuple[int, ...]]":
         overlay_task = pixel.start_asy_neopixel_led_overl()
         await asyncio.sleep(0)
-        await conn.set_wifi_led(True)  # led_pin is None -> self.led becomes self.ext_led (pixel)
+        await conn.set_wifi_led(status=True)  # led_pin is None -> self.led becomes self.ext_led (pixel)
         conn._led_on()
         await asyncio.sleep(0.05)
         on_write = pixel.pixel.writes[-1][0]
@@ -127,7 +127,7 @@ def test_set_ext_led_swaps_in_a_real_driver_after_construction() -> None:
     async def scenario() -> "tuple[int, ...]":
         overlay_task = pixel.start_asy_neopixel_led_overl()
         await asyncio.sleep(0)
-        await conn.set_wifi_led(True)
+        await conn.set_wifi_led(status=True)
         conn._led_on()
         await asyncio.sleep(0.05)
         write = pixel.pixel.writes[-1][0]

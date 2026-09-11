@@ -14,7 +14,7 @@ import json
 import os
 import sys
 
-import coverage
+import coverage  # type: ignore[import-not-found]
 
 
 def merge_raw_dumps(raw_dir: str, repo_root: str) -> dict[str, list[int]]:

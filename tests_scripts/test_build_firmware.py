@@ -12,7 +12,7 @@ from pathlib import Path
 from types import ModuleType
 
 import pytest
-from conftest import load_script_module
+from _script_loader import load_script_module
 
 
 @pytest.fixture(scope="session")
@@ -30,15 +30,18 @@ def test_build_stage_dir_rejects_a_device_with_no_boot_entry_file(build_firmware
         build_firmware.build_stage_dir(tmp_path, "no-such-device")
 
 
-def test_manifest_template_includes_the_default_board_manifest_and_freezes_stage_dir(build_firmware: ModuleType) -> None:
+def test_manifest_template_includes_the_default_board_manifest_and_freezes_stage_dir(build_firmware: ModuleType, tmp_path: Path) -> None:
     # Unlike this script's own previous approach (a custom _boot.py, which meant skipping the
     # default board manifest entirely to avoid a colliding second freeze() of "_boot.py" - see
     # SPECIFICATION.md Part F.1 for why that broke USB entirely), each device's boot module is now
     # frozen under "main.py" instead, so the default manifest (asyncio/neopixel/bundle-networking/
     # ... plus the stock, always-returns _boot.py + rp2.py) is reused unchanged.
-    manifest = build_firmware._MANIFEST_TEMPLATE.format(board="RPI_PICO_W", stage_dir="/tmp/some-stage-dir")
+    # str(), not the Path itself: the template interpolates {stage_dir!r} and build_firmware.py's
+    # own call site passes str(stage_dir), so a Path here would render as PosixPath('...').
+    stage_dir = str(tmp_path / "some-stage-dir")
+    manifest = build_firmware._MANIFEST_TEMPLATE.format(board="RPI_PICO_W", stage_dir=stage_dir)
     assert 'include("$(PORT_DIR)/boards/RPI_PICO_W/manifest.py")' in manifest
-    assert "freeze('/tmp/some-stage-dir')" in manifest
+    assert f"freeze('{stage_dir}')" in manifest
 
 
 @pytest.mark.parametrize("device", ["wozi", "dev"])
@@ -91,7 +94,7 @@ def test_build_stage_dir_frozen_html_contains_the_real_website_not_the_stub(buil
     assert "/js/app.js.gz" in frozen_html_text
 
 
-def _run_cli(repo_root: Path, args: "list[str]", check: bool=False) -> "subprocess.CompletedProcess[str]":
+def _run_cli(repo_root: Path, args: list[str], *, check: bool = False) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, "scripts/build_firmware.py", *args],
         cwd=repo_root,

@@ -17,8 +17,8 @@ if TYPE_CHECKING:
 
 sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comment for why
 
-from neopixel import NeoPixel  # noqa: E402
-from network import (  # noqa: E402
+from neopixel import NeoPixel
+from network import (
     STA_IF,
     STAT_CONNECT_FAIL,
     STAT_CONNECTING,

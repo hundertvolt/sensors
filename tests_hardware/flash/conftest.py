@@ -5,9 +5,12 @@ pytest session."""
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
-from harness import Board
+
+if TYPE_CHECKING:
+    from harness import Board
 
 _DEVICE_SCRIPTS = Path(__file__).resolve().parent.parent / "device_scripts"
 

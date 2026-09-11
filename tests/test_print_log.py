@@ -45,33 +45,39 @@ class _RaisingFramChunk:
     # independent of what the concrete AsyFramManager currently guarantees (its own _write_chunk/
     # _read_chunk wrap their entire bodies in try/except - confirmed by asy_fram_manager.py's own
     # src/ promotion audit - so write_into()/read_into() can no longer actually raise through it).
-    def __init__(self, raise_on_write: bool = False, raise_on_read: bool = False) -> None:
+    def __init__(self, *, raise_on_write: bool = False, raise_on_read: bool = False) -> None:
         self.raise_on_write = raise_on_write
         self.raise_on_read = raise_on_read
 
+    # Every parameter below keeps its exact name (and stays unused): mypy checks this double
+    # structurally against print_log.py's own _FramChunk/_FramManager Protocols at each
+    # PrintLogHistoryStore() call site, and an underscore prefix breaks that match outright.
     def get_buffer(self) -> "LockableBuffer":
         from base_classes import LockableBuffer
 
         return LockableBuffer(6, data_start=0, data_length=6)
 
-    async def write_into(self, buf: "Any", override_pause: bool = False) -> bool:
+    async def write_into(self, buf: "LockableBuffer", *, override_pause: bool = False) -> bool:
         if self.raise_on_write:
             raise RuntimeError("simulated write failure")
         return True
 
-    async def read_into(self, buf: "Any", override_pause: bool = False) -> bool:
+    async def read_into(self, buf: "LockableBuffer", *, override_pause: bool = False) -> bool:
         if self.raise_on_read:
             raise RuntimeError("simulated read failure")
         return True
 
 
 class _RaisingFramManager:
-    def __init__(self, chunk: "_RaisingFramChunk | None", raise_on_get_chunk: bool = False) -> None:
+    def __init__(self, chunk: "_RaisingFramChunk | None", *, raise_on_get_chunk: bool = False) -> None:
         self._chunk = chunk
         self.raise_on_get_chunk = raise_on_get_chunk
 
+    # Every parameter below keeps its exact name (and stays unused): mypy checks this double
+    # structurally against print_log.py's own _FramChunk/_FramManager Protocols at each
+    # PrintLogHistoryStore() call site, and an underscore prefix breaks that match outright.
     def get_chunk(
-        self, size: int, crc: "CRC_Base | None" = None, verify: int = 0, check_length: int = 8
+        self, size: int, crc: "CRC_Base | None" = None, verify: int = 0, check_length: int = 8,
     ) -> "_RaisingFramChunk | None":
         if self.raise_on_get_chunk:
             raise RuntimeError("simulated allocation failure")
@@ -332,7 +338,7 @@ class _RaisingDeque:
     # first (nonzero-maxlen) call raises - the except block's own deque([], 0) fallback must still
     # succeed normally, matching what a real memory-constrained device's tiny recovery allocation
     # would do.
-    def __call__(self, iterable: "Any", maxlen: int) -> "Any":
+    def __call__(self, iterable: "list[int]", maxlen: int) -> "deque[int]":
         if maxlen == 0:
             return deque(iterable, maxlen)
         raise MemoryError("simulated allocation failure")

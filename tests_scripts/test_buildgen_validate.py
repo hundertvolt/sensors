@@ -4,13 +4,18 @@ just incidentally exercised by the six real device TOMLs happening to be valid."
 
 import shutil
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 from _toml_fixtures import base_doc, write_doc, write_text
 
 from buildgen.errors import BuildError
-from buildgen.model import DeviceModel
 from buildgen.validate import build_model
+
+if TYPE_CHECKING:
+    from _toml_fixtures import TomlDoc
+
+    from buildgen.model import DeviceModel
 
 
 @pytest.fixture
@@ -18,7 +23,7 @@ def src_dir(repo_root: Path) -> Path:
     return repo_root / "src"
 
 
-def _build(tmp_path: Path, src_dir: Path, doc: dict, name: str = "dev") -> "DeviceModel":
+def _build(tmp_path: Path, src_dir: Path, doc: "TomlDoc", name: str = "dev") -> "DeviceModel":
     return build_model(write_doc(tmp_path, name, doc), src_dir)
 
 
@@ -322,7 +327,7 @@ def test_driver_resolvable_but_missing_buildspec_entry_reports_the_real_cause(tm
         "bus": {},
         "instance": [{"driver": "bogus2"}],
     }
-    with pytest.raises(BuildError, match="has no entry in buildgen.buildspec"):
+    with pytest.raises(BuildError, match=r"has no entry in buildgen\.buildspec"):
         _build(tmp_path, custom_src, doc, name="bogus2dev")
 
 
@@ -710,7 +715,7 @@ def test_wiring_reference_wrong_class(tmp_path: Path, src_dir: Path) -> None:
 def test_required_wiring_field_missing(tmp_path: Path, src_dir: Path) -> None:
     doc = base_doc()
     del doc["instance"][4]["wiring"]["signal_sink"]
-    with pytest.raises(BuildError, match="missing required wiring.signal_sink"):
+    with pytest.raises(BuildError, match=r"missing required wiring\.signal_sink"):
         _build(tmp_path, src_dir, doc)
 
 
@@ -982,7 +987,7 @@ def test_bus_table_is_not_a_table_at_all(tmp_path: Path, src_dir: Path) -> None:
 
 def test_single_bus_entry_is_not_a_table(tmp_path: Path, src_dir: Path) -> None:
     path = write_text(tmp_path, "dev", _MINIMAL_DEVICE_TABLE + "\n[bus]\ni2c0 = 5\n")
-    with pytest.raises(BuildError, match="bus.i2c0 is not a table"):
+    with pytest.raises(BuildError, match=r"bus\.i2c0 is not a table"):
         build_model(path, src_dir)
 
 
@@ -1029,7 +1034,7 @@ def test_attr_mode_default_provider_without_the_target_attribute(tmp_path: Path,
 def test_required_value_wiring_field_left_unwired(tmp_path: Path, src_dir: Path) -> None:
     doc = base_doc()
     del doc["instance"][1]["wiring"]["temperature_source"]
-    with pytest.raises(BuildError, match="missing required wiring.temperature_source"):
+    with pytest.raises(BuildError, match=r"missing required wiring\.temperature_source"):
         _build(tmp_path, src_dir, doc)
 
 

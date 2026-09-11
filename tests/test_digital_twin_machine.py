@@ -22,16 +22,16 @@ if TYPE_CHECKING:
 # rather than a scripts/test.sh/MICROPYPATH change.
 sys.path.insert(0, "digital_twin")
 
-import machine  # noqa: E402 - whole-module import, needed for the live reset_count/bootloader_count globals below
-from machine import (  # noqa: E402
+import machine
+from machine import (
     I2C,
     RTC,
     SPI,
     WDT,
     Pin,
-    SimulatedBootloaderEntry,
-    SimulatedReboot,
-    SimulatedReset,
+    SimulatedBootloaderEntryError,
+    SimulatedRebootError,
+    SimulatedResetError,
     Timer,
     bootloader,
     reset,
@@ -82,7 +82,7 @@ def test_pin_simulate_edge_to_the_same_value_does_not_fire_the_irq_handler() -> 
     fired: list[int] = []
     pin = Pin(23)
     pin.off()
-    pin.irq(handler=lambda p: fired.append(1), trigger=Pin.IRQ_RISING | Pin.IRQ_FALLING)
+    pin.irq(handler=lambda _p: fired.append(1), trigger=Pin.IRQ_RISING | Pin.IRQ_FALLING)
     pin.simulate_edge(0)  # already 0 - not a real transition, must be a no-op
     assert fired == []
 
@@ -115,6 +115,8 @@ def test_configure_random_source_threads_through_to_newly_wired_chips() -> None:
     Pin.reset_registry()
     try:
 
+        # a/b/k keep their names (and stay unused): configure_random_source() takes machine.py's
+        # own _RandomSource Protocol, which mypy matches structurally by parameter name.
         class _FixedRandom:
             def uniform(self, a: float, b: float) -> float:
                 return a
@@ -166,7 +168,7 @@ def test_configure_scd30_state_path_and_flush_scd30_round_trip_settings() -> Non
     import os
 
     sys.path.insert(0, "digital_twin")
-    from _crc8 import crc8, word  # noqa: E402
+    from _crc8 import crc8, word
 
     path = "tests/_tmp/scd30_machine_wiring.json"
     try:
@@ -280,7 +282,7 @@ def test_wdt_feed_increments_count() -> None:
 
 
 def test_wdt_rejects_a_nonzero_id() -> None:
-    # Confirmed directly against the pinned v1.28.0 ports/rp2/machine_wdt.c source: rp2 only ever
+    # Confirmed directly against the pinned v1.29.0 ports/rp2/machine_wdt.c source: rp2 only ever
     # implements id 0 - WDT(id=1) raises ValueError("WDT(1) doesn't exist") on real hardware.
     try:
         WDT(id=1)
@@ -371,7 +373,7 @@ def test_wdt_would_have_triggered_log_records_the_feed_count_at_each_notificatio
 def test_wdt_on_would_trigger_callback_fires_with_the_wdt_instance() -> None:
     async def scenario() -> "list[WDT]":
         seen: list[WDT] = []
-        _wdt = WDT(timeout=150, on_would_trigger=lambda w: seen.append(w))
+        _wdt = WDT(timeout=150, on_would_trigger=seen.append)
         for _ in range(200):
             if seen:
                 return seen
@@ -386,8 +388,8 @@ def test_reset_increments_the_module_counter_then_raises_simulated_reset() -> No
     before = machine.reset_count
     try:
         reset()
-        raise AssertionError("expected SimulatedReset")
-    except SimulatedReset:
+        raise AssertionError("expected SimulatedResetError")
+    except SimulatedResetError:
         pass
     assert machine.reset_count == before + 1
 
@@ -396,19 +398,19 @@ def test_bootloader_increments_the_module_counter_then_raises_simulated_bootload
     before = machine.bootloader_count
     try:
         bootloader()
-        raise AssertionError("expected SimulatedBootloaderEntry")
-    except SimulatedBootloaderEntry:
+        raise AssertionError("expected SimulatedBootloaderEntryError")
+    except SimulatedBootloaderEntryError:
         pass
     assert machine.bootloader_count == before + 1
 
 
 def test_simulated_reset_and_bootloader_entry_are_both_simulated_reboot() -> None:
-    assert issubclass(SimulatedReset, SimulatedReboot)
-    assert issubclass(SimulatedBootloaderEntry, SimulatedReboot)
+    assert issubclass(SimulatedResetError, SimulatedRebootError)
+    assert issubclass(SimulatedBootloaderEntryError, SimulatedRebootError)
     try:
         reset()
-        raise AssertionError("expected SimulatedReboot")
-    except SimulatedReboot:
+        raise AssertionError("expected SimulatedRebootError")
+    except SimulatedRebootError:
         pass  # caught via the base class, not the specific subclass
 
 
@@ -421,7 +423,7 @@ def test_rtc_datetime_round_trips() -> None:
 def test_timer_deinit_stops_further_callbacks() -> None:
     calls: list[int] = []
     timer = Timer()
-    timer.init(period=20, mode=Timer.PERIODIC, callback=lambda t: calls.append(1))
+    timer.init(period=20, mode=Timer.PERIODIC, callback=lambda _t: calls.append(1))
 
     async def scenario() -> "tuple[int, int]":
         await asyncio.sleep_ms(60)
@@ -455,7 +457,7 @@ def test_timer_reinit_from_within_its_own_callback_does_not_raise() -> None:
             timer.init(period=10, mode=Timer.ONE_SHOT, callback=lambda t: _chain(t, counter + 1))
 
     async def scenario() -> None:
-        timer.init(period=10, mode=Timer.ONE_SHOT, callback=lambda t: _chain(t))
+        timer.init(period=10, mode=Timer.ONE_SHOT, callback=_chain)
         for _ in range(100):  # generous relative to the 10ms period, matches the sibling test below
             if len(steps) >= 3:
                 return
@@ -474,7 +476,7 @@ def test_timer_deinit_outside_a_running_event_loop_does_not_raise() -> None:
     # asyncio.run() in progress) hits immediately. deinit() must treat that the same as "definitely
     # not my own callback", not let the RuntimeError propagate.
     timer = Timer()
-    timer.init(period=1000, mode=Timer.ONE_SHOT, callback=lambda t: None)
+    timer.init(period=1000, mode=Timer.ONE_SHOT, callback=lambda _t: None)
     timer.deinit()  # must not raise, called with no event loop running
 
 
@@ -486,7 +488,7 @@ def test_timer_fires_for_real_on_a_short_period() -> None:
     timer = Timer()
 
     async def scenario() -> None:
-        timer.init(period=20, mode=Timer.ONE_SHOT, callback=lambda t: fired.append(1))
+        timer.init(period=20, mode=Timer.ONE_SHOT, callback=lambda _t: fired.append(1))
         for _ in range(100):  # up to ~2s total, generous relative to the 20ms period
             if fired:
                 return

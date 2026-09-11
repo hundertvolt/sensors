@@ -297,7 +297,7 @@ def test_parse_requires_tags_leaves_non_tags_alone(tmp_path: Path, source: str) 
         ("<", 100, 200, True), ("<", 100, 100, False),
     ],
 )
-def test_check_requires_tags_every_operator_both_ways(op: str, actual: int, value: int, satisfied: bool) -> None:
+def test_check_requires_tags_every_operator_both_ways(op: str, actual: int, value: int, *, satisfied: bool) -> None:
     tags = (RequiresTag("timeout", op, value, f"@requires bus.timeout{op}{value}"),)
     if satisfied:
         check_requires_tags(tags, {"timeout": actual}, "dev", "scd30", "i2c0")  # no raise

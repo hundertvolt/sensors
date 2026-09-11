@@ -4,8 +4,7 @@
 # project's one low-frequency caller (asy_ntp_client.py's NTP-host resolution).
 # SPDX-License-Identifier: MIT
 
-"""Async, non-blocking IPv4 DNS resolver (A-records only) built on asy_udp_socket.py's AsyUDPSocket.
-"""
+"""Async, non-blocking IPv4 DNS resolver (A-records only) built on asy_udp_socket.py's AsyUDPSocket."""
 # resolve_ipv4() never raises, returns the dotted-quad str or None; only bare compression-pointer
 # names (RFC 1035 SS4.1.4) are followed, matching captive_dns.py's precedent.
 
@@ -26,16 +25,19 @@ _FALLBACK_DNS_SERVERS: tuple[str, ...] = ("8.8.8.8", "1.1.1.1")  # tried after c
 _QTYPE_A = const(b"\x00\x01")
 _QCLASS_IN = const(b"\x00\x01")
 
+_IPV4_OCTETS = const(4)  # dotted-quad parts, and an A-record's RDLENGTH (RFC 1035 SS3.4.1)
+_IPV4_OCTET_MAX = const(255)
+_LABEL_MAX_OCTETS = const(63)  # RFC 1035 SS3.1's single-length-byte ceiling
+_HEADER_LEN = const(12)  # RFC 1035 SS4.1.1 fixed message header
+_PTR_MASK = const(0xC0)  # RFC 1035 SS4.1.4 compression-pointer top-two-bits marker
+
 
 def _is_ipv4_literal(host: str) -> bool:
     # Dotted-quad check, avoiding int()'s exceptions for control flow via isdigit().
     parts = host.split(".")
-    if len(parts) != 4:
+    if len(parts) != _IPV4_OCTETS:
         return False
-    for part in parts:
-        if not part.isdigit() or not (0 <= int(part) <= 255):
-            return False
-    return True
+    return all(part.isdigit() and 0 <= int(part) <= _IPV4_OCTET_MAX for part in parts)
 
 
 def _build_query(host: bytes, txn_id: bytes) -> bytearray:
@@ -50,14 +52,14 @@ def _build_query(host: bytes, txn_id: bytes) -> bytearray:
     # NTP_Host schema), so an overlong label is a real, reachable input, not just a defensive-only
     # case - raised deliberately (matching add()/check()'s own let-it-propagate MemoryError
     # contract in crc_checks.py) so resolve_ipv4() can catch it alongside that same MemoryError.
-    if any(len(label) > 63 for label in labels):
-        raise ValueError(f"DNS label too long ({max(len(label) for label in labels)} > 63 octets)")
+    if any(len(label) > _LABEL_MAX_OCTETS for label in labels):
+        raise ValueError(f"DNS label too long ({max(len(label) for label in labels)} > {_LABEL_MAX_OCTETS} octets)")
     qname_len = len(host) + 2
-    query = bytearray(12 + qname_len + 4)  # header + QNAME + QTYPE(2) + QCLASS(2)
+    query = bytearray(_HEADER_LEN + qname_len + 4)  # header + QNAME + QTYPE(2) + QCLASS(2)
     query[0:2] = txn_id
     query[2:4] = b"\x01\x00"  # QR=0 (query), Opcode=0 (standard), RD=1 (recursion desired)
     query[4:6] = b"\x00\x01"  # QDCOUNT=1 (ANCOUNT/NSCOUNT/ARCOUNT stay 0 - already zero-initialized)
-    pos = 12
+    pos = _HEADER_LEN
     for label in labels:
         n = len(label)
         query[pos] = n
@@ -73,7 +75,7 @@ def _build_query(host: bytes, txn_id: bytes) -> bytearray:
 
 def _parse_response(rsp: bytes | bytearray, query: bytes | bytearray) -> str | None:
     # See module docstring for the compression-pointer-only limitation.
-    if len(rsp) < 12 or rsp[0:2] != query[0:2]:
+    if len(rsp) < _HEADER_LEN or rsp[0:2] != query[0:2]:
         return None  # too short to be a real header, or a stale/spoofed reply (wrong transaction ID)
     if not (rsp[2] & 0x80):
         return None  # QR=0 - not actually a response
@@ -86,14 +88,14 @@ def _parse_response(rsp: bytes | bytearray, query: bytes | bytearray) -> str | N
     for _ in range(answer_count):
         # Top-two-bits mask (RFC 1035 SS4.1.4: any 0xC0-0xFF leading byte), not `== 0xC0` - a
         # bare `== 0xC0` would misread any valid pointer to offset >= 256.
-        if pos + 12 > len(rsp) or (rsp[pos] & 0xC0) != 0xC0:
+        if pos + 12 > len(rsp) or (rsp[pos] & _PTR_MASK) != _PTR_MASK:
             break  # truncated, or a name that isn't a bare compression pointer
         rtype = (rsp[pos + 2] << 8) | rsp[pos + 3]
         rclass = (rsp[pos + 4] << 8) | rsp[pos + 5]
         rdlength = (rsp[pos + 10] << 8) | rsp[pos + 11]
         data_start = pos + 12
-        if rtype == 1 and rclass == 1 and rdlength == 4 and data_start + 4 <= len(rsp):
-            ip = rsp[data_start : data_start + 4]
+        if rtype == 1 and rclass == 1 and rdlength == _IPV4_OCTETS and data_start + _IPV4_OCTETS <= len(rsp):
+            ip = rsp[data_start : data_start + _IPV4_OCTETS]
             return f"{ip[0]}.{ip[1]}.{ip[2]}.{ip[3]}"
         pos = data_start + rdlength
     return None

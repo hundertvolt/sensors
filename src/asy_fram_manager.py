@@ -24,6 +24,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
     from typing import Any
 
+    from print_log import ErrorLog
+
 _STATUS_UNINIT = const(0x00)
 _STATUS_IDLE = const(0x01)
 _STATUS_BUSY = const(0x02)
@@ -64,7 +66,7 @@ class _AsyBaseFramChunk:
         # this one serializes this chunk's own write()/read()/clear() end to end, across both blocks.
         self._op_lock = asyncio.Lock()
 
-    async def _write(self, buf: bytearray, override_pause: bool = False) -> bool:
+    async def _write(self, buf: bytearray, *, override_pause: bool = False) -> bool:
         async with self._op_lock:  # serializes this chunk's own writes/reads/clears end to end
             if (not override_pause) and (self._mempause()):
                 await self.pr.wrn_s("FRAM communication paused, not writing FRAM!", wrnno=60)
@@ -95,7 +97,7 @@ class _AsyBaseFramChunk:
                     self.pr.evt("Write verification successful")
             return True
 
-    async def _read(self, buf: bytearray, override_pause: bool = False) -> bool:
+    async def _read(self, buf: bytearray, *, override_pause: bool = False) -> bool:
         async with self._op_lock:  # serializes this chunk's own writes/reads/clears end to end
             if (not override_pause) and (self._mempause()):
                 await self.pr.wrn_s("FRAM communication paused, not reading FRAM!", wrnno=70)
@@ -180,14 +182,14 @@ class _AsyBaseFramChunk:
             else:
                 # No strict= (ruff B905): MicroPython's zip() rejects it (CPython 3.10+-only); bs/gs
                 # always span the same chunk_size by construction (see _read_chunk), so no truncation risk.
-                for bsi, gsi in zip(range(bs[0], bs[1]), range(gs[0], gs[1])):  # noqa: B905
+                for bsi, gsi in zip(range(bs[0], bs[1]), range(gs[0], gs[1])):  # noqa: B905 - MicroPython zip() rejects strict=, equal lengths by construction
                     match = match and (mvt[bsi] == mvb[gsi])
 
         uninit, valid_bytes = await self._read_chunk(temp, addr, cb)
         valid = valid and valid_bytes == self.size and n_iter > 0
         return valid, uninit, match
 
-    async def _set_check_sb(self, fram: FRAM_SPI, st_addr: int, val: int, check_idle: bool, err: int) -> bool | None:
+    async def _set_check_sb(self, fram: FRAM_SPI, st_addr: int, val: int, *, check_idle: bool, err: int) -> bool | None:
         uninit = False
         if check_idle:
             stat = bytearray(1)
@@ -208,16 +210,16 @@ class _AsyBaseFramChunk:
         return uninit
 
     async def _handle_status_bytes(
-        self, fram: FRAM_SPI, addr: int, val: int, check_idle: bool, err: int
+        self, fram: FRAM_SPI, addr: int, val: int, *, check_idle: bool, err: int,
     ) -> bool | None:
         st_addr = addr + self.size + self.crc.length()
         # check_idle=False only needs 2 tightly packed errnos (one failure mode); check_idle=True
         # (only _read_chunk's busy-set) can also disagree between bytes, so it keeps the full spread.
         gap = 3 if check_idle else 1
-        uninit0 = await self._set_check_sb(fram, st_addr + _ADDR_STATUS_1, val, check_idle, err)
+        uninit0 = await self._set_check_sb(fram, st_addr + _ADDR_STATUS_1, val, check_idle=check_idle, err=err)
         if uninit0 is None:
             return None
-        uninit1 = await self._set_check_sb(fram, st_addr + _ADDR_STATUS_2, val, check_idle, err + gap)
+        uninit1 = await self._set_check_sb(fram, st_addr + _ADDR_STATUS_2, val, check_idle=check_idle, err=err + gap)
         if uninit1 is None:
             return None
         if check_idle and uninit0 != uninit1:
@@ -229,7 +231,7 @@ class _AsyBaseFramChunk:
         async with self.fram as fram:
             try:
                 # check_idle=False here, so _handle_status_bytes may only set err to err + 1
-                if await self._handle_status_bytes(fram, addr, _STATUS_BUSY, False, 10) is None:
+                if await self._handle_status_bytes(fram, addr, _STATUS_BUSY, check_idle=False, err=10) is None:
                     return False
                 if await self.crc.add_into(buf, self.size) is None:
                     await self.pr.err_s("CRC computation failed!", errno=17)
@@ -238,7 +240,7 @@ class _AsyBaseFramChunk:
                     await self.pr.err_s("_write_chunk failed!", errno=18)
                     return False
                 # check_idle=False here, so _handle_status_bytes may only set err to err + 1
-                if await self._handle_status_bytes(fram, addr, _STATUS_IDLE, False, 19) is None:
+                if await self._handle_status_bytes(fram, addr, _STATUS_IDLE, check_idle=False, err=19) is None:
                     return False
             except Exception as e:
                 await self.pr.err_s("General write error in _write_chunk:", e, errno=26)
@@ -255,7 +257,7 @@ class _AsyBaseFramChunk:
         async with self.fram as fram:
             try:
                 # check_idle=True here, so _handle_status_bytes may set err all the way to err + 6
-                uninit = await self._handle_status_bytes(fram, addr, _STATUS_BUSY, True, 30)
+                uninit = await self._handle_status_bytes(fram, addr, _STATUS_BUSY, check_idle=True, err=30)
                 if uninit is None:  # error
                     await cb(None, None, 0)
                     return False, 0
@@ -293,7 +295,7 @@ class _AsyBaseFramChunk:
                     await asyncio.sleep(0)
 
                 # check_idle=False here, so _handle_status_bytes may only set err to err + 1
-                if await self._handle_status_bytes(fram, addr, _STATUS_IDLE, False, 39) is None:
+                if await self._handle_status_bytes(fram, addr, _STATUS_IDLE, check_idle=False, err=39) is None:
                     await cb(None, None, num_iterations)
                     return False, 0
 
@@ -303,20 +305,18 @@ class _AsyBaseFramChunk:
                     await cb(None, None, num_iterations)
                     return False, 0
                 await cb(buf_slice, global_slice, num_iterations)
-                return False, length
             except Exception as e:
                 await self.pr.err_s("General read error in _read_chunk:", e, errno=47)
                 await cb(None, None, 0)
                 return False, 0
-        # Unreachable in practice (every path above returns; __aexit__ never suppresses) - kept
-        # because mypy can't statically rule that out and treats the fall-through as live.
-        return False, 0
+            else:
+                return False, length
 
     async def _clear_chunk(self, addr: int) -> bool:
         async with self.fram as fram:
             try:
                 # check_idle=False here, so _handle_status_bytes may only set err to err + 1
-                if await self._handle_status_bytes(fram, addr, _STATUS_UNINIT, False, 50) is None:
+                if await self._handle_status_bytes(fram, addr, _STATUS_UNINIT, check_idle=False, err=50) is None:
                     return False
                 # bytearray(n) zero-fills directly (same content as `[_STATUS_UNINIT] * n`) without
                 # building that list first - `[x] * n` can segfault uncatchably for large n (CLAUDE.md).
@@ -340,7 +340,7 @@ class _AsyBaseFramChunk:
         self.verify_counter = 0
         self._verify = value
 
-    async def clear(self, override_pause: bool = False) -> bool:
+    async def clear(self, *, override_pause: bool = False) -> bool:
         async with self._op_lock:  # serializes this chunk's own writes/reads/clears end to end
             if (not override_pause) and (self._mempause()):
                 await self.pr.wrn_s("FRAM communication paused, not clearing FRAM!", wrnno=80)
@@ -384,7 +384,7 @@ class AsyFramChunk(_AsyBaseFramChunk):
     def get_buffer(self) -> AsyFramChunkBuffer:
         return AsyFramChunkBuffer(self.size, self.crc.length())
 
-    async def write(self, data: bytes | bytearray, override_pause: bool = False) -> bool:
+    async def write(self, data: bytes | bytearray, *, override_pause: bool = False) -> bool:
         buf = self.get_buffer()  # preallocate buffer for payload and crc length
         databuf = buf.get_data_buf()
         if databuf is None:
@@ -397,13 +397,13 @@ class AsyFramChunk(_AsyBaseFramChunk):
         del data  # free memory after using preallocated buffer
         return await self.write_into(buf, override_pause=override_pause)
 
-    async def write_into(self, buf: AsyFramChunkBuffer, override_pause: bool = False) -> bool:
+    async def write_into(self, buf: AsyFramChunkBuffer, *, override_pause: bool = False) -> bool:
         dbuf = buf.get_buf()
         if dbuf is None:
             return False
         return await self._write(dbuf, override_pause=override_pause)
 
-    async def read(self, override_pause: bool = False) -> bytearray | None:
+    async def read(self, *, override_pause: bool = False) -> bytearray | None:
         buf = self.get_buffer()  # preallocate buffer for payload and crc length
         if not await self.read_into(buf, override_pause=override_pause):
             return None
@@ -412,7 +412,7 @@ class AsyFramChunk(_AsyBaseFramChunk):
             return None
         return bytearray(dbuf)
 
-    async def read_into(self, buf: AsyFramChunkBuffer, override_pause: bool = False) -> bool:
+    async def read_into(self, buf: AsyFramChunkBuffer, *, override_pause: bool = False) -> bool:
         dbuf = buf.get_buf()
         if dbuf is None:
             return False
@@ -465,11 +465,11 @@ class AsyFramTimestampedChunk(_AsyBaseFramChunk):
 
     def get_buffer(self) -> AsyFramChunkTimestampedBuffer:
         return AsyFramChunkTimestampedBuffer(
-            struct.calcsize(_TS_FMT), self.size - struct.calcsize(_TS_FMT), self.crc.length()
+            struct.calcsize(_TS_FMT), self.size - struct.calcsize(_TS_FMT), self.crc.length(),
         )  # uses ts size and data size separately
 
     async def write(
-        self, data: bytes | bytearray, require_ntp: bool = False, override_pause: bool = False
+        self, data: bytes | bytearray, *, require_ntp: bool = False, override_pause: bool = False,
     ) -> tuple[bool, int | None, bool]:
         buf = self.get_buffer()  # preallocate buffer for payload and crc length
         dbuf = buf.get_data_buf()
@@ -485,6 +485,7 @@ class AsyFramTimestampedChunk(_AsyBaseFramChunk):
     async def write_into(
         self,
         buf: AsyFramChunkTimestampedBuffer,
+        *,
         require_ntp: bool = False,
         override_pause: bool = False,
     ) -> tuple[bool, int | None, bool]:
@@ -521,7 +522,7 @@ class AsyFramTimestampedChunk(_AsyBaseFramChunk):
         res = await self._write(bbuf, override_pause=override_pause)
         return ntp_synced, utc, res
 
-    async def read(self, override_pause: bool = False) -> tuple[int | None, int | None, bytearray | None]:
+    async def read(self, *, override_pause: bool = False) -> tuple[int | None, int | None, bytearray | None]:
         buf = self.get_buffer()  # preallocate buffer for payload and crc length
         valid, ts, age = await self.read_into(buf, override_pause=override_pause)
         if not valid:
@@ -532,7 +533,7 @@ class AsyFramTimestampedChunk(_AsyBaseFramChunk):
         return ts, age, bytearray(dbuf)
 
     async def read_into(
-        self, buf: AsyFramChunkTimestampedBuffer, override_pause: bool = False
+        self, buf: AsyFramChunkTimestampedBuffer, *, override_pause: bool = False,
     ) -> tuple[bool, int | None, int | None]:
         bbuf = buf.get_buf()
         if bbuf is None:
@@ -570,7 +571,7 @@ class AsyFramTimestampedChunk(_AsyBaseFramChunk):
 
 class AsyFramManager:
     def __init__(
-        self, spi_bus: SPI, spi_cs: int, max_size: int = 0x2000, history_length: int = 10, debug: int | None = None
+        self, spi_bus: SPI, spi_cs: int, max_size: int = 0x2000, history_length: int = 10, debug: int | None = None,
     ) -> None:
         self.pr = PrintLogHistory(history_length, debug, name=_NAME)
         self.name = _NAME  # matches self.pr.name - the _ModuleLike registration shape
@@ -589,14 +590,14 @@ class AsyFramManager:
     def get_loggers(self) -> "list[PrintLogHistory]":
         return [self.pr]
 
-    async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[str]]]:
+    async def get_error_counter(self) -> "ErrorLog":
         return await self.pr.get_log()
 
     def get_pause(self) -> bool:
         return self._pause
 
     def get_chunk(
-        self, size: int, crc: CRC_Base | None = None, verify: int = 0, check_length: int = 8
+        self, size: int, crc: CRC_Base | None = None, verify: int = 0, check_length: int = 8,
     ) -> AsyFramChunk | None:
         if size == 0:  # a chunk storing nothing is never a sensible request, regardless of crc
             self.pr.err("Zero-size chunk requested, rejected!")
@@ -676,7 +677,7 @@ class AsyFramManager:
         )
         return chunk
 
-    def set_pause(self, value: bool) -> None:
+    def set_pause(self, *, value: bool) -> None:
         self.pr.evt("Storage pause set to", value)
         self._pause = value
 

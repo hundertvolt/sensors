@@ -29,7 +29,7 @@ elif int(coerced) == above:
     # single-precision hardware, so it would always match regardless of lost precision.
     failures.append(
         f"2**24+1 unexpectedly round-tripped exactly ({coerced!r}) - either this build isn't really "
-        "single-precision float, or MicroPython's own int->float conversion is more precise than assumed here"
+        "single-precision float, or MicroPython's own int->float conversion is more precise than assumed here",
     )
 elif coerced != float(2**24):
     failures.append(f"2**24+1 coerced to an unexpected value {coerced!r}, expected {float(2**24)!r} (round-to-even)")

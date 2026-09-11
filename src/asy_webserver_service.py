@@ -21,12 +21,15 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Coroutine, Iterable, Sequence
-    from typing import Any, Protocol
+    from collections.abc import Awaitable, Callable, Coroutine, Iterable, Sequence
+    from typing import Any, Protocol, TypeVar
 
     import config_manager as cm
+    from api_response import _RequestLike  # the shared microdot.Request stand-in (Part G.1: reuse, never reimplement)
     from asy_fram_manager import AsyFramManager
-    from print_log import PrintLogHistory
+    from print_log import ErrorLog, PrintLogHistory
+
+    _T = TypeVar("_T")
 
     class _ModuleLike(Protocol):
         # Structural stand-in for a registered sensor/settings/error-source module (real modules:
@@ -41,8 +44,41 @@ if TYPE_CHECKING:
         async def get_dict_data(self) -> "dict[str, Any]": ...
         async def get_dict_cfg(self) -> "dict[str, Any]": ...
         async def _set_dict_cfg(self, data: "dict[str, Any]", cfg_vals: "cm.ConfigSchema") -> "dict[str, str]": ...
-        async def get_error_counter(self) -> "dict[str, dict[str, Any]]": ...
+        async def get_error_counter(self) -> "ErrorLog": ...
         async def reset_error_counter(self) -> None: ...
+
+    class _ClosableStream(Protocol):
+        # _close_writer()'s own narrower view of the stream below - exactly the two methods it
+        # calls, so a writer-only object (real or test double) satisfies it without a read half.
+        def close(self) -> None: ...
+        async def wait_closed(self) -> None: ...
+
+    class _StreamLike(_ClosableStream, Protocol):
+        # The single asyncio Stream object MicroPython hands a start_server() callback as both
+        # reader and writer; typings/'s CPython-derived StreamReader/StreamWriter split models
+        # neither half of it completely (no aclose() at all), so this is the real surface.
+        async def readline(self) -> bytes: ...
+        async def readexactly(self, n: int) -> bytes: ...
+        async def awrite(self, data: bytes) -> None: ...
+        async def aclose(self) -> None: ...
+        def get_extra_info(self, name: str) -> object: ...
+
+    RouteHandler = Callable[..., Any]  # per-route handler shapes differ by design - Microdot's own
+    # dispatch_request() accepts a Response, a dict, a (body, status) tuple or a bare int from any
+    # of them, and passes url_args through as keyword arguments only some routes declare.
+
+    class _MicrodotApp(Protocol):
+        # Structural stand-in for the ext/microdot.py Microdot instance routes are registered onto -
+        # not on this project's mypy search path either (see the microdot import comment above, and
+        # api_response.py's _RequestLike; SPECIFICATION.md Part C.10's typing convention).
+        def get(self, url_pattern: str) -> "Callable[[RouteHandler], RouteHandler]": ...
+        def put(self, url_pattern: str) -> "Callable[[RouteHandler], RouteHandler]": ...
+        def after_request(self, f: "RouteHandler") -> "RouteHandler": ...
+        def after_error_request(self, f: "RouteHandler") -> "RouteHandler": ...
+        def errorhandler(self, status_code_or_exception_class: "int | type[Exception]") -> "Callable[[RouteHandler], RouteHandler]": ...
+        async def handle_request(self, reader: "_StreamLike", writer: "_StreamLike") -> None: ...
+        async def dispatch_request(self, req: "_RequestLike | None") -> "Response": ...  # not called
+        # from this module - part of the surface because tests drive routes through it directly.
 
     StatusSourceFct = Callable[[], Coroutine[Any, Any, dict[str, Any]]]
     MaintenanceFct = Callable[[], Coroutine[Any, Any, dict[str, Any]]]
@@ -88,10 +124,7 @@ def _index_by_name(items: "Iterable[_ModuleLike]") -> "dict[str, _ModuleLike]":
 
 
 def _index_pairs(items: "Iterable[tuple[str, MaintenanceFct]]") -> "dict[str, MaintenanceFct]":
-    result: dict[str, MaintenanceFct] = {}
-    for name, fct in items:
-        result[name] = fct
-    return result
+    return dict(items)
 
 
 def _coalesce_json_fragments(parts: "list[str]", max_bytes: int = _MAX_STATUS_PIECE_BYTES) -> "list[str]":
@@ -125,7 +158,7 @@ def _append_coalesced_object(pieces: "list[str]", prefix: str, parts: "list[str]
     pieces[-1] += suffix
 
 
-async def _stream_dict_response(result: "dict[str, Any]") -> "Any":
+async def _stream_dict_response(result: "dict[str, Any]") -> "Response":
     # Memory-bounded streaming for any GET route whose response scales with device configuration
     # (not a fixed, small upper bound) - see SPECIFICATION.md Part I.3 for the full design and why
     # this produces byte-identical JSON to json.dumps(result). Not used for /status itself, whose
@@ -174,12 +207,12 @@ class _TimeoutStreamProxy:
     # Exception not an OSError subclass - SPECIFICATION.md Part F.1). Microdot's own read-phase
     # catch silently swallows a resulting TimeoutError (see Part A.5), so this proxy is the only
     # place a per-call read timeout is ever observable - logged here, not in _serve().
-    def __init__(self, stream: "Any", timeout_s: float, pr: "PrintLogHistory") -> None:
+    def __init__(self, stream: "_StreamLike", timeout_s: float, pr: "PrintLogHistory") -> None:
         self._stream = stream
         self._timeout_s = timeout_s
         self._pr = pr
 
-    async def _bounded(self, coro: "Any") -> "Any":
+    async def _bounded(self, coro: "Awaitable[_T]") -> "_T":
         try:
             return await asyncio.wait_for(coro, self._timeout_s)
         except asyncio.TimeoutError as e:
@@ -187,10 +220,10 @@ class _TimeoutStreamProxy:
             raise
 
     async def readline(self) -> bytes:
-        return await self._bounded(self._stream.readline())  # type: ignore[no-any-return]
+        return await self._bounded(self._stream.readline())
 
     async def readexactly(self, n: int) -> bytes:
-        return await self._bounded(self._stream.readexactly(n))  # type: ignore[no-any-return]
+        return await self._bounded(self._stream.readexactly(n))
 
     async def awrite(self, data: bytes) -> None:
         await self._bounded(self._stream.awrite(data))
@@ -204,15 +237,15 @@ class _TimeoutStreamProxy:
     async def wait_closed(self) -> None:
         await self._bounded(self._stream.wait_closed())
 
-    def get_extra_info(self, name: str) -> "Any":
+    def get_extra_info(self, name: str) -> object:
         return self._stream.get_extra_info(name)
 
 
 class WebserverService:
     def __init__(
         self,
-        app: "Any",  # a real ext/microdot.py Microdot() instance - routes are registered onto it
-        # once, here; not itself importable for typing (see the microdot import comment above).
+        app: "_MicrodotApp",  # a real ext/microdot.py Microdot() instance - routes are registered
+        # onto it once, here; not itself importable for typing (see the microdot import comment above).
         sensors: "Sequence[_ModuleLike]" = (),
         settings: "dict[str, Sequence[SettingsGroup]] | None" = None,
         system_cmd: "SystemCmdFct | None" = None,
@@ -297,7 +330,7 @@ class WebserverService:
 
     # -- /measurements, /sensors --------------------------------------------------------------
 
-    async def _get_measurements(self, request: "Any") -> "Any":
+    async def _get_measurements(self, _request: "_RequestLike") -> "Response":
         # Plain for-loop, not a dict comprehension - MicroPython doesn't support `await` inside one.
         # .update(), not result[name] = ... - see SPECIFICATION.md Part A.8 for the real
         # double-wrap production bug this avoids.
@@ -306,14 +339,14 @@ class WebserverService:
             result.update(await module.get_dict_data())
         return await _stream_dict_response(result)
 
-    async def _get_sensors(self, request: "Any") -> "Any":
+    async def _get_sensors(self, _request: "_RequestLike") -> "Response":
         # .update(), not result[name] = ... - see _get_measurements()'s own comment above.
         result: dict[str, Any] = {}
         for module in self._sensors.values():
             result.update(await module.get_dict_cfg())
         return await _stream_dict_response(result)  # see _get_measurements()'s own comment above
 
-    async def _put_sensors(self, request: "Any") -> "ar.ResponseEnvelope":
+    async def _put_sensors(self, request: "_RequestLike") -> "ar.ResponseEnvelope":
         body = _body_as_dict(request)
         if body is None:
             return ar.make_response(1)
@@ -373,23 +406,23 @@ class WebserverService:
                 results.update(group_result)
         return results
 
-    async def _get_networking(self, request: "Any") -> "Any":
+    async def _get_networking(self, _request: "_RequestLike") -> "Response":
         # Streamed via _stream_dict_response() - see that function's own comment: this scales with
         # however many SettingsGroup entries this device variant's own build wires up (CLAUDE.md's
         # memory-safety hard rule).
         return await _stream_dict_response(await self._get_settings_flat("networking"))
 
-    async def _put_networking(self, request: "Any") -> "ar.ResponseEnvelope":
+    async def _put_networking(self, request: "_RequestLike") -> "ar.ResponseEnvelope":
         body = _body_as_dict(request)
         if body is None:
             return ar.make_response(1)
         results = await self._apply_settings_groups("networking", body)
         return ar.make_response(0, result=results)
 
-    async def _get_system(self, request: "Any") -> "Any":
+    async def _get_system(self, _request: "_RequestLike") -> "Response":
         return await _stream_dict_response(await self._get_settings_flat("system"))  # see _get_networking()'s own comment
 
-    async def _put_system(self, request: "Any") -> "ar.ResponseEnvelope":
+    async def _put_system(self, request: "_RequestLike") -> "ar.ResponseEnvelope":
         body = _body_as_dict(request)
         if body is None:
             return ar.make_response(1)
@@ -398,8 +431,11 @@ class WebserverService:
             results["SystemCmd"] = await self._dispatch_system_cmd(body["SystemCmd"])
         return ar.make_response(0, result=results)
 
-    async def _dispatch_system_cmd(self, cmd: "Any") -> str:
-        if self._system_cmd is None or cmd not in _SYSTEM_CMDS:
+    async def _dispatch_system_cmd(self, cmd: object) -> str:
+        # object, not a narrower type: cmd is whatever JSON value the client put in "SystemCmd".
+        # The isinstance() guard is redundant at runtime (a non-str can never be in _SYSTEM_CMDS)
+        # and only states that contract - same shape as the other two dispatchers below.
+        if self._system_cmd is None or not isinstance(cmd, str) or cmd not in _SYSTEM_CMDS:
             return "Invalid"
         try:  # caller-supplied callback, could legitimately misbehave - same defensive shape every
             # other caller-supplied-callback call site in this codebase already uses (e.g.
@@ -412,10 +448,10 @@ class WebserverService:
             return "Failed"
         return "Valid" if ok else "Failed"
 
-    async def _get_notification(self, request: "Any") -> "Any":
+    async def _get_notification(self, _request: "_RequestLike") -> "Response":
         return await _stream_dict_response(await self._get_settings_flat("notification"))  # see _get_networking()'s own comment
 
-    async def _put_notification(self, request: "Any") -> "ar.ResponseEnvelope":
+    async def _put_notification(self, request: "_RequestLike") -> "ar.ResponseEnvelope":
         body = _body_as_dict(request)
         if body is None:
             return ar.make_response(1)
@@ -426,7 +462,7 @@ class WebserverService:
             results["PauseTime"] = await self._dispatch_notification_pause(body["PauseTime"])
         return ar.make_response(0, result=results)
 
-    async def _dispatch_notification_led(self, payload: "Any") -> str:
+    async def _dispatch_notification_led(self, payload: object) -> str:
         if self._notification_led is None or not isinstance(payload, dict):
             return "Invalid"
         try:  # caller-supplied callback, could legitimately misbehave - see _dispatch_system_cmd()'s
@@ -438,7 +474,7 @@ class WebserverService:
             return "Failed"
         return "Valid" if ok else "Failed"
 
-    async def _dispatch_notification_pause(self, payload: "Any") -> str:
+    async def _dispatch_notification_pause(self, payload: object) -> str:
         # Reuses config_manager.py's own type_or_range_error() against a synthetic FieldSchema
         # (_PAUSE_TIME_FIELD) instead of a second, hand-rolled strict check - same int<->float
         # coercion policy every schema-backed field gets (SPECIFICATION.md Part A.8): a bool is
@@ -449,7 +485,10 @@ class WebserverService:
         # command rejects an out-of-range pauseTime as Invalid (modules/sensortask-wozi.py's
         # update_valid_json(..., 0, 3600, ...)) - reject it here too, before the callback ever sees
         # it, rather than silently reporting a clamped value as a successful "Valid".
-        if self._notification_pause is None:
+        # isinstance() guard: same object-in/narrow-then-validate shape as the two dispatchers
+        # above. Redundant at runtime - type_or_range_error() rejects every other type via its own
+        # `type(check_val) is int` check - so it changes no outcome for any payload.
+        if self._notification_pause is None or not isinstance(payload, (int, float)):
             return "Invalid"
         is_error, coerced_payload = type_or_range_error(payload, _PAUSE_TIME_FIELD)
         if is_error:
@@ -465,7 +504,7 @@ class WebserverService:
 
     # -- /status ---------------------------------------------------------------------------------
 
-    async def _get_status(self, request: "Any") -> "Any":
+    async def _get_status(self, _request: "_RequestLike") -> "Response":
         # Streams /status as small pre-built json.dumps() fragments via a plain sync iterator,
         # bounding the largest single allocation regardless of the whole aggregate's size (~5.7KB on
         # real hardware, the original MemoryError root cause - SPECIFICATION.md Part I). Not an
@@ -528,7 +567,7 @@ class WebserverService:
             await self.pr.err_s("Status stream source failed:", name, e, errno=6)
             return '{"error":"unavailable"}'
 
-    async def _dump_errcount_entry(self, get_log_fct: "Callable[[], Coroutine[Any, Any, dict[str, dict[str, Any]]]]", name: str) -> str:
+    async def _dump_errcount_entry(self, get_log_fct: "Callable[[], Coroutine[Any, Any, ErrorLog]]", name: str) -> str:
         try:  # see _dump_status_source()'s own comment - identical reasoning, different source kind.
             raw = await get_log_fct()
         except Exception as e:
@@ -536,7 +575,7 @@ class WebserverService:
             return '{"error":"unavailable"}'
         return json.dumps(_shape_errcount_entry(raw, name))
 
-    async def _put_status(self, request: "Any") -> "ar.ResponseEnvelope":
+    async def _put_status(self, request: "_RequestLike") -> "ar.ResponseEnvelope":
         body = _body_as_dict(request)
         if body is None:
             return ar.make_response(1)
@@ -548,13 +587,13 @@ class WebserverService:
 
     # -- static content (see SPECIFICATION.md Part A.9) ----------------------------------------
 
-    async def _get_static_index(self, request: "Any") -> "Any":
+    async def _get_static_index(self, _request: "_RequestLike") -> "Response":
         return self._serve_static(self._static_index)
 
-    async def _get_static(self, request: "Any", filename: str) -> "Any":
+    async def _get_static(self, _request: "_RequestLike", filename: str) -> "Response":
         return self._serve_static(filename)
 
-    def _serve_static(self, filename: str) -> "Any":
+    def _serve_static(self, filename: str) -> "Response":
         if ".." in filename:
             abort(404)  # guard-clause before touching the mounted filesystem - cheap and uniform
             # even though freezefs's own VfsFrozen already refuses to escape its mount root.
@@ -570,7 +609,7 @@ class WebserverService:
 
     # -- error handling ----------------------------------------------------------------------------
 
-    async def _handle_unhandled_exception(self, request: "Any", exc: Exception) -> "tuple[dict[str, Any], int]":
+    async def _handle_unhandled_exception(self, _request: "_RequestLike", exc: Exception) -> "tuple[dict[str, Any], int]":
         # Registered via app.errorhandler(Exception) in __init__ - see that call site's own comment
         # for why this exists purely to persist the exception into pr.err_s()/FRAM history, not to
         # shape the reply (the 500 status-code handler already does that on its own, since
@@ -581,7 +620,7 @@ class WebserverService:
 
     # -- connection lifecycle ---------------------------------------------------------------------
 
-    async def _close_writer(self, writer: "Any") -> None:
+    async def _close_writer(self, writer: "_ClosableStream") -> None:
         try:
             writer.close()
         except Exception as e:  # best-effort cleanup, never load-bearing - still logged (Part C.7's
@@ -594,6 +633,9 @@ class WebserverService:
             await self.pr.wrn_s("Error waiting for writer to close:", e, wrnno=5)
 
     async def _serve(self, reader: "Any", writer: "Any") -> None:
+        # Any, not _StreamLike: asyncio.start_server() types its callback as
+        # Callable[[StreamReader, StreamWriter], ...] (typings/'s CPython-shaped alias), and neither
+        # of those stub classes satisfies the one real Stream surface _TimeoutStreamProxy forwards.
         current = await self._open_conns.increment()
         if current > self._max_connections:
             # Reject-when-full (decision 3): silently close, no accept, no response ever written -
@@ -660,26 +702,28 @@ class WebserverService:
     def get_loggers(self) -> "list[PrintLogHistory]":
         return [self.pr]
 
-    async def get_error_counter(self) -> "dict[str, dict[str, Any]]":
+    async def get_error_counter(self) -> "ErrorLog":
         return await self.pr.get_log()
 
     async def reset_error_counter(self) -> None:
         await self.pr.reset()
 
 
-def _shape_errcount_entry(raw: "dict[str, dict[str, Any]]", name: str) -> "dict[str, Any]":
-    entry = raw.get(name, {})
+def _shape_errcount_entry(raw: "ErrorLog", name: str) -> "dict[str, Any]":
+    entry = raw.get(name)
+    if entry is None:  # module never logged anything - the same empty shape the old {} default produced
+        return {"counter": 0, "history": []}
     err_num = entry.get("ErrNum", [])
     err_type = entry.get("ErrType", [])
     return {
         "counter": entry.get("ErrCount", 0),
-        "history": [{"num": n, "type": t} for n, t in zip(err_num, err_type)],  # noqa: B905
+        "history": [{"num": n, "type": t} for n, t in zip(err_num, err_type)],  # noqa: B905 - MicroPython zip() rejects strict=, ErrEntry keeps both lists in step
         # No strict= (ruff B905): MicroPython's zip() rejects it (CPython 3.10+-only) - see
         # src/asy_fram_manager.py's identical precedent.
     }
 
 
-def _body_as_dict(request: "Any") -> "dict[str, Any] | None":
+def _body_as_dict(request: "_RequestLike") -> "dict[str, Any] | None":
     # None covers both a request.json access raising (malformed/undecodable JSON, matches
     # api_response.py's parse_cmd_request() precedent) and a syntactically valid but non-dict body
     # (array/string/number/null) - both degrade to the same clean ERR envelope at the call site.
@@ -690,7 +734,7 @@ def _body_as_dict(request: "Any") -> "dict[str, Any] | None":
     return data if isinstance(data, dict) else None
 
 
-def _mark_connection_close(request: "Any", response: "Any") -> "Any":
+def _mark_connection_close(_request: "_RequestLike", response: "Response") -> "Response":
     # ext/microdot.py speaks HTTP/1.0 (Response.write()'s literal status line) whose spec default is
     # already non-persistent, but RFC 7230 SS6.6 recommends a server that intends to close after
     # responding say so explicitly - added via Microdot's own supported hook, never by editing the
@@ -699,8 +743,8 @@ def _mark_connection_close(request: "Any", response: "Any") -> "Any":
     return response
 
 
-def _shaped_error_handler(status_code: int, descr: str) -> "Callable[[Any], tuple[dict[str, Any], int]]":
-    def handler(request: "Any") -> "tuple[dict[str, Any], int]":
+def _shaped_error_handler(status_code: int, descr: str) -> "Callable[[_RequestLike], tuple[dict[str, Any], int]]":
+    def handler(_request: "_RequestLike") -> "tuple[dict[str, Any], int]":
         return ar.make_response(status_code, descr=descr), status_code
 
     return handler

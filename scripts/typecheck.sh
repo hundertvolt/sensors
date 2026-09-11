@@ -84,6 +84,37 @@ EOF
     exit 1
 fi
 
+# Two verified regressions in micropython-stdlib-stubs 1.29.0.post1/.post2 that upstream has no
+# fixed release for yet. Both are repaired here, at the stub tree, rather than papered over with
+# `type: ignore` comments in our own code - the code is correct on the real interpreter in both
+# cases, and a stub defect is not ours to encode into src/. Each repair is conditional on the
+# defect still being present, so it silently stops doing anything once upstream re-ships.
+#
+# 1. An incomplete rename in stdlib/_asyncio.pyi: `Future` was privatised to `_Future`, and the
+#    stdlib/asyncio/futures.pyi that re-exported it under the public name was dropped from the
+#    wheel - but stdlib/asyncio/tasks.pyi still does `from .futures import Future` and
+#    stdlib/asyncio/__init__.pyi still does `from .futures import *`, and _asyncio.pyi's own
+#    docstring still describes the re-export as existing. With both importers dangling, `Future`
+#    degrades to Any, `_FutureLike[_T]` collapses, and every `asyncio.wait_for()`/`gather()`
+#    result in this repo becomes un-inferable ("Need type annotation", "Returning Any"). The
+#    one-line file below restores exactly the re-export the rest of the package still expects.
+# 2. builtins.pyi has `NotImplemented: _NotImplementedType` commented out, so `NotImplemented` is
+#    undefined for mypy. MicroPython genuinely has it, and honors it from `__eq__` correctly
+#    (verified directly against the pinned Unix-port interpreter: `A() == 5` is False, not the
+#    truthy NotImplemented object) - see SPECIFICATION.md Part F.5.5. The substitution is
+#    line-ending agnostic: this stub ships with CRLF endings.
+# Both repairs also check that the file they target is where they expect it. If a future stub
+# release restructures the tree, they skip rather than fail the whole type-check on a path that
+# no longer exists.
+asyncio_futures="typings/stdlib/asyncio/futures.pyi"
+if [ -d "typings/stdlib/asyncio" ] && [ ! -e "$asyncio_futures" ]; then
+    printf '%s\n' 'from _asyncio import _Future as Future' > "$asyncio_futures"
+fi
+builtins_stub="typings/stdlib/builtins.pyi"
+if [ -f "$builtins_stub" ] && grep -q '^# NotImplemented: _NotImplementedType' "$builtins_stub"; then
+    sed -i 's/^# \(NotImplemented: _NotImplementedType\)/\1/' "$builtins_stub"
+fi
+
 # Extra args (if any) override pyproject.toml's [tool.mypy] `files` for this invocation - e.g.
 # CI's lint-and-typecheck job passes `src tests` to gate on just that scope, without changing
 # what a plain `scripts/typecheck.sh` checks locally (see .github/workflows/ci.yml).
@@ -103,18 +134,18 @@ if [ "$twin_status" -ne 0 ]; then
     echo "error: digital_twin/typecheck.ini's dedicated pass found real findings - this scope is expected to stay fully clean." >&2
 fi
 
-# The host-side build chain (buildgen/, scripts/, toolchain/, tests_scripts/) gets a THIRD,
-# separate mypy invocation, always run regardless of "$@" - see scripts/hosttools_typecheck.ini's
-# own docstring for why: all of it is genuinely CPython-target host tooling (real stdlib
-# tomllib/ast/subprocess, no machine/network/neopixel at all), so it needs mypy's real bundled
-# typeshed, not the MicroPython-stub-replaced one the main pass above uses. Same "no tolerance for
-# pre-existing debt" treatment as digital_twin/ above.
-hosttools_status=0
-mypy --config-file scripts/hosttools_typecheck.ini buildgen scripts toolchain tests_scripts || hosttools_status=$?
-if [ "$hosttools_status" -ne 0 ]; then
-    echo "error: scripts/hosttools_typecheck.ini's dedicated pass found real findings - this scope is expected to stay fully clean." >&2
+# buildgen/, scripts/, toolchain/, tests_scripts/ and tests_hardware/ are host CPython, not
+# MicroPython, so they need a THIRD invocation for the same reason the twin needs its second one:
+# the main pass above replaces mypy's typeshed with the MicroPython stubs (custom_typeshed_dir),
+# which have no `ast`/`argparse`/`pathlib`/`subprocess`/`tomllib`, so every stdlib import in those
+# five scopes would report as missing. Always run, regardless of "$@" - see host_typecheck.ini's
+# own header.
+host_status=0
+mypy --config-file host_typecheck.ini || host_status=$?
+if [ "$host_status" -ne 0 ]; then
+    echo "error: host_typecheck.ini's dedicated pass found real findings - this scope is expected to stay fully clean." >&2
 fi
 
-if [ "$main_status" -ne 0 ] || [ "$twin_status" -ne 0 ] || [ "$hosttools_status" -ne 0 ]; then
+if [ "$main_status" -ne 0 ] || [ "$twin_status" -ne 0 ] || [ "$host_status" -ne 0 ]; then
     exit 1
 fi

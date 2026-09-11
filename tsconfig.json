@@ -8,6 +8,21 @@
         "checkJs": true,
         "noEmit": true,
         "strict": true,
+        // Everything TypeScript offers beyond `strict`, mirroring pyproject.toml's mypy settings
+        // on the Python side. All of these were verified to hold before being switched on; the two
+        // that needed real fixes (exactOptionalPropertyTypes, noUncheckedIndexedAccess) were fixed
+        // in js/ rather than left off. skipLibCheck stays TRUE deliberately: the only findings it
+        // hides are inside third-party .d.ts files this project does not own.
+        "noUncheckedIndexedAccess": true,
+        "exactOptionalPropertyTypes": true,
+        "noImplicitOverride": true,
+        "noImplicitReturns": true,
+        "noUnusedLocals": true,
+        "noUnusedParameters": true,
+        "noFallthroughCasesInSwitch": true,
+        "allowUnreachableCode": false,
+        "allowUnusedLabels": false,
+        "verbatimModuleSyntax": true,
         "skipLibCheck": true
     },
     "include": ["js/**/*.js", "tests_js/**/*.js", "tests_js/**/*.d.ts"],

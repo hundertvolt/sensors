@@ -13,9 +13,9 @@ import sys
 # pyproject.toml/scripts/test.sh - a "Pre-push verification" scope change this file must not need.
 sys.path.insert(0, "ext")
 
-from _shared_rest_roundtrip import drain_json_response_body  # noqa: E402
-from freezefs.ffsmount import VfsFrozen  # type: ignore[import-not-found]  # noqa: E402
-from microdot import Microdot, Request, Response  # type: ignore[import-not-found]  # noqa: E402
+from _shared_rest_roundtrip import drain_json_response_body
+from freezefs.ffsmount import VfsFrozen  # type: ignore[import-not-found]
+from microdot import Microdot, Request, Response  # type: ignore[import-not-found]
 
 import config_manager as cm
 from asy_webserver_service import SettingsGroup, WebserverService, _stream_dict_response, _TimeoutStreamProxy
@@ -36,7 +36,7 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":
     return asyncio.run(coro)
 
 
-def status_body(res: "Any") -> bytes:
+def status_body(res: "Response") -> bytes:
     # GET /status streams from a plain list of already-json.dumps()-encoded fragments now (see
     # asy_webserver_service.py's _get_status()/_build_status_pieces()) - drains it the way a real
     # client naturally would, so every existing json.loads(...) assertion on a GET /status response
@@ -68,12 +68,12 @@ class _FakeLogger:
         self.history: list[tuple[int, str]] = []
         self.reset_calls = 0
 
-    async def err_s(self, *args: "Any", errno: int = 0, **kwargs: "Any") -> None:
+    async def err_s(self, *_args: object, errno: int = 0, **_kwargs: object) -> None:
         self.err_count += 1
         if errno:
             self.history.append((errno, "E"))
 
-    async def wrn_s(self, *args: "Any", wrnno: int = 0, **kwargs: "Any") -> None:
+    async def wrn_s(self, *_args: object, wrnno: int = 0, **_kwargs: object) -> None:
         self.err_count += 1
         if wrnno:
             self.history.append((wrnno, "W"))
@@ -84,7 +84,7 @@ class _FakeLogger:
                 "ErrCount": self.err_count,
                 "ErrNum": [h[0] for h in self.history],
                 "ErrType": [h[1] for h in self.history],
-            }
+            },
         }
 
     async def reset(self) -> None:
@@ -164,7 +164,7 @@ class _ScriptedReader:
     # After the scripted chunks are exhausted, further reads hang forever (never resolve) unless
     # eof=True, in which case they raise EOFError/return b"" - matching real Stream behavior for a
     # clean peer close vs. a genuinely wedged/silent one.
-    def __init__(self, chunks: "list[tuple[float, bytes]]", eof: bool = False) -> None:
+    def __init__(self, chunks: "list[tuple[float, bytes]]", *, eof: bool = False) -> None:
         self._chunks = list(chunks)
         self._buf = b""
         self._eof = eof
@@ -205,7 +205,7 @@ class _HangingReader:
         await asyncio.Event().wait()
         return b""  # unreachable
 
-    async def readexactly(self, n: int) -> bytes:
+    async def readexactly(self, _n: int) -> bytes:
         await asyncio.Event().wait()
         return b""  # unreachable
 
@@ -217,12 +217,12 @@ class _ClosedReader:
     async def readline(self) -> bytes:
         return b""
 
-    async def readexactly(self, n: int) -> bytes:
+    async def readexactly(self, _n: int) -> bytes:
         raise EOFError
 
 
 class _ScriptedWriter:
-    def __init__(self, hang_close: bool = False, fail_with: "Exception | None" = None) -> None:
+    def __init__(self, *, hang_close: bool = False, fail_with: "Exception | None" = None) -> None:
         self.written = b""
         self.close_called = False
         self.wait_closed_called = False
@@ -245,7 +245,7 @@ class _ScriptedWriter:
         if self._hang_close:
             await asyncio.Event().wait()
 
-    def get_extra_info(self, name: str) -> "Any":
+    def get_extra_info(self, name: str) -> object:
         return ("127.0.0.1", 54321) if name == "peername" else None
 
 
@@ -257,7 +257,9 @@ def _request_bytes(method: str, path: str, body: bytes = b"", extra_headers: "di
     return f"{method} {path} HTTP/1.1\r\n{header_lines}\r\n".encode() + body
 
 
-def _make_service(**kwargs: "Any") -> "tuple[WebserverService, Microdot]":
+def _make_service(**kwargs: "Any") -> "tuple[WebserverService, Microdot]":  # Any: forwarded
+    # verbatim into WebserverService's own 21 differently-typed keyword parameters, which no single
+    # non-Any **kwargs element type can express before PEP 692's Unpack (3.11+).
     app = Microdot()
     kwargs.setdefault("max_content_length", 4096)
     kwargs.setdefault("max_connections", 3)
@@ -285,7 +287,7 @@ def test_measurements_get_returns_merged_per_sensor_dict() -> None:
     # whole point of this test, not incidental.
     scd = _NestedCfgModule("SCD30", values={}, data={"CO2": 800})
     sgp = _NestedCfgModule("SGP40", values={}, data={"VOC": 120})
-    service, app = _make_service(sensors=[scd, sgp])
+    _service, app = _make_service(sensors=[scd, sgp])
     res = run(app.dispatch_request(_make_request(app, "GET", "/measurements", None)))
     assert res.status_code == 200
     assert json.loads(status_body(res)) == {"SCD30": {"CO2": 800}, "SGP40": {"VOC": 120}}
@@ -296,7 +298,7 @@ def test_measurements_get_does_not_double_wrap_a_real_self_wrapped_sensor_shape(
     # describes: _get_measurements() used to index the already-self-wrapped get_dict_data() result
     # by name again, producing {"SCD30": {"SCD30": {"CO2": 800}}} for every real sensor.
     scd = _NestedCfgModule("SCD30", values={}, data={"CO2": 800})
-    service, app = _make_service(sensors=[scd])
+    _service, app = _make_service(sensors=[scd])
     res = run(app.dispatch_request(_make_request(app, "GET", "/measurements", None)))
     body = json.loads(status_body(res))
     assert "SCD30" not in body["SCD30"]
@@ -304,7 +306,7 @@ def test_measurements_get_does_not_double_wrap_a_real_self_wrapped_sensor_shape(
 
 
 def test_measurements_get_empty_sensor_list_returns_empty_dict_not_a_crash() -> None:
-    service, app = _make_service(sensors=[])
+    _service, app = _make_service(sensors=[])
     res = run(app.dispatch_request(_make_request(app, "GET", "/measurements", None)))
     assert res.status_code == 200
     assert json.loads(status_body(res)) == {}
@@ -312,7 +314,7 @@ def test_measurements_get_empty_sensor_list_returns_empty_dict_not_a_crash() -> 
 
 def test_sensors_get_mirrors_measurements_structure_with_cfg_fields() -> None:
     scd = _NestedCfgModule("SCD30", values={"Interval": 10, "Offset": 2})
-    service, app = _make_service(sensors=[scd])
+    _service, app = _make_service(sensors=[scd])
     res = run(app.dispatch_request(_make_request(app, "GET", "/sensors", None)))
     assert json.loads(status_body(res)) == {"SCD30": {"Interval": 10, "Offset": 2}}
 
@@ -321,7 +323,7 @@ def test_sensors_get_does_not_double_wrap_a_real_self_wrapped_sensor_shape() -> 
     # Same regression as test_measurements_get_does_not_double_wrap... above, via get_dict_cfg()/
     # _get_sensors() instead of get_dict_data()/_get_measurements().
     scd = _NestedCfgModule("SCD30", values={"Interval": 10, "Offset": 2})
-    service, app = _make_service(sensors=[scd])
+    _service, app = _make_service(sensors=[scd])
     res = run(app.dispatch_request(_make_request(app, "GET", "/sensors", None)))
     body = json.loads(status_body(res))
     assert "SCD30" not in body["SCD30"]
@@ -330,7 +332,7 @@ def test_sensors_get_does_not_double_wrap_a_real_self_wrapped_sensor_shape() -> 
 
 def test_sensors_put_empty_body_is_noop() -> None:
     scd = _FakeModule("SCD30")
-    service, app = _make_service(sensors=[scd])
+    _service, app = _make_service(sensors=[scd])
     res = run(app.dispatch_request(_make_request(app, "PUT", "/sensors", {})))
     assert res.status_code == 200
     assert json.loads(res.body)["result"] == {}
@@ -340,7 +342,7 @@ def test_sensors_put_empty_body_is_noop() -> None:
 def test_sensors_put_single_field_for_one_sensor() -> None:
     scd = _FakeModule("SCD30")
     sgp = _FakeModule("SGP40")
-    service, app = _make_service(sensors=[scd, sgp])
+    _service, app = _make_service(sensors=[scd, sgp])
     res = run(app.dispatch_request(_make_request(app, "PUT", "/sensors", {"SCD30": {"Interval": 10}})))
     body = json.loads(res.body)
     assert body["result"] == {"SCD30": {"Interval": "Valid"}}
@@ -351,7 +353,7 @@ def test_sensors_put_single_field_for_one_sensor() -> None:
 def test_sensors_put_all_fields_for_all_sensors() -> None:
     scd = _FakeModule("SCD30")
     sgp = _FakeModule("SGP40")
-    service, app = _make_service(sensors=[scd, sgp])
+    _service, app = _make_service(sensors=[scd, sgp])
     body_in = {"SCD30": {"Interval": 10, "Offset": 3}, "SGP40": {"Interval": 20, "Offset": -1}}
     res = run(app.dispatch_request(_make_request(app, "PUT", "/sensors", body_in)))
     body = json.loads(res.body)
@@ -363,7 +365,7 @@ def test_sensors_put_all_fields_for_all_sensors() -> None:
 
 def test_sensors_put_unknown_sensor_key_ignored() -> None:
     scd = _FakeModule("SCD30")
-    service, app = _make_service(sensors=[scd])
+    _service, app = _make_service(sensors=[scd])
     res = run(app.dispatch_request(_make_request(app, "PUT", "/sensors", {"BOGUS": {"Interval": 10}})))
     assert res.status_code == 200
     assert json.loads(res.body)["result"] == {}
@@ -372,7 +374,7 @@ def test_sensors_put_unknown_sensor_key_ignored() -> None:
 
 def test_sensors_put_unknown_field_within_known_sensor_reported_invalid_not_whole_request() -> None:
     scd = _FakeModule("SCD30")
-    service, app = _make_service(sensors=[scd])
+    _service, app = _make_service(sensors=[scd])
     res = run(app.dispatch_request(_make_request(app, "PUT", "/sensors", {"SCD30": {"Interval": 10, "Bogus": 1}})))
     body = json.loads(res.body)
     assert body["res"] == "OK"
@@ -381,7 +383,7 @@ def test_sensors_put_unknown_field_within_known_sensor_reported_invalid_not_whol
 
 def test_sensors_put_malformed_json_body_is_a_clean_rejection_not_a_crash() -> None:
     scd = _FakeModule("SCD30")
-    service, app = _make_service(sensors=[scd])
+    _service, app = _make_service(sensors=[scd])
     req = _make_request(app, "PUT", "/sensors", {})
     req._body = b"{not valid json"
     req.content_length = len(req._body)
@@ -394,7 +396,7 @@ def test_sensors_put_malformed_json_body_is_a_clean_rejection_not_a_crash() -> N
 def test_networking_get_is_flat_settings_only_no_live_fields() -> None:
     wifi = _FakeModule("WIFI", schema=(("SSID", "str", "", 0, 32, None),), values={"SSID": "MyNet"})
     group = SettingsGroup(wifi, ("SSID",))
-    service, app = _make_service(settings={"networking": [group]})
+    _service, app = _make_service(settings={"networking": [group]})
     res = run(app.dispatch_request(_make_request(app, "GET", "/networking", None)))
     body = json.loads(status_body(res))
     assert body == {"SSID": "MyNet"}
@@ -442,7 +444,7 @@ def test_networking_get_flattens_a_real_type_name_nested_get_dict_cfg_shape() ->
     # docstring above.
     wifi = _NestedCfgModule("WIFI", {"SSID": "MyNet"})
     group = SettingsGroup(wifi, ("SSID",))  # type: ignore[arg-type]  # structurally _ModuleLike-shaped
-    service, app = _make_service(settings={"networking": [group]})
+    _service, app = _make_service(settings={"networking": [group]})
     res = run(app.dispatch_request(_make_request(app, "GET", "/networking", None)))
     assert json.loads(status_body(res)) == {"SSID": "MyNet"}
 
@@ -457,7 +459,7 @@ def test_networking_put_partial_field_update_triggers_only_relevant_post_hook() 
     resync_calls: list[int] = []
     net_group = SettingsGroup(wifi, ("SSID",), post_fct=lambda: reconnect_calls.append(1))
     ntp_group = SettingsGroup(wifi, ("NTP_Host",), post_asy_fct=lambda: _record_async(resync_calls))
-    service, app = _make_service(settings={"networking": [net_group, ntp_group]})
+    _service, app = _make_service(settings={"networking": [net_group, ntp_group]})
     res = run(app.dispatch_request(_make_request(app, "PUT", "/networking", {"SSID": "NewNet"})))
     assert res.status_code == 200
     assert reconnect_calls == [1]
@@ -487,7 +489,7 @@ def test_networking_put_raising_post_fct_marks_every_attempted_field_in_that_gro
         raise RuntimeError("simulated post_fct failure")
 
     net_group = SettingsGroup(wifi, ("SSID", "PW"), post_fct=_raise)
-    service, app = _make_service(settings={"networking": [net_group]})
+    _service, app = _make_service(settings={"networking": [net_group]})
     res = run(app.dispatch_request(_make_request(app, "PUT", "/networking", {"SSID": "NewNet", "PW": "hunter2"})))
     assert res.status_code == 200
     body = json.loads(res.body)
@@ -507,7 +509,7 @@ def test_system_get_is_flat_debug_gmt_dst_only() -> None:
         values={"GMTOffset": 3600, "DSTOffset": 3600},
     )
     groups = [SettingsGroup(sysm, ("DebugLevel",)), SettingsGroup(ntp, ("GMTOffset", "DSTOffset"))]
-    service, app = _make_service(settings={"system": groups})
+    _service, app = _make_service(settings={"system": groups})
     res = run(app.dispatch_request(_make_request(app, "GET", "/system", None)))
     assert json.loads(status_body(res)) == {"DebugLevel": 2, "GMTOffset": 3600, "DSTOffset": 3600}
 
@@ -520,7 +522,7 @@ def test_system_put_settings_only_body_no_systemcmd_takes_no_lifecycle_action() 
         return True
 
     sysm = _FakeModule("SYSTEM", schema=(("DebugLevel", "int", 0, 0, 5, None),), values={"DebugLevel": 0})
-    service, app = _make_service(settings={"system": [SettingsGroup(sysm, ("DebugLevel",))]}, system_cmd=system_cmd)
+    _service, app = _make_service(settings={"system": [SettingsGroup(sysm, ("DebugLevel",))]}, system_cmd=system_cmd)
     res = run(app.dispatch_request(_make_request(app, "PUT", "/system", {"DebugLevel": 3})))
     assert res.status_code == 200
     assert cmd_calls == []
@@ -533,7 +535,7 @@ def test_system_put_systemcmd_invalid_value_rejected_without_side_effects() -> N
         cmd_calls.append(cmd)
         return True
 
-    service, app = _make_service(system_cmd=system_cmd)
+    _service, app = _make_service(system_cmd=system_cmd)
     res = run(app.dispatch_request(_make_request(app, "PUT", "/system", {"SystemCmd": "erase_flash"})))
     assert res.status_code == 200
     body = json.loads(res.body)
@@ -548,7 +550,7 @@ def test_system_put_systemcmd_reboot_fires_system_cmd_callback() -> None:
         cmd_calls.append(cmd)
         return True
 
-    service, app = _make_service(system_cmd=system_cmd)
+    _service, app = _make_service(system_cmd=system_cmd)
     res = run(app.dispatch_request(_make_request(app, "PUT", "/system", {"SystemCmd": "reboot"})))
     assert res.status_code == 200
     assert cmd_calls == ["reboot"]
@@ -565,7 +567,7 @@ def test_system_put_mempause_never_accepts_a_client_supplied_duration() -> None:
         cmd_calls.append(cmd)
         return True
 
-    service, app = _make_service(system_cmd=system_cmd)
+    _service, app = _make_service(system_cmd=system_cmd)
     res = run(app.dispatch_request(_make_request(app, "PUT", "/system", {"SystemCmd": "mempause", "Duration": 9999})))
     assert res.status_code == 200
     assert cmd_calls == ["mempause"]
@@ -576,7 +578,7 @@ def test_system_put_systemcmd_raising_callback_returns_failed_not_an_exception()
     # e.g. asy_notification_service.py's request_signal_cb) and could legitimately misbehave;
     # previously unguarded here, so a raise would escape all the way out of the route handler
     # instead of degrading to a clean "Failed" result with a persisted, diagnosable errno.
-    async def system_cmd(cmd: str) -> bool:
+    async def system_cmd(_cmd: str) -> bool:
         raise RuntimeError("simulated system_cmd failure")
 
     service, app = _make_service(system_cmd=system_cmd)
@@ -597,8 +599,8 @@ def test_status_get_returns_exact_substructure_no_settings_fields_anywhere() -> 
     async def notif_status() -> "dict[str, Any]":
         return {"Triggered": False}
 
-    service, app = _make_service(
-        status_sources={"networking": net_status, "system": sys_status, "notification": notif_status}
+    _service, app = _make_service(
+        status_sources={"networking": net_status, "system": sys_status, "notification": notif_status},
     )
     res = run(app.dispatch_request(_make_request(app, "GET", "/status", None)))
     body = json.loads(status_body(res))
@@ -612,14 +614,14 @@ def test_status_get_sensors_subkey_omits_sensors_with_no_maintenance_data() -> N
     async def sgp_maint() -> "dict[str, Any]":
         return {"BackupTS": 111, "RestoreTS": 222}
 
-    service, app = _make_service(maintenance_sensors=[("SGP40", sgp_maint)])
+    _service, app = _make_service(maintenance_sensors=[("SGP40", sgp_maint)])
     res = run(app.dispatch_request(_make_request(app, "GET", "/status", None)))
     body = json.loads(status_body(res))
     assert body["sensors"] == {"SGP40": {"BackupTS": 111, "RestoreTS": 222}}
 
 
 def test_status_get_sensors_subkey_empty_when_no_maintenance_sensors_registered() -> None:
-    service, app = _make_service(maintenance_sensors=[])
+    _service, app = _make_service(maintenance_sensors=[])
     res = run(app.dispatch_request(_make_request(app, "GET", "/status", None)))
     assert json.loads(status_body(res))["sensors"] == {}
 
@@ -627,7 +629,7 @@ def test_status_get_sensors_subkey_empty_when_no_maintenance_sensors_registered(
 def test_status_put_empty_and_false_reset_errors_are_both_noops() -> None:
     mod = _FakeModule("SGP40")
     run(mod.pr.err_s("boom", errno=1))
-    service, app = _make_service(error_sources=[mod])
+    _service, app = _make_service(error_sources=[mod])
     for body_in in ({}, {"ResetErrors": False}):
         res = run(app.dispatch_request(_make_request(app, "PUT", "/status", body_in)))
         assert res.status_code == 200
@@ -638,7 +640,7 @@ def test_status_put_empty_and_false_reset_errors_are_both_noops() -> None:
 def test_status_put_reset_errors_true_resets_every_module_counter_and_history() -> None:
     mod = _FakeModule("SGP40")
     run(mod.pr.err_s("boom", errno=1))
-    service, app = _make_service(error_sources=[mod])
+    _service, app = _make_service(error_sources=[mod])
     res = run(app.dispatch_request(_make_request(app, "PUT", "/status", {"ResetErrors": True})))
     assert res.status_code == 200
     assert mod.pr.reset_calls == 1
@@ -648,9 +650,9 @@ def test_status_put_reset_errors_true_resets_every_module_counter_and_history() 
 
 def test_notification_get_is_flat_settings_only_no_live_fields() -> None:
     notif = _FakeModule(
-        "NOTIF", schema=(("OnH", "int", 8, 0, 23, None),), values={"OnH": 8}
+        "NOTIF", schema=(("OnH", "int", 8, 0, 23, None),), values={"OnH": 8},
     )
-    service, app = _make_service(settings={"notification": [SettingsGroup(notif, ("OnH",))]})
+    _service, app = _make_service(settings={"notification": [SettingsGroup(notif, ("OnH",))]})
     res = run(app.dispatch_request(_make_request(app, "GET", "/notification", None)))
     body = json.loads(status_body(res))
     assert body == {"OnH": 8}
@@ -665,13 +667,13 @@ def test_notification_put_light_cmd_led_round_trips_independently_of_flat_fields
         return True
 
     notif = _FakeModule("NOTIF", schema=(("OnH", "int", 8, 0, 23, None),), values={"OnH": 8})
-    service, app = _make_service(
-        settings={"notification": [SettingsGroup(notif, ("OnH",))]}, notification_led=notification_led
+    _service, app = _make_service(
+        settings={"notification": [SettingsGroup(notif, ("OnH",))]}, notification_led=notification_led,
     )
     res = run(
         app.dispatch_request(
-            _make_request(app, "PUT", "/notification", {"lightCmdLED": {"r": 10, "g": 20, "b": 30, "t": 5}})
-        )
+            _make_request(app, "PUT", "/notification", {"lightCmdLED": {"r": 10, "g": 20, "b": 30, "t": 5}}),
+        ),
     )
     assert res.status_code == 200
     assert led_calls == [{"r": 10, "g": 20, "b": 30, "t": 5}]
@@ -686,8 +688,8 @@ def test_notification_put_pause_time_only_leaves_schedule_fields_untouched() -> 
         pause_calls.append(secs)
         return True
 
-    service, app = _make_service(
-        settings={"notification": [SettingsGroup(notif, ("OnH",))]}, notification_pause=notification_pause
+    _service, app = _make_service(
+        settings={"notification": [SettingsGroup(notif, ("OnH",))]}, notification_pause=notification_pause,
     )
     res = run(app.dispatch_request(_make_request(app, "PUT", "/notification", {"PauseTime": 60})))
     assert res.status_code == 200
@@ -699,19 +701,19 @@ def test_notification_put_pause_time_only_leaves_schedule_fields_untouched() -> 
 
 def test_notification_put_pause_time_reported_invalid_when_no_handler_registered() -> None:
     notif = _FakeModule("NOTIF", schema=(("OnH", "int", 8, 0, 23, None),), values={"OnH": 8})
-    service, app = _make_service(settings={"notification": [SettingsGroup(notif, ("OnH",))]})  # notification_pause=None
+    _service, app = _make_service(settings={"notification": [SettingsGroup(notif, ("OnH",))]})  # notification_pause=None
     res = run(app.dispatch_request(_make_request(app, "PUT", "/notification", {"PauseTime": 60})))
     body = json.loads(res.body)
     assert body["result"]["PauseTime"] == "Invalid"
 
 
 def test_notification_put_pause_time_reported_invalid_when_not_an_int() -> None:
-    async def notification_pause(secs: int) -> bool:
+    async def notification_pause(_secs: int) -> bool:
         return True
 
     notif = _FakeModule("NOTIF", schema=(("OnH", "int", 8, 0, 23, None),), values={"OnH": 8})
-    service, app = _make_service(
-        settings={"notification": [SettingsGroup(notif, ("OnH",))]}, notification_pause=notification_pause
+    _service, app = _make_service(
+        settings={"notification": [SettingsGroup(notif, ("OnH",))]}, notification_pause=notification_pause,
     )
     for bad_value in ("60", 1.5, True, None):
         res = run(app.dispatch_request(_make_request(app, "PUT", "/notification", {"PauseTime": bad_value})))
@@ -732,8 +734,8 @@ def test_notification_put_pause_time_accepts_integral_float_coerced_to_int() -> 
         return True
 
     notif = _FakeModule("NOTIF", schema=(("OnH", "int", 8, 0, 23, None),), values={"OnH": 8})
-    service, app = _make_service(
-        settings={"notification": [SettingsGroup(notif, ("OnH",))]}, notification_pause=notification_pause
+    _service, app = _make_service(
+        settings={"notification": [SettingsGroup(notif, ("OnH",))]}, notification_pause=notification_pause,
     )
     res = run(app.dispatch_request(_make_request(app, "PUT", "/notification", {"PauseTime": 60.0})))
     body = json.loads(res.body)
@@ -756,8 +758,8 @@ def test_notification_put_pause_time_reported_invalid_when_out_of_range() -> Non
         return True
 
     notif = _FakeModule("NOTIF", schema=(("OnH", "int", 8, 0, 23, None),), values={"OnH": 8})
-    service, app = _make_service(
-        settings={"notification": [SettingsGroup(notif, ("OnH",))]}, notification_pause=notification_pause
+    _service, app = _make_service(
+        settings={"notification": [SettingsGroup(notif, ("OnH",))]}, notification_pause=notification_pause,
     )
     for bad_value in (-1, 3601):
         res = run(app.dispatch_request(_make_request(app, "PUT", "/notification", {"PauseTime": bad_value})))
@@ -769,12 +771,12 @@ def test_notification_put_pause_time_reported_invalid_when_out_of_range() -> Non
 def test_notification_put_pause_time_raising_callback_returns_failed_not_an_exception() -> None:
     # notification_pause is a caller-supplied callback and could legitimately misbehave, the same as
     # system_cmd/notification_led (see their own identical raising-callback tests above).
-    async def notification_pause(secs: int) -> bool:
+    async def notification_pause(_secs: int) -> bool:
         raise RuntimeError("simulated notification_pause failure")
 
     notif = _FakeModule("NOTIF", schema=(("OnH", "int", 8, 0, 23, None),), values={"OnH": 8})
     service, app = _make_service(
-        settings={"notification": [SettingsGroup(notif, ("OnH",))]}, notification_pause=notification_pause
+        settings={"notification": [SettingsGroup(notif, ("OnH",))]}, notification_pause=notification_pause,
     )
     res = run(app.dispatch_request(_make_request(app, "PUT", "/notification", {"PauseTime": 60})))
     assert res.status_code == 200
@@ -785,23 +787,23 @@ def test_notification_put_pause_time_raising_callback_returns_failed_not_an_exce
 
 def test_notification_put_light_cmd_led_reported_invalid_when_no_handler_registered() -> None:
     notif = _FakeModule("NOTIF", schema=(("OnH", "int", 8, 0, 23, None),), values={"OnH": 8})
-    service, app = _make_service(settings={"notification": [SettingsGroup(notif, ("OnH",))]})  # notification_led=None
+    _service, app = _make_service(settings={"notification": [SettingsGroup(notif, ("OnH",))]})  # notification_led=None
     res = run(
         app.dispatch_request(
-            _make_request(app, "PUT", "/notification", {"lightCmdLED": {"r": 10, "g": 20, "b": 30, "t": 5}})
-        )
+            _make_request(app, "PUT", "/notification", {"lightCmdLED": {"r": 10, "g": 20, "b": 30, "t": 5}}),
+        ),
     )
     body = json.loads(res.body)
     assert body["result"]["lightCmdLED"] == "Invalid"
 
 
 def test_notification_put_light_cmd_led_reported_invalid_when_payload_is_not_a_dict() -> None:
-    async def notification_led(payload: "dict[str, Any]") -> bool:
+    async def notification_led(_payload: "dict[str, Any]") -> bool:
         return True
 
     notif = _FakeModule("NOTIF", schema=(("OnH", "int", 8, 0, 23, None),), values={"OnH": 8})
-    service, app = _make_service(
-        settings={"notification": [SettingsGroup(notif, ("OnH",))]}, notification_led=notification_led
+    _service, app = _make_service(
+        settings={"notification": [SettingsGroup(notif, ("OnH",))]}, notification_led=notification_led,
     )
     res = run(app.dispatch_request(_make_request(app, "PUT", "/notification", {"lightCmdLED": "not-a-dict"})))
     body = json.loads(res.body)
@@ -812,17 +814,17 @@ def test_notification_put_light_cmd_led_raising_callback_returns_failed_not_an_e
     # notification_led is a caller-supplied callback and could legitimately misbehave, the same as
     # system_cmd (see test_system_put_systemcmd_raising_callback_returns_failed_not_an_exception's
     # own comment) - previously unguarded here too.
-    async def notification_led(payload: "dict[str, Any]") -> bool:
+    async def notification_led(_payload: "dict[str, Any]") -> bool:
         raise RuntimeError("simulated notification_led failure")
 
     notif = _FakeModule("NOTIF", schema=(("OnH", "int", 8, 0, 23, None),), values={"OnH": 8})
     service, app = _make_service(
-        settings={"notification": [SettingsGroup(notif, ("OnH",))]}, notification_led=notification_led
+        settings={"notification": [SettingsGroup(notif, ("OnH",))]}, notification_led=notification_led,
     )
     res = run(
         app.dispatch_request(
-            _make_request(app, "PUT", "/notification", {"lightCmdLED": {"r": 10, "g": 20, "b": 30, "t": 5}})
-        )
+            _make_request(app, "PUT", "/notification", {"lightCmdLED": {"r": 10, "g": 20, "b": 30, "t": 5}}),
+        ),
     )
     assert res.status_code == 200
     body = json.loads(res.body)
@@ -846,7 +848,7 @@ def _settings_service(endpoint: str) -> "tuple[WebserverService, Microdot, _Fake
 
 def test_b_missing_field_or_sub_object_left_untouched_on_every_settings_endpoint() -> None:
     for endpoint in _SETTINGS_ENDPOINTS:
-        service, app, mod = _settings_service(endpoint)
+        _service, app, mod = _settings_service(endpoint)
         res = run(app.dispatch_request(_make_request(app, "PUT", "/" + endpoint, {"Interval": 10})))
         assert res.status_code == 200, endpoint
         assert run(mod.get_dict_cfg())["Offset"] == 0, endpoint  # untouched, not reset to default
@@ -854,7 +856,7 @@ def test_b_missing_field_or_sub_object_left_untouched_on_every_settings_endpoint
 
 def test_b_unknown_top_level_key_silently_ignored_on_every_settings_endpoint() -> None:
     for endpoint in _SETTINGS_ENDPOINTS:
-        service, app, mod = _settings_service(endpoint)
+        _service, app, _mod = _settings_service(endpoint)
         res = run(app.dispatch_request(_make_request(app, "PUT", "/" + endpoint, {"Bogus": 1})))
         assert res.status_code == 200, endpoint
         body = json.loads(res.body)
@@ -863,7 +865,7 @@ def test_b_unknown_top_level_key_silently_ignored_on_every_settings_endpoint() -
 
 def test_b_wrong_top_level_json_type_is_a_clean_rejection_on_every_settings_endpoint() -> None:
     for endpoint in _SETTINGS_ENDPOINTS:
-        service, app, mod = _settings_service(endpoint)
+        _service, app, _mod = _settings_service(endpoint)
         for bad_body in ([1, 2, 3], "a string", 42, None):
             req = _make_request(app, "PUT", "/" + endpoint, None)
             req._body = json.dumps(bad_body).encode()
@@ -875,7 +877,7 @@ def test_b_wrong_top_level_json_type_is_a_clean_rejection_on_every_settings_endp
 
 def test_b_wrong_type_for_a_known_field_is_a_per_field_rejection_others_still_apply() -> None:
     for endpoint in _SETTINGS_ENDPOINTS:
-        service, app, mod = _settings_service(endpoint)
+        _service, app, mod = _settings_service(endpoint)
         res = run(app.dispatch_request(_make_request(app, "PUT", "/" + endpoint, {"Interval": "not-an-int", "Offset": 5})))
         body = json.loads(res.body)
         assert body["result"] == {"Interval": "Invalid", "Offset": "Valid"}, endpoint
@@ -884,7 +886,7 @@ def test_b_wrong_type_for_a_known_field_is_a_per_field_rejection_others_still_ap
 
 def test_b_malformed_json_body_handled_like_the_legacy_parse_cmd_request_path() -> None:
     for endpoint in _SETTINGS_ENDPOINTS:
-        service, app, mod = _settings_service(endpoint)
+        _service, app, _mod = _settings_service(endpoint)
         req = _make_request(app, "PUT", "/" + endpoint, {})
         req._body = b"{not valid json"
         req.content_length = len(req._body)
@@ -896,7 +898,7 @@ def test_b_malformed_json_body_handled_like_the_legacy_parse_cmd_request_path() 
 def test_b_duplicate_keys_in_raw_json_text_last_wins() -> None:
     # MicroPython's json module deserializes the same way CPython's does for a duplicate-key
     # object literal - confirmed directly against the pinned interpreter, not assumed.
-    service, app, mod = _settings_service("networking")
+    _service, app, mod = _settings_service("networking")
     req = _make_request(app, "PUT", "/networking", {})
     req._body = b'{"Interval": 1, "Interval": 10}'
     req.content_length = len(req._body)
@@ -913,7 +915,7 @@ def test_b_deeply_nested_json_body_degrades_to_a_clean_rejection_not_a_hard_faul
     # raw JSON text directly via string repetition sidesteps that entirely: no recursive Python call
     # is involved in constructing the bytes, only json.loads() (inside the code under test) ever
     # walks this structure recursively.
-    service, app, mod = _settings_service("system")
+    _service, app, _mod = _settings_service("system")
     depth = 2000  # deep enough to matter on an embedded stack; MicroPython's json.loads recursion
     # bound is confirmed well under this by direct testing against the pinned interpreter (raises
     # RecursionError/ValueError, not a hard interpreter fault).
@@ -929,7 +931,7 @@ def test_b_body_at_and_over_max_content_length_boundary() -> None:
     # max_content_length is a Request *class* attribute in ext/microdot.py (Request.
     # max_content_length, per its own module docstring example), not an app-instance one -
     # WebserverService's constructor is expected to set it there.
-    service, app, mod = _settings_service("networking")
+    _service, app, _mod = _settings_service("networking")
     limit = Request.max_content_length
     under = _make_request(app, "PUT", "/networking", {"Interval": 5})
     assert len(under.body) < limit
@@ -949,7 +951,7 @@ def test_b_body_at_and_over_max_content_length_boundary() -> None:
 
 
 def test_c_zero_entries_in_any_registration_group_produces_well_formed_empty_response() -> None:
-    service, app = _make_service(sensors=[], settings={}, maintenance_sensors=[], error_sources=[])
+    _service, app = _make_service(sensors=[], settings={}, maintenance_sensors=[], error_sources=[])
     for path in ("/measurements", "/sensors", "/status"):
         res = run(app.dispatch_request(_make_request(app, "GET", path, None)))
         assert res.status_code == 200, path
@@ -958,7 +960,7 @@ def test_c_zero_entries_in_any_registration_group_produces_well_formed_empty_res
 
 def test_c_one_entry_behaves_identically_to_a_hand_constructed_single_item_list() -> None:
     single = _NestedCfgModule("SCD30", values={}, data={"CO2": 900})
-    service, app = _make_service(sensors=[single])
+    _service, app = _make_service(sensors=[single])
     res = run(app.dispatch_request(_make_request(app, "GET", "/measurements", None)))
     assert json.loads(status_body(res)) == {"SCD30": {"CO2": 900}}
 
@@ -966,7 +968,7 @@ def test_c_one_entry_behaves_identically_to_a_hand_constructed_single_item_list(
 def test_c_duplicate_registration_last_registration_wins() -> None:
     first = _NestedCfgModule("SCD30", values={}, data={"CO2": 111})
     second = _NestedCfgModule("SCD30", values={}, data={"CO2": 222})
-    service, app = _make_service(sensors=[first, second])
+    _service, app = _make_service(sensors=[first, second])
     res = run(app.dispatch_request(_make_request(app, "GET", "/measurements", None)))
     assert json.loads(status_body(res)) == {"SCD30": {"CO2": 222}}
 
@@ -979,7 +981,7 @@ def test_c_duplicate_registration_last_registration_wins() -> None:
 def test_d_status_errcount_includes_one_entry_per_module_and_per_configmanager() -> None:
     module = _FakeModule("SGP40")
     cfgmgr = _FakeModule("CFGMGR_SGP40")
-    service, app = _make_service(error_sources=[module, cfgmgr])
+    _service, app = _make_service(error_sources=[module, cfgmgr])
     res = run(app.dispatch_request(_make_request(app, "GET", "/status", None)))
     errcount = json.loads(status_body(res))["errcount"]
     # "WEBSERVER" is this service's own entry (see SPECIFICATION.md Part A.8 for the
@@ -992,7 +994,7 @@ def test_d_counter_always_present_history_present_for_both_populated_and_zero_ca
     quiet = _FakeModule("QUIET")
     run(quiet.pr.err_s("boom", errno=3))
     noisy_free = _FakeModule("FREE")
-    service, app = _make_service(error_sources=[quiet, noisy_free])
+    _service, app = _make_service(error_sources=[quiet, noisy_free])
     res = run(app.dispatch_request(_make_request(app, "GET", "/status", None)))
     errcount = json.loads(status_body(res))["errcount"]
     assert errcount["QUIET"]["counter"] == 1
@@ -1005,7 +1007,7 @@ def test_d_reset_errors_calls_reset_error_counter_on_every_registered_module() -
     mods = [_FakeModule(n) for n in ("SGP40", "BMP3XX", "NEOPIXEL", "DNS", "CFGMGR_SGP40")]
     for m in mods:
         run(m.pr.err_s("x", errno=1))
-    service, app = _make_service(error_sources=mods)
+    _service, app = _make_service(error_sources=mods)
     run(app.dispatch_request(_make_request(app, "PUT", "/status", {"ResetErrors": True})))
     for m in mods:
         assert m.pr.reset_calls == 1, m.name
@@ -1032,7 +1034,7 @@ def test_d_reset_on_one_module_never_affects_another() -> None:
     b = _FakeModule("B")
     run(a.pr.err_s("x", errno=1))
     run(b.pr.err_s("y", errno=2))
-    service, app = _make_service(error_sources=[a, b])
+    _service, app = _make_service(error_sources=[a, b])
     run(app.dispatch_request(_make_request(app, "PUT", "/status", {"ResetErrors": True})))
     # Both reset together by this global action (decision: ResetErrors resets every module, not
     # scoped per-module) - the isolation property under test is that resetting doesn't cross-wire
@@ -1044,7 +1046,7 @@ def test_d_reset_on_one_module_never_affects_another() -> None:
 
 
 def test_d_webserver_own_errcount_entry_accumulates_a_warning_on_reclaim() -> None:
-    service, app = _make_service(per_call_timeout_s=0.05, outer_cap_s=0.2, max_connections=2)
+    service, _app = _make_service(per_call_timeout_s=0.05, outer_cap_s=0.2, max_connections=2)
     reader = _HangingReader()
     writer = _ScriptedWriter()
     run_timed(service._serve(reader, writer), timeout_s=2.0)
@@ -1056,7 +1058,7 @@ def test_d_webserver_own_errcount_entry_accumulates_a_warning_on_reclaim() -> No
 
 def test_d_status_put_malformed_json_body_is_a_clean_rejection_not_a_crash() -> None:
     module = _FakeModule("SGP40")
-    service, app = _make_service(error_sources=[module])
+    _service, app = _make_service(error_sources=[module])
     req = _make_request(app, "PUT", "/status", {})
     req._body = b"{not valid json"
     req.content_length = len(req._body)
@@ -1073,11 +1075,11 @@ def test_d_status_put_malformed_json_body_is_a_clean_rejection_not_a_crash() -> 
 
 def test_e_concurrent_put_during_get_never_produces_a_torn_response() -> None:
     mod = _FakeModule("WIFI", values={"Interval": 1, "Offset": 0})
-    service, app = _make_service(settings={"networking": [SettingsGroup(mod, ("Interval", "Offset"))]})
+    _service, app = _make_service(settings={"networking": [SettingsGroup(mod, ("Interval", "Offset"))]})
 
     async def scenario() -> None:
         put_task = asyncio.get_event_loop().create_task(
-            app.dispatch_request(_make_request(app, "PUT", "/networking", {"Interval": 99, "Offset": 99}))
+            app.dispatch_request(_make_request(app, "PUT", "/networking", {"Interval": 99, "Offset": 99})),
         )
         get_res = await app.dispatch_request(_make_request(app, "GET", "/networking", None))
         await put_task
@@ -1105,7 +1107,7 @@ def test_e_scd30_bmp3xx_live_readback_torn_read_is_a_known_characterization_not_
             return result
 
     mod = _LiveReadbackModule("SCD30", values={"Interval": 1, "Offset": 0})
-    service, app = _make_service(settings={"sensors_live": [SettingsGroup(mod, ("Interval", "Offset"))]})
+    _service, _app = _make_service(settings={"sensors_live": [SettingsGroup(mod, ("Interval", "Offset"))]})
 
     async def scenario() -> "dict[str, Any]":
         async def mutate_mid_read() -> None:
@@ -1125,7 +1127,7 @@ def test_e_scd30_bmp3xx_live_readback_torn_read_is_a_known_characterization_not_
 
 def test_e_mutating_a_returned_getter_dict_never_affects_the_modules_own_state() -> None:
     mod = _FakeModule("SCD30", data={"CO2": 800})
-    service, app = _make_service(sensors=[mod])
+    _service, _app = _make_service(sensors=[mod])
     d1 = run(mod.get_dict_data())
     d1["CO2"] = 0
     d2 = run(mod.get_dict_data())
@@ -1143,7 +1145,7 @@ def test_e_mutating_a_returned_getter_dict_never_affects_the_modules_own_state()
 
 
 def test_f1_client_sends_nothing_ever_is_reclaimed_by_the_per_call_timeout() -> None:
-    service, app = _make_service(per_call_timeout_s=0.05, outer_cap_s=2.0)
+    service, _app = _make_service(per_call_timeout_s=0.05, outer_cap_s=2.0)
     writer = _ScriptedWriter()
     run_timed(service._serve(_HangingReader(), writer), timeout_s=2.0)
     assert run(service._open_conns.get_value()) == 0
@@ -1151,14 +1153,14 @@ def test_f1_client_sends_nothing_ever_is_reclaimed_by_the_per_call_timeout() -> 
 
 
 def test_f1_client_opens_then_immediately_closes_before_any_bytes() -> None:
-    service, app = _make_service()
+    service, _app = _make_service()
     writer = _ScriptedWriter()
     run_timed(service._serve(_ClosedReader(), writer))
     assert run(service._open_conns.get_value()) == 0
 
 
 def test_f1_rapid_connect_disconnect_churn_keeps_counter_accurate() -> None:
-    service, app = _make_service()
+    service, _app = _make_service()
 
     async def churn() -> None:
         for _ in range(50):
@@ -1169,7 +1171,7 @@ def test_f1_rapid_connect_disconnect_churn_keeps_counter_accurate() -> None:
 
 
 def test_f1_connections_up_to_ceiling_accepted_beyond_ceiling_silently_closed() -> None:
-    service, app = _make_service(max_connections=2, per_call_timeout_s=5.0, outer_cap_s=5.0)
+    service, _app = _make_service(max_connections=2, per_call_timeout_s=5.0, outer_cap_s=5.0)
 
     async def scenario() -> None:
         # Two long-lived (never-completing) connections occupy the ceiling.
@@ -1194,7 +1196,7 @@ def test_f1_connections_up_to_ceiling_accepted_beyond_ceiling_silently_closed() 
 
 
 def test_f1_a_slot_freed_by_reclaim_accepts_the_next_connection_immediately() -> None:
-    service, app = _make_service(max_connections=1, per_call_timeout_s=0.05, outer_cap_s=2.0)
+    service, _app = _make_service(max_connections=1, per_call_timeout_s=0.05, outer_cap_s=2.0)
 
     async def scenario() -> None:
         await service._serve(_HangingReader(), _ScriptedWriter())  # reclaimed by per-call timeout
@@ -1229,7 +1231,7 @@ def test_f2_trickled_request_line_is_reclaimed_by_the_outer_cap_not_a_single_per
     physical_lines = [part + b"\r\n" for part in full_line.split(b"\r\n")[:-1]]  # drop the trailing
     # split() artifact after the final \r\n - see full_line's own \r\n\r\n terminator
     chunks = [(line_delay, line) for line in physical_lines]
-    service, app = _make_service(per_call_timeout_s=per_call, outer_cap_s=outer_cap)
+    service, _app = _make_service(per_call_timeout_s=per_call, outer_cap_s=outer_cap)
     reader = _ScriptedReader(chunks)
     writer = _ScriptedWriter()
     run_timed(service._serve(reader, writer), timeout_s=outer_cap * 20)
@@ -1238,7 +1240,7 @@ def test_f2_trickled_request_line_is_reclaimed_by_the_outer_cap_not_a_single_per
 
 
 def test_f2_malformed_request_line_degrades_safely_via_microdots_own_blanket_catch() -> None:
-    service, app = _make_service()
+    service, _app = _make_service()
     reader = _ScriptedReader([(0, b"NOT A VALID REQUEST LINE AT ALL\r\n\r\n")])
     writer = _ScriptedWriter()
     run_timed(service._serve(reader, writer))
@@ -1251,7 +1253,7 @@ def test_f2_content_length_larger_than_body_sent_then_silence_times_out() -> Non
     # directly from the pinned interpreter's extmod/asyncio/core.py - so it's absorbed by
     # handle_request()'s own blanket except-Exception around Request.create(), which then writes its
     # own ordinary 400 and closes normally, rather than the connection being silently dropped.
-    service, app = _make_service(per_call_timeout_s=0.05, outer_cap_s=1.0)
+    service, _app = _make_service(per_call_timeout_s=0.05, outer_cap_s=1.0)
     headers = "PUT /networking HTTP/1.1\r\nContent-Length: 1000\r\nContent-Type: application/json\r\n\r\n"
     reader = _ScriptedReader([(0, headers.encode() + b'{"Interval":')])  # body truncated, then silence
     writer = _ScriptedWriter()
@@ -1261,7 +1263,7 @@ def test_f2_content_length_larger_than_body_sent_then_silence_times_out() -> Non
 
 
 def test_f2_content_length_exceeding_max_content_length_returns_413() -> None:
-    service, app = _make_service(max_content_length=64, per_call_timeout_s=2.0, outer_cap_s=2.0)
+    service, _app = _make_service(max_content_length=64, per_call_timeout_s=2.0, outer_cap_s=2.0)
     body = json.dumps({"Interval": 1, "Padding": "x" * 200}).encode()
     reader = _ScriptedReader([(0, _request_bytes("PUT", "/networking", body))])
     writer = _ScriptedWriter()
@@ -1273,16 +1275,17 @@ def test_f2_content_length_exceeding_max_content_length_returns_413() -> None:
 def test_f2_body_truncated_by_a_clean_peer_close_degrades_via_microdots_own_blanket_catch() -> None:
     # Corrected during implementation, once the real code revealed the actual behavior. Traced
     # directly against ext/microdot.py's handle_request(): the readexactly() call
-    # for the body sits inside Request.create(), which handle_request() wraps in `except OSError ...
-    # else: raise` *then* `except Exception as exc: print_exception(exc)` - EOFError isn't an
-    # OSError, so it hits the second clause, which does not re-raise. req stays None and
+    # for the body sits inside Request.create(), which handle_request() wraps in an
+    # `except OSError ... else: raise` clause *then* in `except Exception as exc: print_exception(exc)`
+    # - EOFError isn't an OSError, so it hits the second clause, which does not re-raise. req stays
+    # None and
     # handle_request() falls straight through to its own ordinary 400 response, written and closed
     # normally - exactly like the malformed-request-line case just above, not a silent drop. EOFError
     # structurally never reaches our own serve() wrapper here; a per-call *timeout* on the same read
     # (see the sibling "then silence times out" test above) is what actually reaches us, since a
     # timeout is an unmuted OSError and handle_request()'s first except clause re-raises those.
     headers = "PUT /networking HTTP/1.1\r\nContent-Length: 100\r\nContent-Type: application/json\r\n\r\n"
-    service, app = _make_service(per_call_timeout_s=1.0, outer_cap_s=2.0)
+    service, _app = _make_service(per_call_timeout_s=1.0, outer_cap_s=2.0)
     reader = _ScriptedReader([(0, headers.encode() + b'{"Interval": 1}')], eof=True)  # then a clean EOF, not silence
     writer = _ScriptedWriter()
     run_timed(service._serve(reader, writer), timeout_s=3.0)
@@ -1294,7 +1297,7 @@ def test_f2_body_truncated_by_a_clean_peer_close_degrades_via_microdots_own_blan
 
 
 def test_f5_normal_close_decrements_counter_exactly_once() -> None:
-    service, app = _make_service()
+    service, _app = _make_service()
     reader = _ScriptedReader([(0, _request_bytes("GET", "/status"))])
     writer = _ScriptedWriter()
     run_timed(service._serve(reader, writer))
@@ -1303,7 +1306,7 @@ def test_f5_normal_close_decrements_counter_exactly_once() -> None:
 
 
 def test_f5_connection_close_header_present_on_every_response_including_errors() -> None:
-    service, app = _make_service()
+    service, _app = _make_service()
     for method, path in (("GET", "/status"), ("GET", "/no/such/route"), ("DELETE", "/status")):
         writer = _ScriptedWriter()
         reader = _ScriptedReader([(0, _request_bytes(method, path))])
@@ -1312,7 +1315,7 @@ def test_f5_connection_close_header_present_on_every_response_including_errors()
 
 
 def test_f5_double_close_paths_dont_raise_or_double_decrement() -> None:
-    service, app = _make_service()
+    service, _app = _make_service()
     reader = _ScriptedReader([(0, _request_bytes("GET", "/status"))])
     writer = _ScriptedWriter()
     run_timed(service._serve(reader, writer))  # our own finally + Microdot's own aclose() both run
@@ -1323,7 +1326,7 @@ def test_f5_double_close_paths_dont_raise_or_double_decrement() -> None:
 
 
 def test_f6_n_simultaneous_wedged_connections_are_each_independently_reclaimed() -> None:
-    service, app = _make_service(max_connections=3, per_call_timeout_s=0.05, outer_cap_s=0.5)
+    service, _app = _make_service(max_connections=3, per_call_timeout_s=0.05, outer_cap_s=0.5)
 
     async def scenario() -> None:
         writers = [_ScriptedWriter() for _ in range(3)]
@@ -1336,7 +1339,7 @@ def test_f6_n_simultaneous_wedged_connections_are_each_independently_reclaimed()
 
 
 def test_f6_no_cooldown_gap_between_a_reclaim_and_the_next_accept() -> None:
-    service, app = _make_service(max_connections=1, per_call_timeout_s=0.02, outer_cap_s=1.0)
+    service, _app = _make_service(max_connections=1, per_call_timeout_s=0.02, outer_cap_s=1.0)
 
     async def scenario() -> None:
         start = 0
@@ -1350,7 +1353,7 @@ def test_f6_no_cooldown_gap_between_a_reclaim_and_the_next_accept() -> None:
 
 
 def test_f6_pathological_repeated_rewedging_stays_bounded_never_escalates() -> None:
-    service, app = _make_service(max_connections=2, per_call_timeout_s=0.02, outer_cap_s=0.2)
+    service, _app = _make_service(max_connections=2, per_call_timeout_s=0.02, outer_cap_s=0.2)
 
     async def scenario() -> None:
         for _ in range(30):  # a hostile client immediately reconnecting and rewedging
@@ -1363,7 +1366,7 @@ def test_f6_pathological_repeated_rewedging_stays_bounded_never_escalates() -> N
 
 
 def test_f6_a_hanging_cleanup_close_path_still_lets_the_connection_task_end() -> None:
-    service, app = _make_service(per_call_timeout_s=0.05, outer_cap_s=0.2)
+    service, _app = _make_service(per_call_timeout_s=0.05, outer_cap_s=0.2)
     writer = _ScriptedWriter(hang_close=True)  # wait_closed() itself never returns
     run_timed(service._serve(_HangingReader(), writer), timeout_s=3.0)
     assert run(service._open_conns.get_value()) == 0  # the connection task still ended
@@ -1378,7 +1381,7 @@ def test_close_writer_swallows_a_raising_close_and_still_awaits_wait_closed() ->
     # writer.close() raising is real Stream-caller-supplied behavior this module must never let
     # escape (_close_writer()'s own try/except) - and the cleanup must still proceed to wait_closed()
     # afterward, not abort early.
-    service, app = _make_service()
+    service, _app = _make_service()
     writer = _RaisingCloseWriter()
     run_timed(service._close_writer(writer))
     assert writer.wait_closed_called is True
@@ -1388,7 +1391,7 @@ def test_close_writer_logs_a_persisted_warning_when_close_raises() -> None:
     # Step 6 (silent-failure-masking finding): a raising close()/wait_closed() must not just be
     # swallowed silently - it needs a persisted signal, the same as every other connection-lifecycle
     # failure this file already logs (peer-closed-early, timed-out, socket-error).
-    service, app = _make_service()
+    service, _app = _make_service()
     writer = _RaisingCloseWriter()
     run_timed(service._close_writer(writer))
     assert service.pr.err_count == 1
@@ -1401,7 +1404,7 @@ class _RaisingWaitClosedWriter(_ScriptedWriter):
 
 
 def test_close_writer_logs_a_persisted_warning_when_wait_closed_raises() -> None:
-    service, app = _make_service()
+    service, _app = _make_service()
     writer = _RaisingWaitClosedWriter()
     run_timed(service._close_writer(writer))
     assert writer.close_called is True
@@ -1427,7 +1430,7 @@ def test_serve_absorbs_an_eoferror_raised_directly_by_handle_request() -> None:
     # app.handle_request() to prove _serve()'s except EOFError clause actually degrades cleanly.
     service, app = _make_service()
 
-    async def _raise_eof(reader: "Any", writer: "Any") -> None:
+    async def _raise_eof(_reader: object, _writer: object) -> None:
         raise EOFError
 
     app.handle_request = _raise_eof
@@ -1440,7 +1443,7 @@ def test_serve_absorbs_an_oserror_raised_directly_by_handle_request() -> None:
     # a genuine real-hardware socket failure is the only real trigger, so exercised directly here.
     service, app = _make_service()
 
-    async def _raise_os(reader: "Any", writer: "Any") -> None:
+    async def _raise_os(_reader: object, _writer: object) -> None:
         raise OSError("simulated socket failure")
 
     app.handle_request = _raise_os
@@ -1451,7 +1454,7 @@ def test_serve_absorbs_an_oserror_raised_directly_by_handle_request() -> None:
 def test_serve_absorbs_an_unexpected_exception_raised_directly_by_handle_request() -> None:
     service, app = _make_service()
 
-    async def _raise_boom(reader: "Any", writer: "Any") -> None:
+    async def _raise_boom(_reader: object, _writer: object) -> None:
         raise RuntimeError("simulated unexpected bug")
 
     app.handle_request = _raise_boom
@@ -1466,7 +1469,7 @@ def test_serve_absorbs_an_unexpected_exception_raised_directly_by_handle_request
 
 
 def test_f7_unknown_path_returns_404_shaped_response() -> None:
-    service, app = _make_service()
+    service, _app = _make_service()
     reader = _ScriptedReader([(0, _request_bytes("GET", "/no/such/route"))])
     writer = _ScriptedWriter()
     run_timed(service._serve(reader, writer))
@@ -1474,7 +1477,7 @@ def test_f7_unknown_path_returns_404_shaped_response() -> None:
 
 
 def test_f7_wrong_http_method_on_a_known_path_returns_405_shaped_response() -> None:
-    service, app = _make_service()
+    service, _app = _make_service()
     reader = _ScriptedReader([(0, _request_bytes("DELETE", "/status"))])
     writer = _ScriptedWriter()
     run_timed(service._serve(reader, writer))
@@ -1482,7 +1485,7 @@ def test_f7_wrong_http_method_on_a_known_path_returns_405_shaped_response() -> N
 
 
 def test_f7_extremely_long_url_path_is_handled_cleanly_not_a_crash() -> None:
-    service, app = _make_service(per_call_timeout_s=2.0, outer_cap_s=2.0)
+    service, _app = _make_service(per_call_timeout_s=2.0, outer_cap_s=2.0)
     long_path = "/status/" + ("a" * 8192)
     reader = _ScriptedReader([(0, _request_bytes("GET", long_path))])
     writer = _ScriptedWriter()
@@ -1493,7 +1496,7 @@ def test_f7_extremely_long_url_path_is_handled_cleanly_not_a_crash() -> None:
 def test_f7_dedicated_multi_connection_slowloris_simulation_all_reclaimed_and_slots_reused() -> None:
     per_call = 0.02
     outer_cap = 0.1
-    service, app = _make_service(max_connections=3, per_call_timeout_s=per_call, outer_cap_s=outer_cap)
+    service, _app = _make_service(max_connections=3, per_call_timeout_s=per_call, outer_cap_s=outer_cap)
 
     def trickle_reader() -> _ScriptedReader:
         full_line = _request_bytes("GET", "/status")
@@ -1519,7 +1522,7 @@ def test_f7_dedicated_multi_connection_slowloris_simulation_all_reclaimed_and_sl
 
 
 def test_f8_task_starters_exposes_exactly_one_server_task_for_the_supervisor() -> None:
-    service, app = _make_service()
+    service, _app = _make_service()
     starters = service.get_task_starters()
     assert len(starters) == 1
 
@@ -1529,7 +1532,7 @@ def test_f8_start_serving_runs_a_real_asyncio_start_server_backed_task() -> None
     # this is the one test exercising _run()/_start_serving() themselves, the real
     # asyncio.start_server() composition (never app.start_server()/app.shutdown() - decision 1).
     # Bound to an ephemeral loopback port, never the real host/port=0.0.0.0:80 default.
-    service, app = _make_service(host="127.0.0.1", port=0)
+    service, _app = _make_service(host="127.0.0.1", port=0)
 
     async def scenario() -> None:
         starters = service.get_task_starters()
@@ -1554,7 +1557,7 @@ def test_f9_soak_100_plus_start_wedge_reclaim_cycles_hold_counter_and_memory_fla
     # well-formed connections across max_connections' full ceiling, never a restart step anywhere.
     import gc
 
-    service, app = _make_service(max_connections=2, per_call_timeout_s=0.02, outer_cap_s=0.1)
+    service, _app = _make_service(max_connections=2, per_call_timeout_s=0.02, outer_cap_s=0.1)
 
     async def one_cycle(i: int) -> None:
         if i % 3 == 0:
@@ -1667,7 +1670,7 @@ def test_g_static_routes_never_shadow_a_real_api_endpoint() -> None:
     # registered after every real API route or it would silently swallow them.
     scd = _NestedCfgModule("SCD30", values={}, data={"CO2": 800})
     mount = _mount_static_fixture({"index.html": b"<h1>hi</h1>", "measurements": b"not the real one"})
-    service, app = _make_service(sensors=[scd], static_mount=mount)
+    _service, app = _make_service(sensors=[scd], static_mount=mount)
     res = run(app.dispatch_request(_make_request(app, "GET", "/measurements", None)))
     assert res.status_code == 200
     assert json.loads(status_body(res)) == {"SCD30": {"CO2": 800}}  # the real endpoint, not the static file
@@ -1925,7 +1928,7 @@ def test_h2_stream_yields_one_piece_per_top_level_section_not_one_precomputed_bu
     # the whole aggregate - but also never one piece per punctuation character (measured to regress
     # real throughput ~53% via this server's own per-write asyncio.wait_for() wrapping - see
     # _build_status_pieces()'s own comment for the full finding).
-    service, app = _make_service(
+    _service, app = _make_service(
         status_sources={"networking": _const_source({"A": 1})},
         maintenance_sensors=[("SGP40", _const_source({"BackupTS": 1}))],
         error_sources=[_FakeModule("SGP40")],
@@ -1955,7 +1958,7 @@ def test_h2_stream_response_has_an_explicit_correct_content_length_header() -> N
     # (found via tests/test_digital_twin_run_wozi_integration.py's own soak test failing without
     # this): digital_twin/_http_client.py's fetch() falls back to a slow, effectively-untested
     # reader.read(-1)-until-EOF path whenever Content-Length is missing.
-    service, app = _make_service()
+    service, _app = _make_service()
     reader = _ScriptedReader([(0, _request_bytes("GET", "/status"))])
     writer = _ScriptedWriter()
     run_timed(service._serve(reader, writer))
@@ -1985,8 +1988,8 @@ def test_h2_stream_status_source_failure_yields_an_error_marker_not_a_broken_str
 
 
 def test_h2_stream_maintenance_source_failure_is_isolated_to_that_one_sensor() -> None:
-    service, app = _make_service(
-        maintenance_sensors=[("SGP40", _raising_source), ("BMP3XX", _const_source({"BackupTS": 1}))]
+    _service, app = _make_service(
+        maintenance_sensors=[("SGP40", _raising_source), ("BMP3XX", _const_source({"BackupTS": 1}))],
     )
     res = run(app.dispatch_request(_make_request(app, "GET", "/status", None)))
     body = json.loads(status_body(res))
@@ -1997,7 +2000,7 @@ def test_h2_stream_maintenance_source_failure_is_isolated_to_that_one_sensor() -
 def test_h2_stream_errcount_source_failure_is_isolated_to_that_one_module() -> None:
     good = _FakeModule("BMP3XX")
     bad = _RaisingErrorCounterModule("SGP40")
-    service, app = _make_service(error_sources=[good, bad], history_length=0)  # see
+    _service, app = _make_service(error_sources=[good, bad], history_length=0)  # see
     # test_h2_stream_yields_many_small_chunks_not_one_precomputed_buffer()'s own comment on why
     res = run(app.dispatch_request(_make_request(app, "GET", "/status", None)))
     errcount = json.loads(status_body(res))["errcount"]
@@ -2029,7 +2032,7 @@ def test_h2_stream_every_source_failing_still_produces_one_complete_valid_json_d
     # response must still be one complete, parseable JSON document with a plain 200 - each source's
     # own try/except (see _dump_status_source()'s own comment) keeps its exception from ever escaping
     # _build_status_pieces()/_get_status() itself, so Microdot's own blanket catch never even sees one.
-    service, app = _make_service(
+    _service, app = _make_service(
         status_sources={"networking": _raising_source, "system": _raising_source, "notification": _raising_source},
         maintenance_sensors=[("SGP40", _raising_source)],
         error_sources=[_RaisingErrorCounterModule("BMP3XX")],
@@ -2054,7 +2057,7 @@ def test_h2_stream_every_source_failing_still_produces_one_complete_valid_json_d
 
 
 def test_h2_stream_empty_registration_everywhere_matches_the_old_all_empty_shape() -> None:
-    service, app = _make_service(sensors=[], settings={}, maintenance_sensors=[], error_sources=[], history_length=0)  # see
+    _service, app = _make_service(sensors=[], settings={}, maintenance_sensors=[], error_sources=[], history_length=0)  # see
     # test_h2_stream_yields_many_small_chunks_not_one_precomputed_buffer()'s own comment on why
     res = run(app.dispatch_request(_make_request(app, "GET", "/status", None)))
     body = json.loads(status_body(res))
@@ -2068,8 +2071,8 @@ def test_h2_stream_empty_registration_everywhere_matches_the_old_all_empty_shape
 
 
 def test_h2_stream_two_maintenance_sensors_produce_valid_json_with_no_stray_commas() -> None:
-    service, app = _make_service(
-        maintenance_sensors=[("SGP40", _const_source({"A": 1})), ("BMP3XX", _const_source({"B": 2}))]
+    _service, app = _make_service(
+        maintenance_sensors=[("SGP40", _const_source({"A": 1})), ("BMP3XX", _const_source({"B": 2}))],
     )
     res = run(app.dispatch_request(_make_request(app, "GET", "/status", None)))
     body = json.loads(status_body(res))
@@ -2077,7 +2080,7 @@ def test_h2_stream_two_maintenance_sensors_produce_valid_json_with_no_stray_comm
 
 
 def test_h2_stream_two_error_sources_plus_the_own_entry_produce_valid_json_with_no_stray_commas() -> None:
-    service, app = _make_service(error_sources=[_FakeModule("SGP40"), _FakeModule("BMP3XX")])
+    _service, app = _make_service(error_sources=[_FakeModule("SGP40"), _FakeModule("BMP3XX")])
     res = run(app.dispatch_request(_make_request(app, "GET", "/status", None)))
     errcount = json.loads(status_body(res))["errcount"]
     assert set(errcount.keys()) == {"SGP40", "BMP3XX", "WEBSERVER"}
@@ -2089,7 +2092,7 @@ def test_h2_stream_module_names_with_special_characters_are_correctly_escaped() 
     # _build_status_pieces()'s own comment on why every piece is its own list entry rather than
     # joined by hand).
     tricky = _FakeModule('SGP"40')
-    service, app = _make_service(error_sources=[tricky])
+    _service, app = _make_service(error_sources=[tricky])
     res = run(app.dispatch_request(_make_request(app, "GET", "/status", None)))
     errcount = json.loads(status_body(res))["errcount"]
     assert set(errcount.keys()) == {'SGP"40', "WEBSERVER"}
@@ -2110,7 +2113,7 @@ def test_h2_stream_many_error_sources_are_coalesced_into_size_bounded_batches_no
         m.pr.err_count = 10
         m.pr.history = [(1, "E")] * 10
         modules.append(m)
-    service, app = _make_service(error_sources=modules, history_length=0)
+    _service, app = _make_service(error_sources=modules, history_length=0)
     res = run(app.dispatch_request(_make_request(app, "GET", "/status", None)))
     chunks = list(res.body)
     encoded = [c.encode() if isinstance(c, str) else c for c in chunks]
@@ -2255,7 +2258,7 @@ _HAMMER_PIECE_BUDGET = 1200  # same generous margin over _MAX_STATUS_PIECE_BYTES
 # coalescing test above - not an exact byte count, just "nowhere near" an unbounded aggregate.
 
 
-def _assert_body_is_bounded_stream(res: "Any", path: str) -> bytes:
+def _assert_body_is_bounded_stream(res: "Response", path: str) -> bytes:
     # A route hammer test asserting only on the final assembled JSON (json.loads(status_body(res)))
     # cannot tell a genuinely-streamed, bounded-piece response apart from a reverted
     # `return result` that Microdot's own Response.__init__ turns into one plain json.dumps() string

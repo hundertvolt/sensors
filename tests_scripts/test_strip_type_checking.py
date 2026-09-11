@@ -6,7 +6,7 @@ from pathlib import Path
 from types import ModuleType
 
 import pytest
-from conftest import load_script_module
+from _script_loader import load_script_module
 
 
 @pytest.fixture(scope="session")

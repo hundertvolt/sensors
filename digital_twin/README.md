@@ -51,10 +51,18 @@ Kept completely separate so nothing here can accidentally affect the determinist
   2026-09-04): dev's own `AsyFramManager.setup()` silently failed its device-ID check every twin
   run, caught and swallowed by its own broad `except Exception`.
 - `unix_port_poll_prewarm.py` — a workaround for a confirmed, real dangling-pointer bug in the
-  pinned MicroPython v1.28.0 Unix port's `extmod/modselect.c` (see "Known gaps / follow-ups" below
-  for the full account). Called as the first statement of `run_wozi_integration.py`'s and
-  `segfault_stress_repro.py`'s own `main()`, before anything else in the process registers a poll
-  object.
+  pinned MicroPython Unix port's `extmod/modselect.c` (see "Known gaps / follow-ups" below
+  for the full account; `extmod/modselect.c` took zero commits between `v1.28.0` and the current
+  `v1.29.0` pin, so the account and the workaround both still stand verbatim). Called as the first
+  statement of `run_wozi_integration.py`'s and `segfault_stress_repro.py`'s own `main()`, before
+  anything else in the process registers a poll object.
+- `unix_port_gc_unwedge.py` — its sibling for a second Unix-port quirk: a SIGINT landing inside
+  `gc_collect()` leaves the GC heap permanently locked, so the shutdown flush dies with a
+  misleading `MemoryError: ... heap is locked` on a heap that is mostly free. Measured at ~5% on
+  both `v1.28.0` and `v1.29.0`, so not a version-bump regression. Both runners call
+  `unwedge_heap_after_interrupt()` first in their `except KeyboardInterrupt:` handler — full
+  mechanism and why `gc.collect()` (not `micropython.heap_unlock()`) is the fix: SPECIFICATION.md
+  Part F.6.
 - `_crc8.py` / `_fault_injection.py` — small shared helpers (CRC-8 for SGP40/SCD30's word protocol;
   a generic op-keyed fault-injection queue, mirroring `tests/machine.py`'s own
   `inject_fault()`/`_maybe_raise()` convention) used by more than one chip fake.
@@ -499,7 +507,8 @@ correctly by the dedicated pass instead - see `digital_twin/typecheck.ini`'s own
   automated test tiers can't (a genuine repro crashes the whole interpreter process) — run
   manually, same `MICROPYPATH` as `run_wozi_integration.py`. Its target bug is root-caused and
   fixed, not open: a dangling-pointer dereference at `extmod/modselect.c:132` in the pinned
-  MicroPython v1.28.0 Unix port — growing the shared asyncio poller's `pollfds` array (needed once
+  MicroPython Unix port (traced at `v1.28.0`, and `extmod/modselect.c` is unchanged at the current
+  `v1.29.0` pin) — growing the shared asyncio poller's `pollfds` array (needed once
   concurrently-registered fds cross a multiple of 4) unconditionally repoints every
   already-registered poll object's `pollfd` field at the new buffer, including non-fd poll objects
   whose `pollfd` is legitimately `NULL`, corrupting it into a small garbage pointer the next
@@ -514,8 +523,9 @@ correctly by the dedicated pass instead - see `digital_twin/typecheck.ini`'s own
   [micropython/micropython#12887](https://github.com/micropython/micropython/issues/12887) ("Use
   After Free at modselect.c:151", CVE-2023-7152) and fixed by
   [PR #12895](https://github.com/jimmo/micropython/commit/8b24aa36ba978eafc6114b6798b47b7bfecdca26)
-  (merged into the 1.22.0 milestone, long before this project's v1.28.0 pin). Verified directly
-  against `extmod/modselect.c` at the real `v1.28.0` tag: that fix's pointer-update loop only skips
+  (merged into the 1.22.0 milestone, long before this project's pin). Verified directly
+  against `extmod/modselect.c` at the real `v1.28.0` tag, and re-checked at `v1.29.0` (zero commits
+  to that file between the two): that fix's pointer-update loop only skips
   a poll object when the map slot itself is empty (`if (!poll_obj) continue;`) — it does not skip a
   poll object whose `pollfd` field is legitimately `NULL` (the non-fd/stream-wrapper case this
   project hit), so it still runs pointer arithmetic on that `NULL` and corrupts it. No separate

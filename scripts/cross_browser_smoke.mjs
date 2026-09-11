@@ -164,7 +164,7 @@ async function wdCreateSession(base, capabilities) {
 
 /** @param {string} base @param {string} sid */
 async function wdDeleteSession(base, sid) {
-    await fetch(`${base}/session/${sid}`, { method: "DELETE" }).catch(() => {});
+    await fetch(`${base}/session/${sid}`, { method: "DELETE" }).catch(() => { /* teardown is best-effort - a dead driver is not a smoke-check failure */ });
 }
 
 /** @param {string} base @param {string} sid @param {string} url */
@@ -388,7 +388,13 @@ async function pollForAppliedResult(wrapperLocator, captionLocator, expectedCapt
 /** @param {"chromium" | "edge"} which @param {"desktop" | "mobile"} viewport @param {number} probeValue */
 async function runChromiumFamily(which, viewport, probeValue) {
     const label = `${which === "edge" ? "Edge" : "Chromium"} (${viewport})`;
-    const executablePath = which === "edge" ? EDGE_BIN : (existsSync(SANDBOX_CHROMIUM) ? SANDBOX_CHROMIUM : undefined);
+    /** @type {string | undefined} */
+    let executablePath;
+    if (which === "edge") {
+        executablePath = EDGE_BIN;
+    } else if (existsSync(SANDBOX_CHROMIUM)) {
+        executablePath = SANDBOX_CHROMIUM;
+    }
     let browser;
     try {
         browser = await chromium.launch(executablePath ? { executablePath } : {});
@@ -418,7 +424,7 @@ async function runChromiumFamily(which, viewport, probeValue) {
         const message = err instanceof Error ? err.message : String(err);
         return { label, ok: false, detail: message };
     } finally {
-        await browser?.close().catch(() => {});
+        await browser?.close().catch(() => { /* teardown is best-effort - a dead browser is not a smoke-check failure */ });
     }
 }
 

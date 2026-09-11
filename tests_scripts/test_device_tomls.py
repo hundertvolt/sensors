@@ -4,9 +4,14 @@ Hand-implements the collision checks until Session 3's generator/validator exist
 
 import copy
 from pathlib import Path
+from typing import Any
 
 import pytest
 import tomllib
+
+# A parsed TOML table (tomllib.load()'s own return shape, and every [[instance]]/[bus.*]/[device]
+# sub-table sliced out of it) - str keys, arbitrarily nested str/int/float/bool/list/dict values.
+_TomlDoc = dict[str, Any]
 
 DEVICE_NAMES = ["dev", "wozi", "arzi", "klkizi", "grkizi", "schlafzi"]
 
@@ -37,7 +42,7 @@ def devices_dir(repo_root: Path) -> Path:
     return repo_root / "devices"
 
 
-def _load(devices_dir: Path, name: str) -> dict:
+def _load(devices_dir: Path, name: str) -> _TomlDoc:
     with open(devices_dir / f"{name}.toml", "rb") as f:
         return tomllib.load(f)
 
@@ -53,7 +58,7 @@ def _bus_kind(bus_name: str) -> str:
 # Standalone functions so the negative-path tests below can exercise the same logic on synthetic docs.
 
 
-def check_bus_tables_declare_their_required_wire_pins(doc: dict, label: str) -> None:
+def check_bus_tables_declare_their_required_wire_pins(doc: _TomlDoc, label: str) -> None:
     buses = doc["bus"]
     assert buses, f"{label}: no bus declared"
     for bus_name, bus_table in buses.items():
@@ -70,20 +75,20 @@ def check_bus_tables_declare_their_required_wire_pins(doc: dict, label: str) -> 
         assert "cs_pin" not in bus_table, f"{label}: bus.{bus_name} declares cs_pin - that belongs on the owning instance, not the shared bus"
 
 
-def check_every_instance_referencing_a_bus_uses_a_declared_bus(doc: dict, label: str) -> None:
+def check_every_instance_referencing_a_bus_uses_a_declared_bus(doc: _TomlDoc, label: str) -> None:
     bus_ids = set(doc["bus"].keys())
     for inst in doc["instance"]:
         if "bus" in inst:
             assert inst["bus"] in bus_ids, f"{label}: instance {inst['driver']!r} references undeclared bus {inst['bus']!r}"
 
 
-def check_every_declared_bus_is_used_by_some_instance(doc: dict, label: str) -> None:
+def check_every_declared_bus_is_used_by_some_instance(doc: _TomlDoc, label: str) -> None:
     used = {inst["bus"] for inst in doc["instance"] if "bus" in inst}
     orphans = set(doc["bus"].keys()) - used
     assert not orphans, f"{label}: bus(es) {orphans} declared but never referenced by any instance"
 
 
-def check_singleton_drivers_never_declare_name_ext(doc: dict, label: str) -> None:
+def check_singleton_drivers_never_declare_name_ext(doc: _TomlDoc, label: str) -> None:
     for inst in doc["instance"]:
         if inst["driver"] in _SINGLETON_DRIVERS:
             assert "name_ext" not in inst, f"{label}: singleton driver {inst['driver']!r} declares name_ext - singleton service kinds never do"
@@ -95,7 +100,7 @@ def check_singleton_drivers_never_declare_name_ext(doc: dict, label: str) -> Non
 _SGP40_VALUE_WIRING = {"temperature_source": "Temp", "humidity_source": "Hum"}
 
 
-def check_sgp40_wiring_resolves_to_real_sources(doc: dict, label: str) -> None:
+def check_sgp40_wiring_resolves_to_real_sources(doc: _TomlDoc, label: str) -> None:
     instances = {(inst["driver"], inst.get("name_ext", "")): inst for inst in doc["instance"]}
     sgp40_key = ("sgp40", "")
     assert sgp40_key in instances, f"{label}: no unextended sgp40 instance found"
@@ -108,7 +113,7 @@ def check_sgp40_wiring_resolves_to_real_sources(doc: dict, label: str) -> None:
         assert (sig.get("source"), "") in instances, f"{label}: sgp40's {key} references {sig.get('source')!r} but no such instance exists"
 
 
-def check_no_global_gpio_pin_collision(doc: dict, label: str) -> None:
+def check_no_global_gpio_pin_collision(doc: _TomlDoc, label: str) -> None:
     # One flat GPIO namespace per device; `address` excluded - it's per-bus logical, not physical.
     claims: dict[int, str] = {}
 
@@ -132,7 +137,7 @@ def check_no_global_gpio_pin_collision(doc: dict, label: str) -> None:
                 claim(inst[field], f"instance[{inst_label}].{field}")
 
 
-def check_no_per_bus_address_collision(doc: dict, label: str) -> None:
+def check_no_per_bus_address_collision(doc: _TomlDoc, label: str) -> None:
     per_bus: dict[str, dict[int, str]] = {}
     for inst in doc["instance"]:
         if "address" not in inst or "bus" not in inst:
@@ -143,13 +148,13 @@ def check_no_per_bus_address_collision(doc: dict, label: str) -> None:
         bus_claims[inst["address"]] = inst["driver"]
 
 
-def check_no_instance_name_collision(doc: dict, label: str) -> None:
+def check_no_instance_name_collision(doc: _TomlDoc, label: str) -> None:
     # instance_name(driver, name_ext) collision (SPECIFICATION.md Part C.14.1).
     names = [inst["driver"] + (f"_{inst['name_ext']}" if inst.get("name_ext") else "") for inst in doc["instance"]]
     assert len(names) == len(set(names)), f"{label}: instance name collision in {names}"
 
 
-def check_notification_wiring_resolves_to_a_real_neopixel_instance(doc: dict, label: str) -> None:
+def check_notification_wiring_resolves_to_a_real_neopixel_instance(doc: _TomlDoc, label: str) -> None:
     # signal_sink is a required, TOML-visible reference to the neopixel instance.
     instances = {(inst["driver"], inst.get("name_ext", "")): inst for inst in doc["instance"]}
     notif_key = ("notification", "")
@@ -167,7 +172,7 @@ _NOTIFICATION_SIGNAL_WIRING = {
 }
 
 
-def check_notification_signal_wiring_resolves_if_present(doc: dict, label: str) -> None:
+def check_notification_signal_wiring_resolves_if_present(doc: _TomlDoc, label: str) -> None:
     # Each per-signal getter is optional; absence disables that warning signal rather than erroring.
     instances = {(inst["driver"], inst.get("name_ext", "")): inst for inst in doc["instance"]}
     notif = next((inst for inst in doc["instance"] if inst["driver"] == "notification"), None)
@@ -182,7 +187,7 @@ def check_notification_signal_wiring_resolves_if_present(doc: dict, label: str) 
         assert (sig["source"], "") in instances, f"{label}: notification's {key}.source references {sig['source']!r} but no such instance exists"
 
 
-def check_fram_wiring_resolves_if_present(doc: dict, label: str) -> None:
+def check_fram_wiring_resolves_if_present(doc: _TomlDoc, label: str) -> None:
     # fram_target is optional per instance; when present it must resolve to a real fram instance.
     instances = {(inst["driver"], inst.get("name_ext", "")): inst for inst in doc["instance"]}
     for inst in doc["instance"]:
@@ -196,7 +201,7 @@ def check_fram_wiring_resolves_if_present(doc: dict, label: str) -> None:
         assert ("fram", "") in instances, f"{label}: {inst['driver']}'s fram_target references 'fram' but no such instance exists"
 
 
-def check_device_wiring_resolves_if_present(doc: dict, label: str) -> None:
+def check_device_wiring_resolves_if_present(doc: _TomlDoc, label: str) -> None:
     # Mandatory-infra-to-optional-instance links, under [device.wiring]; both fields optional.
     instances = {(inst["driver"], inst.get("name_ext", "")): inst for inst in doc["instance"]}
     wiring = doc.get("device", {}).get("wiring", {})
@@ -208,14 +213,14 @@ def check_device_wiring_resolves_if_present(doc: dict, label: str) -> None:
         assert (target, "") in instances, f"{label}: device.wiring.{field} references {target!r} but no such instance exists"
 
 
-def check_no_mandatory_infra_modeled_as_instance(doc: dict, label: str) -> None:
+def check_no_mandatory_infra_modeled_as_instance(doc: _TomlDoc, label: str) -> None:
     # wifi/ntp/system must never appear as [[instance]] entries.
     drivers = {inst["driver"] for inst in doc["instance"]}
     leaked = drivers & _MANDATORY_INFRA_DRIVERS
     assert not leaked, f"{label}: {sorted(leaked)} modeled as [[instance]] - mandatory infrastructure belongs in [device], never as an instance"
 
 
-def check_device_infra_fields_present_and_valid(doc: dict, label: str) -> None:
+def check_device_infra_fields_present_and_valid(doc: _TomlDoc, label: str) -> None:
     # Required, not defaulted - a missing or wrong-typed field is a build-time error.
     cfg = doc.get("device")
     assert cfg is not None, f"{label}: no [device] table"
@@ -373,7 +378,7 @@ def test_klkizi_grkizi_schlafzi_share_identical_wiring(devices_dir: Path) -> Non
 # --- error-handling tests: each check above must actually fire on bad input ----------------------
 
 # A minimal, otherwise-valid single-device doc; each negative test mutates it to trigger one violation.
-_BASE_DOC: dict = {
+_BASE_DOC: _TomlDoc = {
     "device": {
         "name": "Test",
         "hostname": "SensorStationTest",
@@ -415,7 +420,7 @@ _BASE_DOC: dict = {
 }
 
 
-def _base_doc() -> dict:
+def _base_doc() -> _TomlDoc:
     return copy.deepcopy(_BASE_DOC)
 
 
@@ -501,7 +506,7 @@ def test_detects_a_singleton_driver_wrongly_declaring_name_ext() -> None:
 def test_detects_sgp40_missing_its_wiring_table() -> None:
     doc = _base_doc()
     del doc["instance"][1]["wiring"]
-    with pytest.raises(AssertionError, match="no \\[instance.wiring\\] table"):
+    with pytest.raises(AssertionError, match=r"no \[instance\.wiring\] table"):
         check_sgp40_wiring_resolves_to_real_sources(doc, "base")
 
 

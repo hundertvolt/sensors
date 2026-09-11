@@ -8,8 +8,8 @@ import sys
 # - same confirmed-safe pattern as test_setter_microdot_integration.py's own ext/ insertion.
 sys.path.insert(0, "digital_twin")
 
-from _crc8 import crc8, word  # noqa: E402
-from _sgp40_chip import Sgp40Chip  # noqa: E402
+from _crc8 import crc8, word
+from _sgp40_chip import Sgp40Chip
 
 
 class _FixedRandom:
@@ -87,7 +87,7 @@ def test_measure_raw_default_range_stays_inside_the_sgp40_datasheets_own_tick_ra
     # SRAW_VOC is documented as 0-65'535 ticks (datasheets/sgp40, Table 1) - the twin's own default
     # range must be a sensible sub-range of that, not the datasheet's full extremes.
     chip = Sgp40Chip()
-    assert 0 <= chip._min_raw and chip._max_raw <= 65535
+    assert chip._min_raw >= 0 and chip._max_raw <= 65535
     assert chip._min_raw < chip._max_raw
 
 

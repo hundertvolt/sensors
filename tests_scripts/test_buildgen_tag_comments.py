@@ -19,12 +19,12 @@ from pathlib import Path
 
 import pytest
 
-import buildgen.tag_comments as tag_comments
+from buildgen import tag_comments
 from buildgen.errors import BuildError
 from buildgen.tag_comments import CommentToken, _levenshtein, check_for_near_miss_tags, find_leading_word, iter_comment_tokens, looks_like_tag_payload
 
 
-def _tok(text: str, lineno: int = 1, col: int = 0, indented: bool = False) -> CommentToken:
+def _tok(text: str, lineno: int = 1, col: int = 0, *, indented: bool = False) -> CommentToken:
     return CommentToken(lineno, col, text, indented)
 
 
@@ -262,7 +262,7 @@ def test_looks_like_tag_payload_every_operator(op: str) -> None:
         ("# @requires a bit more care here", False),
     ],
 )
-def test_looks_like_tag_payload(text: str, expected: bool) -> None:
+def test_looks_like_tag_payload(text: str, *, expected: bool) -> None:
     assert looks_like_tag_payload(text) is expected
 
 
@@ -357,7 +357,7 @@ def test_check_for_near_miss_tags_typo_tolerance_narrows_for_a_short_tag_name(mo
     # Two edits away from a 3-letter name is most of the dictionary, so a short tag name (the
     # planned "@web") tolerates only one - otherwise adding it to the registry would start failing
     # builds over unrelated @-words. "wet" is one edit from "web"; "wed"/"we" would be too.
-    web = tag_comments.TagSpec("web", lambda text: tag_comments.looks_like_tag_payload(text))
+    web = tag_comments.TagSpec("web", tag_comments.looks_like_tag_payload)
     monkeypatch.setattr(tag_comments, "KNOWN_TAGS", (web,))
     with pytest.raises(BuildError, match="misspelled @web tag"):
         _check([_tok("# @wet name=x")])
@@ -366,7 +366,7 @@ def test_check_for_near_miss_tags_typo_tolerance_narrows_for_a_short_tag_name(mo
 
 def test_known_tag_names_mirrors_the_registry() -> None:
     # KNOWN_TAG_NAMES is the convenience view; KNOWN_TAGS is the real registry the scan walks.
-    assert tag_comments.KNOWN_TAG_NAMES == tuple(spec.name for spec in tag_comments.KNOWN_TAGS)
+    assert tuple(spec.name for spec in tag_comments.KNOWN_TAGS) == tag_comments.KNOWN_TAG_NAMES
 
 
 @pytest.mark.parametrize(
@@ -386,7 +386,7 @@ def test_known_tag_names_mirrors_the_registry() -> None:
         ("# @requires a bit more care here", "requires", False),
     ],
 )
-def test_each_family_recognizes_its_own_payload_shape_and_not_prose(text: str, family: str, expected: bool) -> None:
+def test_each_family_recognizes_its_own_payload_shape_and_not_prose(text: str, family: str, *, expected: bool) -> None:
     # A single shared heuristic would go blind on whichever shape it wasn't written for - the exact
     # silent miss the near-miss detector exists to prevent - so each family gates on its own shape.
     (spec,) = [s for s in tag_comments.KNOWN_TAGS if s.name == family]

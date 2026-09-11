@@ -154,10 +154,10 @@ def test_multiple_simultaneous_crossings_produce_sequential_correctly_colored_ra
     pixel, notify = make_pair()
 
     co2 = NotificationSignal(
-        "WarnCO2", _FakeSource("WarnCO2", 2000), "WarnCO2", (("WarnCO2", "int", 1600, 0, 3000, None),), (1, 0, 0)
+        "WarnCO2", _FakeSource("WarnCO2", 2000), "WarnCO2", (("WarnCO2", "int", 1600, 0, 3000, None),), (1, 0, 0),
     )
     voc = NotificationSignal(
-        "WarnVOC", _FakeSource("WarnVOC", 400), "WarnVOC", (("WarnVOC", "int", 350, 0, 500, None),), (0, 1, 0)
+        "WarnVOC", _FakeSource("WarnVOC", 400), "WarnVOC", (("WarnVOC", "int", 350, 0, 500, None),), (0, 1, 0),
     )
     notify.register(co2)
     notify.register(voc)

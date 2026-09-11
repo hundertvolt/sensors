@@ -31,7 +31,10 @@ if TYPE_CHECKING:
     from collections.abc import Coroutine
     from typing import Any, TypeVar
 
+    from asy_notification_service import _LocalTime  # the callback contract this file's stub fills
+
     T = TypeVar("T")
+    from print_log import ErrorLog
 
 _FIELD_WARN_CO2 = (("WarnCO2", "int", 1600, 0, 3000, None),)
 
@@ -116,11 +119,11 @@ class _FakeSource:
         return self
 
 
-async def _local_time_stub() -> "Any":
+async def _local_time_stub() -> "_LocalTime | None":
     return None
 
 
-async def _request_signal_stub(r: int, g: int, b: int, t: float) -> bool:
+async def _request_signal_stub(_r: int, _g: int, _b: int, _t: float) -> bool:
     return True
 
 
@@ -162,7 +165,7 @@ def test_driver_and_notify_service_errors_stay_in_separate_histories() -> None:
     pixel = make_pixel(manager)
     notify = make_notify(manager, _tmp_cfg_dir())
 
-    async def scenario() -> "tuple[dict, dict]":
+    async def scenario() -> "tuple[ErrorLog, ErrorLog]":
         await pixel.pr.setup()
         await notify.pr.setup()
         # NeopixelDriver structurally can't fail on any of its own real code paths (see its own
@@ -202,7 +205,7 @@ def test_both_histories_survive_a_simulated_reboot() -> None:
     pixel2 = make_pixel(manager2)
     notify2 = make_notify(manager2, cfg_path)  # same registration order/shape as before the reboot
 
-    async def after_reboot() -> "tuple[dict, dict]":
+    async def after_reboot() -> "tuple[ErrorLog, ErrorLog]":
         await pixel2.pr.setup()
         await notify2.pr.setup()
         pixel_log = await pixel2.pr.get_log("NEOPIXEL")

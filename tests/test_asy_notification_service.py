@@ -11,7 +11,9 @@ except ImportError:  # typing isn't available on the real MicroPython test inter
 
 if TYPE_CHECKING:
     from collections.abc import Coroutine
-    from typing import Any, TypeVar
+    from typing import Any, NoReturn, TypeVar
+
+    from crc_checks import CRC_Base
 
     T = TypeVar("T")
 
@@ -157,7 +159,7 @@ class _FastAsyncSleep:
         asyncio.sleep = _fast  # type: ignore[assignment]  # deliberate monkeypatch, not a real caller mismatch
         return self
 
-    def __exit__(self, *exc_info: "Any") -> None:
+    def __exit__(self, *exc_info: object) -> None:
         asyncio.sleep = self._real_sleep
 
 
@@ -175,14 +177,14 @@ def make_coordinator(
 
 
 def make_signal(
-    name: str = "WarnCO2", above: bool = True, value: "int | float | None" = 1000, color: "tuple[int, int, int]" = (1, 0, 0)
+    name: str = "WarnCO2", *, above: bool = True, value: "int | float | None" = 1000, color: "tuple[int, int, int]" = (1, 0, 0),
 ) -> "tuple[NotificationSignal, FakeValue]":
     fv = FakeValue(value, field=name)
     field_schema = ((name, "int", 1600, 0, 3000, None),)
     return NotificationSignal(name, fv, name, field_schema, color, above=above), fv
 
 
-async def _one_cycle(coordinator: NotificationCoordinator, task: "asyncio.Task[None]", wait: float = 0.1) -> None:
+async def _one_cycle(_coordinator: NotificationCoordinator, task: "asyncio.Task[None]", wait: float = 0.1) -> None:
     # monitor_loop() is an infinite loop; let it run through exactly one full iteration (including
     # any triggered flashes' settle sleeps) by giving it real wall-clock time, then cancel. `wait`
     # must cover every triggered signal's own 2*FlashDur settle sleep for a test to observe the
@@ -369,7 +371,7 @@ def test_each_int_float_field_boundary_values_accepted() -> None:
     coordinator.finalize()
     run(coordinator.cfgmgr.setup())
 
-    async def write_one(key: str, value: "Any") -> str:
+    async def write_one(key: str, value: "int | float | str | bool | None") -> str:
         results = await coordinator._set_dict_cfg({key: value}, coordinator.get_cfg_schema())
         return results[key]
 
@@ -392,7 +394,7 @@ def test_each_int_float_field_just_outside_bounds_rejected() -> None:
     coordinator.finalize()
     run(coordinator.cfgmgr.setup())
 
-    async def write_one(key: str, value: "Any") -> str:
+    async def write_one(key: str, value: "int | float | str | bool | None") -> str:
         results = await coordinator._set_dict_cfg({key: value}, coordinator.get_cfg_schema())
         return results[key]
 
@@ -413,13 +415,13 @@ def test_each_field_wrong_type_rejected() -> None:
     coordinator.finalize()
     run(coordinator.cfgmgr.setup())
 
-    async def write_one(key: str, value: "Any") -> str:
+    async def write_one(key: str, value: "int | float | str | bool | None") -> str:
         results = await coordinator._set_dict_cfg({key: value}, coordinator.get_cfg_schema())
         return results[key]
 
     async def scenario() -> None:
         assert await write_one("OnH", "10") == "Invalid"  # str instead of int
-        assert await write_one("OnH", True) == "Invalid"  # bool instead of int - type(), not isinstance()
+        assert await write_one("OnH", value=True) == "Invalid"  # bool instead of int - type(), not isinstance()
         assert await write_one("Interv", 100) == "Valid"  # int accepted for a float field, coerced (SPECIFICATION.md Part A.8)
         assert await write_one("FlashDur", "2.0") == "Invalid"  # str instead of float
         assert await write_one("AutoOn", 1) == "Invalid"  # int instead of bool
@@ -469,7 +471,7 @@ def test_registered_int_field_boundaries_and_coercion_enforced() -> None:
     coordinator.finalize()
     run(coordinator.cfgmgr.setup())
 
-    async def write_one(value: "Any") -> str:
+    async def write_one(value: "int | float | str | bool | None") -> str:
         results = await coordinator._set_dict_cfg({"WarnCO2": value}, coordinator.get_cfg_schema())
         return results["WarnCO2"]
 
@@ -504,7 +506,7 @@ def test_registered_float_field_boundaries_and_coercion_enforced() -> None:
     coordinator.finalize()
     run(coordinator.cfgmgr.setup())
 
-    async def write_one(value: "Any") -> str:
+    async def write_one(value: "int | float | str | bool | None") -> str:
         results = await coordinator._set_dict_cfg({"WarnHum": value}, coordinator.get_cfg_schema())
         return results["WarnHum"]
 
@@ -589,17 +591,17 @@ def test_fram_backed_variant_survives_a_reboot() -> None:
         def __init__(self) -> None:
             self.buf = bytearray(64)
 
-        def get_buffer(self) -> "Any":
+        def get_buffer(self) -> "_FakeFramChunk":
             return self
 
         def get_data_buf(self) -> bytearray:
             return self.buf
 
-        async def write_into(self, buf: "Any", override_pause: bool = False) -> bool:
+        async def write_into(self, buf: "_FakeFramChunk", *, override_pause: bool = False) -> bool:
             self.buf[:] = buf.get_data_buf()
             return True
 
-        async def read_into(self, buf: "Any", override_pause: bool = False) -> bool:
+        async def read_into(self, buf: "_FakeFramChunk", *, override_pause: bool = False) -> bool:
             buf.get_data_buf()[:] = self.buf
             return True
 
@@ -607,7 +609,7 @@ def test_fram_backed_variant_survives_a_reboot() -> None:
         def __init__(self, chunk: "_FakeFramChunk") -> None:
             self.chunk = chunk
 
-        def get_chunk(self, size: int, crc: "Any" = None, verify: int = 0, check_length: int = 8) -> "_FakeFramChunk":
+        def get_chunk(self, size: int, crc: "CRC_Base | None" = None, verify: int = 0, check_length: int = 8) -> "_FakeFramChunk":
             return self.chunk
 
     chunk = _FakeFramChunk()
@@ -701,7 +703,7 @@ def test_two_signals_failures_share_one_errno_but_distinct_names_in_message() ->
 
 
 # ---------------------------------------------------------------------------
-# _check_one()
+# _check_one
 # ---------------------------------------------------------------------------
 
 
@@ -782,7 +784,7 @@ def test_check_one_infinite_value_triggers_in_the_expected_direction() -> None:
 
 def test_check_one_none_value_is_not_triggered_no_crash() -> None:
     coordinator, _clock, _cb = make_coordinator()
-    signal, fv = make_signal("WarnCO2", value=None)
+    signal, _fv = make_signal("WarnCO2", value=None)
     coordinator.register(signal)
     coordinator.finalize()
     run(coordinator.cfgmgr.setup())
@@ -1013,7 +1015,7 @@ def test_sleep_window_boundaries_inclusive() -> None:
         clock.value = _FakeTime(hour, minute)
         cb.calls.clear()
         await coordinator._set_dict_cfg(
-            {"OnH": 10, "OnM": 0, "OffH": 18, "OffM": 0, "Interv": 3600.0, "FlashDur": 0.01}, coordinator.get_cfg_schema()
+            {"OnH": 10, "OnM": 0, "OffH": 18, "OffM": 0, "Interv": 3600.0, "FlashDur": 0.01}, coordinator.get_cfg_schema(),
         )
         task = coordinator.start_asy_notify_monitor()
         await _one_cycle(coordinator, task)
@@ -1044,7 +1046,7 @@ def test_sleep_window_just_after_off_bound_is_excluded() -> None:
 
     async def scenario() -> None:
         await coordinator._set_dict_cfg(
-            {"OnH": 10, "OnM": 0, "OffH": 18, "OffM": 0, "Interv": 3600.0, "FlashDur": 0.01}, coordinator.get_cfg_schema()
+            {"OnH": 10, "OnM": 0, "OffH": 18, "OffM": 0, "Interv": 3600.0, "FlashDur": 0.01}, coordinator.get_cfg_schema(),
         )
         task = coordinator.start_asy_notify_monitor()
         await _one_cycle(coordinator, task)
@@ -1211,7 +1213,7 @@ def test_set_override_led_above_the_max_clamps_and_reads_back_clamped() -> None:
 
 
 def test_malformed_own_config_read_degrades_gracefully_and_keeps_retrying() -> None:
-    coordinator, clock, cb = make_coordinator()
+    coordinator, clock, _cb = make_coordinator()
     clock.value = _FakeTime(12, 0)
     signal, _fv = make_signal("WarnCO2", value=2000)
     coordinator.register(signal)
@@ -1267,7 +1269,7 @@ def test_next_sleep_secs_floors_at_point_one_when_elapsed_exceeds_interv() -> No
 
 
 def test_zero_registered_signals_just_sleeps_no_crash() -> None:
-    coordinator, clock, cb = make_coordinator()
+    coordinator, clock, _cb = make_coordinator()
     clock.value = _FakeTime(12, 0)
     coordinator.finalize()
     run(coordinator.cfgmgr.setup())
@@ -1354,12 +1356,12 @@ class _OverflowingTime:
     # this replaces asy_notification_service's own module-level `time` name instead: a plain,
     # mutable module global, unlike the builtin module it points to. Only _now()'s own two calls run
     # while it's installed, so monitor_loop()'s ticks_ms()/ticks_diff() never see it.
-    def gmtime(self) -> "Any":
+    def gmtime(self) -> "tuple[int, ...]":
         import time as _real_time
 
         return _real_time.gmtime()
 
-    def mktime(self, _t: "Any") -> int:
+    def mktime(self, _t: "tuple[int, ...]") -> "NoReturn":
         raise OverflowError("past rp2's ~2037 32-bit epoch range")
 
 
@@ -1368,10 +1370,10 @@ class _RaisingGmtime:
     # same try block (time.gmtime() itself) instead of mktime() - both share one
     # `except (OverflowError, OSError)`, so this proves the guard isn't only reachable from the
     # mktime() half of that line.
-    def gmtime(self) -> "Any":
+    def gmtime(self) -> "NoReturn":
         raise OSError("RTC read failed")
 
-    def mktime(self, _t: "Any") -> int:
+    def mktime(self, _t: "tuple[int, ...]") -> "NoReturn":
         raise AssertionError("must not be reached - gmtime() itself already raised")
 
 
@@ -1386,7 +1388,7 @@ def test_now_mktime_overflow_returns_none_and_stores_a_none_timestamp() -> None:
     asy_notification_service.time = _OverflowingTime()  # type: ignore[assignment]  # deliberate monkeypatch, not a real caller mismatch
     try:
         assert coordinator._now() is None
-        run(coordinator._store_notif_data(True))
+        run(coordinator._store_notif_data(any_triggered=True))
     finally:
         asy_notification_service.time = original_time
     assert run(coordinator.get_data()) == (True, None)
@@ -1402,7 +1404,7 @@ def test_now_gmtime_raising_returns_none_and_stores_a_none_timestamp() -> None:
     asy_notification_service.time = _RaisingGmtime()  # type: ignore[assignment]  # deliberate monkeypatch, not a real caller mismatch
     try:
         assert coordinator._now() is None
-        run(coordinator._store_notif_data(False))
+        run(coordinator._store_notif_data(any_triggered=False))
     finally:
         asy_notification_service.time = original_time
     assert run(coordinator.get_data()) == (False, None)

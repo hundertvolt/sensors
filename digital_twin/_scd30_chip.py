@@ -13,7 +13,19 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from typing import Any
+    from typing import Protocol
+
+    from machine import Timer  # type-only: the runtime import of Timer stays inside _start_timer()
+
+    class _RandomSource(Protocol):
+        # Structural stand-in for the `random` module (the default) or a seeded random.Random -
+        # machine.py's configure_random_source() seam. Only uniform() is ever called here.
+        def uniform(self, a: float, b: float) -> float: ...
+
+    class _RdyPin(Protocol):
+        # Structural stand-in for machine.py's Pin (and any test's own pin fake) - only the
+        # twin-only simulate_edge() is ever called here.
+        def simulate_edge(self, new_value: int) -> None: ...
 
 _CMD_CONTINUOUS_MEASUREMENT = 0x0010
 _CMD_STOP_CONTINUOUS_MEASUREMENT = 0x0104
@@ -42,7 +54,7 @@ def _pack_float(value: float) -> bytes:
 class Scd30Chip:
     def __init__(
         self,
-        random_source: "Any | None" = None,
+        random_source: "_RandomSource | None" = None,
         min_co2: float = 400.0,
         max_co2: float = 2000.0,
         min_temp: float = 15.0,
@@ -53,7 +65,8 @@ class Scd30Chip:
         temp_step: float = 1.0,
         hum_step: float = 3.0,
         measurement_interval_s: int = 2,
-        rdy_pin: "Any | None" = None,
+        rdy_pin: "_RdyPin | None" = None,
+        *,
         auto_refresh: bool = True,
         state_path: "str | None" = None,
     ) -> None:
@@ -80,7 +93,7 @@ class Scd30Chip:
         self._rdy_pin = rdy_pin
         self.fault = FaultInjector()
         self.corrupt_next_measurement = False
-        self._timer: Any | None = None
+        self._timer: Timer | None = None
         self.state_path = state_path
         self._load_state()  # may override the *_s/_ambient_pressure/_altitude/_temp_offset_raw/
         # _asc_enabled defaults just set above - never the co2/temp/hum draws below, see class docstring
@@ -135,7 +148,7 @@ class Scd30Chip:
         self._timer.init(
             period=self._measurement_interval_s * 1000,
             mode=_Timer.PERIODIC,
-            callback=lambda t: self._produce_new_reading(),
+            callback=lambda _t: self._produce_new_reading(),
         )
 
     def _clamp(self, value: float, lo: float, hi: float) -> float:

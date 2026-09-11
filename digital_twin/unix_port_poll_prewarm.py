@@ -1,4 +1,4 @@
-"""Workaround for a confirmed MicroPython v1.28.0 Unix-port-only `extmod/modselect.c` segfault (pollfds-array growth corrupts non-fd poll objects; confirmed rp2-immune) — full mechanism and the fix's verified evidence: see `digital_twin/README.md`'s "Known gaps" section.
+"""Workaround for a confirmed MicroPython Unix-port-only `extmod/modselect.c` segfault (traced at v1.28.0; that file is unchanged at the current v1.29.0 pin) (pollfds-array growth corrupts non-fd poll objects; confirmed rp2-immune) — full mechanism and the fix's verified evidence: see `digital_twin/README.md`'s "Known gaps" section.
 Call `prewarm_poll_set()` as the very first statement of any entry point booting `sensortask_wozi`."""
 
 # asyncio.core is a private implementation module (the whole point here is reaching into its

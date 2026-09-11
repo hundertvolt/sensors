@@ -12,10 +12,10 @@ import sys
 # ext/microdot.py without touching MICROPYPATH/pyproject.toml/scripts/test.sh.
 sys.path.insert(0, "ext")
 
-import frozen_html  # type: ignore[import-not-found]  # noqa: E402,F401  # mounts /html on import
-from microdot import Microdot, Request  # type: ignore[import-not-found]  # noqa: E402
+import frozen_html  # type: ignore[import-not-found]  # noqa: F401  # mounts /html on import
+from microdot import Microdot, Request  # type: ignore[import-not-found]
 
-from asy_webserver_service import WebserverService  # noqa: E402
+from asy_webserver_service import WebserverService
 
 try:
     from typing import TYPE_CHECKING
@@ -23,18 +23,26 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from typing import Any
+    from collections.abc import Coroutine
+    from typing import Any, Protocol, TypeVar
+
+    T = TypeVar("T")
+
+    class _ResponseBody(Protocol):
+        # send_file() streams its body from a file-like object, not raw bytes - .read() is the
+        # only thing _decompress() below ever needs off it.
+        def read(self) -> bytes: ...
 
 
-def run(coro: "Any") -> "Any":
+def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
     return asyncio.run(coro)
 
 
-def _decompress(body: "Any") -> bytes:
+def _decompress(body: "_ResponseBody") -> bytes:
     # send_file() responses stream their body from a file-like object (VfsFrozen.open()'s own
     # BytesIO), not raw bytes - .read() first to get the real gzip bytes off the wire, matching what
     # a real HTTP client would receive. deflate.DeflateIO with AUTO auto-detects the gzip header
-    # (confirmed directly against the pinned v1.28.0 Unix-port build) - the same mechanism
+    # (confirmed directly against the pinned v1.29.0 Unix-port build) - the same mechanism
     # ffsmount.py's own VfsFrozen.open() would use for a freezefs-level --compress entry, applied
     # here to our own gzip-Content-Encoding bytes instead, since this project never uses freezefs's
     # own --compress (see CLAUDE.md).

@@ -4,14 +4,6 @@ Also carries `inject_hang()`/`maybe_hang()` — a real, blocking `time.sleep()` 
 
 import time
 
-try:
-    from typing import TYPE_CHECKING
-except ImportError:  # typing has no runtime presence on MicroPython, on-device or in the Unix-port test build
-    TYPE_CHECKING = False
-
-if TYPE_CHECKING:
-    pass
-
 
 class FaultInjector:
     def __init__(self) -> None:

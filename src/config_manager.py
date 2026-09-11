@@ -20,15 +20,23 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from typing import Any, Literal, NamedTuple, TypeVar
 
+    from print_log import ErrorLog
+
     T = TypeVar("T", int, float, str)
 
-    # One schema field: (name, type, def, min, max, special) - see module docstring. "special" is
-    # a single bypass value (exact-match exception to min/max, e.g. SCD30's AmbPres=0) or a tuple
-    # of allowed values (a discrete set, e.g. BMP3xx's OSR/IIR settings - see type_or_range_error).
+    # The project's canonical config/JSON scalar: every schema default, cached value, REST-supplied
+    # field value and _push_* dispatch payload is one of these (SPECIFICATION.md Part C.5.2 / G.2).
+    CfgValue = int | float | str | bool | None
+    # A field's "special" slot as _special_bypass() accepts it: one bypass scalar (exact-match
+    # exception to min/max, e.g. SCD30's AmbPres=0) or a discrete allowed-value set. Schema authors
+    # write const()-folded tuples (FieldSchema below), but a plain list works just as well.
+    CfgSpecial = int | float | str | tuple[int, ...] | tuple[float, ...] | tuple[str, ...] | list[int] | list[float] | list[str] | None
+
+    # One schema field: (name, type, def, min, max, special) - see module docstring.
     FieldSchema = tuple[
         str,
         str,
-        "int | float | str | bool | None",
+        CfgValue,
         "int | float | None",
         "int | float | None",
         "int | float | str | tuple[int, ...] | tuple[float, ...] | tuple[str, ...] | None",
@@ -45,11 +53,11 @@ if TYPE_CHECKING:
 from print_log import PrintLogHistory
 
 
-def _special_bypass(check_val: "Any", val_special: "Any", scalar_type: type, check_special: bool) -> "bool | None":
+def _special_bypass(check_val: "CfgValue", val_special: "CfgSpecial", scalar_type: type, *, check_special: bool) -> "bool | None":
     # Shared by every non-bool branch of type_or_range_error: val_special is a single scalar or a
-    # tuple/list of scalars (see ConfigSchema above). Returns True/False to short-circuit the
+    # tuple/list of scalars (see CfgSpecial above). Returns True/False to short-circuit the
     # caller (malformed special, or a valid bypass match), or None to fall to the range check.
-    if type(val_special) in (tuple, list):
+    if type(val_special) is tuple or type(val_special) is list:
         if any(type(v) is not scalar_type for v in val_special):
             return True  # malformed set (wrong-typed element) - reject regardless of check_val
         if check_special and check_val in val_special:
@@ -97,7 +105,7 @@ def schema_dict(schema: "ConfigSchema") -> "dict[str, FieldSchema]":  # {field_n
 
 
 def make_dict(
-    nt: "NamedTuple", fields: "tuple[str, ...]", name: str | None = None
+    nt: "NamedTuple", fields: "tuple[str, ...]", name: str | None = None,
 ) -> "dict[str, dict[str, int | float | str | None]]":  # {type_name: {field: value}} - fields is the same
     # literal tuple the caller's own namedtuple(name, fields) was built from (rp2's build ROM level
     # is MICROPY_CONFIG_ROM_LEVEL_EXTRA_FEATURES, one level below the MICROPY_CONFIG_ROM_LEVEL_
@@ -116,10 +124,12 @@ def make_dict(
     try:
         return {name: {field: getattr(nt, field) for field in fields}}
     except Exception:
-        return {name: {field: None for field in fields}}
+        return {name: dict.fromkeys(fields)}
 
 
-def coerce_numeric(check_val: "Any", scalar_type: type) -> "tuple[bool, Any]":
+def coerce_numeric(check_val: "CfgValue", scalar_type: type) -> "tuple[bool, int | float | Any]":
+    # Returned value: the coerced scalar when the flag is True (scalar_type is only ever int or
+    # float here), the caller's own raw value untouched when it's False - hence the Any arm.
     # Intent: accept only what's exactly representable as scalar_type, in either direction (see
     # SPECIFICATION.md Part A.8) - float -> int is accepted only when the value carries no
     # fractional part, rejected otherwise, never truncated/rounded, so a fat-fingered "12.5" can't
@@ -155,7 +165,7 @@ def coerce_numeric(check_val: "Any", scalar_type: type) -> "tuple[bool, Any]":
 
 
 def type_or_range_error(
-    check_val: "Any", field: "FieldSchema", check_special: bool = True
+    check_val: "CfgValue", field: "FieldSchema", *, check_special: bool = True,
 ) -> "tuple[bool, Any]":  # (True, check_val) if check_val doesn't satisfy field's own type/min/
     # max(/special) schema entry (coercion included) - (False, coerced_val) otherwise, where
     # coerced_val is check_val itself unless an int<->float coercion above actually applied.
@@ -167,7 +177,7 @@ def type_or_range_error(
             if not ok:
                 return True, check_val
             if val_special is not None:
-                bypass = _special_bypass(check_val, val_special, int, check_special)
+                bypass = _special_bypass(check_val, val_special, int, check_special=check_special)
                 if bypass is not None:
                     return bypass, check_val
             if type(val_max) is int and type(val_min) is int and val_min <= check_val <= val_max:
@@ -177,7 +187,7 @@ def type_or_range_error(
             if not ok:
                 return True, check_val
             if val_special is not None:
-                bypass = _special_bypass(check_val, val_special, float, check_special)
+                bypass = _special_bypass(check_val, val_special, float, check_special=check_special)
                 if bypass is not None:
                     return bypass, check_val
             if type(val_max) is float and type(val_min) is float and val_min <= check_val <= val_max:
@@ -186,7 +196,7 @@ def type_or_range_error(
             if type(check_val) is not str:
                 return True, check_val
             if val_special is not None:
-                bypass = _special_bypass(check_val, val_special, str, check_special)
+                bypass = _special_bypass(check_val, val_special, str, check_special=check_special)
                 if bypass is not None:
                     return bypass, check_val
             if type(val_max) is int and type(val_min) is int and val_min <= len(check_val) <= val_max:
@@ -201,7 +211,7 @@ def type_or_range_error(
 
 def check_cfg_get_default(
     field: "FieldSchema",
-) -> "tuple[bool, int | float | str | bool | None]":
+) -> "tuple[bool, CfgValue]":
     try:  # returns flag if value is used for storage and if the default, if valid
         _name, _type, def_val, _min, _max, special_val = field  # wrong length/shape -> ValueError, caught below
         use_value = True
@@ -214,9 +224,10 @@ def check_cfg_get_default(
         is_error, coerced_val = type_or_range_error(def_val, field, check_special=True)
         if is_error:
             return True, None  # self-check of defaults
-        return use_value, coerced_val
     except Exception:  # malformed field record
         return True, None
+    else:
+        return use_value, coerced_val
 
 
 if TYPE_CHECKING:
@@ -232,7 +243,7 @@ class ConfigManager:
         self.config_file = filename
         self.cfg_vals = cfg_vals
         self.valid = False
-        self._cache: dict[str, int | float | str | bool | None] = {}
+        self._cache: dict[str, CfgValue] = {}
 
     async def _get_values(self, keys: "ConfigSchema") -> "list[Any] | None":
         if not self.valid:
@@ -245,7 +256,7 @@ class ConfigManager:
             await self.pr.err_s(self.config_file, "- Config read error:", e, errno=6)
             return None
 
-    async def _get_converted_values(self, keys: "ConfigSchema", converter: "Callable[[Any], T]") -> "list[T] | None":
+    async def _get_converted_values(self, keys: "ConfigSchema", converter: "Callable[..., T]") -> "list[T] | None":
         values = await self._get_values(keys)
         if values is None:
             return None
@@ -254,13 +265,13 @@ class ConfigManager:
         except (TypeError, ValueError):
             return None
 
-    async def get_error_counter(self) -> "dict[str, dict[str, int | list[int] | list[str]]]":
+    async def get_error_counter(self) -> "ErrorLog":
         return await self.pr.get_log()
 
     async def reset_error_counter(self) -> None:
         await self.pr.reset()
 
-    async def get_dict(self, keys: "list[str]") -> "dict[str, int | float | str | bool | None] | None":
+    async def get_dict(self, keys: "list[str]") -> "dict[str, CfgValue] | None":
         # Reads _cache directly - no lock needed (write_config never awaits mid-mutation, so no
         # partial state is observable here; see module docstring for the cache design).
         if not self.valid:
@@ -291,7 +302,7 @@ class ConfigManager:
         return values
 
     async def write_config(
-        self, data: "dict[str, int | float | str | bool | None]", cfg_vals: "ConfigSchema"
+        self, data: "dict[str, CfgValue]", cfg_vals: "ConfigSchema",
     ) -> "tuple[bool, WriteValidity]":
         if not self.valid:
             await self.pr.err_s(self.config_file, "- Config is not valid, cannot write!", errno=9)
@@ -318,7 +329,7 @@ class ConfigManager:
                         await self.pr.err_s(self.config_file, "- Type / range error in", key, "- skipping!", errno=12)
                         dict_results[key] = "Invalid"
                         continue
-                    value = coerced_value  # use the coerced (e.g. int->float) shape for storage below
+                    # coerced_value (not the caller's raw one) is the shape stored below - e.g. int->float
                     if not use_value:
                         dict_results[key] = "Valid"
                         self.pr.evt(self.config_file, "- Key", key, "is valid but not in storage, skipping.")
@@ -327,8 +338,8 @@ class ConfigManager:
                         dict_results[key] = "Failed"
                         await self.pr.err_s(self.config_file, "- Key", key, "not found in config file, ignoring!", errno=13)
                         continue
-                    if new_cache[key] != value:
-                        new_cache[key] = value
+                    if new_cache[key] != coerced_value:
+                        new_cache[key] = coerced_value
                         dict_results[key] = "Valid"
                         changed = True
                     else:
@@ -340,15 +351,16 @@ class ConfigManager:
                     json.dump(new_cache, f)
                 self._cache = new_cache  # only commit once the write has actually succeeded
                 self.pr.evt(self.config_file, "- Config data was written.")
-                return True, dict_results
             except (MemoryError, OSError, ValueError, AttributeError) as e:  # file errors, a non-dict
                 # `data` param (AttributeError on .items()), or json.dump() exhausting the heap;
                 # ValueError is defensive since dump() no longer reads/reparses json here.
                 await self.pr.err_s(self.config_file, "- Error writing config data:", e, errno=14)
                 return False, {}
+            else:
+                return True, dict_results
 
     async def setup(self) -> None:
-        data: dict[str, Any] | None = None
+        data: dict[str, CfgValue] | None = None
         try:
             if (os.stat(self.config_file)[0] & 0x4000) == 0:  # 0x4000 = MP_S_IFDIR, MicroPython's own
                 # stat-mode bit (extmod/vfs.h), uniform across VFS backends incl. littlefs.
@@ -376,7 +388,7 @@ class ConfigManager:
             return
 
         rewrite = False  # don't write file unless required
-        valid_cfg: dict[str, int | float | str | bool | None] = {}  # create surely valid config
+        valid_cfg: dict[str, CfgValue] = {}  # create surely valid config
         for key, field in defaults.items():  # iterate through default config
             use_value, default_val = check_cfg_get_default(field)  # read and selfcheck
             if default_val is None:  # invalid config, no default or special-alone value
@@ -384,6 +396,7 @@ class ConfigManager:
                 return
             if not use_value:  # special-alone value
                 continue  # not used for storage, skip loop iteration
+            new_cfg: CfgValue
             if data is None:  # no or invalid config file
                 new_cfg = default_val  # immediately take default value
             else:  # file exists and is valid
@@ -422,8 +435,6 @@ class ConfigManager:
             self._cache = valid_cfg
             self.valid = True
             self.pr.one("Default data was written in", self.config_file, "- config is ready.")
-            return
         except (MemoryError, OSError, TypeError) as e:  # write failed, filename isn't a string, or
             # json.dump() exhausts the heap serializing valid_cfg
             await self.pr.err_s("Error writing config", self.config_file, "- config is not valid:", e, errno=4)
-            return

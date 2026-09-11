@@ -4,11 +4,14 @@ rule that a near-miss attempt at one must fail the build loud (BUILD_CHAIN_PLAN.
 
 import re
 import tokenize
-from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from buildgen.errors import BuildError
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 # Every comment-tag family this generator recognizes. Each carries its own "does this comment even
@@ -95,11 +98,14 @@ KNOWN_TAGS = (
 )
 KNOWN_TAG_NAMES = tuple(spec.name for spec in KNOWN_TAGS)
 
+_SHORT_TAG_NAME_LEN = 4  # 3-4 letters (the planned "@web") only tolerates one typo, see below
+
+
 # Generous enough to catch one missing/extra/swapped letter (e.g. "require", "requries",
 # "reqiures"), scaled down for a short tag name: two edits away from a 3-4 letter name (the planned
 # "@web") is most of the dictionary, so a short name only tolerates one.
 def _max_typo_distance(tag_name: str) -> int:
-    return 1 if len(tag_name) <= 4 else 2
+    return 1 if len(tag_name) <= _SHORT_TAG_NAME_LEN else 2
 
 # The rough shape every real tag's payload has, in two alternative forms - an identifier followed
 # by a comparison-like operator (value deliberately optional, so a truncated "bus.timeout>=" still

@@ -32,11 +32,14 @@ def find_default_class(path: Path, device: str, driver: str, toml_field: str) ->
     return None
 
 
-def default_init_params(class_node: "ast.ClassDef", path: Path, device: str, driver: str) -> "tuple[DefaultParam, ...]":
+def default_init_params(class_node: "ast.ClassDef", _path: Path, _device: str, _driver: str) -> "tuple[DefaultParam, ...]":
     # A class with no explicit __init__ genuinely takes zero constructor arguments (it inherits
     # object.__init__) - real, legal shape for a defaultable field with no meaningful constant at
     # all (§2.2's own uniform-shape example: signal_sink = {default = true}, no other keys) - not
-    # an error condition.
+    # an error condition. _path/_device/_driver are unused today (no error path exists yet in this
+    # function) but kept in the signature for the same "always have error context on hand" shape
+    # find_default_class() above uses - a future validation gap here (e.g. __init__ taking **kwargs)
+    # would need them.
     for item in class_node.body:
         if isinstance(item, ast.FunctionDef) and item.name == "__init__":
             positional = (item.args.posonlyargs + item.args.args)[1:]  # drop "self"

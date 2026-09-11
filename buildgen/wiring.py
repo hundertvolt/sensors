@@ -16,7 +16,7 @@ _SPECS = tuple(spec for spec in KNOWN_TAGS if spec.name == "wiring")
 # leaves the line matching no tag at all - which check_for_near_miss_tags() then reports as a
 # malformed @wiring tag rather than letting it pass as "no tag here".
 _TAG_RE = re.compile(
-    r"#+\s*@wiring\s+(?P<toml_field>\w+)\s+(?P<producer_class>\w+)\s+(?P<target>\w+)\s+(?P<required>required|optional)\s+(?P<mode>kwarg|attr|setter)\s*$"
+    r"#+\s*@wiring\s+(?P<toml_field>\w+)\s+(?P<producer_class>\w+)\s+(?P<target>\w+)\s+(?P<required>required|optional)\s+(?P<mode>kwarg|attr|setter)\s*$",
 )
 
 

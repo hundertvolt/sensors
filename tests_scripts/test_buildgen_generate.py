@@ -171,7 +171,7 @@ def test_cli_writes_module_and_boot_entry_to_out_dir(repo_root: Path, tmp_path: 
     ast.parse((out_dir / "sensortask_wozi.py").read_text())
 
 
-def test_cli_prints_module_source_without_out_dir(repo_root: Path, capsys: pytest.CaptureFixture) -> None:
+def test_cli_prints_module_source_without_out_dir(repo_root: Path, capsys: pytest.CaptureFixture[str]) -> None:
     from buildgen.generate import main
 
     exit_code = main([str(repo_root / "devices" / "wozi.toml")])
@@ -180,7 +180,7 @@ def test_cli_prints_module_source_without_out_dir(repo_root: Path, capsys: pytes
     assert "async def build_system(" in captured.out
 
 
-def test_cli_reports_build_error_on_stderr_and_exits_nonzero(tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
+def test_cli_reports_build_error_on_stderr_and_exits_nonzero(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     from buildgen.generate import main
 
     doc = base_doc()
@@ -266,6 +266,7 @@ def test_cli_entry_point_writes_both_files_and_exits_zero(tmp_path: Path, repo_r
         cwd=repo_root,
         capture_output=True,
         text=True,
+        check=False,
     )
     assert result.returncode == 0, result.stderr
     assert (out / "sensortask_wozi.py").is_file()
@@ -283,6 +284,7 @@ def test_cli_entry_point_reports_a_build_error_and_exits_nonzero(tmp_path: Path,
         cwd=repo_root,
         capture_output=True,
         text=True,
+        check=False,
     )
     assert result.returncode == 1
     assert "buildgen:" in result.stderr  # a human-readable reason, never a raw traceback

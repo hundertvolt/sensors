@@ -43,7 +43,7 @@ def _parse_expecting(tmp_path: Path, source: str, match: str) -> None:
 
 @pytest.mark.parametrize("mode", _MODES)
 @pytest.mark.parametrize("word,required", _REQUIREDNESS)
-def test_parse_wiring_requiredness_mode_cross_product(tmp_path: Path, word: str, required: bool, mode: str) -> None:
+def test_parse_wiring_requiredness_mode_cross_product(tmp_path: Path, word: str, *, required: bool, mode: str) -> None:
     (field,) = _parse(tmp_path, f"# @wiring fram_target AsyFramManager fram {word} {mode}\n")
     assert field == WiringField("fram_target", "AsyFramManager", "fram", required, mode)
 

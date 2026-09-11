@@ -13,12 +13,14 @@ away.
 ## Vendored, unmodified
 
 - **Microdot** ([`miguelgrinberg/microdot`](https://github.com/miguelgrinberg/microdot),
-  `ext/microdot.py`, pinned `v2.6.2`; a legacy, unmodified copy of the same version also ships as
+  `ext/microdot.py`, pinned `v2.6.2` — verified byte-identical to that tag; a legacy copy of a
+  much older, untagged snapshot between `v2.0.1` and `v2.1.0` also ships as
   `python/CommonDrivers/microdot.py`) — © 2019 Miguel Grinberg, MIT. License text:
   `ext/LICENSE-microdot`. See `CLAUDE.md`/`SPECIFICATION.md` Part A.5 for this project's
   hands-off vendoring policy for this file.
 - **freezefs** ([`bixb922/freezefs`](https://github.com/bixb922/freezefs), `ext/freezefs/`) — ©
-  2022 bixb922, MIT. License text: `ext/freezefs/LICENSE`.
+  2022 bixb922, MIT. License text: `ext/freezefs/LICENSE`. Upstream publishes no release tags, so
+  "current" here means `main`; synced and verified byte-identical to it on 2026-09-10.
 
 ## Restructured/rewritten, attribution retained (SPDX headers in the files themselves)
 

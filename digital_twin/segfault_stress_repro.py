@@ -32,14 +32,15 @@ async def _wait_until_serving(host: str, port: int, timeout_s: float = 10.0) -> 
         while True:
             try:
                 await _http_client.fetch(host, port, "GET", "/")
-                return
             except OSError:
                 await asyncio.sleep_ms(50)
+            else:
+                return
 
     await asyncio.wait_for(poll(), timeout_s)
 
 
-async def _hammer_client(host: str, port: int, n_requests: int, client_id: int, results: list) -> None:
+async def _hammer_client(host: str, port: int, n_requests: int, client_id: int, results: list[tuple[str, int, int, int | str]]) -> None:
     for i in range(n_requests):
         path = _ENDPOINTS[i % len(_ENDPOINTS)]
         try:
@@ -80,7 +81,7 @@ async def main(n_clients: int, n_requests: int, n_rounds: int, host: str, port: 
     machine.configure_fram_state_path(None)
     machine.configure_scd30_state_path(None)
     main_task = asyncio.get_event_loop().create_task(
-        sensortask_wozi.main(cfg_path=_CONFIG_DIR, web_host=host, web_port=port)
+        sensortask_wozi.main(cfg_path=_CONFIG_DIR, web_host=host, web_port=port),
     )
     try:
         await _wait_until_built()
@@ -88,7 +89,7 @@ async def main(n_clients: int, n_requests: int, n_rounds: int, host: str, port: 
         gc.collect()
         for round_n in range(n_rounds):
             print(f"round {round_n}: firing {n_clients} concurrent clients x {n_requests} requests each")
-            results: list = []
+            results: list[tuple[str, int, int, int | str]] = []
             await asyncio.gather(*[_hammer_client(host, port, n_requests, c, results) for c in range(n_clients)])
             ok = sum(1 for r in results if r[0] == "ok")
             err = sum(1 for r in results if r[0] == "err")

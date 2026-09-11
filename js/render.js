@@ -49,9 +49,9 @@ function readInputValue(rawInputValue, field) {
  * @returns {string}
  */
 function describeGetFailure(response, url) {
-    const body = /** @type {{descr?: string} | null} */ (response.body);
-    if (body?.descr) {
-        return `GET ${url} failed: ${body.descr}`;
+    const errorBody = /** @type {{descr?: string} | null} */ (response.body);
+    if (errorBody?.descr) {
+        return `GET ${url} failed: ${errorBody.descr}`;
     }
     if (response.body === null) {
         return `GET ${url} returned an empty body`;
@@ -348,7 +348,7 @@ export function renderSection(defs, section, mainEl) {
                 }
                 continue;
             }
-            const rendered = buildAndWireFieldGroup(fieldGroup, section, groupValues, () => void fetchOnce());
+            const rendered = buildAndWireFieldGroup(fieldGroup, section, groupValues, () => { fetchOnce(); });
             if (existing) {
                 existing.replaceWith(rendered);
             } else {
@@ -395,8 +395,8 @@ export function renderSection(defs, section, mainEl) {
         return stop;
     }
 
-    void fetchOnce();
-    return () => {};
+    fetchOnce();
+    return () => { /* a non-polling section has nothing running to stop */ };
 }
 
 /**

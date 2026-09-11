@@ -17,6 +17,7 @@ _SPECS = tuple(spec for spec in KNOWN_TAGS if spec.name == "limits")
 # "@limits" would be read as a tag with an unintelligible domain instead of as the prose it is.
 _TAG_RE = re.compile(r"#+\s*@limits\s+(?P<field>\w+)\s+(?=.*(?:\.\.|[{}]))(?P<payload>\S.*?)\s*$")
 _SET_RE = re.compile(r"^in\s*\{(?P<values>[^{}]*)\}$")
+_RANGE_PARTS = 2  # a range payload is always exactly <min>..<max>
 
 
 @dataclass(frozen=True)
@@ -53,7 +54,7 @@ def _parse_payload(payload: str, path: Path, lineno: int, device: str, driver: s
         return LimitField(field, frozenset(choices))
 
     parts = payload.split("..")
-    if len(parts) != 2:
+    if len(parts) != _RANGE_PARTS:
         raise BuildError(
             device,
             f"{path}:{lineno}: @limits {field} payload {payload!r} is neither a range (<min>..<max>, '*' for unbounded) nor a choice set (in {{a, b}})",

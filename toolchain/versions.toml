@@ -11,7 +11,7 @@
 # `--latest` to auto-detect and write back the newest stable tag), then re-run the
 # installer — it updates in place.
 [micropython]
-ref = "v1.28.0"
+ref = "v1.29.0"
 
 [toolchain]
 board = "RPI_PICO_W"
@@ -28,4 +28,9 @@ apt_packages = [
     # interpreter, not just CPython+stubs - see BACKLOG.md's "Self-contained venv via uv") needs
     # libffi-dev for its ffi module; the rest of its deps overlap with what's already listed above.
     "libffi-dev",
+    # scripts/test.sh and scripts/run_digital_twin_ci.sh both grant CAP_NET_BIND_SERVICE to the
+    # built Unix-port binary (setcap, from libcap2-bin) so the real port-53 DNS-server test can
+    # bind - present by default on a GitHub runner and a normal Ubuntu install, but not in a
+    # minimal image, where its absence only surfaces AFTER the whole toolchain build.
+    "libcap2-bin",
 ]

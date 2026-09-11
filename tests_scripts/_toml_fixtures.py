@@ -8,9 +8,15 @@ of hand-editing another near-identical TOML blob."""
 import copy
 import json
 from pathlib import Path
+from typing import Any
+
+# A parsed/to-be-serialized TOML table - str keys, arbitrarily nested str/int/float/bool/list/dict
+# values (matches buildgen.model.TomlDoc's own shape; kept as a local alias since this module is
+# deliberately import-independent from buildgen/ - see the module docstring).
+TomlDoc = dict[str, Any]
 
 
-def base_doc() -> dict:
+def base_doc() -> TomlDoc:
     # A minimal, valid device: one of everything (scd30/sgp40/fram/neopixel/notification), deep
     # copy per call so tests can freely mutate their own instance.
     return copy.deepcopy(
@@ -50,7 +56,7 @@ def base_doc() -> dict:
                     },
                 },
             ],
-        }
+        },
     )
 
 
@@ -62,7 +68,7 @@ def _dump_scalar(v: object) -> str:
     return str(v)
 
 
-def dump_toml(doc: dict) -> str:
+def dump_toml(doc: TomlDoc) -> str:
     lines: list[str] = []
     device = doc.get("device")
     if device is not None:
@@ -93,7 +99,7 @@ def dump_toml(doc: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
-def write_doc(tmp_path: Path, name: str, doc: dict) -> Path:
+def write_doc(tmp_path: Path, name: str, doc: TomlDoc) -> Path:
     path = tmp_path / f"{name}.toml"
     path.write_text(dump_toml(doc))
     return path

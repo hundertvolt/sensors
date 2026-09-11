@@ -9,8 +9,6 @@ try:
 except ImportError:  # typing has no runtime presence on MicroPython, on-device or in the Unix-port test build
     TYPE_CHECKING = False
 
-if TYPE_CHECKING:
-    pass
 
 _OPCODE_WREN = 0x06
 _OPCODE_WRDI = 0x04
@@ -133,7 +131,12 @@ class FramChip:
         elif opcode == _OPCODE_RDID:
             self._pending_op = _OPCODE_RDID
 
-    def readinto(self, buf: bytearray, write_value: int = 0x00) -> None:
+    # _write_value: the SPI bus fills the MOSI line with it while clocking a read out, so a
+    # device-side fake never reads it. Named for machine.SPI.readinto()'s own second argument,
+    # which is positional-only there - no caller can pass it by keyword.
+    # bytearray | memoryview, matching SPI.readinto()/asy_spi_driver.py's own signature: the body
+    # only uses len(buf) and buf[:] = ..., both valid on a writable memoryview.
+    def readinto(self, buf: "bytearray | memoryview", _write_value: int = 0x00) -> None:
         self.fault.maybe_hang("readinto")
         self.fault.maybe_raise("readinto")
         if self._pending_op == _OPCODE_READ and self._pending_addr is not None:

@@ -98,6 +98,12 @@ point at a flagged assumption being wrong, not at a real product bug. Resolved i
 through, kept (not deleted) so a reader mid-investigation doesn't wonder whether something was ever
 a live question:
 
+- **The bench has never run MicroPython 1.29.0.** The refactor's pin moved 1.28.0 → 1.29.0 in an
+  audit session with no real-hardware go-ahead, so every finding behind it (SPECIFICATION.md Part
+  F.5) is source-, map-file- or twin-derived and the board still runs whatever was last flashed.
+  Flash the dev bench deliberately before reading any run as a 1.29 result, and see BACKLOG.md's
+  "Deferred" list for the three items that specifically want on-target confirmation (the new SPI
+  RX-overrun raise site, the `deinit()` no-ops, the SRAM-placement win).
 - ~~Does `mpremote`'s implicit soft-reset re-execute `modules/_boot.py`/`boot.py`/`main.py`?~~ —
   **resolved: no.** Confirmed against the pinned MicroPython C source and empirically on real
   hardware: only a genuine `hard_reset()` resumes the live system; `exec()`/`run_isolated()` never
@@ -614,7 +620,7 @@ sees it a moment later - an isolated repro (2026-09-08) showed this can persist 
 consecutive attempts, not just one. `_join_dut_hotspot_with_reverify_retry()`'s reverify window is
 30s/2s (widened from an original 15s/1s that let a `TimeoutError` escape uncaught, crashing the
 retry loop on attempt 1 instead of exhausting all attempts) and catches `TimeoutError` alongside
-`HardwareTestFailure`. A repro with both fixes in place still occasionally exhausted 3 attempts once;
+`HardwareTestFailureError`. A repro with both fixes in place still occasionally exhausted 3 attempts once;
 tracing into `src/asy_wifi_service.py` found a plausible (not confirmed) explanation:
 `_configure_hotspot_ap()` re-runs `wlan.config()`+`wlan.active(True)` on every `_run_hotspot_mode()`
 loop iteration for as long as no client is connected (every `wifi_refresh_sec`, 5s default) - a real,
