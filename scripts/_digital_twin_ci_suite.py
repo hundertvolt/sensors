@@ -150,6 +150,22 @@ def _wait_for_errcount_above(name: str, floor: int, timeout_s: float) -> dict[st
     return entry
 
 
+def _wait_for_error_type_count(name: str, target: int, timeout_s: float) -> dict[str, Any]:
+    # Same "poll, never guess a sleep" reasoning as _wait_for_errcount_above(), but keyed on the
+    # "E"-typed count _error_type_count() extracts rather than the raw counter (which a "W" recovery
+    # notice also bumps). A fixed sleep here encodes a host-speed assumption: on this project's own
+    # bench Pi4 a bounded 3-fault SGP40 run needs ~8s to record all three and settle, where an x86
+    # CI runner needs ~2s, so a 6s sleep passes there and samples mid-sequence here.
+    deadline = time.monotonic() + timeout_s
+    entry: dict[str, Any] = {}
+    while time.monotonic() < deadline:
+        entry = _errcount(name)
+        if _error_type_count(entry) >= target:
+            return entry
+        time.sleep(1.0)
+    return entry
+
+
 def _wait_until_serving(proc: subprocess.Popen[str], timeout_s: float = 20.0) -> None:
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
@@ -402,8 +418,9 @@ def _run_5_recovery_after_bounded_fault(micropython_bin: str, logs_dir: Path) ->
     proc = _spawn(micropython_bin, ["--fault", f"sgp40:writeto:{_SGP40_BOUNDED_FAULT_COUNT}"], log5)
     try:
         _wait_until_serving(proc)
-        time.sleep(6.0)  # comfortably more than 3 SGP40 read cycles (~1Hz) - the fault should be exhausted by now
-        entry = _errcount("SGP40")
+        # Poll rather than sleep a guessed interval: the fault is exhausted when the third "E"
+        # lands, which is a real event to wait for, not a wall-clock duration to assume.
+        entry = _wait_for_error_type_count("SGP40", _SGP40_BOUNDED_FAULT_COUNT, timeout_s=30.0)
         errors_after_exhaustion = _error_type_count(entry)
         _check(condition=errors_after_exhaustion == _SGP40_BOUNDED_FAULT_COUNT, msg=f"Run 5: SGP40's bounded fault ({_SGP40_BOUNDED_FAULT_COUNT} failures) was fully recorded, no more ({entry!r})")
         time.sleep(3.0)  # a few more cycles past exhaustion - real ("E") errors should NOT keep climbing
