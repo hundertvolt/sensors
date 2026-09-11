@@ -55,7 +55,24 @@ constraints.
   then reconciles it against `UART_C_PORT_CHANGELOG.md` — the running log of protocol changes made
   during the Python module's `src/` promotion — re-verifying each entry's conformance assumption
   against the real C source. That log file is deleted once the reconciliation is done; this entry
-  comes out with it.
+  comes out with it. **It is prototypical, exactly like this repo's legacy Python, with no device in
+  the field running it** (owner, 2026-09-11) — so the reconciliation has no deployed pair to keep
+  working and no flag day to schedule; both sides are simply reflashed together. Real hardware
+  running the C side exists and can be connected to the dev board, so the reconciliation session can
+  test the two implementations against each other for real rather than only reading them side by
+  side.
+- **The auto-builder needs an importable, selectable `uart_crossover` module before a dev firmware
+  can exercise the UART link.** The parallel automatic-build work resolves dependencies by scanning
+  imports and pulling in whatever the selected modules require. `asy_uart_comm.py` is a *submodule*,
+  not an include-selectable one, and it has no upstream module today — nor does it need one for bare
+  testing. So a dev build that should exercise the bench crossover jumper has nothing that would
+  cause the module to be included at all. The fix belongs to the auto-builder integration, not to the
+  UART promotion: a selectable module named `uart_crossover` that constructs the two instances across
+  the jumper and pulls `asy_uart_comm` in behind it. **No file, no code and no placeholder is wanted
+  in the promotion branch** — this entry exists so the integration session finds the requirement
+  instead of discovering a silently UART-less firmware. It is also the enabler for the promotion's
+  own H3/H4 tiers (`tests_hardware/flash/`, `tests_hardware/bench/`): those cannot run until a dev
+  firmware that actually contains the module can be built, so this entry is their gating dependency.
 
 ## Open questions (need owner input or further investigation)
 

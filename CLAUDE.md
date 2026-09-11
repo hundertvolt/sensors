@@ -116,8 +116,17 @@ information):
   the former keeps a mixed-version pair working, the latter is a coordinated flag-day needing the
   owner's decision. **The C side's conformance is expected but unverified** — it mirrors the Python
   implementation's intended behavior, but may not share every known flaw and may have its own, so
-  every Class A entry must be re-verified against the real C source once it lands. Two further
-  standing facts: the module is **standalone/self-contained** (its BME688/BSEC first use case is out
+  every Class A entry must be re-verified against the real C source once it lands. **It is, however,
+  prototypical — exactly like this repo's legacy Python — with no device in the field running it**
+  (owner, 2026-09-11), so no change recorded in the changelog can break a live pair: both sides are
+  reflashed together at reconciliation, and the flag-day framing above describes an obligation to
+  record, not a deployment risk to weigh. Real hardware running the C side exists and can be
+  connected to the dev board, making the promoted module testable against the genuine second
+  implementation rather than only against itself over the bench crossover jumper. **The protocol's
+  parameters (`payload_size`, `timeout`, baud) stay fixed by out-of-band agreement** — owner
+  decision, 2026-09-11: no version or capability negotiation is to be added, so a mismatched pair
+  is diagnosed (it looks like a dead link that nonetheless carries bytes), never negotiated. Two
+  further standing facts: the module is **standalone/self-contained** (its BME688/BSEC first use case is out
   of scope and constrains nothing), and it is **strictly initiator/responder, never a symmetric
   peer** — there is no collision arbitration, so simultaneous initiation is out of contract.
 - **`dev` config is a bench rig only** — its quirks (e.g. LED/Neopixel REST routes referencing an

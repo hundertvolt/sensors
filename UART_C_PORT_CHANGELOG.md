@@ -10,6 +10,16 @@ but **how far that mirroring extends to the known flaws is unverified** — it m
 others, and may have introduced its own. Every entry below is therefore a task for the reconciliation
 session, not a description of what the C code already does.
 
+**Deployment status (owner, 2026-09-11): the C implementation is prototypical, exactly like this
+repo's legacy Python.** There is no device in the field running it, so **no pair can be broken by
+any change recorded here** — neither a receiver-strictness change nor an emitted-bytes flag day has
+a live cost today. The two sides are reflashed together whenever the reconciliation happens. Real
+hardware running the C side exists and can be connected to the dev board, so the promoted module is
+testable against the genuine second implementation rather than only against itself over the
+crossover jumper. This removes the *risk* from the entries below, not the *obligation*: the point of
+this file is that the reconciliation session finds every change already written down instead of
+re-deriving it from two diverged sources.
+
 ## How to use this file
 
 Every change to the module during its `src/` promotion gets an entry, in one of two classes:

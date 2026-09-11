@@ -1030,8 +1030,19 @@ cannot reach.
 **Spec.** Real hardware, dev bench, over the permanent jumper, under the project owner's go-ahead
 given directly in the running session.
 
+**Blocked on the auto-builder, not on this branch.** `asy_uart_comm.py` is a submodule, not an
+include-selectable one, and it has no upstream module — so nothing pulls it into a dev firmware
+today. A selectable `uart_crossover` module is what makes this tier runnable; it belongs to the
+auto-builder integration and is recorded in BACKLOG.md, deliberately with no file, code or
+placeholder on this branch. H3 and H4 are written now and run once that lands.
+
 **Purpose.** Real timing, real UART peripheral behaviour, real `poll_wait_ms` latency — the three
 things no fake reproduces.
+
+**Beyond the jumper.** Hardware running the real C implementation exists and can be connected to the
+dev board (§3.12), so this tier eventually covers genuine cross-implementation interop, not just the
+self-compatibility the jumper proves. That is the reconciliation session's run, not this branch's —
+but the tier is shaped so the peer can be swapped for the Arduino without rewriting the tests.
 
 | # | Trigger | Symptom if unhandled | Required handling |
 |---|---|---|---|
@@ -1061,7 +1072,7 @@ mismatched `payload_size` fails loudly rather than silently corrupting.
 **Failure tests.** `[bench]` an injected link fault does not disturb the API, and an API overload
 does not corrupt a transfer.
 
-**Sources.** C.8 tier 4, E.6.1.
+**Sources.** C.8 tier 4, E.6.1. Gated by the same `uart_crossover` build dependency as H3.
 
 ### H5 — Fault-injection adapter seam
 
@@ -1199,6 +1210,18 @@ Owner decisions, 2026-09-11, with the derivations they drive:
 11. **CRC/framing ownership.** `asy_uart_driver.py` gains a framing-codec concept (B2), which
     resolves changelog A11's open design question. The mechanism is Class B; selecting COBS is A11's
     own Class A flag day.
+12. **The C implementation is prototypical, with no device in the field.** Exactly the state this
+    repo's legacy Python is in. Consequence for this branch: Phase D's tightened receiver validation
+    (D4.1-D4.6) has **no live pair to break** — it rejects frames the legacy accepted, and there is
+    no deployed Arduino relying on that tolerance. The flag-day framing in `UART_C_PORT_CHANGELOG.md`
+    is therefore an obligation to *record*, not a risk to weigh: both sides are reflashed together at
+    reconciliation. Real hardware running the C side exists and can be connected to the dev board, so
+    cross-implementation interop becomes testable at the reconciliation (H3), not merely readable.
+13. **Protocol parameters stay fixed.** `payload_size`, `timeout` and baud remain out-of-band
+    agreements; **no version or capability negotiation is added**, now or as part of the
+    reconciliation. Consequence: a mismatched pair is *diagnosed*, never recovered — D2.5/D2.6's
+    "bytes arriving, not one frame ever validating" signature is the whole mechanism, and C2.2's
+    construction-time check plus G1.6's single shared constant are what stop it arising locally.
 
 # 4. Legacy violation map
 
@@ -1241,6 +1264,10 @@ Both follow CLAUDE.md's "flag, don't silently change" rule.
   B1.2) — a defect in already-promoted code, in the exact mechanism J.5 designates as the recovery
   route for a blocked listener. It is a prerequisite for E5, so this branch must fix it; it is
   reported rather than folded in quietly.
+- **The auto-builder has no way to include this module in a dev firmware** — BACKLOG.md. It is a
+  submodule, not include-selectable, with no upstream module; a selectable `uart_crossover` module is
+  what a dev build exercising the crossover jumper needs. Owner's direction: record it, add nothing
+  here — no file, no code, no placeholder. It is H3/H4's gating dependency.
 - **Seven `src/` modules number `errno`/`wrnno` inside the range `base_classes.py` reserves** —
   BACKLOG.md item 16. No live clash today; a real defect the moment any of them gains a `logger=`
   reach-through, which is precisely the pattern this module adopts.
@@ -1253,8 +1280,11 @@ Each verified by running it, not by inspection:
   findings, and the finding count on untouched files is unchanged.
 - Every item above has its function tests **and** its failure tests, and every `Fx.y` row has at
   least one test that fails if its handling is removed (I3.4).
-- The flash and bench comm-hazard tiers run clean on the dev bench over the real crossover jumper,
-  under the project owner's go-ahead given directly in that session.
+- The flash and bench comm-hazard tiers (H3/H4) are **written**, and run clean on the dev bench over
+  the real crossover jumper once the auto-builder can produce a firmware containing the module
+  (BACKLOG.md's `uart_crossover` entry) — under the project owner's go-ahead given directly in that
+  session. Their *authoring* is this branch's done criterion; their *first green run* is gated on a
+  dependency outside it, and that gap is stated rather than quietly dropped.
 - §4's table is fully struck through — every listed violation actually fixed, not deferred.
 - `SPECIFICATION.md`, `UART_C_PORT_CHANGELOG.md`, `BACKLOG.md` and README.md's doc map are updated in
   the same change set.
