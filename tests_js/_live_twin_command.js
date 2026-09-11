@@ -11,7 +11,10 @@ import { fileURLToPath } from "node:url";
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const TOOLCHAIN_DIR = process.env.PICO_TOOLCHAIN_DIR || path.join(homedir(), "pico-toolchain");
 const MICROPYTHON_BIN = path.join(TOOLCHAIN_DIR, "micropython", "ports", "unix", "build-standard", "micropython");
-const MICROPYPATH = "src:digital_twin:ext:frozen_modules:.frozen";
+// build/generated_src first: no static src/sensortask_wozi.py exists any more
+// (BUILD_CHAIN_PLAN.md's Session 6 finish criterion) - package.json's own "pretest"/
+// "pretest:coverage" hooks generate it fresh there, via buildgen, before this spawns.
+const MICROPYPATH = "build/generated_src:src:digital_twin:ext:frozen_modules:.frozen";
 const HOST = "127.0.0.1";
 // Distinct from every other fixed port this repo already uses for a twin/integration run (8080
 // manual walkthrough, 18080 Python's own automated CI suite, 19300+ Python's
