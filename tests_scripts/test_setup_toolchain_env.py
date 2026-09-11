@@ -281,19 +281,30 @@ def _fake_run_for_existing_bridge(recorded_run: list[list[str]], channel: str = 
     return value for every `nmcli -g` call regardless of which field it asked for (which used to
     let get_interface_mac() silently receive "6\n" as an interface name and swallow the
     resulting SetupError - never actually exercising the mismatch-detection logic this fixture
-    now models directly)."""
+    now models directly).
+
+    Models `nmcli -g`'s own ':' escaping faithfully: it returns 'D8\:3A\:...' unless `--escape no`
+    is passed. Not modelling that is exactly how the MAC check shipped unconditionally broken - the
+    fake handed back a plain 'aa:bb:cc:dd:ee:ff' no real nmcli would ever produce, so the comparison
+    passed here while never once matching on real hardware. Keeping the escaping modelled is what
+    makes the no-warning test below a genuine regression guard on `--escape no` staying put."""
 
     def fake_run(cmd: list[str], cwd: Path | None = None, check: bool = True, env: dict[str, str] | None = None) -> str:
         recorded_run.append(cmd)
-        if cmd[:3] == ["nmcli", "-g", "802-11-wireless.channel"]:
-            return f"{channel}\n"
-        if cmd[:3] == ["nmcli", "-g", "connection.interface-name"]:
-            return f"{eth_iface}\n"
-        if cmd[:3] == ["nmcli", "-g", "bridge.mac-address"]:
-            return f"{bridge_mac}\n"
         if cmd[:4] == ["ip", "-o", "link", "show"]:
             return f"2: {eth_iface}    link/ether {real_mac} brd ff:ff:ff:ff:ff:ff"
-        return ""
+        if cmd[0] != "nmcli" or "-g" not in cmd:
+            return ""
+        escaped = not any(cmd[i:i + 2] == ["--escape", "no"] for i in range(len(cmd) - 1))
+        field = cmd[cmd.index("-g") + 1]
+        value = {
+            "802-11-wireless.channel": channel,
+            "connection.interface-name": eth_iface,
+            "bridge.mac-address": bridge_mac,
+        }.get(field)
+        if value is None:
+            return ""
+        return f"{value.replace(':', chr(92) + ':') if escaped else value}\n"
 
     return fake_run
 

@@ -56,13 +56,17 @@ class BenchBridge:
         return iface
 
     def ap_ssid(self) -> str:
-        return _nmcli("-g", "802-11-wireless.ssid", "connection", "show", self.ap_conn).strip()
+        # `--escape no`: `nmcli -g` escapes every ':' in a value as '\:', so an SSID/PSK containing
+        # one would be handed to the DUT with stray backslashes and simply fail to associate - a
+        # credential bug that presents as "WiFi flakiness". Colon-free for a bench-generated AP
+        # (secrets.token_urlsafe), but not for a hand-made one or a $BENCH_AP_PASSWORD override.
+        return _nmcli("--escape", "no", "-g", "802-11-wireless.ssid", "connection", "show", self.ap_conn).strip()
 
     def ap_password(self) -> str:
         """The real, current WPA2 PSK for this bridge's AP - needs `--show-secrets` (nmcli
         withholds it otherwise, even as root; ap_ssid()'s plain `-g` query doesn't need this).
         Lets conftest.py's `dut_ip` fixture recover stale DUT WiFi credentials automatically."""
-        return _nmcli("--show-secrets", "-g", "802-11-wireless-security.psk", "connection", "show", self.ap_conn).strip()
+        return _nmcli("--show-secrets", "--escape", "no", "-g", "802-11-wireless-security.psk", "connection", "show", self.ap_conn).strip()
 
     # -- fault injection: attacking the DUT's *uplink* (the bridge is the AP the DUT connects to) --
 
