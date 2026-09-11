@@ -319,7 +319,7 @@ information):
   walks driver source via the real stdlib `ast`, never imports `src/` itself (real MicroPython-only
   names like `machine`/`neopixel` aren't available under plain CPython there). The pre-refactor
   deployed codebase (`python/`, `modules/`) has no lint/type config yet; extending scope there is a
-  separate future decision, not assumed by this setup. All nine are expected to stay fully clean — every
+  separate future decision, not assumed by this setup. All eight are expected to stay fully clean — every
   scope in this setup is fully-reviewed, freely-editable code (see "Hard rules" above), not WIP;
   there's no tracked-debt scope left to compare `digital_twin/` against since `improved-quality/`
   was deleted (see "Hard rules" above). `digital_twin/`'s own
@@ -672,9 +672,9 @@ rm -rf "$CHROOT"
 ```
 
 **What counts as passing**: `lint.sh`/`typecheck.sh`/`scripts/test.sh` all run to completion with
-exit 0 — all nine scopes this setup covers (see "Code quality tooling" above) are fully-reviewed
+exit 0 — all eight scopes this setup covers (see "Code quality tooling" above) are fully-reviewed
 code expected to stay fully clean (confirmed: `lint.sh` and all three `typecheck.sh` passes report
-zero findings as of the nine-scope extension), so a nonzero exit from either one
+zero findings as of the eight-scope extension), so a nonzero exit from either one
 here is a real regression to chase down, not an expected/tracked finding to compare against a
 session sandbox's own baseline count. `scripts/test.sh`'s tests must likewise actually pass (exit
 0, every test PASS) — a test failure here is a real regression too.
