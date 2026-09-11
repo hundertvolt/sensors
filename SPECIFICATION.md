@@ -44,15 +44,25 @@ python/
   IndividualDrivers/      only copied in if a device config needs them
   Manifest/manifest.py    MicroPython freeze manifest
 src/                     Fully-reviewed/tested refactor code, freely editable (Part D). Includes
-                          src/sensortask_wozi.py (A.7), src/sensortask_dev.py (dev bench, B.11/H.5),
-                          src/asy_webserver_service.py (A.8). improved-quality/ (former WIP staging)
-                          has been fully retired and deleted.
+                          src/asy_webserver_service.py (A.8). No static src/sensortask_*.py entry
+                          point any more (BUILD_CHAIN_PLAN.md's Session 6 finish criterion) - every
+                          device's own sensortask_<device>.py + boot entry is generated at build
+                          time by buildgen/ from devices/<device>.toml instead (see C.14, H.5, this
+                          Part's own build/ entry below). improved-quality/ (former WIP staging) has
+                          been fully retired and deleted.
 ext/                     Vendored third-party code, hands-off (CLAUDE.md)
   microdot.py               Microdot v2.6.2, unmodified (A.5)
   freezefs/                 freezefs 2.4, unmodified - gzip+freeze pipeline for html_stub/ (A.9)
-boot_entry/              Real firmware entry point for sensortask_wozi.py/sensortask_dev.py
-  wozi_boot.py/dev_boot.py  the only files that block on asyncio.run(main()) - kept separate so
-                            sensortask_*.py stays import-safe for tests
+devices/                 One TOML file per device variant (BUILD_CHAIN_PLAN.md) - the single source
+                          of truth for that device's hardware/wiring facts; buildgen/ turns each one
+                          into a real firmware build.
+buildgen/                Host-CPython device-TOML-to-firmware-module generator (BUILD_CHAIN_PLAN.md,
+                          Part C.14) - AST-parses src/ driver files, never imports them (real
+                          MicroPython-only names aren't available under plain CPython here).
+build/                   Gitignored, build-time-only output tree (scripts/build_firmware.py's
+                          default --output location) - generation is never committed
+                          (BUILD_CHAIN_PLAN.md's "Core design decisions"); `rm -rf build/` is the
+                          full cleanup.
 digital_twin/            Hardware simulator for I2C/SPI/WiFi under the MicroPython Unix-port
                           interpreter (A.10, digital_twin/README.md, Part C.11 point 9)
 frozen_modules/          Gitignored build artifact (build_frozen_html.sh's gzip+freezefs output) -
@@ -110,12 +120,14 @@ stage, plus unit-tests, digital-twin-e2e and a real `firmware.uf2` build; the st
 is the legacy `python/`+`build-*.sh` pipeline, BACKLOG.md). Files land in `src/` once reviewed
 against Part D.
 
-Prototype covers `src/sensortask_wozi.py` ("wozi", A.7) and `src/sensortask_dev.py` (dev bench,
-physically flashed, B.11/H.5) — not yet `arzi`/`neu`. Goal: same top-level features as today's
-deployed units, not a feature change. A future per-variant build-script generator (one
-setup-definition file → every variant's app/website pair) is planned but not built (A.8's
-registration API and A.9's `HTML_SRC_DIRS` are shaped around it). Real-hardware genericization for
-`arzi`/`neu` is open (BACKLOG.md).
+Originally prototyped as hand-written `src/sensortask_wozi.py` ("wozi", A.7) and
+`src/sensortask_dev.py` (dev bench, physically flashed, B.11/H.5) — not yet `arzi`/`neu`. That
+per-variant build-script generator has since been built (`buildgen/`, BUILD_CHAIN_PLAN.md): every
+one of the 6 real device variants (`wozi`/`dev`/`arzi`/`klkizi`/`grkizi`/`schlafzi`, one TOML file
+each under `devices/`) now gets its own `sensortask_<device>.py` + boot entry generated at build
+time, and neither hand-written file exists in `src/` any more (BUILD_CHAIN_PLAN.md's Session 6
+finish criterion). Goal throughout: same top-level features as today's deployed units, not a
+feature change.
 
 ## A.4 Architecture — deep reference
 
@@ -198,8 +210,8 @@ registration API and A.9's `HTML_SRC_DIRS` are shaped around it). Real-hardware 
   `NotificationSignal.color` is a per-channel weight (0/1) scaled by the shared `FlashBri` at
   trigger time. Config field names drop the "Led" prefix everywhere (`WarnCO2` not `LedWarnCO2`) —
   a deliberate wire-format change; only legacy `html_raw/` isn't updated (accepted debt, H.1).
-- Deployed task supervisor is a hand-rolled loop duplicated per device file;
-  `src/sensortask_wozi.py`'s `main()` instead calls `system_service.py`'s real
+- Deployed task supervisor is a hand-rolled loop duplicated per device file; every generated
+  `sensortask_<device>.py`'s `main()` instead calls `system_service.py`'s real
   `start_and_check_tasks()`/`start_timers()`.
 - **Functional behaviors confirmed intentional by the project owner — don't "fix" these:**
   air-quality LED sequencing (one color per condition, paused between flashes); FRAM SGP40 backup
@@ -275,13 +287,20 @@ be fetched, say so explicitly.
 the whole family shares the same register map/protocol, so `asy_bmp3xx_driver.py` treating BMP390's
 `0x60` chip ID the same as the other two is correct — the PDF's absence is a documentation gap only.
 
-## A.7 `src/sensortask_wozi.py` construction order and dependency graph
+## A.7 wozi's construction order and dependency graph
+
+Historically documented against a hand-written `src/sensortask_wozi.py`; that file no longer exists
+(BUILD_CHAIN_PLAN.md's Session 6 finish criterion) - `buildgen.generate.generate_device()` now
+generates the equivalent `sensortask_wozi.py`/boot entry at build time from `devices/wozi.toml`
+(Part C.14), reproducing the exact same construction order/FRAM chunk layout described below. This
+section stays the architectural reference for *why* that order is what it is; the generator is what
+actually emits it now.
 
 `build_system(*, cfg_path="", debug=None, web_host="0.0.0.0", web_port=80) -> None` does pure
 construction (every object assigned to a module-level global) plus a `setup()` batch; `main()`
 calls `build_system()` then `start_timers()`/`start_and_check_tasks()`. Neither blocks at import
-time — the real entry point, `boot_entry/wozi_boot.py` (`asyncio.run(main())`), is kept separate so
-`import sensortask_wozi` stays safe under tests.
+time — the real entry point (the generated boot entry, `asyncio.run(main())`) is kept separate so
+importing the generated device module stays safe under tests.
 
 **Why order matters**: `AsyFramManager` is a bump-pointer allocator — instantiation order is
 on-chip layout and must stay identical across firmware versions (A.4's determinism rule).
@@ -426,9 +445,9 @@ source dir(s) (`html_stub/` default, `HTML_SRC_DIRS` overridable), then runs `py
 compressed=True, file_extension=".gz")`). Output goes to `frozen_modules/` (gitignored), not
 `.frozen/`: `.frozen/` is a hardcoded MicroPython import-machinery sentinel
 (`MP_FROZEN_PATH_PREFIX`) — any path starting with that string routes to the compiled-in frozen
-table, so a real on-disk file there is silently unimportable. `src/sensortask_wozi.py` does a
-module-level `import frozen_html`, mounting `/html` as a side effect; `WebserverService(...,
-static_mount="/html")` registers the static route pair.
+table, so a real on-disk file there is silently unimportable. Every generated
+`sensortask_<device>.py` does a module-level `import frozen_html`, mounting `/html` as a side
+effect; `WebserverService(..., static_mount="/html")` registers the static route pair.
 
 `tests/test_frozen_html_integration.py` is the real-pipeline proof;
 `tests/test_asy_webserver_service.py`'s Section G exercises the generic route-wiring against a
@@ -449,8 +468,9 @@ hook actually stages the right content.
 
 `digital_twin/` fakes `machine`/`network`/`neopixel` at the same raw bus-transaction mocking
 boundary `tests/machine.py` uses, but with real-time-firing `Timer`s and plausible sensor values,
-so `src/sensortask_wozi.py` runs under the Unix-port interpreter and behaves like real hardware.
-Independent of `tests/`; the swap is pure `MICROPYPATH` ordering. See `digital_twin/README.md`.
+so the generated `sensortask_wozi.py` runs under the Unix-port interpreter and behaves like real
+hardware. Independent of `tests/`; the swap is pure `MICROPYPATH` ordering. See
+`digital_twin/README.md`.
 
 **Chain-completeness requirement, generalized beyond sensor drivers**: any new module joins the
 digital twin, provided it can form a complete chain. A new sensor driver needs the C.11 point 9
@@ -623,8 +643,11 @@ assumes `python/` is checked out as `py-include/python` alongside `micropython`,
 genericized (BACKLOG.md).
 
 **The `src/`-based build (parallel pipeline)**: `scripts/build_firmware.py <device> [--output
-PATH]` assembles a real `firmware.uf2` from `src/` + `ext/microdot.py` + the real website (H) —
-build-only. Every device needs its own `boot_entry/<device>_boot.py`.
+PATH]` assembles a real `firmware.uf2` from a `buildgen`-generated device entry module + `src/` +
+`ext/microdot.py` + the real website (H) — build-only. Every device needs its own
+`devices/<device>.toml` (BUILD_CHAIN_PLAN.md); the generated boot entry (`buildgen.codegen.
+generate_boot_entry_source()`) replaces the former hand-written `boot_entry/<device>_boot.py`
+(retired, Session 6's finish criterion).
 
 **That entry point is frozen under the literal name `"main.py"`, NOT imported from a custom
 `_boot.py` — load-bearing**, re-confirmed against pinned v1.29.0: `ports/rp2/main.c`'s boot sequence
@@ -2554,8 +2577,9 @@ loop stops feeding the watchdog — the same backstop principle as a wedged bus/
 **(e) Prove there are no memory issues under native `gc` defaults, first** — every stress test runs
 with `gc.threshold(-1)` before ever running with a chosen threshold; a test only passing with a
 threshold was never proving the code path memory-safe. **(f) A `gc.threshold()` value is defense in
-depth on top of an already-safe design, never the fix itself** — `boot_entry/*_boot.py` sets
-`gc.threshold(32768)` for exactly this reason, chosen *after* the `/status` fix already eliminated
+depth on top of an already-safe design, never the fix itself** — every generated boot entry
+(`buildgen.codegen.generate_boot_entry_source()`, formerly the hand-written `boot_entry/*_boot.py`)
+sets `gc.threshold(32768)` for exactly this reason, chosen *after* the `/status` fix already eliminated
 the real-hardware `MemoryError` with no threshold change at all. Don't "fix" a failing (e)-stage
 test by reaching for a threshold change instead of the underlying allocation pattern.
 

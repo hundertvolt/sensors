@@ -3,9 +3,10 @@
 # requires-python = ">=3.11"
 # dependencies = []
 # ///
-"""Assembles a real, deployable firmware.uf2 from src/ + ext/microdot.py + the real website for
-one device (SPECIFICATION.md Part B.11, including why boot_entry/<device>_boot.py is frozen under
-the literal name "main.py"). A clean build is necessary, not sufficient, for a device to boot."""
+"""Assembles a real, deployable firmware.uf2 from a buildgen-generated device module + ext/microdot.py
++ the real website for one device (SPECIFICATION.md Part B.11, including why the generated boot
+entry is frozen under the literal name "main.py"). A clean build is necessary, not sufficient, for
+a device to boot."""
 
 # Usage (from anywhere, via uv):
 #     uv run scripts/build_firmware.py wozi
@@ -29,11 +30,19 @@ import setup_toolchain as st  # type: ignore[import-not-found]  # noqa: E402
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 from _strip_type_checking import strip_type_checking_blocks  # type: ignore[import-not-found]  # noqa: E402
 
+# buildgen/ lives at the repo root alongside scripts/ - not a subdirectory needing its own
+# sys.path entry the way toolchain/scripts above do, but this script is invoked with an arbitrary
+# cwd (via uv run from anywhere - see the Usage comment above), so REPO_ROOT itself still needs to
+# be on sys.path for `import buildgen` to resolve.
+sys.path.insert(0, str(REPO_ROOT))
+from buildgen.errors import BuildError  # noqa: E402
+from buildgen.generate import generate_device  # noqa: E402
+
 # Mirrors boards/RPI_PICO_W/manifest.py + boards/manifest.py combined - the default manifest's own
 # require()s and its freeze("$(PORT_DIR)/modules") (the stock, always-returns _boot.py + rp2.py)
 # are reused unchanged; {stage_dir} freeze() below adds our own modules on top, including each
-# device's boot_entry/<device>_boot.py content staged under the literal name "main.py" (see this
-# file's own docstring for why).
+# device's buildgen-generated boot entry staged under the literal name "main.py" (see this file's
+# own docstring for why).
 _MANIFEST_TEMPLATE = """\
 include("$(PORT_DIR)/boards/{board}/manifest.py")
 freeze({stage_dir!r})
@@ -53,36 +62,59 @@ def _stage_stripped(src_file: Path, dest: Path) -> None:
 
 
 def build_stage_dir(stage_dir: Path, device: str) -> None:
-    # Every device needs its own boot_entry/<device>_boot.py real entry point (see
-    # boot_entry/wozi_boot.py's/boot_entry/dev_boot.py's own docstrings). Fail loud, before staging
-    # anything, if the device this build was asked for has no boot entry point at all.
-    boot_module = f"{device}_boot"
-    boot_entry_file = REPO_ROOT / "boot_entry" / f"{boot_module}.py"
-    if not boot_entry_file.is_file():
-        raise RuntimeError(f"no boot_entry/{boot_module}.py for device {device!r} - every device needs its own boot_entry/<device>_boot.py")
+    # Every device needs its own devices/<device>.toml (buildgen's own device definition) - fail
+    # loud, before staging anything, converting buildgen's own BuildError (malformed TOML,
+    # unresolved wiring, ...) into a plain RuntimeError so this function's own contract (raise
+    # RuntimeError on any build-impossible condition) stays uniform for every failure mode below.
+    device_toml = REPO_ROOT / "devices" / f"{device}.toml"
+    try:
+        generated = generate_device(device_toml, REPO_ROOT / "src", REPO_ROOT / "ext")
+    except BuildError as e:
+        raise RuntimeError(str(e)) from e
 
-    # This script freezes src/*.py alongside its own infra files (microdot.py, main.py,
-    # frozen_html.py) into the SAME flat stage_dir - a future src/ file sharing one of those names
-    # would be silently overwritten (or would silently overwrite the infra file copied after it)
-    # with no error, shipping wrong firmware content. Fail loud instead.
-    reserved = {"microdot.py", "main.py", "frozen_html.py"}
-    src_files = sorted((REPO_ROOT / "src").glob("*.py"))
-    collisions = reserved & {f.name for f in src_files}
+    # Resolve buildgen's own computed frozen-module set (BUILD_CHAIN_PLAN.md's "Frozen-module
+    # selection is dependency-driven") to real files - only this device's actual transitive
+    # dependency closure gets staged, not every src/*.py file unconditionally (a real, smaller-
+    # firmware behavior change from this script's own pre-buildgen shape). Each module resolves to
+    # exactly one of src/ or ext/ (e.g. "microdot" naturally resolves to ext/microdot.py, since
+    # asy_webserver_service.py - itself in buildgen.frozen_modules.CORE_MODULES - imports it).
+    module_files: dict[str, Path] = {}
+    for module in generated.frozen_modules:
+        src_file = REPO_ROOT / "src" / f"{module}.py"
+        ext_file = REPO_ROOT / "ext" / f"{module}.py"
+        if src_file.is_file():
+            module_files[module] = src_file
+        elif ext_file.is_file():
+            module_files[module] = ext_file
+        else:
+            raise RuntimeError(f"buildgen computed {module!r} as a frozen module for device {device!r} but no matching file exists under src/ or ext/ - a buildgen bug, not a device misconfiguration")
+
+    # This script freezes every resolved module alongside its own infra files (main.py,
+    # frozen_html.py, and the generated device entry module itself) into the SAME flat stage_dir -
+    # a future src/ file sharing one of those names would be silently overwritten (or would
+    # silently overwrite the infra file copied after it) with no error, shipping wrong firmware
+    # content. Fail loud instead.
+    entry_module = f"sensortask_{generated.model.device}"
+    reserved = {"main.py", "frozen_html.py", f"{entry_module}.py"}
+    collisions = reserved & {f"{m}.py" for m in module_files}
     if collisions:
-        raise RuntimeError(f"src/ file(s) collide with this build's own reserved staging names: {sorted(collisions)}")
+        raise RuntimeError(f"generated module(s) for device {device!r} collide with this build's own reserved staging names: {sorted(collisions)}")
 
-    for py_file in src_files:
-        _stage_stripped(py_file, stage_dir / py_file.name)
-    _stage_stripped(REPO_ROOT / "ext" / "microdot.py", stage_dir / "microdot.py")
-    # Frozen under the literal name "main.py", not "<device>_boot.py" - see this module's own
-    # docstring for the source-confirmed reason (pyexec_file_if_exists("main.py") checks the frozen
-    # table before the filesystem, and runs after mp_usbd_init(); a custom _boot.py that never
-    # returns means USB never initializes at all).
-    _stage_stripped(boot_entry_file, stage_dir / "main.py")
+    for module, path in sorted(module_files.items()):
+        _stage_stripped(path, stage_dir / f"{module}.py")
+
+    # The buildgen-generated device entry module (sensortask_<device>.py-equivalent) and its boot
+    # entry - freshly generated text, never read off disk, so there is nothing to strip. Frozen
+    # under the literal name "main.py", not "<device>_boot.py" - see this module's own docstring
+    # for the source-confirmed reason (pyexec_file_if_exists("main.py") checks the frozen table
+    # before the filesystem, and runs after mp_usbd_init(); a custom _boot.py that never returns
+    # means USB never initializes at all).
+    (stage_dir / f"{entry_module}.py").write_text(generated.module_source)
+    (stage_dir / "main.py").write_text(generated.boot_entry_source)
 
     # The real website, built fresh for this device and frozen under the same "frozen_html" name
-    # src/sensortask_wozi.py's own `import frozen_html` already expects (SPECIFICATION.md Part
-    # A.9) - no src/ code change needed to pick up the real content instead of html_stub/.
+    # the generated entry module's own `import frozen_html` already expects (SPECIFICATION.md Part
+    # A.9) - no generated-module change needed to pick up the real content instead of html_stub/.
     log(f"Building the real website for device={device!r}")
     subprocess.run(
         [str(REPO_ROOT / "scripts" / "build_website.sh"), device, str(stage_dir / "frozen_html.py")],
@@ -93,7 +125,7 @@ def build_stage_dir(stage_dir: Path, device: str) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("device", help='Device name, matching an html/definitions/<device>.json file, e.g. "wozi"')
+    parser.add_argument("device", help='Device name, matching a devices/<device>.toml file, e.g. "wozi"')
     parser.add_argument("--output", type=Path, default=None, help="Output path for the built firmware.uf2 (default: build/firmware-<device>.uf2)")
     parser.add_argument(
         "--toolchain-dir",
@@ -104,9 +136,9 @@ def main() -> int:
     parser.add_argument("--jobs", type=int, default=os.cpu_count() or 4, help="Parallel make jobs")
     args = parser.parse_args()
 
-    definitions_file = REPO_ROOT / "html" / "definitions" / f"{args.device}.json"
-    if not definitions_file.is_file():
-        print(f"error: no definitions file at {definitions_file}", file=sys.stderr)
+    device_toml = REPO_ROOT / "devices" / f"{args.device}.toml"
+    if not device_toml.is_file():
+        print(f"error: no device definition at {device_toml}", file=sys.stderr)
         return 1
 
     versions = st.load_versions(REPO_ROOT / "toolchain" / "versions.toml")
@@ -152,6 +184,6 @@ def main() -> int:
 if __name__ == "__main__":
     try:
         sys.exit(main())
-    except (subprocess.CalledProcessError, st.SetupError) as exc:
+    except (subprocess.CalledProcessError, st.SetupError, RuntimeError) as exc:
         print(f"\nFAILED: {exc}", file=sys.stderr)
         sys.exit(1)

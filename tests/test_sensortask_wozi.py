@@ -13,6 +13,7 @@ import sys
 sys.path.insert(0, "ext")
 
 import machine
+import sensortask_wozi
 from _fram_chip_fake import FakeMB85RS64V
 from _shared_rest_roundtrip import (
     assert_named_modules_constructed,
@@ -22,7 +23,6 @@ from _shared_rest_roundtrip import (
 from microdot import Request, Response  # type: ignore[import-not-found]
 
 import asy_spi_driver
-import sensortask_wozi
 from print_log import PrintLog, PrintLogHistory, PrintLogHistoryStore
 
 # Same one-process-per-test-file swap as every other asy_fram_*-touching test file (see their own
@@ -66,7 +66,7 @@ def status_body(res: "Response") -> bytes:
 # ---------------------------------------------------------------------------
 # Per-test config-file isolation - same pattern as test_ntp_fram_system_integration.py's own
 # _tmp_cfg_dir(): build_system() constructs five real ConfigManager-backed modules (conn, ntp,
-# sgp_reader, bmp_reader, notify_service), each of which writes/reads a real config_<NAME>.cfg file
+# sgp40, bmp3xx, notification), each of which writes/reads a real config_<NAME>.cfg file
 # at its cfg_path - repeated calls across test_* functions in this one process must not collide on
 # the same files, and must not touch the real repo-root config files either.
 # ---------------------------------------------------------------------------
@@ -204,11 +204,11 @@ def test_build_system_constructs_every_legacy_named_module() -> None:
             "spi0",
             "fram",
             "sysfunct",
-            "sgp_reader",
-            "bmp_reader",
-            "scd_reader",
-            "pixel",
-            "notify_service",
+            "sgp40",
+            "bmp3xx",
+            "scd30",
+            "neopixel",
+            "notification",
             "watchdog",
         ),
     )
@@ -219,13 +219,13 @@ def test_scd30s_own_i2c_bus_uses_a_clock_stretch_timeout_wide_enough_for_it() ->
     # (datasheets/scd30/..._Interface_Description.pdf p.2) - rp2's own I2C timeout default is
     # 50ms (DEFAULT_I2C_TIMEOUT, ports/rp2/machine_i2c.c), so whichever bus SCD30 sits on must
     # override it or that expected stretch surfaces as a spurious OSError roughly once a day.
-    # Looked up through scd_reader itself (not assumed to be i2c0) - wozi wires SCD30 to i2c0
+    # Looked up through scd30 itself (not assumed to be i2c0) - wozi wires SCD30 to i2c0
     # today, but a future variant could wire it to a different bus (BACKLOG.md's "Per-variant
     # generator" entry); this test, unlike the FRAM-chunk assertions below, stays correct as-is
     # for that case.
     run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
-    assert sensortask_wozi.scd_reader is not None
-    scd_bus = sensortask_wozi.scd_reader.scd.i2c_scd30.i2c_device.i2c
+    assert sensortask_wozi.scd30 is not None
+    scd_bus = sensortask_wozi.scd30.scd.i2c_scd30.i2c_device.i2c
     assert scd_bus._i2c is not None
     assert scd_bus._i2c.freq == 50000
     assert scd_bus._i2c.timeout >= 150000
@@ -238,11 +238,11 @@ def test_scd30s_own_i2c_bus_uses_a_clock_stretch_timeout_wide_enough_for_it() ->
 
 
 def test_build_system_wires_the_wifi_led_callback_after_both_exist() -> None:
-    # conn.set_ext_led(pixel) - the one cross-wiring step that must run after both objects exist.
+    # conn.set_ext_led(neopixel) - the one cross-wiring step that must run after both objects exist.
     # Confirmed indirectly: AsyConnTime's own ext_led slot is set.
     run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
     assert sensortask_wozi.conn is not None
-    assert sensortask_wozi.conn.ext_led is sensortask_wozi.pixel
+    assert sensortask_wozi.conn.ext_led is sensortask_wozi.neopixel
 
 
 def test_build_system_is_independently_callable_and_returns() -> None:
@@ -351,7 +351,7 @@ def test_fram_chunk_allocation_order_matches_the_documented_seven_chunk_sequence
     # (timestamped) -> BMP3xx_Reader(chunk) -> NeopixelDriver(chunk) ->
     # NotificationCoordinator(chunk), in that order, unconditionally. SCD30 now constructs before
     # SGP40 (ordering-hazard #1, SPECIFICATION.md Part A.7/C.14 - SGP40 holds a direct reference to
-    # scd_reader as its temperature_source/humidity_source, so the producer must exist first).
+    # scd30 as its temperature_source/humidity_source, so the producer must exist first).
     assert calls == ["chunk", "chunk", "chunk", "timestamped", "chunk", "chunk", "chunk"]
 
 
@@ -361,24 +361,24 @@ def test_fram_chunks_are_all_successfully_allocated_not_out_of_memory() -> None:
     # in-memory-only on allocation failure rather than raising (base_classes.py's own contract) -
     # assert the happy path actually got real FRAM-backed chunks, not a silently-degraded one.
     assert sensortask_wozi.sysfunct is not None
-    assert sensortask_wozi.sgp_reader is not None
-    assert sensortask_wozi.bmp_reader is not None
-    assert sensortask_wozi.scd_reader is not None
-    assert sensortask_wozi.pixel is not None
-    assert sensortask_wozi.notify_service is not None
+    assert sensortask_wozi.sgp40 is not None
+    assert sensortask_wozi.bmp3xx is not None
+    assert sensortask_wozi.scd30 is not None
+    assert sensortask_wozi.neopixel is not None
+    assert sensortask_wozi.notification is not None
     assert isinstance(sensortask_wozi.sysfunct.pr, PrintLogHistoryStore)
     assert sensortask_wozi.sysfunct.pr.fram is not None
-    assert isinstance(sensortask_wozi.sgp_reader.pr, PrintLogHistoryStore)
-    assert sensortask_wozi.sgp_reader.pr.fram is not None
-    assert sensortask_wozi.sgp_reader.ts_storage is not None
-    assert isinstance(sensortask_wozi.bmp_reader.pr, PrintLogHistoryStore)
-    assert sensortask_wozi.bmp_reader.pr.fram is not None
-    assert isinstance(sensortask_wozi.scd_reader.pr, PrintLogHistoryStore)
-    assert sensortask_wozi.scd_reader.pr.fram is not None
-    assert isinstance(sensortask_wozi.pixel.pr, PrintLogHistoryStore)
-    assert sensortask_wozi.pixel.pr.fram is not None
-    assert isinstance(sensortask_wozi.notify_service.pr, PrintLogHistoryStore)
-    assert sensortask_wozi.notify_service.pr.fram is not None
+    assert isinstance(sensortask_wozi.sgp40.pr, PrintLogHistoryStore)
+    assert sensortask_wozi.sgp40.pr.fram is not None
+    assert sensortask_wozi.sgp40.ts_storage is not None
+    assert isinstance(sensortask_wozi.bmp3xx.pr, PrintLogHistoryStore)
+    assert sensortask_wozi.bmp3xx.pr.fram is not None
+    assert isinstance(sensortask_wozi.scd30.pr, PrintLogHistoryStore)
+    assert sensortask_wozi.scd30.pr.fram is not None
+    assert isinstance(sensortask_wozi.neopixel.pr, PrintLogHistoryStore)
+    assert sensortask_wozi.neopixel.pr.fram is not None
+    assert isinstance(sensortask_wozi.notification.pr, PrintLogHistoryStore)
+    assert sensortask_wozi.notification.pr.fram is not None
 
 
 class _DeadFramChip(FakeMB85RS64V):
@@ -409,11 +409,11 @@ def test_build_system_never_insists_on_fram_hardware_being_available() -> None:
     assert sensortask_wozi.fram.fram is not None
     assert sensortask_wozi.fram.fram.initialized is False  # the dead chip, confirmed never ready
     assert sensortask_wozi.sysfunct is not None
-    assert sensortask_wozi.sgp_reader is not None
-    assert sensortask_wozi.bmp_reader is not None
-    assert sensortask_wozi.scd_reader is not None
-    assert sensortask_wozi.pixel is not None
-    assert sensortask_wozi.notify_service is not None
+    assert sensortask_wozi.sgp40 is not None
+    assert sensortask_wozi.bmp3xx is not None
+    assert sensortask_wozi.scd30 is not None
+    assert sensortask_wozi.neopixel is not None
+    assert sensortask_wozi.notification is not None
 
     # Every FRAM-chunk-owning module's own logger still allocated a chunk (pure bookkeeping,
     # SPECIFICATION.md C.13 - doesn't require setup() to have succeeded) but stays functional in
@@ -426,18 +426,18 @@ def test_build_system_never_insists_on_fram_hardware_being_available() -> None:
     # SGP40 specifically: VOC backup/restore chunk allocated but unusable - skips backups, starts
     # from scratch every time, but the reader itself keeps running (asy_sgp40_driver.py's own
     # _check_storage() contract, not re-tested here at that depth).
-    assert isinstance(sensortask_wozi.sgp_reader.pr, PrintLogHistoryStore)
-    assert sensortask_wozi.sgp_reader.ts_storage is not None
-    assert run(sensortask_wozi.sgp_reader.get_error_counter())["SGP40"]["ErrCount"] == 0
+    assert isinstance(sensortask_wozi.sgp40.pr, PrintLogHistoryStore)
+    assert sensortask_wozi.sgp40.ts_storage is not None
+    assert run(sensortask_wozi.sgp40.get_error_counter())["SGP40"]["ErrCount"] == 0
 
     # BMP3xx/SCD30: same degraded-mode contract as sysfunct above - a FRAM-backed logger stays
     # functional in plain memory when the chip never comes up.
-    assert isinstance(sensortask_wozi.bmp_reader.pr, PrintLogHistoryStore)
-    run(sensortask_wozi.bmp_reader.pr.err_s("boom", errno=1))
-    assert run(sensortask_wozi.bmp_reader.get_error_counter())["BMP3XX"]["ErrCount"] == 1
-    assert isinstance(sensortask_wozi.scd_reader.pr, PrintLogHistoryStore)
-    run(sensortask_wozi.scd_reader.pr.err_s("boom", errno=1))
-    assert run(sensortask_wozi.scd_reader.get_error_counter())["SCD30"]["ErrCount"] == 1
+    assert isinstance(sensortask_wozi.bmp3xx.pr, PrintLogHistoryStore)
+    run(sensortask_wozi.bmp3xx.pr.err_s("boom", errno=1))
+    assert run(sensortask_wozi.bmp3xx.get_error_counter())["BMP3XX"]["ErrCount"] == 1
+    assert isinstance(sensortask_wozi.scd30.pr, PrintLogHistoryStore)
+    run(sensortask_wozi.scd30.pr.err_s("boom", errno=1))
+    assert run(sensortask_wozi.scd30.get_error_counter())["SCD30"]["ErrCount"] == 1
 
     # The rest of the system is unaffected - task/timer starter collection still works end to end.
     starters = sensortask_wozi._collect_task_starters()
@@ -445,7 +445,7 @@ def test_build_system_never_insists_on_fram_hardware_being_available() -> None:
 
 
 # ---------------------------------------------------------------------------
-# setup() batch: grouped, fixed order, notify_service.setup() only after finalize().
+# setup() batch: grouped, fixed order, notification.setup() only after finalize().
 # ---------------------------------------------------------------------------
 
 
@@ -532,11 +532,11 @@ def test_setup_batch_runs_sysfunct_then_fram_then_conn_then_ntp_then_sgp_then_bm
 
 def test_notify_service_cfgmgr_exists_once_build_system_completes() -> None:
     # self.cfgmgr only comes into existence via finalize()'s delayed super().__init__() -
-    # asy_notification_service.py's own contract. If build_system() ever called notify_service's
+    # asy_notification_service.py's own contract. If build_system() ever called notification's
     # setup() before finalize(), this would be the observable symptom (AttributeError instead).
     run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
-    assert sensortask_wozi.notify_service is not None
-    assert sensortask_wozi.notify_service.cfgmgr.valid is True
+    assert sensortask_wozi.notification is not None
+    assert sensortask_wozi.notification.cfgmgr.valid is True
 
 
 # ---------------------------------------------------------------------------
@@ -550,8 +550,8 @@ def test_notify_service_cfgmgr_exists_once_build_system_completes() -> None:
 def _all_loggers() -> "list[Any]":
     w = sensortask_wozi
     assert w.conn is not None and w.ntp is not None and w.fram is not None and w.sysfunct is not None
-    assert w.sgp_reader is not None and w.bmp_reader is not None and w.scd_reader is not None
-    assert w.pixel is not None and w.notify_service is not None and w.webserver is not None
+    assert w.sgp40 is not None and w.bmp3xx is not None and w.scd30 is not None
+    assert w.neopixel is not None and w.notification is not None and w.webserver is not None
     return [
         w.conn.pr,
         w.conn.cfgmgr.pr,
@@ -561,14 +561,14 @@ def _all_loggers() -> "list[Any]":
         w.fram.pr,
         w.sysfunct.pr,
         w.sysfunct.cfgmgr.pr,
-        w.sgp_reader.pr,
-        w.sgp_reader.cfgmgr.pr,
-        w.bmp_reader.pr,
-        w.bmp_reader.cfgmgr.pr,
-        w.scd_reader.pr,
-        w.pixel.pr,
-        w.notify_service.pr,
-        w.notify_service.cfgmgr.pr,
+        w.sgp40.pr,
+        w.sgp40.cfgmgr.pr,
+        w.bmp3xx.pr,
+        w.bmp3xx.cfgmgr.pr,
+        w.scd30.pr,
+        w.neopixel.pr,
+        w.notification.pr,
+        w.notification.cfgmgr.pr,
         w.webserver.pr,
     ]
 
@@ -646,11 +646,11 @@ def test_collect_task_starters_includes_every_constructed_module() -> None:
     # (instance, function) pair, so membership via == still proves each owner actually contributed
     # its own starters to the combined list, not just that the total count happens to match.
     for owner in (
-        sensortask_wozi.scd_reader,
-        sensortask_wozi.bmp_reader,
-        sensortask_wozi.sgp_reader,
-        sensortask_wozi.pixel,
-        sensortask_wozi.notify_service,
+        sensortask_wozi.scd30,
+        sensortask_wozi.bmp3xx,
+        sensortask_wozi.sgp40,
+        sensortask_wozi.neopixel,
+        sensortask_wozi.notification,
         sensortask_wozi.sysfunct,
         sensortask_wozi.conn,
         sensortask_wozi.ntp,
@@ -663,7 +663,7 @@ def test_collect_task_starters_includes_every_constructed_module() -> None:
 def test_collect_timer_starters_includes_every_constructed_module() -> None:
     # Every constructed module is checked here, not just the ones that currently contribute a real
     # timer (matches test_collect_task_starters_includes_every_constructed_module's own uniform
-    # ownership check) - pixel/notify_service/webserver all currently return [] from their own
+    # ownership check) - neopixel/notification/webserver all currently return [] from their own
     # get_timer_starters(), but this test still proves _collect_timer_starters() actually calls
     # each of them (rather than picking modules by name), since a future Timer added to any of the
     # three would otherwise silently never run. Found missing entirely - Step 7 second-pass audit.
@@ -672,11 +672,11 @@ def test_collect_timer_starters_includes_every_constructed_module() -> None:
     assert len(starters) > 0
     assert all(callable(s) for s in starters)
     for owner in (
-        sensortask_wozi.scd_reader,
-        sensortask_wozi.bmp_reader,
-        sensortask_wozi.sgp_reader,
-        sensortask_wozi.pixel,
-        sensortask_wozi.notify_service,
+        sensortask_wozi.scd30,
+        sensortask_wozi.bmp3xx,
+        sensortask_wozi.sgp40,
+        sensortask_wozi.neopixel,
+        sensortask_wozi.notification,
         sensortask_wozi.sysfunct,
         sensortask_wozi.conn,
         sensortask_wozi.ntp,
@@ -793,8 +793,8 @@ def test_webserver_sensors_put_round_trips_a_real_field_through_the_real_driver(
     res = _dispatch("PUT", "/sensors", {"SGP40": {"BackupPeriod": 5}})
     body = json.loads(res.body)
     assert body["result"] == {"SGP40": {"BackupPeriod": "Valid"}}
-    assert sensortask_wozi.sgp_reader is not None
-    assert run(sensortask_wozi.sgp_reader.cfgmgr.get_dict(["BackupPeriod"])) == {"BackupPeriod": 5}
+    assert sensortask_wozi.sgp40 is not None
+    assert run(sensortask_wozi.sgp40.cfgmgr.get_dict(["BackupPeriod"])) == {"BackupPeriod": 5}
 
 
 def test_webserver_sensors_put_round_trips_a_real_scd30_field_through_the_real_driver() -> None:
@@ -969,23 +969,23 @@ def test_webserver_notification_put_light_cmd_led_accepts_upper_boundary_rgb_and
 
 
 def test_webserver_notification_put_pause_time_dispatches_to_the_real_coordinator() -> None:
-    # Regression test: the legacy `pauseAutoLED` override-countdown command (pixel.set_override_led()
+    # Regression test: the legacy `pauseAutoLED` override-countdown command (neopixel.set_override_led()
     # in modules/sensortask-wozi.py) had no equivalent wiring at all in the promoted REST layer until
     # this fix - _notification_pause_callback()/notification_pause= closes that gap.
     run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
-    assert sensortask_wozi.notify_service is not None
-    assert run(sensortask_wozi.notify_service.get_override_led()) == 0
+    assert sensortask_wozi.notification is not None
+    assert run(sensortask_wozi.notification.get_override_led()) == 0
     res = _dispatch("PUT", "/notification", {"PauseTime": 60})
     assert json.loads(res.body)["result"]["PauseTime"] == "Valid"
-    assert run(sensortask_wozi.notify_service.get_override_led()) == 60
+    assert run(sensortask_wozi.notification.get_override_led()) == 60
 
 
 def test_webserver_notification_put_flat_field_round_trips_through_the_real_coordinator() -> None:
     run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
-    assert sensortask_wozi.notify_service is not None
+    assert sensortask_wozi.notification is not None
     res = _dispatch("PUT", "/notification", {"WarnCO2": 1800})
     assert json.loads(res.body)["result"] == {"WarnCO2": "Valid"}
-    assert run(sensortask_wozi.notify_service.cfgmgr.get_dict(["WarnCO2"])) == {"WarnCO2": 1800}
+    assert run(sensortask_wozi.notification.cfgmgr.get_dict(["WarnCO2"])) == {"WarnCO2": 1800}
 
 
 def test_webserver_status_get_reflects_the_real_object_graph() -> None:

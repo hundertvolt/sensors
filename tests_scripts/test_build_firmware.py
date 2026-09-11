@@ -23,9 +23,10 @@ def build_firmware(repo_root: Path) -> ModuleType:
     return load_script_module(repo_root / "scripts" / "build_firmware.py", "build_firmware")
 
 
-def test_build_stage_dir_rejects_a_device_with_no_boot_entry_file(build_firmware: ModuleType, tmp_path: Path) -> None:
-    # Fail loud, before staging anything, rather than silently falling back to some other
-    # device's boot module.
+def test_build_stage_dir_rejects_a_device_with_no_matching_toml(build_firmware: ModuleType, tmp_path: Path) -> None:
+    # Fail loud, before staging anything - build_stage_dir() converts buildgen's own BuildError
+    # (no devices/no-such-device.toml to read) into a plain RuntimeError, matching this function's
+    # contract of raising RuntimeError for every build-impossible condition.
     with pytest.raises(RuntimeError, match="no-such-device"):
         build_firmware.build_stage_dir(tmp_path, "no-such-device")
 
@@ -45,28 +46,55 @@ def test_manifest_template_includes_the_default_board_manifest_and_freezes_stage
 
 
 @pytest.mark.parametrize("device", ["wozi", "dev"])
-def test_build_stage_dir_assembles_every_expected_file(build_firmware: ModuleType, repo_root: Path, tmp_path: Path, device: str) -> None:
+def test_build_stage_dir_stages_exactly_the_computed_frozen_modules(build_firmware: ModuleType, repo_root: Path, tmp_path: Path, device: str) -> None:
+    # No longer "every src/*.py file unconditionally" - only this device's own buildgen-computed
+    # dependency closure (BUILD_CHAIN_PLAN.md's "Frozen-module selection is dependency-driven",
+    # wired into this script by this session) gets staged, a real, smaller-firmware behavior change
+    # from this script's own pre-buildgen shape.
+    from buildgen.frozen_modules import compute_frozen_modules
+    from buildgen.validate import build_model
+
     build_firmware.build_stage_dir(tmp_path, device)
 
-    staged = {p.name for p in tmp_path.iterdir()}
-    src_files = {p.name for p in (repo_root / "src").glob("*.py")}
-    assert src_files, "sanity: src/ should contain at least one .py file"
-    assert src_files <= staged
+    model = build_model(repo_root / "devices" / f"{device}.toml", repo_root / "src")
+    expected_modules = compute_frozen_modules(model, repo_root / "src", repo_root / "ext")
+    assert expected_modules, "sanity: a real device should need at least one frozen module"
 
-    for expected in ("microdot.py", "main.py", "frozen_html.py"):
+    staged = {p.name for p in tmp_path.iterdir()}
+    assert {f"{m}.py" for m in expected_modules} <= staged
+
+    for expected in ("microdot.py", "main.py", "frozen_html.py", f"sensortask_{device}.py"):
         assert expected in staged, expected
 
-    # boot_entry/<device>_boot.py is staged under the name "main.py" (see
-    # scripts/build_firmware.py's own docstring for why this is load-bearing, not cosmetic), copied
-    # verbatim content-wise, not modules/_boot.py (the protected file) - confirmed by content match
-    # against the real source, not just filename presence: each device stages its own, distinct
-    # boot module content, not silently falling back to wozi's.
-    boot_entry_file = repo_root / "boot_entry" / f"{device}_boot.py"
-    assert (tmp_path / "main.py").read_text() == boot_entry_file.read_text()
+    # A src/ module outside this device's own computed dependency closure (e.g. a driver no real
+    # device today wires in) must NOT be staged either - proves this is a real, device-scoped
+    # subset, not "every src/*.py file" still happening to pass the assertion above.
+    all_src_modules = {p.stem for p in (repo_root / "src").glob("*.py")}
+    unrelated_modules = all_src_modules - expected_modules
+    assert unrelated_modules, "sanity: src/ should contain at least one module outside every real device's own dependency closure"
+    assert not ({f"{m}.py" for m in unrelated_modules} & staged)
+
+    assert (repo_root / "ext" / "microdot.py").read_text() == (tmp_path / "microdot.py").read_text()
+
+
+@pytest.mark.parametrize("device", ["wozi", "dev"])
+def test_build_stage_dir_writes_the_generated_entry_module_and_boot_entry(build_firmware: ModuleType, repo_root: Path, tmp_path: Path, device: str) -> None:
+    # The generated device entry module (sensortask_<device>.py-equivalent) and its boot entry -
+    # freshly generated text, never copied from boot_entry/<device>_boot.py (retired, this session -
+    # see buildgen.codegen.generate_boot_entry_source()) - staged under "main.py" (see
+    # scripts/build_firmware.py's own docstring for why this is load-bearing, not cosmetic).
+    # Content-matched against buildgen's own generator directly, not just filename presence: each
+    # device stages its own, distinct boot module content, not silently falling back to wozi's.
+    from buildgen.codegen import generate_boot_entry_source
+    from buildgen.generate import generate_device
+
+    build_firmware.build_stage_dir(tmp_path, device)
+
+    generated = generate_device(repo_root / "devices" / f"{device}.toml", repo_root / "src", repo_root / "ext")
+    assert (tmp_path / f"sensortask_{device}.py").read_text() == generated.module_source
+    assert (tmp_path / "main.py").read_text() == generate_boot_entry_source(device)
     other_device = "dev" if device == "wozi" else "wozi"
-    other_boot_entry_file = repo_root / "boot_entry" / f"{other_device}_boot.py"
-    assert (tmp_path / "main.py").read_text() != other_boot_entry_file.read_text()
-    assert (tmp_path / "microdot.py").read_text() == (repo_root / "ext" / "microdot.py").read_text()
+    assert (tmp_path / "main.py").read_text() != generate_boot_entry_source(other_device)
 
 
 @pytest.mark.parametrize("device", ["wozi", "dev"])
@@ -104,7 +132,7 @@ def _run_cli(repo_root: Path, args: list[str], *, check: bool = False) -> subpro
     )
 
 
-def test_cli_missing_definitions_file_fails_fast(repo_root: Path, tmp_path: Path) -> None:
+def test_cli_missing_device_toml_fails_fast(repo_root: Path, tmp_path: Path) -> None:
     result = _run_cli(repo_root, ["no-such-device", "--output", str(tmp_path / "out.uf2")])
     assert result.returncode != 0
     assert "no-such-device" in result.stderr
@@ -120,7 +148,7 @@ def test_cli_missing_toolchain_dir_fails_before_attempting_a_build(repo_root: Pa
     assert not (tmp_path / "out.uf2").exists()
 
 
-@pytest.mark.parametrize("device", ["wozi", "dev"])
+@pytest.mark.parametrize("device", ["wozi", "dev", "arzi", "klkizi", "grkizi", "schlafzi"])
 @pytest.mark.skipif(
     os.environ.get("RUN_SLOW_FIRMWARE_BUILD") != "1",
     reason="real ARM firmware compile, several minutes - opt in with RUN_SLOW_FIRMWARE_BUILD=1 "
@@ -131,8 +159,10 @@ def test_real_firmware_build_produces_a_valid_uf2(repo_root: Path, tmp_path: Pat
     # firmware.uf2, built by the exact same script/manifest a device build would use, not just its
     # staging logic checked in isolation above. Needs the real toolchain already installed
     # (uv run toolchain/setup_toolchain.py setup) - scripts/test.sh and CI's unit-tests job both
-    # already provision it before this suite runs. Parametrized over both real devices - each has
-    # its own distinct boot_entry/<device>_boot.py that must actually compile and freeze cleanly.
+    # already provision it before this suite runs. Parametrized over all 6 real devices - each has
+    # its own distinct buildgen-generated boot entry that must actually compile and freeze cleanly
+    # (CI runs these as a per-device matrix, .github/workflows/ci.yml's firmware-build-verify job -
+    # not all 6 in one slow local run, though `-k` can select just one for fast local iteration).
     output = tmp_path / f"firmware-{device}.uf2"
     result = _run_cli(repo_root, [device, "--output", str(output)])
     assert result.returncode == 0, result.stdout + result.stderr

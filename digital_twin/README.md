@@ -3,14 +3,15 @@
 A set of fake `machine`/`network`/`neopixel` modules, sitting at the same raw I2C/SPI
 bus-transaction mocking boundary `tests/machine.py` establishes for unit tests, but built for a
 different purpose: real-time-firing `Timer`s and randomized-but-plausible sensor values, so the full
-assembled `src/sensortask_wozi.py`/`src/sensortask_dev.py` prototypes can run under the real
-MicroPython Unix-port interpreter and behave like they're attached to real hardware — not just
-satisfy a hand-driven test double. See SPECIFICATION.md Part A.10 for how this fits into the rest of
-the architecture, and Part C.11 point 9 for the per-driver "add a matching chip fake" requirement.
+assembled, buildgen-generated `sensortask_wozi.py`/`sensortask_dev.py` device modules can run under
+the real MicroPython Unix-port interpreter and behave like they're attached to real hardware — not
+just satisfy a hand-driven test double. See SPECIFICATION.md Part A.10 for how this fits into the
+rest of the architecture, and Part C.11 point 9 for the per-driver "add a matching chip fake"
+requirement.
 
 **Not `tests/machine.py`, does not import it, and is never imported by anything in `tests/`.**
 Kept completely separate so nothing here can accidentally affect the deterministic unit-test suite
-`scripts/test.sh` runs by default (`MICROPYPATH="src:tests:frozen_modules:.frozen"`).
+`scripts/test.sh` runs by default (`MICROPYPATH="build/generated_src:src:tests:frozen_modules:.frozen"`).
 
 ## What's here
 
@@ -109,12 +110,14 @@ below's `--hang` section) — distinct from a bounded, immediately-raised fault.
 
 ## Swapping the twin in for a Unix-port run
 
-`src/sensortask_wozi.py` needs **zero twin-awareness** — no `if` branch anywhere distinguishing real
-hardware from simulated. The swap is pure `MICROPYPATH` ordering, the same mechanism
-`tests/machine.py` already uses transparently for the unit-test suite. `run_wozi_integration.py`
-also drives real HTTP over real sockets against the real `WebserverService` — never Microdot's
-`app.dispatch_request()` bypass, the same "full HTTP" standard the real system meets. The dedicated
-entry point, `scripts/run_unix_port_integration.sh`, does exactly this:
+The generated `sensortask_wozi.py` (built fresh by `buildgen` from `devices/wozi.toml` — no static
+copy is committed any more, BUILD_CHAIN_PLAN.md's Session 6 finish criterion) needs **zero
+twin-awareness** — no `if` branch anywhere distinguishing real hardware from simulated. The swap is
+pure `MICROPYPATH` ordering, the same mechanism `tests/machine.py` already uses transparently for
+the unit-test suite. `run_wozi_integration.py` also drives real HTTP over real sockets against the
+real `WebserverService` — never Microdot's `app.dispatch_request()` bypass, the same "full HTTP"
+standard the real system meets. The dedicated entry point, `scripts/run_unix_port_integration.sh`,
+does exactly this:
 
 ```bash
 scripts/run_unix_port_integration.sh                      # just launch + serve forever, no flags
@@ -123,30 +126,35 @@ scripts/run_unix_port_integration.sh --soak --duration 0   # same, but exits rig
 scripts/run_unix_port_integration.sh --fault sgp40:writeto # manual fault-injection exploration
 ```
 
-Under the hood (builds the toolchain, then builds the real `wozi` website into
+Under the hood (builds the toolchain, generates every device's `sensortask_<device>.py` into
+`build/generated_src/` via `scripts/_generate_sensortask_modules.py` — see "Booting a generated
+device" below for the general mechanism this is built on — then builds the real `wozi` website into
 `frozen_modules/frozen_html.py` via `scripts/build_website.sh wozi` — **not**
 `scripts/build_frozen_html.sh`'s own `html_stub` default; this is the twin's normal, default
 wiring, matching what a real deployed unit actually serves, not a placeholder — then runs
-`digital_twin/run_wozi_integration.py` — the real orchestrator, not `boot_entry/wozi_boot.py`
+`digital_twin/run_wozi_integration.py` — the real orchestrator, not the generated boot entry
 directly, since it also needs to drive the soak/fault-injection/`--duration`-forever logic around
 `sensortask_wozi.main()`, not just block on it):
 
 ```bash
-MICROPYPATH="src:digital_twin:ext:frozen_modules:.frozen" <micropython-unix-port-binary> digital_twin/run_wozi_integration.py [flags]
+MICROPYPATH="build/generated_src:src:digital_twin:ext:frozen_modules:.frozen" <micropython-unix-port-binary> digital_twin/run_wozi_integration.py [flags]
 ```
 
-`frozen_modules` is required here too (see `SPECIFICATION.md` Part A.9 for the full pipeline) —
-`src/sensortask_wozi.py` does an unconditional module-level `import frozen_html`, which
-resolves from that segment (see `scripts/build_frozen_html.sh`'s own comment for why it can't be
-`.frozen` itself). Omitting it fails the run at import time with `ImportError: no module named
-'frozen_html'` before any twin code ever runs. `digital_twin` sits between `src` and
-`frozen_modules`/`.frozen` — never together with plain `tests` on the same `MICROPYPATH` (that would
-let `tests/machine.py`/`tests/network.py`/`tests/neopixel.py` shadow this package's own same-named
-modules, or vice versa, depending on ordering — the two are meant to never be on the same path at
-once). This is a **separate** invocation from `scripts/test.sh`'s own
-`"src:tests:frozen_modules:.frozen"` — `scripts/run_unix_port_integration.sh` is not part of
-`scripts/test.sh`'s own default `tests/test_*.py` glob loop (it can run forever in `--duration`-
-omitted/manual mode, which would hang that loop if it were discovered there instead).
+`build/generated_src` is listed first so `import sensortask_wozi` resolves to the freshly
+buildgen-generated module, not any same-named file that might otherwise be found later on this
+path — no static `src/sensortask_wozi.py` exists any more. `frozen_modules` is required here too
+(see `SPECIFICATION.md` Part A.9 for the full pipeline) — the generated `sensortask_wozi.py` does an
+unconditional module-level `import frozen_html`, which resolves from that segment (see
+`scripts/build_frozen_html.sh`'s own comment for why it can't be `.frozen` itself). Omitting it
+fails the run at import time with `ImportError: no module named 'frozen_html'` before any twin code
+ever runs. `digital_twin` sits between `src` and `frozen_modules`/`.frozen` — never together with
+plain `tests` on the same `MICROPYPATH` (that would let `tests/machine.py`/`tests/network.py`/
+`tests/neopixel.py` shadow this package's own same-named modules, or vice versa, depending on
+ordering — the two are meant to never be on the same path at once). This is a **separate**
+invocation from `scripts/test.sh`'s own `"build/generated_src:src:tests:frozen_modules:.frozen"` —
+`scripts/run_unix_port_integration.sh` is not part of `scripts/test.sh`'s own default
+`tests/test_*.py` glob loop (it can run forever in `--duration`-omitted/manual mode, which would
+hang that loop if it were discovered there instead).
 
 `digital_twin/run_wozi_integration.py` reuses this file's own `launch.py`'s `parse_fault_spec()`/
 `_parse_wifi_outcome()` directly (same device/op/wifi-outcome vocabulary), and defaults to
@@ -177,10 +185,12 @@ fakes, which happened to return an already-flat shape. See `_flatten_cfg_values(
 
 `run_dev_integration.py` mirrors `run_wozi_integration.py` exactly — only the booted module and bus
 wiring differ — but has no dedicated `scripts/run_*.sh` wrapper yet. Invoke it directly, building the
-`dev` website first (`scripts/build_website.sh dev`, not `wozi`):
+`dev` website first (`scripts/build_website.sh dev`, not `wozi`) and generating every device's module
+into `build/generated_src/` first (`uv run scripts/_generate_sensortask_modules.py` — same step
+`scripts/run_unix_port_integration.sh` runs for you):
 
 ```bash
-MICROPYPATH="src:digital_twin:ext:frozen_modules:.frozen" <micropython-unix-port-binary> digital_twin/run_dev_integration.py [flags]
+MICROPYPATH="build/generated_src:src:digital_twin:ext:frozen_modules:.frozen" <micropython-unix-port-binary> digital_twin/run_dev_integration.py [flags]
 ```
 
 Same flag vocabulary, same `frozen_modules`/`MICROPYPATH`-ordering requirements as
@@ -209,8 +219,13 @@ Path("/tmp/twin_boot/wiring_plan.json").write_text(json.dumps(compute_twin_wirin
 
 Then the MicroPython process, with the generated module's own directory placed **first** on
 `MICROPYPATH` (so `import sensortask_novel_combo` resolves to the freshly-generated file, not any
-same-named file under `src/` — real for `wozi`/`dev`, which already have hand-written
-`src/sensortask_wozi.py`/`sensortask_dev.py`; every other import the generated module itself needs,
+same-named file that might otherwise be found elsewhere on this path — every real device is
+generated exactly the same way now, including `wozi`/`dev`; no device has a hand-written
+`sensortask_<device>.py` any more, BUILD_CHAIN_PLAN.md's Session 6 finish criterion. `scripts/test.sh`/
+`scripts/run_unix_port_integration.sh`/`scripts/run_digital_twin_ci.sh` all generate into the fixed
+`build/generated_src/` directory via `scripts/_generate_sensortask_modules.py` rather than a fresh
+temp directory per run, purely because those callers need `wozi`'s/`dev`'s modules to exist at a
+predictable path before any test file runs; every other import the generated module itself needs,
 e.g. `asy_i2c_driver`, still falls through to `src/`):
 
 ```bash

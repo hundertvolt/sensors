@@ -23,9 +23,9 @@ patch_asy_udp_socket_for_unix_port()
 # digital_twin's own fake machine module - configure_fram_state_path()/flush_fram(), used only by
 # this file's own reboot-survival section below.
 import machine  # noqa: E402
+import sensortask_wozi  # noqa: E402
 from _shared_rest_roundtrip import assert_named_modules_constructed, assert_sensor_payload_not_self_wrapped  # noqa: E402
 
-import sensortask_wozi  # noqa: E402
 from asy_scd30_driver import SCD30  # noqa: E402  # used only by this file's own reboot-survival section below
 
 try:
@@ -206,11 +206,11 @@ def test_build_system_boots_against_the_real_twin_buses_without_exception() -> N
             "spi0",
             "fram",
             "sysfunct",
-            "sgp_reader",
-            "bmp_reader",
-            "scd_reader",
-            "pixel",
-            "notify_service",
+            "sgp40",
+            "bmp3xx",
+            "scd30",
+            "neopixel",
+            "notification",
             "webserver",
             "watchdog",
         ),
@@ -264,7 +264,7 @@ def test_every_get_endpoint_is_reachable_over_real_http_and_shaped_correctly() -
 
             res = await _http_client.fetch("127.0.0.1", port, "GET", "/notification")
             assert res.status_code == 200
-            # notify_service.get_dict_cfg() is nested-shaped too - same fix as /networking above.
+            # notification.get_dict_cfg() is nested-shaped too - same fix as /networking above.
             body = res.json()
             assert body["WarnCO2"] == 1600
             assert body["WarnVOC"] == 350
@@ -308,11 +308,11 @@ def test_put_round_trips_through_a_real_twin_backed_driver_over_real_http() -> N
             res = await _http_client.fetch("127.0.0.1", port, "PUT", "/notification", {"WarnCO2": 1800})
             assert res.status_code == 200
             assert res.json()["result"] == {"WarnCO2": "Valid"}
-            assert sensortask_wozi.notify_service is not None
+            assert sensortask_wozi.notification is not None
             # await directly, not via run() - already inside scenario()'s own event loop
             # (run_timed()'s asyncio.run()); a nested asyncio.run() call here segfaulted the real
             # interpreter instead of raising a clean error (found via this exact bug, the hard way).
-            assert await sensortask_wozi.notify_service.cfgmgr.get_dict(["WarnCO2"]) == {"WarnCO2": 1800}
+            assert await sensortask_wozi.notification.cfgmgr.get_dict(["WarnCO2"]) == {"WarnCO2": 1800}
         finally:
             await _cancel(task)
 
@@ -331,8 +331,8 @@ def test_put_pause_time_round_trips_and_counts_down_over_real_http() -> None:
 
     async def scenario() -> None:
         await _boot(port)
-        assert sensortask_wozi.notify_service is not None
-        tasks = [starter() for starter in sensortask_wozi.notify_service.get_task_starters()]
+        assert sensortask_wozi.notification is not None
+        tasks = [starter() for starter in sensortask_wozi.notification.get_task_starters()]
         tasks.append(await _start_webserver())
         try:
             res = await _http_client.fetch("127.0.0.1", port, "PUT", "/notification", {"PauseTime": 3})
@@ -497,7 +497,7 @@ def test_start_and_check_tasks_restarts_a_real_dead_task_from_the_real_full_task
 
     async def scenario() -> None:
         await _boot(port)
-        assert sensortask_wozi.sysfunct is not None and sensortask_wozi.bmp_reader is not None
+        assert sensortask_wozi.sysfunct is not None and sensortask_wozi.bmp3xx is not None
         sysfunct = sensortask_wozi.sysfunct
         task_starters = sensortask_wozi._collect_task_starters()  # the REAL, full list - every
         # constructed module's own get_task_starters(), exactly what main() itself would use.
@@ -518,12 +518,12 @@ def test_start_and_check_tasks_restarts_a_real_dead_task_from_the_real_full_task
         SystemService._start_task = _tracking_start_task  # type: ignore[method-assign]
         supervisor_task = asyncio.get_event_loop().create_task(sysfunct.start_and_check_tasks(task_starters))
         try:
-            # bmp_reader.start_asy_trigger's own task (_base_trigger()) is just a real event-wait
+            # bmp3xx.start_asy_trigger's own task (_base_trigger()) is just a real event-wait
             # loop with no I/O and no Timer armed in this test (start_timers() was never called) -
             # a real, side-effect-free task to kill and watch get restarted. The real restart logic
             # itself (start_and_check_tasks()) never inspects which task died or why, only
             # task.done(), so this pick is representative of any real task in the list.
-            target_idx = task_starters.index(sensortask_wozi.bmp_reader.start_asy_trigger)
+            target_idx = task_starters.index(sensortask_wozi.bmp3xx.start_asy_trigger)
             assert await _wait_until(lambda: target_idx in started, timeout_s=5.0), (
                 "the real task was never started by the real supervisor at all"
             )
@@ -580,9 +580,9 @@ def test_wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server_a
 
     async def scenario() -> None:
         await _boot(port)
-        assert sensortask_wozi.conn is not None and sensortask_wozi.pixel is not None
+        assert sensortask_wozi.conn is not None and sensortask_wozi.neopixel is not None
         conn = sensortask_wozi.conn
-        pixel = sensortask_wozi.pixel
+        pixel = sensortask_wozi.neopixel
 
         # A real configured SSID (not the "SSID==''" unconfigured shortcut) so this exercises a
         # genuine scripted STA connect failure through the real state machine, not just "never
@@ -615,7 +615,10 @@ def test_wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server_a
             conn.connection_failures = 4
             started = await _wait_until(lambda: conn.dns_server_task is not None, timeout_s=25.0)
             assert started, "real hotspot activation never started the real DNSServer task"
-            assert not conn.dns_server_task.done()  # type: ignore[union-attr]  # started == True above
+            assert not conn.dns_server_task.done()  # started == True above; `conn` types as Any
+            # here (the generated sensortask_wozi.py's own module-level `conn` is `"Any | None"`,
+            # not the hand-written file's precise `"AsyConnTime | None"` - buildgen/codegen.py's
+            # deliberate choice), so no type: ignore is needed any more for this attribute access.
             # The real WiFi-status LED wiring didn't just exist - it actually drove real
             # hardware-facing calls during the transition (poll-time toggles, the on-failure
             # _led_off()), landing as real committed frames on the real (twin) NeoPixel.
@@ -647,7 +650,7 @@ def test_wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server_a
 
 # ---------------------------------------------------------------------------
 # SGP40 VOC-backup reboot survival, end-to-end (BACKLOG.md "Whole-system integration test scope") -
-# a real FRAM write through the real sgp_reader/fram construction order from build_system(), a
+# a real FRAM write through the real sgp40/fram construction order from build_system(), a
 # simulated reboot via digital_twin's own FramChip state-file persistence (digital_twin/machine.py's
 # configure_fram_state_path()/flush_fram() - the twin's real reboot-survival mechanism, not a
 # hand-rolled substitute), then a real restore against a brand-new build_system() object graph.
@@ -663,16 +666,16 @@ def test_sgp40_voc_backup_survives_a_simulated_reboot_through_the_real_fram_chun
             # --- Boot 1: real construction, real FRAM chunk 3 (SPECIFICATION.md Part A.7) write
             # through the real chain. ---
             await sensortask_wozi.build_system(cfg_path=cfg_path, web_host="127.0.0.1", web_port=_next_test_port())
-            assert sensortask_wozi.sgp_reader is not None and sensortask_wozi.scd_reader is not None
-            sgp1 = sensortask_wozi.sgp_reader
+            assert sensortask_wozi.sgp40 is not None and sensortask_wozi.scd30 is not None
+            sgp1 = sensortask_wozi.sgp40
             # sgp_comp_callback (sensortask_wozi.py's own real construction wiring) reads
-            # scd_reader.get_data() for humidity compensation - real _read_sgp() bails out (no
-            # measurement, no backup) without it. scd_reader's own read chain is orthogonal to what
+            # scd30.get_data() for humidity compensation - real _read_sgp() bails out (no
+            # measurement, no backup) without it. scd30's own read chain is orthogonal to what
             # this chain tests, so this seeds its real cached reading directly via the same
             # _set_meas_data() a real read cycle itself calls (test_asy_scd30_driver.py's own
             # established precedent for reaching this exact seam), rather than also driving a real
             # SCD30 IRQ-triggered read cycle just to satisfy an unrelated dependency.
-            await sensortask_wozi.scd_reader._set_meas_data(SCD30(800, 22.0, 45.0, None, None, None))
+            await sensortask_wozi.scd30._set_meas_data(SCD30(800, 22.0, 45.0, None, None, None))
             # WaitTimeNTP's schema default (30) would need 30 real backup-triggering cycles before
             # _run_backup()'s own require_ntp gate ever clears without a real NTP sync (asy_sgp40_driver.py's
             # own voc_write countdown) - set to its minimum positive value so the very first real
@@ -703,12 +706,12 @@ def test_sgp40_voc_backup_survives_a_simulated_reboot_through_the_real_fram_chun
             # attached (digital_twin/README.md's "FRAM persistence" section). ---
             machine.flush_fram()
             await sensortask_wozi.build_system(cfg_path=cfg_path, web_host="127.0.0.1", web_port=_next_test_port())
-            assert sensortask_wozi.sgp_reader is not None and sensortask_wozi.scd_reader is not None
-            assert sensortask_wozi.sgp_reader is not sgp1  # a genuinely fresh object, not the same
+            assert sensortask_wozi.sgp40 is not None and sensortask_wozi.scd30 is not None
+            assert sensortask_wozi.sgp40 is not sgp1  # a genuinely fresh object, not the same
             # instance surviving in memory - the whole point is that the persisted FRAM bytes, not
             # Python state, are what carries the backup across the "reboot".
-            sgp2 = sensortask_wozi.sgp_reader
-            await sensortask_wozi.scd_reader._set_meas_data(SCD30(800, 22.0, 45.0, None, None, None))  # see boot 1's own comment above
+            sgp2 = sensortask_wozi.sgp40
+            await sensortask_wozi.scd30._set_meas_data(SCD30(800, 22.0, 45.0, None, None, None))  # see boot 1's own comment above
 
             # --- Restore, through the real chain again. ---
             task2 = sgp2.start_asy_read()
@@ -746,9 +749,9 @@ def test_sgp40_voc_backup_unflushed_write_is_lost_but_the_system_recovers_cleanl
             # Boot 1: real construction, one real backup, flushed - the durable "last known good"
             # state everything below checks against.
             await sensortask_wozi.build_system(cfg_path=cfg_path, web_host="127.0.0.1", web_port=_next_test_port())
-            assert sensortask_wozi.sgp_reader is not None and sensortask_wozi.scd_reader is not None
-            sgp1 = sensortask_wozi.sgp_reader
-            await sensortask_wozi.scd_reader._set_meas_data(SCD30(800, 22.0, 45.0, None, None, None))
+            assert sensortask_wozi.sgp40 is not None and sensortask_wozi.scd30 is not None
+            sgp1 = sensortask_wozi.sgp40
+            await sensortask_wozi.scd30._set_meas_data(SCD30(800, 22.0, 45.0, None, None, None))
             persisted, _results = await sgp1.cfgmgr.write_config({"WaitTimeNTP": 1}, sgp1.get_cfg_schema())
             assert persisted
             task = sgp1.start_asy_read()
@@ -781,10 +784,10 @@ def test_sgp40_voc_backup_unflushed_write_is_lost_but_the_system_recovers_cleanl
             # which still only holds boot 1's flushed content - the second backup's write is
             # genuinely lost, exactly as an un-flushed write would be lost to a real power cycle.
             await sensortask_wozi.build_system(cfg_path=cfg_path, web_host="127.0.0.1", web_port=_next_test_port())
-            assert sensortask_wozi.sgp_reader is not None and sensortask_wozi.scd_reader is not None
-            assert sensortask_wozi.sgp_reader is not sgp1  # genuinely fresh object, not memory surviving in-process
-            sgp2 = sensortask_wozi.sgp_reader
-            await sensortask_wozi.scd_reader._set_meas_data(SCD30(800, 22.0, 45.0, None, None, None))
+            assert sensortask_wozi.sgp40 is not None and sensortask_wozi.scd30 is not None
+            assert sensortask_wozi.sgp40 is not sgp1  # genuinely fresh object, not memory surviving in-process
+            sgp2 = sensortask_wozi.sgp40
+            await sensortask_wozi.scd30._set_meas_data(SCD30(800, 22.0, 45.0, None, None, None))
 
             # Restore must succeed cleanly against the last *flushed* state, with no trace of the lost write.
             task3 = sgp2.start_asy_read()

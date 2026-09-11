@@ -3,18 +3,17 @@
 # tests/ (their unit tests), digital_twin/ (the hardware simulator, SPECIFICATION.md Part A.10),
 # tests_hardware/ (the real-hardware suite and the device scripts it pushes), and the whole
 # host-side build chain - buildgen/ (the device-TOML generator, BUILD_CHAIN_PLAN.md's Session 3),
-# boot_entry/, scripts/ and toolchain/ (the dev-tooling/build-environment scripts) and
-# tests_scripts/ (their pytest suite) - plus shellcheck over scripts/, and actionlint + zizmor over
-# the GitHub Actions workflows. All expected to stay fully clean. Lint only: `ruff format` is
-# deliberately not part of this toolchain, see pyproject.toml's [tool.ruff] comment. Assumes
-# `uv sync` has been run and its venv is active - every tool here installs from pyproject.toml's
-# [dependency-groups].
+# scripts/ and toolchain/ (the dev-tooling/build-environment scripts) and tests_scripts/ (their
+# pytest suite) - plus shellcheck over scripts/, and actionlint + zizmor over the GitHub Actions
+# workflows. All expected to stay fully clean. Lint only: `ruff format` is deliberately not part of
+# this toolchain, see pyproject.toml's [tool.ruff] comment. Assumes `uv sync` has been run and its
+# venv is active - every tool here installs from pyproject.toml's [dependency-groups].
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 status=0
 
-ruff check src tests digital_twin boot_entry tests_hardware buildgen scripts toolchain tests_scripts || status=1
+ruff check src tests digital_twin tests_hardware buildgen scripts toolchain tests_scripts || status=1
 
 # scripts/ only, deliberately NOT the four legacy build-*.sh at the repo root: those belong to the
 # same pre-refactor generation as python//modules/ and are out of lint scope by the same standing

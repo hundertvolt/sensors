@@ -12,6 +12,7 @@ import sys
 sys.path.insert(0, "ext")
 
 import machine
+import sensortask_dev
 from _fram_chip_fake import FakeMB85RS64V
 from _shared_rest_roundtrip import (
     assert_named_modules_constructed,
@@ -21,7 +22,6 @@ from _shared_rest_roundtrip import (
 from microdot import Request, Response  # type: ignore[import-not-found]
 
 import asy_spi_driver
-import sensortask_dev
 from print_log import PrintLog, PrintLogHistory, PrintLogHistoryStore
 
 try:
@@ -196,11 +196,11 @@ def test_build_system_constructs_every_legacy_named_module() -> None:
             "spi0",
             "fram",
             "sysfunct",
-            "sgp_reader",
-            "bmp_reader",
-            "scd_reader",
-            "pixel",
-            "notify_service",
+            "sgp40",
+            "bmp3xx",
+            "scd30",
+            "neopixel",
+            "notification",
             "watchdog",
         ),
     )
@@ -209,10 +209,10 @@ def test_build_system_constructs_every_legacy_named_module() -> None:
 def test_scd30s_own_i2c_bus_uses_a_clock_stretch_timeout_wide_enough_for_it() -> None:
     # SCD30 documents up to 150ms clock stretching once a day (datasheet p.2); rp2's I2C timeout
     # default is 50ms, so SCD30's bus must override it or that stretch surfaces as a spurious
-    # OSError. Looked up via scd_reader itself so this stays correct regardless of which bus.
+    # OSError. Looked up via scd30 itself so this stays correct regardless of which bus.
     run(sensortask_dev.build_system(cfg_path=_tmp_cfg_dir()))
-    assert sensortask_dev.scd_reader is not None
-    scd_bus = sensortask_dev.scd_reader.scd.i2c_scd30.i2c_device.i2c
+    assert sensortask_dev.scd30 is not None
+    scd_bus = sensortask_dev.scd30.scd.i2c_scd30.i2c_device.i2c
     assert scd_bus._i2c is not None
     assert scd_bus._i2c.freq == 50000
     assert scd_bus._i2c.timeout >= 150000
@@ -226,11 +226,11 @@ def test_scd30s_own_i2c_bus_uses_a_clock_stretch_timeout_wide_enough_for_it() ->
 
 
 def test_build_system_wires_the_wifi_led_callback_after_both_exist() -> None:
-    # conn.set_ext_led(pixel) - the one cross-wiring step that must run after both objects exist.
+    # conn.set_ext_led(neopixel) - the one cross-wiring step that must run after both objects exist.
     # Confirmed indirectly: AsyConnTime's own ext_led slot is set.
     run(sensortask_dev.build_system(cfg_path=_tmp_cfg_dir()))
     assert sensortask_dev.conn is not None
-    assert sensortask_dev.conn.ext_led is sensortask_dev.pixel
+    assert sensortask_dev.conn.ext_led is sensortask_dev.neopixel
 
 
 def test_build_system_is_independently_callable_and_returns() -> None:
@@ -336,24 +336,24 @@ def test_fram_chunks_are_all_successfully_allocated_not_out_of_memory() -> None:
     # Each chunk-owning module degrades to in-memory-only on allocation failure rather than
     # raising; assert the happy path actually got real FRAM-backed chunks, not a silent degrade.
     assert sensortask_dev.sysfunct is not None
-    assert sensortask_dev.sgp_reader is not None
-    assert sensortask_dev.bmp_reader is not None
-    assert sensortask_dev.scd_reader is not None
-    assert sensortask_dev.pixel is not None
-    assert sensortask_dev.notify_service is not None
+    assert sensortask_dev.sgp40 is not None
+    assert sensortask_dev.bmp3xx is not None
+    assert sensortask_dev.scd30 is not None
+    assert sensortask_dev.neopixel is not None
+    assert sensortask_dev.notification is not None
     assert isinstance(sensortask_dev.sysfunct.pr, PrintLogHistoryStore)
     assert sensortask_dev.sysfunct.pr.fram is not None
-    assert isinstance(sensortask_dev.sgp_reader.pr, PrintLogHistoryStore)
-    assert sensortask_dev.sgp_reader.pr.fram is not None
-    assert sensortask_dev.sgp_reader.ts_storage is not None
-    assert isinstance(sensortask_dev.bmp_reader.pr, PrintLogHistoryStore)
-    assert sensortask_dev.bmp_reader.pr.fram is not None
-    assert isinstance(sensortask_dev.scd_reader.pr, PrintLogHistoryStore)
-    assert sensortask_dev.scd_reader.pr.fram is not None
-    assert isinstance(sensortask_dev.pixel.pr, PrintLogHistoryStore)
-    assert sensortask_dev.pixel.pr.fram is not None
-    assert isinstance(sensortask_dev.notify_service.pr, PrintLogHistoryStore)
-    assert sensortask_dev.notify_service.pr.fram is not None
+    assert isinstance(sensortask_dev.sgp40.pr, PrintLogHistoryStore)
+    assert sensortask_dev.sgp40.pr.fram is not None
+    assert sensortask_dev.sgp40.ts_storage is not None
+    assert isinstance(sensortask_dev.bmp3xx.pr, PrintLogHistoryStore)
+    assert sensortask_dev.bmp3xx.pr.fram is not None
+    assert isinstance(sensortask_dev.scd30.pr, PrintLogHistoryStore)
+    assert sensortask_dev.scd30.pr.fram is not None
+    assert isinstance(sensortask_dev.neopixel.pr, PrintLogHistoryStore)
+    assert sensortask_dev.neopixel.pr.fram is not None
+    assert isinstance(sensortask_dev.notification.pr, PrintLogHistoryStore)
+    assert sensortask_dev.notification.pr.fram is not None
 
 
 class _DeadFramChip(_FakeMB85RS2MTA):
@@ -381,11 +381,11 @@ def test_build_system_never_insists_on_fram_hardware_being_available() -> None:
     assert sensortask_dev.fram.fram is not None
     assert sensortask_dev.fram.fram.initialized is False  # the dead chip, confirmed never ready
     assert sensortask_dev.sysfunct is not None
-    assert sensortask_dev.sgp_reader is not None
-    assert sensortask_dev.bmp_reader is not None
-    assert sensortask_dev.scd_reader is not None
-    assert sensortask_dev.pixel is not None
-    assert sensortask_dev.notify_service is not None
+    assert sensortask_dev.sgp40 is not None
+    assert sensortask_dev.bmp3xx is not None
+    assert sensortask_dev.scd30 is not None
+    assert sensortask_dev.neopixel is not None
+    assert sensortask_dev.notification is not None
 
     # Each logger still allocated a chunk (pure bookkeeping, SPECIFICATION.md C.13) but stays
     # functional in degraded mode rather than raising.
@@ -396,18 +396,18 @@ def test_build_system_never_insists_on_fram_hardware_being_available() -> None:
     # SGP40 specifically: VOC backup/restore chunk allocated but unusable - skips backups, starts
     # from scratch every time, but the reader itself keeps running (asy_sgp40_driver.py's own
     # _check_storage() contract, not re-tested here at that depth).
-    assert isinstance(sensortask_dev.sgp_reader.pr, PrintLogHistoryStore)
-    assert sensortask_dev.sgp_reader.ts_storage is not None
-    assert run(sensortask_dev.sgp_reader.get_error_counter())["SGP40"]["ErrCount"] == 0
+    assert isinstance(sensortask_dev.sgp40.pr, PrintLogHistoryStore)
+    assert sensortask_dev.sgp40.ts_storage is not None
+    assert run(sensortask_dev.sgp40.get_error_counter())["SGP40"]["ErrCount"] == 0
 
     # BMP3xx/SCD30: same degraded-mode contract as sysfunct above - a FRAM-backed logger stays
     # functional in plain memory when the chip never comes up.
-    assert isinstance(sensortask_dev.bmp_reader.pr, PrintLogHistoryStore)
-    run(sensortask_dev.bmp_reader.pr.err_s("boom", errno=1))
-    assert run(sensortask_dev.bmp_reader.get_error_counter())["BMP3XX"]["ErrCount"] == 1
-    assert isinstance(sensortask_dev.scd_reader.pr, PrintLogHistoryStore)
-    run(sensortask_dev.scd_reader.pr.err_s("boom", errno=1))
-    assert run(sensortask_dev.scd_reader.get_error_counter())["SCD30"]["ErrCount"] == 1
+    assert isinstance(sensortask_dev.bmp3xx.pr, PrintLogHistoryStore)
+    run(sensortask_dev.bmp3xx.pr.err_s("boom", errno=1))
+    assert run(sensortask_dev.bmp3xx.get_error_counter())["BMP3XX"]["ErrCount"] == 1
+    assert isinstance(sensortask_dev.scd30.pr, PrintLogHistoryStore)
+    run(sensortask_dev.scd30.pr.err_s("boom", errno=1))
+    assert run(sensortask_dev.scd30.get_error_counter())["SCD30"]["ErrCount"] == 1
 
     # The rest of the system is unaffected - task/timer starter collection still works end to end.
     starters = sensortask_dev._collect_task_starters()
@@ -415,7 +415,7 @@ def test_build_system_never_insists_on_fram_hardware_being_available() -> None:
 
 
 # ---------------------------------------------------------------------------
-# setup() batch: grouped, fixed order, notify_service.setup() only after finalize().
+# setup() batch: grouped, fixed order, notification.setup() only after finalize().
 # ---------------------------------------------------------------------------
 
 
@@ -499,11 +499,11 @@ def test_setup_batch_runs_sysfunct_then_fram_then_conn_then_ntp_then_sgp_then_bm
 
 def test_notify_service_cfgmgr_exists_once_build_system_completes() -> None:
     # self.cfgmgr only comes into existence via finalize()'s delayed super().__init__() -
-    # asy_notification_service.py's own contract. If build_system() ever called notify_service's
+    # asy_notification_service.py's own contract. If build_system() ever called notification's
     # setup() before finalize(), this would be the observable symptom (AttributeError instead).
     run(sensortask_dev.build_system(cfg_path=_tmp_cfg_dir()))
-    assert sensortask_dev.notify_service is not None
-    assert sensortask_dev.notify_service.cfgmgr.valid is True
+    assert sensortask_dev.notification is not None
+    assert sensortask_dev.notification.cfgmgr.valid is True
 
 
 # ---------------------------------------------------------------------------
@@ -515,8 +515,8 @@ def test_notify_service_cfgmgr_exists_once_build_system_completes() -> None:
 def _all_loggers() -> "list[Any]":
     d = sensortask_dev
     assert d.conn is not None and d.ntp is not None and d.fram is not None and d.sysfunct is not None
-    assert d.sgp_reader is not None and d.bmp_reader is not None and d.scd_reader is not None
-    assert d.pixel is not None and d.notify_service is not None and d.webserver is not None
+    assert d.sgp40 is not None and d.bmp3xx is not None and d.scd30 is not None
+    assert d.neopixel is not None and d.notification is not None and d.webserver is not None
     return [
         d.conn.pr,
         d.conn.cfgmgr.pr,
@@ -526,14 +526,14 @@ def _all_loggers() -> "list[Any]":
         d.fram.pr,
         d.sysfunct.pr,
         d.sysfunct.cfgmgr.pr,
-        d.sgp_reader.pr,
-        d.sgp_reader.cfgmgr.pr,
-        d.bmp_reader.pr,
-        d.bmp_reader.cfgmgr.pr,
-        d.scd_reader.pr,
-        d.pixel.pr,
-        d.notify_service.pr,
-        d.notify_service.cfgmgr.pr,
+        d.sgp40.pr,
+        d.sgp40.cfgmgr.pr,
+        d.bmp3xx.pr,
+        d.bmp3xx.cfgmgr.pr,
+        d.scd30.pr,
+        d.neopixel.pr,
+        d.notification.pr,
+        d.notification.cfgmgr.pr,
         d.webserver.pr,
     ]
 
@@ -601,11 +601,11 @@ def test_collect_task_starters_includes_every_constructed_module() -> None:
     # MicroPython bound methods don't expose __self__, but they compare equal when bound to the
     # same (instance, function) pair, so membership via == still proves each owner contributed.
     for owner in (
-        sensortask_dev.scd_reader,
-        sensortask_dev.bmp_reader,
-        sensortask_dev.sgp_reader,
-        sensortask_dev.pixel,
-        sensortask_dev.notify_service,
+        sensortask_dev.scd30,
+        sensortask_dev.bmp3xx,
+        sensortask_dev.sgp40,
+        sensortask_dev.neopixel,
+        sensortask_dev.notification,
         sensortask_dev.sysfunct,
         sensortask_dev.conn,
         sensortask_dev.ntp,
@@ -618,17 +618,17 @@ def test_collect_task_starters_includes_every_constructed_module() -> None:
 def test_collect_timer_starters_includes_every_constructed_module() -> None:
     # Every constructed module is checked, not just ones with a real timer today - proves
     # _collect_timer_starters() calls each module rather than picking by name, so a future Timer
-    # added to pixel/notify_service/webserver (all currently []) won't silently never run.
+    # added to neopixel/notification/webserver (all currently []) won't silently never run.
     run(sensortask_dev.build_system(cfg_path=_tmp_cfg_dir()))
     starters = sensortask_dev._collect_timer_starters()
     assert len(starters) > 0
     assert all(callable(s) for s in starters)
     for owner in (
-        sensortask_dev.scd_reader,
-        sensortask_dev.bmp_reader,
-        sensortask_dev.sgp_reader,
-        sensortask_dev.pixel,
-        sensortask_dev.notify_service,
+        sensortask_dev.scd30,
+        sensortask_dev.bmp3xx,
+        sensortask_dev.sgp40,
+        sensortask_dev.neopixel,
+        sensortask_dev.notification,
         sensortask_dev.sysfunct,
         sensortask_dev.conn,
         sensortask_dev.ntp,
@@ -732,8 +732,8 @@ def test_webserver_sensors_put_round_trips_a_real_field_through_the_real_driver(
     res = _dispatch("PUT", "/sensors", {"SGP40": {"BackupPeriod": 5}})
     body = json.loads(res.body)
     assert body["result"] == {"SGP40": {"BackupPeriod": "Valid"}}
-    assert sensortask_dev.sgp_reader is not None
-    assert run(sensortask_dev.sgp_reader.cfgmgr.get_dict(["BackupPeriod"])) == {"BackupPeriod": 5}
+    assert sensortask_dev.sgp40 is not None
+    assert run(sensortask_dev.sgp40.cfgmgr.get_dict(["BackupPeriod"])) == {"BackupPeriod": 5}
 
 
 def test_webserver_sensors_put_round_trips_a_real_scd30_field_through_the_real_driver() -> None:
@@ -876,19 +876,19 @@ def test_webserver_notification_put_light_cmd_led_accepts_upper_boundary_rgb_and
 
 def test_webserver_notification_put_pause_time_dispatches_to_the_real_coordinator() -> None:
     run(sensortask_dev.build_system(cfg_path=_tmp_cfg_dir()))
-    assert sensortask_dev.notify_service is not None
-    assert run(sensortask_dev.notify_service.get_override_led()) == 0
+    assert sensortask_dev.notification is not None
+    assert run(sensortask_dev.notification.get_override_led()) == 0
     res = _dispatch("PUT", "/notification", {"PauseTime": 60})
     assert json.loads(res.body)["result"]["PauseTime"] == "Valid"
-    assert run(sensortask_dev.notify_service.get_override_led()) == 60
+    assert run(sensortask_dev.notification.get_override_led()) == 60
 
 
 def test_webserver_notification_put_flat_field_round_trips_through_the_real_coordinator() -> None:
     run(sensortask_dev.build_system(cfg_path=_tmp_cfg_dir()))
-    assert sensortask_dev.notify_service is not None
+    assert sensortask_dev.notification is not None
     res = _dispatch("PUT", "/notification", {"WarnCO2": 1800})
     assert json.loads(res.body)["result"] == {"WarnCO2": "Valid"}
-    assert run(sensortask_dev.notify_service.cfgmgr.get_dict(["WarnCO2"])) == {"WarnCO2": 1800}
+    assert run(sensortask_dev.notification.cfgmgr.get_dict(["WarnCO2"])) == {"WarnCO2": 1800}
 
 
 def test_webserver_status_get_reflects_the_real_object_graph() -> None:

@@ -1,14 +1,21 @@
 """Generates a device's website `definitions.json` (SPECIFICATION.md Part H.5) from a validated
 `DeviceModel` plus the `# @web`/`# @web-group` tags on the `src/` files that own each field/group
-(`buildgen.web_tag`). Architecture and design rationale: SPECIFICATION.md Part H.5.1."""
+(`buildgen.web_tag`). Architecture and design rationale: SPECIFICATION.md Part H.5.1. The CLI
+wrapper at the bottom is for manual use and `scripts/build_website.sh`'s own build-time invocation."""
 
+import argparse
+import json
+import sys
 from pathlib import Path
 from typing import Any
 
 from buildgen.errors import BuildError
 from buildgen.model import DeviceModel, InstanceSpec
 from buildgen.schema_ast import FieldSchema, extract_field_schemas
+from buildgen.validate import build_model
 from buildgen.web_tag import SELF_GROUP, WebFieldTag, WebGroupTag, parse_web_group_tags, parse_web_tags
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
 
 SCHEMA_VERSION = "1.0.0"
 
@@ -452,3 +459,29 @@ def generate_definitions(model: DeviceModel, src_dir: Path) -> "dict[str, Any]":
         "defaultPollIntervalMs": 3000,
         "sections": sections,
     }
+
+
+def main(argv: "list[str] | None" = None) -> int:
+    parser = argparse.ArgumentParser(description="Generate a device's website definitions.json from its device TOML.")
+    parser.add_argument("device_toml", type=Path)
+    parser.add_argument("--src-dir", type=Path, default=REPO_ROOT / "src")
+    parser.add_argument("--out", type=Path, default=None, help="write definitions.json here instead of printing to stdout")
+    args = parser.parse_args(argv)
+
+    try:
+        model = build_model(args.device_toml, args.src_dir)
+        definitions = generate_definitions(model, args.src_dir)
+    except BuildError as e:
+        print(f"buildgen: {e}", file=sys.stderr)
+        return 1
+
+    text = json.dumps(definitions, indent=2)
+    if args.out is None:
+        print(text)
+    else:
+        args.out.write_text(text)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -704,6 +704,186 @@ script quality bar" below, not repeated here.
    scoped to wozi alone; every one of these tests' own scenario logic applies unchanged, generalized
    to which device it boots. This may span more than one session if the volume warrants it, but the
    requirement holds until it's actually done, not just staged.**
+
+   **Session 6 done, partially — honestly staged, not falsely claimed complete** (the finish
+   criterion's own "may span more than one session" clause is being used here, deliberately, not as
+   an excuse to under-scope): the literal "zero static `src/sensortask_*.py` files" half is fully
+   met; the "every digital-twin test genuinely parameterized across all 6 devices" half is not -
+   see "Not done" below for exactly what's left and why.
+
+   - **`build/` artifact root**: added to `.gitignore` (generation is build-time only, never
+     committed, matching this doc's own "Core design decisions"). `scripts/build_firmware.py`'s own
+     `--output` default (`build/firmware-<device>.uf2`) already pointed here; nothing else needed a
+     new path decision this session beyond `build/generated_src/` (below).
+   - **`scripts/build_firmware.py` wired to `buildgen`**: `build_stage_dir()` now calls
+     `buildgen.generate.generate_device()` and stages only that device's own computed
+     `frozen_modules` set (resolved against `src/`/`ext/` - `"microdot"` resolves to `ext/microdot.py`
+     automatically, since `asy_webserver_service.py` - itself in `buildgen.frozen_modules.
+     CORE_MODULES` - imports it) instead of globbing every `src/*.py` file unconditionally - a real,
+     smaller-firmware behavior change from this script's pre-`buildgen` shape, and the first time
+     `compute_frozen_modules()`'s own output has actually been wired into a real build (Session 3's
+     own "Not built here" list flagged this as Session 6's job). The generated device entry module
+     and boot entry are written directly (freshly generated text, never read off disk) under
+     `sensortask_<device>.py`/`main.py`. A device with no `devices/<device>.toml` fails loud via
+     `buildgen.errors.BuildError`, converted to a plain `RuntimeError` so this function's own
+     failure contract stays uniform.
+   - **`boot_entry/` retired outright** (`wozi_boot.py`/`dev_boot.py` deleted) - `buildgen.codegen.
+     generate_boot_entry_source()` already produced an equivalent, generic boot entry
+     (`gc.threshold(32768)`, `asyncio.run(main())`/`finally: asyncio.new_event_loop()`) since Session
+     3; this session's own research confirmed it was a complete, drop-in replacement with nothing
+     left to preserve. Removed from `pyproject.toml`'s ruff/mypy `files`, `.github/workflows/ci.yml`'s
+     ruff/mypy invocation lines, and `scripts/lint.sh`'s own ruff invocation; CLAUDE.md's "Scope is
+     nine directories" became "eight". A real, pre-existing generator bug was fixed along the way:
+     `generate_boot_entry_source()`'s own docstring literally said `"Mirrors src/sensortask_wozi.py's
+     construction-order shape"` for *every* device's generated module, even non-wozi ones - a
+     copy-paste artifact from Session 3, harmless (docstring text only) but wrong; fixed to
+     device-generic wording.
+   - **Website `definitions.json` generation — wired as a fallback, not a full retirement**: added a
+     CLI to `buildgen/definitions.py` (`python -m buildgen.definitions <device_toml> --src-dir src
+     --out <path>`, matching `buildgen/generate.py`'s own CLI precedent) and taught
+     `scripts/build_website.sh` to generate a device's `definitions.json` on the fly (into a
+     `scratch_dir` kept deliberately separate from the served `stage_dir`, so the generated file
+     never gets frozen as its own stray `/definitions.json.gz` - confirmed by hitting exactly that
+     bug once and fixing it, see the script's own comment) whenever `html/definitions/<device>.json`
+     doesn't already exist on disk. `wozi`/`dev` keep using their existing hand-written files
+     **unchanged** - deliberately: `tests_js/live-backend-put-matrix.test.js`/
+     `mock-server-put-matrix.test.js` read those two exact files directly off disk as fixtures, and
+     Session 4 already proved buildgen's generated output is byte-shape-identical to them, so
+     switching wozi/dev over would touch JS test fixtures this session didn't audit closely enough
+     to risk. The other 4 devices (`arzi`/`klkizi`/`grkizi`/`schlafzi`, which never had a
+     hand-written `definitions.json` at all) now generate one automatically - this is what actually
+     unblocks `firmware-build-verify`'s new 6-device matrix below, since `scripts/build_firmware.py`
+     unconditionally calls `scripts/build_website.sh` and would otherwise fail for those 4 devices.
+     **Not done** (Session 4's own "Not built here" item, still open): retiring `html/definitions/
+     wozi.json`/`dev.json` outright and switching those two devices over to generated output too -
+     genuinely deferred, not silently dropped, because it needs a `tests_js/` fixture audit this
+     session didn't do.
+   - **CI: `firmware-build-verify` is now a real 6-device `strategy.matrix`** (`fail-fast: false`,
+     one job per device) instead of a single wozi-only job - each device's own real ARM firmware
+     compile is independently attributable in the job list.
+   - **Zero static `src/sensortask_wozi.py`/`sensortask_dev.py`** (the finish criterion's own
+     non-negotiable half): both deleted from git. A new `scripts/_generate_sensortask_modules.py`
+     generates all 6 real devices' `sensortask_<device>.py` fresh via `buildgen.generate.
+     generate_device()` into `build/generated_src/` (gitignored) - deliberately **not** into `src/`
+     itself, so freshly generated, unreviewed-per-run output never re-enters `src/`'s own
+     fully-reviewed, ruff/mypy-`--strict`-scanned scope. Wired in everywhere something needs to
+     `import sensortask_wozi`/`sensortask_dev` to actually resolve: `scripts/test.sh` (MICROPYPATH
+     gains a `build/generated_src` segment, listed first), `scripts/typecheck.sh` (runs the
+     generator before `mypy`; `pyproject.toml`'s `[tool.mypy] mypy_path` and `digital_twin/
+     typecheck.ini`'s own `mypy_path` both gained the same directory), `scripts/
+     run_unix_port_integration.sh`, and `scripts/run_digital_twin_ci.sh`/`scripts/
+     _digital_twin_ci_suite.py`'s own `MICROPYPATH` constant. Every one of the ~10 files that
+     statically `import sensortask_wozi`/`sensortask_dev` (`tests/test_sensortask_wozi.py`, `tests/
+     test_sensortask_dev.py`, `tests/test_digital_twin_sensortask_integration.py`, `tests/
+     test_digital_twin_bus_hazard_concurrency.py`, `tests/test_digital_twin_webserver_concurrency.py`,
+     `tests/test_digital_twin_real_website_integration.py`, `tests/
+     test_digital_twin_run_generic_integration.py`'s own smoke test, `digital_twin/
+     run_wozi_integration.py`, `digital_twin/run_dev_integration.py`, `digital_twin/
+     segfault_stress_repro.py`) now resolves that import against a freshly `buildgen`-generated
+     module instead of a hand-written one, with **no import-statement change needed in any of
+     them** - confirmed directly (a full `mypy`/`ruff` pass across every scope, plus the entire
+     `tests_scripts/` pytest suite, all green; the real MicroPython-interpreter suite
+     (`scripts/test.sh`) could not be run in this session's own sandbox - no outbound apt access to
+     build the Unix-port toolchain - so CI's own `unit-tests`/`digital-twin-e2e` runs are this
+     change's first real-interpreter proof; watched closely after this PR opens).
+   - **A real naming mismatch found and fixed**: `buildgen`'s generated code names every optional
+     module's global by `driver`/`name_ext` (`scd30`/`sgp40`/`bmp3xx`/`neopixel`/`notification`),
+     not the hand-written files' own bespoke names (`scd_reader`/`sgp_reader`/`bmp_reader`/`pixel`/
+     `notify_service`) - a real attribute-name difference the "pre-generation, zero test changes"
+     approach alone could not paper over (confirmed by generating wozi's module and diffing it
+     against the hand-written file directly). Renamed every real reference to these five specific
+     module-level globals across the four whitebox test files that actually access them
+     (`test_sensortask_wozi.py`, `test_sensortask_dev.py`, `test_digital_twin_sensortask_integration.py`,
+     `test_digital_twin_bus_hazard_concurrency.py`) - the other ~15 files this session's own
+     research catalogued only ever mention `sensortask_wozi`/`sensortask_dev` in comments/prose, not
+     as an attribute access, and needed no rename. Handled `pixel` → `neopixel` surgically, not by
+     blind find-and-replace: `NeopixelDriver` itself has its own internal `.pixel` attribute (the
+     real hardware object it wraps), and `test_digital_twin_sensortask_integration.py` has a local
+     variable literally named `pixel` (assigned from `sensortask_wozi.pixel`) that reads `pixel.pixel.
+     writes` - only the module-attribute access (`sensortask_wozi.pixel` → `sensortask_wozi.
+     neopixel`) was renamed; the local variable name and `NeopixelDriver`'s own internal attribute
+     were left untouched, since renaming either would either be cosmetic churn or a real coupling
+     bug. One further, real, `--strict`-mypy-caught consequence: `buildgen`'s generated module types
+     most instance globals as `"Any | None"` rather than the hand-written file's precise unions
+     (e.g. `conn: "AsyConnTime | None"` → `conn: "Any | None"`), which made one pre-existing `# type:
+     ignore[union-attr]` in `test_digital_twin_sensortask_integration.py` provably unused under
+     `digital_twin/typecheck.ini`'s own `--strict` pass - removed, with a comment explaining why.
+   - **A real coverage gap closed**: `tests/test_reset_call_site_invariant.py`'s own
+     `test_wdt_constructed_only_in_sensortask_entry_point_files()` scans committed `src/*.py` files
+     and skips anything named `sensortask_*.py` - now permanently vacuous (nothing in `src/` is ever
+     named that any more) but still correct (the invariant it enforces holds trivially with nothing
+     left to skip), so it needed no code change. What it can no longer prove - that the *generated*
+     module's own single `WDT()` construction site stays exactly one per device - now has its own,
+     separate CPython-side proof: `tests_scripts/test_buildgen_generate.py::
+     test_real_device_constructs_watchdog_exactly_once`, parametrized over all 6 real devices,
+     asserting `result.module_source.count("WDT(") == 1`.
+   - **`tests_scripts/test_build_firmware.py` updated for the new staging behavior**: the old
+     "every `src/*.py` file gets staged" assertion is replaced with a check against `buildgen.
+     frozen_modules.compute_frozen_modules()`'s own computed set (plus a sanity check that at least
+     one real `src/` module - `asy_uart_driver.py`, unused by any of the 6 real devices today -
+     is genuinely *excluded*, proving this is a real device-scoped subset and not still "everything"
+     in disguise); the old "`boot_entry/<device>_boot.py` copied byte-for-byte" assertion is replaced
+     with a content match against `buildgen.codegen.generate_boot_entry_source()` directly. The real
+     ARM firmware-build test (`test_real_firmware_build_produces_a_valid_uf2`) is now parametrized
+     over all 6 real devices (previously wozi/dev only), feeding the new CI matrix above.
+   - **Documentation**: `SPECIFICATION.md` (the Part A directory map now lists `devices/`/`buildgen/`/
+     `build/` and drops `boot_entry/`; Part A.3/A.7/A.10 and B.11's stale `src/sensortask_wozi.py`-
+     exists claims fixed), `CLAUDE.md` ("Scope is nine directories" → eight; the `improved-quality/`
+     retirement hard rule gained a note that its own replacement, `src/sensortask_wozi.py`, has since
+     been retired too), `README.md` (two user-facing walkthrough references), and `digital_twin/
+     README.md` (every `MICROPYPATH` example gained the `build/generated_src` segment; critically,
+     the "Booting a generated device" section's own asymmetry note - "real for wozi/dev, which
+     already have hand-written `src/sensortask_wozi.py`/`sensortask_dev.py`" - was fixed, since that
+     asymmetry no longer exists: every real device, wozi/dev included, is generated exactly the same
+     way now). `buildgen/validate.py`'s own known-gap comment about `hostname`/`hotspot_password`
+     never actually reaching generated code (flagged there as "Session 6's territory") is confirmed
+     **still open** - fixing it needs a real `src/asy_wifi_service.py` constructor-parameter change
+     to a heavily-tested core driver, judged out of this session's own scope (see that file's own
+     comment for the full reasoning).
+
+   **Not done** (flagged, not silently absorbed - concrete enough for a follow-up session to pick
+   straight up):
+   1. **`scripts/run_digital_twin_ci.sh`'s own 11-run suite is still wozi-only.** It now correctly
+      drives the *generated* (not hand-written) `sensortask_wozi.py` - the mechanism above is fully
+      proven for it - but was not extended to a real 6-device matrix. Concretely blocked on one real,
+      previously-undocumented gap found during this session's own research: `digital_twin/
+      run_generic_integration.py` (the generic runner `run_wozi_integration.py`/
+      `run_dev_integration.py` were deliberately kept thin wrappers around, per Session 5's own
+      documented decision) has **no `--soak`/`--soak-cycles` support at all** - only `--duration`.
+      The soak/memory-trend-check machinery (`_SOAK_WARMUP_CYCLES`, `_MEM_TREND_TOLERANCE_BYTES`,
+      measured from real repeated runs) exists only in `run_wozi_integration.py`/
+      `run_dev_integration.py` today. Porting it into `run_generic_integration.py` (mechanical - the
+      logic is already fully generic, just needs relocating) plus rewriting `scripts/
+      _digital_twin_ci_suite.py`'s `_spawn()` to loop per device, plus a real CI-time-budget decision
+      (11 runs × 6 devices, including a ~90s WiFi-hotspot-fallback wait and a soak run each) is a
+      concretely scoped, moderate-to-large follow-up, not attempted this round.
+   2. **The ~10 files above resolve their import against a generated module now, but were not
+      rewritten to actually parameterize their own scenario logic across all 6 real devices** - the
+      finish criterion's own "not narrowed to a boot+REST smoke check" bar. Two are genuinely
+      trivial next steps (`tests/test_digital_twin_webserver_concurrency.py` and `tests/
+      test_digital_twin_run_generic_integration.py`'s own smoke test have **zero** device-specific
+      assertions - purely connection-count/HTTP-status/parse-arguments logic - and would parametrize
+      over all 6 devices with no assertion rework at all). The rest need real, non-mechanical
+      decisions, not just find-and-replace: `test_sensortask_wozi.py`/`test_sensortask_dev.py` are
+      near-perfect duplicates (49 identically-named/positioned `def test_*` functions each,
+      confirmed by diff) that could collapse into one parametrized module deriving its expected
+      sensor set/FRAM-chunk-count from each device's own generated `model.instances` rather than
+      hardcoding wozi/dev's own 3-sensor set - a moderate refactor. `test_digital_twin_
+      sensortask_integration.py` and `test_digital_twin_bus_hazard_concurrency.py` (CLAUDE.md's own
+      standing "a new bus-facing device gets bus-hazard test coverage" rule) hardcode wozi/dev's own
+      config defaults and 3-sensor set even more deeply (one test picks
+      `bmp_reader.start_asy_trigger` as a specific task-supervisor-restart target, which structurally
+      requires `bmp3xx` - a driver 4 of the 6 real devices don't have); whether/how to extend
+      bus-hazard coverage to those 4 devices is a genuine judgment call this session did not make
+      unilaterally, flagged to the project owner per CLAUDE.md's "flag, don't silently change"
+      convention rather than guessed at. `test_digital_twin_real_website_integration.py`'s one
+      device-specific assertion (the inlined website's own `device.id`) comes from the *website*
+      build, not the sensortask module, and is likely already orthogonal to this generalization -
+      not re-verified this session. `run_wozi_integration.py`/`run_dev_integration.py` themselves
+      were kept exactly as Session 5 left them (thin, device-specific wrappers), consistent with
+      that session's own documented decision - not revisited here since generalizing them is gated
+      on the same `--soak` porting item 1 above already identifies.
+
 7. **Versioning** — firmware + website, both starting at "2.0b0".
 8. **Closing consistency pass** — bird's-eye scan across everything sessions 1-7 touched; confirm
    zero device-specific content remains outside the 6 TOML files.

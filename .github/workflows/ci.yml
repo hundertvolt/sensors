@@ -302,9 +302,9 @@ jobs:
         run: node scripts/cross_browser_smoke.mjs
 
   lint-and-typecheck:
-    # Gates on src/, tests/, digital_twin/, boot_entry/, and buildgen/ for ruff, plus
-    # tests_hardware/device_scripts/ for mypy only (boot_entry/ and tests_hardware/device_scripts/
-    # are MicroPython-target code, checked by the main mypy pass below alongside src/tests/, not
+    # Gates on src/, tests/, digital_twin/, and buildgen/ for ruff, plus
+    # tests_hardware/device_scripts/ for mypy only (tests_hardware/device_scripts/
+    # is MicroPython-target code, checked by the main mypy pass below alongside src/tests/, not
     # the host build chain's separate pass), plus the whole host-side build chain - buildgen/,
     # scripts/, toolchain/ and tests_scripts/ - under both tools (the build scripts gate the
     # firmware every device ships, so they carry the same bar as the code they build; their mypy
@@ -336,9 +336,9 @@ jobs:
       - name: Sync dev dependencies
         run: uv sync
       - name: Ruff (src/, tests/, digital_twin/, tests_hardware/, and the whole host build chain)
-        run: uv run ruff check src tests digital_twin boot_entry tests_hardware buildgen scripts toolchain tests_scripts
+        run: uv run ruff check src tests digital_twin tests_hardware buildgen scripts toolchain tests_scripts
       - name: Mypy (src/, tests/, digital_twin/, tests_hardware/device_scripts/, and the whole host build chain)
-        run: uv run scripts/typecheck.sh src tests boot_entry tests_hardware/device_scripts
+        run: uv run scripts/typecheck.sh src tests tests_hardware/device_scripts
 
   shellcheck:
     # Own stage, not a step inside lint-and-typecheck: each tool gets its own independently
@@ -545,6 +545,12 @@ jobs:
     # (that entry itself stays open - it's specifically about the legacy build-*.sh scripts, a
     # separate, not-yet-done piece of work).
     #
+    # strategy.matrix over all 6 real devices (BUILD_CHAIN_PLAN.md's Session 6) - each is its own
+    # job, so a failure names exactly which device's generated build broke directly in the job
+    # list, rather than one job silently only ever having covered wozi/dev the way this job did
+    # before every device had a buildgen-generated entry point to build from. fail-fast: false so
+    # one device's failure doesn't cancel the other 5 mid-build - each is an independent proof.
+    #
     # needs: unit-tests, not digital-twin-e2e - this only needs the toolchain cache unit-tests'
     # own setup step already populates (mpy-cross + pico-sdk + picotool + the MicroPython/pico-sdk
     # git checkouts), not anything digital-twin-e2e itself produces, so it runs in parallel with
@@ -563,6 +569,10 @@ jobs:
       contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        device: [wozi, dev, arzi, klkizi, grkizi, schlafzi]
     steps:
       - uses: actions/checkout@v7
         with:
@@ -594,5 +604,5 @@ jobs:
           versions = st.load_versions(Path("toolchain/versions.toml"))
           st.ensure_apt_packages(versions["toolchain"]["apt_packages"], skip=False)
           PYEOF
-      - name: Build a real firmware.uf2 for wozi and verify it
-        run: RUN_SLOW_FIRMWARE_BUILD=1 uv run pytest tests_scripts/test_build_firmware.py::test_real_firmware_build_produces_a_valid_uf2 -v
+      - name: Build a real firmware.uf2 for ${{ matrix.device }} and verify it
+        run: RUN_SLOW_FIRMWARE_BUILD=1 uv run pytest "tests_scripts/test_build_firmware.py::test_real_firmware_build_produces_a_valid_uf2[${{ matrix.device }}]" -v

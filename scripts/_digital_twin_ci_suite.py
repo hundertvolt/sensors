@@ -26,7 +26,10 @@ STATE_DIR = REPO_ROOT / "digital_twin"
 FRAM_STATE_PATH = STATE_DIR / "fram_state.json"
 SCD30_STATE_PATH = STATE_DIR / "scd30_state.json"
 CONFIG_DIR = STATE_DIR / "config"
-MICROPYPATH = "src:digital_twin:ext:frozen_modules:.frozen"
+# build/generated_src first: no static src/sensortask_wozi.py exists any more
+# (BUILD_CHAIN_PLAN.md's Session 6 finish criterion) - scripts/run_digital_twin_ci.sh generates it
+# fresh, via buildgen, into this gitignored directory before this suite ever runs.
+MICROPYPATH = "build/generated_src:src:digital_twin:ext:frozen_modules:.frozen"
 HOST = "127.0.0.1"
 PORT = 18080  # a fixed, non-privileged, non-8080-default port - avoids colliding with a real
 # manual `scripts/run_unix_port_integration.sh` run on the same machine.

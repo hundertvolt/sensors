@@ -9,9 +9,9 @@ sys.path.insert(0, "ext")  # same convention as test_digital_twin_sensortask_int
 sys.path.insert(0, "digital_twin")
 
 import machine
-
 import sensortask_dev
 import sensortask_wozi
+
 from crc_checks import CRC8
 
 try:
@@ -111,7 +111,7 @@ async def _run_real_task_graph_and_assert_healthy(module: "ModuleType", shared_b
     # itself would, then asserts the run produced fresh data from every sensor and never starved
     # the watchdog - not just "didn't crash".
     assert module.watchdog is not None and module.sysfunct is not None
-    assert module.sgp_reader is not None and module.bmp_reader is not None and module.scd_reader is not None
+    assert module.sgp40 is not None and module.bmp3xx is not None and module.scd30 is not None
     assert module.fram is not None
     await module.sysfunct.start_timers(module._collect_timer_starters())
     tasks = [starter() for starter in module._collect_task_starters()]
@@ -120,9 +120,9 @@ async def _run_real_task_graph_and_assert_healthy(module: "ModuleType", shared_b
         await asyncio.sleep(run_seconds)
         assert module.watchdog.would_have_triggered_count == 0
 
-        sgp_data = await module.sgp_reader.get_data()
-        bmp_data = await module.bmp_reader.get_data()
-        scd_data = await module.scd_reader.get_data()
+        sgp_data = await module.sgp40.get_data()
+        bmp_data = await module.bmp3xx.get_data()
+        scd_data = await module.scd30.get_data()
         assert sgp_data.VOC is not None, "SGP40 never produced real data under concurrent bus load"
         assert bmp_data.Pres is not None, "BMP3xx never produced real data under concurrent bus load"
         assert scd_data.CO2 is not None, "SCD30 never produced real data under concurrent bus load"
@@ -316,7 +316,7 @@ def test_wozi_survives_concurrent_bus_load_and_a_real_established_wifi_disconnec
         await module.build_system(cfg_path=_tmp_cfg_dir(), web_host="127.0.0.1", web_port=port)
         assert module.conn is not None
         assert module.watchdog is not None and module.sysfunct is not None
-        assert module.sgp_reader is not None and module.bmp_reader is not None and module.scd_reader is not None
+        assert module.sgp40 is not None and module.bmp3xx is not None and module.scd30 is not None
         assert module.fram is not None
         # A real configured SSID, written before the task graph starts so the wifi task's first
         # connect attempt sees it (same technique as test_digital_twin_sensortask_integration.py's
@@ -331,9 +331,9 @@ def test_wozi_survives_concurrent_bus_load_and_a_real_established_wifi_disconnec
         try:
             await asyncio.sleep(75.0)
             assert module.watchdog.would_have_triggered_count == 0
-            sgp_data = await module.sgp_reader.get_data()
-            bmp_data = await module.bmp_reader.get_data()
-            scd_data = await module.scd_reader.get_data()
+            sgp_data = await module.sgp40.get_data()
+            bmp_data = await module.bmp3xx.get_data()
+            scd_data = await module.scd30.get_data()
             assert sgp_data.VOC is not None, "SGP40 never produced real data under concurrent bus load + a real wifi disconnect"
             assert bmp_data.Pres is not None, "BMP3xx never produced real data under concurrent bus load + a real wifi disconnect"
             assert scd_data.CO2 is not None, "SCD30 never produced real data under concurrent bus load + a real wifi disconnect"

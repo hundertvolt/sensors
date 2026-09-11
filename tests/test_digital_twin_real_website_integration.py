@@ -21,7 +21,6 @@ import frozen_website_wozi  # type: ignore[import-not-found]  # mounts /html wit
 sys.modules["frozen_html"] = frozen_website_wozi
 
 import _http_client  # noqa: E402
-
 import sensortask_wozi  # noqa: E402
 
 # Mirrors asy_wifi_service.py's own _PHASE_STA_SEEKING/_PHASE_HOTSPOT values - same

@@ -49,7 +49,10 @@ information):
 - **`improved-quality/` (the refactor's WIP staging directory) has been fully retired and
   deleted.** Every file it ever held was either promoted into `src/` once fully reviewed/tested,
   or — its last remaining file, `sensortask-wozi.py` — confirmed fully superseded by
-  `src/sensortask_wozi.py` + `src/asy_webserver_service.py` (construction/wiring and REST routing
+  `src/sensortask_wozi.py` (that file itself has since been retired too — every device's own
+  `sensortask_<device>.py` is now `buildgen`-generated at build time, never committed to `src/` —
+  BUILD_CHAIN_PLAN.md's Session 6 finish criterion; the construction/wiring facts described below
+  live in `devices/*.toml` now) + `src/asy_webserver_service.py` (construction/wiring and REST routing
   both independently rebuilt there, more generically, with real gaps in the old file fixed along
   the way — e.g. `conn.setup()`/`ntp.setup()` were never called anywhere in the old flow) and
   removed outright, not just left in place. Its old "don't edit source files without a scoped
@@ -304,11 +307,11 @@ information):
   actionlint 1.7.12 rejects that as invalid, so the two gates cannot both be satisfied; revisit
   when actionlint learns it. **Adding a SHA-pinned third-party action means bumping that SHA by
   hand** — no Dependabot is configured.
-- **Scope is nine directories**: `src/`, `tests/`, `digital_twin/`, `boot_entry/`, `buildgen/` (the
+- **Scope is eight directories**: `src/`, `tests/`, `digital_twin/`, `buildgen/` (the
   device-TOML-to-firmware-module generator, BUILD_CHAIN_PLAN.md's Session 3), `toolchain/`,
   `scripts/`, `tests_scripts/` and `tests_hardware/` — `tests_hardware/` in full for ruff; only its
   `device_scripts/` subtree (real MicroPython code pushed to the board, checked alongside
-  `src/`/`tests/`/`boot_entry/` in the main mypy pass) for mypy, since the rest of `tests_hardware/`
+  `src/`/`tests/` in the main mypy pass) for mypy, since the rest of `tests_hardware/`
   is host-side pytest code that goes through `host_typecheck.ini`'s dedicated pass below instead
   (see that file's own docstring). `buildgen/` follows the same split as `digital_twin/`: ruff
   checks it directly, but mypy needs `host_typecheck.ini`'s own separate invocation (below) since

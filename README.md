@@ -461,10 +461,10 @@ and repeatable where noted:
 - `--fram-state-path PATH` — persist the FRAM twin's contents to a JSON file across runs, instead of
   in-memory only.
 
-This standalone launcher is twin-only (no `src/` import). To instead run the real
-`src/sensortask_wozi.py` prototype against the twin, see `digital_twin/README.md`'s own
-"Swapping the twin in for a Unix-port run" section — that's a separate `MICROPYPATH`-based
-invocation, not this launcher.
+This standalone launcher is twin-only (no `src/` import). To instead run the real, buildgen-generated
+`sensortask_wozi.py` prototype against the twin, see `digital_twin/README.md`'s own "Swapping the
+twin in for a Unix-port run" section — that's a separate `MICROPYPATH`-based invocation, not this
+launcher.
 
 **Automated CI suite** — the manual walkthrough below turned into an unattended, CI-gating check:
 drives `digital_twin/run_wozi_integration.py` through five real subprocess runs (fresh boot, every
@@ -487,8 +487,8 @@ adding a new chip fake when a new sensor driver lands: **`digital_twin/README.md
 
 ### Manual baseline verification walkthrough
 
-A copy-paste sequence for manually checking the real assembled system (`src/sensortask_wozi.py`,
-unchanged) against the digital twin, end to end, over real HTTP — the same walkthrough used to
+A copy-paste sequence for manually checking the real assembled system (the buildgen-generated
+`sensortask_wozi.py`) against the digital twin, end to end, over real HTTP — the same walkthrough used to
 establish this project's own known-working baseline (build → boot → set log level → reboot with
 that level persisted → boot again with bus faults injected). Run each block from the repo root;
 `curl` and a browser both work against `http://127.0.0.1:8080` while a run is up.

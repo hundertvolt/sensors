@@ -57,5 +57,12 @@ fi
 echo "== Building the real wozi website into frozen_modules/frozen_html.py"
 scripts/build_website.sh wozi
 
+# No static src/sensortask_wozi.py exists any more (BUILD_CHAIN_PLAN.md's Session 6 finish
+# criterion) - generated fresh here, via buildgen, into build/generated_src/ (gitignored); see
+# scripts/_digital_twin_ci_suite.py's own MICROPYPATH constant for where run_wozi_integration.py's
+# `import sensortask_wozi` actually resolves it from.
+echo "== Generating buildgen device modules into build/generated_src/"
+uv run scripts/_generate_sensortask_modules.py
+
 echo "== Running digital-twin automated CI suite"
 uv run scripts/_digital_twin_ci_suite.py --micropython-bin "$micropython_bin" --logs-dir "digital_twin_ci_logs"
