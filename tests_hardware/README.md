@@ -380,6 +380,25 @@ So: **an error log read after a flash- or bench-tier run is not evidence about t
 CLAUDE.md's "read the FRAM logs before clearing anything" rule still stands — it is aimed at a
 unit that has been running normally. Check what has been run against the board first.
 
+**Standing rule for a device script that reads or asserts on error-log content: clear the chunk at
+the START, never at the end.** Clearing first is what makes the run deterministic — the chunk is
+real persistent storage, so without it a script inherits whatever a previous run left behind and
+its assertions silently drift (this has already bitten once: a seeded ring accumulating across runs
+until the history no longer matched). Clearing at the end is the opposite of useful — what the
+script leaves behind is the evidence of what it just did, and a run that wipes it destroys the only
+record of a failure that has already happened. Residue is the accepted outcome; the fix for
+misreading it is knowing a hardware run happened, which is what this section is for.
+
+The three scripts that read error-log content all do this today — `fram_error_log_roundtrip.py`,
+`fram_error_log_reset_race_seed_and_race.py` (which also verifies the cleared baseline before
+seeding, since its assertions depend on an exact ring) and
+`fram_error_log_reset_during_boot_window.py`. `fram_error_log_reset_race_verify.py` is the one
+deliberate exception, and has to be: it runs after the raced reset specifically to read what
+survived, so clearing first would erase the thing under test. Scripts working on plain data chunks
+(`fram_manager_roundtrip.py`, `fram_busy_status_lockout.py`, `fram_pause_unpause_and_gating.py`,
+`fram_write_protect_roundtrip.py`, `bus_deinit_is_a_noop_on_real_hardware.py`) establish the same
+baseline by writing their own pattern first, which is the equivalent discipline.
+
 - **FRAM write protection actually gates a real write, a real read, and does so in silicon**
   (`device_scripts/fram_write_protect_roundtrip.py`, `flash/test_fram_storage.py`): sets the real
   WPEN|BP0|BP1 status-register bits, then checks three things - a write is rejected while

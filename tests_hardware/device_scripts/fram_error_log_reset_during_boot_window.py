@@ -25,7 +25,9 @@ async def _main() -> None:
     if not store.initialized:
         print("RESULT: FAIL could not initialize the error-log chunk on the real chip")
         return
-    await store.reset()  # this chunk is real persistent storage - start from a known baseline
+    # Clear at the START, never at the end (tests_hardware/README.md's own rule): this chunk is
+    # real persistent storage, so without this the seeding below stacks on a previous run's ring.
+    await store.reset()
     for _ in range(3):
         await store.err_s("seeded", errno=SEEDED_ERRNO)
     seeded = (await store.get_log())[LOG_NAME]

@@ -30,6 +30,9 @@ async def _main() -> None:
         return
 
     # Same two objects in the same order as the seed script, so this addresses the same chunk.
+    # Deliberately does NOT clear it first, unlike every other error-log script here (see
+    # tests_hardware/README.md's clear-at-the-start rule): what the raced reset left behind IS the
+    # thing under test, so a baseline wipe would erase it.
     store = make_logger(fram, history_length=HISTORY_LENGTH, debug=None, name=LOG_NAME)
     await store.setup()
     if not store.initialized:
