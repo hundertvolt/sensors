@@ -1,7 +1,6 @@
 """Generates a device's website `definitions.json` (SPECIFICATION.md Part H.5) from a validated
 `DeviceModel` plus the `# @web`/`# @web-group` tags on the `src/` files that own each field/group
-(`buildgen.web_tag`). Architecture and design rationale: SPECIFICATION.md Part H.5.1. The CLI
-wrapper at the bottom is for manual use and `scripts/build_website.sh`'s own build-time invocation."""
+(`buildgen.web_tag`; design rationale: Part H.5.1). CLI at the bottom: manual use + `build_website.sh`."""
 
 import argparse
 import json

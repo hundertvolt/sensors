@@ -96,9 +96,10 @@ scripts/                 lint.sh/typecheck.sh/test.sh, build_frozen_html.sh, run
   `base_classes.py`'s `_set_dict_cfg()` gives every `SensorReaderConfig` a generic schema-driven
   setter; `api_response.py`'s `make_response()`/`parse_cmd_request()`/`handle_set_cmd()` replace the
   per-endpoint glue with one response envelope (C.5.3).
-- **FRAM storage** (arzi/neu/wozi only) — a bump allocator handing out chunks as two redundant
-  copies, so power-loss/watchdog reset mid-write leaves one valid copy. Used today for SGP40's VOC
-  baseline backup.
+- **FRAM storage** (every real device — confirmed against all 6 `devices/*.toml`, each declaring a
+  `driver = "fram"` instance) — a bump allocator handing out chunks as two redundant copies, so
+  power-loss/watchdog reset mid-write leaves one valid copy. Used today for SGP40's VOC baseline
+  backup.
 - **LED notification signalling** — `asy_neopixel_driver.py` (pure LED hardware: overlay toggle,
   dimmed ramp, internal/external arbitration for the one shared pixel; no config schema) +
   `asy_notification_service.py` (`NotificationCoordinator`: generic threshold signalling replacing
@@ -150,7 +151,7 @@ feature change.
   exposes the schema via a public `self.cfg_schema` attribute (`asy_wifi_service.py`/
   `asy_ntp_client.py`).
 - `asy_fram_driver.py`/`asy_fram_manager.py` — raw SPI FRAM driver + chunk allocator with dual-copy
-  redundancy (arzi/neu/wozi). `src/`'s promoted versions: each chunk stores two copies plus a
+  redundancy (every real device — see the FRAM-storage bullet above). `src/`'s promoted versions: each chunk stores two copies plus a
   busy/idle status byte guarding reads and writes (MB85RS64V reads are destructive internally — the
   datasheet's own endurance note says total reads *and* writes set the endurance limit "as an FRAM
   memory operates with destructive readout mechanism", i.e. every read is internally a
@@ -196,16 +197,20 @@ feature change.
   unconditional, fixed-position statement, never inside a branch/loop a task restart could
   re-enter. True today: task restarts only re-invoke an already-captured starter on the *existing*
   object, never `__init__`; a full reboot replays `build_system()`'s construction from scratch, and
-  every current FRAM-chunk-owning construction (`sysfunct`, `sgp_reader`'s VOC chunk, `pixel`,
-  `notify_service`) is unconditional top-level. Prove single, deterministic construction before
+  every current FRAM-chunk-owning construction (`sysfunct`, `sgp40`'s VOC chunk, `neopixel`,
+  `notification`) is unconditional top-level. Prove single, deterministic construction before
   adding any new FRAM-backed class.
   Every deliberate system reset pauses FRAM first (`system_service.py`'s `_reboot()` calls
   `storage_pause(True)` before arming the reset timer, and before the watchdog-starve fallback).
   Margin is ample (FRAM at 1MHz, 8KB chip, no chunk near that size — a two-block write+CRC readback
   completes in low single-digit ms, three orders of magnitude under both the 4s reset delay and the
-  ~8s watchdog-starve wait). Enforced by `tests/test_reset_call_site_invariant.py` (fails if
-  `machine.reset()`/`bootloader()` appear anywhere but `system_service.py`, or `WDT()` anywhere but
-  `sensortask_wozi.py`).
+  ~8s watchdog-starve wait). The `machine.reset()`/`bootloader()`-site half is enforced by
+  `tests/test_reset_call_site_invariant.py` (fails if either appears anywhere in `src/` but
+  `system_service.py`). Its `WDT()`-site half is now permanently vacuous — no `sensortask_*.py` is
+  ever committed to `src/` any more (every device's own is buildgen-generated at build/test time,
+  BUILD_CHAIN_PLAN.md's Session 6) — and the invariant it used to check is instead proven on the
+  generated output directly by `tests_scripts/test_buildgen_generate.py::
+  test_real_device_constructs_watchdog_exactly_once`, parametrized over all 6 real devices.
 - **SCD30's `AmbPres`** is stored in the sensor's own NVM as a one-time-set value, not a
   continuously-updated live input — hence a static config value even on wozi (which has a live
   BMP388); `set_ambient_pressure` uses `force=True` since resending the same value is also SCD30's
@@ -293,7 +298,7 @@ against its actual source, not docs/memory.
 - **Captive-portal hotspot redirect fallback**: `_serve_static()`'s `except OSError` branch (no
   matching file) redirects to `/` (302) instead of 404 whenever `is_hotspot_active: Callable[[],
   bool] | None` is provided and returns `True` (default `None` = old always-404 behavior).
-  `sensortask_wozi.py` wires this to `AsyConnTime.is_hotspot_active()`. This is what makes phones'
+  The generated `sensortask_wozi.py` wires this to `AsyConnTime.is_hotspot_active()`. This is what makes phones'
   captive-portal probes (`generate_204`, `hotspot-detect.html`) trigger the OS "Sign in to network"
   popup instead of a silent 404, while `captive_dns.py` answers every domain with the AP's IP.
 - Deployed `python/CommonDrivers/microdot.py` already implements essentially the same protective
@@ -343,45 +348,45 @@ on-chip layout and must stay identical across firmware versions (A.4's determini
 5. `spi0 = asy_spi_driver.SPI(...)`.
 6. `fram = AsyFramManager(spi0, 1, max_size=0x2000, ...)` — no chunk of its own.
 7. `sysfunct = SystemService(ntp.ntp_issynced, watchdog=watchdog, fram=fram, ...)` — **FRAM chunk 1**.
-8. `scd_reader = SCD30_Reader(i2c0, 8, trigger_sec=3, ..., fram=fram, ...)` — **chunk 2**; no
-   config schema (params live on-sensor). Constructed before `sgp_reader` (ordering-hazard #1,
-   Part C.14): `sgp_reader` holds a direct reference to this already-built object as its
+8. `scd30 = SCD30_Reader(i2c0, 8, trigger_sec=3, ..., fram=fram, ...)` — **chunk 2**; no
+   config schema (params live on-sensor). Constructed before `sgp40` (ordering-hazard #1,
+   Part C.14): `sgp40` holds a direct reference to this already-built object as its
    `temperature_source`/`humidity_source`, so the producer must exist first — a pure Python
    name-resolution requirement, not a FRAM one (chunk order is random-access and doesn't itself
    care), but the two facts are deliberately kept in the same relative order here for readability.
    `wozi` is never physically flashed (CLAUDE.md), so reordering carries no deployed-data-loss risk.
-9. `sgp_reader = SGP40_Reader(i2c1, temperature_source=scd_reader, temperature_field="Temp",
-   humidity_source=scd_reader, humidity_field="Hum", fram_storage=fram,
+9. `sgp40 = SGP40_Reader(i2c1, temperature_source=scd30, temperature_field="Temp",
+   humidity_source=scd30, humidity_field="Hum", fram_storage=fram,
    fram_ntp_callback=ntp.ntp_issynced, ...)` — **chunks 3-4** (error log, then VOC backup).
-   `scd_reader` is passed directly as both value sources (C.14.3's generalized per-value
+   `scd30` is passed directly as both value sources (C.14.3's generalized per-value
    measurement wiring) — no wrapping callback; the two fields resolve independently, so a future
    device could compensate temperature and humidity from two different sensors.
-10. `bmp_reader = BMP3xx_Reader(i2c1, ..., fram=fram, ...)` — **chunk 5**. No cross-instance wiring
+10. `bmp3xx = BMP3xx_Reader(i2c1, ..., fram=fram, ...)` — **chunk 5**. No cross-instance wiring
     dependency of its own on `wozi` (SCD30's `AmbPres` stays a static config value even though
     `wozi` physically has a live BMP388 — A.4's own note), so unconstrained by ordering-hazard #1.
-11. `pixel = NeopixelDriver(15, fram=fram, ...)` — **chunk 6**.
-12. `notify_service = NotificationCoordinator(pixel.request_signal, ntp.cettime, fram=fram, ...)`,
-    staged `register()` ×3 (each a direct `(source, field)` reference — `scd_reader`/`"CO2"`,
-    `sgp_reader`/`"VOC"`, `scd_reader`/`"Hum"`, Part C.14) then `finalize()` — **chunk 7**.
-13. `conn.set_ext_led(pixel)`.
+11. `neopixel = NeopixelDriver(15, fram=fram, ...)` — **chunk 6**.
+12. `notification = NotificationCoordinator(neopixel.request_signal, ntp.cettime, fram=fram, ...)`,
+    staged `register()` ×3 (each a direct `(source, field)` reference — `scd30`/`"CO2"`,
+    `sgp40`/`"VOC"`, `scd30`/`"Hum"`, Part C.14) then `finalize()` — **chunk 7**.
+13. `conn.set_ext_led(neopixel)`.
 14. `app = Microdot(); webserver = WebserverService(app, sensors=(...), ..., static_mount="/html",
     is_hotspot_active=conn.is_hotspot_active, host=web_host, port=web_port)` — **no `fram=`**
     (deliberately RAM-only — a connection-reclaim warning could churn faster than a sensor's fault
     log, and this keeps the seven-chunk order unchanged). `static_mount="/html"` registers the
     static route pair last, so an exact-match API route always wins.
 15. `sysfunct.set_level_setters(_collect_level_setters())` — after every module has constructed.
-16. **`await x.setup()` batch**: `sysfunct → fram → conn → ntp → sgp_reader → bmp_reader →
-    notify_service`. One hard constraint: `notify_service.setup()` needs `finalize()` (step 12)
-    already run, satisfied by batching at the end. `scd_reader.setup()` isn't in this batch (no
+16. **`await x.setup()` batch**: `sysfunct → fram → conn → ntp → sgp40 → bmp3xx →
+    notification`. One hard constraint: `notification.setup()` needs `finalize()` (step 12)
+    already run, satisfied by batching at the end. `scd30.setup()` isn't in this batch (no
     local config).
 
 **Real FRAM chunk order**: SystemService → SCD30 → SGP40 error log → SGP40 VOC backup → BMP3xx →
 Neopixel → NotificationCoordinator. Seven chunks — every module with a FRAM-backed error log uses
 it; must stay in this relative order. `src/` has no earlier on-chip layout to preserve.
 
-**This order, and `i2c0`'s SCD30-specific `timeout=200000`, are wozi's own** — a future per-variant
-generator must derive both from the variant's own module set, not assume wozi's answer applies
-everywhere.
+**This order, and `i2c0`'s SCD30-specific `timeout=200000`, are wozi's own — derived from
+`devices/wozi.toml`.** `buildgen` derives both from each device's own TOML rather than assuming
+wozi's answer applies everywhere (confirmed against `buildgen/codegen.py`).
 
 **Task/timer starter collection** (`_collect_task_starters()`/`_collect_timer_starters()`, from
 `main()`): every module's `get_task_starters()`/`get_timer_starters()` is called uniformly.
@@ -397,10 +402,10 @@ error-logging sub-object a module owns (a `SensorReaderConfig`'s own `.cfgmgr`, 
 `try/except Exception`; calling `set_level()` at any time is safe — no interrupt handler touches
 logging, `self.level` is a single atomic-store `int`).
 
-**Dependency graph**: `ntp` holds `conn`'s bound methods; `notify_service` holds direct references
-to `scd_reader`/`sgp_reader` (its registered `NotificationSignal`s' `source`) plus
-`pixel.request_signal`/`ntp.cettime`; `conn` holds `pixel`; `sgp_reader` holds `ntp.ntp_issynced`
-and direct references to `scd_reader` (its `temperature_source`/`humidity_source`, Part C.14.3).
+**Dependency graph**: `ntp` holds `conn`'s bound methods; `notification` holds direct references
+to `scd30`/`sgp40` (its registered `NotificationSignal`s' `source`) plus
+`neopixel.request_signal`/`ntp.cettime`; `conn` holds `neopixel`; `sgp40` holds `ntp.ntp_issynced`
+and direct references to `scd30` (its `temperature_source`/`humidity_source`, Part C.14.3).
 Since C.14.3's per-value measurement wiring resolves any producer purely by attribute name
 (`getattr(data, field_name)`), `asy_sgp40_driver.py` needs **no** static import of
 `asy_scd30_driver` at all — a real change from the mechanism's earlier, whole-object `comp_source`
@@ -1306,8 +1311,9 @@ readiness question needs a gate** — `AsyFramManager.get_chunk()` is pure bookk
 
 ## C.14 Instance naming, cross-instance wiring, and error/logger fan-in
 
-Session 1 of the device-genericization initiative (`BUILD_CHAIN_PLAN.md`) — the mechanism a future
-per-device generator (not built yet) will drive from each device's TOML. Applies to
+Session 1 of the device-genericization initiative (`BUILD_CHAIN_PLAN.md`) — the mechanism
+`buildgen/` (Session 3 on) now drives from each device's TOML, wired into the real build chain as
+of Session 6. Applies to
 `SensorReader`/`SensorReaderConfig` subclasses (the layer that can realistically have more than one
 instance per device, e.g. two SCD30s, or several differential-pressure sensors); singleton services
 (WiFi/NTP/SystemService/Neopixel/NotificationCoordinator/FRAM/the DNS server/the webserver) are
@@ -1347,9 +1353,11 @@ The default (empty extension) case reproduces every existing path/filename/dict-
 — covered by `tests/test_config_manager.py`'s `instance_name()` tests and each driver's own
 `name_ext`-default regression test.
 
-**Collision detection across a whole device's instance list is not built here** — that's the future
-generator's job (it errors at build time when two instances would resolve to the same name with no
-disambiguating extension); this session only makes the naming mechanism itself correct and usable.
+**Collision detection across a whole device's instance list is built in `buildgen/validate.py`**
+(`_check_instance_name_collisions()`/`_check_instance_label_collisions()`, called from
+`build_model()`) — it errors at build time when two instances would resolve to the same name with
+no disambiguating extension. This Part's own contribution was making the naming mechanism itself
+correct and usable; `buildgen` is what actually enforces it across a device's whole instance list.
 
 ### C.14.2 The `_WIRING` tuple convention
 
@@ -1379,8 +1387,8 @@ five makes the tag fail the build loud rather than parse as "no tag here" (`tag_
   compensation-source dependency used to be a second wiring entry here, `comp_source` — see the
   generalized per-value mechanism below, which replaced it.)
 - `mode="attr"`: the instance's `target` attribute/bound method is passed instead of the instance
-  itself — `asy_notification_service.py`'s `signal_sink` resolves to `pixel.request_signal`, not
-  `pixel`, satisfying `NotificationCoordinator.__init__`'s existing `request_signal_cb` parameter
+  itself — `asy_notification_service.py`'s `signal_sink` resolves to `neopixel.request_signal`, not
+  `neopixel`, satisfying `NotificationCoordinator.__init__`'s existing `request_signal_cb` parameter
   (left unchanged) while still keeping the *TOML-visible* link a direct instance reference, per
   BUILD_CHAIN_PLAN.md's "no getters, no callback functions in generated code" — the callback shape
   survives only as the one hand-written driver's own constructor parameter, never as
@@ -1428,8 +1436,8 @@ class), so `asy_sgp40_driver.py` no longer needs to know its compensation source
 all.
 
 **Ordering hazard #1 (object existence)**: since the consumer's constructor call references the
-producer's already-built Python object, the producer must be constructed first. `sensortask_wozi.py`
-now constructs `scd_reader` before `sgp_reader` for exactly this reason (A.7's construction order) —
+producer's already-built Python object, the producer must be constructed first. The generated
+`sensortask_wozi.py` constructs `scd30` before `sgp40` for exactly this reason (A.7's construction order) —
 a real, deliberate reordering of wozi's FRAM chunk allocation order, safe only because wozi is never
 physically flashed (CLAUDE.md). `buildgen/graph.py` (Session 3) topologically sorts a device's
 whole instance list by `_WIRING` dependency (kwarg/attr modes only — a "setter"-mode reference is a
@@ -1452,8 +1460,8 @@ as "not triggered," not an error.
 ### C.14.3 Error-source and logger fan-in (N-to-1)
 
 Every module callable from a top-level `_collect_error_sources()`/`_collect_level_setters()`
-(`sensortask_wozi.py`'s shape — a future per-device generator emits the equivalent for any device)
-implements `get_error_sources(self) -> list[Any]` and `get_loggers(self) -> list[PrintLogHistory]`,
+(`sensortask_wozi.py`'s shape — `buildgen` emits the equivalent for any device) implements
+`get_error_sources(self) -> list[Any]` and `get_loggers(self) -> list[PrintLogHistory]`,
 structurally (duck-typed — matches `asy_webserver_service.py`'s own `_ModuleLike` `Protocol`
 precedent, not a forced inheritance relationship). `base_classes.py`'s `SensorReader` provides the
 default (`[self]` / `[self.pr]`); `SensorReaderConfig` extends it with its own `self.cfgmgr` (`[self,
@@ -1678,6 +1686,16 @@ importable. **`.frozen` is a literal MicroPython sentinel, not an ordinary direc
 starting with `MP_FROZEN_PATH_PREFIX` routes to the compiled-in frozen table, never the real
 filesystem. `frozen_modules` is a separate, ordinary, gitignored directory (A.9's output) needed
 too, since `sensortask_wozi.py`'s `import frozen_html` needs it.
+
+Any test file that imports a `sensortask_<device>.py` module directly (`test_sensortask_wozi.py`/
+`test_sensortask_dev.py` and every `tests/test_digital_twin_*.py` that does the same) needs one more
+prerequisite first, since no such module is ever committed to `src/` any more (BUILD_CHAIN_PLAN.md's
+Session 6): `uv run scripts/_generate_sensortask_modules.py` to populate the gitignored
+`build/generated_src/` directory, and `build/generated_src` prepended to `MICROPYPATH` (ahead of
+`src`) so the generated module resolves before anything else. `scripts/test.sh`/`scripts/
+typecheck.sh` already do both automatically; running one such file directly, as the invocation above
+does for `test_math_helpers.py`, needs them done by hand first or the import fails with
+`ImportError: no module named 'sensortask_wozi'`.
 
 ## E.4 Hardware-touching files: mock at the raw bus-transaction level only
 
@@ -2391,8 +2409,12 @@ stops measurement, not a no-op (matching the legacy synthetic reference), not th
 (same three drivers); only `device.id`/`displayName` and I2C bus pairing differ, which the
 definitions files don't encode since a sensor's schema is driver-defined, not bus-defined.
 **Autogeneration**: `buildgen/definitions.py` generates this correctly for all six real devices
-today (H.5.1) — not yet wired into the build chain, so `html/definitions/*.json` stays hand-written
-for now (BACKLOG.md).
+today (H.5.1), and is wired into the real build chain as of BUILD_CHAIN_PLAN.md's Session 6:
+`scripts/build_website.sh` falls back to generating a device's `definitions.json` on the fly
+whenever no hand-written `html/definitions/<device>.json` exists. `wozi`/`dev` keep their existing
+hand-written files unchanged (`tests_js/` reads those exact files as fixtures); the other four real
+devices (`arzi`/`klkizi`/`grkizi`/`schlafzi`), which never had a hand-written file, get one
+generated this way — see H.5.1's own "Not yet built" note for what's still open.
 
 ## H.5.1 Definitions-file autogeneration
 
@@ -2440,8 +2462,10 @@ real devices pass a `validateDefinitions()`-equivalent shape check written direc
 (`tests_scripts/test_buildgen_definitions.py`); the mandatory `novel_combo.toml`/
 `multi_instance.toml` synthetic fixtures generate successfully, proving per-instance
 `resolved_name`-keying genuinely generalizes beyond the two real devices that happen to need it.
-**Not yet built**: wiring this into `scripts/build_website.sh`/CI, retiring the two hand-written
-files, or generating one for the four real devices that don't have one yet (BACKLOG.md).
+**Not yet built**: retiring the two hand-written `wozi.json`/`dev.json` files in favor of generating
+them too — the wiring into `scripts/build_website.sh`/CI, and generating one for the four real
+devices that never had one, are both done as of Session 6 (see the "Autogeneration" paragraph
+above; BACKLOG.md).
 
 ## H.6 Errcount (Status section) and dispatch-only field conventions
 

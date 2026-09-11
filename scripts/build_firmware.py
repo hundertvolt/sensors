@@ -4,9 +4,8 @@
 # dependencies = []
 # ///
 """Assembles a real, deployable firmware.uf2 from a buildgen-generated device module + ext/microdot.py
-+ the real website for one device (SPECIFICATION.md Part B.11, including why the generated boot
-entry is frozen under the literal name "main.py"). A clean build is necessary, not sufficient, for
-a device to boot."""
++ the real website for one device (SPECIFICATION.md Part B.11). A clean build is necessary, not
+sufficient, for a device to boot."""
 
 # Usage (from anywhere, via uv):
 #     uv run scripts/build_firmware.py wozi

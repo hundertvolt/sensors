@@ -68,7 +68,8 @@ constraints.
    did change (`short_name` is now `".".join(name.split(".")[:-1])` rather than a literal `.py`
    strip, plus a new non-ASCII module-name rejection), but the frozen name it produces for a flat
    `foo.py` is identical, and `py/frozenmod.c` is untouched - the analysis stands unchanged.
-   `boot_entry/wozi_boot.py` (the refactor's own entry point) already does
+   the refactor's own generated boot entry (`buildgen.codegen.generate_boot_entry_source()`, since
+   Session 6 - `boot_entry/wozi_boot.py` at the time this was written) already does
    `from sensortask_wozi import main` - the correct form - so there's nothing to fix on the
    refactor side. **`modules/_boot.py` itself stays untouched**: it targets the currently-deployed
    1.26 firmware, a different version whose own import machinery hasn't been separately verified
@@ -460,13 +461,13 @@ constraints.
   requirement - a generated `sensortask-*.py` is exactly as much "real code" as a hand-written one,
   same Part D bar applies), and those tests must themselves check which sensors/FRAM a given variant
   actually has before asserting anything sensor- or FRAM-specific — asserting e.g.
-  `scd_reader.pr.fram is not None` unconditionally against a variant with no SCD30 (or no FRAM at
+  `scd30.pr.fram is not None` unconditionally against a variant with no SCD30 (or no FRAM at
   all) would either hard-fail on a module that was never supposed to exist, or - the sharper risk -
   pass vacuously for the wrong reason if the assertion is generated loosely enough to skip rather
   than genuinely check. A variant-specific test also can't hardcode *which bus* a sensor sits on
   (SCD30 is wired to `i2c0` on wozi, but a different variant could wire it to `i2c1` or a third bus
   entirely) — it must look the bus up through the sensor's own object graph (e.g.
-  `scd_reader.scd.i2c_scd30.i2c_device.i2c`), never assume a specific `i2cN` name.
+  `scd30.scd.i2c_scd30.i2c_device.i2c`), never assume a specific `i2cN` name.
   `tests/test_sensortask_wozi.py`'s own
   `test_scd30s_own_i2c_bus_uses_a_clock_stretch_timeout_wide_enough_for_it` remains the worked
   example this generalizes from (both the bus lookup and the FRAM assertions). **Partially done**:
@@ -479,7 +480,8 @@ constraints.
   call flagged to the project owner rather than a mechanical rename. **Resolved (2026-09-03):
   `scripts/build_firmware.py dev` is now the real,
   correct, confirmed-working way to build/flash for the dev bench** — device-parametrized boot-entry
-  selection (`boot_entry/<device>_boot.py`) is real, and the earlier "wozi's own pins forced onto
+  selection was real then via `boot_entry/<device>_boot.py` (that directory is retired now, replaced
+  by `buildgen.codegen.generate_boot_entry_source()` — Session 6, above), and the earlier "wozi's own pins forced onto
   dev hardware" mismatch that produced noise mistaken for real bugs (once tracked as the open
   questions list's own item 7) no longer has anything to stand in for. `dev_legacy/README.md`'s
   mounted-entry-script recipe remains a valid, lighter-weight path for driver-level bring-up/

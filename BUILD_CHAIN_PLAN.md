@@ -938,7 +938,7 @@ script quality bar" below, not repeated here.
       sensortask_integration.py` and `test_digital_twin_bus_hazard_concurrency.py` (CLAUDE.md's own
       standing "a new bus-facing device gets bus-hazard test coverage" rule) hardcode wozi/dev's own
       config defaults and 3-sensor set even more deeply (one test picks
-      `bmp_reader.start_asy_trigger` as a specific task-supervisor-restart target, which structurally
+      `bmp3xx.start_asy_trigger` as a specific task-supervisor-restart target, which structurally
       requires `bmp3xx` - a driver 4 of the 6 real devices don't have); whether/how to extend
       bus-hazard coverage to those 4 devices is a genuine judgment call this session did not make
       unilaterally, flagged to the project owner per CLAUDE.md's "flag, don't silently change"

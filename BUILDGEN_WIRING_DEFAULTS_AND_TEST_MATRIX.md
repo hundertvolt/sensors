@@ -128,7 +128,7 @@ occupy — not as a separate named global/instance:
 
 ```python
 sgp40 = SGP40_Reader(i2c1, _DefaultCompSource(temperature=25, relative_humidity=50), ...)
-notify_service = NotificationCoordinator(_DefaultSignalSink().request_signal, ntp.cettime, ...)
+notification = NotificationCoordinator(_DefaultSignalSink().request_signal, ntp.cettime, ...)
 ```
 
 Consequence: `graph.py`'s dependency-edge computation needs a branch — a `{default: true, ...}`

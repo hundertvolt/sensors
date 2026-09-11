@@ -763,8 +763,8 @@ _FIELD_SCD_FORCE_CAL_REF: "cm.FieldSchema" = ("ForceCalRef", "int", 400, 400, 20
 def _scd_set_fields(
     reader: SCD30_Reader,
 ) -> "tuple[tuple[str, cm.FieldSchema, Callable[[Any], Coroutine[Any, Any, bool]]], ...]":
-    # Bound per reader instance (the real file builds this once against its one module-level
-    # scd_reader); iterated in a fixed order, which the one-shot bus fault below relies on.
+    # Bound per reader instance (the real generated module builds this once against its one
+    # module-level scd30); iterated in a fixed order, which the one-shot bus fault below relies on.
     return (
         ("MeasInt", _FIELD_SCD_MEAS_INT, reader.set_measurement_interval),
         ("AmbPres", _FIELD_SCD_AMB_PRES, reader.set_ambient_pressure),

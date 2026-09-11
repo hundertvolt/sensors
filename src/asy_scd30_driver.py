@@ -107,9 +107,9 @@ _FIELDS = const(("CO2", "Temp", "Hum", "WetBulb", "DewPoint", "TS"))  # kept in 
 
 # Datasheets/scd30/..._Interface_Description.pdf p.2: clock stretching is normally <=30ms but can
 # reach 150ms once/day for internal calibration, past rp2's own I2C timeout default (50ms) - every
-# device TOML's own bus.i2c*.timeout comment already cites this same fact (see e.g. devices/
-# wozi.toml, src/sensortask_wozi.py's own build_system()). Enforced here as a real, generator-
-# checked build requirement (BUILD_CHAIN_PLAN.md's "Build/generator script quality bar") instead of
+# device TOML's own bus.i2c*.timeout comment already cites this same fact (see e.g.
+# devices/wozi.toml). Enforced here as a real, generator-checked build requirement
+# (BUILD_CHAIN_PLAN.md's "Build/generator script quality bar") instead of
 # only a comment a device TOML author has to remember by hand.
 # @requires bus.timeout>=200000
 # Datasheet hard maximum, same source (Interface Description p.2): "Maximal I2C speed is

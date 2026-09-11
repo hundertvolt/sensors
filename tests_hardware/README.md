@@ -293,8 +293,9 @@ a live question:
   and hanging forever. `scripts/run_flash_hardware_suite.sh`/`run_bench_hardware_suite.sh` are
   scoped to avoid this either way, but the naming is the structural backstop.
 - **Reusable real-hardware GC/fragmentation-instrumentation technique**: a temporary async probe
-  task added to `boot_entry/<device>_boot.py` (never committed - `git diff` confirmed clean after
-  reverting, real production firmware rebuilt+reflashed before finishing), printing a fixed-format
+  task added to the boot entry (`boot_entry/<device>_boot.py` at the time this was written; that
+  directory is retired now - BUILD_CHAIN_PLAN.md's Session 6 - so add it to the staged `main.py`
+  a build produces, before flashing, and never commit the edit), printing a fixed-format
   line every N ms/every real event, captured via direct `pyserial` reads (`Board.tail_log()`, never
   `mpremote exec()` against a live system - that soft-resets it, wiping the very state being
   measured). Used for `gc.mem_free()` sampling + collection detection, real per-collection pause

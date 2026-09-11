@@ -3,12 +3,9 @@
 # requires-python = ">=3.11"
 # dependencies = []
 # ///
-"""Pre-generates every real device's `sensortask_<device>.py` via `buildgen` into
-`build/generated_src/` (gitignored, regenerated fresh every run) - the mechanism that lets every
-test statically importing `sensortask_wozi`/`sensortask_dev` keep working unchanged now that
-neither hand-written file exists any more (BUILD_CHAIN_PLAN.md's Session 6 finish criterion).
-Deliberately NOT written into `src/` itself: `src/` is fully-reviewed, hand-committed code under
-ruff/mypy's strict scope (CLAUDE.md), and freshly generated output has no business there."""
+"""Pre-generates every real device's `sensortask_<device>.py` via `buildgen` into gitignored
+`build/generated_src/`, regenerated fresh every run - lets tests statically importing
+`sensortask_wozi`/`sensortask_dev` keep working (BUILD_CHAIN_PLAN.md's Session 6; SPECIFICATION.md E.3)."""
 
 # Usage: uv run scripts/_generate_sensortask_modules.py
 # Called by scripts/test.sh, scripts/typecheck.sh, scripts/run_unix_port_integration.sh and

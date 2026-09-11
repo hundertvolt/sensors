@@ -1,6 +1,8 @@
 # dev.toml - bench rig device config; the only unit ever bench-flashed, never wozi's own pins
 # (CLAUDE.md's "Per-variant sensortask-*.py generator" rule).
-# Wiring sourced from src/sensortask_dev.py's build_system().
+# Wiring originally sourced from the hand-written src/sensortask_dev.py's build_system(), since
+# retired (BUILD_CHAIN_PLAN.md's Session 6) - this file is now the source of truth buildgen reads
+# from, not the other way around.
 
 [device]
 name = "Dev"

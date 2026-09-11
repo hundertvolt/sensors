@@ -77,7 +77,9 @@ dev = [
 # cleanup effort originally started against, including its own ad hoc improved-quality/mypy.ini and
 # improved-quality/pycheck.sh (retired in favor of this file) - has since been deleted in full:
 # every file it held was either promoted into src/ once fully reviewed/tested, or (its last
-# remaining file, sensortask-wozi.py) confirmed fully superseded by src/sensortask_wozi.py +
+# remaining file, sensortask-wozi.py) confirmed fully superseded by src/sensortask_wozi.py (that
+# file itself has since been retired too - every device's own sensortask_<device>.py is now
+# buildgen-generated at build time, never committed to src/ - BUILD_CHAIN_PLAN.md's Session 6) +
 # src/asy_webserver_service.py and removed outright.
 
 [tool.ruff]
@@ -435,8 +437,6 @@ max-returns = 12
 # api_response.py above, and asserts its static mount is non-None purely to narrow the type for
 # mypy (the route is only ever registered when it isn't None).
 "src/asy_webserver_service.py" = ["SLF001", "S101", "ANN401"]  # ANN401: the asyncio.start_server() seam described above
-"src/sensortask_wozi.py" = ["S101"]
-"src/sensortask_dev.py" = ["S101"]
 # build_firmware.py's single subprocess call is the repo's OWN scripts/build_website.sh, addressed
 # by an absolute path built from REPO_ROOT, with shell=False and check=True - a build driver
 # invoking the sibling build step it exists to orchestrate. S603 fires on every subprocess call

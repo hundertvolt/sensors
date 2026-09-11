@@ -639,6 +639,10 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   branch's sessions; expected to fold into `SPECIFICATION.md`/be deleted once the whole chain lands
   and merges into `main`, matching this repo's usual temporary-planning-doc lifecycle (see the
   deleted-docs list at the end of this section).
+- **[`BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md`](BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md)** —
+  design record for `buildgen`'s wiring-defaults mechanism, per-value generalization, and driver-
+  onboarding hardening; every mechanism it designed has since shipped, so it's kept current as a
+  durable design record rather than archived, same lifecycle as `BUILD_CHAIN_PLAN.md` above.
 
 **`DEVICE_REFERENCE.md`** (permanent, end-user-facing):
 

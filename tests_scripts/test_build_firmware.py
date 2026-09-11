@@ -31,6 +31,52 @@ def test_build_stage_dir_rejects_a_device_with_no_matching_toml(build_firmware: 
         build_firmware.build_stage_dir(tmp_path, "no-such-device")
 
 
+def test_build_stage_dir_rejects_a_frozen_module_resolving_to_neither_src_nor_ext(build_firmware: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Defensive check for a buildgen/build_firmware.py contract mismatch that should never happen
+    # given buildgen's own current guarantees - simulated by injecting a fake GeneratedDevice (a
+    # plain SimpleNamespace, since build_stage_dir only ever reads .model.device/.module_source/
+    # .boot_entry_source/.frozen_modules off it) whose frozen_modules set names a module neither
+    # src/ nor ext/ actually has.
+    from types import SimpleNamespace
+
+    fake_generated = SimpleNamespace(
+        model=SimpleNamespace(device="wozi"),
+        module_source="# fake module\n",
+        boot_entry_source="# fake boot\n",
+        frozen_modules=frozenset({"this_module_does_not_exist_anywhere"}),
+    )
+    monkeypatch.setattr(build_firmware, "generate_device", lambda *_args, **_kwargs: fake_generated)
+
+    with pytest.raises(RuntimeError, match="this_module_does_not_exist_anywhere"):
+        build_firmware.build_stage_dir(tmp_path, "wozi")
+
+
+def test_build_stage_dir_rejects_a_frozen_module_colliding_with_a_reserved_staging_name(build_firmware: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # The other defensive check: a resolved frozen module whose own filename collides with one of
+    # this build's own reserved names (main.py/frozen_html.py/sensortask_<device>.py) must fail
+    # loud rather than silently overwrite (or be overwritten by) the real entry/website content.
+    # No real src/ file is named "main.py" today, so REPO_ROOT is patched to a fake tree that has
+    # one, purely to make the collision reachable.
+    from types import SimpleNamespace
+
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "main.py").write_text("# dummy colliding module\n")
+    monkeypatch.setattr(build_firmware, "REPO_ROOT", tmp_path)
+
+    fake_generated = SimpleNamespace(
+        model=SimpleNamespace(device="wozi"),
+        module_source="# fake module\n",
+        boot_entry_source="# fake boot\n",
+        frozen_modules=frozenset({"main"}),
+    )
+    monkeypatch.setattr(build_firmware, "generate_device", lambda *_args, **_kwargs: fake_generated)
+
+    stage_dir = tmp_path / "stage"
+    stage_dir.mkdir()
+    with pytest.raises(RuntimeError, match=r"main\.py"):
+        build_firmware.build_stage_dir(stage_dir, "wozi")
+
+
 def test_manifest_template_includes_the_default_board_manifest_and_freezes_stage_dir(build_firmware: ModuleType, tmp_path: Path) -> None:
     # Unlike this script's own previous approach (a custom _boot.py, which meant skipping the
     # default board manifest entirely to avoid a colliding second freeze() of "_boot.py" - see
