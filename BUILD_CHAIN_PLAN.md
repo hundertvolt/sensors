@@ -640,6 +640,30 @@ script quality bar" below, not repeated here.
      a real `GET` against five real REST endpoints all return 200 - for `wozi`, `dev`, `novel_combo`,
      and `multi_instance`. This is the first point in the whole initiative a generated module has
      ever actually booted and served real traffic, not just parsed.
+   - **A real bug this proof depth actually caught, and fixed**: every generated module crashed on
+     boot with `AttributeError: 'AsyFramManager' object has no attribute 'get_task_starters'` the
+     first time this session's own boot test ran it - `buildgen/codegen.py`'s `_emit_collectors()`
+     put every constructed module, `fram` included, into the same `modules` list used by all four
+     collector loops (`_collect_error_sources`/`_collect_level_setters`/`_collect_task_starters`/
+     `_collect_timer_starters`) uniformly. `AsyFramManager` genuinely has no `get_task_starters()`/
+     `get_timer_starters()` at all (a synchronous flash-backed store owns no `asyncio` task or
+     `Timer` of its own) - confirmed directly against `src/asy_fram_manager.py`'s own method list,
+     and against every hand-written `sensortask_wozi.py`/`sensortask_dev.py`, whose own
+     `_collect_task_starters()`/`_collect_timer_starters()` already exclude `fram` from exactly
+     those two loops while still including it in the error-source/level-setter ones. Fixed by
+     computing a second `task_timer_modules` list (the same `modules` list, minus `fram`'s own
+     instance variable when a `fram` instance exists) and using it for just those two loops -
+     `_collect_error_sources()`/`_collect_level_setters()` are unaffected. This is exactly the kind
+     of bug `ast.parse()`-only correctness proof structurally cannot see (the generated syntax was
+     always valid Python; only actually *running* `main()` reaches the broken call), and exactly why
+     this session's mission specified running generated code, not just parsing it. Landed as a
+     forced, minimal, narrowly-scoped fix to `buildgen/codegen.py` itself - not a workaround in
+     `digital_twin/`, and not deferred - per this plan's own "forced cascade, not an early attempt
+     at [a later session's] job" precedent (see Session 6's own entry below for where that phrase
+     first appears): fixing it was required to deliver this session's own actual mission
+     (proving generated code boots), and every one of Session 3's/Session 4's own existing tests
+     (golden-file comparisons, shape validation, the synthetic-fixture generation checks) still pass
+     unchanged - confirmed directly, not assumed.
    - **Not built here** (flagged, not silently absorbed, per the merge-back checklist): wiring this
      generalized boot path into `scripts/run_digital_twin_ci.sh`/CI, extending that CI suite's own
      11-run matrix to `dev`/generated devices, or retiring `run_wozi_integration.py`/

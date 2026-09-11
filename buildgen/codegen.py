@@ -472,6 +472,19 @@ def _emit_webserver(lines: "list[str]", have: "set[str]", sensor_vars: "list[str
 
 def _emit_collectors(lines: "list[str]", construction_order: "list[str | tuple[str, str]]", ctx: _Ctx) -> None:
     modules = ["conn", "ntp"] + [ctx.instance_var(n) if isinstance(n, tuple) else n for n in construction_order if n not in ("conn", "ntp")]
+    # fram (AsyFramManager) has get_error_sources()/get_loggers() but, unlike every other
+    # constructed module, no get_task_starters()/get_timer_starters() at all - a synchronous
+    # flash-backed store owns no asyncio task or Timer of its own. Every hand-written
+    # sensortask_wozi.py/sensortask_dev.py's own _collect_task_starters()/_collect_timer_starters()
+    # already excludes it from those two loops specifically (while still including it in
+    # _collect_error_sources()/_collect_level_setters()) - this mirrors that, rather than crashing
+    # every generated device with a FRAM instance (i.e. every real device and both synthetic
+    # fixtures) with AttributeError the moment main() reaches this collector, a real bug this
+    # generator's own ast.parse()-only proof depth could never have caught (found + fixed by
+    # BUILD_CHAIN_PLAN.md's Session 5, whose own boot proof is the first thing to actually run
+    # generated code at all).
+    fram_var = next((ctx.instance_var(n) for n in construction_order if isinstance(n, tuple) and n[0] == "fram"), None)
+    task_timer_modules = [m for m in modules if m != fram_var] if fram_var is not None else modules
     lines.append('def _collect_error_sources() -> "list[Any]":')
     for name in modules:
         lines.append(f"    assert {name} is not None")
@@ -490,14 +503,14 @@ def _emit_collectors(lines: "list[str]", construction_order: "list[str | tuple[s
     lines.append('def _collect_task_starters() -> "list[Callable[[], asyncio.Task[Any]]]":')
     lines.append("    assert webserver is not None")
     lines.append("    starters: list[Callable[[], asyncio.Task[Any]]] = []")
-    lines.append(f"    for module in ({', '.join(modules)}, webserver):")
+    lines.append(f"    for module in ({', '.join(task_timer_modules)}, webserver):")
     lines.append("        starters.extend(module.get_task_starters())")
     lines.append("    return starters")
     lines.append("")
     lines.append('def _collect_timer_starters() -> "list[Callable[[], None]]":')
     lines.append("    assert webserver is not None")
     lines.append("    starters: list[Callable[[], None]] = []")
-    lines.append(f"    for module in ({', '.join(modules)}, webserver):")
+    lines.append(f"    for module in ({', '.join(task_timer_modules)}, webserver):")
     lines.append("        starters.extend(module.get_timer_starters())")
     lines.append("    return starters")
     lines.append("")
