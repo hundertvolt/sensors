@@ -46,7 +46,7 @@ tested, because each phase's tests are written against the previous phase's guar
 |---|---|---|
 | **A — Test foundation** | A1-A4 | TDD needs a link to test against, and the link model is the one thing nothing else can substitute for |
 | **B — Bus driver** | B1-B4 | The module is written once, against the driver's final API — including the framing codec and the cancel fix, both of which change that API's behaviour |
-| **C — Module foundation** | C1-C5 | Construction, readiness, logging and buffers must exist before any byte moves |
+| **C — Module foundation** | C1-C6 | Construction, readiness, logging, buffers and the responder's own loop must exist before any byte moves |
 | **D — Frame layer** | D1-D5 | One frame in, one frame out, fully validated |
 | **E — Exchange layer** | E1-E5 | One acknowledged frame exchange, plus the recovery every failure path calls into |
 | **F — Transaction layer** | F1-F7 | Trains, the public API, the role gate, the zero-copy forms |
@@ -428,6 +428,39 @@ a readiness failure does; `[mock]` C5.6's pre-seeded partial frame is drained by
 raising the error counter, and the first real transfer afterwards succeeds.
 
 **Sources.** C.9, C.13, A.7.
+
+### C6 — Responder listen loop and its callbacks
+
+**Spec.** The responder's supervised task is a loop calling `uart_listen()` forever. Its
+`get_callback`/`set_callback` are **constructor parameters**, not arguments the supervisor could
+supply — `system_service.py` starts a task through a zero-argument starter and knows nothing about
+this module's callbacks, so a loop that needed them passed in could not be started generically at
+all. `uart_listen()` keeps taking them as explicit arguments for a caller driving the loop itself;
+the owned loop passes the constructed ones. Between iterations the loop applies C.9's capped
+exponential backoff on **consecutive** faults — initial, multiplier and cap derived from `timeout`,
+reset to the initial value by the first clean transaction — and yields unconditionally.
+
+**Purpose.** C5.2 and §3.2 both defer the link-fault response to "the backoff" without either of
+them specifying it, and C5's own task starter cannot be written at all until the callback source is
+settled. This item is what those two cross-references point at.
+
+| # | Trigger | Symptom if unhandled | Required handling |
+|---|---|---|---|
+| C6.1 | Callbacks supplied only as `uart_listen()` arguments | The owned task starter has nothing to pass; a responder cannot be supervised generically, which is the whole point of C5 | Constructor parameters, used by the owned loop; the `uart_listen()` arguments stay for a caller driving its own loop |
+| C6.2 | A responder constructed without callbacks | Every GET and SET is unanswerable, discovered only when the peer first asks | Refused at construction by the readiness gate with a distinct errno (F4.6), not an `AttributeError` at the worst moment |
+| C6.3 | Loop retries a failing link at zero delay | `captive_dns.py`'s measured cascading-recovery storm, one resync per iteration, burying the FRAM history — C.9's own named convention | Capped exponential backoff on consecutive faults; asserted by counting iterations against elapsed time on a permanently dead link |
+| C6.4 | Backoff not reset after a success | A link that recovers stays throttled at the cap indefinitely | Reset to the initial delay by the first clean transaction; a test drives fault → recovery → fault and asserts the second delay is the initial one |
+| C6.5 | Backoff constants hardcoded in milliseconds | A different `timeout` silently changes the recovery contract, the same defect E4.7 rejects for the drain bound | Derived from `timeout`, never a bare constant |
+| C6.6 | Loop body raises | The supervisor restarts the task, which is correct but logs it as a task death rather than a link fault, and the distinction is the diagnosis | `uart_listen()` never raises by contract (F4); the loop still wraps its body per I.4(a), logging a distinct errno, because a contract is not an enforcement |
+| C6.7 | Backoff sleep not cancellable | `clear()` cannot unstick a loop parked in its own backoff, only one parked in a read | The sleep is a plain `await asyncio.sleep_ms()` the task cancellation already interrupts; no flag or timer involved (E3.1's reasoning applies unchanged) |
+
+**Function tests.** `[mock]` the owned loop answers a GET and a SET using the constructed callbacks;
+the loop survives a fault and keeps serving afterwards.
+**Failure tests.** `[mock]` C6.2's missing-callback refusal; C6.3's iteration count on a dead link
+over a fixed window; C6.4's reset-after-success sequence; C6.6's raising callback does not escape
+the loop.
+
+**Sources.** C.9, C.13, F4, §3.2.
 
 ---
 
@@ -1255,6 +1288,7 @@ list.
 | 239-241 | `else:` after `return`; no `UID` check on a non-ACK reply | C1.4, E1.2 |
 | 263 | ACK built through `_build_msg()`, allocating a fully padded frame per ACK | D5.3 |
 | (absent) | `name`, `get_error_counter()`, `reset_error_counter()`, starters, `setup()`, role gate, parameter validation | C2, C3, C5, F5 |
+| (absent) | no owned listen loop, no backoff between iterations — the caller must drive `uart_listen()` itself | C6 |
 
 # 5. Findings raised, not fixed here
 

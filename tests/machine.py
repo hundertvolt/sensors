@@ -401,6 +401,7 @@ class UART(io.IOBase):
         self.rx_queue = bytearray()
         self.writable = True
         self.write_limit: int | None = None  # test-only: caps bytes accepted per write() call - see write()
+        self._link: "UARTLink | None" = None  # set by UARTLink() - see its own docstring
 
     def feed_rx(self, data: bytes) -> None:  # test helper: queue bytes as if received over the wire
         self.rx_queue += data
@@ -462,7 +463,152 @@ class UART(io.IOBase):
             if not data:
                 return None
         self.log.append(("write", data))
+        if self._link is not None:
+            self._link.transmit(self, data)  # the far side's rx_queue, via this direction's knobs
         return len(data)
+
+
+class _LinkDirection:
+    # One direction of a UARTLink: the fault knobs plus the counters and wire log that make each
+    # knob's effect assertable (A3.1 - every knob is an explicit schedule, never unseeded
+    # randomness). Offsets in drop_indices/corrupt_indices are stream offsets within this
+    # direction, counted over every byte offered to it, not per write() call.
+    def __init__(self, capacity: int) -> None:
+        self.capacity = capacity  # far-side FIFO bound; overflow drops the newest bytes
+        self.silent = False  # one-sided silence
+        self.drop_indices: "set[int]" = set()
+        self.corrupt_indices: "dict[int, int]" = {}  # stream offset -> xor mask, length-preserving
+        self.truncate_after: int | None = None  # cut this direction's stream after N offered bytes
+        self.noise_before_next = bytearray()  # injected once, ahead of the next delivery
+        self.delay = False  # hold delivered bytes until UARTLink.release_delayed()
+        self.duplicate_next = 0  # repeat this many of the next delivered bytes
+        self.offered = 0
+        self.delivered = 0
+        self.dropped_overrun = 0
+        self.pending = bytearray()  # held by delay
+        self.wire_log = bytearray()  # every byte that actually reached the destination FIFO
+
+    def shape(self, data: bytes) -> bytearray:
+        # Applies the per-byte knobs in a fixed order - truncation bounds the stream, dropping
+        # removes bytes, corruption only rewrites them (A3.4: separate, composable, attributable).
+        out = bytearray()
+        for byte in data:
+            offset = self.offered
+            self.offered += 1
+            if self.silent:
+                continue
+            if self.truncate_after is not None and offset >= self.truncate_after:
+                continue
+            if offset in self.drop_indices:
+                continue
+            out.append(byte ^ self.corrupt_indices.get(offset, 0))
+        return out
+
+
+class UARTLink:
+    # Byte-level crossover between two UART fakes - one independent FIFO per direction, each with
+    # its own fault knobs (A1/A3). The fakes keep no concept of a frame: a write is appended to the
+    # far side's rx_queue and reads split wherever the reader asks. Never registers anything with a
+    # real select.poll() - use LinkPoller below (A1.2).
+    def __init__(self, uart_a: "UART", uart_b: "UART", capacity_a_to_b: int | None = None, capacity_b_to_a: int | None = None) -> None:
+        if uart_a._link is not None or uart_b._link is not None:
+            raise ValueError("UART already attached to a link")
+        if uart_a is uart_b:
+            raise ValueError("a link needs two distinct endpoints")
+        self.endpoints = (uart_a, uart_b)
+        # Default each direction's bound to the *destination's* own rxbuf: that is what really
+        # drops a frame's tail on hardware, which is the failure C2.9/C2.10 exist for.
+        self.a_to_b = _LinkDirection(uart_b.rxbuf if capacity_a_to_b is None else capacity_a_to_b)
+        self.b_to_a = _LinkDirection(uart_a.rxbuf if capacity_b_to_a is None else capacity_b_to_a)
+        uart_a._link = self
+        uart_b._link = self
+
+    def _index(self, uart: "UART") -> int:
+        return 0 if uart is self.endpoints[0] else 1
+
+    def direction_from(self, uart: "UART") -> "_LinkDirection":
+        # Raises rather than returning None for a foreign endpoint, so every caller can use the
+        # result directly - the same "a test fake validates its own inputs" stance Pin() takes.
+        if uart not in self.endpoints:
+            raise ValueError("UART is not an endpoint of this link")
+        return self.a_to_b if self._index(uart) == 0 else self.b_to_a
+
+    def direction_to(self, uart: "UART") -> "_LinkDirection":
+        if uart not in self.endpoints:
+            raise ValueError("UART is not an endpoint of this link")
+        return self.b_to_a if self._index(uart) == 0 else self.a_to_b
+
+    def _deposit(self, direction: "_LinkDirection", dest: "UART", data: bytearray) -> None:
+        room = direction.capacity - len(dest.rx_queue)
+        if room < len(data):
+            direction.dropped_overrun += len(data) - max(room, 0)
+            data = data[: max(room, 0)]
+        if not data:
+            return
+        dest.rx_queue += data
+        direction.wire_log += data
+        direction.delivered += len(data)
+
+    def transmit(self, src: "UART", data: bytes) -> None:
+        direction = self.direction_from(src)
+        dest = self.endpoints[1 - self._index(src)]
+        shaped = direction.shape(data)
+        if direction.duplicate_next > 0 and shaped:
+            n = min(direction.duplicate_next, len(shaped))
+            shaped += shaped[:n]
+            direction.duplicate_next -= n
+        if direction.noise_before_next and shaped:
+            shaped = direction.noise_before_next + shaped
+            direction.noise_before_next = bytearray()
+        if direction.delay:
+            direction.pending += shaped
+            return
+        self._deposit(direction, dest, shaped)
+
+    def settle(self) -> None:
+        # Fidelity seam for the shared contract (tests/_uart_link_contract.py): this model
+        # delivers synchronously, so there is nothing to wait for. The twin's own link overrides
+        # it with a real wire-time wait.
+        return
+
+    def release_delayed(self) -> int:
+        # Flushes both directions' held bytes and reports how many were released - the
+        # deterministic stand-in for "the wire got around to it" (A3.1).
+        released = 0
+        for index, direction in ((0, self.a_to_b), (1, self.b_to_a)):
+            if not direction.pending:
+                continue
+            data = direction.pending
+            direction.pending = bytearray()
+            released += len(data)
+            self._deposit(direction, self.endpoints[1 - index], data)
+        return released
+
+
+class LinkPoller:
+    # Bounded select.poll() stand-in for one UART fake, re-querying its ioctl() on every call
+    # (A2.2). Installed by reassigning asy_uart_driver.UART.poller after construction, keeping
+    # src/ free of a testability seam. Never wraps a real select.poll(): the Unix port does not
+    # re-evaluate a Python object's ioctl() after register(), which is CLAUDE.md's known CI hang.
+    def __init__(self, uart: "UART", not_ready_calls: int = 0) -> None:
+        self._uart = uart
+        self._not_ready = not_ready_calls
+
+    def force_not_ready(self, calls: int) -> None:  # A2.3: makes the timeout paths reachable
+        self._not_ready = calls
+
+    def ipoll(self, _timeout_ms: int = 0) -> "list[tuple[None, int]]":
+        if self._not_ready > 0:
+            self._not_ready -= 1
+            return []
+        event = self._uart.ioctl(UART._MP_STREAM_POLL, select.POLLIN | select.POLLOUT)
+        return [(None, event)] if event else []
+
+    def register(self, obj: object, mask: int = 0) -> None:
+        pass
+
+    def unregister(self, obj: object) -> None:
+        pass
 
 
 class Timer:

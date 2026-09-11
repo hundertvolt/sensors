@@ -4,6 +4,8 @@ See `digital_twin/README.md`'s "What's here" section for the full wiring/`Pin`-i
 
 import asyncio
 import errno
+import io
+import select
 import time
 from collections import deque
 
@@ -402,6 +404,286 @@ class SPI:
             raise ValueError("buffers must be the same length")
         self.write(buffer_out)
         self.readinto(buffer_in)
+
+
+
+_UART_BITS_PER_BYTE = 10  # 8N1 on the wire: one start bit, eight data bits, one stop bit
+
+
+class _LinkDirection:
+    # One direction of a UARTLink. Same knobs and same semantics as tests/machine.py's own
+    # _LinkDirection (both are held to tests/_uart_link_contract.py); the difference is fidelity -
+    # this one schedules delivery by real wire time instead of depositing synchronously.
+    def __init__(self, capacity: int, baudrate: int) -> None:
+        self.capacity = capacity
+        self.baudrate = baudrate
+        self.silent = False
+        self.drop_indices: "set[int]" = set()
+        self.corrupt_indices: "dict[int, int]" = {}
+        self.truncate_after: int | None = None
+        self.noise_before_next = bytearray()
+        self.delay = False
+        self.duplicate_next = 0
+        self.offered = 0
+        self.delivered = 0
+        self.dropped_overrun = 0
+        self.pending = bytearray()  # held by the delay knob
+        self.in_flight: "deque[tuple[int, int]]" = deque((), 64)  # (due_us, byte)
+        self.wire_log = bytearray()
+
+    def byte_time_us(self) -> int:
+        return (_UART_BITS_PER_BYTE * 1_000_000) // max(self.baudrate, 1)
+
+    def shape(self, data: bytes) -> bytearray:
+        out = bytearray()
+        for byte in data:
+            offset = self.offered
+            self.offered += 1
+            if self.silent:
+                continue
+            if self.truncate_after is not None and offset >= self.truncate_after:
+                continue
+            if offset in self.drop_indices:
+                continue
+            out.append(byte ^ self.corrupt_indices.get(offset, 0))
+        return out
+
+
+class UARTLink:
+    # Twin-fidelity byte-level crossover between two UART fakes: one FIFO per direction, the same
+    # fault knobs as the mock link, plus real wire time - a byte only becomes readable once its
+    # transmission would actually have finished at the configured baud rate. That is what keeps a
+    # timing-dependent recovery (drain, cooldown) from passing for the wrong reason (A4.3).
+    def __init__(self, uart_a: "UART", uart_b: "UART", capacity_a_to_b: int | None = None, capacity_b_to_a: int | None = None) -> None:
+        if uart_a._link is not None or uart_b._link is not None:
+            raise ValueError("UART already attached to a link")
+        if uart_a is uart_b:
+            raise ValueError("a link needs two distinct endpoints")
+        self.endpoints = (uart_a, uart_b)
+        self.a_to_b = _LinkDirection(uart_b.rxbuf if capacity_a_to_b is None else capacity_a_to_b, uart_a.baudrate)
+        self.b_to_a = _LinkDirection(uart_a.rxbuf if capacity_b_to_a is None else capacity_b_to_a, uart_b.baudrate)
+        self._next_free_us = [0, 0]  # per direction: when the wire is idle again
+        uart_a._link = self
+        uart_b._link = self
+
+    def _index(self, uart: "UART") -> int:
+        return 0 if uart is self.endpoints[0] else 1
+
+    def direction_from(self, uart: "UART") -> "_LinkDirection":
+        if uart not in self.endpoints:
+            raise ValueError("UART is not an endpoint of this link")
+        return self.a_to_b if self._index(uart) == 0 else self.b_to_a
+
+    def direction_to(self, uart: "UART") -> "_LinkDirection":
+        if uart not in self.endpoints:
+            raise ValueError("UART is not an endpoint of this link")
+        return self.b_to_a if self._index(uart) == 0 else self.a_to_b
+
+    def _schedule(self, index: int, direction: "_LinkDirection", data: bytearray) -> None:
+        now = time.ticks_us()
+        due = now if time.ticks_diff(self._next_free_us[index], now) < 0 else self._next_free_us[index]
+        step = direction.byte_time_us()
+        for byte in data:
+            due = time.ticks_add(due, step)
+            direction.in_flight.append((due, byte))
+        self._next_free_us[index] = due
+
+    def _advance(self) -> None:
+        # Moves every byte whose wire time has elapsed into the destination FIFO. Called from each
+        # endpoint's own read path, so time only ever advances as the consumer actually runs.
+        now = time.ticks_us()
+        for index, direction in ((0, self.a_to_b), (1, self.b_to_a)):
+            dest = self.endpoints[1 - index]
+            while direction.in_flight and time.ticks_diff(direction.in_flight[0][0], now) <= 0:
+                _due, byte = direction.in_flight.popleft()
+                if len(dest.rx_queue) >= direction.capacity:
+                    direction.dropped_overrun += 1
+                    continue
+                dest.rx_queue.append(byte)
+                direction.wire_log.append(byte)
+                direction.delivered += 1
+
+    def settle(self) -> None:
+        # Blocks until every in-flight byte has landed - the fidelity seam the shared contract
+        # calls so a synchronous assertion does not race the wire (tests/_uart_link_contract.py).
+        while self.a_to_b.in_flight or self.b_to_a.in_flight:
+            self._advance()
+            if self.a_to_b.in_flight or self.b_to_a.in_flight:
+                time.sleep_us(self.a_to_b.byte_time_us() + 1)
+
+    def transmit(self, src: "UART", data: bytes) -> None:
+        index = self._index(src)
+        direction = self.direction_from(src)
+        shaped = direction.shape(data)
+        if direction.duplicate_next > 0 and shaped:
+            n = min(direction.duplicate_next, len(shaped))
+            shaped += shaped[:n]
+            direction.duplicate_next -= n
+        if direction.noise_before_next and shaped:
+            shaped = direction.noise_before_next + shaped
+            direction.noise_before_next = bytearray()
+        if direction.delay:
+            direction.pending += shaped
+            return
+        self._schedule(index, direction, shaped)
+
+    def release_delayed(self) -> int:
+        released = 0
+        for index, direction in ((0, self.a_to_b), (1, self.b_to_a)):
+            if not direction.pending:
+                continue
+            data = direction.pending
+            direction.pending = bytearray()
+            released += len(data)
+            self._schedule(index, direction, data)
+        return released
+
+
+class UART(io.IOBase):
+    # Twin UART, deliberately independent of tests/machine.py's own (see this module's docstring)
+    # but held to the same semantics by tests/_uart_link_contract.py. io.IOBase is what lets
+    # asy_uart_driver.py's init() register it with a real select.poll() without raising; tests
+    # still reassign .poller to a bounded stand-in afterwards, since the Unix port never
+    # re-evaluates a Python object's ioctl() after registration (CLAUDE.md's known hang cause).
+    _MP_STREAM_POLL = 3  # py/stream.h
+    _MAX_BUFFER_SIZE = 32766
+    _UART_INVERT_MASK = 3
+
+    # One live instance per peripheral id, enforced rather than assumed: the twin wires a single
+    # device per bus id, and a silently re-init'd peripheral would mis-route a whole link (A4.2).
+    _live: "dict[int, UART]" = {}
+
+    def __init__(
+        self,
+        id: int,
+        *,
+        tx: "Pin",
+        rx: "Pin",
+        baudrate: int = 9600,
+        bits: int = 8,
+        parity: int | None = None,
+        stop: int = 1,
+        rxbuf: int = 256,
+        txbuf: int = 256,
+        timeout: int = 0,
+        timeout_char: int = 1,
+        invert: int = 0,
+    ) -> None:
+        if id not in (0, 1):
+            raise ValueError(f"UART({id}) doesn't exist")
+        if invert & ~self._UART_INVERT_MASK:
+            raise ValueError("bad inversion mask")
+        if rxbuf > self._MAX_BUFFER_SIZE:
+            raise ValueError("rxbuf too large")
+        if txbuf > self._MAX_BUFFER_SIZE:
+            raise ValueError("txbuf too large")
+        if id in UART._live:
+            raise ValueError(f"UART({id}) is already in use by another instance")
+        self.id = id
+        self.tx = tx
+        self.rx = rx
+        self.baudrate = baudrate
+        self.bits = bits
+        self.parity = parity
+        self.stop = stop
+        self.rxbuf = rxbuf
+        self.txbuf = txbuf
+        self.timeout = timeout
+        self.timeout_char = timeout_char
+        self.invert = invert
+        self.deinit_called = False
+        self.rx_queue = bytearray()
+        self.writable = True
+        self.write_limit: int | None = None
+        self._link: "UARTLink | None" = None
+        UART._live[id] = self
+
+    def _pump(self) -> None:
+        if self._link is not None:
+            self._link._advance()
+
+    def ioctl(self, req: int, arg: int) -> int:
+        if req != self._MP_STREAM_POLL:
+            return 0
+        self._pump()
+        ready = 0
+        if (arg & select.POLLIN) and self.rx_queue:
+            ready |= select.POLLIN
+        if (arg & select.POLLOUT) and self.writable:
+            ready |= select.POLLOUT
+        return ready
+
+    def feed_rx(self, data: bytes) -> None:
+        self.rx_queue += data
+
+    def deinit(self) -> None:
+        self.deinit_called = True
+        if UART._live.get(self.id) is self:
+            del UART._live[self.id]
+
+    def read(self, nbytes: int | None = None) -> bytes | None:
+        self._pump()
+        n = len(self.rx_queue) if nbytes is None else min(nbytes, len(self.rx_queue))
+        if n == 0:
+            return None
+        data = bytes(self.rx_queue[:n])
+        self.rx_queue = self.rx_queue[n:]
+        return data
+
+    def readinto(self, buf: "bytearray | memoryview", nbytes: int | None = None) -> int | None:
+        self._pump()
+        n = len(buf) if nbytes is None else min(nbytes, len(buf))
+        n = min(n, len(self.rx_queue))
+        if n == 0:
+            return None
+        buf[:n] = self.rx_queue[:n]
+        self.rx_queue = self.rx_queue[n:]
+        return n
+
+    def readline(self) -> bytes | None:
+        self._pump()
+        if not self.rx_queue:
+            return None
+        idx = self.rx_queue.find(b"\n")
+        end = len(self.rx_queue) if idx == -1 else idx + 1
+        data = bytes(self.rx_queue[:end])
+        self.rx_queue = self.rx_queue[end:]
+        return data
+
+    def write(self, buf: object) -> int | None:
+        data = bytes(buf)  # type: ignore[call-overload]
+        if self.write_limit is not None:
+            data = data[: self.write_limit]
+            if not data:
+                return None
+        if self._link is not None:
+            self._link.transmit(self, data)
+        return len(data)
+
+
+class LinkPoller:
+    # Bounded select.poll() stand-in, identical in behaviour to tests/machine.py's own - see
+    # digital_twin/unix_port_poll_prewarm.py for the modselect.c segfault a real poll object over
+    # a non-fd stream can hit here.
+    def __init__(self, uart: "UART", not_ready_calls: int = 0) -> None:
+        self._uart = uart
+        self._not_ready = not_ready_calls
+
+    def force_not_ready(self, calls: int) -> None:
+        self._not_ready = calls
+
+    def ipoll(self, _timeout_ms: int = 0) -> "list[tuple[None, int]]":
+        if self._not_ready > 0:
+            self._not_ready -= 1
+            return []
+        event = self._uart.ioctl(UART._MP_STREAM_POLL, select.POLLIN | select.POLLOUT)
+        return [(None, event)] if event else []
+
+    def register(self, obj: object, mask: int = 0) -> None:
+        pass
+
+    def unregister(self, obj: object) -> None:
+        pass
 
 
 class Timer:

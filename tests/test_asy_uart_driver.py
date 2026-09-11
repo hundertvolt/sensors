@@ -5,6 +5,7 @@ from machine import UART as FakeUART
 
 from asy_uart_driver import UART
 from crc_checks import CRC16, CRC_Base, CRC_Pass
+from framing_codecs import COBS_DELIMITER, Framing_COBS, Framing_Pass
 
 try:
     from typing import TYPE_CHECKING
@@ -433,6 +434,409 @@ def test_cancel_read_timeout_unblocks_a_pending_wait() -> None:
     result, cancelled = run(scenario())
     assert result is None
     assert cancelled is True
+
+
+# ---------------------------------------------------------------------------
+# B3 - optional-buffer gaps and caller-buffer validation
+# ---------------------------------------------------------------------------
+
+
+def test_a_complete_write_reslices_nothing() -> None:
+    # B3.1: the re-slice happens only after a short write has actually occurred, so the normal
+    # path costs no memoryview allocation. Asserted on what the fake actually received.
+    uart = make_uart()
+    payload = bytearray(b"0123456789")
+    assert run(locked_write(uart, payload)) is True
+    writes = [entry[1] for entry in fake(uart).log if entry[0] == "write"]
+    assert writes == [b"0123456789"]  # exactly one round, so no slice was ever needed
+
+
+def test_a_short_write_still_completes_across_rounds() -> None:
+    uart = make_uart()
+    fake(uart).write_limit = 4
+    payload = bytearray(b"0123456789")
+    assert run(locked_write(uart, payload)) is True
+    writes = [entry[1] for entry in fake(uart).log if entry[0] == "write"]
+    assert b"".join(writes) == b"0123456789"
+    assert len(writes) == 3  # 4 + 4 + 2, the re-slicing path this time
+
+
+def test_writefrom_rejects_a_size_longer_than_the_buffer() -> None:
+    # B3.2: silent truncation, or an out-of-range write, would both be worse than the sentinel.
+    uart = make_uart()
+    assert run(locked_writefrom(uart, bytearray(4), 8)) is False
+    assert run(locked_writefrom(uart, bytearray(4), -1)) is False
+
+
+def test_writefrom_rejects_a_buffer_with_no_room_for_the_crc() -> None:
+    uart = make_uart(crc=CRC16())
+    assert run(locked_writefrom(uart, bytearray(4), 4)) is False  # 4 payload + 2 CRC > 4
+    assert run(locked_writefrom(uart, bytearray(6), 4)) is True
+
+
+def test_into_methods_move_the_same_bytes_as_their_allocating_siblings() -> None:
+    # B3.3: the zero-allocation path exists for the whole related set, not half of it.
+    allocating = make_uart()
+    into = make_uart()
+    payload = bytearray(b"\x01\x02\x03\x04")
+    assert run(locked_write(allocating, bytearray(payload))) is True
+    assert run(locked_writefrom(into, bytearray(payload), len(payload))) is True
+    assert written(allocating) == written(into)
+
+    reader_alloc = make_uart()
+    reader_alloc.poller = _StepPoller([select.POLLIN])  # type: ignore[assignment]
+    fake(reader_alloc).feed_rx(bytes(payload))
+    reader_into = make_uart()
+    reader_into.poller = _StepPoller([select.POLLIN])  # type: ignore[assignment]
+    fake(reader_into).feed_rx(bytes(payload))
+    got = run(locked_read_until_complete(reader_alloc, 4, start_timeout_ms=200, timeout_ms=200))
+    buf = bytearray(4)
+    size = run(locked_readinto_until_complete(reader_into, buf, 4, start_timeout_ms=200, timeout_ms=200))
+    assert got is not None
+    assert size == 4
+    assert bytes(got) == bytes(buf)
+
+
+# ---------------------------------------------------------------------------
+# B2 - the pluggable framing codec
+# ---------------------------------------------------------------------------
+
+
+def cobs_uart(max_frame: int = 64, **kwargs: "Any") -> UART:
+    return make_uart(framing=Framing_COBS(max_frame), **kwargs)
+
+
+async def locked_write(uart: UART, msg: bytearray) -> bool:
+    async with uart:
+        return await uart.write(msg)
+
+
+async def locked_writefrom(uart: UART, buf: bytearray, size: int) -> bool:
+    async with uart:
+        return await uart.writefrom(buf, size)
+
+
+async def locked_readinto_until_complete(uart: UART, buf: bytearray, nbytes: int, **kwargs: "Any") -> int | None:
+    async with uart:
+        return await uart.readinto_until_complete(buf, nbytes, **kwargs)
+
+
+async def locked_read_until_complete(uart: UART, nbytes: int, **kwargs: "Any") -> bytearray | None:
+    async with uart:
+        return await uart.read_until_complete(nbytes, **kwargs)
+
+
+def written(uart: UART) -> bytes:
+    return b"".join(entry[1] for entry in fake(uart).log if entry[0] == "write")
+
+
+def test_pass_through_codec_emits_exactly_what_it_always_did() -> None:
+    # The regression that proves the default changed nothing: identical bytes, with and without
+    # the codec named explicitly.
+    default_uart = make_uart()
+    explicit = make_uart(framing=Framing_Pass())
+    assert run(locked_write(default_uart, bytearray(b"\x01\x00\x02"))) is True
+    assert run(locked_write(explicit, bytearray(b"\x01\x00\x02"))) is True
+    assert written(default_uart) == b"\x01\x00\x02"
+    assert written(explicit) == written(default_uart)
+
+
+def test_cobs_write_emits_a_delimited_frame_with_no_inner_zero() -> None:
+    uart = cobs_uart()
+    assert run(locked_write(uart, bytearray(b"\x01\x00\x02"))) is True
+    out = written(uart)
+    assert out[-1] == COBS_DELIMITER
+    assert COBS_DELIMITER not in out[:-1]
+
+
+def test_writefrom_is_framed_exactly_like_write() -> None:
+    # B2.6: a half-codec'd API, where write() frames and writefrom() does not, is the defect.
+    via_write = cobs_uart()
+    via_writefrom = cobs_uart()
+    payload = bytearray(b"\x01\x00\x02\x03")
+    assert run(locked_write(via_write, bytearray(payload))) is True
+    buf = bytearray(payload) + bytearray(8)
+    assert run(locked_writefrom(via_writefrom, buf, len(payload))) is True
+    assert written(via_write) == written(via_writefrom)
+
+
+def test_cobs_round_trips_through_the_driver() -> None:
+    sender = cobs_uart()
+    payload = bytearray(b"\x05\x00\x00\x07")
+    assert run(locked_write(sender, bytearray(payload))) is True
+    receiver = cobs_uart()
+    receiver.poller = _StepPoller([select.POLLIN])  # type: ignore[assignment]
+    fake(receiver).feed_rx(written(sender))
+    buf = bytearray(64)
+    size = run(locked_readinto_until_complete(receiver, buf, len(payload), start_timeout_ms=200, timeout_ms=200))
+    assert size == len(payload)
+    assert bytes(buf[:size]) == bytes(payload)
+
+
+def test_cobs_round_trips_through_the_allocating_read() -> None:
+    # B2.6 again, on the read half: read_until_complete() and readinto_until_complete() move
+    # together or not at all.
+    sender = cobs_uart()
+    payload = bytearray(b"\x09\x00\x0a")
+    assert run(locked_write(sender, bytearray(payload))) is True
+    receiver = cobs_uart()
+    receiver.poller = _StepPoller([select.POLLIN])  # type: ignore[assignment]
+    fake(receiver).feed_rx(written(sender))
+    got = run(locked_read_until_complete(receiver, len(payload), start_timeout_ms=200, timeout_ms=200))
+    assert got is not None
+    assert bytes(got) == bytes(payload)
+
+
+def test_cobs_round_trips_with_a_crc_underneath_it() -> None:
+    # The ordering claim itself: build -> CRC -> encode on write, the exact reverse on read.
+    sender = make_uart(crc=CRC16(), framing=Framing_COBS(64))
+    payload = bytearray(b"\x01\x02\x00\x03")
+    assert run(locked_write(sender, bytearray(payload))) is True
+    receiver = make_uart(crc=CRC16(), framing=Framing_COBS(64))
+    receiver.poller = _StepPoller([select.POLLIN])  # type: ignore[assignment]
+    fake(receiver).feed_rx(written(sender))
+    buf = bytearray(64)
+    size = run(locked_readinto_until_complete(receiver, buf, len(payload), start_timeout_ms=200, timeout_ms=200))
+    assert size == len(payload)
+    assert bytes(buf[:size]) == bytes(payload)
+
+
+def test_a_peer_that_never_sends_a_delimiter_fails_the_read_rather_than_blocking() -> None:
+    # B2.1: a delimited read is length-unknown, so only the codec's own worst-case bound stops a
+    # silent peer from owning the read loop forever.
+    uart = cobs_uart(max_frame=16)
+    uart.poller = _StepPoller([0])  # type: ignore[assignment]  # never becomes ready again
+    fake(uart).feed_rx(b"\x01" * 200)  # plenty of bytes, not one delimiter
+    buf = bytearray(64)
+    assert run(locked_readinto_until_complete(uart, buf, 8, start_timeout_ms=100, timeout_ms=100)) is None
+
+
+def test_the_fragment_after_a_resync_is_discarded_never_decoded() -> None:
+    # B2.2: a delimiter means "end of something"; only the *next* one bounds a whole frame.
+    sender = cobs_uart()
+    assert run(locked_write(sender, bytearray(b"\x41\x42\x43"))) is True
+    whole_frame = written(sender)
+    # A resync lands somewhere inside a frame, so the stream starts with that frame's tail,
+    # then its delimiter, then the next whole frame.
+    tail = b"\x77\x88" + bytes([COBS_DELIMITER])
+
+    receiver = cobs_uart()
+    receiver.poller = _StepPoller([select.POLLIN])  # type: ignore[assignment]
+    fake(receiver).feed_rx(tail + whole_frame)
+    receiver.resync_framing()
+    buf = bytearray(64)
+    size = run(locked_readinto_until_complete(receiver, buf, 3, start_timeout_ms=200, timeout_ms=200))
+    assert size == 3
+    assert bytes(buf[:size]) == b"\x41\x42\x43"
+
+    # Without the resync the same stream decodes the fragment instead - which is exactly the
+    # garbage B2.2 exists to keep out, so the flag has to be what makes the difference.
+    naive = cobs_uart()
+    naive.poller = _StepPoller([select.POLLIN])  # type: ignore[assignment]
+    fake(naive).feed_rx(tail + whole_frame)
+    assert run(locked_readinto_until_complete(naive, bytearray(64), 3, start_timeout_ms=200, timeout_ms=200)) is None
+
+
+def test_empty_frames_are_skipped_at_the_codec_layer() -> None:
+    # B2.3: two consecutive delimiters must never surface as a zero-length frame to index into.
+    sender = cobs_uart()
+    assert run(locked_write(sender, bytearray(b"\x31\x32"))) is True
+    receiver = cobs_uart()
+    receiver.poller = _StepPoller([select.POLLIN])  # type: ignore[assignment]
+    fake(receiver).feed_rx(bytes([COBS_DELIMITER, COBS_DELIMITER]) + written(sender))
+    buf = bytearray(64)
+    size = run(locked_readinto_until_complete(receiver, buf, 2, start_timeout_ms=200, timeout_ms=200))
+    assert size == 2
+    assert bytes(buf[:size]) == b"\x31\x32"
+
+
+def test_a_corrupt_code_byte_is_a_decode_failure_not_an_overrun() -> None:
+    # B2.4, through the driver: the sentinel, never a walk off the end of the buffer.
+    uart = cobs_uart()
+    uart.poller = _StepPoller([select.POLLIN])  # type: ignore[assignment]
+    fake(uart).feed_rx(b"\x40\x01\x02" + bytes([COBS_DELIMITER]))  # code 0x40 runs past the frame
+    buf = bytearray(64)
+    assert run(locked_readinto_until_complete(uart, buf, 3, start_timeout_ms=200, timeout_ms=200)) is None
+
+
+def test_a_caller_buffer_too_small_for_the_encoded_frame_is_refused() -> None:
+    # B2.5: silent truncation or a per-frame allocation are both worse than the sentinel.
+    uart = cobs_uart()
+    assert run(locked_readinto_until_complete(uart, bytearray(4), 8, start_timeout_ms=50, timeout_ms=50)) is None
+
+
+def test_a_codec_whose_allocation_failed_degrades_every_framed_call() -> None:
+    # B2.8: a driver that looks constructed but cannot frame must say so on every framed path.
+    uart = make_uart(framing=Framing_COBS(-1))
+    assert uart.framing.ready() is False
+    assert run(locked_write(uart, bytearray(b"abc"))) is False
+    assert run(locked_writefrom(uart, bytearray(b"abcd"), 4)) is False
+
+
+def test_resync_framing_is_inert_for_the_pass_through_codec() -> None:
+    uart = make_uart()
+    uart.resync_framing()
+    assert uart._skip_to_delimiter is False
+
+
+# ---------------------------------------------------------------------------
+# B1 - the cancel handshake: latched, bounded, broadcast
+# ---------------------------------------------------------------------------
+
+
+def test_cancel_during_a_completing_read_still_terminates() -> None:
+    # B1.1: the cancel arrives while the lock is held but no ready() is in flight (here, during
+    # the post-read CRC yield) and the read then completes normally. Before the fix, ready() never
+    # observed self.cancel, self.cancelled was never set, and cancel_read_timeout() awaited
+    # forever - a permanent wedge in the mechanism that exists to prevent wedges.
+    uart = make_uart()
+    uart.poller = _StepPoller([select.POLLIN])  # type: ignore[assignment]
+    fake(uart).feed_rx(b"abcd")
+
+    async def reader() -> bytes | None:
+        async with uart:
+            data = await uart.read(4)
+            await asyncio.sleep_ms(30)  # stands in for crc.check()'s own per-byte yields
+            return data
+
+    async def scenario() -> tuple[bytes | None, bool]:
+        task = asyncio.create_task(reader())
+        await asyncio.sleep_ms(5)  # the read has completed; the lock is still held
+        cancelled = await asyncio.wait_for(uart.cancel_read_timeout(), 2)
+        return await asyncio.wait_for(task, 2), cancelled
+
+    result, cancelled = run(scenario())
+    assert result == b"abcd"  # the read was already done, so it is not disturbed
+    assert cancelled is True  # and the canceller still returns instead of hanging
+
+
+def test_cancel_between_two_reads_is_not_lost() -> None:
+    # B1.2: ready() used to begin with `self.cancel = False`, erasing a request that arrived
+    # between two reads - the canceller then blocked on an acknowledgement that never came.
+    uart = make_uart()
+    uart.poller = _StepPoller([select.POLLIN, select.POLLIN, 0])  # type: ignore[assignment]
+    fake(uart).feed_rx(b"xy")
+
+    async def reader() -> "list[object]":
+        async with uart:
+            first = await uart.read(2)
+            await asyncio.sleep_ms(30)  # cancel lands in here, with no ready() in flight
+            second = await uart.read(2, timeout_ms=-1)
+            return [first, second]
+
+    async def scenario() -> "tuple[list[object], bool]":
+        task = asyncio.create_task(reader())
+        await asyncio.sleep_ms(5)
+        cancelled = await asyncio.wait_for(uart.cancel_read_timeout(), 2)
+        return await asyncio.wait_for(task, 2), cancelled
+
+    results, cancelled = run(scenario())
+    assert cancelled is True
+    assert results[0] == b"xy"
+    assert results[1] is None  # the latched cancel aborts the *next* read rather than vanishing
+
+
+def test_two_concurrent_cancellers_both_return() -> None:
+    # B1.3: the acknowledgement is broadcast - one canceller consuming it must not strand another.
+    uart = make_uart()
+    uart.poller = _StepPoller([0])  # type: ignore[assignment]
+
+    async def waiter() -> bytes | None:
+        async with uart:
+            return await uart.read(timeout_ms=-1)
+
+    async def scenario() -> "tuple[bool, bool]":
+        task = asyncio.create_task(waiter())
+        await asyncio.sleep_ms(5)
+        first = asyncio.create_task(uart.cancel_read_timeout())
+        second = asyncio.create_task(uart.cancel_read_timeout())
+        results = (await asyncio.wait_for(first, 2), await asyncio.wait_for(second, 2))
+        await asyncio.wait_for(task, 2)
+        return results
+
+    first_result, second_result = run(scenario())
+    assert first_result is True
+    assert second_result is True
+
+
+def test_no_read_happens_after_the_cancel_is_acknowledged() -> None:
+    # B1.5: acknowledgement means "the read path has left the loop", not "it is about to".
+    uart = make_uart()
+    uart.poller = _StepPoller([0])  # type: ignore[assignment]
+
+    async def waiter() -> bytes | None:
+        async with uart:
+            return await uart.read(timeout_ms=-1)
+
+    async def scenario() -> "tuple[int, int]":
+        task = asyncio.create_task(waiter())
+        await asyncio.sleep_ms(5)
+        await asyncio.wait_for(uart.cancel_read_timeout(), 2)
+        reads_at_ack = len([entry for entry in fake(uart).log if entry[0] == "read"])
+        await asyncio.wait_for(task, 2)
+        return reads_at_ack, len([entry for entry in fake(uart).log if entry[0] == "read"])
+
+    at_ack, after = run(scenario())
+    assert at_ack == 0
+    assert after == 0
+
+
+def test_cancel_with_a_wedged_holder_is_bounded_and_counted() -> None:
+    # B1.1's "provably terminating" half: a lock holder that never calls ready() again and never
+    # exits cannot make cancel_read_timeout() block forever. It returns True (a cancel is
+    # outstanding, so clear() must not then take the lock) and records the un-acknowledged case.
+    uart = make_uart()
+
+    async def wedged() -> None:
+        async with uart:
+            await asyncio.sleep_ms(400)  # never touches the bus again
+
+    async def scenario() -> "tuple[bool, int]":
+        task = asyncio.create_task(wedged())
+        await asyncio.sleep_ms(5)
+        result = await asyncio.wait_for(uart.cancel_read_timeout(timeout_ms=50), 2)
+        unacked = uart.cancel_unacknowledged
+        await asyncio.wait_for(task, 2)
+        return result, unacked
+
+    result, unacked = run(scenario())
+    assert result is True
+    assert unacked == 1
+
+
+def test_leaving_the_locked_region_acknowledges_a_latched_cancel() -> None:
+    # The other half of B1.1's required handling: the request is acknowledged on every exit from
+    # the locked region, not only from inside ready()'s loop.
+    uart = make_uart()
+
+    async def holder() -> None:
+        async with uart:
+            await asyncio.sleep_ms(20)
+
+    async def scenario() -> "tuple[bool, int]":
+        task = asyncio.create_task(holder())
+        await asyncio.sleep_ms(5)
+        result = await asyncio.wait_for(uart.cancel_read_timeout(timeout_ms=500), 2)
+        await asyncio.wait_for(task, 2)
+        return result, uart.cancel_unacknowledged
+
+    result, unacked = run(scenario())
+    assert result is True
+    assert unacked == 0  # acknowledged by the __aexit__, well inside the bound
+
+
+def test_a_new_ready_call_does_not_clear_an_unrelated_cancel() -> None:
+    # B1.2 at the unit level: entering ready() must not consume a request it did not serve.
+    uart = make_uart()
+    uart.poller = _StepPoller([select.POLLIN])  # type: ignore[assignment]
+    uart.cancel = True
+    assert run(one_shot_ready(uart)) is False  # the latched cancel wins over readiness
+    assert uart.cancel is False  # and is consumed exactly once
+
+
+async def one_shot_ready(uart: UART) -> bool:
+    async with uart:
+        return await uart.ready(select.POLLIN, timeout_ms=100)
 
 
 # ---------------------------------------------------------------------------
