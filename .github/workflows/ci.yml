@@ -504,11 +504,20 @@ jobs:
     # across a real process reboot, soak) - see digital_twin/README.md's "Automated CI suite"
     # section and scripts/run_digital_twin_ci.sh's own header comment for the full reference.
     # Deliberately a separate job from unit-tests above: this drives digital_twin/
-    # run_wozi_integration.py as a real subprocess over real HTTP through several genuine process
-    # restarts (to prove persistence survives an actual reboot, not just an in-process rebuild of
-    # the object graph the way tests/test_digital_twin_sensortask_integration.py already does) -
-    # a fundamentally different, heavier kind of check than the fast unit-test tier, not a
+    # run_generic_integration.py as a real subprocess over real HTTP through several genuine
+    # process restarts (to prove persistence survives an actual reboot, not just an in-process
+    # rebuild of the object graph the way tests/test_digital_twin_sensortask_integration.py already
+    # does) - a fundamentally different, heavier kind of check than the fast unit-test tier, not a
     # duplicate of it.
+    #
+    # strategy.matrix over all 6 real devices (BUILD_CHAIN_PLAN.md's Session 6.2, mirroring
+    # firmware-build-verify's own precedent below) - each device's own 11-run suite is an
+    # independent job, attributable directly in the job list, rather than one long serial script
+    # that would otherwise need roughly 6x the wall-clock budget of a single device's run (several
+    # runs in the suite each wait tens of seconds for a real state-machine transition - a WiFi
+    # hotspot-fallback DNS answer, a soak's own memory-trend sampling - which parallelize for free
+    # across jobs but simply sum if serialized in-process). fail-fast: false so one device's
+    # failure doesn't cancel the other 5 mid-suite - each is an independent proof.
     #
     # needs: unit-tests - runs after the unit-test tier both for fail-fast ordering (no reason to
     # spend several more minutes on a full boot/reboot/soak cycle if the fast unit tests already
@@ -519,6 +528,10 @@ jobs:
       contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        device: [wozi, dev, arzi, klkizi, grkizi, schlafzi]
     steps:
       - uses: actions/checkout@v7
         with:
@@ -526,12 +539,12 @@ jobs:
       - name: Set up MicroPython toolchain (install uv, restore cache)
         uses: ./.github/actions/setup-micropython-toolchain
       - name: Run digital-twin clean/build/test cycle
-        run: scripts/run_digital_twin_ci.sh
+        run: scripts/run_digital_twin_ci.sh "${{ matrix.device }}"
       - name: Upload digital-twin subprocess logs
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: digital-twin-ci-logs
+          name: digital-twin-ci-logs-${{ matrix.device }}
           path: digital_twin_ci_logs/
           if-no-files-found: ignore
         continue-on-error: true

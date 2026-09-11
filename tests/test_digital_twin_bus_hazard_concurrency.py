@@ -1,6 +1,8 @@
 """Digital-twin tier: boots the REAL sensortask_wozi.py/sensortask_dev.py object graphs against the
 real digital_twin buses and proves SPECIFICATION.md Part C.8's locking model holds under genuine
-concurrent load. Bus topology and the standing rule for adding a new device/variant: Part C.8."""
+concurrent load. Bus topology, the standing rule for adding a new device/variant, and why this
+file's own device scope is deliberate and re-verified (not just inherited) against all 6 real
+devices: Part C.8."""
 
 import asyncio
 import sys

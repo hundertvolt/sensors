@@ -126,6 +126,22 @@ def test_real_website_inlined_definitions_matches_the_booted_devices_own_id() ->
     # definitions.json is no longer a separately-fetched route (scripts/build_website.sh's own
     # "Inlining" comment - SPECIFICATION.md Part H.7): it's embedded directly into
     # index.html at build time instead, so this now reads it out of the real page body.
+    #
+    # "wozi" is hardcoded here deliberately, not a stale device-specific leftover this session left
+    # unexamined (BUILD_CHAIN_PLAN.md's Session 6.2 - re-verified, not just inherited): this file's
+    # own device.id assertion is orthogonal to sensortask-module generalization - it comes from
+    # WHICHEVER device's real website bundle scripts/test.sh built (frozen_modules/
+    # frozen_website_wozi.py, the only one built - see that script's own comment), never from
+    # sensortask_wozi.py's own construction. Generalizing it would mean teaching scripts/test.sh to
+    # build a second, real, gzip+freezefs+inlined website bundle per device (real added build cost
+    # for every one of the 6 real devices) just to re-prove a build PIPELINE this file already
+    # proves once - the per-device DATA correctness (a device's own real definitions.json
+    # containing its own real device.id) is already proven generically, for all 6 real devices, by
+    # tests_scripts/test_buildgen_definitions.py; this file's own remaining job is proving the real
+    # gzip/freezefs/inlining pipeline actually executes correctly under the Unix port at all - a
+    # pipeline-mechanism check that's the same code path regardless of which device's data flows
+    # through it, so picking wozi (this project's own exemplary/base variant, CLAUDE.md) once is
+    # complete coverage, not a gap.
     port = _next_test_port()
 
     async def scenario() -> None:

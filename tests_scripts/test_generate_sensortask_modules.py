@@ -1,6 +1,8 @@
 """Tests scripts/_generate_sensortask_modules.py (SPECIFICATION.md Part E.3's build/generated_src/
-pre-generation step) - both its real-device happy path and its BuildError-reporting failure path."""
+pre-generation step) - both its real-device happy path (module source + wiring-plan JSON) and its
+BuildError-reporting failure path."""
 
+import json
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
@@ -9,6 +11,7 @@ from _script_loader import load_script_module
 
 from buildgen.errors import BuildError
 from buildgen.generate import generate_device
+from buildgen.twin_wiring import compute_twin_wiring
 
 DEVICE_NAMES = ["dev", "wozi", "arzi", "klkizi", "grkizi", "schlafzi"]
 
@@ -31,6 +34,9 @@ def test_main_generates_every_real_device_matching_generate_device_directly(gene
     for device in DEVICE_NAMES:
         expected = generate_device(repo_root / "devices" / f"{device}.toml", repo_root / "src", repo_root / "ext")
         assert (out_dir / f"sensortask_{device}.py").read_text() == expected.module_source
+        expected_plan = compute_twin_wiring(expected.model)
+        actual_plan = json.loads((out_dir / f"sensortask_{device}_wiring_plan.json").read_text())
+        assert actual_plan == expected_plan
 
 
 def test_main_reports_a_build_error_and_exits_nonzero_without_crashing(generate_sensortask_modules: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
@@ -53,5 +59,5 @@ def test_main_reports_a_build_error_and_exits_nonzero_without_crashing(generate_
     assert exit_code == 1
     assert "simulated failure for broken.toml" in capsys.readouterr().err
 
-    # Never left holding a half-written module for the device that failed.
-    assert not list((tmp_path / "build" / "generated_src").glob("sensortask_broken.py"))
+    # Never left holding a half-written module (or wiring plan) for the device that failed.
+    assert not list((tmp_path / "build" / "generated_src").glob("sensortask_broken*"))

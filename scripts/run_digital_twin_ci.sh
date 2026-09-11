@@ -5,6 +5,12 @@
 # CI-gating check. See digital_twin/README.md's "Automated CI suite" section for the full
 # reference and SPECIFICATION.md's "any new module joins the twin" rule this exists to enforce.
 #
+# Usage: scripts/run_digital_twin_ci.sh [device]   (default: wozi)
+# Device-generic since BUILD_CHAIN_PLAN.md's Session 6.2 - .github/workflows/ci.yml's
+# digital-twin-e2e job runs this once per real device via its own strategy.matrix (mirroring
+# firmware-build-verify's own precedent), so each device's own 11-run suite is independently
+# attributable in the job list rather than serialized into one long wozi-only run.
+#
 # Clean: wipes any leftover digital_twin/*.json state files and digital_twin/config/ before
 # starting, so every run (CI or local) begins from a genuinely blank twin - not just relying on a
 # GitHub-hosted runner's own fresh-VM-per-job property. scripts/_digital_twin_ci_suite.py itself
@@ -13,18 +19,21 @@
 #
 # Build: builds the MicroPython Unix port (if not already cached - same
 # $PICO_TOOLCHAIN_DIR/SKIP_APT convention as scripts/test.sh and
-# scripts/run_unix_port_integration.sh) and the real, production `wozi` website (the only device
-# `src/` currently assembles - SPECIFICATION.md Part H.7) as frozen_modules/frozen_html.py, via
-# scripts/build_website.sh - not scripts/build_frozen_html.sh's own html_stub default. Must
-# succeed before any test phase can run - a build failure here fails the job immediately via
-# `set -e`, before scripts/_digital_twin_ci_suite.py ever launches a twin subprocess.
+# scripts/run_unix_port_integration.sh) and the real, production website for $device as
+# frozen_modules/frozen_html.py, via scripts/build_website.sh - not scripts/build_frozen_html.sh's
+# own html_stub default. Must succeed before any test phase can run - a build failure here fails
+# the job immediately via `set -e`, before scripts/_digital_twin_ci_suite.py ever launches a twin
+# subprocess.
 #
 # Test: hands off to scripts/_digital_twin_ci_suite.py (a self-contained `uv run` CPython script,
 # not MicroPython - it only orchestrates the MicroPython subprocess and speaks plain HTTP to it),
-# which drives digital_twin/run_wozi_integration.py through five real subprocess runs and asserts
-# every step. Exit code propagates straight through to this script's own exit code.
+# which drives digital_twin/run_generic_integration.py through $device's own freshly-buildgen-
+# generated module across an 11-run suite and asserts every step. Exit code propagates straight
+# through to this script's own exit code.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
+device="${1:-wozi}"
 
 export TZ=UTC  # same reasoning as scripts/test.sh's own identical export.
 
@@ -54,15 +63,16 @@ else
     sudo setcap 'cap_net_bind_service=+ep' "$micropython_bin"
 fi
 
-echo "== Building the real wozi website into frozen_modules/frozen_html.py"
-scripts/build_website.sh wozi
+echo "== Building the real $device website into frozen_modules/frozen_html.py"
+scripts/build_website.sh "$device"
 
-# No static src/sensortask_wozi.py exists any more (BUILD_CHAIN_PLAN.md's Session 6 finish
-# criterion) - generated fresh here, via buildgen, into build/generated_src/ (gitignored); see
-# scripts/_digital_twin_ci_suite.py's own MICROPYPATH constant for where run_wozi_integration.py's
-# `import sensortask_wozi` actually resolves it from.
-echo "== Generating buildgen device modules into build/generated_src/"
+# No static src/sensortask_*.py exists any more (BUILD_CHAIN_PLAN.md's Session 6 finish criterion)
+# - every real device's module + wiring plan is generated fresh here, via buildgen, into
+# build/generated_src/ (gitignored); see scripts/_digital_twin_ci_suite.py's own MICROPYPATH
+# constant for where run_generic_integration.py's `--module sensortask_<device>` actually resolves
+# it from, and its own --device flag for how it picks $device's own generated pair.
+echo "== Generating buildgen device modules + wiring plans into build/generated_src/"
 uv run scripts/_generate_sensortask_modules.py
 
-echo "== Running digital-twin automated CI suite"
-uv run scripts/_digital_twin_ci_suite.py --micropython-bin "$micropython_bin" --logs-dir "digital_twin_ci_logs"
+echo "== Running digital-twin automated CI suite (device: $device)"
+uv run scripts/_digital_twin_ci_suite.py --micropython-bin "$micropython_bin" --device "$device" --logs-dir "digital_twin_ci_logs"

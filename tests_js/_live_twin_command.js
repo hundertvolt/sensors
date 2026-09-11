@@ -56,7 +56,13 @@ function spawnTwin() {
     const proc = spawn(
         MICROPYTHON_BIN,
         [
-            "digital_twin/run_wozi_integration.py",
+            "digital_twin/run_generic_integration.py",
+            "--module",
+            "sensortask_wozi",
+            "--wiring-plan",
+            path.join(REPO_ROOT, "build", "generated_src", "sensortask_wozi_wiring_plan.json"),
+            "--device",
+            "wozi",
             "--host",
             HOST,
             "--port",
@@ -89,7 +95,7 @@ async function stopTwin(proc) {
     if (proc.exitCode !== null || proc.signalCode !== null) {
         return;
     }
-    // SIGINT, not SIGTERM/kill('SIGTERM'): run_wozi_integration.py's own graceful-shutdown path
+    // SIGINT, not SIGTERM/kill('SIGTERM'): run_generic_integration.py's own graceful-shutdown path
     // (FRAM/SCD30 flush) only runs on KeyboardInterrupt - a plain SIGTERM would skip it, same
     // reasoning as scripts/_digital_twin_ci_suite.py's own _shutdown().
     proc.kill("SIGINT");
@@ -131,7 +137,7 @@ export async function runLiveBackendSmoke({ context }) {
 
     // Fresh state every run, mirroring scripts/_digital_twin_ci_suite.py's own "clean" step -
     // FRAM/SCD30 are already in-memory-only above; config/ is the one thing that still persists
-    // to a fixed path by default (run_wozi_integration.py exposes no --cfg-path flag).
+    // to a fixed path by default (run_generic_integration.py exposes no --cfg-path flag).
     rmSync(path.join(REPO_ROOT, "digital_twin", "config"), { recursive: true, force: true });
 
     const proc = spawnTwin();

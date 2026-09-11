@@ -192,7 +192,9 @@ _LEGACY_WIRING_PLANS: "dict[str, dict[str, Any]]" = {
 }
 
 _wiring_plan: "dict[str, Any]" = _LEGACY_WIRING_PLANS["wozi"]  # default for every caller that never
-# calls configure_i2c_wiring()/configure_wiring() at all (e.g. run_wozi_integration.py's own main()).
+# calls configure_i2c_wiring()/configure_wiring() at all (e.g.
+# digital_twin/segfault_stress_repro.py's own main(), deliberately kept hardcoded to
+# sensortask_wozi - see that module's own comment).
 
 
 def configure_wiring(plan: "dict[str, Any]") -> None:

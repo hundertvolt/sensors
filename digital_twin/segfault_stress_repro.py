@@ -1,9 +1,21 @@
 """Manual, deliberately-aggressive concurrency stress tool for the (now root-caused and fixed, see `unix_port_poll_prewarm.py`) MicroPython Unix-port segfault under heavy concurrent connection load.
 Full account, usage, and exit/crash behavior in `digital_twin/README.md`'s "Known gaps" section."""
 
-# Same MICROPYPATH as run_wozi_integration.py; flags: --clients/--requests/--rounds/--host/--port.
-# A genuine segfault kills the interpreter outright (check exit status / dmesg, no Python traceback);
-# a MemoryError at higher concurrency is a distinct, catchable outcome this tool also reports.
+# Same MICROPYPATH as digital_twin/run_generic_integration.py; flags: --clients/--requests/
+# --rounds/--host/--port. A genuine segfault kills the interpreter outright (check exit status /
+# dmesg, no Python traceback); a MemoryError at higher concurrency is a distinct, catchable outcome
+# this tool also reports.
+#
+# Deliberately kept hardcoded to sensortask_wozi, not generalized to run_generic_integration.py's
+# own --module/--wiring-plan mechanism (BUILD_CHAIN_PLAN.md's Session 6.2, which DID retire
+# run_wozi_integration.py/run_dev_integration.py themselves): this is a manual, one-off repro tool
+# for one specific, already-fixed, device-independent MicroPython Unix-port interpreter bug (a real
+# libc-level segfault under enough concurrent connections, unrelated to any device's own sensor
+# wiring) - never invoked by scripts/run_digital_twin_ci.sh or any tests/test_*.py file, so it
+# carries none of the "narrowed to a boot+REST smoke check" concern the digital-twin test-suite
+# generalization mission is actually about. Its own import already resolves against a freshly
+# buildgen-generated sensortask_wozi module (Session 6's MICROPYPATH fix), so it needed no change
+# beyond this comment.
 
 import asyncio
 import gc

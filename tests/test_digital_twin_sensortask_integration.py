@@ -1,7 +1,24 @@
-"""Middle integration tier: builds the real sensortask_wozi object graph against the real digital_twin buses and drives real REST traffic over a real socket, but only ever starts the specific tasks each test needs - never the full start_and_check_tasks() supervisor, with one deliberate exception (the task-supervisor-restart section below, whose whole point is that real supervisor loop). See digital_twin/README.md's "Swapping the twin in" section for the full account, including the sys.path.insert(0, "digital_twin") mechanism and a real bug this tier already found."""
+"""Middle integration tier: builds the real sensortask_wozi object graph against the real digital_twin buses and drives real REST traffic over a real socket, but only ever starts the specific tasks each test needs - never the full start_and_check_tasks() supervisor, with one deliberate exception (the task-supervisor-restart section below, whose whole point is that real supervisor loop). See digital_twin/README.md's "Swapping the twin in" section for the full account, including the sys.path.insert(0, "digital_twin") mechanism and a real bug this tier already found.
+Construction/wiring/REST-shape coverage is parametrized across all 6 real devices (the "Construction
+across every real device" section below, BUILD_CHAIN_PLAN.md's Session 6.2) - those checks are fast
+(no real wall-clock waits) and their expected sensor/module set is derived reflectively, the same
+"never a hardcoded wozi/dev 3-sensor literal" principle tests/test_sensortask.py's own collapse
+already established. The rest of this file's own tests (WiFi/DNS hotspot fallback, watchdog
+escalation, task-supervisor restart, SGP40 VOC-backup reboot survival x2, mempause) stay scoped to
+wozi specifically - a deliberate scope decision, not an oversight: each one drives several real
+seconds-to-tens-of-seconds wall-clock waits (real Timers, real background tasks, a real simulated
+reboot), and every one of them exercises only mandatory infrastructure (conn/ntp/sysfunct/fram) plus
+SCD30/SGP40 - present on every real device, never bmp3xx - so the underlying mechanism they prove is
+already device-independent; measured directly, running this file's full battery against all 6
+devices would take roughly 6x its own single-device wall time (~40s), overrunning
+scripts/test.sh's own 180s per-file timeout with no real margin. Wiring a genuine per-device CI
+matrix for just this one file's heavy tests (mirroring scripts/run_digital_twin_ci.sh's own
+per-device matrix) was judged out of proportion to what a bmp3xx-blind mechanism actually needs
+proven six times over."""
 
 import asyncio
 import gc
+import json
 import os
 import select
 import socket
@@ -105,7 +122,26 @@ def _next_test_port() -> int:
     return _next_port
 
 
+# Every real device (devices/*.toml) - buildgen generates each one's own module + wiring plan into
+# build/generated_src/ before scripts/test.sh ever runs this file (scripts/_generate_sensortask_modules.py).
+_DEVICES = ("wozi", "dev", "arzi", "klkizi", "grkizi", "schlafzi")
+
+
+def _wiring_plan(device: str) -> "dict[str, Any]":
+    with open(f"build/generated_src/sensortask_{device}_wiring_plan.json") as f:
+        plan: dict[str, Any] = json.load(f)
+    return plan
+
+
 async def _boot(port: int) -> None:
+    # configure_wiring() explicitly, every call - every digital-twin I2C/SPI construction reads the
+    # shared machine._wiring_plan global ("last configure_wiring() call before construction wins"),
+    # and this file's own construction-across-every-real-device section below (which shares this
+    # process) configures a different device's plan for its own scenarios. MicroPython's globals()
+    # doesn't preserve definition order (this file's own watchdog-section comment), so relying on
+    # "the wozi tests always run first" would be a real, order-dependent hazard rather than an
+    # actual guarantee.
+    machine.configure_wiring(_wiring_plan("wozi"))
     await sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir(), web_host="127.0.0.1", web_port=port)
 
 
@@ -187,38 +223,16 @@ async def _wait_until(predicate: "Callable[[], bool]", timeout_s: float, interva
 
 
 # ---------------------------------------------------------------------------
-# Boot against the real twin buses.
+# Boot against the real twin buses - parametrized across all 6 real devices, see the
+# "Construction across every real device" section near the end of this file.
 # ---------------------------------------------------------------------------
 
 
-def test_build_system_boots_against_the_real_twin_buses_without_exception() -> None:
-    # Confirms every FRAM chunk (SPECIFICATION.md Part A.7) allocates cleanly against the twin's
-    # real FramChip, not just tests/machine.py's fake. Shared shape with the mock's own equivalent
-    # test (tests/_shared_rest_roundtrip.py); adds "webserver" since this file exercises real HTTP.
-    run(_boot(_next_test_port()))
-    assert_named_modules_constructed(
-        sensortask_wozi,
-        (
-            "conn",
-            "ntp",
-            "i2c0",
-            "i2c1",
-            "spi0",
-            "fram",
-            "sysfunct",
-            "sgp40",
-            "bmp3xx",
-            "scd30",
-            "neopixel",
-            "notification",
-            "webserver",
-            "watchdog",
-        ),
-    )
-
-
 # ---------------------------------------------------------------------------
-# Every REST endpoint (+ the Step 4 static site) reachable over a real HTTP round trip.
+# Every REST endpoint (+ the Step 4 static site) reachable over a real HTTP round trip - stays
+# wozi-scoped (this file's own module docstring explains why); a separate, dedicated test in the
+# "Construction across every real device" section near the end of this file re-checks the GET
+# /measurements+/sensors sensor-shape specifically, parametrized across all 6 real devices.
 # ---------------------------------------------------------------------------
 
 
@@ -417,41 +431,11 @@ def test_sensors_put_round_trips_a_real_scd30_field_over_real_http() -> None:
     run_timed(scenario(), timeout_s=10.0)
 
 
-def test_a_real_bus_fault_degrades_to_a_clean_response_not_a_crash() -> None:
-    # A concrete example of the "might point us to oversights" value owner decision 10 called out:
-    # this exercises a real twin-injected I2C fault flowing all the way through the real driver ->
-    # real webserver -> a real HTTP response, something no existing tests/machine.py-backed test can
-    # do (tests/machine.py has no comparable fault-injection surface wired to sensortask_wozi.py).
-    port = _next_test_port()
-
-    async def scenario() -> None:
-        await _boot(port)
-        assert sensortask_wozi.i2c1 is not None
-        import errno
-
-        # asy_i2c_driver.I2C wraps the real machine.I2C at its own private _i2c attribute (confirmed
-        # directly against src/asy_i2c_driver.py's __init__) - the twin's own chip-fake registry
-        # (.devices) lives on that wrapped object, not on the wrapper itself. Only None before
-        # init() runs (__init__ calls it itself, unconditionally) - always set by now, just not
-        # statically provable from the type alone.
-        assert sensortask_wozi.i2c1._i2c is not None
-        sgp40_chip = sensortask_wozi.i2c1._i2c.devices[0x59]
-        # A handful is enough - this test makes exactly one HTTP request, and the real Unix-port
-        # heap is small enough that a needlessly large `times` (each queued as its own list entry)
-        # measurably adds to this file's own cumulative memory pressure across its several real
-        # build_system() calls.
-        sgp40_chip.fault.inject_fault("writeto", OSError(errno.EIO, "test-injected"), times=5)
-        task = await _start_webserver()
-        try:
-            res = await _http_client.fetch("127.0.0.1", port, "GET", "/measurements")
-            assert res.status_code == 200  # never a 500 - a sensor read failure degrades to
-            # whatever get_dict_data() already returns for a not-yet-successfully-read sensor, not
-            # an unhandled exception reaching the HTTP layer.
-            assert "SGP40" in res.json()
-        finally:
-            await _cancel(task)
-
-    run_timed(scenario(), timeout_s=10.0)
+# test_a_real_bus_fault_degrades_to_a_clean_response_not_a_crash - moved into the "Construction
+# across every real device" section near the end of this file (BUILD_CHAIN_PLAN.md's Session 6.2),
+# parametrized across all 6 real devices: SGP40 is fixed-address (0x59) on every one, but which BUS
+# it's actually wired to varies (wozi/dev differ from each other already), so the parametrized
+# version resolves the bus from the device's own wiring plan instead of assuming i2c1.
 
 
 # ---------------------------------------------------------------------------
@@ -694,6 +678,7 @@ def test_sgp40_voc_backup_survives_a_simulated_reboot_through_the_real_fram_chun
         try:
             # --- Boot 1: real construction, real FRAM chunk 3 (SPECIFICATION.md Part A.7) write
             # through the real chain. ---
+            machine.configure_wiring(_wiring_plan("wozi"))  # see _boot()'s own identical comment for why this is needed every call, not just once
             await sensortask_wozi.build_system(cfg_path=cfg_path, web_host="127.0.0.1", web_port=_next_test_port())
             assert sensortask_wozi.sgp40 is not None and sensortask_wozi.scd30 is not None
             sgp1 = sensortask_wozi.sgp40
@@ -734,6 +719,7 @@ def test_sgp40_voc_backup_survives_a_simulated_reboot_through_the_real_fram_chun
             # of a real device losing power and cold-booting with the same physical FRAM chip still
             # attached (digital_twin/README.md's "FRAM persistence" section). ---
             machine.flush_fram()
+            machine.configure_wiring(_wiring_plan("wozi"))  # see _boot()'s own identical comment for why this is needed every call, not just once
             await sensortask_wozi.build_system(cfg_path=cfg_path, web_host="127.0.0.1", web_port=_next_test_port())
             assert sensortask_wozi.sgp40 is not None and sensortask_wozi.scd30 is not None
             assert sensortask_wozi.sgp40 is not sgp1  # a genuinely fresh object, not the same
@@ -777,6 +763,7 @@ def test_sgp40_voc_backup_unflushed_write_is_lost_but_the_system_recovers_cleanl
         try:
             # Boot 1: real construction, one real backup, flushed - the durable "last known good"
             # state everything below checks against.
+            machine.configure_wiring(_wiring_plan("wozi"))  # see _boot()'s own identical comment for why this is needed every call, not just once
             await sensortask_wozi.build_system(cfg_path=cfg_path, web_host="127.0.0.1", web_port=_next_test_port())
             assert sensortask_wozi.sgp40 is not None and sensortask_wozi.scd30 is not None
             sgp1 = sensortask_wozi.sgp40
@@ -812,6 +799,7 @@ def test_sgp40_voc_backup_unflushed_write_is_lost_but_the_system_recovers_cleanl
             # Simulated crash-reboot: rebuild the object graph fresh from the SAME state_path,
             # which still only holds boot 1's flushed content - the second backup's write is
             # genuinely lost, exactly as an un-flushed write would be lost to a real power cycle.
+            machine.configure_wiring(_wiring_plan("wozi"))  # see _boot()'s own identical comment for why this is needed every call, not just once
             await sensortask_wozi.build_system(cfg_path=cfg_path, web_host="127.0.0.1", web_port=_next_test_port())
             assert sensortask_wozi.sgp40 is not None and sensortask_wozi.scd30 is not None
             assert sensortask_wozi.sgp40 is not sgp1  # genuinely fresh object, not memory surviving in-process
@@ -870,6 +858,143 @@ def test_mempause_over_real_http_reaches_the_real_fram_manager_and_unpauses() ->
             await _cancel(task)
 
     run_timed(scenario(), timeout_s=20.0)
+
+
+# ---------------------------------------------------------------------------
+# Construction across every real device (BUILD_CHAIN_PLAN.md's Session 6.2) - fast, no real
+# wall-clock waits, so parametrized across all 6 real devices with no CI-budget concern (unlike the
+# heavier tests above - see this file's own module docstring for the measured reasoning). Covers
+# exactly what test_build_system_boots_against_the_real_twin_buses_without_exception/
+# test_every_get_endpoint_is_reachable_over_real_http_and_shaped_correctly/
+# test_a_real_bus_fault_degrades_to_a_clean_response_not_a_crash used to check for wozi alone,
+# generalized: the expected optional-instance/sensor set is derived reflectively from the booted
+# module's own attributes, and the bus-fault test resolves SGP40's own bus from the device's real
+# wiring plan instead of assuming i2c1.
+# ---------------------------------------------------------------------------
+
+_PARAM_SCENARIOS: "list[tuple[str, Callable[[str], None]]]" = []
+
+
+def _register_param(name: str) -> "Callable[[Callable[[str], None]], Callable[[str], None]]":
+    def deco(fn: "Callable[[str], None]") -> "Callable[[str], None]":
+        _PARAM_SCENARIOS.append((name, fn))
+        return fn
+
+    return deco
+
+
+async def _boot_device(port: int, device: str) -> "Any":
+    machine.configure_wiring(_wiring_plan(device))
+    module = __import__(f"sensortask_{device}")
+    await module.build_system(cfg_path=_tmp_cfg_dir(), web_host="127.0.0.1", web_port=port)
+    return module
+
+
+def _present_optional_instances(module: "Any") -> "tuple[str, ...]":
+    # Reflective, not a hardcoded per-device table - see tests/test_sensortask.py's own identical
+    # helper/comment for the full rationale.
+    return tuple(name for name in ("scd30", "sgp40", "bmp3xx", "neopixel", "notification") if getattr(module, name, None) is not None)
+
+
+@_register_param("build_system_boots_against_the_real_twin_buses_without_exception")
+def _scenario_boots_against_real_twin_buses(device: str) -> None:
+    # Confirms every FRAM chunk (SPECIFICATION.md Part A.7) allocates cleanly against the twin's
+    # real FramChip, not just tests/machine.py's fake. Shared shape with the mock's own equivalent
+    # test (tests/_shared_rest_roundtrip.py); adds "webserver" since this file exercises real HTTP.
+    async def scenario() -> None:
+        module = await _boot_device(_next_test_port(), device)
+        mandatory = ("conn", "ntp", "i2c0", "i2c1", "spi0", "fram", "sysfunct", "neopixel", "notification", "webserver", "watchdog")
+        assert_named_modules_constructed(module, mandatory + _present_optional_instances(module))
+
+    run_timed(scenario(), timeout_s=10.0)
+
+
+@_register_param("get_measurements_and_sensors_are_reachable_and_shaped_correctly")
+def _scenario_measurements_and_sensors_shape(device: str) -> None:
+    # Shared shape with the mock's own equivalent check (tests/_shared_rest_roundtrip.py) -
+    # regression guard for the {name: {name: {...}}} self-wrapping bug (see
+    # asy_webserver_service.py's comments), over a real socket against the real twin.
+    port = _next_test_port()
+
+    async def scenario() -> None:
+        module = await _boot_device(port, device)
+        task = module.webserver.get_task_starters()[0]()
+        await asyncio.sleep(0.1)
+        try:
+            expected = {name.upper() for name in _present_optional_instances(module) if name in ("scd30", "sgp40", "bmp3xx")}
+            res = await _http_client.fetch("127.0.0.1", port, "GET", "/measurements")
+            assert res.status_code == 200
+            assert_sensor_payload_not_self_wrapped(res.json(), expected)
+
+            res = await _http_client.fetch("127.0.0.1", port, "GET", "/sensors")
+            assert res.status_code == 200
+            assert_sensor_payload_not_self_wrapped(res.json(), expected)
+        finally:
+            await _cancel(task)
+
+    run_timed(scenario(), timeout_s=10.0)
+
+
+@_register_param("a_real_bus_fault_degrades_to_a_clean_response_not_a_crash")
+def _scenario_bus_fault_degrades(device: str) -> None:
+    # A concrete example of the "might point us to oversights" value owner decision 10 called out:
+    # this exercises a real twin-injected I2C fault flowing all the way through the real driver ->
+    # real webserver -> a real HTTP response, something no existing tests/machine.py-backed test can
+    # do (tests/machine.py has no comparable fault-injection surface wired to sensortask_<device>.py).
+    port = _next_test_port()
+
+    async def scenario() -> None:
+        module = await _boot_device(port, device)
+        import errno
+
+        # SGP40 is fixed-address (0x59) on every real device (buildgen.twin_wiring.FIXED_ADDRESSES),
+        # but which bus it's actually wired to varies by device (wozi/dev already differ from each
+        # other - see digital_twin/run_dev_integration.py's own historical chip dict) - resolved
+        # here from the device's own real wiring plan, never assumed to be i2c1.
+        plan = _wiring_plan(device)
+        sgp40_bus_name = next(bus_name for bus_name, attachments in plan["buses"].items() if any(a["driver"] == "sgp40" for a in attachments))
+        bus = getattr(module, sgp40_bus_name)
+        # asy_i2c_driver.I2C wraps the real machine.I2C at its own private _i2c attribute (confirmed
+        # directly against src/asy_i2c_driver.py's __init__) - the twin's own chip-fake registry
+        # (.devices) lives on that wrapped object, not on the wrapper itself. Only None before
+        # init() runs (__init__ calls it itself, unconditionally) - always set by now, just not
+        # statically provable from the type alone.
+        assert bus._i2c is not None
+        sgp40_chip = bus._i2c.devices[0x59]
+        # A handful is enough - this test makes exactly one HTTP request, and the real Unix-port
+        # heap is small enough that a needlessly large `times` (each queued as its own list entry)
+        # measurably adds to this file's own cumulative memory pressure across its several real
+        # build_system() calls.
+        sgp40_chip.fault.inject_fault("writeto", OSError(errno.EIO, "test-injected"), times=5)
+        task = module.webserver.get_task_starters()[0]()
+        await asyncio.sleep(0.1)
+        try:
+            res = await _http_client.fetch("127.0.0.1", port, "GET", "/measurements")
+            assert res.status_code == 200  # never a 500 - a sensor read failure degrades to
+            # whatever get_dict_data() already returns for a not-yet-successfully-read sensor, not
+            # an unhandled exception reaching the HTTP layer.
+            assert "SGP40" in res.json()
+        finally:
+            await _cancel(task)
+
+    run_timed(scenario(), timeout_s=10.0)
+
+
+# Registration: one test_<scenario>_<device> per (scenario, device) pair - microtest.py discovers
+# every callable in globals() named test_*, the only parametrization mechanism available here (no
+# real pytest on MicroPython - SPECIFICATION.md Part E.1). fn/device are bound as default-argument
+# values, not read from the loop variable, since a closure over a `for` loop's own variable would
+# otherwise have every generated test share the SAME (last-iteration) device/fn.
+for _param_name, _param_fn in _PARAM_SCENARIOS:
+    for _device in _DEVICES:
+
+        def _make_test(fn: "Callable[[str], None]" = _param_fn, device: str = _device) -> "Callable[[], None]":
+            def test() -> None:
+                fn(device)
+
+            return test
+
+        globals()[f"test_{_param_name}_{_device}"] = _make_test()
 
 
 if __name__ == "__main__":
