@@ -471,6 +471,33 @@ branch — not a one-time check, repeated on every incoming merge:
    source legitimately changed is fine, but only if the test isn't made less strict in the
    process.
 
+## `main` merged in (2026-09-11)
+
+While this initiative was running, `main` independently landed a large code-quality hardening pass
+(ruff moved to `select = ["ALL"]` with a real tool-version bump, mypy went to full `--strict` across
+all three passes, lint/typecheck scope extended to `boot_entry/`, `toolchain/`, `scripts/`,
+`tests_scripts/` and `tests_hardware/`'s own host-CPython code, shellcheck/actionlint/zizmor added
+as their own CI stages) plus the MicroPython pin moving to 1.29.0. `main` was merged into this
+branch to bring the initiative's own work under the same bar rather than letting it drift stale —
+conflicts were resolved favoring `main`'s newer conventions throughout (its CI job split, its
+`host_typecheck.ini` — the renamed, generalized successor to `buildgen/`'s own
+`hosttools_typecheck.ini`, now also covering `tests_hardware/`'s host-side pytest code — its
+`TomlDoc`-shaped generic-type strictness), while every build-chain-specific decision from Sessions
+1-3 (the 5-element `_WIRING` comment-tag shape, per-value SGP40 wiring, per-instance naming, the
+per-device hotspot password) stayed in place unchanged. `buildgen/` itself needed real fixes to
+clear the new bar (not just merge-resolution): `generate_module_source()` decomposed into six
+smaller `_emit_*` functions to clear mypy's/ruff's complexity ceiling, every internal `assert`
+converted to a proper `raise BuildError(...)` (this package's own established fail-loud
+convention), and `tests_scripts/conftest.py`'s `load_script_module()` helper split out to a new
+`tests_scripts/_script_loader.py` module — `host_typecheck.ini` needs both `tests_hardware/` and
+`tests_scripts/` on its `mypy_path` for their own bare sibling imports, and each directory's own
+`conftest.py` can't both resolve to the same bare `conftest` module name in one mypy run (mypy
+resolves each bare name to exactly one file per invocation, the same constraint that already
+justifies `digital_twin/typecheck.ini`'s own separate pass) — moving the one thing that actually
+needed `tests_scripts/conftest.py` to resolve bare eliminated the only real reason for the
+collision; see `host_typecheck.ini`'s own `exclude` comment for the small, accepted coverage gap
+this still leaves (that one file's own two trivial fixtures go unchecked by this pass).
+
 ## Build/generator script quality bar
 
 Binds every session that writes build/generation logic — Session 3's Python code generator (which
