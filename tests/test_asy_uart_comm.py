@@ -216,14 +216,30 @@ def test_every_declared_errno_is_inside_the_published_range() -> None:
     # mechanically against the source rather than by review.
     with open(_SRC) as handle:
         source = handle.read()
-    err_min, err_max, wrn_min, wrn_max = 10, 33, 10, 14
+    # The bounds come from the module's own _ERRNO_MIN/_MAX and _WRNNO_MIN/_MAX rather than being
+    # repeated here: a catalog whose declared range and its test disagree is exactly the drift
+    # this is supposed to catch.
+    declared = {}
     for line in source.split("\n"):
         stripped = line.strip()
-        for prefix, low, high in (("_ERR_", err_min, err_max), ("_WRN_", wrn_min, wrn_max)):
-            if not stripped.startswith(prefix) or "const(" not in stripped or "_MIN" in stripped or "_MAX" in stripped:
+        if "const(" in stripped and ("_ERRNO_" in stripped or "_WRNNO_" in stripped):
+            declared[stripped.split(" =")[0]] = int(stripped.split("const(")[1].split(")")[0])
+    assert set(declared) == {"_ERRNO_MIN", "_ERRNO_MAX", "_WRNNO_MIN", "_WRNNO_MAX"}, declared
+    seen = {"_ERR_": 0, "_WRN_": 0}
+    for line in source.split("\n"):
+        stripped = line.strip()
+        for prefix, low, high in (
+            ("_ERR_", declared["_ERRNO_MIN"], declared["_ERRNO_MAX"]),
+            ("_WRN_", declared["_WRNNO_MIN"], declared["_WRNNO_MAX"]),
+        ):
+            if not stripped.startswith(prefix) or "const(" not in stripped or "_ERRNO_" in stripped or "_WRNNO_" in stripped:
                 continue
             value = int(stripped.split("const(")[1].split(")")[0])
             assert low <= value <= high, f"{stripped} is outside the declared {prefix} range"
+            seen[prefix] += 1
+    # The sweep proves nothing if it matched no codes at all.
+    assert seen["_ERR_"] > 10
+    assert seen["_WRN_"] > 1
 
 
 def test_no_errno_literal_bypasses_the_catalog() -> None:
