@@ -260,7 +260,7 @@ def test_parse_web_tags_rejects_near_misses(tmp_path: Path, source: str, match: 
     "source",
     [
         "# web mentions the website but isn't a tag\n",
-        '"""# @web X section=sensors submitGroup=self label="L""""\nx = 1\n',
+        '"""Docstring mentioning # @web X section=sensors submitGroup=self label="L" as an example."""\nx = 1\n',
         'X = "# @web X section=sensors submitGroup=self label=\\"L\\""\n',
     ],
 )
