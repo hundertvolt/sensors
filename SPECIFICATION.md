@@ -2309,7 +2309,58 @@ stops measurement, not a no-op (matching the legacy synthetic reference), not th
 `false` default. See `wozi.json`/`dev.json` for worked examples — nearly identical field content
 (same three drivers); only `device.id`/`displayName` and I2C bus pairing differ, which the
 definitions files don't encode since a sensor's schema is driver-defined, not bus-defined.
-**Autogeneration is not yet built** — hand-written today (BACKLOG.md).
+**Autogeneration**: `buildgen/definitions.py` generates this correctly for all six real devices
+today (H.5.1) — not yet wired into the build chain, so `html/definitions/*.json` stays hand-written
+for now (BACKLOG.md).
+
+## H.5.1 Definitions-file autogeneration
+
+`buildgen.definitions.generate_definitions(model, src_dir)` builds the dict above from an already-
+`buildgen.validate.build_model()`-validated `DeviceModel` plus two source-derived inputs: the
+`# @web <Field> key=value ...` / `# @web-group key=value ...` comment-tag family
+(`buildgen/web_tag.py`, built on `buildgen/tag_comments.py`'s shared near-miss-enforcing scanner
+exactly like `@requires` — never a second, separately-tested detector) and a best-effort,
+never-imported AST read of each driver's real `ConfigSchema`/`FieldSchema` constant
+(`buildgen/schema_ast.py`, same never-import policy as `buildgen.driver_registry`). A tag supplies
+only what the schema tuple can't structurally provide — label (always), unit, description, an
+explicit `kind=` override for a field with no matching schema constant at all (`ContMeas` —
+freestanding, fully tag-specified), and a `special:<value>="<meaning>"` label for a discrete/
+sentinel schema value; `kind`/`min`/`max`/`minLength`/`maxLength`/`float` are inferred from the
+schema automatically (`kind`: `toggle` for `bool`, `string` for `str`, `enum` when the schema's own
+discrete-choice tuple is non-empty, `number` otherwise). `submitGroup=self` is a reserved sentinel
+substituted with the TOML instance's own resolved name at generation time — used by scd30/sgp40/
+bmp3xx, the only drivers a device can carry more than one instance of; every other group (WiFi's
+`identity`/`wifiLed`, NTP's `ntp`, System's `settings`, Notification's `autoConfig`) uses a literal
+key instead. Every tag names its target explicitly (`section=`/`submitGroup=`) rather than relying
+on file position, since a field's group is not always inferable from where in the file it sits.
+Grammar is deliberately minimal, matching BACKLOG.md's own original sketch: a quoted value may not
+contain a literal `"` (no escaping), and every tag is a single physical line (no continuation
+syntax, unlike `@wiring`'s bracketed-continuation-line allowance — a `@web` tag's payload never
+needs it).
+
+A schema-declared sentinel special value must have a matching tag `special:<value>="<meaning>"` or
+the build fails loud; a tag's own `special:` entries also survive independently of whatever the
+schema's own `special` slot says (SGP40's `BackupPeriod`/`BackupMaxAge`/`WaitTimeNTP` each document
+a "0 means X" meaning despite an ordinary, non-sentinel schema tuple — a real in-range value that
+also carries a UI meaning, not a validation bypass).
+
+**What stays generator-owned rather than tag-derived**, since none of it is a per-driver fact any
+one source file owns: the six-REST-endpoint section skeleton itself (pure routing architecture,
+H.4's "mirrors the 6 REST endpoints 1:1"); the dispatch-only, webserver-level fields with no natural
+owning file (`SystemCmd`, `PauseTime`, `lightCmdLED`, `ResetErrors`, the Status section's own
+live-readonly field lists); and the `warn_co2`/`warn_voc`/`warn_hum` UI metadata
+(`_WARN_SIGNAL_WEB_CATALOG`, the same precedent `buildgen.codegen._KNOWN_SIGNALS` already set for
+these three TOML wiring keys — kept in sync by cross-reference/comment, not import, since the two
+need different shapes for the same keys).
+
+**Correctness proof**: `generate_definitions()` run against `devices/wozi.toml`/`dev.toml`
+reproduces the existing hand-written `wozi.json`/`dev.json` exactly (order-insensitive); all six
+real devices pass a `validateDefinitions()`-equivalent shape check written directly in Python
+(`tests_scripts/test_buildgen_definitions.py`); the mandatory `novel_combo.toml`/
+`multi_instance.toml` synthetic fixtures generate successfully, proving per-instance
+`resolved_name`-keying genuinely generalizes beyond the two real devices that happen to need it.
+**Not yet built**: wiring this into `scripts/build_website.sh`/CI, retiring the two hand-written
+files, or generating one for the four real devices that don't have one yet (BACKLOG.md).
 
 ## H.6 Errcount (Status section) and dispatch-only field conventions
 

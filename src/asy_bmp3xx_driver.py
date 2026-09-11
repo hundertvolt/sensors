@@ -86,11 +86,27 @@ _VAL_ATM = const((("MeanAtmTemp", "float", 15.0, -50.0, 50.0, None),))
 _N_INT_CFG = const(4)  # SampleInterv + PressOvers + TempOvers + FiltCoeff
 _N_FLOAT_CFG = const(4)  # PressOffset + TempOffset + SeaLevelOffs + MeanAtmTemp
 
+# @web-group section=sensors submitGroup=self label="BMP388 — Pressure, Temperature" submit=true
+# @web SampleInterv section=sensors submitGroup=self label="Measurement Interval" unit="s"
+# @web PressOvers section=sensors submitGroup=self label="Pressure Oversampling" special:1="×1" special:2="×2" special:4="×4" special:8="×8" special:16="×16" special:32="×32"
+# @web TempOvers section=sensors submitGroup=self label="Temperature Oversampling" special:1="×1" special:2="×2" special:4="×4" special:8="×8" special:16="×16" special:32="×32"
+# @web FiltCoeff section=sensors submitGroup=self label="Filter Coefficient" description="First-order IIR lowpass filter coefficient." special:0="Off" special:1="1" special:3="3" special:7="7" special:15="15" special:31="31" special:63="63" special:127="127"
+# @web PressOffset section=sensors submitGroup=self label="Pressure Offset" unit="hPa"
+# @web TempOffset section=sensors submitGroup=self label="Temperature Offset" unit="K"
+# @web SeaLevelOffs section=sensors submitGroup=self label="Sensor Sea Level Offset" unit="m"
+# @web MeanAtmTemp section=sensors submitGroup=self label="Mean Atmospheric Temperature" unit="°C"
+
 _NAME = const("BMP3XX")
 # Kept as a literal tuple inline (not `_FIELDS` below) because mypy's namedtuple plugin can only
 # infer field names from a literal at the call site, not through a variable indirection.
 BMP3XX = namedtuple("BMP3XX", ("Pres", "Temp", "SLPres", "TS"))
 _FIELDS = const(("Pres", "Temp", "SLPres", "TS"))  # kept in sync with BMP3XX's own fields above
+
+# @web-group section=measurements submitGroup=self label="BMP388 — Pressure, Temperature"
+# @web Pres section=measurements submitGroup=self kind=readonly label="Pressure" unit="hPa"
+# @web Temp section=measurements submitGroup=self kind=readonly label="Temperature" unit="°C"
+# @web SLPres section=measurements submitGroup=self kind=readonly label="Sea Level Pressure" unit="hPa"
+# @web TS section=measurements submitGroup=self kind=readonly label="Timestamp" unit="s"
 
 # This driver's one optional live cross-instance dependency (SPECIFICATION.md Part C.14): its own
 # FRAM backup target, resolved by buildgen/ (Session 3 of BUILD_CHAIN_PLAN.md) to an

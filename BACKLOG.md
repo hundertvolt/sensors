@@ -421,42 +421,15 @@ constraints.
     `MemoryError`/reboot markers, zero unexpected skips. **Still open**: the real `--tier long`
     (6h) production-duration run itself - `mid` is a genuine real-hardware pass at 10 minutes, not
     a substitute for the full 6h window this item was always about.
-- **Website definitions-file autogeneration — not yet built.** `html/definitions/<device>.json`
-  (Part H.5) is currently hand-written. A worked, already-checked-against-real-code *sketch* exists
-  for deriving most of it at build time from `#`-prefixed comment tags placed above each driver's
-  `ConfigSchema` tuple (most fields — `min`/`max`, toggle/string/enum/number `kind`, special/enum
-  option values — are already inferable from the schema tuple itself with no tag at all; a tag only
-  needs to supply what the tuple can't: `label` (required), `unit`, `description`, an occasional
-  `kind` override for a non-`ConfigSchema` value like `asy_webserver_service.py`'s `_SYSTEM_CMDS`,
-  and `special:<value>="<meaning>"` for a sentinel/enum-option's human-readable meaning). Grammar:
-  `# @web <key>=<value> <key>="<quoted value>" ...` for a per-field tag; `@web-group` for a
-  module-level tag (`label`, `endpoint`, optional `submitGroup`). Three worked examples against real
-  `src/` code: a sentinel special value (`asy_scd30_driver.py`'s `AmbPres`), a toggle needing no
-  `kind` tag at all (`SelfCal`), and an enumerated field (`asy_bmp3xx_driver.py`'s `PressOvers`, six
-  `special:` entries becoming six labeled `options`). **Not a decision** — no parser has been built
-  and no `src/` file carries these tags yet. Left open, case by case, for whoever builds the real
-  parser: where the composite `lightCmdLED` shape (r/g/b/t) and other non-driver-schema webserver
-  values anchor a tag at all; whether `@web-group`'s `endpoint`/`submitGroup` belong on the schema
-  declaration or should instead read off `src/sensortask_wozi.py`'s own `SettingsGroup(...)`
-  construction-site wiring (which already states the same grouping, risking silent drift if tagged
-  twice); a full formal grammar (escaping a `"` inside a quoted value, etc.) was deliberately not
-  attempted, since the sketch's job was proving the *shape* of the idea against real code, not being
-  implementation-ready. **Standing requirement for whoever builds the real parser** (BUILD_CHAIN_PLAN.md's
-  "Build/generator script quality bar," project owner's explicit direction): a `@web`/`@web-group` tag
-  that's present, or close to present with a typo, must be verified correct in every dimension - exact
-  wording, location, format, content, validity - or fail the build loud, the same bar `@requires`
-  already meets. Build on `buildgen/tag_comments.py` (the shared comment-tag-scanning mechanism
-  `buildgen/requires_tag.py` already uses - tokenize-based so a `#` inside a string/docstring is
-  never mistaken for a real comment, edit-distance typo matching, a payload-shape gate against
-  false-positiving on ordinary prose) rather than a second, separately-tested detector - add `"web"`/
-  `"web-group"` to its `KNOWN_TAG_NAMES` registry and give the new grammar its own strict-format
-  module next to `requires_tag.py`. `tests_scripts/test_buildgen_tag_comments.py` and
-  `tests_scripts/test_buildgen_requires_tag.py` are the reference test shape to mirror, and
-  BUILD_CHAIN_PLAN.md's "Build/generator script quality bar" spells out the matrix they implement:
-  the accept side carried at full dimensionality (every operator x every value shape, every legal
-  spacing variant, every legal placement, none/one/several tags per file), the reject side one case
-  per dimension, and each grammar element deleted in turn — a dropped operator, value or sigil is
-  the shape that silently degrades to "no tag declared".
+- **Website definitions-file autogeneration — done (BUILD_CHAIN_PLAN.md Session 4).** The
+  `@web`/`@web-group` comment-tag family and `buildgen/definitions.py`'s generator now exist,
+  resolving every open question this entry used to track (anchoring a non-driver-schema value like
+  `lightCmdLED`, `@web-group`'s relationship to `SettingsGroup(...)` wiring, the formal grammar's
+  scope) — see BUILD_CHAIN_PLAN.md's own "Session 4 done" account for the resolutions and
+  `tests_scripts/test_buildgen_web_tag.py`/`test_buildgen_definitions.py` for the test coverage.
+  Generating `html/definitions/<device>.json` for real (replacing the two hand-written files,
+  producing one for the four devices that don't have one yet, and wiring it into
+  `scripts/build_website.sh`/CI) is still Session 6's own job, not done by this entry's resolution.
 - **Per-variant `sensortask-*.py` generator — not yet built (the automated version specifically;
   one real, hand-written second variant now exists).** SPECIFICATION.md Part A.3 already names the
   automated generator as a real planned direction (one setup-definition file → every variant's

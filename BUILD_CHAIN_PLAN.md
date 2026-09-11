@@ -426,13 +426,149 @@ script quality bar" below, not repeated here.
 3. **Done. Python generator** (`sensortask_<device>.py` + boot entry) — topological construction
    ordering, dependency-driven frozen-module selection, generic definitions-file-derived tests.
    Lives at `buildgen/`; see "Session 3 done" above for the full account.
-4. **Website `definitions.json` generator** — resolves BACKLOG.md's `@web`/`@web-group` open
+4. **Done. Website `definitions.json` generator** — resolves BACKLOG.md's `@web`/`@web-group` open
    sub-questions, combined with each device's TOML instance list. **Read
    BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md first**: its §2/§2.9 (landed 2026-09-10) changed the
    device TOML shape a real device's instance list can carry (`comp_source` → independent
    `temperature_source`/`humidity_source` fields, plus the general `{default = true, ...}` opt-in
    shape now legal on any defaultable wiring field) - a definitions.json generator built against
    the pre-2026-09-10 shape would silently miss both.
+
+   **Session 4 done**: the `@web`/`@web-group` comment-tag family lives at `buildgen/web_tag.py`,
+   built on `buildgen/tag_comments.py`'s shared scanner exactly like `requires_tag.py` (registered
+   in `tag_comments.KNOWN_TAGS`, its own `_looks_like_web_payload`/`_looks_like_web_group_payload`
+   near-miss predicates). **Grammar, resolving the sketch's three open questions**: every tag names
+   its target explicitly rather than relying on file position - `# @web <Field> section=<key>
+   submitGroup=<key|self> label="..." [unit=...] [description="..."] [kind=...] [onLabel=...]
+   [offLabel=...] [mask=true] [dispatch=true] [defaultValue=...] [special:<value>="<meaning>"]...`
+   and `# @web-group section=<key> submitGroup=<key|self> label="..." [submit=true]
+   [submitLabel=...]` - a deliberate departure from the sketch's pure key=value-only shape (which
+   had no way to say *which* field/group a tag described once a field has no nearby schema tuple to
+   sit next to, e.g. `ContMeas`), while keeping every other tag family's existing "identity is a
+   leading token, not position" convention. `submitGroup=self` is a reserved sentinel meaning "this
+   TOML instance's own resolved name" (substituted at generation time) - used by scd30/sgp40/bmp3xx,
+   which can have more than one instance per device; every other group (WiFi's `identity`/`wifiLed`,
+   NTP's `ntp`, System's `settings`, Notification's `autoConfig`) uses a literal key instead, since
+   none of those drivers is ever multi-instance.
+   - **Open question 1** (where does a non-driver-schema value like `lightCmdLED` anchor a tag):
+     resolved by **not** tagging it at all. `SystemCmd`/`PauseTime`/`lightCmdLED`/`ResetErrors` and
+     the entire Status section's own live-readonly field lists are fixed, generator-owned catalogs
+     in `buildgen/definitions.py` - the same precedent Session 3 already set for
+     `buildgen.codegen._KNOWN_SIGNALS` (universal across every device, hardcoded rather than
+     inventing a TOML/tag mechanism for something that never varies). `_WARN_SIGNAL_WEB_CATALOG` is
+     this module's own parallel of `_KNOWN_SIGNALS` (label/unit UI metadata for the same three
+     `warn_*` keys) - kept in sync by cross-reference/comment, not import, since the two need
+     genuinely different shapes.
+   - **Open question 2** (does `@web-group`'s `endpoint`/grouping duplicate `SettingsGroup(...)`'s
+     own wiring): resolved by making the six-REST-endpoint section skeleton itself
+     (`_SECTION_SKELETON` - keys, labels, REST paths, `pollGroup`) fixed/generator-owned too, never
+     tag-derived - it's pure routing architecture (H.4: "mirrors the 6 REST endpoints 1:1"), not a
+     per-driver fact any tag could sensibly own. `@web-group` tags only ever supply a *group's* own
+     label/submit metadata, never section-level facts, so there is nothing left to duplicate against
+     `SettingsGroup(...)`.
+   - **Open question 3** (a full formal grammar): still deliberately minimal, matching the sketch's
+     own stated scope - a quoted value may not contain a literal `"` (no escaping), and every tag is
+     a single physical line (no continuation syntax, unlike `@wiring`'s bracketed-continuation-line
+     allowance, since a `@web` tag's payload volume - a label, an optional unit/description, a
+     handful of `special:` entries - never needed it).
+   - **What's tag-derived vs. inferred vs. generator-owned**: most per-field metadata is inferred
+     automatically from the real `ConfigSchema`/`FieldSchema` constant already in the driver file
+     (`buildgen/schema_ast.py` - AST-evaluates the exact `_VAL_*`/bare-`FieldSchema` literal shapes
+     `src/` actually uses, resolving `const()`-wrapped named references like `_OSR_SETTINGS`,
+     without importing) - `kind` (`toggle` for `bool`, `string` for `str`, `enum` when the schema's
+     own discrete-choice tuple is non-empty, `number` otherwise), `min`/`max`/`minLength`/
+     `maxLength`, `float`. A tag only ever supplies what the schema tuple structurally can't: label
+     (always required), unit, description, an explicit `kind=` override for a field with no matching
+     schema constant at all (`ContMeas` - freestanding, fully tag-specified), and `special:` labels
+     for a schema-declared discrete/sentinel value. One real-code finding this surfaced: SGP40's
+     `BackupPeriod`/`BackupMaxAge`/`WaitTimeNTP` each have a documented "0 means X" meaning
+     (matching AmbPres's sentinel pattern in the hand-written JSON) despite their own schema tuples
+     carrying `special=None` (0 is a perfectly ordinary in-range value, not a validation bypass) -
+     the generator honors a tag's own `special:` entries whenever present, regardless of what the
+     schema's `special` slot says, rather than requiring a schema-declared sentinel to unlock them.
+   - **The generator**: `buildgen/definitions.py`'s `generate_definitions(model, src_dir)` takes an
+     already-`buildgen.validate.build_model()`-validated `DeviceModel`, scans each relevant
+     instance's/mandatory-infra file's tags (cached per source path), and assembles the full
+     `definitions.json`-shaped dict - measurements/sensors groups keyed by each instance's own
+     `resolved_name` (so a multi-instance device gets distinct, correctly-labeled cards), the
+     networking/system/notification groups assembled from tags spanning more than one file (e.g.
+     `GMTOffset`/`DSTOffset` are real `asy_ntp_client.py` fields that render on the System page's
+     `settings` card - contributed there via `section=system submitGroup=settings`, with
+     `system_service.py` as that group's sole `@web-group` declarer; declaring `@web-group` for the
+     same `(section, submitGroup)` in two files is a `BuildError`, the cross-file "global resource
+     collision" check this quality bar's own section calls for), and the errcount module catalog/
+     Status section's own live field lists gated by which optional instances the device actually has
+     (`have`). Seven `src/` files carry the real tags: `asy_scd30_driver.py`, `asy_sgp40_driver.py`,
+     `asy_bmp3xx_driver.py`, `asy_wifi_service.py`, `asy_ntp_client.py`, `system_service.py`,
+     `asy_notification_service.py`.
+   - **Correctness proof**: `generate_definitions()` run against `devices/wozi.toml`/`dev.toml`
+     produces output structurally identical (order-insensitive) to the existing hand-written
+     `html/definitions/wozi.json`/`dev.json` - the strongest available signal, since those two files
+     are the sketch's own already-checked-against-real-code reference. All 6 real devices pass a
+     `js/definitions.js`-`validateDefinitions()`-equivalent shape check written directly in Python
+     (`tests_scripts/test_buildgen_definitions.py`), and the mandatory `novel_combo.toml`/
+     `multi_instance.toml` synthetic fixtures generate successfully, proving the per-instance
+     `resolved_name`-keying genuinely generalizes beyond the two real devices that happen to need it
+     (`wozi`/`dev`'s own instance lists never repeat a driver). Full test coverage (TDD, written
+     first): `tests_scripts/test_buildgen_web_tag.py` mirrors `test_buildgen_requires_tag.py`'s own
+     dimensionality (field-name/key=value shapes, format/spacing, placement, multiplicity, the full
+     near-miss matrix including cross-family contamination checks, and a real-driver spot check);
+     `tests_scripts/test_buildgen_definitions.py` covers the golden-file comparison, per-device
+     instance variation, the synthetic fixtures, and targeted failure paths (a missing `@web-group`,
+     a missing `special:` label, a duplicate cross-file group declaration) built by mutating a
+     temporary copy of one real driver file rather than a synthetic TOML fixture, since this
+     generator's own malformed-input surface is source-file tags, not TOML.
+   - **Not built here** (deliberately, per this session's own scope - flagged per the merge-back
+     checklist, not silently absorbed): wiring this generator into `scripts/build_website.sh`/CI, or
+     retiring the hand-written `wozi.json`/`dev.json` (Session 6's job); generating a
+     `definitions.json` for the four real devices that don't have one yet (`arzi`/`klkizi`/`grkizi`/
+     `schlafzi`) - the generator itself already produces a correct one for all six (proven by the
+     shape-validation test above), but writing those four files to `html/definitions/` and wiring
+     them into the build is bundled with the same Session 6 work as retiring the two hand-written
+     ones, rather than landing four new committed files this session that Session 6 would then have
+     to reconcile against its own generated output; digital twin generalization (Session 5).
+   - **A one-line `pyproject.toml` addition**: `[tool.ruff.lint].allowed-confusables = ["×"]` - the
+     real BMP3xx oversampling option labels (`"×1"`, matching the existing hand-written JSON
+     exactly) use U+00D7 MULTIPLICATION SIGN, which RUF003 otherwise flags as a suspected ASCII "x"
+     look-alike inside the `# @web ... special:N="×N"` tags carrying it.
+   - **Post-merge self-audit found and fixed three gaps** (project owner asked for a paragraph-by-
+     paragraph check against SPECIFICATION.md/this plan/the test-completeness bar/documentation
+     rules - none of these were caught by the original PR's own review or by CI):
+     - `buildgen/web_tag.py`/`schema_ast.py`/`definitions.py`'s module docstrings, plus both new
+       test files' own docstrings, had drifted well past CLAUDE.md's hard 3-line header-comment cap
+       (up to 22 lines) - the exact "website-facing facts" that same rule says belong in
+       SPECIFICATION.md instead. Fixed by adding **SPECIFICATION.md Part H.5.1** (the architecture/
+       rationale content that used to live in those docstrings) and trimming every docstring to a
+       short pointer at it; H.5's own stale "Autogeneration is not yet built" line is corrected too.
+       The two test files' "Matrix dimensions" blocks moved from inside the docstring to a plain
+       `#`-comment block below it, matching `test_buildgen_requires_tag.py`'s own established
+       pattern (that file was never in violation - it already split the two).
+     - `buildgen/schema_ast.py` had **zero dedicated unit tests** - unlike every sibling AST-scanning
+       module (`buildgen.driver_registry` included, the module its own docstring says it matches).
+       Its real behavior (both assignment shapes, `const()`-wrapped `Name` resolution, negative
+       numbers, list-vs-tuple literals, and the silent-skip paths for an unresolvable name/
+       unsupported node/non-numeric negation) was previously proven only incidentally, through
+       `generate_definitions()`'s own golden-file tests happening to exercise some of it. Fixed with
+       `tests_scripts/test_buildgen_schema_ast.py` (17 tests, synthetic + a real-driver spot check
+       against `asy_bmp3xx_driver.py`'s `_OSR_SETTINGS`/`_IIR_SETTINGS`-resolving fields).
+     - `test_buildgen_web_tag.py`'s own matrix had real holes against the standing tag-family bar:
+       no coverage of the `_WebGrammarError` "dropped-piece" path (trailing junk, a dropped value, a
+       duplicate key) for either `@web` or `@web-group`, no edit-distance-boundary "stays silent"
+       case for either family's own typo tolerance, no "valid tag beside a near-miss" regression
+       guard, and real-driver spot checks thin everywhere but scd30/bmp3xx. Closed with 17 more
+       tests (66 → 83), including exhaustive field-name-set checks for the five previously
+       under-covered real driver files.
+     - **Flagged, not fixed** (pre-existing, out of this session's scope, genuinely ambiguous):
+       `buildgen/tag_comments.py`'s `iter_comment_tokens`/`check_for_near_miss_tags` docstrings
+       already exceeded the 3-line cap before this session (Session 3) - a cross-file consistency
+       discrepancy to flag per CLAUDE.md's "flag, don't silently fix" rule, not this session's tag
+       family's own docstring to correct. Separately, SPECIFICATION.md H.5's own claim that
+       `dispatch: true` covers "H.6, minus `ContMeas`" doesn't match the real hand-written
+       `wozi.json`: `lightCmdLED`/`PauseTime` are both in H.6's dispatch-only list but carry no
+       `dispatch: true` in the actual JSON (only `SystemCmd`/`ResetErrors`/`SGPResetVOC` do) -
+       `buildgen/definitions.py` faithfully reproduces the real, golden behavior either way, so this
+       is a pre-existing spec-vs-reality mismatch to resolve with the project owner, not a
+       generator bug.
 5. **Digital twin generalization** — consumes the Session 3 generated module directly, replacing
    `configure_i2c_wiring("wozi"|"dev")`'s 2-profile enum. **Same pointer as Session 4 above** - the
    generated module's own construction calls now use the post-§2.9 `SGP40_Reader` signature; a twin

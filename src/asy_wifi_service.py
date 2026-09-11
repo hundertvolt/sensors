@@ -52,6 +52,15 @@ _VAL_LED = const((("LedWifiOn", "bool", True, None, None, None),))
 # _mask_pw() below.
 _VAL_HOTSPOT_PW = const((("HotspotPW", "str", "12345678", 8, 63, None),))
 
+# @web-group section=networking submitGroup=identity label="Wi-Fi & Identity" submit=true
+# @web SSID section=networking submitGroup=identity label="Wi-Fi SSID"
+# @web PW section=networking submitGroup=identity label="Wi-Fi Password" mask=true
+# @web Country section=networking submitGroup=identity label="Country" description="Two-letter ISO 3166 country code."
+# @web Hostname section=networking submitGroup=identity label="Hostname"
+
+# @web-group section=networking submitGroup=wifiLed label="Wi-Fi Status LED" submit=true
+# @web LedWifiOn section=networking submitGroup=wifiLed label="Wi-Fi Status LED"
+
 _NAME = const("WIFI")
 # Kept as a literal tuple inline (not `_FIELDS` below) because mypy's namedtuple plugin can only
 # infer field names from a literal at the call site, not through a variable indirection.

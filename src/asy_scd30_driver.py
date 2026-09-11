@@ -62,6 +62,14 @@ _VAL_ALT = const((("Altitude", "int", None, 0, 65535, None),))
 _VAL_CAL = const((("ForceCalRef", "int", None, 400, 2000, None),))
 _VAL_SC = const((("SelfCal", "bool", None, None, None, None),))
 
+# @web-group section=sensors submitGroup=self label="SCD30 — CO2, Temperature, Humidity" submit=true
+# @web TempOffs section=sensors submitGroup=self label="Temperature Offset" unit="K"
+# @web MeasInt section=sensors submitGroup=self label="Measurement Interval" unit="s"
+# @web AmbPres section=sensors submitGroup=self label="Ambient Pressure (starts continuous measurement)" unit="hPa" special:0="Compensation off / use Altitude"
+# @web Altitude section=sensors submitGroup=self label="Altitude above sea level" unit="m" description="Only used if Ambient Pressure is 0."
+# @web ForceCalRef section=sensors submitGroup=self label="Forced Calibration Reference" unit="ppm"
+# @web SelfCal section=sensors submitGroup=self label="Automatic Self-Calibration"
+
 # Same datasheet limits the _VAL_* schema entries above carry, named for the driver's own argument
 # validation (Interface Description sections 1.4.1-1.4.6).
 _MEAS_INTERVAL_MIN = const(2)
@@ -79,12 +87,23 @@ _WORD_CRC_BYTES = const(3)
 # Deliberately no _VAL_* entry for "ContMeas" - the SCD30 can't report whether continuous
 # measurement is currently running, so it can't join this schema the way the other fields do.
 # No local default either: these params are stored on the sensor itself, not cached locally.
+# Freestanding @web tag (no matching schema constant, per the comment above) - kind/onLabel/
+# offLabel/defaultValue supply everything a real _VAL_* tuple would otherwise let the generator infer.
+# @web ContMeas section=sensors submitGroup=self kind=toggle label="Continuous Measurement" onLabel="On" offLabel="Off" description="Setting this to Off stops continuous measurement; restart it via Ambient Pressure above." defaultValue=true
 
 _NAME = const("SCD30")
 # Kept as a literal tuple inline (not `_FIELDS` below) because mypy's namedtuple plugin can only
 # infer field names from a literal at the call site, not through a variable indirection.
 SCD30 = namedtuple("SCD30", ("CO2", "Temp", "Hum", "WetBulb", "DewPoint", "TS"))
 _FIELDS = const(("CO2", "Temp", "Hum", "WetBulb", "DewPoint", "TS"))  # kept in sync with SCD30's own fields above
+
+# @web-group section=measurements submitGroup=self label="SCD30 — CO2, Temperature, Humidity"
+# @web CO2 section=measurements submitGroup=self kind=readonly label="CO2" unit="ppm"
+# @web Temp section=measurements submitGroup=self kind=readonly label="Temperature" unit="°C"
+# @web Hum section=measurements submitGroup=self kind=readonly label="Relative Humidity" unit="%"
+# @web WetBulb section=measurements submitGroup=self kind=readonly label="Wet Bulb Temperature" unit="°C"
+# @web DewPoint section=measurements submitGroup=self kind=readonly label="Dew Point" unit="°C"
+# @web TS section=measurements submitGroup=self kind=readonly label="Timestamp" unit="s"
 
 # Datasheets/scd30/..._Interface_Description.pdf p.2: clock stretching is normally <=30ms but can
 # reach 150ms once/day for internal calibration, past rp2's own I2C timeout default (50ms) - every

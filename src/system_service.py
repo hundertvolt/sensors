@@ -56,6 +56,8 @@ _NAME = const("SYSTEM")
 # SPECIFICATION.md Part C.5 for the setSGP/setBMP history this superseded. DebugLevel is the first
 # field; adding another is the same one-line _VAL_*-tuple-concatenation pattern every other
 # ConfigManager-backed module already uses (Part C).
+# @web-group section=system submitGroup=settings label="System Settings" submit=true
+# @web DebugLevel section=system submitGroup=settings label="Debug Level"
 _VAL_DEBUG_LEVEL = const((("DebugLevel", "int", 0, 0, 5, None),))  # range matches print_log.py's
 # PrintLog.level_off()..level_info() (0-5); default 0 matches the reference file's own debug=False.
 
