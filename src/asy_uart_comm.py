@@ -147,6 +147,18 @@ ListenResult = namedtuple("ListenResult", ("cmd_id", "cmd", "payload"))
 _LISTEN_FAILED = ListenResult(None, None, None)
 
 
+def _is_writable(buf: "Writable") -> bool:
+    # memoryview(b"...") is a memoryview like any other: the type check passes and the first real
+    # assignment raises, mid-train, after the peer has already been acknowledged. A zero-length
+    # slice assignment is the whole test - it allocates nothing, changes nothing, and raises in
+    # exactly the case a real one would.
+    try:
+        buf[0:0] = b""
+    except TypeError:
+        return False
+    return True
+
+
 def _next_uid(uid: int) -> int:
     # The single controlled wrap (D3.2). Anything predicting a *next* UID uses this, never a bare
     # +1, which mispredicts precisely at the 0xFE -> 0 boundary.
@@ -195,10 +207,18 @@ class UART_Comm:
         self._episode_events = 0  # C3.8 applied to the recovery warnings, not just the errno
         self._valid_frames = 0
         self._blind_resyncs = 0  # D2.5/D2.6: resyncs that saw bytes but never a valid frame
-        self._backoff_initial_ms = max(timeout // 2, 1)
-        self._backoff_max_ms = max(timeout * _BACKOFF_MAX_MULT, self._backoff_initial_ms)
         self._init_errno = self._validate_config()
-        self.frame_size = _HEADER_LEN + self.payload_size
+        # Derived from locally re-checked values, never the caller's raw ones: `5 + "48"` and
+        # `"1000" // 2` both raise TypeError, and __init__ is the one entry point that cannot
+        # answer with a sentinel - there is no object yet to ask. _validate_config() returns on its
+        # first finding, so a non-integer payload_size can still be sitting there when the errno
+        # names something else entirely. The caller's own values stay untouched on self, for the
+        # log to name; a refused construction just keeps well-formed attributes, as _allocate does.
+        payload = self.payload_size if isinstance(self.payload_size, int) else 0
+        backoff_base = self.timeout if isinstance(self.timeout, int) and self.timeout > 0 else 1
+        self.frame_size = _HEADER_LEN + payload
+        self._backoff_initial_ms = max(backoff_base // 2, 1)
+        self._backoff_max_ms = max(backoff_base * _BACKOFF_MAX_MULT, self._backoff_initial_ms)
         self._tx, self._rx, self._ack, self._zero, self._cmd_buf = self._allocate()
         if self._init_errno == 0 and self._tx.get_buf() is None:
             self._init_errno = _ERR_ALLOC
@@ -351,8 +371,14 @@ class UART_Comm:
     async def _check_buffer(self, buf: object, *, writable: bool) -> bool:
         # The responder already type-checks what a callback hands back (F4.3); the public entry
         # points trusted their caller instead, so a str or an int reached the frame builder.
-        kinds: tuple[type, ...] = (bytearray, memoryview) if writable else (bytes, bytearray, memoryview)
-        if buf is None or isinstance(buf, kinds):
+        if buf is None:
+            return True
+        if isinstance(buf, (bytearray, memoryview)):
+            if writable and not _is_writable(buf):
+                await self._err(_ERR_BAD_ARG, "destination buffer is read-only")
+                return False
+            return True
+        if not writable and isinstance(buf, bytes):
             return True
         await self._err(_ERR_BAD_ARG, "buffer is a", type(buf).__name__, "not a byte buffer")
         return False
@@ -642,10 +668,11 @@ class UART_Comm:
             cur += 1
             size = min(total - sent, self.payload_size)
             if pull is not None:
-                # The callback has filled the TX data region in place, so the header is stamped
-                # around it rather than copying the same bytes in a second time.
+                # The callback fills the TX data region in place and data=None leaves it there, so
+                # the shared writer stamps the header around those bytes instead of copying them in
+                # a second time - the whole of what a separate streamed-write path used to do.
                 written = await self._pull_chunk(pull, cur, size, is_last=cur == chunks)
-                if written is None or not await self._write_prepared_chunk(device, chunks, cur, written):
+                if written is None or not await self._write_frame_with_ack(device, CMD_SET, chunks, cur, None, written):
                     return False
                 sent += written
                 continue
@@ -671,34 +698,6 @@ class UART_Comm:
             await self._err(_ERR_STREAM_SHORT, "pull callback short-filled non-final chunk", chunk)
             return None
         return written
-
-    async def _write_prepared_chunk(self, device: "UART", chunks: int, cur: int, size: int) -> bool:
-        # The pull callback has already written into the TX data region, so the header is stamped
-        # around it in place rather than copying the payload in a second time.
-        await self._await_write_gate()
-        uid = _next_uid(self.uid)
-        if not self._prepare_tx(uid, CMD_SET, chunks, cur, None, size):
-            await self._err(_ERR_FRAME_INVALID, "could not build streamed frame", cur)
-            return False
-        self.uid = uid
-        buf = self._tx.get_buf()
-        if buf is None:
-            return False
-        if not await device.writefrom(buf, self.frame_size):
-            await self._err(_ERR_WRITE_FAILED, "streamed frame write failed")
-            await self._resync(device)
-            return False
-        if not await self._read_frame(device, self.timeout):
-            await self._err(_ERR_NO_ACK, "no ACK for streamed frame", cur)
-            await self._resync(device)
-            return False
-        err = self._validate(self._rx.get_buf(), CMD_ACK, 1, 1, uid)
-        if err:
-            await self._err(err, "invalid ACK for streamed frame", cur)
-            await self._resync(device)
-            return False
-        await self._note_valid_frame()
-        return True
 
     # ---- transaction layer: receiving a train ----------------------------------------------------
 
@@ -797,7 +796,7 @@ class UART_Comm:
         finally:
             self._busy = False
 
-    async def uart_set_stream(self, set_id: int, total_size: int, pull: "_PullCallback") -> bool:
+    async def uart_set_stream(self, set_id: int, total_size: int, pull: "_PullCallback | None") -> bool:
         # F7.6: a declared total is required up front, because CHUNKS has to be in chunk 1. A
         # genuinely unknown length is out of scope for this protocol, by design.
         if not await self._gate(ROLE_INITIATOR):
@@ -806,6 +805,13 @@ class UART_Comm:
         if bus is None:
             return False
         if not await self._check_cmd_id(set_id) or not await self._check_size(total_size, allow_none=False):
+            return False
+        if pull is None:
+            # Refused here, not left to _send_train: its own no-pull branch means "the payload
+            # argument carries the data", and this entry point has no payload argument - so the
+            # train went out as total_size bytes of padding and the call reported success. Typed
+            # Optional and refused in the body, the way uart_get_into() states its own destination.
+            await self._err(_ERR_BAD_ARG, "uart_set_stream needs a pull callback")
             return False
         self._busy = True
         try:
@@ -844,7 +850,12 @@ class UART_Comm:
         result = await self._run_get(get_id, exp_size, dest=buf)
         return None if result is None else result[0]
 
-    async def uart_get_stream(self, get_id: int, push: "_PushCallback", exp_size: int | None = None) -> int | None:
+    async def uart_get_stream(self, get_id: int, push: "_PushCallback | None", exp_size: int | None = None) -> int | None:
+        if push is None:
+            # Without it _recv_train has neither a push callback nor a destination, so every chunk
+            # is counted and dropped: the call returns the byte count of an answer nobody received.
+            await self._err(_ERR_BAD_ARG, "uart_get_stream needs a push callback")
+            return None
         result = await self._run_get(get_id, exp_size, push=push)
         return None if result is None else result[0]
 

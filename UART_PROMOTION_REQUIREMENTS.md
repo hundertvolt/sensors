@@ -1378,3 +1378,34 @@ CRC and the validation rules are for); `read`/`readinto` return `None` for `EAGA
 raising; `write()` may short-write or return `None`, both of which `_write_all()` already handles;
 and no call site uses `flush()`, the one `machine.UART` method that can raise `OSError(ETIMEDOUT)`.
 Four further findings were reviewed and deliberately left alone — see BACKLOG.md's deferred list.
+
+## K — Structural review pass (2026-09-11)
+
+The same reading carried into the questions Part J did not ask: is the structure lean, is the
+inheritance from `base_classes.py` right, does the module integrate the way the rest of `src/`
+does, and is anything missing. Three more defects, each reproduced before being fixed and each
+pinned by a named test, plus one duplication removed.
+
+| # | What was wrong | How it showed | Closed by |
+|---|---|---|---|
+| K1 | **`__init__` raised `TypeError` on a non-integer `payload_size`/`timeout`** — `self.frame_size = _HEADER_LEN + self.payload_size` and `max(timeout // 2, 1)` both ran on the caller's raw value, one of them *before* `_validate_config()`, which type-checks exactly those two fields. The constructor is the one entry point that cannot answer with a sentinel: there is no object yet to ask | Measured: `UART_Comm(bus, role, payload_size="48")` → `TypeError: unsupported types for __add__`; `timeout="1000"` → `__floordiv__` | Both derivations now read locally re-checked values, and `_validate_config()` runs first. The caller's own value stays on `self`, so the refusal still names it (`test_a_non_integer_payload_size_is_refused_instead_of_raising`) |
+| K2 | **A read-only `memoryview` passed the writable-destination check.** J2 closed `bytes`, but `memoryview(b"...")` is a `memoryview` like any other — the `isinstance` test passed and the first slice assignment raised `TypeError` mid-train, after the peer had been acknowledged: precisely the failure mode J2 set out to remove | Measured: `uart_get_into(1, memoryview(b"\x00" * 64))` raised after the train had started | `_is_writable()`, a zero-length slice assignment — no allocation, no mutation, raises exactly where a real one would (`test_a_read_only_destination_is_refused_before_the_train_starts`) |
+| K3 | **Both streaming entry points accepted a `None` callback and reported success.** `uart_set_stream(id, n, None)` fell into `_send_train`'s "the payload argument carries the data" branch — which this entry point has no payload argument for — and transmitted `n` bytes of **padding**, returning `True`. `uart_get_stream(id, None)` left `_recv_train` with neither a push callback nor a destination, so it counted every chunk, dropped it, and returned the byte count | Measured: 12 bytes of zeros on the wire for a 12-byte stream, `True`; and `10` returned for an answer nobody received | Both refused with `errno` 34 before the gate opens; both parameters now typed `| None` and refused in the body, the way `uart_get_into()` already states its own destination |
+
+**Removed rather than added.** `_write_prepared_chunk()` was `_write_frame_with_ack()` with
+different log strings: same write gate, same UID advance, the *same* `_prepare_tx()` call, same
+ACK read and validation. Collapsed into the one writer — 28 lines out, and the streamed path picks
+up the two things only the shared one had: the `_ERR_ALLOC` log on a missing TX buffer, and the
+`_ERR_PEER_INITIATED` diagnosis when a data frame arrives where an ACK was due.
+
+**What this pass confirmed rather than changed.** The `Lockable`/`LockableBuffer` inheritance is
+correct and complete — `UART(Lockable)` calls `super().__init__()` and chains `__aexit__`, which is
+what makes `cancel_read_timeout()` terminating, and `UART_Comm` holds `LockableBuffer`s for their
+guarded allocation and data-region views while serializing on the bus lock, so their own locks stay
+unused by design. `UART_Comm` deliberately does **not** subclass `SensorReader` (owner direction) but
+mirrors its registration shape exactly — `name`/`pr`, `get_task_starters()`/`get_timer_starters()`/
+`get_error_counter()`/`reset_error_counter()`, `errno` from 10 — and `sensortask_dev.py` registers
+both instances individually in `_collect_error_sources()` and `_collect_level_setters()`. `setup()`
+returning `bool` while the caller discards it matches `asy_fram_manager.py`'s own precedent, and a
+`setup()` that failed leaves `_listen_loop()` returning at once, which is the supervisor's
+restart-then-reboot ladder working as intended, not a hole.

@@ -1237,6 +1237,59 @@ def test_a_refused_argument_is_logged_with_its_own_errno() -> None:
     assert 34 in log["ErrNum"], log  # _ERR_BAD_ARG
 
 
+# ---- caller-supplied arguments, second pass -------------------------------------------------------
+# Same class as the section above, found by carrying its question into the two entry points it had
+# not reached: the constructor, and the streaming forms' own callbacks.
+
+
+def test_a_non_integer_payload_size_is_refused_instead_of_raising() -> None:
+    # _validate_config() already caught the type - but frame_size was derived from the raw value
+    # first, so `5 + "48"` raised TypeError out of __init__ itself. The constructor is the one
+    # entry point that cannot answer with a sentinel: there is no object yet to ask.
+    for bad in ("48", None, 1.5):
+        comm = make_comm(payload_size=bad)
+        assert comm._init_errno != 0, bad
+        assert comm.payload_size == bad, "the caller's own value stays on self, for the log to name"
+        assert run(comm.setup()) is False
+
+
+def test_a_non_integer_timeout_is_refused_instead_of_raising() -> None:
+    # The backoff was computed before validation ran, so `"1000" // 2` raised first.
+    for bad in ("1000", None):
+        comm = make_comm(timeout=bad)
+        assert comm._init_errno != 0, bad
+        assert run(comm.setup()) is False
+
+
+def test_a_read_only_destination_is_refused_before_the_train_starts() -> None:
+    # memoryview(b"...") is a memoryview like any other, so the type check passed and the first
+    # slice assignment raised TypeError mid-train - after the peer had already been acknowledged.
+    pair = run(build_pair(get_callback=echo_get(b"hello"), set_callback=accept_set()))
+    assert run(pair.initiator.uart_get_into(1, memoryview(b"\x00" * 64))) is None
+    assert pair.wire_from_initiator() == b""
+    # The contrast case: a writable memoryview is still a perfectly good destination.
+    dest = bytearray(64)
+    assert run(pair.with_listener(pair.initiator.uart_get_into(1, memoryview(dest), 5)), limit=20) == 5
+    assert dest[0:5] == bytearray(b"hello")
+
+
+def test_a_stream_without_its_pull_callback_sends_nothing() -> None:
+    # _send_train's no-pull branch means "the payload argument carries the data", and this entry
+    # point has no payload argument - so the train went out as total_size bytes of padding and
+    # uart_set_stream() returned True.
+    pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()))
+    assert run(pair.initiator.uart_set_stream(1, 12, None)) is False
+    assert pair.wire_from_initiator() == b"", "nothing may reach the wire without a source for it"
+
+
+def test_a_stream_without_its_push_callback_reports_failure_not_a_byte_count() -> None:
+    # With neither a push callback nor a destination, _recv_train counts every chunk and drops it,
+    # so the call reported the byte count of an answer nobody received.
+    pair = run(build_pair(get_callback=echo_get(b"abcdefghij"), set_callback=accept_set()))
+    assert run(pair.initiator.uart_get_stream(1, None)) is None
+    assert pair.wire_from_initiator() == b""
+
+
 # ---- fault-episode history discipline (audit pass) -----------------------------------------------
 
 
