@@ -1,0 +1,5 @@
+# Deliberately invalid buildgen fixture: no [device] table at all (a plausible hand-edit mistake -
+# an accidentally deleted table, or a bad merge). Used only by test_build_website_sh.py to prove
+# scripts/build_website.sh's own buildgen-fallback branch fails loud (via set -euo pipefail) when a
+# devices/<device>.toml exists but fails buildgen's own validation, as opposed to not existing at
+# all - copied into devices/ under a test-only name for the duration of that one test, then removed.

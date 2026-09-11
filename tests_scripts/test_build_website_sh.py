@@ -92,6 +92,32 @@ def test_device_without_a_hand_written_definitions_file_generates_one_via_buildg
     assert "/definitions.json.gz" not in text
 
 
+def test_device_toml_that_fails_buildgen_validation_fails_the_build_loud(repo_root: Path, tmp_path: Path) -> None:
+    # The other half of the fallback's failure surface: a devices/<device>.toml that DOES exist but
+    # fails buildgen's own validation (a bad hand-edit, a bad merge) - as opposed to
+    # test_unknown_device_fails_with_no_matching_definitions_file's "neither file exists at all".
+    # build_website.sh always `cd`s to its own repo root regardless of the caller's cwd, so this
+    # needs a real devices/<device>.toml on disk to exercise - the fixture lives in the dedicated
+    # tests_scripts/buildgen_fixtures/ directory (same place novel_combo.toml/multi_instance.toml
+    # live) and is copied into devices/ under a test-only name for this one test only, removed
+    # again in `finally` even if an assertion below fails.
+    device = "zz_test_malformed_buildgen_fixture"
+    device_toml = repo_root / "devices" / f"{device}.toml"
+    assert not device_toml.exists(), "sanity: this test-only device name must not collide with a real device"
+    fixture = (repo_root / "tests_scripts" / "buildgen_fixtures" / "malformed_missing_device_table.toml").read_text()
+
+    device_toml.write_text(fixture)
+    try:
+        out_file = tmp_path / f"frozen_website_{device}.py"
+        result = _run_build_website(repo_root, device, out_file, check=False)
+
+        assert result.returncode != 0
+        assert "missing [device] table" in result.stderr
+        assert not out_file.exists()
+    finally:
+        device_toml.unlink()
+
+
 def test_every_real_js_and_html_file_is_accounted_for_by_the_staging_script(repo_root: Path) -> None:
     # scripts/build_website.sh's cp lists (html root files, production js/ modules) are hand-kept,
     # not derived from directory contents - a new html/*.html or js/*.js file added later would
