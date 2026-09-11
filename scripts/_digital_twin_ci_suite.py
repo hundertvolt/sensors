@@ -136,6 +136,27 @@ def _errcount(name: str) -> dict[str, Any]:
     return entry if isinstance(entry, dict) else {}
 
 
+def _mem_paused() -> bool | None:
+    # system_service.py's own permanent-storage pause, as GET /status reports it. None means the
+    # field wasn't readable at all, which is not the same answer as False.
+    status, body = _http("GET", "/status")
+    if status != _HTTP_OK or not isinstance(body, dict):
+        return None
+    system = body.get("system", {})
+    return system.get("MemPaused") if isinstance(system, dict) else None
+
+
+def _wait_for_mem_paused(*, expected: bool, timeout_s: float) -> bool:
+    # The pause is applied from a REST handler onto the FRAM manager, so a 200 on the PUT is not by
+    # itself proof the flag is up - poll the real reported state rather than assume it followed.
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        if _mem_paused() is expected:
+            return True
+        time.sleep(0.5)
+    return False
+
+
 def _wait_for_errcount_above(name: str, floor: int, timeout_s: float) -> dict[str, Any]:
     # Polls /status until `name`'s error counter climbs above `floor`, or times out - used instead
     # of a fixed sleep for state-machine transitions (e.g. WiFi hotspot fallback) with real, but
@@ -145,6 +166,22 @@ def _wait_for_errcount_above(name: str, floor: int, timeout_s: float) -> dict[st
     while time.monotonic() < deadline:
         entry = _errcount(name)
         if entry.get("counter", 0) > floor:
+            return entry
+        time.sleep(1.0)
+    return entry
+
+
+def _wait_for_error_type_count(name: str, target: int, timeout_s: float) -> dict[str, Any]:
+    # Same "poll, never guess a sleep" reasoning as _wait_for_errcount_above(), but keyed on the
+    # "E"-typed count _error_type_count() extracts rather than the raw counter (which a "W" recovery
+    # notice also bumps). A fixed sleep here encodes a host-speed assumption: on this project's own
+    # bench Pi4 a bounded 3-fault SGP40 run needs ~8s to record all three and settle, where an x86
+    # CI runner needs ~2s, so a 6s sleep passes there and samples mid-sequence here.
+    deadline = time.monotonic() + timeout_s
+    entry: dict[str, Any] = {}
+    while time.monotonic() < deadline:
+        entry = _errcount(name)
+        if _error_type_count(entry) >= target:
             return entry
         time.sleep(1.0)
     return entry
@@ -354,13 +391,18 @@ def _run_3_sustained_bus_fault_matrix(micropython_bin: str, logs_dir: Path) -> N
     )
     try:
         _wait_until_serving(proc)
-        time.sleep(6.0)  # let every faulted sensor's own read cycle actually run several times
+        # Wait for every faulted module to have recorded a real error, rather than sleeping a
+        # guessed interval and hoping: "the fault has actually been exercised" is a real event to
+        # wait for, and a fixed sleep here encodes the same host-speed assumption that made the old
+        # Run 4 check flaky (an x86 CI runner gets through several read cycles in the time this
+        # bench Pi4 manages one). Keyed on "E"-typed entries, never the raw counter - a "W" recovery
+        # notice bumps that too, so `counter > 0` could be satisfied without the fault ever landing.
+        faulted = {name: _wait_for_error_type_count(name, 1, timeout_s=45.0) for name in ("SCD30", "SGP40", "BMP3XX", "FRAM")}
         for path in ("/measurements", "/sensors", "/status"):
             status, _ = _http("GET", path)
             _check(condition=status == _HTTP_OK, msg=f"Run 3: GET {path} still returns 200 under a sustained bus-fault matrix (graceful degradation)")
-        for name in ("SCD30", "SGP40", "BMP3XX", "FRAM"):
-            entry = _errcount(name)
-            _check(condition=entry.get("counter", 0) > 0, msg=f"Run 3: {name}'s injected sustained fault was recorded in its error counter ({entry!r})")
+        for name, entry in faulted.items():
+            _check(condition=_error_type_count(entry) > 0, msg=f"Run 3: {name}'s injected sustained fault was recorded as a real error, not just a warning ({entry!r})")
     except Exception as exc:
         _fail(f"Run 3 (sustained bus-fault matrix): {exc!r}")
     finally:
@@ -372,19 +414,36 @@ def _run_3_sustained_bus_fault_matrix(micropython_bin: str, logs_dir: Path) -> N
 
 
 def _run_4_bus_fault_persistence_sweep(micropython_bin: str, logs_dir: Path) -> None:
-    # ---- Run 4: reboot fault-free - persistence-correctness sweep for every module Run 3 faulted.
-    # SGP40 is FRAM-backed (should persist); SCD30/BMP3XX/FRAM are in-memory-only by design (should
-    # reset to 0) - SPECIFICATION.md Part A.7. Both directions are real, checkable design claims. ----
+    # ---- Run 4: reboot fault-free after Run 3's matrix - what must reset, and that every faulted
+    # bus actually comes back. SCD30/BMP3XX/FRAM's counters are in-memory-only by design and must
+    # read back 0 (SPECIFICATION.md Part A.7); that direction is deterministic and is what this run
+    # proves. ----
+    #
+    # This run deliberately does NOT assert that SGP40's FRAM-backed history survived Run 3 - it
+    # cannot. Run 3's own matrix faults `fram:write`, so the chip is unwritable for that whole run
+    # and nothing SGP40 logs there can ever reach it. The check that used to stand here
+    # (`counter > 0`) was unsound twice over: `counter` counts "W" as well as "E", so it was only
+    # ever satisfied by a FRESH warning from this run's own boot rather than by anything persisted,
+    # and waiting on that warning is a host-speed race (it lands before the sample on an x86 CI
+    # runner, after it on the bench Pi4 - measured). Losing FRAM-backed history when the FRAM itself
+    # was unavailable is accepted behavior, not a defect (project owner's call, 2026-09-11): no
+    # recovery scheme is wanted for a reboot that catches the chip mid-operation. The real
+    # persistence claim is proven in Run 5b instead, where the chip is healthy and the outcome is
+    # deterministic on any host.
     log4 = logs_dir / "run4_bus_fault_persistence_sweep.log"
     proc = _spawn(micropython_bin, [], log4)
     try:
         _wait_until_serving(proc)
-        for name in _PERSISTED_ERROR_MODULES:
-            entry = _errcount(name)
-            _check(condition=entry.get("counter", 0) > 0, msg=f"Run 4: {name}'s error count persisted across reboot as designed (FRAM-backed) ({entry!r})")
         for name in ("SCD30", "BMP3XX", "FRAM"):  # WIFI's own reset check is Run 8, after its own fault run (Run 7)
             entry = _errcount(name)
             _check(condition=entry.get("counter", 0) == 0, msg=f"Run 4: {name}'s error count correctly did NOT persist across reboot (in-memory-only by design) ({entry!r})")
+        # Every bus Run 3 faulted must be live again, not merely answering 200 with stale state -
+        # this is the recovery half of Run 3's story, and the one claim about SGP40 here that does
+        # not depend on what did or didn't reach the FRAM.
+        status, body = _http("GET", "/measurements")
+        readings = body if status == _HTTP_OK and isinstance(body, dict) else {}
+        for name in ("SCD30", "SGP40", "BMP3XX"):
+            _check(condition=bool(readings.get(name)), msg=f"Run 4: {name} produces real readings again after a run in which every bus (FRAM included) was faulted throughout ({readings.get(name)!r})")
     except Exception as exc:
         _fail(f"Run 4 (bus-fault persistence-correctness sweep): {exc!r}")
     finally:
@@ -402,8 +461,9 @@ def _run_5_recovery_after_bounded_fault(micropython_bin: str, logs_dir: Path) ->
     proc = _spawn(micropython_bin, ["--fault", f"sgp40:writeto:{_SGP40_BOUNDED_FAULT_COUNT}"], log5)
     try:
         _wait_until_serving(proc)
-        time.sleep(6.0)  # comfortably more than 3 SGP40 read cycles (~1Hz) - the fault should be exhausted by now
-        entry = _errcount("SGP40")
+        # Poll rather than sleep a guessed interval: the fault is exhausted when the third "E"
+        # lands, which is a real event to wait for, not a wall-clock duration to assume.
+        entry = _wait_for_error_type_count("SGP40", _SGP40_BOUNDED_FAULT_COUNT, timeout_s=30.0)
         errors_after_exhaustion = _error_type_count(entry)
         _check(condition=errors_after_exhaustion == _SGP40_BOUNDED_FAULT_COUNT, msg=f"Run 5: SGP40's bounded fault ({_SGP40_BOUNDED_FAULT_COUNT} failures) was fully recorded, no more ({entry!r})")
         time.sleep(3.0)  # a few more cycles past exhaustion - real ("E") errors should NOT keep climbing
@@ -418,6 +478,99 @@ def _run_5_recovery_after_bounded_fault(micropython_bin: str, logs_dir: Path) ->
     finally:
         ec = _shutdown(proc)
         _check(condition=ec == 0, msg=f"Run 5: clean shutdown (exit code {ec})")
+
+
+
+def _run_5b_error_log_restore_is_all_or_nothing(micropython_bin: str, logs_dir: Path) -> None:
+    # ---- Run 5b: reboot straight onto Run 5's state, fault-free. Run 5 left exactly
+    # _SGP40_BOUNDED_FAULT_COUNT "E" entries on a HEALTHY chip, write-through (print_log.py's
+    # _store_err() writes on every push - no deferred flush to race), so they SHOULD come back. But
+    # Run 5 shut down abruptly, and an abrupt shutdown can catch a chunk write in flight: both
+    # status bytes are set to _STATUS_BUSY before the payload is touched, so an interrupted write
+    # leaves them there, PrintLogHistoryStore.setup()'s _read() then fails, and its _write() fallback
+    # stores the empty ring. Measured here at roughly 1 abrupt restart in 8.
+    #
+    # That loss is accepted behavior, not a defect (project owner's call, 2026-09-11): no recovery
+    # scheme is wanted for a reboot that catches the chip mid-operation. So this run asserts the
+    # invariant that does hold unconditionally - the restore is ALL-OR-NOTHING, never partial and
+    # never garbled, which is the dual-block + CRC + busy-flag protocol's actual job. Run 5c below
+    # covers the case that must never lose anything. Mirrored at the mock tier
+    # (tests/test_fram_integration.py) and on real silicon (tests_hardware/flash/test_fram_storage.py).
+    #
+    # A timing race cannot make this fail spuriously: the poll returns either the fully restored ring
+    # or a still-empty one (setup()'s restore is a single history.extend(), never observable half
+    # done), and both satisfy the invariant. ----
+    log5b = logs_dir / "run5b_error_log_restore_is_all_or_nothing.log"
+    proc = _spawn(micropython_bin, [], log5b)
+    try:
+        _wait_until_serving(proc)
+        for name in _PERSISTED_ERROR_MODULES:
+            # The webserver answers well before the FRAM-backed loggers finish their own setup(),
+            # and that setup() IS the restore - so poll for it rather than sampling immediately,
+            # the same host-speed trap the old Run 4 check fell into, one layer down.
+            entry = _wait_for_error_type_count(name, _SGP40_BOUNDED_FAULT_COUNT, timeout_s=30.0)
+            restored = _error_type_count(entry)
+            _check(condition=restored in (0, _SGP40_BOUNDED_FAULT_COUNT), msg=f"Run 5b: {name}'s FRAM-backed history came back all-or-nothing after an abrupt restart - never a partial {restored}-entry remnant ({entry!r})")
+            if restored:
+                _check(condition=entry.get("counter", 0) >= restored, msg=f"Run 5b: {name}'s restored error COUNT is consistent with the {restored} restored entries, not left behind ({entry!r})")
+    except Exception as exc:
+        _fail(f"Run 5b (error-log restore is all-or-nothing): {exc!r}")
+    finally:
+        ec = _shutdown(proc)
+        _check(condition=ec == 0, msg=f"Run 5b: clean shutdown (exit code {ec})")
+
+
+
+def _run_5c_storage_paused_shutdown_never_loses_the_error_log(micropython_bin: str, logs_dir: Path) -> None:
+    # ---- Run 5c: the case that must NEVER lose anything - a commanded reboot. Production's own
+    # system_service._reboot() pauses permanent storage before it resets, precisely so no FRAM chunk
+    # operation can be in flight across the restart; `PUT /system {"SystemCmd": "mempause"}` is that
+    # same pause, reachable over REST. With it held, none of _write()/_read()/clear() can start, so
+    # no status byte can be left at _STATUS_BUSY and the restore is deterministic - measured 20/20
+    # here against roughly 1-in-8 loss for the unpaused abrupt shutdown Run 5b covers.
+    #
+    # This is what makes the pair sound: Run 5b alone would pass even if persistence never worked at
+    # all (an empty ring satisfies all-or-nothing), which is exactly the hole the old Run 4 check had. ----
+    _clean_state()
+    log5c_a = logs_dir / "run5c_a_record_then_pause_storage.log"
+    proc = _spawn(micropython_bin, ["--fault", f"sgp40:writeto:{_SGP40_BOUNDED_FAULT_COUNT}"], log5c_a)
+    try:
+        _wait_until_serving(proc)
+        entry = _wait_for_error_type_count("SGP40", _SGP40_BOUNDED_FAULT_COUNT, timeout_s=30.0)
+        _check(condition=_error_type_count(entry) == _SGP40_BOUNDED_FAULT_COUNT, msg=f"Run 5c: SGP40 recorded all {_SGP40_BOUNDED_FAULT_COUNT} bounded failures before the commanded reboot ({entry!r})")
+        status, _ = _http("PUT", "/system", {"SystemCmd": "mempause"})
+        _check(condition=status == _HTTP_OK, msg=f"Run 5c: PUT /system mempause accepted (status {status})")
+        paused = _wait_for_mem_paused(expected=True, timeout_s=15.0)
+        _check(condition=paused, msg="Run 5c: storage actually reported paused before the shutdown, not just a 200")
+        time.sleep(2.0)  # let anything already in flight finish - nothing new can start while paused
+    except Exception as exc:
+        _fail(f"Run 5c (record then pause storage): {exc!r}")
+    finally:
+        ec = _shutdown(proc)
+        _check(condition=ec == 0, msg=f"Run 5c: clean shutdown after the storage pause (exit code {ec})")
+
+    log5c_b = logs_dir / "run5c_b_history_survived_the_commanded_reboot.log"
+    proc = _spawn(micropython_bin, [], log5c_b)
+    try:
+        _wait_until_serving(proc)
+        entry = _wait_for_error_type_count("SGP40", _SGP40_BOUNDED_FAULT_COUNT, timeout_s=30.0)
+        restored = _error_type_count(entry)
+        _check(condition=restored == _SGP40_BOUNDED_FAULT_COUNT, msg=f"Run 5c: SGP40's {_SGP40_BOUNDED_FAULT_COUNT} errors survived a reboot taken with storage paused - the one case that must never lose them ({restored} found, {entry!r})")
+        _check(condition=entry.get("counter", 0) >= _SGP40_BOUNDED_FAULT_COUNT, msg=f"Run 5c: SGP40's persisted error COUNT was restored too, not just the history ring ({entry!r})")
+        _check(condition=_mem_paused() is False, msg="Run 5c: the storage pause did NOT survive the reboot (it is RAM-only by design)")
+        # The restored history must not be a read-only relic: a ResetErrors PUT has to clear it on
+        # the chip. Deliberately issued after the poll above confirmed setup() ran, so this checks
+        # the ordinary case; a reset issued *before* setup() is covered separately (Part C.7
+        # - it persists straight away now and the later setup() must not undo it).
+        status, _ = _http("PUT", "/status", {"ResetErrors": True})
+        _check(condition=status == _HTTP_OK, msg=f"Run 5c: PUT /status ResetErrors accepted (status {status})")
+        entry = _errcount("SGP40")
+        _check(condition=_error_type_count(entry) == 0, msg=f"Run 5c: the restored history was actually cleared by ResetErrors, not just masked ({entry!r})")
+    except Exception as exc:
+        _fail(f"Run 5c (history survived the commanded reboot): {exc!r}")
+    finally:
+        ec = _shutdown(proc)
+        _check(condition=ec == 0, msg=f"Run 5c: clean shutdown (exit code {ec})")
 
 
 
@@ -586,6 +739,8 @@ def run_suite(micropython_bin: str, logs_dir: Path) -> int:
     _run_3_sustained_bus_fault_matrix(micropython_bin, logs_dir)
     _run_4_bus_fault_persistence_sweep(micropython_bin, logs_dir)
     _run_5_recovery_after_bounded_fault(micropython_bin, logs_dir)
+    _run_5b_error_log_restore_is_all_or_nothing(micropython_bin, logs_dir)
+    _run_5c_storage_paused_shutdown_never_loses_the_error_log(micropython_bin, logs_dir)
     _run_6_configure_ssid(micropython_bin, logs_dir)
     _run_7_wifi_hotspot_dns(micropython_bin, logs_dir)
     _run_8_wifi_persistence_and_configure_ntp(micropython_bin, logs_dir)

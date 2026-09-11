@@ -7,8 +7,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import http_client
+from harness import wait_until
 
 if TYPE_CHECKING:
+    from bench_control import BenchBridge
     from harness import Board
 
 CO2_MIN_PPM, CO2_MAX_PPM = 400, 10_000
@@ -72,3 +74,41 @@ def test_measurements_endpoint_returns_plausible_values_for_every_real_sensor(bo
         failures.append(f"SGP40.Raw={raw!r} not within [{RAW_MIN}, {RAW_MAX}]")
 
     assert not failures, "implausible/missing real sensor values via GET /measurements: " + "; ".join(failures) + f"\nfull body: {body!r}"
+
+
+# ---------------------------------------------------------------------------
+# The FRAM storage-pause gate, end to end over the real HTTP stack. The mock tier covers the
+# clamp/re-arm/abort logic and the flash tier covers the real chip gating plus the real
+# auto-unpause timer; what only this tier can prove is that the REST command actually reaches
+# AsyFramManager on a real device and is visible in GET /status.
+# ---------------------------------------------------------------------------
+
+
+def test_mempause_over_real_rest_pauses_storage_and_does_not_survive_a_reboot(board: Board, bench: BenchBridge, dut_ip: str) -> None:
+    before = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0)
+    assert before.status_code == 200, f"GET /status failed: {before.status_code} {before.body!r}"
+    assert before.json()["system"]["MemPaused"] is False, "storage was already paused before this test ran - a previous test left the bench in a paused state"
+
+    put_res = http_client.fetch(dut_ip, 80, "PUT", "/system", {"SystemCmd": "mempause"}, timeout_s=10.0)
+    assert put_res.status_code == 200, f"PUT /system mempause failed: {put_res.status_code} {put_res.body!r}"
+
+    paused = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0)
+    assert paused.status_code == 200, f"GET /status after mempause failed: {paused.status_code} {paused.body!r}"
+    assert paused.json()["system"]["MemPaused"] is True, f"MemPaused did not become True after a real PUT /system mempause: {paused.json()['system']!r}"
+
+    # Recovery is a reboot, not a second REST call: the pause window is a fixed 300s and the
+    # duration is never client-suppliable (asy_webserver_service.py forwards the enum string only),
+    # so there is no REST unpause to issue. That constraint is also the assertion - AsyFramManager
+    # sets _pause = False in __init__ and nothing ever restores it from FRAM, so the pause is
+    # RAM-only and a reset must clear it. Leaving the bench unpaused for whatever runs next is a
+    # required side effect, not incidental cleanup.
+    bench.kick_all_stations()  # see conftest.py's dut_ip docstring for why this precedes every reconnect-expecting reset
+    board.hard_reset()
+    wait_until(
+        lambda: http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=5.0).status_code == 200,
+        timeout_s=120.0,
+        poll_interval_s=3.0,
+        description="DUT serving /status again after the recovery reboot",
+    )
+    after = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0)
+    assert after.json()["system"]["MemPaused"] is False, f"storage was still paused after a real reboot - the pause is supposed to be RAM-only: {after.json()['system']!r}"

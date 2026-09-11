@@ -299,6 +299,51 @@ def test_torn_write_on_printloghistorystore_chunk_self_heals_across_a_simulated_
     assert log["y"]["ErrNum"][-1] == 9  # recovered from block 1 despite block 0's torn-write marker
 
 
+def test_torn_write_on_both_blocks_wipes_the_history_cleanly_rather_than_partially() -> None:
+    # The other outcome of the same power-loss shape the test above covers: an interrupted write can
+    # leave BOTH blocks marked BUSY (the chunk protocol marks both before touching either payload),
+    # and then there is nothing left to self-heal from. setup()'s _read() fails, its _write()
+    # fallback stores the empty ring, and the history is gone. That loss is accepted behavior, not a
+    # defect (project owner's call, 2026-09-11 - no recovery scheme wanted for a reboot that catches
+    # the chip mid-operation). What this pins is that the loss is ALL-or-nothing: a cleanly empty
+    # ring, never a partial or garbled one, which is the dual-block + CRC + busy-flag protocol's
+    # actual job. Mirrored at the twin tier (scripts/_digital_twin_ci_suite.py's Run 5b) and on real
+    # silicon (tests_hardware/flash/test_fram_storage.py's reset-race test).
+    manager1, chip = make_manager()
+    run(manager1.setup())
+    reader1 = SensorReader(Meas(1.0, 1), 3, fram=manager1)
+    run(reader1.pr.setup())
+    run(reader1.pr.err_s("before reboot", errno=9))
+    assert isinstance(reader1.pr, PrintLogHistoryStore)
+    assert isinstance(reader1.pr.fram, AsyFramChunk)
+    addr0, addr1 = reader1.pr.fram.block_addr
+    payload_len = reader1.pr.fram.size + reader1.pr.fram.crc.length()
+    for base in (addr0, addr1):
+        chip.memory[base + payload_len] = _STATUS_BUSY
+        chip.memory[base + payload_len + 1] = _STATUS_BUSY
+
+    manager2, _chip2 = make_manager()
+    manager2.fram._spidev.spi._spi = chip  # same underlying chip, fresh manager/reader objects
+    run(manager2.setup())
+    reader2 = SensorReader(Meas(1.0, 1), 3, fram=manager2)
+    run(reader2.pr.setup())
+
+    async def scenario() -> "ErrorLog":
+        return await reader2.pr.get_log("y")
+
+    log = run(scenario())
+    assert log["y"]["ErrCount"] == 0  # not a partially-restored count
+    assert set(log["y"]["ErrType"]) == {"N"}  # cleanly empty, never a torn remnant of errno 9
+    assert 9 not in log["y"]["ErrNum"]
+
+    # And the chunk must still be usable afterwards - a wedged chunk that never takes a write again
+    # would be a real defect even under the accepted-loss rule above.
+    run(reader2.pr.err_s("after reboot", errno=11))
+    log_after = run(scenario())
+    assert log_after["y"]["ErrNum"][-1] == 11
+    assert log_after["y"]["ErrCount"] == 1
+
+
 def test_value_chunk_crc_trailer_corruption_self_heals_through_the_full_chain() -> None:
     # A directly corrupted CRC trailer byte (not payload) on a real CRC32 value chunk, matching
     # asy_sgp40_driver.py's own ts_storage shape - proves the checksum's own on-chip storage is

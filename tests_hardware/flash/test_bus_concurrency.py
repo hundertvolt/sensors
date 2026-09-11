@@ -87,3 +87,16 @@ def test_fram_hard_reset_race_during_write_and_recovery(board: Board) -> None:
     wait_until(board.is_reachable, timeout_s=30.0, poll_interval_s=1.0, description="board reachable again after the real reset-raced write")
     output = board.run_isolated(DEVICE_SCRIPTS / "fram_reset_race_during_write_verify_recovery.py", timeout_s=60.0)
     _assert_pass(output, "FRAM hard-reset race during write recovery check")
+
+
+# ---------------------------------------------------------------------------
+# SPECIFICATION.md Part F.5.1, on a live bus. Both claims were read out of the rp2 port's protocol
+# tables and faithfully modelled in tests/machine.py and digital_twin/machine.py - but a fake
+# agreeing with a fake proves nothing about silicon, which is what BACKLOG.md flagged this file as
+# the natural home for.
+# ---------------------------------------------------------------------------
+
+
+def test_i2c_and_spi_deinit_are_silent_noops_and_each_bus_id_is_a_singleton(board: Board) -> None:
+    output = board.run_isolated(DEVICE_SCRIPTS / "bus_deinit_is_a_noop_on_real_hardware.py", timeout_s=60.0)
+    _assert_pass(output, "I2C/SPI deinit() no-op and bus-singleton check")

@@ -444,6 +444,68 @@ def test_override_pause_bypasses_manager_pause() -> None:
     assert read_result == bytearray(b"data")
 
 
+def test_pause_short_circuits_before_the_bus_so_an_injected_fault_survives_untouched() -> None:
+    # The ORDERING claim the two tests above cannot make: _read()/_write() consult _mempause()
+    # BEFORE any SPI access, so a paused operation is not merely refused - the bus is never driven
+    # at all. Discriminated by a queued one-shot readinto fault: if the paused read had reached the
+    # bus it would have consumed the fault, and the post-unpause read would then find a clean bus.
+    # Uses a READ fault deliberately - machine.SPI's fake makes write() non-injectable on purpose,
+    # matching the real rp2 write-only path's own inability to fail (SPECIFICATION.md Part F.5.2).
+    manager, chip = make_manager()
+    run(setup_manager(manager))
+    chunk = manager.get_chunk(4, crc=CRC_Pass())
+    assert chunk is not None
+    run(chunk.write(b"good"))
+    chip.inject_fault("readinto", OSError(5, "SPI RX overrun"), times=1)
+    manager.set_pause(value=True)
+
+    async def while_paused() -> "tuple[bytearray | None, ErrorLog]":
+        result = await chunk.read()
+        return result, await manager.get_error_counter()
+
+    paused_result, paused_errs = run(while_paused())
+    assert paused_result is None  # refused by the gate
+    # The refusal itself is logged as a WARNING (_read()'s wrnno=70), never an error - and no error
+    # of any kind appears, because nothing reached the bus that could fail. Asserting on ErrType
+    # rather than ErrCount is deliberate: ErrCount counts "W" entries too, so the bare count is
+    # bumped by the refusal itself and cannot distinguish "refused" from "tried and failed".
+    assert "E" not in paused_errs["FRAM"]["ErrType"]
+    assert 70 in paused_errs["FRAM"]["ErrNum"]  # _read()'s own "FRAM communication paused" warning
+
+    manager.set_pause(value=False)
+
+    async def after_unpause() -> "tuple[bytearray | None, ErrorLog]":
+        result = await chunk.read()
+        return result, await manager.get_error_counter()
+
+    result, errs = run(after_unpause())
+    # The fault was still queued: it fires now, on the first read that genuinely reaches the bus.
+    # The read still returns data - a single transient overrun is absorbed by the dual-copy
+    # fallback (Part F.5.2) - but the error counter is what proves the bus was actually touched.
+    assert result == bytearray(b"good")
+    assert "E" in errs["FRAM"]["ErrType"]  # an error only appears once the bus is genuinely driven
+
+
+def test_unpausing_restores_a_genuinely_working_bus_not_just_a_cleared_flag() -> None:
+    # The other half of the pause lifecycle: after unpausing, a real write/read round trip must
+    # land new bytes on the chip. A distinct second pattern makes a stale read impossible to
+    # mistake for a fresh one.
+    manager, chip = make_manager()
+    run(setup_manager(manager))
+    chunk = manager.get_chunk(4, crc=CRC_Pass())
+    assert chunk is not None
+    run(chunk.write(b"aaaa"))
+    manager.set_pause(value=True)
+    assert run(chunk.write(b"bbbb")) is False
+    addr0, _addr1 = chunk.block_addr
+    assert bytes(chip.memory[addr0 : addr0 + 4]) == b"aaaa"  # the refused write never reached the chip
+
+    manager.set_pause(value=False)
+    assert run(chunk.write(b"bbbb")) is True
+    assert run(chunk.read()) == bytearray(b"bbbb")
+    assert bytes(chip.memory[addr0 : addr0 + 4]) == b"bbbb"  # ...and the real chip bytes changed
+
+
 # ---------------------------------------------------------------------------
 # clear - zeroing both copies of a chunk
 # ---------------------------------------------------------------------------
@@ -824,6 +886,76 @@ def test_write_fails_cleanly_when_fram_is_write_protected() -> None:
     assert write_ok is False
     assert 10 in errnums
     assert 61 in errnums
+
+
+def test_read_is_also_blocked_while_write_protected_and_the_data_survives_it() -> None:
+    # Intended, accepted behavior, not a defect (project owner, 2026-09-11; SPECIFICATION.md Part
+    # A.4's FRAM entry): _read_chunk() must WRITE a transient busy marker before it reads, so write
+    # protection gates read() exactly as it gates write(). The discriminating part is the second
+    # half - the stored bytes are untouched by the refusal and come back intact once protection is
+    # cleared, so this is an access gate, not data loss.
+    manager, _chip = make_manager()
+    run(setup_manager(manager))
+    chunk = manager.get_chunk(4, crc=CRC_Pass())
+    assert chunk is not None
+
+    async def scenario() -> "tuple[bytearray | None, bytearray | None, ErrorLog]":
+        assert await chunk.write(b"keep")
+        assert await manager.fram.set_write_protected(value=True)
+        blocked = await chunk.read()
+        errs = await manager.get_error_counter()
+        assert await manager.fram.set_write_protected(value=False)
+        restored = await chunk.read()
+        return blocked, restored, errs
+
+    blocked, restored, errs = run(scenario())
+    errnums = errs["FRAM"]["ErrNum"]
+    assert blocked is None
+    assert bytes(restored or b"") == b"keep"
+    # Identical error signature to the WREN-drop read above: the busy-status write is what fails,
+    # for both blocks (err=30+2), and neither copy is then usable.
+    assert errnums.count(32) == 2
+    assert 72 in errnums
+
+
+def test_write_protect_gate_still_reaches_the_bus_unlike_the_pause_gate() -> None:
+    # The two refusals look identical from outside (both hand back None) but differ where it
+    # matters: set_pause() short-circuits before SPI, write protection does not - its guard sits
+    # inside FRAM_SPI._write(), reached only after _set_check_sb() has already clocked the status
+    # byte off the real chip. Counting chip-side reads is what tells them apart.
+    manager, chip = make_manager()
+    run(setup_manager(manager))
+    chunk = manager.get_chunk(4, crc=CRC_Pass())
+    assert chunk is not None
+    reads = 0
+    real_readinto = chip.readinto
+
+    # Parameter name must match FakeMB85RS64V.readinto()'s own (_write_value) - mypy compares the
+    # full signature on a method reassignment, and a renamed parameter is an `assignment` error
+    # that `type: ignore[method-assign]` deliberately does not cover.
+    def counting_readinto(buf: "bytearray | memoryview", _write_value: int = 0x00) -> None:
+        nonlocal reads
+        reads += 1
+        real_readinto(buf, _write_value)
+
+    async def scenario() -> "tuple[int, int]":
+        assert await chunk.write(b"keep")
+        assert await manager.fram.set_write_protected(value=True)
+        chip.readinto = counting_readinto  # type: ignore[method-assign]
+        assert await chunk.read() is None
+        protected_reads = reads
+        assert await manager.fram.set_write_protected(value=False)
+        manager.set_pause(value=True)
+        reads_before_pause = reads
+        assert await chunk.read() is None
+        paused_reads = reads - reads_before_pause
+        manager.set_pause(value=False)
+        return protected_reads, paused_reads
+
+    protected_reads, paused_reads = run(scenario())
+    chip.readinto = real_readinto  # type: ignore[method-assign]
+    assert paused_reads == 0, "the paused read reached the chip - the pause gate is supposed to short-circuit first"
+    assert protected_reads > 0, "the write-protected read never reached the chip - it is supposed to fail at the chip, not before it"
 
 
 def test_operations_fail_cleanly_once_fram_chip_goes_uninitialized_mid_run() -> None:
