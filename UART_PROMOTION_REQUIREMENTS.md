@@ -39,8 +39,12 @@ concretely demands of *this* module and how it will be checked.
 | 2.2 | The legacy `asy_uart.AsyUART` import is replaced by `asy_uart_driver.UART`. Their method sets differ — every call site is re-derived from the promoted driver's real signatures, not assumed | D.9, D.14 |
 | 2.3 | No session/protocol class split (`*_DeviceSession` + `*_I2C`). C.3.2 settles this for a point-to-point link: one merged class, because there is no bus-sharing concept and the two lock layers collapse without losing distinction | C.3.2 |
 | 2.4 | This is **not** a sensor driver: no namedtuple measurement shape, no `make_dict()`, no `get_data()`/`get_dict_data()`. Registering it as a `sensors=` module would be wrong | C.4.2, J.1 |
-| 2.5 | **Not a `SensorReader` subclass** (owner decision, 2026-09-11): plain class owning a `PrintLogHistory`, the `captive_dns.DNSServer`/`SystemService` shape. Its `errno`/`wrnno` numbering is nevertheless aligned to the `SensorReader` reservation anyway — see 4.4 | Owner decision, C.4.3 |
-| 2.6 | A consecutive-failure-streak give-up is still required for any owned long-running task (6.8). Without `SensorReader` there is no inherited `_error_check()`, so the streak counter is written here — modelled explicitly on `_error_check()`'s contract (increment on failure, decrement on success, give up past the threshold), with `max_module_error` as its constructor parameter and the same name/semantics | C.7, C.9 |
+| 2.5 | **Plain class owning a `PrintLogHistory`**, the `AsyFramManager`/`SystemService`/`DNSServer` shape — not a `SensorReader` subclass. Derived from what the existing subclasses are actually for: every one of them subclasses for a measurement snapshot (`SCD30_Reader`), a `ConfigManager`-backed schema (`AsyConnTime`, `AsyNtpClient`, `NotificationCoordinator` — all `SensorReaderConfig`), or both. This module has neither, and the module closest to it by *role* — a chunking transfer manager sitting above a bus driver, owning a logger and sharing it downstream — is `AsyFramManager`, which is a plain class | C.4.3, G.1 |
+| 2.5a | **No `ConfigManager` schema.** `payload_size`/`timeout` are agreed out of band and must match both ends; making them runtime-settable would let a REST write desync a working link. They stay constructor parameters under 10.1-10.2's readiness gate | J.6 |
+| 2.5b | **No measurement snapshot.** A link-state namedtuple would be a new top-level feature, which the refactor explicitly is not — the module's observability is its error history, which 4.2 already gets for free | CLAUDE.md, J.1 |
+| 2.6 | **`_error_check()` is not reimplemented here** — G.1 forbids re-rolling an established primitive, and a private method on a class this module doesn't subclass cannot be reused. It is also the wrong primitive: `_error_check()`'s give-up exists so the task supervisor can re-run `_init_<sensor>()` and re-initialize hardware, and this module owns no hardware to re-initialize — a restart would accomplish nothing the quiesce-and-resync has not already done | G.1, C.4.1 |
+| 2.6a | **The listen loop escalates by capped exponential backoff instead**, `captive_dns.py`'s `DNSServer.run()` shape (0.5s → 5s cap, reset on success) — C.9's cascading-recovery-storm convention, which exists precisely for a loop whose failures return sentinels rather than raising, so no outer `except` ever fires | C.9 |
+| 2.6b | The loop returns (letting the supervisor restart it) **only on a readiness failure** — no bus handle, `setup()` never ran, role mismatch — never on a link fault, which is self-healing by design | C.13, J.5 |
 
 ## 3. Construction contract
 
@@ -96,7 +100,7 @@ incidental.
 | 6.5 | Every `await` that can block indefinitely is either deliberately unbounded **and** externally cancellable (the responder's listen wait, via `cancel_read_timeout()` from another task), or bounded by a timeout. No third category | J.5, D.5 |
 | 6.6 | A fault path must always converge: quiesce-and-resync, then the caller's normal failure sentinel. No path may return a "success" sentinel after an aborted drain | J.5 |
 | 6.7 | Recovery must not be able to recurse: a failure inside `_clear_buffers()` must not re-enter `_clear_buffers()` | D.3 |
-| 6.8 | If a long-running task is owned (responder listen loop), repeated failure escalates rather than spinning: either a bounded-retry shape or a consecutive-failure-streak give-up returning `False` so the task supervisor restarts it — and, in a sentinel-returning retry loop, a **capped exponential backoff**, since no `except` ever fires for a sentinel | C.9's cascading-recovery-storm convention, I.4(c) |
+| 6.8 | The owned responder listen loop escalates rather than spinning, via the capped exponential backoff of 2.6a — a sentinel-returning failure never triggers an `except`, so without it the loop runs at full speed and floods the log (measured at ~5 lines/second in the case this convention was written for) | C.9's cascading-recovery-storm convention, I.4(c) |
 | 6.9 | The module never stalls timing-sensitive work (the Neopixel animation): every wait yields, none busy-spins without `await` | F.3, D.5 |
 
 ## 7. Memory model and buffer ownership
@@ -291,12 +295,17 @@ Line references are `python/IndividualDrivers/asy_uart_comm.py` as it stands tod
 
 Settled by the project owner, 2026-09-11:
 
-1. **Base class / logger.** Not a `SensorReader` subclass. It owns a `PrintLogHistory` and supports
-   both construction routes — `fram=`/`history_length=`/`debug=`/`name=` through `make_logger()`,
-   or a `logger=` reach-through to an upstream instance's own, the way `AsyFramManager` hands
-   `self.pr` down to `FRAM_SPI` and its chunks. Consequences: the streak counter `_error_check()`
-   would have supplied is written here instead (2.6), and a shared logger means a shared numbering
-   space (4.4a).
+1. **Logger.** Both construction routes, exactly as `SensorReader.__init__` shapes them —
+   `fram=`/`history_length=`/`debug=`/`name=` through `make_logger()`, or a `logger=` reach-through
+   to an upstream instance's own, the way `AsyFramManager` hands `self.pr` down to `FRAM_SPI` and
+   its chunks. Consequence: a shared logger is a shared numbering space (4.4a).
+1a. **Base class** (delegated to this scope, resolved against precedent rather than by preference):
+   plain class, not a `SensorReader` subclass — see 2.5-2.6b for the derivation. Every existing
+   subclass is one for a measurement snapshot or a config schema; this module has neither, and
+   `AsyFramManager` is its closest structural match. `_error_check()` is neither reimplemented nor
+   needed: C.9's capped backoff is the primitive that fits a link fault, since there is no hardware
+   to re-initialize on restart. **Reversible in one place** if a link-state snapshot is ever wanted
+   as a real feature — that, not the base class, would be the decision that changes.
 2. **FRAM backing.** Optional but always possible, exactly as project-wide — `fram=` selects
    `PrintLogHistoryStore`, omitting it selects `PrintLogHistory`, and `make_logger()` already makes
    that choice. Consequence: a FRAM-backed instance appends to dev's chunk order, never inserts
@@ -323,7 +332,48 @@ Still open — needed before the affected code is written, not before the tests 
 10. **The lost-final-ACK case** — whether "sent, unconfirmed" is surfaced as its own outcome or
     folded into failure. It is a two-generals situation, so the honest answer may be a third state.
 
-## 20. Done criteria
+## 20. Changes permitted in `asy_uart_driver.py`
+
+Maximum buffer reuse may require reaching one layer down. That is allowed (owner direction,
+2026-09-11) under one scheme and a few constraints.
+
+**The scheme**: *an optional buffer argument; allocate internally only when the caller passes none.*
+The two established shapes are `voc_algorithm.py`'s `vocalgorithm_proc_ser_des(sraw, buf=None, ...)`
+and `asy_fram_manager.py`'s `write()`/`write_into()` pair — pick whichever fits the method, but
+never invent a third.
+
+**Most of it already exists** — check before adding anything: `readinto_until_complete()` is the
+zero-allocation counterpart of `read_until_complete()`, `writefrom(buf, size)` of `write(msg)`, and
+`readinto()` covers the drain path. Using these instead of their allocating siblings is §7's
+requirement, not a driver change. Do not add a parallel API next to them.
+
+**Candidate gaps this scan actually found**, none yet confirmed as blocking:
+
+- `_write_all()` re-slices `memoryview(buf)[sent:]` on every retry round, allocating a memoryview
+  object per iteration. Only matters on a short-writing link; an offset-carrying inner write would
+  avoid it.
+- `read()`/`readline()` allocate a fresh `bytes` per call and have no `_into` counterpart for the
+  unbounded-length case. The bounded drain path does not need one (`readinto()` exists), so this is
+  only a gap if the drain ends up wanting "read whatever is there" semantics.
+- There is no way to suppress CRC handling for a single call. Nothing needs this today; §19.7's COBS
+  question would.
+
+**Constraints on touching it**:
+
+- It is already promoted, reviewed and tested. Every existing `tests/test_asy_uart_driver.py` test
+  must still pass unchanged, and any new parameter gets its own coverage in that same file.
+- D.10 applies hardest here: give every member of the related set the same shape. A `buf=` parameter
+  added to one read method and not its siblings is a worse outcome than not adding it at all.
+- The never-raise sentinel contract (C.3.2) holds for anything added — including the new
+  allocation, which degrades to the method's existing sentinel rather than propagating a
+  `MemoryError`.
+- A driver change is Class B in `UART_C_PORT_CHANGELOG.md` (no wire effect) unless it changes
+  emitted bytes, in which case it is Class A with a stated flag-day consequence.
+- `asy_uart_driver.py` currently has no logger of its own (C.7.1's table says so explicitly). If a
+  new failure mode needs reporting, it returns a sentinel for its caller to log — the
+  silent-failure-masking convention `deinit()` already follows — rather than growing a `self.pr`.
+
+## 21. Done criteria
 
 The branch is done when all of the following hold, each verified by running it rather than by
 inspection:
@@ -334,7 +384,7 @@ inspection:
   MicroPython Unix-port interpreter; the flash/bench comm-hazard tiers run clean on the dev bench
   over the real crossover jumper, under the project owner's own go-ahead.
 - §18's table is fully struck through — every listed violation actually fixed, not deferred.
-- §19's four remaining open questions are answered and reflected in the code.
+- §19's four remaining open questions (7-10) are answered and reflected in the code.
 - `SPECIFICATION.md`, `UART_C_PORT_CHANGELOG.md`, `BACKLOG.md` and README.md's doc map are updated
   in the same change set.
 - A bird's-eye scan across the whole of `src/` has been re-run after the file lands, covering Part
