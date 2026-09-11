@@ -36,7 +36,15 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":
 
 
 def make_uart(**kwargs: "Any") -> UART:
-    return UART(0, tx_pin=0, rx_pin=1, **kwargs)
+    uart = UART(0, tx_pin=0, rx_pin=1, **kwargs)
+    # Replaces the real select.poll() init() installs, for every UART in this file rather than only
+    # the ones that were noticed: the Unix port never re-evaluates a Python object's ioctl() after
+    # registration, so anything awaiting readiness through it blocks forever on a CI runner while
+    # passing locally (CLAUDE.md's known hang cause - this is the standing "never a real
+    # select.poll() behind uart.poller" rule). Always-ready by default; a test needing a specific
+    # readiness schedule reassigns uart.poller with its own _StepPoller, as several below do.
+    uart.poller = _StepPoller([select.POLLIN | select.POLLOUT])  # type: ignore[assignment]
+    return uart
 
 
 def fake(uart: UART) -> FakeUART:
@@ -445,6 +453,17 @@ def test_rxbuf_and_baudrate_are_readable_back() -> None:
     uart.init(0, 0, 1, rxbuf=1024, baudrate=9600)
     assert uart.rxbuf == 1024
     assert uart.baudrate == 9600
+
+
+def test_no_uart_built_here_polls_through_a_real_select_poll() -> None:
+    # CLAUDE.md's standing rule, asserted rather than left to review. A real select.poll() behind
+    # uart.poller is the known CI-only hang: the Unix port never re-evaluates a Python object's
+    # ioctl() after registration, so _write_all()'s unbounded ready(POLLOUT) wait blocks forever on
+    # a runner while passing locally. That is exactly how it escaped review once - six write-path
+    # tests were green locally and timed out in CI.
+    real_poll_type = type(select.poll()).__name__
+    assert type(make_uart().poller).__name__ != real_poll_type
+    assert type(cobs_uart().poller).__name__ != real_poll_type
 
 
 # ---------------------------------------------------------------------------

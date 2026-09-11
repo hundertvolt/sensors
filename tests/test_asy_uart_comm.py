@@ -63,7 +63,9 @@ def test_valid_construction_sets_the_gate_only_after_setup() -> None:
 def test_payload_size_boundaries_are_accepted_and_refused() -> None:
     # C2.1: SIZE/CHUNKS are single bytes and a zero-width payload cannot carry the command id.
     for good in (1, 255):
-        comm = make_comm(payload_size=good, uart=UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=1, rxbuf=2048))
+        roomy = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=1, rxbuf=2048)
+        roomy.poller = LinkPoller(roomy._uart)  # type: ignore[assignment,arg-type]  # never a real select.poll()
+        comm = make_comm(payload_size=good, uart=roomy)
         assert comm._init_errno == 0, f"payload_size {good} should be legal"
     for bad in (0, 256, -1):
         comm = make_comm(payload_size=bad)
