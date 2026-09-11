@@ -319,6 +319,35 @@ def test_put_round_trips_through_a_real_twin_backed_driver_over_real_http() -> N
     run_timed(scenario(), timeout_s=10.0)
 
 
+def test_reset_errors_over_real_http_is_not_undone_by_a_fram_loggers_later_setup() -> None:
+    # Twin-tier form of SPECIFICATION.md Part C.7's boot-window contract, over a real socket
+    # against the real twin FRAM chip. Only
+    # the webserver task is started here, exactly like the boot window it models: every sensor
+    # task's own pr.setup() (SGP40's lives in read_loop()'s _init_sgp()) has not run, so the chunk
+    # still holds the previous boot's history while the RAM-side logger is uninitialized.
+    port = _next_test_port()
+
+    async def scenario() -> None:
+        await _boot(port)
+        assert sensortask_wozi.sgp40 is not None
+        sgp = sensortask_wozi.sgp40
+        await sgp.pr.setup()
+        await sgp.pr.err_s("simulated", errno=99)
+        sgp.pr.initialized = False  # bytes on the real twin chip, RAM side not yet set up
+        task = await _start_webserver()
+        try:
+            res = await _http_client.fetch("127.0.0.1", port, "PUT", "/status", {"ResetErrors": True})
+            assert res.status_code == 200
+            await sgp.pr.setup()  # ... and only now does _init_sgp() get there
+            log = await sgp.get_error_counter()
+            assert log["SGP40"]["ErrCount"] == 0
+            assert 99 not in log["SGP40"]["ErrNum"], "setup() restored the pre-reset history over a reset that returned 200"
+        finally:
+            await _cancel(task)
+
+    run_timed(scenario(), timeout_s=10.0)
+
+
 def test_put_pause_time_round_trips_and_counts_down_over_real_http() -> None:
     # The special-case endpoint pairing this restores: PUT /notification (the settings/command
     # endpoint) sets the override countdown, GET /status (the live/polling endpoint) reports its
@@ -802,6 +831,45 @@ def test_sgp40_voc_backup_unflushed_write_is_lost_but_the_system_recovers_cleanl
             gc.collect()  # this test builds the whole real object graph twice in one run
 
     run_timed(scenario(), timeout_s=30.0)
+
+
+def test_mempause_over_real_http_reaches_the_real_fram_manager_and_unpauses() -> None:
+    # The REST -> SystemService.pause_permanent_storage() -> AsyFramManager.set_pause() wiring,
+    # through the real booted object graph and a real HTTP request. The mock tier proves the pause
+    # LOGIC and the flash tier proves the real chip gating plus the real auto-unpause timer; what
+    # this tier adds is that the wiring between them holds in CI, on every push, rather than only
+    # in a bench session. Deliberately does not wait out an auto-unpause: the REST command's
+    # duration is a hardcoded 300s that no client can shorten (asy_webserver_service.py forwards
+    # the enum string only), so the unpause half is driven through the same SystemService call the
+    # command itself reaches.
+    port = _next_test_port()
+
+    async def scenario() -> None:
+        await _boot(port)
+        assert sensortask_wozi.fram is not None
+        assert sensortask_wozi.sysfunct is not None
+        task = await _start_webserver()
+        try:
+            res = await _http_client.fetch("127.0.0.1", port, "GET", "/status")
+            assert res.json()["system"]["MemPaused"] is False
+
+            res = await _http_client.fetch("127.0.0.1", port, "PUT", "/system", {"SystemCmd": "mempause"})
+            assert res.status_code == 200
+
+            # Both the live object and the REST view must agree - a status field reporting a
+            # different flag than the manager actually holds would be the real defect here.
+            assert sensortask_wozi.fram.get_pause() is True
+            res = await _http_client.fetch("127.0.0.1", port, "GET", "/status")
+            assert res.json()["system"]["MemPaused"] is True
+
+            sensortask_wozi.sysfunct.pause_permanent_storage(0)  # the immediate-unpause branch
+            assert sensortask_wozi.fram.get_pause() is False
+            res = await _http_client.fetch("127.0.0.1", port, "GET", "/status")
+            assert res.json()["system"]["MemPaused"] is False
+        finally:
+            await _cancel(task)
+
+    run_timed(scenario(), timeout_s=20.0)
 
 
 if __name__ == "__main__":

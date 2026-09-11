@@ -367,7 +367,9 @@ def test_err_s_before_setup_does_not_write_even_with_logging_off() -> None:
     assert list(hist.history)[-1] == 1  # in-memory recording still happens
 
 
-def test_reset_before_setup_does_not_write_even_with_logging_off() -> None:
+def test_reset_before_setup_still_clears_even_with_logging_off() -> None:
+    # The in-memory base has nothing to persist, so reset() is unconditional here either way -
+    # what this pins down is that it never depends on the logging level to do its job.
     hist = PrintLogHistory(history_length=3, level=PrintLog.level_off())
     run(hist.err_s("e", errno=1))
     assert hist.initialized is False
@@ -474,13 +476,53 @@ def test_printloghistorystore_err_s_before_setup_does_not_touch_fram() -> None:
     assert chip.memory == bytearray(len(chip.memory))  # but nothing was ever written to FRAM
 
 
-def test_printloghistorystore_reset_before_setup_does_not_touch_fram() -> None:
+def test_printloghistorystore_reset_before_setup_persists_the_cleared_state_anyway() -> None:
+    # SPECIFICATION.md Part C.7: reset() deliberately has no "uninitialized" guard. A cleared ring is not
+    # stale state - it is precisely what the caller asked to persist - so it goes to FRAM straight
+    # away, which is what stops a later setup() restoring the old history over the top.
     manager, chip = make_fram_manager()
     run(manager.setup())
     store = PrintLogHistoryStore(manager, history_length=4, level=None)
     assert store.initialized is False
     run(store.reset())
-    assert chip.memory == bytearray(len(chip.memory))
+    assert chip.memory != bytearray(len(chip.memory)), "the cleared ring never reached the chip"
+    assert store.initialized is True, "a successful reset write means this logger is initialized by definition"
+
+
+def test_printloghistorystore_reset_during_the_boot_window_is_not_undone_by_the_later_setup() -> None:
+    # The whole point of SPECIFICATION.md Part C.7's boot window: every FRAM-backed logger runs its own pr.setup() from
+    # inside its task, so the webserver can answer a ResetErrors PUT before that has happened.
+    # The reset must survive the setup() that follows it, not be silently rolled back.
+    manager, chip = make_fram_manager()
+    run(manager.setup())
+    seeded = PrintLogHistoryStore(manager, history_length=3)
+    run(seeded.setup())
+    run(seeded.err_s("e", errno=7))
+    assert list(seeded.history)[-1] == 7
+
+    manager2, _chip2 = make_fram_manager()
+    manager2.fram._spidev.spi._spi = chip  # same chip image - models a reboot, history still on it
+    run(manager2.setup())
+    rebooted = PrintLogHistoryStore(manager2, history_length=3)
+    assert rebooted.initialized is False  # its task has not reached pr.setup() yet
+    run(rebooted.reset())  # the PUT lands in that window
+    run(rebooted.setup())  # ... and only now does the task get there
+    assert rebooted.err_count == 0
+    assert list(rebooted.history) == [0, 0, 0], "setup() restored the old history over a reset that had already been persisted"
+
+
+def test_printloghistorystore_reset_that_cannot_reach_the_chip_stays_uninitialized() -> None:
+    # The safety half of dropping the guard: claiming initialization on a FAILED write would make
+    # the later setup() return early, leaving a logger that believes it is persisted and is not.
+    manager, chip = make_fram_manager()
+    run(manager.setup())
+    store = PrintLogHistoryStore(manager, history_length=4)
+    chip.drop_wren = True  # every chip write silently does nothing from here on
+    run(store.reset())
+    assert store.initialized is False
+    chip.drop_wren = False
+    run(store.setup())
+    assert store.initialized is True
 
 
 def test_printloghistorystore_zero_length_history_survives_write_and_read() -> None:

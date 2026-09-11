@@ -1017,6 +1017,28 @@ def test_webserver_status_put_reset_errors_clears_a_real_modules_history() -> No
     assert (run(sensortask_wozi.conn.get_error_counter()))["WIFI"]["ErrCount"] == 0
 
 
+def test_webserver_status_put_reset_errors_is_not_undone_by_a_fram_loggers_later_setup() -> None:
+    # SPECIFICATION.md Part C.7's boot window, reproduced exactly. Every FRAM-backed logger runs its own
+    # pr.setup() from inside its task - SGP40's lives in read_loop()'s _init_sgp() - while the
+    # webserver's own task answers as soon as start_server() returns. So a ResetErrors PUT can land
+    # while the chunk still holds the previous boot's history and the RAM-side logger is still
+    # uninitialized. build_system() starts no tasks, so that state is deterministic here.
+    run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
+    sgp = sensortask_wozi.sgp40
+    assert sgp is not None
+    run(sgp.pr.setup())
+    run(sgp.pr.err_s("simulated", errno=99))
+    sgp.pr.initialized = False  # what the boot window looks like: bytes on the chip, RAM side not yet set up
+
+    res = _dispatch("PUT", "/status", {"ResetErrors": True})
+    assert json.loads(res.body)["res"] == "OK"
+    run(sgp.pr.setup())  # ... and only now does _init_sgp() get there
+
+    log = run(sgp.get_error_counter())
+    assert log["SGP40"]["ErrCount"] == 0
+    assert 99 not in log["SGP40"]["ErrNum"], "setup() restored the pre-reset history over a reset that returned OK"
+
+
 # ---------------------------------------------------------------------------
 # Captive-portal hotspot-mode redirect wiring (SPECIFICATION.md Part A.5/A.7) - confirms
 # `is_hotspot_active=conn.is_hotspot_active` (build_system()'s own real WebserverService(...) call)

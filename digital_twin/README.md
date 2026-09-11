@@ -350,7 +350,7 @@ placeholder). Must succeed before any test phase runs.
 **Test**: hands off to `scripts/_digital_twin_ci_suite.py`, a self-contained `uv run` CPython
 script (stdlib-only — no `uv sync` needed) that drives `digital_twin/run_wozi_integration.py` as a
 real subprocess, over real HTTP/UDP (`http.client`/`socket`, not `_http_client.py` — this script
-runs under CPython, not the twin's own MicroPython process), through eleven real, sequential
+runs under CPython, not the twin's own MicroPython process), through thirteen real, sequential
 subprocess runs on a fixed port (`18080`, distinct from the manual entry point's `8080` default, so
 both can run side by side without colliding):
 
@@ -376,17 +376,47 @@ both can run side by side without colliding):
    correct outcome under the current architecture: `--fault` only ever produces bounded,
    immediately-raised `OSError`s, never an indefinite hang, so nothing here can actually block the
    event loop long enough to matter — see run 10 below for the one scenario that can.
-4. **Reboot fault-free — bus-fault persistence-correctness sweep** — checks *both* directions for
-   every module run 3 faulted: SGP40's count should have persisted (FRAM-backed,
-   `PrintLogHistoryStore` — see `src/print_log.py`); SCD30/BMP3XX/FRAM's counts should have reset to
-   `0` (in-memory-only by design — SPECIFICATION.md Part A.7). A bug in either direction is real and
-   would be caught here.
+4. **Reboot fault-free — what must reset, and that every faulted bus comes back** —
+   SCD30/BMP3XX/FRAM's counts must have reset to `0` (in-memory-only by design — SPECIFICATION.md
+   Part A.7), and all three sensors must produce real readings again after a run in which every
+   bus, the FRAM included, was faulted throughout. This run deliberately does **not** claim SGP40's
+   FRAM-backed history survived run 3 — it cannot, because run 3's own matrix faults `fram:write`,
+   so the chip is unwritable for that whole run. The check that used to stand here (`counter > 0`)
+   was unsound twice over: `counter` counts `"W"` as well as `"E"`, so it was only ever satisfied by
+   a *fresh* warning from this run's own boot, and waiting on that warning is a host-speed race
+   (it lands before the sample on an x86 runner, after it on the project's bench Pi4). The real
+   persistence claim lives in run 5b instead.
 5. **Clean boot, a small *bounded* fault** (`sgp40:writeto:3`, not sustained) — the other half of
    the self-healing story run 3 alone can't show: not just "doesn't crash while still broken," but
    "comes back once the fault clears." Confirms the real error count stops climbing once the 3
    queued failures are exhausted (a driver's own "recovered" notice is itself logged as a warning,
    not an error — this suite counts `"E"`-typed history entries specifically, not the raw combined
    counter, to avoid mistaking a recovery notice for a new failure) and that measurements resume.
+   **5b. Reboot straight onto run 5's state, fault-free — the restore is all-or-nothing.** Run 5
+   left exactly three `"E"` entries on a *healthy* chip, write-through (`print_log.py`'s
+   `_store_err()` writes on every push — there is no deferred flush to race), so they should come
+   back. But run 5 shut down abruptly, and that can catch a chunk write in flight: both status bytes
+   go to `_STATUS_BUSY` before the payload is touched, so an interrupted write leaves them there,
+   `PrintLogHistoryStore.setup()`'s `_read()` then fails, and its `_write()` fallback stores the
+   empty ring. Measured here at roughly **1 abrupt restart in 8**. That loss is **accepted
+   behavior** (project owner's call, 2026-09-11 — no recovery scheme wanted for a reboot that
+   catches the chip mid-operation), so this run asserts the invariant that does hold
+   unconditionally: the restore is all-or-nothing, never partial and never garbled, which is the
+   dual-block + CRC + busy-flag protocol's actual job.
+   **5c. A commanded reboot, taken with storage paused — the case that must never lose anything.**
+   Production's own `system_service._reboot()` pauses permanent storage before it resets, precisely
+   so no FRAM chunk operation can be in flight across the restart; `PUT /system {"SystemCmd":
+   "mempause"}` is that same pause over REST. With it held, none of `_write()`/`_read()`/`clear()`
+   can start, no status byte can be left `_STATUS_BUSY`, and the restore is deterministic —
+   measured **20/20** against the ~1-in-8 loss of run 5b's unpaused shutdown. This is what makes
+   the pair sound: 5b alone would pass even if persistence never worked at all (an empty ring
+   satisfies all-or-nothing), which is exactly the hole the old run 4 check had. 5c also confirms
+   the pause itself does *not* survive the reboot (RAM-only by design) and that a `ResetErrors` PUT
+   genuinely clears the restored history on the chip — issued only *after* polling for the restore,
+   because a reset arriving before the loggers finish `setup()` is dropped by design and the
+   restore then puts the old history straight back. The same all-or-nothing claim is mirrored at the
+   mock tier (`tests/test_fram_integration.py`) and on real silicon
+   (`tests_hardware/flash/test_fram_storage.py`'s reset-race test).
 6. **Clean boot, configure a real SSID** (persisted) — needed for run 7's genuine STA-connect-
    failure cycle, not the `SSID==""` unconfigured shortcut.
 7. **Reboot with 5 scripted `"no access point found"` WiFi outcomes** — drives the real STA →

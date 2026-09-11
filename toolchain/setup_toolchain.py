@@ -841,7 +841,12 @@ def ensure_bench_bridge(uplink_iface: str | None, wifi_iface: str | None, ssid: 
             real_mac = get_interface_mac(eth_iface)
         except SetupError:
             real_mac = ""
-        bridge_mac = run(["nmcli", "-g", "bridge.mac-address", "connection", "show", BENCH_BRIDGE_CONN]).strip()
+        # `--escape no` is load-bearing, not cosmetic: `nmcli -g` escapes every ':' in a value as
+        # '\:', so a MAC reads back as 'D8\:3A\:...' and can never compare equal to the plain
+        # 'd8:3a:...' get_interface_mac() reads from `ip -o link show`. Without it this check is
+        # unconditionally true and warns on a correctly-pinned bridge - which is worse than useless
+        # here, since the remedy it prints cycles a live bridge (the 2026-09-04 lockout, Part B.13).
+        bridge_mac = run(["nmcli", "--escape", "no", "-g", "bridge.mac-address", "connection", "show", BENCH_BRIDGE_CONN]).strip()
         if real_mac and bridge_mac.lower() != real_mac.lower():
             log(
                 f"WARNING: bridge {BENCH_BRIDGE_CONN!r}'s MAC ({bridge_mac or 'unset/synthesized'}) does not "
