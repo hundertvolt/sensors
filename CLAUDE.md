@@ -105,7 +105,7 @@ information):
   own code (see "Microdot / REST layer" below), never by touching this file. `src/` and `ext/` are
   copied flat into one directory and frozen together for the refactored firmware build, which is why
   they live at the same directory depth in the repo.
-- **The UART message protocol (`asy_uart_comm.py`, promotion in progress) has a second
+- **The UART message protocol (`src/asy_uart_comm.py`, promoted) has a second
   implementation in C on the Arduino peer — so its wire format, accept/reject rules and recovery
   timings are a two-implementation contract, not this repo's to change unilaterally.** The protocol
   itself is specified in SPECIFICATION.md Part J; **every change made to it gets an entry in
@@ -129,6 +129,10 @@ information):
   further standing facts: the module is **standalone/self-contained** (its BME688/BSEC first use case is out
   of scope and constrains nothing), and it is **strictly initiator/responder, never a symmetric
   peer** — there is no collision arbitration, so simultaneous initiation is out of contract.
+  **`dev` carries two instances across its permanent crossover jumper and `wozi` carries none** —
+  wozi is never physically flashed, so wiring it there would add an untestable peripheral. The
+  protocol's own wire constants and recovery timings live in `src/asy_uart_comm.py` as `const()`
+  values; a change to any of them is Class A by definition.
 - **`dev` config is a bench rig only** — its quirks (e.g. LED/Neopixel REST routes referencing an
   object that's never instantiated) are explicitly out of scope. Don't fix them as if they were
   bugs.

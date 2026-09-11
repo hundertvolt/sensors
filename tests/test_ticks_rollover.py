@@ -1,7 +1,20 @@
 """Direct, real-interpreter verification of MicroPython's time.ticks_ms()/time.ticks_diff()/time.ticks_add() wraparound arithmetic - see SPECIFICATION.md Part F.1 for the full rollover facts (rp2's 2**30 vs. this Unix-port rig's 2**62 period, and why time.ticks_ms() can't be monkeypatched).
-Every real src/ ticks_ms()/ticks_diff() use site was directly read for this audit: all share the same bounded-short-timeout shape, no raw `now - t0` subtraction anywhere. Built entirely from synthetic time.ticks_add()/ticks_diff() values, never a live time.ticks_ms() reading."""
+Every real src/ ticks_ms()/ticks_diff() use site shares the same bounded-short-timeout shape, with no raw `now - t0` subtraction anywhere - enforced mechanically below rather than by having read them once. Built entirely from synthetic time.ticks_add()/ticks_diff() values, never a live time.ticks_ms() reading."""
 
+import os
 import time
+
+_SRC_DIR = "src"  # scripts/test.sh always invokes tests from the repo root
+# Modules that genuinely measure elapsed time, and must therefore appear in the sweep below. Named
+# explicitly so a module that silently stops using ticks - or a new one that starts - is visible
+# here rather than quietly dropping out of the audit's coverage.
+_KNOWN_TICKS_USERS = (
+    "asy_bmp3xx_driver.py",
+    "asy_notification_service.py",
+    "asy_uart_comm.py",
+    "asy_uart_driver.py",
+    "asy_udp_socket.py",
+)
 
 
 # This Unix-port test rig's own ticks period, confirmed empirically (see module docstring) - NOT
@@ -82,6 +95,40 @@ def test_ticks_diff_timeout_comparison_correct_across_a_wrap() -> None:
     now_at_150ms = time.ticks_add(t0, 150)  # type: ignore[type-var]
     assert time.ticks_diff(now_at_150ms, t0) >= 100  # timeout already elapsed
     assert not (time.ticks_diff(now_at_150ms, t0) >= 200)  # timeout not yet elapsed
+
+
+def _src_files() -> "list[str]":
+    return sorted(f for f in os.listdir(_SRC_DIR) if f.endswith(".py"))
+
+
+def test_no_src_module_measures_elapsed_time_by_subtraction() -> None:
+    # A raw `now - t0` is wrong at the 2**30 ms rollover (about 12.4 days of uptime on rp2) - a
+    # fault that appears once per uptime period and cannot be found by waiting for it. ticks_diff()
+    # is the only correct form, so its absence next to a subtraction is the thing to catch.
+    offenders = []
+    for filename in _src_files():
+        with open(_SRC_DIR + "/" + filename) as handle:
+            for number, line in enumerate(handle, start=1):
+                code = line.split("#")[0]
+                if "ticks_" not in code or "ticks_diff" in code or "ticks_add" in code:
+                    continue
+                if "-" in code.split("ticks_ms()")[-1] or "- " in code:
+                    offenders.append(f"{filename}:{number}: {line.strip()}")
+    assert offenders == [], "raw tick subtraction found: " + "; ".join(offenders)
+
+
+def test_every_known_ticks_user_is_actually_covered_by_this_audit() -> None:
+    # The sweep above proves nothing about a file it never reads. This is what keeps its coverage
+    # honest when a module is added, renamed, or stops measuring time.
+    using_ticks = []
+    for filename in _src_files():
+        with open(_SRC_DIR + "/" + filename) as handle:
+            if "ticks_ms()" in handle.read():
+                using_ticks.append(filename)
+    for expected in _KNOWN_TICKS_USERS:
+        assert expected in using_ticks, f"{expected} no longer measures elapsed time - update _KNOWN_TICKS_USERS"
+    unlisted = [f for f in using_ticks if f not in _KNOWN_TICKS_USERS]
+    assert unlisted == [], f"new ticks_ms() user(s) not yet listed in this audit: {unlisted}"
 
 
 if __name__ == "__main__":

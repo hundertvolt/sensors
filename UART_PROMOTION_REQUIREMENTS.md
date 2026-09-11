@@ -1262,6 +1262,12 @@ Line references are `python/IndividualDrivers/asy_uart_comm.py` as it stands tod
 the item that fixes it. This is the "what actually has to change" view, not a second requirement
 list.
 
+**Every row below is closed.** `src/asy_uart_comm.py` contains none of these constructs: no `math`
+import, no `machine.Timer`, no unbounded drain or unbounded write wait, no bitmask command check, no
+per-frame or per-chunk allocation, no `+=`-grown accumulator, no path that falls off the end, and no
+missing validation. The "(absent)" rows are present. Verified by reading the merged file against
+each row, and by the tests each item carries - not by inspection of this table alone.
+
 | Lines | What it does | Fixed by |
 |---|---|---|
 | 3 | `import math` for one `ceil()` on a float division | C1.5, F1 |
@@ -1308,7 +1314,7 @@ Both follow CLAUDE.md's "flag, don't silently change" rule.
 
 # 6. Done criteria
 
-Each verified by running it, not by inspection:
+Each verified by running it, not by inspection. **Status as of this branch:**
 
 - `scripts/lint.sh`, `scripts/typecheck.sh` (all three passes) and `scripts/test.sh` exit 0 with zero
   findings, and the finding count on untouched files is unchanged.

@@ -71,8 +71,10 @@ constraints.
   the jumper and pulls `asy_uart_comm` in behind it. **No file, no code and no placeholder is wanted
   in the promotion branch** — this entry exists so the integration session finds the requirement
   instead of discovering a silently UART-less firmware. It is also the enabler for the promotion's
-  own H3/H4 tiers (`tests_hardware/flash/`, `tests_hardware/bench/`): those cannot run until a dev
-  firmware that actually contains the module can be built, so this entry is their gating dependency.
+  own H3/H4 tiers: those are now **written** (`tests_hardware/flash/test_uart_crossover.py` with its
+  two device scripts, and `tests_hardware/bench/test_uart_link_under_api_load.py`) and skip with an
+  explicit message naming this entry until a firmware containing the module can be built. Their
+  authoring is done; their first green run is what this entry gates.
 
 ## Open questions (need owner input or further investigation)
 
@@ -513,12 +515,14 @@ constraints.
   exercises Chromium/WebKitGTK/Firefox/Edge on Linux CI runners — Part H.1's "stable and
   good-looking on major mobile/desktop browsers" goal still wants at least one real human pass on
   real Safari and a real mobile device, which no automation here can substitute for.
-- **UART sensor integration — confirmed staying unwired, not just deferred.** `asy_uart_driver.py`
-  and `asy_uart_comm.py` (its one real consumer, promotion in progress — SPECIFICATION.md Part J)
-  are deliberately not wired into any `sensortask-*.py`. Not a legacy deployed feature, so wiring
-  one in would be a scope addition beyond feature-parity, not a postponed fix - owner-confirmed this
-  stays as-is. The protocol module is standalone by design: its BME688/BSEC first use case is
-  explicitly out of scope and is **not** part of this promotion.
+- **UART sensor integration — still unwired as a *sensor*, though the link itself now exists.**
+  `asy_uart_comm.py` is promoted (SPECIFICATION.md Part J) and `src/sensortask_dev.py` constructs two
+  instances across the dev bench's crossover jumper, which is what makes the protocol's
+  self-compatibility property physically testable. What stays deliberately absent is any *sensor*
+  behind that link: no BME688/BSEC coprocessor, and no such wiring in any other variant. Not a legacy
+  deployed feature, so adding one would be a scope addition beyond feature-parity rather than a
+  postponed fix — owner-confirmed this stays as-is. The protocol module is standalone by design: its
+  BME688/BSEC first use case is explicitly out of scope and was **not** part of the promotion.
 - **Owner requirement for the final wiring stage — fulfilled, entry kept only until the large
   post-merge audit closes.** Every `sensortask-*.py` built as part of the real rewrite needs a full
   Unix-port equivalent, runnable on a local computer, with whatever hardware is physically
