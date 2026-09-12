@@ -33,7 +33,7 @@
             "NtpSynced": true, "NtpLastSyncAge": 205, "NtpLastSync": 1754999795
         },
         "system": {
-            "SysUptime": 9900, "BootSignature": 1754997600, "MemPaused": false,
+            "SysUptime": 9900, "BootSignature": 1754997600, "FirmwareVersion": "2.0b0", "MemPaused": false,
             "LocalTime": { "year": 2025, "month": 8, "mday": 12, "hour": 9, "minute": 14, "second": 3, "weekday": 1 },
             "UtcTime": { "year": 2025, "month": 8, "mday": 12, "hour": 8, "minute": 14, "second": 3, "weekday": 1 }
         },

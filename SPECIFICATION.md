@@ -433,6 +433,10 @@ settings.
   GMTOffset, DSTOffset`; `/notification` → `OnH, OnM, OffH, OffM, FlashBri, Interv, FlashDur, AutoOn,
   WarnCO2, WarnVOC, WarnHum`; `/status` → live-only, sub-structured `networking`/`system`/`sensors`/
   `notification`/`errcount` (one entry per module plus per `ConfigManager` — `CFGMGR_<name>`).
+  `status.system` also carries `FirmwareVersion` (BUILD_CHAIN_PLAN.md Session 7) — a real
+  frozen-bytecode string constant every generated device embeds (`buildgen.version.
+  FIRMWARE_VERSION`, generator-owned/fixed, never per-device), reported live so a fleet operator can
+  tell which build a given physical unit is actually running without re-flashing to check.
 - **Real production bug, fixed**: `_get_measurements()`/`_get_sensors()` must build results with
   `.update()`, never `result[name] = await module.get_dict_data()` — every driver's own return is
   already `{name: {...}}`, so indexing doubled it into `{"SCD30": {"SCD30": {...}}}`.
@@ -2414,7 +2418,11 @@ separately from the generic sparse-PUT path, covered explicitly by `tests_js/moc
 
 One JSON file per device (`html/definitions/<device>.json`). `js/definitions.js` documents the
 shape via JSDoc and strictly validates it at load time. **Top level**:
-`{schemaVersion, device, landingSection, defaultPollIntervalMs, sections[]}`. **`section`** mirrors
+`{schemaVersion, websiteVersion, device, landingSection, defaultPollIntervalMs, sections[]}`.
+`websiteVersion` (BUILD_CHAIN_PLAN.md Session 7, `buildgen.version.WEBSITE_VERSION`) is this
+project's own product/build version — build provenance only, not validated or rendered anywhere in
+the UI, and a genuinely different concept from `schemaVersion` (that field's own wire-format-shape
+concern, unaffected by this addition — never conflate the two). **`section`** mirrors
 one REST endpoint (`key`, `rest: {get, put?}`, `pollGroup: "live"|"settings"|"none"`, `groups[]`).
 **`group`** is normally a `FieldGroup`; Status's error section is `ErrcountGroup`
 (`kind: "errcount"`, `modules[]`). **`FieldDef`**: a `kind`

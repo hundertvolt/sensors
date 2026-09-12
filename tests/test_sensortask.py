@@ -1171,6 +1171,11 @@ def _scenario_status_get(device: str) -> None:
     assert set(body["sensors"].keys()) == ({"SGP40"} if _has(module, "sgp40") else set())
     assert "BackupTS" in body["sensors"]["SGP40"] and "RestoreTS" in body["sensors"]["SGP40"]
     assert "SysUptime" in body["system"] and "LocalTime" in body["system"] and "UtcTime" in body["system"]
+    # BUILD_CHAIN_PLAN.md Session 7: every generated device embeds buildgen.version.FIRMWARE_VERSION
+    # as a real frozen-bytecode constant and reports it live here - can't cross-check the exact
+    # value against buildgen itself from inside the MicroPython interpreter (host-CPython-only
+    # tooling), so this proves presence/shape the same way every other field above does.
+    assert isinstance(body["system"]["FirmwareVersion"], str) and body["system"]["FirmwareVersion"]
     assert "WifiUptime" in body["networking"] and "NtpSynced" in body["networking"]
     assert "Triggered" in body["notification"] and "PauseTime" in body["notification"]
     # One entry per real module + per real ConfigManager + this service's own "WEBSERVER" entry -

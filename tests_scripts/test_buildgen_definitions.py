@@ -13,6 +13,7 @@ from buildgen.driver_registry import DriverInfo
 from buildgen.errors import BuildError
 from buildgen.model import DeviceModel, InstanceSpec
 from buildgen.validate import build_model
+from buildgen.version import WEBSITE_VERSION
 
 DEVICE_NAMES = ["dev", "wozi", "arzi", "klkizi", "grkizi", "schlafzi"]
 BMP3XX_DEVICES = {"dev", "wozi"}
@@ -87,6 +88,25 @@ def test_bmp3xx_group_presence_matches_device_instance_set(repo_root: Path, src_
 def test_every_real_device_has_all_six_sections(repo_root: Path, src_dir: Path, device: str) -> None:
     generated = _generate(repo_root, src_dir, device)
     assert {s["key"] for s in generated["sections"]} == {"measurements", "sensors", "networking", "system", "status", "notification"}
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_every_real_device_stamps_the_website_version(repo_root: Path, src_dir: Path, device: str) -> None:
+    # BUILD_CHAIN_PLAN.md Session 7: buildgen.version.WEBSITE_VERSION is a build-provenance-only
+    # stamp, independent of schemaVersion (the wire-format shape version) - a genuinely different
+    # concept, so the two must never collide on the same key.
+    generated = _generate(repo_root, src_dir, device)
+    assert generated["websiteVersion"] == WEBSITE_VERSION
+    assert generated["websiteVersion"] != generated["schemaVersion"]
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_every_real_device_reports_firmware_version_on_the_status_page(repo_root: Path, src_dir: Path, device: str) -> None:
+    generated = _generate(repo_root, src_dir, device)
+    status = next(s for s in generated["sections"] if s["key"] == "status")
+    system_group = next(g for g in status["groups"] if g["key"] == "system")
+    field = next(f for f in system_group["fields"] if f["key"] == "FirmwareVersion")
+    assert field["kind"] == "readonly"
 
 
 # ---------------------------------------------------------------------------

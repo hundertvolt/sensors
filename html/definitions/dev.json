@@ -1,5 +1,6 @@
 {
     "schemaVersion": "1.0.0",
+    "websiteVersion": "2.0b0",
     "device": { "id": "dev", "displayName": "dev" },
     "landingSection": "measurements",
     "defaultPollIntervalMs": 3000,
@@ -234,6 +235,7 @@
                             "key": "BootSignature", "label": "Boot Signature", "kind": "readonly",
                             "description": "Opaque value, stable for the running boot session; a different value on a later poll means the device rebooted. Not a human-readable code."
                         },
+                        { "key": "FirmwareVersion", "label": "Firmware Version", "kind": "readonly" },
                         { "key": "MemPaused", "label": "Backups Paused", "kind": "readonly" },
                         { "key": "LocalTime", "label": "Local Time", "kind": "readonly", "format": "gmtimestruct" },
                         { "key": "UtcTime", "label": "UTC Time", "kind": "readonly", "format": "gmtimestruct" }

@@ -12,10 +12,15 @@ from buildgen.errors import BuildError
 from buildgen.model import DeviceModel, InstanceSpec
 from buildgen.schema_ast import FieldSchema, extract_field_schemas
 from buildgen.validate import build_model
+from buildgen.version import WEBSITE_VERSION
 from buildgen.web_tag import SELF_GROUP, WebFieldTag, WebGroupTag, parse_web_group_tags, parse_web_tags
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
+# SCHEMA_VERSION is this file's own wire-format shape version (does js/definitions.js understand
+# what it was just served); WEBSITE_VERSION (buildgen.version) is this project's own product/build
+# version, a genuinely different concept - never conflate the two (CLAUDE.md/BUILD_CHAIN_PLAN.md
+# Session 7).
 SCHEMA_VERSION = "1.0.0"
 
 # Fixed, generator-owned REST-endpoint skeleton (H.4: "Nav grouping: Mirrors the 6 REST endpoints
@@ -378,6 +383,7 @@ def _status_section(have: "set[str]") -> "dict[str, Any]":
             "key": "BootSignature", "label": "Boot Signature", "kind": "readonly",
             "description": "Opaque value, stable for the running boot session; a different value on a later poll means the device rebooted. Not a human-readable code.",
         },
+        {"key": "FirmwareVersion", "label": "Firmware Version", "kind": "readonly"},
     ]
     if "fram" in have:
         system_fields.append({"key": "MemPaused", "label": "Backups Paused", "kind": "readonly"})
@@ -453,6 +459,7 @@ def generate_definitions(model: DeviceModel, src_dir: Path) -> "dict[str, Any]":
 
     return {
         "schemaVersion": SCHEMA_VERSION,
+        "websiteVersion": WEBSITE_VERSION,
         "device": {"id": model.device, "displayName": model.device},
         "landingSection": "measurements",
         "defaultPollIntervalMs": 3000,

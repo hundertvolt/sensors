@@ -14,6 +14,7 @@ from _toml_fixtures import base_doc, write_doc
 
 from buildgen.errors import BuildError
 from buildgen.generate import generate_device
+from buildgen.version import FIRMWARE_VERSION
 
 DEVICE_NAMES = ["dev", "wozi", "arzi", "klkizi", "grkizi", "schlafzi"]
 
@@ -58,6 +59,17 @@ def test_real_device_constructs_watchdog_exactly_once(repo_root: Path, src_dir: 
 def test_real_device_boot_entry_imports_the_right_module(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
     result = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir)
     assert f"from sensortask_{device} import main" in result.boot_entry_source
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_real_device_embeds_and_reports_the_firmware_version_exactly_once(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
+    # BUILD_CHAIN_PLAN.md Session 7: buildgen.version.FIRMWARE_VERSION is the one source of truth -
+    # every generated device embeds it as a real frozen-bytecode constant (never per-device, never
+    # duplicated by hand) and reports it live through GET /status's "system" section.
+    result = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir)
+    assert result.module_source.count("_FIRMWARE_VERSION = const(") == 1
+    assert f"_FIRMWARE_VERSION = const({FIRMWARE_VERSION!r})" in result.module_source
+    assert '"FirmwareVersion": _FIRMWARE_VERSION' in result.module_source
 
 
 def test_novel_combo_fixture_generates_successfully(fixtures_dir: Path, src_dir: Path, ext_dir: Path) -> None:

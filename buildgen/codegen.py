@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from buildgen.defaults import default_class_name
 from buildgen.errors import BuildError
 from buildgen.model import DeviceModel, InstanceSpec, TomlDoc, instance_label, resolve_instance_key
+from buildgen.version import FIRMWARE_VERSION
 from buildgen.wiring import WiringField
 
 _MAX_MODULE_ERROR = 5
@@ -236,6 +237,7 @@ def _emit_header_and_imports(lines: "list[str]", model: DeviceModel, ctx: _Ctx, 
     lines.append(f"_DNS_TIMEOUT_MS = const({_DNS_TIMEOUT_MS})")
     lines.append(f"_DNS_TRIES = const({_DNS_TRIES})")
     lines.append(f"_NTP_FETCH_TIMEOUT_MS = const({_NTP_FETCH_TIMEOUT_MS})")
+    lines.append(f"_FIRMWARE_VERSION = const({FIRMWARE_VERSION!r})")
     lines.append("")
 
 
@@ -418,7 +420,7 @@ def _emit_callbacks(lines: "list[str]", have: "set[str]") -> None:
     lines.append("    assert sysfunct is not None and ntp is not None")
     lines.append("    local_time = await ntp.cettime()")
     lines.append("    return {")
-    lines.append('        "SysUptime": await sysfunct.get_uptime(), "BootSignature": await sysfunct.get_boot_signature(),')
+    lines.append('        "SysUptime": await sysfunct.get_uptime(), "BootSignature": await sysfunct.get_boot_signature(), "FirmwareVersion": _FIRMWARE_VERSION,')
     if "fram" in have:
         lines.append('        "MemPaused": fram.get_pause(),')
     lines.append('        "LocalTime": _gmtimestruct_to_dict(local_time), "UtcTime": _gmtimestruct_to_dict(time.gmtime()),')
