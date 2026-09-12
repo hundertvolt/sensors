@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { installMockFetch } from "../js/mock-server.js";
 
 /** @type {import("../js/definitions.js").SiteDefinitions} */
@@ -406,23 +406,19 @@ describe("installMockFetch", () => {
         // Math.random is pinned to its maximum so the expected values are exact rather than a
         // band - a 0.02 leaf jittered by up to +-0.05 and rounded to 2dp can legitimately land
         // back on 0.02, which would make a "it moved" assertion flaky rather than wrong.
-        const realRandom = Math.random;
-        Math.random = () => 1;
-        try {
-            uninstall = installMockFetch(DEFS, DATA);
-            const body = await (await fetch("/measurements")).json();
+        const random = vi.spyOn(Math, "random").mockReturnValue(1);
+        uninstall = installMockFetch(DEFS, DATA);
+        const body = await (await fetch("/measurements")).json();
+        random.mockRestore();
 
-            expect(body.ISL29125.TS).toBe(1001); // top-level timestamp: still exactly +1
-            expect(body.ISL29125.CCT).toBeNull(); // a null leaf is not a number - left alone
-            expect(body.ISL29125.Lux).toBe(303); // top level: 300 + 1% of itself
-            // The nested leaves, each moved by the 0.05 jitter floor - which only happens at all
-            // if jitterInPlace() recursed into the sub-object.
-            expect(body.ISL29125.RGB.R).toBe(0.07);
-            expect(body.ISL29125.RGB.G).toBe(0.08);
-            expect(body.ISL29125.RGB.B).toBe(0.06);
-        } finally {
-            Math.random = realRandom;
-        }
+        expect(body.ISL29125.TS).toBe(1001); // top-level timestamp: still exactly +1
+        expect(body.ISL29125.CCT).toBeNull(); // a null leaf is not a number - left alone
+        expect(body.ISL29125.Lux).toBe(303); // top level: 300 + 1% of itself
+        // The nested leaves, each moved by the 0.05 jitter floor - which only happens at all if
+        // jitterInPlace() recursed into the sub-object.
+        expect(body.ISL29125.RGB.R).toBe(0.07);
+        expect(body.ISL29125.RGB.G).toBe(0.08);
+        expect(body.ISL29125.RGB.B).toBe(0.06);
     });
 
     it("omits the command-only ISLResetCal from GET readback, as it already does for ContMeas/SGPResetVOC", async () => {
@@ -438,7 +434,11 @@ describe("installMockFetch", () => {
     it("accepts ISLResetCal repeatedly - it is a trigger, not a one-shot", async () => {
         uninstall = installMockFetch(DEFS, DATA);
         for (let attempt = 0; attempt < 3; attempt += 1) {
+            // Sequential is the point: each PUT must be accepted after the previous one already
+            // fired, which running them in parallel would not show.
+            // eslint-disable-next-line no-await-in-loop -- see the comment above
             const res = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ ISL29125: { ISLResetCal: true } }) });
+            // eslint-disable-next-line no-await-in-loop -- same reasoning as above
             expect((await res.json()).result.ISL29125.ISLResetCal).toBe("Valid");
         }
     });

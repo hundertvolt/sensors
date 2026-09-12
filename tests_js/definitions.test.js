@@ -229,6 +229,7 @@ describe("resolveFieldValue", () => {
     });
 
     it("yields undefined for a path that does not resolve, never a half-walked sub-object", () => {
+        /** @type {import("../js/definitions.js").FieldDef} */
         const field = { key: "R", label: "Red", kind: "readonly", path: ["RGB", "R"] };
         expect(resolveFieldValue(field, {})).toBeUndefined();
         expect(resolveFieldValue(field, { RGB: null })).toBeUndefined();
@@ -237,6 +238,7 @@ describe("resolveFieldValue", () => {
     });
 
     it("still falls back to defaultValue when a path resolves to nothing", () => {
+        /** @type {import("../js/definitions.js").FieldDef} */
         const field = { key: "R", label: "Red", kind: "readonly", path: ["RGB", "R"], defaultValue: 0 };
         expect(resolveFieldValue(field, {})).toBe(0);
     });
