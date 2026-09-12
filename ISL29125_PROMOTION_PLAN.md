@@ -2,8 +2,9 @@
 
 Temporary working doc for the `python/IndividualDrivers/asy_isl29125_driver.py` → `src/`
 promotion, following CLAUDE.md's step-session workflow. §1-§5 are the audit of the existing driver
-against the real datasheet; §6 records the requirements the project owner has since settled, and
-§7-§9 the design notes written against them. Nothing has been changed in the driver yet. Delete this
+against the real datasheet; §6 records the requirements the project owner has since settled, §7-§9
+the design notes written against them, §10 the bench rig, and §12 the questions still open.
+Nothing has been changed in the driver yet. Delete this
 file once the promotion closes, migrating
 anything permanent into `SPECIFICATION.md` (the established pattern — see README.md's "Further
 reading" for the list of planning docs already retired that way).
@@ -29,6 +30,12 @@ reading" for the list of planning docs already retired that way).
   proposed in §7.1.
 - **`tedyapo/arduino-VEML7700`**, as the reference implementation of Vishay's published auto-gain
   application note — the canonical treatment of this class of problem on a different sensor.
+- **A second full pass over the datasheet, plus a web re-scan of how others use this part**
+  (2026-09-12), to check for capabilities the first pass missed. It found four: CCT as a specified
+  output (§7.11), the conversion restart on a `CONFIG1` write (§4, §7.6), burst writes across the
+  consecutive config registers (§8.7), and IR compensation's coupling to the full scale (§7.9). It
+  also corrected the auto-range switch-point arithmetic (§7.6) and turned up the community
+  all-channels-`0xFFFF` failure signature that the saturation fast-path has to survive.
 
 Two things the datasheet does **not** contain, which stay open: the **12-bit integration time**
 (only the 16-bit figure, 101 ms typ, is specified) and the **lux-conversion coefficients**
@@ -162,10 +169,17 @@ Two consequences:
 - **The deployed register value is nevertheless the right one.** The dev default
   `ISLIrCompensation: 63` programs `B7=1, B[5:0]=63` → register `0xBF` → effective 169. The
   datasheet's own recommendation (p10) is: *"Recommended to set BF at register 0x02 to max out IR
-  compensation value. It make High range reach more than 10,000 lux."* So the field behaviour is
-  correct and datasheet-endorsed; only the naming and the reachable range are wrong. Per CLAUDE.md's
-  "verify against proven field behaviour" rule, **the promotion should preserve `0xBF` as the
-  default register value** while fixing the semantics.
+  compensation value. It make High range reach more than 10,000 lux."* So the deployed value is
+  datasheet-endorsed for what it was chosen for; only the naming and the reachable range are wrong.
+
+**On whether to keep `0xBF` as the default — resolved, and the answer is no** (this supersedes an
+earlier revision of this section, which argued for preserving it under CLAUDE.md's
+"verify against proven field behaviour" rule). That rule protects *proven* field behaviour, and
+there is none here: the ISL29125 has only ever run one config-and-read smoke test (§4), never a
+measurement anyone checked. Two independent reasons now point the other way — see §6's consequences
+and §7.9. `0xBF` stays reachable through the API and remains the right choice behind IR-tinted
+glass or when >10 000 lux of headroom is wanted; it is simply not the right *default* for a bare
+sensor whose lux output is scaled against the nominal 10 000 lux full scale.
 
 ### 3.3 Threshold validation is off by one, and the failure mode is version-dependent
 
@@ -270,9 +284,17 @@ explicitly.
   so this holds today by construction — but it is worth an explicit note (and arguably an explicit
   write) so a later change cannot silently flip it.
 - **`CONVEN` (`_CONFIG3` B4) is not exposed.** Setting it makes INT assert on conversion-complete
-  rather than on threshold crossing (Table 13, p11). That is an alternative, potentially better
-  sampling strategy than the 1 s timer — read exactly when data is fresh — and it is the natural
-  answer to §3.6 as well.
+  rather than on threshold crossing (Table 13, p11) — an alternative sampling strategy to the 1 s
+  timer. **Decided against, see §7.6:** the sample interval is ≥ 1 s against a ≤ 303 ms cycle, the
+  data registers are double buffered, and INT is wanted for the auto-range thresholds instead. The
+  bit stays 0.
+- **A write to `CONFIG1` restarts the conversion cycle.** Table 7 (p10) defines the `SYNC` = 0 case
+  as *"ADC start at I²C write 0x01"*. So every `CONFIG1` write — including a read-modify-write that
+  changes nothing — aborts the conversion in flight and starts a fresh one. Two consequences, both
+  exploited in §7.6 and §8.7: the settle window after a range switch becomes **deterministic**
+  rather than guessed, and the driver must never re-assert `CONFIG1` on a timer, because that would
+  destroy every cycle it touches. *Strongly implied but terse — one table row, no supporting prose —
+  so verify on the bench before depending on the restart for timing.*
 - **`CONVENF` (`0x08` B1) and `RGBCF` (`0x08` B5:4) are not exposed.** These report
   conversion-complete and which channel is currently converting (Tables 17, 19, p12). Either would
   let a reader avoid sampling across a conversion boundary.
@@ -282,6 +304,13 @@ explicitly.
   needs to know that. (The same is true of `_set_bits` on `0x08` in `setup()`, whose
   read-modify-write performs a read of `0x08` as a side effect — benign there, since it immediately
   follows an explicit `clear_register_flag()`.)
+- **After an interrupt, the count that triggered it has a deadline.** p6: *"If the user needs to
+  read the ADC count that triggers the interrupt, the reading should be done before the data
+  registers are refreshed by the following conversions."* That is one conversion of that channel —
+  ~101 ms at 16-bit. It bounds the acceptable latency of the soft (`hard=False`) IRQ path: past
+  that, the interrupt still says *what* happened, but the sample that caused it is gone. Not fatal
+  for auto-range, which only needs the direction, but it does mean the handler must not sit behind
+  a long `await`.
 - **`INTSEL = 00` disables the interrupt entirely**, and that is the dev default
   (`ISLInterruptAssignment: 0`). So the whole IRQ path is dormant on the bench rig as configured —
   worth knowing before writing hardware tests that expect an interrupt to fire.
@@ -289,7 +318,11 @@ explicitly.
   `Pin(irq_pin, mode=Pin.IN)` (line 83) with no `PULL_UP`. The datasheet's reference circuit
   (Figures 1 and 15) shows R4 = 2.7 kΩ-10 kΩ pulling INT to VDD, so this is correct *provided* the
   dev board has that resistor. `dev_legacy/README.md` records the pin (GPIO6) but not the pull-up.
-  **Unverified — flagging rather than assuming.** If it is absent, `Pin.PULL_UP` would be the fix.
+  **Unverified — flagging rather than assuming.** If it is absent, `Pin.PULL_UP` is a workable
+  fallback but not an equivalent one: the rp2040's internal pull-up is ~50-80 kΩ, well above the
+  1 kΩ-20 kΩ window p4's `RPU` row gives for the same class of open-drain line, so the *rising*
+  edge is slow. The driver triggers on the falling edge and clears the pin by reading `0x08`, so a
+  slow release only costs recovery latency — but it is a degraded mode, not the intended circuit.
 - **Raw counts are exposed with no range/resolution annotation.** The REST payload
   (`sensortask-dev.py:306`) returns `Red`/`Green`/`Blue` as bare ADC counts. Those are not
   comparable across a `ISLSensingRange` or `ISLAdcResolution` change (375 lux vs 10 000 lux full
@@ -298,6 +331,15 @@ explicitly.
   conversion, or simply to report the active range alongside the counts, is a design question.
 - **Dark count is 1-5 counts typ** on range 0 (`DDark`, p3). No offset handling. Probably fine;
   noted for completeness.
+- **The three channels do not share a full-scale irradiance.** p3 gives Range 0 full scale as
+  Green = 18, Red = 20, Blue = 30 µW/cm² (at 565/620/485 nm). Equal counts therefore do **not** mean
+  equal irradiance, and a broadband white source will not read R = G = B. Quantitative backing for
+  §7.4's "sensor RGB, not colorimetric RGB" caveat — see §7.10 for why the driver should not try to
+  correct it.
+- **CCT is a specified output of this part, and nothing in the driver produces it.** p3 lists
+  *Corrected Color Temperature Accuracy, ±5 %* as an electrical specification, and p15's references
+  point at the Planckian locus and CIE 1931. This is the largest genuinely unexploited capability
+  the audit found — see §7.11.
 - **The ISL29125 has never been bench-tested.** `dev_legacy/README.md`'s "Confirmed working" list
   (2026-08-28) covers Neopixel, SCD30, SGP40, BMP3xx, MPRLS, FRAM and the UART crossover — the
   ISL29125 is wired (I2C1, GPIO6) but absent from that list. Unlike the other promotions, there is
@@ -305,7 +347,7 @@ explicitly.
 
 ## 5. Datasheet defects, so nobody re-chases them
 
-FN8424 Rev 3.00 contradicts itself in four places. Recording them here because each one looks like
+FN8424 Rev 3.00 contradicts itself in six places. Recording them here because each one looks like
 a code bug on first reading.
 
 1. **Data registers are marked `RW`** in Table 1 (p9) and Table 20 (p13), but p13's own prose says
@@ -315,13 +357,26 @@ a code bug on first reading.
    `reset()` corroborates the register reading back `0x00` after a software reset, which suggests
    the explicit brownout clear in our `setup()` is belt-and-braces rather than strictly required —
    harmless either way.
-3. **The high-threshold rows in Table 14 (p12) are labelled `THL[...]`**, the same mnemonic as the
-   low threshold. Table 1 gets it right (`THH`). Addresses are unambiguous; only the mnemonic is
-   wrong.
+3. **Table 14 (p12) mislabels every threshold row.** The mnemonics are swapped — "Low Threshold -
+   High byte" carries `THH[7:0]` and "High Threshold - Low byte" carries `THL[7:0]` — *and* every
+   high-byte row is given bit indices `[7:0]` instead of `[15:8]`. Table 1 (p9) gets all of it
+   right. Addresses are unambiguous, so nothing is actually in doubt; the table is just wrong.
+   Table 20 (p13) has the same disease in the data registers: rows 13 and 14 are named "RED Data"
+   while carrying `BLUE[...]` bits, and `BLUE[0]`/`BLUE[8]` are spelled `RED[0]`/`RED[8]`. Both
+   tables also carry the caption "CONFIGURATION-3", copy-pasted from Table 10.
 4. **The interrupt-clear register is named inconsistently**: p11 says "the 8-bit Device Register
    byte **(0x08)** transfer", p12 says "the 8-bit **(00h)** command register transfer". p11 is the
    one consistent with the surrounding text, with SparkFun's implementation, and with our driver's
    observed field behaviour.
+
+5. **The power-up state is given three different ways.** p6's Power-On Reset section says the part
+   *"will power up into Standby mode"*; p10's operating-mode section says *"The device powers up on
+   a disable mode"*; and Table 1/Table 4 give `CONFIG1` a default of `0x00`, whose B2:0 = `000` is
+   **Power-Down**, not Standby (`100`). Standby and Power-Down differ in supply current (29 µA vs
+   0.5 µA, p3) but not in behaviour that matters here — neither converts — so §9.3's conclusion is
+   unaffected. Do not read the prose as evidence that a reset device is in mode `100`.
+6. **`0x08`'s `RGBCF` field is spelled `GRBCF` in the register map** (Table 1, p9) and `RGBCF`
+   everywhere else (Table 15, Table 19, the p12 prose). Same field.
 
 Also worth flagging: the p12 prose block introduced as covering *both* the lower (`0x04`/`0x05`)
 and higher (`0x06`/`0x07`) interrupt registers only ever describes lower-threshold behaviour. This
@@ -359,7 +414,11 @@ Two consequences worth stating explicitly, because they change earlier reasoning
   not refuse it.
 - Since the sensor is bare, the datasheet's p14 guidance ("not under IR tinted glass … b7 = '0'
   and B[5:0] … about 40 codes") is the applicable **default**, not p10's `0xBF`. `0xBF` remains
-  reachable — it is just no longer the right default for this deployment.
+  reachable — it is just no longer the right default for this deployment. **A second, independent
+  reason has since been found** (§7.9): IR compensation moves the *effective full scale*, and
+  `0xBF` is the setting that pushes range 1 furthest past the nominal 10 000 lux the lux
+  normalisation is scaled against. 40 codes keeps the scale closest to nominal. Both reasons point
+  the same way, which closes the question — see §3.2 for the superseded argument.
 
 ## 7. Design notes against those requirements
 
@@ -369,13 +428,20 @@ Counts *must* jump 26.67× at a range switch; that is the gain changing, not a d
 comes from never exposing counts. One chain, applied to every sample:
 
 1. **Burst-read `0x09`-`0x0E` in one transaction** → coherent (green, red, blue), and §3.6 is fixed
-   as a side effect. Register order is G, R, B.
+   as a side effect. Register order is G, R, B. **Mechanically this needs care on the promoted bus
+   layer**: `get_register_struct()` returns `unpacked[0]` only (`src/asy_i2c_driver.py:101`), so
+   passing `"<HHH"` would silently discard red and blue. The working form is
+   `get_register_struct(0x09, "6s")` — the return type union already includes `bytes` — with
+   `struct.unpack("<HHH", ...)` done in the driver.
 2. **Resolution-normalise**: 12-bit values `<< 4` onto a common 0-65535 scale. Changing resolution
    then moves only the noise floor, never the reported magnitude.
 3. **Dark-offset subtract** (`DDark` 1-5 counts, p3; only material on range 0 / 16-bit).
 4. **Range-normalise to absolute** via `FS_lux / 65535` (`FS` = 375 or 10000) — using the
    **calibrated** gain ratio, not the nominal 26.67 (see §7.3). After this step every sample is on
-   one absolute scale regardless of which range produced it.
+   one absolute scale regardless of which range produced it. **The datasheet confirms this exact
+   mapping**, which is worth more than the RIOT cross-check: p1's feature list gives
+   "Range 0 = 5.7m lux to 375 lux" and "Range 1 = 0.152 lux to 10,000 lux", and 375/65535 =
+   5.72 mlux, 10000/65535 = 0.1526 lux. The LSB *is* FS/65535, linearly, on both ranges.
 5. **Derive the three outputs** from that absolute triple.
 
 Steps 1, 2 and 4 are exactly what `RIOT-OS/RIOT`'s `drivers/isl29125/isl29125.c` does (burst read
@@ -415,9 +481,11 @@ Two caveats:
   Uncalibrated HSB is still perfectly useful for *relative* colour (shifts, trends, warm-vs-cool),
   and should be labelled as such rather than presented as a colorimetric measurement.
 
-There is also a scaling choice for **B**: normalised 0-1 over the full auto-range span makes it
-continuous but leaves a dim room reading ~0.003, i.e. almost no usable resolution. Reporting B in
-lux, or on a log scale, keeps it legible. Open — see §8.
+There was also a scaling choice for **B**: normalised 0-1 over the full auto-range span makes it
+continuous but leaves a dim room reading ~0.003, i.e. almost no usable resolution. **Settled** —
+requirements 8 and 9: RGB is 0-1, `Bri` follows from that, and the low-light behaviour is accepted.
+`Lux` is the field to read when magnitude matters; `Bri` is there for completeness of the HSB
+triple, not as the brightness measurement.
 
 ### 7.5 Lux without calibration coefficients
 
@@ -434,20 +502,75 @@ correction.
 
 ### 7.6 Auto-range driven by the threshold interrupt
 
-Set the high threshold at the switch-up point, the low threshold at the switch-down point,
-`INTSEL` = green, `PRST` = 4 or 8. INT then fires exactly when a range change is needed, and the
-persistence counter performs transient rejection **in hardware** — the anti-chatter mechanism that
-would otherwise be software. Saturation (65535, clipped) forces an immediate switch-up without
-waiting for any filter: react fast to bright, slowly to dark, so a camera flash does not drag the
-range down for the next minute.
+`INTSEL` = green, `PRST` = `AutoRangePersist`. The chip fires INT whenever the green count leaves
+the window `[low, high]`, and the persistence counter performs transient rejection **in hardware** —
+the anti-chatter mechanism that would otherwise be software. Saturation (65535, clipped) forces an
+immediate switch-up without waiting for any filter: react fast to bright, slowly to dark, so a
+camera flash does not drag the range down for the next minute.
 
-After every range change, **discard at least one full R-G-B cycle** (~303 ms at 16-bit) — the
-conversion in flight when `RNG` flips is invalid. The datasheet specifies no settling time; this is
-inference, and a real gap.
+**Only one threshold is live at a time, and which one depends on the range.** An earlier phrasing
+here ("high threshold at the switch-up point, low threshold at the switch-down point") reads as if
+both are armed together; they cannot usefully be, because the two switch points live on different
+gain scales. On the **low** range there is nowhere more sensitive to go, so only an up-crossing
+matters: `high` = `u`·65535, `low` = 0. On the **high** range only a down-crossing matters:
+`low` = `d`·65535, `high` = 0xFFFF. Each range switch therefore rewrites both threshold registers —
+one 4-byte burst write (§8.7), issued in the same handler that flips `RNG`. Two edge cases, both
+benign: on the low range, total darkness (count = 0) satisfies the datasheet's "below **or equal
+to** the lower threshold" and raises an interrupt the handler simply clears, since no switch is
+possible; on the high range, a clipped 65535 does not exceed a `high` of 0xFFFF, so parking it
+there raises nothing spurious.
 
 Thresholds should be **set in lux at the API and converted to counts internally** (RIOT does this,
 though its `(uint16_t)(65535 / max_range)` integer division truncates 6.55 to 6 — a cautionary
 example: do the scaling in float).
+
+**`CONVEN` is not needed, and the open question about it is closed.** The remaining reason to want
+conversion-done was freshness. But the sample interval is ≥ 1 s against a ≤ 303 ms cycle, the data
+registers are double buffered so "the data is always valid" (p13), and `RGBCF` (`0x08` B5:4) already
+says which channel is mid-conversion if the driver ever wants to check. So a plain burst read at any
+moment yields three values none of which is more than one cycle old — inside the timestamp's own
+one-second resolution. (That is an *age* guarantee, not a coherence one: the channels convert
+sequentially, so the triple can still straddle two cycles. The burst read removes the bus-side
+tearing §3.6 is about; `CONVEN` would not have removed the rest either.) Setting `CONVEN` would only mux a second event source onto the pin we want for the
+thresholds. It stays 0 — and the unresolved "does conversion-done fire per channel or per RGB
+cycle?" question no longer needs bench time.
+
+**The settle window is deterministic, not guessed.** An earlier revision of this section recorded
+"discard at least one full R-G-B cycle, the datasheet specifies no settling time, this is inference"
+as a real gap. Table 7 (p10) closes most of it: with `SYNC` = 0 the ADC *starts* on an I²C write to
+`0x01`, so the write that flips `RNG` also restarts the cycle. The first valid sample is therefore
+one full cycle after the write — ~303 ms at 16-bit, ~19 ms at 12-bit (3 × the ~6.3 ms derived in
+§7.2) — and the driver can simply wait that long rather than discarding an unknown number of
+samples. What remains inferred is only whether the restart is exact; §4 flags it for bench
+confirmation.
+
+#### The switch points must clear the range ratio, and the first proposal did not
+
+Let `r` = FS_high / FS_low = 10000/375 = **26.67**. Switch **up** when the reading exceeds `u` of
+the current (low-range) full scale; switch **down** when it falls below `d` of the current
+(high-range) full scale. Immediately after a switch-up the same light reads `u/r` of the high
+range, so the no-chatter condition is `u/r > d`, and for real margin `u/r ≥ 2d`, i.e.
+
+> **`d ≤ u / (2r)`** — with `u` = 85 %, that is `d ≤ 1.59 %`.
+
+The schema first proposed in §8.3 had `u` = 85 % and **`d` = 3.0 %**, which fails it: 85 % of 375 lux
+is 319 lux, and 3.0 % of 10 000 lux is 300 lux, so a switch-up lands just 6 % above the switch-down
+point and the loop chatters on noise alone. Corrected default: **`d` = 1.5 %**, giving a hysteresis
+band of 150 lux → 319 lux and a 2.1× margin. The reverse direction is comfortable either way: after
+a switch-down the reading sits at `d·r` = 40 % of the low range, far below `u`. Resolution is not a
+constraint at the decision point — 150 lux is ~983 counts on range 1's 0.1526 lux LSB. The
+constraint is cross-field, so the driver enforces it; the schema cannot (§8.3).
+
+#### Saturation is not the only way to read 65535
+
+A bus fault reads back as all-ones, and the community failure reports for this part are exactly
+that: all three channels stuck at `0xFFFF`, under any light, usually alongside a failed init. So
+the saturation fast-path must not fire on a dead bus — it would drive the range up and stay there.
+Cheap discriminator, no extra transaction: real saturation on a colour source almost never pins
+*all three* channels to exactly 65535 at once, and the status byte (`0x08`) is read on the same
+interrupt anyway — `0x08` reading `0xFF` is impossible for a register whose B7:B6 and B3 are
+reserved-zero. Treat all-three-exactly-65535 **plus** an implausible status byte as a bus fault for
+the error counter, not as a range-up trigger; re-read the device ID (`0x7D`) to confirm.
 
 ### 7.7 Register ownership, and a correction
 
@@ -462,9 +585,10 @@ in the same byte `0x08` (Table 15: B0 `RGBTHF`, B1 `CONVENF`), so a **single sta
 distinguishes which event fired**. `CONVEN` and `INTSEL` do mux onto one INT pin, but the status
 byte disambiguates them.
 
-One caution if `CONVEN` is used: the datasheet does not say whether conversion-done fires per
-channel or per R-G-B cycle. Per channel at 12-bit that is up to ~160 interrupts/s, which is a real
-load on a soft IRQ. Unspecified — verify on hardware before relying on it.
+An earlier revision ended here with a caution about `CONVEN`: the datasheet never says whether
+conversion-done fires per channel or per R-G-B cycle, and per channel at 12-bit that would be
+~160 interrupts/s on a soft IRQ path. **Moot now** — §7.6 decided against `CONVEN` on other
+grounds, so the bit stays 0 and the question never has to be answered.
 
 ### 7.8 Reusable primitives
 
@@ -476,18 +600,94 @@ one into a shared primitive is a Part G extension the auto-range work should mak
 (BMP3xx's `FiltCoeff` is the *sensor's* on-chip IIR, not a software filter — different thing,
 same name.)
 
+### 7.9 IR compensation moves the full scale — the one coupling nobody expected
+
+`IrComp` is not an independent knob. p10: *"Recommended to set BF at register 0x02 to max out IR
+compensation value. **It make High range reach more than 10,000 lux.**"* Figure 14 (p14) plots the
+same thing directly — "system measurement range (lux)" against "compensation adjustment (% range)",
+spanning roughly 2 000 to 11 000 lux across the sweep, for three illuminants whose curves cross at
+the correct setting.
+
+So the `FS_lux` constant in §7.1 step 4 is nominal *at one compensation setting*, and changing IR
+compensation rescales every lux and every lux-denominated auto-range threshold. Two honest options:
+
+1. **Hold `FS_lux` at the nominal 375/10 000 and document the coupling.** Changing `IrComp` then
+   trades lux accuracy for IR rejection and headroom, visibly.
+2. **Carry a per-setting scale factor.** Correct, but deriving it needs the p14 procedure with A,
+   F2 and D65 reference illuminants, which we do not have and cannot fake with a NeoPixel (§10).
+
+**Recommendation: option 1.** It is the only one we can actually substantiate, and it makes the
+default choice matter more, not less — which is the second reason 40 codes beats `0xBF` (§6).
+Worth stating in the field's own help text, not just here: *changing IR compensation shifts the lux
+scale.*
+
+### 7.10 The raw triple is not white-balanced, and the driver should not pretend otherwise
+
+p3 gives Range 0 full scale as Green = 18, Red = 20, **Blue = 30 µW/cm²**. Blue needs ~1.7× the
+irradiance of green to reach the same count, so a broadband white source reads blue-deficient. It
+is tempting to divide each channel by its own full-scale irradiance and call the result balanced —
+**don't**. Those three numbers are responsivities at three specific monochromatic wavelengths
+(565/620/485 nm, note 5 p3), not integrals over a broadband source, so the "correction" would be
+right only for a source made of exactly those three lines. A real white-balance needs the 3×3 of
+Eq. 1, characterised per optomechanical design, which the datasheet is explicit about.
+
+So: keep the raw ratios, and label the output **sensor RGB**, as §7.4 already concluded. This
+section is the quantitative backing for that label, and the reason not to add a `WhiteBal` knob
+that could not be set correctly.
+
+### 7.11 CCT — the specified feature the driver never produced
+
+This is the largest gap the re-scan found. p3 specifies *Corrected Color Temperature Accuracy
+±5 %* (Illuminant A at 300 lux) as an **electrical specification**, and p15's references list the
+Planckian locus and CIE 1931 explicitly. Renesas also publishes a standalone "ISL29125 CCT
+calculation" document. CCT is what this part is *for* in its own application list ("industrial/
+commercial LED lighting color management", "ambient light color detection/correction"), and none of
+the three reference implementations we compared against computes it either.
+
+It is also nearly free here:
+
+- **Range- and resolution-invariant.** CCT depends only on chromaticity, i.e. on the R:G:B ratios,
+  so it inherits §7.4's invariance exactly as H and S do. It needs none of the §7.1 normalisation
+  chain — only step 1 (the coherent burst read) and step 3 (the dark-offset subtract, which *is*
+  load-bearing here because an additive offset distorts ratios).
+- **Two short formulas.** RGB → XYZ by a 3×3 (Eq. 1), then `x = X/(X+Y+Z)`, `y = Y/(X+Y+Z)`, then
+  McCamy's cubic: `n = (x − 0.3320)/(0.1858 − y)`, `CCT = 449n³ + 3525n² + 6823.3n + 5520.33`.
+- **It fits the existing value contract.** `None` is already in every promoted driver's declared
+  measurement-value union, so "not determinable" needs no new type.
+
+The honest caveats, both of which go in the field's help text rather than being designed away:
+
+- **The 3×3 must be a documented placeholder.** Eq. 1's coefficients are per-system by the
+  datasheet's own statement, and the ±5 % spec presupposes a characterised one. Use the Rec.709/
+  sRGB D65 matrix as the stand-in, keep it a module constant (a 3×3 is not nine config fields), and
+  say plainly that the output is a *relative, uncalibrated* colour temperature — repeatable and
+  monotonic, not a colorimeter reading. A per-unit matrix is the calibration hook if absolute
+  accuracy is ever wanted.
+- **CCT needs a low-light floor, even though HSB does not.** The project owner accepted HSB's
+  low-light behaviour, but chromaticity noise grows much faster than hue noise: near the 1-5 count
+  dark floor the denominator `X+Y+Z` collapses and McCamy's `n` diverges. Report `CCT` as `None`
+  below a documented green-count floor (proposal: 64 counts on the resolution-normalised scale,
+  ~13× the worst-case dark count) and when `n` lands outside McCamy's valid ~2 000-12 500 K span.
+  This is a new decision, not a walk-back of the accepted HSB behaviour.
+
+**This is a scope addition and therefore the project owner's call** — §12 carries it as the one
+open decision. Everything else in §7-§9 stands without it.
+
 ## 8. Resulting API shape
 
 ### 8.1 What the settled requirements remove
 
 "Register ownership is the driver's; the sensor's hardware interrupts are not user-visible" deletes
-**five of the ten legacy config keys** outright — they become internal driver state:
+**four of the ten legacy config keys** outright — they become internal driver state:
 
 `ISLInterruptAssignment`, `ISLInterruptHighThres`, `ISLInterruptLowThres`,
-`ISLInterruptAutoClear`, `ISLPersistentControl`.
+`ISLInterruptAutoClear`.
 
-`INTSEL`, `PRST` and both threshold registers are how auto-range gets its hardware hysteresis
-(§7.6), so they are the mechanism, not a setting. No user-facing event/notification is planned; if
+`INTSEL` and both threshold registers are how auto-range gets its hardware hysteresis (§7.6), so
+they are the mechanism, not a setting. A fifth, `ISLPersistentControl` (`PRST`), was listed here in
+an earlier revision and has been **put back** as `AutoRangePersist` — it sets how long a light
+change must persist before the range moves, which is an auto-range parameter in the sense
+requirement 3 means, not plumbing (§8.3). No user-facing event/notification is planned; if
 one is ever wanted it is raised in software off the normalised stream, in lux, never by exposing
 raw counts or the INT pin.
 
@@ -524,29 +724,48 @@ Part G's cross-language mirror obligation requires anyway.
 | `RangeAuto` | bool | True | — | auto vs. fixed range |
 | `Range` | int | 10000 | {375, 10000} | `CONFIG1` B3, used when `RangeAuto` is false |
 | `AutoRangeUp` | float | 85.0 | 50.0-95.0 % FS | switch-up threshold |
-| `AutoRangeDown` | float | 3.0 | 0.5-20.0 % FS | switch-down threshold |
-| `AutoRangeSettle` | int | 1 | 1-10 cycles | conversions discarded after a switch |
+| `AutoRangeDown` | float | **1.5** | **0.2-3.0** % FS | switch-down threshold |
+| `AutoRangeSettle` | int | 1 | 1-10 cycles | full cycles waited after a switch |
+| `AutoRangePersist` | int | 4 | {1, 2, 4, 8} | `CONFIG3` `PRST` — hardware transient rejection |
 | `IrCompOffset` | int | 0 | {0, 1} | `CONFIG2` B7 (adds 106) |
 | `IrCompAdjust` | int | 40 | 0-63 | `CONFIG2` B5:0 |
 | `FiltCoeff` | float | -1.0 | -1.0-1.0 | output EMA; <= 0 disables (legacy SHTC3/MPRLS precedent) |
 
+Three notes on the shape, all of which changed during this pass:
+
+- **`AutoRangeDown`'s default and bounds were wrong in the first proposal.** 3.0 % chatters against
+  an 85 % switch-up — §7.6 does the arithmetic. 1.5 % is the corrected default and 3.0 % is now the
+  *ceiling*, not the default.
+- **The cross-field constraint is `AutoRangeDown ≤ AutoRangeUp / 53.33`** (i.e. `u/(2r)` with
+  `r` = 26.67). `FieldSchema`'s per-field min/max cannot express a relation between two fields, so
+  the driver validates it on push and rejects the write, the same way it has to reject any other
+  combination the schema can't see.
+- **`AutoRangePersist` is added.** It was originally folded away with the other interrupt fields in
+  §8.1 as "mechanism, not setting". But `PRST` is the *transient-rejection time constant* of the
+  auto-range loop — how many integration cycles a light change must persist before the range moves
+  (p6's own camera-flash example) — which is exactly the kind of auto-range parameter requirement 3
+  says is API-settable. It is a hardware knob serving a user-visible behaviour, not plumbing.
+
 IR compensation stays **two fields** rather than one: the effective scale is 0-63 and 106-169 with
-a gap at 64-105, so no single contiguous range can express it honestly. `AutoRangeUp` must exceed
-`AutoRangeDown` by more than the range ratio or the switch chatters — a cross-field constraint the
-schema's per-field validation cannot express, so the driver has to enforce it.
+a gap at 64-105, so no single contiguous range can express it honestly. Its help text must carry
+§7.9's warning that changing it shifts the lux scale.
 
 ### 8.4 Proposed measurement fields
 
-`namedtuple("ISL29125", ("Lux", "Red", "Green", "Blue", "Hue", "Sat", "Bri", "Range", "TS"))`
+`namedtuple("ISL29125", ("Lux", "Red", "Green", "Blue", "Hue", "Sat", "Bri", "CCT", "Range", "TS"))`
 
 - `Lux` — absolute, green-channel-derived (§7.5).
+- `CCT` — relative colour temperature in K, or `None` below the low-light floor (§7.11).
+  **Proposed, pending the project owner's go-ahead** — see §12.
 - `Red`/`Green`/`Blue` — **normalised 0-1** over the full span: the fixed range when one is
   selected, the whole auto-range span when auto is on.
 - `Hue`/`Sat`/`Bri` — `Bri` follows from RGB being 0-1, so it is 0-1 too. In a dim room that lands
   near 0.003; the project owner has accepted that behaviour, so no log scaling and no low-light
   validity flag.
-- **Naming**: HSB's brightness must not be spelled `B` — it would collide with blue. `Red`/`Green`/
-  `Blue` + `Hue`/`Sat`/`Bri` keeps both triples unambiguous.
+- **Naming**: in the flat namedtuple HSB's brightness must not be spelled `B` — it would collide
+  with blue. `Red`/`Green`/`Blue` + `Hue`/`Sat`/`Bri` keeps both triples unambiguous. The nested
+  response body (§8.6) dissolves the collision anyway, so the flat tuple is an internal carrier and
+  its names need only be unique, not pretty.
 - `Range` — the *active* range. It belongs in the measurement tuple rather than the config dict,
   because under auto-range it is an output, not a setting, and without it a consumer cannot tell
   which span the normalised values were taken against.
@@ -590,12 +809,44 @@ Proposed response body:
 {"ISL29125": {"Lux": <float>,
               "RGB": {"R": <0-1>, "G": <0-1>, "B": <0-1>},
               "HSB": {"H": <0-360>, "S": <0-1>, "B": <0-1>},
+              "CCT": <float|null>,
               "Range": <375|10000>,
               "TS": <epoch>}}
 ```
 
 Nesting also dissolves the naming collision flagged in §8.4: `RGB.B` and `HSB.B` are unambiguous
 once they sit in separate sub-objects, so both triples keep their conventional single-letter names.
+
+### 8.7 One write path: shadow bytes, burst-written
+
+Three separate findings converge on the same implementation, so it is worth stating once as a
+decision rather than three times as consequences.
+
+- `CONFIG1`/`CONFIG2`/`CONFIG3` are **consecutive** (`0x01`-`0x03`), and the part supports burst
+  writes with an auto-incrementing address pointer (p7).
+- Every `set_bits()` is a **read-modify-write**, and `CONFIG1` now has two writers — auto-range
+  (`RNG`) and the API (`BITS`) — so an RMW can silently lose a concurrent change (§9.2c).
+- Every write to `CONFIG1` **restarts the conversion cycle** (Table 7, §4), so writes to it should
+  be few and deliberate.
+
+So: the driver holds a **shadow copy of all three config bytes**, never reads them back to modify
+them, and applies changes as one burst write of whole bytes. The RMW hazard disappears by
+construction — there is no read to race — and a full reconfiguration costs one transaction instead
+of up to six. Mechanically this works through the promoted bus layer unchanged, with the same
+`"Ns"` trick the burst read needs: `set_register_struct(0x01, "3s", bytes((c1, c2, c3)))`, since
+`set_register_struct()` takes a single value but accepts `bytes` (`src/asy_i2c_driver.py:130-147`).
+
+Two refinements:
+
+- **Write from `0x02` when `CONFIG1` is unchanged.** An IR-compensation change alone should not
+  restart the conversion cycle, so a 2-byte burst at `0x02` is the right form for it. Only
+  range/resolution/mode changes pay the restart.
+- **The shadow is authoritative, not a cache.** It is never refreshed from the device except on
+  the one path that matters: `BOUTF` set means the chip lost its configuration, so the driver
+  re-writes the shadow *to* the device (§9.3) rather than reading the device's state *into* it.
+
+The thresholds (`0x04`-`0x07`) are likewise consecutive, so a range switch's new threshold pair is
+one 4-byte burst write, not four single writes.
 
 ## 9. The chip's write model — no wear, but no persistence either
 
@@ -615,9 +866,12 @@ auto-range is free to rewrite `RNG` as often as the light demands.
 ### 9.2 Three caveats, only one of which is the expected one
 
 **a) Measurement glitches — the expected one, and real.** The ADC integrates continuously, so the
-conversion in flight when a config bit changes is invalid. Discard at least one full R-G-B cycle
-(~303 ms at 16-bit) after any write that changes `RNG`, `BITS` or the IR compensation. No settling
-time is specified; this is inference (§7.6).
+conversion in flight when a config bit changes is invalid. Wait one full R-G-B cycle (~303 ms at
+16-bit, ~19 ms at 12-bit) after any write that changes `RNG`, `BITS` or the IR compensation. For
+`CONFIG1` writes this window is **deterministic rather than inferred**: Table 7 says the write
+itself restarts the conversion (§7.6), so the first valid sample is exactly one cycle later. An IR
+change writes only `CONFIG2`, which does not restart, so there the one-cycle wait remains a
+conservative inference.
 
 **b) `tWC` has a symbol but no value.** Figure 4 (p5) labels an I²C write-cycle time `tWC`, and p7
 warns that *"during the internal write cycle, the device inputs are disabled and the SDA line is in
@@ -629,33 +883,99 @@ with the project's per-transaction locking this is unlikely to bite, but it is u
 specification rather than known-safe.
 
 **c) `CONFIG1` now has two writers.** Auto-range writes `RNG` (B3) continuously while an API call
-can write `BITS` (B4) — same register, and every `_set_bits` is a read-modify-write. Each RMW is
+can write `BITS` (B4) — same register, and every `set_bits()` is a read-modify-write. Each RMW is
 individually lock-protected, but that does not help: auto-range can read `CONFIG1`, the user's
 write can land, and auto-range can then write back its stale copy, silently losing the resolution
-change. The legacy design never hit this because nothing wrote `CONFIG1` on its own. Fix: the
-driver keeps a **shadow copy of `CONFIG1`** and writes whole bytes, or routes every `CONFIG1` write
-through one owner. This is a consequence of adding auto-range, not a pre-existing defect.
+change. The legacy design never hit this because nothing wrote `CONFIG1` on its own. This is a
+consequence of adding auto-range, not a pre-existing defect. **Resolved by §8.7's shadow-byte
+burst write** — with no read in the write path there is no stale copy to lose, and the same change
+removes five bus transactions and the incidental conversion restarts that per-field RMWs cause.
 
 ### 9.3 The flip side of volatility: a brownout silently disables the sensor
 
 Volatile means no wear, and it equally means **no persistence**. `Table 1` gives `CONFIG1` a
-power-on default of `0x00` — and `0x00` in bits B2:0 is **Power-Down**. So after any brownout the
-chip stops converting entirely, and a driver that keeps reading data registers would report the
-last stale values, with a fresh timestamp, indefinitely.
+power-on default of `0x00`, whose B2:0 = `000` is **Power-Down** per Table 4. (p6's prose says
+"Standby" and p10's says "a disable mode" instead — §5 defect 5 — but all three agree on the part
+that matters: no conversions.) So after any brownout the chip stops converting entirely, and a
+driver that keeps reading data registers would report the last stale values, with a fresh
+timestamp, indefinitely.
 
 The datasheet provides the detector: `BOUTF` (`0x08` B2), *"Power-down or Brownout occurred"*
 (Table 18, p12), default HIGH at power-up and cleared by writing it LOW.
 
 So the driver should **check `BOUTF` periodically, and on finding it set, re-apply the full
 configuration** (mode, range, resolution, IR compensation, thresholds) and clear it again — the
-same self-healing posture the existing 1 s interrupt self-heal already takes (§1.3). The legacy
+same self-healing posture the existing 1 s interrupt self-heal already takes (§1, item 3). The legacy
 driver clears `BOUTF` once at setup and never looks at it again, so a mid-life brownout would go
 unnoticed.
 
 This also folds in cleanly: the status register is already read on every interrupt, and `BOUTF`
 sits in the same byte as `RGBTHF` and `CONVENF` (§7.7), so the check costs no extra transaction.
 
-## 10. Known prerequisites and standing obligations
+**Re-apply on `BOUTF`, never on a timer.** The tempting simplification — just rewrite the config
+every few seconds and never worry about it — is wrong here, because a `CONFIG1` write restarts the
+conversion cycle (Table 7, §4). A periodic re-assert would abort a cycle every time it fired, and
+at a short enough period the ADC would never complete one. `BOUTF` is the trigger; the re-apply is
+the §8.7 burst write of the shadow bytes, followed by clearing `BOUTF` and discarding one cycle.
+
+One consequence for the error counter: a brownout that trips `BOUTF` is a *recovered* event, not an
+I²C failure. It should be logged (the FRAM-backed per-module log is exactly the place — CLAUDE.md's
+rule about reading those before clearing them applies here) but not fed to the leaky bucket that
+escalates to a task restart, or a flickering supply would reboot the node instead of healing it.
+
+## 10. The NeoPixel as a range-sweep source (project owner's suggestion)
+
+Pointing the board's own NeoPixel at the ISL29125 gives something no ambient light source does:
+**a stimulus the device under test controls**, repeatable to the LSB, sweepable on demand through
+both ranges and across the switch point. That is precisely the stimulus the auto-range work needs
+and cannot otherwise get — you cannot ask a room to ramp from 10 lux to 2 000 lux on a schedule.
+
+**What it can actually validate** (all of it relative, none of it absolute):
+
+- **Continuity across a range switch** — the headline requirement. Sweep up through the switch
+  point, then down through it, and assert that reported lux has no step at the transition beyond a
+  stated tolerance. This is the one test that proves §7.1's chain and §7.3's gain-ratio calibration.
+- **Hysteresis / no chatter** — park the level right at the switch point and hold. The range must
+  not oscillate. Directly exercises §7.6's corrected `u`/`d` arithmetic and `AutoRangePersist`.
+- **Settle discard** — assert no glitch sample appears in the cycle after a switch (§7.6).
+- **Saturation fast-path** — jump from dim to full scale in one step; the range must move up
+  immediately rather than waiting out the persistence counter.
+- **Hue/saturation invariance** — hold a colour, sweep brightness across the switch point, assert
+  H and S stay put (§7.4). The cleanest possible test of that claim, and a NeoPixel is well suited
+  to it since it can hold a fixed ratio while scaling all three channels.
+- **Monotonicity** of lux against LED level, in both ranges.
+
+**What it cannot validate, and must not be read as validating.** Three reasons, each independent:
+
+1. **The WS2812 is PWM-dimmed**, at a rate variously specified as ≥400 Hz and 2 kHz depending on
+   the die revision. At 16-bit (101 ms) the ADC integrates over 40-200 PWM periods, so residual
+   ripple is negligible. **At 12-bit (~6.3 ms) it covers only ~2.5 periods at 400 Hz**, which
+   produces tens of percent of beat-frequency ripple. A 12-bit sweep against this source will look
+   noisy, *and that noise is the LED, not the driver* — record it here so nobody chases it. It is
+   also, incidentally, a neat demonstration of §7.2's flicker-rejection argument on real hardware.
+2. **Its spectrum is three narrow LED lines**, nothing like an illuminant. Absolute lux and CCT
+   against it are meaningless (§7.10 explains why the per-channel full-scale figures do not rescue
+   this), and the p14 IR-compensation procedure — which needs A, F2 and D65 — cannot be run with it
+   at all.
+3. **Level is not linear in lux.** Assert monotonic, never linear.
+
+**Practical constraints for whoever writes it:**
+
+- The NeoPixel is already owned by `asy_neopixel_driver.py` and driven by
+  `asy_notification_service.py`. A sweep must go through the existing override/arbitration path,
+  not write the pixel directly, or the two will fight mid-test.
+- Geometry is the repeatability limit. Figure 6's radiation pattern falls off well before ±90°, so
+  a hand-held LED gives a different answer every run; fix the spacing and alignment mechanically
+  and record it, or the sweep is only good within a single session.
+- One WS2812 at a few centimetres comfortably exceeds range 0's 375 lux full scale, so both ranges
+  and the transition are reachable. Distance sets the span — that is the knob to tune, not
+  brightness.
+- Tier and gate: this is `tests_hardware/` bench-tier work on the dev board, so it needs the
+  project owner's go-ahead in the session that runs it (CLAUDE.md). The same sweep should be
+  modelled in the digital twin's chip fake so the identical continuity assertions run in CI on
+  every commit, with the bench run as confirmation rather than as the only coverage.
+
+## 11. Known prerequisites and standing obligations
 
 - `BACKLOG.md:519-522` already flags `asy_i2c_driver.py`'s `readfrom_mem()` → `readfrom_mem_into()`
   zero-copy change as *"worth doing before `asy_isl29125_driver.py` … is migrated"*, naming this
@@ -675,10 +995,34 @@ sits in the same byte as `RGBTHF` and `CONVENF` (§7.7), so the check costs no e
   `src/asy_i2c_driver.py` — which exposes the same four-operation API — carries no attribution at
   all. By the standard already applied to `asy_fram_driver.py` it may warrant a similar note.
 
+## 12. What is still open
+
+Everything else in this doc is settled. These are not.
+
+1. **Add `CCT` to the output?** A scope addition beyond the settled lux/RGB/HSB, but it is the
+   part's own specified colour output and costs one 3×3 and one cubic (§7.11). Recommended, with
+   the placeholder-matrix and low-light-floor caveats stated in the field help. **Needs a yes/no.**
+2. **Does the dev board have the INT pull-up?** (§4.) Bench check, one meter reading. Determines
+   whether `Pin.PULL_UP` is needed as a fallback. Unblocked by nothing — it just needs the board.
+3. **Does a `CONFIG1` write really restart the conversion cycle?** (§4, Table 7.) The design uses
+   it for deterministic settling (§7.6) and avoids periodic re-asserts because of it (§9.3).
+   Both remain *safe* if it turns out not to restart — the waits are conservative either way — so
+   this gates optimisation, not correctness. Bench check.
+4. **AN1910, AN1914, AN1591 and the Renesas "ISL29125 CCT calculation" note are all unobtainable**
+   from a session. AN1910 would settle the 12-bit integration time (currently derived, §7.2); the
+   CCT note would replace §7.11's placeholder matrix with the vendor's own. Neither blocks the
+   promotion; both would improve it.
+
+Closed during this pass, recorded so they are not reopened: the IR-compensation default (40 codes,
+`B7` = 0 — §6, §7.9); whether `CONVEN` fires per channel or per cycle (moot, `CONVEN` stays 0 —
+§7.6); and the `CONFIG1` read-modify-write hazard (designed out, §8.7).
+
 ## Datasheet acquisition
 
 `renesas.com`, `intersil.com` and every mirror host (DigiKey, Mouser, AllDataSheet, Arrow, Farnell,
 `web.archive.org`) are blocked by the session egress policy, and no reachable GitHub repository
 vendors the PDF. The project owner supplied it directly. **AN1910 and AN1914 are still missing**
-and would have to be supplied the same way — AN1910 in particular would settle the 12-bit
-integration time, which the datasheet leaves unspecified.
+and would have to be supplied the same way, along with **AN1591** (the ISL290XX evaluation
+hardware/software manual) and the standalone Renesas **"ISL29125 CCT calculation"** note found
+during the re-scan. AN1910 in particular would settle the 12-bit integration time, which the
+datasheet leaves unspecified; the CCT note would replace §7.11's placeholder colour matrix.
