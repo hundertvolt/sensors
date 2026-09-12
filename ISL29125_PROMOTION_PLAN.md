@@ -314,15 +314,9 @@ explicitly.
 - **`INTSEL = 00` disables the interrupt entirely**, and that is the dev default
   (`ISLInterruptAssignment: 0`). So the whole IRQ path is dormant on the bench rig as configured —
   worth knowing before writing hardware tests that expect an interrupt to fire.
-- **INT is open-drain and needs an external pull-up.** The driver constructs
-  `Pin(irq_pin, mode=Pin.IN)` (line 83) with no `PULL_UP`. The datasheet's reference circuit
-  (Figures 1 and 15) shows R4 = 2.7 kΩ-10 kΩ pulling INT to VDD, so this is correct *provided* the
-  dev board has that resistor. `dev_legacy/README.md` records the pin (GPIO6) but not the pull-up.
-  **Unverified — flagging rather than assuming.** If it is absent, `Pin.PULL_UP` is a workable
-  fallback but not an equivalent one: the rp2040's internal pull-up is ~50-80 kΩ, well above the
-  1 kΩ-20 kΩ window p4's `RPU` row gives for the same class of open-drain line, so the *rising*
-  edge is slow. The driver triggers on the falling edge and clears the pin by reading `0x08`, so a
-  slow release only costs recovery latency — but it is a degraded mode, not the intended circuit.
+- **INT is open-drain and needs a pull-up — and the driver should enable the internal one
+  regardless.** See §7.12; the short version is that the chip has none, the SparkFun breakout has a
+  hard-wired 10 kΩ, and `Pin.PULL_UP` is the right default either way.
 - **Raw counts are exposed with no range/resolution annotation.** The REST payload
   (`sensortask-dev.py:306`) returns `Red`/`Green`/`Blue` as bare ADC counts. Those are not
   comparable across a `ISLSensingRange` or `ISLAdcResolution` change (375 lux vs 10 000 lux full
@@ -406,6 +400,11 @@ These are decisions, not options. Everything below in §7 is designed against th
 11. **Measurement output is structured** — `RGB` and `HSB` are nested sub-objects, not flattened
     sibling keys.
 12. **`OperationMode` is not exposed.** The driver sets and keeps `RED_GREEN_BLUE` itself.
+13. **`CCT` is part of the output.** Accepted as an addition to lux/RGB/HSB (§7.11), with the
+    placeholder-matrix and low-light-floor caveats it carries.
+14. **Auto-range is fully tunable through the API** — switch points, hardware transient rejection,
+    settle margin, a software down-direction dwell, and a command to discard the learned gain
+    ratio (§8.3). The learned ratio itself is calibration state, not a setting (§7.3).
 
 Two consequences worth stating explicitly, because they change earlier reasoning in this doc:
 
@@ -463,7 +462,20 @@ the user.
 26.67x is nominal. The real per-device ratio differs, and that error *is* the visible step at each
 transition. Self-calibration is cheap: when the light sits in the overlap band, take one reading in
 each range, compute the true ratio, low-pass it, persist it to FRAM. Without this, auto-range is
-smooth-ish; with it, smooth.
+smooth-ish; with it, smooth. It is the single most influential number for transition quality, so
+it is worth doing properly rather than trusting the nominal figure.
+
+**Where the learned value lives — following `asy_sgp40_driver.py`, not inventing a pattern.** SGP40
+already solves exactly this shape: its VOC algorithm's learned state goes into a timestamped FRAM
+chunk (`AsyFramChunkTimestampedBuffer`), the *policy* around it is ordinary config fields
+(`BackupPeriod`, `BackupMaxAge`, `WaitTimeNTP`), and a command-only bool (`SGPResetVOC`,
+`special=True`, wired through `_push_callbacks`) discards the learned state. Mapped across: the
+gain ratio is one float in a FRAM chunk, not a config field, and `ResetCal` is the command-only
+bool that throws it away and relearns from nominal.
+
+Deliberately **no** on/off switch for the learning itself. The ratio is a device constant — it
+converges and stays there — not an environmental adaptation that could wander, so "stop learning"
+solves nothing that `ResetCal` does not.
 
 ### 7.4 Hue and saturation are continuous for free; brightness is not
 
@@ -506,7 +518,8 @@ correction.
 the window `[low, high]`, and the persistence counter performs transient rejection **in hardware** —
 the anti-chatter mechanism that would otherwise be software. Saturation (65535, clipped) forces an
 immediate switch-up without waiting for any filter: react fast to bright, slowly to dark, so a
-camera flash does not drag the range down for the next minute.
+passing shadow does not cost a range change and a change back. The "slowly to dark" half is
+`AutoRangeDwell`, because `PRST` cannot be made asymmetric — §8.3 has the reasoning.
 
 **Only one threshold is live at a time, and which one depends on the range.** An earlier phrasing
 here ("high threshold at the switch-up point, low threshold at the switch-down point") reads as if
@@ -670,8 +683,50 @@ The honest caveats, both of which go in the field's help text rather than being 
   ~13× the worst-case dark count) and when `n` lands outside McCamy's valid ~2 000-12 500 K span.
   This is a new decision, not a walk-back of the accepted HSB behaviour.
 
-**This is a scope addition and therefore the project owner's call** — §12 carries it as the one
-open decision. Everything else in §7-§9 stands without it.
+**Accepted by the project owner** (requirement 13). The two caveats above are not negotiable
+extras — they are what makes the number honest, so both belong in the field's help text where the
+consumer of the API will see them, not only here.
+
+### 7.12 The INT pull-up — settled from the schematics
+
+Three separate questions, each with a definite answer.
+
+**Does the chip have an internal pull-up? No, and it cannot.** p6 is unambiguous: *"The active low
+interrupt pin is an open-drain pull-down configuration."* Open-drain means the pin can only pull
+low; the high level has to come from somewhere else. The reference circuit (Figures 1 and 15) shows
+that somewhere as R4 = 2.7 kΩ-10 kΩ to VDD. Nothing the driver writes can change this.
+
+**Does the board already have one? Almost certainly yes.** SparkFun's own Eagle schematic for the
+ISL29125 breakout (`Hardware/SparkFun_ISL29125_Breakout.sch` in their hardware repo, read directly)
+carries **R4 = 10 kΩ from `!INT` to 3V3**, wired straight through — *not* behind the solder jumper.
+`SJ2` only breaks R2/R3, the SDA/SCL pull-ups, which is the usual "remove my I²C pull-ups when
+several boards share the bus" jumper. So on that breakout the INT pull-up is present and cannot be
+disconnected. The caveat is only that `dev_legacy/README.md` names exact variants for the FRAM
+(MB85RS2MTA) and the BMP3xx (BMP384) but not for the ISL29125, so the repo cannot *prove* this is
+the SparkFun board. One look settles it: a 10 kΩ 0603 beside the INT header pin. The part is a
+1.65 mm ODFN, which is why a breakout is near-certain in the first place.
+
+**Should the driver enable the rp2040's internal pull-up? Yes, unconditionally.** The Pico W
+datasheet gives RP2040's on-chip pull-ups as ~50 kΩ (RUN) and nominally 60 kΩ (SWDIO/SWCLK), so the
+GPIO pad pull-up is in that class. (The RP2040 datasheet itself is **not** in `datasheets/` — this
+is the closest primary source the repo holds, and it is the same on-chip structure.) Enabling it
+is right in both worlds:
+
+- **With the external 10 kΩ present** it is harmless — two resistors in parallel, dominated by the
+  10 kΩ, ~6 % stronger pull and a few µA more sink current while INT is asserted.
+- **Without it** the driver still works. At ~60 kΩ into the tens of pF of a short jumper, the
+  rising edge settles in single-digit microseconds against an interrupt that stays asserted for
+  milliseconds at least. An earlier revision of this section called 60 kΩ a "degraded mode" on
+  timing grounds; that was wrong — timing is not the issue here at all.
+
+So: `Pin(irq_pin, mode=Pin.IN, pull=Pin.PULL_UP)`. **The reason to still fit the external resistor
+if it turns out to be missing is noise immunity, not speed.** A 60 kΩ pull-up on a jumper wire is
+far easier to drag down by capacitive coupling than a 10 kΩ one, and a spurious falling edge on
+this line is not cosmetic — it is a bogus auto-range decision. 4.7 kΩ or 10 kΩ, either is fine.
+
+Worth noting for the convention scan: no other promoted driver's interrupt pin uses `PULL_UP` —
+SCD30's RDY line is push-pull, so bare `Pin.IN` is correct there. This is a real difference between
+the parts, not a divergence to reconcile.
 
 ## 8. Resulting API shape
 
@@ -711,6 +766,16 @@ raw counts or the INT pin.
 - Field names carry **no device prefix** — `_NAME = "BMP3XX"` namespaces them, so the legacy
   `ISLSampleInterv` becomes `SampleInterv`.
 
+**One discrepancy surfaced while checking this, reported rather than fixed** (CLAUDE.md's
+"flag, don't silently change" rule for cross-file inconsistency). Of the 30 config field names in
+`src/`, exactly one carries a device prefix: `asy_sgp40_driver.py`'s **`SGPResetVOC`**. Every other
+field across BMP3xx, SCD30, SGP40, the notification service and the WiFi service is unprefixed.
+Since this driver copies SGP40's command-only-bool pattern for `ResetCal` (§7.3), it would be easy
+to copy the prefix with it — it should not, and the ISL driver follows the 29-field majority. Both
+the divergence and the possibility that `SGPResetVOC` is deliberate (it is the only *command*
+rather than *setting*, and a bare `ResetVOC` may have read ambiguously in the UI) are for the
+project owner to settle; nothing here changes that file.
+
 **This closes §3.7 (the string-getter asymmetry) as a decision, not a question**: enumerated
 settings are ints with allowed-value tuples, and the human-readable labels move to `js/`, which
 Part G's cross-language mirror obligation requires anyway.
@@ -727,11 +792,38 @@ Part G's cross-language mirror obligation requires anyway.
 | `AutoRangeDown` | float | **1.5** | **0.2-3.0** % FS | switch-down threshold |
 | `AutoRangeSettle` | int | 1 | 1-10 cycles | full cycles waited after a switch |
 | `AutoRangePersist` | int | 4 | {1, 2, 4, 8} | `CONFIG3` `PRST` — hardware transient rejection |
+| `AutoRangeDwell` | float | 10.0 | 0.0-300.0 s | minimum time on the high range before a switch **down** |
+| `ResetCal` | bool | — | command-only | discard the learned gain ratio and relearn (§7.3) |
 | `IrCompOffset` | int | 0 | {0, 1} | `CONFIG2` B7 (adds 106) |
 | `IrCompAdjust` | int | 40 | 0-63 | `CONFIG2` B5:0 |
 | `FiltCoeff` | float | -1.0 | -1.0-1.0 | output EMA; <= 0 disables (legacy SHTC3/MPRLS precedent) |
 
-Three notes on the shape, all of which changed during this pass:
+#### Why `AutoRangeDwell` exists, and what was deliberately not added
+
+`PRST` is the hardware's transient rejection, and it is the wrong tool for half the job. It is one
+2-bit field applied to *both* threshold crossings, so it cannot be asymmetric — and auto-range
+wants asymmetry: switch **up** fast so a brightening scene never clips, switch **down** slowly so a
+passing shadow does not cost a range change, a settle discard, and then a change back. `PRST`'s
+maximum of 8 integration cycles is also short for the down direction: 0.8 s or 2.4 s at 16-bit
+depending on whether Table 12 counts the 101 ms channel integration or the ~303 ms RGB cycle (the
+datasheet does not say which), and 50-150 ms at 12-bit. Either way it is nowhere near the tens of
+seconds a room wants. `AutoRangeDwell` is the software half: a floor on how long the driver stays
+on the high range before honouring a down-crossing. `0.0` disables it and leaves the behaviour
+purely hardware-driven.
+
+Four knobs were considered and **declined**, recorded so they are not re-proposed:
+
+- **A tunable saturation threshold.** Clipping is clipping — 65535 is not a policy. A knob here
+  could only ever be set wrong.
+- **A selectable auto-range decision channel (`INTSEL`).** Green is both the photopic proxy (§7.5)
+  and the basis of the reported lux. Pointing the range decision at red or blue would let the
+  range and the value it scales disagree.
+- **Separate up/down hardware persistence.** Physically impossible — `PRST` is one field.
+  `AutoRangeDwell` is the answer instead.
+- **An on/off switch for gain-ratio learning.** See §7.3: the ratio is a device constant, so
+  `ResetCal` covers the only real need.
+
+Three further notes on the shape, all of which changed during this pass:
 
 - **`AutoRangeDown`'s default and bounds were wrong in the first proposal.** 3.0 % chatters against
   an 85 % switch-up — §7.6 does the arithmetic. 1.5 % is the corrected default and 3.0 % is now the
@@ -756,7 +848,6 @@ a gap at 64-105, so no single contiguous range can express it honestly. Its help
 
 - `Lux` — absolute, green-channel-derived (§7.5).
 - `CCT` — relative colour temperature in K, or `None` below the low-light floor (§7.11).
-  **Proposed, pending the project owner's go-ahead** — see §12.
 - `Red`/`Green`/`Blue` — **normalised 0-1** over the full span: the fixed range when one is
   selected, the whole auto-range span when auto is on.
 - `Hue`/`Sat`/`Bri` — `Bri` follows from RGB being 0-1, so it is 0-1 too. In a dim room that lands
@@ -942,7 +1033,11 @@ and cannot otherwise get — you cannot ask a room to ramp from 10 lux to 2 000 
   immediately rather than waiting out the persistence counter.
 - **Hue/saturation invariance** — hold a colour, sweep brightness across the switch point, assert
   H and S stay put (§7.4). The cleanest possible test of that claim, and a NeoPixel is well suited
-  to it since it can hold a fixed ratio while scaling all three channels.
+  to it since it can hold a fixed ratio while scaling all three channels. `CCT` should hold still
+  across the same sweep for the same reason (§7.11) — its *absolute* value against an LED is
+  meaningless, but its *stability* through a range switch is exactly what the test is for.
+- **Gain-ratio convergence** — run the sweep repeatedly and watch the learned ratio settle (§7.3),
+  then `ResetCal` and watch it converge again from nominal.
 - **Monotonicity** of lux against LED level, in both ranges.
 
 **What it cannot validate, and must not be read as validating.** Three reasons, each independent:
@@ -999,23 +1094,30 @@ and cannot otherwise get — you cannot ask a room to ramp from 10 lux to 2 000 
 
 Everything else in this doc is settled. These are not.
 
-1. **Add `CCT` to the output?** A scope addition beyond the settled lux/RGB/HSB, but it is the
-   part's own specified colour output and costs one 3×3 and one cubic (§7.11). Recommended, with
-   the placeholder-matrix and low-light-floor caveats stated in the field help. **Needs a yes/no.**
-2. **Does the dev board have the INT pull-up?** (§4.) Bench check, one meter reading. Determines
-   whether `Pin.PULL_UP` is needed as a fallback. Unblocked by nothing — it just needs the board.
-3. **Does a `CONFIG1` write really restart the conversion cycle?** (§4, Table 7.) The design uses
+1. **Is the ISL29125 on the dev board the SparkFun breakout?** (§7.12.) If yes — a 10 kΩ 0603 next
+   to the INT header pin — there is nothing to fit and nothing to decide. If no, a 4.7-10 kΩ
+   resistor from INT to 3V3 is worth adding for noise immunity. Either way the driver enables
+   `Pin.PULL_UP` and works, so this gates board hygiene, not function. One look at the board.
+2. **Does a `CONFIG1` write really restart the conversion cycle?** (§4, Table 7.) The design uses
    it for deterministic settling (§7.6) and avoids periodic re-asserts because of it (§9.3).
    Both remain *safe* if it turns out not to restart — the waits are conservative either way — so
    this gates optimisation, not correctness. Bench check.
-4. **AN1910, AN1914, AN1591 and the Renesas "ISL29125 CCT calculation" note are all unobtainable**
-   from a session. AN1910 would settle the 12-bit integration time (currently derived, §7.2); the
-   CCT note would replace §7.11's placeholder matrix with the vendor's own. Neither blocks the
-   promotion; both would improve it.
+3. **Does `PRST` count channel integrations or full RGB cycles?** (§8.3.) Changes
+   `AutoRangePersist`'s effective time constant by 3× and nothing else; `AutoRangeDwell` covers the
+   down direction regardless. Bench check, or AN1910.
+4. **`SGPResetVOC` is the only device-prefixed config field in `src/`** (§8.2). Reported, not
+   touched — the project owner decides whether it is a deliberate exception or drift.
+5. **AN1910, AN1914, AN1591 and the Renesas "ISL29125 CCT calculation" note are all unobtainable**
+   from a session. AN1910 would settle the 12-bit integration time (currently derived, §7.2) and
+   question 3 above; the CCT note would replace §7.11's placeholder matrix with the vendor's own.
+   Neither blocks the promotion; both would improve it.
 
-Closed during this pass, recorded so they are not reopened: the IR-compensation default (40 codes,
-`B7` = 0 — §6, §7.9); whether `CONVEN` fires per channel or per cycle (moot, `CONVEN` stays 0 —
-§7.6); and the `CONFIG1` read-modify-write hazard (designed out, §8.7).
+Closed during this pass, recorded so they are not reopened: `CCT` is in (requirement 13); the
+auto-range tuning surface is settled and the four rejected knobs are listed with reasons (§8.3);
+the INT pull-up is resolved from the datasheet and SparkFun's schematic, with `Pin.PULL_UP` on by
+default (§7.12); the IR-compensation default is 40 codes with `B7` = 0 (§6, §7.9); whether `CONVEN`
+fires per channel or per cycle is moot since `CONVEN` stays 0 (§7.6); and the `CONFIG1`
+read-modify-write hazard is designed out rather than mitigated (§8.7).
 
 ## Datasheet acquisition
 
