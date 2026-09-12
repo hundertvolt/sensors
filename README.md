@@ -666,6 +666,16 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   (back when it still ran 1.24.1) — reference material for future `src/` promotion work, not
   itself reviewed, promoted, or covered by lint/type/test config.
 
+**`ISL29125_PROMOTION_PLAN.md`** (temporary, in flight):
+
+- **[`ISL29125_PROMOTION_PLAN.md`](ISL29125_PROMOTION_PLAN.md)** — working doc for the
+  `python/IndividualDrivers/asy_isl29125_driver.py` → `src/` promotion: a full audit of the
+  existing driver against `datasheets/isl29125/`'s real datasheet (what is correct, the confirmed
+  defects, the device capabilities the driver doesn't use, and the datasheet's own internal
+  contradictions), plus the open design questions the promotion needs answered. Temporary by
+  design — delete it when the promotion closes, migrating anything permanent into
+  `SPECIFICATION.md` first, the same way the planning docs listed below were retired.
+
 `HARDWARE_TEST_PLAN.md`, `tmp_hardware_test_candidates.md`, `REAL_HARDWARE_HANDOFF.md`,
 `REAL_HARDWARE_RUN_LOG.md`, and `DEV_HARDWARE_BASELINE_PLAN.md` — five temporary real-hardware
 planning/handoff docs, all now deleted (2026-09-04) once real-hardware execution was genuinely
