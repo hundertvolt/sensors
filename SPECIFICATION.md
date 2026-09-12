@@ -1138,7 +1138,7 @@ is expected; only overlap *within* one row matters.
 | `asy_webserver_service.py` (`WEBSERVER`) | 1-6 | 1-5 | 1=unexpected exception in dispatch, 2=`system_cmd` callback, 3=`notification_led` callback, 4=uncaught exception via `errorhandler(Exception)`, 5=`notification_pause` callback, 6=one `/status` streamed-fragment source failed. `wrnno` 1-5=connection-lifecycle reclaim reasons. |
 | `asy_neopixel_driver.py` | — | — | No persisted logging. |
 | `asy_i2c_driver.py`/`asy_spi_driver.py`, `asy_udp_socket.py`, `asy_dns_client.py` (client) | — | — | Deliberately no logging — every failure surfaces to exactly one upstream owner. Coverage audit closed, no gaps. |
-| `asy_uart_comm.py` (`UART`, `_NAME` only as the default) | 10-34 | 10-14 | 10-16=construction refusals (payload_size, timeout, role, bus handle, allocation, rxbuf, missing callback), 17=not-ready gate, 18=role refusal, 19=frame validation, 20=missing/mismatched ACK, 21=write, 22=read timeout, 23=payload too large, 24=destination allocation, 25=size mismatch, 26=callback, 27=re-entrant call, 28=wrong frame kind, 29=GET id mismatch, 30=listen loop, 31=peer initiated simultaneously, 32=bytes arriving but no frame ever valid (a CRC/baud/`payload_size` mismatch), 33=streamed chunk short-filled, 34=a caller's own argument refused (command id outside a byte, a non-integer or negative size, a non-buffer payload or destination). `wrnno` 10=resync, 11=drain bound reached, 12=fault episode cleared, 13=driver cancel un-acknowledged, 14=a callback declined a command id. **10 and 11 are persisted at most once per fault episode** — deduping only the `errno` left every fault still persisting its own resync warning, which refilled the bounded history and evicted the entry naming the cause. Numbered from 10 to stay clear of `base_classes.py`'s reservation even though this is not a `SensorReader` subclass, and disjoint from any owner's own range where the logger is reached through. |
+| `asy_uart_comm.py` (`UART`, `_NAME` only as the default) | 10-34 | 10-14 | 10-16=construction refusals (payload_size, timeout, role, bus handle, allocation — the module's own buffers *and* a frame codec whose one long-lived scratch failed, since a codec that reports itself not ready would otherwise fail every write instead — rxbuf, missing callback), 17=not-ready gate, 18=role refusal, 19=frame validation, 20=missing/mismatched ACK, 21=write, 22=read timeout, 23=payload too large, 24=destination allocation, 25=size mismatch, 26=callback, 27=re-entrant call, 28=wrong frame kind, 29=GET id mismatch, 30=listen loop, 31=peer initiated simultaneously, 32=bytes arriving but no frame ever valid (a CRC/baud/`payload_size` mismatch), 33=streamed chunk short-filled, 34=a caller's own argument refused (command id outside a byte, a non-integer or negative size, a non-buffer payload or destination). `wrnno` 10=resync, 11=drain bound reached, 12=fault episode cleared, 13=a *rise* in the driver's cumulative `cancel_unacknowledged` (reading it as a flag reported every later healthy cancel as wedged), 14=a callback declined a command id. **10, 11 and 14 are persisted at most once per fault episode, and 14 at most once per command id** — deduping only the `errno` left every fault still persisting its own resync warning, which refilled the bounded history and evicted the entry naming the cause — and 14 escaped that fix until 2026-09-12, so a peer polling one unimplemented id spent two slots per refusal and erased a ten-slot history in five rounds. Numbered from 10 to stay clear of `base_classes.py`'s reservation even though this is not a `SensorReader` subclass, and disjoint from any owner's own range where the logger is reached through. |
 | `asy_uart_driver.py` | — | — | Deliberately no logging — every failure surfaces to its one upstream owner (`asy_uart_comm.py`), the same treatment the other bus drivers get. `cancel_unacknowledged` is a plain counter that owner reads and logs under its own `wrnno` 13. |
 
 ## C.8 Concurrency & locking model
@@ -2903,7 +2903,10 @@ frame that may never come pays one scheduler round trip per poll for as long as 
 2 ms is a large and permanent share of the event loop (Part F.5.9). The same instance therefore
 takes a second, slower `poll_idle_ms` for a wait with no deadline — 50 ms on the dev bench. It is
 the first-byte notice latency, so it must stay well under the peer's `timeout`: the initiator's ACK
-budget has to cover it, the frame read and the reply.
+budget has to cover it, the frame read and the reply. **That is a construction refusal, not just a
+rule** — `timeout`'s floor below is the enforcement, and it carries `poll_idle_ms` precisely because
+a budget that cannot cover the idle poll expires before an idle responder has looked at the line
+once, so every request on a physically sound link fails.
 
 **`rxbuf` is checked at construction against two independent floors**, because stop-and-wait means a
 *complete* frame can land before the reader is next scheduled, and a frame whose tail the driver
@@ -2913,8 +2916,11 @@ legal `payload_size` overruns the default outright), and one poll interval's wor
 (`baud/10 × (poll_wait_ms + jitter)` — about 288 bytes at 115200 baud, the 20 ms default and the
 5 ms of scheduling slack the module adds; 230 without that slack). Too
 small is a readiness-gate refusal with its own errno, never a silent degradation. `timeout` has a
-floor too: below `2 × poll_wait_ms` plus the measured worst-case GC pause, an ordinary collection
-reads as a link fault and the link resyncs continuously under memory pressure.
+floor too: `2 × poll_wait_ms + poll_idle_ms +` the measured worst-case GC pause. The GC term is what
+stops an ordinary collection reading as a link fault and resyncing the link continuously under memory
+pressure; the `poll_idle_ms` term is the peer's own first-byte notice latency above. Both ends agree
+`timeout` out of band, so checking the local instance's idle rate against it is what guarantees the
+peer's budget covers this side's latency — and it is checkable locally, which is the point.
 
 ## J.7 Testing: the loopback model
 

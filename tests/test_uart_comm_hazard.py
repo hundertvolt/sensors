@@ -30,7 +30,8 @@ if TYPE_CHECKING:
 
 # A short timeout keeps each recovery cycle cheap: this tier is about which frames are accepted and
 # what is emitted, not about real-world durations, and every value still clears the module's own
-# floor of 2 x poll_wait_ms + the worst-case GC pause.
+# floor of 2 x poll_wait_ms + poll_idle_ms + the worst-case GC pause (the harness leaves
+# poll_idle_ms at poll_wait_ms, so that floor is 24ms here).
 _TIMEOUT_MS = 30
 _PAYLOAD = 8
 _FRAME = 5 + _PAYLOAD

@@ -14,6 +14,7 @@ from asy_uart_comm import (
     UART_Comm,
 )
 from asy_uart_driver import UART
+from framing_codecs import Framing_COBS
 
 try:
     from typing import TYPE_CHECKING
@@ -36,6 +37,15 @@ _CUR = 4
 _PAYLOAD = 5
 _FRAME = 5 + PAYLOAD_SIZE
 _ERR_ALLOC = 14  # asy_uart_comm.py's own _ERR_ALLOC; const() folds the name out of that module
+
+
+def persisted(comm: UART_Comm) -> "list[str]":
+    # ErrNum holds errnos and wrnnos in one ring and they share the number space, so ErrType is
+    # what tells them apart; "N" is an unused slot. Indexed rather than zip()ed - MicroPython's
+    # zip() has no strict= parameter to satisfy B905.
+    entry = run(comm.get_error_counter())[comm.name]
+    nums, kinds = entry["ErrNum"], entry["ErrType"]
+    return [f"{kinds[i]}{nums[i]}" for i in range(len(nums)) if kinds[i] != "N"]
 
 
 def make_comm(**kwargs: "Any") -> UART_Comm:
@@ -96,6 +106,19 @@ def test_timeout_below_the_gc_pause_floor_is_refused() -> None:
     assert UART_Comm(driver, ROLE_INITIATOR, payload_size=8, timeout=200)._init_errno == 0
 
 
+def test_an_idle_poll_rate_the_reply_budget_cannot_cover_is_refused() -> None:
+    # J.6 states that poll_idle_ms is the first-byte notice latency and "must stay well under the
+    # peer's timeout", and nothing enforced it: an idle responder polling every 5s answers nothing
+    # within a 1s budget, so a perfectly sound link fails every request and looks dead.
+    def bus(idle_ms: int) -> UART:
+        driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=2, poll_idle_ms=idle_ms, rxbuf=1024)
+        driver.poller = LinkPoller(driver._uart)  # type: ignore[assignment,arg-type]
+        return driver
+
+    assert UART_Comm(bus(5000), ROLE_INITIATOR, payload_size=8, timeout=1000)._init_errno != 0
+    assert UART_Comm(bus(50), ROLE_INITIATOR, payload_size=8, timeout=1000)._init_errno == 0
+
+
 def test_invalid_role_is_refused_and_has_no_default() -> None:
     assert make_comm(role="listener")._init_errno != 0
     assert make_comm(role=ROLE_INITIATOR)._init_errno == 0
@@ -140,6 +163,21 @@ def test_rxbuf_too_small_for_one_poll_interval_is_refused() -> None:
     driver = UART(0, tx_pin=0, rx_pin=1, baudrate=115200, poll_wait_ms=20, rxbuf=64)
     driver.poller = LinkPoller(driver._uart)  # type: ignore[assignment,arg-type]
     assert UART_Comm(driver, ROLE_INITIATOR, payload_size=8, timeout=TIMEOUT_MS)._init_errno != 0
+
+
+def test_a_codec_that_failed_its_allocation_refuses_construction() -> None:
+    # B2.8 gives every codec a ready() to report a failed scratch allocation, and nothing read it.
+    # A dead codec constructed cleanly, passed setup() and then failed every single write with
+    # _ERR_WRITE_FAILED - the link looking broken instead of the configuration being refused.
+    dead = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=1, rxbuf=1024, framing=Framing_COBS(-1))
+    dead.poller = LinkPoller(dead._uart)  # type: ignore[assignment,arg-type]
+    assert dead.framing.ready() is False
+    comm = UART_Comm(dead, ROLE_INITIATOR, payload_size=8, timeout=TIMEOUT_MS)
+    assert comm._init_errno == _ERR_ALLOC
+    assert run(comm.setup()) is False
+    live = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=1, rxbuf=1024, framing=Framing_COBS(128))
+    live.poller = LinkPoller(live._uart)  # type: ignore[assignment,arg-type]
+    assert UART_Comm(live, ROLE_INITIATOR, payload_size=8, timeout=TIMEOUT_MS)._init_errno == 0
 
 
 def test_every_public_method_is_gated_before_setup() -> None:
@@ -212,6 +250,22 @@ def test_a_single_transient_fault_leaves_one_entry_not_a_pair() -> None:
     run(comm._err(19, "one-off"))
     run(comm._note_valid_frame())
     assert run(comm.get_error_counter())["UART_X"]["ErrCount"] == 1
+
+
+def test_a_repeatedly_declined_command_does_not_refill_the_history() -> None:
+    # C3.8/J4 applied to the one warning that still escaped it. A refusal persisted wrnno 14 and
+    # the resync it performs persisted wrnno 10, unconditionally - two entries per refusal, so a
+    # peer polling an id this side does not implement erased a ten-slot history in five rounds.
+    def decline(cmd_id: int) -> "tuple[bool, None]":
+        return False, None
+
+    pair = run(build_pair(timeout=30, get_callback=decline, set_callback=accept_set()))
+    for _ in range(5):
+        assert run(pair.with_listener(pair.initiator.uart_get(0x42)), limit=10) is None
+    assert persisted(pair.responder) == ["W14"], persisted(pair.responder)
+    # A different id is a different standing condition and is worth its own entry.
+    assert run(pair.with_listener(pair.initiator.uart_get(0x43)), limit=10) is None
+    assert persisted(pair.responder) == ["W14", "W14"], persisted(pair.responder)
 
 
 def test_every_declared_errno_is_inside_the_published_range() -> None:
@@ -807,6 +861,33 @@ def test_clear_with_nothing_in_flight_takes_the_lock_and_drains() -> None:
     pair.fake_a.feed_rx(b"leftovers")
     run(pair.initiator.clear(), limit=10)
     assert pair.fake_a.rx_queue == bytearray()
+
+
+def test_only_a_rise_in_the_drivers_unacked_count_is_reported() -> None:
+    # cancel_unacknowledged is cumulative, and clear() read it as a flag: once any holder had ever
+    # wedged, every later cancel - healthy ones included - persisted wrnno 13 again, which is the
+    # bounded-history churn C3.8 exists to prevent, on a link that had already recovered.
+    pair = Pair()
+    run(pair.setup())
+    bus = pair.initiator.uart
+    assert bus is not None
+
+    async def hold(ms: int) -> None:
+        async with bus:  # the cancel is acknowledged on leaving the locked region, never before
+            await asyncio.sleep_ms(ms)
+
+    async def scenario(hold_ms: int) -> None:
+        holder = asyncio.create_task(hold(hold_ms))
+        await asyncio.sleep_ms(5)
+        await pair.initiator.clear()
+        await holder
+
+    run(scenario(1300), limit=20)  # past the driver's own 1000ms acknowledgement bound
+    assert bus.cancel_unacknowledged == 1
+    assert persisted(pair.initiator) == ["W13"]
+    run(scenario(5), limit=20)  # a holder that acknowledges promptly: nothing new to report
+    assert bus.cancel_unacknowledged == 1
+    assert persisted(pair.initiator) == ["W13"]
 
 
 # ===========================================================================

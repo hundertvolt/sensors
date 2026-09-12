@@ -205,6 +205,8 @@ class UART_Comm:
         self._episode_events = 0  # C3.8 applied to the recovery warnings, not just the errno
         self._valid_frames = 0
         self._blind_resyncs = 0  # D2.5/D2.6: resyncs that saw bytes but never a valid frame
+        self._last_reject = -1  # the command id of the last refusal, so a repeat is not persisted
+        self._cancel_unacked_seen = 0  # the driver's counter is cumulative; only a rise is news
         self._init_errno = self._validate_config()
         # Re-checked locally, never the caller's raw values: `5 + "48"` raises, and __init__ is the
         # one entry point with no object yet to answer through a sentinel. _validate_config() stops
@@ -229,19 +231,32 @@ class UART_Comm:
         # desyncs intermittently in the field, the one fault the self-healing design cannot heal.
         if self.uart is None:
             return _ERR_NO_BUS
+        if not self.uart.framing.ready():
+            # B2.8: the codec reports a failed scratch allocation and nothing was reading it, so a
+            # dead codec constructed cleanly and then failed every single write as if the link were.
+            return _ERR_ALLOC
         if not isinstance(self.payload_size, int) or not (_PAYLOAD_MIN <= self.payload_size <= _PAYLOAD_MAX):
             return _ERR_PAYLOAD_SIZE
         if self.role not in (ROLE_INITIATOR, ROLE_RESPONDER):
             return _ERR_ROLE_PARAM
         if not isinstance(self.timeout, int) or self.timeout <= 0:
             return _ERR_TIMEOUT_PARAM
-        if self.timeout < (2 * self.uart.poll_wait_ms) + _GC_PAUSE_WORST_MS:
-            return _ERR_TIMEOUT_PARAM  # C2.4: below this, a GC pause reads as a link fault
+        if self.timeout < self._min_timeout():
+            return _ERR_TIMEOUT_PARAM  # C2.4/J.6: a GC pause or the peer's idle poll reads as a fault
         if self.role == ROLE_RESPONDER and (self.get_callback is None or self.set_callback is None):
             return _ERR_NO_CALLBACK  # C6.2: every request would be unanswerable
         if self.uart.rxbuf < self._min_rxbuf():
             return _ERR_RXBUF
         return 0
+
+    def _min_timeout(self) -> int:
+        # C2.4's GC-pause floor plus J.6's idle-rate rule: the reply budget has to cover the peer's
+        # own first-byte notice latency, which is poll_idle_ms - a timeout below it expires before
+        # an idle responder has looked at the line even once, and every request fails on a sound link.
+        bus = self.uart
+        if bus is None:
+            return 0
+        return (2 * bus.poll_wait_ms) + bus.poll_idle_ms + _GC_PAUSE_WORST_MS
 
     def _min_rxbuf(self) -> int:
         # Two independent floors (C2.9/C2.10). One whole framed frame, because stop-and-wait means
@@ -561,6 +576,24 @@ class UART_Comm:
         finally:
             self._in_resync = False
 
+    async def _fault(self, device: "UART", errno: int, *args: object) -> None:
+        # Every fault this module reports also resyncs, without exception - one helper so that is a
+        # single enforced shape rather than a convention repeated at twenty-eight call sites.
+        await self._err(errno, *args)
+        await self._resync(device)
+
+    async def _reject_wrn(self, device: "UART", cmd_id: int) -> None:
+        # C3.8's repeat rule applied to a declined command. A peer polling an id this side does not
+        # implement is a standing condition, and every refusal also resyncs - two persisted entries
+        # each, which filled a ten-slot history in five refusals. The first persists, the rest do not.
+        if cmd_id == self._last_reject:
+            self._episode_events += 1  # so the resync below stays visible-only too
+            self.pr.wrn("Repeated rejection of command", cmd_id)
+        else:
+            self._last_reject = cmd_id
+            await self._episode_wrn(_WRN_CMD_REJECTED, "callback rejected command", cmd_id)
+        await self._resync(device)
+
     async def clear(self) -> None:
         # The external unstick. Cancel FIRST, outside the lock: a listening responder holds it
         # indefinitely, so locking first would deadlock against the caller this frees (E5.1). The
@@ -570,7 +603,10 @@ class UART_Comm:
         if not await self.uart.cancel_read_timeout():
             async with self.uart as device:
                 await self._resync(device)
-        elif self.uart.cancel_unacknowledged:
+        elif self.uart.cancel_unacknowledged != self._cancel_unacked_seen:
+            # The driver's counter is cumulative, so reading it as a flag reported every later
+            # cancel - healthy ones included - as un-acknowledged, persisting a warning each time.
+            self._cancel_unacked_seen = self.uart.cancel_unacknowledged
             await self.pr.wrn_s("Driver cancel was not acknowledged", wrnno=_WRN_CANCEL_UNACKED)
 
     # ---- exchange layer -------------------------------------------------------------------------
@@ -587,22 +623,19 @@ class UART_Comm:
             await self._err(_ERR_ALLOC, "no TX buffer")
             return False
         if not await device.writefrom(buf, self.frame_size):
-            await self._err(_ERR_WRITE_FAILED, "frame write failed")
-            await self._resync(device)
+            await self._fault(device, _ERR_WRITE_FAILED, "frame write failed")
             return False
         if not await self._read_frame(device, self.timeout):
-            await self._err(_ERR_NO_ACK, "no ACK for frame", cur_chunk)
-            await self._resync(device)
+            await self._fault(device, _ERR_NO_ACK, "no ACK for frame", cur_chunk)
             return False
         err = self._validate(self._rx.get_buf(), CMD_ACK, 1, 1, uid)
         if err:
             if err == _ERR_WRONG_KIND:
                 # The peer initiated while this side was mid-transaction. Out of contract - there
                 # is no arbitration - so it is logged as the peer's violation, not as noise (E1.3).
-                await self._err(_ERR_PEER_INITIATED, "a data frame arrived where an ACK was due")
+                await self._fault(device, _ERR_PEER_INITIATED, "a data frame arrived where an ACK was due")
             else:
-                await self._err(err, "invalid ACK for frame", cur_chunk)
-            await self._resync(device)
+                await self._fault(device, err, "invalid ACK for frame", cur_chunk)
             return False
         await self._note_valid_frame()
         return True
@@ -704,32 +737,27 @@ class UART_Comm:
         while cur < chunks:
             cur += 1
             if not await self._read_frame(device, self.timeout):
-                await self._err(_ERR_READ_TIMEOUT, "train stalled at chunk", cur)
-                await self._resync(device)
+                await self._fault(device, _ERR_READ_TIMEOUT, "train stalled at chunk", cur)
                 return None
             rx = self._rx.get_buf()
             err = self._validate(rx, CMD_SET, cur, chunks, _next_uid(prev_uid))
             if err or rx is None:
-                await self._err(err or _ERR_FRAME_INVALID, "invalid frame at chunk", cur)
-                await self._resync(device)
+                await self._fault(device, err or _ERR_FRAME_INVALID, "invalid frame at chunk", cur)
                 return None
             prev_uid = rx[_MSG_UID]
             size = rx[_MSG_SIZE]
             if exp_size >= 0 and written + size > exp_size:
                 # F2.3: checked before the copy, so a desynced or hostile peer cannot overrun.
-                await self._err(_ERR_SIZE_MISMATCH, "train overshoots expected size", exp_size)
-                await self._resync(device)
+                await self._fault(device, _ERR_SIZE_MISMATCH, "train overshoots expected size", exp_size)
                 return None
             if push is not None:
                 ok = await self._call(push, cur, memoryview(rx)[_MSG_PAYLOAD : _MSG_PAYLOAD + size])
                 if ok is not True:
-                    await self._err(_ERR_CALLBACK, "push callback rejected chunk", cur)
-                    await self._resync(device)
+                    await self._fault(device, _ERR_CALLBACK, "push callback rejected chunk", cur)
                     return None
             elif dest is not None:
                 if written + size > len(dest):
-                    await self._err(_ERR_SIZE_MISMATCH, "destination too small at chunk", cur)
-                    await self._resync(device)
+                    await self._fault(device, _ERR_SIZE_MISMATCH, "destination too small at chunk", cur)
                     return None
                 # Through a memoryview, like the push branch above: slicing the bytearray would
                 # build a fresh payload_size copy per chunk - the repeated same-shaped allocation
@@ -740,16 +768,13 @@ class UART_Comm:
             if cur == chunks:
                 break  # F2.4: the final ACK is deferred until after the total-size check below
             if not await self._send_ack(device, prev_uid):
-                await self._err(_ERR_WRITE_FAILED, "ACK write failed at chunk", cur)
-                await self._resync(device)
+                await self._fault(device, _ERR_WRITE_FAILED, "ACK write failed at chunk", cur)
                 return None
         if exp_size >= 0 and written != exp_size:
-            await self._err(_ERR_SIZE_MISMATCH, "train delivered", written, "of", exp_size)
-            await self._resync(device)
+            await self._fault(device, _ERR_SIZE_MISMATCH, "train delivered", written, "of", exp_size)
             return None
         if not await self._send_ack(device, prev_uid):
-            await self._err(_ERR_WRITE_FAILED, "final ACK write failed")
-            await self._resync(device)
+            await self._fault(device, _ERR_WRITE_FAILED, "final ACK write failed")
             return None
         return written
 
@@ -889,8 +914,7 @@ class UART_Comm:
         chunks, uid = header
         room = self._dest_size(chunks, want)
         if room is None:
-            await self._err(_ERR_SIZE_MISMATCH, "expected", want, "bytes, the train can carry at most", (chunks - 1) * self.payload_size)
-            await self._resync(device)
+            await self._fault(device, _ERR_SIZE_MISMATCH, "expected", want, "bytes, the train can carry at most", (chunks - 1) * self.payload_size)
             return None
         own_dest = None
         if push is None:
@@ -898,17 +922,14 @@ class UART_Comm:
                 try:  # allocated before the first data chunk is acknowledged (F2.2)
                     own_dest = bytearray(room)
                 except (MemoryError, OverflowError):
-                    await self._err(_ERR_DEST_ALLOC, "could not allocate", room, "bytes for the answer")
-                    await self._resync(device)
+                    await self._fault(device, _ERR_DEST_ALLOC, "could not allocate", room, "bytes for the answer")
                     return None
                 dest = own_dest
             elif len(dest) < room:
-                await self._err(_ERR_SIZE_MISMATCH, "destination holds", len(dest), "of", room)  # F2.9
-                await self._resync(device)
+                await self._fault(device, _ERR_SIZE_MISMATCH, "destination holds", len(dest), "of", room)  # F2.9
                 return None
         if not await self._send_ack(device, uid):
-            await self._err(_ERR_WRITE_FAILED, "ACK for the answer header failed")
-            await self._resync(device)
+            await self._fault(device, _ERR_WRITE_FAILED, "ACK for the answer header failed")
             return None
         written = await self._recv_train(device, dest, want, push, chunks, uid)
         if written is None:
@@ -917,19 +938,16 @@ class UART_Comm:
 
     async def _read_answer_header(self, device: "UART", get_id: int) -> "tuple[int, int] | None":
         if not await self._read_frame(device, self.timeout):
-            await self._err(_ERR_READ_TIMEOUT, "no answer to GET", get_id)
-            await self._resync(device)
+            await self._fault(device, _ERR_READ_TIMEOUT, "no answer to GET", get_id)
             return None
         rx = self._rx.get_buf()
         err = self._validate(rx, CMD_SET, 1, None, None)
         if err or rx is None:
-            await self._err(err or _ERR_FRAME_INVALID, "invalid answer to GET", get_id)
-            await self._resync(device)
+            await self._fault(device, err or _ERR_FRAME_INVALID, "invalid answer to GET", get_id)
             return None
         if rx[_MSG_PAYLOAD] != get_id:
             # F3.1: otherwise the initiator accepts an answer to a question it never asked.
-            await self._err(_ERR_GET_ID_MISMATCH, "answer echoes id", rx[_MSG_PAYLOAD], "not", get_id)
-            await self._resync(device)
+            await self._fault(device, _ERR_GET_ID_MISMATCH, "answer echoes id", rx[_MSG_PAYLOAD], "not", get_id)
             return None
         await self._note_valid_frame()
         return rx[_MSG_CHUNKS], rx[_MSG_UID]
@@ -961,8 +979,7 @@ class UART_Comm:
 
     async def _listen_unlocked(self, device: "UART", get_cb: "_GetCallback", set_cb: "_SetCallback") -> ListenResult:
         if not await self._read_frame(device, -1):  # the one legitimate unbounded wait (E2)
-            await self._err(_ERR_READ_TIMEOUT, "listen read failed or was cancelled")
-            await self._resync(device)
+            await self._fault(device, _ERR_READ_TIMEOUT, "listen read failed or was cancelled")
             return _LISTEN_FAILED
         rx = self._rx.get_buf()
         if rx is None:
@@ -971,8 +988,7 @@ class UART_Comm:
         exp = CMD_GET if cmd == CMD_GET else CMD_SET
         err = self._validate(rx, exp, 1, None, None)
         if err:
-            await self._err(err, "unexpected frame while listening")
-            await self._resync(device)
+            await self._fault(device, err, "unexpected frame while listening")
             return _LISTEN_FAILED
         cmd_id = rx[_MSG_PAYLOAD]
         uid = rx[_MSG_UID]
@@ -984,26 +1000,22 @@ class UART_Comm:
 
     async def _answer_get(self, device: "UART", get_cb: "_GetCallback", cmd_id: int, uid: int) -> ListenResult:
         if not await self._send_ack(device, uid):
-            await self._err(_ERR_WRITE_FAILED, "ACK for GET failed")
-            await self._resync(device)
+            await self._fault(device, _ERR_WRITE_FAILED, "ACK for GET failed")
             return _LISTEN_FAILED
         pair = self._pair(await self._call(get_cb, cmd_id))
         if pair is None:
-            await self._err(_ERR_CALLBACK, "get_callback returned an unusable result for", cmd_id)
-            await self._resync(device)
+            await self._fault(device, _ERR_CALLBACK, "get_callback returned an unusable result for", cmd_id)
             return _LISTEN_FAILED
         valid, payload = pair
         if not valid:
             # F3.3: a distinct outcome, not silence - the caller is told which command was asked
             # for and that the answer was withheld, while the peer learns it by timing out.
-            await self.pr.wrn_s("get_callback rejected command", cmd_id, wrnno=_WRN_CMD_REJECTED)
-            await self._resync(device)
+            await self._reject_wrn(device, cmd_id)
             return ListenResult(None, CMD_GET, None)
         if payload is not None and not isinstance(payload, (bytes, bytearray, memoryview)):
             # F4.3: the payload's type is part of the return shape, so it is checked rather than
             # trusted - a str or an int here would otherwise reach the frame builder.
-            await self._err(_ERR_CALLBACK, "get_callback returned a non-buffer payload for", cmd_id)
-            await self._resync(device)
+            await self._fault(device, _ERR_CALLBACK, "get_callback returned a non-buffer payload for", cmd_id)
             return ListenResult(None, CMD_GET, None)
         # The answer runs through the internal unlocked SET path, so the role gate that refuses
         # uart_set() on a responder does not stop a responder from ever answering anything (F5.2).
@@ -1014,34 +1026,28 @@ class UART_Comm:
 
     async def _accept_set(self, device: "UART", set_cb: "_SetCallback", cmd_id: int, uid: int, chunks: int) -> ListenResult:
         if not await self._send_ack(device, uid):
-            await self._err(_ERR_WRITE_FAILED, "ACK for SET failed")
-            await self._resync(device)
+            await self._fault(device, _ERR_WRITE_FAILED, "ACK for SET failed")
             return _LISTEN_FAILED
         pair = self._pair(await self._call(set_cb, cmd_id))
         if pair is None:
-            await self._err(_ERR_CALLBACK, "set_callback returned an unusable result for", cmd_id)
-            await self._resync(device)
+            await self._fault(device, _ERR_CALLBACK, "set_callback returned an unusable result for", cmd_id)
             return _LISTEN_FAILED
         valid, exp_size = pair
         if not valid:
-            await self.pr.wrn_s("set_callback rejected command", cmd_id, wrnno=_WRN_CMD_REJECTED)
-            await self._resync(device)
+            await self._reject_wrn(device, cmd_id)
             return ListenResult(None, CMD_SET, None)
         want = -1 if exp_size is None else exp_size
         if not isinstance(want, int) or want < -1 or want > (_CHUNKS_MAX - 1) * self.payload_size:
-            await self._err(_ERR_CALLBACK, "set_callback asked for an impossible size", exp_size)  # F4.4
-            await self._resync(device)
+            await self._fault(device, _ERR_CALLBACK, "set_callback asked for an impossible size", exp_size)  # F4.4
             return ListenResult(None, CMD_SET, None)
         room = self._dest_size(chunks, want)
         if room is None:
-            await self._err(_ERR_SIZE_MISMATCH, "expected", want, "bytes, train can carry at most", (chunks - 1) * self.payload_size)
-            await self._resync(device)
+            await self._fault(device, _ERR_SIZE_MISMATCH, "expected", want, "bytes, train can carry at most", (chunks - 1) * self.payload_size)
             return ListenResult(None, CMD_SET, None)
         try:  # allocated before any data chunk is acknowledged (F2.2)
             dest = bytearray(room)
         except (MemoryError, OverflowError):
-            await self._err(_ERR_DEST_ALLOC, "could not allocate", room, "bytes for the incoming train")
-            await self._resync(device)
+            await self._fault(device, _ERR_DEST_ALLOC, "could not allocate", room, "bytes for the incoming train")
             return ListenResult(None, CMD_SET, None)
         written = await self._recv_train(device, dest, want, None, chunks, uid)
         if written is None:
@@ -1123,4 +1129,5 @@ class UART_Comm:
         self._clear_fault_state()
         self._valid_frames = 0
         self._blind_resyncs = 0
+        self._last_reject = -1
         await self.pr.reset()

@@ -1520,3 +1520,48 @@ BME688's BSEC coprocessor (Part J), and the pin-mux mapping the port macros prod
 Gates after the pass: `lint.sh` clean, all three `typecheck.sh` passes clean, `tests_scripts/` PASS,
 60/60 MicroPython files ALL PASSED, and the four touched `src/` modules cross-compile for armv6m
 (`asy_uart_comm.mpy` 12229 B against 12230 B before — comments carry no bytecode).
+
+## N — Standing-question review pass (2026-09-12)
+
+The nine questions this file's §0 coherence test implies, asked once more over the finished branch:
+are the issues it opened closed, is the structure lean, is the setup resilient, is the inheritance
+right, does it integrate like the rest of `src/`, are its own specialties catered for, is there
+simplification left, is anything missing, does it do its job. Four defects, each reproduced against
+the real interpreter before being fixed, each pinned by a named test verified to fail when the fix
+is reverted; plus one collapse and one dead override removed.
+
+| # | What was wrong | How it showed | Closed by |
+|---|---|---|---|
+| N1 | **`clear()` read the driver's cumulative `cancel_unacknowledged` as a current-state flag.** The counter only ever grows, so once any holder had wedged even once, every later *healthy* cancel was reported as un-acknowledged — a persisted `wrnno` 13 each time, on a link that had already recovered. The branch had no test at all | Measured: a wedged round leaves `unacked == 1` and one `W13`; the next round, with a holder that acknowledges on leaving the locked region, persists a second `W13` | `_cancel_unacked_seen`: only a *rise* is news (`test_only_a_rise_in_the_drivers_unacked_count_is_reported`) |
+| N2 | **`poll_idle_ms` was the one deployment parameter stated as a constraint and never enforced.** J.6 requires it to stay well under the peer's `timeout` — it is an idle responder's first-byte notice latency — while `_validate_config()` gated `poll_wait_ms` and `rxbuf` and left it alone | Measured: `poll_idle_ms=5000` against `timeout=1000` constructs with `_init_errno == 0`. The responder looks at the line every 5 s; every request times out at 1 s, on wiring that is perfectly sound | `_min_timeout()` carries the idle rate, so the floor is `2 × poll_wait_ms + poll_idle_ms + ` the GC pause, refused under the existing `errno` 11 (`test_an_idle_poll_rate_the_reply_budget_cannot_cover_is_refused`) |
+| N3 | **J4's repeat-suppression missed the one warning that needed it most.** A declined command id persisted `wrnno` 14, and the resync every refusal performs persisted `wrnno` 10 — both unconditionally. A peer polling an id this side does not implement is a *standing* condition, not a transient | Measured: six declined GETs filled and overflowed a ten-slot history, 14/10/14/10…, evicting the entry naming the cause — exactly the loss C6.3 names and J4 set out to close | `_reject_wrn()`: the first refusal of an id persists and marks the episode so its own resync stays visible-only; repeats persist nothing. Six rounds now leave one entry (`test_a_repeatedly_declined_command_does_not_refill_the_history`) |
+| N4 | **`framing_codecs.py`'s `ready()` had no reader anywhere.** B2.8 gives every codec a way to report a failed one-time scratch allocation, and neither the bus driver nor `UART_Comm` ever asked | A `Framing_COBS` that could not allocate constructs, passes `setup()`, opens the readiness gate, and then fails every single write with `errno` 21 — the link looking broken instead of the configuration being refused. The same shape as L1, one layer down | `_validate_config()` refuses it with `errno` 14 before the gate opens (`test_a_codec_that_failed_its_allocation_refuses_construction`) |
+
+**Removed rather than added.** `await self._err(...)` followed by `await self._resync(device)`
+appeared at 28 call sites and nowhere disagreed: every fault this module reports also resyncs. One
+`_fault()` helper makes that a single enforced shape instead of a convention repeated 28 times — 28
+lines out, and a fault that forgets to quiesce is now structurally impossible rather than merely
+unusual. `Framing_Pass._checked()` went too: it overrode the base method with the same behaviour
+(`Framing_Base.ready()` is unconditionally `True` and the base applies no `max_frame` bound either),
+under a comment claiming a difference that did not exist.
+
+**What this pass confirmed rather than changed.**
+
+- **The deferred `setup()`-called-twice deadlock is genuinely unreachable, now with evidence rather
+  than assertion.** `system_service.start_and_check_tasks()` restarts a dead *task* by re-calling its
+  starter; nothing in the supervisor re-runs a module's `setup()`, and `sensortask_dev.py` awaits
+  each once. The BACKLOG entry's "no guard for a caller that does not exist" stands.
+- **`_answer_get()` and `_accept_set()` share a four-statement prologue and were deliberately left
+  duplicated.** Their three outcomes differ where it matters — `_LISTEN_FAILED` for an unusable
+  callback return, `ListenResult(None, cmd, None)` for a clean refusal (F3.3's "a distinct outcome,
+  not silence") — and a helper carrying three outcomes through one return value reads worse than the
+  repetition it removes.
+- **The registration shape is complete end to end.** Both instances reach `/status` (`UART_INIT`,
+  `UART_RESP` in `html/definitions/dev.json`'s errcount list and in `_collect_error_sources()`), and
+  the link's own counters ride the variable-length `maintenance_sensors` registration (G2.4).
+- **`errno`/`wrnno` numbering stays conformant**: 10-34 and 10-14, clear of `base_classes.py`'s
+  reservation, and no `logger=` reach-through anywhere in the dev wiring, so BACKLOG item 16's latent
+  clash is still latent.
+- **The `rxbuf` floor is unaffected by the idle poll rate.** Stop-and-wait means at most one frame is
+  ever in flight, so the whole-framed-frame floor still bounds what can accumulate before the reader
+  is next scheduled, however late that is.

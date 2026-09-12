@@ -71,9 +71,6 @@ class Framing_Pass(Framing_Base):
     def __init__(self) -> None:
         super().__init__(0, run_length=0, trailer=0)  # no code bytes, no delimiter, no overhead
 
-    def _checked(self, buf: bytearray, size: int) -> bool:
-        return 0 <= size <= len(buf)  # no max_frame bound applies when nothing is reframed
-
 
 class Framing_COBS(Framing_Base):
     # Consistent Overhead Byte Stuffing: the encoded form provably contains no 0x00, so a single

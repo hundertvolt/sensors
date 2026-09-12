@@ -342,7 +342,9 @@ constraints.
   - **`UART_Comm.setup()` called a second time while its own listen loop is running would
     deadlock** on the bus lock the loop holds during its unbounded read. Nothing calls it twice -
     `system_service.py` runs the setup batch before any task starts - so no guard was invented for
-    a caller that does not exist.
+    a caller that does not exist. Re-checked against the supervisor itself (2026-09-12): its restart
+    ladder re-calls a dead task's *starter*, never a module's `setup()`, so the unreachability is a
+    property of the code rather than of today's call sites.
   - **One `Framing_COBS` instance shared between two drivers would corrupt both**, since its
     long-lived scratch is per-instance, not per-call. Every construction site makes its own; noted
     because the failure would be silent if one ever did not.
