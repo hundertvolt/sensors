@@ -264,24 +264,33 @@ constraints.
     corrected `errno`/`wrnno` table entry, and regression coverage (mock:
     `tests/test_asy_sgp40_driver.py`; digital twin, against the real wozi wiring:
     `tests/test_digital_twin_sensortask_integration.py`): SPECIFICATION.md Part C.14.2 and C.7.1.
-18. **SPECIFICATION.md Part A.4's "SGP40 silently degrading to uncompensated VOC when SCD30 is
-    down" wording may be imprecise.** Found while auditing item 17 above: the actual behavior
-    (confirmed by `tests/test_asy_sgp40_driver.py::test_read_sgp_without_compensation_data_returns_all_none`)
-    skips the read entirely and returns `SGP40(None, None, None)` rather than substituting any
-    default/fallback compensation values, so "degrading to uncompensated" may overstate what
-    happens. The underlying behavior itself is intentional and out of scope to change; flagging the
-    wording only, per the "flag, don't silently change" rule — owner call on whether it needs a
-    rewrite.
-19. **BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md §2.5's "Worked designs" example is stale.** Found
-    during the same audit: it still shows the superseded single `comp_source`/`_DefaultCompSource`
-    design (`comp_data: list[int | float | None] = [float(scd_data.Temp), float(scd_data.Hum)]`)
-    rather than the current split `temperature_source`/`humidity_source`/`_DefaultTemperatureSource`/
-    `_DefaultHumiditySource` design (§2.9's generalization, also referenced by SPECIFICATION.md Part
-    C.14.2). That doc's own README.md entry says it's "kept current as a durable design record," so
-    this is a genuine gap — unrelated to this session's diff, left untouched rather than drive-by
-    edited.
+18. ~~SPECIFICATION.md Part A.4's "SGP40 silently degrading to uncompensated VOC when SCD30 is
+    down" wording may be imprecise.~~ — **closed (2026-09-12).** Reworded to state the actual
+    behavior directly: SGP40 skips the read entirely and returns `SGP40(None, None, None)`
+    (confirmed by `tests/test_asy_sgp40_driver.py::test_read_sgp_without_compensation_data_returns_all_none`),
+    it never substitutes a fallback/default compensation value. The underlying behavior itself was
+    never in question, only the doc wording describing it.
+19. ~~BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md §2.5's "Worked designs" example is stale.~~ —
+    **closed (2026-09-12).** The section already carried its own "Superseded by §2.9" note pointing
+    at the current split `temperature_source`/`humidity_source` design, which is the correct
+    "design record" treatment (README.md's own framing for this doc) rather than a gap; the one
+    genuine staleness — the quoted `_read_sgp()` snippet no longer matching current code after
+    Session 6.3's `getattr(..., None)` rewrite — is now called out inline with a pointer to
+    BACKLOG.md item 17/SPECIFICATION.md Part C.14.2 for the current implementation.
 
 ## Deferred / explicitly out-of-scope work
+- **Session 7's `pyproject.toml` `max-args` ratchet (21 → 22, for `WebserverService.__init__`'s new
+  `build_info=` parameter) only got the noble leg of CLAUDE.md's required two-target clean-chroot
+  pre-push verification.** The trixie leg — required by the same rule whenever `pyproject.toml`
+  changes, specifically to catch a GCC>=14-only issue the noble/GCC-13 leg can't see (the precedent:
+  the mbedtls `-Warray-bounds` false positive, SPECIFICATION.md Part B.7.1) — couldn't be run from
+  that session's own sandbox: `debootstrap --variant=minbase trixie` needs `deb.debian.org`, which
+  the sandbox's egress policy rejected outright (confirmed directly, not a transient failure), with
+  no alternate Debian mirror to fall back to. The change itself is a pure ruff/pylint lint-rule
+  threshold with no compiler-version sensitivity, so the residual risk is judged low, not zero — a
+  from-scratch trixie leg (or a run on the bench Pi4, which already runs trixie/GCC 14.2) should
+  still confirm it whenever one is next convenient. Full account: BUILD_CHAIN_PLAN.md's "Session 7
+  done" entry.
 - **`buildgen/buildspec.py`'s per-driver schema is hand-maintained — making it AST-derivable is a
   separate, unstarted unit of work.** Everything else `buildgen/` needs from a driver is derived
   from `src/` automatically (the class itself via `driver_registry.py`'s naming convention,

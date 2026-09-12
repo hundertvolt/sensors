@@ -84,11 +84,13 @@ already states" philosophy (same principle as `driver_registry.py`'s AST-based c
 
 ### 2.5 Worked designs
 
-**`asy_sgp40_driver.py`** — `mode="kwarg"`. `_read_sgp()` only ever reads `.Temp`/`.Hum` off
-whatever `comp_source.get_data()` returns (confirmed directly:
+**`asy_sgp40_driver.py`** — `mode="kwarg"`. At the time of this design record, `_read_sgp()` only
+ever read `.Temp`/`.Hum` off whatever `comp_source.get_data()` returned (confirmed directly then:
 `comp_data: list[int | float | None] = [float(scd_data.Temp), float(scd_data.Hum)]`), so the
-default provider's return value only strictly needs to expose those two attributes — no change
-needed to `_read_sgp()` itself:
+default provider's return value only strictly needed to expose those two attributes — no change
+needed to `_read_sgp()` itself. (`_read_sgp()`'s actual implementation has since moved on — see
+BACKLOG.md item 17/SPECIFICATION.md Part C.14.2 for the current `getattr(..., None)`-based read —
+but the two-attributes-only shape this worked example is about is unaffected by that later change.)
 
 ```python
 class _DefaultCompSource:

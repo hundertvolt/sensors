@@ -250,9 +250,10 @@ feature change.
   restarts the same way `_PHASE_HOTSPOT` already is — only a physical power-cycle clears it; STA
   never auto-falls-back to hotspot once connected successfully even once in a task's lifetime — only
   a human resubmitting credentials or a full task restart resets this; the web UI shows raw numbers
-  only, no color-coding (the LED is the at-a-glance indicator); SGP40 silently degrading to
-  uncompensated VOC when SCD30 is down, with no distinct signal (SCD30's own error counter covers
-  it); FRAM's 8KB has ample headroom over SGP40's ~250-byte usage; `asy_uart_driver.py` intentionally
+  only, no color-coding (the LED is the at-a-glance indicator); SGP40 skipping its VOC read entirely
+  (returning `SGP40(None, None, None)`, not substituting any fallback compensation values) when
+  SCD30 compensation data isn't yet available, with no distinct signal (SCD30's own error counter
+  covers it); FRAM's 8KB has ample headroom over SGP40's ~250-byte usage; `asy_uart_driver.py` intentionally
   exposes no hardware flow control; `asy_notification_service.py`'s active-window check doesn't
   handle a window wrapping past midnight (`OnH=22`/`OffH=6` silently never triggers) — byte-for-byte
   identical to legacy's proven field behavior, a future overnight-window feature would need
