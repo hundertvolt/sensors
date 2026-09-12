@@ -342,6 +342,12 @@ These are decisions, not options. Everything below in §7 is designed against th
    RDY pin (`irq_pin: int` positional, `Pin(irq_pin, mode=Pin.IN)`, `ThreadSafeFlag`). Not optional,
    so §3.4's `None`-dereference disappears by construction rather than needing a guard.
 6. **IR compensation** — an API parameter. The sensor is **openly exposed**: no IR-tinted cover.
+7. **Register ownership is the driver's.** The sensor's hardware interrupts do not surface to the
+   user at all; no interrupt-as-event notification is planned, and if one is ever added it is
+   raised by software, not by exposing the INT pin or the threshold registers.
+8. **RGB output is normalised 0-1.**
+9. **HSB's low-light behaviour is accepted** — no log scaling, no validity flag needed.
+10. **The API follows the same conventions as the other promoted drivers** (verified in §8.2).
 
 Two consequences worth stating explicitly, because they change earlier reasoning in this doc:
 
@@ -467,19 +473,89 @@ one into a shared primitive is a Part G extension the auto-range work should mak
 (BMP3xx's `FiltCoeff` is the *sensor's* on-chip IIR, not a software filter — different thing,
 same name.)
 
-## 8. Open questions
+## 8. Resulting API shape
 
-1. **RGB output units** — absolute per-channel lux-equivalent, or normalised 0-1 / 0-255 relative
-   to the span? The latter is display-friendly, the former physically meaningful.
-2. **HSB brightness scaling** (§7.4) — 0-1 over the full span, lux, or log.
-3. **IR compensation default** — p14's ~40 codes with B7=0 (bare-sensor colour accuracy, and now
-   the applicable case) is my recommendation; `0xBF` stays reachable for range headroom.
-4. **IR compensation and calibration interact**: changing it changes the count scale, so it
-   invalidates any stored gain-ratio calibration (§7.3). The driver should discard the stored ratio
-   when IR compensation changes.
-5. **Getter return type** (§3.7) — strings are display-only today and the dev UI depends on them.
-   With every setting becoming API-settable and persisted, this is the moment to decide: ints with
-   the label mapping in `js/`, or both.
+### 8.1 What the settled requirements remove
+
+"Register ownership is the driver's; the sensor's hardware interrupts are not user-visible" deletes
+**five of the ten legacy config keys** outright — they become internal driver state:
+
+`ISLInterruptAssignment`, `ISLInterruptHighThres`, `ISLInterruptLowThres`,
+`ISLInterruptAutoClear`, `ISLPersistentControl`.
+
+`INTSEL`, `PRST` and both threshold registers are how auto-range gets its hardware hysteresis
+(§7.6), so they are the mechanism, not a setting. No user-facing event/notification is planned; if
+one is ever wanted it is raised in software off the normalised stream, in lux, never by exposing
+raw counts or the INT pin.
+
+### 8.2 Convention check — verified, not assumed
+
+"Compliant to the whole system as other drivers do" was checked directly against `src/`:
+
+- Promoted drivers subclass **`SensorReaderConfig`** (`base_classes.py:244`), which supplies the
+  data lock, logger, FRAM-backed error history and the `_get_dict_cfg`/`_set_dict_cfg` machinery.
+- Config is a **`ConfigSchema`** tuple of `(name, type, default, min, max, special)` records
+  (`config_manager.py:36-44`), assembled from one `_VAL_*` `const()` per field.
+- **Discrete settings are `"int"` with an allowed-value tuple in the 6th slot**, not a min/max
+  range — `_VAL_POV`/`_VAL_TOV`/`_VAL_FC` in `asy_bmp3xx_driver.py:78-80` are exactly this, and
+  `asy_bmp3xx_driver.py:76` records that a plain min/max was the *old*, wrong shape here.
+- `"bool"` fields are established (`AutoOn`, `SelfCal`, `LedWifiOn`).
+- **No promoted driver has a single `"str"`-typed config field.** Verified by grep across every
+  `src/asy_*_driver.py`.
+- Live-effect fields register a `_push_callbacks[name_cfg(_VAL_X)]`; those with a hardware
+  read-back also register a `_get_callbacks[...]` for `_set_dict_cfg`'s failed-push recovery chain
+  (Part C.5.2). Software-only knobs (a timer divider) deliberately have no `_get_callbacks` entry.
+- Field names carry **no device prefix** — `_NAME = "BMP3XX"` namespaces them, so the legacy
+  `ISLSampleInterv` becomes `SampleInterv`.
+
+**This closes §3.7 (the string-getter asymmetry) as a decision, not a question**: enumerated
+settings are ints with allowed-value tuples, and the human-readable labels move to `js/`, which
+Part G's cross-language mirror obligation requires anyway.
+
+### 8.3 Proposed config schema
+
+| Field | Type | Default | Allowed / range | Effect |
+|---|---|---|---|---|
+| `SampleInterv` | int | 1 | 1-3600 s | software timer divider |
+| `Resolution` | int | 16 | {12, 16} | `CONFIG1` B4 |
+| `RangeAuto` | bool | True | — | auto vs. fixed range |
+| `Range` | int | 10000 | {375, 10000} | `CONFIG1` B3, used when `RangeAuto` is false |
+| `AutoRangeUp` | float | 85.0 | 50.0-95.0 % FS | switch-up threshold |
+| `AutoRangeDown` | float | 3.0 | 0.5-20.0 % FS | switch-down threshold |
+| `AutoRangeSettle` | int | 1 | 1-10 cycles | conversions discarded after a switch |
+| `IrCompOffset` | int | 0 | {0, 1} | `CONFIG2` B7 (adds 106) |
+| `IrCompAdjust` | int | 40 | 0-63 | `CONFIG2` B5:0 |
+| `FiltCoeff` | float | -1.0 | -1.0-1.0 | output EMA; <= 0 disables (legacy SHTC3/MPRLS precedent) |
+
+IR compensation stays **two fields** rather than one: the effective scale is 0-63 and 106-169 with
+a gap at 64-105, so no single contiguous range can express it honestly. `AutoRangeUp` must exceed
+`AutoRangeDown` by more than the range ratio or the switch chatters — a cross-field constraint the
+schema's per-field validation cannot express, so the driver has to enforce it.
+
+### 8.4 Proposed measurement fields
+
+`namedtuple("ISL29125", ("Lux", "Red", "Green", "Blue", "Hue", "Sat", "Bri", "Range", "TS"))`
+
+- `Lux` — absolute, green-channel-derived (§7.5).
+- `Red`/`Green`/`Blue` — **normalised 0-1** over the full span: the fixed range when one is
+  selected, the whole auto-range span when auto is on.
+- `Hue`/`Sat`/`Bri` — `Bri` follows from RGB being 0-1, so it is 0-1 too. In a dim room that lands
+  near 0.003; the project owner has accepted that behaviour, so no log scaling and no low-light
+  validity flag.
+- **Naming**: HSB's brightness must not be spelled `B` — it would collide with blue. `Red`/`Green`/
+  `Blue` + `Hue`/`Sat`/`Bri` keeps both triples unambiguous.
+- `Range` — the *active* range. It belongs in the measurement tuple rather than the config dict,
+  because under auto-range it is an output, not a setting, and without it a consumer cannot tell
+  which span the normalised values were taken against.
+
+### 8.5 One question this raises
+
+**Should `OperationMode` be exposed at all?** Lux, RGB and HSB all need three channels, so anything
+but `RED_GREEN_BLUE` (`0b101`) leaves every derived output undefined, and `POWERDOWN`/`STANDBY`
+produce no conversions while the driver keeps reporting the last register contents with a fresh
+timestamp (§3.8). Either drop it and have the driver force RGB mode, or keep it and document that
+the other seven modes invalidate the outputs. Dropping it looks right for a mains-powered node,
+where the 56 µA -> 0.5 µA saving buys nothing.
 
 ## 9. Known prerequisites and standing obligations
 
