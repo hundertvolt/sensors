@@ -35,7 +35,13 @@ def test_main_generates_every_real_device_matching_generate_device_directly(gene
         expected = generate_device(repo_root / "devices" / f"{device}.toml", repo_root / "src", repo_root / "ext")
         assert (out_dir / f"sensortask_{device}.py").read_text() == expected.module_source
         expected_plan = compute_twin_wiring(expected.model)
+        # "instances" is main()'s own addition on top of compute_twin_wiring()'s documented shape
+        # (an independent, pre-construction driver-presence oracle for tests/test_sensortask.py -
+        # see main()'s own comment) - checked separately against the model directly, then popped
+        # before comparing the rest of the plan against compute_twin_wiring()'s own return value
+        # unchanged.
         actual_plan = json.loads((out_dir / f"sensortask_{device}_wiring_plan.json").read_text())
+        assert actual_plan.pop("instances") == sorted({spec.driver for spec in expected.model.instances.values()})
         assert actual_plan == expected_plan
 
 
