@@ -1171,16 +1171,26 @@ def _scenario_status_get(device: str) -> None:
     assert set(body["sensors"].keys()) == ({"SGP40"} if _has(module, "sgp40") else set())
     assert "BackupTS" in body["sensors"]["SGP40"] and "RestoreTS" in body["sensors"]["SGP40"]
     assert "SysUptime" in body["system"] and "LocalTime" in body["system"] and "UtcTime" in body["system"]
-    # BUILD_CHAIN_PLAN.md Session 7: every generated device embeds buildgen.version.FIRMWARE_VERSION
-    # as a real frozen-bytecode constant and reports it live here - can't cross-check the exact
-    # value against buildgen itself from inside the MicroPython interpreter (host-CPython-only
-    # tooling), so this proves presence/shape the same way every other field above does.
-    assert isinstance(body["system"]["FirmwareVersion"], str) and body["system"]["FirmwareVersion"]
     assert "WifiUptime" in body["networking"] and "NtpSynced" in body["networking"]
     assert "Triggered" in body["notification"] and "PauseTime" in body["notification"]
     # One entry per real module + per real ConfigManager + this service's own "WEBSERVER" entry -
     # derived from _all_loggers()'s own reflected shape, never a hardcoded wozi/dev-specific count.
     assert len(body["errcount"]) == len(_all_loggers(module))
+
+
+@_register("webserver_system_get_reports_the_real_build_info")
+def _scenario_system_get_build_info(device: str) -> None:
+    # BUILD_CHAIN_PLAN.md Session 7: every generated device embeds buildgen.version.FIRMWARE_VERSION/
+    # WEBSITE_VERSION plus a real build timestamp and reports them live under GET /system's "build"
+    # sub-entry. Can't cross-check the exact values against buildgen itself from inside the
+    # MicroPython interpreter (host-CPython-only tooling), so this proves presence/shape only.
+    module = build(device)
+    res = _dispatch(module, "GET", "/system")
+    body = json.loads(status_body(res))
+    build_info = body["build"]
+    assert isinstance(build_info["firmwareVersion"], str) and build_info["firmwareVersion"]
+    assert isinstance(build_info["websiteVersion"], str) and build_info["websiteVersion"]
+    assert isinstance(build_info["buildDate"], str) and build_info["buildDate"]
 
 
 @_register("webserver_status_put_reset_errors_clears_a_real_modules_history")

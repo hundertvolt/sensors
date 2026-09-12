@@ -21,7 +21,10 @@
         "SSID": "bench-net", "PW": "testbench42", "Country": "DE", "Hostname": "dev",
         "LedWifiOn": false, "NTP_Host": "pool.ntp.org", "NTP_Offset_S": 0, "NTP_Interv_H": 6
     },
-    "systemConfig": { "DebugLevel": 3, "GMTOffset": 3600, "DSTOffset": 0 },
+    "systemConfig": {
+        "DebugLevel": 3, "GMTOffset": 3600, "DSTOffset": 0,
+        "build": { "firmwareVersion": "2.0b0", "websiteVersion": "2.0b0", "buildDate": "2026-09-12T10:00:00Z" }
+    },
     "notificationConfig": {
         "AutoOn": false, "OnH": 8, "OnM": 0, "OffH": 20, "OffM": 0, "FlashBri": 80,
         "Interv": 1200.0, "FlashDur": 1.5, "WarnCO2": 1500, "WarnVOC": 300, "WarnHum": 70.0
@@ -33,7 +36,7 @@
             "NtpSynced": true, "NtpLastSyncAge": 205, "NtpLastSync": 1754999795
         },
         "system": {
-            "SysUptime": 9900, "BootSignature": 1754997600, "FirmwareVersion": "2.0b0", "MemPaused": false,
+            "SysUptime": 9900, "BootSignature": 1754997600, "MemPaused": false,
             "LocalTime": { "year": 2025, "month": 8, "mday": 12, "hour": 9, "minute": 14, "second": 3, "weekday": 1 },
             "UtcTime": { "year": 2025, "month": 8, "mday": 12, "hour": 8, "minute": 14, "second": 3, "weekday": 1 }
         },

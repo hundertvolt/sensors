@@ -383,7 +383,6 @@ def _status_section(have: "set[str]") -> "dict[str, Any]":
             "key": "BootSignature", "label": "Boot Signature", "kind": "readonly",
             "description": "Opaque value, stable for the running boot session; a different value on a later poll means the device rebooted. Not a human-readable code.",
         },
-        {"key": "FirmwareVersion", "label": "Firmware Version", "kind": "readonly"},
     ]
     if "fram" in have:
         system_fields.append({"key": "MemPaused", "label": "Backups Paused", "kind": "readonly"})

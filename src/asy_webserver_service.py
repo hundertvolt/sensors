@@ -248,6 +248,10 @@ class WebserverService:
         # onto it once, here; not itself importable for typing (see the microdot import comment above).
         sensors: "Sequence[_ModuleLike]" = (),
         settings: "dict[str, Sequence[SettingsGroup]] | None" = None,
+        build_info: "dict[str, Any] | None" = None,  # verbatim "build" sub-entry on GET /system's
+        # otherwise-flat response (firmwareVersion/websiteVersion/buildDate - BUILD_CHAIN_PLAN.md
+        # Session 7) - a fixed, generator-supplied fact this class never computes itself; None
+        # (default) omits the key entirely, matching every other optional constructor knob here.
         system_cmd: "SystemCmdFct | None" = None,
         notification_led: "NotificationLedFct | None" = None,
         notification_pause: "NotificationPauseFct | None" = None,
@@ -278,6 +282,7 @@ class WebserverService:
         self._app = app
         self._sensors = _index_by_name(sensors)
         self._settings: dict[str, list[SettingsGroup]] = {k: list(v) for k, v in (settings or {}).items()}
+        self._build_info = build_info
         self._system_cmd = system_cmd
         self._notification_led = notification_led
         self._notification_pause = notification_pause
@@ -420,7 +425,10 @@ class WebserverService:
         return ar.make_response(0, result=results)
 
     async def _get_system(self, _request: "_RequestLike") -> "Response":
-        return await _stream_dict_response(await self._get_settings_flat("system"))  # see _get_networking()'s own comment
+        result = await self._get_settings_flat("system")  # see _get_networking()'s own comment
+        if self._build_info is not None:
+            result["build"] = self._build_info
+        return await _stream_dict_response(result)
 
     async def _put_system(self, request: "_RequestLike") -> "ar.ResponseEnvelope":
         body = _body_as_dict(request)

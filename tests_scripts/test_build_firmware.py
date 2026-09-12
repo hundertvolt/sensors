@@ -124,7 +124,7 @@ def test_build_stage_dir_stages_exactly_the_computed_frozen_modules(build_firmwa
 
 
 @pytest.mark.parametrize("device", ["wozi", "dev"])
-def test_build_stage_dir_writes_the_generated_entry_module_and_boot_entry(build_firmware: ModuleType, repo_root: Path, tmp_path: Path, device: str) -> None:
+def test_build_stage_dir_writes_the_generated_entry_module_and_boot_entry(build_firmware: ModuleType, repo_root: Path, tmp_path: Path, device: str, monkeypatch: pytest.MonkeyPatch) -> None:
     # The generated device entry module (sensortask_<device>.py-equivalent) and its boot entry -
     # freshly generated text, never copied from boot_entry/<device>_boot.py (retired, this session -
     # see buildgen.codegen.generate_boot_entry_source()) - staged under "main.py" (see
@@ -133,6 +133,11 @@ def test_build_stage_dir_writes_the_generated_entry_module_and_boot_entry(build_
     # device stages its own, distinct boot module content, not silently falling back to wozi's.
     from buildgen.codegen import generate_boot_entry_source
     from buildgen.generate import generate_device
+
+    # Pins generate_device()'s own default build_date so build_stage_dir()'s internal call and this
+    # test's separate reference call below embed the identical timestamp, rather than racing a real
+    # wall clock against each other (BUILD_CHAIN_PLAN.md Session 7).
+    monkeypatch.setattr("buildgen.generate.current_build_date", lambda: "2026-09-12T10:00:00Z")
 
     build_firmware.build_stage_dir(tmp_path, device)
 

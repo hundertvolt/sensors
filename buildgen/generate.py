@@ -12,6 +12,7 @@ from buildgen.frozen_modules import compute_frozen_modules
 from buildgen.graph import build_construction_order
 from buildgen.model import DeviceModel
 from buildgen.validate import build_model
+from buildgen.version import current_build_date
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -24,10 +25,10 @@ class GeneratedDevice:
         self.frozen_modules = frozen_modules
 
 
-def generate_device(toml_path: Path, src_dir: Path, ext_dir: "Path | None" = None) -> GeneratedDevice:
+def generate_device(toml_path: Path, src_dir: Path, ext_dir: "Path | None" = None, build_date: "str | None" = None) -> GeneratedDevice:
     model = build_model(toml_path, src_dir)
     build_construction_order(model)
-    module_source = generate_module_source(model, model.construction_order)
+    module_source = generate_module_source(model, model.construction_order, build_date if build_date is not None else current_build_date())
     boot_entry_source = generate_boot_entry_source(model.device)
     frozen = compute_frozen_modules(model, src_dir, ext_dir)
     return GeneratedDevice(model, module_source, boot_entry_source, frozen)
