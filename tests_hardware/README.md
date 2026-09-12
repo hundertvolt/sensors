@@ -12,8 +12,8 @@ worth knowing before trusting a run's results.
 go-ahead first, given directly in that session's own conversation** - see CLAUDE.md's own hard rule
 on this. Once granted, this file has everything else needed: prerequisites below, environment
 variables, the critical safety facts folded into "Known assumptions and open findings" (the
-`--allow-flash-cycle`/long-soak opt-in gates in "Running" below, the stage-6 permanent-WLAN-
-deactivation risk, `BENCH_AP_PASSWORD` handling in "Environment variables" below).
+`--allow-flash-cycle`/long-soak/`--allow-neopixel-sweep` opt-in gates in "Running" below, the
+stage-6 permanent-WLAN-deactivation risk, `BENCH_AP_PASSWORD` handling in "Environment variables" below).
 
 ## Prerequisites
 
@@ -80,6 +80,10 @@ uv run pytest tests_hardware/flash --allow-multi-day-rollover-wait -k test_ticks
 # default - this genuinely re-flashes the board, see SPECIFICATION.md Part E.6.3):
 scripts/run_flash_hardware_suite.sh --allow-flash-cycle
 
+# Add --allow-neopixel-sweep to also run the ISL29125 auto-range sweep (skipped by default - it
+# needs the NeoPixel rig physically set up, see "The ISL29125 NeoPixel sweep rig" below):
+scripts/run_flash_hardware_suite.sh --allow-neopixel-sweep
+
 # Manual tests (interactive, prints instructions, waits for confirmation):
 scripts/run_manual_hardware_tests.sh --list          # see what's registered, run nothing
 scripts/run_manual_hardware_tests.sh --only <name>   # run just one
@@ -89,6 +93,36 @@ scripts/run_manual_hardware_tests.sh                 # run all of them, in seque
 Both automated scripts are plain `uv run pytest` wrappers - any pytest flag works (`-k <substring>`,
 `-m role_reversal`, `-v`, `--tb=short`, ...). `--collect-only` works with nothing attached at all
 (every fixture skips cleanly, never errors, when the hardware it needs isn't reachable).
+
+## The ISL29125 NeoPixel sweep rig
+
+`tests_hardware/flash/test_sensor_accuracy.py::test_isl29125_autorange_sweep_driven_by_the_boards_own_neopixel`
+is the only test in this tier gated on physical geometry rather than on time or wear, which is why
+it has its own `--allow-neopixel-sweep` flag and its own `KNOWN_PERMANENT_SKIPS` entry in
+`scripts/_require_clean_hardware_run.sh` (so an expected skip does not read as a failure). What it
+needs:
+
+- The dev board's own WS2812 (GP18) aimed at the ISL29125's window at a fixed, recorded distance -
+  close enough that a full-brightness white ramp drives the sensor through the 375 lx range's top
+  and into the 10000 lx range, so the sweep really crosses the switch point.
+- Ambient light excluded (an enclosure, or a darkened room). Ambient that already exceeds the low
+  range makes the whole ramp happen on the high range and the sweep fails with "only range N was
+  ever used", which is a rig problem, not a driver one.
+- Nothing else driving the pixel: the script goes through `request_signal()`'s real arbitration
+  path, and a notification signal landing mid-ramp is indistinguishable from a bad reading.
+
+Everything it asserts is **relative** - continuity across the range switch, hysteresis (no
+chatter), hue/saturation invariance while the level ramps, and gain-ratio convergence. Absolute lux
+and CCT against a WS2812's three narrow emission lines are meaningless, so they are deliberately
+not checked anywhere; the reference-meter half lives in
+`tests_hardware/manual/manual_sensor_accuracy.py` instead, alongside the geometry record.
+
+**Before running any ISL29125 device script**, CLAUDE.md's FRAM rule applies in its sharpest form:
+an isolated-driver script builds its own `AsyFramManager` over the same chip and the allocator is
+deterministic, so its first chunk *is* production's first chunk. Read the FRAM-persisted error logs
+first, and treat any log found afterwards as suspect unless you know what has been run against that
+board. The gain-ratio persistence check is deliberately a bench-tier REST test
+(`bench/test_rest_endpoints_over_sta.py`) rather than a device-script pair for exactly this reason.
 
 ## Known assumptions and open findings
 
@@ -568,7 +602,11 @@ tasks. Without it, `cfgmgr.valid` stays `False`, the reader's first config read 
 the read loop fails silently (visible only at `debug=5`, e.g. "Error reading config data!") without
 ever attempting a real sensor read. Found independently in `bmp3xx_plausibility_read.py` and
 `sgp40_fram_backup_restore.py`. Never call `cfgmgr.setup()` in such scripts - that performs a real
-littlefs file write/read.
+littlefs file write/read. The three `isl29125_*.py` scripts that build a
+`ISL29125_Reader` (plausibility, real IRQ edge, auto-range sweep) follow the same pattern; the two
+concurrency ones, and the `_measure_*` half of `isl29125_real_irq_edge.py`, sidestep it entirely by
+constructing the protocol layer (`ISL29125_I2C`) alone, which has no `cfgmgr` at all - the shape
+Part C.8 requires of any concurrency script touching persisted config.
 
 ## Sixth pass - the `dut_ip()` fixture's retry/recovery methodology, and other bench-harness findings
 

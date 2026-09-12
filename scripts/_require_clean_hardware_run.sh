@@ -11,14 +11,15 @@
 # PASSED, not quietly skip or fail. (`pytest tests_hardware --collect-only`, the genuinely
 # no-hardware-attached case, bypasses this file entirely - it's a plain manual invocation, not run
 # through either wrapper script.) The opt-in-gated categories (--allow-flash-cycle/--soak-tier/
-# --allow-multi-day-rollover-wait, tests_hardware/conftest.py) are handled contextually below, not
-# just whitelisted outright - their own tests skipping is only acceptable when the matching flag
-# was genuinely omitted from this invocation; passing the flag and still getting a skip is a real
-# failure. Soak tests (long_soak/multi_day_rollover markers) are never run through the general
-# wrapper scripts at all (they pass -m "not long_soak and not multi_day_rollover", so those tests
-# are deselected, not skipped) - this whitelist only matters for a direct invocation of this file
-# that doesn't apply that marker exclusion, e.g. scripts/run_bench_soak_tests.sh's own -m long_soak
-# selection (where --soak-tier IS expected to be passed, so these become "must pass", not "may skip").
+# --allow-multi-day-rollover-wait/--allow-neopixel-sweep, tests_hardware/conftest.py) are handled
+# contextually below, not just whitelisted outright - their own tests skipping is only acceptable
+# when the matching flag was genuinely omitted from this invocation; passing the flag and still
+# getting a skip is a real failure. Soak tests (long_soak/multi_day_rollover markers) are never
+# run through the general wrapper scripts at all (they pass -m "not long_soak and not
+# multi_day_rollover", so those tests are deselected, not skipped) - this whitelist only matters
+# for a direct invocation of this file that doesn't apply that marker exclusion, e.g.
+# scripts/run_bench_soak_tests.sh's own -m long_soak selection (where --soak-tier IS expected to
+# be passed, so these become "must pass", not "may skip").
 set -uo pipefail  # deliberately not -e: this script inspects pytest's own output before deciding its own exit code
 
 # The one currently-known, deliberate, permanent skip: raw-socket off-subnet-source-address
@@ -34,10 +35,12 @@ KNOWN_PERMANENT_SKIPS=("test_spoofed_off_subnet_source_address_is_ignored")
 allow_flash_cycle=0
 soak_tier=0
 allow_multi_day_rollover=0
+allow_neopixel_sweep=0
 for arg in "$@"; do
     [ "$arg" = "--allow-flash-cycle" ] && allow_flash_cycle=1
     [ "$arg" = "--soak-tier" ] && soak_tier=1
     [ "$arg" = "--allow-multi-day-rollover-wait" ] && allow_multi_day_rollover=1
+    [ "$arg" = "--allow-neopixel-sweep" ] && allow_neopixel_sweep=1
 done
 if [ "$allow_flash_cycle" = 0 ]; then
     KNOWN_PERMANENT_SKIPS+=("test_real_uf2_reflash_and_boot_smoke_test")
@@ -51,6 +54,11 @@ if [ "$soak_tier" = 0 ]; then
 fi
 if [ "$allow_multi_day_rollover" = 0 ]; then
     KNOWN_PERMANENT_SKIPS+=("test_ticks_ms_real_2pow30_rollover")
+fi
+if [ "$allow_neopixel_sweep" = 0 ]; then
+    # Physical geometry, not a destructive or slow operation: the ISL29125 sweep needs the board's
+    # own NeoPixel actually aimed at the sensor, ambient light excluded (tests_hardware/README.md).
+    KNOWN_PERMANENT_SKIPS+=("test_isl29125_autorange_sweep_driven_by_the_boards_own_neopixel")
 fi
 
 logfile="$(mktemp)"

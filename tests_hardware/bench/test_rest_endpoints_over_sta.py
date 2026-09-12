@@ -20,6 +20,8 @@ PRESSURE_MIN_HPA, PRESSURE_MAX_HPA = 300.0, 1250.0
 BMP_TEMP_MIN_C, BMP_TEMP_MAX_C = -40.0, 85.0
 VOC_MIN, VOC_MAX = 0, 500
 RAW_MIN, RAW_MAX = 0, 65535
+LUX_MIN, LUX_MAX = 0.0, 10_000.0  # FN8424 p1's own two-range span
+CCT_MIN_K, CCT_MAX_K = 2000.0, 12_500.0  # McCamy (1992)'s own usable span
 
 # ---------------------------------------------------------------------------
 # The website, over the normal STA/bridge network path (not hotspot mode).
@@ -43,7 +45,7 @@ def test_measurements_endpoint_returns_plausible_values_for_every_real_sensor(bo
     assert res.status_code == 200, f"GET /measurements failed: {res.status_code} {res.body!r}"
     body = res.json()
 
-    for name in ("SCD30", "BMP3XX", "SGP40"):
+    for name in ("SCD30", "BMP3XX", "SGP40", "ISL29125"):
         assert name in body, f"GET /measurements is missing the {name!r} key entirely: {body!r}"
 
     failures: list[str] = []
@@ -72,6 +74,28 @@ def test_measurements_endpoint_returns_plausible_values_for_every_real_sensor(bo
         failures.append(f"SGP40.VOC={voc!r} not within [{VOC_MIN}, {VOC_MAX}]")
     if raw is None or not (RAW_MIN <= raw <= RAW_MAX):
         failures.append(f"SGP40.Raw={raw!r} not within [{RAW_MIN}, {RAW_MAX}]")
+
+    # The only nested measurement group in either shipped device: RGB and HSB are sub-objects, not
+    # flat keys (requirement 11), so this also proves the nesting survives the real JSON round trip.
+    isl = body["ISL29125"]
+    lux, cct, range_act = isl.get("Lux"), isl.get("CCT"), isl.get("RangeAct")
+    rgb, hsb = isl.get("RGB"), isl.get("HSB")
+    if lux is None or not (LUX_MIN <= lux <= LUX_MAX):
+        failures.append(f"ISL29125.Lux={lux!r} not within [{LUX_MIN}, {LUX_MAX}] lx")
+    if range_act not in (375, 10_000):
+        failures.append(f"ISL29125.RangeAct={range_act!r} is neither of the part's two ranges")
+    if cct is not None and not (CCT_MIN_K <= cct <= CCT_MAX_K):
+        failures.append(f"ISL29125.CCT={cct!r} not within [{CCT_MIN_K}, {CCT_MAX_K}] K")  # legitimately None below the low-light floor
+    if not isinstance(rgb, dict) or not isinstance(hsb, dict):
+        failures.append(f"ISL29125.RGB/HSB did not arrive as sub-objects: RGB={rgb!r} HSB={hsb!r}")
+    else:
+        for group, key in (("RGB", "R"), ("RGB", "G"), ("RGB", "B"), ("HSB", "S"), ("HSB", "B")):
+            value = (rgb if group == "RGB" else hsb).get(key)
+            if value is None or not (0.0 <= value <= 1.0):
+                failures.append(f"ISL29125.{group}.{key}={value!r} outside the normalised 0-1 range")
+        hue = hsb.get("H")
+        if hue is None or not (0.0 <= hue < 360.0):
+            failures.append(f"ISL29125.HSB.H={hue!r} outside [0, 360)")
 
     assert not failures, "implausible/missing real sensor values via GET /measurements: " + "; ".join(failures) + f"\nfull body: {body!r}"
 
@@ -112,3 +136,36 @@ def test_mempause_over_real_rest_pauses_storage_and_does_not_survive_a_reboot(bo
     )
     after = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0)
     assert after.json()["system"]["MemPaused"] is False, f"storage was still paused after a real reboot - the pause is supposed to be RAM-only: {after.json()['system']!r}"
+
+
+# ---------------------------------------------------------------------------
+# The ISL29125's learned gain ratio lives in its own timestamped FRAM chunk, so unlike every other
+# sensor's config it is expected to survive a power cycle. Deliberately checked through the real
+# production firmware over REST rather than with an isolated-driver device script: such a script
+# builds its own AsyFramManager over the same chip and the allocator is deterministic, so it would
+# overwrite production's own first chunk (CLAUDE.md's FRAM rule, sharpest form).
+# ---------------------------------------------------------------------------
+
+
+def test_isl29125_learned_gain_ratio_survives_a_real_reboot_with_its_timestamp(board: Board, bench: BenchBridge, dut_ip: str) -> None:
+    before = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0)
+    assert before.status_code == 200, f"GET /status failed: {before.status_code} {before.body!r}"
+    maintenance = before.json()["sensors"]["ISL29125"]
+    ratio, cal_ts = maintenance.get("GainRatio"), maintenance.get("CalTS")
+    assert ratio is not None and cal_ts is not None, f"GET /status is missing the ISL29125 maintenance keys entirely: {maintenance!r}"
+
+    bench.kick_all_stations()  # see conftest.py's dut_ip docstring for why this precedes every reconnect-expecting reset
+    board.hard_reset()
+    wait_until(
+        lambda: http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=5.0).status_code == 200,
+        timeout_s=120.0,
+        poll_interval_s=3.0,
+        description="DUT serving /status again after the reboot this test's persistence check needs",
+    )
+    after = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).json()["sensors"]["ISL29125"]
+    # Deliberately asserts equality rather than skipping when nothing has been learned yet: on a
+    # board that has never seen the overlap band the pair is (nominal ratio, CalTS 0), and that it
+    # comes back unchanged is the same property - a reboot must neither lose a real calibration nor
+    # invent one. Learning a real ratio needs the --allow-neopixel-sweep rig, not this test.
+    assert after.get("CalTS") == cal_ts, f"the calibration timestamp did not survive a real reboot: {cal_ts!r} before, {after.get('CalTS')!r} after"
+    assert after.get("GainRatio") == ratio, f"the learned gain ratio did not survive a real reboot: {ratio!r} before, {after.get('GainRatio')!r} after"
