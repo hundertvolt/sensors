@@ -201,6 +201,7 @@ def test_build_system_constructs_every_legacy_named_module() -> None:
             "scd_reader",
             "pixel",
             "notify_service",
+            "isl_reader",
             "watchdog",
         ),
     )
@@ -297,7 +298,7 @@ def test_main_forwards_web_host_and_port_to_build_system() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_fram_chunk_allocation_order_matches_the_documented_seven_chunk_sequence() -> None:
+def test_fram_chunk_allocation_order_matches_the_documented_nine_chunk_sequence() -> None:
     calls: list[str] = []
     from asy_fram_manager import AsyFramManager
 
@@ -326,8 +327,13 @@ def test_fram_chunk_allocation_order_matches_the_documented_seven_chunk_sequence
         AsyFramManager.get_timestamped_chunk = real_get_timestamped_chunk  # type: ignore[method-assign]
 
     # SystemService -> SGP40 log -> SGP40 VOC backup(timestamped) -> BMP3xx -> SCD30 -> Neopixel ->
-    # NotificationCoordinator, matching sensortask_wozi.py's own build_system() order.
-    assert calls == ["chunk", "chunk", "timestamped", "chunk", "chunk", "chunk", "chunk"]
+    # NotificationCoordinator -> ISL29125 log -> ISL29125 gain-ratio calibration(timestamped).
+    # Chunks 1-7 are byte-identical to sensortask_wozi.py's own order and MUST stay that way -
+    # AsyFramManager is a bump allocator, so inserting the ISL anywhere earlier would shift every
+    # later chunk's address and silently reinterpret a dev board's existing persisted error logs
+    # at the wrong offset. The two extra chunks at the end are this variant's only divergence
+    # (SPECIFICATION.md Part A.7.1).
+    assert calls == ["chunk", "chunk", "timestamped", "chunk", "chunk", "chunk", "chunk", "chunk", "timestamped"]
 
 
 def test_fram_chunks_are_all_successfully_allocated_not_out_of_memory() -> None:
@@ -353,6 +359,10 @@ def test_fram_chunks_are_all_successfully_allocated_not_out_of_memory() -> None:
     assert sensortask_dev.pixel.pr.fram is not None
     assert isinstance(sensortask_dev.notify_service.pr, PrintLogHistoryStore)
     assert sensortask_dev.notify_service.pr.fram is not None
+    assert sensortask_dev.isl_reader is not None
+    assert isinstance(sensortask_dev.isl_reader.pr, PrintLogHistoryStore)
+    assert sensortask_dev.isl_reader.pr.fram is not None
+    assert sensortask_dev.isl_reader.ts_storage is not None
 
 
 class _DeadFramChip(_FakeMB85RS2MTA):
@@ -516,6 +526,7 @@ def _all_loggers() -> "list[Any]":
     assert d.conn is not None and d.ntp is not None and d.fram is not None and d.sysfunct is not None
     assert d.sgp_reader is not None and d.bmp_reader is not None and d.scd_reader is not None
     assert d.pixel is not None and d.notify_service is not None and d.webserver is not None
+    assert d.isl_reader is not None
     return [
         d.conn.pr,
         d.conn.cfgmgr.pr,
@@ -534,6 +545,8 @@ def _all_loggers() -> "list[Any]":
         d.notify_service.pr,
         d.notify_service.cfgmgr.pr,
         d.webserver.pr,
+        d.isl_reader.pr,
+        d.isl_reader.cfgmgr.pr,
     ]
 
 
@@ -608,6 +621,7 @@ def test_collect_task_starters_includes_every_constructed_module() -> None:
         sensortask_dev.sysfunct,
         sensortask_dev.conn,
         sensortask_dev.ntp,
+        sensortask_dev.isl_reader,
     ):
         assert owner is not None
         for expected in owner.get_task_starters():
@@ -632,10 +646,94 @@ def test_collect_timer_starters_includes_every_constructed_module() -> None:
         sensortask_dev.conn,
         sensortask_dev.ntp,
         sensortask_dev.webserver,
+        sensortask_dev.isl_reader,
     ):
         assert owner is not None
         for expected in owner.get_timer_starters():
             assert expected in starters, f"no timer starter bound to {owner!r}"
+
+
+# ---------------------------------------------------------------------------
+# The ISL29125 - dev's one permanent divergence from wozi (requirement 18)
+# ---------------------------------------------------------------------------
+
+
+def test_isl29125_sits_on_i2c1_beside_scd30_and_sgp40() -> None:
+    # dev_legacy/sensortask-dev.py:137 constructs it on i2c1 (15, 14), the same bus SCD30 and
+    # SGP40 share - not i2c0, which carries BMP3xx alone on this bench unit.
+    run(sensortask_dev.build_system(cfg_path=_tmp_cfg_dir()))
+    assert sensortask_dev.isl_reader is not None
+    assert sensortask_dev.isl_reader.isl.i2c_isl29125.i2c_device.i2c is sensortask_dev.i2c1
+    assert sensortask_dev.isl_reader.isl.i2c_isl29125.i2c_device.device_address == 0x44
+
+
+def test_isl29125_interrupt_pin_is_gpio6_with_the_internal_pull_up_enabled() -> None:
+    # The INT is open-drain pull-down (FN8424 p6), so the high level has to come from a resistor.
+    # The dev board has an external 10k; enabling the internal one too is harmless there and is
+    # what makes the driver work on a board that lacks it.
+    run(sensortask_dev.build_system(cfg_path=_tmp_cfg_dir()))
+    assert sensortask_dev.isl_reader is not None
+    pin = sensortask_dev.isl_reader.irq_pin
+    assert pin.id == 6
+    assert pin.mode == machine.Pin.IN
+    assert pin.pull == machine.Pin.PULL_UP
+
+
+def test_isl29125_contributes_two_error_sources_and_two_level_setters() -> None:
+    # The module itself plus its own ConfigManager ("CFGMGR_ISL29125") - the same pairing every
+    # other ConfigManager-backed module contributes.
+    run(sensortask_dev.build_system(cfg_path=_tmp_cfg_dir()))
+    assert sensortask_dev.isl_reader is not None
+    sources = sensortask_dev._collect_error_sources()
+    assert sensortask_dev.isl_reader in sources
+    assert sensortask_dev.isl_reader.cfgmgr in sources
+    assert len(sensortask_dev._collect_level_setters()) == len(_all_loggers())
+
+
+def test_isl29125_is_constructed_after_notify_service_so_chunks_one_to_seven_are_unmoved() -> None:
+    # The hard constraint, asserted as a property rather than trusted to a comment: AsyFramManager
+    # is a bump allocator, so its own allocated_size at the moment each module is constructed IS
+    # that module's on-chip address. The ISL's two chunks must be the LAST two allocated.
+    offsets: list[tuple[str, int]] = []
+    from asy_fram_manager import AsyFramManager
+
+    real_get_chunk = AsyFramManager.get_chunk
+    real_get_timestamped_chunk = AsyFramManager.get_timestamped_chunk
+
+    def _tracking_get_chunk(
+        self: "AsyFramManager", size: int, crc: "CRC_Base | None" = None, verify: int = 0, check_length: int = 8,
+    ) -> "AsyFramChunk | None":
+        offsets.append(("chunk", self.allocated_size))
+        return real_get_chunk(self, size, crc, verify, check_length)
+
+    def _tracking_get_timestamped_chunk(
+        self: "AsyFramManager", size: int, ntp_sync_callback: "Callable[[], Coroutine[Any, Any, bool]]",
+        crc: "CRC_Base | None" = None, verify: int = 0, check_length: int = 8,
+    ) -> "AsyFramTimestampedChunk | None":
+        offsets.append(("timestamped", self.allocated_size))
+        return real_get_timestamped_chunk(self, size, ntp_sync_callback, crc, verify, check_length)
+
+    AsyFramManager.get_chunk = _tracking_get_chunk  # type: ignore[method-assign]
+    AsyFramManager.get_timestamped_chunk = _tracking_get_timestamped_chunk  # type: ignore[method-assign]
+    try:
+        run(sensortask_dev.build_system(cfg_path=_tmp_cfg_dir()))
+    finally:
+        AsyFramManager.get_chunk = real_get_chunk  # type: ignore[method-assign]
+        AsyFramManager.get_timestamped_chunk = real_get_timestamped_chunk  # type: ignore[method-assign]
+    assert len(offsets) == 9
+    assert [kind for kind, _offset in offsets[7:]] == ["chunk", "timestamped"]
+    # Strictly increasing, and the first seven start where wozi's own seven do - chunk 1 at 0.
+    assert offsets[0][1] == 0
+    for index in range(1, len(offsets)):
+        assert offsets[index][1] > offsets[index - 1][1]
+
+
+def test_isl29125_maintenance_status_reports_the_two_flattened_keys() -> None:
+    run(sensortask_dev.build_system(cfg_path=_tmp_cfg_dir()))
+    status = run(sensortask_dev._isl_maintenance_status())
+    assert set(status) == {"GainRatio", "CalTS"}
+    assert status["CalTS"] is None  # nothing learned yet on a fresh unit
+    assert status["GainRatio"] is not None  # the nominal ratio, in use until one is learned
 
 
 def test_collect_task_starters_never_touches_start_and_check_tasks() -> None:
@@ -719,11 +817,11 @@ def test_webserver_measurements_and_sensors_get_include_every_real_sensor() -> N
     res = _dispatch("GET", "/measurements")
     assert res.status_code == 200
     measurements = json.loads(status_body(res))
-    assert_sensor_payload_not_self_wrapped(measurements, {"SCD30", "BMP3XX", "SGP40"})
+    assert_sensor_payload_not_self_wrapped(measurements, {"SCD30", "BMP3XX", "SGP40", "ISL29125"})
 
     res = _dispatch("GET", "/sensors")
     sensors = json.loads(status_body(res))
-    assert_sensor_payload_not_self_wrapped(sensors, {"SCD30", "BMP3XX", "SGP40"})
+    assert_sensor_payload_not_self_wrapped(sensors, {"SCD30", "BMP3XX", "SGP40", "ISL29125"})
 
 
 def test_webserver_sensors_put_round_trips_a_real_field_through_the_real_driver() -> None:
@@ -895,14 +993,17 @@ def test_webserver_status_get_reflects_the_real_object_graph() -> None:
     res = _dispatch("GET", "/status")
     body = json.loads(status_body(res))
     assert set(body.keys()) == {"networking", "system", "notification", "sensors", "errcount"}
-    assert set(body["sensors"].keys()) == {"SGP40"}  # only sensor with real maintenance data
+    assert set(body["sensors"].keys()) == {"SGP40", "ISL29125"}  # the two with real maintenance data
     assert "BackupTS" in body["sensors"]["SGP40"] and "RestoreTS" in body["sensors"]["SGP40"]
+    # js/render.js flattens these one level into ISL29125_GainRatio/ISL29125_CalTS, which is
+    # exactly how html/definitions/dev.json addresses them.
+    assert "GainRatio" in body["sensors"]["ISL29125"] and "CalTS" in body["sensors"]["ISL29125"]
     assert "SysUptime" in body["system"] and "LocalTime" in body["system"] and "UtcTime" in body["system"]
     assert "WifiUptime" in body["networking"] and "NtpSynced" in body["networking"]
     assert "Triggered" in body["notification"] and "PauseTime" in body["notification"]
     # One entry per real module + per real ConfigManager + this service's own "WEBSERVER" entry -
-    # same 16-owner enumeration _collect_level_setters()/_collect_error_sources() both share, plus one.
-    assert len(body["errcount"]) == 17
+    # same 18-owner enumeration _collect_level_setters()/_collect_error_sources() both share, plus one.
+    assert len(body["errcount"]) == 19
 
 
 def test_webserver_status_put_reset_errors_clears_a_real_modules_history() -> None:
@@ -972,7 +1073,7 @@ def test_is_hotspot_active_wiring_real_static_root_and_api_route_unaffected_in_h
 
     res = _dispatch("GET", "/measurements")
     assert res.status_code == 200
-    assert_sensor_payload_not_self_wrapped(json.loads(status_body(res)), {"SCD30", "BMP3XX", "SGP40"})
+    assert_sensor_payload_not_self_wrapped(json.loads(status_body(res)), {"SCD30", "BMP3XX", "SGP40", "ISL29125"})
 
 
 def test_is_hotspot_active_wiring_directory_traversal_still_404s_in_hotspot_mode() -> None:

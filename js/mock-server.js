@@ -20,7 +20,7 @@ const PAUSE_TIME_MAX = 3600; // matches src/asy_webserver_service.py's own _PAUS
 // is a direct hardware dispatch re-run whenever submitted, never compared against a stored value
 // or persisted like an ordinary settings field - modeled here instead of the generic store-and-echo
 // path, which would wrongly report "Unchanged" and echo back the raw PUT.
-const SENSOR_QUIRK_FIELDS = new Set(["ForceCalRef", "ContMeas", "SGPResetVOC"]);
+const SENSOR_QUIRK_FIELDS = new Set(["ForceCalRef", "ContMeas", "SGPResetVOC", "ISLResetCal"]);
 
 /**
  * @param {import("./definitions.js").FieldDef} field
@@ -232,8 +232,9 @@ function dispatchSensorQuirkField(field, rawValue) {
 
 /**
  * Applies SENSOR_QUIRK_FIELDS' real GET-readback behavior: `ForceCalRef` always reports the fixed
- * constant 400 (SCD30's volatile-register limitation); `ContMeas`/`SGPResetVOC` are omitted
- * entirely, matching the real schema's exclusion of both.
+ * constant 400 (SCD30's volatile-register limitation); `ContMeas`/`SGPResetVOC`/`ISLResetCal` are
+ * omitted entirely, matching the real schema's exclusion of all three - each is a command-only
+ * trigger that is never persisted, so echoing one back would make it look like a stored setting.
  * @param {Record<string, Record<string, unknown>>} sensorsConfig
  * @returns {Record<string, Record<string, unknown>>}
  */
@@ -241,7 +242,9 @@ function applySensorQuirksForGet(sensorsConfig) {
     /** @type {Record<string, Record<string, unknown>>} */
     const result = {};
     for (const [sensorKey, fields] of Object.entries(sensorsConfig)) {
-        const rest = Object.fromEntries(Object.entries(fields).filter(([key]) => key !== "ContMeas" && key !== "SGPResetVOC"));
+        const rest = Object.fromEntries(
+            Object.entries(fields).filter(([key]) => key !== "ContMeas" && key !== "SGPResetVOC" && key !== "ISLResetCal"),
+        );
         result[sensorKey] = "ForceCalRef" in rest ? { ...rest, ForceCalRef: 400 } : rest;
     }
     return result;
@@ -275,13 +278,21 @@ function envelope(result) {
 }
 
 /**
- * Nudges every numeric leaf in a plain (non-nested-object-of-objects) record by a small random
- * jitter, so polled values visibly move like a real sensor instead of sitting static. Timestamp-
- * looking keys (ending "TS" or named "Timestamp") always increment instead of jittering.
+ * Nudges every numeric leaf in a measurement record by a small random jitter, so polled values
+ * visibly move like a real sensor instead of sitting static. Timestamp-looking keys (ending "TS"
+ * or named "Timestamp") always increment instead of jittering.
+ *
+ * Recurses into a nested sub-object (`{"RGB": {"R": 0.5}}`), which the ISL29125's own body is the
+ * first to produce: without this those leaves would sit static forever, which reads as a broken
+ * renderer rather than as a mock-server gap.
  * @param {Record<string, unknown>} group
  */
 function jitterInPlace(group) {
     for (const [key, value] of Object.entries(group)) {
+        if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+            jitterInPlace(/** @type {Record<string, unknown>} */ (value));
+            continue;
+        }
         if (typeof value !== "number") {
             continue;
         }

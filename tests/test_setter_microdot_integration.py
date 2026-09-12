@@ -31,6 +31,7 @@ import api_response as ar
 import config_manager as cm
 from asy_bmp3xx_driver import BMP3xx_Reader
 from asy_i2c_driver import I2C
+from asy_isl29125_driver import ISL29125_Reader
 from asy_ntp_client import AsyNtpClient
 from asy_scd30_driver import SCD30_Reader
 from asy_sgp40_driver import SGP40_Reader
@@ -101,7 +102,7 @@ def _tmp_cfg_dir() -> str:
         os.mkdir(path)
     except OSError:
         pass  # already exists from a stale previous run
-    for stale in ("config_WIFI.cfg", "config_NTP.cfg", "config_BMP3XX.cfg", "config_SGP40.cfg"):
+    for stale in ("config_WIFI.cfg", "config_NTP.cfg", "config_BMP3XX.cfg", "config_SGP40.cfg", "config_ISL29125.cfg"):
         try:
             os.remove(path + "/" + stale)
         except OSError:
@@ -722,6 +723,94 @@ def test_real_microdot_sgp40_setter_end_to_end_write_fault_surfaces_as_failed_no
     assert body["result"] == {"BackupPeriod": "Failed", "SGPResetVOC": "Failed"}
     assert reader.reset is False  # nothing was persisted, so nothing was pushed live either
     assert run(reader.cfgmgr.get_dict(["BackupPeriod"])) == {"BackupPeriod": 1}  # still the default
+
+
+# ---------------------------------------------------------------------------
+# Real Microdot end-to-end for the ISL29125's setter surface - the fourth _set_dict_cfg-backed
+# sensor route. Two things here have no equivalent above: a cross-field constraint the schema
+# itself cannot express (AutoRangeDown <= AutoRangeUp/53.3), and a command-only trigger whose
+# repeatability actually matters, since a recalibration that finds nothing to discard has not
+# failed and must not drag _recover_failed_push() in behind it.
+# ---------------------------------------------------------------------------
+
+
+def make_isl_reader() -> "tuple[ISL29125_Reader, I2C]":
+    i2c = I2C(1, scl_pin=19, sda_pin=18, frequency=50000)
+    reader = ISL29125_Reader(i2c, 6, cfg_path=_tmp_cfg_dir())
+    run(reader.cfgmgr.setup())
+    return reader, i2c
+
+
+def _isl_app(reader: ISL29125_Reader) -> Microdot:
+    app = Microdot()
+
+    @app.put("/sensors/cmd")
+    async def sensor_cmd(request: Request) -> "ar.ResponseEnvelope":
+        data, err = ar.parse_cmd_request(request, ["setISL"])
+        if err is not None:
+            return err
+        assert data is not None
+        fields = {k: v for k, v in data.items() if k != "cmd"}
+        return await ar.handle_set_cmd(reader, fields, reader.get_cfg_schema())
+
+    return app
+
+
+def test_real_microdot_isl29125_setter_end_to_end_round_trips_a_software_knob() -> None:
+    reader, _i2c = make_isl_reader()
+    app = _isl_app(reader)
+    req = _make_request(app, "PUT", "/sensors/cmd", {"cmd": "setISL", "AutoRangeDwell": 30.0, "SampleInterv": 4})
+    res = run(app.dispatch_request(req))
+    assert res.status_code == 200
+    body = json.loads(res.body)
+    assert body["result"] == {"AutoRangeDwell": "Valid", "SampleInterv": "Valid"}
+    assert reader._ar_dwell_s == 30.0  # the live push really landed, not just the persisted value
+    assert run(reader.trigger_period.get_value()) == 4
+
+
+def test_real_microdot_isl29125_setter_end_to_end_rejects_a_cross_field_violation() -> None:
+    # The schema's own per-field min/max cannot express a relation between two fields, so this is
+    # the driver's own check surfacing through the real route: 3.0% is inside AutoRangeDown's own
+    # bounds and still illegal against the standing AutoRangeUp of 85%.
+    reader, _i2c = make_isl_reader()
+    app = _isl_app(reader)
+    req = _make_request(app, "PUT", "/sensors/cmd", {"cmd": "setISL", "AutoRangeDown": 3.0})
+    res = run(app.dispatch_request(req))
+    assert res.status_code == 200  # a rejected value is per-field detail, never a 500
+    body = json.loads(res.body)
+    assert body["res"] == "OK"
+    assert body["result"] == {"AutoRangeDown": "Failed"}
+    assert reader._ar_down == 1.5  # unchanged
+    # And the failed push was corrected back in storage rather than left at the rejected value.
+    assert run(reader.cfgmgr.get_dict(["AutoRangeDown"])) == {"AutoRangeDown": 1.5}
+
+
+def test_real_microdot_isl29125_setter_end_to_end_reset_cal_is_a_repeatable_trigger() -> None:
+    # SPECIFICATION.md Part C.5.2.1 obligation 3: a special-alone command field always reports
+    # Valid once the type check passes. Fired twice in a row, through the real route.
+    reader, _i2c = make_isl_reader()
+    app = _isl_app(reader)
+    for _ in range(2):
+        req = _make_request(app, "PUT", "/sensors/cmd", {"cmd": "setISL", "ISLResetCal": True})
+        res = run(app.dispatch_request(req))
+        assert res.status_code == 200
+        assert json.loads(res.body)["result"] == {"ISLResetCal": "Valid"}
+    # Never persisted: get_dict() is all-or-nothing per key, so asking for it returns None.
+    assert run(reader.cfgmgr.get_dict(["ISLResetCal"])) is None
+
+
+def test_real_microdot_isl29125_setter_end_to_end_bus_fault_surfaces_as_failed_not_500() -> None:
+    # Unlike the SGP40 above, this driver's hardware-backed fields really do touch the bus on the
+    # request path, so a dead sensor has to come back as per-field "Failed" rather than a raise.
+    reader, i2c = make_isl_reader()
+    _nak_i2c_address(i2c, 0x44)
+    app = _isl_app(reader)
+    req = _make_request(app, "PUT", "/sensors/cmd", {"cmd": "setISL", "IrCompAdjust": 55})
+    res = run(app.dispatch_request(req))
+    assert res.status_code == 200
+    body = json.loads(res.body)
+    assert body["res"] == "OK"
+    assert body["result"] == {"IrCompAdjust": "Failed"}
 
 
 # ---------------------------------------------------------------------------

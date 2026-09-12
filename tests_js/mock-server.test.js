@@ -30,6 +30,15 @@ const DEFS = {
                     submit: true,
                     fields: [{ key: "SGPResetVOC", label: "Reset VOC Index", kind: "toggle" }],
                 },
+                {
+                    key: "ISL29125",
+                    label: "ISL29125",
+                    submit: true,
+                    fields: [
+                        { key: "IrCompAdjust", label: "IR Compensation Adjust", kind: "number", min: 0, max: 63 },
+                        { key: "ISLResetCal", label: "Reset Gain Calibration", kind: "toggle" },
+                    ],
+                },
             ],
         },
         {
@@ -126,8 +135,11 @@ const DEFS = {
 };
 
 const DATA = {
-    measurements: { SCD30: { CO2: 600, TS: 1000, Model: "SCD30" } },
-    sensorsConfig: { SCD30: { MeasInt: 5, ForceCalRef: 400 }, SGP40: {} },
+    measurements: {
+        SCD30: { CO2: 600, TS: 1000, Model: "SCD30" },
+        ISL29125: { Lux: 300, RGB: { R: 0.02, G: 0.03, B: 0.01 }, CCT: null, TS: 1000 },
+    },
+    sensorsConfig: { SCD30: { MeasInt: 5, ForceCalRef: 400 }, SGP40: {}, ISL29125: { IrCompAdjust: 40 } },
     networkingConfig: { Hostname: "wozi", PW: "hunter2hunter2" },
     systemConfig: {},
     notificationConfig: {},
@@ -386,6 +398,39 @@ describe("installMockFetch", () => {
         expect(body.SCD30.Model).toBe("SCD30"); // non-number leaf: untouched
         expect(body.SCD30.CO2).toBeGreaterThan(590);
         expect(body.SCD30.CO2).toBeLessThan(610);
+    });
+
+    it("jitters a nested measurement sub-object's leaves too, not just the top level", async () => {
+        // The ISL29125's body is the first with a third level ({"RGB": {"R": ...}}). Without the
+        // recursion those leaves sit perfectly static forever, which reads as a broken renderer.
+        uninstall = installMockFetch(DEFS, DATA);
+        const body = await (await fetch("/measurements")).json();
+
+        expect(body.ISL29125.TS).toBe(1001); // top-level timestamp: still exactly +1
+        expect(body.ISL29125.CCT).toBeNull(); // a null leaf is not a number - left alone
+        for (const channel of ["R", "G", "B"]) {
+            expect(typeof body.ISL29125.RGB[channel]).toBe("number");
+        }
+        // The jitter floor is 0.05, so a 0.02-0.03 value really does move, and visibly.
+        expect(body.ISL29125.RGB.R).not.toBe(0.02);
+    });
+
+    it("omits the command-only ISLResetCal from GET readback, as it already does for ContMeas/SGPResetVOC", async () => {
+        uninstall = installMockFetch(DEFS, DATA);
+        const accepted = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ ISL29125: { ISLResetCal: true } }) });
+        expect((await accepted.json()).result.ISL29125.ISLResetCal).toBe("Valid");
+
+        const body = await (await fetch("/sensors")).json();
+        expect("ISLResetCal" in body.ISL29125).toBe(false); // never echoed back as if persisted
+        expect(body.ISL29125.IrCompAdjust).toBe(40); // its neighbours are unaffected
+    });
+
+    it("accepts ISLResetCal repeatedly - it is a trigger, not a one-shot", async () => {
+        uninstall = installMockFetch(DEFS, DATA);
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+            const res = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ ISL29125: { ISLResetCal: true } }) });
+            expect((await res.json()).result.ISL29125.ISLResetCal).toBe("Valid");
+        }
     });
 
     it("silently ignores a PUT /sensors group key that isn't a real sensor, applying the real ones normally", async () => {

@@ -16,17 +16,18 @@ import { collectPutFieldCases } from "./_put_field_cases.js";
 /** @typedef {import("./_put_field_cases.js").PutFieldCase & {data: MockDeviceData}} PutFieldCase */
 
 // Shared driver/module field sets - identical between devices, so only wozi's copy is exercised.
-// Currently matches zero of dev's real groups (SCD30/SGP40/BMP3XX, same three drivers as wozi - the
-// two devices' only real difference today is I2C bus pairing, which the JSON definitions don't
-// encode) - that's expected, not a bug: project-owner direction (2026-09-08) is to keep this
-// mechanism as-is for when dev gains its own unique sensor(s) later, not to prune it now.
+// ISL29125 is the sensor this mechanism was kept for (project-owner direction, 2026-09-08): dev
+// now really does carry a driver wozi does not, so every one of its writable fields generates a
+// real case here from html/definitions/dev.json + mockdata/dev.json together. SHTC3 and MPRLS stay
+// listed as the placeholders they always were - the two devices' other difference is I2C bus
+// pairing, which the JSON definitions do not encode.
 const DEV_UNIQUE_GROUPS = new Set(["SHTC3", "MPRLS", "ISL29125"]);
 
 // GET never reflects what this generic matrix's "resubmit -> Unchanged"/"valid value -> reflected
 // in GET" categories assume (SPECIFICATION.md Part H.4's mock-server-quirks note) - excluded here
 // only, not via _put_field_cases.js's shared DISPATCH_ONLY_KEYS, since
 // tests_js/live-backend-put-matrix.test.js also consumes that list and covers these fields for real.
-const GET_READBACK_QUIRK_FIELDS = new Set(["ForceCalRef", "ContMeas", "SGPResetVOC", "PW"]);
+const GET_READBACK_QUIRK_FIELDS = new Set(["ForceCalRef", "ContMeas", "SGPResetVOC", "ISLResetCal", "PW"]);
 
 /**
  * @param {string} device

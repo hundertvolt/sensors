@@ -11,6 +11,7 @@
  *   mask?: boolean, options?: EnumOption[], specialValues?: SpecialValue[],
  *   subFields?: FieldDef[], onLabel?: string, offLabel?: string,
  *   format?: "gmtimestruct", float?: boolean, dispatch?: boolean, defaultValue?: unknown,
+ *   path?: string[], decimals?: number,
  * }} FieldDef
  * @typedef {{key: string, label: string, fields: FieldDef[], submit?: boolean, submitLabel?: string}} FieldGroup
  * @typedef {{key: string, label: string, kind: "errcount", modules: {key: string, label: string}[]}} ErrcountGroup
@@ -61,12 +62,31 @@ export const SUPPORTED_SCHEMA_MAJOR = 1;
  * A field's effective current value: the real value from `currentValues` when GET reported one,
  * otherwise `field.defaultValue`, otherwise `undefined`. Callers use this instead of reading
  * `currentValues[field.key]` directly, so rendering and change-comparison never drift apart.
+ *
+ * `field.path` walks a nested measurement body (`{"RGB": {"R": 0.5}}`) one or more levels down
+ * instead of doing the flat `key` lookup - readonly fields only, since a PUT body is always flat.
+ * A path that is present but does not resolve yields `undefined` (rendered as an em dash), never
+ * a partially-walked sub-object leaking into `formatFieldValue()` as `[object Object]`.
  * @param {FieldDef} field
  * @param {Record<string, unknown>} currentValues
  * @returns {unknown}
  */
 export function resolveFieldValue(field, currentValues) {
-    const value = currentValues[field.key];
+    let value;
+    if (Array.isArray(field.path) && field.path.length > 0) {
+        /** @type {unknown} */
+        let cursor = currentValues;
+        for (const step of field.path) {
+            if (typeof cursor !== "object" || cursor === null) {
+                cursor = undefined;
+                break;
+            }
+            cursor = /** @type {Record<string, unknown>} */ (cursor)[step];
+        }
+        value = cursor;
+    } else {
+        value = currentValues[field.key];
+    }
     return value === undefined ? field.defaultValue : value;
 }
 
@@ -150,11 +170,46 @@ export function validateDefinitions(data) {
             }
             if (!Array.isArray(g.fields)) {
                 problems.push(`${gWhere}.fields must be an array`);
+                continue;
+            }
+            for (const [fIndex, field] of g.fields.entries()) {
+                problems.push(...validateFieldHints(field, `${gWhere}.fields[${fIndex}]`));
             }
         }
     }
     if (defs.landingSection !== undefined && !sectionKeys.has(defs.landingSection)) {
         problems.push(`landingSection "${defs.landingSection}" does not match any section key`);
+    }
+    return problems;
+}
+
+/**
+ * Validates the two display-only hints a nested, precision-declared readonly field carries.
+ * Accepting either needs no validator change at all - nothing here inspected field-level keys
+ * before - but this file's contract is to fail loudly rather than in the browser, so a malformed
+ * `path`/`decimals` has to surface here.
+ * @param {unknown} field
+ * @param {string} where
+ * @returns {string[]}
+ */
+function validateFieldHints(field, where) {
+    /** @type {string[]} */
+    const problems = [];
+    if (typeof field !== "object" || field === null) {
+        return problems;  // the group-level shape checks above already own this case
+    }
+    const f = /** @type {Record<string, unknown>} */ (field);
+    if (f.path !== undefined) {
+        if (!Array.isArray(f.path) || f.path.length === 0 || !f.path.every((step) => typeof step === "string" && step !== "")) {
+            problems.push(`${where}.path must be a non-empty array of non-empty strings when present`);
+        } else if (f.kind !== "readonly") {
+            // A PUT body is always flat, so a path on a writable field would render one value and
+            // submit a different one.
+            problems.push(`${where}.path is only valid on a readonly field, not kind "${String(f.kind)}"`);
+        }
+    }
+    if (f.decimals !== undefined && (typeof f.decimals !== "number" || !Number.isInteger(f.decimals) || f.decimals < 0)) {
+        problems.push(`${where}.decimals must be a non-negative integer when present`);
     }
     return problems;
 }

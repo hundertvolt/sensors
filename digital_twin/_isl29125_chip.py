@@ -88,6 +88,12 @@ class Isl29125Chip:
         self._gain_ratio = gain_ratio
         self._dark_counts = dark_counts  # DDark, p3: typ 1 / max 5 counts at range 0, 16 bits
         self._int_pin = int_pin
+        if int_pin is not None:
+            # The line idles HIGH: it is open-drain pull-down with an external pull-up (p6), and
+            # machine.py's Pin comes up at 0. Without this the line starts electrically asserted,
+            # so the first real crossing produces no falling EDGE at all and the driver's handler
+            # never runs - a silent, whole-mechanism failure with nothing to point at.
+            int_pin.simulate_edge(1)
         self.fault = FaultInjector()
         self._config = bytearray(3)  # CONFIG1-3, all 0x00 at power-on (p9-p11, Tables 3/8/10)
         self._threshold_low = 0x0000  # p12, Table 14's own documented defaults

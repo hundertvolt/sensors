@@ -2248,6 +2248,28 @@ def test_i1_many_entries_are_coalesced_into_size_bounded_batches_not_one_growing
     assert json.loads(b"".join(encoded)) == result
 
 
+def test_i1_a_two_level_measurement_value_serialises_correctly_and_is_not_re_wrapped() -> None:
+    # asy_isl29125_driver.py is the first driver whose measurement body nests one level deeper
+    # ({"ISL29125": {"RGB": {"R": ...}}}) - _stream_dict_response() does one json.dumps() per
+    # TOP-LEVEL value, so a nested value has to come through intact and exactly once, neither
+    # flattened nor double-encoded into a JSON string.
+    result = {
+        "ISL29125": {
+            "Lux": 123.45,
+            "RGB": {"R": 0.1234, "G": 0.2345, "B": 0.3456},
+            "HSB": {"H": 217.4, "S": 0.512, "B": 0.3456},
+            "CCT": None,
+            "RangeAct": 10000,
+            "TS": 1789230685,
+        },
+    }
+    # status_body() drains res.body, which is a generator - read it once, assert on the result.
+    body = json.loads(status_body(run(_stream_dict_response(result))))
+    assert body == result
+    assert isinstance(body["ISL29125"]["RGB"], dict)  # a dict, not the string '{"R": 0.1234, ...}'
+    assert body == json.loads(Response(result).body)  # byte-for-byte Microdot's own dict path
+
+
 def test_i1_a_key_with_special_characters_is_correctly_escaped_not_hand_concatenated() -> None:
     result = {'Weird"Key': 1}
     res = run(_stream_dict_response(result))

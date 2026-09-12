@@ -4,7 +4,14 @@
         "SGP40": { "VOC": 95, "Raw": 28850, "TS": 1755000000 },
         "SHTC3": { "Temp": 23.3, "Hum": 39.1, "WetBulb": 15.8, "DewPoint": 8.4, "TS": 1755000000 },
         "MPRLS": { "Pres": 1002.9, "TS": 1755000000 },
-        "ISL29125": { "Red": 1840, "Green": 2210, "Blue": 990, "TS": 1755000000 }
+        "ISL29125": {
+            "Lux": 337.42,
+            "RGB": { "R": 0.0281, "G": 0.0337, "B": 0.0151 },
+            "HSB": { "H": 78.4, "S": 0.552, "B": 0.0337 },
+            "CCT": 4180,
+            "RangeAct": 10000,
+            "TS": 1755000000
+        }
     },
     "sensorsConfig": {
         "SCD30": { "MeasInt": 10, "TempOffs": 1.5, "AmbPres": 950, "Altitude": 0, "ForceCalRef": 400, "SelfCal": false },
@@ -12,9 +19,10 @@
         "SHTC3": { "SampleInterv": 10, "TempOffset": 0.0, "FiltCoeff": 0.2 },
         "MPRLS": { "SampleInterv": 10, "PressOffset": 0.0, "FiltCoeff": -1.0 },
         "ISL29125": {
-            "SampleInterv": 5, "OperationMode": 5, "SensingRange": 1, "AdcResolution": 0,
-            "IrCompensation": -1, "InterruptAssignment": 0, "InterruptHighThres": 0,
-            "InterruptLowThres": 0, "InterruptAutoClear": -1, "PersistentControl": 0
+            "SampleInterv": 5, "Resolution": 16, "RangeAuto": true, "Range": 10000,
+            "AutoRangeUp": 85.0, "AutoRangeDown": 1.5, "AutoRangeSettle": 1,
+            "AutoRangePersist": 4, "AutoRangeDwell": 10.0,
+            "IrCompOffset": 0, "IrCompAdjust": 40, "FiltCoeff": -1.0, "ISLResetCal": false
         }
     },
     "networkingConfig": {
@@ -37,7 +45,10 @@
             "LocalTime": { "year": 2025, "month": 8, "mday": 12, "hour": 9, "minute": 14, "second": 3, "weekday": 1 },
             "UtcTime": { "year": 2025, "month": 8, "mday": 12, "hour": 8, "minute": 14, "second": 3, "weekday": 1 }
         },
-        "sensors": { "SGP40": { "BackupTS": 1754997000, "RestoreTS": 0 } },
+        "sensors": {
+            "SGP40": { "BackupTS": 1754997000, "RestoreTS": 0 },
+            "ISL29125": { "GainRatio": 25.914, "CalTS": 1754997600 }
+        },
         "notification": { "Triggered": false, "TS": 0, "PauseTime": 0 },
         "errcount": {
             "WIFI": { "counter": 0, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }] },

@@ -51,7 +51,21 @@ const DEFS = {
             label: "Measurements",
             rest: { get: "/measurements" },
             pollGroup: "live",
-            groups: [{ key: "SCD30", label: "SCD30", fields: [{ key: "CO2", label: "CO2", unit: "ppm", kind: "readonly" }] }],
+            groups: [
+                { key: "SCD30", label: "SCD30", fields: [{ key: "CO2", label: "CO2", unit: "ppm", kind: "readonly" }] },
+                {
+                    // A nested, precision-declared measurement group - the shape the ISL29125's
+                    // own body introduced (SPECIFICATION.md Part H.5's `path`/`decimals` hints).
+                    key: "COLOUR",
+                    label: "Colour",
+                    fields: [
+                        { key: "Lux", label: "Illuminance", unit: "lx", kind: "readonly", decimals: 2 },
+                        { key: "R", label: "Red", kind: "readonly", path: ["RGB", "R"], decimals: 4 },
+                        { key: "Bri", label: "Brightness", kind: "readonly", path: ["HSB", "B"], decimals: 4 },
+                        { key: "CCT", label: "Colour Temperature", unit: "K", kind: "readonly", decimals: 0 },
+                    ],
+                },
+            ],
         },
         {
             key: "sensors",
@@ -140,7 +154,10 @@ function getSection(key) {
 }
 
 const DATA = {
-    measurements: { SCD30: { CO2: 600 } },
+    measurements: {
+        SCD30: { CO2: 600 },
+        COLOUR: { Lux: 337.4219, RGB: { R: 0.02814159, G: 0.0337, B: 0.0151 }, HSB: { H: 78.4, S: 0.552, B: 0.0337 }, CCT: null },
+    },
     sensorsConfig: { SCD30: { MeasInt: 5, COffset: 10, MeasEnabled: true, Oversampling: 1 } },
     networkingConfig: {},
     systemConfig: {},
@@ -196,6 +213,29 @@ describe("renderSection", () => {
         const value = mustQuery(main, '[data-field-key="CO2"]');
         expect(Number(value.textContent)).toBeGreaterThan(590);
         expect(Number(value.textContent)).toBeLessThan(610);
+    });
+
+    it("renders a nested measurement field's own leaf at its declared precision, not [object Object]", async () => {
+        // The full path the ISL29125 introduced: definitions.js walks field.path, field-format.js
+        // applies field.decimals, and templates.js renders the result - with nothing in src/
+        // rounding anything on the way.
+        uninstall = installMockFetch(DEFS, DATA);
+        const main = mount();
+        stop = renderSection(DEFS, getSection("measurements"), main);
+
+        await waitFor(() => main.querySelector('[data-field-key="R"]') !== null);
+
+        const red = mustQuery(main, '[data-field-key="R"]').textContent ?? "";
+        expect(red).not.toContain("object");
+        expect(red).toMatch(/^\d\.\d{4}$/); // exactly 4 decimals, per the field's own hint
+        const brightness = mustQuery(main, '[data-field-key="Bri"]').textContent ?? "";
+        expect(brightness).toMatch(/^\d\.\d{4}$/);
+        // RGB.B and HSB.B are different values under the same leaf name - which is the whole
+        // reason the measurement body is nested rather than flattened.
+        expect(brightness).not.toBe(red);
+        expect(mustQuery(main, '[data-field-key="Lux"]').textContent).toMatch(/^\d+\.\d{2}$/);
+        // A null CCT (a dark room) stays an em dash rather than becoming "null" or 0.
+        expect(mustQuery(main, '[data-field-key="CCT"]').textContent).toBe("\u2014");
     });
 
     it("renders a writable number field pre-filled via its current-value caption, and a toggle button", async () => {
