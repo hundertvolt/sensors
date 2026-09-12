@@ -1,20 +1,6 @@
-"""Middle integration tier: builds the real sensortask_wozi object graph against the real digital_twin buses and drives real REST traffic over a real socket, but only ever starts the specific tasks each test needs - never the full start_and_check_tasks() supervisor, with one deliberate exception (the task-supervisor-restart section below, whose whole point is that real supervisor loop). See digital_twin/README.md's "Swapping the twin in" section for the full account, including the sys.path.insert(0, "digital_twin") mechanism and a real bug this tier already found.
-Construction/wiring/REST-shape coverage is parametrized across all 6 real devices (the "Construction
-across every real device" section below, BUILD_CHAIN_PLAN.md's Session 6.2) - those checks are fast
-(no real wall-clock waits) and their expected sensor/module set is derived reflectively, the same
-"never a hardcoded wozi/dev 3-sensor literal" principle tests/test_sensortask.py's own collapse
-already established. The rest of this file's own tests (WiFi/DNS hotspot fallback, watchdog
-escalation, task-supervisor restart, SGP40 VOC-backup reboot survival x2, mempause) stay scoped to
-wozi specifically - a deliberate scope decision, not an oversight: each one drives several real
-seconds-to-tens-of-seconds wall-clock waits (real Timers, real background tasks, a real simulated
-reboot), and every one of them exercises only mandatory infrastructure (conn/ntp/sysfunct/fram) plus
-SCD30/SGP40 - present on every real device, never bmp3xx - so the underlying mechanism they prove is
-already device-independent; measured directly, running this file's full battery against all 6
-devices would take roughly 6x its own single-device wall time (~40s), overrunning
-scripts/test.sh's own 180s per-file timeout with no real margin. Wiring a genuine per-device CI
-matrix for just this one file's heavy tests (mirroring scripts/run_digital_twin_ci.sh's own
-per-device matrix) was judged out of proportion to what a bmp3xx-blind mechanism actually needs
-proven six times over."""
+"""Middle integration tier: builds the real sensortask_wozi object graph against real digital_twin
+buses, driving real REST traffic while starting only the tasks each test needs (the task-supervisor-
+restart section below is the one exception). See digital_twin/README.md and this file's own section comments for the full account, including device-scope reasoning and a real bug this tier already found."""
 
 import asyncio
 import gc
@@ -862,14 +848,23 @@ def test_mempause_over_real_http_reaches_the_real_fram_manager_and_unpauses() ->
 
 # ---------------------------------------------------------------------------
 # Construction across every real device (BUILD_CHAIN_PLAN.md's Session 6.2) - fast, no real
-# wall-clock waits, so parametrized across all 6 real devices with no CI-budget concern (unlike the
-# heavier tests above - see this file's own module docstring for the measured reasoning). Covers
+# wall-clock waits, so parametrized across all 6 real devices with no CI-budget concern. Covers
 # exactly what test_build_system_boots_against_the_real_twin_buses_without_exception/
 # test_every_get_endpoint_is_reachable_over_real_http_and_shaped_correctly/
 # test_a_real_bus_fault_degrades_to_a_clean_response_not_a_crash used to check for wozi alone,
 # generalized: the expected optional-instance/sensor set is derived reflectively from the booted
 # module's own attributes, and the bus-fault test resolves SGP40's own bus from the device's real
 # wiring plan instead of assuming i2c1.
+#
+# The rest of this file's tests (WiFi/DNS hotspot fallback, watchdog escalation, task-supervisor
+# restart, SGP40 VOC-backup reboot survival x2, mempause) stay scoped to wozi specifically - a
+# deliberate decision, not an oversight: each drives several real seconds-to-tens-of-seconds
+# wall-clock waits through mandatory infrastructure plus SCD30/SGP40 only (never bmp3xx, present
+# on every device), so the mechanism they prove is already device-independent; measured directly,
+# running this file's full battery against all 6 devices would take roughly 6x its own
+# single-device wall time (~40s), overrunning scripts/test.sh's own 180s per-file timeout with no
+# real margin. Wiring a genuine per-device CI matrix for just this file's heavy tests was judged
+# out of proportion to what a bmp3xx-blind mechanism actually needs proven six times over.
 # ---------------------------------------------------------------------------
 
 _PARAM_SCENARIOS: "list[tuple[str, Callable[[str], None]]]" = []

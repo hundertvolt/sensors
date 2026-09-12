@@ -1046,7 +1046,7 @@ script quality bar" below, not repeated here.
         no-real-wall-clock-wait scenarios (construction/module-list check, GET
         `/measurements`+`/sensors` sensor-shape check, a real injected bus fault degrading cleanly)
         moved into a new "Construction across every real device" section and are now parametrized
-        across all 6 real devices (30 tests total, confirmed real run time ~43.8s, a ~3.5s increase
+        across all 6 real devices (18 tests total, confirmed real run time ~43.8s, a ~3.5s increase
         over the original single-device ~40.3s baseline). This file's other ~11 tests (WiFi/DNS
         hotspot fallback, watchdog escalation, task-supervisor restart, SGP40 VOC-backup reboot
         survival x2, mempause) stay wozi-scoped deliberately: each drives several real
