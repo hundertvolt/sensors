@@ -21,7 +21,10 @@ _BITS_12 = 0x10
 _INTSEL_GREEN = 0x01
 
 _STATUS_RGBTHF = 0x01
+_STATUS_CONVENF = 0x02
 _STATUS_BOUTF = 0x04
+_STATUS_RGBCF_MASK = 0x30
+_DEVICE_ID = 0x7D
 
 
 class _FixedRandom:
@@ -116,8 +119,18 @@ def test_reset_command_restores_every_default() -> None:
     chip.handle_writeto_mem(_ADDR_ID, bytes([0x46]))
     assert chip.handle_readfrom_mem(_ADDR_CONFIG1, 3) == bytes([0x00, 0x00, 0x00])
     assert chip.handle_readfrom_mem(_ADDR_THRESH, 4) == bytes([0x00, 0x00, 0xFF, 0xFF])
-    # BOUTF comes back HIGH: Table 15 documents 0x04 as this register's own default, so a reset
-    # restores it exactly like a power-up does. The driver's own reset verify has to tolerate it.
+    # BOUTF stays CLEAR: measured on real silicon (2026-09-12), the status register reads 0x00
+    # straight after the 0x46 command. Table 15's 0x04 is the POWER-ON default (p12 says "during
+    # the initial power-up"), which simulate_brownout() models instead - see the test below.
+    assert not chip.handle_readfrom_mem(_ADDR_STATUS, 1)[0] & _STATUS_BOUTF
+
+
+def test_a_supply_brownout_raises_the_flag_the_reset_command_does_not() -> None:
+    chip = make_chip()
+    chip.handle_writeto_mem(_ADDR_STATUS, bytes([0x00]))  # clear the power-on BOUTF
+    chip.handle_writeto_mem(_ADDR_ID, bytes([0x46]))
+    assert not chip.handle_readfrom_mem(_ADDR_STATUS, 1)[0] & _STATUS_BOUTF
+    chip.simulate_brownout()
     assert chip.handle_readfrom_mem(_ADDR_STATUS, 1)[0] & _STATUS_BOUTF
 
 
@@ -363,6 +376,79 @@ def test_cycle_time_follows_the_configured_resolution() -> None:
     assert chip.cycle_ms() == 303  # 3 x tINT, tINT = 101ms at 16 bits (p3)
     configure(chip, _MODE_RGB | _BITS_12)
     assert chip.cycle_ms() == 19  # 3 x ~6.3ms, derived from p6's n-bit-counter model
+
+
+# ---------------------------------------------------------------------------
+# Register-map behaviours measured against real silicon (2026-09-12) - see the
+# "ISL29125 mock conformance" section of tests_hardware/README.md for the probe.
+# ---------------------------------------------------------------------------
+
+
+def test_the_address_pointer_walks_the_whole_map_in_one_burst() -> None:
+    # Real silicon: a 16-byte read from 0x00 returns id, CONFIG1-3, both thresholds, the status
+    # byte and all six data bytes - one flat pointer, not one block per register group.
+    chip = make_chip()
+    configure(chip, _MODE_RGB, 0x28, 0x00)
+    chip.handle_writeto_mem(_ADDR_THRESH, bytes([0x34, 0x12, 0xCD, 0xAB]))
+    chip.set_illumination(200.0)
+    walk = chip.handle_readfrom_mem(_ADDR_ID, 16)
+    assert walk[0] == _DEVICE_ID
+    assert walk[1:4] == bytes([_MODE_RGB, 0x28, 0x00])
+    assert walk[4:8] == bytes([0x34, 0x12, 0xCD, 0xAB])
+    assert walk[9:15] == bytes(chip.handle_readfrom_mem(_ADDR_DATA, 6))
+    assert walk[15] == 0x00  # past 0x0E the pointer stops - it does NOT roll over to the id
+
+
+def test_a_burst_starting_mid_map_keeps_walking_across_the_block_boundary() -> None:
+    chip = make_chip()
+    configure(chip, _MODE_RGB, 0x28, 0x00)
+    chip.handle_writeto_mem(_ADDR_THRESH, bytes([0x34, 0x12, 0xCD, 0xAB]))
+    assert chip.handle_readfrom_mem(_ADDR_CONFIG2, 6) == bytes([0x28, 0x00, 0x34, 0x12, 0xCD, 0xAB])
+
+
+def test_a_read_past_the_last_register_pads_with_zeros_rather_than_rolling_over() -> None:
+    chip = make_chip()
+    configure(chip, _MODE_RGB)
+    chip.set_illumination(200.0)
+    tail = chip.handle_readfrom_mem(0x0D, 8)
+    assert tail[2:] == bytes(6)
+
+
+def test_reserved_config_bits_read_back_zero_rather_than_what_was_written() -> None:
+    # Measured: 0xFF into each config register reads back 3f / bf / 1f.
+    chip = make_chip()
+    configure(chip, 0xFF, 0xFF, 0xFF)
+    assert chip.handle_readfrom_mem(_ADDR_CONFIG1, 3) == bytes([0x3F, 0xBF, 0x1F])
+
+
+def test_convenf_is_set_by_a_completed_conversion_and_cleared_by_the_status_read() -> None:
+    chip = make_chip()
+    configure(chip, _MODE_RGB)
+    chip.set_illumination(200.0)  # drives one conversion to completion
+    assert chip.handle_readfrom_mem(_ADDR_STATUS, 1)[0] & _STATUS_CONVENF
+    assert not chip.handle_readfrom_mem(_ADDR_STATUS, 1)[0] & _STATUS_CONVENF  # read-to-clear
+    chip.set_illumination(210.0)
+    assert chip.handle_readfrom_mem(_ADDR_STATUS, 1)[0] & _STATUS_CONVENF  # and set again
+
+
+def test_the_status_read_leaves_the_rgbcf_field_alone() -> None:
+    # RGBTHF and CONVENF are read-to-clear; the channel-under-conversion field is not.
+    chip = make_chip()
+    configure(chip, _MODE_RGB)
+    chip.set_illumination(200.0)
+    first = chip.handle_readfrom_mem(_ADDR_STATUS, 1)[0]
+    assert chip.handle_readfrom_mem(_ADDR_STATUS, 1)[0] & _STATUS_RGBCF_MASK == first & _STATUS_RGBCF_MASK
+
+
+def test_powering_down_stops_the_conversion_fields_but_keeps_the_data() -> None:
+    # Real silicon reads a flat 0x00 here: no conversion in progress, none completed.
+    chip = make_chip()
+    configure(chip, _MODE_RGB)
+    chip.set_illumination(200.0)
+    held = read_counts(chip)
+    configure(chip, 0x00)  # power-down
+    assert chip.handle_readfrom_mem(_ADDR_STATUS, 1)[0] & (_STATUS_CONVENF | _STATUS_RGBCF_MASK) == 0
+    assert read_counts(chip) == held
 
 
 if __name__ == "__main__":

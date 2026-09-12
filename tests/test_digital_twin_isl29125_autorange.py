@@ -424,7 +424,7 @@ def test_a_real_brownout_is_detected_reconfigured_and_recovered_from() -> None:
 
     async def scenario() -> "tuple[ISL29125, ISL29125, ErrorLog]":
         good = await cycle(chip, reader, 200.0)
-        chip._reset()  # what a supply dip does: every register back to its power-on default
+        chip.simulate_brownout()  # a supply dip: power-on defaults AND BOUTF high, unlike 0x46
         recovering = await cycle(chip, reader, 200.0)
         recovered = await cycle(chip, reader, 200.0)
         assert recovering.Lux == good.Lux  # the brownout cycle stored nothing new

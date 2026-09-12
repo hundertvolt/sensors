@@ -42,14 +42,22 @@ _CONFIG1_RNG = 0x08  # p10, Table 5: 0 = 375 lux, 1 = 10000 lux
 _CONFIG1_BITS = 0x10  # p10, Table 6: 0 = 16-bit, 1 = 12-bit
 _MODES_WITH_CONVERSION = (0x01, 0x02, 0x03, 0x05, 0x06, 0x07)  # p10, Table 4 (0 = power-down, 4 = standby)
 
+# Reserved bits read back ZERO, they do not hold what was written (measured on real silicon
+# 2026-09-12: writing 0xFF reads back 3f/bf/1f). p9's own "all RESERVED bits are Intersil used bits
+# ONLY" permits either, so this is a measurement, not a datasheet deduction.
+_CONFIG_MASKS = (0x3F, 0xBF, 0x1F)  # CONFIG1 B7:6, CONFIG2 B6, CONFIG3 B7:5
+
 _CONFIG3_INTSEL_MASK = 0x03  # p11, Table 11: 00 none, 01 green, 10 red, 11 blue
 _CONFIG3_PRST_MASK = 0x0C  # p11, Table 12: 1/2/4/8 integration cycles
 _PRST_CYCLES = (1, 2, 4, 8)
 
 _STATUS_RGBTHF = 0x01  # p12, Table 16
+_STATUS_CONVENF = 0x02  # p12, Table 17 - set when a conversion completes, cleared by the status read
 _STATUS_BOUTF = 0x04  # p12, Table 18 - HIGH at power-up by design
 _STATUS_RGBCF_SHIFT = 4  # p12, Table 19
+_STATUS_RGBCF_MASK = 0x30
 _STATUS_POR = 0x04  # p12, Table 15's own documented default
+_LAST_REGISTER = 0x0E  # 0x00-0x0E is the whole map; the pointer stops here rather than rolling over
 
 _FS_LOW_LUX = 375.0  # p10, Table 5 - the low range is the gain reference the ratio is measured against
 _FULL_SCALE_COUNTS = 65535.0  # p3, Electrical Specifications: "Full Scale ADC Code, ADC 16 bits"
@@ -174,7 +182,8 @@ class Isl29125Chip:
         # Double buffered, so the write above is atomic from the bus's point of view (p13). RGBCF
         # reports which channel the next conversion is on; rotated so it is never a constant.
         next_channel = ((self._status >> _STATUS_RGBCF_SHIFT) % 3) + 1
-        self._status = (self._status & ~0x30) | (next_channel << _STATUS_RGBCF_SHIFT)
+        self._status = (self._status & ~_STATUS_RGBCF_MASK) | (next_channel << _STATUS_RGBCF_SHIFT)
+        self._status |= _STATUS_CONVENF  # "conversion completed" (p12, Table 17)
         self._update_int(green, red, blue)
 
     def _update_int(self, green: int, red: int, blue: int) -> None:
@@ -206,8 +215,17 @@ class Isl29125Chip:
         self._data = bytearray(6)
         self._prst_count = 0
         self._release_int()
-        # Table 15 documents 0x04 as this register's own default, so BOUTF survives a reset the
-        # same way it survives a power-up: only an explicit write clears it (p12).
+        # Measured on real silicon (2026-09-12): the status register reads 0x00 straight after the
+        # 0x46 reset command, with no intervening write - so the reset clears BOUTF too. Table 15's
+        # 0x04 is the POWER-ON default (p12 says "during the initial power-up"), which __init__
+        # still models; it is not a value the reset command restores.
+        self._status = 0x00
+
+    def simulate_brownout(self) -> None:
+        # A SUPPLY event, which is NOT the 0x46 reset command: every register drops to its
+        # power-on default AND BOUTF comes back up (p12). That flag is the whole signal the
+        # driver's recovery path keys on, and _reset() deliberately no longer raises it.
+        self._reset()
         self._status = _STATUS_POR
 
     def _release_int(self) -> None:
@@ -247,8 +265,12 @@ class Isl29125Chip:
             for offset, value in enumerate(data):
                 index = reg_addr - _REG_CONFIG1 + offset
                 if index < len(self._config):
-                    self._config[index] = value
+                    self._config[index] = value & _CONFIG_MASKS[index]
             if touched_config1:
+                if (self._config[0] & _CONFIG1_MODE_MASK) not in _MODES_WITH_CONVERSION:
+                    # Power-down/standby stops the conversion engine: real silicon reads 0x00 here,
+                    # so both conversion-progress fields go with it (BOUTF, if set, stays).
+                    self._status &= ~(_STATUS_CONVENF | _STATUS_RGBCF_MASK)
                 # "ADC start at I2C write 0x01" with SYNC = 0 (p10, Table 7): the conversion
                 # restarts, so the data registers keep the PREVIOUS cycle's values - taken on the
                 # old gain - until a new cycle completes. That stale window is exactly what the
@@ -275,25 +297,36 @@ class Isl29125Chip:
             return
         # any other register: real hardware silently accepts and ignores it too.
 
+    def _register_image(self) -> bytes:
+        # The whole 0x00-0x0E map as one flat block. Reads are served out of this rather than
+        # per-register-block, because the address pointer really does walk straight across the
+        # block boundaries - measured on real silicon (2026-09-12): a 16-byte read from 0x00
+        # returns id, CONFIG1-3, both thresholds, status and all six data bytes in one go.
+        return (
+            bytes((_DEVICE_ID, self._config[0], self._config[1], self._config[2]))
+            + bytes((self._threshold_low & 0xFF, self._threshold_low >> 8, self._threshold_high & 0xFF, self._threshold_high >> 8))
+            + bytes((self._status,))
+            + bytes(self._data)
+        )
+
     def handle_readfrom_mem(self, reg_addr: int, nbytes: int) -> bytes:
         self.fault.maybe_hang("readfrom_mem")
         self.fault.maybe_raise("readfrom_mem")
-        if reg_addr == _REG_DEVICE_ID:
-            reply = bytes([_DEVICE_ID])
-        elif _REG_CONFIG1 <= reg_addr <= _REG_CONFIG3:
-            reply = bytes(self._config[reg_addr - _REG_CONFIG1 :])
-        elif _REG_THRESH_LOW_L <= reg_addr <= 0x07:
-            values = bytes([self._threshold_low & 0xFF, self._threshold_low >> 8, self._threshold_high & 0xFF, self._threshold_high >> 8])
-            reply = values[reg_addr - _REG_THRESH_LOW_L :]
-        elif reg_addr == _REG_STATUS:
-            # Destructive by design (p11/p12): the read is what clears RGBTHF and releases the
-            # INT pin, so nothing else in the driver may read this register "just to check".
-            reply = bytes([self._status])
-            self._status &= ~_STATUS_RGBTHF
+        image = self._register_image()
+        reply = image[reg_addr : reg_addr + nbytes] if reg_addr <= _LAST_REGISTER else b""
+        # Past 0x0E the pointer stops and the part keeps clocking out zeros - it does NOT roll
+        # over to 0x00, despite p6's burst-WRITE text saying the write counter does (measured:
+        # an 8-byte read from 0x0D gives the two data bytes then six zeros).
+        reply = (reply + bytes(nbytes))[:nbytes]
+        if reg_addr <= _REG_STATUS < reg_addr + nbytes and reg_addr <= _LAST_REGISTER:
+            # Destructive by design (p11/p12): transferring the status byte is what clears RGBTHF
+            # and CONVENF and releases the INT pin, so nothing else in the driver may read this
+            # register "just to check". Both flags measured read-to-clear on real silicon; the
+            # RGBCF field is not, and survives the read. Whether a burst that merely SPANS 0x08
+            # also clears them could not be measured (the threshold re-armed faster than the probe
+            # could re-check) - clearing is the reading p12's "the 8-bit transfer" wording supports,
+            # and the driver only ever reads 0x08 on its own, so nothing depends on the choice.
+            self._status &= ~(_STATUS_RGBTHF | _STATUS_CONVENF)
             self._prst_count = 0
             self._release_int()
-        elif _REG_DATA <= reg_addr <= 0x0E:
-            reply = bytes(self._data[reg_addr - _REG_DATA :])
-        else:
-            reply = bytes(nbytes)
-        return (reply + bytes(nbytes))[:nbytes]
+        return reply

@@ -1682,7 +1682,17 @@ reader will otherwise "fix" them:
 - **Clipping is modelled, not clamped away**: a channel whose modelled illumination exceeds the active range's full scale reads exactly `(1 << bits) - 1` — 4095 at 12-bit, 65535 at 16-bit — because F6 tests the raw maximum and a fake that saturated at 65535 regardless of `BITS` would make the 12-bit half of that test vacuous.
 - **`CONFIG1`'s power-on value is `0x00` and `BOUTF` starts high**, so a freshly constructed fake
   is in the post-brownout state on purpose. A twin test that expects readings before the driver
-  has configured the chip is asserting the wrong thing.
+  has configured the chip is asserting the wrong thing. **The `0x46` reset command does not raise
+  `BOUTF`** — measured 2026-09-12, the real part reads `0x00` straight after it — so a test that
+  wants a brownout calls `simulate_brownout()`, which models the supply event rather than the
+  command.
+- **The address pointer is flat across the whole `0x00`-`0x0E` map**, not one pointer per register
+  block: a 16-byte read from `0x00` returns id, `CONFIG1`-`CONFIG3`, both thresholds, the status
+  byte and all six data bytes, then zeros. It does **not** roll over to `0x00`, despite p6's
+  burst-*write* text. Measured 2026-09-12.
+- **Reserved config bits read back zero**, they do not hold what was written: `0xFF` into each
+  config register reads back `3f`/`bf`/`1f`, matching the driver's own `_CONFIG*_MASK` constants.
+  Measured 2026-09-12; p9 permits either, so this is a measurement, not a datasheet deduction.
 
 **T10, `digital_twin/machine.py::_wire_i2c_devices()`**: one line —
 `0x44: Isl29125Chip(int_pin=Pin(6, mode=Pin.IN), random_source=_random_source)` in the **dev**

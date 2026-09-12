@@ -1302,6 +1302,39 @@ tuple, not `NamedTuple` (internal, not the public model, C.6).
    should appear on (H.5) — the website comes entirely from that file, so a driver with no
    definitions-file entry stays invisible indefinitely. Same session, not deferred.
 
+## C.11.1 Keeping a chip fake honest — the conformance probe
+
+A chip fake drifts from the part it models silently: every test still passes, because the tests and
+the fake share the same wrong assumption. The ISL29125 is the first driver with a standing guard
+against that, and the pattern generalises to any new bus-facing device.
+
+`tests_hardware/device_scripts/isl29125_mock_conformance_probe.py` is one probe that talks **raw
+`machine.I2C` only** — the single layer the real board and `digital_twin/machine.py` both
+implement — so the identical file runs against real silicon over `mpremote` and against the chip
+fake under the Unix port. `tests_hardware/isl29125_conformance.py` runs the twin half and diffs
+the two, and `tests_hardware/flash/test_sensor_accuracy.py::
+test_the_isl29125_mock_answers_the_bus_exactly_as_the_real_chip_does` is the flash-tier gate. Keys
+whose value depends on the light falling on the part are excluded **by value** and covered by the
+probe's own derived yes/no keys instead, so nothing is merely unchecked.
+
+**What the first real run found (2026-09-12), every item a fake that no test could have caught:**
+
+| Behaviour | Real ISL29125 | The fake had |
+|---|---|---|
+| Address pointer | flat across the whole `0x00`-`0x0E` map — a 16-byte read from `0x00` returns id, `CONFIG1`-`3`, both thresholds, status and all six data bytes | one pointer per register block, zero-padding at each block's end |
+| Past `0x0E` | keeps clocking zeros; does **not** roll over to `0x00`, despite p6's burst-*write* text | zero padding (correct) |
+| Reserved config bits | read back zero — `0xFF` gives `3f`/`bf`/`1f`, matching the driver's own `_CONFIG*_MASK` | echoed whatever was written |
+| `CONVENF` (`0x08` B1) | set by a completed conversion, cleared by the status read, flat `0x00` while powered down | never modelled at all |
+| `RGBCF` (`0x08` B5:4) | **not** cleared by the status read; zero while powered down | not cleared (correct); retained in power-down (wrong) |
+| `BOUTF` after the `0x46` reset | reads `0x00` — the reset command does not raise it | restored to `0x04`, treating reset like a power-up |
+
+The `BOUTF` row is why the fake now separates the two events: `_reset()` models the `0x46`
+**command**, and `simulate_brownout()` models the **supply** event that really does raise the flag.
+A test wanting a brownout must call the latter. **One half stays unconfirmed**: whether `BOUTF` is
+high at power-up at all (p12 says it is) was not observable, because the probe's own first run
+issued a reset before its first status read. Settling it needs a genuine power cycle whose first
+transaction is a status read, on firmware that does not run `ISL29125_I2C.setup()` at boot.
+
 ## C.12 Testing
 
 Covered fully by Part E.4: mock `tests/machine.py`'s raw bus transactions only, letting real logic

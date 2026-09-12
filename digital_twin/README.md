@@ -46,10 +46,14 @@ Kept completely separate so nothing here can accidentally affect the determinist
   does not carry this sensor) and is the one fake that models a gain the driver has to *learn*: its
   high range's full scale is a deliberately non-nominal multiple of its low range's, so the
   driver's gain-ratio self-calibration converges on something real instead of on the constant it
-  started from. It also models the destructive `0x08` status read (which clears the interrupt flag
-  and releases the INT line), `BOUTF` high at power-up, per-resolution clipping at `(1 << bits) - 1`,
+  started from. It also models the destructive `0x08` status read (which clears `RGBTHF`
+  and `CONVENF` and releases the INT line), `BOUTF` high at power-up but **not** after the `0x46`
+  reset command (`simulate_brownout()` is the seam for a supply event, which raises it again), the
+  flat address pointer that walks the whole `0x00`-`0x0E` map in one burst and then pads with
+  zeros, reserved config bits reading back zero, per-resolution clipping at `(1 << bits) - 1`,
   and `set_illumination(lux, tint=(r, g, b))` so a scene can clip one channel while green stays
-  mid-scale. Its INT line is **active-low** (`simulate_edge(0)` to assert), the opposite of
+  mid-scale. Every one of those register-map behaviours was measured against the real part on
+  2026-09-12 — see SPECIFICATION.md Part C's ISL29125 conformance notes. Its INT line is **active-low** (`simulate_edge(0)` to assert), the opposite of
   `_scd30_chip.py`'s RDY.
 - `_fram_chip.py` — the FRAM chip's SPI opcode protocol (WREN/WRDI/RDSR/WRSR/READ/WRITE/RDID), plus
   explicit `save_state()`/on-construction load JSON persistence (see "FRAM persistence" below).

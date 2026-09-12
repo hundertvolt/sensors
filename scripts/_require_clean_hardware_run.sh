@@ -58,7 +58,11 @@ fi
 if [ "$allow_neopixel_sweep" = 0 ]; then
     # Physical geometry, not a destructive or slow operation: the ISL29125 sweep needs the board's
     # own NeoPixel actually aimed at the sensor, ambient light excluded (tests_hardware/README.md).
-    KNOWN_PERMANENT_SKIPS+=("test_isl29125_autorange_sweep_driven_by_the_boards_own_neopixel")
+    KNOWN_PERMANENT_SKIPS+=(
+        "test_isl29125_autorange_sweep_driven_by_the_boards_own_neopixel"
+        "test_isl29125_mechanisms_hold_across_the_whole_illumination_envelope"
+        "test_isl29125_survives_recombined_realistic_lighting_scenarios"
+    )
 fi
 
 logfile="$(mktemp)"
