@@ -378,6 +378,57 @@ def test_read_sgp_without_compensation_data_returns_all_none() -> None:
     assert serialized is False
 
 
+def test_read_sgp_without_compensation_data_yet_logs_nothing() -> None:
+    # Regression test for BACKLOG.md item 17: a compensation source whose field is legitimately
+    # still None (e.g. SCD30 hasn't completed its first post-boot measurement yet) is expected
+    # startup jitter, not a fault - CLAUDE.md's standing rule is that no E/W entry is ever logged
+    # for that. The old code called float(getattr(...)) inside the same try that's supposed to
+    # catch a genuine read failure, so a None field raised TypeError there and got misreported as
+    # "Compensation data read failed" (errno=18) immediately followed by "No compensation data
+    # available!" (wrnno=14) - both real log entries for a completely ordinary race. Neither may
+    # fire here now.
+    reader = SGP40_Reader(
+        make_i2c(),
+        temperature_source=_FakeCompSource(None, None),
+        temperature_field="Temp",
+        humidity_source=_FakeCompSource(None, None),
+        humidity_field="Hum",
+        max_module_error=2,
+        cfg_path=_tmp_path("") + "/",
+    )
+    run(reader.cfgmgr.setup())
+    run(reader.pr.setup())
+    data, compensated, serialized = run(reader._read_sgp(None, serialize=False, deserialize=False))
+    assert data == SGP40(None, None, None)
+    assert compensated is False
+    assert serialized is False
+    log = run(reader.get_error_counter())
+    assert log["SGP40"]["ErrCount"] == 0, f"expected startup jitter must not log any E/W entry ({log!r})"
+
+
+def test_read_sgp_with_one_of_two_compensation_fields_still_none_logs_nothing() -> None:
+    # Same regression as above, but only one of the two wired fields is still None - the getattr()
+    # default catches each field independently, so a partial startup race (e.g. temperature already
+    # measured, humidity not yet) must be just as silent as both being None.
+    reader = SGP40_Reader(
+        make_i2c(),
+        temperature_source=_FakeCompSource(25.0, None),
+        temperature_field="Temp",
+        humidity_source=_FakeCompSource(25.0, None),
+        humidity_field="Hum",
+        max_module_error=2,
+        cfg_path=_tmp_path("") + "/",
+    )
+    run(reader.cfgmgr.setup())
+    run(reader.pr.setup())
+    data, compensated, serialized = run(reader._read_sgp(None, serialize=False, deserialize=False))
+    assert data == SGP40(None, None, None)
+    assert compensated is False
+    assert serialized is False
+    log = run(reader.get_error_counter())
+    assert log["SGP40"]["ErrCount"] == 0
+
+
 def test_read_sgp_with_compensation_data_stores_a_result() -> None:
     reader = make_reader()
     fake_bus = bus(reader.sgp.i2c_sgp40.i2c_device.i2c)
@@ -788,9 +839,12 @@ def test_read_sgp_comp_source_get_data_raising_is_caught_not_propagated() -> Non
     assert compensated is False  # comp_data fell back to [None, None] before the availability check
     assert serialized is False
     log = run(reader.get_error_counter())
-    err_count = log["SGP40"]["ErrCount"]
-    assert isinstance(err_count, int)
-    assert err_count >= 1
+    # Exactly one entry (the real get_data() failure, errno=18) - not also a second, redundant "no
+    # compensation data available" warning for a condition the exception already explains
+    # (BACKLOG.md item 17).
+    assert log["SGP40"]["ErrCount"] == 1
+    assert _last_err(log, "ErrNum") == 18
+    assert _last_err(log, "ErrType") == "E"
 
 
 def test_run_backup_genuine_fram_write_failure_is_logged_as_an_error() -> None:

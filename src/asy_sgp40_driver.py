@@ -49,7 +49,6 @@ if TYPE_CHECKING:
 _FRAM_VERIFY_MINS = const(60)
 _MAX_NTP_WAITTIME = const(600)  # 600s = 10min
 _BACKUP_COUNTER_MAX = const(100000)  # see _check_storage()'s own note on the 86400s = 1 day margin
-_N_COMP_VALUES = const(2)  # the compensation callback's own [Temperature, Humidity] result shape
 _SELF_TEST_PASS = const(0xD4)  # datasheet Table 13, high byte only (the low byte is "ignore")
 
 _VAL_BP = const((("BackupPeriod", "int", 1, 0, 1440, None),))
@@ -265,29 +264,34 @@ class SGP40_Reader(SensorReaderConfig):
         # Direct read of each producer's own get_data() (SPECIFICATION.md Part C.14), resolved
         # independently by attribute name (§2.9's per-value generalization - the same getattr()
         # resolution asy_notification_service.py's own _check_one() already uses for warn_*) - no
-        # wrapping callback. get_data() never raises, but the named field can individually be None
-        # (the producer hasn't completed its first real measurement yet, or its own error streak
-        # gave up) - float(None) raises, so that's still guarded here, matching this driver's own
-        # SGP40-degrades-uncompensated-when-its-source-is-down documented behavior
-        # (SPECIFICATION.md Part A.4). A single try/except covers both reads: either failing is the
-        # same "no usable compensation data this cycle" outcome, whichever source is responsible.
+        # wrapping callback. get_data() never raises, but the named field can individually still be
+        # None (the producer hasn't completed its first real measurement yet, or its own error
+        # streak gave up) - a normal, expected input, not an exception (CLAUDE.md: no E/W log for
+        # expected startup jitter). Split the same way _check_one() already does: only get_data()
+        # itself raising - a genuine violation of its own never-raises contract - is a real fault
+        # worth logging; a getattr()-returned None is read via its own default, never routed through
+        # float() (which would raise TypeError on None and get misreported as a read failure) and
+        # never logged here on its own - a persistent producer failure is caught and logged by that
+        # producer's own driver already, not re-detected from this side.
+        temp_val: int | float | None
+        hum_val: int | float | None
         try:
             temp_data = await self.temperature_source.get_data()
             hum_data = await self.humidity_source.get_data()
-            comp_data: list[int | float | None] = [
-                float(getattr(temp_data, self.temperature_field)),
-                float(getattr(hum_data, self.humidity_field)),
-            ]
         except Exception as e:
             await self.pr.err_s("Compensation data read failed:", e, errno=18)
-            comp_data = [None, None]
-        if len(comp_data) != _N_COMP_VALUES or comp_data[0] is None or comp_data[1] is None:
-            await self.pr.wrn_s("No compensation data available!", wrnno=14)
+            temp_val, hum_val = None, None
+        else:
+            temp_val = getattr(temp_data, self.temperature_field, None)
+            hum_val = getattr(hum_data, self.humidity_field, None)
+
+        if temp_val is None or hum_val is None:
             if deserialize:
                 self.pr.evt("Retrying initialization...")
                 self.voc_init = 1  # retry init if triggered and no compensation data is available
                 self.backup_counter = 0  # no backup if restore is pending
             return SGP40(None, None, None), False, False
+        comp_data: list[int | float] = [float(temp_val), float(hum_val)]
 
         try:
             timestamp = time.mktime(time.gmtime())
