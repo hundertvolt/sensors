@@ -847,6 +847,39 @@ def test_read_sgp_comp_source_get_data_raising_is_caught_not_propagated() -> Non
     assert _last_err(log, "ErrType") == "E"
 
 
+_BadCompReading = namedtuple("_BadCompReading", ("Temp", "Hum"))
+
+
+class _FakeNonNumericCompSource:
+    # A non-numeric-but-not-None field: never actually producible by any real *_Reader (every
+    # measurement field is always float|None - base_classes.py's namedtuple contract), but the
+    # source is only structurally, not nominally, typed (SPECIFICATION.md Part C.14), so this can't
+    # be ruled out statically. Exists to prove SPECIFICATION.md Part D.2 ("never raises, under any
+    # input") for the float(temp_val)/float(hum_val) calls in _read_sgp()'s second try block -
+    # matches this file's own _TooSmallBuf precedent for forcing an otherwise-unreachable branch.
+    async def get_data(self) -> "Any":
+        return _BadCompReading("not-a-number", 50.0)
+
+
+def test_read_sgp_non_numeric_compensation_value_is_caught_not_propagated() -> None:
+    # Distinct from both tests above: get_data() succeeds and the field is not None, so it passes
+    # the availability check, but float() on the value itself raises - this must be caught by the
+    # existing second try/except (errno=11, "Read failed"), not escape _read_sgp() uncaught.
+    reader = make_reader()
+    bad_source = _FakeNonNumericCompSource()
+    reader.temperature_source = bad_source
+    reader.humidity_source = bad_source
+    run(reader.pr.setup())
+    data, compensated, serialized = run(reader._read_sgp(None, serialize=False, deserialize=False))
+    assert data == SGP40(None, None, None)
+    assert compensated is True  # comp data was "available" (not None) - float() itself failed
+    assert serialized is False
+    log = run(reader.get_error_counter())
+    assert log["SGP40"]["ErrCount"] == 1
+    assert _last_err(log, "ErrNum") == 11
+    assert _last_err(log, "ErrType") == "E"
+
+
 def test_run_backup_genuine_fram_write_failure_is_logged_as_an_error() -> None:
     # Distinct from the "no NTP yet" deferral path
     # (test_fram_backup_without_ntp_sync_is_deferred_not_lost): here NTP is synced and require_ntp

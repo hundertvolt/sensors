@@ -291,8 +291,6 @@ class SGP40_Reader(SensorReaderConfig):
                 self.voc_init = 1  # retry init if triggered and no compensation data is available
                 self.backup_counter = 0  # no backup if restore is pending
             return SGP40(None, None, None), False, False
-        temperature_c = float(temp_val)
-        humidity_rh = float(hum_val)
 
         try:
             timestamp = time.mktime(time.gmtime())
@@ -307,8 +305,13 @@ class SGP40_Reader(SensorReaderConfig):
                 serialized,
                 deserialized,
             ) = await self.sgp.measure_index_and_raw(
-                temperature=temperature_c,
-                relative_humidity=humidity_rh,
+                # float() rather than a plain narrowed value: temp_val/hum_val are only known
+                # not-None here (D.2), not known numeric - a non-numeric field value from a
+                # caller-supplied source (SPECIFICATION.md Part C.14) would raise here, same as a
+                # genuine I2C fault, and is caught by this same try/except below (errno=11) rather
+                # than escaping uncaught.
+                temperature=float(temp_val),
+                relative_humidity=float(hum_val),
                 reset=reset_for_measure,
                 buf=None if buf is None else buf.get_data_buf(),
                 serialize=serialize,
