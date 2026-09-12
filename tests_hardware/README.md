@@ -113,20 +113,22 @@ a live question:
   `"Task N ended with exception"` (chased down as real on 2026-09-11; it was test data). CLAUDE.md's
   "read the FRAM logs before clearing" rule assumes a board that has been running normally — check
   what was last run against this one first.
-- **The UART crossover tiers have been run on real hardware and pass: flash 2/2, bench 2/2 — twice,
-  on two different builds of the driver (2026-09-11, and again 2026-09-12 after the read fix was
-  completed and the idle poll rate added).** The second run also re-measured both platform findings
-  against the reshaped driver: F.5.8's C-call table reproduced (unclamped 4422 us, clamped 137 us),
-  and F.5.9's idle rate confirmed by counting real `ipoll()` rounds — 1244 over 3 s at 2 ms against
-  60 at 50 ms. They were run *in isolation*, not as part of a full tier sweep, which is the next
-  session's job. Two things a later session should know about that run. The board had to be
-  reflashed first — it was carrying a pre-UART `dev` build, so `asy_uart_comm` was simply absent and
-  neither tier could run; `uv run scripts/build_firmware.py dev` + `picotool load -x -v` fixed it,
-  and neither tier's skip guard fired afterwards. And the bench tier's own "a transfer completes
-  while the API is hammered" claim is, on an isolated run, vacuous: nothing on a live `dev` system
-  ever initiates a transfer (`uart_initiator.get_task_starters()` is deliberately empty), so it
-  currently asserts that an idle link stays idle. See BACKLOG.md, including the owner's direction to
-  revisit it in the context of a full bench run.
+- **The UART crossover coverage is 5 flash-tier tests and 3 bench-tier tests, all passing as part
+  of the full sweep** (2026-09-12: `run_bench_hardware_suite.sh` → 96 passed, 2 known-permanent
+  skips, 41 min, with the four SCD30-EEPROM-write tests deselected). Three of the flash tests and
+  one of the bench tests were added in that session; the rest date from 2026-09-11.
+  Two platform findings are asserted rather than merely documented: F.5.8's clamped-read CPU hold
+  (`uart_read_never_blocks_the_loop.py` — measured 4394 us unclamped against 121 us clamped) and
+  F.5.9's idle poll rate (`uart_idle_poll_rate.py` — 1336/1266 rounds at 2 ms against 60/60 at
+  50 ms over 3 s). A third, `uart_link_under_concurrent_system_load.py`, runs the link against both
+  I2C devices, the FRAM's SPI bus and heavy allocation churn at once, and asserts in both
+  directions — the link keeps transferring *and* nothing else was starved.
+  The bench tier's "a transfer completes while the API is hammered" claim used to be vacuous and no
+  longer is: `sensortask_dev.py` runs a link exerciser and publishes a transfer/failure count
+  through `/status`'s `sensors.UARTLINK`, which the bench tier asserts advancing during the load
+  window. A later session should also know the board may need reflashing before any of this runs —
+  a firmware predating a `src/` change simply won't carry it, and the tier's skip guards name that
+  rather than failing obscurely.
 - **A device script's every wait must stay inside its own watchdog window, or a link fault reports
   as a reset instead of a result.** `tests_hardware/device_scripts/uart_crossover_*.py` arm an 8s
   `machine.WDT` and used to join their responder task with `asyncio.wait_for(listener, 10/12)`.

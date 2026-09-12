@@ -290,6 +290,123 @@ def test_a_forced_collection_mid_transfer_does_not_break_the_link() -> None:
     assert run(scenario(), limit=60) is True
 
 
+def test_a_maximum_length_train_completes_and_still_yields() -> None:
+    # The massive singular load: the longest transaction this protocol can express, 254 data chunks
+    # at payload_size 48. One transfer, hundreds of stop-and-wait round trips - the case where a
+    # single non-yielding step anywhere in the read or write path would be most visible.
+    build_linked_system()
+    dev = sensortask_dev
+    initiator = dev.uart_initiator
+    assert initiator is not None
+    payload = bytes((i * 7) & 0xFF for i in range(48 * 254))
+    ticks = []  # unannotated, like the sibling ticker above: ticks_ms() is an opaque _TicksMs
+
+    async def ticker() -> None:
+        while True:
+            ticks.append(time.ticks_ms())
+            await asyncio.sleep_ms(2)
+
+    async def scenario() -> bool:
+        background = asyncio.create_task(ticker())
+        try:
+            return await exchange(initiator.uart_set(0x02, payload))
+        finally:
+            background.cancel()
+
+    assert run(scenario(), limit=240) is True, "the maximum-length train did not complete"
+    # Progress, not a rate: the ticker must have been scheduled throughout, which it cannot be if
+    # any step held the loop for the whole transfer.
+    assert len(ticks) > 50, f"other tasks ran only {len(ticks)} times across a 254-chunk transfer"
+    counts = run(initiator.get_error_counter())
+    assert counts[initiator.name]["ErrCount"] == 0, "the longest legal transfer logged an error"
+
+
+def test_many_back_to_back_transfers_do_not_degrade_or_leak() -> None:
+    # Massive repeated load rather than one big transfer: the counters, the UID space and the
+    # buffers all have to survive being cycled, not just used once. The UID wraps at 0xFE, so this
+    # deliberately runs past one whole wrap.
+    import gc
+
+    link = build_linked_system()
+    dev = sensortask_dev
+    initiator = dev.uart_initiator
+    assert initiator is not None
+    rounds = 300
+    fake_a, fake_b = fakes()
+
+    def _clear_wire_logs() -> None:
+        # The twin records every delivered byte in an unbounded wire_log. Over this many transfers
+        # that is ~95kB of test instrumentation, which would otherwise be measured as the leak this
+        # test is looking for - it is the harness growing, not the driver.
+        link.direction_from(fake_a).wire_log = bytearray()
+        link.direction_from(fake_b).wire_log = bytearray()
+
+    async def scenario() -> "tuple[int, int]":
+        _clear_wire_logs()
+        gc.collect()
+        before = gc.mem_free()
+        ok = 0
+        for i in range(rounds):
+            if await exchange(initiator.uart_get(0x01)) is not None:
+                ok += 1
+            if not i % 20:
+                _clear_wire_logs()
+        _clear_wire_logs()
+        gc.collect()
+        return ok, before - gc.mem_free()
+
+    ok, leaked = run(scenario(), limit=300)
+    assert ok == rounds, f"only {ok}/{rounds} transfers succeeded across a full UID wrap"
+    counts = run(initiator.get_error_counter())
+    assert counts[initiator.name]["ErrCount"] == 0, f"{rounds} clean transfers logged an error"
+    # Buffers are preallocated per instance, so a steady-state loop must not grow the heap. The
+    # bound is generous - this asserts "no per-transfer leak", not an allocation budget.
+    assert leaked < 8192, f"{leaked} bytes not reclaimed across {rounds} transfers - a per-transfer leak"
+
+
+def test_the_link_survives_sustained_allocation_pressure() -> None:
+    # Resource exhaustion rather than contention: a heap being churned hard underneath the link,
+    # which is what turns a latent one-big-allocation design into a failure (Part I). The link must
+    # either complete or degrade cleanly - never raise out, and never corrupt a payload.
+    import gc
+
+    build_linked_system()
+    dev = sensortask_dev
+    initiator = dev.uart_initiator
+    assert initiator is not None
+    stop: list[bool] = []
+
+    async def churn() -> None:
+        held: list[bytearray] = []
+        while not stop:
+            try:
+                held.append(bytearray(1024))
+            except MemoryError:  # the pressure this test exists to create
+                held = []
+                gc.collect()
+            if len(held) > 32:
+                held = held[16:]
+            await asyncio.sleep_ms(1)
+
+    async def scenario() -> "list[bool]":
+        background = asyncio.create_task(churn())
+        try:
+            out = []
+            for _ in range(10):
+                # noqa: MicroPython has no `await` inside a comprehension, so ruff's suggested
+                # rewrite does not compile on the target interpreter at all.
+                out.append(await exchange(initiator.uart_set(0x02, bytes(200))))  # noqa: PERF401
+            return out
+        finally:
+            stop.append(True)
+            background.cancel()
+            await asyncio.sleep_ms(5)
+
+    results = run(scenario(), limit=180)
+    assert all(isinstance(r, bool) for r in results), "a transfer returned something other than its documented bool"
+    assert any(results), "every transfer failed under allocation pressure - the link did not degrade, it stopped"
+
+
 if __name__ == "__main__":
     import microtest
 

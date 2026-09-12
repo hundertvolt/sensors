@@ -320,23 +320,6 @@ constraints.
   for. What remains genuinely unmodelled is the *duration* — a fake cannot tell a caller how many
   milliseconds of event loop an over-ask would have cost, only how many bytes it was over by. Only
   the bench tier measures the milliseconds, and F.5.8's table is that measurement.
-- **The bench tier's H4 "a transfer completes while the API is hammered" claim is currently
-  vacuous, because nothing on the live `dev` system ever initiates one.**
-  `tests_hardware/bench/test_uart_link_under_api_load.py` hammers `/status` and `/measurements` and
-  then asserts `UART_INIT`/`UART_RESP` logged no errors - but `sensortask_dev.py` registers
-  `uart_initiator.get_task_starters()` as deliberately empty (the role decides the task set), so the
-  only live link task is the responder's listen loop, parked waiting for a peer that never speaks.
-  The test therefore proves an idle link stays idle, not that link work and request handling
-  coexist, which is what `UART_PROMOTION_REQUIREMENTS.md` H4 actually specifies. Closing it needs a
-  way to drive the initiator on a running system, and the shape of that is an owner decision rather
-  than a test detail: a dev-only command route registered on `app` before `WebserverService` claims
-  `/<path:filename>` (H4.2 explicitly permits a command-only, never-persisted `PUT`), or a periodic
-  dev-only initiator task, or extending `_SYSTEM_CMDS` - the first keeps the shared webserver
-  untouched, the last does not. Deliberately not decided here.
-  **Owner direction (2026-09-11): H4 applies sensibly once a full bench-tier run is actually
-  started, which is the next session's job.** This session ran the UART tests alone, on purpose, so
-  the observation above is what an isolated run can show; revisit the claim in the context of a
-  whole bench run rather than treating it as a defect in the test on its own.
 - **Four UART-audit findings reviewed and deliberately left as they are** (audit pass over the
   promotion, 2026-09-11 - every other finding from that pass was fixed and tested):
   - **A responder's `set_callback` returning `None` ("don't care") lets the *peer* size a heap

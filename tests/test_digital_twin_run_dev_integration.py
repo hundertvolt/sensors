@@ -27,6 +27,8 @@ sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comme
 
 from run_dev_integration import RunConfig, _soak, main, parse_args
 
+import sensortask_dev
+
 
 def run_timed(coro: "Coroutine[Any, Any, T]", timeout_s: float = 5.0) -> "T":
     return asyncio.run(asyncio.wait_for(coro, timeout_s))
@@ -90,6 +92,18 @@ def test_main_runs_a_tiny_bounded_soak_with_an_injected_fault_and_returns_a_clea
     non_memory_failures = [f for f in summary["failures"] if "gc.mem_free()" not in f]
     assert non_memory_failures == []
     assert summary["would_have_triggered_count"] == 0
+
+    # H4 in the twin tier, asserted on this same run rather than a second one: building the whole
+    # dev graph twice in one file exhausts the Unix port's 8MB test heap. The bench tier can only
+    # assert the link logged no errors while the API was hammered, which is a claim about an idle
+    # link unless something initiates - here the crossover jumper and its exerciser ran throughout
+    # the ~294-request soak, so the link has to have actually moved bytes across it.
+    assert sensortask_dev.uart_transfers > 0, "the link never completed a transfer during the soak"
+    # Counted, never timed: a transfer count is a property of the code, unlike this run's wall
+    # clock (Part E.7). Every attempt must succeed - the jumper is attached and nothing else
+    # contends for those two peripherals.
+    assert sensortask_dev.uart_failures == 0, f"{sensortask_dev.uart_failures} link failures under concurrent HTTP load"
+
 
 
 # ---------------------------------------------------------------------------

@@ -453,6 +453,15 @@ class _LinkDirection:
         return out
 
 
+def attach_crossover_jumper(fake_a: "UART", fake_b: "UART") -> "tuple[UARTLink, LinkPoller, LinkPoller]":
+    # Models the dev bench's permanent GP0<->GP9 / GP1<->GP8 jumper (dev_legacy/README.md). The
+    # twin's dev graph constructs both ends but nothing joins them, so without this it models a dev
+    # board whose jumper is missing, and the link exerciser only ever counts failures. Returns the
+    # bounded pollers for the caller to install on its drivers - a real select.poll() never
+    # re-evaluates a Python object's ioctl() on the Unix port (CLAUDE.md's known CI hang).
+    return UARTLink(fake_a, fake_b), LinkPoller(fake_a), LinkPoller(fake_b)
+
+
 class UARTLink:
     # Byte-level crossover between two UART fakes: one FIFO per direction, the mock link's fault
     # knobs, plus real wire time - a byte becomes readable only once its transmission would have

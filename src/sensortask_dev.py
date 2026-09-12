@@ -70,6 +70,12 @@ _UART_BUF_BYTES = const(512)
 # application semantics - these exist so the jumper can be exercised end to end from the bench.
 _UART_CMD_BANNER = const(0x01)
 _UART_CMD_ECHO = const(0x02)
+_UART_BANNER = b"dev-uart-crossover"
+# How often the initiator drives a real transfer across the jumper. Nothing else on a live system
+# ever initiates one - the responder only answers - so without this the link is idle and every
+# claim about it coexisting with the webserver is vacuous (UART_PROMOTION_REQUIREMENTS.md H4).
+# 1s leaves the link busy enough to observe within a test window and far from saturating it.
+_UART_EXERCISE_PERIOD_MS = const(1000)
 
 _FIELD_WARN_CO2: "cm.ConfigSchema" = (("WarnCO2", "int", 1600, 0, 3000, None),)
 _FIELD_WARN_VOC: "cm.ConfigSchema" = (("WarnVOC", "int", 350, 0, 500, None),)
@@ -97,6 +103,10 @@ uart1: "asy_uart_driver.UART | None" = None
 uart_initiator: "UART_Comm | None" = None
 uart_responder: "UART_Comm | None" = None
 uart_last_echo: "bytearray | None" = None
+# Progress counters for the exerciser below, surfaced through /status so a bench test can assert
+# the link actually moved bytes rather than merely failing to log an error.
+uart_transfers: int = 0
+uart_failures: int = 0
 timers_running: "ThreadSafeFlag | None" = None
 
 
@@ -104,7 +114,7 @@ def _uart_get_callback(cmd_id: int) -> "tuple[bool, bytes | None]":
     # Answers a GET across the jumper. Returns (valid, payload); withholding validity is how the
     # responder signals "no such command", which the peer sees as a withheld answer.
     if cmd_id == _UART_CMD_BANNER:
-        return True, b"dev-uart-crossover"
+        return True, _UART_BANNER
     if cmd_id == _UART_CMD_ECHO:
         return True, bytes(uart_last_echo or b"")
     return False, None
@@ -123,6 +133,27 @@ def _uart_message_callback(cmd_id: int, cmd: int, payload: "bytearray | None") -
     global uart_last_echo
     if cmd == CMD_SET and cmd_id == _UART_CMD_ECHO:
         uart_last_echo = payload
+
+
+async def _uart_exercise_loop() -> None:
+    # Drives one real GET across the jumper per period, so the link carries traffic on a live
+    # system instead of only under a device script. Never raises out: uart_get() is contracted to
+    # return None rather than raise, and the counters are what a failure is reported through.
+    global uart_transfers, uart_failures
+    assert uart_initiator is not None
+    while True:
+        answer = await uart_initiator.uart_get(_UART_CMD_BANNER)
+        if answer is not None and bytes(answer) == _UART_BANNER:
+            uart_transfers += 1
+        else:
+            uart_failures += 1
+        await asyncio.sleep_ms(_UART_EXERCISE_PERIOD_MS)
+
+
+async def _uart_link_maintenance() -> "dict[str, Any]":
+    # Registered as a maintenance sensor, not a new /status key: that list is variable-length by
+    # design, so the dev-only link reports through it without touching the shared webserver.
+    return {"Transfers": uart_transfers, "Failures": uart_failures}
 
 
 async def sgp_comp_callback() -> "list[float | None]":
@@ -353,6 +384,12 @@ async def build_system(
     global watchdog, conn, ntp, i2c0, i2c1, spi0, fram, sysfunct
     global sgp_reader, bmp_reader, scd_reader, pixel, notify_service, webserver, timers_running
     global uart0, uart1, uart_initiator, uart_responder
+    global uart_transfers, uart_failures
+
+    # Rebuilding the system rebuilds the link, so its progress counters start over with it -
+    # otherwise a second build_system() in one process would report the first one's traffic.
+    uart_transfers = 0
+    uart_failures = 0
 
     # watchdog: hardcoded at construction time, no injection point - same standing rule as
     # sensortask_wozi.py ("must be hardcoded so no error ever can circumvent it when it is set
@@ -504,7 +541,7 @@ async def build_system(
             "system": _system_status,
             "notification": _notification_status,
         },
-        maintenance_sensors=(("SGP40", _sgp_maintenance_status),),
+        maintenance_sensors=(("SGP40", _sgp_maintenance_status), ("UARTLINK", _uart_link_maintenance)),
         error_sources=_collect_error_sources(),
         debug=debug,
         static_mount="/html",  # see SPECIFICATION.md Part A.9 - matches frozen_html's own
@@ -558,6 +595,10 @@ def _collect_task_starters() -> "list[Callable[[], asyncio.Task[Any]]]":
         # - no bespoke whole-server-restart mechanism).
         + uart_initiator.get_task_starters()  # empty: the role decides the task set, and an
         + uart_responder.get_task_starters()  # initiator that listened would mean both ends initiate
+        # The initiating half is this variant's own job, for the same reason: the module cannot
+        # know what a caller wants to ask its peer, so a bench rig that wants a live link supplies
+        # the question itself.
+        + [lambda: asyncio.create_task(_uart_exercise_loop())]
     )
 
 

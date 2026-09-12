@@ -4,9 +4,10 @@ to coexist rather than each merely work alone (requirement H4)."""
 
 from __future__ import annotations
 
+import json
 import threading
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import http_client
 import pytest
@@ -24,6 +25,22 @@ _GET_ITERATIONS_PER_WORKER = 10
 # Generous next to a single request's own budget, but far below the point at which a stalled link
 # would look like a slow one: the claim is coexistence, not a latency number.
 _REQUEST_BUDGET_S = 15.0
+
+
+def _link_counters(dut_ip: str) -> dict[str, int]:
+    # The link's own progress, read through /status's "sensors" registration list. This is what
+    # makes H4's claim testable at all: without it the only observable is an error counter, and an
+    # idle link and a healthy one both leave that at zero.
+    res = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=15.0)
+    assert res.status_code == 200, f"GET /status returned {res.status_code}: {res.body!r}"
+    sensors: dict[str, Any] = json.loads(res.body).get("sensors", {})
+    link: dict[str, int] | None = sensors.get("UARTLINK")
+    if link is None:
+        pytest.skip(
+            "this firmware exposes no UARTLINK maintenance entry - the dev link exerciser is what "
+            "makes a live transfer observable (UART_PROMOTION_REQUIREMENTS.md H4)",
+        )
+    return link
 
 
 def _require_uart_modules(dut_ip: str) -> None:
@@ -87,6 +104,55 @@ def test_the_link_stays_healthy_while_the_api_is_hammered(board: Board, dut_ip: 
     for name in _UART_MODULES:
         entry = counts.get(name, {})
         assert not entry.get("counter", 0), f"{name} logged errors while the API was under load: {entry!r}"
+
+
+def test_real_transfers_complete_while_the_api_is_hammered(board: Board, dut_ip: str) -> None:
+    # H4's actual function test: "a transfer completes while the API is hammered". The two tests
+    # around it assert the link logged no errors, which an idle link also satisfies - this one
+    # requires the link to have moved bytes during the load window, and to have moved them without
+    # a single failed attempt.
+    _require_uart_modules(dut_ip)
+    before = _link_counters(dut_ip)
+
+    errors: list[str] = []
+    errors_lock = threading.Lock()
+
+    def worker(worker_id: int) -> None:
+        for i in range(_GET_ITERATIONS_PER_WORKER):
+            started = time.monotonic()
+            try:
+                res = http_client.fetch(dut_ip, 80, "GET", "/measurements", timeout_s=_REQUEST_BUDGET_S)
+            except Exception as e:
+                with errors_lock:
+                    errors.append(f"worker {worker_id} iter {i}: {type(e).__name__}: {e}")
+                continue
+            elapsed = time.monotonic() - started
+            if res.status_code != 200 or elapsed > _REQUEST_BUDGET_S:
+                with errors_lock:
+                    errors.append(f"worker {worker_id} iter {i}: status {res.status_code} in {elapsed:.1f}s")
+
+    threads = [threading.Thread(target=worker, args=(w,)) for w in range(_GET_WORKERS)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=120.0)
+        assert not t.is_alive(), "a worker thread never finished within 120s - possible real deadlock under load"
+    assert not errors, f"{len(errors)} API issue(s) while the link was running: {'; '.join(errors[:10])}"
+
+    # The link must have progressed *during* the hammering, not merely survived it. One exerciser
+    # period is 1s, so a load window of this length cannot legitimately produce zero transfers.
+    wait_until(  # raises on timeout, so reaching the next line means a transfer landed
+        lambda: _link_counters(dut_ip)["Transfers"] > before["Transfers"],
+        timeout_s=30.0,
+        poll_interval_s=2.0,
+        description="the UART link completing a transfer while the API is under load",
+    )
+    after = _link_counters(dut_ip)
+    moved = after["Transfers"] - before["Transfers"]
+    assert moved > 0, f"no transfer completed across the jumper under API load: {before!r} -> {after!r}"
+    assert after["Failures"] == before["Failures"], (
+        f"{after['Failures'] - before['Failures']} transfer(s) failed while the API was hammered: {before!r} -> {after!r}"
+    )
 
 
 def test_an_api_overload_does_not_corrupt_the_link_or_the_reverse(board: Board, dut_ip: str) -> None:

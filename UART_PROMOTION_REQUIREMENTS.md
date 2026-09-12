@@ -1359,11 +1359,13 @@ Each verified by running it, not by inspection. **Status as of this branch:**
   twin soak against 839 after (Part F.5.9). Eight unit tests pin the two together, each verified by
   reverting the fix and requiring it to fail, and both UART fakes now count the stall an over-ask
   would have taken so the mock tier catches a regression the bench previously had to.
-  **H4's function test is, however, still vacuous** — it asserts the link logged no errors while the
-  API was hammered, but nothing on a live `dev` system ever initiates a transfer
-  (`uart_initiator.get_task_starters()` is deliberately empty), so it proves an idle link stays idle
-  rather than that link work and request handling coexist. Closing it needs an owner decision on how
-  to drive the initiator over HTTP; the options are in BACKLOG.md and nothing has been wired.
+  **H4's function test is now real** (2026-09-12). It had been vacuous — nothing on a live `dev`
+  system ever initiated a transfer, so it only proved an idle link stays idle. `sensortask_dev.py`
+  now runs its own link exerciser task (the module itself cannot: it carries no application
+  semantics, so only the variant knows what to ask its peer) and reports progress through the
+  existing variable-length `maintenance_sensors` registration, so `/status` carries a live
+  transfer/failure count with no change to the shared webserver. The bench tier asserts that count
+  advancing *during* the load window, with zero failures.
 - §4's table is fully struck through — every listed violation actually fixed, not deferred.
 - `SPECIFICATION.md`, `UART_C_PORT_CHANGELOG.md`, `BACKLOG.md` and README.md's doc map are updated in
   the same change set.

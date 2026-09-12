@@ -53,3 +53,26 @@ def test_one_sided_silence_recovers_and_a_parameter_mismatch_fails_loudly(board:
     # the one it deliberately cannot - which must therefore be diagnosed rather than absorbed.
     output = _run_or_skip(board, "uart_crossover_recovery.py", timeout_s=180.0)
     _assert_pass(output, "UART crossover recovery and mismatch detection")
+
+
+def test_a_clamped_read_never_holds_the_cpu_for_a_frame_still_arriving(board: Board) -> None:
+    # SPECIFICATION.md Part F.5.8, asserted rather than merely measured. POLLIN fires on the first
+    # byte, so asking the peripheral for a whole frame blocks the event loop for its remaining wire
+    # time - the one hazard on this path that only real timing shows.
+    output = _run_or_skip(board, "uart_read_never_blocks_the_loop.py", timeout_s=120.0)
+    _assert_pass(output, "UART clamped-read CPU hold")
+
+
+def test_an_idle_listener_polls_at_the_idle_rate_not_the_transaction_rate(board: Board) -> None:
+    # SPECIFICATION.md Part F.5.9. Counted, never timed: a poll-round count is a property of the
+    # code, while throughput on this board moves with heap state (Part E.7).
+    output = _run_or_skip(board, "uart_idle_poll_rate.py", timeout_s=180.0)
+    _assert_pass(output, "UART idle poll rate")
+
+
+def test_the_link_keeps_transferring_while_every_other_subsystem_is_busy(board: Board) -> None:
+    # The realistic worst case for a stop-and-wait link sharing one core: both I2C devices, the
+    # FRAM's SPI bus and heavy allocation churn all running against it. Asserts in both directions
+    # - the link must keep progressing, and it must not have done so by starving anything else.
+    output = _run_or_skip(board, "uart_link_under_concurrent_system_load.py", timeout_s=180.0)
+    _assert_pass(output, "UART link under concurrent system load")
