@@ -264,6 +264,22 @@ constraints.
     corrected `errno`/`wrnno` table entry, and regression coverage (mock:
     `tests/test_asy_sgp40_driver.py`; digital twin, against the real wozi wiring:
     `tests/test_digital_twin_sensortask_integration.py`): SPECIFICATION.md Part C.14.2 and C.7.1.
+18. **SPECIFICATION.md Part A.4's "SGP40 silently degrading to uncompensated VOC when SCD30 is
+    down" wording may be imprecise.** Found while auditing item 17 above: the actual behavior
+    (confirmed by `tests/test_asy_sgp40_driver.py::test_read_sgp_without_compensation_data_returns_all_none`)
+    skips the read entirely and returns `SGP40(None, None, None)` rather than substituting any
+    default/fallback compensation values, so "degrading to uncompensated" may overstate what
+    happens. The underlying behavior itself is intentional and out of scope to change; flagging the
+    wording only, per the "flag, don't silently change" rule — owner call on whether it needs a
+    rewrite.
+19. **BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md §2.5's "Worked designs" example is stale.** Found
+    during the same audit: it still shows the superseded single `comp_source`/`_DefaultCompSource`
+    design (`comp_data: list[int | float | None] = [float(scd_data.Temp), float(scd_data.Hum)]`)
+    rather than the current split `temperature_source`/`humidity_source`/`_DefaultTemperatureSource`/
+    `_DefaultHumiditySource` design (§2.9's generalization, also referenced by SPECIFICATION.md Part
+    C.14.2). That doc's own README.md entry says it's "kept current as a durable design record," so
+    this is a genuine gap — unrelated to this session's diff, left untouched rather than drive-by
+    edited.
 
 ## Deferred / explicitly out-of-scope work
 - **`buildgen/buildspec.py`'s per-driver schema is hand-maintained — making it AST-derivable is a
