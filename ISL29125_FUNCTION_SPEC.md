@@ -16,7 +16,8 @@ two places where the published forms of the same formula disagree in sign and on
 copied matrix has two different "correct" roundings.
 
 **Still specification.** Nothing here is code, and no code is to be written from it until the
-project owner says so — §13's open questions are inputs to five of the functions below.
+project owner says so — §13's three remaining open questions are inputs to three of the
+functions below (§8 tracks which, and what the resolution pass closed).
 
 **Status of the numbers in this document.** Every register address, bit position, timing figure
 and register default is from FN8424 Rev 3.00 (`datasheets/isl29125/`), cited inline. Every
@@ -78,7 +79,20 @@ written against the names:
 | Namedtuple | `ISL29125` + `_FIELDS` | C.2, convention 5 |
 | Auto-range schema entries | `_VAL_AR_UP`, `_VAL_AR_DOWN`, `_VAL_AR_SETTLE`, `_VAL_AR_PERSIST`, `_VAL_AR_DWELL` | §14.4 rule 1 |
 | Other schema entries | `_VAL_SI`, `_VAL_RES`, `_VAL_RA`, `_VAL_RNG`, `_VAL_ICO`, `_VAL_ICA`, `_VAL_FC`, `_VAL_RESETCAL` | 6 |
+| Batch-length constants | `_N_INT_CFG`, `_N_FLOAT_CFG`, `_N_BOOL_CFG` | 7 |
 | Maintenance getter | `get_mem_status()` | matches `SGP40_Reader.get_mem_status()` exactly |
+
+**Three of the eight non-auto-range `_VAL_*` names are abbreviations, not initials, and that is a
+stated deviation from convention 6 rather than an oversight.** `Resolution`, `Range` and
+`RangeAuto` all collapse onto `R`/`RA`, so they are fixed as `_VAL_RES`, `_VAL_RNG` and
+`_VAL_RA`; `ISLResetCal` initials to `IRC`, one character from `IrComp`'s own `_VAL_ICO`/
+`_VAL_ICA`, so it is spelled `_VAL_RESETCAL`. The rule is applied where it discriminates and
+abbreviated where it does not — plan §14.4 rule 1 carries the same note.
+
+**`_N_BOOL_CFG = const(1)`, not 2.** The schema has two `"bool"` fields, but `ISLResetCal` is
+command-only and is never in `ConfigManager`'s cache, so it must be excluded from every batch
+read exactly as `asy_sgp40_driver.py` excludes `_VAL_RESET` from its own two batches and from
+`get_dict_cfg()`. The bool batch is `_VAL_RA` alone.
 
 `get_mem_status()` is worth pausing on: SGP40 already has a method of that name returning
 `(last_backup, restored_from)`, consumed by `sensortask_dev.py`'s `_sgp_maintenance_status()`.
@@ -90,8 +104,8 @@ means in practice.
 
 ## 1. Inventory — every function, one line each
 
-**109 functions across 12 source files**, of which 98 are new and 11 are edits to existing
-functions. Counted so the plan's estimate of the work is a number rather than an impression.
+**111 functions across 12 source files**, of which 100 are new and 11 are edits to existing
+functions. (109/98 before the resolution pass added F6 and F7 — see §4.2.) Counted so the plan's estimate of the work is a number rather than an impression.
 Test files are not in this count — they are §6.
 
 ### 1.1 `src/math_helpers.py` — 5 new, pure, bus-free (§14.4 rule 2)
@@ -104,15 +118,17 @@ Test files are not in this count — they are §6.
 | M4 | `cct_mccamy(chroma_x, chroma_y)` | new |
 | M5 | `ema_step(previous, sample, coefficient)` | new — Part G.2 catalogue entry (§7.8) |
 
-### 1.2 `src/asy_isl29125_driver.py` — module level, 5 new pure helpers
+### 1.2 `src/asy_isl29125_driver.py` — module level, 7 new pure helpers
 
 | # | Function | Purpose in one clause |
 |---|---|---|
 | F1 | `_decode_rgb_burst(raw)` | 6 bytes → `(green, red, blue)` counts |
-| F2 | `_normalise_triple(green, red, blue, resolution, dark_offset)` | 12-bit shift + dark subtract + clamp |
+| F2 | `_normalise_triple(green, red, blue, *, resolution_bits, dark_offset)` | 12-bit shift + dark subtract + clamp |
 | F3 | `_counts_to_lux(count, full_scale, gain_correction)` | counts → absolute lux |
 | F4 | `_fraction_to_counts(fraction)` | % of full scale → threshold counts, in float |
 | F5 | `_is_bus_fault_pattern(counts, status)` | all-ones triple + implausible status byte |
+| F6 | `_is_saturated(green, red, blue, *, resolution_bits)` | any **raw** channel at its resolution's maximum |
+| F7 | `_decode_config_bytes(raw)` | 3 config bytes → the five hardware-backed field values |
 
 ### 1.3 `src/asy_isl29125_driver.py` — `ISL29125_Reader`, 58 new
 
@@ -126,7 +142,7 @@ Test files are not in this count — they are §6.
 | R6 | `_read_sensor_dict()` | config |
 | R7 | `_handle_status(status)` | read path |
 | R8 | `_recover_brownout()` | self-healing |
-| R9 | `_evaluate_range(green_counts, saturated)` | auto-range |
+| R9 | `_evaluate_range(counts, saturated)` | auto-range |
 | R10 | `_switch_range(target_range)` | auto-range |
 | R11 | `_settle_wait()` | auto-range |
 | R12 | `_learn_gain_ratio(green_counts)` | calibration |
@@ -177,10 +193,16 @@ near-identical blocks — they differ only in the field they carry and the `errn
 | T1-T9 | `Isl29125Chip.*` | `digital_twin/_isl29125_chip.py` | new ×9 |
 | T10 | `_wire_i2c_devices()` | `digital_twin/machine.py` | edit |
 | W1 | `resolveFieldValue()` | `js/definitions.js` | edit |
-| W2 | `validateDefinitions()` | `js/definitions.js` | edit |
+| W2 | `validateDefinitions()` | `js/definitions.js` | edit — **conditional**: it does not inspect field-level keys today, so `path` is accepted without it; this is optional hardening (plan §8.6) |
 | W3 | `jitterInPlace()` | `js/mock-server.js` | edit |
 | W4 | `applySensorQuirksForGet()` | `js/mock-server.js` | edit |
-| W5 | `formatFieldValue()` | `js/field-format.js` | edit **only if §13 q6 lands on option (b)** |
+| W5 | `formatFieldValue()` | `js/field-format.js` | edit — **conditional** on §13 q6 landing on option (b) |
+
+Two of those five are marked **conditional**, and the count above includes them. §7.4's
+done-rule reads accordingly: every *unconditional* function has an entry and a `●`, and a
+conditional one acquires the same obligation the moment its question is answered "yes". A
+conditional row that is answered "no" is struck from the inventory in the same edit, so the count
+never silently drifts.
 | H1-H4 | `_main()` in four `tests_hardware/device_scripts/` files | real hardware | new ×4 |
 
 ---
@@ -219,6 +241,14 @@ get/set pairs in adjacent numbers, then the paths unique to this device.
 | 35 | `_load_gain_ratio()`: FRAM chunk read failed | SGP40 13 |
 | 36 | `_persist_gain_ratio()`: FRAM chunk write failed | SGP40 14 |
 | 37 | `_clear_gain_ratio()`: FRAM chunk clear failed | SGP40 15 |
+| 38 | `set_range_auto()`: applying the stored fixed range, or re-writing `INTSEL`, raised on the auto→off transition | — |
+
+`errno=38` closes the one gap in the original allocation: `RangeAuto` was the only one of the 13
+config fields with no number, on the assumption that it is a software flag. It is not purely
+software — turning it **off** applies the stored `Range` (a `CONFIG1` write) and disarms the
+interrupt by writing `INTSEL = 00` (a `CONFIG3` write), either of which can fail on the bus. It
+takes no *getter* errno, because it has no `_get_callbacks` entry: there is no chip register that
+holds "the user asked for auto", only the `RNG` bit that is its consequence.
 
 | `wrnno` | Occurrence | Why a warning and not an error |
 |---|---|---|
@@ -279,10 +309,17 @@ Applied to this driver, the complete list — every occurrence, one row each:
 
 Two rules worth stating because they are easy to get wrong:
 
-- **Nothing in the auto-range or brownout paths increments the leaky bucket.** `_error_check()` is
+- **Nothing in the auto-range path increments the leaky bucket** — and a recovered brownout
+  increments it exactly once, deliberately. `_error_check()` is
   called exactly once per `read_loop()` cycle with the read results (§14.2 item 5). A range switch
-  and a brownout recovery are *successful* operations; only the I²C failures inside them are
-  errors, and those surface through the results tuple anyway.
+  and a settle discard are *successful* operations that still produce a sample, so they must not
+  count; only the I²C failures inside them are errors, and those surface through the results
+  tuple anyway. A **brownout cycle is different**: it produces no sample at all — the chip was in
+  power-down and the data registers hold nothing measured — so R4 returns all-`None` and the
+  bucket sees one failed cycle. That is the intended cost (one of five) for a real lost reading,
+  and it is what `wrnno=10`'s "recovered by design" note means: recovered, but not free. An
+  earlier revision of this bullet said "nothing in the auto-range **or brownout** paths", which
+  contradicted R4's own handling text; R4 is the correct one.
 - **A dark room is not a fault.** `CCT = None` below the low-light floor (§7.11) is a normal
   output. It is logged at `all`, never as a warning, and — see §4.2's `_read_isl()` — it must
   never enter the tuple handed to `_error_check()`.
@@ -551,6 +588,8 @@ without constructing a reader — `base_classes.py`'s own `_checked_write_result
 
 - **Where**: module level.
 - **Purpose**: distinguish genuine optical saturation from a dead bus reading all-ones (§7.6).
+  **Takes the raw counts, before F2's normalisation** — the all-ones pattern is a property of the
+  wire, not of the scaled value, and taking it raw is what makes the 12-bit case exact (below).
 - **Functionality**: returns `True` only when **all three** counts are exactly 65535 **and** the
   status byte is implausible. "Implausible" is precise: `0x08`'s B7:B6 and B3 are reserved and
   read zero (Table 15, p12), so `status & 0xC8 != 0` is impossible on a working part. `0xFF`
@@ -569,10 +608,81 @@ without constructing a reader — `base_classes.py`'s own `_checked_write_result
 - **Logging**: none here; the caller logs `errno=32` if the ID re-read confirms the fault, and
   `wrnno=14` if it turns out to be real saturation on the high range.
 - **Done when**: tested with all-ones + `0xFF`, all-ones + a valid status, two-of-three at 65535
-  (must be `False` — a real saturated scene with one unsaturated channel), and the 12-bit case
-  where the normalised maximum is 65520 and this can therefore never fire at all (worth an
-  explicit test, because it means the fast path behaves differently at 12-bit and that has to be
-  a known property rather than a surprise).
+  (must be `False` — a real saturated scene with one unsaturated channel), and the 12-bit case.
+  **The 12-bit case, corrected.** An earlier revision said the normalised maximum is 65520 so
+  this "can therefore never fire at 12-bit". That was wrong twice over, and both halves matter.
+  Taken on *normalised* counts it would still fire, because F2 clamps at 65535 and a dead bus
+  presents 0xFFFF per channel before the shift; taken on *raw* counts — which is now the fixed
+  contract above — it fires correctly at both resolutions, because a dead bus reads 0xFF bytes
+  regardless of `BITS`. What is genuinely special about 12-bit is the opposite of "never fires":
+  a real 12-bit reading cannot exceed 4095, so at 12-bit the function has **no false-positive
+  mode at all**. The test asserts exactly that: all-ones raw + implausible status → `True` at
+  both resolutions, and 4095/4095/4095 (a genuinely clipped 12-bit scene) → `False`.
+
+---
+
+#### F6 `_is_saturated(green, red, blue, *, resolution_bits) -> bool`
+
+- **Where**: module level. **Added by the resolution pass** — R9 consumed a `saturated` flag that
+  no function produced, and F5 (bus fault) had been standing in for it in the prose.
+- **Purpose**: the auto-range fast path's "this scene is clipping, switch up now" test.
+- **Functionality**: `True` if **any** of the three **raw** counts equals `(1 << resolution_bits)
+  - 1` — 4095 at 12-bit, 65535 at 16-bit. Raw, and before F2, for the reason F5 gives: a
+  post-normalisation `== 65535` test is simply wrong at 12-bit, where the shifted maximum is
+  65520 and the fast path would be silently dead.
+- **Why any channel and not green alone**: the output is a colour triple. A clipped red with
+  green at 40 % of full scale still destroys `Hue`, `Sat` and `CCT`, and the §10 NeoPixel rig
+  drives exactly that scene. Plan §7.6 carries the matching rule for the *threshold* decision —
+  it is the maximum of the three channels in both directions, which is what stops a red-dominant
+  scene from oscillating (up on red, green then below the down threshold, `AutoRangeDwell`
+  expires, back down, repeat).
+- **Failure modes**: a `resolution_bits` that is neither 12 nor 16; a count above the maximum
+  (impossible from the wire, possible from a test).
+- **Handling**: an unknown `resolution_bits` falls back to 16, matching F2's own conservative
+  fallback — under-reporting saturation costs one late switch, over-reporting costs a spurious
+  range change every cycle. `>=`, not `==`, so an out-of-range test value still reads as
+  saturated.
+- **Downstream**: none. **Upstream**: `_read_isl()` step 5, immediately after `read_counts()` and
+  before `_normalise_triple()`.
+- **Logging**: none (pure); the caller logs `wrnno=14` if it is already on the high range.
+- **Done when**: a table test at both resolutions covering each channel saturating alone, all
+  three together, and the off-by-one below each maximum; plus the named regression test asserting
+  that 4095 at 12-bit reads as saturated while 65520 — the same reading after F2 — is what the
+  post-normalisation form would have missed.
+
+#### F7 `_decode_config_bytes(raw) -> tuple[int, int, int, int, int] | None`
+
+- **Where**: module level. **Added by the resolution pass**, together with P12's change of return
+  type.
+- **Purpose**: turn the three config bytes into the five hardware-backed config values, so that
+  P12 can hand back what it actually read and the reader can do two different things with it.
+- **Functionality**: `(resolution, range_fs, ir_offset, ir_adjust, persist)` from `CONFIG1` B4/B3,
+  `CONFIG2` B7/B5:0 and `CONFIG3` B3:2. The exact inverse of P5's `_encode_shadow()`, and tested
+  as a round trip against it. Rejects anything that is not exactly 3 bytes → `None`.
+- **Why this is split out of P12 at all**: P12 used to return the five decoded values, which made
+  its stated purpose — *"the only mechanism that can detect shadow-vs-chip divergence"* — untrue
+  of its own signature. Mode, `SYNC`, `CONVEN` and `INTSEL` are precisely the bits a brownout or
+  a stray write zeroes, and all four were being decoded away before the caller could see them.
+  With P12 returning the raw bytes, the divergence check is a masked comparison against
+  `_encode_shadow()` — every bit, not five fields — and the config read-back is this function.
+- **Failure modes**: wrong length or type; a field encoding that is not one of the legal values
+  (a mode that is not 5, a `PRST` the schema does not allow) — which is *information*, not an
+  error.
+- **Handling**: length/type → `None`. An illegal field value is returned as decoded, never
+  coerced: the caller is the one that knows whether it is looking at a divergence or at a value
+  it is about to overwrite.
+- **Downstream**: none. **Upstream**: `_read_sensor_dict()` (R6).
+- **Logging**: none (pure).
+- **Done when**: a decode table test; a round-trip test against `_encode_shadow()` over the legal
+  field space; the 2-byte/4-byte/`None` rejections; and a post-brownout `(0x00, 0x00, 0x00)` case
+  asserting it decodes without raising and that the caller can tell it apart from a configured
+  chip.
+
+**Reserved bits, since both F7 and the divergence check touch them**: `CONFIG1` B7:B6,
+`CONFIG2` B6 and `CONFIG3` B7:B5 are reserved, and p9 states plainly that *"the value of the
+reserved bit can change without any notice"*. So the comparison masks with `0x3F`, `0xBF`, `0x1F`
+and the decoder ignores them — a driver that compared raw bytes would eventually report a
+divergence that is not one.
 
 ---
 
@@ -610,10 +720,31 @@ failure when **any** element of the tuple it is given is `None`. `CCT` is `None`
 design (§7.11), and `Hue`/`Sat` are reported as unreliable near the dark floor (§7.4). If the
 namedtuple were passed to `_error_check()`, a dim room would increment the leaky bucket every
 cycle and restart the task at `max_module_error`. So `_read_isl()` returns a **narrow results
-tuple** — `(green, red, blue, timestamp)`, the four things whose absence really is a failed read —
-and `_store_isl()` builds the wide namedtuple separately. `BMP3xx_Reader` already splits it this
+tuple** and `_store_isl()` builds the wide namedtuple separately. `BMP3xx_Reader` already splits it this
 way (`BMPResults` is 3-tuple, `BMP3XX` is a 4-field namedtuple); here the split is not stylistic,
 it is load-bearing.
+
+**The tuple carries five things, not four, and the fifth is the fix for a real defect.** Declared
+the way BMP3xx declares its own — a plain type alias under the `TYPE_CHECKING` guard, not a
+namedtuple (`asy_bmp3xx_driver.py:95` is the model; this alias was used throughout an earlier
+revision of this document without ever being defined):
+
+```python
+ISLResults = tuple[int | None, int | None, int | None, int | None, int | None]
+# green, red, blue, the full-scale range the sample was taken on, timestamp
+```
+
+The range has to travel **with the sample**. R4 decides the range *after* reading the counts, and
+a switch takes effect for the next cycle while the current sample stays valid (R4 step 7) — but
+R10 has already updated `self._active_range` by the time `_store_isl()` runs. A four-element
+tuple therefore leaves `_store_isl()` scaling a sample taken on the old gain by the new range's
+full scale, once per switch, in the direction that makes the error largest (26.67× either way).
+Capturing `self._active_range` into the tuple *before* step 7 removes the whole class of problem
+and costs one element. It also gives `RangeAct` (plan §8.4) its exact definition: the range the
+reported sample was taken on, not the one currently programmed.
+
+`_error_check()` is unaffected: the range element is an `int` on every successful cycle, and
+`None` only when the whole tuple is `None` — which is already what "failed read" means.
 
 ---
 
@@ -666,8 +797,14 @@ it is load-bearing.
   2. `self._err_cnt_internal = 0`;
   3. `await self.isl.setup()` inside `try` → `errno=10`, return `False`;
   4. `pr.one("Setting sensor config at startup.")`;
-  5. read the int batch and the float batch from `cfgmgr` (`_N_INT_CFG`, `_N_FLOAT_CFG`) →
-     `errno=12`, return `False` on a short or `None` result;
+  5. read the int, float **and bool** batches from `cfgmgr` (`_N_INT_CFG`, `_N_FLOAT_CFG`,
+     `_N_BOOL_CFG`) → `errno=12`, return `False` on a short or `None` result. **The bool batch
+     was missing from an earlier revision of this list**, and step 9 cannot work without it: the
+     schema has two `"bool"` fields, `RangeAuto` decides whether step 9 arms the thresholds at
+     all, and `ConfigManager.get_bool_values()` exists for exactly this
+     (`config_manager.py:270`, used by `asy_notification_service.py:297` and
+     `asy_wifi_service.py:164`). The batch is `_VAL_RA` **alone** — `ISLResetCal` is command-only
+     and never enters the cache, so including it would make every init fail (§0.3);
   6. `await self.set_trigger_secs(...)` — never fails the init, same reasoning as BMP3xx's own
      comment (a bad stored interval is a software knob, not a reason to give up);
   7. one `await self.isl.configure(...)` applying resolution, range, IR compensation and persist
@@ -750,14 +887,19 @@ it is load-bearing.
   4. `brownout, threshold_fired = self._handle_status(status)`; if `brownout`, run
      `_recover_brownout()` and **return an all-`None` result for this cycle** — the chip was in
      power-down, so whatever is in the data registers is not a measurement;
-  5. `counts = await self.isl.read_counts()` → `_normalise_triple(...)`;
-  6. saturation/bus-fault discrimination via `_is_bus_fault_pattern()`, with the device-ID re-read
-     on a hit (§7.6);
-  7. `_evaluate_range(green, saturated)` → if it returns a target, `_switch_range()` it and mark
-     the sample as the last one on the old range (it is still valid — the switch takes effect for
-     the *next* cycle);
+  5. `raw = await self.isl.read_counts()`; **on the raw counts, before any scaling**, evaluate
+     `_is_bus_fault_pattern(raw, status)` (F5) and `saturated = _is_saturated(raw, …)` (F6) —
+     both tests belong to the wire values, not the normalised ones (F5/F6 give the reasoning);
+     then `counts = _normalise_triple(raw, …)`;
+  6. on a bus-fault hit, re-read the device ID and only then treat the cycle as a fault (§7.6);
+  7. `sample_range = self._active_range` **first**, then
+     `_evaluate_range(counts, saturated=saturated)` → if it returns a target, `_switch_range()`
+     it. The sample stays valid — the switch takes effect for the *next* cycle — and capturing
+     the range before the switch is what makes that true rather than merely stated (see (c)
+     above: `_switch_range()` updates `self._active_range`, so reading it later in
+     `_store_isl()` would scale this sample by the wrong full scale);
   8. `_learn_gain_ratio(green)` when the reading sits in the overlap band (§7.3);
-  9. `pr.all("read")`; return `(green, red, blue, timestamp)`.
+  9. `pr.all("read")`; return `(green, red, blue, sample_range, timestamp)`.
 - **Failure modes**: any bus transaction raising; the status read succeeding but the data read
   failing (a torn cycle); a brownout mid-cycle; all-ones from a dead bus; the settle wait being
   invalidated by a concurrent config write (see R11); a `RGBCF` value saying a conversion is
@@ -770,11 +912,12 @@ it is load-bearing.
   `None`, and the cycle is skipped — which does mean the leaky bucket sees one `None` cycle, and
   that is correct: the driver genuinely has no sample, and one increment against a budget of 5 is
   the right cost for a recovered brownout.
-- **Downstream**: P10 `read_status()`, P9 `read_counts()`, P13 `get_device_id()`, F2/F5, R7-R12.
+- **Downstream**: P10 `read_status()`, P9 `read_counts()`, P13 `get_device_id()`, F2/F5/F6,
+  R7-R12.
   Every callee's raise path is inside the outer `try`; every callee's `None` path is checked at
   the call site.
 - **Upstream**: `read_loop()` expects a fixed-length tuple whose `None`-ness means "failed read" —
-  met by the narrow 4-tuple (see (c) above).
+  met by the narrow 5-tuple (see (c) above).
 - **Logging**: `all` for "read"; `errno` 11/29/30/31/32; `wrnno` 10/14/15; `evt` for a range
   decision.
 - **Done when**: tests exist for a clean cycle, a bus fault at each of the three transactions, a
@@ -791,14 +934,21 @@ it is load-bearing.
   the derived maths and the output filter.
 - **Functionality**: bail out unchanged if any element is `None` (all three drivers open this way);
   read the float config batch (`FiltCoeff`) → `errno=14` on failure, falling back to the schema
-  defaults rather than returning; convert each channel with `_counts_to_lux()`; normalise RGB to
-  0-1 over the active full scale (requirement 8); `Lux` from green alone (§7.5); `rgb_to_hsb()`;
+  defaults rather than returning; convert each channel with `_counts_to_lux()` **using the
+  sample's own range from the results tuple, never `self._active_range`**; normalise RGB to
+  0-1 **over the whole auto-range span — 10 000 lux — when `RangeAuto` is true, and over the
+  selected fixed range when it is false** (requirement 4, and plan §7.4's denominator
+  paragraph); `Lux` from green alone (§7.5); `rgb_to_hsb()`;
   `rgb_to_xyz()` → `chromaticity_xy()` → `cct_mccamy()`, gated by the green-count low-light floor;
   apply `ema_step()` to the filtered outputs if `FiltCoeff > 0`; `await self._set_meas_data(...)`;
   `pr.all("data stored")`.
 - **Failure modes**: config batch unreadable; a maths helper returning `None` (expected, not a
-  failure); the filter state poisoned by a NaN (M5 handles it); **the `Range` field's meaning** —
-  see the open question below.
+  failure); the filter state poisoned by a NaN (M5 handles it); **normalising by the active range
+  instead of the span** — an earlier revision of this entry said "over the active full scale",
+  citing requirement 8 while contradicting requirement 4. It is worth naming as a failure mode
+  rather than quietly correcting, because the symptom is subtle: `Lux` stays continuous and
+  everything else steps by 26.67× at each switch, which reads like an auto-range bug rather than
+  a normalisation one.
 - **Handling**: `None` from any helper is stored as `None` in that field and nowhere else; one
   `None` never blanks the rest of the tuple. The config-read fallback mirrors `_store_bmp()`'s
   `comp_values = [0.0, ...]` pattern exactly.
@@ -812,14 +962,16 @@ it is load-bearing.
   computed by hand, including the low-light floor boundary in both directions, the filter on and
   off, and the config-read-failure fallback.
 
-> **New open question (q9), raised not fixed.** `Range` is both a **config field** (the fixed
-> range selected when `RangeAuto` is off, §8.3) and a **measurement field** (the range actually
-> active, §8.4). They live in different groups so the JSON is unambiguous, but they share a label
-> in the UI and a name in the code, and under auto-range they routinely disagree — which is the
-> normal case, not an error state. Recommendation: keep the config field as `Range` and rename the
-> measurement field to **`RangeAct`**, which is 8 characters and reads correctly in
-> `js/render.js`'s flattened form. This is the project owner's call; every table in this document
-> says `Range` so that a rename is one substitution.
+> **q9, resolved — the measurement field is `RangeAct`.** `Range` is both a **config field** (the
+> fixed range selected when `RangeAuto` is off, §8.3) and was a **measurement field** (the range
+> actually active, §8.4). They live in different groups so the JSON is unambiguous, but they
+> shared a label in the UI and a name in the code, and under auto-range they routinely disagree —
+> which is the normal case, not an error state. The config field keeps `Range`; the measurement
+> field becomes **`RangeAct`** (8 characters, renders correctly in `js/render.js`'s flattened
+> form), and its meaning is pinned by the results tuple: *the range the reported sample was taken
+> on*, which after (c)'s fix is a fact the tuple actually carries rather than a property of
+> whatever the chip happens to be set to when the value is rendered. Plan §8.4 carries the same
+> decision.
 
 ---
 
@@ -829,8 +981,10 @@ it is load-bearing.
 - **Purpose**: report what the **chip** currently holds for the five hardware-backed config
   fields, as opposed to what the config file says.
 - **Functionality**: one `await self.isl.get_config_snapshot()` — a single 3-byte burst read of
-  `0x01`-`0x03` under one device-session lock — decoded into `Resolution`, `Range`,
-  `IrCompOffset`, `IrCompAdjust`, `AutoRangePersist`.
+  `0x01`-`0x03` under one device-session lock — which now returns the **three raw bytes**;
+  `_decode_config_bytes()` (F7) turns them into `Resolution`, `Range`, `IrCompOffset`,
+  `IrCompAdjust`, `AutoRangePersist`, and the same raw bytes are compared, masked, against
+  `_encode_shadow()` for divergence.
 - **The shadow-model resolution, decided here.** §8.7 says the shadow is authoritative and the
   driver "never reads the config registers back to modify them". That rule is about the
   read-modify-write hazard, and it does not forbid a **read-only** snapshot: Table 7 (p10) makes
@@ -838,6 +992,22 @@ it is load-bearing.
   else. Reading the real registers rather than reporting the shadow is strictly better, because it
   is the only thing in the driver that can detect the shadow and the chip having diverged — which
   is the failure `BOUTF` exists for and the one a shadow can never see by looking at itself.
+- **What "detect divergence" actually required, corrected.** The claim above was true of the
+  intent and false of the signature: a 5-tuple of decoded config values drops mode, `SYNC`,
+  `CONVEN` and `INTSEL`, which are exactly the bits a brownout or a stray write zeroes, so the
+  one mechanism that was supposed to see divergence was discarding the evidence before the
+  caller saw it. With P12 returning raw bytes the check is
+  `(c1 & 0x3F, c2 & 0xBF, c3 & 0x1F) != masked(_encode_shadow())` — every meaningful bit, three
+  integer comparisons, no extra transaction. The masks drop the reserved bits, which p9 says
+  *"can change without any notice"*.
+  **On a mismatch**: log `wrnno=10` and re-apply the shadow through the same path
+  `_recover_brownout()` uses (R8, minus the `BOUTF` clear), because a chip that has lost its
+  configuration is the same condition whether or not `BOUTF` happened to be set. **Coverage is
+  honest rather than complete**: `_read_sensor_dict()` is called by `_get_dict_cfg()`, i.e. when
+  something reads the config back, so this catches divergence on a `GET /sensors` and not
+  otherwise. That is enough, because the one *physical* cause — a supply dip — already raises
+  `BOUTF` on every cycle's status read; the snapshot check is the backstop for the causes
+  `BOUTF` does not flag.
 - **Failure modes**: the burst read raising or returning `None`; **the `Range` disagreement** —
   under auto-range the chip's `RNG` bit is the auto-range machinery's choice, not the user's
   setting, so reporting it as the value of the `Range` *config* field would overwrite the user's
@@ -848,14 +1018,18 @@ it is load-bearing.
   and leaves the fields showing persisted values as if they were live. For the `Range` field:
   **when `RangeAuto` is true, omit `Range` from the returned dict** so `_get_dict_cfg()` keeps the
   persisted value, and report the active range through the measurement field where it belongs.
-- **Downstream**: P12 `get_config_snapshot()`.
+- **Downstream**: P12 `get_config_snapshot()`, F7 `_decode_config_bytes()`, and — only on a
+  mismatch — P7 `configure()` and P8 `set_thresholds()`.
 - **Upstream**: `_get_dict_cfg()` (`base_classes.py:181`), which already wraps the call and warns
   on unknown keys (`wrnno=1`) — so the returned keys must exactly match `name_cfg(_VAL_*)` for the
   five fields, or every `GET /sensors` logs a warning.
-- **Logging**: `errno=28`.
+- **Logging**: `errno=28`; `wrnno=10` on a detected divergence.
 - **Done when**: tested for the clean path, the raise path (asserting the five keys come back
-  `None` and errno 28 is recorded), the auto-range omission of `Range`, and a key-name test
-  asserting no `wrnno=1` warning is produced.
+  `None` and errno 28 is recorded), the auto-range omission of `Range`, a key-name test
+  asserting no `wrnno=1` warning is produced, and a divergence test in which the fake's
+  `CONFIG1` mode bits are changed behind the driver's back — asserting the mismatch is detected
+  (which the old five-value return could not do), the shadow is re-applied, and exactly one
+  warning is logged.
 
 ---
 
@@ -905,18 +1079,30 @@ it is load-bearing.
 
 ---
 
-#### R9 `_evaluate_range(self, green_counts, *, saturated) -> int | None`
+#### R9 `_evaluate_range(self, counts, *, saturated) -> int | None`
 
 - **Where**: `ISL29125_Reader`. Pure except for reading `self`'s settings; **no I/O**, which is
   what lets the INT path and the periodic path share it (requirement 17).
 - **Purpose**: decide whether the range should change, and to what.
-- **Functionality**:
-  - on the **low** range: switch up if `saturated`, or if `green_counts >= _fraction_to_counts(AutoRangeUp)`;
-  - on the **high** range: switch down if `green_counts <= _fraction_to_counts(AutoRangeDown)`
+- **Functionality**, over `peak = max(green, red, blue)` — **not green alone**, see the box
+  below:
+  - on the **low** range: switch up if `saturated`, or if `peak >= _fraction_to_counts(AutoRangeUp)`;
+  - on the **high** range: switch down if `peak <= _fraction_to_counts(AutoRangeDown)`
     **and** `AutoRangeDwell` seconds have elapsed since the last switch up;
   - never switch while a settle deadline is pending;
   - never switch when `RangeAuto` is false;
   - returns the target range constant, or `None` for "stay".
+> **Why the peak and not green.** The hardware path is green-only and stays so — `INTSEL` has
+> one channel and §8.3 declines to make it selectable. The *software* path has all three counts
+> in hand, and the output is a colour triple: a clipped red with green at 40 % of full scale
+> still destroys `Hue`, `Sat` and `CCT`, and the §10 NeoPixel rig drives exactly that scene. The
+> subtle part is that the peak must be used in **both** directions. Deciding up on the peak and
+> down on green alone oscillates: a red-dominant scene switches up, green lands below the
+> down threshold, `AutoRangeDwell` expires, it switches down, red clips again. Using the peak
+> throughout, the same scene stays up because red is still well above the down threshold. The
+> hardware path remains a strict subset — an INT can only *wake* the loop, never decide — so the
+> two can never disagree about the outcome, only about how quickly it is noticed.
+
 - **Failure modes**: chatter, if the schema's cross-field constraint `d ≤ u/(2r)` is violated
   (§7.6's arithmetic); an immediate switch back after a switch, if the settle guard is missing;
   a switch-down triggered by a passing shadow, which `AutoRangeDwell` exists to prevent; `dwell`
@@ -935,7 +1121,9 @@ it is load-bearing.
 - **Done when**: a pure-function test sweeps counts across both switch points in both directions
   and asserts no state in which an up-decision is immediately followed by a down-decision at the
   same illumination (the chatter proof, run at the schema's default `u`/`d` **and** at its
-  worst legal pair); plus settle, dwell and `RangeAuto=False` guard tests.
+  worst legal pair); plus settle, dwell and `RangeAuto=False` guard tests; plus the
+  single-saturated-channel case — red at full scale with green at 40 % must switch up **and**
+  must not switch back down on the next evaluation, which is the test the green-only rule fails.
 
 ---
 
@@ -977,19 +1165,24 @@ it is load-bearing.
 - **Where**: `ISL29125_Reader`.
 - **Purpose**: discard the conversion that a `CONFIG1` write aborted (§7.6).
 - **Functionality**: `await asyncio.sleep_ms(remaining)` where `remaining` comes from
-  `self.isl.time_to_settle_ms()`, itself derived from the deadline `configure()` set and the
-  resolution-dependent cycle time (~303 ms at 16-bit, ~19 ms at 12-bit — the latter derived, not
-  specified, §7.2). Re-checks the deadline after waking, because a concurrent config write may
-  have pushed it out.
+  `self.isl.time_to_settle_ms()`, itself derived from the deadline `configure()` set —
+  `AutoRangeSettle × cycle_ms()`, with the resolution-dependent cycle time being ~303 ms at
+  16-bit and ~19 ms at 12-bit (the latter derived, §7.2). Re-checks the deadline after waking,
+  because a concurrent config write may have pushed it out.
 - **Failure modes**: the deadline being extended repeatedly by a stream of config writes, which
   would starve the read loop; the sleep being longer than the sample interval, which at 16-bit and
   `SampleInterv = 1` it is not (303 ms < 1 s) but at a future shorter interval could be; question 1
   in §13 — if a `CONFIG1` write turns out **not** to restart the cycle, this wait is simply
   unnecessary, never wrong.
-- **Handling**: a bounded loop (at most `AutoRangeSettle` full cycles, the schema field that
-  exists exactly for this) rather than an open `while deadline_pending`. Past the bound the driver
-  proceeds and lets the reading stand — a possibly-stale sample is better than a starved loop, and
-  the bucket will catch a persistent problem.
+- **Handling**: a bounded loop rather than an open `while deadline_pending`: at most one extra
+  cycle's worth of waiting beyond the deadline the settle multiplier already set, so a stream of
+  concurrent config writes cannot starve the read loop indefinitely. Past the bound the driver
+  proceeds and lets the reading stand — a possibly-stale sample is better than a starved loop,
+  and the bucket will catch a persistent problem. **Note `AutoRangeSettle` appears twice and
+  means one thing**: it sizes the deadline in P7, and the bound here simply follows that
+  deadline. An earlier revision used it *only* as a loop bound while P7 set a fixed one-cycle
+  deadline, which made the schema field's documented behaviour ("full cycles waited after a
+  switch") false for every value above 1.
 - **Downstream**: P14 `time_to_settle_ms()`, `asyncio.sleep_ms`.
 - **Upstream**: `_read_isl()` step 2.
 - **Logging**: `all`.
@@ -1108,11 +1301,11 @@ One shape, thirteen instances, so one specification with a table rather than thi
 |---|---|---|---|---|
 | `SampleInterv` | `set_trigger_secs` | divider only | no | software knob, no read-back — BMP3xx's precedent |
 | `Resolution` | `set_resolution` | `CONFIG1` B4 | **yes** | restarts the conversion; sets a settle deadline |
-| `RangeAuto` | `set_range_auto` | arms/disarms the state machine | no | not a chip bit; on `False` it applies the stored `Range` |
+| `RangeAuto` | `set_range_auto` | arms/disarms the state machine **and `INTSEL`** | no | not a chip bit, but two chip writes: on `False` it applies the stored `Range` (`CONFIG1`) and writes `INTSEL = 00` (`CONFIG3`); on `True` it restores `INTSEL = 01` and re-arms the thresholds. `errno=38` |
 | `Range` | `set_range` | `CONFIG1` B3 | **yes, conditional** | read-back suppressed while `RangeAuto` (R6) |
 | `AutoRangeUp` | `set_autorange_up` | thresholds on next switch | no | cross-field checked |
 | `AutoRangeDown` | `set_autorange_down` | thresholds on next switch | no | **cross-field: rejected unless `d ≤ u/53.33`** |
-| `AutoRangeSettle` | `set_autorange_settle` | settle bound | no | |
+| `AutoRangeSettle` | `set_autorange_settle` | settle margin | no | pushes `settle_cycles` down to the protocol object (P7) |
 | `AutoRangePersist` | `set_autorange_persist` | `CONFIG3` `PRST` | **yes** | chip-backed |
 | `AutoRangeDwell` | `set_autorange_dwell` | dwell floor | no | |
 | `IrCompOffset` | `set_ir_comp_offset` | `CONFIG2` B7 | **yes** | shifts the lux scale (§7.9) |
@@ -1302,7 +1495,11 @@ around exceptions and a silent `None` would reach the maths.
   (`set_register_struct(0x01, "3s", bytes((c1, c2, c3)))`); if only `CONFIG2`/`CONFIG3` changed,
   write two from `0x02`, which avoids restarting the conversion for an IR-compensation change;
   if nothing changed, write nothing. When `CONFIG1` **was** written, set
-  `self._settle_until_ms = ticks_add(ticks_ms(), self.cycle_ms())`.
+  `self._settle_until_ms = ticks_add(ticks_ms(), self.settle_cycles * self.cycle_ms())`.
+  `settle_cycles` is a plain int attribute on the protocol object, defaulting to 1 and set by the
+  reader whenever `AutoRangeSettle` is applied (init step 7 and the field's own push) — keeping
+  the *policy* on the reader and the *arithmetic* next to the write, which is the same split
+  every other value in this class uses.
 - **Why the deadline lives here**: any writer of `CONFIG1` restarts the conversion (Table 7), and
   there are three of them — the range switch, a resolution push, and the brownout recovery.
   Putting the deadline in the function that does the write makes it impossible for a caller to
@@ -1317,8 +1514,10 @@ around exceptions and a silent `None` would reach the maths.
 - **Upstream**: `setup()`, `_switch_range()`, the resolution/IR/persist setters,
   `_recover_brownout()`.
 - **Done when**: byte-exact wire-log tests for the three-byte, two-byte and no-op cases; a test
-  that an IR-only change does **not** touch `0x01` and does **not** set a settle deadline; and a
-  test that a `CONFIG1` change does both.
+  that an IR-only change does **not** touch `0x01` and does **not** set a settle deadline; a
+  test that a `CONFIG1` change does both; and a test that `settle_cycles = 5` produces a deadline
+  five cycles out at both resolutions — requirement 14 calls this knob the *settle margin*, so a
+  value above 1 has to change the wait and not just a loop bound.
 
 #### P8 `set_thresholds(self, low_counts, high_counts) -> None`
 
@@ -1365,20 +1564,27 @@ around exceptions and a silent `None` would reach the maths.
 - **Done when**: that counting test exists, plus a twin-level test that reading the status really
   does release the fake's INT line.
 
-#### P12 `get_config_snapshot(self) -> tuple[int, int, int, int, int]`
+#### P12 `get_config_snapshot(self) -> bytes`
 
 - **Purpose**: convention 11's single batched live read-back, and the only mechanism that can
   detect shadow-vs-chip divergence.
-- **Functionality**: one 3-byte burst read at `0x01` under one device-session lock, decoded to
-  `(resolution, range_fs, ir_offset, ir_adjust, persist)`.
-- **Failure modes**: bus raise; `None`; a reserved/invalid encoding in a field (e.g. a mode that
-  is not 5), which means the chip has lost its configuration.
-- **Handling**: raise on the first two. On the third, **return the decoded values anyway** and let
-  the reader compare — the divergence is information, and swallowing it here would hide exactly
-  what this function is for. (The brownout path is the one that acts on it.)
-- **Done when**: a test asserting one transaction, not three; a decode table test; and a
-  divergence test where the fake's registers are changed behind the driver's back and the
-  snapshot reports the chip's values, not the shadow's.
+- **Functionality**: one 3-byte burst read at `0x01` under one device-session lock —
+  `get_register_struct(0x01, "3s")` — returning the bytes **undecoded**.
+- **Why it returns bytes and not the five decoded values** (changed by the resolution pass):
+  decoding here threw away mode, `SYNC`, `CONVEN` and `INTSEL`, which are the four things a
+  brownout or a stray write actually corrupts — so the function's own stated purpose was
+  defeated by its own return type, and its "a mode that is not 5" failure mode was unreachable
+  by any caller. Returning bytes serves both consumers without a second transaction: R6 decodes
+  them through F7 for the config read-back, and compares them masked against `_encode_shadow()`
+  for divergence. It also keeps this layer free of policy, which is the rule the whole of §0.2
+  rests on.
+- **Failure modes**: bus raise; `None` or a short read from layer 1; a reserved/invalid encoding
+  in a field, which means the chip has lost its configuration.
+- **Handling**: raise on the first two (`OSError`, as everywhere in this layer). The third is not
+  this function's business at all any more — it returns what it read, and R6 decides.
+- **Done when**: a test asserting one transaction, not three; a test that the bytes come back in
+  register order and unmodified; and a divergence test where the fake's registers are changed
+  behind the driver's back and the snapshot reports the chip's bytes, not the shadow's.
 
 #### P13 `get_device_id(self) -> int` · P14 `time_to_settle_ms(self) -> int` · P15 `cycle_ms(self) -> int`
 
@@ -1387,8 +1593,11 @@ around exceptions and a silent `None` would reach the maths.
 - `time_to_settle_ms()`: `max(0, ticks_diff(self._settle_until_ms, ticks_ms()))` — `ticks_diff`,
   never subtraction (Part F).
 - `cycle_ms()`: `303` at 16-bit (3 × 101 ms `tINT`, p3), `19` at 12-bit (3 × ~6.3 ms, **derived**
-  — only the 16-bit figure is specified, §7.2; AN1910 would confirm, §13 q3). The derivation is a
-  comment on the constant, not a hidden assumption.
+  — only the 16-bit figure is specified). The derivation is a comment on the constant, not a
+  hidden assumption, and it is now the datasheet's own model rather than an analogy: p6 states
+  the integration time is set by *"an internal oscillator and the n-bit (n = 12, 16) counter
+  inside the ADC"*, so 101 ms × 2⁻⁴ = 6.3 ms. §13 q3's missing application note would confirm
+  the figure; it is no longer needed to justify it.
 - **Done when**: both resolutions return the documented values; a ticks-wrap test drives
   `ticks_ms()` past the wrap boundary and asserts `time_to_settle_ms()` stays sane.
 
@@ -1460,7 +1669,7 @@ this fake needs both halves.
 | T4 | `handle_writeto(data)` | answer layer 1's zero-byte ACK probe — `_bmp3xx_chip.py:151`'s comment records what happens without it (an `AttributeError` on every boot) |
 | T5 | `handle_writeto_mem(reg, data)` | `0x00 = 0x46` → full reset; `0x01` accepts 1-3 bytes (the burst) and **restarts the conversion**; `0x02`/`0x03`; `0x04`-`0x07` thresholds; `0x08` write clears `BOUTF` |
 | T6 | `handle_readfrom_mem(reg, n)` | `0x00` → `0x7D`; `0x01`-`0x03` → the real stored bytes; `0x08` → the flag byte **and then clear `RGBTHF` + release the pin** (destructive, p11); `0x09`-`0x0E` → the 6-byte burst |
-| T7 | `set_illumination(lux)` | the test seam the twin-tier sweep drives (§6.4) |
+| T7 | `set_illumination(lux, *, tint=None)` | the test seam the twin-tier sweep drives (§6.4). **`tint` is a (r, g, b) weight triple, added by the resolution pass**: R9 now decides on the peak of the three channels, so the fake has to be able to present a scene where one channel clips and green does not — a scalar-lux fake can only ever produce neutral scenes, and the one case the green-only rule got wrong would be untestable at this tier. Default `None` = neutral, i.e. today's behaviour |
 | T8 | `_start_timer()` | optional periodic refresh, matching `_scd30_chip.py`'s `auto_refresh` |
 | T9 | `configure_fault(op)` | the `isl29125:int_stuck_high` mode requirement 17 needs — **nothing today provides it**, and without it requirement 17's periodic path is untestable at the tier that would catch a regression (§11.5) |
 
@@ -1470,6 +1679,7 @@ reader will otherwise "fix" them:
 - **`digital_twin/machine.py`'s `Pin` is a per-id registry singleton**, so the `Pin(6)` the fake
   holds and the `Pin(6)` the driver constructs are the same object. That is what makes
   `simulate_edge()` reach the driver's handler at all.
+- **Clipping is modelled, not clamped away**: a channel whose modelled illumination exceeds the active range's full scale reads exactly `(1 << bits) - 1` — 4095 at 12-bit, 65535 at 16-bit — because F6 tests the raw maximum and a fake that saturated at 65535 regardless of `BITS` would make the 12-bit half of that test vacuous.
 - **`CONFIG1`'s power-on value is `0x00` and `BOUTF` starts high**, so a freshly constructed fake
   is in the post-brownout state on purpose. A twin test that expects readings before the driver
   has configured the chip is asserting the wrong thing.
@@ -1485,14 +1695,18 @@ profile's `bus_id == 1` dict, beside `0x61`/`0x59`. Wozi's branch is untouched (
 | # | Function | Change | Failure mode it must not have |
 |---|---|---|---|
 | W1 | `resolveFieldValue()` in `js/definitions.js` | walk an optional `path` array before the flat `key` lookup | a `path` that is present but does not resolve must yield `null` (→ `—`), never `undefined` leaking into `formatFieldValue()` as `"undefined"` |
-| W2 | `validateDefinitions()` in `js/definitions.js` | accept and validate `path`: array of non-empty strings, only on `readonly` fields | silently accepting a malformed `path` and failing in the browser |
+| W2 | `validateDefinitions()` in `js/definitions.js` | **conditional (optional hardening)** — validate `path`: array of non-empty strings, only on `readonly` fields. *Accepting* it needs no change: the function does not inspect field-level keys at all today, and `path` is additive so `SUPPORTED_SCHEMA_MAJOR` does not move | silently accepting a malformed `path` and failing in the browser |
 | W3 | `jitterInPlace()` in `js/mock-server.js` | recurse one level deeper than the two `jitterEachSensorGroup()` walks today | mangling or skipping the third level, which shows as a static nested value |
 | W4 | `applySensorQuirksForGet()` in `js/mock-server.js` | omit `ISLResetCal` from GET readback, as it already does for `ContMeas`/`SGPResetVOC` | a command field echoing back a value and looking persisted |
 | W5 | `formatFieldValue()` in `js/field-format.js` | **conditional on §13 q6** — honour an optional `decimals` hint instead of ending at `String(value)` | a hue rendered as `217.43859649122808` |
 
-W1-W4 are required by requirement 11 and are not optional. W5 is requirement 19 and depends on a
-decision that is not this document's to make; the recommendation stays option (b), because it
-fixes all four sensors at once and leaves the drivers consistent with each other.
+W1, W3 and W4 are required by requirement 11 and are not optional. W2 and W5 are the two
+conditional rows §1.5 marks: W2 because field-level validation does not exist yet and adding it
+is a separate (worthwhile) decision, W5 because requirement 19's *mechanism* is §13 q6 — the
+per-field precision itself is already decided, in plan §8.4's table. The recommendation stays
+option (b), and two facts found since support it: `formatFieldValue()` already dispatches on a
+display-only hint (`format: "gmtimestruct"`), and `js/mock-server.js` already rounds its own
+jitter to two decimals, so the renderer is currently the only layer that does not round.
 
 Per Part G's `src/`↔`js/` mirror obligation, each of these lands with its `tests_js/`
 counterpart in the same commit (§6.6).
@@ -1587,6 +1801,16 @@ q3. What was reachable this session:
 | IEC 61966-2-1 sRGB matrix, via the W3C CSS Color 4 discussion of it | The widely copied `0.4124564 / 0.3575761 / 0.1804375 …` rounding and the more precisely derived `0.41239080 / 0.35758434 / 0.18048079 …` **differ in the 6th decimal**, and the CSS WG corrected its own published matrices over exactly this | M2 pins whichever set is chosen as **literal constants with a source comment**, and its test asserts the literals — because a test that recomputes the matrix from primaries would pass against either |
 | `adafruit/Adafruit_CircuitPython_TCS34725` | A comparable colour sensor computes CCT as `3810 × (B/R) + 1391` (AMS DN40), not via chromaticity | Recorded as the alternative approach and **not** adopted: it is fitted to that part's own filters, so it would be no more calibrated here than McCamy and considerably less defensible |
 
+Added by the resolution pass:
+
+| Source | What it settled | Consequence here |
+|---|---|---|
+| `torvalds/linux` `drivers/iio/light/isl29125.c` | Writes the mode byte to `CONFIG1` and then unconditionally `msleep(101)` — one whole `tINT` — before reading; exposes the two ranges as scales `0.005722` and `0.152590` | Independent corroboration for §13 q1 (a `CONFIG1` write restarts the conversion), and a third implementation confirming `FS/65535` as the per-LSB scaling used by F3 |
+| FN8424 Rev 3.00, p6 "Principles of Operation" | *"The ADC integration time is determined by an internal oscillator and the n-bit (n = 12, 16) counter inside the ADC"* | P15's 12-bit cycle time stops being an analogy: 101 ms × 2⁻⁴ = 6.3 ms is the datasheet's own model, so §13 q3 no longer gates it |
+| FN8424 Rev 3.00, p11 Table 12 + p12 threshold text, read against `INTSEL` | `PRST`'s unit is a conversion of the **selected** channel, which happens once per RGB cycle | §13 q2 closed; `AutoRangePersist = 4` is ~1.2 s at 16-bit |
+| FN8424 Rev 3.00, p13 Eq. 1 and Eq. 2 | Eq. 1's coefficients *"will be changed respectively depending on the system setup"*; Eq. 2 is `Ev = (CYR·R + CYG·G + CYB·B) × Range` | The CCT matrix can only ever be a placeholder plus a calibration hook — no vendor note can supply a universal one — and §7.5's green-only lux is exactly Eq. 2 with `CYR = CYB = 0`, so a later characterisation fills in coefficients rather than replacing the formula |
+| `renesas.com` (retried) | **Refused by this session's egress proxy**, not by the site; no mirror carries Intersil application notes, and the "AN1910" hits elsewhere are NXP's and Microchip's unrelated documents of the same number | §13 q3 stays unobtainable, but both things it was wanted for are settled above |
+
 One negative result worth recording so it is not re-attempted: `docs.micropython.org`,
 `en.wikipedia.org` and `brucelindbloom.com` are all blocked by this session's egress policy. The
 MicroPython facts above came from the pinned tag's own `docs/` in the repository, which is the
@@ -1649,7 +1873,13 @@ file's `test_<what>_<expectation>()` style.
   `test_normalise_triple_12_bit_maximum_is_65520_not_65535()` (the saturation trap)
 - `test_counts_to_lux_matches_the_datasheet_lsb_figures()`
 - `test_fraction_to_counts_does_not_truncate_like_the_riot_driver()`
-- `test_is_bus_fault_pattern_needs_all_three_channels_and_a_reserved_bit()`
+- `test_is_bus_fault_pattern_needs_all_three_channels_and_a_reserved_bit()`,
+  `…_fires_on_raw_all_ones_at_both_resolutions()`,
+  `…_is_false_for_a_clipped_12_bit_scene()`
+- `test_is_saturated_uses_the_raw_resolution_maximum_not_65535()` (the 12-bit trap, from the
+  other side), `…_is_true_when_any_single_channel_clips()`
+- `test_decode_config_bytes_round_trips_against_encode_shadow()`,
+  `…_ignores_the_reserved_bits()`, `…_decodes_an_all_zero_post_brownout_chip()`
 
 **Protocol layer against `tests/machine.py`** — P1-P15, byte-exact wire logs:
 - `test_setup_sequence_is_id_reset_brownout_config()`, `…_raises_on_wrong_device_id()`,
@@ -1659,7 +1889,8 @@ file's `test_<what>_<expectation>()` style.
   `…_writes_two_bytes_from_0x02_for_an_ir_only_change()`, `…_sets_the_settle_deadline_only_on_a_config1_write()`
 - `test_set_thresholds_is_one_four_byte_burst_little_endian()`
 - `test_status_register_is_read_exactly_once_per_cycle()`
-- `test_get_config_snapshot_is_one_transaction_and_reports_the_chip_not_the_shadow()`
+- `test_get_config_snapshot_is_one_transaction_and_returns_the_raw_bytes_unmodified()`,
+  `test_read_sensor_dict_detects_a_diverged_mode_and_reapplies_the_shadow()`
 - `test_every_protocol_read_raises_rather_than_returning_none()`
 
 **Reader lifecycle** — R1-R3:
@@ -1673,14 +1904,22 @@ file's `test_<what>_<expectation>()` style.
 
 **Read path and outputs** — R4-R7, R11:
 - `test_read_returns_a_narrow_results_tuple_without_cct()` (**the `_error_check` trap, §4.3(c)**)
+- `test_the_results_tuple_carries_the_range_the_sample_was_taken_on()` and
+  `test_a_switching_cycle_is_scaled_by_the_old_range_not_the_new_one()` — the defect §4.3(c)
+  describes, asserted from both ends
 - `test_a_dark_room_never_increments_the_error_counter()` — the same trap, from the outside
 - `test_store_produces_the_documented_nested_body()`
 - `test_cct_is_none_below_the_low_light_floor_and_present_above_it()`
 - `test_hue_and_saturation_are_invariant_across_a_resolution_change()` (§7.4)
 - `test_output_filter_applies_only_when_filtcoeff_is_positive()`
+- `test_rgb_is_normalised_over_the_span_not_the_active_range()` — the same illumination read on
+  each range must produce the same `RGB`/`Bri` to within the calibrated gain error (requirement 4)
 
 **Auto-range** — R9, R10:
 - `test_switch_up_on_saturation_without_waiting_for_persistence()`
+- `test_switch_up_when_only_red_clips_and_green_is_mid_scale()` and
+  `test_that_scene_does_not_switch_back_down_after_the_dwell_expires()` — the peak-vs-green rule
+  (R9's box); the second is the oscillation the green-only version would have shipped
 - `test_switch_points_do_not_chatter_at_the_schema_defaults()` and `…_at_the_worst_legal_pair()`
 - `test_switch_down_is_suppressed_inside_the_dwell_window()`
 - `test_thresholds_are_written_before_the_range_bit()`
@@ -1699,6 +1938,9 @@ file's `test_<what>_<expectation>()` style.
 - one push test per field (13), one setter failure-injection test per errno
 - `test_autorange_down_is_rejected_when_it_violates_the_cross_field_constraint()`
 - `test_range_readback_is_suppressed_while_autorange_is_on()`
+- `test_turning_autorange_off_writes_intsel_zero_and_applies_the_stored_range()` and
+  `…_logs_errno_38_when_that_write_fails()`
+- `test_autorange_settle_of_five_waits_five_cycles_not_one()` (the settle-margin fix, P7/R11)
 - `test_get_dict_cfg_excludes_the_command_only_field()`
 - `test_a_failed_push_recovers_through_the_getter_then_the_snapshot_then_the_default()`
 
@@ -1743,7 +1985,17 @@ chip fake must exist and answer or that file stops passing — it is the twin ti
 - **requirement 17 end to end**: enable `isl29125:int_stuck_high` and assert the range still
   tracks, on the periodic path alone, and that `wrnno=15` appears;
 - **gain-ratio convergence**: repeated sweeps move the learned ratio towards the fake's own
-  non-nominal value; `ISLResetCal` returns it to nominal and it re-converges.
+  non-nominal value; `ISLResetCal` returns it to nominal and it re-converges;
+- **the single-clipped-channel scene** (added by the resolution pass): `set_illumination(…,
+  tint=(1.0, 0.15, 0.1))` on the low range, so red clips while green sits well below
+  `AutoRangeUp`. Assert the range switches up, that it does **not** come back down when
+  `AutoRangeDwell` expires, and that `Hue` afterwards matches the tint rather than the flat
+  value a clipped red produces. This is the case the green-only decision rule got wrong, and it
+  is the one the §10 NeoPixel rig drives on real hardware;
+- **continuity across the span, not across the active range**: assert that `RGB`/`Bri` are
+  continuous through the switch, not just `Lux`. Under the corrected R5 they are; under the
+  "active full scale" reading they step by 26.67×, which makes this the regression test for that
+  defect specifically.
 
 `tests/test_digital_twin_bus_hazard_concurrency.py` gains the ISL in its "every sensor still
 produced real data under concurrent load" assertions. `scripts/_digital_twin_ci_suite.py` stays
@@ -1806,7 +2058,7 @@ figure, not an accuracy claim.
 | Function group | 1 mock | 2 twin | 3 web | 4 flash | 5 bench | 6 manual |
 |---|---|---|---|---|---|---|
 | M1-M5 colour/EMA maths | ● | ○ | — | ○ | ○ | ○ |
-| F1-F5 pure driver helpers | ● | ○ | — | ○ | ○ | — |
+| F1-F7 pure driver helpers | ● | ○ | — | ○ | ○ | — |
 | R1 construction / req. 20 | ● | ● | — | ○ | ○ | — |
 | R2-R3 init, read loop | ● | ● | — | ● | ● | — |
 | R4-R5 read + derive | ● | ● | — | ● | ● | ● |
@@ -1891,32 +2143,59 @@ Not a schedule, a dependency order. Several of these are only discoverable by ge
 
 ### 7.4 The definition of done for the whole promotion
 
-Everything in §14.5, unchanged, plus the one line this document adds: **every function in §1's
-inventory has an entry in §4 and at least one `●` in §6.9's matrix.** A function that appears in
-the code but in neither is either undiscovered scope or dead code, and both are findings.
+Everything in §14.5, unchanged, plus the one line this document adds: **every unconditional
+function in §1's inventory has an entry in §4 and at least one `●` in §6.9's matrix.** A function
+that appears in the code but in neither is either undiscovered scope or dead code, and both are
+findings. The two rows §1.5 marks **conditional** (W2, W5) are exempt until their question is
+answered: answered "yes" they acquire the same obligation, answered "no" they are struck from the
+inventory and the count in §1 moves with them — never left in place as an entry nothing has to
+satisfy.
 
 ---
 
-## 8. Questions this layer inherits, and the one it adds
+## 8. Questions this layer inherits, and what the resolution pass closed
 
-§13's eight questions are unchanged and five of them still gate implementation. Their effect on
-*this* document:
+Plan §13 now carries nine questions, of which **six are closed** and three remain the project
+owner's call. Their effect on *this* document:
 
-| § 13 | Effect on the function list |
-|---|---|
-| q1 `CONFIG1` restart | P7's settle deadline and R11 are conservative either way — this gates optimisation, not correctness. H3 settles it |
-| q2 `PRST` units | changes `AutoRangePersist`'s effective time constant by 3×, nothing structural. H3 settles it |
-| q3 missing app notes | P15's 12-bit cycle time stays derived; M2's matrix stays a documented placeholder |
-| q4 keep the nesting | if "no", W1-W3 disappear and `get_dict_data()` stops being an override — the single largest structural swing in this document |
-| q5 `mockdata/dev.json` orphans | no function effect |
-| q6 output rounding | decides whether W5 exists, or whether `_store_isl()` gains a `_quantise()` seam. **Specified so it is one change either way**: the driver emits full precision today and the seam is a single call site |
-| q7 `fram=` vs `fram_storage=` | one keyword in R1 |
-| q8 twin CI suite dev leg | no function effect; §6.4 assumes "no" and records the asymmetry |
+| §13 | Status | Effect on the function list |
+|---|---|---|
+| q1 `CONFIG1` restart | **closed — yes** (Table 7 + the Linux IIO driver's `msleep(101)`, §5.3) | P7's settle deadline and R11 are now justified rather than merely conservative; H3 can still measure it, but nothing waits on the answer |
+| q2 `PRST` units | **closed — RGB cycles** (`INTSEL` selects one channel; it converts once per cycle) | `AutoRangePersist`'s help text states a real time constant; no structural effect |
+| q3 missing app notes | **closed as unobtainable, and no longer load-bearing** | P15's 12-bit cycle time is derived from the datasheet's own oscillator/counter model, not from a missing note; M2's matrix is a placeholder *by the datasheet's own statement*, not for want of one |
+| q4 keep the nesting | open — owner's call | if "no", W1-W3 disappear and `get_dict_data()` stops being an override. Still the single largest structural swing here, but cheaper than costed: W2 is optional either way (§1.5) |
+| q5 `mockdata/dev.json` orphans | open — owner's call, recommendation now **leave them** | no function effect |
+| q6 output rounding | open — owner's call, recommendation still (b) | decides whether W5 exists. **Specified so it is one change either way**: the driver emits full precision today and the seam is a single call site. The per-field precision itself is no longer open — plan §8.4's table fixes it |
+| q7 `fram=` vs `fram_storage=` | **closed — `fram=`** (the base class's own parameter name; SGP40 forwards to it anyway) | R1's keyword is settled |
+| q8 twin CI suite dev leg | **closed — no** (the suite names `run_wozi_integration.py` in seven places) | no function effect; §6.4 assumes "no" and records the asymmetry |
+| q9 `Range` vs `RangeAct` | **closed — `RangeAct`** | the namedtuple's ninth field, the nested response body, and the definitions entry. R5's box carries the reasoning |
 
-**And one new question, q9, raised by writing this down** (§4.5's box): `Range` is both a config
-field and a measurement field, and under auto-range they routinely disagree — which is normal, not
-an error. Recommendation: rename the measurement field to **`RangeAct`**. Every table here says
-`Range` so the change is one substitution.
+### What the resolution pass changed in this document, and why
+
+Recorded as a list because each item was a defect in a previous revision, not a new decision, and
+a reviewer should be able to check them one by one:
+
+1. **R5 normalised RGB over the active full scale.** Requirement 4 and plan §7.4 both say the
+   *whole span*; the active-range form steps every normalised output by 26.67× at each switch —
+   the exact discontinuity the design exists to remove. R5 corrected.
+2. **The results tuple carried no range**, so `_store_isl()` would scale a pre-switch sample by
+   the post-switch full scale, once per switch. `ISLResults` is now a 5-tuple and is defined
+   (§4.3(c)) rather than only referred to.
+3. **`AutoRangeSettle` was documented as a wait and implemented as a loop bound.** P7 now sizes
+   the deadline by it; R11 follows the deadline (requirement 14 calls the knob a *settle margin*).
+4. **`saturated` had no producer.** F6 owns it, on raw counts against the resolution's own
+   maximum — and F5's "can never fire at 12-bit" note was wrong in both directions (§4.2).
+5. **The range decision was green-only**, which cannot see a clipped red and, if saturation alone
+   were made peak-based, oscillates. R9 now decides on the peak of the three in both directions.
+6. **P12 could not detect the divergence it was justified by** — it decoded away mode, `SYNC`,
+   `CONVEN` and `INTSEL`. It returns raw bytes now; F7 decodes; R6 compares masked and re-applies.
+7. **`_init_isl()` never read the bool batch**, so `RangeAuto` was unavailable to the step that
+   needs it. Added, with `_N_BOOL_CFG = const(1)` and the `ISLResetCal` exclusion.
+8. **`set_range_auto()` had no `errno`** although it performs two chip writes. `errno=38`.
+9. **§3's leaky-bucket rule contradicted R4** on whether a brownout cycle counts. It does, once;
+   the auto-range path never does.
+10. **q9 lived only here**, while plan §13 asserted everything else was settled. The list is one
+    list again, in the plan.
 
 Two smaller things surfaced while writing and are decided here rather than raised, because
 neither is a discrepancy between existing files — they are new-code choices with a clear better

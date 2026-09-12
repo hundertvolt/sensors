@@ -3,8 +3,8 @@
 Temporary working doc for the `python/IndividualDrivers/asy_isl29125_driver.py` → `src/`
 promotion, following CLAUDE.md's step-session workflow. §1-§5 are the audit of the existing driver
 against the real datasheet; §6 records the requirements the project owner has since settled, §7-§9
-the design notes written against them, §10 the bench rig, §11 the full integration map, and §13
-the questions still open, and §14 the quality bar.
+the design notes written against them, §10 the bench rig, §11 the full integration map, §12 the
+prerequisites and standing obligations, §13 the questions still open, and §14 the quality bar.
 
 **Companion document**: [`ISL29125_FUNCTION_SPEC.md`](ISL29125_FUNCTION_SPEC.md) takes the
 decisions below down to the level of individual functions — which function, in which file, its
@@ -532,7 +532,9 @@ confirmation, from a production RTOS driver, that this is the right shape.
 16-bit integration is 101 ms = exactly 5 x 20 ms (50 Hz) = 6 x 16.67 ms (60 Hz), which is *why*
 p6 says it "rejects 50Hz and 60Hz power line as well as florescent flicker noise", and p14's Noise
 Rejection section states the integration time must be an integer multiple of the AC period. 12-bit
-is ~6.3 ms (derived — only the 16-bit figure is specified; AN1910 would confirm) and is a multiple
+is ~6.3 ms — derived, but on the datasheet's own terms rather than by analogy: p6 states the
+integration time is set by *"an internal oscillator and the n-bit (n = 12, 16) counter inside the
+ADC"*, so the specified 101 ms 16-bit figure scales by 2⁻⁴. It is a multiple
 of neither, so it forfeits flicker rejection under any mains-driven lighting. 12-bit buys ~16x
 faster conversion. Both are legitimate; the API should make the trade visible rather than pick for
 the user.
@@ -580,6 +582,17 @@ requirements 8 and 9: RGB is 0-1, `Bri` follows from that, and the low-light beh
 `Lux` is the field to read when magnitude matters; `Bri` is there for completeness of the HSB
 triple, not as the brightness measurement.
 
+**The denominator, spelled out, because it is the one number the whole continuity argument rests
+on.** Requirement 4 says *"over the whole auto-range span when auto is on"*, and that is
+**10 000 lux — the union of both ranges — not the range currently active**. The 0.003 above is
+that arithmetic and nothing else: a 30 lux dim room over a 10 000 lux span. Dividing by the
+*active* full scale instead would make `R`/`G`/`B`/`Bri` jump by the gain ratio (~26.67×) at every
+switch, which is precisely the discontinuity §7.1 exists to remove — the values would be
+continuous in `Lux` and stepped in every other field. With `RangeAuto` **false** the denominator
+is the selected fixed range (375 or 10 000), because then there is no span to be continuous
+across. One consequence worth stating: under auto-range the low range's own 0-375 lux window only
+ever occupies the bottom 3.75 % of the normalised scale, by design.
+
 ### 7.5 Lux without calibration coefficients
 
 Eq. 2's `CYR`/`CYG`/`CYB` are explicitly system-specific. The defensible zeroth-order estimate is
@@ -597,10 +610,43 @@ correction.
 
 `INTSEL` = green, `PRST` = `AutoRangePersist`. The chip fires INT whenever the green count leaves
 the window `[low, high]`, and the persistence counter performs transient rejection **in hardware** —
-the anti-chatter mechanism that would otherwise be software. Saturation (65535, clipped) forces an
+the anti-chatter mechanism that would otherwise be software. Saturation forces an
 immediate switch-up without waiting for any filter: react fast to bright, slowly to dark, so a
 passing shadow does not cost a range change and a change back. The "slowly to dark" half is
 `AutoRangeDwell`, because `PRST` cannot be made asymmetric — §8.3 has the reasoning.
+
+**`PRST` counts RGB cycles, not channel integrations — resolved** (this was §13 question 2).
+Table 12 (p11) calls its unit an *"integration cycle"* and p12's threshold text says the same, but
+the ambiguity dissolves once `INTSEL` is taken into account: the threshold comparison is made
+against **one** selected channel, and that channel converts exactly once per R-G-B cycle, so
+"an 'X-consecutive' number of interrupt" (p11) can only accumulate at one per cycle. SparkFun's
+own tutorial describes the same field as *"N consecutive readings above the threshold"*. So
+`AutoRangePersist` = 4 is 4 × 303 ms ≈ 1.2 s at 16-bit and ≈ 76 ms at 12-bit. If a bench run ever
+shows the other reading, the effect is that hardware rejection is **3× faster** than documented,
+which is safe in the up direction and irrelevant in the down direction (`AutoRangeDwell` owns
+that one) — so nothing in the design is conditional on this.
+
+**Which channel decides, and what "saturated" means.** Two different things, and an earlier
+revision ran them together:
+
+- **The hardware fast path is green, and only green** — `INTSEL` has one channel and §8.3 declines
+  to make it selectable, because green is both the photopic proxy and the basis of the reported
+  lux.
+- **The software decision is the maximum of the three channels.** Requirement 17's periodic
+  evaluation has all three counts in hand, and the output is a *colour* triple: a clipped red with
+  green at 40 % of full scale still destroys `Hue`, `Sat` and `CCT`. Deciding on green alone would
+  leave that scene un-ranged, and the §10 NeoPixel rig drives exactly it (a saturated primary).
+  Using the maximum in **both** directions is what keeps it stable: switch up when
+  `max ≥ AutoRangeUp`, switch down only when `max ≤ AutoRangeDown`. Deciding "up" on the maximum
+  but "down" on green alone would oscillate — a red-dominant scene switches up, green lands below
+  the down threshold, `AutoRangeDwell` expires, and it switches back.
+  The hardware path stays a strict subset of this rule: the INT can only ever *wake* the loop
+  early, never make the decision, so the two cannot disagree.
+- **Saturation is tested on the raw counts, against the resolution's own maximum** — 4095 at
+  12-bit, 65535 at 16-bit — *before* the `<< 4` normalisation, never against 65535 afterwards. A
+  12-bit reading normalises to at most 4095 << 4 = **65520**, so a post-normalisation `== 65535`
+  test can never fire at 12-bit and the fast path would be silently dead there. Any channel at its
+  maximum counts as saturated.
 
 **Only one threshold is live at a time, and which one depends on the range.** An earlier phrasing
 here ("high threshold at the switch-up point, low threshold at the switch-down point") reads as if
@@ -635,8 +681,12 @@ as a real gap. Table 7 (p10) closes most of it: with `SYNC` = 0 the ADC *starts*
 `0x01`, so the write that flips `RNG` also restarts the cycle. The first valid sample is therefore
 one full cycle after the write — ~303 ms at 16-bit, ~19 ms at 12-bit (3 × the ~6.3 ms derived in
 §7.2) — and the driver can simply wait that long rather than discarding an unknown number of
-samples. What remains inferred is only whether the restart is exact; §4 flags it for bench
-confirmation.
+samples. What remains inferred is only whether the restart is exact — and there is now independent
+corroboration: the mainline Linux IIO driver (`drivers/iio/light/isl29125.c`) writes `CONFIG1` and
+then unconditionally `msleep(101)` — one whole `tINT` — before it will read data, which is only
+sensible if the write restarts the integration. Between Table 7 and that, §13 question 1 is
+treated as **answered yes**; a bench check could only ever *remove* a wait, never add one, so it
+no longer gates anything.
 
 #### The switch points must clear the range ratio, and the first proposal did not
 
@@ -879,17 +929,34 @@ Part G's cross-language mirror obligation requires anyway.
 |---|---|---|---|---|
 | `SampleInterv` | int | 1 | 1-3600 s | software timer divider |
 | `Resolution` | int | 16 | {12, 16} | `CONFIG1` B4 |
-| `RangeAuto` | bool | True | — | auto vs. fixed range |
+| `RangeAuto` | bool | True | — | auto vs. fixed range; also arms (`01`) or disarms (`00`) `INTSEL` |
 | `Range` | int | 10000 | {375, 10000} | `CONFIG1` B3, used when `RangeAuto` is false |
 | `AutoRangeUp` | float | 85.0 | 50.0-95.0 % FS | switch-up threshold |
 | `AutoRangeDown` | float | **1.5** | **0.2-3.0** % FS | switch-down threshold |
-| `AutoRangeSettle` | int | 1 | 1-10 cycles | full cycles waited after a switch |
-| `AutoRangePersist` | int | 4 | {1, 2, 4, 8} | `CONFIG3` `PRST` — hardware transient rejection |
+| `AutoRangeSettle` | int | 1 | 1-10 cycles | full conversion cycles discarded after any `CONFIG1` write |
+| `AutoRangePersist` | int | 4 | {1, 2, 4, 8} | `CONFIG3` `PRST` — hardware transient rejection, in RGB cycles (§7.6) |
 | `AutoRangeDwell` | float | 10.0 | 0.0-300.0 s | minimum time on the high range before a switch **down** |
 | `ISLResetCal` | bool | — | command-only | discard the learned gain ratio and relearn (§7.3) |
 | `IrCompOffset` | int | 0 | {0, 1} | `CONFIG2` B7 (adds 106) |
 | `IrCompAdjust` | int | 40 | 0-63 | `CONFIG2` B5:0 |
 | `FiltCoeff` | float | -1.0 | -1.0-1.0 | output EMA; <= 0 disables (legacy SHTC3/MPRLS precedent) |
+
+Three properties of that table that are decisions rather than description, and are easy to read
+past:
+
+- **`AutoRangeSettle` is a multiplier, not a flag.** The settle deadline is
+  `AutoRangeSettle × cycle_ms()` — requirement 14 calls this knob the *settle margin*, so a value
+  of 5 must actually discard five cycles, not set a one-cycle deadline five times.
+- **`RangeAuto = False` disarms the interrupt at the chip**, by writing `INTSEL = 00`
+  ("No Interrupt", Table 11 p11) rather than by parking the thresholds. Parking them cannot fully
+  disarm: the datasheet fires on *"below **or equal to** the lower threshold"*, so a low threshold
+  of `0x0000` still interrupts in total darkness. With `INTSEL = 00` the fixed-range mode runs
+  purely off the software divider, and the read rate is then exactly one per `SampleInterv`.
+  Writing it touches `CONFIG3` only, so it costs a 2-byte burst at `0x02` and no conversion
+  restart (§8.7).
+- **The EMA steps once per read cycle, not once per second.** Under auto-range an INT can add a
+  cycle, so `FiltCoeff`'s effective time constant is a lower bound, not a fixed number of seconds.
+  With `RangeAuto` false it is exact, by the bullet above.
 
 #### Why `AutoRangeDwell` exists, and what was deliberately not added
 
@@ -915,6 +982,35 @@ Four knobs were considered and **declined**, recorded so they are not re-propose
   `AutoRangeDwell` is the answer instead.
 - **An on/off switch for gain-ratio learning.** See §7.3: the ratio is a device constant, so
   `ISLResetCal` covers the only real need.
+- **A settable dark offset.** `DDark` is specified (p3, Electrical Specifications: typ 1, max 5
+  counts at Range 0) — it is a property of the part, and a user-supplied value could only ever be
+  wrong. It is a module constant; see the table below.
+
+#### Which numbers are config fields, which are constants, and which are learned
+
+Requirement 1 says *"no compile-time constants for anything a user might want to change"*. It
+needs one clarification to be applicable, and §7.3 already made it implicitly when it put the gain
+ratio in FRAM rather than in the schema: the requirement governs **preferences**. A number is
+
+- a **config field** if a user could reasonably prefer a different value;
+- a **module constant** if it is a property of the device or of the maths;
+- **learned state** (a FRAM chunk) if the driver derives it at run time.
+
+Stated so the five constants this design introduces are declared rather than discovered in review:
+
+| Constant | Value | Class | Source, and why it is not a field |
+|---|---|---|---|
+| `_DARK_COUNTS` | 1 | device | `DDark` typ 1 / max 5 counts (p3). Subtracted before every ratio; the typical value is the honest default and the maximum is 0.03 lux on range 0 |
+| `_CCT_FLOOR_COUNTS` | 64 | device | §7.11 — ~13× the worst-case dark count, i.e. the level below which a 5-count additive error moves a channel ratio by more than ~8 % |
+| `_GAIN_EMA_COEFF` | 0.1 | maths | the learning filter's own time constant; §7.3 declined an on/off switch for the learning for the same reason |
+| `_GAIN_RATIO_MIN` / `_MAX` | 20.0 / 34.0 | device | a plausibility gate around the nominal 26.67 (= 10 000 / 375). Bounds on a device characteristic, not a preference |
+| the 3×3 RGB→XYZ matrix | sRGB / Rec.709 D65 | system | nine floats cannot be a `ConfigSchema` field, and p13's Eq. 1 says the coefficients *"will be changed respectively depending on the system setup"*. It is a documented placeholder and the calibration hook (§7.11); a per-unit matrix belongs in `BACKLOG.md` at promotion time, not in the schema |
+
+The same page also supplies the vendor's own lux equation — Eq. 2,
+`Ev = (CYR·Red + CYG·Green + CYB·Blue) × Range` — which places §7.5's green-only estimate exactly:
+it is Eq. 2 with `CYG` set by the FS/65535 scaling and `CYR = CYB = 0`. That is worth knowing
+because it means a later characterisation *fills in two coefficients* rather than replacing the
+formula.
 
 #### `ISLResetCal` against the project's own rule for command-only fields
 
@@ -975,12 +1071,13 @@ a gap at 64-105, so no single contiguous range can express it honestly. Its help
 
 ### 8.4 Proposed measurement fields
 
-`namedtuple("ISL29125", ("Lux", "Red", "Green", "Blue", "Hue", "Sat", "Bri", "CCT", "Range", "TS"))`
+`namedtuple("ISL29125", ("Lux", "Red", "Green", "Blue", "Hue", "Sat", "Bri", "CCT", "RangeAct", "TS"))`
 
 - `Lux` — absolute, green-channel-derived (§7.5).
 - `CCT` — relative colour temperature in K, or `None` below the low-light floor (§7.11).
 - `Red`/`Green`/`Blue` — **normalised 0-1** over the full span: the fixed range when one is
-  selected, the whole auto-range span when auto is on.
+  selected, the whole auto-range span (10 000 lux) when auto is on — §7.4's denominator paragraph,
+  which is the one place this must not be read as "the active range".
 - `Hue`/`Sat`/`Bri` — `Bri` follows from RGB being 0-1, so it is 0-1 too. In a dim room that lands
   near 0.003; the project owner has accepted that behaviour, so no log scaling and no low-light
   validity flag.
@@ -988,9 +1085,38 @@ a gap at 64-105, so no single contiguous range can express it honestly. Its help
   with blue. `Red`/`Green`/`Blue` + `Hue`/`Sat`/`Bri` keeps both triples unambiguous. The nested
   response body (§8.6) dissolves the collision anyway, so the flat tuple is an internal carrier and
   its names need only be unique, not pretty.
-- `Range` — the *active* range. It belongs in the measurement tuple rather than the config dict,
-  because under auto-range it is an output, not a setting, and without it a consumer cannot tell
-  which span the normalised values were taken against.
+- `RangeAct` — the full-scale range **the reported sample was taken on**, which is not always the
+  range currently programmed: a cycle that ends in a switch-up still reports a sample acquired on
+  the old gain (§7.6), so the two differ for exactly one reading each time. It belongs in the
+  measurement tuple rather than the config dict because under auto-range it is an output, not a
+  setting. Note it is **not** needed to interpret `Red`/`Green`/`Blue` — the span normalisation
+  above already makes those range-independent. What it is for is diagnostics: it says which gain,
+  and therefore which noise floor and which LSB, produced the numbers, and it is what the twin's
+  continuity test and the bench sweep assert against.
+- **The name is `RangeAct`, not `Range`** — this closes the question the function spec raised
+  (q9). `Range` is already a *config* field (the fixed range selected when `RangeAuto` is off),
+  the two routinely disagree under auto-range, and that disagreement is the normal case rather
+  than an error. Nothing in the stack breaks on a shared name — they live in different response
+  bodies — but a settings page and a measurements page showing "Range: 375" and "Range: 10000"
+  at the same moment is a support call waiting to happen.
+
+#### Units and precision — requirement 19 in a table
+
+Requirement 19 asks that each emitted value carries a *declared* unit and a *declared* precision.
+The units below go in `html/definitions/dev.json`'s `unit` field; the decimals are the rendering
+precision §13 question 6 decides the mechanism for. Either way the numbers are decided here
+rather than falling out of binary floating point:
+
+| Field | Unit | Decimals | Why that many |
+|---|---|---|---|
+| `Lux` | `lx` | 2 | 0.01 lx is inside the dark-count spread on range 0 (`DDark` 1-5 counts = 0.006-0.03 lx) and 15× finer than range 1's own 0.1526 lx LSB |
+| `RGB.R` / `.G` / `.B` | — | 4 | 1e-4 of the 10 000 lux span is 1 lux. Finer is available in `Lux`, which §7.4 already names as the field to read when magnitude matters |
+| `HSB.H` | `°` | 1 | 0.1° is 1/3600 of the circle — below the hue noise at any count level where hue is meaningful at all |
+| `HSB.S` | — | 3 | a 0-1 ratio of ratios; three digits is the point where the dark-offset residual dominates |
+| `HSB.B` | — | 4 | same scale and same denominator as RGB, so the same precision |
+| `CCT` | `K` | 0 | the part's own CCT accuracy is ±5 % (p3) — at 2 856 K that is ±143 K, so a decimal would be three orders of magnitude inside the error bar |
+| `RangeAct` | `lx` | 0 | one of exactly two integers |
+| `TS` | `s` | 0 | `time.mktime(time.gmtime())`, 1 s resolution, as in all three existing drivers |
 
 ### 8.5 `OperationMode` is dropped — decided
 
@@ -1044,10 +1170,18 @@ concrete places assume a measurement group is a flat map of scalars:
 
 The fix is small and belongs in one place: give a readonly `FieldDef` an optional **`path`**
 (`{"key": "R", "path": ["RGB", "R"], …}`) and have `resolveFieldValue()` walk it, with
-`validateDefinitions()` accepting and checking the new key, and `jitterInPlace()` recursing. That
+`jitterInPlace()` recursing. That
 is one function each in `definitions.js` and `mock-server.js`, plus the schema documentation in
 Part H — and, per CLAUDE.md's Part G `src/`↔`js/` mirror obligation, mirrored tests in
 `tests_js/definitions.test.js`, `templates.test.js` and `mock-server.test.js`. §11 lists each file.
+
+**Cheaper than this section first estimated, checked since**: `validateDefinitions()` does not
+inspect field-level keys at all — it validates `schemaVersion`, `device.id`, `landingSection`,
+`defaultPollIntervalMs`, then per section its `key`/`label`/`rest.get`/`pollGroup` and only that
+each group's `fields` is an array. A new optional `FieldDef` key therefore needs **no** validator
+change to be accepted; extending it to *check* `path` is optional hardening, worth doing but not
+part of the cost of the decision. The schema's major version does not move either (`path` is
+additive, and `SUPPORTED_SCHEMA_MAJOR` gates only the major).
 
 The alternative — flattening the output to `R`/`G`/`B`/`Hue`/`Sat`/`Bri` — costs nothing but gives
 up requirement 11. Recommendation: keep the nesting and make the small renderer change, since
@@ -1060,7 +1194,7 @@ Proposed response body:
               "RGB": {"R": <0-1>, "G": <0-1>, "B": <0-1>},
               "HSB": {"H": <0-360>, "S": <0-1>, "B": <0-1>},
               "CCT": <float|null>,
-              "Range": <375|10000>,
+              "RangeAct": <375|10000>,
               "TS": <epoch>}}
 ```
 
@@ -1332,7 +1466,7 @@ count is not cosmetic — it is asserted literally, see §11.7.
 
 | File | What |
 |---|---|
-| `SPECIFICATION.md` Part C.7.1 table | **New row** for `asy_isl29125_driver.py` (`ISL29125`). Start at `errno=10` (base reserves 1-9), reuse `10=init`, `11=periodic read`, `12=config read at init`, `13=config write at init`, then one per push callback, then the auto-range/calibration/brownout paths. `wrnno` for the recoverable ones: brownout recovered, gain-ratio calibration rejected, settle discard. |
+| `SPECIFICATION.md` Part C.7.1 table | **New row** for `asy_isl29125_driver.py` (`ISL29125`). Start at `errno=10` (base reserves 1-9), reuse `10=init`, `11=periodic read`, `12=config read at init`, `13=config write at init`, then the setter/getter pairs, then the auto-range/calibration/brownout paths. **The authoritative allocation is the function spec's §2** (errno 10-38, wrnno 10-15); this row is a pointer, not a second list. Two things it used to get wrong: the setters are *not* one errno per push callback (the four software auto-range knobs share `errno=27`, and the five hardware-backed fields take get/set pairs), and there is **no `wrnno` for a settle discard** — a settle wait is a planned, successful part of a range switch and is logged at `all`, not as a warning. |
 
 ### 11.5 Digital twin
 
@@ -1371,7 +1505,7 @@ point 9 makes mandatory in the same session as the promotion.
 
 | File | What |
 |---|---|
-| `html/definitions/dev.json` | **The single place the website learns about a sensor.** Its `status`→`errcount` group carries an explicit 17-entry `modules[]` list, which becomes **19**. `measurements` → a new `ISL29125` group (`Lux`, the nested RGB and HSB fields, `CCT`, `Range`, `TS`). `sensors` → a new `ISL29125` group with all 13 config fields: `enum` for `Resolution`/`Range`/`AutoRangePersist`/`IrCompOffset`, `number` (`float: true` where fractional) for the rest, `toggle` for `RangeAuto`, and `toggle` + `dispatch: true` + `defaultValue` for `ISLResetCal`. `status` → `sensors` group gains the two maintenance keys. |
+| `html/definitions/dev.json` | **The single place the website learns about a sensor.** Its `status`→`errcount` group carries an explicit 17-entry `modules[]` list, which becomes **19**. `measurements` → a new `ISL29125` group (`Lux`, the nested RGB and HSB fields, `CCT`, `RangeAct`, `TS`), each with the `unit` and rendering precision §8.4's table fixes. `sensors` → a new `ISL29125` group with all 13 config fields: `enum` for `Resolution`/`Range`/`AutoRangePersist`/`IrCompOffset`, `number` (`float: true` where fractional) for the rest, `toggle` for `RangeAuto`, and `toggle` + `dispatch: true` + `defaultValue` for `ISLResetCal`. `status` → `sensors` group gains the two maintenance keys. |
 | `js/definitions.js` | `resolveFieldValue()` learns the optional `path` walk; `validateDefinitions()` accepts/validates it. Required by requirement 11 — see §8.6's correction. |
 | `js/mock-server.js` | `jitterInPlace()`/`jitterEachSensorGroup()` recurse one level deeper; `applySensorQuirksForGet()` omits `ISLResetCal` the way it already omits `ContMeas`/`SGPResetVOC`. |
 | `js/render.js` | **Added by the second pass.** Two places touch the shapes this driver introduces. `groupValuesFrom()` hands the whole `data[group.key]` object to the renderer for `measurements`, which is what makes the `path` walk in `definitions.js` sufficient rather than needing a second unwrap here — **verified, no change**. Its `status`/`sensors` branch is the `<Sensor>_<Field>` flattener the maintenance keys must match (§11.1) — also no change, but the naming is not free. Its `collectGroupBody()` PUT path only ever sees the flat `sensors` group, so nesting never reaches it. |
@@ -1410,7 +1544,7 @@ point 9 makes mandatory in the same session as the promotion.
 | `tests_js/templates.test.js` | A nested readonly field renders its value, not `[object Object]`. |
 | `tests_js/render.test.js` | Change-comparison still works for `path`-bearing fields; `ISLResetCal` is always resubmitted (`dispatch`). |
 | `tests_js/mock-server.test.js` | Deeper jitter; `ISLResetCal` omitted from GET readback. |
-| `tests_js/mock-server-put-matrix.test.js` | **Corrected: not an optional new case — an automatic one.** It already imports `html/definitions/dev.json` and `mockdata/dev.json` and builds a case per writable field in *both* shipped devices, skipping dev's groups only because they are byte-identical to wozi's today. Its own header says the mechanism is kept "for when dev gains its own unique sensor(s) later" — this is that sensor. Two consequences: the skip logic must stop treating dev as a duplicate, and `mockdata/dev.json` must carry a valid current value for every ISL field or the generated cases fail. |
+| `tests_js/mock-server-put-matrix.test.js` | **Corrected: not an optional new case — an automatic one.** It already imports `html/definitions/dev.json` and `mockdata/dev.json` and builds a case per writable field in *both* shipped devices, keeping dev's through `DEV_UNIQUE_GROUPS`, a set that **already contains `"ISL29125"`**. Its own header says the mechanism is kept "for when dev gains its own unique sensor(s) later" — this is that sensor. So no filter logic changes: what changes is that the filter starts matching, its header comment ("currently matches zero of dev's real groups") goes stale and must be rewritten, and `mockdata/dev.json` must carry a valid current value for every ISL field or the generated cases fail. |
 | **A gap, not a file** | Nothing anywhere runs `js/definitions.js`'s `validateDefinitions()` against `html/definitions/dev.json`. `definitions.test.js` loads `wozi.json`; the PUT matrix imports dev's JSON raw, with no validation. So a malformed dev definitions file ships and only fails in a browser. Adding the ISL group is the moment to close this — a one-line addition to `definitions.test.js` covering both shipped devices. |
 | `tests_js/live-backend-put-matrix.test.js`, `_live_matrix_command.js`, `_live_twin_command.js` | These drive `run_wozi_integration.py`. **Non-targets** unless a dev-twin variant is added. |
 | `scripts/cross_browser_smoke.mjs` | Same — wozi-driven, non-target. |
@@ -1480,7 +1614,7 @@ integration row with no requirement behind it) is the note after it.
 | 1 settings persisted | §11.1 schema · §11.3 `config_ISL29125.cfg` · §11.6 definitions · §11.7 schema tests · §11.8 PUT matrix | yes |
 | 2 Resolution | schema field + `enum` in definitions | yes |
 | 3 Range / auto | schema fields; twin fake must model the 26.67× gain to exercise it | yes |
-| 4 outputs normalised over the span | §11.1 driver · §11.6 measurements group | yes |
+| 4 outputs normalised over the span | §11.1 driver · §11.6 measurements group · §7.4's denominator paragraph, which fixes the span at 10 000 lux under auto-range | yes |
 | 5 mandatory INT GPIO | §11.1 `irq_pin=6, PULL_UP` · §11.5 twin `Pin(6)` + `simulate_edge()` · §11.7 `tests/machine.py` (verified) · §11.9 `isl29125_real_irq_edge.py` | yes — all four tiers |
 | 6 IR compensation | two schema fields | yes |
 | 7 registers stay the driver's; no INT surfaced | **a negative requirement, and it is testable**: no `Interrupt*`/threshold field in the definitions file, none in the schema, `asy_notification_service.py` untouched, and the stale legacy `Interrupt*` keys deleted from `mockdata/dev.json` | yes |
@@ -1495,7 +1629,7 @@ integration row with no requirement behind it) is the note after it.
 | 16 self-healing, never stale | driver · twin fake must model `BOUTF` and the destructive `0x08` read · unit tests | yes |
 | 17 auto-range not INT-alone | driver's periodic path · unit tests both paths · **and a twin fault mode that suppresses the edge**, which the second pass found nothing provides (§11.5) | now yes |
 | 18 dev only | every `wozi` row marked non-target; `tests/test_sensortask_wozi.py`'s seven-chunk and three-sensor assertions must stay untouched | yes |
-| 19 declared unit and precision | §11.6 `field-format.js` · definitions `unit` metadata · §13 question 6 decides where rounding happens | open, by design |
+| 19 declared unit and precision | **§8.4's units-and-precision table** (the values themselves) · §11.6 `field-format.js` · definitions `unit` metadata · §13 question 6 decides only *where* the rounding happens | values now decided; mechanism still q6 |
 | 20 constructs on an absent chip | §11.7 `tests/test_sensortask_dev.py` (the generic mock has no ISL registers) | yes |
 
 **Backwards.** Three integration rows exist for reasons no requirement states, and that is
@@ -1544,61 +1678,90 @@ requirement:
 
 ## 13. What is still open
 
-Everything else in this doc is settled. These are not. Questions 1-5 predate the second pass;
-6-8 came out of it.
+Nine questions have been raised across this document and its companion (q9 is the function spec's
+own, recorded here because §13 is where the list lives). **Five are now closed by research**, one
+is closed as unobtainable-and-no-longer-load-bearing, and **three remain the project owner's
+call** — each of those three because it changes a file this promotion does not otherwise own,
+which is exactly CLAUDE.md's "report it, do not silently fix it" line.
 
-1. **Does a `CONFIG1` write really restart the conversion cycle?** (§4, Table 7.) The design uses
-   it for deterministic settling (§7.6) and avoids periodic re-asserts because of it (§9.3).
-   Both remain *safe* if it turns out not to restart — the waits are conservative either way — so
-   this gates optimisation, not correctness. Bench check.
-2. **Does `PRST` count channel integrations or full RGB cycles?** (§8.3.) Changes
-   `AutoRangePersist`'s effective time constant by 3× and nothing else; `AutoRangeDwell` covers the
-   down direction regardless. Bench check, or AN1910.
-3. **AN1910, AN1914, AN1591 and the Renesas "ISL29125 CCT calculation" note are all unobtainable**
-   from a session. AN1910 would settle the 12-bit integration time (currently derived, §7.2) and
-   question 2 above; the CCT note would replace §7.11's placeholder matrix with the vendor's own.
-   Neither blocks the promotion; both would improve it.
+### Still open — decisions, not research
+
 4. **Should the nested measurement output keep its nesting, at the cost of a small `path`
-   extension to the website renderer?** (§8.6's correction, §11.6.) Recommended yes; flattening to
-   `R`/`G`/`B`/`Hue`/`Sat`/`Bri` is the alternative and gives up requirement 11.
+   extension to the website renderer?** (§8.6's correction, §11.6.) Recommended **yes**;
+   flattening to `R`/`G`/`B`/`Hue`/`Sat`/`Bri` is the alternative and gives up requirement 11.
+   *Cheaper than first costed*: `validateDefinitions()` turns out not to inspect field-level keys
+   at all, so `path` needs no validator change to be accepted and the schema major version does
+   not move (§8.6). The change is `resolveFieldValue()` + `jitterInPlace()` + tests.
 5. **Should `mockdata/dev.json`'s orphan `SHTC3`/`MPRLS` blocks be removed** in the same pass?
-   (§11.6.) They describe sensors the refactored dev variant does not have. Note the stale
-   `ISL29125` blocks in the same file are **not** part of this question — those must be replaced
-   either way (§11.8).
-
-**Three more, opened by the second pass. All three are discrepancies between existing files, so
-CLAUDE.md's "report it, do not silently fix it" applies — they are the project owner's calls.**
-
+   (§11.6.) **Recommendation has changed to no, leave them**, on evidence found since:
+   `tests_js/mock-server-put-matrix.test.js:18-23` keeps `DEV_UNIQUE_GROUPS =
+   {"SHTC3", "MPRLS", "ISL29125"}` under an explicit **project-owner direction dated 2026-09-08**
+   — *"keep this mechanism as-is for when dev gains its own unique sensor(s) later, not to prune
+   it now."* The mock blocks are the data half of that same placeholder, they generate no test
+   cases while no definitions entry names them, and removing them would leave two of the three
+   names in that set pointing at nothing. Still the owner's call, but the default should now be
+   inaction. (The stale `ISL29125` blocks in the same file are **not** part of this question —
+   those are replaced either way, §11.8.)
 6. **Where does output rounding happen — or does it happen at all?** No driver in `src/` rounds
-   any output, and `formatFieldValue()` ends in a bare `String(value)`. Today that is harmless;
-   with eight floats per reading, six of them normalised or angular, it stops being harmless.
-   Three options: (a) the ISL rounds its own derived outputs, which diverges from the other three
-   drivers; (b) a `decimals` hint is added to the readonly `FieldDef` and `field-format.js`
-   honours it, which fixes every sensor at once and is a website change rather than a driver one;
-   (c) accept full precision on the page. Recommendation: **(b)** — it is the only one that leaves
-   the four drivers consistent with each other, and it costs about as much as the `path` change
-   already proposed in question 4, on the same file.
-7. **`fram_storage=` or `fram=` for the new driver's constructor?** `SGP40_Reader` uses the
-   former and forwards it to the base class as the latter; every other module uses `fram=`. The
-   ISL is the first driver since SGP40 to need both an error log and a chunk of its own, so it is
-   the first that has to choose. Recommendation: **`fram=`**, matching the majority and the base
-   class's own parameter name, and record `SGP40_Reader`'s spelling as a known one-off rather than
-   renaming it in an unrelated promotion.
-8. **Should the twin CI suite grow a dev leg?** `scripts/_digital_twin_ci_suite.py` drives
-   `run_wozi_integration.py` only, so this sensor gets no coverage there (§11.5). Recommendation:
-   **no, not in this promotion** — the dev runner plus
-   `tests/test_digital_twin_run_dev_integration.py` cover the same ground for this sensor, and
-   parametrising the suite is a harness rewrite. But record the asymmetry in `BACKLOG.md`, because
-   the next new dev-only device inherits the same hole.
+   any output, and `formatFieldValue()` ends in a bare `String(value)`. Three options: (a) the ISL
+   rounds its own derived outputs, which diverges from the other three drivers; (b) a `decimals`
+   hint is added to the readonly `FieldDef` and `field-format.js` honours it, which fixes every
+   sensor at once and is a website change rather than a driver one; (c) accept full precision on
+   the page. Recommendation is still **(b)**, and two facts found since make it stronger:
+   `formatFieldValue()` already dispatches on a display-only hint (`format: "gmtimestruct"`), so
+   `decimals` is a sibling of something that exists rather than a new concept; and
+   `js/mock-server.js`'s own jitter already quantises to two decimals, so the renderer is
+   currently the *only* layer that does not round. §8.4's units-and-precision table decides the
+   per-field numbers regardless of which option is chosen — that half of requirement 19 is no
+   longer open.
 
-Closed during this pass, recorded so they are not reopened: `CCT` is in (requirement 13); the
-auto-range tuning surface is settled and the four rejected knobs are listed with reasons (§8.3);
-the INT pull-up is resolved — present on the dev board, confirmed by the project owner and
+### Closed during this pass, with the evidence
+
+1. **Does a `CONFIG1` write restart the conversion cycle? — yes.** Table 7 (p10) says "ADC start
+   at I2C write 0x01" for `SYNC` = 0, and the mainline Linux IIO driver
+   (`drivers/iio/light/isl29125.c`) writes the mode byte and then unconditionally `msleep(101)`,
+   one whole `tINT`, before reading — which is only sensible under that reading. §7.6 records
+   both. A bench check could only ever *remove* a wait, so this no longer gates anything.
+2. **Does `PRST` count channel integrations or full RGB cycles? — RGB cycles.** Not from new
+   wording but from `INTSEL`: the comparison is made against one selected channel, which converts
+   once per cycle, so consecutive interrupt conditions can only accumulate at one per cycle
+   (§7.6). Worst case if a bench run disagrees is that hardware rejection is 3× faster than
+   documented, which is safe up and irrelevant down.
+3. **AN1910, AN1914, AN1591 and the Renesas "ISL29125 CCT calculation" note remain
+   unobtainable** — `renesas.com` is blocked by this session's egress proxy (retried this pass and
+   refused at the proxy, not by the site), and no mirror carries Intersil application notes; the
+   "AN1910" hits on other vendors' sites are unrelated documents of the same number. **Both things
+   it was wanted for are now settled without it**: the 12-bit cycle time is derived from p6's own
+   "internal oscillator and the n-bit (n = 12, 16) counter" statement rather than by analogy
+   (§7.2), and the CCT matrix cannot come from a vendor note at all — p13 states the coefficients
+   *"will be changed respectively depending on the system setup"*, so a placeholder plus a
+   calibration hook is the only honest shape (§7.11, §8.3). Downgraded from a gate to a
+   nice-to-have.
+7. **`fram_storage=` or `fram=`? — `fram=`.** `SensorReaderConfig.__init__`'s own parameter is
+   spelled `fram` (`base_classes.py:157`, `:252`); BMP3xx and SCD30 pass `fram=`; `SGP40_Reader`
+   is 1 of 4 and forwards it as `fram=fram_storage` (`asy_sgp40_driver.py:85`) — so even the
+   outlier reaches the base class under the majority spelling. The "it needs both a log and a
+   chunk, hence the different name" theory does not survive that line. `SGP40_Reader` keeps its
+   spelling; nothing in `src/` changes.
+8. **Should the twin CI suite grow a dev leg? — no, not in this promotion.** Confirmed:
+   `scripts/_digital_twin_ci_suite.py` names `run_wozi_integration.py` in seven places, including
+   its subprocess command line, its banner matching and its SIGINT handling — parametrising it is
+   a harness rewrite, not a flag. The dev runner plus `tests/test_digital_twin_run_dev_integration.py`
+   cover the same ground for this sensor. Record the asymmetry in `BACKLOG.md` at promotion time,
+   because the next dev-only device inherits the hole.
+9. **`Range` as both a config and a measurement field — resolved as `RangeAct`** (§8.4). The
+   measurement field is renamed and its semantics pinned to "the range the *reported sample* was
+   taken on", which is what the sample-carried range in the results tuple now makes available.
+
+Closed earlier and recorded so they are not reopened: `CCT` is in (requirement 13); the
+auto-range tuning surface is settled and the rejected knobs are listed with reasons (§8.3); the
+INT pull-up is resolved — present on the dev board, confirmed by the project owner and
 corroborated by SparkFun's schematic, with `Pin.PULL_UP` enabled by default regardless (§7.12);
 the config-field naming question is closed as a *rule* (device prefix marks a command, not a
-setting — §8.3), so `SGPResetVOC` stays as it is and needs no decision; the IR-compensation default is 40 codes with `B7` = 0 (§6, §7.9); whether `CONVEN`
-fires per channel or per cycle is moot since `CONVEN` stays 0 (§7.6); and the `CONFIG1`
-read-modify-write hazard is designed out rather than mitigated (§8.7).
+setting — §8.3), so `SGPResetVOC` stays as it is and needs no decision; the IR-compensation
+default is 40 codes with `B7` = 0 (§6, §7.9); whether `CONVEN` fires per channel or per cycle is
+moot since `CONVEN` stays 0 (§7.6); and the `CONFIG1` read-modify-write hazard is designed out
+rather than mitigated (§8.7).
 
 ## 14. Quality bar — what "done" means for this driver
 
@@ -1690,11 +1853,17 @@ driver of its kind in the project. Each needs a decision made deliberately rathe
 1. **`_VAL_` abbreviations collide.** Thirteen config fields against BMP3xx's eight, and five of
    them start `AutoRange` — `AutoRangeUp`/`AutoRangeDown`/`AutoRangeSettle`/`AutoRangePersist`/
    `AutoRangeDwell` all reduce to `AR*` under convention 6, and `AutoRangeDown` vs `AutoRangeDwell`
-   collide outright at `ARD`. **Rule**: keep the initials scheme for the six non-auto-range fields,
-   and give the auto-range five a `_VAL_AR_<WORD>` form (`_VAL_AR_UP`, `_VAL_AR_DOWN`,
+   collide outright at `ARD`. **Rule**: keep the initials scheme for the **eight** non-auto-range
+   fields, and give the auto-range five a `_VAL_AR_<WORD>` form (`_VAL_AR_UP`, `_VAL_AR_DOWN`,
    `_VAL_AR_SETTLE`, `_VAL_AR_PERSIST`, `_VAL_AR_DWELL`). It reads as the same scheme with one
    extra level, which is what a reader of the other three files would expect, and it groups the
    batch that is always read together.
+   **Three of those eight are abbreviations rather than initials, and that is deliberate**:
+   `Resolution`, `Range` and `RangeAuto` all reduce to `R`/`RA`, so the function spec's §0.3 fixes
+   them as `_VAL_RES`, `_VAL_RNG` and `_VAL_RA`, with `_VAL_RESETCAL` spelled out because
+   `ISLResetCal` initials to `IRC` — one character from `IrComp`'s `_VAL_ICO`/`_VAL_ICA`. Recorded
+   here so the deviation is a decision rather than a reviewer's finding: convention 6 is followed
+   where it discriminates and abbreviated where it does not.
 2. **Colour maths has no home yet.** RGB→HSB, RGB→XYZ→xy and McCamy's CCT cubic are pure,
    total, reusable functions over floats — exactly the shape of `wet_bulb_temperature()` and
    `dew_point()`. **Rule**: they go in `math_helpers.py`, `float | None` in and out, with
