@@ -2048,6 +2048,29 @@ def test_learning_takes_a_paired_reading_and_returns_to_the_original_range() -> 
     assert abs(reader._gain_ratio - (_GAIN_RATIO_NOMINAL + 0.1 * (25.9 - _GAIN_RATIO_NOMINAL))) < 1e-9
 
 
+def test_a_paired_reading_that_clipped_the_low_range_is_rejected_rather_than_learned() -> None:
+    import time as _time
+
+    i2c, reader = ready_reader("learn_clipped")
+
+    async def scenario() -> "ErrorLog":
+        with _FastAsyncSleep():
+            reader._gain_learn_ms = _time.ticks_add(_time.ticks_ms(), -4_000_000)
+            reader._ar_dwell_s = 0.0
+            # 3000 counts on the HIGH range is ordinary indoor light (~460 lx) and sits inside the
+            # overlap band, so learning fires. But the same light is ~26.7x more on the low range -
+            # 80000 counts, which the part cannot represent - so the paired reading comes back
+            # clipped at full scale. 65534/3000 = 21.8 lands INSIDE the 20-34 plausibility band, so
+            # nothing downstream can tell it from a real measurement.
+            seed(i2c, _REG_DATA, counts_burst(65535, 65535, 65535))
+            await reader._learn_gain_ratio(3000)
+        return await reader.get_error_counter()
+
+    counters = run(scenario())
+    assert reader._gain_ratio == _GAIN_RATIO_NOMINAL, "a clipped pair must not move the learned ratio"
+    assert 16 in warnings(counters), "the rejection has to be visible, and distinguishable from a plain implausible pair"
+
+
 def test_an_implausible_learned_ratio_is_rejected_with_a_warning() -> None:
     import time as _time
 

@@ -684,6 +684,17 @@ class ISL29125_Reader(SensorReaderConfig):
             await self.pr.err_s("Paired gain-ratio reading failed:", e, errno=11)
             await self._switch_range(here)
             return
+        if _is_saturated(raw[0], raw[1], raw[2], resolution_bits=self.isl.resolution_bits()):
+            # A clipped partner makes the ratio a measurement of the clamp, not of the part. The
+            # band gate above is range-agnostic, so learning from the HIGH range at an ordinary
+            # indoor level (~3000 counts, ~460 lx) asks the low range for ~26.7x that - past full
+            # scale - and _normalise_triple() clamps rather than failing. The resulting 65534/3000
+            # = 21.8 lands INSIDE the 20-34 plausibility band, so nothing downstream can catch it.
+            # Rejecting the whole triple, not just green: a pair is only taken in a quiet period,
+            # so any channel at the clamp means the scene is at the top of that range regardless.
+            await self.pr.wrn_s("Paired gain-ratio reading clipped - the other range cannot represent this scene", wrnno=16)
+            await self._switch_range(here)
+            return
         paired = _normalise_triple(
             raw[0], raw[1], raw[2], resolution_bits=self.isl.resolution_bits(), dark_offset=self._dark_offset(),
         )[0]

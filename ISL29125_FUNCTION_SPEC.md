@@ -257,6 +257,7 @@ holds "the user asked for auto", only the `RNG` bit that is its consequence.
 | 13 | A learned ratio was outside the plausible band and rejected | Calibration declined to move; measurement unaffected |
 | 14 | All three channels clipped while already on the high range | The scene genuinely exceeds the part; nothing the driver can do, but the consumer must know |
 | 15 | The periodic path made a range decision the INT path should have made first, N times running | **Requirement 17's silent-failure detector** — this is what turns "the interrupt is dead" from invisible into visible |
+| 16 | The paired gain-ratio reading came back clipped on the other range | The pair measures the clamp, not the part, and its apparent ratio can land inside the plausibility band — see §9.5 |
 
 `wrnno=15` is new in this document. Requirement 17 makes the periodic evaluation a safety net; it
 says nothing about *noticing* that the net is carrying the load. A counter that increments when
@@ -2309,3 +2310,40 @@ simulated time is not real time. Recorded so nobody reads them as the driver nee
 - The chip fake's random light *walk* is switched off (`_lux_step = 0.0`) while its conversion
   timer keeps running. Stopping the timer instead — the obvious move — makes the paired
   gain-reading stale and the calibration never converges.
+
+### 9.5 One defect the real-hardware session's measurements exposed, fixed here
+
+BACKLOG 20's finding — that the range ratio varies with level rather than being a device constant
+— sent me back through `_learn_gain_ratio()`, and the trip found a separate, unambiguous bug in
+it. Recorded here because it is a defect in this promotion's own new code, not a question.
+
+**The overlap-band gate is range-agnostic, but the pair it authorises is not.** The gate asks only
+that the *current* range's green count sit between `AutoRangeDown` and `AutoRangeUp` of full
+scale. On the low range that is exactly right: the high-range partner is ~26.7× smaller and
+comfortably on scale. On the **high** range the same gate authorises a pair whose low-range
+partner is ~26.7× *larger* — past full scale for any high-range count above ~2458, which is an
+ordinary indoor level (~460 lx, and the unit sits on the high range from ~150 lx up).
+
+`_normalise_triple()` clamps rather than failing, so the partner comes back as 65534 and the
+apparent ratio is `65534 / high_counts`. Most of that range is caught by the `[20.0, 34.0]`
+plausibility gate — but not all of it. High-range counts of roughly **2458-3277** yield apparent
+ratios of **26.7 down to 20.0**, which land *inside* the band. Nothing downstream can tell such a
+value from a real measurement, and at `_GAIN_EMA_COEFF = 0.1` each one drags the learned ratio a
+tenth of the way toward the clamp. The bias is always downward, and it recurs every learn period
+for as long as the scene sits there.
+
+That is also a caution for reading BACKLOG 20's own numbers: those were measured at the protocol
+layer directly, so they are unaffected — but any ratio the *driver* learned on real hardware while
+on the high range may carry this artefact on top of the genuine level dependence.
+
+**Fixed** by rejecting a clipped partner outright (`_is_saturated()` on the raw triple, before
+normalisation, so it is correct at 12 bit too) with its own `wrnno=16` rather than a silent skip
+— a unit that can never learn because it always clips is exactly the thing the FRAM-persisted
+history should show. Covered by
+`test_a_paired_reading_that_clipped_the_low_range_is_rejected_rather_than_learned`.
+
+The narrower question this leaves open is for the owner, not for this document: the gate could
+instead be made range-aware, so that learning from the high range is authorised only where the
+low-range partner will actually be on scale (high-range counts below ~2458). That would turn the
+rejection into a non-event rather than a warning, and it interacts directly with BACKLOG 20's
+question of *where* in the span the ratio should be learned at all.
