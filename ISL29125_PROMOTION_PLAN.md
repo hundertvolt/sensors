@@ -3,7 +3,7 @@
 Temporary working doc for the `python/IndividualDrivers/asy_isl29125_driver.py` → `src/`
 promotion, following CLAUDE.md's step-session workflow. §1-§5 are the audit of the existing driver
 against the real datasheet; §6 records the requirements the project owner has since settled, and
-§7 the design notes written against them. Nothing has been changed in the driver yet. Delete this
+§7-§9 the design notes written against them. Nothing has been changed in the driver yet. Delete this
 file once the promotion closes, migrating
 anything permanent into `SPECIFICATION.md` (the established pattern — see README.md's "Further
 reading" for the list of planning docs already retired that way).
@@ -348,6 +348,9 @@ These are decisions, not options. Everything below in §7 is designed against th
 8. **RGB output is normalised 0-1.**
 9. **HSB's low-light behaviour is accepted** — no log scaling, no validity flag needed.
 10. **The API follows the same conventions as the other promoted drivers** (verified in §8.2).
+11. **Measurement output is structured** — `RGB` and `HSB` are nested sub-objects, not flattened
+    sibling keys.
+12. **`OperationMode` is not exposed.** The driver sets and keeps `RED_GREEN_BLUE` itself.
 
 Two consequences worth stating explicitly, because they change earlier reasoning in this doc:
 
@@ -548,16 +551,111 @@ schema's per-field validation cannot express, so the driver has to enforce it.
   because under auto-range it is an output, not a setting, and without it a consumer cannot tell
   which span the normalised values were taken against.
 
-### 8.5 One question this raises
+### 8.5 `OperationMode` is dropped — decided
 
-**Should `OperationMode` be exposed at all?** Lux, RGB and HSB all need three channels, so anything
-but `RED_GREEN_BLUE` (`0b101`) leaves every derived output undefined, and `POWERDOWN`/`STANDBY`
-produce no conversions while the driver keeps reporting the last register contents with a fresh
-timestamp (§3.8). Either drop it and have the driver force RGB mode, or keep it and document that
-the other seven modes invalidate the outputs. Dropping it looks right for a mains-powered node,
-where the 56 µA -> 0.5 µA saving buys nothing.
+Not exposed. Lux, RGB and HSB all need three channels, so anything but `RED_GREEN_BLUE` (`0b101`)
+leaves every derived output undefined, and `POWERDOWN`/`STANDBY` produce no conversions while the
+driver would keep reporting stale registers with a fresh timestamp (§3.8). The 56 µA -> 0.5 µA
+saving buys nothing on a mains-powered node. The driver sets mode 5 at setup and **re-asserts it
+whenever it finds the chip has lost it** (§9.3).
 
-## 9. Known prerequisites and standing obligations
+### 8.6 Nested output — cheaper than it looks
+
+The current shared shape is exactly two levels: `make_dict()` (`config_manager.py:87`) turns a flat
+namedtuple into `{TypeName: {field: value}}`, and every promoted driver annotates
+`get_dict_data() -> dict[str, dict[str, int | float | str | bool | None]]`.
+
+Three things make the nested form cheap rather than cross-cutting:
+
+- **The webserver's own protocol is already wide enough.** `_ModuleLike.get_dict_data()` is
+  declared `-> dict[str, Any]` (`asy_webserver_service.py:44`), so the consuming side needs no
+  change at all.
+- **The serialiser already handles it.** `_stream_dict_response()` does `json.dumps(v)` per
+  top-level value (`asy_webserver_service.py:166`), so a nested value serialises correctly today.
+  Part I's memory bound is unaffected: this module's response is a small fixed set of numbers, not
+  something that grows with device configuration.
+- **There is already precedent for nesting on the config side** — `_flatten_cfg_values()`
+  (`asy_webserver_service.py:177`) exists precisely because `get_dict_cfg()` may return either
+  shape.
+
+So the ISL driver **overrides `get_dict_data()`** and builds the nested dict itself rather than
+going through `make_dict()`, declaring the wider return type. No shared contract change, no other
+module touched. Note `make_dict()`'s own comment records that `_asdict()`/`_fields` are unavailable
+on rp2 (ROM level `EXTRA_FEATURES`, below the `EVERYTHING` they need), so the nested build is
+written out explicitly rather than derived from the namedtuple.
+
+Proposed response body:
+
+```
+{"ISL29125": {"Lux": <float>,
+              "RGB": {"R": <0-1>, "G": <0-1>, "B": <0-1>},
+              "HSB": {"H": <0-360>, "S": <0-1>, "B": <0-1>},
+              "Range": <375|10000>,
+              "TS": <epoch>}}
+```
+
+Nesting also dissolves the naming collision flagged in §8.4: `RGB.B` and `HSB.B` are unambiguous
+once they sit in separate sub-objects, so both triples keep their conventional single-letter names.
+
+## 9. The chip's write model — no wear, but no persistence either
+
+### 9.1 Confirmed: config registers are volatile, rewriting them is free
+
+The datasheet says it directly. Of the byte-write sequence (p7): *"The ISL29125 then begins an
+internal write cycle of the data to the **volatile memory**."* There is no EEPROM, no NVM, no
+write-endurance figure anywhere in FN8424 — because there is nothing non-volatile to wear out.
+Rewriting `CONFIG1`/`CONFIG2`/`CONFIG3` is an SRAM-cell write, as often as wanted.
+
+This is worth stating explicitly because **the same is not true of every sensor in this repo**:
+`BACKLOG.md` records that `asy_scd30_driver.py`'s persistent NVM setters have no published
+write-cycle endurance figure, and are safe today only because every one of them is REST-triggered
+and never called from a boot path or a periodic loop. The ISL29125 carries no such constraint, so
+auto-range is free to rewrite `RNG` as often as the light demands.
+
+### 9.2 Three caveats, only one of which is the expected one
+
+**a) Measurement glitches — the expected one, and real.** The ADC integrates continuously, so the
+conversion in flight when a config bit changes is invalid. Discard at least one full R-G-B cycle
+(~303 ms at 16-bit) after any write that changes `RNG`, `BITS` or the IR compensation. No settling
+time is specified; this is inference (§7.6).
+
+**b) `tWC` has a symbol but no value.** Figure 4 (p5) labels an I²C write-cycle time `tWC`, and p7
+warns that *"during the internal write cycle, the device inputs are disabled and the SDA line is in
+a high impedance state, so the device will not respond to any requests from the master."* But no
+`tWC` figure appears in any spec table — checked p3 and p4. So a transaction issued immediately
+after a write can legitimately NACK. The driver should treat an `OSError` in the window right after
+a config write as a retryable condition, not as a bus fault that feeds the error counter. At 50 kHz
+with the project's per-transaction locking this is unlikely to bite, but it is unbounded by
+specification rather than known-safe.
+
+**c) `CONFIG1` now has two writers.** Auto-range writes `RNG` (B3) continuously while an API call
+can write `BITS` (B4) — same register, and every `_set_bits` is a read-modify-write. Each RMW is
+individually lock-protected, but that does not help: auto-range can read `CONFIG1`, the user's
+write can land, and auto-range can then write back its stale copy, silently losing the resolution
+change. The legacy design never hit this because nothing wrote `CONFIG1` on its own. Fix: the
+driver keeps a **shadow copy of `CONFIG1`** and writes whole bytes, or routes every `CONFIG1` write
+through one owner. This is a consequence of adding auto-range, not a pre-existing defect.
+
+### 9.3 The flip side of volatility: a brownout silently disables the sensor
+
+Volatile means no wear, and it equally means **no persistence**. `Table 1` gives `CONFIG1` a
+power-on default of `0x00` — and `0x00` in bits B2:0 is **Power-Down**. So after any brownout the
+chip stops converting entirely, and a driver that keeps reading data registers would report the
+last stale values, with a fresh timestamp, indefinitely.
+
+The datasheet provides the detector: `BOUTF` (`0x08` B2), *"Power-down or Brownout occurred"*
+(Table 18, p12), default HIGH at power-up and cleared by writing it LOW.
+
+So the driver should **check `BOUTF` periodically, and on finding it set, re-apply the full
+configuration** (mode, range, resolution, IR compensation, thresholds) and clear it again — the
+same self-healing posture the existing 1 s interrupt self-heal already takes (§1.3). The legacy
+driver clears `BOUTF` once at setup and never looks at it again, so a mid-life brownout would go
+unnoticed.
+
+This also folds in cleanly: the status register is already read on every interrupt, and `BOUTF`
+sits in the same byte as `RGBTHF` and `CONVENF` (§7.7), so the check costs no extra transaction.
+
+## 10. Known prerequisites and standing obligations
 
 - `BACKLOG.md:519-522` already flags `asy_i2c_driver.py`'s `readfrom_mem()` → `readfrom_mem_into()`
   zero-copy change as *"worth doing before `asy_isl29125_driver.py` … is migrated"*, naming this
