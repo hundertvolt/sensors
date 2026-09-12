@@ -37,6 +37,12 @@ reading" for the list of planning docs already retired that way).
   consecutive config registers (§8.7), and IR compensation's coupling to the full scale (§7.9). It
   also corrected the auto-range switch-point arithmetic (§7.6) and turned up the community
   all-channels-`0xFFFF` failure signature that the saturation fast-path has to survive.
+- **A second pass over the integration surface** (2026-09-12): every file in the repo that names
+  an existing sensor was enumerated and opened, and every claim already written in §11 was checked
+  against the file it names. Six rows were wrong rather than merely incomplete, and two more
+  requirements came out of it — §11's own "Second pass" preamble lists the corrections, §11.13
+  cross-checks §6 against §11 in both directions, and §13's questions 6-8 are the discrepancies
+  it surfaced between existing files.
 
 Two things the datasheet does **not** contain, which stay open: the **12-bit integration time**
 (only the 16-bit figure, 101 ms typ, is specified) and the **lux-conversion coefficients**
@@ -435,6 +441,28 @@ hole in the design rather than a restatement):
 18. **Scope is the `dev` variant only.** `wozi` does not carry this sensor and is not to be
     changed — see §11's non-targets, which matters because most of the integration surface has a
     wozi twin of every dev file.
+
+**Two more, added by the second completeness pass** (this one worked backwards — from the
+integration surface in §11 to the requirements — which is why these were invisible the first
+time round):
+
+19. **Every emitted value carries a declared unit and a declared precision.** Found by following
+    requirement 8 into the renderer: `js/field-format.js`'s `formatFieldValue()` ends in a bare
+    `String(value)`, and **no driver in `src/` rounds any output** (one `round()` exists in all of
+    `src/`, and it is an `asyncio.sleep()` argument). Today that is invisible because SCD30/BMP3xx
+    emit one or two derived floats each. This driver emits eight, six of them normalised or
+    angular, so a hue of `217.43859649122808` would go straight to the page. The *requirement* is
+    that the precision is a decided, tested property of each field rather than an artefact of
+    binary floating point; **where** the rounding happens is §13's question 6, because doing it in
+    the driver diverges from the other three and is therefore a discrepancy to raise, not to fix
+    quietly.
+20. **Construction and `setup()` must complete on a bus where the chip never answers.** Not a
+    restatement of 16: 16 is about a chip that is present and misbehaving, this is about one that
+    is absent for the whole run. It is not hypothetical — `tests/test_sensortask_dev.py` builds
+    the entire dev object graph against `tests/machine.py`'s generic dict-of-registers fake, which
+    has no ISL29125 registers in it, and `build_system()` has no per-sensor try/except. Every
+    existing driver already satisfies this; it is stated because it is the one property that, if
+    missed, breaks the whole dev test file rather than just the new one.
 
 **One standing consequence, stated once because it recurs**: CLAUDE.md's rule to *"verify against
 the legacy driver's own actually-proven field behaviour"* has **no purchase for this device**. The
@@ -1198,29 +1226,85 @@ area; each row is a file and what it needs.
 **Scope**: the `dev` variant only (requirement 18). Every `wozi` counterpart below is an explicit
 **non-target**.
 
+**Second pass.** This map was rebuilt once more from the other direction — every file in the repo
+that so much as names an existing sensor was enumerated and opened, and every claim already in
+this section was checked against the file it names rather than against memory of it. Six rows were
+**wrong**, not merely incomplete, and they are corrected in place below rather than appended to:
+
+1. The FRAM cost is **two** chunks, not one (§11.1) — so dev goes to **nine**, not eight.
+2. `scripts/_digital_twin_ci_suite.py` only ever boots `run_wozi_integration.py`, so every edit
+   §11.5 proposed to it would have been inert (§11.5).
+3. `tests/test_digital_twin_sensortask_integration.py` and
+   `tests/test_digital_twin_real_website_integration.py` are **wozi-only files** — non-targets,
+   where §11.7 listed them as work (§11.7).
+4. `SPECIFICATION.md` Part A.7 is titled *"`src/sensortask_wozi.py` construction order"* and has no
+   dev counterpart at all, so this needs a **new** section, not an edit to an existing one (§11.11).
+5. The `tests_js` PUT matrix already imports `html/definitions/dev.json` **and**
+   `mockdata/dev.json` and iterates every writable field it finds — so the mockdata refresh is
+   mandatory and automatic, not the optional tidy-up §11.6/§13 treated it as (§11.8).
+6. `js/render.js` and `js/field-format.js` were missing from the website row entirely, and both
+   are on the path requirement 11's nesting has to travel (§11.6).
+
+Everything else below was confirmed against the file. Where a row now reads "**verified, no
+change**", that means the file was actually opened and the reason recorded — not that it was
+skipped.
+
 ### 11.1 The driver and its wiring (`src/`)
 
 | File | What |
 |---|---|
 | `src/asy_isl29125_driver.py` | **New.** Two classes per Part C.2: `ISL29125_I2C` (chip protocol, `Lockable` device session) and `ISL29125_Reader(SensorReaderConfig)` (trigger timer, read loop, auto-range state machine, error counting, config schema, FRAM-backed gain-ratio chunk). |
-| `src/sensortask_dev.py` | Import + module-global + construction in `build_system()`; `_collect_error_sources()` (**two** entries: `isl_reader`, `isl_reader.cfgmgr`); `_collect_level_setters()` (same two, `.pr.set_level`); `WebserverService(sensors=…)`; `maintenance_sensors=` (a `_isl_maintenance_status()` alongside `_sgp_maintenance_status()`, reporting the learned gain ratio and its calibration timestamp); `await isl_reader.setup()` in the setup batch; `_collect_task_starters()`; `_collect_timer_starters()`. |
+| `src/sensortask_dev.py` | Import + module-global + construction in `build_system()`; `_collect_error_sources()` (**two** entries: `isl_reader`, `isl_reader.cfgmgr`); `_collect_level_setters()` (same two, `.pr.set_level`); `WebserverService(sensors=…)`; `maintenance_sensors=` (a `_isl_maintenance_status()` alongside `_sgp_maintenance_status()`); `await isl_reader.setup()` in the setup batch; `_collect_task_starters()`; `_collect_timer_starters()`. Four details the second pass pinned down — see below the table. |
 | `src/sensortask_wozi.py` | **Non-target.** |
+
+**Four details in that row, settled against the real file.**
+
+- **The maintenance keys are `ISL29125_GainRatio` and `ISL29125_CalTS`.** `js/render.js`'s
+  `groupValuesFrom()` flattens `/status`'s `sensors` object one level into `<Sensor>_<Field>`
+  keys, and `html/definitions/dev.json` addresses them that way (`SGP40_BackupTS` /
+  `SGP40_RestoreTS` are the only two that exist today). So `_isl_maintenance_status()` returns
+  `{"GainRatio": …, "CalTS": …}` and the definitions file names them prefixed. Not a free choice.
+- **`await isl_reader.setup()` really does belong in the batch.** Part A.7 records that
+  `scd_reader.setup()` is deliberately *not* in it, "no local config" being the reason. The ISL
+  has a `ConfigManager` of its own, so it follows `sgp_reader`/`bmp_reader`, not `scd_reader`.
+- **The timestamped chunk needs the NTP callback**, which is a second constructor argument, not a
+  free consequence of passing `fram=`: `SGP40_Reader(fram_storage=fram,
+  fram_ntp_callback=ntp.ntp_issynced, …)` is the only existing precedent, and
+  `AsyFramManager.get_timestamped_chunk()` takes the callback positionally.
+- **GP6 is free on dev** — confirmed against `build_system()`'s own pin assignments (i2c0 13/12,
+  i2c1 15/14, spi0 2/3/4 + CS 5, SCD30 RDY 11, NeoPixel 18). No conflict to design around.
+
+**A naming discrepancy this surfaces, to raise rather than resolve unilaterally.** `SGP40_Reader`
+spells its FRAM argument `fram_storage=`, while `BMP3xx_Reader`/`SCD30_Reader`/`NeopixelDriver`/
+`NotificationCoordinator`/`SystemService` all spell it `fram=` — and `SGP40_Reader` then forwards
+it to the base class *as* `fram=`. The ISL is the first driver since to need both a FRAM-backed
+error log and a chunk of its own, so it is the first to have to pick a side. Part D.10 (API
+consistency across the project) makes this a real finding, and CLAUDE.md's "report a discrepancy,
+do not silently fix it" makes it the project owner's call, not this document's: §13 question 7.
 
 **The FRAM chunk position is a hard constraint, not a style choice.** `AsyFramManager` is a bump
 allocator: instantiation order *is* on-chip layout, and Part A.7 records the seven-chunk order as
 one that "must stay in this relative order". `SPECIFICATION.md`'s "FRAM chunk determinism rule"
 requires every chunk-owning construction to be unconditional and fixed-position. So
-`isl_reader` must be constructed **after** `notify_service` (chunk 7), taking **chunk 8** — not in
-the natural reading position beside the other sensors, which would shift chunks 5-7 and silently
-invalidate every existing error log on the dev board's FRAM. That is exactly the evidence
-CLAUDE.md warns has already been destroyed once. One out-of-place construction plus a comment
-saying why; dev and wozi then still share an identical chunks 1-7.
+`isl_reader` must be constructed **after** `notify_service` (chunk 7) — not in the natural reading
+position beside the other sensors, which would shift chunks 5-7 and silently invalidate every
+existing error log on the dev board's FRAM. That is exactly the evidence CLAUDE.md warns has
+already been destroyed once. One out-of-place construction plus a comment saying why; dev and
+wozi then still share an identical chunks 1-7.
+
+**Corrected by the second pass: it takes chunks 8 *and* 9, not chunk 8.** Requirement 15 asks for
+a FRAM-backed error history and §7.3 asks for a persisted gain ratio, and those are two separate
+allocations — exactly as SGP40 already holds chunks 2 *and* 3 (error log, then VOC backup), both
+allocated inside its own `__init__` in that sub-order. So the ISL follows the same sub-order:
+**chunk 8 = error log, chunk 9 = timestamped gain ratio**, dev ends at **nine** chunks, and wozi
+stays at seven. Capacity is a non-issue (dev's MB85RS2MTA is 256KB against wozi's 8KB), but the
+count is not cosmetic — it is asserted literally, see §11.7.
 
 ### 11.2 Shared `src/` surfaces
 
 | File | What |
 |---|---|
-| `src/asy_i2c_driver.py` | Module docstring line 2 lists every I2C driver that uses it — add this one. No code change: the burst read (`"6s"`) and burst write (`"3s"`/`"4s"`) both work through the existing API (§7.1, §8.7). |
+| `src/asy_i2c_driver.py` | Module docstring line 2 lists every I2C driver that uses it by name (verified: `asy_scd30_driver.py`, `asy_sgp40_driver.py`, `asy_bmp3xx_driver.py`) — add this one. No code change: the burst read (`"6s"`) and burst write (`"3s"`/`"4s"`) both work through the existing API (§7.1, §8.7). |
 | `src/api_response.py` | Nothing. Its `_ERRNO_UNHANDLED_DISPATCH = 99` sentinel is deliberately above every driver's range; check the new range stays below it. |
 | `src/asy_notification_service.py` | **Nothing** — no light-based notification signal is planned. Listed because it is where a future one would register. |
 
@@ -1229,7 +1313,7 @@ saying why; dev and wozi then still share an identical chunks 1-7.
 | File | What |
 |---|---|
 | `config_ISL29125.cfg` | **New at runtime**, not committed — one JSON file per sensor, written by `ConfigManager` under `cfg_path`. Already covered by `.gitignore`'s `config_*.cfg` rule; no change needed there. |
-| FRAM gain-ratio chunk | Allocated inside `ISL29125_Reader.__init__` when `fram=` is given, following SGP40's VOC chunk. One float plus CRC; use a timestamped chunk so `_isl_maintenance_status()` can report when it was last learned. |
+| FRAM chunks 8 and 9 | Both allocated inside `ISL29125_Reader.__init__`, in that sub-order: the base class's own error-log chunk first, then `get_timestamped_chunk()` for the gain ratio (one float plus CRC, `CRC32()` like SGP40's). The timestamped variant is what lets `_isl_maintenance_status()` report *when* the ratio was learned, and it is why the constructor needs an NTP-sync callback as well as the manager (§11.1). Both must degrade to `None` on allocation failure rather than raising — `__init__` runs before any task supervisor exists to catch it (`asy_sgp40_driver.py`'s own guard is the precedent). |
 
 ### 11.4 Error/warning numbering
 
@@ -1248,17 +1332,40 @@ point 9 makes mandatory in the same session as the promotion.
 | `digital_twin/machine.py` | `_wire_i2c_devices()`: add `0x44: Isl29125Chip(int_pin=Pin(6, mode=Pin.IN), …)` to the **`dev` profile's `bus_id == 1`** dict, beside `0x61`/`0x59`. The existing `Pin.simulate_edge()` is exactly the mechanism the active-low INT needs (`simulate_edge(0)` on a threshold crossing, `simulate_edge(1)` when `0x08` is read) — the same seam `_scd30_chip.py` already uses for its RDY line. |
 | `digital_twin/README.md` | "What's here" bus-wiring bullet; the dev-variant section. |
 | `digital_twin/launch.py` | **Optional / non-target.** It mirrors wozi's wiring only. If a dev profile is ever added there, `_FAULT_DEVICE_OPS` and `_sensor_loop()` gain an `isl29125` entry. |
-| `digital_twin/run_dev_integration.py` | Only if the chip fake needs on-disk state like `--scd30-state-path`. The gain ratio lives in the FRAM chunk, which the twin already persists, so **probably nothing**. |
-| `scripts/_digital_twin_ci_suite.py` | `_VERBOSE_LOG_PREFIXES` += `"ISL29125"`; classify into `_PERSISTED_ERROR_MODULES` or `_IN_MEMORY_ERROR_MODULES`; optionally a `--fault isl29125:readfrom_mem:N` leg in the fault run. |
+| `digital_twin/run_dev_integration.py` | On-disk state (a `--isl29125-state-path` mirroring `--scd30-state-path`) is **not** needed: the gain ratio lives in the FRAM chunk, which the twin already persists via `--fram-state-path`. What it may need is a fault spec covering requirement 17's failure mode — see below. |
+| `scripts/_digital_twin_ci_suite.py` | **Corrected: nothing, and that is a finding.** The suite hard-codes `run_wozi_integration.py` as the subprocess it drives (its own docstring, and the `cmd = [micropython_bin, "digital_twin/run_wozi_integration.py", …]` it builds), so the ISL never boots inside it. Adding `"ISL29125"` to `_VERBOSE_LOG_PREFIXES`/`_PERSISTED_ERROR_MODULES` would be dead configuration. See the note below the table. |
+| `digital_twin/run_dev_integration.py` (again) | This, not the CI suite, is the twin's dev entry point — it boots the real `sensortask_dev` graph. The ISL therefore enters it **automatically** the moment `build_system()` constructs one, which promotes the chip fake from "required by policy" to "required or `tests/test_digital_twin_run_dev_integration.py`'s existing bounded end-to-end smoke test stops passing". |
+
+**Two consequences of the CI-suite finding.**
+
+- **The twin-tier end-to-end coverage for this sensor comes from the dev runner and the dev unit
+  tests, not from the wozi CI suite.** That is a deliberate gap, not an oversight to close in this
+  promotion: parametrising `_digital_twin_ci_suite.py` over both entry points is a rewrite of a
+  700-line harness that today hard-codes wozi's module set, ports, fault specs and expected error
+  modules. Recommendation: leave it wozi-only, and record the asymmetry in `BACKLOG.md` so the
+  next person does not read the absence as an accident. (§13, question 8.)
+- **Requirement 17 needs a fault mode nothing currently provides: an INT line that never
+  asserts.** The interrupt-freezes-silently hole is exactly what requirement 17 exists to close,
+  so the chip fake must be able to *not* pull the line — a constructor flag or a `FaultInjector`
+  op (`isl29125:int_stuck_high`) that suppresses `simulate_edge()` while the conversion data keeps
+  moving. Without it the requirement's periodic-read path is untestable at the tier that would
+  actually catch a regression. Worth noting `digital_twin/machine.py`'s `Pin` is a **per-id
+  registry singleton**, so the `Pin(6)` the chip fake holds and the `Pin(6)` the driver constructs
+  are the same object — which is what makes the whole mechanism work, and is worth a comment in
+  the fake so nobody "fixes" it later.
 
 ### 11.6 Website (`html/`, `js/`, `mockdata/`)
 
 | File | What |
 |---|---|
-| `html/definitions/dev.json` | **The single place the website learns about a sensor.** `measurements` → a new `ISL29125` group (`Lux`, the nested RGB and HSB fields, `CCT`, `Range`, `TS`). `sensors` → a new `ISL29125` group with all 13 config fields: `enum` for `Resolution`/`Range`/`AutoRangePersist`/`IrCompOffset`, `number` (`float: true` where fractional) for the rest, `toggle` for `RangeAuto`, and `toggle` + `dispatch: true` + `defaultValue` for `ISLResetCal`. `status` → `sensors` group gains the two maintenance keys. |
+| `html/definitions/dev.json` | **The single place the website learns about a sensor.** Its `status`→`errcount` group carries an explicit 17-entry `modules[]` list, which becomes **19**. `measurements` → a new `ISL29125` group (`Lux`, the nested RGB and HSB fields, `CCT`, `Range`, `TS`). `sensors` → a new `ISL29125` group with all 13 config fields: `enum` for `Resolution`/`Range`/`AutoRangePersist`/`IrCompOffset`, `number` (`float: true` where fractional) for the rest, `toggle` for `RangeAuto`, and `toggle` + `dispatch: true` + `defaultValue` for `ISLResetCal`. `status` → `sensors` group gains the two maintenance keys. |
 | `js/definitions.js` | `resolveFieldValue()` learns the optional `path` walk; `validateDefinitions()` accepts/validates it. Required by requirement 11 — see §8.6's correction. |
 | `js/mock-server.js` | `jitterInPlace()`/`jitterEachSensorGroup()` recurse one level deeper; `applySensorQuirksForGet()` omits `ISLResetCal` the way it already omits `ContMeas`/`SGPResetVOC`. |
-| `mockdata/dev.json` | Replace the **stale legacy `ISL29125` blocks that are already there** — `measurements` still carries raw `Red`/`Green`/`Blue` counts, `sensorsConfig` still carries the ten `OperationMode`/`Interrupt*` keys §8.1 deletes. `status.errcount` already lists `ISL29125` and `CFGMGR_ISL29125`, so that part is done. (It also carries orphan `SHTC3`/`MPRLS` entries for sensors the refactored dev does not have — worth removing in the same pass, or leaving alone deliberately.) |
+| `js/render.js` | **Added by the second pass.** Two places touch the shapes this driver introduces. `groupValuesFrom()` hands the whole `data[group.key]` object to the renderer for `measurements`, which is what makes the `path` walk in `definitions.js` sufficient rather than needing a second unwrap here — **verified, no change**. Its `status`/`sensors` branch is the `<Sensor>_<Field>` flattener the maintenance keys must match (§11.1) — also no change, but the naming is not free. Its `collectGroupBody()` PUT path only ever sees the flat `sensors` group, so nesting never reaches it. |
+| `js/field-format.js` | **Added by the second pass, and it carries a real question.** `formatFieldValue()` handles `null` already (renders `—`), so a `None` CCT is fine with no change. But every numeric field ends at a bare `String(value)`, and no driver in `src/` rounds anything — so eight unrounded floats per reading would render at full binary precision. This is requirement 19, and §13's question 6 decides where the rounding lives. |
+| `js/templates.js` | The `readonly` kind is the only one these fields use and it renders through `formatFieldValue()` — **verified, no change**, provided `resolveFieldValue()` has already resolved the `path`. |
+| `js/app.js`, `js/main.js` | **Verified, no change.** `app.js`'s `KNOWN_DEVICES` already contains `"dev"`; `main.js` is the production entry and has no device switch at all. |
+| `mockdata/dev.json` | Replace the **stale legacy `ISL29125` blocks that are already there** — `measurements` still carries raw `Red`/`Green`/`Blue` counts, `sensorsConfig` still carries the ten `OperationMode`/`Interrupt*` keys §8.1 deletes. `status.errcount` already lists `ISL29125` and `CFGMGR_ISL29125`, so that part is done; `status.sensors` needs the two new maintenance keys. **Not optional** — `tests_js/mock-server-put-matrix.test.js` reads this file and `html/definitions/dev.json` together and generates a case per writable field, so a definitions entry with no matching mock value is a failing test, not a cosmetic gap (§11.8). (It also carries orphan `SHTC3`/`MPRLS` entries for sensors the refactored dev does not have — §13 question 5.) |
 | `html/index.html`, `html/style.css` | Nothing — both are generic; a `.composite-fields`-style rule is only needed if the `path` change introduces new markup, which it should not. |
 | `html_raw/dev/*` | **Non-target.** `SPECIFICATION.md` (Part H.1) records legacy `html_raw/` as deliberately not updated — accepted debt. |
 | `html/definitions/wozi.json`, `mockdata/wozi.json` | **Non-targets.** |
@@ -1268,18 +1375,19 @@ point 9 makes mandatory in the same session as the promotion.
 | File | What |
 |---|---|
 | `tests/test_asy_isl29125_driver.py` | **New.** The bulk of the work: register packing, the burst read/write, the normalisation chain, the auto-range state machine (both the INT path and requirement 17's periodic path), hysteresis and dwell, settle discard, saturation vs. bus-fault discrimination, gain-ratio learning and `ISLResetCal`, brownout re-apply, HSB/CCT maths incl. the low-light `None`, every schema field's validation, the cross-field `AutoRangeDown ≤ AutoRangeUp/53.33` rejection, and the command-only field's four Part C.5.2.1 obligations. |
-| `tests/machine.py` | The mock I2C is a generic dict-of-registers fake, so probably no change — but its `Pin.irq()` fake must be able to drive an `IRQ_FALLING` edge (it currently notes SCD30 uses rising only). Verify, extend if needed. |
+| `tests/machine.py` | **Verified, no change.** The I2C fake is a generic dict-of-registers double; `Pin.__init__` already accepts `pull`; and `IRQ_FALLING = 0x04` is defined with the default trigger mask covering both edges, despite the comment noting SCD30 only uses rising. Nothing to extend. |
 | `tests/test_digital_twin_isl29125.py` | **New.** Deterministic unit tests of the chip fake in isolation, matching the three existing `test_digital_twin_{sgp40,scd30,bmp3xx}.py`. |
 | `tests/test_digital_twin_machine.py` | Extend the dispatch tests for the new address on dev `bus_id == 1`. |
 | `tests/test_bus_hazard_multi_device.py` | Mock-tier bus hazards — same-device read-vs-write, cross-device interleaving with SCD30/SGP40, address/command sweep. **CLAUDE.md standing rule, all four tiers.** |
 | `tests/test_digital_twin_bus_hazard_concurrency.py` | Twin-tier equivalent; add the ISL to the "every sensor still produced real data under concurrent load" assertions. |
-| `tests/test_sensortask_dev.py` | Construction/wiring assertions: the reader exists, is on `i2c1`, `irq_pin=6` with `PULL_UP`, its two error sources and two level setters are registered, its task/timer starters are collected, **and the FRAM chunk order is unchanged for chunks 1-7**. |
-| `tests/test_digital_twin_sensortask_integration.py` | `assert_sensor_payload_not_self_wrapped(…, {"SCD30", "BMP3XX", "SGP40", "ISL29125"})` on `/measurements` and `/sensors`. |
-| `tests/test_digital_twin_run_dev_integration.py` | Only if `run_dev_integration.py` changes. |
+| `tests/test_sensortask_dev.py` | **The heaviest single file, and the second pass found exactly what changes.** Five existing assertions break the moment the reader is constructed, all of them literal: `test_fram_chunk_allocation_order_matches_the_documented_seven_chunk_sequence()` asserts `calls == ["chunk", "chunk", "timestamped", "chunk", "chunk", "chunk", "chunk"]` — it gains `"chunk", "timestamped"` and **its own name and section comment stop being true** (seven → nine); `len(body["errcount"]) == 17` → 19, and the comment calling it a "16-owner enumeration" → 18; `set(body["sensors"].keys()) == {"SGP40"}` → `{"SGP40", "ISL29125"}`; and three `assert_sensor_payload_not_self_wrapped(…, {"SCD30", "BMP3XX", "SGP40"})` calls (`/measurements`, `/sensors`, `/status`) each gain `"ISL29125"`. Plus the new work: `assert_named_modules_constructed()`'s tuple gains `"isl_reader"`, `test_fram_chunks_are_all_successfully_allocated_not_out_of_memory()` gains its two chunks, and new assertions for `i2c1`, `irq_pin=6` with `PULL_UP`, the two error sources and two level setters, and the task/timer starters. |
+| `tests/test_digital_twin_sensortask_integration.py` | **Corrected: non-target.** Despite the neutral filename it imports `sensortask_wozi` and drives only that graph — its two `assert_sensor_payload_not_self_wrapped()` calls stay at three sensors. The dev-side equivalent of this coverage is `tests/test_sensortask_dev.py`'s own three calls, above. |
+| `tests/test_digital_twin_run_dev_integration.py` | **More than "only if".** Its bounded end-to-end `main()` smoke test boots the whole real dev graph against the twin, so the chip fake must exist and answer or this file fails — it is the twin tier's real gate for this sensor (§11.5). Extend it with the requirement-17 scenario if the INT fault mode lands here. |
 | `tests/test_asy_webserver_service.py` | The nested `get_dict_data()` return is a new shape for `_stream_dict_response()` — add a case proving a two-level value serialises correctly and is not re-wrapped. |
 | `tests/test_setter_microdot_integration.py` | It drives real readers through real Microdot routes; add the ISL for the schema-driven setter path, and specifically for the command-only field's repeatable-trigger semantics. |
-| `tests/test_digital_twin_real_website_integration.py` | Add the new definitions group to whatever it cross-checks between `html/definitions/dev.json` and the live twin. |
-| `tests/test_config_manager.py`, `tests/test_base_classes.py` | Probably nothing — generic. Check whether either enumerates real schemas. |
+| `tests/test_digital_twin_real_website_integration.py` | **Corrected: non-target.** It pre-registers `frozen_website_wozi` and boots `sensortask_wozi`; its only mention of dev is an assertion that `/definitions/dev.json` is *not* served, which stays true. Same for `tests/test_website_build_integration.py`. **The gap this exposes is real though**: no test anywhere boots the dev website, and `js/definitions.js`'s validator never runs against `html/definitions/dev.json` — see §11.8. |
+| `tests/test_config_manager.py`, `tests/test_base_classes.py`, `tests/test_print_log.py`, `tests/test_crc_checks.py`, `tests/test_fram_integration.py`, `tests/test_ntp_fram_system_integration.py`, `tests/_shared_rest_roundtrip.py` | **Verified, no change.** Each was opened: every sensor name in them is a comment, a docstring example or a `PrintLog(name="SGP40")`-style label, never an enumeration of the real registry. `test_ntp_fram_system_integration.py` imports all three readers but builds its own fixtures rather than the dev graph. |
+| `tests/test_sensortask_wozi.py`, `tests/test_digital_twin_run_wozi_integration.py`, `tests/test_digital_twin_launch.py` | **Non-targets.** `test_sensortask_wozi.py` carries the same seven-chunk and three-sensor assertions and they must stay exactly as they are — the divergence is the point. |
 
 ### 11.8 Website tests (`tests_js/`, Node)
 
@@ -1289,7 +1397,8 @@ point 9 makes mandatory in the same session as the promotion.
 | `tests_js/templates.test.js` | A nested readonly field renders its value, not `[object Object]`. |
 | `tests_js/render.test.js` | Change-comparison still works for `path`-bearing fields; `ISLResetCal` is always resubmitted (`dispatch`). |
 | `tests_js/mock-server.test.js` | Deeper jitter; `ISLResetCal` omitted from GET readback. |
-| `tests_js/mock-server-put-matrix.test.js` | Its header comment says it "currently matches zero of dev's real groups" — the ISL's mixed enum/number/toggle/command group is a good new matrix case. |
+| `tests_js/mock-server-put-matrix.test.js` | **Corrected: not an optional new case — an automatic one.** It already imports `html/definitions/dev.json` and `mockdata/dev.json` and builds a case per writable field in *both* shipped devices, skipping dev's groups only because they are byte-identical to wozi's today. Its own header says the mechanism is kept "for when dev gains its own unique sensor(s) later" — this is that sensor. Two consequences: the skip logic must stop treating dev as a duplicate, and `mockdata/dev.json` must carry a valid current value for every ISL field or the generated cases fail. |
+| **A gap, not a file** | Nothing anywhere runs `js/definitions.js`'s `validateDefinitions()` against `html/definitions/dev.json`. `definitions.test.js` loads `wozi.json`; the PUT matrix imports dev's JSON raw, with no validation. So a malformed dev definitions file ships and only fails in a browser. Adding the ISL group is the moment to close this — a one-line addition to `definitions.test.js` covering both shipped devices. |
 | `tests_js/live-backend-put-matrix.test.js`, `_live_matrix_command.js`, `_live_twin_command.js` | These drive `run_wozi_integration.py`. **Non-targets** unless a dev-twin variant is added. |
 | `scripts/cross_browser_smoke.mjs` | Same — wozi-driven, non-target. |
 
@@ -1303,10 +1412,12 @@ All of this needs the project owner's go-ahead in the session that runs it (CLAU
 | `tests_hardware/device_scripts/isl29125_plausibility_read.py` | **New**, matching `scd30_plausibility_read.py`/`bmp3xx_plausibility_read.py`. |
 | `tests_hardware/device_scripts/isl29125_same_device_rw_concurrency.py` | **New**, matching the existing per-device pair. |
 | `tests_hardware/device_scripts/isl29125_real_irq_edge.py` | **New**, matching `scd30_real_irq_edge.py` — and the natural place to settle §13's `CONFIG1`-restart and `PRST`-units questions. |
-| `tests_hardware/device_scripts/isl29125_autorange_sweep.py` | **New** — the NeoPixel rig of §10. The one test no other sensor has an analogue of. |
+| `tests_hardware/device_scripts/isl29125_autorange_sweep.py` | **New** — the NeoPixel rig of §10. The one test no other sensor has an analogue of, and the second pass found it needs more than a script: it depends on physical geometry (an LED aimed at the sensor) that a normal bench run has no way to assume. So it needs an **opt-in gate** of its own, like the three that already exist — a `pytest_addoption()` flag in `tests_hardware/conftest.py`, plus an entry in `scripts/_require_clean_hardware_run.sh`'s `KNOWN_PERMANENT_SKIPS` for when the flag is absent, so an expected skip does not read as a failure. The alternative is `tests_hardware/manual/`, which exists for exactly this "needs a human and a physical reference" shape — recommended for the accuracy half, with the automated sweep staying in `flash/` behind the flag. |
 | `tests_hardware/flash/test_bus_concurrency.py`, `flash/test_sensor_accuracy.py` | Flash-tier registration of the scripts above. |
 | `tests_hardware/bench/test_bus_concurrency_under_api_load.py`, `bench/test_rest_endpoints_over_sta.py`, `bench/test_sensor_config_push_over_real_hardware.py`, `bench/test_memory_stress_bench.py` | Bench-tier: the new group appears in the REST surface, its settings push over real hardware, and the extra module's heap cost is counted. |
-| `tests_hardware/README.md` | Document the new scripts and the NeoPixel rig's own physical setup (geometry matters, §10). |
+| `tests_hardware/README.md` | Document the new scripts, the new opt-in flag, and the NeoPixel rig's own physical setup (geometry matters, §10). |
+| `tests_hardware/conftest.py`, `scripts/_require_clean_hardware_run.sh` | **Added by the second pass** — the opt-in flag and its expected-skip entry, per the row above. |
+| `tests_hardware/manual/manual_sensor_accuracy.py` | Candidate home for the "against a real reference" half of the NeoPixel work, alongside the BMP388 entry already there. |
 
 ### 11.10 Build and tooling
 
@@ -1321,13 +1432,13 @@ All of this needs the project owner's go-ahead in the session that runs it (CLAU
 
 | File | What |
 |---|---|
-| `SPECIFICATION.md` Part A.7 | The dev construction order and the **eight**-chunk FRAM order; note it is dev-only and wozi stays at seven. |
+| `SPECIFICATION.md` Part A.7 | **Corrected: a new section, not an edit.** A.7 is titled *"`src/sensortask_wozi.py` construction order and dependency graph"* and documents wozi only — dev's order lives nowhere but `sensortask_dev.py`'s own inline comments. A.7 even says outright that its order "and `i2c0`'s SCD30-specific `timeout=200000`, are wozi's own". So this needs a dev counterpart (an A.7.1, or a dev block inside A.7) recording the **nine**-chunk order and the out-of-position `isl_reader` construction — and an explicit statement that wozi stays at seven. |
 | `SPECIFICATION.md` Part A.4 | Module-by-module reference entry. |
 | `SPECIFICATION.md` Part C.7.1 | The errno/wrnno row (§11.4). |
 | `SPECIFICATION.md` Part C.8 | Bus-hazard/locking: the ISL joins i2c1's device list. |
 | `SPECIFICATION.md` Part G | Any shared primitive this work promotes — the EMA filter (§7.8) is the concrete candidate, and it must be added to the catalogue rather than duplicated. |
-| `SPECIFICATION.md` Part H | The definitions-file schema gains `path`; H.6's dispatch-only list gains `ISLResetCal`. |
-| `README.md` | The device table's `dev` row (line 20) gains the ISL29125. |
+| `SPECIFICATION.md` Part H | The definitions-file schema gains `path` (H.5); H.6's dispatch-only field list gains `ISLResetCal`. **Plus one claim that stops being true**: H.5 ends "See `wozi.json`/`dev.json` for worked examples — nearly identical field content (same three drivers); only `device.id`/`displayName` and I2C bus pairing differ". After this promotion the two files differ by a whole sensor, and that sentence is exactly the kind of stale cross-reference the second pass was asked to find. |
+| `README.md` | Two places, not one. (a) The device table's `dev` row currently reads "SCD30, SGP40, BMP388 — **same drivers as wozi**, different I2C bus pairing" — that clause has to go, not just gain a fourth name. (b) The "Further reading" entry for **this document**, which already carries its own disposal instruction: *"Temporary by design — delete it when the promotion closes, migrating anything permanent into `SPECIFICATION.md` first"*. Closing the promotion means executing that, not leaving the plan behind as a second source of truth. |
 | `DEVICE_REFERENCE.md` | A user-facing section on the ISL's own easily-conflated values — the IR-compensation/lux-scale coupling (§7.9) and "sensor RGB is not colorimetric RGB" (§7.10) are exactly the SGP40-backup-style traps this file exists for. |
 | `THIRD_PARTY_LICENSES.md` | Move the entry from "Shipped but not promoted" to "Restructured/rewritten, attribution retained" (§12). |
 | `BACKLOG.md` | Close the `readfrom_mem_into()` item if done; record anything deferred. |
@@ -1340,7 +1451,59 @@ CLAUDE.md: **whenever a new file is added to `src/`, run a bird's-eye scan over 
 `src/`** — Part D.10 API consistency, Part D.9 current-MicroPython check, and Part G's
 shared-primitive catalogue and grep-for-the-shape discovery. And: *"if the scan surfaces a
 discrepancy, do not silently fix it — report it and discuss."* This pass has already produced one
-such finding (the config-field prefix question, §8.2), which is how the rule is meant to work.
+such finding (the config-field prefix question, §8.2), and the second pass produced three more
+(§13's questions 6-8: output rounding, the `fram_storage=`/`fram=` split, and the twin CI suite's
+wozi-only scope). All four are written up as questions rather than as changes, which is how the
+rule is meant to work.
+
+### 11.13 Cross-check: every requirement against the places that realise it
+
+Asked for explicitly — do §6 and §11 match, and is each complete with respect to the other. Run
+in both directions. **Forwards** (requirement → where it lands) is the table; **backwards** (an
+integration row with no requirement behind it) is the note after it.
+
+| Req | Where it is actually realised | Complete? |
+|---|---|---|
+| 1 settings persisted | §11.1 schema · §11.3 `config_ISL29125.cfg` · §11.6 definitions · §11.7 schema tests · §11.8 PUT matrix | yes |
+| 2 Resolution | schema field + `enum` in definitions | yes |
+| 3 Range / auto | schema fields; twin fake must model the 26.67× gain to exercise it | yes |
+| 4 outputs normalised over the span | §11.1 driver · §11.6 measurements group | yes |
+| 5 mandatory INT GPIO | §11.1 `irq_pin=6, PULL_UP` · §11.5 twin `Pin(6)` + `simulate_edge()` · §11.7 `tests/machine.py` (verified) · §11.9 `isl29125_real_irq_edge.py` | yes — all four tiers |
+| 6 IR compensation | two schema fields | yes |
+| 7 registers stay the driver's; no INT surfaced | **a negative requirement, and it is testable**: no `Interrupt*`/threshold field in the definitions file, none in the schema, `asy_notification_service.py` untouched, and the stale legacy `Interrupt*` keys deleted from `mockdata/dev.json` | yes |
+| 8 RGB 0-1 | §11.6 — and the display half was **missing** until the second pass; now requirement 19 | now yes |
+| 9 HSB low-light accepted | `DEVICE_REFERENCE.md` (§11.11) — a documentation obligation, not a code one | yes |
+| 10 project conventions | §11.12 bird's-eye scan · §8.2/§8.3 | yes |
+| 11 structured output | §11.6 `path` in `definitions.js` · `render.js`/`templates.js` verified · §11.7 `_stream_dict_response()` case · §11.8 three JS tests | yes |
+| 12 no `OperationMode` | deleting the stale mock block is the only place it still exists | yes |
+| 13 CCT | measurements group; `null` already renders as `—` (verified) | yes |
+| 14 auto-range tunable | schema · PUT matrix · §11.9 NeoPixel rig | yes |
+| 15 logging / FRAM / errno | §11.3 chunks 8+9 · §11.4 errno row · errcount lists in **three** places: `html/definitions/dev.json` (17→19), `tests/test_sensortask_dev.py` (17→19), `mockdata/dev.json` (already present) | yes, after the second pass corrected the chunk count |
+| 16 self-healing, never stale | driver · twin fake must model `BOUTF` and the destructive `0x08` read · unit tests | yes |
+| 17 auto-range not INT-alone | driver's periodic path · unit tests both paths · **and a twin fault mode that suppresses the edge**, which the second pass found nothing provides (§11.5) | now yes |
+| 18 dev only | every `wozi` row marked non-target; `tests/test_sensortask_wozi.py`'s seven-chunk and three-sensor assertions must stay untouched | yes |
+| 19 declared unit and precision | §11.6 `field-format.js` · definitions `unit` metadata · §13 question 6 decides where rounding happens | open, by design |
+| 20 constructs on an absent chip | §11.7 `tests/test_sensortask_dev.py` (the generic mock has no ISL registers) | yes |
+
+**Backwards.** Three integration rows exist for reasons no requirement states, and that is
+correct rather than a gap — they are project obligations, not device behaviour:
+`THIRD_PARTY_LICENSES.md` (attribution), `BACKLOG.md` (the `readfrom_mem_into()` prerequisite),
+and §11.12's bird's-eye scan. Everything else in §11 traces to a requirement above.
+
+**Two structural observations from running the cross-check**, neither of which changes a
+requirement:
+
+- Requirements 4, 8, 11, 13 and 19 all converge on **one output path** — driver → namedtuple →
+  `get_dict_data()` → `_stream_dict_response()` → `resolveFieldValue()` → `formatFieldValue()`.
+  Five requirements, one chain, and the second pass found two of its six links (`render.js`,
+  `field-format.js`) had never been examined. A single end-to-end test that walks the whole chain
+  for one nested field is worth more than five isolated ones.
+- Requirements 15 and 18 interact in a way nothing else does: 15 adds FRAM chunks, 18 says dev
+  only, and the result is the **first permanent divergence between the two variants' FRAM
+  layouts**. Every doc and test that currently says "seven chunks" has to learn that the number is
+  per-variant. That is three files (`SPECIFICATION.md` A.7, `tests/test_sensortask_dev.py`
+  including a test *name*, and `sensortask_dev.py`'s own comments) and it is the single
+  easiest thing in this whole plan to get half-right.
 
 ## 12. Known prerequisites and standing obligations
 
@@ -1366,7 +1529,8 @@ such finding (the config-field prefix question, §8.2), which is how the rule is
 
 ## 13. What is still open
 
-Everything else in this doc is settled. These are not.
+Everything else in this doc is settled. These are not. Questions 1-5 predate the second pass;
+6-8 came out of it.
 
 1. **Does a `CONFIG1` write really restart the conversion cycle?** (§4, Table 7.) The design uses
    it for deterministic settling (§7.6) and avoids periodic re-asserts because of it (§9.3).
@@ -1383,7 +1547,34 @@ Everything else in this doc is settled. These are not.
    extension to the website renderer?** (§8.6's correction, §11.6.) Recommended yes; flattening to
    `R`/`G`/`B`/`Hue`/`Sat`/`Bri` is the alternative and gives up requirement 11.
 5. **Should `mockdata/dev.json`'s orphan `SHTC3`/`MPRLS` blocks be removed** in the same pass?
-   (§11.6.) They describe sensors the refactored dev variant does not have.
+   (§11.6.) They describe sensors the refactored dev variant does not have. Note the stale
+   `ISL29125` blocks in the same file are **not** part of this question — those must be replaced
+   either way (§11.8).
+
+**Three more, opened by the second pass. All three are discrepancies between existing files, so
+CLAUDE.md's "report it, do not silently fix it" applies — they are the project owner's calls.**
+
+6. **Where does output rounding happen — or does it happen at all?** No driver in `src/` rounds
+   any output, and `formatFieldValue()` ends in a bare `String(value)`. Today that is harmless;
+   with eight floats per reading, six of them normalised or angular, it stops being harmless.
+   Three options: (a) the ISL rounds its own derived outputs, which diverges from the other three
+   drivers; (b) a `decimals` hint is added to the readonly `FieldDef` and `field-format.js`
+   honours it, which fixes every sensor at once and is a website change rather than a driver one;
+   (c) accept full precision on the page. Recommendation: **(b)** — it is the only one that leaves
+   the four drivers consistent with each other, and it costs about as much as the `path` change
+   already proposed in question 4, on the same file.
+7. **`fram_storage=` or `fram=` for the new driver's constructor?** `SGP40_Reader` uses the
+   former and forwards it to the base class as the latter; every other module uses `fram=`. The
+   ISL is the first driver since SGP40 to need both an error log and a chunk of its own, so it is
+   the first that has to choose. Recommendation: **`fram=`**, matching the majority and the base
+   class's own parameter name, and record `SGP40_Reader`'s spelling as a known one-off rather than
+   renaming it in an unrelated promotion.
+8. **Should the twin CI suite grow a dev leg?** `scripts/_digital_twin_ci_suite.py` drives
+   `run_wozi_integration.py` only, so this sensor gets no coverage there (§11.5). Recommendation:
+   **no, not in this promotion** — the dev runner plus
+   `tests/test_digital_twin_run_dev_integration.py` cover the same ground for this sensor, and
+   parametrising the suite is a harness rewrite. But record the asymmetry in `BACKLOG.md`, because
+   the next new dev-only device inherits the same hole.
 
 Closed during this pass, recorded so they are not reopened: `CCT` is in (requirement 13); the
 auto-range tuning surface is settled and the four rejected knobs are listed with reasons (§8.3);
