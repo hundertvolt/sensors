@@ -464,6 +464,9 @@ class UART(io.IOBase):
         return n
 
     def readline(self) -> bytes | None:
+        # No count to clamp, so the driver gates this path on one buffered byte instead - model the
+        # same byte, since readline() on an empty ring spins out the C read's EAGAIN probe.
+        self._count_overask(1)
         if not self.rx_queue:
             return None
         idx = self.rx_queue.find(b"\n")

@@ -207,6 +207,21 @@ def check_overask_is_counted_not_taken(make: "LinkFactory") -> None:
     type(b).would_have_blocked_bytes = 0
 
 
+def check_readline_on_an_empty_line_is_counted_too(make: "LinkFactory") -> None:
+    # readline() carries no count to clamp, so the driver gates it on one buffered byte; a fake that
+    # counted only the counted reads would leave that gate free to regress (the sweep that found this
+    # is in SPECIFICATION.md Part E.8). One byte per empty call, none once anything is buffered.
+    a, b, link = make()
+    type(b).would_have_blocked_bytes = 0
+    assert b.readline() is None
+    assert type(b).would_have_blocked_bytes == 1
+    a.write(b"hi\n")
+    link.settle()
+    assert b.readline() == b"hi\n"
+    assert type(b).would_have_blocked_bytes == 1
+    type(b).would_have_blocked_bytes = 0
+
+
 ALL_CHECKS = (
     check_byte_moves_one_way,
     check_both_directions_independent,
@@ -227,4 +242,5 @@ ALL_CHECKS = (
     check_readinto_moves_the_same_bytes,
     check_readinto_returns_none_when_empty,
     check_overask_is_counted_not_taken,
+    check_readline_on_an_empty_line_is_counted_too,
 )

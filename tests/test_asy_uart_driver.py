@@ -1665,6 +1665,7 @@ def test_uncounted_reads_are_clamped_to_what_is_buffered_too() -> None:
 def test_readline_does_not_probe_an_empty_buffer() -> None:
     # readline() has no count to clamp, so it gates on any() instead: the C read would otherwise
     # spin out its EAGAIN probe on every empty call, for the ~1ms it takes ticks_ms() to advance.
+    FakeUART.would_have_blocked_bytes = 0
     uart = make_uart()  # POLLIN always set by this poller, nothing queued behind it
     fk = fake(uart)
 
@@ -1674,6 +1675,54 @@ def test_readline_does_not_probe_an_empty_buffer() -> None:
 
     assert run(scenario()) is None
     assert not [entry for entry in fk.log if entry[0] == "readline"], fk.log
+    # The log alone cannot see this regression: the fake returns early on an empty ring, before it
+    # logs, so removing the gate leaves the log empty too. The over-ask count is the oracle that bites.
+    assert FakeUART.would_have_blocked_bytes == 0, FakeUART.would_have_blocked_bytes
+
+
+def test_readline_until_complete_does_not_probe_an_empty_buffer_either() -> None:
+    # The looping half of the same gate: POLLIN says a byte is readable, so a round that finds the
+    # ring empty must yield rather than hand readline() an empty ring to spin its EAGAIN probe on.
+    FakeUART.would_have_blocked_bytes = 0
+    uart = make_uart(poll_wait_ms=1)
+    fk = fake(uart)
+
+    def feed_line_and_ready() -> int:
+        fk.feed_rx(b"hi\n")
+        return select.POLLIN
+
+    uart.poller = _StepPoller([select.POLLIN, feed_line_and_ready])  # type: ignore[assignment]
+
+    async def scenario() -> bytearray | None:
+        async with uart:
+            return await uart.readline_until_complete(start_timeout_ms=200, timeout_ms=200)
+
+    got = run(scenario())
+    assert got is not None and bytes(got) == b"hi\n", got
+    assert FakeUART.would_have_blocked_bytes == 0, FakeUART.would_have_blocked_bytes
+
+
+def test_a_delimited_frame_read_never_probes_an_empty_ring() -> None:
+    # _read_delimited() must read one byte per call (a wider read would swallow the next frame's
+    # head), so it has no count to clamp and gates on one buffered byte like readline() does.
+    FakeUART.would_have_blocked_bytes = 0
+    sender = cobs_uart()
+    payload = bytearray(b"\x09\x00\x0a")
+    assert run(locked_write(sender, bytearray(payload))) is True
+    frame = written(sender)
+
+    receiver = cobs_uart(poll_wait_ms=1)
+    fk = fake(receiver)
+    fk.feed_rx(frame[:2])
+
+    def feed_rest_and_ready() -> int:
+        fk.feed_rx(frame[2:])
+        return select.POLLIN
+
+    receiver.poller = _StepPoller([select.POLLIN, feed_rest_and_ready])  # type: ignore[assignment]
+    got = run(locked_read_until_complete(receiver, len(payload), start_timeout_ms=200, timeout_ms=200))
+    assert got is not None and bytes(got) == bytes(payload), got
+    assert FakeUART.would_have_blocked_bytes == 0, FakeUART.would_have_blocked_bytes
 
 
 def test_a_whole_frame_read_never_asks_for_a_byte_that_has_not_arrived() -> None:

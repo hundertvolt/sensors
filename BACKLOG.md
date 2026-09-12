@@ -315,11 +315,16 @@ constraints.
   they hold and return, where the peripheral would wait out `timeout_char` for every byte the caller
   asked for that has not arrived (SPECIFICATION.md Part F.5.8). Making them actually wait would turn
   a real-time defect into a slow test; both instead count the stall they would have taken, as
-  `UART.would_have_blocked_bytes`, held to identical semantics by `tests/_uart_link_contract.py` and
-  asserted at zero across a whole frame read. That closes the regression gap this entry was opened
-  for. What remains genuinely unmodelled is the *duration* — a fake cannot tell a caller how many
-  milliseconds of event loop an over-ask would have cost, only how many bytes it was over by. Only
-  the bench tier measures the milliseconds, and F.5.8's table is that measurement.
+  `UART.would_have_blocked_bytes`, held to identical semantics by `tests/_uart_link_contract.py`.
+  **The regression gap this entry was opened for is now closed, but it was not closed by counting
+  alone** — a sweep that removed each of the driver's seven read-path clamps in turn (2026-09-12)
+  found three that no test caught: the two `readline` paths, which the fakes never counted at all,
+  and `_read_delimited`'s one-byte gate, which was counted but asserted nowhere. `readline()` now
+  counts the one byte its gate guards, and each of the seven paths has a test that fails when its
+  clamp is removed, re-verified by the same sweep. What remains genuinely unmodelled is the
+  *duration* — a fake cannot tell a caller how many milliseconds of event loop an over-ask would
+  have cost, only how many bytes it was over by. Only the bench tier measures the milliseconds, and
+  F.5.8's table is that measurement.
 - **Four UART-audit findings reviewed and deliberately left as they are** (audit pass over the
   promotion, 2026-09-11 - every other finding from that pass was fixed and tested):
   - **A responder's `set_callback` returning `None` ("don't care") lets the *peer* size a heap

@@ -1629,6 +1629,46 @@ Two consequences, both load-bearing:
   it belongs above the whole observed range rather than near it —
   `tests/test_digital_twin_run_dev_integration.py` allows 120 s for a 44-62 s run.
 
+## E.8 Measurement traps, and the guard-is-blind trap behind them
+
+Every item here produced a confident, stable, wrong number before it produced a right one, so each
+is a rule rather than an anecdote. E.7 is the largest of them and keeps its own section.
+
+- **An absolute heap-delta bound is host-dependent; a leak is a rate.** Retention scales with the
+  work done, while an interpreter's internal caching is a fixed sprinkle that varies by host. Two
+  hammer tests bounded `gc.mem_alloc()` growth at a few frames because both measured exactly 0 on
+  the bench, and failed CI at 64 B over 150 transactions (0.43 B/transaction). Assert a
+  per-operation rate instead — `tests/test_uart_comm_hazard.py` uses `< 1.0 B/transaction` and
+  `< 16.0 B/failure`, against a real retained frame's 13+ B/transaction.
+- **The twin's `UARTLink.wire_log` is unbounded** — one byte per delivered byte, ~15-95 kB over a
+  few hundred transactions. It reads as a leak in the code under test. Clear it inside any
+  measurement loop.
+- **An asyncio loop-latency probe cannot separate "idle on a timer" from "blocked."** The driver's
+  own cooperative `sleep_ms(poll_wait_ms)` puts both at ~2 ms. Time the C calls directly (F.5.8).
+- **A probe read before the watchdog task next runs reports 0 for everything.** Give it a turn —
+  `await asyncio.sleep_ms(0)` a few times — before reading its peak.
+- **`I2C.scan()` is synchronous** and blocks the loop for a 128-address sweep, so using it as "bus
+  load" models nothing production does: it inflated a measured worst-case RTT from 112 ms to 574 ms.
+- **Cross-test contamination is real.** One process, one task queue, and no parent/child tracking in
+  MicroPython asyncio, so listeners parked by earlier tests keep allocating. Isolate before
+  believing a per-test number.
+- **`ErrNum` mixes errnos and wrnnos in one ring sharing a number space** (wrnno 10 = resync,
+  errno 10 = bad `payload_size`), and every fault also resyncs, so the newest entry is almost always
+  the resync warning. Filter on `ErrType == "E"`.
+
+**The trap under the traps: a guard whose oracle cannot see the regression it guards.** Verified by
+regressing each of `asy_uart_driver.py`'s seven read paths in turn and re-running the mock tier
+(2026-09-12): four failed a named test, three passed silently. `test_readline_does_not_probe_an_empty_buffer`
+asserted on the fake's own call log, but the fake returns early on an empty ring *before* it logs,
+so deleting the gate left the log empty too and the test still passed. A guard is only established
+by removing what it guards and watching it fail — the same standard I3.4's revert-and-confirm pass
+applies to fixes, applied to test oracles.
+
+**Standing rule, from the same sweep: every hazard check runs in both CRC modes.**
+`tests/test_uart_comm_hazard.py` registers each `_check_*` twice (`_nocrc`, `_crc16`) — 48 checks,
+96 tests. Two are single-mode by construction (`_MODE_SPECIFIC`), because their subject *is* one
+configuration. The deployed link runs `CRC_Pass`, so the no-CRC path is the one in the field.
+
 # Part F — Platform Target & MicroPython Runtime Facts
 
 ## F.1 Core platform facts
@@ -2086,6 +2126,15 @@ read asked for that had not arrived, the two models are held to identical counti
 `tests/_uart_link_contract.py`, and a whole-frame read through the driver asserts it stays at zero.
 A regression of the clamp now fails in the mock tier as a number, in the same shape as the twin's
 own `WDT.would_have_triggered_count`.
+
+**All seven read paths are guarded, and that was established by breaking each one.** The counted
+paths (`read`/`readinto`, counted and uncounted, and both `*_until_complete` loops) clamp to
+`any()`; the three that carry no count to clamp — `readline()`, `readline_until_complete()` and
+`_read_delimited()`'s one-byte read — gate on one buffered byte instead. Removing each clamp in
+turn and re-running the mock tier (2026-09-12) initially failed a named test for only four of the
+seven: the two `readline` paths were uncounted by both fakes, and `_read_delimited`'s gate was
+counted but asserted nowhere. Both gaps are closed, and the sweep now fails on all seven. Part E.8
+records the test-oracle trap this exposed.
 
 **This does not generalise to `asy_i2c_driver.py`/`asy_spi_driver.py`, and must not be applied
 there.** A UART read is fixable only because the peripheral offers a genuinely non-blocking path —
