@@ -159,6 +159,46 @@ def test_i2c_readfrom_mem_and_writeto_mem_dispatch_to_the_wired_bmp3xx_device() 
     assert reply[0] in (0x50, 0x60)
 
 
+def test_dev_wiring_puts_the_isl29125_on_i2c1_beside_scd30_and_sgp40() -> None:
+    # dev is the only variant that carries this sensor (requirement 18) - wozi's own branch, the
+    # default asserted above, must stay two devices.
+    machine.configure_i2c_wiring("dev")
+    try:
+        Pin.reset_registry()
+        i2c = I2C(1, scl=Pin(15), sda=Pin(14), freq=50000)
+        assert sorted(i2c.scan()) == [0x44, 0x59, 0x61]
+        assert i2c.readfrom_mem(0x44, 0x00, 1) == bytes([0x7D])  # device ID, p9 Table 2
+        i2c.writeto_mem(0x44, 0x01, bytes([0x05, 0x00, 0x00]))  # the driver's own 3-byte burst
+        assert i2c.readfrom_mem(0x44, 0x01, 3) == bytes([0x05, 0x00, 0x00])
+    finally:
+        machine.configure_i2c_wiring("wozi")
+        Pin.reset_registry()
+
+
+def test_dev_wiring_hands_the_isl29125_the_same_pin_object_the_driver_constructs() -> None:
+    # machine.py's Pin is a per-id registry singleton, and that identity is what lets the chip
+    # fake's simulate_edge() reach a handler the driver registered on its own Pin(6). Load-bearing,
+    # not incidental - a later "fix" making Pin() return fresh objects would silently break the
+    # whole interrupt path with no test failing anywhere else.
+    machine.configure_i2c_wiring("dev")
+    try:
+        Pin.reset_registry()
+        i2c = I2C(1, scl=Pin(15), sda=Pin(14), freq=50000)
+        chip = i2c.devices[0x44]
+        driver_side = Pin(6, mode=Pin.IN, pull=Pin.PULL_UP)
+        assert chip._int_pin is driver_side
+    finally:
+        machine.configure_i2c_wiring("wozi")
+        Pin.reset_registry()
+
+
+def test_wozi_wiring_carries_no_isl29125() -> None:
+    machine.configure_i2c_wiring("wozi")
+    Pin.reset_registry()
+    assert 0x44 not in I2C(1, scl=Pin(19), sda=Pin(18), freq=50000).devices
+    assert 0x44 not in I2C(0, scl=Pin(9), sda=Pin(8), freq=50000).devices
+
+
 def test_configure_scd30_state_path_and_flush_scd30_round_trip_settings() -> None:
     # Same module-level-hook shape as configure_fram_state_path()/flush_fram() - no dedicated wiring
     # test exists for that FRAM pair either (only covered indirectly via a real Step 5 run), so this

@@ -45,6 +45,12 @@ class Pin:
     OUT = 1
     IRQ_FALLING = 0x04
     IRQ_RISING = 0x08
+    # Real rp2 values (confirmed against ports/rp2/machine_pin.c at v1.29.0: GPIO_PULL_UP is 1,
+    # GPIO_PULL_DOWN is 2, both exposed as class constants). asy_isl29125_driver.py is the first
+    # driver to need one - its INT line is open-drain and needs a pull-up (SPECIFICATION.md
+    # Part C); SCD30's RDY is push-pull, which is why nothing needed these before.
+    PULL_UP = 1
+    PULL_DOWN = 2
 
     _registry: "dict[int, Pin]" = {}
     _initialized: bool
@@ -186,19 +192,24 @@ def configure_i2c_wiring(profile: str) -> None:
 def _wire_i2c_devices(bus_id: int) -> "dict[int, Any]":
     global _current_scd30_chip
     from _bmp3xx_chip import Bmp3xxChip
+    from _isl29125_chip import Isl29125Chip
     from _scd30_chip import Scd30Chip
     from _sgp40_chip import Sgp40Chip
 
     if _i2c_wiring_profile == "dev":
         # dev_legacy/README.md's wiring table: i2c0 (bus_id=0) carries BMP3xx alone; i2c1 (bus_id=1)
-        # carries SCD30 (IRQ/RDY=GPIO11) + SGP40 sharing the bus - the reverse pairing from wozi's
-        # own layout below.
+        # carries SCD30 (IRQ/RDY=GPIO11) + SGP40 + ISL29125 (INT=GPIO6) sharing the bus - the
+        # reverse pairing from wozi's own layout below, which carries no ISL29125 at all.
         if bus_id == 0:
             return {0x77: Bmp3xxChip(random_source=_random_source)}
         if bus_id == 1:
             chip = Scd30Chip(rdy_pin=Pin(11, mode=Pin.IN), random_source=_random_source, state_path=_scd30_state_path)
             _current_scd30_chip = chip
-            return {0x61: chip, 0x59: Sgp40Chip(random_source=_random_source)}
+            return {
+                0x61: chip,
+                0x59: Sgp40Chip(random_source=_random_source),
+                0x44: Isl29125Chip(int_pin=Pin(6, mode=Pin.IN), random_source=_random_source),
+            }
         return {}
 
     # "wozi" (default): i2c0 (bus_id=0) carries SCD30 alone (IRQ/RDY=GPIO8); i2c1 (bus_id=1) carries

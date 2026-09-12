@@ -36,13 +36,21 @@ Kept completely separate so nothing here can accidentally affect the determinist
   to the most recent 200 entries (`_LOG_MAXLEN`) - an unbounded list here was a real memory leak,
   found once a run drove enough real transactions for the list's own backing-array growth to need a
   large contiguous reallocation that failed with a genuine `MemoryError` on a fragmented heap.
-- `_sgp40_chip.py` / `_scd30_chip.py` / `_bmp3xx_chip.py` — one chip fake per sensor, each verified
+- `_sgp40_chip.py` / `_scd30_chip.py` / `_bmp3xx_chip.py` / `_isl29125_chip.py` — one chip fake per sensor, each verified
   against its own datasheet in `datasheets/` for the raw transaction shape and sensible value
   ranges. `_scd30_chip.py`'s RDY pin fires a real rising edge on its own internal measurement-
   interval cadence, exercising the real driver's normal IRQ-driven path. `_scd30_chip.py` also has
   explicit `save_state()`/on-construction load JSON persistence for its five NVM-backed settings
   (see "SCD30 persistence" below) — the same `state_path` design `_fram_chip.py` uses, applied to a
-  handful of scalars instead of the whole memory image.
+  handful of scalars instead of the whole memory image. `_isl29125_chip.py` is **dev-only** (wozi
+  does not carry this sensor) and is the one fake that models a gain the driver has to *learn*: its
+  high range's full scale is a deliberately non-nominal multiple of its low range's, so the
+  driver's gain-ratio self-calibration converges on something real instead of on the constant it
+  started from. It also models the destructive `0x08` status read (which clears the interrupt flag
+  and releases the INT line), `BOUTF` high at power-up, per-resolution clipping at `(1 << bits) - 1`,
+  and `set_illumination(lux, tint=(r, g, b))` so a scene can clip one channel while green stays
+  mid-scale. Its INT line is **active-low** (`simulate_edge(0)` to assert), the opposite of
+  `_scd30_chip.py`'s RDY.
 - `_fram_chip.py` — the FRAM chip's SPI opcode protocol (WREN/WRDI/RDSR/WRSR/READ/WRITE/RDID), plus
   explicit `save_state()`/on-construction load JSON persistence (see "FRAM persistence" below).
   Models both real chips this project ships: wozi's 8KB MB85RS64V (default) and dev's 256KB
@@ -174,7 +182,14 @@ MICROPYPATH="src:digital_twin:ext:frozen_modules:.frozen" <micropython-unix-port
 ```
 
 Same flag vocabulary, same `frozen_modules`/`MICROPYPATH`-ordering requirements as
-`run_wozi_integration.py` above.
+`run_wozi_integration.py` above. Only the dev profile wires the ISL29125 (`0x44` on `i2c1`,
+INT on GPIO6), so it is also the only entry point where that driver runs at all.
+
+`--isl29125-int-stuck-high` arms the one fault mode that is a persistent *behaviour* rather than a
+queued exception: the bus keeps answering and conversions keep happening, but the INT line never
+moves. That is the silent failure the driver's periodic range evaluation exists to survive, and
+nothing in `_fault_injection.py` can express it — which is why it lives on the chip itself, as
+`Isl29125Chip.configure_fault("isl29125:int_stuck_high")`.
 
 ### FRAM persistence
 

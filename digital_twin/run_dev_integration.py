@@ -58,6 +58,7 @@ class RunConfig:
         hangs: "list[tuple[str, str, float, int]] | None" = None,
         wifi_outcomes: "list[int] | None" = None,
         *,
+        isl29125_int_stuck_high: bool = False,
         soak: bool = False,
         soak_cycles: int = _SOAK_CYCLES_DEFAULT,
         duration: "float | None" = None,
@@ -70,6 +71,7 @@ class RunConfig:
         self.faults = faults if faults is not None else []
         self.hangs = hangs if hangs is not None else []
         self.wifi_outcomes = wifi_outcomes if wifi_outcomes is not None else []
+        self.isl29125_int_stuck_high = isl29125_int_stuck_high
         self.soak = soak
         self.soak_cycles = soak_cycles
         self.duration = duration
@@ -86,6 +88,7 @@ class RunConfig:
             and self.faults == other.faults
             and self.hangs == other.hangs
             and self.wifi_outcomes == other.wifi_outcomes
+            and self.isl29125_int_stuck_high == other.isl29125_int_stuck_high
             and self.soak == other.soak
             and self.soak_cycles == other.soak_cycles
             and self.duration == other.duration
@@ -95,7 +98,8 @@ class RunConfig:
         return (
             f"RunConfig(host={self.host!r}, port={self.port!r}, fram_state_path={self.fram_state_path!r}, "
             f"scd30_state_path={self.scd30_state_path!r}, seed={self.seed!r}, faults={self.faults!r}, "
-            f"hangs={self.hangs!r}, wifi_outcomes={self.wifi_outcomes!r}, soak={self.soak!r}, soak_cycles={self.soak_cycles!r}, "
+            f"hangs={self.hangs!r}, wifi_outcomes={self.wifi_outcomes!r}, "
+            f"isl29125_int_stuck_high={self.isl29125_int_stuck_high!r}, soak={self.soak!r}, soak_cycles={self.soak_cycles!r}, "
             f"duration={self.duration!r})"
         )
 
@@ -116,6 +120,7 @@ def parse_args(argv: "list[str]") -> RunConfig:
     faults: list[tuple[str, str, int]] = []
     hangs: list[tuple[str, str, float, int]] = []
     wifi_outcomes: list[int] = []
+    isl29125_int_stuck_high = False
     soak = False
     soak_cycles = _SOAK_CYCLES_DEFAULT
     duration: float | None = None
@@ -141,6 +146,11 @@ def parse_args(argv: "list[str]") -> RunConfig:
             hangs.append(parse_hang_spec(_pop_value(remaining, arg)))
         elif arg == "--wifi-outcome":
             wifi_outcomes.append(_parse_wifi_outcome(_pop_value(remaining, arg)))
+        elif arg == "--isl29125-int-stuck-high":
+            # Not a --fault: that flag queues exceptions/hangs on a bus op, and this is a
+            # persistent behaviour - the bus keeps answering and conversions keep happening,
+            # only the INT line never moves (see _isl29125_chip.py's configure_fault()).
+            isl29125_int_stuck_high = True
         elif arg == "--soak":
             soak = True
         elif arg == "--soak-cycles":
@@ -160,6 +170,7 @@ def parse_args(argv: "list[str]") -> RunConfig:
         faults=faults,
         hangs=hangs,
         wifi_outcomes=wifi_outcomes,
+        isl29125_int_stuck_high=isl29125_int_stuck_high,
         soak=soak,
         soak_cycles=soak_cycles,
         duration=duration,
@@ -294,7 +305,8 @@ async def main(config: RunConfig) -> "dict[str, Any]":
     patch_asy_udp_socket_for_unix_port()
     machine.configure_fram_state_path(config.fram_state_path)
     machine.configure_scd30_state_path(config.scd30_state_path)
-    # Selects the dev-bench bus wiring (i2c0=BMP3xx alone, i2c1=SCD30+SGP40, SCD30 IRQ=GPIO11) -
+    # Selects the dev-bench bus wiring (i2c0=BMP3xx alone, i2c1=SCD30+SGP40+ISL29125, SCD30
+    # IRQ=GPIO11, ISL29125 INT=GPIO6) -
     # machine.py's own _wire_i2c_devices() defaults to wozi's reversed layout otherwise. Must run
     # before sensortask_dev.build_system() (below, inside main_task) ever constructs i2c0/i2c1.
     machine.configure_i2c_wiring("dev")
@@ -311,7 +323,8 @@ async def main(config: RunConfig) -> "dict[str, Any]":
         f"digital_twin/run_dev_integration.py starting - host={config.host!r} port={config.port!r} "
         f"fram_state_path={config.fram_state_path!r} scd30_state_path={config.scd30_state_path!r} "
         f"seed={config.seed!r} soak_cycles={config.soak_cycles!r} "
-        f"duration={config.duration!r} faults={config.faults!r} hangs={config.hangs!r} wifi_outcomes={config.wifi_outcomes!r}",
+        f"duration={config.duration!r} faults={config.faults!r} hangs={config.hangs!r} wifi_outcomes={config.wifi_outcomes!r} "
+        f"isl29125_int_stuck_high={config.isl29125_int_stuck_high!r}",
     )
 
     main_task = asyncio.get_event_loop().create_task(
@@ -334,8 +347,11 @@ async def main(config: RunConfig) -> "dict[str, Any]":
             "scd30": sensortask_dev.i2c1._i2c.devices[0x61],
             "sgp40": sensortask_dev.i2c1._i2c.devices[0x59],
             "bmp3xx": sensortask_dev.i2c0._i2c.devices[0x77],
+            "isl29125": sensortask_dev.i2c1._i2c.devices[0x44],
             "fram": sensortask_dev.spi0._spi.device,
         }
+        if config.isl29125_int_stuck_high:
+            chips["isl29125"].configure_fault("isl29125:int_stuck_high")
         for device, op, times in config.faults:
             _apply_fault(device, op, times, chips, sensortask_dev.conn.wlan)
         for device, op, seconds, times in config.hangs:
