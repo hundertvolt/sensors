@@ -1902,6 +1902,28 @@ Not "it looks right". D.14 requires the commands actually run and the output rea
 - **`git diff --stat` against `wozi`'s own files must be empty.** Requirement 18 in a form that
   can actually be checked.
 
+## 15. Status — implemented, pending the project owner's review
+
+Everything this plan calls for is built, and every tier except real hardware is running and
+passing: `tests/test_asy_isl29125_driver.py` (147), `tests/test_digital_twin_isl29125.py` (28),
+`tests/test_digital_twin_isl29125_autorange.py` (14), plus the updated dev/webserver/bus-hazard/
+setter/twin-machine suites and the whole `tests_js` tier. `ruff` and all three `mypy --strict`
+passes are clean. The real-hardware tier is **written and registered but never run** — that needs
+the project owner's go-ahead in the session that runs it (CLAUDE.md), which this session does not
+have.
+
+Where the code ends up differing from the two planning documents — including **three places where
+the specification was wrong and would have shipped a real bug** — is recorded in
+`ISL29125_FUNCTION_SPEC.md` §9 rather than being edited back into either document in place. Read
+that section before this one is retired.
+
+**Both planning documents stay for now.** README's "Further reading" entry says to delete them
+when the promotion closes, migrating anything permanent into `SPECIFICATION.md` first. That
+migration has happened (Part A.4, A.7.1, C.7.1, C.8, G.2, H.5/H.6, plus `DEVICE_REFERENCE.md`,
+`THIRD_PARTY_LICENSES.md` and `README.md`), but the promotion is not closed until the owner has
+reviewed it and the real-hardware tier has actually run — so deleting them is the owner's call,
+not this session's.
+
 ## Datasheet acquisition
 
 `renesas.com`, `intersil.com` and every mirror host (DigiKey, Mouser, AllDataSheet, Arrow, Farnell,

@@ -17,7 +17,7 @@ CLAUDE.md's hard rules for why wozi, not dev, is never flashed).
 | arzi | SCD30 (CO2/temp/hum), SGP40 (VOC) | yes | active (8000ms) | `html_raw/arzi` |
 | neu ×3 | same as arzi, different pin assignments | yes | active (8000ms) | `html_raw/arzi` (reused) |
 | wozi | SCD30, SGP40, BMP388 (pressure/temp) | yes | active (8000ms) | `html_raw/wozi` |
-| dev | SCD30, SGP40, BMP388 — same drivers as wozi, different I2C bus pairing (Part C.8) | yes | active (8000ms) | `html_raw/dev` (bench rig) |
+| dev | SCD30, SGP40, BMP388, ISL29125 (RGB colour/lux) — the colour sensor is dev-only; the other three share wozi's drivers with a different I2C bus pairing (Part C.8) | yes | active (8000ms) | `html_raw/dev` (bench rig) |
 
 ## Repository layout, architecture, refactor status, and the build process
 

@@ -209,6 +209,22 @@ registration API and A.9's `HTML_SRC_DIRS` are shaped around it). Real-hardware 
   a spike needs a real step change, not just a high absolute value; (3) a *higher* raw tick count
   reads as *cleaner* air — the inverse of what "raw" suggests. Not a bug — how Sensirion's reference
   algorithm works; `asy_sgp40_driver.py` treats `VOC` as an opaque index throughout (F.4).
+- **ISL29125's own easily-conflated facts** (`asy_isl29125_driver.py`, dev only): the chip reports
+  raw per-channel counts, so everything user-facing is derived. (1) **Auto-range is the driver's,
+  not the chip's** — the part has two fixed full-scale ranges (375/10000 lx, nominal ratio 26.67)
+  and the driver moves between them using the chip's own threshold interrupt, with a peak-of-three
+  decision, a dwell floor and a settle count; `RangeAct` in every reading says which range that
+  sample was actually taken on. (2) **The gain ratio is learned and persisted**, not assumed: a
+  paired reading taken across both ranges in the overlap band feeds an EMA, plausibility-banded to
+  20.0-34.0 and stored in its own timestamped FRAM chunk, so the two ranges agree across a switch
+  on *this* unit rather than in theory. `ISLResetCal` throws it away; it is command-only and never
+  persisted. (3) **Normalised RGB/HSB are over the whole auto-range span** (10000 lx) whenever
+  `RangeAuto` is on, over the selected fixed range otherwise — so the numbers do not jump when the
+  range does. (4) **Register `0x08` is destructive to read** (the read clears `RGBTHF` and releases
+  the INT pin), which is why exactly one status read happens per cycle and why no other code path
+  may touch it. (5) **Sensor RGB is not colorimetric RGB** and the IR-compensation fields move the
+  lux scale as well as the colour balance — see `DEVICE_REFERENCE.md` for the user-facing version
+  of both.
 - Legacy `neopixel_signal.py` (LED hardware + hardcoded threshold monitoring) was split:
   `asy_neopixel_driver.py`'s `NeopixelDriver` (pure LED hardware, unchanged mechanism —
   `request_signal()` returns once queued, not once its ramp finishes; also serves
@@ -367,6 +383,55 @@ sharing. No `src/` module imports another by name to reach a sibling — every d
 constructor-injected, so the graph is a clean DAG at the import level.
 
 Full coverage: `tests/test_sensortask_wozi.py`.
+
+## A.7.1 `src/sensortask_dev.py` construction order — where it diverges, and why
+
+The dev variant runs the same `build_system()`/`main()` shape as A.7, the same setup batch and the
+same starter/level-setter collection. Only three things differ, and only the third is structural.
+
+**1. Pins and bus pairing** (`dev_legacy/README.md`'s wiring table, this bench unit's own):
+`i2c0` = (13, 12) carrying BMP3xx alone, port-default timeout; `i2c1` = (15, 14) carrying SCD30 +
+SGP40 + ISL29125, `timeout=200000` because SCD30 is on **this** bus here, not `i2c0`. SPI0 =
+(2, 3, 4); FRAM CS = GPIO5, a 256 KB MB85RS2MTA (`max_size=0x40000`) rather than wozi's 8 KB part
+at CS=1. SCD30's RDY pin is GPIO11 (wozi: 8), the NeoPixel GPIO18 (wozi: 15), the ISL29125's INT
+GPIO6 (wozi: no such device).
+
+**2. One extra module.** `isl_reader = ISL29125_Reader(i2c1, 6, …, fram=fram,
+fram_ntp_callback=ntp.ntp_issynced, …)` — dev-only, by the project owner's own scoping decision.
+It contributes two error sources (itself and its `ConfigManager`), two level setters, a
+`maintenance_sensors` entry (`GainRatio`/`CalTS`), an entry in the `sensors=` tuple, an
+`await isl_reader.setup()` in the batch, and its task/timer starters.
+
+**3. Nine FRAM chunks, and `isl_reader` constructed out of reading order.** This is the first
+permanent divergence between the two variants' on-chip layouts, and it is the one thing here that
+cannot be changed casually. `AsyFramManager` is a bump allocator, so instantiation order *is*
+layout:
+
+| Chunk | Owner | Same as wozi? |
+|---|---|---|
+| 1 | `SystemService` | yes |
+| 2 | SGP40 error log | yes |
+| 3 | SGP40 VOC backup | yes |
+| 4 | BMP3xx | yes |
+| 5 | SCD30 | yes |
+| 6 | Neopixel | yes |
+| 7 | `NotificationCoordinator` | yes |
+| 8 | ISL29125 error log | **dev only** |
+| 9 | ISL29125 gain-ratio calibration (timestamped) | **dev only** |
+
+`isl_reader` is therefore constructed **after `notify_service.finalize()` and before the
+`WebserverService(...)` call**, not beside the other sensor readers where it would read more
+naturally. Putting it with the others would shift chunks 5-7 down by two and silently reinterpret
+every already-persisted error log and the VOC backup at the wrong offset on a dev board that has
+already run. Appending at the end keeps chunks 1-7 byte-identical between the variants, so the
+only thing a dev board gains is two chunks nothing else was using.
+
+**wozi stays at seven chunks, permanently.** "Seven chunks" is not a project-wide constant any
+more; it is wozi's number. Anything asserting a chunk count has to say which variant it means —
+`tests/test_sensortask_dev.py` does (its nine-chunk sequence test), and
+`tests/test_sensortask_wozi.py`'s seven-chunk assertions are deliberately untouched.
+
+Full coverage: `tests/test_sensortask_dev.py`.
 
 ## A.8 REST API endpoint reference (`src/asy_webserver_service.py`)
 
@@ -1143,6 +1208,16 @@ any unaddressed write, already handled). A real-hardware regression test exists
 (`test_sgp40_general_call_reset_does_not_corrupt_a_concurrent_scd30_transaction`). The only
 structural fix (a bus-wide "quiesce every session before broadcasting" mechanism) is flagged for a
 project-owner decision if ever revisited, not justified without evidence of a live risk.
+
+**ISL29125 (dev's `i2c1`, alongside SCD30 and SGP40)** adds one hazard shape none of the others
+have and removes another. The hazard: register `0x08` is **destructive to read** — the read clears
+`RGBTHF` and releases the INT pin — so exactly one status read happens per read cycle, inside the
+device session, and no other code path (a REST getter, a config push, a test helper) may touch it.
+Anything that reads it a second time silently eats an interrupt. What is *absent*: the part has no
+on-chip non-volatile memory at all (its config registers are volatile), so the "at most one real
+write per bus-hazard test group" budget in constraint (a) below simply does not bind for this
+device — the first promoted sensor where reconfiguring costs nothing. Constraint (b) still applies
+in full, and its concurrency scripts construct `ISL29125_I2C` directly.
 
 **Standing rule — bus-hazard test coverage, read before adding a new bus-facing device or rewiring
 a bus (project owner's explicit standing direction)**: every promoted I2C/SPI device gets
@@ -2129,13 +2204,20 @@ one REST endpoint (`key`, `rest: {get, put?}`, `pollGroup: "live"|"settings"|"no
 (`kind: "errcount"`, `modules[]`). **`FieldDef`**: a `kind`
 (`readonly|number|string|enum|toggle|composite`) plus kind-specific metadata (`min`/`max`, `mask`,
 `options`, `specialValues`, `subFields`, `onLabel`/`offLabel`, `float`, `dispatch`,
-`defaultValue`). `dispatch: true` marks a repeatable command field (H.6, minus `ContMeas`) that
+`defaultValue`, `path`, `decimals`). `path` is an array of keys naming where the value actually
+lives inside a nested REST body (`["RGB", "R"]`), for a group whose GET payload is more than one
+level deep — `resolveFieldValue()` walks it, and a field without one reads its own `key` from the
+top level exactly as before. `decimals` fixes a numeric field's displayed precision
+(`formatFieldValue()`), applied only to real finite numbers and only after the `null`/`mask`/
+`enum`/`format` branches, so no existing field's rendering changes. Both are validated per field at
+load time (`validateFieldHints()`). `dispatch: true` marks a repeatable command field (H.6, minus `ContMeas`) that
 must re-submit even when unchanged. `defaultValue` marks a field's safe synthetic baseline when GET
 never reports a real value — `ContMeas`'s `defaultValue` is `true` since `false` ("Off") actually
 stops measurement, not a no-op (matching the legacy synthetic reference), not the toggle's naive
-`false` default. See `wozi.json`/`dev.json` for worked examples — nearly identical field content
-(same three drivers); only `device.id`/`displayName` and I2C bus pairing differ, which the
-definitions files don't encode since a sensor's schema is driver-defined, not bus-defined.
+`false` default. See `wozi.json`/`dev.json` for worked examples. The two are **no longer near-identical**:
+`dev.json` carries a whole fourth sensor (`ISL29125`, dev-only) that `wozi.json` does not, and it is
+the only place `path`/`decimals` are used today. What the definitions files still don't encode is
+I2C bus pairing — a sensor's schema is driver-defined, not bus-defined.
 **Autogeneration is not yet built** — hand-written today (BACKLOG.md).
 
 ## H.6 Errcount (Status section) and dispatch-only field conventions
@@ -2147,8 +2229,8 @@ per-entry timestamp — `type` only colors `num`. **Errcount UX**: same `.card` 
 groups, starts collapsed to a rollup + two filter buttons, wired entirely inside `templates.js`
 (no controller involvement). **Dispatch-only field semantics** — `SystemCmd`, `PauseTime`,
 `lightCmdLED` (r/g/b/t, bounds matching legacy exactly, rejecting not clamping),
-`ResetErrors`, `ContMeas`, `SGPResetVOC`: `"Invalid"` only for a structurally wrong payload; a
-well-formed submission always reports `"Valid"`, including on an identical repeat (never
+`ResetErrors`, `ContMeas`, `SGPResetVOC`, `ISLResetCal`: `"Invalid"` only for a structurally wrong
+payload; a well-formed submission always reports `"Valid"`, including on an identical repeat (never
 `"Unchanged"`). `js/mock-server.js` mirrors this via dedicated dispatch functions — none ever
 persisted into the generic settings store. **Server-side settings-group failure**: if a
 `SettingsGroup`'s post-write hook raises, every field that group attempted is reported `"Failed"` —

@@ -517,9 +517,14 @@ constraints.
   `improved-quality/sensortask-wozi.py` is deleted, but `src/sensortask_wozi.py` itself still calls
   it by the current name, so this remains a real (if small) call-site update.
 - **`asy_i2c_driver.py`'s `get_bits`/`set_bits`/`get_register_struct` still call the allocating
-  `readfrom_mem()` rather than zero-copy `readfrom_mem_into()`** — no real caller needs the
-  zero-copy path yet, but worth doing before `asy_isl29125_driver.py` (its one plausible future
-  caller) is migrated.
+  `readfrom_mem()` rather than zero-copy `readfrom_mem_into()`** — this was written as "worth doing
+  before `asy_isl29125_driver.py` is migrated", and that migration has now happened without it.
+  **Still not done, deliberately, and worth a decision rather than silent carry-over**: the ISL's
+  own hot path is one `get_register_struct(_REGISTER_DATA, "6s")` per read cycle — a 6-byte
+  allocation at the configured sample interval, nowhere near the fixed-size-buffer bar Part I
+  reserves the zero-copy treatment for. The cost of doing it is a changed signature on three shared
+  methods every existing driver calls. Left as the same low-priority item it was, no longer blocked
+  on anything.
 - **`asy_scd30_driver.py`'s persistent NVM setters have no published write-cycle endurance figure**
   (checked every available Sensirion doc) — safe today only because every setter is REST-triggered,
   never called from a boot path or periodic loop. Don't add a periodic/high-frequency caller

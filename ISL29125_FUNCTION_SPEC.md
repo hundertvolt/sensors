@@ -2213,3 +2213,89 @@ answer, and both are recorded so a reviewer can disagree on the record:
   it is the only mechanism that can detect shadow-vs-chip divergence, a read of `0x01` does not
   restart the conversion (only a write does, Table 7), and §8.7's rule is about the
   read-modify-write hazard, which a read-only snapshot does not create.
+
+---
+
+## 9. Implementation record — where the code diverged from this document, and why
+
+Written after the implementation was complete and every non-hardware tier was green. Anything in
+§4 that the code does differently is listed here rather than being edited into place above: this
+document was the plan, and a reader should be able to see which of its calls survived contact.
+
+### 9.1 Three specification defects — this document was wrong, the code is right
+
+Each of these was found by a test failing, or by deriving the arithmetic again from the datasheet
+rather than from the entry. All three need the project owner's eyes, because in each case the
+document's version would have shipped a real bug.
+
+**1. `_counts_to_lux()`'s gain correction was inverted.** §4.2's F3 entry specifies
+`nominal_ratio / learned_ratio`. It is `learned_ratio / nominal_ratio`. Derivation: the learned
+ratio is measured as a ratio of *counts* for the same light across the two ranges, which equals
+the ratio of the two real full scales. A unit whose real high-range full scale is above the
+nominal 10000 lx therefore produces *fewer* counts per lux on that range, so its reported lux
+needs scaling **up** by exactly that excess — `learned / nominal`, above 1.0 for such a unit. The
+document's form scales it the wrong way, roughly doubling the error it was meant to remove. The
+low range stays the reference either way, which is the part the entry got right.
+
+**2. `reset()`'s verify must not include the status register.** SparkFun's own `reset()` requires
+`0x00` from registers `0x01`, `0x02`, `0x03` *and* `0x08`, and this document inherited that. Two
+independent reasons not to: FN8424 Table 15 documents `0x04` — `BOUTF` set — as register `0x08`'s
+own power-on default, so requiring `0x00` contradicts the datasheet and would make every reset
+report failure on a part behaving correctly; and reading `0x08` is destructive, so putting a read
+there breaks the "exactly one status read per cycle" invariant the whole brownout/threshold design
+rests on. The implementation verifies `CONFIG1`-`CONFIG3` only, with the reasoning in a comment.
+
+**3. Range-switch thresholds must be scaled to the active resolution.** §4.3's `_switch_range()`
+computes its threshold pair from `_fraction_to_counts()`, which works in 16-bit counts. At 12-bit
+resolution the chip's own data and threshold registers hold 12-bit values, so an unscaled
+threshold sits far above anything the chip can ever produce and the crossing never fires — the
+auto-range silently stops working at 12 bit, in a way no 16-bit test can see. The implementation
+shifts both thresholds right by `16 - bits`, and clamps the upper one to `(1 << bits) - 1`.
+
+### 9.2 Smaller deviations, decided in code
+
+- **`_dark_offset()` is range-conditional.** The document subtracts `DDark` unconditionally. The
+  datasheet's 1-count typical figure is stated at range 0; on the high range one count is 26.67×
+  more light and subtracting it is both wrong and large enough to break exact-doubling assertions
+  across a range switch. Returns `_DARK_COUNTS` on the low range, 0 on the high one.
+- **`encode_shadow()` is public.** §4.4 has it private. The reader's divergence check (R6) needs
+  to encode the shadow it expects before comparing it against P12's raw snapshot, and that is a
+  legitimate caller outside the protocol class.
+- **`ISLResults` is a five-tuple**, `(green, red, blue, range_fs, timestamp)`. The range the
+  sample was taken on has to travel with the sample — a reading corrected against the wrong range
+  is worse than no reading — and keeping CCT out of this tuple means `_error_check()` never sees a
+  legitimately-`None` value and mistakes it for a failed read.
+- **The bus-fault pattern tests against `0xC8`, not `0xFF`.** `0xFF` includes `BOUTF`, so a
+  stuck-high bus was being handled as a brownout first and never reached the fault path. `0xC8` is
+  the reserved-bits-only mask from Table 15.
+- **One more real-hardware script than §4.8 lists.** `isl29125_cross_device_concurrency.py` (H5)
+  was added: CLAUDE.md's standing bus-hazard rule requires cross-device interleaving coverage at
+  every tier that applies, and §4.8's four scripts covered same-device only. §6.6 already said the
+  flash tier registers "the cross-device pairing with SCD30/SGP40"; there was no script for it.
+- **The gain-ratio reboot-persistence check is a bench-tier REST test, not a `reboot_persist_*.py`
+  pair** as §6.7 proposes. A device-script pair would build its own `AsyFramManager` over the same
+  chip, and the allocator is deterministic, so it would overwrite production's own first chunk —
+  the exact hazard §6.6's own FRAM warning describes. Going through the production firmware over
+  REST proves the same property and touches nothing.
+
+### 9.3 Two stale cross-references in this document
+
+- §4.8 cites "§11.9" for the sweep's opt-in gate. There is no §11.9 here; the reference is to
+  **plan §11.9**, which does discuss it. Left as a note rather than silently renumbered.
+- §7.2's per-file gate table says the `tests_hardware/*` scripts must be "written and registered,
+  not run without the owner's go-ahead". That is exactly what happened, and it is the one gate in
+  that table that is deliberately *not* closed by this session.
+
+### 9.4 What the harness needed that the design did not
+
+Three twin-tier settings differ from production defaults, in the test only, each because
+simulated time is not real time. Recorded so nobody reads them as the driver needing them:
+
+- `AutoRangeDwell` is 0.0 in the twin tests (production default 10.0 s). The dwell floor itself is
+  covered at tier 1, where time is controlled directly.
+- `AutoRangeSettle` is 2 (shipped default 1). In simulated time the chip fake's next conversion
+  and the driver's settle deadline land on the same millisecond; on real silicon the ADC restarts
+  *during* the I²C write, so one cycle genuinely suffices.
+- The chip fake's random light *walk* is switched off (`_lux_step = 0.0`) while its conversion
+  timer keeps running. Stopping the timer instead — the obvious move — makes the paired
+  gain-reading stale and the calibration never converges.

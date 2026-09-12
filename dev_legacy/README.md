@@ -95,6 +95,14 @@ this bench unit:
   ~26.2°C). The broken trace was the sole root cause; driver code, MicroPython version, and the
   RP2040 I2C peripheral were never at fault.
 
+**Not in that list, deliberately: the ISL29125.** It is wired (I2C1, INT on GPIO6) and
+`src/asy_isl29125_driver.py` is promoted and green across every non-hardware tier, but it has
+never been exercised against this board — running its scripts needs the project owner's go-ahead
+in the session that runs them. Its five `tests_hardware/device_scripts/isl29125_*.py` entries and
+their flash/bench registrations are ready; the NeoPixel sweep additionally needs the rig
+`tests_hardware/README.md` describes. Add it to the list above only once a real run has actually
+passed.
+
 ## Confirmed working — full assembled system bring-up (2026-08-28)
 
 Beyond the per-peripheral checks above, a `sensornode-dev` wiring (this bench unit's real pins,
