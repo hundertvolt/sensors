@@ -3,7 +3,8 @@
 Temporary working doc for the `python/IndividualDrivers/asy_isl29125_driver.py` → `src/`
 promotion, following CLAUDE.md's step-session workflow. §1-§5 are the audit of the existing driver
 against the real datasheet; §6 records the requirements the project owner has since settled, §7-§9
-the design notes written against them, §10 the bench rig, and §12 the questions still open.
+the design notes written against them, §10 the bench rig, §11 the full integration map, and §13
+the questions still open.
 Nothing has been changed in the driver yet. Delete this
 file once the promotion closes, migrating
 anything permanent into `SPECIFICATION.md` (the established pattern — see README.md's "Further
@@ -408,6 +409,33 @@ These are decisions, not options. Everything below in §7 is designed against th
     settle margin, a software down-direction dwell, and a command to discard the learned gain
     ratio (§8.3). The learned ratio itself is calibration state, not a setting (§7.3).
 
+**Four more, added by a completeness pass over this list** (asked for explicitly; each is a
+behaviour the driver must have that none of 1-14 actually states, and the last one is a genuine
+hole in the design rather than a restatement):
+
+15. **Logging and error history follow the promoted-driver pattern in full** — a `PrintLog` per
+    module plus one per its `ConfigManager` (`CFGMGR_ISL29125`), a FRAM-backed error history when
+    a `fram=` is supplied and a plain in-RAM one when it is not, the `_error_check()` leaky bucket,
+    and its own `errno`/`wrnno` range in Part C.7.1's table. Implied by 10, but it is the single
+    largest block of shared machinery and worth naming.
+16. **The driver is self-healing and never reports a stale value as fresh.** Concretely: `BOUTF`
+    set means the chip lost its configuration, so re-apply the whole shadow and discard a cycle
+    (§9.3); startup tolerates transient I²C failure on the same leaky-bucket terms as steady state
+    (closing §3.5's asymmetry); and a sample the driver cannot prove is current is reported as
+    `None`, never as the last reading with a new timestamp (§3.8).
+17. **Auto-range must not depend on the interrupt alone.** *This one is a real gap, found while
+    checking this list.* Every design note so far routes the range decision through the threshold
+    INT. But if that line never asserts — a missing pull-up, a broken jumper, a mis-set `INTSEL` —
+    auto-range simply freezes on whatever range it started on, silently, and the only symptom is
+    saturated or near-zero readings that look like a sensor fault. The fix costs nothing: the
+    driver already reads a full sample every `SampleInterv`, so it evaluates the same switch
+    condition on that sample too. The interrupt becomes the *fast* path (sub-second reaction with
+    hardware persistence) and the periodic read the *guaranteed* one. Both use the same thresholds,
+    the same `AutoRangeDwell` and the same settle wait, so they cannot fight.
+18. **Scope is the `dev` variant only.** `wozi` does not carry this sensor and is not to be
+    changed — see §11's non-targets, which matters because most of the integration surface has a
+    wozi twin of every dev file.
+
 **One standing consequence, stated once because it recurs**: CLAUDE.md's rule to *"verify against
 the legacy driver's own actually-proven field behaviour"* has **no purchase for this device**. The
 ISL29125 has only ever run a single config-and-read smoke test (§4) — the project owner has
@@ -481,13 +509,13 @@ Part C.5.2.1 defines the *command-only trigger field*, and `asy_sgp40_driver.py`
 example: learned state goes into a timestamped FRAM chunk (`AsyFramChunkTimestampedBuffer`), the
 *policy* around it is ordinary config fields (`BackupPeriod`, `BackupMaxAge`, `WaitTimeNTP`), and a
 special-alone `"bool"` field wired through `_push_callbacks` discards it. Mapped across: the gain
-ratio is one float in a FRAM chunk, not a config field, and **`ResetRangeCal`** is the command-only
+ratio is one float in a FRAM chunk, not a config field, and **`ISLResetCal`** is the command-only
 bool that throws it away and relearns from nominal. §8.3 spells out what conforming to C.5.2.1
 actually obliges the driver to do.
 
 Deliberately **no** on/off switch for the learning itself. The ratio is a device constant — it
 converges and stays there — not an environmental adaptation that could wander, so "stop learning"
-solves nothing that `ResetRangeCal` does not.
+solves nothing that `ISLResetCal` does not.
 
 ### 7.4 Hue and saturation are continuous for free; brightness is not
 
@@ -792,7 +820,7 @@ raw counts or the INT pin.
 "flag, don't silently change" rule for cross-file inconsistency). Of the 30 config field names in
 `src/`, exactly one carries a device prefix: `asy_sgp40_driver.py`'s **`SGPResetVOC`**. Every other
 field across BMP3xx, SCD30, SGP40, the notification service and the WiFi service is unprefixed.
-Since this driver adopts the same command-only-bool pattern for `ResetRangeCal` (§7.3, §8.3), it
+Since this driver adopts the same command-only-bool pattern for `ISLResetCal` (§7.3, §8.3), it
 would be easy to carry the prefix across with it — it does not. Note that `SPECIFICATION.md`
 Part C.5.2.1 quotes `SGPResetVOC` by name, but as the worked example of the *mechanism*; nothing
 in it makes the prefix part of the convention. Whether `SGPResetVOC` is a deliberate exception (it
@@ -817,7 +845,7 @@ Part G's cross-language mirror obligation requires anyway.
 | `AutoRangeSettle` | int | 1 | 1-10 cycles | full cycles waited after a switch |
 | `AutoRangePersist` | int | 4 | {1, 2, 4, 8} | `CONFIG3` `PRST` — hardware transient rejection |
 | `AutoRangeDwell` | float | 10.0 | 0.0-300.0 s | minimum time on the high range before a switch **down** |
-| `ResetRangeCal` | bool | — | command-only | discard the learned gain ratio and relearn (§7.3) |
+| `ISLResetCal` | bool | — | command-only | discard the learned gain ratio and relearn (§7.3) |
 | `IrCompOffset` | int | 0 | {0, 1} | `CONFIG2` B7 (adds 106) |
 | `IrCompAdjust` | int | 40 | 0-63 | `CONFIG2` B5:0 |
 | `FiltCoeff` | float | -1.0 | -1.0-1.0 | output EMA; <= 0 disables (legacy SHTC3/MPRLS precedent) |
@@ -845,15 +873,15 @@ Four knobs were considered and **declined**, recorded so they are not re-propose
 - **Separate up/down hardware persistence.** Physically impossible — `PRST` is one field.
   `AutoRangeDwell` is the answer instead.
 - **An on/off switch for gain-ratio learning.** See §7.3: the ratio is a device constant, so
-  `ResetRangeCal` covers the only real need.
+  `ISLResetCal` covers the only real need.
 
-#### `ResetRangeCal` against the project's own rule for command-only fields
+#### `ISLResetCal` against the project's own rule for command-only fields
 
 `SPECIFICATION.md` Part C.5.2.1 is prescriptive here, so this is conformance, not a design choice.
 Four obligations, all of which the driver has to honour and none of which is obvious from the
 schema row alone:
 
-1. **Shape**: `_VAL_RESETCAL = const((("ResetRangeCal", "bool", None, None, None, True),))` — a
+1. **Shape**: `_VAL_RESETCAL = const((("ISLResetCal", "bool", None, None, None, True),))` — a
    *special-alone* field, `default=None` with a single-value `special`. Validated and reported,
    never persisted. `"bool"` never inspects `special`, so both values are always accepted, and a
    special-alone write always reports `"Valid"` — which is exactly what makes it a *repeatable*
@@ -868,11 +896,22 @@ schema row alone:
 4. **No `_get_callbacks` entry.** `_recover_failed_push()` skips command-only fields by design;
    registering a getter for one would be dead code at best.
 
-**Naming.** Unprefixed, per the 29-of-30 majority in `src/` (§8.2) — `_NAME = "ISL29125"` already
-namespaces it. `ResetRangeCal` rather than a bare `ResetRangeCal` because §7.11 leaves a second
-calibration plausible (a per-unit colour matrix), and `Cal` alone would then say nothing about
-which one. It is one character longer than the longest existing field name, which is not a style
-break.
+**Naming — and this resolves §8.2's open discrepancy.** The project owner's call is a prefixed
+`ISLReset…` form, which turns what looked like drift into a coherent rule:
+
+> **A command-only trigger field carries the device prefix; an ordinary persisted setting does
+> not.** `SGPResetVOC` and `ISLResetCal` are 2 of 2; the 29 persisted settings across BMP3xx,
+> SCD30, SGP40, the notification service and the WiFi service are 29 of 29 unprefixed.
+
+That is a real distinction rather than an accident. A setting is read back inside its own
+`_NAME`-keyed group, where a prefix would be redundant — whereas a command is a verb the caller
+fires and never reads back (`get_dict_cfg()` deliberately omits it, obligation 2 above), so the
+prefix is what says *which device* is being commanded at the point of use. Nothing in `src/`
+changes: `SGPResetVOC` keeps its name and now has a reason rather than an exception. **§8.2's
+finding is closed as a rule, not left as a question.**
+
+`ISLResetCal` matches `SGPResetVOC` in shape (`<PREFIX>Reset<WHAT>`) and length (11), well inside
+the existing 12-character maximum.
 
 Three further notes on the shape, all of which changed during this pass:
 
@@ -941,9 +980,37 @@ Three things make the nested form cheap rather than cross-cutting:
 
 So the ISL driver **overrides `get_dict_data()`** and builds the nested dict itself rather than
 going through `make_dict()`, declaring the wider return type. No shared contract change, no other
-module touched. Note `make_dict()`'s own comment records that `_asdict()`/`_fields` are unavailable
-on rp2 (ROM level `EXTRA_FEATURES`, below the `EVERYTHING` they need), so the nested build is
-written out explicitly rather than derived from the namedtuple.
+Python module touched. Note `make_dict()`'s own comment records that `_asdict()`/`_fields` are
+unavailable on rp2 (ROM level `EXTRA_FEATURES`, below the `EVERYTHING` they need), so the nested
+build is written out explicitly rather than derived from the namedtuple.
+
+#### But the website is flat-keyed, and that is the real cost — correcting this section
+
+An earlier revision of §8.6 concluded "cheap rather than cross-cutting" full stop. That holds for
+the **Python** side and is wrong about the **website**, which the audit had not yet reached. Three
+concrete places assume a measurement group is a flat map of scalars:
+
+- **`js/definitions.js`'s `resolveFieldValue()`** does `currentValues[field.key]` — a single flat
+  lookup, and the one function both rendering and change-comparison go through. Given
+  `{"RGB": {"R": …}}` it returns the sub-object, which `formatFieldValue()` renders as
+  `[object Object]`.
+- **`js/mock-server.js`'s `jitterEachSensorGroup()`** walks exactly two levels
+  (`bySensor` → sensor → numeric leaves); its own comment says so. A third level is skipped or
+  mangled.
+- **`js/templates.js`'s `composite` kind is not the answer.** It exists for the `lightCmdLED` PUT
+  body: its sub-inputs are always rendered empty with no value binding, so it is a write-only
+  widget, not nested readonly display.
+
+The fix is small and belongs in one place: give a readonly `FieldDef` an optional **`path`**
+(`{"key": "R", "path": ["RGB", "R"], …}`) and have `resolveFieldValue()` walk it, with
+`validateDefinitions()` accepting and checking the new key, and `jitterInPlace()` recursing. That
+is one function each in `definitions.js` and `mock-server.js`, plus the schema documentation in
+Part H — and, per CLAUDE.md's Part G `src/`↔`js/` mirror obligation, mirrored tests in
+`tests_js/definitions.test.js`, `templates.test.js` and `mock-server.test.js`. §11 lists each file.
+
+The alternative — flattening the output to `R`/`G`/`B`/`Hue`/`Sat`/`Bri` — costs nothing but gives
+up requirement 11. Recommendation: keep the nesting and make the small renderer change, since
+`path` is generally useful and every future structured reading gets it for free.
 
 Proposed response body:
 
@@ -1088,7 +1155,7 @@ and cannot otherwise get — you cannot ask a room to ramp from 10 lux to 2 000 
   across the same sweep for the same reason (§7.11) — its *absolute* value against an LED is
   meaningless, but its *stability* through a range switch is exactly what the test is for.
 - **Gain-ratio convergence** — run the sweep repeatedly and watch the learned ratio settle (§7.3),
-  then `ResetRangeCal` and watch it converge again from nominal.
+  then `ISLResetCal` and watch it converge again from nominal.
 - **Monotonicity** of lux against LED level, in both ranges.
 
 **What it cannot validate, and must not be read as validating.** Three reasons, each independent:
@@ -1121,7 +1188,161 @@ and cannot otherwise get — you cannot ask a room to ramp from 10 lux to 2 000 
   modelled in the digital twin's chip fake so the identical continuity assertions run in CI on
   every commit, with the bench run as confirmation rather than as the only coverage.
 
-## 11. Known prerequisites and standing obligations
+## 11. Integration map — where to integrate what
+
+Scanned by taking each of `bmp3xx`/`sgp40`/`scd30` in turn and following every reference across
+the repo, then reading the authoritative checklists the project already keeps
+(`SPECIFICATION.md` Part C.11, `digital_twin/README.md`'s "Adding a new chip fake"). Grouped by
+area; each row is a file and what it needs.
+
+**Scope**: the `dev` variant only (requirement 18). Every `wozi` counterpart below is an explicit
+**non-target**.
+
+### 11.1 The driver and its wiring (`src/`)
+
+| File | What |
+|---|---|
+| `src/asy_isl29125_driver.py` | **New.** Two classes per Part C.2: `ISL29125_I2C` (chip protocol, `Lockable` device session) and `ISL29125_Reader(SensorReaderConfig)` (trigger timer, read loop, auto-range state machine, error counting, config schema, FRAM-backed gain-ratio chunk). |
+| `src/sensortask_dev.py` | Import + module-global + construction in `build_system()`; `_collect_error_sources()` (**two** entries: `isl_reader`, `isl_reader.cfgmgr`); `_collect_level_setters()` (same two, `.pr.set_level`); `WebserverService(sensors=…)`; `maintenance_sensors=` (a `_isl_maintenance_status()` alongside `_sgp_maintenance_status()`, reporting the learned gain ratio and its calibration timestamp); `await isl_reader.setup()` in the setup batch; `_collect_task_starters()`; `_collect_timer_starters()`. |
+| `src/sensortask_wozi.py` | **Non-target.** |
+
+**The FRAM chunk position is a hard constraint, not a style choice.** `AsyFramManager` is a bump
+allocator: instantiation order *is* on-chip layout, and Part A.7 records the seven-chunk order as
+one that "must stay in this relative order". `SPECIFICATION.md`'s "FRAM chunk determinism rule"
+requires every chunk-owning construction to be unconditional and fixed-position. So
+`isl_reader` must be constructed **after** `notify_service` (chunk 7), taking **chunk 8** — not in
+the natural reading position beside the other sensors, which would shift chunks 5-7 and silently
+invalidate every existing error log on the dev board's FRAM. That is exactly the evidence
+CLAUDE.md warns has already been destroyed once. One out-of-place construction plus a comment
+saying why; dev and wozi then still share an identical chunks 1-7.
+
+### 11.2 Shared `src/` surfaces
+
+| File | What |
+|---|---|
+| `src/asy_i2c_driver.py` | Module docstring line 2 lists every I2C driver that uses it — add this one. No code change: the burst read (`"6s"`) and burst write (`"3s"`/`"4s"`) both work through the existing API (§7.1, §8.7). |
+| `src/api_response.py` | Nothing. Its `_ERRNO_UNHANDLED_DISPATCH = 99` sentinel is deliberately above every driver's range; check the new range stays below it. |
+| `src/asy_notification_service.py` | **Nothing** — no light-based notification signal is planned. Listed because it is where a future one would register. |
+
+### 11.3 Persistence and config
+
+| File | What |
+|---|---|
+| `config_ISL29125.cfg` | **New at runtime**, not committed — one JSON file per sensor, written by `ConfigManager` under `cfg_path`. Already covered by `.gitignore`'s `config_*.cfg` rule; no change needed there. |
+| FRAM gain-ratio chunk | Allocated inside `ISL29125_Reader.__init__` when `fram=` is given, following SGP40's VOC chunk. One float plus CRC; use a timestamped chunk so `_isl_maintenance_status()` can report when it was last learned. |
+
+### 11.4 Error/warning numbering
+
+| File | What |
+|---|---|
+| `SPECIFICATION.md` Part C.7.1 table | **New row** for `asy_isl29125_driver.py` (`ISL29125`). Start at `errno=10` (base reserves 1-9), reuse `10=init`, `11=periodic read`, `12=config read at init`, `13=config write at init`, then one per push callback, then the auto-range/calibration/brownout paths. `wrnno` for the recoverable ones: brownout recovered, gain-ratio calibration rejected, settle discard. |
+
+### 11.5 Digital twin
+
+Driven by `digital_twin/README.md`'s own five-step "Adding a new chip fake", which Part C.11
+point 9 makes mandatory in the same session as the promotion.
+
+| File | What |
+|---|---|
+| `digital_twin/_isl29125_chip.py` | **New.** `FaultInjector` (`self.fault`), `random_source` seam, datasheet-sourced min/max plus a documented (non-datasheet) random-walk step bound, and `handle_readfrom_mem()`/`handle_writeto_mem()` answering the exact register-addressed shape `ISL29125_I2C` sends. Must model: the destructive `0x08` read (clears `RGBTHF` **and** the INT pin), `BOUTF` high at power-up, `CONFIG1`'s power-on `0x00`, the sequential G→R→B conversion with `RGBCF`, double-buffered data registers, the 26.67× range gain with a deliberately *non-nominal* per-instance ratio (so the §7.3 calibration has something real to learn), and 12-bit truncation. |
+| `digital_twin/machine.py` | `_wire_i2c_devices()`: add `0x44: Isl29125Chip(int_pin=Pin(6, mode=Pin.IN), …)` to the **`dev` profile's `bus_id == 1`** dict, beside `0x61`/`0x59`. The existing `Pin.simulate_edge()` is exactly the mechanism the active-low INT needs (`simulate_edge(0)` on a threshold crossing, `simulate_edge(1)` when `0x08` is read) — the same seam `_scd30_chip.py` already uses for its RDY line. |
+| `digital_twin/README.md` | "What's here" bus-wiring bullet; the dev-variant section. |
+| `digital_twin/launch.py` | **Optional / non-target.** It mirrors wozi's wiring only. If a dev profile is ever added there, `_FAULT_DEVICE_OPS` and `_sensor_loop()` gain an `isl29125` entry. |
+| `digital_twin/run_dev_integration.py` | Only if the chip fake needs on-disk state like `--scd30-state-path`. The gain ratio lives in the FRAM chunk, which the twin already persists, so **probably nothing**. |
+| `scripts/_digital_twin_ci_suite.py` | `_VERBOSE_LOG_PREFIXES` += `"ISL29125"`; classify into `_PERSISTED_ERROR_MODULES` or `_IN_MEMORY_ERROR_MODULES`; optionally a `--fault isl29125:readfrom_mem:N` leg in the fault run. |
+
+### 11.6 Website (`html/`, `js/`, `mockdata/`)
+
+| File | What |
+|---|---|
+| `html/definitions/dev.json` | **The single place the website learns about a sensor.** `measurements` → a new `ISL29125` group (`Lux`, the nested RGB and HSB fields, `CCT`, `Range`, `TS`). `sensors` → a new `ISL29125` group with all 13 config fields: `enum` for `Resolution`/`Range`/`AutoRangePersist`/`IrCompOffset`, `number` (`float: true` where fractional) for the rest, `toggle` for `RangeAuto`, and `toggle` + `dispatch: true` + `defaultValue` for `ISLResetCal`. `status` → `sensors` group gains the two maintenance keys. |
+| `js/definitions.js` | `resolveFieldValue()` learns the optional `path` walk; `validateDefinitions()` accepts/validates it. Required by requirement 11 — see §8.6's correction. |
+| `js/mock-server.js` | `jitterInPlace()`/`jitterEachSensorGroup()` recurse one level deeper; `applySensorQuirksForGet()` omits `ISLResetCal` the way it already omits `ContMeas`/`SGPResetVOC`. |
+| `mockdata/dev.json` | Replace the **stale legacy `ISL29125` blocks that are already there** — `measurements` still carries raw `Red`/`Green`/`Blue` counts, `sensorsConfig` still carries the ten `OperationMode`/`Interrupt*` keys §8.1 deletes. `status.errcount` already lists `ISL29125` and `CFGMGR_ISL29125`, so that part is done. (It also carries orphan `SHTC3`/`MPRLS` entries for sensors the refactored dev does not have — worth removing in the same pass, or leaving alone deliberately.) |
+| `html/index.html`, `html/style.css` | Nothing — both are generic; a `.composite-fields`-style rule is only needed if the `path` change introduces new markup, which it should not. |
+| `html_raw/dev/*` | **Non-target.** `SPECIFICATION.md` (Part H.1) records legacy `html_raw/` as deliberately not updated — accepted debt. |
+| `html/definitions/wozi.json`, `mockdata/wozi.json` | **Non-targets.** |
+
+### 11.7 Unit tests (`tests/`, real MicroPython Unix port)
+
+| File | What |
+|---|---|
+| `tests/test_asy_isl29125_driver.py` | **New.** The bulk of the work: register packing, the burst read/write, the normalisation chain, the auto-range state machine (both the INT path and requirement 17's periodic path), hysteresis and dwell, settle discard, saturation vs. bus-fault discrimination, gain-ratio learning and `ISLResetCal`, brownout re-apply, HSB/CCT maths incl. the low-light `None`, every schema field's validation, the cross-field `AutoRangeDown ≤ AutoRangeUp/53.33` rejection, and the command-only field's four Part C.5.2.1 obligations. |
+| `tests/machine.py` | The mock I2C is a generic dict-of-registers fake, so probably no change — but its `Pin.irq()` fake must be able to drive an `IRQ_FALLING` edge (it currently notes SCD30 uses rising only). Verify, extend if needed. |
+| `tests/test_digital_twin_isl29125.py` | **New.** Deterministic unit tests of the chip fake in isolation, matching the three existing `test_digital_twin_{sgp40,scd30,bmp3xx}.py`. |
+| `tests/test_digital_twin_machine.py` | Extend the dispatch tests for the new address on dev `bus_id == 1`. |
+| `tests/test_bus_hazard_multi_device.py` | Mock-tier bus hazards — same-device read-vs-write, cross-device interleaving with SCD30/SGP40, address/command sweep. **CLAUDE.md standing rule, all four tiers.** |
+| `tests/test_digital_twin_bus_hazard_concurrency.py` | Twin-tier equivalent; add the ISL to the "every sensor still produced real data under concurrent load" assertions. |
+| `tests/test_sensortask_dev.py` | Construction/wiring assertions: the reader exists, is on `i2c1`, `irq_pin=6` with `PULL_UP`, its two error sources and two level setters are registered, its task/timer starters are collected, **and the FRAM chunk order is unchanged for chunks 1-7**. |
+| `tests/test_digital_twin_sensortask_integration.py` | `assert_sensor_payload_not_self_wrapped(…, {"SCD30", "BMP3XX", "SGP40", "ISL29125"})` on `/measurements` and `/sensors`. |
+| `tests/test_digital_twin_run_dev_integration.py` | Only if `run_dev_integration.py` changes. |
+| `tests/test_asy_webserver_service.py` | The nested `get_dict_data()` return is a new shape for `_stream_dict_response()` — add a case proving a two-level value serialises correctly and is not re-wrapped. |
+| `tests/test_setter_microdot_integration.py` | It drives real readers through real Microdot routes; add the ISL for the schema-driven setter path, and specifically for the command-only field's repeatable-trigger semantics. |
+| `tests/test_digital_twin_real_website_integration.py` | Add the new definitions group to whatever it cross-checks between `html/definitions/dev.json` and the live twin. |
+| `tests/test_config_manager.py`, `tests/test_base_classes.py` | Probably nothing — generic. Check whether either enumerates real schemas. |
+
+### 11.8 Website tests (`tests_js/`, Node)
+
+| File | What |
+|---|---|
+| `tests_js/definitions.test.js` | The `path` resolution and its validation. |
+| `tests_js/templates.test.js` | A nested readonly field renders its value, not `[object Object]`. |
+| `tests_js/render.test.js` | Change-comparison still works for `path`-bearing fields; `ISLResetCal` is always resubmitted (`dispatch`). |
+| `tests_js/mock-server.test.js` | Deeper jitter; `ISLResetCal` omitted from GET readback. |
+| `tests_js/mock-server-put-matrix.test.js` | Its header comment says it "currently matches zero of dev's real groups" — the ISL's mixed enum/number/toggle/command group is a good new matrix case. |
+| `tests_js/live-backend-put-matrix.test.js`, `_live_matrix_command.js`, `_live_twin_command.js` | These drive `run_wozi_integration.py`. **Non-targets** unless a dev-twin variant is added. |
+| `scripts/cross_browser_smoke.mjs` | Same — wozi-driven, non-target. |
+
+### 11.9 Real-hardware tests (`tests_hardware/`)
+
+All of this needs the project owner's go-ahead in the session that runs it (CLAUDE.md).
+
+| File | What |
+|---|---|
+| `tests_hardware/bus_topology.py` | `DEV_TOPOLOGY`'s `port_id=1` device tuple gains `I2CDeviceSpec("ISL29125", 0x44)`; `KNOWN_ADDRESSES` gains `0x44: "ISL29125"`. Two lines, and the autodetect sweep picks it up from there. |
+| `tests_hardware/device_scripts/isl29125_plausibility_read.py` | **New**, matching `scd30_plausibility_read.py`/`bmp3xx_plausibility_read.py`. |
+| `tests_hardware/device_scripts/isl29125_same_device_rw_concurrency.py` | **New**, matching the existing per-device pair. |
+| `tests_hardware/device_scripts/isl29125_real_irq_edge.py` | **New**, matching `scd30_real_irq_edge.py` — and the natural place to settle §13's `CONFIG1`-restart and `PRST`-units questions. |
+| `tests_hardware/device_scripts/isl29125_autorange_sweep.py` | **New** — the NeoPixel rig of §10. The one test no other sensor has an analogue of. |
+| `tests_hardware/flash/test_bus_concurrency.py`, `flash/test_sensor_accuracy.py` | Flash-tier registration of the scripts above. |
+| `tests_hardware/bench/test_bus_concurrency_under_api_load.py`, `bench/test_rest_endpoints_over_sta.py`, `bench/test_sensor_config_push_over_real_hardware.py`, `bench/test_memory_stress_bench.py` | Bench-tier: the new group appears in the REST surface, its settings push over real hardware, and the extra module's heap cost is counted. |
+| `tests_hardware/README.md` | Document the new scripts and the NeoPixel rig's own physical setup (geometry matters, §10). |
+
+### 11.10 Build and tooling
+
+| File | What |
+|---|---|
+| `scripts/build_firmware.py` | **Nothing.** It freezes `src/*.py` wholesale; only the three reserved names (`microdot.py`, `main.py`, `frozen_html.py`) would collide. |
+| `boot_entry/dev_boot.py` | Check — likely nothing, it calls `sensortask_dev.main()`. |
+| `pyproject.toml` | A `[tool.ruff.lint.per-file-ignores]` row for `src/asy_isl29125_driver.py` if it takes a boolean positional (`FBT001`), as all three existing drivers do. `N801` is already globally allowed, so `ISL29125_I2C` is fine. |
+| `build-dev.sh` and the other three `build-*.sh` | **Non-targets, permanently** — CLAUDE.md's legacy hard rule. |
+
+### 11.11 Documentation
+
+| File | What |
+|---|---|
+| `SPECIFICATION.md` Part A.7 | The dev construction order and the **eight**-chunk FRAM order; note it is dev-only and wozi stays at seven. |
+| `SPECIFICATION.md` Part A.4 | Module-by-module reference entry. |
+| `SPECIFICATION.md` Part C.7.1 | The errno/wrnno row (§11.4). |
+| `SPECIFICATION.md` Part C.8 | Bus-hazard/locking: the ISL joins i2c1's device list. |
+| `SPECIFICATION.md` Part G | Any shared primitive this work promotes — the EMA filter (§7.8) is the concrete candidate, and it must be added to the catalogue rather than duplicated. |
+| `SPECIFICATION.md` Part H | The definitions-file schema gains `path`; H.6's dispatch-only list gains `ISLResetCal`. |
+| `README.md` | The device table's `dev` row (line 20) gains the ISL29125. |
+| `DEVICE_REFERENCE.md` | A user-facing section on the ISL's own easily-conflated values — the IR-compensation/lux-scale coupling (§7.9) and "sensor RGB is not colorimetric RGB" (§7.10) are exactly the SGP40-backup-style traps this file exists for. |
+| `THIRD_PARTY_LICENSES.md` | Move the entry from "Shipped but not promoted" to "Restructured/rewritten, attribution retained" (§12). |
+| `BACKLOG.md` | Close the `readfrom_mem_into()` item if done; record anything deferred. |
+| `CLAUDE.md` | Only if a new standing rule comes out of this. |
+| `dev_legacy/README.md` | Already updated with the INT wiring; add the ISL to "Confirmed working" once the bench run passes. |
+
+### 11.12 The one cross-cutting obligation that is easy to miss
+
+CLAUDE.md: **whenever a new file is added to `src/`, run a bird's-eye scan over the whole of
+`src/`** — Part D.10 API consistency, Part D.9 current-MicroPython check, and Part G's
+shared-primitive catalogue and grep-for-the-shape discovery. And: *"if the scan surfaces a
+discrepancy, do not silently fix it — report it and discuss."* This pass has already produced one
+such finding (the config-field prefix question, §8.2), which is how the rule is meant to work.
+
+## 12. Known prerequisites and standing obligations
 
 - `BACKLOG.md:519-522` already flags `asy_i2c_driver.py`'s `readfrom_mem()` → `readfrom_mem_into()`
   zero-copy change as *"worth doing before `asy_isl29125_driver.py` … is migrated"*, naming this
@@ -1143,7 +1364,7 @@ and cannot otherwise get — you cannot ask a room to ramp from 10 lux to 2 000 
   `src/asy_i2c_driver.py` — which exposes the same four-operation API — carries no attribution at
   all. By the standard already applied to `asy_fram_driver.py` it may warrant a similar note.
 
-## 12. What is still open
+## 13. What is still open
 
 Everything else in this doc is settled. These are not.
 
@@ -1154,17 +1375,22 @@ Everything else in this doc is settled. These are not.
 2. **Does `PRST` count channel integrations or full RGB cycles?** (§8.3.) Changes
    `AutoRangePersist`'s effective time constant by 3× and nothing else; `AutoRangeDwell` covers the
    down direction regardless. Bench check, or AN1910.
-3. **`SGPResetVOC` is the only device-prefixed config field in `src/`** (§8.2). Reported, not
-   touched — the project owner decides whether it is a deliberate exception or drift.
-4. **AN1910, AN1914, AN1591 and the Renesas "ISL29125 CCT calculation" note are all unobtainable**
+3. **AN1910, AN1914, AN1591 and the Renesas "ISL29125 CCT calculation" note are all unobtainable**
    from a session. AN1910 would settle the 12-bit integration time (currently derived, §7.2) and
    question 2 above; the CCT note would replace §7.11's placeholder matrix with the vendor's own.
    Neither blocks the promotion; both would improve it.
+4. **Should the nested measurement output keep its nesting, at the cost of a small `path`
+   extension to the website renderer?** (§8.6's correction, §11.6.) Recommended yes; flattening to
+   `R`/`G`/`B`/`Hue`/`Sat`/`Bri` is the alternative and gives up requirement 11.
+5. **Should `mockdata/dev.json`'s orphan `SHTC3`/`MPRLS` blocks be removed** in the same pass?
+   (§11.6.) They describe sensors the refactored dev variant does not have.
 
 Closed during this pass, recorded so they are not reopened: `CCT` is in (requirement 13); the
 auto-range tuning surface is settled and the four rejected knobs are listed with reasons (§8.3);
 the INT pull-up is resolved — present on the dev board, confirmed by the project owner and
-corroborated by SparkFun's schematic, with `Pin.PULL_UP` enabled by default regardless (§7.12); the IR-compensation default is 40 codes with `B7` = 0 (§6, §7.9); whether `CONVEN`
+corroborated by SparkFun's schematic, with `Pin.PULL_UP` enabled by default regardless (§7.12);
+the config-field naming question is closed as a *rule* (device prefix marks a command, not a
+setting — §8.3), so `SGPResetVOC` stays as it is and needs no decision; the IR-compensation default is 40 codes with `B7` = 0 (§6, §7.9); whether `CONVEN`
 fires per channel or per cycle is moot since `CONVEN` stays 0 (§7.6); and the `CONFIG1`
 read-modify-write hazard is designed out rather than mitigated (§8.7).
 
