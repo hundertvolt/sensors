@@ -643,6 +643,10 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   the Python-internal changes explicitly recorded as having no C impact). Carries those decisions
   across the gap until that C source is imported into this repo and reconciled, then gets deleted.
   The protocol itself is specified in `SPECIFICATION.md` Part J, which is permanent.
+- **[`UART_SESSION_HANDOVER.md`](UART_SESSION_HANDOVER.md)** — handover from the 2026-09-12 bench
+  session to a session without hardware: what is proven where, the one red-CI item whose fix is
+  already written, the two open items, and the measurement traps that each produced a confident
+  wrong answer first. Deleted once its open items close.
 - **[`UART_PROMOTION_REQUIREMENTS.md`](UART_PROMOTION_REQUIREMENTS.md)** — the refined scope of the
   UART module's `src/` promotion: every standard the promoted file has to meet, derived from
   `SPECIFICATION.md` Parts C/D/F/G/I/J and CLAUDE.md, plus the map of what the legacy file currently
