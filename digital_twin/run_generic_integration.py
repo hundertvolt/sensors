@@ -263,7 +263,7 @@ async def _wait_until_serving(host: str, port: int, timeout_s: float = 10.0) -> 
         while True:
             try:
                 await _http_client.fetch(host, port, "GET", "/")
-            except OSError:
+            except (OSError, MemoryError):  # MemoryError isn't an OSError subclass here
                 await asyncio.sleep_ms(50)
             else:
                 return
@@ -282,7 +282,10 @@ async def _soak(host: str, port: int, cycles: int) -> "list[str]":
         for path in _SOAK_ENDPOINTS:
             try:
                 await _http_client.fetch(host, port, "GET", path)
-            except OSError as e:
+            except (OSError, MemoryError) as e:  # MemoryError isn't an OSError subclass here
+                # (CLAUDE.md's platform-facts note) - a real soak run must record a genuine
+                # allocation failure as one more failure, never let it crash the whole run
+                # uncaught before the summary below ever prints (found via a real CI failure).
                 failures.append(f"warmup: GET {path} -> {e!r}")
     gc.collect()
     mem_samples: list[int] = [gc.mem_free()]  # index 0: post-warmup baseline, excluded from the
@@ -291,7 +294,7 @@ async def _soak(host: str, port: int, cycles: int) -> "list[str]":
         for path in _SOAK_ENDPOINTS:
             try:
                 res = await _http_client.fetch(host, port, "GET", path)
-            except OSError as e:
+            except (OSError, MemoryError) as e:
                 failures.append(f"cycle {cycle}: GET {path} -> {e!r}")
                 continue
             if res.status_code != 200:
