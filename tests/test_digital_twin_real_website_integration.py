@@ -204,10 +204,10 @@ def test_real_website_static_mount_never_shadows_a_real_api_route() -> None:
 
 # ---------------------------------------------------------------------------
 # Captive-portal hotspot-mode redirect - full integration, real production website + real API, real
-# HTTP over a real socket (the one thing test_sensortask_wozi.py's own in-process _dispatch()
+# HTTP over a real socket (the one thing test_sensortask.py's own in-process _dispatch()
 # equivalent can't exercise). No real WiFi task is started (conn.start_asy_wlan_connect() is never
 # called here) - conn._conn_phase is set directly instead, the same test-seam convention
-# test_sensortask_wozi.py's own wiring-level coverage and this file's sibling
+# test_sensortask.py's own wiring-level coverage and this file's sibling
 # test_digital_twin_sensortask_integration.py's own direct-attribute tests already use; that file's
 # own test_wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server_and_status_led
 # already covers the "reached via a genuine real STA-failure/hotspot transition" case with the

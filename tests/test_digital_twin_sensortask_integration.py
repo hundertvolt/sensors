@@ -11,7 +11,7 @@ import socket
 import sys
 import time
 
-sys.path.insert(0, "ext")  # same convention as test_sensortask_wozi.py's own comment - reaches the
+sys.path.insert(0, "ext")  # same convention as test_sensortask.py's own comment - reaches the
 # real, vendored ext/microdot.py that sensortask_wozi.py transitively imports.
 sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comment for why
 
@@ -53,7 +53,7 @@ def run_timed(coro: "Coroutine[Any, Any, T]", timeout_s: float) -> "T":
 
 # ---------------------------------------------------------------------------
 # Per-test config-file isolation - same _tmp_cfg_dir()/_sweep_stale_tmp_dirs() shape every other
-# test file uses (see tests/test_sensortask_wozi.py's own comment for the full root-cause story on
+# test file uses (see tests/test_sensortask.py's own comment for the full root-cause story on
 # why the sweep is required, not just the fresh-directory-name counter alone).
 # ---------------------------------------------------------------------------
 
@@ -426,8 +426,8 @@ def test_sensors_put_round_trips_a_real_scd30_field_over_real_http() -> None:
 
 # ---------------------------------------------------------------------------
 # Watchdog escalation - a short, real, fully-supervised run (owner decision 7: automated assertion
-# *and* manually observable - the manual side lives in digital_twin/run_wozi_integration.py, this
-# is the automated side).
+# *and* manually observable - the manual side lives in digital_twin/run_generic_integration.py
+# (--module sensortask_wozi --wiring-plan ... --device wozi), this is the automated side).
 #
 # Deliberately does NOT drive this through sensortask_wozi.main()/start_and_check_tasks(): a real
 # regression found while building this file - MicroPython's globals() does not preserve
@@ -509,7 +509,7 @@ def test_start_and_check_tasks_restarts_a_real_dead_task_from_the_real_full_task
         async def _tracking_start_task(self: "SystemService", starter: "Callable[[], asyncio.Task[Any]]", n: "int") -> "asyncio.Task[Any] | None":
             # Observes the real supervisor's own real task-(re)start calls without changing its
             # behavior at all - the same non-invasive class-method-wrap convention
-            # test_sensortask_wozi.py's own FRAM-chunk-order test already uses.
+            # test_sensortask.py's own FRAM-chunk-order test already uses.
             task = await real_start_task(self, starter, n)
             started.setdefault(n, []).append(task)
             return task
@@ -605,7 +605,7 @@ def test_wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server_a
             # immediately overwritten once it did.
             # Fast-forwards the real conn_fail_to_hotspot=5 streak (sensortask_wozi.py's own real
             # construction call) to "one real scripted failure away from hotspot fallback" - the
-            # same direct-attribute test-seam convention test_sensortask_wozi.py's own
+            # same direct-attribute test-seam convention test_sensortask.py's own
             # test_webserver_networking_put_ntp_fields_forces_a_resync() already uses
             # (`sensortask_wozi.ntp.ntp_retries = 3`), not a fake of
             # _register_sta_connection_failure() itself. Waiting out 5 real scripted-failure cycles
@@ -950,8 +950,7 @@ def _scenario_bus_fault_degrades(device: str) -> None:
 
         # SGP40 is fixed-address (0x59) on every real device (buildgen.twin_wiring.FIXED_ADDRESSES),
         # but which bus it's actually wired to varies by device (wozi/dev already differ from each
-        # other - see digital_twin/run_dev_integration.py's own historical chip dict) - resolved
-        # here from the device's own real wiring plan, never assumed to be i2c1.
+        # other) - resolved here from the device's own real wiring plan, never assumed to be i2c1.
         plan = _wiring_plan(device)
         sgp40_bus_name = next(bus_name for bus_name, attachments in plan["buses"].items() if any(a["driver"] == "sgp40" for a in attachments))
         bus = getattr(module, sgp40_bus_name)

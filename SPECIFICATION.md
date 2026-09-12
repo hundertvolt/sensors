@@ -414,7 +414,7 @@ module still constructs its own `ConfigManager`/`PrintLog` internally — no cro
 sharing, and every *instance*-level dependency stays constructor-injected, so the object graph is
 still a clean DAG at that level.
 
-Full coverage: `tests/test_sensortask_wozi.py`.
+Full coverage: `tests/test_sensortask.py`.
 
 ## A.8 REST API endpoint reference (`src/asy_webserver_service.py`)
 
@@ -1706,8 +1706,8 @@ starting with `MP_FROZEN_PATH_PREFIX` routes to the compiled-in frozen table, ne
 filesystem. `frozen_modules` is a separate, ordinary, gitignored directory (A.9's output) needed
 too, since `sensortask_wozi.py`'s `import frozen_html` needs it.
 
-Any test file that imports a `sensortask_<device>.py` module directly (`test_sensortask_wozi.py`/
-`test_sensortask_dev.py` and every `tests/test_digital_twin_*.py` that does the same) needs one more
+Any test file that imports a `sensortask_<device>.py` module directly (`test_sensortask.py` and
+every `tests/test_digital_twin_*.py` that does the same) needs one more
 prerequisite first, since no such module is ever committed to `src/` any more (BUILD_CHAIN_PLAN.md's
 Session 6): `uv run scripts/_generate_sensortask_modules.py` to populate the gitignored
 `build/generated_src/` directory, and `build/generated_src` prepended to `MICROPYPATH` (ahead of

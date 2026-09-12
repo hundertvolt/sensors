@@ -255,23 +255,47 @@ constraints.
     concrete mechanism logs a real `err_s(..., errno=18)` ("Compensation data read failed")
     followed by `wrn_s(..., wrnno=14)` ("No compensation data available!") whenever a compensation
     read happens to land before SCD30's own first post-boot measurement is ready - pure startup
-    timing, not a real fault. Found via a real digital-twin CI failure on PR #74 ("dev"'s
-    `digital-twin-e2e` matrix leg, Run 5c). `scripts/_digital_twin_ci_suite.py`'s own Run 5c check
-    was fixed for its own symptom (a `time.sleep(3.0)` before the ResetErrors-then-check-zero
-    assertion, letting the transient land and settle first) - a legitimate, independent test fix
-    that stays regardless of what the follow-up below decides, but it does not touch the underlying
-    production behavior. **Project owner's direction: this is a general principle, not limited to
-    this one case - no error or warning should ever be logged for expected startup jitter on any
-    boot, on any module, as long as nothing has genuinely broken; only genuine faults should ever
-    surface as E/W log entries.** The one already-correct exception: SGP40's own "No backup found!"
-    warning (`wrnno=10`, `asy_sgp40_driver.py` ~line 382) on a genuinely blank/first-ever device is
-    legitimate and should stay a warning. Scope for the follow-up session: (1) fix this specific
-    SGP40/SCD30 compensation-read race at its source (e.g. a distinct, non-logged "source not ready
-    yet during the boot grace window" case instead of routing it through the same `err_s()`/
-    `wrn_s()` path as a real compensation-read exception), and (2) audit the rest of the codebase
-    for the same class of bug - any other driver/module that can log a real E/W entry purely from
-    post-boot startup jitter before its own dependencies/sources are ready, not just this one
-    instance. Must not weaken real-fault detection while doing this - a genuine, persistent
+    timing, not a real fault. **Root cause pinned down precisely**: `_read_sgp()` calls
+    `float(getattr(temp_data, self.temperature_field))`/`float(getattr(hum_data,
+    self.humidity_field))` *inside* the same `try` that's supposed to catch a genuine read failure -
+    when the field is legitimately still `None` (never measured yet), `float(None)` raises
+    `TypeError`, which gets caught and misreported as "Compensation data read failed" alongside a
+    real exception object, rather than the clean "no data yet" case it actually is.
+    `src/asy_notification_service.py`'s own `_check_one()` reads a source the identical way
+    (`devices/*.toml`'s `warn_co2`/`warn_voc`/`warn_hum` wiring) and does NOT have this bug: it does
+    a plain `getattr(data, notif.field, None)` first, checks for `None` and returns cleanly *before*
+    ever calling `float()` - confirmed by direct comparison this is the *only* difference between
+    the two, and grepping all of `src/` for the same `float(getattr(...))`-inside-a-broad-try shape
+    found no other occurrence, so this specific anti-pattern is confirmed isolated to
+    `asy_sgp40_driver.py` alone, not systemic - though the general principle below still calls for a
+    fresh check whenever new cross-module value-reading code is added. Found via a real digital-twin
+    CI failure on PR #74 ("dev"'s `digital-twin-e2e` matrix leg, Run 5c).
+    `scripts/_digital_twin_ci_suite.py`'s own Run 5c check was fixed for its own symptom (a
+    `time.sleep(3.0)` before the ResetErrors-then-check-zero assertion, letting the transient land
+    and settle first) - a legitimate, independent test fix that stays regardless of what the
+    follow-up below decides, but it does not touch the underlying production behavior. **Project
+    owner's direction: this is a general principle, not limited to this one case - no error or
+    warning should ever be logged for expected startup jitter on any boot, on any module, as long as
+    nothing has genuinely broken; only genuine faults should ever surface as E/W log entries.** The
+    one already-correct exception: SGP40's own "No backup found!" warning (`wrnno=10`,
+    `asy_sgp40_driver.py` ~line 382) on a genuinely blank/first-ever device is legitimate and should
+    stay a warning. **Project owner's own first design idea for the fix, to weigh against
+    alternatives, not a settled decision**: a global grace period in `system_service.py`, active for
+    a fixed window after boot, during which a "never written" sentinel in a cross-module measurement
+    read (the exact class this SGP40/SCD30 case is one instance of) is accepted/ignored silently
+    instead of logged - narrowly scoped to just the E/W classes this affects, everything else keeps
+    logging immediately and unconditionally, and only for that fixed window, not permanently. Scope
+    for the follow-up session: (1) decide on and implement a fix for this specific SGP40/SCD30 race
+    (the grace-period idea above, or a narrower per-call-site fix matching
+    `asy_notification_service.py`'s own already-correct pattern, or another approach - a real
+    design choice, not mechanical), and (2) audit the rest of the codebase for the same class of bug
+    - any other driver/module that can log a real E/W entry purely from post-boot startup jitter
+    before its own dependencies/sources are ready, not just this one instance (this session's own
+    src/-wide grep for the specific `float(getattr(...))` anti-pattern found nothing else, but a
+    fresh, broader look - e.g. any place a cross-module read's exception handling doesn't cleanly
+    separate "no data yet" from "a real exception occurred" - is still this follow-up's job, not
+    assumed complete by this narrower grep). Must not weaken real-fault detection while doing this -
+    a genuine, persistent
     compensation-source failure (source never comes up, real bus fault) must still be caught and
     logged.
 
@@ -495,16 +519,16 @@ constraints.
   (SCD30 is wired to `i2c0` on wozi, but a different variant could wire it to `i2c1` or a third bus
   entirely) — it must look the bus up through the sensor's own object graph (e.g.
   `scd30.scd.i2c_scd30.i2c_device.i2c`), never assume a specific `i2cN` name.
-  `tests/test_sensortask_wozi.py`'s own
+  `tests/test_sensortask.py`'s own
   `test_scd30s_own_i2c_bus_uses_a_clock_stretch_timeout_wide_enough_for_it` remains the worked
-  example this generalizes from (both the bus lookup and the FRAM assertions). **Partially done**:
-  `firmware-build-verify`'s 6-device CI matrix and `tests_scripts/test_digital_twin_generated_boot.py`
-  prove every real device's generated module boots and serves real REST traffic, but the deeper
-  per-variant whitebox parameterization this requirement actually calls for (presence-conditioned
-  sensor/FRAM assertions, bus-graph lookups, across the ~10 files that exercise
-  `sensortask_wozi`/`sensortask_dev` today) is still open — BUILD_CHAIN_PLAN.md's Session 6 account,
-  "Not done" item 2, has the full breakdown of what's left and why part of it is a genuine judgment
-  call flagged to the project owner rather than a mechanical rename. **Resolved (2026-09-03):
+  example this generalized from (both the bus lookup and the FRAM assertions). **Resolved
+  (BUILD_CHAIN_PLAN.md's Session 6.2)**: the deeper per-variant whitebox parameterization this
+  requirement actually calls for (presence-conditioned sensor/FRAM assertions, bus-graph lookups)
+  is now real, across every file the finish criterion named - `tests/test_sensortask.py`'s 315
+  tests derive their expected sensor/FRAM set reflectively per device, and
+  `tests/test_digital_twin_bus_hazard_concurrency.py`'s device-scope question was checked (not
+  guessed) directly against every real `devices/*.toml`, resolving what this entry's own earlier
+  text called a still-open judgment call. **Resolved (2026-09-03):
   `scripts/build_firmware.py dev` is now the real,
   correct, confirmed-working way to build/flash for the dev bench** — device-parametrized boot-entry
   selection was real then via `boot_entry/<device>_boot.py` (that directory is retired now, replaced

@@ -325,7 +325,7 @@ max-returns = 12
 # deliberately ignores - that is what makes it a faithful double. Renaming them to `_x` is not
 # merely undesirable here, it is a hard error: mypy checks a Protocol implementation's and a
 # monkeypatched method's parameter NAMES against the real ones, so `_buf` fails [assignment]
-# outright (tests/test_sensortask_wozi.py and tests/test_asy_dns_client.py both carry comments
+# outright (tests/test_sensortask.py and tests/test_asy_dns_client.py both carry comments
 # recording exactly this). Every one of the 56 ARG findings in this repo is that pattern, and
 # src/ + digital_twin/ have none - so the rule is unsatisfiable precisely where it fires.
 "tests/**" = ["S101", "SLF001", "PLC0415", "PLR2004", "ARG001", "ARG002", "ARG004", "ARG005"]
@@ -532,10 +532,13 @@ follow_imports = "silent"
 # issues (it's explicitly labeled Beta upstream) don't get reported as if they were findings in
 # our code, while their declared types are still fully used for checking our code's calls.
 follow_imports_for_stubs = true
-# build/generated_src: tests/test_sensortask_wozi.py/test_sensortask_dev.py (and no other file in
-# this pass's own `files` below) statically `import sensortask_wozi`/`sensortask_dev` - neither
-# hand-written file exists in src/ any more (BUILD_CHAIN_PLAN.md's Session 6 finish criterion), so
-# this points mypy at the same buildgen-generated, gitignored location scripts/test.sh's own
+# build/generated_src: tests_hardware/device_scripts/heap_headroom_after_full_system_build.py (and
+# no other file in this pass's own `files` below - tests/test_sensortask.py resolves every real
+# device's own module dynamically via __import__(), never a static import, since
+# BUILD_CHAIN_PLAN.md's Session 6.2 collapsed it from two per-device files into one) statically
+# `import sensortask_dev` - no hand-written file exists in src/ any more (BUILD_CHAIN_PLAN.md's
+# Session 6 finish criterion), so this points mypy at the same buildgen-generated, gitignored
+# location scripts/test.sh's own
 # MICROPYPATH resolves them from - scripts/typecheck.sh runs scripts/_generate_sensortask_modules.py
 # first so the directory is actually populated before mypy runs. No collision risk: this directory
 # holds only sensortask_<device>.py files, none of which exist under src/.
@@ -583,10 +586,11 @@ files = ["src", "tests", "digital_twin", "tests_hardware/device_scripts"]
 # run_dev_integration.py, once this file gained their own soak machinery too and became CI's real
 # driver for every device) and segfault_stress_repro.py (the segfault-repro tool, see
 # digital_twin/README.md) are the files that genuinely need both universes at once - each imports
-# its own sensortask_* module (src/) and machine/network (digital_twin/'s own richer twin API, not
-# the real board stub) in the same file -
+# a sensortask_* module (build/generated_src only - no hand-written copy exists under src/ any
+# more, BUILD_CHAIN_PLAN.md's Session 6 finish criterion) and machine/network (digital_twin/'s own
+# richer twin API, not the real board stub) in the same file -
 # excluded here for the same "machine/network must resolve to the twin, not the real stub" reason
-# as launch.py, and digital_twin/typecheck.ini's own mypy_path now includes src/ too so their
+# as launch.py, and digital_twin/typecheck.ini's own mypy_path lists build/generated_src so their
 # sensortask_* import still resolves correctly under that dedicated pass. Concretely: several
 # of these files exercise the twin's own richer `machine`/`network` API surface
 # (`WDT.would_have_triggered_count`, `WLAN.script_connect_outcomes()`, `Pin.reset_registry()`,

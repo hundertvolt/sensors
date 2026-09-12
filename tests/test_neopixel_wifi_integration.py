@@ -31,7 +31,7 @@ def _sweep_stale_tmp_dirs(prefix: str) -> None:
     # Sweeps pre-existing <prefix>* scratch dirs left behind by an earlier scripts/test.sh run on
     # this machine - _next_dir always restarts at 0 per process, so without this a later run
     # silently reuses an earlier run's real, persisted config_*.cfg files instead of a genuinely
-    # fresh directory. See tests/test_sensortask_wozi.py's own _sweep_stale_tmp_dirs() for the full
+    # fresh directory. See tests/test_sensortask.py's own _sweep_stale_tmp_dirs() for the full
     # root-cause writeup (this exact _tmp_cfg_dir() shape is copy-pasted across every test file with
     # its own _TMP_DIR/_next_dir pair - same fix applied uniformly to each).
     try:

@@ -984,6 +984,23 @@ script quality bar" below, not repeated here.
       silently stopped proving anything had this gone unnoticed. Fixed by having `_spawn()` pass
       `--fram-state-path`/`--scd30-state-path` explicitly, pointed at the same fixed paths
       `_clean_state()` already wipes.
+      - **A real, second bug found extending this suite to `dev` for the first time**:
+        `digital_twin/_fram_chip.py`'s own `_decode_addr()` always read exactly 2 address bytes,
+        correct for the 8KB MB85RS64V every other real device uses, but silently dropped the true
+        low-order address byte for `dev`'s real 256KB MB85RS2MTA (which needs a 3-byte address, per
+        `src/asy_fram_driver.py`'s own `_setup_addr_buffer()`) - any two chunks whose real addresses
+        happened to share the same high byte aliased and corrupted each other's data, surfacing as
+        3 failing FRAM/SGP40 error-history-persistence checks on `dev`'s first real CI run. Fixed by
+        branching on the same `_ADDR_16BIT_MAX` threshold the real driver uses; regression coverage
+        added to `tests/test_digital_twin_fram.py` (an aliasing test that fails against the old code
+        and passes against the fix, confirmed both ways, plus a 16-bit-chip test proving every other
+        device's decode path is unaffected). One further check this same `dev` run surfaced was a
+        real, pre-existing race (confirmed to also occur on wozi, unrelated to this addressing bug):
+        `scripts/_digital_twin_ci_suite.py`'s Run 5c raced SGP40's real compensation-read-from-SCD30
+        startup transient - fixed on the test side later this same session (see this file's own
+        later fix-commit account), with the underlying production behavior it exposed - a real E/W
+        pair logged for expected startup jitter - tracked as BACKLOG.md's open item 17 for a
+        dedicated follow-up session.
       - **CI shape, decided deliberately**: `.github/workflows/ci.yml`'s `digital-twin-e2e` job
         gained a `strategy.matrix` over all 6 real devices (`fail-fast: false`), mirroring
         `firmware-build-verify`'s own precedent from Session 6, rather than one long script looping
@@ -1064,10 +1081,13 @@ script quality bar" below, not repeated here.
         comment already established that for test-execution order) - so every one of this file's
         own wozi-boot call sites now calls `machine.configure_wiring()` explicitly, rather than
         relying on "the wozi tests happen to run before/after the new parametrized ones."
-      - `tests/test_digital_twin_bus_hazard_concurrency.py` — the "genuine judgment call" both
-        BUILD_CHAIN_PLAN.md and CLAUDE.md flagged, resolved by checking, not guessing: read every
-        real device's own `devices/*.toml` directly. `wozi` (`sgp40`+`bmp3xx` sharing `i2c1`) and
-        `dev` (`scd30`+`sgp40` sharing `i2c1`) are the *only* two real devices that share a bus
+      - `tests/test_digital_twin_bus_hazard_concurrency.py` — Session 6's own "genuine judgment
+        call ... flagged to the project owner" (above) turned out not to need an owner-level
+        decision after all: CLAUDE.md's standing bus-hazard rule already settles which devices need
+        cross-device-interleaving coverage ("shares a bus in either variant"), so this was a
+        fact-finding question, not an open architectural one - discharged by checking, not guessing,
+        against every real device's own `devices/*.toml` directly. `wozi` (`sgp40`+`bmp3xx` sharing
+        `i2c1`) and `dev` (`scd30`+`sgp40` sharing `i2c1`) are the *only* two real devices that share a bus
         between two sensor instances at all - `arzi`/`klkizi`/`grkizi`/`schlafzi` each wire `scd30`
         alone on `i2c0` and `sgp40` alone on `i2c1`. CLAUDE.md's own standing bus-hazard rule scopes
         cross-device-interleaving coverage to a device that "shares a bus in either variant" - since

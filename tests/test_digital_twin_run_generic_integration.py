@@ -16,8 +16,7 @@ if TYPE_CHECKING:
     T = TypeVar("T")
 
 sys.path.insert(0, "ext")  # run_generic_integration.py transitively imports a booted sensortask_*
-# module -> asy_webserver_service -> microdot - same convention test_digital_twin_run_wozi_integration.py's
-# own comment uses.
+# module -> asy_webserver_service -> microdot - reaches the real, vendored ext/microdot.py.
 sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comment for why
 
 import machine
