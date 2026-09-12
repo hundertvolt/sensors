@@ -291,7 +291,8 @@ class SGP40_Reader(SensorReaderConfig):
                 self.voc_init = 1  # retry init if triggered and no compensation data is available
                 self.backup_counter = 0  # no backup if restore is pending
             return SGP40(None, None, None), False, False
-        comp_data: list[int | float] = [float(temp_val), float(hum_val)]
+        temperature_c = float(temp_val)
+        humidity_rh = float(hum_val)
 
         try:
             timestamp = time.mktime(time.gmtime())
@@ -306,8 +307,8 @@ class SGP40_Reader(SensorReaderConfig):
                 serialized,
                 deserialized,
             ) = await self.sgp.measure_index_and_raw(
-                temperature=float(comp_data[0]),
-                relative_humidity=float(comp_data[1]),
+                temperature=temperature_c,
+                relative_humidity=humidity_rh,
                 reset=reset_for_measure,
                 buf=None if buf is None else buf.get_data_buf(),
                 serialize=serialize,

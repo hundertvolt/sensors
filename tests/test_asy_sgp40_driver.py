@@ -836,7 +836,7 @@ def test_read_sgp_comp_source_get_data_raising_is_caught_not_propagated() -> Non
     run(reader.pr.setup())
     data, compensated, serialized = run(reader._read_sgp(None, serialize=False, deserialize=False))
     assert data == SGP40(None, None, None)
-    assert compensated is False  # comp_data fell back to [None, None] before the availability check
+    assert compensated is False  # temp_val/hum_val fell back to None, None before the availability check
     assert serialized is False
     log = run(reader.get_error_counter())
     # Exactly one entry (the real get_data() failure, errno=18) - not also a second, redundant "no
