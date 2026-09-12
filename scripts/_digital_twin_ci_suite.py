@@ -632,6 +632,13 @@ def _run_5c_storage_paused_shutdown_never_loses_the_error_log(ctx: RunContext) -
         _check(condition=restored == _SGP40_BOUNDED_FAULT_COUNT, msg=f"Run 5c: SGP40's {_SGP40_BOUNDED_FAULT_COUNT} errors survived a reboot taken with storage paused - the one case that must never lose them ({restored} found, {entry!r})")
         _check(condition=entry.get("counter", 0) >= _SGP40_BOUNDED_FAULT_COUNT, msg=f"Run 5c: SGP40's persisted error COUNT was restored too, not just the history ring ({entry!r})")
         _check(condition=_mem_paused() is False, msg="Run 5c: the storage pause did NOT survive the reboot (it is RAM-only by design)")
+        # Every real device wires SGP40's compensation source to SCD30 (devices/*.toml), and
+        # asy_sgp40_driver.py's own _read_sgp() logs a real, one-time E18/W14 pair if a compensation
+        # read races SCD30's cold-start after this fresh boot (documented "degrades gracefully"
+        # behavior, not a bug) - found via a real CI failure racing the immediate check below. Letting
+        # that one-time transient land and pass before ResetErrors keeps this check about ResetErrors
+        # actually clearing the log, not about SGP40/SCD30 boot timing.
+        time.sleep(3.0)
         # The restored history must not be a read-only relic: a ResetErrors PUT has to clear it on
         # the chip. Deliberately issued after the poll above confirmed setup() ran, so this checks
         # the ordinary case; a reset issued *before* setup() is covered separately (Part C.7
