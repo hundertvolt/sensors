@@ -464,6 +464,11 @@ time round):
     existing driver already satisfies this; it is stated because it is the one property that, if
     missed, breaks the whole dev test file rather than just the new one.
 
+**What "satisfied" means for all twenty of these is §14**, which sets the quality bar: the written
+standards each requirement has to clear, plus the fourteen conventions the three existing drivers
+share that no document states — the ones a new file fails by omission rather than by
+contradiction.
+
 **One standing consequence, stated once because it recurs**: CLAUDE.md's rule to *"verify against
 the legacy driver's own actually-proven field behaviour"* has **no purchase for this device**. The
 ISL29125 has only ever run a single config-and-read smoke test (§4) — the project owner has
@@ -1521,8 +1526,10 @@ requirement:
 - **Licensing** is settled and needs no new work: upstream is
   `jposada202020/MicroPython_ISL29125`, MIT, © 2023 Jose D. Montoya, archived Dec 2024, and our
   file is a restructure. On promotion the `THIRD_PARTY_LICENSES.md` entry moves from "Shipped but
-  not promoted" to "Restructured/rewritten, attribution retained". One **separate, pre-existing**
-  question stays open there: upstream's `i2c_helpers.py` carries an explicit "Based on
+  not promoted" to "Restructured/rewritten, attribution retained". **The promoted file also needs
+  its own two-line SPDX header above the module docstring** — all three existing drivers carry
+  one and §14.3 records the exact shape; this document had not mentioned it before the quality
+  pass. One **separate, pre-existing** question stays open there: upstream's `i2c_helpers.py` carries an explicit "Based on
   `adafruit_register.i2c_struct`/`i2c_bits`, © 2016 Adafruit Industries, MIT" notice, while
   `src/asy_i2c_driver.py` — which exposes the same four-operation API — carries no attribution at
   all. By the standard already applied to `asy_fram_driver.py` it may warrant a similar note.
@@ -1584,6 +1591,141 @@ the config-field naming question is closed as a *rule* (device prefix marks a co
 setting — §8.3), so `SGPResetVOC` stays as it is and needs no decision; the IR-compensation default is 40 codes with `B7` = 0 (§6, §7.9); whether `CONVEN`
 fires per channel or per cycle is moot since `CONVEN` stays 0 (§7.6); and the `CONFIG1`
 read-modify-write hazard is designed out rather than mitigated (§8.7).
+
+## 14. Quality bar — what "done" means for this driver
+
+Four standards, set by the project owner:
+
+> Fully according to the specification document · fully according to general project practice,
+> style, patterns and guidelines · an integral part, looking like the other sensor drivers look,
+> all made of the same material, nothing missing or contradicting · same naming, coding and
+> implementation conventions.
+
+The first two are **written down** and this section points at them rather than restating them —
+a copy would drift. The second two are mostly **not** written down: they live in the three drivers
+already in `src/`, and a new file fails them by omission, not by contradiction. So §14.3 is the
+substance here — the conventions all three drivers follow that no document states, each with the
+evidence that it is a convention rather than a coincidence.
+
+### 14.1 The written standards, and what each governs
+
+| Where | Governs | What it demands here |
+|---|---|---|
+| `SPECIFICATION.md` Part C.1-C.13 | The shape of a sensor driver | The whole file. C.2 naming, C.3 the protocol layer, C.4 the reader layer, C.5 the schema, C.7 errors, C.8 locking, C.9 timer/task/IRQ, C.10 typing, C.11 the nine decisions, C.13 the readiness gate |
+| Part D.0-D.16 | The promotion gate | Every item, in order. **D.16 is literally "move the file into `src/`, only once all of the above is actually done and passing"** — the file does not land first and get fixed after |
+| Part E.1-E.6 | Testing | Real MicroPython Unix port, `tests/microtest.py`, mock only the raw bus transaction (E.4) |
+| Part G.1-G.3 | Shared primitives | Check the G.2 catalogue **before** writing any helper; extend the catalogue rather than duplicate (§7.8's EMA filter is the concrete case) |
+| Part H.5/H.6 | The website | The definitions file is the only place the site learns about a sensor |
+| Part I | Memory safety | catch → degrade → restart → watchdog; `gc`-default-first for any new stress test |
+| Part F | Platform facts | Read before any platform-facing claim; do not re-derive from general Python knowledge |
+| `CLAUDE.md` hard rules | Everything else | The 3-line docstring cap, four-tier bus-hazard coverage, the bird's-eye `src/` scan on every new file, "report a discrepancy, do not silently fix it", no `method-assign` suppression in `src/` |
+
+Two of these have teeth beyond a review comment: `scripts/lint.sh` fails the gate on a
+`# type: ignore[method-assign]` anywhere in `src/`, and `ruff` runs `select = ["ALL"]` with the
+project's exceptions — so a convention nobody notices in review still stops the build.
+
+### 14.2 Acceptance checklist, bound to this driver
+
+Checkable, not aspirational. Each line is either true of the finished file or it is not.
+
+1. `src/asy_isl29125_driver.py` holds **three classes**: `ISL29125_Reader(SensorReaderConfig)`,
+   `ISL29125_DeviceSession(Lockable)`, `ISL29125_I2C`. The middle one is copied verbatim from
+   C.2's snippet — it is boilerplate, not a design surface. *(The plan named the first and third
+   but never the second; C.2 requires it and all three drivers have one.)*
+2. `_NAME = const("ISL29125")` and `namedtuple("ISL29125", …)` carry the **identical** string,
+   defined next to each other (C.2 makes this a "must, always").
+3. Every config field is a `_VAL_<ABBREV>` 6-tuple; every `errno`/`wrnno` is registered in Part
+   C.7.1's table before the code is written, not after.
+4. The reader raises nothing. The protocol layer may raise; every call into it from the reader is
+   wrapped and logged through `err_s()`/`wrn_s()` — never a bare `except Exception: return None`
+   (C.7).
+5. `_error_check()` is called exactly once per `read_loop()` cycle, and the auto-range machinery
+   does **not** invent a second failure counter beside it.
+6. No new shared helper exists that Part G.2 already names. The colour maths and the EMA filter
+   are the two candidates, and §14.4 decides where each goes.
+7. `mypy --strict` and `ruff` report **zero** findings on the file, with no per-file ignore beyond
+   the `FBT001` row the other three drivers already carry (and only if it actually takes a boolean
+   positional).
+8. The four-tier bus-hazard coverage exists (mock, twin, flash, bench) — CLAUDE.md's standing rule,
+   not a nice-to-have.
+9. The bird's-eye scan over all of `src/` has been run and its findings reported, not silently
+   fixed.
+
+### 14.3 Conventions all three drivers follow that no document states
+
+Found by reading `asy_bmp3xx_driver.py`, `asy_scd30_driver.py` and `asy_sgp40_driver.py` end to
+end and diffing their structure. Each row records how many of the three follow it — 3/3 is a
+convention, 2/3 needs a reason.
+
+| # | Convention | Evidence | This driver |
+|---|---|---|---|
+| 1 | **File section order is fixed**: SPDX block → module docstring → stdlib imports → `machine`/`micropython` → project imports → the `typing` guard → `if TYPE_CHECKING:` → chip constants → `_VAL_*` → `_N_*` → `_NAME` → namedtuple + `_FIELDS` → classes | 3/3 | follow exactly |
+| 2 | **The `_Reader` class comes first in the file, before `_DeviceSession` and `_I2C`** — layer 3 before layer 2, the reverse of the layer numbering | 3/3 (reader at line 98/93/67, protocol at 378/428/449) | follow — this one reads like a mistake if you do not know it is deliberate |
+| 3 | **An SPDX two-line copyright block sits *above* the module docstring** for any file derived from third-party code, naming the original and pointing at `THIRD_PARTY_LICENSES.md` | 3/3, all Adafruit-derived | **required, and the plan had not mentioned it**: upstream here is `jposada202020/MicroPython_ISL29125`, MIT, © 2023 Jose D. Montoya. `SPDX-FileCopyrightText` + `SPDX-License-Identifier: MIT` |
+| 4 | **The module docstring is a 3-line template**: (1) what the chip is and what this driver does, (2) the two class names and their roles + "see SPECIFICATION.md Part C", (3) "Verified against …" naming the datasheet under `datasheets/` | 3/3 | follow; line 3 cites `datasheets/isl29125/REN_isl29125_DST_20151201_1.pdf`, FN8424 Rev 3.00 |
+| 5 | **`_FIELDS` duplicates the namedtuple's field names as a `const`**, with the comment *"kept in sync with `<X>`'s own fields above"* — because mypy's namedtuple plugin only infers field names from a literal at the call site, so the tuple cannot be factored out | 3/3, identical comment wording | follow, with the ten-field tuple of §8.4 |
+| 6 | **`_VAL_<ABBREV>` uses the initials of the field name** (`SampleInterv`→`SI`, `SeaLevelOffs`→`SLO`, `BackupMaxAge`→`BMAX`) | 3/3, 18 fields | see §14.4 — this one **breaks** here |
+| 7 | **`_N_<THING>_CFG = const(n)`** names the expected length of every batched `get_*_values()` read, so the batch and its unpack cannot drift | 3/3 (`_N_INT_CFG`, `_N_FLOAT_CFG`, `_N_STORAGE_CFG`, `_N_SETUP_CFG`) | follow |
+| 8 | **`_init_<abbr>()` / `_read_<abbr>()` / `_store_<abbr>()`** is the reader's internal triple, `<abbr>` being the chip's 3-letter short name | 3/3 (`bmp`/`scd`/`sgp`) | `_init_isl()` / `_read_isl()` / `_store_isl()` |
+| 9 | **`self.<abbr>` holds the protocol object on the reader; `self.i2c_<fullname>` holds the device session inside the protocol class** | 3/3 (`self.bmp` + `self.i2c_bmp3xx`, `self.scd`, `self.sgp` + `self.i2c_sgp40`) | `self.isl` and `self.i2c_isl29125` |
+| 10 | **Nested `async with` for a multi-transaction sequence**: `async with self.i2c_<x> as <x>, <x>.i2c_device as i2c:` — device session first, bus second | 3/3 | follow; the burst read and the three-byte config burst each need it |
+| 11 | **Live config readback is one batched `get_config_snapshot()` on the protocol class, called by `_read_sensor_dict()` on the reader**, which is then passed as `get_dict_cfg(callback=…)`. Explicitly *not* three independent `get_*()` calls — BMP3xx's own comment records that the naive version had a torn-read window | 2/3 (SGP40 has no chip-side config at all, C.4.4) | **follow** — the ISL's config *is* chip registers, and the shadow-byte model of §8.7 makes the snapshot almost free |
+| 12 | **`async def setup()` on the protocol class**, plus `reset()` where the chip has one | 3/3 setup, 2/3 reset | both — the ISL has a real reset (`0x46`→`0x00`) |
+| 13 | **Every chip constant carries a datasheet citation as a trailing comment** (`# datasheet sec 4.3.2`, `# Table 13, high byte only`) | 3/3 | follow; §2's conformance table already has the page/table for every register |
+| 14 | **Pure, reusable physical maths lives in `math_helpers.py`**, with `float \| None` in and out, a `_<NAME>_MIN`/`_MAX` domain-constant pair per function, and the domain's source cited | 2/3 import it; SGP40's two chip-specific tick conversions stay local as `@staticmethod` | see §14.4 |
+
+### 14.4 Where this driver has no precedent, and the rule chosen for each
+
+Five places where "look at how the others did it" returns nothing, because this is the first
+driver of its kind in the project. Each needs a decision made deliberately rather than by default.
+
+1. **`_VAL_` abbreviations collide.** Thirteen config fields against BMP3xx's eight, and five of
+   them start `AutoRange` — `AutoRangeUp`/`AutoRangeDown`/`AutoRangeSettle`/`AutoRangePersist`/
+   `AutoRangeDwell` all reduce to `AR*` under convention 6, and `AutoRangeDown` vs `AutoRangeDwell`
+   collide outright at `ARD`. **Rule**: keep the initials scheme for the six non-auto-range fields,
+   and give the auto-range five a `_VAL_AR_<WORD>` form (`_VAL_AR_UP`, `_VAL_AR_DOWN`,
+   `_VAL_AR_SETTLE`, `_VAL_AR_PERSIST`, `_VAL_AR_DWELL`). It reads as the same scheme with one
+   extra level, which is what a reader of the other three files would expect, and it groups the
+   batch that is always read together.
+2. **Colour maths has no home yet.** RGB→HSB, RGB→XYZ→xy and McCamy's CCT cubic are pure,
+   total, reusable functions over floats — exactly the shape of `wet_bulb_temperature()` and
+   `dew_point()`. **Rule**: they go in `math_helpers.py`, `float | None` in and out, with
+   `_CCT_X_MIN`-style domain constants and the source cited per D.1 (CIE 1931 for the matrix,
+   McCamy 1992 for the cubic). The chip-specific parts — count-to-lux scaling, the 12-bit `<<4`
+   normalisation — stay in the driver, mirroring how SGP40 keeps `_celsius_to_ticks()` local.
+   This also makes them unit-testable without a bus, which the D.12 matrix needs.
+3. **First falling-edge interrupt.** SCD30's RDY is rising-only; the ISL's INT is active-low
+   open-drain. Both fakes already define `IRQ_FALLING` and accept `pull=`, so nothing needs
+   extending — but `asy_scd30_driver.py` is the shape to copy for the `ThreadSafeFlag` +
+   self-healing re-arm, not a new mechanism.
+4. **First driver whose measurement output is not flat.** Nothing in `src/` returns a nested
+   measurement dict today. **Rule**: the nesting stops at the transport boundary — the namedtuple
+   stays flat (§8.4), `make_dict()` keeps its one-level contract, and the nesting is built where
+   the response is shaped. Anything else would make this driver's data model a special case in
+   `base_classes.py`, which D.10 forbids.
+5. **First permanent divergence between the two variants.** Covered in §11.1/§11.13: dev reaches
+   nine FRAM chunks while wozi stays at seven. **Rule**: the divergence is documented in the same
+   commit that creates it — `SPECIFICATION.md`'s new dev section, `sensortask_dev.py`'s own
+   comment, and the renamed chunk-order test — never left to be inferred from the code.
+
+### 14.5 How it is verified, and against what baseline
+
+Not "it looks right". D.14 requires the commands actually run and the output read:
+
+- `scripts/lint.sh` and `scripts/typecheck.sh` — all three mypy passes — must report **zero**
+  findings, which is the current state of all eight scopes, so any nonzero result is this work's
+  regression and not a pre-existing one.
+- `scripts/test.sh` — every test passes under the real Unix-port interpreter, including the
+  existing dev-variant assertions §11.7 lists as needing updates. A changed assertion must be
+  changed because the *expected* value moved, never to make a failure go away.
+- `npm test` for the website tier, including the PUT matrix that now generates real cases for this
+  sensor.
+- `scripts/run_digital_twin_ci.sh` stays green — it is wozi-only (§11.5), so it is a regression
+  check here, not coverage.
+- The pre-push chroot verification (both noble and trixie) applies only if the toolchain or build
+  configuration is touched; a driver plus its tests does not trigger it.
+- **`git diff --stat` against `wozi`'s own files must be empty.** Requirement 18 in a form that
+  can actually be checked.
 
 ## Datasheet acquisition
 
