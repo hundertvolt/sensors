@@ -30,6 +30,7 @@ import sensortask_wozi  # noqa: E402
 from _shared_rest_roundtrip import assert_named_modules_constructed, assert_sensor_payload_not_self_wrapped  # noqa: E402
 
 from asy_scd30_driver import SCD30  # noqa: E402  # used only by this file's own reboot-survival section below
+from asy_sgp40_driver import SGP40  # noqa: E402  # used only by this file's own boot-race regression test below
 
 try:
     from typing import TYPE_CHECKING
@@ -353,6 +354,34 @@ def test_reset_errors_over_real_http_is_not_undone_by_a_fram_loggers_later_setup
             assert 99 not in log["SGP40"]["ErrNum"], "setup() restored the pre-reset history over a reset that returned 200"
         finally:
             await _cancel(task)
+
+    run_timed(scenario(), timeout_s=10.0)
+
+
+def test_sgp40_reading_before_scd30_has_measured_yet_logs_no_bogus_error() -> None:
+    # Regression test for BACKLOG.md item 17, against the real wozi wiring (devices/wozi.toml wires
+    # sgp40.temperature_source/humidity_source to scd30's own Temp/Hum fields) rather than a fake
+    # stand-in - this is exactly the real object graph the bug was originally found through (a real
+    # digital-twin CI failure, "dev"'s digital-twin-e2e matrix leg, Run 5c). Deliberately does NOT
+    # pre-seed scd30's own measurement data the way every other SGP40 test in this file does (see
+    # test_sgp40_voc_backup_survives_a_simulated_reboot_through_the_real_fram_chunk's own comment on
+    # why that seeding is normally needed) - the whole point here is to let the real startup race
+    # actually happen: scd30 has never completed a real measurement, so its Temp/Hum fields are
+    # still None when sgp40 reads them.
+    port = _next_test_port()
+
+    async def scenario() -> None:
+        await _boot(port)
+        assert sensortask_wozi.sgp40 is not None and sensortask_wozi.scd30 is not None
+        sgp = sensortask_wozi.sgp40
+        assert (await sensortask_wozi.scd30.get_data()).Temp is None  # the race precondition holds
+        await sgp.pr.setup()
+        buf, serialize, deserialize, _cfg_values = await sgp._check_storage()
+        data, compensated, _serialized = await sgp._read_sgp(buf, serialize=serialize, deserialize=deserialize)
+        assert compensated is False  # scd30 genuinely hasn't measured yet - real, expected timing
+        assert data == SGP40(None, None, None)
+        log = await sgp.get_error_counter()
+        assert log["SGP40"]["ErrCount"] == 0, f"expected startup jitter must not log any E/W entry ({log!r})"
 
     run_timed(scenario(), timeout_s=10.0)
 

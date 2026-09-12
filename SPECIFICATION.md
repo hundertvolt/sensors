@@ -1171,7 +1171,7 @@ is expected; only overlap *within* one row matters.
 | `asy_fram_manager.py`/`asy_fram_driver.py` (`FRAM`) | 10-98 | 60-83 | `AsyFramManager` 10-88 (busy/idle status-byte helper spreads a base across 2-7 values per call); `FRAM_SPI` 89-98 (not-initialized ×5, invalid-range ×2, readback mismatch, lock-timeout, device-ID guard) + `wrnno` 81-83 (WRDI-stuck, WEL-didn't-set ×2). |
 | `asy_bmp3xx_driver.py` (`BMP3XX`) | 10-22 | — | 10=init, 11=periodic read, 12=config read at init, 13=config write at init, 14=config read at store-time, 15-20=oversampling/filter forwards, 21=trigger-interval, 22=batched snapshot read. |
 | `asy_scd30_driver.py` (`SCD30`) | 10-25 | — | 10=init, 11=periodic read, 12=unused (no init-time config), 13=stop-continuous-measurement, 14-25=per-field forwards. |
-| `asy_sgp40_driver.py` (`SGP40`) | 10-18 | 10-14 | 10=init, 11=periodic read, 12=config read at init, 13-18=backup read/write/clear/deserialize/serialize/compensation. `wrnno`=backup missing/stale. |
+| `asy_sgp40_driver.py` (`SGP40`) | 10-18 | 10-13 | 10=init, 11=periodic read, 12=config read at init, 13-18=backup read/write/clear/deserialize/serialize/compensation. `wrnno`=backup missing/stale — a missing/not-yet-available *compensation* reading is no longer one of these (C.14.2's own note), only a genuine compensation-source read exception (`errno=18`) still logs. |
 | `asy_wifi_service.py` (`WIFI`) | 11-18 | 1-7 | 11=mode-switch...17=hardware give-up, 18=disconnect-timeout; `wrnno` 1-3=missing-config, 4-7=WLAN status. |
 | `asy_ntp_client.py` (`NTP`) | 11-20 | 1-3 | 11=missing-config...19=time-calc, 18/20=interval-fallback/give-up; `wrnno`=callback failures. |
 | `captive_dns.py` (`DNSSRV`) | 1-3 | 1-3 | 1=invalid server_ip/netmask, 2=loop exception, 3=disconnect-cleanup; `wrnno` 1=dropped reply, 2=invalid recvfrom, 3=socket teardown incomplete. |
@@ -1477,11 +1477,16 @@ read can happen before the producer's first real measurement completes. Every pr
 measurement holder already has a safe, defined initial value at construction — every `*_Reader`
 constructs its namedtuple with every field `None` before any real read (`SCD30(None, None, None,
 None, None, None)` etc., C.4.1) — so `get_data()` is always safe to call immediately, returning a
-namedtuple whose individual fields may be `None`. Every direct-reference consumer audited this
-session already tolerates that as a normal, expected input, not an exceptional one: `SGP40_Reader.
-_read_sgp()` catches the `float(None)` this produces and falls back to uncompensated operation
-(A.4's already-documented behavior); `NotificationCoordinator._check_one()` treats a `None` field
-as "not triggered," not an error.
+namedtuple whose individual fields may be `None`. Every direct-reference consumer tolerates that as
+a normal, expected input, not an exceptional one, the same way `NotificationCoordinator._check_one()`
+already does for its own `None` field (treated as "not triggered," not an error): `SGP40_Reader.
+_read_sgp()` reads each field via `getattr(..., None)` and, if either is still `None`, skips this
+cycle's compensated read (A.4's already-documented degrade behavior) without logging anything — only
+a genuine exception from the producer's own `get_data()` (a violation of its never-raises contract)
+still logs (`errno=18`, C.7.1). Fixed this way after `float()` being called on the still-`None` field
+raised `TypeError` there instead, misreported as a real compensation-read failure alongside a
+spurious "no compensation data" warning on every ordinary startup race (BACKLOG.md item 17, fixed
+2026-09-12).
 
 ### C.14.3 Error-source and logger fan-in (N-to-1)
 
