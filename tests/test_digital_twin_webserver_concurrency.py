@@ -1,11 +1,6 @@
 """Real-socket concurrent-connection regression coverage for WebserverService, booted against the
-real digital_twin buses - genuinely concurrent TCP connections, unlike
-tests/test_asy_webserver_service.py Section F's in-process _serve()-against-fakes tests.
-Parametrized across all 6 real devices (BUILD_CHAIN_PLAN.md's Session 6.2): every scenario below has
-zero device-specific assertions (pure connection-count/HTTP-status/timing logic - WebserverService's
-own accept/reject machinery is identical regardless of which sensors a device has), so generalizing
-this file needed no assertion rework - only which device's freshly-buildgen-generated module gets
-booted."""
+real digital_twin buses across all 6 real devices - genuinely concurrent TCP connections, unlike
+tests/test_asy_webserver_service.py Section F's in-process _serve()-against-fakes tests."""
 
 # See SPECIFICATION.md Part H.7 and this module's own comments below for the full rationale.
 
@@ -268,7 +263,9 @@ async def _real_config_write(host: str, port: int, interval: int) -> int:
 # copies of every test. Renamed from a bare test_* to _scenario_* + _register() purely so this
 # file's own dynamic-registration loop (mirroring microtest.py's test_* discovery-by-globals()
 # convention, the only parametrization mechanism available without a real pytest) can generate
-# `test_<name>_<device>` for every device from one shared body.
+# `test_<name>_<device>` for every device from one shared body. No scenario below has a
+# device-specific assertion - WebserverService's own accept/reject machinery is identical
+# regardless of which sensors a device has - so generalizing needed no assertion rework at all.
 # ---------------------------------------------------------------------------
 
 _SCENARIOS: "list[tuple[str, Callable[[str], Coroutine[Any, Any, None]], float]]" = []

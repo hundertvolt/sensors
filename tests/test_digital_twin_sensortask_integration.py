@@ -885,10 +885,16 @@ async def _boot_device(port: int, device: str) -> "Any":
     return module
 
 
-def _present_optional_instances(module: "Any") -> "tuple[str, ...]":
-    # Reflective, not a hardcoded per-device table - see tests/test_sensortask.py's own identical
-    # helper/comment for the full rationale.
-    return tuple(name for name in ("scd30", "sgp40", "bmp3xx", "neopixel", "notification") if getattr(module, name, None) is not None)
+def _present_optional_instances(module: "Any", device: str) -> "tuple[str, ...]":
+    # Derived from the wiring plan's own pre-construction "instances" list, not the built module's
+    # own attributes - see tests/test_sensortask.py's own identical helper/comment for why (a real
+    # construction bug that silently drops a declared driver would read back as though the device
+    # never had it, which getattr(module, name, None) can't tell apart from the truth).
+    plan_instances = set(_wiring_plan(device)["instances"])
+    present = tuple(name for name in ("scd30", "sgp40", "bmp3xx", "neopixel", "notification") if name in plan_instances)
+    for name in present:
+        assert getattr(module, name, None) is not None, f"{name} is in devices/{device}.toml's own instances but build_system() never constructed it"
+    return present
 
 
 @_register_param("build_system_boots_against_the_real_twin_buses_without_exception")
@@ -899,7 +905,7 @@ def _scenario_boots_against_real_twin_buses(device: str) -> None:
     async def scenario() -> None:
         module = await _boot_device(_next_test_port(), device)
         mandatory = ("conn", "ntp", "i2c0", "i2c1", "spi0", "fram", "sysfunct", "neopixel", "notification", "webserver", "watchdog")
-        assert_named_modules_constructed(module, mandatory + _present_optional_instances(module))
+        assert_named_modules_constructed(module, mandatory + _present_optional_instances(module, device))
 
     run_timed(scenario(), timeout_s=10.0)
 
@@ -916,7 +922,7 @@ def _scenario_measurements_and_sensors_shape(device: str) -> None:
         task = module.webserver.get_task_starters()[0]()
         await asyncio.sleep(0.1)
         try:
-            expected = {name.upper() for name in _present_optional_instances(module) if name in ("scd30", "sgp40", "bmp3xx")}
+            expected = {name.upper() for name in _present_optional_instances(module, device) if name in ("scd30", "sgp40", "bmp3xx")}
             res = await _http_client.fetch("127.0.0.1", port, "GET", "/measurements")
             assert res.status_code == 200
             assert_sensor_payload_not_self_wrapped(res.json(), expected)

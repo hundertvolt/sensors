@@ -617,7 +617,12 @@ correctly by the dedicated pass instead - see `digital_twin/typecheck.ini`'s own
   tests (already covered by `tests/test_asy_fram_driver.py`) and weren't reproduced here.
 - **`segfault_stress_repro.py`** is a manual, deliberately-aggressive concurrency-stress CLI tool —
   fires many concurrent HTTP clients against the real assembled system, exercising a scenario the
-  automated test tiers can't (a genuine repro crashes the whole interpreter process) — run
+  automated test tiers can't (a genuine repro crashes the whole interpreter process). Deliberately
+  kept hardcoded to `sensortask_wozi`, not generalized to `run_generic_integration.py`'s own
+  `--module`/`--wiring-plan` mechanism (BUILD_CHAIN_PLAN.md's Session 6.2): its target bug is a
+  device-independent MicroPython Unix-port interpreter bug, unrelated to any device's own sensor
+  wiring, and it's never invoked by `scripts/run_digital_twin_ci.sh` or any `tests/test_*.py` file
+  — so it carries none of that session's "narrowed to a boot+REST smoke check" concern. Run
   manually, same `MICROPYPATH` as `run_generic_integration.py`. Its target bug is root-caused and
   fixed, not open: a dangling-pointer dereference at `extmod/modselect.c:132` in the pinned
   MicroPython Unix port (traced at `v1.28.0`, and `extmod/modselect.c` is unchanged at the current

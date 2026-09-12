@@ -1,7 +1,5 @@
-"""Deterministic unit tests for digital_twin/unix_port_gc_unwedge.py (SPECIFICATION.md Part F.6).
-Extracted from test_digital_twin_run_wozi_integration.py (BUILD_CHAIN_PLAN.md's Session 6.2,
-retiring run_wozi_integration.py/run_dev_integration.py in favor of run_generic_integration.py)
-into its own per-module file - this module is shared by every digital-twin entry point that calls
+"""Deterministic unit tests for digital_twin/unix_port_gc_unwedge.py (SPECIFICATION.md Part F.6) -
+its own file since this module is shared by every digital-twin entry point that calls
 asyncio.run(), not owned by any one of them."""
 
 import gc

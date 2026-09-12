@@ -4,11 +4,8 @@
 # dependencies = []
 # ///
 """Pre-generates every real device's `sensortask_<device>.py` via `buildgen` into gitignored
-`build/generated_src/`, regenerated fresh every run - lets tests statically importing
-`sensortask_wozi`/`sensortask_dev` keep working (BUILD_CHAIN_PLAN.md's Session 6; SPECIFICATION.md E.3).
-Also writes each device's `buildgen.twin_wiring.compute_twin_wiring()` plan alongside its module
-(`sensortask_<device>_wiring_plan.json`) - the one extra artifact `scripts/_digital_twin_ci_suite.py`
-needs to boot every device under `digital_twin/run_generic_integration.py` (Session 6.2)."""
+`build/generated_src/`, regenerated fresh every run (SPECIFICATION.md E.3) - also writes each
+device's own wiring-plan JSON alongside its module, an independent oracle for its consumers."""
 
 # Usage: uv run scripts/_generate_sensortask_modules.py
 # Called by scripts/test.sh, scripts/typecheck.sh, scripts/run_unix_port_integration.sh and
@@ -44,6 +41,12 @@ def main() -> int:
             return 1
         (out_dir / f"sensortask_{device}.py").write_text(generated.module_source)
         wiring_plan = compute_twin_wiring(generated.model)
+        # "instances" is this script's own addition, not part of compute_twin_wiring()'s documented
+        # shape (that stays digital_twin/machine.py's own I2C/SPI-only contract): every driver name
+        # devices/<device>.toml declares, bus-attached or not (neopixel/notification included) - an
+        # independent, pre-construction oracle tests/test_sensortask.py's own optional-instance
+        # checks read instead of reflecting back on the very module they're verifying.
+        wiring_plan["instances"] = sorted({spec.driver for spec in generated.model.instances.values()})
         (out_dir / f"sensortask_{device}_wiring_plan.json").write_text(json.dumps(wiring_plan))
     print(f"Generated {len(device_tomls)} device module(s) + wiring plan(s) into {out_dir}")
     return 0

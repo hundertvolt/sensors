@@ -1,15 +1,6 @@
-"""Construction/wiring tests for every real device's own buildgen-generated sensortask_<device>.py
-build_system() - see SPECIFICATION.md Part A.7 for the full construction-order/FRAM-chunk-order/
-setup-batch/dependency-graph reference this file verifies against. Collapses the former
-test_sensortask_wozi.py/test_sensortask_dev.py (near-perfect duplicates, 55/54 functions each -
-BUILD_CHAIN_PLAN.md's Session 6.2) into one module, parametrized across all 6 real devices
-(devices/*.toml): every scenario below derives its expected optional-instance set (does this
-device have a bmp3xx or not) and FRAM-chunk-count reflectively, from the actual constructed module's
-own attributes, rather than hardcoding wozi/dev's specific 3-sensor set - the same "derive from
-model.instances, never a hand-kept table" principle buildgen itself is built on.
-Also covers the webserver's own real wiring (a real Microdot() app + WebserverService, every
-module's registrations) - deep per-route behavior stays tests/test_asy_webserver_service.py's job;
-this file only checks the real driver objects were registered correctly."""
+"""Construction/wiring tests for every real device's buildgen-generated sensortask_<device>.py
+build_system() - SPECIFICATION.md Part A.7 has the full reference. Also covers real webserver
+wiring; deep per-route behavior stays tests/test_asy_webserver_service.py's job."""
 
 import asyncio
 import json
@@ -253,17 +244,30 @@ def build(device: str, cfg_path: "str | None" = None, **kwargs: "Any") -> "Any":
     return run(_boot(device, cfg_path, **kwargs))
 
 
-def _has(module: "Any", name: str) -> bool:
-    return getattr(module, name, None) is not None
+def _device_of(module: "Any") -> str:
+    name: str = module.__name__
+    assert name.startswith("sensortask_")
+    return name[len("sensortask_") :]
 
 
 def _present_optional_instances(module: "Any") -> "tuple[str, ...]":
-    # Reflective, not a hardcoded per-device table: whichever of these attributes build_system()
-    # actually set on the module IS this device's own real optional-instance set (buildgen's own
-    # generated code only ever assigns a name when devices/<device>.toml declares it -
-    # BUILD_CHAIN_PLAN.md's device TOML schema). fram is deliberately excluded here - every real
-    # device has one unconditionally, and it's never part of the sensor-facing sets below.
-    return tuple(name for name in _OPTIONAL_INSTANCE_NAMES if _has(module, name))
+    # Reflective, not a hardcoded per-device table - but the oracle is the wiring plan buildgen
+    # wrote BEFORE this module was even generated (scripts/_generate_sensortask_modules.py's own
+    # "instances" list, straight from devices/<device>.toml), never the built module's own
+    # attributes: reading the module back (getattr(module, name, None) is not None) can't
+    # distinguish "device genuinely has no bmp3xx" from "buildgen silently dropped a declared
+    # driver" - a real construction bug would read back as though the driver was never wired at
+    # all, and every check below would agree with it. fram is deliberately excluded here - every
+    # real device has one unconditionally, and it's never part of the sensor-facing sets below.
+    plan_instances = set(_wiring_plan(_device_of(module))["instances"])
+    return tuple(name for name in _OPTIONAL_INSTANCE_NAMES if name in plan_instances)
+
+
+def _has(module: "Any", name: str) -> bool:
+    present = name in _present_optional_instances(module)
+    if present:
+        assert getattr(module, name, None) is not None, f"{name} is in devices/{_device_of(module)}.toml's own instances but build_system() never constructed it"
+    return present
 
 
 def _all_loggers(module: "Any") -> "list[Any]":
@@ -286,9 +290,9 @@ def _all_loggers(module: "Any") -> "list[Any]":
     # generic reflective walk of buildgen's own construction order) stays correct for all 6. This
     # test pairs setters[i] with loggers[i] by index elsewhere in this file, so this order is
     # load-bearing.
-    if module.scd30 is not None:
+    if _has(module, "scd30"):
         loggers.append(module.scd30.pr)
-    if module.sgp40 is not None:
+    if _has(module, "sgp40"):
         loggers += [module.sgp40.pr, module.sgp40.cfgmgr.pr]
     if _has(module, "bmp3xx"):
         loggers += [module.bmp3xx.pr, module.bmp3xx.cfgmgr.pr]
@@ -306,9 +310,9 @@ def _expected_fram_chunk_calls(module: "Any") -> "list[str]":
     # per-device literal - every real device's own devices/*.toml lists its instances in this same
     # relative order (BUILD_CHAIN_PLAN.md's Session 2), so this fixed shape stays correct for all 6.
     calls = ["chunk"]  # SystemService
-    if module.scd30 is not None:
+    if _has(module, "scd30"):
         calls.append("chunk")
-    if module.sgp40 is not None:
+    if _has(module, "sgp40"):
         calls += ["chunk", "timestamped"]
     if _has(module, "bmp3xx"):
         calls.append("chunk")
@@ -519,10 +523,10 @@ def _scenario_fram_chunks_allocated(device: str) -> None:
     assert module.neopixel.pr.fram is not None
     assert isinstance(module.notification.pr, PrintLogHistoryStore)
     assert module.notification.pr.fram is not None
-    if module.scd30 is not None:
+    if _has(module, "scd30"):
         assert isinstance(module.scd30.pr, PrintLogHistoryStore)
         assert module.scd30.pr.fram is not None
-    if module.sgp40 is not None:
+    if _has(module, "sgp40"):
         assert isinstance(module.sgp40.pr, PrintLogHistoryStore)
         assert module.sgp40.pr.fram is not None
         assert module.sgp40.ts_storage is not None
@@ -571,7 +575,7 @@ def _scenario_fram_never_required(device: str) -> None:
     # SGP40 (present on every real device): VOC backup/restore chunk allocated but unusable - skips
     # backups, starts from scratch every time, but the reader itself keeps running
     # (asy_sgp40_driver.py's own _check_storage() contract, not re-tested here at that depth).
-    if module.sgp40 is not None:
+    if _has(module, "sgp40"):
         assert isinstance(module.sgp40.pr, PrintLogHistoryStore)
         assert module.sgp40.ts_storage is not None
         assert run(module.sgp40.get_error_counter())["SGP40"]["ErrCount"] == 0
@@ -583,7 +587,7 @@ def _scenario_fram_never_required(device: str) -> None:
         assert isinstance(module.bmp3xx.pr, PrintLogHistoryStore)
         run(module.bmp3xx.pr.err_s("boom", errno=1))
         assert run(module.bmp3xx.get_error_counter())["BMP3XX"]["ErrCount"] == 1
-    if module.scd30 is not None:
+    if _has(module, "scd30"):
         assert isinstance(module.scd30.pr, PrintLogHistoryStore)
         run(module.scd30.pr.err_s("boom", errno=1))
         assert run(module.scd30.get_error_counter())["SCD30"]["ErrCount"] == 1
@@ -1152,8 +1156,10 @@ def _scenario_status_get(device: str) -> None:
     res = _dispatch(module, "GET", "/status")
     body = json.loads(status_body(res))
     assert set(body.keys()) == {"networking", "system", "notification", "sensors", "errcount"}
-    assert set(body["sensors"].keys()) == {"SGP40"}  # only sensor with real maintenance data,
-    # present on every real device
+    # SGP40 is the only sensor with real maintenance data (VOC backup/restore timestamps) -
+    # reflective, not hardcoded, since a future device without sgp40 (buildgen/codegen.py's own
+    # "if sgp40 in have") would otherwise go stale silently here.
+    assert set(body["sensors"].keys()) == ({"SGP40"} if _has(module, "sgp40") else set())
     assert "BackupTS" in body["sensors"]["SGP40"] and "RestoreTS" in body["sensors"]["SGP40"]
     assert "SysUptime" in body["system"] and "LocalTime" in body["system"] and "UtcTime" in body["system"]
     assert "WifiUptime" in body["networking"] and "NtpSynced" in body["networking"]

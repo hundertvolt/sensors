@@ -21,6 +21,7 @@ sys.path.insert(0, "ext")  # run_generic_integration.py transitively imports a b
 sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comment for why
 
 import machine
+import run_generic_integration
 from machine import I2C, SPI, Pin
 from run_generic_integration import RunConfig, _collect_chips, _soak, main, parse_args
 
@@ -162,6 +163,88 @@ def test_soak_records_a_connection_reset_as_a_failure_instead_of_crashing() -> N
         assert any("cycle 0" in f for f in failures)
 
     run_timed(scenario(), timeout_s=15.0)
+
+
+# ---------------------------------------------------------------------------
+# _soak()'s own memory-trend check - the feature's actual stated purpose (catching a real leak),
+# never previously exercised: every other _soak() test either drives real HTTP failures (above) or
+# treats a trend failure as noise to filter out (test_main_runs_a_tiny_bounded_soak_... below). A
+# real regression in the trend arithmetic (e.g. the check disabled outright) would have shipped
+# silently - confirmed by mutation test before this coverage was added. gc.mem_free() is mocked
+# (reassigning run_generic_integration's own imported `gc` name, this project's usual mocking
+# mechanism) to a scripted sequence, isolating the trend arithmetic from real, noisy heap behavior.
+# ---------------------------------------------------------------------------
+
+
+async def _always_200_server(reader: "asyncio.StreamReader", writer: "asyncio.StreamWriter") -> None:
+    while True:
+        line = await reader.readline()
+        if line in (b"\r\n", b"\n", b""):
+            break
+    writer.write(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+    await writer.drain()
+    writer.close()
+    await writer.wait_closed()
+
+
+class _ScriptedGc:
+    # Stands in for the real `gc` module: `collect()` is a no-op (nothing to actually reclaim
+    # against these scripted numbers) and `mem_free()` returns the next value from a fixed script -
+    # one call for _soak()'s post-warmup baseline, then one more per main-loop cycle.
+    def __init__(self, mem_free_script: "list[int]") -> None:
+        self._script = mem_free_script
+        self._calls = 0
+
+    def collect(self) -> None:
+        pass
+
+    def mem_free(self) -> int:
+        value = self._script[min(self._calls, len(self._script) - 1)]
+        self._calls += 1
+        return value
+
+
+def test_soak_reports_a_failure_when_gc_mem_free_genuinely_trends_downward() -> None:
+    # 5 calls needed for cycles=4 (1 baseline + 4 per-cycle): a steady, real decline of 5000 bytes/
+    # cycle - early_avg (first quarter) vs. late_avg (last quarter) trend is 15000 bytes, well past
+    # _MEM_TREND_TOLERANCE_BYTES (8192).
+    real_gc = run_generic_integration.gc  # type: ignore[attr-defined]
+    run_generic_integration.gc = _ScriptedGc([100_000, 95_000, 90_000, 85_000, 80_000])  # type: ignore[attr-defined,assignment]
+    try:
+
+        async def scenario() -> "list[str]":
+            server = await asyncio.start_server(_always_200_server, "127.0.0.1", 18199)
+            try:
+                return await _soak("127.0.0.1", 18199, cycles=4)
+            finally:
+                server.close()
+                await server.wait_closed()
+
+        failures = run_timed(scenario(), timeout_s=15.0)
+    finally:
+        run_generic_integration.gc = real_gc  # type: ignore[attr-defined]
+    assert any("trend" in f and "tolerance" in f for f in failures), f"expected a memory-trend failure, got: {failures!r}"
+
+
+def test_soak_reports_no_trend_failure_when_gc_mem_free_stays_flat() -> None:
+    # Same shape as the decline test above, but a flat memory profile - proves the check isn't
+    # trigger-happy (a real, correctly-behaving system must not fail this).
+    real_gc = run_generic_integration.gc  # type: ignore[attr-defined]
+    run_generic_integration.gc = _ScriptedGc([100_000] * 5)  # type: ignore[attr-defined,assignment]
+    try:
+
+        async def scenario() -> "list[str]":
+            server = await asyncio.start_server(_always_200_server, "127.0.0.1", 18200)
+            try:
+                return await _soak("127.0.0.1", 18200, cycles=4)
+            finally:
+                server.close()
+                await server.wait_closed()
+
+        failures = run_timed(scenario(), timeout_s=15.0)
+    finally:
+        run_generic_integration.gc = real_gc  # type: ignore[attr-defined]
+    assert not any("trend" in f for f in failures), f"expected no memory-trend failure, got: {failures!r}"
 
 
 # ---------------------------------------------------------------------------

@@ -1,9 +1,6 @@
 """Deterministic unit tests for digital_twin/_http_client.py's pure request/response parsing plus
-one real end-to-end socket round trip. Extracted from test_digital_twin_run_wozi_integration.py
-(BUILD_CHAIN_PLAN.md's Session 6.2, retiring run_wozi_integration.py/run_dev_integration.py in
-favor of run_generic_integration.py) into its own per-module file - _http_client.py is shared by
-every digital-twin entry point (run_generic_integration.py, segfault_stress_repro.py, several
-tests/test_digital_twin_*.py files), not owned by any one of them."""
+one real end-to-end socket round trip - its own file since _http_client.py is shared by every
+digital-twin entry point, not owned by any one of them."""
 
 import asyncio
 import sys
