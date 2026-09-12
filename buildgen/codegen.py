@@ -208,13 +208,23 @@ def _emit_header_and_imports(lines: "list[str]", model: DeviceModel, ctx: _Ctx, 
     lines.append("import asy_i2c_driver")
     lines.append("import asy_spi_driver")
     lines.append("import config_manager as cm")
+    # One import line per module, not per instance - two instances of the same driver (e.g. a
+    # multi-scd30 device) share one module and must share one import line, merging whichever
+    # _Default* extras either instance's own wiring needs rather than importing the class twice.
+    module_imports: dict[str, tuple[str, list[str]]] = {}
     for spec in sorted(instances.values(), key=lambda s: s.order_index):
         if spec.driver_info is None:
             raise BuildError(ctx.model.device, "internal: driver_info unresolved by codegen time", instance=spec.label)
         if spec.driver == "notification":
             continue  # imported below, together with NotificationSignal
-        extra = "".join(f", {default_class_name(f)}" for f in _defaulted_wiring_fields(spec))
-        lines.append(f"from {spec.driver_info.module} import {spec.driver_info.class_name}{extra}")
+        _class_name, extras = module_imports.setdefault(spec.driver_info.module, (spec.driver_info.class_name, []))
+        for f in _defaulted_wiring_fields(spec):
+            name = default_class_name(f)
+            if name not in extras:
+                extras.append(name)
+    for module, (class_name, extras) in module_imports.items():
+        extra = "".join(f", {name}" for name in extras)
+        lines.append(f"from {module} import {class_name}{extra}")
     if "notification" in have:
         notif_extra_spec = next(s for s in instances.values() if s.driver == "notification")
         notif_extra = "".join(f", {default_class_name(f)}" for f in _defaulted_wiring_fields(notif_extra_spec))

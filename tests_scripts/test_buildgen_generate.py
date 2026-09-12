@@ -142,6 +142,11 @@ def test_multi_instance_fixture_generates_successfully(fixtures_dir: Path, src_d
     # (warn_co2/warn_hum are absent from this fixture entirely, and sgp40_b is never a warn_* source).
     assert result.module_source.count("NotificationSignal(") == 1
     assert "NotificationSignal('WarnVOC', sgp40_a, 'VOC'" in result.module_source
+    # Two scd30 instances and two sgp40 instances share one module each - one import line per
+    # module, not one per instance, merging whichever _Default* extras either instance needs.
+    assert result.module_source.count("from asy_scd30_driver import") == 1
+    assert result.module_source.count("from asy_sgp40_driver import") == 1
+    assert "from asy_sgp40_driver import SGP40_Reader, _DefaultHumiditySource" in result.module_source
 
 
 def test_device_without_notification_or_neopixel_omits_their_wiring(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
