@@ -1,9 +1,10 @@
 # ISL29125 driver promotion — findings
 
 Temporary working doc for the `python/IndividualDrivers/asy_isl29125_driver.py` → `src/`
-promotion, following CLAUDE.md's step-session workflow. This is **step 1 output only**: an audit of
-the existing driver against the real datasheet. No implementation decisions are settled here, and
-nothing has been changed in the driver. Delete this file once the promotion closes, migrating
+promotion, following CLAUDE.md's step-session workflow. §1-§5 are the audit of the existing driver
+against the real datasheet; §6 records the requirements the project owner has since settled, and
+§7 the design notes written against them. Nothing has been changed in the driver yet. Delete this
+file once the promotion closes, migrating
 anything permanent into `SPECIFICATION.md` (the established pattern — see README.md's "Further
 reading" for the list of planning docs already retired that way).
 
@@ -20,9 +21,14 @@ reading" for the list of planning docs already retired that way).
 - **MicroPython source at both relevant tags** (`v1.26.0` deployed, `v1.29.0` target), cloned and
   read for `int.to_bytes()`, `struct.pack()` and `Pin.irq()` semantics rather than relied on from
   memory, per CLAUDE.md's standing rule.
-- **Two independent implementations**, for cross-checking register semantics only:
-  `jposada202020/MicroPython_ISL29125` (our upstream) and `sparkfun/ISL29125_Breakout`'s Arduino
-  library (unrelated lineage — the value of it is precisely that it is a second opinion).
+- **Three independent implementations**, for cross-checking register semantics and design choices:
+  `jposada202020/MicroPython_ISL29125` (our upstream), `sparkfun/ISL29125_Breakout`'s Arduino
+  library, and **`RIOT-OS/RIOT`'s `drivers/isl29125/`** — unrelated lineages, which is precisely
+  what makes them useful as second opinions. RIOT's is the most instructive: a production RTOS
+  driver that already does the burst read, the 12-bit-to-16-bit shift and the range-to-lux scaling
+  proposed in §7.1.
+- **`tedyapo/arduino-VEML7700`**, as the reference implementation of Vishay's published auto-gain
+  application note — the canonical treatment of this class of problem on a different sensor.
 
 Two things the datasheet does **not** contain, which stay open: the **12-bit integration time**
 (only the 16-bit figure, 101 ms typ, is specified) and the **lux-conversion coefficients**
@@ -321,30 +327,161 @@ Also worth flagging: the p12 prose block introduced as covering *both* the lower
 and higher (`0x06`/`0x07`) interrupt registers only ever describes lower-threshold behaviour. This
 is the origin of the docstring defect in §3.8.
 
-## 6. Open questions for the project owner
+## 6. Settled requirements (project owner, this session)
 
-Genuinely architectural, in rough order of how much they change the work:
+These are decisions, not options. Everything below in §7 is designed against them.
 
-1. **IR compensation API shape.** Keep the current single `ISLIrCompensation` key with a `-1`
-   sentinel (fix the semantics internally, preserve `0xBF`), or split into an honest
-   `ISLIrCompOffset` (0/1) + `ISLIrCompAdjust` (0-63)? The split makes the 1-63 band reachable and
-   matches the datasheet, but changes the REST schema and the dev HTML, and needs a migration
-   story for existing config files carrying `-1`.
-2. **Getter return type** (§3.7). Strings are currently display-only and the UI depends on them.
-   Options: keep strings, switch to ints and move the label mapping into `js/`, or return both.
-   This is the one that most affects Part D.10 consistency across `src/`.
-3. **Sampling strategy.** Keep the 1 s software-divided timer, or move to `CONVEN` +
-   conversion-complete interrupts? The latter is more faithful to the device, fixes §3.6 for free,
-   and would make this the first reader in the tree driven by the sensor rather than by a timer —
-   which is also an argument against it, on consistency grounds.
-4. **Lux conversion.** Report raw counts as now (but annotate the active range), or implement Eq. 2?
-   Real conversion needs per-system `CYR`/`CYG`/`CYB` coefficients that the datasheet says must be
-   characterised optically and which we do not have.
-5. **Should the interrupt path be promoted at all?** It is dev-rig-only, dormant by default
-   (`INTSEL = 00`), never bench-tested, and no wozi variant uses it. Promoting it means owning
-   hardware test coverage for it; dropping it loses a genuinely interesting capability.
+1. **Every setting is API-settable and persisted.** No compile-time constants for anything a user
+   might want to change.
+2. **Resolution** — a plain value (12 or 16 bit). User's choice, not auto-managed.
+3. **Range** — either a fixed value *or* `auto`. The **auto-range parameters are themselves
+   API-settable**.
+4. **Outputs** — **lux, RGB and HSB**, each *normalised over the full span*: over the fixed range
+   when one is selected, over the whole auto-range span when auto is on.
+5. **Interrupt** — used, with a **mandatory GPIO**, the same way `asy_scd30_driver.py` treats its
+   RDY pin (`irq_pin: int` positional, `Pin(irq_pin, mode=Pin.IN)`, `ThreadSafeFlag`). Not optional,
+   so §3.4's `None`-dereference disappears by construction rather than needing a guard.
+6. **IR compensation** — an API parameter. The sensor is **openly exposed**: no IR-tinted cover.
 
-## 7. Known prerequisites and standing obligations
+Two consequences worth stating explicitly, because they change earlier reasoning in this doc:
+
+- Since resolution stays user-selectable, the flicker finding (§7.2) is **documentation, not a
+  design constraint** — the driver must let the user pick 12-bit and should say what it costs,
+  not refuse it.
+- Since the sensor is bare, the datasheet's p14 guidance ("not under IR tinted glass … b7 = '0'
+  and B[5:0] … about 40 codes") is the applicable **default**, not p10's `0xBF`. `0xBF` remains
+  reachable — it is just no longer the right default for this deployment.
+
+## 7. Design notes against those requirements
+
+### 7.1 The normalisation chain — the heart of "smooth and continuous"
+
+Counts *must* jump 26.67× at a range switch; that is the gain changing, not a defect. Continuity
+comes from never exposing counts. One chain, applied to every sample:
+
+1. **Burst-read `0x09`-`0x0E` in one transaction** → coherent (green, red, blue), and §3.6 is fixed
+   as a side effect. Register order is G, R, B.
+2. **Resolution-normalise**: 12-bit values `<< 4` onto a common 0-65535 scale. Changing resolution
+   then moves only the noise floor, never the reported magnitude.
+3. **Dark-offset subtract** (`DDark` 1-5 counts, p3; only material on range 0 / 16-bit).
+4. **Range-normalise to absolute** via `FS_lux / 65535` (`FS` = 375 or 10000) — using the
+   **calibrated** gain ratio, not the nominal 26.67 (see §7.3). After this step every sample is on
+   one absolute scale regardless of which range produced it.
+5. **Derive the three outputs** from that absolute triple.
+
+Steps 1, 2 and 4 are exactly what `RIOT-OS/RIOT`'s `drivers/isl29125/isl29125.c` does (burst read
+of 6 bytes, `resfactor` shift for 12-bit, `luxfactor = range_FS / 65535.0`) — independent
+confirmation, from a production RTOS driver, that this is the right shape.
+
+### 7.2 Resolution is a flicker/speed trade, and must be labelled as one
+
+16-bit integration is 101 ms = exactly 5 x 20 ms (50 Hz) = 6 x 16.67 ms (60 Hz), which is *why*
+p6 says it "rejects 50Hz and 60Hz power line as well as florescent flicker noise", and p14's Noise
+Rejection section states the integration time must be an integer multiple of the AC period. 12-bit
+is ~6.3 ms (derived — only the 16-bit figure is specified; AN1910 would confirm) and is a multiple
+of neither, so it forfeits flicker rejection under any mains-driven lighting. 12-bit buys ~16x
+faster conversion. Both are legitimate; the API should make the trade visible rather than pick for
+the user.
+
+### 7.3 Gain-ratio calibration removes the residual step
+
+26.67x is nominal. The real per-device ratio differs, and that error *is* the visible step at each
+transition. Self-calibration is cheap: when the light sits in the overlap band, take one reading in
+each range, compute the true ratio, low-pass it, persist it to FRAM. Without this, auto-range is
+smooth-ish; with it, smooth.
+
+### 7.4 Hue and saturation are continuous for free; brightness is not
+
+All three channels share one `RNG` bit and one resolution, so any common scale factor cancels out of
+the R:G:B ratios. **H and S are therefore invariant across range and resolution changes** — no
+blending, no correction. Only **B** carries the magnitude and needs the §7.1 chain.
+
+Two caveats:
+
+- The invariance breaks near the dark floor, because the dark offset is *additive*: below some
+  count floor the ratios distort and H/S should be reported as unreliable rather than as noise.
+- **HSB from sensor RGB is "sensor HSB", not colorimetric HSB.** The ISL's R/G/B spectral responses
+  (Figure 2) are not sRGB primaries; mapping to a device-independent space needs the 3x3 transform
+  of Eq. 1, whose coefficients the datasheet says must be characterised per optomechanical design.
+  Uncalibrated HSB is still perfectly useful for *relative* colour (shifts, trends, warm-vs-cool),
+  and should be labelled as such rather than presented as a colorimetric measurement.
+
+There is also a scaling choice for **B**: normalised 0-1 over the full auto-range span makes it
+continuous but leaves a dim room reading ~0.003, i.e. almost no usable resolution. Reporting B in
+lux, or on a log scale, keeps it legible. Open — see §8.
+
+### 7.5 Lux without calibration coefficients
+
+Eq. 2's `CYR`/`CYG`/`CYB` are explicitly system-specific. The defensible zeroth-order estimate is
+**green-channel-based**, since the ISL's green response approximates the CIE Y curve (Figures 2 and
+13) — which is also why green is the right channel to base range decisions on. RIOT applies the
+same per-channel `luxfactor` to R, G and B, yielding "per-channel lux-equivalent" rather than true
+photopic lux; that is the pragmatic uncalibrated approach and is worth copying, provided the
+reported **lux** figure comes from green alone and the RGB triple is labelled lux-equivalent.
+
+Note p3's calibration note 5: production test calibrates irradiance "to produce the same DATA count
+against an illuminance level of 130 lux fluorescent light" — the anchor point for any later
+correction.
+
+### 7.6 Auto-range driven by the threshold interrupt
+
+Set the high threshold at the switch-up point, the low threshold at the switch-down point,
+`INTSEL` = green, `PRST` = 4 or 8. INT then fires exactly when a range change is needed, and the
+persistence counter performs transient rejection **in hardware** — the anti-chatter mechanism that
+would otherwise be software. Saturation (65535, clipped) forces an immediate switch-up without
+waiting for any filter: react fast to bright, slowly to dark, so a camera flash does not drag the
+range down for the next minute.
+
+After every range change, **discard at least one full R-G-B cycle** (~303 ms at 16-bit) — the
+conversion in flight when `RNG` flips is invalid. The datasheet specifies no settling time; this is
+inference, and a real gap.
+
+Thresholds should be **set in lux at the API and converted to counts internally** (RIOT does this,
+though its `(uint16_t)(65535 / max_range)` integer division truncates 6.55 to 6 — a cautionary
+example: do the scaling in float).
+
+### 7.7 Register ownership, and a correction
+
+With auto-range on, the driver **owns** `INTSEL` and both threshold registers. A user-facing
+threshold alarm therefore cannot be served by the same hardware registers at the same time. The
+clean resolution is that the user's alarm is expressed **in lux** and evaluated **in software** off
+the normalised stream, which is the better API anyway — the user should not be writing raw counts.
+
+**Correcting an earlier claim in this session**: the conflict between polling `CONVENF` for
+conversion-done and using `RGBTHF` for threshold alarms is *not* a hard either/or. Both flags live
+in the same byte `0x08` (Table 15: B0 `RGBTHF`, B1 `CONVENF`), so a **single status read
+distinguishes which event fired**. `CONVEN` and `INTSEL` do mux onto one INT pin, but the status
+byte disambiguates them.
+
+One caution if `CONVEN` is used: the datasheet does not say whether conversion-done fires per
+channel or per R-G-B cycle. Per channel at 12-bit that is up to ~160 interrupts/s, which is a real
+load on a soft IRQ. Unspecified — verify on hardware before relying on it.
+
+### 7.8 Reusable primitives
+
+The first-order EMA used by the legacy SHTC3/MPRLS readers
+(`tc = tc_old + FiltCoeff * (tc - tc_old)`, with `<= 0` meaning off) is the existing precedent for
+output smoothing, currently inline in each driver rather than shared. `src/math_helpers.py` has no
+filter primitive today, and `SPECIFICATION.md` Part G's catalogue lists none — so promoting this
+one into a shared primitive is a Part G extension the auto-range work should make, not duplicate.
+(BMP3xx's `FiltCoeff` is the *sensor's* on-chip IIR, not a software filter — different thing,
+same name.)
+
+## 8. Open questions
+
+1. **RGB output units** — absolute per-channel lux-equivalent, or normalised 0-1 / 0-255 relative
+   to the span? The latter is display-friendly, the former physically meaningful.
+2. **HSB brightness scaling** (§7.4) — 0-1 over the full span, lux, or log.
+3. **IR compensation default** — p14's ~40 codes with B7=0 (bare-sensor colour accuracy, and now
+   the applicable case) is my recommendation; `0xBF` stays reachable for range headroom.
+4. **IR compensation and calibration interact**: changing it changes the count scale, so it
+   invalidates any stored gain-ratio calibration (§7.3). The driver should discard the stored ratio
+   when IR compensation changes.
+5. **Getter return type** (§3.7) — strings are display-only today and the dev UI depends on them.
+   With every setting becoming API-settable and persisted, this is the moment to decide: ints with
+   the label mapping in `js/`, or both.
+
+## 9. Known prerequisites and standing obligations
 
 - `BACKLOG.md:519-522` already flags `asy_i2c_driver.py`'s `readfrom_mem()` → `readfrom_mem_into()`
   zero-copy change as *"worth doing before `asy_isl29125_driver.py` … is migrated"*, naming this
