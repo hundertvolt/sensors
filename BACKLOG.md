@@ -489,48 +489,8 @@ constraints.
   Generating `html/definitions/<device>.json` for real (replacing the two hand-written files,
   producing one for the four devices that don't have one yet, and wiring it into
   `scripts/build_website.sh`/CI) is still Session 6's own job, not done by this entry's resolution.
-- **Per-variant `sensortask-*.py` generator — built (`buildgen`, BUILD_CHAIN_PLAN.md's Session 6),
-  entry kept only until its own two follow-ups below close.** SPECIFICATION.md Part A.3 already names the
-  automated generator as a real planned direction (one setup-definition file → every variant's
-  `sensortask-*.py`/website pair), shaped for by A.8's registration-API/A.9's `HTML_SRC_DIRS`
-  mechanisms. `src/sensortask_dev.py` (2026-09-03) is the first
-  concrete step toward it — a real, hand-written, `src/`-quality dev-bench variant carrying the
-  same three sensors as wozi (SCD30 + BMP3xx + SGP40), built and flashed for real via
-  `scripts/build_firmware.py dev`/`boot_entry/dev_boot.py`, confirmed clean on real hardware
-  (6.5-minute stability window, real sensor readings, real captive-portal redirect). It's an
-  interim baseline, not the generator itself — deliberately not over-invested in permanence, and has
-  since been superseded by the generator, `buildgen` (Session 6; `src/sensortask_dev.py` itself is
-  deleted, generated fresh at build time now). Two concrete requirements were raised for whenever the
-  generator got built, and their current status: (1) any hardware-presence-conditioned wiring the old
-  hand-written `sensortask_wozi.py` used to hardcode for its own fixed sensor set — which FRAM chunks
-  get allocated (Part A.7's seven-chunk order is wozi-specific) and any sensor-specific bus parameter
-  (e.g. SCD30's own I2C clock-stretch `timeout=200000`) — had to be derived from the target variant's
-  actual module set, not copied verbatim into a variant lacking that sensor. **Resolved**:
-  `buildgen.generate.generate_device()` derives both from each device's own `devices/<device>.toml`
-  (`fram_target`, per-bus `timeout`, confirmed directly against `buildgen/codegen.py`) — no variant
-  copies another's values. (2) **every generated variant needs its own real unit tests** (owner
-  requirement - a generated `sensortask-*.py` is exactly as much "real code" as a hand-written one,
-  same Part D bar applies), and those tests must themselves check which sensors/FRAM a given variant
-  actually has before asserting anything sensor- or FRAM-specific — asserting e.g.
-  `scd30.pr.fram is not None` unconditionally against a variant with no SCD30 (or no FRAM at
-  all) would either hard-fail on a module that was never supposed to exist, or - the sharper risk -
-  pass vacuously for the wrong reason if the assertion is generated loosely enough to skip rather
-  than genuinely check. A variant-specific test also can't hardcode *which bus* a sensor sits on
-  (SCD30 is wired to `i2c0` on wozi, but a different variant could wire it to `i2c1` or a third bus
-  entirely) — it must look the bus up through the sensor's own object graph (e.g.
-  `scd30.scd.i2c_scd30.i2c_device.i2c`), never assume a specific `i2cN` name.
-  `tests/test_sensortask.py`'s own
-  `test_scd30s_own_i2c_bus_uses_a_clock_stretch_timeout_wide_enough_for_it` remains the worked
-  example this generalized from (both the bus lookup and the FRAM assertions). **Resolved
-  (BUILD_CHAIN_PLAN.md's Session 6.2)**: the deeper per-variant whitebox parameterization this
-  requirement actually calls for (presence-conditioned sensor/FRAM assertions, bus-graph lookups)
-  is now real, across every file the finish criterion named - `tests/test_sensortask.py`'s 315
-  tests derive their expected sensor/FRAM set reflectively per device, and
-  `tests/test_digital_twin_bus_hazard_concurrency.py`'s device-scope question was checked (not
-  guessed) directly against every real `devices/*.toml`, resolving what this entry's own earlier
-  text called a still-open judgment call. **Resolved (2026-09-03):
-  `scripts/build_firmware.py dev` is now the real,
-  correct, confirmed-working way to build/flash for the dev bench** — device-parametrized boot-entry
+- **`scripts/build_firmware.py dev` confirmed the real, correct way to build/flash for the dev
+  bench — Resolved (2026-09-03).** Device-parametrized boot-entry
   selection was real then via `boot_entry/<device>_boot.py` (that directory is retired now, replaced
   by `buildgen.codegen.generate_boot_entry_source()` — Session 6, above), and the earlier "wozi's own pins forced onto
   dev hardware" mismatch that produced noise mistaken for real bugs (once tracked as the open

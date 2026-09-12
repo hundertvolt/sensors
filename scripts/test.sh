@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runs the tests/ suite under a real MicroPython Unix-port interpreter (not CPython/pytest - see
-# BACKLOG.md's "Self-contained venv via uv" testing requirement). Builds the toolchain on first
+# SPECIFICATION.md Part E.1's "Why not pytest"). Builds the toolchain on first
 # run via `uv run toolchain/setup_toolchain.py` (plain `setup` - building/verifying the Unix port
 # is just part of what `setup`/`test` already do, there's no separate `unix` subcommand, see
 # SPECIFICATION.md Part B) if the Unix port binary isn't already there, then reuses the cached build
@@ -104,10 +104,10 @@ scripts/build_website.sh wozi frozen_modules/frozen_website_wozi.py
 # No static src/sensortask_wozi.py/sensortask_dev.py exist any more (BUILD_CHAIN_PLAN.md's Session
 # 6 finish criterion) - every device's own sensortask_<device>.py is generated fresh here, via
 # buildgen, into build/generated_src/ (gitignored - see scripts/_generate_sensortask_modules.py's
-# own docstring for why NOT into src/ itself). tests/test_sensortask_wozi.py, tests/
-# test_sensortask_dev.py, and every tests/test_digital_twin_*.py file that statically imports
-# sensortask_wozi/sensortask_dev keep working unchanged: MICROPYPATH below puts this directory
-# first, so `import sensortask_wozi` resolves to the freshly generated module.
+# own docstring for why NOT into src/ itself). tests/test_sensortask.py (dynamic __import__() per
+# device) and every tests/test_digital_twin_*.py file that statically imports a sensortask_<device>
+# module keep working unchanged: MICROPYPATH below puts this directory first, so `import
+# sensortask_wozi` resolves to the freshly generated module.
 echo "== Generating buildgen device modules into build/generated_src/"
 uv run scripts/_generate_sensortask_modules.py
 

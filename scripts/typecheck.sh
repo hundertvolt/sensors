@@ -115,8 +115,9 @@ if [ -f "$builtins_stub" ] && grep -q '^# NotImplemented: _NotImplementedType' "
     sed -i 's/^# \(NotImplemented: _NotImplementedType\)/\1/' "$builtins_stub"
 fi
 
-# tests/test_sensortask_wozi.py/test_sensortask_dev.py (in `files` below) statically `import
-# sensortask_wozi`/`sensortask_dev` - neither file exists in src/ any more (BUILD_CHAIN_PLAN.md's
+# tests_hardware/device_scripts/heap_headroom_after_full_system_build.py (in `files` below, the
+# main pass's sole static importer - pyproject.toml's own [tool.mypy] mypy_path comment) statically
+# `import sensortask_dev` - no hand-written copy exists in src/ any more (BUILD_CHAIN_PLAN.md's
 # Session 6 finish criterion), so mypy needs build/generated_src/ (this pass's own mypy_path entry,
 # pyproject.toml's [tool.mypy]) populated before it runs, same as scripts/test.sh's own real
 # MicroPython-interpreter run needs it on MICROPYPATH.

@@ -203,7 +203,7 @@ import json
 from buildgen.generate import generate_device
 from buildgen.twin_wiring import compute_twin_wiring
 
-generated = generate_device(Path("devices/novel_combo.toml"), Path("src"), Path("ext"))
+generated = generate_device(Path("tests_scripts/buildgen_fixtures/novel_combo.toml"), Path("src"), Path("ext"))
 # In tests_scripts/buildgen_fixtures/ for the two synthetic fixtures - devices/ for a real one.
 Path("/tmp/twin_boot/sensortask_novel_combo.py").write_text(generated.module_source)
 Path("/tmp/twin_boot/wiring_plan.json").write_text(json.dumps(compute_twin_wiring(generated.model)))

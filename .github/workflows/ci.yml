@@ -403,7 +403,7 @@ jobs:
 
   unit-tests:
     # Tests run under a real MicroPython Unix-port interpreter, not CPython - see
-    # BACKLOG.md's "Self-contained venv via uv" testing requirement and SPECIFICATION.md Part E.
+    # SPECIFICATION.md Part E.
     #
     # needs: lint-and-typecheck - serializes the two jobs in this workflow instead of letting them
     # run in parallel (the previous default). This dates from an earlier phase of the CI-hang

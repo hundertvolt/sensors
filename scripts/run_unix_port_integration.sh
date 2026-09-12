@@ -14,7 +14,7 @@
 # "ext" is required here (unlike scripts/test.sh's own MICROPYPATH) because every generated
 # sensortask_<device>.py unconditionally imports vendored ext/microdot.py - every tests/test_*.py
 # file that needs it works around scripts/test.sh's own ext-less MICROPYPATH with its own per-file
-# sys.path.insert(0, "ext") (see e.g. tests/test_sensortask_wozi.py's own comment), but this is the
+# sys.path.insert(0, "ext") (see e.g. tests/test_sensortask.py's own comment), but this is the
 # real standalone entry point, not a test file, so it needs the real fix here instead. Found by
 # actually running this script standalone for the first time (a manual baseline-verification pass) -
 # every prior verification of this file went through the test-harness sys.path.insert() workaround
