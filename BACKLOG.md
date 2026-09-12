@@ -247,6 +247,32 @@ constraints.
     deliberate asymmetry against `_store_err()`'s own guard, and the tier coverage:
     SPECIFICATION.md Part C.7.
 
+17. **Five cross-file consistency findings from the ISL29125 promotion's bird's-eye `src/` scan
+    (CLAUDE.md: reported, not fixed — 2026-09-12).** None is a bug; each is a place two files
+    answer the same question differently, and each needs a decision rather than a drive-by edit.
+    - **`FiltCoeff` means two different things.** In `asy_bmp3xx_driver.py` it is the BMP3xx's
+      on-chip IIR register — a discrete `int` from `_IIR_SETTINGS` (0…127). In
+      `asy_isl29125_driver.py` it is a software EMA coefficient — a `float` in -1.0…1.0 with -1.0
+      meaning off. Same field name, same `/sensors` endpoint, different type and different
+      meaning. No wire collision (the sensor group namespaces it), and both names are locally
+      the natural one. Options: leave it, or give one of them a distinguishing name.
+    - **Four names for two trigger-event roles.** `asy_bmp3xx_driver.py`/`asy_sgp40_driver.py` use
+      `trigger_event`; `asy_scd30_driver.py` uses `start_trigger_event` + `irq_trigger_event`;
+      `asy_isl29125_driver.py` uses `base_trigger_event` + `read_event`, and its own comment says
+      it matches SCD30's shape — which it does structurally, not by name.
+    - **`from asyncio import ThreadSafeFlag` appears in exactly one file** (`asy_scd30_driver.py`);
+      every other file in `src/` writes `asyncio.ThreadSafeFlag`. Pre-existing, not ISL-introduced.
+    - **`_N_*_CFG` constants group on two different axes.** BMP3xx and ISL29125 group by type
+      (`_N_INT_CFG`/`_N_FLOAT_CFG`/`_N_BOOL_CFG`); SGP40 groups by purpose (`_N_SETUP_CFG`/
+      `_N_STORAGE_CFG`).
+    - **Return-annotation quoting is mixed project-wide**, and most files use both forms. Twenty
+      files carry quoted subscripted return annotations, eleven carry unquoted ones. MicroPython
+      never evaluates annotations, so both are safe; there is simply no stated convention.
+    Separately, and already known: `SGPResetVOC` and now `ISLResetCal` are the only two config
+    fields in `src/` carrying a device prefix (open question raised in the promotion plan §8.2,
+    whose own prose says the ISL field does *not* carry one while its §8.3 schema table names it
+    `ISLResetCal` — the code follows the table and the function spec, which agree).
+
 ## Deferred / explicitly out-of-scope work
 - **The 1.29.0 pin is now field-proven on the dev bench (2026-09-11).** Real `dev` firmware built
   from `src/` and flashed; `sys.implementation` on target reports `(1, 29, 0)` / `_mpy=4870` /
