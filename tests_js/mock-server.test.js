@@ -403,16 +403,26 @@ describe("installMockFetch", () => {
     it("jitters a nested measurement sub-object's leaves too, not just the top level", async () => {
         // The ISL29125's body is the first with a third level ({"RGB": {"R": ...}}). Without the
         // recursion those leaves sit perfectly static forever, which reads as a broken renderer.
-        uninstall = installMockFetch(DEFS, DATA);
-        const body = await (await fetch("/measurements")).json();
+        // Math.random is pinned to its maximum so the expected values are exact rather than a
+        // band - a 0.02 leaf jittered by up to +-0.05 and rounded to 2dp can legitimately land
+        // back on 0.02, which would make a "it moved" assertion flaky rather than wrong.
+        const realRandom = Math.random;
+        Math.random = () => 1;
+        try {
+            uninstall = installMockFetch(DEFS, DATA);
+            const body = await (await fetch("/measurements")).json();
 
-        expect(body.ISL29125.TS).toBe(1001); // top-level timestamp: still exactly +1
-        expect(body.ISL29125.CCT).toBeNull(); // a null leaf is not a number - left alone
-        for (const channel of ["R", "G", "B"]) {
-            expect(typeof body.ISL29125.RGB[channel]).toBe("number");
+            expect(body.ISL29125.TS).toBe(1001); // top-level timestamp: still exactly +1
+            expect(body.ISL29125.CCT).toBeNull(); // a null leaf is not a number - left alone
+            expect(body.ISL29125.Lux).toBe(303); // top level: 300 + 1% of itself
+            // The nested leaves, each moved by the 0.05 jitter floor - which only happens at all
+            // if jitterInPlace() recursed into the sub-object.
+            expect(body.ISL29125.RGB.R).toBe(0.07);
+            expect(body.ISL29125.RGB.G).toBe(0.08);
+            expect(body.ISL29125.RGB.B).toBe(0.06);
+        } finally {
+            Math.random = realRandom;
         }
-        // The jitter floor is 0.05, so a 0.02-0.03 value really does move, and visibly.
-        expect(body.ISL29125.RGB.R).not.toBe(0.02);
     });
 
     it("omits the command-only ISLResetCal from GET readback, as it already does for ContMeas/SGPResetVOC", async () => {
