@@ -992,6 +992,8 @@ def _check_silence_then_corruption_then_clean_still_converges(crc: "CrcMaker") -
 # ---------------------------------------------------------------------------
 
 _HAMMER_ROUNDS = 150
+_HAMMER_SAMPLE_AT = _HAMMER_ROUNDS // 3  # the warm-up that absorbs first-touch allocation
+_HAMMER_MEASURED = _HAMMER_ROUNDS - _HAMMER_SAMPLE_AT - 1  # transactions the heap delta spans
 
 
 def _hammer_clean(crc: "CrcMaker") -> None:
@@ -1009,7 +1011,7 @@ def _hammer_clean(crc: "CrcMaker") -> None:
             if await pair.initiator.uart_set(1, payload):
                 ok += 1
             _scrub(pair)
-            if i == _HAMMER_ROUNDS // 3:  # sample once the steady state is genuinely reached
+            if i == _HAMMER_SAMPLE_AT:  # sample once the steady state is genuinely reached
                 gc.collect()
                 mid[0] = gc.mem_alloc()
         gc.collect()
@@ -1026,11 +1028,14 @@ def _hammer_clean(crc: "CrcMaker") -> None:
     assert ok == _HAMMER_ROUNDS, f"only {ok}/{_HAMMER_ROUNDS} hammered transactions completed"
     assert not errnos(pair.initiator), f"a clean link logged errors under sustained load: {errnos(pair.initiator)}"
     # A per-transaction RATE, not an absolute total: a leak is proportional to the work done, while
-    # interpreter-internal caching is a fixed sprinkle that varies with the host. An absolute
-    # few-frames bound passed locally at 0 bytes and failed CI at 64 (0.43 B/transaction) - real
-    # retention of even one frame would be 13+ B/transaction, two orders of magnitude above this.
-    per_transaction = grew / _HAMMER_ROUNDS
-    assert per_transaction < 1.0, f"{grew} bytes over {_HAMMER_ROUNDS} transactions = {per_transaction:.2f} B/transaction"
+    # interpreter-internal caching is a fixed sprinkle that varies with the host - and it is divided
+    # by the span actually measured, not by _HAMMER_ROUNDS, which understated it by half again.
+    # Observed sprinkle over this span: 0 B locally, 64 B and 288 B on two GitHub runners running
+    # identical code, so the floor is host- and run-dependent rather than a property of the module.
+    # The bound sits above that and still far below the smallest real signal - one retained frame is
+    # 13+ B/transaction, and an injected 16 B/transaction leak measures 380.
+    per_transaction = grew / _HAMMER_MEASURED
+    assert per_transaction < 6.0, f"{grew} bytes over {_HAMMER_MEASURED} transactions = {per_transaction:.2f} B/transaction"
 
 
 def _hammer_faulted(crc: "CrcMaker") -> None:

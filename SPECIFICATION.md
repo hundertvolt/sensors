@@ -1635,11 +1635,17 @@ Every item here produced a confident, stable, wrong number before it produced a 
 is a rule rather than an anecdote. E.7 is the largest of them and keeps its own section.
 
 - **An absolute heap-delta bound is host-dependent; a leak is a rate.** Retention scales with the
-  work done, while an interpreter's internal caching is a fixed sprinkle that varies by host. Two
-  hammer tests bounded `gc.mem_alloc()` growth at a few frames because both measured exactly 0 on
-  the bench, and failed CI at 64 B over 150 transactions (0.43 B/transaction). Assert a
-  per-operation rate instead — `tests/test_uart_comm_hazard.py` uses `< 1.0 B/transaction` and
-  `< 16.0 B/failure`, against a real retained frame's 13+ B/transaction.
+  work done, while an interpreter's internal caching is a fixed sprinkle that varies by host *and
+  by run*. Two hammer tests bounded `gc.mem_alloc()` growth at a few frames because both measured
+  exactly 0 on the bench, and failed CI at 64 B. Assert a per-operation rate instead —
+  `tests/test_uart_comm_hazard.py` uses `< 6.0 B/transaction` and `< 16.0 B/failure`, against a real
+  retained frame's 13+ B/transaction and an injected 16 B/transaction leak's measured 636.
+  **Two follow-on traps, both paid for:** the rate must be divided by the span actually measured,
+  not by the loop's total round count — the clean hammer sampled a third of the way in and still
+  divided by all 150, understating itself by half again. And one runner observation does not
+  calibrate a floor: the same commit measured 64 B on one GitHub runner and 288 B on another, so a
+  bound set just above the first reading went red on the second. Set it from the signal you must
+  still catch, not from the noise you happened to see.
 - **The twin's `UARTLink.wire_log` is unbounded** — one byte per delivered byte, ~15-95 kB over a
   few hundred transactions. It reads as a leak in the code under test. Clear it inside any
   measurement loop.
