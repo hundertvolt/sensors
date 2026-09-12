@@ -1760,7 +1760,11 @@ collection and reporting are two stages: `tests/_coverage_runner.py` runs *insid
 `htmlcov/index.html`, `coverage.xml`, `coverage_summary.md`. Locally nothing opens automatically. On
 GitHub: `coverage_summary.md` appends to the run's Job Summary; `htmlcov/` uploads as a downloadable
 artifact; `coverage.xml` uploads to Codecov, but that account-linking hasn't been done, so it
-currently no-ops silently.
+currently no-ops silently. Runs in its own `unit-tests-coverage` CI job (Session 8's
+closing-consistency-pass PR split it out of `unit-tests` proper) — this pass re-runs the whole
+real-interpreter suite a second time under `sys.settrace`, so keeping it off `unit-tests`' own
+critical path means `digital-twin-e2e`/`firmware-build-verify` (which only need `unit-tests`' own
+toolchain-cache population, never this job's report) no longer wait on it.
 
 ### E.5.1 Reading the numbers: three systematic false-negative patterns, not missed test cases
 
