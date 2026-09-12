@@ -7,6 +7,8 @@ the full validate -> sort -> generate pipeline from one TOML file, no code chang
 # under a real interpreter - booting a generated module is Session 5's digital-twin work.
 
 import ast
+import re
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -14,6 +16,7 @@ from _toml_fixtures import base_doc, write_doc
 
 from buildgen.errors import BuildError
 from buildgen.generate import generate_device
+from buildgen.version import FIRMWARE_VERSION, WEBSITE_VERSION
 
 DEVICE_NAMES = ["dev", "wozi", "arzi", "klkizi", "grkizi", "schlafzi"]
 
@@ -58,6 +61,33 @@ def test_real_device_constructs_watchdog_exactly_once(repo_root: Path, src_dir: 
 def test_real_device_boot_entry_imports_the_right_module(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
     result = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir)
     assert f"from sensortask_{device} import main" in result.boot_entry_source
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_real_device_embeds_and_reports_version_and_build_date_exactly_once(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
+    # BUILD_CHAIN_PLAN.md Session 7 (as corrected - GET /system's "build" sub-entry, not GET
+    # /status): buildgen.version.FIRMWARE_VERSION/WEBSITE_VERSION are the one source of truth for
+    # the two version constants; the build date is a fresh, explicitly-injected value (never
+    # computed on-device) so this test can assert an exact match instead of a moving "now".
+    result = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir, build_date="2026-09-12T10:00:00Z")
+    assert result.module_source.count("_FIRMWARE_VERSION = const(") == 1
+    assert result.module_source.count("_WEBSITE_VERSION = const(") == 1
+    assert result.module_source.count("_BUILD_DATE = const(") == 1
+    assert f"_FIRMWARE_VERSION = const({FIRMWARE_VERSION!r})" in result.module_source
+    assert f"_WEBSITE_VERSION = const({WEBSITE_VERSION!r})" in result.module_source
+    assert "_BUILD_DATE = const('2026-09-12T10:00:00Z')" in result.module_source
+    assert 'build_info={"firmwareVersion": _FIRMWARE_VERSION, "websiteVersion": _WEBSITE_VERSION, "buildDate": _BUILD_DATE}' in result.module_source
+    # Regression guard against this session's own earlier, corrected design: the version no longer
+    # lives on GET /status's "system" section.
+    assert '"FirmwareVersion": _FIRMWARE_VERSION' not in result.module_source
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_real_device_defaults_to_a_real_current_build_date_when_none_is_given(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
+    result = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir)
+    match = re.search(r"_BUILD_DATE = const\('([^']+)'\)", result.module_source)
+    assert match is not None
+    datetime.fromisoformat(match.group(1))  # raises ValueError if malformed; "Z" is UTC, not naive
 
 
 def test_novel_combo_fixture_generates_successfully(fixtures_dir: Path, src_dir: Path, ext_dir: Path) -> None:

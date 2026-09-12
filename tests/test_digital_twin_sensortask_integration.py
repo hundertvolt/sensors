@@ -260,8 +260,17 @@ def test_every_get_endpoint_is_reachable_over_real_http_and_shaped_correctly() -
             res = await _http_client.fetch("127.0.0.1", port, "GET", "/system")
             assert res.status_code == 200
             # DebugLevel is sourced from sysfunct (flat) - GMTOffset/DSTOffset from ntp (nested),
-            # same fix as /networking above.
-            assert res.json() == {"DebugLevel": 0, "GMTOffset": 3600, "DSTOffset": 3600}
+            # same fix as /networking above. "build" is the one extra key (BUILD_CHAIN_PLAN.md
+            # Session 7's buildgen-supplied firmware/website version + build date, verbatim from
+            # src/asy_webserver_service.py's build_info= kwarg) - checked for shape only, since the
+            # exact values (a real timestamp, this build's own version strings) aren't something this
+            # MicroPython-run test can cross-check against buildgen itself (host-CPython-only tooling).
+            system_body = res.json()
+            build_info = system_body.pop("build")
+            assert system_body == {"DebugLevel": 0, "GMTOffset": 3600, "DSTOffset": 3600}
+            assert isinstance(build_info["firmwareVersion"], str) and build_info["firmwareVersion"]
+            assert isinstance(build_info["websiteVersion"], str) and build_info["websiteVersion"]
+            assert isinstance(build_info["buildDate"], str) and build_info["buildDate"]
 
             res = await _http_client.fetch("127.0.0.1", port, "GET", "/notification")
             assert res.status_code == 200

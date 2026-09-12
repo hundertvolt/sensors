@@ -1178,6 +1178,25 @@ def _scenario_status_get(device: str) -> None:
     assert len(body["errcount"]) == len(_all_loggers(module))
 
 
+@_register("webserver_system_get_reports_the_real_build_info")
+def _scenario_system_get_build_info(device: str) -> None:
+    # BUILD_CHAIN_PLAN.md Session 7: every generated device embeds buildgen.version.FIRMWARE_VERSION/
+    # WEBSITE_VERSION plus a real build timestamp and reports them live under GET /system's "build"
+    # sub-entry, alongside the ordinary flat DebugLevel/GMTOffset/DSTOffset settings fields (no
+    # existing scenario in this file does a plain GET /system, so this is this module's only proof
+    # of that flat shape too, not just "build"'s own presence). Can't cross-check the exact build-
+    # info values against buildgen itself from inside the MicroPython interpreter (host-CPython-only
+    # tooling), so those three are checked for presence/shape only.
+    module = build(device)
+    res = _dispatch(module, "GET", "/system")
+    body = json.loads(status_body(res))
+    build_info = body.pop("build")
+    assert set(body.keys()) == {"DebugLevel", "GMTOffset", "DSTOffset"}
+    assert isinstance(build_info["firmwareVersion"], str) and build_info["firmwareVersion"]
+    assert isinstance(build_info["websiteVersion"], str) and build_info["websiteVersion"]
+    assert isinstance(build_info["buildDate"], str) and build_info["buildDate"]
+
+
 @_register("webserver_status_put_reset_errors_clears_a_real_modules_history")
 def _scenario_status_put_reset_errors(device: str) -> None:
     module = build(device)
