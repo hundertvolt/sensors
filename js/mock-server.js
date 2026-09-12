@@ -299,8 +299,15 @@ function jitterInPlace(group) {
         if (key.endsWith("TS") || key === "Timestamp" || key.endsWith("Uptime")) {
             group[key] = value + 1;
         } else {
+            // The 0.05 absolute floor was sized for readings of order hundreds (CO2 ~600). The
+            // ISL29125's normalised 0-1 leaves are far smaller, so that floor is +-148% on a 0.0337
+            // brightness and routinely takes it NEGATIVE - which no normalised channel, saturation
+            // or brightness can be, and which the real site would then render as "-0.0100".
+            // Jitter must not change a value's sign: clamp back to zero from whichever side it
+            // started on. Values of ordinary magnitude never reach this, so nothing else moves.
             const spread = Math.max(Math.abs(value) * 0.01, 0.05);
-            group[key] = Math.round((value + (Math.random() * 2 - 1) * spread) * 100) / 100;
+            const jittered = Math.round((value + (Math.random() * 2 - 1) * spread) * 100) / 100;
+            group[key] = (value >= 0 && jittered < 0) || (value <= 0 && jittered > 0) ? 0 : jittered;
         }
     }
 }

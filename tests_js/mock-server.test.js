@@ -421,6 +421,26 @@ describe("installMockFetch", () => {
         expect(body.ISL29125.RGB.B).toBe(0.06);
     });
 
+    it("never jitters a non-negative measurement leaf into a negative one", async () => {
+        // The 0.05 absolute floor is sized for readings of order hundreds; on the ISL29125's
+        // normalised 0-1 leaves it is larger than the value itself, so unclamped jitter routinely
+        // produced negatives - a brightness of -0.01 is not a plausible reading and the real site
+        // rendered it verbatim. Math.random pinned to 0 is the most negative jitter there is.
+        const random = vi.spyOn(Math, "random").mockReturnValue(0);
+        try {
+            uninstall = installMockFetch(DEFS, DATA);
+            const body = await (await fetch("/measurements")).json();
+
+            expect(body.ISL29125.RGB.R).toBe(0); // 0.02 - 0.05 would be -0.03, clamped at the sign change
+            expect(body.ISL29125.RGB.G).toBe(0); // 0.03 - 0.05 would be -0.02
+            expect(body.ISL29125.RGB.B).toBe(0); // 0.01 - 0.05 would be -0.04
+            // A value big enough that the floor cannot reach zero is untouched by the clamp.
+            expect(body.ISL29125.Lux).toBe(297); // 300 - 1% of itself
+        } finally {
+            random.mockRestore();
+        }
+    });
+
     it("omits the command-only ISLResetCal from GET readback, as it already does for ContMeas/SGPResetVOC", async () => {
         uninstall = installMockFetch(DEFS, DATA);
         const accepted = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ ISL29125: { ISLResetCal: true } }) });
