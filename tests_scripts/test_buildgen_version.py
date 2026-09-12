@@ -1,8 +1,6 @@
-"""Tests for buildgen.version (BUILD_CHAIN_PLAN.md Session 7): the one source-of-truth pair of
-product-version constants every generated firmware module and every generated definitions.json
-stamps itself with, plus current_build_date() (GET /system's "build" sub-entry). No bump mechanism
-exists (deliberately, per that session's own account) - these tests only prove the two constants
-are well-formed and match the plan's own starting value, and that the date helper is correct."""
+"""Tests for buildgen.version (BUILD_CHAIN_PLAN.md Session 7) - the product-version constants and
+current_build_date() are well-formed and match the plan's own starting values; no bump mechanism
+is assumed to exist (see that session's own account for why)."""
 
 import re
 from datetime import UTC, datetime, timedelta

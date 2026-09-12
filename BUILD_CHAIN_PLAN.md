@@ -1351,6 +1351,20 @@ script quality bar" below, not repeated here.
      the parsed value is genuinely "now" in UTC (bounded against `datetime.now(UTC)` taken
      immediately before/after the call, not just "parses without raising").
 
+   **A second self-review pass, checking this session's own work against CLAUDE.md/SPECIFICATION.md/
+   the build chain plan/test-completeness paragraph by paragraph, found one more real gap**: CLAUDE.md's
+   standing "every module gets exactly one header comment block ... capped at 3 lines" rule was
+   violated by two files this session wrote from scratch — `buildgen/version.py`'s module docstring (8
+   lines) and its `current_build_date()` docstring (4 lines), plus `tests_scripts/test_buildgen_version.py`'s
+   module docstring (5 lines) — missed by the first self-review pass since it was scoped to
+   correctness/coverage, not this formatting rule. Trimmed all three to 3 lines each, keeping the
+   load-bearing facts and pointing at this account for the rest, rather than dropping the detail
+   outright. Everything else checked (endpoint shape vs. A.8/H.5, the mock-server's `applySparsePut()`
+   genuinely leaving `state.systemConfig.build` untouched across a `PUT /system`, every test file's
+   actual content vs. the claims made above) matched with no further discrepancies; `scripts/lint.sh`/
+   `scripts/typecheck.sh` and the full `tests_scripts` suite (1015 passed, 7 skipped) re-ran clean
+   after the fix.
+
    **Verification**: `scripts/lint.sh`/`scripts/typecheck.sh` report zero findings (after the
    `max-args` ratchet above); the full `tests_scripts/` pytest suite (1015 passed - the four fixes
    above added two new tests - 7 pre-existing skips) and the full real-MicroPython-interpreter suite
