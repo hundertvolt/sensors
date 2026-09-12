@@ -16,8 +16,8 @@ two places where the published forms of the same formula disagree in sign and on
 copied matrix has two different "correct" roundings.
 
 **Still specification.** Nothing here is code, and no code is to be written from it until the
-project owner says so — §13's three remaining open questions are inputs to three of the
-functions below (§8 tracks which, and what the resolution pass closed).
+project owner says so. §13's nine questions are all answered now; §8 records each one's effect
+on the function list, and the ten document defects the resolution pass found on the way.
 
 **Status of the numbers in this document.** Every register address, bit position, timing figure
 and register default is from FN8424 Rev 3.00 (`datasheets/isl29125/`), cited inline. Every
@@ -193,16 +193,15 @@ near-identical blocks — they differ only in the field they carry and the `errn
 | T1-T9 | `Isl29125Chip.*` | `digital_twin/_isl29125_chip.py` | new ×9 |
 | T10 | `_wire_i2c_devices()` | `digital_twin/machine.py` | edit |
 | W1 | `resolveFieldValue()` | `js/definitions.js` | edit |
-| W2 | `validateDefinitions()` | `js/definitions.js` | edit — **conditional**: it does not inspect field-level keys today, so `path` is accepted without it; this is optional hardening (plan §8.6) |
+| W2 | `validateDefinitions()` | `js/definitions.js` | edit — validates `path` and `decimals`; the `FieldDef` typedef gains both |
 | W3 | `jitterInPlace()` | `js/mock-server.js` | edit |
 | W4 | `applySensorQuirksForGet()` | `js/mock-server.js` | edit |
-| W5 | `formatFieldValue()` | `js/field-format.js` | edit — **conditional** on §13 q6 landing on option (b) |
+| W5 | `formatFieldValue()` | `js/field-format.js` | edit — honours the `decimals` hint |
 
-Two of those five are marked **conditional**, and the count above includes them. §7.4's
-done-rule reads accordingly: every *unconditional* function has an entry and a `●`, and a
-conditional one acquires the same obligation the moment its question is answered "yes". A
-conditional row that is answered "no" is struck from the inventory in the same edit, so the count
-never silently drifts.
+**All five are unconditional now.** They were briefly two-of-five conditional, on §13 q4 (keep
+the nesting) and q6 (where rounding happens); the project owner has answered both — keep the
+nesting, and rounding is the `decimals` hint — so W1-W5 are required work and every one of them
+carries the usual obligation of an entry in §4 and a `●` in §6.9.
 | H1-H4 | `_main()` in four `tests_hardware/device_scripts/` files | real hardware | new ×4 |
 
 ---
@@ -468,9 +467,10 @@ caveat; recorded here so the choice is visible.
   `sample` → `None`, via an explicit `sample != sample` test, which is the only way to catch it
   before it enters the state.
 - **Downstream**: none.
-- **Upstream**: the gain-ratio learner (R12) and, if §13 q6 lands there, the output filter. Both
+- **Upstream**: the gain-ratio learner (R12) and the output filter in `_store_isl()` (R5). Both
   expect a value they can store as the new `previous` — met, since every non-`None` return is
-  finite.
+  finite. Note the filter is unrelated to output *rounding*: §13 q6 puts that in the renderer, so
+  nothing quantises a value before it enters this function's state.
 - **Done when**: tested for the off path, the seeding path, convergence to a constant input within
   a stated number of steps, the NaN-poisoning case explicitly, and the D.12 matrix. Part G.2's
   catalogue table carries a row for it.
@@ -1695,18 +1695,19 @@ profile's `bus_id == 1` dict, beside `0x61`/`0x59`. Wozi's branch is untouched (
 | # | Function | Change | Failure mode it must not have |
 |---|---|---|---|
 | W1 | `resolveFieldValue()` in `js/definitions.js` | walk an optional `path` array before the flat `key` lookup | a `path` that is present but does not resolve must yield `null` (→ `—`), never `undefined` leaking into `formatFieldValue()` as `"undefined"` |
-| W2 | `validateDefinitions()` in `js/definitions.js` | **conditional (optional hardening)** — validate `path`: array of non-empty strings, only on `readonly` fields. *Accepting* it needs no change: the function does not inspect field-level keys at all today, and `path` is additive so `SUPPORTED_SCHEMA_MAJOR` does not move | silently accepting a malformed `path` and failing in the browser |
+| W2 | `validateDefinitions()` in `js/definitions.js` | validate `path` (array of non-empty strings, `readonly` fields only) and `decimals` (a non-negative integer). *Accepting* either needs no change — the function does not inspect field-level keys at all today, and both are additive so `SUPPORTED_SCHEMA_MAJOR` does not move — but the file's stated contract is to fail loudly rather than in the browser, so they are validated | silently accepting a malformed `path`/`decimals` and failing in the browser |
 | W3 | `jitterInPlace()` in `js/mock-server.js` | recurse one level deeper than the two `jitterEachSensorGroup()` walks today | mangling or skipping the third level, which shows as a static nested value |
 | W4 | `applySensorQuirksForGet()` in `js/mock-server.js` | omit `ISLResetCal` from GET readback, as it already does for `ContMeas`/`SGPResetVOC` | a command field echoing back a value and looking persisted |
-| W5 | `formatFieldValue()` in `js/field-format.js` | **conditional on §13 q6** — honour an optional `decimals` hint instead of ending at `String(value)` | a hue rendered as `217.43859649122808` |
+| W5 | `formatFieldValue()` in `js/field-format.js` | honour an optional `decimals` hint instead of ending at `String(value)`: after the `null`/`mask`/`enum`/`format` branches, `typeof value === "number" && Number.isFinite(value)` → `value.toFixed(field.decimals)`. Numbers only, so a string or a struct is untouched | a hue rendered as `217.43859649122808`; a `toFixed()` on a non-number throwing inside the renderer |
 
-W1, W3 and W4 are required by requirement 11 and are not optional. W2 and W5 are the two
-conditional rows §1.5 marks: W2 because field-level validation does not exist yet and adding it
-is a separate (worthwhile) decision, W5 because requirement 19's *mechanism* is §13 q6 — the
-per-field precision itself is already decided, in plan §8.4's table. The recommendation stays
-option (b), and two facts found since support it: `formatFieldValue()` already dispatches on a
-display-only hint (`format: "gmtimestruct"`), and `js/mock-server.js` already rounds its own
-jitter to two decimals, so the renderer is currently the only layer that does not round.
+W1-W4 realise requirement 11 and W5 realises requirement 19; none of them is optional any more
+(§13 q4 and q6 are both answered). Two notes that shape W5's implementation:
+`formatFieldValue()` already dispatches on a display-only hint (`format: "gmtimestruct"`), so
+`decimals` is a sibling of something that exists rather than a new concept; and
+`js/mock-server.js` already rounds its own jitter to two decimals, so after this change the mock
+and the renderer finally agree instead of the mock being the only thing that rounds. The driver
+keeps full precision — no `src/` file rounds an output, and this change is what lets that stay
+true.
 
 Per Part G's `src/`↔`js/` mirror obligation, each of these lands with its `tests_js/`
 counterpart in the same commit (§6.6).
@@ -2005,11 +2006,12 @@ produced real data under concurrent load" assertions. `scripts/_digital_twin_ci_
 
 | File | Case |
 |---|---|
-| `definitions.test.js` | `path` resolution; validation of a malformed `path`; **plus the gap §11.8 found — run `validateDefinitions()` against `html/definitions/dev.json`, which nothing does today** |
+| `definitions.test.js` | `path` resolution; validation of a malformed `path` and a malformed `decimals`; **plus the gap §11.8 found — run `validateDefinitions()` against `html/definitions/dev.json`, which nothing does today** |
 | `templates.test.js` | a nested readonly field renders its value, not `[object Object]` |
+| `templates.test.js` (again) | the `decimals` hint — `formatFieldValue()` has no test file of its own; `templates.test.js` is where it is covered today, so the new cases go there rather than in a new file: a hue at 1 dp, a CCT at 0 dp, `null` still `—`, a non-number value passed through untouched, and a field with no `decimals` unchanged from today's behaviour (so the other three sensors cannot regress) |
 | `render.test.js` | change-comparison for `path`-bearing fields; `ISLResetCal` always resubmitted (`dispatch`) |
 | `mock-server.test.js` | deeper jitter; `ISLResetCal` omitted from GET |
-| `mock-server-put-matrix.test.js` | **automatic, not optional** — it already iterates every writable field in both shipped devices, so the skip logic must stop treating dev as a duplicate of wozi and `mockdata/dev.json` must carry a valid current value for every ISL field |
+| `mock-server-put-matrix.test.js` | **automatic, not optional** — it already iterates every writable field in both shipped devices and its `DEV_UNIQUE_GROUPS` already contains `"ISL29125"`, so no filter logic changes: the filter starts matching, its "currently matches zero of dev's real groups" comment goes stale and must be rewritten, and `mockdata/dev.json` must carry a valid current value for every ISL field |
 
 ### 6.6 Tier 4 — flash (real hardware, dev bench, owner go-ahead)
 
@@ -2143,32 +2145,35 @@ Not a schedule, a dependency order. Several of these are only discoverable by ge
 
 ### 7.4 The definition of done for the whole promotion
 
-Everything in §14.5, unchanged, plus the one line this document adds: **every unconditional
-function in §1's inventory has an entry in §4 and at least one `●` in §6.9's matrix.** A function
-that appears in the code but in neither is either undiscovered scope or dead code, and both are
-findings. The two rows §1.5 marks **conditional** (W2, W5) are exempt until their question is
-answered: answered "yes" they acquire the same obligation, answered "no" they are struck from the
-inventory and the count in §1 moves with them — never left in place as an entry nothing has to
-satisfy.
+Everything in §14.5, unchanged, plus the one line this document adds: **every function in §1's
+inventory has an entry in §4 and at least one `●` in §6.9's matrix.** A function that appears in
+the code but in neither is either undiscovered scope or dead code, and both are findings. The
+rule holds without exception now that §13 q4 and q6 are answered — W2 and W5 were briefly
+conditional and are not; a row that a decision ever strikes is removed from the inventory in the
+same edit, with the count in §1, rather than left in place as an entry nothing has to satisfy.
 
 ---
 
-## 8. Questions this layer inherits, and what the resolution pass closed
+## 8. The questions this layer inherited, and what each one settled
 
-Plan §13 now carries nine questions, of which **six are closed** and three remain the project
-owner's call. Their effect on *this* document:
+Plan §13's nine questions are **all answered** — six by research, three by the project owner.
+Their effect on this document:
 
-| §13 | Status | Effect on the function list |
+| §13 | Answer | Effect on the function list |
 |---|---|---|
-| q1 `CONFIG1` restart | **closed — yes** (Table 7 + the Linux IIO driver's `msleep(101)`, §5.3) | P7's settle deadline and R11 are now justified rather than merely conservative; H3 can still measure it, but nothing waits on the answer |
-| q2 `PRST` units | **closed — RGB cycles** (`INTSEL` selects one channel; it converts once per cycle) | `AutoRangePersist`'s help text states a real time constant; no structural effect |
-| q3 missing app notes | **closed as unobtainable, and no longer load-bearing** | P15's 12-bit cycle time is derived from the datasheet's own oscillator/counter model, not from a missing note; M2's matrix is a placeholder *by the datasheet's own statement*, not for want of one |
-| q4 keep the nesting | open — owner's call | if "no", W1-W3 disappear and `get_dict_data()` stops being an override. Still the single largest structural swing here, but cheaper than costed: W2 is optional either way (§1.5) |
-| q5 `mockdata/dev.json` orphans | open — owner's call, recommendation now **leave them** | no function effect |
-| q6 output rounding | open — owner's call, recommendation still (b) | decides whether W5 exists. **Specified so it is one change either way**: the driver emits full precision today and the seam is a single call site. The per-field precision itself is no longer open — plan §8.4's table fixes it |
-| q7 `fram=` vs `fram_storage=` | **closed — `fram=`** (the base class's own parameter name; SGP40 forwards to it anyway) | R1's keyword is settled |
-| q8 twin CI suite dev leg | **closed — no** (the suite names `run_wozi_integration.py` in seven places) | no function effect; §6.4 assumes "no" and records the asymmetry |
-| q9 `Range` vs `RangeAct` | **closed — `RangeAct`** | the namedtuple's ninth field, the nested response body, and the definitions entry. R5's box carries the reasoning |
+| q1 `CONFIG1` restart | **yes** (Table 7 + the Linux IIO driver's `msleep(101)`, §5.3) | P7's settle deadline and R11 are justified rather than merely conservative; H3 can still measure it, but nothing waits on the answer |
+| q2 `PRST` units | **RGB cycles** (`INTSEL` selects one channel; it converts once per cycle) | `AutoRangePersist`'s help text can state a real time constant; no structural effect |
+| q3 missing app notes | **unobtainable, and no longer load-bearing** | P15's 12-bit cycle time derives from the datasheet's own oscillator/counter model; M2's matrix is a placeholder *by the datasheet's own statement*, not for want of a note |
+| q4 keep the nesting | **yes** (project owner) | W1-W3 stay, `get_dict_data()` stays an override, and the largest structural swing in this document is closed in the direction it was written for |
+| q5 `mockdata/dev.json` orphans | **leave them** (project owner) | no function effect |
+| q6 output rounding | **option (b)** — a `decimals` hint (project owner) | W5 is unconditional; the driver still rounds nothing, so `_store_isl()` needs no `_quantise()` seam and all four drivers stay identical |
+| q7 `fram=` vs `fram_storage=` | **`fram=`** (the base class's own parameter name) | R1's keyword is settled |
+| q8 twin CI suite dev leg | **no** (the suite names `run_wozi_integration.py` in seven places) | no function effect; §6.4 assumes "no" and records the asymmetry |
+| q9 `Range` vs `RangeAct` | **`RangeAct`** | the namedtuple's ninth field, the nested response body, and the definitions entry. R5's box carries the reasoning |
+
+One further decision came out of the same round and is **not** from §13: the auto-range software
+decision uses the **peak of the three channels** in both directions rather than green alone
+(R9's box). Proposed here, confirmed by the project owner.
 
 ### What the resolution pass changed in this document, and why
 

@@ -4,7 +4,8 @@ Temporary working doc for the `python/IndividualDrivers/asy_isl29125_driver.py` 
 promotion, following CLAUDE.md's step-session workflow. §1-§5 are the audit of the existing driver
 against the real datasheet; §6 records the requirements the project owner has since settled, §7-§9
 the design notes written against them, §10 the bench rig, §11 the full integration map, §12 the
-prerequisites and standing obligations, §13 the questions still open, and §14 the quality bar.
+prerequisites and standing obligations, §13 every question that was open and how it was
+answered, and §14 the quality bar.
 
 **Companion document**: [`ISL29125_FUNCTION_SPEC.md`](ISL29125_FUNCTION_SPEC.md) takes the
 decisions below down to the level of individual functions — which function, in which file, its
@@ -461,9 +462,11 @@ time round):
     emit one or two derived floats each. This driver emits eight, six of them normalised or
     angular, so a hue of `217.43859649122808` would go straight to the page. The *requirement* is
     that the precision is a decided, tested property of each field rather than an artefact of
-    binary floating point; **where** the rounding happens is §13's question 6, because doing it in
-    the driver diverges from the other three and is therefore a discrepancy to raise, not to fix
-    quietly.
+    binary floating point. **Both halves are now settled**: the values are §8.4's
+    units-and-precision table, and *where* the rounding happens was §13 question 6, decided by
+    the project owner as option (b) — a `decimals` hint on the readonly field, honoured by
+    `formatFieldValue()`. The driver rounds nothing, so all four drivers stay identical to each
+    other.
 20. **Construction and `setup()` must complete on a bus where the chip never answers.** Not a
     restatement of 16: 16 is about a chip that is present and misbehaving, this is about one that
     is absent for the whole run. It is not hypothetical — `tests/test_sensortask_dev.py` builds
@@ -632,7 +635,8 @@ revision ran them together:
 - **The hardware fast path is green, and only green** — `INTSEL` has one channel and §8.3 declines
   to make it selectable, because green is both the photopic proxy and the basis of the reported
   lux.
-- **The software decision is the maximum of the three channels.** Requirement 17's periodic
+- **The software decision is the maximum of the three channels** — proposed by the resolution
+  pass and **confirmed by the project owner**. Requirement 17's periodic
   evaluation has all three counts in hand, and the output is a *colour* triple: a clipped red with
   green at 40 % of full scale still destroys `Hue`, `Sat` and `CCT`. Deciding on green alone would
   leave that scene un-ranged, and the §10 NeoPixel rig drives exactly it (a saturated primary).
@@ -1104,8 +1108,8 @@ a gap at 64-105, so no single contiguous range can express it honestly. Its help
 
 Requirement 19 asks that each emitted value carries a *declared* unit and a *declared* precision.
 The units below go in `html/definitions/dev.json`'s `unit` field; the decimals are the rendering
-precision §13 question 6 decides the mechanism for. Either way the numbers are decided here
-rather than falling out of binary floating point:
+precision is carried by the `decimals` hint §13 question 6 settled. The numbers are decided
+here rather than falling out of binary floating point:
 
 | Field | Unit | Decimals | Why that many |
 |---|---|---|---|
@@ -1184,8 +1188,9 @@ part of the cost of the decision. The schema's major version does not move eithe
 additive, and `SUPPORTED_SCHEMA_MAJOR` gates only the major).
 
 The alternative — flattening the output to `R`/`G`/`B`/`Hue`/`Sat`/`Bri` — costs nothing but gives
-up requirement 11. Recommendation: keep the nesting and make the small renderer change, since
-`path` is generally useful and every future structured reading gets it for free.
+up requirement 11. **Decided by the project owner: keep the nesting and make the renderer
+change** (§13 q4), since `path` is generally useful and every future structured reading gets it
+for free.
 
 Proposed response body:
 
@@ -1427,7 +1432,8 @@ spells its FRAM argument `fram_storage=`, while `BMP3xx_Reader`/`SCD30_Reader`/`
 it to the base class *as* `fram=`. The ISL is the first driver since to need both a FRAM-backed
 error log and a chunk of its own, so it is the first to have to pick a side. Part D.10 (API
 consistency across the project) makes this a real finding, and CLAUDE.md's "report a discrepancy,
-do not silently fix it" makes it the project owner's call, not this document's: §13 question 7.
+do not silently fix it" made it the project owner's call, not this document's: §13 question 7,
+answered `fram=` with `SGP40_Reader` left exactly as it is.
 
 **The FRAM chunk position is a hard constraint, not a style choice.** `AsyFramManager` is a bump
 allocator: instantiation order *is* on-chip layout, and Part A.7 records the seven-chunk order as
@@ -1506,13 +1512,13 @@ point 9 makes mandatory in the same session as the promotion.
 | File | What |
 |---|---|
 | `html/definitions/dev.json` | **The single place the website learns about a sensor.** Its `status`→`errcount` group carries an explicit 17-entry `modules[]` list, which becomes **19**. `measurements` → a new `ISL29125` group (`Lux`, the nested RGB and HSB fields, `CCT`, `RangeAct`, `TS`), each with the `unit` and rendering precision §8.4's table fixes. `sensors` → a new `ISL29125` group with all 13 config fields: `enum` for `Resolution`/`Range`/`AutoRangePersist`/`IrCompOffset`, `number` (`float: true` where fractional) for the rest, `toggle` for `RangeAuto`, and `toggle` + `dispatch: true` + `defaultValue` for `ISLResetCal`. `status` → `sensors` group gains the two maintenance keys. |
-| `js/definitions.js` | `resolveFieldValue()` learns the optional `path` walk; `validateDefinitions()` accepts/validates it. Required by requirement 11 — see §8.6's correction. |
+| `js/definitions.js` | `resolveFieldValue()` learns the optional `path` walk; `validateDefinitions()` validates `path` and `decimals`; the `FieldDef` typedef gains both keys. Required by requirement 11 (`path`) and requirement 19 (`decimals`) — see §8.6 and §13 q4/q6. Note *accepting* either key needs no validator change (it does not inspect field-level keys today) and the schema major stays 1; the validation is added because the file's own contract is to fail loudly on a malformed definitions file rather than in the browser. |
 | `js/mock-server.js` | `jitterInPlace()`/`jitterEachSensorGroup()` recurse one level deeper; `applySensorQuirksForGet()` omits `ISLResetCal` the way it already omits `ContMeas`/`SGPResetVOC`. |
 | `js/render.js` | **Added by the second pass.** Two places touch the shapes this driver introduces. `groupValuesFrom()` hands the whole `data[group.key]` object to the renderer for `measurements`, which is what makes the `path` walk in `definitions.js` sufficient rather than needing a second unwrap here — **verified, no change**. Its `status`/`sensors` branch is the `<Sensor>_<Field>` flattener the maintenance keys must match (§11.1) — also no change, but the naming is not free. Its `collectGroupBody()` PUT path only ever sees the flat `sensors` group, so nesting never reaches it. |
-| `js/field-format.js` | **Added by the second pass, and it carries a real question.** `formatFieldValue()` handles `null` already (renders `—`), so a `None` CCT is fine with no change. But every numeric field ends at a bare `String(value)`, and no driver in `src/` rounds anything — so eight unrounded floats per reading would render at full binary precision. This is requirement 19, and §13's question 6 decides where the rounding lives. |
+| `js/field-format.js` | **Added by the second pass; the question it carried is now decided.** `formatFieldValue()` handles `null` already (renders `—`), so a `None` CCT is fine with no change. But every numeric field ends at a bare `String(value)`, and no driver in `src/` rounds anything — so eight unrounded floats per reading would render at full binary precision. **§13 q6 lands on option (b)**: honour an optional `decimals` hint — a sibling of the existing `format: "gmtimestruct"` dispatch — applied to numbers only, after the `null`/`mask`/`enum` branches and before the final `String(value)`. The drivers keep full precision and stay identical to each other; the per-field values are §8.4's table. All four sensors can adopt it later at the cost of one key each. |
 | `js/templates.js` | The `readonly` kind is the only one these fields use and it renders through `formatFieldValue()` — **verified, no change**, provided `resolveFieldValue()` has already resolved the `path`. |
 | `js/app.js`, `js/main.js` | **Verified, no change.** `app.js`'s `KNOWN_DEVICES` already contains `"dev"`; `main.js` is the production entry and has no device switch at all. |
-| `mockdata/dev.json` | Replace the **stale legacy `ISL29125` blocks that are already there** — `measurements` still carries raw `Red`/`Green`/`Blue` counts, `sensorsConfig` still carries the ten `OperationMode`/`Interrupt*` keys §8.1 deletes. `status.errcount` already lists `ISL29125` and `CFGMGR_ISL29125`, so that part is done; `status.sensors` needs the two new maintenance keys. **Not optional** — `tests_js/mock-server-put-matrix.test.js` reads this file and `html/definitions/dev.json` together and generates a case per writable field, so a definitions entry with no matching mock value is a failing test, not a cosmetic gap (§11.8). (It also carries orphan `SHTC3`/`MPRLS` entries for sensors the refactored dev does not have — §13 question 5.) |
+| `mockdata/dev.json` | Replace the **stale legacy `ISL29125` blocks that are already there** — `measurements` still carries raw `Red`/`Green`/`Blue` counts, `sensorsConfig` still carries the ten `OperationMode`/`Interrupt*` keys §8.1 deletes. `status.errcount` already lists `ISL29125` and `CFGMGR_ISL29125`, so that part is done; `status.sensors` needs the two new maintenance keys. **Not optional** — `tests_js/mock-server-put-matrix.test.js` reads this file and `html/definitions/dev.json` together and generates a case per writable field, so a definitions entry with no matching mock value is a failing test, not a cosmetic gap (§11.8). (It also carries orphan `SHTC3`/`MPRLS` entries for sensors the refactored dev does not have. **§13 q5 is decided: leave them** — `tests_js/mock-server-put-matrix.test.js`'s `DEV_UNIQUE_GROUPS` keeps the same two names under the project owner's 2026-09-08 direction, and these blocks are the data half of that placeholder.) |
 | `html/index.html`, `html/style.css` | Nothing — both are generic; a `.composite-fields`-style rule is only needed if the `path` change introduces new markup, which it should not. |
 | `html_raw/dev/*` | **Non-target.** `SPECIFICATION.md` (Part H.1) records legacy `html_raw/` as deliberately not updated — accepted debt. |
 | `html/definitions/wozi.json`, `mockdata/wozi.json` | **Non-targets.** |
@@ -1541,7 +1547,7 @@ point 9 makes mandatory in the same session as the promotion.
 | File | What |
 |---|---|
 | `tests_js/definitions.test.js` | The `path` resolution and its validation. |
-| `tests_js/templates.test.js` | A nested readonly field renders its value, not `[object Object]`. |
+| `tests_js/templates.test.js` | A nested readonly field renders its value, not `[object Object]`; and the `decimals` hint — `formatFieldValue()` has no test file of its own and is covered here today, so the rounding cases go here too (a hue at 1 dp, a CCT at 0 dp, `null` still `—`, a non-number untouched, and a field with no `decimals` behaving exactly as now, so the other three sensors cannot regress). |
 | `tests_js/render.test.js` | Change-comparison still works for `path`-bearing fields; `ISLResetCal` is always resubmitted (`dispatch`). |
 | `tests_js/mock-server.test.js` | Deeper jitter; `ISLResetCal` omitted from GET readback. |
 | `tests_js/mock-server-put-matrix.test.js` | **Corrected: not an optional new case — an automatic one.** It already imports `html/definitions/dev.json` and `mockdata/dev.json` and builds a case per writable field in *both* shipped devices, keeping dev's through `DEV_UNIQUE_GROUPS`, a set that **already contains `"ISL29125"`**. Its own header says the mechanism is kept "for when dev gains its own unique sensor(s) later" — this is that sensor. So no filter logic changes: what changes is that the filter starts matching, its header comment ("currently matches zero of dev's real groups") goes stale and must be rewritten, and `mockdata/dev.json` must carry a valid current value for every ISL field or the generated cases fail. |
@@ -1629,7 +1635,7 @@ integration row with no requirement behind it) is the note after it.
 | 16 self-healing, never stale | driver · twin fake must model `BOUTF` and the destructive `0x08` read · unit tests | yes |
 | 17 auto-range not INT-alone | driver's periodic path · unit tests both paths · **and a twin fault mode that suppresses the edge**, which the second pass found nothing provides (§11.5) | now yes |
 | 18 dev only | every `wozi` row marked non-target; `tests/test_sensortask_wozi.py`'s seven-chunk and three-sensor assertions must stay untouched | yes |
-| 19 declared unit and precision | **§8.4's units-and-precision table** (the values themselves) · §11.6 `field-format.js` · definitions `unit` metadata · §13 question 6 decides only *where* the rounding happens | values now decided; mechanism still q6 |
+| 19 declared unit and precision | **§8.4's units-and-precision table** (the values) · §11.6 `field-format.js`'s `decimals` hint (the mechanism, §13 q6 option (b)) · definitions `unit` + `decimals` metadata · `tests_js/` mirror | yes |
 | 20 constructs on an absent chip | §11.7 `tests/test_sensortask_dev.py` (the generic mock has no ISL registers) | yes |
 
 **Backwards.** Three integration rows exist for reasons no requirement states, and that is
@@ -1676,82 +1682,74 @@ requirement:
   `src/asy_i2c_driver.py` — which exposes the same four-operation API — carries no attribution at
   all. By the standard already applied to `asy_fram_driver.py` it may warrant a similar note.
 
-## 13. What is still open
+## 13. What was open, and how each was answered
 
-Nine questions have been raised across this document and its companion (q9 is the function spec's
-own, recorded here because §13 is where the list lives). **Five are now closed by research**, one
-is closed as unobtainable-and-no-longer-load-bearing, and **three remain the project owner's
-call** — each of those three because it changes a file this promotion does not otherwise own,
-which is exactly CLAUDE.md's "report it, do not silently fix it" line.
+**Nothing in this document is open any more.** Nine questions were raised across it and its
+companion; six were closed by research and the remaining three by the project owner directly.
+They are kept here, with their evidence, so that none of them is reopened by a later reader who
+only sees the conclusion.
 
-### Still open — decisions, not research
+### Answered by the project owner
 
-4. **Should the nested measurement output keep its nesting, at the cost of a small `path`
-   extension to the website renderer?** (§8.6's correction, §11.6.) Recommended **yes**;
-   flattening to `R`/`G`/`B`/`Hue`/`Sat`/`Bri` is the alternative and gives up requirement 11.
-   *Cheaper than first costed*: `validateDefinitions()` turns out not to inspect field-level keys
-   at all, so `path` needs no validator change to be accepted and the schema major version does
-   not move (§8.6). The change is `resolveFieldValue()` + `jitterInPlace()` + tests.
-5. **Should `mockdata/dev.json`'s orphan `SHTC3`/`MPRLS` blocks be removed** in the same pass?
-   (§11.6.) **Recommendation has changed to no, leave them**, on evidence found since:
-   `tests_js/mock-server-put-matrix.test.js:18-23` keeps `DEV_UNIQUE_GROUPS =
-   {"SHTC3", "MPRLS", "ISL29125"}` under an explicit **project-owner direction dated 2026-09-08**
-   — *"keep this mechanism as-is for when dev gains its own unique sensor(s) later, not to prune
-   it now."* The mock blocks are the data half of that same placeholder, they generate no test
-   cases while no definitions entry names them, and removing them would leave two of the three
-   names in that set pointing at nothing. Still the owner's call, but the default should now be
-   inaction. (The stale `ISL29125` blocks in the same file are **not** part of this question —
-   those are replaced either way, §11.8.)
-6. **Where does output rounding happen — or does it happen at all?** No driver in `src/` rounds
-   any output, and `formatFieldValue()` ends in a bare `String(value)`. Three options: (a) the ISL
-   rounds its own derived outputs, which diverges from the other three drivers; (b) a `decimals`
-   hint is added to the readonly `FieldDef` and `field-format.js` honours it, which fixes every
-   sensor at once and is a website change rather than a driver one; (c) accept full precision on
-   the page. Recommendation is still **(b)**, and two facts found since make it stronger:
-   `formatFieldValue()` already dispatches on a display-only hint (`format: "gmtimestruct"`), so
-   `decimals` is a sibling of something that exists rather than a new concept; and
-   `js/mock-server.js`'s own jitter already quantises to two decimals, so the renderer is
-   currently the *only* layer that does not round. §8.4's units-and-precision table decides the
-   per-field numbers regardless of which option is chosen — that half of requirement 19 is no
-   longer open.
+4. **Keep the nested measurement output** — yes. `RGB` and `HSB` stay sub-objects (requirement
+   11), and the website gains the optional `path` walk (§8.6). Cheaper than first costed:
+   `validateDefinitions()` does not inspect field-level keys, so `path` is *accepted* with no
+   validator change and `SUPPORTED_SCHEMA_MAJOR` does not move; the validation is added anyway,
+   because that file's contract is to fail loudly rather than in the browser.
+5. **Leave `mockdata/dev.json`'s orphan `SHTC3`/`MPRLS` blocks alone.** They are the data half of
+   the placeholder `tests_js/mock-server-put-matrix.test.js` keeps in `DEV_UNIQUE_GROUPS` under
+   the owner's own 2026-09-08 direction — *"keep this mechanism as-is for when dev gains its own
+   unique sensor(s) later, not to prune it now."* They generate no test cases while nothing in
+   the definitions names them. (The stale `ISL29125` blocks in the same file are a different
+   matter and are replaced either way, §11.8.)
+6. **Rounding is option (b)**: a `decimals` hint on the readonly field, honoured by
+   `formatFieldValue()`. The driver rounds nothing, so all four drivers stay identical to each
+   other, and the fix is available to the other three for one key each. The per-field values are
+   §8.4's units-and-precision table. Two things make (b) the cheap option in practice:
+   `formatFieldValue()` already dispatches on a display-only hint (`format: "gmtimestruct"`), and
+   `js/mock-server.js` already rounds its own jitter to two decimals — the renderer is currently
+   the only layer that does not round.
 
-### Closed during this pass, with the evidence
+**One more decision, made in the same round**: the auto-range software decision uses the **peak
+of the three channels** in both directions, not green alone (§7.6). Proposed by the resolution
+pass, confirmed by the project owner.
 
-1. **Does a `CONFIG1` write restart the conversion cycle? — yes.** Table 7 (p10) says "ADC start
-   at I2C write 0x01" for `SYNC` = 0, and the mainline Linux IIO driver
+### Answered by research
+
+1. **A `CONFIG1` write does restart the conversion cycle.** Table 7 (p10) gives "ADC start at I2C
+   write 0x01" for `SYNC` = 0, and the mainline Linux IIO driver
    (`drivers/iio/light/isl29125.c`) writes the mode byte and then unconditionally `msleep(101)`,
    one whole `tINT`, before reading — which is only sensible under that reading. §7.6 records
-   both. A bench check could only ever *remove* a wait, so this no longer gates anything.
-2. **Does `PRST` count channel integrations or full RGB cycles? — RGB cycles.** Not from new
-   wording but from `INTSEL`: the comparison is made against one selected channel, which converts
-   once per cycle, so consecutive interrupt conditions can only accumulate at one per cycle
-   (§7.6). Worst case if a bench run disagrees is that hardware rejection is 3× faster than
-   documented, which is safe up and irrelevant down.
+   both. A bench check could only ever *remove* a wait.
+2. **`PRST` counts full RGB cycles**, not channel integrations. Not from new wording but from
+   `INTSEL`: the comparison is made against one selected channel, which converts once per cycle,
+   so consecutive interrupt conditions can only accumulate at one per cycle (§7.6). Worst case if
+   a bench run disagrees is that hardware rejection is 3× faster than documented — safe up,
+   irrelevant down.
 3. **AN1910, AN1914, AN1591 and the Renesas "ISL29125 CCT calculation" note remain
-   unobtainable** — `renesas.com` is blocked by this session's egress proxy (retried this pass and
-   refused at the proxy, not by the site), and no mirror carries Intersil application notes; the
-   "AN1910" hits on other vendors' sites are unrelated documents of the same number. **Both things
-   it was wanted for are now settled without it**: the 12-bit cycle time is derived from p6's own
-   "internal oscillator and the n-bit (n = 12, 16) counter" statement rather than by analogy
-   (§7.2), and the CCT matrix cannot come from a vendor note at all — p13 states the coefficients
-   *"will be changed respectively depending on the system setup"*, so a placeholder plus a
-   calibration hook is the only honest shape (§7.11, §8.3). Downgraded from a gate to a
-   nice-to-have.
-7. **`fram_storage=` or `fram=`? — `fram=`.** `SensorReaderConfig.__init__`'s own parameter is
-   spelled `fram` (`base_classes.py:157`, `:252`); BMP3xx and SCD30 pass `fram=`; `SGP40_Reader`
-   is 1 of 4 and forwards it as `fram=fram_storage` (`asy_sgp40_driver.py:85`) — so even the
-   outlier reaches the base class under the majority spelling. The "it needs both a log and a
-   chunk, hence the different name" theory does not survive that line. `SGP40_Reader` keeps its
-   spelling; nothing in `src/` changes.
-8. **Should the twin CI suite grow a dev leg? — no, not in this promotion.** Confirmed:
+   unobtainable** — `renesas.com` is blocked by this session's egress proxy (retried and refused
+   at the proxy, not by the site), no mirror carries Intersil application notes, and the other
+   "AN1910" hits are NXP's and Microchip's unrelated documents of the same number. **Both things
+   they were wanted for are settled without them**: the 12-bit cycle time derives from p6's own
+   *"internal oscillator and the n-bit (n = 12, 16) counter"* statement (§7.2), and the CCT
+   matrix cannot come from a vendor note at all, since p13 says the coefficients *"will be
+   changed respectively depending on the system setup"* (§7.11, §8.3). Downgraded from a gate to
+   a nice-to-have.
+7. **`fram=`.** `SensorReaderConfig.__init__`'s own parameter is spelled `fram`
+   (`base_classes.py:157`, `:252`); BMP3xx and SCD30 pass `fram=`; `SGP40_Reader` is 1 of 4 and
+   forwards it as `fram=fram_storage` (`asy_sgp40_driver.py:85`), so even the outlier reaches the
+   base class under the majority spelling. `SGP40_Reader` keeps its own spelling; nothing in
+   `src/` changes.
+8. **No dev leg for the twin CI suite, not in this promotion.**
    `scripts/_digital_twin_ci_suite.py` names `run_wozi_integration.py` in seven places, including
    its subprocess command line, its banner matching and its SIGINT handling — parametrising it is
-   a harness rewrite, not a flag. The dev runner plus `tests/test_digital_twin_run_dev_integration.py`
-   cover the same ground for this sensor. Record the asymmetry in `BACKLOG.md` at promotion time,
-   because the next dev-only device inherits the hole.
-9. **`Range` as both a config and a measurement field — resolved as `RangeAct`** (§8.4). The
-   measurement field is renamed and its semantics pinned to "the range the *reported sample* was
-   taken on", which is what the sample-carried range in the results tuple now makes available.
+   a harness rewrite, not a flag. The dev runner plus
+   `tests/test_digital_twin_run_dev_integration.py` cover the same ground for this sensor. Record
+   the asymmetry in `BACKLOG.md` at promotion time, because the next dev-only device inherits the
+   hole.
+9. **The measurement field is `RangeAct`** (§8.4), its meaning pinned to "the range the *reported
+   sample* was taken on" — which is what the sample-carried range in the results tuple makes
+   available. The config field keeps `Range`.
 
 Closed earlier and recorded so they are not reopened: `CCT` is in (requirement 13); the
 auto-range tuning surface is settled and the rejected knobs are listed with reasons (§8.3); the
