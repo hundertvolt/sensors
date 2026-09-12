@@ -19,6 +19,8 @@ if TYPE_CHECKING:
     from collections.abc import Coroutine
     from typing import Any, Protocol, TypeVar
 
+    from crc_checks import CRC_Base
+
     T = TypeVar("T")
 
     # Every protocol callback is (cmd_id) -> (valid, value), sync or async, so the result is either
@@ -50,10 +52,15 @@ class Pair:
         timeout: int = TIMEOUT_MS,
         get_callback: "CommCallback | None" = None,
         set_callback: "CommCallback | None" = None,
+        crc_a: "CRC_Base | None" = None,
+        crc_b: "CRC_Base | None" = None,
         **comm_kwargs: "Any",
     ) -> None:
-        self.driver_a = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS)
-        self.driver_b = UART(1, tx_pin=8, rx_pin=9, poll_wait_ms=POLL_WAIT_MS)
+        # crc_a/crc_b are per-bus, not per-Comm: the CRC sits on the UART object below the protocol
+        # and is invisible to it (SPECIFICATION.md Part J). Both ends must agree, so a test that
+        # passes only one models a mismatched pair rather than a protected link.
+        self.driver_a = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS, crc=crc_a)
+        self.driver_b = UART(1, tx_pin=8, rx_pin=9, poll_wait_ms=POLL_WAIT_MS, crc=crc_b)
         self.fake_a = fake_of(self.driver_a)
         self.fake_b = fake_of(self.driver_b)
         self.link = UARTLink(self.fake_a, self.fake_b)

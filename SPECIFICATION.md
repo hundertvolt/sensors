@@ -2803,8 +2803,24 @@ full quiet window exactly as a resync does.
 `payload_size` and `timeout` are **agreed out of band and must match on both ends** — nothing is
 negotiated, now or at the C reconciliation (owner decision, 2026-09-11). A mismatched pair is
 therefore *diagnosed*, never recovered: bytes keep arriving while not one frame ever validates, and
-the module logs that signature naming all three candidates (CRC algorithm, baud rate,
-`payload_size`) rather than guessing one. `payload_size` must be in `1 … 255` (`SIZE`/`CHUNKS` are single bytes; a zero-width
+the module logs that signature (`errno` 32) naming all three candidates (CRC algorithm, baud rate,
+`payload_size`) rather than guessing one.
+
+**That diagnostic has a known blind spot, accepted rather than fixed** (owner decision,
+2026-09-12). `_resync()` gates it on `drained and self._valid_frames == 0`, but `drained` counts
+only what `_drain()` finds *after* a failure — and `readinto_until_complete()` has already consumed
+the short frame's bytes while waiting for a full-length one, discarding them on timeout. Measured
+against a genuinely `payload_size`-mismatched peer: `drained == 0` at every one of five resyncs, so
+`errno` 32 never fires. **What errno 32 does still catch is unparseable bytes arriving while this
+side is not mid-read** — a peer spewing continuously onto an idle line, which is the shape a bad
+baud rate often takes. **What it misses is a speak-when-spoken-to peer**, where every stray byte is
+swallowed by the failing read: that presents as repeated `errno` 22 (read timeout) plus `wrnno` 10
+resync warnings, and *that* is the signature to look for at the C reconciliation. Closing the gap
+would mean either giving `asy_uart_driver.UART` a flag that exists solely for this layer to read,
+or changing `readinto_until_complete()`'s sentinel contract to return a partial count for every
+caller — both more coupling than a logging line is worth. `tests/test_uart_comm_hazard.py`'s
+`..._a_peer_that_never_produces_a_valid_frame_is_diagnosed` pins the current behaviour, so it
+inverts the day anyone does change it. `payload_size` must be in `1 … 255` (`SIZE`/`CHUNKS` are single bytes; a zero-width
 payload has no room for the command ID). A mismatch desyncs the link outright, so an out-of-range
 value must never be silently clamped — C.13's readiness-gate treatment instead. Maximum transferable
 payload is `(0xFF - 1) × payload_size`.

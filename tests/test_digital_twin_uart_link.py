@@ -33,6 +33,7 @@ except ImportError:  # typing isn't available on the real MicroPython test inter
 
 if TYPE_CHECKING:
     from collections.abc import Coroutine
+    from types import ModuleType
     from typing import Any, TypeVar
 
     T = TypeVar("T")
@@ -393,8 +394,8 @@ def test_the_link_survives_sustained_allocation_pressure() -> None:
         try:
             out = []
             for _ in range(10):
-                # noqa: MicroPython has no `await` inside a comprehension, so ruff's suggested
-                # rewrite does not compile on the target interpreter at all.
+                # The suppression below: MicroPython has no `await` inside a comprehension, so
+                # ruff's suggested rewrite does not compile on the target interpreter at all.
                 out.append(await exchange(initiator.uart_set(0x02, bytes(200))))  # noqa: PERF401
             return out
         finally:
@@ -405,6 +406,75 @@ def test_the_link_survives_sustained_allocation_pressure() -> None:
     results = run(scenario(), limit=180)
     assert all(isinstance(r, bool) for r in results), "a transfer returned something other than its documented bool"
     assert any(results), "every transfer failed under allocation pressure - the link did not degrade, it stopped"
+
+
+def _hammer_with_the_graph_running(threshold: int) -> None:
+    # The combined case: the link hammered flat out while the rest of the real dev graph runs, with
+    # the heap watched throughout. Run under MicroPython's own default (-1, no proactive
+    # collection) as well as the project's chosen 32768, per CLAUDE.md's stress-test rule - a
+    # hammer that only survives with proactive collection is hiding the defect the rule exists for.
+    import gc
+
+    link = build_linked_system()
+    dev = sensortask_dev
+    initiator = dev.uart_initiator
+    assert initiator is not None and dev.sysfunct is not None
+    fake_a, fake_b = fakes()
+    original = gc.threshold()
+    gc.threshold(threshold)
+
+    def clear_wire_logs() -> None:
+        # The twin records every delivered byte in an unbounded wire_log - about 15kB over this
+        # many transactions. That is the harness growing, not the driver, and measuring it as a
+        # leak is exactly the mistake Part E.7 warns about.
+        link.direction_from(fake_a).wire_log = bytearray()
+        link.direction_from(fake_b).wire_log = bytearray()
+
+    async def scenario() -> "tuple[int, int]":
+        noise = [asyncio.create_task(_uptime_noise(dev)) for _ in range(3)]
+        try:
+            for _ in range(20):  # absorb one-time cost before the window opens
+                await exchange(initiator.uart_get(0x01))
+            clear_wire_logs()
+            gc.collect()
+            before = gc.mem_free()
+            ok = 0
+            for i in range(120):
+                if await exchange(initiator.uart_get(0x01)) is not None:
+                    ok += 1
+                if not i % 20:
+                    clear_wire_logs()
+            clear_wire_logs()
+            gc.collect()
+            return ok, before - gc.mem_free()
+        finally:
+            for task in noise:
+                task.cancel()
+            await asyncio.sleep_ms(5)
+
+    try:
+        ok, leaked = run(scenario(), limit=300)
+    finally:
+        gc.threshold(original)
+    assert ok == 120, f"only {ok}/120 hammered transactions completed at gc.threshold({threshold})"
+    counts = run(initiator.get_error_counter())
+    assert counts[initiator.name]["ErrCount"] == 0, f"errors logged under hammer at gc.threshold({threshold})"
+    assert leaked < 8192, f"{leaked} bytes retained across 120 hammered transactions at gc.threshold({threshold})"
+
+
+async def _uptime_noise(dev: "ModuleType") -> None:
+    # A co-running consumer of the same event loop, so the hammer is never the only thing scheduled.
+    while True:
+        await dev.sysfunct.get_uptime()
+        await asyncio.sleep_ms(1)
+
+
+def test_hammering_the_link_beside_the_graph_holds_at_the_gc_default() -> None:
+    _hammer_with_the_graph_running(-1)
+
+
+def test_hammering_the_link_beside_the_graph_holds_at_the_chosen_gc_threshold() -> None:
+    _hammer_with_the_graph_running(32768)
 
 
 if __name__ == "__main__":

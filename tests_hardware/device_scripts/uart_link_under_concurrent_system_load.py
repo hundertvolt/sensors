@@ -26,7 +26,7 @@ POLL_IDLE_MS = 50
 BUF_BYTES = 512
 _CMD_BANNER = 0x01
 _BANNER = b"loaded-link-ok"
-RUN_MS = 6000
+RUN_MS = 12000  # long enough for a second measurement window to mean something
 # A stop-and-wait round trip is a few ms; over this window even a heavily loaded board should land
 # many. The floor is deliberately far below the unloaded rate - this asserts the link keeps making
 # progress under load, not a throughput number.
@@ -108,6 +108,11 @@ async def _main() -> None:
     wdt = machine.WDT(timeout=8000)
     failures = []
     load = Load()
+    # CLAUDE.md's standing rule for a stress test: prove it under MicroPython's own real default
+    # (no proactive collection) before leaning on the project's chosen threshold. On real hardware
+    # that is the harder case by far - 264kB of RAM, no 8MB Unix-port heap to hide in.
+    gc.collect()
+    gc.threshold(-1)
 
     uart0 = asy_uart_driver.UART(0, 0, 1, baudrate=BAUDRATE, rxbuf=BUF_BYTES, txbuf=BUF_BYTES, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_IDLE_MS)
     uart1 = asy_uart_driver.UART(1, 8, 9, baudrate=BAUDRATE, rxbuf=BUF_BYTES, txbuf=BUF_BYTES, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_IDLE_MS)
@@ -134,6 +139,11 @@ async def _main() -> None:
     transfers = 0
     link_failures = 0
     worst_rtt_ms = 0
+    # Heap sampled at the third and the end, so the one-time cost of the first transactions and the
+    # first fault is absorbed before anything is measured. What is asserted is the steady state:
+    # under sustained parallel load the link must not grow the heap transaction by transaction.
+    heap_at_third = 0
+    heap_at_end = 0
     tasks = [
         asyncio.create_task(responder._listen_loop()),
         asyncio.create_task(_scd_load_loop(scd, load)),
@@ -142,9 +152,13 @@ async def _main() -> None:
         asyncio.create_task(_memory_churn_loop(load)),
     ]
     try:
-        deadline = time.ticks_add(time.ticks_ms(), RUN_MS)
+        started_ms = time.ticks_ms()
+        deadline = time.ticks_add(started_ms, RUN_MS)
         while time.ticks_diff(deadline, time.ticks_ms()) > 0:
             wdt.feed()
+            if not heap_at_third and time.ticks_diff(time.ticks_ms(), started_ms) > RUN_MS // 3:
+                gc.collect()
+                heap_at_third = gc.mem_alloc()
             started = time.ticks_ms()
             answer = await initiator.uart_get(_CMD_BANNER)
             rtt = time.ticks_diff(time.ticks_ms(), started)
@@ -155,6 +169,8 @@ async def _main() -> None:
                 link_failures += 1
             await asyncio.sleep_ms(5)
     finally:
+        gc.collect()
+        heap_at_end = gc.mem_alloc()
         load.stop = True
         for task in tasks:
             task.cancel()
@@ -183,6 +199,11 @@ async def _main() -> None:
         failures.append("the FRAM's SPI bus was starved by the link")
     if not load.churn_blocks:
         failures.append("the allocation churn task never ran")
+    # The memory half of the claim. A frame is 53 bytes; two thirds of the run happen after the
+    # sample, so real per-transaction retention would be thousands of bytes, far above this bound.
+    heap_growth = heap_at_end - heap_at_third
+    if heap_at_third and heap_growth > 2048:
+        failures.append(f"heap grew {heap_growth} bytes over the last two thirds of the run under parallel load")
 
     if failures:
         print("RESULT: FAIL " + "; ".join(failures))
@@ -190,7 +211,7 @@ async def _main() -> None:
         print(
             f"RESULT: PASS {transfers} transfers (worst RTT {worst_rtt_ms}ms) while scd={load.i2c0_reads} "
             f"sgp={load.i2c1_reads} spi={load.spi_reads} churn={load.churn_blocks} "
-            f"allocfail={load.alloc_failures}",
+            f"allocfail={load.alloc_failures} heapgrowth={heap_growth}B",
         )
 
 
