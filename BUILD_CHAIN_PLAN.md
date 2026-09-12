@@ -7,6 +7,104 @@ TOML config file per device variant. This doc is the shared reference for every 
 this branch; update it as decisions evolve. Once the whole chain lands and is verified, this
 branch merges into `main` as the single final step — not before.
 
+## Initiative wrap-up (as of Session 8, the closing consistency pass)
+
+One coherent view of the whole effort, pulled together from the session-by-session narrative below
+(project owner's own request for Session 8) — read this first; the "Session breakdown" section
+after it is the detailed, in-order record each summary point traces back to.
+
+**What shipped.** All eight sessions this doc ever planned are done. The device TOML schema and
+`_WIRING`/`instance_name()` runtime mechanism (Session 1) plus the 6 real `devices/*.toml` files
+(Session 2) exist; `buildgen/` (Session 3) generates a device's firmware entry module, computes its
+frozen-module set, and validates its TOML against a full fail-loud error catalog (malformed shape,
+every resource-collision class, every wiring reference); `buildgen/definitions.py` (Session 4)
+generates a device's website `definitions.json` from the same validated model plus source-level
+`@web`/`@web-group` tags; the digital twin (Session 5) boots any device from a plain, JSON-serializable
+wiring plan instead of a 2-profile enum; the real build chain and CI matrix (Session 6, 6.2, 6.3) wire
+all of the above together, delete the last hand-written `sensortask_wozi.py`/`sensortask_dev.py`
+files, and generalize the entire digital-twin test suite to run against a freshly-generated module
+for all 6 real devices (or record a real, checked reason a given file stays narrower); firmware and
+website versioning (Session 7) land as independent constants surfaced on `GET /system`; and this
+session (8) confirms the result actually holds the promise end to end.
+
+**Acceptance criteria: both hold today.** (1) A new driver needs exactly one association — its
+common name resolved to its class via the mandatory `asy_<name>_driver.py` naming convention — with
+everything else (schema, frozen-module inclusion, REST/config naming, website fields, wiring
+validation) derived automatically; confirmed true of every driver in `src/` today. (2) A new hardware
+combination of already-known drivers needs exactly one new file, the device's TOML, with the full
+firmware+website build following automatically — proven, not assumed, by two synthetic fixtures
+(`novel_combo.toml`, `multi_instance.toml`) exercising layouts none of the 6 real devices use, passing
+the full pipeline since Session 3.
+
+**Real plan changes along the way — recorded, not silently absorbed:**
+- **`_WIRING`'s own shape grew** from a 2-element `(toml_field, class)` tuple (Session 1's design) to
+  a 5-element `(toml_field, class, target, required, mode)` one (Session 3), so a resolved producer
+  can be handed to its consumer as a kwarg, an attribute, or via a setter call — needed once
+  `signal_sink`/`led_target` turned out not to fit the plain-kwarg shape every earlier wiring field
+  used.
+- **Every driver-declared fact the running firmware never reads became a comment tag, not a Python
+  constant** (project owner's ruling, 2026-09-10): `_WIRING`, `_VALUE_WIRING`, and `_LIMITS` were all
+  converted to `# @wiring`/`# @value-wiring`/`# @limits` comment tags, saving ~3,576 bytes (~2.6%) of
+  `src/`'s frozen bytecode — the same reasoning already applied to `# @requires`/`# @web` was
+  generalized to every tag family, not just the one it was first raised against.
+- **Session 5 deliberately kept `run_wozi_integration.py`/`run_dev_integration.py` as thin,
+  device-specific wrappers** rather than rewriting them onto the new generic mechanism, reasoning
+  they were still Session 6's own retirement candidate. **Session 6.2 then reversed that call**, once
+  its own prerequisites (soak-machinery porting, the CI suite becoming device-generic) were met:
+  both files were retired outright as pure duplication with nothing left only they could do — not a
+  contradiction of Session 5's own reasoning, but the natural next step once the thing Session 5 was
+  deferring on actually landed.
+- **Firmware/website version placement was corrected mid-session by the project owner (Session 7)**:
+  the first landed draft put `FirmwareVersion` on `GET /status`'s existing `system` section (reusing
+  its generic status mechanism for free UI rendering); the owner redirected it to a new, deliberately
+  un-flattened `"build"` sub-entry on `GET /system` instead, carrying both version strings and a
+  build date together, deliberately not rendered in the UI at all.
+- **SGP40's boot-race false-error fix (Session 6.3) considered and rejected a global fix**: the
+  project owner's own first-proposed approach — a post-boot grace-period/timeout window in
+  `system_service.py` — was weighed and rejected in favor of the narrower, already-precedented
+  per-call-site `getattr(..., None)` split `asy_notification_service.py` already used, avoiding a new
+  cross-cutting timing window with nothing else to tune.
+- **`main` was merged into this branch (2026-09-11)** once it independently landed a large,
+  unrelated code-quality hardening pass (ruff `select = ["ALL"]`, mypy full `--strict` everywhere,
+  lint/typecheck scope widened to `boot_entry/`/`toolchain/`/`scripts/`/`tests_scripts/`/
+  `tests_hardware/`, shellcheck/actionlint/zizmor) plus the MicroPython 1.28→1.29 pin move — rather
+  than letting this initiative's own branch drift stale against `main`'s new bar. Every build-chain
+  decision from Sessions 1-3 survived the merge unchanged; `buildgen/` itself needed real
+  complexity/fail-loud-convention fixes to clear the new bar, not just conflict resolution.
+- **Session 8's own PR hit a real CI-timing gap this initiative's every prior sub-PR had apparently
+  also faced (each starting with a cold toolchain cache) but never actually blown the budget on
+  until now** — `unit-tests`' 30-minute timeout, with almost no margin even warm because the
+  coverage pass ran serially inside the same job. Fixed by splitting coverage into its own parallel,
+  non-gating job and re-measuring the real cold/warm timings directly rather than guessing; see this
+  session's own "Session 8 done" account above for the full root cause and the numbers.
+
+**Known, still-open gaps** (none blocking, all previously flagged rather than newly discovered by
+this closing pass except where noted, and none contradicting the acceptance criteria above — a gap
+in *runtime effect* or *test-infra hygiene*, not in the generator's own generality):
+- **`[device].name`/`hostname`/`hotspot_password` are schema-validated but wired into no generated
+  boot path** — every real device currently boots as `"SensorNode"`/`"12345678"` regardless of its
+  own TOML (Session 6's own finding, held in place by a tripwire test). The single largest gap
+  against this initiative's spirit, if not its literal, narrower acceptance criteria — fixing it
+  needs a real `asy_wifi_service.py` constructor-parameter change to a heavily-tested core driver,
+  judged out of scope for every session so far.
+- **`wozi`/`dev`'s hand-written `html/definitions/*.json` and `mockdata/*.json` were never retired**
+  in favor of generated output, and the other four devices never got their own committed `mockdata/`
+  fixture — the reason `js/app.js`'s browser-preview `?device=` switch still only lists `wozi`/`dev`
+  (Session 4/6's own deferred item; restated precisely by Session 8, not new).
+- **`tests_hardware/bus_topology.py` hand-duplicates two real devices' wiring facts with no automated
+  cross-check against `devices/*.toml`, and turned out to be dead code** — a real, new finding from
+  this session's own closing pass, not part of the original 8-session scope (BACKLOG.md item 20).
+- **`buildgen/buildspec.py`'s per-driver TOML-field schema is still hand-maintained**, the one
+  association Session 3's own design didn't make AST-derivable (BACKLOG.md, "Deferred" section).
+- **Session 7's `pyproject.toml` `max-args` ratchet only completed the noble leg of CLAUDE.md's
+  required two-target clean-chroot pre-push verification** — the trixie leg was blocked by that
+  session's own sandbox network policy, not attempted since (BACKLOG.md, "Deferred" section).
+
+**Is this the last piece before merging into `main`?** Yes, per this doc's own session breakdown —
+Session 8 was always the last planned unit of work. The actual decision to merge
+`claude/automated-build-chain-nuzumw` into `main` is the project owner's own call, not made by this
+session or implied by this wrap-up.
+
 ## Target device variants
 
 Six: `dev` (bench rig only, never physically absent from testing — see CLAUDE.md), `wozi`
@@ -1414,6 +1512,112 @@ script quality bar" below, not repeated here.
 
 8. **Closing consistency pass** — bird's-eye scan across everything sessions 1-7 touched; confirm
    zero device-specific content remains outside the 6 TOML files.
+
+   **Session 8 done.** Grepped every device name (`wozi`/`dev`/`arzi`/`klkizi`/`grkizi`/`schlafzi`/
+   `SensorStation`) across `src/`, `buildgen/`, `digital_twin/`, `js/`, `html/`, `tests/`,
+   `tests_scripts/`, `tests_hardware/`, and classified every hit rather than trusting a clean grep
+   count alone (a comment citing a real device by name is not the same thing as behavior that
+   depends on one). Also confirmed the CI matrix claim directly: `.github/workflows/ci.yml`'s
+   `digital-twin-e2e` and `firmware-build-verify` both genuinely run `strategy.matrix: device:
+   [wozi, dev, arzi, klkizi, grkizi, schlafzi]` — no subset, no device silently dropped.
+
+   - **`src/`, `buildgen/`, and the bulk of `digital_twin/` are clean.** Every hit in `src/` is a
+     comment citing the retired hand-written `sensortask_wozi.py`/legacy `modules/sensortask-wozi.py`
+     by name for historical precedent (e.g. `config_manager.py`'s `type_or_range_error()` docstring) —
+     none of it is behavior that varies by device. Every `digital_twin/` hit is a previously-documented,
+     deliberate exception already recorded in Sessions 5/6.2's own accounts above (`machine.py`'s
+     `_LEGACY_WIRING_PLANS` "wozi"/"dev" sugar table, `_FRAM_RDID_BY_MAX_SIZE`'s size-keyed proxy,
+     `launch.py`'s standalone `src/`-free demo, `segfault_stress_repro.py`'s deliberately-wozi-only
+     repro tool) — nothing new. One small, real doc-staleness fix made along the way:
+     `unix_port_poll_prewarm.py`'s docstring said to call `prewarm_poll_set()` from "any entry point
+     booting `sensortask_wozi`" — stale since `run_generic_integration.py` (Session 5) made that entry
+     point device-generic; reworded to say "a `sensortask_<device>` module."
+   - **One real gap in `js/`, already known but not previously stated this precisely**: `js/app.js`'s
+     `KNOWN_DEVICES = ["wozi", "dev"]` (feeding its prototype-only `?device=` switch — real firmware
+     ships exactly one device's `definitions.json`, never branches on a query param, per that file's
+     own docstring) is a literal, hardcoded device-name list living outside `devices/*.toml`. Not a
+     new architectural hole: it exists only because `mockdata/`/`html/definitions/` still carry
+     fixtures for wozi/dev alone (Session 4/6's own deliberately-deferred "retire the two hand-written
+     files" item) — extending it needs generating fixtures for the other four devices first, not a
+     one-line edit. Recorded against BACKLOG.md's existing tracking entry for that gap rather than as
+     a new one.
+   - **One real, new finding, not previously known**: `tests_hardware/bus_topology.py` hand-duplicates
+     `devices/dev.toml`'s/`wozi.toml`'s own I2C pin/address/SPI-CS/FRAM-capacity facts in a second,
+     unenforced host-side copy — confirmed still byte-for-byte accurate today, but cross-checked by no
+     test or tooling. Worse, it turned out to be dead code: nothing in the repo imports it (confirmed
+     by grep), and the real on-target sweep CLAUDE.md's own standing bus-hazard rule cites it for runs
+     a *different*, self-contained device script carrying its own third, independent address-table
+     copy instead. Its docstring also cited a "SPECIFICATION.md Part C.8 update-this-file-too rule"
+     that doesn't exist anywhere in that document — corrected in place (citation fix only, no
+     behavior change). This predates the buildgen initiative — it's general test-infrastructure
+     hygiene debt this pass happened to surface, not something any of Sessions 1-7 introduced. Full
+     account and the three real open decisions it raises (delete it? wire the device script to import
+     from it instead of its own copy? fix or drop CLAUDE.md's citation?): BACKLOG.md item 20 — flagged
+     for the project owner, not resolved here, per CLAUDE.md's "flag, don't silently change" rule.
+   - **`BACKLOG.md`/`BUILD_CHAIN_PLAN.md` re-checked for staleness the way the post-Session-6.3 pass
+     already did once**: one real, currently-false claim found and fixed — `BACKLOG.md`'s "Website
+     definitions-file autogeneration" entry still said generating `definitions.json` for the four
+     devices that never had one, and wiring generation into `scripts/build_website.sh`/CI, was "still
+     Session 6's own job, not done" — false as of Session 6 itself, which did both; only the
+     wozi/dev-retirement third of that item is genuinely still open. Corrected to state the real,
+     current split. No other item in either file was found stale — both are in materially better
+     shape than before the post-Session-6.3 cleanup pass (BACKLOG.md items 18/19), consistent with
+     CLAUDE.md's working-agreement that resolved items get pruned as they land rather than
+     accreting — confirmed directly by reading both files in full this session, not assumed.
+   - **Acceptance criteria (BUILD_CHAIN_PLAN.md's own, quoted at the top of this doc): both hold.**
+     Criterion 1 (a new driver needs exactly one association, derived from the naming convention) —
+     confirmed unchanged and still true of every driver in `src/` today. Criterion 2 (a new hardware
+     combination needs exactly one new TOML file, no code changes) — proven, not assumed, by the two
+     mandatory synthetic fixtures (`novel_combo.toml`, `multi_instance.toml`) passing the full
+     pipeline (`buildgen` validation/generation, digital-twin boot, website generation) since Session 3.
+   - **Not fixed, deliberately flagged instead** (this session's own findings, both real but neither
+     a mechanical fix): the `bus_topology.py` duplication/dead-code question above, and — carried
+     forward from BACKLOG.md's existing "Deferred" list, re-confirmed still open, and worth restating
+     here because it's the single largest gap against this initiative's own acceptance criteria —
+     **`[device].name`/`hostname`/`hotspot_password` are validated by `buildgen.validate.build_model()`
+     but wired into no generated boot path**: every real device, whatever its TOML says, actually boots
+     with the shared hardcoded `"SensorNode"`/`"12345678"` defaults `asy_wifi_service.py`'s
+     `_VAL_HOST`/`_VAL_HOTSPOT_PW` carry. This isn't new — Session 6 already found and tracked it,
+     with a tripwire test holding the gap in place — but the closing pass's own job is exactly to
+     confirm what's still open, not just what's new, so it's restated here rather than left buried
+     only in BACKLOG.md's "Deferred" section.
+   - **This is the last session `BUILD_CHAIN_PLAN.md`'s own session breakdown calls for.** See the new
+     "Initiative wrap-up" section below for the consolidated, whole-effort view the project owner
+     asked for. Whether/when `claude/automated-build-chain-nuzumw` actually merges into `main` is the
+     project owner's own decision, not made by this session.
+   - **A real CI-efficiency gap found while this PR was open, fixed in the same session**: the very
+     PR carrying this closing pass hit `unit-tests`' own 30-minute `timeout-minutes` twice, cancelled
+     both times mid-build — a cold toolchain cache (this session's own sibling PR against
+     `claude/automated-build-chain-nuzumw` starts with none of the previously-merged sessions' own
+     warm cache to inherit, since GitHub Actions scopes a cache save to the PR ref that built it, not
+     the shared base branch) cascaded into every `firmware-build-verify` job failing on the resulting
+     missing toolchain checkout. Root-caused, not just reported: `unit-tests`' own job comment claimed
+     a warm-cache run took "~8-9 minutes total (plain + coverage passes combined)", which real CI
+     history never actually measured — the plain pass alone takes ~13-15 minutes warm, and the
+     coverage pass (re-running the whole real-interpreter suite a second time under
+     `tests/_coverage_runner.py`'s `sys.settrace`) takes about the same again, leaving the 30-minute
+     budget almost no margin warm and none at all cold. Coverage is a report, never a gate
+     (SPECIFICATION.md Part E.5) and nothing downstream reads it, so it was split into its own
+     `unit-tests-coverage` job — parallel to `firmware-build-verify`/`digital-twin-e2e` instead of
+     blocking them, gated on `unit-tests` only to reuse its now-warm cache rather than racing it for a
+     redundant cold-cache toolchain rebuild. Real timing was then measured directly, not guessed: two
+     independent cold-cache runs of the split `unit-tests` job (spun up via a throwaway probe PR,
+     cleaned up afterward) took 16m58s/16m42s, and `unit-tests-coverage` (warm cache) took
+     14m01s/16m56s — both jobs' `timeout-minutes` set to 25, ~45% headroom over the observed worst
+     case rather than either the original tight 30 or an arbitrarily generous placeholder. One of
+     those probe runs also surfaced a genuine, unrelated CI-timing flake
+     (`tests/test_asy_ntp_client.py::test_integration_recovers_on_retry_after_one_dropped_request`,
+     a `TimeoutError` on a real 5-second UDP round-trip wait) that did not reproduce on an
+     essentially-simultaneous parallel run — confirmed transient, not a regression, and not touched.
+   - **Verification**: `BACKLOG.md`/`BUILD_CHAIN_PLAN.md`/`CLAUDE.md`/`README.md`/`SPECIFICATION.md`
+     doc updates plus the `.github/workflows/ci.yml` job split above (two docstring corrections in
+     `digital_twin/unix_port_poll_prewarm.py` and `tests_hardware/bus_topology.py` also included) —
+     no `src/`/`buildgen/`/`digital_twin/`/`js/` runtime behavior changed. `scripts/lint.sh`/
+     `scripts/typecheck.sh`/`scripts/test.sh` all run clean locally; the real CI runs described above
+     are this change's own end-to-end proof. CLAUDE.md's clean-chroot pre-push recipe does not apply —
+     its own trigger list is `pyproject.toml`/`scripts/`/`toolchain/versions.toml`/build-environment
+     setup, and a CI-workflow-only YAML change (job structure and timeout tuning, no compiler/toolchain
+     content) carries none of the compiler-version sensitivity that recipe exists to catch.
 
 Every session works on its own branch off `claude/automated-build-chain-nuzumw` (this branch), not
 `main`, and opens its PR against this branch. This branch merges into `main` only once every

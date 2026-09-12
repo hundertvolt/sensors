@@ -304,10 +304,14 @@ information):
 - **Wired into CI** via `.github/workflows/ci.yml` (GitHub Actions). **Each tool is its own job/
   stage**, so a failure names the tool directly instead of a shared "lint" job going red:
   `lint-and-typecheck` (ruff + mypy), `shellcheck`, `actionlint`, `zizmor`, plus the test/build
-  stages (`unit-tests`, `digital-twin-e2e`, `firmware-build-verify`) and the web tier. Note
-  `unit-tests` keeps `needs: lint-and-typecheck` (the standing hang backstop below); the other lint
-  stages run in parallel and gate nothing, so one of them failing no longer silently skips the
-  whole test suite.
+  stages (`unit-tests`, `unit-tests-coverage`, `digital-twin-e2e`, `firmware-build-verify`) and the
+  web tier. Note `unit-tests` keeps `needs: lint-and-typecheck` (the standing hang backstop below);
+  the other lint stages run in parallel and gate nothing, so one of them failing no longer silently
+  skips the whole test suite. `unit-tests-coverage` (Session 8's closing-consistency-pass PR) is the
+  plain pass's own report-only, `continue-on-error` sibling — split into its own job so a coverage
+  run's own wall-clock cost (roughly the same again as the plain pass) never sits on the critical
+  path `digital-twin-e2e`/`firmware-build-verify` wait on; see `ci.yml`'s own job comments for the
+  full account.
 - **`zizmor` audits the GitHub Actions workflows themselves** — `GITHUB_TOKEN` scope, checkout
   credential persistence, action pinning: the one part of the supply chain ruff/mypy can't see.
   Policy config is `.github/zizmor.yml` (only `unpinned-uses` is configured — `actions/*` may be

@@ -153,8 +153,10 @@ Result: FAILED
 ```
 
 All three (`lint.sh`/`typecheck.sh`/`test.sh`) run in GitHub Actions CI
-(`.github/workflows/ci.yml`) on every push/PR, plus `test.sh --coverage` as a non-gating extra
-step. Config lives in the root `pyproject.toml`; see CLAUDE.md's "Code quality tooling" section
+(`.github/workflows/ci.yml`) on every push/PR, plus `test.sh --coverage` as its own non-gating
+`unit-tests-coverage` job (split out from the main test job so its own wall-clock cost never sits
+on the critical path other jobs wait on). Config lives in the root `pyproject.toml`; see CLAUDE.md's
+"Code quality tooling" section
 for the full rationale (why `ruff format` isn't used, why the MicroPython stubs install into a
 separate `typings/` directory instead of the main dev venv, why tests don't run under
 pytest/CPython, etc.).
