@@ -423,16 +423,17 @@ jobs:
     # run (many files hanging at once) rather than being the only thing standing between a stuck
     # test and GitHub's own 360-minute hard limit (the scenario that produced the originally-
     # observed 6-hour hang before timeout-minutes existed - see CLAUDE.md's "CI hang investigation"
-    # note). Real GitHub-hosted-runner timings (not a local dev box, which runs measurably faster):
-    # ~13-15 minutes for this job's own plain pass with a warm toolchain cache; a cold cache (no
-    # prior run on this exact branch/PR scope to inherit from - see BUILD_CHAIN_PLAN.md's Session 8
-    # closing-pass PR for the mechanism) adds the full from-scratch ARM+MicroPython Unix-port
-    # toolchain build on top. The coverage pass used to run serially in this same job (see
+    # note). Real GitHub-hosted-runner timings, measured directly rather than assumed (Session 8's
+    # closing-pass PR, two independent cold-cache runs - no prior run on this exact branch/PR scope
+    # to inherit a cache from, see BUILD_CHAIN_PLAN.md for the mechanism): this job's own plain pass
+    # took 16m58s and 16m42s from a cold cache (full from-scratch ARM+MicroPython Unix-port
+    # toolchain build included); a warm cache drops that to the ~13-15 minutes the test suite itself
+    # takes. 25 minutes gives ~45% headroom over the observed cold-cache worst case without being an
+    # empty, unfalsifiable number. The coverage pass used to run serially in this same job (see
     # unit-tests-coverage below for why it no longer does) - a stale comment here once claimed
-    # "~8-9 minutes total" for both passes combined, which real CI runs never actually measured:
-    # confirmed directly against this job's own history, a warm-cache run takes ~13-15 minutes for
-    # the plain pass ALONE, and the now-removed second (coverage) pass took a similar amount again
-    # - fixed here rather than left to mislead the next person sizing this timeout.
+    # "~8-9 minutes total" for both passes combined, which real CI runs never actually measured and
+    # which the real cold-cache figures above already contradict on their own; fixed rather than
+    # left to mislead the next person sizing this timeout.
     #
     # `if: !cancelled()` keeps the `needs:` edge above (so the serialization the standing backstop
     # asks for is intact) while dropping the SUCCESS gating that `needs:` otherwise implies. That
@@ -447,7 +448,7 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7
         with:
@@ -470,12 +471,15 @@ jobs:
     # just populated, rather than racing it and potentially rebuilding the same toolchain twice in
     # parallel on a cold cache - the one piece of sequencing this job keeps, in exchange for running
     # fully in parallel with firmware-build-verify/digital-twin-e2e instead of blocking them.
+    # Measured directly (Session 8's closing-pass PR, two runs against the now-warm cache
+    # unit-tests just built): 14m01s and 16m56s for the full suite re-run under sys.settrace. 25
+    # minutes matches unit-tests' own budget and gives comfortable headroom over both samples.
     needs: unit-tests
     if: ${{ !cancelled() }}
     permissions:
       contents: read
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7
         with:

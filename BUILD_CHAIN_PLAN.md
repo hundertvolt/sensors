@@ -71,6 +71,12 @@ the full pipeline since Session 3.
   than letting this initiative's own branch drift stale against `main`'s new bar. Every build-chain
   decision from Sessions 1-3 survived the merge unchanged; `buildgen/` itself needed real
   complexity/fail-loud-convention fixes to clear the new bar, not just conflict resolution.
+- **Session 8's own PR hit a real CI-timing gap this initiative's every prior sub-PR had apparently
+  also faced (each starting with a cold toolchain cache) but never actually blown the budget on
+  until now** — `unit-tests`' 30-minute timeout, with almost no margin even warm because the
+  coverage pass ran serially inside the same job. Fixed by splitting coverage into its own parallel,
+  non-gating job and re-measuring the real cold/warm timings directly rather than guessing; see this
+  session's own "Session 8 done" account above for the full root cause and the numbers.
 
 **Known, still-open gaps** (none blocking, all previously flagged rather than newly discovered by
 this closing pass except where noted, and none contradicting the acceptance criteria above — a gap
@@ -1579,12 +1585,39 @@ script quality bar" below, not repeated here.
      "Initiative wrap-up" section below for the consolidated, whole-effort view the project owner
      asked for. Whether/when `claude/automated-build-chain-nuzumw` actually merges into `main` is the
      project owner's own decision, not made by this session.
-   - **Verification**: this session's own changes are documentation/comments only (`BACKLOG.md`,
-     `BUILD_CHAIN_PLAN.md`, two docstring corrections in `digital_twin/unix_port_poll_prewarm.py` and
-     `tests_hardware/bus_topology.py`) — no `src/`/`buildgen/`/`digital_twin/`/`js/` behavior changed.
-     `scripts/lint.sh`/`scripts/typecheck.sh`/`scripts/test.sh` still run to confirm nothing was
-     broken; CLAUDE.md's clean-chroot pre-push recipe does not apply (no `pyproject.toml`/`scripts/`/
-     `toolchain/versions.toml` change).
+   - **A real CI-efficiency gap found while this PR was open, fixed in the same session**: the very
+     PR carrying this closing pass hit `unit-tests`' own 30-minute `timeout-minutes` twice, cancelled
+     both times mid-build — a cold toolchain cache (this session's own sibling PR against
+     `claude/automated-build-chain-nuzumw` starts with none of the previously-merged sessions' own
+     warm cache to inherit, since GitHub Actions scopes a cache save to the PR ref that built it, not
+     the shared base branch) cascaded into every `firmware-build-verify` job failing on the resulting
+     missing toolchain checkout. Root-caused, not just reported: `unit-tests`' own job comment claimed
+     a warm-cache run took "~8-9 minutes total (plain + coverage passes combined)", which real CI
+     history never actually measured — the plain pass alone takes ~13-15 minutes warm, and the
+     coverage pass (re-running the whole real-interpreter suite a second time under
+     `tests/_coverage_runner.py`'s `sys.settrace`) takes about the same again, leaving the 30-minute
+     budget almost no margin warm and none at all cold. Coverage is a report, never a gate
+     (SPECIFICATION.md Part E.5) and nothing downstream reads it, so it was split into its own
+     `unit-tests-coverage` job — parallel to `firmware-build-verify`/`digital-twin-e2e` instead of
+     blocking them, gated on `unit-tests` only to reuse its now-warm cache rather than racing it for a
+     redundant cold-cache toolchain rebuild. Real timing was then measured directly, not guessed: two
+     independent cold-cache runs of the split `unit-tests` job (spun up via a throwaway probe PR,
+     cleaned up afterward) took 16m58s/16m42s, and `unit-tests-coverage` (warm cache) took
+     14m01s/16m56s — both jobs' `timeout-minutes` set to 25, ~45% headroom over the observed worst
+     case rather than either the original tight 30 or an arbitrarily generous placeholder. One of
+     those probe runs also surfaced a genuine, unrelated CI-timing flake
+     (`tests/test_asy_ntp_client.py::test_integration_recovers_on_retry_after_one_dropped_request`,
+     a `TimeoutError` on a real 5-second UDP round-trip wait) that did not reproduce on an
+     essentially-simultaneous parallel run — confirmed transient, not a regression, and not touched.
+   - **Verification**: `BACKLOG.md`/`BUILD_CHAIN_PLAN.md`/`CLAUDE.md`/`README.md`/`SPECIFICATION.md`
+     doc updates plus the `.github/workflows/ci.yml` job split above (two docstring corrections in
+     `digital_twin/unix_port_poll_prewarm.py` and `tests_hardware/bus_topology.py` also included) —
+     no `src/`/`buildgen/`/`digital_twin/`/`js/` runtime behavior changed. `scripts/lint.sh`/
+     `scripts/typecheck.sh`/`scripts/test.sh` all run clean locally; the real CI runs described above
+     are this change's own end-to-end proof. CLAUDE.md's clean-chroot pre-push recipe does not apply —
+     its own trigger list is `pyproject.toml`/`scripts/`/`toolchain/versions.toml`/build-environment
+     setup, and a CI-workflow-only YAML change (job structure and timeout tuning, no compiler/toolchain
+     content) carries none of the compiler-version sensitivity that recipe exists to catch.
 
 Every session works on its own branch off `claude/automated-build-chain-nuzumw` (this branch), not
 `main`, and opens its PR against this branch. This branch merges into `main` only once every
