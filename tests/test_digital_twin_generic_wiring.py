@@ -183,7 +183,7 @@ def test_default_wiring_before_any_configure_call_is_wozi() -> None:
     # Regression check for the old module-level `_i2c_wiring_profile = "wozi"` default - the very
     # first test function to run in a fresh Unix-port process (before any other test's
     # configure_i2c_wiring()/configure_wiring() call) must still see wozi's own layout, matching
-    # every caller that never calls either function at all (run_wozi_integration.py's own main()).
+    # every caller that never calls either function at all (segfault_stress_repro.py's own main()).
     # Re-asserted here explicitly (not just relied upon via test order) since machine._wiring_plan
     # is process-global state that later tests' configure_*() calls mutate.
     machine.configure_i2c_wiring("wozi")  # restore the default explicitly - this test must not

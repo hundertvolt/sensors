@@ -414,7 +414,7 @@ module still constructs its own `ConfigManager`/`PrintLog` internally — no cro
 sharing, and every *instance*-level dependency stays constructor-injected, so the object graph is
 still a clean DAG at that level.
 
-Full coverage: `tests/test_sensortask_wozi.py`.
+Full coverage: `tests/test_sensortask.py`.
 
 ## A.8 REST API endpoint reference (`src/asy_webserver_service.py`)
 
@@ -508,11 +508,14 @@ checklist. A new common/base module wired into `build_system()`'s real object gr
 automatically exercised — no separate question for a module with no hardware surface. A module that
 can't yet complete the chain stays out until the missing piece exists (flagged per CLAUDE.md).
 
-**Automated CI suite** (`scripts/run_digital_twin_ci.sh`, `digital-twin-e2e` job): wipes leftover
-twin state; builds the Unix port and the real production website (`scripts/build_website.sh wozi`);
-`scripts/_digital_twin_ci_suite.py` drives `run_wozi_integration.py` through eleven subprocess runs
-(fresh boot + every endpoint; settings persistence across reboot; a sustained fault matrix proving
-graceful degradation and that the watchdog never starves under bounded failure; a
+**Automated CI suite** (`scripts/run_digital_twin_ci.sh`, `digital-twin-e2e` job — a
+`strategy.matrix` over all 6 real device variants as of BUILD_CHAIN_PLAN.md's Session 6.2): wipes
+leftover twin state; builds the Unix port and the real production website for that device
+(`scripts/build_website.sh <device>`); `scripts/_digital_twin_ci_suite.py` drives
+`run_generic_integration.py` through eleven top-level subprocess runs (two of them, 5b/5c, further
+sub-runs of run 5 — thirteen real subprocess runs in total; fresh boot + every endpoint; settings
+persistence across reboot; a sustained fault matrix, derived from that device's own real wiring
+plan, proving graceful degradation and that the watchdog never starves under bounded failure; a
 persistence-correctness sweep; recovery after a bounded fault clears; hotspot fallback with a real
 answered UDP DNS query; NTP permanently unreachable; a real blocking hang proving the watchdog
 backstop engages; a clean soak run). Building this surfaced three confirmed Unix-port-only `socket`
@@ -1220,6 +1223,22 @@ bus), and an address/command sweep, across as many of four tiers as apply (cheap
    full HTTP stack, concurrent load. Extend the worker set only with requests safe under both
    constraints above (`GET` always safe; `PUT` only if documented command-only/never-persisted).
 
+**Per-real-device applicability, re-verified against all 6 device TOMLs (BUILD_CHAIN_PLAN.md's
+Session 6.2)**: "cross-device interleaving if sharing a bus" only actually applies to a device that
+does. Checked directly against every real `devices/*.toml`: `wozi` wires `sgp40`+`bmp3xx` together
+on `i2c1`, and `dev` wires `scd30`+`sgp40` together on `i2c1` — the only two real devices with any
+sensor pair sharing a bus at all. `arzi`/`klkizi`/`grkizi`/`schlafzi` each wire `scd30` alone on
+`i2c0` and `sgp40` alone on `i2c1` (no `bmp3xx` instance at all) — there is no cross-device
+interleaving window on these 4 devices for tier 2's own
+`test_<device>_real_task_graph_survives_concurrent_bus_load_including_a_real_general_call()`
+scenario to prove anything about, so that test staying wozi/dev-only is complete coverage, not a
+gap to extend. FRAM's own same-device hazard coverage (tier 2's remaining tests: injected-fault
+recovery, RX-overrun absorption, write-protect/storage-pause gating) and the WiFi-disconnect-under-
+load scenario are device-independent by construction (FRAM sits alone on its own dedicated SPI bus
+on every real device, unaffected by which other sensors exist alongside it) — proven once, against
+one real assembled object graph (wozi), rather than six times over at six times the real
+wall-clock cost (the WiFi-disconnect scenario alone is an unavoidable real ~75s).
+
 ## C.9 Timer/task/IRQ integration contract
 
 Every `Reader`/service exposes `get_task_starters()`/`get_timer_starters()` (even trivially
@@ -1687,8 +1706,8 @@ starting with `MP_FROZEN_PATH_PREFIX` routes to the compiled-in frozen table, ne
 filesystem. `frozen_modules` is a separate, ordinary, gitignored directory (A.9's output) needed
 too, since `sensortask_wozi.py`'s `import frozen_html` needs it.
 
-Any test file that imports a `sensortask_<device>.py` module directly (`test_sensortask_wozi.py`/
-`test_sensortask_dev.py` and every `tests/test_digital_twin_*.py` that does the same) needs one more
+Any test file that imports a `sensortask_<device>.py` module directly (`test_sensortask.py` and
+every `tests/test_digital_twin_*.py` that does the same) needs one more
 prerequisite first, since no such module is ever committed to `src/` any more (BUILD_CHAIN_PLAN.md's
 Session 6): `uv run scripts/_generate_sensortask_modules.py` to populate the gitignored
 `build/generated_src/` directory, and `build/generated_src` prepended to `MICROPYPATH` (ahead of

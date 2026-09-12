@@ -342,7 +342,7 @@ information):
   never both be checked correctly in one invocation. `digital_twin/machine.py`/`network.py`/
   `neopixel.py` (a straight `Duplicate module named "machine"` collision with `tests/machine.py`
   otherwise — confirmed directly, not the softer resolution-priority hijack `tests/network.py`'s own
-  exclude guards against) and `digital_twin/launch.py`/`run_wozi_integration.py`/`run_dev_integration.py`/
+  exclude guards against) and `digital_twin/launch.py`/`run_generic_integration.py`/
   `segfault_stress_repro.py`/every `tests/test_digital_twin_*.py` (attr-
   defined noise on every twin-only API the real board stub doesn't declare, e.g.
   `WDT.would_have_triggered_count`, `WLAN.script_connect_outcomes()` — confirmed directly, including
@@ -417,7 +417,9 @@ information):
   independently-`create_task()`-spawned sibling tasks (WiFi, sensor readers, the webserver, ...)
   parked in the shared, process-wide asyncio task queue after the test's own coroutine returns —
   `Task.cancel()` on the one task a test explicitly awaits (`main_task` in
-  `digital_twin/run_wozi_integration.py`) never cascades to those siblings, since MicroPython's
+  `digital_twin/run_generic_integration.py` today; `run_wozi_integration.py` at the time this was
+  found, since retired in favor of it — BUILD_CHAIN_PLAN.md's Session 6.2) never cascades to those
+  siblings, since MicroPython's
   asyncio has no parent/child task tracking. `tests/test_*.py` files run one Unix-port process per
   file (see `scripts/test.sh`'s own comment) sharing one process-wide task queue across every test
   function in that file, so this only ever surfaced as the *whole process* hanging at exit after the
@@ -428,7 +430,7 @@ information):
   relying on the interpreter's own idle-detection ever reaching zero pending tasks. This is exactly
   the same "explicit tracked-task-list + cancel-all in `finally`" shape `digital_twin/launch.py`'s
   own `main()` already used for its own (much smaller, self-spawned) task list — the one difference
-  is `run_wozi_integration.py` drives the real, much larger `system_service.py`-supervised task
+  is the generic entry point drives the real, much larger `system_service.py`-supervised task
   graph, which isn't reachable/trackable from outside that module, making a blanket forced-exit the
   more robust fix than trying to enumerate and cancel every sibling task individually. Surfaced by
   the `system_service.py` `_timer_sequencer()` Timer-GC fix above: before that fix, `start_timers()`

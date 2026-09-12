@@ -1,8 +1,9 @@
 """Generic digital-twin entry point: boots ANY `sensortask_<device>` module - most usefully a Session-3 `buildgen.generate.generate_device()`-generated one, written to disk by the caller first - against a `machine.configure_wiring()`-shaped wiring-plan JSON (produced host-side by `buildgen.twin_wiring.compute_twin_wiring()`, since this MicroPython process has no tomllib/buildgen of its own). Not a `tests/test_*.py` file - it can serve forever.
-`run_wozi_integration.py`/`run_dev_integration.py` stay unchanged, thin, device-specific wrappers rather than being rewritten onto this (documented design decision); this file's own fault/hang chip lookup is the generalized form of their hardcoded `{"scd30": sensortask_wozi.i2c0._i2c.devices[0x61], ...}`.
-See `digital_twin/README.md`'s "Booting a generated device" section and BUILD_CHAIN_PLAN.md's Session 5 write-up for the full design account."""
+This file's own fault/hang chip lookup is the generalized form of `run_wozi_integration.py`'s/`run_dev_integration.py`'s hardcoded `{"scd30": sensortask_wozi.i2c0._i2c.devices[0x61], ...}`; `--soak`/`--soak-cycles` (Session 6.2) is the same generalization applied to their own soak/memory-trend-check machinery - see `_soak()`'s own comment for the methodology, ported verbatim from `run_wozi_integration.py`.
+See `digital_twin/README.md`'s "Booting a generated device" section and BUILD_CHAIN_PLAN.md's Session 5/6.2 write-ups for the full design account."""
 
 import asyncio
+import gc
 import json
 import sys
 
@@ -32,6 +33,17 @@ _booted_module: "Any | None" = None  # set by main(), read by _print_wdt_status(
 # needed explicitly here since this file's own module is only known at runtime (parse_args()'s
 # --module), unlike run_wozi_integration.py/run_dev_integration.py's own static imports.
 
+# Ported verbatim from run_wozi_integration.py (BUILD_CHAIN_PLAN.md's Session 6.2 - confirmed by
+# direct comparison against run_dev_integration.py's own byte-identical copy that this machinery is
+# genuinely device-generic already, not wozi-specific: the same warm-up transient/noise band shows
+# up driving either module, since both boot the same shape of real object graph). See
+# run_wozi_integration.py's own _SOAK_WARMUP_CYCLES/_MEM_TREND_* comments for the full measurement
+# history and methodology behind these constants - unchanged here.
+_SOAK_ENDPOINTS = ("/measurements", "/sensors", "/networking", "/system", "/notification", "/status", "/")
+_SOAK_WARMUP_CYCLES = 40
+_MEM_TREND_TOLERANCE_BYTES = 8192
+_SOAK_CYCLES_DEFAULT = 20
+
 
 class RunConfig:
     def __init__(
@@ -48,6 +60,8 @@ class RunConfig:
         hangs: "list[tuple[str, str, float, int]] | None" = None,
         wifi_outcomes: "list[int] | None" = None,
         *,
+        soak: bool = False,
+        soak_cycles: int = _SOAK_CYCLES_DEFAULT,
         duration: "float | None" = None,
     ) -> None:
         self.module = module
@@ -61,6 +75,8 @@ class RunConfig:
         self.faults = faults if faults is not None else []
         self.hangs = hangs if hangs is not None else []
         self.wifi_outcomes = wifi_outcomes if wifi_outcomes is not None else []
+        self.soak = soak
+        self.soak_cycles = soak_cycles
         self.duration = duration
 
     def __eq__(self, other: "object") -> bool:
@@ -78,6 +94,8 @@ class RunConfig:
             and self.faults == other.faults
             and self.hangs == other.hangs
             and self.wifi_outcomes == other.wifi_outcomes
+            and self.soak == other.soak
+            and self.soak_cycles == other.soak_cycles
             and self.duration == other.duration
         )
 
@@ -91,7 +109,8 @@ class RunConfig:
             f"RunConfig(module={self.module!r}, wiring_plan_path={self.wiring_plan_path!r}, host={self.host!r}, "
             f"port={self.port!r}, device={self.device!r}, fram_state_path={self.fram_state_path!r}, "
             f"scd30_state_path={self.scd30_state_path!r}, seed={self.seed!r}, faults={self.faults!r}, "
-            f"hangs={self.hangs!r}, wifi_outcomes={self.wifi_outcomes!r}, duration={self.duration!r})"
+            f"hangs={self.hangs!r}, wifi_outcomes={self.wifi_outcomes!r}, soak={self.soak!r}, "
+            f"soak_cycles={self.soak_cycles!r}, duration={self.duration!r})"
         )
 
 
@@ -114,6 +133,8 @@ def parse_args(argv: "list[str]") -> RunConfig:
     faults: list[tuple[str, str, int]] = []
     hangs: list[tuple[str, str, float, int]] = []
     wifi_outcomes: list[int] = []
+    soak = False
+    soak_cycles = _SOAK_CYCLES_DEFAULT
     duration: float | None = None
 
     while remaining:
@@ -143,6 +164,11 @@ def parse_args(argv: "list[str]") -> RunConfig:
             hangs.append(parse_hang_spec(_pop_value(remaining, arg)))
         elif arg == "--wifi-outcome":
             wifi_outcomes.append(_parse_wifi_outcome(_pop_value(remaining, arg)))
+        elif arg == "--soak":
+            soak = True
+        elif arg == "--soak-cycles":
+            soak_cycles = int(_pop_value(remaining, arg))
+            soak = True  # passing a cycle count is itself opting into running the soak
         elif arg == "--duration":
             duration = float(_pop_value(remaining, arg))
         else:
@@ -165,6 +191,8 @@ def parse_args(argv: "list[str]") -> RunConfig:
         faults=faults,
         hangs=hangs,
         wifi_outcomes=wifi_outcomes,
+        soak=soak,
+        soak_cycles=soak_cycles,
         duration=duration,
     )
 
@@ -235,12 +263,68 @@ async def _wait_until_serving(host: str, port: int, timeout_s: float = 10.0) -> 
         while True:
             try:
                 await _http_client.fetch(host, port, "GET", "/")
-            except OSError:
+            except (OSError, MemoryError):  # MemoryError isn't an OSError subclass here
                 await asyncio.sleep_ms(50)
             else:
                 return
 
     await asyncio.wait_for(poll(), timeout_s)
+
+
+async def _soak(host: str, port: int, cycles: int) -> "list[str]":
+    # Ported verbatim from run_wozi_integration.py's own _soak() (BUILD_CHAIN_PLAN.md's Session
+    # 6.2) - deliberately strictly-sequential, see that function's own comment for why (a real
+    # MicroPython Unix-port interpreter segfault, found by exceeding WebserverService's own
+    # max_connections=4 with concurrent clients; tests/test_digital_twin_webserver_concurrency.py
+    # is the project's real regression coverage for that concurrency scale, never this soak).
+    failures: list[str] = []
+    for _ in range(_SOAK_WARMUP_CYCLES):
+        for path in _SOAK_ENDPOINTS:
+            try:
+                await _http_client.fetch(host, port, "GET", path)
+            except (OSError, MemoryError) as e:  # MemoryError isn't an OSError subclass here
+                # (CLAUDE.md's platform-facts note) - a real soak run must record a genuine
+                # allocation failure as one more failure, never let it crash the whole run
+                # uncaught before the summary below ever prints (found via a real CI failure).
+                failures.append(f"warmup: GET {path} -> {e!r}")
+    gc.collect()
+    mem_samples: list[int] = [gc.mem_free()]  # index 0: post-warmup baseline, excluded from the
+    # trend comparison below (it's a single point, not a quarter average).
+    for cycle in range(cycles):
+        for path in _SOAK_ENDPOINTS:
+            try:
+                res = await _http_client.fetch(host, port, "GET", path)
+            except (OSError, MemoryError) as e:
+                failures.append(f"cycle {cycle}: GET {path} -> {e!r}")
+                continue
+            if res.status_code != 200:
+                failures.append(f"cycle {cycle}: GET {path} -> {res.status_code}")
+        gc.collect()
+        mem_samples.append(gc.mem_free())
+    # Trend check - see run_wozi_integration.py's own _MEM_TREND_* module-level comment for the
+    # full methodology. Needs at least 4 per-cycle samples (cycles >= 4) for the quarters to mean
+    # anything; skipped below that (a --soak-cycles this small is a manual smoke run).
+    per_cycle_samples = mem_samples[1:]
+    quarter = len(per_cycle_samples) // 4
+    if quarter >= 1:
+        early = per_cycle_samples[:quarter]
+        late = per_cycle_samples[-quarter:]
+        early_avg = sum(early) / len(early)
+        late_avg = sum(late) / len(late)
+        trend = early_avg - late_avg  # positive: memory declined between quarters
+        print(
+            f"digital_twin/run_generic_integration.py memory trend: baseline={mem_samples[0]} "
+            f"min={min(per_cycle_samples)} max={max(per_cycle_samples)} early_avg={early_avg:.0f} "
+            f"late_avg={late_avg:.0f} trend={trend:.0f} tolerance={_MEM_TREND_TOLERANCE_BYTES} "
+            f"quarter_size={quarter} samples={len(per_cycle_samples)}",
+        )
+        if trend > _MEM_TREND_TOLERANCE_BYTES:
+            failures.append(
+                f"gc.mem_free() trend declined by {trend:.0f} bytes (early_avg={early_avg:.0f} -> "
+                f"late_avg={late_avg:.0f}) over {cycles} cycles, exceeding the "
+                f"{_MEM_TREND_TOLERANCE_BYTES}-byte tolerance",
+            )
+    return failures
 
 
 def _print_wdt_status(config: RunConfig) -> None:
@@ -283,8 +367,8 @@ async def main(config: RunConfig) -> "dict[str, Any]":
     print(
         f"digital_twin/run_generic_integration.py starting - device={config.device!r} module={config.module!r} "
         f"host={config.host!r} port={config.port!r} fram_state_path={config.fram_state_path!r} "
-        f"scd30_state_path={config.scd30_state_path!r} seed={config.seed!r} duration={config.duration!r} "
-        f"faults={config.faults!r} hangs={config.hangs!r} wifi_outcomes={config.wifi_outcomes!r}",
+        f"scd30_state_path={config.scd30_state_path!r} seed={config.seed!r} soak_cycles={config.soak_cycles!r} "
+        f"duration={config.duration!r} faults={config.faults!r} hangs={config.hangs!r} wifi_outcomes={config.wifi_outcomes!r}",
     )
 
     module = __import__(config.module)
@@ -292,7 +376,7 @@ async def main(config: RunConfig) -> "dict[str, Any]":
     main_task = asyncio.get_event_loop().create_task(
         module.main(cfg_path=_CONFIG_DIR, web_host=config.host, web_port=config.port),
     )
-    summary: dict[str, Any] = {"failures": []}
+    summary: dict[str, Any] = {"failures": [], "would_have_triggered_count": 0}
     try:
         await _wait_until_built(module)
 
@@ -310,6 +394,23 @@ async def main(config: RunConfig) -> "dict[str, Any]":
         # survive that, so it's widened by the total configured hang time whenever any are armed.
         total_hang_s = sum(seconds * times for _device, _op, seconds, times in config.hangs)
         await _wait_until_serving(config.host, config.port, timeout_s=10.0 + total_hang_s)
+
+        if config.soak:
+            failures = await _soak(config.host, config.port, config.soak_cycles)
+            if module.watchdog.would_have_triggered_count != 0:
+                failures.append(f"watchdog would have triggered {module.watchdog.would_have_triggered_count} time(s)")
+
+            summary = {
+                "soak_cycles": config.soak_cycles,
+                "failures": failures,
+                "would_have_triggered_count": module.watchdog.would_have_triggered_count,
+            }
+            print(f"digital_twin/run_generic_integration.py [{config.device}] soak summary:", summary)
+            if failures:
+                for failure in failures:
+                    print("FAIL:", failure)
+            else:
+                print(f"PASS - {config.soak_cycles} soak cycles across every endpoint, watchdog never starved")
 
         if config.duration is None:
             print(f"Serving forever at http://{config.host}:{config.port}/ - Ctrl+C to stop")

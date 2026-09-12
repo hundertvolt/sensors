@@ -192,7 +192,9 @@ _LEGACY_WIRING_PLANS: "dict[str, dict[str, Any]]" = {
 }
 
 _wiring_plan: "dict[str, Any]" = _LEGACY_WIRING_PLANS["wozi"]  # default for every caller that never
-# calls configure_i2c_wiring()/configure_wiring() at all (e.g. run_wozi_integration.py's own main()).
+# calls configure_i2c_wiring()/configure_wiring() at all (e.g.
+# digital_twin/segfault_stress_repro.py's own main(), deliberately kept hardcoded to
+# sensortask_wozi - see that module's own comment).
 
 
 def configure_wiring(plan: "dict[str, Any]") -> None:
@@ -206,11 +208,12 @@ def configure_wiring(plan: "dict[str, Any]") -> None:
 
 
 def configure_i2c_wiring(profile: str) -> None:
-    # Called once, before build_system()-equivalent code constructs i2c0/i2c1, by whatever entry
-    # point wants a non-default wiring (digital_twin/run_dev_integration.py's own main() calls this
-    # with "dev"). Validated eagerly here rather than only inside configure_wiring() above, so a
-    # typo surfaces immediately at the call site instead of silently NAKing every I2C transaction
-    # later.
+    # Called once, before build_system()-equivalent code constructs i2c0/i2c1, by whatever caller
+    # wants a non-default wiring by name - legacy sugar over configure_wiring() kept for tests
+    # (digital_twin/README.md), not called by any real entry point since run_generic_integration.py
+    # takes a full wiring-plan dict instead. Validated eagerly here rather than only inside
+    # configure_wiring() above, so a typo surfaces immediately at the call site instead of silently
+    # NAKing every I2C transaction later.
     if profile not in _LEGACY_WIRING_PLANS:
         raise ValueError(f"unknown I2C wiring profile {profile!r} - expected 'wozi' or 'dev'")
     configure_wiring(_LEGACY_WIRING_PLANS[profile])

@@ -4,14 +4,15 @@
 # dependencies = []
 # ///
 """Pre-generates every real device's `sensortask_<device>.py` via `buildgen` into gitignored
-`build/generated_src/`, regenerated fresh every run - lets tests statically importing
-`sensortask_wozi`/`sensortask_dev` keep working (BUILD_CHAIN_PLAN.md's Session 6; SPECIFICATION.md E.3)."""
+`build/generated_src/`, regenerated fresh every run (SPECIFICATION.md E.3) - also writes each
+device's own wiring-plan JSON alongside its module, an independent oracle for its consumers."""
 
 # Usage: uv run scripts/_generate_sensortask_modules.py
 # Called by scripts/test.sh, scripts/typecheck.sh, scripts/run_unix_port_integration.sh and
 # scripts/run_digital_twin_ci.sh before anything imports a sensortask_<device> module - see each
 # script's own comment for why every one of them needs this.
 
+import json
 import sys
 from pathlib import Path
 
@@ -20,6 +21,7 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from buildgen.errors import BuildError  # noqa: E402
 from buildgen.generate import generate_device  # noqa: E402
+from buildgen.twin_wiring import compute_twin_wiring  # noqa: E402
 
 
 def main() -> int:
@@ -38,7 +40,15 @@ def main() -> int:
             print(f"error: {e}", file=sys.stderr)
             return 1
         (out_dir / f"sensortask_{device}.py").write_text(generated.module_source)
-    print(f"Generated {len(device_tomls)} device module(s) into {out_dir}")
+        wiring_plan = compute_twin_wiring(generated.model)
+        # "instances" is this script's own addition, not part of compute_twin_wiring()'s documented
+        # shape (that stays digital_twin/machine.py's own I2C/SPI-only contract): every driver name
+        # devices/<device>.toml declares, bus-attached or not (neopixel/notification included) - an
+        # independent, pre-construction oracle tests/test_sensortask.py's own optional-instance
+        # checks read instead of reflecting back on the very module they're verifying.
+        wiring_plan["instances"] = sorted({spec.driver for spec in generated.model.instances.values()})
+        (out_dir / f"sensortask_{device}_wiring_plan.json").write_text(json.dumps(wiring_plan))
+    print(f"Generated {len(device_tomls)} device module(s) + wiring plan(s) into {out_dir}")
     return 0
 
 

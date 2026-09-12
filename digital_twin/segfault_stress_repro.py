@@ -1,9 +1,12 @@
 """Manual, deliberately-aggressive concurrency stress tool for the (now root-caused and fixed, see `unix_port_poll_prewarm.py`) MicroPython Unix-port segfault under heavy concurrent connection load.
 Full account, usage, and exit/crash behavior in `digital_twin/README.md`'s "Known gaps" section."""
 
-# Same MICROPYPATH as run_wozi_integration.py; flags: --clients/--requests/--rounds/--host/--port.
-# A genuine segfault kills the interpreter outright (check exit status / dmesg, no Python traceback);
-# a MemoryError at higher concurrency is a distinct, catchable outcome this tool also reports.
+# Same MICROPYPATH as digital_twin/run_generic_integration.py; flags: --clients/--requests/
+# --rounds/--host/--port. A genuine segfault kills the interpreter outright (check exit status /
+# dmesg, no Python traceback); a MemoryError at higher concurrency is a distinct, catchable outcome
+# this tool also reports. Deliberately kept hardcoded to sensortask_wozi, not generalized to
+# run_generic_integration.py's own --module/--wiring-plan mechanism - see digital_twin/README.md's
+# "Known gaps" section for why.
 
 import asyncio
 import gc

@@ -1955,8 +1955,10 @@ def test_h2_stream_response_has_an_explicit_correct_content_length_header() -> N
     # generic iterator - _get_status() sets it explicitly instead, since the full size is already
     # known once every source has been awaited up front (nothing here is genuinely lazy streaming -
     # see _get_status()'s own comment). Real-hardware/real-socket regression coverage
-    # (found via tests/test_digital_twin_run_wozi_integration.py's own soak test failing without
-    # this): digital_twin/_http_client.py's fetch() falls back to a slow, effectively-untested
+    # (found via digital_twin/run_wozi_integration.py's own now-retired soak test failing without
+    # this, before that soak machinery moved to run_generic_integration.py -
+    # BUILD_CHAIN_PLAN.md's Session 6.2): digital_twin/_http_client.py's fetch() falls back to a
+    # slow, effectively-untested
     # reader.read(-1)-until-EOF path whenever Content-Length is missing.
     service, _app = _make_service()
     reader = _ScriptedReader([(0, _request_bytes("GET", "/status"))])

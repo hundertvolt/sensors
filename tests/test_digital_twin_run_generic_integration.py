@@ -1,4 +1,4 @@
-"""Unit tests for digital_twin/run_generic_integration.py: parse_args() (pure), _collect_chips() (the generalized fault/hang chip lookup), and one real end-to-end smoke boot.
+"""Unit tests for digital_twin/run_generic_integration.py: parse_args() (pure), _collect_chips() (the generalized fault/hang chip lookup), _soak() resilience, and one real end-to-end smoke boot (now exercising --soak too, ported from run_wozi_integration.py's own equivalent test - BUILD_CHAIN_PLAN.md's Session 6.2 retired that file and run_dev_integration.py outright in favor of this one, now-fully-capable generic entry point).
 The smoke test reuses the hand-written sensortask_wozi module plus machine's own "wozi" legacy plan (JSON-dumped to a temp file), not a real buildgen-generated module - buildgen needs tomllib/CPython and can't run inside this MicroPython process at all; proving a genuinely *generated* module boots is tests_scripts/test_digital_twin_generated_boot.py's job instead. This file only proves run_generic_integration.py's own generic machinery works, using a well-understood module as the payload."""
 
 import asyncio
@@ -16,13 +16,13 @@ if TYPE_CHECKING:
     T = TypeVar("T")
 
 sys.path.insert(0, "ext")  # run_generic_integration.py transitively imports a booted sensortask_*
-# module -> asy_webserver_service -> microdot - same convention test_digital_twin_run_wozi_integration.py's
-# own comment uses.
+# module -> asy_webserver_service -> microdot - reaches the real, vendored ext/microdot.py.
 sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comment for why
 
 import machine
+import run_generic_integration
 from machine import I2C, SPI, Pin
-from run_generic_integration import RunConfig, _collect_chips, main, parse_args
+from run_generic_integration import RunConfig, _collect_chips, _soak, main, parse_args
 
 
 def run_timed(coro: "Coroutine[Any, Any, T]", timeout_s: float = 5.0) -> "T":
@@ -92,6 +92,158 @@ def test_parse_args_rejects_an_unrecognized_flag() -> None:
         raise AssertionError("expected ValueError")
     except ValueError:
         pass
+
+
+def test_parse_args_missing_value_for_a_flag_raises() -> None:
+    # _pop_value()'s own guard.
+    try:
+        parse_args(["--module", "m", "--wiring-plan", "p.json", "--host"])
+        raise AssertionError("expected ValueError")
+    except ValueError:
+        pass
+
+
+def test_parse_args_soak_defaults_to_disabled() -> None:
+    # A bare, no-flags run is the plain "launch the twin and serve forever" path - soak only opts
+    # in via --soak/--soak-cycles below. Ported from run_wozi_integration.py's own identical test
+    # (BUILD_CHAIN_PLAN.md's Session 6.2 - that file and run_dev_integration.py are both retired now
+    # that this generic entry point carries their own soak machinery too).
+    config = parse_args(["--module", "m", "--wiring-plan", "p.json"])
+    assert config.soak is False
+    assert config.soak_cycles == 20
+
+
+def test_parse_args_soak_flag_enables_soak_with_the_default_cycle_count() -> None:
+    config = parse_args(["--module", "m", "--wiring-plan", "p.json", "--soak"])
+    assert config.soak is True
+    assert config.soak_cycles == 20
+
+
+def test_parse_args_soak_cycles_implies_soak() -> None:
+    # Passing a cycle count is itself opting into running the soak - no need to also pass --soak.
+    config = parse_args(["--module", "m", "--wiring-plan", "p.json", "--soak-cycles", "5"])
+    assert config.soak is True
+    assert config.soak_cycles == 5
+
+
+# ---------------------------------------------------------------------------
+# _soak() resilience - regression coverage for a real crash found via a real user report running
+# this exact soak against the real assembled system, ported verbatim from
+# run_wozi_integration.py's own identical test (BUILD_CHAIN_PLAN.md's Session 6.2): src/
+# asy_webserver_service.py's own max_connections=4 reject-when-full path
+# (WebserverService._serve()) closes a rejected connection immediately with zero response ever
+# written, by design (BACKLOG.md's own "reject-when-full" decision) - a real client hitting it sees
+# an ECONNRESET (or an EOF-before-any-bytes, depending on the OS/kernel's own close-with-unread-data
+# semantics) with no HTTP-level response at all. The real server already tolerates this kind of
+# failure gracefully; _soak() must record it as one soak failure among many, never raise and crash
+# the whole diagnostic run.
+# ---------------------------------------------------------------------------
+
+
+async def _reset_immediately_server(_reader: "asyncio.StreamReader", writer: "asyncio.StreamWriter") -> None:
+    # Never reads the request, never writes a response, closes immediately - the same "closed with
+    # nothing written at all" shape WebserverService._serve()'s own reject-when-full path produces
+    # (its own _close_writer() helper: writer.close() then await writer.wait_closed()).
+    writer.close()
+    await writer.wait_closed()
+
+
+def test_soak_records_a_connection_reset_as_a_failure_instead_of_crashing() -> None:
+    async def scenario() -> None:
+        server = await asyncio.start_server(_reset_immediately_server, "127.0.0.1", 18198)
+        try:
+            failures = await _soak("127.0.0.1", 18198, cycles=1)  # must not raise
+        finally:
+            server.close()
+            await server.wait_closed()
+        assert failures  # every single request (warmup and main cycle alike) failed - some
+        # failure must have been recorded, not silently dropped
+        assert any("warmup" in f for f in failures)
+        assert any("cycle 0" in f for f in failures)
+
+    run_timed(scenario(), timeout_s=15.0)
+
+
+# ---------------------------------------------------------------------------
+# _soak()'s own memory-trend check - the feature's actual stated purpose (catching a real leak),
+# never previously exercised: every other _soak() test either drives real HTTP failures (above) or
+# treats a trend failure as noise to filter out (test_main_runs_a_tiny_bounded_soak_... below). A
+# real regression in the trend arithmetic (e.g. the check disabled outright) would have shipped
+# silently - confirmed by mutation test before this coverage was added. gc.mem_free() is mocked
+# (reassigning run_generic_integration's own imported `gc` name, this project's usual mocking
+# mechanism) to a scripted sequence, isolating the trend arithmetic from real, noisy heap behavior.
+# ---------------------------------------------------------------------------
+
+
+async def _always_200_server(reader: "asyncio.StreamReader", writer: "asyncio.StreamWriter") -> None:
+    while True:
+        line = await reader.readline()
+        if line in (b"\r\n", b"\n", b""):
+            break
+    writer.write(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+    await writer.drain()
+    writer.close()
+    await writer.wait_closed()
+
+
+class _ScriptedGc:
+    # Stands in for the real `gc` module: `collect()` is a no-op (nothing to actually reclaim
+    # against these scripted numbers) and `mem_free()` returns the next value from a fixed script -
+    # one call for _soak()'s post-warmup baseline, then one more per main-loop cycle.
+    def __init__(self, mem_free_script: "list[int]") -> None:
+        self._script = mem_free_script
+        self._calls = 0
+
+    def collect(self) -> None:
+        pass
+
+    def mem_free(self) -> int:
+        value = self._script[min(self._calls, len(self._script) - 1)]
+        self._calls += 1
+        return value
+
+
+def test_soak_reports_a_failure_when_gc_mem_free_genuinely_trends_downward() -> None:
+    # 5 calls needed for cycles=4 (1 baseline + 4 per-cycle): a steady, real decline of 5000 bytes/
+    # cycle - early_avg (first quarter) vs. late_avg (last quarter) trend is 15000 bytes, well past
+    # _MEM_TREND_TOLERANCE_BYTES (8192).
+    real_gc = run_generic_integration.gc  # type: ignore[attr-defined]
+    run_generic_integration.gc = _ScriptedGc([100_000, 95_000, 90_000, 85_000, 80_000])  # type: ignore[attr-defined,assignment]
+    try:
+
+        async def scenario() -> "list[str]":
+            server = await asyncio.start_server(_always_200_server, "127.0.0.1", 18199)
+            try:
+                return await _soak("127.0.0.1", 18199, cycles=4)
+            finally:
+                server.close()
+                await server.wait_closed()
+
+        failures = run_timed(scenario(), timeout_s=15.0)
+    finally:
+        run_generic_integration.gc = real_gc  # type: ignore[attr-defined]
+    assert any("trend" in f and "tolerance" in f for f in failures), f"expected a memory-trend failure, got: {failures!r}"
+
+
+def test_soak_reports_no_trend_failure_when_gc_mem_free_stays_flat() -> None:
+    # Same shape as the decline test above, but a flat memory profile - proves the check isn't
+    # trigger-happy (a real, correctly-behaving system must not fail this).
+    real_gc = run_generic_integration.gc  # type: ignore[attr-defined]
+    run_generic_integration.gc = _ScriptedGc([100_000] * 5)  # type: ignore[attr-defined,assignment]
+    try:
+
+        async def scenario() -> "list[str]":
+            server = await asyncio.start_server(_always_200_server, "127.0.0.1", 18200)
+            try:
+                return await _soak("127.0.0.1", 18200, cycles=4)
+            finally:
+                server.close()
+                await server.wait_closed()
+
+        failures = run_timed(scenario(), timeout_s=15.0)
+    finally:
+        run_generic_integration.gc = real_gc  # type: ignore[attr-defined]
+    assert not any("trend" in f for f in failures), f"expected no memory-trend failure, got: {failures!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -178,16 +330,30 @@ def test_collect_chips_skips_a_bus_var_the_module_never_constructed() -> None:
 
 
 # ---------------------------------------------------------------------------
-# main() - one real, short, bounded end-to-end smoke test (same spirit as
-# test_digital_twin_run_wozi_integration.py's own main() smoke test): boots the real hand-written
+# main() - one real, short, bounded end-to-end smoke test: boots the real hand-written
 # sensortask_wozi object graph via the GENERIC entry point (not a static `import sensortask_wozi`),
-# wired from a JSON-dumped copy of machine's own "wozi" legacy plan, with one real injected fault.
-# Deliberately exactly one such test - see test_digital_twin_run_wozi_integration.py's own identical
-# comment for why (the real object graph's orphaned background tasks after main_task.cancel()).
+# wired from a JSON-dumped copy of machine's own "wozi" legacy plan, running a tiny bounded soak
+# with one real injected fault - the same combined shape run_wozi_integration.py's own now-retired
+# main() smoke test used (BUILD_CHAIN_PLAN.md's Session 6.2: that file and run_dev_integration.py
+# are both gone now that this generic entry point carries their own soak machinery too).
+# Deliberately exactly one such test, not two (a soak-only one plus a separate fault-injection
+# one): main()'s own real supervisor (sensortask_wozi.main()/start_and_check_tasks()) leaves
+# several real background tasks running after main()'s own main_task.cancel() - the same orphaned-
+# task memory-pressure bug tests/test_digital_twin_sensortask_integration.py's own module docstring
+# already documents in full. digital_twin/launch.py's own test file has exactly one such smoke test
+# for the identical reason - matched here, not reinvented.
 # ---------------------------------------------------------------------------
 
 
-def test_main_boots_sensortask_wozi_through_the_generic_path_and_serves_real_http() -> None:
+def test_main_runs_a_tiny_bounded_soak_with_an_injected_fault_and_returns_a_clean_summary() -> None:
+    # soak_cycles is deliberately tiny, unlike a real soak run (run_generic_integration.py's own
+    # default is 20) - this is a smoke test, not a real soak, and the memory-flat check's fixed
+    # tolerance needs far more real cycles than fit a fast smoke test to reliably average out
+    # ordinary per-connection allocator noise (confirmed directly against the now-retired
+    # run_wozi_integration.py's own identical test: a real run at this small cycle count produced a
+    # false-positive-shaped gc.mem_free() dip). The endpoint-reachability and watchdog signals are
+    # meaningful even at this tiny scale, so this only excludes that one specific, scale-sensitive
+    # failure message.
     import json
     import os
 
@@ -206,17 +372,24 @@ def test_main_boots_sensortask_wozi_through_the_generic_path_and_serves_real_htt
         port=19099,
         fram_state_path=None,
         scd30_state_path=None,
+        soak=True,
+        soak_cycles=2,
         duration=0.0,
         faults=[("sgp40", "writeto", 2)],
     )
     try:
-        summary = run_timed(main(config), timeout_s=30.0)
+        # _SOAK_WARMUP_CYCLES (40) adds real HTTP round trips ahead of this test's own tiny
+        # soak_cycles - 30s wasn't enough once that warm-up landed (same finding
+        # run_wozi_integration.py's own now-retired identical test already made).
+        summary = run_timed(main(config), timeout_s=60.0)
     finally:
         try:
             os.remove(plan_path)
         except OSError:
             pass
-    assert summary["failures"] == []
+    non_memory_failures = [f for f in summary["failures"] if "gc.mem_free()" not in f]
+    assert non_memory_failures == []
+    assert summary["would_have_triggered_count"] == 0
 
 
 if __name__ == "__main__":

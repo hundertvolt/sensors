@@ -950,6 +950,229 @@ script quality bar" below, not repeated here.
       that session's own documented decision - not revisited here since generalizing them is gated
       on the same `--soak` porting item 1 above already identifies.
 
+   **Session 6.2 done — the finish criterion's second half is now genuinely met, both items closed,
+   not just staged.** Picked up exactly where Session 6's own "Not done" list (above) left off;
+   every one of that list's two items is resolved below, with real findings along the way, not
+   guessed at or narrowed to a boot+REST smoke check.
+
+   1. **`--soak`/`--soak-cycles` ported into `run_generic_integration.py`** — verbatim (the
+      `_SOAK_WARMUP_CYCLES`/`_MEM_TREND_TOLERANCE_BYTES` constants, `_soak()`'s own endpoint-cycling/
+      memory-trend-sampling body), confirmed genuinely device-generic already (not wozi-specific
+      logic that happened to need adapting) by direct comparison against `run_dev_integration.py`'s
+      own byte-identical copy of the same machinery before that file was retired. `RunConfig`/
+      `parse_args()` gained `soak`/`soak_cycles` fields and `--soak`/`--soak-cycles` flags matching
+      the retired wrapper files' own shape exactly. Test coverage (TDD, written first): soak-related
+      `parse_args()` cases, a `_soak()` connection-reset-resilience regression test (ported from the
+      retired wrapper's own identical test), and the existing single `main()` smoke test extended to
+      exercise `--soak` + a real injected fault together (the "deliberately exactly one such test"
+      constraint the retired wrapper's own test file already documented - the real object graph's
+      orphaned background tasks after `main_task.cancel()` - still applies here unchanged).
+   2. **`scripts/_digital_twin_ci_suite.py` rewritten to be device-generic**, driving
+      `run_generic_integration.py` (never the retired wrappers) via a `RunContext` dataclass
+      (`--device`, resolved `--module`/`--wiring-plan`/`--fram-state-path`/`--scd30-state-path`,
+      and `drivers`: the bus-attached driver set read straight from that device's own
+      `buildgen.twin_wiring`-computed wiring plan, never a hardcoded per-device driver table). The
+      bus-fault matrix (runs 3/4) is derived from `drivers` the same way - a device without `bmp3xx`
+      (4 of the 6 real devices) simply never faults/checks it, with zero device-name branching
+      anywhere in the suite itself. `scripts/_generate_sensortask_modules.py` now also writes each
+      device's own `sensortask_<device>_wiring_plan.json` alongside its module, the one new artifact
+      this needed. **A real, previously-undocumented gap found by actually reading
+      `run_generic_integration.py`'s own `RunConfig` defaults, not assumed from the retired
+      wrapper's shape**: its `fram_state_path`/`scd30_state_path` default to `None` (in-memory
+      only), unlike the retired `run_wozi_integration.py`'s own hardcoded on-disk defaults - every
+      one of this suite's persistence-across-a-real-reboot checks (runs 2, 4, 5b, 5c) would have
+      silently stopped proving anything had this gone unnoticed. Fixed by having `_spawn()` pass
+      `--fram-state-path`/`--scd30-state-path` explicitly, pointed at the same fixed paths
+      `_clean_state()` already wipes.
+      - **A real, second bug found extending this suite to `dev` for the first time**:
+        `digital_twin/_fram_chip.py`'s own `_decode_addr()` always read exactly 2 address bytes,
+        correct for the 8KB MB85RS64V every other real device uses, but silently dropped the true
+        low-order address byte for `dev`'s real 256KB MB85RS2MTA (which needs a 3-byte address, per
+        `src/asy_fram_driver.py`'s own `_setup_addr_buffer()`) - any two chunks whose real addresses
+        happened to share the same high byte aliased and corrupted each other's data, surfacing as
+        3 failing FRAM/SGP40 error-history-persistence checks on `dev`'s first real CI run. Fixed by
+        branching on the same `_ADDR_16BIT_MAX` threshold the real driver uses; regression coverage
+        added to `tests/test_digital_twin_fram.py` (an aliasing test that fails against the old code
+        and passes against the fix, confirmed both ways, plus a 16-bit-chip test proving every other
+        device's decode path is unaffected). One further check this same `dev` run surfaced was a
+        real, pre-existing race (confirmed to also occur on wozi, unrelated to this addressing bug):
+        `scripts/_digital_twin_ci_suite.py`'s Run 5c raced SGP40's real compensation-read-from-SCD30
+        startup transient - fixed on the test side later this same session (see this file's own
+        later fix-commit account), with the underlying production behavior it exposed - a real E/W
+        pair logged for expected startup jitter - tracked as BACKLOG.md's open item 17 for a
+        dedicated follow-up session.
+      - **CI shape, decided deliberately**: `.github/workflows/ci.yml`'s `digital-twin-e2e` job
+        gained a `strategy.matrix` over all 6 real devices (`fail-fast: false`), mirroring
+        `firmware-build-verify`'s own precedent from Session 6, rather than one long script looping
+        all 6 devices serially in-process. Chosen over the serial alternative because several of
+        this suite's own runs (the WiFi hotspot-fallback wait, the soak run) carry real,
+        non-parallelizable wall-clock cost *per device* that a matrix absorbs for free across
+        concurrent jobs but a serial loop simply sums - each device's own 11-run suite stays
+        independently attributable in the job list too, the same diagnostic benefit
+        `firmware-build-verify`'s own matrix already provides.
+      - `scripts/run_digital_twin_ci.sh` and `scripts/run_unix_port_integration.sh` both gained a
+        `[device]`/`--device` selector (default `wozi`, preserving every existing local/manual
+        invocation's own behavior unchanged).
+   3. **The remaining ~10 files that only resolved their import against a generated module before
+      this session** - every one is now either genuinely parametrized across all 6 real devices, or
+      confirmed (not guessed) to be correctly out of that scope, with the actual reasoning recorded
+      in each file's own comments/module docstring, not just here:
+      - `tests/test_digital_twin_webserver_concurrency.py` — fully parametrized (90 = 15 scenarios x
+        6 devices), exactly as trivial as Session 6 predicted (zero assertion rework - only which
+        device's own generated module gets booted, via a per-test `machine.configure_wiring()` call
+        this file never needed before, since every one of its own scenarios now shares one process
+        across several devices' own modules). **A real bug found only by actually running this at
+        the new, much higher call-volume scale (90 real object-graph builds in one process, versus
+        the original 15)**: a `MemoryError` allocating dev's 256KB FRAM chip fake, from garbage
+        accumulated across builds outpacing MicroPython's own `gc.threshold(32768)`-triggered
+        automatic collection at this volume - fixed with one explicit `gc.collect()` after every
+        generated test, confirmed sufficient (measured: real run time ~1m52s, comfortably inside
+        `scripts/test.sh`'s own 180s per-file timeout).
+      - `tests/test_digital_twin_run_generic_integration.py`'s own smoke test — judged, not
+        rewritten: re-read its own docstring, which explicitly states it deliberately boots the
+        hand-written `sensortask_wozi` as "a well-understood payload" to test
+        `run_generic_integration.py`'s own generic machinery, and that proving a genuinely
+        *generated* module boots is already `tests_scripts/test_digital_twin_generated_boot.py`'s
+        job. Parametrizing it across 6 devices would have duplicated that other file's own coverage
+        and contradicted this file's own stated scope - left as-is, deliberately, not an oversight.
+        Extended instead with the new `--soak`/`_soak()` coverage item 1 above needed.
+      - `tests/test_sensortask_wozi.py`/`test_sensortask_dev.py` — collapsed into one new file,
+        `tests/test_sensortask.py` (52 shared scenario bodies x 6 devices = 312, plus 3 genuinely
+        device-independent `_sweep_stale_tmp_dirs()` unit tests left unparametrized = 315 total,
+        confirmed by direct diff that the two retired files' own 55/54 functions really were
+        near-perfect duplicates first). Expected optional-instance set, FRAM-chunk-call sequence,
+        and errcount/logger counts are all derived reflectively from the booted module's own
+        attributes (`getattr(module, name, None) is not None`) - never a hardcoded wozi/dev
+        3-sensor literal - and dev's own distinct 256KB FRAM chip fake (RDID-keyed by the device's
+        own real `max_size`, read from its wiring plan) is selected the same
+        `digital_twin/machine.py`-established way. **Two classes of real bug found only by actually
+        running the collapsed module against the real interpreter, not assumed from the original
+        files' own passing status**: (1) `getattr(module, "bmp3xx", None)` was the right shape, but
+        several helpers still used a bare `module.bmp3xx is not None` first - a real
+        `AttributeError` on any device without that name declared at all as a module global (4 of
+        the 6 real devices), not just `None`-valued; (2) several `lightCmdLED` notification-PUT
+        scenarios were rewritten from memory with the wrong payload key case (`R`/`G`/`B`/`T`
+        instead of the real driver's own lowercase `r`/`g`/`b`/`t`) and the wrong expected outcome
+        for a validation failure (`"Invalid"` instead of the real dispatcher's own `"Failed"` for a
+        payload that fails inside the callback) - caught immediately by the real interpreter run
+        returning the wrong result for every device, not silently passing on a coincidentally-
+        matching assumption. Both fixed by re-deriving every value from the original files directly
+        rather than from memory. Confirmed clean: 315/315 passed, real run time ~13.6s.
+      - `tests/test_digital_twin_sensortask_integration.py` — a deliberate hybrid, not full
+        parametrization, decided and recorded in the file's own module docstring: its three fast,
+        no-real-wall-clock-wait scenarios (construction/module-list check, GET
+        `/measurements`+`/sensors` sensor-shape check, a real injected bus fault degrading cleanly)
+        moved into a new "Construction across every real device" section and are now parametrized
+        across all 6 real devices (18 tests total, confirmed real run time ~43.8s, a ~3.5s increase
+        over the original single-device ~40.3s baseline). This file's other ~11 tests (WiFi/DNS
+        hotspot fallback, watchdog escalation, task-supervisor restart, SGP40 VOC-backup reboot
+        survival x2, mempause) stay wozi-scoped deliberately: each drives several real
+        seconds-to-tens-of-seconds wall-clock waits (a real ~75s WiFi-disconnect scenario among
+        them) through mandatory infrastructure plus SCD30/SGP40 only - never `bmp3xx` - so the
+        mechanism they prove is already device-independent, and measured directly, a full x6
+        parametrization of this file's heavier tests would have overrun `scripts/test.sh`'s own
+        180s per-file timeout with no real margin (~40s x 6 ≈ 240s). Wiring a genuine per-device CI
+        matrix for just this one file's heavy tests (mirroring `scripts/run_digital_twin_ci.sh`'s
+        own per-device matrix) was judged out of proportion to what a bmp3xx-blind mechanism
+        actually needs proven six times over - a deliberate, documented tradeoff, not a shortcut
+        taken silently. A real, order-dependent hazard was found and fixed along the way: this
+        file's own `machine._wiring_plan` is a shared, process-wide mutable global, and
+        MicroPython's `globals()` doesn't preserve definition order (this file's own pre-existing
+        comment already established that for test-execution order) - so every one of this file's
+        own wozi-boot call sites now calls `machine.configure_wiring()` explicitly, rather than
+        relying on "the wozi tests happen to run before/after the new parametrized ones."
+      - `tests/test_digital_twin_bus_hazard_concurrency.py` — Session 6's own "genuine judgment
+        call ... flagged to the project owner" (above) turned out not to need an owner-level
+        decision after all: CLAUDE.md's standing bus-hazard rule already settles which devices need
+        cross-device-interleaving coverage ("shares a bus in either variant"), so this was a
+        fact-finding question, not an open architectural one - discharged by checking, not guessing,
+        against every real device's own `devices/*.toml` directly. `wozi` (`sgp40`+`bmp3xx` sharing
+        `i2c1`) and `dev` (`scd30`+`sgp40` sharing `i2c1`) are the *only* two real devices that share a bus
+        between two sensor instances at all - `arzi`/`klkizi`/`grkizi`/`schlafzi` each wire `scd30`
+        alone on `i2c0` and `sgp40` alone on `i2c1`. CLAUDE.md's own standing bus-hazard rule scopes
+        cross-device-interleaving coverage to a device that "shares a bus in either variant" - since
+        none of the other 4 do, there is no third/fourth/fifth/sixth device-named
+        cross-device-interleaving test missing here; the existing wozi+dev-only pair is complete
+        coverage under the project's own rule, not a gap. This file's other tests (FRAM-specific
+        same-device hazard recovery, the WiFi-disconnect-under-load scenario) stay wozi-scoped for
+        the same device-independent-mechanism/real-wall-clock-cost reasoning as the sensortask-
+        integration file above. Zero test-logic changes were needed - only confirming and recording
+        this determination, in the file's own module docstring and SPECIFICATION.md Part C.8 (both
+        updated), so a future session doesn't have to re-derive it from scratch.
+      - `tests/test_digital_twin_real_website_integration.py` — Session 6's own guess ("likely
+        already orthogonal") confirmed correct, not just re-asserted: its one device-specific
+        assertion (the inlined website's `device.id`) comes from `frozen_modules/
+        frozen_website_wozi.py`, the one real website bundle `scripts/test.sh` builds (there is no
+        infrastructure to build a second device's own real gzip+freezefs+inlined bundle for testing
+        today) - never from `sensortask_wozi.py`'s own construction. The per-device *data*
+        correctness this would otherwise need proving (a device's own real `definitions.json`
+        containing its own real `device.id`) is already proven generically, for all 6 real devices,
+        by `tests_scripts/test_buildgen_definitions.py` (confirmed directly:
+        `buildgen/definitions.py`'s own `"id": model.device` line, and that test's own per-device
+        shape check). This file's own remaining job - proving the real gzip/freezefs/inlining build
+        *pipeline* actually executes correctly under the Unix port at all - is the same code path
+        regardless of which device's data flows through it, so wozi once is complete coverage, not
+        a gap; recorded in the test's own comment rather than left for a future session to
+        re-investigate.
+   4. **`run_wozi_integration.py`/`run_dev_integration.py` retired outright**, a real decision (not
+      inherited from Session 5's own different-reasons-different-session deferral): once
+      `run_generic_integration.py` gained their own soak machinery (item 1) and became CI's real
+      per-device driver (item 2), both were pure duplication with nothing left only they could do -
+      confirmed directly, not assumed, since every real device including wozi/dev now boots through
+      `run_generic_integration.py` in both the CI suite and `scripts/run_unix_port_integration.sh`.
+      Their own unique remaining coverage (`_http_client.py`'s pure request/response-parsing tests,
+      `unix_port_gc_unwedge.py`'s own tests) moved into two new dedicated per-module files
+      (`tests/test_digital_twin_http_client.py`, `tests/test_digital_twin_unix_port_gc_unwedge.py`)
+      rather than being deleted with them, matching every other module's own one-file-per-module
+      test convention. Both files import `digital_twin/`-only modules exclusively (same shape as
+      every other `test_digital_twin_*.py` file - `pyproject.toml`'s `[tool.mypy]` exclude comment),
+      so they're named to match that pattern from the start: CI's `lint-and-typecheck` job runs the
+      main mypy pass without `digital_twin` on its scan roots, and the `test_digital_twin_.*\.py$`
+      exclude is what keeps files like these out of that pass so `digital_twin/typecheck.ini`'s own
+      dedicated pass (which does include them, via its `tests/test_digital_twin_*.py` argument)
+      checks them instead - confirmed the hard way when the initial `test_http_client.py`/
+      `test_unix_port_gc_unwedge.py` names missed the glob and broke CI's `lint-and-typecheck` job
+      with two `import-not-found` errors. Three JS
+      spawn sites (`tests_js/_live_twin_command.js`, `tests_js/_live_matrix_command.js`,
+      `scripts/cross_browser_smoke.mjs`) that hardcoded `digital_twin/run_wozi_integration.py`
+      directly were updated to spawn `run_generic_integration.py --module sensortask_wozi
+      --wiring-plan ... --device wozi` instead - found by grepping for the literal filename across
+      the whole repo (not just `.py`/`.sh`/`.md`, the gap Session 6's own equivalent sweep missed
+      once already for a different file), so nothing was left silently broken by the retirement.
+      `digital_twin/segfault_stress_repro.py` was **not** generalized or retired - a deliberate,
+      recorded decision, not an oversight: it is a manual, one-off repro tool for one specific,
+      already-fixed, device-independent MicroPython Unix-port interpreter bug, never invoked by
+      `scripts/run_digital_twin_ci.sh` or any `tests/test_*.py` file, so it carries none of the
+      "narrowed to a boot+REST smoke check" concern this whole mission is actually about; only its
+      own stale comment referencing the now-deleted `run_wozi_integration.py` needed fixing.
+   5. **Documentation**: `digital_twin/README.md` (every `run_wozi_integration.py`/
+      `run_dev_integration.py` reference updated - the "Swapping the twin in", "Booting a generated
+      device", "FRAM/SCD30 persistence", and "Automated CI suite" sections all described the
+      now-retired 2-file/wozi-only shape and needed real rewrites, not just a name substitution: the
+      CI suite section in particular now describes a per-device matrix, not one wozi-only walkthrough),
+      `CLAUDE.md` (its own mypy-exclude-list account of which digital-twin files need the dedicated
+      typecheck pass had drifted the same way `pyproject.toml`'s real exclude list did), and
+      `SPECIFICATION.md` Part C.8 (the bus-hazard standing rule gained the per-device applicability
+      account item 3's bus-hazard entry above summarizes). `pyproject.toml`'s own `[tool.mypy]`
+      exclude list and per-file-ignore comments were updated to match every file this session
+      deleted/added, not just the code itself.
+   6. **Pre-push verification**: this session's own changes touch `pyproject.toml` and `scripts/`
+      (`scripts/_digital_twin_ci_suite.py`, `scripts/_generate_sensortask_modules.py`,
+      `scripts/run_digital_twin_ci.sh`, `scripts/run_unix_port_integration.sh`), triggering
+      CLAUDE.md's "Pre-push verification" clean-chroot requirement. See this session's own PR
+      description for the actual noble/trixie chroot run status - recorded there rather than
+      duplicated here, since it's a one-time gate on this specific PR, not a durable project fact.
+
+   **Confirmed**: the finish criterion's second half ("the *entire* existing digital-twin test
+   suite... generalized to run against a freshly-`buildgen`-generated module for all 6 real device
+   variants... not narrowed to a boot+REST smoke check") is now genuinely met. Every file the finish
+   criterion named has either been fully parametrized across all 6 real devices, or has a real,
+   checked (not guessed) determination recorded for why full parametrization doesn't apply to it -
+   never silently left as a wozi-only smoke check. `scripts/lint.sh`/`scripts/typecheck.sh` report
+   zero findings across all eight scopes; `scripts/test.sh`'s full MicroPython-interpreter suite
+   passes end to end (this session's own sandbox had outbound access to build the toolchain from
+   scratch, unlike Session 6's - the real-interpreter proof did not have to wait for CI this time).
+
 7. **Versioning** — firmware + website, both starting at "2.0b0".
 8. **Closing consistency pass** — bird's-eye scan across everything sessions 1-7 touched; confirm
    zero device-specific content remains outside the 6 TOML files.
