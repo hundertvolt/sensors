@@ -336,8 +336,10 @@ explicitly.
   the audit found — see §7.11.
 - **The ISL29125 has never been bench-tested.** `dev_legacy/README.md`'s "Confirmed working" list
   (2026-08-28) covers Neopixel, SCD30, SGP40, BMP3xx, MPRLS, FRAM and the UART crossover — the
-  ISL29125 is wired (I2C1, GPIO6) but absent from that list. Unlike the other promotions, there is
-  no prior real-hardware evidence for this device to check new behaviour against.
+  ISL29125 is wired (I2C1, GPIO6) but absent from that list, and the project owner has confirmed
+  the device only ever ran a single config-and-read smoke test. So unlike every other promotion
+  there is **no proven field behaviour** for this device to check new behaviour against — see §6
+  for what that rules out.
 
 ## 5. Datasheet defects, so nobody re-chases them
 
@@ -406,7 +408,16 @@ These are decisions, not options. Everything below in §7 is designed against th
     settle margin, a software down-direction dwell, and a command to discard the learned gain
     ratio (§8.3). The learned ratio itself is calibration state, not a setting (§7.3).
 
-Two consequences worth stating explicitly, because they change earlier reasoning in this doc:
+**One standing consequence, stated once because it recurs**: CLAUDE.md's rule to *"verify against
+the legacy driver's own actually-proven field behaviour"* has **no purchase for this device**. The
+ISL29125 has only ever run a single config-and-read smoke test (§4) — the project owner has
+confirmed there is nothing to preserve on those grounds. So wherever this doc weighs "but the
+deployed code does X", X is evidence of intent at most, never of proven behaviour. That is what
+settled the IR default below, and it applies equally to naming, defaults and API shape: the
+promoted driver follows the project's current conventions, not the legacy driver's.
+
+Two further consequences worth stating explicitly, because they change earlier reasoning in this
+doc:
 
 - Since resolution stays user-selectable, the flicker finding (§7.2) is **documentation, not a
   design constraint** — the driver must let the user pick 12-bit and should say what it costs,
@@ -465,17 +476,18 @@ each range, compute the true ratio, low-pass it, persist it to FRAM. Without thi
 smooth-ish; with it, smooth. It is the single most influential number for transition quality, so
 it is worth doing properly rather than trusting the nominal figure.
 
-**Where the learned value lives — following `asy_sgp40_driver.py`, not inventing a pattern.** SGP40
-already solves exactly this shape: its VOC algorithm's learned state goes into a timestamped FRAM
-chunk (`AsyFramChunkTimestampedBuffer`), the *policy* around it is ordinary config fields
-(`BackupPeriod`, `BackupMaxAge`, `WaitTimeNTP`), and a command-only bool (`SGPResetVOC`,
-`special=True`, wired through `_push_callbacks`) discards the learned state. Mapped across: the
-gain ratio is one float in a FRAM chunk, not a config field, and `ResetCal` is the command-only
-bool that throws it away and relearns from nominal.
+**Where the learned value lives — the project already has a rule for this.** `SPECIFICATION.md`
+Part C.5.2.1 defines the *command-only trigger field*, and `asy_sgp40_driver.py` is its worked
+example: learned state goes into a timestamped FRAM chunk (`AsyFramChunkTimestampedBuffer`), the
+*policy* around it is ordinary config fields (`BackupPeriod`, `BackupMaxAge`, `WaitTimeNTP`), and a
+special-alone `"bool"` field wired through `_push_callbacks` discards it. Mapped across: the gain
+ratio is one float in a FRAM chunk, not a config field, and **`ResetRangeCal`** is the command-only
+bool that throws it away and relearns from nominal. §8.3 spells out what conforming to C.5.2.1
+actually obliges the driver to do.
 
 Deliberately **no** on/off switch for the learning itself. The ratio is a device constant — it
 converges and stays there — not an environmental adaptation that could wander, so "stop learning"
-solves nothing that `ResetCal` does not.
+solves nothing that `ResetRangeCal` does not.
 
 ### 7.4 Hue and saturation are continuous for free; brightness is not
 
@@ -696,15 +708,23 @@ interrupt pin is an open-drain pull-down configuration."* Open-drain means the p
 low; the high level has to come from somewhere else. The reference circuit (Figures 1 and 15) shows
 that somewhere as R4 = 2.7 kΩ-10 kΩ to VDD. Nothing the driver writes can change this.
 
-**Does the board already have one? Almost certainly yes.** SparkFun's own Eagle schematic for the
-ISL29125 breakout (`Hardware/SparkFun_ISL29125_Breakout.sch` in their hardware repo, read directly)
-carries **R4 = 10 kΩ from `!INT` to 3V3**, wired straight through — *not* behind the solder jumper.
-`SJ2` only breaks R2/R3, the SDA/SCL pull-ups, which is the usual "remove my I²C pull-ups when
-several boards share the bus" jumper. So on that breakout the INT pull-up is present and cannot be
-disconnected. The caveat is only that `dev_legacy/README.md` names exact variants for the FRAM
-(MB85RS2MTA) and the BMP3xx (BMP384) but not for the ISL29125, so the repo cannot *prove* this is
-the SparkFun board. One look settles it: a 10 kΩ 0603 beside the INT header pin. The part is a
-1.65 mm ODFN, which is why a breakout is near-certain in the first place.
+**Does the dev board already have one? Yes — confirmed.** The project owner has confirmed directly
+that INT on the dev board is connected *and pulled up*, on GP6 / physical pin 9. That is the same
+class of evidence `dev_legacy/README.md` already records for the UART crossover jumper, and it is
+now recorded the same way, in that file's own device table.
+
+This matches the hardware independently: SparkFun's Eagle schematic for the ISL29125 breakout
+(`Hardware/SparkFun_ISL29125_Breakout.sch`, read directly) carries **R4 = 10 kΩ from `!INT` to
+3V3**, wired straight through — *not* behind the solder jumper. `SJ2` only breaks R2/R3, the
+SDA/SCL pull-ups, which is the usual "remove my I²C pull-ups when several boards share the bus"
+jumper. So on that breakout the pull-up is present and cannot be disconnected, which is consistent
+with what the owner measured.
+
+The board's own software corroborates the rest of the wiring: `dev_legacy/sensortask-dev.py:137`
+constructs `ISL29125_Reader(i2c1, …, irq_pin=6, …)` with a real `islIrqCallback` registered
+(line 101), and `i2c1` is `(1, scl=15, sda=14, 50 kHz)` — the same bus as SGP40 (line 134) and
+SCD30 (line 133). That is evidence of intent and of the pin assignment, not of the resistor; the
+owner's confirmation is what settles the resistor.
 
 **Should the driver enable the rp2040's internal pull-up? Yes, unconditionally.** The Pico W
 datasheet gives RP2040's on-chip pull-ups as ~50 kΩ (RUN) and nominally 60 kΩ (SWDIO/SWCLK), so the
@@ -719,10 +739,12 @@ is right in both worlds:
   milliseconds at least. An earlier revision of this section called 60 kΩ a "degraded mode" on
   timing grounds; that was wrong — timing is not the issue here at all.
 
-So: `Pin(irq_pin, mode=Pin.IN, pull=Pin.PULL_UP)`. **The reason to still fit the external resistor
-if it turns out to be missing is noise immunity, not speed.** A 60 kΩ pull-up on a jumper wire is
-far easier to drag down by capacitive coupling than a 10 kΩ one, and a spurious falling edge on
-this line is not cosmetic — it is a bogus auto-range decision. 4.7 kΩ or 10 kΩ, either is fine.
+So: `Pin(irq_pin, mode=Pin.IN, pull=Pin.PULL_UP)`. Nothing needs to be added to the dev board —
+the internal pull-up is belt-and-braces there, and the value of enabling it unconditionally is that
+the driver also works on a board that lacks the resistor. If one ever does, 4.7 kΩ or 10 kΩ is
+worth fitting for **noise immunity, not speed**: a 60 kΩ pull-up on a jumper wire is far easier to
+drag down by capacitive coupling than a 10 kΩ one, and a spurious falling edge on this line is not
+cosmetic — it is a bogus auto-range decision.
 
 Worth noting for the convention scan: no other promoted driver's interrupt pin uses `PULL_UP` —
 SCD30's RDY line is push-pull, so bare `Pin.IN` is correct there. This is a real difference between
@@ -770,11 +792,13 @@ raw counts or the INT pin.
 "flag, don't silently change" rule for cross-file inconsistency). Of the 30 config field names in
 `src/`, exactly one carries a device prefix: `asy_sgp40_driver.py`'s **`SGPResetVOC`**. Every other
 field across BMP3xx, SCD30, SGP40, the notification service and the WiFi service is unprefixed.
-Since this driver copies SGP40's command-only-bool pattern for `ResetCal` (§7.3), it would be easy
-to copy the prefix with it — it should not, and the ISL driver follows the 29-field majority. Both
-the divergence and the possibility that `SGPResetVOC` is deliberate (it is the only *command*
-rather than *setting*, and a bare `ResetVOC` may have read ambiguously in the UI) are for the
-project owner to settle; nothing here changes that file.
+Since this driver adopts the same command-only-bool pattern for `ResetRangeCal` (§7.3, §8.3), it
+would be easy to carry the prefix across with it — it does not. Note that `SPECIFICATION.md`
+Part C.5.2.1 quotes `SGPResetVOC` by name, but as the worked example of the *mechanism*; nothing
+in it makes the prefix part of the convention. Whether `SGPResetVOC` is a deliberate exception (it
+is the only *command* rather than *setting* in `src/`, and a bare `ResetVOC` may have read
+ambiguously in the UI) or simple drift is for the project owner to settle; nothing here changes
+that file.
 
 **This closes §3.7 (the string-getter asymmetry) as a decision, not a question**: enumerated
 settings are ints with allowed-value tuples, and the human-readable labels move to `js/`, which
@@ -793,7 +817,7 @@ Part G's cross-language mirror obligation requires anyway.
 | `AutoRangeSettle` | int | 1 | 1-10 cycles | full cycles waited after a switch |
 | `AutoRangePersist` | int | 4 | {1, 2, 4, 8} | `CONFIG3` `PRST` — hardware transient rejection |
 | `AutoRangeDwell` | float | 10.0 | 0.0-300.0 s | minimum time on the high range before a switch **down** |
-| `ResetCal` | bool | — | command-only | discard the learned gain ratio and relearn (§7.3) |
+| `ResetRangeCal` | bool | — | command-only | discard the learned gain ratio and relearn (§7.3) |
 | `IrCompOffset` | int | 0 | {0, 1} | `CONFIG2` B7 (adds 106) |
 | `IrCompAdjust` | int | 40 | 0-63 | `CONFIG2` B5:0 |
 | `FiltCoeff` | float | -1.0 | -1.0-1.0 | output EMA; <= 0 disables (legacy SHTC3/MPRLS precedent) |
@@ -821,7 +845,34 @@ Four knobs were considered and **declined**, recorded so they are not re-propose
 - **Separate up/down hardware persistence.** Physically impossible — `PRST` is one field.
   `AutoRangeDwell` is the answer instead.
 - **An on/off switch for gain-ratio learning.** See §7.3: the ratio is a device constant, so
-  `ResetCal` covers the only real need.
+  `ResetRangeCal` covers the only real need.
+
+#### `ResetRangeCal` against the project's own rule for command-only fields
+
+`SPECIFICATION.md` Part C.5.2.1 is prescriptive here, so this is conformance, not a design choice.
+Four obligations, all of which the driver has to honour and none of which is obvious from the
+schema row alone:
+
+1. **Shape**: `_VAL_RESETCAL = const((("ResetRangeCal", "bool", None, None, None, True),))` — a
+   *special-alone* field, `default=None` with a single-value `special`. Validated and reported,
+   never persisted. `"bool"` never inspects `special`, so both values are always accepted, and a
+   special-alone write always reports `"Valid"` — which is exactly what makes it a *repeatable*
+   trigger rather than a one-shot.
+2. **`get_dict_cfg()` needs its own narrower field list**, excluding this field.
+   `ConfigManager.get_dict()` is all-or-nothing and would `KeyError` on a key that was never
+   persisted. Easy to miss, and it fails at runtime rather than at type-check time.
+3. **The push wrapper must report success unconditionally once the type check passes.** A push
+   callback's return means "push succeeded/failed"; a recalibration that finds nothing to discard
+   has not *failed*. Part C.5.2.1 names `reset_voc()` and SCD30's inverted `ContMeas` as the two
+   existing instances of exactly this trap.
+4. **No `_get_callbacks` entry.** `_recover_failed_push()` skips command-only fields by design;
+   registering a getter for one would be dead code at best.
+
+**Naming.** Unprefixed, per the 29-of-30 majority in `src/` (§8.2) — `_NAME = "ISL29125"` already
+namespaces it. `ResetRangeCal` rather than a bare `ResetRangeCal` because §7.11 leaves a second
+calibration plausible (a per-unit colour matrix), and `Cal` alone would then say nothing about
+which one. It is one character longer than the longest existing field name, which is not a style
+break.
 
 Three further notes on the shape, all of which changed during this pass:
 
@@ -1037,7 +1088,7 @@ and cannot otherwise get — you cannot ask a room to ramp from 10 lux to 2 000 
   across the same sweep for the same reason (§7.11) — its *absolute* value against an LED is
   meaningless, but its *stability* through a range switch is exactly what the test is for.
 - **Gain-ratio convergence** — run the sweep repeatedly and watch the learned ratio settle (§7.3),
-  then `ResetCal` and watch it converge again from nominal.
+  then `ResetRangeCal` and watch it converge again from nominal.
 - **Monotonicity** of lux against LED level, in both ranges.
 
 **What it cannot validate, and must not be read as validating.** Three reasons, each independent:
@@ -1075,9 +1126,11 @@ and cannot otherwise get — you cannot ask a room to ramp from 10 lux to 2 000 
 - `BACKLOG.md:519-522` already flags `asy_i2c_driver.py`'s `readfrom_mem()` → `readfrom_mem_into()`
   zero-copy change as *"worth doing before `asy_isl29125_driver.py` … is migrated"*, naming this
   driver as its one plausible future caller.
-- The device shares **I2C1** with SCD30 and SGP40 on the dev rig, so CLAUDE.md's standing bus-hazard
-  rule applies in full: coverage across all four tiers (mock, digital twin, flash, bench) per
-  `SPECIFICATION.md` Part C.8.
+- The device shares **I2C1** with SCD30 and SGP40 on the dev rig — `dev_legacy/sensortask-dev.py`
+  builds all three on the same `i2c1` object (lines 133, 134, 137; `i2c1 = I2C(1, scl=15, sda=14,
+  50 kHz)` at line 127) — so CLAUDE.md's standing bus-hazard rule applies in full: coverage across
+  all four tiers (mock, digital twin, flash, bench) per `SPECIFICATION.md` Part C.8. The INT line
+  is GP6 / physical pin 9, pulled up (§7.12).
 - A **digital-twin chip fake** is required for any new sensor driver (`SPECIFICATION.md` Part C.11
   point 9, `digital_twin/README.md`). It will need to model the destructive flag-register read and
   the sequential conversion cycle to be useful for the interrupt path.
@@ -1094,28 +1147,24 @@ and cannot otherwise get — you cannot ask a room to ramp from 10 lux to 2 000 
 
 Everything else in this doc is settled. These are not.
 
-1. **Is the ISL29125 on the dev board the SparkFun breakout?** (§7.12.) If yes — a 10 kΩ 0603 next
-   to the INT header pin — there is nothing to fit and nothing to decide. If no, a 4.7-10 kΩ
-   resistor from INT to 3V3 is worth adding for noise immunity. Either way the driver enables
-   `Pin.PULL_UP` and works, so this gates board hygiene, not function. One look at the board.
-2. **Does a `CONFIG1` write really restart the conversion cycle?** (§4, Table 7.) The design uses
+1. **Does a `CONFIG1` write really restart the conversion cycle?** (§4, Table 7.) The design uses
    it for deterministic settling (§7.6) and avoids periodic re-asserts because of it (§9.3).
    Both remain *safe* if it turns out not to restart — the waits are conservative either way — so
    this gates optimisation, not correctness. Bench check.
-3. **Does `PRST` count channel integrations or full RGB cycles?** (§8.3.) Changes
+2. **Does `PRST` count channel integrations or full RGB cycles?** (§8.3.) Changes
    `AutoRangePersist`'s effective time constant by 3× and nothing else; `AutoRangeDwell` covers the
    down direction regardless. Bench check, or AN1910.
-4. **`SGPResetVOC` is the only device-prefixed config field in `src/`** (§8.2). Reported, not
+3. **`SGPResetVOC` is the only device-prefixed config field in `src/`** (§8.2). Reported, not
    touched — the project owner decides whether it is a deliberate exception or drift.
-5. **AN1910, AN1914, AN1591 and the Renesas "ISL29125 CCT calculation" note are all unobtainable**
+4. **AN1910, AN1914, AN1591 and the Renesas "ISL29125 CCT calculation" note are all unobtainable**
    from a session. AN1910 would settle the 12-bit integration time (currently derived, §7.2) and
-   question 3 above; the CCT note would replace §7.11's placeholder matrix with the vendor's own.
+   question 2 above; the CCT note would replace §7.11's placeholder matrix with the vendor's own.
    Neither blocks the promotion; both would improve it.
 
 Closed during this pass, recorded so they are not reopened: `CCT` is in (requirement 13); the
 auto-range tuning surface is settled and the four rejected knobs are listed with reasons (§8.3);
-the INT pull-up is resolved from the datasheet and SparkFun's schematic, with `Pin.PULL_UP` on by
-default (§7.12); the IR-compensation default is 40 codes with `B7` = 0 (§6, §7.9); whether `CONVEN`
+the INT pull-up is resolved — present on the dev board, confirmed by the project owner and
+corroborated by SparkFun's schematic, with `Pin.PULL_UP` enabled by default regardless (§7.12); the IR-compensation default is 40 codes with `B7` = 0 (§6, §7.9); whether `CONVEN`
 fires per channel or per cycle is moot since `CONVEN` stays 0 (§7.6); and the `CONFIG1`
 read-modify-write hazard is designed out rather than mitigated (§8.7).
 

@@ -46,7 +46,7 @@ unit, not any code that references it.
 | SGP40 | I2C1 | address-only (0x59 default), no extra pins |
 | SCD30 | I2C1 | interrupt/RDY = GPIO11 |
 | MPRLS | I2C0 | reset_pin=GPIO10, eoc_pin=GPIO7 |
-| ISL29125 | I2C1 | irq_pin=GPIO6 |
+| ISL29125 | I2C1 | irq_pin=GPIO6 (physical pin 9), **pulled up** — confirmed by the project owner directly on the board |
 | BME688 (BSEC) | UART0 | tx=GPIO16, rx=GPIO17, 115200 baud — not I2C/SPI |
 | Neopixel | — | **GPIO18** (physical pin 24); deployed `wozi` uses GPIO15, a different pin again |
 | SHTC3 | — | **not present** on this board (some legacy code wires it, but it's not actually connected) |
