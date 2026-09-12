@@ -2065,6 +2065,11 @@ distinguish them:
 | `uart.any()` | 72 us |
 | `uart.write(53B)` | 171 us |
 
+Re-measured on the dev bench (2026-09-12) after the yield moved from the four read loops into
+`ready()` itself: unclamped 4422 us, clamped **137 us**, write 169 us — the same result from an
+independent run against the reshaped driver, which is what makes the table a property of the
+peripheral rather than of one arrangement of the code.
+
 For scale, this board's own scheduler noise floor — the worst gap a `sleep_ms(0)` probe sees with
 no UART activity at all — is 400-900us, so the clamped read is already below the point at which
 the measurement means anything. An A/B on one firmware (defeating `_buffered()` at runtime to ask
@@ -2104,14 +2109,27 @@ blocks, a wait that never stops working. `asy_uart_driver.UART.ready()` waits by
 correct and deliberate: Part J.6 requires a single-digit `poll_wait_ms` precisely because poll
 granularity, not baud rate, dominates a stop-and-wait exchange's throughput. For a *listener* it is
 not. A responder parked in `uart_listen()` is waiting on a frame that may not come for hours, and at
-2 ms it pays a scheduler round trip every 2 ms for the whole of that time. This board's own round
-trip measures 400-900 us (F.5.8's noise floor), so an idle listener holds a quarter to a half of the
-event loop while the wire is silent — on the same core as the sensor tasks and the webserver.
+2 ms it pays a scheduler round trip every 2 ms for the whole of that time — on the same core as the
+sensor tasks and the webserver.
 
 Counted in the digital twin's dev soak, which runs the real `sensortask_dev` graph including both
 `UART_Comm` instances: **14 039 poll rounds** over a ~60 s run with one rate, against **839** with
 the idle rate below. (Count the rounds, not the soak's wall clock — see Part E.7 for why that number
 is not usable here.)
+
+**Confirmed on real hardware (2026-09-12, dev bench.)** Counting `ipoll()` calls through a proxy
+around the driver's own poller, so the shipped path is what is measured, an idle listener performs
+**1244 / 1233 poll rounds over 3 s at 2 ms against 60 / 60 at 50 ms** — a 20.6x cut, and exactly
+the ratio the two rates predict (one round per 2.4 ms vs one per 50.0 ms). Repeated interleaved; the
+50 ms figure was identical to the round on both runs.
+
+**What that costs the event loop is a smaller number than this section first inferred, and the
+inference is withdrawn.** Reasoning from the 400-900 us round trip in F.5.8 to "a quarter to a half"
+overstates it. Measured directly — a counter task running flat out beside the listener, interleaved
+and order-reversed — an idle listener at 2 ms takes **~18-23 %** of that task's throughput, and at
+50 ms the cost falls into the noise. The spread is real: absolute throughput on this board moves
+with heap state between runs, exactly as Part E.7 describes, which is why the poll-round count above
+is the load-bearing measurement and this one is only corroboration of its direction.
 
 **The fix is a second poll rate, selected by whether the wait carries a deadline.** `ready(mask,
 timeout_ms)` polls at `poll_wait_ms` when `timeout_ms > 0` and at `poll_idle_ms` otherwise, because

@@ -113,8 +113,12 @@ a live question:
   `"Task N ended with exception"` (chased down as real on 2026-09-11; it was test data). CLAUDE.md's
   "read the FRAM logs before clearing" rule assumes a board that has been running normally — check
   what was last run against this one first.
-- **The UART crossover tiers have been run on real hardware (2026-09-11) and pass: flash 2/2,
-  bench 2/2.** They were run *in isolation*, not as part of a full tier sweep, which is the next
+- **The UART crossover tiers have been run on real hardware and pass: flash 2/2, bench 2/2 — twice,
+  on two different builds of the driver (2026-09-11, and again 2026-09-12 after the read fix was
+  completed and the idle poll rate added).** The second run also re-measured both platform findings
+  against the reshaped driver: F.5.8's C-call table reproduced (unclamped 4422 us, clamped 137 us),
+  and F.5.9's idle rate confirmed by counting real `ipoll()` rounds — 1244 over 3 s at 2 ms against
+  60 at 50 ms. They were run *in isolation*, not as part of a full tier sweep, which is the next
   session's job. Two things a later session should know about that run. The board had to be
   reflashed first — it was carrying a pre-UART `dev` build, so `asy_uart_comm` was simply absent and
   neither tier could run; `uv run scripts/build_firmware.py dev` + `picotool load -x -v` fixed it,
