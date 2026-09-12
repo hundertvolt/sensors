@@ -59,8 +59,8 @@ export const SUPPORTED_SCHEMA_MAJOR = 1;
 
 // websiteVersion (when present) is this project's own product/build version (BUILD_CHAIN_PLAN.md
 // Session 7) - build provenance only, distinct from schemaVersion's wire-format-shape concern
-// above. Not rendered anywhere in the UI (no live-data question the way the firmware's own
-// GET /status FirmwareVersion field has - you're always looking at exactly the build you fetched),
+// above. Not rendered anywhere in the UI (no live-data question the way the device's own real
+// GET /system "build" sub-entry has - you're always looking at exactly the build you fetched),
 // so it isn't validated here either; a missing/malformed value degrades to "unknown provenance",
 // never to broken rendering.
 

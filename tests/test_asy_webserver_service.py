@@ -530,6 +530,17 @@ def test_system_get_omits_build_key_when_build_info_not_supplied() -> None:
     assert json.loads(status_body(res)) == {}
 
 
+def test_system_get_combines_flat_settings_and_build_info_together() -> None:
+    # The realistic shape every real generated device actually produces: ordinary flat
+    # SettingsGroup-sourced fields alongside the one nested "build" sub-entry, neither one
+    # clobbering the other.
+    sysm = _FakeModule("SYSTEM", schema=(("DebugLevel", "int", 0, 0, 5, None),), values={"DebugLevel": 2})
+    build_info = {"firmwareVersion": "2.0b0", "websiteVersion": "2.0b0", "buildDate": "2026-09-12T10:00:00Z"}
+    _service, app = _make_service(settings={"system": [SettingsGroup(sysm, ("DebugLevel",))]}, build_info=build_info)
+    res = run(app.dispatch_request(_make_request(app, "GET", "/system", None)))
+    assert json.loads(status_body(res)) == {"DebugLevel": 2, "build": build_info}
+
+
 def test_system_put_settings_only_body_no_systemcmd_takes_no_lifecycle_action() -> None:
     cmd_calls = []
 

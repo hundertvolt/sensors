@@ -1329,12 +1329,35 @@ script quality bar" below, not repeated here.
    `FieldDef` names, so an extra, undeclared `"build"` key in the real payload is silently ignored by
    both, not a shape mismatch either has to be taught about.
 
+   **A self-review pass after the correction landed found and fixed four more real gaps** (project
+   owner asked for a direct re-check of correctness/completeness/coverage - none of these were
+   caught by the correction's own original verification run):
+   - `js/definitions.js`'s new `websiteVersion` comment still said "the firmware's own `GET /status`
+     FirmwareVersion field" - a stale reference to the pre-correction design, never updated when the
+     field moved to `GET /system`'s `"build"` sub-entry. Fixed to point at the real thing.
+   - `tests/test_asy_webserver_service.py` had a real coverage gap: separate tests proved
+     `build_info=` renders verbatim and that it's omitted when absent, but nothing proved the
+     *combined*, realistic shape every actual generated device produces - ordinary flat
+     `SettingsGroup` fields **and** the nested `"build"` key together, neither clobbering the other.
+     Added `test_system_get_combines_flat_settings_and_build_info_together`.
+   - `tests/test_sensortask.py`'s new scenario checked `body["build"]`'s own three sub-fields but
+     never asserted the rest of `GET /system`'s shape - and no *other* scenario in that file does a
+     plain `GET /system` either, so the flat `DebugLevel`/`GMTOffset`/`DSTOffset` shape had no direct
+     coverage left at all after the correction. Fixed to `pop("build")` and assert the remaining keys
+     match exactly, the same pattern the digital-twin integration test already used.
+   - `tests_scripts/test_buildgen_version.py` tested `FIRMWARE_VERSION`/`WEBSITE_VERSION` but had
+     zero direct unit tests for `current_build_date()` itself (only exercised indirectly through
+     `generate_device()`'s own default). Added two: the exact `YYYY-MM-DDTHH:MM:SSZ` format, and that
+     the parsed value is genuinely "now" in UTC (bounded against `datetime.now(UTC)` taken
+     immediately before/after the call, not just "parses without raising").
+
    **Verification**: `scripts/lint.sh`/`scripts/typecheck.sh` report zero findings (after the
-   `max-args` ratchet above); the full `tests_scripts/` pytest suite (1013 passed, 7 pre-existing
-   skips) and the full real-MicroPython-interpreter suite (`scripts/test.sh` - 55/55 `tests/
-   test_*.py` files passed after the digital-twin `/system` shape fix above) both ran clean end to
-   end, not deferred to CI, including a second full run of both after the mid-session correction
-   itself (not just the original draft). `npm test`/`npm run lint`/`npm run typecheck`/`npm run
+   `max-args` ratchet above); the full `tests_scripts/` pytest suite (1015 passed - the four fixes
+   above added two new tests - 7 pre-existing skips) and the full real-MicroPython-interpreter suite
+   (`scripts/test.sh` - 55/55 `tests/test_*.py` files passed after the digital-twin `/system` shape
+   fix above and again after this self-review pass's own test additions) both ran clean end to end,
+   not deferred to CI, including repeated full runs of both across the mid-session correction and
+   this later self-review pass (not just the original draft). `npm test`/`npm run lint`/`npm run typecheck`/`npm run
    lint:html`/`npm run lint:css` (vitest + eslint + tsc + html-validate + stylelint, the full
    `js/`/`tests_js/`/`html/` suite against the real built `wozi` website) ran clean too. **This
    session's changes touch `pyproject.toml`** (the `max-args` ratchet) **- CLAUDE.md's two-target
