@@ -277,6 +277,29 @@ constraints.
     genuine staleness — the quoted `_read_sgp()` snippet no longer matching current code after
     Session 6.3's `getattr(..., None)` rewrite — is now called out inline with a pointer to
     BACKLOG.md item 17/SPECIFICATION.md Part C.14.2 for the current implementation.
+20. **`tests_hardware/bus_topology.py` is a second, hand-kept, unenforced copy of `devices/dev.toml`'s/
+    `wozi.toml`'s own wiring facts, and — found while checking it — appears to be dead code today.**
+    Found by BUILD_CHAIN_PLAN.md's Session 8 closing-consistency pass (the one real gap that scan
+    surfaced against the "every device-specific fact lives in exactly one place" acceptance
+    criterion; everywhere else checked was already clean or a previously-documented exception).
+    `DEV_I2C_BUSES`/`WOZI_I2C_BUSES`/`DEV_SPI_CS`/`WOZI_SPI_CS` hand-duplicate real per-device I2C
+    pins/frequencies, sensor addresses, and the SPI CS pin/FRAM capacity that already live in the
+    two real device TOMLs — confirmed still byte-for-byte matching today, but nothing (no test, no
+    tooling) cross-checks the two against each other, so a future TOML edit could silently drift
+    without this file ever noticing. Worse: nothing in the repo imports `bus_topology.py` at all
+    (confirmed by grep) — the real on-target sweep CLAUDE.md's standing bus-hazard rule cites it
+    for (`tests_hardware/flash/test_bus_concurrency.py`'s
+    `test_bus_topology_autodetect_address_and_reserved_range_sweep`) actually runs a *different*,
+    self-contained file (`device_scripts/bus_topology_autodetect_and_hazard_sweep.py`, which carries
+    its own third, independent `KNOWN_ADDRESSES` copy, tied to this file only by a plain comment).
+    The module's own docstring used to cite "SPECIFICATION.md Part C.8" for an "update-this-file-too"
+    rule that doesn't exist there (or anywhere in SPECIFICATION.md) — corrected in place to describe
+    the real, current state instead of a fictional cross-reference (dangling-citation fix only; no
+    behavioral change). **Not fixed further** — genuinely the project owner's call, not a mechanical
+    cleanup: whether `bus_topology.py` should be deleted as dead code, whether
+    `bus_topology_autodetect_and_hazard_sweep.py` should import its `KNOWN_ADDRESSES` from it instead
+    of keeping a third copy, and whether CLAUDE.md's own bus-hazard rule should drop the citation or
+    point at a real, live consumer, are all real design decisions this pass didn't make unilaterally.
 
 ## Deferred / explicitly out-of-scope work
 - **Session 7's `pyproject.toml` `max-args` ratchet (21 → 22, for `WebserverService.__init__`'s new
@@ -477,9 +500,22 @@ constraints.
   `lightCmdLED`, `@web-group`'s relationship to `SettingsGroup(...)` wiring, the formal grammar's
   scope) — see BUILD_CHAIN_PLAN.md's own "Session 4 done" account for the resolutions and
   `tests_scripts/test_buildgen_web_tag.py`/`test_buildgen_definitions.py` for the test coverage.
-  Generating `html/definitions/<device>.json` for real (replacing the two hand-written files,
-  producing one for the four devices that don't have one yet, and wiring it into
-  `scripts/build_website.sh`/CI) is still Session 6's own job, not done by this entry's resolution.
+  Generating `html/definitions/<device>.json` for real was Session 6's own job; that session
+  closed two of its three parts — `arzi`/`klkizi`/`grkizi`/`schlafzi` (the four devices that never
+  had a hand-written file) now get one generated on the fly by `scripts/build_website.sh`'s own
+  fallback, and this is wired into CI's 6-device `firmware-build-verify` matrix. **Still open**:
+  retiring `wozi`/`dev`'s own hand-written `html/definitions/{wozi,dev}.json` in favor of generated
+  output — deliberately deferred, since `tests_js/live-backend-put-matrix.test.js`/
+  `mock-server-put-matrix.test.js` read those two files directly as fixtures and switching them
+  over needs a `tests_js/` fixture audit no session has done yet (BUILD_CHAIN_PLAN.md's "Session 6
+  done" account). **The same wozi/dev-only scope shows up in the browser prototype too**: `js/
+  app.js`'s `KNOWN_DEVICES = ["wozi", "dev"]` (its `?device=` switch, prototype-only per that file's
+  own docstring — real firmware ships exactly one device's `definitions.json`, never branches on a
+  query param) is a real, literal device-name list living outside `devices/*.toml`, but it isn't an
+  independent gap: it exists because `mockdata/`/`html/definitions/` only carry fixtures for those
+  two devices, the same limitation this entry already tracks. Extending it to all 6 needs generating
+  `mockdata/<device>.json` fixtures for the other four first, not just a `KNOWN_DEVICES` edit — found
+  by BUILD_CHAIN_PLAN.md's Session 8 closing pass, flagged here rather than fixed piecemeal.
 - **`scripts/build_firmware.py dev` confirmed the real, correct way to build/flash for the dev
   bench — Resolved (2026-09-03).** Device-parametrized boot-entry
   selection was real then via `boot_entry/<device>_boot.py` (that directory is retired now, replaced
