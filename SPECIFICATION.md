@@ -292,9 +292,9 @@ against its actual source, not docs/memory.
 ## A.6 Datasheets
 
 `datasheets/` (repo root) holds real datasheet PDFs for the chips this codebase drives (`bmp3xx/`,
-`fram/`, `pico w/`, `scd30/`, `sgp40/`) — read the PDF first for any hardware-interaction claim,
-rather than reconstructing from training memory/web search. If a needed one isn't there and can't
-be fetched, say so explicitly.
+`fram/`, `isl29125/`, `pico w/`, `scd30/`, `sgp40/`) — read the PDF first for any
+hardware-interaction claim, rather than reconstructing from training memory/web search. If a
+needed one isn't there and can't be fetched, say so explicitly.
 
 **BMP390**: `datasheets/bmp3xx/` holds BMP384/BMP388 but not BMP390. The project owner has confirmed
 the whole family shares the same register map/protocol, so `asy_bmp3xx_driver.py` treating BMP390's
