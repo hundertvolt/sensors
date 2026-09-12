@@ -265,8 +265,15 @@ def _present_optional_instances(module: "Any") -> "tuple[str, ...]":
 
 def _has(module: "Any", name: str) -> bool:
     present = name in _present_optional_instances(module)
+    device = _device_of(module)
     if present:
-        assert getattr(module, name, None) is not None, f"{name} is in devices/{_device_of(module)}.toml's own instances but build_system() never constructed it"
+        assert getattr(module, name, None) is not None, f"{name} is in devices/{device}.toml's own instances but build_system() never constructed it"
+    else:
+        # The reverse direction matters too: a wiring plan that silently UNDER-reports (omits a
+        # driver build_system() genuinely constructs) must not let this check quietly agree with
+        # it and stop testing a real, live object - confirmed by direct review this was the one
+        # blind spot the "declared present -> constructed" check above didn't cover.
+        assert getattr(module, name, None) is None, f"{name} is NOT in devices/{device}.toml's own instances, but build_system() constructed it anyway"
     return present
 
 
@@ -376,7 +383,8 @@ def _scenario_scd30_clock_stretch(device: str) -> None:
     # Looked up through scd30 itself (not assumed to be i2c0) - every real device wires it to i2c0
     # today, but this test stays correct as-is if a future variant wired it elsewhere.
     module = build(device)
-    assert module.scd30 is not None
+    if not _has(module, "scd30"):
+        return  # every real device has scd30 today, but this stays correct if a future one doesn't
     scd_bus = module.scd30.scd.i2c_scd30.i2c_device.i2c
     assert scd_bus._i2c is not None
     assert scd_bus._i2c.freq == 50000
@@ -943,10 +951,11 @@ def _scenario_webserver_measurements_and_sensors_get(device: str) -> None:
 @_register("webserver_sensors_put_round_trips_a_real_field_through_the_real_driver")
 def _scenario_sensors_put_sgp40(device: str) -> None:
     module = build(device)
+    if not _has(module, "sgp40"):
+        return  # every real device has sgp40 today, but this stays correct if a future one doesn't
     res = _dispatch(module, "PUT", "/sensors", {"SGP40": {"BackupPeriod": 5}})
     body = json.loads(res.body)
     assert body["result"] == {"SGP40": {"BackupPeriod": "Valid"}}
-    assert module.sgp40 is not None
     assert run(module.sgp40.cfgmgr.get_dict(["BackupPeriod"])) == {"BackupPeriod": 5}
 
 

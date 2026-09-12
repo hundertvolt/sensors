@@ -891,9 +891,16 @@ def _present_optional_instances(module: "Any", device: str) -> "tuple[str, ...]"
     # construction bug that silently drops a declared driver would read back as though the device
     # never had it, which getattr(module, name, None) can't tell apart from the truth).
     plan_instances = set(_wiring_plan(device)["instances"])
-    present = tuple(name for name in ("scd30", "sgp40", "bmp3xx", "neopixel", "notification") if name in plan_instances)
-    for name in present:
-        assert getattr(module, name, None) is not None, f"{name} is in devices/{device}.toml's own instances but build_system() never constructed it"
+    all_names = ("scd30", "sgp40", "bmp3xx", "neopixel", "notification")
+    present = tuple(name for name in all_names if name in plan_instances)
+    for name in all_names:
+        if name in present:
+            assert getattr(module, name, None) is not None, f"{name} is in devices/{device}.toml's own instances but build_system() never constructed it"
+        else:
+            # The reverse direction matters too - see tests/test_sensortask.py's own identical
+            # check for why (a wiring plan that silently under-reports a driver must not let this
+            # check quietly agree with it and stop testing a real, live object).
+            assert getattr(module, name, None) is None, f"{name} is NOT in devices/{device}.toml's own instances, but build_system() constructed it anyway"
     return present
 
 
