@@ -654,6 +654,14 @@ deb http://archive.ubuntu.com/ubuntu noble main universe
 deb http://archive.ubuntu.com/ubuntu noble-updates main universe
 deb http://security.ubuntu.com/ubuntu noble-security main universe
 EOF
+# ON arm64 (the bench Pi4 itself), the three URLs above serve NO packages - archive.ubuntu.com and
+# security.ubuntu.com are x86-only, and Ubuntu's arm64 packages live on ports.ubuntu.com. Debian's
+# own mirror needs no such split, so only the noble leg is affected. Verified 2026-09-12 by running
+# this recipe on the bench Pi4: `--arch=arm64` plus the ports mirror produces a working
+# "Ubuntu 24.04 LTS" chroot, the archive.ubuntu.com form produces nothing installable. On arm64 use:
+#   debootstrap --variant=minbase --arch=arm64 noble "$CHROOT" http://ports.ubuntu.com/ubuntu-ports
+# and the same three lines against http://ports.ubuntu.com/ubuntu-ports (noble, noble-updates,
+# noble-security all on that one host - there is no separate security mirror for ports).
 cp /etc/resolv.conf "$CHROOT/etc/resolv.conf"
 mount --bind /proc "$CHROOT/proc"; mount --bind /sys "$CHROOT/sys"
 mount --bind /dev "$CHROOT/dev"; mount --bind /dev/pts "$CHROOT/dev/pts"
@@ -751,8 +759,11 @@ it already. And Debian has no `universe`, so the `main`-only lists above are com
 Check the compiler actually landed as expected before trusting the run:
 `chroot "$CHROOT" gcc --version` must report 14.x (or newer), and the noble one 13.x.
 
-The trixie leg was last satisfied on 2026-09-11 by a full from-scratch build plus every suite on
-the bench Pi4 itself, which runs trixie / GCC 14.2.
+The trixie leg was last satisfied on 2026-09-12 by a real `--variant=minbase` trixie chroot on the
+bench Pi4 (GCC 14.2.0): lint and typecheck clean, then `env --tier generic` run end to end, which
+installed the `.nvmrc`-pinned Node from nothing (v22.23.2), 203 npm packages and the Playwright
+Chromium build. The noble leg was satisfied the same day from the `--arch=arm64` ports-mirror form
+noted above.
 
 **What counts as passing**: `lint.sh`/`typecheck.sh`/`scripts/test.sh` all run to completion with
 exit 0 — all eight scopes this setup covers (see "Code quality tooling" above) are fully-reviewed

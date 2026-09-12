@@ -176,14 +176,21 @@ for its architecture) has its own dev-tooling stack, the JS/HTML/CSS equivalent 
 side's ruff/mypy/pytest above: ESLint (lint), TypeScript `checkJS` mode
 (type-checks JSDoc annotations in plain `.js`, no transpilation), Vitest in real-browser mode
 (Playwright + Chromium, not jsdom — same "real engine over a shim" principle as running Python
-tests under a real MicroPython Unix-port interpreter), html-validate, and Stylelint. Needs Node
-(version pinned in `.nvmrc`; `nvm use` or any Node manager that reads it will pick the right one)
-and npm:
+tests under a real MicroPython Unix-port interpreter), html-validate, and Stylelint.
+
+**`toolchain/setup_toolchain.py env --tier generic` sets all of this up for you** — it installs the
+`.nvmrc`-pinned Node into `$PICO_TOOLCHAIN_DIR/node` when the host has none, then runs `npm ci` and
+downloads the Playwright Chromium build Vitest needs. Node comes from nodejs.org (checksum-verified
+against the release SHASUMS), deliberately **not** from apt: Debian trixie ships Node 20 while this
+repo pins 22, so `apt install nodejs` would silently install a version the repo says not to use. A
+Node already on `PATH` that matches the pin is used as-is and never overridden, so `nvm`, a system
+install or CI's own `setup-node` all keep working. `--skip-npm` opts out of the whole JS side.
+
+The individual commands, if you want to run them by hand:
 
 ```sh
-npm ci                            # one-time, and after pulling changes - installs into node_modules/ from package-lock.json
-npx playwright install chromium   # one-time - only if `npm test` reports a missing browser executable
-                                   # (a Claude Code web-session sandbox has this pre-installed already)
+npm ci                            # installs into node_modules/ from package-lock.json
+npx playwright install chromium   # the real browser Vitest drives - `npm test` cannot start without it
 
 npm run lint           # ESLint (js/, tests_js/)
 npm run typecheck      # tsc --noEmit (checkJS over js/, tests_js/)
