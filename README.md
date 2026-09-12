@@ -666,7 +666,7 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   (back when it still ran 1.24.1) — reference material for future `src/` promotion work, not
   itself reviewed, promoted, or covered by lint/type/test config.
 
-**`ISL29125_PROMOTION_PLAN.md`** (temporary, in flight):
+**`ISL29125_PROMOTION_PLAN.md`** and **`ISL29125_FUNCTION_SPEC.md`** (temporary, in flight):
 
 - **[`ISL29125_PROMOTION_PLAN.md`](ISL29125_PROMOTION_PLAN.md)** — working doc for the
   `python/IndividualDrivers/asy_isl29125_driver.py` → `src/` promotion: a full audit of the
@@ -675,6 +675,13 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   contradictions), plus the open design questions the promotion needs answered. Temporary by
   design — delete it when the promotion closes, migrating anything permanent into
   `SPECIFICATION.md` first, the same way the planning docs listed below were retired.
+- **[`ISL29125_FUNCTION_SPEC.md`](ISL29125_FUNCTION_SPEC.md)** — the function-level companion to
+  that plan: every function the promotion needs, in which file, with its purpose, expected
+  behaviour, failure modes and handling, its upstream/downstream contracts, its logging level and
+  `errno`, and what makes it complete — plus the reference layer behind those choices (datasheet
+  register map, what four other ISL29125 implementations do, the external docs checked) and the
+  test specification for all six tiers, real hardware included. Same disposal rule: temporary by
+  design, migrate anything permanent into `SPECIFICATION.md` when the promotion closes.
 
 `HARDWARE_TEST_PLAN.md`, `tmp_hardware_test_candidates.md`, `REAL_HARDWARE_HANDOFF.md`,
 `REAL_HARDWARE_RUN_LOG.md`, and `DEV_HARDWARE_BASELINE_PLAN.md` — five temporary real-hardware

@@ -4,7 +4,15 @@ Temporary working doc for the `python/IndividualDrivers/asy_isl29125_driver.py` 
 promotion, following CLAUDE.md's step-session workflow. §1-§5 are the audit of the existing driver
 against the real datasheet; §6 records the requirements the project owner has since settled, §7-§9
 the design notes written against them, §10 the bench rig, §11 the full integration map, and §13
-the questions still open.
+the questions still open, and §14 the quality bar.
+
+**Companion document**: [`ISL29125_FUNCTION_SPEC.md`](ISL29125_FUNCTION_SPEC.md) takes the
+decisions below down to the level of individual functions — which function, in which file, its
+purpose, expected behaviour, failure modes and handling, upstream/downstream contracts, logging
+level and `errno`, and its completion criteria — with the datasheet/implementation/web reference
+layer behind each choice and the test specification for all six tiers. Read this file for *what*
+and *why*; read that one for *which function* and *how it is proven*.
+
 Nothing has been changed in the driver yet. Delete this
 file once the promotion closes, migrating
 anything permanent into `SPECIFICATION.md` (the established pattern — see README.md's "Further
