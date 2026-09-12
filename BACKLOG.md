@@ -247,6 +247,33 @@ constraints.
     unconditionally and claims initialization only once that write succeeds. Mechanism, the
     deliberate asymmetry against `_store_err()`'s own guard, and the tier coverage:
     SPECIFICATION.md Part C.7.
+17. **SGP40's compensation-read-from-SCD30 boot race logs a real E/W pair for expected startup
+    jitter, not a genuine fault — PRIORITIZED, deferred to a dedicated follow-up session (project
+    owner, 2026-09-12).** Every real device wires SGP40's `humidity_source`/`temperature_source` to
+    SCD30 (`devices/*.toml`); `src/asy_sgp40_driver.py`'s own `_read_sgp()` (~line 271) already
+    documents "SGP40 degrades uncompensated when its source is down" as intended behavior, but the
+    concrete mechanism logs a real `err_s(..., errno=18)` ("Compensation data read failed")
+    followed by `wrn_s(..., wrnno=14)` ("No compensation data available!") whenever a compensation
+    read happens to land before SCD30's own first post-boot measurement is ready - pure startup
+    timing, not a real fault. Found via a real digital-twin CI failure on PR #74 ("dev"'s
+    `digital-twin-e2e` matrix leg, Run 5c). `scripts/_digital_twin_ci_suite.py`'s own Run 5c check
+    was fixed for its own symptom (a `time.sleep(3.0)` before the ResetErrors-then-check-zero
+    assertion, letting the transient land and settle first) - a legitimate, independent test fix
+    that stays regardless of what the follow-up below decides, but it does not touch the underlying
+    production behavior. **Project owner's direction: this is a general principle, not limited to
+    this one case - no error or warning should ever be logged for expected startup jitter on any
+    boot, on any module, as long as nothing has genuinely broken; only genuine faults should ever
+    surface as E/W log entries.** The one already-correct exception: SGP40's own "No backup found!"
+    warning (`wrnno=10`, `asy_sgp40_driver.py` ~line 382) on a genuinely blank/first-ever device is
+    legitimate and should stay a warning. Scope for the follow-up session: (1) fix this specific
+    SGP40/SCD30 compensation-read race at its source (e.g. a distinct, non-logged "source not ready
+    yet during the boot grace window" case instead of routing it through the same `err_s()`/
+    `wrn_s()` path as a real compensation-read exception), and (2) audit the rest of the codebase
+    for the same class of bug - any other driver/module that can log a real E/W entry purely from
+    post-boot startup jitter before its own dependencies/sources are ready, not just this one
+    instance. Must not weaken real-fault detection while doing this - a genuine, persistent
+    compensation-source failure (source never comes up, real bus fault) must still be caught and
+    logged.
 
 ## Deferred / explicitly out-of-scope work
 - **`buildgen/buildspec.py`'s per-driver schema is hand-maintained — making it AST-derivable is a
