@@ -1,9 +1,10 @@
-"""Dev-variant end-to-end digital-twin entry point - mirrors `run_wozi_integration.py` exactly,
-only the underlying module and bus wiring differ. Not a `tests/test_*.py` file - it can serve
-forever. See `digital_twin/README.md`'s "Swapping the twin in" section for the full reference."""
+"""Generic digital-twin entry point: boots ANY `sensortask_<device>` module - most usefully a Session-3 `buildgen.generate.generate_device()`-generated one, written to disk by the caller first - against a `machine.configure_wiring()`-shaped wiring-plan JSON (produced host-side by `buildgen.twin_wiring.compute_twin_wiring()`, since this MicroPython process has no tomllib/buildgen of its own). Not a `tests/test_*.py` file - it can serve forever.
+This file's own fault/hang chip lookup is the generalized form of `run_wozi_integration.py`'s/`run_dev_integration.py`'s hardcoded `{"scd30": sensortask_wozi.i2c0._i2c.devices[0x61], ...}`; `--soak`/`--soak-cycles` (Session 6.2) is the same generalization applied to their own soak/memory-trend-check machinery - see `_soak()`'s own comment for the methodology, ported verbatim from `run_wozi_integration.py`.
+See `digital_twin/README.md`'s "Booting a generated device" section and BUILD_CHAIN_PLAN.md's Session 5/6.2 write-ups for the full design account."""
 
 import asyncio
 import gc
+import json
 import sys
 
 try:
@@ -14,7 +15,7 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 if TYPE_CHECKING:
     from typing import Any
 
-    import network  # type-only: only _apply_fault()'s wlan parameter needs the twin's WLAN type
+    import network
 
 import _http_client
 import machine
@@ -27,21 +28,19 @@ from launch import (
 from unix_port_gc_unwedge import unwedge_heap_after_interrupt
 from unix_port_poll_prewarm import prewarm_poll_set
 
-import sensortask_dev
-
-_DEFAULT_FRAM_STATE_PATH = "digital_twin/fram_state.json"
-_DEFAULT_SCD30_STATE_PATH = "digital_twin/scd30_state.json"  # same folder as the FRAM state file
-# above, own individual file - see digital_twin/_scd30_chip.py's module docstring for what's persisted.
 _CONFIG_DIR = "digital_twin/config/"
+_booted_module: "Any | None" = None  # set by main(), read by _print_wdt_status()'s two call sites -
+# needed explicitly here since this file's own module is only known at runtime (parse_args()'s
+# --module), unlike run_wozi_integration.py/run_dev_integration.py's own static imports.
+
+# Ported verbatim from run_wozi_integration.py (BUILD_CHAIN_PLAN.md's Session 6.2 - confirmed by
+# direct comparison against run_dev_integration.py's own byte-identical copy that this machinery is
+# genuinely device-generic already, not wozi-specific: the same warm-up transient/noise band shows
+# up driving either module, since both boot the same shape of real object graph). See
+# run_wozi_integration.py's own _SOAK_WARMUP_CYCLES/_MEM_TREND_* comments for the full measurement
+# history and methodology behind these constants - unchanged here.
 _SOAK_ENDPOINTS = ("/measurements", "/sensors", "/networking", "/system", "/notification", "/status", "/")
-_SOAK_WARMUP_CYCLES = 40  # see run_wozi_integration.py's own identical constant/comment - this
-# soak drives the real object graph the same way, so the same warm-up transient applies here too.
-#
-# _MEM_TREND_*: see run_wozi_integration.py's own identical constants/comment for the full
-# methodology and measurement history behind this trend-check shape and tolerance - unchanged here,
-# since nothing about this variant's own construction graph (only its bus/pin wiring differs from
-# wozi's) would plausibly shift the steady-state memory-noise band this tolerance was measured
-# against.
+_SOAK_WARMUP_CYCLES = 40
 _MEM_TREND_TOLERANCE_BYTES = 8192
 _SOAK_CYCLES_DEFAULT = 20
 
@@ -49,10 +48,13 @@ _SOAK_CYCLES_DEFAULT = 20
 class RunConfig:
     def __init__(
         self,
+        module: str,
+        wiring_plan_path: str,
         host: str = "localhost",
         port: int = 8080,
-        fram_state_path: "str | None" = _DEFAULT_FRAM_STATE_PATH,
-        scd30_state_path: "str | None" = _DEFAULT_SCD30_STATE_PATH,
+        device: "str | None" = None,
+        fram_state_path: "str | None" = None,
+        scd30_state_path: "str | None" = None,
         seed: "int | None" = None,
         faults: "list[tuple[str, str, int]] | None" = None,
         hangs: "list[tuple[str, str, float, int]] | None" = None,
@@ -62,8 +64,11 @@ class RunConfig:
         soak_cycles: int = _SOAK_CYCLES_DEFAULT,
         duration: "float | None" = None,
     ) -> None:
+        self.module = module
+        self.wiring_plan_path = wiring_plan_path
         self.host = host
         self.port = port
+        self.device = device if device is not None else module
         self.fram_state_path = fram_state_path
         self.scd30_state_path = scd30_state_path
         self.seed = seed
@@ -78,8 +83,11 @@ class RunConfig:
         if not isinstance(other, RunConfig):
             return NotImplemented
         return (
-            self.host == other.host
+            self.module == other.module
+            and self.wiring_plan_path == other.wiring_plan_path
+            and self.host == other.host
             and self.port == other.port
+            and self.device == other.device
             and self.fram_state_path == other.fram_state_path
             and self.scd30_state_path == other.scd30_state_path
             and self.seed == other.seed
@@ -91,12 +99,18 @@ class RunConfig:
             and self.duration == other.duration
         )
 
+    # Value equality without a matching hash: spell out what CPython already does implicitly for
+    # any class defining __eq__, so the intent is explicit rather than inherited by accident - same
+    # convention run_wozi_integration.py's own RunConfig already uses.
+    __hash__ = None  # type: ignore[assignment]  # mypy has no special case for the standard unhashable-by-__eq__ idiom
+
     def __repr__(self) -> str:
         return (
-            f"RunConfig(host={self.host!r}, port={self.port!r}, fram_state_path={self.fram_state_path!r}, "
+            f"RunConfig(module={self.module!r}, wiring_plan_path={self.wiring_plan_path!r}, host={self.host!r}, "
+            f"port={self.port!r}, device={self.device!r}, fram_state_path={self.fram_state_path!r}, "
             f"scd30_state_path={self.scd30_state_path!r}, seed={self.seed!r}, faults={self.faults!r}, "
-            f"hangs={self.hangs!r}, wifi_outcomes={self.wifi_outcomes!r}, soak={self.soak!r}, soak_cycles={self.soak_cycles!r}, "
-            f"duration={self.duration!r})"
+            f"hangs={self.hangs!r}, wifi_outcomes={self.wifi_outcomes!r}, soak={self.soak!r}, "
+            f"soak_cycles={self.soak_cycles!r}, duration={self.duration!r})"
         )
 
 
@@ -108,10 +122,13 @@ def _pop_value(remaining: "list[str]", flag: str) -> str:
 
 def parse_args(argv: "list[str]") -> RunConfig:
     remaining = list(argv)
+    module: str | None = None
+    wiring_plan_path: str | None = None
     host = "localhost"
     port = 8080
-    fram_state_path: str | None = _DEFAULT_FRAM_STATE_PATH
-    scd30_state_path: str | None = _DEFAULT_SCD30_STATE_PATH
+    device: str | None = None
+    fram_state_path: str | None = None
+    scd30_state_path: str | None = None
     seed: int | None = None
     faults: list[tuple[str, str, int]] = []
     hangs: list[tuple[str, str, float, int]] = []
@@ -122,10 +139,16 @@ def parse_args(argv: "list[str]") -> RunConfig:
 
     while remaining:
         arg = remaining.pop(0)
-        if arg == "--host":
+        if arg == "--module":
+            module = _pop_value(remaining, arg)
+        elif arg == "--wiring-plan":
+            wiring_plan_path = _pop_value(remaining, arg)
+        elif arg == "--host":
             host = _pop_value(remaining, arg)
         elif arg == "--port":
             port = int(_pop_value(remaining, arg))
+        elif arg == "--device":
+            device = _pop_value(remaining, arg)
         elif arg == "--fram-state-path":
             value = _pop_value(remaining, arg)
             fram_state_path = value or None  # "" means in-memory only, matches
@@ -151,9 +174,17 @@ def parse_args(argv: "list[str]") -> RunConfig:
         else:
             raise ValueError(f"unrecognized argument: {arg!r}")
 
+    if module is None:
+        raise ValueError("--module is required (the sensortask_<device> module to import and boot)")
+    if wiring_plan_path is None:
+        raise ValueError("--wiring-plan is required (a JSON file in buildgen.twin_wiring.compute_twin_wiring()'s own shape)")
+
     return RunConfig(
+        module,
+        wiring_plan_path,
         host=host,
         port=port,
+        device=device,
         fram_state_path=fram_state_path,
         scd30_state_path=scd30_state_path,
         seed=seed,
@@ -166,12 +197,46 @@ def parse_args(argv: "list[str]") -> RunConfig:
     )
 
 
+def _collect_chips(module: "Any", plan: "dict[str, Any]") -> "dict[str, Any]":
+    # Generalizes run_wozi_integration.py's/run_dev_integration.py's own hardcoded
+    # `{"scd30": sensortask_wozi.i2c0._i2c.devices[0x61], ...}` dict by walking the wiring plan and
+    # resolving each attachment's bus variable by name. A driver with more than one instance is also
+    # keyed by "driver_nameext" (the plain key still exists too, first instance wins - launch.py's
+    # parse_fault_spec()/parse_hang_spec() only ever speak the plain-driver-name vocabulary).
+    # sorted(): plan["buses"]/plan["spi"] are plain dicts, and MicroPython dicts do NOT preserve
+    # insertion order the way CPython's do (confirmed directly) - sorting by bus name is what makes
+    # "first instance wins" above actually mean "i2c0 before i2c1", not MicroPython's hash order.
+    chips: dict[str, Any] = {}
+    for bus_name, attachments in sorted(plan["buses"].items()):
+        bus = getattr(module, bus_name, None)
+        if bus is None or bus._i2c is None:
+            continue
+        for attachment in attachments:
+            chip = bus._i2c.devices[attachment["address"]]
+            driver = attachment["driver"]
+            name_ext = attachment["name_ext"]
+            chips.setdefault(driver, chip)
+            if name_ext:
+                chips[f"{driver}_{name_ext}"] = chip
+    for bus_name, attachment in sorted(plan["spi"].items()):
+        bus = getattr(module, bus_name, None)
+        if bus is None or bus._spi is None:
+            continue
+        chip = bus._spi.device
+        driver = attachment["driver"]
+        name_ext = attachment["name_ext"]
+        chips.setdefault(driver, chip)
+        if name_ext:
+            chips[f"{driver}_{name_ext}"] = chip
+    return chips
+
+
 def _apply_fault(device: str, op: str, times: int, chips: "dict[str, Any]", wlan: "network.WLAN") -> None:
-    # Same shape as digital_twin/launch.py's own _apply_fault() - reads the real bus objects
-    # sensortask_dev.build_system() actually constructed rather than launch.py's own local vars.
+    # Same shape as digital_twin/launch.py's own _apply_fault() - reads the real bus objects the
+    # booted generated module actually constructed.
     import errno
 
-    message = f"digital_twin/run_dev_integration.py --fault {device}:{op}"
+    message = f"digital_twin/run_generic_integration.py --fault {device}:{op}"
     if device == "wlan":
         wlan.raise_on[op] = OSError(errno.EIO, message)
         return
@@ -179,30 +244,26 @@ def _apply_fault(device: str, op: str, times: int, chips: "dict[str, Any]", wlan
 
 
 def _apply_hang(device: str, op: str, seconds: float, times: int, chips: "dict[str, Any]") -> None:
-    # Same shape as _apply_fault() above - see digital_twin/_fault_injection.py's own module
-    # docstring for why a real blocking time.sleep() (not an exception) is what this expresses.
     chips[device].fault.inject_hang(op, seconds, times=times)
 
 
-async def _wait_until_built(timeout_s: float = 10.0) -> None:
+async def _wait_until_built(module: "Any", timeout_s: float = 10.0) -> None:
     async def poll() -> None:
         # webserver is the last module build_system() assigns before its own grouped await
         # x.setup() batch - see tests/test_digital_twin_sensortask_integration.py's own identical
         # poll for why this (not watchdog, assigned first) is the right readiness signal.
-        while sensortask_dev.webserver is None:
+        while getattr(module, "webserver", None) is None:
             await asyncio.sleep_ms(20)
 
     await asyncio.wait_for(poll(), timeout_s)
 
 
 async def _wait_until_serving(host: str, port: int, timeout_s: float = 10.0) -> None:
-    # The real socket doesn't bind until start_and_check_tasks() reaches the webserver's own
-    # staggered task starter - retrying the connection is simpler than predicting that timing.
     async def poll() -> None:
         while True:
             try:
                 await _http_client.fetch(host, port, "GET", "/")
-            except OSError:
+            except (OSError, MemoryError):  # MemoryError isn't an OSError subclass here
                 await asyncio.sleep_ms(50)
             else:
                 return
@@ -211,39 +272,38 @@ async def _wait_until_serving(host: str, port: int, timeout_s: float = 10.0) -> 
 
 
 async def _soak(host: str, port: int, cycles: int) -> "list[str]":
-    # Deliberately strictly-sequential (one fetch() awaited at a time, never asyncio.gather()'d) -
-    # see run_wozi_integration.py's own identical comment for the full reasoning (a real
-    # MicroPython Unix-port interpreter segfault found by exceeding WebserverService's own
-    # max_connections=4 ceiling with concurrent clients) - this soak's own sequential pattern never
-    # approaches that and must stay that way.
+    # Ported verbatim from run_wozi_integration.py's own _soak() (BUILD_CHAIN_PLAN.md's Session
+    # 6.2) - deliberately strictly-sequential, see that function's own comment for why (a real
+    # MicroPython Unix-port interpreter segfault, found by exceeding WebserverService's own
+    # max_connections=4 with concurrent clients; tests/test_digital_twin_webserver_concurrency.py
+    # is the project's real regression coverage for that concurrency scale, never this soak).
     failures: list[str] = []
     for _ in range(_SOAK_WARMUP_CYCLES):
         for path in _SOAK_ENDPOINTS:
             try:
                 await _http_client.fetch(host, port, "GET", path)
-            except OSError as e:
+            except (OSError, MemoryError) as e:  # MemoryError isn't an OSError subclass here
+                # (CLAUDE.md's platform-facts note) - a real soak run must record a genuine
+                # allocation failure as one more failure, never let it crash the whole run
+                # uncaught before the summary below ever prints (found via a real CI failure).
                 failures.append(f"warmup: GET {path} -> {e!r}")
     gc.collect()
     mem_samples: list[int] = [gc.mem_free()]  # index 0: post-warmup baseline, excluded from the
-    # trend comparison below (it's a single point, not a quarter average, and every real cycle
-    # already starts from it).
+    # trend comparison below (it's a single point, not a quarter average).
     for cycle in range(cycles):
         for path in _SOAK_ENDPOINTS:
             try:
                 res = await _http_client.fetch(host, port, "GET", path)
-            except OSError as e:
+            except (OSError, MemoryError) as e:
                 failures.append(f"cycle {cycle}: GET {path} -> {e!r}")
                 continue
             if res.status_code != 200:
                 failures.append(f"cycle {cycle}: GET {path} -> {res.status_code}")
         gc.collect()
         mem_samples.append(gc.mem_free())
-    # Trend check (see run_wozi_integration.py's own _MEM_TREND_* module-level comment for why this
-    # replaced a flat two-point delta): compare the mean of the first and last quarter of per-cycle
-    # samples - averaging each quarter absorbs single-sample GC-timing noise a raw two-point diff
-    # can't. Needs at least 4 per-cycle samples (cycles >= 4) for the quarters to mean anything;
-    # skipped below that (a --soak-cycles this small is a manual smoke run, not a real memory-trend
-    # check).
+    # Trend check - see run_wozi_integration.py's own _MEM_TREND_* module-level comment for the
+    # full methodology. Needs at least 4 per-cycle samples (cycles >= 4) for the quarters to mean
+    # anything; skipped below that (a --soak-cycles this small is a manual smoke run).
     per_cycle_samples = mem_samples[1:]
     quarter = len(per_cycle_samples) // 4
     if quarter >= 1:
@@ -253,7 +313,7 @@ async def _soak(host: str, port: int, cycles: int) -> "list[str]":
         late_avg = sum(late) / len(late)
         trend = early_avg - late_avg  # positive: memory declined between quarters
         print(
-            f"digital_twin/run_dev_integration.py memory trend: baseline={mem_samples[0]} "
+            f"digital_twin/run_generic_integration.py memory trend: baseline={mem_samples[0]} "
             f"min={min(per_cycle_samples)} max={max(per_cycle_samples)} early_avg={early_avg:.0f} "
             f"late_avg={late_avg:.0f} trend={trend:.0f} tolerance={_MEM_TREND_TOLERANCE_BYTES} "
             f"quarter_size={quarter} samples={len(per_cycle_samples)}",
@@ -267,10 +327,12 @@ async def _soak(host: str, port: int, cycles: int) -> "list[str]":
     return failures
 
 
-def _print_wdt_status() -> None:
-    # See both call sites' own comments for why this needs to run from two different places.
-    if sensortask_dev.watchdog is not None:
-        print(f"digital_twin/run_dev_integration.py shutdown: would_have_triggered_count={sensortask_dev.watchdog.would_have_triggered_count}")
+def _print_wdt_status(config: RunConfig) -> None:
+    # See both call sites' own comments in run_wozi_integration.py for why this needs to run from
+    # two different places - same reasoning applies here.
+    watchdog = getattr(_booted_module, "watchdog", None) if _booted_module is not None else None
+    if watchdog is not None:
+        print(f"digital_twin/run_generic_integration.py [{config.device}] shutdown: would_have_triggered_count={watchdog.would_have_triggered_count}")
 
 
 def _ensure_dir(path: str) -> None:
@@ -283,84 +345,67 @@ def _ensure_dir(path: str) -> None:
 
 
 async def main(config: RunConfig) -> "dict[str, Any]":
+    global _booted_module
     # Must run before anything else in the process registers a poll object - see
-    # unix_port_poll_prewarm.py's own module docstring and digital_twin/README.md's "Known gaps"
-    # section (a confirmed Unix-port-only MicroPython bug this pre-warming avoids triggering).
+    # unix_port_poll_prewarm.py's own module docstring.
     prewarm_poll_set()
     # Must also run before anything constructs a real AsyUDPSocket (captive_dns.py's DNSServer,
-    # asy_ntp_client.py's NTP fetch, asy_dns_client.py's own resolver) - see
-    # _unix_port_udp_addr_shim.py's own module docstring for the confirmed Unix-port-only
-    # socket.bind()/connect() quirk this works around, entirely from twin-side code.
+    # asy_ntp_client.py's NTP fetch, asy_dns_client.py's own resolver).
     patch_asy_udp_socket_for_unix_port()
     machine.configure_fram_state_path(config.fram_state_path)
     machine.configure_scd30_state_path(config.scd30_state_path)
-    # Selects the dev-bench bus wiring (i2c0=BMP3xx alone, i2c1=SCD30+SGP40, SCD30 IRQ=GPIO11) -
-    # machine.py's own _wire_i2c_devices() defaults to wozi's reversed layout otherwise. Must run
-    # before sensortask_dev.build_system() (below, inside main_task) ever constructs i2c0/i2c1.
-    machine.configure_i2c_wiring("dev")
+    with open(config.wiring_plan_path) as f:
+        plan = json.load(f)
+    machine.configure_wiring(plan)
     if config.seed is not None:
         import random
 
-        random.seed(config.seed)  # reseeds the one shared generator every chip fake's own
-        # random_source=None default falls back to - same approach digital_twin/launch.py's own
-        # main() already uses, for the same reason (see that module's own comment).
+        random.seed(config.seed)
 
     _ensure_dir(_CONFIG_DIR)
 
     print(
-        f"digital_twin/run_dev_integration.py starting - host={config.host!r} port={config.port!r} "
-        f"fram_state_path={config.fram_state_path!r} scd30_state_path={config.scd30_state_path!r} "
-        f"seed={config.seed!r} soak_cycles={config.soak_cycles!r} "
+        f"digital_twin/run_generic_integration.py starting - device={config.device!r} module={config.module!r} "
+        f"host={config.host!r} port={config.port!r} fram_state_path={config.fram_state_path!r} "
+        f"scd30_state_path={config.scd30_state_path!r} seed={config.seed!r} soak_cycles={config.soak_cycles!r} "
         f"duration={config.duration!r} faults={config.faults!r} hangs={config.hangs!r} wifi_outcomes={config.wifi_outcomes!r}",
     )
 
+    module = __import__(config.module)
+    _booted_module = module
     main_task = asyncio.get_event_loop().create_task(
-        sensortask_dev.main(cfg_path=_CONFIG_DIR, web_host=config.host, web_port=config.port),
+        module.main(cfg_path=_CONFIG_DIR, web_host=config.host, web_port=config.port),
     )
     summary: dict[str, Any] = {"failures": [], "would_have_triggered_count": 0}
     try:
-        await _wait_until_built()
+        await _wait_until_built(module)
 
-        assert sensortask_dev.i2c0 is not None and sensortask_dev.i2c1 is not None and sensortask_dev.spi0 is not None
-        assert sensortask_dev.conn is not None and sensortask_dev.watchdog is not None
-        # asy_i2c_driver.I2C/asy_spi_driver.SPI wrap the real machine.I2C/machine.SPI at their own
-        # private _i2c/_spi attributes - the twin's chip-fake registry (.devices/.device) lives on
-        # the wrapped object. Always set by the time build_system() returns, just not statically
-        # provable from the type alone.
-        assert sensortask_dev.i2c0._i2c is not None and sensortask_dev.i2c1._i2c is not None and sensortask_dev.spi0._spi is not None
-        # dev_legacy/README.md's wiring table (this bench unit, not wozi's): SCD30 and SGP40 share
-        # i2c1; BMP3xx sits alone on i2c0 (wozi: SCD30 alone on i2c0, SGP40+BMP3xx sharing i2c1).
-        chips = {
-            "scd30": sensortask_dev.i2c1._i2c.devices[0x61],
-            "sgp40": sensortask_dev.i2c1._i2c.devices[0x59],
-            "bmp3xx": sensortask_dev.i2c0._i2c.devices[0x77],
-            "fram": sensortask_dev.spi0._spi.device,
-        }
+        assert module.conn is not None and module.watchdog is not None
+        chips = _collect_chips(module, plan)
         for device, op, times in config.faults:
-            _apply_fault(device, op, times, chips, sensortask_dev.conn.wlan)
+            _apply_fault(device, op, times, chips, module.conn.wlan)
         for device, op, seconds, times in config.hangs:
             _apply_hang(device, op, seconds, times, chips)
         if config.wifi_outcomes:
-            sensortask_dev.conn.wlan.script_connect_outcomes(config.wifi_outcomes)
+            module.conn.wlan.script_connect_outcomes(config.wifi_outcomes)
 
         # A queued --hang can fire during setup() (before this point) via a real, blocking
-        # time.sleep() that freezes the whole interpreter, including this very poll loop - the
-        # default 10s bound isn't enough to survive that, so it's widened by the total configured
-        # hang time (plus its own normal margin) whenever any are armed.
+        # time.sleep() that freezes the whole interpreter - the default 10s bound isn't enough to
+        # survive that, so it's widened by the total configured hang time whenever any are armed.
         total_hang_s = sum(seconds * times for _device, _op, seconds, times in config.hangs)
         await _wait_until_serving(config.host, config.port, timeout_s=10.0 + total_hang_s)
 
         if config.soak:
             failures = await _soak(config.host, config.port, config.soak_cycles)
-            if sensortask_dev.watchdog.would_have_triggered_count != 0:
-                failures.append(f"watchdog would have triggered {sensortask_dev.watchdog.would_have_triggered_count} time(s)")
+            if module.watchdog.would_have_triggered_count != 0:
+                failures.append(f"watchdog would have triggered {module.watchdog.would_have_triggered_count} time(s)")
 
             summary = {
                 "soak_cycles": config.soak_cycles,
                 "failures": failures,
-                "would_have_triggered_count": sensortask_dev.watchdog.would_have_triggered_count,
+                "would_have_triggered_count": module.watchdog.would_have_triggered_count,
             }
-            print("digital_twin/run_dev_integration.py soak summary:", summary)
+            print(f"digital_twin/run_generic_integration.py [{config.device}] soak summary:", summary)
             if failures:
                 for failure in failures:
                     print("FAIL:", failure)
@@ -374,18 +419,13 @@ async def main(config: RunConfig) -> "dict[str, Any]":
         elif config.duration > 0:
             await asyncio.sleep(config.duration)
     finally:
-        # Unconditional, not just under --soak: an external observer driving this as a subprocess
-        # has no in-process access to sensortask_dev.watchdog otherwise. Called before
-        # main_task.cancel()/await, since a real SIGINT shutdown never reaches a statement placed
-        # after that pair - see the __main__ block below for the other call site this needs (a
-        # SIGINT that lands while parked in the scheduler's own poll wait skips this whole block).
-        _print_wdt_status()
+        _print_wdt_status(config)
         main_task.cancel()
         try:
             await main_task
         except (asyncio.CancelledError, KeyboardInterrupt):
-            # A second SIGINT can arrive while this cleanup await is still in flight - without
-            # catching it here too, it would propagate out, skipping the flush calls below.
+            # A real SIGINT can be re-delivered while this cleanup await is still in flight - see
+            # run_wozi_integration.py's own identical comment. Already shutting down either way.
             pass
         machine.flush_fram()
         machine.flush_scd30()
@@ -399,12 +439,12 @@ if __name__ == "__main__":
     try:
         _summary = asyncio.run(main(_config))
     except KeyboardInterrupt:
-        # asyncio.run()'s own KeyboardInterrupt gap while parked in the scheduler's poll wait - see
-        # SPECIFICATION.md Part F.1. A harmless no-op if main()'s own finally already ran.
+        # See run_wozi_integration.py's own identical comment for the confirmed MicroPython
+        # Unix-port asyncio.run()/KeyboardInterrupt gap this works around.
         unwedge_heap_after_interrupt()
         machine.flush_fram()
         machine.flush_scd30()
-        _print_wdt_status()
-        print("digital_twin/run_dev_integration.py: interrupted")
+        _print_wdt_status(_config)
+        print("digital_twin/run_generic_integration.py: interrupted")
     if _summary is not None and _summary["failures"]:
         sys.exit(1)

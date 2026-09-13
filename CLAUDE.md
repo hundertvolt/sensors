@@ -49,7 +49,10 @@ information):
 - **`improved-quality/` (the refactor's WIP staging directory) has been fully retired and
   deleted.** Every file it ever held was either promoted into `src/` once fully reviewed/tested,
   or — its last remaining file, `sensortask-wozi.py` — confirmed fully superseded by
-  `src/sensortask_wozi.py` + `src/asy_webserver_service.py` (construction/wiring and REST routing
+  `src/sensortask_wozi.py` (that file itself has since been retired too — every device's own
+  `sensortask_<device>.py` is now `buildgen`-generated at build time, never committed to `src/` —
+  BUILD_CHAIN_PLAN.md's Session 6 finish criterion; the construction/wiring facts described below
+  live in `devices/*.toml` now) + `src/asy_webserver_service.py` (construction/wiring and REST routing
   both independently rebuilt there, more generically, with real gaps in the old file fixed along
   the way — e.g. `conn.setup()`/`ntp.setup()` were never called anywhere in the old flow) and
   removed outright, not just left in place. Its old "don't edit source files without a scoped
@@ -301,10 +304,14 @@ information):
 - **Wired into CI** via `.github/workflows/ci.yml` (GitHub Actions). **Each tool is its own job/
   stage**, so a failure names the tool directly instead of a shared "lint" job going red:
   `lint-and-typecheck` (ruff + mypy), `shellcheck`, `actionlint`, `zizmor`, plus the test/build
-  stages (`unit-tests`, `digital-twin-e2e`, `firmware-build-verify`) and the web tier. Note
-  `unit-tests` keeps `needs: lint-and-typecheck` (the standing hang backstop below); the other lint
-  stages run in parallel and gate nothing, so one of them failing no longer silently skips the
-  whole test suite.
+  stages (`unit-tests`, `unit-tests-coverage`, `digital-twin-e2e`, `firmware-build-verify`) and the
+  web tier. Note `unit-tests` keeps `needs: lint-and-typecheck` (the standing hang backstop below);
+  the other lint stages run in parallel and gate nothing, so one of them failing no longer silently
+  skips the whole test suite. `unit-tests-coverage` (Session 8's closing-consistency-pass PR) is the
+  plain pass's own report-only, `continue-on-error` sibling — split into its own job so a coverage
+  run's own wall-clock cost (roughly the same again as the plain pass) never sits on the critical
+  path `digital-twin-e2e`/`firmware-build-verify` wait on; see `ci.yml`'s own job comments for the
+  full account.
 - **`zizmor` audits the GitHub Actions workflows themselves** — `GITHUB_TOKEN` scope, checkout
   credential persistence, action pinning: the one part of the supply chain ruff/mypy can't see.
   Policy config is `.github/zizmor.yml` (only `unpinned-uses` is configured — `actions/*` may be
@@ -315,21 +322,31 @@ information):
   actionlint 1.7.12 rejects that as invalid, so the two gates cannot both be satisfied; revisit
   when actionlint learns it. **Adding a SHA-pinned third-party action means bumping that SHA by
   hand** — no Dependabot is configured.
-- **Scope is eight directories**: `src/`, `tests/`, `digital_twin/`, `boot_entry/`, `toolchain/`,
-  `scripts/`, `tests_scripts/` and `tests_hardware/`. The pre-refactor deployed
-  codebase (`python/`, `modules/`) has no lint/type config yet; extending scope there is a separate
-  future decision, not assumed by this setup. All eight are expected to stay fully clean — every
+- **Scope is eight directories**: `src/`, `tests/`, `digital_twin/`, `buildgen/` (the
+  device-TOML-to-firmware-module generator, BUILD_CHAIN_PLAN.md's Session 3), `toolchain/`,
+  `scripts/`, `tests_scripts/` and `tests_hardware/` — `tests_hardware/` in full for ruff; only its
+  `device_scripts/` subtree (real MicroPython code pushed to the board, checked alongside
+  `src/`/`tests/` in the main mypy pass) for mypy, since the rest of `tests_hardware/`
+  is host-side pytest code that goes through `host_typecheck.ini`'s dedicated pass below instead
+  (see that file's own docstring). `buildgen/` follows the same split as `digital_twin/`: ruff
+  checks it directly, but mypy needs `host_typecheck.ini`'s own separate invocation (below) since
+  it's genuinely CPython-target host tooling — it parses TOML via the real stdlib `tomllib` and
+  walks driver source via the real stdlib `ast`, never imports `src/` itself (real MicroPython-only
+  names like `machine`/`neopixel` aren't available under plain CPython there). The pre-refactor
+  deployed codebase (`python/`, `modules/`) has no lint/type config yet; extending scope there is a
+  separate future decision, not assumed by this setup. All eight are expected to stay fully clean — every
   scope in this setup is fully-reviewed, freely-editable code (see "Hard rules" above), not WIP;
   there's no tracked-debt scope left to compare `digital_twin/` against since `improved-quality/`
   was deleted (see "Hard rules" above). `digital_twin/`'s own
   type-check is a **separate** mypy invocation (`digital_twin/typecheck.ini`, run unconditionally by
-  `scripts/typecheck.sh` regardless of its own args) rather than folded into the main
+  `scripts/typecheck.sh` regardless of its own args — as is `host_typecheck.ini`'s
+  build-chain pass) rather than folded into the main
   `[tool.mypy]` pass — mypy resolves each bare `machine`/`network`/`neopixel` module name to exactly
   one file per run, so this package's own hardware fakes and the real `typings/` board stubs can
   never both be checked correctly in one invocation. `digital_twin/machine.py`/`network.py`/
   `neopixel.py` (a straight `Duplicate module named "machine"` collision with `tests/machine.py`
   otherwise — confirmed directly, not the softer resolution-priority hijack `tests/network.py`'s own
-  exclude guards against) and `digital_twin/launch.py`/`run_wozi_integration.py`/`run_dev_integration.py`/
+  exclude guards against) and `digital_twin/launch.py`/`run_generic_integration.py`/
   `segfault_stress_repro.py`/every `tests/test_digital_twin_*.py` (attr-
   defined noise on every twin-only API the real board stub doesn't declare, e.g.
   `WDT.would_have_triggered_count`, `WLAN.script_connect_outcomes()` — confirmed directly, including
@@ -350,10 +367,16 @@ information):
   build_firmware.py`), none of which are MicroPython-target code, so the real-interpreter rationale
   above doesn't apply to them; see `tests_scripts/conftest.py`'s own docstring. `scripts/test.sh`
   runs both: the MicroPython suite as described above, plus `uv run pytest tests_scripts` as one
-  more step before it. `tests_scripts/` is in lint/typecheck scope, like
-  `scripts/`/`toolchain/` (the dev-tooling scripts these tests exercise) — all three are checked by
-  `host_typecheck.ini`'s real-CPython pass, not the MicroPython one, and carry the same
-  `per-file-ignores` block `tests/` does.
+  more step before it. `tests_scripts/` — together with `scripts/`, `toolchain/` and `buildgen/`,
+  the host-side build chain it exercises, plus `tests_hardware/`'s own host-CPython pytest code —
+  **is** linted and type-checked (project owner's direction: "add all build scripts to the full
+  CI"), but through `host_typecheck.ini`'s dedicated mypy pass rather than the main `[tool.mypy]`
+  one: all of it is genuinely CPython-target host tooling needing mypy's real bundled typeshed, not
+  the MicroPython-stub-replaced one `custom_typeshed_dir` installs for `src/` (`tomllib` alone
+  doesn't exist in that stub subset). Same "two resolution universes can't coexist in one run"
+  isolation `digital_twin/typecheck.ini` already establishes for its own, different reason.
+  `tests_scripts/`, `scripts/` and `toolchain/` carry the same `per-file-ignores` block `tests/`
+  does.
 - **`scripts/test.sh --coverage` reports `src/` line coverage; it never gates anything** — no
   threshold is enforced anywhere, by design (confirmed directly, not a placeholder for a future
   gate). Since `coverage.py` only runs under CPython while `src/` only ever runs
@@ -398,7 +421,9 @@ information):
   independently-`create_task()`-spawned sibling tasks (WiFi, sensor readers, the webserver, ...)
   parked in the shared, process-wide asyncio task queue after the test's own coroutine returns —
   `Task.cancel()` on the one task a test explicitly awaits (`main_task` in
-  `digital_twin/run_wozi_integration.py`) never cascades to those siblings, since MicroPython's
+  `digital_twin/run_generic_integration.py` today; `run_wozi_integration.py` at the time this was
+  found, since retired in favor of it — BUILD_CHAIN_PLAN.md's Session 6.2) never cascades to those
+  siblings, since MicroPython's
   asyncio has no parent/child task tracking. `tests/test_*.py` files run one Unix-port process per
   file (see `scripts/test.sh`'s own comment) sharing one process-wide task queue across every test
   function in that file, so this only ever surfaced as the *whole process* hanging at exit after the
@@ -409,7 +434,7 @@ information):
   relying on the interpreter's own idle-detection ever reaching zero pending tasks. This is exactly
   the same "explicit tracked-task-list + cancel-all in `finally`" shape `digital_twin/launch.py`'s
   own `main()` already used for its own (much smaller, self-spawned) task list — the one difference
-  is `run_wozi_integration.py` drives the real, much larger `system_service.py`-supervised task
+  is the generic entry point drives the real, much larger `system_service.py`-supervised task
   graph, which isn't reachable/trackable from outside that module, making a blanket forced-exit the
   more robust fix than trying to enumerate and cancel every sibling task individually. Surfaced by
   the `system_service.py` `_timer_sequencer()` Timer-GC fix above: before that fix, `start_timers()`
@@ -623,6 +648,10 @@ fi
 
 chroot "$CHROOT" /bin/bash -c "source /root/proxy-env.sh && apt-get update && apt-get install -y --no-install-recommends git curl ca-certificates python3 python3-venv python3-pip sudo libcap2-bin"
 chroot "$CHROOT" /bin/bash -c "source /root/proxy-env.sh && pip install --break-system-packages uv"
+# libcap2-bin is missing for the same reason: scripts/test.sh grants CAP_NET_BIND_SERVICE to the
+# Unix-port binary via setcap (the real port-53 DNS-server test needs it) and dies with
+# "setcap: command not found" without it - after having already built the whole toolchain, so the
+# failure lands minutes in. Confirmed by hitting it (2026-09-10).
 # sudo is not part of debootstrap --variant=minbase, but toolchain/setup_toolchain.py's
 # ensure_apt_packages() unconditionally shells out to it (see toolchain/versions.toml's
 # apt_packages, used by both its `setup`/`test` subcommands) - without it, `scripts/test.sh`

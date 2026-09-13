@@ -258,7 +258,7 @@ def _request_bytes(method: str, path: str, body: bytes = b"", extra_headers: "di
 
 
 def _make_service(**kwargs: "Any") -> "tuple[WebserverService, Microdot]":  # Any: forwarded
-    # verbatim into WebserverService's own 21 differently-typed keyword parameters, which no single
+    # verbatim into WebserverService's own 22 differently-typed keyword parameters, which no single
     # non-Any **kwargs element type can express before PEP 692's Unpack (3.11+).
     app = Microdot()
     kwargs.setdefault("max_content_length", 4096)
@@ -512,6 +512,33 @@ def test_system_get_is_flat_debug_gmt_dst_only() -> None:
     _service, app = _make_service(settings={"system": groups})
     res = run(app.dispatch_request(_make_request(app, "GET", "/system", None)))
     assert json.loads(status_body(res)) == {"DebugLevel": 2, "GMTOffset": 3600, "DSTOffset": 3600}
+
+
+def test_system_get_reports_build_info_verbatim_when_supplied() -> None:
+    # BUILD_CHAIN_PLAN.md Session 7: buildgen supplies this dict at construction time (firmware/
+    # website version + a real build timestamp) - WebserverService never computes any of it itself,
+    # just relays it under one "build" sub-entry alongside the ordinary flat settings fields.
+    build_info = {"firmwareVersion": "2.0b0", "websiteVersion": "2.0b0", "buildDate": "2026-09-12T10:00:00Z"}
+    _service, app = _make_service(build_info=build_info)
+    res = run(app.dispatch_request(_make_request(app, "GET", "/system", None)))
+    assert json.loads(status_body(res)) == {"build": build_info}
+
+
+def test_system_get_omits_build_key_when_build_info_not_supplied() -> None:
+    _service, app = _make_service()
+    res = run(app.dispatch_request(_make_request(app, "GET", "/system", None)))
+    assert json.loads(status_body(res)) == {}
+
+
+def test_system_get_combines_flat_settings_and_build_info_together() -> None:
+    # The realistic shape every real generated device actually produces: ordinary flat
+    # SettingsGroup-sourced fields alongside the one nested "build" sub-entry, neither one
+    # clobbering the other.
+    sysm = _FakeModule("SYSTEM", schema=(("DebugLevel", "int", 0, 0, 5, None),), values={"DebugLevel": 2})
+    build_info = {"firmwareVersion": "2.0b0", "websiteVersion": "2.0b0", "buildDate": "2026-09-12T10:00:00Z"}
+    _service, app = _make_service(settings={"system": [SettingsGroup(sysm, ("DebugLevel",))]}, build_info=build_info)
+    res = run(app.dispatch_request(_make_request(app, "GET", "/system", None)))
+    assert json.loads(status_body(res)) == {"DebugLevel": 2, "build": build_info}
 
 
 def test_system_put_settings_only_body_no_systemcmd_takes_no_lifecycle_action() -> None:
@@ -1955,8 +1982,10 @@ def test_h2_stream_response_has_an_explicit_correct_content_length_header() -> N
     # generic iterator - _get_status() sets it explicitly instead, since the full size is already
     # known once every source has been awaited up front (nothing here is genuinely lazy streaming -
     # see _get_status()'s own comment). Real-hardware/real-socket regression coverage
-    # (found via tests/test_digital_twin_run_wozi_integration.py's own soak test failing without
-    # this): digital_twin/_http_client.py's fetch() falls back to a slow, effectively-untested
+    # (found via digital_twin/run_wozi_integration.py's own now-retired soak test failing without
+    # this, before that soak machinery moved to run_generic_integration.py -
+    # BUILD_CHAIN_PLAN.md's Session 6.2): digital_twin/_http_client.py's fetch() falls back to a
+    # slow, effectively-untested
     # reader.read(-1)-until-EOF path whenever Content-Length is missing.
     service, _app = _make_service()
     reader = _ScriptedReader([(0, _request_bytes("GET", "/status"))])

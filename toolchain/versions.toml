@@ -25,7 +25,7 @@ apt_packages = [
     "libnewlib-arm-none-eabi",
     "libstdc++-arm-none-eabi-newlib",
     # ports/unix (the host-side MicroPython build used for running tests under the real
-    # interpreter, not just CPython+stubs - see BACKLOG.md's "Self-contained venv via uv") needs
+    # interpreter, not just CPython+stubs - see SPECIFICATION.md Part E.1) needs
     # libffi-dev for its ffi module; the rest of its deps overlap with what's already listed above.
     "libffi-dev",
     # scripts/test.sh and scripts/run_digital_twin_ci.sh both grant CAP_NET_BIND_SERVICE to the

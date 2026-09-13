@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runs the tests/ suite under a real MicroPython Unix-port interpreter (not CPython/pytest - see
-# BACKLOG.md's "Self-contained venv via uv" testing requirement). Builds the toolchain on first
+# SPECIFICATION.md Part E.1's "Why not pytest"). Builds the toolchain on first
 # run via `uv run toolchain/setup_toolchain.py` (plain `setup` - building/verifying the Unix port
 # is just part of what `setup`/`test` already do, there's no separate `unix` subcommand, see
 # SPECIFICATION.md Part B) if the Unix port binary isn't already there, then reuses the cached build
@@ -27,10 +27,11 @@
 # stage of.
 #
 # Also (re)builds frozen_modules/frozen_html.py via scripts/build_frozen_html.sh before every run -
-# the website-placeholder module (SPECIFICATION.md Part A.9), which src/sensortask_wozi.py imports
-# unconditionally at module level. Lives in its own frozen_modules/ MICROPYPATH segment, not
-# ".frozen/" - see build_frozen_html.sh's own comment for why that exact name can't hold a real,
-# importable file (it's a hardcoded MicroPython sentinel, confirmed against py/builtinimport.c).
+# the website-placeholder module (SPECIFICATION.md Part A.9), which every generated
+# sensortask_<device>.py imports unconditionally at module level. Lives in its own frozen_modules/
+# MICROPYPATH segment, not ".frozen/" - see build_frozen_html.sh's own comment for why that exact
+# name can't hold a real, importable file (it's a hardcoded MicroPython sentinel, confirmed against
+# py/builtinimport.c).
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
@@ -100,6 +101,16 @@ scripts/build_frozen_html.sh
 echo "== Building frozen_modules/frozen_website_wozi.py"
 scripts/build_website.sh wozi frozen_modules/frozen_website_wozi.py
 
+# No static src/sensortask_wozi.py/sensortask_dev.py exist any more (BUILD_CHAIN_PLAN.md's Session
+# 6 finish criterion) - every device's own sensortask_<device>.py is generated fresh here, via
+# buildgen, into build/generated_src/ (gitignored - see scripts/_generate_sensortask_modules.py's
+# own docstring for why NOT into src/ itself). tests/test_sensortask.py (dynamic __import__() per
+# device) and every tests/test_digital_twin_*.py file that statically imports a sensortask_<device>
+# module keep working unchanged: MICROPYPATH below puts this directory first, so `import
+# sensortask_wozi` resolves to the freshly generated module.
+echo "== Generating buildgen device modules into build/generated_src/"
+uv run scripts/_generate_sensortask_modules.py
+
 # CPython-side tests for the build tooling itself (scripts/build_frozen_html.sh, scripts/
 # build_website.sh, scripts/build_firmware.py - SPECIFICATION.md Part B.11's "fully verified"
 # follow-up) - see tests_scripts/conftest.py's own docstring for why these run under CPython/
@@ -163,8 +174,11 @@ for test_file in tests/test_*.py; do
     # rather than extending it, and the default path is what makes frozen-in modules (asyncio
     # included) resolvable at all. Confirmed directly against the built interpreter - dropping
     # this breaks `import asyncio` for any async src/ file with no import error pointing at why.
-    # frozen_modules must be included too - src/sensortask_wozi.py's `import frozen_html` resolves
-    # there (see build_frozen_html.sh's comment for why it can't be ".frozen" itself).
+    # frozen_modules must be included too - the generated sensortask_<device>.py's own `import
+    # frozen_html` resolves there (see build_frozen_html.sh's comment for why it can't be
+    # ".frozen" itself). build/generated_src listed first: makes `import sensortask_wozi`/
+    # `sensortask_dev` resolve to the freshly buildgen-generated module built above, not any
+    # same-named file that might otherwise be found elsewhere on this path.
     if [ "$coverage" = "1" ]; then
         raw_out="$raw_dir/$(basename "$test_file" .py).json"
         cmd=(tests/_coverage_runner.py "$test_file" "$raw_out")
@@ -172,7 +186,7 @@ for test_file in tests/test_*.py; do
         cmd=("$test_file")
     fi
     for attempt in $(seq 1 "$max_attempts"); do
-        if MICROPYPATH="src:tests:frozen_modules:.frozen" stdbuf -oL -eL timeout --kill-after=10 "$per_file_timeout_s" "$micropython_bin" -X heapsize=8M "${cmd[@]}"; then
+        if MICROPYPATH="build/generated_src:src:tests:frozen_modules:.frozen" stdbuf -oL -eL timeout --kill-after=10 "$per_file_timeout_s" "$micropython_bin" -X heapsize=8M "${cmd[@]}"; then
             ec=0
         else
             ec=$?

@@ -1,0 +1,112 @@
+# multi_instance.toml - axis 9's own dedicated multi-instance fixture
+# (BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md §10.7 item 1): the richest corner of the whole
+# clean-build matrix, deliberately distinct from tests_scripts/buildgen_fixtures/novel_combo.toml
+# (2x scd30 + 1x sgp40 + bmp3xx, both device-wiring fields wired, signal_sink a real reference).
+#
+# What's different here: 2x scd30 AND 2x sgp40 simultaneously (sgp40 has no address-select pin, so
+# the two instances must sit on different buses - a real hardware constraint, not a buildgen
+# choice); sgp40_a sources both values from the same scd30 instance (the common real-device shape);
+# sgp40_b instead mixes a cross-driver-type reference for temperature (bmp3xx's own Temp field -
+# §2.9's "any producer exposing a matching attribute name" richness, not restricted to scd30) with
+# an explicit {default = true, ...} constant for humidity; bmp3xx keeps a name_ext despite being
+# the device's only instance of its driver (axis 11 - legal, just unusual); both
+# [device.wiring].led_target/.fram_target are left entirely unwired (novel_combo.toml wires both);
+# notification's own signal_sink is defaulted (§2's no-op LED sink) rather than a real neopixel
+# reference, and only sgp40_a is monitored via warn_voc - sgp40_b's VOC signal isn't wired at all
+# (partial multi-instance signal wiring). Not a real device - never flashed, never referenced
+# outside tests_scripts/test_buildgen_*.py.
+
+[device]
+name = "MultiInstance"
+hostname = "SensorStationMultiInstance"
+hotspot_password = "12345678"
+conn_fail_to_hotspot = 4
+hotspot_time_min = 9
+
+[device.wiring]
+
+[bus.i2c0]
+scl_pin = 13
+sda_pin = 12
+frequency = 50000
+timeout = 200000
+
+[bus.i2c1]
+scl_pin = 19
+sda_pin = 18
+frequency = 50000
+timeout = 200000
+
+[bus.spi0]
+sck_pin = 2
+mosi_pin = 3
+miso_pin = 4
+
+[[instance]]
+driver = "scd30"
+name_ext = "a"
+bus = "i2c0"
+irq_pin = 8
+trigger_sec = 2
+
+[[instance]]
+driver = "scd30"
+name_ext = "b"
+bus = "i2c1"
+irq_pin = 9
+trigger_sec = 5
+
+[[instance]]
+driver = "bmp3xx"
+name_ext = "only"
+bus = "i2c0"
+address = 0x76
+
+[instance.wiring]
+fram_target = "fram"
+
+[[instance]]
+driver = "sgp40"
+name_ext = "a"
+bus = "i2c1"
+
+[instance.wiring.temperature_source]
+source = "scd30_b"
+field = "Temp"
+
+[instance.wiring.humidity_source]
+source = "scd30_b"
+field = "Hum"
+
+[[instance]]
+driver = "sgp40"
+name_ext = "b"
+bus = "i2c0"
+
+[instance.wiring.temperature_source]
+source = "bmp3xx_only"
+field = "Temp"
+
+[instance.wiring.humidity_source]
+default = true
+relative_humidity = 35
+
+[[instance]]
+driver = "fram"
+bus = "spi0"
+cs_pin = 1
+max_size = 0x4000
+
+[[instance]]
+driver = "neopixel"
+pin = 15
+
+[[instance]]
+driver = "notification"
+
+[instance.wiring.signal_sink]
+default = true
+
+[instance.wiring.warn_voc]
+source = "sgp40_a"
+field = "VOC"

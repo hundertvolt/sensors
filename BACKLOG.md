@@ -68,7 +68,8 @@ constraints.
    did change (`short_name` is now `".".join(name.split(".")[:-1])` rather than a literal `.py`
    strip, plus a new non-ASCII module-name rejection), but the frozen name it produces for a flat
    `foo.py` is identical, and `py/frozenmod.c` is untouched - the analysis stands unchanged.
-   `boot_entry/wozi_boot.py` (the refactor's own entry point) already does
+   the refactor's own generated boot entry (`buildgen.codegen.generate_boot_entry_source()`, since
+   Session 6 - `boot_entry/wozi_boot.py` at the time this was written) already does
    `from sensortask_wozi import main` - the correct form - so there's nothing to fix on the
    refactor side. **`modules/_boot.py` itself stays untouched**: it targets the currently-deployed
    1.26 firmware, a different version whose own import machinery hasn't been separately verified
@@ -246,8 +247,113 @@ constraints.
     unconditionally and claims initialization only once that write succeeds. Mechanism, the
     deliberate asymmetry against `_store_err()`'s own guard, and the tier coverage:
     SPECIFICATION.md Part C.7.
+17. **SGP40's compensation-read-from-SCD30 boot race logged a real E/W pair for expected startup
+    jitter, not a genuine fault — FIXED (2026-09-12).** `_read_sgp()` now reads each compensation
+    field via `getattr(..., None)` before ever calling `float()` on it, the same split
+    `asy_notification_service.py`'s own `_check_one()` already used — a field that's legitimately
+    still `None` (SCD30 hasn't measured yet) is silent, expected input again, never logged; only a
+    genuine exception from the compensation source's own `get_data()` (a violation of its
+    never-raises contract) still logs (`errno=18`). Chosen over a global post-boot grace-period
+    mechanism in `system_service.py`: the narrower per-call-site fix already matches an established,
+    correct precedent with no new cross-cutting timing window to add/tune, and a persistent producer
+    failure is still caught and logged by that producer's own driver, not re-detected from this
+    side. A full audit for the same class of bug (any cross-module producer/consumer read whose
+    exception handling doesn't separate "no data yet" from "a real exception") found no other
+    occurrence in `src/` — `asy_notification_service.py`'s own read was already correct, and no
+    other cross-module `get_data()`/cross-module value read exists in `src/` today. Mechanism, the
+    corrected `errno`/`wrnno` table entry, and regression coverage (mock:
+    `tests/test_asy_sgp40_driver.py`; digital twin, against the real wozi wiring:
+    `tests/test_digital_twin_sensortask_integration.py`): SPECIFICATION.md Part C.14.2 and C.7.1.
+18. ~~SPECIFICATION.md Part A.4's "SGP40 silently degrading to uncompensated VOC when SCD30 is
+    down" wording may be imprecise.~~ — **closed (2026-09-12).** Reworded to state the actual
+    behavior directly: SGP40 skips the read entirely and returns `SGP40(None, None, None)`
+    (confirmed by `tests/test_asy_sgp40_driver.py::test_read_sgp_without_compensation_data_returns_all_none`),
+    it never substitutes a fallback/default compensation value. The underlying behavior itself was
+    never in question, only the doc wording describing it.
+19. ~~BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md §2.5's "Worked designs" example is stale.~~ —
+    **closed (2026-09-12), and the section itself since removed (2026-09-13).** That document was
+    rewritten to state only the final, shipped per-value mechanism (§2.9's design, now the whole of
+    what it calls "wiring defaults") — the superseded whole-object `comp_source` worked example this
+    item was about no longer exists to go stale. Current implementation:
+    SPECIFICATION.md Part C.14.2, BACKLOG.md item 17.
+20. **`tests_hardware/bus_topology.py` is a second, hand-kept, unenforced copy of `devices/dev.toml`'s/
+    `wozi.toml`'s own wiring facts, and — found while checking it — appears to be dead code today.**
+    Found by BUILD_CHAIN_PLAN.md's Session 8 closing-consistency pass (the one real gap that scan
+    surfaced against the "every device-specific fact lives in exactly one place" acceptance
+    criterion; everywhere else checked was already clean or a previously-documented exception).
+    `DEV_I2C_BUSES`/`WOZI_I2C_BUSES`/`DEV_SPI_CS`/`WOZI_SPI_CS` hand-duplicate real per-device I2C
+    pins/frequencies, sensor addresses, and the SPI CS pin/FRAM capacity that already live in the
+    two real device TOMLs — confirmed still byte-for-byte matching today, but nothing (no test, no
+    tooling) cross-checks the two against each other, so a future TOML edit could silently drift
+    without this file ever noticing. Worse: nothing in the repo imports `bus_topology.py` at all
+    (confirmed by grep) — the real on-target sweep CLAUDE.md's standing bus-hazard rule cites it
+    for (`tests_hardware/flash/test_bus_concurrency.py`'s
+    `test_bus_topology_autodetect_address_and_reserved_range_sweep`) actually runs a *different*,
+    self-contained file (`device_scripts/bus_topology_autodetect_and_hazard_sweep.py`, which carries
+    its own third, independent `KNOWN_ADDRESSES` copy, tied to this file only by a plain comment).
+    The module's own docstring used to cite "SPECIFICATION.md Part C.8" for an "update-this-file-too"
+    rule that doesn't exist there (or anywhere in SPECIFICATION.md) — corrected in place to describe
+    the real, current state instead of a fictional cross-reference (dangling-citation fix only; no
+    behavioral change). **Not fixed further** — genuinely the project owner's call, not a mechanical
+    cleanup: whether `bus_topology.py` should be deleted as dead code, whether
+    `bus_topology_autodetect_and_hazard_sweep.py` should import its `KNOWN_ADDRESSES` from it instead
+    of keeping a third copy, and whether CLAUDE.md's own bus-hazard rule should drop the citation or
+    point at a real, live consumer, are all real design decisions this pass didn't make unilaterally.
+21. **SPECIFICATION.md Part H.5.1's `dispatch: true` claim doesn't match the real `wozi.json`/`dev.json`
+    for two of its five named fields.** Part H.5.1 says `dispatch: true` "marks a repeatable command
+    field (H.6, minus `ContMeas`)" — i.e. every field in H.6's dispatch-only list
+    (`SystemCmd`/`PauseTime`/`lightCmdLED`/`ResetErrors`/`SGPResetVOC`) except `ContMeas`. Confirmed
+    directly against `html/definitions/wozi.json`: only `SystemCmd`/`ResetErrors`/`SGPResetVOC`
+    actually carry `dispatch: true`; `PauseTime` and `lightCmdLED` (both instances) carry none.
+    `buildgen/definitions.py` faithfully reproduces this real, golden behavior either way, so this is
+    a pre-existing spec-vs-reality mismatch to resolve with the project owner (which side is actually
+    correct — the doc's claim or the shipped JSON), not a generator bug. Found by
+    BUILD_CHAIN_PLAN.md's Session 4 post-merge self-audit; had never been migrated to this file before
+    now, so it stayed unresolved and easy to lose track of.
 
 ## Deferred / explicitly out-of-scope work
+- **Session 7's `pyproject.toml` `max-args` ratchet (21 → 22, for `WebserverService.__init__`'s new
+  `build_info=` parameter) only got the noble leg of CLAUDE.md's required two-target clean-chroot
+  pre-push verification.** The trixie leg — required by the same rule whenever `pyproject.toml`
+  changes, specifically to catch a GCC>=14-only issue the noble/GCC-13 leg can't see (the precedent:
+  the mbedtls `-Warray-bounds` false positive, SPECIFICATION.md Part B.7.1) — couldn't be run from
+  that session's own sandbox: `debootstrap --variant=minbase trixie` needs `deb.debian.org`, which
+  the sandbox's egress policy rejected outright (confirmed directly, not a transient failure), with
+  no alternate Debian mirror to fall back to. The change itself is a pure ruff/pylint lint-rule
+  threshold with no compiler-version sensitivity, so the residual risk is judged low, not zero — a
+  from-scratch trixie leg (or a run on the bench Pi4, which already runs trixie/GCC 14.2) should
+  still confirm it whenever one is next convenient. Full account: BUILD_CHAIN_PLAN.md's "Session 7
+  done" entry.
+- **`buildgen/buildspec.py`'s per-driver schema is hand-maintained — making it AST-derivable is a
+  separate, unstarted unit of work.** Everything else `buildgen/` needs from a driver is derived
+  from `src/` automatically (the class itself via `driver_registry.py`'s naming convention,
+  `_WIRING`, `_VALUE_WIRING`, `_LIMITS`, `_Default*`); `buildspec.py`'s "which TOML fields does this
+  driver require/allow, does it sit on a bus, does it have a selectable address" dicts are the one
+  exception, because Session 2's shipped TOML field names (`pin`, `cs_pin`, ...) and `src/`'s
+  constructor parameter names (`neopixel_pin`, `spi_cs`, ...) are two independently-evolved naming
+  spaces with no rule connecting them. So adding a 7th driver means editing one table by hand, and
+  forgetting to is a real (if now clearly-reported) failure. **The small half is already done**: a
+  driver that resolves via `driver_registry` but has no `buildspec.py` entry raises a dedicated
+  error naming that as the cause, instead of reporting every one of its real fields as
+  "unrecognized" (BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md's "Known limitation" section). The large half —
+  deriving the schema from each driver's own constructor signature, or from a new declarative tuple
+  beside `_WIRING` — needs real design, not a mechanical continuation, and hasn't been started.
+- **`[device].name`/`hostname`/`hotspot_password` are validated but never wired into any boot
+  path.** Confirmed against the generator (`buildgen.generate.generate_device()`): neither
+  `AsyConnTime.__init__` nor any generated `sensortask_<device>.py` has a constructor-time
+  injection point for them. `Hostname`/`HotspotPW` are ConfigManager-
+  persisted runtime values with one hardcoded shared default (`"SensorNode"`/`"12345678"` —
+  `asy_wifi_service.py`'s `_VAL_HOST`/`_VAL_HOTSPOT_PW`), identical in every device's frozen build,
+  so **every device today actually boots as `SensorNode`**, whatever its `devices/*.toml` says. The
+  TOML values are schema-checked and otherwise inert. **Still not fixed as of Session 6** (build
+  chain + CI matrix + digital-twin test generalization) — that session's own finish criterion was
+  eliminating the hand-written `sensortask_wozi.py`/`sensortask_dev.py` entry points, not this gap.
+  Fixing it needs either a `src/` constructor-time override mechanism (`asy_wifi_service.py`'s
+  `AsyConnTime.__init__` would need real `hostname=`/`hotspot_password=` parameters — several
+  existing tests assert the literal `"SensorNode"`/`"12345678"` defaults) or a build-artifact
+  config-seeding step — not a `buildgen/`-only change. A tripwire test
+  (`test_hostname_and_hotspot_password_are_not_yet_wired_into_generated_code`) and a code comment in
+  `validate.py` hold the current state in place so the gap can't quietly change shape unnoticed.
 - **The 1.29.0 pin is now field-proven on the dev bench (2026-09-11).** Real `dev` firmware built
   from `src/` and flashed; `sys.implementation` on target reports `(1, 29, 0)` / `_mpy=4870` /
   `RPI_PICO_W`. Flash tier (25 passed), bench tier (85 passed) and the mid soak tier (4 passed) all
@@ -322,7 +428,7 @@ constraints.
   not model (it requires a positional `id`). This is the same stub gap CLAUDE.md's "Code quality
   tooling" section already records for `src/`'s four drivers plus `I2C.deinit()`, and it has the
   same resolution: every invocation the project actually runs - CI's `scripts/typecheck.sh src
-  tests boot_entry tests_hardware/device_scripts` and a bare local `scripts/typecheck.sh` - includes
+  tests tests_hardware/device_scripts` and a bare local `scripts/typecheck.sh` - includes
   `tests/`, whose `tests/machine.py` fake models `Timer()` correctly and wins module resolution.
   Worth knowing before anyone runs mypy over that directory on its own and reads the result as a
   regression.
@@ -398,62 +504,32 @@ constraints.
     `MemoryError`/reboot markers, zero unexpected skips. **Still open**: the real `--tier long`
     (6h) production-duration run itself - `mid` is a genuine real-hardware pass at 10 minutes, not
     a substitute for the full 6h window this item was always about.
-- **Website definitions-file autogeneration — not yet built.** `html/definitions/<device>.json`
-  (Part H.5) is currently hand-written. A worked, already-checked-against-real-code *sketch* exists
-  for deriving most of it at build time from `#`-prefixed comment tags placed above each driver's
-  `ConfigSchema` tuple (most fields — `min`/`max`, toggle/string/enum/number `kind`, special/enum
-  option values — are already inferable from the schema tuple itself with no tag at all; a tag only
-  needs to supply what the tuple can't: `label` (required), `unit`, `description`, an occasional
-  `kind` override for a non-`ConfigSchema` value like `asy_webserver_service.py`'s `_SYSTEM_CMDS`,
-  and `special:<value>="<meaning>"` for a sentinel/enum-option's human-readable meaning). Grammar:
-  `# @web <key>=<value> <key>="<quoted value>" ...` for a per-field tag; `@web-group` for a
-  module-level tag (`label`, `endpoint`, optional `submitGroup`). Three worked examples against real
-  `src/` code: a sentinel special value (`asy_scd30_driver.py`'s `AmbPres`), a toggle needing no
-  `kind` tag at all (`SelfCal`), and an enumerated field (`asy_bmp3xx_driver.py`'s `PressOvers`, six
-  `special:` entries becoming six labeled `options`). **Not a decision** — no parser has been built
-  and no `src/` file carries these tags yet. Left open, case by case, for whoever builds the real
-  parser: where the composite `lightCmdLED` shape (r/g/b/t) and other non-driver-schema webserver
-  values anchor a tag at all; whether `@web-group`'s `endpoint`/`submitGroup` belong on the schema
-  declaration or should instead read off `src/sensortask_wozi.py`'s own `SettingsGroup(...)`
-  construction-site wiring (which already states the same grouping, risking silent drift if tagged
-  twice); a full formal grammar (escaping a `"` inside a quoted value, etc.) was deliberately not
-  attempted, since the sketch's job was proving the *shape* of the idea against real code, not being
-  implementation-ready.
-- **Per-variant `sensortask-*.py` generator — not yet built (the automated version specifically;
-  one real, hand-written second variant now exists).** SPECIFICATION.md Part A.3 already names the
-  automated generator as a real planned direction (one setup-definition file → every variant's
-  `sensortask-*.py`/website pair), shaped for by A.8's registration-API/A.9's `HTML_SRC_DIRS`
-  mechanisms. `src/sensortask_dev.py` (2026-09-03) is the first
-  concrete step toward it — a real, hand-written, `src/`-quality dev-bench variant carrying the
-  same three sensors as wozi (SCD30 + BMP3xx + SGP40), built and flashed for real via
-  `scripts/build_firmware.py dev`/`boot_entry/dev_boot.py`, confirmed clean on real hardware
-  (6.5-minute stability window, real sensor readings, real captive-portal redirect). It's an
-  interim baseline, not the generator itself — deliberately not over-invested in permanence, meant
-  to be replaced once the generator lands. Two concrete requirements for whenever the generator is
-  actually built, so they aren't lost
-  between now and then: (1) any hardware-presence-conditioned wiring `sensortask_wozi.py` currently
-  hardcodes for its own fixed sensor set — which FRAM chunks get allocated (Part A.7's seven-chunk
-  order is wozi-specific) and any sensor-specific bus parameter (e.g. SCD30's own I2C
-  clock-stretch `timeout=200000`) — must be derived from the target variant's actual module set,
-  not copied verbatim into a variant lacking that sensor; (2) **every generated variant needs its
-  own real unit tests** (owner requirement - a generated `sensortask-*.py` is exactly as much "real
-  code" as a hand-written one, same Part D bar applies; the build script that generates the
-  `sensortask-*.py`/test pair is also the natural place to activate/select which of the generated
-  tests actually run for a given variant, rather than a separate manual step), and those tests must
-  themselves check which sensors/FRAM a given variant actually has before asserting anything
-  sensor- or FRAM-specific — asserting e.g. `scd_reader.pr.fram is not None` unconditionally against
-  a variant with no SCD30 (or no FRAM at all) would either hard-fail on a module that was never
-  supposed to exist, or - the sharper risk - pass vacuously for the wrong reason if the assertion is
-  generated loosely enough to skip rather than genuinely check. A variant-specific test also can't
-  hardcode *which bus* a sensor sits on (SCD30 is wired to `i2c0` on wozi, but a different variant
-  could wire it to `i2c1` or a third bus entirely) — it must look the bus up through the sensor's
-  own object graph (e.g. `scd_reader.scd.i2c_scd30.i2c_device.i2c`), never assume a specific
-  `i2cN` name. `tests/test_sensortask_wozi.py`'s own
-  `test_scd30s_own_i2c_bus_uses_a_clock_stretch_timeout_wide_enough_for_it` is the worked example
-  this generalizes from (both the bus lookup and the FRAM assertions), not a template to copy
-  unconditionally. **Resolved (2026-09-03): `scripts/build_firmware.py dev` is now the real,
-  correct, confirmed-working way to build/flash for the dev bench** — device-parametrized boot-entry
-  selection (`boot_entry/<device>_boot.py`) is real, and the earlier "wozi's own pins forced onto
+- **Website definitions-file autogeneration — done (BUILD_CHAIN_PLAN.md Session 4).** The
+  `@web`/`@web-group` comment-tag family and `buildgen/definitions.py`'s generator now exist,
+  resolving every open question this entry used to track (anchoring a non-driver-schema value like
+  `lightCmdLED`, `@web-group`'s relationship to `SettingsGroup(...)` wiring, the formal grammar's
+  scope) — see BUILD_CHAIN_PLAN.md's own "Session 4 done" account for the resolutions and
+  `tests_scripts/test_buildgen_web_tag.py`/`test_buildgen_definitions.py` for the test coverage.
+  Generating `html/definitions/<device>.json` for real was Session 6's own job; that session
+  closed two of its three parts — `arzi`/`klkizi`/`grkizi`/`schlafzi` (the four devices that never
+  had a hand-written file) now get one generated on the fly by `scripts/build_website.sh`'s own
+  fallback, and this is wired into CI's 6-device `firmware-build-verify` matrix. **Still open**:
+  retiring `wozi`/`dev`'s own hand-written `html/definitions/{wozi,dev}.json` in favor of generated
+  output — deliberately deferred, since `tests_js/live-backend-put-matrix.test.js`/
+  `mock-server-put-matrix.test.js` read those two files directly as fixtures and switching them
+  over needs a `tests_js/` fixture audit no session has done yet (BUILD_CHAIN_PLAN.md's "Session 6
+  done" account). **The same wozi/dev-only scope shows up in the browser prototype too**: `js/
+  app.js`'s `KNOWN_DEVICES = ["wozi", "dev"]` (its `?device=` switch, prototype-only per that file's
+  own docstring — real firmware ships exactly one device's `definitions.json`, never branches on a
+  query param) is a real, literal device-name list living outside `devices/*.toml`, but it isn't an
+  independent gap: it exists because `mockdata/`/`html/definitions/` only carry fixtures for those
+  two devices, the same limitation this entry already tracks. Extending it to all 6 needs generating
+  `mockdata/<device>.json` fixtures for the other four first, not just a `KNOWN_DEVICES` edit — found
+  by BUILD_CHAIN_PLAN.md's Session 8 closing pass, flagged here rather than fixed piecemeal.
+- **`scripts/build_firmware.py dev` confirmed the real, correct way to build/flash for the dev
+  bench — Resolved (2026-09-03).** Device-parametrized boot-entry
+  selection was real then via `boot_entry/<device>_boot.py` (that directory is retired now, replaced
+  by `buildgen.codegen.generate_boot_entry_source()` — Session 6, above), and the earlier "wozi's own pins forced onto
   dev hardware" mismatch that produced noise mistaken for real bugs (once tracked as the open
   questions list's own item 7) no longer has anything to stand in for. `dev_legacy/README.md`'s
   mounted-entry-script recipe remains a valid, lighter-weight path for driver-level bring-up/
@@ -482,7 +558,7 @@ constraints.
   whole wired-together sensortask can be exercised as close to the real target as possible without
   physical hardware. **Fulfilled**: `digital_twin/` is the lowest-level-mocking module this
   requirement calls for (see `SPECIFICATION.md` Part A.10), and `scripts/run_unix_port_integration.sh`
-  runs the whole wired-together `src/sensortask_wozi.py` against it end to end (see
+  runs the whole wired-together (buildgen-generated) `sensortask_wozi.py` against it end to end (see
   `digital_twin/README.md`'s "Swapping the twin in for a Unix-port run" section). This entry should
   come out once the whole effort's large post-merge audit closes, per this file's own stated
   resolved-item policy — not yet removed on its own, since that audit hasn't closed yet.
@@ -514,8 +590,8 @@ constraints.
   see SPECIFICATION.md Part C.8 for the full account. Still not picked up: a rename to make
   `network_available()`'s already-held-lock contract visible in its own name (e.g.
   `network_available_locked()`) was considered but not done — nothing blocks it now that
-  `improved-quality/sensortask-wozi.py` is deleted, but `src/sensortask_wozi.py` itself still calls
-  it by the current name, so this remains a real (if small) call-site update.
+  `improved-quality/sensortask-wozi.py` is deleted, but `buildgen/codegen.py` itself still generates
+  a call to it by the current name, so this remains a real (if small) call-site update.
 - **`asy_i2c_driver.py`'s `get_bits`/`set_bits`/`get_register_struct` still call the allocating
   `readfrom_mem()` rather than zero-copy `readfrom_mem_into()`** — no real caller needs the
   zero-copy path yet, but worth doing before `asy_isl29125_driver.py` (its one plausible future

@@ -1,13 +1,12 @@
 """Tests toolchain/setup_toolchain.py's `env` subcommand (tiered generic/flash/bench dev
-environment setup) in isolation - the pure-Python detection/idempotency/argument-parsing logic,
-mocked against fake /sys trees and a fake run(), never real hardware, sudo, or network. See
-dev_legacy/README.md for what "flash"/"bench" mean and the manual nmcli recipe this automates.
-End-to-end real-hardware behavior (USB auto-detection against a real board, the actual bridge/AP
-working) is proven on the real bench unit, not here - see the module docstring's own account of
-why this split exists (SPECIFICATION.md Part E.1's "real interpreter, not stubs" principle
-applies the same way to "real hardware, not this suite" for anything USB/network-hardware-facing)."""
+environment setup) in isolation: the pure-Python detection/idempotency/argument-parsing logic,
+mocked against fake /sys trees and a fake run() - never real hardware, sudo, or network."""
 
-import importlib.util
+# dev_legacy/README.md defines what "flash"/"bench" mean and holds the manual nmcli recipe this
+# automates. End-to-end real-hardware behavior (USB auto-detection against a real board, the bridge
+# and AP actually working) is proven on the real bench unit instead - the same "real thing, not
+# stubs" split SPECIFICATION.md Part E.1 draws for the interpreter.
+
 import os
 import subprocess
 import sys
@@ -17,19 +16,12 @@ from types import ModuleType
 from typing import NoReturn
 
 import pytest
+from _script_loader import load_script_module
 
 
 @pytest.fixture(scope="session")
 def setup_toolchain(repo_root: Path) -> ModuleType:
-    module_path = repo_root / "toolchain" / "setup_toolchain.py"
-    spec = importlib.util.spec_from_file_location("setup_toolchain", module_path)
-    # spec_from_file_location() returns None for an unloadable path and spec.loader is
-    # Optional in the general case - narrowed here so a renamed/missing script fails with a
-    # clear assertion instead of an AttributeError three lines later.
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    return load_script_module(repo_root / "toolchain" / "setup_toolchain.py", "setup_toolchain")
 
 
 @pytest.fixture

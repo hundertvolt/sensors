@@ -57,8 +57,11 @@ async def _main() -> None:
     if err_count != 1:
         print(f"RESULT: FAIL restored ErrCount={err_count!r}, expected 1 (real FRAM read did not reflect the recorded error)")
         return
-    positions = [i for i, num in enumerate(err_num) if num == TEST_ERRNO]
-    if not positions or err_type[positions[0]] != "E":
+    # err_num/err_type both narrow to the same list[int] | list[str] union (get_log()'s one shared
+    # value type covers all three keys - see the comment above) - zip()+== sidesteps .index()'s
+    # per-overload argument-type mismatch that a bare err_num.index(TEST_ERRNO) would hit.
+    matched_type = next((t for n, t in zip(err_num, err_type) if n == TEST_ERRNO), None)  # noqa: B905 - MicroPython zip() rejects strict=, same list length by construction
+    if matched_type != "E":
         print(f"RESULT: FAIL restored history does not contain errno={TEST_ERRNO} as type 'E': ErrNum={err_num!r} ErrType={err_type!r}")
         return
 

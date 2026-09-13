@@ -283,6 +283,7 @@ jobs:
             uv run toolchain/setup_toolchain.py setup
           fi
           scripts/build_website.sh wozi
+          uv run scripts/_generate_sensortask_modules.py
       # Firefox+geckodriver (via conda-forge/micromamba - see scripts/setup_cross_browser_toolchain.sh's
       # own comment for why) is the one piece of this job's toolchain worth caching across runs: it's
       # a ~106MB download from a channel with no version-pin file to key on (deliberately unpinned,
@@ -302,19 +303,27 @@ jobs:
         run: node scripts/cross_browser_smoke.mjs
 
   lint-and-typecheck:
-    # Gates on src/, tests/, and digital_twin/ (pyproject.toml's [tool.mypy]/[tool.ruff] default
-    # scope - both fully-reviewed, expected to stay clean). Passing explicit paths to
+    # Gates on src/, tests/, digital_twin/, and buildgen/ for ruff, plus
+    # tests_hardware/device_scripts/ for mypy only (tests_hardware/device_scripts/
+    # is MicroPython-target code, checked by the main mypy pass below alongside src/tests/, not
+    # the host build chain's separate pass), plus the whole host-side build chain - buildgen/,
+    # scripts/, toolchain/ and tests_scripts/ - under both tools (the build scripts gate the
+    # firmware every device ships, so they carry the same bar as the code they build; their mypy
+    # coverage comes from host_typecheck.ini's own separate pass). Passing explicit paths to
     # scripts/typecheck.sh overrides pyproject.toml's `files`/default target for that one
     # invocation without changing what a plain `scripts/lint.sh`/`scripts/typecheck.sh` checks
     # locally (still full-scope: see scripts/typecheck.sh's `mypy "$@"` and ruff's own
-    # CLI-args-override-config behavior).
-    # digital_twin/ is NOT in the `ruff check`/`scripts/typecheck.sh` args below the way src/tests
-    # are - see pyproject.toml's [tool.mypy] exclude comment and digital_twin/typecheck.ini's own
-    # docstring for why mypy needs a wholly separate invocation for it (bare `machine`/`network`/
-    # `neopixel` module names can only resolve one way per mypy run); scripts/typecheck.sh already
-    # runs that second pass unconditionally, regardless of "$@", so the Mypy step below gates on
-    # digital_twin/ too without needing it named here explicitly. Ruff has no such per-run
-    # resolution conflict, so it's just named directly alongside src/tests.
+    # CLI-args-override-config behavior). digital_twin/ and buildgen/ are NOT in the
+    # `ruff check`/`scripts/typecheck.sh` args below the way src/tests are - see pyproject.toml's
+    # [tool.mypy] exclude comment, digital_twin/typecheck.ini's own docstring, and
+    # host_typecheck.ini's own docstring for why mypy needs a wholly separate invocation for each
+    # (digital_twin/: bare `machine`/`network`/`neopixel` module names can only resolve one way per
+    # mypy run; the host build chain - buildgen/, scripts/, toolchain/, tests_scripts/, plus
+    # tests_hardware/'s own host-CPython pytest code: genuinely CPython-target host tooling, needs
+    # mypy's real bundled typeshed instead of the MicroPython-stub-replaced one); scripts/typecheck.sh
+    # already runs both second passes unconditionally, regardless of "$@", so the Mypy step below
+    # gates on both without needing them named here explicitly. Ruff has no such per-run resolution
+    # conflict, so every scope is just named directly.
     permissions:
       contents: read
     runs-on: ubuntu-latest
@@ -327,10 +336,10 @@ jobs:
         run: pip install uv
       - name: Sync dev dependencies
         run: uv sync
-      - name: Ruff (src/, tests/, digital_twin/)
-        run: uv run ruff check src tests digital_twin boot_entry toolchain scripts tests_scripts tests_hardware
-      - name: Mypy (src/, tests/, digital_twin/)
-        run: uv run scripts/typecheck.sh src tests boot_entry tests_hardware/device_scripts
+      - name: Ruff (src/, tests/, digital_twin/, tests_hardware/, and the whole host build chain)
+        run: uv run ruff check src tests digital_twin tests_hardware buildgen scripts toolchain tests_scripts
+      - name: Mypy (src/, tests/, digital_twin/, tests_hardware/device_scripts/, and the whole host build chain)
+        run: uv run scripts/typecheck.sh src tests tests_hardware/device_scripts
 
   shellcheck:
     # Own stage, not a step inside lint-and-typecheck: each tool gets its own independently
@@ -394,7 +403,7 @@ jobs:
 
   unit-tests:
     # Tests run under a real MicroPython Unix-port interpreter, not CPython - see
-    # BACKLOG.md's "Self-contained venv via uv" testing requirement and SPECIFICATION.md Part E.
+    # SPECIFICATION.md Part E.
     #
     # needs: lint-and-typecheck - serializes the two jobs in this workflow instead of letting them
     # run in parallel (the previous default). This dates from an earlier phase of the CI-hang
@@ -414,8 +423,17 @@ jobs:
     # run (many files hanging at once) rather than being the only thing standing between a stuck
     # test and GitHub's own 360-minute hard limit (the scenario that produced the originally-
     # observed 6-hour hang before timeout-minutes existed - see CLAUDE.md's "CI hang investigation"
-    # note). With a warm toolchain cache, a healthy run takes ~8-9 minutes total (plain + coverage
-    # passes combined - confirmed by direct local measurement).
+    # note). Real GitHub-hosted-runner timings, measured directly rather than assumed (Session 8's
+    # closing-pass PR, two independent cold-cache runs - no prior run on this exact branch/PR scope
+    # to inherit a cache from, see BUILD_CHAIN_PLAN.md for the mechanism): this job's own plain pass
+    # took 16m58s and 16m42s from a cold cache (full from-scratch ARM+MicroPython Unix-port
+    # toolchain build included); a warm cache drops that to the ~13-15 minutes the test suite itself
+    # takes. 25 minutes gives ~45% headroom over the observed cold-cache worst case without being an
+    # empty, unfalsifiable number. The coverage pass used to run serially in this same job (see
+    # unit-tests-coverage below for why it no longer does) - a stale comment here once claimed
+    # "~8-9 minutes total" for both passes combined, which real CI runs never actually measured and
+    # which the real cold-cache figures above already contradict on their own; fixed rather than
+    # left to mislead the next person sizing this timeout.
     #
     # `if: !cancelled()` keeps the `needs:` edge above (so the serialization the standing backstop
     # asks for is intact) while dropping the SUCCESS gating that `needs:` otherwise implies. That
@@ -430,7 +448,7 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7
         with:
@@ -439,12 +457,37 @@ jobs:
         uses: ./.github/actions/setup-micropython-toolchain
       - name: Run unit tests
         run: scripts/test.sh
-      # Coverage is a report, not a gate (see SPECIFICATION.md Part E.5 ("Coverage")) - never let
-      # it fail the job. The `Run unit tests` step above is the real pass/fail signal; this just
-      # re-runs the same suite under the same Unix port binary (always built with
-      # MICROPY_PY_SYS_SETTRACE=1 - see build_unix_port()), wrapped by tests/_coverage_runner.py
-      # this time, to measure src/ AND digital_twin/ line coverage (two separate reports from one
-      # shared run - see scripts/test.sh's own comment).
+
+  unit-tests-coverage:
+    # Coverage is a report, not a gate (SPECIFICATION.md Part E.5, "Coverage") - never lets
+    # anything downstream wait on or fail because of it. Split out of unit-tests above (Session 8's
+    # closing-consistency-pass PR) into its own job, off the critical path entirely: re-running the
+    # whole real-interpreter suite a second time under tests/_coverage_runner.py's sys.settrace
+    # wrapper roughly doubled unit-tests' own wall-clock time for a report nothing else reads to
+    # make a decision - firmware-build-verify/digital-twin-e2e only ever needed unit-tests' own
+    # toolchain-cache population, never this job's own output, so gating either of them behind a
+    # coverage run they don't use was pure wasted latency. needs: unit-tests (not
+    # lint-and-typecheck directly) specifically to reuse the toolchain cache unit-tests' own run
+    # just populated, rather than racing it and potentially rebuilding the same toolchain twice in
+    # parallel on a cold cache - the one piece of sequencing this job keeps, in exchange for running
+    # fully in parallel with firmware-build-verify/digital-twin-e2e instead of blocking them.
+    # Measured directly (Session 8's closing-pass PR, two runs against the now-warm cache
+    # unit-tests just built): 14m01s and 16m56s for the full suite re-run under sys.settrace. 25
+    # minutes matches unit-tests' own budget and gives comfortable headroom over both samples.
+    needs: unit-tests
+    if: ${{ !cancelled() }}
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Set up MicroPython toolchain (install uv, restore cache)
+        uses: ./.github/actions/setup-micropython-toolchain
+      # continue-on-error: true at every step below - a coverage-tooling failure must never read
+      # as a test regression; unit-tests above is the only real pass/fail signal for this suite.
       - name: Run unit tests with coverage
         run: scripts/test.sh --coverage
         continue-on-error: true
@@ -495,11 +538,20 @@ jobs:
     # across a real process reboot, soak) - see digital_twin/README.md's "Automated CI suite"
     # section and scripts/run_digital_twin_ci.sh's own header comment for the full reference.
     # Deliberately a separate job from unit-tests above: this drives digital_twin/
-    # run_wozi_integration.py as a real subprocess over real HTTP through several genuine process
-    # restarts (to prove persistence survives an actual reboot, not just an in-process rebuild of
-    # the object graph the way tests/test_digital_twin_sensortask_integration.py already does) -
-    # a fundamentally different, heavier kind of check than the fast unit-test tier, not a
+    # run_generic_integration.py as a real subprocess over real HTTP through several genuine
+    # process restarts (to prove persistence survives an actual reboot, not just an in-process
+    # rebuild of the object graph the way tests/test_digital_twin_sensortask_integration.py already
+    # does) - a fundamentally different, heavier kind of check than the fast unit-test tier, not a
     # duplicate of it.
+    #
+    # strategy.matrix over all 6 real devices (BUILD_CHAIN_PLAN.md's Session 6.2, mirroring
+    # firmware-build-verify's own precedent below) - each device's own 11-run suite is an
+    # independent job, attributable directly in the job list, rather than one long serial script
+    # that would otherwise need roughly 6x the wall-clock budget of a single device's run (several
+    # runs in the suite each wait tens of seconds for a real state-machine transition - a WiFi
+    # hotspot-fallback DNS answer, a soak's own memory-trend sampling - which parallelize for free
+    # across jobs but simply sum if serialized in-process). fail-fast: false so one device's
+    # failure doesn't cancel the other 5 mid-suite - each is an independent proof.
     #
     # needs: unit-tests - runs after the unit-test tier both for fail-fast ordering (no reason to
     # spend several more minutes on a full boot/reboot/soak cycle if the fast unit tests already
@@ -510,6 +562,10 @@ jobs:
       contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        device: [wozi, dev, arzi, klkizi, grkizi, schlafzi]
     steps:
       - uses: actions/checkout@v7
         with:
@@ -517,12 +573,12 @@ jobs:
       - name: Set up MicroPython toolchain (install uv, restore cache)
         uses: ./.github/actions/setup-micropython-toolchain
       - name: Run digital-twin clean/build/test cycle
-        run: scripts/run_digital_twin_ci.sh
+        run: scripts/run_digital_twin_ci.sh "${{ matrix.device }}"
       - name: Upload digital-twin subprocess logs
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: digital-twin-ci-logs
+          name: digital-twin-ci-logs-${{ matrix.device }}
           path: digital_twin_ci_logs/
           if-no-files-found: ignore
         continue-on-error: true
@@ -536,6 +592,12 @@ jobs:
     # "No CI firmware-build stage yet" entry describes, closed here for the new src/-based toolchain
     # (that entry itself stays open - it's specifically about the legacy build-*.sh scripts, a
     # separate, not-yet-done piece of work).
+    #
+    # strategy.matrix over all 6 real devices (BUILD_CHAIN_PLAN.md's Session 6) - each is its own
+    # job, so a failure names exactly which device's generated build broke directly in the job
+    # list, rather than one job silently only ever having covered wozi/dev the way this job did
+    # before every device had a buildgen-generated entry point to build from. fail-fast: false so
+    # one device's failure doesn't cancel the other 5 mid-build - each is an independent proof.
     #
     # needs: unit-tests, not digital-twin-e2e - this only needs the toolchain cache unit-tests'
     # own setup step already populates (mpy-cross + pico-sdk + picotool + the MicroPython/pico-sdk
@@ -555,6 +617,10 @@ jobs:
       contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        device: [wozi, dev, arzi, klkizi, grkizi, schlafzi]
     steps:
       - uses: actions/checkout@v7
         with:
@@ -586,5 +652,5 @@ jobs:
           versions = st.load_versions(Path("toolchain/versions.toml"))
           st.ensure_apt_packages(versions["toolchain"]["apt_packages"], skip=False)
           PYEOF
-      - name: Build a real firmware.uf2 for wozi and verify it
-        run: RUN_SLOW_FIRMWARE_BUILD=1 uv run pytest tests_scripts/test_build_firmware.py::test_real_firmware_build_produces_a_valid_uf2 -v
+      - name: Build a real firmware.uf2 for ${{ matrix.device }} and verify it
+        run: RUN_SLOW_FIRMWARE_BUILD=1 uv run pytest "tests_scripts/test_build_firmware.py::test_real_firmware_build_produces_a_valid_uf2[${{ matrix.device }}]" -v

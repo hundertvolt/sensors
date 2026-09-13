@@ -60,7 +60,7 @@ async def _main() -> None:
     # Deliberately measured at MicroPython's own reactive-only default first: a headroom figure that
     # only holds with a proactive threshold isn't headroom (CLAUDE.md's memory-safety ladder).
     free, largest = _report("after_build_system")
-    gc.threshold(32768)  # what boot_entry/dev_boot.py sets in the real firmware
+    gc.threshold(32768)  # what buildgen.codegen.generate_boot_entry_source() sets in the real firmware
     _report("after_build_system_production_threshold")
 
     if free < _MIN_FREE:

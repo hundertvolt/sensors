@@ -113,8 +113,8 @@ never run it over a connection that depends on the bridge staying up.
 ## Code quality tooling
 
 Ruff and mypy checks, scoped to eight directories — `src/`, `tests/`, `digital_twin/`,
-`boot_entry/`, `toolchain/`, `scripts/`, `tests_scripts/` and `tests_hardware/` (the pre-refactor
-codebase — `python/`, `modules/` — isn't covered yet) — shellcheck over `scripts/`, actionlint +
+`buildgen/`, `toolchain/`, `scripts/`, `tests_scripts/` and `tests_hardware/` (the
+pre-refactor codebase — `python/`, `modules/` — isn't covered yet) — shellcheck over `scripts/`, actionlint +
 zizmor over the GitHub Actions workflows, plus unit tests for `src/`, can be run manually. mypy
 runs three separate passes, since the MicroPython-target scopes and the host-CPython ones need
 different stdlib stubs and cannot share one invocation. Needs Python 3.11+ (`tomllib`, stdlib only since 3.11 — `uv sync` enforces this
@@ -153,8 +153,10 @@ Result: FAILED
 ```
 
 All three (`lint.sh`/`typecheck.sh`/`test.sh`) run in GitHub Actions CI
-(`.github/workflows/ci.yml`) on every push/PR, plus `test.sh --coverage` as a non-gating extra
-step. Config lives in the root `pyproject.toml`; see CLAUDE.md's "Code quality tooling" section
+(`.github/workflows/ci.yml`) on every push/PR, plus `test.sh --coverage` as its own non-gating
+`unit-tests-coverage` job (split out from the main test job so its own wall-clock cost never sits
+on the critical path other jobs wait on). Config lives in the root `pyproject.toml`; see CLAUDE.md's
+"Code quality tooling" section
 for the full rationale (why `ruff format` isn't used, why the MicroPython stubs install into a
 separate `typings/` directory instead of the main dev venv, why tests don't run under
 pytest/CPython, etc.).
@@ -394,11 +396,11 @@ equivalent summary at the end (`All N manual test(s) passed.` or `N/M manual tes
 `digital_twin/` is a fake `machine`/`network`/`neopixel` implementation that mirrors a real device's
 bus wiring — real-time-firing `Timer`s, randomized-but-plausible sensor values, and a scripted
 `WLAN` connect sequence — so driver code can run under the real MicroPython Unix-port interpreter
-with no physical hardware attached. `wozi` is the default wiring (`scripts/run_unix_port_integration.sh`,
-`scripts/run_digital_twin_ci.sh`); `dev` is also fully supported end-to-end (`digital_twin/run_dev_integration.py`)
-— see `digital_twin/README.md`. The default run serves the real, production `wozi` website
-(`scripts/build_website.sh wozi`), not the `html_stub` placeholder — see `SPECIFICATION.md` Part H.7
-for the full account.
+with no physical hardware attached. `wozi` is the default device (`scripts/run_unix_port_integration.sh`,
+`scripts/run_digital_twin_ci.sh`); every real device is fully supported end-to-end via `--device`
+(`digital_twin/run_generic_integration.py`) — see `digital_twin/README.md`. The default run serves
+the real, production `wozi` website (`scripts/build_website.sh wozi`), not the `html_stub`
+placeholder — see `SPECIFICATION.md` Part H.7 for the full account.
 
 **Quick start: twin + real website, in one command** (builds the MicroPython Unix port and the
 website automatically if either is missing, then serves both forever):
@@ -411,19 +413,22 @@ Then open `http://127.0.0.1:8080/` in a browser — that's the real `html/`+`js/
 real REST API, backed by the twin instead of physical hardware. See "Manual baseline verification
 walkthrough" below for a longer copy-paste sequence that also exercises every endpoint and
 fault-injection flag over `curl`. Every flag forwards straight through to
-`digital_twin/run_wozi_integration.py`'s own arg parser:
+`digital_twin/run_generic_integration.py`'s own arg parser:
 
 ```sh
-scripts/run_unix_port_integration.sh                                 # just launch + serve forever, no flags
+scripts/run_unix_port_integration.sh                                 # wozi: just launch + serve forever, no flags
+scripts/run_unix_port_integration.sh --device dev                     # any other real device, same shape
 scripts/run_unix_port_integration.sh --soak                           # bounded automated soak run, then serves forever
 scripts/run_unix_port_integration.sh --soak --duration 0              # same, but exits immediately after the soak
 scripts/run_unix_port_integration.sh --fault sgp40:writeto             # manual fault-injection exploration
 scripts/run_unix_port_integration.sh --host 0.0.0.0 --port 8080        # reachable from outside this machine
 ```
 
+- `--device NAME` — which real device to boot (`wozi`/`dev`/`arzi`/`klkizi`/`grkizi`/`schlafzi`,
+  default `wozi`); this script's own flag, not forwarded to the twin process.
 - `--host HOST` / `--port PORT` — bind address (default `localhost:8080`).
 - `--soak` — run a bounded automated HTTP+memory-trend soak check before serving (see
-  `run_wozi_integration.py`'s `_soak()` for the methodology); prints a `PASS`/`FAIL` line.
+  `run_generic_integration.py`'s `_soak()` for the methodology); prints a `PASS`/`FAIL` line.
 - `--soak-cycles N` — number of soak cycles (implies `--soak`); default 20.
 - `--duration SECONDS` — exit after a fixed run instead of serving forever (`0` exits immediately
   after the soak, if any).
@@ -434,8 +439,8 @@ scripts/run_unix_port_integration.sh --host 0.0.0.0 --port 8080        # reachab
   raising, for timeout-path testing.
 - `--wifi-outcome OUTCOME` (repeatable) — queue a `WLAN.connect()` outcome, same values as below.
 - `--fram-state-path PATH` / `--scd30-state-path PATH` — persist that chip's state to a JSON file
-  across runs (default `digital_twin/fram_state.json` / `digital_twin/scd30_state.json`; `""` means
-  in-memory only, never persisted).
+  across runs; default in-memory only (`""` also means in-memory only), unlike
+  `scripts/_digital_twin_ci_suite.py`'s own explicit on-disk defaults for its persistence checks.
 
 Start the twin's standalone CLI demo (no website, twin only) directly with the same Unix-port binary
 `scripts/test.sh` builds:
@@ -461,19 +466,22 @@ and repeatable where noted:
 - `--fram-state-path PATH` — persist the FRAM twin's contents to a JSON file across runs, instead of
   in-memory only.
 
-This standalone launcher is twin-only (no `src/` import). To instead run the real
-`src/sensortask_wozi.py` prototype against the twin, see `digital_twin/README.md`'s own
-"Swapping the twin in for a Unix-port run" section — that's a separate `MICROPYPATH`-based
-invocation, not this launcher.
+This standalone launcher is twin-only (no `src/` import). To instead run the real, buildgen-generated
+`sensortask_wozi.py` prototype against the twin, see `digital_twin/README.md`'s own "Swapping the
+twin in for a Unix-port run" section — that's a separate `MICROPYPATH`-based invocation, not this
+launcher.
 
 **Automated CI suite** — the manual walkthrough below turned into an unattended, CI-gating check:
-drives `digital_twin/run_wozi_integration.py` through five real subprocess runs (fresh boot, every
-GET/PUT endpoint, `DebugLevel=5` verbose logging, bus fault injection, settings/error persistence
-across a real reboot, soak) and asserts every step. Builds the Unix port and the real `wozi` website
-first if either is missing (same `$PICO_TOOLCHAIN_DIR`/`SKIP_APT` convention as `scripts/test.sh`):
+drives `digital_twin/run_generic_integration.py` through thirteen real, sequential subprocess runs
+(11 top-level, two of them sub-runs of one; fresh boot, every GET/PUT endpoint, `DebugLevel=5`
+verbose logging, bus fault injection, settings/error persistence across a real reboot, soak) and
+asserts every step. Runs against `wozi` by default, or any of the other 5 real device variants via
+an optional device argument. Builds the Unix port and the real website for that device first if
+either is missing (same `$PICO_TOOLCHAIN_DIR`/`SKIP_APT` convention as `scripts/test.sh`):
 
 ```sh
-scripts/run_digital_twin_ci.sh
+scripts/run_digital_twin_ci.sh          # wozi (default)
+scripts/run_digital_twin_ci.sh dev      # or any other real device variant
 ```
 
 Ends with its own clear summary: `== digital-twin CI suite PASSED: every check succeeded` or
@@ -487,8 +495,8 @@ adding a new chip fake when a new sensor driver lands: **`digital_twin/README.md
 
 ### Manual baseline verification walkthrough
 
-A copy-paste sequence for manually checking the real assembled system (`src/sensortask_wozi.py`,
-unchanged) against the digital twin, end to end, over real HTTP — the same walkthrough used to
+A copy-paste sequence for manually checking the real assembled system (the buildgen-generated
+`sensortask_wozi.py`) against the digital twin, end to end, over real HTTP — the same walkthrough used to
 establish this project's own known-working baseline (build → boot → set log level → reboot with
 that level persisted → boot again with bus faults injected). Run each block from the repo root;
 `curl` and a browser both work against `http://127.0.0.1:8080` while a run is up.
@@ -533,7 +541,7 @@ curl -s http://127.0.0.1:8080/system   # confirm it reads back as 5
 ```
 
 Now stop the running twin with **Ctrl-C in its own terminal** (a real `SIGINT` — this is what
-`run_wozi_integration.py`'s own `except KeyboardInterrupt:` catches, letting its `finally` block
+`run_generic_integration.py`'s own `except KeyboardInterrupt:` catches, letting its `finally` block
 flush the FRAM twin's state to disk before exiting; a hard `kill`/`pkill` skips that cleanup, same
 as it would skip any unsaved state on real hardware). Then boot again the same way as step 1, but
 **without** wiping `digital_twin/config/` this time (that's the whole point — the persisted
@@ -628,6 +636,21 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   every reference to them elsewhere in the repo (docs and code comments alike) was repointed
   directly at `SPECIFICATION.md`'s Parts C, D, E, and B respectively — they held no content of
   their own by then, just a "moved here" pointer.
+
+**`BUILD_CHAIN_PLAN.md`** (working doc, active for the device-genericization initiative):
+
+- **[`BUILD_CHAIN_PLAN.md`](BUILD_CHAIN_PLAN.md)** — the shared plan for making `src/`, the
+  website, the build chain, and the test chain fully device-generic (every device-specific fact
+  in exactly one TOML file per device variant): target device list, core design decisions, the
+  device TOML schema, and the dependency-ordered session breakdown every session spun off
+  `claude/automated-build-chain-nuzumw` works against. Updated as decisions evolve across that
+  branch's sessions; expected to fold into `SPECIFICATION.md`/be deleted once the whole chain lands
+  and merges into `main`, matching this repo's usual temporary-planning-doc lifecycle (see the
+  deleted-docs list at the end of this section).
+- **[`BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md`](BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md)** —
+  design record for `buildgen`'s wiring-defaults mechanism, per-value generalization, and driver-
+  onboarding hardening; every mechanism it designed has since shipped, so it's kept current as a
+  durable design record rather than archived, same lifecycle as `BUILD_CHAIN_PLAN.md` above.
 
 **`DEVICE_REFERENCE.md`** (permanent, end-user-facing):
 

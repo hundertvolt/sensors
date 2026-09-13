@@ -1,7 +1,6 @@
 """Boots the real sensortask_wozi object graph (digital_twin) with the REAL website - not
 html_stub - wired in as `frozen_html`, and proves it over real HTTP: the Unix-port counterpart to
-scripts/build_firmware.py's real ARM build (SPECIFICATION.md Part B.11), runnable and checkable
-here where the ARM build can only be compiled, never executed."""
+scripts/build_firmware.py's real ARM build, which can only be compiled here, never executed."""
 
 import asyncio
 import json
@@ -22,7 +21,6 @@ import frozen_website_wozi  # type: ignore[import-not-found]  # mounts /html wit
 sys.modules["frozen_html"] = frozen_website_wozi
 
 import _http_client  # noqa: E402
-
 import sensortask_wozi  # noqa: E402
 
 # Mirrors asy_wifi_service.py's own _PHASE_STA_SEEKING/_PHASE_HOTSPOT values - same
@@ -128,6 +126,22 @@ def test_real_website_inlined_definitions_matches_the_booted_devices_own_id() ->
     # definitions.json is no longer a separately-fetched route (scripts/build_website.sh's own
     # "Inlining" comment - SPECIFICATION.md Part H.7): it's embedded directly into
     # index.html at build time instead, so this now reads it out of the real page body.
+    #
+    # "wozi" is hardcoded here deliberately, not a stale device-specific leftover this session left
+    # unexamined (BUILD_CHAIN_PLAN.md's Session 6.2 - re-verified, not just inherited): this file's
+    # own device.id assertion is orthogonal to sensortask-module generalization - it comes from
+    # WHICHEVER device's real website bundle scripts/test.sh built (frozen_modules/
+    # frozen_website_wozi.py, the only one built - see that script's own comment), never from
+    # sensortask_wozi.py's own construction. Generalizing it would mean teaching scripts/test.sh to
+    # build a second, real, gzip+freezefs+inlined website bundle per device (real added build cost
+    # for every one of the 6 real devices) just to re-prove a build PIPELINE this file already
+    # proves once - the per-device DATA correctness (a device's own real definitions.json
+    # containing its own real device.id) is already proven generically, for all 6 real devices, by
+    # tests_scripts/test_buildgen_definitions.py; this file's own remaining job is proving the real
+    # gzip/freezefs/inlining pipeline actually executes correctly under the Unix port at all - a
+    # pipeline-mechanism check that's the same code path regardless of which device's data flows
+    # through it, so picking wozi (this project's own exemplary/base variant, CLAUDE.md) once is
+    # complete coverage, not a gap.
     port = _next_test_port()
 
     async def scenario() -> None:
@@ -190,10 +204,10 @@ def test_real_website_static_mount_never_shadows_a_real_api_route() -> None:
 
 # ---------------------------------------------------------------------------
 # Captive-portal hotspot-mode redirect - full integration, real production website + real API, real
-# HTTP over a real socket (the one thing test_sensortask_wozi.py's own in-process _dispatch()
+# HTTP over a real socket (the one thing test_sensortask.py's own in-process _dispatch()
 # equivalent can't exercise). No real WiFi task is started (conn.start_asy_wlan_connect() is never
 # called here) - conn._conn_phase is set directly instead, the same test-seam convention
-# test_sensortask_wozi.py's own wiring-level coverage and this file's sibling
+# test_sensortask.py's own wiring-level coverage and this file's sibling
 # test_digital_twin_sensortask_integration.py's own direct-attribute tests already use; that file's
 # own test_wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server_and_status_led
 # already covers the "reached via a genuine real STA-failure/hotspot transition" case with the

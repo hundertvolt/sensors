@@ -581,6 +581,15 @@ class AsyFramManager:
         self._pause = False
         self.fram = FRAM_SPI(spi_bus, spi_cs, max_size=self.size, logger=self.pr)
 
+    def get_error_sources(self) -> "list[Any]":
+        # Fan-in primitive (SPECIFICATION.md Part C.14/G.2) - matches base_classes.py's
+        # SensorReader.get_error_sources() shape, duck-typed rather than inherited (this class
+        # isn't a SensorReader - no measurement data, no config schema).
+        return [self]
+
+    def get_loggers(self) -> "list[PrintLogHistory]":
+        return [self.pr]
+
     async def get_error_counter(self) -> "ErrorLog":
         return await self.pr.get_log()
 

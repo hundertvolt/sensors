@@ -3,11 +3,18 @@ See CLAUDE.md's "Code quality tooling" for why this suite runs under CPython/pyt
 the real MicroPython Unix-port interpreter tests/ uses (SPECIFICATION.md Part E.1)."""
 
 import os
+import sys
 from pathlib import Path
 
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+
+# buildgen/ (Session 3 of BUILD_CHAIN_PLAN.md) is a real top-level package, unlike scripts/
+# (loaded per-file via importlib.util elsewhere in this suite) - pytest's own rootless import mode
+# only ever puts tests_scripts/ itself on sys.path, never the repo root, so its tests need this to
+# resolve `import buildgen`.
+sys.path.insert(0, str(REPO_ROOT))
 
 
 @pytest.fixture(scope="session")
@@ -22,3 +29,14 @@ def micropython_dir() -> Path:
     # real checkout here before this suite runs (see build_stage_dir()'s own rp2.py copy).
     toolchain_dir = Path(os.environ.get("PICO_TOOLCHAIN_DIR", Path.home() / "pico-toolchain"))
     return toolchain_dir / "micropython"
+
+
+@pytest.fixture(scope="session")
+def micropython_bin(micropython_dir: Path) -> Path:
+    # Same path scripts/run_digital_twin_ci.sh's own $micropython_bin resolves to. A test that needs
+    # to actually spawn it (e.g. test_digital_twin_generated_boot.py) skips itself when it isn't
+    # built yet, rather than failing the whole suite - building it is scripts/test.sh's/CI's job.
+    path = micropython_dir / "ports" / "unix" / "build-standard" / "micropython"
+    if not path.is_file():
+        pytest.skip(f"MicroPython Unix port not built at {path} - run toolchain/setup_toolchain.py setup first")
+    return path

@@ -61,14 +61,26 @@ dev = [
 # instead: an isolated directory containing only the stubs, nothing else.
 
 # Checks currently cover src/ (fully-reviewed, freely-editable code - see CLAUDE.md), tests/
-# (their unit tests), and digital_twin/ (the hardware simulator, SPECIFICATION.md Part A.10 - same
-# fully-reviewed status as src/). The pre-refactor deployed codebase (python/, modules/) isn't in
-# scope yet and has no lint/type config of its own right now. `improved-quality/` - the WIP
-# code-quality refactor staging area this cleanup effort originally started against, including its
-# own ad hoc improved-quality/mypy.ini and improved-quality/pycheck.sh (retired in favor of this
-# file) - has since been deleted in full: every file it held was either promoted into src/ once
-# fully reviewed/tested, or (its last remaining file, sensortask-wozi.py) confirmed fully
-# superseded by src/sensortask_wozi.py + src/asy_webserver_service.py and removed outright.
+# (their unit tests), digital_twin/ (the hardware simulator, SPECIFICATION.md Part A.10 - same
+# fully-reviewed status as src/), and tests_hardware/device_scripts/ (the isolated-driver scripts
+# that get frozen and run directly on real MicroPython hardware via mpremote, importing src/
+# driver modules by name the same way sensortask_*.py does - the rest of tests_hardware/, the
+# CPython-side pytest harness that drives mpremote/serial/nmcli, stays out of scope, same reasoning
+# as scripts/toolchain/ below). Added after a real driver constructor signature change
+# (SGP40_Reader's comp_source -> temperature_source/humidity_source) silently broke two of these
+# scripts for a full day - undetected because this whole directory was outside both lint/type
+# scope and CI, and only ever runs against real hardware behind an explicit per-session go-ahead
+# (tests_hardware/device_scripts/sgp40_voc_algorithm_quality.py's own git history is the concrete
+# case: mypy reproduces the exact break immediately once this directory is in scope). The
+# pre-refactor deployed codebase (python/, modules/) isn't in scope yet and has no lint/type config
+# of its own right now. `improved-quality/` - the WIP code-quality refactor staging area this
+# cleanup effort originally started against, including its own ad hoc improved-quality/mypy.ini and
+# improved-quality/pycheck.sh (retired in favor of this file) - has since been deleted in full:
+# every file it held was either promoted into src/ once fully reviewed/tested, or (its last
+# remaining file, sensortask-wozi.py) confirmed fully superseded by src/sensortask_wozi.py (that
+# file itself has since been retired too - every device's own sensortask_<device>.py is now
+# buildgen-generated at build time, never committed to src/ - BUILD_CHAIN_PLAN.md's Session 6) +
+# src/asy_webserver_service.py and removed outright.
 
 [tool.ruff]
 # Deliberately 3.10, not >=3.11 like [project]'s requires-python above: this is the syntax floor
@@ -90,6 +102,13 @@ line-length = 320
 # omission. Preview rules stay off (ruff excludes them from `ALL` unless `preview = true`). This
 # is exactly what pins ruff in [dependency-groups] above - see that comment.
 select = ["ALL"]
+
+# "×" (U+00D7 MULTIPLICATION SIGN) is real, intentional content, not an accidental homoglyph: the
+# `# @web ... special:N="×N"` tags in asy_bmp3xx_driver.py (buildgen's website-definitions
+# generator, BUILD_CHAIN_PLAN.md Session 4) carry it verbatim into html/definitions/*.json's own
+# oversampling option labels (`{"value": 1, "label": "×1"}`, already the hand-written files' real
+# content) - RUF003 would otherwise flag every occurrence as a suspected ASCII "x" look-alike.
+allowed-confusables = ["×"]
 
 ignore = [
     # ---- Hand-chosen line breaks (see [tool.ruff] above) ----
@@ -281,14 +300,16 @@ convention = "google"
 
 # Complexity ceilings sit at this codebase's CURRENT measured maximum, so they gate REGRESSION
 # (nothing may get worse) without demanding a restructure of already-reviewed, shipped code.
-# max-args = 21 is asy_webserver_service.py's service constructor, whose arguments are
+# max-args = 22 is asy_webserver_service.py's service constructor, whose arguments are
 # keyword-defaulted wiring rather than a call-site burden. Ratchet these DOWNWARD as offenders are
-# genuinely simplified; never upward to accommodate new code.
+# genuinely simplified; never upward to accommodate new code EXCEPT a deliberate, reviewed one-
+# parameter addition like this one (21 -> 22, BUILD_CHAIN_PLAN.md Session 7's build_info= kwarg) -
+# raised on purpose, not as an unreviewed workaround, and not to be bumped again casually.
 [tool.ruff.lint.mccabe]
 max-complexity = 20
 
 [tool.ruff.lint.pylint]
-max-args = 21
+max-args = 22
 max-branches = 20
 max-statements = 80
 max-returns = 12
@@ -306,7 +327,7 @@ max-returns = 12
 # deliberately ignores - that is what makes it a faithful double. Renaming them to `_x` is not
 # merely undesirable here, it is a hard error: mypy checks a Protocol implementation's and a
 # monkeypatched method's parameter NAMES against the real ones, so `_buf` fails [assignment]
-# outright (tests/test_sensortask_wozi.py and tests/test_asy_dns_client.py both carry comments
+# outright (tests/test_sensortask.py and tests/test_asy_dns_client.py both carry comments
 # recording exactly this). Every one of the 56 ARG findings in this repo is that pattern, and
 # src/ + digital_twin/ have none - so the rule is unsatisfiable precisely where it fires.
 "tests/**" = ["S101", "SLF001", "PLC0415", "PLR2004", "ARG001", "ARG002", "ARG004", "ARG005"]
@@ -340,7 +361,11 @@ max-returns = 12
 # (extmod/machine_i2c.c uses MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN, i.e. kwargs are rejected). The
 # fakes must impersonate that signature exactly or they stop being faithful doubles.
 "tests/machine.py" = ["A002", "FBT001", "FBT002", "ANN401"]  # ANN401: category 1 above - Timer.__init__ forwards **kwargs into self.init()
-"digital_twin/machine.py" = ["A002", "FBT001", "FBT002"]
+# ANN401 here: _build_i2c_chip()'s own return type is deliberately Any, not the stricter
+# _I2CDevice Protocol I2C.devices is typed with - see that function's own comment (no single real
+# chip fake implements every _I2CDevice method; it's I2C.devices' own "the bus's expectation, not a
+# guarantee" stand-in).
+"digital_twin/machine.py" = ["A002", "FBT001", "FBT002", "ANN401"]
 # Same faithful-double reasoning, one level up: test_setup_toolchain_env.py monkeypatches
 # toolchain/setup_toolchain.py's own `run(cmd, cwd=None, check=True, env=None)` with local
 # fake_run() recorders. A double has to accept the signature it intercepts exactly, `check`'s
@@ -355,7 +380,6 @@ max-returns = 12
 # `_push_callbacks` contract, so a keyword-only parameter would break the dispatch signature that
 # every registered callback shares (Part D.10 forbids splitting the family).
 "src/asy_bmp3xx_driver.py" = ["FBT001"]
-"src/asy_sgp40_driver.py" = ["FBT001"]
 "src/asy_scd30_driver.py" = ["FBT001"]
 "src/asy_wifi_service.py" = ["S106", "FBT001"]
 # ANN401, category 1 - heterogeneous **kwargs forwarded verbatim into a callee whose keyword
@@ -385,14 +409,50 @@ max-returns = 12
 # degrades cleanly. Typing the parameter honestly would make the call site a static error, which is
 # the very thing the test exists to exercise.
 "tests/test_asy_udp_socket.py" = ["ANN401"]
+# ANN401, category 5 - the per-value wiring `_ValueSource` structural Protocol (SPECIFICATION.md
+# Part C.14, BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md §2.9): `get_data()` is the one contract
+# every *_Reader shares, but each driver's own NamedTuple return type is different, so no single
+# element type can satisfy every real/fake producer wired to a `temperature_source`/
+# `humidity_source`/notification-signal field. Same reasoning as category 1, applied to this
+# driver-agnostic fan-in seam instead of a stdlib callee.
+# ARG002: _DefaultSignalSink.request_signal()'s r/g/b/t parameters are unused (it's a no-op LED
+# sink) but its signature deliberately mirrors NeopixelDriver.request_signal() exactly, per its own
+# docstring - so codegen's attr-mode rendering needs no mode-specific special-casing for a
+# defaulted signal_sink field.
+"src/asy_notification_service.py" = ["ANN401", "ARG002"]
+"src/asy_sgp40_driver.py" = ["ANN401", "FBT001"]
+"tests/test_asy_sgp40_driver.py" = ["ANN401"]
+"tests/test_notification_scd30_sgp40_integration.py" = ["ANN401"]
+"tests/test_notification_sgp40_integration.py" = ["ANN401"]
+"tests/test_setter_microdot_integration.py" = ["ANN401"]
+# ANN401, category 6 - a dynamically `__import__()`ed module object (run_generic_integration.py's
+# own `--module` flag) has no static type at all - that genericness is this file's whole point, so
+# there is no fixed shape (`types.ModuleType` would type-check but reject every `.i2c0`/`.conn`/
+# `.watchdog`/`.webserver` attribute access this file actually needs). Same reasoning one level up:
+# test_buildgen_twin_wiring.py's `digital_twin_machine` fixture bridges the real digital_twin/
+# machine.py module into a CPython/pytest test the same way, for the same structural reason.
+# test_digital_twin_webserver_concurrency.py's own `_boot()`/`_start_webserver()` (BUILD_CHAIN_PLAN.md's
+# Session 6.2) dynamically `__import__()`s whichever real device's own sensortask_<device> module a
+# given parametrized test is booting - the identical structural reason, one file over.
+"digital_twin/run_generic_integration.py" = ["ANN401"]
+"tests_scripts/test_buildgen_twin_wiring.py" = ["ANN401"]
+"tests/test_digital_twin_webserver_concurrency.py" = ["ANN401"]
+# tests/test_sensortask.py (BUILD_CHAIN_PLAN.md's Session 6.2 - collapses the former
+# test_sensortask_wozi.py/test_sensortask_dev.py) dynamically `__import__()`s whichever real
+# device's own sensortask_<device> module a given parametrized scenario is booting - the identical
+# structural reason as the other ANN401 exemptions in this same category.
+"tests/test_sensortask.py" = ["ANN401"]
+# tests/test_digital_twin_sensortask_integration.py's own "Construction across every real device"
+# section (BUILD_CHAIN_PLAN.md's Session 6.2) does the same dynamic __import__() for its own
+# parametrized scenarios, alongside this file's pre-existing static `sensortask_wozi` import for
+# every other (wozi-scoped) test.
+"tests/test_digital_twin_sensortask_integration.py" = ["ANN401"]
 "digital_twin/launch.py" = ["S105"]
 "tests/test_digital_twin_network_neopixel.py" = ["S106"]
 # asy_webserver_service.py makes the same documented Part C.5.2 `_set_dict_cfg` dispatch call as
 # api_response.py above, and asserts its static mount is non-None purely to narrow the type for
 # mypy (the route is only ever registered when it isn't None).
 "src/asy_webserver_service.py" = ["SLF001", "S101", "ANN401"]  # ANN401: the asyncio.start_server() seam described above
-"src/sensortask_wozi.py" = ["S101"]
-"src/sensortask_dev.py" = ["S101"]
 # build_firmware.py's single subprocess call is the repo's OWN scripts/build_website.sh, addressed
 # by an absolute path built from REPO_ROOT, with shell=False and check=True - a build driver
 # invoking the sibling build step it exists to orchestrate. S603 fires on every subprocess call
@@ -400,9 +460,10 @@ max-returns = 12
 # live everywhere else, where a genuinely externally-supplied argv could appear.
 "scripts/build_firmware.py" = ["S603"]
 # _digital_twin_ci_suite.py spawns the Unix-port interpreter on the repo's own
-# digital_twin/run_wozi_integration.py, with shell=False and an argv built from the resolved
-# interpreter path, repo-relative script path, this suite's own HOST/PORT constants and its own
-# literal --fault/--wifi-outcome flags. Same shape and same reasoning as build_firmware.py above;
+# digital_twin/run_generic_integration.py, with shell=False and an argv built from the resolved
+# interpreter path, repo-relative script path, this suite's own HOST/PORT constants, its own
+# --module/--wiring-plan/--device (BUILD_CHAIN_PLAN.md's Session 6.2), and its own literal
+# --fault/--wifi-outcome flags. Same shape and same reasoning as build_firmware.py above;
 # it previously carried an inline `# noqa: S603`, migrated here so every exemption in this repo
 # lives in one place with a stated reason, per this block's own header.
 "scripts/_digital_twin_ci_suite.py" = ["S603"]
@@ -446,6 +507,10 @@ max-returns = 12
 "tests_hardware/bench/test_hotspot_role_reversal.py" = ["S105"]
 "tests_hardware/bench/test_network_resilience.py" = ["S105"]
 "tests_hardware/device_scripts/wifi_reconnect_after_failed_attempts_repro.py" = ["S106"]
+# S105: same "copy of an accepted risk, not a new credential" reasoning as the tests_hardware/
+# entries above, for buildgen's own [device].hotspot_password minimum-length boundary test - it
+# has to assert against the real WPA2 8-character floor literal, not a placeholder.
+"tests_scripts/test_buildgen_validate.py" = ["S105"]
 # RUF007: device_scripts/ is MicroPython firmware-target code uploaded to the board and run there
 # (see tests_hardware/README.md) - `itertools` does not exist in the rp2 port at all, so
 # `itertools.pairwise()` is unimplementable, exactly like the global RUF005/RUF037/FURB122 entries.
@@ -469,7 +534,17 @@ follow_imports = "silent"
 # issues (it's explicitly labeled Beta upstream) don't get reported as if they were findings in
 # our code, while their declared types are still fully used for checking our code's calls.
 follow_imports_for_stubs = true
-mypy_path = ["typings", "src"]
+# build/generated_src: tests_hardware/device_scripts/heap_headroom_after_full_system_build.py (and
+# no other file in this pass's own `files` below - tests/test_sensortask.py resolves every real
+# device's own module dynamically via __import__(), never a static import, since
+# BUILD_CHAIN_PLAN.md's Session 6.2 collapsed it from two per-device files into one) statically
+# `import sensortask_dev` - no hand-written file exists in src/ any more (BUILD_CHAIN_PLAN.md's
+# Session 6 finish criterion), so this points mypy at the same buildgen-generated, gitignored
+# location scripts/test.sh's own
+# MICROPYPATH resolves them from - scripts/typecheck.sh runs scripts/_generate_sensortask_modules.py
+# first so the directory is actually populated before mypy runs. No collision risk: this directory
+# holds only sensortask_<device>.py files, none of which exist under src/.
+mypy_path = ["typings", "src", "build/generated_src"]
 custom_typeshed_dir = "typings"
 # Without this, mypy also auto-discovers the dev venv's own packages (mypy/ruff/pytest's own
 # runtime dependencies, e.g. typing_extensions) as importable modules and tries to type-check
@@ -479,7 +554,7 @@ no_site_packages = true
 # A bare glob in `files` (e.g. "src/*.py") gets pre-expanded to an explicit file list, which
 # `exclude` can't then prune - passing the directory itself is what makes `exclude` actually take
 # effect during mypy's own directory walk.
-files = ["src", "tests", "digital_twin", "boot_entry", "tests_hardware/device_scripts"]
+files = ["src", "tests", "digital_twin", "tests_hardware/device_scripts"]
 # tests/network.py: a bare top-level
 # `network.py` sitting inside a `files`-scanned root starts winning module resolution over
 # typings/'s real `network` stub *project-wide*, not just within tests/ - confirmed directly: with
@@ -501,20 +576,23 @@ files = ["src", "tests", "digital_twin", "boot_entry", "tests_hardware/device_sc
 # to `files` at all (a straight collision, not just a silent resolution-priority hijack, since both
 # are bare top-level `machine.py` files scanned in the same run).
 #
-# digital_twin/launch.py, digital_twin/run_wozi_integration.py, digital_twin/run_dev_integration.py,
-# digital_twin/segfault_stress_repro.py, every tests/test_digital_twin_*.py: launch.py and every
+# digital_twin/launch.py, digital_twin/run_generic_integration.py, digital_twin/
+# segfault_stress_repro.py, every tests/test_digital_twin_*.py: launch.py and every
 # test_digital_twin_*.py file import nothing
 # from src/ (confirmed directly - grepped every top-level import in all 7 pre-Step-5
 # test_digital_twin_*.py files; they reach digital_twin/ exclusively, via
 # sys.path.insert(0, "digital_twin"), never src/), so this whole subsystem's tests are a
 # self-contained scope that belongs entirely to digital_twin/typecheck.ini's own dedicated pass
-# (below), not split across both. run_wozi_integration.py, run_dev_integration.py (its per-device
-# sibling) and segfault_stress_repro.py (the segfault-repro tool, see digital_twin/README.md) are the
-# files that genuinely need both universes at once - each imports its own sensortask_* module
-# (src/) and machine/network (digital_twin/'s own richer twin API, not the real board stub) in the
-# same file -
+# (below), not split across both. run_generic_integration.py (the generic twin entry point -
+# BUILD_CHAIN_PLAN.md's Session 6.2 retired its two former thin wrappers, run_wozi_integration.py/
+# run_dev_integration.py, once this file gained their own soak machinery too and became CI's real
+# driver for every device) and segfault_stress_repro.py (the segfault-repro tool, see
+# digital_twin/README.md) are the files that genuinely need both universes at once - each imports
+# a sensortask_* module (build/generated_src only - no hand-written copy exists under src/ any
+# more, BUILD_CHAIN_PLAN.md's Session 6 finish criterion) and machine/network (digital_twin/'s own
+# richer twin API, not the real board stub) in the same file -
 # excluded here for the same "machine/network must resolve to the twin, not the real stub" reason
-# as launch.py, and digital_twin/typecheck.ini's own mypy_path now includes src/ too so their
+# as launch.py, and digital_twin/typecheck.ini's own mypy_path lists build/generated_src so their
 # sensortask_* import still resolves correctly under that dedicated pass. Concretely: several
 # of these files exercise the twin's own richer `machine`/`network` API surface
 # (`WDT.would_have_triggered_count`, `WLAN.script_connect_outcomes()`, `Pin.reset_registry()`,
@@ -542,8 +620,7 @@ exclude = [
     "digital_twin/network\\.py$",
     "digital_twin/neopixel\\.py$",
     "digital_twin/launch\\.py$",
-    "digital_twin/run_wozi_integration\\.py$",
-    "digital_twin/run_dev_integration\\.py$",
+    "digital_twin/run_generic_integration\\.py$",
     "digital_twin/segfault_stress_repro\\.py$",
     "tests/test_digital_twin_.*\\.py$",
 ]

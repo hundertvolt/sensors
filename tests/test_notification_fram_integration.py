@@ -46,7 +46,7 @@ def _sweep_stale_tmp_dirs(prefix: str) -> None:
     # Sweeps pre-existing <prefix>* scratch dirs left behind by an earlier scripts/test.sh run on
     # this machine - _next_dir always restarts at 0 per process, so without this a later run
     # silently reuses an earlier run's real, persisted config_*.cfg files instead of a genuinely
-    # fresh directory. See tests/test_sensortask_wozi.py's own _sweep_stale_tmp_dirs() for the full
+    # fresh directory. See tests/test_sensortask.py's own _sweep_stale_tmp_dirs() for the full
     # root-cause writeup (this exact _tmp_cfg_dir() shape is copy-pasted across every test file with
     # its own _TMP_DIR/_next_dir pair - same fix applied uniformly to each).
     try:
@@ -112,8 +112,11 @@ def make_manager(max_size: int = 0x2000) -> "tuple[AsyFramManager, FakeMB85RS64V
     return manager, chip
 
 
-async def _value_stub() -> "int | None":
-    return None
+class _FakeSource:
+    # A controllable NotificationSignal producer (SPECIFICATION.md Part C.14.2) whose configured
+    # field is always None - matches the removed _value_stub()'s own always-None return.
+    async def get_data(self) -> "_FakeSource":
+        return self
 
 
 async def _local_time_stub() -> "_LocalTime | None":
@@ -133,7 +136,7 @@ def make_notify(manager: AsyFramManager, cfg_path: str) -> NotificationCoordinat
     # layout (built once in finalize()) to decode identically across a simulated reboot, matching
     # the "number and order of registered signals stays constant" invariant this design relies on.
     coordinator = NotificationCoordinator(_request_signal_stub, _local_time_stub, cfg_path=cfg_path, fram=manager)
-    coordinator.register(NotificationSignal("WarnCO2", _value_stub, _FIELD_WARN_CO2, (1, 0, 0)))
+    coordinator.register(NotificationSignal("WarnCO2", _FakeSource(), "WarnCO2", _FIELD_WARN_CO2, (1, 0, 0)))
     coordinator.finalize()
     return coordinator
 

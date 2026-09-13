@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     from typing import Any, Protocol
 
     from asy_fram_manager import AsyFramManager
-    from print_log import ErrorLog
+    from print_log import ErrorLog, PrintLogHistory
 
     # Structural Protocol for a caller-supplied LED (SPECIFICATION.md Part C.10's typing convention).
     class LEDControl(Protocol):
@@ -46,6 +46,20 @@ _VAL_PW = const((("PW", "str", "", 8, 63, ""),))
 _VAL_CTRY = const((("Country", "str", "DE", 2, 2, None),))
 _VAL_HOST = const((("Hostname", "str", "SensorNode", 1, 32, None),))  # 32 = network.hostname()'s real cap
 _VAL_LED = const((("LedWifiOn", "bool", True, None, None, None),))
+# Hotspot AP password - real WPA2-PSK length (8-63), defaulting to the existing hardcoded
+# "12345678" (CLAUDE.md's "Hard rules": a known, accepted-risk credential, made per-device
+# configurable here rather than removed/rotated). Same masking treatment as _VAL_PW - see
+# _mask_pw() below.
+_VAL_HOTSPOT_PW = const((("HotspotPW", "str", "12345678", 8, 63, None),))
+
+# @web-group section=networking submitGroup=identity label="Wi-Fi & Identity" submit=true
+# @web SSID section=networking submitGroup=identity label="Wi-Fi SSID"
+# @web PW section=networking submitGroup=identity label="Wi-Fi Password" mask=true
+# @web Country section=networking submitGroup=identity label="Country" description="Two-letter ISO 3166 country code."
+# @web Hostname section=networking submitGroup=identity label="Hostname"
+
+# @web-group section=networking submitGroup=wifiLed label="Wi-Fi Status LED" submit=true
+# @web LedWifiOn section=networking submitGroup=wifiLed label="Wi-Fi Status LED"
 
 _NAME = const("WIFI")
 # Kept as a literal tuple inline (not `_FIELDS` below) because mypy's namedtuple plugin can only
@@ -53,12 +67,20 @@ _NAME = const("WIFI")
 WIFI = namedtuple("WIFI", ("Mode", "Connected", "IP", "TS"))
 _FIELDS = const(("Mode", "Connected", "IP", "TS"))  # kept in sync with WIFI's own fields above
 
+# This service's one optional live cross-instance dependency (SPECIFICATION.md Part C.14): the
+# status LED it drives, resolved by buildgen/ (Session 3 of BUILD_CHAIN_PLAN.md, from
+# [device.wiring].led_target - AsyConnTime is mandatory infra, never an [[instance]] entry itself)
+# to an already-constructed NeopixelDriver instance. "setter" mode: set_ext_led() is a
+# post-construction call (see set_ext_led() below), not a constructor kwarg - the generator emits
+# `conn.set_ext_led(<resolved instance>)` once, after both already exist.
+# @wiring led_target NeopixelDriver set_ext_led optional setter
+
 _STA_DISCONNECT_WAIT_ITERS = const(20)  # 20 * 0.5s = 10s max wait for isconnected() to clear -
 # bounds _disconnect_sta_and_wait()'s loop; a real disconnect() completes far faster than this.
 
 # Expected field counts of the config reads and of WLAN.ifconfig()'s fixed 4-tuple, checked before
 # unpacking so a short/missing config degrades instead of raising.
-_HOTSPOT_CFG_FIELDS = const(2)  # _VAL_CTRY + _VAL_HOST
+_HOTSPOT_CFG_FIELDS = const(3)  # _VAL_CTRY + _VAL_HOST + _VAL_HOTSPOT_PW
 _STA_CFG_FIELDS = const(4)  # _VAL_SSID + _VAL_PW + _VAL_CTRY + _VAL_HOST
 _IFCONFIG_FIELDS = const(4)  # (ip, netmask, gateway, dns)
 
@@ -95,7 +117,7 @@ class AsyConnTime(SensorReaderConfig):
             WIFI(None, None, None, None),
             max_module_error,
             _NAME,
-            _VAL_SSID + _VAL_PW + _VAL_CTRY + _VAL_HOST + _VAL_LED,
+            _VAL_SSID + _VAL_PW + _VAL_CTRY + _VAL_HOST + _VAL_LED + _VAL_HOTSPOT_PW,
             cfg_path=cfg_path,
             fram=fram,
             history_length=history_length,
@@ -139,10 +161,10 @@ class AsyConnTime(SensorReaderConfig):
             return None
 
     async def _mask_pw(self) -> dict[str, int | float | str | bool | None]:
-        # PW is a real credential, masked here ("********") via _get_dict_cfg()'s callback overlay
-        # so it can't leak the plaintext value through any REST route built on the generic
-        # getter-quartet path.
-        return {"PW": "********"}
+        # PW/HotspotPW are real credentials, masked here ("********") via _get_dict_cfg()'s callback
+        # overlay so neither can leak its plaintext value through any REST route built on the
+        # generic getter-quartet path.
+        return {"PW": "********", "HotspotPW": "********"}
 
     def _wlan_status_or_none(self) -> int | None:
         # Observation-tier: a status query failing (WLAN mid-transition/deinitialized) is routine
@@ -300,32 +322,32 @@ class AsyConnTime(SensorReaderConfig):
         await self.wifi_mode_lock.acquire()
         try:
             led_cfg = await self._read_wifi_led_cfg()
-            wifi_cfg = await self.cfgmgr.get_str_values(_VAL_CTRY + _VAL_HOST)
+            wifi_cfg = await self.cfgmgr.get_str_values(_VAL_CTRY + _VAL_HOST + _VAL_HOTSPOT_PW)
             if wifi_cfg is None or led_cfg is None or len(wifi_cfg) != _HOTSPOT_CFG_FIELDS:
                 await self.pr.wrn_s("Missing WLAN configuration!", wrnno=2)
                 await self.set_wifi_led(status=False)
             else:
                 await self.set_wifi_led(status=led_cfg)
-                await self._activate_hotspot_ap(wifi_cfg[0], wifi_cfg[1])
+                await self._activate_hotspot_ap(wifi_cfg[0], wifi_cfg[1], wifi_cfg[2])
             self.hotspot_started_once = True
         finally:
             self._release_wifi_lock()
 
-    async def _activate_hotspot_ap(self, country: str, hostname: str) -> None:
+    async def _activate_hotspot_ap(self, country: str, hostname: str, password: str) -> None:
         try:
-            self._configure_hotspot_ap(country, hostname)
+            self._configure_hotspot_ap(country, hostname, password)
         except Exception as e:
             self.hw_op_failed = True
             await self.pr.err_s("Error activating hotspot AP:", e, errno=12)
 
-    def _configure_hotspot_ap(self, country: str, hostname: str) -> None:
+    def _configure_hotspot_ap(self, country: str, hostname: str, password: str) -> None:
         # Only reached on the first tick after entering hotspot mode in normal operation - see
         # SPECIFICATION.md Part F.2 for why STAT_GOT_IP isn't STA-only. The active() guard below is
         # kept regardless, as low-risk defense against redundant reconfiguration on genuine re-entry.
         if not self.wlan.active():
             network.country(country)  # Country
             network.hostname(hostname)  # Hostname
-            self.wlan.config(essid=hostname, password="12345678")
+            self.wlan.config(essid=hostname, password=password)  # HotspotPW, per-device configurable
             self.wlan.active(True)
             self.wlan.config(pm=0xA11140)  # disable power-save mode
             self.pr.one("WLAN hotspot was started")
@@ -629,12 +651,24 @@ class AsyConnTime(SensorReaderConfig):
 
     async def get_dict_data(self) -> dict[str, dict[str, int | float | str | bool | None]]:
         data = await self.get_data()
-        return make_dict(data, _FIELDS)
+        return make_dict(data, _FIELDS, name=self.name)
 
     async def get_dict_cfg(self) -> dict[str, dict[str, int | float | str | bool | None]]:
         return await self._get_dict_cfg(
-            _NAME, _VAL_SSID + _VAL_PW + _VAL_CTRY + _VAL_HOST + _VAL_LED, callback=self._mask_pw,
+            self.name, _VAL_SSID + _VAL_PW + _VAL_CTRY + _VAL_HOST + _VAL_LED + _VAL_HOTSPOT_PW, callback=self._mask_pw,
         )
+
+    def get_error_sources(self) -> "list[Any]":
+        # Extends SensorReaderConfig.get_error_sources() with this class's own independently-
+        # logged sub-object (self.dns_server, "DNSSRV" - see its own __init__ comment on why it's
+        # not folded into self.pr). List concatenation, not a `[*x, y]` star-unpack display - the
+        # latter raises SyntaxError ("*x must be assignment target") on this project's pinned
+        # MicroPython build at parse time, confirmed directly against the real interpreter
+        # (SPECIFICATION.md Part F.1) - unrelated to super() specifically.
+        return super().get_error_sources() + [self.dns_server]
+
+    def get_loggers(self) -> "list[PrintLogHistory]":
+        return super().get_loggers() + [self.dns_server.pr]
 
     async def get_error_counter(self) -> "ErrorLog":
         return await self.pr.get_log()

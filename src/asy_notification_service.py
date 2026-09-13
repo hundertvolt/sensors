@@ -39,8 +39,34 @@ if TYPE_CHECKING:
         @property
         def minute(self) -> int: ...
 
+    class _ValueSource(Protocol):
+        # Structural stand-in for a NotificationSignal's producer (SPECIFICATION.md Part C.10's
+        # typing convention) - any *_Reader exposing the same get_data() -> NamedTuple contract
+        # every driver already has (C.4.2). Only get_data() is used here.
+        async def get_data(self) -> "Any": ...
+
 _MAX_OVERRIDE_TIME = const(3600)
 _NAME = const("NOTIFY")
+
+# This driver's live cross-instance dependencies (SPECIFICATION.md Part C.14): the LED it signals
+# through (required - resolved by buildgen/, Session 3 of BUILD_CHAIN_PLAN.md - "attr" mode: the
+# resolved NeopixelDriver instance's own request_signal bound method is passed as
+# request_signal_cb, not the instance itself, per BUILD_CHAIN_PLAN.md's "no getters, no callback
+# functions in generated code" - the callback-shaped constructor parameter itself stays as-is, only
+# how the generator supplies it changes), plus the optional FRAM backup target.
+# @wiring signal_sink NeopixelDriver request_signal required attr
+# @wiring fram_target AsyFramManager fram optional kwarg
+
+
+class _DefaultSignalSink:
+    """§2's wiring-defaults mechanism (BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md), opted into via
+    [instance.wiring].signal_sink = {default = true} - a no-op LED sink for a notification setup
+    that shouldn't blink any LED. request_signal's own signature/return-value contract matches
+    NeopixelDriver.request_signal exactly, since codegen's existing attr-mode rendering
+    (f"{var}.{wf.target}") needs no mode-specific special-casing for a defaulted attr-mode field."""
+
+    async def request_signal(self, r: int, g: int, b: int, t: float) -> bool:
+        return False
 
 # Own schema, "Led" prefix dropped (matches asy_wifi_service.py/asy_sgp40_driver.py's own field
 # naming convention - see CLAUDE.md's "Current architecture" note on this deliberate wire-format
@@ -53,6 +79,25 @@ _VAL_FLASH_BRI = const((("FlashBri", "int", 200, 1, 255, None),))
 _VAL_INTERV = const((("Interv", "float", 300.0, 60.0, 3600.0, None),))
 _VAL_FLASH_DUR = const((("FlashDur", "float", 2.0, 0.5, 10.0, None),))
 _VAL_AUTO_ON = const((("AutoOn", "bool", True, None, None, None),))
+
+# WarnCO2/WarnVOC/WarnHum (registered per-signal at runtime, not one of this file's own _VAL_*
+# constants - see finalize()/_combined_schema() above) render in this same group too; their web
+# metadata is buildgen.definitions._WARN_SIGNAL_WEB_CATALOG, the generator-owned parallel of
+# buildgen.codegen._KNOWN_SIGNALS (BUILD_CHAIN_PLAN.md's quality bar: neither is a real per-device
+# fact this file could tag - every device using a given signal wires it to the same threshold).
+# Literal submitGroup ("autoConfig"), not the "self" instance-resolved-name sentinel scd30/sgp40/
+# bmp3xx use: NotificationCoordinator is a singleton service (driver_registry.SERVICE_DRIVERS -
+# never more than one per device), so there is no multi-instance disambiguation need, and the
+# hand-written definitions files already established this literal key.
+# @web-group section=notification submitGroup=autoConfig label="Automatic Notification Configuration" submit=true
+# @web AutoOn section=notification submitGroup=autoConfig label="Automatic Notifications" description="Auto On must be before Off, on the same day."
+# @web OnH section=notification submitGroup=autoConfig label="Auto On Hour"
+# @web OnM section=notification submitGroup=autoConfig label="Auto On Minute"
+# @web OffH section=notification submitGroup=autoConfig label="Auto Off Hour"
+# @web OffM section=notification submitGroup=autoConfig label="Auto Off Minute"
+# @web FlashBri section=notification submitGroup=autoConfig label="Flash Brightness"
+# @web Interv section=notification submitGroup=autoConfig label="Flash Interval" unit="s"
+# @web FlashDur section=notification submitGroup=autoConfig label="Flash Duration" unit="s"
 
 _VAL_INT_FIELDS = _VAL_ON_H + _VAL_ON_M + _VAL_OFF_H + _VAL_OFF_M + _VAL_FLASH_BRI
 _VAL_FLOAT_FIELDS = _VAL_INTERV + _VAL_FLASH_DUR
@@ -73,14 +118,20 @@ class NotificationSignal:
     def __init__(
         self,
         name: str,
-        get_value: "Callable[[], Coroutine[Any, Any, int | float | None]]",
+        source: "_ValueSource",
+        field: str,
         field_schema: "ConfigSchema",
         color: "tuple[int, int, int]",
         *,
         above: bool = True,
     ) -> None:
         self.name = name
-        self.get_value = get_value
+        # Direct reference to the producer's own get_data() (SPECIFICATION.md Part C.14) plus the
+        # field to read off its namedtuple result - no wrapping getter/callback function. Replaces
+        # the old get_value: Callable parameter (sensortask_wozi.py's co2_value_callback()/
+        # voc_value_callback()/hum_value_callback() as a category).
+        self.source = source
+        self.field = field
         self.field_schema = field_schema
         self.color = color  # per-channel weight (0/1), scaled by FlashBri at trigger time
         self.above = above
@@ -151,10 +202,15 @@ class NotificationCoordinator(SensorReaderConfig):
             return None
 
     async def _check_one(self, notif: NotificationSignal) -> bool:
-        try:  # caller-supplied callback, could legitimately misbehave
-            value = await notif.get_value()
+        # Direct read of the producer's own get_data() (SPECIFICATION.md Part C.14) - get_data()
+        # never raises, but the specific field can legitimately be None (not yet measured, or the
+        # producer's own error streak gave up) - a normal, expected input here, not exceptional.
+        value: int | float | None
+        try:
+            data = await notif.source.get_data()
+            value = getattr(data, notif.field, None)
         except Exception as e:
-            await self.pr.err_s(notif.name, "Value callback failed:", e, errno=10)
+            await self.pr.err_s(notif.name, "Value read failed:", e, errno=10)
             value = None
         notif.last_value = value
         if value is None:
@@ -166,7 +222,11 @@ class NotificationCoordinator(SensorReaderConfig):
             notif.triggered = False
             return False
         threshold = thresholds[0]  # exactly one field - register() rejects any other shape
-        triggered = (value >= threshold) if notif.above else (value <= threshold)
+        # float(value): getattr()'s own return is untyped even after the None-check above (the
+        # field name is dynamic, not a literal) - narrows to a real numeric comparison the same way
+        # every removed value_callback() used to explicitly cast its own return.
+        numeric_value = float(value)
+        triggered = (numeric_value >= threshold) if notif.above else (numeric_value <= threshold)
         notif.triggered = triggered
         return triggered
 
@@ -202,14 +262,14 @@ class NotificationCoordinator(SensorReaderConfig):
 
     async def get_dict_data(self) -> dict[str, dict[str, int | float | str | bool | None]]:
         data = await self.get_data()
-        return make_dict(data, _FIELDS)
+        return make_dict(data, _FIELDS, name=self.name if self._finalized else _NAME)
 
     async def get_dict_cfg(self) -> dict[str, dict[str, int | float | str | bool | None]]:
         if not self._finalized:  # self.cfg_schema doesn't exist yet - same caller-ordering guard as get_data()
             return {_NAME: {}}
         # self.cfg_schema is already the full combined schema (own fields + every registered
         # signal's field) - built once, inside finalize() - so this covers everything in one call.
-        return await self._get_dict_cfg(_NAME, self.cfg_schema)
+        return await self._get_dict_cfg(self.name, self.cfg_schema)
 
     async def get_error_counter(self) -> "ErrorLog":
         if not self._finalized:  # self.pr doesn't exist yet - same caller-ordering guard as get_data()

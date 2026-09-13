@@ -62,6 +62,14 @@ _VAL_ALT = const((("Altitude", "int", None, 0, 65535, None),))
 _VAL_CAL = const((("ForceCalRef", "int", None, 400, 2000, None),))
 _VAL_SC = const((("SelfCal", "bool", None, None, None, None),))
 
+# @web-group section=sensors submitGroup=self label="SCD30 — CO2, Temperature, Humidity" submit=true
+# @web TempOffs section=sensors submitGroup=self label="Temperature Offset" unit="K"
+# @web MeasInt section=sensors submitGroup=self label="Measurement Interval" unit="s"
+# @web AmbPres section=sensors submitGroup=self label="Ambient Pressure (starts continuous measurement)" unit="hPa" special:0="Compensation off / use Altitude"
+# @web Altitude section=sensors submitGroup=self label="Altitude above sea level" unit="m" description="Only used if Ambient Pressure is 0."
+# @web ForceCalRef section=sensors submitGroup=self label="Forced Calibration Reference" unit="ppm"
+# @web SelfCal section=sensors submitGroup=self label="Automatic Self-Calibration"
+
 # Same datasheet limits the _VAL_* schema entries above carry, named for the driver's own argument
 # validation (Interface Description sections 1.4.1-1.4.6).
 _MEAS_INTERVAL_MIN = const(2)
@@ -79,12 +87,35 @@ _WORD_CRC_BYTES = const(3)
 # Deliberately no _VAL_* entry for "ContMeas" - the SCD30 can't report whether continuous
 # measurement is currently running, so it can't join this schema the way the other fields do.
 # No local default either: these params are stored on the sensor itself, not cached locally.
+# Freestanding @web tag (no matching schema constant, per the comment above) - kind/onLabel/
+# offLabel/defaultValue supply everything a real _VAL_* tuple would otherwise let the generator infer.
+# @web ContMeas section=sensors submitGroup=self kind=toggle label="Continuous Measurement" onLabel="On" offLabel="Off" description="Setting this to Off stops continuous measurement; restart it via Ambient Pressure above." defaultValue=true
 
 _NAME = const("SCD30")
 # Kept as a literal tuple inline (not `_FIELDS` below) because mypy's namedtuple plugin can only
 # infer field names from a literal at the call site, not through a variable indirection.
 SCD30 = namedtuple("SCD30", ("CO2", "Temp", "Hum", "WetBulb", "DewPoint", "TS"))
 _FIELDS = const(("CO2", "Temp", "Hum", "WetBulb", "DewPoint", "TS"))  # kept in sync with SCD30's own fields above
+
+# @web-group section=measurements submitGroup=self label="SCD30 — CO2, Temperature, Humidity"
+# @web CO2 section=measurements submitGroup=self kind=readonly label="CO2" unit="ppm"
+# @web Temp section=measurements submitGroup=self kind=readonly label="Temperature" unit="°C"
+# @web Hum section=measurements submitGroup=self kind=readonly label="Relative Humidity" unit="%"
+# @web WetBulb section=measurements submitGroup=self kind=readonly label="Wet Bulb Temperature" unit="°C"
+# @web DewPoint section=measurements submitGroup=self kind=readonly label="Dew Point" unit="°C"
+# @web TS section=measurements submitGroup=self kind=readonly label="Timestamp" unit="s"
+
+# Datasheets/scd30/..._Interface_Description.pdf p.2: clock stretching is normally <=30ms but can
+# reach 150ms once/day for internal calibration, past rp2's own I2C timeout default (50ms) - every
+# device TOML's own bus.i2c*.timeout comment already cites this same fact (see e.g.
+# devices/wozi.toml). Enforced here as a real, generator-checked build requirement
+# (BUILD_CHAIN_PLAN.md's "Build/generator script quality bar") instead of
+# only a comment a device TOML author has to remember by hand.
+# @requires bus.timeout>=200000
+# Datasheet hard maximum, same source (Interface Description p.2): "Maximal I2C speed is
+# 100 kHz" - Sensirion recommends 50 kHz or less, which every device TOML uses today.
+# @requires bus.frequency<=100000
+# @wiring fram_target AsyFramManager fram optional kwarg
 
 if TYPE_CHECKING:
     SCDResults = tuple[float | None, float | None, float | None, int | None]  # CO2, temperature, humidity, timestamp
@@ -97,6 +128,7 @@ class SCD30_Reader(SensorReader):
         irq_pin: int,
         trigger_sec: int = 3,
         max_module_error: int = 5,
+        name_ext: str = "",
         fram: AsyFramManager | None = None,
         history_length: int = 10,
         debug: int | None = None,
@@ -108,6 +140,7 @@ class SCD30_Reader(SensorReader):
             history_length=history_length,
             debug=debug,
             name=_NAME,
+            name_ext=name_ext,
         )
         self.scd = SCD30_I2C(i2c)
         self.irq_pin = Pin(irq_pin, mode=Pin.IN)
@@ -212,11 +245,11 @@ class SCD30_Reader(SensorReader):
 
     async def get_dict_data(self) -> dict[str, dict[str, int | float | str | bool | None]]:
         data = await self.get_data()
-        return make_dict(data, _FIELDS)
+        return make_dict(data, _FIELDS, name=self.name)
 
     async def get_dict_cfg(self) -> dict[str, dict[str, int | float | str | bool | None]]:
         return await self._get_dict_cfg(
-            _NAME,
+            self.name,
             _VAL_TO + _VAL_MI + _VAL_AP + _VAL_ALT + _VAL_CAL + _VAL_SC,
             callback=self._read_sensor_dict,
         )

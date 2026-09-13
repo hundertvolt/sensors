@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# Runs mypy against src/, tests/, and digital_twin/ (pyproject.toml's [tool.mypy] `files` - see
-# scripts/lint.sh for the same scope). Pass explicit paths (e.g. `scripts/typecheck.sh src tests`)
-# to check only those instead - used by CI's lint-and-typecheck job to gate on just src/tests/,
-# leaving digital_twin/ to its own dedicated second pass below (see .github/workflows/ci.yml).
+# Runs mypy against src/, tests/, digital_twin/, and tests_hardware/device_scripts/ (pyproject.toml's
+# [tool.mypy] `files` - note this is NOT the same scope as scripts/lint.sh's ruff invocation, which
+# doesn't cover tests_hardware/device_scripts/ yet). Pass explicit paths (e.g.
+# `scripts/typecheck.sh src tests tests_hardware/device_scripts`) to check only those instead -
+# used by CI's lint-and-typecheck job to gate on just that set, leaving digital_twin/ to its own
+# dedicated second pass below (see .github/workflows/ci.yml).
 # Assumes mypy is already installed and on PATH; uses
 # `uv` (assumed on PATH, same as toolchain/setup_toolchain.py) only to populate typings/, an
 # isolated directory holding just the MicroPython stub package - see pyproject.toml's [tool.mypy]
@@ -113,6 +115,15 @@ if [ -f "$builtins_stub" ] && grep -q '^# NotImplemented: _NotImplementedType' "
     sed -i 's/^# \(NotImplemented: _NotImplementedType\)/\1/' "$builtins_stub"
 fi
 
+# tests_hardware/device_scripts/heap_headroom_after_full_system_build.py (in `files` below, the
+# main pass's sole static importer - pyproject.toml's own [tool.mypy] mypy_path comment) statically
+# `import sensortask_dev` - no hand-written copy exists in src/ any more (BUILD_CHAIN_PLAN.md's
+# Session 6 finish criterion), so mypy needs build/generated_src/ (this pass's own mypy_path entry,
+# pyproject.toml's [tool.mypy]) populated before it runs, same as scripts/test.sh's own real
+# MicroPython-interpreter run needs it on MICROPYPATH.
+echo "== Generating buildgen device modules into build/generated_src/ (for import resolution)"
+uv run scripts/_generate_sensortask_modules.py
+
 # Extra args (if any) override pyproject.toml's [tool.mypy] `files` for this invocation - e.g.
 # CI's lint-and-typecheck job passes `src tests` to gate on just that scope, without changing
 # what a plain `scripts/typecheck.sh` checks locally (see .github/workflows/ci.yml).
@@ -132,11 +143,12 @@ if [ "$twin_status" -ne 0 ]; then
     echo "error: digital_twin/typecheck.ini's dedicated pass found real findings - this scope is expected to stay fully clean." >&2
 fi
 
-# scripts/, toolchain/, tests_scripts/ and tests_hardware/ are host CPython, not MicroPython, so
-# they need a THIRD invocation for the same reason the twin needs its second one: the main pass
-# above replaces mypy's typeshed with the MicroPython stubs (custom_typeshed_dir), which have no
-# `ast`/`argparse`/`pathlib`/`subprocess`, so every stdlib import in those four scopes would report
-# as missing. Always run, regardless of "$@" - see host_typecheck.ini's own header.
+# buildgen/, scripts/, toolchain/, tests_scripts/ and tests_hardware/ are host CPython, not
+# MicroPython, so they need a THIRD invocation for the same reason the twin needs its second one:
+# the main pass above replaces mypy's typeshed with the MicroPython stubs (custom_typeshed_dir),
+# which have no `ast`/`argparse`/`pathlib`/`subprocess`/`tomllib`, so every stdlib import in those
+# five scopes would report as missing. Always run, regardless of "$@" - see host_typecheck.ini's
+# own header.
 host_status=0
 mypy --config-file host_typecheck.ini || host_status=$?
 if [ "$host_status" -ne 0 ]; then

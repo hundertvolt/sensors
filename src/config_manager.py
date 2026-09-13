@@ -43,6 +43,13 @@ if TYPE_CHECKING:
     ]
     ConfigSchema = tuple[FieldSchema, ...]
 
+    # A driver's own generator-facing metadata - what it can be wired to, and what domains its
+    # TOML fields have - is NOT declared here, and deliberately isn't a Python value at all: it
+    # lives in `# @wiring`/`# @value-wiring`/`# @limits` comment tags beside the schema it
+    # describes, because nothing the running firmware reads should become a real frozen-bytecode
+    # value just to serve the generator (BUILD_CHAIN_PLAN.md's quality bar). See
+    # SPECIFICATION.md Part C.14.2 for the grammars and buildgen/wiring.py for the parser.
+
 from print_log import PrintLogHistory
 
 
@@ -61,6 +68,19 @@ def _special_bypass(check_val: "CfgValue", val_special: "CfgSpecial", scalar_typ
     if check_special and check_val == val_special:
         return False
     return None
+
+
+def instance_name(base_name: str, name_ext: str) -> str:
+    # Uniform per-instance naming (SPECIFICATION.md Part C.14): an empty name_ext (the default -
+    # every module today) reproduces base_name completely unchanged, so a single-instance device's
+    # REST dict keys/config filenames/error-log keys stay byte-identical to today's. A non-empty
+    # extension appends "_" + name_ext, disambiguating a second instance of the same driver type
+    # (e.g. two SCD30s: "SCD30" and "SCD30_fan_pressure") across every one of those three surfaces
+    # at once, since all three already key off this one resolved name. Collision detection across
+    # a whole device's instance list is the generator's job (not built here), not this function's.
+    if not name_ext:
+        return base_name
+    return base_name + "_" + name_ext
 
 
 def schema_names(schema: "ConfigSchema") -> "list[str]":  # field names, in schema order (duplicates preserved); malformed input -> []
@@ -85,16 +105,22 @@ def schema_dict(schema: "ConfigSchema") -> "dict[str, FieldSchema]":  # {field_n
 
 
 def make_dict(
-    nt: "NamedTuple", fields: "tuple[str, ...]",
+    nt: "NamedTuple", fields: "tuple[str, ...]", name: str | None = None,
 ) -> "dict[str, dict[str, int | float | str | None]]":  # {type_name: {field: value}} - fields is the same
     # literal tuple the caller's own namedtuple(name, fields) was built from (rp2's build ROM level
     # is MICROPY_CONFIG_ROM_LEVEL_EXTRA_FEATURES, one level below the MICROPY_CONFIG_ROM_LEVEL_
     # EVERYTHING that _asdict()/_fields require - confirmed against ports/rp2/mpconfigport.h - so
     # neither is safe to rely on here).
-    try:
-        name = type(nt).__name__
-    except Exception:
-        return {}
+    # name=None (default) introspects the namedtuple's own type name, exactly as before this
+    # parameter existed - every caller with only ever one instance relies on this. A caller that
+    # can have more than one instance (SPECIFICATION.md Part C.14) passes its own resolved
+    # self.name explicitly instead, since the namedtuple *type* itself is fixed at class-definition
+    # time and can't vary per instance the way self.name (instance_name()'s result) can.
+    if name is None:
+        try:
+            name = type(nt).__name__
+        except Exception:
+            return {}
     try:
         return {name: {field: getattr(nt, field) for field in fields}}
     except Exception:
