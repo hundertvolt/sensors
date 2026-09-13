@@ -46,7 +46,7 @@ unit, not any code that references it.
 | SGP40 | I2C1 | address-only (0x59 default), no extra pins |
 | SCD30 | I2C1 | interrupt/RDY = GPIO11 |
 | MPRLS | I2C0 | reset_pin=GPIO10, eoc_pin=GPIO7 |
-| ISL29125 | I2C1 | irq_pin=GPIO6 |
+| ISL29125 | I2C1 | irq_pin=GPIO6 (physical pin 9), **pulled up** — confirmed by the project owner directly on the board |
 | BME688 (BSEC) | UART0 | tx=GPIO16, rx=GPIO17, 115200 baud — not I2C/SPI |
 | Neopixel | — | **GPIO18** (physical pin 24); deployed `wozi` uses GPIO15, a different pin again |
 | SHTC3 | — | **not present** on this board (some legacy code wires it, but it's not actually connected) |
@@ -94,6 +94,14 @@ this bench unit:
   `src/asy_bmp3xx_driver.py` — 5/5 clean reads, no `EIO`, stable values (~999.1-999.3 hPa,
   ~26.2°C). The broken trace was the sole root cause; driver code, MicroPython version, and the
   RP2040 I2C peripheral were never at fault.
+
+**Not in that list, deliberately: the ISL29125.** It is wired (I2C1, INT on GPIO6) and
+`src/asy_isl29125_driver.py` is promoted and green across every non-hardware tier, but it has
+never been exercised against this board — running its scripts needs the project owner's go-ahead
+in the session that runs them. Its five `tests_hardware/device_scripts/isl29125_*.py` entries and
+their flash/bench registrations are ready; the NeoPixel sweep additionally needs the rig
+`tests_hardware/README.md` describes. Add it to the list above only once a real run has actually
+passed.
 
 ## Confirmed working — full assembled system bring-up (2026-08-28)
 

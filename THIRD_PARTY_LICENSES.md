@@ -37,6 +37,14 @@ applies to the one non-Adafruit file below. The following `src/` files are deriv
 - `src/asy_sgp40_driver.py` — from Adafruit's
   [`Adafruit_CircuitPython_SGP40`](https://github.com/adafruit/Adafruit_CircuitPython_SGP40),
   © 2020 Bryan Siepert for Adafruit Industries, MIT.
+- `src/asy_isl29125_driver.py` — from
+  [`jposada202020/MicroPython_ISL29125`](https://github.com/jposada202020/MicroPython_ISL29125)
+  (archived/deprecated December 2024), © 2023 Jose D. Montoya, MIT — the one non-Adafruit file the
+  paragraph above refers to. What survives from upstream is the register map and the sense of the
+  configuration bits; everything else is this project's own, written against FN8424 Rev 3.00
+  directly: the three-layer asyncio structure, the shadow-register single-write model, the
+  destructive-status-read discipline, the auto-range state machine and its FRAM-persisted
+  gain-ratio self-calibration, and all of the config/logging/error machinery.
 - `src/asy_fram_driver.py` — opcode/register-constant naming and the write-enable/write/
   write-disable method shape follow Adafruit's
   [`Adafruit_CircuitPython_FRAM`](https://github.com/adafruit/Adafruit_CircuitPython_FRAM),
@@ -100,9 +108,11 @@ These still carry their own correct SPDX/MIT headers in place and need no change
 - `asy_shtc3_driver.py` — from Adafruit's
   [`Adafruit_CircuitPython_SHTC3`](https://github.com/adafruit/Adafruit_CircuitPython_SHTC3),
   © 2017 Scott Shawcroft / © 2020 Bryan Siepert for Adafruit Industries, MIT.
-- `asy_isl29125_driver.py` — from
-  [`jposada202020/MicroPython_ISL29125`](https://github.com/jposada202020/MicroPython_ISL29125)
-  (archived/deprecated December 2024), © 2023 Jose D. Montoya, MIT.
+
+`python/IndividualDrivers/asy_isl29125_driver.py` used to be listed here too. It is still in the
+tree, still carrying its own correct header, and still reference-only — but the promoted
+`src/asy_isl29125_driver.py` is now the one that ships, so its entry moved up to
+"Restructured/rewritten" above rather than being duplicated in both places.
 
 ## Apache License 2.0 (derived, kept as a separate license within this MIT repo)
 

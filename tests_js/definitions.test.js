@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { loadDefinitions, SUPPORTED_SCHEMA_MAJOR, validateDefinitions } from "../js/definitions.js";
+// These tests run in a real browser (Playwright + Chromium), so the shipped definitions are
+// imported as modules - node:fs is not reachable here. Same import shape the PUT matrix uses.
+import woziDefs from "../html/definitions/wozi.json";
+import devDefs from "../html/definitions/dev.json";
+import { loadDefinitions, resolveFieldValue, SUPPORTED_SCHEMA_MAJOR, validateDefinitions } from "../js/definitions.js";
 
 const MINIMAL_VALID = {
     schemaVersion: "1.0.0",
@@ -160,6 +164,89 @@ describe("validateDefinitions", () => {
             landingSection: "status",
         };
         expect(validateDefinitions(withErrcount)).toEqual([]);
+    });
+
+    /**
+     * @param {Record<string, unknown>} field
+     * @returns {Record<string, unknown>}
+     */
+    function withField(field) {
+        return {
+            ...MINIMAL_VALID,
+            sections: [{ ...MINIMAL_VALID.sections[0], groups: [{ key: "G", label: "G", fields: [field] }] }],
+        };
+    }
+
+    it("accepts a readonly field carrying a nested path and a decimals hint", () => {
+        expect(validateDefinitions(withField({ key: "R", label: "Red", kind: "readonly", path: ["RGB", "R"], decimals: 4 }))).toEqual([]);
+    });
+
+    it("rejects a malformed path", () => {
+        for (const path of ["RGB.R", [], [""], ["RGB", 3], {}]) {
+            const problems = validateDefinitions(withField({ key: "R", label: "Red", kind: "readonly", path }));
+            expect(problems.some((p) => p.includes(".path")), JSON.stringify(path)).toBe(true);
+        }
+    });
+
+    it("rejects a path on a writable field, where a PUT body is always flat", () => {
+        const problems = validateDefinitions(withField({ key: "R", label: "Red", kind: "number", path: ["RGB", "R"] }));
+        expect(problems.some((p) => p.includes(".path is only valid on a readonly field"))).toBe(true);
+    });
+
+    it("rejects a malformed decimals hint", () => {
+        for (const decimals of [-1, 1.5, "2", null]) {
+            const problems = validateDefinitions(withField({ key: "Lux", label: "Lux", kind: "readonly", decimals }));
+            expect(problems.some((p) => p.includes(".decimals")), JSON.stringify(decimals)).toBe(true);
+        }
+    });
+
+    // Nothing anywhere ran this validator against the shipped dev definitions before: the PUT
+    // matrix imports that file raw, and this suite only ever loaded wozi's. A malformed dev
+    // definitions file therefore shipped and failed in a browser instead of here.
+    it.each([
+        ["wozi", woziDefs],
+        ["dev", devDefs],
+    ])("accepts the shipped %s definitions file", (_device, shipped) => {
+        expect(validateDefinitions(shipped)).toEqual([]);
+    });
+});
+
+describe("resolveFieldValue", () => {
+    it("reads a flat key when no path is given", () => {
+        expect(resolveFieldValue({ key: "Lux", label: "Lux", kind: "readonly" }, { Lux: 12.5 })).toBe(12.5);
+    });
+
+    it("walks a nested path instead of the flat key", () => {
+        const values = { Lux: 12.5, RGB: { R: 0.25, G: 0.5, B: 0.75 } };
+        expect(resolveFieldValue({ key: "R", label: "Red", kind: "readonly", path: ["RGB", "R"] }, values)).toBe(0.25);
+        expect(resolveFieldValue({ key: "B", label: "Blue", kind: "readonly", path: ["RGB", "B"] }, values)).toBe(0.75);
+    });
+
+    it("distinguishes RGB.B from HSB.B, which is the whole reason the body is nested", () => {
+        const values = { RGB: { B: 0.75 }, HSB: { B: 0.03 } };
+        expect(resolveFieldValue({ key: "B", label: "Blue", kind: "readonly", path: ["RGB", "B"] }, values)).toBe(0.75);
+        expect(resolveFieldValue({ key: "Bri", label: "Brightness", kind: "readonly", path: ["HSB", "B"] }, values)).toBe(0.03);
+    });
+
+    it("yields undefined for a path that does not resolve, never a half-walked sub-object", () => {
+        /** @type {import("../js/definitions.js").FieldDef} */
+        const field = { key: "R", label: "Red", kind: "readonly", path: ["RGB", "R"] };
+        expect(resolveFieldValue(field, {})).toBeUndefined();
+        expect(resolveFieldValue(field, { RGB: null })).toBeUndefined();
+        expect(resolveFieldValue(field, { RGB: 42 })).toBeUndefined();
+        expect(resolveFieldValue({ ...field, path: ["RGB"] }, { RGB: { R: 1 } })).toEqual({ R: 1 });
+    });
+
+    it("still falls back to defaultValue when a path resolves to nothing", () => {
+        /** @type {import("../js/definitions.js").FieldDef} */
+        const field = { key: "R", label: "Red", kind: "readonly", path: ["RGB", "R"], defaultValue: 0 };
+        expect(resolveFieldValue(field, {})).toBe(0);
+    });
+
+    it("passes a null through as a real value rather than falling back", () => {
+        // CCT is legitimately null in a dark room - the renderer shows an em dash for it, and a
+        // defaultValue fallback here would silently invent a colour temperature instead.
+        expect(resolveFieldValue({ key: "CCT", label: "CCT", kind: "readonly", defaultValue: 5000 }, { CCT: null })).toBeNull();
     });
 });
 

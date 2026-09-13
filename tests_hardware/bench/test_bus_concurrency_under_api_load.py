@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import threading
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import http_client
 from error_log_helpers import assert_module_error_log_empty, reset_all_error_logs
@@ -24,6 +24,23 @@ PRESSURE_MIN_HPA, PRESSURE_MAX_HPA = 300.0, 1250.0
 _GET_WORKERS = 2
 _GET_ITERATIONS_PER_WORKER = 8
 _PUT_RESET_COUNT = 2
+
+
+def _schema_sanity_findings(body: dict[str, Any], context: str) -> list[str]:
+    """Range-checks one GET /sensors body against each driver's own schema. A value outside it is
+    not a driver bug but a torn/corrupted read - the property every worker below is really watching
+    for, extracted here so all four tests check exactly the same thing (and stay under C901)."""
+    findings = []
+    meas_int = body.get("SCD30", {}).get("MeasInt")
+    if meas_int is not None and not (2 <= meas_int <= 1800):
+        findings.append(f"SCD30 MeasInt={meas_int!r} outside valid schema range{context} - possible torn/corrupted config read")
+    press_overs = body.get("BMP3XX", {}).get("PressOvers")
+    if press_overs is not None and press_overs not in (1, 2, 4, 8, 16, 32):
+        findings.append(f"BMP3XX PressOvers={press_overs!r} outside valid schema range{context} - possible torn/corrupted config read")
+    resolution = body.get("ISL29125", {}).get("Resolution")
+    if resolution is not None and resolution not in (12, 16):
+        findings.append(f"ISL29125 Resolution={resolution!r} outside valid schema range{context} - possible torn/corrupted config read")
+    return findings
 
 
 def test_concurrent_get_sensors_under_real_multi_client_load_never_corrupts_or_crashes(board: Board, dut_ip: str) -> None:
@@ -46,15 +63,8 @@ def test_concurrent_get_sensors_under_real_multi_client_load_never_corrupts_or_c
             if res.status_code != 200:
                 _record(f"worker {worker_id} iter {i}: GET /sensors returned {res.status_code}: {res.body!r}")
                 continue
-            body = res.json()
-            scd30 = body.get("SCD30", {})
-            bmp = body.get("BMP3XX", {})
-            meas_int = scd30.get("MeasInt")
-            if meas_int is not None and not (2 <= meas_int <= 1800):
-                _record(f"worker {worker_id} iter {i}: SCD30 MeasInt={meas_int!r} outside valid schema range - possible torn/corrupted config read")
-            press_overs = bmp.get("PressOvers")
-            if press_overs is not None and press_overs not in (1, 2, 4, 8, 16, 32):
-                _record(f"worker {worker_id} iter {i}: BMP3XX PressOvers={press_overs!r} outside valid schema range - possible torn/corrupted config read")
+            for finding in _schema_sanity_findings(res.json(), ""):
+                _record(f"worker {worker_id} iter {i}: {finding}")
 
     def sgp40_reset_trigger_worker() -> None:
         for i in range(_PUT_RESET_COUNT):
@@ -86,10 +96,10 @@ def test_concurrent_get_sensors_under_real_multi_client_load_never_corrupts_or_c
         description="webserver serving normally again after the concurrent bus-load test",
     )
 
-    # The whole system must have stayed genuinely healthy, not just "no thread hung" - SCD30/BMP3XX
-    # (whose reads this test drove directly), SGP40 (whose reset it triggered), and FRAM (which
-    # every one of those sensors' own error-log writes lands on) must all report nothing wrong.
-    for module in ("SCD30", "BMP3XX", "SGP40", "FRAM"):
+    # The whole system must have stayed genuinely healthy, not just "no thread hung" - SCD30/BMP3XX/
+    # ISL29125 (whose reads this test drove directly), SGP40 (whose reset it triggered), and FRAM
+    # (which every one of those sensors' own error-log writes lands on) must all report nothing wrong.
+    for module in ("SCD30", "BMP3XX", "SGP40", "ISL29125", "FRAM"):
         assert_module_error_log_empty(dut_ip, module)
 
     # Final sanity: the real system is still serving plausible measurements after the load, not
@@ -133,15 +143,8 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_light_netw
                 continue
             if res.status_code != 200:
                 continue
-            body = res.json()
-            scd30 = body.get("SCD30", {})
-            bmp = body.get("BMP3XX", {})
-            meas_int = scd30.get("MeasInt")
-            if meas_int is not None and not (2 <= meas_int <= 1800):
-                _record(f"worker {worker_id} iter {i}: SCD30 MeasInt={meas_int!r} outside valid schema range under degraded network - possible torn/corrupted config read")
-            press_overs = bmp.get("PressOvers")
-            if press_overs is not None and press_overs not in (1, 2, 4, 8, 16, 32):
-                _record(f"worker {worker_id} iter {i}: BMP3XX PressOvers={press_overs!r} outside valid schema range under degraded network - possible torn/corrupted config read")
+            for finding in _schema_sanity_findings(res.json(), " under degraded network"):
+                _record(f"worker {worker_id} iter {i}: {finding}")
 
     def sgp40_reset_trigger_worker() -> None:
         for i in range(_PUT_RESET_COUNT):
@@ -176,7 +179,7 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_light_netw
         poll_interval_s=2.0,
         description="webserver serving normally again after concurrent bus load + degraded network",
     )
-    for module in ("SCD30", "BMP3XX", "SGP40", "FRAM"):
+    for module in ("SCD30", "BMP3XX", "SGP40", "ISL29125", "FRAM"):
         assert_module_error_log_empty(dut_ip, module)
     reset_all_error_logs(dut_ip)
 
@@ -219,15 +222,8 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_tra
                 continue
             if res.status_code != 200:
                 continue
-            body = res.json()
-            scd30 = body.get("SCD30", {})
-            bmp = body.get("BMP3XX", {})
-            meas_int = scd30.get("MeasInt")
-            if meas_int is not None and not (2 <= meas_int <= 1800):
-                _record(f"worker {worker_id} iter {i}: SCD30 MeasInt={meas_int!r} outside valid schema range during NTP outage - possible torn/corrupted config read")
-            press_overs = bmp.get("PressOvers")
-            if press_overs is not None and press_overs not in (1, 2, 4, 8, 16, 32):
-                _record(f"worker {worker_id} iter {i}: BMP3XX PressOvers={press_overs!r} outside valid schema range during NTP outage - possible torn/corrupted config read")
+            for finding in _schema_sanity_findings(res.json(), " during NTP outage"):
+                _record(f"worker {worker_id} iter {i}: {finding}")
 
     def sgp40_reset_trigger_worker() -> None:
         for i in range(_PUT_RESET_COUNT):
@@ -264,7 +260,7 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_tra
     # NTP must resync via its own retry timer (well inside 15s _NTP_RETRY_INTERV), no hard_reset()
     # anywhere - same bar the standalone test holds, now proven concurrently with real bus load.
     wait_until(_synced, timeout_s=20.0, poll_interval_s=1.0, description="NTP resynced via its own retry timer after a transient outage, concurrent with real bus load")
-    for module in ("SCD30", "BMP3XX", "SGP40", "FRAM"):
+    for module in ("SCD30", "BMP3XX", "SGP40", "ISL29125", "FRAM"):
         assert_module_error_log_empty(dut_ip, module)
     reset_all_error_logs(dut_ip)
 
@@ -295,15 +291,8 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_repeated_r
                 continue
             if res.status_code != 200:
                 continue
-            body = res.json()
-            scd30 = body.get("SCD30", {})
-            bmp = body.get("BMP3XX", {})
-            meas_int = scd30.get("MeasInt")
-            if meas_int is not None and not (2 <= meas_int <= 1800):
-                _record(f"worker {worker_id} iter {i}: SCD30 MeasInt={meas_int!r} outside valid schema range during WiFi flapping - possible torn/corrupted config read")
-            press_overs = bmp.get("PressOvers")
-            if press_overs is not None and press_overs not in (1, 2, 4, 8, 16, 32):
-                _record(f"worker {worker_id} iter {i}: BMP3XX PressOvers={press_overs!r} outside valid schema range during WiFi flapping - possible torn/corrupted config read")
+            for finding in _schema_sanity_findings(res.json(), " during WiFi flapping"):
+                _record(f"worker {worker_id} iter {i}: {finding}")
 
     def sgp40_reset_trigger_worker() -> None:
         for i in range(_PUT_RESET_COUNT):
@@ -355,6 +344,6 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_repeated_r
         print("RESULT NOTE: recovered via a fallback hard_reset() after the flapping+bus-load compound")
 
     if not recovered_via_hard_reset:
-        for module in ("SCD30", "BMP3XX", "SGP40", "FRAM"):
+        for module in ("SCD30", "BMP3XX", "SGP40", "ISL29125", "FRAM"):
             assert_module_error_log_empty(dut_ip, module)
     reset_all_error_logs(dut_ip)

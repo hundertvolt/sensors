@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { installMockFetch } from "../js/mock-server.js";
 
 /** @type {import("../js/definitions.js").SiteDefinitions} */
@@ -29,6 +29,15 @@ const DEFS = {
                     label: "SGP40",
                     submit: true,
                     fields: [{ key: "SGPResetVOC", label: "Reset VOC Index", kind: "toggle" }],
+                },
+                {
+                    key: "ISL29125",
+                    label: "ISL29125",
+                    submit: true,
+                    fields: [
+                        { key: "IrCompAdjust", label: "IR Compensation Adjust", kind: "number", min: 0, max: 63 },
+                        { key: "ISLResetCal", label: "Reset Gain Calibration", kind: "toggle" },
+                    ],
                 },
             ],
         },
@@ -126,8 +135,11 @@ const DEFS = {
 };
 
 const DATA = {
-    measurements: { SCD30: { CO2: 600, TS: 1000, Model: "SCD30" } },
-    sensorsConfig: { SCD30: { MeasInt: 5, ForceCalRef: 400 }, SGP40: {} },
+    measurements: {
+        SCD30: { CO2: 600, TS: 1000, Model: "SCD30" },
+        ISL29125: { Lux: 300, RGB: { R: 0.02, G: 0.03, B: 0.01 }, CCT: null, TS: 1000 },
+    },
+    sensorsConfig: { SCD30: { MeasInt: 5, ForceCalRef: 400 }, SGP40: {}, ISL29125: { IrCompAdjust: 40 } },
     networkingConfig: { Hostname: "wozi", PW: "hunter2hunter2" },
     systemConfig: {},
     notificationConfig: {},
@@ -386,6 +398,69 @@ describe("installMockFetch", () => {
         expect(body.SCD30.Model).toBe("SCD30"); // non-number leaf: untouched
         expect(body.SCD30.CO2).toBeGreaterThan(590);
         expect(body.SCD30.CO2).toBeLessThan(610);
+    });
+
+    it("jitters a nested measurement sub-object's leaves too, not just the top level", async () => {
+        // The ISL29125's body is the first with a third level ({"RGB": {"R": ...}}). Without the
+        // recursion those leaves sit perfectly static forever, which reads as a broken renderer.
+        // Math.random is pinned to its maximum so the expected values are exact rather than a
+        // band - a 0.02 leaf jittered by up to +-0.05 and rounded to 2dp can legitimately land
+        // back on 0.02, which would make a "it moved" assertion flaky rather than wrong.
+        const random = vi.spyOn(Math, "random").mockReturnValue(1);
+        uninstall = installMockFetch(DEFS, DATA);
+        const body = await (await fetch("/measurements")).json();
+        random.mockRestore();
+
+        expect(body.ISL29125.TS).toBe(1001); // top-level timestamp: still exactly +1
+        expect(body.ISL29125.CCT).toBeNull(); // a null leaf is not a number - left alone
+        expect(body.ISL29125.Lux).toBe(303); // top level: 300 + 1% of itself
+        // The nested leaves, each moved by the 0.05 jitter floor - which only happens at all if
+        // jitterInPlace() recursed into the sub-object.
+        expect(body.ISL29125.RGB.R).toBe(0.07);
+        expect(body.ISL29125.RGB.G).toBe(0.08);
+        expect(body.ISL29125.RGB.B).toBe(0.06);
+    });
+
+    it("never jitters a non-negative measurement leaf into a negative one", async () => {
+        // The 0.05 absolute floor is sized for readings of order hundreds; on the ISL29125's
+        // normalised 0-1 leaves it is larger than the value itself, so unclamped jitter routinely
+        // produced negatives - a brightness of -0.01 is not a plausible reading and the real site
+        // rendered it verbatim. Math.random pinned to 0 is the most negative jitter there is.
+        const random = vi.spyOn(Math, "random").mockReturnValue(0);
+        try {
+            uninstall = installMockFetch(DEFS, DATA);
+            const body = await (await fetch("/measurements")).json();
+
+            expect(body.ISL29125.RGB.R).toBe(0); // 0.02 - 0.05 would be -0.03, clamped at the sign change
+            expect(body.ISL29125.RGB.G).toBe(0); // 0.03 - 0.05 would be -0.02
+            expect(body.ISL29125.RGB.B).toBe(0); // 0.01 - 0.05 would be -0.04
+            // A value big enough that the floor cannot reach zero is untouched by the clamp.
+            expect(body.ISL29125.Lux).toBe(297); // 300 - 1% of itself
+        } finally {
+            random.mockRestore();
+        }
+    });
+
+    it("omits the command-only ISLResetCal from GET readback, as it already does for ContMeas/SGPResetVOC", async () => {
+        uninstall = installMockFetch(DEFS, DATA);
+        const accepted = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ ISL29125: { ISLResetCal: true } }) });
+        expect((await accepted.json()).result.ISL29125.ISLResetCal).toBe("Valid");
+
+        const body = await (await fetch("/sensors")).json();
+        expect("ISLResetCal" in body.ISL29125).toBe(false); // never echoed back as if persisted
+        expect(body.ISL29125.IrCompAdjust).toBe(40); // its neighbours are unaffected
+    });
+
+    it("accepts ISLResetCal repeatedly - it is a trigger, not a one-shot", async () => {
+        uninstall = installMockFetch(DEFS, DATA);
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+            // Sequential is the point: each PUT must be accepted after the previous one already
+            // fired, which running them in parallel would not show.
+            // eslint-disable-next-line no-await-in-loop -- see the comment above
+            const res = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ ISL29125: { ISLResetCal: true } }) });
+            // eslint-disable-next-line no-await-in-loop -- same reasoning as above
+            expect((await res.json()).result.ISL29125.ISLResetCal).toBe("Valid");
+        }
     });
 
     it("silently ignores a PUT /sensors group key that isn't a real sensor, applying the real ones normally", async () => {

@@ -18,6 +18,9 @@ _PROBE_MAX = 192 * 1024
 # an ordinary allocation-pattern change won't trip them but a real regression will - a new static
 # buffer, or a future MicroPython bump moving more code into SRAM the way 1.29 already did with the
 # interpreter core (12,918 B, Part F.5.3). Raise them only with a fresh measurement to point at.
+# NOT re-measured since asy_isl29125_driver.py joined the dev graph - that build is one module
+# and one more reader object heavier, so the first real run after it lands is also the
+# measurement that either confirms these floors or replaces them.
 _MIN_FREE = 100_000
 _MIN_LARGEST_BLOCK = 80_000
 

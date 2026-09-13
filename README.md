@@ -17,7 +17,7 @@ CLAUDE.md's hard rules for why wozi, not dev, is never flashed).
 | arzi | SCD30 (CO2/temp/hum), SGP40 (VOC) | yes | active (8000ms) | `html_raw/arzi` |
 | neu ×3 | same as arzi, different pin assignments | yes | active (8000ms) | `html_raw/arzi` (reused) |
 | wozi | SCD30, SGP40, BMP388 (pressure/temp) | yes | active (8000ms) | `html_raw/wozi` |
-| dev | SCD30, SGP40, BMP388 — same drivers as wozi, different I2C bus pairing (Part C.8) | yes | active (8000ms) | `html_raw/dev` (bench rig) |
+| dev | SCD30, SGP40, BMP388, ISL29125 (RGB colour/lux) — the colour sensor is dev-only; the other three share wozi's drivers with a different I2C bus pairing (Part C.8) | yes | active (8000ms) | `html_raw/dev` (bench rig) |
 
 ## Repository layout, architecture, refactor status, and the build process
 
@@ -665,6 +665,23 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   section, a historical, frozen-in-time snapshot of this unit's onboard filesystem from 2026-08-27
   (back when it still ran 1.24.1) — reference material for future `src/` promotion work, not
   itself reviewed, promoted, or covered by lint/type/test config.
+
+**`ISL29125_PROMOTION_PLAN.md`** and **`ISL29125_FUNCTION_SPEC.md`** (temporary, in flight):
+
+- **[`ISL29125_PROMOTION_PLAN.md`](ISL29125_PROMOTION_PLAN.md)** — working doc for the
+  `python/IndividualDrivers/asy_isl29125_driver.py` → `src/` promotion: a full audit of the
+  existing driver against `datasheets/isl29125/`'s real datasheet (what is correct, the confirmed
+  defects, the device capabilities the driver doesn't use, and the datasheet's own internal
+  contradictions), plus the open design questions the promotion needs answered. Temporary by
+  design — delete it when the promotion closes, migrating anything permanent into
+  `SPECIFICATION.md` first, the same way the planning docs listed below were retired.
+- **[`ISL29125_FUNCTION_SPEC.md`](ISL29125_FUNCTION_SPEC.md)** — the function-level companion to
+  that plan: every function the promotion needs, in which file, with its purpose, expected
+  behaviour, failure modes and handling, its upstream/downstream contracts, its logging level and
+  `errno`, and what makes it complete — plus the reference layer behind those choices (datasheet
+  register map, what four other ISL29125 implementations do, the external docs checked) and the
+  test specification for all six tiers, real hardware included. Same disposal rule: temporary by
+  design, migrate anything permanent into `SPECIFICATION.md` when the promotion closes.
 
 `HARDWARE_TEST_PLAN.md`, `tmp_hardware_test_candidates.md`, `REAL_HARDWARE_HANDOFF.md`,
 `REAL_HARDWARE_RUN_LOG.md`, and `DEV_HARDWARE_BASELINE_PLAN.md` — five temporary real-hardware

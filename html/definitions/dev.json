@@ -41,6 +41,34 @@
                         { "key": "SLPres", "label": "Sea Level Pressure", "unit": "hPa", "kind": "readonly" },
                         { "key": "TS", "label": "Timestamp", "unit": "s", "kind": "readonly" }
                     ]
+                },
+                {
+                    "key": "ISL29125",
+                    "label": "ISL29125 — Light, Colour",
+                    "fields": [
+                        { "key": "Lux", "label": "Illuminance", "unit": "lx", "kind": "readonly", "decimals": 2 },
+                        {
+                            "key": "R", "label": "Red", "path": ["RGB", "R"], "kind": "readonly", "decimals": 4,
+                            "description": "Sensor red, normalised over the whole auto-range span (10000 lx). Relative colour, not a colorimetric measurement."
+                        },
+                        { "key": "G", "label": "Green", "path": ["RGB", "G"], "kind": "readonly", "decimals": 4 },
+                        { "key": "B", "label": "Blue", "path": ["RGB", "B"], "kind": "readonly", "decimals": 4 },
+                        { "key": "H", "label": "Hue", "unit": "°", "path": ["HSB", "H"], "kind": "readonly", "decimals": 1 },
+                        { "key": "S", "label": "Saturation", "path": ["HSB", "S"], "kind": "readonly", "decimals": 3 },
+                        {
+                            "key": "Bri", "label": "Brightness", "path": ["HSB", "B"], "kind": "readonly", "decimals": 4,
+                            "description": "Same scale and denominator as RGB, so a dim room reads near 0.003. Read Illuminance when magnitude matters."
+                        },
+                        {
+                            "key": "CCT", "label": "Colour Temperature", "unit": "K", "kind": "readonly", "decimals": 0,
+                            "description": "Relative and uncalibrated — a documented placeholder RGB→XYZ matrix, so repeatable and monotonic rather than a colorimeter reading. Blank below the low-light floor."
+                        },
+                        {
+                            "key": "RangeAct", "label": "Active Range", "unit": "lx", "kind": "readonly", "decimals": 0,
+                            "description": "The full-scale range this sample was taken on, which under automatic ranging is not always the one currently programmed."
+                        },
+                        { "key": "TS", "label": "Timestamp", "unit": "s", "kind": "readonly", "decimals": 0 }
+                    ]
                 }
             ]
         },
@@ -127,6 +155,72 @@
                         },
                         { "key": "SeaLevelOffs", "label": "Sensor Sea Level Offset", "unit": "m", "kind": "number", "min": -1000.0, "max": 5000.0, "float": true },
                         { "key": "MeanAtmTemp", "label": "Mean Atmospheric Temperature", "unit": "°C", "kind": "number", "min": -50.0, "max": 50.0, "float": true }
+                    ]
+                },
+                {
+                    "key": "ISL29125",
+                    "label": "ISL29125 — Light, Colour",
+                    "submit": true,
+                    "fields": [
+                        { "key": "SampleInterv", "label": "Measurement Interval", "unit": "s", "kind": "number", "min": 1, "max": 3600 },
+                        {
+                            "key": "Resolution", "label": "ADC Resolution", "kind": "enum",
+                            "description": "16 bit integrates for 101 ms, an exact multiple of both the 50 Hz and 60 Hz mains period, so it rejects lighting flicker. 12 bit is ~16× faster and rejects none.",
+                            "options": [ { "value": 12, "label": "12 bit (fast)" }, { "value": 16, "label": "16 bit (flicker-rejecting)" } ]
+                        },
+                        {
+                            "key": "RangeAuto", "label": "Automatic Range", "kind": "toggle", "onLabel": "Auto", "offLabel": "Fixed",
+                            "description": "Switches gain between the two ranges on its own, using the chip's threshold interrupt as the fast path and every periodic read as the guaranteed one."
+                        },
+                        {
+                            "key": "Range", "label": "Fixed Range", "unit": "lx", "kind": "enum",
+                            "description": "Used only while Automatic Range is off.",
+                            "options": [ { "value": 375, "label": "375 lx" }, { "value": 10000, "label": "10000 lx" } ]
+                        },
+                        {
+                            "key": "AutoRangeUp", "label": "Switch-Up Point", "unit": "%", "kind": "number", "min": 50.0, "max": 95.0, "float": true,
+                            "description": "Percent of the low range's full scale above which the driver switches up."
+                        },
+                        {
+                            "key": "AutoRangeDown", "label": "Switch-Down Point", "unit": "%", "kind": "number", "min": 0.2, "max": 3.0, "float": true,
+                            "description": "Percent of the high range's full scale below which the driver switches back down. Must stay at or below Switch-Up Point / 53.3, or the loop chatters on noise alone."
+                        },
+                        {
+                            "key": "AutoRangeSettle", "label": "Settle Margin", "unit": "cycles", "kind": "number", "min": 1, "max": 10,
+                            "description": "Full conversion cycles discarded after any range or resolution change, each of which restarts the conversion."
+                        },
+                        {
+                            "key": "AutoRangePersist", "label": "Transient Rejection", "kind": "enum",
+                            "description": "How many consecutive RGB cycles a light change must persist before the chip raises its threshold interrupt. Each cycle is ~303 ms at 16 bit.",
+                            "options": [
+                                { "value": 1, "label": "1 cycle" }, { "value": 2, "label": "2 cycles" },
+                                { "value": 4, "label": "4 cycles" }, { "value": 8, "label": "8 cycles" }
+                            ]
+                        },
+                        {
+                            "key": "AutoRangeDwell", "label": "Switch-Down Dwell", "unit": "s", "kind": "number", "min": 0.0, "max": 300.0, "float": true,
+                            "description": "Minimum time on the high range before a switch back down is honoured, so a passing shadow does not cost a range change.",
+                            "specialValues": [ { "value": 0.0, "meaning": "No dwell — hardware persistence alone" } ]
+                        },
+                        {
+                            "key": "IrCompOffset", "label": "IR Compensation Offset", "kind": "enum",
+                            "description": "Adds 106 codes on top of IR Compensation Adjust. Changing IR compensation shifts the lux scale.",
+                            "options": [ { "value": 0, "label": "Off (0-63 codes)" }, { "value": 1, "label": "On (106-169 codes)" } ]
+                        },
+                        {
+                            "key": "IrCompAdjust", "label": "IR Compensation Adjust", "unit": "codes", "kind": "number", "min": 0, "max": 63,
+                            "description": "Fine infrared rejection. Changing it shifts the lux scale: the reported full scale is nominal at one setting only."
+                        },
+                        {
+                            "key": "FiltCoeff", "label": "Output Filter", "kind": "number", "min": -1.0, "max": 1.0, "float": true,
+                            "description": "First-order exponential moving average over the measured channels, stepped once per read cycle.",
+                            "specialValues": [ { "value": -1.0, "meaning": "Filter off" } ]
+                        },
+                        {
+                            "key": "ISLResetCal", "label": "Reset Gain Calibration", "kind": "toggle", "onLabel": "On", "offLabel": "Off",
+                            "description": "Only 'On' has effect. Discards the learned range-gain ratio and relearns it from the nominal 26.67.",
+                            "dispatch": true, "defaultValue": false
+                        }
                     ]
                 }
             ]
@@ -244,7 +338,9 @@
                     "label": "Sensor Maintenance",
                     "fields": [
                         { "key": "SGP40_BackupTS", "label": "SGP40 Last Backup", "kind": "readonly" },
-                        { "key": "SGP40_RestoreTS", "label": "SGP40 Restore Timestamp", "kind": "readonly" }
+                        { "key": "SGP40_RestoreTS", "label": "SGP40 Restore Timestamp", "kind": "readonly" },
+                        { "key": "ISL29125_GainRatio", "label": "ISL29125 Learned Gain Ratio", "kind": "readonly", "decimals": 3 },
+                        { "key": "ISL29125_CalTS", "label": "ISL29125 Calibration Timestamp", "kind": "readonly" }
                     ]
                 },
                 {
@@ -273,6 +369,8 @@
                         { "key": "SGP40", "label": "SGP40" },
                         { "key": "CFGMGR_SGP40", "label": "SGP40 Config Store" },
                         { "key": "BMP3XX", "label": "BMP388" },
+                        { "key": "ISL29125", "label": "ISL29125" },
+                        { "key": "CFGMGR_ISL29125", "label": "ISL29125 Config Store" },
                         { "key": "CFGMGR_BMP3XX", "label": "BMP388 Config Store" },
                         { "key": "NEOPIXEL", "label": "Neopixel LED" },
                         { "key": "NOTIFY", "label": "Notification Service" },

@@ -247,6 +247,211 @@ constraints.
     deliberate asymmetry against `_store_err()`'s own guard, and the tier coverage:
     SPECIFICATION.md Part C.7.
 
+17. **Five cross-file consistency findings from the ISL29125 promotion's bird's-eye `src/` scan
+    (CLAUDE.md: reported, not fixed — 2026-09-12).** None is a bug; each is a place two files
+    answer the same question differently, and each needs a decision rather than a drive-by edit.
+    - **`FiltCoeff` means two different things.** In `asy_bmp3xx_driver.py` it is the BMP3xx's
+      on-chip IIR register — a discrete `int` from `_IIR_SETTINGS` (0…127). In
+      `asy_isl29125_driver.py` it is a software EMA coefficient — a `float` in -1.0…1.0 with -1.0
+      meaning off. Same field name, same `/sensors` endpoint, different type and different
+      meaning. No wire collision (the sensor group namespaces it), and both names are locally
+      the natural one. Options: leave it, or give one of them a distinguishing name.
+    - **Four names for two trigger-event roles.** `asy_bmp3xx_driver.py`/`asy_sgp40_driver.py` use
+      `trigger_event`; `asy_scd30_driver.py` uses `start_trigger_event` + `irq_trigger_event`;
+      `asy_isl29125_driver.py` uses `base_trigger_event` + `read_event`, and its own comment says
+      it matches SCD30's shape — which it does structurally, not by name.
+    - **`from asyncio import ThreadSafeFlag` appears in exactly one file** (`asy_scd30_driver.py`);
+      every other file in `src/` writes `asyncio.ThreadSafeFlag`. Pre-existing, not ISL-introduced.
+    - **`_N_*_CFG` constants group on two different axes.** BMP3xx and ISL29125 group by type
+      (`_N_INT_CFG`/`_N_FLOAT_CFG`/`_N_BOOL_CFG`); SGP40 groups by purpose (`_N_SETUP_CFG`/
+      `_N_STORAGE_CFG`).
+    - **Return-annotation quoting is mixed project-wide**, and most files use both forms. Twenty
+      files carry quoted subscripted return annotations, eleven carry unquoted ones. MicroPython
+      never evaluates annotations, so both are safe; there is simply no stated convention.
+    Separately, and already known: `SGPResetVOC` and now `ISLResetCal` are the only two config
+    fields in `src/` carrying a device prefix (open question raised in the promotion plan §8.2,
+    whose own prose says the ISL field does *not* carry one while its §8.3 schema table names it
+    `ISLResetCal` — the code follows the table and the function spec, which agree).
+
+18. **Is the ISL29125's `BOUTF` actually high at power-up? — CLOSED (2026-09-13).** Yes, and the
+    status *read* clears it, which p12 denies. Full lifecycle and evidence: SPECIFICATION.md Part
+    C.11.1.1. The fake models all four transitions now; `src/` needed no change. Original entry
+    kept below for the reasoning that led to it.
+
+    ~~Is the ISL29125's `BOUTF` actually high at power-up?~~ (raised 2026-09-12 by the first real
+    mock-conformance run, SPECIFICATION.md Part C.11.1). Measured and settled: the `0x46` reset
+    command leaves `0x08` reading `0x00`, so it does **not** raise the flag — the twin's `_reset()`
+    was corrected and `simulate_brownout()` added for the supply event. What is **not** settled is
+    p12's claim that the register's power-on default is `0x04`: the probe's own first run issued a
+    reset before its first status read, consuming the evidence, and nothing since has power-cycled
+    the part. To settle it: power-cycle the board while it runs firmware that does **not** call
+    `ISL29125_I2C.setup()` at boot (the pre-ISL dev build, not this branch's), then make a status
+    read the very first transaction — `device_scripts/isl29125_mock_conformance_probe.py`'s own
+    `B01` key does this if nothing precedes it. Low stakes either way: `setup()` clears `BOUTF`
+    unconditionally, so no production behaviour depends on the answer; it decides only whether the
+    fake's `__init__` should keep starting at `_STATUS_POR`.
+
+19. **The ISL29125 NeoPixel auto-range sweep cannot pass as written** — and is now largely
+    *superseded*: the project owner's priority (2026-09-12) is proving the module's mechanisms work
+    under all conditions, not absolute calibration, and
+    `test_isl29125_mechanisms_hold_across_the_whole_illumination_envelope` does exactly that and
+    passes on real hardware. What the sweep still uniquely covers is gain-ratio **convergence and
+    cross-range continuity**, which is the calibration half and is explicitly deprioritised — see
+    item 20 for why a single scalar ratio may be the wrong model anyway. Detail kept below for
+    whenever that is picked up. (found 2026-09-12, first real
+    run of `test_isl29125_autorange_sweep_driven_by_the_boards_own_neopixel`). **The driver is not
+    at fault** — a logged diagnostic run shows it dropping to the 375 lx range at ambient and
+    returning to 10000 lx under the LED, exactly as designed. Two rig/test-design problems:
+    - **The ramp crosses the switch point far too fast.** `request_signal(255, 255, 255, 24.0)`
+      ramps LED *level* linearly, but the whole 0-375 lx band is the bottom ~14% of a ramp that
+      peaks near 2645 lx at this geometry — traversed in about two samples at `SampleInterv = 1`.
+      Consecutive samples measured 39.9 → 373.8 → 1492.9 lx, so `MAX_TRANSITION_STEP = 0.15` is
+      asking the light to hold still where it is moving fastest. A **staircase** (set a level, wait
+      out the settle, sample; step again), with levels concentrated around the switch point, makes
+      continuity a meaningful measurement instead of a race.
+    - **Sweeps 0 and 1 never used the low range at all**, because the script starts the first ramp
+      immediately after `start_asy_read()`, while the driver is still on its configured 10000 lx
+      default — it needs a pre-ramp ambient hold (~3 s was enough in the diagnostic) to settle onto
+      375 lx first. The `lit = lux > 20.0` filter also admits *ambient-dominated* samples, whose hue
+      is genuinely a different light source, which is most of the measured 30.9° hue spread.
+    Both are changes to the test rather than to `src/`, so they are **not** made unilaterally.
+    **The rig itself is fine and needs no physical change**: the fix is to drive the NeoPixel
+    properly. `request_signal()` takes a per-channel peak of 0-255, not just full white, and a
+    peak near the switch point (measured: `(55, 55, 55)` peaks around 1970 lx here) keeps the whole
+    ramp in the band that matters instead of spending ~86% of it above the switch. `t` may run to
+    60 s through the REST schema (`lightCmdLED`'s own `_FIELD_LED_T` bound) and is unbounded when
+    `request_signal()` is called on the instance directly. `pixel.off()` parks the overlay so the
+    WiFi/air-quality signalling cannot compete, and `pixel.on()` with `led_overl_bri` gives a
+    genuinely STEADY white at any 0-255 level — which is the only way to measure cross-range
+    continuity honestly, since a moving ramp confounds the gain step with the light's own rise
+    (measured at ~22%/s through the switch point, against a 15% tolerance).
+
+20. **The ISL29125's range ratio is not a constant — it varies ~28 → ~22 with signal level**
+    (measured 2026-09-12, static light, protocol layer only, `_settled()` discarding the stale
+    window). Six illuminants × three channels = 18 independent estimates, and the pattern is
+    unambiguous: in every scene the **brightest** channel has the **lowest** ratio, regardless of
+    colour, so this is a level effect and not a spectral one.
+
+    | scene | low counts (G,R,B) | ratio (G,R,B) |
+    |---|---|---|
+    | ambient | 7645, 5995, 4101 | 28.11, 28.01, 28.09 |
+    | red `(6,0,0)` | 20298, **29674**, 8415 | 27.14, **24.44**, 29.32 |
+    | green `(0,6,0)` | **29068**, 9816, 16555 | **24.89**, 29.30, 27.92 |
+    | blue `(0,0,6)` | 13497, 5940, **37436** | 29.73, 28.15, **23.40** |
+    | white `(4,4,4)` | 32469, 24548, 36331 | 24.19, 25.05, 23.42 |
+
+    A level sweep agrees independently: low-range peak 7637 → 28.08, 36106 → 23.29, 50408 → 22.49,
+    64078 → 21.55. PWM dimming cannot explain it — both ranges share the same 101 ms integration,
+    so a duty-cycle artefact cancels in the ratio. The likeliest reading is low-range compression
+    well below full scale (a high-range under-read at small counts would fit the same data, and
+    telling them apart needs a reference meter, so this stays stated as the observation).
+
+    **Why it matters for `src/`, and why nothing was changed:** the driver models the ratio as one
+    scalar device constant (`_GAIN_RATIO_NOMINAL`, a `[20.0, 34.0]` plausibility gate, an hourly
+    EMA relearn). The whole observed span sits *inside* that gate, so the guard never fires. The
+    ratio is learned in the overlap band, where the low range is near its top and therefore reads
+    **~22-23** — which is right for switch-point continuity and is arguably exactly where it
+    should be learned. The corollary is the uncomfortable one: at genuinely low light the true
+    ratio is ~28, so a learned 22.5 would make a low-light cross-range comparison **worse**, not
+    better. Measured instance: the driver reported one static ambient as 37.84 lx on the high range
+    vs 39.91 lx on the low — 5.5% apart, matching nominal 26.67 against the true 28.08 exactly.
+    Correcting my earlier note in this session: **28.16 is not "this unit's gain ratio"**, it is
+    its ratio at ambient light level only.
+
+    Open question for the owner: is one scalar the right model, or should the ratio be learned/
+    applied as a function of level (or simply pinned to the overlap band and documented as such)?
+    One unit, one geometry, one session — worth reproducing on a second board before acting.
+
+21. **The ISL29125 flash-tier tests need this branch's firmware flashed** (2026-09-12; the
+    BOUTF reason for deferring it is gone as of 2026-09-13, open question 18 being closed). Five ISL device scripts import `asy_isl29125_driver`, which is **not**
+    in the firmware on the bench board (a pre-ISL `dev` build). `harness.Board.run_isolated()` does
+    not mount, so `uv run pytest tests_hardware/flash -k isl29125` fails with
+    `ImportError: no module named 'asy_isl29125_driver'` for every one of them. Everything was
+    therefore verified by running the same scripts through `mpremote ... mount <dir>` with the two
+    branch-only modules (`asy_isl29125_driver`, the extended `math_helpers`) cross-compiled to
+    `.mpy` — real hardware, real drivers, just supplied from the host instead of frozen.
+
+    **Why it was not simply flashed**: this branch's firmware calls `ISL29125_I2C.setup()` at every
+    boot, which clears `BOUTF` — foreclosing open question 18 for good. The pre-ISL firmware
+    currently on the board never touches the part, which is the only state in which 18 can still be
+    answered. **To close both**: power-cycle the board and run
+    `device_scripts/isl29125_mock_conformance_probe.py` first (its `B01` key is the very first
+    status read), then flash `uv run scripts/build_firmware.py dev` and run the whole flash tier
+    with `--allow-neopixel-sweep`. The uf2 is already built at `build/firmware-dev-isl.uf2`.
+    Note `mpremote mount` also needs care: the board's production watchdog stays armed across a
+    raw-REPL interrupt, so the mount handshake plus a slow import can trip the 8 s ceiling — chain
+    `exec "import machine; machine.WDT(timeout=8000)"` before `mount` to refresh it first.
+
+22. **What the ISL29125 module has been proven to do on real hardware** (2026-09-12) — recorded so
+    a later session does not redo it. Three new flash-tier tests, all passing, all structural or
+    relative (no absolute-lux assertion anywhere):
+    - `test_the_isl29125_mock_answers_the_bus_exactly_as_the_real_chip_does` — 36/36 protocol keys
+      match between the real part and the twin fake (Part C.11.1 for what the first run found).
+    - `test_isl29125_mechanisms_hold_across_the_whole_illumination_envelope` — ascending and
+      descending steady levels, 39 → 8928 lx; both ranges; 2 switches across a full up-and-down;
+      fixed-range pinning; 12-bit vs 16-bit agreeing to 0.4% on one static scene; `ISLResetCal`;
+      `W14` firing at hard saturation; **no `W15`**, which proves the INT line is carrying the
+      range decisions rather than the periodic fallback silently covering for a dead interrupt.
+    - `test_isl29125_survives_recombined_realistic_lighting_scenarios` — 10 scenarios, 520 samples,
+      1.0-8930 lx, zero errors and zero coherence violations.
+    Also confirmed directly: device ID `0x7D`, the real falling-edge INT fast path beating a 30 s
+    periodic fallback by 0.61 s, `PRST` counting whole RGB cycles (1066 ms at PRST=4), the
+    `CONFIG1`-write conversion restart, 12-bit data being right-aligned, and both concurrency
+    scripts (same-device read/write, and cross-device interleaving against SCD30 + SGP40).
+
+23. **A hardware test that depends on an unstated rig condition is the recurring failure mode in
+    this tier** (pattern, 2026-09-13 — worth reading before writing a new one). Three instances so
+    far, all found by actually running the tests rather than by review:
+    - `isl29125_real_irq_edge.py` assumed a scene near a range boundary. A latched-white NeoPixel
+      (~2000 lx) is static and mid-band, crosses no threshold, and so produces no threshold
+      interrupt — correct driver behaviour, failing test. **Fixed**: the script parks the pixel.
+    - `isl29125_autorange_sweep.py` assumes the LED ramp crosses the switch point slowly enough to
+      sample; it does not (item 19).
+    - the first `isl29125_lighting_scenarios.py` oscillation scenario put both its levels inside
+      the hysteresis band and passed with `switches=0` (item 22's own note).
+    - `isl29125_plausibility_read.py` depended on ambient, so its result depended on **test
+      ordering**: it passed while the pixel was latched white by the interrupted WiFi signalling,
+      then failed once the fixed IRQ script (above) began parking the pixel dark before it
+      (`Lux=1.07` against a 5.0 floor, sensor covered). The nastiest of the four, because the test
+      itself never changed. **Fixed**: it lights its own scene at a known level and parks the pixel
+      dark again on the way out, so it neither depends on nor imposes bench state.
+    The three habits that catch this class: **a device script provides its own light** rather than
+    trusting the bench state, **it restores that state on the way out** so it cannot decide a later
+    script's result, and it **asserts a minimum engagement** (this must switch / both ranges
+    must be used) alongside every ceiling, so a test cannot pass while the mechanism it targets
+    never runs.
+
+24. **The two live-backend browser tests fail locally on a stale/stub frozen website** (observed
+    2026-09-13 on this branch; **not caused by it** — nothing in the ISL29125 work touches the web
+    lane, and 575/576 `tests_js` tests pass). `npx vitest run` reports 2 failed files, 1 failed
+    test:
+    - `tests_js/live-backend.test.js` — the browser-driven PUT round-trip fails with
+      `page.waitForSelector: Timeout 10000ms exceeded` waiting for `[data-section-key="system"]`.
+      The captured HTML in the failure shows why: the twin served the **wozi placeholder stub**
+      (`<title>wozi placeholder</title>`, `Hello, wozi! (placeholder stub)`), not the real site.
+    - `tests_js/live-backend-put-matrix.test.js` — fails at *collection* with
+      `startLiveMatrix failed: digital twin never started serving on 127.0.0.1:19412 within
+      20000ms`, twin stderr empty. Whether this is the same root cause surfacing earlier or a
+      separate boot/port problem was **not** established.
+
+    **Confirmed root cause for the first one.** `frozen_modules/` is a gitignored build artifact
+    and currently holds `frozen_html.py` at 8 KB — the stub, built by `scripts/build_frozen_html.sh`
+    from `html_stub/` — alongside a separate 84 KB `frozen_website_wozi.py`. `sensortask_dev.py`'s
+    top-level `import frozen_html` is what mounts `/html`, so the twin serves whatever that module
+    contains; here, the placeholder. The tracked `html/index.html` *is* the real site, so this is
+    purely about which artifact got built into `frozen_modules/`.
+
+    **Also worth fixing, and arguably the real defect:** `tests_js/live-backend.test.js`'s own
+    docstring promises it "skips itself with a clear message if the MicroPython toolchain/frozen
+    website aren't built yet, rather than failing the suite" — but `_live_twin_command.js`'s guard
+    only checks that the Unix-port binary exists. It does not check that the frozen module is the
+    **real** website, so a stub build fails with a confusing selector timeout instead of skipping
+    as designed. Widening that guard would have turned this into a one-line skip message.
+
+    Left for the web lane's owner: not investigated further, and nothing was rebuilt, since a
+    `scripts/build_website.sh` run changes a gitignored artifact that other work on this bench may
+    be relying on.
+
 ## Deferred / explicitly out-of-scope work
 - **The 1.29.0 pin is now field-proven on the dev bench (2026-09-11).** Real `dev` firmware built
   from `src/` and flashed; `sys.implementation` on target reports `(1, 29, 0)` / `_mpy=4870` /
@@ -517,9 +722,14 @@ constraints.
   `improved-quality/sensortask-wozi.py` is deleted, but `src/sensortask_wozi.py` itself still calls
   it by the current name, so this remains a real (if small) call-site update.
 - **`asy_i2c_driver.py`'s `get_bits`/`set_bits`/`get_register_struct` still call the allocating
-  `readfrom_mem()` rather than zero-copy `readfrom_mem_into()`** — no real caller needs the
-  zero-copy path yet, but worth doing before `asy_isl29125_driver.py` (its one plausible future
-  caller) is migrated.
+  `readfrom_mem()` rather than zero-copy `readfrom_mem_into()`** — this was written as "worth doing
+  before `asy_isl29125_driver.py` is migrated", and that migration has now happened without it.
+  **Still not done, deliberately, and worth a decision rather than silent carry-over**: the ISL's
+  own hot path is one `get_register_struct(_REGISTER_DATA, "6s")` per read cycle — a 6-byte
+  allocation at the configured sample interval, nowhere near the fixed-size-buffer bar Part I
+  reserves the zero-copy treatment for. The cost of doing it is a changed signature on three shared
+  methods every existing driver calls. Left as the same low-priority item it was, no longer blocked
+  on anything.
 - **`asy_scd30_driver.py`'s persistent NVM setters have no published write-cycle endurance figure**
   (checked every available Sensirion doc) — safe today only because every setter is REST-triggered,
   never called from a boot path or periodic loop. Don't add a periodic/high-frequency caller

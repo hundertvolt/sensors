@@ -51,7 +51,21 @@ const DEFS = {
             label: "Measurements",
             rest: { get: "/measurements" },
             pollGroup: "live",
-            groups: [{ key: "SCD30", label: "SCD30", fields: [{ key: "CO2", label: "CO2", unit: "ppm", kind: "readonly" }] }],
+            groups: [
+                { key: "SCD30", label: "SCD30", fields: [{ key: "CO2", label: "CO2", unit: "ppm", kind: "readonly" }] },
+                {
+                    // A nested, precision-declared measurement group - the shape the ISL29125's
+                    // own body introduced (SPECIFICATION.md Part H.5's `path`/`decimals` hints).
+                    key: "COLOUR",
+                    label: "Colour",
+                    fields: [
+                        { key: "Lux", label: "Illuminance", unit: "lx", kind: "readonly", decimals: 2 },
+                        { key: "R", label: "Red", kind: "readonly", path: ["RGB", "R"], decimals: 4 },
+                        { key: "Bri", label: "Brightness", kind: "readonly", path: ["HSB", "B"], decimals: 4 },
+                        { key: "CCT", label: "Colour Temperature", unit: "K", kind: "readonly", decimals: 0 },
+                    ],
+                },
+            ],
         },
         {
             key: "sensors",
@@ -140,7 +154,11 @@ function getSection(key) {
 }
 
 const DATA = {
-    measurements: { SCD30: { CO2: 600 } },
+    measurements: {
+        SCD30: { CO2: 600 },
+        // A lit scene, and a coherent one: HSB.B is max(R, G, B) as the real driver computes it.
+        COLOUR: { Lux: 337.4219, RGB: { R: 0.2814159, G: 0.6337, B: 0.151 }, HSB: { H: 78.4, S: 0.552, B: 0.6337 }, CCT: null },
+    },
     sensorsConfig: { SCD30: { MeasInt: 5, COffset: 10, MeasEnabled: true, Oversampling: 1 } },
     networkingConfig: {},
     systemConfig: {},
@@ -196,6 +214,41 @@ describe("renderSection", () => {
         const value = mustQuery(main, '[data-field-key="CO2"]');
         expect(Number(value.textContent)).toBeGreaterThan(590);
         expect(Number(value.textContent)).toBeLessThan(610);
+    });
+
+    it("renders a nested measurement field's own leaf at its declared precision, not [object Object]", async () => {
+        // The full path the ISL29125 introduced: definitions.js walks field.path, field-format.js
+        // applies field.decimals, and templates.js renders the result - with nothing in src/
+        // rounding anything on the way.
+        // Randomness pinned to its midpoint, which is exactly zero jitter, so every expectation
+        // below is an exact string rather than a shape. Asserting a regex here let a real defect
+        // through once: the mock's 0.05 absolute jitter floor was taking a 0.0337 brightness
+        // negative about a third of the time, and `/^\\d\\.\\d{4}$/` failed on "-0.0100" only when
+        // the dice landed that way. The floor is fixed in js/mock-server.js; this keeps the test
+        // from depending on the dice at all.
+        const random = vi.spyOn(Math, "random").mockReturnValue(0.5);
+        try {
+            uninstall = installMockFetch(DEFS, DATA);
+            const main = mount();
+            stop = renderSection(DEFS, getSection("measurements"), main);
+
+            await waitFor(() => main.querySelector('[data-field-key="R"]') !== null);
+
+            const red = mustQuery(main, '[data-field-key="R"]').textContent ?? "";
+            expect(red).not.toContain("object");
+            expect(red).toBe("0.2800"); // the field's own decimals: 4, over the mock's 2dp rounding
+            const brightness = mustQuery(main, '[data-field-key="Bri"]').textContent ?? "";
+            // RGB.B (0.151) and HSB.B (0.6337) are different values under the same leaf name -
+            // which is the whole reason the measurement body is nested rather than flattened.
+            // Resolving the path wrongly would render either 0.1500 or the red above.
+            expect(brightness).toBe("0.6300");
+            expect(brightness).not.toBe(red);
+            expect(mustQuery(main, '[data-field-key="Lux"]').textContent).toBe("337.42");
+            // A null CCT (a dark room) stays an em dash rather than becoming "null" or 0.
+            expect(mustQuery(main, '[data-field-key="CCT"]').textContent).toBe("\u2014");
+        } finally {
+            random.mockRestore();
+        }
     });
 
     it("renders a writable number field pre-filled via its current-value caption, and a toggle button", async () => {
