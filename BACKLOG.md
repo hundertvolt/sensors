@@ -530,8 +530,9 @@ constraints.
     `scripts/build_website.sh` run changes a gitignored artifact that other work on this bench may
     be relying on.
 
-25. **Seven classes in `src/` do not satisfy SPECIFICATION.md D.15's method ordering** (measured
-    2026-09-13 with an AST checker, after `asy_isl29125_driver.py` was sorted to conform). The
+25. **Eleven of the 74 classes in `src/` do not satisfy SPECIFICATION.md D.15's method ordering**
+    (re-measured 2026-09-13 with an AST checker *after* the UART promotion merged - it was seven
+    before that, and the four it added are what make the recommendation below stronger, not weaker). The
     checker reads D.15 the way the drivers already practise it: privates before publics, the
     *public* group ordered starters/getters/setters/others, and `stop_X` counted as a starter only
     when the class really has a `start_X` to pair it with. Both reference drivers
@@ -541,7 +542,13 @@ constraints.
     `ConfigManager` (`reset_error_counter` between getters), `SystemService` (`_set_dict_cfg`
     and `_apply_level` among publics, `get_cfg_schema` after `setup`), and the three
     `asy_webserver_service.py` protocol stubs `_ModuleLike`/`_StreamLike`/`_TimeoutStreamProxy`
-    (which mirror an interface's own declaration order).
+    (which mirror an interface's own declaration order). The UART promotion added four more:
+    `UART_Comm` (privates and publics interleaved throughout, and its starters/getters group sits
+    LAST rather than first), `UART` (`resync_framing` among the privates), and
+    `Framing_Base`/`Framing_COBS` (`_checked` mid-public, the same interface-shaped pattern as the
+    webserver stubs). That matters for the decision below: `asy_uart_comm.py` is the newest, most
+    recently reviewed module in `src/`, written long after D.15 existed, and it does not follow it
+    either.
     One further observation the same sweep produced: **no file role-orders its PRIVATE group** —
     `BMP3XX_I2C` has `_get_osr_setting` before `_read`, `AsyNtpClient` has `_get_ntp_config` and
     `_set_synced` among "others". So D.15's "within each group" is, in practice, applied to the
@@ -563,7 +570,10 @@ constraints.
    `asy_ntp_client.py` (`wrnno` 1-3), `asy_notification_service.py` (`wrnno` 1-5 - its `errno` was
    already renumbered to 10-13 for exactly this reason). Conformant today:
    `asy_sgp40_driver.py` (`errno` 10-18, `wrnno` 10-14), `asy_bmp3xx_driver.py`,
-   `asy_scd30_driver.py`, `asy_fram_manager.py`/`asy_fram_driver.py`.
+   `asy_scd30_driver.py`, `asy_fram_manager.py`/`asy_fram_driver.py`, and - checked 2026-09-13
+   after the merge, since that driver and this audit were written concurrently and it appeared in
+   neither list - `asy_isl29125_driver.py` (`errno` 10-38, `wrnno` 10-17), clear of both reserved
+   ranges.
    **No live clash exists** - none of the seven currently shares a logger with a `SensorReader`
    instance, so the reserved codes never reach the same history stream. It becomes a real defect
    the moment one of them gains a `logger=` reach-through, which is exactly the pattern
