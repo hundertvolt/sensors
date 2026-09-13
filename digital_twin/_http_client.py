@@ -2,6 +2,7 @@
 Every response it sees carries `Connection: close`, so no keep-alive support is needed. See `digital_twin/README.md`'s "What's here" section."""
 
 import asyncio
+import gc
 import json
 
 try:
@@ -58,6 +59,9 @@ async def fetch(host: str, port: int, method: str, path: str, json_body: "dict[s
     # reader/writer are the same underlying Stream object on this build (two names kept only for
     # readability/symmetry with Microdot's own convention) - close() is a no-op here, the socket
     # only actually closes via wait_closed() in the finally below.
+    # Collects the previous fetch()'s own now-garbage headers dict/body bytes before this one
+    # starts allocating - see the second gc.collect() below for why this matters on this heap.
+    gc.collect()
     reader, writer = await asyncio.open_connection(host, port)
     try:
         writer.write(build_request(method, path, host, json_body))
@@ -73,6 +77,11 @@ async def fetch(host: str, port: int, method: str, path: str, json_body: "dict[s
             headers[name] = value
 
         content_length = headers.get("Content-Length")
+        # A big contiguous allocation (the response body, up to several KB for the frozen website)
+        # right after several smaller header-parsing ones is exactly the shape that MemoryErrors on
+        # a fragmented Unix-port heap (see the CI failure this was added to fix) - collect first so
+        # the allocator has the best chance of finding room for it.
+        gc.collect()
         # read(-1) reads until EOF - a safe fallback for a missing Content-Length, though every real
         # response this client sees does carry one (Microdot sets it whenever missing).
         body = await reader.readexactly(int(content_length)) if content_length is not None else await reader.read(-1)
