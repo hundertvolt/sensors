@@ -168,7 +168,7 @@ None is a driver defect, and each one looks like one if you do not know it:
   | falling | from level 2 (~76 lx) | to level 3 (~112 lx) |
 
   So **levels 2-8 sit INSIDE the band and cannot force a switch in either direction**. The
-  decision itself lands in 500-800 ms at the default `AutoRangePersist = 2` (see the next section);
+  decision itself lands in 500-800 ms at the derived `PRST = 2` (see the next section);
   `isl29125_lighting_scenarios.py` nonetheless holds a level for 8 s before asserting on a switch,
   which is deliberate margin over that latency, not an estimate of it. The band is geometry- and
   cover-dependent: re-measure with that script's own levels if the rig changes.
@@ -176,11 +176,11 @@ None is a driver defect, and each one looks like one if you do not know it:
 ## Which path decides a range switch, and the rule that governs it
 
 Measured 2026-09-13, six forced crossings per setting: the chip cannot raise `RGBTHF` before
-`AutoRangePersist` whole RGB cycles have passed (303 ms each at 16 bit), while the driver
+`PRST` whole RGB cycles have passed (303 ms each at 16 bit), while the driver
 re-evaluates the same condition in software on every sample with no persistence requirement at
 all. **Whichever window is shorter decides every switch.**
 
-| `AutoRangePersist` | window at 16 bit | against `SampleInterv = 1` | measured |
+| `PRST` | window at 16 bit | against `SampleInterv = 1` | measured |
 |---|---|---|---|
 | 4 | 1212 ms | longer - software wins | 5 of 6 switches periodic-led, latency pinned at ~1000 ms |
 | 2 | 606 ms | shorter - interrupt wins | 6 of 6 interrupt-led, 500-800 ms |

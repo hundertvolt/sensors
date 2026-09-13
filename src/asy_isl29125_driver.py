@@ -130,13 +130,6 @@ _VAL_RNG = const((("Range", "int", 10000, None, None, _RANGES),))
 _VAL_AR_UP = const((("AutoRangeUp", "float", 85.0, _MIN_AR_UP, _MAX_AR_UP, None),))
 _VAL_AR_DOWN = const((("AutoRangeDown", "float", 1.5, _MIN_AR_DOWN, _MAX_AR_DOWN, None),))
 _VAL_AR_SETTLE = const((("AutoRangeSettle", "int", 1, _MIN_SETTLE_CYCLES, _MAX_SETTLE_CYCLES, None),))
-# 2, not 4: PRST is measured in whole RGB cycles, so 4 of them is 1212ms at 16 bit - LONGER than
-# the 1s default SampleInterv, which makes the periodic evaluation beat the chip's own interrupt
-# to every decision and leaves the hardware fast path requirement 5 mandates structurally dead.
-# Measured on the bench 2026-09-13: at PRST=4, 5 of 6 switches were periodic-led at a flat ~1000ms;
-# at PRST=2 (606ms), 6 of 6 were interrupt-led at 500-800ms. Two cycles still reject a single-cycle
-# transient, which is what the field is for. See SPECIFICATION.md Part C.11.1.3.
-_VAL_AR_PERSIST = const((("AutoRangePersist", "int", 2, None, None, _PRST_SETTINGS),))
 _VAL_AR_DWELL = const((("AutoRangeDwell", "float", 10.0, _MIN_DWELL_S, _MAX_DWELL_S, None),))
 _VAL_ICO = const((("IrCompOffset", "int", 0, None, None, _IR_OFFSETS),))
 _VAL_ICA = const((("IrCompAdjust", "int", 40, 0, 63, None),))
@@ -152,7 +145,7 @@ _VAL_GR = const((("GainRatio", "float", _GAIN_RATIO_NOMINAL, _GAIN_RATIO_MIN, _G
 # ConfigManager's _cache, so either would fail at runtime rather than at type-check time.
 _VAL_CALIB = const((("ISLCalibrate", "bool", None, None, None, True),))
 
-_N_INT_CFG = const(7)  # SampleInterv + Resolution + Range + AutoRangeSettle + AutoRangePersist + IrCompOffset + IrCompAdjust
+_N_INT_CFG = const(6)  # SampleInterv + Resolution + Range + AutoRangeSettle + IrCompOffset + IrCompAdjust
 _N_FLOAT_CFG = const(5)  # AutoRangeUp + AutoRangeDown + AutoRangeDwell + FiltCoeff + GainRatio
 _N_BOOL_CFG = const(1)  # RangeAuto ALONE - ISLCalibrate is command-only (see _VAL_CALIB above)
 _N_STORE_CFG = const(1)  # FiltCoeff ALONE - the only config value the store path reads per sample
@@ -189,7 +182,7 @@ class ISL29125_Reader(SensorReaderConfig):
             max_module_error,
             _NAME,
             _VAL_SI + _VAL_RES + _VAL_RA + _VAL_RNG + _VAL_AR_UP + _VAL_AR_DOWN + _VAL_AR_SETTLE
-            + _VAL_AR_PERSIST + _VAL_AR_DWELL + _VAL_ICO + _VAL_ICA + _VAL_FC + _VAL_GR + _VAL_CALIB,
+            + _VAL_AR_DWELL + _VAL_ICO + _VAL_ICA + _VAL_FC + _VAL_GR + _VAL_CALIB,
             cfg_path=cfg_path,
             fram=fram,
             history_length=history_length,
@@ -244,7 +237,6 @@ class ISL29125_Reader(SensorReaderConfig):
         self._push_callbacks[name_cfg(_VAL_AR_UP)] = self._push_autorange_up
         self._push_callbacks[name_cfg(_VAL_AR_DOWN)] = self._push_autorange_down
         self._push_callbacks[name_cfg(_VAL_AR_SETTLE)] = self._push_autorange_settle
-        self._push_callbacks[name_cfg(_VAL_AR_PERSIST)] = self._push_autorange_persist
         self._push_callbacks[name_cfg(_VAL_AR_DWELL)] = self._push_autorange_dwell
         self._push_callbacks[name_cfg(_VAL_ICO)] = self._push_ir_comp_offset
         self._push_callbacks[name_cfg(_VAL_ICA)] = self._push_ir_comp_adjust
@@ -259,7 +251,6 @@ class ISL29125_Reader(SensorReaderConfig):
         self._get_callbacks[name_cfg(_VAL_RNG)] = self.get_range
         self._get_callbacks[name_cfg(_VAL_ICO)] = self.get_ir_comp_offset
         self._get_callbacks[name_cfg(_VAL_ICA)] = self.get_ir_comp_adjust
-        self._get_callbacks[name_cfg(_VAL_AR_PERSIST)] = self.get_autorange_persist
 
     # -- lifecycle ---------------------------------------------------------
 
@@ -275,7 +266,7 @@ class ISL29125_Reader(SensorReaderConfig):
         self.pr.one("Setting sensor config at startup.")
 
         int_values = await self.cfgmgr.get_int_values(
-            _VAL_SI + _VAL_RES + _VAL_RNG + _VAL_AR_SETTLE + _VAL_AR_PERSIST + _VAL_ICO + _VAL_ICA,
+            _VAL_SI + _VAL_RES + _VAL_RNG + _VAL_AR_SETTLE + _VAL_ICO + _VAL_ICA,
         )
         float_values = await self.cfgmgr.get_float_values(_VAL_AR_UP + _VAL_AR_DOWN + _VAL_AR_DWELL + _VAL_FC + _VAL_GR)
         # The bool batch is RangeAuto alone, and it is not optional: step 9 below cannot decide
@@ -305,9 +296,12 @@ class ISL29125_Reader(SensorReaderConfig):
             await self.isl.configure(
                 resolution=int_values[1],
                 range_fs=self._active_range,
-                persist=int_values[4],
-                ir_offset=int_values[5],
-                ir_adjust=int_values[6],
+                # Derived from the two fields that determine it, never stored - see
+                # persist_for_interval(). configure() applies the resolution from this same call,
+                # so the cycle length it is chosen against is the one about to be in force.
+                persist=self.isl.persist_for_interval(int_values[0]),
+                ir_offset=int_values[4],
+                ir_adjust=int_values[5],
                 threshold_interrupt=self._range_auto,
             )
         except Exception as e:
@@ -413,13 +407,15 @@ class ISL29125_Reader(SensorReaderConfig):
             return
         self._periodic_only_switches = 0
         # "Interrupt-led" means the LINE woke this cycle AND the chip had latched the crossing -
-        # both, because either on its own is still satisfied by a fault. Two situations reach here,
-        # and blaming the wiring for the arithmetic one sends whoever reads the log off after a
-        # fault that is not there: the chip cannot raise RGBTHF before AutoRangePersist whole RGB
-        # cycles have passed, so a sample interval shorter than that window means the periodic
-        # path wins every race by construction, with nothing wrong anywhere.
+        # both, because either on its own is still satisfied by a fault. The chip cannot raise
+        # RGBTHF before PRST whole RGB cycles have passed, so a window outlasting the sample
+        # interval makes the periodic path win every race with nothing wrong at the wiring at all.
+        # persist_for_interval() now derives PRST precisely so that cannot happen, which makes this
+        # an INVARIANT check rather than the misconfiguration detector it started as: it can only
+        # fire if that derivation is wrong, and it exists so such a bug reports itself instead of
+        # masquerading as the dead-line fault below.
         if self.isl.persist_window_ms() >= int(await self.trigger_period.get_value()) * 1000:
-            await self.pr.wrn_s("AutoRangePersist outlasts SampleInterv - the periodic path decides the range and the interrupt cannot lead.", wrnno=17)
+            await self.pr.wrn_s("Derived transient rejection outlasts SampleInterv - the interrupt cannot lead. This is a driver bug, not a wiring fault.", wrnno=17)
             return
         await self.pr.wrn_s("Range decided by the periodic path only - the interrupt may be dead.", wrnno=15)
 
@@ -681,19 +677,18 @@ class ISL29125_Reader(SensorReaderConfig):
         except Exception as e:
             await self.pr.err_s("Error reading config from sensor:", e, errno=28)
             return dict.fromkeys(
-                (name_cfg(_VAL_RES), name_cfg(_VAL_RNG), name_cfg(_VAL_ICO), name_cfg(_VAL_ICA), name_cfg(_VAL_AR_PERSIST)),
+                (name_cfg(_VAL_RES), name_cfg(_VAL_RNG), name_cfg(_VAL_ICO), name_cfg(_VAL_ICA)),
                 None,
             )
         await self._check_divergence(raw)
         decoded = self.isl.decode_config(raw)
         if decoded is None:
             return {}
-        resolution, range_fs, ir_offset, ir_adjust, persist = decoded
+        resolution, range_fs, ir_offset, ir_adjust, _persist = decoded
         result: dict[str, int | float | str | bool | None] = {
             name_cfg(_VAL_RES): resolution,
             name_cfg(_VAL_ICO): ir_offset,
             name_cfg(_VAL_ICA): ir_adjust,
-            name_cfg(_VAL_AR_PERSIST): persist,
         }
         # Under auto-range the chip's RNG bit is the state machine's choice, not the user's
         # setting, so reporting it as the Range CONFIG field would overwrite the stored preference
@@ -738,6 +733,16 @@ class ISL29125_Reader(SensorReaderConfig):
             return None
         return coerced
 
+    async def _reapply_persist(self, trigger_secs: int) -> bool:
+        # Called by the only two setters whose value feeds the derivation. Writing the same value
+        # back is free - configure() diffs the shadow and writes nothing when nothing changed.
+        try:
+            await self.isl.configure(persist=self.isl.persist_for_interval(trigger_secs))
+        except Exception as e:
+            await self.pr.err_s("Error applying the derived transient rejection:", e, errno=24)
+            return False
+        return True
+
     async def _check_cross_field(self, *, up: float, down: float, field: str) -> bool:
         # FieldSchema's per-field min/max cannot express a relation between two fields, so the
         # driver enforces it: immediately after a switch up the same light reads u/r of the high
@@ -770,9 +775,6 @@ class ISL29125_Reader(SensorReaderConfig):
 
     async def _push_autorange_settle(self, value: "int | float | str | bool | None") -> bool:
         return type(value) is int and await self.set_autorange_settle(value)
-
-    async def _push_autorange_persist(self, value: "int | float | str | bool | None") -> bool:
-        return type(value) is int and await self.set_autorange_persist(value)
 
     async def _push_autorange_dwell(self, value: "int | float | str | bool | None") -> bool:
         return type(value) is float and await self.set_autorange_dwell(value)
@@ -865,7 +867,7 @@ class ISL29125_Reader(SensorReaderConfig):
         return await self._get_dict_cfg(
             _NAME,
             _VAL_SI + _VAL_RES + _VAL_RA + _VAL_RNG + _VAL_AR_UP + _VAL_AR_DOWN + _VAL_AR_SETTLE
-            + _VAL_AR_PERSIST + _VAL_AR_DWELL + _VAL_ICO + _VAL_ICA + _VAL_FC + _VAL_GR,
+            + _VAL_AR_DWELL + _VAL_ICO + _VAL_ICA + _VAL_FC + _VAL_GR,
             callback=self._read_sensor_dict,
         )
 
@@ -884,9 +886,6 @@ class ISL29125_Reader(SensorReaderConfig):
     async def get_ir_comp_adjust(self) -> int | None:
         return await self._snapshot_field(3, 21, "IR compensation adjust")
 
-    async def get_autorange_persist(self) -> int | None:
-        return await self._snapshot_field(4, 23, "AutoRangePersist")
-
     # -- setters -----------------------------------------------------------
 
     async def set_trigger_secs(self, value: float) -> bool:
@@ -894,13 +893,16 @@ class ISL29125_Reader(SensorReaderConfig):
         if trigger_secs is None:
             return False
         await self.trigger_period.set_value(int(trigger_secs))
-        return True
+        return await self._reapply_persist(int(trigger_secs))
 
     async def set_resolution(self, value: int) -> bool:
         try:
             await self.isl.configure(resolution=value)
         except Exception as e:
             await self.pr.err_s("Error setting resolution:", e, errno=16)
+            return False
+        # A resolution change changes the cycle length, so the derived persistence changes with it.
+        if not await self._reapply_persist(int(await self.trigger_period.get_value())):
             return False
         if self._range_auto:
             # The threshold registers are compared against the RAW ADC value, so they are scaled
@@ -960,14 +962,6 @@ class ISL29125_Reader(SensorReaderConfig):
         if cycles is None:
             return False
         self.isl.settle_cycles = int(cycles)
-        return True
-
-    async def set_autorange_persist(self, value: int) -> bool:
-        try:
-            await self.isl.configure(persist=value)
-        except Exception as e:
-            await self.pr.err_s("Error setting AutoRangePersist:", e, errno=24)
-            return False
         return True
 
     async def set_autorange_dwell(self, value: float) -> bool:
@@ -1271,6 +1265,23 @@ class ISL29125_I2C:
         # The earliest the chip can raise RGBTHF after a crossing: PRST whole RGB cycles (p11,
         # Table 12). Lives here because both figures it needs are the shadow's own.
         return self._persist * self.cycle_ms()
+
+    def persist_for_interval(self, trigger_secs: int) -> int:
+        # PRST is DERIVED, never configured - the largest transient rejection whose window still
+        # closes inside one sample interval, so the chip's interrupt always gets to raise RGBTHF
+        # before the periodic re-check would have decided anyway. Configuring it by hand is what
+        # left the hardware fast path structurally dead (SPECIFICATION.md Part C.11.1.3): 4 cycles
+        # is 1212ms at 16 bit, longer than the 1s default interval. At 16 bit / 1s this picks 2,
+        # which the bench measured at 6 of 6 interrupt-led switches in 500-800ms; at 12 bit a cycle
+        # is ~16x shorter, so it picks 8 and rejects far more transient noise for free.
+        cycle = self.cycle_ms()
+        options: tuple[int, ...] = _PRST_SETTINGS  # const() is Any to mypy; same annotation decode_config() uses
+        for persist in reversed(options):
+            if persist * cycle < trigger_secs * 1000:
+                return persist
+        # Unreachable at the current schema bounds - one 16-bit cycle is 303ms against a minimum
+        # 1s interval - but this is the honest degradation if either bound ever moves.
+        return options[0]
 
     def time_to_settle_ms(self) -> int:
         return max(0, time.ticks_diff(self._settle_until_ms, time.ticks_ms()))

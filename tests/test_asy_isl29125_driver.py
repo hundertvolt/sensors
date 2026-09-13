@@ -1667,7 +1667,7 @@ def test_read_sensor_dict_reports_the_five_hardware_backed_fields() -> None:
     reader._range_auto = False
     with _FastAsyncSleep():
         result = run(reader._read_sensor_dict())
-    assert set(result) == {"Resolution", "Range", "IrCompOffset", "IrCompAdjust", "AutoRangePersist"}
+    assert set(result) == {"Resolution", "Range", "IrCompOffset", "IrCompAdjust"}
 
 
 def test_read_sensor_dict_key_names_produce_no_unknown_key_warning() -> None:
@@ -1708,7 +1708,7 @@ def test_read_sensor_dict_returns_all_none_and_logs_errno_28_on_a_bus_fault() ->
         return result, await reader.get_error_counter()
 
     result, counters = run(scenario())
-    assert set(result) == {"Resolution", "Range", "IrCompOffset", "IrCompAdjust", "AutoRangePersist"}
+    assert set(result) == {"Resolution", "Range", "IrCompOffset", "IrCompAdjust"}
     assert all(value is None for value in result.values())
     assert 28 in errors(counters)
 
@@ -1756,7 +1756,7 @@ def test_get_dict_cfg_excludes_the_command_only_field() -> None:
     assert "SampleInterv" in body["ISL29125"]
     assert set(body["ISL29125"]) == {
         "SampleInterv", "Resolution", "RangeAuto", "Range", "AutoRangeUp", "AutoRangeDown",
-        "AutoRangeSettle", "AutoRangePersist", "AutoRangeDwell", "IrCompOffset", "IrCompAdjust",
+        "AutoRangeSettle", "AutoRangeDwell", "IrCompOffset", "IrCompAdjust",
         "FiltCoeff", "GainRatio",
     }
 
@@ -1769,7 +1769,7 @@ def test_get_dict_cfg_excludes_the_command_only_field() -> None:
 def test_every_schema_field_has_a_push_callback() -> None:
     _i2c, reader = make_reader("push_coverage")
     names = [field[0] for field in reader.cfg_schema]
-    assert len(names) == 14  # GainRatio joined when the ratio moved out of FRAM into config
+    assert len(names) == 13  # GainRatio joined from FRAM; AutoRangePersist left, now derived
     assert sorted(reader._push_callbacks) == sorted(names)
 
 
@@ -1778,7 +1778,7 @@ def test_only_the_five_hardware_backed_fields_have_a_getter() -> None:
     # command-only field by design - a getter for either would be dead code.
     _i2c, reader = make_reader("get_coverage")
     assert sorted(reader._get_callbacks) == [
-        "AutoRangePersist", "IrCompAdjust", "IrCompOffset", "Range", "Resolution",
+        "IrCompAdjust", "IrCompOffset", "Range", "Resolution",
     ]
 
 
@@ -1788,7 +1788,7 @@ def test_each_push_rejects_the_wrong_type_without_touching_the_bus() -> None:
     i2c, reader = ready_reader("push_types")
     wrong: dict[str, int | float | str | bool | None] = {
         "SampleInterv": True, "Resolution": 16.0, "RangeAuto": 1, "Range": "10000",
-        "AutoRangeUp": 85, "AutoRangeDown": 2, "AutoRangeSettle": 1.0, "AutoRangePersist": 4.0,
+        "AutoRangeUp": 85, "AutoRangeDown": 2, "AutoRangeSettle": 1.0,
         "AutoRangeDwell": 10, "IrCompOffset": False, "IrCompAdjust": 40.0, "FiltCoeff": 0,
         "GainRatio": 26, "ISLCalibrate": 1,
     }
@@ -1816,30 +1816,66 @@ def test_pushing_ir_compensation_reaches_config2_without_touching_config1() -> N
     assert writes[-1][1][0] == 0x80 | 63
 
 
-def test_pushing_autorange_persist_reaches_config3() -> None:
-    i2c, reader = ready_reader("push_persist")
+def test_the_derived_persistence_reaches_config3_and_tracks_its_two_inputs() -> None:
+    # PRST is not pushable any more - it is derived from Resolution and SampleInterv, so the only
+    # way it reaches the chip is one of those two changing. 12 bit makes a cycle ~16x shorter, so
+    # the same interval then affords the largest rejection the part offers.
+    i2c, reader = ready_reader("derived_persist")
     with _FastAsyncSleep():
-        assert run(reader._push_callbacks["AutoRangePersist"](8)) is True
+        assert run(reader.set_resolution(12)) is True
     writes = mem_writes(i2c)
-    assert writes[-1][0] == _REG_CONFIG2  # the 2-byte burst that carries CONFIG3
-    assert writes[-1][1][1] & 0x0C == 0x0C  # PRST = 11 -> 8 cycles
+    assert any(w[0] == _REG_CONFIG2 and w[1][1] & 0x0C == 0x0C for w in writes), "12 bit should derive PRST=8"
+
+
+def test_the_derivation_never_lets_the_window_outlast_the_sample_interval() -> None:
+    # The property the whole change exists for, asserted across every combination the schema can
+    # produce rather than at the default alone: whatever the user sets, the chip can still raise
+    # RGBTHF before the periodic re-check would have decided.
+    _i2c, reader = ready_reader("derived_invariant")
+    for resolution in (12, 16):
+        reader.isl._resolution = resolution
+        for trigger_secs in (1, 2, 5, 60, 3600):
+            reader.isl._persist = reader.isl.persist_for_interval(trigger_secs)
+            assert reader.isl.persist_window_ms() < trigger_secs * 1000, (resolution, trigger_secs)
+    # And it is the LARGEST that fits, not merely a safe one - a derivation that always returned 1
+    # would satisfy the assertion above while throwing away every bit of transient rejection.
+    reader.isl._resolution = 16
+    assert reader.isl.persist_for_interval(1) == 2  # 606ms of 1000ms; 4 cycles would be 1212ms
+    reader.isl._resolution = 12
+    assert reader.isl.persist_for_interval(1) == 8  # ~152ms of 1000ms
+
 
 
 def test_pushing_the_software_knobs_changes_only_driver_state() -> None:
+    # SampleInterv is deliberately NOT in this list any more: the derived transient rejection reads
+    # it, so changing it legitimately reaches CONFIG3. Its own test is below.
     i2c, reader = ready_reader("push_software")
     with _FastAsyncSleep():
-        assert run(reader._push_callbacks["SampleInterv"](7)) is True
         assert run(reader._push_callbacks["AutoRangeUp"](90.0)) is True
         assert run(reader._push_callbacks["AutoRangeDown"](0.5)) is True
         assert run(reader._push_callbacks["AutoRangeSettle"](5)) is True
         assert run(reader._push_callbacks["AutoRangeDwell"](30.0)) is True
         assert run(reader._push_callbacks["FiltCoeff"](0.25)) is True
-    assert run(reader.trigger_period.get_value()) == 7
     assert reader._ar_up == 90.0
     assert reader._ar_down == 0.5
     assert reader.isl.settle_cycles == 5
     assert reader._ar_dwell_s == 30.0
     assert mem_writes(i2c) == []
+
+
+def test_pushing_the_sample_interval_re_derives_the_transient_rejection() -> None:
+    # A consequence of deriving PRST rather than storing it: SampleInterv stopped being a
+    # software-only knob. At 16 bit a 1s interval affords 2 cycles and a 7s one affords 8, so this
+    # push has to reach the chip - a driver that only updated the timer would silently leave the
+    # part rejecting less transient noise than the new interval allows.
+    i2c, reader = ready_reader("push_interval")
+    assert reader.isl._persist == 2  # derived at init from the 1s default
+    with _FastAsyncSleep():
+        assert run(reader._push_callbacks["SampleInterv"](7)) is True
+    assert run(reader.trigger_period.get_value()) == 7
+    assert reader.isl._persist == 8
+    writes = mem_writes(i2c)
+    assert any(w[0] == _REG_CONFIG2 and w[1][1] & 0x0C == 0x0C for w in writes), "the new PRST has to reach CONFIG3"
 
 
 def test_autorange_down_is_rejected_when_it_violates_the_cross_field_constraint() -> None:
@@ -1940,7 +1976,6 @@ def test_set_trigger_secs_logs_errno_25_and_does_not_raise_on_a_bad_value() -> N
 def test_every_hardware_setter_logs_its_own_errno_on_a_bus_fault() -> None:
     expected = {
         "set_resolution": (16, 12),
-        "set_autorange_persist": (24, 8),
         "set_ir_comp_offset": (20, 1),
         "set_ir_comp_adjust": (22, 63),
     }
@@ -1960,7 +1995,7 @@ def test_every_hardware_setter_logs_its_own_errno_on_a_bus_fault() -> None:
 
 
 def test_every_getter_logs_its_own_errno_and_returns_none_on_a_bus_fault() -> None:
-    expected = {"get_resolution": 15, "get_range": 17, "get_ir_comp_offset": 19, "get_ir_comp_adjust": 21, "get_autorange_persist": 23}
+    expected = {"get_resolution": 15, "get_range": 17, "get_ir_comp_offset": 19, "get_ir_comp_adjust": 21}
     for method, errno_value in expected.items():
         i2c, reader = ready_reader("getter_" + method)
 
@@ -1982,7 +2017,6 @@ def test_the_getters_read_the_live_chip_not_the_shadow() -> None:
         assert run(reader.get_range()) == _RANGE_LOW_LUX
         assert run(reader.get_ir_comp_offset()) == 1
         assert run(reader.get_ir_comp_adjust()) == 7
-        assert run(reader.get_autorange_persist()) == 2
 
 
 def test_a_failed_push_recovers_through_the_getter_then_the_snapshot_then_the_default() -> None:
@@ -2530,14 +2564,12 @@ def test_every_hardware_backed_setter_reports_a_rejected_field_without_writing()
         assert await reader.set_resolution(8) is False
         assert await reader.set_ir_comp_offset(2) is False
         assert await reader.set_ir_comp_adjust(200) is False
-        assert await reader.set_autorange_persist(3) is False
         return await reader.get_error_counter()
 
     counters = run(scenario())
     assert 16 in errors(counters)  # resolution
     assert 20 in errors(counters)  # IR compensation offset
     assert 22 in errors(counters)  # IR compensation adjust
-    assert 24 in errors(counters)  # AutoRangePersist
     assert mem_writes(i2c) == []
 
 

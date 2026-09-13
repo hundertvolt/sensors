@@ -64,11 +64,13 @@ and RGB/HSB are normalised over the whole span, so **nothing should visibly jump
 changes**. If it does, that is worth reporting. The `AutoRange*` settings tune when the switch
 happens (how full the reading gets before going up, how empty before coming down, how long to
 settle, and a minimum dwell time so it cannot chatter) — the defaults are fine for ordinary use.
-One of them interacts with the measurement interval: `AutoRangePersist` is how long a light change
-must persist before the chip itself reacts, so if you raise it past the `SampleInterv` you set, the
-unit's own periodic re-check will always get there first and the log will say so. That is a
-configuration consequence, not a fault, and the setting's own help text in the web UI says the
-same.
+There used to be a fourth, controlling how long a light change must persist before the chip itself
+reacts. It is gone from the settings on purpose: it only worked while it stayed shorter than the
+measurement interval, and raising it past that silently handed every range decision to the unit's
+slower software re-check. The unit now works it out from the measurement interval and the ADC
+resolution — always the most transient rejection that still lets the chip react first — so there is
+nothing left to get wrong. A side effect worth knowing: changing the measurement interval now also
+reconfigures the sensor, where before it only retimed the software.
 
 **Calibration is yours to run, and yours to accept.** Every real chip's two ranges differ slightly
 from the nominal 26.67× ratio between them, and that error is the small step you see when a reading

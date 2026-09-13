@@ -216,8 +216,9 @@ registration API and A.9's `HTML_SRC_DIRS` are shaped around it). Real-hardware 
   raw per-channel counts, so everything user-facing is derived. (1) **Auto-range is the driver's,
   not the chip's** — the part has two fixed full-scale ranges (375/10000 lx, nominal ratio 26.67)
   and the driver moves between them using the chip's own threshold interrupt, with a peak-of-three
-  decision, a dwell floor and a settle count — and `AutoRangePersist` has to stay shorter than
-  `SampleInterv` or the software re-check beats the interrupt to every decision (C.11.1.3); `RangeAct` in every reading says which range that
+  decision, a dwell floor and a settle count — and the chip's persistence window has to stay
+  shorter than `SampleInterv` or the software re-check beats the interrupt to every decision, which
+  is why that window is **derived rather than configured** (C.11.1.3); `RangeAct` in every reading says which range that
   sample was actually taken on. (2) **The gain ratio is measured on request and applied only by the
   user**, never assumed and never adopted automatically: `ISLCalibrate` starts a bounded run that
   sandwiches a reading on each range, checks the scene held still, and publishes a candidate as the
@@ -228,7 +229,7 @@ registration API and A.9's `HTML_SRC_DIRS` are shaped around it). Real-hardware 
   the INT pin), which is why exactly one status read happens per cycle and why no other code path
   may touch it. (5) **Sensor RGB is not colorimetric RGB** and the IR-compensation fields move the
   lux scale as well as the colour balance — see `DEVICE_REFERENCE.md` for the user-facing version
-  of both. (6) **`AutoRangePersist`'s unit is an RGB cycle, not an integration cycle**, even though the
+  of both. (6) **The persistence window's unit is an RGB cycle, not an integration cycle**, even though the
   datasheet says "integration cycles" in both places it mentions the field — p11's Table 12 heads
   its column "NUMBER OF INTEGRATION CYCLE", and p6's prose offers "setting the persistency to 8
   integration cycles". `INTSEL` selects exactly one channel to compare against the thresholds, and
@@ -1257,7 +1258,7 @@ is expected; only overlap *within* one row matters.
 | `asy_fram_manager.py`/`asy_fram_driver.py` (`FRAM`) | 10-98 | 60-83 | `AsyFramManager` 10-88 (busy/idle status-byte helper spreads a base across 2-7 values per call); `FRAM_SPI` 89-98 (not-initialized ×5, invalid-range ×2, readback mismatch, lock-timeout, device-ID guard) + `wrnno` 81-83 (WRDI-stuck, WEL-didn't-set ×2). |
 | `asy_bmp3xx_driver.py` (`BMP3XX`) | 10-22 | — | 10=init, 11=periodic read, 12=config read at init, 13=config write at init, 14=config read at store-time, 15-20=oversampling/filter forwards, 21=trigger-interval, 22=batched snapshot read. |
 | `asy_scd30_driver.py` (`SCD30`) | 10-25 | — | 10=init, 11=periodic read, 12=unused (no init-time config), 13=stop-continuous-measurement, 14-25=per-field forwards. |
-| `asy_isl29125_driver.py` (`ISL29125`) | 10-38 | 10-17 | 10=init, 11=periodic read, 12=config read at init, 13=config write at init, 14=config read at store-time, 15-24=get/set pairs for Resolution/Range/IrCompOffset/IrCompAdjust/AutoRangePersist, 25=trigger-interval, 26=filter coefficient, 27=any of the four software auto-range knobs (range or cross-field), 28=batched snapshot read, 29/30=threshold and CONFIG1 write inside a range switch, 31=status read, 32=bus-fault pattern confirmed by a failed device-ID re-read, 33=brownout re-apply, 34=shadow write outside a range switch, 35-37=gain-ratio FRAM read/write/clear, 38=RangeAuto's own two chip writes on the auto->off transition. `wrnno` 10=brownout recovered, 11/12=no/stale stored gain ratio, 13=implausible learned ratio rejected, 14=saturated on the high range, 15=the periodic path made a range decision the interrupt should have made first, five times running (the dead-INT detector), 16=the paired gain-ratio reading clipped on the other range, so the pair measures the clamp rather than the part, 17=the same five-in-a-row, but with `AutoRangePersist` longer than `SampleInterv`, where the periodic path winning is arithmetic rather than a dead interrupt (C.11.1.3). |
+| `asy_isl29125_driver.py` (`ISL29125`) | 10-38 | 10-17 | 10=init, 11=periodic read, 12=config read at init, 13=config write at init, 14=config read at store-time, 15-24=get/set pairs for Resolution/Range/IrCompOffset/IrCompAdjust/AutoRangePersist, 25=trigger-interval, 26=filter coefficient, 27=any of the four software auto-range knobs (range or cross-field), 28=batched snapshot read, 29/30=threshold and CONFIG1 write inside a range switch, 31=status read, 32=bus-fault pattern confirmed by a failed device-ID re-read, 33=brownout re-apply, 34=shadow write outside a range switch, 35-37=gain-ratio FRAM read/write/clear, 38=RangeAuto's own two chip writes on the auto->off transition. `wrnno` 10=brownout recovered, 11/12=no/stale stored gain ratio, 13=implausible learned ratio rejected, 14=saturated on the high range, 15=the periodic path made a range decision the interrupt should have made first, five times running (the dead-INT detector), 16=the paired gain-ratio reading clipped on the other range, so the pair measures the clamp rather than the part, 17=the same five-in-a-row, but with the derived persistence window longer than `SampleInterv`, which the derivation makes impossible - so this is an invariant check on that derivation, not a misconfiguration report (C.11.1.3). |
 | `asy_sgp40_driver.py` (`SGP40`) | 10-18 | 10-14 | 10=init, 11=periodic read, 12=config read at init, 13-18=backup read/write/clear/deserialize/serialize/compensation. `wrnno`=backup missing/stale. |
 | `asy_wifi_service.py` (`WIFI`) | 11-18 | 1-7 | 11=mode-switch...17=hardware give-up, 18=disconnect-timeout; `wrnno` 1-3=missing-config, 4-7=WLAN status. |
 | `asy_ntp_client.py` (`NTP`) | 11-20 | 1-3 | 11=missing-config...19=time-calc, 18/20=interval-fallback/give-up; `wrnno`=callback failures. |
@@ -1462,7 +1463,7 @@ assumes. Nothing in `src/` needed changing.
 
 Found by reading the fake rather than by the probe, then settled on the board (2026-09-13). The
 fake reset `_prst_count` on **every** read that transferred `0x08`. If that were right, the
-driver's own defaults would make the hardware interrupt unreachable: `AutoRangePersist = 4` needs
+driver's own defaults would make the hardware interrupt unreachable: `PRST = 4` needs
 four consecutive out-of-window RGB cycles (4 × 303 ms ≈ 1.21 s at 16 bit), `SampleInterv = 1`
 reads the status register every second, and a count knocked back to zero each second never reaches
 four.
@@ -1470,7 +1471,7 @@ four.
 Measured directly, with both thresholds parked at `0x0000` so the window is crossed in any light
 and the persistence counter is the only variable:
 
-| `AutoRangePersist` | no reads for 3 s | one read per second, 8 reads |
+| `PRST` | no reads for 3 s | one read per second, 8 reads |
 |---|---|---|
 | 1 | `RGBTHF` set | set in **8 of 8** |
 | 4 | `RGBTHF` set | set in **4 of 8**, strictly alternating, INT low on exactly those |
@@ -1495,18 +1496,31 @@ cycle, which is the cadence this was measured at. What it does change is the twi
 any twin-tier scenario at the real defaults was silently exercising the periodic fallback only,
 with the interrupt path dead and nothing saying so.
 
-### C.11.1.3 `AutoRangePersist` must stay shorter than `SampleInterv`, and the default did not
+### C.11.1.3 The persistence window is derived from `SampleInterv`, never configured
 
 Requirement 5 makes the threshold interrupt's GPIO mandatory and requirement 17 makes the periodic
 re-check the safety net *behind* it. At the shipped defaults it was the other way round, and the
-arithmetic says so: `AutoRangePersist = 4` means four whole RGB cycles, 4 × 303 ms = **1212 ms** at
+arithmetic says so: `PRST = 4` means four whole RGB cycles, 4 × 303 ms = **1212 ms** at
 16 bit, while `SampleInterv = 1` re-evaluates the same switch condition in software every
 **1000 ms** — with no persistence requirement at all. The software path therefore won every race,
 and the hardware fast path was dead by construction.
 
+**Settled 2026-09-13 by removing the field from the API entirely** (owner's decision): correcting
+the default only moved the trap, since any later `SampleInterv` change could walk back into it.
+`ISL29125_I2C.persist_for_interval()` now derives PRST as **the largest setting whose window still
+closes inside one sample interval**, so the invariant holds for every combination the schema can
+express rather than for the shipped pair alone. At 16 bit / 1 s that picks 2 — the configuration
+measured below — and at 12 bit, where a cycle is ~16× shorter, it picks 8 and rejects far more
+transient noise at no cost. Both inputs re-apply it when they change, which is why `SampleInterv`
+is no longer a software-only knob: changing it writes CONFIG3.
+
+`wrnno=17` survives as an **invariant check** rather than the misconfiguration detector it began
+as. It can now only fire if the derivation itself is wrong, and it exists so that such a bug
+reports itself instead of masquerading as `wrnno=15`'s dead-INT-line fault.
+
 Measured on the bench (2026-09-13), six forced crossings per setting, one reader, same scene:
 
-| `AutoRangePersist` | window at 16 bit | interrupt-led | periodic-led | switch latency |
+| `PRST` | window at 16 bit | interrupt-led | periodic-led | switch latency |
 |---|---|---|---|---|
 | 4 | 1212 ms | 1 of 6 | **5 of 6** | pinned at ~1000 ms — the sample interval, not the light |
 | 2 | 606 ms | **6 of 6** | 0 | 500-800 ms |

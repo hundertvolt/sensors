@@ -32,7 +32,7 @@ _PIN_PIXEL = 18
 # INSIDE the hysteresis band and cannot force a switch in either direction.
 _BAND_BELOW = 1  # comfortably under the falling edge
 _BAND_ABOVE = 12  # comfortably over the rising edge
-_SWITCH_HOLD_S = 8.0  # AutoRangePersist=2 cycles + settle + a 1s sample interval, with margin
+_SWITCH_HOLD_S = 8.0  # the derived 2 cycles + settle + a 1s sample interval, with margin
 _STEP_MS = 100  # light-program update period; a "step" shape lands inside one of these
 _SAMPLE_MS = 300  # reader polling; the reader itself produces a fresh sample about once a second
 _SETTLE_S = 4.0
@@ -207,7 +207,7 @@ def _scenarios() -> "list[tuple[str, list[tuple[str, tuple[int, int, int], tuple
     Levels are chosen against the MEASURED hysteresis band on this rig (tests_hardware/README.md):
     the low range holds up to level 6 rising, the high range down to level 3 falling, so levels
     2..8 are inside the band and only a level <= 1 or >= 8 can force a switch. Holds that must
-    produce a switch are >= _SWITCH_HOLD_S, because AutoRangePersist=2 cycles plus the settle plus
+    produce a switch are >= _SWITCH_HOLD_S, because the derived 2 cycles plus the settle plus
     a 1s sample interval is the real latency of a decision.
     """
     dark, below, inside, full = (0, 0, 0), 1, 5, 255
@@ -289,7 +289,7 @@ async def _main() -> None:
     reader.cfgmgr._cache = {
         "SampleInterv": 1, "Resolution": 16, "RangeAuto": True, "Range": 10000,
         "AutoRangeUp": 85.0, "AutoRangeDown": 1.5, "AutoRangeSettle": 1,
-        "AutoRangePersist": 2, "AutoRangeDwell": 0.0,
+        "AutoRangeDwell": 0.0,
         "IrCompOffset": 0, "IrCompAdjust": 40, "FiltCoeff": -1.0,
     }
     reader.start_timer()

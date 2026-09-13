@@ -194,14 +194,6 @@
                             "description": "Full conversion cycles discarded after any range or resolution change, each of which restarts the conversion."
                         },
                         {
-                            "key": "AutoRangePersist", "label": "Transient Rejection", "kind": "enum",
-                            "description": "How many consecutive RGB cycles a light change must persist before the chip raises its threshold interrupt. Each cycle is ~303 ms at 16 bit, so keep this window shorter than the Measurement Interval - past that the periodic re-check decides every range change first and the interrupt never leads.",
-                            "options": [
-                                { "value": 1, "label": "1 cycle" }, { "value": 2, "label": "2 cycles" },
-                                { "value": 4, "label": "4 cycles" }, { "value": 8, "label": "8 cycles" }
-                            ]
-                        },
-                        {
                             "key": "AutoRangeDwell", "label": "Switch-Down Dwell", "unit": "s", "kind": "number", "min": 0.0, "max": 300.0, "float": true,
                             "description": "Minimum time on the high range before a switch back down is honoured, so a passing shadow does not cost a range change.",
                             "specialValues": [ { "value": 0.0, "meaning": "No dwell — hardware persistence alone" } ]

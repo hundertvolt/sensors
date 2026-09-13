@@ -695,7 +695,7 @@ shadow model depends on, the colour-chain decisions (why the sRGB matrix is pinn
 the two McCamy forms are identical, why the matrix is a placeholder by the datasheet's own
 wording), the config-field classification rule and `AutoRangeDown`'s cross-field bound are now
 `SPECIFICATION.md` Part C.11.2; the log-level convention the drivers already followed is Part C.7;
-`AutoRangePersist`'s real unit — an RGB cycle, not the "integration cycle" its own datasheet calls
+the persistence window's real unit — an RGB cycle, not the "integration cycle" its own datasheet calls
 it in both places it mentions the field — is Part A.4's conflatable-facts list, item 6, alongside
 the related fact that conversion does not stop when the interrupt asserts (item 7). The `errno`/`wrnno` allocation was
 already Part C.7.1's registry, the platform facts were already Part F, and the three specification
