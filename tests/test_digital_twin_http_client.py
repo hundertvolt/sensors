@@ -163,6 +163,66 @@ def test_read_exact_retries_a_spurious_none_read_instead_of_treating_it_as_eof()
 
 
 # ---------------------------------------------------------------------------
+# _read_until_close() - the unsized fallback path GET / actually takes (Microdot's send_file()
+# passes a raw stream body, so no Content-Length is ever set - see this function's own comment).
+# ---------------------------------------------------------------------------
+
+
+class _EofReader:
+    # Like _ChunkedReader, but readinto() always fills as much of the caller's own buffer as the
+    # current chunk allows (mirroring a real socket, which fills whatever room readinto() is given,
+    # not just returns its own chunk verbatim) - proving _read_until_close() correctly bounds each
+    # read to len(buf), not just to the scripted chunk's own length.
+    def __init__(self, chunks: "list[bytes | None]") -> None:
+        self._chunks = list(chunks)
+
+    async def readinto(self, buf: bytearray) -> "int | None":
+        if not self._chunks:
+            return 0
+        chunk = self._chunks.pop(0)
+        if chunk is None:
+            return None
+        n = min(len(chunk), len(buf))
+        buf[:n] = chunk[:n]
+        if n < len(chunk):
+            self._chunks.insert(0, chunk[n:])
+        return n
+
+
+def test_read_until_close_joins_chunks_across_multiple_reads() -> None:
+    reader = _EofReader([b"abc", b"de", b"fgh"])
+    result = run_timed(http_client._read_until_close(reader))
+    assert result == b"abcdefgh"
+    assert isinstance(result, bytes)
+
+
+def test_read_until_close_retries_a_spurious_none_read() -> None:
+    reader = _EofReader([None, b"ab", None, b"c"])
+    result = run_timed(http_client._read_until_close(reader))
+    assert result == b"abc"
+
+
+def test_read_until_close_bounds_each_read_to_the_scratch_buffer_size() -> None:
+    # A chunk bigger than the internal scratch buffer must be split across multiple readinto()
+    # rounds, not silently truncated - proving the "reuse one fixed-size buffer" design actually
+    # bounds allocation size the way it claims to, not just that the end result happens to be right.
+    original = http_client._READ_UNTIL_CLOSE_CHUNK_BYTES
+    http_client._READ_UNTIL_CLOSE_CHUNK_BYTES = 4
+    try:
+        reader = _EofReader([b"0123456789"])
+        result = run_timed(http_client._read_until_close(reader))
+    finally:
+        http_client._READ_UNTIL_CLOSE_CHUNK_BYTES = original
+    assert result == b"0123456789"
+
+
+def test_read_until_close_returns_empty_bytes_for_an_immediately_closed_stream() -> None:
+    reader = _EofReader([])
+    result = run_timed(http_client._read_until_close(reader))
+    assert result == b""
+
+
+# ---------------------------------------------------------------------------
 # HttpResponse.json() - response-body decoding
 # ---------------------------------------------------------------------------
 
@@ -234,6 +294,40 @@ def test_fetch_reassembles_a_body_delivered_across_two_separate_writes() -> None
             res = await http_client.fetch("127.0.0.1", 18100, "GET", "/anything")
             assert res.status_code == 200
             assert res.json() == {"a": 1, "b": 2}
+        finally:
+            server.close()
+            await server.wait_closed()
+
+    run_timed(scenario(), timeout_s=5.0)
+
+
+async def _canned_server_no_content_length(reader: "asyncio.StreamReader", writer: "asyncio.StreamWriter") -> None:
+    # Matches GET /'s real shape (asy_webserver_service.py's static-file route, via ext/microdot.py's
+    # Response.send_file() passing a raw stream body): no Content-Length at all, body delivered
+    # across several separate writes, EOF (this connection closing) is what actually ends it - the
+    # exact shape that sent every real GET / through fetch()'s unsized _read_until_close() path.
+    await reader.readline()
+    while True:
+        line = await reader.readline()
+        if line in (b"\r\n", b"\n", b""):
+            break
+    body = b"x" * 3000  # bigger than _read_until_close()'s own default 1024-byte scratch buffer
+    writer.write(b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n")
+    await writer.drain()
+    for offset in range(0, len(body), 777):  # deliberately not a multiple of the scratch buffer
+        writer.write(body[offset : offset + 777])
+        await writer.drain()
+    await writer.wait_closed()
+
+
+def test_fetch_reads_a_body_with_no_content_length_until_the_connection_closes() -> None:
+    async def scenario() -> None:
+        server = await asyncio.start_server(_canned_server_no_content_length, "127.0.0.1", 18101)
+        try:
+            res = await http_client.fetch("127.0.0.1", 18101, "GET", "/anything")
+            assert res.status_code == 200
+            assert "Content-Length" not in res.headers
+            assert res.body == b"x" * 3000
         finally:
             server.close()
             await server.wait_closed()

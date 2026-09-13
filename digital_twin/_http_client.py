@@ -94,6 +94,29 @@ async def _read_exact(reader: "Any", n: int) -> bytearray:
     return buf
 
 
+_READ_UNTIL_CLOSE_CHUNK_BYTES = 1024
+
+
+async def _read_until_close(reader: "Any") -> bytes:
+    # The live path for GET / (the frozen website): ext/microdot.py's Response.send_file() passes a
+    # raw file stream as the body, so Response.complete()'s auto-Content-Length (`len(self.body)`)
+    # never applies - confirmed directly by reading it - and Connection: close (this client always
+    # sends it) plus EOF is how the response actually ends. Not a rarely-taken fallback, as this
+    # file's own first version of fetch() assumed. Same growth-by-concatenation problem as
+    # Stream.readexactly() (`r += r2` on every partial read, extmod/asyncio/stream.py's own
+    # Stream.read(-1)) and the same fix in spirit: fixed-size (bounded, never growing) chunks
+    # collected in a list and joined exactly once, instead of one bigger contiguous copy per read.
+    chunks: list[bytes] = []
+    scratch = bytearray(_READ_UNTIL_CLOSE_CHUNK_BYTES)
+    while True:
+        nread = await reader.readinto(scratch)
+        if nread == 0:
+            break
+        if nread:
+            chunks.append(bytes(scratch[:nread]))
+    return b"".join(chunks)
+
+
 async def fetch(host: str, port: int, method: str, path: str, json_body: "dict[str, object] | None" = None) -> HttpResponse:
     # reader/writer are the same underlying Stream object on this build (two names kept only for
     # readability/symmetry with Microdot's own convention) - close() is a no-op here, the socket
@@ -113,11 +136,10 @@ async def fetch(host: str, port: int, method: str, path: str, json_body: "dict[s
             headers[name] = value
 
         content_length = headers.get("Content-Length")
-        # The sized path above is what every real response takes (Microdot always sets
-        # Content-Length) and is what _read_exact() exists for. read(-1) is an unsized fallback for
-        # a response with none - genuinely unbounded, so it can't be pre-sized the same way; left
-        # as Stream's own accumulating read() since nothing in this codebase ever exercises it.
-        body = await _read_exact(reader, int(content_length)) if content_length is not None else await reader.read(-1)
+        # Sized (JSON envelopes, most REST responses) takes _read_exact(); unsized (GET / - see
+        # _read_until_close()'s own comment for why this is a live, heavily-used path, not a rare
+        # fallback) takes _read_until_close(). Neither ever accumulates via growth-by-concatenation.
+        body = await _read_exact(reader, int(content_length)) if content_length is not None else await _read_until_close(reader)
 
         return HttpResponse(status_code, headers, body)
     finally:
