@@ -468,6 +468,29 @@ constraints.
     `CONFIG1`-write conversion restart, 12-bit data being right-aligned, and both concurrency
     scripts (same-device read/write, and cross-device interleaving against SCD30 + SGP40).
 
+    **Extended again 2026-09-13**, after the driver's two-class restructure and on firmware rebuilt
+    from the branch *including* the merged UART promotion — so these figures cover both running
+    together, not the ISL alone:
+    - **Flash tier: 8/8**, three consecutive runs, `-k isl29125 --allow-neopixel-sweep` (~12 min
+      each; the sweep dominates). The eighth is the new
+      `test_isl29125_gain_ratio_survives_a_simulated_reboot_through_the_real_fram_chunk` — before
+      it, the ISL's own FRAM chunk had **no** real-hardware coverage at all, on any tier.
+    - **Bench tier: 3/3**, four consecutive runs. Two of those three had never passed: they came
+      from commit `ab81b79`, whose own subject is "written, never run", and both encoded an
+      expectation the driver has never met. Fixed on the test side — `CalTS` is `None` (not `0`)
+      until a ratio is genuinely learned and persisted, matching `SGP40_Reader`'s own
+      `last_backup`/`restored_from`; and no ISL test may assert an empty error log while
+      auto-range is on, because the gain learner warns legitimately on its own schedule.
+    - **Proven on silicon by the new round-trip script**: a non-nominal ratio survives the real SPI
+      and `"<f"` transfer exactly (24.5 in, 24.5 out); an implausible stored value is rejected on
+      load and degrades to nominal; `ISLResetCal` really clears the chip. Mutation-checked — an
+      in-band value, where the gate must *not* fire, is caught by both phase-2 assertions.
+    What is still **not** proven on hardware: a ratio learned from a real overlap-band measurement
+    surviving a reboot. The envelope script records what a run learned but persists nothing
+    (`fram=None`), and the bench reboot test pins `RangeAuto=False` precisely so the learner cannot
+    race it. Closing that needs the NeoPixel rig held in the overlap band long enough for a learn to
+    complete, then a real reset — worth doing, not done.
+
 23. **A hardware test that depends on an unstated rig condition is the recurring failure mode in
     this tier** (pattern, 2026-09-13 — worth reading before writing a new one). Six instances so
     far, all found by actually running the tests rather than by review:

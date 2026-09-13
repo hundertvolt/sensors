@@ -263,6 +263,28 @@ A failure here means the fake and the part disagree - decide which one is wrong 
 **and** a fresh measurement, never from the fake. SPECIFICATION.md Part C.11.1 lists what the first
 real run found and why each item mattered.
 
+## The ISL29125 gain-ratio FRAM round trip
+
+`tests_hardware/flash/test_fram_storage.py::test_isl29125_gain_ratio_survives_a_simulated_reboot_through_the_real_fram_chunk`
+runs `device_scripts/isl29125_gain_ratio_fram_roundtrip.py`. It is the only coverage the ISL29125's
+own FRAM chunk has on real silicon - every other tier exercises that path against a simulated chip.
+Needs no rig and no light, takes ~4s, and is not gated behind any flag.
+
+Three properties in one run, each a separate phase against a freshly-constructed
+`AsyFramManager`+reader pair standing in for a reboot (the allocator is deterministic, so the second
+pair lands on the same physical chunk - the same technique `sgp40_fram_backup_restore.py` uses):
+a non-nominal ratio survives the real SPI and `"<f"` round trip; an implausible stored value is
+rejected **on load** and degrades to nominal rather than becoming the live scale factor; and
+`ISLResetCal` really clears the chip, so the next boot finds nothing instead of the old value.
+
+Two details that are load-bearing rather than incidental. `GOOD_RATIO = 24.5` is chosen to sit
+inside the driver's own 20.0-34.0 plausibility band **and** be exactly representable as a
+single-precision float, so a mismatch is a real round-trip fault and never a rounding artefact.
+And each phase calls `reset_error_counter()` on its fresh reader: the logger is FRAM-backed, so
+without that it comes up carrying the previous run's warnings and phase 1 passes once, then fails
+on every run afterwards. That also means this script clears one real error-log chunk, the same
+isolated-driver side effect the note further down describes.
+
 ## Known assumptions and open findings
 
 Flagged while writing this tier against real source/datasheets, or found once real-hardware runs

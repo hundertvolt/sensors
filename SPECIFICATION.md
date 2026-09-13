@@ -1910,6 +1910,24 @@ with no deterministic injection point under the 8M test heap. Kept, like the res
 defence in depth in a module contracted never to raise is cheaper than the day the surrounding logic
 moves.
 
+A fourth category is not a measurement artefact at all but reads like one: **a guard on a contract
+the real collaborator cannot violate.** `asy_isl29125_driver.py` is the worked example - measured
+2026-09-13, 88% with 102 missed lines, of which 95 are the three patterns above and exactly **seven
+are these**. All seven are in the FRAM-backed gain-ratio path plus the config read-back:
+`_learn_gain_ratio`'s `ema_step() is None` arm (that helper returns `None` only for a `None` or
+non-finite sample, and `low_counts / high_counts` with `high_counts > 0` is neither);
+`_load_gain_ratio`'s `struct.unpack_from("<f", ...)` failure arm and `_persist_gain_ratio`'s
+`get_data_buf() is None` arm (the chunk is allocated at a fixed four bytes, and `ts_storage is None`
+is already checked above both); and `_read_sensor_dict`/`_snapshot_field`'s `decode_config(...) is
+None` arms (`get_config_snapshot()` raises unless it read exactly three bytes, which is the only
+input that makes that decoder return `None`).
+
+They stay, and they stay untested, deliberately: reaching them needs a test double substituted for a
+real collaborator, which Part E.4 forbids for exactly the reason it would prove nothing about the
+real one. The distinction that matters when reading a coverage report is that these are **not**
+missed test cases - writing a test that forces them would be writing a test against a fake. The
+counter-example is directly below.
+
 A `finally:` body is **not** one of these patterns, despite looking like one: its lines fire a trace
 event only when an exception actually passes through, so a `finally` that only ever runs on the
 normal return path reads as uncovered. That is a real missing test — of cancellation — not an
