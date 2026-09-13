@@ -271,12 +271,11 @@ constraints.
     it never substitutes a fallback/default compensation value. The underlying behavior itself was
     never in question, only the doc wording describing it.
 19. ~~BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md §2.5's "Worked designs" example is stale.~~ —
-    **closed (2026-09-12).** The section already carried its own "Superseded by §2.9" note pointing
-    at the current split `temperature_source`/`humidity_source` design, which is the correct
-    "design record" treatment (README.md's own framing for this doc) rather than a gap; the one
-    genuine staleness — the quoted `_read_sgp()` snippet no longer matching current code after
-    Session 6.3's `getattr(..., None)` rewrite — is now called out inline with a pointer to
-    BACKLOG.md item 17/SPECIFICATION.md Part C.14.2 for the current implementation.
+    **closed (2026-09-12), and the section itself since removed (2026-09-13).** That document was
+    rewritten to state only the final, shipped per-value mechanism (§2.9's design, now the whole of
+    what it calls "wiring defaults") — the superseded whole-object `comp_source` worked example this
+    item was about no longer exists to go stale. Current implementation:
+    SPECIFICATION.md Part C.14.2, BACKLOG.md item 17.
 20. **`tests_hardware/bus_topology.py` is a second, hand-kept, unenforced copy of `devices/dev.toml`'s/
     `wozi.toml`'s own wiring facts, and — found while checking it — appears to be dead code today.**
     Found by BUILD_CHAIN_PLAN.md's Session 8 closing-consistency pass (the one real gap that scan
@@ -300,6 +299,17 @@ constraints.
     `bus_topology_autodetect_and_hazard_sweep.py` should import its `KNOWN_ADDRESSES` from it instead
     of keeping a third copy, and whether CLAUDE.md's own bus-hazard rule should drop the citation or
     point at a real, live consumer, are all real design decisions this pass didn't make unilaterally.
+21. **SPECIFICATION.md Part H.5.1's `dispatch: true` claim doesn't match the real `wozi.json`/`dev.json`
+    for two of its five named fields.** Part H.5.1 says `dispatch: true` "marks a repeatable command
+    field (H.6, minus `ContMeas`)" — i.e. every field in H.6's dispatch-only list
+    (`SystemCmd`/`PauseTime`/`lightCmdLED`/`ResetErrors`/`SGPResetVOC`) except `ContMeas`. Confirmed
+    directly against `html/definitions/wozi.json`: only `SystemCmd`/`ResetErrors`/`SGPResetVOC`
+    actually carry `dispatch: true`; `PauseTime` and `lightCmdLED` (both instances) carry none.
+    `buildgen/definitions.py` faithfully reproduces this real, golden behavior either way, so this is
+    a pre-existing spec-vs-reality mismatch to resolve with the project owner (which side is actually
+    correct — the doc's claim or the shipped JSON), not a generator bug. Found by
+    BUILD_CHAIN_PLAN.md's Session 4 post-merge self-audit; had never been migrated to this file before
+    now, so it stayed unresolved and easy to lose track of.
 
 ## Deferred / explicitly out-of-scope work
 - **Session 7's `pyproject.toml` `max-args` ratchet (21 → 22, for `WebserverService.__init__`'s new
@@ -325,7 +335,7 @@ constraints.
   forgetting to is a real (if now clearly-reported) failure. **The small half is already done**: a
   driver that resolves via `driver_registry` but has no `buildspec.py` entry raises a dedicated
   error naming that as the cause, instead of reporting every one of its real fields as
-  "unrecognized" (BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md §10.1 item 5, §10.5). The large half —
+  "unrecognized" (BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md's "Known limitation" section). The large half —
   deriving the schema from each driver's own constructor signature, or from a new declarative tuple
   beside `_WIRING` — needs real design, not a mechanical continuation, and hasn't been started.
 - **`[device].name`/`hostname`/`hotspot_password` are validated but never wired into any boot

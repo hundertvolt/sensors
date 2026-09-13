@@ -1,5 +1,5 @@
-"""Shared "specially formatted comment near a schema" scanning infrastructure: the mechanism
-behind `# @requires` today and the planned `# @web`/`# @web-group` tags tomorrow, and the standing
+"""Shared "specially formatted comment near a schema" scanning infrastructure: the mechanism behind
+`# @requires`/`# @wiring`/`# @value-wiring`/`# @limits`/`# @web`/`# @web-group`, and the standing
 rule that a near-miss attempt at one must fail the build loud (BUILD_CHAIN_PLAN.md's quality bar)."""
 
 import re
@@ -192,10 +192,9 @@ def _levenshtein(a: str, b: str) -> int:
 
 
 def iter_comment_tokens(path: Path, device: str, instance_label: str) -> "list[CommentToken]":
-    """Every real COMMENT token in `path` - tokenize-based, not a naive per-line regex, so a "#"
-    inside a string/docstring (e.g. this very module's own docstring, which quotes example tag
-    grammar) is never mistaken for a real comment. Each token carries whether it sits inside a
-    class/function body rather than at module level."""
+    """Every real COMMENT token in `path`, tokenize-based (not per-line regex) so a "#" inside a
+    string/docstring is never mistaken for a real comment. Each token also carries whether it sits
+    inside a class/function body rather than at module level."""
     tokens = []
     # Bracket depth, plus whether the statement that opened the current bracketing was itself
     # indented: inside brackets a comment's own line is always indented by style, so its physical
@@ -249,18 +248,12 @@ def looks_like_tag_payload(comment_text: str, spec: "TagSpec | None"=None) -> bo
 
 
 def check_for_near_miss_tags(tokens: "list[CommentToken]", path: Path, device: str, instance_label: str, exact_matches: "set[tuple[int, int]]", specs: "tuple[TagSpec, ...] | None"=None) -> None:
-    """Raises BuildError for any comment that looks like a typo'd or malformed attempt at one of
-    KNOWN_TAG_NAMES but isn't one of the already-successfully-parsed tags at `exact_matches`
-    ((lineno, col) pairs of the real, well-formed tags each tag module's own parser already found).
-    This is the "present, or close to present" half of the standing rule (module docstring above):
-    a real driver signature change once silently broke two frozen device scripts for a full day,
-    undetected purely because nothing validated the comment that would have caught it (see
-    tests_hardware/device_scripts/sgp40_voc_algorithm_quality.py's git history) - the same failure
-    mode applies here if a typo'd @requires tag is just silently treated as "no tag present".
-
-    `specs` narrows which families are policed. Each grammar module passes its own, so a perfectly
-    valid tag of a *different* family isn't reported as a malformed one of this family - every
-    family is still policed on every file, because validate.py runs all of the parsers over it."""
+    """Raises BuildError for a comment that looks like a typo'd/malformed attempt at a
+    KNOWN_TAG_NAMES tag not already in `exact_matches`. `specs` narrows which families are policed -
+    each grammar module passes its own, so a valid tag of another family isn't misreported."""
+    # The failure mode this guards against is real: a driver signature change once silently broke
+    # two tests_hardware/device_scripts/ call sites for a full day because nothing validated the
+    # comment that should have caught it - see BUILD_CHAIN_PLAN.md's quality bar for the incident.
     for tok in tokens:
         if (tok.lineno, tok.col) in exact_matches:
             continue

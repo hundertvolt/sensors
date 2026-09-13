@@ -1,13 +1,13 @@
-# `digital_twin/` — hardware simulator for the wozi and dev prototypes
+# `digital_twin/` — hardware simulator for any buildgen-generated device
 
 A set of fake `machine`/`network`/`neopixel` modules, sitting at the same raw I2C/SPI
 bus-transaction mocking boundary `tests/machine.py` establishes for unit tests, but built for a
-different purpose: real-time-firing `Timer`s and randomized-but-plausible sensor values, so the full
-assembled, buildgen-generated `sensortask_wozi.py`/`sensortask_dev.py` device modules can run under
-the real MicroPython Unix-port interpreter and behave like they're attached to real hardware — not
-just satisfy a hand-driven test double. See SPECIFICATION.md Part A.10 for how this fits into the
-rest of the architecture, and Part C.11 point 9 for the per-driver "add a matching chip fake"
-requirement.
+different purpose: real-time-firing `Timer`s and randomized-but-plausible sensor values, so a full
+assembled, buildgen-generated `sensortask_<device>.py` module — any of the 6 real devices, or the two
+mandatory synthetic fixtures — can run under the real MicroPython Unix-port interpreter and behave
+like it's attached to real hardware, not just satisfy a hand-driven test double. See
+SPECIFICATION.md Part A.10 for how this fits into the rest of the architecture, and Part C.11 point 9
+for the per-driver "add a matching chip fake" requirement.
 
 **Not `tests/machine.py`, does not import it, and is never imported by anything in `tests/`.**
 Kept completely separate so nothing here can accidentally affect the deterministic unit-test suite
@@ -297,10 +297,14 @@ finally:
 Omitting `configure_scd30_state_path()` (or passing `None`) runs the SCD30 twin in-memory only,
 same convention as FRAM. Both `digital_twin/run_generic_integration.py` and `digital_twin/launch.py`
 default to in-memory-only for both FRAM/SCD30 (`--fram-state-path`/`--scd30-state-path` opt in
-explicitly) — `scripts/_digital_twin_ci_suite.py` is what supplies real, fixed on-disk paths
-explicitly for its own persistence-across-a-real-reboot checks (BUILD_CHAIN_PLAN.md's Session 6.2 -
-the retired `run_wozi_integration.py` used to default to a persistent file itself; the CI suite now
-owns that choice explicitly instead, since it's the one caller that actually needs it).
+explicitly) — `scripts/_digital_twin_ci_suite.py` is the one caller that supplies real, fixed on-disk
+paths, for its own persistence-across-a-real-reboot checks.
+
+**Known limitation: single-chip globals.** `machine.py`'s `_current_scd30_chip`/`flush_scd30()`
+(and the equivalent FRAM pair) each track exactly one chip instance. A device wired with more than
+one SCD30 (both mandatory synthetic fixtures) only ever persists the *last-wired* instance's NVM
+settings across a simulated reboot — every other twin behavior for such a device is unaffected. A
+real multi-instance-persistence fix is unscoped; no real device needs it today.
 
 ## Running the twin's own tests
 

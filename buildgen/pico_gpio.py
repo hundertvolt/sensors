@@ -1,6 +1,6 @@
 """The Pico W's real, fixed GPIO-to-peripheral mapping, transcribed from
 RP-008312-DS-2-pico-w-datasheet.pdf Figure 2 (printed p.4) - see
-BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md §4.3 axis 10 for the full derivation."""
+BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md's "Pico W GPIO / bus pin legality" section."""
 
 WIRELESS_RESERVED_GPIOS = frozenset({23, 24, 25, 29})
 _GPIO_MIN = 0
