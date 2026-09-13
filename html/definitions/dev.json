@@ -67,6 +67,10 @@
                             "key": "RangeAct", "label": "Active Range", "unit": "lx", "kind": "readonly", "decimals": 0,
                             "description": "The full-scale range this sample was taken on, which under automatic ranging is not always the one currently programmed."
                         },
+                        {
+                            "key": "GainMeas", "label": "Measured Gain Ratio", "kind": "readonly", "decimals": 3,
+                            "description": "A candidate measured by the last calibration run, held for ten minutes and then cleared. Blank unless a run produced one. Nothing applies it - copy it into Range Gain Ratio if you want it used."
+                        },
                         { "key": "TS", "label": "Timestamp", "unit": "s", "kind": "readonly", "decimals": 0 }
                     ]
                 }
@@ -217,8 +221,12 @@
                             "specialValues": [ { "value": -1.0, "meaning": "Filter off" } ]
                         },
                         {
-                            "key": "ISLResetCal", "label": "Reset Gain Calibration", "kind": "toggle", "onLabel": "On", "offLabel": "Off",
-                            "description": "Only 'On' has effect. Discards the learned range-gain ratio and relearns it from the nominal 26.67.",
+                            "key": "GainRatio", "label": "Range Gain Ratio", "kind": "number", "min": 20.0, "max": 34.0, "float": true, "decimals": 3,
+                            "description": "The applied ratio between the 375 lx and 10000 lx full scales. Nominally 26.667; every real part differs, and the error shows as a step at each range change. Changed only here - measure a candidate with Calibrate below, read it off Measured Gain Ratio, and enter it."
+                        },
+                        {
+                            "key": "ISLCalibrate", "label": "Calibrate Gain Ratio", "kind": "toggle", "onLabel": "On", "offLabel": "Off",
+                            "description": "Only 'On' has effect. Measures the ratio for up to two minutes while the light stays in the auto-range overlap band, and publishes the result as Measured Gain Ratio. Changes nothing on its own.",
                             "dispatch": true, "defaultValue": false
                         }
                     ]
@@ -339,8 +347,6 @@
                     "fields": [
                         { "key": "SGP40_BackupTS", "label": "SGP40 Last Backup", "kind": "readonly" },
                         { "key": "SGP40_RestoreTS", "label": "SGP40 Restore Timestamp", "kind": "readonly" },
-                        { "key": "ISL29125_GainRatio", "label": "ISL29125 Learned Gain Ratio", "kind": "readonly", "decimals": 3 },
-                        { "key": "ISL29125_CalTS", "label": "ISL29125 Calibration Timestamp", "kind": "readonly" },
                         { "key": "UARTLINK_Transfers", "label": "UART Link Transfers", "kind": "readonly", "description": "Completed transfers across this bench rig's UART0<->UART1 crossover jumper since boot. Bench-only - a deployed unit has no such link." },
                         { "key": "UARTLINK_Failures", "label": "UART Link Failures", "kind": "readonly", "description": "Transfers that did not complete across the crossover jumper since boot." }
                     ]

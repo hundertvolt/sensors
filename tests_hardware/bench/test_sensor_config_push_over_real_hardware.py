@@ -117,24 +117,29 @@ def test_isl29125_resolution_and_ir_compensation_push_over_real_rest_and_readbac
     assert_module_error_log_empty(dut_ip, "CFGMGR_ISL29125")  # the config layer has no such schedule
 
 
-def test_isl29125_reset_gain_calibration_command_push_over_real_rest(board: Board, dut_ip: str) -> None:
+def test_isl29125_calibrate_command_push_over_real_rest(board: Board, dut_ip: str) -> None:
     reset_all_error_logs(dut_ip)
-    # ISLResetCal is command-only, like SGPResetVOC above - never persisted, so there is nothing to
-    # restore. What it does persist is a FRAM chunk, so the follow-up GET /status checks the
-    # maintenance keys came back rather than the module having lost its calibration surface.
-    put_res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"ISL29125": {"ISLResetCal": True}}, timeout_s=10.0)
-    assert put_res.status_code == 200, f"PUT /sensors ISLResetCal failed: {put_res.status_code} {put_res.body!r}"
-    result = put_res.json()["result"]["ISL29125"]
-    assert result.get("ISLResetCal") == "Valid", f"real reset_gain_calibration() push was rejected: {result!r}"
+    # ISLCalibrate is command-only, like SGPResetVOC above - never persisted, so there is nothing
+    # to restore. It starts a bounded measuring run and must not disturb the APPLIED ratio, which
+    # is an ordinary config value only a PUT can change; that is what the readback below pins.
+    before = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=10.0)
+    assert before.status_code == 200, f"GET /sensors failed: {before.status_code} {before.body!r}"
+    applied = before.json()["ISL29125"]["GainRatio"]
 
-    status = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0)
-    assert status.status_code == 200, f"GET /status after a real gain-calibration reset failed: {status.status_code} {status.body!r}"
-    maintenance = status.json()["sensors"]["ISL29125"]
-    assert "GainRatio" in maintenance and "CalTS" in maintenance, f"GET /status lost the ISL29125 maintenance keys after the reset: {maintenance!r}"
+    put_res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"ISL29125": {"ISLCalibrate": True}}, timeout_s=10.0)
+    assert put_res.status_code == 200, f"PUT /sensors ISLCalibrate failed: {put_res.status_code} {put_res.body!r}"
+    result = put_res.json()["result"]["ISL29125"]
+    assert result.get("ISLCalibrate") == "Valid", f"real start_calibration() push was rejected: {result!r}"
+
+    after = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=10.0)
+    assert after.status_code == 200, f"GET /sensors after starting a calibration failed: {after.status_code} {after.body!r}"
+    assert after.json()["ISL29125"]["GainRatio"] == applied, "a calibration run must never move the applied ratio"
 
     get_res = http_client.fetch(dut_ip, 80, "GET", "/measurements", timeout_s=10.0)
-    assert get_res.status_code == 200, f"GET /measurements after a real gain-calibration reset failed: {get_res.status_code} {get_res.body!r}"
-    # Not an empty log: reset_gain_calibration() back-dates the learn clock ON PURPOSE so the next
-    # opportunity is taken, which makes a rejected paired reading the EXPECTED outcome here rather
-    # than an incidental one. Errors, and any other warning, still fail.
+    assert get_res.status_code == 200, f"GET /measurements after starting a calibration failed: {get_res.status_code} {get_res.body!r}"
+    # GainMeas rides the measurement tuple and is legitimately null until a run produces a stable
+    # pair, so its presence is the contract here, not its value - the bench light is not arranged.
+    assert "GainMeas" in get_res.json()["ISL29125"], f"GET /measurements lost GainMeas: {get_res.json()['ISL29125']!r}"
+    # Not an empty log: under an unarranged bench scene a refused pair is the EXPECTED outcome.
+    # Errors, and any other warning, still fail.
     assert_module_error_log_clean(dut_ip, "ISL29125", allowed_warnings=_ISL_LEARNER_WARNINGS)

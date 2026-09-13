@@ -429,11 +429,17 @@ constraints.
     level, against the nominal 26.67 — sitting exactly where the level-dependence above predicts,
     between the ~28 at ambient and the ~22 near full scale.
 
-    Open question for the owner: is one scalar the right model, or should the ratio be learned/
-    applied as a function of level (or simply pinned to the overlap band and documented as such)?
-    One unit, one geometry — worth reproducing on a second board before acting. Note the learning
-    itself now actually runs (see item 19), so a long bench soak would produce real convergence
-    data where before it could only ever have reported the nominal value.
+    **Largely answered by the 2026-09-13 redesign** (owner's decision, SPECIFICATION.md Part
+    C.11.3): calibration is a user-triggered run under conditions the operator arranges, and the
+    measured candidate is applied only if the operator copies it into `GainRatio`. So the model is
+    still one scalar, but *which* scalar is now a deliberate choice rather than a property of
+    whatever light happened to pass the gate — calibrate at the level you care about. The
+    level-dependence itself is unchanged and worth keeping recorded, because it sets the limit of
+    what any single number can do: a ratio measured near the switch point stays right there and
+    drifts by the amounts tabulated above elsewhere.
+    **What is still genuinely open**, and needs a second board rather than a decision: whether the
+    ~28 → ~22 span is this specimen or the part. One unit, one geometry is thin evidence, and only
+    a reference meter can separate low-range compression from a high-range under-read.
 
 21. **The ISL29125 flash-tier firmware — CLOSED (2026-09-13).** The bench board was carrying a
     pre-ISL `dev` build, so every ISL device script failed under `harness.Board.run_isolated()`
@@ -503,15 +509,15 @@ constraints.
       until a ratio is genuinely learned and persisted, matching `SGP40_Reader`'s own
       `last_backup`/`restored_from`; and no ISL test may assert an empty error log while
       auto-range is on, because the gain learner warns legitimately on its own schedule.
-    - **Proven on silicon by the new round-trip script**: a non-nominal ratio survives the real SPI
-      and `"<f"` transfer exactly (24.5 in, 24.5 out); an implausible stored value is rejected on
-      load and degrades to nominal; `ISLResetCal` really clears the chip. Mutation-checked — an
-      in-band value, where the gate must *not* fire, is caught by both phase-2 assertions.
-    What is still **not** proven on hardware: a ratio learned from a real overlap-band measurement
-    surviving a reboot. The envelope script records what a run learned but persists nothing
-    (`fram=None`), and the bench reboot test pins `RangeAuto=False` precisely so the learner cannot
-    race it. Closing that needs the NeoPixel rig held in the overlap band long enough for a learn to
-    complete, then a real reset — worth doing, not done.
+    **Superseded in part by the 2026-09-13 calibration redesign** (Part C.11.3). The gain ratio no
+    longer lives in FRAM, so the round-trip evidence above and the "a learned ratio surviving a
+    reboot is unproven" gap both describe a mechanism that no longer exists — the ratio is config
+    now, and its persistence is the same config persistence every other field already has, covered
+    by the bench reboot test rewritten alongside it. What is **not** yet proven on hardware is the
+    new path: a calibration run measuring a real sandwich under the NeoPixel rig, and the operator
+    copying the candidate across. The mock and twin tiers cover it end to end (including the
+    measured-then-applied error shrink); the flash/bench tiers assert only that the trigger is
+    accepted, the applied ratio does not move, and `GainMeas` is present.
 
 23. **A hardware test that depends on an unstated rig condition is the recurring failure mode in
     this tier** (pattern, 2026-09-13 — worth reading before writing a new one). Six instances so

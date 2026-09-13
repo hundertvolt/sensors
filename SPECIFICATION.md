@@ -218,11 +218,11 @@ registration API and A.9's `HTML_SRC_DIRS` are shaped around it). Real-hardware 
   and the driver moves between them using the chip's own threshold interrupt, with a peak-of-three
   decision, a dwell floor and a settle count — and `AutoRangePersist` has to stay shorter than
   `SampleInterv` or the software re-check beats the interrupt to every decision (C.11.1.3); `RangeAct` in every reading says which range that
-  sample was actually taken on. (2) **The gain ratio is learned and persisted**, not assumed: a
-  paired reading taken across both ranges in the overlap band feeds an EMA, plausibility-banded to
-  20.0-34.0 and stored in its own timestamped FRAM chunk, so the two ranges agree across a switch
-  on *this* unit rather than in theory. `ISLResetCal` throws it away; it is command-only and never
-  persisted. (3) **Normalised RGB/HSB are over the whole auto-range span** (10000 lx) whenever
+  sample was actually taken on. (2) **The gain ratio is measured on request and applied only by the
+  user**, never assumed and never adopted automatically: `ISLCalibrate` starts a bounded run that
+  sandwiches a reading on each range, checks the scene held still, and publishes a candidate as the
+  `GainMeas` measurement; `GainRatio` is an ordinary config field, plausibility-banded to 20.0-34.0,
+  that only a PUT changes. See Part C.11.3. (3) **Normalised RGB/HSB are over the whole auto-range span** (10000 lx) whenever
   `RangeAuto` is on, over the selected fixed range otherwise — so the numbers do not jump when the
   range does. (4) **Register `0x08` is destructive to read** (the read clears `RGBTHF` and releases
   the INT pin), which is why exactly one status read happens per cycle and why no other code path
@@ -437,13 +437,13 @@ SGP40 + ISL29125, `timeout=200000` because SCD30 is on **this** bus here, not `i
 at CS=1. SCD30's RDY pin is GPIO11 (wozi: 8), the NeoPixel GPIO18 (wozi: 15), the ISL29125's INT
 GPIO6 (wozi: no such device).
 
-**2. One extra module.** `isl_reader = ISL29125_Reader(i2c1, 6, …, fram=fram,
-fram_ntp_callback=ntp.ntp_issynced, …)` — dev-only, by the project owner's own scoping decision.
-It contributes two error sources (itself and its `ConfigManager`), two level setters, a
-`maintenance_sensors` entry (`GainRatio`/`CalTS`), an entry in the `sensors=` tuple, an
-`await isl_reader.setup()` in the batch, and its task/timer starters.
+**2. One extra module.** `isl_reader = ISL29125_Reader(i2c1, 6, …, fram=fram, …)` — dev-only, by
+the project owner's own scoping decision. It contributes two error sources (itself and its
+`ConfigManager`), two level setters, an entry in the `sensors=` tuple, an `await isl_reader.setup()`
+in the batch, and its task/timer starters. It registers **no** `maintenance_sensors` entry: the gain
+ratio is config and its measured candidate is a measurement, so both already have a home.
 
-**3. Nine FRAM chunks, and `isl_reader` constructed out of reading order.** This is the first
+**3. Eight FRAM chunks, and `isl_reader` constructed out of reading order.** This is the first
 permanent divergence between the two variants' on-chip layouts, and it is the one thing here that
 cannot be changed casually. `AsyFramManager` is a bump allocator, so instantiation order *is*
 layout:
@@ -458,18 +458,20 @@ layout:
 | 6 | Neopixel | yes |
 | 7 | `NotificationCoordinator` | yes |
 | 8 | ISL29125 error log | **dev only** |
-| 9 | ISL29125 gain-ratio calibration (timestamped) | **dev only** |
+
+The gain ratio was a ninth, timestamped chunk until 2026-09-13. It is a config value now, written
+only by a user PUT (Part C.11.3), so the driver persists nothing of its own beyond its error log.
 
 `isl_reader` is therefore constructed **after `notify_service.finalize()` and before the
 `WebserverService(...)` call**, not beside the other sensor readers where it would read more
-naturally. Putting it with the others would shift chunks 5-7 down by two and silently reinterpret
-every already-persisted error log and the VOC backup at the wrong offset on a dev board that has
-already run. Appending at the end keeps chunks 1-7 byte-identical between the variants, so the
-only thing a dev board gains is two chunks nothing else was using.
+naturally. Putting it with the others would shift chunks 5-7 down and silently reinterpret every
+already-persisted error log and the VOC backup at the wrong offset on a dev board that has already
+run. Appending at the end keeps chunks 1-7 byte-identical between the variants, so the only thing a
+dev board gains is one chunk nothing else was using.
 
 **wozi stays at seven chunks, permanently.** "Seven chunks" is not a project-wide constant any
 more; it is wozi's number. Anything asserting a chunk count has to say which variant it means —
-`tests/test_sensortask_dev.py` does (its nine-chunk sequence test), and
+`tests/test_sensortask_dev.py` does (its eight-chunk sequence test), and
 `tests/test_sensortask_wozi.py`'s seven-chunk assertions are deliberately untouched.
 
 Full coverage: `tests/test_sensortask_dev.py`.
@@ -1530,6 +1532,43 @@ unrelated timing reason rather than because the detector worked.
 now checks `wrnno=15`/`17` per scenario *and* asserts the run made at least five range switches, so
 the check can actually fire. Before that, nothing in the suite ever exercised W15 where it was
 reachable — the envelope test makes two switches and the warning needs five in a row.
+
+### C.11.3 Calibration is user-triggered, user-applied, and writes nothing by itself
+
+Owner's design, 2026-09-13, replacing an hourly background learner that persisted its own result
+to a FRAM chunk. Three separate properties, and each is load-bearing:
+
+**The applied factor is ordinary config.** `GainRatio` is a schema field like any other — `float`,
+plausibility-banded to 20.0–34.0, defaulting to the nominal 26.667 — and `_gain_correction()` is
+its only reader. **Only a user PUT ever changes it.** The driver never writes its own config, so
+every flash write on this module stays on the REST path, which is the property Part F.2's
+power-cycle recovery argument depends on. It is also what made the old ninth FRAM chunk redundant
+(Part A.7.1).
+
+**Measuring is a bounded run, started by hand.** `ISLCalibrate` is command-only (the special-alone
+schema shape, C.5.2.1) and starts a window of `_CAL_WINDOW_MS`. While it is open the read loop's
+own path takes sandwiches; the run ends early on convergence, or when the window closes. Nothing
+schedules it, so normal operation pays nothing: a sandwich costs two range switches and two settle
+windows, which would otherwise be a permanent tax on every sample interval.
+
+**The measurement is a sandwich, not a pair, and that is the whole point.** Read this range, the
+other, then **this range again**. The dominant error in this measurement is the scene changing
+between the two legs, and a pair alone cannot distinguish a real ratio from a light that moved —
+both produce a plausible number. If the first and third readings disagree by more than
+`_CAL_STABILITY_TOL`, the sandwich is discarded however good the ratio looks. Convergence then
+requires `_CAL_CONVERGE_N` consecutive stable sandwiches agreeing within `_CAL_CONVERGE_TOL`,
+because a slow drift produces a run of self-consistent wrong answers.
+
+**The result is a measurement, not a setting.** A candidate is published as `GainMeas`, riding the
+same tuple as `Lux` and the colour fields, and held for `_CAL_HOLD_MS` before clearing. The user
+reads it and copies it into `GainRatio` if they want it used. **A refused measurement is reported
+by absence**: `GainMeas` stays `None`, which is the feedback — there is deliberately no `wrnno` for
+an unusable scene, because a scene outside the overlap band is a fact about the light, not a fault.
+Refusal reasons go to the debug log only. A real bus failure during a leg still logs `errno=11`.
+
+**One consequence worth knowing**: the third leg runs even when the second failed, because it is
+also what puts the range back. Skipping it on a clipped or unreadable partner would strand every
+later sample on the wrong range — caught by its own test, not by reasoning.
 
 ### C.11.2 ISL29125 reference layer — the prior art, and the traps it closes
 
@@ -2935,7 +2974,7 @@ per-entry timestamp — `type` only colors `num`. **Errcount UX**: same `.card` 
 groups, starts collapsed to a rollup + two filter buttons, wired entirely inside `templates.js`
 (no controller involvement). **Dispatch-only field semantics** — `SystemCmd`, `PauseTime`,
 `lightCmdLED` (r/g/b/t, bounds matching legacy exactly, rejecting not clamping),
-`ResetErrors`, `ContMeas`, `SGPResetVOC`, `ISLResetCal`: `"Invalid"` only for a structurally wrong
+`ResetErrors`, `ContMeas`, `SGPResetVOC`, `ISLCalibrate`: `"Invalid"` only for a structurally wrong
 payload; a well-formed submission always reports `"Valid"`, including on an identical repeat (never
 `"Unchanged"`). `js/mock-server.js` mirrors this via dedicated dispatch functions — none ever
 persisted into the generic settings store. **Server-side settings-group failure**: if a

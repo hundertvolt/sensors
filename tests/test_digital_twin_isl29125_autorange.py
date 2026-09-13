@@ -329,60 +329,53 @@ def test_a_dead_interrupt_line_eventually_warns_rather_than_staying_invisible() 
 # ---------------------------------------------------------------------------
 
 
-def test_the_learned_gain_ratio_converges_towards_the_chips_own_real_ratio() -> None:
-    # 12-bit for speed: a settle window is ~19 ms rather than ~303 ms, and each learn costs two
+def test_a_calibration_run_measures_the_chips_own_real_ratio() -> None:
+    # 12-bit for speed: a settle window is ~19 ms rather than ~303 ms, and each sandwich costs two
     # of them. The ratio itself is resolution-independent (it is a ratio of counts on one scale).
-    chip, reader = make_dev_reader("gain_converge", resolution=12)
+    chip, reader = make_dev_reader("gain_measure", resolution=12)
 
-    async def scenario() -> "list[float]":
-        seen = [reader._gain_ratio]
+    async def scenario() -> "tuple[float | None, float]":
+        assert await reader.start_calibration(flag=True) is True
+        # The driver's OWN read path takes the sandwiches - this is the real mechanism, not a
+        # direct call into it. Parked in the overlap band, where both ranges can represent it.
         for _ in range(30):
-            # Park in the overlap band and let the learn period elapse, so the driver's OWN read
-            # path takes the paired reading - this is the real mechanism, not a direct call to it.
-            elapse_learn_period(reader)
             await cycle(chip, reader, 300.0)
-            seen.append(reader._gain_ratio)
-        return seen
+        return reader._measured_ratio(), reader._gain_ratio
 
-    seen = run(scenario())
-    assert seen[0] == _GAIN_RATIO_NOMINAL
-    assert seen[-1] < seen[0]  # moved towards the chip's own smaller ratio, not away from it
-    assert abs(seen[-1] - _CHIP_GAIN_RATIO) < 0.5
-    assert abs(seen[-1] - _CHIP_GAIN_RATIO) < abs(seen[0] - _CHIP_GAIN_RATIO)
+    measured, applied = run(scenario())
+    assert measured is not None, "a steady in-band scene has to produce a candidate"
+    assert abs(measured - _CHIP_GAIN_RATIO) < 0.5, "the measurement has to find the chip's own ratio"
+    assert applied == _GAIN_RATIO_NOMINAL, "measuring must never change what the driver applies"
 
 
-def test_reset_cal_returns_the_ratio_to_nominal_and_it_relearns() -> None:
-    chip, reader = make_dev_reader("gain_reset", resolution=12)
+def test_the_applied_ratio_changes_only_by_a_config_push() -> None:
+    chip, reader = make_dev_reader("gain_apply", resolution=12)
 
-    async def scenario() -> "tuple[float, float, float]":
-        for _ in range(10):
-            elapse_learn_period(reader)
-            await cycle(chip, reader, 300.0)
-        learned = reader._gain_ratio
-        await reader.reset_gain_calibration(flag=True)
-        after_reset = reader._gain_ratio
-        for _ in range(10):
-            elapse_learn_period(reader)
-            await cycle(chip, reader, 300.0)
-        return learned, after_reset, reader._gain_ratio
+    async def scenario() -> "tuple[float, bool, float]":
+        before = reader._gain_ratio
+        accepted = await reader.set_gain_ratio(_CHIP_GAIN_RATIO)
+        return before, accepted, reader._gain_ratio
 
-    learned, after_reset, relearned = run(scenario())
-    assert learned < _GAIN_RATIO_NOMINAL
-    assert after_reset == _GAIN_RATIO_NOMINAL
-    assert relearned < _GAIN_RATIO_NOMINAL
+    before, accepted, after = run(scenario())
+    assert before == _GAIN_RATIO_NOMINAL
+    assert accepted is True
+    assert after == _CHIP_GAIN_RATIO
 
 
-def test_calibration_measurably_shrinks_the_high_range_error() -> None:
-    # The point of the whole mechanism, stated as the number a user would notice: the nominal
-    # ratio overstates this unit's high range by ~3%, and the learned one does not.
+def test_applying_a_measured_ratio_shrinks_the_high_range_error() -> None:
+    # The point of the whole mechanism, end to end and stated as the number a user would notice:
+    # measure a candidate, copy it across as a PUT would, and the ~3% overstatement is gone.
     chip, reader = make_dev_reader("gain_effect", resolution=12)
 
     async def scenario() -> "tuple[float, float]":
         await cycle(chip, reader, 900.0)  # settle onto the high range
         before = await cycle(chip, reader, 900.0)
-        for _ in range(40):
-            elapse_learn_period(reader)
+        assert await reader.start_calibration(flag=True) is True
+        for _ in range(30):
             await cycle(chip, reader, 300.0)
+        measured = reader._measured_ratio()
+        assert measured is not None
+        assert await reader.set_gain_ratio(measured) is True  # the user's copy-across
         await cycle(chip, reader, 900.0)
         after = await cycle(chip, reader, 900.0)
         assert before.Lux is not None and after.Lux is not None
@@ -391,15 +384,6 @@ def test_calibration_measurably_shrinks_the_high_range_error() -> None:
     before_lux, after_lux = run(scenario())
     assert abs(before_lux - 900.0) / 900.0 > 0.02  # the uncalibrated ~3% overstatement
     assert abs(after_lux - 900.0) / 900.0 < 0.01  # calibrated away
-
-
-def elapse_learn_period(reader: ISL29125_Reader) -> None:
-    # Backdates the reader's own learn clock far enough that its hourly period has elapsed - the
-    # one thing these tests cannot simply wait out in real time. Sets the attribute rather than
-    # returning a value so the port's opaque ticks type never has to be spelled here.
-    import time
-
-    reader._gain_learn_ms = time.ticks_add(time.ticks_ms(), -4_000_000)
 
 
 # ---------------------------------------------------------------------------

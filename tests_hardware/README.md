@@ -205,7 +205,8 @@ What one run proves: a live read chain at every level; `Bri == max(R, G, B)` and
 domain; monotonic response across a 39 → 8900 lx envelope; both ranges used; hysteresis with no
 chatter (2 switches across a full up-and-down, against a ceiling of 4); the return to the low
 range; fixed-range pinning at both ends; 12-bit and 16-bit agreeing to <1% on one static scene
-(which is what proves the `<< 4` normalisation); `ISLResetCal`; the saturation detector firing at
+(which is what proves the `<< 4` normalisation); `ISLCalibrate` starting a run without moving the
+applied ratio; the saturation detector firing at
 full white (`W14` - this rig really does exceed the 10000 lx range at ~20 mm); **no `W15`**, which
 is the driver's own "the interrupt may be dead" detector and therefore proves the INT line is
 carrying the range decisions rather than the periodic fallback silently doing the work; and zero
@@ -278,13 +279,12 @@ a live question:
   an empty-log assertion is a race, not a check. Use `error_log_helpers.assert_module_error_log_clean()`
   with `allowed_warnings=(13, 16)` instead - it still fails on any error and on any other warning.
   Two bench tests were failing on exactly this (2026-09-13, their first-ever execution: they came
-  from commit `ab81b79`, whose own subject is "written, never run"); both are green now. The same
-  commit's `CalTS` expectation was wrong too - it is `None`, not `0`, until a ratio has actually been
-  learned AND persisted, matching `SGP40_Reader`'s own `last_backup`/`restored_from`.
-- **A test comparing the ISL29125's GainRatio/CalTS across a reboot must pin `RangeAuto` off first**,
-  or the hourly learner can land between the two reads and move the pair under the test.
-  `_learn_gain_ratio()` returns immediately with auto-range off, and `RangeAuto` is persisted, so one
-  PUT before the reboot covers the whole test.
+  from commit `ab81b79`, whose own subject is "written, never run"); both are green now.
+- **The ISL29125's gain ratio is a config value, not a FRAM one** (since 2026-09-13). Only a user
+  PUT changes it, so a test comparing it across a reboot is an ordinary config-persistence check
+  and needs no `RangeAuto` pinning - a calibration run cannot move it at all. A run publishes its
+  candidate as the `GainMeas` measurement instead, which is legitimately null until a stable pair
+  is measured, so assert its PRESENCE unless the rig's light is actually arranged.
 - **`test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly` still fails
   deterministically** (not ISL-related): it asserts an empty FRAM log after deliberately provoking
   torn writes, and sees the dual-copy recovery's own `W71`/`W72` plus `E31`. Left alone on purpose -

@@ -36,7 +36,7 @@ const DEFS = {
                     submit: true,
                     fields: [
                         { key: "IrCompAdjust", label: "IR Compensation Adjust", kind: "number", min: 0, max: 63 },
-                        { key: "ISLResetCal", label: "Reset Gain Calibration", kind: "toggle" },
+                        { key: "ISLCalibrate", label: "Calibrate Gain Ratio", kind: "toggle" },
                     ],
                 },
             ],
@@ -441,25 +441,25 @@ describe("installMockFetch", () => {
         }
     });
 
-    it("omits the command-only ISLResetCal from GET readback, as it already does for ContMeas/SGPResetVOC", async () => {
+    it("omits the command-only ISLCalibrate from GET readback, as it already does for ContMeas/SGPResetVOC", async () => {
         uninstall = installMockFetch(DEFS, DATA);
-        const accepted = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ ISL29125: { ISLResetCal: true } }) });
-        expect((await accepted.json()).result.ISL29125.ISLResetCal).toBe("Valid");
+        const accepted = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ ISL29125: { ISLCalibrate: true } }) });
+        expect((await accepted.json()).result.ISL29125.ISLCalibrate).toBe("Valid");
 
         const body = await (await fetch("/sensors")).json();
-        expect("ISLResetCal" in body.ISL29125).toBe(false); // never echoed back as if persisted
+        expect("ISLCalibrate" in body.ISL29125).toBe(false); // never echoed back as if persisted
         expect(body.ISL29125.IrCompAdjust).toBe(40); // its neighbours are unaffected
     });
 
-    it("accepts ISLResetCal repeatedly - it is a trigger, not a one-shot", async () => {
+    it("accepts ISLCalibrate repeatedly - it is a trigger, not a one-shot", async () => {
         uninstall = installMockFetch(DEFS, DATA);
         for (let attempt = 0; attempt < 3; attempt += 1) {
             // Sequential is the point: each PUT must be accepted after the previous one already
             // fired, which running them in parallel would not show.
             // eslint-disable-next-line no-await-in-loop -- see the comment above
-            const res = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ ISL29125: { ISLResetCal: true } }) });
+            const res = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ ISL29125: { ISLCalibrate: true } }) });
             // eslint-disable-next-line no-await-in-loop -- same reasoning as above
-            expect((await res.json()).result.ISL29125.ISLResetCal).toBe("Valid");
+            expect((await res.json()).result.ISL29125.ISLCalibrate).toBe("Valid");
         }
     });
 

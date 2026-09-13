@@ -27,7 +27,7 @@ const DEV_UNIQUE_GROUPS = new Set(["SHTC3", "MPRLS", "ISL29125"]);
 // in GET" categories assume (SPECIFICATION.md Part H.4's mock-server-quirks note) - excluded here
 // only, not via _put_field_cases.js's shared DISPATCH_ONLY_KEYS, since
 // tests_js/live-backend-put-matrix.test.js also consumes that list and covers these fields for real.
-const GET_READBACK_QUIRK_FIELDS = new Set(["ForceCalRef", "ContMeas", "SGPResetVOC", "ISLResetCal", "PW"]);
+const GET_READBACK_QUIRK_FIELDS = new Set(["ForceCalRef", "ContMeas", "SGPResetVOC", "ISLCalibrate", "PW"]);
 
 /**
  * @param {string} device

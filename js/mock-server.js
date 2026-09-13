@@ -20,7 +20,7 @@ const PAUSE_TIME_MAX = 3600; // matches src/asy_webserver_service.py's own _PAUS
 // is a direct hardware dispatch re-run whenever submitted, never compared against a stored value
 // or persisted like an ordinary settings field - modeled here instead of the generic store-and-echo
 // path, which would wrongly report "Unchanged" and echo back the raw PUT.
-const SENSOR_QUIRK_FIELDS = new Set(["ForceCalRef", "ContMeas", "SGPResetVOC", "ISLResetCal"]);
+const SENSOR_QUIRK_FIELDS = new Set(["ForceCalRef", "ContMeas", "SGPResetVOC", "ISLCalibrate"]);
 
 /**
  * @param {import("./definitions.js").FieldDef} field
@@ -232,7 +232,7 @@ function dispatchSensorQuirkField(field, rawValue) {
 
 /**
  * Applies SENSOR_QUIRK_FIELDS' real GET-readback behavior: `ForceCalRef` always reports the fixed
- * constant 400 (SCD30's volatile-register limitation); `ContMeas`/`SGPResetVOC`/`ISLResetCal` are
+ * constant 400 (SCD30's volatile-register limitation); `ContMeas`/`SGPResetVOC`/`ISLCalibrate` are
  * omitted entirely, matching the real schema's exclusion of all three - each is a command-only
  * trigger that is never persisted, so echoing one back would make it look like a stored setting.
  * @param {Record<string, Record<string, unknown>>} sensorsConfig
@@ -243,7 +243,7 @@ function applySensorQuirksForGet(sensorsConfig) {
     const result = {};
     for (const [sensorKey, fields] of Object.entries(sensorsConfig)) {
         const rest = Object.fromEntries(
-            Object.entries(fields).filter(([key]) => key !== "ContMeas" && key !== "SGPResetVOC" && key !== "ISLResetCal"),
+            Object.entries(fields).filter(([key]) => key !== "ContMeas" && key !== "SGPResetVOC" && key !== "ISLCalibrate"),
         );
         result[sensorKey] = "ForceCalRef" in rest ? { ...rest, ForceCalRef: 400 } : rest;
     }

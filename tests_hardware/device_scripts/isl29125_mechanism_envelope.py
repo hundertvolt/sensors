@@ -110,7 +110,7 @@ def _make_reader(i2c1: "asy_i2c_driver.I2C") -> ISL29125_Reader:
         "SampleInterv": 1, "Resolution": 16, "RangeAuto": True, "Range": 10000,
         "AutoRangeUp": 85.0, "AutoRangeDown": 1.5, "AutoRangeSettle": 1,
         "AutoRangePersist": 2, "AutoRangeDwell": 0.0,
-        "IrCompOffset": 0, "IrCompAdjust": 40, "FiltCoeff": -1.0,
+        "IrCompOffset": 0, "IrCompAdjust": 40, "FiltCoeff": -1.0, "GainRatio": 10000 / 375,
     }
     return reader
 
@@ -191,16 +191,14 @@ async def _config_mechanisms(pixel: NeopixelDriver, reader: ISL29125_Reader, wdt
             notes.append(f"cross-range continuity at level {OVERLAP_LEVEL}: {on_low.Lux:.2f} lx on 375 vs {on_high.Lux:.2f} lx on 10000 ({step * 100:.1f}% step)")
             check(step < MAX_RANGE_STEP, f"the same light reads {on_low.Lux:.2f} lx on the low range and {on_high.Lux:.2f} lx on the high one ({step * 100:.1f}%) - the range gain correction is not being applied")
 
-    # Reported, never asserted: whether the run happened to enter the overlap band in a quiet
-    # enough moment to learn is a property of the light, not of the driver. It is recorded because
-    # each run is then one more data point for BACKLOG.md item 20's level-dependence question.
-    learned, _learned_ts = await reader.get_mem_status()
-    notes.append(f"gain ratio learned during this run: {learned} (nominal {10000 / 375})")
-
-    check(await reader._set_dict_cfg({"ISLResetCal": True}, reader.cfg_schema), "ISLResetCal was rejected")
-    ratio, _cal_ts = await reader.get_mem_status()
-    check(ratio is not None, "no gain ratio reported at all after ISLResetCal")
-    notes.append(f"gain ratio after ISLResetCal: {ratio}")
+    # The applied ratio is config now and only a user PUT changes it, so the run asserts the
+    # trigger is accepted and reports whatever candidate the light allowed - whether the scene
+    # happened to sit in the overlap band is a property of the light, not of the driver. Each run
+    # is one more data point for BACKLOG.md item 20's level-dependence question.
+    check(await reader._set_dict_cfg({"ISLCalibrate": True}, reader.cfg_schema), "ISLCalibrate was rejected")
+    check(reader._calibrating is True, "the calibration run did not start")
+    notes.append(f"measured gain ratio during this run: {reader._measured_ratio()} (nominal {10000 / 375})")
+    check(reader._gain_ratio == 10000 / 375, "a calibration run must never change the applied ratio")
 
 
 async def _main() -> None:

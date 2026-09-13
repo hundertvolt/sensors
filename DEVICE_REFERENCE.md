@@ -70,10 +70,19 @@ unit's own periodic re-check will always get there first and the log will say so
 configuration consequence, not a fault, and the setting's own help text in the web UI says the
 same.
 
-**The unit learns its own calibration, and it is meant to.** Every real chip's two ranges differ
-slightly from the nominal 26.67× ratio between them. When a reading lands in the band where both
-ranges work, the unit measures the real ratio on *this* chip and keeps a running average of it in
-FRAM, with a timestamp — `/status` shows both as `GainRatio` and `CalTS`. That is why readings
-across a range switch line up better after the unit has been running a while. `ISLResetCal` throws
-the learned value away and starts over; use it after changing the optics in front of the sensor,
-not as routine maintenance. A `CalTS` of 0 simply means nothing has been learned yet.
+**Calibration is yours to run, and yours to accept.** Every real chip's two ranges differ slightly
+from the nominal 26.67× ratio between them, and that error is the small step you see when a reading
+crosses a range change. The unit will measure the real ratio on *this* chip, but only when you ask
+and it never applies the result by itself.
+
+Set the light so the reading sits in the band where both ranges work — mid-brightness, neither dark
+nor near saturation — and switch **Calibrate Gain Ratio** on. For up to two minutes the unit takes
+readings on both ranges and checks the light held still between them, discarding any pair taken
+while it moved. What it finds appears as **Measured Gain Ratio** among the ISL29125 readings, and
+stays there for ten minutes. If the number looks sensible, type it into **Range Gain Ratio**; that
+field is the one the unit actually applies, and nothing but your own entry ever changes it. Leaving
+it at 26.667 is a perfectly reasonable choice.
+
+Measured Gain Ratio staying blank means no usable pair was obtained — most often the scene is too
+bright or too dark for both ranges at once, or it is not holding still. Move the light and run it
+again.

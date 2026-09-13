@@ -785,18 +785,18 @@ def test_real_microdot_isl29125_setter_end_to_end_rejects_a_cross_field_violatio
     assert run(reader.cfgmgr.get_dict(["AutoRangeDown"])) == {"AutoRangeDown": 1.5}
 
 
-def test_real_microdot_isl29125_setter_end_to_end_reset_cal_is_a_repeatable_trigger() -> None:
+def test_real_microdot_isl29125_setter_end_to_end_calibrate_is_a_repeatable_trigger() -> None:
     # SPECIFICATION.md Part C.5.2.1 obligation 3: a special-alone command field always reports
     # Valid once the type check passes. Fired twice in a row, through the real route.
     reader, _i2c = make_isl_reader()
     app = _isl_app(reader)
     for _ in range(2):
-        req = _make_request(app, "PUT", "/sensors/cmd", {"cmd": "setISL", "ISLResetCal": True})
+        req = _make_request(app, "PUT", "/sensors/cmd", {"cmd": "setISL", "ISLCalibrate": True})
         res = run(app.dispatch_request(req))
         assert res.status_code == 200
-        assert json.loads(res.body)["result"] == {"ISLResetCal": "Valid"}
+        assert json.loads(res.body)["result"] == {"ISLCalibrate": "Valid"}
     # Never persisted: get_dict() is all-or-nothing per key, so asking for it returns None.
-    assert run(reader.cfgmgr.get_dict(["ISLResetCal"])) is None
+    assert run(reader.cfgmgr.get_dict(["ISLCalibrate"])) is None
 
 
 def test_real_microdot_isl29125_setter_end_to_end_bus_fault_surfaces_as_failed_not_500() -> None:

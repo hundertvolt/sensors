@@ -299,7 +299,7 @@ def test_main_forwards_web_host_and_port_to_build_system() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_fram_chunk_allocation_order_matches_the_documented_nine_chunk_sequence() -> None:
+def test_fram_chunk_allocation_order_matches_the_documented_eight_chunk_sequence() -> None:
     calls: list[str] = []
     from asy_fram_manager import AsyFramManager
 
@@ -328,13 +328,14 @@ def test_fram_chunk_allocation_order_matches_the_documented_nine_chunk_sequence(
         AsyFramManager.get_timestamped_chunk = real_get_timestamped_chunk  # type: ignore[method-assign]
 
     # SystemService -> SGP40 log -> SGP40 VOC backup(timestamped) -> BMP3xx -> SCD30 -> Neopixel ->
-    # NotificationCoordinator -> ISL29125 log -> ISL29125 gain-ratio calibration(timestamped).
+    # NotificationCoordinator -> ISL29125 log. The ISL's gain ratio was a ninth, timestamped chunk
+    # until it became a config value written only by a user PUT (SPECIFICATION.md Part C.11.3).
     # Chunks 1-7 are byte-identical to sensortask_wozi.py's own order and MUST stay that way -
     # AsyFramManager is a bump allocator, so inserting the ISL anywhere earlier would shift every
     # later chunk's address and silently reinterpret a dev board's existing persisted error logs
-    # at the wrong offset. The two extra chunks at the end are this variant's only divergence
+    # at the wrong offset. The one extra chunk at the end is this variant's only divergence
     # (SPECIFICATION.md Part A.7.1).
-    assert calls == ["chunk", "chunk", "timestamped", "chunk", "chunk", "chunk", "chunk", "chunk", "timestamped"]
+    assert calls == ["chunk", "chunk", "timestamped", "chunk", "chunk", "chunk", "chunk", "chunk"]
 
 
 def test_fram_chunks_are_all_successfully_allocated_not_out_of_memory() -> None:
@@ -363,7 +364,6 @@ def test_fram_chunks_are_all_successfully_allocated_not_out_of_memory() -> None:
     assert sensortask_dev.isl_reader is not None
     assert isinstance(sensortask_dev.isl_reader.pr, PrintLogHistoryStore)
     assert sensortask_dev.isl_reader.pr.fram is not None
-    assert sensortask_dev.isl_reader.ts_storage is not None
 
 
 class _DeadFramChip(_FakeMB85RS2MTA):
@@ -697,7 +697,7 @@ def test_isl29125_contributes_two_error_sources_and_two_level_setters() -> None:
 def test_isl29125_is_constructed_after_notify_service_so_chunks_one_to_seven_are_unmoved() -> None:
     # The hard constraint, asserted as a property rather than trusted to a comment: AsyFramManager
     # is a bump allocator, so its own allocated_size at the moment each module is constructed IS
-    # that module's on-chip address. The ISL's two chunks must be the LAST two allocated.
+    # that module's on-chip address. The ISL's chunk must be the LAST one allocated.
     offsets: list[tuple[str, int]] = []
     from asy_fram_manager import AsyFramManager
 
@@ -724,20 +724,22 @@ def test_isl29125_is_constructed_after_notify_service_so_chunks_one_to_seven_are
     finally:
         AsyFramManager.get_chunk = real_get_chunk  # type: ignore[method-assign]
         AsyFramManager.get_timestamped_chunk = real_get_timestamped_chunk  # type: ignore[method-assign]
-    assert len(offsets) == 9
-    assert [kind for kind, _offset in offsets[7:]] == ["chunk", "timestamped"]
+    assert len(offsets) == 8
+    assert [kind for kind, _offset in offsets[7:]] == ["chunk"]
     # Strictly increasing, and the first seven start where wozi's own seven do - chunk 1 at 0.
     assert offsets[0][1] == 0
     for index in range(1, len(offsets)):
         assert offsets[index][1] > offsets[index - 1][1]
 
 
-def test_isl29125_maintenance_status_reports_the_two_flattened_keys() -> None:
+def test_the_isl29125_gain_ratio_is_reachable_as_an_ordinary_config_field() -> None:
+    # It used to be a maintenance key fed from FRAM. It is config now, written only by a user PUT,
+    # so it has to arrive through the same GET every other tuning knob does.
     run(sensortask_dev.build_system(cfg_path=_tmp_cfg_dir()))
-    status = run(sensortask_dev._isl_maintenance_status())
-    assert set(status) == {"GainRatio", "CalTS"}
-    assert status["CalTS"] is None  # nothing learned yet on a fresh unit
-    assert status["GainRatio"] is not None  # the nominal ratio, in use until one is learned
+    assert sensortask_dev.isl_reader is not None
+    body = run(sensortask_dev.isl_reader.get_dict_cfg())
+    assert "GainRatio" in body["ISL29125"]
+    assert "ISLCalibrate" not in body["ISL29125"]  # command-only, never in the config cache
 
 
 def test_collect_task_starters_never_touches_start_and_check_tasks() -> None:
@@ -997,13 +999,11 @@ def test_webserver_status_get_reflects_the_real_object_graph() -> None:
     res = _dispatch("GET", "/status")
     body = json.loads(status_body(res))
     assert set(body.keys()) == {"networking", "system", "notification", "sensors", "errcount"}
-    # SGP40 and ISL29125 are the real sensors with maintenance data; UARTLINK is the bench rig's
-    # own link exerciser reporting through the same variable-length registration list.
-    assert set(body["sensors"].keys()) == {"SGP40", "ISL29125", "UARTLINK"}
+    # SGP40 is the only real sensor with maintenance data - the ISL29125's gain ratio moved to
+    # config when it stopped being FRAM-backed. UARTLINK is the bench rig's own link exerciser
+    # reporting through the same variable-length registration list.
+    assert set(body["sensors"].keys()) == {"SGP40", "UARTLINK"}
     assert "BackupTS" in body["sensors"]["SGP40"] and "RestoreTS" in body["sensors"]["SGP40"]
-    # js/render.js flattens these one level into ISL29125_GainRatio/ISL29125_CalTS, which is
-    # exactly how html/definitions/dev.json addresses them.
-    assert "GainRatio" in body["sensors"]["ISL29125"] and "CalTS" in body["sensors"]["ISL29125"]
     assert body["sensors"]["UARTLINK"] == {"Transfers": 0, "Failures": 0}  # no exerciser task run yet
     assert "SysUptime" in body["system"] and "LocalTime" in body["system"] and "UtcTime" in body["system"]
     assert "WifiUptime" in body["networking"] and "NtpSynced" in body["networking"]

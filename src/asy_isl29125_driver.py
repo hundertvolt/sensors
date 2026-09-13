@@ -19,7 +19,6 @@ import math_helpers
 from asy_i2c_driver import I2CDevice
 from base_classes import Lockable, LockedValue, SensorReaderConfig
 from config_manager import name_cfg, type_or_range_error
-from crc_checks import CRC32
 
 try:
     from typing import TYPE_CHECKING
@@ -27,10 +26,10 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Coroutine
+    from collections.abc import Callable
     from typing import Any
 
-    from asy_fram_manager import AsyFramManager, AsyFramTimestampedChunk
+    from asy_fram_manager import AsyFramManager
     from asy_i2c_driver import I2C
     from config_manager import ConfigSchema
     from print_log import ErrorLog
@@ -96,9 +95,13 @@ _CCT_FLOOR_COUNTS = const(64)  # ~13x the worst-case dark count: below it a 5-co
 _GAIN_RATIO_NOMINAL = const(26.666666666666668)  # 10000/375 - the ratio a fresh unit starts from
 _GAIN_RATIO_MIN = const(20.0)  # a plausibility gate around nominal, applied where an untrusted
 _GAIN_RATIO_MAX = const(34.0)  # value enters (on load and on learn), never in the hot path
-_GAIN_EMA_COEFF = const(0.1)  # the learning filter's own time constant
-_GAIN_LEARN_PERIOD_S = const(3600)  # the ratio is a device constant, so re-measuring it hourly is
-# generous; each measurement costs one extra range switch and two settle windows.
+# Calibration is a bounded, user-started run, never a background schedule: the driver only ever
+# READS GainRatio, so nothing it does can write the flash (SPECIFICATION.md Part C.11.3).
+_CAL_WINDOW_MS = const(120000)  # hard stop on a run that never converges - ~100 attempts at 16 bit
+_CAL_HOLD_MS = const(600000)  # how long a finished run's candidate stays readable before it clears
+_CAL_CONVERGE_N = const(3)  # consecutive stable ratios that must agree before the run stops early
+_CAL_CONVERGE_TOL = const(0.01)  # 1%: one bench scene measured 28.11/28.01/28.09, a 0.4% spread
+_CAL_STABILITY_TOL = const(0.02)  # 2% between the sandwich's first and third reading of one range
 _AR_CROSS_FIELD_DIVISOR = const(53.333333333333336)  # 2 x the range ratio - the no-chatter margin
 # AutoRangeDown must clear: d <= u/(2r), see SPECIFICATION.md Part C.11.2.
 _SETTLE_WAIT_MAX_ROUNDS = const(2)  # one extra cycle past the deadline, so a stream of concurrent
@@ -138,22 +141,27 @@ _VAL_AR_DWELL = const((("AutoRangeDwell", "float", 10.0, _MIN_DWELL_S, _MAX_DWEL
 _VAL_ICO = const((("IrCompOffset", "int", 0, None, None, _IR_OFFSETS),))
 _VAL_ICA = const((("IrCompAdjust", "int", 40, 0, 63, None),))
 _VAL_FC = const((("FiltCoeff", "float", -1.0, _MIN_FILT_COEFF, _MAX_FILT_COEFF, None),))
+# The applied scale factor, and the ONLY thing _gain_correction() reads. Persisted like any other
+# config value and written by a user PUT alone - the driver never writes it back, which is what
+# keeps every flash write on the REST path. A measured candidate is published as a MEASUREMENT
+# (GainMeas) for the user to copy across, never adopted automatically.
+_VAL_GR = const((("GainRatio", "float", _GAIN_RATIO_NOMINAL, _GAIN_RATIO_MIN, _GAIN_RATIO_MAX, None),))
 # Command-only trigger, not a persisted config value - the schema's "special-alone" shape
 # (def=None + a non-tuple special, SPECIFICATION.md Part C.5.2.1). Deliberately excluded from
 # get_dict_cfg()'s own schema argument and from the bool batch below: this key is never in
 # ConfigManager's _cache, so either would fail at runtime rather than at type-check time.
-_VAL_RESETCAL = const((("ISLResetCal", "bool", None, None, None, True),))
+_VAL_CALIB = const((("ISLCalibrate", "bool", None, None, None, True),))
 
 _N_INT_CFG = const(7)  # SampleInterv + Resolution + Range + AutoRangeSettle + AutoRangePersist + IrCompOffset + IrCompAdjust
-_N_FLOAT_CFG = const(4)  # AutoRangeUp + AutoRangeDown + AutoRangeDwell + FiltCoeff
-_N_BOOL_CFG = const(1)  # RangeAuto ALONE - ISLResetCal is command-only (see _VAL_RESETCAL above)
+_N_FLOAT_CFG = const(5)  # AutoRangeUp + AutoRangeDown + AutoRangeDwell + FiltCoeff + GainRatio
+_N_BOOL_CFG = const(1)  # RangeAuto ALONE - ISLCalibrate is command-only (see _VAL_CALIB above)
 _N_STORE_CFG = const(1)  # FiltCoeff ALONE - the only config value the store path reads per sample
 
 _NAME = const("ISL29125")
 # Kept as a literal tuple inline (not `_FIELDS` below) because mypy's namedtuple plugin can only
 # infer field names from a literal at the call site, not through a variable indirection.
-ISL29125 = namedtuple("ISL29125", ("Lux", "Red", "Green", "Blue", "Hue", "Sat", "Bri", "CCT", "RangeAct", "TS"))
-_FIELDS = const(("Lux", "Red", "Green", "Blue", "Hue", "Sat", "Bri", "CCT", "RangeAct", "TS"))  # kept in sync with ISL29125's own fields above
+ISL29125 = namedtuple("ISL29125", ("Lux", "Red", "Green", "Blue", "Hue", "Sat", "Bri", "CCT", "RangeAct", "GainMeas", "TS"))
+_FIELDS = const(("Lux", "Red", "Green", "Blue", "Hue", "Sat", "Bri", "CCT", "RangeAct", "GainMeas", "TS"))  # kept in sync with ISL29125's own fields above
 if TYPE_CHECKING:
     # Narrow on purpose - CCT is legitimately None in a dark room, and base_classes._error_check()
     # counts a failed read when ANY element is None, so the wide namedtuple must never reach it.
@@ -173,16 +181,15 @@ class ISL29125_Reader(SensorReaderConfig):
         max_module_error: int = 5,
         cfg_path: str = "",
         fram: "AsyFramManager | None" = None,
-        fram_ntp_callback: "Callable[[], Coroutine[Any, Any, bool]] | None" = None,
         history_length: int = 10,
         debug: int | None = None,
     ) -> None:
         super().__init__(
-            ISL29125(None, None, None, None, None, None, None, None, None, None),
+            ISL29125(None, None, None, None, None, None, None, None, None, None, None),
             max_module_error,
             _NAME,
             _VAL_SI + _VAL_RES + _VAL_RA + _VAL_RNG + _VAL_AR_UP + _VAL_AR_DOWN + _VAL_AR_SETTLE
-            + _VAL_AR_PERSIST + _VAL_AR_DWELL + _VAL_ICO + _VAL_ICA + _VAL_FC + _VAL_RESETCAL,
+            + _VAL_AR_PERSIST + _VAL_AR_DWELL + _VAL_ICO + _VAL_ICA + _VAL_FC + _VAL_GR + _VAL_CALIB,
             cfg_path=cfg_path,
             fram=fram,
             history_length=history_length,
@@ -219,29 +226,17 @@ class ISL29125_Reader(SensorReaderConfig):
         # it: the flag is raised by the CHIP, so it is set just the same when the line itself is
         # dead - which is precisely the missing pull-up / broken jumper requirement 17 names.
         self._irq_fired = False
-        self._gain_ratio = _GAIN_RATIO_NOMINAL
-        self._gain_ratio_ts: int | None = None
-        # Back-dated by a whole period, so the first chance is taken as soon as the light sits in
-        # the overlap band. _GAIN_LEARN_PERIOD_S is a rate limit BETWEEN measurements, not a
-        # blackout before the first one: seeding this with "now" would make a fresh unit - and
-        # ISLResetCal, whose whole point is to relearn - wait a full hour before it could measure
-        # anything. A ratio successfully restored from FRAM does start the period (see
-        # _load_gain_ratio), because a good stored value is not worth re-measuring at once.
-        # ticks_add() takes a negative delta as long as its magnitude stays under half the tick
-        # period (2**29 ms on rp2 - 3600000 is nowhere near it), which is what makes "the period
-        # has already elapsed" expressible as a real ticks value instead of a None sentinel.
-        self._gain_learn_ms = time.ticks_add(time.ticks_ms(), -_GAIN_LEARN_PERIOD_S * 1000)
+        self._gain_ratio = _GAIN_RATIO_NOMINAL  # the APPLIED factor, replaced only by a config push
+        # Calibration-run state, all RAM-only and all deliberately so: a run is started by the user,
+        # bounded, and publishes its candidate as a measurement. Nothing here reaches the flash.
+        # A flag plus a bare deadline, not an Optional deadline: time.ticks_ms() types as the
+        # stubs' internal _TicksMs, which cannot be spelled in an annotation (Part F.1).
+        self._calibrating = False
+        self._cal_until_ms = time.ticks_ms()
+        self._cal_recent: list[float] = []  # consecutive stable ratios, for the convergence check
+        self._cal_meas: float | None = None  # the published candidate, or None when none is current
+        self._cal_meas_until_ms = time.ticks_ms()  # when _cal_meas stops being offered
         self._filtered: list[float | None] = [None, None, None]  # green, red, blue, in lux
-        if fram is None or fram_ntp_callback is None:
-            self.ts_storage: AsyFramTimestampedChunk | None = None
-        else:
-            try:  # broad on purpose, matching asy_sgp40_driver.py's own FRAM-allocation guard -
-                # __init__ runs before any task supervisor exists to catch an escaped exception.
-                self.ts_storage = fram.get_timestamped_chunk(4, fram_ntp_callback, crc=CRC32())
-            except Exception:
-                self.ts_storage = None
-            if self.ts_storage is None:
-                self.pr.err("FRAM calibration storage allocation failed!")
         self._push_callbacks[name_cfg(_VAL_SI)] = self._push_trigger_secs
         self._push_callbacks[name_cfg(_VAL_RES)] = self._push_resolution
         self._push_callbacks[name_cfg(_VAL_RA)] = self._push_range_auto
@@ -254,11 +249,12 @@ class ISL29125_Reader(SensorReaderConfig):
         self._push_callbacks[name_cfg(_VAL_ICO)] = self._push_ir_comp_offset
         self._push_callbacks[name_cfg(_VAL_ICA)] = self._push_ir_comp_adjust
         self._push_callbacks[name_cfg(_VAL_FC)] = self._push_filter_coefficient
-        self._push_callbacks[name_cfg(_VAL_RESETCAL)] = self._push_reset_gain_calibration
+        self._push_callbacks[name_cfg(_VAL_GR)] = self._push_gain_ratio
+        self._push_callbacks[name_cfg(_VAL_CALIB)] = self._push_calibrate
         # Live read-back for _set_dict_cfg's failed-push recovery chain (SPECIFICATION.md C.5.2).
         # Only the five hardware-backed fields have one; the software knobs (the timer divider,
         # the four auto-range policy numbers, the output filter) have nothing to read back, and
-        # ISLResetCal is command-only so _recover_failed_push() skips it by design.
+        # ISLCalibrate is command-only so _recover_failed_push() skips it by design.
         self._get_callbacks[name_cfg(_VAL_RES)] = self.get_resolution
         self._get_callbacks[name_cfg(_VAL_RNG)] = self.get_range
         self._get_callbacks[name_cfg(_VAL_ICO)] = self.get_ir_comp_offset
@@ -281,7 +277,7 @@ class ISL29125_Reader(SensorReaderConfig):
         int_values = await self.cfgmgr.get_int_values(
             _VAL_SI + _VAL_RES + _VAL_RNG + _VAL_AR_SETTLE + _VAL_AR_PERSIST + _VAL_ICO + _VAL_ICA,
         )
-        float_values = await self.cfgmgr.get_float_values(_VAL_AR_UP + _VAL_AR_DOWN + _VAL_AR_DWELL + _VAL_FC)
+        float_values = await self.cfgmgr.get_float_values(_VAL_AR_UP + _VAL_AR_DOWN + _VAL_AR_DWELL + _VAL_FC + _VAL_GR)
         # The bool batch is RangeAuto alone, and it is not optional: step 9 below cannot decide
         # whether to arm the thresholds without it.
         bool_values = await self.cfgmgr.get_bool_values(_VAL_RA)
@@ -300,6 +296,7 @@ class ISL29125_Reader(SensorReaderConfig):
         # SampleInterv is a pure software timing knob, not a reason to fail this whole init attempt.
         await self.set_trigger_secs(int_values[0])
         self._ar_up, self._ar_down, self._ar_dwell_s = float_values[0], float_values[1], float_values[2]
+        self._gain_ratio = float_values[4]  # already schema-bounded to [20, 34] on the way in
         self.isl.settle_cycles = int_values[3]
         self._range_auto = bool_values[0]
         self._fixed_range = int_values[2]
@@ -317,7 +314,6 @@ class ISL29125_Reader(SensorReaderConfig):
             await self.pr.err_s("Error setting config data:", e, errno=13)
             return False  # error
 
-        await self._load_gain_ratio()  # never fails the init - degrades to the nominal ratio
         if self._range_auto:
             # Easy to miss: without this the part boots with its power-on thresholds and the
             # interrupt path is dead until the first switch would have happened anyway.
@@ -389,7 +385,7 @@ class ISL29125_Reader(SensorReaderConfig):
                 await self._switch_range(target)
             elif saturated and sample_range == _RANGE_HIGH_LUX:
                 await self.pr.wrn_s("Saturated on the high range - the scene exceeds the part.", wrnno=14)
-            await self._learn_gain_ratio(counts[0])
+            await self._measure_gain_ratio(counts[0])
             self.pr.all("read")
             green, red, blue = counts
         except Exception as e:
@@ -495,6 +491,7 @@ class ISL29125_Reader(SensorReaderConfig):
                 Bri=bri,
                 CCT=self._colour_temperature(green, norm),
                 RangeAct=sample_range,
+                GainMeas=self._measured_ratio(),  # None unless a recent run produced a candidate
                 TS=timestamp,
             ),
         )
@@ -588,120 +585,90 @@ class ISL29125_Reader(SensorReaderConfig):
 
     # -- gain-ratio calibration -------------------------------------------
 
-    async def _learn_gain_ratio(self, green_counts: int) -> None:
-        # 26.67 is nominal; the real per-device ratio differs, and that error IS the visible step
-        # at each transition. Measured as a PAIR of readings on the two ranges within one quiet
-        # period, because the dominant error source is the scene changing between them.
+    async def _measure_gain_ratio(self, green_counts: int) -> None:
+        # Only ever runs inside a user-started window. Measured as a SANDWICH - this range, the
+        # other, then this one again - because the dominant error is the scene moving between the
+        # two readings, and a pair alone cannot tell a real ratio from a light that changed.
+        # Publishes a candidate; never adopts it and never writes it anywhere (Part C.11.3).
+        if not self._calibrating:
+            return
+        if time.ticks_diff(time.ticks_ms(), self._cal_until_ms) >= 0:
+            await self._end_calibration("no stable reading converged before the window closed")
+            return
         if not self._range_auto or self.isl.time_to_settle_ms() > 0:
-            return
-        if time.ticks_diff(time.ticks_ms(), self._gain_learn_ms) < _GAIN_LEARN_PERIOD_S * 1000:
-            return
-        if time.ticks_diff(time.ticks_ms(), self._last_switch_ms) < int(self._ar_dwell_s * 1000):
             return
         # Only inside the overlap band - bright enough to be well clear of the dark floor on the
         # low range, dim enough not to clip it.
         if not self.isl.fraction_to_counts(self._ar_down) < green_counts < self.isl.fraction_to_counts(self._ar_up):
+            self.pr.evt("calibration: scene outside the overlap band, waiting")
             return
         here = self._active_range
         there = _RANGE_LOW_LUX if here == _RANGE_HIGH_LUX else _RANGE_HIGH_LUX
-        self._gain_learn_ms = time.ticks_ms()
-        if not await self._switch_range(there):
+        paired = await self._read_on(there)
+        # The third leg runs even when the second failed, because it is also what puts the range
+        # BACK - skipping it on a clipped or unreadable partner would strand every later sample on
+        # the wrong range, which is far worse than the wasted read.
+        back = await self._read_on(here)
+        if paired is None or back is None:
             return
-        try:
-            await self._settle_wait()
-            raw = await self.isl.read_counts()
-        except Exception as e:
-            await self.pr.err_s("Paired gain-ratio reading failed:", e, errno=11)
-            await self._switch_range(here)
+        # The stability test the pair alone cannot do: if this range no longer reads what it read a
+        # moment ago, the light moved during the sandwich and the ratio measures that, not the part.
+        if green_counts <= 0 or abs(back - green_counts) > green_counts * _CAL_STABILITY_TOL:
+            self._cal_recent = []
+            self.pr.evt("calibration: scene moved during the pair", green_counts, "->", back)
             return
-        paired_counts, paired_saturated = self.isl.normalise(raw, range_fs=self._active_range)
-        if paired_saturated:
-            # A clipped partner makes the ratio a measurement of the clamp, not of the part. The
-            # band gate above is range-agnostic, so learning from the HIGH range at an ordinary
-            # indoor level (~3000 counts, ~460 lx) asks the low range for ~26.7x that - past full
-            # scale - and normalise() clamps rather than failing. The resulting 65534/3000
-            # = 21.8 lands INSIDE the 20-34 plausibility band, so nothing downstream can catch it.
-            # Rejecting the whole triple, not just green: a pair is only taken in a quiet period,
-            # so any channel at the clamp means the scene is at the top of that range regardless.
-            await self.pr.wrn_s("Paired gain-ratio reading clipped - the other range cannot represent this scene", wrnno=16)
-            await self._switch_range(here)
-            return
-        paired = paired_counts[0]
-        await self._switch_range(here)
         low_counts, high_counts = (green_counts, paired) if here == _RANGE_LOW_LUX else (paired, green_counts)
         if high_counts <= 0:
             return
         sample_ratio = low_counts / high_counts
         if not _GAIN_RATIO_MIN <= sample_ratio <= _GAIN_RATIO_MAX:
-            await self.pr.wrn_s("Learned gain ratio implausible, keeping the previous one:", sample_ratio, wrnno=13)
+            self._cal_recent = []
+            self.pr.evt("calibration: ratio implausible, discarding", sample_ratio)
             return
-        updated = math_helpers.ema_step(self._gain_ratio, sample_ratio, _GAIN_EMA_COEFF)
-        if updated is None:
-            return
-        self.pr.evt("gain ratio", self._gain_ratio, "->", updated)
-        self._gain_ratio = updated
-        await self._persist_gain_ratio()
+        await self._note_candidate(sample_ratio)
 
-    async def _load_gain_ratio(self) -> None:
-        # Every failure here degrades to "use the nominal ratio", never to a failed init and never
-        # to a raise. The plausibility gate is applied on LOAD, not only on learn: this is the
-        # boundary where an untrusted value enters (see counts_to_lux's own note).
-        if self.ts_storage is None:
-            await self.pr.wrn_s("No calibration storage - using the nominal gain ratio.", wrnno=11)
-            return
-        buf = self.ts_storage.get_buffer()
+    async def _read_on(self, target_range: int) -> int | None:
+        # One leg of the sandwich: switch, wait out the settle the switch just armed, read green.
+        # Returns None on any failure, having logged it - the caller abandons the whole sandwich.
+        if not await self._switch_range(target_range):
+            return None
         try:
-            valid, stored_ts, age = await self.ts_storage.read_into(buf)
+            await self._settle_wait()
+            raw = await self.isl.read_counts()
         except Exception as e:
-            await self.pr.err_s("Error reading the gain-ratio backup:", e, errno=35)
-            return
-        data = buf.get_data_buf()
-        if not valid or data is None:
-            await self.pr.wrn_s("No gain-ratio backup found!", wrnno=11)
-            return
-        try:  # single precision: MicroPython's float is 4 bytes on rp2, so "<d" would waste half
-            ratio = float(struct.unpack_from("<f", data, 0)[0])  # the chunk and misstate the precision
-        except Exception:
-            await self.pr.wrn_s("Stored gain ratio is unreadable, using nominal.", wrnno=12)
-            return
-        if not _GAIN_RATIO_MIN <= ratio <= _GAIN_RATIO_MAX:
-            await self.pr.wrn_s("Stored gain ratio is implausible, using nominal:", ratio, wrnno=13)
-            return
-        if stored_ts is None:
-            await self.pr.wrn_s("Gain ratio restored without a timestamp.", wrnno=12)
-        self._gain_ratio = ratio
-        self._gain_ratio_ts = stored_ts
-        self._gain_learn_ms = time.ticks_ms()  # a restored ratio starts the period; only an unseeded run learns at once
-        self.pr.one("Gain ratio restored:", ratio, "age", age)
+            await self.pr.err_s("Paired gain-ratio reading failed:", e, errno=11)
+            return None
+        counts, saturated = self.isl.normalise(raw, range_fs=self._active_range)
+        if saturated:
+            # A clipped leg measures the clamp, not the part: the band gate is range-agnostic, so a
+            # scene fine on THIS range can be far past full scale on the other one.
+            self._cal_recent = []
+            self.pr.evt("calibration: the other range cannot represent this scene")
+            return None
+        return counts[0]
 
-    async def _persist_gain_ratio(self) -> None:
-        if self.ts_storage is None:
-            return
-        buf = self.ts_storage.get_buffer()
-        data = buf.get_data_buf()
-        if data is None:
-            return
-        try:
-            struct.pack_into("<f", data, 0, self._gain_ratio)
-            ntp_synced, written_ts, ok = await self.ts_storage.write_into(buf)
-        except Exception as e:
-            await self.pr.err_s("Error writing the gain-ratio backup:", e, errno=36)
-            return
-        if not ok:
-            await self.pr.err_s("Write error during the gain-ratio backup!", errno=36)
-            return
-        self._gain_ratio_ts = written_ts if ntp_synced else None
+    async def _note_candidate(self, sample_ratio: float) -> None:
+        # Converged means several consecutive stable sandwiches agreed - one good-looking reading
+        # is not evidence, since a slow drift produces a run of self-consistent wrong answers.
+        if self._cal_recent and abs(sample_ratio - self._cal_recent[-1]) > self._cal_recent[-1] * _CAL_CONVERGE_TOL:
+            self._cal_recent = []
+        self._cal_recent.append(sample_ratio)
+        self._publish_candidate(sample_ratio)
+        self.pr.evt("calibration: candidate", sample_ratio, "run", len(self._cal_recent))
+        if len(self._cal_recent) >= _CAL_CONVERGE_N:
+            await self._end_calibration(f"{len(self._cal_recent)} consecutive readings agreed, last {sample_ratio:.3f}")
 
-    async def _clear_gain_ratio(self) -> bool:
-        if self.ts_storage is None:
-            return True  # nothing allocated to clear - vacuously satisfied, not a failure
-        try:
-            return await self.ts_storage.clear()
-        except Exception as e:
-            await self.pr.err_s("Error clearing the gain-ratio backup:", e, errno=37)
-            return False
+    def _publish_candidate(self, value: float) -> None:
+        # Every stable sandwich republishes, so the user sees the run settling rather than only its
+        # final answer - and the hold restarts from the most recent one, not the first.
+        self._cal_meas = value
+        self._cal_meas_until_ms = time.ticks_add(time.ticks_ms(), _CAL_HOLD_MS)
 
-    # -- config helpers ----------------------------------------------------
+    def _measured_ratio(self) -> float | None:
+        # None once the hold expires, so a stale candidate can never be mistaken for a fresh one.
+        if self._cal_meas is None or time.ticks_diff(time.ticks_ms(), self._cal_meas_until_ms) >= 0:
+            return None
+        return self._cal_meas
 
     async def _read_sensor_dict(self) -> "dict[str, int | float | str | bool | None]":
         # Reads the real registers rather than reporting the shadow, because this is the only
@@ -819,13 +786,16 @@ class ISL29125_Reader(SensorReaderConfig):
     async def _push_filter_coefficient(self, value: "int | float | str | bool | None") -> bool:
         return type(value) is float and await self.set_filter_coefficient(value)
 
-    async def _push_reset_gain_calibration(self, value: "int | float | str | bool | None") -> bool:
-        # Reports success unconditionally once the type check passes: a recalibration that finds
-        # nothing to discard has not FAILED, and returning False would run _recover_failed_push()
-        # on a command-only field that cannot be recovered (SPECIFICATION.md Part C.5.2.1).
+    async def _push_gain_ratio(self, value: "int | float | str | bool | None") -> bool:
+        return type(value) is float and await self.set_gain_ratio(value)
+
+    async def _push_calibrate(self, value: "int | float | str | bool | None") -> bool:
+        # Reports success unconditionally once the type check passes: starting a run that later
+        # finds no usable scene has not FAILED, and returning False would run
+        # _recover_failed_push() on a command-only field that cannot be recovered (Part C.5.2.1).
         if type(value) is not bool:
             return False
-        await self.reset_gain_calibration(flag=value)
+        await self.start_calibration(flag=value)
         return True
 
     # -- starters ----------------------------------------------------------
@@ -867,9 +837,6 @@ class ISL29125_Reader(SensorReaderConfig):
 
     # -- getters -----------------------------------------------------------
 
-    async def get_mem_status(self) -> "tuple[float | None, int | None]":
-        return self._gain_ratio, self._gain_ratio_ts
-
     async def get_data(self) -> ISL29125:
         # Narrows to this Reader's concrete ISL29125 - see SPECIFICATION.md C.4.2's convention.
         return await self._get_meas_data()  # type: ignore[return-value]
@@ -892,12 +859,12 @@ class ISL29125_Reader(SensorReaderConfig):
         }
 
     async def get_dict_cfg(self) -> "dict[str, dict[str, int | float | str | bool | None]]":
-        # ISLResetCal is deliberately absent from this schema argument: ConfigManager.get_dict()
+        # ISLCalibrate is deliberately absent from this schema argument: ConfigManager.get_dict()
         # is all-or-nothing and would KeyError on a key it never persisted.
         return await self._get_dict_cfg(
             _NAME,
             _VAL_SI + _VAL_RES + _VAL_RA + _VAL_RNG + _VAL_AR_UP + _VAL_AR_DOWN + _VAL_AR_SETTLE
-            + _VAL_AR_PERSIST + _VAL_AR_DWELL + _VAL_ICO + _VAL_ICA + _VAL_FC,
+            + _VAL_AR_PERSIST + _VAL_AR_DWELL + _VAL_ICO + _VAL_ICA + _VAL_FC + _VAL_GR,
             callback=self._read_sensor_dict,
         )
 
@@ -1025,6 +992,16 @@ class ISL29125_Reader(SensorReaderConfig):
             return False
         return True
 
+    async def set_gain_ratio(self, value: float) -> bool:
+        # The one and only way the applied factor changes. Unlike set_filter_coefficient() this
+        # DOES store locally: _gain_correction() reads the cached attribute on every sample rather
+        # than going back to cfgmgr, so the live value has to be updated here too.
+        coerced = await self._checked_cfg(value, _VAL_GR, 26)
+        if coerced is None:
+            return False
+        self._gain_ratio = float(coerced)
+        return True
+
     async def set_filter_coefficient(self, value: float) -> bool:
         # Validates, but deliberately stores NOTHING, unlike the other three software knobs: the
         # filter's only reader is _store_isl(), which takes the value from cfgmgr on the sample it
@@ -1034,18 +1011,20 @@ class ISL29125_Reader(SensorReaderConfig):
 
     # -- others ------------------------------------------------------------
 
-    async def reset_gain_calibration(self, *, flag: bool) -> bool:
+    async def start_calibration(self, *, flag: bool) -> bool:
         # flag=False is deliberately a no-op, matching SGP40_Reader.reset_voc()'s own contract.
         if not flag:
             return False
-        self._gain_ratio = _GAIN_RATIO_NOMINAL
-        self._gain_ratio_ts = None
-        # Back-dated a whole period, exactly as __init__ does: relearn at the next opportunity,
-        # which is what "relearning from nominal" below actually means.
-        self._gain_learn_ms = time.ticks_add(time.ticks_ms(), -_GAIN_LEARN_PERIOD_S * 1000)
-        cleared = await self._clear_gain_ratio()
-        self.pr.one("Gain calibration discarded, relearning from nominal.")
-        return cleared
+        self._cal_until_ms = time.ticks_add(time.ticks_ms(), _CAL_WINDOW_MS)
+        self._calibrating = True
+        self._cal_recent = []
+        self.pr.one("Gain-ratio calibration started - measuring while the scene stays in the overlap band.")
+        return True
+
+    async def _end_calibration(self, why: str) -> None:
+        self._calibrating = False
+        self._cal_recent = []
+        self.pr.one("Gain-ratio calibration finished:", why)
 
     async def read_loop(self) -> bool:
         if not await self._init_isl():  # init sensor at startup
@@ -1218,9 +1197,9 @@ class ISL29125_I2C:
     def counts_to_lux(count: int, full_scale: int, gain_correction: float) -> float:
         # p1's feature list gives 375/65535 = 5.72 mlux and 10000/65535 = 0.1526 lux per LSB,
         # matching the datasheet's own stated figures exactly - the LSB really is FS/65535 on both
-        # ranges. gain_correction is validated where an untrusted ratio ENTERS (the reader's
-        # _load_gain_ratio), never here: a plausibility gate in the hot path would run on every
-        # sample for a value that changes daily.
+        # ranges. gain_correction is validated where an untrusted ratio ENTERS (the GainRatio
+        # config field's own schema bounds), never here: a plausibility gate in the hot path would
+        # run on every sample for a value that only a user PUT can change.
         return count * (full_scale / 65535.0) * gain_correction
 
     @staticmethod

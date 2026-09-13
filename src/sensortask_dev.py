@@ -1,6 +1,6 @@
 """Dev-bench sibling of `src/sensortask_wozi.py` - same shape, plus the ISL29125 colour sensor wozi does not carry,
 wired for the "dev" bench unit's own pins (`dev_legacy/README.md`'s wiring table) instead of wozi's.
-See SPECIFICATION.md Part A.7.1 for this variant's own nine-chunk construction order."""
+See SPECIFICATION.md Part A.7.1 for this variant's own eight-chunk construction order."""
 
 import asyncio
 import time
@@ -268,14 +268,6 @@ async def _sgp_maintenance_status() -> "dict[str, Any]":
     return {"BackupTS": backup_ts, "RestoreTS": restore_ts}
 
 
-async def _isl_maintenance_status() -> "dict[str, Any]":
-    # js/render.js's groupValuesFrom() flattens /status's `sensors` object one level into
-    # <Sensor>_<Field>, so these become ISL29125_GainRatio/ISL29125_CalTS and
-    # html/definitions/dev.json has to name them exactly that - the keys are not a free choice.
-    assert isl_reader is not None
-    gain_ratio, cal_ts = await isl_reader.get_mem_status()
-    return {"GainRatio": gain_ratio, "CalTS": cal_ts}
-
 
 async def _networking_status() -> "dict[str, Any]":
     assert conn is not None and ntp is not None
@@ -493,7 +485,6 @@ async def build_system(
         max_module_error=_MAX_MODULE_ERROR,
         cfg_path=cfg_path,
         fram=fram,
-        fram_ntp_callback=ntp.ntp_issynced,
         debug=debug,
     )
     conn.set_ext_led(pixel)  # callback for wifi led - after both conn and pixel exist
@@ -569,7 +560,7 @@ async def build_system(
             "system": _system_status,
             "notification": _notification_status,
         },
-        maintenance_sensors=(("SGP40", _sgp_maintenance_status), ("ISL29125", _isl_maintenance_status), ("UARTLINK", _uart_link_maintenance)),
+        maintenance_sensors=(("SGP40", _sgp_maintenance_status), ("UARTLINK", _uart_link_maintenance)),
         error_sources=_collect_error_sources(),
         debug=debug,
         static_mount="/html",  # see SPECIFICATION.md Part A.9 - matches frozen_html's own

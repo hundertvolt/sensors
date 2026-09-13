@@ -10,6 +10,7 @@
             "HSB": { "H": 78.4, "S": 0.552, "B": 0.0337 },
             "CCT": 4180,
             "RangeAct": 10000,
+            "GainMeas": null,
             "TS": 1755000000
         }
     },
@@ -22,7 +23,8 @@
             "SampleInterv": 5, "Resolution": 16, "RangeAuto": true, "Range": 10000,
             "AutoRangeUp": 85.0, "AutoRangeDown": 1.5, "AutoRangeSettle": 1,
             "AutoRangePersist": 2, "AutoRangeDwell": 10.0,
-            "IrCompOffset": 0, "IrCompAdjust": 40, "FiltCoeff": -1.0, "ISLResetCal": false
+            "IrCompOffset": 0, "IrCompAdjust": 40, "FiltCoeff": -1.0, "GainRatio": 26.667,
+            "ISLCalibrate": false
         }
     },
     "networkingConfig": {
@@ -46,8 +48,7 @@
             "UtcTime": { "year": 2025, "month": 8, "mday": 12, "hour": 8, "minute": 14, "second": 3, "weekday": 1 }
         },
         "sensors": {
-            "SGP40": { "BackupTS": 1754997000, "RestoreTS": 0 },
-            "ISL29125": { "GainRatio": 25.914, "CalTS": 1754997600 }
+            "SGP40": { "BackupTS": 1754997000, "RestoreTS": 0 }
         },
         "notification": { "Triggered": false, "TS": 0, "PauseTime": 0 },
         "errcount": {

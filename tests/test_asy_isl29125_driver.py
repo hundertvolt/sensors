@@ -45,6 +45,7 @@ _STATUS_BOUTF = 0x04
 _RANGE_LOW_LUX = 375
 _RANGE_HIGH_LUX = 10000
 _GAIN_RATIO_NOMINAL = 26.666666666666668
+_CAL_CONVERGE_N = 3  # mirrors the driver's own const: consecutive agreeing readings that end a run
 
 try:
     from typing import TYPE_CHECKING
@@ -52,7 +53,7 @@ except ImportError:  # typing isn't available on the real MicroPython test inter
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Coroutine
+    from collections.abc import Coroutine
     from typing import Any, TypeVar
 
     from typing_extensions import Self
@@ -802,7 +803,6 @@ def make_reader(
     *,
     max_module_error: int = 5,
     fram: "AsyFramManager | None" = None,
-    ntp: "Callable[[], Coroutine[Any, Any, bool]] | None" = None,
     healthy: bool = True,
 ) -> "tuple[I2C, ISL29125_Reader]":
     FakeTimer.all_timers.clear()
@@ -815,7 +815,6 @@ def make_reader(
         max_module_error=max_module_error,
         cfg_path=_tmp_cfg_path(name),
         fram=fram,
-        fram_ntp_callback=ntp,
     )
     run(reader.cfgmgr.setup())
     return i2c, reader
@@ -853,16 +852,6 @@ def seed_cycle(i2c: I2C, green: int, red: int, blue: int, status: int = 0x00) ->
     seed(i2c, _REG_DATA, counts_burst(green, red, blue))
 
 
-class _RefusingFramManager:
-    # An AsyFramManager stand-in whose allocator is out of space - the real one returns None
-    # rather than raising, and __init__ has to degrade to "no persisted calibration" either way.
-    def get_timestamped_chunk(self, *_args: object, **_kwargs: object) -> None:
-        return None
-
-
-class _RaisingFramManager:
-    def get_timestamped_chunk(self, *_args: object, **_kwargs: object) -> None:
-        raise MemoryError("simulated allocation failure")
 
 
 def test_reader_construction_performs_no_bus_transactions() -> None:
@@ -872,17 +861,6 @@ def test_reader_construction_performs_no_bus_transactions() -> None:
     i2c = make_i2c()
     ISL29125_Reader(i2c, 6, cfg_path=_tmp_cfg_path("no_io"))
     assert fake(i2c).log == []
-
-
-def test_reader_construction_survives_a_fram_manager_that_refuses_allocation() -> None:
-    for manager in (_RefusingFramManager(), _RaisingFramManager()):
-        FakeTimer.all_timers.clear()
-        i2c = make_i2c()
-        reader = ISL29125_Reader(
-            i2c, 6, cfg_path=_tmp_cfg_path("no_fram"), fram=manager, fram_ntp_callback=_always_synced,  # type: ignore[arg-type]
-        )
-        assert reader.ts_storage is None
-        assert fake(i2c).log == []
 
 
 def test_reader_construction_enables_the_internal_pull_up_on_the_int_pin() -> None:
@@ -1774,24 +1752,24 @@ def test_get_dict_cfg_excludes_the_command_only_field() -> None:
     _i2c, reader = ready_reader("cfg_excl")
     with _FastAsyncSleep():
         body = run(reader.get_dict_cfg())
-    assert "ISLResetCal" not in body["ISL29125"]
+    assert "ISLCalibrate" not in body["ISL29125"]
     assert "SampleInterv" in body["ISL29125"]
     assert set(body["ISL29125"]) == {
         "SampleInterv", "Resolution", "RangeAuto", "Range", "AutoRangeUp", "AutoRangeDown",
         "AutoRangeSettle", "AutoRangePersist", "AutoRangeDwell", "IrCompOffset", "IrCompAdjust",
-        "FiltCoeff",
+        "FiltCoeff", "GainRatio",
     }
 
 
 # ---------------------------------------------------------------------------
-# Config surface - the thirteen pushes, the setters and the five getters
+# Config surface - the fourteen pushes, the setters and the five getters
 # ---------------------------------------------------------------------------
 
 
 def test_every_schema_field_has_a_push_callback() -> None:
     _i2c, reader = make_reader("push_coverage")
     names = [field[0] for field in reader.cfg_schema]
-    assert len(names) == 13
+    assert len(names) == 14  # GainRatio joined when the ratio moved out of FRAM into config
     assert sorted(reader._push_callbacks) == sorted(names)
 
 
@@ -1812,7 +1790,7 @@ def test_each_push_rejects_the_wrong_type_without_touching_the_bus() -> None:
         "SampleInterv": True, "Resolution": 16.0, "RangeAuto": 1, "Range": "10000",
         "AutoRangeUp": 85, "AutoRangeDown": 2, "AutoRangeSettle": 1.0, "AutoRangePersist": 4.0,
         "AutoRangeDwell": 10, "IrCompOffset": False, "IrCompAdjust": 40.0, "FiltCoeff": 0,
-        "ISLResetCal": 1,
+        "GainRatio": 26, "ISLCalibrate": 1,
     }
     with _FastAsyncSleep():
         for field, value in wrong.items():
@@ -2054,122 +2032,23 @@ def test_a_getter_returning_an_out_of_schema_value_is_rejected_by_the_recovery_c
     assert run(scenario())["Resolution"] == 16  # the pre-write snapshot, not the chip's nonsense
 
 
-def test_reset_cal_returns_valid_twice_in_a_row() -> None:
-    # A recalibration that finds nothing to discard has not FAILED - returning False would run
+def test_starting_a_calibration_returns_valid_twice_in_a_row() -> None:
+    # A run that later finds no usable scene has not FAILED - returning False would run
     # _recover_failed_push() on a field that cannot be recovered.
-    _i2c, reader = ready_reader("resetcal_twice")
+    _i2c, reader = ready_reader("calibrate_twice")
 
     async def scenario() -> "list[Any]":
         with _FastAsyncSleep():
-            first = await reader._set_dict_cfg({"ISLResetCal": True}, reader.cfg_schema)
-            second = await reader._set_dict_cfg({"ISLResetCal": True}, reader.cfg_schema)
-        return [first["ISLResetCal"], second["ISLResetCal"]]
+            first = await reader._set_dict_cfg({"ISLCalibrate": True}, reader.cfg_schema)
+            second = await reader._set_dict_cfg({"ISLCalibrate": True}, reader.cfg_schema)
+        return [first["ISLCalibrate"], second["ISLCalibrate"]]
 
     assert run(scenario()) == ["Valid", "Valid"]
-
-
-def test_reset_cal_with_false_is_a_no_op() -> None:
-    _i2c, reader = make_reader("resetcal_false")
-    reader._gain_ratio = 24.0
-    assert run(reader.reset_gain_calibration(flag=False)) is False
-    assert reader._gain_ratio == 24.0
-    assert run(reader._push_callbacks["ISLResetCal"](False)) is True  # still a successful push
 
 
 # ---------------------------------------------------------------------------
 # Gain-ratio calibration - R12-R15
 # ---------------------------------------------------------------------------
-
-
-def test_gain_ratio_round_trips_through_the_fram_chunk() -> None:
-    manager, chip, spi_bus = make_fram_manager()
-    run(manager.setup())
-    i2c, reader = ready_reader("gain_rt", fram=manager, ntp=_always_synced)
-    assert reader.ts_storage is not None
-
-    async def scenario() -> float | None:
-        reader._gain_ratio = 25.25
-        await reader._persist_gain_ratio()
-        # A real reboot re-constructs everything downstream of the surviving chip memory.
-        manager2 = AsyFramManager(spi_bus, 1, max_size=0x2000)
-        manager2.fram._spidev.spi._spi = chip
-        await manager2.setup()
-        FakeTimer.all_timers.clear()
-        rebooted = ISL29125_Reader(
-            i2c, 6, cfg_path=_tmp_cfg_path("gain_rt2"), fram=manager2, fram_ntp_callback=_always_synced,
-        )
-        await rebooted.cfgmgr.setup()
-        await rebooted.pr.setup()
-        await rebooted._load_gain_ratio()
-        return rebooted._gain_ratio
-
-    restored = run(scenario())
-    assert restored is not None
-    assert abs(restored - 25.25) < 1e-3  # single precision, deliberately: rp2's float is 4 bytes
-
-
-def test_a_corrupt_or_implausible_stored_ratio_falls_back_to_nominal_with_a_warning() -> None:
-    manager, _chip, _spi = make_fram_manager()
-    run(manager.setup())
-    _i2c, reader = ready_reader("gain_bad", fram=manager, ntp=_always_synced)
-    assert reader.ts_storage is not None
-
-    async def scenario() -> "ErrorLog":
-        reader._gain_ratio = 99.0  # outside the 20-34 plausibility band
-        await reader._persist_gain_ratio()
-        reader._gain_ratio = _GAIN_RATIO_NOMINAL
-        await reader._load_gain_ratio()
-        return await reader.get_error_counter()
-
-    counters = run(scenario())
-    assert reader._gain_ratio == _GAIN_RATIO_NOMINAL
-    assert 13 in warnings(counters)
-
-
-def test_an_absent_chunk_degrades_to_nominal_with_no_error_and_no_crash() -> None:
-    _i2c, reader = ready_reader("gain_absent")  # no fram= at all
-    assert reader.ts_storage is None
-
-    async def scenario() -> "ErrorLog":
-        await reader._load_gain_ratio()
-        assert await reader._clear_gain_ratio() is True
-        await reader._persist_gain_ratio()
-        return await reader.get_error_counter()
-
-    counters = run(scenario())
-    assert reader._gain_ratio == _GAIN_RATIO_NOMINAL
-    assert 11 in warnings(counters)
-    assert errors(counters) == []  # a missing chunk is expected, not an error
-
-
-def test_a_fresh_unit_with_storage_warns_that_there_is_no_backup_yet() -> None:
-    manager, _chip, _spi = make_fram_manager()
-    run(manager.setup())
-    _i2c, reader = ready_reader("gain_fresh", fram=manager, ntp=_always_synced)
-
-    async def scenario() -> "ErrorLog":
-        await reader._load_gain_ratio()
-        return await reader.get_error_counter()
-
-    assert 11 in warnings(run(scenario()))
-
-
-def test_reset_cal_clears_the_chunk_and_returns_to_nominal() -> None:
-    manager, _chip, _spi = make_fram_manager()
-    run(manager.setup())
-    _i2c, reader = ready_reader("gain_reset", fram=manager, ntp=_always_synced)
-
-    async def scenario() -> "tuple[float, Any]":
-        reader._gain_ratio = 25.0
-        await reader._persist_gain_ratio()
-        await reader.reset_gain_calibration(flag=True)
-        ratio_after_reset = reader._gain_ratio
-        await reader._load_gain_ratio()  # nothing left to restore
-        return ratio_after_reset, await reader.get_mem_status()
-
-    ratio_after_reset, mem_status = run(scenario())
-    assert ratio_after_reset == _GAIN_RATIO_NOMINAL
-    assert mem_status == (_GAIN_RATIO_NOMINAL, None)
 
 
 def test_the_gain_correction_is_one_on_the_low_range_and_learned_over_nominal_on_the_high_one() -> None:
@@ -2183,165 +2062,6 @@ def test_the_gain_correction_is_one_on_the_low_range_and_learned_over_nominal_on
     # light, so the reported lux has to be scaled UP - the direction this assertion pins.
     reader._gain_ratio = 30.0
     assert reader._gain_correction(_RANGE_HIGH_LUX) > 1.0
-
-
-def test_a_fresh_reader_learns_at_its_first_opportunity_rather_than_after_a_whole_period() -> None:
-    # _GAIN_LEARN_PERIOD_S is a rate limit BETWEEN measurements, not a blackout before the first
-    # one. Seeding the timestamp with "now" at construction made a unit with no stored ratio wait
-    # a full hour before it could measure anything - and made ISLResetCal's own "relearning from
-    # nominal" a lie for that same hour. Nothing is back-dated here on purpose.
-    i2c, reader = ready_reader("learn_first")
-    with _FastAsyncSleep():
-        reader._ar_dwell_s = 0.0
-        seed(i2c, _REG_DATA, counts_burst(51801, 51801, 51801))
-        run(reader._learn_gain_ratio(2000))
-    assert reader._gain_ratio != _GAIN_RATIO_NOMINAL, "the very first in-band sample has to move the ratio"
-
-
-def test_the_learn_period_rate_limits_repeats_and_islresetcal_re_arms_it() -> None:
-    import time as _time
-
-    i2c, reader = ready_reader("learn_period")
-
-    def settled() -> None:
-        # The paired reading's own two range switches each arm a 303ms settle, and these tests run
-        # in zero wall-clock time - so it is cleared between attempts, leaving the learn period as
-        # the only thing that can still hold a measurement off.
-        reader.isl._settle_until_ms = _time.ticks_ms()
-
-    with _FastAsyncSleep():
-        reader._ar_dwell_s = 0.0
-        seed(i2c, _REG_DATA, counts_burst(51801, 51801, 51801))
-        run(reader._learn_gain_ratio(2000))
-        after_first = reader._gain_ratio
-        assert after_first != _GAIN_RATIO_NOMINAL
-        settled()
-        fake(i2c).log.clear()
-        run(reader._learn_gain_ratio(2000))  # immediately again - inside the period
-        assert mem_writes(i2c) == [], "a second measurement inside the period must not touch the bus"
-        assert reader._gain_ratio == after_first
-        run(reader.reset_gain_calibration(flag=True))
-        settled()
-        run(reader._learn_gain_ratio(2000))
-    assert reader._gain_ratio != _GAIN_RATIO_NOMINAL, "ISLResetCal must let the next opportunity relearn, not wait out a period"
-
-
-def test_a_ratio_restored_from_fram_starts_the_period_instead_of_being_re_measured_at_once() -> None:
-    import time as _time
-
-    manager, _chip, _spi = make_fram_manager()
-    run(manager.setup())
-    i2c, reader = ready_reader("learn_restored", fram=manager, ntp=_always_synced)
-    assert reader.ts_storage is not None
-
-    async def scenario() -> None:
-        reader._gain_ratio = 25.25
-        await reader._persist_gain_ratio()
-        await reader._load_gain_ratio()  # a successful restore is what starts the period
-
-    with _FastAsyncSleep():
-        run(scenario())
-        reader._ar_dwell_s = 0.0
-        reader.isl._settle_until_ms = _time.ticks_ms()
-        fake(i2c).log.clear()
-        run(reader._learn_gain_ratio(2000))
-    assert mem_writes(i2c) == []
-    assert abs(reader._gain_ratio - 25.25) < 1e-3
-
-
-def test_learning_is_skipped_during_settle_and_dwell_and_while_auto_is_off() -> None:
-    import time as _time
-
-    i2c, reader = ready_reader("learn_guards")
-    with _FastAsyncSleep():
-        reader._gain_learn_ms = _time.ticks_add(_time.ticks_ms(), -4_000_000)  # the period has elapsed
-        reader._ar_dwell_s = 0.0
-        reader._range_auto = False
-        fake(i2c).log.clear()
-        run(reader._learn_gain_ratio(20000))
-        assert mem_writes(i2c) == []  # auto off
-        reader._range_auto = True
-        reader.isl._settle_until_ms = _time.ticks_add(_time.ticks_ms(), 500)
-        run(reader._learn_gain_ratio(20000))
-        assert mem_writes(i2c) == []  # settle pending
-        reader.isl._settle_until_ms = _time.ticks_ms()
-        reader._ar_dwell_s = 300.0
-        reader._last_switch_ms = _time.ticks_ms()
-        run(reader._learn_gain_ratio(20000))
-        assert mem_writes(i2c) == []  # inside the dwell window
-
-
-def test_learning_is_skipped_outside_the_overlap_band() -> None:
-    import time as _time
-
-    i2c, reader = ready_reader("learn_band")
-    with _FastAsyncSleep():
-        reader._gain_learn_ms = _time.ticks_add(_time.ticks_ms(), -4_000_000)
-        reader._ar_dwell_s = 0.0
-        fake(i2c).log.clear()
-        run(reader._learn_gain_ratio(10))  # far below AutoRangeDown's own count
-        assert mem_writes(i2c) == []
-        run(reader._learn_gain_ratio(65535))  # clipped, far above AutoRangeUp's
-        assert mem_writes(i2c) == []
-
-
-def test_learning_takes_a_paired_reading_and_returns_to_the_original_range() -> None:
-    import time as _time
-
-    i2c, reader = ready_reader("learn_pair")
-    with _FastAsyncSleep():
-        reader._gain_learn_ms = _time.ticks_add(_time.ticks_ms(), -4_000_000)
-        reader._ar_dwell_s = 0.0
-        # On the high range, reading 2000 counts; the low range sees the same light at ~25.9x.
-        seed(i2c, _REG_DATA, counts_burst(51801, 51801, 51801))
-        run(reader._learn_gain_ratio(2000))
-    assert reader._active_range == _RANGE_HIGH_LUX  # back where it started
-    # ratio = low/high = 51800/2000 = 25.9, low-passed one step from the nominal 26.667.
-    assert reader._gain_ratio < _GAIN_RATIO_NOMINAL
-    assert abs(reader._gain_ratio - (_GAIN_RATIO_NOMINAL + 0.1 * (25.9 - _GAIN_RATIO_NOMINAL))) < 1e-9
-
-
-def test_a_paired_reading_that_clipped_the_low_range_is_rejected_rather_than_learned() -> None:
-    import time as _time
-
-    i2c, reader = ready_reader("learn_clipped")
-
-    async def scenario() -> "ErrorLog":
-        with _FastAsyncSleep():
-            reader._gain_learn_ms = _time.ticks_add(_time.ticks_ms(), -4_000_000)
-            reader._ar_dwell_s = 0.0
-            # 3000 counts on the HIGH range is ordinary indoor light (~460 lx) and sits inside the
-            # overlap band, so learning fires. But the same light is ~26.7x more on the low range -
-            # 80000 counts, which the part cannot represent - so the paired reading comes back
-            # clipped at full scale. 65534/3000 = 21.8 lands INSIDE the 20-34 plausibility band, so
-            # nothing downstream can tell it from a real measurement.
-            seed(i2c, _REG_DATA, counts_burst(65535, 65535, 65535))
-            await reader._learn_gain_ratio(3000)
-        return await reader.get_error_counter()
-
-    counters = run(scenario())
-    assert reader._gain_ratio == _GAIN_RATIO_NOMINAL, "a clipped pair must not move the learned ratio"
-    assert 16 in warnings(counters), "the rejection has to be visible, and distinguishable from a plain implausible pair"
-
-
-def test_an_implausible_learned_ratio_is_rejected_with_a_warning() -> None:
-    import time as _time
-
-    i2c, reader = ready_reader("learn_bad")
-
-    async def scenario() -> "ErrorLog":
-        with _FastAsyncSleep():
-            reader._gain_learn_ms = _time.ticks_add(_time.ticks_ms(), -4_000_000)
-            reader._ar_dwell_s = 0.0
-            # The paired low-range reading and the high-range one differ by only ~10x here,
-            # which is nowhere near the 20-34 band a real part's range ratio has to fall in.
-            seed(i2c, _REG_DATA, counts_burst(20000, 20000, 20000))
-            await reader._learn_gain_ratio(2000)
-        return await reader.get_error_counter()
-
-    counters = run(scenario())
-    assert reader._gain_ratio == _GAIN_RATIO_NOMINAL
-    assert 13 in warnings(counters)
 
 
 # ---------------------------------------------------------------------------
@@ -2458,13 +2178,7 @@ def test_get_data_returns_the_all_none_namedtuple_before_the_first_read() -> Non
     _i2c, reader = make_reader("predata")
     data = run(reader.get_data())
     assert isinstance(data, ISL29125)
-    assert data == ISL29125(None, None, None, None, None, None, None, None, None, None)
-
-
-def test_get_mem_status_reports_the_ratio_and_its_timestamp() -> None:
-    _i2c, reader = make_reader("memstatus")
-    assert run(reader.get_mem_status()) == (_GAIN_RATIO_NOMINAL, None)
-
+    assert data == ISL29125(None, None, None, None, None, None, None, None, None, None, None)
 
 
 # ---------------------------------------------------------------------------
@@ -2580,116 +2294,6 @@ def test_the_filter_coefficient_rejects_values_outside_its_band_and_logs_errno_2
     assert errors(counters).count(26) == 4, "one per rejected value, and the two boundaries must not count"
 
 
-def test_a_silently_dropped_fram_write_is_reported_rather_than_believed() -> None:
-    # A REAL simulated fault at the chip boundary (E.4), not a patched storage method: a corrupted
-    # WREN transfer leaves the latch clear, so the chip ignores the WRITE and answers normally.
-    # AsyFramManager's own verify read-back is what catches it, reporting ok=False with no
-    # exception anywhere - treat that as success and the ratio is believed-persisted and gone at
-    # the next boot.
-    manager, chip, _spi = make_fram_manager()
-    run(manager.setup())
-    _i2c, reader = ready_reader("gain_write_dropped", fram=manager, ntp=_always_synced)
-    assert reader.ts_storage is not None
-
-    async def scenario() -> "ErrorLog":
-        reader._gain_ratio = 24.5
-        await reader._persist_gain_ratio()  # a good write first, so the failure below is the only change
-        assert reader._gain_ratio_ts is not None
-        good_ts = reader._gain_ratio_ts
-        chip.drop_wren = True
-        reader._gain_ratio = 25.5
-        await reader._persist_gain_ratio()
-        assert reader._gain_ratio_ts == good_ts, "a dropped write advanced the stored timestamp anyway"
-        return await reader.get_error_counter()
-
-    counters = run(scenario())
-    assert errors(counters).count(36) == 1
-
-
-def test_one_faulted_fram_read_is_recovered_and_two_degrade_to_nominal() -> None:
-    # Both halves of the read side, measured 2026-09-13. AsyFramManager stores each chunk twice, so
-    # a single disturbed transfer costs nothing at all - the ratio comes back intact and nothing is
-    # even logged. Lose both copies and it becomes "no usable backup" (wrnno=11) and degrades to
-    # nominal: still not an ERROR, because a unit with an unreadable chunk must measure and run.
-    for faults, expect_restored in ((1, True), (2, False)):
-        manager, chip, _spi = make_fram_manager()
-        run(manager.setup())
-        _i2c, reader = ready_reader(f"gain_read_faulted_{faults}", fram=manager, ntp=_always_synced)
-
-        async def scenario(chip: FakeMB85RS64V = chip, reader: ISL29125_Reader = reader, faults: int = faults) -> "ErrorLog":
-            reader._gain_ratio = 24.5
-            await reader._persist_gain_ratio()
-            await reader.reset_error_counter()  # the reader's own init already logged its empty-chunk wrnno=11
-            reader._gain_ratio = _GAIN_RATIO_NOMINAL
-            chip.inject_fault("readinto", OSError(errno_mod.EIO, "SPI RX overrun"), times=faults)
-            await reader._load_gain_ratio()
-            return await reader.get_error_counter()
-
-        counters = run(scenario())
-        assert errors(counters) == [], f"{faults} faulted read(s): a disturbed backup read is a degradation, not a module error"
-        if expect_restored:
-            assert reader._gain_ratio == 24.5, "the second stored copy should have carried the ratio through untouched"
-            assert warnings(counters) == [], "a fault the dual-copy format absorbed must not be reported as a missing backup"
-        else:
-            assert reader._gain_ratio == _GAIN_RATIO_NOMINAL
-            assert 11 in warnings(counters)
-
-
-def test_the_gain_ratio_storage_handlers_survive_a_contract_violating_raise() -> None:
-    # Defense in depth, and deliberately NOT reachable through a real fault: measured 2026-09-13,
-    # AsyFramManager.read_into()/clear() answer a bus fault with a sentinel and never raise, so
-    # errno 35/37 guard the Protocol contract in the abstract rather than any behaviour the real
-    # class has today. Same shape, and the same reason, as E.4's own get_chunk()-raising precedent.
-    manager, _chip, _spi = make_fram_manager()
-    run(manager.setup())
-    _i2c, reader = ready_reader("gain_fram_raises", fram=manager, ntp=_always_synced)
-    storage = reader.ts_storage
-    assert storage is not None
-
-    async def scenario() -> "ErrorLog":
-        async def raising(*_args: object, **_kwargs: object) -> bool:
-            raise OSError(errno_mod.EIO, "a contract violation, not a reachable fault")
-
-        storage.read_into = raising  # type: ignore[method-assign, assignment]
-        await reader._load_gain_ratio()
-        storage.write_into = raising  # type: ignore[method-assign, assignment]
-        await reader._persist_gain_ratio()
-        storage.clear = raising  # type: ignore[method-assign]
-        assert await reader._clear_gain_ratio() is False
-        return await reader.get_error_counter()
-
-    counters = run(scenario())
-    assert 35 in errors(counters)
-    assert 36 in errors(counters)
-    assert 37 in errors(counters)
-    assert reader._gain_ratio == _GAIN_RATIO_NOMINAL, "a failed restore must leave the nominal ratio in place"
-
-
-def test_a_ratio_stored_without_a_valid_timestamp_is_still_restored_and_warned_about() -> None:
-    # A ratio persisted before NTP ever synced has no usable timestamp, but the RATIO itself is
-    # fine - it is a device constant, not a reading, and nothing about it depends on when it was
-    # measured. Warning and keeping it is the whole point: a `return` beside that warning would
-    # silently throw away a good calibration and relearn from nominal on every boot.
-    manager, _chip, _spi = make_fram_manager()
-    run(manager.setup())
-    _i2c, reader = ready_reader("gain_no_ts", fram=manager, ntp=_never_synced)
-    assert reader.ts_storage is not None
-
-    async def scenario() -> "ErrorLog":
-        reader._gain_ratio = 24.5
-        await reader._persist_gain_ratio()
-        reader._gain_ratio = _GAIN_RATIO_NOMINAL  # forget it, the way a reboot would
-        reader._gain_ratio_ts = None
-        await reader._load_gain_ratio()
-        return await reader.get_error_counter()
-
-    counters = run(scenario())
-    assert 12 in warnings(counters)
-    assert abs(reader._gain_ratio - 24.5) < 1e-3, "the ratio was discarded along with its missing timestamp"
-    assert reader._gain_ratio_ts is None
-    assert errors(counters) == [], "an unsynced clock is not an error condition"
-
-
 def test_the_read_loop_stores_healthy_samples_and_gives_up_once_the_budget_is_spent() -> None:
     # read_loop() IS the coroutine system_service.py's supervisor runs, and its False return is
     # the restart contract. Every other test in this file drives _read_isl()/_error_check()
@@ -2748,30 +2352,6 @@ def test_the_read_loop_gives_up_immediately_when_the_chip_is_not_there_at_all() 
 
     assert run(scenario()) is False
     assert entered[0] == 0, "the loop was entered despite the init having failed"
-
-
-def test_a_failed_paired_reading_logs_errno_11_and_puts_the_range_back() -> None:
-    # Taking the pair means switching range for the second reading. If that reading fails, an
-    # early return would leave the chip on the PARTNER range - and every later sample would be
-    # scaled by the wrong gain until something else happened to switch it back.
-    _i2c, reader = ready_reader("paired_fail")
-
-    async def scenario() -> "ErrorLog":
-        with _FastAsyncSleep():
-            reader._ar_dwell_s = 0.0
-            before = reader._active_range
-
-            async def boom(*_args: object, **_kwargs: object) -> "tuple[int, int, int]":
-                raise OSError(errno_mod.EIO, "injected")
-
-            reader.isl.read_counts = boom  # type: ignore[method-assign]
-            await reader._learn_gain_ratio(2000)
-            assert reader._active_range == before, "the reader was left sitting on the partner range"
-        return await reader.get_error_counter()
-
-    counters = run(scenario())
-    assert 11 in errors(counters)
-    assert reader._gain_ratio == _GAIN_RATIO_NOMINAL, "a failed pair must not move the ratio"
 
 
 def test_every_protocol_read_raises_when_layer_one_answers_none_instead_of_raising() -> None:
@@ -3062,50 +2642,6 @@ def test_a_malformed_schema_record_is_refused_rather_than_returned_as_a_setting(
 # ---------------------------------------------------------------------------
 
 
-def test_learning_gives_up_when_the_partner_range_switch_fails() -> None:
-    # The measurement needs BOTH ranges. If the switch to the partner never lands, there is no
-    # pair to compare and the previous ratio has to stand - the danger being a half-done switch
-    # that then reads the ORIGINAL range and learns a ratio of ~1.
-    import time as _time
-
-    i2c, reader = ready_reader("learn_switch_fails")
-
-    async def scenario() -> "ErrorLog":
-        with _FastAsyncSleep():
-            reader._gain_learn_ms = _time.ticks_add(_time.ticks_ms(), -4_000_000)
-            reader._ar_dwell_s = 0.0
-            fake(i2c).inject_fault("writeto_mem", OSError(errno_mod.EIO, "no ACK"), times=2)
-            await reader._learn_gain_ratio(2000)
-        return await reader.get_error_counter()
-
-    counters = run(scenario())
-    assert reader._gain_ratio == _GAIN_RATIO_NOMINAL, "no pair was taken, so nothing may have been learned"
-    assert 29 in errors(counters), "the failed threshold write is what aborted the switch"
-
-
-def test_a_partner_reading_of_zero_is_not_turned_into_a_ratio() -> None:
-    # A ratio is low/high, so a high-range partner reading of zero would divide by zero. Total
-    # darkness on the partner is a legitimate scene (the low range saturates long before the high
-    # range leaves the dark floor), not a fault - so it declines silently rather than logging.
-    i2c, reader = ready_reader("learn_zero_partner")
-
-    async def scenario() -> "ErrorLog":
-        import time as _time
-
-        with _FastAsyncSleep():
-            reader._gain_learn_ms = _time.ticks_add(_time.ticks_ms(), -4_000_000)
-            reader._ar_dwell_s = 0.0
-            reader._active_range = _RANGE_LOW_LUX  # so the partner read below is the HIGH range
-            seed(i2c, _REG_DATA, counts_burst(0, 0, 0))
-            await reader._learn_gain_ratio(2000)
-        return await reader.get_error_counter()
-
-    counters = run(scenario())
-    assert reader._gain_ratio == _GAIN_RATIO_NOMINAL
-    assert warnings(counters).count(13) == 0, "a dark partner is not an implausible ratio, it is no ratio at all"
-    assert errors(counters) == []
-
-
 def test_encode_shadow_falls_back_to_the_shortest_persistence_for_an_impossible_shadow() -> None:
     # encode_shadow() masks rather than validates by design, so it needs an answer for a PRST that
     # is not one of the four the register can express. configure() now refuses to create one, so
@@ -3128,6 +2664,228 @@ def test_the_colour_temperature_chain_gives_up_instead_of_dividing_by_a_collapse
     assert reader._colour_temperature(1000, [0.0, 0.0, 0.0]) is None, "X+Y+Z == 0 has no chromaticity"
     # And the floor itself still answers None rather than reaching either guard.
     assert reader._colour_temperature(1, [0.2, 0.3, 0.2]) is None
+
+
+# ---------------------------------------------------------------------------
+# Manual gain-ratio calibration. The applied factor is an ordinary config value a user PUTs; a run
+# only ever MEASURES and publishes a candidate as a measurement, so nothing here writes the flash.
+# ---------------------------------------------------------------------------
+
+
+def queue_legs(reader: ISL29125_Reader, *triples: "tuple[int, int, int]") -> None:
+    # A sandwich reads three scenes (this range, the other, this one again) while seed() sets one
+    # static register, so the legs are driven through read_counts() itself. The last triple repeats
+    # once the queue drains, which is what a steady scene looks like.
+    pending = list(triples)
+
+    async def _read_counts() -> "tuple[int, int, int]":
+        # Cycles rather than repeating the last triple: a run takes several sandwiches, and each
+        # one has to see the same pair of scenes again for the readings to agree.
+        if not pending:
+            pending.extend(triples)
+        return pending.pop(0)
+
+    reader.isl.read_counts = _read_counts  # type: ignore[method-assign]
+
+
+def calibrating_reader(name: str) -> "tuple[I2C, ISL29125_Reader]":
+    i2c, reader = ready_reader(name)
+    assert run(reader.start_calibration(flag=True)) is True
+    return i2c, reader
+
+
+def test_no_calibration_runs_until_the_user_starts_one() -> None:
+    # The whole point of the redesign: nothing measures, and nothing is published, on its own.
+    _i2c, reader = ready_reader("cal_idle")
+    queue_legs(reader, (51800, 51800, 51800))
+    with _FastAsyncSleep():
+        run(reader._measure_gain_ratio(2000))
+    assert reader._measured_ratio() is None
+    assert reader._active_range == _RANGE_HIGH_LUX  # no range was ever switched away from
+
+
+def test_a_run_publishes_a_candidate_and_leaves_the_applied_ratio_alone() -> None:
+    # The applied factor is config, written by a user PUT alone. A run that measured 25.9 must
+    # publish 25.9 and still be correcting by the nominal ratio afterwards.
+    _i2c, reader = calibrating_reader("cal_publish")
+    queue_legs(reader, (51800, 51800, 51800), (2000, 2000, 2000))
+    with _FastAsyncSleep():
+        run(reader._measure_gain_ratio(2000))
+    measured = reader._measured_ratio()
+    assert measured is not None
+    assert abs(measured - 51799 / 2000) < 1e-9  # the low range carries a 1-count dark offset
+    assert reader._gain_ratio == _GAIN_RATIO_NOMINAL, "a measurement must never become the applied factor"
+    assert reader._active_range == _RANGE_HIGH_LUX  # the sandwich put the range back
+
+
+def test_a_scene_that_moves_during_the_sandwich_is_rejected() -> None:
+    # The reason for the third reading. A pair alone cannot tell a real ratio from a light that
+    # changed between its two legs, and that is the dominant error in this measurement.
+    _i2c, reader = calibrating_reader("cal_moved")
+    # Back on the original range the scene now reads 2600, 30% up from the 2000 it started at.
+    queue_legs(reader, (51800, 51800, 51800), (2600, 2600, 2600))
+    with _FastAsyncSleep():
+        run(reader._measure_gain_ratio(2000))
+    assert reader._measured_ratio() is None, "a ratio measured across a moving scene is not evidence"
+    assert reader._cal_recent == []
+
+
+def test_a_clipped_partner_leg_is_rejected() -> None:
+    # The band gate is range-agnostic, so a scene comfortable on this range can be far past full
+    # scale on the other one - and a clipped leg measures the clamp, not the part.
+    _i2c, reader = calibrating_reader("cal_clipped")
+    queue_legs(reader, (65535, 65535, 65535), (2000, 2000, 2000))
+    with _FastAsyncSleep():
+        run(reader._measure_gain_ratio(2000))
+    assert reader._measured_ratio() is None
+    assert reader._active_range == _RANGE_HIGH_LUX
+
+
+def test_an_implausible_ratio_is_discarded_rather_than_published() -> None:
+    _i2c, reader = calibrating_reader("cal_implausible")
+    # 20000/2000 = 10, far under the 20.0 floor - a real pair cannot look like this.
+    queue_legs(reader, (20000, 20000, 20000), (2000, 2000, 2000))
+    with _FastAsyncSleep():
+        run(reader._measure_gain_ratio(2000))
+    assert reader._measured_ratio() is None
+
+
+def test_calibration_waits_for_a_scene_inside_the_overlap_band() -> None:
+    _i2c, reader = calibrating_reader("cal_band")
+    queue_legs(reader, (51800, 51800, 51800), (2000, 2000, 2000))
+    with _FastAsyncSleep():
+        run(reader._measure_gain_ratio(64000))  # above AutoRangeUp - the low range would clip
+        run(reader._measure_gain_ratio(10))  # below AutoRangeDown - at the dark floor
+    assert reader._measured_ratio() is None
+    assert reader._calibrating is True, "an unusable scene pauses the run, it does not end it"
+
+
+def test_calibration_is_skipped_during_settle_and_while_auto_range_is_off() -> None:
+    import time as _time
+
+    _i2c, reader = calibrating_reader("cal_gated")
+    queue_legs(reader, (51800, 51800, 51800), (2000, 2000, 2000))
+    reader.isl._settle_until_ms = _time.ticks_add(_time.ticks_ms(), 10_000)
+    with _FastAsyncSleep():
+        run(reader._measure_gain_ratio(2000))
+    assert reader._measured_ratio() is None, "a reading taken mid-settle is not a measurement"
+    reader.isl._settle_until_ms = _time.ticks_ms()
+    reader._range_auto = False
+    with _FastAsyncSleep():
+        run(reader._measure_gain_ratio(2000))
+    assert reader._measured_ratio() is None, "a pinned range cannot be swapped out from under the user"
+
+
+def test_the_run_ends_once_consecutive_readings_agree() -> None:
+    import time as _time
+
+    # One good-looking reading is not evidence - a slow drift produces a run of self-consistent
+    # wrong answers, which is what the consecutive-agreement rule is for.
+    _i2c, reader = calibrating_reader("cal_converge")
+    queue_legs(reader, (51800, 51800, 51800), (2000, 2000, 2000))
+    with _FastAsyncSleep():
+        for _ in range(_CAL_CONVERGE_N):
+            assert reader._calibrating is True
+            # Each sandwich's last switch arms a settle the real read loop waits out between
+            # samples; these tests run in zero wall-clock time, so it is retired by hand.
+            reader.isl._settle_until_ms = _time.ticks_ms()
+            run(reader._measure_gain_ratio(2000))
+    assert reader._calibrating is False, "the run stops itself once it has converged"
+    assert reader._measured_ratio() is not None
+
+
+def test_a_disagreeing_reading_restarts_the_agreement_run() -> None:
+    import time as _time
+
+    _i2c, reader = calibrating_reader("cal_restart")
+    queue_legs(reader, (51800, 51800, 51800), (2000, 2000, 2000))
+    with _FastAsyncSleep():
+        run(reader._measure_gain_ratio(2000))
+        assert len(reader._cal_recent) == 1
+        # A different scene: 48000/2000 = 24.0, well outside the 1% agreement tolerance.
+        queue_legs(reader, (48000, 48000, 48000), (2000, 2000, 2000))
+        reader.isl._settle_until_ms = _time.ticks_ms()  # as above: no wall clock passes here
+        run(reader._measure_gain_ratio(2000))
+    assert len(reader._cal_recent) == 1, "a disagreeing reading starts the count again"
+    assert reader._calibrating is True
+
+
+def test_the_run_gives_up_when_its_window_closes() -> None:
+    import time as _time
+
+    _i2c, reader = calibrating_reader("cal_window")
+    reader._cal_until_ms = _time.ticks_add(_time.ticks_ms(), -1)
+    queue_legs(reader, (51800, 51800, 51800), (2000, 2000, 2000))
+    with _FastAsyncSleep():
+        run(reader._measure_gain_ratio(2000))
+    assert reader._calibrating is False
+    assert reader._measured_ratio() is None, "a window that closed with nothing stable publishes nothing"
+
+
+def test_a_published_candidate_stops_being_offered_once_its_hold_expires() -> None:
+    import time as _time
+
+    _i2c, reader = calibrating_reader("cal_hold")
+    queue_legs(reader, (51800, 51800, 51800), (2000, 2000, 2000))
+    with _FastAsyncSleep():
+        run(reader._measure_gain_ratio(2000))
+    assert reader._measured_ratio() is not None
+    reader._cal_meas_until_ms = _time.ticks_add(_time.ticks_ms(), -1)
+    assert reader._measured_ratio() is None, "a stale candidate must not read as a fresh one"
+
+
+def test_the_measured_candidate_travels_with_every_reading() -> None:
+    # GainMeas is a MEASUREMENT, so it rides the same tuple as Lux and RGB rather than sitting in
+    # config or in the maintenance group - which is what lets the user read it and copy it across.
+    i2c, reader = ready_reader("cal_in_tuple")
+    seed_cycle(i2c, 2000, 1000, 500)
+    with _FastAsyncSleep():
+        run(reader._read_isl())
+        run(reader._store_isl((2000, 1000, 500, _RANGE_HIGH_LUX, 1754997000)))
+    assert (run(reader.get_data())).GainMeas is None
+    reader._publish_candidate(25.9)
+    with _FastAsyncSleep():
+        run(reader._store_isl((2000, 1000, 500, _RANGE_HIGH_LUX, 1754997000)))
+    assert (run(reader.get_data())).GainMeas == 25.9
+
+
+def test_only_a_config_push_changes_the_applied_ratio() -> None:
+    _i2c, reader = ready_reader("cal_setter")
+    assert run(reader.set_gain_ratio(24.5)) is True
+    assert reader._gain_ratio == 24.5
+    for refused in (19.9, 34.1):
+        assert run(reader.set_gain_ratio(refused)) is False, f"{refused} is outside the plausibility band"
+    assert reader._gain_ratio == 24.5, "a refused push must not disturb the live value"
+
+
+def test_starting_a_calibration_with_false_is_a_no_op() -> None:
+    # Matches SGP40_Reader.reset_voc()'s own contract for a command-only field.
+    _i2c, reader = ready_reader("cal_false")
+    assert run(reader.start_calibration(flag=False)) is False
+    assert reader._calibrating is False
+
+
+def test_a_failed_partner_read_logs_errno_11_and_puts_the_range_back() -> None:
+    _i2c, reader = calibrating_reader("cal_read_fails")
+
+    async def _boom() -> "tuple[int, int, int]":
+        raise OSError(5)
+
+    reader.isl.read_counts = _boom  # type: ignore[method-assign]
+    with _FastAsyncSleep():
+        run(reader._measure_gain_ratio(2000))
+    assert reader._measured_ratio() is None
+    assert (run(reader.get_error_counter()))["ISL29125"]["ErrCount"] >= 1
+
+
+def test_a_partner_reading_of_zero_is_not_turned_into_a_ratio() -> None:
+    # A division guard, not a plausibility one: a zero on the high range would raise rather than
+    # produce a number the band gate could reject.
+    _i2c, reader = calibrating_reader("cal_zero")
+    queue_legs(reader, (51800, 51800, 51800), (0, 0, 0))
+    with _FastAsyncSleep():
+        run(reader._measure_gain_ratio(0))
+    assert reader._measured_ratio() is None
 
 
 if __name__ == "__main__":
