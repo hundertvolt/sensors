@@ -519,6 +519,16 @@ information):
   `scripts/test.sh` exports `TZ=UTC` before invoking the Unix-port binary for exactly this reason.
   Don't diagnose a consistent (not intermittent) failure in a live-clock assertion as a new code bug
   before checking the runner's `$TZ`.
+- **Two suites that both bind real ports must never run at the same time.** `scripts/test.sh`'s
+  MicroPython tier serves real HTTP (and a real port-53 DNS server) and so does `npm test`'s mock
+  server, so running them concurrently makes a test connect to the *other* suite's listener. It
+  does not look like contention: the failures are a 200/404 mix
+  (`AssertionError: [200, 404, 200, 404, 'rejected', 'rejected']`), an empty body where stub
+  content was expected, and a 404 for a page that plainly exists - i.e. exactly what a broken
+  static mount or a bad merge would produce. Confirmed 2026-09-13: nine failures across
+  `test_digital_twin_webserver_concurrency.py` and `test_frozen_html_integration.py` on a merge
+  commit, all nine gone on a re-run with nothing else running, the same tree passing 63/63. Run the
+  two tiers one after the other; don't re-diagnose this pattern as a code or merge defect.
 - **`ruff format` is deliberately not used anywhere** — line breaks are hand-chosen throughout this
   codebase; `line-length = 320` (ruff's own ceiling) plus an `E501` ignore keep this a non-issue even
   if `format` is ever run by accident. Lint rule selection (`E`/`F`/`W`/`I`/`UP`/`B`) is stricter

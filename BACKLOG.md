@@ -626,6 +626,22 @@ constraints.
     `_learn_gain_ratio`'s only diff is three call relocations with identical arithmetic and the
     same `_active_range` feeding the dark offset.
 
+29. **`html/definitions/dev.json` advertises two `UARTLINK_*` maintenance fields that
+    `mockdata/dev.json` does not provide** (surfaced 2026-09-13 while merging main into the
+    ISL29125 branch; the gap itself is main's, not the merge's). The UART promotion added
+    `UARTLINK_Transfers`/`UARTLINK_Failures` to the `sensors` group of the dev definitions, but
+    `mockdata/dev.json`'s `status.sensors` still carries only `SGP40` and (from this branch)
+    `ISL29125`. The real device answers both keys — `sensortask_dev.py` registers
+    `_uart_link_maintenance` and `tests/test_sensortask_dev.py` asserts
+    `body["sensors"]["UARTLINK"] == {"Transfers": 0, "Failures": 0}` — so this is cosmetic and
+    mock-site-only: those two rows render empty against the mock server, and nowhere else.
+    **Not fixed here deliberately**: it is the UART author's own field pair, and nothing
+    cross-checks definitions against mockdata automatically, so the real question is whether that
+    check should exist rather than whether to paste two numbers in. **Where to fix**: two keys in
+    `mockdata/dev.json`, plus — the more valuable half — a `tests_js/` assertion that every
+    `kind: "readonly"` key named in a variant's definitions resolves in that variant's mockdata,
+    which would have caught this at the time and will catch the next one.
+
 ## Deferred / explicitly out-of-scope work
 - **A digital-twin soak's wall clock is set by GC timing, so it must never be bisected to a code
   change** (established 2026-09-11 after one was — see SPECIFICATION.md Part E.7 for the measurement
