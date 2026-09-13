@@ -54,6 +54,28 @@ constraints.
   Unix-port-tests were pulled forward out of this order already, once `math_helpers.py` cleared the
   `src/` bar, and that's now standing practice for every new file, not a one-off.
 
+- **Sort every class in `src/` to SPECIFICATION.md D.15's method ordering — HIGH PRIORITY**
+  (owner's ruling, 2026-09-13, after an AST sweep measured the gap). **D.15's order as written
+  stands**: privates first, then publics, each group role-ordered (starters, getters, setters,
+  others). `asy_uart_comm.py`'s interleaved layout is **not** a precedent to codify — it was an
+  accident, the rule simply was not applied when that module was built.
+  D.15's "no change to any comment" clause was never meant to forbid moving a comment along with
+  the method it documents; it has been amended to say what it meant (relocation yes, rewriting no),
+  so a file organised into labelled functional sections can still be sorted.
+  **Eleven of 74 classes do not comply**, measured with an AST checker rather than by eye:
+  `UART_Comm` (privates and publics interleaved throughout, its starters/getters group last rather
+  than first), `UART` (`resync_framing` among the privates), `Framing_Base`/`Framing_COBS`
+  (`_checked` mid-public), `SCD30_Reader` (`_set_dict_cfg`, a base-class override), `AsyConnTime`,
+  `ConfigManager`, `SystemService`, and the three `asy_webserver_service.py` protocol stubs
+  `_ModuleLike`/`_StreamLike`/`_TimeoutStreamProxy`. Compliant today: `asy_bmp3xx_driver.py`,
+  `asy_sgp40_driver.py` and `asy_isl29125_driver.py` — the ISL driver was verified against the rule
+  as written, private group included (36 privates + 30 publics in the reader, 6 + 22 in the
+  hardware class), so it needs no further work.
+  **Deliberately not done in the session that raised it** (owner's direction): it is a large,
+  review-hostile diff across five working modules and three protocol stubs, several of them
+  hardware-validated, and it belongs in a session of its own. Each class is a pure AST-verified
+  sort with no behaviour change, so it can be done incrementally, one module per commit.
+
 - **The UART protocol's C implementation is not in this repo yet.** It runs on the Arduino peer and
   is the protocol's second implementation (SPECIFICATION.md Part J). A future session imports it,
   then reconciles it against `UART_C_PORT_CHANGELOG.md` — the running log of protocol changes made
@@ -553,36 +575,8 @@ constraints.
     `scripts/build_website.sh` run changes a gitignored artifact that other work on this bench may
     be relying on.
 
-25. **Eleven of the 74 classes in `src/` do not satisfy SPECIFICATION.md D.15's method ordering**
-    (re-measured 2026-09-13 with an AST checker *after* the UART promotion merged - it was seven
-    before that, and the four it added are what make the recommendation below stronger, not weaker). The
-    checker reads D.15 the way the drivers already practise it: privates before publics, the
-    *public* group ordered starters/getters/setters/others, and `stop_X` counted as a starter only
-    when the class really has a `start_X` to pair it with. Both reference drivers
-    (`asy_bmp3xx_driver.py`, `asy_sgp40_driver.py`) and `asy_isl29125_driver.py` conform; these do
-    not: `SCD30_Reader` (`_set_dict_cfg`, a base-class override, sits mid-public — the same
-    exception noted before), `AsyConnTime` (`set_ext_led`/`set_wifi_led` after several "others"),
-    `ConfigManager` (`reset_error_counter` between getters), `SystemService` (`_set_dict_cfg`
-    and `_apply_level` among publics, `get_cfg_schema` after `setup`), and the three
-    `asy_webserver_service.py` protocol stubs `_ModuleLike`/`_StreamLike`/`_TimeoutStreamProxy`
-    (which mirror an interface's own declaration order). The UART promotion added four more:
-    `UART_Comm` (privates and publics interleaved throughout, and its starters/getters group sits
-    LAST rather than first), `UART` (`resync_framing` among the privates), and
-    `Framing_Base`/`Framing_COBS` (`_checked` mid-public, the same interface-shaped pattern as the
-    webserver stubs). That matters for the decision below: `asy_uart_comm.py` is the newest, most
-    recently reviewed module in `src/`, written long after D.15 existed, and it does not follow it
-    either.
-    One further observation the same sweep produced: **no file role-orders its PRIVATE group** —
-    `BMP3XX_I2C` has `_get_osr_setting` before `_read`, `AsyNtpClient` has `_get_ntp_config` and
-    `_set_synced` among "others". So D.15's "within each group" is, in practice, applied to the
-    public group only.
-    **Recommendation: amend D.15 to state what the codebase actually does** (privates first,
-    grouped functionally; the public group role-ordered; a base-class override or an interface
-    stub may follow the shape it mirrors), rather than reorder five working modules and three
-    protocol stubs. Either way it is the owner's call — flagged, not changed, per CLAUDE.md's
-    cross-file-consistency rule.
 
-26. **Seven `src/` modules number `errno`/`wrnno` inside the range `base_classes.py` reserves.**
+25. **Seven `src/` modules number `errno`/`wrnno` inside the range `base_classes.py` reserves.**
    Part C.7 reserves `errno` 1-9 and `wrnno` 1-2 for `SensorReader`/`SensorReaderConfig`, and
    `api_response.py`'s `handle_set_cmd()` owns the fixed cross-module slot `errno=99`; the project
    owner's standing direction (2026-09-11) is that **every** module aligns to that reservation for
@@ -608,7 +602,7 @@ constraints.
    each module's next substantial touch. Flagged, deliberately not fixed drive-by - see CLAUDE.md's
    "flag, don't silently change" rule.
 
-27. `asy_uart_comm.py`'s `wrnno` 11 ("drain bound reached - the peer never stopped sending") can
+26. `asy_uart_comm.py`'s `wrnno` 11 ("drain bound reached - the peer never stopped sending") can
     never reach the FRAM history through the path that produces it. SPECIFICATION.md Part C.7.1 allows one persisted
     warning per fault episode; `_resync()` logs `wrnno` 10 first and spends it, then calls
     `_drain()`, so 11 is always demoted to visible-only. Measured 2026-09-13: a resync whose drain
@@ -622,7 +616,7 @@ constraints.
     operator sees in a field log, the same class as the `errno` 32 decision of 2026-09-12.
     `SPECIFICATION.md` C.7.1 now states the actual behaviour rather than the intended one.
 
-28. **`test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly` asserts an empty
+27. **`test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly` asserts an empty
     FRAM log after deliberately provoking torn writes** (found 2026-09-13 in the first full
     flash+bench run of the ISL29125 branch; reproduces identically on a targeted re-run). The test
     hard-resets the board three times *during* FRAM writes and then requires the FRAM error log to
@@ -639,7 +633,7 @@ constraints.
     `assert_module_error_log_clean()` helper and `tests_hardware/README.md`); this one is the
     remainder, and it is not ISL-related.
 
-29. **`html/definitions/dev.json` advertises two `UARTLINK_*` maintenance fields that
+28. **`html/definitions/dev.json` advertises two `UARTLINK_*` maintenance fields that
     `mockdata/dev.json` does not provide** (surfaced 2026-09-13 while merging main into the
     ISL29125 branch; the gap itself is main's, not the merge's). The UART promotion added
     `UARTLINK_Transfers`/`UARTLINK_Failures` to the `sensors` group of the dev definitions, but
@@ -655,7 +649,7 @@ constraints.
     `kind: "readonly"` key named in a variant's definitions resolves in that variant's mockdata,
     which would have caught this at the time and will catch the next one.
 
-30. **An interrupted `setup_toolchain.py env --tier flash` can leave the unit-test interpreter
+29. **An interrupted `setup_toolchain.py env --tier flash` can leave the unit-test interpreter
     broken, and `scripts/test.sh` will use it anyway** (hit 2026-09-13). The flash tier legitimately
     rebuilds the MicroPython Unix port as part of `test_env_tier_flash_recurring_run_is_idempotent`,
     and `run_verification_sequence()` builds it **twice**: first with the frozen-verification
