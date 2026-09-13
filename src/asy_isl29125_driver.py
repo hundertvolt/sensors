@@ -854,6 +854,7 @@ class ISL29125_Reader(SensorReaderConfig):
                 "HSB": {"H": data.Hue, "S": data.Sat, "B": data.Bri},
                 "CCT": data.CCT,
                 "RangeAct": data.RangeAct,
+                "GainMeas": data.GainMeas,
                 "TS": data.TS,
             },
         }

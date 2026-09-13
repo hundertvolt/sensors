@@ -349,7 +349,7 @@ def test_a_calibration_run_measures_the_chips_own_real_ratio() -> None:
 
 
 def test_the_applied_ratio_changes_only_by_a_config_push() -> None:
-    chip, reader = make_dev_reader("gain_apply", resolution=12)
+    _chip, reader = make_dev_reader("gain_apply", resolution=12)
 
     async def scenario() -> "tuple[float, bool, float]":
         before = reader._gain_ratio

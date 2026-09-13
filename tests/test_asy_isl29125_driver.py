@@ -1086,7 +1086,7 @@ def test_store_produces_the_documented_nested_body() -> None:
     body = run(reader.get_dict_data())
     assert set(body) == {"ISL29125"}
     group = body["ISL29125"]
-    assert set(group) == {"Lux", "RGB", "HSB", "CCT", "RangeAct", "TS"}
+    assert set(group) == {"Lux", "RGB", "HSB", "CCT", "RangeAct", "GainMeas", "TS"}
     assert set(group["RGB"]) == {"R", "G", "B"}
     assert set(group["HSB"]) == {"H", "S", "B"}
     assert group["RangeAct"] == _RANGE_HIGH_LUX
@@ -2842,11 +2842,14 @@ def test_the_measured_candidate_travels_with_every_reading() -> None:
     with _FastAsyncSleep():
         run(reader._read_isl())
         run(reader._store_isl((2000, 1000, 500, _RANGE_HIGH_LUX, 1754997000)))
-    assert (run(reader.get_data())).GainMeas is None
+    # Asserted through get_dict_data(), NOT get_data(): the REST body is a hand-written override
+    # (the measurement group is nested), so a field can exist on the namedtuple and still never
+    # reach the API. That is exactly what happened when this field was added.
+    assert run(reader.get_dict_data())["ISL29125"]["GainMeas"] is None
     reader._publish_candidate(25.9)
     with _FastAsyncSleep():
         run(reader._store_isl((2000, 1000, 500, _RANGE_HIGH_LUX, 1754997000)))
-    assert (run(reader.get_data())).GainMeas == 25.9
+    assert run(reader.get_dict_data())["ISL29125"]["GainMeas"] == 25.9
 
 
 def test_only_a_config_push_changes_the_applied_ratio() -> None:
