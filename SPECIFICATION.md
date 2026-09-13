@@ -909,6 +909,12 @@ call site already holds the relevant lock, so a shared-buffer fix would be safe 
   hold spanning an internal delay doesn't need the second nesting (`_read_dev_register`).
 - Compensation/calibration math and datasheet operating-range checks live here — reject and raise
   rather than return an implausible value silently.
+- **This includes every decode/scale/convert helper, as a method on this class — never as a
+  module-level function.** A helper that needs the datasheet to write belongs to the chip, and a
+  module-level one both hides that and leaves the reader (layer 3) importing chip semantics it has
+  no business knowing. `ISL29125_I2C` is the worked example: `decode_config`/`decode_status`/
+  `normalise`/`counts_to_lux`/`fraction_to_counts`/`is_bus_fault_pattern`/`matches_shadow` are all
+  `@staticmethod` or shadow-reading methods here, so `ISL29125_Reader` holds policy only.
 
 ### C.3.1 SPI sensor variant — best effort, non-proven
 
@@ -1509,7 +1515,7 @@ isl29125.c` in a later pass).
 2. **Nobody does auto-range or CCT.** Both are this driver's own, which is why its twin-tier tests
    carry more weight than usual: there is no reference implementation to differential-test against.
 3. **RIOT's threshold scaling truncates, and that is a bug not to inherit.** `65535 / 375` in
-   integer arithmetic is 174, not 174.76. `_fraction_to_counts()` exists as a named function with
+   integer arithmetic is 174, not 174.76. `ISL29125_I2C.fraction_to_counts()` exists as a named method with
    a test named after this specifically (`..._does_not_truncate_like_the_riot_driver`) so it cannot
    recur.
 

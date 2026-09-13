@@ -16,13 +16,6 @@ from asy_isl29125_driver import (
     ISL29125,
     ISL29125_I2C,
     ISL29125_Reader,
-    _counts_to_lux,
-    _decode_config_bytes,
-    _decode_rgb_burst,
-    _fraction_to_counts,
-    _is_bus_fault_pattern,
-    _is_saturated,
-    _normalise_triple,
 )
 from asy_spi_driver import SPI
 
@@ -164,6 +157,14 @@ def ready_protocol(address: int = _ADDR) -> "tuple[I2C, ISL29125_I2C]":
     return i2c, isl
 
 
+def protocol_at(bits: int) -> ISL29125_I2C:
+    # Parks the shadow on a resolution through the real write path, so normalise() and
+    # set_thresholds() are exercised against a shadow the hardware driver set itself.
+    _i2c, isl = make_protocol()
+    run(isl.configure(resolution=bits))
+    return isl
+
+
 def mem_writes(i2c: I2C) -> "list[tuple[int, bytes]]":
     return [(entry[2], entry[3]) for entry in fake(i2c).log if entry[0] == "writeto_mem"]
 
@@ -197,59 +198,63 @@ def warnings(counters: "ErrorLog", name: str = "ISL29125") -> "list[int]":
 
 def test_decode_rgb_burst_returns_green_red_blue_in_register_order() -> None:
     # Register order is GREEN, RED, BLUE (p9, Table 1); p13's Table 20 mislabels its own rows.
-    assert _decode_rgb_burst(counts_burst(0x1234, 0x5678, 0x9ABC)) == (0x1234, 0x5678, 0x9ABC)
+    assert ISL29125_I2C._decode_rgb_burst(counts_burst(0x1234, 0x5678, 0x9ABC)) == (0x1234, 0x5678, 0x9ABC)
     # Little-endian, proven by a byte string whose halves are distinguishable either way round.
-    assert _decode_rgb_burst(bytes([0x34, 0x12, 0x78, 0x56, 0xBC, 0x9A])) == (0x1234, 0x5678, 0x9ABC)
+    assert ISL29125_I2C._decode_rgb_burst(bytes([0x34, 0x12, 0x78, 0x56, 0xBC, 0x9A])) == (0x1234, 0x5678, 0x9ABC)
 
 
 def test_decode_rgb_burst_rejects_short_and_none() -> None:
-    assert _decode_rgb_burst(None) is None
-    assert _decode_rgb_burst(b"") is None
-    assert _decode_rgb_burst(bytes(5)) is None
-    assert _decode_rgb_burst(bytes(7)) is None
-    assert _decode_rgb_burst(42) is None  # type: ignore[arg-type]
+    assert ISL29125_I2C._decode_rgb_burst(None) is None
+    assert ISL29125_I2C._decode_rgb_burst(b"") is None
+    assert ISL29125_I2C._decode_rgb_burst(bytes(5)) is None
+    assert ISL29125_I2C._decode_rgb_burst(bytes(7)) is None
+    assert ISL29125_I2C._decode_rgb_burst(42) is None  # type: ignore[arg-type]
 
 
 def test_decode_rgb_burst_accepts_a_bytearray_and_a_memoryview() -> None:
     # Both are legitimate returns from layer 1's own struct.unpack path.
     payload = counts_burst(1, 2, 3)
-    assert _decode_rgb_burst(bytearray(payload)) == (1, 2, 3)
-    assert _decode_rgb_burst(memoryview(payload)) == (1, 2, 3)
+    assert ISL29125_I2C._decode_rgb_burst(bytearray(payload)) == (1, 2, 3)
+    assert ISL29125_I2C._decode_rgb_burst(memoryview(payload)) == (1, 2, 3)
 
 
 def test_decode_rgb_burst_decodes_the_all_ones_bus_fault_pattern() -> None:
-    assert _decode_rgb_burst(bytes([0xFF] * 6)) == (0xFFFF, 0xFFFF, 0xFFFF)
+    assert ISL29125_I2C._decode_rgb_burst(bytes([0xFF] * 6)) == (0xFFFF, 0xFFFF, 0xFFFF)
 
 
 # ---------------------------------------------------------------------------
-# F2 _normalise_triple
+# F2 ISL29125_I2C.normalise - the rescale half
 # ---------------------------------------------------------------------------
 
 
-def test_normalise_triple_shifts_only_at_12_bit() -> None:
-    assert _normalise_triple(100, 200, 300, resolution_bits=16, dark_offset=0) == (100, 200, 300)
-    assert _normalise_triple(100, 200, 300, resolution_bits=12, dark_offset=0) == (1600, 3200, 4800)
+def test_normalise_shifts_only_at_12_bit() -> None:
+    assert protocol_at(16).normalise((100, 200, 300), range_fs=_RANGE_HIGH_LUX)[0] == (100, 200, 300)
+    assert protocol_at(12).normalise((100, 200, 300), range_fs=_RANGE_HIGH_LUX)[0] == (1600, 3200, 4800)
 
 
-def test_normalise_triple_12_bit_maximum_is_65520_not_65535() -> None:
-    # The saturation trap: the shift cannot reach full scale, so any saturation test written
-    # against the NORMALISED value is wrong at 12 bits. F6 tests the raw maximum instead.
-    assert _normalise_triple(4095, 4095, 4095, resolution_bits=12, dark_offset=0) == (65520, 65520, 65520)
+def test_normalise_12_bit_maximum_is_65520_not_65535() -> None:
+    # The saturation trap, and why the two halves have to share one call: the shift cannot reach
+    # full scale, so a saturation test written against the NORMALISED value is wrong at 12 bits.
+    counts, saturated = protocol_at(12).normalise((4095, 4095, 4095), range_fs=_RANGE_HIGH_LUX)
+    assert counts == (65520, 65520, 65520)
+    assert saturated is True
 
 
-def test_normalise_triple_subtracts_the_dark_offset_and_clamps_at_zero() -> None:
-    assert _normalise_triple(10, 5, 1, resolution_bits=16, dark_offset=1) == (9, 4, 0)
-    assert _normalise_triple(0, 0, 0, resolution_bits=16, dark_offset=5) == (0, 0, 0)
+def test_normalise_subtracts_the_dark_offset_on_the_low_range_only_and_clamps_at_zero() -> None:
+    # DDark is specified at range 0 only (p3), so the range the sample was TAKEN on decides.
+    assert protocol_at(16).normalise((10, 5, 1), range_fs=_RANGE_LOW_LUX)[0] == (9, 4, 0)
+    assert protocol_at(16).normalise((10, 5, 1), range_fs=_RANGE_HIGH_LUX)[0] == (10, 5, 1)
+    assert protocol_at(16).normalise((0, 0, 0), range_fs=_RANGE_LOW_LUX)[0] == (0, 0, 0)
 
 
-def test_normalise_triple_clamps_at_full_scale() -> None:
-    assert _normalise_triple(70000, 65535, 65536, resolution_bits=16, dark_offset=0) == (65535, 65535, 65535)
+def test_normalise_clamps_at_full_scale() -> None:
+    assert protocol_at(16).normalise((70000, 65535, 65536), range_fs=_RANGE_HIGH_LUX)[0] == (65535, 65535, 65535)
 
 
-def test_normalise_triple_falls_back_to_no_shift_for_an_unknown_resolution() -> None:
+def test_normalise_falls_back_to_no_shift_for_an_unknown_resolution() -> None:
     # The conservative direction: shifting when you should not inflates every reading 16x, while
     # not shifting when you should only under-reports.
-    assert _normalise_triple(100, 100, 100, resolution_bits=10, dark_offset=0) == (100, 100, 100)
+    assert protocol_at(10).normalise((100, 100, 100), range_fs=_RANGE_HIGH_LUX)[0] == (100, 100, 100)
 
 
 # ---------------------------------------------------------------------------
@@ -260,18 +265,18 @@ def test_normalise_triple_falls_back_to_no_shift_for_an_unknown_resolution() -> 
 def test_counts_to_lux_matches_the_datasheet_lsb_figures() -> None:
     # An external check, not a self-consistent one: p1's feature list states 5.7 mlux per LSB on
     # range 0 and 0.152 lux per LSB on range 1.
-    assert abs(_counts_to_lux(1, _RANGE_LOW_LUX, 1.0) - 0.00572) < 1e-5
-    assert abs(_counts_to_lux(1, _RANGE_HIGH_LUX, 1.0) - 0.15259) < 1e-5
+    assert abs(ISL29125_I2C.counts_to_lux(1, _RANGE_LOW_LUX, 1.0) - 0.00572) < 1e-5
+    assert abs(ISL29125_I2C.counts_to_lux(1, _RANGE_HIGH_LUX, 1.0) - 0.15259) < 1e-5
 
 
 def test_counts_to_lux_reaches_full_scale_at_full_count() -> None:
-    assert _counts_to_lux(0, _RANGE_LOW_LUX, 1.0) == 0.0
-    assert abs(_counts_to_lux(65535, _RANGE_LOW_LUX, 1.0) - 375.0) < 1e-9
-    assert abs(_counts_to_lux(65535, _RANGE_HIGH_LUX, 1.0) - 10000.0) < 1e-9
+    assert ISL29125_I2C.counts_to_lux(0, _RANGE_LOW_LUX, 1.0) == 0.0
+    assert abs(ISL29125_I2C.counts_to_lux(65535, _RANGE_LOW_LUX, 1.0) - 375.0) < 1e-9
+    assert abs(ISL29125_I2C.counts_to_lux(65535, _RANGE_HIGH_LUX, 1.0) - 10000.0) < 1e-9
 
 
 def test_counts_to_lux_applies_the_gain_correction_multiplicatively() -> None:
-    assert abs(_counts_to_lux(65535, _RANGE_HIGH_LUX, 0.97) - 9700.0) < 1e-6
+    assert abs(ISL29125_I2C.counts_to_lux(65535, _RANGE_HIGH_LUX, 0.97) - 9700.0) < 1e-6
 
 
 # ---------------------------------------------------------------------------
@@ -283,23 +288,23 @@ def test_fraction_to_counts_does_not_truncate_like_the_riot_driver() -> None:
     # RIOT's own `(uint16_t)(65535 / max_range)` does the scaling in integer arithmetic and
     # truncates - 6.55 becomes 6, a 9% error. Doing it in float and rounding once is why this is
     # a named function at all, and these are the two schema defaults the design depends on.
-    assert _fraction_to_counts(85.0) == 55705
-    assert _fraction_to_counts(1.5) == 983
+    assert ISL29125_I2C.fraction_to_counts(85.0) == 55705
+    assert ISL29125_I2C.fraction_to_counts(1.5) == 983
 
 
 def test_fraction_to_counts_clamps_to_the_register_range() -> None:
-    assert _fraction_to_counts(0.0) == 0
-    assert _fraction_to_counts(100.0) == 65535
-    assert _fraction_to_counts(-5.0) == 0
-    assert _fraction_to_counts(1000.0) == 65535
+    assert ISL29125_I2C.fraction_to_counts(0.0) == 0
+    assert ISL29125_I2C.fraction_to_counts(100.0) == 65535
+    assert ISL29125_I2C.fraction_to_counts(-5.0) == 0
+    assert ISL29125_I2C.fraction_to_counts(1000.0) == 65535
 
 
 def test_fraction_to_counts_lands_somewhere_defined_for_nan_and_inf() -> None:
     # int() raises ValueError for NaN and OverflowError for inf on MicroPython, so the guard has
     # to be explicit rather than incidental.
-    assert _fraction_to_counts(float("nan")) == 0
-    assert _fraction_to_counts(float("inf")) == 65535
-    assert _fraction_to_counts(float("-inf")) == 0
+    assert ISL29125_I2C.fraction_to_counts(float("nan")) == 0
+    assert ISL29125_I2C.fraction_to_counts(float("inf")) == 65535
+    assert ISL29125_I2C.fraction_to_counts(float("-inf")) == 0
 
 
 # ---------------------------------------------------------------------------
@@ -308,75 +313,115 @@ def test_fraction_to_counts_lands_somewhere_defined_for_nan_and_inf() -> None:
 
 
 def test_is_bus_fault_pattern_needs_all_three_channels_and_a_reserved_bit() -> None:
-    assert _is_bus_fault_pattern((0xFFFF, 0xFFFF, 0xFFFF), 0xFF) is True
+    assert ISL29125_I2C.is_bus_fault_pattern((0xFFFF, 0xFFFF, 0xFFFF), 0xFF) is True
     # A genuinely saturated white scene with a plausible status byte is NOT a bus fault.
-    assert _is_bus_fault_pattern((0xFFFF, 0xFFFF, 0xFFFF), 0x11) is False
+    assert ISL29125_I2C.is_bus_fault_pattern((0xFFFF, 0xFFFF, 0xFFFF), 0x11) is False
     # Two of three at full scale is a real saturated scene with one unsaturated channel.
-    assert _is_bus_fault_pattern((0xFFFF, 0xFFFF, 0x1234), 0xFF) is False
+    assert ISL29125_I2C.is_bus_fault_pattern((0xFFFF, 0xFFFF, 0x1234), 0xFF) is False
 
 
 def test_is_bus_fault_pattern_fires_on_raw_all_ones_at_both_resolutions() -> None:
     # A dead bus reads 0xFF bytes regardless of BITS, so the raw pattern is identical either way.
     for _bits in (12, 16):
-        assert _is_bus_fault_pattern((0xFFFF, 0xFFFF, 0xFFFF), 0xC8) is True
+        assert ISL29125_I2C.is_bus_fault_pattern((0xFFFF, 0xFFFF, 0xFFFF), 0xC8) is True
 
 
 def test_is_bus_fault_pattern_is_false_for_a_clipped_12_bit_scene() -> None:
     # What is special about 12-bit is the OPPOSITE of "never fires": a real 12-bit reading cannot
     # exceed 4095, so at 12 bits this heuristic has no false-positive mode at all.
-    assert _is_bus_fault_pattern((4095, 4095, 4095), 0xFF) is False
+    assert ISL29125_I2C.is_bus_fault_pattern((4095, 4095, 4095), 0xFF) is False
 
 
 def test_is_bus_fault_pattern_treats_a_non_int_status_as_implausible() -> None:
-    assert _is_bus_fault_pattern((0xFFFF, 0xFFFF, 0xFFFF), None) is True
+    assert ISL29125_I2C.is_bus_fault_pattern((0xFFFF, 0xFFFF, 0xFFFF), None) is True
 
 
 def test_is_bus_fault_pattern_tolerates_a_missing_triple() -> None:
-    assert _is_bus_fault_pattern(None, 0xFF) is False
+    assert ISL29125_I2C.is_bus_fault_pattern(None, 0xFF) is False
 
 
 # ---------------------------------------------------------------------------
-# F6 _is_saturated
+# F6 ISL29125_I2C.normalise - the saturation half
 # ---------------------------------------------------------------------------
 
 
-def test_is_saturated_uses_the_raw_resolution_maximum_not_65535() -> None:
+def test_normalise_reports_saturation_at_the_raw_resolution_maximum_not_65535() -> None:
     # The 12-bit trap from the other side: 4095 raw IS saturated, while the same reading after
     # normalisation is 65520 - which a post-normalisation `== 65535` test would miss entirely.
-    assert _is_saturated(4095, 0, 0, resolution_bits=12) is True
-    assert _is_saturated(65520, 0, 0, resolution_bits=12) is True  # >= , so an out-of-range test value still reads saturated
-    assert _is_saturated(4094, 4094, 4094, resolution_bits=12) is False
-    assert _is_saturated(65535, 0, 0, resolution_bits=16) is True
-    assert _is_saturated(65534, 65534, 65534, resolution_bits=16) is False
+    assert protocol_at(12).normalise((4095, 0, 0), range_fs=_RANGE_HIGH_LUX)[1] is True
+    assert protocol_at(12).normalise((65520, 0, 0), range_fs=_RANGE_HIGH_LUX)[1] is True  # >= , so an out-of-range test value still reads saturated
+    assert protocol_at(12).normalise((4094, 4094, 4094), range_fs=_RANGE_HIGH_LUX)[1] is False
+    assert protocol_at(16).normalise((65535, 0, 0), range_fs=_RANGE_HIGH_LUX)[1] is True
+    assert protocol_at(16).normalise((65534, 65534, 65534), range_fs=_RANGE_HIGH_LUX)[1] is False
 
 
-def test_is_saturated_is_true_when_any_single_channel_clips() -> None:
+def test_normalise_reports_saturation_when_any_single_channel_clips() -> None:
     # Any channel, because the output is a colour triple: a clipped red with green at 40% of full
     # scale still destroys Hue, Sat and CCT.
-    assert _is_saturated(26214, 65535, 100, resolution_bits=16) is True
-    assert _is_saturated(65535, 26214, 100, resolution_bits=16) is True
-    assert _is_saturated(100, 26214, 65535, resolution_bits=16) is True
+    assert protocol_at(16).normalise((26214, 65535, 100), range_fs=_RANGE_HIGH_LUX)[1] is True
+    assert protocol_at(16).normalise((65535, 26214, 100), range_fs=_RANGE_HIGH_LUX)[1] is True
+    assert protocol_at(16).normalise((100, 26214, 65535), range_fs=_RANGE_HIGH_LUX)[1] is True
 
 
-def test_is_saturated_falls_back_to_16_bit_for_an_unknown_resolution() -> None:
-    assert _is_saturated(4095, 4095, 4095, resolution_bits=10) is False
+def test_normalise_falls_back_to_16_bit_saturation_for_an_unknown_resolution() -> None:
+    assert protocol_at(10).normalise((4095, 4095, 4095), range_fs=_RANGE_HIGH_LUX)[1] is False
+
+
+def test_decode_status_separates_the_four_flags() -> None:
+    # p12, Tables 15-19: BOUTF is B2, RGBTHF B0, CONVENF B1, and RGBCF is the two-bit counter at
+    # B5:B4 - an order that is easy to transpose and that nothing downstream would catch.
+    assert ISL29125_I2C.decode_status(0x00) == (False, False, 0, False)
+    assert ISL29125_I2C.decode_status(_STATUS_BOUTF) == (True, False, 0, False)
+    assert ISL29125_I2C.decode_status(_STATUS_RGBTHF) == (False, True, 0, False)
+    assert ISL29125_I2C.decode_status(0x02) == (False, False, 0, True)
+    assert ISL29125_I2C.decode_status(0x20) == (False, False, 2, False)
+    assert ISL29125_I2C.decode_status(0xFF) == (True, True, 3, True)
+
+
+def test_decode_status_answers_none_for_anything_that_is_not_a_byte() -> None:
+    # None is "layer 1 never produced a byte", which the read path treats as no flags at all -
+    # a bool included, since True would otherwise decode as a threshold crossing.
+    assert ISL29125_I2C.decode_status(None) is None
+    assert ISL29125_I2C.decode_status(b"\x01") is None
+    assert ISL29125_I2C.decode_status(True) is None
+    assert ISL29125_I2C.decode_status(1.0) is None
+
+
+def test_matches_shadow_ignores_reserved_bits_but_not_meaningful_ones() -> None:
+    _i2c, isl = ready_protocol()
+    run(isl.setup())
+    shadow = isl.encode_shadow()
+    assert isl.matches_shadow(shadow) is True
+    # B7:B6 of CONFIG1 "can change without any notice" (p9), so they are not a divergence.
+    assert isl.matches_shadow(bytes([shadow[0] | 0xC0, shadow[1], shadow[2]])) is True
+    assert isl.matches_shadow(bytes([shadow[0] ^ _MODE_RGB, shadow[1], shadow[2]])) is False
+    assert isl.matches_shadow(bytes(3)) is False  # the all-zero post-brownout chip
+
+
+def test_matches_shadow_does_not_report_divergence_on_an_uncomparable_read() -> None:
+    # A short read is a failed read, not evidence the chip moved - reporting divergence here
+    # would make the reader re-apply the whole configuration on a bus glitch.
+    _i2c, isl = ready_protocol()
+    run(isl.setup())
+    assert isl.matches_shadow(b"") is True
+    assert isl.matches_shadow(bytes(2)) is True
 
 
 # ---------------------------------------------------------------------------
-# F7 _decode_config_bytes
+# F7 ISL29125_I2C.decode_config
 # ---------------------------------------------------------------------------
 
 
-def test_decode_config_bytes_decodes_every_field() -> None:
+def test_decode_config_decodes_every_field() -> None:
     # CONFIG1 = mode 5 | RNG | BITS(12), CONFIG2 = IR offset + 40 codes, CONFIG3 = INTSEL green,
     # PRST = 10 -> 4 cycles.
-    decoded = _decode_config_bytes(bytes([_MODE_RGB | _RNG_HIGH | _BITS_12, 0x80 | 40, _INTSEL_GREEN | 0x08]))
+    decoded = ISL29125_I2C.decode_config(bytes([_MODE_RGB | _RNG_HIGH | _BITS_12, 0x80 | 40, _INTSEL_GREEN | 0x08]))
     assert decoded == (12, _RANGE_HIGH_LUX, 1, 40, 4)
-    decoded = _decode_config_bytes(bytes([_MODE_RGB, 0x00, 0x00]))
+    decoded = ISL29125_I2C.decode_config(bytes([_MODE_RGB, 0x00, 0x00]))
     assert decoded == (16, _RANGE_LOW_LUX, 0, 0, 1)
 
 
-def test_decode_config_bytes_round_trips_against_encode_shadow() -> None:
+def test_decode_config_round_trips_against_encode_shadow() -> None:
     _i2c, isl = make_protocol()
     for resolution in (12, 16):
         for range_fs in (_RANGE_LOW_LUX, _RANGE_HIGH_LUX):
@@ -388,28 +433,28 @@ def test_decode_config_bytes_round_trips_against_encode_shadow() -> None:
                         isl._ir_offset = ir_offset
                         isl._ir_adjust = ir_adjust
                         isl._persist = persist
-                        assert _decode_config_bytes(isl.encode_shadow()) == (resolution, range_fs, ir_offset, ir_adjust, persist)
+                        assert ISL29125_I2C.decode_config(isl.encode_shadow()) == (resolution, range_fs, ir_offset, ir_adjust, persist)
 
 
-def test_decode_config_bytes_ignores_the_reserved_bits() -> None:
+def test_decode_config_ignores_the_reserved_bits() -> None:
     # p9: "the value of the reserved bit can change without any notice" - CONFIG1 B7:B6,
     # CONFIG2 B6 and CONFIG3 B7:B5.
-    plain = _decode_config_bytes(bytes([_MODE_RGB, 40, 0x00]))
-    noisy = _decode_config_bytes(bytes([_MODE_RGB | 0xC0, 40 | 0x40, 0xE0]))
+    plain = ISL29125_I2C.decode_config(bytes([_MODE_RGB, 40, 0x00]))
+    noisy = ISL29125_I2C.decode_config(bytes([_MODE_RGB | 0xC0, 40 | 0x40, 0xE0]))
     assert plain == noisy
 
 
-def test_decode_config_bytes_decodes_an_all_zero_post_brownout_chip() -> None:
+def test_decode_config_decodes_an_all_zero_post_brownout_chip() -> None:
     # A chip that went through power-down reads 0x00 everywhere. That must decode without raising
     # AND be distinguishable from a configured chip - which it is, by the mode bits the caller
     # compares separately (this function deliberately does not decode mode).
-    assert _decode_config_bytes(bytes(3)) == (16, _RANGE_LOW_LUX, 0, 0, 1)
+    assert ISL29125_I2C.decode_config(bytes(3)) == (16, _RANGE_LOW_LUX, 0, 0, 1)
 
 
-def test_decode_config_bytes_rejects_the_wrong_length_and_none() -> None:
-    assert _decode_config_bytes(None) is None
-    assert _decode_config_bytes(bytes(2)) is None
-    assert _decode_config_bytes(bytes(4)) is None
+def test_decode_config_rejects_the_wrong_length_and_none() -> None:
+    assert ISL29125_I2C.decode_config(None) is None
+    assert ISL29125_I2C.decode_config(bytes(2)) is None
+    assert ISL29125_I2C.decode_config(bytes(4)) is None
 
 
 # ---------------------------------------------------------------------------
@@ -641,6 +686,27 @@ def test_set_thresholds_clamps_out_of_range_counts() -> None:
     i2c, isl = ready_protocol()
     run(isl.set_thresholds(-10, 70000))
     assert mem_writes(i2c) == [(_REG_THRESHOLDS, bytes([0x00, 0x00, 0xFF, 0xFF]))]
+
+
+def test_set_thresholds_rescales_both_counts_to_the_active_resolution() -> None:
+    # Callers hand over 16-bit-scale counts; the registers are compared against the RAW ADC value,
+    # so at 12 bits an unscaled threshold could never be crossed and the fast path would be dead.
+    i2c, isl = make_protocol()
+    run(isl.configure(resolution=12))
+    fake(i2c).log.clear()  # drop the resolution write itself
+    run(isl.set_thresholds(983, 55705))
+    assert mem_writes(i2c) == [(_REG_THRESHOLDS, struct.pack("<HH", 983 >> 4, 55705 >> 4))]
+
+
+def test_set_thresholds_parks_an_omitted_up_crossing_at_the_top_of_the_active_scale() -> None:
+    # The high range's only live threshold is the down-crossing, so the up-crossing has to sit
+    # where it cannot fire - 4095 at 12 bits, NOT 65535, which the part would never reach.
+    for bits, ceiling in ((12, 4095), (16, 65535)):
+        i2c, isl = make_protocol()
+        run(isl.configure(resolution=bits))
+        fake(i2c).log.clear()
+        run(isl.set_thresholds(0))
+        assert mem_writes(i2c) == [(_REG_THRESHOLDS, struct.pack("<HH", 0, ceiling))]
 
 
 def test_read_counts_uses_a_six_byte_burst_not_three_halfwords() -> None:
@@ -1291,7 +1357,7 @@ def test_switch_points_do_not_chatter_at_the_schema_defaults() -> None:
         _i2c, reader = make_reader(f"chatter_{up}")
         reader._ar_up, reader._ar_down, reader._ar_dwell_s = up, down, 0.0
         reader._active_range = _RANGE_LOW_LUX
-        up_counts = _fraction_to_counts(up)
+        up_counts = ISL29125_I2C.fraction_to_counts(up)
         # Just past the up threshold on the low range.
         assert reader._evaluate_range((up_counts, up_counts, up_counts), saturated=False) == _RANGE_HIGH_LUX
         reader._active_range = _RANGE_HIGH_LUX
@@ -1340,7 +1406,7 @@ def test_thresholds_are_written_before_the_range_bit() -> None:
 def test_thresholds_are_scaled_to_the_active_resolution() -> None:
     # The threshold registers are compared against the RAW ADC value, so a 16-bit-scaled
     # threshold could never be crossed at 12 bits and the hardware fast path would be silently
-    # dead there. _fraction_to_counts() itself stays a pure fraction-of-65535 helper.
+    # dead there. ISL29125_I2C.fraction_to_counts() itself stays a pure fraction-of-65535 helper.
     i2c, reader = ready_reader("thresh_bits")
     with _FastAsyncSleep():
         run(reader.isl.configure(resolution=12))
@@ -2724,9 +2790,9 @@ def test_every_protocol_read_raises_when_layer_one_answers_none_instead_of_raisi
 def test_the_config_decoder_survives_an_answer_that_is_not_bytes_at_all() -> None:
     # Same contract seen from the decoder: it is handed whatever layer 1 produced, and len() on a
     # non-sequence raises TypeError rather than returning a wrong length.
-    assert _decode_config_bytes(None) is None
-    assert _decode_config_bytes(b"\x01\x02") is None  # right type, wrong length
-    assert _decode_config_bytes(5) is None  # type: ignore[arg-type]
+    assert ISL29125_I2C.decode_config(None) is None
+    assert ISL29125_I2C.decode_config(b"\x01\x02") is None  # right type, wrong length
+    assert ISL29125_I2C.decode_config(5) is None  # type: ignore[arg-type]
 
 
 def test_pinning_a_range_while_autorange_is_off_actually_programs_the_chip() -> None:
