@@ -414,8 +414,14 @@ jobs:
     # run (many files hanging at once) rather than being the only thing standing between a stuck
     # test and GitHub's own 360-minute hard limit (the scenario that produced the originally-
     # observed 6-hour hang before timeout-minutes existed - see CLAUDE.md's "CI hang investigation"
-    # note). With a warm toolchain cache, a healthy run takes ~8-9 minutes total (plain + coverage
-    # passes combined - confirmed by direct local measurement).
+    # note). With a warm toolchain cache this job takes ~17 minutes (measured on a real runner,
+    # 2026-09-13); the coverage rerun that used to follow it here now has its own job below.
+    #
+    # 45, not 30: scripts/test.sh's per-file timeout is 180s with three attempts, so one genuinely
+    # hung file costs up to 9 minutes of retries on top of that ~17 - which a 30-minute cap does
+    # not cover once the suite grows at all. This cap is the backstop for many files hanging at
+    # once, not for one; sizing it below "normal run + one file's full retry budget" makes it fire
+    # on healthy runs instead, which is exactly how run `34755468619` was lost.
     #
     # `if: !cancelled()` keeps the `needs:` edge above (so the serialization the standing backstop
     # asks for is intact) while dropping the SUCCESS gating that `needs:` otherwise implies. That
@@ -430,21 +436,71 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Set up MicroPython toolchain (install uv, restore cache)
         uses: ./.github/actions/setup-micropython-toolchain
+      # scripts/test.sh's pytest tier shells out to `uv run`, which implicitly builds the WHOLE
+      # dev group before it runs anything - ruff, mypy, shellcheck, zizmor and actionlint-py
+      # included, none of which tests_scripts/ needs. actionlint-py has no wheel and downloads its
+      # binary from a release URL inside its own build backend, so one bad response there fails the
+      # entire test lane on a tree where nothing is wrong: `error: HTTP Error 500` on 2026-09-13,
+      # with lint-and-typecheck's identical `uv sync` succeeding 27 seconds earlier in the same
+      # run. Doing the sync here, retried, keeps a third party's momentary outage from reading as a
+      # red test result - the same "lint must not erase the answer tests give" reasoning as the
+      # `if: !cancelled()` above, applied to the dependency build instead of the job graph.
+      # `scripts/test.sh`'s own `uv run` then finds the environment current and rebuilds nothing.
+      - name: Sync dev dependencies (retried - third-party build downloads are not always up)
+        run: |
+          for attempt in 1 2 3; do
+              uv sync && exit 0
+              echo "uv sync failed on attempt $attempt/3; retrying in $((attempt * 10))s" >&2
+              sleep $((attempt * 10))
+          done
+          uv sync
       - name: Run unit tests
         run: scripts/test.sh
-      # Coverage is a report, not a gate (see SPECIFICATION.md Part E.5 ("Coverage")) - never let
-      # it fail the job. The `Run unit tests` step above is the real pass/fail signal; this just
-      # re-runs the same suite under the same Unix port binary (always built with
-      # MICROPY_PY_SYS_SETTRACE=1 - see build_unix_port()), wrapped by tests/_coverage_runner.py
-      # this time, to measure src/ AND digital_twin/ line coverage (two separate reports from one
-      # shared run - see scripts/test.sh's own comment).
+  # Split out of unit-tests, exactly as web-coverage was split out of web-unit-tests and for the
+  # same reason - which this branch then proved again on the Python side. `timeout-minutes` gates a
+  # whole job, not its "real" step, so a slow instrumented rerun kills the already-passed test step
+  # with it and skips everything downstream. Measured on run `34755468619`: the plain suite
+  # reported "60/60 files passed / ALL PASSED" at 12:07:19, the --coverage rerun then ran 13m24s
+  # more and the 30-minute job cap cancelled the lot, taking digital-twin-e2e with it. Nothing was
+  # wrong with the tree. Coverage is a report, never a gate (CLAUDE.md's "Code quality tooling",
+  # SPECIFICATION.md Part E.5) - its own job, its own budget, gating nothing, is what makes that
+  # true rather than merely stated. Keep it split even if the suite gets faster again.
+  unit-tests-coverage:
+    # Success-gated on purpose (no `if: !cancelled()`, unlike unit-tests' own edge above): there is
+    # nothing to measure if the suite did not pass, and this job gates nothing itself.
+    needs: unit-tests
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Set up MicroPython toolchain (install uv, restore cache)
+        uses: ./.github/actions/setup-micropython-toolchain
+      # scripts/test.sh's pytest tier shells out to `uv run`, which implicitly builds the WHOLE
+      # dev group before it runs anything (see the unit-tests job above for the full account of
+      # why this sync is here and retried).
+      - name: Sync dev dependencies (retried - third-party build downloads are not always up)
+        run: |
+          for attempt in 1 2 3; do
+              uv sync && exit 0
+              echo "uv sync failed on attempt $attempt/3; retrying in $((attempt * 10))s" >&2
+              sleep $((attempt * 10))
+          done
+          uv sync
+      # Re-runs the same suite under the same Unix port binary (always built with
+      # MICROPY_PY_SYS_SETTRACE=1 - see build_unix_port()), wrapped by tests/_coverage_runner.py,
+      # to measure src/ AND digital_twin/ line coverage (two reports from one shared run - see
+      # scripts/test.sh's own comment).
       - name: Run unit tests with coverage
         run: scripts/test.sh --coverage
         continue-on-error: true
@@ -488,6 +544,7 @@ jobs:
           name: coverage-html-digital-twin
           path: htmlcov_digital_twin/
         continue-on-error: true
+
 
   digital-twin-e2e:
     # Automated version of the digital twin's on-demand manual walkthrough (fresh boot, every GET/

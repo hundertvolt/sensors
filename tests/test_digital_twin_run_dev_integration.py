@@ -1,11 +1,6 @@
-"""Deterministic unit tests for digital_twin/run_dev_integration.py's own parse_args()/_soak()/
-main() - the dev-variant sibling of test_digital_twin_run_wozi_integration.py. Needed because this
-file's own module docstring says it "mirrors run_wozi_integration.py exactly" but its parse_args(),
-_soak(), _apply_fault()/_apply_hang(), and main() are each an independently-duplicated copy, not a
-shared import from launch.py - a bug introduced only in this copy (wrong default, wrong chip
-address in main()'s own `chips` dict, a soak-loop regression) would not be caught by the wozi test
-file, which only imports run_wozi_integration. _http_client.py's own parsing is shared and already
-fully covered there, so it isn't repeated here."""
+"""Deterministic tests for run_dev_integration.py's own parse_args()/_soak()/main() - each an
+independently duplicated copy rather than a shared import, so a bug in this one would not be caught
+by test_digital_twin_run_wozi_integration.py. Shared _http_client.py parsing is covered there."""
 
 import asyncio
 import sys
@@ -27,18 +22,17 @@ sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comme
 
 from run_dev_integration import RunConfig, _soak, main, parse_args
 
+import sensortask_dev
+
 
 def run_timed(coro: "Coroutine[Any, Any, T]", timeout_s: float = 5.0) -> "T":
     return asyncio.run(asyncio.wait_for(coro, timeout_s))
 
 
 # ---------------------------------------------------------------------------
-# _soak() resilience - same regression this file's own module docstring and
-# test_digital_twin_run_wozi_integration.py's own identical test document: a connection closed with
-# zero bytes written (WebserverService._serve()'s own max_connections reject-when-full path) must
-# be recorded as one soak failure, never raise out of _soak() and crash the whole diagnostic run.
-# This is this file's own independently-duplicated _soak() copy, not a shared one - not implied by
-# the wozi-side test passing.
+# _soak() resilience: a connection closed with zero bytes written (the max_connections reject path)
+# must be recorded as one soak failure, never raise out of _soak() and end the diagnostic run. This
+# is the dev copy of _soak(), so the wozi-side test passing implies nothing about it.
 # ---------------------------------------------------------------------------
 
 
@@ -63,12 +57,9 @@ def test_soak_records_a_connection_reset_as_a_failure_instead_of_crashing() -> N
 
 
 # ---------------------------------------------------------------------------
-# run_dev_integration.main() - one real, short, bounded end-to-end smoke test, same spirit and same
-# "deliberately exactly one" reasoning as test_digital_twin_run_wozi_integration.py's own identical
-# test (see that file's own comment for the full account of why one, not two). This is the one test
-# that actually exercises main()'s own `chips` dict (dev's own i2c0/i2c1/spi0 address wiring, wired
-# independently of wozi's) - a wrong address there would raise a KeyError applying the fault below,
-# or silently fault the wrong device, either way not caught anywhere else in this suite.
+# main() - one real, short, bounded end-to-end smoke test, deliberately exactly one (the wozi file's
+# own comment has the full reasoning). The only test exercising main()'s `chips` dict, dev's own
+# address wiring: a wrong address there is caught nowhere else in this suite.
 # ---------------------------------------------------------------------------
 
 
@@ -83,17 +74,29 @@ def test_main_runs_a_tiny_bounded_soak_with_an_injected_fault_and_returns_a_clea
         duration=0.0,
         faults=[("sgp40", "writeto", 3)],
     )
-    summary = run_timed(main(config), timeout_s=60.0)
+    # 120s, not the wozi sibling's 60s: this run's wall clock is set by where GC collections land,
+    # measured at 44.1-61.5s across variants of a module it never executes a changed line of (Part
+    # E.7). A liveness backstop belongs above the whole observed range, not near it.
+    summary = run_timed(main(config), timeout_s=120.0)
     non_memory_failures = [f for f in summary["failures"] if "gc.mem_free()" not in f]
     assert non_memory_failures == []
     assert summary["would_have_triggered_count"] == 0
 
+    # The bench tier's claim in the twin tier, on this same run: building the dev graph twice
+    # in one file exhausts the Unix port's 8MB test heap. The jumper and its exerciser ran through
+    # the whole soak, so an idle-link reading cannot pass this.
+    assert sensortask_dev.uart_transfers > 0, "the link never completed a transfer during the soak"
+    # Counted, never timed: a transfer count is a property of the code, unlike this run's wall
+    # clock (Part E.7). Every attempt must succeed - the jumper is attached and nothing else
+    # contends for those two peripherals.
+    assert sensortask_dev.uart_failures == 0, f"{sensortask_dev.uart_failures} link failures under concurrent HTTP load"
+
+
 
 # ---------------------------------------------------------------------------
-# run_dev_integration.parse_args() - this file's own independently-duplicated copy of the same
-# flag-parsing logic test_digital_twin_run_wozi_integration.py already covers for
-# run_wozi_integration's copy. Full parity coverage, not a subset - a copy-paste divergence in
-# either file's own defaults/flags is exactly what two separate, non-shared test files are for.
+# parse_args() - the dev copy of the flag parsing the wozi test file covers for its own. Full parity
+# coverage rather than a subset: catching a copy-paste divergence in either file's defaults is
+# exactly what two separate, non-shared test files are for.
 # ---------------------------------------------------------------------------
 
 
