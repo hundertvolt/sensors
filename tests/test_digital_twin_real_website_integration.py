@@ -93,7 +93,7 @@ async def _cancel(task: "asyncio.Task[Any]") -> None:
         pass
 
 
-def _decompress(body: bytes) -> bytes:
+def _decompress(body: "bytes | bytearray") -> bytes:
     # Same technique as test_frozen_html_integration.py/test_website_build_integration.py - see
     # either file's own comment for why deflate.DeflateIO(..., AUTO, ...) is the right call here.
     import io

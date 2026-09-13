@@ -2,7 +2,6 @@
 Every response it sees carries `Connection: close`, so no keep-alive support is needed. See `digital_twin/README.md`'s "What's here" section."""
 
 import asyncio
-import gc
 import json
 
 try:
@@ -15,9 +14,12 @@ if TYPE_CHECKING:
 
 
 class HttpResponse:
-    def __init__(self, status_code: int, headers: "dict[str, str]", body: bytes) -> None:
+    def __init__(self, status_code: int, headers: "dict[str, str]", body: "bytes | bytearray") -> None:
         self.status_code = status_code
         self.headers = headers
+        # bytearray on the sized/common path (_read_exact()'s own right-sized buffer, never copied
+        # into a fresh bytes object - see its own comment for why), bytes on the unsized fallback
+        # (Stream.read(-1)'s own return type). Nothing here or in any caller mutates it either way.
         self.body = body
 
     # Every response body this client is ever asked to decode is a JSON *object* (the REST layer's
@@ -25,7 +27,11 @@ class HttpResponse:
     # value side stays Any: callers index nested levels (res.json()["notification"]["PauseTime"]),
     # which no non-Any JSON alias can express without a cast at every call site.
     def json(self) -> "dict[str, Any]":
-        decoded: dict[str, Any] = json.loads(self.body)  # named local, not a bare return: json.loads() is Any-typed
+        # json.loads()'s stub types its argument AnyStr (str | bytes), rejecting bytearray - a stub
+        # gap, not a real runtime restriction: extmod/modjson.c's own mod_json_loads() reads through
+        # mp_get_buffer_raise(), the generic buffer protocol, which bytearray fully implements
+        # (confirmed directly against the pinned interpreter's own source).
+        decoded: dict[str, Any] = json.loads(self.body)  # type: ignore[type-var]
         return decoded
 
 
@@ -55,13 +61,35 @@ def parse_header_line(line: bytes) -> "tuple[str, str] | None":
     return name.strip(), value.strip()
 
 
+async def _read_exact(reader: "Any", n: int) -> bytearray:
+    # extmod/asyncio/stream.py's own Stream.readexactly() accumulates via `r += r2` on every
+    # partial read - a fresh, larger contiguous bytes object each time, immediately abandoning the
+    # previous one. For a several-KB body arriving over several TCP reads that is several
+    # progressively bigger allocate-copy-discard cycles per fetch(), which is exactly the pattern
+    # that fragments this heap under repeated soak cycles (confirmed directly against the pinned
+    # interpreter's own extmod/asyncio/stream.py). Reading into one right-sized buffer via
+    # Stream.readinto() - which does exist, and does a single non-accumulating read per call, so it
+    # must itself be looped to fill the buffer - costs exactly one allocation per fetch() instead,
+    # done once we already know the final size. No explicit gc.collect() is needed anywhere for
+    # this: py/gc.c's own gc_alloc() already runs a full collect-and-retry before ever raising
+    # MemoryError (confirmed directly against the pinned interpreter's own source), so a stale
+    # previous response's garbage is reclaimed automatically, exactly when an allocation actually
+    # needs the room - forcing it early changes nothing but timing.
+    buf = bytearray(n)
+    view = memoryview(buf)
+    got = 0
+    while got < n:
+        nread = await reader.readinto(view[got:])
+        if not nread:
+            raise EOFError
+        got += nread
+    return buf
+
+
 async def fetch(host: str, port: int, method: str, path: str, json_body: "dict[str, object] | None" = None) -> HttpResponse:
     # reader/writer are the same underlying Stream object on this build (two names kept only for
     # readability/symmetry with Microdot's own convention) - close() is a no-op here, the socket
     # only actually closes via wait_closed() in the finally below.
-    # Collects the previous fetch()'s own now-garbage headers dict/body bytes before this one
-    # starts allocating - see the second gc.collect() below for why this matters on this heap.
-    gc.collect()
     reader, writer = await asyncio.open_connection(host, port)
     try:
         writer.write(build_request(method, path, host, json_body))
@@ -77,14 +105,11 @@ async def fetch(host: str, port: int, method: str, path: str, json_body: "dict[s
             headers[name] = value
 
         content_length = headers.get("Content-Length")
-        # A big contiguous allocation (the response body, up to several KB for the frozen website)
-        # right after several smaller header-parsing ones is exactly the shape that MemoryErrors on
-        # a fragmented Unix-port heap (see the CI failure this was added to fix) - collect first so
-        # the allocator has the best chance of finding room for it.
-        gc.collect()
-        # read(-1) reads until EOF - a safe fallback for a missing Content-Length, though every real
-        # response this client sees does carry one (Microdot sets it whenever missing).
-        body = await reader.readexactly(int(content_length)) if content_length is not None else await reader.read(-1)
+        # The sized path above is what every real response takes (Microdot always sets
+        # Content-Length) and is what _read_exact() exists for. read(-1) is an unsized fallback for
+        # a response with none - genuinely unbounded, so it can't be pre-sized the same way; left
+        # as Stream's own accumulating read() since nothing in this codebase ever exercises it.
+        body = await _read_exact(reader, int(content_length)) if content_length is not None else await reader.read(-1)
 
         return HttpResponse(status_code, headers, body)
     finally:

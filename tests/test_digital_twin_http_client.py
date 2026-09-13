@@ -97,6 +97,55 @@ def test_parse_header_line_returns_none_for_the_blank_terminator() -> None:
 
 
 # ---------------------------------------------------------------------------
+# _read_exact() - fills one right-sized buffer across as many partial readinto() rounds as the
+# underlying stream actually delivers (extmod/asyncio/stream.py's own Stream.readinto() does
+# exactly one non-accumulating read per call, never a whole-buffer guarantee) - the replacement for
+# Stream.readexactly()'s own `r += r2` growth-by-concatenation accumulation, which is what made a
+# multi-KB response body a repeated allocate-copy-discard cycle under repeated soak cycles.
+# ---------------------------------------------------------------------------
+
+
+class _ChunkedReader:
+    # A fake stream whose readinto() hands back one pre-scripted chunk per call, exactly like a
+    # real socket splitting one response body across several TCP segments - proving the loop
+    # actually loops, not just that it works when the first call happens to deliver everything.
+    def __init__(self, chunks: "list[bytes]") -> None:
+        self._chunks = list(chunks)
+
+    async def readinto(self, buf: bytearray) -> int:
+        if not self._chunks:
+            return 0
+        chunk = self._chunks.pop(0)
+        n = len(chunk)
+        buf[:n] = chunk
+        return n
+
+
+def test_read_exact_fills_the_buffer_across_multiple_partial_reads() -> None:
+    reader = _ChunkedReader([b"abc", b"de", b"fgh"])
+    result = run_timed(http_client._read_exact(reader, 8))
+    assert bytes(result) == b"abcdefgh"
+
+
+def test_read_exact_returns_a_right_sized_buffer_for_a_single_read() -> None:
+    reader = _ChunkedReader([b"hello"])
+    result = run_timed(http_client._read_exact(reader, 5))
+    assert bytes(result) == b"hello"
+    assert len(result) == 5
+
+
+def test_read_exact_raises_eof_on_premature_stream_closure() -> None:
+    # Only 2 of the 5 requested bytes ever arrive, then the stream reports EOF (readinto() -> 0) -
+    # matches Stream.readexactly()'s own EOFError contract exactly (extmod/asyncio/stream.py).
+    reader = _ChunkedReader([b"ab"])
+    try:
+        run_timed(http_client._read_exact(reader, 5))
+        raise AssertionError("expected EOFError")
+    except EOFError:
+        pass
+
+
+# ---------------------------------------------------------------------------
 # HttpResponse.json() - response-body decoding
 # ---------------------------------------------------------------------------
 
@@ -135,6 +184,39 @@ def test_fetch_round_trips_a_real_request_through_a_real_socket() -> None:
             res = await http_client.fetch("127.0.0.1", 18099, "GET", "/anything")
             assert res.status_code == 200
             assert res.json() == {"ok": True}
+        finally:
+            server.close()
+            await server.wait_closed()
+
+    run_timed(scenario(), timeout_s=5.0)
+
+
+async def _canned_server_split_body(reader: "asyncio.StreamReader", writer: "asyncio.StreamWriter") -> None:
+    # Writes the body across two separate drain()s with a real yield between them, forcing fetch()'s
+    # own _read_exact() to actually loop - proves the fix over a real socket, not only against
+    # _ChunkedReader's own scripted fake.
+    await reader.readline()
+    while True:
+        line = await reader.readline()
+        if line in (b"\r\n", b"\n", b""):
+            break
+    body = b'{"a": 1, "b": 2}'
+    half = len(body) // 2
+    writer.write(f"HTTP/1.1 200 OK\r\nContent-Length: {len(body)}\r\nConnection: close\r\n\r\n".encode() + body[:half])
+    await writer.drain()
+    await asyncio.sleep_ms(20)
+    writer.write(body[half:])
+    await writer.drain()
+    await writer.wait_closed()
+
+
+def test_fetch_reassembles_a_body_delivered_across_two_separate_writes() -> None:
+    async def scenario() -> None:
+        server = await asyncio.start_server(_canned_server_split_body, "127.0.0.1", 18100)
+        try:
+            res = await http_client.fetch("127.0.0.1", 18100, "GET", "/anything")
+            assert res.status_code == 200
+            assert res.json() == {"a": 1, "b": 2}
         finally:
             server.close()
             await server.wait_closed()
