@@ -100,6 +100,11 @@ def _log_entries(counters: "ErrorLog") -> "tuple[list[tuple[str, int]], int]":
 
 def _make_reader(i2c1: "asy_i2c_driver.I2C") -> ISL29125_Reader:
     reader = ISL29125_Reader(i2c1, 6, max_module_error=999, fram=None, debug=None)
+    # Scratch filename, because this script is the one that calls _set_dict_cfg: its persist leg
+    # is a real write_config() to the board's own filesystem, which would otherwise stamp the
+    # seeded cache below over the PRODUCTION config_ISL29125.cfg. Same convention as
+    # reboot_persist_write.py's config_HWTEST_REBOOT.cfg - see tests_hardware/README.md.
+    reader.cfgmgr.config_file = "config_HWTEST_ISL29125.cfg"
     reader.cfgmgr.valid = True
     reader.cfgmgr._cache = {
         "SampleInterv": 1, "Resolution": 16, "RangeAuto": True, "Range": 10000,

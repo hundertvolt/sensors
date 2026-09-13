@@ -285,6 +285,14 @@ a live question:
   `"Task N ended with exception"` (chased down as real on 2026-09-11; it was test data). CLAUDE.md's
   "read the FRAM logs before clearing" rule assumes a board that has been running normally — check
   what was last run against this one first.
+- **The config files on the flash filesystem are the same hazard, except it is a real write, not
+  just a stale read.** An isolated-driver script seeds `cfgmgr._cache` directly and never calls
+  `cfgmgr.setup()`, so the manager keeps its default `config_<NAME>.cfg` filename — and any call
+  reaching `_set_dict_cfg()` runs a real `write_config()`, stamping that seeded cache over the
+  production file. `isl29125_mechanism_envelope.py` did exactly that until 2026-09-13, rewriting
+  `config_ISL29125.cfg` six times per run with no sign of it in the test output. A script that
+  pushes config therefore points `cfgmgr.config_file` at a `config_HWTEST_*.cfg` scratch name,
+  the convention `reboot_persist_write.py` already uses; do the same for any new one.
 - **A device script that reads error-log content clears its chunk at the START, never at the end.**
   Clearing first is what makes a run deterministic: the chunk is real persistent storage, so
   without it a script inherits the previous run's ring and its assertions drift silently. Clearing
