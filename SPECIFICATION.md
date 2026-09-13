@@ -225,7 +225,23 @@ registration API and A.9's `HTML_SRC_DIRS` are shaped around it). Real-hardware 
   the INT pin), which is why exactly one status read happens per cycle and why no other code path
   may touch it. (5) **Sensor RGB is not colorimetric RGB** and the IR-compensation fields move the
   lux scale as well as the colour balance — see `DEVICE_REFERENCE.md` for the user-facing version
-  of both.
+  of both. (6) **`AutoRangePersist`'s unit is an RGB cycle, not an integration cycle**, even though the
+  datasheet says "integration cycles" in both places it mentions the field — p11's Table 12 heads
+  its column "NUMBER OF INTEGRATION CYCLE", and p6's prose offers "setting the persistency to 8
+  integration cycles". `INTSEL` selects exactly one channel to compare against the thresholds, and
+  that channel is converted once per RGB cycle, so "X-consecutive" means X × 303 ms at 16 bit, not
+  X × 101 ms. Settled on silicon 2026-09-13 (C.11.1.2): at `PRST` = 4 with one status read per
+  second the flag was set in 4 of 8 reads, strictly alternating — which only fits a 1212 ms re-arm,
+  where 404 ms would have set it in all 8. Taking the datasheet at its word makes
+  `ISL29125_I2C.persist_window_ms()` look 3× too large and `wrnno=17` look like a false positive;
+  it is the datasheet that is loose here, not the code.
+  (7) **The interrupt does not freeze the data registers.** p6: conversion "continues without
+  stopping after interrupt is asserted", and if you want the counts that actually tripped the
+  threshold you must read them "before the data registers are refreshed by the following
+  conversions". This driver deliberately does not try: `_read_isl()` re-evaluates the range from
+  whatever the current counts are, so a sample one cycle newer than the one that tripped the
+  threshold is still the right input. Don't add a "read the triggering sample" path — it would be
+  a race against a 303 ms refresh for no gain.
 - Legacy `neopixel_signal.py` (LED hardware + hardcoded threshold monitoring) was split:
   `asy_neopixel_driver.py`'s `NeopixelDriver` (pure LED hardware, unchanged mechanism —
   `request_signal()` returns once queued, not once its ramp finishes; also serves
@@ -1130,6 +1146,17 @@ info/trace; `pr.err_s`/`pr.wrn_s` (async, persist to history/FRAM) for anything 
 `get_error_counter()`; `pr.err`/`pr.wrn` (sync, non-persisting) for a genuinely sync call site
 (e.g. a `Timer.init()` failure handler) or a routine observation that shouldn't count at all.
 
+**Which of the three info levels to use** (migrated from the retired `ISL29125_FUNCTION_SPEC.md`
+§3, which recorded the convention the drivers already followed because nothing else stated it):
+`one()` for once-per-lifecycle milestones (`"initialized"`, `"Setting sensor config at startup."`,
+a restored calibration and its age); `evt()` for per-cycle events worth seeing at debug 4
+(`"sensor trigger"`, `"Backup trigger."`, a range switch); `all()` for per-cycle data-flow noise
+(`"read"`, `"data stored"`, a decoded status byte, a discarded settle). The persisting pair splits
+the same way by *whether it counts*: `err_s(..., errno=)` for anything that fails and is counted,
+`wrn_s(..., wrnno=)` for recovered or expected-but-notable, and the sync `err()`/`wrn()` for a
+failure with no history entry yet — construction-time, before `pr.setup()` has run (`start_timer()`'s
+`"Could not start timer:"`, SGP40's `"FRAM backup storage allocation failed!"`).
+
 `errno=`/`wrnno=` are small positive ints, per driver, grouped by the raising method.
 **`base_classes.py` reserves `errno=1`-`9`/`wrnno=1`-`2`**, inherited unmodified — a driver's own
 numbering starts at 10+ (why `errno=10` = "init failed" recurs everywhere). **Three fixed common
@@ -1255,6 +1282,20 @@ periodic timer self-heals next tick, a dropped one-shot never fires again. A dri
 than one rate (BMP3xx: 1Hz base tick divided down) runs a small counting sub-task rather than
 reprogramming the Timer's period at runtime.
 
+**A `Pin.irq()` handler follows the same discipline, and may also capture state.** `Pin.irq()`
+defaults to `hard=False` on rp2 (`ports/rp2/machine_pin.c`, v1.29.0), so the handler runs in soft-IRQ
+context and must allocate nothing. Setting a `ThreadSafeFlag` is not the only thing allowed there:
+`ThreadSafeFlag.set()` is itself just `self.state = 1` (`extmod/asyncio/event.py`, whose own comment
+sanctions setting it from an IRQ), so **storing into an attribute `__init__` already created is the
+same operation and equally safe** — what must not appear is anything that allocates, blocks, or
+decides. `asy_scd30_driver.py` uses the minimal form (a lambda that only sets the flag);
+`asy_isl29125_driver.py` is the precedent for the other, recording `self._irq_fired = True` beside
+the flag because its dead-line detector has to distinguish "the chip raised its flag" from "the LINE
+actually moved" — a distinction the flag alone cannot make, since the chip raises it identically
+when the wire is open (C.11.1.3). Note the consequence: a soft IRQ **dropped** by a full scheduler
+queue (F.1) then reads as a periodic-led decision, which is the intended bias — a unit dropping
+edges deserves the warning.
+
 **Every `Timer.init()` failure handler catches `except (OSError, MemoryError) as e:`, not bare
 `OSError`** (F.1) — its documented failure is `OSError(MP_ENOMEM)` on alarm-pool exhaustion; no
 separate `Timer.init()`-specific `MemoryError` path exists, but the widening is correct generic
@@ -1378,6 +1419,14 @@ read, which does clear it, restarts the count, so t = 3 s misses and t = 4 s see
 counter reset by every read would have produced 0 of 8; one never reset at all would have produced
 8 of 8 (the flag would re-raise on the very next conversion after each clear). Neither happened.
 
+**Reproducing it.** The *unit* half (RGB cycles, not channel integrations — A.4's conflatable-facts
+item 6) is automated and now asserted: `tests_hardware/device_scripts/isl29125_real_irq_edge.py`'s
+`_measure_persist_unit()` times a `PRST` = 4 assertion and fails the script if the answer is not
+`rgb_cycles`, because `persist_window_ms()` and `wrnno=17` are both built on it. The *restart* half
+above was a one-off bench probe, not a committed script; the table's own method is the recipe —
+park both thresholds at `0x0000` so any light crosses the window, then vary only the status-read
+cadence.
+
 **Consequences.** The fake now resets `_prst_count` only inside the `if self._status &
 _STATUS_RGBTHF` branch. `src/` needed no change — the driver already reads `0x08` exactly once per
 cycle, which is the cadence this was measured at. What it does change is the twin: before the fix,
@@ -1421,6 +1470,81 @@ unrelated timing reason rather than because the detector worked.
 now checks `wrnno=15`/`17` per scenario *and* asserts the run made at least five range switches, so
 the check can actually fire. Before that, nothing in the suite ever exercised W15 where it was
 reachable — the envelope test makes two switches and the warning needs five in a row.
+
+### C.11.2 ISL29125 reference layer — the prior art, and the traps it closes
+
+Migrated from `ISL29125_FUNCTION_SPEC.md` §5 and `ISL29125_PROMOTION_PLAN.md` §7.6/§8.3 when both
+temporary docs were retired (2026-09-13). Every item here is something a future reader would
+otherwise re-derive or "correct" back to a worse answer.
+
+**One owner per register — the property that makes the shadow model safe.** The driver keeps a
+local shadow of `CONFIG1`-`CONFIG3` and writes it back whole; that is only sound while exactly one
+function may touch each register.
+
+| Register | Contents | Sole writer | Read by |
+|---|---|---|---|
+| `0x00` | Device ID / reset command | `reset()` (writes `0x46`) | `get_device_id()` |
+| `0x01`-`0x03` | `CONFIG1`/`2`/`3` | `configure()` only | `get_config_snapshot()` only (one 3-byte burst, undecoded) |
+| `0x04`-`0x07` | Low/high thresholds | `set_thresholds()` only | never read back |
+| `0x08` | Status (`RGBTHF`/`CONVENF`/`BOUTF`/`RGBCF`) | `clear_brownout()` only | `read_status()`, **exactly once per cycle, destructive** |
+| `0x09`-`0x0E` | Green, Red, Blue data, in that order | never written | `read_counts()`, one 6-byte burst |
+
+Deliberately unused, with the reason, so nobody adds them later: `SYNC` (inverts the INT pin into
+an input, p6/p10); `CONVEN` (muxes conversion-done onto the pin the thresholds need); `RGBCF` and
+`CONVENF` (redundant — the data registers are double-buffered, p13).
+
+The same "integration cycle" looseness runs through p6's own prose, not just Table 12 — see A.4's
+conflatable-facts item 6 for the measurement that settles it, and item 7 for the related fact that
+conversion continues after the interrupt asserts.
+
+**Prior art, and the three places this driver departs from it.** Four independent implementations
+were read: the legacy `python/IndividualDrivers/` driver, `jposada202020/MicroPython_ISL29125`,
+SparkFun's Arduino library, and RIOT-OS `drivers/isl29125` (plus Linux's `drivers/iio/light/
+isl29125.c` in a later pass).
+
+1. **RIOT is the only prior art for the normalisation chain**, and this driver copies its shape
+   (6-byte burst, `<< 4` for 12-bit, `range_FS / 65535.0` per LSB) deliberately — Linux's IIO
+   driver independently confirms the same per-LSB scaling. The other three read per-channel and do
+   no lux conversion at all.
+2. **Nobody does auto-range or CCT.** Both are this driver's own, which is why its twin-tier tests
+   carry more weight than usual: there is no reference implementation to differential-test against.
+3. **RIOT's threshold scaling truncates, and that is a bug not to inherit.** `65535 / 375` in
+   integer arithmetic is 174, not 174.76. `_fraction_to_counts()` exists as a named function with
+   a test named after this specifically (`..._does_not_truncate_like_the_riot_driver`) so it cannot
+   recur.
+
+SparkFun's `reset()` additionally verifies `CONFIG1`-`CONFIG3` **and** status all read `0x00`; this
+driver verifies the config registers only, for two independent reasons (C.11.1.1 and the
+destructive-read invariant above).
+
+**Colour chain (`math_helpers.py`).** Three decisions that look like defects unless you know them:
+
+- The **sRGB/Rec.709 D65 matrix is pinned as literals** because two published roundings of the same
+  matrix differ in the 6th decimal (the CSS WG corrected its own), and both pass a `1e-6`
+  tolerance. `test_rgb_to_xyz_coefficients_are_the_pinned_literals()` asserts the literals exactly
+  rather than recomputing them from primaries, which would pass against either set.
+- **The two published McCamy forms are algebraically identical**, not contradictory: flipping the
+  sign of the denominator flips `n`, which flips the sign of the odd-power terms. Do not "correct"
+  one into the other — it changes nothing but the reviewer's confidence.
+- **The matrix is a placeholder by the datasheet's own statement**, not for want of a better source:
+  FN8424 p13 Eq. 1 says its coefficients "will be changed respectively depending on the system
+  setup". A per-unit matrix is the calibration hook; the reported colour is relative. There is
+  deliberately **no gamma decode** — the sRGB transfer function undoes display encoding, while this
+  sensor's output is linear in irradiance. The colour helpers take triples already normalised 0-1
+  by the driver's own chain, so an out-of-domain input means that chain is broken and is rejected
+  rather than clamped.
+
+**Config-field classification.** Device and maths constants are not config fields: requirement 1
+governs *preferences*, and a dark-count offset, a CCT floor or a gain-learn period is not one.
+`AutoRangeDown` additionally has a cross-field rule against `AutoRangeUp` — `d <= u / (2r)`, where
+`r` is the range ratio — which is what `_AR_CROSS_FIELD_DIVISOR` encodes as the no-chatter margin.
+
+**The Renesas application notes are unobtainable — do not re-attempt.** The four Intersil notes the
+promotion wanted are not reachable (the vendor site refuses, no mirror carries them, and the
+"AN1910" hits elsewhere are NXP's and Microchip's unrelated documents of the same number). Both
+things they were wanted for are settled without them: the 12-bit cycle time comes from the
+datasheet's own oscillator/counter model (p6, "the n-bit (n = 12, 16) counter inside the ADC", so
+101 ms × 2⁻⁴ ≈ 6.3 ms), and the CCT matrix is a placeholder by p13's own wording.
 
 ## C.12 Testing
 

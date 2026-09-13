@@ -120,7 +120,12 @@ async def _main() -> None:
         except (asyncio.CancelledError, Exception):
             pass
 
-    if data is not None and data.Lux is not None:
+    # Asserted, not merely reported: ISL29125_I2C.persist_window_ms() multiplies PRST by a whole
+    # RGB cycle, and wrnno=17 fires on the result. If this part ever answered "channel
+    # integrations" the driver's window would be 3x too long and nothing else would notice.
+    if "persist_unit=rgb_cycles" not in persist_note:
+        print(f"RESULT: FAIL {persist_note} - persist_window_ms() and wrnno=17 both assume whole RGB cycles | {restart_note}")
+    elif data is not None and data.Lux is not None:
         elapsed_s = time.ticks_diff(time.ticks_ms(), start) / 1000.0
         print(f"RESULT: PASS interrupt-driven reading arrived after {elapsed_s:.2f}s (periodic fallback was {TRIGGER_SEC}s) | {restart_note} | {persist_note}")
     else:

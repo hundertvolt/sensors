@@ -290,9 +290,10 @@ constraints.
       names a `TYPE_CHECKING`-only import, leave the rest bare. A sentence in SPECIFICATION.md
       Part D costs nothing; touching 31 files to enforce it buys nothing.
     Separately, and already known: `SGPResetVOC` and now `ISLResetCal` are the only two config
-    fields in `src/` carrying a device prefix (open question raised in the promotion plan §8.2,
-    whose own prose says the ISL field does *not* carry one while its §8.3 schema table names it
-    `ISLResetCal` — the code follows the table and the function spec, which agree).
+    fields in `src/` carrying a device prefix. The retired promotion plan contradicted itself here
+    (its prose said the ISL field carries no prefix, its schema table named it `ISLResetCal`); the
+    code follows the table, and the function spec agreed with the table. Recorded because the
+    naming question itself is still open, not the resolved contradiction.
 
 18. **Is the ISL29125's `BOUTF` actually high at power-up? — CLOSED (2026-09-13).** Yes, and the
     status *read* clears it, which p12 denies. Full lifecycle and evidence: SPECIFICATION.md Part
@@ -494,6 +495,27 @@ constraints.
     Left for the web lane's owner: not investigated further, and nothing was rebuilt, since a
     `scripts/build_website.sh` run changes a gitignored artifact that other work on this bench may
     be relying on.
+
+25. **`asy_isl29125_driver.py` does not follow SPECIFICATION.md D.15's method ordering, and the
+    two rules conflict for this file** (found 2026-09-13 by validating the session's touched files
+    against the spec paragraph by paragraph). D.15 wants private methods before public ones, then
+    starters/getters/setters/others within each group. Measured across `src/`: `asy_bmp3xx_driver.py`
+    and `asy_sgp40_driver.py` comply exactly, `asy_scd30_driver.py` has one exception
+    (`_set_dict_cfg`, a base-class override whose placement follows the base class), and
+    **`asy_isl29125_driver.py` has 37 private-after-public methods**.
+    It is not a simple oversight. The ISL driver is the **only** file in `src/` that carries
+    functional section headings — nine of them (`# -- read path --`, `# -- auto-range --`,
+    `# -- gain-ratio calibration --`, ...) — and it is organised by pipeline stage rather than by
+    visibility. The three compliant drivers have none. D.15 also requires the reorder to change
+    "no body/decorator/**comment**/module-level statement", which a visibility sort cannot honour
+    here: it would strand or delete all nine headings.
+    **Recommendation: amend D.15 rather than reorder the file.** Functional sectioning is more
+    useful than a visibility sort in a 1400-line driver, and the headings are load-bearing
+    navigation. Suggested wording: D.15's ordering applies unless a file carries explicit
+    functional section headings, in which case sections are ordered by pipeline stage and the
+    private/public rule applies *within* each section. Needs the owner's yes/no — reordering 37
+    methods is a large, review-hostile diff on a file that is otherwise complete and
+    hardware-validated, and doing it the other way (amending the spec) costs nothing.
 
 ## Deferred / explicitly out-of-scope work
 - **The 1.29.0 pin is now field-proven on the dev bench (2026-09-11).** Real `dev` firmware built

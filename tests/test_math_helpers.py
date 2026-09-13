@@ -299,7 +299,7 @@ def test_rel_humidity_nan_and_inf_return_none() -> None:
 
 
 # ---------------------------------------------------------------------------
-# rgb_to_hsb - M1 (ISL29125 colour chain, see ISL29125_FUNCTION_SPEC.md section 4.1)
+# rgb_to_hsb - the ISL29125 colour chain (SPECIFICATION.md Part C.11.2)
 # ---------------------------------------------------------------------------
 
 
@@ -400,7 +400,7 @@ def test_rgb_to_xyz_reproduces_the_matrix_columns_for_pure_primaries() -> None:
 
 def test_rgb_to_xyz_coefficients_are_the_pinned_literals() -> None:
     # Exact equality, not approx(): two published roundings of this same matrix differ in the
-    # 6th decimal (the CSS WG corrected its own once, see ISL29125_FUNCTION_SPEC.md section 5.3),
+    # 6th decimal (the CSS WG corrected its own once, see SPECIFICATION.md Part C.11.2),
     # and both would pass a 1e-6 tolerance. The driver's constants are const()-folded and so are
     # not readable as module attributes - reading them back through a pure primary is the only
     # way to pin them, and it pins the wiring at the same time.

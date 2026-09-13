@@ -88,7 +88,7 @@ _CYCLE_MS_16BIT = const(303)  # 3 x tINT, tINT = 101ms typ at 16 bits (p3)
 _CYCLE_MS_12BIT = const(19)  # 3 x ~6.3ms: p6 makes tINT an n-bit counter on one oscillator, 101 x 2**-4
 
 # Device/maths constants, deliberately NOT config fields - requirement 1 governs preferences, and
-# none of these is one (see ISL29125_PROMOTION_PLAN.md section 8.3's own classification table).
+# none of these is one (SPECIFICATION.md Part C.11.2's own classification note).
 _DARK_COUNTS = const(1)  # DDark typ 1 / max 5 counts at range 0 (p3, Electrical Specifications)
 _CCT_FLOOR_COUNTS = const(64)  # ~13x the worst-case dark count: below it a 5-count additive error
 # moves a channel ratio by more than ~8%, and chromaticity noise grows far faster than hue noise.
@@ -99,7 +99,7 @@ _GAIN_EMA_COEFF = const(0.1)  # the learning filter's own time constant
 _GAIN_LEARN_PERIOD_S = const(3600)  # the ratio is a device constant, so re-measuring it hourly is
 # generous; each measurement costs one extra range switch and two settle windows.
 _AR_CROSS_FIELD_DIVISOR = const(53.333333333333336)  # 2 x the range ratio - the no-chatter margin
-# AutoRangeDown must clear: d <= u/(2r), see ISL29125_PROMOTION_PLAN.md section 7.6.
+# AutoRangeDown must clear: d <= u/(2r), see SPECIFICATION.md Part C.11.2.
 _SETTLE_WAIT_MAX_ROUNDS = const(2)  # one extra cycle past the deadline, so a stream of concurrent
 # config writes can extend the settle but can never starve the read loop indefinitely.
 _PERIODIC_ONLY_WARN_AT = const(5)  # consecutive periodic-path switches with no preceding interrupt
@@ -1149,9 +1149,11 @@ class ISL29125_Reader(SensorReaderConfig):
         )
 
     def _on_irq(self, _pin: object) -> None:
-        # Runs in a soft IRQ (rp2's Pin.irq() defaults to hard=False), so it allocates nothing:
-        # one attribute store and one ThreadSafeFlag set, both of which MicroPython guarantees
-        # are allocation-free.
+        # Soft IRQ (rp2's Pin.irq() defaults to hard=False - ports/rp2/machine_pin.c at v1.29.0),
+        # so it must allocate nothing. It does not: both lines store into attributes __init__
+        # already created, and ThreadSafeFlag.set() is itself only `self.state = 1`
+        # (extmod/asyncio/event.py, whose own comment sanctions setting it from IRQ context) - so
+        # the added flag is exactly the same kind of store the stdlib already does here.
         self._irq_fired = True
         self.read_event.set()
 

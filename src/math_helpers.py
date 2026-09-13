@@ -29,7 +29,7 @@ _MAGNUS_T_MAX = const(40.0)
 _MAGNUS_RH_MAX = const(100.0)
 _MAGNUS_AH_MAX = const(100.0)
 # Colour-chain domains. The RGB triples these take are already normalised 0-1 by the driver's own
-# scaling chain (ISL29125_FUNCTION_SPEC.md section 7.1), so anything outside means that chain is
+# scaling chain (SPECIFICATION.md Part C.11.2), so anything outside means that chain is
 # broken, not that the light was unusual - hence a reject rather than a clamp.
 _COLOUR_IN_MIN = const(0.0)
 _COLOUR_IN_MAX = const(1.0)
@@ -141,9 +141,9 @@ def rgb_to_hsb(red: float | None, green: float | None, blue: float | None) -> "t
     # Standard HSV/HSB hexcone conversion over a normalised 0-1 sensor-RGB triple: hue in
     # [0, 360), saturation and brightness in [0, 1]. Returns a tuple, unlike every other function
     # in this file, because H/S/B all derive from the same max/min of the same triple and three
-    # separate entry points could return a mutually inconsistent triple (ISL29125_FUNCTION_SPEC.md
-    # section 4.1). The range gate below also catches NaN, which compares false against
-    # everything and would otherwise silently pick the wrong max branch.
+    # separate entry points could return a mutually inconsistent triple. The range gate below also
+    # catches NaN, which compares false against everything and would otherwise silently pick the
+    # wrong max branch.
     if red is None or green is None or blue is None:
         return None
     if not (_COLOUR_IN_MIN <= red <= _COLOUR_IN_MAX and _COLOUR_IN_MIN <= green <= _COLOUR_IN_MAX and _COLOUR_IN_MIN <= blue <= _COLOUR_IN_MAX):
@@ -165,7 +165,7 @@ def rgb_to_hsb(red: float | None, green: float | None, blue: float | None) -> "t
 def rgb_to_xyz(red: float | None, green: float | None, blue: float | None) -> "tuple[float, float, float] | None":
     # sRGB/Rec.709 D65 primaries (IEC 61966-2-1), pinned as literals: a second published rounding
     # of this same matrix differs in the 6th decimal, so these must not be "corrected" (see
-    # ISL29125_FUNCTION_SPEC.md section 5.3). Deliberately NO gamma decode - the sRGB transfer
+    # SPECIFICATION.md Part C.11.2). Deliberately NO gamma decode - the sRGB transfer
     # function exists to undo display encoding, while this sensor's output is linear in
     # irradiance, so applying it would be a straight error.
     # This matrix is a documented PLACEHOLDER for this device: FN8424 p13 Eq. 1 states its own

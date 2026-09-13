@@ -2508,29 +2508,79 @@ def test_the_filter_coefficient_rejects_values_outside_its_band_and_logs_errno_2
     assert errors(counters).count(26) == 4, "one per rejected value, and the two boundaries must not count"
 
 
-def test_every_gain_ratio_backup_failure_degrades_instead_of_raising() -> None:
-    # All three FRAM paths, including the one that does not raise: write_into() reporting ok=False
-    # is a real write failure the chip answered normally, and treating it as success would leave
-    # the ratio believed-persisted and silently lost at the next boot.
+def test_a_silently_dropped_fram_write_is_reported_rather_than_believed() -> None:
+    # A REAL simulated fault at the chip boundary (E.4), not a patched storage method: a corrupted
+    # WREN transfer leaves the latch clear, so the chip ignores the WRITE and answers normally.
+    # AsyFramManager's own verify read-back is what catches it, reporting ok=False with no
+    # exception anywhere - treat that as success and the ratio is believed-persisted and gone at
+    # the next boot.
+    manager, chip, _spi = make_fram_manager()
+    run(manager.setup())
+    _i2c, reader = ready_reader("gain_write_dropped", fram=manager, ntp=_always_synced)
+    assert reader.ts_storage is not None
+
+    async def scenario() -> "ErrorLog":
+        reader._gain_ratio = 24.5
+        await reader._persist_gain_ratio()  # a good write first, so the failure below is the only change
+        assert reader._gain_ratio_ts is not None
+        good_ts = reader._gain_ratio_ts
+        chip.drop_wren = True
+        reader._gain_ratio = 25.5
+        await reader._persist_gain_ratio()
+        assert reader._gain_ratio_ts == good_ts, "a dropped write advanced the stored timestamp anyway"
+        return await reader.get_error_counter()
+
+    counters = run(scenario())
+    assert errors(counters).count(36) == 1
+
+
+def test_one_faulted_fram_read_is_recovered_and_two_degrade_to_nominal() -> None:
+    # Both halves of the read side, measured 2026-09-13. AsyFramManager stores each chunk twice, so
+    # a single disturbed transfer costs nothing at all - the ratio comes back intact and nothing is
+    # even logged. Lose both copies and it becomes "no usable backup" (wrnno=11) and degrades to
+    # nominal: still not an ERROR, because a unit with an unreadable chunk must measure and run.
+    for faults, expect_restored in ((1, True), (2, False)):
+        manager, chip, _spi = make_fram_manager()
+        run(manager.setup())
+        _i2c, reader = ready_reader(f"gain_read_faulted_{faults}", fram=manager, ntp=_always_synced)
+
+        async def scenario(chip: FakeMB85RS64V = chip, reader: ISL29125_Reader = reader, faults: int = faults) -> "ErrorLog":
+            reader._gain_ratio = 24.5
+            await reader._persist_gain_ratio()
+            await reader.reset_error_counter()  # the reader's own init already logged its empty-chunk wrnno=11
+            reader._gain_ratio = _GAIN_RATIO_NOMINAL
+            chip.inject_fault("readinto", OSError(errno_mod.EIO, "SPI RX overrun"), times=faults)
+            await reader._load_gain_ratio()
+            return await reader.get_error_counter()
+
+        counters = run(scenario())
+        assert errors(counters) == [], f"{faults} faulted read(s): a disturbed backup read is a degradation, not a module error"
+        if expect_restored:
+            assert reader._gain_ratio == 24.5, "the second stored copy should have carried the ratio through untouched"
+            assert warnings(counters) == [], "a fault the dual-copy format absorbed must not be reported as a missing backup"
+        else:
+            assert reader._gain_ratio == _GAIN_RATIO_NOMINAL
+            assert 11 in warnings(counters)
+
+
+def test_the_gain_ratio_storage_handlers_survive_a_contract_violating_raise() -> None:
+    # Defense in depth, and deliberately NOT reachable through a real fault: measured 2026-09-13,
+    # AsyFramManager.read_into()/clear() answer a bus fault with a sentinel and never raise, so
+    # errno 35/37 guard the Protocol contract in the abstract rather than any behaviour the real
+    # class has today. Same shape, and the same reason, as E.4's own get_chunk()-raising precedent.
     manager, _chip, _spi = make_fram_manager()
     run(manager.setup())
-    _i2c, reader = ready_reader("gain_fram_faults", fram=manager, ntp=_always_synced)
+    _i2c, reader = ready_reader("gain_fram_raises", fram=manager, ntp=_always_synced)
     storage = reader.ts_storage
     assert storage is not None
 
     async def scenario() -> "ErrorLog":
         async def raising(*_args: object, **_kwargs: object) -> bool:
-            raise OSError(errno_mod.EIO, "injected")
-
-        async def silent_write_failure(*_args: object, **_kwargs: object) -> "tuple[bool, int | None, bool]":
-            return True, 0, False  # answered, committed nothing
+            raise OSError(errno_mod.EIO, "a contract violation, not a reachable fault")
 
         storage.read_into = raising  # type: ignore[method-assign, assignment]
         await reader._load_gain_ratio()
         storage.write_into = raising  # type: ignore[method-assign, assignment]
-        await reader._persist_gain_ratio()
-        storage.write_into = silent_write_failure  # type: ignore[method-assign]
-        reader._gain_ratio_ts = 12345
         await reader._persist_gain_ratio()
         storage.clear = raising  # type: ignore[method-assign]
         assert await reader._clear_gain_ratio() is False
@@ -2538,10 +2588,9 @@ def test_every_gain_ratio_backup_failure_degrades_instead_of_raising() -> None:
 
     counters = run(scenario())
     assert 35 in errors(counters)
-    assert errors(counters).count(36) == 2, "the silent ok=False write failure was treated as a success"
+    assert 36 in errors(counters)
     assert 37 in errors(counters)
     assert reader._gain_ratio == _GAIN_RATIO_NOMINAL, "a failed restore must leave the nominal ratio in place"
-    assert reader._gain_ratio_ts == 12345, "a failed write must not advance the stored timestamp"
 
 
 def test_a_ratio_stored_without_a_valid_timestamp_is_still_restored_and_warned_about() -> None:
