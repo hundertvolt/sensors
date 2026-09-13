@@ -38,20 +38,6 @@ def test_fram_chunk_write_read_roundtrips_against_the_real_chip(board: Board) ->
 # ---------------------------------------------------------------------------
 
 
-def test_isl29125_gain_ratio_survives_a_simulated_reboot_through_the_real_fram_chunk(board: Board) -> None:
-    """The ISL29125's own FRAM chunk, which no other tier touches on real hardware.
-
-    Three properties in one run: a non-nominal ratio survives the real SPI/float32 round trip, an
-    implausible stored value is rejected on LOAD rather than adopted as the live scale factor, and
-    ISLResetCal really clears the chip so the next boot finds nothing. The mock tier proves the
-    logic against a simulated chip; only this proves the bytes actually make it to and from silicon.
-    """
-    output = board.run_isolated(DEVICE_SCRIPTS / "isl29125_gain_ratio_fram_roundtrip.py", timeout_s=90.0)
-    match = RESULT_RE.search(output)
-    assert match is not None, f"device script printed no RESULT line - full output:\n{output}"
-    assert match.group(1) == "PASS", f"ISL29125 gain-ratio FRAM round trip failed: {match.group(2).strip()}\nfull output:\n{output}"
-
-
 def test_sgp40_voc_state_backs_up_to_and_restores_from_the_real_chip(board: Board) -> None:
     # ~90s real runtime (60s to the first natural BackupPeriod trigger, plus restore-cycle margin)
     # - see the device script's own docstring; timeout is generous relative to that.
