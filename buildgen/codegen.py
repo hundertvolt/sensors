@@ -4,12 +4,16 @@ construction order (`buildgen.graph.build_construction_order()`)."""
 
 import keyword
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from buildgen.defaults import default_class_name
 from buildgen.errors import BuildError
 from buildgen.model import DeviceModel, InstanceSpec, TomlDoc, instance_label, resolve_instance_key
 from buildgen.version import FIRMWARE_VERSION, WEBSITE_VERSION
 from buildgen.wiring import WiringField
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 _MAX_MODULE_ERROR = 5
 _DNS_TIMEOUT_MS = 500
@@ -101,72 +105,127 @@ def _defaulted_wiring_fields(spec: InstanceSpec) -> "list[str]":
     return [f for f, v in spec.wiring.items() if isinstance(v, dict) and v.get("default") is True]
 
 
+def _fram_kw(spec: InstanceSpec, ctx: _Ctx) -> "tuple[str, str] | None":
+    fram_wf = _wf(spec, "fram_target")
+    return (fram_wf.target, ctx.wiring_expr(spec, fram_wf)) if fram_wf is not None and "fram_target" in spec.wiring else None
+
+
+def _build_args_scd30(spec: InstanceSpec, ctx: _Ctx) -> "tuple[list[str], list[tuple[str, str]]]":
+    f = spec.fields
+    pos = [ctx.bus_var(f["bus"]), str(f["irq_pin"])]
+    kw: list[tuple[str, str]] = []
+    if "trigger_sec" in f:
+        kw.append(("trigger_sec", str(f["trigger_sec"])))
+    kw.append(("max_module_error", "_MAX_MODULE_ERROR"))
+    if spec.name_ext:
+        kw.append(("name_ext", repr(spec.name_ext)))
+    fram_kw = _fram_kw(spec, ctx)
+    if fram_kw:
+        kw.append(fram_kw)
+    kw.append(("debug", "debug"))
+    return pos, kw
+
+
+def _build_args_sgp40(spec: InstanceSpec, ctx: _Ctx) -> "tuple[list[str], list[tuple[str, str]]]":
+    f = spec.fields
+    pos = [ctx.bus_var(f["bus"])]
+    kw: list[tuple[str, str]] = []
+    kw.extend(ctx.value_wiring_kwargs(spec, "temperature_source"))
+    kw.extend(ctx.value_wiring_kwargs(spec, "humidity_source"))
+    kw.append(("max_module_error", "_MAX_MODULE_ERROR"))
+    if spec.name_ext:
+        kw.append(("name_ext", repr(spec.name_ext)))
+    kw.append(("cfg_path", "cfg_path"))
+    fram_kw = _fram_kw(spec, ctx)
+    if fram_kw:
+        kw.append(fram_kw)
+    kw.append(("fram_ntp_callback", "ntp.ntp_issynced"))
+    kw.append(("debug", "debug"))
+    return pos, kw
+
+
+def _build_args_bmp3xx(spec: InstanceSpec, ctx: _Ctx) -> "tuple[list[str], list[tuple[str, str]]]":
+    f = spec.fields
+    pos = [ctx.bus_var(f["bus"])]
+    kw: list[tuple[str, str]] = []
+    if "address" in f:
+        kw.append(("address", hex(f["address"])))
+    if "trigger_sec" in f:
+        kw.append(("trigger_sec", str(f["trigger_sec"])))
+    kw.append(("max_module_error", "_MAX_MODULE_ERROR"))
+    if spec.name_ext:
+        kw.append(("name_ext", repr(spec.name_ext)))
+    kw.append(("cfg_path", "cfg_path"))
+    fram_kw = _fram_kw(spec, ctx)
+    if fram_kw:
+        kw.append(fram_kw)
+    kw.append(("debug", "debug"))
+    return pos, kw
+
+
+def _build_args_fram(spec: InstanceSpec, ctx: _Ctx) -> "tuple[list[str], list[tuple[str, str]]]":
+    f = spec.fields
+    pos = [ctx.bus_var(f["bus"]), str(f["cs_pin"])]
+    kw: list[tuple[str, str]] = [("max_size", hex(f["max_size"])), ("debug", "debug")]
+    return pos, kw
+
+
+def _build_args_neopixel(spec: InstanceSpec, ctx: _Ctx) -> "tuple[list[str], list[tuple[str, str]]]":
+    pos = [str(spec.fields["pin"])]
+    kw: list[tuple[str, str]] = []
+    fram_kw = _fram_kw(spec, ctx)
+    if fram_kw:
+        kw.append(fram_kw)
+    kw.append(("debug", "debug"))
+    return pos, kw
+
+
+def _build_args_notification(spec: InstanceSpec, ctx: _Ctx) -> "tuple[list[str], list[tuple[str, str]]]":
+    signal_wf = _wf(spec, "signal_sink")
+    if signal_wf is None:
+        raise BuildError(ctx.model.device, "internal: notification has no signal_sink wiring field by codegen time", instance=spec.label)
+    pos = [ctx.wiring_expr(spec, signal_wf), "ntp.cettime"]
+    kw: list[tuple[str, str]] = [("max_module_error", "_MAX_MODULE_ERROR"), ("cfg_path", "cfg_path")]
+    fram_kw = _fram_kw(spec, ctx)
+    if fram_kw:
+        kw.append(fram_kw)
+    kw.append(("debug", "debug"))
+    return pos, kw
+
+
+def _build_args_uart_link(spec: InstanceSpec, ctx: _Ctx) -> "tuple[list[str], list[tuple[str, str]]]":
+    # No fram= - matches asy_uart_comm.UART_Comm's own construction on main (Part J.1: "no
+    # application semantics" also means no FRAM-backed error log of its own).
+    f = spec.fields
+    pos = [ctx.bus_var(f["bus"]), repr(f["role"])]
+    kw: list[tuple[str, str]] = []
+    if spec.name_ext:
+        kw.append(("name_ext", repr(spec.name_ext)))
+    kw.append(("debug", "debug"))
+    return pos, kw
+
+
+# One handler per driver, in the same "add a driver -> add a row" shape as buildspec.py's own
+# tables - kept as a dispatch table rather than one long if/elif chain (which this file used to be)
+# purely to stay under ruff's cyclomatic-complexity ceiling; the actual per-driver logic is
+# unchanged, just split one function per driver instead of one branch per driver in a single one.
+_BUILD_ARGS_HANDLERS: "dict[str, Callable[[InstanceSpec, _Ctx], tuple[list[str], list[tuple[str, str]]]]]" = {
+    "scd30": _build_args_scd30,
+    "sgp40": _build_args_sgp40,
+    "bmp3xx": _build_args_bmp3xx,
+    "fram": _build_args_fram,
+    "neopixel": _build_args_neopixel,
+    "notification": _build_args_notification,
+    "uart_link": _build_args_uart_link,
+}
+
+
 def _build_call(spec: InstanceSpec, ctx: _Ctx) -> str:
     class_name = spec.driver_info.class_name  # type: ignore[union-attr]
-    driver = spec.driver
-    f = spec.fields
-    pos: list[str] = []
-    kw: list[tuple[str, str]] = []
-    fram_wf = _wf(spec, "fram_target")
-    fram_kw = (fram_wf.target, ctx.wiring_expr(spec, fram_wf)) if fram_wf is not None and "fram_target" in spec.wiring else None
-
-    if driver == "scd30":
-        pos = [ctx.bus_var(f["bus"]), str(f["irq_pin"])]
-        if "trigger_sec" in f:
-            kw.append(("trigger_sec", str(f["trigger_sec"])))
-        kw.append(("max_module_error", "_MAX_MODULE_ERROR"))
-        if spec.name_ext:
-            kw.append(("name_ext", repr(spec.name_ext)))
-        if fram_kw:
-            kw.append(fram_kw)
-        kw.append(("debug", "debug"))
-    elif driver == "sgp40":
-        pos = [ctx.bus_var(f["bus"])]
-        kw.extend(ctx.value_wiring_kwargs(spec, "temperature_source"))
-        kw.extend(ctx.value_wiring_kwargs(spec, "humidity_source"))
-        kw.append(("max_module_error", "_MAX_MODULE_ERROR"))
-        if spec.name_ext:
-            kw.append(("name_ext", repr(spec.name_ext)))
-        kw.append(("cfg_path", "cfg_path"))
-        if fram_kw:
-            kw.append(fram_kw)
-        kw.append(("fram_ntp_callback", "ntp.ntp_issynced"))
-        kw.append(("debug", "debug"))
-    elif driver == "bmp3xx":
-        pos = [ctx.bus_var(f["bus"])]
-        if "address" in f:
-            kw.append(("address", hex(f["address"])))
-        if "trigger_sec" in f:
-            kw.append(("trigger_sec", str(f["trigger_sec"])))
-        kw.append(("max_module_error", "_MAX_MODULE_ERROR"))
-        if spec.name_ext:
-            kw.append(("name_ext", repr(spec.name_ext)))
-        kw.append(("cfg_path", "cfg_path"))
-        if fram_kw:
-            kw.append(fram_kw)
-        kw.append(("debug", "debug"))
-    elif driver == "fram":
-        pos = [ctx.bus_var(f["bus"]), str(f["cs_pin"])]
-        kw.append(("max_size", hex(f["max_size"])))
-        kw.append(("debug", "debug"))
-    elif driver == "neopixel":
-        pos = [str(f["pin"])]
-        if fram_kw:
-            kw.append(fram_kw)
-        kw.append(("debug", "debug"))
-    elif driver == "notification":
-        signal_wf = _wf(spec, "signal_sink")
-        if signal_wf is None:
-            raise BuildError(ctx.model.device, "internal: notification has no signal_sink wiring field by codegen time", instance=spec.label)
-        pos = [ctx.wiring_expr(spec, signal_wf), "ntp.cettime"]
-        kw.append(("max_module_error", "_MAX_MODULE_ERROR"))
-        kw.append(("cfg_path", "cfg_path"))
-        if fram_kw:
-            kw.append(fram_kw)
-        kw.append(("debug", "debug"))
-    else:
-        raise BuildError(ctx.model.device, f"codegen has no build recipe for driver {driver!r} - add one to buildgen.codegen._build_call", instance=spec.label)
-
+    handler = _BUILD_ARGS_HANDLERS.get(spec.driver)
+    if handler is None:
+        raise BuildError(ctx.model.device, f"codegen has no build recipe for driver {spec.driver!r} - add one to buildgen.codegen._BUILD_ARGS_HANDLERS", instance=spec.label)
+    pos, kw = handler(spec, ctx)
     args = ", ".join(pos + ([_kw(kw)] if kw else []))
     return f"{class_name}({args})"
 
@@ -207,6 +266,7 @@ def _emit_header_and_imports(lines: "list[str]", model: DeviceModel, ctx: _Ctx, 
     lines.append("")
     lines.append("import asy_i2c_driver")
     lines.append("import asy_spi_driver")
+    lines.append("import asy_uart_driver")
     lines.append("import config_manager as cm")
     # One import line per module, not per instance - two instances of the same driver (e.g. a
     # multi-scd30 device) share one module and must share one import line, merging whichever
@@ -288,9 +348,16 @@ def _emit_build_system(lines: "list[str]", model: DeviceModel, ctx: _Ctx, instan
             port = bus_id[len("i2c") :]  # "i2c0" -> "0" - strip the prefix, don't scan for digits (the "2" in "i2c" is itself a digit)
             timeout_kw = f", timeout={bus_table['timeout']}" if "timeout" in bus_table else ""
             lines.append(f"    {var} = asy_i2c_driver.I2C({port}, {bus_table['scl_pin']}, {bus_table['sda_pin']}, frequency={bus_table['frequency']}{timeout_kw})")
-        else:
+        elif bus_id.startswith("spi"):
             port = bus_id[len("spi") :]  # "spi0" -> "0"
             lines.append(f"    {var} = asy_spi_driver.SPI({port}, {bus_table['sck_pin']}, {bus_table['mosi_pin']}, {bus_table['miso_pin']})")
+        else:
+            port = bus_id[len("uart") :]  # "uart0" -> "0"
+            # rxbuf/txbuf/poll_wait_ms/poll_idle_ms: optional, only emitted when the TOML bus table
+            # declares them - asy_uart_driver.UART's own constructor defaults apply otherwise, same
+            # "declared field -> kwarg, absent field -> constructor default" shape as i2c's timeout.
+            extra_kw = "".join(f", {f}={bus_table[f]}" for f in ("rxbuf", "txbuf", "poll_wait_ms", "poll_idle_ms") if f in bus_table)
+            lines.append(f"    {var} = asy_uart_driver.UART({port}, {bus_table['tx_pin']}, {bus_table['rx_pin']}, baudrate={bus_table['baudrate']}{extra_kw})")
 
     for node in construction_order:
         if node in ("conn", "ntp"):
@@ -315,7 +382,11 @@ def _emit_build_system(lines: "list[str]", model: DeviceModel, ctx: _Ctx, instan
         lines.append(f"    conn.set_ext_led({ctx.instance_var(resolve_instance_key(model, led_target))})")
 
     lines.append("")
-    _emit_webserver(lines, have, sensor_vars)
+    uart_initiator_var = next(
+        (ctx.instance_var(n) for n in construction_order if isinstance(n, tuple) and instances[n].driver == "uart_link" and instances[n].fields.get("role") == "initiator"),
+        None,
+    )
+    _emit_webserver(lines, have, sensor_vars, uart_initiator_var)
 
     lines.append("    timers_running = ThreadSafeFlag()")
     lines.append("    sysfunct.set_level_setters(_collect_level_setters())")
@@ -446,7 +517,7 @@ def _emit_callbacks(lines: "list[str]", have: "set[str]") -> None:
         lines.append("")
 
 
-def _emit_webserver(lines: "list[str]", have: "set[str]", sensor_vars: "list[str]") -> None:
+def _emit_webserver(lines: "list[str]", have: "set[str]", sensor_vars: "list[str]", uart_initiator_var: "str | None") -> None:
     lines.append("    app = Microdot()")
     lines.append("    webserver = WebserverService(")
     lines.append("        app,")
@@ -474,8 +545,17 @@ def _emit_webserver(lines: "list[str]", have: "set[str]", sensor_vars: "list[str
     if "notification" in have:
         status_sources.append('"notification": _notification_status')
     lines.append("        status_sources={" + ", ".join(status_sources) + "},")
+    maintenance_entries = []
     if "sgp40" in have:
-        lines.append('        maintenance_sensors=(("SGP40", _sgp_maintenance_status),),')
+        maintenance_entries.append('("SGP40", _sgp_maintenance_status)')
+    if uart_initiator_var is not None:
+        # Only the initiator side owns real transfer/failure counts (it's the only one that ever
+        # initiates a transfer - SPECIFICATION.md Part J.1's "the protocol carries no application
+        # semantics" means the responder side has nothing of its own to report here).
+        maintenance_entries.append(f'("UARTLINK", {uart_initiator_var}.get_link_status)')
+    if maintenance_entries:
+        comma = "," if len(maintenance_entries) == 1 else ""
+        lines.append(f"        maintenance_sensors=({', '.join(maintenance_entries)}{comma}),")
     lines.append("        error_sources=_collect_error_sources(),")
     lines.append("        debug=debug,")
     lines.append('        static_mount="/html",')

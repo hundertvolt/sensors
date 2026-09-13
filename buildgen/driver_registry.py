@@ -10,17 +10,30 @@ from buildgen.errors import BuildError
 
 _READER_BASES = {"SensorReader", "SensorReaderConfig"}
 
-# Singleton services genuinely can't follow asy_<name>_driver.py/*_Reader (BUILD_CHAIN_PLAN.md's
-# "Acceptance criteria" #1's own named exception): fram/notification's own files aren't named
-# "_driver.py", and none of the three defines a SensorReader/SensorReaderConfig subclass at all.
+# Drivers that genuinely can't follow asy_<name>_driver.py/*_Reader (BUILD_CHAIN_PLAN.md's
+# "Acceptance criteria" #1's own named exception): none of the four defines a SensorReader/
+# SensorReaderConfig subclass at all, and fram/notification/uart_link's own files aren't even named
+# "_driver.py" to begin with (asy_uart_link_driver.py IS "_driver.py"-named, but still needs the
+# override - the naming convention alone was never sufficient, only necessary).
 _OVERRIDES: dict[str, tuple[str, str]] = {
     "fram": ("asy_fram_manager", "AsyFramManager"),
     "neopixel": ("asy_neopixel_driver", "NeopixelDriver"),
     "notification": ("asy_notification_service", "NotificationCoordinator"),
+    "uart_link": ("asy_uart_link_driver", "UartLinkExerciser"),
 }
 
-# Singleton services: never more than one per device (SPECIFICATION.md Part C.14's own scoping).
+# Every driver resolved via the override table above, regardless of whether it's a singleton -
+# "needs an override" and "is a singleton" are independent facts that happened to coincide for the
+# first three entries; SERVICE_DRIVERS only ever meant the former (validate.py's own name_ext
+# rejection - the actual singleton restriction - reads SINGLETON_SERVICE_DRIVERS below instead).
 SERVICE_DRIVERS = frozenset(_OVERRIDES)
+
+# Singleton services: never more than one per device (SPECIFICATION.md Part C.14's own scoping).
+# uart_link is deliberately excluded - it resolves via the same override table (it isn't a
+# SensorReader/SensorReaderConfig subclass either) but is NOT a singleton: a device wires exactly
+# two instances (initiator/responder), disambiguated by name_ext like any other multi-instance
+# driver, not forced to name_ext="" the way fram/neopixel/notification are.
+SINGLETON_SERVICE_DRIVERS = SERVICE_DRIVERS - {"uart_link"}
 
 
 @dataclass(frozen=True)

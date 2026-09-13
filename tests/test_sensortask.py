@@ -277,6 +277,20 @@ def _has(module: "Any", name: str) -> bool:
     return present
 
 
+def _has_uart_link(module: "Any") -> bool:
+    # uart_link doesn't fit _has()'s one-driver-one-attribute shape: a device that has it always
+    # has exactly two instances (uart_link_init/uart_link_resp - buildgen/twin_wiring.py's own
+    # instance_label() naming), never a single "module.uart_link". Only "dev" has it today.
+    present = "uart_link" in set(_wiring_plan(_device_of(module))["instances"])
+    init = getattr(module, "uart_link_init", None)
+    resp = getattr(module, "uart_link_resp", None)
+    if present:
+        assert init is not None and resp is not None, "uart_link is in devices/<device>.toml's own instances but build_system() never constructed both instances"
+    else:
+        assert init is None and resp is None, "uart_link is NOT in devices/<device>.toml's own instances, but build_system() constructed it anyway"
+    return present
+
+
 def _all_loggers(module: "Any") -> "list[Any]":
     assert module.conn is not None and module.ntp is not None and module.fram is not None and module.sysfunct is not None
     assert module.neopixel is not None and module.notification is not None and module.webserver is not None
@@ -303,7 +317,12 @@ def _all_loggers(module: "Any") -> "list[Any]":
         loggers += [module.sgp40.pr, module.sgp40.cfgmgr.pr]
     if _has(module, "bmp3xx"):
         loggers += [module.bmp3xx.pr, module.bmp3xx.cfgmgr.pr]
-    loggers += [module.neopixel.pr, module.notification.pr, module.notification.cfgmgr.pr, module.webserver.pr]
+    loggers += [module.neopixel.pr, module.notification.pr, module.notification.cfgmgr.pr]
+    if _has_uart_link(module):
+        # No cfgmgr - UART_Comm has no config schema (its parameters are an out-of-band wire
+        # contract, never runtime-writable, SPECIFICATION.md Part J.6), one entry per instance.
+        loggers += [module.uart_link_init.pr, module.uart_link_resp.pr]
+    loggers.append(module.webserver.pr)
     return loggers
 
 
@@ -1165,11 +1184,20 @@ def _scenario_status_get(device: str) -> None:
     res = _dispatch(module, "GET", "/status")
     body = json.loads(status_body(res))
     assert set(body.keys()) == {"networking", "system", "notification", "sensors", "errcount"}
-    # SGP40 is the only sensor with real maintenance data (VOC backup/restore timestamps) -
-    # reflective, not hardcoded, since a future device without sgp40 (buildgen/codegen.py's own
-    # "if sgp40 in have") would otherwise go stale silently here.
-    assert set(body["sensors"].keys()) == ({"SGP40"} if _has(module, "sgp40") else set())
-    assert "BackupTS" in body["sensors"]["SGP40"] and "RestoreTS" in body["sensors"]["SGP40"]
+    # SGP40 and UARTLINK are the only maintenance-status sources any real device has today
+    # (VOC backup/restore timestamps; UART transfer/failure counts) - reflective, not hardcoded,
+    # since a future device without either (buildgen/codegen.py's own "if sgp40 in have"/uart
+    # equivalent) would otherwise go stale silently here.
+    expected_sensors = set()
+    if _has(module, "sgp40"):
+        expected_sensors.add("SGP40")
+    if _has_uart_link(module):
+        expected_sensors.add("UARTLINK")
+    assert set(body["sensors"].keys()) == expected_sensors
+    if _has(module, "sgp40"):
+        assert "BackupTS" in body["sensors"]["SGP40"] and "RestoreTS" in body["sensors"]["SGP40"]
+    if _has_uart_link(module):
+        assert "Transfers" in body["sensors"]["UARTLINK"] and "Failures" in body["sensors"]["UARTLINK"]
     assert "SysUptime" in body["system"] and "LocalTime" in body["system"] and "UtcTime" in body["system"]
     assert "WifiUptime" in body["networking"] and "NtpSynced" in body["networking"]
     assert "Triggered" in body["notification"] and "PauseTime" in body["notification"]

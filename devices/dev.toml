@@ -34,6 +34,28 @@ sck_pin = 2
 mosi_pin = 3
 miso_pin = 4
 
+# The bench's permanent UART0<->UART1 crossover jumper (GP0<->GP9, GP1<->GP8 - dev_legacy/README.md)
+# makes SPECIFICATION.md Part J.7's self-compatibility property physically testable. rxbuf/txbuf/
+# poll_wait_ms/poll_idle_ms: sized from the real frame (5 + 48 = 53 bytes) and this bench's own
+# poll rate, not left at asy_uart_driver.UART's own generic defaults - see Part J.6.
+[bus.uart0]
+tx_pin = 0
+rx_pin = 1
+baudrate = 115200
+rxbuf = 512
+txbuf = 512
+poll_wait_ms = 2
+poll_idle_ms = 50
+
+[bus.uart1]
+tx_pin = 8
+rx_pin = 9
+baudrate = 115200
+rxbuf = 512
+txbuf = 512
+poll_wait_ms = 2
+poll_idle_ms = 50
+
 # --- sensor drivers ---------------------------------------------------------------------------
 
 [[instance]]
@@ -106,3 +128,21 @@ field = "VOC"
 [instance.wiring.warn_hum]
 source = "scd30"
 field = "Hum"
+
+# --- UART crossover link exerciser (bench-only) -------------------------------------------------
+# No [instance.wiring] on either - the protocol carries no application semantics of its own
+# (SPECIFICATION.md Part J.1), so neither instance takes a fram_target or any other cross-instance
+# reference. wozi never gets a UART instance - it is never physically flashed, so wiring it there
+# would add an untestable peripheral (CLAUDE.md).
+
+[[instance]]
+driver = "uart_link"
+name_ext = "init"
+bus = "uart0"
+role = "initiator"
+
+[[instance]]
+driver = "uart_link"
+name_ext = "resp"
+bus = "uart1"
+role = "responder"

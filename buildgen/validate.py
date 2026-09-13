@@ -7,11 +7,11 @@ from pathlib import Path
 
 from buildgen.buildspec import ADDRESS_CAPABLE_DRIVERS, ALLOWED_INSTANCE_FIELDS, BUS_ATTACHED_DRIVERS, FIXED_ADDRESS_DRIVERS, REQUIRED_TOML_FIELDS
 from buildgen.defaults import default_class_defines_attr, default_class_name, default_init_params, find_default_class
-from buildgen.driver_registry import SERVICE_DRIVERS, parse_name_constant, resolve_driver
+from buildgen.driver_registry import SINGLETON_SERVICE_DRIVERS, parse_name_constant, resolve_driver
 from buildgen.errors import BuildError
 from buildgen.limits import LimitField, parse_limits
 from buildgen.model import DeviceModel, InstanceSpec, TomlDoc, instance_label, load_device, resolve_instance_key
-from buildgen.pico_gpio import I2C_ROLE, SPI_ROLE, gpio_exists
+from buildgen.pico_gpio import I2C_ROLE, SPI_ROLE, UART_ROLE, gpio_exists
 from buildgen.requires_tag import RequiresTag, check_requires_tags, parse_requires_tags
 from buildgen.value_wiring import ValueWiringField, parse_value_wiring
 from buildgen.wiring import WiringField, parse_wiring
@@ -23,29 +23,43 @@ _ParsedDriverTags = tuple["tuple[WiringField, ...]", "tuple[RequiresTag, ...]", 
 _BUS_WIRE_FIELDS = {
     "i2c": ("scl_pin", "sda_pin"),
     "spi": ("sck_pin", "mosi_pin", "miso_pin"),
+    "uart": ("tx_pin", "rx_pin"),
 }
-# Real RP2040 bus identities - Pico W exposes exactly two I2C and two SPI peripheral indices, never
-# an arbitrary digit (closes the "i2c2"/bare-"i2c" gap - _bus_kind() used to only check the prefix).
-_VALID_BUS_IDS = {"i2c0": "i2c", "i2c1": "i2c", "spi0": "spi", "spi1": "spi"}
-# bus-table field name -> (role table, the role that field must resolve to). Both fields of a kind
-# always appear together in _BUS_WIRE_FIELDS/_BUS_ALLOWED_FIELDS, so a bus table never mixes kinds.
+# Real RP2040 bus identities - Pico W exposes exactly two I2C, two SPI and two UART peripheral
+# indices, never an arbitrary digit (closes the "i2c2"/bare-"i2c" gap - _bus_kind() used to only
+# check the prefix).
+_VALID_BUS_IDS = {"i2c0": "i2c", "i2c1": "i2c", "spi0": "spi", "spi1": "spi", "uart0": "uart", "uart1": "uart"}
+# bus-table field name -> (role table, the role that field must resolve to). Every field of a kind
+# always appears together in _BUS_WIRE_FIELDS/_BUS_ALLOWED_FIELDS, so a bus table never mixes kinds.
 _BUS_PIN_ROLE: "dict[str, tuple[dict[int, tuple[str, str]], str]]" = {
     "scl_pin": (I2C_ROLE, "scl"),
     "sda_pin": (I2C_ROLE, "sda"),
     "sck_pin": (SPI_ROLE, "sck"),
     "mosi_pin": (SPI_ROLE, "mosi"),
     "miso_pin": (SPI_ROLE, "miso"),
+    "tx_pin": (UART_ROLE, "tx"),
+    "rx_pin": (UART_ROLE, "rx"),
 }
 # Every field a bus table of this kind may declare, in total - its own required wire pins plus
 # "frequency" (both i2c/asy_i2c_driver.I2C's own required param, checked separately above for a
 # more specific message) and, i2c-only, "timeout" (asy_i2c_driver.I2C's own optional param;
 # asy_spi_driver.SPI has none) - itself optional at the bus-table-shape level, only actually
 # required when an scd30 instance sits on this specific bus (enforced by that driver's own
-# @requires tag, not here).
+# @requires tag, not here). uart's own optional fields all mirror asy_uart_driver.UART's own
+# constructor kwargs of the same name, present only because dev's bench-specific tuning
+# (SPECIFICATION.md Part J) differs from that constructor's own generic defaults - "baudrate" is
+# required (checked separately below, same shape as i2c's "frequency"), the rest are optional and
+# codegen only emits a kwarg for whichever of them the TOML actually declares.
 _BUS_ALLOWED_FIELDS = {
     "i2c": frozenset(_BUS_WIRE_FIELDS["i2c"]) | {"frequency", "timeout"},
     "spi": frozenset(_BUS_WIRE_FIELDS["spi"]),
+    "uart": frozenset(_BUS_WIRE_FIELDS["uart"]) | {"baudrate", "rxbuf", "txbuf", "poll_wait_ms", "poll_idle_ms"},
 }
+_UART_LINK_ROLES = frozenset({"initiator", "responder"})  # asy_uart_comm.ROLE_INITIATOR/ROLE_RESPONDER's
+# own literal values, duplicated here rather than imported - buildgen never imports real src/
+# modules (they can rely on MicroPython-only syntax/APIs the driver_registry.py docstring's own
+# AST-only-parsing rule exists to avoid), so the two string literals are the contract instead.
+_UART_OPTIONAL_INT_FIELDS = ("rxbuf", "txbuf", "poll_wait_ms", "poll_idle_ms")
 _REQUIRED_DEVICE_FIELDS = ("name", "hostname", "hotspot_password", "conn_fail_to_hotspot", "hotspot_time_min")
 _REQUIRED_DEVICE_INT_FIELDS = ("conn_fail_to_hotspot", "hotspot_time_min")
 _ALLOWED_DEVICE_FIELDS = frozenset(_REQUIRED_DEVICE_FIELDS) | {"wiring"}
@@ -134,10 +148,16 @@ def _check_bus_tables(model: DeviceModel) -> "dict[str, TomlDoc]":
             raise BuildError(model.device, f"bus.{bus_name} declares cs_pin - that's an instance-exclusive resource, not a shared bus field", field="cs_pin")
         if kind == "i2c" and not (isinstance(bus_table.get("frequency"), int) and not isinstance(bus_table.get("frequency"), bool)):
             raise BuildError(model.device, f"bus.{bus_name} (i2c) is missing an int frequency", field="frequency")
-        if kind == "spi" and "frequency" in bus_table:
-            raise BuildError(model.device, f"bus.{bus_name} (spi) declares frequency - asy_spi_driver.SPI has no such parameter", field="frequency")
+        if kind in ("spi", "uart") and "frequency" in bus_table:
+            raise BuildError(model.device, f"bus.{bus_name} ({kind}) declares frequency - its own driver has no such parameter", field="frequency")
+        if kind == "uart" and not (isinstance(bus_table.get("baudrate"), int) and not isinstance(bus_table.get("baudrate"), bool)):
+            raise BuildError(model.device, f"bus.{bus_name} (uart) is missing an int baudrate", field="baudrate")
         if "timeout" in bus_table and not (isinstance(bus_table["timeout"], int) and not isinstance(bus_table["timeout"], bool)):
             raise BuildError(model.device, f"bus.{bus_name} ({kind}) timeout must be an int, got {bus_table['timeout']!r}", field="timeout")
+        if kind == "uart":
+            for f in _UART_OPTIONAL_INT_FIELDS:
+                if f in bus_table and not (isinstance(bus_table[f], int) and not isinstance(bus_table[f], bool)):
+                    raise BuildError(model.device, f"bus.{bus_name} (uart) {f} must be an int, got {bus_table[f]!r}", field=f)
         unknown = set(bus_table) - _BUS_ALLOWED_FIELDS[kind]
         if unknown:
             raise BuildError(model.device, f"bus.{bus_name} ({kind}) declares unrecognized field(s) {sorted(unknown)} - typo, or copy-pasted from an unrelated bus kind?", field=min(unknown))
@@ -168,7 +188,7 @@ def _resolve_instances(model: DeviceModel, src_dir: Path) -> None:
         spec.wiring_schema, spec.requires_tags, spec.limits_schema, spec.value_wiring_schema, base_name = parsed[info.source_path]
         spec.resolved_name = _instance_name(base_name, spec.name_ext)
 
-        if spec.driver in SERVICE_DRIVERS and spec.name_ext:
+        if spec.driver in SINGLETON_SERVICE_DRIVERS and spec.name_ext:
             raise BuildError(model.device, f"{spec.label}: singleton service driver {spec.driver!r} must not declare name_ext", instance=spec.label, field="name_ext")
 
 
@@ -203,6 +223,8 @@ def _check_required_fields(model: DeviceModel, buses: "dict[str, TomlDoc]") -> N
                 raise BuildError(model.device, f"{spec.label} references undeclared bus {spec.fields['bus']!r}", instance=spec.label, field="bus")
         if "address" in spec.fields and spec.driver not in ADDRESS_CAPABLE_DRIVERS:
             raise BuildError(model.device, f"{spec.label} declares an address field, but {spec.driver!r} has no address-select pin (see buildgen.buildspec.ADDRESS_CAPABLE_DRIVERS)", instance=spec.label, field="address")
+        if spec.driver == "uart_link" and spec.fields.get("role") not in _UART_LINK_ROLES:
+            raise BuildError(model.device, f"{spec.label}.role must be one of {sorted(_UART_LINK_ROLES)}, got {spec.fields.get('role')!r}", instance=spec.label, field="role")
         # These three all reach codegen.py's hex()/str() argument-building unvalidated otherwise -
         # a wrong type (e.g. a quoted "0x77" string for address) would raise a raw TypeError from
         # hex(), or - for trigger_sec, which only ever goes through str() - silently render as a
@@ -312,19 +334,19 @@ def _check_gpio_collisions(model: DeviceModel, buses: "dict[str, TomlDoc]") -> N
         claims[pin] = owner
 
     for bus_name, bus_table in buses.items():
-        for f in ("scl_pin", "sda_pin", "sck_pin", "mosi_pin", "miso_pin"):
+        for f in ("scl_pin", "sda_pin", "sck_pin", "mosi_pin", "miso_pin", "tx_pin", "rx_pin"):
             if f not in bus_table:
                 continue
             pin = bus_table[f]
             claim(pin, f"bus.{bus_name}", f)
             # Bus-pin-only: this specific GPIO must be hardwired to *this* bus's own peripheral
-            # index, in the *role* this field claims (SDA vs SCL, MISO vs SCK vs MOSI) - not just
-            # any legal, unclaimed GPIO. cs_pin/irq_pin/neopixel's "pin" have no peripheral role to
-            # check (see the claim() call below), so this half only runs for bus wire pins.
+            # index, in the *role* this field claims (SDA vs SCL, MISO vs SCK vs MOSI, TX vs RX) -
+            # not just any legal, unclaimed GPIO. cs_pin/irq_pin/neopixel's "pin" have no peripheral
+            # role to check (see the claim() call below), so this half only runs for bus wire pins.
             role_table, expected_role = _BUS_PIN_ROLE[f]
             info = role_table.get(pin)
             if info is None:
-                kind = "I2C" if role_table is I2C_ROLE else "SPI"
+                kind = "I2C" if role_table is I2C_ROLE else "SPI" if role_table is SPI_ROLE else "UART"
                 raise BuildError(model.device, f"bus.{bus_name}.{f}=GP{pin} has no {kind} function on the Pico W", instance=f"bus.{bus_name}", field=f)
             actual_bus, actual_role = info
             if actual_bus != bus_name:

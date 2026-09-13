@@ -428,12 +428,14 @@ jobs:
     # to inherit a cache from, see BUILD_CHAIN_PLAN.md for the mechanism): this job's own plain pass
     # took 16m58s and 16m42s from a cold cache (full from-scratch ARM+MicroPython Unix-port
     # toolchain build included); a warm cache drops that to the ~13-15 minutes the test suite itself
-    # takes. 25 minutes gives ~45% headroom over the observed cold-cache worst case without being an
-    # empty, unfalsifiable number. The coverage pass used to run serially in this same job (see
-    # unit-tests-coverage below for why it no longer does) - a stale comment here once claimed
-    # "~8-9 minutes total" for both passes combined, which real CI runs never actually measured and
-    # which the real cold-cache figures above already contradict on their own; fixed rather than
-    # left to mislead the next person sizing this timeout.
+    # takes (~17 minutes measured on a real runner, 2026-09-13). The coverage pass used to run
+    # serially in this same job (see unit-tests-coverage below for why it no longer does).
+    #
+    # 45, not 25/30: scripts/test.sh's per-file timeout is 180s with three attempts, so one
+    # genuinely hung file costs up to 9 minutes of retries on top of the ~17-minute warm-cache run -
+    # which a tighter cap does not cover once the suite grows at all. This cap is the backstop for
+    # many files hanging at once, not for one; sizing it below "normal run + one file's full retry
+    # budget" makes it fire on healthy runs instead, which is exactly how run `34755468619` was lost.
     #
     # `if: !cancelled()` keeps the `needs:` edge above (so the serialization the standing backstop
     # asks for is intact) while dropping the SUCCESS gating that `needs:` otherwise implies. That
@@ -448,46 +450,88 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Set up MicroPython toolchain (install uv, restore cache)
         uses: ./.github/actions/setup-micropython-toolchain
+      # scripts/test.sh's pytest tier shells out to `uv run`, which implicitly builds the WHOLE
+      # dev group before it runs anything - ruff, mypy, shellcheck, zizmor and actionlint-py
+      # included, none of which tests_scripts/ needs. actionlint-py has no wheel and downloads its
+      # binary from a release URL inside its own build backend, so one bad response there fails the
+      # entire test lane on a tree where nothing is wrong: `error: HTTP Error 500` on 2026-09-13,
+      # with lint-and-typecheck's identical `uv sync` succeeding 27 seconds earlier in the same
+      # run. Doing the sync here, retried, keeps a third party's momentary outage from reading as a
+      # red test result - the same "lint must not erase the answer tests give" reasoning as the
+      # `if: !cancelled()` above, applied to the dependency build instead of the job graph.
+      # `scripts/test.sh`'s own `uv run` then finds the environment current and rebuilds nothing.
+      - name: Sync dev dependencies (retried - third-party build downloads are not always up)
+        run: |
+          for attempt in 1 2 3; do
+              uv sync && exit 0
+              echo "uv sync failed on attempt $attempt/3; retrying in $((attempt * 10))s" >&2
+              sleep $((attempt * 10))
+          done
+          uv sync
       - name: Run unit tests
         run: scripts/test.sh
 
+  # Split out of unit-tests above (Session 8's closing-consistency-pass PR), exactly as
+  # web-coverage was split out of web-unit-tests and for the same reason - which this branch then
+  # proved again on the Python side. Coverage is a report, not a gate (CLAUDE.md's "Code quality
+  # tooling", SPECIFICATION.md Part E.5, "Coverage") - never lets anything downstream wait on or
+  # fail because of it: re-running the whole real-interpreter suite a second time under
+  # tests/_coverage_runner.py's sys.settrace wrapper roughly doubled unit-tests' own wall-clock
+  # time for a report nothing else reads to make a decision - firmware-build-verify/digital-twin-e2e
+  # only ever needed unit-tests' own toolchain-cache population, never this job's own output, so
+  # gating either of them behind a coverage run they don't use was pure wasted latency. `needs:
+  # unit-tests` (not lint-and-typecheck directly) specifically to reuse the toolchain cache
+  # unit-tests' own run just populated, rather than racing it and potentially rebuilding the same
+  # toolchain twice in parallel on a cold cache - the one piece of sequencing this job keeps, in
+  # exchange for running fully in parallel with firmware-build-verify/digital-twin-e2e instead of
+  # blocking them.
+  #
+  # `timeout-minutes` gates a whole job, not its "real" step, so a slow instrumented rerun kills the
+  # already-passed test step with it and skips everything downstream if sized too tight. Measured on
+  # run `34755468619`: the plain suite reported "60/60 files passed / ALL PASSED" at 12:07:19, the
+  # --coverage rerun then ran 13m24s more and a 30-minute job cap cancelled the lot, taking
+  # digital-twin-e2e with it - nothing was wrong with the tree. Session 8's own closing-pass runs
+  # (two, against an already-warm cache) measured 14m01s and 16m56s for the full suite re-run under
+  # sys.settrace; 45 minutes gives comfortable headroom over both figures and over the incident
+  # above alike. Keep the job split even if the suite gets faster again.
   unit-tests-coverage:
-    # Coverage is a report, not a gate (SPECIFICATION.md Part E.5, "Coverage") - never lets
-    # anything downstream wait on or fail because of it. Split out of unit-tests above (Session 8's
-    # closing-consistency-pass PR) into its own job, off the critical path entirely: re-running the
-    # whole real-interpreter suite a second time under tests/_coverage_runner.py's sys.settrace
-    # wrapper roughly doubled unit-tests' own wall-clock time for a report nothing else reads to
-    # make a decision - firmware-build-verify/digital-twin-e2e only ever needed unit-tests' own
-    # toolchain-cache population, never this job's own output, so gating either of them behind a
-    # coverage run they don't use was pure wasted latency. needs: unit-tests (not
-    # lint-and-typecheck directly) specifically to reuse the toolchain cache unit-tests' own run
-    # just populated, rather than racing it and potentially rebuilding the same toolchain twice in
-    # parallel on a cold cache - the one piece of sequencing this job keeps, in exchange for running
-    # fully in parallel with firmware-build-verify/digital-twin-e2e instead of blocking them.
-    # Measured directly (Session 8's closing-pass PR, two runs against the now-warm cache
-    # unit-tests just built): 14m01s and 16m56s for the full suite re-run under sys.settrace. 25
-    # minutes matches unit-tests' own budget and gives comfortable headroom over both samples.
+    # Success-gated on purpose (no `if: !cancelled()`, unlike unit-tests' own edge above): there is
+    # nothing to measure if the suite did not pass, and this job gates nothing itself.
     needs: unit-tests
-    if: ${{ !cancelled() }}
     permissions:
       contents: read
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Set up MicroPython toolchain (install uv, restore cache)
         uses: ./.github/actions/setup-micropython-toolchain
+      # scripts/test.sh's pytest tier shells out to `uv run`, which implicitly builds the WHOLE
+      # dev group before it runs anything (see the unit-tests job above for the full account of
+      # why this sync is here and retried).
+      - name: Sync dev dependencies (retried - third-party build downloads are not always up)
+        run: |
+          for attempt in 1 2 3; do
+              uv sync && exit 0
+              echo "uv sync failed on attempt $attempt/3; retrying in $((attempt * 10))s" >&2
+              sleep $((attempt * 10))
+          done
+          uv sync
       # continue-on-error: true at every step below - a coverage-tooling failure must never read
       # as a test regression; unit-tests above is the only real pass/fail signal for this suite.
+      # Re-runs the same suite under the same Unix port binary (always built with
+      # MICROPY_PY_SYS_SETTRACE=1 - see build_unix_port()), wrapped by tests/_coverage_runner.py,
+      # to measure src/ AND digital_twin/ line coverage (two reports from one shared run - see
+      # scripts/test.sh's own comment).
       - name: Run unit tests with coverage
         run: scripts/test.sh --coverage
         continue-on-error: true
@@ -531,6 +575,7 @@ jobs:
           name: coverage-html-digital-twin
           path: htmlcov_digital_twin/
         continue-on-error: true
+
 
   digital-twin-e2e:
     # Automated version of the digital twin's on-demand manual walkthrough (fresh boot, every GET/
