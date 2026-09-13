@@ -304,6 +304,20 @@ constraints.
    each module's next substantial touch. Flagged, deliberately not fixed drive-by - see CLAUDE.md's
    "flag, don't silently change" rule.
 
+17. `asy_uart_comm.py`'s `wrnno` 11 ("drain bound reached - the peer never stopped sending") can
+    never reach the FRAM history through the path that produces it. C3.8 allows one persisted
+    warning per fault episode; `_resync()` logs `wrnno` 10 first and spends it, then calls
+    `_drain()`, so 11 is always demoted to visible-only. Measured 2026-09-13: a resync whose drain
+    genuinely hits its bound persists `['W10']` and nothing else. **Not a violation of the rule** -
+    it is "at most once per episode", satisfied by never - but 11 is the strictly more informative
+    of the two, and it is the one signal separating a babbling or misconfigured peer from ordinary
+    line noise once the link has carried a valid frame at some point (before that, `errno` 32
+    covers it). **Where to fix**: have `_drain()` set a flag and let `_resync()` choose which
+    `wrnno` spends the episode's slot, so the more specific condition wins - about five lines, no
+    change to the one-per-episode budget. Needs an owner decision because it changes which entry an
+    operator sees in a field log, the same class as the `errno` 32 decision of 2026-09-12.
+    `SPECIFICATION.md` C.7.1 now states the actual behaviour rather than the intended one.
+
 ## Deferred / explicitly out-of-scope work
 - **A digital-twin soak's wall clock is set by GC timing, so it must never be bisected to a code
   change** (established 2026-09-11 after one was — see SPECIFICATION.md Part E.7 for the measurement

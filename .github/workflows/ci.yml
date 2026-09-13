@@ -437,6 +437,24 @@ jobs:
           persist-credentials: false
       - name: Set up MicroPython toolchain (install uv, restore cache)
         uses: ./.github/actions/setup-micropython-toolchain
+      # scripts/test.sh's pytest tier shells out to `uv run`, which implicitly builds the WHOLE
+      # dev group before it runs anything - ruff, mypy, shellcheck, zizmor and actionlint-py
+      # included, none of which tests_scripts/ needs. actionlint-py has no wheel and downloads its
+      # binary from a release URL inside its own build backend, so one bad response there fails the
+      # entire test lane on a tree where nothing is wrong: `error: HTTP Error 500` on 2026-09-13,
+      # with lint-and-typecheck's identical `uv sync` succeeding 27 seconds earlier in the same
+      # run. Doing the sync here, retried, keeps a third party's momentary outage from reading as a
+      # red test result - the same "lint must not erase the answer tests give" reasoning as the
+      # `if: !cancelled()` above, applied to the dependency build instead of the job graph.
+      # `scripts/test.sh`'s own `uv run` then finds the environment current and rebuilds nothing.
+      - name: Sync dev dependencies (retried - third-party build downloads are not always up)
+        run: |
+          for attempt in 1 2 3; do
+              uv sync && exit 0
+              echo "uv sync failed on attempt $attempt/3; retrying in $((attempt * 10))s" >&2
+              sleep $((attempt * 10))
+          done
+          uv sync
       - name: Run unit tests
         run: scripts/test.sh
       # Coverage is a report, not a gate (see SPECIFICATION.md Part E.5 ("Coverage")) - never let

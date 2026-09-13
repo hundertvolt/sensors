@@ -99,6 +99,7 @@ _DIAG_RESYNC_STREAK = const(2)  # resyncs with bytes seen but no frame ever vali
 _MIN_CHUNKS = const(2)  # even a payload-less command carries one data chunk, so it can be confirmed
 _CALLBACK_PAIR_LEN = const(2)  # every callback returns exactly (valid, value)
 _CMD_ID_MAX = const(0xFF)  # a command id is one payload byte, so this is its whole range
+_REJECT_MAP_LEN = const(32)  # one bit per command id (256 / 8), so a refusal is news exactly once
 
 # errno catalog - 10 upward, aligned to base_classes.py's SensorReader reservation even though this
 # is not a subclass (owner direction). Kept disjoint from any owner's own range when a logger is
@@ -205,7 +206,6 @@ class UART_Comm:
         self._episode_events = 0  # C3.8 applied to the recovery warnings, not just the errno
         self._valid_frames = 0
         self._blind_resyncs = 0  # D2.5/D2.6: resyncs that saw bytes but never a valid frame
-        self._last_reject = -1  # the command id of the last refusal, so a repeat is not persisted
         self._cancel_unacked_seen = 0  # the driver's counter is cumulative; only a rise is news
         self._init_errno = self._validate_config()
         # Re-checked locally, never the caller's raw values: `5 + "48"` raises, and __init__ is the
@@ -216,7 +216,7 @@ class UART_Comm:
         self.frame_size = _HEADER_LEN + payload
         self._backoff_initial_ms = max(backoff_base // 2, 1)
         self._backoff_max_ms = max(backoff_base * _BACKOFF_MAX_MULT, self._backoff_initial_ms)
-        self._tx, self._rx, self._ack, self._zero, self._cmd_buf = self._allocate()
+        self._tx, self._rx, self._ack, self._zero, self._cmd_buf, self._rejected = self._allocate()
         if self._init_errno == 0 and not self._buffers_ready(payload):
             self._init_errno = _ERR_ALLOC
         if self._init_errno:
@@ -269,10 +269,11 @@ class UART_Comm:
         per_poll = ((bus.baudrate // 10) * (bus.poll_wait_ms + _POLL_JITTER_MS)) // 1000
         return max(wire, per_poll)
 
-    def _allocate(self) -> "tuple[LockableBuffer, LockableBuffer, bytearray, bytearray, bytearray]":
+    def _allocate(self) -> "tuple[LockableBuffer, LockableBuffer, bytearray, bytearray, bytearray, bytearray]":
         # Everything the steady state needs, once: separate TX/RX frame buffers (C4.2), the ACK
-        # scratch, the zero-padding source and the command-id scratch. Nothing is allocated per
-        # frame after this - zero bytes retained per transaction, pinned by test_uart_comm_hazard.py.
+        # scratch, the zero-padding source, the command-id scratch and the declined-id bitmap.
+        # Nothing is allocated per frame after this - zero bytes retained per transaction,
+        # pinned by test_uart_comm_hazard.py.
         if self.uart is None or self._init_errno == _ERR_PAYLOAD_SIZE:
             size = _HEADER_LEN  # a refused construction still needs well-formed attributes
             room = size
@@ -285,18 +286,19 @@ class UART_Comm:
             ack = bytearray(room)
             zero = bytearray(max(size - _HEADER_LEN, 0))
             cmd_buf = bytearray(1)
+            rejected = bytearray(_REJECT_MAP_LEN)
         except (MemoryError, OverflowError):
-            return tx, rx, bytearray(0), bytearray(0), bytearray(0)
+            return tx, rx, bytearray(0), bytearray(0), bytearray(0), bytearray(0)
         # An ACK's shape is fixed, so only its UID is ever written again (D5.3).
         if len(ack) >= _HEADER_LEN:
             ack[_MSG_CMD] = CMD_ACK
             ack[_MSG_SIZE] = 0
             ack[_MSG_CHUNKS] = 1
             ack[_MSG_CUR_CHUNK] = 1
-        return tx, rx, ack, zero, cmd_buf
+        return tx, rx, ack, zero, cmd_buf, rejected
 
     def _buffers_ready(self, payload: int) -> bool:
-        # Every buffer, not only the TX frame: _allocate() guards the three scratch buffers as one
+        # Every buffer, not only the TX frame: _allocate() guards its four scratch buffers as one
         # group, so a heap exhausted after the frame buffers leaves zero-length ones behind. That
         # object passed the gate, then padding shrank the TX buffer and the id write raised (F.1).
         return (
@@ -305,6 +307,7 @@ class UART_Comm:
             and len(self._ack) >= self.frame_size
             and len(self._zero) >= payload
             and len(self._cmd_buf) >= 1
+            and len(self._rejected) >= _REJECT_MAP_LEN
         )
 
     # ---- logging --------------------------------------------------------------------------
@@ -585,13 +588,16 @@ class UART_Comm:
     async def _reject_wrn(self, device: "UART", cmd_id: int) -> None:
         # C3.8's repeat rule applied to a declined command. A peer polling an id this side does not
         # implement is a standing condition, and every refusal also resyncs - two persisted entries
-        # each, which filled a ten-slot history in five refusals. The first persists, the rest do not.
-        if cmd_id == self._last_reject:
+        # each, which filled a ten-slot history in five refusals. One bit per id rather than just the
+        # last one: remembering only the last let two unimplemented ids in rotation flood it again.
+        index = cmd_id >> 3
+        bit = 1 << (cmd_id & 7)
+        if index < len(self._rejected) and not self._rejected[index] & bit:
+            self._rejected[index] |= bit
+            await self._episode_wrn(_WRN_CMD_REJECTED, "callback rejected command", cmd_id)
+        else:
             self._episode_events += 1  # so the resync below stays visible-only too
             self.pr.wrn("Repeated rejection of command", cmd_id)
-        else:
-            self._last_reject = cmd_id
-            await self._episode_wrn(_WRN_CMD_REJECTED, "callback rejected command", cmd_id)
         await self._resync(device)
 
     async def clear(self) -> None:
@@ -699,7 +705,7 @@ class UART_Comm:
                 # The callback fills the TX data region in place and data=None leaves it there, so
                 # the shared writer stamps the header around those bytes instead of copying them in
                 # a second time - the whole of what a separate streamed-write path used to do.
-                written = await self._pull_chunk(pull, cur, size, is_last=cur == chunks)
+                written = await self._pull_chunk(device, pull, cur, size, is_last=cur == chunks)
                 if written is None or not await self._write_frame_with_ack(device, CMD_SET, chunks, cur, None, written):
                     return False
                 sent += written
@@ -710,20 +716,23 @@ class UART_Comm:
             sent += size
         return True
 
-    async def _pull_chunk(self, pull: "_PullCallback", chunk: int, size: int, *, is_last: bool) -> int | None:
+    async def _pull_chunk(self, device: "UART", pull: "_PullCallback", chunk: int, size: int, *, is_last: bool) -> int | None:
         # F7.2: the callback fills a memoryview of exactly this chunk's region, so it cannot
-        # overrun by construction. F7.1: a short non-final supply aborts locally, before anything
-        # is sent - the peer would reject it anyway (D4.5), but the fault is this side's.
+        # overrun by construction. F7.1: a short non-final supply aborts locally, before this chunk
+        # is sent - the peer would reject it anyway (D4.5), but the fault is this side's. Every
+        # abort here is still mid-train, with chunk 1 already sent and acknowledged, so it quiesces
+        # like any other fault: without that the peer drains for 1.5 x timeout while this side is
+        # free to transmit straight into that window.
         region = self._tx.get_data_buf()
         if region is None:
-            await self._err(_ERR_ALLOC, "no TX data region")
+            await self._fault(device, _ERR_ALLOC, "no TX data region")
             return None
         written = await self._call(pull, chunk, region[0:size])
         if not isinstance(written, int) or written < 0 or written > size:
-            await self._err(_ERR_CALLBACK, "pull callback returned", written, "for chunk", chunk)
+            await self._fault(device, _ERR_CALLBACK, "pull callback returned", written, "for chunk", chunk)
             return None
         if written < size and not is_last:
-            await self._err(_ERR_STREAM_SHORT, "pull callback short-filled non-final chunk", chunk)
+            await self._fault(device, _ERR_STREAM_SHORT, "pull callback short-filled non-final chunk", chunk)
             return None
         return written
 
@@ -1129,5 +1138,6 @@ class UART_Comm:
         self._clear_fault_state()
         self._valid_frames = 0
         self._blind_resyncs = 0
-        self._last_reject = -1
+        for index in range(len(self._rejected)):
+            self._rejected[index] = 0  # in place: a reset must not depend on the heap having room
         await self.pr.reset()

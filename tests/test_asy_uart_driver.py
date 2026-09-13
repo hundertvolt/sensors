@@ -1891,6 +1891,10 @@ def test_a_delimited_frame_longer_than_the_yield_interval_still_yields() -> None
             return await locked_read_until_complete(receiver, 40, start_timeout_ms=200, timeout_ms=200)
         finally:
             other.cancel()
+            try:
+                await other  # awaited out, so no task is left parked in the shared queue
+            except asyncio.CancelledError:  # expected; anything else is a real failure
+                pass
 
     got = run(scenario())
     assert got is not None and bytes(got) == b"\x41" * 40, got

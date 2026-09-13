@@ -1654,3 +1654,48 @@ test: all 28 of its misses are 18 `const()` lines plus the five domain-guarded `
 already names. Every one of those five is provably unreachable — each function's range gate runs
 first, and inside it `math.sqrt`, `math.log`, `math.exp` and `math.pow` have no argument that raises
 and no denominator that reaches zero.
+
+
+## P — Resilience re-review of everything this branch touched (2026-09-13)
+
+A second pass with one question: does anything here behave in a way nobody planned? Three findings,
+each reproduced against the real interpreter before being touched. Two are defects and are fixed,
+each pinned by a test verified to fail when the fix is reverted; the third is flagged rather than
+changed, because it decides what an operator sees in a field log.
+
+| # | What was wrong | Measured | Closed by |
+|---|---|---|---|
+| P1 | **§N's declined-command fix suppressed only *consecutive* repeats of the same id.** `_last_reject` remembered one id, so an alternation defeated it — and a peer looping over a command set of which two are unimplemented here is the realistic shape, not an exotic one | Two ids in rotation, six rounds each: **10 of 10 history slots consumed**, the entry naming the cause evicted first. Exactly the loss J4 and §N3 each set out to close, one step removed | A 32-byte one-bit-per-id map, allocated once inside `_allocate()`'s guarded group and cleared in place by `reset_error_counter()`. The same run now leaves two entries, one per distinct id, and a third id is still worth its own (`test_two_declined_ids_in_rotation_do_not_refill_the_history_either`) |
+| P2 | **§N's "every fault also resyncs" had three real exceptions left**, all in the streamed-send path. A pull callback that raises, returns a non-count, or short-fills a non-final chunk aborted through `_err()` rather than `_fault()` — and every one of those aborts happens *after* chunk 1 is already on the wire and acknowledged | `uart_set_stream()` with a short-filled chunk 2: `['E33']`, `_holdoff_active False`, one frame delivered. The peer then drains for 1.5 × `timeout` while this side is free to transmit straight into that window — where the drain swallows a real payload and hands it back as a link fault | `_pull_chunk()` takes the device and reports through `_fault()`. The same run now persists `['E33', 'W10']` and holds off its own writes (`test_a_pull_callback_failing_mid_train_quiesces_like_any_other_fault`, which also covers the raising and non-count arms) |
+| P3 | **`wrnno` 11 can never reach FRAM through the path that produces it.** One persisted warning per episode is the rule; `_resync()` spends it on `wrnno` 10 before calling `_drain()`, so "the peer never stopped sending" is always demoted to visible-only | A resync whose drain genuinely hits its bound persists `['W10']` and nothing else | **Flagged, not changed** — BACKLOG open question 17, with the five-line fix written out. It changes which entry an operator sees in a field log, the same class as the `errno` 32 decision the owner reserved on 2026-09-12. C.7.1 now states the actual behaviour instead of the intended one |
+
+**One fix written and then removed again, which is the more useful half of P2.** `_pull_chunk()`
+briefly gained `isinstance(written, bool)` alongside its `isinstance(written, int)` check, on the
+CPython reasoning that `True` would otherwise pass as a one-byte fill. The mutation sweep refused to
+let it through: reverting the new arm failed nothing, because **`bool` is not a subclass of `int` on
+MicroPython** — `mp_type_bool` is defined with no `parent` slot at all, so `isinstance(True, int)`
+is already `False` while `True + 1 == 2` still works. The guard was dead code under a comment that
+was wrong about the runtime it ships on. Removed, and the fact recorded in SPECIFICATION.md Part F.1
+where the next `isinstance(x, int)` validator will find it; `test_asy_bmp3xx_driver.py`'s own
+bool-rejection comment, which asserted the CPython rule as if it held here, is corrected in the same
+pass. This is precisely what CLAUDE.md means by not reasoning from general Python knowledge.
+
+**What this pass re-checked and found sound.**
+
+- **Every remaining bare `await self._err(...)` is correct to leave un-quiesced.** All twenty of them
+  are either pre-wire (the role gate, re-entrancy, the four argument validators, the two stream
+  entry points, an oversize payload rejected before the first frame) or post-transaction (the two
+  right-sizing copies, the listen loop's own wrapper) — none has put a partial frame on the line.
+  The two that sit mid-train, `_write_frame_with_ack()`'s build failures, are the structurally
+  unreachable pair §O already lists.
+- **The idle-rate floor of §N2 is right for an initiator too**, which was not obvious: an initiator
+  never calls `uart_listen()`, but `_write_all()` waits on `POLLOUT` with no deadline, so it polls
+  at `poll_idle_ms` like any deadline-less wait. Gating its `timeout` on its own idle rate is
+  therefore a real constraint, not a symmetric-configuration proxy.
+- **A cancelled transaction releases both the re-entrancy flag and the bus lock.** `_busy` is
+  cleared in a `finally` and the lock by `async with`; the test drives all four initiator entry
+  points through a mid-flight cancel, and a leaked lock would surface as the next iteration timing
+  out rather than as a silent pass.
+- **`_reject_wrn()`'s map is bounded by construction**, not by traffic: 32 bytes, allocated once with
+  the other scratch buffers, never re-allocated, and cleared in place so a reset cannot fail on a
+  heap that has no room.

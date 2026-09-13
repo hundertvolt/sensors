@@ -415,6 +415,19 @@ information):
   needs this repo registered at codecov.io plus a token/OIDC setup that hasn't happened yet, so
   that upload currently no-ops. Locally, `--coverage` only prints the output paths; nothing opens
   automatically. See README.md's "Test coverage" section for the full user-facing rundown.
+- **A third party's momentary outage must never read as a red test result.** `scripts/test.sh`'s
+  pytest tier shells out to `uv run`, and that implicitly builds the **whole** `dev` group first —
+  ruff, mypy, shellcheck, zizmor and `actionlint-py` included, none of which `tests_scripts/` needs.
+  `actionlint-py` ships no wheel and downloads its binary from a release URL inside its own build
+  backend, so one bad response there fails the entire `unit-tests` lane on a tree where nothing is
+  wrong. Not hypothetical: `error: HTTP Error 500: Internal Server Error` on 2026-09-13, with
+  `lint-and-typecheck`'s identical `uv sync` succeeding 27 seconds earlier in the same workflow run,
+  and the re-run green with no code change. `ci.yml`'s `unit-tests` job therefore does its own
+  `uv sync` with three attempts **before** `scripts/test.sh`, which then finds the environment
+  current and rebuilds nothing. Same reasoning as the `if: !cancelled()` edge below — a lint tool's
+  problem must not erase the answer the tests give — applied to the dependency build rather than to
+  the job graph. Don't "simplify" the retry away; and if a test lane ever goes red with no test
+  named in the summary, read the `uv`/build output before the test output.
 - **Standing backstop: hanging tests are never allowed.** `scripts/test.sh`/`ci.yml` enforce a
   per-file `timeout`+retry, `stdbuf -oL -eL` line buffering, and `needs: lint-and-typecheck` job
   sequencing regardless of any specific hang's root cause — keep all three even after a specific

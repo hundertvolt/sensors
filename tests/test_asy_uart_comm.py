@@ -347,8 +347,8 @@ def test_a_partially_failed_allocation_refuses_construction_outright() -> None:
     real_allocate = UART_Comm._allocate
 
     def starved(self: UART_Comm) -> "Any":
-        tx, rx, _ack, _zero, _cmd = real_allocate(self)
-        return tx, rx, bytearray(0), bytearray(0), bytearray(0)
+        tx, rx, _ack, _zero, _cmd, _rejected = real_allocate(self)
+        return tx, rx, bytearray(0), bytearray(0), bytearray(0), bytearray(0)
 
     UART_Comm._allocate = starved  # type: ignore[method-assign]
     try:
@@ -1872,7 +1872,7 @@ def test_every_internal_buffer_read_rechecks_rather_than_indexing_none() -> None
                 await comm._read_frame(device, 10),
                 await comm._send_ack(device, 1),
                 await comm._drain(device, first_ms=1),
-                await comm._pull_chunk(pull, 2, 4, is_last=False),
+                await comm._pull_chunk(device, pull, 2, 4, is_last=False),
             )
 
     frame, ack, drained, pulled = run(internals(), limit=20)
@@ -1880,7 +1880,9 @@ def test_every_internal_buffer_read_rechecks_rather_than_indexing_none() -> None
     assert ack is False
     assert drained == 0
     assert pulled is None
-    assert persisted(comm) == ["E14"], persisted(comm)
+    # _pull_chunk aborts mid-train, so it resyncs like any other fault - the drain reads through
+    # the same missing buffer and returns 0 rather than raising, which is the point.
+    assert persisted(comm) == ["E14", "W10"], persisted(comm)
 
 def test_a_cancelled_transaction_still_releases_the_re_entrancy_flag() -> None:
     # _busy is cleared in a finally rather than on the return path, so a task cancelled while it
@@ -1892,11 +1894,16 @@ def test_a_cancelled_transaction_still_releases_the_re_entrancy_flag() -> None:
 
     pair = run(build_pair(get_callback=echo_get(b"v"), set_callback=accept_set()))
     initiator = pair.initiator
+    bus = initiator.uart
+    assert bus is not None
     pair.link.direction_from(pair.fake_b).silent = True  # nothing answers, so every call parks
 
     async def cancel_midway(work: "Any") -> None:
         task = asyncio.create_task(work)
         await asyncio.sleep_ms(5)  # long enough to be inside the transaction, not before it
+        # Asserted rather than assumed: cancelling a task that had not started yet would leave
+        # _busy False for the trivial reason and read as a pass without testing anything.
+        assert bus.asy_lock.locked() is True, "the transaction was not in flight when cancelled"
         task.cancel()
         try:
             await task
@@ -1911,6 +1918,64 @@ def test_a_cancelled_transaction_still_releases_the_re_entrancy_flag() -> None:
     ):
         run(cancel_midway(work), limit=15)
         assert initiator._busy is False, work
+        # The lock is the more serious of the two: a leaked one is a permanently dead link, and it
+        # would otherwise show only as the next iteration timing out rather than as a named failure.
+        assert bus.asy_lock.locked() is False, work
+
+def test_two_declined_ids_in_rotation_do_not_refill_the_history_either() -> None:
+    # The half J4's own fix still left open. Remembering only the *last* declined id suppresses a
+    # repeat but not an alternation, and a peer looping over a command set of which two are
+    # unimplemented here is the realistic shape - it refilled and overflowed a ten-slot history in
+    # five rounds, cause entry first, exactly the loss the rule exists to prevent.
+    pair = run(build_pair(timeout=30, get_callback=returns((False, None)), set_callback=accept_set()))
+    for _ in range(6):
+        for cmd_id in (0x42, 0x43):
+            assert run(pair.with_listener(pair.initiator.uart_get(cmd_id)), limit=10) is None
+    assert persisted(pair.responder) == ["W14", "W14"], persisted(pair.responder)
+
+    # A third id is still a third standing condition, and a reset makes every id news again.
+    assert run(pair.with_listener(pair.initiator.uart_get(0x44)), limit=10) is None
+    assert persisted(pair.responder) == ["W14", "W14", "W14"], persisted(pair.responder)
+    run(pair.responder.reset_error_counter())
+    assert run(pair.with_listener(pair.initiator.uart_get(0x42)), limit=10) is None
+    assert persisted(pair.responder) == ["W14"], persisted(pair.responder)
+
+
+def test_a_pull_callback_failing_mid_train_quiesces_like_any_other_fault() -> None:
+    # Chunk 1 is already sent and acknowledged by the time a pull callback is first asked for
+    # anything, so every abort here leaves the peer mid-train: it drains for 1.5 x timeout while
+    # this side, without a hold-off, is free to transmit straight into that window - where the
+    # drain swallows a real payload and reports it back as a link fault.
+    def aborting_pull(kind: str) -> "Any":
+        def pull(chunk: int, buf: memoryview) -> "Any":
+            if chunk != 2:
+                return len(buf)
+            if kind == "short":
+                return 1  # a short non-final chunk: errno 33
+            if kind == "bool":
+                return True  # not a byte count, and not an int on this runtime either (F.1)
+            raise ValueError("callback exploded")  # errno 26 through the guarded dispatch
+
+        return pull
+
+    for kind, errno in (("short", "E33"), ("bool", "E26"), ("raise", "E26")):
+        pair = Pair(timeout=30, get_callback=echo_get(b""), set_callback=accept_set())
+        assert run(pair.setup()) is True
+
+        async def scenario(link: Pair = pair, how: str = kind) -> bool:
+            listener = asyncio.create_task(link.responder.uart_listen())
+            try:
+                return await link.initiator.uart_set_stream(0x50, 2 * PAYLOAD_SIZE, aborting_pull(how))
+            finally:
+                listener.cancel()
+                try:
+                    await listener
+                except asyncio.CancelledError:  # expected; anything else is a real failure
+                    pass
+
+        assert run(scenario(), limit=25) is False, kind
+        assert persisted(pair.initiator) == [errno, "W10"], (kind, persisted(pair.initiator))
+        assert pair.initiator._holdoff_active is True, kind
 
 if __name__ == "__main__":
     import microtest
