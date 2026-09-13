@@ -407,16 +407,10 @@ class ISL29125_Reader(SensorReaderConfig):
             return
         self._periodic_only_switches = 0
         # "Interrupt-led" means the LINE woke this cycle AND the chip had latched the crossing -
-        # both, because either on its own is still satisfied by a fault. The chip cannot raise
-        # RGBTHF before PRST whole RGB cycles have passed, so a window outlasting the sample
-        # interval makes the periodic path win every race with nothing wrong at the wiring at all.
-        # persist_for_interval() now derives PRST precisely so that cannot happen, which makes this
-        # an INVARIANT check rather than the misconfiguration detector it started as: it can only
-        # fire if that derivation is wrong, and it exists so such a bug reports itself instead of
-        # masquerading as the dead-line fault below.
-        if self.isl.persist_window_ms() >= int(await self.trigger_period.get_value()) * 1000:
-            await self.pr.wrn_s("Derived transient rejection outlasts SampleInterv - the interrupt cannot lead. This is a driver bug, not a wiring fault.", wrnno=17)
-            return
+        # both, because either on its own is still satisfied by a fault. There is only one reading
+        # left now that persist_for_interval() derives the window: the chip is always given time to
+        # raise RGBTHF first, so the periodic path carrying five decisions in a row means the line
+        # itself is not delivering them.
         await self.pr.wrn_s("Range decided by the periodic path only - the interrupt may be dead.", wrnno=15)
 
     def _handle_status(self, status: object) -> "tuple[bool, bool]":
@@ -1260,11 +1254,6 @@ class ISL29125_I2C:
 
     def cycle_ms(self) -> int:
         return _CYCLE_MS_12BIT if self._resolution == _RESOLUTION_12BIT else _CYCLE_MS_16BIT
-
-    def persist_window_ms(self) -> int:
-        # The earliest the chip can raise RGBTHF after a crossing: PRST whole RGB cycles (p11,
-        # Table 12). Lives here because both figures it needs are the shadow's own.
-        return self._persist * self.cycle_ms()
 
     def persist_for_interval(self, trigger_secs: int) -> int:
         # PRST is DERIVED, never configured - the largest transient rejection whose window still

@@ -1520,54 +1520,13 @@ def test_the_pin_handler_records_the_edge_as_well_as_waking_the_read_loop() -> N
     assert _drain_flag(reader.read_event) is True
 
 
-def test_a_persistence_window_longer_than_the_sample_interval_warns_about_itself() -> None:
-    # Not a dead interrupt: the chip cannot raise RGBTHF before AutoRangePersist whole RGB cycles,
-    # so a shorter sample interval means the periodic path wins every race by arithmetic. A
-    # separate wrnno, because wrnno=15 would send someone looking for a wiring fault.
-    i2c, reader = ready_reader("wrn17")
-    reader._ar_dwell_s = 0.0
-
-    async def scenario() -> "ErrorLog":
-        await reader.isl.configure(persist=8)  # 8 x 303ms = 2424ms against a 1s SampleInterv
-        with _FastAsyncSleep():
-            for index in range(5):
-                seed_cycle(i2c, 100, 100, 100, status=0x00) if index % 2 == 0 else seed_cycle(i2c, 65535, 65535, 65535, status=0x00)
-                reader.isl._settle_until_ms = time.ticks_ms()
-                reader._last_switch_ms = time.ticks_add(time.ticks_ms(), -1000)
-                await reader._read_isl()
-        return await reader.get_error_counter()
-
-    counters = run(scenario())
-    assert 17 in warnings(counters)
-    assert 15 not in warnings(counters)
-
-
-def test_the_persistence_window_tracks_both_the_persist_count_and_the_resolution() -> None:
-    # The window wrnno=17 is decided on is PRST whole RGB cycles, and a cycle is 3 x tINT - which
-    # is ~16x shorter at 12 bits. Assuming 16-bit cycles would make the window wrong by that same
-    # factor on a part configured for 12, in the direction that invents a config fault.
-    _i2c, reader = ready_reader("persist_window")
-
-    async def scenario() -> None:
-        await reader.isl.configure(persist=2)
-        assert reader.isl.persist_window_ms() == 2 * 303
-        await reader.isl.configure(persist=8)
-        assert reader.isl.persist_window_ms() == 8 * 303
-        await reader.isl.configure(resolution=12)
-        assert reader.isl.persist_window_ms() == 8 * 19
-
-    run(scenario())
-
-
-def test_a_short_persistence_window_still_reports_a_dead_interrupt_rather_than_blaming_the_config() -> None:
-    # The other side of wrnno=17: at 12 bits even the longest persistence setting is 152ms, so it
-    # sits far inside a 1s sample interval and the interrupt genuinely COULD have led. Its silence
-    # is then a real finding, and reporting the config instead would mask the wiring fault.
+def test_five_periodic_led_decisions_in_a_row_report_a_possibly_dead_interrupt() -> None:
+    # The derived window always leaves the chip time to raise RGBTHF first, so the periodic path
+    # carrying five decisions running has exactly one reading left: the line is not delivering.
     _i2c, reader = ready_reader("wrn15_12bit")
 
     async def scenario() -> "ErrorLog":
         await reader.isl.configure(resolution=12, persist=8)
-        assert reader.isl.persist_window_ms() < 1000
         for _ in range(5):
             await reader._note_decision_source(threshold_fired=False)
         return await reader.get_error_counter()
@@ -1835,8 +1794,8 @@ def test_the_derivation_never_lets_the_window_outlast_the_sample_interval() -> N
     for resolution in (12, 16):
         reader.isl._resolution = resolution
         for trigger_secs in (1, 2, 5, 60, 3600):
-            reader.isl._persist = reader.isl.persist_for_interval(trigger_secs)
-            assert reader.isl.persist_window_ms() < trigger_secs * 1000, (resolution, trigger_secs)
+            window_ms = reader.isl.persist_for_interval(trigger_secs) * reader.isl.cycle_ms()
+            assert window_ms < trigger_secs * 1000, (resolution, trigger_secs)
     # And it is the LARGEST that fits, not merely a safe one - a derivation that always returned 1
     # would satisfy the assertion above while throwing away every bit of transient rejection.
     reader.isl._resolution = 16

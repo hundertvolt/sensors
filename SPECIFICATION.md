@@ -237,7 +237,7 @@ registration API and A.9's `HTML_SRC_DIRS` are shaped around it). Real-hardware 
   X × 101 ms. Settled on silicon 2026-09-13 (C.11.1.2): at `PRST` = 4 with one status read per
   second the flag was set in 4 of 8 reads, strictly alternating — which only fits a 1212 ms re-arm,
   where 404 ms would have set it in all 8. Taking the datasheet at its word makes
-  `ISL29125_I2C.persist_window_ms()` look 3× too large and `wrnno=17` look like a false positive;
+  `persist_for_interval()` pick a setting that rejects less transient noise than it could;
   it is the datasheet that is loose here, not the code.
   (7) **The interrupt does not freeze the data registers.** p6: conversion "continues without
   stopping after interrupt is asserted", and if you want the counts that actually tripped the
@@ -1258,7 +1258,7 @@ is expected; only overlap *within* one row matters.
 | `asy_fram_manager.py`/`asy_fram_driver.py` (`FRAM`) | 10-98 | 60-83 | `AsyFramManager` 10-88 (busy/idle status-byte helper spreads a base across 2-7 values per call); `FRAM_SPI` 89-98 (not-initialized ×5, invalid-range ×2, readback mismatch, lock-timeout, device-ID guard) + `wrnno` 81-83 (WRDI-stuck, WEL-didn't-set ×2). |
 | `asy_bmp3xx_driver.py` (`BMP3XX`) | 10-22 | — | 10=init, 11=periodic read, 12=config read at init, 13=config write at init, 14=config read at store-time, 15-20=oversampling/filter forwards, 21=trigger-interval, 22=batched snapshot read. |
 | `asy_scd30_driver.py` (`SCD30`) | 10-25 | — | 10=init, 11=periodic read, 12=unused (no init-time config), 13=stop-continuous-measurement, 14-25=per-field forwards. |
-| `asy_isl29125_driver.py` (`ISL29125`) | 10-38 | 10-17 | 10=init, 11=periodic read, 12=config read at init, 13=config write at init, 14=config read at store-time, 15-24=get/set pairs for Resolution/Range/IrCompOffset/IrCompAdjust/AutoRangePersist, 25=trigger-interval, 26=filter coefficient, 27=any of the four software auto-range knobs (range or cross-field), 28=batched snapshot read, 29/30=threshold and CONFIG1 write inside a range switch, 31=status read, 32=bus-fault pattern confirmed by a failed device-ID re-read, 33=brownout re-apply, 34=shadow write outside a range switch, 35-37=gain-ratio FRAM read/write/clear, 38=RangeAuto's own two chip writes on the auto->off transition. `wrnno` 10=brownout recovered, 11/12=no/stale stored gain ratio, 13=implausible learned ratio rejected, 14=saturated on the high range, 15=the periodic path made a range decision the interrupt should have made first, five times running (the dead-INT detector), 16=the paired gain-ratio reading clipped on the other range, so the pair measures the clamp rather than the part, 17=the same five-in-a-row, but with the derived persistence window longer than `SampleInterv`, which the derivation makes impossible - so this is an invariant check on that derivation, not a misconfiguration report (C.11.1.3). |
+| `asy_isl29125_driver.py` (`ISL29125`) | 10-38 | 10-16 | 10=init, 11=periodic read, 12=config read at init, 13=config write at init, 14=config read at store-time, 15-24=get/set pairs for Resolution/Range/IrCompOffset/IrCompAdjust/AutoRangePersist, 25=trigger-interval, 26=filter coefficient, 27=any of the four software auto-range knobs (range or cross-field), 28=batched snapshot read, 29/30=threshold and CONFIG1 write inside a range switch, 31=status read, 32=bus-fault pattern confirmed by a failed device-ID re-read, 33=brownout re-apply, 34=shadow write outside a range switch, 35-37=gain-ratio FRAM read/write/clear, 38=RangeAuto's own two chip writes on the auto->off transition. `wrnno` 10=brownout recovered, 11/12=no/stale stored gain ratio, 13=implausible learned ratio rejected, 14=saturated on the high range, 15=the periodic path made a range decision the interrupt should have made first, five times running (the dead-INT detector), 16=the paired gain-ratio reading clipped on the other range, so the pair measures the clamp rather than the part. 17 was briefly a second five-in-a-row warning for a persistence window outlasting `SampleInterv`; deriving that window made the case unreachable and the code was removed with it (C.11.1.3), so the range ends at 16. |
 | `asy_sgp40_driver.py` (`SGP40`) | 10-18 | 10-14 | 10=init, 11=periodic read, 12=config read at init, 13-18=backup read/write/clear/deserialize/serialize/compensation. `wrnno`=backup missing/stale. |
 | `asy_wifi_service.py` (`WIFI`) | 11-18 | 1-7 | 11=mode-switch...17=hardware give-up, 18=disconnect-timeout; `wrnno` 1-3=missing-config, 4-7=WLAN status. |
 | `asy_ntp_client.py` (`NTP`) | 11-20 | 1-3 | 11=missing-config...19=time-calc, 18/20=interval-fallback/give-up; `wrnno`=callback failures. |
@@ -1485,7 +1485,7 @@ counter reset by every read would have produced 0 of 8; one never reset at all w
 **Reproducing it.** The *unit* half (RGB cycles, not channel integrations — A.4's conflatable-facts
 item 6) is automated and now asserted: `tests_hardware/device_scripts/isl29125_real_irq_edge.py`'s
 `_measure_persist_unit()` times a `PRST` = 4 assertion and fails the script if the answer is not
-`rgb_cycles`, because `persist_window_ms()` and `wrnno=17` are both built on it. The *restart* half
+`rgb_cycles`, because `persist_for_interval()` is built on it. The *restart* half
 above was a one-off bench probe, not a committed script; the table's own method is the recipe —
 park both thresholds at `0x0000` so any light crosses the window, then vary only the status-read
 cadence.
@@ -1514,9 +1514,11 @@ measured below — and at 12 bit, where a cycle is ~16× shorter, it picks 8 and
 transient noise at no cost. Both inputs re-apply it when they change, which is why `SampleInterv`
 is no longer a software-only knob: changing it writes CONFIG3.
 
-`wrnno=17` survives as an **invariant check** rather than the misconfiguration detector it began
-as. It can now only fire if the derivation itself is wrong, and it exists so that such a bug
-reports itself instead of masquerading as `wrnno=15`'s dead-INT-line fault.
+`wrnno=17` is **gone**, and so is `persist_window_ms()`, its only caller. A warning that the
+derivation makes unreachable is complexity without a reader: keeping it as an invariant check was
+considered and rejected (owner, 2026-09-13) on the grounds that the ISL's surface is large enough
+already. `wrnno=15` therefore has a single meaning again - five decisions in a row went to the
+periodic path, so the line looks dead - which is the question it was always meant to answer.
 
 Measured on the bench (2026-09-13), six forced crossings per setting, one reader, same scene:
 
@@ -1526,13 +1528,11 @@ Measured on the bench (2026-09-13), six forced crossings per setting, one reader
 | 2 | 606 ms | **6 of 6** | 0 | 500-800 ms |
 | 1 | 303 ms | **6 of 6** | 0 | 200-613 ms |
 
-**Three changes came out of it.** The default is now **2** — still one cycle of transient
-rejection, which is what the field is for, and comfortably inside a 1 s sample interval. The
-detector no longer blames the wiring for this: `wrnno=15` keeps its "the interrupt may be dead"
-meaning, and the new **`wrnno=17`** covers the case where the configured window simply outlasts the
-sample interval - which a deliberately long persistence window and a short sample interval can
-each produce on their own, and which is arithmetic rather than a fault. And
-the detector now keys on the **line**, not the flag — see below.
+**Two changes came out of it.** The window is **derived**, so at a 1 s interval and 16 bit the
+driver picks 2 — still a cycle of transient rejection, and comfortably inside the interval — while
+a longer interval or 12-bit resolution buys more. And the detector now keys on the **line**, not
+the flag — see below. A third change, a separate `wrnno=17` for "the window outlasts the interval",
+was made and then removed once deriving the window made that case unreachable.
 
 **Why the flag alone was not enough.** `_note_decision_source()` originally counted a decision as
 interrupt-led whenever `RGBTHF` was set in the status byte. But `RGBTHF` is raised by the *chip*,

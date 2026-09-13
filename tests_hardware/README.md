@@ -186,10 +186,12 @@ all. **Whichever window is shorter decides every switch.**
 | 2 | 606 ms | shorter - interrupt wins | 6 of 6 interrupt-led, 500-800 ms |
 | 1 | 303 ms | shorter - interrupt wins | 6 of 6 interrupt-led, 200-613 ms |
 
-The default is now 2 for exactly this reason (SPECIFICATION.md Part C.11.1.3). When writing a
-device script that sets its own `cfgmgr._cache`, keep the same relationship or the script will
-quietly be testing the periodic path only - `wrnno=17` is the driver telling you that has happened,
-and it is distinct from `wrnno=15`, which means the interrupt line itself looks dead.
+PRST is **derived** for exactly this reason and is no longer a config field at all
+(SPECIFICATION.md Part C.11.1.3): the driver picks the largest setting whose window still closes
+inside the sample interval. A device script setting its own `cfgmgr._cache` therefore cannot get
+this relationship wrong any more - there is nothing to seed. `wrnno=15` remains, and now has only
+one meaning: five range decisions in a row went to the periodic path, so the interrupt line itself
+looks dead.
 
 ## The ISL29125 mechanism envelope
 
