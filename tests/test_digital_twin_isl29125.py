@@ -125,6 +125,15 @@ def test_reset_command_restores_every_default() -> None:
     assert not chip.handle_readfrom_mem(_ADDR_STATUS, 1)[0] & _STATUS_BOUTF
 
 
+def test_the_status_read_clears_the_brownout_flag_too() -> None:
+    # Measured 2026-09-13 on a just-powered board: 0x08 read 0x04, a second read 0x00, with only
+    # that read in between. This CONTRADICTS p12 ("should be reset to LOW by an I2C write
+    # command") - the write works too, it is simply not the only thing that clears it.
+    chip = make_chip()
+    assert chip.handle_readfrom_mem(_ADDR_STATUS, 1)[0] & _STATUS_BOUTF  # power-on default
+    assert not chip.handle_readfrom_mem(_ADDR_STATUS, 1)[0] & _STATUS_BOUTF
+
+
 def test_a_supply_brownout_raises_the_flag_the_reset_command_does_not() -> None:
     chip = make_chip()
     chip.handle_writeto_mem(_ADDR_STATUS, bytes([0x00]))  # clear the power-on BOUTF

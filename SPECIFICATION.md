@@ -1327,13 +1327,31 @@ probe's own derived yes/no keys instead, so nothing is merely unchecked.
 | `CONVENF` (`0x08` B1) | set by a completed conversion, cleared by the status read, flat `0x00` while powered down | never modelled at all |
 | `RGBCF` (`0x08` B5:4) | **not** cleared by the status read; zero while powered down | not cleared (correct); retained in power-down (wrong) |
 | `BOUTF` after the `0x46` reset | reads `0x00` — the reset command does not raise it | restored to `0x04`, treating reset like a power-up |
+| `BOUTF` after a status read | **cleared by the read itself** | survived the read |
 
-The `BOUTF` row is why the fake now separates the two events: `_reset()` models the `0x46`
-**command**, and `simulate_brownout()` models the **supply** event that really does raise the flag.
-A test wanting a brownout must call the latter. **One half stays unconfirmed**: whether `BOUTF` is
-high at power-up at all (p12 says it is) was not observable, because the probe's own first run
-issued a reset before its first status read. Settling it needs a genuine power cycle whose first
-transaction is a status read, on firmware that does not run `ISL29125_I2C.setup()` at boot.
+### C.11.1.1 `BOUTF`'s real lifecycle — settled 2026-09-13, and p12 is wrong about it
+
+Measured on a genuinely just-powered board, with a status read as the **first** transaction (the
+pre-ISL firmware never touches the part, so nothing had disturbed it):
+
+| event | `BOUTF` | source |
+|---|---|---|
+| power-up | **set** (`0x08` reads `0x04`) | measured; p12 agrees |
+| a status read of `0x08` | **cleared** | measured; **p12 contradicts this** |
+| the `0x46` reset command | **cleared** | measured (first probe run: reset, then read `0x00`, with no status read before it) |
+| a write of `0x00` to `0x08` | cleared | measured; p12 agrees |
+
+p12 says the flag "should be reset to LOW by an I2C **write** command during the initial
+configuration". The write does work — it is simply not the only thing that clears it. The
+destructive status read clears `BOUTF` alongside `RGBTHF` and `CONVENF`; only the `RGBCF` field
+survives a read.
+
+**Consequences.** The fake models all four rows now, and separates the two events that look alike:
+`_reset()` is the `0x46` **command**, `simulate_brownout()` is the **supply** event that raises the
+flag again — a test wanting a brownout must call the latter. For the driver this is benign and
+was already handled: `_handle_status()` reads `0x08` exactly once per cycle, so a real brownout is
+reported exactly once, which is what `_recover_brownout()`'s own `_brownout_seen` latch already
+assumes. Nothing in `src/` needed changing.
 
 ## C.12 Testing
 

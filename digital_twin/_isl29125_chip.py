@@ -319,14 +319,16 @@ class Isl29125Chip:
         # an 8-byte read from 0x0D gives the two data bytes then six zeros).
         reply = (reply + bytes(nbytes))[:nbytes]
         if reg_addr <= _REG_STATUS < reg_addr + nbytes and reg_addr <= _LAST_REGISTER:
-            # Destructive by design (p11/p12): transferring the status byte is what clears RGBTHF
-            # and CONVENF and releases the INT pin, so nothing else in the driver may read this
-            # register "just to check". Both flags measured read-to-clear on real silicon; the
-            # RGBCF field is not, and survives the read. Whether a burst that merely SPANS 0x08
+            # Destructive by design (p11/p12): transferring the status byte is what clears RGBTHF,
+            # CONVENF and BOUTF and releases the INT pin, so nothing else in the driver may read
+            # this register "just to check". BOUTF being read-to-clear CONTRADICTS p12, which says
+            # it "should be reset to LOW by an I2C write command" - measured 2026-09-13 on a
+            # genuinely just-powered board: 0x08 read 0x04, and a second read 0x00 with only that
+            # read in between. The RGBCF field is the one that survives a read. Whether a burst that merely SPANS 0x08
             # also clears them could not be measured (the threshold re-armed faster than the probe
             # could re-check) - clearing is the reading p12's "the 8-bit transfer" wording supports,
             # and the driver only ever reads 0x08 on its own, so nothing depends on the choice.
-            self._status &= ~(_STATUS_RGBTHF | _STATUS_CONVENF)
+            self._status &= ~(_STATUS_RGBTHF | _STATUS_CONVENF | _STATUS_BOUTF)
             self._prst_count = 0
             self._release_int()
         return reply

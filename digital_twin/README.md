@@ -46,9 +46,10 @@ Kept completely separate so nothing here can accidentally affect the determinist
   does not carry this sensor) and is the one fake that models a gain the driver has to *learn*: its
   high range's full scale is a deliberately non-nominal multiple of its low range's, so the
   driver's gain-ratio self-calibration converges on something real instead of on the constant it
-  started from. It also models the destructive `0x08` status read (which clears `RGBTHF`
-  and `CONVENF` and releases the INT line), `BOUTF` high at power-up but **not** after the `0x46`
-  reset command (`simulate_brownout()` is the seam for a supply event, which raises it again), the
+  started from. It also models the destructive `0x08` status read (which clears `RGBTHF`,
+  `CONVENF` and `BOUTF` and releases the INT line — `BOUTF` being read-to-clear contradicts p12 and
+  was measured, see SPECIFICATION.md Part C.11.1.1), `BOUTF` high at power-up but **not** after the
+  `0x46` reset command (`simulate_brownout()` is the seam for a supply event, which raises it), the
   flat address pointer that walks the whole `0x00`-`0x0E` map in one burst and then pads with
   zeros, reserved config bits reading back zero, per-resolution clipping at `(1 << bits) - 1`,
   and `set_illumination(lux, tint=(r, g, b))` so a scene can clip one channel while green stays
