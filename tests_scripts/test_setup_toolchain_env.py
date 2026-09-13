@@ -1,11 +1,6 @@
-"""Tests toolchain/setup_toolchain.py's `env` subcommand (tiered generic/flash/bench dev
-environment setup) in isolation - the pure-Python detection/idempotency/argument-parsing logic,
-mocked against fake /sys trees and a fake run(), never real hardware, sudo, or network. See
-dev_legacy/README.md for what "flash"/"bench" mean and the manual nmcli recipe this automates.
-End-to-end real-hardware behavior (USB auto-detection against a real board, the actual bridge/AP
-working) is proven on the real bench unit, not here - see the module docstring's own account of
-why this split exists (SPECIFICATION.md Part E.1's "real interpreter, not stubs" principle
-applies the same way to "real hardware, not this suite" for anything USB/network-hardware-facing)."""
+"""Tests setup_toolchain.py's `env` subcommand in isolation: the pure-Python detection/idempotency/
+parsing logic against fake /sys trees and a fake run(), never real hardware, sudo or network. The
+end-to-end behaviour is proven on the real bench unit instead (dev_legacy/README.md)."""
 
 import importlib.util
 import os
@@ -275,19 +270,9 @@ def test_generate_bench_ap_credentials_are_fresh_and_random(setup_toolchain: Mod
 
 
 def _fake_run_for_existing_bridge(recorded_run: list[list[str]], channel: str = "6", eth_iface: str = "eth0", bridge_mac: str = "aa:bb:cc:dd:ee:ff", real_mac: str = "aa:bb:cc:dd:ee:ff") -> Callable[..., str]:
-    r"""A field-aware fake_run() for ensure_bench_bridge()'s "already exists" branch - dispatches
-    each of its three distinct `nmcli -g` queries (channel, interface-name, bridge MAC) plus the
-    `ip -o link show` real-MAC lookup by their actual field/command, rather than one blanket
-    return value for every `nmcli -g` call regardless of which field it asked for (which used to
-    let get_interface_mac() silently receive "6\n" as an interface name and swallow the
-    resulting SetupError - never actually exercising the mismatch-detection logic this fixture
-    now models directly).
-
-    Models `nmcli -g`'s own ':' escaping faithfully: it returns 'D8\:3A\:...' unless `--escape no`
-    is passed. Not modelling that is exactly how the MAC check shipped unconditionally broken - the
-    fake handed back a plain 'aa:bb:cc:dd:ee:ff' no real nmcli would ever produce, so the comparison
-    passed here while never once matching on real hardware. Keeping the escaping modelled is what
-    makes the no-warning test below a genuine regression guard on `--escape no` staying put."""
+    r"""A field-aware fake_run() for ensure_bench_bridge()'s "already exists" branch: each `nmcli -g`
+    query and the `ip -o link show` lookup answered by its actual field, and `nmcli -g`'s own ':'
+    escaping modelled - without either, the MAC check passes here while never matching on hardware."""
 
     def fake_run(cmd: list[str], cwd: Path | None = None, check: bool = True, env: dict[str, str] | None = None) -> str:
         recorded_run.append(cmd)
@@ -399,13 +384,9 @@ def test_ensure_br_netfilter_loads_module_and_persists_config(setup_toolchain: M
 
 
 def _fake_run_with_real_eth0_mac(recorded_run: list[list[str]], mac: str = "aa:bb:cc:dd:ee:ff") -> Callable[..., str]:
-    r"""A fake_run() that also answers ensure_bench_bridge()'s get_interface_mac(uplink_iface)
-    lookup realistically, mirroring a real `ip -o link show eth0` line closely enough for
-    get_interface_mac()'s own `link/ether\s+(\S+)` regex to match - the plain recorded_run
-    fixture's blanket "" default doesn't, which is exactly what made these two tests fail for
-    real once get_interface_mac() was added (confirmed directly against a real CI run,
-    2026-09-04): SetupError propagated uncaught through the bridge-creation path instead of
-    exercising it."""
+    r"""A fake_run() that also answers get_interface_mac(uplink_iface) with a real `ip -o link show`
+    line, close enough for its own `link/ether\s+(\S+)` regex. The plain fixture's blanket "" makes
+    SetupError propagate through the bridge-creation path instead of exercising it."""
 
     def fake_run(cmd: list[str], cwd: Path | None = None, check: bool = True, env: dict[str, str] | None = None) -> str:
         recorded_run.append(cmd)

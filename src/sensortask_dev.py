@@ -343,11 +343,9 @@ def _collect_error_sources() -> "list[Any]":
 
 
 def _collect_level_setters() -> "list[Callable[[int], None]]":
-    # Every logger in the whole constructed object graph, not just each module's own top-level
-    # self.pr - the nested ConfigManager.pr each ConfigManager-backed module owns internally
-    # ("CFGMGR_<NAME>"), and AsyConnTime's own separately-named dns_server.pr ("DNSSRV", not
-    # covered by conn.pr - see SPECIFICATION.md Part A.7). Mirrors sensortask_wozi.py's own
-    # _collect_level_setters() shape exactly - same object graph, different pins.
+    # Every logger in the graph, not just each module's own self.pr: the nested "CFGMGR_<NAME>" each
+    # ConfigManager-backed module owns, and AsyConnTime's separately-named "DNSSRV" (Part A.7).
+    # Mirrors sensortask_wozi.py's _collect_level_setters() exactly - same graph, different pins.
     assert conn is not None and ntp is not None and fram is not None and sysfunct is not None
     assert sgp_reader is not None and bmp_reader is not None and scd_reader is not None
     assert pixel is not None and notify_service is not None and webserver is not None
@@ -391,11 +389,9 @@ async def build_system(
     uart_transfers = 0
     uart_failures = 0
 
-    # watchdog: hardcoded at construction time, no injection point - same standing rule as
-    # sensortask_wozi.py ("must be hardcoded so no error ever can circumvent it when it is set
-    # active"). Doesn't conflict with the separate mounted debug scratch script
-    # (dev_legacy/README.md), which stays watchdog-free for its own purpose - see CLAUDE.md's
-    # wozi/dev hard rule.
+    # watchdog: hardcoded at construction, no injection point - wozi's own standing rule, so no
+    # error can circumvent it once active. The separate mounted debug scratch script stays
+    # watchdog-free for its own purpose (dev_legacy/README.md).
     watchdog = WDT(timeout=8000)
     conn = AsyConnTime(
         conn_fail_to_hotspot=5,
@@ -418,13 +414,9 @@ async def build_system(
     # dev_legacy/README.md's wiring table (this bench unit, not wozi's): i2c0 (13, 12) carries
     # BMP3xx alone - no clock-stretch override needed, port default (50ms) is fine for it.
     i2c0 = asy_i2c_driver.I2C(0, 13, 12, frequency=50000)
-    # i2c1 (15, 14) carries SCD30 + SGP40, sharing the bus - datasheets/scd30/
-    # ..._Interface_Description.pdf p.2: max 100kHz, Sensirion recommends <=50kHz (matched by
-    # frequency=50000); clock stretching is normally <=30ms but can reach 150ms once/day for
-    # internal calibration, well past rp2's own I2C timeout default (DEFAULT_I2C_TIMEOUT,
-    # ports/rp2/machine_i2c.c, 50ms) - timeout=200000 (200ms) keeps that expected once-daily
-    # stretch from surfacing as a spurious OSError. Follows SCD30 onto whichever bus it's actually
-    # on here (i2c1), not i2c0 like wozi.
+    # i2c1 (15, 14) carries SCD30 + SGP40, sharing the bus. Sensirion recommends <=50kHz, and the
+    # SCD30's once-daily 150ms clock stretch would exceed rp2's own 50ms default, hence 200ms
+    # (datasheets/scd30/..._Interface_Description.pdf p.2). On i2c1 here, not i2c0 like wozi.
     i2c1 = asy_i2c_driver.I2C(1, 15, 14, frequency=50000, timeout=200000)
     spi0 = asy_spi_driver.SPI(0, 2, 3, 4)
     # FRAM: dev bench chip is a 256KB MB85RS2MTA at CS=GPIO5 (wozi: 8KB MB85RS64V at CS=1).
@@ -451,11 +443,9 @@ async def build_system(
     scd_reader = SCD30_Reader(i2c1, 11, trigger_sec=3, max_module_error=_MAX_MODULE_ERROR, fram=fram, debug=debug)
     # FRAM chunk 6. GPIO18 on this bench unit (wozi: GPIO15).
     pixel = NeopixelDriver(18, fram=fram, debug=debug)
-    # Staged registration (asy_notification_service.py's own module docstring): construct every
-    # NotificationSignal, register() each in the same order the reference file's hardcoded
-    # CO2/VOC/Humidity checks ran in (this becomes the poll loop's own deterministic check order),
-    # then finalize() exactly once - the one point notify_service.pr/notify_service.cfgmgr actually
-    # come into existence (FRAM chunk 7), before its own setup() below or any task starter runs.
+    # Staged registration (asy_notification_service.py's docstring): construct each signal,
+    # register() in the reference file's own CO2/VOC/Humidity order - which becomes the poll loop's
+    # check order - then finalize() once, the point pr/cfgmgr come into existence (FRAM chunk 7).
     notify_service = NotificationCoordinator(
         pixel.request_signal,
         ntp.cettime,
@@ -557,11 +547,9 @@ async def build_system(
 
     sysfunct.set_level_setters(_collect_level_setters())
 
-    # Grouped await x.setup() phase - see sensortask_wozi.py's own module docstring/comment for why
-    # batching here (rather than interleaved with construction above) is the one correct ordering,
-    # not just a style choice. Same fixed order as wozi's own build_system() - this ordering is
-    # about ConfigManager-domain setup, not the FRAM chunk allocation order above, so it doesn't
-    # need to track the bus/pin differences between the two variants.
+    # Grouped await x.setup() phase: batching here rather than interleaving with construction is the
+    # one correct ordering, not a style choice (sensortask_wozi.py's docstring has why). Same fixed
+    # order as wozi's - this is ConfigManager-domain setup, not the FRAM allocation order above.
     await sysfunct.setup()
     await fram.setup()
     await conn.setup()

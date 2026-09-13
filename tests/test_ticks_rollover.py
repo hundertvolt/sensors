@@ -57,12 +57,9 @@ def test_this_rigs_ticks_period_is_self_consistent() -> None:
 
 
 def test_ticks_diff_correct_when_now_has_wrapped_past_t0() -> None:
-    # t0 sits just before this rig's own wraparound; "now" is a small, real elapsed time later,
-    # having wrapped around to a small raw value near zero. A raw subtraction (now - t0) would
-    # compute a huge negative number (~ -period) here instead of the true small positive elapsed
-    # time. Built entirely via time.ticks_add() (never a raw literal near the period boundary -
-    # see module docstring for why an unwrapped literal there gives ticks_diff() an out-of-domain
-    # input and garbage results).
+    # t0 sits just before this rig's wraparound and "now" a small elapsed time later, wrapped to a
+    # raw value near zero - where a raw `now - t0` computes ~ -period instead. Built via
+    # time.ticks_add() only, never a literal near the boundary (module docstring for why).
     t0 = time.ticks_add(0, -50)  # type: ignore[type-var]  # raw value: period - 50, just before the wrap
     now = time.ticks_add(t0, 200)  # type: ignore[type-var]  # 200ms later, having wrapped past zero
     assert time.ticks_diff(now, t0) == 200

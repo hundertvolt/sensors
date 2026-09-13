@@ -1008,8 +1008,7 @@ def test_is_hotspot_active_wiring_put_to_unmatched_path_still_405_in_hotspot_mod
 # ---------------------------------------------------------------------------
 # The dev-only UART link exerciser (UART_PROMOTION_REQUIREMENTS.md H4). Nothing on a live system
 # initiates a transfer but this loop, so without it every claim about the link coexisting with the
-# webserver is a claim about an idle link. These tests run it against the real constructed graph
-# with the two fake UARTs actually crossed over.
+# webserver is a claim about an idle link.
 # ---------------------------------------------------------------------------
 
 

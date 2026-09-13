@@ -1723,11 +1723,9 @@ def test_a_peer_answering_a_different_question_is_refused() -> None:
     assert persisted(pair.initiator) == ["E29", "W10"], persisted(pair.initiator)
 
 class _StarvedAlloc:
-    # Shadows asy_uart_comm.py's own module-global `bytearray` - the reassign-a-module-name mocking
-    # the rest of tests/ uses, pointed at an allocation instead of a method. Armed and one-shot
-    # rather than blanket: every degraded path allocates something itself, so a stub that always
-    # raised would fire again inside the very handler under test. skip lets a test aim past the
-    # allocations that come first, so the one it means to starve is named by position, not by count.
+    # Shadows asy_uart_comm.py's module-global `bytearray` - tests/'s usual reassign-a-module-name
+    # mocking pointed at an allocation (SPECIFICATION.md Part E.4). Armed and one-shot, since every
+    # degraded path allocates too; `skip` names the allocation to starve by position, not by count.
     def __init__(self) -> None:
         self.skip = 0
         self.armed = False
@@ -1983,11 +1981,9 @@ def test_a_pull_callback_failing_mid_train_quiesces_like_any_other_fault() -> No
 # ===========================================================================
 # Conformance with the legacy BSEC use case (dev_legacy/asy_bsec_driver.py)
 # ===========================================================================
-# A demonstration, deliberately not a constraint: CLAUDE.md states this module is standalone and
-# that its BME688/BSEC first use case constrains nothing about its design. What these two check is
-# only that the legacy driver's whole command/control/communication structure is still expressible
-# - any API able to express it passes them. Sizes and command ids are the ones
-# dev_legacy/sensortask-dev.py actually deployed.
+# A demonstration, deliberately not a constraint - the module is standalone and this use case
+# constrains nothing about its design (SPECIFICATION.md Part J.1). Sizes and command ids are the
+# ones dev_legacy/sensortask-dev.py actually deployed.
 
 _BSEC_GET_MEASUREMENTS = 0x20
 _BSEC_GET_STATE = 0x21
@@ -2009,14 +2005,9 @@ _BSEC_STATE = bytes((i * 7) & 0xFF for i in range(_BSEC_STATE_SIZE))
 
 
 def test_the_legacy_bsec_command_set_still_runs_end_to_end() -> None:
-    # Opcode and payload stay separate (an id per command, data alongside it), every transaction is
-    # initiated from this side only, and all five shapes the driver used are here: a fixed-size GET
-    # decoded with struct, a don't-care GET for when the stored state size is unknown, a
-    # payload-less SET used as a pure command, a small SET, and a 221-byte multi-chunk SET whose
-    # payload has to arrive byte-identical. clear() is included because the legacy reset sequence
-    # runs SET -> wait -> clear -> read status, and the hold-off that leaves must not break what
-    # follows. Timings are this file's, not the deployed 1000ms: the budget decides how long a
-    # failure costs, not whether the flow can be expressed.
+    # All five shapes the legacy driver used, opcode and payload kept separate, every transaction
+    # initiated from this side only (SPECIFICATION.md Part J.1). clear() is included because the
+    # legacy reset ran SET -> wait -> clear -> read status, and the hold-off must not break that.
     answers = {
         _BSEC_GET_SYSTEM_STATE: _BSEC_SYSTEM_STATE,
         _BSEC_GET_MEASUREMENTS: _BSEC_MEASUREMENTS,
@@ -2111,13 +2102,9 @@ def test_the_two_spellings_the_boards_own_uart_script_used_still_work() -> None:
 
 
 def test_the_legacy_bsec_bus_parameters_meet_every_floor_but_one() -> None:
-    # The one thing a legacy-faithful port has to change. C2.9's whole-frame floor is 27 bytes here
-    # (5 header + 20 payload + 2 CRC) and the deployed rxbuf of 32 clears it; C2.10's second floor -
-    # one poll interval's arrivals, 80 bytes at 115200 with a 2ms poll - does not. Stop-and-wait
-    # means only one frame is ever in flight, so the second floor is stricter than this protocol's
-    # own traffic needs; it is kept because a drain has to survive a peer that does not stop, and
-    # because 128 bytes of RX ring costs nothing on an RP2040. Loud at construction, not a silent
-    # tail loss - so the port raises one number rather than debugging an intermittent link.
+    # The one value a legacy-faithful port has to change: the deployed rxbuf of 32 clears C2.9's
+    # 27-byte whole-frame floor but not C2.10's 80-byte per-poll floor. Kept rather than relaxed, a
+    # drain must survive a peer that does not stop (SPECIFICATION.md Part J.1).
     def deployed(rxbuf: int) -> UART_Comm:
         bus = UART(0, tx_pin=0, rx_pin=1, baudrate=115200, rxbuf=rxbuf, poll_wait_ms=2, poll_idle_ms=50, crc=CRC16())
         bus.poller = LinkPoller(bus._uart)  # type: ignore[assignment,arg-type]

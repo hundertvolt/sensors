@@ -37,11 +37,8 @@ _SOAK_ENDPOINTS = ("/measurements", "/sensors", "/networking", "/system", "/noti
 _SOAK_WARMUP_CYCLES = 40  # see run_wozi_integration.py's own identical constant/comment - this
 # soak drives the real object graph the same way, so the same warm-up transient applies here too.
 #
-# _MEM_TREND_*: see run_wozi_integration.py's own identical constants/comment for the full
-# methodology and measurement history behind this trend-check shape and tolerance - unchanged here,
-# since nothing about this variant's own construction graph (only its bus/pin wiring differs from
-# wozi's) would plausibly shift the steady-state memory-noise band this tolerance was measured
-# against.
+# _MEM_TREND_*: run_wozi_integration.py's identical constants carry the methodology and measurement
+# history. Unchanged here - only bus/pin wiring differs, nothing that would shift the noise band.
 _MEM_TREND_TOLERANCE_BYTES = 8192
 _SOAK_CYCLES_DEFAULT = 20
 
@@ -211,11 +208,9 @@ async def _wait_until_serving(host: str, port: int, timeout_s: float = 10.0) -> 
 
 
 async def _soak(host: str, port: int, cycles: int) -> "list[str]":
-    # Deliberately strictly-sequential (one fetch() awaited at a time, never asyncio.gather()'d) -
-    # see run_wozi_integration.py's own identical comment for the full reasoning (a real
-    # MicroPython Unix-port interpreter segfault found by exceeding WebserverService's own
-    # max_connections=4 ceiling with concurrent clients) - this soak's own sequential pattern never
-    # approaches that and must stay that way.
+    # Deliberately strictly sequential, one fetch() at a time and never gather()'d: concurrent
+    # clients exceeding WebserverService's max_connections=4 segfault the Unix port
+    # (run_wozi_integration.py's identical comment has the full account). Keep it that way.
     failures: list[str] = []
     for _ in range(_SOAK_WARMUP_CYCLES):
         for path in _SOAK_ENDPOINTS:
@@ -238,12 +233,9 @@ async def _soak(host: str, port: int, cycles: int) -> "list[str]":
                 failures.append(f"cycle {cycle}: GET {path} -> {res.status_code}")
         gc.collect()
         mem_samples.append(gc.mem_free())
-    # Trend check (see run_wozi_integration.py's own _MEM_TREND_* module-level comment for why this
-    # replaced a flat two-point delta): compare the mean of the first and last quarter of per-cycle
-    # samples - averaging each quarter absorbs single-sample GC-timing noise a raw two-point diff
-    # can't. Needs at least 4 per-cycle samples (cycles >= 4) for the quarters to mean anything;
-    # skipped below that (a --soak-cycles this small is a manual smoke run, not a real memory-trend
-    # check).
+    # Trend check (run_wozi_integration.py's _MEM_TREND_* comment has why this replaced a two-point
+    # delta): first quarter's mean against the last quarter's, averaging out GC-timing noise a raw
+    # diff cannot. Needs 4 samples for the quarters to mean anything; below that it is a smoke run.
     per_cycle_samples = mem_samples[1:]
     quarter = len(per_cycle_samples) // 4
     if quarter >= 1:
@@ -383,11 +375,9 @@ async def main(config: RunConfig) -> "dict[str, Any]":
         elif config.duration > 0:
             await asyncio.sleep(config.duration)
     finally:
-        # Unconditional, not just under --soak: an external observer driving this as a subprocess
-        # has no in-process access to sensortask_dev.watchdog otherwise. Called before
-        # main_task.cancel()/await, since a real SIGINT shutdown never reaches a statement placed
-        # after that pair - see the __main__ block below for the other call site this needs (a
-        # SIGINT that lands while parked in the scheduler's own poll wait skips this whole block).
+        # Unconditional, not just under --soak: a subprocess observer has no in-process access to
+        # sensortask_dev.watchdog. Before main_task.cancel()/await, since a real SIGINT never reaches
+        # a statement after that pair - hence the second call site in the __main__ block below.
         _print_wdt_status()
         main_task.cancel()
         try:

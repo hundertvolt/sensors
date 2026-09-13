@@ -21,18 +21,9 @@ if TYPE_CHECKING:
 
 
 def run(coro: "Coroutine[Any, Any, T]") -> "T":
-    # Bounded via wait_for(), not a bare asyncio.run(coro): several tests below feed data via
-    # feed_rx() and then call uart.read()/write() with no explicit timeout_ms, which hits
-    # asy_uart_driver.py's ready()'s timeout_ms=-1 (wait forever) branch and depends entirely on
-    # the real select.poll() detecting readiness via tests/machine.py's fake UART's ioctl() - the
-    # one mechanism in this file not exercised through the bounded _StepPoller test double. Investigated
-    # as the leading suspect for a real, reproducible CI-only hang (always this file, never locally -
-    # see CLAUDE.md's "CI hang investigation" note) that 20/20 recent CI runs hit regardless of
-    # per-file timeout/retry/stdbuf mitigations already in scripts/test.sh. 5s is generous next to
-    # the tightest existing inner bound already in this file (wait_for(task, 2)) while guaranteeing
-    # this test file itself can never hang the whole suite even if that poll path genuinely misbehaves
-    # again - a TimeoutError here surfaces as a normal, fast FAIL through microtest's own exception
-    # handling, not a silent stall.
+    # Bounded via wait_for(), not a bare asyncio.run(): a timeout_ms=-1 read through a real
+    # select.poll() against a pure-Python fake hangs forever on CI runners (CLAUDE.md's known hang).
+    # 5s is generous next to this file's tightest inner bound, and a TimeoutError FAILs fast.
     return asyncio.run(asyncio.wait_for(coro, 5))
 
 
@@ -50,14 +41,9 @@ def fake(uart: UART) -> FakeUART:
 
 
 class _StepPoller:
-    # Stands in for uart.poller in tests that need genuine control over ready()'s per-call
-    # readiness. Confirmed directly against this project's MicroPython Unix-port test build: its
-    # select.poll() doesn't re-check a plain Python stream object's ioctl() per call the way real
-    # hardware does (register()'d readiness never changes afterward, regardless of the object's
-    # actual state) - so it can't exercise a genuine not-ready -> ready transition. This bypasses
-    # select.poll entirely: each ipoll() call consumes the next `steps` entry (an event bitmask, or
-    # a zero-arg callable returning one - useful for feeding data as a side effect of "becoming
-    # ready"), repeating the last entry once exhausted.
+    # Stands in for uart.poller: the Unix port's select.poll() never re-checks a Python object's
+    # ioctl(), so it cannot exercise a not-ready -> ready transition (CLAUDE.md's known hang). Each
+    # ipoll() consumes the next `steps` entry - a mask, or a callable returning one - then repeats it.
     def __init__(self, steps: "list[int | Any]") -> None:
         self._steps = list(steps)
 
@@ -872,12 +858,9 @@ async def one_shot_ready(uart: UART) -> bool:
 def test_read_returns_bytes_once_ready() -> None:
     uart = make_uart()
     fake(uart).feed_rx(b"hello")
-    # _StepPoller, not the real select.poll() init() registers by default: the real poll/ioctl
-    # dispatch against tests/machine.py's pure-Python fake proved unreliable specifically on GitHub
-    # Actions runners (never locally) - see CLAUDE.md's "CI hang investigation" note. This and every
-    # other test below that used to rely on that path now use the same bounded test double already
-    # used elsewhere in this file - they're testing read/write/CRC assembly logic, not the poll/
-    # ioctl integration itself.
+    # _StepPoller, not the real select.poll() init() registers by default: that dispatch against a
+    # pure-Python fake hangs on GitHub runners (CLAUDE.md's known hang). What is under test here is
+    # read/write/CRC assembly, not the poll/ioctl integration.
     uart.poller = _StepPoller([select.POLLIN])  # type: ignore[assignment]
 
     async def scenario() -> bytes | None:
@@ -1220,11 +1203,9 @@ def test_writefrom_buffer_too_small_for_crc_returns_false() -> None:
 
 
 def test_write_retries_after_a_short_write_until_everything_is_sent() -> None:
-    # Regression test: uart.write() used to be called once and its return value discarded
-    # entirely, silently dropping the untransmitted tail of a message larger than the TX ring
-    # buffer's available room - confirmed as a real gap against ports/rp2/machine_uart.c's own
-    # write() loop, which can return a short count. write_limit=3 forces every fake write() call to
-    # accept at most 3 bytes, so a 7-byte message needs 3 rounds (3+3+1) to fully send.
+    # Regression test: write()'s return value used to be discarded, silently dropping the tail of a
+    # message larger than the TX ring's free room - real, since rp2's own write() can return a short
+    # count. write_limit=3 makes a 7-byte message need three rounds (3+3+1).
     uart = make_uart()
     fake(uart).write_limit = 3
     uart.poller = _StepPoller([select.POLLOUT])  # type: ignore[assignment]  # see test_read_returns_bytes_once_ready's comment
@@ -1480,27 +1461,17 @@ def test_read_until_complete_returns_none_on_crc_check_memoryerror() -> None:
     assert run(scenario()) is None
 
 
-# `msg += add`'s own MemoryError guard in read_until_complete()/readline_until_complete() (see the
-# module docstring's "MemoryError guarding" section) is deliberately NOT fault-injected here the
-# same way: unlike self.crc, `msg` is a plain bytearray built and grown entirely inside those
-# methods - there's no substitutable object to wrap/monkeypatch the way _MemoryErrorCRC does above,
-# and bytearray.__iadd__ has no Python-level hook to force MemoryError deterministically without
-# either a constrained interpreter heap (not controllable from within a running test - see
-# SPECIFICATION.md Part E) or genuinely exhausting memory (flaky/unsafe for CI). Same category of
-# documented, deliberate testing gap as test_print_log.py's own
-# test_history_length_huge_is_capped_instead_of_crashing_the_interpreter comment. The surrounding
-# behavior is still covered: test_read_until_complete_assembles_across_multiple_rounds and
-# test_readline_until_complete_assembles_multi_part_line already exercise this exact line
-# successfully across multiple rounds, proving the guard doesn't break normal accumulation.
+# `msg += add`'s own MemoryError guard is deliberately not fault-injected: unlike self.crc, `msg` is
+# a plain bytearray with no substitutable object and no hook to force the raise deterministically.
+# A documented gap (SPECIFICATION.md Part E); the multi-round assembly tests still cover the line.
 
 
 # ---------------------------------------------------------------------------
 # Counted reads never ask the peripheral for bytes that have not arrived
 # ---------------------------------------------------------------------------
-# Real machine.UART.read()/readinto() wait out timeout_char for every requested byte still in
-# flight, synchronously, without ever yielding to asyncio - measured at 4.4ms of held event loop
-# per 53-byte frame on the dev bench (SPECIFICATION.md Part F.5.8). The clamp to any() is what
-# keeps this driver non-blocking, so these tests pin the *request*, which the fake cannot.
+# machine.UART.read() waits out timeout_char per requested byte without yielding - 4.4ms of held
+# loop per 53-byte frame (SPECIFICATION.md Part F.5.8). The clamp to any() is what keeps this driver
+# non-blocking, so these pin the *request*, which the fake cannot.
 
 
 def _record_requests(fk: FakeUART, method: str) -> "list[int | None]":
@@ -1593,9 +1564,9 @@ def test_single_shot_reads_clamp_to_what_is_buffered_and_report_nothing_as_none(
 # ---------------------------------------------------------------------------
 # ready() is this driver's one yield point, and it has two poll rates
 # ---------------------------------------------------------------------------
-# Every read loop above reaches the peripheral through ready(), so "ready() always yields" is what
-# bounds how long any of them can hold the event loop. The clamp alone made the stall worse without
-# it, because ipoll() reports the mask with no await of its own (SPECIFICATION.md Part F.5.8).
+# Every read loop reaches the peripheral through ready(), so "ready() always yields" bounds how long
+# any of them holds the loop. The clamp alone made the stall worse, ipoll() reporting the mask with
+# no await of its own (SPECIFICATION.md Part F.5.8).
 
 
 def test_ready_yields_even_when_the_mask_is_already_satisfied() -> None:
@@ -1762,11 +1733,9 @@ class _NamelessDelimiter(Framing_Base):
 
 
 def test_a_raising_any_is_swallowed_instead_of_escaping_the_driver() -> None:
-    # Defence in depth, not a reachable rp2 failure: traced through ports/rp2/machine_uart.c at
-    # v1.29.0, mp_machine_uart_any() drains the FIFO (absorbing overrun/break/parity silently, per
-    # C.3.2) and returns ringbuf_avail() - there is no raise site. The guard earns its two lines
-    # because every read in the module funnels through here, so a future port that does raise would
-    # otherwise put a bare OSError through an API that only ever returns sentinels.
+    # Defence in depth, not a reachable rp2 failure: mp_machine_uart_any() drains the FIFO and
+    # returns ringbuf_avail(), with no raise site (SPECIFICATION.md Part C.3.2). The guard earns its
+    # two lines because every read in the module funnels through here.
     uart = make_uart()
     fk = fake(uart)
     fk.feed_rx(b"abcd")
@@ -1784,11 +1753,9 @@ def test_a_raising_any_is_swallowed_instead_of_escaping_the_driver() -> None:
 
 
 def test_a_read_that_comes_back_empty_after_reporting_ready_ends_the_loop() -> None:
-    # The ring can drain between any() and the read itself, and rp2 then returns None (MP_EAGAIN)
-    # rather than raising - so each counted loop has to end on the sentinel instead of spinning or
-    # counting bytes it never received. Deliberately run with no deadline at all: a loop that
-    # merely waited the timeout out would still answer None, so only the unbounded form separates
-    # "ended on the sentinel" from "spun until the clock saved it" - run()'s own 5s bound fails it.
+    # The ring can drain between any() and the read, and rp2 returns None (MP_EAGAIN) rather than
+    # raising, so each counted loop must end on the sentinel. Run with no deadline at all: only the
+    # unbounded form separates "ended on the sentinel" from "spun until the clock saved it".
     def empty_reader(**kwargs: "Any") -> UART:
         uart = make_uart(**kwargs)
         fk = fake(uart)

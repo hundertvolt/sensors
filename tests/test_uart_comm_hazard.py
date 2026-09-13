@@ -47,11 +47,9 @@ _CUR = 4
 _POS = 5
 
 
-# Standing rule (project owner, 2026-09-12): every test here runs both with and without a CRC.
-# The deployed link runs CRC_Pass, so the no-CRC path is the one in the field - but a CRC changes
-# which corruptions are detectable at all, and a suite that only ran one way would be pinning half
-# the contract. CRC_MODES is what each test iterates; `crc()` builds a fresh instance per pair,
-# since CRC_Base carries incremental state and two ends must not share one object.
+# Standing rule (project owner, 2026-09-12): every check runs both with and without a CRC - the
+# deployed link is CRC_Pass, but a CRC changes which corruptions are detectable at all
+# (SPECIFICATION.md Part E.8). `crc()` builds a fresh instance per pair: CRC_Base carries state.
 CRC_MODES = (("nocrc", None), ("crc16", CRC16))
 
 
@@ -496,13 +494,9 @@ async def _measure_retention(pair: Pair) -> "tuple[int, float]":
     for _ in range(_WARMUP):  # every path taken at least once before the heap is sampled
         done += 1 if await pair.initiator.uart_set(1, payload) else 0
         _scrub(pair)
-    # An ambient control first, yield-matched. Every test_*.py file runs as one process with one
-    # task queue and MicroPython's asyncio has no parent/child tracking, so listeners parked by
-    # earlier tests keep allocating whenever this one yields. A CRC yields once per byte, so a
-    # CRC'd transaction hands those leftovers ~200x more wakeups than an idle sleep does - which is
-    # why an idle control still charged 118 bytes/transaction to the protocol. This control repeats
-    # the same CRC work over the same frame sizes, with no link involved, so what it measures is
-    # exactly the scheduling churn a transaction provokes and nothing the protocol itself retains.
+    # An ambient control first, yield-matched: listeners parked by earlier tests keep allocating
+    # whenever this one yields, and a CRC yields once per byte. Repeating that CRC work with no link
+    # involved measures the scheduling churn instead of charging it to the protocol.
     gc.collect()
     idle_before = gc.mem_alloc()
     for _ in range(_MEASURED):
@@ -540,10 +534,9 @@ def _check_a_long_run_of_transactions_retains_no_memory(crc: "CrcMaker") -> None
 
 
 # ---------------------------------------------------------------------------
-# Which error is reported, not merely that one was. Every test above this point asserts ErrCount;
-# none asserts ErrNum, so a fault reporting the wrong code passes the whole suite. The catalog is
-# the module's only diagnostic surface (SPECIFICATION.md Part J, errno 10-34), and on a link with
-# no CRC it is the only way a bench session tells one failure from another.
+# Which error is reported, not merely that one was: every test above asserts ErrCount, none ErrNum,
+# so a fault reporting the wrong code would pass the whole suite. The catalog is the module's only
+# diagnostic surface (SPECIFICATION.md Part J, errno 10-34).
 # ---------------------------------------------------------------------------
 
 _ERR_NO_ACK = 20
@@ -645,10 +638,9 @@ def _check_a_size_mismatch_against_an_expected_size_reports_it_distinctly(crc: "
 
 
 # ---------------------------------------------------------------------------
-# The three link fault knobs no test exercised: dropped bytes, duplicated bytes and delayed
-# delivery. On rp2 a framing/parity/overrun fault never raises (C.3.2), so every electrical fault
-# reaches this layer as exactly one of these three stream shapes - which makes them the whole
-# observable surface of the physical layer, not exotic extras.
+# Dropped, duplicated and delayed bytes. A framing/parity/overrun fault never raises on rp2
+# (SPECIFICATION.md Part C.3.2), so every electrical fault reaches this layer as one of these three
+# stream shapes - the whole observable surface of the physical layer, not exotic extras.
 # ---------------------------------------------------------------------------
 
 
@@ -709,10 +701,9 @@ def _check_a_frame_delivered_in_two_fragments_still_assembles(crc: "CrcMaker") -
 
 
 # ---------------------------------------------------------------------------
-# The integrity envelope. The deployed link runs with CRC_Pass - no CRC at all - so structural
-# field validation is the *only* check (SPECIFICATION.md Part J). These tests pin exactly where
-# that boundary falls, because "corruption is handled" is true of the header and false of the
-# payload, and a bench session needs to know which.
+# The integrity envelope. The deployed link runs CRC_Pass, so structural field validation is the
+# *only* check (SPECIFICATION.md Part J). These pin exactly where that boundary falls: "corruption
+# is handled" is true of the header and false of the payload.
 # ---------------------------------------------------------------------------
 
 
@@ -785,12 +776,9 @@ def _check_a_receive_buffer_smaller_than_a_frame_is_refused_at_construction(crc:
 
 
 # ---------------------------------------------------------------------------
-# The mismatched-peer signature. The protocol's parameters are fixed by out-of-band agreement and
-# never negotiated (SPECIFICATION.md Part J), so a pair configured differently is diagnosed rather
-# than recovered. errno 32 is that diagnosis - bytes keep arriving and not one frame ever
-# validates - and it is the signature the C-port reconciliation will most likely meet first
-# (UART_C_PORT_CHANGELOG.md D2.5). Until now it was only ever reached by setting _blind_resyncs by
-# hand, never by an actually mismatched peer.
+# The mismatched-peer signature: parameters are agreed out of band and never negotiated, so a pair
+# configured differently is diagnosed (errno 32), never recovered (SPECIFICATION.md Part J.6). The
+# signature the C-port reconciliation will most likely meet first (UART_C_PORT_CHANGELOG.md D2.5).
 # ---------------------------------------------------------------------------
 
 _ERR_LINK_UNINTELLIGIBLE = 32
@@ -846,15 +834,9 @@ def _check_a_peer_that_never_produces_a_valid_frame_is_diagnosed(crc: "CrcMaker"
                 listener.cancel()
 
     run(scenario(), limit=120)
-    # KNOWN DEFECT, reported to the project owner rather than fixed here (CLAUDE.md's
-    # flag-don't-silently-change rule): errno 32 does NOT fire in the scenario it exists for.
-    # _resync() gates the diagnostic on `drained and self._valid_frames == 0`, but
-    # readinto_until_complete() has already consumed the short frame's bytes while waiting for a
-    # full-length one and discarded them on timeout - so _drain() finds an empty line and `drained`
-    # is 0 on every resync (measured: (0, 0, 0) at each of five resyncs). The mismatched peer is
-    # therefore reported only as a generic read timeout, errno 22.
-    # This assertion pins the defect, not the desired behaviour: when the gate is fixed it flips,
-    # which is the point - nothing about the current behaviour is silently blessed.
+    # Pins the known blind spot, not the desired behaviour: errno 32 never fires here, because the
+    # failing read has already swallowed the bytes _resync() gates on, so the mismatch reports as a
+    # generic errno 22. Accepted rather than fixed (SPECIFICATION.md Part J.6); this inverts if it is.
     codes = errnos(responder)
     assert _ERR_READ_TIMEOUT in codes, f"expected the generic timeout this currently reports: {codes}"
     assert _ERR_LINK_UNINTELLIGIBLE not in codes, (
@@ -875,10 +857,9 @@ def _check_a_break_like_run_of_nulls_recovers_to_a_working_exchange(crc: "CrcMak
 
 
 # ---------------------------------------------------------------------------
-# Recombined failure modes. Every fault above is injected alone, but a real degraded link does not
-# fail one way at a time - a marginal connector drops bytes AND corrupts them AND stalls. These
-# apply faults in pairs, because the interesting question is whether two recovery paths running
-# over each other still converge, not whether each works in isolation.
+# Recombined failure modes: a real degraded link does not fail one way at a time - a marginal
+# connector drops bytes AND corrupts them AND stalls. Faults are applied in pairs, because the
+# question is whether two recovery paths running over each other still converge.
 # ---------------------------------------------------------------------------
 
 
@@ -987,9 +968,9 @@ def _check_silence_then_corruption_then_clean_still_converges(crc: "CrcMaker") -
 
 
 # ---------------------------------------------------------------------------
-# Hammering the link on its own: sustained back-to-back transactions at the tier's maximum rate,
-# with the heap watched throughout. A link deployed for weeks has no backstop below the watchdog
-# (CLAUDE.md's memory-safety ladder), so "works once" and "works for an hour" are different claims.
+# Hammering the link on its own, heap watched throughout. A link deployed for weeks has no backstop
+# below the watchdog (CLAUDE.md's memory-safety ladder), so "works once" and "works for an hour"
+# are different claims.
 # ---------------------------------------------------------------------------
 
 _HAMMER_ROUNDS = 150
@@ -1028,13 +1009,9 @@ def _hammer_clean(crc: "CrcMaker") -> None:
     ok, grew = run(hammer(), limit=300)
     assert ok == _HAMMER_ROUNDS, f"only {ok}/{_HAMMER_ROUNDS} hammered transactions completed"
     assert not errnos(pair.initiator), f"a clean link logged errors under sustained load: {errnos(pair.initiator)}"
-    # A per-transaction RATE, not an absolute total: a leak is proportional to the work done, while
-    # interpreter-internal caching is a fixed sprinkle that varies with the host - and it is divided
-    # by the span actually measured, not by _HAMMER_ROUNDS, which understated it by half again.
-    # Observed sprinkle over this span: 0 B locally, 64 B and 288 B on two GitHub runners running
-    # identical code, so the floor is host- and run-dependent rather than a property of the module.
-    # The bound sits above that and still far below the smallest real signal - one retained frame is
-    # 13+ B/transaction, and an injected 16 B/transaction leak measures 380.
+    # A per-transaction RATE over the span actually measured: a leak scales with the work done,
+    # while interpreter caching is a host-dependent fixed sprinkle (0 B locally, 64 B and 288 B on
+    # two runners). The bound sits above that, far below one retained frame's 13+ B/transaction.
     per_transaction = grew / _HAMMER_MEASURED
     assert per_transaction < 6.0, f"{grew} bytes over {_HAMMER_MEASURED} transactions = {per_transaction:.2f} B/transaction"
 
@@ -1113,11 +1090,9 @@ def _clean_ack_bytes(crc: "CrcMaker") -> int:
 
 
 def _check_a_lost_final_ack_is_reported_as_failure_though_the_peer_acted(crc: "CrcMaker") -> None:
-    # The protocol's at-least-once seam, and the one a caller most needs to know about. The final
-    # ACK is deferred until after the responder's total-size check (F2.4), so if it is lost the
-    # responder has ALREADY accepted and delivered the whole train while the initiator reports
-    # failure. A caller that retries on False must therefore tolerate the peer seeing it twice.
-    # SPECIFICATION.md Part J states this is folded into failure; nothing pinned it until now.
+    # The protocol's at-least-once seam: the final ACK is deferred until after the responder's
+    # total-size check (F2.4), so a lost one leaves the peer having accepted the whole train while
+    # this side reports failure. A caller that retries on False must tolerate that (Part J).
     pair = hazard_pair(crc)
     delivered: list[bytes] = []
     # The payload is read off uart_listen()'s own ListenResult, not a message_callback: that
@@ -1252,13 +1227,9 @@ def _check_the_crc_appears_on_the_wire_big_endian_after_the_payload(crc: "CrcMak
     assert tail[0] == (int.from_bytes(bytes(tail), "big") >> 8) & 0xFF
 
 
-# CLAUDE.md's standing rule for any new stress/hammer test: it must pass under gc.threshold(-1),
-# MicroPython's own real default, BEFORE it is ever run under the project's chosen 32768. A
-# threshold is defense in depth on top of an already-safe design, never the fix for one that still
-# needs a big contiguous allocation - so a hammer that only passes with proactive collection
-# enabled is hiding exactly the defect the rule exists to surface. Both are run here, -1 first.
-# gc.threshold() is process-global, so each body saves and restores it (the same shape
-# test_asy_webserver_service.py's own H.3 pair uses).
+# CLAUDE.md's standing rule for a stress test: it must pass under gc.threshold(-1), MicroPython's
+# own default, BEFORE the project's chosen 32768 - one that only passes with proactive collection
+# hides the defect the rule exists to surface. gc.threshold() is global, so each body restores it.
 _GC_THRESHOLDS = (("gcdefault", -1), ("gc32768", 32768))
 
 
@@ -1283,11 +1254,9 @@ def _check_hammering_a_faulted_link_never_raises_and_still_recovers(crc: "CrcMak
         _under_threshold(_hammer_faulted, crc, threshold)
 
 
-# Every _check_* above takes the CRC mode and is registered here once per mode, so microtest
-# reports "..._nocrc" and "..._crc16" separately and a failure names which configuration broke.
-# Two checks are about one configuration by construction, not by omission: one pins that a payload
-# corruption is undetectable WITHOUT a CRC, the other that it is caught WITH one. Running either in
-# the opposite mode would assert the opposite of what it says.
+# Registered once per mode, so a failure names the configuration that broke. Two checks are about
+# one configuration by construction, not omission: a payload corruption is undetectable without a
+# CRC and caught with one, so either in the opposite mode would assert the opposite of what it says.
 _MODE_SPECIFIC = {
     "a_corrupted_payload_byte_is_delivered_undetected_without_a_crc": "nocrc",
     "with_a_crc_configured_the_same_payload_corruption_is_caught": "crc16",

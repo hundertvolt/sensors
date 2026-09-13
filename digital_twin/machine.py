@@ -139,11 +139,9 @@ _random_source: "_RandomSource | None" = None
 
 
 def configure_random_source(source: "_RandomSource | None") -> None:
-    # Same module-level-hook pattern as configure_fram_state_path() below, applied to sensor value
-    # walks instead of FRAM persistence: called once, before build_system()-equivalent code
-    # constructs i2c0/i2c1, by whatever entry point wants every wired chip's value walk to share one
-    # seeded random.Random (digital_twin/launch.py's own --seed flag). None (the default) means
-    # every chip falls back to its own un-seeded `random` module, exactly as before this existed.
+    # The same module-level hook as configure_fram_state_path() below, applied to value walks: called
+    # once before i2c0/i2c1 are constructed, by an entry point wanting every chip's walk to share one
+    # seeded random.Random (launch.py's --seed). None leaves each chip on the un-seeded module.
     global _random_source
     _random_source = source
 
@@ -174,11 +172,9 @@ _i2c_wiring_profile = "wozi"  # dev's variant flips which bus carries which sens
 
 
 def configure_i2c_wiring(profile: str) -> None:
-    # Called once, before build_system()-equivalent code constructs i2c0/i2c1, by whatever entry
-    # point wants a non-default wiring (digital_twin/run_dev_integration.py's own main() calls this
-    # with "dev"). Validated eagerly here rather than only inside _wire_i2c_devices() below, so a
-    # typo surfaces immediately at the call site instead of silently NAKing every I2C transaction
-    # later.
+    # Called once before i2c0/i2c1 are constructed, by an entry point wanting a non-default wiring
+    # (run_dev_integration.py's main() passes "dev"). Validated eagerly rather than inside
+    # _wire_i2c_devices(), so a typo surfaces at the call site instead of NAKing every transaction.
     if profile not in ("wozi", "dev"):
         raise ValueError(f"unknown I2C wiring profile {profile!r} - expected 'wozi' or 'dev'")
     global _i2c_wiring_profile
@@ -454,11 +450,9 @@ class _LinkDirection:
 
 
 def attach_crossover_jumper(fake_a: "UART", fake_b: "UART") -> "tuple[UARTLink, LinkPoller, LinkPoller]":
-    # Models the dev bench's permanent GP0<->GP9 / GP1<->GP8 jumper (dev_legacy/README.md). The
-    # twin's dev graph constructs both ends but nothing joins them, so without this it models a dev
-    # board whose jumper is missing, and the link exerciser only ever counts failures. Returns the
-    # bounded pollers for the caller to install on its drivers - a real select.poll() never
-    # re-evaluates a Python object's ioctl() on the Unix port (CLAUDE.md's known CI hang).
+    # Models the dev bench's permanent GP0<->GP9 / GP1<->GP8 jumper (dev_legacy/README.md): the
+    # twin's dev graph builds both ends but joins neither. The returned pollers are bounded, a real
+    # select.poll() never re-evaluating a Python object's ioctl() (CLAUDE.md's known CI hang).
     return UARTLink(fake_a, fake_b), LinkPoller(fake_a), LinkPoller(fake_b)
 
 
@@ -828,12 +822,9 @@ class WDT:
         self.id = id
         self.timeout = timeout
         self.feed_count = 0
-        # Twin-only: real hardware can never be asked "would you have reset by now" - an internal
-        # asyncio-task-scheduled countdown (mirrors Timer's own mechanism above) that tracks time
-        # since the last feed() and records, rather than acts on, a would-have-reset event. No
-        # public "disable" API - real hardware genuinely can't disable an armed WDT either, and this
-        # task dies naturally when its owning asyncio.run() event loop closes, matching Timer's own
-        # cleanup story (see digital_twin/README.md for the full design writeup).
+        # Twin-only: real hardware can never be asked "would you have reset by now". An asyncio
+        # countdown since the last feed() that records rather than acts, with no disable API - a real
+        # armed WDT has none either, and the task dies with its loop (digital_twin/README.md).
         self.would_have_triggered_count = 0
         # feed_count observed at each notification - ad-hoc introspection aid, same shape as
         # I2C.log/SPI.log above (see _LOG_MAXLEN's own comment): grows for the life of the process
@@ -914,11 +905,9 @@ bootloader_count = 0
 
 
 def reset() -> None:
-    # Real machine.reset() never returns - it restarts the whole device. This twin can't do that
-    # (it would just kill the test/Step-5 process), so it raises instead: the counter below still
-    # increments first (useful even though the call "never returns" on real hardware either - a
-    # harness catching the exception can still inspect "how many times did this happen"), then
-    # SimulatedResetError propagates to whatever caller is meant to observe "a reboot happened here".
+    # Real machine.reset() never returns; this twin cannot restart anything, so it raises instead.
+    # The counter increments first, so a harness catching SimulatedResetError can still ask how many
+    # times this happened rather than only that it did.
     global reset_count
     reset_count += 1
     raise SimulatedResetError("machine.reset() called - the twin does not actually restart the process")

@@ -222,14 +222,9 @@ class UART(Lockable):
         self.poller.register(self._uart, select.POLLIN | select.POLLOUT)
 
     def deinit(self) -> bool:
-        # machine.UART.deinit() actually turns off the hardware bus, not just drops the Python
-        # reference - confirmed never to raise itself, unlike poller.unregister() below.
-        # Returns True if the poller was cleanly unregistered (or there was nothing to unregister),
-        # False if unregister() itself raised - this class has no logger of its own (every method
-        # here is a plain sentinel-return, never-raises primitive per the module docstring), so a
-        # caller that wants to log a failed teardown reads this return value with its own logger
-        # once this driver is actually wired in (SPECIFICATION.md Part C.7's silent-failure-masking
-        # convention - previously a bare `pass` with no signal at all, even once a real caller exists).
+        # machine.UART.deinit() turns the hardware bus off and never raises; poller.unregister()
+        # can, and False is returned only in that case - this class has no logger of its own, so the
+        # caller logs a failed teardown with its own (SPECIFICATION.md Part C.7).
         if self._uart is None:
             return True
         ok = True
