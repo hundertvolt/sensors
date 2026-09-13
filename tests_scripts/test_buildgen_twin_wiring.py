@@ -1,4 +1,4 @@
-"""Tests for buildgen.twin_wiring: the digital twin's wiring-plan generator - cross-checks the two real devices' generated plans against digital_twin/machine.py's own hand-maintained `_LEGACY_WIRING_PLANS` (so the two can never silently drift apart), plus shape/JSON-round-trip checks and the two synthetic fixtures (proving generality beyond the 6 real, hand-verified devices, same spirit as test_buildgen_definitions.py)."""
+"""Tests for buildgen.twin_wiring: the digital twin's wiring-plan generator - proves digital_twin/machine.py's `configure_i2c_wiring("wozi"|"dev")` correctly loads and applies the real, freshly-generated plan (no hand-maintained literal exists anymore), plus shape/JSON-round-trip checks and the two synthetic fixtures (proving generality beyond the 6 real, hand-verified devices, same spirit as test_buildgen_definitions.py)."""
 
 import json
 import sys
@@ -37,26 +37,29 @@ def digital_twin_machine(repo_root: Path) -> Any:
         sys.path.remove(digital_twin_dir)
 
 
-def _sort_attachments(plan: "dict[str, Any]") -> "dict[str, Any]":
-    """Normalizes a wiring plan's own bus attachment lists by address, so a real content
-    difference still fails comparison but a cosmetic declaration-order difference does not."""
-    return {
-        "buses": {bus: sorted(attachments, key=lambda a: a["address"]) for bus, attachments in plan["buses"].items()},
-        "spi": plan["spi"],
-    }
-
-
 # ---------------------------------------------------------------------------
-# Cross-check against digital_twin/machine.py's own hand-maintained legacy plans
+# configure_i2c_wiring() actually loads the real, generated plan - not a hand-typed literal
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("device", ["wozi", "dev"])
-def test_generated_plan_matches_machines_own_legacy_plan(repo_root: Path, src_dir: Path, digital_twin_machine: Any, device: str) -> None:
+def test_configure_i2c_wiring_loads_the_real_generated_plan(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, repo_root: Path, src_dir: Path, digital_twin_machine: Any, device: str,
+) -> None:
+    # digital_twin/machine.py's configure_i2c_wiring("wozi"|"dev") reads
+    # build/generated_src/sensortask_<profile>_wiring_plan.json (relative to cwd, matching every
+    # other digital-twin consumer of that file - scripts/_generate_sensortask_modules.py writes it,
+    # scripts/test.sh runs that first). Proves the load-and-apply mechanism end to end against a
+    # throwaway build/generated_src/ under a tmp cwd - self-contained, not dependent on that script
+    # having already run - rather than relying on a hand-maintained literal that could silently drift.
     model = build_model(repo_root / "devices" / f"{device}.toml", src_dir)
-    generated = compute_twin_wiring(model)
-    legacy = digital_twin_machine._LEGACY_WIRING_PLANS[device]
-    assert _sort_attachments(generated) == _sort_attachments(legacy)
+    expected = compute_twin_wiring(model)
+    generated_dir = tmp_path / "build" / "generated_src"
+    generated_dir.mkdir(parents=True)
+    (generated_dir / f"sensortask_{device}_wiring_plan.json").write_text(json.dumps(expected))
+    monkeypatch.chdir(tmp_path)
+    digital_twin_machine.configure_i2c_wiring(device)
+    assert digital_twin_machine._wiring_plan == expected
 
 
 # ---------------------------------------------------------------------------

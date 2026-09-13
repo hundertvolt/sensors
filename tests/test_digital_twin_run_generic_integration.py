@@ -1,5 +1,5 @@
 """Unit tests for digital_twin/run_generic_integration.py: parse_args() (pure), _collect_chips() (the generalized fault/hang chip lookup), _soak() resilience, and one real end-to-end smoke boot (now exercising --soak too, ported from run_wozi_integration.py's own equivalent test - BUILD_CHAIN_PLAN.md's Session 6.2 retired that file and run_dev_integration.py outright in favor of this one, now-fully-capable generic entry point).
-The smoke test reuses the hand-written sensortask_wozi module plus machine's own "wozi" legacy plan (JSON-dumped to a temp file), not a real buildgen-generated module - buildgen needs tomllib/CPython and can't run inside this MicroPython process at all; proving a genuinely *generated* module boots is tests_scripts/test_digital_twin_generated_boot.py's job instead. This file only proves run_generic_integration.py's own generic machinery works, using a well-understood module as the payload."""
+The smoke test reuses the hand-written sensortask_wozi module plus wozi's own build/generated_src/sensortask_wozi_wiring_plan.json (buildgen-generated, same file machine.configure_i2c_wiring("wozi") itself loads), not a real buildgen-generated module - buildgen needs tomllib/CPython and can't run inside this MicroPython process at all; proving a genuinely *generated* module boots is tests_scripts/test_digital_twin_generated_boot.py's job instead. This file only proves run_generic_integration.py's own generic machinery works, using a well-understood module as the payload."""
 
 import asyncio
 import sys
@@ -354,20 +354,9 @@ def test_main_runs_a_tiny_bounded_soak_with_an_injected_fault_and_returns_a_clea
     # false-positive-shaped gc.mem_free() dip). The endpoint-reachability and watchdog signals are
     # meaningful even at this tiny scale, so this only excludes that one specific, scale-sensitive
     # failure message.
-    import json
-    import os
-
-    try:
-        os.mkdir("tests/_tmp")
-    except OSError:
-        pass
-    plan_path = "tests/_tmp/generic_integration_wiring_plan.json"
-    with open(plan_path, "w") as f:
-        json.dump(machine._LEGACY_WIRING_PLANS["wozi"], f)
-
     config = RunConfig(
         "sensortask_wozi",
-        plan_path,
+        "build/generated_src/sensortask_wozi_wiring_plan.json",  # buildgen-generated - see this file's own module docstring
         host="127.0.0.1",
         port=19099,
         fram_state_path=None,
@@ -377,16 +366,10 @@ def test_main_runs_a_tiny_bounded_soak_with_an_injected_fault_and_returns_a_clea
         duration=0.0,
         faults=[("sgp40", "writeto", 2)],
     )
-    try:
-        # _SOAK_WARMUP_CYCLES (40) adds real HTTP round trips ahead of this test's own tiny
-        # soak_cycles - 30s wasn't enough once that warm-up landed (same finding
-        # run_wozi_integration.py's own now-retired identical test already made).
-        summary = run_timed(main(config), timeout_s=60.0)
-    finally:
-        try:
-            os.remove(plan_path)
-        except OSError:
-            pass
+    # _SOAK_WARMUP_CYCLES (40) adds real HTTP round trips ahead of this test's own tiny soak_cycles -
+    # 30s wasn't enough once that warm-up landed (same finding run_wozi_integration.py's own
+    # now-retired identical test already made).
+    summary = run_timed(main(config), timeout_s=60.0)
     non_memory_failures = [f for f in summary["failures"] if "gc.mem_free()" not in f]
     assert non_memory_failures == []
     assert summary["would_have_triggered_count"] == 0

@@ -341,10 +341,14 @@ files directly, independent of `buildgen`'s own validator.
      real RDID reply bytes (`digital_twin/machine.py`'s `_FRAM_RDID_BY_MAX_SIZE`, keyed by size as
      the best available proxy).
    - **`digital_twin/machine.py`**: `configure_wiring(plan)` is the generic entry point;
-     `configure_i2c_wiring("wozi"|"dev")` is now pure sugar over it, fed from a literal
-     `_LEGACY_WIRING_PLANS` table (this module runs under the MicroPython Unix port, which has no
-     `tomllib`, so it can't call `buildgen` directly). `tests_scripts/test_buildgen_twin_wiring.py`
-     cross-checks `compute_twin_wiring()` against that literal table for both real devices.
+     `configure_i2c_wiring("wozi"|"dev")` is now pure sugar over it, lazily loading
+     `build/generated_src/sensortask_<profile>_wiring_plan.json` (`scripts/_generate_sensortask_modules.py`'s
+     own output, itself just `compute_twin_wiring()` run against the real `devices/<profile>.toml` —
+     this module runs under the MicroPython Unix port, which has no `tomllib`, so it can't call
+     `buildgen` directly at runtime, but reading a pre-generated JSON file needs none). No hand-typed
+     literal exists anymore (2026-09-13, replacing the earlier `_LEGACY_WIRING_PLANS` table).
+     `tests_scripts/test_buildgen_twin_wiring.py` proves the load-and-apply mechanism itself is
+     correct for both real devices.
    - **`digital_twin/run_generic_integration.py`** boots any `sensortask_<device>` module against a
      `--wiring-plan` JSON file, resolving it via `__import__(--module)`. `run_wozi_integration.py`/
      `run_dev_integration.py` were retired in Session 6.2 (see below) once this superseded them.

@@ -3,6 +3,7 @@ See `digital_twin/README.md`'s "What's here" section for the full wiring/`Pin`-i
 
 import asyncio
 import errno
+import json
 import time
 from collections import deque
 
@@ -165,36 +166,8 @@ def flush_scd30() -> None:
         _current_scd30_chip.save_state()
 
 
-# The two real devices' own wiring, in configure_wiring()'s own generic shape - kept as plain literal
-# data (this module has no tomllib/buildgen under the MicroPython Unix port); devices/wozi.toml and
-# dev.toml are the real source of truth, cross-checked in tests_scripts/test_buildgen_twin_wiring.py.
-_LEGACY_WIRING_PLANS: "dict[str, dict[str, Any]]" = {
-    "wozi": {
-        "buses": {
-            "i2c0": [{"driver": "scd30", "name_ext": "", "address": 0x61, "irq_pin": 8}],
-            "i2c1": [
-                {"driver": "sgp40", "name_ext": "", "address": 0x59},
-                {"driver": "bmp3xx", "name_ext": "", "address": 0x77},
-            ],
-        },
-        "spi": {"spi0": {"driver": "fram", "name_ext": "", "max_size": 0x2000}},
-    },
-    "dev": {
-        "buses": {
-            "i2c0": [{"driver": "bmp3xx", "name_ext": "", "address": 0x77}],
-            "i2c1": [
-                {"driver": "scd30", "name_ext": "", "address": 0x61, "irq_pin": 11},
-                {"driver": "sgp40", "name_ext": "", "address": 0x59},
-            ],
-        },
-        "spi": {"spi0": {"driver": "fram", "name_ext": "", "max_size": 0x40000}},
-    },
-}
-
-_wiring_plan: "dict[str, Any]" = _LEGACY_WIRING_PLANS["wozi"]  # default for every caller that never
-# calls configure_i2c_wiring()/configure_wiring() at all (e.g.
-# digital_twin/segfault_stress_repro.py's own main(), deliberately kept hardcoded to
-# sensortask_wozi - see that module's own comment).
+_wiring_plan: "dict[str, Any] | None" = None  # None until configure_wiring()/configure_i2c_wiring()
+# runs, or a bus is actually constructed - see _current_wiring_plan() below.
 
 
 def configure_wiring(plan: "dict[str, Any]") -> None:
@@ -211,12 +184,28 @@ def configure_i2c_wiring(profile: str) -> None:
     # Called once, before build_system()-equivalent code constructs i2c0/i2c1, by whatever caller
     # wants a non-default wiring by name - legacy sugar over configure_wiring() kept for tests
     # (digital_twin/README.md), not called by any real entry point since run_generic_integration.py
-    # takes a full wiring-plan dict instead. Validated eagerly here rather than only inside
-    # configure_wiring() above, so a typo surfaces immediately at the call site instead of silently
-    # NAKing every I2C transaction later.
-    if profile not in _LEGACY_WIRING_PLANS:
+    # takes a full wiring-plan dict instead. Loads the profile's own generated
+    # build/generated_src/sensortask_<profile>_wiring_plan.json (scripts/_generate_sensortask_modules.py,
+    # from the real devices/<profile>.toml via buildgen.twin_wiring.compute_twin_wiring()) - never a
+    # hand-typed literal, so devices/wozi.toml and dev.toml stay the only source of truth. Validated
+    # eagerly here rather than only inside configure_wiring() above, so a typo surfaces immediately at
+    # the call site instead of silently NAKing every I2C transaction later.
+    if profile not in ("wozi", "dev"):
         raise ValueError(f"unknown I2C wiring profile {profile!r} - expected 'wozi' or 'dev'")
-    configure_wiring(_LEGACY_WIRING_PLANS[profile])
+    with open(f"build/generated_src/sensortask_{profile}_wiring_plan.json") as f:
+        configure_wiring(json.load(f))
+
+
+def _current_wiring_plan() -> "dict[str, Any]":
+    # Lazily defaults to wozi's own generated plan the first time any caller constructs a bus without
+    # ever calling configure_wiring()/configure_i2c_wiring() first (e.g.
+    # digital_twin/segfault_stress_repro.py's own main(), deliberately kept hardcoded to
+    # sensortask_wozi - see that module's own comment) - matches the old eager "default to wozi"
+    # behavior exactly, just loaded on first use instead of at import time (this file must stay
+    # importable even before build/generated_src/ exists, e.g. under a plain CPython cross-check).
+    if _wiring_plan is None:
+        configure_i2c_wiring("wozi")
+    return _wiring_plan  # type: ignore[return-value]  # configure_i2c_wiring() above always sets it
 
 
 def _build_i2c_chip(attachment: "dict[str, Any]") -> "Any":
@@ -244,7 +233,7 @@ def _build_i2c_chip(attachment: "dict[str, Any]") -> "Any":
 
 
 def _wire_i2c_devices(bus_id: int) -> "dict[int, Any]":
-    return {attachment["address"]: _build_i2c_chip(attachment) for attachment in _wiring_plan["buses"].get(f"i2c{bus_id}", [])}
+    return {attachment["address"]: _build_i2c_chip(attachment) for attachment in _current_wiring_plan()["buses"].get(f"i2c{bus_id}", [])}
 
 
 class I2C:
@@ -333,7 +322,7 @@ _FRAM_RDID_BY_MAX_SIZE: "dict[int, bytes]" = {_DEV_FRAM_SIZE: _DEV_FRAM_RDID}
 
 def _wire_spi_device(bus_id: int) -> "FramChip | None":
     global _current_fram_chip
-    attachment = _wiring_plan["spi"].get(f"spi{bus_id}")
+    attachment = _current_wiring_plan()["spi"].get(f"spi{bus_id}")
     if attachment is None:
         return None
     from _fram_chip import FramChip

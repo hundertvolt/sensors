@@ -23,9 +23,11 @@ Kept completely separate so nothing here can accidentally affect the determinist
   (`configure_wiring(plan)`, called once before any bus is constructed — a plain
   `{"buses": {...}, "spi": {...}}` dict in the exact shape `buildgen.twin_wiring.compute_twin_wiring()`
   produces from a device's own TOML/`DeviceModel`, see "Booting a generated device" below).
-  `configure_i2c_wiring("wozi" | "dev")` still exists as pure sugar over two literal plans kept in
-  `machine._LEGACY_WIRING_PLANS` (default `"wozi"` if neither is ever called, so every caller that
-  predates `configure_wiring()` keeps its exact prior behavior unchanged): `"wozi"` mirrors
+  `configure_i2c_wiring("wozi" | "dev")` still exists as pure sugar over it, lazily loading
+  `build/generated_src/sensortask_<profile>_wiring_plan.json` (buildgen-generated, no hand-typed
+  literal — default `"wozi"` if neither `configure_wiring()`/`configure_i2c_wiring()` is ever called,
+  so every caller that predates `configure_wiring()` keeps its exact prior behavior unchanged):
+  `"wozi"` mirrors
   `sensortask_wozi.build_system()`'s own construction (`I2C(0, ...)` carries the SCD30 at `0x61`,
   `I2C(1, ...)` carries the SGP40 at `0x59` and BMP3xx at `0x77`), `"dev"` mirrors
   `sensortask_dev.build_system()`'s own reversed layout instead (`I2C(0, ...)` carries the BMP3xx at
@@ -567,10 +569,10 @@ started with. For a new **I2C** sensor this is a small, mechanical addition:
    generic and needs no per-chip code; see "Booting a generated device" above). If the chip's real
    I2C address is hardwired (no TOML `address` field — `buildgen.buildspec.FIXED_ADDRESS_DRIVERS`),
    add it to `buildgen/twin_wiring.py`'s own `FIXED_ADDRESSES` table too, matching the real driver's
-   own hardcoded default address. If it lands on `machine.py`'s two hardcoded legacy "wozi"/"dev"
-   profiles as well (a real driver promoted for one of those two devices specifically), add the
-   matching entry to `_LEGACY_WIRING_PLANS` too — cross-check `devices/wozi.toml`'s/
-   `devices/dev.toml`'s own fields for the real pin/address assignment.
+   own hardcoded default address. Nothing else to wire by hand for `"wozi"`/`"dev"`:
+   `configure_i2c_wiring()` loads its plan from `devices/wozi.toml`/`dev.toml` via generation, so a
+   driver promoted for either device is picked up automatically the next time
+   `scripts/_generate_sensortask_modules.py` runs.
 3. Add `tests/test_digital_twin_<name>.py` — deterministic unit tests of the chip fake in isolation
    (no real `machine.I2C` involved, matching every existing `tests/test_digital_twin_{sgp40,scd30,
    bmp3xx}.py`) — then extend `tests/test_digital_twin_machine.py`'s own dispatch tests if the new
