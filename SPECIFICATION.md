@@ -3673,6 +3673,19 @@ FPU split is the one that matters for BSEC, which is float-heavy:
 | **ESP32-S3** | Xtensa LX7, dual 240 MHz | **Yes** | native USB + **built-in JTAG** | 512 kB SRAM; 8 MB flash (no PSRAM) or 4 MB + 2 MB PSRAM. BLE only |
 | **ESP32-C3** | RISC-V, single 160 MHz | **No** | native | ~2× slower FP again than S2 |
 
+**One further differentiator that matters on a 14-pin board: UART pin freedom.** The ESP32-S3 has
+three UART controllers routable to **any** GPIO through the GPIO matrix (IOMUX direct where the pin
+happens to match, matrix otherwise). The SAMD21's SERCOM mux constrains TX to pad 0 or pad 2 of the
+chosen SERCOM, so a second UART alongside I2C and the debug port is a pinout puzzle rather than a
+configuration line. This project needs exactly that combination - STEMMA QT I2C for the BME688, a
+protocol UART, and USB CDC for debug.
+
+**Recommended SKU if the move happens: QT Py ESP32-S3, 8 MB flash / no PSRAM** (chip marking
+`FN8C0`; the 4 MB + 2 MB PSRAM part is `FH4R2`). Both carry the same 512 kB internal SRAM and an
+**identical pinout**, so PSRAM costs no pins - it simply buys nothing here, since BSEC's ~3.9 kB BSS
+and this firmware's buffers sit far inside 512 kB, while the larger flash is the half that is
+actually useful (BSEC config blobs, partition headroom, a future OTA slot).
+
 **Where the SAMD21 sits on the float axis: almost certainly last of the five, by inference rather
 than measurement.** It combines the no-FPU penalty with a 48 MHz clock (3.3× below the C3, 5× below
 the S3) and a Cortex-M0+ core that has no hardware divide and only a Thumb-1-class instruction set,
