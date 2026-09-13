@@ -328,7 +328,14 @@ class Isl29125Chip:
             # also clears them could not be measured (the threshold re-armed faster than the probe
             # could re-check) - clearing is the reading p12's "the 8-bit transfer" wording supports,
             # and the driver only ever reads 0x08 on its own, so nothing depends on the choice.
+            if self._status & _STATUS_RGBTHF:
+                # The persistence counter restarts when the flag is CLEARED, not on every status
+                # read - measured 2026-09-13 (SPECIFICATION.md Part C.11.1.2). Resetting it here
+                # unconditionally is what a read cadence FASTER than PRST x one cycle turns into a
+                # permanently dead interrupt: at the driver's own defaults (PRST = 4, ~303ms per
+                # cycle, one status read per second) the count would be knocked back to 0 at every
+                # read and never reach 4, while real silicon asserts every other second.
+                self._prst_count = 0
             self._status &= ~(_STATUS_RGBTHF | _STATUS_CONVENF | _STATUS_BOUTF)
-            self._prst_count = 0
             self._release_int()
         return reply

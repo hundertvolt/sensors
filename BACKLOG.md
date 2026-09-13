@@ -250,24 +250,45 @@ constraints.
 17. **Five cross-file consistency findings from the ISL29125 promotion's bird's-eye `src/` scan
     (CLAUDE.md: reported, not fixed — 2026-09-12).** None is a bug; each is a place two files
     answer the same question differently, and each needs a decision rather than a drive-by edit.
+    **A recommendation was added to each on 2026-09-13**; all five still need the owner's yes/no,
+    and four of them would touch drivers this branch otherwise leaves alone.
     - **`FiltCoeff` means two different things.** In `asy_bmp3xx_driver.py` it is the BMP3xx's
       on-chip IIR register — a discrete `int` from `_IIR_SETTINGS` (0…127). In
       `asy_isl29125_driver.py` it is a software EMA coefficient — a `float` in -1.0…1.0 with -1.0
       meaning off. Same field name, same `/sensors` endpoint, different type and different
       meaning. No wire collision (the sensor group namespaces it), and both names are locally
       the natural one. Options: leave it, or give one of them a distinguishing name.
+      **Recommendation: leave it.** Renaming the BMP3xx field is a config-schema migration on
+      already-deployed units — open question 2's own data-loss risk, for a purely cosmetic gain;
+      renaming the ISL one makes the newer driver the odd one out. Both fields carry their own
+      `description` in `html/definitions/<device>.json`, which is where a user actually meets them.
     - **Four names for two trigger-event roles.** `asy_bmp3xx_driver.py`/`asy_sgp40_driver.py` use
       `trigger_event`; `asy_scd30_driver.py` uses `start_trigger_event` + `irq_trigger_event`;
       `asy_isl29125_driver.py` uses `base_trigger_event` + `read_event`, and its own comment says
       it matches SCD30's shape — which it does structurally, not by name.
+      **Recommendation: if one is chosen, it should be the ISL29125 pair** — `base_trigger_event`
+      for the 1 s divider input and `read_event` for "go and read now", which are the only two
+      roles any of the four drivers has, and the only naming that says which is which. A pure
+      rename with no behaviour attached, but it touches three drivers and their tests.
     - **`from asyncio import ThreadSafeFlag` appears in exactly one file** (`asy_scd30_driver.py`);
       every other file in `src/` writes `asyncio.ThreadSafeFlag`. Pre-existing, not ISL-introduced.
+      **Recommendation: change the one file.** Four lines in `asy_scd30_driver.py`, no behavioural
+      risk whatsoever, and the cheapest of the five to settle.
     - **`_N_*_CFG` constants group on two different axes.** BMP3xx and ISL29125 group by type
       (`_N_INT_CFG`/`_N_FLOAT_CFG`/`_N_BOOL_CFG`); SGP40 groups by purpose (`_N_SETUP_CFG`/
       `_N_STORAGE_CFG`).
+      **Recommendation: close this as "both, and the rule is whichever axis separates them".** It
+      resolved itself on 2026-09-13: narrowing `_store_isl()`'s config read to `FiltCoeff` alone
+      gave the ISL29125 two float batches, and no type-based name can tell two float batches
+      apart — hence `_N_STORE_CFG` beside `_N_FLOAT_CFG`, which is exactly SGP40's own reasoning.
+      Type when type separates them, purpose when it does not.
     - **Return-annotation quoting is mixed project-wide**, and most files use both forms. Twenty
       files carry quoted subscripted return annotations, eleven carry unquoted ones. MicroPython
       never evaluates annotations, so both are safe; there is simply no stated convention.
+      **Recommendation: state the rule, do not mass-edit.** The one that matches what the code
+      already mostly does, and the only one with a reason behind it: quote an annotation that
+      names a `TYPE_CHECKING`-only import, leave the rest bare. A sentence in SPECIFICATION.md
+      Part D costs nothing; touching 31 files to enforce it buys nothing.
     Separately, and already known: `SGPResetVOC` and now `ISLResetCal` are the only two config
     fields in `src/` carrying a device prefix (open question raised in the promotion plan §8.2,
     whose own prose says the ISL field does *not* carry one while its §8.3 schema table names it
@@ -291,40 +312,27 @@ constraints.
     unconditionally, so no production behaviour depends on the answer; it decides only whether the
     fake's `__init__` should keep starting at `_STATUS_POR`.
 
-19. **The ISL29125 NeoPixel auto-range sweep cannot pass as written** — and is now largely
-    *superseded*: the project owner's priority (2026-09-12) is proving the module's mechanisms work
-    under all conditions, not absolute calibration, and
-    `test_isl29125_mechanisms_hold_across_the_whole_illumination_envelope` does exactly that and
-    passes on real hardware. What the sweep still uniquely covers is gain-ratio **convergence and
-    cross-range continuity**, which is the calibration half and is explicitly deprioritised — see
-    item 20 for why a single scalar ratio may be the wrong model anyway. Detail kept below for
-    whenever that is picked up. (found 2026-09-12, first real
-    run of `test_isl29125_autorange_sweep_driven_by_the_boards_own_neopixel`). **The driver is not
-    at fault** — a logged diagnostic run shows it dropping to the 375 lx range at ambient and
-    returning to 10000 lx under the LED, exactly as designed. Two rig/test-design problems:
-    - **The ramp crosses the switch point far too fast.** `request_signal(255, 255, 255, 24.0)`
-      ramps LED *level* linearly, but the whole 0-375 lx band is the bottom ~14% of a ramp that
-      peaks near 2645 lx at this geometry — traversed in about two samples at `SampleInterv = 1`.
-      Consecutive samples measured 39.9 → 373.8 → 1492.9 lx, so `MAX_TRANSITION_STEP = 0.15` is
-      asking the light to hold still where it is moving fastest. A **staircase** (set a level, wait
-      out the settle, sample; step again), with levels concentrated around the switch point, makes
-      continuity a meaningful measurement instead of a race.
-    - **Sweeps 0 and 1 never used the low range at all**, because the script starts the first ramp
-      immediately after `start_asy_read()`, while the driver is still on its configured 10000 lx
-      default — it needs a pre-ramp ambient hold (~3 s was enough in the diagnostic) to settle onto
-      375 lx first. The `lit = lux > 20.0` filter also admits *ambient-dominated* samples, whose hue
-      is genuinely a different light source, which is most of the measured 30.9° hue spread.
-    Both are changes to the test rather than to `src/`, so they are **not** made unilaterally.
-    **The rig itself is fine and needs no physical change**: the fix is to drive the NeoPixel
-    properly. `request_signal()` takes a per-channel peak of 0-255, not just full white, and a
-    peak near the switch point (measured: `(55, 55, 55)` peaks around 1970 lx here) keeps the whole
-    ramp in the band that matters instead of spending ~86% of it above the switch. `t` may run to
-    60 s through the REST schema (`lightCmdLED`'s own `_FIELD_LED_T` bound) and is unbounded when
-    `request_signal()` is called on the instance directly. `pixel.off()` parks the overlay so the
-    WiFi/air-quality signalling cannot compete, and `pixel.on()` with `led_overl_bri` gives a
-    genuinely STEADY white at any 0-255 level — which is the only way to measure cross-range
-    continuity honestly, since a moving ramp confounds the gain step with the light's own rise
-    (measured at ~22%/s through the switch point, against a 15% tolerance).
+19. **The ISL29125 NeoPixel auto-range sweep — CLOSED (2026-09-13), the script is retired.** It
+    could not pass as written, was re-run one last time to confirm exactly why, and its one piece
+    of unique coverage has been moved somewhere it can actually be measured.
+
+    The final run's findings were precisely the two predicted rig/test-design faults, and nothing
+    else: sweeps 0 and 1 never touched the low range at all (no dark pre-roll, so the driver stayed
+    on its configured 10000 lx default for the whole window), and the continuity check compared two
+    samples straddling a transition where the *light itself* had moved 1.07 → 348.46 lux between
+    them — it was measuring the LED's slew rate, not the driver's gain step. The third blocker, the
+    gain-ratio convergence assertion, turned out to be a real driver defect rather than a test one
+    and is fixed (the hourly relearn rate limit was also gating the FIRST measurement, so a fresh
+    unit — and `ISLResetCal`, whose whole point is to relearn — could not calibrate for an hour).
+
+    **What replaced it.** Cross-range continuity is now measured inside
+    `isl29125_mechanism_envelope.py`, which was already the staircase the sweep should have been:
+    one stationary light at a level inside the overlap band, read on each range in turn with
+    `RangeAuto` off. Two settled holds have none of the ramp's confound. Measured on this rig:
+    132.50 lx on the 375 range against 147.76 lx on the 10000 range, an 11.5% step, bounded at 25%
+    (a relative bound on the correction being applied at all, not a calibration claim — item 20
+    owns the accuracy question). The same run now also reports the ratio the driver learned before
+    `ISLResetCal` discards it, so every envelope run is one more data point for item 20.
 
 20. **The ISL29125's range ratio is not a constant — it varies ~28 → ~22 with signal level**
     (measured 2026-09-12, static light, protocol layer only, `_settled()` discarding the stale
@@ -358,9 +366,17 @@ constraints.
     Correcting my earlier note in this session: **28.16 is not "this unit's gain ratio"**, it is
     its ratio at ambient light level only.
 
+    **A third, independent data point (2026-09-13)**, from the envelope test's new continuity
+    measurement: one stationary light at ~140 lx read 132.50 lx pinned to the 375 range and
+    147.76 lx pinned to the 10000 range. That 11.5% step implies a true ratio of ~23.9 at this
+    level, against the nominal 26.67 — sitting exactly where the level-dependence above predicts,
+    between the ~28 at ambient and the ~22 near full scale.
+
     Open question for the owner: is one scalar the right model, or should the ratio be learned/
     applied as a function of level (or simply pinned to the overlap band and documented as such)?
-    One unit, one geometry, one session — worth reproducing on a second board before acting.
+    One unit, one geometry — worth reproducing on a second board before acting. Note the learning
+    itself now actually runs (see item 19), so a long bench soak would produce real convergence
+    data where before it could only ever have reported the nominal value.
 
 21. **The ISL29125 flash-tier tests need this branch's firmware flashed** (2026-09-12; the
     BOUTF reason for deferring it is gone as of 2026-09-13, open question 18 being closed). Five ISL device scripts import `asy_isl29125_driver`, which is **not**
@@ -374,10 +390,13 @@ constraints.
     **Why it was not simply flashed**: this branch's firmware calls `ISL29125_I2C.setup()` at every
     boot, which clears `BOUTF` — foreclosing open question 18 for good. The pre-ISL firmware
     currently on the board never touches the part, which is the only state in which 18 can still be
-    answered. **To close both**: power-cycle the board and run
-    `device_scripts/isl29125_mock_conformance_probe.py` first (its `B01` key is the very first
-    status read), then flash `uv run scripts/build_firmware.py dev` and run the whole flash tier
-    with `--allow-neopixel-sweep`. The uf2 is already built at `build/firmware-dev-isl.uf2`.
+    answered. Both are now closed: the board was power-cycled, 18 was settled, and
+    `build/firmware-dev-isl.uf2` was flashed. **What is still outstanding is one reflash**: the
+    2026-09-13 driver changes (SPECIFICATION.md Parts C.11.1.2/C.11.1.3 and the gain-learn fix)
+    were validated over `mpremote mount` with `asy_isl29125_driver.mpy` cross-compiled to the
+    board, not frozen — so `harness.Board.run_isolated()`, which does not mount, still runs the
+    older frozen driver. Rebuild with `uv run scripts/build_firmware.py dev` and reflash before
+    the next full flash-tier run, or the tier tests a driver this branch no longer ships.
     Note `mpremote mount` also needs care: the board's production watchdog stays armed across a
     raw-REPL interrupt, so the mount handshake plus a slow import can trip the 8 s ceiling — chain
     `exec "import machine; machine.WDT(timeout=8000)"` before `mount` to refresh it first.
@@ -388,12 +407,22 @@ constraints.
     - `test_the_isl29125_mock_answers_the_bus_exactly_as_the_real_chip_does` — 36/36 protocol keys
       match between the real part and the twin fake (Part C.11.1 for what the first run found).
     - `test_isl29125_mechanisms_hold_across_the_whole_illumination_envelope` — ascending and
-      descending steady levels, 39 → 8928 lx; both ranges; 2 switches across a full up-and-down;
-      fixed-range pinning; 12-bit vs 16-bit agreeing to 0.4% on one static scene; `ISLResetCal`;
-      `W14` firing at hard saturation; **no `W15`**, which proves the INT line is carrying the
-      range decisions rather than the periodic fallback silently covering for a dead interrupt.
-    - `test_isl29125_survives_recombined_realistic_lighting_scenarios` — 10 scenarios, 520 samples,
-      1.0-8930 lx, zero errors and zero coherence violations.
+      descending steady levels, 1.1 → 8829 lx; both ranges; 2 switches across a full up-and-down;
+      fixed-range pinning; 12-bit vs 16-bit agreeing to 0.6% on one static scene; cross-range
+      continuity at 11.5% (item 19); `ISLResetCal`; `W14` firing at hard saturation.
+    - `test_isl29125_survives_recombined_realistic_lighting_scenarios` — 10 scenarios, ~520
+      samples, 1.1-8829 lx, 26 range switches, zero errors and zero coherence violations, and
+      **no `W15`/`W17` with enough switches for either to have fired** — which is what actually
+      proves the INT line is carrying the range decisions rather than the periodic fallback
+      silently covering for a dead interrupt.
+
+    **Corrected 2026-09-13**: the envelope test's own "no `W15`" was claimed as that proof and is
+    not — the warning needs five periodic-only decisions in a row and that run makes two switches
+    in total, so it could not have fired however dead the line was. Checked where it *could* fire,
+    `W15` promptly did, and the cause was a real defect (`AutoRangePersist` outlasting
+    `SampleInterv`, SPECIFICATION.md Part C.11.1.3). The scenario test now asserts a minimum switch
+    count alongside the warning check, so the claim above is load-bearing rather than vacuous —
+    the same habit item 23 records.
     Also confirmed directly: device ID `0x7D`, the real falling-edge INT fast path beating a 30 s
     periodic fallback by 0.61 s, `PRST` counting whole RGB cycles (1066 ms at PRST=4), the
     `CONFIG1`-write conversion restart, 12-bit data being right-aligned, and both concurrency
@@ -405,8 +434,10 @@ constraints.
     - `isl29125_real_irq_edge.py` assumed a scene near a range boundary. A latched-white NeoPixel
       (~2000 lx) is static and mid-band, crosses no threshold, and so produces no threshold
       interrupt — correct driver behaviour, failing test. **Fixed**: the script parks the pixel.
-    - `isl29125_autorange_sweep.py` assumes the LED ramp crosses the switch point slowly enough to
-      sample; it does not (item 19).
+    - `isl29125_autorange_sweep.py` assumed the LED ramp crossed the switch point slowly enough to
+      sample; it did not, and the script is retired (item 19).
+    - the envelope script's `W15` check sat below the threshold at which the warning can fire, so
+      it read as a proof and was one (item 22). A ceiling with no matching floor, again.
     - the first `isl29125_lighting_scenarios.py` oscillation scenario put both its levels inside
       the hysteresis band and passed with `switches=0` (item 22's own note).
     - `isl29125_plausibility_read.py` depended on ambient, so its result depended on **test

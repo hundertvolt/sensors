@@ -162,7 +162,7 @@ Test files are not in this count — they are §6.
 (The 13 pushes, 13 setters and 5 getters are specified as three tables in §4.3 rather than 31
 near-identical blocks — they differ only in the field they carry and the `errno` they log.)
 
-### 1.4 `src/asy_isl29125_driver.py` — `ISL29125_DeviceSession` (1) and `ISL29125_I2C` (15 new)
+### 1.4 `src/asy_isl29125_driver.py` — `ISL29125_DeviceSession` (1) and `ISL29125_I2C` (17 new)
 
 | # | Function |
 |---|---|
@@ -171,7 +171,7 @@ near-identical blocks — they differ only in the field they carry and the `errn
 | P2 | `setup()` |
 | P3 | `reset()` |
 | P4 | `_read_byte(register)` |
-| P5 | `_encode_shadow()` |
+| P5 | `encode_shadow()` — public, not `_`-private: `_check_divergence()` compares it against the chip's own bytes from outside this class |
 | P6 | `_write_shadow(first_register)` |
 | P7 | `configure(**fields)` |
 | P8 | `set_thresholds(low_counts, high_counts)` |
@@ -182,6 +182,8 @@ near-identical blocks — they differ only in the field they carry and the `errn
 | P13 | `get_device_id()` |
 | P14 | `time_to_settle_ms()` |
 | P15 | `cycle_ms()` |
+| P16 | `resolution_bits()` |
+| P17 | `persist_window_ms()` — `AutoRangePersist` × `cycle_ms()`, the earliest the chip can raise `RGBTHF` (SPECIFICATION.md Part C.11.1.3) |
 
 ### 1.5 Everything outside the driver
 
@@ -202,7 +204,7 @@ near-identical blocks — they differ only in the field they carry and the `errn
 the nesting) and q6 (where rounding happens); the project owner has answered both — keep the
 nesting, and rounding is the `decimals` hint — so W1-W5 are required work and every one of them
 carries the usual obligation of an entry in §4 and a `●` in §6.9.
-| H1-H4 | `_main()` in four `tests_hardware/device_scripts/` files | real hardware | new ×4 |
+| H1-H7 | `_main()` in seven `tests_hardware/device_scripts/` files | real hardware | new ×7 |
 
 ---
 
@@ -255,9 +257,10 @@ holds "the user asked for auto", only the `RNG` bit that is its consequence.
 | 11 | No stored gain ratio found at init; nominal 26.67 in use | Expected on a fresh unit; SGP40's `wrnno=10` "No backup found!" is the exact precedent |
 | 12 | Stored gain ratio present but has no timestamp, or is older than the configured age | SGP40 `wrnno` 11/12 |
 | 13 | A learned ratio was outside the plausible band and rejected | Calibration declined to move; measurement unaffected |
-| 14 | All three channels clipped while already on the high range | The scene genuinely exceeds the part; nothing the driver can do, but the consumer must know |
-| 15 | The periodic path made a range decision the INT path should have made first, N times running | **Requirement 17's silent-failure detector** — this is what turns "the interrupt is dead" from invisible into visible |
+| 14 | **Any** channel clipped while already on the high range | The scene genuinely exceeds the part; nothing the driver can do, but the consumer must know. Any, not all: the output is a colour triple, so one clipped channel already destroys Hue/Sat/CCT (F6) |
+| 15 | The periodic path made a range decision the INT path should have made first, N times running | **Requirement 17's silent-failure detector** — this is what turns "the interrupt is dead" from invisible into visible. "Interrupt-led" needs the **pin edge** as well as `RGBTHF`: the flag is raised by the chip, so it is set just the same when the line itself is open (SPECIFICATION.md Part C.11.1.3) |
 | 16 | The paired gain-ratio reading came back clipped on the other range | The pair measures the clamp, not the part, and its apparent ratio can land inside the plausibility band — see §9.5 |
+| 17 | The same five-in-a-row as 15, but with `AutoRangePersist` × one RGB cycle ≥ `SampleInterv` | Not a fault at all: the chip cannot raise `RGBTHF` before that window has passed, so a shorter sample interval means the periodic path wins by arithmetic. A separate number because 15 would send someone looking for a wiring problem (SPECIFICATION.md Part C.11.1.3) |
 
 `wrnno=15` is new in this document. Requirement 17 makes the periodic evaluation a safety net; it
 says nothing about *noticing* that the net is carrying the load. A counter that increments when
@@ -934,7 +937,8 @@ reported sample was taken on, not the one currently programmed.
 - **Purpose**: turn the narrow results tuple into the ten-field measurement namedtuple, applying
   the derived maths and the output filter.
 - **Functionality**: bail out unchanged if any element is `None` (all three drivers open this way);
-  read the float config batch (`FiltCoeff`) → `errno=14` on failure, falling back to the schema
+  read the float config batch — **`FiltCoeff` alone**, the other three floats being auto-range
+  policy already cached on the reader — → `errno=14` on failure, falling back to the schema
   defaults rather than returning; convert each channel with `_counts_to_lux()` **using the
   sample's own range from the results tuple, never `self._active_range`**; normalise RGB to
   0-1 **over the whole auto-range span — 10 000 lux — when `RangeAuto` is true, and over the

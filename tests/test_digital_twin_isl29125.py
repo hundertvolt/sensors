@@ -328,6 +328,45 @@ def test_persistence_restarts_when_the_reading_comes_back_inside_the_window() ->
         assert pin.edges == []
 
 
+def test_a_status_read_that_finds_the_flag_clear_leaves_the_persistence_counter_running() -> None:
+    # Measured on real silicon 2026-09-13 (SPECIFICATION.md Part C.11.1.2): the persistence
+    # counter restarts when RGBTHF is CLEARED, not on every status read. The difference is not
+    # academic - the driver reads 0x08 once per sample, and at its own defaults (PRST = 4,
+    # ~303ms per cycle, SampleInterv = 1s) a read that reset the count unconditionally would knock
+    # it back to 0 before it ever reached 4, leaving the hardware fast path permanently dead in
+    # the twin while real silicon asserts every other second.
+    pin = _RecordingPin()
+    chip = make_chip(int_pin=pin, dark_counts=0)
+    configure(chip, _MODE_RGB, 0x00, _INTSEL_GREEN | 0x08)  # PRST[1:0] = 10 -> 4 cycles
+    chip.handle_writeto_mem(_ADDR_THRESH, bytes([0x00, 0x00, 0x00, 0x10]))
+    for _ in range(3):
+        chip.set_illumination(187.5)
+        assert chip.handle_readfrom_mem(_ADDR_STATUS, 1)[0] & 0x01 == 0  # a read that clears nothing
+    chip.set_illumination(187.5)  # the fourth consecutive out-of-window cycle, reads notwithstanding
+    assert pin.edges == [0]
+    assert chip.handle_readfrom_mem(_ADDR_STATUS, 1)[0] & 0x01 == 1
+
+
+def test_the_clearing_status_read_is_what_restarts_the_persistence_counter() -> None:
+    # The other half of the same measured rule: once the flag has actually been cleared, the part
+    # needs another full PRST cycles before it asserts again - it does not re-raise on the very
+    # next conversion just because the light is still outside the window.
+    pin = _RecordingPin()
+    chip = make_chip(int_pin=pin, dark_counts=0)
+    configure(chip, _MODE_RGB, 0x00, _INTSEL_GREEN | 0x08)
+    chip.handle_writeto_mem(_ADDR_THRESH, bytes([0x00, 0x00, 0x00, 0x10]))
+    for _ in range(4):
+        chip.set_illumination(187.5)
+    assert pin.edges == [0]
+    chip.handle_readfrom_mem(_ADDR_STATUS, 1)  # clears RGBTHF and releases the line
+    assert pin.edges == [0, 1]
+    for _ in range(3):
+        chip.set_illumination(187.5)
+        assert pin.edges == [0, 1], "the counter has to start again from the clear, not from where it was"
+    chip.set_illumination(187.5)
+    assert pin.edges == [0, 1, 0]
+
+
 def test_the_int_stuck_high_fault_suppresses_the_edge_while_data_keeps_moving() -> None:
     # Requirement 17's failure mode, and the only thing in this package that can produce it: the
     # bus keeps working, the flag still sets, and the line simply never moves.

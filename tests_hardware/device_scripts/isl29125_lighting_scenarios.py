@@ -32,7 +32,7 @@ _PIN_PIXEL = 18
 # INSIDE the hysteresis band and cannot force a switch in either direction.
 _BAND_BELOW = 1  # comfortably under the falling edge
 _BAND_ABOVE = 12  # comfortably over the rising edge
-_SWITCH_HOLD_S = 8.0  # AutoRangePersist=4 cycles + settle + a 1s sample interval, with margin
+_SWITCH_HOLD_S = 8.0  # AutoRangePersist=2 cycles + settle + a 1s sample interval, with margin
 _STEP_MS = 100  # light-program update period; a "step" shape lands inside one of these
 _SAMPLE_MS = 300  # reader polling; the reader itself produces a fresh sample about once a second
 _SETTLE_S = 4.0
@@ -67,6 +67,7 @@ class Rig:
         self.rgb = (0, 0, 0)
         self.samples = 0
         self.switches = 0
+        self.total_switches = 0  # across every scenario - reset_scenario() deliberately leaves it alone
         self.ranges_used: list[int] = []
         self.last_range: int | None = None
         self.last_ts: object = None
@@ -117,6 +118,7 @@ class Rig:
             self.ranges_used.append(data.RangeAct)
         if self.last_range is not None and data.RangeAct != self.last_range:
             self.switches += 1
+            self.total_switches += 1
         self.last_range = data.RangeAct
 
 
@@ -169,6 +171,10 @@ async def _run_scenario(rig: Rig, spec: "tuple[str, list[tuple[str, tuple[int, i
     entries = _log_entries(await rig.reader.get_error_counter())
     errors = [pair for pair in entries if pair[0] == "E"]
     check(not errors, f"{name}: the module logged real ERRORS: {errors}")
+    # W15 is the driver's own dead-interrupt detector: five range decisions in a row made by the
+    # periodic safety net with no preceding threshold interrupt. It only means something once
+    # enough switches have happened for it to be reachable, which _main() checks at the end.
+    check(("W", 15) not in entries, f"{name}: W15 logged - five range decisions running came from the PERIODIC path, so the interrupt is not carrying them")
     check(rig.samples >= 3, f"{name}: only {rig.samples} samples arrived - the read chain stalled")
     check(rig.max_gap_ms <= int(_MAX_SAMPLE_GAP_S * 1000), f"{name}: {rig.max_gap_ms}ms between samples - the read chain stalled mid-scenario")
     check(rig.switches <= max_switches, f"{name}: {rig.switches} range switches (limit {max_switches}) - chattering")
@@ -201,7 +207,7 @@ def _scenarios() -> "list[tuple[str, list[tuple[str, tuple[int, int, int], tuple
     Levels are chosen against the MEASURED hysteresis band on this rig (tests_hardware/README.md):
     the low range holds up to level 6 rising, the high range down to level 3 falling, so levels
     2..8 are inside the band and only a level <= 1 or >= 8 can force a switch. Holds that must
-    produce a switch are >= _SWITCH_HOLD_S, because AutoRangePersist=4 cycles plus the settle plus
+    produce a switch are >= _SWITCH_HOLD_S, because AutoRangePersist=2 cycles plus the settle plus
     a 1s sample interval is the real latency of a decision.
     """
     dark, below, inside, full = (0, 0, 0), 1, 5, 255
@@ -283,7 +289,7 @@ async def _main() -> None:
     reader.cfgmgr._cache = {
         "SampleInterv": 1, "Resolution": 16, "RangeAuto": True, "Range": 10000,
         "AutoRangeUp": 85.0, "AutoRangeDown": 1.5, "AutoRangeSettle": 1,
-        "AutoRangePersist": 4, "AutoRangeDwell": 0.0,
+        "AutoRangePersist": 2, "AutoRangeDwell": 0.0,
         "IrCompOffset": 0, "IrCompAdjust": 40, "FiltCoeff": -1.0,
     }
     reader.start_timer()
@@ -302,7 +308,11 @@ async def _main() -> None:
             await _baseline(rig, spec[0], reference)
         # Collectively the scenarios must have covered a real dynamic range, not one corner of it.
         check(span_hi > span_lo * 100.0, f"the scenario set only spanned {span_lo:.1f}..{span_hi:.1f} lux - the brightness range was not really covered")
-        notes.append(f"combined span across every scenario: {span_lo:.1f}..{span_hi:.1f} lux")
+        # Without this the per-scenario W15 checks above prove nothing: the warning needs five
+        # consecutive periodic-only decisions, so a run with four switches in total could not have
+        # produced it however dead the interrupt line was.
+        check(rig.total_switches >= 5, f"only {rig.total_switches} range switches across the whole run - too few for the W15 dead-interrupt check above to be able to fire at all")
+        notes.append(f"combined span across every scenario: {span_lo:.1f}..{span_hi:.1f} lux, {rig.total_switches} range switches in total")
     finally:
         pixel[0] = (0, 0, 0)
         pixel.write()

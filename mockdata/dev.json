@@ -21,7 +21,7 @@
         "ISL29125": {
             "SampleInterv": 5, "Resolution": 16, "RangeAuto": true, "Range": 10000,
             "AutoRangeUp": 85.0, "AutoRangeDown": 1.5, "AutoRangeSettle": 1,
-            "AutoRangePersist": 4, "AutoRangeDwell": 10.0,
+            "AutoRangePersist": 2, "AutoRangeDwell": 10.0,
             "IrCompOffset": 0, "IrCompAdjust": 40, "FiltCoeff": -1.0, "ISLResetCal": false
         }
     },

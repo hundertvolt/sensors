@@ -270,12 +270,14 @@ def test_a_real_threshold_crossing_drives_the_interrupt_line_into_the_read_event
     assert reader._active_range == _RANGE_HIGH_LUX  # so the armed threshold is the DOWN crossing
 
     async def scenario() -> "tuple[bool, int]":
-        # Four conversions with no driver read in between: AutoRangePersist defaults to 4, so the
+        # Two conversions with no driver read in between: AutoRangePersist defaults to 2, so the
         # chip deliberately holds the interrupt off until a light change has persisted that long.
-        # That hardware transient rejection is the point of the field.
-        for index in range(4):
+        # That hardware transient rejection is the point of the field - and two cycles (606ms at
+        # 16 bit) is what keeps the window inside the 1s default SampleInterv, so the interrupt
+        # can actually lead the periodic re-check (SPECIFICATION.md Part C.11.1.3).
+        for index in range(2):
             chip.set_illumination(5.0)  # far below the down threshold: the window is crossed
-            if index < 3:
+            if index < 1:
                 assert reader.read_event.state == 0, "the persistence counter released too early"
         fired = bool(reader.read_event.state)
         # The destructive status read is what clears the flag and releases the line again.

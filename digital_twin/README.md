@@ -54,8 +54,11 @@ Kept completely separate so nothing here can accidentally affect the determinist
   zeros, reserved config bits reading back zero, per-resolution clipping at `(1 << bits) - 1`,
   and `set_illumination(lux, tint=(r, g, b))` so a scene can clip one channel while green stays
   mid-scale. Every one of those register-map behaviours was measured against the real part on
-  2026-09-12 — see SPECIFICATION.md Part C's ISL29125 conformance notes. Its INT line is **active-low** (`simulate_edge(0)` to assert), the opposite of
-  `_scd30_chip.py`'s RDY.
+  2026-09-12/13 — see SPECIFICATION.md Parts C.11.1 to C.11.1.3 for the six divergences those runs
+  found, the last of which is the subtlest: the threshold **persistence counter** restarts when
+  `RGBTHF` is cleared, not on every status read, and a fake that reset it on every read makes the
+  interrupt unreachable at the driver's own default sampling rate. Its INT line is **active-low**
+  (`simulate_edge(0)` to assert), the opposite of `_scd30_chip.py`'s RDY.
 - `_fram_chip.py` — the FRAM chip's SPI opcode protocol (WREN/WRDI/RDSR/WRSR/READ/WRITE/RDID), plus
   explicit `save_state()`/on-construction load JSON persistence (see "FRAM persistence" below).
   Models both real chips this project ships: wozi's 8KB MB85RS64V (default) and dev's 256KB

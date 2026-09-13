@@ -126,7 +126,13 @@ _VAL_RNG = const((("Range", "int", 10000, None, None, _RANGES),))
 _VAL_AR_UP = const((("AutoRangeUp", "float", 85.0, _MIN_AR_UP, _MAX_AR_UP, None),))
 _VAL_AR_DOWN = const((("AutoRangeDown", "float", 1.5, _MIN_AR_DOWN, _MAX_AR_DOWN, None),))
 _VAL_AR_SETTLE = const((("AutoRangeSettle", "int", 1, _MIN_SETTLE_CYCLES, _MAX_SETTLE_CYCLES, None),))
-_VAL_AR_PERSIST = const((("AutoRangePersist", "int", 4, None, None, _PRST_SETTINGS),))
+# 2, not 4: PRST is measured in whole RGB cycles, so 4 of them is 1212ms at 16 bit - LONGER than
+# the 1s default SampleInterv, which makes the periodic evaluation beat the chip's own interrupt
+# to every decision and leaves the hardware fast path requirement 5 mandates structurally dead.
+# Measured on the bench 2026-09-13: at PRST=4, 5 of 6 switches were periodic-led at a flat ~1000ms;
+# at PRST=2 (606ms), 6 of 6 were interrupt-led at 500-800ms. Two cycles still reject a single-cycle
+# transient, which is what the field is for. See SPECIFICATION.md Part C.11.1.3.
+_VAL_AR_PERSIST = const((("AutoRangePersist", "int", 2, None, None, _PRST_SETTINGS),))
 _VAL_AR_DWELL = const((("AutoRangeDwell", "float", 10.0, _MIN_DWELL_S, _MAX_DWELL_S, None),))
 _VAL_ICO = const((("IrCompOffset", "int", 0, None, None, _IR_OFFSETS),))
 _VAL_ICA = const((("IrCompAdjust", "int", 40, 0, 63, None),))
@@ -140,6 +146,7 @@ _VAL_RESETCAL = const((("ISLResetCal", "bool", None, None, None, True),))
 _N_INT_CFG = const(7)  # SampleInterv + Resolution + Range + AutoRangeSettle + AutoRangePersist + IrCompOffset + IrCompAdjust
 _N_FLOAT_CFG = const(4)  # AutoRangeUp + AutoRangeDown + AutoRangeDwell + FiltCoeff
 _N_BOOL_CFG = const(1)  # RangeAuto ALONE - ISLResetCal is command-only (see _VAL_RESETCAL above)
+_N_STORE_CFG = const(1)  # FiltCoeff ALONE - the only config value the store path reads per sample
 
 _NAME = const("ISL29125")
 # Kept as a literal tuple inline (not `_FIELDS` below) because mypy's namedtuple plugin can only
@@ -299,9 +306,22 @@ class ISL29125_Reader(SensorReaderConfig):
         self._last_switch_ms = time.ticks_ms()
         self._brownout_seen = False
         self._periodic_only_switches = 0
+        # Set by the pin handler, consumed once per read cycle. RGBTHF alone cannot stand in for
+        # it: the flag is raised by the CHIP, so it is set just the same when the line itself is
+        # dead - which is precisely the missing pull-up / broken jumper requirement 17 names.
+        self._irq_fired = False
         self._gain_ratio = _GAIN_RATIO_NOMINAL
         self._gain_ratio_ts: int | None = None
-        self._gain_learn_ms = time.ticks_ms()
+        # Back-dated by a whole period, so the first chance is taken as soon as the light sits in
+        # the overlap band. _GAIN_LEARN_PERIOD_S is a rate limit BETWEEN measurements, not a
+        # blackout before the first one: seeding this with "now" would make a fresh unit - and
+        # ISLResetCal, whose whole point is to relearn - wait a full hour before it could measure
+        # anything. A ratio successfully restored from FRAM does start the period (see
+        # _load_gain_ratio), because a good stored value is not worth re-measuring at once.
+        # ticks_add() takes a negative delta as long as its magnitude stays under half the tick
+        # period (2**29 ms on rp2 - 3600000 is nowhere near it), which is what makes "the period
+        # has already elapsed" expressible as a real ticks value instead of a None sentinel.
+        self._gain_learn_ms = time.ticks_add(time.ticks_ms(), -_GAIN_LEARN_PERIOD_S * 1000)
         self._filtered: list[float | None] = [None, None, None]  # green, red, blue, in lux
         if fram is None or fram_ntp_callback is None:
             self.ts_storage: AsyFramTimestampedChunk | None = None
@@ -433,6 +453,9 @@ class ISL29125_Reader(SensorReaderConfig):
             except Exception as e:  # distinguishable from a data-read failure, and not re-raised
                 await self.pr.err_s("Status read failed:", e, errno=31)
                 return None, None, None, None, None
+            # Consumed here, once, so a decision is credited to the interrupt only when the LINE
+            # actually woke this cycle - see _note_decision_source().
+            irq_fired, self._irq_fired = self._irq_fired, False
             brownout, threshold_fired = self._handle_status(status)
             if not brownout:
                 self._brownout_seen = False
@@ -456,7 +479,7 @@ class ISL29125_Reader(SensorReaderConfig):
             sample_range = self._active_range
             target = self._evaluate_range(counts, saturated=saturated)
             if target is not None:
-                await self._note_decision_source(threshold_fired=threshold_fired)
+                await self._note_decision_source(threshold_fired=threshold_fired and irq_fired)
                 self.pr.evt("range switch", sample_range, "->", target, "peak", max(counts))
                 await self._switch_range(target)
             elif saturated and sample_range == _RANGE_HIGH_LUX:
@@ -490,9 +513,19 @@ class ISL29125_Reader(SensorReaderConfig):
             self._periodic_only_switches = 0
             return
         self._periodic_only_switches += 1
-        if self._periodic_only_switches >= _PERIODIC_ONLY_WARN_AT:
-            await self.pr.wrn_s("Range decided by the periodic path only - the interrupt may be dead.", wrnno=15)
-            self._periodic_only_switches = 0
+        if self._periodic_only_switches < _PERIODIC_ONLY_WARN_AT:
+            return
+        self._periodic_only_switches = 0
+        # "Interrupt-led" means the LINE woke this cycle AND the chip had latched the crossing -
+        # both, because either on its own is still satisfied by a fault. Two situations reach here,
+        # and blaming the wiring for the arithmetic one sends whoever reads the log off after a
+        # fault that is not there: the chip cannot raise RGBTHF before AutoRangePersist whole RGB
+        # cycles have passed, so a sample interval shorter than that window means the periodic
+        # path wins every race by construction, with nothing wrong anywhere.
+        if self.isl.persist_window_ms() >= int(await self.trigger_period.get_value()) * 1000:
+            await self.pr.wrn_s("AutoRangePersist outlasts SampleInterv - the periodic path decides the range and the interrupt cannot lead.", wrnno=17)
+            return
+        await self.pr.wrn_s("Range decided by the periodic path only - the interrupt may be dead.", wrnno=15)
 
     def _handle_status(self, status: object) -> "tuple[bool, bool]":
         if type(status) is not int:  # layer 1 failed to produce a byte - the read path decides
@@ -525,11 +558,14 @@ class ISL29125_Reader(SensorReaderConfig):
         if green is None or red is None or blue is None or sample_range is None or timestamp is None:
             return  # don't run on invalid data
 
-        cfg_values = await self.cfgmgr.get_float_values(_VAL_AR_UP + _VAL_AR_DOWN + _VAL_AR_DWELL + _VAL_FC)
-        if cfg_values is None or len(cfg_values) != _N_FLOAT_CFG:
-            cfg_values = [85.0, 1.5, 10.0, -1.0]
+        # FiltCoeff ALONE, matching spec R5: the other three floats in the init batch are
+        # auto-range POLICY, already cached on the reader by their own setters, so reading them
+        # again here would cost a config lookup per sample for values this function never uses.
+        cfg_values = await self.cfgmgr.get_float_values(_VAL_FC)
+        if cfg_values is None or len(cfg_values) != _N_STORE_CFG:
+            cfg_values = [-1.0]
             await self.pr.err_s("Error reading config data!", errno=14)
-        filter_coefficient = cfg_values[3]
+        filter_coefficient = cfg_values[0]
 
         correction = self._gain_correction(sample_range)
         lux = [_counts_to_lux(count, sample_range, correction) for count in (green, red, blue)]
@@ -742,6 +778,7 @@ class ISL29125_Reader(SensorReaderConfig):
             await self.pr.wrn_s("Gain ratio restored without a timestamp.", wrnno=12)
         self._gain_ratio = ratio
         self._gain_ratio_ts = stored_ts
+        self._gain_learn_ms = time.ticks_ms()  # a restored ratio starts the period; only an unseeded run learns at once
         self.pr.one("Gain ratio restored:", ratio, "age", age)
 
     async def _persist_gain_ratio(self) -> None:
@@ -1030,6 +1067,10 @@ class ISL29125_Reader(SensorReaderConfig):
         return True
 
     async def set_filter_coefficient(self, value: float) -> bool:
+        # Validates and stores NOTHING on purpose, unlike the other three software knobs: the
+        # filter's only reader is _store_isl(), which takes the value from cfgmgr on the sample it
+        # applies it to, so the persisted value IS the live one. What this still owns is the
+        # verdict - a False here is what makes _set_dict_cfg() report the field "Failed".
         try:
             coefficient = float(value)
             if not _MIN_FILT_COEFF <= coefficient <= _MAX_FILT_COEFF:
@@ -1045,7 +1086,9 @@ class ISL29125_Reader(SensorReaderConfig):
             return False
         self._gain_ratio = _GAIN_RATIO_NOMINAL
         self._gain_ratio_ts = None
-        self._gain_learn_ms = time.ticks_ms()
+        # Back-dated a whole period, exactly as __init__ does: relearn at the next opportunity,
+        # which is what "relearning from nominal" below actually means.
+        self._gain_learn_ms = time.ticks_add(time.ticks_ms(), -_GAIN_LEARN_PERIOD_S * 1000)
         cleared = await self._clear_gain_ratio()
         self.pr.one("Gain calibration discarded, relearning from nominal.")
         return cleared
@@ -1099,11 +1142,18 @@ class ISL29125_Reader(SensorReaderConfig):
             self.pr.err("Could not start timer:", e)
         # FALLING, not rising: the INT is active-low open-drain (p6). A line held low by a fault
         # produces exactly one edge and then silence - which is what the periodic path and
-        # wrnno=15 exist for, not a flood. The handler allocates nothing.
+        # wrnno=15 exist for, not a flood. The bound method is built once, here, not per edge.
         self.irq_pin.irq(
             trigger=self.irq_pin.IRQ_FALLING,
-            handler=lambda _b: self.read_event.set(),
+            handler=self._on_irq,
         )
+
+    def _on_irq(self, _pin: object) -> None:
+        # Runs in a soft IRQ (rp2's Pin.irq() defaults to hard=False), so it allocates nothing:
+        # one attribute store and one ThreadSafeFlag set, both of which MicroPython guarantees
+        # are allocation-free.
+        self._irq_fired = True
+        self.read_event.set()
 
     def stop_timer(self) -> None:
         self.trigger_timer.deinit()  # Timer.deinit() IS real on rp2, unlike I2C/SPI (Part F.5.1)
@@ -1188,6 +1238,11 @@ class ISL29125_I2C:
     def cycle_ms(self) -> int:
         return _CYCLE_MS_12BIT if self._resolution == _RESOLUTION_12BIT else _CYCLE_MS_16BIT
 
+    def persist_window_ms(self) -> int:
+        # The earliest the chip can raise RGBTHF after a crossing: PRST whole RGB cycles (p11,
+        # Table 12). Lives here because both figures it needs are the shadow's own.
+        return self._persist * self.cycle_ms()
+
     def time_to_settle_ms(self) -> int:
         return max(0, time.ticks_diff(self._settle_until_ms, time.ticks_ms()))
 
@@ -1233,7 +1288,12 @@ class ISL29125_I2C:
         if device_id != _DEVICE_ID:
             raise RuntimeError(f"Failed to find ISL29125! Device ID {hex(device_id)}")
         await self.reset()
-        await self.clear_brownout()  # BOUTF is high at power-up and only a write clears it (p12)
+        # BOUTF is high at power-up (p12). The write is kept even though the 0x46 reset above and
+        # any status read BOTH clear it on real silicon (measured 2026-09-13, SPECIFICATION.md
+        # Part C.11.1.1 - p12 claims only a write does): it is the one clear the datasheet
+        # actually promises, it costs one transaction once per init, and it makes the flag's state
+        # after setup() independent of which of the three mechanisms this part honours.
+        await self.clear_brownout()
         # SYNC and CONVEN are written explicitly rather than left at their reset default, so a
         # later change cannot flip either silently: SYNC = 1 turns INT into an INPUT and inverts
         # the whole interrupt path, and CONVEN would mux conversion-done onto the pin the
@@ -1242,10 +1302,11 @@ class ISL29125_I2C:
 
     async def reset(self) -> None:
         # The datasheet specifies no post-reset settle time (unlike BMP3xx's documented 2ms), so
-        # the verify read IS the settle. Only CONFIG1-3 are verified: SparkFun's own reset() also
-        # requires STATUS to read 0x00, but Table 15 documents 0x04 as that register's default
-        # (BOUTF high), so including it would contradict the datasheet - and reading 0x08 here
-        # would break the "exactly one destructive status read per cycle" invariant besides.
+        # the verify read IS the settle. Only CONFIG1-3 are verified, and NOT status the way
+        # SparkFun's own reset() does: 0x08 really does read 0x00 straight after the reset command
+        # (measured 2026-09-13 - Table 15's 0x04 is the power-ON default, not a post-reset one),
+        # so the check would pass, but reading 0x08 here would consume a destructive read outside
+        # the one-per-cycle invariant read_status() depends on.
         async with self.i2c_isl29125 as isl, isl.i2c_device as i2c:
             await i2c.set_register_struct(_REGISTER_DEVICE_ID, "B", _CMD_RESET)
             config = await i2c.get_register_struct(_REGISTER_CONFIG1, "3s")

@@ -98,10 +98,13 @@ def test_isl29125_mechanisms_hold_across_the_whole_illumination_envelope(board: 
     structural and relative properties - never absolute lux. Covers: a live read chain at every
     level, HSB/RGB coherence, monotonic response, both ranges used, hysteresis without chatter,
     the return to the low range, fixed-range pinning, 12-bit vs 16-bit agreement on one scene,
-    ISLResetCal, the saturation detector firing at full white (W14), the interrupt actually
-    carrying the range decisions rather than the periodic fallback (no W15), and no errors at all.
+    cross-range continuity (one stationary light read on each range in turn), ISLResetCal, the
+    saturation detector firing at full white (W14), and no errors at all. The dead-interrupt
+    detector (W15) is checked here too, but only
+    test_isl29125_survives_recombined_realistic_lighting_scenarios makes enough range decisions
+    for it to be able to fire.
     """
-    # Same physical prerequisite as the sweep below - the LED has to actually reach the sensor.
+    # Physical prerequisite: the LED has to actually reach the sensor.
     if not request.config.getoption("--allow-neopixel-sweep"):
         pytest.skip("needs the NeoPixel-aimed-at-the-sensor rig physically set up - pass --allow-neopixel-sweep once it is (tests_hardware/README.md)")
 
@@ -110,19 +113,3 @@ def test_isl29125_mechanisms_hold_across_the_whole_illumination_envelope(board: 
     match = RESULT_RE.search(output)
     assert match is not None, f"device script printed no RESULT line - full output:\n{output}"
     assert match.group(1) == "PASS", f"ISL29125 mechanism envelope failed: {match.group(2).strip()}\nfull output:\n{output}"
-
-
-@pytest.mark.neopixel_sweep
-def test_isl29125_autorange_sweep_driven_by_the_boards_own_neopixel(board: Board, request: pytest.FixtureRequest) -> None:
-    # Gated because it needs physical geometry, not because it is slow or destructive: the board's
-    # own WS2812 has to actually illuminate the sensor, through both ranges and across the switch
-    # point, with ambient light excluded. A routine bench run cannot assume that rig is set up, and
-    # a run without it fails for a reason that has nothing to do with the driver.
-    if not request.config.getoption("--allow-neopixel-sweep"):
-        pytest.skip("needs the NeoPixel-aimed-at-the-sensor rig physically set up - pass --allow-neopixel-sweep once it is (tests_hardware/README.md)")
-
-    # Three 24s ramps plus settling; the timeout is generous relative to that.
-    output = board.run_isolated(DEVICE_SCRIPTS / "isl29125_autorange_sweep.py", timeout_s=180.0)
-    match = RESULT_RE.search(output)
-    assert match is not None, f"device script printed no RESULT line - full output:\n{output}"
-    assert match.group(1) == "PASS", f"ISL29125 auto-range sweep failed: {match.group(2).strip()}\nfull output:\n{output}"

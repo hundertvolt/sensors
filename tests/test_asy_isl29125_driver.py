@@ -1395,19 +1395,75 @@ def test_a_periodic_only_switch_warns_after_five_consecutive_occurrences() -> No
 def test_an_interrupt_driven_switch_resets_the_periodic_only_counter() -> None:
     i2c, reader = ready_reader("wrn15_reset")
     reader._ar_dwell_s = 0.0
-    with _FastAsyncSleep():
-        for index in range(4):
-            seed_cycle(i2c, 100, 100, 100, status=0x00) if index % 2 == 0 else seed_cycle(i2c, 65535, 65535, 65535, status=0x00)
+
+    async def scenario() -> "ErrorLog":
+        with _FastAsyncSleep():
+            for index in range(3):  # three, not five - the counter must not reach its own warn point
+                seed_cycle(i2c, 100, 100, 100, status=0x00) if index % 2 == 0 else seed_cycle(i2c, 65535, 65535, 65535, status=0x00)
+                reader.isl._settle_until_ms = time.ticks_ms()
+                await reader._read_isl()
+            assert reader._periodic_only_switches == 3
+            # The third iteration left the reader on the LOW range, so a BRIGHT scene is what
+            # makes this last cycle decide a switch at all - and this time both halves of a
+            # healthy fast path are present: the chip latched the crossing AND the line woke us.
+            seed_cycle(i2c, 65535, 65535, 65535, status=_STATUS_RGBTHF)
+            reader._irq_fired = True
             reader.isl._settle_until_ms = time.ticks_ms()
-            run(reader._read_isl())
-        assert reader._periodic_only_switches != 0
-        # The fourth iteration left the reader on the HIGH range, so a DIM scene is what makes
-        # this last cycle decide a switch at all - and this time the status byte says the
-        # interrupt did fire, which is what has to reset the counter.
-        seed_cycle(i2c, 100, 100, 100, status=_STATUS_RGBTHF)
+            await reader._read_isl()
+        return await reader.get_error_counter()
+
+    counters = run(scenario())
+    assert reader._periodic_only_switches == 0
+    assert 15 not in warnings(counters), "the counter was reset by reaching its warn point, not by the interrupt"
+
+
+def test_a_latched_flag_with_no_pin_edge_still_counts_as_a_periodic_only_switch() -> None:
+    # The fault requirement 17 actually names - a missing pull-up or a broken jumper - leaves the
+    # CHIP working: it latches RGBTHF exactly as before, and only the line never moves. Keying the
+    # detector on the flag alone would therefore report a healthy fast path throughout.
+    i2c, reader = ready_reader("wrn15_line_dead")
+    reader._ar_dwell_s = 0.0
+    with _FastAsyncSleep():
+        seed_cycle(i2c, 100, 100, 100, status=_STATUS_RGBTHF)  # flag set...
+        reader._irq_fired = False  # ...but no edge ever arrived
         reader.isl._settle_until_ms = time.ticks_ms()
         run(reader._read_isl())
-    assert reader._periodic_only_switches == 0
+    assert reader._active_range == _RANGE_LOW_LUX  # the switch still happened, via the periodic path
+    assert reader._periodic_only_switches == 1
+
+
+def test_the_pin_handler_records_the_edge_as_well_as_waking_the_read_loop() -> None:
+    _i2c, reader = make_reader("irq_records")
+    reader.start_timer()
+    # Captured into a local first: mypy keeps a narrowed member type across an opaque call, so
+    # asserting on reader._irq_fired twice would make the second assertion look unreachable.
+    before = reader._irq_fired
+    reader.irq_pin.trigger_irq()
+    assert before is False
+    assert reader._irq_fired is True
+    assert _drain_flag(reader.read_event) is True
+
+
+def test_a_persistence_window_longer_than_the_sample_interval_warns_about_itself() -> None:
+    # Not a dead interrupt: the chip cannot raise RGBTHF before AutoRangePersist whole RGB cycles,
+    # so a shorter sample interval means the periodic path wins every race by arithmetic. A
+    # separate wrnno, because wrnno=15 would send someone looking for a wiring fault.
+    i2c, reader = ready_reader("wrn17")
+    reader._ar_dwell_s = 0.0
+
+    async def scenario() -> "ErrorLog":
+        await reader.isl.configure(persist=8)  # 8 x 303ms = 2424ms against a 1s SampleInterv
+        with _FastAsyncSleep():
+            for index in range(5):
+                seed_cycle(i2c, 100, 100, 100, status=0x00) if index % 2 == 0 else seed_cycle(i2c, 65535, 65535, 65535, status=0x00)
+                reader.isl._settle_until_ms = time.ticks_ms()
+                reader._last_switch_ms = time.ticks_add(time.ticks_ms(), -1000)
+                await reader._read_isl()
+        return await reader.get_error_counter()
+
+    counters = run(scenario())
+    assert 17 in warnings(counters)
+    assert 15 not in warnings(counters)
 
 
 # ---------------------------------------------------------------------------
@@ -1994,6 +2050,70 @@ def test_the_gain_correction_is_one_on_the_low_range_and_learned_over_nominal_on
     # light, so the reported lux has to be scaled UP - the direction this assertion pins.
     reader._gain_ratio = 30.0
     assert reader._gain_correction(_RANGE_HIGH_LUX) > 1.0
+
+
+def test_a_fresh_reader_learns_at_its_first_opportunity_rather_than_after_a_whole_period() -> None:
+    # _GAIN_LEARN_PERIOD_S is a rate limit BETWEEN measurements, not a blackout before the first
+    # one. Seeding the timestamp with "now" at construction made a unit with no stored ratio wait
+    # a full hour before it could measure anything - and made ISLResetCal's own "relearning from
+    # nominal" a lie for that same hour. Nothing is back-dated here on purpose.
+    i2c, reader = ready_reader("learn_first")
+    with _FastAsyncSleep():
+        reader._ar_dwell_s = 0.0
+        seed(i2c, _REG_DATA, counts_burst(51801, 51801, 51801))
+        run(reader._learn_gain_ratio(2000))
+    assert reader._gain_ratio != _GAIN_RATIO_NOMINAL, "the very first in-band sample has to move the ratio"
+
+
+def test_the_learn_period_rate_limits_repeats_and_islresetcal_re_arms_it() -> None:
+    import time as _time
+
+    i2c, reader = ready_reader("learn_period")
+
+    def settled() -> None:
+        # The paired reading's own two range switches each arm a 303ms settle, and these tests run
+        # in zero wall-clock time - so it is cleared between attempts, leaving the learn period as
+        # the only thing that can still hold a measurement off.
+        reader.isl._settle_until_ms = _time.ticks_ms()
+
+    with _FastAsyncSleep():
+        reader._ar_dwell_s = 0.0
+        seed(i2c, _REG_DATA, counts_burst(51801, 51801, 51801))
+        run(reader._learn_gain_ratio(2000))
+        after_first = reader._gain_ratio
+        assert after_first != _GAIN_RATIO_NOMINAL
+        settled()
+        fake(i2c).log.clear()
+        run(reader._learn_gain_ratio(2000))  # immediately again - inside the period
+        assert mem_writes(i2c) == [], "a second measurement inside the period must not touch the bus"
+        assert reader._gain_ratio == after_first
+        run(reader.reset_gain_calibration(flag=True))
+        settled()
+        run(reader._learn_gain_ratio(2000))
+    assert reader._gain_ratio != _GAIN_RATIO_NOMINAL, "ISLResetCal must let the next opportunity relearn, not wait out a period"
+
+
+def test_a_ratio_restored_from_fram_starts_the_period_instead_of_being_re_measured_at_once() -> None:
+    import time as _time
+
+    manager, _chip, _spi = make_fram_manager()
+    run(manager.setup())
+    i2c, reader = ready_reader("learn_restored", fram=manager, ntp=_always_synced)
+    assert reader.ts_storage is not None
+
+    async def scenario() -> None:
+        reader._gain_ratio = 25.25
+        await reader._persist_gain_ratio()
+        await reader._load_gain_ratio()  # a successful restore is what starts the period
+
+    with _FastAsyncSleep():
+        run(scenario())
+        reader._ar_dwell_s = 0.0
+        reader.isl._settle_until_ms = _time.ticks_ms()
+        fake(i2c).log.clear()
+        run(reader._learn_gain_ratio(2000))
+    assert mem_writes(i2c) == []
+    assert abs(reader._gain_ratio - 25.25) < 1e-3
 
 
 def test_learning_is_skipped_during_settle_and_dwell_and_while_auto_is_off() -> None:

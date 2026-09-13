@@ -80,8 +80,8 @@ uv run pytest tests_hardware/flash --allow-multi-day-rollover-wait -k test_ticks
 # default - this genuinely re-flashes the board, see SPECIFICATION.md Part E.6.3):
 scripts/run_flash_hardware_suite.sh --allow-flash-cycle
 
-# Add --allow-neopixel-sweep to also run the ISL29125 auto-range sweep (skipped by default - it
-# needs the NeoPixel rig physically set up, see "The ISL29125 NeoPixel sweep rig" below):
+# Add --allow-neopixel-sweep to also run the three ISL29125 light tests (skipped by default -
+# they need the NeoPixel rig physically set up, see "The ISL29125 NeoPixel light rig" below):
 scripts/run_flash_hardware_suite.sh --allow-neopixel-sweep
 
 # Manual tests (interactive, prints instructions, waits for confirmation):
@@ -94,12 +94,16 @@ Both automated scripts are plain `uv run pytest` wrappers - any pytest flag work
 `-m role_reversal`, `-v`, `--tb=short`, ...). `--collect-only` works with nothing attached at all
 (every fixture skips cleanly, never errors, when the hardware it needs isn't reachable).
 
-## The ISL29125 NeoPixel sweep rig
+## The ISL29125 NeoPixel light rig
 
-`tests_hardware/flash/test_sensor_accuracy.py::test_isl29125_autorange_sweep_driven_by_the_boards_own_neopixel`
-is the only test in this tier gated on physical geometry rather than on time or wear, which is why
-it has its own `--allow-neopixel-sweep` flag and its own `KNOWN_PERMANENT_SKIPS` entry in
-`scripts/_require_clean_hardware_run.sh` (so an expected skip does not read as a failure). What it
+`test_isl29125_mechanisms_hold_across_the_whole_illumination_envelope` and
+`test_isl29125_survives_recombined_realistic_lighting_scenarios` are the only tests in this tier
+gated on physical geometry rather than on time or wear, which is why they share the
+`--allow-neopixel-sweep` flag and have their own `KNOWN_PERMANENT_SKIPS` entries in
+`scripts/_require_clean_hardware_run.sh` (so an expected skip does not read as a failure). A third
+script, `isl29125_autorange_sweep.py`, used to live here and was **retired on 2026-09-13** - it
+drove a moving LED ramp, which confounds the gain step with the light's own rise; its one unique
+measurement now lives in the envelope test as two settled holds (BACKLOG.md item 19). What the rig
 needs:
 
 - The dev board's own WS2812 (GP18) aimed at the ISL29125's window at a fixed, recorded distance -
@@ -164,9 +168,27 @@ None is a driver defect, and each one looks like one if you do not know it:
   | falling | from level 2 (~76 lx) | to level 3 (~112 lx) |
 
   So **levels 2-8 sit INSIDE the band and cannot force a switch in either direction**, and a
-  decision needs roughly 8 s to land (AutoRangePersist = 4 RGB cycles + the settle + a 1 s sample
-  interval). Both numbers are geometry- and cover-dependent: re-measure with
+  decision needs roughly 8 s to land (AutoRangePersist = 2 RGB cycles + the settle + a 1 s sample
+  interval, with margin). Both numbers are geometry- and cover-dependent: re-measure with
   `isl29125_lighting_scenarios.py`'s own levels if the rig changes.
+
+## Which path decides a range switch, and the rule that governs it
+
+Measured 2026-09-13, six forced crossings per setting: the chip cannot raise `RGBTHF` before
+`AutoRangePersist` whole RGB cycles have passed (303 ms each at 16 bit), while the driver
+re-evaluates the same condition in software on every sample with no persistence requirement at
+all. **Whichever window is shorter decides every switch.**
+
+| `AutoRangePersist` | window at 16 bit | against `SampleInterv = 1` | measured |
+|---|---|---|---|
+| 4 | 1212 ms | longer - software wins | 5 of 6 switches periodic-led, latency pinned at ~1000 ms |
+| 2 | 606 ms | shorter - interrupt wins | 6 of 6 interrupt-led, 500-800 ms |
+| 1 | 303 ms | shorter - interrupt wins | 6 of 6 interrupt-led, 200-613 ms |
+
+The default is now 2 for exactly this reason (SPECIFICATION.md Part C.11.1.3). When writing a
+device script that sets its own `cfgmgr._cache`, keep the same relationship or the script will
+quietly be testing the periodic path only - `wrnno=17` is the driver telling you that has happened,
+and it is distinct from `wrnno=15`, which means the interrupt line itself looks dead.
 
 ## The ISL29125 mechanism envelope
 
@@ -719,7 +741,8 @@ the read loop fails silently (visible only at `debug=5`, e.g. "Error reading con
 ever attempting a real sensor read. Found independently in `bmp3xx_plausibility_read.py` and
 `sgp40_fram_backup_restore.py`. Never call `cfgmgr.setup()` in such scripts - that performs a real
 littlefs file write/read. The three `isl29125_*.py` scripts that build a
-`ISL29125_Reader` (plausibility, real IRQ edge, auto-range sweep) follow the same pattern; the two
+`ISL29125_Reader` (plausibility, real IRQ edge, mechanism envelope, lighting scenarios) follow the
+same pattern; the two
 concurrency ones, and the `_measure_*` half of `isl29125_real_irq_edge.py`, sidestep it entirely by
 constructing the protocol layer (`ISL29125_I2C`) alone, which has no `cfgmgr` at all - the shape
 Part C.8 requires of any concurrency script touching persisted config.
