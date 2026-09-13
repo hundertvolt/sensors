@@ -499,6 +499,17 @@ def test_powering_down_stops_the_conversion_fields_but_keeps_the_data() -> None:
     assert read_counts(chip) == held
 
 
+def test_a_zero_length_write_is_ignored_rather_than_indexing_into_nothing() -> None:
+    # I2CDevice.setup()'s ACK probe writes zero bytes, and a register write can legitimately carry
+    # no payload. Reaching for data[0] here would turn the probe into an IndexError on every boot.
+    chip = make_chip()
+    configure(chip, _MODE_RGB, 0x00, _INTSEL_GREEN)
+    before = chip.handle_readfrom_mem(_ADDR_CONFIG1, 3)
+    chip.handle_writeto_mem(_ADDR_CONFIG1, b"")
+    chip.handle_writeto_mem(_ADDR_ID, b"")  # the register whose write triggers a full reset
+    assert chip.handle_readfrom_mem(_ADDR_CONFIG1, 3) == before, "an empty write changed the configuration"
+
+
 if __name__ == "__main__":
     import microtest
 

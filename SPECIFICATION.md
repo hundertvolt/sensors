@@ -1673,7 +1673,12 @@ currently no-ops silently.
 ### E.5.1 Reading the numbers: three systematic false-negative patterns, not missed test cases
 
 `micropython.const(...)` assignments are compiled away entirely, so the line never fires a trace
-event and always shows a 0-hit miss despite being fully "exercised." A decorated function's traced
+event and always shows a 0-hit miss despite being fully "exercised." This is not a rounding error
+on a const-heavy module: measured 2026-09-13, it accounts for **84 of `asy_isl29125_driver.py`'s
+148 reported misses, 37 of `asy_bmp3xx_driver.py`'s 52, and 13 of `asy_sgp40_driver.py`'s 17**,
+while `base_classes.py` (no module-level `const()` at all) reports 100%. So a driver's headline
+percentage understates it by roughly ten points - read the per-line report, not the table, before
+concluding a driver is under-tested. A decorated function's traced
 event lands on the decorator line, not the `def` line, so every `@staticmethod`/`@classmethod`
 shows missed even when called throughout the suite. A bare `while True:` header never fires its own
 trace event at any iteration (folds into an unconditional jump at compile time).
@@ -1704,7 +1709,10 @@ silently stalls waiting on one.
 owner's go-ahead given directly in the running session (CLAUDE.md). Both tiers run clean end to end
 on real hardware; the earlier WiFi-reconnection flakiness this section used to flag is root-caused
 and mitigated (`tests_hardware/README.md`'s "Known assumptions and open findings"). Lint/type-check
-scope does **not** extend to `tests_hardware/` (matching `tests_scripts/`'s own non-scoping).
+scope **does** cover `tests_hardware/` — it is one of CLAUDE.md's eight scopes: `scripts/lint.sh`
+runs ruff over all of it, and `host_typecheck.ini` type-checks it except
+`tests_hardware/device_scripts/`, which is MicroPython-target code rather than host CPython and is
+excluded there for that reason (see that file's own comment).
 
 ### E.6.1 The five-backend model
 
