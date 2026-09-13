@@ -3,6 +3,7 @@ and readiness, frame build/validate/ACK, the acknowledged exchange and its recov
 transaction layer. The comm-hazard tier lives in test_uart_comm_hazard.py (H1)."""
 
 import asyncio
+import struct
 
 from _uart_comm_harness import PAYLOAD_SIZE, TIMEOUT_MS, Pair, accept_set, build_pair, echo_get, frames, run
 from machine import LinkPoller
@@ -15,6 +16,7 @@ from asy_uart_comm import (
     UART_Comm,
 )
 from asy_uart_driver import UART
+from crc_checks import CRC16
 from framing_codecs import Framing_COBS
 
 try:
@@ -37,7 +39,8 @@ _CHUNKS = 3
 _CUR = 4
 _PAYLOAD = 5
 _FRAME = 5 + PAYLOAD_SIZE
-_ERR_ALLOC = 14  # asy_uart_comm.py's own _ERR_ALLOC; const() folds the name out of that module
+_ERR_ALLOC = 14  # asy_uart_comm.py's own errnos; const() folds the names out of that module
+_ERR_RXBUF = 15
 
 
 def persisted(comm: UART_Comm) -> "list[str]":
@@ -1976,6 +1979,157 @@ def test_a_pull_callback_failing_mid_train_quiesces_like_any_other_fault() -> No
         assert run(scenario(), limit=25) is False, kind
         assert persisted(pair.initiator) == [errno, "W10"], (kind, persisted(pair.initiator))
         assert pair.initiator._holdoff_active is True, kind
+
+# ===========================================================================
+# Conformance with the legacy BSEC use case (dev_legacy/asy_bsec_driver.py)
+# ===========================================================================
+# A demonstration, deliberately not a constraint: CLAUDE.md states this module is standalone and
+# that its BME688/BSEC first use case constrains nothing about its design. What these two check is
+# only that the legacy driver's whole command/control/communication structure is still expressible
+# - any API able to express it passes them. Sizes and command ids are the ones
+# dev_legacy/sensortask-dev.py actually deployed.
+
+_BSEC_GET_MEASUREMENTS = 0x20
+_BSEC_GET_STATE = 0x21
+_BSEC_GET_SYSTEM_STATE = 0x22
+_BSEC_SET_START = 0x30
+_BSEC_SET_STATE = 0x31
+_BSEC_SET_RESET = 0x32
+_BSEC_SET_TEMP_COMP = 0x33
+_BSEC_SET_DEBUG = 0x34
+_BSEC_DATAFIELDS = 13
+_BSEC_STATE_SIZE = 221
+_BSEC_PAYLOAD_SIZE = 20  # BME688_Reader's own default, not this module's
+# "<" pins the layout: the Unix port is 64-bit, so a native "L" is 8 bytes there and 4 on the
+# rp2040 - the legacy code's bare "bbbbL" against a hardcoded size of 8 only holds on the target.
+_BSEC_SYSTEM_STATE = struct.pack("<bbbbL", 0, 0, 0, 0, 12345)
+_BSEC_FIELD_VALUES = [1.5] * _BSEC_DATAFIELDS + [1, 1]  # the trailing pair is valid/new_data
+_BSEC_MEASUREMENTS = struct.pack("<" + _BSEC_DATAFIELDS * "f" + "HH", *_BSEC_FIELD_VALUES)
+_BSEC_STATE = bytes((i * 7) & 0xFF for i in range(_BSEC_STATE_SIZE))
+
+
+def test_the_legacy_bsec_command_set_still_runs_end_to_end() -> None:
+    # Opcode and payload stay separate (an id per command, data alongside it), every transaction is
+    # initiated from this side only, and all five shapes the driver used are here: a fixed-size GET
+    # decoded with struct, a don't-care GET for when the stored state size is unknown, a
+    # payload-less SET used as a pure command, a small SET, and a 221-byte multi-chunk SET whose
+    # payload has to arrive byte-identical. clear() is included because the legacy reset sequence
+    # runs SET -> wait -> clear -> read status, and the hold-off that leaves must not break what
+    # follows. Timings are this file's, not the deployed 1000ms: the budget decides how long a
+    # failure costs, not whether the flow can be expressed.
+    answers = {
+        _BSEC_GET_SYSTEM_STATE: _BSEC_SYSTEM_STATE,
+        _BSEC_GET_MEASUREMENTS: _BSEC_MEASUREMENTS,
+        _BSEC_GET_STATE: _BSEC_STATE,
+    }
+    accepted = (_BSEC_SET_START, _BSEC_SET_STATE, _BSEC_SET_RESET, _BSEC_SET_TEMP_COMP, _BSEC_SET_DEBUG)
+    received: dict[int, bytes] = {}
+
+    def peer_get(cmd_id: int) -> "tuple[bool, bytes | None]":
+        return cmd_id in answers, answers.get(cmd_id)
+
+    def peer_set(cmd_id: int) -> "tuple[bool, None]":
+        return cmd_id in accepted, None
+
+    pair = Pair(payload_size=_BSEC_PAYLOAD_SIZE, get_callback=peer_get, set_callback=peer_set)
+    assert run(pair.setup()) is True
+    bme = pair.initiator
+
+    async def peer() -> None:
+        while True:  # an idle uart_listen() waits forever by design, so the task is cancelled out
+            result = await pair.responder.uart_listen()
+            if result.cmd_id is not None and result.payload is not None:
+                received[result.cmd_id] = bytes(result.payload)
+
+    async def system_status() -> "tuple[Any, ...] | None":
+        res = await bme.uart_get(_BSEC_GET_SYSTEM_STATE, exp_size=len(_BSEC_SYSTEM_STATE))
+        return None if res is None else struct.unpack("<bbbbL", res)
+
+    async def scenario() -> "dict[str, Any]":
+        listener = asyncio.create_task(peer())
+        out: dict[str, Any] = {}
+        try:
+            out["status"] = await system_status()
+            out["start"] = await bme.uart_set(_BSEC_SET_START, None)  # a command with no payload
+            measurements = await bme.uart_get(_BSEC_GET_MEASUREMENTS, exp_size=(4 * _BSEC_DATAFIELDS) + 4)
+            out["measurements"] = None if measurements is None else struct.unpack("<" + _BSEC_DATAFIELDS * "f" + "HH", measurements)
+            out["temp_comp"] = await bme.uart_set(_BSEC_SET_TEMP_COMP, struct.pack("<l", 21500))
+            sized = await bme.uart_get(_BSEC_GET_STATE, exp_size=_BSEC_STATE_SIZE)
+            out["state_sized"] = None if sized is None else bytes(sized)
+            dont_care = await bme.uart_get(_BSEC_GET_STATE)  # the FRAM size was not always known
+            out["state_dont_care"] = None if dont_care is None else bytes(dont_care)
+            out["set_state"] = await bme.uart_set(_BSEC_SET_STATE, _BSEC_STATE)
+            out["debug"] = await bme.uart_set(_BSEC_SET_DEBUG, struct.pack("<b", 1))
+            out["reset"] = await bme.uart_set(_BSEC_SET_RESET, None)
+            await bme.clear()  # the legacy reset sequence's own unstick, hold-off and all
+            out["status_after_clear"] = await system_status()
+        finally:
+            listener.cancel()
+            try:
+                await listener
+            except asyncio.CancelledError:  # expected; anything else is a real failure
+                pass
+        return out
+
+    out = run(scenario(), limit=60)
+    assert out["status"] == (0, 0, 0, 0, 12345), out["status"]
+    assert out["start"] is True
+    assert out["measurements"] == tuple(_BSEC_FIELD_VALUES), out["measurements"]
+    assert out["temp_comp"] is True
+    assert out["state_sized"] == _BSEC_STATE, "a 221-byte answer must arrive byte-identical"
+    assert out["state_dont_care"] == _BSEC_STATE, "and identically without a declared size"
+    assert out["set_state"] is True
+    assert out["debug"] is True
+    assert out["reset"] is True
+    assert out["status_after_clear"] == (0, 0, 0, 0, 12345), "clear() must not break what follows"
+    # The opcode reached the peer as its own field, and the payload arrived beside it intact.
+    assert received[_BSEC_SET_STATE] == _BSEC_STATE
+    assert struct.unpack("<l", received[_BSEC_SET_TEMP_COMP])[0] == 21500
+    assert _BSEC_SET_START not in received, "a payload-less command carries no payload"
+
+
+def test_the_two_spellings_the_boards_own_uart_script_used_still_work() -> None:
+    # dev_legacy/ext_uart.py, the exploratory script found on the board, exercised two shapes the
+    # BSEC driver itself does not: a GET declaring an expected size of exactly zero (an answer that
+    # must be empty, which is a different claim from "don't care"), and a SET whose payload is an
+    # empty bytearray rather than None. Both have to stay distinguishable from failure.
+    pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set(0)))
+    empty = run(pair.with_listener(pair.initiator.uart_get(0x3C, exp_size=0)), limit=20)
+    assert empty is not None and len(empty) == 0, empty  # empty, not None: decision 9
+
+    async def scenario() -> bool:
+        listener = asyncio.create_task(pair.responder.uart_listen())
+        sent = await pair.initiator.uart_set(0x30, bytearray())
+        await asyncio.wait_for(listener, 8)
+        return sent
+
+    assert run(scenario(), limit=25) is True, "an empty bytearray is as good a payload as None"
+
+    # And the rejection half: a peer answering a zero-size GET with data is refused, not delivered.
+    loud = run(build_pair(get_callback=echo_get(b"data"), set_callback=accept_set()))
+    assert run(loud.with_listener(loud.initiator.uart_get(0x3C, exp_size=0)), limit=20) is None
+
+
+def test_the_legacy_bsec_bus_parameters_meet_every_floor_but_one() -> None:
+    # The one thing a legacy-faithful port has to change. C2.9's whole-frame floor is 27 bytes here
+    # (5 header + 20 payload + 2 CRC) and the deployed rxbuf of 32 clears it; C2.10's second floor -
+    # one poll interval's arrivals, 80 bytes at 115200 with a 2ms poll - does not. Stop-and-wait
+    # means only one frame is ever in flight, so the second floor is stricter than this protocol's
+    # own traffic needs; it is kept because a drain has to survive a peer that does not stop, and
+    # because 128 bytes of RX ring costs nothing on an RP2040. Loud at construction, not a silent
+    # tail loss - so the port raises one number rather than debugging an intermittent link.
+    def deployed(rxbuf: int) -> UART_Comm:
+        bus = UART(0, tx_pin=0, rx_pin=1, baudrate=115200, rxbuf=rxbuf, poll_wait_ms=2, poll_idle_ms=50, crc=CRC16())
+        bus.poller = LinkPoller(bus._uart)  # type: ignore[assignment,arg-type]
+        return UART_Comm(bus, ROLE_INITIATOR, payload_size=_BSEC_PAYLOAD_SIZE, timeout=1000)
+
+    assert deployed(256)._min_rxbuf() == 80
+    assert deployed(32)._init_errno == _ERR_RXBUF, "the deployed value is refused, not accepted quietly"
+    assert deployed(64)._init_errno == _ERR_RXBUF
+    assert deployed(128)._init_errno == 0
+    # Everything else the legacy link declared is accepted unchanged: 115200 baud, a 1000ms reply
+    # budget, payload_size 20, and a CRC16 underneath the protocol.
+    assert deployed(128).payload_size == _BSEC_PAYLOAD_SIZE
 
 if __name__ == "__main__":
     import microtest

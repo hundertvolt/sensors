@@ -2721,6 +2721,20 @@ serial link, with no sensor, device or application semantics of its own. Command
 and expected sizes all belong to the caller. Its first use case (a BME688/BSEC coprocessor) is
 explicitly *not* part of its scope and does not constrain its design.
 
+**Not constraining it is not the same as not serving it**, and that was checked rather than assumed
+(2026-09-13). `dev_legacy/asy_bsec_driver.py`'s whole `BSEC_UART` control flow replays over the
+promoted module at the sizes `dev_legacy/sensortask-dev.py` actually deployed — 13 datafields, a
+221-byte BSEC state, `payload_size` 20, an 8-byte system status — covering all five shapes it used:
+a fixed-size GET decoded with `struct`, a don't-care GET for when the stored state size was unknown,
+a payload-less SET as a pure command, a small SET, and a 221-byte multi-chunk SET. Opcode and
+payload stay separate fields (an id in chunk 1, data from chunk 2), and what the legacy left
+implicit — that only one side ever initiates — is now the role gate. Two conformance tests in
+`tests/test_asy_uart_comm.py` pin it, each verified to fail when the capability is removed; they
+demonstrate rather than constrain, since any API able to express the flow passes them.
+**One deployed value has to change in a faithful port**: `rxbuf` 32 is refused (`errno` 15) against
+this module's 80-byte C2.10 floor at 115200 baud — loud at construction rather than an intermittent
+lost tail, and 128 bytes of RX ring costs nothing. See UART_PROMOTION_REQUIREMENTS.md §Q.
+
 **A second implementation of this protocol exists in C**, running on the Arduino peer. It mirrors the
 Python implementation's *intended* behavior and is owner-validated over many real transmissions — but
 **how far that mirroring extends to the known flaws is unverified**: it may share some, not others,

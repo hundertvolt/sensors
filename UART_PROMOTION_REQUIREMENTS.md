@@ -1699,3 +1699,77 @@ pass. This is precisely what CLAUDE.md means by not reasoning from general Pytho
 - **`_reject_wrn()`'s map is bounded by construction**, not by traffic: 32 bytes, allocated once with
   the other scratch buffers, never re-allocated, and cleared in place so a reset cannot fail on a
   heap that has no room.
+
+
+## Q — Conformance with the legacy BSEC use case (2026-09-13)
+
+Asked directly by the project owner: the legacy protocol separated opcode from payload, and
+transactions were always started from one side, though only implicitly. That protocol was used by
+the BSEC driver. Is the promoted module still able to carry that top-level command, control and
+communication structure — with API changes, even significant ones, fully acceptable?
+
+**Yes, in full, and it eases it.** Checked by replaying `dev_legacy/asy_bsec_driver.py`'s entire
+`BSEC_UART` control flow over the promoted API at the sizes `dev_legacy/sensortask-dev.py` actually
+deployed (13 datafields, a 221-byte BSEC state, `payload_size` 20, an 8-byte system status,
+115200 baud, a 1000 ms reply budget), not by reading the two modules side by side.
+
+| Legacy structure | Promoted equivalent |
+|---|---|
+| **Opcode / payload separation.** The id rides alone in chunk 1 (`SIZE == 1`), data from chunk 2 | Unchanged on the wire, and enforced rather than assumed: `_check_cmd_id()` refuses an id outside a byte instead of truncating it silently (`0x101` became `0x01`, a *different valid command* the peer executed while the caller was told it succeeded), and `_validate_size_for_position()` requires `SIZE == 1` at `cur == 1`, which the legacy `_check_msg()` did not — so a corrupted length byte could make it read the opcode out of a padding byte |
+| **One-sided initiation, implicit.** The Pico always initiated; the BSEC peer only answered. `uart_listen()` existed but the driver never called it, and nothing prevented either side initiating | Explicit: `ROLE_INITIATOR` / `ROLE_RESPONDER` at construction, with `_gate(role)` refusing the wrong direction and `get_task_starters()` returning `[]` for an initiator, so no listen loop is even started. The convention became a construction parameter |
+| `uart_get(id, exp_size=N)` decoded with `struct.unpack` | Same call, same return shape (a right-sized `bytearray`, `None` only for failure) |
+| `uart_get(id, exp_size=None)` — used when the FRAM-stored state size was unknown | Same. `want = -1` sizes the destination from CHUNKS and right-sizes the answer |
+| `uart_set(id, None)` — a pure command with no payload (start measurement, system reset) | Same, and still two chunks, so the command is still acknowledged |
+| `uart_set(id, payload)` — up to a 221-byte BSEC state blob | Same, 12 chunks at `payload_size` 20, arriving byte-identical |
+| `clear()` before setup and after a reset, with a write hold-off afterwards | Same contract, better mechanism: cancel-first outside the lock (the legacy locked first and could deadlock against the caller it was freeing), a bounded drain, and a deadline instead of a one-shot `Timer` whose soft callback MicroPython can silently drop |
+
+**What the module adds for this use case**, none of which the legacy had:
+
+- `uart_get_into(id, buf, exp_size)` — a caller-owned destination, so `get_measurements()` at the
+  sample rate need not allocate. The legacy accumulated with `res += ...` per chunk, the
+  reallocation-per-chunk shape Part I.1 exists to avoid.
+- `uart_get_stream()` / `uart_set_stream()` — a BSEC state blob could move between the link and its
+  FRAM chunk without a full-size RAM copy at either end.
+- A real error catalogue persisted to FRAM (`errno` 10-34, `wrnno` 10-14, bounded per episode)
+  where the legacy had `debug=True` prints and nothing after a reboot.
+- Every fault quiesces the link and holds off its own writes, so the two ends cannot resume on
+  different frame boundaries.
+
+**The one thing a faithful port must change.** The deployed bus declared `rxbuf=32`. C2.9's
+whole-frame floor is 27 bytes here (5 header + 20 payload + 2 CRC) and 32 clears it; C2.10's second
+floor — one poll interval's arrivals, **80 bytes** at 115200 with a 2 ms poll — does not, so
+construction is refused with `errno` 15. Stop-and-wait means only one frame is ever in flight, so
+that second floor is stricter than this protocol's own traffic requires; it is kept anyway, because
+a drain has to survive a peer that does *not* stop, and because 128 bytes of RX ring costs nothing
+on an RP2040. The refusal is loud at construction rather than an intermittent lost tail, which is
+the whole point of having the floor.
+
+**The board's own exploratory script, `dev_legacy/ext_uart.py`, adds two spellings the driver
+never used**, and both still work: a GET declaring an expected size of exactly zero — an answer
+that *must* be empty, which is a different claim from "don't care", and which still comes back as
+an empty buffer rather than as `None` — and a SET whose payload is an empty `bytearray()` rather
+than `None`. A peer answering that zero-size GET with data is refused rather than delivered
+(`test_the_two_spellings_the_boards_own_uart_script_used_still_work`).
+
+That same script also shows the one pattern that *looks* like the role gate would break it:
+`listen1()` receives with `uart_listen()` and then answers by calling `uart_set()` itself. That is
+a **superseded** form — it calls `uart_listen()` with no arguments, which the legacy module's own
+final signature (two callbacks) no longer accepts, and answering a GET moved inside `uart_listen()`
+via `get_callback` returning `(valid, payload)`. The promoted module does exactly what the legacy
+ended up doing: `_answer_get()` sends the answer through the *internal unlocked* path, precisely so
+the role gate that refuses `uart_set()` on a responder never stops a responder answering
+(`test_a_responder_still_answers_a_get_while_the_role_gate_is_active`).
+
+Every fact above is pinned by tests (`test_the_legacy_bsec_command_set_still_runs_end_to_end`,
+`test_the_legacy_bsec_bus_parameters_meet_every_floor_but_one`,
+`test_the_two_spellings_the_boards_own_uart_script_used_still_work`), the first two verified to fail
+when the capability they cover is removed — the opcode field, the don't-care GET, the payload-less SET and the
+`rxbuf` floor were each broken in turn and each produced the named failure. They **demonstrate
+rather than constrain**: CLAUDE.md and Part J.1 both state this module is standalone and that the
+BSEC use case does not shape its design, and any API able to express the flow passes them.
+
+**One legacy detail worth carrying forward separately**, unrelated to this module: the driver
+decoded its system status with a bare `struct.unpack("bbbbL", res)` against a hardcoded size of 8.
+That only holds where a native `long` is 4 bytes — it is 8 on a 64-bit host, so the same line reads
+16 bytes under the Unix-port test interpreter. Any port of the *driver* should pin the layout with
+an explicit `"<"` prefix; the conformance test does.
