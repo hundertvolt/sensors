@@ -149,6 +149,63 @@ def test_multi_instance_fixture_generates_successfully(fixtures_dir: Path, src_d
     assert "from asy_sgp40_driver import SGP40_Reader, _DefaultHumiditySource" in result.module_source
 
 
+def test_multi_instance_same_module_merges_distinct_default_extras(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
+    # codegen.py's per-module import dedup (bb5354c) unions whichever _Default* extras any
+    # instance of the shared module needs - this fixture has each of two sgp40 instances default a
+    # *different* field (a's humidity, b's temperature), so the merged import line must carry both
+    # extras even though neither instance alone needs both.
+    doc = base_doc()
+    doc["bus"]["i2c1"] = {"scl_pin": 19, "sda_pin": 18, "frequency": 50000, "timeout": 200000}
+    sgp40 = next(i for i in doc["instance"] if i["driver"] == "sgp40")
+    sgp40["name_ext"] = "a"
+    sgp40["wiring"]["humidity_source"] = {"default": True, "relative_humidity": 35}
+    doc["instance"].append(
+        {
+            "driver": "sgp40",
+            "name_ext": "b",
+            "bus": "i2c1",
+            "wiring": {
+                "temperature_source": {"default": True, "temperature": 20},
+                "humidity_source": {"source": "scd30", "field": "Hum"},
+            },
+        },
+    )
+    result = generate_device(write_doc(tmp_path, "merge_extras", doc), src_dir, ext_dir)
+    ast.parse(result.module_source)
+    assert result.module_source.count("from asy_sgp40_driver import") == 1
+    import_line = next(line for line in result.module_source.splitlines() if line.startswith("from asy_sgp40_driver import"))
+    assert "_DefaultHumiditySource" in import_line
+    assert "_DefaultTemperatureSource" in import_line
+
+
+def test_multi_instance_same_module_dedupes_identical_default_extra(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
+    # Same mechanism, opposite corner: both sgp40 instances default the *same* field
+    # (humidity_source, with different constants) - default_class_name() maps the field name alone
+    # to the class name, so the module's single import line must list _DefaultHumiditySource once,
+    # not twice, even though two separate instances each requested it.
+    doc = base_doc()
+    doc["bus"]["i2c1"] = {"scl_pin": 19, "sda_pin": 18, "frequency": 50000, "timeout": 200000}
+    sgp40 = next(i for i in doc["instance"] if i["driver"] == "sgp40")
+    sgp40["name_ext"] = "a"
+    sgp40["wiring"]["humidity_source"] = {"default": True, "relative_humidity": 35}
+    doc["instance"].append(
+        {
+            "driver": "sgp40",
+            "name_ext": "b",
+            "bus": "i2c1",
+            "wiring": {
+                "temperature_source": {"source": "scd30", "field": "Temp"},
+                "humidity_source": {"default": True, "relative_humidity": 45},
+            },
+        },
+    )
+    result = generate_device(write_doc(tmp_path, "dedupe_extras", doc), src_dir, ext_dir)
+    ast.parse(result.module_source)
+    assert result.module_source.count("from asy_sgp40_driver import") == 1
+    import_line = next(line for line in result.module_source.splitlines() if line.startswith("from asy_sgp40_driver import"))
+    assert import_line.count("_DefaultHumiditySource") == 1
+
+
 def test_device_without_notification_or_neopixel_omits_their_wiring(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
     doc = base_doc()
     doc["instance"] = [i for i in doc["instance"] if i["driver"] not in ("neopixel", "notification")]
