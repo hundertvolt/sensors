@@ -204,11 +204,13 @@ class _ScriptedGc:
 
 
 def test_soak_reports_a_failure_when_gc_mem_free_genuinely_trends_downward() -> None:
-    # 5 calls needed for cycles=4 (1 baseline + 4 per-cycle): a steady, real decline of 5000 bytes/
-    # cycle - early_avg (first quarter) vs. late_avg (last quarter) trend is 15000 bytes, well past
-    # _MEM_TREND_TOLERANCE_BYTES (8192).
+    # 5 calls needed for cycles=4 (1 baseline + 4 per-cycle): a steady, real decline of 15000
+    # bytes/cycle - early_avg (first quarter) vs. late_avg (last quarter) trend is 45000 bytes,
+    # well past the scaled tolerance at this test's own quarter_size=1 (8192 * sqrt(25/1) = 40960 -
+    # see _MEM_TREND_TOLERANCE_BYTES_AT_25_SAMPLES's own module-level comment for why quarter_size,
+    # not a flat constant, decides the real tolerance).
     real_gc = run_generic_integration.gc  # type: ignore[attr-defined]
-    run_generic_integration.gc = _ScriptedGc([100_000, 95_000, 90_000, 85_000, 80_000])  # type: ignore[attr-defined,assignment]
+    run_generic_integration.gc = _ScriptedGc([200_000, 185_000, 170_000, 155_000, 140_000])  # type: ignore[attr-defined,assignment]
     try:
 
         async def scenario() -> "list[str]":

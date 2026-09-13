@@ -5,6 +5,7 @@ See `digital_twin/README.md`'s "Booting a generated device" section and BUILD_CH
 import asyncio
 import gc
 import json
+import math
 import sys
 
 try:
@@ -36,13 +37,27 @@ _booted_module: "Any | None" = None  # set by main(), read by _print_wdt_status(
 # Ported verbatim from run_wozi_integration.py (BUILD_CHAIN_PLAN.md's Session 6.2 - confirmed by
 # direct comparison against run_dev_integration.py's own byte-identical copy that this machinery is
 # genuinely device-generic already, not wozi-specific: the same warm-up transient/noise band shows
-# up driving either module, since both boot the same shape of real object graph). See
-# run_wozi_integration.py's own _SOAK_WARMUP_CYCLES/_MEM_TREND_* comments for the full measurement
-# history and methodology behind these constants - unchanged here.
+# up driving either module, since both boot the same shape of real object graph).
 _SOAK_ENDPOINTS = ("/measurements", "/sensors", "/networking", "/system", "/notification", "/status", "/")
 _SOAK_WARMUP_CYCLES = 40
-_MEM_TREND_TOLERANCE_BYTES = 8192
 _SOAK_CYCLES_DEFAULT = 20
+# _MEM_TREND_*: originally calibrated (run_wozi_integration.py, since retired - its own module
+# docstring carried the full account, recovered from git history below since nothing else still
+# states it) from five independent 100-cycle soaks - 25-sample first/last quarters - measuring
+# trend deltas of +2623, +796, -410, +1729, -116 bytes (positive = memory declined): max magnitude
+# 2623, scattered around zero rather than a consistent decline (the evidence against a real leak,
+# not the absence of variance). The flat 8192-byte tolerance that produced (~3.1x that magnitude)
+# was calibrated for a 25-sample quarter; _SOAK_CYCLES_DEFAULT=20's own 5-sample quarters are
+# noisier, a mismatch the original comment already named but never corrected. Harmless while
+# digital_twin/_http_client.py's own fetch() called gc.collect() twice per request - that extra,
+# unrelated collection incidentally smoothed this measurement too - until removing it (a real fix,
+# see that file's own history) let the 20-cycle default's genuine noise floor through: a real CI
+# run measured a 9203-byte trend with zero HTTP failures and no leak (confirmed: run_generic_
+# integration.py's own soak methodology already rules that out the same way the original
+# calibration did). Scaled by quarter size instead of a flat constant - trend is a difference of
+# two quarter means, so its standard error scales with 1/sqrt(quarter_size); at the calibration's
+# own 25-sample quarters this reduces to exactly the original 8192.
+_MEM_TREND_TOLERANCE_BYTES_AT_25_SAMPLES = 8192
 
 
 class RunConfig:
@@ -329,9 +344,10 @@ async def _soak(host: str, port: int, cycles: int) -> "list[str]":
                 failures.append(f"cycle {cycle}: GET {path} -> {res.status_code}")
         gc.collect()
         mem_samples.append(gc.mem_free())
-    # Trend check - see run_wozi_integration.py's own _MEM_TREND_* module-level comment for the
-    # full methodology. Needs at least 4 per-cycle samples (cycles >= 4) for the quarters to mean
-    # anything; skipped below that (a --soak-cycles this small is a manual smoke run).
+    # Trend check - see this file's own _MEM_TREND_* module-level comment for the full methodology
+    # and why the tolerance below is scaled, not flat. Needs at least 4 per-cycle samples
+    # (cycles >= 4) for the quarters to mean anything; skipped below that (a --soak-cycles this
+    # small is a manual smoke run).
     per_cycle_samples = mem_samples[1:]
     quarter = len(per_cycle_samples) // 4
     if quarter >= 1:
@@ -340,17 +356,22 @@ async def _soak(host: str, port: int, cycles: int) -> "list[str]":
         early_avg = sum(early) / len(early)
         late_avg = sum(late) / len(late)
         trend = early_avg - late_avg  # positive: memory declined between quarters
+        # trend's own standard error scales with 1/sqrt(quarter_size) (it's a difference of two
+        # quarter means) - this reduces to exactly the original flat constant at the calibration's
+        # own 25-sample quarters, and widens correctly for a smaller/noisier one instead of
+        # silently re-applying a tolerance measured at a different sample size.
+        tolerance = _MEM_TREND_TOLERANCE_BYTES_AT_25_SAMPLES * math.sqrt(25 / quarter)
         print(
             f"digital_twin/run_generic_integration.py memory trend: baseline={mem_samples[0]} "
             f"min={min(per_cycle_samples)} max={max(per_cycle_samples)} early_avg={early_avg:.0f} "
-            f"late_avg={late_avg:.0f} trend={trend:.0f} tolerance={_MEM_TREND_TOLERANCE_BYTES} "
+            f"late_avg={late_avg:.0f} trend={trend:.0f} tolerance={tolerance:.0f} "
             f"quarter_size={quarter} samples={len(per_cycle_samples)}",
         )
-        if trend > _MEM_TREND_TOLERANCE_BYTES:
+        if trend > tolerance:
             failures.append(
                 f"gc.mem_free() trend declined by {trend:.0f} bytes (early_avg={early_avg:.0f} -> "
                 f"late_avg={late_avg:.0f}) over {cycles} cycles, exceeding the "
-                f"{_MEM_TREND_TOLERANCE_BYTES}-byte tolerance",
+                f"{tolerance:.0f}-byte tolerance (quarter_size={quarter})",
             )
     return failures
 
@@ -463,6 +484,16 @@ async def main(config: RunConfig) -> "dict[str, Any]":
 
 
 if __name__ == "__main__":
+    # Matches buildgen.codegen.generate_boot_entry_source()'s own real-firmware boot entry exactly
+    # (same call, same one-time placement immediately before asyncio.run()) - a gap found while
+    # root-causing a real CI MemoryError (2026-09-13): this twin entry point never set it, so every
+    # twin run - not just this one - has always run in MicroPython's own reactive-only default
+    # (collect on allocation failure, never proactively), unlike real hardware, which collects every
+    # ~32KB allocated. Confirmed as the actual cause, not the request/response allocation patterns
+    # themselves (digital_twin/_http_client.py's own _read_exact()/_read_until_close() and
+    # src/asy_uart_comm.py's own steady-state buffers were independently re-verified clean - the twin
+    # was simply never running under the same memory-safety configuration production already does).
+    gc.threshold(32768)
     _config = parse_args(sys.argv[1:])
     _summary: "dict[str, Any] | None" = None
     try:
