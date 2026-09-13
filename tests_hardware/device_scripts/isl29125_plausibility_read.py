@@ -5,17 +5,31 @@ Primes reader.cfgmgr directly (no real flash I/O) - see tests_hardware/README.md
 import asyncio
 
 import machine
+from machine import Pin
+from neopixel import NeoPixel
 
 import asy_i2c_driver
 from asy_isl29125_driver import ISL29125_Reader
 
 LUX_MIN, LUX_MAX = 0.0, 10000.0  # p1's own feature list: range 1 reaches 10000 lx
 CCT_MIN_K, CCT_MAX_K = 2000.0, 12500.0  # McCamy (1992)'s own usable span
-ROOM_LIGHT_MIN_LUX = 5.0  # a lit bench; below this the rig is in the dark, not the driver failing
+_SELF_LIGHT_LEVEL = 20  # ~750 lx at this geometry: well inside range 1, nowhere near clipping
+ROOM_LIGHT_MIN_LUX = 5.0  # with the board lighting ITSELF (below), anything this dark is a real
+# fault rather than a dark bench - see the self-lighting note in _main().
 
 
 async def _main() -> None:
     wdt = machine.WDT(timeout=8000)  # matches src/system_service.py's own production value
+    # The board lights its OWN scene rather than trusting the bench. Depending on ambient made this
+    # test's result depend on what the previous test happened to leave the WS2812 at: it passed
+    # with the pixel latched white by the interrupted WiFi signalling, then failed once a preceding
+    # test parked the pixel dark (measured 2026-09-13, Lux=1.07 against a 5.0 floor, with the
+    # sensor covered). A known self-provided level makes the reading deterministic, and keeps the
+    # floor check meaningful: lit and still dark now means a real fault.
+    np = NeoPixel(Pin(18, Pin.OUT), 1)
+    np[0] = (_SELF_LIGHT_LEVEL, _SELF_LIGHT_LEVEL, _SELF_LIGHT_LEVEL)
+    np.write()
+    await asyncio.sleep_ms(300)
     i2c1 = asy_i2c_driver.I2C(1, 15, 14, frequency=50000, timeout=200000)
     reader = ISL29125_Reader(i2c1, 6, max_module_error=999, fram=None, debug=None)
     # Prime config directly rather than reader.cfgmgr.setup() - no real flash file I/O. Defaults
@@ -72,6 +86,9 @@ async def _main() -> None:
         peak = max(data.Red, data.Green, data.Blue)
         if abs(data.Bri - peak) > 1e-6:
             failures.append(f"Bri={data.Bri!r} does not match max(R,G,B)={peak!r} - the HSB triple is inconsistent with RGB")
+
+    np[0] = (0, 0, 0)  # hand the next script a known-dark bench, not this one's leftovers
+    np.write()
 
     if failures:
         print(f"RESULT: FAIL {'; '.join(failures)}")

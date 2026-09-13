@@ -148,7 +148,13 @@ None is a driver defect, and each one looks like one if you do not know it:
   high relative to green and blue. Nothing here asserts channel equality or a specific hue, only
   that the HSB triple stays in domain and coherent with RGB.
 - **An interrupted `main.py` leaves the WS2812 latched**, frequently at full white - see the sweep
-  rig section below.
+  rig section below. **Every ISL29125 device script must therefore park the pixel dark itself**
+  rather than assuming the bench is dark; they all do now. This is not cosmetic: it silently broke
+  `isl29125_real_irq_edge.py` on its first real run (2026-09-13). A latched-white pixel is ~2000 lx
+  at this geometry, which is a STATIC scene sitting comfortably inside the auto-range band - it
+  crosses no threshold, so no threshold interrupt fires, and the reader's first sample waits for
+  the periodic tick (30 s in that test) instead. The driver is correct; the test was depending on
+  an unstated rig condition. Measured both ways: latched white FAILs, parked dark PASSes in 0.60 s.
 - **The auto-range hysteresis band, measured on the covered rig (2026-09-12)**, in NeoPixel levels
   at this geometry - needed by any test that wants to force, or deliberately avoid, a range switch:
 

@@ -7,6 +7,8 @@ import asyncio
 import time
 
 import machine
+from machine import Pin
+from neopixel import NeoPixel
 
 import asy_i2c_driver
 from asy_isl29125_driver import ISL29125_I2C, ISL29125_Reader
@@ -66,6 +68,18 @@ async def _measure_persist_unit(isl: ISL29125_I2C, pin: machine.Pin, wdt: machin
 
 async def _main() -> None:
     wdt = machine.WDT(timeout=8000)
+    # Park the pixel dark FIRST. A WS2812 latches its last value, and interrupting the production
+    # system into raw REPL (which every `mpremote run` does) leaves it wherever the WiFi signalling
+    # service last wrote it - frequently full white, which is ~2000 lx at this geometry. Part B
+    # below then measures a STATIC scene sitting comfortably inside the auto-range band, which
+    # crosses no threshold, so no threshold interrupt ever fires and the first reading waits for
+    # the 30s periodic tick instead. That is the driver behaving correctly, and it made this test
+    # fail for a reason that has nothing to do with the INT line (measured 2026-09-13: latched
+    # white FAILs, parked dark PASSes in 0.60s).
+    np = NeoPixel(Pin(18, Pin.OUT), 1)
+    np[0] = (0, 0, 0)
+    np.write()
+    await asyncio.sleep_ms(300)
     i2c1 = asy_i2c_driver.I2C(1, 15, 14, frequency=50000, timeout=200000)
 
     # Part A: the two datasheet measurements, against the protocol layer alone.

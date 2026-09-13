@@ -273,7 +273,12 @@ constraints.
     whose own prose says the ISL field does *not* carry one while its §8.3 schema table names it
     `ISLResetCal` — the code follows the table and the function spec, which agree).
 
-18. **Is the ISL29125's `BOUTF` actually high at power-up?** (raised 2026-09-12 by the first real
+18. **Is the ISL29125's `BOUTF` actually high at power-up? — CLOSED (2026-09-13).** Yes, and the
+    status *read* clears it, which p12 denies. Full lifecycle and evidence: SPECIFICATION.md Part
+    C.11.1.1. The fake models all four transitions now; `src/` needed no change. Original entry
+    kept below for the reasoning that led to it.
+
+    ~~Is the ISL29125's `BOUTF` actually high at power-up?~~ (raised 2026-09-12 by the first real
     mock-conformance run, SPECIFICATION.md Part C.11.1). Measured and settled: the `0x46` reset
     command leaves `0x08` reading `0x00`, so it does **not** raise the flag — the twin's `_reset()`
     was corrected and `simulate_brownout()` added for the supply event. What is **not** settled is
@@ -357,8 +362,8 @@ constraints.
     applied as a function of level (or simply pinned to the overlap band and documented as such)?
     One unit, one geometry, one session — worth reproducing on a second board before acting.
 
-21. **The ISL29125 flash-tier tests need this branch's firmware flashed — currently blocked by
-    choice** (2026-09-12). Five ISL device scripts import `asy_isl29125_driver`, which is **not**
+21. **The ISL29125 flash-tier tests need this branch's firmware flashed** (2026-09-12; the
+    BOUTF reason for deferring it is gone as of 2026-09-13, open question 18 being closed). Five ISL device scripts import `asy_isl29125_driver`, which is **not**
     in the firmware on the bench board (a pre-ISL `dev` build). `harness.Board.run_isolated()` does
     not mount, so `uv run pytest tests_hardware/flash -k isl29125` fails with
     `ImportError: no module named 'asy_isl29125_driver'` for every one of them. Everything was
@@ -393,6 +398,59 @@ constraints.
     periodic fallback by 0.61 s, `PRST` counting whole RGB cycles (1066 ms at PRST=4), the
     `CONFIG1`-write conversion restart, 12-bit data being right-aligned, and both concurrency
     scripts (same-device read/write, and cross-device interleaving against SCD30 + SGP40).
+
+23. **A hardware test that depends on an unstated rig condition is the recurring failure mode in
+    this tier** (pattern, 2026-09-13 — worth reading before writing a new one). Three instances so
+    far, all found by actually running the tests rather than by review:
+    - `isl29125_real_irq_edge.py` assumed a scene near a range boundary. A latched-white NeoPixel
+      (~2000 lx) is static and mid-band, crosses no threshold, and so produces no threshold
+      interrupt — correct driver behaviour, failing test. **Fixed**: the script parks the pixel.
+    - `isl29125_autorange_sweep.py` assumes the LED ramp crosses the switch point slowly enough to
+      sample; it does not (item 19).
+    - the first `isl29125_lighting_scenarios.py` oscillation scenario put both its levels inside
+      the hysteresis band and passed with `switches=0` (item 22's own note).
+    - `isl29125_plausibility_read.py` depended on ambient, so its result depended on **test
+      ordering**: it passed while the pixel was latched white by the interrupted WiFi signalling,
+      then failed once the fixed IRQ script (above) began parking the pixel dark before it
+      (`Lux=1.07` against a 5.0 floor, sensor covered). The nastiest of the four, because the test
+      itself never changed. **Fixed**: it lights its own scene at a known level and parks the pixel
+      dark again on the way out, so it neither depends on nor imposes bench state.
+    The three habits that catch this class: **a device script provides its own light** rather than
+    trusting the bench state, **it restores that state on the way out** so it cannot decide a later
+    script's result, and it **asserts a minimum engagement** (this must switch / both ranges
+    must be used) alongside every ceiling, so a test cannot pass while the mechanism it targets
+    never runs.
+
+24. **The two live-backend browser tests fail locally on a stale/stub frozen website** (observed
+    2026-09-13 on this branch; **not caused by it** — nothing in the ISL29125 work touches the web
+    lane, and 575/576 `tests_js` tests pass). `npx vitest run` reports 2 failed files, 1 failed
+    test:
+    - `tests_js/live-backend.test.js` — the browser-driven PUT round-trip fails with
+      `page.waitForSelector: Timeout 10000ms exceeded` waiting for `[data-section-key="system"]`.
+      The captured HTML in the failure shows why: the twin served the **wozi placeholder stub**
+      (`<title>wozi placeholder</title>`, `Hello, wozi! (placeholder stub)`), not the real site.
+    - `tests_js/live-backend-put-matrix.test.js` — fails at *collection* with
+      `startLiveMatrix failed: digital twin never started serving on 127.0.0.1:19412 within
+      20000ms`, twin stderr empty. Whether this is the same root cause surfacing earlier or a
+      separate boot/port problem was **not** established.
+
+    **Confirmed root cause for the first one.** `frozen_modules/` is a gitignored build artifact
+    and currently holds `frozen_html.py` at 8 KB — the stub, built by `scripts/build_frozen_html.sh`
+    from `html_stub/` — alongside a separate 84 KB `frozen_website_wozi.py`. `sensortask_dev.py`'s
+    top-level `import frozen_html` is what mounts `/html`, so the twin serves whatever that module
+    contains; here, the placeholder. The tracked `html/index.html` *is* the real site, so this is
+    purely about which artifact got built into `frozen_modules/`.
+
+    **Also worth fixing, and arguably the real defect:** `tests_js/live-backend.test.js`'s own
+    docstring promises it "skips itself with a clear message if the MicroPython toolchain/frozen
+    website aren't built yet, rather than failing the suite" — but `_live_twin_command.js`'s guard
+    only checks that the Unix-port binary exists. It does not check that the frozen module is the
+    **real** website, so a stub build fails with a confusing selector timeout instead of skipping
+    as designed. Widening that guard would have turned this into a one-line skip message.
+
+    Left for the web lane's owner: not investigated further, and nothing was rebuilt, since a
+    `scripts/build_website.sh` run changes a gitignored artifact that other work on this bench may
+    be relying on.
 
 ## Deferred / explicitly out-of-scope work
 - **The 1.29.0 pin is now field-proven on the dev bench (2026-09-11).** Real `dev` firmware built
