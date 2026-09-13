@@ -270,10 +270,9 @@ class UART_Comm:
         return max(wire, per_poll)
 
     def _allocate(self) -> "tuple[LockableBuffer, LockableBuffer, bytearray, bytearray, bytearray, bytearray]":
-        # Everything the steady state needs, once: separate TX/RX frame buffers (C4.2), the ACK
-        # scratch, the zero-padding source, the command-id scratch and the declined-id bitmap.
-        # Nothing is allocated per frame after this - zero bytes retained per transaction,
-        # pinned by test_uart_comm_hazard.py.
+        # Everything the steady state needs, once: the TX/RX frame buffers (C4.2), the ACK scratch,
+        # the zero padding, the command-id scratch and the declined-id bitmap. Nothing is allocated
+        # per frame after this - zero bytes retained per transaction, pinned by test_uart_comm_hazard.py.
         if self.uart is None or self._init_errno == _ERR_PAYLOAD_SIZE:
             size = _HEADER_LEN  # a refused construction still needs well-formed attributes
             room = size
@@ -586,10 +585,9 @@ class UART_Comm:
         await self._resync(device)
 
     async def _reject_wrn(self, device: "UART", cmd_id: int) -> None:
-        # C3.8's repeat rule applied to a declined command. A peer polling an id this side does not
-        # implement is a standing condition, and every refusal also resyncs - two persisted entries
-        # each, which filled a ten-slot history in five refusals. One bit per id rather than just the
-        # last one: remembering only the last let two unimplemented ids in rotation flood it again.
+        # C3.8's repeat rule for a declined command: a peer polling an id this side does not implement
+        # is a standing condition, and every refusal also resyncs - two slots each, a ten-slot history
+        # gone in five rounds. One bit per id, not just the last, so an alternation cannot refill it.
         index = cmd_id >> 3
         bit = 1 << (cmd_id & 7)
         if index < len(self._rejected) and not self._rejected[index] & bit:
@@ -717,12 +715,9 @@ class UART_Comm:
         return True
 
     async def _pull_chunk(self, device: "UART", pull: "_PullCallback", chunk: int, size: int, *, is_last: bool) -> int | None:
-        # F7.2: the callback fills a memoryview of exactly this chunk's region, so it cannot
-        # overrun by construction. F7.1: a short non-final supply aborts locally, before this chunk
-        # is sent - the peer would reject it anyway (D4.5), but the fault is this side's. Every
-        # abort here is still mid-train, with chunk 1 already sent and acknowledged, so it quiesces
-        # like any other fault: without that the peer drains for 1.5 x timeout while this side is
-        # free to transmit straight into that window.
+        # F7.2: the callback fills a memoryview of exactly this chunk's region, so it cannot overrun
+        # by construction; F7.1: a short non-final supply aborts before this chunk is sent. Every abort
+        # here is mid-train though, so it quiesces - else this side transmits into the peer's own drain.
         region = self._tx.get_data_buf()
         if region is None:
             await self._fault(device, _ERR_ALLOC, "no TX data region")

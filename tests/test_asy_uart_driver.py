@@ -1762,9 +1762,11 @@ class _NamelessDelimiter(Framing_Base):
 
 
 def test_a_raising_any_is_swallowed_instead_of_escaping_the_driver() -> None:
-    # The never-raises contract at its one real risk point: every read clamps to uart.any(), so a
-    # bus fault there would otherwise put a bare OSError through an API that only ever returns
-    # sentinels. rp2 does raise from any() on an RX overrun (F.5.1's new EIO site).
+    # Defence in depth, not a reachable rp2 failure: traced through ports/rp2/machine_uart.c at
+    # v1.29.0, mp_machine_uart_any() drains the FIFO (absorbing overrun/break/parity silently, per
+    # C.3.2) and returns ringbuf_avail() - there is no raise site. The guard earns its two lines
+    # because every read in the module funnels through here, so a future port that does raise would
+    # otherwise put a bare OSError through an API that only ever returns sentinels.
     uart = make_uart()
     fk = fake(uart)
     fk.feed_rx(b"abcd")

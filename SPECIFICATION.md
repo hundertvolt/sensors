@@ -623,11 +623,20 @@ gap is the RP2040 firmware build.
 
 ## B.10 CI perspective
 
-`.github/workflows/ci.yml`: `lint-and-typecheck` + `unit-tests` (`scripts/test.sh`, building via
-`setup` on a cache miss). Cache key hashes **both** `versions.toml` and `setup_toolchain.py` —
-keying on `versions.toml` alone once let a stale cached binary (built before
-`MICROPY_PY_SYS_SETTRACE=1`) survive across commits, a real bug (`--coverage` failed in CI while
-passing locally). No RP2040 firmware-build CI stage yet (BACKLOG.md).
+`.github/workflows/ci.yml` runs **twelve jobs** (eleven of them real work plus `web-changes`, a
+path filter the four web jobs gate on), each its own stage so a failure names the tool
+rather than going red under a shared "lint" label (corrected 2026-09-13 — this paragraph had
+described a two-job workflow that stopped being true several stages ago). Python side:
+`lint-and-typecheck`, `shellcheck`, `actionlint`, `zizmor`, `unit-tests` (`scripts/test.sh`,
+building via `setup` on a cache miss), `digital-twin-e2e` and **`firmware-build-verify`, which does
+build a real `firmware.uf2` for wozi and verify it** — the "no RP2040 firmware-build CI stage yet"
+this paragraph used to claim is long gone. Web side: `web-lint-and-typecheck`, `web-unit-tests`, `web-coverage`, `web-cross-browser-smoke`.
+
+Cache key hashes **both** `versions.toml` and `setup_toolchain.py` — keying on `versions.toml`
+alone once let a stale cached binary (built before `MICROPY_PY_SYS_SETTRACE=1`) survive across
+commits, a real bug (`--coverage` failed in CI while passing locally). `unit-tests` additionally
+runs its own retried `uv sync` before `scripts/test.sh`, so a third party's build-time download
+failing cannot read as a red test result (CLAUDE.md's "Code quality tooling").
 
 ## B.11 Building this project's firmware
 
@@ -886,7 +895,12 @@ region**, published through monotonic request/ack counters and bounded so the ca
 terminating. (It was an `asyncio.Event` handshake, which could both drop a request and hang the
 canceller forever; see `UART_C_PORT_CHANGELOG.md` B15.); **raise contract** (re-verified against `ports/rp2/machine_uart.c` at v1.29.0): a
 hardware framing/parity/overrun error is never raised — delivered corrupted, dropped, or skipped
-silently instead, and `write()` can short-write — a third position distinct from I2C (raises) and
+silently instead, and `write()` can short-write. **`any()` cannot raise either** (re-traced
+2026-09-13, since every read in the driver now funnels through it): `mp_machine_uart_any()` calls
+`uart_drain_rx_fifo()`, which absorbs the OE/BE/PE bits with no error path, then returns
+`ringbuf_avail()`; the generic `extmod/machine_uart.c` wrapper only boxes that int. `_buffered()`'s
+`except (OSError, MemoryError)` is therefore defence in depth against a future port, not a
+reachable rp2 case — worth its two lines precisely because it is the single choke point — a third position distinct from I2C (raises) and
 SPI (writes cannot raise; 32+ byte reads can, since 1.29 — F.5.2), already matched correctly (every
 method returns a sentinel).
 
@@ -1138,7 +1152,7 @@ is expected; only overlap *within* one row matters.
 | `asy_webserver_service.py` (`WEBSERVER`) | 1-6 | 1-5 | 1=unexpected exception in dispatch, 2=`system_cmd` callback, 3=`notification_led` callback, 4=uncaught exception via `errorhandler(Exception)`, 5=`notification_pause` callback, 6=one `/status` streamed-fragment source failed. `wrnno` 1-5=connection-lifecycle reclaim reasons. |
 | `asy_neopixel_driver.py` | — | — | No persisted logging. |
 | `asy_i2c_driver.py`/`asy_spi_driver.py`, `asy_udp_socket.py`, `asy_dns_client.py` (client) | — | — | Deliberately no logging — every failure surfaces to exactly one upstream owner. Coverage audit closed, no gaps. |
-| `asy_uart_comm.py` (`UART`, `_NAME` only as the default) | 10-34 | 10-14 | 10-16=construction refusals (payload_size, timeout, role, bus handle, allocation — the module's own buffers *and* a frame codec whose one long-lived scratch failed, since a codec that reports itself not ready would otherwise fail every write instead — rxbuf, missing callback), 17=not-ready gate, 18=role refusal, 19=frame validation, 20=missing/mismatched ACK, 21=write, 22=read timeout, 23=payload too large, 24=destination allocation, 25=size mismatch, 26=callback, 27=re-entrant call, 28=wrong frame kind, 29=GET id mismatch, 30=listen loop, 31=peer initiated simultaneously, 32=bytes arriving but no frame ever valid (a CRC/baud/`payload_size` mismatch), 33=streamed chunk short-filled, 34=a caller's own argument refused (command id outside a byte, a non-integer or negative size, a non-buffer payload or destination). `wrnno` 10=resync, 11=drain bound reached, 12=fault episode cleared, 13=a *rise* in the driver's cumulative `cancel_unacknowledged` (reading it as a flag reported every later healthy cancel as wedged), 14=a callback declined a command id. **Exactly one of 10/11/14 is persisted per fault episode, and 14 at most once per command id, ever** — deduping only the `errno` left every fault still persisting its own resync warning, which refilled the bounded history and evicted the entry naming the cause — and 14 escaped that fix until 2026-09-12, so a peer polling one unimplemented id spent two slots per refusal and erased a ten-slot history in five rounds; remembering only the *last* declined id then left an alternation between two unimplemented ids flooding it just the same, which a 32-byte one-bit-per-id map closed on 2026-09-13. **A consequence worth knowing before reading a field log: `wrnno` 11 never reaches FRAM through the path that produces it** — `_resync()` persists 10 first and that spends the episode's one slot, so "the peer never stopped sending" is only ever visible-only, and a babbling peer shows as 10 (plus `errno` 32 when no frame ever validated). Measured 2026-09-13; whether 11 should outrank 10 is BACKLOG open question 17, not a silent change. Numbered from 10 to stay clear of `base_classes.py`'s reservation even though this is not a `SensorReader` subclass, and disjoint from any owner's own range where the logger is reached through. |
+| `asy_uart_comm.py` (`UART`, `_NAME` only as the default) | 10-34 | 10-14 | 10-16=construction refusals (payload_size, timeout, role, bus handle, allocation — the module's own buffers *and* a frame codec whose one long-lived scratch failed, since a codec that reports itself not ready would otherwise fail every write instead — rxbuf, missing callback), 17=not-ready gate, 18=role refusal, 19=frame validation, 20=missing/mismatched ACK, 21=write, 22=read timeout, 23=payload too large, 24=destination allocation, 25=size mismatch, 26=callback, 27=re-entrant call, 28=wrong frame kind, 29=GET id mismatch, 30=listen loop, 31=peer initiated simultaneously, 32=bytes arriving but no frame ever valid (a CRC/baud/`payload_size` mismatch), 33=streamed chunk short-filled, 34=a caller's own argument refused (command id outside a byte, a non-integer or negative size, a non-buffer payload or destination). `wrnno` 10=resync, 11=drain bound reached, 12=fault episode cleared, 13=a *rise* in the driver's cumulative `cancel_unacknowledged` (reading it as a flag reported every later healthy cancel as wedged), 14=a callback declined a command id. **Exactly one of 10/11/14 is persisted per fault episode, and 14 at most once per command id until a `reset_error_counter()`** — deduping only the `errno` left every fault still persisting its own resync warning, which refilled the bounded history and evicted the entry naming the cause — and 14 escaped that fix until 2026-09-12, so a peer polling one unimplemented id spent two slots per refusal and erased a ten-slot history in five rounds; remembering only the *last* declined id then left an alternation between two unimplemented ids flooding it just the same, which a 32-byte one-bit-per-id map closed on 2026-09-13. **A consequence worth knowing before reading a field log: `wrnno` 11 never reaches FRAM through the path that produces it** — `_resync()` persists 10 first and that spends the episode's one slot, so "the peer never stopped sending" is only ever visible-only, and a babbling peer shows as 10 (plus `errno` 32 when no frame ever validated). Measured 2026-09-13; whether 11 should outrank 10 is BACKLOG open question 17, not a silent change. Numbered from 10 to stay clear of `base_classes.py`'s reservation even though this is not a `SensorReader` subclass, and disjoint from any owner's own range where the logger is reached through. |
 | `asy_uart_driver.py` | — | — | Deliberately no logging — every failure surfaces to its one upstream owner (`asy_uart_comm.py`), the same treatment the other bus drivers get. `cancel_unacknowledged` is a plain counter that owner reads and logs under its own `wrnno` 13. |
 
 ## C.8 Concurrency & locking model
@@ -1388,7 +1402,14 @@ contract once at module level rather than repeating it per function — applies 
 Consistent control-flow order: `None`-check, range-check (plain guard), then `try`-wrapped
 computation. **Keep documentation itself concise — a module docstring is a short header, not an
 essay.** A permanent design fact belongs in CLAUDE.md/this document; an open question belongs in
-BACKLOG.md. Inline comments stay within **3 lines, prefer fewer**.
+BACKLOG.md. **CLAUDE.md's comment-discipline rule is the authority and this line used to contradict
+it** (corrected 2026-09-13): the **3 lines, prefer fewer** cap is on the *module header block*;
+inline `#` comments have **no hard numeric cap** but must stay a few short, load-bearing WHY notes
+next to the line they explain, never a multi-paragraph block of narrative reasoning. The codebase
+follows CLAUDE.md, not the old wording — `sensortask_wozi.py` alone carries fifteen blocks longer
+than three lines. Where a file has settled on its own tighter norm, match *it* (D.10):
+`asy_uart_comm.py` is uniformly ≤ 3, and the three blocks that drifted past it were trimmed back in
+the same pass that found this.
 
 ## D.12 Unit tests
 
@@ -1483,6 +1504,17 @@ the abstract. This caught a real gap during `print_log.py`'s review: `_write()`/
 buffer methods *before* their `try:` block started — fixed by widening both to cover the whole
 body.
 
+**The allocator is the one other sanctioned mocking surface**, on the same
+no-real-class-equivalent reasoning: an 8MB test heap cannot be starved at a chosen moment, so
+`tests/test_asy_uart_comm.py`'s `_StarvedAlloc` shadows *that module's own* `bytearray` global —
+the reassign-a-module-name mechanism the rest of `tests/` already uses, pointed at an allocation
+instead of a method. Two rules make it safe, both learned by getting them wrong first: it must be
+**armed and one-shot**, because every degraded path allocates something itself and a
+blanket-raising stub fires again inside the very handler under test; and it must restore the global
+in `__exit__` so a failing assertion cannot leave the module shadowed for the next test in the same
+process. Reach for it only where a real `MemoryError` is genuinely unreachable — never to avoid
+writing the reachable case.
+
 ## E.5 Coverage
 
 ```
@@ -1502,8 +1534,12 @@ currently no-ops silently.
 
 ### E.5.1 Reading the numbers: three systematic false-negative patterns, not missed test cases
 
-`micropython.const(...)` assignments are compiled away entirely, so the line never fires a trace
-event and always shows a 0-hit miss despite being fully "exercised." A decorated function's traced
+`micropython.const(...)` assignments whose name starts with `_` are compiled away entirely, so the
+line never fires a trace event and always shows a 0-hit miss despite being fully "exercised."
+**The rule is the leading underscore, verified at source** (`py/parse.c`, the `MICROPY_COMP_CONST`
+fold): a private `const()` has its whole assignment replaced by `pass` in the parse tree, while a
+public one keeps the store and therefore does register — which is why `ROLE_INITIATOR` and `CMD_GET`
+show as covered in `asy_uart_comm.py` while all 58 of its `_`-prefixed constants do not. A decorated function's traced
 event lands on the decorator line, not the `def` line, so every `@staticmethod`/`@classmethod`
 shows missed even when called throughout the suite. A bare `while True:` header never fires its own
 trace event at any iteration (folds into an unconditional jump at compile time).
@@ -1678,6 +1714,16 @@ asserted on the fake's own call log, but the fake returns early on an empty ring
 so deleting the gate left the log empty too and the test still passed. A guard is only established
 by removing what it guards and watching it fail — the same standard I3.4's revert-and-confirm pass
 applies to fixes, applied to test oracles.
+
+**Run it as a scripted sweep, not by hand.** One list of `(source file, exact anchor, replacement,
+expected failing tests)`; for each entry, write the mutation, run only the affected test file,
+require the named test to be in the failures, restore the file in a `finally` regardless. Cheap
+enough to run over twenty-odd guards in one pass, and it answers a question reading cannot: 27
+mutations across 2026-09-12/13 found two tests that asserted *that* a refusal happened but not
+*where*, so both survived a mutation that moved the refusal to the wrong end of the exchange — and
+one **fix** that was itself dead code, an `isinstance(written, bool)` arm added on CPython reasoning
+that nothing could fail once removed, because `bool` is not an `int` subclass here at all (F.1). A
+mutation that fails nothing is as much a finding as a test that fails nothing.
 
 **Standing rule, from the same sweep: every hazard check runs in both CRC modes.**
 `tests/test_uart_comm_hazard.py` registers each `_check_*` twice (`_nocrc`, `_crc16`) — 48 checks,
@@ -2863,7 +2909,12 @@ abandoned — the anti-desync rule.
 **Recovery is quiesce-and-resync, never retransmission.** Nothing is ever re-sent. On any fault — CRC
 failure (the frame simply never completes), unexpected chunk index, size mismatch, missing ACK — the
 side that noticed drains its receive path until the line has been quiet for `1.5 × timeout`, then
-holds off initiating for a further `1.5 × timeout`. With no framing marker to resync against, this
+holds off initiating for a further `1.5 × timeout`. **"Any fault" includes a purely local one raised
+mid-train**, which is easy to read as exempt because nothing arrived wrong: a streamed send whose
+`pull` callback raises, returns a non-count or short-fills a non-final chunk has already put chunk 1
+on the wire and had it acknowledged, so the peer is mid-train and will drain — and this side must
+quiesce with it or transmit straight into that window. Found violating this on 2026-09-13 and fixed;
+the code now routes every such abort through the same `_fault()` helper as a link fault. With no framing marker to resync against, this
 mutual silence is what gets both sides back onto a clean frame boundary. **Both constants are part of
 the contract** (J.1's Class A rule) — a peer draining for less can transmit into the other's drain
 window.
