@@ -82,7 +82,7 @@ def test_main_runs_a_tiny_bounded_soak_with_an_injected_fault_and_returns_a_clea
     assert non_memory_failures == []
     assert summary["would_have_triggered_count"] == 0
 
-    # H4 in the twin tier, on this same run rather than a second one: building the dev graph twice
+    # The bench tier's claim in the twin tier, on this same run: building the dev graph twice
     # in one file exhausts the Unix port's 8MB test heap. The jumper and its exerciser ran through
     # the whole soak, so an idle-link reading cannot pass this.
     assert sensortask_dev.uart_transfers > 0, "the link never completed a transfer during the soak"

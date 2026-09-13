@@ -900,7 +900,7 @@ def test_webserver_status_get_reflects_the_real_object_graph() -> None:
     body = json.loads(status_body(res))
     assert set(body.keys()) == {"networking", "system", "notification", "sensors", "errcount"}
     # SGP40 is the only real sensor with maintenance data; UARTLINK is the bench rig's own link
-    # exerciser reporting through the same variable-length registration list (H4).
+    # exerciser reporting through the same variable-length registration list.
     assert set(body["sensors"].keys()) == {"SGP40", "UARTLINK"}
     assert "BackupTS" in body["sensors"]["SGP40"] and "RestoreTS" in body["sensors"]["SGP40"]
     assert body["sensors"]["UARTLINK"] == {"Transfers": 0, "Failures": 0}  # no exerciser task run yet
@@ -1006,7 +1006,7 @@ def test_is_hotspot_active_wiring_put_to_unmatched_path_still_405_in_hotspot_mod
 
 
 # ---------------------------------------------------------------------------
-# The dev-only UART link exerciser (UART_PROMOTION_REQUIREMENTS.md H4). Nothing on a live system
+# The dev-only UART link exerciser (SPECIFICATION.md Part A.7 step 13b). Nothing on a live system
 # initiates a transfer but this loop, so without it every claim about the link coexisting with the
 # webserver is a claim about an idle link.
 # ---------------------------------------------------------------------------
@@ -1057,7 +1057,7 @@ def test_the_link_exerciser_moves_real_bytes_and_counts_them() -> None:
 
 
 def test_the_exerciser_progress_is_visible_through_the_real_status_route() -> None:
-    # H4's assertion surface: a bench test can only tell a live link from an idle one through the
+    # The bench tier's assertion surface: it can only tell a live link from an idle one through the
     # API, so the counters have to actually reach /status.
     run(sensortask_dev.build_system(cfg_path=_tmp_cfg_dir()))
     _cross_the_dev_uarts()

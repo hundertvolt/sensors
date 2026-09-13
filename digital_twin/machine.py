@@ -459,7 +459,7 @@ def attach_crossover_jumper(fake_a: "UART", fake_b: "UART") -> "tuple[UARTLink, 
 class UARTLink:
     # Byte-level crossover between two UART fakes: one FIFO per direction, the mock link's fault
     # knobs, plus real wire time - a byte becomes readable only once its transmission would have
-    # finished at the configured baud rate, so a drain or cooldown cannot pass wrongly (A4.3).
+    # finished at the configured baud rate, so a drain or cooldown cannot pass wrongly.
     def __init__(self, uart_a: "UART", uart_b: "UART", capacity_a_to_b: int | None = None, capacity_b_to_a: int | None = None) -> None:
         if uart_a._link is not None or uart_b._link is not None:
             raise ValueError("UART already attached to a link")
@@ -578,7 +578,7 @@ class UART(io.IOBase):
 
     # One live instance per peripheral id. Real machine.UART() re-inits the peripheral rather than
     # refusing, so a second instance on one id supersedes the first; the twin deinits and detaches
-    # the loser so it cannot keep delivering to a stale peer - the mis-routing this models (A4.2).
+    # the loser so it cannot keep delivering to a stale peer - the mis-routing this models.
     _live: "dict[int, UART]" = {}
     superseded = 0  # how many instances have been displaced this way, for a test to assert on
 

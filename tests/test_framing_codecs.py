@@ -1,5 +1,5 @@
 """Unit tests for src/framing_codecs.py - the pluggable frame codec asy_uart_driver.py writes
-through (requirement B2). Covers the pass-through default's byte-identity guarantee, COBS
+through (SPECIFICATION.md Part G.2). Covers the pass-through default's byte-identity guarantee, COBS
 round-trips including every shape the protocol can emit, and each malformed-input rejection."""
 
 import asyncio
@@ -58,7 +58,7 @@ def test_pass_through_has_no_overhead_and_no_delimiter() -> None:
 
 
 def test_pass_through_is_always_ready() -> None:
-    # B2.8's counterpart: a codec that allocates nothing can never fail to construct.
+    # ready()'s counterpart: a codec that allocates nothing can never fail to construct.
     assert Framing_Pass().ready() is True
 
 
@@ -106,7 +106,7 @@ def test_cobs_overhead_matches_the_documented_bound() -> None:
 
 
 def test_cobs_never_emits_the_delimiter_over_a_fuzz_sweep() -> None:
-    # A deterministic sweep, not unseeded randomness (A3.1): a linear-congruential walk over
+    # A deterministic sweep, not unseeded randomness: a linear-congruential walk over
     # buffers of every length up to the maximum frame.
     codec = Framing_COBS(300)
     state = 12345
@@ -121,12 +121,12 @@ def test_cobs_never_emits_the_delimiter_over_a_fuzz_sweep() -> None:
 
 
 # ---------------------------------------------------------------------------
-# B2.4/B2.5 - malformed input and bounds
+# Malformed input and bounds
 # ---------------------------------------------------------------------------
 
 
 def test_cobs_rejects_a_code_byte_pointing_past_the_frame_end() -> None:
-    # B2.4: the decoder must validate every offset before following it, not walk off the buffer.
+    # The decoder must validate every offset before following it, not walk off the buffer.
     codec = Framing_COBS(64)
     assert decoded(codec, b"\x20\x01\x02") is None
 
@@ -137,7 +137,7 @@ def test_cobs_rejects_a_zero_code_byte_inside_a_frame() -> None:
 
 
 def test_cobs_rejects_an_oversized_frame() -> None:
-    # B2.1/B2.5: the maximum frame length bounds the codec, so an over-long input is a decode
+    # The maximum frame length bounds the codec, so an over-long input is a decode
     # failure rather than an out-of-range write into a buffer sized for the worst legal case.
     codec = Framing_COBS(16)
     buf = bytearray(64)
@@ -154,14 +154,14 @@ def test_cobs_rejects_a_negative_or_oversized_size() -> None:
 
 
 def test_cobs_decode_of_an_empty_frame_is_empty_not_a_failure() -> None:
-    # B2.3's other half: the codec itself round-trips a zero-length payload; skipping *empty
+    # The other half: the codec itself round-trips a zero-length payload; skipping *empty
     # frames on the wire* is the read loop's job, not this layer's.
     codec = Framing_COBS(64)
     assert decoded(codec, b"\x01") == b""
 
 
 def test_cobs_failed_allocation_degrades_to_not_ready() -> None:
-    # B2.8: a codec that could not allocate its scratch reports it instead of looking constructed.
+    # A codec that could not allocate its scratch reports it instead of looking constructed.
     codec = Framing_COBS(-1)  # an impossible frame bound, the same guard LockableBuffer applies
     assert codec.ready() is False
     assert run(codec.encode_into(bytearray(8), 4)) is None
@@ -169,7 +169,7 @@ def test_cobs_failed_allocation_degrades_to_not_ready() -> None:
 
 
 def test_cobs_scratch_too_large_for_the_heap_degrades_the_same_way() -> None:
-    # The other half of B2.8. A negative bound never reaches the allocation at all, so the except
+    # The other half of ready(). A negative bound never reaches the allocation at all, so the except
     # clause that catches a real MemoryError/OverflowError - the case that actually happens on a
     # fragmented heap, rather than a caller typo - had no test of its own.
     codec = Framing_COBS(1 << 40)  # well-formed, and far past what any heap here can serve
@@ -185,7 +185,7 @@ def test_cobs_reports_itself_as_delimited() -> None:
 
 
 def test_cobs_scratch_is_reused_across_frames() -> None:
-    # B2.5: allocated once from the frame bound, never per frame.
+    # allocated once from the frame bound, never per frame.
     codec = Framing_COBS(128)
     first = run(codec.encode_into(bytearray(b"abc"), 3))
     second = run(codec.encode_into(bytearray(b"defg"), 4))

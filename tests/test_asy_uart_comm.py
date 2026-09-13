@@ -1,6 +1,6 @@
-"""Unit tests for src/asy_uart_comm.py, phases C-F of UART_PROMOTION_REQUIREMENTS.md: construction
+"""Unit tests for src/asy_uart_comm.py (SPECIFICATION.md Part J): construction
 and readiness, frame build/validate/ACK, the acknowledged exchange and its recovery, and the
-transaction layer. The comm-hazard tier lives in test_uart_comm_hazard.py (H1)."""
+transaction layer. The comm-hazard tier lives in test_uart_comm_hazard.py."""
 
 import asyncio
 import struct
@@ -63,20 +63,20 @@ def make_comm(**kwargs: "Any") -> UART_Comm:
 
 
 # ===========================================================================
-# Phase C - module foundation
+# Module foundation
 # ===========================================================================
 # C2 - constructor, parameter validation, readiness gate
 
 
 def test_valid_construction_sets_the_gate_only_after_setup() -> None:
     comm = make_comm()
-    assert comm.initialized is False  # C2.6: nothing is usable before setup()
+    assert comm.initialized is False  # nothing is usable before setup()
     assert run(comm.setup()) is True
     assert comm.initialized is True
 
 
 def test_payload_size_boundaries_are_accepted_and_refused() -> None:
-    # C2.1: SIZE/CHUNKS are single bytes and a zero-width payload cannot carry the command id.
+    # SIZE/CHUNKS are single bytes and a zero-width payload cannot carry the command id.
     for good in (1, 255):
         roomy = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=1, rxbuf=2048)
         roomy.poller = LinkPoller(roomy._uart)  # type: ignore[assignment,arg-type]  # never a real select.poll()
@@ -102,7 +102,7 @@ def test_non_positive_timeout_is_refused() -> None:
 
 
 def test_timeout_below_the_gc_pause_floor_is_refused() -> None:
-    # C2.4: below this a routine collection pause reads as a link fault, and the link resyncs
+    # Below this a routine collection pause reads as a link fault, and the link resyncs
     # continuously under memory pressure for no reason.
     driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=10)
     driver.poller = LinkPoller(driver._uart)  # type: ignore[assignment,arg-type]
@@ -130,7 +130,7 @@ def test_invalid_role_is_refused_and_has_no_default() -> None:
 
 
 def test_a_none_bus_is_recorded_distinctly_and_never_raises() -> None:
-    # C2.7: otherwise every call returns a sentinel with no explanation of which thing was wrong.
+    # Otherwise every call returns a sentinel with no explanation of which thing was wrong.
     comm = make_comm(uart=None)
     assert comm._init_errno != 0
     assert run(comm.setup()) is False
@@ -140,7 +140,7 @@ def test_a_none_bus_is_recorded_distinctly_and_never_raises() -> None:
 
 
 def test_construction_performs_no_bus_call() -> None:
-    # C2.8: an allocate-only constructor, so construction can never hang outside any supervisor.
+    # An allocate-only constructor, so construction can never hang outside any supervisor.
     driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=1)
     driver.poller = LinkPoller(driver._uart)  # type: ignore[assignment,arg-type]
     before = len(driver._uart.log)  # type: ignore[union-attr]
@@ -149,7 +149,7 @@ def test_construction_performs_no_bus_call() -> None:
 
 
 def test_maximum_payload_size_against_the_default_rxbuf_is_refused() -> None:
-    # C2.9: 5 + 255 = 260 bytes against the driver's own 256-byte default rxbuf, so the maximum
+    # 5 + 255 = 260 bytes against the driver's own 256-byte default rxbuf, so the maximum
     # legal payload_size overruns it outright - a frame that never completes, indistinguishable
     # from a link fault unless it is caught at construction.
     driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=1)  # rxbuf defaults to 256
@@ -162,7 +162,7 @@ def test_maximum_payload_size_against_the_default_rxbuf_is_refused() -> None:
 
 
 def test_rxbuf_too_small_for_one_poll_interval_is_refused() -> None:
-    # C2.10: at 115200 baud a 20ms poll interval plus the module's 5ms of scheduling slack admits
+    # At 115200 baud a 20ms poll interval plus the module's 5ms of scheduling slack admits
     # ~288 bytes, so a 64-byte rxbuf loses the tail of anything sustained even though a frame fits.
     driver = UART(0, tx_pin=0, rx_pin=1, baudrate=115200, poll_wait_ms=20, rxbuf=64)
     driver.poller = LinkPoller(driver._uart)  # type: ignore[assignment,arg-type]
@@ -170,7 +170,7 @@ def test_rxbuf_too_small_for_one_poll_interval_is_refused() -> None:
 
 
 def test_a_codec_that_failed_its_allocation_refuses_construction() -> None:
-    # B2.8 gives every codec a ready() to report a failed scratch allocation, and nothing read it.
+    # Every codec has a ready() to report a failed scratch allocation, and nothing read it.
     # A dead codec constructed cleanly, passed setup() and then failed every single write with
     # _ERR_WRITE_FAILED - the link looking broken instead of the configuration being refused.
     dead = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=1, rxbuf=1024, framing=Framing_COBS(-1))
@@ -185,7 +185,7 @@ def test_a_codec_that_failed_its_allocation_refuses_construction() -> None:
 
 
 def test_every_public_method_is_gated_before_setup() -> None:
-    # C2.6: operating on unallocated state must return the method's own sentinel, never raise.
+    # Operating on unallocated state must return the method's own sentinel, never raise.
     comm = make_comm()
     assert run(comm.uart_set(1, b"a")) is False
     assert run(comm.uart_set_into(1, bytearray(2), 2)) is False
@@ -202,7 +202,7 @@ def test_every_public_method_is_gated_before_setup() -> None:
 def test_logger_injection_uses_both_routes() -> None:
     own = make_comm(name="UART_X")
     assert own.name == "UART_X"
-    assert own.pr.name == own.name  # G2.1: registration keys on one and the history on the other
+    assert own.pr.name == own.name  # registration keys on one and the history on the other
     shared = make_comm(logger=own.pr)
     assert shared.pr is own.pr  # the AsyFramManager-style reach-through
 
@@ -218,7 +218,7 @@ def test_get_error_counter_returns_the_shared_envelope() -> None:
 
 
 def test_reset_clears_the_history_and_the_streak_state() -> None:
-    # C5.5: a reset the caller expects to be total must not leave the escalate-once state behind.
+    # A reset the caller expects to be total must not leave the escalate-once state behind.
     comm = make_comm(name="UART_X")
     run(comm._err(19, "synthetic"))
     comm._valid_frames = 5
@@ -231,7 +231,7 @@ def test_reset_clears_the_history_and_the_streak_state() -> None:
 
 
 def test_a_repeated_identical_fault_stops_persisting() -> None:
-    # C3.8: a link failing once a second would otherwise write FRAM once a second and bury every
+    # A link failing once a second would otherwise write FRAM once a second and bury every
     # other module's entries under one repeated code. Exactly two entries per fault episode - the
     # transition in and the transition back out - never one per occurrence.
     comm = make_comm(name="UART_X")
@@ -257,7 +257,7 @@ def test_a_single_transient_fault_leaves_one_entry_not_a_pair() -> None:
 
 
 def test_a_repeatedly_declined_command_does_not_refill_the_history() -> None:
-    # C3.8/J4 applied to the one warning that still escaped it. A refusal persisted wrnno 14 and
+    # C.7.1's repeat rule applied to the one warning that still escaped it. A refusal persisted wrnno 14 and
     # the resync it performs persisted wrnno 10, unconditionally - two entries per refusal, so a
     # peer polling an id this side does not implement erased a ten-slot history in five rounds.
     def decline(cmd_id: int) -> "tuple[bool, None]":
@@ -273,7 +273,7 @@ def test_a_repeatedly_declined_command_does_not_refill_the_history() -> None:
 
 
 def test_every_declared_errno_is_inside_the_published_range() -> None:
-    # C3.7: /status must never show a number the catalog cannot explain, so the ranges are checked
+    # /status must never show a number the catalog cannot explain, so the ranges are checked
     # mechanically against the source rather than by review.
     with open(_SRC) as handle:
         source = handle.read()
@@ -304,7 +304,7 @@ def test_every_declared_errno_is_inside_the_published_range() -> None:
 
 
 def test_no_errno_literal_bypasses_the_catalog() -> None:
-    # The other half of C3.7: an errno= that is a bare number rather than a catalog name would
+    # The other half of an errno= that is a bare number rather than a catalog name would
     # pass the range sweep above while being invisible to it.
     with open(_SRC) as handle:
         source = handle.read()
@@ -320,7 +320,7 @@ def test_no_errno_literal_bypasses_the_catalog() -> None:
 
 
 def test_tx_and_rx_buffers_are_separate() -> None:
-    # C4.2: one shared buffer means a received frame overwrites the frame being acknowledged.
+    # One shared buffer means a received frame overwrites the frame being acknowledged.
     comm = make_comm()
     tx = comm._tx.get_buf()
     rx = comm._rx.get_buf()
@@ -333,7 +333,7 @@ def test_tx_and_rx_buffers_are_separate() -> None:
 
 
 def test_a_failed_buffer_allocation_degrades_every_entry_point() -> None:
-    # C4.1: LockableBuffer returns None rather than raising, and every consumer's first act is to
+    # LockableBuffer returns None rather than raising, and every consumer's first act is to
     # check for it.
     comm = make_comm()
     run(comm.setup())
@@ -364,7 +364,7 @@ def test_a_partially_failed_allocation_refuses_construction_outright() -> None:
 
 
 def test_padding_is_zero_filled_from_the_preallocated_buffer() -> None:
-    # C4.3: leaving the remainder unwritten transmits the previous frame's payload remnants - a
+    # Leaving the remainder unwritten transmits the previous frame's payload remnants - a
     # real data leak between unrelated messages.
     comm = make_comm()
     assert comm._prepare_tx(1, _CMD_SET, 2, 2, b"\xaa" * PAYLOAD_SIZE, PAYLOAD_SIZE) is True
@@ -377,21 +377,21 @@ def test_padding_is_zero_filled_from_the_preallocated_buffer() -> None:
 
 def test_payload_size_is_immutable_after_construction() -> None:
     comm = make_comm()
-    assert not hasattr(comm, "set_payload_size")  # C4.5: no setter exists
+    assert not hasattr(comm, "set_payload_size")  # no setter exists
 
 
 # C5/C6 - lifecycle, starters, listen loop
 
 
 def test_starter_lists_match_the_role() -> None:
-    # C5.4: an initiator exposing a listen task would mean both ends initiate, and the protocol
+    # An initiator exposing a listen task would mean both ends initiate, and the protocol
     # has no arbitration for that.
     initiator = make_comm(role=ROLE_INITIATOR)
     responder = make_comm(role=ROLE_RESPONDER, get_callback=echo_get(b""), set_callback=accept_set())
     assert initiator.get_task_starters() == []
     assert len(responder.get_task_starters()) == 1
     assert initiator.get_timer_starters() == []
-    assert responder.get_timer_starters() == []  # E3.1/E3.2: no machine.Timer anywhere
+    assert responder.get_timer_starters() == []  # no machine.Timer anywhere
 
 
 def test_the_module_constructs_no_timer_at_all() -> None:
@@ -404,7 +404,7 @@ def test_the_module_constructs_no_timer_at_all() -> None:
 
 
 def test_setup_drains_a_partial_frame_left_over_from_before() -> None:
-    # C5.6: a peer mid-train, or one that outlived this side's reset, leaves bytes in the driver's
+    # A peer mid-train, or one that outlived this side's reset, leaves bytes in the driver's
     # rxbuf. A boot-time drain is not a fault and must not be counted.
     pair = Pair(get_callback=echo_get(b"ok"), set_callback=accept_set())
     pair.fake_b.feed_rx(b"\x01\x02\x03")  # a partial frame, as if the peer was mid-transmission
@@ -416,13 +416,13 @@ def test_setup_drains_a_partial_frame_left_over_from_before() -> None:
 
 
 def test_a_responder_without_callbacks_is_refused_at_construction() -> None:
-    # C6.2: every GET and SET would be unanswerable, discovered only when the peer first asks.
+    # Every GET and SET would be unanswerable, discovered only when the peer first asks.
     assert make_comm(role=ROLE_RESPONDER)._init_errno != 0
     assert make_comm(role=ROLE_RESPONDER, get_callback=echo_get(b""))._init_errno != 0
 
 
 def test_the_listen_loop_backs_off_on_a_dead_link_and_resets_after_success() -> None:
-    # C6.3/C6.4: a zero-delay retry is captive_dns.py's measured recovery storm; a backoff that
+    # A zero-delay retry is captive_dns.py's measured recovery storm; a backoff that
     # never resets leaves a recovered link throttled at the cap forever.
     comm = make_comm(role=ROLE_RESPONDER, get_callback=echo_get(b""), set_callback=accept_set())
     assert comm._backoff_initial_ms == TIMEOUT_MS // 2
@@ -431,7 +431,7 @@ def test_the_listen_loop_backs_off_on_a_dead_link_and_resets_after_success() -> 
 
 
 def test_the_listen_loop_survives_a_raising_callback() -> None:
-    # C6.6: uart_listen() is contracted never to raise, but a contract is not an enforcement.
+    # uart_listen() is contracted never to raise, but a contract is not an enforcement.
     def explode(cmd_id: int) -> "tuple[bool, Any]":
         raise ValueError("callback blew up")
 
@@ -450,7 +450,7 @@ def test_the_listen_loop_survives_a_raising_callback() -> None:
 
 
 # ===========================================================================
-# Phase D - frame layer
+# Frame layer
 # ===========================================================================
 
 
@@ -468,7 +468,7 @@ def test_header_fields_land_at_their_documented_offsets() -> None:
 
 
 def test_out_of_range_header_fields_are_rejected_not_truncated() -> None:
-    # D1.1: struct.pack() truncates silently on this platform, so an out-of-range CHUNKS would
+    # struct.pack() truncates silently on this platform, so an out-of-range CHUNKS would
     # become a plausible wrong value instead of an error.
     comm = make_comm()
     assert comm._prepare_tx(0xFF, _CMD_SET, 2, 1, b"\x01", 1) is False  # UID 0xFF is never emitted
@@ -483,13 +483,13 @@ def test_a_payload_longer_than_the_region_is_rejected() -> None:
 
 
 def test_size_always_matches_the_bytes_actually_copied() -> None:
-    # D1.3: a SIZE passed independently of the copy lets the peer read padding as payload.
+    # A SIZE passed independently of the copy lets the peer read padding as payload.
     comm = make_comm()
     assert comm._prepare_tx(1, _CMD_SET, 2, 2, b"\x01\x02", 4) is False  # claims more than it has
 
 
 def test_the_uid_cycle_covers_every_legal_value_and_never_0xff() -> None:
-    # D3.1: the 0xFE -> 0 wrap is a deliberate off-by-one barrier and keeps the UID space exactly
+    # The 0xFE -> 0 wrap is a deliberate off-by-one barrier and keeps the UID space exactly
     # as large as the longest train, so no UID repeats inside one transfer.
     from asy_uart_comm import _next_uid
 
@@ -504,7 +504,7 @@ def test_the_uid_cycle_covers_every_legal_value_and_never_0xff() -> None:
 
 
 def test_the_next_uid_prediction_is_correct_at_the_wrap_boundary() -> None:
-    # D3.2: a bare +1 mispredicts precisely here, once every 255 frames.
+    # A bare +1 mispredicts precisely here, once every 255 frames.
     from asy_uart_comm import _next_uid
 
     assert _next_uid(0xFD) == 0xFE
@@ -532,7 +532,7 @@ def test_validation_accepts_every_legal_frame_shape() -> None:
 
 
 def test_a_multi_bit_command_is_rejected_rather_than_falling_through() -> None:
-    # D4.1: today's bitmask test lets 0x03 and 0x06 pass validation and then match no dispatch
+    # Today's bitmask test lets 0x03 and 0x06 pass validation and then match no dispatch
     # branch, so a malformed frame is silently mishandled instead of rejected.
     comm = make_comm()
     for bad in (0x03, 0x06, 0x00, 0x07):
@@ -541,8 +541,8 @@ def test_a_multi_bit_command_is_rejected_rather_than_falling_through() -> None:
 
 def test_an_undefined_command_is_distinguished_from_a_valid_but_unexpected_one() -> None:
     # The exact-match membership test separates "not a command at all" from "a command, but not the
-    # one due here" - only the second is the peer's contract violation, which E1.3 gives its own
-    # errno. A bitmask collapses the two, since 0x06 shares bits with both GET and SET (D4.1).
+    # one due here" - only the second is the peer's contract violation, which gets its own
+    # errno. A bitmask collapses the two, since 0x06 shares bits with both GET and SET.
     comm = make_comm()
     undefined = comm._validate(build_frame(cmd=0x06), _CMD_ACK, 1, 1, 1)
     wrong_kind = comm._validate(build_frame(cmd=_CMD_SET), _CMD_ACK, 1, 1, 1)
@@ -552,41 +552,41 @@ def test_an_undefined_command_is_distinguished_from_a_valid_but_unexpected_one()
 
 
 def test_a_changed_chunks_total_is_rejected() -> None:
-    # D4.2: otherwise a peer truncates a transfer mid-train by re-declaring the total, and the
+    # Otherwise a peer truncates a transfer mid-train by re-declaring the total, and the
     # receiver reports success on partial data.
     comm = make_comm()
     assert comm._validate(build_frame(size=PAYLOAD_SIZE, chunks=2, cur=2, uid=2), _CMD_SET, 2, 3, 2) != 0
 
 
 def test_a_stale_data_chunk_is_rejected_by_its_uid() -> None:
-    # D4.3: invisible before - only ACKs were UID-checked.
+    # Invisible before - only ACKs were UID-checked.
     comm = make_comm()
     assert comm._validate(build_frame(size=PAYLOAD_SIZE, chunks=3, cur=2, uid=9), _CMD_SET, 2, 3, 2) != 0
 
 
 def test_a_first_chunk_with_the_wrong_size_is_rejected() -> None:
-    # D4.4: else the command id is silently read from a padding byte, usually 0.
+    # Else the command id is silently read from a padding byte, usually 0.
     comm = make_comm()
     assert comm._validate(build_frame(size=0), _CMD_SET, 1, None, None) != 0
     assert comm._validate(build_frame(size=2), _CMD_SET, 1, None, None) != 0
 
 
 def test_a_short_middle_chunk_is_rejected() -> None:
-    # D4.5: the payload is silently corrupted, and the length still adds up if a later chunk
+    # The payload is silently corrupted, and the length still adds up if a later chunk
     # compensates.
     comm = make_comm()
     assert comm._validate(build_frame(size=PAYLOAD_SIZE - 1, chunks=4, cur=2, uid=2), _CMD_SET, 2, 4, 2) != 0
 
 
 def test_an_empty_chunk_is_legal_only_as_a_two_chunk_trains_last() -> None:
-    # D4.6: an empty middle chunk must not be misread as a genuinely empty payload.
+    # An empty middle chunk must not be misread as a genuinely empty payload.
     comm = make_comm()
     assert comm._validate(build_frame(size=0, chunks=2, cur=2, uid=2), _CMD_SET, 2, 2, 2) == 0
     assert comm._validate(build_frame(size=0, chunks=3, cur=3, uid=3), _CMD_SET, 3, 3, 3) != 0
 
 
 def test_a_set_declaring_a_single_chunk_is_rejected() -> None:
-    # D4.7: no data chunk exists to acknowledge, and a conforming sender floors at 2.
+    # No data chunk exists to acknowledge, and a conforming sender floors at 2.
     comm = make_comm()
     assert comm._validate(build_frame(chunks=1, cur=1), _CMD_SET, 1, None, None) != 0
 
@@ -597,7 +597,7 @@ def test_a_zero_chunk_train_is_rejected() -> None:
 
 
 def test_a_malformed_ack_is_rejected() -> None:
-    # D4.9: a malformed ACK accepted as valid confirmation is worse than no ACK at all.
+    # A malformed ACK accepted as valid confirmation is worse than no ACK at all.
     comm = make_comm()
     assert comm._validate(build_frame(cmd=_CMD_ACK, size=1, chunks=1, cur=1), _CMD_ACK, 1, 1, 1) != 0
     assert comm._validate(build_frame(cmd=_CMD_ACK, size=0, chunks=2, cur=1), _CMD_ACK, 1, 1, 1) != 0
@@ -605,7 +605,7 @@ def test_a_malformed_ack_is_rejected() -> None:
 
 
 def test_a_frame_of_the_wrong_kind_is_rejected_at_each_read_site() -> None:
-    # D4.10/D4.11: a data frame where an ACK is due, or a GET arriving at an initiator, is the
+    # A data frame where an ACK is due, or a GET arriving at an initiator, is the
     # peer's violation and must be visible as such.
     comm = make_comm()
     assert comm._validate(build_frame(cmd=_CMD_SET), _CMD_ACK, 1, 1, 1) != 0
@@ -614,7 +614,7 @@ def test_a_frame_of_the_wrong_kind_is_rejected_at_each_read_site() -> None:
 
 
 def test_validation_never_raises_on_a_short_or_missing_buffer() -> None:
-    # D4.12: an exception escaping a module contracted never to raise.
+    # An exception escaping a module contracted never to raise.
     comm = make_comm()
     assert comm._validate(None, _CMD_SET, 1, None, None) != 0
     assert comm._validate(bytearray(2), _CMD_SET, 1, None, None) != 0
@@ -622,7 +622,7 @@ def test_validation_never_raises_on_a_short_or_missing_buffer() -> None:
 
 
 def test_a_received_uid_of_0xff_is_rejected() -> None:
-    # D3.3: out of contract - a conforming peer never sends it.
+    # Out of contract - a conforming peer never sends it.
     comm = make_comm()
     assert comm._validate(build_frame(uid=0xFF), _CMD_SET, 1, None, None) != 0
 
@@ -649,7 +649,7 @@ def test_the_ack_frame_is_byte_exact() -> None:
 
 
 def test_an_ack_is_sent_even_while_the_write_hold_off_is_active() -> None:
-    # D5.2/E3.4: if the hold-off gated ACKs too, both sides would back off simultaneously and the
+    # If the hold-off gated ACKs too, both sides would back off simultaneously and the
     # link would stall with neither at fault.
     pair = Pair(get_callback=echo_get(b""), set_callback=accept_set())
     assert run(pair.setup()) is True
@@ -665,7 +665,7 @@ def test_an_ack_is_sent_even_while_the_write_hold_off_is_active() -> None:
 
 
 # ===========================================================================
-# Phase E - exchange layer
+# Exchange layer
 # ===========================================================================
 
 
@@ -675,7 +675,7 @@ def test_a_clean_write_round_trip_is_acknowledged() -> None:
 
 
 def test_a_missing_ack_bounds_the_wait_and_resyncs() -> None:
-    # E1.1: without the bound the sender waits forever; with it, the failure is reported and both
+    # Without the bound the sender waits forever; with it, the failure is reported and both
     # sides quiesce so the next transfer starts on a clean frame boundary.
     pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()))
     pair.link.direction_from(pair.fake_b).silent = True  # the responder's ACKs never arrive
@@ -684,14 +684,14 @@ def test_a_missing_ack_bounds_the_wait_and_resyncs() -> None:
 
 
 def test_a_write_that_never_reaches_the_peer_fails_the_same_way() -> None:
-    # E1.5: indistinguishable from a lost ACK at this layer, and the distinction is not invented.
+    # Indistinguishable from a lost ACK at this layer, and the distinction is not invented.
     pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()))
     pair.link.direction_from(pair.fake_a).silent = True
     assert run(pair.with_listener(pair.initiator.uart_set(3, b"hi")), limit=15) is False
 
 
 def test_a_stale_ack_uid_is_rejected() -> None:
-    # E1.2: the UID space is exactly as large as the longest train, so no UID repeats inside one
+    # The UID space is exactly as large as the longest train, so no UID repeats inside one
     # transfer and a stale ACK can never be mistaken for the current one.
     comm = make_comm()
     ack = build_frame(cmd=_CMD_ACK, size=0, chunks=1, cur=1, uid=5)
@@ -700,7 +700,7 @@ def test_a_stale_ack_uid_is_rejected() -> None:
 
 
 def test_a_lost_final_ack_reports_failure_while_the_receiver_reports_success() -> None:
-    # E1.6/decision 10: the two-generals case, folded into failure by decision. There is no
+    # J.9: the two-generals case, folded into failure by decision. There is no
     # retransmission to hang a third state on and a caller could not act differently anyway.
     def remember(cmd_id: int) -> "tuple[bool, int | None]":
         return True, None
@@ -738,14 +738,14 @@ def test_the_write_hold_off_uses_a_deadline_and_expires() -> None:
 
 
 def test_the_hold_off_window_derives_from_timeout() -> None:
-    # E3.6/changelog A4: both constants are 1.5 x timeout and neither is hardcoded, because a peer
+    # Changelog A4: both constants are 1.5 x timeout and neither is hardcoded, because a peer
     # draining for less transmits into the other's drain window.
     assert make_comm(timeout=100)._resync_window_ms() == 150
     assert make_comm(timeout=400)._resync_window_ms() == 600
 
 
 def test_the_hold_off_deadline_survives_the_ticks_rollover() -> None:
-    # E3.3: a raw now - t0 subtraction is wrong at the 2**30 ms rollover - a fault that appears
+    # A raw now - t0 subtraction is wrong at the 2**30 ms rollover - a fault that appears
     # once per uptime period and cannot be found by waiting for it.
     import time
 
@@ -757,7 +757,7 @@ def test_the_hold_off_deadline_survives_the_ticks_rollover() -> None:
 
 
 def test_listening_clears_the_hold_off() -> None:
-    # E3.5: if the peer is requesting something it is definitely up again - the one documented
+    # If the peer is requesting something it is definitely up again - the one documented
     # reset besides the deadline itself.
     pair = run(build_pair(get_callback=echo_get(b"v"), set_callback=accept_set()))
     pair.responder._hold_off_writes()
@@ -777,7 +777,7 @@ def test_the_drain_ends_once_the_line_is_quiet() -> None:
 
 
 def test_the_drain_is_bounded_against_a_peer_that_never_stops() -> None:
-    # E4.1: the legacy module's unbounded `while True` never sees quiet against a stuck sender.
+    # The legacy module's unbounded `while True` never sees quiet against a stuck sender.
     pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()))
 
     async def flood() -> None:
@@ -798,7 +798,7 @@ def test_the_drain_is_bounded_against_a_peer_that_never_stops() -> None:
 
 
 def test_the_drain_reads_into_the_scratch_buffer() -> None:
-    # E4.2: read() would allocate per round, on exactly the degraded link where the heap is most
+    # read() would allocate per round, on exactly the degraded link where the heap is most
     # fragmented. Asserted on what the fake was asked to do.
     pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()))
     pair.fake_a.log.clear()
@@ -815,7 +815,7 @@ def test_the_drain_reads_into_the_scratch_buffer() -> None:
 
 
 def test_a_resync_is_not_re_entrant() -> None:
-    # E4.3: a fault during a resync continues the drain, it never starts a second one.
+    # A fault during a resync continues the drain, it never starts a second one.
     pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()))
     pair.initiator._in_resync = True
 
@@ -828,7 +828,7 @@ def test_a_resync_is_not_re_entrant() -> None:
 
 
 def test_every_public_entry_point_converges_on_its_own_sentinel() -> None:
-    # E4.6: a caller must never believe a failed transfer succeeded.
+    # A caller must never believe a failed transfer succeeded.
     pair = run(build_pair(get_callback=echo_get(b"v"), set_callback=accept_set()))
     pair.link.direction_from(pair.fake_b).silent = True  # nothing ever answers
     assert run(pair.initiator.uart_set(1, b"x"), limit=15) is False
@@ -838,7 +838,7 @@ def test_every_public_entry_point_converges_on_its_own_sentinel() -> None:
 
 
 def test_clear_cancels_first_and_drains_exactly_once() -> None:
-    # E5.1/E5.3: taking the lock before attempting the cancel deadlocks against the very listener
+    # Taking the lock before attempting the cancel deadlocks against the very listener
     # this exists to free, and two drains double the recovery time for no benefit.
     pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()))
     drains = []
@@ -870,7 +870,7 @@ def test_clear_with_nothing_in_flight_takes_the_lock_and_drains() -> None:
 def test_only_a_rise_in_the_drivers_unacked_count_is_reported() -> None:
     # cancel_unacknowledged is cumulative, and clear() read it as a flag: once any holder had ever
     # wedged, every later cancel - healthy ones included - persisted wrnno 13 again, which is the
-    # bounded-history churn C3.8 exists to prevent, on a link that had already recovered.
+    # bounded-history churn Part C.7.1 exists to prevent, on a link that had already recovered.
     pair = Pair()
     run(pair.setup())
     bus = pair.initiator.uart
@@ -895,7 +895,7 @@ def test_only_a_rise_in_the_drivers_unacked_count_is_reported() -> None:
 
 
 # ===========================================================================
-# Phase F - transaction layer
+# Transaction layer
 # ===========================================================================
 
 
@@ -934,11 +934,11 @@ def test_chunk_counts_at_the_payload_size_boundaries() -> None:
     assert comm._chunk_count(PAYLOAD_SIZE) == 2
     assert comm._chunk_count(PAYLOAD_SIZE + 1) == 3
     assert comm._chunk_count(254 * PAYLOAD_SIZE) == 255  # the largest legal train
-    assert comm._chunk_count(254 * PAYLOAD_SIZE + 1) is None  # F1.1: rejected, never mis-declared
+    assert comm._chunk_count(254 * PAYLOAD_SIZE + 1) is None  # rejected, never mis-declared
 
 
 def test_an_oversize_payload_is_rejected_before_the_first_frame() -> None:
-    # F1.1: never partially sent - a half-delivered train is worse than a refused one.
+    # Never partially sent - a half-delivered train is worse than a refused one.
     pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()))
     too_big = bytes(254 * PAYLOAD_SIZE + 1)
     assert run(pair.initiator.uart_set(1, too_big), limit=15) is False
@@ -946,7 +946,7 @@ def test_an_oversize_payload_is_rejected_before_the_first_frame() -> None:
 
 
 def test_a_missing_ack_at_each_train_position_aborts_and_resyncs() -> None:
-    # F1.3: nothing is re-sent - that is the design, not a gap. A PAYLOAD_SIZE + 1 payload is a
+    # Nothing is re-sent - that is the design, not a gap. A PAYLOAD_SIZE + 1 payload is a
     # three-chunk train, so the responder emits three ACKs (header, middle chunk, deferred final);
     # each is dropped in turn by cutting its direction after exactly that many whole frames.
     for kept_acks in (0, 1, 2):
@@ -996,7 +996,7 @@ def test_all_three_expected_size_modes() -> None:
 
 
 def test_an_empty_payload_is_a_distinct_outcome_from_failure() -> None:
-    # F2.5/decision 9: None means failure and a zero-length result means genuinely empty; if the
+    # J.9: None means failure and a zero-length result means genuinely empty; if the
     # two ever collapse, a caller cannot tell an empty answer from a dead link.
     pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()))
     answer = run(pair.with_listener(pair.initiator.uart_get(4)))
@@ -1005,7 +1005,7 @@ def test_an_empty_payload_is_a_distinct_outcome_from_failure() -> None:
 
 
 def test_an_expected_size_the_train_could_never_deliver_is_rejected_early() -> None:
-    # F2.8: the transfer is doomed the moment CHUNKS is known, so it does not run to completion
+    # The transfer is doomed the moment CHUNKS is known, so it does not run to completion
     # first.
     comm = make_comm()
     assert comm._dest_size(2, PAYLOAD_SIZE) == PAYLOAD_SIZE
@@ -1022,7 +1022,7 @@ def test_a_get_round_trip_returns_the_answer() -> None:
 
 
 def test_the_get_answer_echoes_the_requested_command_id() -> None:
-    # F3.1: otherwise the initiator accepts an answer to a question it never asked.
+    # Otherwise the initiator accepts an answer to a question it never asked.
     pair = run(build_pair(get_callback=echo_get(b"v"), set_callback=accept_set()))
     run(pair.with_listener(pair.initiator.uart_get(0x44)))
     answer = frames(pair.wire_from_responder(), _FRAME)
@@ -1032,7 +1032,7 @@ def test_the_get_answer_echoes_the_requested_command_id() -> None:
 
 
 def test_a_rejected_get_callback_reports_a_distinct_outcome() -> None:
-    # F3.3: withhold the answer, resync, and tell the responder's own caller which command was
+    # Withhold the answer, resync, and tell the responder's own caller which command was
     # refused - not silently nothing.
     def refuse(cmd_id: int) -> "tuple[bool, Any]":
         return False, None
@@ -1052,7 +1052,7 @@ def test_a_rejected_get_callback_reports_a_distinct_outcome() -> None:
 
 
 def test_uart_listen_returns_the_namedtuple_on_every_path() -> None:
-    # F4.1: a bare None makes a caller's three-way unpack raise inside a module contracted never
+    # A bare None makes a caller's three-way unpack raise inside a module contracted never
     # to raise.
     pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()))
     refused = run(pair.initiator.uart_listen())  # wrong role
@@ -1073,7 +1073,7 @@ def test_both_sync_and_async_callbacks_work() -> None:
 
 
 def test_a_callback_returning_the_wrong_shape_is_treated_like_a_raise() -> None:
-    # F4.3: a TypeError on unpacking is the same escape by another route.
+    # A TypeError on unpacking is the same escape by another route.
     comm = make_comm()
     assert comm._pair(None) is None
     assert comm._pair(42) is None
@@ -1084,7 +1084,7 @@ def test_a_callback_returning_the_wrong_shape_is_treated_like_a_raise() -> None:
 
 
 def test_a_callback_returning_a_non_buffer_payload_is_rejected() -> None:
-    # F4.3 again: the payload's type is part of the return shape, so a str here must not reach
+    # The callback-return guard again: the payload's type is part of the return shape, so a str here must not reach
     # the frame builder.
     def wrong_type(cmd_id: int) -> "tuple[bool, Any]":
         return True, "not a buffer"
@@ -1102,7 +1102,7 @@ def test_a_callback_returning_a_non_buffer_payload_is_rejected() -> None:
 
 
 def test_a_callback_asking_for_an_impossible_size_is_rejected() -> None:
-    # F4.4: otherwise it propagates into the sizing and allocates nonsense.
+    # Otherwise it propagates into the sizing and allocates nonsense.
     for bad in (-5, 255 * PAYLOAD_SIZE * 4):
         pair = Pair(get_callback=echo_get(b""), set_callback=accept_set(bad))
         assert run(pair.setup()) is True
@@ -1117,7 +1117,7 @@ def test_a_callback_asking_for_an_impossible_size_is_rejected() -> None:
 
 
 def test_a_re_entrant_callback_is_refused_instead_of_deadlocking() -> None:
-    # F4.9: asyncio.Lock is not reentrant, so a callback that calls back in would await a lock its
+    # asyncio.Lock is not reentrant, so a callback that calls back in would await a lock its
     # own caller holds - the task deadlocks with the bus held and nothing times out, because
     # nothing is waiting on the wire. The bounded run() here is what proves it is not merely slow.
     pair = Pair(get_callback=echo_get(b""), set_callback=accept_set())
@@ -1141,7 +1141,7 @@ def test_a_re_entrant_callback_is_refused_instead_of_deadlocking() -> None:
 
 
 def test_the_role_gate_refuses_the_wrong_direction() -> None:
-    # F5.1: the lock is released between listen calls, so an application could otherwise interleave
+    # The lock is released between listen calls, so an application could otherwise interleave
     # an initiation into a responder's loop and cause exactly the simultaneous initiation the
     # design has no arbitration for.
     pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()))
@@ -1151,7 +1151,7 @@ def test_the_role_gate_refuses_the_wrong_direction() -> None:
 
 
 def test_a_responder_still_answers_a_get_while_the_role_gate_is_active() -> None:
-    # F5.2: the answer runs through the internal unlocked SET path. If the gate blocked it too, a
+    # The answer runs through the internal unlocked SET path. If the gate blocked it too, a
     # responder could never answer anything and the protocol would simply stop working.
     pair = run(build_pair(get_callback=echo_get(b"answer"), set_callback=accept_set()))
     assert run(pair.responder.uart_set(1, b"x")) is False  # the gate is genuinely active
@@ -1162,11 +1162,11 @@ def test_a_responder_still_answers_a_get_while_the_role_gate_is_active() -> None
 
 def test_the_role_is_immutable_after_construction() -> None:
     comm = make_comm()
-    assert not hasattr(comm, "set_role")  # F5.4
+    assert not hasattr(comm, "set_role")
 
 
 def test_both_halves_of_each_pair_move_identical_bytes() -> None:
-    # F6.1: a zero-copy path that exists for reads but not writes is worse than neither, because
+    # A zero-copy path that exists for reads but not writes is worse than neither, because
     # it looks complete.
     payload = bytes(range(PAYLOAD_SIZE + 1))
     via_convenience = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()))
@@ -1186,14 +1186,14 @@ def test_both_halves_of_each_pair_move_identical_bytes() -> None:
 
 
 def test_an_into_destination_that_is_too_small_is_refused() -> None:
-    # F6.2/F2.9: checked before the first data ACK, so nothing is overrun and nothing is reported
+    # Checked before the first data ACK, so nothing is overrun and nothing is reported
     # as success.
     pair = run(build_pair(get_callback=echo_get(bytes(PAYLOAD_SIZE * 2)), set_callback=accept_set()))
     assert run(pair.with_listener(pair.initiator.uart_get_into(1, bytearray(2))), limit=20) is None
 
 
 def test_an_into_destination_of_none_returns_the_sentinel() -> None:
-    # F6.3: a failed LockableBuffer hands its owner None; an AttributeError here would be the
+    # A failed LockableBuffer hands its owner None; an AttributeError here would be the
     # worst possible moment for one.
     comm = make_comm()
     run(comm.setup())
@@ -1243,7 +1243,7 @@ def test_a_payload_can_be_streamed_into_a_push_callback() -> None:
 
 
 def test_a_pull_callback_short_filling_a_non_final_chunk_aborts_locally() -> None:
-    # F7.1: the peer would reject it anyway (D4.5), but the fault is this side's and must be
+    # The peer would reject it anyway, but the fault is this side's and must be
     # caught before anything is sent.
     def stingy(chunk: int, buf: memoryview) -> int:
         return 1  # always one byte, however much the chunk needs
@@ -1253,7 +1253,7 @@ def test_a_pull_callback_short_filling_a_non_final_chunk_aborts_locally() -> Non
 
 
 def test_a_pull_callback_returning_a_wrong_shape_is_guarded() -> None:
-    # F7.4: the same escape as F4.2/F4.3, so it gets the same guard.
+    # The same escape as the other callback returns, so it gets the same guard.
     def wrong(chunk: int, buf: memoryview) -> str:
         return "lots"
 
@@ -1262,7 +1262,7 @@ def test_a_pull_callback_returning_a_wrong_shape_is_guarded() -> None:
 
 
 def test_a_push_callback_failing_mid_train_aborts() -> None:
-    # F7.3: half the payload is stored otherwise, with the caller none the wiser.
+    # Half the payload is stored otherwise, with the caller none the wiser.
     def refuse_second(chunk: int, buf: memoryview) -> bool:
         return chunk < 3
 
@@ -1271,7 +1271,7 @@ def test_a_push_callback_failing_mid_train_aborts() -> None:
 
 
 def test_a_streamed_total_size_must_be_declared() -> None:
-    # F7.6: CHUNKS has to be in chunk 1, so an unknown length is out of scope by design.
+    # CHUNKS has to be in chunk 1, so an unknown length is out of scope by design.
     pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()))
     assert run(pair.initiator.uart_set_stream(1, -1, lambda chunk, buf: 0)) is False
 
@@ -1317,7 +1317,7 @@ def test_a_negative_expected_size_is_refused_not_read_as_dont_care() -> None:
 
 def test_a_non_buffer_payload_returns_a_sentinel_instead_of_raising() -> None:
     # len(5) and "abc"[0:n] both raise TypeError; the responder's own get_callback payload was
-    # already type-checked (F4.3), the initiator's was not.
+    # already type-checked, the initiator's was not.
     pair = run(build_pair(get_callback=echo_get(b"hi"), set_callback=accept_set()))
     assert run(pair.initiator.uart_set(1, 5)) is False  # type: ignore[arg-type]
     assert run(pair.initiator.uart_set(1, "abc")) is False  # type: ignore[arg-type]
@@ -1396,7 +1396,7 @@ def test_a_stream_without_its_push_callback_reports_failure_not_a_byte_count() -
 
 
 def test_a_repeating_fault_does_not_bury_the_errno_under_resync_warnings() -> None:
-    # C3.8 deduped the errno but not the resync each fault drags along with it, so a permanently
+    # C.7.1 deduped the errno but not the resync each fault drags along with it, so a permanently
     # faulty link still refilled the bounded history - evicting the one entry that says what
     # broke. Measured before the fix: 5 identical faults produced 1 errno and 5 resync warnings.
     pair = run(build_pair(get_callback=echo_get(b"hi"), set_callback=accept_set()))
@@ -1435,7 +1435,7 @@ def test_a_recovered_link_starts_a_fresh_episode() -> None:
 
 def test_a_rejected_command_is_distinguishable_from_a_link_fault() -> None:
     # Both used _WRN_RESYNC, so a history entry could not tell "the peer asked for something this
-    # side does not implement" from "the link broke" - the exact diagnostic loss C3.8 is about.
+    # side does not implement" from "the link broke" - the exact diagnostic loss C.7.1 is about.
     def only_one(cmd_id: int) -> "tuple[bool, bytes | None]":
         return (cmd_id == 1), None
 
@@ -1478,7 +1478,7 @@ def test_the_owned_listen_loop_delivers_a_received_payload() -> None:
 
 
 def test_a_raising_message_callback_does_not_kill_the_listen_loop() -> None:
-    # C6.6's reasoning applies to this callback too: it is owner-supplied code running inside the
+    # The same reasoning applies to this callback: it is owner-supplied code running inside the
     # loop the supervisor would otherwise restart as a task death.
     def explode(cmd_id: int, cmd: int, payload: "bytearray | None") -> None:
         raise ValueError("owner code")
@@ -1504,7 +1504,7 @@ def test_a_raising_message_callback_does_not_kill_the_listen_loop() -> None:
 
 def test_a_responder_without_a_message_callback_is_still_constructible() -> None:
     # Optional by design: a GET-only responder has nothing to deliver, so its absence is not the
-    # unanswerable-request case C6.2 refuses at construction.
+    # unanswerable-request case construction refuses outright.
     pair = run(build_pair(get_callback=echo_get(b"hi"), set_callback=accept_set()))
     assert pair.responder.message_callback is None
     assert pair.responder.initialized is True
@@ -1554,11 +1554,11 @@ def test_a_declared_size_larger_than_its_buffer_is_refused_before_the_train() ->
     run(comm.setup())
     assert run(comm.uart_set_into(1, b"abc", 4)) is False
     assert run(comm.uart_set_into(1, None, 3)) is False  # nothing to take the bytes from at all
-    assert persisted(comm) == ["E25"], persisted(comm)  # C3.8: the repeat is visible, not persisted
+    assert persisted(comm) == ["E25"], persisted(comm)  # the repeat is visible, not persisted
 
 
 def test_an_answer_the_train_could_never_carry_is_refused_at_its_header() -> None:
-    # F2.8 on the wire rather than in _dest_size() alone: CHUNKS arrives in the answer's first
+    # On the wire rather than in _dest_size() alone: CHUNKS arrives in the answer's first
     # frame, so an expected size the train cannot deliver is refused right there - before a single
     # data chunk is acknowledged, not after the whole transfer has run to completion.
     pair = run(build_pair(get_callback=echo_get(b"ab"), set_callback=accept_set()))
@@ -1580,7 +1580,7 @@ def test_an_answer_that_exactly_fills_its_train_is_handed_back_uncopied() -> Non
 
 
 def test_a_set_callback_returning_an_unusable_result_is_treated_like_a_raise() -> None:
-    # F4.3 on the SET half. The GET half already had this; a set_callback's return is unpacked the
+    # The callback-return guard on the SET half. The GET half already had this; a set_callback's return is unpacked the
     # same way, so a bare None or a wrong-shaped tuple must be refused rather than indexed into.
     for bad in (None, "yes", (True,), (1, None)):
         pair = Pair(timeout=30, get_callback=echo_get(b""), set_callback=returns(bad))
@@ -1597,7 +1597,7 @@ def test_a_set_callback_returning_an_unusable_result_is_treated_like_a_raise() -
 
 
 def test_a_declined_set_is_a_distinct_outcome_just_like_a_declined_get() -> None:
-    # F3.3's SET half: the responder tells its own caller which kind of command it refused, and the
+    # The SET half: the responder tells its own caller which kind of command it refused, and the
     # peer learns it by timing out - the same shape the GET half already had.
     pair = Pair(timeout=30, get_callback=echo_get(b""), set_callback=returns((False, None)))
     assert run(pair.setup()) is True
@@ -1635,7 +1635,7 @@ def test_a_set_callback_asking_for_more_than_this_train_carries_is_refused() -> 
 
 
 def test_a_listener_whose_callbacks_were_cleared_refuses_instead_of_dispatching() -> None:
-    # Construction refuses a responder with no callbacks (C6.2), but they are plain attributes an
+    # Construction refuses a responder with no callbacks, but they are plain attributes an
     # owner can reassign, so uart_listen() re-checks what it is about to dispatch to.
     pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()))
     pair.responder.get_callback = None
@@ -1706,7 +1706,7 @@ def test_a_responder_that_cannot_acknowledge_a_set_reports_and_resyncs() -> None
 
 
 def test_a_peer_answering_a_different_question_is_refused() -> None:
-    # F3.1 over the wire: the answer's first chunk echoes the command id, and an echo that does not
+    # Over the wire: the answer's first chunk echoes the command id, and an echo that does not
     # match is a desynced or confused peer - accepting it would hand the caller another command's
     # data under the id it actually asked for.
     pair = Pair(timeout=30, get_callback=echo_get(b"ab"), set_callback=accept_set())
@@ -1766,7 +1766,7 @@ def test_a_scratch_allocation_that_fails_during_construction_refuses_the_object(
 
 
 def test_an_answer_buffer_the_heap_cannot_serve_fails_before_the_first_data_ack() -> None:
-    # F2.2: the destination is allocated the moment CHUNKS is known, before a single data chunk is
+    # The destination is allocated the moment CHUNKS is known, before a single data chunk is
     # acknowledged - so a heap that cannot serve it ends the transfer instead of accepting bytes
     # with nowhere to put them, which is what an allocation after the ACK would have to do.
     starved = _StarvedAlloc()
@@ -1786,7 +1786,7 @@ def test_an_answer_buffer_the_heap_cannot_serve_fails_before_the_first_data_ack(
 def test_a_right_sizing_copy_that_fails_returns_the_sentinel_not_the_padding() -> None:
     # uart_get() turns a don't-care answer into one exactly-sized copy. If that copy cannot be
     # made the answer is lost: handing back the oversized buffer would give the caller padding
-    # bytes it has no way to tell from payload, which is the one thing decision 9 forbids.
+    # bytes it has no way to tell from payload, which is the one thing J.9 forbids.
     starved = _StarvedAlloc()
 
     def arm_then_answer(cmd_id: int) -> "tuple[bool, bytes]":
@@ -1803,7 +1803,7 @@ def test_a_right_sizing_copy_that_fails_returns_the_sentinel_not_the_padding() -
 
 
 def test_an_incoming_trains_buffer_that_the_heap_cannot_serve_ends_the_transfer() -> None:
-    # The responder's half of F2.2, allocated at the same point and for the same reason.
+    # The responder's half of the same rule, allocated at the same point and for the same reason.
     starved = _StarvedAlloc()
 
     def arm_then_accept(cmd_id: int) -> "tuple[bool, None]":
@@ -1853,7 +1853,7 @@ def test_a_received_train_that_cannot_be_right_sized_is_reported_not_over_report
 
 
 def test_every_internal_buffer_read_rechecks_rather_than_indexing_none() -> None:
-    # C4.1 below the public entry points. The frame read, the ACK scratch, the drain and the
+    # J.8 below the public entry points. The frame read, the ACK scratch, the drain and the
     # stream region each fetch their buffer again and answer with their own sentinel, because an
     # AttributeError here would land in the middle of a transaction in a never-raise module.
     def pull(chunk: int, buf: memoryview) -> int:
@@ -2086,7 +2086,7 @@ def test_the_two_spellings_the_boards_own_uart_script_used_still_work() -> None:
     # empty bytearray rather than None. Both have to stay distinguishable from failure.
     pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set(0)))
     empty = run(pair.with_listener(pair.initiator.uart_get(0x3C, exp_size=0)), limit=20)
-    assert empty is not None and len(empty) == 0, empty  # empty, not None: decision 9
+    assert empty is not None and len(empty) == 0, empty  # empty, not None (J.9)
 
     async def scenario() -> bool:
         listener = asyncio.create_task(pair.responder.uart_listen())
@@ -2102,8 +2102,8 @@ def test_the_two_spellings_the_boards_own_uart_script_used_still_work() -> None:
 
 
 def test_the_legacy_bsec_bus_parameters_meet_every_floor_but_one() -> None:
-    # The one value a legacy-faithful port has to change: the deployed rxbuf of 32 clears C2.9's
-    # 27-byte whole-frame floor but not C2.10's 80-byte per-poll floor. Kept rather than relaxed, a
+    # The one value a legacy-faithful port has to change: the deployed rxbuf of 32 clears J.6's
+    # 27-byte whole-frame floor but not its 80-byte per-poll floor. Kept rather than relaxed, a
     # drain must survive a peer that does not stop (SPECIFICATION.md Part J.1).
     def deployed(rxbuf: int) -> UART_Comm:
         bus = UART(0, tx_pin=0, rx_pin=1, baudrate=115200, rxbuf=rxbuf, poll_wait_ms=2, poll_idle_ms=50, crc=CRC16())

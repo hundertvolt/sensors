@@ -345,7 +345,8 @@ information):
 - **Wired into CI** via `.github/workflows/ci.yml` (GitHub Actions). **Each tool is its own job/
   stage**, so a failure names the tool directly instead of a shared "lint" job going red:
   `lint-and-typecheck` (ruff + mypy), `shellcheck`, `actionlint`, `zizmor`, plus the test/build
-  stages (`unit-tests`, `digital-twin-e2e`, `firmware-build-verify`) and the web tier. Note
+  stages (`unit-tests`, `unit-tests-coverage`, `digital-twin-e2e`, `firmware-build-verify`) and the
+  web tier. Note
   `unit-tests` keeps `needs: lint-and-typecheck` (the standing hang backstop below); the other lint
   stages run in parallel and gate nothing, so one of them failing no longer silently skips the
   whole test suite.
@@ -409,7 +410,10 @@ information):
   (`build_unix_port()` in `toolchain/setup_toolchain.py`) — an inert hook check when unused, not a
   behavior change, confirmed directly — so plain `scripts/test.sh` and `--coverage` share one
   binary; `ports/rp2`'s firmware build never gets this flag. CI
-  (`.github/workflows/ci.yml`) runs it as a non-gating step: a markdown summary goes to that run's
+  (`.github/workflows/ci.yml`) runs it as its own non-gating job, `unit-tests-coverage` — separate
+  from `unit-tests` because `timeout-minutes` gates a whole job rather than its real step, so the
+  instrumented rerun would otherwise cancel a suite that had already passed (it did, on run
+  `34755468619`). A markdown summary goes to that run's
   GitHub Actions Job Summary (not the repo's main page), the HTML report is a downloadable build
   artifact (GitHub doesn't render it inline), and the Cobertura XML uploads to Codecov — which
   needs this repo registered at codecov.io plus a token/OIDC setup that hasn't happened yet, so

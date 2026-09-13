@@ -1,4 +1,4 @@
-"""Mock-tier comm-hazard suite for the UART protocol (requirement H1) - the UART-shaped analogue
+"""Mock-tier comm-hazard suite for the UART protocol (SPECIFICATION.md Part E.6) - the UART-shaped analogue
 of the standing bus-hazard rule. A link has exactly two participants, so multi-device interleaving
 and an address sweep are replaced by same-instance concurrency, both-ends-transmitting, and a full frame-field sweep."""
 
@@ -109,7 +109,7 @@ def listen_once(pair: Pair, injected: bytes) -> "tuple[Any, bytes]":
 
 
 # ---------------------------------------------------------------------------
-# H1.1 - same-instance concurrency
+# Same-instance concurrency
 # ---------------------------------------------------------------------------
 
 
@@ -155,7 +155,7 @@ def _check_a_second_call_during_a_transaction_is_refused_with_a_sentinel(crc: "C
 
 
 # ---------------------------------------------------------------------------
-# H1.2 - clear() racing an in-flight transaction
+# clear() racing an in-flight transaction
 # ---------------------------------------------------------------------------
 
 
@@ -196,7 +196,7 @@ def _check_clear_terminates_even_while_a_listener_is_parked_forever(crc: "CrcMak
 
 
 # ---------------------------------------------------------------------------
-# H1.3 - both participants transmitting
+# Both participants transmitting
 # ---------------------------------------------------------------------------
 
 
@@ -227,7 +227,7 @@ def _check_a_peer_initiating_mid_transaction_is_detected_and_both_recover(crc: "
 
 
 # ---------------------------------------------------------------------------
-# H1.4/H1.5 - the frame/field sweep, with wire-log assertions
+# The frame/field sweep, with wire-log assertions
 # ---------------------------------------------------------------------------
 
 
@@ -278,7 +278,7 @@ def _check_the_current_chunk_field_sweep_matches_only_the_expected_index(crc: "C
 
 
 def _check_no_ack_is_emitted_for_any_rejected_frame(crc: "CrcMaker") -> None:
-    # H1.5: a rejected frame and a silently mishandled one both return failure, so the wire log is
+    # A rejected frame and a silently mishandled one both return failure, so the wire log is
     # what tells them apart. Withholding the ACK *is* the rejection signal in this protocol.
     rejected = (
         ("multi-bit CMD", raw_frame(cmd=0x06, crc=crc)),
@@ -778,7 +778,7 @@ def _check_a_receive_buffer_smaller_than_a_frame_is_refused_at_construction(crc:
 # ---------------------------------------------------------------------------
 # The mismatched-peer signature: parameters are agreed out of band and never negotiated, so a pair
 # configured differently is diagnosed (errno 32), never recovered (SPECIFICATION.md Part J.6). The
-# signature the C-port reconciliation will most likely meet first (UART_C_PORT_CHANGELOG.md D2.5).
+# signature the C-port reconciliation will most likely meet first.
 # ---------------------------------------------------------------------------
 
 _ERR_LINK_UNINTELLIGIBLE = 32
@@ -1091,7 +1091,7 @@ def _clean_ack_bytes(crc: "CrcMaker") -> int:
 
 def _check_a_lost_final_ack_is_reported_as_failure_though_the_peer_acted(crc: "CrcMaker") -> None:
     # The protocol's at-least-once seam: the final ACK is deferred until after the responder's
-    # total-size check (F2.4), so a lost one leaves the peer having accepted the whole train while
+    # total-size check, so a lost one leaves the peer having accepted the whole train while
     # this side reports failure. A caller that retries on False must tolerate that (Part J).
     pair = hazard_pair(crc)
     delivered: list[bytes] = []

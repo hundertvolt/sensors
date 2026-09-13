@@ -451,7 +451,7 @@ class UART(io.IOBase):
 
 class _LinkDirection:
     # One direction of a UARTLink: the fault knobs plus the counters and wire log that make each
-    # knob assertable (A3.1 - every knob is an explicit schedule, never randomness). Offsets in
+    # knob assertable - every knob is an explicit schedule, never randomness. Offsets in
     # drop_indices/corrupt_indices are stream offsets within this direction, not per write() call.
     def __init__(self, capacity: int) -> None:
         self.capacity = capacity  # far-side FIFO bound; overflow drops the newest bytes
@@ -470,7 +470,7 @@ class _LinkDirection:
 
     def shape(self, data: bytes) -> bytearray:
         # Applies the per-byte knobs in a fixed order - truncation bounds the stream, dropping
-        # removes bytes, corruption only rewrites them (A3.4: separate, composable, attributable).
+        # removes bytes, corruption only rewrites them (separate, composable, attributable).
         out = bytearray()
         for byte in data:
             offset = self.offered
@@ -488,7 +488,7 @@ class _LinkDirection:
 class UARTLink:
     # Byte-level crossover between two UART fakes - one independent FIFO per direction with its own
     # fault knobs (A1/A3). The fakes keep no concept of a frame: a write lands in the far side's
-    # rx_queue and reads split where the reader asks. Never uses a real poll() - see LinkPoller (A1.2).
+    # rx_queue and reads split where the reader asks. Never uses a real poll() - see LinkPoller.
     def __init__(self, uart_a: "UART", uart_b: "UART", capacity_a_to_b: int | None = None, capacity_b_to_a: int | None = None) -> None:
         if uart_a._link is not None or uart_b._link is not None:
             raise ValueError("UART already attached to a link")
@@ -496,7 +496,7 @@ class UARTLink:
             raise ValueError("a link needs two distinct endpoints")
         self.endpoints = (uart_a, uart_b)
         # Default each direction's bound to the *destination's* own rxbuf: that is what really
-        # drops a frame's tail on hardware, which is the failure C2.9/C2.10 exist for.
+        # drops a frame's tail on hardware, which is the failure J.6's rxbuf floors exist for.
         self.a_to_b = _LinkDirection(uart_b.rxbuf if capacity_a_to_b is None else capacity_a_to_b)
         self.b_to_a = _LinkDirection(uart_a.rxbuf if capacity_b_to_a is None else capacity_b_to_a)
         uart_a._link = self
@@ -552,7 +552,7 @@ class UARTLink:
 
     def release_delayed(self) -> int:
         # Flushes both directions' held bytes and reports how many were released - the
-        # deterministic stand-in for "the wire got around to it" (A3.1).
+        # deterministic stand-in for "the wire got around to it".
         released = 0
         for index, direction in ((0, self.a_to_b), (1, self.b_to_a)):
             if not direction.pending:
@@ -565,14 +565,14 @@ class UARTLink:
 
 
 class LinkPoller:
-    # Bounded select.poll() stand-in for one UART fake, re-querying its ioctl() every call (A2.2).
+    # Bounded select.poll() stand-in for one UART fake, re-querying its ioctl() every call.
     # Installed by reassigning asy_uart_driver.UART.poller, keeping src/ free of a testability seam.
     # Never wraps a real select.poll(): the port never re-checks ioctl() - CLAUDE.md's known CI hang.
     def __init__(self, uart: "UART", not_ready_calls: int = 0) -> None:
         self._uart = uart
         self._not_ready = not_ready_calls
 
-    def force_not_ready(self, calls: int) -> None:  # A2.3: makes the timeout paths reachable
+    def force_not_ready(self, calls: int) -> None:  # makes the timeout paths reachable
         self._not_ready = calls
 
     def ipoll(self, _timeout_ms: int = 0) -> "list[tuple[None, int]]":

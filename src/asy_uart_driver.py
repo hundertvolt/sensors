@@ -101,7 +101,7 @@ class UART(Lockable):
             self._cancel_ack = self._cancel_req
 
     def resync_framing(self) -> None:
-        # B2.2: after a resync the read path is somewhere inside a frame, so the bytes up to the
+        # After a resync the read path is somewhere inside a frame, so the bytes up to the
         # next delimiter are a fragment - discarded, never decoded, since a delimiter means "end of
         # something" and only the one after it bounds a whole frame. Inert for an undelimited codec.
         self._skip_to_delimiter = self.framing.is_delimited()
@@ -127,7 +127,7 @@ class UART(Lockable):
     async def _write_all(self, uart: "_UART", buf: bytearray | memoryview) -> bool:
         # rp2 uart.write() can short-write instead of raising, so retry with what is left - the
         # write-side counterpart of read_until_complete()'s loop. The view is re-sliced only after a
-        # short write (B3.1), so the normal complete write allocates no memoryview at all.
+        # short write, so the normal complete write allocates no memoryview at all.
         sent = 0
         total = len(buf)
         view = memoryview(buf)
@@ -145,7 +145,7 @@ class UART(Lockable):
     ) -> int | None:
         # Reads one delimiter-terminated frame into buf, decodes in place and verifies its CRC. One
         # byte per readinto() on purpose: a wider read would swallow the head of the next frame,
-        # which a stream cannot hand back. Bounded by the codec's worst-case length (B2.1).
+        # which a stream cannot hand back. Bounded by the codec's worst-case length.
         delimiter = self.framing.delimiter()
         if delimiter is None:
             return None
@@ -168,11 +168,11 @@ class UART(Lockable):
                 if not size % _DELIMITED_YIELD_BYTES:  # this loop consumes a buffered byte per
                     await asyncio.sleep_ms(0)  # round without ever reaching ready()'s own yield
                 continue
-            if self._skip_to_delimiter:  # B2.2: the fragment a resync landed in the middle of
+            if self._skip_to_delimiter:  # the fragment a resync landed in the middle of
                 self._skip_to_delimiter = False
                 size = 0
                 continue
-            if size == 0:  # B2.3: two delimiters in a row - an empty frame is skipped, never surfaced
+            if size == 0:  # two delimiters in a row - an empty frame is skipped, never surfaced
                 continue
             break
         decoded = await self.framing.decode_from(buf, size)
@@ -364,7 +364,7 @@ class UART(Lockable):
         nbytes += self.crc.length()
         if self.framing.is_delimited():
             if self.framing.max_encoded(nbytes) > len(buf):
-                return None  # B2.5: the caller's buffer must hold the worst-case encoded frame
+                return None  # the caller's buffer must hold the worst-case encoded frame
             return await self._read_delimited(uart, buf, nbytes, start_timeout_ms, timeout_ms)
         timeout = start_timeout_ms  # wait time for the first message part
         size = 0
@@ -440,12 +440,12 @@ class UART(Lockable):
 
     async def writefrom(self, buf: bytearray, size: int) -> bool:  # write buf's first size bytes (+ CRC), retrying until it's all sent
         # buf belongs to this call for its duration - the caller must not mutate it until the call
-        # returns (B3.4). This instance's own uses are already serialized by the session lock.
+        # returns. This instance's own uses are already serialized by the session lock.
         uart = self._active_uart()
         if uart is None:
             return False
         if size < 0 or size + self.crc.length() > len(buf):
-            return False  # B3.2: a short buffer is never a partial transfer reported as success
+            return False  # a short buffer is never a partial transfer reported as success
         crcsize = await self.crc.add_into(buf, size)
         if crcsize is None:
             return False

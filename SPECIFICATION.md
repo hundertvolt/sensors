@@ -350,7 +350,13 @@ on-chip layout and must stay identical across firmware versions (A.4's determini
     `uart_responder` = `UART_Comm(...)` ×2 across the crossover jumper (Part J) — **no `fram=`**,
     for the same reason as the webserver below, so the seven-chunk order is untouched. Placed here,
     after every FRAM-allocating module and immediately before the webserver, because the webserver's
-    own `error_sources=` list includes them. `wozi` has no such step.
+    own `error_sources=` list includes them. `wozi` has no such step. The variant also runs a small
+    **link exerciser** task: nothing on a live system would otherwise initiate a transfer, so every
+    claim about the link coexisting with the webserver would be a claim about an idle link. Its
+    transfer/failure counts ride the variable-length `maintenance_sensors` registration and surface
+    through `/status`, which the bench tier asserts advancing under load (`tests_hardware/README.md`).
+    It lives in the variant rather than the module because only the variant knows what to ask a peer —
+    the protocol itself carries no application semantics (Part J.1).
 14. `app = Microdot(); webserver = WebserverService(app, sensors=(...), ..., static_mount="/html",
     is_hotspot_active=conn.is_hotspot_active, host=web_host, port=web_port)` — **no `fram=`**
     (deliberately RAM-only — a connection-reclaim warning could churn faster than a sensor's fault
@@ -623,12 +629,13 @@ gap is the RP2040 firmware build.
 
 ## B.10 CI perspective
 
-`.github/workflows/ci.yml` runs **twelve jobs** (eleven of them real work plus `web-changes`, a
+`.github/workflows/ci.yml` runs **thirteen jobs** (twelve of them real work plus `web-changes`, a
 path filter the four web jobs gate on), each its own stage so a failure names the tool
 rather than going red under a shared "lint" label (corrected 2026-09-13 — this paragraph had
 described a two-job workflow that stopped being true several stages ago). Python side:
 `lint-and-typecheck`, `shellcheck`, `actionlint`, `zizmor`, `unit-tests` (`scripts/test.sh`,
-building via `setup` on a cache miss), `digital-twin-e2e` and **`firmware-build-verify`, which does
+building via `setup` on a cache miss), `unit-tests-coverage`, `digital-twin-e2e` and
+**`firmware-build-verify`, which does
 build a real `firmware.uf2` for wozi and verify it** — the "no RP2040 firmware-build CI stage yet"
 this paragraph used to claim is long gone. Web side: `web-lint-and-typecheck`, `web-unit-tests`, `web-coverage`, `web-cross-browser-smoke`.
 
@@ -637,6 +644,13 @@ alone once let a stale cached binary (built before `MICROPY_PY_SYS_SETTRACE=1`) 
 commits, a real bug (`--coverage` failed in CI while passing locally). `unit-tests` additionally
 runs its own retried `uv sync` before `scripts/test.sh`, so a third party's build-time download
 failing cannot read as a red test result (CLAUDE.md's "Code quality tooling").
+
+**The coverage rerun is its own job**, `unit-tests-coverage`, for the same reason `web-coverage` is
+separate from `web-unit-tests`: `timeout-minutes` gates a whole job, not its real step, so a slow
+instrumented rerun can kill a test step that already passed. Measured on run `34755468619`
+(2026-09-13): the plain suite reported `60/60 files passed / ALL PASSED`, the `--coverage` rerun
+then ran 13m24s longer, and the 30-minute cap cancelled the job — skipping `digital-twin-e2e` too,
+on a tree with nothing wrong with it. Coverage gates nothing (E.5), so it gets its own budget.
 
 ## B.11 Building this project's firmware
 
@@ -1552,9 +1566,17 @@ the same shape from an `if`: it treats two sentinels as equivalent "nothing reco
 only one is actually reachable — **confirmed intentional by the project owner**, kept for
 defensive symmetry. `asy_uart_comm.py` carries six statements of a third variant: a buffer or a
 bound re-checked immediately after the check that already settled it, so the second check cannot
-fire through any call path that exists (measured and listed one by one in
-`UART_PROMOTION_REQUIREMENTS.md` §O). Kept, like the rest — one branch of defence in depth in a
-module contracted never to raise is cheaper than the day the surrounding logic moves.
+fire through any call path that exists. Measured one by one: `_write_frame_with_ack()`'s second
+`self._tx.get_buf()` (`_prepare_tx()` has already returned `False` if it were `None`);
+`_listen_unlocked()`'s `rx is None` (`_read_frame()` returns `False` in exactly that case);
+`_recv_train()`'s destination bound (`_get_unlocked()` refuses a short destination at the header, and
+`_accept_set()` allocates exactly `room`); and `uart_get()`'s `own is None` (it passes neither a
+destination nor a push callback, so `_run_get()` always allocates one). `asy_uart_driver.py` adds
+four more of a different kind — the `except MemoryError` around `msg += add` in
+`read_until_complete()`/`readline_until_complete()`, which guard an accumulator growing across rounds
+with no deterministic injection point under the 8M test heap. Kept, like the rest — one branch of
+defence in depth in a module contracted never to raise is cheaper than the day the surrounding logic
+moves.
 
 A `finally:` body is **not** one of these patterns, despite looking like one: its lines fire a trace
 event only when an exception actually passes through, so a `finally` that only ever runs on the
@@ -1781,6 +1803,12 @@ sibling `Exception` subclasses; catch `(OSError, MemoryError)` wherever both are
 **this project's Unix-port test rig uses double precision** (exact to `2**53`) — `float(int)`
 beyond either threshold silently rounds. `coerce_numeric()`'s int→float direction relies on this
 (A.8) — accepted, since no real schema field's bounds go near it.
+
+**`struct` format codes with no byte-order prefix use the host's own native sizes**, so `'L'` is
+4 bytes on rp2 and 8 on the 64-bit Unix-port test interpreter — the same line reads a different
+number of bytes in the two places. Pin any wire or on-chip layout with an explicit `"<"` prefix;
+`dev_legacy/asy_bsec_driver.py`'s bare `struct.unpack("bbbbL", res)` against a hardcoded size of 8 is
+the shape to avoid, and anything porting it forward has to fix that first.
 
 **`struct.pack()`/`pack_into()` silently zero-pad or truncate on a mismatch instead of raising**,
 unlike CPython — validate shape before packing if it matters. Still true on 1.29: the overflow
@@ -2191,7 +2219,8 @@ same thing from the other direction.
 **Why no test caught it, and what now does.** `tests/machine.py`'s and `digital_twin/machine.py`'s
 UART fakes return `min(nbytes, len(rx_queue))` and never wait — they model a non-blocking read the
 real peripheral does not provide, so the defect was invisible to every tier below the bench. This is
-precisely the class `UART_PROMOTION_REQUIREMENTS.md` H3.3 predicted the flash tier would find.
+precisely the class of defect the flash tier exists to find: real electrical and timing behaviour
+that no fake reproduces.
 Making the fakes actually *wait* would only turn a real-time defect into a slow test; both instead
 **count the stall they would have taken**. `UART.would_have_blocked_bytes` accumulates every byte a
 read asked for that had not arrived, the two models are held to identical counting by
@@ -2778,8 +2807,11 @@ implicit — that only one side ever initiates — is now the role gate. Two con
 `tests/test_asy_uart_comm.py` pin it, each verified to fail when the capability is removed; they
 demonstrate rather than constrain, since any API able to express the flow passes them.
 **One deployed value has to change in a faithful port**: `rxbuf` 32 is refused (`errno` 15) against
-this module's 80-byte C2.10 floor at 115200 baud — loud at construction rather than an intermittent
-lost tail, and 128 bytes of RX ring costs nothing. See UART_PROMOTION_REQUIREMENTS.md §Q.
+this module's 80-byte per-poll-interval `rxbuf` floor (J.6) at 115200 baud — loud at construction
+rather than an intermittent lost tail, and 128 bytes of RX ring costs nothing. Two further
+spellings the board's own exploratory script used still work unchanged: a GET declaring
+`exp_size=0` (J.9's *must be exactly empty*, a different claim from *don't care*) and a SET whose
+payload is an empty `bytearray()` rather than `None`.
 
 **A second implementation of this protocol exists in C**, running on the Arduino peer. It mirrors the
 Python implementation's *intended* behavior and is owner-validated over many real transmissions — but
@@ -3070,3 +3102,36 @@ would save one ≤`payload_size` memcpy but costs an extra `ready()` round — o
 **Padding must be zero-filled from a preallocated zero buffer**, not from a freshly built one. Today
 the full-length framing means every frame carries `payload_size - size` unused bytes; leaving them
 unwritten would transmit the previous frame's payload remnants.
+
+## J.9 Module contract: shape, results and sentinels
+
+**A plain class, not a `SensorReader` subclass** (owner-delegated decision, 2026-09-11, resolved
+against precedent). Every existing subclass is one for a measurement snapshot or a
+`ConfigManager`-backed schema, and this module has neither: `payload_size`/`timeout` are out-of-band
+agreements a runtime write must not be able to desync, and a link-state snapshot would be a new
+top-level feature the refactor is not for. `asy_fram_manager.py` is its closest structural match.
+`_error_check()` is therefore neither reimplemented (G.1) nor needed — its give-up exists so the
+supervisor can re-run an `_init_<sensor>()` and re-initialize hardware, and this module owns none.
+C.9's capped exponential backoff is the primitive that fits a link fault. `errno`/`wrnno` still align
+to `base_classes.py`'s reservation regardless of the base class (C.7.1).
+
+**`None` means failure; an empty result means a genuinely empty payload.** The two must never
+collapse, at any of the four result shapes: `uart_get()` returns `None` or a right-sized buffer that
+may be zero-length; the `_into` and streaming forms mirror it as `None` versus 0 bytes written. The
+same distinction exists on the request side — `exp_size=None` is *don't care*, `exp_size=0` is
+*must be exactly empty*, and a peer answering a zero-size GET with data is refused rather than
+delivered.
+
+**`uart_listen()` returns a `ListenResult` namedtuple** (`cmd_id`, `cmd`, `payload`) on every path,
+never a bare `None` off the end of the function. Its one allocation is per logical message, not per
+frame — a 255-chunk train still allocates exactly one — so J.8's zero-allocation frame path is
+untouched. C.6's `make_dict()` repr-parsing landmine does not apply: this namedtuple is never
+serialized.
+
+**A lost final ACK folds into failure**, deliberately, rather than becoming a third "delivered but
+unconfirmed" state. Because the final chunk's acknowledgement is deferred until after the responder's
+total-size check (J.4), losing it leaves the responder having *already* accepted and delivered the
+whole train while the initiator reports failure. This is the protocol's at-least-once seam: a caller
+that retries on a failed `uart_set()` must tolerate the peer seeing the message twice. A third state
+would buy nothing — no retransmission exists to hang it on, and the application-level answer is the
+same either way.

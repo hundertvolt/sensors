@@ -1,5 +1,6 @@
-"""Unit tests for digital_twin/machine.py's UART fake and its wire-timed crossover link (A4).
-Re-runs tests/_uart_link_contract.py's shared bodies against the twin backend, so the twin and mock link models can differ in fidelity but never in semantics (A4.1)."""
+"""Unit tests for digital_twin/machine.py's UART fake and its wire-timed crossover link.
+Re-runs tests/_uart_link_contract.py's shared bodies against the twin backend, so the twin and
+mock link models can differ in fidelity but never in semantics."""
 
 import sys
 import time
@@ -13,7 +14,7 @@ from machine import UART, LinkPoller, Pin, UARTLink
 
 
 def make_link(**kwargs: "int | None") -> "tuple[UART, UART, UARTLink]":
-    UART._live.clear()  # each test constructs its own pair (A3.3), never a shared module-level one
+    UART._live.clear()  # each test constructs its own pair, never a shared module-level one
     a = UART(0, tx=Pin(0), rx=Pin(1), baudrate=115200)
     b = UART(1, tx=Pin(8), rx=Pin(9), baudrate=115200)
     return a, b, UARTLink(a, b, **kwargs)
@@ -25,7 +26,7 @@ def test_twin_link_satisfies_the_shared_contract() -> None:
 
 
 def test_a_second_instance_on_one_bus_id_supersedes_the_first() -> None:
-    # A4.2: real machine.UART() re-inits the peripheral rather than refusing, so what has to be
+    # Real machine.UART() re-inits the peripheral rather than refusing, so what has to be
     # modelled is that the displaced instance stops carrying bytes - a half-live one would
     # silently mis-route a whole link.
     a, b, link = make_link()
@@ -42,7 +43,7 @@ def test_a_second_instance_on_one_bus_id_supersedes_the_first() -> None:
 
 
 def test_delivery_takes_real_wire_time() -> None:
-    # A4.3: a twin link that ran faster than real time would make every drain/cooldown test pass
+    # A twin link that ran faster than real time would make every drain/cooldown test pass
     # for the wrong reason. 64 bytes at 1200 baud is ~533ms of wire time; assert a floor well
     # under that but far above zero, so the test is about the mechanism, not the exact clock.
     UART._live.clear()
@@ -61,7 +62,7 @@ def test_delivery_takes_real_wire_time() -> None:
 
 
 def test_faster_baud_delivers_faster() -> None:
-    # The wire time derives from the configured baud rate, not a constant (A4.3).
+    # The wire time derives from the configured baud rate, not a constant.
     def elapsed_for(baudrate: int) -> int:
         UART._live.clear()
         a = UART(0, tx=Pin(0), rx=Pin(1), baudrate=baudrate)

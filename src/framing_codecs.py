@@ -28,7 +28,7 @@ class Framing_Base:
         self.trailer = max(trailer, 0)
         self.allocations = 0  # long-lived scratch allocations; 1 at most, never per frame
 
-    def ready(self) -> bool:  # False once a scratch allocation has failed (B2.8)
+    def ready(self) -> bool:  # False once a scratch allocation has failed
         return True
 
     def is_delimited(self) -> bool:
@@ -77,7 +77,7 @@ class Framing_COBS(Framing_Base):
     # 0x00 delimiter frames it unambiguously whatever the payload, CRC or UID happen to be.
     def __init__(self, max_frame: int) -> None:
         super().__init__(max_frame, run_length=_COBS_RUN_LEN, trailer=1)
-        # One long-lived scratch, sized for the worst case from max_frame - never per frame (B2.5).
+        # One long-lived scratch, sized for the worst case from max_frame - never per frame.
         self._scratch: bytearray | None = None
         if max_frame > 0:
             try:
@@ -136,7 +136,7 @@ class Framing_COBS(Framing_Base):
                 return None
             read += 1
             end = read + code - 1
-            if end > size:  # B2.4: validated before it is followed, never walked off the buffer
+            if end > size:  # validated before it is followed, never walked off the buffer
                 return None
             while read < end:
                 buf[written] = buf[read]

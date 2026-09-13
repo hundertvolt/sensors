@@ -1,6 +1,6 @@
 """Flash-tier automated tests: the UART message protocol across the dev bench's permanent
 UART0<->UART1 crossover jumper - real timing, real peripheral behaviour and real poll latency,
-the three things no fake reproduces (requirement H3 / SPECIFICATION.md Part J.7)."""
+the three things no fake reproduces (SPECIFICATION.md Parts E.6 and J.7)."""
 
 from __future__ import annotations
 

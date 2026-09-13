@@ -1,6 +1,6 @@
 """Unit tests for tests/machine.py's UART crossover link model and its bounded poller stand-in
-(requirements A1-A3). The backend-agnostic half lives in _uart_link_contract.py and is re-run
-against digital_twin/machine.py's own link by test_digital_twin_machine_uart.py (A4.1)."""
+(SPECIFICATION.md Part J.7). The backend-agnostic half lives in _uart_link_contract.py and is re-run
+against digital_twin/machine.py's own link by test_digital_twin_machine_uart.py."""
 
 import select
 
@@ -45,7 +45,7 @@ def test_unattached_uart_still_behaves_as_before() -> None:
 
 
 def test_capacity_defaults_to_the_destination_rxbuf() -> None:
-    # A1.3 and C2.9/C2.10: the far side's own rxbuf is what really drops a frame's tail.
+    # The far side's own rxbuf is what really drops a frame's tail.
     a = UART(0, tx=Pin(0), rx=Pin(1), rxbuf=64)
     b = UART(1, tx=Pin(8), rx=Pin(9), rxbuf=128)
     link = UARTLink(a, b)
@@ -74,7 +74,7 @@ def test_each_direction_counts_its_own_traffic() -> None:
 
 
 def test_a_second_link_on_the_same_fakes_is_refused() -> None:
-    # A3.3's cross-test contamination, one level down: an endpoint belongs to exactly one link.
+    # Cross-test contamination, one level down: an endpoint belongs to exactly one link.
     a, b, _link = make_link()
     try:
         UARTLink(a, b)
@@ -89,7 +89,7 @@ def test_a_second_link_on_the_same_fakes_is_refused() -> None:
 
 
 def test_poller_requeries_ioctl_on_every_call() -> None:
-    # A2.2: readiness that was true once must not stay true.
+    # Readiness that was true once must not stay true.
     a, b, _link = make_link()
     poller = LinkPoller(b)
     assert poller.ipoll(0) == [(None, select.POLLOUT)]
@@ -100,7 +100,7 @@ def test_poller_requeries_ioctl_on_every_call() -> None:
 
 
 def test_poller_can_be_forced_not_ready_for_n_calls() -> None:
-    # A2.3: without this the timeout paths are unreachable and every timeout test passes blindly.
+    # Without this the timeout paths are unreachable and every timeout test passes blindly.
     a, b, _link = make_link()
     a.write(b"x")
     poller = LinkPoller(b)
@@ -111,7 +111,7 @@ def test_poller_can_be_forced_not_ready_for_n_calls() -> None:
 
 
 def test_poller_is_not_a_real_select_poll() -> None:
-    # A1.2/A2.1: the standing rule, asserted rather than left to review. Compared by type *name*:
+    # The standing rule, asserted rather than left to review. Compared by type *name*:
     # mypy can already prove the two classes unrelated, so an isinstance or identity form is
     # statically vacuous - it would read as a guard while checking nothing at runtime.
     _a, b, _link = make_link()
@@ -133,7 +133,7 @@ def test_poller_register_and_unregister_are_inert() -> None:
 
 
 def test_fault_knobs_are_deterministic_across_identical_runs() -> None:
-    # A3.1: no unseeded randomness anywhere - two identical runs produce identical wire logs.
+    # No unseeded randomness anywhere - two identical runs produce identical wire logs.
     def run_once() -> bytes:
         a, b, link = make_link()
         link.direction_from(a).drop_indices = {2, 5}
@@ -146,7 +146,7 @@ def test_fault_knobs_are_deterministic_across_identical_runs() -> None:
 
 
 def test_knobs_are_per_direction_and_independent() -> None:
-    # A3.2: a one-sided fault is the realistic case and must be expressible.
+    # A one-sided fault is the realistic case and must be expressible.
     a, b, link = make_link()
     link.direction_from(a).silent = True
     a.write(b"lost")
@@ -156,7 +156,7 @@ def test_knobs_are_per_direction_and_independent() -> None:
 
 
 def test_each_link_is_freshly_constructed() -> None:
-    # A3.3: no module-level shared link object - two make_link() calls share no state.
+    # no module-level shared link object - two make_link() calls share no state.
     a1, _b1, link1 = make_link()
     link1.direction_from(a1).silent = True
     a2, b2, _link2 = make_link()

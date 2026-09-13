@@ -1,4 +1,4 @@
-"""Twin-tier coverage for the UART crossover link (requirements G1-G3, H2): builds the real
+"""Twin-tier coverage for the UART crossover link (SPECIFICATION.md Part J.7): builds the real
 sensortask_dev object graph against the digital twin's own buses, joins its two UART peripherals
 across the bench rig's jumper, and drives real transfers while the rest of the task graph runs."""
 
@@ -110,7 +110,7 @@ async def _settle_listener(listener: "asyncio.Task[Any]") -> None:
 
 
 # ---------------------------------------------------------------------------
-# G1 - the dev wiring itself
+# The dev wiring itself
 # ---------------------------------------------------------------------------
 
 
@@ -128,7 +128,7 @@ def test_both_instances_are_constructed_and_registered() -> None:
 
 
 def test_the_two_instances_have_distinct_names_and_loggers() -> None:
-    # G1.5/C3.2: a shared logger would merge two links' histories into a single /status entry and
+    # A shared logger would merge two links' histories into a single /status entry and
     # make a fault unattributable to an end.
     build_linked_system()
     dev = sensortask_dev
@@ -140,7 +140,7 @@ def test_the_two_instances_have_distinct_names_and_loggers() -> None:
 
 
 def test_both_instances_share_one_set_of_protocol_parameters() -> None:
-    # G1.6/C2.2: payload_size and timeout are out-of-band agreements that must match on both ends,
+    # payload_size and timeout are out-of-band agreements that must match on both ends,
     # and nothing is negotiated - a mismatch desyncs the link outright and cannot self-heal.
     build_linked_system()
     dev = sensortask_dev
@@ -151,8 +151,8 @@ def test_both_instances_share_one_set_of_protocol_parameters() -> None:
 
 
 def test_the_two_ends_sit_on_distinct_peripherals_with_sized_buffers() -> None:
-    # G1.8: both on one id would re-init the first's peripheral and leave one link object silently
-    # owning nothing. G1.9: a default-sized rxbuf drops a frame's tail at this payload size.
+    # Both on one id would re-init the first's peripheral and leave one link object silently
+    # owning nothing. a default-sized rxbuf drops a frame's tail at this payload size.
     build_linked_system()
     dev = sensortask_dev
     assert dev.uart0 is not None and dev.uart1 is not None
@@ -164,7 +164,7 @@ def test_the_two_ends_sit_on_distinct_peripherals_with_sized_buffers() -> None:
 
 
 def test_the_fram_chunk_order_is_unchanged_by_the_new_modules() -> None:
-    # G1.4: AsyFramManager is a bump-pointer allocator, so instantiation order *is* the on-chip
+    # AsyFramManager is a bump-pointer allocator, so instantiation order *is* the on-chip
     # layout - an inserted chunk would turn every previously persisted log into garbage. Both UART
     # instances take RAM-only loggers, so they allocate nothing at all here.
     build_linked_system()
@@ -176,7 +176,7 @@ def test_the_fram_chunk_order_is_unchanged_by_the_new_modules() -> None:
 
 
 # ---------------------------------------------------------------------------
-# A4/G3 - real transfers inside the real object graph
+# Real transfers inside the real object graph
 # ---------------------------------------------------------------------------
 
 
@@ -206,7 +206,7 @@ def test_a_payload_larger_than_one_chunk_crosses_the_jumper_intact() -> None:
 
 
 def test_one_sided_silence_forces_a_resync_and_both_sides_recover() -> None:
-    # A4's failure test: the realistic one-sided fault, and the recovery the whole design exists for.
+    # The realistic one-sided fault, and the recovery the whole design exists for.
     link = build_linked_system()
     dev = sensortask_dev
     assert dev.uart_initiator is not None and dev.uart_responder is not None
@@ -221,12 +221,12 @@ def test_one_sided_silence_forces_a_resync_and_both_sides_recover() -> None:
 
 
 # ---------------------------------------------------------------------------
-# H2 - concurrency inside the real task graph
+# Concurrency inside the real task graph
 # ---------------------------------------------------------------------------
 
 
 def test_a_transfer_does_not_starve_other_tasks() -> None:
-    # H2.1: every wait in the protocol yields, so a maximum-length transfer must not stall the
+    # Every wait in the protocol yields, so a maximum-length transfer must not stall the
     # Neopixel animation or a sensor trigger. A plain co-running ticker is the cheapest proof.
     build_linked_system()
     dev = sensortask_dev
@@ -251,7 +251,7 @@ def test_a_transfer_does_not_starve_other_tasks() -> None:
 
 
 def test_the_link_keeps_working_while_the_rest_of_the_graph_runs() -> None:
-    # H2.2: the link and the rest of the system have to coexist, not merely each work alone.
+    # The link and the rest of the system have to coexist, not merely each work alone.
     build_linked_system()
     dev = sensortask_dev
     assert dev.uart_initiator is not None and dev.sysfunct is not None
@@ -268,7 +268,7 @@ def test_the_link_keeps_working_while_the_rest_of_the_graph_runs() -> None:
 
 
 def test_a_forced_collection_mid_transfer_does_not_break_the_link() -> None:
-    # H2.3: timeout is sized well above the measured worst-case collection pause, so a GC landing
+    # timeout is sized well above the measured worst-case collection pause, so a GC landing
     # mid-frame must not read as an inter-part timeout.
     import gc
 

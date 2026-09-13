@@ -1,6 +1,6 @@
 """Bench-tier automated tests: the UART crossover link under the full production HTTP stack and
 concurrent API load - the realistic deployed condition, where link work and request handling have
-to coexist rather than each merely work alone (requirement H4)."""
+to coexist rather than each merely work alone (SPECIFICATION.md Part E.6)."""
 
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ _REQUEST_BUDGET_S = 15.0
 
 def _link_counters(dut_ip: str) -> dict[str, int]:
     # The link's own progress, read through /status's "sensors" registration list. This is what
-    # makes H4's claim testable at all: without it the only observable is an error counter, and an
+    # makes this tier's claim testable at all: without it the only observable is an error counter, and an
     # idle link and a healthy one both leave that at zero.
     res = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=15.0)
     assert res.status_code == 200, f"GET /status returned {res.status_code}: {res.body!r}"
@@ -38,7 +38,7 @@ def _link_counters(dut_ip: str) -> dict[str, int]:
     if link is None:
         pytest.skip(
             "this firmware exposes no UARTLINK maintenance entry - the dev link exerciser is what "
-            "makes a live transfer observable (UART_PROMOTION_REQUIREMENTS.md H4)",
+            "makes a live transfer observable (SPECIFICATION.md Part A.7 step 13b)",
         )
     return link
 
@@ -57,7 +57,7 @@ def _require_uart_modules(dut_ip: str) -> None:
 
 
 def test_the_link_stays_healthy_while_the_api_is_hammered(board: Board, dut_ip: str) -> None:
-    # H4.1: both sides have their own budget, and neither may be met by starving the other. The
+    # Both sides have their own budget, and neither may be met by starving the other. The
     # API side is asserted on latency and status; the link side on its own error counters, which
     # is where a transfer that timed out under load would show up.
     _require_uart_modules(dut_ip)
@@ -107,7 +107,7 @@ def test_the_link_stays_healthy_while_the_api_is_hammered(board: Board, dut_ip: 
 
 
 def test_real_transfers_complete_while_the_api_is_hammered(board: Board, dut_ip: str) -> None:
-    # H4's actual function test: "a transfer completes while the API is hammered". The two tests
+    # The actual function test: "a transfer completes while the API is hammered". The two tests
     # around it assert the link logged no errors, which an idle link also satisfies - this one
     # requires the link to have moved bytes during the load window, and to have moved them without
     # a single failed attempt.

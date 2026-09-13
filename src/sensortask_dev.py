@@ -53,7 +53,7 @@ _NTP_FETCH_TIMEOUT_MS = const(5000)  # timeout for the actual NTP request/reply 
 
 # The bench rig's permanent UART0<->UART1 crossover jumper (GP0<->GP9, GP1<->GP8, see dev_legacy/
 # README.md) makes J.7's self-compatibility property physically testable; Part J says why these pins
-# and not another legal pair. Both instances share these constants, never negotiated (G1.6).
+# and not another legal pair. Both instances share these constants, never negotiated.
 _UART_PAYLOAD_SIZE = const(48)
 _UART_TIMEOUT_MS = const(1000)
 _UART_BAUDRATE = const(115200)
@@ -64,7 +64,7 @@ _UART_POLL_WAIT_MS = const(2)
 _UART_POLL_IDLE_MS = const(50)
 # Sized from the real frame, not left at the driver default: a whole framed frame is 5 + 48 = 53
 # bytes, and one poll interval at 115200 baud admits about 80 bytes. Below either floor the tail of
-# a frame is silently dropped and the result is indistinguishable from a link fault (C2.9/C2.10).
+# a frame is silently dropped and the result is indistinguishable from a link fault.
 _UART_BUF_BYTES = const(512)
 # The two command ids the bench link answers. The module itself is standalone and carries no
 # application semantics - these exist so the jumper can be exercised end to end from the bench.
@@ -73,7 +73,7 @@ _UART_CMD_ECHO = const(0x02)
 _UART_BANNER = b"dev-uart-crossover"
 # How often the initiator drives a real transfer across the jumper. Nothing else on a live system
 # ever initiates one - the responder only answers - so without this the link is idle and every
-# claim about it coexisting with the webserver is vacuous (UART_PROMOTION_REQUIREMENTS.md H4).
+# claim about it coexisting with the webserver is vacuous (SPECIFICATION.md Part A.7 step 13b).
 # 1s leaves the link busy enough to observe within a test window and far from saturating it.
 _UART_EXERCISE_PERIOD_MS = const(1000)
 
@@ -336,7 +336,7 @@ def _collect_error_sources() -> "list[Any]":
         notify_service,
         notify_service.cfgmgr,
         # One entry per instance, each with its own name: two links sharing a logger would merge
-        # their histories into a single /status entry and make a fault unattributable (G1.5/C3.2).
+        # their histories into a single /status entry and make a fault unattributable.
         uart_initiator,
         uart_responder,
     ]
@@ -470,7 +470,7 @@ async def build_system(
         1, 8, 9, baudrate=_UART_BAUDRATE, rxbuf=_UART_BUF_BYTES, txbuf=_UART_BUF_BYTES, poll_wait_ms=_UART_POLL_WAIT_MS, poll_idle_ms=_UART_POLL_IDLE_MS,
     )
     # Distinct peripheral ids: constructing both on one id would re-init the first's peripheral and
-    # leave one link object silently owning nothing (G1.8). Roles are structural - exactly one side
+    # leave one link object silently owning nothing. Roles are structural - exactly one side
     # may initiate, since the protocol has no collision arbitration at all (J.2).
     uart_initiator = UART_Comm(
         uart0, ROLE_INITIATOR, payload_size=_UART_PAYLOAD_SIZE, timeout=_UART_TIMEOUT_MS, debug=debug, name="UART_INIT",

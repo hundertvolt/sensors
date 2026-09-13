@@ -76,7 +76,7 @@ constraints.
   instances itself (SPECIFICATION.md Part A.7 step 13b), so it *is* the upstream module the entry
   asked for: an import-scanning builder that selects `sensortask_dev` pulls `asy_uart_comm` in behind
   it. Independently, today's `scripts/build_firmware.py` globs and freezes all of `src/*.py`, so a
-  dev firmware built with it contains the module either way. **The H3/H4 hardware tiers are therefore
+  dev firmware built with it contains the module either way. **The flash and bench hardware tiers are therefore
   not blocked, and have now been run** (2026-09-11, dev bench, owner's go-ahead in-session):
   `tests_hardware/flash/test_uart_crossover.py` 2/2 and
   `tests_hardware/bench/test_uart_link_under_api_load.py` 2/2, against a dev firmware built from the
@@ -305,7 +305,7 @@ constraints.
    "flag, don't silently change" rule.
 
 17. `asy_uart_comm.py`'s `wrnno` 11 ("drain bound reached - the peer never stopped sending") can
-    never reach the FRAM history through the path that produces it. C3.8 allows one persisted
+    never reach the FRAM history through the path that produces it. SPECIFICATION.md Part C.7.1 allows one persisted
     warning per fault episode; `_resync()` logs `wrnno` 10 first and spends it, then calls
     `_drain()`, so 11 is always demoted to visible-only. Measured 2026-09-13: a resync whose drain
     genuinely hits its bound persists `['W10']` and nothing else. **Not a violation of the rule** -

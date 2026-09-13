@@ -1,4 +1,4 @@
-"""Backend-agnostic semantic assertions for a byte-stream UART crossover link (A1/A3/A4.1).
+"""Backend-agnostic semantic assertions for a byte-stream UART crossover link (Part J.7).
 Each check takes a factory returning (uart_a, uart_b, link); tests/machine.py and digital_twin/machine.py supply their own, so the two models diverge in fidelity but never in semantics.
 link.settle() is that one fidelity seam - a no-op on the mock, a wait for pending wire time on the twin."""
 
@@ -21,7 +21,7 @@ def check_byte_moves_one_way(make: "LinkFactory") -> None:
     a.write(b"Z")
     link.settle()
     assert b.read(1) == b"Z"
-    assert a.read(1) is None  # A1.4: never reads back what it just wrote
+    assert a.read(1) is None  # never reads back what it just wrote
 
 
 def check_both_directions_independent(make: "LinkFactory") -> None:
@@ -34,14 +34,14 @@ def check_both_directions_independent(make: "LinkFactory") -> None:
 
 
 def check_reads_split_at_arbitrary_offsets(make: "LinkFactory") -> None:
-    # A1.5: a write boundary is not a frame boundary - the reader splits wherever it asks.
+    # A write boundary is not a frame boundary - the reader splits wherever it asks.
     a, b, link = make()
     a.write(b"0123456789")
     link.settle()
     assert b.read(3) == b"012"
     assert b.read(1) == b"3"
     assert b.read() == b"456789"
-    assert b.read() is None  # A1.1/real rp2: None, not b"", on an empty FIFO
+    assert b.read() is None  # real rp2: None, not b"", on an empty FIFO
 
 
 def check_write_boundaries_are_not_preserved(make: "LinkFactory") -> None:
@@ -80,7 +80,7 @@ def check_short_write_returns_real_count(make: "LinkFactory") -> None:
 
 
 def check_capacity_drops_newest(make: "LinkFactory") -> None:
-    # A1.3: fixed capacity per direction, explicit drop-newest policy, counted.
+    # Fixed capacity per direction, explicit drop-newest policy, counted.
     a, b, link = make()
     direction = link.direction_from(a)
     direction.capacity = 4
@@ -111,7 +111,7 @@ def check_drop_indices_remove_exactly_those_bytes(make: "LinkFactory") -> None:
 
 
 def check_corruption_preserves_length(make: "LinkFactory") -> None:
-    # A3.4: corruption and truncation are separate knobs, so a failure is attributable.
+    # Corruption and truncation are separate knobs, so a failure is attributable.
     a, b, link = make()
     link.direction_from(a).corrupt_indices = {0: 0xFF}
     a.write(b"\x00\x01")
@@ -168,7 +168,7 @@ def check_duplication_repeats_the_next_bytes(make: "LinkFactory") -> None:
 
 
 def check_wire_log_records_what_was_delivered(make: "LinkFactory") -> None:
-    # A3.1: every knob's effect is verifiable against a recorded wire log, not inferred.
+    # every knob's effect is verifiable against a recorded wire log, not inferred.
     a, b, link = make()
     link.direction_from(a).drop_indices = {0}
     a.write(b"AB")

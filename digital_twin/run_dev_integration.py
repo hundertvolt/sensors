@@ -315,7 +315,7 @@ async def main(config: RunConfig) -> "dict[str, Any]":
 
         # The bench's permanent crossover jumper. Without it the twin models a dev board whose
         # jumper is missing, and the link exerciser sensortask_dev now starts would spend the whole
-        # run timing out instead of moving bytes (SPECIFICATION.md Part J, H4).
+        # run timing out instead of moving bytes (SPECIFICATION.md Part J).
         assert sensortask_dev.uart0 is not None and sensortask_dev.uart1 is not None
         assert sensortask_dev.uart0._uart is not None and sensortask_dev.uart1._uart is not None
         _link, poll_a, poll_b = machine.attach_crossover_jumper(sensortask_dev.uart0._uart, sensortask_dev.uart1._uart)

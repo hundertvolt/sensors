@@ -1,7 +1,7 @@
 """Isolated-driver device script: the failure half of the crossover-jumper tier - one-sided silence
 recovers within the specified window, and a deliberately mismatched payload_size fails loudly
 rather than silently corrupting, which is the one configuration error the design cannot self-heal."""
-# The fault knobs sit behind a small injector object (H5): the flash tier drives them through the
+# The fault knobs sit behind a small injector object: the flash tier drives them through the
 # peripherals themselves, and a future external injector implements the same three methods, so these
 # bodies need no reshaping. Inline because `mpremote run` uploads exactly one file.
 

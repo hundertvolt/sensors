@@ -454,7 +454,7 @@ def test_no_uart_built_here_polls_through_a_real_select_poll() -> None:
 
 
 def test_a_complete_write_reslices_nothing() -> None:
-    # B3.1: the re-slice happens only after a short write has actually occurred, so the normal
+    # The re-slice happens only after a short write has actually occurred, so the normal
     # path costs no memoryview allocation. Asserted on what the fake actually received.
     uart = make_uart()
     payload = bytearray(b"0123456789")
@@ -474,7 +474,7 @@ def test_a_short_write_still_completes_across_rounds() -> None:
 
 
 def test_writefrom_rejects_a_size_longer_than_the_buffer() -> None:
-    # B3.2: silent truncation, or an out-of-range write, would both be worse than the sentinel.
+    # Silent truncation, or an out-of-range write, would both be worse than the sentinel.
     uart = make_uart()
     assert run(locked_writefrom(uart, bytearray(4), 8)) is False
     assert run(locked_writefrom(uart, bytearray(4), -1)) is False
@@ -487,7 +487,7 @@ def test_writefrom_rejects_a_buffer_with_no_room_for_the_crc() -> None:
 
 
 def test_into_methods_move_the_same_bytes_as_their_allocating_siblings() -> None:
-    # B3.3: the zero-allocation path exists for the whole related set, not half of it.
+    # The zero-allocation path exists for the whole related set, not half of it.
     allocating = make_uart()
     into = make_uart()
     payload = bytearray(b"\x01\x02\x03\x04")
@@ -562,7 +562,7 @@ def test_cobs_write_emits_a_delimited_frame_with_no_inner_zero() -> None:
 
 
 def test_writefrom_is_framed_exactly_like_write() -> None:
-    # B2.6: a half-codec'd API, where write() frames and writefrom() does not, is the defect.
+    # A half-codec'd API, where write() frames and writefrom() does not, is the defect.
     via_write = cobs_uart()
     via_writefrom = cobs_uart()
     payload = bytearray(b"\x01\x00\x02\x03")
@@ -586,7 +586,7 @@ def test_cobs_round_trips_through_the_driver() -> None:
 
 
 def test_cobs_round_trips_through_the_allocating_read() -> None:
-    # B2.6 again, on the read half: read_until_complete() and readinto_until_complete() move
+    # The codec again, on the read half: read_until_complete() and readinto_until_complete() move
     # together or not at all.
     sender = cobs_uart()
     payload = bytearray(b"\x09\x00\x0a")
@@ -614,7 +614,7 @@ def test_cobs_round_trips_with_a_crc_underneath_it() -> None:
 
 
 def test_a_peer_that_never_sends_a_delimiter_fails_the_read_rather_than_blocking() -> None:
-    # B2.1: a delimited read is length-unknown, so only the codec's own worst-case bound stops a
+    # A delimited read is length-unknown, so only the codec's own worst-case bound stops a
     # silent peer from owning the read loop forever.
     uart = cobs_uart(max_frame=16)
     uart.poller = _StepPoller([0])  # type: ignore[assignment]  # never becomes ready again
@@ -624,7 +624,7 @@ def test_a_peer_that_never_sends_a_delimiter_fails_the_read_rather_than_blocking
 
 
 def test_the_fragment_after_a_resync_is_discarded_never_decoded() -> None:
-    # B2.2: a delimiter means "end of something"; only the *next* one bounds a whole frame.
+    # A delimiter means "end of something"; only the *next* one bounds a whole frame.
     sender = cobs_uart()
     assert run(locked_write(sender, bytearray(b"\x41\x42\x43"))) is True
     whole_frame = written(sender)
@@ -642,7 +642,7 @@ def test_the_fragment_after_a_resync_is_discarded_never_decoded() -> None:
     assert bytes(buf[:size]) == b"\x41\x42\x43"
 
     # Without the resync the same stream decodes the fragment instead - which is exactly the
-    # garbage B2.2 exists to keep out, so the flag has to be what makes the difference.
+    # garbage resync_framing() exists to keep out, so the flag has to be what makes the difference.
     naive = cobs_uart()
     naive.poller = _StepPoller([select.POLLIN])  # type: ignore[assignment]
     fake(naive).feed_rx(tail + whole_frame)
@@ -650,7 +650,7 @@ def test_the_fragment_after_a_resync_is_discarded_never_decoded() -> None:
 
 
 def test_empty_frames_are_skipped_at_the_codec_layer() -> None:
-    # B2.3: two consecutive delimiters must never surface as a zero-length frame to index into.
+    # Two consecutive delimiters must never surface as a zero-length frame to index into.
     sender = cobs_uart()
     assert run(locked_write(sender, bytearray(b"\x31\x32"))) is True
     receiver = cobs_uart()
@@ -663,7 +663,7 @@ def test_empty_frames_are_skipped_at_the_codec_layer() -> None:
 
 
 def test_a_corrupt_code_byte_is_a_decode_failure_not_an_overrun() -> None:
-    # B2.4, through the driver: the sentinel, never a walk off the end of the buffer.
+    # Through the driver: the sentinel, never a walk off the end of the buffer.
     uart = cobs_uart()
     uart.poller = _StepPoller([select.POLLIN])  # type: ignore[assignment]
     fake(uart).feed_rx(b"\x40\x01\x02" + bytes([COBS_DELIMITER]))  # code 0x40 runs past the frame
@@ -672,13 +672,13 @@ def test_a_corrupt_code_byte_is_a_decode_failure_not_an_overrun() -> None:
 
 
 def test_a_caller_buffer_too_small_for_the_encoded_frame_is_refused() -> None:
-    # B2.5: silent truncation or a per-frame allocation are both worse than the sentinel.
+    # Silent truncation or a per-frame allocation are both worse than the sentinel.
     uart = cobs_uart()
     assert run(locked_readinto_until_complete(uart, bytearray(4), 8, start_timeout_ms=50, timeout_ms=50)) is None
 
 
 def test_a_codec_whose_allocation_failed_degrades_every_framed_call() -> None:
-    # B2.8: a driver that looks constructed but cannot frame must say so on every framed path.
+    # A driver that looks constructed but cannot frame must say so on every framed path.
     uart = make_uart(framing=Framing_COBS(-1))
     assert uart.framing.ready() is False
     assert run(locked_write(uart, bytearray(b"abc"))) is False
@@ -697,7 +697,7 @@ def test_resync_framing_is_inert_for_the_pass_through_codec() -> None:
 
 
 def test_cancel_during_a_completing_read_still_terminates() -> None:
-    # B1.1: the cancel arrives while the lock is held but no ready() is in flight (here, during the
+    # The cancel arrives while the lock is held but no ready() is in flight (here, during the
     # post-read CRC yield) and the read then completes normally. Before the fix nothing ever
     # acknowledged it and cancel_read_timeout() awaited forever - a wedge in the anti-wedge.
     uart = make_uart()
@@ -722,7 +722,7 @@ def test_cancel_during_a_completing_read_still_terminates() -> None:
 
 
 def test_cancel_between_two_reads_is_not_lost() -> None:
-    # B1.2: ready() used to begin with `self.cancel = False`, erasing a request that arrived
+    # ready() used to begin with `self.cancel = False`, erasing a request that arrived
     # between two reads - the canceller then blocked on an acknowledgement that never came.
     uart = make_uart()
     uart.poller = _StepPoller([select.POLLIN, select.POLLIN, 0])  # type: ignore[assignment]
@@ -748,7 +748,7 @@ def test_cancel_between_two_reads_is_not_lost() -> None:
 
 
 def test_two_concurrent_cancellers_both_return() -> None:
-    # B1.3: the acknowledgement is broadcast - one canceller consuming it must not strand another.
+    # The acknowledgement is broadcast - one canceller consuming it must not strand another.
     uart = make_uart()
     uart.poller = _StepPoller([0])  # type: ignore[assignment]
 
@@ -771,7 +771,7 @@ def test_two_concurrent_cancellers_both_return() -> None:
 
 
 def test_no_read_happens_after_the_cancel_is_acknowledged() -> None:
-    # B1.5: acknowledgement means "the read path has left the loop", not "it is about to".
+    # Acknowledgement means "the read path has left the loop", not "it is about to".
     uart = make_uart()
     uart.poller = _StepPoller([0])  # type: ignore[assignment]
 
@@ -793,7 +793,7 @@ def test_no_read_happens_after_the_cancel_is_acknowledged() -> None:
 
 
 def test_cancel_with_a_wedged_holder_is_bounded_and_counted() -> None:
-    # B1.1's "provably terminating" half: a lock holder that never calls ready() again and never
+    # J.5's "provably terminating" half: a lock holder that never calls ready() again and never
     # exits cannot make cancel_read_timeout() block forever. It returns True (a cancel is
     # outstanding, so clear() must not then take the lock) and records the un-acknowledged case.
     uart = make_uart()
@@ -816,7 +816,7 @@ def test_cancel_with_a_wedged_holder_is_bounded_and_counted() -> None:
 
 
 def test_leaving_the_locked_region_acknowledges_a_latched_cancel() -> None:
-    # The other half of B1.1's required handling: the request is acknowledged on every exit from
+    # The other half of J.5's handshake: the request is acknowledged on every exit from
     # the locked region, not only from inside ready()'s loop.
     uart = make_uart()
 
@@ -837,7 +837,7 @@ def test_leaving_the_locked_region_acknowledges_a_latched_cancel() -> None:
 
 
 def test_a_new_ready_call_does_not_clear_an_unrelated_cancel() -> None:
-    # B1.2 at the unit level: entering ready() must not consume a request it did not serve.
+    # At the unit level: entering ready() must not consume a request it did not serve.
     uart = make_uart()
     uart.poller = _StepPoller([select.POLLIN])  # type: ignore[assignment]
     uart.cancel = True
@@ -1831,7 +1831,7 @@ def test_a_delimited_codec_that_names_no_delimiter_fails_the_read() -> None:
 
 
 def test_a_delimited_read_whose_worst_case_buffer_will_not_fit_fails_cleanly() -> None:
-    # read_until_complete() sizes its own buffer from the codec's worst case (B2.1), so a length
+    # read_until_complete() sizes its own buffer from the codec's worst case, so a length
     # the heap cannot serve has to come back as the sentinel - not as a MemoryError out of a driver
     # contracted never to raise, and not as a read against a buffer that was never allocated.
     uart = cobs_uart(max_frame=1 << 30)
