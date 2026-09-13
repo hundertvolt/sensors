@@ -69,6 +69,21 @@ constraints.
   running the C side exists and can be connected to the dev board, so the reconciliation session can
   test the two implementations against each other for real rather than only reading them side by
   side.
+- **An Arduino/C++ tier of equal standing to the Python and website tiers — researched, nothing
+  chosen.** Project owner's target (2026-09-13): the Arduino part reaches the same quality-check,
+  integration, CI and installer level as the Python part, with C++-appropriate tooling; gets a
+  host-runnable digital twin able to talk to the Python twin; runs over USB alongside the
+  USB-connected Pico, bench tier included; and is self-contained the way the website tier is.
+  **SPECIFICATION.md Part K is the research collection** — build tooling (arduino-cli `sketch.yaml`
+  profiles vs. PlatformIO), the static-analysis stack that stands in for ruff/mypy, the four real
+  unit-test options, why instruction-level emulation of the SAMD21 is ruled out (no Renode, QEMU or
+  Wokwi platform exists for it) and what a functional twin needs instead, the twin-to-twin transport
+  candidates, the 1200-baud-touch and tty-exclusivity facts that constrain the bench, the official
+  CI actions, and what the installer would have to do. **Its K.10 lists ten open decisions**, the
+  first four of which (build tool, test framework, EpoxyDuino vs. an owned `Arduino.h` shim, twin-link
+  transport) gate everything else. One fact there is unverified and must be checked against the
+  pinned interpreter before being relied on: whether the MicroPython Unix port's `socket` module
+  exposes `AF_UNIX`. No file, no code and no placeholder added for any of this.
 - **Auto-builder: decide whether `sensortask_dev` importing `asy_uart_comm` is selection enough, or
   whether a separate selectable `uart_crossover` unit is still wanted.** The original requirement was
   recorded (owner, 2026-09-11) as: `asy_uart_comm.py` is a *submodule*, not an include-selectable

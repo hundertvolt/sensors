@@ -126,7 +126,12 @@ information):
   reflashed together at reconciliation, and the flag-day framing above describes an obligation to
   record, not a deployment risk to weigh. Real hardware running the C side exists and can be
   connected to the dev board, making the promoted module testable against the genuine second
-  implementation rather than only against itself over the bench crossover jumper. **The protocol's
+  implementation rather than only against itself over the bench crossover jumper. **What it would
+  take to bring that C side to this repo's standard — build tooling, static analysis, unit tests, a
+  host-runnable twin that can talk to the Python twin, real-hardware integration, CI and installer
+  coverage — is researched in SPECIFICATION.md Part K.** That Part is a facts collection with ten
+  open decisions, not a set of rules: nothing there is chosen, so don't treat any option in it as
+  settled. **The protocol's
   parameters (`payload_size`, `timeout`, baud) stay fixed by out-of-band agreement** — owner
   decision, 2026-09-11: no version or capability negotiation is to be added, so a mismatched pair
   is diagnosed (it looks like a dead link that nonetheless carries bytes), never negotiated. Two
