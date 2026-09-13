@@ -518,42 +518,40 @@ constraints.
     protocol stubs. Either way it is the owner's call — flagged, not changed, per CLAUDE.md's
     cross-file-consistency rule.
 
-26. **Three bench-tier tests fail deterministically, and none of them is a code regression**
-    (first full flash+bench run of the ISL29125 branch, 2026-09-13: 95 passed, 3 failed, 2 skipped;
-    all three reproduce identically on a targeted re-run). Each needs an owner decision, because in
-    two cases the test encodes an expectation the driver has never met and in the third the test
-    asserts a cleanliness the mechanism it exercises cannot provide.
-    - **`test_isl29125_learned_gain_ratio_survives_a_real_reboot_with_its_timestamp`** fails on its
-      *first* assertion, before it reboots anything: `CalTS is not None`. The test's own comment
-      says an unlearned board reports "(nominal ratio, CalTS 0)". It does not — `_gain_ratio_ts`
-      initialises to `None` and `get_mem_status()` returns it unchanged. That is *consistent* with
-      the sibling: `SGP40_Reader`'s `last_backup`/`restored_from` also start at `None`. The test
-      comes from commit `ab81b79`, whose own subject is "written, never run", so it has never been
-      green. **Recommendation: fix the test** — accept `None` as "never calibrated" and keep the
-      real property it was written for (the pair survives a reboot unchanged).
-    - **`test_isl29125_reset_gain_calibration_command_push_over_real_rest`** — the REST push itself
-      succeeds; the failure is the trailing `assert_module_error_log_empty("ISL29125")`, which sees
-      one warning (`W13` on the first run, `W16` on the re-run). That is the designed mechanism:
-      `reset_gain_calibration()` back-dates `_gain_learn_ms` on purpose so the learner retries at
-      the next opportunity, and under bench ambient light the paired reading is legitimately
-      rejected as clipped (`wrnno=16`) or implausible (`wrnno=13`). Same `ab81b79` provenance.
-      **Recommendation: fix the test** — assert no *errors* (`type == "E"`), not an empty log, and
-      say why a learner warning is expected here.
-    - **`test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly`** is older code
-      (not from `ab81b79`) and is the one worth real thought. It hard-resets the board three times
-      *during* FRAM writes, then asserts the FRAM log is empty; the log holds `E31`, `W71`, `E31`,
-      `W72`. `W71` ("invalid data in block 0, reading block 1") is the dual-copy recovery working
-      as designed and is arguably a success signal, not a failure. `W72` ("invalid data in block 1")
-      means one chunk lost *both* copies, and `E31` is a status-byte failure on the write side.
-      **Recommendation: do not loosen this one without deciding what the contract is.** The
-      flash-tier `test_error_log_history_is_all_or_nothing_across_a_reset_raced_chunk_write` passes,
-      so the all-or-nothing property holds per chunk; the open question is whether `W72` after a
-      deliberate mid-write reset is acceptable degradation or a robustness gap.
-    Ruled out as causes, by evidence rather than assumption: NTP is synced on the bench board
-    (SGP40's `BackupTS` is a real epoch), and every function in the gain-calibration path except
-    `_learn_gain_ratio` is AST-identical to the pre-restructure baseline `1809110` — while
-    `_learn_gain_ratio`'s only diff is three call relocations with identical arithmetic and the
-    same `_active_range` feeding the dark offset.
+26. **`test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly` asserts an empty
+    FRAM log after deliberately provoking torn writes** (found 2026-09-13 in the first full
+    flash+bench run of the ISL29125 branch; reproduces identically on a targeted re-run). The test
+    hard-resets the board three times *during* FRAM writes and then requires the FRAM error log to
+    be empty; it holds `E31`, `W71`, `E31`, `W72`. `W71` ("invalid data in block 0, reading block
+    1") is the dual-copy recovery doing exactly its job and is arguably a success signal. `W72`
+    ("invalid data in block 1") means one chunk lost *both* copies, and `E31` is a status-byte
+    failure on the write side.
+    Deliberately not "fixed" by loosening the assertion: the flash-tier
+    `test_error_log_history_is_all_or_nothing_across_a_reset_raced_chunk_write` passes, so the
+    all-or-nothing property holds per chunk, and the real question is whether `W72` after a
+    deliberate mid-write reset is acceptable degradation or a robustness gap. **Needs the owner to
+    say which**, and the answer decides whether the test relaxes or the manager changes. Two ISL29125
+    bench tests that failed in the same run have since been fixed and are green (see the
+    `assert_module_error_log_clean()` helper and `tests_hardware/README.md`); this one is the
+    remainder, and it is not ISL-related.
+
+27. **An interrupted `setup_toolchain.py env --tier flash` can leave the unit-test interpreter
+    broken, and `scripts/test.sh` will use it anyway** (hit 2026-09-13). The flash tier legitimately
+    rebuilds the MicroPython Unix port as part of `test_env_tier_flash_recurring_run_is_idempotent`,
+    and `run_verification_sequence()` builds it **twice**: first with the frozen-verification
+    manifest, then a vanilla rebuild that restores "the real test rig" (its own comment). Interrupt
+    the run between those two and the binary left on disk has no frozen `asyncio` at all — every
+    `tests/test_*.py` that imports asyncio then dies with `ImportError: no module named 'asyncio'`,
+    which reads like a code failure and is not one. The most likely trigger here was this session's
+    own `pkill` of a hardware suite, so it is a fragility rather than a latent bug, but nothing
+    detects it: `scripts/test.sh` only checks `[ ! -x "$micropython_bin" ]`, so a *broken* binary is
+    indistinguishable from a good one and is silently used.
+    **Recommendation: make that guard a capability check rather than an existence check** — e.g.
+    `"$micropython_bin" -c "import asyncio"` (or a small `-X heapsize` smoke import) alongside the
+    `-x` test, rebuilding when it fails. Deliberately not implemented here: `scripts/` is inside
+    CLAUDE.md's "Pre-push verification" scope, which requires a clean Ubuntu-noble *and* Debian-trixie
+    chroot run before pushing, and this session cannot satisfy that gate. Recovery in the meantime is
+    `rm` the binary and re-run `scripts/test.sh`, which rebuilds it.
 
 ## Deferred / explicitly out-of-scope work
 - **The 1.29.0 pin is now field-proven on the dev bench (2026-09-11).** Real `dev` firmware built

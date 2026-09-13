@@ -271,17 +271,31 @@ point at a flagged assumption being wrong, not at a real product bug. Resolved i
 through, kept (not deleted) so a reader mid-investigation doesn't wonder whether something was ever
 a live question:
 
-- **Three bench-tier tests fail deterministically as of the first full flash+bench run of the
-  ISL29125 branch (2026-09-13, 95 passed / 3 failed / 2 skipped).** Two of them
-  (`test_isl29125_learned_gain_ratio_survives_a_real_reboot_with_its_timestamp`,
-  `test_isl29125_reset_gain_calibration_command_push_over_real_rest`) come from commit `ab81b79`,
-  whose own subject is "written, never run" - this was their first execution, and both encode an
-  expectation the driver has never met (`CalTS` is `None`, not `0`, on an unlearned board; and
-  clearing the calibration deliberately unlocks the learner, which then legitimately warns). The
-  third (`test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly`) asserts an
-  empty FRAM log after three deliberate mid-write hard resets and sees the dual-copy recovery's own
-  `W71`/`W72` plus `E31`. Full analysis and a recommendation for each: BACKLOG.md item 26. Do not
-  read these three as a regression signal while they stand.
+- **No ISL29125 test may assert an empty error log** - the gain learner runs on its own hourly
+  schedule whenever auto-range is on, and a paired reading it rejects is a legitimate warning
+  (`wrnno=13`, ratio outside the 20-34 plausibility band; `wrnno=16`, the partner range clipped the
+  scene). Whether that window opens during a given test is a property of the light and the clock, so
+  an empty-log assertion is a race, not a check. Use `error_log_helpers.assert_module_error_log_clean()`
+  with `allowed_warnings=(13, 16)` instead - it still fails on any error and on any other warning.
+  Two bench tests were failing on exactly this (2026-09-13, their first-ever execution: they came
+  from commit `ab81b79`, whose own subject is "written, never run"); both are green now. The same
+  commit's `CalTS` expectation was wrong too - it is `None`, not `0`, until a ratio has actually been
+  learned AND persisted, matching `SGP40_Reader`'s own `last_backup`/`restored_from`.
+- **A test comparing the ISL29125's GainRatio/CalTS across a reboot must pin `RangeAuto` off first**,
+  or the hourly learner can land between the two reads and move the pair under the test.
+  `_learn_gain_ratio()` returns immediately with auto-range off, and `RangeAuto` is persisted, so one
+  PUT before the reboot covers the whole test.
+- **`test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly` still fails
+  deterministically** (not ISL-related): it asserts an empty FRAM log after deliberately provoking
+  torn writes, and sees the dual-copy recovery's own `W71`/`W72` plus `E31`. Left alone on purpose -
+  BACKLOG.md item 26 has the analysis and the question it needs answered.
+- **An interrupted flash-tier run can leave the Unix-port unit-test interpreter unusable.**
+  `test_env_tier_flash_recurring_run_is_idempotent` runs the full `setup_toolchain.py env --tier
+  flash`, which builds the Unix port twice (frozen-verification manifest, then a vanilla rebuild that
+  restores the real test rig). Killing the suite between those two leaves a binary with no frozen
+  `asyncio`, and `scripts/test.sh` only checks that the file is executable - so every `tests/test_*.py`
+  then dies with `ImportError: no module named 'asyncio'`, which looks like a code failure and is not
+  one. Recovery: `rm` the binary and re-run `scripts/test.sh`. BACKLOG.md item 27.
 
 - ~~The bench has never run MicroPython 1.29.0.~~ — **resolved (2026-09-11): it has, repeatedly.**
   Real `dev` firmware built from `src/` and flashed, with the flash, bench and mid soak tiers all

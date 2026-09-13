@@ -148,24 +148,45 @@ def test_mempause_over_real_rest_pauses_storage_and_does_not_survive_a_reboot(bo
 
 
 def test_isl29125_learned_gain_ratio_survives_a_real_reboot_with_its_timestamp(board: Board, bench: BenchBridge, dut_ip: str) -> None:
-    before = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0)
-    assert before.status_code == 200, f"GET /status failed: {before.status_code} {before.body!r}"
-    maintenance = before.json()["sensors"]["ISL29125"]
-    ratio, cal_ts = maintenance.get("GainRatio"), maintenance.get("CalTS")
-    assert ratio is not None and cal_ts is not None, f"GET /status is missing the ISL29125 maintenance keys entirely: {maintenance!r}"
-
-    bench.kick_all_stations()  # see conftest.py's dut_ip docstring for why this precedes every reconnect-expecting reset
-    board.hard_reset()
-    wait_until(
-        lambda: http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=5.0).status_code == 200,
-        timeout_s=120.0,
-        poll_interval_s=3.0,
-        description="DUT serving /status again after the reboot this test's persistence check needs",
+    # RangeAuto is pinned off for the whole test, and that is what makes the comparison below a
+    # property of the FRAM round trip rather than a race: _learn_gain_ratio() returns immediately
+    # with auto-range off, so no learn can land between the two reads and move the pair under the
+    # test. RangeAuto is a persisted field, so it stays off across the reboot without being
+    # re-pushed - which is exactly what the reboot leg needs.
+    sensors_before = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=10.0)
+    assert sensors_before.status_code == 200, f"GET /sensors failed: {sensors_before.status_code} {sensors_before.body!r}"
+    original_auto = sensors_before.json()["ISL29125"]["RangeAuto"]
+    pin = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"ISL29125": {"RangeAuto": False}}, timeout_s=10.0)
+    assert pin.status_code == 200 and pin.json()["result"]["ISL29125"].get("RangeAuto") in ("Valid", "Unchanged"), (
+        f"could not pin RangeAuto=False for the duration of this test: {pin.status_code} {pin.body!r}"
     )
-    after = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).json()["sensors"]["ISL29125"]
-    # Deliberately asserts equality rather than skipping when nothing has been learned yet: on a
-    # board that has never seen the overlap band the pair is (nominal ratio, CalTS 0), and that it
-    # comes back unchanged is the same property - a reboot must neither lose a real calibration nor
-    # invent one. Learning a real ratio needs the --allow-neopixel-sweep rig, not this test.
-    assert after.get("CalTS") == cal_ts, f"the calibration timestamp did not survive a real reboot: {cal_ts!r} before, {after.get('CalTS')!r} after"
-    assert after.get("GainRatio") == ratio, f"the learned gain ratio did not survive a real reboot: {ratio!r} before, {after.get('GainRatio')!r} after"
+
+    try:
+        before = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0)
+        assert before.status_code == 200, f"GET /status failed: {before.status_code} {before.body!r}"
+        maintenance = before.json()["sensors"]["ISL29125"]
+        # Presence, not a value: CalTS stays None until a ratio has actually been learned AND
+        # persisted, the same shape SGP40_Reader's own last_backup/restored_from carry. Requiring a
+        # non-None here would only ever assert "this bench has seen the overlap band".
+        assert "GainRatio" in maintenance and "CalTS" in maintenance, f"GET /status is missing the ISL29125 maintenance keys entirely: {maintenance!r}"
+        ratio, cal_ts = maintenance.get("GainRatio"), maintenance.get("CalTS")
+
+        bench.kick_all_stations()  # see conftest.py's dut_ip docstring for why this precedes every reconnect-expecting reset
+        board.hard_reset()
+        wait_until(
+            lambda: http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=5.0).status_code == 200,
+            timeout_s=120.0,
+            poll_interval_s=3.0,
+            description="DUT serving /status again after the reboot this test's persistence check needs",
+        )
+        after = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).json()["sensors"]["ISL29125"]
+        # Deliberately asserts equality rather than skipping when nothing has been learned yet: on a
+        # board that has never seen the overlap band the pair is (nominal ratio, CalTS None), and
+        # that it comes back unchanged is the same property - a reboot must neither lose a real
+        # calibration nor invent one. The real FRAM round trip of a NON-nominal ratio is covered at
+        # the flash tier instead, by isl29125_gain_ratio_fram_roundtrip.py.
+        assert after.get("CalTS") == cal_ts, f"the calibration timestamp did not survive a real reboot: {cal_ts!r} before, {after.get('CalTS')!r} after"
+        assert after.get("GainRatio") == ratio, f"the learned gain ratio did not survive a real reboot: {ratio!r} before, {after.get('GainRatio')!r} after"
+    finally:
+        restore = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"ISL29125": {"RangeAuto": original_auto}}, timeout_s=10.0)
+        assert restore.status_code == 200, f"failed to restore RangeAuto={original_auto!r}: {restore.status_code} {restore.body!r}"
