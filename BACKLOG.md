@@ -530,26 +530,28 @@ constraints.
     `scripts/build_website.sh` run changes a gitignored artifact that other work on this bench may
     be relying on.
 
-25. **`asy_isl29125_driver.py` does not follow SPECIFICATION.md D.15's method ordering, and the
-    two rules conflict for this file** (found 2026-09-13 by validating the session's touched files
-    against the spec paragraph by paragraph). D.15 wants private methods before public ones, then
-    starters/getters/setters/others within each group. Measured across `src/`: `asy_bmp3xx_driver.py`
-    and `asy_sgp40_driver.py` comply exactly, `asy_scd30_driver.py` has one exception
-    (`_set_dict_cfg`, a base-class override whose placement follows the base class), and
-    **`asy_isl29125_driver.py` has 37 private-after-public methods**.
-    It is not a simple oversight. The ISL driver is the **only** file in `src/` that carries
-    functional section headings — nine of them (`# -- read path --`, `# -- auto-range --`,
-    `# -- gain-ratio calibration --`, ...) — and it is organised by pipeline stage rather than by
-    visibility. The three compliant drivers have none. D.15 also requires the reorder to change
-    "no body/decorator/**comment**/module-level statement", which a visibility sort cannot honour
-    here: it would strand or delete all nine headings.
-    **Recommendation: amend D.15 rather than reorder the file.** Functional sectioning is more
-    useful than a visibility sort in a 1400-line driver, and the headings are load-bearing
-    navigation. Suggested wording: D.15's ordering applies unless a file carries explicit
-    functional section headings, in which case sections are ordered by pipeline stage and the
-    private/public rule applies *within* each section. Needs the owner's yes/no — reordering 37
-    methods is a large, review-hostile diff on a file that is otherwise complete and
-    hardware-validated, and doing it the other way (amending the spec) costs nothing.
+25. **Seven classes in `src/` do not satisfy SPECIFICATION.md D.15's method ordering** (measured
+    2026-09-13 with an AST checker, after `asy_isl29125_driver.py` was sorted to conform). The
+    checker reads D.15 the way the drivers already practise it: privates before publics, the
+    *public* group ordered starters/getters/setters/others, and `stop_X` counted as a starter only
+    when the class really has a `start_X` to pair it with. Both reference drivers
+    (`asy_bmp3xx_driver.py`, `asy_sgp40_driver.py`) and `asy_isl29125_driver.py` conform; these do
+    not: `SCD30_Reader` (`_set_dict_cfg`, a base-class override, sits mid-public — the same
+    exception noted before), `AsyConnTime` (`set_ext_led`/`set_wifi_led` after several "others"),
+    `ConfigManager` (`reset_error_counter` between getters), `SystemService` (`_set_dict_cfg`
+    and `_apply_level` among publics, `get_cfg_schema` after `setup`), and the three
+    `asy_webserver_service.py` protocol stubs `_ModuleLike`/`_StreamLike`/`_TimeoutStreamProxy`
+    (which mirror an interface's own declaration order).
+    One further observation the same sweep produced: **no file role-orders its PRIVATE group** —
+    `BMP3XX_I2C` has `_get_osr_setting` before `_read`, `AsyNtpClient` has `_get_ntp_config` and
+    `_set_synced` among "others". So D.15's "within each group" is, in practice, applied to the
+    public group only.
+    **Recommendation: amend D.15 to state what the codebase actually does** (privates first,
+    grouped functionally; the public group role-ordered; a base-class override or an interface
+    stub may follow the shape it mirrors), rather than reorder five working modules and three
+    protocol stubs. Either way it is the owner's call — flagged, not changed, per CLAUDE.md's
+    cross-file-consistency rule.
+
 26. **Seven `src/` modules number `errno`/`wrnno` inside the range `base_classes.py` reserves.**
    Part C.7 reserves `errno` 1-9 and `wrnno` 1-2 for `SensorReader`/`SensorReaderConfig`, and
    `api_response.py`'s `handle_set_cmd()` owns the fixed cross-module slot `errno=99`; the project
@@ -586,6 +588,43 @@ constraints.
     change to the one-per-episode budget. Needs an owner decision because it changes which entry an
     operator sees in a field log, the same class as the `errno` 32 decision of 2026-09-12.
     `SPECIFICATION.md` C.7.1 now states the actual behaviour rather than the intended one.
+
+28. **Three bench-tier tests fail deterministically, and none of them is a code regression**
+    (first full flash+bench run of the ISL29125 branch, 2026-09-13: 95 passed, 3 failed, 2 skipped;
+    all three reproduce identically on a targeted re-run). Each needs an owner decision, because in
+    two cases the test encodes an expectation the driver has never met and in the third the test
+    asserts a cleanliness the mechanism it exercises cannot provide.
+    - **`test_isl29125_learned_gain_ratio_survives_a_real_reboot_with_its_timestamp`** fails on its
+      *first* assertion, before it reboots anything: `CalTS is not None`. The test's own comment
+      says an unlearned board reports "(nominal ratio, CalTS 0)". It does not — `_gain_ratio_ts`
+      initialises to `None` and `get_mem_status()` returns it unchanged. That is *consistent* with
+      the sibling: `SGP40_Reader`'s `last_backup`/`restored_from` also start at `None`. The test
+      comes from commit `ab81b79`, whose own subject is "written, never run", so it has never been
+      green. **Recommendation: fix the test** — accept `None` as "never calibrated" and keep the
+      real property it was written for (the pair survives a reboot unchanged).
+    - **`test_isl29125_reset_gain_calibration_command_push_over_real_rest`** — the REST push itself
+      succeeds; the failure is the trailing `assert_module_error_log_empty("ISL29125")`, which sees
+      one warning (`W13` on the first run, `W16` on the re-run). That is the designed mechanism:
+      `reset_gain_calibration()` back-dates `_gain_learn_ms` on purpose so the learner retries at
+      the next opportunity, and under bench ambient light the paired reading is legitimately
+      rejected as clipped (`wrnno=16`) or implausible (`wrnno=13`). Same `ab81b79` provenance.
+      **Recommendation: fix the test** — assert no *errors* (`type == "E"`), not an empty log, and
+      say why a learner warning is expected here.
+    - **`test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly`** is older code
+      (not from `ab81b79`) and is the one worth real thought. It hard-resets the board three times
+      *during* FRAM writes, then asserts the FRAM log is empty; the log holds `E31`, `W71`, `E31`,
+      `W72`. `W71` ("invalid data in block 0, reading block 1") is the dual-copy recovery working
+      as designed and is arguably a success signal, not a failure. `W72` ("invalid data in block 1")
+      means one chunk lost *both* copies, and `E31` is a status-byte failure on the write side.
+      **Recommendation: do not loosen this one without deciding what the contract is.** The
+      flash-tier `test_error_log_history_is_all_or_nothing_across_a_reset_raced_chunk_write` passes,
+      so the all-or-nothing property holds per chunk; the open question is whether `W72` after a
+      deliberate mid-write reset is acceptable degradation or a robustness gap.
+    Ruled out as causes, by evidence rather than assumption: NTP is synced on the bench board
+    (SGP40's `BackupTS` is a real epoch), and every function in the gain-calibration path except
+    `_learn_gain_ratio` is AST-identical to the pre-restructure baseline `1809110` — while
+    `_learn_gain_ratio`'s only diff is three call relocations with identical arithmetic and the
+    same `_active_range` feeding the dark offset.
 
 ## Deferred / explicitly out-of-scope work
 - **A digital-twin soak's wall clock is set by GC timing, so it must never be bisected to a code
