@@ -1514,7 +1514,16 @@ before them (`crc_checks.py`'s masked-CRC guard, `math_helpers.py`'s domain-guar
 as documented dead code rather than chased for a coverage number. `print_log.py`'s `get_log()` has
 the same shape from an `if`: it treats two sentinels as equivalent "nothing recorded" markers, but
 only one is actually reachable — **confirmed intentional by the project owner**, kept for
-defensive symmetry.
+defensive symmetry. `asy_uart_comm.py` carries six statements of a third variant: a buffer or a
+bound re-checked immediately after the check that already settled it, so the second check cannot
+fire through any call path that exists (measured and listed one by one in
+`UART_PROMOTION_REQUIREMENTS.md` §O). Kept, like the rest — one branch of defence in depth in a
+module contracted never to raise is cheaper than the day the surrounding logic moves.
+
+A `finally:` body is **not** one of these patterns, despite looking like one: its lines fire a trace
+event only when an exception actually passes through, so a `finally` that only ever runs on the
+normal return path reads as uncovered. That is a real missing test — of cancellation — not an
+artefact; `test_a_cancelled_transaction_still_releases_the_re_entrancy_flag` is what it was hiding.
 
 ## E.6 Shared behaviors and the real-hardware test tier
 

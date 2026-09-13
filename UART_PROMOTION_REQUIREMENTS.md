@@ -1565,3 +1565,92 @@ under a comment claiming a difference that did not exist.
 - **The `rxbuf` floor is unaffected by the idle poll rate.** Stop-and-wait means at most one frame is
   ever in flight, so the whole-framed-frame floor still bounds what can accumulate before the reader
   is next scheduled, however late that is.
+
+
+## O — Coverage close-out (2026-09-13)
+
+`scripts/test.sh --coverage` over the finished branch, then a test for every uncovered line a test
+can genuinely reach. **No `src/` file changed: this pass is tests only** — 30 new ones, 626 lines,
+and nothing for `UART_C_PORT_CHANGELOG.md` to record, since no emitted byte or accept/reject rule
+moved. Each new test was then verified by breaking the thing it guards and requiring it to
+fail (Part E.8's rule, applied to characterising tests as much as to fixes): 23 mutations, 23 bites.
+Two needed the test strengthened first — asserting *where* a refusal happened, not merely that it
+did, since both refusals eventually produce the same `errno` either way — and one needed the mutation
+re-aimed at the call site the test actually goes through.
+
+| Module | Before | After | Left uncovered, net of the tracer artefacts SPECIFICATION.md E.5.1 catalogues |
+|---|---|---|---|
+| `src/asy_uart_comm.py` | 84% (121 missed) | **92%** (66 missed) | 6 statements, every one unreachable by construction (below) |
+| `src/asy_uart_driver.py` | 91% (26 missed) | **96%** (11 missed) | 4 statements, two `MemoryError` guards with no injection point (below) |
+| `src/framing_codecs.py` | 94% (6 missed) | **98%** (2 missed) | none — every executable statement is covered |
+| `src/sensortask_dev.py` | 84% | 85% | none in its UART half |
+| whole of `src/` | 92% | **93%** | 75 statements newly covered |
+
+The headline percentages understate it badly, and knowing why is the point: 58 of `asy_uart_comm.py`'s
+66 remaining misses are `_`-prefixed `const()` lines, which MicroPython folds at compile time so they
+can never fire a trace event. Against executable statements only, the three modules read 99.2%, 98.6%
+and 100%.
+
+**What the new tests reach.** The whole of what a healthy exchange never touches:
+
+- **Every write failure in one GET** — six distinct `writefrom()` call sites (the request, the
+  responder's ACK for it, the answer header, the initiator's ACK for that header, a mid-train ACK,
+  the final ACK), plus the SET header's own ACK. All report `errno` 21 and resync; a write that
+  silently did nothing is exactly what leaves the two sides on different frame boundaries.
+- **Five allocation failures**, driven by a real `MemoryError` rather than by substituting the
+  method around it: a module-scoped `bytearray` shadow (`_StarvedAlloc`, armed one-shot from inside
+  a callback so it fires at a named point in the exchange) covers `_allocate()`'s own except clause,
+  both destination allocations, and both right-sizing copies. The last of these is the one place the
+  two ends legitimately disagree — the final ACK is already out, so the sender is right that the
+  train was delivered while the receiver has to report that it could not keep it.
+- **A bus cleared after construction**, at all six entry points plus `setup()` and both construction
+  floors: the handle is read fresh per call, so each has its own check and each has to reach its own
+  sentinel rather than an `AttributeError` out of a never-raise module.
+- **A cancelled transaction still clears `_busy`.** This one was hiding behind a coverage artefact
+  rather than behind an exotic input: a `finally:` body only fires a trace event when an exception
+  actually passes through it, so the three `self._busy = False` lines read as uncovered while the
+  happy path ran them constantly. What was genuinely missing was the cancellation test — a task
+  killed mid-transaction must not leave the instance refusing every later call as re-entrant.
+- **A peer answering a different question** (F3.1 over the wire, not just in `_validate`), a declined
+  SET as a distinct outcome from a link fault, a `set_callback` returning any of four unusable
+  shapes, a size that no train could carry versus one *this* train cannot, and a listener whose
+  callbacks were cleared after construction.
+- On the driver: a raising `any()` swallowed (rp2 1.29 added an `OSError(EIO)` site there, F.5.1); a
+  read, readinto or readline that comes back empty after reporting ready — asserted **with no
+  deadline at all**, so "ended on the sentinel" is separated from "spun until the clock saved it";
+  the allocating read yielding rather than spinning on an empty ring, which its in-place twin already
+  had; the delimited path's own timeout, its refusal of a codec that names no delimiter *before
+  consuming a byte*, its worst-case buffer allocation, and its 16-byte yield measured against a
+  competing task rather than asserted.
+- On `sensortask_dev.py`: the bench rig's own ECHO command, of which only the banner GET had ever
+  been exercised — a SET stores the payload through the message callback, the matching GET hands it
+  straight back, and an id neither callback knows is refused rather than answered with something
+  else, which is what makes the banner's own answer evidence of anything.
+
+**What stays uncovered, and why none of it is a missing test.**
+
+- **Six statements in `asy_uart_comm.py` are unreachable by construction** — each a buffer or a
+  bound re-checked immediately after the check that already settled it. `_write_frame_with_ack()`'s
+  second `self._tx.get_buf()` (623-624: `_prepare_tx()` has already returned `False` if it were
+  `None`); `_listen_unlocked()`'s `rx is None` (986: `_read_frame()` returns `False` in exactly that
+  case); `_recv_train()`'s destination bound (760-761: `_get_unlocked()` refuses a short destination
+  at the header, and `_accept_set()` allocates exactly `room`); `uart_get()`'s `own is None` (851:
+  it passes neither a destination nor a push callback, so `_run_get()` always allocates one).
+  **Flagged, not removed** — CLAUDE.md's flag-don't-silently-change rule, and E.5.1's standing answer
+  for this class: one branch of defence in depth in a module contracted never to raise is cheaper
+  than the day the surrounding logic moves.
+- **Four in `asy_uart_driver.py`**: the `except MemoryError` around `msg += add` in
+  `read_until_complete()` and `readline_until_complete()`. Both guard an accumulator that grows
+  across rounds — the readline one genuinely unbounded, as its own comment says — against a heap
+  that gives out mid-frame. There is no deterministic injection point under the Unix port's 8M test
+  heap: the accumulator is a local `bytearray` with no hook, and filling the heap first would take
+  the harness down with it.
+- **The rest is E.5.1's three tracer artefacts**, and they dominate: `const()` folding (58 + 3 + 2
+  lines here), the `@staticmethod` `def` whose event lands on the decorator, and the bare
+  `while True:` header that compiles to an unconditional jump.
+
+**Checked and left alone.** `math_helpers.py` reads 66%, the lowest number in `src/`, and needs no
+test: all 28 of its misses are 18 `const()` lines plus the five domain-guarded `except` blocks E.5.1
+already names. Every one of those five is provably unreachable — each function's range gate runs
+first, and inside it `math.sqrt`, `math.log`, `math.exp` and `math.pow` have no argument that raises
+and no denominator that reaches zero.

@@ -62,6 +62,18 @@ def test_pass_through_is_always_ready() -> None:
     assert Framing_Pass().ready() is True
 
 
+def test_pass_through_still_bounds_every_size_against_the_buffer() -> None:
+    # Framing_Pass overrides nothing, so the base class's own bound check is what holds here: a
+    # pass-through codec may still not hand out a view past the end of the caller's buffer, nor
+    # report a decoded length longer than what actually arrived.
+    codec = Framing_Pass()
+    assert codec.delimiter() is None
+    assert run(codec.encode_into(bytearray(4), 5)) is None
+    assert run(codec.encode_into(bytearray(4), -1)) is None
+    assert run(codec.decode_from(bytearray(4), 5)) is None
+    assert run(codec.decode_from(bytearray(4), -1)) is None
+
+
 # ---------------------------------------------------------------------------
 # COBS - round-trip
 # ---------------------------------------------------------------------------
@@ -154,6 +166,16 @@ def test_cobs_failed_allocation_degrades_to_not_ready() -> None:
     assert codec.ready() is False
     assert run(codec.encode_into(bytearray(8), 4)) is None
     assert run(codec.decode_from(bytearray(8), 4)) is None
+
+
+def test_cobs_scratch_too_large_for_the_heap_degrades_the_same_way() -> None:
+    # The other half of B2.8. A negative bound never reaches the allocation at all, so the except
+    # clause that catches a real MemoryError/OverflowError - the case that actually happens on a
+    # fragmented heap, rather than a caller typo - had no test of its own.
+    codec = Framing_COBS(1 << 40)  # well-formed, and far past what any heap here can serve
+    assert codec.allocations == 0
+    assert codec.ready() is False
+    assert run(codec.encode_into(bytearray(8), 4)) is None
 
 
 def test_cobs_reports_itself_as_delimited() -> None:

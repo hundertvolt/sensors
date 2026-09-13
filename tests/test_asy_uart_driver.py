@@ -6,7 +6,7 @@ from machine import UART as FakeUART
 
 from asy_uart_driver import UART
 from crc_checks import CRC16, CRC_Base, CRC_Pass
-from framing_codecs import COBS_DELIMITER, Framing_COBS, Framing_Pass
+from framing_codecs import COBS_DELIMITER, Framing_Base, Framing_COBS, Framing_Pass
 
 try:
     from typing import TYPE_CHECKING
@@ -1747,6 +1747,174 @@ def test_a_whole_frame_read_never_asks_for_a_byte_that_has_not_arrived() -> None
     assert run(scenario()) == 8
     assert FakeUART.would_have_blocked_bytes == 0, FakeUART.would_have_blocked_bytes
 
+
+# ---------------------------------------------------------------------------
+# The never-raises contract's own edges: a raising any(), a read that comes
+# back empty after reporting ready, and the delimited path's own failures
+# ---------------------------------------------------------------------------
+
+
+class _NamelessDelimiter(Framing_Base):
+    # Reports itself delimited but names no delimiter byte - inconsistent by construction, which is
+    # precisely what the read path's own guard is for: there is nothing to frame on.
+    def is_delimited(self) -> bool:
+        return True
+
+
+def test_a_raising_any_is_swallowed_instead_of_escaping_the_driver() -> None:
+    # The never-raises contract at its one real risk point: every read clamps to uart.any(), so a
+    # bus fault there would otherwise put a bare OSError through an API that only ever returns
+    # sentinels. rp2 does raise from any() on an RX overrun (F.5.1's new EIO site).
+    uart = make_uart()
+    fk = fake(uart)
+    fk.feed_rx(b"abcd")
+
+    def raising_any() -> int:
+        raise OSError(5)
+
+    fk.any = raising_any  # type: ignore[method-assign]
+
+    async def scenario() -> "tuple[Any, Any, Any]":
+        async with uart:
+            return await uart.read(4), await uart.readinto(bytearray(4)), await uart.readline()
+
+    assert run(scenario()) == (None, None, None)
+
+
+def test_a_read_that_comes_back_empty_after_reporting_ready_ends_the_loop() -> None:
+    # The ring can drain between any() and the read itself, and rp2 then returns None (MP_EAGAIN)
+    # rather than raising - so each counted loop has to end on the sentinel instead of spinning or
+    # counting bytes it never received. Deliberately run with no deadline at all: a loop that
+    # merely waited the timeout out would still answer None, so only the unbounded form separates
+    # "ended on the sentinel" from "spun until the clock saved it" - run()'s own 5s bound fails it.
+    def empty_reader(**kwargs: "Any") -> UART:
+        uart = make_uart(**kwargs)
+        fk = fake(uart)
+        fk.feed_rx(b"abcdefgh")  # any() keeps reporting these, so the loop always attempts a read
+        return uart
+
+    allocating = empty_reader()
+
+    def no_read(nbytes: "int | None" = None) -> "bytes | None":
+        return None
+
+    fake(allocating).read = no_read  # type: ignore[method-assign]
+    assert run(locked_read_until_complete(allocating, 4)) is None
+
+    in_place = empty_reader()
+
+    def no_readinto(buf: "bytearray | memoryview", nbytes: "int | None" = None) -> "int | None":
+        return None
+
+    fake(in_place).readinto = no_readinto  # type: ignore[method-assign]
+    assert run(locked_readinto_until_complete(in_place, bytearray(8), 4)) is None
+
+    lines = empty_reader()
+
+    def no_readline() -> "bytes | None":
+        return None
+
+    fake(lines).readline = no_readline  # type: ignore[method-assign]
+
+    async def read_a_line() -> "bytearray | None":
+        async with lines:
+            return await lines.readline_until_complete()
+
+    assert run(read_a_line()) is None
+
+
+def test_the_allocating_read_yields_rather_than_spinning_on_an_empty_ring() -> None:
+    # POLLIN with nothing actually buffered: the loop must hand the scheduler a turn instead of
+    # calling ready() again at once, which on real hardware burns the whole latency budget inside
+    # one task. readinto_until_complete()'s twin already had this; the allocating one did not.
+    uart = make_uart(poll_wait_ms=1)
+    fk = fake(uart)
+
+    def feed_and_ready() -> int:
+        fk.feed_rx(b"abcd")
+        return select.POLLIN
+
+    uart.poller = _StepPoller([select.POLLIN, feed_and_ready])  # type: ignore[assignment]
+    got = run(locked_read_until_complete(uart, 4, start_timeout_ms=200, timeout_ms=200))
+    assert got is not None and bytes(got) == b"abcd", got
+
+
+def test_a_delimited_read_with_nothing_on_the_line_times_out_on_both_paths() -> None:
+    # The delimited path's own deadline. With no byte to inspect the loop never reaches the
+    # delimiter check at all, so ending the wait is ready()'s job - and the allocating read then
+    # has to turn _read_delimited()'s sentinel into its own rather than returning a partial frame.
+    uart = cobs_uart()
+    uart.poller = _StepPoller([0])  # type: ignore[assignment]  # never becomes ready
+    assert run(locked_readinto_until_complete(uart, bytearray(64), 8, start_timeout_ms=30, timeout_ms=30)) is None
+    assert run(locked_read_until_complete(uart, 8, start_timeout_ms=30, timeout_ms=30)) is None
+
+
+def test_a_delimited_codec_that_names_no_delimiter_fails_the_read() -> None:
+    # A codec cannot be framed on nothing, so the read path checks rather than trusting that
+    # is_delimited() and delimiter() agree - the same shape as every other sentinel here.
+    uart = make_uart(framing=_NamelessDelimiter(64, run_length=254, trailer=1))
+    fake(uart).feed_rx(b"\x01\x02\x03")
+    assert run(locked_readinto_until_complete(uart, bytearray(64), 2, start_timeout_ms=30, timeout_ms=30)) is None
+    assert run(locked_read_until_complete(uart, 2, start_timeout_ms=30, timeout_ms=30)) is None
+    # Refused before the first byte, not after reading a whole worst-case frame looking for a
+    # delimiter that does not exist - which is the difference the guard actually makes.
+    assert len(fake(uart).rx_queue) == 3, fake(uart).rx_queue
+
+
+def test_a_delimited_read_whose_worst_case_buffer_will_not_fit_fails_cleanly() -> None:
+    # read_until_complete() sizes its own buffer from the codec's worst case (B2.1), so a length
+    # the heap cannot serve has to come back as the sentinel - not as a MemoryError out of a driver
+    # contracted never to raise, and not as a read against a buffer that was never allocated.
+    uart = cobs_uart(max_frame=1 << 30)
+    assert run(locked_read_until_complete(uart, 1 << 30, start_timeout_ms=10, timeout_ms=10)) is None
+
+
+def test_a_delimited_frame_longer_than_the_yield_interval_still_yields() -> None:
+    # _read_delimited() consumes one buffered byte per round without ever reaching ready()'s own
+    # yield, so a frame longer than the yield interval would hold the loop for its whole wire time.
+    # Measured against a competing task rather than asserted: the count is what proves the yield.
+    sender = cobs_uart()
+    assert run(locked_write(sender, bytearray(b"\x41" * 40))) is True  # well past the 16-byte interval
+    receiver = cobs_uart()
+    receiver.poller = _StepPoller([select.POLLIN])  # type: ignore[assignment]
+    fake(receiver).feed_rx(written(sender))
+    turns = [0]
+
+    async def competitor() -> None:
+        while True:
+            turns[0] += 1
+            await asyncio.sleep_ms(0)
+
+    async def scenario() -> "bytearray | None":
+        other = asyncio.create_task(competitor())
+        try:
+            return await locked_read_until_complete(receiver, 40, start_timeout_ms=200, timeout_ms=200)
+        finally:
+            other.cancel()
+
+    got = run(scenario())
+    assert got is not None and bytes(got) == b"\x41" * 40, got
+    assert turns[0] >= 2, turns[0]  # 40 bytes / 16 per yield, so the loop gave up the CPU twice
+
+
+def test_a_crc_framed_write_of_nothing_is_refused_rather_than_sent_as_a_bare_crc() -> None:
+    # add_into() refuses a zero-length payload, and writefrom() has to pass that refusal on: a
+    # frame of pure CRC is not a short write to retry, it is a frame the peer would have to parse.
+    uart = make_uart(crc=CRC16())
+    assert run(locked_writefrom(uart, bytearray(8), 0)) is False
+    assert written(uart) == b""
+
+def test_a_readline_that_never_becomes_ready_returns_the_sentinel() -> None:
+    # readline() has no count to clamp, so its only bound is ready()'s deadline - a line that never
+    # starts must end the call rather than leave a caller parked on a silent peer.
+    uart = make_uart()
+    uart.poller = _StepPoller([0])  # type: ignore[assignment]  # never becomes ready
+
+    async def scenario() -> "bytes | None":
+        async with uart:
+            return await uart.readline(timeout_ms=30)
+
+    assert run(scenario()) is None
 
 if __name__ == "__main__":
     import microtest

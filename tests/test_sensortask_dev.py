@@ -1117,6 +1117,35 @@ def test_the_exerciser_is_registered_as_a_real_task_starter() -> None:
     assert sensortask_dev.uart_transfers > before, "no registered task starter ever drove the link"
 
 
+def test_the_echo_command_round_trips_a_payload_across_the_jumper() -> None:
+    # The dev rig's own two-command protocol, of which only the banner GET was ever exercised. A
+    # SET stores the payload through the message callback, the matching GET hands it straight back,
+    # and an id neither callback knows is refused rather than answered with something else - which
+    # is what makes the banner's own answer evidence of anything.
+    run(sensortask_dev.build_system(cfg_path=_tmp_cfg_dir()))
+    sensortask_dev.uart_last_echo = None
+    _cross_the_dev_uarts()
+    initiator = sensortask_dev.uart_initiator
+    responder = sensortask_dev.uart_responder
+    assert initiator is not None and responder is not None
+    echo_id = 0x02  # sensortask_dev's own _UART_CMD_ECHO; const() folds the name out of that module
+
+    async def scenario() -> "tuple[bool, bytearray | None, bytearray | None]":
+        listener = asyncio.create_task(responder._listen_loop())
+        try:
+            sent = await initiator.uart_set(echo_id, b"ping-across-the-jumper")
+            echoed = await initiator.uart_get(echo_id)
+            unknown = await initiator.uart_get(0x7E)  # neither banner nor echo
+            return sent, echoed, unknown
+        finally:
+            listener.cancel()
+            await asyncio.sleep_ms(5)
+
+    sent, echoed, unknown = run(scenario())
+    assert sent is True
+    assert echoed is not None and bytes(echoed) == b"ping-across-the-jumper", echoed
+    assert unknown is None
+
 if __name__ == "__main__":
     import microtest
 
