@@ -632,28 +632,37 @@ constraints.
     failure on the write side.
     Deliberately not "fixed" by loosening the assertion: the flash-tier
     `test_error_log_history_is_all_or_nothing_across_a_reset_raced_chunk_write` passes, so the
-    all-or-nothing property holds per chunk, and the real question is whether `W72` after a
-    deliberate mid-write reset is acceptable degradation or a robustness gap. **Needs the owner to
-    say which**, and the answer decides whether the test relaxes or the manager changes. Two ISL29125
-    bench tests that failed in the same run have since been fixed and are green (see the
-    `assert_module_error_log_clean()` helper and `tests_hardware/README.md`); this one is the
-    remainder, and it is not ISL-related.
+    all-or-nothing property holds per chunk.
+    **RESOLVED (2026-09-13) — the entries are acceptable degradation, and the test now expects
+    them** (owner's ruling). An error or warning here is the direct, expected consequence of an
+    interrupted read or write, so requiring an empty log asserted that deliberately-provoked damage
+    leaves no trace — not a property the hardware has. `assert_module_error_log_clean()` gained an
+    `allowed_errors` parameter for exactly this case, and the test now permits `E31`/`W71`/`W72`
+    while still failing on anything else and still requiring a fresh backup to complete afterwards.
+    It also **clears the FRAM log in its own `finally`**, because those entries are real persisted
+    state that the next test would otherwise read as evidence — CLAUDE.md's "read the FRAM logs
+    before clearing" rule assumes a board that has been running normally. On a failure the entries
+    are already in the assertion message, so nothing diagnostic is lost by clearing.
 
-28. **`html/definitions/dev.json` advertises two `UARTLINK_*` maintenance fields that
-    `mockdata/dev.json` does not provide** (surfaced 2026-09-13 while merging main into the
-    ISL29125 branch; the gap itself is main's, not the merge's). The UART promotion added
-    `UARTLINK_Transfers`/`UARTLINK_Failures` to the `sensors` group of the dev definitions, but
-    `mockdata/dev.json`'s `status.sensors` still carries only `SGP40` and (from this branch)
-    `ISL29125`. The real device answers both keys — `sensortask_dev.py` registers
-    `_uart_link_maintenance` and `tests/test_sensortask_dev.py` asserts
-    `body["sensors"]["UARTLINK"] == {"Transfers": 0, "Failures": 0}` — so this is cosmetic and
-    mock-site-only: those two rows render empty against the mock server, and nowhere else.
-    **Not fixed here deliberately**: it is the UART author's own field pair, and nothing
-    cross-checks definitions against mockdata automatically, so the real question is whether that
-    check should exist rather than whether to paste two numbers in. **Where to fix**: two keys in
-    `mockdata/dev.json`, plus — the more valuable half — a `tests_js/` assertion that every
-    `kind: "readonly"` key named in a variant's definitions resolves in that variant's mockdata,
-    which would have caught this at the time and will catch the next one.
+28. **Definitions and mockdata were never compared, and had drifted in three places — CLOSED
+    (2026-09-13).** Found because dev's definitions advertised `UARTLINK_Transfers`/`UARTLINK_Failures`
+    with no mockdata behind them (the UART promotion's own gap). Fixing only that would have left
+    the mechanism open, so `tests_js/definitions-mockdata-coverage.test.js` now walks every shipped
+    variant and asserts that each `kind: "readonly"` field a definitions file names actually
+    resolves against that variant's mockdata — using `resolveFieldValue()` and a mirror of
+    `render.js`'s own `groupValuesFrom()`, so it tests the real resolution rather than a second
+    implementation of it. It carries a negative control, since a resolver that returned a value for
+    everything would make the whole check vacuous.
+    It found two more on its first run. **`GainMeas`** was in dev's definitions and mockdata while
+    `get_dict_data()` — this driver's hand-written REST override — never emitted it, so a real
+    device would have served a body without it (fixed in the same session). And **dev's mockdata
+    had no `BMP3XX` at all**, in either `measurements` or `sensorsConfig`, though dev's definitions
+    declare the group and `sensortask_dev.py` really does construct a `BMP3xx_Reader` — a
+    pre-existing gap, unrelated to any recent work, that rendered a permanently blank card on the
+    mock site. Values mirror wozi's, the same part.
+    The class of bug is the same in all three: a field named in one of the three sources
+    (definitions, mockdata, the device's real body) and absent from another, which renders exactly
+    like a device that has not reported yet rather than like a defect.
 
 29. **An interrupted `setup_toolchain.py env --tier flash` can leave the unit-test interpreter
     broken, and `scripts/test.sh` will use it anyway** (hit 2026-09-13). The flash tier legitimately

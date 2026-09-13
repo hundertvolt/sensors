@@ -285,10 +285,13 @@ a live question:
   and needs no `RangeAuto` pinning - a calibration run cannot move it at all. A run publishes its
   candidate as the `GainMeas` measurement instead, which is legitimately null until a stable pair
   is measured, so assert its PRESENCE unless the rig's light is actually arranged.
-- **`test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly` still fails
-  deterministically** (not ISL-related): it asserts an empty FRAM log after deliberately provoking
-  torn writes, and sees the dual-copy recovery's own `W71`/`W72` plus `E31`. Left alone on purpose -
-  BACKLOG.md item 28 has the analysis and the question it needs answered.
+- **`test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly` expects FRAM
+  entries, and clears them afterwards.** Three hard resets landing inside real SPI writes are
+  meant to tear some: `E31` (status-byte failure on the write side), `W71` (dual-copy recovery
+  reading block 1 - the mechanism working) and `W72` (a chunk that lost both copies). Settled as
+  acceptable degradation rather than a robustness gap (owner, 2026-09-13), so the test permits
+  exactly those three and still fails on anything else. It clears the FRAM log in its own
+  `finally`, so no sibling test has to know it ran.
 - **An interrupted flash-tier run can leave the Unix-port unit-test interpreter unusable.**
   `test_env_tier_flash_recurring_run_is_idempotent` runs the full `setup_toolchain.py env --tier
   flash`, which builds the Unix port twice (frozen-verification manifest, then a vanilla rebuild that

@@ -9,7 +9,7 @@ import time
 from typing import TYPE_CHECKING
 
 import http_client
-from error_log_helpers import assert_module_error_log_empty, reset_all_error_logs
+from error_log_helpers import assert_module_error_log_clean, assert_module_error_log_empty, reset_all_error_logs
 from harness import Board, wait_until
 
 if TYPE_CHECKING:
@@ -170,7 +170,16 @@ def test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly(bo
 
         # Full health check, not just "reachable" - the FRAM subsystem specifically must still work.
         assert_module_error_log_empty(dut_ip, "SGP40")
-        assert_module_error_log_empty(dut_ip, "FRAM")
+        # FRAM is NOT held to an empty log, and that is the point of this test rather than a
+        # concession (owner's ruling, 2026-09-13). Three hard resets deliberately landing inside
+        # real SPI writes are expected to tear some of them: E31 is the status-byte failure on the
+        # write side, W71 is the dual-copy recovery reading block 1 because block 0 is invalid -
+        # the mechanism working - and W72 is a chunk that lost both copies, which a torn write at
+        # the wrong moment can genuinely produce. Requiring an empty log here asserted that
+        # deliberately-provoked damage leaves no trace, which is not a property the hardware has.
+        # What IS asserted: nothing else appears, and the subsystem still completes a fresh backup
+        # below. The per-chunk all-or-nothing property has its own flash-tier test.
+        assert_module_error_log_clean(dut_ip, "FRAM", allowed_warnings=(71, 72), allowed_errors=(31,))
 
         # One more real backup completing cleanly after all three resets proves the FRAM subsystem
         # itself is still genuinely functional, not merely "board reachable".
@@ -183,6 +192,15 @@ def test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly(bo
             description="a fresh real SGP40 VOC backup completing after the reset sequence",
         )
     finally:
+        # The torn-write entries this test expects are real persisted FRAM state, so they would
+        # otherwise be read as evidence by whatever runs next - and CLAUDE.md's "read the FRAM logs
+        # before clearing" rule assumes a board that has been running normally. Cleared here rather
+        # than at the start of the next test, so no sibling has to know this one ran. On a failure
+        # the entries are already in the assertion message above, so nothing diagnostic is lost.
+        try:
+            reset_all_error_logs(dut_ip)
+        except OSError:
+            pass  # unreachable board - the restore below does its own reachability recovery
         try:
             restore_res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"SGP40": {"BackupPeriod": original_backup_period}}, timeout_s=10.0)
         except OSError:
