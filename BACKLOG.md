@@ -378,32 +378,37 @@ constraints.
     itself now actually runs (see item 19), so a long bench soak would produce real convergence
     data where before it could only ever have reported the nominal value.
 
-21. **The ISL29125 flash-tier tests need this branch's firmware flashed** (2026-09-12; the
-    BOUTF reason for deferring it is gone as of 2026-09-13, open question 18 being closed). Five ISL device scripts import `asy_isl29125_driver`, which is **not**
-    in the firmware on the bench board (a pre-ISL `dev` build). `harness.Board.run_isolated()` does
-    not mount, so `uv run pytest tests_hardware/flash -k isl29125` fails with
-    `ImportError: no module named 'asy_isl29125_driver'` for every one of them. Everything was
-    therefore verified by running the same scripts through `mpremote ... mount <dir>` with the two
-    branch-only modules (`asy_isl29125_driver`, the extended `math_helpers`) cross-compiled to
-    `.mpy` — real hardware, real drivers, just supplied from the host instead of frozen.
+21. **The ISL29125 flash-tier firmware — CLOSED (2026-09-13).** The bench board was carrying a
+    pre-ISL `dev` build, so every ISL device script failed under `harness.Board.run_isolated()`
+    (which does not mount) with `ImportError: no module named 'asy_isl29125_driver'`, and the
+    branch's own driver could only be exercised through `mpremote ... mount <dir>` with the
+    branch-only modules cross-compiled to `.mpy`.
 
-    **Why it was not simply flashed**: this branch's firmware calls `ISL29125_I2C.setup()` at every
-    boot, which clears `BOUTF` — foreclosing open question 18 for good. The pre-ISL firmware
-    currently on the board never touches the part, which is the only state in which 18 can still be
-    answered. Both are now closed: the board was power-cycled, 18 was settled, and
-    `build/firmware-dev-isl.uf2` was flashed. **What is still outstanding is one reflash**: the
-    2026-09-13 driver changes (SPECIFICATION.md Parts C.11.1.2/C.11.1.3 and the gain-learn fix)
-    were validated over `mpremote mount` with `asy_isl29125_driver.mpy` cross-compiled to the
-    board, not frozen — so `harness.Board.run_isolated()`, which does not mount, still runs the
-    older frozen driver. Rebuild with `uv run scripts/build_firmware.py dev` and reflash before
-    the next full flash-tier run, or the tier tests a driver this branch no longer ships.
-    Note `mpremote mount` also needs care: the board's production watchdog stays armed across a
-    raw-REPL interrupt, so the mount handshake plus a slow import can trip the 8 s ceiling — chain
-    `exec "import machine; machine.WDT(timeout=8000)"` before `mount` to refresh it first.
+    The board now runs a `uv run scripts/build_firmware.py dev` build of the branch tip, flashed
+    with `picotool load -x -v`, and **the whole flash tier runs clean against it: 38 passed,
+    1 skipped, 0 failed (25:51)** — the skip being `--allow-flash-cycle`'s own gate. All nine
+    config files survived the flash.
 
-22. **What the ISL29125 module has been proven to do on real hardware** (2026-09-12) — recorded so
-    a later session does not redo it. Three new flash-tier tests, all passing, all structural or
-    relative (no absolute-lux assertion anywhere):
+    Two things worth keeping from how it was done. `mpremote mount` remains the right way to try a
+    driver change before committing to a flash cycle — cross-compile with `mpy-cross -march=armv6m`
+    and mount the directory; the board's production watchdog stays armed across a raw-REPL
+    interrupt, so chain `exec "import machine; machine.WDT(timeout=8000)"` before `mount` or the
+    handshake plus a slow import trips the 8 s ceiling. And a mounted run's config writes land in
+    the mounted host directory rather than on the board's own filesystem, which is what makes it a
+    genuinely non-destructive stand-in.
+
+    **One consequence still open**: `config_ISL29125.cfg` on the bench board predates this
+    branch's `AutoRangePersist` default change and still reads `4`. A persisted value always wins
+    over a schema default, so the production system on that board is still running the
+    configuration in which the interrupt cannot lead (item 22, SPECIFICATION.md Part C.11.1.3).
+    Deleting the file so the next boot regenerates it is a one-line fix, but it is a real write to
+    the board's flash filesystem and has not been made.
+
+22. **What the ISL29125 module has been proven to do on real hardware** (2026-09-12, extended
+    2026-09-13) — recorded so a later session does not redo it. Everything below now runs from
+    **frozen firmware** through the ordinary tier runner, not over a mount: the full flash tier is
+    38 passed / 1 skipped / 0 failed (item 21). Three ISL-specific tests carry the weight, all
+    structural or relative (no absolute-lux assertion anywhere):
     - `test_the_isl29125_mock_answers_the_bus_exactly_as_the_real_chip_does` — 36/36 protocol keys
       match between the real part and the twin fake (Part C.11.1 for what the first run found).
     - `test_isl29125_mechanisms_hold_across_the_whole_illumination_envelope` — ascending and
