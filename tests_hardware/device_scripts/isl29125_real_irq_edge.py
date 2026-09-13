@@ -17,7 +17,6 @@ FAST_PATH_DEADLINE_S = 3.0  # well under the 30s periodic fallback configured be
 TRIGGER_SEC = 30  # deliberately long: only a real interrupt can beat it
 _CYCLE_MS_16BIT = 303  # 3 x tINT, tINT = 101ms typ (p3)
 _MODE_RGB = 0x05
-_INTSEL_GREEN = 0x01
 
 
 async def _measure_config1_restart(isl: ISL29125_I2C, wdt: machine.WDT) -> str:
@@ -25,7 +24,7 @@ async def _measure_config1_restart(isl: ISL29125_I2C, wdt: machine.WDT) -> str:
     # the mainline Linux IIO driver msleep(101)s after exactly that write. If the restart is
     # real, the data registers still hold the PREVIOUS cycle's values immediately afterwards and
     # only change once a full cycle has elapsed.
-    await isl.configure(mode=_MODE_RGB, range_fs=10000, resolution=16, int_select=0)
+    await isl.configure(mode=_MODE_RGB, range_fs=10000, resolution=16, threshold_interrupt=False)
     await asyncio.sleep_ms(2 * _CYCLE_MS_16BIT)
     wdt.feed()
     before = await isl.read_counts()
@@ -46,7 +45,7 @@ async def _measure_persist_unit(isl: ISL29125_I2C, pin: machine.Pin, wdt: machin
     # that is one channel's integration (~101 ms) or one whole R-G-B cycle (~303 ms). INTSEL
     # selects ONE channel, which converts once per RGB cycle, so the reading should be cycles -
     # this times it rather than arguing about it.
-    await isl.configure(mode=_MODE_RGB, range_fs=375, resolution=16, int_select=_INTSEL_GREEN, persist=4)
+    await isl.configure(mode=_MODE_RGB, range_fs=375, resolution=16, threshold_interrupt=True, persist=4)
     await isl.set_thresholds(0, 1)  # essentially any light at all is "above the window"
     await isl.read_status()  # destructive: clears any flag already standing
     start = time.ticks_ms()

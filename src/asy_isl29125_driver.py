@@ -18,7 +18,7 @@ from micropython import const
 import math_helpers
 from asy_i2c_driver import I2CDevice
 from base_classes import Lockable, LockedValue, SensorReaderConfig
-from config_manager import name_cfg
+from config_manager import name_cfg, type_or_range_error
 from crc_checks import CRC32
 
 try:
@@ -32,6 +32,7 @@ if TYPE_CHECKING:
 
     from asy_fram_manager import AsyFramManager, AsyFramTimestampedChunk
     from asy_i2c_driver import I2C
+    from config_manager import ConfigSchema
     from print_log import ErrorLog
 
 
@@ -310,7 +311,7 @@ class ISL29125_Reader(SensorReaderConfig):
                 persist=int_values[4],
                 ir_offset=int_values[5],
                 ir_adjust=int_values[6],
-                int_select=_INTSEL_GREEN if self._range_auto else _INTSEL_NONE,
+                threshold_interrupt=self._range_auto,
             )
         except Exception as e:
             await self.pr.err_s("Error setting config data:", e, errno=13)
@@ -400,9 +401,10 @@ class ISL29125_Reader(SensorReaderConfig):
         # One extra transaction, spent only when the all-ones heuristic already fired - so a false
         # positive costs one wasted read and never decides the verdict on its own.
         try:
-            return await self.isl.get_device_id() == _DEVICE_ID
+            await self.isl.verify_device_id()
         except Exception:
             return False
+        return True
 
     async def _note_decision_source(self, *, threshold_fired: bool) -> None:
         # Requirement 17's silent-failure detector: the periodic evaluation is the safety net, and
@@ -755,81 +757,67 @@ class ISL29125_Reader(SensorReaderConfig):
             return None
         return decoded[index]
 
-    async def _check_cross_field(self, *, up: float, down: float, field: str, low: float, high: float, checked: float) -> bool:
+    async def _checked_cfg(self, value: "int | float", schema: "ConfigSchema", errno: int) -> "int | float | None":
+        # SPECIFICATION.md Part G.2's numeric primitive, not a second hand-rolled cast-and-compare:
+        # the bounds come from the field's own schema record, so they cannot drift from the ones
+        # the config path enforces, and the int<->float coercion is the identical policy that
+        # already ran on this value on its way in (a fractional "12.5" is rejected, not truncated).
+        is_error, coerced = type_or_range_error(value, schema[0])
+        # isinstance() guard: type_or_range_error() is typed to hand back Any, and a malformed
+        # schema record is the one way something non-numeric could come back out of it - the same
+        # narrow-then-validate shape asy_webserver_service.py's _put_notification() applies.
+        if is_error or not isinstance(coerced, (int, float)):
+            await self.pr.err_s("Error setting", schema[0][0], "- out of range:", value, errno=errno)
+            return None
+        return coerced
+
+    async def _check_cross_field(self, *, up: float, down: float, field: str) -> bool:
         # FieldSchema's per-field min/max cannot express a relation between two fields, so the
         # driver enforces it: immediately after a switch up the same light reads u/r of the high
-        # range, so d must clear u/(2r) for the loop not to chatter on noise alone.
-        try:
-            if not low <= checked <= high:
-                raise ValueError(f"{field} must be between {low} and {high}")
-            if not down <= up / _AR_CROSS_FIELD_DIVISOR:
-                raise ValueError(f"AutoRangeDown must be <= AutoRangeUp/{_AR_CROSS_FIELD_DIVISOR:.1f} ({up / _AR_CROSS_FIELD_DIVISOR:.3f})")
-        except (TypeError, ValueError, OverflowError, ZeroDivisionError) as e:
-            await self.pr.err_s("Error setting", field, ":", e, errno=27)
-            return False
-        return True
+        # range, so d must clear u/(2r) for the loop not to chatter on noise alone. Both arguments
+        # are already through _checked_cfg, so the division here cannot raise.
+        if down <= up / _AR_CROSS_FIELD_DIVISOR:
+            return True
+        await self.pr.err_s("Error setting", field, "- AutoRangeDown must be <=", f"{up / _AR_CROSS_FIELD_DIVISOR:.3f}", errno=27)
+        return False
 
     # -- push callbacks ----------------------------------------------------
 
     async def _push_trigger_secs(self, value: "int | float | str | bool | None") -> bool:
-        if type(value) is not int:
-            return False
-        return await self.set_trigger_secs(value)
+        return type(value) is int and await self.set_trigger_secs(value)
 
     async def _push_resolution(self, value: "int | float | str | bool | None") -> bool:
-        if type(value) is not int:
-            return False
-        return await self.set_resolution(value)
+        return type(value) is int and await self.set_resolution(value)
 
     async def _push_range_auto(self, value: "int | float | str | bool | None") -> bool:
-        if type(value) is not bool:
-            return False
-        return await self.set_range_auto(flag=value)
+        return type(value) is bool and await self.set_range_auto(flag=value)
 
     async def _push_range(self, value: "int | float | str | bool | None") -> bool:
-        if type(value) is not int:
-            return False
-        return await self.set_range(value)
+        return type(value) is int and await self.set_range(value)
 
     async def _push_autorange_up(self, value: "int | float | str | bool | None") -> bool:
-        if type(value) is not float:
-            return False
-        return await self.set_autorange_up(value)
+        return type(value) is float and await self.set_autorange_up(value)
 
     async def _push_autorange_down(self, value: "int | float | str | bool | None") -> bool:
-        if type(value) is not float:
-            return False
-        return await self.set_autorange_down(value)
+        return type(value) is float and await self.set_autorange_down(value)
 
     async def _push_autorange_settle(self, value: "int | float | str | bool | None") -> bool:
-        if type(value) is not int:
-            return False
-        return await self.set_autorange_settle(value)
+        return type(value) is int and await self.set_autorange_settle(value)
 
     async def _push_autorange_persist(self, value: "int | float | str | bool | None") -> bool:
-        if type(value) is not int:
-            return False
-        return await self.set_autorange_persist(value)
+        return type(value) is int and await self.set_autorange_persist(value)
 
     async def _push_autorange_dwell(self, value: "int | float | str | bool | None") -> bool:
-        if type(value) is not float:
-            return False
-        return await self.set_autorange_dwell(value)
+        return type(value) is float and await self.set_autorange_dwell(value)
 
     async def _push_ir_comp_offset(self, value: "int | float | str | bool | None") -> bool:
-        if type(value) is not int:
-            return False
-        return await self.set_ir_comp_offset(value)
+        return type(value) is int and await self.set_ir_comp_offset(value)
 
     async def _push_ir_comp_adjust(self, value: "int | float | str | bool | None") -> bool:
-        if type(value) is not int:
-            return False
-        return await self.set_ir_comp_adjust(value)
+        return type(value) is int and await self.set_ir_comp_adjust(value)
 
     async def _push_filter_coefficient(self, value: "int | float | str | bool | None") -> bool:
-        if type(value) is not float:
-            return False
-        return await self.set_filter_coefficient(value)
+        return type(value) is float and await self.set_filter_coefficient(value)
 
     async def _push_reset_gain_calibration(self, value: "int | float | str | bool | None") -> bool:
         # Reports success unconditionally once the type check passes: a recalibration that finds
@@ -934,16 +922,10 @@ class ISL29125_Reader(SensorReaderConfig):
     # -- setters -----------------------------------------------------------
 
     async def set_trigger_secs(self, value: float) -> bool:
-        try:
-            # int(float('inf'))/int(float('-inf')) raise OverflowError, not ValueError - confirmed
-            # against the real MicroPython Unix-port interpreter.
-            trigger_secs = int(value)
-            if not (_MIN_TRIGGER_SECS <= trigger_secs <= _MAX_TRIGGER_SECS):
-                raise ValueError(f"trigger interval must be between {_MIN_TRIGGER_SECS} and {_MAX_TRIGGER_SECS} seconds")
-        except (TypeError, ValueError, OverflowError) as e:
-            await self.pr.err_s("Error setting trigger interval:", e, errno=25)
+        trigger_secs = await self._checked_cfg(value, _VAL_SI, 25)
+        if trigger_secs is None:
             return False
-        await self.trigger_period.set_value(trigger_secs)
+        await self.trigger_period.set_value(int(trigger_secs))
         return True
 
     async def set_resolution(self, value: int) -> bool:
@@ -960,18 +942,16 @@ class ISL29125_Reader(SensorReaderConfig):
         return True
 
     async def set_range(self, value: int) -> bool:
-        if value not in _RANGES:
-            await self.pr.err_s("Error setting range: must be one of", _RANGES, errno=18)
-            return False
-        self._fixed_range = value
-        if self._range_auto:
-            return True  # stored as the preference; the state machine owns the chip's RNG bit
         try:
-            await self.isl.configure(range_fs=value)
+            if self._range_auto:  # stored as the preference only; the state machine owns the RNG bit
+                self.isl.check_range(value)
+            else:
+                await self.isl.configure(range_fs=value)
+                self._active_range = value
         except Exception as e:
             await self.pr.err_s("Error setting range:", e, errno=18)
             return False
-        self._active_range = value
+        self._fixed_range = value
         return True
 
     async def set_range_auto(self, *, flag: bool) -> bool:
@@ -982,9 +962,9 @@ class ISL29125_Reader(SensorReaderConfig):
         self._range_auto = flag
         try:
             if flag:
-                await self.isl.configure(int_select=_INTSEL_GREEN)
+                await self.isl.configure(threshold_interrupt=True)
             else:
-                await self.isl.configure(range_fs=self._fixed_range, int_select=_INTSEL_NONE)
+                await self.isl.configure(range_fs=self._fixed_range, threshold_interrupt=False)
                 self._active_range = self._fixed_range
         except Exception as e:
             await self.pr.err_s("Error applying the auto-range mode:", e, errno=38)
@@ -994,26 +974,24 @@ class ISL29125_Reader(SensorReaderConfig):
         return True
 
     async def set_autorange_up(self, value: float) -> bool:
-        if not await self._check_cross_field(up=value, down=self._ar_down, field="AutoRangeUp", low=_MIN_AR_UP, high=_MAX_AR_UP, checked=value):
+        up = await self._checked_cfg(value, _VAL_AR_UP, 27)
+        if up is None or not await self._check_cross_field(up=float(up), down=self._ar_down, field="AutoRangeUp"):
             return False
-        self._ar_up = value
+        self._ar_up = float(up)
         return True
 
     async def set_autorange_down(self, value: float) -> bool:
-        if not await self._check_cross_field(up=self._ar_up, down=value, field="AutoRangeDown", low=_MIN_AR_DOWN, high=_MAX_AR_DOWN, checked=value):
+        down = await self._checked_cfg(value, _VAL_AR_DOWN, 27)
+        if down is None or not await self._check_cross_field(up=self._ar_up, down=float(down), field="AutoRangeDown"):
             return False
-        self._ar_down = value
+        self._ar_down = float(down)
         return True
 
-    async def set_autorange_settle(self, value: int) -> bool:
-        try:
-            cycles = int(value)
-            if not _MIN_SETTLE_CYCLES <= cycles <= _MAX_SETTLE_CYCLES:
-                raise ValueError(f"AutoRangeSettle must be between {_MIN_SETTLE_CYCLES} and {_MAX_SETTLE_CYCLES} cycles")
-        except (TypeError, ValueError, OverflowError) as e:
-            await self.pr.err_s("Error setting AutoRangeSettle:", e, errno=27)
+    async def set_autorange_settle(self, value: float) -> bool:  # float, like set_trigger_secs: an integral float coerces (Part A.8)
+        cycles = await self._checked_cfg(value, _VAL_AR_SETTLE, 27)
+        if cycles is None:
             return False
-        self.isl.settle_cycles = cycles
+        self.isl.settle_cycles = int(cycles)
         return True
 
     async def set_autorange_persist(self, value: int) -> bool:
@@ -1025,14 +1003,10 @@ class ISL29125_Reader(SensorReaderConfig):
         return True
 
     async def set_autorange_dwell(self, value: float) -> bool:
-        try:
-            dwell = float(value)
-            if not _MIN_DWELL_S <= dwell <= _MAX_DWELL_S:
-                raise ValueError(f"AutoRangeDwell must be between {_MIN_DWELL_S} and {_MAX_DWELL_S} seconds")
-        except (TypeError, ValueError, OverflowError) as e:
-            await self.pr.err_s("Error setting AutoRangeDwell:", e, errno=27)
+        dwell = await self._checked_cfg(value, _VAL_AR_DWELL, 27)
+        if dwell is None:
             return False
-        self._ar_dwell_s = dwell
+        self._ar_dwell_s = float(dwell)
         return True
 
     async def set_ir_comp_offset(self, value: int) -> bool:
@@ -1056,14 +1030,7 @@ class ISL29125_Reader(SensorReaderConfig):
         # filter's only reader is _store_isl(), which takes the value from cfgmgr on the sample it
         # applies it to, so the persisted value IS the live one. What this still owns is the
         # verdict - a False here is what makes _set_dict_cfg() report the field "Failed".
-        try:
-            coefficient = float(value)
-            if not _MIN_FILT_COEFF <= coefficient <= _MAX_FILT_COEFF:
-                raise ValueError(f"FiltCoeff must be between {_MIN_FILT_COEFF} and {_MAX_FILT_COEFF}")
-        except (TypeError, ValueError, OverflowError) as e:
-            await self.pr.err_s("Error setting filter coefficient:", e, errno=26)
-            return False
-        return True
+        return await self._checked_cfg(value, _VAL_FC, 26) is not None
 
     # -- others ------------------------------------------------------------
 
@@ -1121,6 +1088,24 @@ class ISL29125_I2C:
         # Set by the reader whenever AutoRangeSettle is applied: the POLICY stays on the reader,
         # the arithmetic lives next to the write that needs it.
         self.settle_cycles = 1
+
+    @staticmethod
+    def _reject_unless(value: int, allowed: "tuple[int, ...]", what: str) -> None:
+        # C.3's contract: an out-of-range field is rejected loudly here rather than silently
+        # masked to its own bit width by encode_shadow() and written to the chip as some other
+        # value entirely - an IrCompAdjust of 200 would otherwise land as 8.
+        # The type check is not redundant with the membership test: 375.0 == 375 passes an `in`
+        # test and then reaches encode_shadow()'s bitwise masking, where a float raises TypeError
+        # out of a function whose own contract is that it cannot. Coercing an integral float is
+        # the CONFIG boundary's job (_checked_cfg), not this one's.
+        if type(value) is not int or value not in allowed:
+            raise ValueError(f"{what} must be one of {allowed}")
+
+    @staticmethod
+    def _reject_outside(value: int, low: int, high: int, what: str) -> None:
+        # _reject_unless for a contiguous field - same type-then-value order, same reasons.
+        if type(value) is not int or not low <= value <= high:
+            raise ValueError(f"{what} must be an integer from {low} to {high}")
 
     @staticmethod
     def _dark_offset(range_fs: int) -> int:
@@ -1188,6 +1173,12 @@ class ISL29125_I2C:
         packed = struct.pack("<HH", low, high)  # 0x04-0x07, low pair then high pair (p12, Table 14)
         async with self.i2c_isl29125 as isl, isl.i2c_device as i2c:
             await i2c.set_register_struct(_REGISTER_THRESHOLDS, "4s", packed)
+
+    def check_range(self, value: int) -> None:
+        # The same guard configure() applies, reachable without writing: the reader stores a fixed
+        # range as a preference while auto-range owns the chip's RNG bit, and that preference still
+        # has to be a range the part actually has.
+        self._reject_unless(value, _RANGES, "range")
 
     @staticmethod
     def decode_config(raw: "bytes | bytearray | memoryview | None") -> "tuple[int, int, int, int, int] | None":
@@ -1293,9 +1284,6 @@ class ISL29125_I2C:
         masks = (_CONFIG1_MASK, _CONFIG2_MASK, _CONFIG3_MASK)
         return all(raw[i] & masks[i] == shadow[i] & masks[i] for i in range(_CONFIG_BURST_LEN))
 
-    def resolution_bits(self) -> int:
-        return self._resolution
-
     def cycle_ms(self) -> int:
         return _CYCLE_MS_12BIT if self._resolution == _RESOLUTION_12BIT else _CYCLE_MS_16BIT
 
@@ -1332,7 +1320,7 @@ class ISL29125_I2C:
         ir_offset: int | None = None,
         ir_adjust: int | None = None,
         persist: int | None = None,
-        int_select: int | None = None,
+        threshold_interrupt: bool | None = None,
         sync: int | None = None,
         conven: int | None = None,
         force: bool = False,
@@ -1341,7 +1329,19 @@ class ISL29125_I2C:
         # own byte changed, two from 0x02 otherwise, nothing at all when nothing changed - so an
         # IR-compensation change never restarts the conversion cycle. force=True re-applies the
         # whole shadow unconditionally, which is what brownout recovery and the divergence check
-        # need (there is nothing to diff against a chip that has lost its configuration).
+        # need (there is nothing to diff against a chip that has lost its configuration). Every
+        # user-settable field is guarded first, so no write path - including _init_isl()'s own
+        # opening burst - can reach encode_shadow()'s masking with a value the chip cannot take.
+        if resolution is not None:
+            self._reject_unless(resolution, _RESOLUTIONS, "resolution")
+        if range_fs is not None:
+            self.check_range(range_fs)
+        if ir_offset is not None:
+            self._reject_unless(ir_offset, _IR_OFFSETS, "IR compensation offset")
+        if ir_adjust is not None:
+            self._reject_outside(ir_adjust, 0, _CONFIG2_ALSCC_MASK, "IR compensation adjust")
+        if persist is not None:
+            self._reject_unless(persist, _PRST_SETTINGS, "AutoRangePersist")
         before = self.encode_shadow()
         if mode is not None:
             self._mode = mode
@@ -1355,8 +1355,11 @@ class ISL29125_I2C:
             self._ir_adjust = ir_adjust
         if persist is not None:
             self._persist = persist
-        if int_select is not None:
-            self._int_select = int_select
+        if threshold_interrupt is not None:
+            # INTSEL selects ONE channel (p11, Table 11) and green is the one the auto-range state
+            # machine watches, so "armed" and "green" are the same choice - the caller asks for the
+            # behaviour and this owns the encoding.
+            self._int_select = _INTSEL_GREEN if threshold_interrupt else _INTSEL_NONE
         if sync is not None:
             self._sync = sync
         if conven is not None:
@@ -1390,6 +1393,13 @@ class ISL29125_I2C:
         # check" - a second reader would silently consume another consumer's interrupt state.
         return await self._read_byte(_REGISTER_STATUS)
 
+    async def verify_device_id(self) -> None:
+        # Raising rather than returning a verdict, so setup() fails loudly on the wrong part and
+        # the reader's own all-ones bus-fault confirmation can just catch it.
+        device_id = await self.get_device_id()
+        if device_id != _DEVICE_ID:
+            raise RuntimeError(f"Failed to find ISL29125! Device ID {hex(device_id)}")
+
     async def clear_brownout(self) -> None:
         # Table 15 marks 0x08 "RO", but p12's own BOUTF text requires an I2C write to clear it -
         # the marking is a datasheet defect, not a prohibition.
@@ -1399,9 +1409,7 @@ class ISL29125_I2C:
     async def setup(self) -> None:
         async with self.i2c_isl29125 as isl, isl.i2c_device as i2c:
             await i2c.setup()
-        device_id = await self.get_device_id()
-        if device_id != _DEVICE_ID:
-            raise RuntimeError(f"Failed to find ISL29125! Device ID {hex(device_id)}")
+        await self.verify_device_id()
         await self.reset()
         # BOUTF is high at power-up (p12). The write is kept even though the 0x46 reset above and
         # any status read BOTH clear it on real silicon (measured 2026-09-13, SPECIFICATION.md
@@ -1413,7 +1421,7 @@ class ISL29125_I2C:
         # later change cannot flip either silently: SYNC = 1 turns INT into an INPUT and inverts
         # the whole interrupt path, and CONVEN would mux conversion-done onto the pin the
         # thresholds need.
-        await self.configure(mode=_MODE_RGB, int_select=_INTSEL_GREEN, sync=0, conven=0, force=True)
+        await self.configure(mode=_MODE_RGB, threshold_interrupt=True, sync=0, conven=0, force=True)
 
     async def reset(self) -> None:
         # The datasheet specifies no post-reset settle time (unlike BMP3xx's documented 2ms), so

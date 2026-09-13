@@ -159,9 +159,15 @@ def ready_protocol(address: int = _ADDR) -> "tuple[I2C, ISL29125_I2C]":
 
 def protocol_at(bits: int) -> ISL29125_I2C:
     # Parks the shadow on a resolution through the real write path, so normalise() and
-    # set_thresholds() are exercised against a shadow the hardware driver set itself.
+    # set_thresholds() are exercised against a shadow the hardware driver set itself. A value
+    # configure() rejects goes straight onto the shadow instead: the "unknown resolution" fallback
+    # in normalise() is unreachable defence-in-depth now that configure() guards every write path,
+    # and stays tested as such (SPECIFICATION.md Part E.4's own precedent for that).
     _i2c, isl = make_protocol()
-    run(isl.configure(resolution=bits))
+    if bits in (12, 16):
+        run(isl.configure(resolution=bits))
+    else:
+        isl._resolution = bits
     return isl
 
 
@@ -2773,7 +2779,10 @@ def test_every_protocol_read_raises_when_layer_one_answers_none_instead_of_raisi
     # returns None with no exception at all. The sibling test above injects a real OSError, which
     # propagates on its own and never reaches these normalising raises - so a driver that simply
     # returned the None onward would pass it and fail much later, somewhere unrelated.
-    for call in ("get_device_id", "read_status", "get_config_snapshot", "read_counts"):
+    # reset() is in the list because its post-reset verify read goes through the same call, and
+    # that read IS the settle the datasheet does not specify - a None there must not read as
+    # "all three registers cleared".
+    for call in ("get_device_id", "read_status", "get_config_snapshot", "read_counts", "reset"):
         _i2c, isl = ready_protocol()
 
         async def silent_none(*_args: object, **_kwargs: object) -> None:
@@ -2841,6 +2850,284 @@ def test_the_settle_and_dwell_setters_reject_out_of_range_values_with_errno_27()
     assert errors(counters).count(27) == 5, "one per rejected value, and neither boundary may count"
     assert reader.isl.settle_cycles == 10, "a rejected value must not disturb the last good one"
     assert reader._ar_dwell_s == 300.0
+
+
+# ---------------------------------------------------------------------------
+# The hardware driver's own field guard, and the reader's coercion policy
+# ---------------------------------------------------------------------------
+
+
+def test_configure_rejects_a_field_the_chip_cannot_take_instead_of_masking_it() -> None:
+    # The whole point of the guard: encode_shadow() masks every field to its own bit width, so
+    # an IrCompAdjust of 200 would otherwise be written to the chip as 200 & 0x3F = 8 and
+    # reported as a success. Nothing may reach the bus on a rejected value.
+    i2c, isl = ready_protocol()
+    run(isl.setup())
+    fake(i2c).log.clear()
+    for kwargs in (
+        {"resolution": 8},
+        {"range_fs": 5000},
+        {"ir_offset": 2},
+        {"ir_adjust": 200},
+        {"ir_adjust": -1},
+        {"persist": 3},
+        # An integral float compares EQUAL to the value it shadows, so every one of these passes a
+        # membership or bounds test and then meets encode_shadow()'s bitwise masking, where a
+        # float raises TypeError out of a function documented as unable to raise.
+        {"resolution": 12.0},
+        {"range_fs": 375.0},
+        {"ir_offset": 0.0},
+        {"ir_adjust": 40.5},
+        {"ir_adjust": 40.0},
+        {"persist": 2.0},
+    ):
+        raised = False
+        try:
+            run(isl.configure(**kwargs))  # deliberately out of contract
+        except ValueError:
+            raised = True
+        assert raised, f"configure({kwargs}) must raise, not mask"
+    assert mem_writes(i2c) == [], "a rejected field must not reach the bus at all"
+
+
+def test_configure_accepts_every_value_the_datasheet_does_allow() -> None:
+    # The other side of the guard, so it cannot be satisfied by rejecting everything.
+    _i2c, isl = ready_protocol()
+    run(isl.setup())
+    for kwargs in (
+        {"resolution": 12}, {"resolution": 16},
+        {"range_fs": _RANGE_LOW_LUX}, {"range_fs": _RANGE_HIGH_LUX},
+        {"ir_offset": 0}, {"ir_offset": 1},
+        {"ir_adjust": 0}, {"ir_adjust": 63},
+        {"persist": 1}, {"persist": 2}, {"persist": 4}, {"persist": 8},
+    ):
+        run(isl.configure(**kwargs))  # type: ignore[arg-type]  # one keyword per iteration
+
+
+def test_check_range_is_the_same_verdict_configure_applies_without_writing() -> None:
+    # The reader stores a fixed range as a preference while auto-range owns the RNG bit, so it
+    # needs the verdict without the write - and the two must not be able to drift apart.
+    i2c, isl = ready_protocol()
+    run(isl.setup())
+    fake(i2c).log.clear()
+    isl.check_range(_RANGE_LOW_LUX)
+    isl.check_range(_RANGE_HIGH_LUX)
+    for bad in (0, 375.0, 5000, 10001, True):  # True == 1 is not a range either
+        raised = False
+        try:
+            isl.check_range(bad)  # type: ignore[arg-type]  # 375.0 is deliberately the wrong type
+        except ValueError:
+            raised = True
+        assert raised, f"check_range({bad}) must raise"
+    assert mem_writes(i2c) == []
+
+
+def test_verify_device_id_raises_on_the_wrong_part_and_passes_on_the_right_one() -> None:
+    i2c, isl = ready_protocol()
+    run(isl.verify_device_id())  # 0x7D, seeded - no raise
+    seed(i2c, _REG_ID, bytes([0x44]))  # a plausible wrong answer: the part's own I2C address
+    raised = False
+    try:
+        run(isl.verify_device_id())
+    except RuntimeError:
+        raised = True
+    assert raised, "a mismatched device ID must raise, not be reported as a verdict"
+
+
+def test_the_dark_offset_is_a_datasheet_constant_on_the_low_range_alone() -> None:
+    # DDark is specified at range 0 only (p3): the same dark current is ~1/26.67 of a count on
+    # the high range, so subtracting a whole one there would remove real signal, not an offset.
+    assert ISL29125_I2C._dark_offset(_RANGE_LOW_LUX) == 1
+    assert ISL29125_I2C._dark_offset(_RANGE_HIGH_LUX) == 0
+
+
+def test_every_hardware_backed_setter_reports_a_rejected_field_without_writing() -> None:
+    # Each setter's own errno, and nothing on the bus - the reader must surface the hardware
+    # driver's refusal rather than swallow it into a silent success.
+    i2c, reader = ready_reader("field_guard")
+
+    async def scenario() -> "ErrorLog":
+        assert await reader.set_resolution(8) is False
+        assert await reader.set_ir_comp_offset(2) is False
+        assert await reader.set_ir_comp_adjust(200) is False
+        assert await reader.set_autorange_persist(3) is False
+        return await reader.get_error_counter()
+
+    counters = run(scenario())
+    assert 16 in errors(counters)  # resolution
+    assert 20 in errors(counters)  # IR compensation offset
+    assert 22 in errors(counters)  # IR compensation adjust
+    assert 24 in errors(counters)  # AutoRangePersist
+    assert mem_writes(i2c) == []
+
+
+def test_set_range_rejects_a_bad_value_with_auto_range_off_too() -> None:
+    # The auto-range-on path validates without writing and the off path validates by writing;
+    # both have to refuse, or the stored preference and the chip can disagree.
+    i2c, reader = ready_reader("range_bad_fixed")
+
+    async def scenario() -> "ErrorLog":
+        assert await reader.set_range_auto(flag=False) is True
+        fake(i2c).log.clear()
+        assert await reader.set_range(5000) is False
+        return await reader.get_error_counter()
+
+    counters = run(scenario())
+    assert 18 in errors(counters)
+    assert mem_writes(i2c) == []
+    assert reader._fixed_range == _RANGE_HIGH_LUX, "a rejected range must not become the preference"
+
+
+def test_a_fractional_setting_is_rejected_rather_than_silently_truncated() -> None:
+    # The project-wide coercion policy (SPECIFICATION.md Part A.8), reached by routing these
+    # setters through config_manager's own type_or_range_error() instead of a local int() cast:
+    # a fat-fingered 12.5 must not become a stored 12.
+    _i2c, reader = ready_reader("coerce")
+
+    async def scenario() -> "ErrorLog":
+        assert await reader.set_trigger_secs(12.5) is False
+        assert await reader.set_autorange_settle(2.5) is False
+        assert await reader.set_trigger_secs(30.0) is True  # integral float: exactly representable
+        assert await reader.set_autorange_settle(3.0) is True
+        assert await reader.set_autorange_dwell(10) is True  # int widened to float, always exact
+        return await reader.get_error_counter()
+
+    counters = run(scenario())
+    assert errors(counters).count(25) == 1
+    assert errors(counters).count(27) == 1
+    assert run(reader.trigger_period.get_value()) == 30
+    assert reader.isl.settle_cycles == 3
+    assert reader._ar_dwell_s == 10.0
+
+
+def test_a_bool_is_never_accepted_as_a_numeric_setting() -> None:
+    # bool is an int subclass in MicroPython as in CPython, so a `True` reaching a numeric field
+    # would otherwise store 1 - inside every one of these fields' own bounds except AutoRangeUp.
+    _i2c, reader = ready_reader("bool_reject")
+
+    async def scenario() -> None:
+        assert await reader.set_trigger_secs(True) is False
+        assert await reader.set_autorange_settle(True) is False
+        assert await reader.set_autorange_dwell(True) is False
+        assert await reader.set_filter_coefficient(True) is False
+
+    run(scenario())
+    assert reader.isl.settle_cycles == 1, "the seeded value, untouched"
+
+
+def test_the_cross_field_bound_is_inclusive_at_its_own_boundary() -> None:
+    # d <= u/(2r) - the boundary itself is a legal setting, so a test that only proves the
+    # rejection side would pass just as well against an off-by-one strict comparison.
+    _i2c, reader = ready_reader("cross_edge")
+
+    async def scenario() -> None:
+        assert await reader.set_autorange_up(80.0) is True
+        assert await reader.set_autorange_down(80.0 / 53.333333333333336) is True
+        assert await reader.set_autorange_down(80.0 / 53.333333333333336 + 0.01) is False
+        assert await reader.set_autorange_up(50.0) is False  # would strand the current down value
+
+    run(scenario())
+    assert abs(reader._ar_down - 1.5) < 1e-9
+    assert reader._ar_up == 80.0
+
+
+def test_configure_arms_and_disarms_the_threshold_interrupt_by_intent() -> None:
+    # The reader asks for the behaviour; INTSEL's encoding (one channel, p11 Table 11) stays
+    # inside the hardware driver, so a wrong channel cannot be requested from outside at all.
+    _i2c, isl = ready_protocol()
+    run(isl.setup())
+    assert isl.encode_shadow()[2] & 0x03 == _INTSEL_GREEN
+    run(isl.configure(threshold_interrupt=False))
+    assert isl.encode_shadow()[2] & 0x03 == 0x00
+    run(isl.configure(threshold_interrupt=True))
+    assert isl.encode_shadow()[2] & 0x03 == _INTSEL_GREEN
+
+
+def test_a_malformed_schema_record_is_refused_rather_than_returned_as_a_setting() -> None:
+    # Defence in depth (SPECIFICATION.md Part E.4): type_or_range_error() is typed to hand back
+    # Any, and no real schema in this driver can produce a non-numeric - but the narrowing guard
+    # is what stops one becoming a live setting if one ever could.
+    _i2c, reader = ready_reader("bad_schema")
+    bogus = (("Bogus", "str", "x", 0, 8, None),)
+
+    async def scenario() -> "ErrorLog":
+        assert await reader._checked_cfg("abc", bogus, 27) is None  # type: ignore[arg-type]
+        return await reader.get_error_counter()
+
+    assert 27 in errors(run(scenario()))
+
+
+# ---------------------------------------------------------------------------
+# Paths the happy cases never reach - each one a real fault, not a patched method
+# ---------------------------------------------------------------------------
+
+
+def test_learning_gives_up_when_the_partner_range_switch_fails() -> None:
+    # The measurement needs BOTH ranges. If the switch to the partner never lands, there is no
+    # pair to compare and the previous ratio has to stand - the danger being a half-done switch
+    # that then reads the ORIGINAL range and learns a ratio of ~1.
+    import time as _time
+
+    i2c, reader = ready_reader("learn_switch_fails")
+
+    async def scenario() -> "ErrorLog":
+        with _FastAsyncSleep():
+            reader._gain_learn_ms = _time.ticks_add(_time.ticks_ms(), -4_000_000)
+            reader._ar_dwell_s = 0.0
+            fake(i2c).inject_fault("writeto_mem", OSError(errno_mod.EIO, "no ACK"), times=2)
+            await reader._learn_gain_ratio(2000)
+        return await reader.get_error_counter()
+
+    counters = run(scenario())
+    assert reader._gain_ratio == _GAIN_RATIO_NOMINAL, "no pair was taken, so nothing may have been learned"
+    assert 29 in errors(counters), "the failed threshold write is what aborted the switch"
+
+
+def test_a_partner_reading_of_zero_is_not_turned_into_a_ratio() -> None:
+    # A ratio is low/high, so a high-range partner reading of zero would divide by zero. Total
+    # darkness on the partner is a legitimate scene (the low range saturates long before the high
+    # range leaves the dark floor), not a fault - so it declines silently rather than logging.
+    i2c, reader = ready_reader("learn_zero_partner")
+
+    async def scenario() -> "ErrorLog":
+        import time as _time
+
+        with _FastAsyncSleep():
+            reader._gain_learn_ms = _time.ticks_add(_time.ticks_ms(), -4_000_000)
+            reader._ar_dwell_s = 0.0
+            reader._active_range = _RANGE_LOW_LUX  # so the partner read below is the HIGH range
+            seed(i2c, _REG_DATA, counts_burst(0, 0, 0))
+            await reader._learn_gain_ratio(2000)
+        return await reader.get_error_counter()
+
+    counters = run(scenario())
+    assert reader._gain_ratio == _GAIN_RATIO_NOMINAL
+    assert warnings(counters).count(13) == 0, "a dark partner is not an implausible ratio, it is no ratio at all"
+    assert errors(counters) == []
+
+
+def test_encode_shadow_falls_back_to_the_shortest_persistence_for_an_impossible_shadow() -> None:
+    # encode_shadow() masks rather than validates by design, so it needs an answer for a PRST that
+    # is not one of the four the register can express. configure() now refuses to create one, so
+    # this is defence in depth (SPECIFICATION.md Part E.4) - reached only by writing the shadow
+    # directly. One cycle is the safe fallback: it re-arms soonest, never latest.
+    _i2c, isl = ready_protocol()
+    run(isl.setup())
+    isl._persist = 3  # not in (1, 2, 4, 8)
+    assert isl.encode_shadow()[2] >> 2 & 0x03 == 0, "an unencodable PRST must land on the 1-cycle setting"
+    isl._persist = 8
+    assert isl.encode_shadow()[2] >> 2 & 0x03 == 3
+
+
+def test_the_colour_temperature_chain_gives_up_instead_of_dividing_by_a_collapsed_sum() -> None:
+    # Both guards below the low-light floor. _store_isl() clamps `norm` into 0..1 before calling,
+    # so the out-of-domain arm is defence in depth (Part E.4); the collapsed-sum arm is reachable
+    # whenever the output filter has not yet caught up with a scene that just went dark.
+    _i2c, reader = ready_reader("cct_guards")
+    assert reader._colour_temperature(1000, [1.5, 1.5, 1.5]) is None, "out of the matrix's domain"
+    assert reader._colour_temperature(1000, [0.0, 0.0, 0.0]) is None, "X+Y+Z == 0 has no chromaticity"
+    # And the floor itself still answers None rather than reaching either guard.
+    assert reader._colour_temperature(1, [0.2, 0.3, 0.2]) is None
 
 
 if __name__ == "__main__":

@@ -47,7 +47,7 @@ async def _main() -> None:
     scd = SCD30_I2C(i2c1)
     sgp = SGP40_I2C(i2c1)
     await isl.setup()
-    await isl.configure(mode=_MODE_RGB, range_fs=10000, resolution=16, int_select=0)
+    await isl.configure(mode=_MODE_RGB, range_fs=10000, resolution=16, threshold_interrupt=False)
     await scd.setup()  # no set_ambient_pressure() - that is the one NVM write this group makes, via the session fixture
     await sgp.setup()
 
