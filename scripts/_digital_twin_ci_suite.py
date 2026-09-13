@@ -809,6 +809,12 @@ def _run_11_soak(ctx: RunContext) -> None:
             log_file.close()
     log11_text = _read_log(log11)
     _check(condition="soak summary" in log11_text, msg="Run 11: soak summary was printed")
+    if "PASS -" not in log11_text:
+        # This check alone doesn't say *why* - the soak's own summary line names the actual failed
+        # sub-check(s) (HTTP failures, watchdog, or memory trend) and, for HTTP failures, the real
+        # exception each one hit - print it so a CI failure is diagnosable from the job log alone,
+        # without needing the uploaded digital-twin-ci-logs-* artifact.
+        print(f"== Run 11 soak log ({log11}):\n{log11_text}")
     _check(condition="PASS -" in log11_text, msg="Run 11: soak run reported PASS (no HTTP failures, watchdog never starved, memory trend within tolerance)")
 
 
