@@ -1405,7 +1405,8 @@ Measured on the bench (2026-09-13), six forced crossings per setting, one reader
 rejection, which is what the field is for, and comfortably inside a 1 s sample interval. The
 detector no longer blames the wiring for this: `wrnno=15` keeps its "the interrupt may be dead"
 meaning, and the new **`wrnno=17`** covers the case where the configured window simply outlasts the
-sample interval, which is legitimate at long intervals and is arithmetic rather than a fault. And
+sample interval - which a deliberately long persistence window and a short sample interval can
+each produce on their own, and which is arithmetic rather than a fault. And
 the detector now keys on the **line**, not the flag — see below.
 
 **Why the flag alone was not enough.** `_note_decision_source()` originally counted a decision as

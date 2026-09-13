@@ -167,10 +167,11 @@ None is a driver defect, and each one looks like one if you do not know it:
   | rising | to level 6 (~197 lx) | from level 8 (~300 lx) |
   | falling | from level 2 (~76 lx) | to level 3 (~112 lx) |
 
-  So **levels 2-8 sit INSIDE the band and cannot force a switch in either direction**, and a
-  decision needs roughly 8 s to land (AutoRangePersist = 2 RGB cycles + the settle + a 1 s sample
-  interval, with margin). Both numbers are geometry- and cover-dependent: re-measure with
-  `isl29125_lighting_scenarios.py`'s own levels if the rig changes.
+  So **levels 2-8 sit INSIDE the band and cannot force a switch in either direction**. The
+  decision itself lands in 500-800 ms at the default `AutoRangePersist = 2` (see the next section);
+  `isl29125_lighting_scenarios.py` nonetheless holds a level for 8 s before asserting on a switch,
+  which is deliberate margin over that latency, not an estimate of it. The band is geometry- and
+  cover-dependent: re-measure with that script's own levels if the rig changes.
 
 ## Which path decides a range switch, and the rule that governs it
 

@@ -1067,7 +1067,7 @@ class ISL29125_Reader(SensorReaderConfig):
         return True
 
     async def set_filter_coefficient(self, value: float) -> bool:
-        # Validates and stores NOTHING on purpose, unlike the other three software knobs: the
+        # Validates, but deliberately stores NOTHING, unlike the other three software knobs: the
         # filter's only reader is _store_isl(), which takes the value from cfgmgr on the sample it
         # applies it to, so the persisted value IS the live one. What this still owns is the
         # verdict - a False here is what makes _set_dict_cfg() report the field "Failed".

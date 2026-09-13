@@ -181,10 +181,15 @@ async def _config_mechanisms(pixel: NeopixelDriver, reader: ISL29125_Reader, wdt
     await reader._set_dict_cfg({"RangeAuto": True}, reader.cfg_schema)
     check(on_low is not None and on_low.RangeAct == 375, "the low range did not take at the overlap level")
     check(on_high is not None and on_high.RangeAct == 10000, "the high range did not take at the overlap level")
-    if on_low is not None and on_high is not None and on_low.Lux and on_high.Lux is not None:
-        step = abs(on_high.Lux - on_low.Lux) / on_low.Lux
-        notes.append(f"cross-range continuity at level {OVERLAP_LEVEL}: {on_low.Lux:.2f} lx on 375 vs {on_high.Lux:.2f} lx on 10000 ({step * 100:.1f}% step)")
-        check(step < MAX_RANGE_STEP, f"the same light reads {on_low.Lux:.2f} lx on the low range and {on_high.Lux:.2f} lx on the high one ({step * 100:.1f}%) - the range gain correction is not being applied")
+    if on_low is not None and on_high is not None and on_low.Lux is not None and on_high.Lux is not None:
+        # `on_low.Lux` as a plain truth test here would silently SKIP the whole continuity check
+        # on a zero reading instead of failing - and a zero at the overlap level is a fault in its
+        # own right, besides being the divisor below.
+        check(on_low.Lux > 0.0, f"the low range read {on_low.Lux:.2f} lx at level {OVERLAP_LEVEL} - no light reached the sensor, so continuity cannot be measured")
+        if on_low.Lux > 0.0:
+            step = abs(on_high.Lux - on_low.Lux) / on_low.Lux
+            notes.append(f"cross-range continuity at level {OVERLAP_LEVEL}: {on_low.Lux:.2f} lx on 375 vs {on_high.Lux:.2f} lx on 10000 ({step * 100:.1f}% step)")
+            check(step < MAX_RANGE_STEP, f"the same light reads {on_low.Lux:.2f} lx on the low range and {on_high.Lux:.2f} lx on the high one ({step * 100:.1f}%) - the range gain correction is not being applied")
 
     # Reported, never asserted: whether the run happened to enter the overlap band in a quiet
     # enough moment to learn is a property of the light, not of the driver. It is recorded because

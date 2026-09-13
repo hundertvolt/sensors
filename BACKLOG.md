@@ -434,7 +434,7 @@ constraints.
     scripts (same-device read/write, and cross-device interleaving against SCD30 + SGP40).
 
 23. **A hardware test that depends on an unstated rig condition is the recurring failure mode in
-    this tier** (pattern, 2026-09-13 — worth reading before writing a new one). Three instances so
+    this tier** (pattern, 2026-09-13 — worth reading before writing a new one). Six instances so
     far, all found by actually running the tests rather than by review:
     - `isl29125_real_irq_edge.py` assumed a scene near a range boundary. A latched-white NeoPixel
       (~2000 lx) is static and mid-band, crosses no threshold, and so produces no threshold
@@ -448,12 +448,19 @@ constraints.
     - `isl29125_plausibility_read.py` depended on ambient, so its result depended on **test
       ordering**: it passed while the pixel was latched white by the interrupted WiFi signalling,
       then failed once the fixed IRQ script (above) began parking the pixel dark before it
-      (`Lux=1.07` against a 5.0 floor, sensor covered). The nastiest of the four, because the test
+      (`Lux=1.07` against a 5.0 floor, sensor covered). The nastiest of them, because the test
       itself never changed. **Fixed**: it lights its own scene at a known level and parks the pixel
       dark again on the way out, so it neither depends on nor imposes bench state.
+    - `isl29125_mechanism_envelope.py` imposed state of a different kind: it seeds `cfgmgr._cache`
+      without calling `cfgmgr.setup()`, so the manager kept its default `config_ISL29125.cfg`
+      filename and its six `_set_dict_cfg()` calls each wrote that seeded cache over the board's
+      PRODUCTION config. Six silent flash writes per run, invisible in the test output, and it is
+      what actually moved the bench board's persisted `AutoRangePersist` from 4 to 2. **Fixed**:
+      the script points `cfgmgr.config_file` at a `config_HWTEST_*.cfg` scratch name.
     The three habits that catch this class: **a device script provides its own light** rather than
-    trusting the bench state, **it restores that state on the way out** so it cannot decide a later
-    script's result, and it **asserts a minimum engagement** (this must switch / both ranges
+    trusting the bench state, **it restores or side-steps every piece of shared state it touches**
+    - light, config files, FRAM chunks - so it cannot decide a later script's result or corrupt
+    production's, and it **asserts a minimum engagement** (this must switch / both ranges
     must be used) alongside every ceiling, so a test cannot pass while the mechanism it targets
     never runs.
 

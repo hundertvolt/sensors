@@ -1116,6 +1116,32 @@ def test_output_filter_applies_only_when_filtcoeff_is_positive() -> None:
     assert abs(filtered - (unfiltered + 0.1 * (2.0 * unfiltered - unfiltered))) < 0.2
 
 
+def test_the_store_path_survives_a_config_read_that_fails_or_answers_the_wrong_shape() -> None:
+    # The store path reads ONE float (FiltCoeff) per sample. Both ways that can go wrong have to
+    # end the same way: log errno=14, fall back to the filter being OFF, and still store the
+    # sample - a reading the config could not decorate is worth far more than no reading.
+    for label, answer in (("cfg_none", None), ("cfg_wrong_len", [85.0, 1.5, 10.0, -1.0])):
+        i2c, reader = ready_reader(label)
+
+        async def failing(_cfg_vals: "object", answer: "object" = answer) -> "object":
+            return answer
+
+        reader.cfgmgr.get_float_values = failing  # type: ignore[method-assign,assignment]
+        with _FastAsyncSleep():
+            seed_cycle(i2c, 10000, 10000, 10000)
+            run(reader._store_isl(run(reader._read_isl())))
+            first = run(reader.get_data()).Lux
+            seed_cycle(i2c, 20000, 20000, 20000)
+            run(reader._store_isl(run(reader._read_isl())))
+            second = run(reader.get_data()).Lux
+        counters = run(reader.get_error_counter())
+        assert 14 in errors(counters), f"{label}: no errno=14 for a config read that did not answer as expected"
+        assert first is not None and second is not None, f"{label}: the sample was dropped instead of being stored unfiltered"
+        # Doubling the counts has to double the reported lux EXACTLY: that is the -1.0 fallback
+        # actually being in force, observed rather than inferred from the value it was given.
+        assert abs(second - 2.0 * first) < 1e-9, f"{label}: the reported lux was smoothed, so the filter was not left off"
+
+
 def test_status_register_is_read_exactly_once_per_cycle() -> None:
     # A hard invariant, not a style point: the read is destructive (it clears RGBTHF and releases
     # the INT pin), so a second reader would silently consume another consumer's interrupt state.
@@ -1464,6 +1490,41 @@ def test_a_persistence_window_longer_than_the_sample_interval_warns_about_itself
     counters = run(scenario())
     assert 17 in warnings(counters)
     assert 15 not in warnings(counters)
+
+
+def test_the_persistence_window_tracks_both_the_persist_count_and_the_resolution() -> None:
+    # The window wrnno=17 is decided on is PRST whole RGB cycles, and a cycle is 3 x tINT - which
+    # is ~16x shorter at 12 bits. Assuming 16-bit cycles would make the window wrong by that same
+    # factor on a part configured for 12, in the direction that invents a config fault.
+    _i2c, reader = ready_reader("persist_window")
+
+    async def scenario() -> None:
+        await reader.isl.configure(persist=2)
+        assert reader.isl.persist_window_ms() == 2 * 303
+        await reader.isl.configure(persist=8)
+        assert reader.isl.persist_window_ms() == 8 * 303
+        await reader.isl.configure(resolution=12)
+        assert reader.isl.persist_window_ms() == 8 * 19
+
+    run(scenario())
+
+
+def test_a_short_persistence_window_still_reports_a_dead_interrupt_rather_than_blaming_the_config() -> None:
+    # The other side of wrnno=17: at 12 bits even the longest persistence setting is 152ms, so it
+    # sits far inside a 1s sample interval and the interrupt genuinely COULD have led. Its silence
+    # is then a real finding, and reporting the config instead would mask the wiring fault.
+    _i2c, reader = ready_reader("wrn15_12bit")
+
+    async def scenario() -> "ErrorLog":
+        await reader.isl.configure(resolution=12, persist=8)
+        assert reader.isl.persist_window_ms() < 1000
+        for _ in range(5):
+            await reader._note_decision_source(threshold_fired=False)
+        return await reader.get_error_counter()
+
+    counters = run(scenario())
+    assert 15 in warnings(counters)
+    assert 17 not in warnings(counters)
 
 
 # ---------------------------------------------------------------------------

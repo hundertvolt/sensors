@@ -1740,7 +1740,7 @@ printing exactly one `RESULT: PASS …` / `RESULT: FAIL …` line — the shape
 | H1 | `isl29125_plausibility_read.py` | one real reading inside datasheet-sourced bounds; lux > 0 under room light, RGB in 0-1, HSB coherent, CCT either `None` or inside the span |
 | H2 | `isl29125_same_device_rw_concurrency.py` | a config write interleaved with a read cycle produces neither a torn triple nor a lost write — CLAUDE.md's standing four-tier rule |
 | H3 | `isl29125_real_irq_edge.py` | a genuine falling edge on GP6 drives the read path faster than the periodic fallback; **and settles §13 questions 1 and 2** (does a `CONFIG1` write restart the cycle; does `PRST` count channels or cycles) by timing them directly |
-| H4 | `isl29125_autorange_sweep.py` | §10's NeoPixel rig — continuity, hysteresis, settle, saturation fast path, H/S/CCT invariance, gain-ratio convergence |
+| H4 | `isl29125_mechanism_envelope.py` + `isl29125_lighting_scenarios.py` | §10's NeoPixel rig — cross-range continuity, hysteresis, settle, saturation fast path, H/S/CCT invariance, gain-ratio convergence. These replaced `isl29125_autorange_sweep.py`, retired 2026-09-13: its moving ramp confounded the gain step with the light's own rise, so continuity is now measured as two settled holds at one level (`tests_hardware/README.md`) |
 
 H4 needs an opt-in gate of its own (a `pytest_addoption()` flag in `tests_hardware/conftest.py`
 plus a `KNOWN_PERMANENT_SKIPS` entry in `scripts/_require_clean_hardware_run.sh`), because it
