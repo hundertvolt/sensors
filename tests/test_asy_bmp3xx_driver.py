@@ -1137,8 +1137,10 @@ def test_config_write_wrong_type_rejected_for_int_field_but_coerced_for_float_fi
 
 
 def test_config_write_rejects_bool_for_int_field_despite_bool_being_an_int_subclass() -> None:
-    # config_manager.py's type_or_range_error() uses `type(x) is not int`, which is strict -
-    # bool's exact type is `bool`, not `int`, even though bool subclasses int in Python.
+    # config_manager.py's type_or_range_error() uses `type(x) is not int`, which is strict - bool's
+    # exact type is `bool`, not `int`. That holds on both runtimes, for different reasons: bool
+    # subclasses int on CPython, while on MicroPython it has no base type at all, so even
+    # isinstance() would reject it here (SPECIFICATION.md Part F.1).
     _i2c, reader = make_clean_reader("cfg_bool_reject")
     ok, results = run(reader.cfgmgr.write_config({"SampleInterv": True}, _FULL_SCHEMA))
     assert ok is True

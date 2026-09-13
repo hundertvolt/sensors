@@ -1,11 +1,6 @@
-"""Tests toolchain/setup_toolchain.py's `env` subcommand (tiered generic/flash/bench dev
-environment setup) in isolation - the pure-Python detection/idempotency/argument-parsing logic,
-mocked against fake /sys trees and a fake run(), never real hardware, sudo, or network. See
-dev_legacy/README.md for what "flash"/"bench" mean and the manual nmcli recipe this automates.
-End-to-end real-hardware behavior (USB auto-detection against a real board, the actual bridge/AP
-working) is proven on the real bench unit, not here - see the module docstring's own account of
-why this split exists (SPECIFICATION.md Part E.1's "real interpreter, not stubs" principle
-applies the same way to "real hardware, not this suite" for anything USB/network-hardware-facing)."""
+"""Tests setup_toolchain.py's `env` subcommand in isolation: the pure-Python detection/idempotency/
+parsing logic against fake /sys trees and a fake run(), never real hardware, sudo or network. The
+end-to-end behaviour is proven on the real bench unit instead (dev_legacy/README.md)."""
 
 import importlib.util
 import os
@@ -275,19 +270,9 @@ def test_generate_bench_ap_credentials_are_fresh_and_random(setup_toolchain: Mod
 
 
 def _fake_run_for_existing_bridge(recorded_run: list[list[str]], channel: str = "6", eth_iface: str = "eth0", bridge_mac: str = "aa:bb:cc:dd:ee:ff", real_mac: str = "aa:bb:cc:dd:ee:ff") -> Callable[..., str]:
-    r"""A field-aware fake_run() for ensure_bench_bridge()'s "already exists" branch - dispatches
-    each of its three distinct `nmcli -g` queries (channel, interface-name, bridge MAC) plus the
-    `ip -o link show` real-MAC lookup by their actual field/command, rather than one blanket
-    return value for every `nmcli -g` call regardless of which field it asked for (which used to
-    let get_interface_mac() silently receive "6\n" as an interface name and swallow the
-    resulting SetupError - never actually exercising the mismatch-detection logic this fixture
-    now models directly).
-
-    Models `nmcli -g`'s own ':' escaping faithfully: it returns 'D8\:3A\:...' unless `--escape no`
-    is passed. Not modelling that is exactly how the MAC check shipped unconditionally broken - the
-    fake handed back a plain 'aa:bb:cc:dd:ee:ff' no real nmcli would ever produce, so the comparison
-    passed here while never once matching on real hardware. Keeping the escaping modelled is what
-    makes the no-warning test below a genuine regression guard on `--escape no` staying put."""
+    r"""A field-aware fake_run() for ensure_bench_bridge()'s "already exists" branch: each `nmcli -g`
+    query and the `ip -o link show` lookup answered by its actual field, and `nmcli -g`'s own ':'
+    escaping modelled - without either, the MAC check passes here while never matching on hardware."""
 
     def fake_run(cmd: list[str], cwd: Path | None = None, check: bool = True, env: dict[str, str] | None = None) -> str:
         recorded_run.append(cmd)
@@ -399,13 +384,9 @@ def test_ensure_br_netfilter_loads_module_and_persists_config(setup_toolchain: M
 
 
 def _fake_run_with_real_eth0_mac(recorded_run: list[list[str]], mac: str = "aa:bb:cc:dd:ee:ff") -> Callable[..., str]:
-    r"""A fake_run() that also answers ensure_bench_bridge()'s get_interface_mac(uplink_iface)
-    lookup realistically, mirroring a real `ip -o link show eth0` line closely enough for
-    get_interface_mac()'s own `link/ether\s+(\S+)` regex to match - the plain recorded_run
-    fixture's blanket "" default doesn't, which is exactly what made these two tests fail for
-    real once get_interface_mac() was added (confirmed directly against a real CI run,
-    2026-09-04): SetupError propagated uncaught through the bridge-creation path instead of
-    exercising it."""
+    r"""A fake_run() that also answers get_interface_mac(uplink_iface) with a real `ip -o link show`
+    line, close enough for its own `link/ether\s+(\S+)` regex. The plain fixture's blanket "" makes
+    SetupError propagate through the bridge-creation path instead of exercising it."""
 
     def fake_run(cmd: list[str], cwd: Path | None = None, check: bool = True, env: dict[str, str] | None = None) -> str:
         recorded_run.append(cmd)
@@ -459,27 +440,75 @@ def test_ensure_bench_bridge_generates_credentials_when_none_given(setup_toolcha
 
 def test_run_project_dependency_install_skips_npm_when_flag_set(setup_toolchain: ModuleType, tmp_path: Path, recorded_run: list[list[str]]) -> None:
     (tmp_path / "package.json").write_text("{}")
-    setup_toolchain.run_project_dependency_install(tmp_path, skip_npm=True)
+    setup_toolchain.run_project_dependency_install(tmp_path, tmp_path, skip_npm=True, skip_apt=True)
     assert recorded_run == [["uv", "sync"]]
 
 
 def test_run_project_dependency_install_skips_npm_when_no_package_json(setup_toolchain: ModuleType, tmp_path: Path, recorded_run: list[list[str]]) -> None:
-    setup_toolchain.run_project_dependency_install(tmp_path, skip_npm=False)
+    setup_toolchain.run_project_dependency_install(tmp_path, tmp_path, skip_npm=False, skip_apt=True)
     assert recorded_run == [["uv", "sync"]]
 
 
-def test_run_project_dependency_install_skips_npm_when_not_on_path(setup_toolchain: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, recorded_run: list[list[str]]) -> None:
+def test_run_project_dependency_install_skips_npm_when_none_can_be_installed(
+    setup_toolchain: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, recorded_run: list[list[str]],
+) -> None:
+    # No .nvmrc to pin a version and no npm on PATH: nothing to install and nothing to run, so the
+    # soft skip is still the right outcome - it is only the *silent* skip on a pinned repo that was wrong.
     (tmp_path / "package.json").write_text("{}")
     monkeypatch.setattr(setup_toolchain.shutil, "which", lambda name: None)
-    setup_toolchain.run_project_dependency_install(tmp_path, skip_npm=False)
+    setup_toolchain.run_project_dependency_install(tmp_path, tmp_path, skip_npm=False, skip_apt=True)
     assert recorded_run == [["uv", "sync"]]
 
 
 def test_run_project_dependency_install_runs_npm_ci_when_available(setup_toolchain: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, recorded_run: list[list[str]]) -> None:
     (tmp_path / "package.json").write_text("{}")
     monkeypatch.setattr(setup_toolchain.shutil, "which", lambda name: "/usr/bin/npm")
-    setup_toolchain.run_project_dependency_install(tmp_path, skip_npm=False)
-    assert recorded_run == [["uv", "sync"], ["npm", "ci"]]
+    setup_toolchain.run_project_dependency_install(tmp_path, tmp_path, skip_npm=False, skip_apt=True)
+    assert recorded_run == [["uv", "sync"], ["npm", "ci"], ["npx", "playwright", "install", "chromium"]]
+
+
+# --- the pinned Node install (.nvmrc) --------------------------------------------------------
+
+
+def test_pinned_node_major_reads_nvmrc(setup_toolchain: ModuleType, tmp_path: Path) -> None:
+    (tmp_path / ".nvmrc").write_text("22\n")
+    assert setup_toolchain.pinned_node_major(tmp_path) == "22"
+    (tmp_path / ".nvmrc").write_text("v20.11.1\n")
+    assert setup_toolchain.pinned_node_major(tmp_path) == "20"
+
+
+def test_pinned_node_major_is_none_without_an_nvmrc(setup_toolchain: ModuleType, tmp_path: Path) -> None:
+    assert setup_toolchain.pinned_node_major(tmp_path) is None
+
+
+def test_ensure_node_defers_to_a_matching_node_already_on_path(
+    setup_toolchain: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, recorded_run: list[list[str]],
+) -> None:
+    # The installer exists to make a bare machine work, never to override a correct Node the caller
+    # already manages (nvm, a system install, CI's own setup-node).
+    (tmp_path / ".nvmrc").write_text("22\n")
+    monkeypatch.setattr(setup_toolchain, "node_on_path_matches", lambda major: True)
+    assert setup_toolchain.ensure_node(tmp_path, tmp_path) is None
+    assert recorded_run == []
+
+
+def test_ensure_node_does_nothing_without_a_pin(setup_toolchain: ModuleType, tmp_path: Path, recorded_run: list[list[str]]) -> None:
+    assert setup_toolchain.ensure_node(tmp_path, tmp_path) is None
+    assert recorded_run == []
+
+
+def test_ensure_node_reuses_an_already_installed_tree(
+    setup_toolchain: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, recorded_run: list[list[str]],
+) -> None:
+    # Idempotence: a second `env` run must not re-download a Node that is already extracted.
+    (tmp_path / ".nvmrc").write_text("22\n")
+    monkeypatch.setattr(setup_toolchain, "node_on_path_matches", lambda major: False)
+    monkeypatch.setattr(setup_toolchain, "node_tarball_name", lambda major, env: "node-v22.0.0-linux-arm64.tar.xz")
+    bindir = tmp_path / "node" / "node-v22.0.0-linux-arm64" / "bin"
+    bindir.mkdir(parents=True)
+    (bindir / "node").write_text("#!/bin/sh\n")
+    assert setup_toolchain.ensure_node(tmp_path, tmp_path) == bindir
+    assert recorded_run == [], "an already-installed Node was re-downloaded"
 
 
 # --- CLI wiring ---------------------------------------------------------------------------------
