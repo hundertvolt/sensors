@@ -176,14 +176,21 @@ for its architecture) has its own dev-tooling stack, the JS/HTML/CSS equivalent 
 side's ruff/mypy/pytest above: ESLint (lint), TypeScript `checkJS` mode
 (type-checks JSDoc annotations in plain `.js`, no transpilation), Vitest in real-browser mode
 (Playwright + Chromium, not jsdom — same "real engine over a shim" principle as running Python
-tests under a real MicroPython Unix-port interpreter), html-validate, and Stylelint. Needs Node
-(version pinned in `.nvmrc`; `nvm use` or any Node manager that reads it will pick the right one)
-and npm:
+tests under a real MicroPython Unix-port interpreter), html-validate, and Stylelint.
+
+**`toolchain/setup_toolchain.py env --tier generic` sets all of this up for you** — it installs the
+`.nvmrc`-pinned Node into `$PICO_TOOLCHAIN_DIR/node` when the host has none, then runs `npm ci` and
+downloads the Playwright Chromium build Vitest needs. Node comes from nodejs.org (checksum-verified
+against the release SHASUMS), deliberately **not** from apt: Debian trixie ships Node 20 while this
+repo pins 22, so `apt install nodejs` would silently install a version the repo says not to use. A
+Node already on `PATH` that matches the pin is used as-is and never overridden, so `nvm`, a system
+install or CI's own `setup-node` all keep working. `--skip-npm` opts out of the whole JS side.
+
+The individual commands, if you want to run them by hand:
 
 ```sh
-npm ci                            # one-time, and after pulling changes - installs into node_modules/ from package-lock.json
-npx playwright install chromium   # one-time - only if `npm test` reports a missing browser executable
-                                   # (a Claude Code web-session sandbox has this pre-installed already)
+npm ci                            # installs into node_modules/ from package-lock.json
+npx playwright install chromium   # the real browser Vitest drives - `npm test` cannot start without it
 
 npm run lint           # ESLint (js/, tests_js/)
 npm run typecheck      # tsc --noEmit (checkJS over js/, tests_js/)
@@ -619,7 +626,7 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   architecture spec, the `src/` production-quality checklist, testing & coverage,
   MicroPython/RP2040 platform-target facts, the cross-cutting shared-pattern/primitive-reuse
   catalog, and the website's own architecture — all in one place, organized into lettered Parts
-  (A-H) for different needs. Produced by a first-pass doc-scatter cleanup that merged
+  (A-J) for different needs. Produced by a first-pass doc-scatter cleanup that merged
   `DRIVER_SPEC.md`, `src/README.md`, `tests/README.md`, `toolchain/README.md`, most of this
   file's former "Repository layout"/"Architecture at a glance"/"Refactor in progress"/"Build
   process" content, and the spec-shaped parts of `CLAUDE.md`/`BACKLOG.md` into one document. Start
@@ -628,6 +635,18 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   every reference to them elsewhere in the repo (docs and code comments alike) was repointed
   directly at `SPECIFICATION.md`'s Parts C, D, E, and B respectively — they held no content of
   their own by then, just a "moved here" pointer.
+
+**Temporary docs** (deleted once their purpose is served):
+
+- **[`UART_C_PORT_CHANGELOG.md`](UART_C_PORT_CHANGELOG.md)** — the running log of UART-protocol
+  changes that must be mirrored into the Arduino peer's C implementation of the same protocol (plus
+  the Python-internal changes explicitly recorded as having no C impact). Carries those decisions
+  across the gap until that C source is imported into this repo and reconciled, then gets deleted.
+  The protocol itself is specified in `SPECIFICATION.md` Part J, which is permanent.
+- **[`UART_PROMOTION_REQUIREMENTS.md`](UART_PROMOTION_REQUIREMENTS.md)** — the refined scope of the
+  UART module's `src/` promotion: every standard the promoted file has to meet, derived from
+  `SPECIFICATION.md` Parts C/D/F/G/I/J and CLAUDE.md, plus the map of what the legacy file currently
+  violates and which decisions are still open. Deleted once the promotion is merged.
 
 **`DEVICE_REFERENCE.md`** (permanent, end-user-facing):
 

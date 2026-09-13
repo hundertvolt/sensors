@@ -19,6 +19,7 @@ would recreate the scattering problem this document exists to fix).
 - **Part G** — Shared Pattern & Primitive Reuse
 - **Part H** — Website (JS/HTML/CSS) Architecture
 - **Part I** — Memory-Safety Audit & Discipline
+- **Part J** — UART Message Protocol (`asy_uart_comm.py`)
 
 ---
 
@@ -111,7 +112,9 @@ is the legacy `python/`+`build-*.sh` pipeline, BACKLOG.md). Files land in `src/`
 against Part D.
 
 Prototype covers `src/sensortask_wozi.py` ("wozi", A.7) and `src/sensortask_dev.py` (dev bench,
-physically flashed, B.11/H.5) — not yet `arzi`/`neu`. Goal: same top-level features as today's
+physically flashed, B.11/H.5) — not yet `arzi`/`neu`. `dev` additionally carries the UART message
+protocol (Part J) as two instances across its permanent crossover jumper; `wozi` deliberately does
+not, since it is never physically flashed and would otherwise carry an untestable peripheral. Goal: same top-level features as today's
 deployed units, not a feature change. A future per-variant build-script generator (one
 setup-definition file → every variant's app/website pair) is planned but not built (A.8's
 registration API and A.9's `HTML_SRC_DIRS` are shaped around it). Real-hardware genericization for
@@ -296,6 +299,16 @@ against its actual source, not docs/memory.
 rather than reconstructing from training memory/web search. If a needed one isn't there and can't
 be fetched, say so explicitly.
 
+**RP2040**: `datasheets/pico w/` holds the Pico W *board* datasheet only — the RP2040 *silicon*
+datasheet is not in the repo, so its GPIO function-mux table is not readable here. For a pin-mux
+question the authoritative substitute is the pinned MicroPython source itself
+(`ports/rp2/machine_uart.c`'s `IS_VALID_PERIPH`/`IS_VALID_TX`/`IS_VALID_RX`, and the equivalent
+macros in `machine_i2c.c`/`machine_spi.c`), which the toolchain checkout always has — not a web
+search. Those macros give UART TX on `pin % 4 == 0`, RX on `pin % 4 == 1` and the peripheral from
+`((pin + 4) & 8) >> 3` — so UART0 owns 0/1, 12/13, 16/17, 28/29 and UART1 owns 4/5, 8/9, 20/21,
+24/25. The board datasheet does cover what is board-specific: p.8 lists GPIO23/24/25/29 as the
+pins the wireless chip takes.
+
 **BMP390**: `datasheets/bmp3xx/` holds BMP384/BMP388 but not BMP390. The project owner has confirmed
 the whole family shares the same register map/protocol, so `asy_bmp3xx_driver.py` treating BMP390's
 `0x60` chip ID the same as the other two is correct — the PDF's absence is a documentation gap only.
@@ -333,6 +346,11 @@ on-chip layout and must stay identical across firmware versions (A.4's determini
 12. `notify_service = NotificationCoordinator(pixel.request_signal, ntp.cettime, fram=fram, ...)`,
     staged `register()` ×3 then `finalize()` — **chunk 7**.
 13. `conn.set_ext_led(pixel)`.
+13b. *(`dev` only)* `uart0`/`uart1` = `asy_uart_driver.UART(...)` ×2, then `uart_initiator`/
+    `uart_responder` = `UART_Comm(...)` ×2 across the crossover jumper (Part J) — **no `fram=`**,
+    for the same reason as the webserver below, so the seven-chunk order is untouched. Placed here,
+    after every FRAM-allocating module and immediately before the webserver, because the webserver's
+    own `error_sources=` list includes them. `wozi` has no such step.
 14. `app = Microdot(); webserver = WebserverService(app, sensors=(...), ..., static_mount="/html",
     is_hotspot_active=conn.is_hotspot_active, host=web_host, port=web_port)` — **no `fram=`**
     (deliberately RAM-only — a connection-reclaim warning could churn faster than a sensor's fault
@@ -851,15 +869,22 @@ as both lock layers (C.8) stay genuinely distinct. What differs:
   MB85RS2MTA-DS501-00032-3v0-E.pdf` p.10). `setup()` raises `OSError` on a size/chip mismatch,
   `ValueError` on an unrecognized `max_size`. A genuinely new size needs its own table entry.
 
-### C.3.2 UART variant — orphan module, harmonized precedent
+### C.3.2 UART variant — harmonized precedent
 
-`asy_uart_driver.py`'s `UART(Lockable)` is promoted/tested but has zero live callers (BACKLOG.md).
+`asy_uart_driver.py`'s `UART(Lockable)` now has a real caller: `asy_uart_comm.py` (Part J), wired
+into `dev` as the two ends of the bench rig's crossover jumper. It keeps no logger of its own for
+the same reason `asy_i2c_driver.py` and `asy_spi_driver.py` keep none — every failure surfaces to
+exactly one upstream owner, which does the logging (C.7.1).
 Settled precedent: **one merged class**, not a session+protocol pair (no bus-sharing concept, so
 the two lock layers collapse without losing distinction — the accepted shape for any future
 point-to-point wrapper); **CRC framing lives in the bus-wrapper class itself** (no natural layer 2
-above a point-to-point link to own it instead); **`cancel_read_timeout()`** is a legitimate
-externally-triggerable cancel for another coroutine's unbounded wait (a plain `asyncio.Event`
-handshake); **raise contract** (re-verified against `ports/rp2/machine_uart.c` at v1.29.0): a
+above a point-to-point link to own it instead), joined by a **pluggable frame codec** in the same
+position (`framing_codecs.py`, Part G.2 — pass-through by default, so the default emits exactly
+what it always did); **`cancel_read_timeout()`** is a legitimate externally-triggerable cancel for
+another coroutine's unbounded wait — a **latched request acknowledged on every exit from the locked
+region**, published through monotonic request/ack counters and bounded so the call is provably
+terminating. (It was an `asyncio.Event` handshake, which could both drop a request and hang the
+canceller forever; see `UART_C_PORT_CHANGELOG.md` B15.); **raise contract** (re-verified against `ports/rp2/machine_uart.c` at v1.29.0): a
 hardware framing/parity/overrun error is never raised — delivered corrupted, dropped, or skipped
 silently instead, and `write()` can short-write — a third position distinct from I2C (raises) and
 SPI (writes cannot raise; 32+ byte reads can, since 1.29 — F.5.2), already matched correctly (every
@@ -1113,7 +1138,8 @@ is expected; only overlap *within* one row matters.
 | `asy_webserver_service.py` (`WEBSERVER`) | 1-6 | 1-5 | 1=unexpected exception in dispatch, 2=`system_cmd` callback, 3=`notification_led` callback, 4=uncaught exception via `errorhandler(Exception)`, 5=`notification_pause` callback, 6=one `/status` streamed-fragment source failed. `wrnno` 1-5=connection-lifecycle reclaim reasons. |
 | `asy_neopixel_driver.py` | — | — | No persisted logging. |
 | `asy_i2c_driver.py`/`asy_spi_driver.py`, `asy_udp_socket.py`, `asy_dns_client.py` (client) | — | — | Deliberately no logging — every failure surfaces to exactly one upstream owner. Coverage audit closed, no gaps. |
-| `asy_uart_driver.py` | — | — | Orphan module, no `self.pr` yet. |
+| `asy_uart_comm.py` (`UART`, `_NAME` only as the default) | 10-34 | 10-14 | 10-16=construction refusals (payload_size, timeout, role, bus handle, allocation — the module's own buffers *and* a frame codec whose one long-lived scratch failed, since a codec that reports itself not ready would otherwise fail every write instead — rxbuf, missing callback), 17=not-ready gate, 18=role refusal, 19=frame validation, 20=missing/mismatched ACK, 21=write, 22=read timeout, 23=payload too large, 24=destination allocation, 25=size mismatch, 26=callback, 27=re-entrant call, 28=wrong frame kind, 29=GET id mismatch, 30=listen loop, 31=peer initiated simultaneously, 32=bytes arriving but no frame ever valid (a CRC/baud/`payload_size` mismatch), 33=streamed chunk short-filled, 34=a caller's own argument refused (command id outside a byte, a non-integer or negative size, a non-buffer payload or destination). `wrnno` 10=resync, 11=drain bound reached, 12=fault episode cleared, 13=a *rise* in the driver's cumulative `cancel_unacknowledged` (reading it as a flag reported every later healthy cancel as wedged), 14=a callback declined a command id. **10, 11 and 14 are persisted at most once per fault episode, and 14 at most once per command id** — deduping only the `errno` left every fault still persisting its own resync warning, which refilled the bounded history and evicted the entry naming the cause — and 14 escaped that fix until 2026-09-12, so a peer polling one unimplemented id spent two slots per refusal and erased a ten-slot history in five rounds. Numbered from 10 to stay clear of `base_classes.py`'s reservation even though this is not a `SensorReader` subclass, and disjoint from any owner's own range where the logger is reached through. |
+| `asy_uart_driver.py` | — | — | Deliberately no logging — every failure surfaces to its one upstream owner (`asy_uart_comm.py`), the same treatment the other bus drivers get. `cancel_unacknowledged` is a plain counter that owner reads and logs under its own `wrnno` 13. |
 
 ## C.8 Concurrency & locking model
 
@@ -1488,7 +1514,16 @@ before them (`crc_checks.py`'s masked-CRC guard, `math_helpers.py`'s domain-guar
 as documented dead code rather than chased for a coverage number. `print_log.py`'s `get_log()` has
 the same shape from an `if`: it treats two sentinels as equivalent "nothing recorded" markers, but
 only one is actually reachable — **confirmed intentional by the project owner**, kept for
-defensive symmetry.
+defensive symmetry. `asy_uart_comm.py` carries six statements of a third variant: a buffer or a
+bound re-checked immediately after the check that already settled it, so the second check cannot
+fire through any call path that exists (measured and listed one by one in
+`UART_PROMOTION_REQUIREMENTS.md` §O). Kept, like the rest — one branch of defence in depth in a
+module contracted never to raise is cheaper than the day the surrounding logic moves.
+
+A `finally:` body is **not** one of these patterns, despite looking like one: its lines fire a trace
+event only when an exception actually passes through, so a `finally` that only ever runs on the
+normal return path reads as uncovered. That is a real missing test — of cancellation — not an
+artefact; `test_a_cancelled_transaction_still_releases_the_re_entrancy_flag` is what it was hiding.
 
 ## E.6 Shared behaviors and the real-hardware test tier
 
@@ -1570,6 +1605,85 @@ complementary.
 
 ---
 
+## E.7 A digital-twin soak's wall clock measures GC timing, not the code under test
+
+`digital_twin/run_*_integration.py`'s bounded soak drives ~294 real HTTP requests through the whole
+constructed object graph. Its duration is **deterministic per build and meaningless across builds**:
+it is set by where `gc` collections land on the Unix port's 8 MB heap, and that moves with heap
+layout, which moves with almost any source change.
+
+Measured on the dev variant (2026-09-11), same probe, same host, interleaved, three rounds each,
+against three versions of `src/asy_uart_driver.py`:
+
+| `asy_uart_driver.py` | Soak wall clock | `_buffered()` calls during the run |
+|---|---|---|
+| before the F.5.8 clamp | 44.07 / 44.07 / 44.07 s | — |
+| with the clamp | 58.43 / 58.33 / 58.56 s | **0** |
+| with the clamp and F.5.9's idle rate | 61.49 / 61.79 / 61.24 s | **0** |
+
+The changed code is never executed during that run: the link is idle, so `ready()` never returns
+`True` and no read path is entered at all — confirmed by instrumenting the module itself, not
+inferred. Adding three counter increments to an *unchanged* version reproduces the slow figure on
+its own. And calling `gc.threshold(-1)` for the duration of the soak **inverts the ordering**
+(44.07 s → 57.7 s, 61.5 s → 44.5 s), which is what identifies the mechanism.
+
+Two consequences, both load-bearing:
+
+- **Never bisect a twin soak's runtime to a code change.** It will produce a confident, stable,
+  wrong answer — it did once (2026-09-11), attributing a regression to a function with zero call
+  sites reached. Count the operation you actually care about instead: F.5.9's finding was
+  established by counting poll rounds (14 039 → 839), which is a property of the code rather than
+  of the allocator.
+- **A soak test's own `wait_for()` budget is a liveness backstop, not a performance assertion**, so
+  it belongs above the whole observed range rather than near it —
+  `tests/test_digital_twin_run_dev_integration.py` allows 120 s for a 44-62 s run.
+
+## E.8 Measurement traps, and the guard-is-blind trap behind them
+
+Every item here produced a confident, stable, wrong number before it produced a right one, so each
+is a rule rather than an anecdote. E.7 is the largest of them and keeps its own section.
+
+- **An absolute heap-delta bound is host-dependent; a leak is a rate.** Retention scales with the
+  work done, while an interpreter's internal caching is a fixed sprinkle that varies by host *and
+  by run*. Two hammer tests bounded `gc.mem_alloc()` growth at a few frames because both measured
+  exactly 0 on the bench, and failed CI at 64 B. Assert a per-operation rate instead —
+  `tests/test_uart_comm_hazard.py` uses `< 6.0 B/transaction` and `< 16.0 B/failure`, against a real
+  retained frame's 13+ B/transaction and an injected 16 B/transaction leak's measured 636.
+  **Two follow-on traps, both paid for:** the rate must be divided by the span actually measured,
+  not by the loop's total round count — the clean hammer sampled a third of the way in and still
+  divided by all 150, understating itself by half again. And one runner observation does not
+  calibrate a floor: the same commit measured 64 B on one GitHub runner and 288 B on another, so a
+  bound set just above the first reading went red on the second. Set it from the signal you must
+  still catch, not from the noise you happened to see.
+- **The twin's `UARTLink.wire_log` is unbounded** — one byte per delivered byte, ~15-95 kB over a
+  few hundred transactions. It reads as a leak in the code under test. Clear it inside any
+  measurement loop.
+- **An asyncio loop-latency probe cannot separate "idle on a timer" from "blocked."** The driver's
+  own cooperative `sleep_ms(poll_wait_ms)` puts both at ~2 ms. Time the C calls directly (F.5.8).
+- **A probe read before the watchdog task next runs reports 0 for everything.** Give it a turn —
+  `await asyncio.sleep_ms(0)` a few times — before reading its peak.
+- **`I2C.scan()` is synchronous** and blocks the loop for a 128-address sweep, so using it as "bus
+  load" models nothing production does: it inflated a measured worst-case RTT from 112 ms to 574 ms.
+- **Cross-test contamination is real.** One process, one task queue, and no parent/child tracking in
+  MicroPython asyncio, so listeners parked by earlier tests keep allocating. Isolate before
+  believing a per-test number.
+- **`ErrNum` mixes errnos and wrnnos in one ring sharing a number space** (wrnno 10 = resync,
+  errno 10 = bad `payload_size`), and every fault also resyncs, so the newest entry is almost always
+  the resync warning. Filter on `ErrType == "E"`.
+
+**The trap under the traps: a guard whose oracle cannot see the regression it guards.** Verified by
+regressing each of `asy_uart_driver.py`'s seven read paths in turn and re-running the mock tier
+(2026-09-12): four failed a named test, three passed silently. `test_readline_does_not_probe_an_empty_buffer`
+asserted on the fake's own call log, but the fake returns early on an empty ring *before* it logs,
+so deleting the gate left the log empty too and the test still passed. A guard is only established
+by removing what it guards and watching it fail — the same standard I3.4's revert-and-confirm pass
+applies to fixes, applied to test oracles.
+
+**Standing rule, from the same sweep: every hazard check runs in both CRC modes.**
+`tests/test_uart_comm_hazard.py` registers each `_check_*` twice (`_nocrc`, `_crc16`) — 48 checks,
+96 tests. Two are single-mode by construction (`_MODE_SPECIFIC`), because their subject *is* one
+configuration. The deployed link runs `CRC_Pass`, so the no-CRC path is the one in the field.
+
 # Part F — Platform Target & MicroPython Runtime Facts
 
 ## F.1 Core platform facts
@@ -1615,6 +1729,17 @@ beyond either threshold silently rounds. `coerce_numeric()`'s int→float direct
 unlike CPython — validate shape before packing if it matters. Still true on 1.29: the overflow
 checks added to `py/binary.c` are gated behind `MICROPY_PREVIEW_VERSION_2`, so they only turn on in
 a V2.0 preview build. Expect this fact to flip when upstream ships 2.0.
+
+**Slice assignment has two different length contracts, and neither raises where you expect.** A
+`bytearray` destination *resizes* on a length mismatch exactly as CPython's does — `b[0:2] = <3
+bytes>` grows the object and shifts everything after it, silently — while a `memoryview`
+destination raises `ValueError: lhs and rhs should be compatible`. Both measured on the pinned
+Unix-port interpreter. Code copying a computed span into a buffer must therefore bound-check the
+span itself (`asy_uart_comm.py`'s `written + size > len(dest)` guard); the destination's own type
+will not do it. **There is also no `memoryview.readonly` attribute on MicroPython** — the way to
+tell a writable destination from `memoryview(b"...")` without allocating or mutating anything is a
+zero-length slice assignment (`buf[0:0] = b""`), which raises `TypeError` on a read-only view and
+succeeds on every writable one.
 
 **A `micropython.const()`-wrapped value does not survive as an importable module attribute in a
 frozen build** — `mpy-cross` inlines every `const()` value at each use site rather than leaving a
@@ -1903,6 +2028,186 @@ declaring.
 - `SOCK_RAW` is now default-on and present in the built firmware. Noted only; F.2 settles the
   reachability-probe question.
 
+### F.5.7 `machine.UART.deinit()` leaves the RX ring buffer unrooted — re-init by construction
+
+Read out of `ports/rp2/machine_uart.c` at `v1.29.0` while auditing the UART promotion, not from a
+changelog. It changes nothing about how this project behaves today, but it is the reason one line
+of `asy_uart_driver.py` has to stay the way it is.
+
+`mp_machine_uart_deinit()` clears `MP_STATE_PORT(rp2_uart_rx_buffer[id])` and its TX twin — the
+`MP_REGISTER_ROOT_POINTER` entries that make those ring buffers reachable to the GC — but leaves
+`self->read_buffer.buf` in the static `machine_uart_obj[]` entry still pointing at them. A static C
+struct is not scanned, so after `deinit()` the buffers are garbage that the object still holds a
+pointer to. Calling `uart.init(...)` again does **not** repair it: the reallocation is guarded by
+`if (self->read_buffer.buf == NULL)`, which is false, and the root pointer is never restored — so
+the UART IRQ handler resumes writing into memory the collector is free to hand out. The one
+exception is an `init()` that asks for a **different** `rxbuf`/`txbuf` size: that branch sets
+`buf = NULL` itself before the guard runs, so the buffer is reallocated and re-rooted. Re-initing
+with the same parameters — the ordinary case, and the one a recovery path takes — does not.
+
+The escape is that `mp_machine_uart_make_new()` sets `read_buffer.buf = NULL` itself, so
+**constructing a fresh `machine.UART(id, ...)` always reallocates and re-roots**, while
+`uart.init()` on a previously deinit'd object does not. `asy_uart_driver.UART.init()` therefore
+calls `machine.UART(...)` rather than `self._uart.init(...)`, and that choice is load-bearing
+rather than stylistic — `tests_hardware/device_scripts/uart_crossover_recovery.py`'s injector
+deinits and re-inits a live port, which is exactly the sequence that would otherwise corrupt the
+heap on real hardware.
+
+### F.5.8 `machine.UART.read()/readinto()` block the asyncio loop for bytes not yet arrived
+
+Read out of `ports/rp2/machine_uart.c` at `v1.29.0` and then **measured on the dev bench's own
+crossover jumper**, because the consequence is a real-time property no code review makes obvious.
+
+`mp_machine_uart_read()` loops once per requested byte. When the RX ring is empty it waits — and
+that wait is `mp_event_handle_nowait()`, which runs scheduled callbacks but **never yields to
+asyncio**. The per-byte budget is `self->timeout` for the first byte and `self->timeout_char`
+(this project's drivers pass `1`) for every one after it. A byte at 115200 baud arrives every
+~87 us, comfortably inside that 1 ms, so the loop never times out mid-frame: it simply spins,
+synchronously, until the whole requested count has arrived. `select.poll()` does not protect
+against this — `mp_machine_uart_ioctl()` reports `POLLIN` as soon as the FIFO holds *one* byte.
+
+Measured across the jumper, asking for a whole 53-byte frame the moment `POLLIN` first fires:
+
+| Trial | Bytes buffered at `POLLIN` | `readinto(buf, 53)` returned | CPU held, synchronously |
+|---|---|---|---|
+| 0 | 3 | 53 | 4195 us |
+| 1-4 | 2 | 53 | 4370-4405 us |
+
+Against a wire time of ~4600 us for that frame — i.e. the read holds the loop for essentially the
+entire remaining transmission. **Nothing else in the event loop runs for that whole span**, which
+is exactly what the UART driver and protocol module are required never to do (owner direction,
+2026-09-11: they may time out and handle it, but may never block synchronously, not even in a wait
+state).
+
+**The fix has two halves, and the first alone is worse than useless.**
+
+1. *Ask only for what is already buffered.* `mp_machine_uart_any()` drains the RX FIFO into the ring
+   and returns its fill level, and the documented contract is exactly the property needed — "the
+   number of characters that can be read without blocking" — so a read clamped to it never enters
+   the per-byte wait loop. `asy_uart_driver.UART._buffered()` is that clamp, and **every** read in
+   the module goes through it: the four counted paths (`read()`, `readinto()`,
+   `read_until_complete()`, `readinto_until_complete()`), the two uncounted ones (`read(None)` and
+   `readinto(buf)` asked the peripheral for the whole buffer, which blocks for every byte of it that
+   has not arrived), and `_read_delimited()`'s one-byte read, which was still issued against an
+   empty ring where the C read spins out its `EAGAIN` probe. `readline()` has no count to clamp and
+   gates on `any()` instead. The docs' lower-bound wording ("may return 1 even if there is more than
+   one character available") costs nothing here: under-reporting only ever means another round.
+2. *Yield on the way out of `ready()`.* With the clamp alone the stall did not improve — it got
+   **worse**, measured at 14.6ms. `ready()` returned `True` with **no `await` at all** whenever
+   `ipoll()` already reported the mask, so a frame still mid-flight was simply read in a Python loop
+   with no yield point: the same block, reimplemented one level up and slower than the C busy-wait
+   it replaced. Every read loop in the module reaches the peripheral through `ready()`, so the yield
+   belongs there and nowhere else — `await asyncio.sleep_ms(0)` immediately before it returns
+   `True`. That makes it one guarantee in one place instead of an obligation each call site has to
+   remember: **no path through this driver reaches a read without having just yielded.**
+   `_read_delimited()` is the one loop that consumes buffered bytes without going back through
+   `ready()`, so it yields every `_DELIMITED_YIELD_BYTES` (16) — a task switch every ~1.4ms of wire
+   time rather than every ~87us.
+
+A zero-length round additionally falls back to `sleep_ms(poll_wait_ms)`, so the retry can never
+become an unyielding spin on `ready()` even if `any()` ever disagreed with `POLLIN`.
+
+**Measured result, both halves in place.** The honest measurement is the *longest single
+non-yielding call*, not a loop-latency probe: an `asyncio` probe task cannot distinguish "the loop
+is idle waiting on a timer" from "the loop is blocked", and the driver's own cooperative
+`sleep_ms(poll_wait_ms)` waits put both at the same ~2ms. Timing the C calls directly does
+distinguish them:
+
+| Call, in-flight 53-byte frame | Worst single synchronous span |
+|---|---|
+| `uart.readinto(buf, 53)` — before, asking for the whole frame | 4195-4405 us |
+| `uart.readinto(buf, any())` — after, clamped | **278 us** |
+| `uart.any()` | 72 us |
+| `uart.write(53B)` | 171 us |
+
+Re-measured on the dev bench (2026-09-12) after the yield moved from the four read loops into
+`ready()` itself: unclamped 4422 us, clamped **137 us**, write 169 us — the same result from an
+independent run against the reshaped driver, which is what makes the table a property of the
+peripheral rather than of one arrangement of the code.
+
+For scale, this board's own scheduler noise floor — the worst gap a `sleep_ms(0)` probe sees with
+no UART activity at all — is 400-900us, so the clamped read is already below the point at which
+the measurement means anything. An A/B on one firmware (defeating `_buffered()` at runtime to ask
+for the whole frame again) moves the end-to-end worst loop gap from 3.1ms to 6.3ms, confirming the
+same thing from the other direction.
+
+**Why no test caught it, and what now does.** `tests/machine.py`'s and `digital_twin/machine.py`'s
+UART fakes return `min(nbytes, len(rx_queue))` and never wait — they model a non-blocking read the
+real peripheral does not provide, so the defect was invisible to every tier below the bench. This is
+precisely the class `UART_PROMOTION_REQUIREMENTS.md` H3.3 predicted the flash tier would find.
+Making the fakes actually *wait* would only turn a real-time defect into a slow test; both instead
+**count the stall they would have taken**. `UART.would_have_blocked_bytes` accumulates every byte a
+read asked for that had not arrived, the two models are held to identical counting by
+`tests/_uart_link_contract.py`, and a whole-frame read through the driver asserts it stays at zero.
+A regression of the clamp now fails in the mock tier as a number, in the same shape as the twin's
+own `WDT.would_have_triggered_count`.
+
+**All seven read paths are guarded, and that was established by breaking each one.** The counted
+paths (`read`/`readinto`, counted and uncounted, and both `*_until_complete` loops) clamp to
+`any()`; the three that carry no count to clamp — `readline()`, `readline_until_complete()` and
+`_read_delimited()`'s one-byte read — gate on one buffered byte instead. Removing each clamp in
+turn and re-running the mock tier (2026-09-12) initially failed a named test for only four of the
+seven: the two `readline` paths were uncounted by both fakes, and `_read_delimited`'s gate was
+counted but asserted nowhere. Both gaps are closed, and the sweep now fails on all seven. Part E.8
+records the test-oracle trap this exposed.
+
+**This does not generalise to `asy_i2c_driver.py`/`asy_spi_driver.py`, and must not be applied
+there.** A UART read is fixable only because the peripheral offers a genuinely non-blocking path —
+`POLLIN` plus `any()` report what has already arrived, so the driver can take exactly that and come
+back. `machine.I2C`/`machine.SPI` expose no equivalent: a transfer is one synchronous transaction
+with no partial-read API to clamp to, so an SCD30's 18-byte read *is* a ~1.8ms synchronous span by
+construction. That is the case Part F.2 already settles — the hardware watchdog is the accepted
+backstop, and no I2C-level timeout mechanism is to be proposed for it.
+
+The write side is the same shape but bounded, and needed no change: `mp_machine_uart_write()`
+short-writes rather than waiting once `timeout` (0 here) elapses, and `_write_all()` gates on
+`POLLOUT` and retries. Its theoretical worst case is the ~1 ms it takes `ticks_ms()` to advance,
+never a frame time — and measured at 171 us for a whole 53-byte frame, since a `txbuf` with room
+takes the lot in one copy and the wire drains by interrupt.
+
+### F.5.9 An idle `ready()` poll is a permanent CPU cost, not a free wait
+
+Same layer as F.5.8 and the same owner rule behind it, but the opposite failure: not a wait that
+blocks, a wait that never stops working. `asy_uart_driver.UART.ready()` waits by polling —
+`ipoll(0)`, then `sleep_ms(poll_wait_ms)`, round after round. For a transaction in flight that is
+correct and deliberate: Part J.6 requires a single-digit `poll_wait_ms` precisely because poll
+granularity, not baud rate, dominates a stop-and-wait exchange's throughput. For a *listener* it is
+not. A responder parked in `uart_listen()` is waiting on a frame that may not come for hours, and at
+2 ms it pays a scheduler round trip every 2 ms for the whole of that time — on the same core as the
+sensor tasks and the webserver.
+
+Counted in the digital twin's dev soak, which runs the real `sensortask_dev` graph including both
+`UART_Comm` instances: **14 039 poll rounds** over a ~60 s run with one rate, against **839** with
+the idle rate below. (Count the rounds, not the soak's wall clock — see Part E.7 for why that number
+is not usable here.)
+
+**Confirmed on real hardware (2026-09-12, dev bench.)** Counting `ipoll()` calls through a proxy
+around the driver's own poller, so the shipped path is what is measured, an idle listener performs
+**1244 / 1233 poll rounds over 3 s at 2 ms against 60 / 60 at 50 ms** — a 20.6x cut, and exactly
+the ratio the two rates predict (one round per 2.4 ms vs one per 50.0 ms). Repeated interleaved; the
+50 ms figure was identical to the round on both runs.
+
+**What that costs the event loop is a smaller number than this section first inferred, and the
+inference is withdrawn.** Reasoning from the 400-900 us round trip in F.5.8 to "a quarter to a half"
+overstates it. Measured directly — a counter task running flat out beside the listener, interleaved
+and order-reversed — an idle listener at 2 ms takes **~18-23 %** of that task's throughput, and at
+50 ms the cost falls into the noise. The spread is real: absolute throughput on this board moves
+with heap state between runs, exactly as Part E.7 describes, which is why the poll-round count above
+is the load-bearing measurement and this one is only corroboration of its direction.
+
+**The fix is a second poll rate, selected by whether the wait carries a deadline.** `ready(mask,
+timeout_ms)` polls at `poll_wait_ms` when `timeout_ms > 0` and at `poll_idle_ms` otherwise, because
+a wait with no deadline is by construction an idle listener — `_read_frame(device, -1)` inside
+`uart_listen()` is the only one this protocol issues — while a wait with a deadline is inside a
+transaction whose latency budget is that deadline. Nothing else moves: once the first byte lands,
+every remaining wait in that frame carries `timeout` and runs at the fast rate.
+
+`poll_idle_ms` bounds how late the first byte of a frame is noticed, so it belongs well under the
+peer's own reply timeout. The dev bench uses 50 ms against `_UART_TIMEOUT_MS = 1000` — a twentieth
+of the budget the initiator allows for an ACK, and a 17x cut in idle task switches. A wiring that
+leaves it unset keeps the single rate the driver always had, so this is opt-in per instance rather
+than a change to every existing caller.
+
 ## F.6 A SIGINT during `gc_collect()` can wedge the Unix-port heap
 
 **Not a 1.29 regression** — measured at the same ~5% rate on Unix ports built from both `v1.28.0`
@@ -1987,9 +2292,43 @@ backend-only or frontend-only validation/coercion policy change in this project.
   `# type: ignore[operator]` (three of which it removed outright).
 - **Driver layering/naming/config-schema/error-handling/concurrency/timer shape** — Part C, for a
   sensor driver specifically; complementary to this Part.
+- **Buffer ownership and zero-copy region handoff** — `base_classes.py`'s `LockableBuffer`, plus the
+  paired-API shape every buffer-holding module in `src/` already follows. A module that moves bytes
+  owns **one** contiguous allocation per logical record, sized once from configuration, and hands out
+  `memoryview` slices of its regions (`get_buf()`, `get_data_buf()`, and a per-class accessor per
+  further region) rather than returning freshly allocated copies. Three rules follow, and they are
+  what separates the `src/` implementations from their `python/` ancestors:
+  - **Every transfer method comes in pairs** — `write(data)`/`write_into(buf)` and
+    `read()`/`read_into(buf)`: the convenience form allocates and copies, the `_into`/`_from` form
+    takes a caller-owned buffer and neither allocates nor copies. `asy_fram_manager.py`'s
+    `AsyFramChunk` is the reference shape.
+  - **Serialisation writes into a caller-supplied buffer at an offset, never into a returned tuple
+    or bytes** — `voc_algorithm.py`'s `pack_into(buf, offset)`/`unpack_from(buf, offset)` replacing
+    the legacy `get_states()`/`set_states()` tuple pack.
+  - **A failed allocation degrades to a `None` buffer, never an exception** — `LockableBuffer`
+    catches `MemoryError`/`OverflowError` in its own constructor and leaves `self.buf = None`, and
+    every consumer's first act is `if buf is None: return False`.
+  The composition this buys is the actual point, and it is already live end to end:
+  `asy_sgp40_driver.py` takes one `AsyFramChunkBuffer` from the FRAM chunk, passes its
+  `get_data_buf()` memoryview down to `vocalgorithm_proc_ser_des()`, which `struct.pack_into()`s the
+  algorithm state **directly into the FRAM chunk's payload region**, and the chunk then writes itself
+  out — one allocation, zero copies, across three module layers. Long-lived per-instance scratch
+  buffers (`asy_fram_driver.py`'s `_id_buf`/`_status_buf`/`_addr_buf`, `asy_sgp40_driver.py`'s
+  `_measure_command`) are the same rule applied to fixed-size command/status traffic, replacing the
+  legacy per-call `bytearray([...])`.
 - **Memory-bounded streaming of a dict-shaped GET response** — `_stream_dict_response()` (Part I).
   Any route whose response scales with device configuration returns `await
   _stream_dict_response(result)` instead of `return result`.
+- **Frame codecs for a byte-stream link** — `framing_codecs.py`'s `Framing_Base`/`Framing_Pass`/
+  `Framing_COBS`, deliberately shaped like `crc_checks.py`'s `CRC_Base`/`CRC_Pass` family so one
+  dispatch table can hold either: a base parameterized by constants (`run_length`, `trailer`) that a
+  subclass supplies rather than reimplementing the arithmetic, `ready()` reporting a failed scratch
+  allocation, and `encode_into()`/`decode_from()` working through a long-lived buffer rather than
+  allocating per frame. Injected into `asy_uart_driver.UART` exactly as a CRC is, sitting *above*
+  it: write order is build → CRC → encode → delimiter and read order the exact reverse, so a
+  protocol layer above stays CRC- and framing-agnostic. A pass-through codec is the default and
+  emits byte-for-byte what the driver emitted before the concept existed, which is what makes this
+  reusable by a future framed protocol rather than specific to this one.
 - **Cross-language mirror: `js/` must encode the same policy `src/` enforces for anything it
   simulates** — `js/mock-server.js` must match the real `src/` endpoint field for field, bound for
   bound; a `src/`-side policy change and its `js/` mirror are one change, not two.
@@ -2344,3 +2683,314 @@ enough requests through); the headroom the system starts from is asserted separa
 `tests_hardware/flash/test_memory_stress.py`'s `test_real_gc_heap_headroom_survives_a_full_system_build`
 (Part F.5.3 for the 1.29 figures). Note the 91,312 B above is a *loaded* floor and the F.5.3
 numbers are at rest — don't compare them directly.
+
+---
+
+# Part J — UART Message Protocol (`asy_uart_comm.py`)
+
+The wire protocol and role model of `src/asy_uart_comm.py`, the point-to-point UART message
+transport. No vendor document or prior specification exists — this Part **is** the specification,
+reconstructed from the field-proven legacy implementation (`python/IndividualDrivers/asy_uart_comm.py`)
+and confirmed by the project owner (2026-09-11). Read it before changing anything about the protocol.
+
+**The module is promoted.** It sits above `asy_uart_driver.UART` the way `asy_fram_manager.py` sits
+above `asy_fram_driver.py`: a sync allocate-only constructor with a readiness gate, an injected
+logger by either route, `get_task_starters()`/`get_timer_starters()`/`get_error_counter()`/
+`reset_error_counter()` for generic supervision and observability, and a never-raise contract on
+every entry point. `dev` carries two instances across its crossover jumper (A.7 step 13b); `wozi`
+carries none. The jumper uses UART0 on GP0/GP1 and UART1 on GP8/GP9: of the other legal pin-mux
+pairs, GPIO24/25 and GPIO28/29 each have a half the wireless chip takes (A.6), and GPIO16/17 is
+left free because a BME688's BSEC coprocessor wants UART0 there and one peripheral serves one pair. Everything below describes what the promoted module does, not what the legacy one
+did — the differences are enumerated in `UART_C_PORT_CHANGELOG.md`.
+
+## J.1 Scope and the two-implementation contract
+
+The module is **standalone and self-contained** — a general message transport over a point-to-point
+serial link, with no sensor, device or application semantics of its own. Command IDs, payload layouts
+and expected sizes all belong to the caller. Its first use case (a BME688/BSEC coprocessor) is
+explicitly *not* part of its scope and does not constrain its design.
+
+**A second implementation of this protocol exists in C**, running on the Arduino peer. It mirrors the
+Python implementation's *intended* behavior and is owner-validated over many real transmissions — but
+**how far that mirroring extends to the known flaws is unverified**: it may share some, not others,
+and may have introduced its own. Establishing that is future work, never an assumption to build on.
+The C source is not yet in this repo; importing and reconciling it is a future session's job
+(BACKLOG.md). Until then:
+
+- **Every protocol-level change is logged in `UART_C_PORT_CHANGELOG.md`** — a temporary file, deleted
+  once the C side is reconciled. A change is protocol-level ("Class A") if it alters the bytes
+  emitted, which received frames are accepted vs. rejected, or any timing the peer depends on;
+  everything else is Class B and is logged too, as explicitly-no-C-impact.
+- **Prefer Class A changes that only tighten receiver validation, never ones that change emitted
+  bytes.** A receiver-strictness change rejects only frames a *conforming* peer never sends, so a
+  mixed-version pair (new Python ↔ old C) keeps working and the peer's reflash can happen in either
+  order — **conditional on the C side actually conforming, which each such change must re-verify
+  against the C source once it is imported.** A change to emitted bytes is a coordinated flag-day
+  needing an explicit owner decision.
+
+## J.2 Role model
+
+**One side is constructed as the initiator, the other as the responder. This is not a symmetric peer
+protocol, and initiation is restricted to one side by construction** — there is no collision
+arbitration anywhere in the design, so simultaneous initiation is out of contract rather than a case
+to handle.
+
+Role governs *who may start a transaction*, not data direction: a responder still transmits a
+complete payload train when answering a GET, and acknowledges every frame it receives. An initiator
+uses `uart_get()`/`uart_set()` and never listens; a responder uses `uart_listen()` and never
+initiates.
+
+**The role is enforced structurally, not by convention.** The role is a constructor parameter, and
+the initiation entry points refuse on the wrong role (C.13's readiness-gate treatment — a logged
+refusal returning the module's normal failure sentinel, never an exception). Holding the session lock
+for the duration of one `uart_listen()` call is *not* sufficient on its own: the lock is released
+between calls, so an application could otherwise interleave an initiation into a responder's listen
+loop and produce exactly the simultaneous initiation the design has no arbitration for. The
+responder's own answer to a GET is unaffected — it runs through the internal unlocked SET path, not
+through the public `uart_set()` entry point that the role gate covers.
+
+## J.3 Frame format
+
+Every frame is exactly `5 + payload_size` bytes, the payload field zero-padded to its full width.
+There is no delimiter, no length prefix and no escaping: **the fixed size is the framing**, which is
+what lets a receiver take a whole frame as one fixed-length read and verify it in one go.
+
+CRC framing is **optional and not part of this layer** — it is configured on the `UART` bus object
+and appended/verified/stripped transparently below it, and `CRC_Pass`'s zero length makes every
+framing calculation degrade to the no-CRC case automatically, so this layer is entirely CRC-agnostic.
+The same is true of the frame codec that now sits alongside it (`framing_codecs.py`, Part G.2):
+`Framing_Pass` is the default and adds nothing, so the fixed size stays the framing. Selecting a
+delimited codec is a wire change and a coordinated flag day (changelog A11), not a local decision.
+Without a CRC, the only integrity checking left is this layer's own structural validation (command,
+chunk index, size bounds, ACK `UID` match).
+
+**The CRC algorithm and its byte order are part of the wire contract and must be specified, never
+inherited.** The field-proven legacy configuration — `python/IndividualDrivers/asy_uart.py`'s own
+`CRC16`, which is what the C peer mirrors — is an LSB-first/right-shifting variant over poly `0x1021`
+with init `0xFFFF`, appended in the platform's **native** byte order; that is *not* CRC-16/CCITT-FALSE,
+and it interoperates between the two peers only because both happen to be little-endian.
+`src/crc_checks.py`'s `CRC16` is a genuine MSB-first CRC-16/CCITT-FALSE appended big-endian. **The two
+are not wire-compatible** — verified directly: each is self-consistent (residue zero over payload+CRC)
+and each rejects the other's frames. Moving this module onto `src/`'s driver therefore changes the
+bytes on the wire, which is a coordinated flag-day rather than a receiver-strictness change
+(`UART_C_PORT_CHANGELOG.md` A7).
+
+| Offset | Field | Semantics |
+|---|---|---|
+| 0 | `UID` | Per-frame nonce, incremented per transmitted frame, wrapping `0xFE → 0`. Matches an ACK to the frame it acknowledges; carries no stream-ordering meaning. **Never `0xFF`** — see below. |
+| 1 | `CMD` | `ACK 0x01`, `GET 0x02`, `SET 0x04`. |
+| 2 | `SIZE` | Bytes of the payload field actually used (`0 … payload_size`). |
+| 3 | `CHUNKS` | Total frames in this train (`1 … 0xFF`). |
+| 4 | `CUR_CHUNK` | This frame's index within the train, 1-based. |
+| 5… | payload | `SIZE` meaningful bytes, zero-padded to `payload_size`. |
+
+An ACK frame carries the acknowledged frame's `UID`, `SIZE = 0`, `CHUNKS = 1`, `CUR_CHUNK = 1`. An
+ACK echoes the received `UID` and does not consume one of the sender's own.
+
+**`0xFF` is deliberately kept out of the `UID` space** (author-confirmed rationale, 2026-09-11): it is
+a free off-by-one safety barrier, so that any implementation adding 1 to a UID it just received — in
+either language — stays inside the byte rather than rolling over uncontrolled. The only route to `0`
+is the controlled wrap. Two further properties follow, both worth preserving:
+
+- The value space (`0 … 0xFE`, 255 values) is **exactly** as large as the longest possible train
+  (`CHUNKS` maxes at 255, one UID consumed per frame), so no UID repeats within a single train and a
+  stale ACK from an earlier frame of the same transfer can never be mistaken for the current one.
+- Any code predicting the *next* expected UID must reuse the same controlled wrap, never a bare `+1`,
+  which mispredicts precisely at the `0xFE → 0` boundary.
+
+Do not "fix" the wrap to `0xFF`: it removes the barrier and the no-repeat-within-a-train property
+together.
+
+## J.4 Transactions
+
+A logical message is a **chunk train**. Chunk 1 is always the command header: its payload is the
+single command-ID byte, `SIZE = 1`. Chunks 2…N carry the data. **Every frame is individually
+acknowledged before the next is sent** — stop-and-wait at frame granularity, never more than one
+frame in flight, no windowing and no NAK.
+
+**SET (initiator → responder)** — `CHUNKS = ceil(len(payload) / payload_size) + 1`, floored at 2, so
+even a payload-less command still has one data chunk to acknowledge and is confirmed end-to-end
+rather than merely heard. Each chunk gets a fresh `UID`.
+
+**GET (initiator → responder)** — the initiator sends a one-chunk GET train whose payload is the
+command ID; the responder answers with a **SET train in the opposite direction** whose chunk 1 echoes
+that same ID. A GET answer is therefore literally a SET transfer, which is why two primitives (send a
+train / receive a train) cover all four directions, and why the responder's GET branch and the
+initiator's SET path are the same code.
+
+**Receiving a train** — validate each frame (command, chunk index exactly as expected, `SIZE` within
+bounds), append `SIZE` payload bytes, acknowledge. `SIZE = 0` on chunk 2 means a genuinely empty
+payload, a distinct outcome from failure. An expected total size may be supplied — *don't care*,
+*exactly empty*, or *exactly N* — enforced both incrementally (reject as soon as the running total
+would overshoot) and finally (exact match).
+
+**Rejection is signalled by withholding an ACK.** There is no NAK. The final chunk's acknowledgement
+is deliberately deferred until after the total-size check passes, so a sender learns its transfer was
+rejected by timing out rather than by a reply.
+
+## J.5 Timing, flow control and recovery
+
+**Two-level timeouts.** Waiting for a *new* message is either unbounded (a responder listening) or
+bounded by `timeout` (an initiator awaiting a reply); once a frame has begun arriving, the inter-part
+timeout is always `timeout`. A half-received frame must complete promptly or the whole frame is
+abandoned — the anti-desync rule.
+
+**Recovery is quiesce-and-resync, never retransmission.** Nothing is ever re-sent. On any fault — CRC
+failure (the frame simply never completes), unexpected chunk index, size mismatch, missing ACK — the
+side that noticed drains its receive path until the line has been quiet for `1.5 × timeout`, then
+holds off initiating for a further `1.5 × timeout`. With no framing marker to resync against, this
+mutual silence is what gets both sides back onto a clean frame boundary. **Both constants are part of
+the contract** (J.1's Class A rule) — a peer draining for less can transmit into the other's drain
+window.
+
+The write hold-off gates *initiating* transmissions only: acknowledgements are always sent, so a side
+keeps confirming the peer's traffic while backing off from its own.
+
+**Unsticking from outside.** A listening responder blocks indefinitely while holding the bus lock, so
+the only safe interruption comes from another task: cancel the in-flight read from outside the lock
+and let that read's own failure path perform the drain, or — if nothing was in flight — take the lock
+and drain directly. This is why `asy_uart_driver.py` keeps `cancel_read_timeout()` and infers "a read
+is in flight" from the lock rather than a flag of its own (C.3.2). That handshake is **latched and
+bounded**: a request survives an unrelated `ready()` entry, is acknowledged on every exit from the
+locked region as well as from inside the poll loop, and reports rather than blocks if a wedged
+holder never acknowledges — without which the recovery route could itself wedge (changelog B15).
+
+**The drain is bounded** (changelog A5), and `setup()` runs one at boot before the readiness gate
+opens: a peer mid-train, or one that outlived this side's reset, leaves partial-frame bytes in the
+receive buffer, and recovering from those reactively would log a fault on every boot of a live link
+— indistinguishable in the FRAM history from a real one. That boot drain shortens only its *first*
+probe, so a healthy link pays nothing for it; once a byte does turn up, every later round uses the
+full quiet window exactly as a resync does.
+
+## J.6 Deployment parameters
+
+`payload_size` and `timeout` are **agreed out of band and must match on both ends** — nothing is
+negotiated, now or at the C reconciliation (owner decision, 2026-09-11). A mismatched pair is
+therefore *diagnosed*, never recovered: bytes keep arriving while not one frame ever validates, and
+the module logs that signature (`errno` 32) naming all three candidates (CRC algorithm, baud rate,
+`payload_size`) rather than guessing one.
+
+**That diagnostic has a known blind spot, accepted rather than fixed** (owner decision,
+2026-09-12). `_resync()` gates it on `drained and self._valid_frames == 0`, but `drained` counts
+only what `_drain()` finds *after* a failure — and `readinto_until_complete()` has already consumed
+the short frame's bytes while waiting for a full-length one, discarding them on timeout. Measured
+against a genuinely `payload_size`-mismatched peer: `drained == 0` at every one of five resyncs, so
+`errno` 32 never fires. **What errno 32 does still catch is unparseable bytes arriving while this
+side is not mid-read** — a peer spewing continuously onto an idle line, which is the shape a bad
+baud rate often takes. **What it misses is a speak-when-spoken-to peer**, where every stray byte is
+swallowed by the failing read: that presents as repeated `errno` 22 (read timeout) plus `wrnno` 10
+resync warnings, and *that* is the signature to look for at the C reconciliation. Closing the gap
+would mean either giving `asy_uart_driver.UART` a flag that exists solely for this layer to read,
+or changing `readinto_until_complete()`'s sentinel contract to return a partial count for every
+caller — both more coupling than a logging line is worth. `tests/test_uart_comm_hazard.py`'s
+`..._a_peer_that_never_produces_a_valid_frame_is_diagnosed` pins the current behaviour, so it
+inverts the day anyone does change it. `payload_size` must be in `1 … 255` (`SIZE`/`CHUNKS` are single bytes; a zero-width
+payload has no room for the command ID). A mismatch desyncs the link outright, so an out-of-range
+value must never be silently clamped — C.13's readiness-gate treatment instead. Maximum transferable
+payload is `(0xFF - 1) × payload_size`.
+
+**Wire cost.** Every frame is exactly `5 + payload_size + crc` bytes, ACKs included — an ACK carries
+no payload but transmits `payload_size` bytes of padding regardless. At the defaults
+(`payload_size=48`, CRC16) a chunk exchange therefore costs `55 + 55 = 110` bytes of airtime to move
+48 payload bytes: 21.8 % efficiency for a single-chunk transfer, 39.7 % at 480 bytes, and an
+asymptote of **43.6 %**. This is accepted for the intended traffic (short bursts between two
+participants) and is not on its own a reason to change the wire format — see
+`UART_C_PORT_CHANGELOG.md` A10/A11 for the two candidates that would.
+
+**Poll granularity dominates throughput, not baud rate or protocol overhead.**
+`asy_uart_driver.py`'s `ready()` yields via `asyncio.sleep_ms(poll_wait_ms)` between readiness
+checks, defaulting to **20 ms**. A 55-byte frame takes 4.8 ms on the wire at 115200 baud but costs
+one or more whole poll intervals to notice, in each direction, for every frame of a stop-and-wait
+exchange. Measured against the defaults, a 480-byte transfer spends roughly 1.1 s of wall clock to
+move 480 bytes over an 11.5 kB/s link — about 4 % of link capacity, of which the overwhelming
+majority is poll latency. **A `UART` instance driving this protocol must therefore be constructed
+with a single-digit `poll_wait_ms`**; leaving the default in place makes every other efficiency
+property of the protocol irrelevant.
+
+**That rate is for a transaction, and a responder must not idle at it.** A listener waiting on a
+frame that may never come pays one scheduler round trip per poll for as long as it waits, which at
+2 ms is a large and permanent share of the event loop (Part F.5.9). The same instance therefore
+takes a second, slower `poll_idle_ms` for a wait with no deadline — 50 ms on the dev bench. It is
+the first-byte notice latency, so it must stay well under the peer's `timeout`: the initiator's ACK
+budget has to cover it, the frame read and the reply. **That is a construction refusal, not just a
+rule** — `timeout`'s floor below is the enforcement, and it carries `poll_idle_ms` precisely because
+a budget that cannot cover the idle poll expires before an idle responder has looked at the line
+once, so every request on a physically sound link fails.
+
+**`rxbuf` is checked at construction against two independent floors**, because stop-and-wait means a
+*complete* frame can land before the reader is next scheduled, and a frame whose tail the driver
+silently dropped is indistinguishable from a link fault: one whole framed frame (at
+`payload_size = 255` that is 260 bytes against the driver's own 256-byte default, so the maximum
+legal `payload_size` overruns the default outright), and one poll interval's worth of arrivals
+(`baud/10 × (poll_wait_ms + jitter)` — about 288 bytes at 115200 baud, the 20 ms default and the
+5 ms of scheduling slack the module adds; 230 without that slack). Too
+small is a readiness-gate refusal with its own errno, never a silent degradation. `timeout` has a
+floor too: `2 × poll_wait_ms + poll_idle_ms +` the measured worst-case GC pause. The GC term is what
+stops an ordinary collection reading as a link fault and resyncing the link continuously under memory
+pressure; the `poll_idle_ms` term is the peer's own first-byte notice latency above. Both ends agree
+`timeout` out of band, so checking the local instance's idle rate against it is what guarantees the
+peer's budget covers this side's latency — and it is checkable locally, which is the point.
+
+## J.7 Testing: the loopback model
+
+**Self-compatibility is a required, tested property**: one Python instance as initiator and one as
+responder must interoperate perfectly. The dev bench embodies this physically (the permanent
+UART0↔UART1 crossover jumper, `dev_legacy/README.md`), and it must also be reproducible without
+hardware, at **the `machine.UART` level — below `asy_uart_driver.py`** — in `tests/machine.py` (unit
+tier) and `digital_twin/machine.py` (twin tier, which has no `UART` at all today). The link is
+modelled per direction, with byte-stream fault injection: dropped/corrupted bytes, mid-frame
+truncation, injected noise, delayed delivery, stalled TX readiness, short writes, duplicated frames,
+receive-buffer overrun, and one-sided silence.
+
+Both models exist: `tests/machine.py`'s `UARTLink` (synchronous delivery, deterministic fault
+knobs) and `digital_twin/machine.py`'s (the same semantics plus real wire time derived from the
+configured baud rate, so a drain or cooldown cannot pass for the wrong reason). They are held to one
+shared set of assertions in `tests/_uart_link_contract.py` — the two may differ in fidelity, never
+in semantics — with `link.settle()` as the single seam between them.
+
+**Constraint — a loopback harness must never register a fake UART with a real `select.poll()`.** The
+Unix port does not re-evaluate a Python object's `ioctl()` after registration (the reason
+`tests/test_asy_uart_driver.py`'s `_StepPoller` exists, and the cause of a CI-only hang — CLAUDE.md's
+"Known hang cause"), and `digital_twin/unix_port_poll_prewarm.py` records a related `modselect.c`
+segfault with non-fd poll objects. The mock layer therefore supplies a paired poller stand-in
+re-querying each fake's `ioctl()` per call, installed by reassigning `uart.poller` after construction
+— the project's established mocking mechanism, keeping `src/` free of a testability seam.
+
+## J.8 Memory model
+
+**The protocol chunks the wire; the API must chunk the memory too.** Splitting a payload into frames
+is what lets a transfer cross a peer's small UART buffers, but it does nothing for RAM if both
+endpoints still have to materialise the whole payload at once — and the legacy implementation does
+exactly that: the receiver grows `res` by `+=` across the whole train (254 reallocations and a ~2×
+peak at the final copy for a maximum 12192-byte transfer, on a 264 kB device), and a responder's GET
+callback must return the complete answer as one buffer before the first frame goes out. Requirement
+"large payloads over little buffers" is only half-met until this is fixed.
+
+The module therefore follows Part G.2's buffer-ownership primitive, in the same paired shape
+`asy_fram_manager.py` uses (all of the following is implemented, not proposed):
+
+- **Two long-lived frame buffers per instance**, `LockableBuffer(framing.max_encoded(5 +
+  payload_size + crc_length), data_start=5, data_length=payload_size)`, allocated once from
+  configuration — the buffer holds what goes *on the wire*, so it has to carry the CRC the bus
+  driver appends and any codec overhead above it, not just the `5 + payload_size` frame: `get_buf()` is what the bus driver's
+  `writefrom()`/`readinto_until_complete()` operate on, `get_data_buf()` is the payload region. Header
+  fields are written in place by index. Steady-state frame traffic allocates nothing.
+- **Paired transfer APIs.** `uart_set(id, data)`/`uart_get(id)` keep today's allocate-and-copy
+  convenience for small payloads; `_into`/`_from` counterparts take a caller-owned buffer, and a
+  callback form drives a chunk at a time so a large transfer can stream to or from FRAM/flash without
+  ever existing in RAM as a whole.
+- **Preallocate from `CHUNKS`, never grow.** The total upper bound `CHUNKS × payload_size` is known
+  the moment the first frame of a train arrives, and the exact size is known whenever the caller
+  passed `exp_size` — neither case justifies an incrementally grown accumulator.
+- **A failed allocation degrades to the module's normal failure sentinel** and the quiesce-and-resync
+  path, never an exception (J.1).
+
+One consequence is worth stating because it is counterintuitive: a received frame is read whole into
+the instance's RX frame buffer and its payload region then slice-assigned into the destination, and
+*not* read header-first so the payload can land directly at its final offset. The two-stage read
+would save one ≤`payload_size` memcpy but costs an extra `ready()` round — one whole `poll_wait_ms`
+(J.6) — and, with CRC enabled, is not available at all, since the CRC covers the frame as a unit.
+
+**Padding must be zero-filled from a preallocated zero buffer**, not from a freshly built one. Today
+the full-length framing means every frame carries `payload_size - size` unused bytes; leaving them
+unwritten would transmit the previous frame's payload remnants.

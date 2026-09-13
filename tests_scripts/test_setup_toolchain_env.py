@@ -459,27 +459,75 @@ def test_ensure_bench_bridge_generates_credentials_when_none_given(setup_toolcha
 
 def test_run_project_dependency_install_skips_npm_when_flag_set(setup_toolchain: ModuleType, tmp_path: Path, recorded_run: list[list[str]]) -> None:
     (tmp_path / "package.json").write_text("{}")
-    setup_toolchain.run_project_dependency_install(tmp_path, skip_npm=True)
+    setup_toolchain.run_project_dependency_install(tmp_path, tmp_path, skip_npm=True, skip_apt=True)
     assert recorded_run == [["uv", "sync"]]
 
 
 def test_run_project_dependency_install_skips_npm_when_no_package_json(setup_toolchain: ModuleType, tmp_path: Path, recorded_run: list[list[str]]) -> None:
-    setup_toolchain.run_project_dependency_install(tmp_path, skip_npm=False)
+    setup_toolchain.run_project_dependency_install(tmp_path, tmp_path, skip_npm=False, skip_apt=True)
     assert recorded_run == [["uv", "sync"]]
 
 
-def test_run_project_dependency_install_skips_npm_when_not_on_path(setup_toolchain: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, recorded_run: list[list[str]]) -> None:
+def test_run_project_dependency_install_skips_npm_when_none_can_be_installed(
+    setup_toolchain: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, recorded_run: list[list[str]],
+) -> None:
+    # No .nvmrc to pin a version and no npm on PATH: nothing to install and nothing to run, so the
+    # soft skip is still the right outcome - it is only the *silent* skip on a pinned repo that was wrong.
     (tmp_path / "package.json").write_text("{}")
     monkeypatch.setattr(setup_toolchain.shutil, "which", lambda name: None)
-    setup_toolchain.run_project_dependency_install(tmp_path, skip_npm=False)
+    setup_toolchain.run_project_dependency_install(tmp_path, tmp_path, skip_npm=False, skip_apt=True)
     assert recorded_run == [["uv", "sync"]]
 
 
 def test_run_project_dependency_install_runs_npm_ci_when_available(setup_toolchain: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, recorded_run: list[list[str]]) -> None:
     (tmp_path / "package.json").write_text("{}")
     monkeypatch.setattr(setup_toolchain.shutil, "which", lambda name: "/usr/bin/npm")
-    setup_toolchain.run_project_dependency_install(tmp_path, skip_npm=False)
-    assert recorded_run == [["uv", "sync"], ["npm", "ci"]]
+    setup_toolchain.run_project_dependency_install(tmp_path, tmp_path, skip_npm=False, skip_apt=True)
+    assert recorded_run == [["uv", "sync"], ["npm", "ci"], ["npx", "playwright", "install", "chromium"]]
+
+
+# --- the pinned Node install (.nvmrc) --------------------------------------------------------
+
+
+def test_pinned_node_major_reads_nvmrc(setup_toolchain: ModuleType, tmp_path: Path) -> None:
+    (tmp_path / ".nvmrc").write_text("22\n")
+    assert setup_toolchain.pinned_node_major(tmp_path) == "22"
+    (tmp_path / ".nvmrc").write_text("v20.11.1\n")
+    assert setup_toolchain.pinned_node_major(tmp_path) == "20"
+
+
+def test_pinned_node_major_is_none_without_an_nvmrc(setup_toolchain: ModuleType, tmp_path: Path) -> None:
+    assert setup_toolchain.pinned_node_major(tmp_path) is None
+
+
+def test_ensure_node_defers_to_a_matching_node_already_on_path(
+    setup_toolchain: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, recorded_run: list[list[str]],
+) -> None:
+    # The installer exists to make a bare machine work, never to override a correct Node the caller
+    # already manages (nvm, a system install, CI's own setup-node).
+    (tmp_path / ".nvmrc").write_text("22\n")
+    monkeypatch.setattr(setup_toolchain, "node_on_path_matches", lambda major: True)
+    assert setup_toolchain.ensure_node(tmp_path, tmp_path) is None
+    assert recorded_run == []
+
+
+def test_ensure_node_does_nothing_without_a_pin(setup_toolchain: ModuleType, tmp_path: Path, recorded_run: list[list[str]]) -> None:
+    assert setup_toolchain.ensure_node(tmp_path, tmp_path) is None
+    assert recorded_run == []
+
+
+def test_ensure_node_reuses_an_already_installed_tree(
+    setup_toolchain: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, recorded_run: list[list[str]],
+) -> None:
+    # Idempotence: a second `env` run must not re-download a Node that is already extracted.
+    (tmp_path / ".nvmrc").write_text("22\n")
+    monkeypatch.setattr(setup_toolchain, "node_on_path_matches", lambda major: False)
+    monkeypatch.setattr(setup_toolchain, "node_tarball_name", lambda major, env: "node-v22.0.0-linux-arm64.tar.xz")
+    bindir = tmp_path / "node" / "node-v22.0.0-linux-arm64" / "bin"
+    bindir.mkdir(parents=True)
+    (bindir / "node").write_text("#!/bin/sh\n")
+    assert setup_toolchain.ensure_node(tmp_path, tmp_path) == bindir
+    assert recorded_run == [], "an already-installed Node was re-downloaded"
 
 
 # --- CLI wiring ---------------------------------------------------------------------------------

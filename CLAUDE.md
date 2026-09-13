@@ -105,6 +105,34 @@ information):
   own code (see "Microdot / REST layer" below), never by touching this file. `src/` and `ext/` are
   copied flat into one directory and frozen together for the refactored firmware build, which is why
   they live at the same directory depth in the repo.
+- **The UART message protocol (`src/asy_uart_comm.py`, promoted) has a second
+  implementation in C on the Arduino peer — so its wire format, accept/reject rules and recovery
+  timings are a two-implementation contract, not this repo's to change unilaterally.** The protocol
+  itself is specified in SPECIFICATION.md Part J; **every change made to it gets an entry in
+  `UART_C_PORT_CHANGELOG.md`** (a temporary file, deleted once the C side is imported and
+  reconciled), classified as protocol-level ("must be mirrored in C") or Python-internal ("no C
+  impact") — the second class is logged too, so a future session doesn't re-derive it. Prefer a
+  protocol-level change that only tightens *receiver* validation over one that alters emitted bytes:
+  the former keeps a mixed-version pair working, the latter is a coordinated flag-day needing the
+  owner's decision. **The C side's conformance is expected but unverified** — it mirrors the Python
+  implementation's intended behavior, but may not share every known flaw and may have its own, so
+  every Class A entry must be re-verified against the real C source once it lands. **It is, however,
+  prototypical — exactly like this repo's legacy Python — with no device in the field running it**
+  (owner, 2026-09-11), so no change recorded in the changelog can break a live pair: both sides are
+  reflashed together at reconciliation, and the flag-day framing above describes an obligation to
+  record, not a deployment risk to weigh. Real hardware running the C side exists and can be
+  connected to the dev board, making the promoted module testable against the genuine second
+  implementation rather than only against itself over the bench crossover jumper. **The protocol's
+  parameters (`payload_size`, `timeout`, baud) stay fixed by out-of-band agreement** — owner
+  decision, 2026-09-11: no version or capability negotiation is to be added, so a mismatched pair
+  is diagnosed (it looks like a dead link that nonetheless carries bytes), never negotiated. Two
+  further standing facts: the module is **standalone/self-contained** (its BME688/BSEC first use case is out
+  of scope and constrains nothing), and it is **strictly initiator/responder, never a symmetric
+  peer** — there is no collision arbitration, so simultaneous initiation is out of contract.
+  **`dev` carries two instances across its permanent crossover jumper and `wozi` carries none** —
+  wozi is never physically flashed, so wiring it there would add an untestable peripheral. The
+  protocol's own wire constants and recovery timings live in `src/asy_uart_comm.py` as `const()`
+  values; a change to any of them is Class A by definition.
 - **`dev` config is a bench rig only** — its quirks (e.g. LED/Neopixel REST routes referencing an
   object that's never instantiated) are explicitly out of scope. Don't fix them as if they were
   bugs.
@@ -162,6 +190,22 @@ information):
 - **Long-blocking operations must not stall timing-sensitive work** — standing design principle
   for all new code; full reasoning (including the retired `get_long_block_lock()` mechanism) is in
   SPECIFICATION.md Part F.3.
+- **`asy_uart_driver.py` and `asy_uart_comm.py` may never block the asyncio loop — not even in a
+  wait state.** They may time out and handle it; they may not wait synchronously (project owner,
+  2026-09-11). This is sharper than F.3's general principle and is easy to violate by accident:
+  `machine.UART.read()/readinto()` wait out `timeout_char` for every byte asked for that has not
+  arrived yet, inside `mp_event_handle_nowait()`, which never yields — so a plain "read the whole
+  frame after `POLLIN`" holds the loop for the frame's entire wire time (measured: 4.4ms per
+  53-byte frame at 115200 baud). The fix needs **both** a clamp to `uart.any()` on every read and a
+  real yield between rounds; the clamp alone is *worse*, because `ready()` returns `True` with no
+  `await` and the block simply moves into a Python loop. The yield lives in `ready()` itself, which
+  every read loop goes through, so the invariant is one guarantee in one place rather than a
+  per-call-site obligation. **The mirror-image failure is just as forbidden**: `ready()` polls, so a
+  listener waiting on traffic that may never come must not idle at the transaction rate — an
+  instance takes a second, slower `poll_idle_ms` for a wait with no deadline (Part F.5.9). Full
+  account and the measured before/after: SPECIFICATION.md Parts F.5.8 and F.5.9 — F.5.8 also states
+  why this must **not** be generalised to `asy_i2c_driver.py`/`asy_spi_driver.py`, whose peripherals
+  expose no partial-read API to clamp to (that case stays F.2's watchdog backstop).
 - **A new bus-facing (I2C/SPI) device gets bus-hazard test coverage across all four test tiers that
   apply to it — never forget this** (project owner's explicit, standing direction): same-device
   read-vs-write concurrency, cross-device interleaving if it shares a bus in either variant, and an
@@ -415,6 +459,21 @@ information):
   the `system_service.py` `_timer_sequencer()` Timer-GC fix above: before that fix, `start_timers()`
   hung forever, so `start_and_check_tasks()` never even got called and no sibling tasks ever
   existed to leak — the soak test's own bounded-completion path was previously unreachable.
+- **Known segfault cause, fixed**: a **nested `asyncio.run()` while any other task is still parked
+  in the shared task queue segfaults the MicroPython Unix port** - it does not raise the
+  `RuntimeError: asyncio.run() cannot be called from a running event loop` CPython would. `run()`
+  installs a fresh event loop and task queue; the outer loop's already-queued tasks then belong to
+  the replaced queue, and resuming the outer loop walks freed pointers. Reduced to a 12-line
+  reproducer (`create_task()` a parked sleeper, then `asyncio.run()` inside the running coroutine),
+  and **not** load-, heap-size- or timing-dependent: it is deterministic and uncatchable, so
+  `microtest.py`'s own `except Exception` never sees it and the file simply dies mid-run with no
+  summary line. **Rule: a test helper that calls `asyncio.run()` (this repo's `run()` wrappers in
+  `tests/_uart_comm_harness.py` and friends, and anything calling `hazard_pair()`/`build_pair()`
+  style builders that run their own setup) must only ever be called from synchronous test-function
+  scope, never from inside a coroutine** - build the fixture at the top of the test, then pass it
+  into the one coroutine `run()` drives. Audited across `tests/`, `digital_twin/` and `src/`: no
+  other call site does this. Don't re-diagnose a test file that segfaults partway through with no
+  `N/N passed` line as a memory bug in the code under test.
 - **Known intermittent-`MemoryError` cause #2, fixed**: a real SIGINT landing inside a
   `gc_collect()` leaves the MicroPython Unix port's heap **permanently locked** — the stuck
   `GC_COLLECT_FLAG` makes every later allocation fail with `MemoryError: memory allocation failed,
@@ -595,6 +654,14 @@ deb http://archive.ubuntu.com/ubuntu noble main universe
 deb http://archive.ubuntu.com/ubuntu noble-updates main universe
 deb http://security.ubuntu.com/ubuntu noble-security main universe
 EOF
+# ON arm64 (the bench Pi4 itself), the three URLs above serve NO packages - archive.ubuntu.com and
+# security.ubuntu.com are x86-only, and Ubuntu's arm64 packages live on ports.ubuntu.com. Debian's
+# own mirror needs no such split, so only the noble leg is affected. Verified 2026-09-12 by running
+# this recipe on the bench Pi4: `--arch=arm64` plus the ports mirror produces a working
+# "Ubuntu 24.04 LTS" chroot, the archive.ubuntu.com form produces nothing installable. On arm64 use:
+#   debootstrap --variant=minbase --arch=arm64 noble "$CHROOT" http://ports.ubuntu.com/ubuntu-ports
+# and the same three lines against http://ports.ubuntu.com/ubuntu-ports (noble, noble-updates,
+# noble-security all on that one host - there is no separate security mirror for ports).
 cp /etc/resolv.conf "$CHROOT/etc/resolv.conf"
 mount --bind /proc "$CHROOT/proc"; mount --bind /sys "$CHROOT/sys"
 mount --bind /dev "$CHROOT/dev"; mount --bind /dev/pts "$CHROOT/dev/pts"
@@ -692,8 +759,11 @@ it already. And Debian has no `universe`, so the `main`-only lists above are com
 Check the compiler actually landed as expected before trusting the run:
 `chroot "$CHROOT" gcc --version` must report 14.x (or newer), and the noble one 13.x.
 
-The trixie leg was last satisfied on 2026-09-11 by a full from-scratch build plus every suite on
-the bench Pi4 itself, which runs trixie / GCC 14.2.
+The trixie leg was last satisfied on 2026-09-12 by a real `--variant=minbase` trixie chroot on the
+bench Pi4 (GCC 14.2.0): lint and typecheck clean, then `env --tier generic` run end to end, which
+installed the `.nvmrc`-pinned Node from nothing (v22.23.2), 203 npm packages and the Playwright
+Chromium build. The noble leg was satisfied the same day from the `--arch=arm64` ports-mirror form
+noted above.
 
 **What counts as passing**: `lint.sh`/`typecheck.sh`/`scripts/test.sh` all run to completion with
 exit 0 — all eight scopes this setup covers (see "Code quality tooling" above) are fully-reviewed

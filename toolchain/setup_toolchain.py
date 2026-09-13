@@ -914,11 +914,101 @@ def ensure_bench_bridge(uplink_iface: str | None, wifi_iface: str | None, ssid: 
     return ssid
 
 
-def run_project_dependency_install(repo_root: Path, *, skip_npm: bool) -> None:
-    """The Python (`uv sync`) and website (`npm ci`, when applicable) dev-tooling installs every
-    tier needs. Missing npm/no package.json is a soft skip. Deliberately runs with env=None
-    (inherit the caller's environment), unlike every other subprocess here, since build_env()'s
-    fixed PATH would just as reliably hide the caller's own uv/npm install."""
+def pinned_node_major(repo_root: Path) -> str | None:
+    """The Node major this project pins, read from .nvmrc - the same file README tells a human to
+    point `nvm use` at, so there is exactly one pin rather than a second one living here."""
+    nvmrc = repo_root / ".nvmrc"
+    if not nvmrc.exists():
+        return None
+    major = nvmrc.read_text().strip().lstrip("v")
+    return major.split(".")[0] if major else None
+
+
+def node_on_path_matches(major: str) -> bool:
+    node = shutil.which("node")
+    if node is None:
+        return False
+    try:  # the resolved absolute path, not "node" - a partial executable path here would resolve
+        # against whatever PATH happens to hold when this runs.
+        version = subprocess.run([node, "--version"], capture_output=True, text=True, check=True).stdout
+    except (OSError, subprocess.CalledProcessError):
+        return False
+    return version.strip().lstrip("v").split(".")[0] == major
+
+
+def node_tarball_name(major: str, env: dict[str, str]) -> str:
+    """The exact release filename for this host's architecture, resolved from the Node dist
+    SHASUMS for the pinned major. Resolved rather than assembled: the patch version moves, and
+    guessing it would make this installer fail every time upstream publishes a new one."""
+    machine = os.uname().machine
+    arch = {"aarch64": "arm64", "arm64": "arm64", "x86_64": "x64"}.get(machine)
+    if arch is None:
+        raise SystemExit(f"No official Node build for this architecture ({machine}) - install Node {major} by hand")
+    url = f"https://nodejs.org/dist/latest-v{major}.x/SHASUMS256.txt"
+    sums = run(["curl", "-fsSL", "--max-time", "60", url], env=env)
+    suffix = f"-linux-{arch}.tar.xz"
+    for line in sums.splitlines():
+        parts = line.split()  # "<sha256>  <filename>" per line
+        if parts[1:] and parts[1].endswith(suffix):
+            return parts[1]
+    raise SystemExit(f"No linux-{arch} build listed for Node {major} at {url}")
+
+
+def ensure_node(toolchain_dir: Path, repo_root: Path) -> Path | None:
+    """Installs the .nvmrc-pinned Node into the managed toolchain directory, the same way the ARM
+    toolchain and pico-sdk are managed, and returns its bin directory.
+
+    Deliberately NOT an apt package: Debian trixie ships Node 20 while this project pins 22, so
+    `apt install nodejs` would silently install a version the repo says not to use. Returns None
+    when a matching Node is already on PATH (nvm, a system install, CI's own setup-node) - this
+    exists to make a bare machine work, never to override a correct Node the caller already has.
+    """
+    major = pinned_node_major(repo_root)
+    if major is None:
+        log("No .nvmrc - leaving Node to the caller")
+        return None
+    if node_on_path_matches(major):
+        log(f"Node {major}.x already on PATH - using it")
+        return None
+
+    node_root = toolchain_dir / "node"
+    env = network_env()
+    tarball = node_tarball_name(major, env)
+    target = node_root / tarball.replace(".tar.xz", "")
+    bindir = target / "bin"
+    if (bindir / "node").exists():
+        log(f"Node already installed at {target}")
+        return bindir
+
+    log(f"Installing Node {major}.x ({tarball}) into {node_root}")
+    node_root.mkdir(parents=True, exist_ok=True)
+    url = f"https://nodejs.org/dist/latest-v{major}.x/{tarball}"
+    with tempfile.TemporaryDirectory() as tmp:
+        archive = Path(tmp) / tarball
+        run(["curl", "-fsSL", "--max-time", "600", "-o", str(archive), url], env=env)
+        # Verified against the same SHASUMS the filename came from: this is a binary landing on a
+        # bench that flashes firmware, so an unverified download is not acceptable here.
+        expected = next(
+            line.split()[0] for line in run(
+                ["curl", "-fsSL", "--max-time", "60", f"https://nodejs.org/dist/latest-v{major}.x/SHASUMS256.txt"],
+                env=env,
+            ).splitlines() if line.split()[1:2] == [tarball]
+        )
+        actual = run(["sha256sum", str(archive)], env=env).split()[0]
+        if actual != expected:
+            raise SystemExit(f"Node tarball checksum mismatch: expected {expected}, got {actual}")
+        run(["tar", "-xJf", str(archive), "-C", str(node_root)], env=env)
+    if not (bindir / "node").exists():
+        raise SystemExit(f"Node install did not produce {bindir / 'node'}")
+    log(f"Node installed: {bindir}")
+    return bindir
+
+
+def run_project_dependency_install(repo_root: Path, toolchain_dir: Path, *, skip_npm: bool, skip_apt: bool) -> None:
+    """The Python (`uv sync`) and website (`npm ci`) dev-tooling installs every tier needs.
+    Deliberately runs with env=None (inherit the caller's environment), unlike every other
+    subprocess here, since build_env()'s fixed PATH would just as reliably hide the caller's own
+    uv/npm install."""
     log("Installing Python project dependencies (uv sync)")
     run(["uv", "sync"], cwd=repo_root)
     if skip_npm:
@@ -927,11 +1017,46 @@ def run_project_dependency_install(repo_root: Path, *, skip_npm: bool) -> None:
     if not (repo_root / "package.json").exists():
         log("No package.json found - skipping npm ci")
         return
-    if shutil.which("npm") is None:
-        log("npm not found on PATH - skipping npm ci (see README.md's \"Website tooling\" section to install Node)")
+    # Installs the pinned Node when the host has none, instead of the previous soft skip that left
+    # the whole web tier silently unrunnable - which is exactly what happened on the bench Pi4.
+    # Not gated on --skip-apt: no system package and no sudo, just a tarball into the managed
+    # toolchain directory. --skip-npm above is the gate for "I do not want the JS side at all".
+    node_bin = ensure_node(toolchain_dir, repo_root)
+    env = None
+    if node_bin is not None:
+        env = dict(os.environ)
+        env["PATH"] = f"{node_bin}{os.pathsep}{env.get('PATH', '')}"
+    elif shutil.which("npm") is None:
+        log("npm not found and no Node could be installed - skipping npm ci")
         return
     log("Installing website tooling dependencies (npm ci)")
-    run(["npm", "ci"], cwd=repo_root)
+    run(["npm", "ci"], cwd=repo_root, env=env)
+    ensure_playwright_browser(repo_root, env, skip_apt=skip_apt)
+
+
+def ensure_playwright_browser(repo_root: Path, env: dict[str, str] | None, *, skip_apt: bool) -> None:
+    """Vitest runs in a real Chromium via Playwright, not jsdom (SPECIFICATION.md Part H), so
+    `npm ci` alone leaves `npm test` unable to start - it fails with Playwright's own "please run
+    npx playwright install". Downloads into ~/.cache/ms-playwright, the same place CI caches.
+
+    The browser download needs no root; only its OS-level libraries do, which is why those are a
+    separate `install-deps` call skipped under --skip-apt. Non-fatal throughout: a machine that
+    only ever runs the Python tiers should still finish `env` successfully."""
+    log("Installing the Playwright Chromium build vitest runs against")
+    # try/except rather than check=False: run() returns stdout either way, so an exception is the
+    # only signal it gives - and this must stay non-fatal without silently swallowing a failure.
+    try:
+        run(["npx", "playwright", "install", "chromium"], cwd=repo_root, env=env)
+    except SetupError as exc:
+        log(f"Playwright browser install failed ({exc}) - `npm test` will not run until it succeeds")
+        return
+    if skip_apt:
+        log("Skipping Playwright OS dependencies (--skip-apt) - already present on a normal desktop/CI image")
+        return
+    try:
+        run(["npx", "playwright", "install-deps", "chromium"], cwd=repo_root, env=env)
+    except SetupError as exc:
+        log(f"Playwright OS dependencies not installed ({exc}) - install them by hand if `npm test` cannot start")
 
 
 def run_env(args: argparse.Namespace, versions_path: Path, versions: dict[str, Any]) -> int:
@@ -947,7 +1072,7 @@ def run_env(args: argparse.Namespace, versions_path: Path, versions: dict[str, A
                 reach genuine internet/NTP - idempotent, see ensure_bench_bridge().
     """
     run_setup(args, versions_path, versions)
-    run_project_dependency_install(REPO_ROOT, skip_npm=args.skip_npm)
+    run_project_dependency_install(REPO_ROOT, args.toolchain_dir, skip_npm=args.skip_npm, skip_apt=args.skip_apt)
 
     if args.tier == "generic":
         log("Generic environment ready: Python/Node deps installed, firmware/Unix-port toolchain verified")

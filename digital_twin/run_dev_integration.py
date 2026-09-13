@@ -321,6 +321,15 @@ async def main(config: RunConfig) -> "dict[str, Any]":
     try:
         await _wait_until_built()
 
+        # The bench's permanent crossover jumper. Without it the twin models a dev board whose
+        # jumper is missing, and the link exerciser sensortask_dev now starts would spend the whole
+        # run timing out instead of moving bytes (SPECIFICATION.md Part J, H4).
+        assert sensortask_dev.uart0 is not None and sensortask_dev.uart1 is not None
+        assert sensortask_dev.uart0._uart is not None and sensortask_dev.uart1._uart is not None
+        _link, poll_a, poll_b = machine.attach_crossover_jumper(sensortask_dev.uart0._uart, sensortask_dev.uart1._uart)
+        sensortask_dev.uart0.poller = poll_a  # type: ignore[assignment]
+        sensortask_dev.uart1.poller = poll_b  # type: ignore[assignment]
+
         assert sensortask_dev.i2c0 is not None and sensortask_dev.i2c1 is not None and sensortask_dev.spi0 is not None
         assert sensortask_dev.conn is not None and sensortask_dev.watchdog is not None
         # asy_i2c_driver.I2C/asy_spi_driver.SPI wrap the real machine.I2C/machine.SPI at their own

@@ -18,6 +18,7 @@ from _shared_rest_roundtrip import (
     assert_sensor_payload_not_self_wrapped,
     drain_json_response_body,
 )
+from machine import LinkPoller, UARTLink
 from microdot import Request, Response  # type: ignore[import-not-found]
 
 import asy_spi_driver
@@ -516,6 +517,7 @@ def _all_loggers() -> "list[Any]":
     assert d.conn is not None and d.ntp is not None and d.fram is not None and d.sysfunct is not None
     assert d.sgp_reader is not None and d.bmp_reader is not None and d.scd_reader is not None
     assert d.pixel is not None and d.notify_service is not None and d.webserver is not None
+    assert d.uart_initiator is not None and d.uart_responder is not None
     return [
         d.conn.pr,
         d.conn.cfgmgr.pr,
@@ -533,6 +535,8 @@ def _all_loggers() -> "list[Any]":
         d.pixel.pr,
         d.notify_service.pr,
         d.notify_service.cfgmgr.pr,
+        d.uart_initiator.pr,  # the two ends of the bench rig's permanent UART crossover jumper,
+        d.uart_responder.pr,  # each with its own name so their histories never merge
         d.webserver.pr,
     ]
 
@@ -895,14 +899,20 @@ def test_webserver_status_get_reflects_the_real_object_graph() -> None:
     res = _dispatch("GET", "/status")
     body = json.loads(status_body(res))
     assert set(body.keys()) == {"networking", "system", "notification", "sensors", "errcount"}
-    assert set(body["sensors"].keys()) == {"SGP40"}  # only sensor with real maintenance data
+    # SGP40 is the only real sensor with maintenance data; UARTLINK is the bench rig's own link
+    # exerciser reporting through the same variable-length registration list (H4).
+    assert set(body["sensors"].keys()) == {"SGP40", "UARTLINK"}
     assert "BackupTS" in body["sensors"]["SGP40"] and "RestoreTS" in body["sensors"]["SGP40"]
+    assert body["sensors"]["UARTLINK"] == {"Transfers": 0, "Failures": 0}  # no exerciser task run yet
     assert "SysUptime" in body["system"] and "LocalTime" in body["system"] and "UtcTime" in body["system"]
     assert "WifiUptime" in body["networking"] and "NtpSynced" in body["networking"]
     assert "Triggered" in body["notification"] and "PauseTime" in body["notification"]
     # One entry per real module + per real ConfigManager + this service's own "WEBSERVER" entry -
-    # same 16-owner enumeration _collect_level_setters()/_collect_error_sources() both share, plus one.
-    assert len(body["errcount"]) == 17
+    # same 18-owner enumeration _collect_level_setters()/_collect_error_sources() both share, plus
+    # one. 18 rather than 16 since the bench rig's two UART crossover ends each register their own.
+    assert len(body["errcount"]) == 19
+    assert "UART_INIT" in body["errcount"]
+    assert "UART_RESP" in body["errcount"]
 
 
 def test_webserver_status_put_reset_errors_clears_a_real_modules_history() -> None:
@@ -994,6 +1004,147 @@ def test_is_hotspot_active_wiring_put_to_unmatched_path_still_405_in_hotspot_mod
     res = _dispatch("PUT", "/generate_204", {})
     assert res.status_code == 405
 
+
+# ---------------------------------------------------------------------------
+# The dev-only UART link exerciser (UART_PROMOTION_REQUIREMENTS.md H4). Nothing on a live system
+# initiates a transfer but this loop, so without it every claim about the link coexisting with the
+# webserver is a claim about an idle link. These tests run it against the real constructed graph
+# with the two fake UARTs actually crossed over.
+# ---------------------------------------------------------------------------
+
+
+def _cross_the_dev_uarts() -> "UARTLink":
+    # build_system() constructs the two ends but nothing joins them - the real bench does that with
+    # a jumper. Bounded LinkPoller, never a real select.poll(): the Unix port never re-evaluates a
+    # Python object's ioctl() after registration (CLAUDE.md's known CI hang).
+    assert sensortask_dev.uart0 is not None and sensortask_dev.uart1 is not None
+    fake_a = sensortask_dev.uart0._uart
+    fake_b = sensortask_dev.uart1._uart
+    assert fake_a is not None and fake_b is not None
+    link = UARTLink(fake_a, fake_b)
+    sensortask_dev.uart0.poller = LinkPoller(fake_a)  # type: ignore[assignment]
+    sensortask_dev.uart1.poller = LinkPoller(fake_b)  # type: ignore[assignment]
+    return link
+
+
+async def _run_exerciser_until(predicate: "Callable[[], bool]", rounds: int = 400) -> None:
+    # Drives the responder's own listen loop beside the real exerciser task, exactly as
+    # _collect_task_starters() wires them, and stops as soon as the caller's condition holds.
+    assert sensortask_dev.uart_responder is not None
+    listener = asyncio.create_task(sensortask_dev.uart_responder._listen_loop())
+    exerciser = asyncio.create_task(sensortask_dev._uart_exercise_loop())
+    try:
+        for _ in range(rounds):
+            if predicate():
+                return
+            await asyncio.sleep_ms(5)
+    finally:
+        exerciser.cancel()
+        listener.cancel()
+        await asyncio.sleep_ms(5)
+
+
+def test_the_link_exerciser_moves_real_bytes_and_counts_them() -> None:
+    run(sensortask_dev.build_system(cfg_path=_tmp_cfg_dir()))
+    link = _cross_the_dev_uarts()
+    run(_run_exerciser_until(lambda: sensortask_dev.uart_transfers >= 1))
+    assert sensortask_dev.uart_transfers >= 1, "the exerciser never completed a transfer over a healthy link"
+    assert sensortask_dev.uart_failures == 0, f"a healthy link reported {sensortask_dev.uart_failures} failures"
+    # The bytes were real, not a callback shortcut: the banner has to have crossed the wire.
+    assert sensortask_dev.uart1 is not None
+    responder_fake = sensortask_dev.uart1._uart
+    assert responder_fake is not None
+    assert bytes(link.direction_from(responder_fake).wire_log).find(b"dev-uart-crossover") >= 0
+
+
+def test_the_exerciser_progress_is_visible_through_the_real_status_route() -> None:
+    # H4's assertion surface: a bench test can only tell a live link from an idle one through the
+    # API, so the counters have to actually reach /status.
+    run(sensortask_dev.build_system(cfg_path=_tmp_cfg_dir()))
+    _cross_the_dev_uarts()
+    run(_run_exerciser_until(lambda: sensortask_dev.uart_transfers >= 2))
+    body = json.loads(status_body(_dispatch("GET", "/status")))
+    assert body["sensors"]["UARTLINK"]["Transfers"] >= 2
+    assert body["sensors"]["UARTLINK"]["Failures"] == 0
+
+
+def test_a_dead_link_is_counted_as_failure_and_never_raises_out_of_the_task() -> None:
+    # The failure direction: with nothing on the other end the exerciser must keep running and
+    # report through its counter, not die and lean on the task supervisor to restart it.
+    run(sensortask_dev.build_system(cfg_path=_tmp_cfg_dir()))
+    _cross_the_dev_uarts()  # crossed, but no listener is started below
+    assert sensortask_dev.uart_initiator is not None
+
+    async def scenario() -> bool:
+        exerciser = asyncio.create_task(sensortask_dev._uart_exercise_loop())
+        try:
+            # One failed GET costs the real timeout plus a resync drain - 1000ms + 1500ms at dev's
+            # own settings - so this window has to outlast that, not just the healthy round trip.
+            for _ in range(1600):
+                if sensortask_dev.uart_failures >= 1:
+                    return not exerciser.done()  # still alive after counting a failure
+                await asyncio.sleep_ms(5)
+            return False
+        finally:
+            exerciser.cancel()
+            await asyncio.sleep_ms(5)
+
+    assert run(scenario()), "the exerciser died on a dead link instead of counting the failure"
+    assert sensortask_dev.uart_transfers == 0
+    assert sensortask_dev.uart_failures >= 1
+
+
+def test_the_exerciser_is_registered_as_a_real_task_starter() -> None:
+    # The wiring itself, not just the loop: a correct loop nobody starts is still an idle link.
+    run(sensortask_dev.build_system(cfg_path=_tmp_cfg_dir()))
+    before = sensortask_dev.uart_transfers
+    _cross_the_dev_uarts()
+    starters = sensortask_dev._collect_task_starters()
+
+    async def scenario() -> None:
+        tasks = [start() for start in starters]
+        try:
+            for _ in range(400):
+                if sensortask_dev.uart_transfers > before:
+                    return
+                await asyncio.sleep_ms(5)
+        finally:
+            for task in tasks:
+                task.cancel()
+            await asyncio.sleep_ms(10)
+
+    run(scenario())
+    assert sensortask_dev.uart_transfers > before, "no registered task starter ever drove the link"
+
+
+def test_the_echo_command_round_trips_a_payload_across_the_jumper() -> None:
+    # The dev rig's own two-command protocol, of which only the banner GET was ever exercised. A
+    # SET stores the payload through the message callback, the matching GET hands it straight back,
+    # and an id neither callback knows is refused rather than answered with something else - which
+    # is what makes the banner's own answer evidence of anything.
+    run(sensortask_dev.build_system(cfg_path=_tmp_cfg_dir()))
+    sensortask_dev.uart_last_echo = None
+    _cross_the_dev_uarts()
+    initiator = sensortask_dev.uart_initiator
+    responder = sensortask_dev.uart_responder
+    assert initiator is not None and responder is not None
+    echo_id = 0x02  # sensortask_dev's own _UART_CMD_ECHO; const() folds the name out of that module
+
+    async def scenario() -> "tuple[bool, bytearray | None, bytearray | None]":
+        listener = asyncio.create_task(responder._listen_loop())
+        try:
+            sent = await initiator.uart_set(echo_id, b"ping-across-the-jumper")
+            echoed = await initiator.uart_get(echo_id)
+            unknown = await initiator.uart_get(0x7E)  # neither banner nor echo
+            return sent, echoed, unknown
+        finally:
+            listener.cancel()
+            await asyncio.sleep_ms(5)
+
+    sent, echoed, unknown = run(scenario())
+    assert sent is True
+    assert echoed is not None and bytes(echoed) == b"ping-across-the-jumper", echoed
+    assert unknown is None
 
 if __name__ == "__main__":
     import microtest

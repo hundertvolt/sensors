@@ -54,6 +54,40 @@ constraints.
   Unix-port-tests were pulled forward out of this order already, once `math_helpers.py` cleared the
   `src/` bar, and that's now standing practice for every new file, not a one-off.
 
+- **The UART protocol's C implementation is not in this repo yet.** It runs on the Arduino peer and
+  is the protocol's second implementation (SPECIFICATION.md Part J). A future session imports it,
+  then reconciles it against `UART_C_PORT_CHANGELOG.md` — the running log of protocol changes made
+  during the Python module's `src/` promotion — re-verifying each entry's conformance assumption
+  against the real C source. That log file is deleted once the reconciliation is done; this entry
+  comes out with it. **It is prototypical, exactly like this repo's legacy Python, with no device in
+  the field running it** (owner, 2026-09-11) — so the reconciliation has no deployed pair to keep
+  working and no flag day to schedule; both sides are simply reflashed together. Real hardware
+  running the C side exists and can be connected to the dev board, so the reconciliation session can
+  test the two implementations against each other for real rather than only reading them side by
+  side.
+- **Auto-builder: decide whether `sensortask_dev` importing `asy_uart_comm` is selection enough, or
+  whether a separate selectable `uart_crossover` unit is still wanted.** The original requirement was
+  recorded (owner, 2026-09-11) as: `asy_uart_comm.py` is a *submodule*, not an include-selectable
+  one, with no upstream module, so a dev build meant to exercise the crossover jumper had nothing
+  that would cause it to be included at all — hence a selectable `uart_crossover` module constructing
+  the two instances across the jumper.
+  **That premise has since changed, and the change is worth stating plainly rather than leaving the
+  original entry to mislead the integration session.** `src/sensortask_dev.py` now constructs both
+  instances itself (SPECIFICATION.md Part A.7 step 13b), so it *is* the upstream module the entry
+  asked for: an import-scanning builder that selects `sensortask_dev` pulls `asy_uart_comm` in behind
+  it. Independently, today's `scripts/build_firmware.py` globs and freezes all of `src/*.py`, so a
+  dev firmware built with it contains the module either way. **The H3/H4 hardware tiers are therefore
+  not blocked, and have now been run** (2026-09-11, dev bench, owner's go-ahead in-session):
+  `tests_hardware/flash/test_uart_crossover.py` 2/2 and
+  `tests_hardware/bench/test_uart_link_under_api_load.py` 2/2, against a dev firmware built from the
+  branch and flashed for the purpose. Neither skip guard fired, which independently confirms
+  `asy_uart_comm` does reach a dev build behind `sensortask_dev`; they remain only as a diagnostic if
+  some future firmware genuinely lacks the module.
+  What is left for the integration session is a design question this branch should not answer for it:
+  whether the auto-builder's selection model wants the variant entry point to carry the link (as it
+  does now), or a separate selectable `uart_crossover` unit so the link can be included or omitted
+  independently of `sensortask_dev`. Still **no file, no code and no placeholder** added here for it.
+
 ## Open questions (need owner input or further investigation)
 
 1. `modules/_boot.py`'s `import sensortask.py` (literal `.py`) — works reliably on real hardware
@@ -247,7 +281,73 @@ constraints.
     deliberate asymmetry against `_store_err()`'s own guard, and the tier coverage:
     SPECIFICATION.md Part C.7.
 
+16. **Seven `src/` modules number `errno`/`wrnno` inside the range `base_classes.py` reserves.**
+   Part C.7 reserves `errno` 1-9 and `wrnno` 1-2 for `SensorReader`/`SensorReaderConfig`, and
+   `api_response.py`'s `handle_set_cmd()` owns the fixed cross-module slot `errno=99`; the project
+   owner's standing direction (2026-09-11) is that **every** module aligns to that reservation for
+   conformity and clash avoidance, whether or not it subclasses `SensorReader`. Audited across
+   `src/`: `config_manager.py` (`errno` 1-14, `wrnno` 1-6), `system_service.py` (`errno` 1-6, plus
+   its dynamic `wrnno = n + 1`), `asy_webserver_service.py` (`errno` 1-6, `wrnno` 1-5),
+   `captive_dns.py` (`errno` 1-3, `wrnno` 1-3), `asy_wifi_service.py` (`wrnno` 1-7),
+   `asy_ntp_client.py` (`wrnno` 1-3), `asy_notification_service.py` (`wrnno` 1-5 - its `errno` was
+   already renumbered to 10-13 for exactly this reason). Conformant today:
+   `asy_sgp40_driver.py` (`errno` 10-18, `wrnno` 10-14), `asy_bmp3xx_driver.py`,
+   `asy_scd30_driver.py`, `asy_fram_manager.py`/`asy_fram_driver.py`.
+   **No live clash exists** - none of the seven currently shares a logger with a `SensorReader`
+   instance, so the reserved codes never reach the same history stream. It becomes a real defect
+   the moment one of them gains a `logger=` reach-through, which is exactly the pattern
+   `AsyFramManager`/`FRAM_SPI` already use and which the UART promotion adopts. **Where to fix**:
+   a renumbering pass is mechanical but not free - every changed code is a persisted value in
+   deployed units' FRAM histories and appears in `SPECIFICATION.md` C.7.1's table, the errcount
+   UI's raw `num`, and existing tests. Needs an owner decision on whether to renumber in place
+   (invalidating persisted history semantics for those modules on the next deployment) or only on
+   each module's next substantial touch. Flagged, deliberately not fixed drive-by - see CLAUDE.md's
+   "flag, don't silently change" rule.
+
 ## Deferred / explicitly out-of-scope work
+- **A digital-twin soak's wall clock is set by GC timing, so it must never be bisected to a code
+  change** (established 2026-09-11 after one was — see SPECIFICATION.md Part E.7 for the measurement
+  and the inverted control). Not open work: the finding itself is the resolution, and
+  `tests/test_digital_twin_run_dev_integration.py`'s budget now sits above the whole observed range
+  rather than inside it. Left here because the trap is easy to fall into a second time: the numbers
+  are stable to within 0.3s per build, which reads exactly like a real signal.
+- **The UART fakes still do not *wait* the way a real read does, deliberately.** They serve what
+  they hold and return, where the peripheral would wait out `timeout_char` for every byte the caller
+  asked for that has not arrived (SPECIFICATION.md Part F.5.8). Making them actually wait would turn
+  a real-time defect into a slow test; both instead count the stall they would have taken, as
+  `UART.would_have_blocked_bytes`, held to identical semantics by `tests/_uart_link_contract.py`.
+  **The regression gap this entry was opened for is now closed, but it was not closed by counting
+  alone** — a sweep that removed each of the driver's seven read-path clamps in turn (2026-09-12)
+  found three that no test caught: the two `readline` paths, which the fakes never counted at all,
+  and `_read_delimited`'s one-byte gate, which was counted but asserted nowhere. `readline()` now
+  counts the one byte its gate guards, and each of the seven paths has a test that fails when its
+  clamp is removed, re-verified by the same sweep. What remains genuinely unmodelled is the
+  *duration* — a fake cannot tell a caller how many milliseconds of event loop an over-ask would
+  have cost, only how many bytes it was over by. Only the bench tier measures the milliseconds, and
+  F.5.8's table is that measurement.
+- **Four UART-audit findings reviewed and deliberately left as they are** (audit pass over the
+  promotion, 2026-09-11 - every other finding from that pass was fixed and tested):
+  - **A responder's `set_callback` returning `None` ("don't care") lets the *peer* size a heap
+    allocation.** `_accept_set()` allocates `(CHUNKS - 1) x payload_size` from the peer-declared
+    `CHUNKS`, i.e. up to ~64 kB at `payload_size = 255`. It is caught (`MemoryError`/`OverflowError`
+    → logged, resync, no partial delivery) and so sits correctly on CLAUDE.md's
+    catch→degrade→restart→watchdog ladder, but a callback that *declares* its expected size caps it
+    instead of trusting the peer - worth preferring in any new responder.
+  - **`asy_uart_driver.UART.deinit()`/`init()` do not respect the session lock.** Calling either
+    while a read is in flight would leave the in-flight code holding a reference to a deinit'd
+    peripheral. No caller does: `UART_Comm` never deinits, and the one place that does
+    (`tests_hardware/device_scripts/uart_crossover_recovery.py`'s injector) does it between
+    exchanges. A guard was not added because `init()` calls `deinit()` itself, so refusing while
+    locked would change construction semantics for a hazard nothing currently reaches.
+  - **`UART_Comm.setup()` called a second time while its own listen loop is running would
+    deadlock** on the bus lock the loop holds during its unbounded read. Nothing calls it twice -
+    `system_service.py` runs the setup batch before any task starts - so no guard was invented for
+    a caller that does not exist. Re-checked against the supervisor itself (2026-09-12): its restart
+    ladder re-calls a dead task's *starter*, never a module's `setup()`, so the unreachability is a
+    property of the code rather than of today's call sites.
+  - **One `Framing_COBS` instance shared between two drivers would corrupt both**, since its
+    long-lived scratch is per-instance, not per-call. Every construction site makes its own; noted
+    because the failure would be silent if one ever did not.
 - **The 1.29.0 pin is now field-proven on the dev bench (2026-09-11).** Real `dev` firmware built
   from `src/` and flashed; `sys.implementation` on target reports `(1, 29, 0)` / `_mpy=4870` /
   `RPI_PICO_W`. Flash tier (25 passed), bench tier (85 passed) and the mid soak tier (4 passed) all
@@ -468,11 +568,14 @@ constraints.
   exercises Chromium/WebKitGTK/Firefox/Edge on Linux CI runners — Part H.1's "stable and
   good-looking on major mobile/desktop browsers" goal still wants at least one real human pass on
   real Safari and a real mobile device, which no automation here can substitute for.
-- **UART sensor integration — confirmed staying unwired, not just deferred.** `asy_uart_driver.py`
-  is promoted to `src/` but deliberately not wired into any `sensortask-*.py`; `asy_uart_comm.py`
-  (its one real consumer) is its own separate, still out-of-scope promotion. Not a legacy deployed
-  feature, so wiring it in would be a scope addition beyond feature-parity, not a postponed fix -
-  owner-confirmed this stays as-is.
+- **UART sensor integration — still unwired as a *sensor*, though the link itself now exists.**
+  `asy_uart_comm.py` is promoted (SPECIFICATION.md Part J) and `src/sensortask_dev.py` constructs two
+  instances across the dev bench's crossover jumper, which is what makes the protocol's
+  self-compatibility property physically testable. What stays deliberately absent is any *sensor*
+  behind that link: no BME688/BSEC coprocessor, and no such wiring in any other variant. Not a legacy
+  deployed feature, so adding one would be a scope addition beyond feature-parity rather than a
+  postponed fix — owner-confirmed this stays as-is. The protocol module is standalone by design: its
+  BME688/BSEC first use case is explicitly out of scope and was **not** part of the promotion.
 - **Owner requirement for the final wiring stage — fulfilled, entry kept only until the large
   post-merge audit closes.** Every `sensortask-*.py` built as part of the real rewrite needs a full
   Unix-port equivalent, runnable on a local computer, with whatever hardware is physically

@@ -20,6 +20,7 @@ from micropython import const
 
 import asy_i2c_driver
 import asy_spi_driver
+import asy_uart_driver
 import config_manager as cm
 from asy_bmp3xx_driver import BMP3xx_Reader
 from asy_fram_manager import AsyFramManager
@@ -28,6 +29,7 @@ from asy_notification_service import NotificationCoordinator, NotificationSignal
 from asy_ntp_client import AsyNtpClient
 from asy_scd30_driver import SCD30_Reader
 from asy_sgp40_driver import SGP40_Reader
+from asy_uart_comm import CMD_SET, ROLE_INITIATOR, ROLE_RESPONDER, UART_Comm
 from asy_webserver_service import SettingsGroup, WebserverService
 from asy_wifi_service import AsyConnTime
 from system_service import SystemService
@@ -48,6 +50,32 @@ _MAX_MODULE_ERROR = const(5)  # consecutive-failure-streak threshold shared by e
 _DNS_TIMEOUT_MS = const(500)  # per-server, per-attempt DNS lookup budget
 _DNS_TRIES = const(1)  # retry budget per DNS server
 _NTP_FETCH_TIMEOUT_MS = const(5000)  # timeout for the actual NTP request/reply round trip
+
+# The bench rig's permanent UART0<->UART1 crossover jumper (GP0<->GP9, GP1<->GP8, see dev_legacy/
+# README.md) makes J.7's self-compatibility property physically testable; Part J says why these pins
+# and not another legal pair. Both instances share these constants, never negotiated (G1.6).
+_UART_PAYLOAD_SIZE = const(48)
+_UART_TIMEOUT_MS = const(1000)
+_UART_BAUDRATE = const(115200)
+# Single-digit by requirement: poll granularity, not baud rate, dominates a stop-and-wait exchange's
+# throughput (Part J.6). That is the in-transaction rate; idling at it burns a task switch every 2ms
+# forever, so a quiet line polls at a twentieth of _UART_TIMEOUT_MS instead (Part F.5.9).
+_UART_POLL_WAIT_MS = const(2)
+_UART_POLL_IDLE_MS = const(50)
+# Sized from the real frame, not left at the driver default: a whole framed frame is 5 + 48 = 53
+# bytes, and one poll interval at 115200 baud admits about 80 bytes. Below either floor the tail of
+# a frame is silently dropped and the result is indistinguishable from a link fault (C2.9/C2.10).
+_UART_BUF_BYTES = const(512)
+# The two command ids the bench link answers. The module itself is standalone and carries no
+# application semantics - these exist so the jumper can be exercised end to end from the bench.
+_UART_CMD_BANNER = const(0x01)
+_UART_CMD_ECHO = const(0x02)
+_UART_BANNER = b"dev-uart-crossover"
+# How often the initiator drives a real transfer across the jumper. Nothing else on a live system
+# ever initiates one - the responder only answers - so without this the link is idle and every
+# claim about it coexisting with the webserver is vacuous (UART_PROMOTION_REQUIREMENTS.md H4).
+# 1s leaves the link busy enough to observe within a test window and far from saturating it.
+_UART_EXERCISE_PERIOD_MS = const(1000)
 
 _FIELD_WARN_CO2: "cm.ConfigSchema" = (("WarnCO2", "int", 1600, 0, 3000, None),)
 _FIELD_WARN_VOC: "cm.ConfigSchema" = (("WarnVOC", "int", 350, 0, 500, None),)
@@ -70,7 +98,62 @@ scd_reader: "SCD30_Reader | None" = None
 pixel: "NeopixelDriver | None" = None
 notify_service: "NotificationCoordinator | None" = None
 webserver: "WebserverService | None" = None
+uart0: "asy_uart_driver.UART | None" = None
+uart1: "asy_uart_driver.UART | None" = None
+uart_initiator: "UART_Comm | None" = None
+uart_responder: "UART_Comm | None" = None
+uart_last_echo: "bytearray | None" = None
+# Progress counters for the exerciser below, surfaced through /status so a bench test can assert
+# the link actually moved bytes rather than merely failing to log an error.
+uart_transfers: int = 0
+uart_failures: int = 0
 timers_running: "ThreadSafeFlag | None" = None
+
+
+def _uart_get_callback(cmd_id: int) -> "tuple[bool, bytes | None]":
+    # Answers a GET across the jumper. Returns (valid, payload); withholding validity is how the
+    # responder signals "no such command", which the peer sees as a withheld answer.
+    if cmd_id == _UART_CMD_BANNER:
+        return True, _UART_BANNER
+    if cmd_id == _UART_CMD_ECHO:
+        return True, bytes(uart_last_echo or b"")
+    return False, None
+
+
+def _uart_set_callback(cmd_id: int) -> "tuple[bool, int | None]":
+    # Accepts a SET across the jumper. Returns (valid, expected_size); None means "don't care",
+    # which is what a bench echo wants.
+    return (cmd_id == _UART_CMD_ECHO), None
+
+
+def _uart_message_callback(cmd_id: int, cmd: int, payload: "bytearray | None") -> None:
+    # The owned listen loop's delivery point: without it the received payload has nowhere to go,
+    # and the ECHO command above could only ever answer empty. The cmd check matters - an answered
+    # GET for the same id also lands here, carrying no payload, and would blank the stored value.
+    global uart_last_echo
+    if cmd == CMD_SET and cmd_id == _UART_CMD_ECHO:
+        uart_last_echo = payload
+
+
+async def _uart_exercise_loop() -> None:
+    # Drives one real GET across the jumper per period, so the link carries traffic on a live
+    # system instead of only under a device script. Never raises out: uart_get() is contracted to
+    # return None rather than raise, and the counters are what a failure is reported through.
+    global uart_transfers, uart_failures
+    assert uart_initiator is not None
+    while True:
+        answer = await uart_initiator.uart_get(_UART_CMD_BANNER)
+        if answer is not None and bytes(answer) == _UART_BANNER:
+            uart_transfers += 1
+        else:
+            uart_failures += 1
+        await asyncio.sleep_ms(_UART_EXERCISE_PERIOD_MS)
+
+
+async def _uart_link_maintenance() -> "dict[str, Any]":
+    # Registered as a maintenance sensor, not a new /status key: that list is variable-length by
+    # design, so the dev-only link reports through it without touching the shared webserver.
+    return {"Transfers": uart_transfers, "Failures": uart_failures}
 
 
 async def sgp_comp_callback() -> "list[float | None]":
@@ -234,6 +317,7 @@ def _collect_error_sources() -> "list[Any]":
     assert conn is not None and ntp is not None and fram is not None and sysfunct is not None
     assert sgp_reader is not None and bmp_reader is not None and scd_reader is not None
     assert pixel is not None and notify_service is not None
+    assert uart_initiator is not None and uart_responder is not None
     return [
         conn,
         conn.cfgmgr,
@@ -251,6 +335,10 @@ def _collect_error_sources() -> "list[Any]":
         pixel,
         notify_service,
         notify_service.cfgmgr,
+        # One entry per instance, each with its own name: two links sharing a logger would merge
+        # their histories into a single /status entry and make a fault unattributable (G1.5/C3.2).
+        uart_initiator,
+        uart_responder,
     ]
 
 
@@ -263,6 +351,7 @@ def _collect_level_setters() -> "list[Callable[[int], None]]":
     assert conn is not None and ntp is not None and fram is not None and sysfunct is not None
     assert sgp_reader is not None and bmp_reader is not None and scd_reader is not None
     assert pixel is not None and notify_service is not None and webserver is not None
+    assert uart_initiator is not None and uart_responder is not None
     return [
         conn.pr.set_level,
         conn.cfgmgr.pr.set_level,
@@ -280,6 +369,8 @@ def _collect_level_setters() -> "list[Callable[[int], None]]":
         pixel.pr.set_level,  # no cfgmgr - no config schema (owner-confirmed, see SPECIFICATION.md A.4)
         notify_service.pr.set_level,
         notify_service.cfgmgr.pr.set_level,
+        uart_initiator.pr.set_level,  # no cfgmgr - the protocol's parameters are out-of-band agreements,
+        uart_responder.pr.set_level,  # never runtime-writable (SPECIFICATION.md Part J.6)
         webserver.pr.set_level,  # no cfgmgr - no config schema (own safety constants only, see BACKLOG.md)
     ]
 
@@ -292,6 +383,13 @@ async def build_system(
     tests. Wired for the dev bench's own pins - see SPECIFICATION.md Part A.7 for the rationale."""
     global watchdog, conn, ntp, i2c0, i2c1, spi0, fram, sysfunct
     global sgp_reader, bmp_reader, scd_reader, pixel, notify_service, webserver, timers_running
+    global uart0, uart1, uart_initiator, uart_responder
+    global uart_transfers, uart_failures
+
+    # Rebuilding the system rebuilds the link, so its progress counters start over with it -
+    # otherwise a second build_system() in one process would report the first one's traffic.
+    uart_transfers = 0
+    uart_failures = 0
 
     # watchdog: hardcoded at construction time, no injection point - same standing rule as
     # sensortask_wozi.py ("must be hardcoded so no error ever can circumvent it when it is set
@@ -372,11 +470,36 @@ async def build_system(
     notify_service.finalize()
     conn.set_ext_led(pixel)  # callback for wifi led - after both conn and pixel exist
 
-    # Registration-based Microdot REST/API service - built here, after every module it registers
-    # exists, exactly like conn.set_ext_led()'s own cross-wiring just above. Mirrors
-    # sensortask_wozi.py's own WebserverService(...) call exactly - only the underlying
-    # scd_reader/bmp_reader/sgp_reader/conn/ntp objects differ in their pin wiring, not this
-    # registration shape.
+    # After every FRAM-allocating module and before the webserver: AsyFramManager is a bump-pointer
+    # allocator, so instantiation order is the on-chip layout. Both take no fram=, so Part A.7's
+    # seven-chunk order is untouched; the webserver's error_sources= list needs them to exist first.
+    uart0 = asy_uart_driver.UART(
+        0, 0, 1, baudrate=_UART_BAUDRATE, rxbuf=_UART_BUF_BYTES, txbuf=_UART_BUF_BYTES, poll_wait_ms=_UART_POLL_WAIT_MS, poll_idle_ms=_UART_POLL_IDLE_MS,
+    )
+    uart1 = asy_uart_driver.UART(
+        1, 8, 9, baudrate=_UART_BAUDRATE, rxbuf=_UART_BUF_BYTES, txbuf=_UART_BUF_BYTES, poll_wait_ms=_UART_POLL_WAIT_MS, poll_idle_ms=_UART_POLL_IDLE_MS,
+    )
+    # Distinct peripheral ids: constructing both on one id would re-init the first's peripheral and
+    # leave one link object silently owning nothing (G1.8). Roles are structural - exactly one side
+    # may initiate, since the protocol has no collision arbitration at all (J.2).
+    uart_initiator = UART_Comm(
+        uart0, ROLE_INITIATOR, payload_size=_UART_PAYLOAD_SIZE, timeout=_UART_TIMEOUT_MS, debug=debug, name="UART_INIT",
+    )
+    uart_responder = UART_Comm(
+        uart1,
+        ROLE_RESPONDER,
+        payload_size=_UART_PAYLOAD_SIZE,
+        timeout=_UART_TIMEOUT_MS,
+        get_callback=_uart_get_callback,
+        set_callback=_uart_set_callback,
+        message_callback=_uart_message_callback,
+        debug=debug,
+        name="UART_RESP",
+    )
+
+    # Registration-based Microdot REST/API service, built after every module it registers exists,
+    # like conn.set_ext_led()'s cross-wiring above. Mirrors sensortask_wozi.py's WebserverService()
+    # call exactly - only the underlying reader/conn/ntp objects differ, not the registration shape.
     app = Microdot()
     webserver = WebserverService(
         app,
@@ -418,7 +541,7 @@ async def build_system(
             "system": _system_status,
             "notification": _notification_status,
         },
-        maintenance_sensors=(("SGP40", _sgp_maintenance_status),),
+        maintenance_sensors=(("SGP40", _sgp_maintenance_status), ("UARTLINK", _uart_link_maintenance)),
         error_sources=_collect_error_sources(),
         debug=debug,
         static_mount="/html",  # see SPECIFICATION.md Part A.9 - matches frozen_html's own
@@ -446,6 +569,8 @@ async def build_system(
     await sgp_reader.setup()
     await bmp_reader.setup()
     await notify_service.setup()
+    await uart_initiator.setup()
+    await uart_responder.setup()
 
 
 def _collect_task_starters() -> "list[Callable[[], asyncio.Task[Any]]]":
@@ -455,6 +580,7 @@ def _collect_task_starters() -> "list[Callable[[], asyncio.Task[Any]]]":
     assert scd_reader is not None and bmp_reader is not None and sgp_reader is not None
     assert pixel is not None and notify_service is not None and sysfunct is not None
     assert conn is not None and ntp is not None and webserver is not None
+    assert uart_initiator is not None and uart_responder is not None
     return (
         scd_reader.get_task_starters()
         + bmp_reader.get_task_starters()
@@ -467,6 +593,12 @@ def _collect_task_starters() -> "list[Callable[[], asyncio.Task[Any]]]":
         + webserver.get_task_starters()  # the webserver's own task, registered as an ordinary task
         # in start_and_check_tasks() like every other module (see SPECIFICATION.md Part A.7
         # - no bespoke whole-server-restart mechanism).
+        + uart_initiator.get_task_starters()  # empty: the role decides the task set, and an
+        + uart_responder.get_task_starters()  # initiator that listened would mean both ends initiate
+        # The initiating half is this variant's own job, for the same reason: the module cannot
+        # know what a caller wants to ask its peer, so a bench rig that wants a live link supplies
+        # the question itself.
+        + [lambda: asyncio.create_task(_uart_exercise_loop())]
     )
 
 
@@ -477,6 +609,7 @@ def _collect_timer_starters() -> "list[Callable[[], None]]":
     assert scd_reader is not None and bmp_reader is not None and sgp_reader is not None
     assert pixel is not None and notify_service is not None and sysfunct is not None
     assert conn is not None and ntp is not None and webserver is not None
+    assert uart_initiator is not None and uart_responder is not None
     return (
         scd_reader.get_timer_starters()
         + bmp_reader.get_timer_starters()
@@ -487,6 +620,8 @@ def _collect_timer_starters() -> "list[Callable[[], None]]":
         + conn.get_timer_starters()
         + ntp.get_timer_starters()
         + webserver.get_timer_starters()
+        + uart_initiator.get_timer_starters()  # both empty: the module constructs no machine.Timer
+        + uart_responder.get_timer_starters()  # at all, deliberately (SPECIFICATION.md Part J.5)
     )
 
 
