@@ -340,7 +340,9 @@
                         { "key": "SGP40_BackupTS", "label": "SGP40 Last Backup", "kind": "readonly" },
                         { "key": "SGP40_RestoreTS", "label": "SGP40 Restore Timestamp", "kind": "readonly" },
                         { "key": "ISL29125_GainRatio", "label": "ISL29125 Learned Gain Ratio", "kind": "readonly", "decimals": 3 },
-                        { "key": "ISL29125_CalTS", "label": "ISL29125 Calibration Timestamp", "kind": "readonly" }
+                        { "key": "ISL29125_CalTS", "label": "ISL29125 Calibration Timestamp", "kind": "readonly" },
+                        { "key": "UARTLINK_Transfers", "label": "UART Link Transfers", "kind": "readonly", "description": "Completed transfers across this bench rig's UART0<->UART1 crossover jumper since boot. Bench-only - a deployed unit has no such link." },
+                        { "key": "UARTLINK_Failures", "label": "UART Link Failures", "kind": "readonly", "description": "Transfers that did not complete across the crossover jumper since boot." }
                     ]
                 },
                 {
@@ -375,6 +377,8 @@
                         { "key": "NEOPIXEL", "label": "Neopixel LED" },
                         { "key": "NOTIFY", "label": "Notification Service" },
                         { "key": "CFGMGR_NOTIFY", "label": "Notification Config Store" },
+                        { "key": "UART_INIT", "label": "UART Link (Initiator)" },
+                        { "key": "UART_RESP", "label": "UART Link (Responder)" },
                         { "key": "WEBSERVER", "label": "Web Server" }
                     ]
                 },

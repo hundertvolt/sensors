@@ -288,14 +288,14 @@ a live question:
 - **`test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly` still fails
   deterministically** (not ISL-related): it asserts an empty FRAM log after deliberately provoking
   torn writes, and sees the dual-copy recovery's own `W71`/`W72` plus `E31`. Left alone on purpose -
-  BACKLOG.md item 26 has the analysis and the question it needs answered.
+  BACKLOG.md item 28 has the analysis and the question it needs answered.
 - **An interrupted flash-tier run can leave the Unix-port unit-test interpreter unusable.**
   `test_env_tier_flash_recurring_run_is_idempotent` runs the full `setup_toolchain.py env --tier
   flash`, which builds the Unix port twice (frozen-verification manifest, then a vanilla rebuild that
   restores the real test rig). Killing the suite between those two leaves a binary with no frozen
   `asyncio`, and `scripts/test.sh` only checks that the file is executable - so every `tests/test_*.py`
   then dies with `ImportError: no module named 'asyncio'`, which looks like a code failure and is not
-  one. Recovery: `rm` the binary and re-run `scripts/test.sh`. BACKLOG.md item 27.
+  one. Recovery: `rm` the binary and re-run `scripts/test.sh`. BACKLOG.md item 30.
 
 - ~~The bench has never run MicroPython 1.29.0.~~ — **resolved (2026-09-11): it has, repeatedly.**
   Real `dev` firmware built from `src/` and flashed, with the flash, bench and mid soak tiers all
@@ -320,6 +320,48 @@ a live question:
   `config_ISL29125.cfg` six times per run with no sign of it in the test output. A script that
   pushes config therefore points `cfgmgr.config_file` at a `config_HWTEST_*.cfg` scratch name,
   the convention `reboot_persist_write.py` already uses; do the same for any new one.
+- **The UART crossover coverage is 5 flash-tier tests and 3 bench-tier tests, all passing as part
+  of the full sweep** (2026-09-12: `run_bench_hardware_suite.sh` → 96 passed, 2 known-permanent
+  skips, 41 min, with the four SCD30-EEPROM-write tests deselected). Three of the flash tests and
+  one of the bench tests were added in that session; the rest date from 2026-09-11.
+  Two platform findings are asserted rather than merely documented: F.5.8's clamped-read CPU hold
+  (`uart_read_never_blocks_the_loop.py` — measured 4394 us unclamped against 121 us clamped) and
+  F.5.9's idle poll rate (`uart_idle_poll_rate.py` — 1336/1266 rounds at 2 ms against 60/60 at
+  50 ms over 3 s). A third, `uart_link_under_concurrent_system_load.py`, runs the link against both
+  I2C devices, the FRAM's SPI bus and heavy allocation churn at once, and asserts in both
+  directions — the link keeps transferring *and* nothing else was starved.
+  The bench tier's "a transfer completes while the API is hammered" claim used to be vacuous and no
+  longer is: `sensortask_dev.py` runs a link exerciser and publishes a transfer/failure count
+  through `/status`'s `sensors.UARTLINK`, which the bench tier asserts advancing during the load
+  window. A later session should also know the board may need reflashing before any of this runs —
+  a firmware predating a `src/` change simply won't carry it, and the tier's skip guards name that
+  rather than failing obscurely.
+- **A device script's every wait must stay inside its own watchdog window, or a link fault reports
+  as a reset instead of a result.** `tests_hardware/device_scripts/uart_crossover_*.py` arm an 8s
+  `machine.WDT` and used to join their responder task with `asyncio.wait_for(listener, 10/12)`.
+  That join can never complete on its own when the frame never arrived - `uart_listen()` parks in
+  its one legitimate unbounded read - so the watchdog fired first and the run died with an
+  `mpremote` I/O error and no `RESULT:` line at all. Found (2026-09-11) by running the exchange
+  script with UART1 deliberately moved to unjumpered pins, i.e. by simulating the exact wiring fault
+  this tier exists to catch. Both scripts now poll `task.done()` in bounded steps, feeding as they
+  go, and use `UART_Comm.clear()` - the module's own documented unstick - to free a parked listener.
+  The same run now reports `GET returned None ... errno 20` (initiator, no ACK) and `errno 22`
+  (responder, read timeout), which is the diagnosis a bench session actually needs.
+- **Both crossover device scripts poll at two rates, matching `sensortask_dev.py`**: `POLL_WAIT_MS`
+  (2 ms) for a transaction in flight, `POLL_IDLE_MS` (50 ms) for a listener waiting on a frame that
+  may never come (SPECIFICATION.md Part F.5.9). A script that used one rate would not be exercising
+  the shipped configuration, which is the whole point of the flash tier. The practical consequence
+  for a bench session: a responder notices the first byte of a frame up to 50 ms late by design, so
+  a measured first-frame latency on this rig includes that and is not a link fault.
+- **`asy_uart_driver.UART.deinit()` does not release the GPIO function select, so a script that
+  inits a UART on different pins poisons that peripheral until the next hard reset.** Confirmed the
+  hard way (2026-09-11): a throwaway diagnostic that put UART1 on GP4/GP5 left those pins muxed to
+  UART1 after `deinit()`. UART1's RX input then kept being taken from the floating GP5 instead of
+  the jumpered GP9, so **every subsequent run of the real crossover tests failed** - deterministically,
+  and across `mpremote`'s own soft resets, which do not restore pin defaults. A `mpremote reset`
+  (real hard reset) cleared it immediately. The shipped scripts always use GP8/GP9 and never hit
+  this, but any ad-hoc device script that moves a UART's pins must hard-reset the board afterwards
+  before its results - or the next test's - mean anything.
 - **A device script that reads error-log content clears its chunk at the START, never at the end.**
   Clearing first is what makes a run deterministic: the chunk is real persistent storage, so
   without it a script inherits the previous run's ring and its assertions drift silently. Clearing

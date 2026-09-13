@@ -4,17 +4,8 @@
 # dependencies = []
 # ///
 """Single-command installer/updater for the MicroPython RP2040/Pico W firmware build environment
-(MicroPython + matching pico-sdk/picotool + ARM cross-toolchain), plus a host-side MicroPython
-Unix port build used for running tests. See SPECIFICATION.md Part B for the full picture.
-
-Usage (from anywhere, via uv — no venv/pip setup needed):
-
-    uv run toolchain/setup_toolchain.py
-    uv run toolchain/setup_toolchain.py --latest          # bump to newest stable MicroPython
-    uv run toolchain/setup_toolchain.py --micropython-ref v1.26.1
-    uv run toolchain/setup_toolchain.py --clean           # wipe build dirs, then rebuild from scratch
-    uv run toolchain/setup_toolchain.py test              # re-verify an existing install, offline
-"""
+(MicroPython + matching pico-sdk/picotool + ARM cross-toolchain) plus the host-side Unix port the
+tests run on. Invocations: README.md's quick-start; the full picture: SPECIFICATION.md Part B."""
 
 from __future__ import annotations
 
@@ -149,10 +140,9 @@ def ensure_apt_packages(packages: list[str], *, skip: bool) -> None:
 
 
 def is_sha(ref: str) -> bool:
-    """True for a raw commit hash (e.g. a pico-sdk pin read out of a git tree) as opposed to
-    a tag/branch name (e.g. "v1.29.0"). The two need different checkout handling below: tags
-    are always fetched by `git fetch --tags`, but an arbitrary commit might not be reachable
-    that way and needs fetching directly by its hash instead."""
+    """True for a raw commit hash rather than a tag/branch name. The two need different checkout
+    handling: `git fetch --tags` always reaches a tag, but an arbitrary commit may not be reachable
+    that way and has to be fetched by its hash."""
     return bool(re.fullmatch(r"[0-9a-f]{7,40}", ref))
 
 
@@ -198,10 +188,9 @@ LS_TREE_FIELDS_BEFORE_PATH = 3
 
 
 def derive_pico_sdk_commit(micropython_dir: Path, mpy_ref: str) -> str:
-    """The pico-sdk version to use is never chosen independently — it's read straight out of
-    MicroPython's own git submodule pin at lib/pico-sdk, which is exactly the pico-sdk commit
-    the firmware actually compiles against. This is the mechanism that makes "only pin
-    MicroPython" (see versions.toml) possible instead of tracking two version numbers by hand."""
+    """Never chosen independently - read straight out of MicroPython's own submodule pin at
+    lib/pico-sdk, which is the commit the firmware actually compiles against. This is what makes
+    "only pin MicroPython" (versions.toml) possible instead of two hand-tracked versions."""
     out = run(["git", "ls-tree", mpy_ref, "lib/pico-sdk"], cwd=micropython_dir, env=network_env())
     # git ls-tree prints one line shaped "160000 commit <sha>\tlib/pico-sdk"
     fields = out.split()
@@ -211,11 +200,9 @@ def derive_pico_sdk_commit(micropython_dir: Path, mpy_ref: str) -> str:
 
 
 def derive_picotool_ref(pico_sdk_dir: Path, pico_sdk_commit: str) -> str:
-    """Picotool only needs to match pico-sdk's major.minor (not its exact commit) — but that
-    match is enforced at build time (a mismatch fails with "Incompatible picotool installation
-    found" since pico-sdk 2.0.0), so getting it wrong isn't a style nitpick, it's a build
-    failure. Resolve the derived pico-sdk commit to its nearest tag, then pick the newest
-    picotool tag sharing that major.minor."""
+    """Picotool need only match pico-sdk's major.minor, but that match is enforced at build time
+    ("Incompatible picotool installation found" since pico-sdk 2.0.0), so a mismatch is a build
+    failure. Resolves the derived commit to its nearest tag, then takes the newest matching tag."""
     described = run(["git", "describe", "--tags", pico_sdk_commit], cwd=pico_sdk_dir, env=network_env()).strip()
     match = re.match(r"^(\d+)\.(\d+)\.", described)
     if not match:
@@ -323,10 +310,9 @@ def build_firmware(micropython_dir: Path, board: str, jobs: int, frozen_manifest
 
 
 def build_unix_port(micropython_dir: Path, jobs: int, frozen_manifest: Path | None = None) -> Path:
-    """Builds the "standard" Unix port variant. Requires mpy-cross already built. Pass
-    frozen_manifest the same way as build_firmware(); omit it for a vanilla build. Always built
-    with MICROPY_PY_SYS_SETTRACE=1 (CLAUDE.md's "Code quality tooling" section) so this one binary
-    backs both plain and --coverage test runs; ports/rp2's build never gets this flag."""
+    """Builds the "standard" Unix port variant; needs mpy-cross already built, and takes
+    frozen_manifest like build_firmware(). Always MICROPY_PY_SYS_SETTRACE=1 so one binary backs both
+    plain and --coverage runs (CLAUDE.md); ports/rp2's build never gets that flag."""
     label = "with the frozen verification module" if frozen_manifest else "standard, unchanged"
     log(f"Building the MicroPython Unix port ({label})")
     unix_dir = micropython_dir / "ports" / "unix"
@@ -355,14 +341,9 @@ def build_unix_port(micropython_dir: Path, jobs: int, frozen_manifest: Path | No
 
 
 def clean_build_dirs(toolchain_dir: Path, board: str) -> None:
-    """Wipe every build-artifact directory without touching the git clones themselves, so the
-    setup that follows rebuilds everything from scratch -- as if freshly installed -- without
-    re-cloning multi-gigabyte source trees that haven't actually changed. build_firmware(),
-    build_unix_port(), and build_and_install_picotool() already do this for their own build dirs
-    on every run (that's why the firmware/Unix-port steps always fully recompile while
-    mpy-cross's build/ is normally left alone and rebuilds incrementally); this is the same
-    action made available on demand and extended to mpy-cross's build/ too, the one directory
-    nothing else ever clears."""
+    """Wipes every build-artifact directory but no git clone, so the setup that follows rebuilds
+    from scratch without re-cloning multi-gigabyte trees. The firmware/Unix-port/picotool steps
+    already clear their own; this extends that to mpy-cross's build/, which nothing else clears."""
     log("Cleaning all build-artifact directories")
     targets = [
         toolchain_dir / "picotool" / "build",
@@ -408,12 +389,9 @@ def cross_compile_frozen_verify_test(mpy_cross_binary: Path, test_file: Path) ->
 
 
 def write_freeze_manifest(manifest_path: Path, port_manifest_relpath: str) -> None:
-    """Mirrors this repo's own manifest convention (python/Manifest/manifest.py): include the
-    port's normal manifest, then freeze FROZEN_MODULE_SUBDIR. freeze() resolves its argument
-    relative to *this* manifest file's own directory - manifest_path is always written as a
-    sibling of FROZEN_MODULE_SUBDIR (never inside it), so freeze() only ever picks up the one
-    intended test module, never the manifest.py files generated alongside it (both this one and
-    the other port's, which also lives in the same tempdir - see run_verification_sequence())."""
+    """Mirrors this repo's manifest convention (python/Manifest/manifest.py): the port's own
+    manifest, then freeze FROZEN_MODULE_SUBDIR. freeze() resolves relative to this file, so
+    manifest_path is written as a sibling of that subdir - never inside it, never freezing itself."""
     manifest_path.write_text(
         f'include("$(PORT_DIR)/{port_manifest_relpath}")\nfreeze("{FROZEN_MODULE_SUBDIR}")\n',
     )
@@ -434,12 +412,9 @@ def run_frozen_verify_on_unix(unix_binary: Path) -> None:
 
 
 def clean_frozen_verification_build_dirs(toolchain_dir: Path, board: str) -> None:
-    """Step 7: removes exactly the two build outputs the frozen-bytecode verification chain
-    (steps 4-6) leaves behind - the Unix port and RP2 firmware built with the frozen test module.
-    Neither is kept: the RP2 build is never repeated afterward (see run_verification_sequence()'s
-    docstring for why a build-only check is sufficient), and the Unix port gets rebuilt vanilla
-    in step 8. Deliberately does not touch mpy-cross/build or picotool - both are real toolchain
-    deliverables needed for actual project work later, not verification-only artifacts."""
+    """Step 7: removes the two outputs the frozen-bytecode verification chain (steps 4-6) leaves -
+    the Unix port and RP2 firmware carrying the frozen test module, neither of which is kept. Leaves
+    mpy-cross/build and picotool alone: those are real deliverables, not verification artifacts."""
     log("Cleaning up the frozen-bytecode verification build artifacts")
     targets = [
         toolchain_dir / "micropython" / "ports" / "rp2" / f"build-{board}",
@@ -482,10 +457,9 @@ def run_verification_sequence(micropython_dir: Path, toolchain_dir: Path, board:
 
 
 def latest_stable_micropython_ref() -> str:
-    """Backs --latest: the only version this whole script tracks by hand is the MicroPython
-    ref (versions.toml), so "upgrade everything" reduces to "find the newest MicroPython tag,
-    write it back to versions.toml, and let derive_pico_sdk_commit/derive_picotool_ref do the
-    rest on the next run"."""
+    """Backs --latest. The only hand-tracked version is the MicroPython ref (versions.toml), so
+    "upgrade everything" reduces to writing the newest tag back there and letting
+    derive_pico_sdk_commit()/derive_picotool_ref() do the rest."""
     out = run(["git", "ls-remote", "--tags", MICROPYTHON_URL], env=network_env())
     candidates = []
     for line in out.splitlines():
@@ -511,11 +485,9 @@ def print_verification_summary(board: str, mpy_cross_binary: Path, unix_binary: 
 
 
 def run_setup(args: argparse.Namespace, versions_path: Path, versions: dict[str, Any]) -> int:
-    """Install or update. The steps below are exactly "How it works" in SPECIFICATION.md Part B.3:
-    pin MicroPython -> derive pico-sdk -> derive picotool -> install the ARM toolchain -> build
-    everything in an isolated environment -> verify. ensure_repo_at_ref() doubles as the update
-    mechanism (clone if missing, fetch+checkout if not), so there's no separate "update" branch
-    of this function — re-running it against an existing --toolchain-dir *is* the update."""
+    """Install or update - the steps are "How it works" in SPECIFICATION.md Part B.3. There is no
+    separate update branch: ensure_repo_at_ref() clones if missing and fetches otherwise, so
+    re-running against an existing --toolchain-dir *is* the update."""
     mpy_ref = args.micropython_ref
     if args.latest:
         mpy_ref = latest_stable_micropython_ref()
@@ -581,12 +553,9 @@ def run_test(args: argparse.Namespace, versions: dict[str, Any]) -> int:
     log(f"Testing existing toolchain at {toolchain_dir} (offline: no apt/git network access)")
     print(f"Board: {board}")
 
-    # Deliberately does not touch apt, git remotes, or the pico-sdk/picotool derivation —
-    # this re-verifies whatever is already checked out, so it's fast, reproducible, and
-    # runnable offline. That's what makes it suitable as a standalone CI step later: `setup`
-    # (or a restored cache of its --toolchain-dir) provisions the toolchain once, and `test`
-    # is the repeatable gate that checks it still builds cleanly. Submodules are assumed
-    # already fetched by a prior `setup` run.
+    # Deliberately touches neither apt, git remotes, nor the pico-sdk/picotool derivation: it
+    # re-verifies what is already checked out, so it is fast, reproducible and offline - `setup`
+    # provisions once, `test` is the repeatable gate. Submodules are assumed already fetched.
     mpy_cross_binary, unix_binary = run_verification_sequence(micropython_dir, toolchain_dir, board, args.jobs)
 
     return print_verification_summary(board, mpy_cross_binary, unix_binary)
@@ -687,10 +656,9 @@ def ensure_network_manager(*, skip_apt: bool) -> None:
 
 
 def ensure_iproute2(*, skip_apt: bool) -> None:
-    """detect_uplink_interface() below needs the real `ip` command - present by default on
-    essentially every real Linux host (including Raspberry Pi OS), but not guaranteed on a
-    minimal/stripped-down one, so this is checked/installed the same way ensure_network_manager()
-    handles nmcli rather than assumed."""
+    """detect_uplink_interface() needs the real `ip` command - present on essentially every real
+    Linux host but not on a stripped-down one, so it is checked/installed the same way
+    ensure_network_manager() handles nmcli rather than assumed."""
     if shutil.which("ip"):
         return
     log("'ip' command not found - installing iproute2")
@@ -700,14 +668,9 @@ def ensure_iproute2(*, skip_apt: bool) -> None:
 
 
 def ensure_iptables(*, skip_apt: bool) -> None:
-    """tests_hardware/bench_control.py's real fault-injection helpers (block_udp_ports(),
-    redirect_udp_port_to_local(), the hotspot-role-reversal AP down/up path's own comment) all
-    shell out to `sudo iptables` - REAL FINDING, confirmed directly on a real bench Raspberry Pi 4
-    running Raspberry Pi OS: `iptables` is not installed by default there (unlike a typical desktop
-    Ubuntu image), which surfaced as a real-hardware test run failing with a plain
-    "sudo: iptables: command not found" rather than any actual fault-injection behavior being
-    exercised. Checked/installed the same way ensure_network_manager()/ensure_iproute2() handle
-    their own commands, rather than assumed present."""
+    """bench_control.py's fault injection all shells out to `sudo iptables`, which Raspberry Pi OS
+    does not install by default - confirmed on the real bench Pi4 as a run failing with "sudo:
+    iptables: command not found" instead of injecting anything. Installed, never assumed."""
     if shutil.which("iptables"):
         return
     log("'iptables' command not found - installing iptables")
@@ -728,10 +691,9 @@ def detect_uplink_interface() -> str:
 
 
 def get_interface_mac(iface: str) -> str:
-    """The real, permanent hardware MAC of a network interface, straight from the kernel - not a
-    NetworkManager-synthesized or bridge-inherited one. See ensure_bench_bridge()'s own note on why
-    pinning `bridge.mac-address` to this value matters (2026-09-04 bench Pi4 lockout incident,
-    CLAUDE.md's "Hard rules")."""
+    """The real, permanent hardware MAC of an interface, straight from the kernel - never a
+    NetworkManager-synthesized or bridge-inherited one. Why pinning `bridge.mac-address` to it
+    matters: ensure_bench_bridge()'s own note, and CLAUDE.md's "Hard rules"."""
     out = run(["ip", "-o", "link", "show", iface], env=build_env())
     match = re.search(r"link/ether\s+(\S+)", out)
     if not match:
@@ -788,11 +750,9 @@ def generate_bench_ap_credentials() -> tuple[str, str]:
 
 
 def ensure_br_netfilter() -> None:
-    """Idempotent: loads br_netfilter and enables net.bridge.bridge-nf-call-iptables=1, without
-    which iptables never sees this bridge's Layer-2-switched DUT traffic at all, making
-    bench_control.py's iptables-based fault injection a silent no-op (SPECIFICATION.md Part B.13).
-    Runs on every `env --tier bench` call, not gated behind bench_ap_exists(), since it's a
-    host-kernel setting independent of whether the bridge profile already exists."""
+    """Idempotent: loads br_netfilter and enables net.bridge.bridge-nf-call-iptables=1, without which
+    bench_control.py's fault injection is a silent no-op (SPECIFICATION.md Part B.13). Ungated by
+    bench_ap_exists(), being a host-kernel setting independent of the bridge profile."""
     run(["sudo", "modprobe", "br_netfilter"])
     run(["sudo", "sysctl", "-w", "net.bridge.bridge-nf-call-iptables=1"])
 
@@ -818,10 +778,9 @@ def ensure_br_netfilter() -> None:
 
 
 def ensure_bench_bridge(uplink_iface: str | None, wifi_iface: str | None, ssid: str | None, password: str | None) -> str:
-    """Idempotent: if br0-wifi-ap already exists it's left alone (just reports its SSID), never
-    recreated. br_netfilter and the fixed 2.4GHz channel are still (re-)enforced unconditionally
-    since a pre-existing bridge could be missing either; a bridge MAC mismatch is flagged, never
-    auto-repaired (SPECIFICATION.md Part B.13)."""
+    """Idempotent: an existing br0-wifi-ap is reported, never recreated, but br_netfilter and the
+    fixed 2.4GHz channel are re-enforced regardless since it could be missing either. A bridge MAC
+    mismatch is flagged, never auto-repaired (SPECIFICATION.md Part B.13)."""
     ensure_br_netfilter()
 
     if bench_ap_exists():
@@ -843,11 +802,9 @@ def ensure_bench_bridge(uplink_iface: str | None, wifi_iface: str | None, ssid: 
             real_mac = get_interface_mac(eth_iface)
         except SetupError:
             real_mac = ""
-        # `--escape no` is load-bearing, not cosmetic: `nmcli -g` escapes every ':' in a value as
-        # '\:', so a MAC reads back as 'D8\:3A\:...' and can never compare equal to the plain
-        # 'd8:3a:...' get_interface_mac() reads from `ip -o link show`. Without it this check is
-        # unconditionally true and warns on a correctly-pinned bridge - which is worse than useless
-        # here, since the remedy it prints cycles a live bridge (the 2026-09-04 lockout, Part B.13).
+        # `--escape no` is load-bearing: `nmcli -g` escapes every ':' as '\:', so a MAC never
+        # compares equal to the plain one `ip -o link show` gives. Without it this warns on a
+        # correctly-pinned bridge, and the remedy it prints cycles a live one (Part B.13).
         bridge_mac = run(["nmcli", "--escape", "no", "-g", "bridge.mac-address", "connection", "show", BENCH_BRIDGE_CONN]).strip()
         if real_mac and bridge_mac.lower() != real_mac.lower():
             log(
@@ -873,14 +830,9 @@ def ensure_bench_bridge(uplink_iface: str | None, wifi_iface: str | None, ssid: 
     log(f"Creating bench WiFi bridge: {uplink_iface} (uplink) + {wifi_iface} (hosted AP, SSID {ssid!r})")
     env = build_env()
     run(["sudo", "nmcli", "connection", "add", "type", "bridge", "ifname", BENCH_BRIDGE_CONN, "con-name", BENCH_BRIDGE_CONN], env=env)
-    # Pin the bridge's own MAC to the uplink interface's real hardware MAC before this bridge is
-    # ever brought up, rather than letting NetworkManager synthesize one - REAL FINDING (2026-09-04
-    # bench Pi4 lockout incident, see CLAUDE.md's "Hard rules"): a synthesized bridge MAC can drift
-    # across the bridge's own lifetime, silently orphaning a router's static DHCP reservation (keyed
-    # to whatever MAC it saw when the reservation was made) - the host then gets a new pool address
-    # and a synthesized `PC-<mac>` hostname instead of its real one. Pinning to the real, permanent
-    # hardware MAC means a reservation keyed to it never needs to be re-keyed again, even across a
-    # future teardown/recreate of this exact bridge (e.g. a from-blank bootstrap test).
+    # Pinned to the uplink's real hardware MAC before the bridge ever comes up, never a synthesized
+    # one: a synthesized MAC can drift across the bridge's lifetime and silently orphan the router's
+    # static DHCP reservation (2026-09-04 bench Pi4 lockout incident, CLAUDE.md's "Hard rules").
     uplink_mac = get_interface_mac(uplink_iface)
     run(["sudo", "nmcli", "connection", "modify", BENCH_BRIDGE_CONN, "bridge.mac-address", uplink_mac], env=env)
     run(
@@ -888,12 +840,9 @@ def ensure_bench_bridge(uplink_iface: str | None, wifi_iface: str | None, ssid: 
          "master", BENCH_BRIDGE_CONN, "con-name", BENCH_ETH_CONN, "slave-type", "bridge"],
         env=env,
     )
-    # REAL FINDING: an unset (auto, channel 0) channel let NetworkManager pick channel 13 on a
-    # real run, which the Pico W's cyw43439 didn't associate with reliably (confirmed directly:
-    # repeated real "WLAN access point not found"/hotspot-fallback failures at channel 13, clean
-    # real STA connects immediately after pinning channel 6 instead - a universally-supported
-    # 2.4GHz channel, unlike 12-13 which are EU/DE-only and not guaranteed supported by every
-    # regulatory-domain/firmware combination).
+    # Real finding: left on auto, NetworkManager picked channel 13, which the Pico W's cyw43439 did
+    # not associate with reliably - repeated "WLAN access point not found" failures, clean STA
+    # connects immediately on channel 6. 12-13 are EU-only and not supported by every firmware.
     run(
         ["sudo", "nmcli", "connection", "add", "type", "wifi", "ifname", wifi_iface, "con-name", BENCH_AP_CONN,
          "ssid", ssid, "802-11-wireless.mode", "ap", "802-11-wireless.band", "bg", "802-11-wireless.channel", "6",
@@ -914,11 +863,95 @@ def ensure_bench_bridge(uplink_iface: str | None, wifi_iface: str | None, ssid: 
     return ssid
 
 
-def run_project_dependency_install(repo_root: Path, *, skip_npm: bool) -> None:
-    """The Python (`uv sync`) and website (`npm ci`, when applicable) dev-tooling installs every
-    tier needs. Missing npm/no package.json is a soft skip. Deliberately runs with env=None
-    (inherit the caller's environment), unlike every other subprocess here, since build_env()'s
-    fixed PATH would just as reliably hide the caller's own uv/npm install."""
+def pinned_node_major(repo_root: Path) -> str | None:
+    """The Node major this project pins, read from .nvmrc - the same file README tells a human to
+    point `nvm use` at, so there is exactly one pin rather than a second one living here."""
+    nvmrc = repo_root / ".nvmrc"
+    if not nvmrc.exists():
+        return None
+    major = nvmrc.read_text().strip().lstrip("v")
+    return major.split(".")[0] if major else None
+
+
+def node_on_path_matches(major: str) -> bool:
+    node = shutil.which("node")
+    if node is None:
+        return False
+    try:  # the resolved absolute path, not "node" - a partial executable path here would resolve
+        # against whatever PATH happens to hold when this runs.
+        version = subprocess.run([node, "--version"], capture_output=True, text=True, check=True).stdout
+    except (OSError, subprocess.CalledProcessError):
+        return False
+    return version.strip().lstrip("v").split(".")[0] == major
+
+
+def node_tarball_name(major: str, env: dict[str, str]) -> str:
+    """The exact release filename for this host's architecture, resolved from the Node dist
+    SHASUMS for the pinned major. Resolved rather than assembled: the patch version moves, and
+    guessing it would make this installer fail every time upstream publishes a new one."""
+    machine = os.uname().machine
+    arch = {"aarch64": "arm64", "arm64": "arm64", "x86_64": "x64"}.get(machine)
+    if arch is None:
+        raise SystemExit(f"No official Node build for this architecture ({machine}) - install Node {major} by hand")
+    url = f"https://nodejs.org/dist/latest-v{major}.x/SHASUMS256.txt"
+    sums = run(["curl", "-fsSL", "--max-time", "60", url], env=env)
+    suffix = f"-linux-{arch}.tar.xz"
+    for line in sums.splitlines():
+        parts = line.split()  # "<sha256>  <filename>" per line
+        if parts[1:] and parts[1].endswith(suffix):
+            return parts[1]
+    raise SystemExit(f"No linux-{arch} build listed for Node {major} at {url}")
+
+
+def ensure_node(toolchain_dir: Path, repo_root: Path) -> Path | None:
+    """Installs the .nvmrc-pinned Node into the managed toolchain directory and returns its bin dir;
+    None when a matching Node is already on PATH. Deliberately not an apt package - see README.md's
+    "Website tooling" for why, and for what a matching Node on PATH means."""
+    major = pinned_node_major(repo_root)
+    if major is None:
+        log("No .nvmrc - leaving Node to the caller")
+        return None
+    if node_on_path_matches(major):
+        log(f"Node {major}.x already on PATH - using it")
+        return None
+
+    node_root = toolchain_dir / "node"
+    env = network_env()
+    tarball = node_tarball_name(major, env)
+    target = node_root / tarball.replace(".tar.xz", "")
+    bindir = target / "bin"
+    if (bindir / "node").exists():
+        log(f"Node already installed at {target}")
+        return bindir
+
+    log(f"Installing Node {major}.x ({tarball}) into {node_root}")
+    node_root.mkdir(parents=True, exist_ok=True)
+    url = f"https://nodejs.org/dist/latest-v{major}.x/{tarball}"
+    with tempfile.TemporaryDirectory() as tmp:
+        archive = Path(tmp) / tarball
+        run(["curl", "-fsSL", "--max-time", "600", "-o", str(archive), url], env=env)
+        # Verified against the same SHASUMS the filename came from: this is a binary landing on a
+        # bench that flashes firmware, so an unverified download is not acceptable here.
+        expected = next(
+            line.split()[0] for line in run(
+                ["curl", "-fsSL", "--max-time", "60", f"https://nodejs.org/dist/latest-v{major}.x/SHASUMS256.txt"],
+                env=env,
+            ).splitlines() if line.split()[1:2] == [tarball]
+        )
+        actual = run(["sha256sum", str(archive)], env=env).split()[0]
+        if actual != expected:
+            raise SystemExit(f"Node tarball checksum mismatch: expected {expected}, got {actual}")
+        run(["tar", "-xJf", str(archive), "-C", str(node_root)], env=env)
+    if not (bindir / "node").exists():
+        raise SystemExit(f"Node install did not produce {bindir / 'node'}")
+    log(f"Node installed: {bindir}")
+    return bindir
+
+
+def run_project_dependency_install(repo_root: Path, toolchain_dir: Path, *, skip_npm: bool, skip_apt: bool) -> None:
+    """The Python (`uv sync`) and website (`npm ci`) dev-tooling installs every tier needs. Runs with
+    env=None (inherit the caller's), unlike every other subprocess here: build_env()'s fixed PATH
+    would hide the caller's own uv/npm install."""
     log("Installing Python project dependencies (uv sync)")
     run(["uv", "sync"], cwd=repo_root)
     if skip_npm:
@@ -927,27 +960,50 @@ def run_project_dependency_install(repo_root: Path, *, skip_npm: bool) -> None:
     if not (repo_root / "package.json").exists():
         log("No package.json found - skipping npm ci")
         return
-    if shutil.which("npm") is None:
-        log("npm not found on PATH - skipping npm ci (see README.md's \"Website tooling\" section to install Node)")
+    # Installs the pinned Node when the host has none, instead of the previous soft skip that left
+    # the whole web tier silently unrunnable - which is exactly what happened on the bench Pi4.
+    # Not gated on --skip-apt: no system package and no sudo, just a tarball into the managed
+    # toolchain directory. --skip-npm above is the gate for "I do not want the JS side at all".
+    node_bin = ensure_node(toolchain_dir, repo_root)
+    env = None
+    if node_bin is not None:
+        env = dict(os.environ)
+        env["PATH"] = f"{node_bin}{os.pathsep}{env.get('PATH', '')}"
+    elif shutil.which("npm") is None:
+        log("npm not found and no Node could be installed - skipping npm ci")
         return
     log("Installing website tooling dependencies (npm ci)")
-    run(["npm", "ci"], cwd=repo_root)
+    run(["npm", "ci"], cwd=repo_root, env=env)
+    ensure_playwright_browser(repo_root, env, skip_apt=skip_apt)
+
+
+def ensure_playwright_browser(repo_root: Path, env: dict[str, str] | None, *, skip_apt: bool) -> None:
+    """Vitest drives a real Chromium, not jsdom (SPECIFICATION.md Part H), so `npm ci` alone leaves
+    `npm test` unable to start. Only the OS-level libraries need root, hence the separate
+    `install-deps` call; non-fatal throughout, so a Python-only machine still finishes `env`."""
+    log("Installing the Playwright Chromium build vitest runs against")
+    # try/except rather than check=False: run() returns stdout either way, so an exception is the
+    # only signal it gives - and this must stay non-fatal without silently swallowing a failure.
+    try:
+        run(["npx", "playwright", "install", "chromium"], cwd=repo_root, env=env)
+    except SetupError as exc:
+        log(f"Playwright browser install failed ({exc}) - `npm test` will not run until it succeeds")
+        return
+    if skip_apt:
+        log("Skipping Playwright OS dependencies (--skip-apt) - already present on a normal desktop/CI image")
+        return
+    try:
+        run(["npx", "playwright", "install-deps", "chromium"], cwd=repo_root, env=env)
+    except SetupError as exc:
+        log(f"Playwright OS dependencies not installed ({exc}) - install them by hand if `npm test` cannot start")
 
 
 def run_env(args: argparse.Namespace, versions_path: Path, versions: dict[str, Any]) -> int:
-    """Tiered dev-environment setup (README.md's environment-tiers table): each tier is a
-    strict superset of the one before it.
-
-      generic - Python/Node project deps (uv sync/npm ci) + the firmware/Unix-port toolchain
-                (reuses run_setup() unchanged) - everything scripts/test.sh and the digital
-                twin need, no physical hardware involved.
-      flash   - + non-root USB serial access (dialout group) and an auto-detected (or
-                --device-overridden) real RP2040 board.
-      bench   - + a real WiFi bridge/AP on this host (NetworkManager), so a flashed board can
-                reach genuine internet/NTP - idempotent, see ensure_bench_bridge().
-    """
+    """Tiered dev-environment setup, each tier a strict superset of the one before it: generic
+    (project deps + the firmware/Unix-port toolchain), flash (+ USB serial access and a real board),
+    bench (+ a WiFi bridge/AP on this host). Per-tier detail: README.md's environment-tiers table."""
     run_setup(args, versions_path, versions)
-    run_project_dependency_install(REPO_ROOT, skip_npm=args.skip_npm)
+    run_project_dependency_install(REPO_ROOT, args.toolchain_dir, skip_npm=args.skip_npm, skip_apt=args.skip_apt)
 
     if args.tier == "generic":
         log("Generic environment ready: Python/Node deps installed, firmware/Unix-port toolchain verified")
