@@ -108,14 +108,19 @@ def test_parse_header_line_returns_none_for_the_blank_terminator() -> None:
 class _ChunkedReader:
     # A fake stream whose readinto() hands back one pre-scripted chunk per call, exactly like a
     # real socket splitting one response body across several TCP segments - proving the loop
-    # actually loops, not just that it works when the first call happens to deliver everything.
-    def __init__(self, chunks: "list[bytes]") -> None:
+    # actually loops, not just that it works when the first call happens to deliver everything. A
+    # scripted `None` models extmod/asyncio/stream.py's own Stream.readinto() spurious-wake race -
+    # poll said readable, the underlying read still came back empty - which must be retried, never
+    # treated as EOF (only a real `b""` may be, once the script runs out).
+    def __init__(self, chunks: "list[bytes | None]") -> None:
         self._chunks = list(chunks)
 
-    async def readinto(self, buf: bytearray) -> int:
+    async def readinto(self, buf: bytearray) -> "int | None":
         if not self._chunks:
             return 0
         chunk = self._chunks.pop(0)
+        if chunk is None:
+            return None
         n = len(chunk)
         buf[:n] = chunk
         return n
@@ -143,6 +148,18 @@ def test_read_exact_raises_eof_on_premature_stream_closure() -> None:
         raise AssertionError("expected EOFError")
     except EOFError:
         pass
+
+
+def test_read_exact_retries_a_spurious_none_read_instead_of_treating_it_as_eof() -> None:
+    # The regression this exists to catch: Stream.readinto() can legitimately return None even
+    # right after poll() said the socket was readable (extmod/asyncio/stream.py's own Stream.read()
+    # explicitly retries on this same race, one function up in that file) - a first version of
+    # _read_exact() conflated None with a real 0-byte EOF, which read as an intermittent, false
+    # "connection closed" under exactly the scheduling jitter a busier CI runner produces more of
+    # than a quiet sandbox does.
+    reader = _ChunkedReader([None, b"ab", None, b"c"])
+    result = run_timed(http_client._read_exact(reader, 3))
+    assert bytes(result) == b"abc"
 
 
 # ---------------------------------------------------------------------------

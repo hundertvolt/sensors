@@ -75,14 +75,22 @@ async def _read_exact(reader: "Any", n: int) -> bytearray:
     # MemoryError (confirmed directly against the pinned interpreter's own source), so a stale
     # previous response's garbage is reclaimed automatically, exactly when an allocation actually
     # needs the room - forcing it early changes nothing but timing.
+    # Stream.readinto() does exactly one queue_read()+readinto() pair, not Stream.read()'s own
+    # retry-on-None loop (same file, a few lines up) - so a spurious None (poll said readable, the
+    # actual read still came back empty - the exact race Stream.read()'s own loop is written to
+    # ride out) reaches this caller directly and must be retried, never treated as EOF. Only a real
+    # 0 means the peer closed. Getting this wrong reads as an intermittent, environment-dependent
+    # false EOFError under scheduling jitter a quieter sandbox rarely reproduces - confirmed the
+    # hard way, this file's own first version conflated the two.
     buf = bytearray(n)
     view = memoryview(buf)
     got = 0
     while got < n:
         nread = await reader.readinto(view[got:])
-        if not nread:
+        if nread == 0:
             raise EOFError
-        got += nread
+        if nread:
+            got += nread
     return buf
 
 
