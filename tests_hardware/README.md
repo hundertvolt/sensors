@@ -271,6 +271,18 @@ point at a flagged assumption being wrong, not at a real product bug. Resolved i
 through, kept (not deleted) so a reader mid-investigation doesn't wonder whether something was ever
 a live question:
 
+- **Three bench-tier tests fail deterministically as of the first full flash+bench run of the
+  ISL29125 branch (2026-09-13, 95 passed / 3 failed / 2 skipped).** Two of them
+  (`test_isl29125_learned_gain_ratio_survives_a_real_reboot_with_its_timestamp`,
+  `test_isl29125_reset_gain_calibration_command_push_over_real_rest`) come from commit `ab81b79`,
+  whose own subject is "written, never run" - this was their first execution, and both encode an
+  expectation the driver has never met (`CalTS` is `None`, not `0`, on an unlearned board; and
+  clearing the calibration deliberately unlocks the learner, which then legitimately warns). The
+  third (`test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly`) asserts an
+  empty FRAM log after three deliberate mid-write hard resets and sees the dual-copy recovery's own
+  `W71`/`W72` plus `E31`. Full analysis and a recommendation for each: BACKLOG.md item 26. Do not
+  read these three as a regression signal while they stand.
+
 - ~~The bench has never run MicroPython 1.29.0.~~ — **resolved (2026-09-11): it has, repeatedly.**
   Real `dev` firmware built from `src/` and flashed, with the flash, bench and mid soak tiers all
   run clean against it. All three items that wanted on-target confirmation are answered: the SPI
