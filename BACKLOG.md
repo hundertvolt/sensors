@@ -65,28 +65,6 @@ constraints.
   running the C side exists and can be connected to the dev board, so the reconciliation session can
   test the two implementations against each other for real rather than only reading them side by
   side.
-- **Auto-builder: decide whether `sensortask_dev` importing `asy_uart_comm` is selection enough, or
-  whether a separate selectable `uart_crossover` unit is still wanted.** The original requirement was
-  recorded (owner, 2026-09-11) as: `asy_uart_comm.py` is a *submodule*, not an include-selectable
-  one, with no upstream module, so a dev build meant to exercise the crossover jumper had nothing
-  that would cause it to be included at all — hence a selectable `uart_crossover` module constructing
-  the two instances across the jumper.
-  **That premise has since changed, and the change is worth stating plainly rather than leaving the
-  original entry to mislead the integration session.** `src/sensortask_dev.py` now constructs both
-  instances itself (SPECIFICATION.md Part A.7 step 13b), so it *is* the upstream module the entry
-  asked for: an import-scanning builder that selects `sensortask_dev` pulls `asy_uart_comm` in behind
-  it. Independently, today's `scripts/build_firmware.py` globs and freezes all of `src/*.py`, so a
-  dev firmware built with it contains the module either way. **The flash and bench hardware tiers are therefore
-  not blocked, and have now been run** (2026-09-11, dev bench, owner's go-ahead in-session):
-  `tests_hardware/flash/test_uart_crossover.py` 2/2 and
-  `tests_hardware/bench/test_uart_link_under_api_load.py` 2/2, against a dev firmware built from the
-  branch and flashed for the purpose. Neither skip guard fired, which independently confirms
-  `asy_uart_comm` does reach a dev build behind `sensortask_dev`; they remain only as a diagnostic if
-  some future firmware genuinely lacks the module.
-  What is left for the integration session is a design question this branch should not answer for it:
-  whether the auto-builder's selection model wants the variant entry point to carry the link (as it
-  does now), or a separate selectable `uart_crossover` unit so the link can be included or omitted
-  independently of `sensortask_dev`. Still **no file, no code and no placeholder** added here for it.
 
 ## Open questions (need owner input or further investigation)
 

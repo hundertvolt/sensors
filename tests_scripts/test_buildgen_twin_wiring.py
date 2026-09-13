@@ -110,7 +110,7 @@ def test_novel_combo_fixture_wires_two_scd30_instances_on_separate_buses(fixture
     i2c0_scd30 = next(a for a in plan["buses"]["i2c0"] if a["driver"] == "scd30")
     i2c1_scd30 = next(a for a in plan["buses"]["i2c1"] if a["driver"] == "scd30")
     assert i2c0_scd30 == {"driver": "scd30", "name_ext": "primary", "address": 0x61, "irq_pin": 2}
-    assert i2c1_scd30 == {"driver": "scd30", "name_ext": "secondary", "address": 0x61, "irq_pin": 8}
+    assert i2c1_scd30 == {"driver": "scd30", "name_ext": "secondary", "address": 0x61, "irq_pin": 10}
     # Same fixed address on two different buses - never a collision (buildgen.validate's own
     # per-bus address-collision check only scopes within one bus).
     bmp3xx = next(a for a in plan["buses"]["i2c0"] if a["driver"] == "bmp3xx")

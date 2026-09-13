@@ -258,6 +258,34 @@ async def _wait_until_built(module: "Any", timeout_s: float = 10.0) -> None:
     await asyncio.wait_for(poll(), timeout_s)
 
 
+def _wire_uart_crossover(module: "Any", plan: "dict[str, Any]") -> None:
+    # Generic, wiring-plan-JSON-driven equivalent of what main's own hand-written
+    # run_dev_integration.py used to do by hand (device-name-specific): the bench's permanent
+    # crossover jumper. Without it the twin models a dev board whose jumper is missing, and the
+    # link exerciser the booted module now starts would spend the whole run timing out instead of
+    # moving bytes (SPECIFICATION.md Part A.7/J). A no-op for any device with no "uart" key
+    # (buildgen.twin_wiring.compute_twin_wiring() only emits one when the device TOML declares a
+    # uart_link initiator/responder pair - wozi never does).
+    #
+    # Deliberately not inside machine.configure_wiring() itself (the plan this was drafted against
+    # first suggested that): configure_wiring() runs BEFORE build_system() constructs anything, but
+    # attach_crossover_jumper() needs the two already-built asy_uart_driver.UART wrapper objects'
+    # own ._uart machine fakes and .poller attributes - those only exist once this generic entry
+    # point's own module (the booted sensortask_<device>) has actually built them, the same reason
+    # _collect_chips() below is a post-construction step too, not a pre-construction one.
+    uart_plan = plan.get("uart")
+    if uart_plan is None:
+        return
+    initiator = getattr(module, uart_plan["initiator_var"])
+    responder = getattr(module, uart_plan["responder_var"])
+    assert initiator is not None and responder is not None
+    assert initiator.uart is not None and responder.uart is not None
+    assert initiator.uart._uart is not None and responder.uart._uart is not None
+    _link, poll_a, poll_b = machine.attach_crossover_jumper(initiator.uart._uart, responder.uart._uart)
+    initiator.uart.poller = poll_a
+    responder.uart.poller = poll_b
+
+
 async def _wait_until_serving(host: str, port: int, timeout_s: float = 10.0) -> None:
     async def poll() -> None:
         while True:
@@ -379,6 +407,7 @@ async def main(config: RunConfig) -> "dict[str, Any]":
     summary: dict[str, Any] = {"failures": [], "would_have_triggered_count": 0}
     try:
         await _wait_until_built(module)
+        _wire_uart_crossover(module, plan)
 
         assert module.conn is not None and module.watchdog is not None
         chips = _collect_chips(module, plan)

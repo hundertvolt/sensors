@@ -353,11 +353,26 @@ def _system_section(src_dir: Path, device: str, cache: "dict[Path, _DriverTags]"
 def _errcount_group(have: "set[str]") -> "dict[str, Any]":
     modules: list[dict[str, str]] = []
     for key, label, has_cfgmgr in _ERRCOUNT_CATALOG:
+        if key == "webserver":
+            continue  # always the very last entry - see below, matching every hand-written
+            # definitions.json's own fixed ordering (UART's two rows land between notification and
+            # it, never after it).
         if key not in _MANDATORY_ERRCOUNT_KEYS and key not in have:
             continue
         modules.append({"key": _ERRCOUNT_NAME[key], "label": label})
         if has_cfgmgr:
             modules.append({"key": f"CFGMGR_{_ERRCOUNT_NAME[key]}", "label": _CFGMGR_LABEL[key]})
+    if "uart_link" in have:
+        # No CFGMGR_ companion (UART_Comm has no config schema - its parameters are an out-of-band
+        # two-implementation wire contract, never runtime-writable, SPECIFICATION.md Part J.6) and
+        # no generic per-instance derivation the way scd30/sgp40 get (buildgen.definitions'
+        # cross-cutting status/errcount sections are a fixed, hand-maintained catalog for every
+        # driver today, not @web-tag-derived - see this module's own docstring). Two fixed rows,
+        # matching UartLinkExerciser's own name_ext="init"/"resp" -> instance_name() resolution.
+        modules.append({"key": "UART_init", "label": "UART Link (Initiator)"})
+        modules.append({"key": "UART_resp", "label": "UART Link (Responder)"})
+    webserver_label = next(label for key, label, _has_cfgmgr in _ERRCOUNT_CATALOG if key == "webserver")
+    modules.append({"key": _ERRCOUNT_NAME["webserver"], "label": webserver_label})
     return {"key": "errcount", "label": "Error Counts & History", "kind": "errcount", "modules": modules}
 
 
@@ -394,11 +409,28 @@ def _status_section(have: "set[str]") -> "dict[str, Any]":
         {"key": "networking", "label": "Networking Status", "fields": networking_fields},
         {"key": "system", "label": "System Status", "fields": system_fields},
     ]
+    # "Sensor Maintenance": one group, its fields built additively from whichever maintenance-status
+    # sources this device actually has (matches codegen._emit_webserver()'s own additive
+    # maintenance_sensors= tuple) - never a per-driver group of its own, both here and there.
+    maintenance_fields: list[dict[str, Any]] = []
     if "sgp40" in have:
-        groups.append({"key": "sensors", "label": "Sensor Maintenance", "fields": [
+        maintenance_fields += [
             {"key": "SGP40_BackupTS", "label": "SGP40 Last Backup", "kind": "readonly"},
             {"key": "SGP40_RestoreTS", "label": "SGP40 Restore Timestamp", "kind": "readonly"},
-        ]})
+        ]
+    if "uart_link" in have:
+        maintenance_fields += [
+            {
+                "key": "UARTLINK_Transfers", "label": "UART Link Transfers", "kind": "readonly",
+                "description": "Completed transfers across this bench rig's UART0<->UART1 crossover jumper since boot. Bench-only - a deployed unit has no such link.",
+            },
+            {
+                "key": "UARTLINK_Failures", "label": "UART Link Failures", "kind": "readonly",
+                "description": "Transfers that did not complete across the crossover jumper since boot.",
+            },
+        ]
+    if maintenance_fields:
+        groups.append({"key": "sensors", "label": "Sensor Maintenance", "fields": maintenance_fields})
     if "notification" in have:
         groups.append({"key": "notification", "label": "Notification Status", "fields": [
             {"key": "Triggered", "label": "Currently Triggered", "kind": "readonly"},

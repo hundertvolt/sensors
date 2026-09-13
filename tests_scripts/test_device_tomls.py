@@ -19,8 +19,13 @@ DEVICE_NAMES = ["dev", "wozi", "arzi", "klkizi", "grkizi", "schlafzi"]
 # bmp3xx is present only on wozi/dev. wifi/ntp/system are mandatory infra, never [[instance]].
 _ALWAYS_PRESENT_DRIVERS = {"scd30", "sgp40", "fram", "neopixel", "notification"}
 _DEVICES_WITH_BMP3XX = {"wozi", "dev"}
-# Driver kinds that can have more than one instance per device.
-_MULTI_INSTANCE_CAPABLE_DRIVERS = {"scd30", "sgp40", "bmp3xx"}
+# "dev" is the only unit with a UART crossover jumper to exercise (CLAUDE.md: never wozi, which is
+# never physically flashed, and no other real device has this bench-only rig at all).
+_DEVICES_WITH_UART_LINK = {"dev"}
+# Driver kinds that can have more than one instance per device. uart_link always has exactly two
+# (initiator + responder) on a device that has it at all, disambiguated by name_ext like any other
+# member here - never a singleton the way fram/neopixel/notification are.
+_MULTI_INSTANCE_CAPABLE_DRIVERS = {"scd30", "sgp40", "bmp3xx", "uart_link"}
 _SINGLETON_DRIVERS = {"fram", "neopixel", "notification"}
 # Mandatory infrastructure - present on every device, never modeled as [[instance]]; tuned via
 # required fields directly in [device].
@@ -34,6 +39,7 @@ _DEVICE_WIRING = {"led_target": "neopixel", "fram_target": "fram"}
 _REQUIRED_BUS_PIN_FIELDS = {
     "i2c": {"scl_pin", "sda_pin"},
     "spi": {"sck_pin", "mosi_pin", "miso_pin"},
+    "uart": {"tx_pin", "rx_pin"},
 }
 
 
@@ -51,7 +57,7 @@ def _bus_kind(bus_name: str) -> str:
     for kind in _REQUIRED_BUS_PIN_FIELDS:
         if bus_name.startswith(kind):
             return kind
-    raise AssertionError(f"unrecognized bus id {bus_name!r} - not an i2c*/spi* bus")
+    raise AssertionError(f"unrecognized bus id {bus_name!r} - not an i2c*/spi*/uart* bus")
 
 
 # --- reusable collision/shape checks (each raises AssertionError on the first violation found) --
@@ -67,10 +73,13 @@ def check_bus_tables_declare_their_required_wire_pins(doc: _TomlDoc, label: str)
         missing = required - bus_table.keys()
         assert not missing, f"{label}: bus.{bus_name} is missing required field(s) {missing}"
         if kind == "i2c":
-            # asy_i2c_driver.I2C takes a frequency param; asy_spi_driver.SPI has none.
+            # asy_i2c_driver.I2C takes a frequency param; asy_spi_driver.SPI/asy_uart_driver.UART
+            # (baudrate is its own, separately-required field, checked below) have none.
             assert isinstance(bus_table.get("frequency"), int), f"{label}: bus.{bus_name} (i2c) is missing an int frequency"
         else:
-            assert "frequency" not in bus_table, f"{label}: bus.{bus_name} (spi) declares frequency - asy_spi_driver.SPI has no such parameter"
+            assert "frequency" not in bus_table, f"{label}: bus.{bus_name} ({kind}) declares frequency - its own driver has no such parameter"
+        if kind == "uart":
+            assert isinstance(bus_table.get("baudrate"), int), f"{label}: bus.{bus_name} (uart) is missing an int baudrate"
         # cs_pin is an instance-exclusive resource, never a bus-shared field.
         assert "cs_pin" not in bus_table, f"{label}: bus.{bus_name} declares cs_pin - that belongs on the owning instance, not the shared bus"
 
@@ -263,8 +272,16 @@ def test_instance_list_has_the_expected_driver_kinds(devices_dir: Path, device: 
     expected = set(_ALWAYS_PRESENT_DRIVERS)
     if device in _DEVICES_WITH_BMP3XX:
         expected.add("bmp3xx")
+    if device in _DEVICES_WITH_UART_LINK:
+        expected.add("uart_link")
     assert set(drivers) == expected, f"{device}: instance driver set {sorted(set(drivers))} != expected {sorted(expected)}"
-    assert len(drivers) == len(set(drivers)), f"{device}: duplicate driver kind in instance list"
+    # Repeats are fine for a _MULTI_INSTANCE_CAPABLE_DRIVERS member (disambiguated by name_ext -
+    # dev's own uart_link initiator+responder pair is exactly this shape) - what must stay unique
+    # is the real (driver, name_ext) identity, the same key model.py itself rejects a duplicate of.
+    keys = [(inst["driver"], inst.get("name_ext", "")) for inst in doc["instance"]]
+    assert len(keys) == len(set(keys)), f"{device}: duplicate (driver, name_ext) in instance list"
+    non_multi = [d for d in drivers if d not in _MULTI_INSTANCE_CAPABLE_DRIVERS]
+    assert len(non_multi) == len(set(non_multi)), f"{device}: duplicate driver kind in instance list for a driver that isn't multi-instance-capable"
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
@@ -479,7 +496,7 @@ def test_detects_no_bus_declared_at_all() -> None:
 
 def test_bus_kind_rejects_an_unrecognized_bus_id() -> None:
     with pytest.raises(AssertionError, match="unrecognized bus id"):
-        _bus_kind("uart0")
+        _bus_kind("can0")
 
 
 def test_detects_instance_referencing_an_undeclared_bus() -> None:

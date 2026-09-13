@@ -135,7 +135,15 @@ information):
   **`dev` carries two instances across its permanent crossover jumper and `wozi` carries none** —
   wozi is never physically flashed, so wiring it there would add an untestable peripheral. The
   protocol's own wire constants and recovery timings live in `src/asy_uart_comm.py` as `const()`
-  values; a change to any of them is Class A by definition.
+  values; a change to any of them is Class A by definition. **Construction is buildgen-driven, like
+  every other driver**: `devices/dev.toml` declares the two instances as `driver = "uart_link"`
+  (`role = "initiator"`/`"responder"`, one on each of `[bus.uart0]`/`[bus.uart1]`) — `src/
+  asy_uart_link_driver.py`'s `UartLinkExerciser` wraps one role's `UART_Comm` plus the bench-only
+  banner/echo application logic and transfer/failure counters (none of which belong in the
+  standalone protocol module itself); resolved via `buildgen/driver_registry.py`'s `_OVERRIDES`
+  table like `fram`/`neopixel`/`notification`, since it isn't a `SensorReader`/`SensorReaderConfig`
+  subclass either — but unlike those three it is not a singleton (`SINGLETON_SERVICE_DRIVERS`
+  excludes it), since a device wires exactly one initiator + one responder.
 - **`dev` config is a bench rig only** — its quirks (e.g. LED/Neopixel REST routes referencing an
   object that's never instantiated) are explicitly out of scope. Don't fix them as if they were
   bugs.

@@ -18,6 +18,7 @@ REQUIRED_TOML_FIELDS: dict[str, tuple[str, ...]] = {
     "fram": ("bus", "cs_pin", "max_size"),
     "neopixel": ("pin",),
     "notification": (),
+    "uart_link": ("bus", "role"),
 }
 
 # TOML fields a driver's instances *may* declare, beyond the required ones above - present because
@@ -29,6 +30,7 @@ OPTIONAL_TOML_FIELDS: dict[str, tuple[str, ...]] = {
     "fram": (),
     "neopixel": (),
     "notification": (),
+    "uart_link": (),
 }
 
 # Every field an instance of this driver may legitimately declare (beyond "driver"/"name_ext") -
@@ -48,5 +50,8 @@ ADDRESS_CAPABLE_DRIVERS = frozenset({"bmp3xx"})
 # Bus-attached drivers with no address field at all - the chip's own I2C address is fixed in
 # hardware (SCD30/SGP40's own datasheets), so two such instances sharing one bus can never be told
 # apart (BUILD_CHAIN_PLAN.md's "two hardwired-address instances of the same chip type sharing a
-# bus with no way to distinguish them at all" case).
+# bus with no way to distinguish them at all" case). "uart_link" lands here too, for a related but
+# distinct reason: a UART bus is a point-to-point peripheral, not a multi-drop one, so it never has
+# an address concept at all - the same "no way to tell two instances on one bus apart" collision
+# check (validate._check_address_collisions()) applies for exactly the reason its own message states.
 FIXED_ADDRESS_DRIVERS = BUS_ATTACHED_DRIVERS - ADDRESS_CAPABLE_DRIVERS - {"fram"}

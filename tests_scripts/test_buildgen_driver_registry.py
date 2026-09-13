@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from buildgen.driver_registry import SERVICE_DRIVERS, DriverInfo, parse_name_constant, resolve_driver
+from buildgen.driver_registry import SERVICE_DRIVERS, SINGLETON_SERVICE_DRIVERS, DriverInfo, parse_name_constant, resolve_driver
 from buildgen.errors import BuildError
 
 
@@ -24,6 +24,7 @@ def src_dir(repo_root: Path) -> Path:
         ("fram", "asy_fram_manager", "AsyFramManager", "service", True),
         ("neopixel", "asy_neopixel_driver", "NeopixelDriver", "service", False),
         ("notification", "asy_notification_service", "NotificationCoordinator", "service", True),
+        ("uart_link", "asy_uart_link_driver", "UartLinkExerciser", "service", True),
     ],
 )
 def test_resolve_driver_real_drivers(src_dir: Path, driver: str, module: str, class_name: str, kind: str, *, needs_setup: bool) -> None:
@@ -68,12 +69,20 @@ def test_resolve_driver_override_table_missing_file(tmp_path: Path) -> None:
 
 
 def test_service_drivers_frozenset_matches_override_table() -> None:
-    assert {"fram", "neopixel", "notification"} == SERVICE_DRIVERS
+    assert {"fram", "neopixel", "notification", "uart_link"} == SERVICE_DRIVERS
+
+
+def test_singleton_service_drivers_excludes_uart_link() -> None:
+    # uart_link resolves via the same override table (not a SensorReader/SensorReaderConfig
+    # subclass either) but isn't a singleton - a device wires exactly two instances
+    # (initiator/responder), disambiguated by name_ext like any other multi-instance driver.
+    assert {"fram", "neopixel", "notification"} == SINGLETON_SERVICE_DRIVERS
+    assert "uart_link" not in SINGLETON_SERVICE_DRIVERS
 
 
 @pytest.mark.parametrize(
     "driver,expected_name",
-    [("scd30", "SCD30"), ("sgp40", "SGP40"), ("bmp3xx", "BMP3XX"), ("fram", "FRAM"), ("neopixel", "NEOPIXEL"), ("notification", "NOTIFY")],
+    [("scd30", "SCD30"), ("sgp40", "SGP40"), ("bmp3xx", "BMP3XX"), ("fram", "FRAM"), ("neopixel", "NEOPIXEL"), ("notification", "NOTIFY"), ("uart_link", "UART")],
 )
 def test_parse_name_constant_real_drivers(src_dir: Path, driver: str, expected_name: str) -> None:
     info = resolve_driver(driver, src_dir, "dev")

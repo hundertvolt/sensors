@@ -18,6 +18,7 @@ CORE_MODULES = frozenset(
         "api_response",
         "asy_i2c_driver",
         "asy_spi_driver",
+        "asy_uart_driver",
         "asy_webserver_service",
         "asy_wifi_service",
         "asy_ntp_client",

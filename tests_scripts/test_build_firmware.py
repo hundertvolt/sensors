@@ -114,10 +114,13 @@ def test_build_stage_dir_stages_exactly_the_computed_frozen_modules(build_firmwa
 
     # A src/ module outside this device's own computed dependency closure (e.g. a driver no real
     # device today wires in) must NOT be staged either - proves this is a real, device-scoped
-    # subset, not "every src/*.py file" still happening to pass the assertion above.
+    # subset, not "every src/*.py file" still happening to pass the assertion above. Not asserted
+    # non-empty here (unlike the pre-uart_link version of this test): "dev" now legitimately wires
+    # every driver in src/ (it's the one real device exercising all 7), so its own unrelated set is
+    # genuinely empty - "wozi" (never wired to uart_link/asy_uart_comm) is what keeps this check
+    # non-vacuous overall, across this test's own device parametrization.
     all_src_modules = {p.stem for p in (repo_root / "src").glob("*.py")}
     unrelated_modules = all_src_modules - expected_modules
-    assert unrelated_modules, "sanity: src/ should contain at least one module outside every real device's own dependency closure"
     assert not ({f"{m}.py" for m in unrelated_modules} & staged)
 
     assert (repo_root / "ext" / "microdot.py").read_text() == (tmp_path / "microdot.py").read_text()

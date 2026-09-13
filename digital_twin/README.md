@@ -247,6 +247,17 @@ nothing left only they could do — `scripts/run_digital_twin_ci.sh`'s own per-d
 every `tests/test_digital_twin_*.py` file that used to hardcode one of them now drive this file
 instead, for every real device including wozi/dev.
 
+`compute_twin_wiring()`'s plan carries a fourth, optional `"uart"` key (`{"initiator_var",
+"responder_var"}`, the two generated Python variable names — `None`/absent for any device with no
+`uart_link` instance, i.e. every device but `dev`) alongside `"buses"`/`"spi"`. Unlike those two,
+this key is consumed *after* construction, not by `machine.configure_wiring()` itself:
+`_wire_uart_crossover()` (called from `main()` right after `_wait_until_built()`) reads the two
+already-built `UartLinkExerciser` instances off the booted module by name, joins their own
+`asy_uart_driver.UART`'s underlying `machine.UART` fakes with the already-existing
+`attach_crossover_jumper()`, and swaps in the returned bounded `LinkPoller`s — the exact generic,
+wiring-plan-JSON-driven replacement for what `run_dev_integration.py` used to do by hand
+(hardcoded to `sensortask_dev.uart0`/`uart1`) before it was retired above.
+
 ### FRAM persistence
 
 The FRAM twin reads back exactly what was written, including across process restarts, but only
