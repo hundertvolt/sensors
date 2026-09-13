@@ -3667,10 +3667,34 @@ FPU split is the one that matters for BSEC, which is float-heavy:
 
 | QT Py variant | Core | FPU | USB | Notes |
 |---|---|---|---|---|
+| **SAMD21** (incumbent) | Cortex-M0+, single 48 MHz | **No** | native CDC | 256 kB flash / **32 kB SRAM**, no radio, no RTOS, no hardware divide. No datasheet in `datasheets/` |
 | **ESP32 Pico** | Xtensa LX6, dual 240 MHz | **Yes** | CP210x bridge | 8 MB flash, 2 MB PSRAM. BT Classic + BLE |
 | **ESP32-S2** | Xtensa LX7, single | **No** | native | Measured ~6× slower FP than ESP32 |
 | **ESP32-S3** | Xtensa LX7, dual 240 MHz | **Yes** | native USB + **built-in JTAG** | 512 kB SRAM; 8 MB flash (no PSRAM) or 4 MB + 2 MB PSRAM. BLE only |
 | **ESP32-C3** | RISC-V, single 160 MHz | **No** | native | ~2× slower FP again than S2 |
+
+**Where the SAMD21 sits on the float axis: almost certainly last of the five, by inference rather
+than measurement.** It combines the no-FPU penalty with a 48 MHz clock (3.3× below the C3, 5× below
+the S3) and a Cortex-M0+ core that has no hardware divide and only a Thumb-1-class instruction set,
+where the C3's RV32IMC at least has the `M` extension. No published cross-benchmark was found that
+puts a number on it, so this is reasoning from the components, not a measured ratio.
+
+**What the SAMD21 is genuinely better at, and it is not nothing.** Ranking it last overall would be
+wrong on three axes that this project actually cares about:
+
+- **Timing determinism.** A bare `loop()` on a single core with no radio and no RTOS is far easier to
+  reason about for a stop-and-wait protocol than FreeRTOS plus a WiFi stack. Part J's poll-interval
+  and timeout budgets (J.6) are derived from worst-case latency, and an ESP32 adds scheduler and
+  radio jitter the SAMD21 structurally cannot have. The move buys headroom but spends predictability.
+- **Not being a second radio.** The Pico W already owns WiFi in this system. A WiFi-capable peer is
+  one more network participant to configure, secure and keep patched, for a device whose entire job
+  is to answer a UART. That is an argument against the ESP32 that has nothing to do with tooling.
+- **Smallest BSEC footprint** (K.11.1): 32 457 B text against the ESP blobs' 34–35 kB. Marginal, and
+  irrelevant against 8 MB of flash — but it is the direction nobody expects.
+
+It is also the only one of the five with a **field-validated implementation of this protocol already
+running on it** (Part J.1). That is sunk-cost value, not technical merit, but it is real: the ESP32
+move restarts the peer's own validation from scratch even though the protocol logic ports unchanged.
 
 **Only the ESP32 Pico and the ESP32-S3 have an FPU.** Picking an S2 or C3 to fix a float-heavy
 workload moves in the wrong direction relative to the two that do — still far faster than a 48 MHz
