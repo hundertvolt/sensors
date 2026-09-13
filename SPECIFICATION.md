@@ -20,6 +20,7 @@ would recreate the scattering problem this document exists to fix).
 - **Part H** — Website (JS/HTML/CSS) Architecture
 - **Part I** — Memory-Safety Audit & Discipline
 - **Part J** — UART Message Protocol (`asy_uart_comm.py`)
+- **Part K** — Arduino/C++ Tier: Tooling, Testing, Simulation & Integration (research)
 
 ---
 
@@ -2815,10 +2816,14 @@ payload is an empty `bytearray()` rather than `None`.
 
 **A second implementation of this protocol exists in C**, running on the Arduino peer. It mirrors the
 Python implementation's *intended* behavior and is owner-validated over many real transmissions — but
-**how far that mirroring extends to the known flaws is unverified**: it may share some, not others,
-and may have introduced its own. Establishing that is future work, never an assumption to build on.
-The C source is not yet in this repo; importing and reconciling it is a future session's job
-(BACKLOG.md). Until then:
+**how far that mirroring extends to the known flaws is now established by reading, not by
+assumption**: it shares some, not others, and has one of its own (a `CMD` bitmask whose unmatched
+case falls through to the wrong `switch` label and acknowledges the frame).
+The C source landed in this repo on 2026-09-13 (`arduino/`) and has been read against the changelog
+— `UART_C_IMPLEMENTATION_NOTES.md` — but **nothing has been reconciled**: no C code has changed, and
+the two sides cannot currently talk (CRC presence, CRC algorithm and `payload_size` all differ, each
+one expected and recorded). The reconciliation itself is still a future session's job (BACKLOG.md).
+Until then:
 
 - **Every protocol-level change is logged in `UART_C_PORT_CHANGELOG.md`** — a temporary file, deleted
   once the C side is reconciled. A change is protocol-level ("Class A") if it alters the bytes
@@ -3135,3 +3140,672 @@ whole train while the initiator reports failure. This is the protocol's at-least
 that retries on a failed `uart_set()` must tolerate the peer seeing the message twice. A third state
 would buy nothing — no retransmission exists to hang it on, and the application-level answer is the
 same either way.
+
+---
+
+# Part K — Arduino/C++ Tier: Tooling, Testing, Simulation & Integration
+
+**Status: research and knowledge collection only. Nothing in this Part is built, chosen or
+committed to.** It exists so that the session that *does* build the Arduino tier starts from
+established facts rather than re-deriving them. Where a statement is a recommendation rather than a
+fact it says so; where something was checked and ruled out, it says what ruled it out. Open
+decisions are collected in K.10 and mirrored in BACKLOG.md.
+
+The subject is the C++ implementation on the Arduino peer — today `arduino/` (Part J, and
+`UART_C_IMPLEMENTATION_NOTES.md` for what that code currently is), a SAMD21 board. The goal
+recorded by the project owner (2026-09-13) is that this tier reaches the same standard as the Python
+tier, with tooling appropriate to C++ rather than a copy of the Python tooling.
+
+## K.1 The six requirements, restated as checkable properties
+
+| # | Requirement | Checkable property |
+|---|---|---|
+| R1 | Same quality-check level, different tooling | A `scripts/lint_arduino.sh`-equivalent exits 0 with zero findings across format, static analysis and compiler warnings, and is in CI as its own named job |
+| R2 | Same integration level | One command compiles, one flashes, one watches the running firmware on the real board — the `mpremote`/`build_firmware.py` equivalents |
+| R3 | USB Python and USB Arduino live in parallel, including bench-tier tests | A bench test drives the Pico over its CDC port and the SAMD21 over its own CDC port in the same test run |
+| R4 | Same CI and same separation as the website tier | Runnable standalone; gated by a paths filter; one workflow file; not a required check that never fires |
+| R5 | A host-runnable digital twin that can talk to the Python twin | The same C++ sources compile and run on the dev host, and a twin-to-twin transfer over the protocol passes |
+| R6 | Installed and self-tested by the setup script | `toolchain/setup_toolchain.py env --tier generic` installs it from nothing and proves it works |
+
+## K.2 Build and toolchain
+
+### K.2.1 Arduino CLI
+
+The official, headless, scriptable build path. Facts that matter here:
+
+- **Reproducible builds are a first-class feature, via `sketch.yaml` build profiles.** A profile
+  names the FQBN, each platform with an exact version and (for third-party cores) its
+  `platform_index_url`, and each library with an exact version. **A profile build is isolated from
+  the system**: globally installed platforms and libraries are excluded entirely and missing ones
+  are downloaded into an isolated directory. This is the direct analogue of `uv.lock` +
+  `toolchain/versions.toml`, and it is declarative rather than scripted.
+
+  ```yaml
+  profiles:
+    <PROFILE_NAME>:
+      fqbn: <FQBN>
+      platforms:
+        - platform: <PLATFORM> [(<VERSION>)]
+          platform_index_url: <URL>
+      libraries:
+        - <LIB_NAME> (<VERSION>)
+        - dependency: <LIB_NAME> (<VERSION>)
+        - dir: <LOCAL_PATH>
+      port: <PORT>
+      port_config:
+        <SETTING>: <VALUE>
+      protocol: <PROTOCOL>
+      programmer: <PROGRAMMER>
+      notes: <TEXT>
+
+  default_profile: <PROFILE_NAME>
+  ```
+
+  Built with `arduino-cli compile --profile <name>`, or bare `arduino-cli compile` when
+  `default_profile` is set. `default_fqbn`, `default_programmer`, `default_port`, `default_protocol`
+  and `default_port_config` set command defaults outside any profile.
+- **`libraries: - dir: <path>` (arduino-cli 1.3.0+) pins a local, unpublished library into a
+  profile.** This is the mechanism that would let `arduino/libraries/Async_UART*` and `CRC_Check`
+  stay in-tree and unpublished while still being part of a reproducible build. Before 1.3.0 there
+  was no way to do this and local libraries had to be symlinked into the sketchbook.
+- **Configuration is fully environment-driven**, which is what makes an isolated, repo-local install
+  possible. Config file `arduino-cli.yaml`; keys include `directories.data`, `directories.downloads`,
+  `directories.user`, `directories.builtin.libraries`, `board_manager.additional_urls`,
+  `board_manager.enable_unsafe_install`, `library.enable_unsafe_install`, `build_cache.path`,
+  `build_cache.extra_paths`, `build_cache.compilations_before_purge` (default 10),
+  `build_cache.ttl` (default 720h), `daemon.port`, `logging.*`, `metrics.*`, `network.proxy`,
+  `network.connection_timeout`, `output.no_color`, `sketch.always_export_binaries`,
+  `updater.enable_notification`. **Every key has an environment variable**: `ARDUINO_` plus the key
+  path upper-cased with underscores (`ARDUINO_DIRECTORIES_DATA`,
+  `ARDUINO_BOARD_MANAGER_ADDITIONAL_URLS`, `ARDUINO_BUILD_CACHE_PATH`). **Precedence: command-line
+  flags > environment variables > config file > defaults.**
+- **`arduino-cli compile --only-compilation-database` emits `compile_commands.json` without
+  building.** This is the hinge that makes clang-tidy and cppcheck usable on Arduino sources (K.3).
+  One historical caveat: in 0.19.x the flag still ran parts of the compile and could fail where a
+  plain compile succeeded (arduino-cli issue #1547, fixed by PR #1549) — confirm behaviour on the
+  version actually pinned.
+- **`arduino-cli board list --format json`** reports, per port: `address`, `label`, `protocol`,
+  `protocol_label`, `properties` (including `vid`, `pid`, **`serialNumber`**) and `matching_boards`
+  (`name`, `fqbn`). `--watch` streams changes; `--discovery-timeout` bounds the wait. The
+  `serialNumber` property is what lets a multi-board bench identify which board is which without
+  guessing at `/dev/ttyACM*` ordering (K.6).
+- **Compiler flags**: `--warnings {none,default,more,all}` selects the core's own warning level.
+  Arbitrary flags go through `--build-property compiler.c.extra_flags=…`,
+  `compiler.cpp.extra_flags=…`, `compiler.S.extra_flags=…` — note these are *separate* properties,
+  so a flag needed for both C and C++ must be passed twice. **Known trap**: `--build-property
+  build.extra_flags=-Werror` overwrites a core's own `build.extra_flags`, which several cores rely
+  on for device-defining macros, and the build then fails in confusing ways (stm32duino issue
+  #1709). Use the `compiler.*.extra_flags` properties, not `build.extra_flags`.
+- **Integration surfaces**: the CLI with `--format json` (recommended for scripting and CI), a gRPC
+  daemon on port 50051 (what Arduino IDE 2.x uses), and embedding as a Go library. No stability
+  guarantee is documented for any of them.
+- **Installation**: there is **no official apt package**. The supported routes are the official
+  `install.sh` (accepts a version argument and honours `BINDIR`) and a versioned tarball from
+  `downloads.arduino.cc` with published checksums. Either is compatible with this repo's
+  pin-and-verify discipline; the tarball plus checksum is the closer match to how
+  `setup_toolchain.py` already handles pinned artifacts.
+
+### K.2.2 PlatformIO
+
+The main alternative. `platformio.ini` pins `platform`, `board` and `framework` with version
+ranges; `pio run` builds, `pio test` runs unit tests on host *and* on target (K.4),
+`pio check` runs cppcheck and/or clang-tidy (K.3), `pio debug` drives a debug probe. Its
+`native` platform is a first-class host-build target, which is why most Arduino host-testing
+tutorials assume PlatformIO.
+
+Trade-off against arduino-cli, stated plainly: PlatformIO gives one tool for build + test + static
+analysis and a ready-made on-target test runner, at the cost of a second package ecosystem
+(Python-based, its own registry, its own version pinning) layered beside `uv`. Arduino CLI is the
+official toolchain, has the stronger reproducibility story (`sketch.yaml` profile isolation), and
+is what every Arduino-native CI action targets — but it has **no test runner at all**, so K.4's
+harness would be this repo's own.
+
+### K.2.3 Make / CMake
+
+Relevant only for the host-side builds. `EpoxyDuino.mk` (K.5) is a three-line Makefile per
+executable. A plain CMake target compiling the protocol sources against a hand-written `Arduino.h`
+shim is the other option and is the one that composes best with gcov/gcovr (K.4.6) and with
+clang-tidy (a CMake build emits `compile_commands.json` natively via
+`CMAKE_EXPORT_COMPILE_COMMANDS=ON`).
+
+### K.2.4 Target facts (SAMD21) — and see K.11 for the planned ESP32 move
+
+- The deployed peer is an Adafruit **QT Py SAMD21** class board. Core: **Adafruit SAMD**, board
+  index URL `https://adafruit.github.io/arduino-board-index/package_adafruit_index.json`, FQBN
+  family `adafruit:samd:*` (the QT Py M0 entry). That URL goes in
+  `board_manager.additional_urls` / a profile's `platform_index_url`.
+- **ATSAMD21G18A: Cortex-M0+, 48 MHz, 256 KB flash, 32 KB SRAM, no FPU.** Every floating-point
+  operation is a soft-float library call. Consequences worth encoding as build flags:
+  - **`-Wdouble-promotion` is not in `-Wall` and must be requested explicitly.** On a part with no
+    FPU an accidental `float`→`double` promotion silently multiplies the cost of an expression.
+  - `-fsingle-precision-constant` makes literals single-precision. It is a real fix for the same
+    problem but it is a *whole-translation-unit semantic change*, so it is a decision, not a
+    default — enabling it changes the meaning of code that genuinely wants double precision.
+  - The 32 KB SRAM figure is the reason a size/RAM budget gate (K.7) matters here more than it does
+    for the RP2040's 264 KB.
+- **The USB CDC port and the protocol UART are different peripherals**: `Serial` (`Serial_`, native
+  USB CDC) versus `Serial1` (SERCOM). `Serial_` is a SAMD/Leonardo-class type; code typed against
+  it does not compile on boards whose `Serial` is a `HardwareSerial`.
+
+## K.3 Static analysis, formatting and the "what replaces mypy" question
+
+The Python tier's gate is ruff + mypy `--strict`. There is no C++ equivalent of mypy, because the
+compiler *is* the type checker — so the C++ analogue of "mypy strict" is **a maximal warning set
+compiled as errors**, and the analogue of "ruff" splits into a formatter and a linter.
+
+| Python tier | C++ tier analogue | Notes |
+|---|---|---|
+| `ruff` (format-adjacent rules) | **clang-format** | `.clang-format` in-tree; check mode is `clang-format --dry-run -Werror`. Already installed on this session's host (`/usr/bin/clang-format`) |
+| `ruff` (lint rules) | **clang-tidy** | Needs `compile_commands.json` (K.2.1). `.clang-tidy` in-tree. Already installed here (`/usr/bin/clang-tidy`) |
+| `mypy --strict` | **`--warnings all` + `-Wall -Wextra -Werror`** | Plus `-Wdouble-promotion`, `-Wconversion`, `-Wshadow` as candidates. There is nothing else that plays this role |
+| (no equivalent) | **cppcheck** | Whole-program flow analysis the compiler does not do. `--project=compile_commands.json`; `--addon=misra.json` for MISRA C 2012 — note the MISRA rule *texts* are licensed and must be supplied by the user via `--rule-texts`, only the rule *numbers* ship with cppcheck |
+| (no equivalent) | **arduino-lint** | ~175 checks over sketch/library/platform specification compliance. Three levels: `permissive`, `specification` (default), `strict` (best practices). The three in-tree libraries currently fail even basic checks — no `library.properties`, no `keywords.txt` (`UART_C_IMPLEMENTATION_NOTES.md` §5.18) |
+| `shellcheck`/`actionlint`/`zizmor` | unchanged | Already cover any shell and workflow files the Arduino tier adds |
+
+`pio check` bundles cppcheck and clang-tidy behind `check_tool`, `check_patterns`, `check_flags`,
+`check_severity` in `platformio.ini` — the same two tools, pre-wired, if PlatformIO is chosen.
+
+**Formatting enforcement**: `pre-commit` with `cpp-linter-hooks` (clang-format + clang-tidy sharing
+the same `.clang-format`/`.clang-tidy` as CI) is the established pattern. This repo has no
+`pre-commit` today, so adding one is a separate decision from adding the CI check.
+
+**Documentation**: Doxygen is the Arduino-world norm for C++ API docs, and Adafruit's CI fails a PR
+on *missing* documentation. That is stricter than this repo's three-line-header rule and would need
+reconciling rather than adopting wholesale.
+
+## K.4 Unit testing
+
+### K.4.1 The architectural precondition
+
+Every source consulted agrees on the same precondition, and it is the single highest-value finding
+in this Part: **host-testable firmware requires the logic to be separable from the hardware.**
+Ports-and-adapters (hexagonal architecture) is the name it usually travels under — the core defines
+interfaces for what it needs, adapters satisfy them with real I/O, and tests substitute doubles.
+Grenning's *Test-Driven Development for Embedded C* is the canonical treatment.
+
+The existing C code is already close to this by accident: `Async_UART_Comm` takes a `Uart*` and a
+`CRC_Check*` by pointer, and `CRC_Check` is already an abstract base with two implementations. The
+seam that is *missing* is `Async_UART`'s direct `Uart*` dependency — the same seam
+`asy_uart_driver.py` has and that `tests/machine.py` fills on the Python side.
+
+### K.4.2 Unity (ThrowTheSwitch)
+
+The embedded default, and PlatformIO's built-in framework. Plain C, tiny, runs on host and on
+target. On a bare-metal target, output is redirected by defining `UNITY_OUTPUT_CHAR(c)` in
+`unity_config.h` — PlatformIO defines it as `Serial.write(c)` for Arduino and `putchar(c)` for
+native. Results are plain text on the wire and are parsed host-side (PlatformIO does this
+internally; the standalone `unity-test-parser` Python module does it for other harnesses).
+
+### K.4.3 AUnit + EpoxyDuino
+
+`AUnit` is an Arduino-native test framework (ArduinoUnit/Google-Test-inspired) that runs both
+on-device and, via EpoxyDuino, on the host. Mature, well documented, single-author.
+
+### K.4.4 arduino_ci (`GODMODE`) — the closest analogue of `tests/machine.py`
+
+A Ruby gem plus a C++ mock layer. Worth studying closely regardless of whether it is adopted,
+because it is the same design this repo already arrived at independently for MicroPython:
+
+- `GODMODE()` returns a state object giving complete control of the simulated board.
+- **The clock is settable** (`state->micros = 1`), so time-dependent code is tested without delays —
+  exactly what `tests/`'s `FakeTime` does.
+- **Each serial port has `dataIn` and `dataOut` queues** — incoming bytes are queued, outgoing bytes
+  are logged. That is `tests/machine.py`'s `UARTLink` per-direction model, in C++.
+- Pin state is both settable and inspectable, with a *history* queue so a sequence of writes can be
+  asserted, and "pin futures" queue values for subsequent reads.
+- `Wire` mocking exposes `getMosi()`/`getMiso()` deques; SPI transfers are recorded.
+- `DataStreamObserver` lets a test emulate a responding device — the analogue of the twin's
+  peer-side model.
+- Validates `library.properties` and compiles every example across configured platforms.
+- **Stated limitation: ISRs are not mocked**, their asynchronous nature being out of scope.
+
+Cost: it introduces Ruby/Bundler into a repo that has Python and Node. That is a real
+separation-of-tooling question (K.10).
+
+### K.4.5 Host-native C++ frameworks
+
+GoogleTest/GoogleMock, Catch2 and doctest all work against a plain CMake host build of the
+hardware-independent code. Heavier than Unity, far richer assertions and mocking. ArduinoFake
+(FakeIt-based) mocks the Arduino API itself for host builds, and is the usual pairing with
+PlatformIO's `native` environment.
+
+### K.4.6 Coverage
+
+The host build is an ordinary GCC build, so coverage is the standard `-fprofile-arcs
+-ftest-coverage` (`--coverage`) → `.gcno`/`.gcda` → **gcovr** (or lcov) → HTML + Cobertura XML.
+Notably this is *simpler* than the Python tier's two-stage MicroPython/CPython coverage pipeline
+(Part E.5): one toolchain, one step. It also produces Cobertura, the same format the Python tier
+already emits, so a single Codecov integration could carry both.
+
+## K.5 The host-runnable digital twin
+
+### K.5.1 Instruction-level emulation was investigated and does not fit
+
+| Emulator | SAMD21 support | Verdict |
+|---|---|---|
+| **Renode** | Not in the supported-boards list. Microchip/Atmel presence is **SAM E70** (Cortex-M7) with USART/TRNG/Ethernet models. An open issue (renode #464) asks about writing a SAMD21 USB model, i.e. it does not exist | Would require hand-writing a SAMD21 `.repl` platform description and peripheral models. Its *mechanisms* are still the reference design — see K.5.3 |
+| **QEMU** | Generic Cortex-M0/M4/M33 CPU support; the Cortex-M *machines* are microbit (nRF51), stm32vldiscovery and similar. No Atmel/Microchip SAM machine | Ruled out |
+| **Wokwi** | Boards are Arduino AVR (Uno/Mega/Nano), ESP32 family, STM32 Nucleo, RP2040 (Pi Pico). **No SAMD21.** (It *does* run MicroPython on the Pico, which is interesting for the other tier, not this one) | Ruled out for this target. `wokwi-cli` + `wokwi/wokwi-ci-action` would otherwise be a strong CI story - **and does become available if the peer moves to ESP32, see K.11.4** |
+| **simavr** | AVR only | Ruled out |
+
+**Conclusion, for a SAMD21 target: a functional twin, not an instruction-level one.** (This
+conclusion is target-conditional and reverses on ESP32 - K.11.4.) Recompile the same C++ sources for
+the host against a fake Arduino layer, exactly as the Python tier recompiles the same `src/` modules
+against `tests/machine.py` and `digital_twin/machine.py`. This keeps the two tiers' twin strategies
+identical in kind, which matters for Part J.7's "the two may differ in fidelity, never in semantics"
+rule if the link contract is ever to span both languages.
+
+### K.5.2 EpoxyDuino — what it gives and what it does not
+
+The established implementation of "compile an Arduino sketch on Linux". Facts:
+
+- **Provides**: `setup()`/`loop()`, `delay()`, `millis()`, `micros()`, `random()`, `map()`, bit
+  macros, `String`, PROGMEM shims, character utilities, and `Serial` as a `StdioSerial` bound to
+  stdin/stdout.
+- **Does not provide**: I2C, SPI and GPIO do nothing (`digitalWrite`/`pinMode`/`analogRead` are
+  stubs). No ArduinoCore-API (the newer standardised API) — only the classic Arduino API.
+- **Additional serial ports must be declared by hand** and are stdio-backed:
+  ```cpp
+  #ifdef EPOXY_DUINO
+  StdioSerial Serial1(STDOUT_FILENO);
+  StdioSerial Serial2(STDERR_FILENO);
+  #endif
+  ```
+  **This is the crux for this project**: the protocol's `Serial1` is exactly the thing that must be
+  faked, and EpoxyDuino's own answer routes it to a file descriptor. That is *compatible* with the
+  twin-link design in K.5.3 (a socket or PTY fd instead of stdout), but it is not a ready-made
+  `UARTLink` — the per-direction fault-injection model Part J.7 requires (dropped bytes, mid-frame
+  truncation, injected noise, delayed delivery, short writes, RX overrun) would still be this
+  project's own code.
+- **Build**: three-line Makefile per executable — `APP_NAME`, `ARDUINO_LIBS`, then
+  `include $(EPOXY_DUINO_DIR)/EpoxyDuino.mk`. `ARDUINO_LIB_DIRS` adds search paths.
+- **Companion mocks**: `EpoxyFS` (LittleFS-compatible), `EpoxyEepromAvr`/`EpoxyEepromEsp`,
+  `EpoxyMockDigitalWriteFast`, `EpoxyMockTimerOne`, `EpoxyMockFastLED`, `EpoxyMockSTM32RTC` — all
+  compile-only stubs, not behavioural models.
+- **Limitations to design around**: the loop is capped near **1000 Hz** by a 1 ms per-iteration
+  delay (so a busy-poll state machine runs at host speed nowhere near the real board's);
+  `int` is 32-bit on the host; stdin flips between raw and cooked modes depending on redirection;
+  Tier-1 support is Ubuntu with g++/clang++.
+- **CI**: designed for it — the standard Ubuntu runner already has `g++` and `make`, so no Arduino
+  toolchain is needed for the host tier at all.
+
+**The alternative to EpoxyDuino** is a project-owned `Arduino.h` shim: fewer features, no external
+dependency, complete control over `Serial1`'s fault model, and a direct mirror of how
+`tests/machine.py` is already written. The trade is that every Arduino API the firmware touches has
+to be implemented here rather than inherited.
+
+### K.5.3 Linking the Arduino twin to the Python twin
+
+The Python twin is a MicroPython Unix-port process; the Arduino twin would be a native ELF. They
+cannot share an in-process byte queue the way `tests/machine.py`'s `UARTLink` does, so the link
+needs a host-level transport. Four candidates, all standard:
+
+1. **A PTY pair** — `socat -d -d pty,rawer,echo=0,link=/tmp/ttyV0 pty,rawer,echo=0,link=/tmp/ttyV1`
+   creates two linked pseudo-terminals; anything written to one appears on the other. Both sides
+   then open what looks exactly like a serial port. Closest to reality, and the option that also
+   lets *unmodified* host tools (`pyserial`, `minicom`) sit on either end.
+2. **TCP on loopback** — simplest, cross-platform, no external process. Both twins open a socket and
+   the fake UART reads/writes it.
+3. **A Unix domain socket** — same, without a port number. **Caveat: whether the MicroPython Unix
+   port's `socket` module exposes `AF_UNIX` has not been verified** and must be checked against the
+   pinned interpreter before this is assumed (CLAUDE.md's standing "check the real source" rule).
+4. **A pair of FIFOs** — one per direction, which matches the protocol's own per-direction model,
+   but gives no readiness semantics worth having.
+
+**Renode is the prior art for exactly this seam even though it is ruled out as an emulator**, and
+its two mechanisms are worth copying by name:
+- `emulation CreateUartPtyTerminal "term" "/tmp/uart"` — a host PTY bridged to a virtual UART
+  (Linux/macOS only). Renode's own documentation notes this is what makes hybrid setups work, with
+  part of the system simulated and part real.
+- `emulation CreateServerSocketTerminal 3456 "term"` — the same thing as a TCP socket,
+  cross-platform.
+- And for twin-to-twin: `emulation CreateUARTHub` plus `connector Connect sysbus.uart uartHub` on
+  each machine is how Renode wires two *emulated* machines' UARTs together — the same shape as this
+  repo's crossover-jumper model.
+
+Whatever transport is chosen, the fault-injection knobs Part J.7 mandates have to live *above* it,
+in each side's fake UART, not in the transport.
+
+## K.6 Real hardware: compile, flash, run, watch — and running beside the Pico
+
+- `arduino-cli compile` / `upload` / `monitor` are the three verbs. `monitor` honours
+  `port_config`/`default_port_config` for baud.
+- **The SAMD21 1200-baud touch is a live hazard for any test harness.** Opening and closing the
+  native USB port **at 1200 baud** triggers a soft-erase and reboots the board into the bootloader;
+  at any other baud rate it does not. This is how `bossac`-based upload enters the bootloader, and
+  it means a harness must never open the Arduino's CDC port at 1200 baud for any other purpose.
+  The procedure is also documented as **not fully reliable** — if the MCU is interrupted during the
+  soft erase it can fail — so a flash step needs a retry and a fallback.
+- **Fallback entry to the bootloader is the double-tap reset** (UF2/`zero` bootloader), which is
+  manual. A bench that must recover unattended needs either a reset line under harness control or an
+  accepted manual step. This repo already has the equivalent concept in
+  `tests_hardware/README.md`'s opt-in gates.
+- **Stable naming**: `/dev/serial/by-id/...` is derived from vendor/product/serial and is stable
+  across reboots and re-plugging. For two boards of the same model, a udev rule keyed on
+  `ATTRS{serial}` with `SYMLINK+="..."` is the standard answer. `arduino-cli board list --format
+  json` exposes the same `serialNumber` (K.2.1), so the bench can resolve board→port from the CLI
+  itself rather than hard-coding paths.
+- **R3 ("Python and Arduino over USB at the same time") is not a contention problem**, because they
+  are two different USB CDC devices and therefore two different ttys. The contention that does exist
+  is *per port*: `mpremote` holds the Pico's port for as long as it runs, and a second opener of the
+  **same** tty gets interleaved garbage rather than an error. Mitigations: pyserial's
+  `exclusive=True` (3.3+, uses `TIOCEXCL`), the kernel's `TIOCEXCL` directly, and the historical
+  `/var/lock/LCK..<name>` convention — note that the lock-file convention is *advisory* and only
+  works if every participant honours it, and that `flock()` alone does **not** stop another process
+  from reading the same port.
+- **HIL structure**: the established pattern (Golioth/Zephyr, ESP-IDF, Memfault) is a self-hosted
+  runner with the boards attached, a **hardware map in YAML** naming each board's platform, serial
+  identifier and programmer, a build step that produces an artifact, then flash-and-pytest. That is
+  structurally what `tests_hardware/` already is — `harness.py`, `bench_control.py`,
+  `conftest.py`, the `flash`/`bench`/`manual` tiers — so the Arduino side should extend it rather
+  than start a parallel one.
+
+## K.7 CI
+
+The official actions, all maintained by Arduino:
+
+- **`arduino/setup-arduino-cli`** — installs a pinned CLI version.
+- **`arduino/compile-sketches`** — compiles every sketch under `sketch-paths` for an `fqbn`.
+  `platforms` accepts Boards Manager entries (`name`, `version`, `source-url`), **a local path**
+  (`source-path` + `name`), a git repo or an archive; `libraries` likewise accepts Library Manager
+  entries, **local paths** (`source-path`, `destination-name`), git repos and archives — so an
+  in-tree library needs no publication to be tested. `cli-compile-flags` passes arbitrary flags
+  through. `enable-deltas-report` compares flash/RAM against the base branch (PRs) or parent commit
+  (pushes); `enable-warnings-report` counts compiler warnings per sketch; both land in a JSON
+  report at `sketches-report-path`.
+- **`arduino/report-size-deltas`** — turns that JSON into a PR comment. Together these are the
+  ready-made answer to the 32 KB-SRAM budget gate K.2.4 argues for.
+- **`arduino/arduino-lint-action`** — `compliance: strict` for the K.3 gate.
+
+**Separation (R4)**: the website tier's shape is the model to copy — a `paths-filter` job feeding
+`if:` conditions on the Arduino jobs, inside the **single** `ci.yml`. This repo has already paid for
+the alternative: a second workflow file with a trigger-level `paths:` filter can leave a PR stuck on
+a required status check that never fires (Part H.8, and `ci.yml`'s own `web-changes` comment).
+Whatever the Arduino tier adds, it adds as named jobs in `ci.yml` with their own filter, and — per
+the standing backstop — with sequencing `needs:` only, never success-gating.
+
+**Emulation in CI** is a real pattern (Renode + Robot Framework is the documented one, Wokwi CI the
+newer one), but both are ruled out for SAMD21 by K.5.1, so the host twin plus the self-hosted HIL
+runner are the two CI execution environments available.
+
+## K.8 Installation by the setup script (R6)
+
+What `toolchain/setup_toolchain.py env --tier …` would have to do, given the facts above:
+
+1. **Install `arduino-cli` at a pinned version** — tarball + published checksum, or `install.sh`
+   with an explicit version and `BINDIR`. No apt package exists; nothing to add to
+   `versions.toml`'s `apt_packages` for the CLI itself.
+2. **Point it at a repo-local data directory** — `ARDUINO_DIRECTORIES_DATA`,
+   `ARDUINO_DIRECTORIES_DOWNLOADS`, `ARDUINO_DIRECTORIES_USER` and `ARDUINO_BUILD_CACHE_PATH` under
+   `$PICO_TOOLCHAIN_DIR` or a sibling, so nothing lands in `~/.Arduino15` and a clean-chroot run
+   starts genuinely clean. This matters for the same reason the `typings/` isolation does.
+3. **Let `sketch.yaml` do the pinning** rather than the installer — the profile already names the
+   core version and index URL, and `arduino-cli compile --profile` installs what is missing into the
+   isolated directory on first build. `versions.toml` would then carry only the `arduino-cli`
+   version and the FQBN, not a parallel list of core/library versions.
+4. **Host tier needs nothing but `g++`/`make`**, both already in `apt_packages` via
+   `build-essential`. A PTY-based twin link (K.5.3) would add `socat`; a socket-based one adds
+   nothing.
+5. **Tier placement**: the host twin and the lint/analysis tools belong in `generic`; anything
+   touching a board belongs in `flash`/`bench`, matching the existing tier definitions.
+6. **Self-test (R6)**: the same shape as the existing verification — build the host twin from
+   nothing, run its tests, compile the firmware for the real FQBN, and assert a nonzero binary. The
+   clean-chroot gate (CLAUDE.md's pre-push verification) would then cover the Arduino tier too, on
+   both noble and trixie.
+
+## K.9 What the exemplars actually do
+
+- **Adafruit `ci-arduino`** — the widest-deployed Arduino library CI. Three gates, any of which
+  fails a PR: `run-clang-format.py` (formatting), `doxy_gen_and_deploy.sh` (Doxygen, *fails on
+  missing documentation*), and `build_platform.py` (compiles every `.ino` example across a board
+  matrix). No unit tests.
+- **`Arduino-CI/arduino_ci`** — the opposite emphasis: real unit tests with a full C++ hardware mock
+  (K.4.4), plus `library.properties` validation and multi-platform example compilation.
+- **bxparks (EpoxyDuino + AUnit + GitHub Actions)** — the host-compile-and-test pattern, run on
+  plain Ubuntu runners with no Arduino toolchain.
+- **Golioth / Zephyr Twister HIL** — the hardware-map-YAML, self-hosted-runner, flash-then-pytest
+  pattern for the bench tier.
+- **Memfault/Interrupt + Renode + Robot Framework** — emulation-driven firmware tests in CI, for
+  targets an emulator actually models.
+
+No single exemplar does all six of R1–R6. The combination this project is describing — reproducible
+official-toolchain builds, host twin, cross-language twin link, real-hardware bench, one CI — is
+assembled from these, not adopted from one.
+
+## K.10 Open decisions
+
+1. **arduino-cli or PlatformIO** as the primary build tool (K.2.1 vs K.2.2), and whether the loser is
+   still used for one thing (e.g. PlatformIO only as a test runner).
+2. **Test framework**: Unity (embedded standard, on-target capable), AUnit+EpoxyDuino
+   (Arduino-native, host+device), arduino_ci/GODMODE (richest mocks, adds Ruby), or GoogleTest/doctest
+   on a plain host build.
+3. **EpoxyDuino or a project-owned `Arduino.h` shim** for the twin (K.5.2) — inherit an emulation
+   layer, or own it the way `tests/machine.py` is owned.
+4. **Twin-link transport**: PTY pair via `socat`, TCP loopback, or Unix socket (K.5.3) — and the
+   unverified `AF_UNIX` question for the MicroPython Unix port.
+5. **How far the Arduino tier mirrors the Python tier's structure**: does it get its own
+   `tests_arduino/`, `scripts/*_arduino.sh`, a `Part K` spec section of rules rather than research,
+   and its own scope in the lint/typecheck scope list?
+6. **Does `arduino/` come under the quality apparatus at all**, and if so, what happens to the
+   vendored trees inside it (`bsec2-6-1-0_generic_release/`, `libraries/Adafruit_*`,
+   `libraries/bsec2`, `libraries/wdt_samd21`) — the `ext/microdot.py` hands-off rule is the obvious
+   precedent.
+7. **Warning set and whether `-Werror`**: which of `-Wall -Wextra -Wdouble-promotion -Wconversion
+   -Wshadow` are on, and whether `-fsingle-precision-constant`'s semantic change is accepted.
+8. **MISRA or not** (K.3) — cppcheck's addon is free, the rule texts are licensed.
+9. **Bench-tier flash recovery**: whether the 1200-baud-touch failure mode (K.6) is accepted with a
+   retry, or whether the bench gets a harness-controlled reset line.
+10. **Doxygen**: adopt the Arduino-world norm, or keep this repo's three-line-header rule and skip
+    generated API docs.
+
+## K.11 Target change: SAMD21 → ESP32 (researched 2026-09-13)
+
+The project owner plans to move the peer from the SAMD21 QT Py to an **ESP32-based QT Py**, citing
+BSEC blob availability and repeated BSEC hangs on the SAMD21. Both premises were checked. One is
+wrong, the other has a mechanical explanation — and the move changes several of K.10's answers
+outright, so this subsection records what it does and does not change.
+
+### K.11.1 The BSEC architecture premise is incorrect, and the evidence is in this repo
+
+Checked against the vendored release drop itself, not documentation:
+
+- **`arduino/libraries/bsec2/src/` ships `libalgobsec.a` for eleven architectures**: `cortex-m0plus`,
+  `cortex-m3`, `cortex-m4`, `cortex-m4/fpv4-sp-d16-hard`, `cortex-m33`,
+  `cortex-m33/fpv5-sp-d16-hard`, `esp32`, `esp32c3`, `esp32s2`, `esp32s3`, `esp8266`.
+- **Its `library.properties` declares `architectures=samd,sam,esp8266,esp32,esp32s2,esp32s3,esp32c3,mbed,nrf52`** —
+  `samd` first in the list. SAMD is a declared supported architecture, not an unverified one.
+- **The Cortex-M0+ blob is the *smallest*, not a degraded build.** From Bosch's own shipped size
+  logs: `cortex-m0plus` **32 457 B text / 3 888 B bss**, `esp32s3` 34 299 / 3 896, `esp32`
+  35 190 / 3 896. **BSS is effectively architecture-independent** (~3.9 kB), so BSEC's RAM
+  requirement is the same everywhere; only code size varies, and the M0+ needs least.
+- The `bsec2-6-1-0_generic_release/` drop is wider still: GCC blobs for Cortex-M0/M0+/M3/M4/M4F/M7/
+  M33/M33F/A7/A73/ARMv8 and **Linux m32 + m64**, IAR7/IAR8 for M0…M7, AVR8 megaAVR/XMEGA, AVR32,
+  MSP430, three Raspberry Pi variants, and esp32/esp32_c2c3/esp32_s2/esp32_s3/esp8266 — for both the
+  `bsec_IAQ` and `bsec_IAQ_Sel` algorithm variants.
+
+**What is true, and probably the origin of the impression**: BSEC **3.x** is required for the
+**BME690** (3.2.0.0+), the ESP32 community threads are by far the most active, and BSEC 3's RISC-V
+builds are shipped for ESP32-C2/C3. So the ESP32 is the *best-trodden* path, not the only verified
+one. **A Linux m64 blob also exists**, which is directly relevant to K.5 — see K.11.4.
+
+### K.11.2 The SAMD21 hang has a mechanical explanation, and it is not BSEC
+
+`arduino/gas_sensor/basic_config_state.ino`'s BSEC path reaches the sensor through `Wire`. Checked
+against Adafruit's `ArduinoCore-samd` source directly (2026-09-13):
+
+- **`libraries/Wire/Wire.cpp` contains no timeout of any kind** — not one occurrence of `millis`,
+  `micros` or `timeout` in 378 lines.
+- **`cores/arduino/SERCOM.cpp` has five completely unbounded spin loops** on
+  `I2CM.SYNCBUSY.bit.ENABLE` / `.SYSOP` with empty bodies and no escape at all (lines 410, 418, 431,
+  457, 537).
+- The four data-phase loops (`startTransmissionWIRE`, `sendDataMasterWIRE`, `readDataWIRE`) *do*
+  carry an escape, but **only via `INTFLAG.bit.ERROR`** — so they exit on an error the peripheral
+  chooses to flag, and spin forever otherwise. `readDataWIRE`'s own comment concedes the design gap:
+  *"readDataWIRE should really be able to indicate an error … because the readDataWIRE callers (in
+  Wire.cpp) should have checked availableWIRE() first and timed it out if the data never showed up"*
+  — and `Wire.cpp` does no such thing.
+- This is the same class of defect as the long-standing `ArduinoCore-samd` report that
+  `Wire.endTransmission()` hangs during an I²C scan.
+
+**So: a stalled I²C bus hangs a SAMD21 sketch outright, BSEC or not.** That matches "the unmodified
+example from the Arduino lib hangs too" better than any BSEC-specific theory does, and it is exactly
+the failure Part F.2 already settles for the RP2040 side — a wedged bus is a watchdog case, not a
+software fix. The C peer's `wdt_samd21` watchdog at `WDT_CONFIG_PER_256` (≈250 ms) is therefore
+load-bearing rather than incidental; a hang that survives it means the watchdog is being fed from a
+path the stall does not block.
+
+**Arduino-ESP32's `Wire` defaults to a 50 ms transaction timeout and exposes `setTimeOut()`**, with
+the ESP-IDF driver underneath carrying its own bit-level timeout. That is a concrete reason the
+symptom would disappear on ESP32 — but it is a *bus-driver* difference, not a BSEC one, and the same
+result is reachable on the SAMD21 by bounding the wait. Worth knowing before the move is justified
+on BSEC grounds.
+
+### K.11.3 Variant choice matters more than the architecture switch
+
+**ESP32 is not one target.** Adafruit's QT Py ESP32 line spans four incompatible choices, and the
+FPU split is the one that matters for BSEC, which is float-heavy:
+
+| QT Py variant | Core | FPU | USB | Notes |
+|---|---|---|---|---|
+| **SAMD21** (incumbent) | Cortex-M0+, single 48 MHz | **No** | native CDC | 256 kB flash / **32 kB SRAM**, no radio, no RTOS, no hardware divide. No datasheet in `datasheets/` |
+| **ESP32 Pico** | Xtensa LX6, dual 240 MHz | **Yes** | CP210x bridge | 8 MB flash, 2 MB PSRAM. BT Classic + BLE |
+| **ESP32-S2** | Xtensa LX7, single | **No** | native | Measured ~6× slower FP than ESP32 |
+| **ESP32-S3** | Xtensa LX7, dual 240 MHz | **Yes** | native USB + **built-in JTAG** | 512 kB SRAM; 8 MB flash (no PSRAM) or 4 MB + 2 MB PSRAM. BLE only |
+| **ESP32-C3** | RISC-V, single 160 MHz | **No** | native | ~2× slower FP again than S2 |
+
+**One further differentiator that matters on a 14-pin board: UART pin freedom.** The ESP32-S3 has
+three UART controllers routable to **any** GPIO through the GPIO matrix (IOMUX direct where the pin
+happens to match, matrix otherwise). The SAMD21's SERCOM mux constrains TX to pad 0 or pad 2 of the
+chosen SERCOM, so a second UART alongside I2C and the debug port is a pinout puzzle rather than a
+configuration line. This project needs exactly that combination - STEMMA QT I2C for the BME688, a
+protocol UART, and USB CDC for debug.
+
+**Recommended SKU if the move happens: QT Py ESP32-S3, 8 MB flash / no PSRAM** (chip marking
+`FN8C0`; the 4 MB + 2 MB PSRAM part is `FH4R2`). Both carry the same 512 kB internal SRAM and an
+**identical pinout**, so PSRAM costs no pins - it simply buys nothing here, since BSEC's ~3.9 kB BSS
+and this firmware's buffers sit far inside 512 kB, while the larger flash is the half that is
+actually useful (BSEC config blobs, partition headroom, a future OTA slot).
+
+**Where the SAMD21 sits on the float axis: almost certainly last of the five, by inference rather
+than measurement.** It combines the no-FPU penalty with a 48 MHz clock (3.3× below the C3, 5× below
+the S3) and a Cortex-M0+ core that has no hardware divide and only a Thumb-1-class instruction set,
+where the C3's RV32IMC at least has the `M` extension. No published cross-benchmark was found that
+puts a number on it, so this is reasoning from the components, not a measured ratio.
+
+**What the SAMD21 is genuinely better at, and it is not nothing.** Ranking it last overall would be
+wrong on three axes that this project actually cares about:
+
+- **Timing determinism.** A bare `loop()` on a single core with no radio and no RTOS is far easier to
+  reason about for a stop-and-wait protocol than FreeRTOS plus a WiFi stack. Part J's poll-interval
+  and timeout budgets (J.6) are derived from worst-case latency, and an ESP32 adds scheduler and
+  radio jitter the SAMD21 structurally cannot have. The move buys headroom but spends predictability.
+- **Not being a second radio.** The Pico W already owns WiFi in this system. A WiFi-capable peer is
+  one more network participant to configure, secure and keep patched, for a device whose entire job
+  is to answer a UART. That is an argument against the ESP32 that has nothing to do with tooling.
+- **Smallest BSEC footprint** (K.11.1): 32 457 B text against the ESP blobs' 34–35 kB. Marginal, and
+  irrelevant against 8 MB of flash — but it is the direction nobody expects.
+
+It is also the only one of the five with a **field-validated implementation of this protocol already
+running on it** (Part J.1). That is sunk-cost value, not technical merit, but it is real: the ESP32
+move restarts the peer's own validation from scratch even though the protocol logic ports unchanged.
+
+**Only the ESP32 Pico and the ESP32-S3 have an FPU.** Picking an S2 or C3 to fix a float-heavy
+workload moves in the wrong direction relative to the two that do — still far faster than a 48 MHz
+M0+ in absolute terms, but it throws away the main hardware reason to switch. **The ESP32-S3 is the
+variant that maximises what this project needs**: FPU, 512 kB SRAM, native USB *and* a built-in
+JTAG debug probe (no external CMSIS-DAP hardware, unlike the SAMD21), and a BSEC blob.
+
+All four have a BSEC2 blob (`esp32`, `esp32s2`, `esp32s3`, `esp32c3`), so blob availability does not
+discriminate between them.
+
+### K.11.4 What this does to K.5: instruction-level emulation becomes real
+
+**K.5.1's conclusion is target-conditional and flips on ESP32.** Re-checked:
+
+- **Wokwi** supports **ESP32, ESP32-S2, ESP32-S3** (Xtensa) and **ESP32-C3/C5/C6/C61/H2/P4, S31**
+  (RISC-V), plus RP2040, AVR and three STM32 parts. **No SAMD21.** With `wokwi-cli` and
+  `wokwi/wokwi-ci-action`, an ESP32 target gets a CI-runnable simulator that the SAMD21 cannot have.
+- **Espressif maintains QEMU forks with ESP32, ESP32-S3 and ESP32-C3 support**, driven by
+  `idf.py qemu`, with prebuilt binaries for x86_64/arm64 Linux and macOS. Also unavailable for SAMD21.
+- **The catch, and it is a real one: neither simulates the BME688.** Wokwi's supported-parts list
+  contains no BME680 or BME688 (community projects using them do it through the Custom Chip API),
+  and QEMU's ESP32 peripheral models do not extend to I²C sensor devices. So an emulated twin can
+  run the firmware, the UART protocol and the system logic, but **not** the BSEC sensor path, which
+  still has to be faked at the driver seam.
+
+That is an acceptable division, because **the UART protocol is the part that has to interoperate with
+the Python twin** and it does not touch the sensor. The practical consequence: an ESP32 target can
+have *both* a functional twin (K.5.2, for the sensor path and for fast unit tests) and an
+instruction-level twin (Wokwi or QEMU, for the firmware as actually built). A SAMD21 target can only
+have the first.
+
+**There is one more option the SAMD21 also has and that is easy to miss: BSEC ships a Linux m64
+blob** (K.11.1). A host-side functional twin can therefore link the *real* BSEC algorithm rather
+than a stub — on either target. That is worth more for twin fidelity than either emulator.
+
+### K.11.5 What this does to K.2 and K.4: a third build system, and one decisive constraint
+
+**ESP-IDF enters as a serious third option**, and it is a different class of tool from the Arduino
+SAMD core: CMake-based (so `compile_commands.json` comes free), `idf.py build/flash/monitor/qemu`,
+the **IDF Component Manager** with a `dependencies.lock` for reproducibility, Unity built in as a
+component, and **Arduino-ESP32 usable as an IDF component** so Arduino-style code keeps working
+inside it. It also has an official **`linux` host target with CMock**, though the docs are explicit
+that only a limited set of components is supported there and the FreeRTOS mock does no scheduling.
+
+**`pytest-embedded` is the find that most directly serves R2/R3/R5.** Espressif's pytest plugin
+exposes services `serial`, `esp` (target/port auto-detect via esptool), `idf` (auto-flash),
+`jtag` (openocd/gdb), **`qemu`** and **`wokwi`** — one harness that runs the same tests against an
+emulator or real hardware, selected by a flag. It is pytest, which `tests_scripts/` already uses, and
+its tiering is structurally what `tests_hardware/` already does. No SAMD21 equivalent exists.
+
+**But one constraint cuts the other way, and it is decisive for K.10 #1.** BSEC ships as a
+**precompiled** library: `library.properties` carries `precompiled=true` and `ldflags=-lalgobsec`.
+The Arduino IDE and `arduino-cli` honour those properties; **PlatformIO historically ignored them**
+(platformio-core issue #3994, closed against milestone 5.2.0) and the documented workaround is to add
+`-L…/src/<arch>` and `-lalgobsec` to `build_flags` by hand. Community reports of BSEC2 link failures
+under PlatformIO persist. **This must be verified on the pinned version before PlatformIO is chosen**
+— if it still bites, it is an argument for `arduino-cli` or ESP-IDF, both of which handle the blob
+without special-casing.
+
+### K.11.6 What gets easier, and what gets no better
+
+**Easier on ESP32:**
+- **Flashing.** The SAMD21's 1200-baud touch (K.6 — documented as unreliable if the MCU is
+  interrupted mid-erase) is replaced by esptool's DTR/RTS auto-reset, which every Espressif board
+  supports via an EN-pin capacitor, with `--before usb-reset` for USB-Serial-JTAG parts. **Two
+  caveats**: Linux asserts RTS on an idle port by default and can hold the chip in reset
+  (`stty -F <port> -hupcl`), and third-party boards lacking the EN capacitor are unreliable.
+- **Debugging.** ESP32-S3's built-in USB JTAG means OpenOCD/GDB with no probe; SAMD21 needs external
+  CMSIS-DAP hardware.
+- **Budget pressure.** 512 kB SRAM and megabytes of flash against 32 kB / 256 kB. K.2.4's size gate
+  becomes informational rather than load-bearing — though the ESP blobs are larger (≈240 kB archive
+  vs 110 kB).
+- **Blocking.** FreeRTOS means the protocol state machine can be its own task, so a blocking read
+  starves one task rather than the whole system. CLAUDE.md's "may never block the asyncio loop" rule
+  has a genuinely weaker counterpart here — worth stating explicitly rather than porting the Python
+  rule verbatim.
+
+**No better on ESP32:**
+- Everything in K.3 (clang-format / clang-tidy / cppcheck / warnings-as-errors) is unchanged; it was
+  never architecture-specific.
+- `-Wdouble-promotion` stays essential on **S2 and C3** (no FPU) and merely useful on ESP32/S3.
+- K.6's tty-exclusivity and stable-naming facts are unchanged — `/dev/serial/by-id`, udev by serial
+  number, pyserial `exclusive=True`. The ESP32 Pico's CP210x bridge and the S3's native USB are both
+  just CDC devices from the host's point of view.
+- The twin-to-twin transport question (K.5.3) is unchanged.
+- The protocol itself (Part J) is unchanged: it is a byte-stream contract with no architectural
+  dependency. Nothing in `UART_C_IMPLEMENTATION_NOTES.md`'s defect list or Class A verdicts becomes
+  stale — those are logic defects, and they port with the code.
+
+### K.11.7 Effect on K.10's open decisions
+
+| K.10 # | Effect of moving to ESP32 |
+|---|---|
+| 1 (build tool) | **Materially changed.** ESP-IDF joins as a third option and is the strongest of the three on reproducibility, host testing and emulator integration. PlatformIO's precompiled-library gap (K.11.5) is the one hard constraint to check first |
+| 2 (test framework) | **Materially changed.** `pytest-embedded` + Unity becomes the front-runner, because it covers host, emulator and real hardware in one pytest harness this repo already knows |
+| 3 (EpoxyDuino vs own shim) | **Unchanged in kind**, but a third option appears: ESP-IDF's `linux` target with CMock. All three still need this project's own fault-injecting UART fake |
+| 4 (twin-link transport) | **Unchanged** |
+| 5–8, 10 | **Unchanged** (structure, scope, warning set, MISRA, Doxygen) |
+| 9 (flash recovery) | **Largely dissolved.** esptool's auto-reset replaces the 1200-baud touch; the remaining risks are the RTS/HUPCL behaviour and the EN capacitor |
+| **new** | **Which ESP32 variant** (K.11.3). This gates the FPU question, the USB/JTAG story and therefore parts of the bench design. It should be settled before any tooling work starts |
+| **new** | **Whether the host twin links the real BSEC Linux blob** (K.11.1/K.11.4) instead of stubbing the algorithm |

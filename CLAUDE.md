@@ -114,15 +114,28 @@ information):
   impact") — the second class is logged too, so a future session doesn't re-derive it. Prefer a
   protocol-level change that only tightens *receiver* validation over one that alters emitted bytes:
   the former keeps a mixed-version pair working, the latter is a coordinated flag-day needing the
-  owner's decision. **The C side's conformance is expected but unverified** — it mirrors the Python
-  implementation's intended behavior, but may not share every known flaw and may have its own, so
-  every Class A entry must be re-verified against the real C source once it lands. **It is, however,
+  owner's decision. **The C source has landed** (`arduino/`, 2026-09-13) and every Class A
+  entry has now been checked against it — results in `UART_C_IMPLEMENTATION_NOTES.md`: each entry's
+  *sender-side* assumption holds, the remaining gap is receiver-strictness plus A7's flag day, and the
+  C carries one defect of its own (a `CMD` bitmask whose unmatched case falls through to the wrong
+  `switch` label and ACKs the frame). **Nothing is reconciled yet** — no C code has been changed, and
+  the two sides cannot currently talk at all (CRC presence, CRC algorithm and `payload_size` all
+  differ, each difference expected and recorded). **It is, however,
   prototypical — exactly like this repo's legacy Python — with no device in the field running it**
   (owner, 2026-09-11), so no change recorded in the changelog can break a live pair: both sides are
   reflashed together at reconciliation, and the flag-day framing above describes an obligation to
   record, not a deployment risk to weigh. Real hardware running the C side exists and can be
   connected to the dev board, making the promoted module testable against the genuine second
-  implementation rather than only against itself over the bench crossover jumper. **The protocol's
+  implementation rather than only against itself over the bench crossover jumper. **What it would
+  take to bring that C side to this repo's standard — build tooling, static analysis, unit tests, a
+  host-runnable twin that can talk to the Python twin, real-hardware integration, CI and installer
+  coverage — is researched in SPECIFICATION.md Part K.** That Part is a facts collection with ten
+  open decisions, not a set of rules: nothing there is chosen, so don't treat any option in it as
+  settled. **K.11 covers the planned move off the SAMD21 to an ESP32-based QT Py** (owner,
+  2026-09-13) and corrects two premises with primary evidence: BSEC2 ships blobs for eleven
+  architectures including the Cortex-M0+ (`samd` is declared first in its `library.properties`), and
+  the SAMD21's BSEC hangs are explained by `ArduinoCore-samd`'s I2C driver having no timeout at all
+  rather than by anything in BSEC. **The protocol's
   parameters (`payload_size`, `timeout`, baud) stay fixed by out-of-band agreement** — owner
   decision, 2026-09-11: no version or capability negotiation is to be added, so a mismatched pair
   is diagnosed (it looks like a dead link that nonetheless carries bytes), never negotiated. Two

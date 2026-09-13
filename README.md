@@ -625,8 +625,9 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   repository/architecture overview, the toolchain/build-environment installer, the sensor driver
   architecture spec, the `src/` production-quality checklist, testing & coverage,
   MicroPython/RP2040 platform-target facts, the cross-cutting shared-pattern/primitive-reuse
-  catalog, and the website's own architecture — all in one place, organized into lettered Parts
-  (A-J) for different needs. Produced by a first-pass doc-scatter cleanup that merged
+  catalog, the website's own architecture, and a research collection on what an Arduino/C++ tier
+  of equal standing would need (Part K) — all in one place, organized into lettered Parts
+  (A-K) for different needs. Produced by a first-pass doc-scatter cleanup that merged
   `DRIVER_SPEC.md`, `src/README.md`, `tests/README.md`, `toolchain/README.md`, most of this
   file's former "Repository layout"/"Architecture at a glance"/"Refactor in progress"/"Build
   process" content, and the spec-shaped parts of `CLAUDE.md`/`BACKLOG.md` into one document. Start
@@ -647,6 +648,11 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   the Python-internal changes explicitly recorded as having no C impact). Carries those decisions
   across the gap until that C source is imported into this repo and reconciled, then gets deleted.
   The protocol itself is specified in `SPECIFICATION.md` Part J, which is permanent.
+
+- **[`UART_C_IMPLEMENTATION_NOTES.md`](UART_C_IMPLEMENTATION_NOTES.md)** - the read-through of the
+  Arduino peer's C implementation (`arduino/`, imported 2026-09-13): how it maps onto the legacy and
+  promoted Python, the defects found in it, and a per-entry verdict on every `UART_C_PORT_CHANGELOG.md`
+  Class A assumption against the real C source. Deleted together with the changelog at reconciliation.
 
 **`DEVICE_REFERENCE.md`** (permanent, end-user-facing):
 
