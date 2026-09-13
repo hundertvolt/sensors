@@ -3268,7 +3268,7 @@ shim is the other option and is the one that composes best with gcov/gcovr (K.4.
 clang-tidy (a CMake build emits `compile_commands.json` natively via
 `CMAKE_EXPORT_COMPILE_COMMANDS=ON`).
 
-### K.2.4 Target facts (SAMD21)
+### K.2.4 Target facts (SAMD21) — and see K.11 for the planned ESP32 move
 
 - The deployed peer is an Adafruit **QT Py SAMD21** class board. Core: **Adafruit SAMD**, board
   index URL `https://adafruit.github.io/arduino-board-index/package_adafruit_index.json`, FQBN
@@ -3385,10 +3385,11 @@ already emits, so a single Codecov integration could carry both.
 |---|---|---|
 | **Renode** | Not in the supported-boards list. Microchip/Atmel presence is **SAM E70** (Cortex-M7) with USART/TRNG/Ethernet models. An open issue (renode #464) asks about writing a SAMD21 USB model, i.e. it does not exist | Would require hand-writing a SAMD21 `.repl` platform description and peripheral models. Its *mechanisms* are still the reference design — see K.5.3 |
 | **QEMU** | Generic Cortex-M0/M4/M33 CPU support; the Cortex-M *machines* are microbit (nRF51), stm32vldiscovery and similar. No Atmel/Microchip SAM machine | Ruled out |
-| **Wokwi** | Boards are Arduino AVR (Uno/Mega/Nano), ESP32 family, STM32 Nucleo, RP2040 (Pi Pico). **No SAMD21.** (It *does* run MicroPython on the Pico, which is interesting for the other tier, not this one) | Ruled out for this target. `wokwi-cli` + `wokwi/wokwi-ci-action` would otherwise be a strong CI story |
+| **Wokwi** | Boards are Arduino AVR (Uno/Mega/Nano), ESP32 family, STM32 Nucleo, RP2040 (Pi Pico). **No SAMD21.** (It *does* run MicroPython on the Pico, which is interesting for the other tier, not this one) | Ruled out for this target. `wokwi-cli` + `wokwi/wokwi-ci-action` would otherwise be a strong CI story - **and does become available if the peer moves to ESP32, see K.11.4** |
 | **simavr** | AVR only | Ruled out |
 
-**Conclusion: a functional twin, not an instruction-level one.** Recompile the same C++ sources for
+**Conclusion, for a SAMD21 target: a functional twin, not an instruction-level one.** (This
+conclusion is target-conditional and reverses on ESP32 - K.11.4.) Recompile the same C++ sources for
 the host against a fake Arduino layer, exactly as the Python tier recompiles the same `src/` modules
 against `tests/machine.py` and `digital_twin/machine.py`. This keeps the two tiers' twin strategies
 identical in kind, which matters for Part J.7's "the two may differ in fidelity, never in semantics"
@@ -3596,3 +3597,178 @@ assembled from these, not adopted from one.
    retry, or whether the bench gets a harness-controlled reset line.
 10. **Doxygen**: adopt the Arduino-world norm, or keep this repo's three-line-header rule and skip
     generated API docs.
+
+## K.11 Target change: SAMD21 → ESP32 (researched 2026-09-13)
+
+The project owner plans to move the peer from the SAMD21 QT Py to an **ESP32-based QT Py**, citing
+BSEC blob availability and repeated BSEC hangs on the SAMD21. Both premises were checked. One is
+wrong, the other has a mechanical explanation — and the move changes several of K.10's answers
+outright, so this subsection records what it does and does not change.
+
+### K.11.1 The BSEC architecture premise is incorrect, and the evidence is in this repo
+
+Checked against the vendored release drop itself, not documentation:
+
+- **`arduino/libraries/bsec2/src/` ships `libalgobsec.a` for eleven architectures**: `cortex-m0plus`,
+  `cortex-m3`, `cortex-m4`, `cortex-m4/fpv4-sp-d16-hard`, `cortex-m33`,
+  `cortex-m33/fpv5-sp-d16-hard`, `esp32`, `esp32c3`, `esp32s2`, `esp32s3`, `esp8266`.
+- **Its `library.properties` declares `architectures=samd,sam,esp8266,esp32,esp32s2,esp32s3,esp32c3,mbed,nrf52`** —
+  `samd` first in the list. SAMD is a declared supported architecture, not an unverified one.
+- **The Cortex-M0+ blob is the *smallest*, not a degraded build.** From Bosch's own shipped size
+  logs: `cortex-m0plus` **32 457 B text / 3 888 B bss**, `esp32s3` 34 299 / 3 896, `esp32`
+  35 190 / 3 896. **BSS is effectively architecture-independent** (~3.9 kB), so BSEC's RAM
+  requirement is the same everywhere; only code size varies, and the M0+ needs least.
+- The `bsec2-6-1-0_generic_release/` drop is wider still: GCC blobs for Cortex-M0/M0+/M3/M4/M4F/M7/
+  M33/M33F/A7/A73/ARMv8 and **Linux m32 + m64**, IAR7/IAR8 for M0…M7, AVR8 megaAVR/XMEGA, AVR32,
+  MSP430, three Raspberry Pi variants, and esp32/esp32_c2c3/esp32_s2/esp32_s3/esp8266 — for both the
+  `bsec_IAQ` and `bsec_IAQ_Sel` algorithm variants.
+
+**What is true, and probably the origin of the impression**: BSEC **3.x** is required for the
+**BME690** (3.2.0.0+), the ESP32 community threads are by far the most active, and BSEC 3's RISC-V
+builds are shipped for ESP32-C2/C3. So the ESP32 is the *best-trodden* path, not the only verified
+one. **A Linux m64 blob also exists**, which is directly relevant to K.5 — see K.11.4.
+
+### K.11.2 The SAMD21 hang has a mechanical explanation, and it is not BSEC
+
+`arduino/gas_sensor/basic_config_state.ino`'s BSEC path reaches the sensor through `Wire`. Checked
+against Adafruit's `ArduinoCore-samd` source directly (2026-09-13):
+
+- **`libraries/Wire/Wire.cpp` contains no timeout of any kind** — not one occurrence of `millis`,
+  `micros` or `timeout` in 378 lines.
+- **`cores/arduino/SERCOM.cpp` has five completely unbounded spin loops** on
+  `I2CM.SYNCBUSY.bit.ENABLE` / `.SYSOP` with empty bodies and no escape at all (lines 410, 418, 431,
+  457, 537).
+- The four data-phase loops (`startTransmissionWIRE`, `sendDataMasterWIRE`, `readDataWIRE`) *do*
+  carry an escape, but **only via `INTFLAG.bit.ERROR`** — so they exit on an error the peripheral
+  chooses to flag, and spin forever otherwise. `readDataWIRE`'s own comment concedes the design gap:
+  *"readDataWIRE should really be able to indicate an error … because the readDataWIRE callers (in
+  Wire.cpp) should have checked availableWIRE() first and timed it out if the data never showed up"*
+  — and `Wire.cpp` does no such thing.
+- This is the same class of defect as the long-standing `ArduinoCore-samd` report that
+  `Wire.endTransmission()` hangs during an I²C scan.
+
+**So: a stalled I²C bus hangs a SAMD21 sketch outright, BSEC or not.** That matches "the unmodified
+example from the Arduino lib hangs too" better than any BSEC-specific theory does, and it is exactly
+the failure Part F.2 already settles for the RP2040 side — a wedged bus is a watchdog case, not a
+software fix. The C peer's `wdt_samd21` watchdog at `WDT_CONFIG_PER_256` (≈250 ms) is therefore
+load-bearing rather than incidental; a hang that survives it means the watchdog is being fed from a
+path the stall does not block.
+
+**Arduino-ESP32's `Wire` defaults to a 50 ms transaction timeout and exposes `setTimeOut()`**, with
+the ESP-IDF driver underneath carrying its own bit-level timeout. That is a concrete reason the
+symptom would disappear on ESP32 — but it is a *bus-driver* difference, not a BSEC one, and the same
+result is reachable on the SAMD21 by bounding the wait. Worth knowing before the move is justified
+on BSEC grounds.
+
+### K.11.3 Variant choice matters more than the architecture switch
+
+**ESP32 is not one target.** Adafruit's QT Py ESP32 line spans four incompatible choices, and the
+FPU split is the one that matters for BSEC, which is float-heavy:
+
+| QT Py variant | Core | FPU | USB | Notes |
+|---|---|---|---|---|
+| **ESP32 Pico** | Xtensa LX6, dual 240 MHz | **Yes** | CP210x bridge | 8 MB flash, 2 MB PSRAM. BT Classic + BLE |
+| **ESP32-S2** | Xtensa LX7, single | **No** | native | Measured ~6× slower FP than ESP32 |
+| **ESP32-S3** | Xtensa LX7, dual 240 MHz | **Yes** | native USB + **built-in JTAG** | 512 kB SRAM; 8 MB flash (no PSRAM) or 4 MB + 2 MB PSRAM. BLE only |
+| **ESP32-C3** | RISC-V, single 160 MHz | **No** | native | ~2× slower FP again than S2 |
+
+**Only the ESP32 Pico and the ESP32-S3 have an FPU.** Picking an S2 or C3 to fix a float-heavy
+workload moves in the wrong direction relative to the two that do — still far faster than a 48 MHz
+M0+ in absolute terms, but it throws away the main hardware reason to switch. **The ESP32-S3 is the
+variant that maximises what this project needs**: FPU, 512 kB SRAM, native USB *and* a built-in
+JTAG debug probe (no external CMSIS-DAP hardware, unlike the SAMD21), and a BSEC blob.
+
+All four have a BSEC2 blob (`esp32`, `esp32s2`, `esp32s3`, `esp32c3`), so blob availability does not
+discriminate between them.
+
+### K.11.4 What this does to K.5: instruction-level emulation becomes real
+
+**K.5.1's conclusion is target-conditional and flips on ESP32.** Re-checked:
+
+- **Wokwi** supports **ESP32, ESP32-S2, ESP32-S3** (Xtensa) and **ESP32-C3/C5/C6/C61/H2/P4, S31**
+  (RISC-V), plus RP2040, AVR and three STM32 parts. **No SAMD21.** With `wokwi-cli` and
+  `wokwi/wokwi-ci-action`, an ESP32 target gets a CI-runnable simulator that the SAMD21 cannot have.
+- **Espressif maintains QEMU forks with ESP32, ESP32-S3 and ESP32-C3 support**, driven by
+  `idf.py qemu`, with prebuilt binaries for x86_64/arm64 Linux and macOS. Also unavailable for SAMD21.
+- **The catch, and it is a real one: neither simulates the BME688.** Wokwi's supported-parts list
+  contains no BME680 or BME688 (community projects using them do it through the Custom Chip API),
+  and QEMU's ESP32 peripheral models do not extend to I²C sensor devices. So an emulated twin can
+  run the firmware, the UART protocol and the system logic, but **not** the BSEC sensor path, which
+  still has to be faked at the driver seam.
+
+That is an acceptable division, because **the UART protocol is the part that has to interoperate with
+the Python twin** and it does not touch the sensor. The practical consequence: an ESP32 target can
+have *both* a functional twin (K.5.2, for the sensor path and for fast unit tests) and an
+instruction-level twin (Wokwi or QEMU, for the firmware as actually built). A SAMD21 target can only
+have the first.
+
+**There is one more option the SAMD21 also has and that is easy to miss: BSEC ships a Linux m64
+blob** (K.11.1). A host-side functional twin can therefore link the *real* BSEC algorithm rather
+than a stub — on either target. That is worth more for twin fidelity than either emulator.
+
+### K.11.5 What this does to K.2 and K.4: a third build system, and one decisive constraint
+
+**ESP-IDF enters as a serious third option**, and it is a different class of tool from the Arduino
+SAMD core: CMake-based (so `compile_commands.json` comes free), `idf.py build/flash/monitor/qemu`,
+the **IDF Component Manager** with a `dependencies.lock` for reproducibility, Unity built in as a
+component, and **Arduino-ESP32 usable as an IDF component** so Arduino-style code keeps working
+inside it. It also has an official **`linux` host target with CMock**, though the docs are explicit
+that only a limited set of components is supported there and the FreeRTOS mock does no scheduling.
+
+**`pytest-embedded` is the find that most directly serves R2/R3/R5.** Espressif's pytest plugin
+exposes services `serial`, `esp` (target/port auto-detect via esptool), `idf` (auto-flash),
+`jtag` (openocd/gdb), **`qemu`** and **`wokwi`** — one harness that runs the same tests against an
+emulator or real hardware, selected by a flag. It is pytest, which `tests_scripts/` already uses, and
+its tiering is structurally what `tests_hardware/` already does. No SAMD21 equivalent exists.
+
+**But one constraint cuts the other way, and it is decisive for K.10 #1.** BSEC ships as a
+**precompiled** library: `library.properties` carries `precompiled=true` and `ldflags=-lalgobsec`.
+The Arduino IDE and `arduino-cli` honour those properties; **PlatformIO historically ignored them**
+(platformio-core issue #3994, closed against milestone 5.2.0) and the documented workaround is to add
+`-L…/src/<arch>` and `-lalgobsec` to `build_flags` by hand. Community reports of BSEC2 link failures
+under PlatformIO persist. **This must be verified on the pinned version before PlatformIO is chosen**
+— if it still bites, it is an argument for `arduino-cli` or ESP-IDF, both of which handle the blob
+without special-casing.
+
+### K.11.6 What gets easier, and what gets no better
+
+**Easier on ESP32:**
+- **Flashing.** The SAMD21's 1200-baud touch (K.6 — documented as unreliable if the MCU is
+  interrupted mid-erase) is replaced by esptool's DTR/RTS auto-reset, which every Espressif board
+  supports via an EN-pin capacitor, with `--before usb-reset` for USB-Serial-JTAG parts. **Two
+  caveats**: Linux asserts RTS on an idle port by default and can hold the chip in reset
+  (`stty -F <port> -hupcl`), and third-party boards lacking the EN capacitor are unreliable.
+- **Debugging.** ESP32-S3's built-in USB JTAG means OpenOCD/GDB with no probe; SAMD21 needs external
+  CMSIS-DAP hardware.
+- **Budget pressure.** 512 kB SRAM and megabytes of flash against 32 kB / 256 kB. K.2.4's size gate
+  becomes informational rather than load-bearing — though the ESP blobs are larger (≈240 kB archive
+  vs 110 kB).
+- **Blocking.** FreeRTOS means the protocol state machine can be its own task, so a blocking read
+  starves one task rather than the whole system. CLAUDE.md's "may never block the asyncio loop" rule
+  has a genuinely weaker counterpart here — worth stating explicitly rather than porting the Python
+  rule verbatim.
+
+**No better on ESP32:**
+- Everything in K.3 (clang-format / clang-tidy / cppcheck / warnings-as-errors) is unchanged; it was
+  never architecture-specific.
+- `-Wdouble-promotion` stays essential on **S2 and C3** (no FPU) and merely useful on ESP32/S3.
+- K.6's tty-exclusivity and stable-naming facts are unchanged — `/dev/serial/by-id`, udev by serial
+  number, pyserial `exclusive=True`. The ESP32 Pico's CP210x bridge and the S3's native USB are both
+  just CDC devices from the host's point of view.
+- The twin-to-twin transport question (K.5.3) is unchanged.
+- The protocol itself (Part J) is unchanged: it is a byte-stream contract with no architectural
+  dependency. Nothing in `UART_C_IMPLEMENTATION_NOTES.md`'s defect list or Class A verdicts becomes
+  stale — those are logic defects, and they port with the code.
+
+### K.11.7 Effect on K.10's open decisions
+
+| K.10 # | Effect of moving to ESP32 |
+|---|---|
+| 1 (build tool) | **Materially changed.** ESP-IDF joins as a third option and is the strongest of the three on reproducibility, host testing and emulator integration. PlatformIO's precompiled-library gap (K.11.5) is the one hard constraint to check first |
+| 2 (test framework) | **Materially changed.** `pytest-embedded` + Unity becomes the front-runner, because it covers host, emulator and real hardware in one pytest harness this repo already knows |
+| 3 (EpoxyDuino vs own shim) | **Unchanged in kind**, but a third option appears: ESP-IDF's `linux` target with CMock. All three still need this project's own fault-injecting UART fake |
+| 4 (twin-link transport) | **Unchanged** |
+| 5–8, 10 | **Unchanged** (structure, scope, warning set, MISRA, Doxygen) |
+| 9 (flash recovery) | **Largely dissolved.** esptool's auto-reset replaces the 1200-baud touch; the remaining risks are the RTS/HUPCL behaviour and the EN capacitor |
+| **new** | **Which ESP32 variant** (K.11.3). This gates the FPU question, the USB/JTAG story and therefore parts of the bench design. It should be settled before any tooling work starts |
+| **new** | **Whether the host twin links the real BSEC Linux blob** (K.11.1/K.11.4) instead of stubbing the algorithm |

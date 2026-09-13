@@ -131,7 +131,11 @@ information):
   host-runnable twin that can talk to the Python twin, real-hardware integration, CI and installer
   coverage — is researched in SPECIFICATION.md Part K.** That Part is a facts collection with ten
   open decisions, not a set of rules: nothing there is chosen, so don't treat any option in it as
-  settled. **The protocol's
+  settled. **K.11 covers the planned move off the SAMD21 to an ESP32-based QT Py** (owner,
+  2026-09-13) and corrects two premises with primary evidence: BSEC2 ships blobs for eleven
+  architectures including the Cortex-M0+ (`samd` is declared first in its `library.properties`), and
+  the SAMD21's BSEC hangs are explained by `ArduinoCore-samd`'s I2C driver having no timeout at all
+  rather than by anything in BSEC. **The protocol's
   parameters (`payload_size`, `timeout`, baud) stay fixed by out-of-band agreement** — owner
   decision, 2026-09-11: no version or capability negotiation is to be added, so a mismatched pair
   is diagnosed (it looks like a dead link that nonetheless carries bytes), never negotiated. Two

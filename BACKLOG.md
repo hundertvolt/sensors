@@ -84,6 +84,18 @@ constraints.
   transport) gate everything else. One fact there is unverified and must be checked against the
   pinned interpreter before being relied on: whether the MicroPython Unix port's `socket` module
   exposes `AF_UNIX`. No file, no code and no placeholder added for any of this.
+  **A planned target change (owner, 2026-09-13: SAMD21 -> an ESP32-based QT Py) is researched in
+  K.11 and moves several of those answers.** Two premises were checked against primary evidence and
+  one is wrong: BSEC2 ships blobs for eleven architectures including `cortex-m0plus` (the *smallest*
+  of them) and its `library.properties` declares `samd` first, so BSEC is not ESP-only - what is
+  ESP-specific is BME690 support needing BSEC 3.2+. The repeated SAMD21 hangs have a mechanical
+  explanation that is not BSEC: Adafruit's `ArduinoCore-samd` `Wire.cpp` has no timeout at all and
+  `SERCOM.cpp` carries five wholly unbounded I2C spin loops, so a stalled bus hangs any sketch -
+  the same failure Part F.2 already settles for the RP2040. **Two new decisions come with the move**:
+  which ESP32 variant (only the ESP32 Pico and S3 have an FPU; S2 and C3 do not, and BSEC is
+  float-heavy), and whether the host twin links BSEC's real Linux m64 blob rather than a stub. **One
+  constraint to verify before choosing PlatformIO**: BSEC is a `precompiled=true` library and
+  PlatformIO has historically ignored that property.
 - **Auto-builder: decide whether `sensortask_dev` importing `asy_uart_comm` is selection enough, or
   whether a separate selectable `uart_crossover` unit is still wanted.** The original requirement was
   recorded (owner, 2026-09-11) as: `asy_uart_comm.py` is a *submodule*, not an include-selectable
