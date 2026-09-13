@@ -5,7 +5,7 @@ global-resource-collision class, and wiring-reference resolution. `build_model()
 import ast
 from pathlib import Path
 
-from buildgen.buildspec import ADDRESS_CAPABLE_DRIVERS, ALLOWED_INSTANCE_FIELDS, BUS_ATTACHED_DRIVERS, FIXED_ADDRESS_DRIVERS, REQUIRED_TOML_FIELDS
+from buildgen.buildspec import ADDRESS_CAPABLE_DRIVERS, ALLOWED_INSTANCE_FIELDS, BUS_ATTACHED_DRIVERS, BUS_KIND_BY_DRIVER, FIXED_ADDRESS_DRIVERS, REQUIRED_TOML_FIELDS
 from buildgen.defaults import default_class_defines_attr, default_class_name, default_init_params, find_default_class
 from buildgen.driver_registry import SINGLETON_SERVICE_DRIVERS, parse_name_constant, resolve_driver
 from buildgen.errors import BuildError
@@ -221,6 +221,21 @@ def _check_required_fields(model: DeviceModel, buses: "dict[str, TomlDoc]") -> N
                 raise BuildError(model.device, f"{spec.label}.bus must be a string, got {spec.fields['bus']!r}", instance=spec.label, field="bus")
             if spec.fields["bus"] not in buses:
                 raise BuildError(model.device, f"{spec.label} references undeclared bus {spec.fields['bus']!r}", instance=spec.label, field="bus")
+            if spec.driver not in BUS_KIND_BY_DRIVER:
+                raise BuildError(model.device, f"{spec.label}: driver {spec.driver!r} is in BUS_ATTACHED_DRIVERS but has no buildgen.buildspec.BUS_KIND_BY_DRIVER entry - add one", instance=spec.label)
+            # A device TOML that points a driver at the wrong kind of bus (e.g. an i2c-only driver
+            # on a [bus.uart0]) used to build cleanly - the bus merely had to exist, its *kind* was
+            # never checked - and only fail at firmware boot, deep inside that driver's own
+            # construction, with a raw AttributeError instead of this fail-loud error.
+            actual_kind = _bus_kind(spec.fields["bus"], model.device)
+            expected_kind = BUS_KIND_BY_DRIVER[spec.driver]
+            if actual_kind != expected_kind:
+                raise BuildError(
+                    model.device,
+                    f"{spec.label}.bus={spec.fields['bus']!r} is a {actual_kind} bus, but driver {spec.driver!r} needs a {expected_kind} bus",
+                    instance=spec.label,
+                    field="bus",
+                )
         if "address" in spec.fields and spec.driver not in ADDRESS_CAPABLE_DRIVERS:
             raise BuildError(model.device, f"{spec.label} declares an address field, but {spec.driver!r} has no address-select pin (see buildgen.buildspec.ADDRESS_CAPABLE_DRIVERS)", instance=spec.label, field="address")
         if spec.driver == "uart_link" and spec.fields.get("role") not in _UART_LINK_ROLES:
@@ -385,6 +400,26 @@ def _check_address_collisions(model: DeviceModel) -> None:
     for (bus, driver), labels in per_bus_driver_fixed.items():
         if len(labels) > 1:
             raise BuildError(model.device, f"bus {bus!r}: {labels} are all {driver!r}-family instances with no address field - their hardware address is fixed, so they can't be told apart on the same bus", instance=labels[-1])
+
+
+def _check_uart_link_roles(model: DeviceModel) -> None:
+    # RP2040 has exactly two UART peripherals, so a device can wire at most one crossover pair -
+    # buildgen.twin_wiring.compute_twin_wiring()'s own docstring already claims build_model()
+    # guarantees "no more than one initiator/responder pair"; this is what actually enforces that.
+    # Without it, e.g. two "role = \"initiator\"" instances (on uart0/uart1, so no GPIO collision)
+    # built and booted silently - both looping on read timeouts forever, no responder ever able to
+    # answer, and compute_twin_wiring()'s own pairing loop picking whichever instance it saw last
+    # for "initiator_var" while leaving "responder_var" None, silently disabling the twin's
+    # crossover wiring - with no build-time error naming any of it.
+    initiators = [spec.label for spec in model.instances.values() if spec.driver == "uart_link" and spec.fields.get("role") == "initiator"]
+    responders = [spec.label for spec in model.instances.values() if spec.driver == "uart_link" and spec.fields.get("role") == "responder"]
+    if not initiators and not responders:
+        return
+    if len(initiators) != 1 or len(responders) != 1:
+        raise BuildError(
+            model.device,
+            f"a device wires exactly one uart_link initiator and one responder (RP2040 has only two UART peripherals) - found {len(initiators)} initiator(s) {sorted(initiators)} and {len(responders)} responder(s) {sorted(responders)}",
+        )
 
 
 def _resolve_wiring_field(schema: "tuple[WiringField, ...]", toml_field: str) -> "WiringField | None":
@@ -572,6 +607,7 @@ def build_model(toml_path: Path, src_dir: Path) -> DeviceModel:
     buses = _check_bus_tables(model)
     _resolve_instances(model, src_dir)
     _check_required_fields(model, buses)
+    _check_uart_link_roles(model)
     _check_limits(model)
     _check_all_buses_used(model, buses)
     _check_instance_name_collisions(model)

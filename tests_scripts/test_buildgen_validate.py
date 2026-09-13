@@ -1091,3 +1091,79 @@ def test_instance_entry_without_a_driver_key(tmp_path: Path, src_dir: Path) -> N
     path = write_text(tmp_path, "dev", '[device]\nname = "Test"\n\n[[instance]]\nname_ext = "x"\n')
     with pytest.raises(BuildError, match=r"entry #0 is missing a 'driver' field"):
         build_model(path, src_dir)
+
+
+# ---------------------------------------------------------------------------
+# uart_link: bus-kind cross-check and initiator/responder role cardinality
+# ---------------------------------------------------------------------------
+
+
+def _with_uart_pair(doc: "TomlDoc") -> "TomlDoc":
+    # Mirrors devices/dev.toml's own uart0/uart1 + initiator/responder shape (a datasheet-legal
+    # UART_ROLE pin pair per bus - buildgen/pico_gpio.py's own _UART_PAIRS) - the one real device
+    # this driver is used by today. GP16/17 (not dev.toml's own GP0/1) since base_doc()'s fram
+    # instance already claims GP1 as its own cs_pin; scd30's own irq_pin moves off GP8 for the same
+    # reason - base_doc() and dev.toml are two independently-evolved fixtures, their pin claims
+    # were never meant to coexist.
+    next(i for i in doc["instance"] if i["driver"] == "scd30")["irq_pin"] = 6
+    doc["bus"]["uart0"] = {"tx_pin": 16, "rx_pin": 17, "baudrate": 115200}
+    doc["bus"]["uart1"] = {"tx_pin": 8, "rx_pin": 9, "baudrate": 115200}
+    doc["instance"].append({"driver": "uart_link", "name_ext": "init", "bus": "uart0", "role": "initiator"})
+    doc["instance"].append({"driver": "uart_link", "name_ext": "resp", "bus": "uart1", "role": "responder"})
+    return doc
+
+
+def test_uart_link_pair_on_its_own_uart_buses_is_valid(tmp_path: Path, src_dir: Path) -> None:
+    _build(tmp_path, src_dir, _with_uart_pair(base_doc()))  # no raise
+
+
+def test_uart_link_pointed_at_an_i2c_bus_is_rejected(tmp_path: Path, src_dir: Path) -> None:
+    # The exact real-world typo this check exists for: a device TOML naming an existing bus of the
+    # wrong kind used to build clean and only fail at firmware boot, deep inside UART_Comm's own
+    # construction, with a raw AttributeError - not here, at the build-time BuildError this asserts.
+    doc = base_doc()
+    doc["instance"].append({"driver": "uart_link", "name_ext": "init", "bus": "i2c0", "role": "initiator"})
+    with pytest.raises(BuildError, match=r"bus=.i2c0. is a i2c bus, but driver 'uart_link' needs a uart bus"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_bmp3xx_pointed_at_a_uart_bus_is_rejected(tmp_path: Path, src_dir: Path) -> None:
+    # The reverse mismatch, on a different driver/bus-kind pairing, to prove this generalizes
+    # rather than only special-casing uart_link's own combination.
+    doc = base_doc()
+    doc["bus"]["uart0"] = {"tx_pin": 16, "rx_pin": 17, "baudrate": 115200}
+    doc["instance"].append({"driver": "bmp3xx", "name_ext": "", "bus": "uart0"})
+    with pytest.raises(BuildError, match=r"bus=.uart0. is a uart bus, but driver 'bmp3xx' needs a i2c bus"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_uart_link_two_initiators_no_responder_is_rejected(tmp_path: Path, src_dir: Path) -> None:
+    # Both on legal, distinct buses - no GPIO collision either - so nothing else in this pass would
+    # otherwise catch two same-role instances; both loop on read timeouts forever with no build
+    # error at all without the dedicated role-cardinality check this asserts.
+    doc = _with_uart_pair(base_doc())
+    doc["instance"][-1]["role"] = "initiator"
+    with pytest.raises(BuildError, match=r"found 2 initiator\(s\).*and 0 responder\(s\)"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_uart_link_one_initiator_two_responders_is_rejected(tmp_path: Path, src_dir: Path) -> None:
+    # A second responder sharing the existing responder's own bus - legal on its own terms (buses
+    # are meant to be multiply-referenced, e.g. base_doc()'s own scd30+sgp40 sharing i2c0), so
+    # nothing but the role-cardinality check itself catches this.
+    doc = _with_uart_pair(base_doc())
+    doc["instance"].append({"driver": "uart_link", "name_ext": "resp2", "bus": "uart1", "role": "responder"})
+    with pytest.raises(BuildError, match=r"found 1 initiator\(s\).*and 2 responder\(s\)"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_uart_link_initiator_with_no_responder_at_all_is_rejected(tmp_path: Path, src_dir: Path) -> None:
+    doc = base_doc()
+    doc["bus"]["uart0"] = {"tx_pin": 16, "rx_pin": 17, "baudrate": 115200}
+    doc["instance"].append({"driver": "uart_link", "name_ext": "init", "bus": "uart0", "role": "initiator"})
+    with pytest.raises(BuildError, match=r"found 1 initiator\(s\).*and 0 responder\(s\)"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_device_with_no_uart_link_instances_at_all_is_fine(tmp_path: Path, src_dir: Path) -> None:
+    _build(tmp_path, src_dir, base_doc())  # no raise - base_doc() has no uart_link instance
