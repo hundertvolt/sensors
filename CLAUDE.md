@@ -114,9 +114,13 @@ information):
   impact") — the second class is logged too, so a future session doesn't re-derive it. Prefer a
   protocol-level change that only tightens *receiver* validation over one that alters emitted bytes:
   the former keeps a mixed-version pair working, the latter is a coordinated flag-day needing the
-  owner's decision. **The C side's conformance is expected but unverified** — it mirrors the Python
-  implementation's intended behavior, but may not share every known flaw and may have its own, so
-  every Class A entry must be re-verified against the real C source once it lands. **It is, however,
+  owner's decision. **The C source has landed** (`arduino/`, 2026-09-13) and every Class A
+  entry has now been checked against it — results in `UART_C_IMPLEMENTATION_NOTES.md`: each entry's
+  *sender-side* assumption holds, the remaining gap is receiver-strictness plus A7's flag day, and the
+  C carries one defect of its own (a `CMD` bitmask whose unmatched case falls through to the wrong
+  `switch` label and ACKs the frame). **Nothing is reconciled yet** — no C code has been changed, and
+  the two sides cannot currently talk at all (CRC presence, CRC algorithm and `payload_size` all
+  differ, each difference expected and recorded). **It is, however,
   prototypical — exactly like this repo's legacy Python — with no device in the field running it**
   (owner, 2026-09-11), so no change recorded in the changelog can break a live pair: both sides are
   reflashed together at reconciliation, and the flag-day framing above describes an obligation to

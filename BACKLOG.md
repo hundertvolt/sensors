@@ -54,12 +54,16 @@ constraints.
   Unix-port-tests were pulled forward out of this order already, once `math_helpers.py` cleared the
   `src/` bar, and that's now standing practice for every new file, not a one-off.
 
-- **The UART protocol's C implementation is not in this repo yet.** It runs on the Arduino peer and
-  is the protocol's second implementation (SPECIFICATION.md Part J). A future session imports it,
-  then reconciles it against `UART_C_PORT_CHANGELOG.md` — the running log of protocol changes made
-  during the Python module's `src/` promotion — re-verifying each entry's conformance assumption
-  against the real C source. That log file is deleted once the reconciliation is done; this entry
-  comes out with it. **It is prototypical, exactly like this repo's legacy Python, with no device in
+- **The UART protocol's C implementation is now in this repo (`arduino/`, added 2026-09-13), but is
+  not yet reconciled.** It runs on the Arduino peer (SAMD21) and is the protocol's second
+  implementation (SPECIFICATION.md Part J). **The import half of this item is done and the
+  read-through has happened** — `UART_C_IMPLEMENTATION_NOTES.md` maps the C onto the legacy and
+  promoted Python, lists the defects found in it, and carries a per-entry verdict on every
+  `UART_C_PORT_CHANGELOG.md` "Verify in C" column. **What is left is the reconciliation itself**: no
+  C code has been changed, no entry's status has moved, and the two sides cannot currently talk at all
+  (three independent mismatches — CRC presence, CRC algorithm, `payload_size` — all expected, all
+  recorded). Both temporary files are deleted once that is done; this entry comes out with them.
+  **It is prototypical, exactly like this repo's legacy Python, with no device in
   the field running it** (owner, 2026-09-11) — so the reconciliation has no deployed pair to keep
   working and no flag day to schedule; both sides are simply reflashed together. Real hardware
   running the C side exists and can be connected to the dev board, so the reconciliation session can

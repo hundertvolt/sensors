@@ -2815,10 +2815,14 @@ payload is an empty `bytearray()` rather than `None`.
 
 **A second implementation of this protocol exists in C**, running on the Arduino peer. It mirrors the
 Python implementation's *intended* behavior and is owner-validated over many real transmissions — but
-**how far that mirroring extends to the known flaws is unverified**: it may share some, not others,
-and may have introduced its own. Establishing that is future work, never an assumption to build on.
-The C source is not yet in this repo; importing and reconciling it is a future session's job
-(BACKLOG.md). Until then:
+**how far that mirroring extends to the known flaws is now established by reading, not by
+assumption**: it shares some, not others, and has one of its own (a `CMD` bitmask whose unmatched
+case falls through to the wrong `switch` label and acknowledges the frame).
+The C source landed in this repo on 2026-09-13 (`arduino/`) and has been read against the changelog
+— `UART_C_IMPLEMENTATION_NOTES.md` — but **nothing has been reconciled**: no C code has changed, and
+the two sides cannot currently talk (CRC presence, CRC algorithm and `payload_size` all differ, each
+one expected and recorded). The reconciliation itself is still a future session's job (BACKLOG.md).
+Until then:
 
 - **Every protocol-level change is logged in `UART_C_PORT_CHANGELOG.md`** — a temporary file, deleted
   once the C side is reconciled. A change is protocol-level ("Class A") if it alters the bytes

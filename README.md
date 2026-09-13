@@ -648,6 +648,11 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   across the gap until that C source is imported into this repo and reconciled, then gets deleted.
   The protocol itself is specified in `SPECIFICATION.md` Part J, which is permanent.
 
+- **[`UART_C_IMPLEMENTATION_NOTES.md`](UART_C_IMPLEMENTATION_NOTES.md)** - the read-through of the
+  Arduino peer's C implementation (`arduino/`, imported 2026-09-13): how it maps onto the legacy and
+  promoted Python, the defects found in it, and a per-entry verdict on every `UART_C_PORT_CHANGELOG.md`
+  Class A assumption against the real C source. Deleted together with the changelog at reconciliation.
+
 **`DEVICE_REFERENCE.md`** (permanent, end-user-facing):
 
 - **[`DEVICE_REFERENCE.md`](DEVICE_REFERENCE.md)** — notes for configuring/operating a deployed

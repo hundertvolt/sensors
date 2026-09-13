@@ -4,7 +4,7 @@
 only to carry protocol decisions across the gap until then, and has no value afterwards.
 
 The UART message protocol (`SPECIFICATION.md` Part J) has two implementations: this repo's Python
-module, and a C implementation on the Arduino peer that is not yet in this repo. The C side mirrors
+module, and a C implementation on the Arduino peer (in `arduino/` since 2026-09-13, unreconciled). The C side mirrors
 the Python implementation's *intended* behavior and is owner-validated over many real transmissions,
 but **how far that mirroring extends to the known flaws is unverified** — it may share some, not
 others, and may have introduced its own. Every entry below is therefore a task for the reconciliation
@@ -19,6 +19,13 @@ testable against the genuine second implementation rather than only against itse
 crossover jumper. This removes the *risk* from the entries below, not the *obligation*: the point of
 this file is that the reconciliation session finds every change already written down instead of
 re-deriving it from two diverged sources.
+
+**The C source has since landed in `arduino/` (2026-09-13) and has been read against this file.**
+`UART_C_IMPLEMENTATION_NOTES.md` records what it actually does, the defects found in it, and a
+per-entry verdict on every "Verify in C" column below. Short version: every Class A entry's
+*sender-side* assumption holds - the C emits what the promoted Python expects - and the whole gap is
+receiver-strictness plus A7's flag day. Read that file before acting on any entry here. It does not
+supersede this one: the reconciliation is still unstarted, and no status value below has moved.
 
 ## How to use this file
 
