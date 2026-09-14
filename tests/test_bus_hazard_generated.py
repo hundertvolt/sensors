@@ -84,6 +84,34 @@ def test_dev_i2c1_each_real_occupant_never_touches_an_unexpected_address() -> No
     run(scenario_each_occupant_never_touches_an_unexpected_address(_dev_i2c1_attachments()))
 
 
+# ---------------------------------------------------------------------------
+# Fail-loud paths: a real occupant with no tests/_bus_hazard_catalog.py adapter yet must abort with
+# a clear, actionable message, never silently skip that driver's own coverage (BUILD_CHAIN_PLAN.md's
+# "tested to the same bar as src/ code: ... full error-handling-path coverage" bar, applied here).
+# ---------------------------------------------------------------------------
+
+_UNKNOWN_ATTACHMENT = {"driver": "not_a_real_driver", "name_ext": "", "address": 0x50}
+
+
+def test_build_bus_occupants_fails_loud_for_a_driver_with_no_catalog_adapter() -> None:
+    i2c = make_i2c(1)
+    try:
+        build_bus_occupants(i2c, [_UNKNOWN_ATTACHMENT])
+    except KeyError as e:
+        assert "not_a_real_driver" in str(e)
+        return
+    raise AssertionError("build_bus_occupants() must fail loud for a driver with no I2C_HAZARD_CATALOG adapter")
+
+
+def test_address_sweep_scenario_fails_loud_for_a_driver_with_no_catalog_adapter() -> None:
+    try:
+        run(scenario_each_occupant_never_touches_an_unexpected_address([_UNKNOWN_ATTACHMENT]))
+    except KeyError as e:
+        assert "not_a_real_driver" in str(e)
+        return
+    raise AssertionError("scenario_each_occupant_never_touches_an_unexpected_address() must fail loud for a driver with no I2C_HAZARD_CATALOG adapter")
+
+
 if __name__ == "__main__":
     import microtest
 
