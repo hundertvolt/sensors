@@ -373,179 +373,6 @@ constraints.
     trigger rather than a resetter. Recorded because the prefix question itself is still open, not
     the resolved contradiction.
 
-18. **Is the ISL29125's `BOUTF` actually high at power-up? — CLOSED (2026-09-13).** Yes, and the
-    status *read* clears it, which p12 denies. Full lifecycle and evidence: SPECIFICATION.md Part
-    C.11.1.1. The fake models all four transitions now; `src/` needed no change. Original entry
-    kept below for the reasoning that led to it.
-
-    ~~Is the ISL29125's `BOUTF` actually high at power-up?~~ (raised 2026-09-12 by the first real
-    mock-conformance run, SPECIFICATION.md Part C.11.1). Measured and settled: the `0x46` reset
-    command leaves `0x08` reading `0x00`, so it does **not** raise the flag — the twin's `_reset()`
-    was corrected and `simulate_brownout()` added for the supply event. What is **not** settled is
-    p12's claim that the register's power-on default is `0x04`: the probe's own first run issued a
-    reset before its first status read, consuming the evidence, and nothing since has power-cycled
-    the part. To settle it: power-cycle the board while it runs firmware that does **not** call
-    `ISL29125_I2C.setup()` at boot (the pre-ISL dev build, not this branch's), then make a status
-    read the very first transaction — `device_scripts/isl29125_mock_conformance_probe.py`'s own
-    `B01` key does this if nothing precedes it. Low stakes either way: `setup()` clears `BOUTF`
-    unconditionally, so no production behaviour depends on the answer; it decides only whether the
-    fake's `__init__` should keep starting at `_STATUS_POR`.
-
-19. **The ISL29125 NeoPixel auto-range sweep — CLOSED (2026-09-13), the script is retired.** It
-    could not pass as written, was re-run one last time to confirm exactly why, and its one piece
-    of unique coverage has been moved somewhere it can actually be measured.
-
-    The final run's findings were precisely the two predicted rig/test-design faults, and nothing
-    else: sweeps 0 and 1 never touched the low range at all (no dark pre-roll, so the driver stayed
-    on its configured 10000 lx default for the whole window), and the continuity check compared two
-    samples straddling a transition where the *light itself* had moved 1.07 → 348.46 lux between
-    them — it was measuring the LED's slew rate, not the driver's gain step. The third blocker, the
-    gain-ratio convergence assertion, turned out to be a real driver defect rather than a test one
-    and is fixed (the hourly relearn rate limit was also gating the FIRST measurement, so a fresh
-    unit — and `ISLResetCal`, whose whole point is to relearn — could not calibrate for an hour).
-
-    **What replaced it.** Cross-range continuity is now measured inside
-    `isl29125_mechanism_envelope.py`, which was already the staircase the sweep should have been:
-    one stationary light at a level inside the overlap band, read on each range in turn with
-    `RangeAuto` off. Two settled holds have none of the ramp's confound. Measured on this rig:
-    132.50 lx on the 375 range against 147.76 lx on the 10000 range, an 11.5% step, bounded at 25%
-    (a relative bound on the correction being applied at all, not a calibration claim —
-    SPECIFICATION.md Part C.11.4 owns the accuracy question). The same run now also reports the ratio the driver learned before
-    the calibration trigger discards it, so every envelope run is one more data point for
-    SPECIFICATION.md Part C.11.4.
-
-20. **The ISL29125's range ratio is not a constant — MIGRATED OUT (2026-09-14), not open.** It
-    varies ~28 at ambient to ~22 near full scale, measured across 18 independent estimates plus two
-    independent confirmations. It is a property of the part, not a decision anyone can take: telling
-    low-range compression from a high-range under-read needs a reference meter, and generalising from
-    one specimen needs a second board. Neither exists, so carrying it here as something to resolve was
-    misleading. **Everything — the tables, the mechanism reading, and what it means for a single
-    `GainRatio` — is now SPECIFICATION.md Part C.11.4.** Do not re-raise it as actionable. If a second
-    unit ever arrives, C.11.4's measurements are the baseline to compare against.
-
-21. **The ISL29125 flash-tier firmware — CLOSED (2026-09-13).** The bench board was carrying a
-    pre-ISL `dev` build, so every ISL device script failed under `harness.Board.run_isolated()`
-    (which does not mount) with `ImportError: no module named 'asy_isl29125_driver'`, and the
-    branch's own driver could only be exercised through `mpremote ... mount <dir>` with the
-    branch-only modules cross-compiled to `.mpy`.
-
-    The board now runs a `uv run scripts/build_firmware.py dev` build of the branch tip, flashed
-    with `picotool load -x -v`, and **the whole flash tier runs clean against it: 38 passed,
-    1 skipped, 0 failed (25:51)** — the skip being `--allow-flash-cycle`'s own gate. All nine
-    config files survived the flash.
-
-    Two things worth keeping from how it was done. `mpremote mount` remains the right way to try a
-    driver change before committing to a flash cycle — cross-compile with `mpy-cross -march=armv6m`
-    and mount the directory; the board's production watchdog stays armed across a raw-REPL
-    interrupt, so chain `exec "import machine; machine.WDT(timeout=8000)"` before `mount` or the
-    handshake plus a slow import trips the 8 s ceiling. And a mounted run's config writes land in
-    the mounted host directory rather than on the board's own filesystem, which is what makes it a
-    genuinely non-destructive stand-in.
-
-    **One consequence still open**: `config_ISL29125.cfg` on the bench board predates this
-    branch's `AutoRangePersist` default change and still reads `4`. A persisted value always wins
-    over a schema default, so the production system on that board is still running the
-    configuration in which the interrupt cannot lead (item 22, SPECIFICATION.md Part C.11.1.3).
-    Deleting the file so the next boot regenerates it is a one-line fix, but it is a real write to
-    the board's flash filesystem and has not been made.
-
-22. **What the ISL29125 module has been proven to do on real hardware** (2026-09-12, extended
-    2026-09-13) — recorded so a later session does not redo it. Everything below now runs from
-    **frozen firmware** through the ordinary tier runner, not over a mount: the full flash tier is
-    38 passed / 1 skipped / 0 failed (item 21). Three ISL-specific tests carry the weight, all
-    structural or relative (no absolute-lux assertion anywhere):
-    - `test_the_isl29125_mock_answers_the_bus_exactly_as_the_real_chip_does` — 36/36 protocol keys
-      match between the real part and the twin fake (Part C.11.1 for what the first run found).
-    - `test_isl29125_mechanisms_hold_across_the_whole_illumination_envelope` — ascending and
-      descending steady levels, 1.1 → 8829 lx; both ranges; 2 switches across a full up-and-down;
-      fixed-range pinning; 12-bit vs 16-bit agreeing to 0.6% on one static scene; cross-range
-      continuity at 11.5% (item 19); the calibration trigger; `W14` firing at hard saturation.
-    - `test_isl29125_survives_recombined_realistic_lighting_scenarios` — 10 scenarios, ~520
-      samples, 1.1-8829 lx, 26 range switches, zero errors and zero coherence violations, and
-      **no `W15`/`W17` with enough switches for either to have fired** — which is what actually
-      proves the INT line is carrying the range decisions rather than the periodic fallback
-      silently covering for a dead interrupt.
-
-    **Corrected 2026-09-13**: the envelope test's own "no `W15`" was claimed as that proof and is
-    not — the warning needs five periodic-only decisions in a row and that run makes two switches
-    in total, so it could not have fired however dead the line was. Checked where it *could* fire,
-    `W15` promptly did, and the cause was a real defect (`AutoRangePersist` outlasting
-    `SampleInterv`, SPECIFICATION.md Part C.11.1.3). The scenario test now asserts a minimum switch
-    count alongside the warning check, so the claim above is load-bearing rather than vacuous —
-    the same habit item 23 records.
-    Also confirmed directly: device ID `0x7D`, the real falling-edge INT fast path beating a 30 s
-    periodic fallback by 0.61 s, `PRST` counting whole RGB cycles (1066 ms at PRST=4), the
-    `CONFIG1`-write conversion restart, 12-bit data being right-aligned, and both concurrency
-    scripts (same-device read/write, and cross-device interleaving against SCD30 + SGP40).
-
-    **Extended again 2026-09-13**, after the driver's two-class restructure and on firmware rebuilt
-    from the branch *including* the merged UART promotion — so these figures cover both running
-    together, not the ISL alone:
-    - **Flash tier: 8/8**, three consecutive runs, `-k isl29125 --allow-neopixel-sweep` (~12 min
-      each; the sweep dominates). The eighth is the new
-      `test_isl29125_gain_ratio_survives_a_simulated_reboot_through_the_real_fram_chunk` — before
-      it, the ISL's own FRAM chunk had **no** real-hardware coverage at all, on any tier.
-    - **Bench tier: 3/3**, four consecutive runs. Two of those three had never passed: they came
-      from commit `ab81b79`, whose own subject is "written, never run", and both encoded an
-      expectation the driver has never met. Fixed on the test side — `CalTS` is `None` (not `0`)
-      until a ratio is genuinely learned and persisted, matching `SGP40_Reader`'s own
-      `last_backup`/`restored_from`; and no ISL test may assert an empty error log while
-      auto-range is on, because the gain learner warns legitimately on its own schedule.
-      **The second of those two no longer holds**: the learner is gone, so an ISL log *should* be
-      empty and the tests assert exactly that (`tests_hardware/README.md` carries the live rule).
-    **Warning numbers above are as they were logged**, before the 2026-09-14 renumbering
-    (SPECIFICATION.md Part C.7.1). To read them against today's driver: `W14` (saturated) is now
-    `W12`, `W15` (dead-INT detector) is now `W13`, `W17` no longer exists at all, and today's `W11`
-    (shadow divergence) was split out of the `W10` those runs shared with brownout recovery.
-
-    **Superseded in part by the 2026-09-13 calibration redesign** (Part C.11.3). The gain ratio no
-    longer lives in FRAM, so the round-trip evidence above and the "a learned ratio surviving a
-    reboot is unproven" gap both describe a mechanism that no longer exists — the ratio is config
-    now, and its persistence is the same config persistence every other field already has, covered
-    by the bench reboot test rewritten alongside it. What is **not** yet proven on hardware is the
-    new path: a calibration run measuring a real sandwich under the NeoPixel rig, and the operator
-    copying the candidate across.
-    **CLOSED 2026-09-14 — that run happened and passed.** Three sandwiches converged at ~24.0 with a
-    1.8% spread across nine candidates, the applied ratio never moved under the driver, and copying
-    the measured value across cut the cross-range continuity step from 11.4% to 0.4%. Full numbers
-    in SPECIFICATION.md Part C.11.3. Everything the 2026-09-14 field removals and warning
-    renumbering needed re-proving was re-run in the same bench session and passed; its temporary
-    write-up has been deleted now that every finding sits in its permanent home (the re-measured
-    fast path in C.11.1.3, the derived-cache rule in `tests_hardware/README.md`). The mock and twin tiers cover it end to end (including the
-    measured-then-applied error shrink); the flash/bench tiers assert only that the trigger is
-    accepted, the applied ratio does not move, and `GainMeas` is present.
-
-23. **A hardware test that depends on an unstated rig condition is the recurring failure mode in
-    this tier** (pattern, 2026-09-13 — worth reading before writing a new one). Six instances so
-    far, all found by actually running the tests rather than by review:
-    - `isl29125_real_irq_edge.py` assumed a scene near a range boundary. A latched-white NeoPixel
-      (~2000 lx) is static and mid-band, crosses no threshold, and so produces no threshold
-      interrupt — correct driver behaviour, failing test. **Fixed**: the script parks the pixel.
-    - `isl29125_autorange_sweep.py` assumed the LED ramp crossed the switch point slowly enough to
-      sample; it did not, and the script is retired (item 19).
-    - the envelope script's `W15` check sat below the threshold at which the warning can fire, so
-      it read as a proof and was one (item 22). A ceiling with no matching floor, again.
-    - the first `isl29125_lighting_scenarios.py` oscillation scenario put both its levels inside
-      the hysteresis band and passed with `switches=0` (item 22's own note).
-    - `isl29125_plausibility_read.py` depended on ambient, so its result depended on **test
-      ordering**: it passed while the pixel was latched white by the interrupted WiFi signalling,
-      then failed once the fixed IRQ script (above) began parking the pixel dark before it
-      (`Lux=1.07` against a 5.0 floor, sensor covered). The nastiest of them, because the test
-      itself never changed. **Fixed**: it lights its own scene at a known level and parks the pixel
-      dark again on the way out, so it neither depends on nor imposes bench state.
-    - `isl29125_mechanism_envelope.py` imposed state of a different kind: it seeds `cfgmgr._cache`
-      without calling `cfgmgr.setup()`, so the manager kept its default `config_ISL29125.cfg`
-      filename and its six `_set_dict_cfg()` calls each wrote that seeded cache over the board's
-      PRODUCTION config. Six silent flash writes per run, invisible in the test output, and it is
-      what actually moved the bench board's persisted `AutoRangePersist` from 4 to 2. **Fixed**:
-      the script points `cfgmgr.config_file` at a `config_HWTEST_*.cfg` scratch name.
-    The three habits that catch this class: **a device script provides its own light** rather than
-    trusting the bench state, **it restores or side-steps every piece of shared state it touches**
-    - light, config files, FRAM chunks - so it cannot decide a later script's result or corrupt
-    production's, and it **asserts a minimum engagement** (this must switch / both ranges
-    must be used) alongside every ceiling, so a test cannot pass while the mechanism it targets
-    never runs.
-
 24. **The two live-backend browser tests fail locally on a stale/stub frozen website** (observed
     2026-09-13 on this branch; **not caused by it** — nothing in the ISL29125 work touches the web
     lane, and 575/576 `tests_js` tests pass). `npx vitest run` reports 2 failed files, 1 failed
@@ -625,48 +452,6 @@ constraints.
     2026-09-14). Nothing here needs the colour sensor, the bench rig or PR #75 to land first; it is
     picked up on its own.
 
-27. **`test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly` asserts an empty
-    FRAM log after deliberately provoking torn writes** (found 2026-09-13 in the first full
-    flash+bench run of the ISL29125 branch; reproduces identically on a targeted re-run). The test
-    hard-resets the board three times *during* FRAM writes and then requires the FRAM error log to
-    be empty; it holds `E31`, `W71`, `E31`, `W72`. `W71` ("invalid data in block 0, reading block
-    1") is the dual-copy recovery doing exactly its job and is arguably a success signal. `W72`
-    ("invalid data in block 1") means one chunk lost *both* copies, and `E31` is a status-byte
-    failure on the write side.
-    Deliberately not "fixed" by loosening the assertion: the flash-tier
-    `test_error_log_history_is_all_or_nothing_across_a_reset_raced_chunk_write` passes, so the
-    all-or-nothing property holds per chunk.
-    **RESOLVED (2026-09-13) — the entries are acceptable degradation, and the test now expects
-    them** (owner's ruling). An error or warning here is the direct, expected consequence of an
-    interrupted read or write, so requiring an empty log asserted that deliberately-provoked damage
-    leaves no trace — not a property the hardware has. `assert_module_error_log_clean()` gained an
-    `allowed_errors` parameter for exactly this case, and the test now permits `E31`/`W71`/`W72`
-    while still failing on anything else and still requiring a fresh backup to complete afterwards.
-    It also **clears the FRAM log in its own `finally`**, because those entries are real persisted
-    state that the next test would otherwise read as evidence — CLAUDE.md's "read the FRAM logs
-    before clearing" rule assumes a board that has been running normally. On a failure the entries
-    are already in the assertion message, so nothing diagnostic is lost by clearing.
-
-28. **Definitions and mockdata were never compared, and had drifted in three places — CLOSED
-    (2026-09-13).** Found because dev's definitions advertised `UARTLINK_Transfers`/`UARTLINK_Failures`
-    with no mockdata behind them (the UART promotion's own gap). Fixing only that would have left
-    the mechanism open, so `tests_js/definitions-mockdata-coverage.test.js` now walks every shipped
-    variant and asserts that each `kind: "readonly"` field a definitions file names actually
-    resolves against that variant's mockdata — using `resolveFieldValue()` and a mirror of
-    `render.js`'s own `groupValuesFrom()`, so it tests the real resolution rather than a second
-    implementation of it. It carries a negative control, since a resolver that returned a value for
-    everything would make the whole check vacuous.
-    It found two more on its first run. **`GainMeas`** was in dev's definitions and mockdata while
-    `get_dict_data()` — this driver's hand-written REST override — never emitted it, so a real
-    device would have served a body without it (fixed in the same session). And **dev's mockdata
-    had no `BMP3XX` at all**, in either `measurements` or `sensorsConfig`, though dev's definitions
-    declare the group and `sensortask_dev.py` really does construct a `BMP3xx_Reader` — a
-    pre-existing gap, unrelated to any recent work, that rendered a permanently blank card on the
-    mock site. Values mirror wozi's, the same part.
-    The class of bug is the same in all three: a field named in one of the three sources
-    (definitions, mockdata, the device's real body) and absent from another, which renders exactly
-    like a device that has not reported yet rather than like a defect.
-
 29. **An interrupted `setup_toolchain.py env --tier flash` can leave the unit-test interpreter
     broken, and `scripts/test.sh` will use it anyway** (hit 2026-09-13). The flash tier legitimately
     rebuilds the MicroPython Unix port as part of `test_env_tier_flash_recurring_run_is_idempotent`,
@@ -695,10 +480,9 @@ constraints.
     ruling is to leave the specification exactly as it stands, Finding 2 included, and tidy this up
     in a session of its own.** Recorded here so that session does not have to re-derive the scan.
 
-    **One free fix for that session, found 2026-09-14 in the branch's final review**: the six
+    **One free fix for that session, found 2026-09-14 in the branch's final review**: the
     subsections are also out of order in the file - `C.11.3` physically precedes `C.11.2`. Pure
-    document order, no content change, and it is left alone here only because the owner's ruling is
-    to touch nothing in the specification until that session.
+    document order, no content change.
 
     Three distinct patterns exist in the document, and only the third is the question:
 
@@ -717,7 +501,10 @@ constraints.
       and where datasheet p12 is wrong), C.11.1.2 (the threshold persistence counter and the
       destructive status read), C.11.1.3 (PRST derived from `SampleInterv`), C.11.2 ("ISL29125
       reference layer"), C.11.3 (the calibration design, holding the band-gate finding), C.11.4
-      (the measured range-ratio table). Checked the other sensors the same way, with chip-only
+      (the measured range-ratio table) and C.11.5 (the project owner's twenty settled requirements,
+      persisted there when the promotion doc that held them was deleted; the numbering is cited by
+      the driver and its tests, so that section moves as a unit or not at all). Checked the other
+      sensors the same way, with chip-only
       identifier sets (`AmbPres`/`FRC`/`ASC`; `sraw` and the VOC-index terms; `_VAL_POV`/
       oversampling/IIR): **SCD30, SGP40 and BMP3XX have no dedicated section anywhere.**
 

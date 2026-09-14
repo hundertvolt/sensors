@@ -1208,8 +1208,8 @@ info/trace; `pr.err_s`/`pr.wrn_s` (async, persist to history/FRAM) for anything 
 `get_error_counter()`; `pr.err`/`pr.wrn` (sync, non-persisting) for a genuinely sync call site
 (e.g. a `Timer.init()` failure handler) or a routine observation that shouldn't count at all.
 
-**Which of the three info levels to use** (migrated from the retired `ISL29125_FUNCTION_SPEC.md`
-§3, which recorded the convention the drivers already followed because nothing else stated it):
+**Which of the three info levels to use** — a convention the drivers already followed, recorded
+here because nothing else stated it:
 `one()` for once-per-lifecycle milestones (`"initialized"`, `"Setting sensor config at startup."`,
 a restored calibration and its age); `evt()` for per-cycle events worth seeing at debug 4
 (`"sensor trigger"`, `"Backup trigger."`, a range switch); `all()` for per-cycle data-flow noise
@@ -1546,7 +1546,7 @@ was made and then removed once deriving the window made that case unreachable.
 **Why the flag alone was not enough.** `_note_decision_source()` originally counted a decision as
 interrupt-led whenever `RGBTHF` was set in the status byte. But `RGBTHF` is raised by the *chip*,
 so it is set exactly the same when the INT line is open — a missing pull-up or a broken jumper,
-which is the fault requirement 17 names. The driver now records the pin edge itself
+which is the fault requirement 17 (C.11.5) names. The driver now records the pin edge itself
 (`_irq_fired`, set in the handler and consumed once per cycle) and requires **both** halves. This
 also un-blinded the twin's own `isl29125:int_stuck_high` fault test, which had been passing for an
 unrelated timing reason rather than because the detector worked.
@@ -1620,9 +1620,8 @@ later sample on the wrong range — caught by its own test, not by reasoning.
 
 ### C.11.2 ISL29125 reference layer — the prior art, and the traps it closes
 
-Migrated from `ISL29125_FUNCTION_SPEC.md` §5 and `ISL29125_PROMOTION_PLAN.md` §7.6/§8.3 when both
-temporary docs were retired (2026-09-13). Every item here is something a future reader would
-otherwise re-derive or "correct" back to a worse answer.
+Every item here is something a future reader would otherwise re-derive, or "correct" back to a
+worse answer.
 
 **One owner per register — the property that makes the shadow model safe.** The driver keeps a
 local shadow of `CONFIG1`-`CONFIG3` and writes it back whole; that is only sound while exactly one
@@ -1681,7 +1680,7 @@ destructive-read invariant above).
   by the driver's own chain, so an out-of-domain input means that chain is broken and is rejected
   rather than clamped.
 
-**Config-field classification.** Device and maths constants are not config fields: requirement 1
+**Config-field classification.** Device and maths constants are not config fields: requirement 1 (C.11.5)
 governs *preferences*, and a dark-count offset, a CCT floor or a gain-learn period is not one.
 
 **The switch-down point is derived, not configured** (owner, 2026-09-14). It was `AutoRangeDown`,
@@ -1767,6 +1766,71 @@ above elsewhere.
 a second board and a reference meter, neither of which exists — it is not a decision anyone can make.
 The measurements stay here because they bound what a single number can achieve, and because a second
 unit arriving later would make them the baseline to compare against.
+
+### C.11.5 ISL29125 settled requirements — the project owner's own list
+
+The twenty decisions the promotion was designed against, as the project owner settled them.
+**These are the "requirement N" the driver, its tests and the sections above cite by number** — the
+numbering is load-bearing and must not be re-flowed. Each item's own working-out is deliberately
+absent; what survives is the decision.
+
+1. **Every setting is API-settable and persisted.** No compile-time constant for anything a user
+   might want to change. Device and maths constants are not settings — C.11.2's classification note
+   is this requirement applied.
+2. **Resolution** is a user-selected config field (12 or 16 bit), never auto-managed.
+3. **Range** is either a fixed value or `auto`, and the auto-range parameters are themselves
+   settable.
+4. **Outputs are lux, RGB and HSB, each normalised over the full span** — the pinned range when one
+   is selected, the whole auto-range span when `RangeAuto` is on.
+5. **The threshold interrupt is used, and its GPIO is mandatory**, the same way `asy_scd30_driver.py`
+   treats its RDY pin. Not optional, so there is no `None` pin to guard against by construction.
+6. **IR compensation is an API parameter.** The sensor is openly exposed — no IR-tinted cover — so
+   the datasheet's bare-sensor guidance of ~40 codes is the applicable default, not p10's `0xBF`.
+7. **Register ownership is the driver's.** The chip's hardware interrupt never surfaces to the user;
+   if an interrupt-as-event notification is ever wanted, software raises it — the INT pin and the
+   threshold registers stay private.
+8. **RGB output is normalised 0-1.**
+9. **HSB's low-light behaviour is accepted** — no log scaling and no validity flag. Settled; do not
+   re-propose either.
+10. **The API follows the same conventions as the other promoted drivers** (Part C).
+11. **Measurement output is structured**: `RGB` and `HSB` are nested sub-objects, never flattened
+    sibling keys.
+12. **`OperationMode` is not exposed.** The driver sets and keeps RGB mode itself.
+13. **`CCT` is part of the output**, carrying its placeholder-matrix and low-light-floor caveats
+    (C.11.2).
+14. **SUPERSEDED.** It required auto-range to be fully tunable — switch points, hardware transient
+    rejection, settle margin, dwell, and a command to discard a learned ratio. Three of those are
+    gone: the persistence window is derived (C.11.1.3), the settle margin is a constant (C.11.2),
+    and the ratio is an ordinary config value with nothing to discard (C.11.3). What remains
+    settable is `AutoRangeThresh` and `AutoRangeDwell`.
+15. **Logging and error history follow the promoted-driver pattern in full** — a `PrintLog` per
+    module plus one per `ConfigManager`, FRAM-backed when a `fram=` is supplied, the `_error_check()`
+    leaky bucket, and its own range in C.7.1's table.
+16. **The driver is self-healing and never reports a stale value as fresh.** `BOUTF` set means the
+    chip lost its configuration, so the whole shadow is re-applied and the cycle discarded; startup
+    tolerates transient I²C failure on the same leaky-bucket terms as steady state; and a sample the
+    driver cannot prove is current is reported as `None`, never as the last reading re-stamped.
+17. **Auto-range must not depend on the interrupt alone.** If the INT line never asserts — a missing
+    pull-up, a broken jumper, a mis-set `INTSEL` — auto-range would freeze on whatever range it
+    started on, with only saturated or near-zero readings to show for it. The periodic read
+    evaluates the same switch condition, so the interrupt is the *fast* path and the periodic read
+    the *guaranteed* one, both on the same thresholds, dwell and settle.
+18. **Scope is the `dev` variant only.** `wozi` carries no colour sensor and is not to be changed,
+    which matters because most of the integration surface has a wozi twin of every dev file.
+19. **Every emitted value carries a declared unit and a declared precision.** The precision is a
+    decided, tested property of each field, not an artefact of binary floating point. No driver in
+    `src/` rounds any output; the renderer's `decimals` hint does it (Part H.5), so all four drivers
+    stay identical to each other.
+20. **Construction and `setup()` must complete on a bus where the chip never answers.** Not a
+    restatement of 16 — that is a chip present and misbehaving, this is one absent for the whole
+    run. `tests/test_sensortask_dev.py` builds the entire dev object graph against a fake with no
+    ISL29125 registers in it, and `build_system()` has no per-sensor try/except.
+
+**One standing consequence, because it recurs**: CLAUDE.md's rule to verify a driver against the
+legacy driver's own actually-proven field behaviour **has no purchase for this device**. The legacy
+ISL29125 only ever ran a single config-and-read smoke test, and the project owner confirmed there is
+nothing to preserve on those grounds — so the legacy code is evidence of intent at most, never of
+proven behaviour, for naming, defaults and API shape alike.
 
 ## C.12 Testing
 

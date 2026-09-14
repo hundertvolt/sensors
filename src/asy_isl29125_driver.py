@@ -87,8 +87,8 @@ _FULL_SCALE_COUNTS = const(65535)  # p3: "Full Scale ADC Code, ADC 16 bits"
 _CYCLE_MS_16BIT = const(303)  # 3 x tINT, tINT = 101ms typ at 16 bits (p3)
 _CYCLE_MS_12BIT = const(19)  # 3 x ~6.3ms: p6 makes tINT an n-bit counter on one oscillator, 101 x 2**-4
 
-# Device/maths constants, deliberately NOT config fields - requirement 1 governs preferences, and
-# none of these is one (SPECIFICATION.md Part C.11.2's own classification note).
+# Device/maths constants, deliberately NOT config fields - requirement 1 (C.11.5) governs
+# preferences, and none of these is one (C.11.2's own classification note).
 _DARK_COUNTS = const(1)  # DDark typ 1 / max 5 counts at range 0 (p3, Electrical Specifications)
 _CCT_FLOOR_COUNTS = const(64)  # ~13x the worst-case dark count: below it a 5-count additive error
 # moves a channel ratio by more than ~8%, and chromaticity noise grows far faster than hue noise.

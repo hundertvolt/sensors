@@ -101,10 +101,9 @@ Both automated scripts are plain `uv run pytest` wrappers - any pytest flag work
 gated on physical geometry rather than on time or wear, which is why they share the
 `--allow-neopixel-sweep` flag and have their own `KNOWN_PERMANENT_SKIPS` entries in
 `scripts/_require_clean_hardware_run.sh` (so an expected skip does not read as a failure). A third
-script, `isl29125_autorange_sweep.py`, used to live here and was **retired on 2026-09-13** - it
-drove a moving LED ramp, which confounds the gain step with the light's own rise; its one unique
-measurement now lives in the envelope test as two settled holds (BACKLOG.md item 19). What the rig
-needs:
+script, `isl29125_autorange_sweep.py`, used to live here and was retired: it drove a moving LED
+ramp, which confounds the gain step with the light's own rise, and its one unique measurement now
+lives in the envelope test as two settled holds. What the rig needs:
 
 - The dev board's own WS2812 (GP18) aimed at the ISL29125's window at a fixed, recorded distance -
   close enough that a full-brightness white ramp drives the sensor through the 375 lx range's top
@@ -172,6 +171,24 @@ None is a driver defect, and each one looks like one if you do not know it:
   `isl29125_lighting_scenarios.py` nonetheless holds a level for 8 s before asserting on a switch,
   which is deliberate margin over that latency, not an estimate of it. The band is geometry- and
   cover-dependent: re-measure with that script's own levels if the rig changes.
+
+## Writing a new device script: the three habits, and why
+
+A test depending on an unstated rig condition is this tier's recurring failure mode - six instances
+so far, every one found by running the test rather than by reading it, and every one of them passed
+first. The three habits that catch the class:
+
+- **Provide your own light** rather than trusting the bench state. `isl29125_plausibility_read.py`
+  passed while a preceding test happened to leave the pixel latched white, then failed once another
+  parked it dark - its own result depended on test ORDER, with the script itself unchanged.
+- **Restore or side-step every piece of shared state you touch** - light, config files, FRAM
+  chunks - so a script cannot decide a later one's result or corrupt production's. The envelope
+  script seeded `cfgmgr._cache` without calling `setup()`, so its `_set_dict_cfg()` calls wrote that
+  cache over the board's real `config_ISL29125.cfg`: six silent flash writes per run.
+- **Assert a minimum engagement beside every ceiling** - this must switch, both ranges must be
+  used - so a test cannot pass while the mechanism it targets never runs. A "no `W15`" check proved
+  nothing in a run making two switches when the warning needs five in a row, and an oscillation
+  scenario passed with `switches=0` because both its levels sat inside the hysteresis band.
 
 ## Which path decides a range switch, and the rule that governs it
 

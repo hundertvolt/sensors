@@ -685,22 +685,6 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   (back when it still ran 1.24.1) — reference material for future `src/` promotion work, not
   itself reviewed, promoted, or covered by lint/type/test config.
 
-`ISL29125_PROMOTION_PLAN.md` and `ISL29125_FUNCTION_SPEC.md` — two temporary promotion docs for
-the `python/IndividualDrivers/asy_isl29125_driver.py` → `src/` move, both **deleted (2026-09-13)**
-once the promotion closed: the driver is in `src/`, covered at every tier, and validated on the
-dev bench. Everything permanent was migrated first, following the same rule the five real-hardware
-planning docs below were retired under. The prior-art cross-check (four other ISL29125
-implementations and where this driver departs from them), the one-owner-per-register table the
-shadow model depends on, the colour-chain decisions (why the sRGB matrix is pinned as literals, why
-the two McCamy forms are identical, why the matrix is a placeholder by the datasheet's own
-wording), the config-field classification rule and the derived switch-down point are now
-`SPECIFICATION.md` Part C.11.2; the log-level convention the drivers already followed is Part C.7;
-the persistence window's real unit — an RGB cycle, not the "integration cycle" its own datasheet calls
-it in both places it mentions the field — is Part A.4's conflatable-facts list, item 6, alongside
-the related fact that conversion does not stop when the interrupt asserts (item 7). The `errno`/`wrnno` allocation was
-already Part C.7.1's registry, the platform facts were already Part F, and the three specification
-defects the implementation corrected are carried as comments at the code they explain.
-
 `HARDWARE_TEST_PLAN.md`, `tmp_hardware_test_candidates.md`, `REAL_HARDWARE_HANDOFF.md`,
 `REAL_HARDWARE_RUN_LOG.md`, and `DEV_HARDWARE_BASELINE_PLAN.md` — five temporary real-hardware
 planning/handoff docs, all now deleted (2026-09-04) once real-hardware execution was genuinely
