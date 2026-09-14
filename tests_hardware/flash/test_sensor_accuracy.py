@@ -98,7 +98,7 @@ def test_isl29125_mechanisms_hold_across_the_whole_illumination_envelope(board: 
     structural and relative properties - never absolute lux. Covers: a live read chain at every
     level, HSB/RGB coherence, monotonic response, both ranges used, hysteresis without chatter,
     the return to the low range, fixed-range pinning, 12-bit vs 16-bit agreement on one scene,
-    cross-range continuity (one stationary light read on each range in turn), ISLResetCal, the
+    cross-range continuity (one stationary light read on each range in turn), ISLCalibrate, the
     saturation detector firing at full white (W14), and no errors at all. The dead-interrupt
     detector (W15) is checked here too, but only
     test_isl29125_survives_recombined_realistic_lighting_scenarios makes enough range decisions

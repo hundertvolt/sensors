@@ -274,14 +274,12 @@ point at a flagged assumption being wrong, not at a real product bug. Resolved i
 through, kept (not deleted) so a reader mid-investigation doesn't wonder whether something was ever
 a live question:
 
-- **No ISL29125 test may assert an empty error log** - the gain learner runs on its own hourly
-  schedule whenever auto-range is on, and a paired reading it rejects is a legitimate warning
-  (`wrnno=13`, ratio outside the 20-34 plausibility band; `wrnno=16`, the partner range clipped the
-  scene). Whether that window opens during a given test is a property of the light and the clock, so
-  an empty-log assertion is a race, not a check. Use `error_log_helpers.assert_module_error_log_clean()`
-  with `allowed_warnings=(13, 16)` instead - it still fails on any error and on any other warning.
-  Two bench tests were failing on exactly this (2026-09-13, their first-ever execution: they came
-  from commit `ab81b79`, whose own subject is "written, never run"); both are green now.
+- **An ISL29125 test asserts an EMPTY error log** - this note previously said the opposite, and the
+  rule inverted when the background learner was removed (2026-09-13). There is no schedule left to
+  race: a calibration run only happens when a user starts one, and a run that finds no usable scene
+  reports that by leaving `GainMeas` null rather than by warning. The `allowed_warnings=(13, 16)`
+  allowance that used to be required now permits two `wrnno`s that no longer exist, so it silently
+  weakens whatever test carries it - use `assert_module_error_log_empty()`.
 - **The ISL29125's gain ratio is a config value, not a FRAM one** (since 2026-09-13). Only a user
   PUT changes it, so a test comparing it across a reboot is an ordinary config-persistence check
   and needs no `RangeAuto` pinning - a calibration run cannot move it at all. A run publishes its

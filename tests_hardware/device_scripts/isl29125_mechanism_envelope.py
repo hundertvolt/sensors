@@ -26,7 +26,7 @@ MAX_WAIT_S = 12.0
 MAX_SWITCHES = 4  # one up and one down is ideal; chatter would be dozens
 OVERLAP_LEVEL = 4  # ~150 lx on this rig: ~40% of the low range's full scale, so BOTH ranges can represent it
 # A relative bound on the gain step, not a calibration claim. The driver corrects the high range by
-# a learned ratio whose plausibility band is 20-34 around a nominal 26.67, so the worst a working
+# an applied ratio whose plausibility band is 20-34 around a nominal 26.67, so the worst a working
 # driver can be off by is ~25%; anything past that is a missing or inverted correction, not
 # calibration error. BACKLOG.md item 20 is where the accuracy question itself lives.
 MAX_RANGE_STEP = 0.25

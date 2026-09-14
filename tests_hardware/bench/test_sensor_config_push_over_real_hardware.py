@@ -7,7 +7,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 import http_client
-from error_log_helpers import assert_module_error_log_clean, assert_module_error_log_empty, reset_all_error_logs
+from error_log_helpers import assert_module_error_log_empty, reset_all_error_logs
 
 if TYPE_CHECKING:
     from harness import Board
@@ -76,14 +76,6 @@ def test_sgp40_reset_voc_command_push_over_real_rest(board: Board, dut_ip: str) 
 _ISL29125_TEST_VALUES = {"Resolution": 12, "IrCompOffset": 1, "IrCompAdjust": 20}
 
 
-# The ISL29125's gain learner runs on its own hourly schedule with auto-range on, and a paired
-# reading it rejects is a legitimate warning, not a fault: wrnno=13 (the ratio is outside the
-# 20-34 plausibility band) or wrnno=16 (the partner range clipped the scene). Whether the window
-# happens to open during a test is a property of the light and the clock, so no ISL29125 test can
-# assert an empty log without racing it - these two are allowed, everything else still fails.
-_ISL_LEARNER_WARNINGS = (13, 16)
-
-
 def test_isl29125_resolution_and_ir_compensation_push_over_real_rest_and_readback(board: Board, dut_ip: str) -> None:
     reset_all_error_logs(dut_ip)
     get_before = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=10.0)
@@ -113,8 +105,8 @@ def test_isl29125_resolution_and_ir_compensation_push_over_real_rest_and_readbac
         restore_results = restore_res.json()["result"]["ISL29125"]
         assert all(v == "Valid" for v in restore_results.values()), f"restoring original ISL29125 config was rejected: {restore_results!r}"
 
-    assert_module_error_log_clean(dut_ip, "ISL29125", allowed_warnings=_ISL_LEARNER_WARNINGS)
-    assert_module_error_log_empty(dut_ip, "CFGMGR_ISL29125")  # the config layer has no such schedule
+    assert_module_error_log_empty(dut_ip, "ISL29125")
+    assert_module_error_log_empty(dut_ip, "CFGMGR_ISL29125")
 
 
 def test_isl29125_calibrate_command_push_over_real_rest(board: Board, dut_ip: str) -> None:
@@ -140,6 +132,6 @@ def test_isl29125_calibrate_command_push_over_real_rest(board: Board, dut_ip: st
     # GainMeas rides the measurement tuple and is legitimately null until a run produces a stable
     # pair, so its presence is the contract here, not its value - the bench light is not arranged.
     assert "GainMeas" in get_res.json()["ISL29125"], f"GET /measurements lost GainMeas: {get_res.json()['ISL29125']!r}"
-    # Not an empty log: under an unarranged bench scene a refused pair is the EXPECTED outcome.
-    # Errors, and any other warning, still fail.
-    assert_module_error_log_clean(dut_ip, "ISL29125", allowed_warnings=_ISL_LEARNER_WARNINGS)
+    # An empty log, not an allowlist: a run that finds no usable scene reports that by leaving
+    # GainMeas null, never by warning. The two wrnnos this used to permit no longer exist.
+    assert_module_error_log_empty(dut_ip, "ISL29125")

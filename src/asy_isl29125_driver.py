@@ -122,7 +122,7 @@ _MIN_AR_DOWN = const(0.2)
 _MAX_AR_DOWN = const(3.0)
 
 _VAL_SI = const((("SampleInterv", "int", 1, _MIN_TRIGGER_SECS, _MAX_TRIGGER_SECS, None),))
-# Resolution/Range/AutoRangePersist/IrCompOffset are genuine discrete allowed-value sets, not
+# Resolution/Range/IrCompOffset are genuine discrete allowed-value sets, not
 # continuous ranges - the 6th-slot `special` shape asy_bmp3xx_driver.py's own _VAL_POV established.
 _VAL_RES = const((("Resolution", "int", 16, None, None, _RESOLUTIONS),))
 _VAL_RA = const((("RangeAuto", "bool", True, None, None, None),))
@@ -502,7 +502,7 @@ class ISL29125_Reader(SensorReaderConfig):
         return math_helpers.cct_mccamy(chroma[0], chroma[1])
 
     def _gain_correction(self, range_fs: int) -> float:
-        # The LOW range is the reference, so the learned ratio only ever corrects the high one -
+        # The LOW range is the reference, so the applied ratio only ever corrects the high one -
         # correcting both would make the absolute scale drift with the calibration.
         # learned/nominal, not its reciprocal: a unit whose real high-range full scale exceeds the
         # nominal 10000 produces FEWER counts for the same light, so the reported lux needs
@@ -1321,7 +1321,7 @@ class ISL29125_I2C:
         if ir_adjust is not None:
             self._reject_outside(ir_adjust, 0, _CONFIG2_ALSCC_MASK, "IR compensation adjust")
         if persist is not None:
-            self._reject_unless(persist, _PRST_SETTINGS, "AutoRangePersist")
+            self._reject_unless(persist, _PRST_SETTINGS, "threshold persistence")
         before = self.encode_shadow()
         if mode is not None:
             self._mode = mode
