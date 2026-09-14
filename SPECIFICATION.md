@@ -20,6 +20,7 @@ would recreate the scattering problem this document exists to fix).
 - **Part H** — Website (JS/HTML/CSS) Architecture
 - **Part I** — Memory-Safety Audit & Discipline
 - **Part J** — UART Message Protocol (`asy_uart_comm.py`)
+- **Part K** — Adding a New Sensor/Module: The Full Checklist
 
 ---
 
@@ -4116,3 +4117,305 @@ whole train while the initiator reports failure. This is the protocol's at-least
 that retries on a failed `uart_set()` must tolerate the peer seeing the message twice. A third state
 would buy nothing — no retransmission exists to hang it on, and the application-level answer is the
 same either way.
+
+---
+
+# Part K — Adding a New Sensor/Module: The Full Checklist
+
+The procedural counterpart to Parts C/D: those describe what a driver's own code and quality bar
+must look like; this Part is the concrete, ordered list of every file a promotion actually has to
+touch to go from "a tested driver exists" to "wired into buildgen, generating correctly for every
+device that needs it, with real coverage at every tier." Distilled from two real promotions done
+this way — UART (`asy_uart_comm.py`/`asy_uart_link_driver.py`, PRs #70/#80) and ISL29125
+(`asy_isl29125_driver.py`, PR #83) plus its own two immediate follow-ups (PR #86's `irq_pull_up`
+TOML field, PR #87's `math_helpers` test gap) — not theorized in advance. Use it as a literal
+checklist; the "Certification" list at the end (K.11) is the one to actually check off per
+promotion. Where a step doesn't apply to a given driver (no interrupt pin, no shared-bus neighbour,
+nothing datasheet-worthy), say so explicitly rather than silently skipping it — the same "flag,
+don't silently change" instinct CLAUDE.md applies everywhere else.
+
+## K.1 Before writing any code
+
+1. **Read the datasheet first, not training memory** (CLAUDE.md's datasheets rule, Part A.6). Place
+   the real PDF under `datasheets/<name>/` if it isn't there yet; every hardware-interaction claim
+   in code comments cites a page number against it, same as every existing driver.
+2. **Check Part G's shared-primitive catalog before writing anything new** — numeric validation/
+   coercion, callback dispatch guarding, response envelopes, locked state, logging, the one shared
+   EMA (`math_helpers.ema_step`, added for ISL29125 but not ISL29125-specific), and anything
+   website-facing needs its `src/`↔`js/` mirror obligation honored too (Part G.3). Re-run the
+   grep-for-the-shape check as part of this same pass.
+3. **Find the closest existing driver and read it in full**, not just its shape. `asy_scd30_driver
+   .py` (bare `SensorReader`, interrupt pin) and `asy_bmp3xx_driver.py` (`SensorReaderConfig`, no
+   interrupt) are the two simplest precedents; `asy_isl29125_driver.py` is the fullest recent one
+   (interrupt pin *and* `SensorReaderConfig` *and* a configurable internal pull-up *and* derived
+   fields needing a shared-helpers extension) if the new driver is likely to need several of these
+   at once.
+4. **Decide the Part C.11 design questions** (bus, identity check, config location, derived fields,
+   operating-range validation, trigger rate, FRAM persistence needs, errno/wrnno numbering) before
+   writing the constructor — C.11 itself, not duplicated here.
+
+## K.2 Write the driver, to the Part C/D bar
+
+Layered shape (Part C.1–C.10), config schema (C.5), error/logging contract (C.7), concurrency model
+(C.8), the full `src/` promotion checklist (Part D, all of D.0–D.15) — nothing in this Part changes
+any of that. Two buildgen-era additions worth calling out because they're easy to miss reading Part
+C/D alone:
+
+- **Keyword-only past the required positional leaders.** Ruff's `FBT001`/`FBT002` (boolean-trap,
+  live under this project's `select = ["ALL"]`) reject a `bool`-typed parameter that isn't
+  keyword-only. Every existing bare-`bool` constructor parameter in `src/` already is (e.g.
+  `asy_fram_driver.py`'s `wp`); a new one needs a `*,` separator before it (PR #86's own fix,
+  found by `ruff check` after the fact rather than anticipated — run lint before assuming a new
+  parameter's shape is fine).
+- **A constructor parameter with a real "off"/"no-op" value needs that value to actually mean
+  nothing changes, checked against the real underlying API, not assumed.** `irq_pull_up=False`
+  constructs a bare `machine.Pin(id, mode=Pin.IN)` (omitting `pull=` entirely) rather than passing
+  `pull=None` explicitly — this project's own `tests/machine.py`/`digital_twin/machine.py` fakes
+  both type `pull` as a plain `int` with a `-1` sentinel, not `int | None`, so the real
+  MicroPython-idiomatic `pull=None` would need both fakes' own signatures widened for no real
+  benefit; matching SCD30's own existing no-pull construction style instead needed no fake changes
+  at all. Check what the *existing* fakes already model before introducing a new value shape.
+
+## K.3 Wire into `buildgen`
+
+Every file below; a driver following the `asy_<name>_driver.py` → `*_Reader(SensorReader |
+SensorReaderConfig)` naming convention (C.2) usually needs only the first three — confirm by
+actually running `buildgen/generate.py` against a fixture TOML (or a real `devices/*.toml` with a
+draft instance added), not by inspection alone.
+
+1. **`buildgen/buildspec.py`** — the one hand-maintained per-driver table (its own docstring says
+   so; every other buildgen table is AST-derived from `src/`). Add rows to
+   `REQUIRED_TOML_FIELDS`/`OPTIONAL_TOML_FIELDS` (every constructor parameter with no default is
+   required; every one with a default your device might want to override is optional — see PR #86
+   for adding a single optional field to an already-promoted driver). If the driver sits on a bus,
+   add it to `BUS_KIND_BY_DRIVER` too. **Check the datasheet for a real address-select pin before
+   deciding `ADDRESS_CAPABLE_DRIVERS` vs. `FIXED_ADDRESS_DRIVERS`** — ISL29125's own datasheet
+   states its address is hardwired with no select pin (FN8424 p15), which is why it lands in
+   `FIXED_ADDRESS_DRIVERS` like SCD30/SGP40, not `ADDRESS_CAPABLE_DRIVERS` like BMP3xx; guessing
+   this wrong lets a device TOML declare a meaningless `address` field that silently does nothing.
+2. **`buildgen/driver_registry.py`** — usually **no change**: `resolve_driver()` AST-scans
+   `asy_<name>_driver.py` for a `SensorReader`/`SensorReaderConfig` subclass automatically. Only
+   add a `_OVERRIDES` entry if the driver genuinely can't follow that convention (today: `fram`,
+   `neopixel`, `notification`, `uart_link` — none define a `SensorReader`/`SensorReaderConfig`
+   subclass at all, or `uart_link`'s file isn't even `_driver.py`-shaped the same way). Confirm the
+   auto-resolution path actually works rather than assuming — it did for ISL29125 with zero code
+   here.
+3. **`buildgen/codegen.py`** — a new `_build_args_<name>()` handler (closest existing shape:
+   `_build_args_scd30` for a bare `SensorReader` with an interrupt pin, `_build_args_bmp3xx` for a
+   `SensorReaderConfig` with none — `_build_args_isl29125` is the one driver combining both, a
+   useful template if the new one does too), registered in `_BUILD_ARGS_HANDLERS`. Every optional
+   TOML field gets emitted only `if "<field>" in f:`, matching every existing handler — never
+   unconditionally, or a device that never set it gets a spurious explicit default in generated
+   source.
+4. **`buildgen/definitions.py`** — add the driver to `_SENSOR_DRIVERS` so the website-definitions
+   generator scans its `@web`/`@web-group` tags (K.6 below) at all. Skipped, the driver silently
+   never appears on the website with no error anywhere.
+5. **`buildgen/twin_wiring.py`** — usually **no change**: `fram_target` and every other generic
+   wiring field is handled uniformly by `codegen.py`'s own `_fram_kw()`/`ctx.wiring_expr()`, not
+   per-driver here. Add a case only if the driver needs a *real interrupt/GPIO line the twin's chip
+   fake has to drive edges on* (today: `scd30`, `isl29125` — see `compute_twin_wiring()`'s own
+   `if spec.driver in ("scd30", "isl29125")` branch) or a genuinely novel cross-instance wiring
+   shape (`uart_link`'s crossover-pair detection, `_compute_uart_wiring()`).
+6. **`buildgen/pico_gpio.py`** — only if the driver needs a wholly new pin-role concept
+   (`uart_link`'s `UART_ROLE` table, transcribed from the Pico W datasheet, is the only precedent
+   so far). A plain interrupt/GPIO pin needs nothing here.
+
+## K.4 `@web`/`@web-group` tags — the website comes from these, never hand-edited JSON
+
+`html/definitions/<device>.json` is generated at build time from every tagged `src/` file (Part
+H.5.1); it is never hand-maintained on this branch. Add `# @web-group`/`# @web <Field> ...` tags for
+every field the website should show, in both the `measurements` and `sensors` sections as
+applicable — `src/asy_bmp3xx_driver.py` (simple) and `src/asy_isl29125_driver.py` (uses `special:`
+sentinel labels, `decimals` rounding hints, and `path="A.B"` for a value nested inside the
+measurement body — the newest tag capabilities, added specifically because ISL29125 needed them,
+Part H.5.1) are the two worked examples to copy from. If a bus prerequisite exists (a minimum I2C
+bus timeout, say), add a `# @requires bus.<field><op><value>` tag too (C.2/BUILD_CHAIN_PLAN.md); if
+a cross-instance reference exists beyond the generic `fram_target` shape, check whether `@wiring`/
+`@value-wiring` already cover it before inventing a new tag family. Every tag family gets full
+accept/reject grammar test coverage (`tests_scripts/test_buildgen_web_tag.py`,
+`test_buildgen_requires_tag.py`, `test_buildgen_tag_comments.py` are the reference bar,
+BUILD_CHAIN_PLAN.md's own standing rule) — extending a tag family's own grammar (like `path`/
+`decimals`) needs new tests in that same file, not just new usages.
+
+## K.5 Digital twin
+
+A chip fake is **required, not optional**, the same session as promotion (C.11 item 9) —
+`digital_twin/_<name>_chip.py`, wired into `digital_twin/machine.py`'s `_build_i2c_chip()`/
+`_build_spi_chip()` dispatch (matched by `driver` string, reading whatever `buildgen.twin_wiring`
+put in the attachment dict — K.3 item 5 above). If the chip's own datasheet has real
+`# @requires`-worthy facts or interrupt-line electrical requirements (open-drain needing a pull-up,
+active-low vs. active-high), model them in the fake too, not just the driver — ISL29125's own chip
+fake needed the INT line to idle HIGH and the conversion timer to keep running through a range
+switch, both found by writing real digital-twin tests against it, not by inspection. Add
+`Pin.PULL_UP`/whatever other `machine`-fake constant the real driver now references to **both**
+`tests/machine.py` and `digital_twin/machine.py` if it's the first driver needing it (ISL29125 was,
+for `PULL_UP`).
+
+## K.6 Tests, every tier — "biting," not just executing
+
+**A dedicated unit-test file for the driver itself**
+(`tests/test_asy_<name>_driver.py`, Part D.12's own bar): every parameter individually and in
+combination, sanity-bounded typical values (not exact reference numbers unless independently
+verifiable — see below), out-of-range on both sides of every bound, exact boundary values accepted,
+`NaN`/`±inf` on every float argument, any formula-inherent quirk as a bounded regression.
+
+**If the driver pulls in or extends a *shared* module** (Part G's own catalog, or `math_helpers`
+specifically), **that module needs its own direct, dedicated tests too — exercising it only
+incidentally through the new driver's own fixture values is not enough.** This is a real gap found
+and fixed this session (PR #87): `math_helpers.py` gained five new functions for ISL29125 (colour-
+space conversion, McCamy CCT, the shared EMA), and the promotion's own PR left `tests/
+test_math_helpers.py` untouched — every other function there has its own suite, and these silently
+didn't. Where possible, check new formula code against an independently-known reference value, not
+just "returns not None" — PR #87's own `rgb_to_xyz(1,1,1)` → the D65 white point → chromaticity →
+~6500K round-trip is the model: each step is a real, checkable number from outside this codebase,
+not a self-referential assertion.
+
+**Digital-twin test(s)** (`tests/test_digital_twin_<name>.py`, plus a dedicated behavior suite if
+the driver has a real state machine worth its own file — ISL29125's autorange logic is the
+precedent, `tests/test_digital_twin_<name>_autorange.py`-shaped). Follow "Driver/DUT process
+separation" (Part E.9) for anything that drives requests against a running twin instance — host-side
+against the real HTTP server, never sharing the twin process's own heap.
+
+**`buildgen`-level tests** (`tests_scripts/`) — this is its own tier, easy to forget since it's
+host-side pytest, not MicroPython:
+- `test_buildgen_driver_registry.py` — confirm the new driver resolves (or, if it needed one,
+  confirm the `_OVERRIDES` entry resolves correctly).
+- `test_buildgen_generate.py` — the new `_build_args_<name>()` handler renders correctly with every
+  optional field present, and correctly *omits* each one when absent from the TOML (PR #86's own
+  `test_isl29125_irq_pull_up_false_is_rendered_into_the_constructor_call`/companion omission test
+  is the exact shape).
+- `test_buildgen_definitions.py` — the driver's `@web` tags produce the expected website-JSON
+  shape.
+- `test_buildgen_web_tag.py` — if a new tag capability was added (K.4), its own accept/reject
+  coverage; otherwise, at minimum the real-driver field-name/group assertions every existing driver
+  gets there.
+- `test_device_tomls.py` — which real devices carry this driver (an explicit allow-list assertion,
+  matching `test_isl29125_only_present_on_dev`'s own shape — never let a new instance land on a
+  device by omission of a check).
+- `tests_scripts/buildgen_fixtures/novel_combo.toml` — extend the synthetic multi-driver fixture so
+  the driver is exercised there too, the same way `uart_link`/`isl29125` both were.
+
+**Bus-hazard coverage, all four tiers, standing rule (CLAUDE.md, explicit)** — same-device
+read/write concurrency, cross-device interleaving with every real neighbour on a shared bus, and an
+address/command sweep:
+- **Sensor-specific hazards are hand-written, from the datasheet, and probably always will be** —
+  they encode a specific chip's own failure mode (ISL29125's destructive `0x08` status read;
+  SCD30's finite NVM write budget) that no generic template could derive. `tests/
+  test_bus_hazard_multi_device.py` (mock) and its digital-twin/`tests_hardware/flash/`/
+  `tests_hardware/bench/` siblings are the four files to add to, following the shape of the
+  driver's closest existing precedent there.
+- **Cross-sensor hazard coverage — check current status before treating either half of this bullet
+  as settled.** As of this writing (2026-09-14), cross-sensor tests are still hand-paired by
+  whoever promotes each driver (e.g. ISL29125-vs-SGP40, PR #83) — write one per real bus-sharing
+  neighbour, in all four tiers, the same way. **A TOML-driven auto-generation capability for
+  exactly this — assembling a per-bus "worst case, every real occupant, all at once" test
+  automatically from the device's own wiring, for both the twin and hardware suites — is in
+  active design** (`BUS_HAZARD_TEST_GENERATION_REQUIREMENTS.md` if it still exists, or its own
+  landed PR's description otherwise; check `git log --oneline -- BUS_HAZARD_TEST_GENERATION_REQUIREMENTS.md`
+  and the buildgen driver-to-bus mapping in `buildgen/twin_wiring.py`/`buildgen/buildspec.py` for
+  whether it's landed). **Once it has landed**, this bullet's own instruction inverts: confirm the
+  new driver's cross-sensor coverage is picked up automatically by the generator (its own tests,
+  per K.3 item wherever that capability's own checklist entry ends up), and hand-write a pairwise
+  cross-sensor test only for something the generic catalog genuinely can't express — not as the
+  default path anymore. Until then, the hand-paired approach above is the real, current bar; don't
+  claim generation coverage that doesn't exist yet.
+
+## K.7 `devices/*.toml` and `tests_hardware/bus_topology.py`
+
+Add the `[[instance]]` block **only to the real devices that actually carry this hardware** —
+`wozi` never gets a bench-only or not-yet-deployed-everywhere sensor just because `dev` does (C.f.
+ISL29125: dev-only, `wozi` and the other four devices untouched). Wiring facts (bus, pin numbers,
+any `irq_pull_up`-style board-specific override) must come from **real, bench-validated hardware**,
+never invented — cite where the fact came from in a TOML comment (a prior hand-written
+`sensortask_<device>.py`'s own construction comment, a real bench measurement, a datasheet page).
+Placement within the `[[instance]]` list has FRAM-chunk-order consequences (bump-pointer allocator,
+Part A.7) — no hard rule on where to put it beyond "after every earlier sensor whose chunk layout
+shouldn't move," which usually just means "last." **Also update `tests_hardware/bus_topology.py`**
+— a hand-kept, tool-uncross-checked mirror of the same wiring facts (its own docstring says so
+directly); nothing enforces that it stays in sync, so it has to be part of this same checklist
+entry, not an afterthought.
+
+## K.8 Regenerate and spot-check generated artifacts
+
+`html/definitions/<device>.json` regenerates from K.4's tags automatically — actually regenerate it
+and read the diff; a stale `mockdata/<device>.json` (a hand-written website-prototype fixture that
+can predate the real driver, carrying placeholder field names that no longer match the real schema)
+is a real, found-twice gap (PR #83's own ISL29125 fix) worth checking for explicitly, not just
+assumed fine because nothing failed.
+
+## K.9 Documentation
+
+- **SPECIFICATION.md Part C** — new `C.11.x` subsections for any real, datasheet-derived design
+  decisions or settled project-owner rulings worth recording permanently (the `C.11.1`–`C.11.5`
+  ISL29125 subsections — the conformance-probe methodology, reference-layer traps, calibration
+  model, range-ratio behavior, settled requirements list — are the shape to follow: real findings,
+  with real evidence, not narrative). A `C.7.1` errno/wrnno table row if the driver claims a new
+  range. Update C.8's per-device bus-sharing note if this driver changes which devices share a bus.
+- **`DEVICE_REFERENCE.md`** — end-user-facing notes only (its own docstring: "not an AI-session or
+  architecture doc"), so add an entry only if the new driver introduces a real user-configurable
+  behavior worth explaining to someone operating a deployed unit — not a routine promotion step for
+  most drivers.
+- **`digital_twin/README.md`** — the new chip fake's own "What's here" entry, matching the doc's
+  current section structure (don't clobber sections added since, e.g. PR #82's "Driver/DUT process
+  separation").
+- **`THIRD_PARTY_LICENSES.md`** — if the driver is adapted from third-party/vendor code (SPDX header
+  + attribution, matching the file's existing entries).
+- **BACKLOG.md** — only for a genuinely still-open question this promotion surfaced but didn't
+  resolve (e.g. "no pytest gate wired for the new conformance-probe script yet" — PR #83's own
+  disclosed, not-silently-resolved gap). Never process narrative (CLAUDE.md's pruning rule).
+
+## K.10 Verification, before calling it done
+
+- `scripts/lint.sh` (ruff, full scope + shellcheck + actionlint + zizmor) — clean.
+- `scripts/typecheck.sh` (all three mypy passes: main, `digital_twin/`, host build chain) — clean.
+- **Actually generate all six real device TOMLs** (`buildgen/generate.py` against each of
+  `devices/*.toml`, or let `scripts/typecheck.sh`'s own generation step do it) and inspect the
+  output for the device(s) that gained the new instance — confirm the constructor call, imports,
+  and error/logger/task-starter fan-in all look right, don't infer correctness from tests alone.
+- `scripts/test.sh` — the full MicroPython Unix-port suite plus `tests_scripts/` pytest, both
+  clean.
+- `scripts/run_digital_twin_ci.sh <device>` for every device that gained the new instance — this
+  already runs the whole suite **twice**, once at `gc.threshold(-1)` and once at the shipped
+  `gc.threshold(32768)` (`scripts/_digital_twin_ci_suite.py`'s own `main()`), per the standing
+  memory-safety discipline (Part I.4) — zero `MemoryError`s under either pass is the bar, not just
+  "the soak trend stayed in tolerance."
+- If website files changed: the JS suite (`npm test`) clean too.
+
+## K.11 Certification checklist
+
+Check off per promotion; note explicitly (not silently) anywhere a step didn't apply:
+
+- [ ] Datasheet in `datasheets/<name>/`; Part G catalog checked for reuse first
+- [ ] Driver written to the Part C/D bar; keyword-only past required positionals; new "off" values
+      checked against what the test fakes actually model
+- [ ] `buildgen/buildspec.py` rows (required/optional fields, bus kind, address classification
+      checked against the datasheet)
+- [ ] `buildgen/driver_registry.py` — confirmed auto-resolves, or a deliberate `_OVERRIDES` entry
+- [ ] `buildgen/codegen.py` — new `_build_args_<name>()`, registered, every optional field
+      conditionally emitted
+- [ ] `buildgen/definitions.py` — added to `_SENSOR_DRIVERS`
+- [ ] `buildgen/twin_wiring.py` — special-cased only if a real interrupt line or novel wiring shape
+      needs it; confirmed unneeded otherwise
+- [ ] `@web`/`@web-group` (+ `@requires`/`@wiring` as needed) tags, with grammar tests if a tag
+      capability was extended
+- [ ] `digital_twin/_<name>_chip.py`, wired into `machine.py`'s dispatch
+- [ ] Unit tests: functionality + resilience/error-path + biting boundary/NaN/inf coverage
+- [ ] Any shared/`math_helpers`-style function this driver added has its **own** direct test suite,
+      not just incidental coverage through the driver's fixtures
+- [ ] Digital-twin tests (+ dedicated behavior suite if the driver has real internal state)
+- [ ] `tests_scripts/test_buildgen_*.py` coverage (registry, codegen present/absent-field rendering,
+      definitions, web_tag, device_tomls allow-list, `novel_combo.toml`)
+- [ ] Bus-hazard, all four tiers: sensor-specific (hand-written) + cross-sensor (auto-generated if
+      that capability has landed by the time you read this — check; hand-paired otherwise)
+- [ ] `devices/*.toml` — only the real devices that carry this hardware, wiring facts cited to a
+      real source; `tests_hardware/bus_topology.py` updated to match
+- [ ] `html/definitions/*.json` regenerated and spot-checked; `mockdata/*.json` checked for stale
+      placeholder fields
+- [ ] SPECIFICATION.md Part C (+ C.7.1/C.8 if applicable), `DEVICE_REFERENCE.md`,
+      `digital_twin/README.md`, `THIRD_PARTY_LICENSES.md` if applicable, BACKLOG.md only for
+      genuinely open questions
+- [ ] `scripts/lint.sh`/`scripts/typecheck.sh`/`scripts/test.sh` clean; all six device TOMLs
+      actually generated and inspected; `scripts/run_digital_twin_ci.sh` clean at both
+      `gc.threshold` values for every affected device
+- [ ] Own branch off the current tracking branch, PR with a real description (not a file list),
+      subscribed for CI/review activity, driven to green
