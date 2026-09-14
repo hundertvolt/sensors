@@ -404,8 +404,9 @@ describe("installMockFetch", () => {
         // The ISL29125's body is the first with a third level ({"RGB": {"R": ...}}). Without the
         // recursion those leaves sit perfectly static forever, which reads as a broken renderer.
         // Math.random is pinned to its maximum so the expected values are exact rather than a
-        // band - a 0.02 leaf jittered by up to +-0.05 and rounded to 2dp can legitimately land
-        // back on 0.02, which would make a "it moved" assertion flaky rather than wrong.
+        // band. Below 1 the spread is 5% of the value and the rounding keeps four decimals, so a
+        // normalised channel moves by a normalised amount and stays legible at the `decimals: 4`
+        // its definitions declare.
         const random = vi.spyOn(Math, "random").mockReturnValue(1);
         uninstall = installMockFetch(DEFS, DATA);
         const body = await (await fetch("/measurements")).json();
@@ -413,29 +414,42 @@ describe("installMockFetch", () => {
 
         expect(body.ISL29125.TS).toBe(1001); // top-level timestamp: still exactly +1
         expect(body.ISL29125.CCT).toBeNull(); // a null leaf is not a number - left alone
-        expect(body.ISL29125.Lux).toBe(303); // top level: 300 + 1% of itself
-        // The nested leaves, each moved by the 0.05 jitter floor - which only happens at all if
+        expect(body.ISL29125.Lux).toBe(303); // at or above 1: unchanged, 300 + 1% of itself
+        // The nested leaves, each moved by 5% of itself - which only happens at all if
         // jitterInPlace() recursed into the sub-object.
-        expect(body.ISL29125.RGB.R).toBe(0.07);
-        expect(body.ISL29125.RGB.G).toBe(0.08);
-        expect(body.ISL29125.RGB.B).toBe(0.06);
+        expect(body.ISL29125.RGB.R).toBe(0.021);
+        expect(body.ISL29125.RGB.G).toBe(0.0315);
+        expect(body.ISL29125.RGB.B).toBe(0.0105);
     });
 
     it("never jitters a non-negative measurement leaf into a negative one", async () => {
-        // The 0.05 absolute floor is sized for readings of order hundreds; on the ISL29125's
-        // normalised 0-1 leaves it is larger than the value itself, so unclamped jitter routinely
-        // produced negatives - a brightness of -0.01 is not a plausible reading and the real site
-        // rendered it verbatim. Math.random pinned to 0 is the most negative jitter there is.
+        // A property of every leaf, not a check on one guard: a brightness of -0.01 is not a
+        // plausible reading and the real site renders it verbatim. Asserted over the whole body
+        // with Math.random pinned to 0, the most negative jitter there is, so a future change to
+        // the spread rule fails here rather than shipping negatives again.
         const random = vi.spyOn(Math, "random").mockReturnValue(0);
         try {
             uninstall = installMockFetch(DEFS, DATA);
             const body = await (await fetch("/measurements")).json();
 
-            expect(body.ISL29125.RGB.R).toBe(0); // 0.02 - 0.05 would be -0.03, clamped at the sign change
-            expect(body.ISL29125.RGB.G).toBe(0); // 0.03 - 0.05 would be -0.02
-            expect(body.ISL29125.RGB.B).toBe(0); // 0.01 - 0.05 would be -0.04
-            // A value big enough that the floor cannot reach zero is untouched by the clamp.
-            expect(body.ISL29125.Lux).toBe(297); // 300 - 1% of itself
+            /** @param {Record<string, unknown>} group @param {string} where */
+            const assertNoNegativeLeaf = (group, where) => {
+                for (const [key, value] of Object.entries(group)) {
+                    if (value !== null && typeof value === "object") {
+                        assertNoNegativeLeaf(/** @type {Record<string, unknown>} */ (value), `${where}.${key}`);
+                    } else if (typeof value === "number") {
+                        expect(value, `${where}.${key}`).toBeGreaterThanOrEqual(0);
+                    }
+                }
+            };
+            assertNoNegativeLeaf(body, "measurements");
+
+            // And the values themselves, so this cannot pass by everything having gone to zero:
+            // each normalised leaf moved by 5% of itself, and stayed a usable number.
+            expect(body.ISL29125.RGB.R).toBe(0.019);
+            expect(body.ISL29125.RGB.G).toBe(0.0285);
+            expect(body.ISL29125.RGB.B).toBe(0.0095);
+            expect(body.ISL29125.Lux).toBe(297); // at or above 1: 300 - 1% of itself
         } finally {
             random.mockRestore();
         }

@@ -53,6 +53,7 @@ if TYPE_CHECKING:
     from typing_extensions import Self
 
     from asy_isl29125_driver import ISLResults
+    from config_manager import ConfigSchema
     from print_log import ErrorLog
 
     T = TypeVar("T")
@@ -1002,8 +1003,10 @@ def test_read_returns_a_narrow_results_tuple_without_cct() -> None:
     seed_cycle(i2c, 20000, 21000, 22000)
     with _FastAsyncSleep():
         results = run(reader._read_isl())
-    assert len(results) == 5
-    assert results == (20000, 21000, 22000, _RANGE_HIGH_LUX, results[4])
+    assert len(results) == 6
+    # The range the sample was taken on AND the span its normalised outputs divide by - both
+    # travel with the sample rather than being read back at store time (see ISLResults).
+    assert results == (20000, 21000, 22000, _RANGE_HIGH_LUX, _RANGE_HIGH_LUX, results[5])
 
 
 def test_the_results_tuple_carries_the_range_the_sample_was_taken_on() -> None:
@@ -1522,7 +1525,7 @@ def test_brownout_reapplies_the_whole_configuration_and_discards_one_cycle() -> 
     seed_cycle(i2c, 20000, 20000, 20000, status=_STATUS_BOUTF)
     with _FastAsyncSleep():
         results = run(reader._read_isl())
-    assert results == (None, None, None, None, None)  # no sample: the chip was in power-down
+    assert results == (None, None, None, None, None, None)  # no sample: the chip was in power-down
     writes = mem_writes(i2c)
     assert any(register == _REG_CONFIG1 and len(payload) == 3 for register, payload in writes)
     assert (_REG_STATUS, bytes([0x00])) in writes  # BOUTF written low
@@ -1793,6 +1796,35 @@ def test_the_derivation_degrades_to_the_shortest_window_when_none_fits() -> None
     assert isl.persist_for_interval(0) == 1
 
 
+def test_a_rangeauto_push_landing_between_the_read_and_the_store_cannot_renormalise_the_sample() -> None:
+    # The same hazard one step further downstream. The RGB/HSB outputs are divided by the whole
+    # auto-range SPAN under RangeAuto and by the pinned range without it, and _store_isl() used to
+    # read that mode live - after its own await on cfgmgr. A RangeAuto PUT landing there normalises
+    # a sample taken over 10000 lx against 375, 26.67x too large and clamped flat at 1.0.
+    i2c, reader = ready_reader("store_mode_push")
+    seed_cycle(i2c, 20000, 20000, 20000)
+    with _FastAsyncSleep():
+        # Stored as a preference only while RangeAuto is on - no chip write - so this is purely
+        # what the push below will select.
+        assert run(reader.set_range(_RANGE_LOW_LUX)) is True
+    real_get = reader.cfgmgr.get_float_values
+
+    async def _get_then_a_rest_push(fields: "ConfigSchema") -> "list[float] | None":
+        values = await real_get(fields)
+        assert await reader.set_range_auto(flag=False) is True
+        return values
+
+    with _FastAsyncSleep():
+        results = run(reader._read_isl())
+        reader.cfgmgr.get_float_values = _get_then_a_rest_push  # type: ignore[method-assign, assignment]
+        run(reader._store_isl(results))
+    data = run(reader.get_data())
+    # 20000 counts on the 10000 lx range is 3052 lx, which is 0.305 of the 10000 lx span. Against
+    # the 375 lx range the push selected it would be 8.1, clamped to a flat, colourless 1.0.
+    assert data.Green is not None
+    assert 0.30 < data.Green < 0.31, data.Green
+
+
 def test_a_config_push_landing_mid_read_scales_the_sample_by_the_gain_it_was_taken_on() -> None:
     # One read cycle has several awaits, and asyncio can run a REST handler at any of them, so a
     # PUT changing Resolution or Range can land between the status read and the data read. The data
@@ -1811,7 +1843,7 @@ def test_a_config_push_landing_mid_read_scales_the_sample_by_the_gain_it_was_tak
 
     reader.isl.read_status = _status_then_a_rest_push  # type: ignore[method-assign]
     with _FastAsyncSleep():
-        green, red, blue, sample_range, _timestamp = run(reader._read_isl())
+        green, red, blue, sample_range, _sample_span, _timestamp = run(reader._read_isl())
     assert (green, red, blue) == (20000, 20000, 20000), "a 16-bit conversion must not be shifted as if it were 12-bit"
     assert sample_range == _RANGE_HIGH_LUX
     assert 12 not in warnings(run(reader.get_error_counter())), "no saturation happened, so none may be reported"
@@ -1838,6 +1870,61 @@ def test_a_failed_config_write_leaves_the_shadow_on_the_value_the_chip_still_hol
     counts, saturated = isl.normalise((20000, 20000, 20000), range_fs=_RANGE_HIGH_LUX)
     assert counts == (20000, 20000, 20000), "a 16-bit reading must not be shifted as if it were 12-bit"
     assert saturated is False
+
+
+def test_a_write_that_fails_during_the_reconciling_re_read_is_not_lost() -> None:
+    # Why the reader tracks a COUNT rather than clearing a flag. The re-read below takes one
+    # transaction, and a REST push landing on it can fail too - with a flag, the clear that follows
+    # would wipe the newer failure and the chip would stay torn until a config GET. The count the
+    # reader records is the one it saw BEFORE the re-read, so a later failure is still ahead.
+    i2c, reader = ready_reader("reconcile_race")
+    chip = fake(i2c)
+    reader.isl._write_failures = 1  # one failure already outstanding
+    real_read = chip.readfrom_mem
+
+    def _fail_a_write_during_the_re_read(address: int, register: int, nbytes: int, **kwargs: object) -> bytes:
+        chip.readfrom_mem = real_read  # type: ignore[method-assign]  # once only
+        reader.isl._write_failures += 1  # a second write fails while this read is in flight
+        return real_read(address, register, nbytes, **kwargs)  # type: ignore[arg-type]
+
+    chip.readfrom_mem = _fail_a_write_during_the_re_read  # type: ignore[method-assign, assignment]
+    with _FastAsyncSleep():
+        run(reader._verify_after_failed_write())
+    assert reader._reconciled_write_failures == 1, "only what was seen before the re-read counts as reconciled"
+    # So the next cycle still has work to do, rather than having had it cleared out from under it.
+    assert reader.isl.write_failures() != reader._reconciled_write_failures
+
+
+def test_a_config_burst_that_lands_only_partly_is_reconciled_by_the_next_read_cycle() -> None:
+    # The rollback above covers the usual failure - a NAK on the address phase, nothing written.
+    # A NAK partway through the three-byte burst is different: CONFIG1 landed, CONFIG2/3 did not,
+    # and rolling the shadow back to all-old leaves the chip a mixture of the two. normalise()
+    # then scales by the old resolution while the part runs the new one, 16x out, with the reads
+    # themselves still succeeding. Before this, only a REST config GET ran the divergence check,
+    # so a headless device stayed wrong until somebody happened to look.
+    i2c, reader = ready_reader("torn_burst")
+    chip = fake(i2c)
+    real_write = chip.writeto_mem
+
+    def _land_config1_only(address: int, memaddr: int, buf: object, **kwargs: object) -> None:
+        real_write(address, memaddr, bytes(buf)[:1], **kwargs)  # type: ignore[arg-type, call-overload]
+        raise OSError(errno_mod.EIO, "no ACK on the second byte")
+
+    chip.writeto_mem = _land_config1_only  # type: ignore[method-assign]
+    try:
+        with _FastAsyncSleep():
+            assert run(reader.set_resolution(12)) is False
+    finally:
+        chip.writeto_mem = real_write  # type: ignore[method-assign]
+    # The chip now carries the 12-bit BITS flag the shadow was rolled back out of.
+    assert bytes(chip.registers[(_ADDR, _REG_CONFIG1)])[0] & _BITS_12 == _BITS_12
+
+    seed_cycle(i2c, 20000, 20000, 20000)
+    with _FastAsyncSleep():
+        run(reader._read_isl())
+    counters = run(reader.get_error_counter())
+    assert 11 in warnings(counters), "the next read cycle must notice the chip disagreeing"
+    assert bytes(chip.registers[(_ADDR, _REG_CONFIG1)])[0] & _BITS_12 == 0, "and put the chip back on the shadow"
 
 
 def test_a_failed_config_write_does_not_make_the_divergence_check_see_a_phantom_change() -> None:
@@ -2364,7 +2451,7 @@ def test_a_failed_status_read_drops_the_whole_sample_without_storing_or_raising(
 
             reader.isl.read_status = failing_status  # type: ignore[method-assign]
             results = await reader._read_isl()
-            assert results == (None, None, None, None, None)
+            assert results == (None, None, None, None, None, None)
             await reader._store_isl(results)
         return await reader.get_error_counter()
 
@@ -2414,7 +2501,7 @@ def test_the_read_loop_stores_healthy_samples_and_gives_up_once_the_budget_is_sp
             if healthy[0] < 2:
                 healthy[0] += 1
                 return await real_read()
-            return None, None, None, None, None
+            return None, None, None, None, None, None
 
         with _FastAsyncSleep():
             seed(i2c, _REG_CONFIG1, bytes(3))
@@ -2937,14 +3024,14 @@ def test_the_measured_candidate_travels_with_every_reading() -> None:
     seed_cycle(i2c, 2000, 1000, 500)
     with _FastAsyncSleep():
         run(reader._read_isl())
-        run(reader._store_isl((2000, 1000, 500, _RANGE_HIGH_LUX, 1754997000)))
+        run(reader._store_isl((2000, 1000, 500, _RANGE_HIGH_LUX, _RANGE_HIGH_LUX, 1754997000)))
     # Asserted through get_dict_data(), NOT get_data(): the REST body is a hand-written override
     # (the measurement group is nested), so a field can exist on the namedtuple and still never
     # reach the API. That is exactly what happened when this field was added.
     assert run(reader.get_dict_data())["ISL29125"]["GainMeas"] is None
     reader._publish_candidate(25.9)
     with _FastAsyncSleep():
-        run(reader._store_isl((2000, 1000, 500, _RANGE_HIGH_LUX, 1754997000)))
+        run(reader._store_isl((2000, 1000, 500, _RANGE_HIGH_LUX, _RANGE_HIGH_LUX, 1754997000)))
     assert run(reader.get_dict_data())["ISL29125"]["GainMeas"] == 25.9
 
 

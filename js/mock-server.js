@@ -299,15 +299,18 @@ function jitterInPlace(group) {
         if (key.endsWith("TS") || key === "Timestamp" || key.endsWith("Uptime")) {
             group[key] = value + 1;
         } else {
-            // The 0.05 absolute floor was sized for readings of order hundreds (CO2 ~600). The
-            // ISL29125's normalised 0-1 leaves are far smaller, so that floor is +-148% on a 0.0337
-            // brightness and routinely takes it NEGATIVE - which no normalised channel, saturation
-            // or brightness can be, and which the real site would then render as "-0.0100".
-            // Jitter must not change a value's sign: clamp back to zero from whichever side it
-            // started on. Values of ordinary magnitude never reach this, so nothing else moves.
-            const spread = Math.max(Math.abs(value) * 0.01, 0.05);
-            const jittered = Math.round((value + (Math.random() * 2 - 1) * spread) * 100) / 100;
-            group[key] = (value >= 0 && jittered < 0) || (value <= 0 && jittered > 0) ? 0 : jittered;
+            // Both the spread and the rounding were sized for readings of order hundreds (CO2
+            // ~600), where a 0.05 floor is noise and two decimals are precision. The ISL29125's
+            // normalised 0-1 leaves are three orders smaller: that floor is +-178% of a 0.0281
+            // channel, which takes it NEGATIVE - something no normalised channel can be - and two
+            // decimals then quantise what is left to 0.03, or to 0.00, which renders as a sensor
+            // reporting nothing. Below 1 both scale with the value instead, which also makes a
+            // sign change arithmetically impossible rather than something to clamp afterwards; at
+            // or above 1 nothing changes at all.
+            const magnitude = Math.abs(value);
+            const spread = magnitude >= 1 ? Math.max(magnitude * 0.01, 0.05) : magnitude * 0.05;
+            const factor = magnitude >= 1 ? 100 : 10000;
+            group[key] = Math.round((value + (Math.random() * 2 - 1) * spread) * factor) / factor;
         }
     }
 }

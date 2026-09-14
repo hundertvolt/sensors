@@ -155,10 +155,12 @@ _FIELDS = const(("Lux", "Red", "Green", "Blue", "Hue", "Sat", "Bri", "CCT", "Ran
 if TYPE_CHECKING:
     # Narrow on purpose - CCT is legitimately None in a dark room, and base_classes._error_check()
     # counts a failed read when ANY element is None, so the wide namedtuple must never reach it.
-    # The 4th element is the full-scale range the sample was TAKEN on: a cycle ending in a switch
-    # still reports a sample acquired on the old gain, so _store_isl() must not read the reader's
-    # current range back.
-    ISLResults = tuple[int | None, int | None, int | None, int | None, int | None]
+    # Elements 4 and 5 both travel WITH the sample rather than being read back at store time, and
+    # for the same reason: a cycle ending in a range switch, or a REST push landing on one of its
+    # awaits, would otherwise scale a reading by a gain it was not taken on. The range is what the
+    # lux conversion divides by; the span is what the normalised RGB/HSB outputs divide by - the
+    # whole auto-range span under RangeAuto, the pinned range without it.
+    ISLResults = tuple[int | None, int | None, int | None, int | None, int | None, int | None]
 
 
 class ISL29125_Reader(SensorReaderConfig):
@@ -211,6 +213,9 @@ class ISL29125_Reader(SensorReaderConfig):
         self._last_switch_ms = time.ticks_ms()
         self._brownout_seen = False
         self._periodic_only_switches = 0
+        # The protocol layer's failed-write count as of the last reconciliation - see
+        # _verify_after_failed_write(). Starts level with it, so a clean boot reconciles nothing.
+        self._reconciled_write_failures = 0
         # Set by the pin handler, consumed once per read cycle. RGBTHF alone cannot stand in for
         # it: the flag is raised by the CHIP, so it is set just the same when the line itself is
         # dead - which is precisely the missing pull-up / broken jumper requirement 17 names.
@@ -332,23 +337,29 @@ class ISL29125_Reader(SensorReaderConfig):
         red: int | None = None
         blue: int | None = None
         sample_range: int | None = None
+        sample_span: int | None = None
         try:
             timestamp = time.mktime(time.gmtime())
+            # Before the settle wait, so a re-apply it triggers restarts the conversion in time for
+            # that same wait to absorb it - no extra return path, and no sample taken mid-re-apply.
+            await self._verify_after_failed_write()
             if self.isl.time_to_settle_ms() > 0:
                 await self._settle_wait()
-            # Both scaling inputs captured HERE, after the settle wait and before the first await
-            # that can let anything else run - the settle wait is what guarantees the conversion in
-            # the data registers was made under the config live at this instant. Two things move
-            # them later: the range switch below, and a REST push landing on any of this cycle's
-            # own awaits. The data registers are double-buffered (p13), so a later push changes
-            # only what this reading would wrongly be scaled BY - the range ratio, or 16x.
+            # The three inputs that scale this reading, all captured HERE: after the settle wait,
+            # which is what guarantees the conversion in the data registers was made under the
+            # config live at this instant, and before the first await that can let anything else
+            # run. Two things move them afterwards - the range switch below, and a REST push
+            # landing on any of this cycle's own awaits. The data registers are double-buffered
+            # (p13), so a later push changes only what this reading would wrongly be scaled BY:
+            # 16x for a Resolution change, the whole range ratio for a Range one.
             sample_range = self._active_range
             sample_resolution = self.isl.resolution()
+            sample_span = _RANGE_HIGH_LUX if self._range_auto else self._fixed_range
             try:
                 status = await self.isl.read_status()
             except Exception as e:  # distinguishable from a data-read failure, and not re-raised
                 await self.pr.err_s("Status read failed:", e, errno=31)
-                return None, None, None, None, None
+                return None, None, None, None, None, None
             # Consumed here, once, so a decision is credited to the interrupt only when the LINE
             # actually woke this cycle - see _note_decision_source().
             irq_fired, self._irq_fired = self._irq_fired, False
@@ -359,12 +370,12 @@ class ISL29125_Reader(SensorReaderConfig):
                 # The chip went through power-down, so its whole configuration is 0x00 and the
                 # data registers hold nothing measured - there is no sample to report this cycle.
                 await self._recover_brownout()
-                return None, None, None, None, None
+                return None, None, None, None, None, None
 
             raw = await self.isl.read_counts()
             if self.isl.is_bus_fault_pattern(raw, status) and not await self._device_id_answers():
                 await self.pr.err_s("All-ones data with an implausible status byte, confirmed by a failed device-ID re-read", errno=32)
-                return None, None, None, None, None
+                return None, None, None, None, None, None
 
             counts, saturated = self.isl.normalise(raw, range_fs=sample_range, resolution=sample_resolution)
             target = self._evaluate_range(counts, saturated=saturated)
@@ -378,9 +389,9 @@ class ISL29125_Reader(SensorReaderConfig):
             self.pr.all("read")
             green, red, blue = counts
         except Exception as e:
-            green = red = blue = sample_range = timestamp = None
+            green = red = blue = sample_range = sample_span = timestamp = None
             await self.pr.err_s("Read failed:", e, errno=11)
-        return green, red, blue, sample_range, timestamp
+        return green, red, blue, sample_range, sample_span, timestamp
 
     async def _device_id_answers(self) -> bool:
         # One extra transaction, spent only when the all-ones heuristic already fired - so a false
@@ -432,9 +443,25 @@ class ISL29125_Reader(SensorReaderConfig):
             await self._switch_range(self._active_range)  # never raises; logs its own errnos
         return True
 
+    async def _verify_after_failed_write(self) -> None:
+        # The roll-back in configure() describes the chip only when NOTHING landed; a burst that
+        # NAKs partway leaves it a mixture, and normalise() would then scale by a resolution the
+        # part is not running. The chip is the authority, so one snapshot settles it through the
+        # ordinary divergence check - here rather than only in _read_sensor_dict(), which a
+        # headless device never reaches. One extra transaction, and only after a failed write.
+        seen = self.isl.write_failures()
+        if seen == self._reconciled_write_failures:
+            return
+        try:
+            raw = await self.isl.get_config_snapshot()
+        except Exception:
+            return  # the bus is down; the counts still differ, so the next cycle tries again
+        self._reconciled_write_failures = seen
+        await self._check_divergence(raw)
+
     async def _store_isl(self, results: "ISLResults") -> None:
-        green, red, blue, sample_range, timestamp = results
-        if green is None or red is None or blue is None or sample_range is None or timestamp is None:
+        green, red, blue, sample_range, sample_span, timestamp = results
+        if green is None or red is None or blue is None or sample_range is None or sample_span is None or timestamp is None:
             return  # don't run on invalid data
 
         # FiltCoeff ALONE, matching spec R5: the other three floats in the init batch are
@@ -456,11 +483,12 @@ class ISL29125_Reader(SensorReaderConfig):
                 self._filtered[index] = filtered
                 lux[index] = filtered
 
-        # The denominator is the whole auto-range SPAN (10000 lux), not the active range: dividing
-        # by the active full scale would step every normalised output by the gain ratio at each
-        # switch, which is exactly the discontinuity auto-range exists to remove. With RangeAuto
-        # off there is no span to be continuous across, so the selected fixed range is right.
-        span = float(_RANGE_HIGH_LUX if self._range_auto else self._fixed_range)
+        # The whole auto-range SPAN (10000 lux), not the active range: dividing by the active full
+        # scale would step every normalised output by the gain ratio at each switch, which is
+        # exactly the discontinuity auto-range exists to remove. With RangeAuto off there is no
+        # span to be continuous across, so the pinned range is right. Chosen with the sample rather
+        # than read back here, for the reason ISLResults' own note gives.
+        span = float(sample_span)
         norm = [min(1.0, max(0.0, value / span)) for value in lux]
 
         hsb = math_helpers.rgb_to_hsb(norm[1], norm[0], norm[2])  # red, green, blue
@@ -1029,6 +1057,10 @@ class ISL29125_I2C:
         self._int_select = _INTSEL_NONE
         self._conven = 0
         self._settle_until_ms = time.ticks_ms()
+        # Bumped whenever a shadow write raises. A COUNT, not a flag: the reader remembers which
+        # value it has reconciled, so a write that fails while it is re-reading the chip is still
+        # ahead afterwards and gets its own cycle instead of being cleared away unseen.
+        self._write_failures = 0
 
     @staticmethod
     def _reject_unless(value: int, allowed: "tuple[int, ...]", what: str) -> None:
@@ -1099,6 +1131,11 @@ class ISL29125_I2C:
 
     async def get_device_id(self) -> int:
         return await self._read_byte(_REGISTER_DEVICE_ID)
+
+    def write_failures(self) -> int:
+        # How many shadow writes have raised. The chip is the authority after one, because the
+        # burst may have landed in part - see configure()'s own roll-back.
+        return self._write_failures
 
     def resolution(self) -> int:
         # The shadow's own value, for a caller that has to pair a reading with the resolution the
@@ -1341,6 +1378,7 @@ class ISL29125_I2C:
             # already been told it failed - the same reason _switch_range() declines to update its
             # own range on a failure.
             (self._mode, self._range_fs, self._resolution, self._ir_offset, self._ir_adjust, self._persist, self._int_select, self._sync, self._conven) = restore
+            self._write_failures += 1
             raise
         if wrote_config1:
             # Any writer of CONFIG1 restarts the conversion (p10, Table 7), and there are three of

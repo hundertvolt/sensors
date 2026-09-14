@@ -24,8 +24,7 @@
         "ISL29125": {
             "SampleInterv": 5, "Resolution": 16, "RangeAuto": true, "Range": 10000,
             "AutoRangeThresh": 85.0, "AutoRangeDwell": 10.0,
-            "IrCompOffset": 0, "IrCompAdjust": 40, "FiltCoeff": -1.0, "GainRatio": 26.667,
-            "ISLCalibrate": false
+            "IrCompOffset": 0, "IrCompAdjust": 40, "FiltCoeff": -1.0, "GainRatio": 26.667
         }
     },
     "networkingConfig": {

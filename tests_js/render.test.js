@@ -224,8 +224,9 @@ describe("renderSection", () => {
         // below is an exact string rather than a shape. Asserting a regex here let a real defect
         // through once: the mock's 0.05 absolute jitter floor was taking a 0.0337 brightness
         // negative about a third of the time, and `/^\\d\\.\\d{4}$/` failed on "-0.0100" only when
-        // the dice landed that way. The floor is fixed in js/mock-server.js; this keeps the test
-        // from depending on the dice at all.
+        // the dice landed that way. Both the floor and the 2-decimal rounding that went with it
+        // are scaled to the value now (js/mock-server.js), so a leaf below 1 survives the mock at
+        // the precision its own `decimals` declares - which is what the strings below assert.
         const random = vi.spyOn(Math, "random").mockReturnValue(0.5);
         try {
             uninstall = installMockFetch(DEFS, DATA);
@@ -236,12 +237,12 @@ describe("renderSection", () => {
 
             const red = mustQuery(main, '[data-field-key="R"]').textContent ?? "";
             expect(red).not.toContain("object");
-            expect(red).toBe("0.2800"); // the field's own decimals: 4, over the mock's 2dp rounding
+            expect(red).toBe("0.2814"); // the fixture's own value, at the field's own decimals: 4
             const brightness = mustQuery(main, '[data-field-key="Bri"]').textContent ?? "";
             // RGB.B (0.151) and HSB.B (0.6337) are different values under the same leaf name -
             // which is the whole reason the measurement body is nested rather than flattened.
             // Resolving the path wrongly would render either 0.1500 or the red above.
-            expect(brightness).toBe("0.6300");
+            expect(brightness).toBe("0.6337");
             expect(brightness).not.toBe(red);
             expect(mustQuery(main, '[data-field-key="Lux"]').textContent).toBe("337.42");
             // A null CCT (a dark room) stays an em dash rather than becoming "null" or 0.
