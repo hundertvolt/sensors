@@ -304,8 +304,8 @@ jobs:
 
   lint-and-typecheck:
     # Gates on src/, tests/, digital_twin/, and buildgen/ for ruff, plus
-    # tests_hardware/device_scripts/ for mypy only (tests_hardware/device_scripts/
-    # is MicroPython-target code, checked by the main mypy pass below alongside src/tests/, not
+    # tests_hardware/device_scripts/ and tests_hardware/device_modules/ for mypy only (both are
+    # MicroPython-target code, checked by the main mypy pass below alongside src/tests/, not
     # the host build chain's separate pass), plus the whole host-side build chain - buildgen/,
     # scripts/, toolchain/ and tests_scripts/ - under both tools (the build scripts gate the
     # firmware every device ships, so they carry the same bar as the code they build; their mypy
@@ -338,8 +338,8 @@ jobs:
         run: uv sync
       - name: Ruff (src/, tests/, digital_twin/, tests_hardware/, and the whole host build chain)
         run: uv run ruff check src tests digital_twin tests_hardware buildgen scripts toolchain tests_scripts
-      - name: Mypy (src/, tests/, digital_twin/, tests_hardware/device_scripts/, and the whole host build chain)
-        run: uv run scripts/typecheck.sh src tests tests_hardware/device_scripts
+      - name: Mypy (src/, tests/, digital_twin/, tests_hardware/device_scripts/, tests_hardware/device_modules/, and the whole host build chain)
+        run: uv run scripts/typecheck.sh src tests tests_hardware/device_scripts tests_hardware/device_modules
 
   shellcheck:
     # Own stage, not a step inside lint-and-typecheck: each tool gets its own independently
