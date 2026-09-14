@@ -157,10 +157,12 @@ Then close the loop, which is the half nothing has ever exercised:
    recorded at nominal 26.67 on 2026-09-13.
 7. Restore `GainRatio` to what it was, so the bench is left as found.
 
-**Expect a level-dependent answer, and record the level.** BACKLOG 20 is the open question here: this
-part's true ratio varies ~28 at ambient to ~22 near full scale, so a value measured in the overlap
-band is not "this unit's ratio", it is its ratio at that level. That item is PARKED (one device), so
-the point of recording the level is evidence, not a decision.
+**Expect a level-dependent answer, and record the level.** SPECIFICATION.md Part C.11.4 has the
+measurements: this part's true ratio varies ~28 at ambient to ~22 near full scale, so a value
+measured in the overlap band is not "this unit's ratio", it is its ratio at that level. That is a
+recorded property of the part, not an open question — one device and no reference meter means there
+is nothing to decide — so record the level as evidence that adds to C.11.4's table, not as input to
+a pending call.
 
 **Also try a refusal**, since absence-as-signal is the whole feedback mechanism: park the pixel
 outside the overlap band (dark, or full white) and start a run. `GainMeas` must stay `null` and the

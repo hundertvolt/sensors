@@ -1682,6 +1682,59 @@ things they were wanted for are settled without them: the 12-bit cycle time come
 datasheet's own oscillator/counter model (p6, "the n-bit (n = 12, 16) counter inside the ADC", so
 101 ms × 2⁻⁴ ≈ 6.3 ms), and the CCT matrix is a placeholder by p13's own wording.
 
+### C.11.4 The range ratio is not a constant — it varies with signal level
+
+**Not an open question and not a defect: a measured property of the part, recorded because it sets
+the limit of what any single `GainRatio` can do.** Migrated out of BACKLOG.md on 2026-09-14 (owner's
+direction) — it is unresolvable with one device and no reference meter, so carrying it as something
+to decide was misleading.
+
+Measured 2026-09-12 on the bench unit, static light, protocol layer only, with the stale conversion
+window discarded. Six illuminants × three channels = 18 independent estimates, and the pattern is
+unambiguous: in every scene the **brightest** channel has the **lowest** ratio, regardless of
+colour. That makes it a level effect, not a spectral one.
+
+| scene | low counts (G,R,B) | ratio (G,R,B) |
+|---|---|---|
+| ambient | 7645, 5995, 4101 | 28.11, 28.01, 28.09 |
+| red `(6,0,0)` | 20298, **29674**, 8415 | 27.14, **24.44**, 29.32 |
+| green `(0,6,0)` | **29068**, 9816, 16555 | **24.89**, 29.30, 27.92 |
+| blue `(0,0,6)` | 13497, 5940, **37436** | 29.73, 28.15, **23.40** |
+| white `(4,4,4)` | 32469, 24548, 36331 | 24.19, 25.05, 23.42 |
+
+A level sweep agrees independently: low-range peak 7637 → 28.08, 36106 → 23.29, 50408 → 22.49,
+64078 → 21.55. A third data point (2026-09-13, the envelope test's continuity measurement): one
+stationary light at ~140 lx read 132.50 lx pinned to the 375 range against 147.76 lx pinned to the
+10000 range, an 11.5 % step implying ~23.9 — sitting exactly between the ~28 at ambient and the ~22
+near full scale.
+
+PWM dimming cannot explain it: both ranges share the same 101 ms integration, so a duty-cycle
+artefact cancels in the ratio. The likeliest reading is **low-range compression well below full
+scale**. A high-range under-read at small counts fits the same data equally well, and separating the
+two needs a reference meter, so this stays stated as the observation rather than as a mechanism.
+
+**What it means for the driver.** The model is one scalar — `GainRatio`, plausibility-banded to
+20.0–34.0 — and the whole observed span sits *inside* that band, so the guard never fires on it. A
+ratio measured in the overlap band (where the low range is near its top) reads ~22–23, which is
+right for switch-point continuity and is arguably exactly where it should be measured. The corollary
+is the uncomfortable one: at genuinely low light the true ratio is ~28, so an applied 22.5 makes a
+low-light cross-range comparison **worse**, not better. A measured instance of that: the driver
+reported one static ambient as 37.84 lx on the high range against 39.91 lx on the low, 5.5 % apart —
+matching nominal 26.67 against the true 28.08 exactly. **28.16 is therefore not "this unit's gain
+ratio"; it is its ratio at ambient level only.**
+
+C.11.3's design is what makes that survivable rather than a flaw. Calibration is a user-triggered run
+under conditions the operator arranges, and the candidate is applied only if the operator copies it
+across — so the model is still one scalar, but *which* scalar is a deliberate choice rather than a
+property of whatever light happened to pass a gate. **Calibrate at the level you care about**, and
+expect a ratio measured near the switch point to stay right there and drift by the amounts tabulated
+above elsewhere.
+
+**Do not re-raise this as actionable.** Whether the ~28 → ~22 span is this specimen or the part needs
+a second board and a reference meter, neither of which exists — it is not a decision anyone can make.
+The measurements stay here because they bound what a single number can achieve, and because a second
+unit arriving later would make them the baseline to compare against.
+
 ## C.12 Testing
 
 Covered fully by Part E.4: mock `tests/machine.py`'s raw bus transactions only, letting real logic

@@ -28,7 +28,7 @@ OVERLAP_LEVEL = 4  # ~150 lx on this rig: ~40% of the low range's full scale, so
 # A relative bound on the gain step, not a calibration claim. The driver corrects the high range by
 # an applied ratio whose plausibility band is 20-34 around a nominal 26.67, so the worst a working
 # driver can be off by is ~25%; anything past that is a missing or inverted correction, not
-# calibration error. BACKLOG.md item 20 is where the accuracy question itself lives.
+# calibration error. SPECIFICATION.md Part C.11.4 is where the accuracy question itself lives.
 MAX_RANGE_STEP = 0.25
 
 failures: "list[str]" = []
@@ -193,7 +193,7 @@ async def _config_mechanisms(pixel: NeopixelDriver, reader: ISL29125_Reader, wdt
     # The applied ratio is config now and only a user PUT changes it, so the run asserts the
     # trigger is accepted and reports whatever candidate the light allowed - whether the scene
     # happened to sit in the overlap band is a property of the light, not of the driver. Each run
-    # is one more data point for BACKLOG.md item 20's level-dependence question.
+    # is one more data point for the level-dependence recorded in SPECIFICATION.md Part C.11.4.
     check(await reader._set_dict_cfg({"ISLCalibrate": True}, reader.cfg_schema), "ISLCalibrate was rejected")
     check(reader._calibrating is True, "the calibration run did not start")
     notes.append(f"measured gain ratio during this run: {reader._measured_ratio()} (nominal {10000 / 375})")

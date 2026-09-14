@@ -89,6 +89,9 @@ constraints.
   review-hostile diff across five working modules and three protocol stubs, several of them
   hardware-validated, and it belongs in a session of its own. Each class is a pure AST-verified
   sort with no behaviour change, so it can be done incrementally, one module per commit.
+  **Independent session - out of the ISL29125 branch's scope and not blocked on it** (owner,
+  2026-09-14). Nothing here needs the colour sensor, the bench rig or PR #75 to land first; it is
+  picked up on its own.
 
 - **The UART protocol's C implementation is not in this repo yet.** It runs on the Arduino peer and
   is the protocol's second implementation (SPECIFICATION.md Part J). A future session imports it,
@@ -359,6 +362,10 @@ constraints.
       already mostly does, and the only one with a reason behind it: quote an annotation that
       names a `TYPE_CHECKING`-only import, leave the rest bare. A sentence in SPECIFICATION.md
       Part D costs nothing; touching 31 files to enforce it buys nothing.
+
+    **Independent session - out of the ISL29125 branch's scope and not blocked on it** (owner,
+    2026-09-14). Nothing here needs the colour sensor, the bench rig or PR #75 to land first; it is
+    picked up on its own.
     Separately, and already known: `SGPResetVOC` and now `ISLCalibrate` are the only two config
     fields in `src/` carrying a device prefix. The retired promotion plan contradicted itself here
     (its prose said the ISL field carries no prefix, its schema table named it `ISLResetCal`); the
@@ -402,61 +409,19 @@ constraints.
     one stationary light at a level inside the overlap band, read on each range in turn with
     `RangeAuto` off. Two settled holds have none of the ramp's confound. Measured on this rig:
     132.50 lx on the 375 range against 147.76 lx on the 10000 range, an 11.5% step, bounded at 25%
-    (a relative bound on the correction being applied at all, not a calibration claim — item 20
-    owns the accuracy question). The same run now also reports the ratio the driver learned before
-    `ISLResetCal` discards it, so every envelope run is one more data point for item 20.
+    (a relative bound on the correction being applied at all, not a calibration claim —
+    SPECIFICATION.md Part C.11.4 owns the accuracy question). The same run now also reports the ratio the driver learned before
+    the calibration trigger discards it, so every envelope run is one more data point for
+    SPECIFICATION.md Part C.11.4.
 
-20. **The ISL29125's range ratio is not a constant — it varies ~28 → ~22 with signal level**
-    (measured 2026-09-12, static light, protocol layer only, `_settled()` discarding the stale
-    window). Six illuminants × three channels = 18 independent estimates, and the pattern is
-    unambiguous: in every scene the **brightest** channel has the **lowest** ratio, regardless of
-    colour, so this is a level effect and not a spectral one.
-
-    | scene | low counts (G,R,B) | ratio (G,R,B) |
-    |---|---|---|
-    | ambient | 7645, 5995, 4101 | 28.11, 28.01, 28.09 |
-    | red `(6,0,0)` | 20298, **29674**, 8415 | 27.14, **24.44**, 29.32 |
-    | green `(0,6,0)` | **29068**, 9816, 16555 | **24.89**, 29.30, 27.92 |
-    | blue `(0,0,6)` | 13497, 5940, **37436** | 29.73, 28.15, **23.40** |
-    | white `(4,4,4)` | 32469, 24548, 36331 | 24.19, 25.05, 23.42 |
-
-    A level sweep agrees independently: low-range peak 7637 → 28.08, 36106 → 23.29, 50408 → 22.49,
-    64078 → 21.55. PWM dimming cannot explain it — both ranges share the same 101 ms integration,
-    so a duty-cycle artefact cancels in the ratio. The likeliest reading is low-range compression
-    well below full scale (a high-range under-read at small counts would fit the same data, and
-    telling them apart needs a reference meter, so this stays stated as the observation).
-
-    **Why it matters for `src/`, and why nothing was changed:** the driver models the ratio as one
-    scalar (`GainRatio`, a config field with a `[20.0, 34.0]` plausibility gate). The whole observed
-    span sits *inside* that gate, so the guard never fires. The
-    ratio is measured in the overlap band, where the low range is near its top and therefore reads
-    **~22-23** — which is right for switch-point continuity and is arguably exactly where it
-    should be measured. The corollary is the uncomfortable one: at genuinely low light the true
-    ratio is ~28, so an applied 22.5 would make a low-light cross-range comparison **worse**, not
-    better. Measured instance: the driver reported one static ambient as 37.84 lx on the high range
-    vs 39.91 lx on the low — 5.5% apart, matching nominal 26.67 against the true 28.08 exactly.
-    Correcting my earlier note in this session: **28.16 is not "this unit's gain ratio"**, it is
-    its ratio at ambient light level only.
-
-    **A third, independent data point (2026-09-13)**, from the envelope test's new continuity
-    measurement: one stationary light at ~140 lx read 132.50 lx pinned to the 375 range and
-    147.76 lx pinned to the 10000 range. That 11.5% step implies a true ratio of ~23.9 at this
-    level, against the nominal 26.67 — sitting exactly where the level-dependence above predicts,
-    between the ~28 at ambient and the ~22 near full scale.
-
-    **Largely answered by the 2026-09-13 redesign** (owner's decision, SPECIFICATION.md Part
-    C.11.3): calibration is a user-triggered run under conditions the operator arranges, and the
-    measured candidate is applied only if the operator copies it into `GainRatio`. So the model is
-    still one scalar, but *which* scalar is now a deliberate choice rather than a property of
-    whatever light happened to pass the gate — calibrate at the level you care about. The
-    level-dependence itself is unchanged and worth keeping recorded, because it sets the limit of
-    what any single number can do: a ratio measured near the switch point stays right there and
-    drifts by the amounts tabulated above elsewhere.
-    **PARKED (owner, 2026-09-13): there is only one device, so this cannot be settled.** What
-    remains open — whether the ~28 → ~22 span is this specimen or the part — needs a second board
-    and a reference meter, not a decision, and neither exists. Do not re-raise it as actionable;
-    the measurements above stay recorded because they set the limit of what any single scalar can
-    do, and because a second unit arriving later would make them the baseline to compare against.
+20. **The ISL29125's range ratio is not a constant — MIGRATED OUT (2026-09-14), not open.** It
+    varies ~28 at ambient to ~22 near full scale, measured across 18 independent estimates plus two
+    independent confirmations. It is a property of the part, not a decision anyone can take: telling
+    low-range compression from a high-range under-read needs a reference meter, and generalising from
+    one specimen needs a second board. Neither exists, so carrying it here as something to resolve was
+    misleading. **Everything — the tables, the mechanism reading, and what it means for a single
+    `GainRatio` — is now SPECIFICATION.md Part C.11.4.** Do not re-raise it as actionable. If a second
+    unit ever arrives, C.11.4's measurements are the baseline to compare against.
 
 21. **The ISL29125 flash-tier firmware — CLOSED (2026-09-13).** The bench board was carrying a
     pre-ISL `dev` build, so every ISL device script failed under `harness.Board.run_isolated()`
@@ -634,6 +599,9 @@ constraints.
    (invalidating persisted history semantics for those modules on the next deployment) or only on
    each module's next substantial touch. Flagged, deliberately not fixed drive-by - see CLAUDE.md's
    "flag, don't silently change" rule.
+   **Independent session - out of the ISL29125 branch's scope and not blocked on it** (owner,
+   2026-09-14). Nothing here needs the colour sensor, the bench rig or PR #75 to land first; it is
+   picked up on its own.
 
 26. `asy_uart_comm.py`'s `wrnno` 11 ("drain bound reached - the peer never stopped sending") can
     never reach the FRAM history through the path that produces it. SPECIFICATION.md Part C.7.1 allows one persisted
@@ -648,6 +616,9 @@ constraints.
     change to the one-per-episode budget. Needs an owner decision because it changes which entry an
     operator sees in a field log, the same class as the `errno` 32 decision of 2026-09-12.
     `SPECIFICATION.md` C.7.1 now states the actual behaviour rather than the intended one.
+    **Independent session - out of the ISL29125 branch's scope and not blocked on it** (owner,
+    2026-09-14). Nothing here needs the colour sensor, the bench rig or PR #75 to land first; it is
+    picked up on its own.
 
 27. **`test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly` asserts an empty
     FRAM log after deliberately provoking torn writes** (found 2026-09-13 in the first full
