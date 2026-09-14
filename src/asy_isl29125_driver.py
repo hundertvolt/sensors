@@ -131,15 +131,13 @@ _VAL_AR_DWELL = const((("AutoRangeDwell", "float", 10.0, _MIN_DWELL_S, _MAX_DWEL
 _VAL_ICO = const((("IrCompOffset", "int", 0, None, None, _IR_OFFSETS),))
 _VAL_ICA = const((("IrCompAdjust", "int", 40, 0, 63, None),))
 _VAL_FC = const((("FiltCoeff", "float", -1.0, _MIN_FILT_COEFF, _MAX_FILT_COEFF, None),))
-# The applied scale factor, and the ONLY thing _gain_correction() reads. Persisted like any other
-# config value and written by a user PUT alone - the driver never writes it back, which is what
-# keeps every flash write on the REST path. A measured candidate is published as a MEASUREMENT
-# (GainMeas) for the user to copy across, never adopted automatically.
+# The applied scale factor, and the only thing _gain_correction() reads. A user PUT is its only
+# writer - the driver never writes its own config, which keeps every flash write on the REST path.
+# A measured candidate is published as GainMeas for the user to copy across, never adopted.
 _VAL_GR = const((("GainRatio", "float", _GAIN_RATIO_NOMINAL, _GAIN_RATIO_MIN, _GAIN_RATIO_MAX, None),))
-# Command-only trigger, not a persisted config value - the schema's "special-alone" shape
-# (def=None + a non-tuple special, SPECIFICATION.md Part C.5.2.1). Deliberately excluded from
-# get_dict_cfg()'s own schema argument and from the bool batch below: this key is never in
-# ConfigManager's _cache, so either would fail at runtime rather than at type-check time.
+# Command-only trigger, the schema's "special-alone" shape (SPECIFICATION.md Part C.5.2.1).
+# Excluded from get_dict_cfg()'s schema argument and from the bool batch below: the key is never
+# in ConfigManager's _cache, so either would fail at runtime rather than at type-check time.
 _VAL_CALIB = const((("ISLCalibrate", "bool", None, None, None, True),))
 
 _N_INT_CFG = const(5)  # SampleInterv + Resolution + Range + IrCompOffset + IrCompAdjust
@@ -153,13 +151,9 @@ _NAME = const("ISL29125")
 ISL29125 = namedtuple("ISL29125", ("Lux", "Red", "Green", "Blue", "Hue", "Sat", "Bri", "CCT", "RangeAct", "GainMeas", "TS"))
 _FIELDS = const(("Lux", "Red", "Green", "Blue", "Hue", "Sat", "Bri", "CCT", "RangeAct", "GainMeas", "TS"))  # kept in sync with ISL29125's own fields above
 if TYPE_CHECKING:
-    # Narrow on purpose - CCT is legitimately None in a dark room, and base_classes._error_check()
-    # counts a failed read when ANY element is None, so the wide namedtuple must never reach it.
-    # Elements 4 and 5 both travel WITH the sample rather than being read back at store time, and
-    # for the same reason: a cycle ending in a range switch, or a REST push landing on one of its
-    # awaits, would otherwise scale a reading by a gain it was not taken on. The range is what the
-    # lux conversion divides by; the span is what the normalised RGB/HSB outputs divide by - the
-    # whole auto-range span under RangeAuto, the pinned range without it.
+    # Narrow on purpose: _error_check() counts a failed read when ANY element is None, and CCT is
+    # legitimately None in a dark room. Elements 4 and 5 travel WITH the sample - the range the lux
+    # conversion divides by, the span the normalised outputs do - never read back at store time.
     ISLResults = tuple[int | None, int | None, int | None, int | None, int | None, int | None]
 
 
@@ -193,9 +187,8 @@ class ISL29125_Reader(SensorReaderConfig):
         # internal one too is harmless there and is what makes the driver work on a board without.
         self.irq_pin = Pin(irq_pin, mode=Pin.IN, pull=Pin.PULL_UP)
         # Two flags, two tasks, matching SCD30's shape. read_event has TWO setters - the divider
-        # and the pin IRQ - which is safe and is what makes the interrupt the fast path and the
-        # timer the guaranteed one: a set with no waiter is remembered, so an INT arriving
-        # mid-cycle coalesces into exactly one extra cycle rather than being lost or queued.
+        # and the pin IRQ - making the interrupt the fast path and the timer the guaranteed one: a
+        # set with no waiter is remembered, so an INT mid-cycle coalesces into one extra cycle.
         self.base_trigger_event = asyncio.ThreadSafeFlag()
         self.read_event = asyncio.ThreadSafeFlag()
         # Bare Timer() is valid on rp2 (id defaults to -1) despite the installed stub package
@@ -221,10 +214,9 @@ class ISL29125_Reader(SensorReaderConfig):
         # dead - which is precisely the missing pull-up / broken jumper requirement 17 names.
         self._irq_fired = False
         self._gain_ratio = _GAIN_RATIO_NOMINAL  # the APPLIED factor, replaced only by a config push
-        # Calibration-run state, all RAM-only and all deliberately so: a run is started by the user,
-        # bounded, and publishes its candidate as a measurement. Nothing here reaches the flash.
-        # A flag plus a bare deadline, not an Optional deadline: time.ticks_ms() types as the
-        # stubs' internal _TicksMs, which cannot be spelled in an annotation (Part F.1).
+        # Calibration-run state, all RAM-only: a run is user-started, bounded, and publishes a
+        # measurement - nothing here reaches the flash. A flag plus a bare deadline, not an Optional
+        # one: time.ticks_ms() types as the stubs' _TicksMs, unspellable in an annotation (F.1).
         self._calibrating = False
         self._cal_until_ms = time.ticks_ms()
         self._cal_recent: list[float] = []  # consecutive stable ratios, for the convergence check
@@ -243,9 +235,8 @@ class ISL29125_Reader(SensorReaderConfig):
         self._push_callbacks[name_cfg(_VAL_GR)] = self._push_gain_ratio
         self._push_callbacks[name_cfg(_VAL_CALIB)] = self._push_calibrate
         # Live read-back for _set_dict_cfg's failed-push recovery chain (SPECIFICATION.md C.5.2).
-        # Only the four hardware-backed fields have one; the software knobs (the timer divider,
-        # the two auto-range policy numbers, the output filter) have nothing to read back, and
-        # ISLCalibrate is command-only so _recover_failed_push() skips it by design.
+        # Only the four hardware-backed fields have one: the software knobs have nothing to read
+        # back, and ISLCalibrate is command-only, so _recover_failed_push() skips it by design.
         self._get_callbacks[name_cfg(_VAL_RES)] = self.get_resolution
         self._get_callbacks[name_cfg(_VAL_RNG)] = self.get_range
         self._get_callbacks[name_cfg(_VAL_ICO)] = self.get_ir_comp_offset
@@ -321,11 +312,9 @@ class ISL29125_Reader(SensorReaderConfig):
                 self.trigger_counter = 0
 
     def _on_irq(self, _pin: object) -> None:
-        # Soft IRQ (rp2's Pin.irq() defaults to hard=False - ports/rp2/machine_pin.c at v1.29.0),
-        # so it must allocate nothing. It does not: both lines store into attributes __init__
-        # already created, and ThreadSafeFlag.set() is itself only `self.state = 1`
-        # (extmod/asyncio/event.py, whose own comment sanctions setting it from IRQ context) - so
-        # the added flag is exactly the same kind of store the stdlib already does here.
+        # Soft IRQ (rp2's Pin.irq() defaults to hard=False), so it must allocate nothing, and does
+        # not: both lines store into attributes __init__ already created, and ThreadSafeFlag.set()
+        # is itself only `self.state = 1` (extmod/asyncio/event.py sanctions it from IRQ context).
         self._irq_fired = True
         self.read_event.set()
 
@@ -345,13 +334,9 @@ class ISL29125_Reader(SensorReaderConfig):
             await self._verify_after_failed_write()
             if self.isl.time_to_settle_ms() > 0:
                 await self._settle_wait()
-            # The three inputs that scale this reading, all captured HERE: after the settle wait,
-            # which is what guarantees the conversion in the data registers was made under the
-            # config live at this instant, and before the first await that can let anything else
-            # run. Two things move them afterwards - the range switch below, and a REST push
-            # landing on any of this cycle's own awaits. The data registers are double-buffered
-            # (p13), so a later push changes only what this reading would wrongly be scaled BY:
-            # 16x for a Resolution change, the whole range ratio for a Range one.
+            # The three inputs that scale this reading, captured after the settle wait - which is
+            # what guarantees the conversion was made under the config live now - and before the
+            # first await that can yield. p13: a later push cannot change what is read, only this.
             sample_range = self._active_range
             sample_resolution = self.isl.resolution()
             sample_span = _RANGE_HIGH_LUX if self._range_auto else self._fixed_range
@@ -412,11 +397,9 @@ class ISL29125_Reader(SensorReaderConfig):
         if self._periodic_only_switches < _PERIODIC_ONLY_WARN_AT:
             return
         self._periodic_only_switches = 0
-        # "Interrupt-led" means the LINE woke this cycle AND the chip had latched the crossing -
-        # both, because either on its own is still satisfied by a fault. There is only one reading
-        # left now that persist_for_interval() derives the window: the chip is always given time to
-        # raise RGBTHF first, so the periodic path carrying five decisions in a row means the line
-        # itself is not delivering them.
+        # "Interrupt-led" needs BOTH the pin edge and the latched crossing: either alone is still
+        # satisfied by a fault. persist_for_interval() always leaves the chip time to raise RGBTHF
+        # first, so five periodic-only decisions running means the line is not delivering them.
         await self.pr.wrn_s("Range decided by the periodic path only - the interrupt may be dead.", wrnno=13)
 
     def _handle_status(self, status: object) -> "tuple[bool, bool]":
@@ -444,11 +427,9 @@ class ISL29125_Reader(SensorReaderConfig):
         return True
 
     async def _verify_after_failed_write(self) -> None:
-        # The roll-back in configure() describes the chip only when NOTHING landed; a burst that
-        # NAKs partway leaves it a mixture, and normalise() would then scale by a resolution the
-        # part is not running. The chip is the authority, so one snapshot settles it through the
-        # ordinary divergence check - here rather than only in _read_sensor_dict(), which a
-        # headless device never reaches. One extra transaction, and only after a failed write.
+        # configure()'s roll-back describes the chip only when NOTHING landed; a burst NAKing
+        # partway leaves it a mixture. The chip is the authority, so one snapshot settles it - here,
+        # not only in _read_sensor_dict(), which a headless device never reaches.
         seen = self.isl.write_failures()
         if seen == self._reconciled_write_failures:
             return
@@ -483,11 +464,9 @@ class ISL29125_Reader(SensorReaderConfig):
                 self._filtered[index] = filtered
                 lux[index] = filtered
 
-        # The whole auto-range SPAN (10000 lux), not the active range: dividing by the active full
-        # scale would step every normalised output by the gain ratio at each switch, which is
-        # exactly the discontinuity auto-range exists to remove. With RangeAuto off there is no
-        # span to be continuous across, so the pinned range is right. Chosen with the sample rather
-        # than read back here, for the reason ISLResults' own note gives.
+        # The whole auto-range SPAN, not the active range: dividing by the active full scale would
+        # step every normalised output by the gain ratio at each switch - the discontinuity
+        # auto-range exists to remove. With RangeAuto off there is no span, so the pinned range is.
         span = float(sample_span)
         norm = [min(1.0, max(0.0, value / span)) for value in lux]
 
@@ -525,11 +504,9 @@ class ISL29125_Reader(SensorReaderConfig):
         return math_helpers.cct_mccamy(chroma[0], chroma[1])
 
     def _gain_correction(self, range_fs: int) -> float:
-        # The LOW range is the reference, so the applied ratio only ever corrects the high one -
-        # correcting both would make the absolute scale drift with the calibration.
-        # learned/nominal, not its reciprocal: a unit whose real high-range full scale exceeds the
-        # nominal 10000 produces FEWER counts for the same light, so the reported lux needs
-        # scaling UP by exactly that excess.
+        # The LOW range is the reference, so the ratio corrects the high one alone - correcting both
+        # would drift the absolute scale. learned/nominal, not its reciprocal: a part whose real
+        # high full scale exceeds 10000 gives FEWER counts, so lux scales UP by that excess.
         if range_fs != _RANGE_HIGH_LUX:
             return 1.0
         return self._gain_ratio / _GAIN_RATIO_NOMINAL
@@ -537,11 +514,9 @@ class ISL29125_Reader(SensorReaderConfig):
     # -- auto-range --------------------------------------------------------
 
     def _evaluate_range(self, counts: "tuple[int, int, int]", *, saturated: bool) -> int | None:
-        # Decides on the PEAK of the three channels in both directions. The hardware path is
-        # green-only because INTSEL has one channel, but the software path has all three in hand
-        # and the output is a colour triple. Using the peak only for "up" would oscillate: a
-        # red-dominant scene switches up, green lands below the down threshold, the dwell expires,
-        # and it switches back.
+        # Decides on the PEAK of all three channels in both directions: the hardware path is
+        # green-only because INTSEL has one channel, but the output is a colour triple. Peak-up with
+        # green-down oscillates - a red-dominant scene switches up, then back once the dwell ends.
         if not self._range_auto:
             return None
         if self.isl.time_to_settle_ms() > 0:
@@ -561,10 +536,9 @@ class ISL29125_Reader(SensorReaderConfig):
         return _RANGE_LOW_LUX
 
     async def _switch_range(self, target_range: int) -> bool:
-        # Only ONE threshold is live per range, because the two switch points sit on different
-        # gain scales: on the low range only an up-crossing can matter, on the high range only a
-        # down-crossing. Both counts are handed over on the 16-bit scale; set_thresholds() is what
-        # rescales them to the resolution the chip is actually running.
+        # One threshold per range, because the two switch points sit on different gain scales: low
+        # range up-crossing only, high range down-crossing only. Both counts arrive on the 16-bit
+        # scale; set_thresholds() rescales them to the resolution the chip is running.
         try:  # thresholds FIRST: the other order leaves a window where the new gain is live
             if target_range == _RANGE_LOW_LUX:  # against the old thresholds
                 await self.isl.set_thresholds(0, self.isl.fraction_to_counts(self._ar_thresh))
@@ -585,10 +559,9 @@ class ISL29125_Reader(SensorReaderConfig):
         return True
 
     async def _settle_wait(self) -> None:
-        # Bounded rather than an open `while pending`: a stream of concurrent config writes can
-        # push the deadline out, and past this bound the driver proceeds and lets the reading
-        # stand - a possibly-stale sample beats a starved read loop, and the leaky bucket catches
-        # a persistent problem anyway.
+        # Bounded rather than an open `while pending`: concurrent config writes can keep pushing the
+        # deadline out. Past the bound the reading stands - a possibly-stale sample beats a starved
+        # read loop, and the leaky bucket catches a persistent problem anyway.
         for _ in range(_SETTLE_WAIT_MAX_ROUNDS):
             remaining = self.isl.time_to_settle_ms()
             if remaining <= 0:
@@ -599,10 +572,9 @@ class ISL29125_Reader(SensorReaderConfig):
     # -- gain-ratio calibration -------------------------------------------
 
     async def _measure_gain_ratio(self, green_counts: int) -> None:
-        # Only ever runs inside a user-started window. Measured as a SANDWICH - this range, the
-        # other, then this one again - because the dominant error is the scene moving between the
-        # two readings, and a pair alone cannot tell a real ratio from a light that changed.
-        # Publishes a candidate; never adopts it and never writes it anywhere (Part C.11.3).
+        # Only runs inside a user-started window. A SANDWICH - this range, the other, then this one
+        # again - because the dominant error is the scene moving between the two readings, which a
+        # pair alone cannot tell from a real ratio. Publishes a candidate, never adopts it (C.11.3).
         if not self._calibrating:
             return
         if time.ticks_diff(time.ticks_ms(), self._cal_until_ms) >= 0:
@@ -689,11 +661,9 @@ class ISL29125_Reader(SensorReaderConfig):
         self.pr.one("Gain-ratio calibration finished:", why)
 
     async def _read_sensor_dict(self) -> "dict[str, int | float | str | bool | None]":
-        # Reads the real registers rather than reporting the shadow, because this is the only
-        # thing in the driver that can detect the two having diverged. Table 7 (p10) makes only a
-        # WRITE to 0x01 restart the conversion, so a read-only snapshot costs one transaction and
-        # nothing else - section 8.7's shadow rule is about the read-modify-write hazard, which a
-        # read-only snapshot does not create.
+        # Reads the real registers rather than the shadow - the only thing in the driver that can
+        # detect the two diverging. Only a WRITE to 0x01 restarts the conversion (p10, Table 7), so
+        # a read-only snapshot costs one transaction and creates no read-modify-write hazard.
         try:
             raw = await self.isl.get_config_snapshot()
         except Exception as e:
@@ -742,10 +712,9 @@ class ISL29125_Reader(SensorReaderConfig):
         return decoded[index]
 
     async def _checked_cfg(self, value: "int | float", schema: "ConfigSchema", errno: int) -> "int | float | None":
-        # SPECIFICATION.md Part G.2's numeric primitive, not a second hand-rolled cast-and-compare:
-        # the bounds come from the field's own schema record, so they cannot drift from the ones
-        # the config path enforces, and the int<->float coercion is the identical policy that
-        # already ran on this value on its way in (a fractional "12.5" is rejected, not truncated).
+        # Part G.2's numeric primitive, not a second hand-rolled cast-and-compare: the bounds come
+        # from the field's own schema record, so they cannot drift from the config path's, and the
+        # int<->float coercion is the identical policy (a fractional 12.5 is rejected, not cut).
         is_error, coerced = type_or_range_error(value, schema[0])
         # isinstance() guard: type_or_range_error() is typed to hand back Any, and a malformed
         # schema record is the one way something non-numeric could come back out of it - the same
@@ -766,10 +735,9 @@ class ISL29125_Reader(SensorReaderConfig):
         return True
 
     def _down_thresh(self) -> float:
-        # DERIVED, never configured: immediately after a switch up the same light reads t/r of the
-        # high range, so the down point must clear t/(2r) for the loop not to chatter on noise
-        # alone. Against the part's NOMINAL 26.67, not the measured GainRatio - the factor 2
-        # absorbs that field's whole [20, 34] band, so coupling the two would move no decision.
+        # DERIVED, never configured: right after a switch up the same light reads t/r of the high
+        # range, so the down point must clear t/(2r) not to chatter on noise. Against the NOMINAL
+        # 26.67, not GainRatio - the factor 2 absorbs that field's whole [20, 34] band.
         return self._ar_thresh / _AR_DOWN_DIVISOR
 
     # -- push callbacks ----------------------------------------------------
@@ -857,10 +825,9 @@ class ISL29125_Reader(SensorReaderConfig):
         return await self._get_meas_data()  # type: ignore[return-value]
 
     async def get_dict_data(self) -> "dict[str, dict[str, Any]]":
-        # The one genuine override in this driver: the measurement body is nested (requirement
-        # 11), which make_dict()'s flat one-level contract cannot express. Written out explicitly
-        # rather than derived from the namedtuple because _asdict()/_fields need a ROM level above
-        # rp2's own (see config_manager.make_dict()'s comment).
+        # The one genuine override here: the measurement body is nested, which make_dict()'s flat
+        # one-level contract cannot express. Written out explicitly rather than from the namedtuple,
+        # because _asdict()/_fields need a ROM level above rp2's own.
         data = await self.get_data()
         return {
             _NAME: {
@@ -938,10 +905,9 @@ class ISL29125_Reader(SensorReaderConfig):
         return True
 
     async def set_range_auto(self, *, flag: bool) -> bool:
-        # Not a purely software flag: turning it OFF applies the stored fixed range (a CONFIG1
-        # write) and disarms the interrupt by writing INTSEL = 00 (a CONFIG3 write). Parking the
-        # thresholds cannot disarm it - the part fires on "below OR EQUAL TO" the low threshold,
-        # so a low threshold of 0x0000 still interrupts in total darkness.
+        # Not a purely software flag: turning it OFF applies the stored fixed range (CONFIG1) and
+        # disarms the interrupt with INTSEL = 00 (CONFIG3). Parking the thresholds cannot disarm it -
+        # the part fires on "below OR EQUAL TO", so 0x0000 still interrupts in total darkness.
         try:  # neither branch reads the flag, so it is cached only once the chip has taken it -
             # a False here makes _recover_failed_push() roll the PERSISTED value back, and a cache
             # updated regardless would leave the two disagreeing until the next restart.
@@ -1001,10 +967,9 @@ class ISL29125_Reader(SensorReaderConfig):
         return True
 
     async def set_filter_coefficient(self, value: float) -> bool:
-        # Validates, but deliberately stores NOTHING, unlike the other three software knobs: the
-        # filter's only reader is _store_isl(), which takes the value from cfgmgr on the sample it
-        # applies it to, so the persisted value IS the live one. What this still owns is the
-        # verdict - a False here is what makes _set_dict_cfg() report the field "Failed".
+        # Validates but stores NOTHING, unlike the other software knobs: _store_isl() takes the value
+        # from cfgmgr on the sample it applies it to, so the persisted value IS the live one. What
+        # this owns is the verdict - a False here makes _set_dict_cfg() report the field "Failed".
         return await self._checked_cfg(value, _VAL_FC, 26) is not None
 
     # -- others ------------------------------------------------------------
@@ -1064,13 +1029,9 @@ class ISL29125_I2C:
 
     @staticmethod
     def _reject_unless(value: int, allowed: "tuple[int, ...]", what: str) -> None:
-        # C.3's contract: an out-of-range field is rejected loudly here rather than silently
-        # masked to its own bit width by encode_shadow() and written to the chip as some other
-        # value entirely - an IrCompAdjust of 200 would otherwise land as 8.
-        # The type check is not redundant with the membership test: 375.0 == 375 passes an `in`
-        # test and then reaches encode_shadow()'s bitwise masking, where a float raises TypeError
-        # out of a function whose own contract is that it cannot. Coercing an integral float is
-        # the CONFIG boundary's job (_checked_cfg), not this one's.
+        # C.3's contract: reject loudly here rather than let encode_shadow() silently mask an
+        # out-of-range value to its bit width (an IrCompAdjust of 200 would land as 8). The type
+        # check is not redundant: 375.0 passes `in`, then raises inside a function contracted not to.
         if type(value) is not int or value not in allowed:
             raise ValueError(f"{what} must be one of {allowed}")
 
@@ -1113,10 +1074,9 @@ class ISL29125_I2C:
     async def _write_shadow(self, first_register: int) -> None:
         payload = self.encode_shadow()[first_register - _REGISTER_CONFIG1 :]
         async with self.i2c_isl29125 as isl, isl.i2c_device as i2c:
-            # set_register_struct() takes a single value but accepts bytes, so an "Ns" format is
-            # how a burst write goes through the promoted bus layer. struct.pack() silently
-            # truncates on MicroPython rather than raising, which is why the value handed over is
-            # already bytes of the exact length instead of an int.
+            # set_register_struct() takes one value but accepts bytes, so an "Ns" format is how a
+            # burst write goes through the promoted bus layer. The payload is already bytes of the
+            # exact length because struct.pack() truncates silently on MicroPython.
             await i2c.set_register_struct(first_register, f"{len(payload)}s", payload)
 
     async def get_config_snapshot(self) -> bytes:
@@ -1143,11 +1103,9 @@ class ISL29125_I2C:
         return self._resolution
 
     async def set_thresholds(self, low_counts: int, high_counts: int | None = None) -> None:
-        # Both counts arrive on the 16-bit scale and are rescaled DOWN to the active resolution
-        # here: the threshold registers are compared against the RAW ADC value, so a 16-bit-scaled
-        # threshold would never be crossed at 12 bits and the hardware fast path would be silently
-        # dead there. An omitted high_counts parks the up-crossing at the top of the active scale,
-        # where it cannot fire - which is what a caller wanting only a down-crossing needs.
+        # Both counts arrive on the 16-bit scale and are rescaled DOWN to the active resolution: the
+        # threshold registers compare against the RAW ADC value, so a 16-bit-scaled threshold would
+        # never cross at 12 bits. An omitted high_counts parks the up-crossing where it cannot fire.
         twelve_bit = self._resolution == _RESOLUTION_12BIT
         shift = 4 if twelve_bit else 0
         ceiling = (1 << _RESOLUTION_12BIT) - 1 if twelve_bit else _FULL_SCALE_COUNTS
@@ -1199,11 +1157,9 @@ class ISL29125_I2C:
 
     @staticmethod
     def counts_to_lux(count: int, full_scale: int, gain_correction: float) -> float:
-        # p1's feature list gives 375/65535 = 5.72 mlux and 10000/65535 = 0.1526 lux per LSB,
-        # matching the datasheet's own stated figures exactly - the LSB really is FS/65535 on both
-        # ranges. gain_correction is validated where an untrusted ratio ENTERS (the GainRatio
-        # config field's own schema bounds), never here: a plausibility gate in the hot path would
-        # run on every sample for a value that only a user PUT can change.
+        # p1 gives 375/65535 = 5.72 mlux and 10000/65535 = 0.1526 lux per LSB, so the LSB really is
+        # FS/65535 on both ranges. gain_correction is validated where an untrusted ratio ENTERS
+        # (GainRatio's schema bounds), never here - a hot-path gate would run on every sample.
         return count * (full_scale / 65535.0) * gain_correction
 
     @staticmethod
@@ -1224,10 +1180,9 @@ class ISL29125_I2C:
 
     @staticmethod
     def is_bus_fault_pattern(counts: "tuple[int, int, int] | None", status: object) -> bool:
-        # A dead bus reads all-ones, and the community failure reports for this part are exactly
-        # that. Taken on the RAW counts, before normalise(): the pattern is a property of the wire,
-        # not of the scaled value, which is what makes the 12-bit case exact (a real 12-bit reading
-        # cannot exceed 4095, so at 12 bits this has no false-positive mode at all).
+        # A dead bus reads all-ones, which is exactly what this part's community failure reports
+        # show. Taken on the RAW counts: the pattern is a property of the wire, not of the scaled
+        # value, which makes the 12-bit case exact - a real 12-bit reading cannot exceed 4095.
         if counts is None or len(counts) != _CHANNELS:
             return False
         if not all(count == _FULL_SCALE_COUNTS for count in counts):
@@ -1237,33 +1192,25 @@ class ISL29125_I2C:
         return type(status) is not int or bool(status & _STATUS_RESERVED_MASK)
 
     def normalise(self, raw: "tuple[int, int, int]", *, range_fs: int, resolution: int | None = None) -> "tuple[tuple[int, int, int], bool]":
-        # Saturation is judged RAW and before the rescale below, because a post-rescale
-        # `== 65535` test is simply wrong at 12 bits, where 4095 << 4 is 65520 and the auto-range
-        # fast path would be silently dead. ANY channel at its raw maximum counts: the output is a
-        # colour triple, so a clipped red with green at 40% of full scale still destroys Hue, Sat
-        # and CCT. range_fs is the range this sample was TAKEN on, not necessarily the live one.
-        # resolution defaults to the live shadow; a caller scaling a reading the part made EARLIER
-        # passes the one that was live then (see _read_isl()), because a mid-read config push moves
-        # the shadow while the double-buffered data registers still hold the old conversion.
+        # Saturation is judged RAW, because a post-rescale `== 65535` test is wrong at 12 bits (4095
+        # << 4 is 65520) and would leave the fast path dead. ANY channel at its maximum counts - a
+        # clipped red destroys Hue, Sat and CCT. Both range_fs and resolution are the SAMPLE's.
         green, red, blue = raw
         twelve_bit = (self._resolution if resolution is None else resolution) == _RESOLUTION_12BIT
         maximum = (1 << _RESOLUTION_12BIT) - 1 if twelve_bit else _FULL_SCALE_COUNTS
         saturated = green >= maximum or red >= maximum or blue >= maximum
-        # Then the rescale itself: 12- and 16-bit readings onto one 0-65535 scale, and the additive
-        # dark offset off. An unknown resolution falls back to "no shift", the conservative
-        # direction - shifting when you should not inflates every reading 16x, while not shifting
-        # when you should only under-reports.
+        # 12- and 16-bit readings onto one 0-65535 scale, and the additive dark offset off. An
+        # unknown resolution falls back to "no shift", the conservative direction: shifting when you
+        # should not inflates every reading 16x, not shifting only under-reports.
         shift = 4 if twelve_bit else 0
         offset = self._dark_offset(range_fs)
         scaled = [max(0, min(_FULL_SCALE_COUNTS, (value << shift) - offset)) for value in (green, red, blue)]
         return (scaled[0], scaled[1], scaled[2]), saturated
 
     def matches_shadow(self, raw: "bytes | bytearray | memoryview") -> bool:
-        # A masked comparison of every meaningful bit, not of five decoded fields: mode, SYNC,
-        # CONVEN and INTSEL are exactly what a brownout or a stray write zeroes, and decoding them
-        # away first is what would make this check blind to the thing it exists for. An unreadable
-        # length answers True - there is nothing to compare, and a caller must not be told the
-        # chip diverged on the strength of a failed read.
+        # A masked comparison of every meaningful bit, not of five decoded fields: mode, SYNC, CONVEN
+        # and INTSEL are exactly what a brownout zeroes, and decoding them away would blind this
+        # check. An unreadable length answers True - a failed read is not evidence of divergence.
         if len(raw) != _CONFIG_BURST_LEN:
             return True
         shadow = self.encode_shadow()
@@ -1274,13 +1221,9 @@ class ISL29125_I2C:
         return _CYCLE_MS_12BIT if self._resolution == _RESOLUTION_12BIT else _CYCLE_MS_16BIT
 
     def persist_for_interval(self, trigger_secs: int) -> int:
-        # PRST is DERIVED, never configured - the largest transient rejection whose window still
-        # closes inside one sample interval, so the chip's interrupt always gets to raise RGBTHF
-        # before the periodic re-check would have decided anyway. Configuring it by hand is what
-        # left the hardware fast path structurally dead (SPECIFICATION.md Part C.11.1.3): 4 cycles
-        # is 1212ms at 16 bit, longer than the 1s default interval. At 16 bit / 1s this picks 2,
-        # which the bench measured at 6 of 6 interrupt-led switches in 500-800ms; at 12 bit a cycle
-        # is ~16x shorter, so it picks 8 and rejects far more transient noise for free.
+        # PRST is DERIVED: the largest transient rejection whose window still closes inside one
+        # sample interval, so the chip always gets to raise RGBTHF before the periodic re-check would
+        # decide. Configuring it by hand left the fast path structurally dead (Part C.11.1.3).
         cycle = self.cycle_ms()
         options: tuple[int, ...] = _PRST_SETTINGS  # const() is Any to mypy; same annotation decode_config() uses
         for persist in reversed(options):
@@ -1294,10 +1237,9 @@ class ISL29125_I2C:
         return max(0, time.ticks_diff(self._settle_until_ms, time.ticks_ms()))
 
     def encode_shadow(self) -> bytes:
-        # Every field masked to its own width before shifting, so an out-of-range value can never
-        # disturb a neighbouring bit - the same guard asy_i2c_driver.py's set_bits() applies.
-        # Masks rather than validates: validation belongs at the setter boundary, and an encoder
-        # that could raise would make configure()'s own failure modes ambiguous.
+        # Every field masked to its own width before shifting, so an out-of-range value cannot
+        # disturb a neighbour - the guard asy_i2c_driver.py's set_bits() applies. Masks rather than
+        # validates: that belongs at the setter boundary, and a raising encoder would blur configure().
         config1 = (self._mode & _CONFIG1_MODE_MASK) | (_CONFIG1_RNG if self._range_fs == _RANGE_HIGH_LUX else 0)
         config1 |= (_CONFIG1_BITS if self._resolution == _RESOLUTION_12BIT else 0) | (_CONFIG1_SYNC if self._sync else 0)
         config2 = (_CONFIG2_IRCOMP_OFFSET if self._ir_offset else 0) | (self._ir_adjust & _CONFIG2_ALSCC_MASK)
@@ -1323,13 +1265,9 @@ class ISL29125_I2C:
         conven: int | None = None,
         force: bool = False,
     ) -> None:
-        # The single write path. Writes the MINIMAL burst: three bytes from 0x01 when CONFIG1's
-        # own byte changed, two from 0x02 otherwise, nothing at all when nothing changed - so an
-        # IR-compensation change never restarts the conversion cycle. force=True re-applies the
-        # whole shadow unconditionally, which is what brownout recovery and the divergence check
-        # need (there is nothing to diff against a chip that has lost its configuration). Every
-        # user-settable field is guarded first, so no write path - including _init_isl()'s own
-        # opening burst - can reach encode_shadow()'s masking with a value the chip cannot take.
+        # The single write path, writing the MINIMAL burst: three bytes from 0x01 when CONFIG1
+        # changed, two from 0x02 otherwise, nothing when nothing changed. force=True re-applies the
+        # whole shadow, which brownout recovery and the divergence check need. Every field is guarded.
         if resolution is not None:
             self._reject_unless(resolution, _RESOLUTIONS, "resolution")
         if range_fs is not None:
@@ -1373,18 +1311,14 @@ class ISL29125_I2C:
         except Exception:
             # The shadow must never claim a value the part did not take: normalise() scales every
             # reading by it, so a lost resolution write would shift every later sample 16x with the
-            # reads themselves still succeeding. Rolled back rather than left to the divergence
-            # check, which runs only on a config GET and would re-apply a setting whose caller has
-            # already been told it failed - the same reason _switch_range() declines to update its
-            # own range on a failure.
+            # reads still succeeding. Rolled back, as _switch_range() declines to update its range.
             (self._mode, self._range_fs, self._resolution, self._ir_offset, self._ir_adjust, self._persist, self._int_select, self._sync, self._conven) = restore
             self._write_failures += 1
             raise
         if wrote_config1:
-            # Any writer of CONFIG1 restarts the conversion (p10, Table 7), and there are three of
-            # them - the range switch, a resolution push and brownout recovery. Setting the
-            # deadline in the function that does the write makes it impossible for a caller to
-            # forget, and refreshes it automatically when a config push lands mid-settle.
+            # Any writer of CONFIG1 restarts the conversion (p10, Table 7), and there are three.
+            # Arming the deadline in the function that does the write makes it impossible for a
+            # caller to forget, and refreshes it when a config push lands mid-settle.
             self._settle_until_ms = time.ticks_add(time.ticks_ms(), _SETTLE_CYCLES * self.cycle_ms())
 
     async def read_counts(self) -> "tuple[int, int, int]":
@@ -1422,25 +1356,19 @@ class ISL29125_I2C:
             await i2c.setup()
         await self.verify_device_id()
         await self.reset()
-        # BOUTF is high at power-up (p12). The write is kept even though the 0x46 reset above and
-        # any status read BOTH clear it on real silicon (measured 2026-09-13, SPECIFICATION.md
-        # Part C.11.1.1 - p12 claims only a write does): it is the one clear the datasheet
-        # actually promises, it costs one transaction once per init, and it makes the flag's state
-        # after setup() independent of which of the three mechanisms this part honours.
+        # BOUTF is high at power-up (p12). Kept even though the 0x46 reset and any status read both
+        # clear it on real silicon (Part C.11.1.1): it is the one clear the datasheet promises, costs
+        # one transaction per init, and makes the post-setup state mechanism-independent.
         await self.clear_brownout()
-        # SYNC and CONVEN are written explicitly rather than left at their reset default, so a
-        # later change cannot flip either silently: SYNC = 1 turns INT into an INPUT and inverts
-        # the whole interrupt path, and CONVEN would mux conversion-done onto the pin the
-        # thresholds need.
+        # SYNC and CONVEN are written explicitly rather than left at their reset default, so neither
+        # can flip silently later: SYNC = 1 turns INT into an INPUT and inverts the whole interrupt
+        # path, and CONVEN would mux conversion-done onto the pin the thresholds need.
         await self.configure(mode=_MODE_RGB, threshold_interrupt=True, sync=0, conven=0, force=True)
 
     async def reset(self) -> None:
-        # The datasheet specifies no post-reset settle time (unlike BMP3xx's documented 2ms), so
-        # the verify read IS the settle. Only CONFIG1-3 are verified, and NOT status the way
-        # SparkFun's own reset() does: 0x08 really does read 0x00 straight after the reset command
-        # (measured 2026-09-13 - Table 15's 0x04 is the power-ON default, not a post-reset one),
-        # so the check would pass, but reading 0x08 here would consume a destructive read outside
-        # the one-per-cycle invariant read_status() depends on.
+        # The datasheet specifies no post-reset settle, so the verify read IS the settle. CONFIG1-3
+        # only, NOT status the way SparkFun's reset() does: reading 0x08 would consume a destructive
+        # read outside the one-per-cycle invariant read_status() depends on (C.11.1.1).
         async with self.i2c_isl29125 as isl, isl.i2c_device as i2c:
             await i2c.set_register_struct(_REGISTER_DEVICE_ID, "B", _CMD_RESET)
             config = await i2c.get_register_struct(_REGISTER_CONFIG1, "3s")

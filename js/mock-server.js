@@ -299,14 +299,9 @@ function jitterInPlace(group) {
         if (key.endsWith("TS") || key === "Timestamp" || key.endsWith("Uptime")) {
             group[key] = value + 1;
         } else {
-            // Both the spread and the rounding were sized for readings of order hundreds (CO2
-            // ~600), where a 0.05 floor is noise and two decimals are precision. The ISL29125's
-            // normalised 0-1 leaves are three orders smaller: that floor is +-178% of a 0.0281
-            // channel, which takes it NEGATIVE - something no normalised channel can be - and two
-            // decimals then quantise what is left to 0.03, or to 0.00, which renders as a sensor
-            // reporting nothing. Below 1 both scale with the value instead, which also makes a
-            // sign change arithmetically impossible rather than something to clamp afterwards; at
-            // or above 1 nothing changes at all.
+            // Spread and rounding were sized for readings of order hundreds (CO2 ~600). On the
+            // ISL29125's normalised 0-1 leaves a 0.05 floor is +-178% and takes them NEGATIVE, and
+            // two decimals quantise to 0.00. Below 1 both scale with the value; above it, nothing.
             const magnitude = Math.abs(value);
             const spread = magnitude >= 1 ? Math.max(magnitude * 0.01, 0.05) : magnitude * 0.05;
             const factor = magnitude >= 1 ? 100 : 10000;

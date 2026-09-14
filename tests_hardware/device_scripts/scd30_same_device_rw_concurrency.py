@@ -14,13 +14,9 @@ HUMIDITY_MIN_RH, HUMIDITY_MAX_RH = 0.0, 100.0
 TEMP_MIN_C, TEMP_MAX_C = -40.0, 70.0
 
 READ_ITERATIONS = 40
-# The SCD30's measurement interval is NVM-persisted, so the sensor resumes continuous measurement
-# on its own after the soft reset setup() issues, and raises data-ready while its registers still
-# hold that first, unsettled conversion. Reading straight through it made this script report a
-# stuck CO2=141.99 - below the floor above - on every iteration (measured 2026-09-14), erroring the
-# session fixture and blocking every test that depends on it. scd30_plausibility_read.py discards a
-# full 45s response-time window for the same reason; this script needs the registers to be REAL
-# rather than the CO2 value to be accurate, so a few measurement intervals (2s default) suffice.
+# The SCD30's measurement interval is NVM-persisted, so it resumes measuring after setup()'s soft
+# reset and raises data-ready while the registers still hold that first unsettled conversion -
+# which read back as a stuck CO2=141.99 on every iteration. A few intervals are enough to clear it.
 _SETTLE_S = 12.0
 
 

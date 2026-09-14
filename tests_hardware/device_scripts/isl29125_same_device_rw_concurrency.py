@@ -1,7 +1,6 @@
-"""Isolated-driver device script: the ISL29125's same-device concurrency proof - "ongoing read,
-incoming write" (SPECIFICATION.md Part C.8). Its config registers are volatile (FN8424 p7 calls
-them volatile memory outright), so this writes freely; the sharper hazard is the DESTRUCTIVE 0x08
-status read, which a config write landing mid-cycle must not tear."""
+"""Isolated-driver device script: the ISL29125's same-device "ongoing read, incoming write" proof
+(Part C.8). Its config registers are volatile (p7), so this writes freely; the sharper hazard is
+the DESTRUCTIVE 0x08 status read, which a config write landing mid-cycle must not tear."""
 
 import asyncio
 
@@ -18,10 +17,9 @@ _STATUS_RESERVED_MASK = 0xC8  # B7:B6 and B3 read zero on a working part (p12, T
 
 async def _main() -> None:
     wdt = machine.WDT(timeout=8000)
-    # Constructs the PROTOCOL layer directly, never ISL29125_Reader: Part C.8's standing rule for
-    # a concurrency script that exercises persisted config, so nothing here can touch the
-    # RP2040's own flash filesystem. The ISL has no on-chip NVM at all, so rewriting its config
-    # costs nothing either - this is the first promoted sensor where that is true.
+    # Constructs the PROTOCOL layer directly, never ISL29125_Reader: Part C.8's standing rule for a
+    # concurrency script exercising persisted config, so nothing here touches the RP2040's flash.
+    # The ISL has no on-chip NVM either, so rewriting its config costs nothing.
     i2c1 = asy_i2c_driver.I2C(1, 15, 14, frequency=50000, timeout=200000)
     isl = ISL29125_I2C(i2c1)
     await isl.setup()

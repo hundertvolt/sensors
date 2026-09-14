@@ -1,7 +1,6 @@
-"""Register-level ISL29125 conformance probe, run IDENTICALLY against the real chip and against
-digital_twin/_isl29125_chip.py - it talks only raw machine.I2C, the one layer both implement, and
-emits KEY=VALUE lines that tests_hardware/isl29125_conformance.py diffs. See that module for which
-keys are protocol (must match exactly) and which are illumination-dependent."""
+"""Register-level ISL29125 conformance probe, run IDENTICALLY against the real chip and the twin's
+fake - it talks only raw machine.I2C, the one layer both implement, and emits KEY=VALUE lines that
+tests_hardware/isl29125_conformance.py diffs into protocol and illumination-dependent keys."""
 import asyncio
 import time
 

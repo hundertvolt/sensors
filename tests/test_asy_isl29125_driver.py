@@ -154,11 +154,9 @@ def ready_protocol(address: int = _ADDR) -> "tuple[I2C, ISL29125_I2C]":
 
 
 def protocol_at(bits: int) -> ISL29125_I2C:
-    # Parks the shadow on a resolution through the real write path, so normalise() and
-    # set_thresholds() are exercised against a shadow the hardware driver set itself. A value
-    # configure() rejects goes straight onto the shadow instead: the "unknown resolution" fallback
-    # in normalise() is unreachable defence-in-depth now that configure() guards every write path,
-    # and stays tested as such (SPECIFICATION.md Part E.4's own precedent for that).
+    # Parks the shadow through the real write path, so normalise()/set_thresholds() run against a
+    # shadow the driver set itself. A value configure() rejects goes straight onto the shadow:
+    # normalise()'s unknown-resolution fallback is defence in depth, tested as such (Part E.4).
     _i2c, isl = make_protocol()
     if bits in (12, 16):
         run(isl.configure(resolution=bits))
@@ -523,10 +521,9 @@ def test_reset_raises_when_the_config_registers_do_not_clear() -> None:
 
 
 def test_reset_does_not_read_the_destructive_status_register() -> None:
-    # Reading 0x08 clears RGBTHF and releases the INT pin, so the "exactly one status read per
-    # cycle" invariant has to hold here too - which is also why this verify covers CONFIG1-3 only
-    # (SparkFun's own reset() additionally requires STATUS == 0x00, but Table 15 documents 0x04
-    # as that register's own default, so that check contradicts the datasheet).
+    # Reading 0x08 clears RGBTHF and releases INT, so the one-status-read-per-cycle invariant holds
+    # here too - which is why this verify covers CONFIG1-3 only. SparkFun's reset() also requires
+    # STATUS == 0x00, which contradicts Table 15's documented 0x04 default.
     i2c, isl = ready_protocol()
     run(isl.reset())
     assert all(register != _REG_STATUS for register, _length in mem_reads(i2c))
@@ -657,11 +654,9 @@ def test_cycle_time_follows_the_configured_resolution() -> None:
 
 
 def test_time_to_settle_stays_sane_across_a_ticks_wrap() -> None:
-    # time.ticks_ms() wraps (at 2**30 on rp2, at a different period on this Unix port), so this
-    # has to use ticks_diff()/ticks_add() and never a plain subtraction. A deadline one second in
-    # the PAST is the discriminating case: ticks_diff() reports it as past regardless of where
-    # the counter happens to sit, while a subtraction reports a hugely positive remaining time
-    # whenever the deadline was computed on the other side of a wrap.
+    # ticks_ms() wraps, so this must use ticks_diff()/ticks_add(), never a subtraction. A deadline
+    # one second in the PAST discriminates: ticks_diff() reports it past wherever the counter sits,
+    # while a subtraction reports hugely positive time whenever the deadline crossed a wrap.
     import time as _time
 
     _i2c, isl = make_protocol()
@@ -810,15 +805,13 @@ def ready_reader(name: str, **kwargs: "object") -> "tuple[I2C, ISL29125_Reader]"
     i2c, reader = make_reader(name, **kwargs)  # type: ignore[arg-type]  # **object forwarding, checked at each call site
     with _FastAsyncSleep():
         assert run(init_reader(reader, i2c)) is True
-    # init's own CONFIG1 burst legitimately leaves a settle deadline pending, and these tests run
-    # in zero wall-clock time - so the first conversion after it is marked complete here rather
-    # than every test having to sleep 303ms of real time. The settle behaviour itself has its own
-    # tests (test_no_sample_is_reported_during_the_settle_window and its siblings).
+    # init's CONFIG1 burst legitimately leaves a settle pending, and these tests run in zero wall
+    # clock - so the first conversion is marked complete here rather than every test sleeping 303ms.
+    # The settle behaviour has its own tests (test_no_sample_is_reported_during_the_settle_window).
     reader.isl._settle_until_ms = _time.ticks_ms()
-    # Register 0x00 is read-only as the device ID and write-only as the reset command on real
-    # hardware; tests/machine.py's flat dict of registers cannot model that split, so setup()'s
-    # own reset write leaves 0x46 sitting where the ID should be. Restored here so a later
-    # device-ID re-read (the bus-fault confirmation) sees what a real chip would.
+    # 0x00 is read-only as the device ID and write-only as the reset command on real hardware, a
+    # split tests/machine.py's flat register dict cannot model - so setup()'s reset write leaves
+    # 0x46 where the ID should be. Restored so a later device-ID re-read sees a real chip.
     seed(i2c, _REG_ID, bytes([_DEVICE_ID]))
     fake(i2c).log.clear()
     return i2c, reader
@@ -1786,10 +1779,9 @@ def test_the_derivation_never_lets_the_window_outlast_the_sample_interval() -> N
 
 
 def test_the_derivation_degrades_to_the_shortest_window_when_none_fits() -> None:
-    # The fallback the reader itself cannot reach - _MIN_TRIGGER_SECS is 1s and a 16-bit cycle is
-    # 303ms, so some option always fits. The protocol layer takes no such bound, though, and the
-    # honest degradation if either ever moves is the SHORTEST rejection rather than a crash or a
-    # silent zero. Asserted here so a bound change surfaces as a decision, not as a surprise.
+    # The fallback the reader cannot reach - _MIN_TRIGGER_SECS is 1s against a 303ms cycle, so some
+    # option always fits. The protocol layer takes no such bound, and the honest degradation is the
+    # SHORTEST rejection. Asserted so a bound change surfaces as a decision, not a surprise.
     _i2c, isl = make_protocol()
     assert isl.persist_for_interval(0) == 1
     run(isl.configure(resolution=12))
@@ -1797,10 +1789,9 @@ def test_the_derivation_degrades_to_the_shortest_window_when_none_fits() -> None
 
 
 def test_a_rangeauto_push_landing_between_the_read_and_the_store_cannot_renormalise_the_sample() -> None:
-    # The same hazard one step further downstream. The RGB/HSB outputs are divided by the whole
-    # auto-range SPAN under RangeAuto and by the pinned range without it, and _store_isl() used to
-    # read that mode live - after its own await on cfgmgr. A RangeAuto PUT landing there normalises
-    # a sample taken over 10000 lx against 375, 26.67x too large and clamped flat at 1.0.
+    # The same hazard one step downstream: the normalised outputs divide by the whole span under
+    # RangeAuto and by the pinned range without it, and _store_isl() used to read that mode live,
+    # after its own await. A PUT landing there scales a 10000 lx sample by 375 - flat 1.0.
     i2c, reader = ready_reader("store_mode_push")
     seed_cycle(i2c, 20000, 20000, 20000)
     with _FastAsyncSleep():
@@ -1826,12 +1817,9 @@ def test_a_rangeauto_push_landing_between_the_read_and_the_store_cannot_renormal
 
 
 def test_a_config_push_landing_mid_read_scales_the_sample_by_the_gain_it_was_taken_on() -> None:
-    # One read cycle has several awaits, and asyncio can run a REST handler at any of them, so a
-    # PUT changing Resolution or Range can land between the status read and the data read. The data
-    # registers are double-buffered (p13), so what comes back is still the conversion the part made
-    # under the OLD config - the new one has only just restarted. Scaling it by the new config is
-    # therefore wrong by 16x for a resolution change, which also drags the reading past the 12-bit
-    # maximum and reports a saturation that never happened.
+    # asyncio can run a REST handler at any of a cycle's awaits, so a Resolution PUT can land
+    # between the status read and the data read. p13's double buffering means what comes back is
+    # still the OLD config's conversion - scaling it by the new one is 16x out and fakes saturation.
     i2c, reader = ready_reader("mid_read_push")
     seed_cycle(i2c, 20000, 20000, 20000)
     real_status = reader.isl.read_status
@@ -1851,9 +1839,8 @@ def test_a_config_push_landing_mid_read_scales_the_sample_by_the_gain_it_was_tak
 
 def test_a_failed_config_write_leaves_the_shadow_on_the_value_the_chip_still_holds() -> None:
     # The shadow is not bookkeeping - normalise() scales EVERY reading by it. A resolution the chip
-    # never took would make twelve_bit true against 16-bit data, shifting every later sample up by
-    # 16x and reporting saturation above 4095, which pins auto-range on the high range. Nothing in
-    # the read path would notice: the reads themselves keep succeeding.
+    # never took shifts every later sample 16x and reports saturation above 4095, pinning auto-range
+    # high. Nothing in the read path notices: the reads themselves keep succeeding.
     i2c, isl = ready_protocol()
     run(isl.setup())
     fake(i2c).inject_fault("writeto_mem", OSError(errno_mod.EIO, "no ACK"), times=1)
@@ -1893,10 +1880,9 @@ def test_a_reconciling_re_read_that_itself_fails_is_retried_on_the_following_cyc
 
 
 def test_a_write_that_fails_during_the_reconciling_re_read_is_not_lost() -> None:
-    # Why the reader tracks a COUNT rather than clearing a flag. The re-read below takes one
-    # transaction, and a REST push landing on it can fail too - with a flag, the clear that follows
-    # would wipe the newer failure and the chip would stay torn until a config GET. The count the
-    # reader records is the one it saw BEFORE the re-read, so a later failure is still ahead.
+    # Why the reader tracks a COUNT, not a flag. The re-read takes one transaction, and a REST push
+    # landing on it can fail too - a flag's clear would wipe that newer failure. The count recorded
+    # is the one seen BEFORE the re-read, so a later failure is still ahead of it.
     i2c, reader = ready_reader("reconcile_race")
     chip = fake(i2c)
     reader.isl._write_failures = 1  # one failure already outstanding
@@ -1916,12 +1902,9 @@ def test_a_write_that_fails_during_the_reconciling_re_read_is_not_lost() -> None
 
 
 def test_a_config_burst_that_lands_only_partly_is_reconciled_by_the_next_read_cycle() -> None:
-    # The rollback above covers the usual failure - a NAK on the address phase, nothing written.
-    # A NAK partway through the three-byte burst is different: CONFIG1 landed, CONFIG2/3 did not,
-    # and rolling the shadow back to all-old leaves the chip a mixture of the two. normalise()
-    # then scales by the old resolution while the part runs the new one, 16x out, with the reads
-    # themselves still succeeding. Before this, only a REST config GET ran the divergence check,
-    # so a headless device stayed wrong until somebody happened to look.
+    # The rollback covers the usual failure - a NAK on the address phase, nothing written. A NAK
+    # partway through the burst leaves the chip a mixture, so normalise() scales by the old
+    # resolution while the part runs the new one. Only a config GET used to notice.
     i2c, reader = ready_reader("torn_burst")
     chip = fake(i2c)
     real_write = chip.writeto_mem
@@ -2019,10 +2002,9 @@ def test_pushing_the_software_knobs_changes_only_driver_state() -> None:
 
 
 def test_pushing_the_sample_interval_re_derives_the_transient_rejection() -> None:
-    # A consequence of deriving PRST rather than storing it: SampleInterv stopped being a
-    # software-only knob. At 16 bit a 1s interval affords 2 cycles and a 7s one affords 8, so this
-    # push has to reach the chip - a driver that only updated the timer would silently leave the
-    # part rejecting less transient noise than the new interval allows.
+    # A consequence of deriving PRST: SampleInterv stopped being a software-only knob. At 16 bit a
+    # 1s interval affords 2 cycles and a 7s one 8, so this push must reach the chip - updating only
+    # the timer would leave the part rejecting less transient noise than the interval allows.
     i2c, reader = ready_reader("push_interval")
     assert reader.isl._persist == 2  # derived at init from the 1s default
     with _FastAsyncSleep():
@@ -2091,10 +2073,9 @@ def test_turning_autorange_off_logs_errno_38_when_that_write_fails() -> None:
 
 
 def test_a_failed_autorange_mode_write_leaves_the_live_flag_where_the_config_still_says() -> None:
-    # The one setter that caches a config value in RAM *and* writes to the chip. The base class
-    # rolls the persisted value back when a push reports False (_recover_failed_push), so caching
-    # the new flag regardless would leave the reader auto-ranging against a config that says it is
-    # not - invisible until the next restart re-reads the file.
+    # The one setter that caches a config value in RAM *and* writes to the chip. _recover_failed_push
+    # rolls the persisted value back when a push reports False, so caching regardless would leave the
+    # reader auto-ranging against a config that says it is not - invisible until the next restart.
     i2c, reader = ready_reader("auto_off_flag")
 
     async def scenario() -> None:
@@ -2294,11 +2275,9 @@ def test_base_trigger_produces_one_read_event_per_sample_interval() -> None:
 
 
 async def _cancel_and_join(task: "asyncio.Task[Any]") -> None:
-    # Cancelling alone is not enough for a task parked on ThreadSafeFlag.wait(): the await is
-    # what lets the cancellation unwind through wait() and UNREGISTER its poll object. Leaking
-    # those registrations grows asyncio's shared pollfds array, which is the confirmed Unix-port
-    # bug digital_twin/unix_port_poll_prewarm.py documents - and it segfaults the process, one
-    # test file at a time, with no failing assertion anywhere to point at it.
+    # Cancelling alone is not enough for a task parked on ThreadSafeFlag.wait(): the await is what
+    # unwinds the cancellation through wait() and UNREGISTERS its poll object. Leaked registrations
+    # grow asyncio's pollfds array and segfault the process (unix_port_poll_prewarm.py).
     task.cancel()
     try:
         await task
@@ -2307,11 +2286,9 @@ async def _cancel_and_join(task: "asyncio.Task[Any]") -> None:
 
 
 def _drain_flag(flag: "asyncio.ThreadSafeFlag") -> bool:
-    # Reads ThreadSafeFlag's own `state` and clears it, rather than probing with a bounded
-    # wait_for_ms(): each such probe registers and abandons a poll object, which segfaults this
-    # Unix port (the same confirmed extmod/modselect.c dangling-pointer bug
-    # digital_twin/unix_port_poll_prewarm.py exists for). A direct state read is also what the
-    # question actually is - "was it set?" - with no scheduling involved at all.
+    # Reads ThreadSafeFlag's own `state` and clears it rather than probing with wait_for_ms(): each
+    # probe registers and abandons a poll object, segfaulting this Unix port (see
+    # unix_port_poll_prewarm.py). A direct read is also the actual question - "was it set?".
     was_set = bool(flag.state)
     flag.clear()
     return was_set
@@ -2560,13 +2537,9 @@ def test_the_read_loop_gives_up_immediately_when_the_chip_is_not_there_at_all() 
 
 
 def test_every_protocol_read_raises_when_layer_one_answers_none_instead_of_raising() -> None:
-    # The other half of layer 1's mixed contract, and the dangerous half: a malformed request
-    # returns None with no exception at all. The sibling test above injects a real OSError, which
-    # propagates on its own and never reaches these normalising raises - so a driver that simply
-    # returned the None onward would pass it and fail much later, somewhere unrelated.
-    # reset() is in the list because its post-reset verify read goes through the same call, and
-    # that read IS the settle the datasheet does not specify - a None there must not read as
-    # "all three registers cleared".
+    # The dangerous half of layer 1's mixed contract: a malformed request returns None with no
+    # exception, so a driver that passed it onward would fail much later, somewhere unrelated.
+    # reset() is listed because its verify read IS the settle - a None must not read as "cleared".
     for call in ("get_device_id", "read_status", "get_config_snapshot", "read_counts", "reset"):
         _i2c, isl = ready_protocol()
 
@@ -2846,10 +2819,9 @@ def test_a_malformed_schema_record_is_refused_rather_than_returned_as_a_setting(
 
 
 def test_encode_shadow_falls_back_to_the_shortest_persistence_for_an_impossible_shadow() -> None:
-    # encode_shadow() masks rather than validates by design, so it needs an answer for a PRST that
-    # is not one of the four the register can express. configure() now refuses to create one, so
-    # this is defence in depth (SPECIFICATION.md Part E.4) - reached only by writing the shadow
-    # directly. One cycle is the safe fallback: it re-arms soonest, never latest.
+    # encode_shadow() masks rather than validates, so it needs an answer for a PRST the register
+    # cannot express. configure() refuses to create one, so this is defence in depth (Part E.4),
+    # reached only by writing the shadow directly. One cycle re-arms soonest, never latest.
     _i2c, isl = ready_protocol()
     run(isl.setup())
     isl._persist = 3  # not in (1, 2, 4, 8)
@@ -2870,8 +2842,7 @@ def test_the_colour_temperature_chain_gives_up_instead_of_dividing_by_a_collapse
 
 
 # ---------------------------------------------------------------------------
-# Manual gain-ratio calibration. The applied factor is an ordinary config value a user PUTs; a run
-# only ever MEASURES and publishes a candidate as a measurement, so nothing here writes the flash.
+# Manual gain-ratio calibration: a run only MEASURES and publishes a candidate, never writes.
 # ---------------------------------------------------------------------------
 
 
@@ -3085,12 +3056,9 @@ def test_a_failed_partner_read_logs_errno_11_and_puts_the_range_back() -> None:
 
 
 def test_a_partner_reading_of_zero_is_not_turned_into_a_ratio() -> None:
-    # A division guard, not a plausibility one: a zero on the high range would raise rather than
-    # produce a number the band gate could reject. Starting on the LOW range deliberately - that
-    # is the only arrangement in which the PARTNER leg is the divisor. Passing a green_counts of 0
-    # instead (which is what this test did until 2026-09-14) never reaches the guard at all: 0 is
-    # below the overlap band, so the run returns at the band gate and the assertion below passes
-    # without anything having been measured. The range assertion is the floor for that ceiling.
+    # A division guard, not a plausibility one. Starting on the LOW range deliberately: that is the
+    # only arrangement where the PARTNER leg is the divisor. Passing green_counts=0 instead returns
+    # at the band gate, so the assertion passes with nothing measured - the range check is the floor.
     _i2c, reader = calibrating_reader("cal_zero")
     reader._active_range = _RANGE_LOW_LUX
     queue_legs(reader, (0, 0, 0), (2000, 2000, 2000))
@@ -3101,16 +3069,9 @@ def test_a_partner_reading_of_zero_is_not_turned_into_a_ratio() -> None:
 
 
 def test_a_leg_whose_range_switch_fails_abandons_the_sandwich_without_a_candidate() -> None:
-    # The other way a leg can fail, distinct from the read failing: the switch that ARMS the leg
-    # never lands, so the reading that follows would be taken on the range the run is trying to
-    # measure AGAINST - the same gain as this leg, giving a ratio of 1 - unless the guard stops it.
-    #
-    # The legs are chosen so that swallowing the failure produces a PLAUSIBLE, publishable answer
-    # rather than an obviously wrong one: 53340/2000 is 26.67, dead on nominal and comfortably
-    # inside the [20, 34] band. A run that reads the partner leg off the unswitched chip therefore
-    # gets a candidate through every downstream gate, and only this guard refuses it. Picking a
-    # scene that the plausibility check would have caught anyway makes the assertion below pass
-    # against a driver with no guard at all - verified by mutation, not assumed.
+    # The other way a leg can fail: the switch that ARMS it never lands, so the reading comes off
+    # the range the run measures against. The legs give 53340/2000 = 26.67 deliberately - a swallowed
+    # failure then produces a PUBLISHABLE answer, so only this guard can refuse it, not the band.
     i2c, reader = calibrating_reader("cal_switch_fail")
     queue_legs(reader, (53340, 53340, 53340), (2000, 2000, 2000))
     with _FastAsyncSleep():

@@ -16,11 +16,8 @@ import { collectPutFieldCases } from "./_put_field_cases.js";
 /** @typedef {import("./_put_field_cases.js").PutFieldCase & {data: MockDeviceData}} PutFieldCase */
 
 // Shared driver/module field sets - identical between devices, so only wozi's copy is exercised.
-// ISL29125 is the sensor this mechanism was kept for (project-owner direction, 2026-09-08): dev
-// now really does carry a driver wozi does not, so every one of its writable fields generates a
-// real case here from html/definitions/dev.json + mockdata/dev.json together. SHTC3 and MPRLS stay
-// listed as the placeholders they always were - the two devices' other difference is I2C bus
-// pairing, which the JSON definitions do not encode.
+// ISL29125 is the sensor this mechanism was kept for: dev really does carry a driver wozi does
+// not, so each of its writable fields generates a real case. SHTC3/MPRLS stay as placeholders.
 const DEV_UNIQUE_GROUPS = new Set(["SHTC3", "MPRLS", "ISL29125"]);
 
 // GET never reflects what this generic matrix's "resubmit -> Unchanged"/"valid value -> reflected

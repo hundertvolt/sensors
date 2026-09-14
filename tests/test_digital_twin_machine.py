@@ -177,9 +177,8 @@ def test_dev_wiring_puts_the_isl29125_on_i2c1_beside_scd30_and_sgp40() -> None:
 
 def test_dev_wiring_hands_the_isl29125_the_same_pin_object_the_driver_constructs() -> None:
     # machine.py's Pin is a per-id registry singleton, and that identity is what lets the chip
-    # fake's simulate_edge() reach a handler the driver registered on its own Pin(6). Load-bearing,
-    # not incidental - a later "fix" making Pin() return fresh objects would silently break the
-    # whole interrupt path with no test failing anywhere else.
+    # fake's simulate_edge() reach a handler the driver registered on its own Pin(6). A later "fix"
+    # returning fresh objects would break the whole interrupt path with nothing else failing.
     machine.configure_i2c_wiring("dev")
     try:
         Pin.reset_registry()

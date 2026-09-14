@@ -67,11 +67,9 @@ def make_dev_reader(name: str, *, resolution: int = 16, dwell_s: float = 0.0) ->
     i2c = asy_i2c_driver.I2C(1, 15, 14, frequency=50000)
     assert i2c._i2c is not None
     chip = i2c._i2c.devices[0x44]
-    # The fake keeps CONVERTING on its own timer - that is load-bearing here, not incidental: a
-    # CONFIG1 write restarts the conversion and leaves the previous cycle's values readable
-    # (exactly as real double-buffered hardware does), so only a real conversion during the
-    # settle window produces a sample on the new gain. What is switched off instead is the
-    # random WALK: with lux_step = 0 the illumination moves only when a test says so.
+    # The fake keeps CONVERTING on its own timer, and that is load-bearing: a CONFIG1 write restarts
+    # the conversion and leaves the previous values readable, so only a real conversion during the
+    # settle produces a sample on the new gain. lux_step = 0 switches off the random WALK instead.
     chip._lux_step = 0.0
     reader = ISL29125_Reader(i2c, 6, cfg_path=_tmp_cfg_path(name))
     # AutoRangeDwell defaults to 10 s, which is right on a real bench and would make every test
@@ -129,10 +127,9 @@ def test_reported_lux_is_continuous_and_monotonic_through_a_range_sweep() -> Non
     # Both ranges really were used - otherwise this proves nothing about the transition.
     assert {entry[2] for entry in seen} == {_RANGE_LOW_LUX, _RANGE_HIGH_LUX}
     for true_lux, reported, _range_act in seen:
-        # 4% covers the whole uncalibrated error budget: the nominal 26.67 range ratio against
-        # this unit's real 25.9 is a 2.96% high-range overstatement, and that residual IS what
-        # the gain-ratio calibration below removes. Without the span normalisation and the
-        # per-sample range in the results tuple, the step here would be ~2567%.
+        # 4% covers the whole uncalibrated error budget: the nominal 26.67 against this unit's real
+        # 25.9 is a 2.96% high-range overstatement, and that residual is what the calibration below
+        # removes. Without the span normalisation and the per-sample range, the step would be ~2567%.
         assert abs(reported - true_lux) / true_lux < 0.04, (true_lux, reported)
 
 
@@ -260,11 +257,9 @@ def test_a_real_threshold_crossing_drives_the_interrupt_line_into_the_read_event
     assert reader._active_range == _RANGE_HIGH_LUX  # so the armed threshold is the DOWN crossing
 
     async def scenario() -> "tuple[bool, int]":
-        # Two conversions with no driver read in between: the derived PRST is 2 here, so the
-        # chip deliberately holds the interrupt off until a light change has persisted that long.
-        # That hardware transient rejection is the point of the field - and two cycles (606ms at
-        # 16 bit) is what keeps the window inside the 1s default SampleInterv, so the interrupt
-        # can actually lead the periodic re-check (SPECIFICATION.md Part C.11.1.3).
+        # Two conversions with no driver read between: the derived PRST is 2, so the chip holds the
+        # interrupt off until a change has persisted that long. Two cycles (606ms at 16 bit) keeps
+        # the window inside the 1s SampleInterv, so the interrupt can lead the re-check (C.11.1.3).
         for index in range(2):
             chip.set_illumination(5.0)  # far below the down threshold: the window is crossed
             if index < 1:

@@ -20,12 +20,9 @@ ROOM_LIGHT_MIN_LUX = 5.0  # with the board lighting ITSELF (below), anything thi
 
 async def _main() -> None:
     wdt = machine.WDT(timeout=8000)  # matches src/system_service.py's own production value
-    # The board lights its OWN scene rather than trusting the bench. Depending on ambient made this
-    # test's result depend on what the previous test happened to leave the WS2812 at: it passed
-    # with the pixel latched white by the interrupted WiFi signalling, then failed once a preceding
-    # test parked the pixel dark (measured 2026-09-13, Lux=1.07 against a 5.0 floor, with the
-    # sensor covered). A known self-provided level makes the reading deterministic, and keeps the
-    # floor check meaningful: lit and still dark now means a real fault.
+    # The board lights its OWN scene rather than trusting the bench: depending on ambient made this
+    # result depend on test ORDER - it passed with the pixel latched white, then failed once a
+    # preceding test parked it dark. Lit and still dark now means a real fault.
     np = NeoPixel(Pin(18, Pin.OUT), 1)
     np[0] = (_SELF_LIGHT_LEVEL, _SELF_LIGHT_LEVEL, _SELF_LIGHT_LEVEL)
     np.write()

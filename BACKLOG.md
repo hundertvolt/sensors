@@ -747,6 +747,18 @@ constraints.
     **Independent session - out of the ISL29125 branch's scope and not blocked on it** (owner,
     2026-09-14). Nothing here needs the colour sensor, the bench rig or PR #75 to land first.
 
+31. **The 3-line inline-comment cap is applied only to what the ISL29125 branch owns.** The cap
+    was tightened from "no hard numeric cap" to 3 lines per block on 2026-09-14 (owner; CLAUDE.md
+    records it), and every file that branch created, plus every block it added to a file it
+    modified, now complies - 95 blocks in created files and 34 in modified ones, plus six
+    over-length docstrings.
+    **What is left is pre-existing**: blocks written before that branch, in files it merely touched.
+    Measured the same day: `tests/test_asy_webserver_service.py` 48 over-length blocks (longest 22),
+    `tests/test_setter_microdot_integration.py` 23, `tests_js/render.test.js` 19, `js/mock-server.js`
+    18, and a long tail across ~30 more files - about 200 in total, none of them this branch's.
+    Deliberately not swept here: rewriting another promotion's comments inside a colour-sensor PR is
+    exactly the drive-by editing CLAUDE.md warns against, and the diff would bury the review.
+
 ## Deferred / explicitly out-of-scope work
 - **Two device scripts still hand-list their `cfgmgr._cache` keys, and will break as a "dead
   sensor" the day their driver gains a config key.** `bmp3xx_plausibility_read.py` (8 keys) and

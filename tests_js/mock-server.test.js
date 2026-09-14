@@ -401,12 +401,9 @@ describe("installMockFetch", () => {
     });
 
     it("jitters a nested measurement sub-object's leaves too, not just the top level", async () => {
-        // The ISL29125's body is the first with a third level ({"RGB": {"R": ...}}). Without the
-        // recursion those leaves sit perfectly static forever, which reads as a broken renderer.
-        // Math.random is pinned to its maximum so the expected values are exact rather than a
-        // band. Below 1 the spread is 5% of the value and the rounding keeps four decimals, so a
-        // normalised channel moves by a normalised amount and stays legible at the `decimals: 4`
-        // its definitions declare.
+        // The ISL29125's body is the first with a third level; without the recursion those leaves
+        // sit static forever, which reads as a broken renderer. Math.random is pinned to its maximum
+        // so the expectations are exact: below 1 the spread is 5% and the rounding keeps 4 decimals.
         const random = vi.spyOn(Math, "random").mockReturnValue(1);
         uninstall = installMockFetch(DEFS, DATA);
         const body = await (await fetch("/measurements")).json();
@@ -423,10 +420,9 @@ describe("installMockFetch", () => {
     });
 
     it("never jitters a non-negative measurement leaf into a negative one", async () => {
-        // A property of every leaf, not a check on one guard: a brightness of -0.01 is not a
-        // plausible reading and the real site renders it verbatim. Asserted over the whole body
-        // with Math.random pinned to 0, the most negative jitter there is, so a future change to
-        // the spread rule fails here rather than shipping negatives again.
+        // A property of every leaf, not a check on one guard: a brightness of -0.01 is not plausible
+        // and the real site renders it verbatim. Asserted over the whole body with Math.random at 0,
+        // the most negative jitter there is, so a change to the spread rule fails here.
         const random = vi.spyOn(Math, "random").mockReturnValue(0);
         try {
             uninstall = installMockFetch(DEFS, DATA);

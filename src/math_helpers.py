@@ -138,12 +138,9 @@ def rel_humidity(temperature: float | None, abs_hum: float | None) -> float | No
 
 
 def rgb_to_hsb(red: float | None, green: float | None, blue: float | None) -> "tuple[float, float, float] | None":
-    # Standard HSV/HSB hexcone conversion over a normalised 0-1 sensor-RGB triple: hue in
-    # [0, 360), saturation and brightness in [0, 1]. Returns a tuple, unlike every other function
-    # in this file, because H/S/B all derive from the same max/min of the same triple and three
-    # separate entry points could return a mutually inconsistent triple. The range gate below also
-    # catches NaN, which compares false against everything and would otherwise silently pick the
-    # wrong max branch.
+    # Standard HSV/HSB hexcone over a normalised 0-1 triple: hue in [0, 360), S and B in [0, 1].
+    # Returns a tuple, unlike the rest of this file, because all three derive from one max/min and
+    # separate entry points could disagree. The range gate also catches NaN, which compares false.
     if red is None or green is None or blue is None:
         return None
     if not (_COLOUR_IN_MIN <= red <= _COLOUR_IN_MAX and _COLOUR_IN_MIN <= green <= _COLOUR_IN_MAX and _COLOUR_IN_MIN <= blue <= _COLOUR_IN_MAX):
@@ -163,14 +160,9 @@ def rgb_to_hsb(red: float | None, green: float | None, blue: float | None) -> "t
 
 
 def rgb_to_xyz(red: float | None, green: float | None, blue: float | None) -> "tuple[float, float, float] | None":
-    # sRGB/Rec.709 D65 primaries (IEC 61966-2-1), pinned as literals: a second published rounding
-    # of this same matrix differs in the 6th decimal, so these must not be "corrected" (see
-    # SPECIFICATION.md Part C.11.2). Deliberately NO gamma decode - the sRGB transfer
-    # function exists to undo display encoding, while this sensor's output is linear in
-    # irradiance, so applying it would be a straight error.
-    # This matrix is a documented PLACEHOLDER for this device: FN8424 p13 Eq. 1 states its own
-    # coefficients "will be changed respectively depending on the system setup", so the result is
-    # a relative, uncalibrated colour, and a per-unit matrix is the calibration hook.
+    # sRGB/Rec.709 D65 primaries, pinned as literals: a second published rounding differs in the
+    # 6th decimal, so these must not be "corrected" (Part C.11.2). No gamma decode - this sensor is
+    # linear in irradiance. A documented PLACEHOLDER: p13 Eq. 1 says the coefficients are per-setup.
     if red is None or green is None or blue is None:
         return None
     if not (_COLOUR_IN_MIN <= red <= _COLOUR_IN_MAX and _COLOUR_IN_MIN <= green <= _COLOUR_IN_MAX and _COLOUR_IN_MIN <= blue <= _COLOUR_IN_MAX):
@@ -182,11 +174,9 @@ def rgb_to_xyz(red: float | None, green: float | None, blue: float | None) -> "t
 
 
 def chromaticity_xy(x_val: float | None, y_val: float | None, z_val: float | None) -> "tuple[float, float] | None":
-    # CIE 1931 chromaticity: x = X/(X+Y+Z), y = Y/(X+Y+Z). This is the step that makes CCT range-
-    # and resolution-invariant, since any common scale factor cancels. The single windowed sum
-    # test below rejects total darkness, a negative sum, +-inf and NaN in one comparison.
-    # The low-light POLICY floor is not here - it is a device fact and lives in the driver, in
-    # counts; this function only refuses the arithmetic that cannot be done at all.
+    # CIE 1931 chromaticity, the step that makes CCT range- and resolution-invariant: any common
+    # scale factor cancels. The single windowed sum test rejects darkness, a negative sum, +-inf and
+    # NaN at once. The low-light POLICY floor is a device fact and lives in the driver, in counts.
     if x_val is None or y_val is None or z_val is None:
         return None
     total = x_val + y_val + z_val
@@ -196,11 +186,9 @@ def chromaticity_xy(x_val: float | None, y_val: float | None, z_val: float | Non
 
 
 def cct_mccamy(chroma_x: float | None, chroma_y: float | None) -> float | None:
-    # McCamy (1992) cubic approximation of correlated colour temperature from CIE 1931
-    # chromaticity. The widely circulated sign-flipped form - n = (x - 0.3320)/(y - 0.1858) with
-    # -449/+3525/-6823.3 - is algebraically the same function, not a correction of this one.
-    # Out-of-span results are REJECTED, not clamped: a clamped 12500 would be indistinguishable
-    # from a real 12500.
+    # McCamy (1992) cubic CCT from CIE 1931 chromaticity. The circulated sign-flipped form -
+    # n = (x - 0.3320)/(y - 0.1858) with -449/+3525/-6823.3 - is algebraically the same function.
+    # Out-of-span results are REJECTED, not clamped: a clamped 12500 would look like a real one.
     if chroma_x is None or chroma_y is None:
         return None
     if not (_COLOUR_IN_MIN <= chroma_x <= _COLOUR_IN_MAX and _COLOUR_IN_MIN <= chroma_y <= _COLOUR_IN_MAX):
@@ -216,13 +204,9 @@ def cct_mccamy(chroma_x: float | None, chroma_y: float | None) -> float | None:
 
 
 def ema_step(previous: float | None, sample: float | None, coefficient: float | None) -> float | None:
-    # The project's single first-order exponential moving average (SPECIFICATION.md Part G.2),
-    # promoted from the inline copies in the legacy SHTC3/MPRLS readers. A coefficient outside
-    # (0, 1] means "filter off" and returns the sample unchanged - the legacy convention
-    # FiltCoeff = -1.0 relies on, kept so it keeps meaning what it means today.
-    # isfinite(), not a range gate like the rest of this file: an EMA has no natural domain, and
-    # a NaN/inf has to be caught before it enters the caller's stored state, where one sample
-    # would otherwise poison every later output for the task's lifetime.
+    # The project's single first-order EMA (Part G.2), promoted from the legacy SHTC3/MPRLS
+    # readers. A coefficient outside (0, 1] means "filter off", the convention FiltCoeff = -1.0
+    # relies on. isfinite(), not a range gate: one NaN would poison the caller's state for good.
     if sample is None or not math.isfinite(sample):
         return None
     if coefficient is None or not (0.0 < coefficient <= 1.0):  # a NaN coefficient lands here too

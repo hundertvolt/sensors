@@ -1,7 +1,6 @@
-"""Isolated-driver device script: confirms a genuine FALLING edge on the ISL29125's INT pin (GP6,
-open-drain, externally pulled up) drives a read faster than the periodic fallback would.
-Also measures the two datasheet questions no document answers: whether a CONFIG1 write really
-restarts the conversion, and whether PRST counts RGB cycles or channel integrations."""
+"""Isolated-driver device script: confirms a genuine FALLING edge on the ISL29125's INT pin drives
+a read faster than the periodic fallback. Also measures the two questions no document answers -
+whether a CONFIG1 write restarts the conversion, and whether PRST counts cycles or integrations."""
 
 import asyncio
 import time
@@ -13,12 +12,9 @@ from neopixel import NeoPixel
 import asy_i2c_driver
 from asy_isl29125_driver import ISL29125_I2C, ISL29125_Reader
 
-# PRST is derived from SampleInterv now, and TRIGGER_SEC=30 is long enough to afford the largest
-# setting the part offers: 8 whole RGB cycles, ~2424ms at 16 bit, before the chip may raise RGBTHF
-# at all. The deadline has to clear that window plus the fixed 2-cycle settle (606ms at 16 bit),
-# so ~3030ms worst case; 3.0s (which predated the derivation) no longer does. 6.0s is still 5x
-# under the periodic fallback, so a pass continues to mean the INT line carried the decision
-# rather than the timer.
+# TRIGGER_SEC=30 affords the largest PRST the part offers - 8 RGB cycles, ~2424ms at 16 bit -
+# before RGBTHF may rise at all, plus the fixed 2-cycle settle: ~3030ms worst case, so the old 3.0s
+# no longer clears it. 6.0s is still 5x under the periodic fallback, so a pass means the INT line.
 FAST_PATH_DEADLINE_S = 6.0
 TRIGGER_SEC = 30  # deliberately long: only a real interrupt can beat it
 _CYCLE_MS_16BIT = 303  # 3 x tINT, tINT = 101ms typ (p3)
@@ -26,10 +22,9 @@ _MODE_RGB = 0x05
 
 
 async def _measure_config1_restart(isl: ISL29125_I2C, wdt: machine.WDT) -> str:
-    # Question 1: Table 7 (p10) says the ADC starts on an I2C write to 0x01 with SYNC = 0, and
-    # the mainline Linux IIO driver msleep(101)s after exactly that write. If the restart is
-    # real, the data registers still hold the PREVIOUS cycle's values immediately afterwards and
-    # only change once a full cycle has elapsed.
+    # Question 1: Table 7 (p10) says the ADC starts on an I2C write to 0x01 with SYNC = 0, and the
+    # mainline Linux IIO driver msleep(101)s after exactly that write. If the restart is real, the
+    # data registers hold the PREVIOUS cycle's values until a full cycle has elapsed.
     await isl.configure(mode=_MODE_RGB, range_fs=10000, resolution=16, threshold_interrupt=False)
     await asyncio.sleep_ms(2 * _CYCLE_MS_16BIT)
     wdt.feed()
@@ -48,9 +43,8 @@ async def _measure_config1_restart(isl: ISL29125_I2C, wdt: machine.WDT) -> str:
 
 async def _measure_persist_unit(isl: ISL29125_I2C, pin: machine.Pin, wdt: machine.WDT) -> str:
     # Question 2: Table 12 (p11) calls PRST's unit an "integration cycle" without saying whether
-    # that is one channel's integration (~101 ms) or one whole R-G-B cycle (~303 ms). INTSEL
-    # selects ONE channel, which converts once per RGB cycle, so the reading should be cycles -
-    # this times it rather than arguing about it.
+    # that is one channel (~101 ms) or one whole R-G-B cycle (~303 ms). INTSEL selects ONE channel,
+    # which converts once per RGB cycle, so it should be cycles - this times it rather than argues.
     await isl.configure(mode=_MODE_RGB, range_fs=375, resolution=16, threshold_interrupt=True, persist=4)
     await isl.set_thresholds(0, 1)  # essentially any light at all is "above the window"
     await isl.read_status()  # destructive: clears any flag already standing
@@ -73,14 +67,9 @@ async def _measure_persist_unit(isl: ISL29125_I2C, pin: machine.Pin, wdt: machin
 
 async def _main() -> None:
     wdt = machine.WDT(timeout=8000)
-    # Park the pixel dark FIRST. A WS2812 latches its last value, and interrupting the production
-    # system into raw REPL (which every `mpremote run` does) leaves it wherever the WiFi signalling
-    # service last wrote it - frequently full white, which is ~2000 lx at this geometry. Part B
-    # below then measures a STATIC scene sitting comfortably inside the auto-range band, which
-    # crosses no threshold, so no threshold interrupt ever fires and the first reading waits for
-    # the 30s periodic tick instead. That is the driver behaving correctly, and it made this test
-    # fail for a reason that has nothing to do with the INT line (measured 2026-09-13: latched
-    # white FAILs, parked dark PASSes in 0.60s).
+    # Park the pixel dark FIRST. A WS2812 latches its last value, and `mpremote run` leaves it
+    # wherever the WiFi signalling service last wrote it - often full white, ~2000 lx here. A static
+    # mid-band scene crosses no threshold, so the test would wait for the periodic tick and fail.
     np = NeoPixel(Pin(18, Pin.OUT), 1)
     np[0] = (0, 0, 0)
     np.write()
@@ -126,9 +115,8 @@ async def _main() -> None:
             pass
 
     # Asserted, not merely reported: persist_for_interval() compares PRST x a whole RGB CYCLE
-    # against the sample interval. If this part ever answered "channel integrations" the real
-    # window would be 3x shorter than the derivation assumes, so it would pick a setting that
-    # rejects less transient noise than it could - and nothing else would notice.
+    # against the sample interval. If the part answered "channel integrations" the real window
+    # would be 3x shorter, so the derivation would under-reject - and nothing else would notice.
     if "persist_unit=rgb_cycles" not in persist_note:
         print(f"RESULT: FAIL {persist_note} - persist_for_interval() assumes whole RGB cycles | {restart_note}")
     elif data is not None and data.Lux is not None:

@@ -69,10 +69,9 @@ def test_sgp40_reset_voc_command_push_over_real_rest(board: Board, dut_ip: str) 
     assert_module_error_log_empty(dut_ip, "SGP40")
 
 
-# All three are live-push fields on the ISL29125 (a real I2C write, not just a stored value), and
-# all three are deliberately different from the driver's own schema defaults (Resolution=16,
-# IrCompOffset=0, IrCompAdjust=40): 12-bit resolution is a real CONFIG1 write that also restarts
-# the conversion, and the two IR-compensation fields are a CONFIG2 write that does not.
+# All three are live-push fields (a real I2C write, not just a stored value) and all three differ
+# from the schema defaults: 12-bit resolution is a CONFIG1 write that also restarts the conversion,
+# and the two IR-compensation fields are a CONFIG2 write that does not.
 _ISL29125_TEST_VALUES = {"Resolution": 12, "IrCompOffset": 1, "IrCompAdjust": 20}
 
 

@@ -54,10 +54,9 @@ def test_sgp40_real_voc_index_response_to_real_stimulus() -> None:
     confirm("Poll GET /measurements every ~10s for the next 2 minutes and press Enter once you've confirmed the rise-then-decay pattern")
 
 
-# ISL29125: datasheets/isl29125/FN8424.pdf gives no lux-accuracy figure at all - only full-scale
-# ranges (375/10000 lx), a dark-current DDark of typ. 1 / max 5 counts at range 0, and an IR
-# spectral response. So this records a documented setup and a repeatability figure against a
-# reference meter; it deliberately makes no absolute-accuracy claim, and none is checkable here.
+# ISL29125: the datasheet gives no lux-accuracy figure at all - only the two full-scale ranges, a
+# DDark of typ. 1 / max 5 counts at range 0, and an IR spectral response. So this records a setup
+# and a repeatability figure, and deliberately makes no absolute-accuracy claim.
 _ISL29125_REPEATABILITY_TOLERANCE_PCT = 10.0
 
 

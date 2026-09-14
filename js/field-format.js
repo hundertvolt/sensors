@@ -30,11 +30,9 @@ export function formatFieldValue(field, value) {
         const pad = (/** @type {number} */ n) => String(n).padStart(2, "0");
         return `${t.year}-${pad(t.month)}-${pad(t.mday)} ${pad(t.hour)}:${pad(t.minute)}:${pad(t.second)}`;
     }
-    // The `decimals` display hint - a sibling of `format` above, and the one place in the stack
-    // that rounds an emitted value. No driver in src/ rounds anything (a hue arrives here as
-    // 217.43859649122808), so without this a declared precision would be an aspiration rather
-    // than a property. Numbers only, and finite ones: a string, a struct, NaN or an Infinity is
-    // passed through untouched rather than being handed to toFixed().
+    // The `decimals` display hint, and the one place in the stack that rounds an emitted value: no
+    // driver in src/ rounds anything, so without this a declared precision is an aspiration.
+    // Finite numbers only - a string, struct, NaN or Infinity passes through untouched.
     if (typeof field.decimals === "number" && typeof value === "number" && Number.isFinite(value)) {
         return value.toFixed(field.decimals);
     }

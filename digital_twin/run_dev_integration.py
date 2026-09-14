@@ -297,10 +297,9 @@ async def main(config: RunConfig) -> "dict[str, Any]":
     patch_asy_udp_socket_for_unix_port()
     machine.configure_fram_state_path(config.fram_state_path)
     machine.configure_scd30_state_path(config.scd30_state_path)
-    # Selects the dev-bench bus wiring (i2c0=BMP3xx alone, i2c1=SCD30+SGP40+ISL29125, SCD30
-    # IRQ=GPIO11, ISL29125 INT=GPIO6) -
-    # machine.py's own _wire_i2c_devices() defaults to wozi's reversed layout otherwise. Must run
-    # before sensortask_dev.build_system() (below, inside main_task) ever constructs i2c0/i2c1.
+    # Selects the dev-bench bus wiring (i2c0=BMP3xx, i2c1=SCD30+SGP40+ISL29125, SCD30 IRQ=GPIO11,
+    # ISL INT=GPIO6); _wire_i2c_devices() defaults to wozi's reversed layout otherwise. Must run
+    # before build_system() ever constructs i2c0/i2c1.
     machine.configure_i2c_wiring("dev")
     if config.seed is not None:
         import random

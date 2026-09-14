@@ -19,11 +19,9 @@ if TYPE_CHECKING:
         def uniform(self, a: float, b: float) -> float: ...
 
     class _IntPin(Protocol):
-        # Structural stand-in for machine.py's Pin (and any test's own pin fake) - only the
-        # twin-only simulate_edge() is ever called here. machine.py's Pin is a per-id registry
-        # singleton, so the Pin(6) handed in here and the Pin(6) the driver constructs are the
-        # SAME object - that identity is what lets simulate_edge() reach the driver's own handler,
-        # and it is load-bearing, not incidental.
+        # Structural stand-in for machine.py's Pin; only the twin-only simulate_edge() is called.
+        # machine.py's Pin is a per-id registry singleton, so the Pin(6) here and the Pin(6) the
+        # driver constructs are the SAME object - that identity is what reaches its handler.
         def simulate_edge(self, new_value: int) -> None: ...
 
 _DEVICE_ID = 0x7D  # datasheet FN8424 Rev 3.00 p9, Table 2
@@ -85,10 +83,9 @@ class Isl29125Chip:
 
             random_source = _random_module
         self._random = random_source
-        # min/max are datasheet-derived (p1's feature list: range 0 reaches 375 lux, range 1
-        # reaches 10000) - lux_step is NOT: it is a physical-plausibility judgment call bounding
-        # how far one reading can move from the last, the same framing _scd30_chip.py's own
-        # *_step arguments carry.
+        # min/max are datasheet-derived (p1: range 0 reaches 375 lux, range 1 reaches 10000).
+        # lux_step is NOT - a physical-plausibility judgment bounding how far one reading can move
+        # from the last, the same framing _scd30_chip.py's own *_step arguments carry.
         self._min_lux, self._max_lux, self._lux_step = min_lux, max_lux, lux_step
         # Deliberately NOT the nominal 10000/375 = 26.67: the driver's gain-ratio self-calibration
         # only has something real to learn if this unit's own high-range full scale differs from
@@ -97,10 +94,9 @@ class Isl29125Chip:
         self._dark_counts = dark_counts  # DDark, p3: typ 1 / max 5 counts at range 0, 16 bits
         self._int_pin = int_pin
         if int_pin is not None:
-            # The line idles HIGH: it is open-drain pull-down with an external pull-up (p6), and
-            # machine.py's Pin comes up at 0. Without this the line starts electrically asserted,
-            # so the first real crossing produces no falling EDGE at all and the driver's handler
-            # never runs - a silent, whole-mechanism failure with nothing to point at.
+            # The line idles HIGH - open-drain pull-down with an external pull-up (p6) - while
+            # machine.py's Pin comes up at 0. Without this it starts electrically asserted, so the
+            # first real crossing produces no falling EDGE and the driver's handler never runs.
             int_pin.simulate_edge(1)
         self.fault = FaultInjector()
         self._config = bytearray(3)  # CONFIG1-3, all 0x00 at power-on (p9-p11, Tables 3/8/10)
@@ -143,9 +139,8 @@ class Isl29125Chip:
 
     def set_illumination(self, lux: float, *, tint: "tuple[float, float, float] | None" = None) -> None:
         # The test seam the twin-tier sweep drives. `tint` is a (red, green, blue) weight triple:
-        # without it a scalar-lux fake can only ever produce neutral scenes, so the one case the
-        # auto-range peak rule exists for - a single clipped channel with green mid-scale - would
-        # be unreachable at this tier.
+        # without it a scalar-lux fake produces only neutral scenes, leaving the one case the
+        # auto-range peak rule exists for - a clipped channel with green mid-scale - unreachable.
         self._lux = lux
         if tint is not None:
             self._tint = tint
@@ -159,9 +154,8 @@ class Isl29125Chip:
         maximum = (1 << bits) - 1
         full_scale = self.effective_full_scale()
         # Clipping is MODELLED, not clamped away: a channel past full scale reads exactly the
-        # resolution's own maximum (4095 at 12 bits, 65535 at 16), because the driver tests
-        # saturation against that raw maximum and a fake that always saturated at 65535 would
-        # make the 12-bit half of that test vacuous.
+        # resolution's own maximum (4095 at 12 bits, 65535 at 16), because a fake that always
+        # saturated at 65535 would make the 12-bit half of the driver's own test vacuous.
         dark = self._dark_counts * (maximum / _FULL_SCALE_COUNTS) if full_scale == _FS_LOW_LUX else 0.0
         out = []
         for weight in self._tint:
@@ -215,10 +209,9 @@ class Isl29125Chip:
         self._data = bytearray(6)
         self._prst_count = 0
         self._release_int()
-        # Measured on real silicon (2026-09-12): the status register reads 0x00 straight after the
-        # 0x46 reset command, with no intervening write - so the reset clears BOUTF too. Table 15's
-        # 0x04 is the POWER-ON default (p12 says "during the initial power-up"), which __init__
-        # still models; it is not a value the reset command restores.
+        # Measured on real silicon: 0x08 reads 0x00 straight after the 0x46 reset, with no
+        # intervening write, so the reset clears BOUTF too. Table 15's 0x04 is the POWER-ON default
+        # that __init__ still models, not a value the reset restores (Part C.11.1.1).
         self._status = 0x00
 
     def simulate_brownout(self) -> None:
@@ -234,11 +227,9 @@ class Isl29125Chip:
         self._int_asserted = False
 
     def configure_fault(self, op: str, *, active: bool = True) -> None:
-        # A persistent behavioural MODE, deliberately not a FaultInjector entry: that shared
-        # primitive queues exceptions and hangs, and this is neither - the bus keeps working and
-        # the conversions keep happening, only the INT line never moves. That silent failure is
-        # exactly the one requirement 17's periodic range evaluation exists to survive, and
-        # nothing else in this package can produce it.
+        # A persistent behavioural MODE, deliberately not a FaultInjector entry: that primitive
+        # queues exceptions and hangs, and this is neither - the bus works, conversions happen, only
+        # the INT line never moves. That silent failure is what the periodic path exists to survive.
         if op != _FAULT_INT_STUCK_HIGH:
             raise ValueError(f"unknown ISL29125 fault mode {op!r} - expected {_FAULT_INT_STUCK_HIGH!r}")
         self._int_stuck_high = active
@@ -272,9 +263,8 @@ class Isl29125Chip:
                     # so both conversion-progress fields go with it (BOUTF, if set, stays).
                     self._status &= ~(_STATUS_CONVENF | _STATUS_RGBCF_MASK)
                 # "ADC start at I2C write 0x01" with SYNC = 0 (p10, Table 7): the conversion
-                # restarts, so the data registers keep the PREVIOUS cycle's values - taken on the
-                # old gain - until a new cycle completes. That stale window is exactly what the
-                # driver's settle wait exists to discard, so it must be modelled, not smoothed away.
+                # restarts, so the data registers keep the PREVIOUS cycle's values until a new one
+                # completes. That stale window is what the settle wait discards - model it.
                 self._prst_count = 0
                 if self._timer is not None:
                     self._start_timer()  # re-arm at the (possibly new) resolution's cycle time
@@ -298,10 +288,9 @@ class Isl29125Chip:
         # any other register: real hardware silently accepts and ignores it too.
 
     def _register_image(self) -> bytes:
-        # The whole 0x00-0x0E map as one flat block. Reads are served out of this rather than
-        # per-register-block, because the address pointer really does walk straight across the
-        # block boundaries - measured on real silicon (2026-09-12): a 16-byte read from 0x00
-        # returns id, CONFIG1-3, both thresholds, status and all six data bytes in one go.
+        # The whole 0x00-0x0E map as one flat block, not per-register-block: the address pointer
+        # really does walk across the boundaries - measured on real silicon, a 16-byte read from
+        # 0x00 returns id, CONFIG1-3, both thresholds, status and all six data bytes.
         return (
             bytes((_DEVICE_ID, self._config[0], self._config[1], self._config[2]))
             + bytes((self._threshold_low & 0xFF, self._threshold_low >> 8, self._threshold_high & 0xFF, self._threshold_high >> 8))
@@ -319,22 +308,13 @@ class Isl29125Chip:
         # an 8-byte read from 0x0D gives the two data bytes then six zeros).
         reply = (reply + bytes(nbytes))[:nbytes]
         if reg_addr <= _REG_STATUS < reg_addr + nbytes and reg_addr <= _LAST_REGISTER:
-            # Destructive by design (p11/p12): transferring the status byte is what clears RGBTHF,
-            # CONVENF and BOUTF and releases the INT pin, so nothing else in the driver may read
-            # this register "just to check". BOUTF being read-to-clear CONTRADICTS p12, which says
-            # it "should be reset to LOW by an I2C write command" - measured 2026-09-13 on a
-            # genuinely just-powered board: 0x08 read 0x04, and a second read 0x00 with only that
-            # read in between. The RGBCF field is the one that survives a read. Whether a burst that merely SPANS 0x08
-            # also clears them could not be measured (the threshold re-armed faster than the probe
-            # could re-check) - clearing is the reading p12's "the 8-bit transfer" wording supports,
-            # and the driver only ever reads 0x08 on its own, so nothing depends on the choice.
+            # Destructive by design (p11/p12): the transfer clears RGBTHF, CONVENF and BOUTF and
+            # releases INT, so nothing may read 0x08 "just to check". BOUTF being read-to-clear
+            # contradicts p12 and is measured, not assumed - Part C.11.1.1 has the evidence.
             if self._status & _STATUS_RGBTHF:
-                # The persistence counter restarts when the flag is CLEARED, not on every status
-                # read - measured 2026-09-13 (SPECIFICATION.md Part C.11.1.2). Resetting it here
-                # unconditionally is what a read cadence FASTER than PRST x one cycle turns into a
-                # permanently dead interrupt: at the driver's own defaults (the derived PRST = 2,
-                # ~303ms per cycle, one status read per second) the count would be knocked back to
-                # 0 at every read and never reach 2, while real silicon asserts every other second.
+                # The counter restarts when the flag is CLEARED, not on every status read (measured;
+                # Part C.11.1.2). Resetting it unconditionally is what a read cadence faster than
+                # PRST x one cycle turns into a permanently dead interrupt.
                 self._prst_count = 0
             self._status &= ~(_STATUS_RGBTHF | _STATUS_CONVENF | _STATUS_BOUTF)
             self._release_int()

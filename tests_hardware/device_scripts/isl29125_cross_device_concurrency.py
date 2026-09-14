@@ -1,7 +1,6 @@
-"""Isolated-driver device script: proves the ISL29125 genuinely interleaves with the two devices it
-shares I2C1 with on the dev bench (SGP40's long initialize() window and SCD30's own reads) rather
-than serializing behind either - CLAUDE.md's standing cross-device requirement for a new bus device,
-real-hardware tier. Counts ISL reads completing strictly inside an SGP40 device-session window."""
+"""Isolated-driver device script: proves the ISL29125 interleaves with the two devices sharing I2C1
+rather than serialising behind either - the standing cross-device requirement, real-hardware tier.
+Counts ISL reads completing strictly inside an SGP40 device-session window."""
 
 import asyncio
 import time

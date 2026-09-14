@@ -294,8 +294,7 @@ def test_main_forwards_web_host_and_port_to_build_system() -> None:
 
 
 # ---------------------------------------------------------------------------
-# FRAM chunk order - eight chunks on dev, exact relative sequence: wozi's own seven in wozi's own
-# construction order, plus the ISL29125's error log appended at the end (Part A.7.1).
+# FRAM chunk order - wozi's seven in wozi's order, plus the ISL29125's log last (Part A.7.1).
 # ---------------------------------------------------------------------------
 
 
@@ -327,14 +326,9 @@ def test_fram_chunk_allocation_order_matches_the_documented_eight_chunk_sequence
         AsyFramManager.get_chunk = real_get_chunk  # type: ignore[method-assign]
         AsyFramManager.get_timestamped_chunk = real_get_timestamped_chunk  # type: ignore[method-assign]
 
-    # SystemService -> SGP40 log -> SGP40 VOC backup(timestamped) -> BMP3xx -> SCD30 -> Neopixel ->
-    # NotificationCoordinator -> ISL29125 log. The ISL's gain ratio was a ninth, timestamped chunk
-    # until it became a config value written only by a user PUT (SPECIFICATION.md Part C.11.3).
-    # Chunks 1-7 are byte-identical to sensortask_wozi.py's own order and MUST stay that way -
-    # AsyFramManager is a bump allocator, so inserting the ISL anywhere earlier would shift every
-    # later chunk's address and silently reinterpret a dev board's existing persisted error logs
-    # at the wrong offset. The one extra chunk at the end is this variant's only divergence
-    # (SPECIFICATION.md Part A.7.1).
+    # SystemService -> SGP40 log -> VOC backup(timestamped) -> BMP3xx -> SCD30 -> Neopixel -> Notify
+    # -> ISL log. Chunks 1-7 must stay byte-identical to wozi's order: the allocator is a bump
+    # pointer, so inserting the ISL earlier shifts every later address (Part A.7.1).
     assert calls == ["chunk", "chunk", "timestamped", "chunk", "chunk", "chunk", "chunk", "chunk"]
 
 
@@ -1008,10 +1002,9 @@ def test_webserver_status_get_reflects_the_real_object_graph() -> None:
     assert "SysUptime" in body["system"] and "LocalTime" in body["system"] and "UtcTime" in body["system"]
     assert "WifiUptime" in body["networking"] and "NtpSynced" in body["networking"]
     assert "Triggered" in body["notification"] and "PauseTime" in body["notification"]
-    # One entry per real module + per real ConfigManager + this service's own "WEBSERVER" entry -
-    # same 20-owner enumeration _collect_level_setters()/_collect_error_sources() both share, plus
-    # one. 20 rather than 16 since the dev-only ISL29125 reader brings its own ConfigManager, and
-    # the bench rig's two UART crossover ends each register their own.
+    # One entry per module + per ConfigManager + this service's own "WEBSERVER" - the same 20-owner
+    # enumeration _collect_level_setters()/_collect_error_sources() share. 20 rather than wozi's 16:
+    # the dev-only ISL brings its own ConfigManager, and the two UART crossover ends their own.
     assert len(body["errcount"]) == 21
     assert "UART_INIT" in body["errcount"]
     assert "UART_RESP" in body["errcount"]

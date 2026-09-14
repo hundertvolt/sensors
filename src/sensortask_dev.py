@@ -313,10 +313,9 @@ async def _notification_status() -> "dict[str, Any]":
 
 
 def _collect_error_sources() -> "list[Any]":
-    # Every module + every ConfigManager instance ("CFGMGR_<name>") - same 20-owner enumeration as
-    # _collect_level_setters() below (one entry per logger in the whole constructed object graph),
-    # just the owning objects themselves rather than their bound set_level() methods. Feeds
-    # WebserverService's error_sources= registration list (its /status "errcount" aggregation).
+    # Every module + every ConfigManager instance ("CFGMGR_<name>") - the same 20-owner enumeration
+    # _collect_level_setters() makes, as owning objects rather than bound set_level() methods.
+    # Feeds WebserverService's error_sources= list (its /status "errcount" aggregation).
     assert conn is not None and ntp is not None and fram is not None and sysfunct is not None
     assert sgp_reader is not None and bmp_reader is not None and scd_reader is not None
     assert pixel is not None and notify_service is not None and isl_reader is not None
@@ -466,19 +465,9 @@ async def build_system(
     notify_service.register(NotificationSignal("WarnVOC", voc_value_callback, _FIELD_WARN_VOC, (0, 1, 0)))
     notify_service.register(NotificationSignal("WarnHum", hum_value_callback, _FIELD_WARN_HUM, (0, 0, 1)))
     notify_service.finalize()
-    # FRAM chunk 8 (its own error log), allocated inside ISL29125_Reader.__init__. One chunk, not
-    # two: the gain ratio is an ordinary config value written only by a user PUT, so it needs no
-    # FRAM of its own (SPECIFICATION.md Part C.11.3).
-    #
-    # CONSTRUCTED HERE, OUT OF READING ORDER, DELIBERATELY. AsyFramManager is a bump allocator, so
-    # instantiation order IS on-chip layout: putting this beside the other sensors would shift
-    # chunks 5-7 and silently reinterpret every existing persisted error log and the VOC backup at
-    # the wrong offset on a dev board that has already run. It must stay after
-    # notify_service.finalize() (chunk 7) and before the WebserverService(...) call below, so dev
-    # and wozi keep an identical chunks 1-7. See SPECIFICATION.md Part A.7.1.
-    #
-    # ISL29125 sits on i2c1 (shared with SCD30 and SGP40); INT is GPIO6 on this bench unit, pulled
-    # up on the board and additionally by the driver's own internal pull-up.
+    # CONSTRUCTED OUT OF READING ORDER, DELIBERATELY: the allocator is a bump pointer, so
+    # instantiation order IS on-chip layout. Only here - after chunk 7, before the webserver - do
+    # dev and wozi keep identical chunks 1-7 (Part A.7.1). ISL on i2c1, INT on GPIO6.
     isl_reader = ISL29125_Reader(
         i2c1,
         6,

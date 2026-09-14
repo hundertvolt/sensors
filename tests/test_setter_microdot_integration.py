@@ -726,11 +726,7 @@ def test_real_microdot_sgp40_setter_end_to_end_write_fault_surfaces_as_failed_no
 
 
 # ---------------------------------------------------------------------------
-# Real Microdot end-to-end for the ISL29125's setter surface - the fourth _set_dict_cfg-backed
-# sensor route. Two things here have no equivalent above: a push that legitimately changes more
-# state than the field it names (AutoRangeThresh also moves the derived down point), and a
-# command-only trigger whose repeatability actually matters, since a recalibration that finds
-# nothing to discard has not failed and must not drag _recover_failed_push() in behind it.
+# Real Microdot for the ISL's setters: a push that moves more than it names, and a repeatable trigger.
 # ---------------------------------------------------------------------------
 
 
@@ -788,9 +784,8 @@ def test_real_microdot_isl29125_setter_end_to_end_moves_the_derived_down_point_t
 
 def test_real_microdot_isl29125_setter_end_to_end_rejects_an_out_of_band_threshold() -> None:
     # "Invalid", not "Failed", and that distinction is the point: with the cross-field rule gone,
-    # EVERY rejection on this field is a plain schema rejection, so an out-of-band value is turned
-    # away before it can reach the driver at all. A rejected value is still per-field detail here,
-    # never a 500.
+    # every rejection here is a plain schema rejection, so an out-of-band value never reaches the
+    # driver. Still per-field detail, never a 500.
     reader, _i2c = make_isl_reader()
     app = _isl_app(reader)
     req = _make_request(app, "PUT", "/sensors/cmd", {"cmd": "setISL", "AutoRangeThresh": 20.0})

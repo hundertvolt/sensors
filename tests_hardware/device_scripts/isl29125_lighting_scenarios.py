@@ -1,7 +1,6 @@
-"""Resilience proof: the ISL29125 module under realistic, recombined lighting - colours and
-mixtures, slopes from sunrise-slow to flash-instant, rising and falling, starting and ending at
-arbitrary levels, held mid-way, oscillating across the range-switch threshold, and a constant
-"ambient" channel under a moving one. Structural/relative assertions only, never absolute lux."""
+"""Resilience proof: the ISL29125 under recombined realistic lighting - colours and mixtures,
+sunrise-slow to flash-instant, arbitrary start and end levels, holds, threshold oscillation, and a
+constant ambient under a moving channel. Structural assertions only, never absolute lux."""
 
 import asyncio
 import time
@@ -21,15 +20,13 @@ except ImportError:  # typing has no runtime presence on MicroPython
 if TYPE_CHECKING:
     from print_log import ErrorLog
 
-# The NeoPixel is driven RAW here on purpose: NeopixelDriver's own API offers a steady white
-# (led_overl_bri + on()) and a 0->peak->0 triangle (request_signal), neither of which can express
-# an arbitrary start level, end level, pause, step or per-channel waveform. Nothing else contends
-# for the pixel in an isolated run, so no arbitration is being bypassed in practice.
+# The NeoPixel is driven RAW on purpose: NeopixelDriver offers a steady white and a 0->peak->0
+# triangle, neither of which can express an arbitrary start, end, pause, step or per-channel
+# waveform. Nothing else contends for the pixel in an isolated run, so no arbitration is bypassed.
 _PIN_PIXEL = 18
-# Measured on the covered rig (tests_hardware/README.md): rising, the low range holds to level 6
-# (~197 lx) and the high range takes over at level 8 (~300 lx); falling, the high range holds to
-# level 3 (~112 lx) and the low range takes back over at level 2 (~76 lx). So levels 2..8 sit
-# INSIDE the hysteresis band and cannot force a switch in either direction.
+# Measured on the covered rig: rising, the low range holds to level 6 (~197 lx) and the high takes
+# over at level 8 (~300 lx); falling, high holds to level 3 (~112 lx) and low takes back at level 2
+# (~76 lx). So levels 2..8 sit INSIDE the hysteresis band and cannot force a switch either way.
 _BAND_BELOW = 1  # comfortably under the falling edge
 _BAND_ABOVE = 12  # comfortably over the rising edge
 _SWITCH_HOLD_S = 8.0  # the derived 2 cycles + settle + a 1s sample interval, with margin
@@ -204,19 +201,15 @@ async def _baseline(rig: Rig, tag: str, reference: "list[float]") -> None:
 def _scenarios() -> "list[tuple[str, list[tuple[str, tuple[int, int, int], tuple[int, int, int], float]], int, int, bool]]":
     """(name, segments, min_switches, max_switches, must_use_both_ranges).
 
-    Levels are chosen against the MEASURED hysteresis band on this rig (tests_hardware/README.md):
-    the low range holds up to level 6 rising, the high range down to level 3 falling, so levels
-    2..8 are inside the band and only a level <= 1 or >= 8 can force a switch. Holds that must
-    produce a switch are >= _SWITCH_HOLD_S, because the derived 2 cycles plus the settle plus
-    a 1s sample interval is the real latency of a decision.
+    Levels are chosen against this rig's MEASURED hysteresis band, so only a level <= 1 or >= 8 can
+    force a switch; holds that must produce one are >= _SWITCH_HOLD_S, a decision's real latency.
     """
     dark, below, inside, full = (0, 0, 0), 1, 5, 255
     lo, hi, sh = _BAND_BELOW, _BAND_ABOVE, _SWITCH_HOLD_S
     return [
-        # Slow, sunrise-like. The dark pre-roll is what makes the starting range deterministic:
-        # without it the scenario inherits the high range from the preceding baseline and the low
-        # range is never touched at all (which is exactly how the first version of this file
-        # passed while proving nothing).
+        # Slow, sunrise-like. The dark pre-roll makes the starting range deterministic: without it
+        # the scenario inherits the high range from the preceding baseline and the low range is
+        # never touched - which is how the first version of this file passed while proving nothing.
         ("sunrise_white_slow", [
             ("hold", dark, dark, sh), ("ramp", dark, (full, full, full), 55.0),
         ], 1, 4, True),

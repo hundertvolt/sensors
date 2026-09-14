@@ -297,8 +297,11 @@ information):
 - **Every module gets exactly one header comment block — module/function/class `"""..."""`
   docstrings in Python, the equivalent leading `/** ... */`/`//` block in JS — capped at 3 lines,
   prefer fewer: a concise header, not an essay. This applies to all code in the repo, not just
-  Python — `js/`, `tests_js/`, `html/style.css`, `digital_twin/`, everything.** Inline comments
-  (`#` in Python, `//`/inline `/** */` in JS) have no hard numeric cap, but stay disciplined: a few
+  Python — `js/`, `tests_js/`, `html/style.css`, `digital_twin/`, everything.** **The same 3-line
+  cap applies to every inline comment block too** (`#` in Python, `//`/inline `/** */` in JS) —
+  tightened from "no hard numeric cap" by the project owner, 2026-09-14, after the ISL29125
+  promotion accumulated 5-to-9-line blocks that read as essays: lengthy documentation is to be
+  avoided, max 3 lines per function, prefer fewer, and docstrings are concise headers only. A few
   short, genuinely load-bearing WHY notes next to the line they explain, never a multi-paragraph
   block of narrative reasoning. Load-bearing detail that doesn't fit that bar moves to: the
   relevant `SPECIFICATION.md` Part if the fact is architectural and reused elsewhere (leave a short
@@ -307,7 +310,9 @@ information):
   `digital_twin/README.md` for anything `digital_twin/`-specific, or a
   short comment right next to the code it explains otherwise — never dropped outright. Applied
   repo-wide across `src/`, `digital_twin/`, `tests/`, `js/`, `tests_js/` in one pass (project
-  owner's direction); keep new code to this bar too.
+  owner's direction); keep new code to this bar too. The 3-line inline cap was applied across every
+  file the ISL29125 branch owns; files it only touched keep their pre-existing blocks, so a
+  repo-wide sweep for the tightened rule is still outstanding (BACKLOG.md).
 - Prefer flagging genuinely ambiguous/architecturally significant decisions to the project owner
   over guessing — several open questions in BACKLOG.md exist precisely because the code's actual
   intent wasn't obvious from reading it alone.

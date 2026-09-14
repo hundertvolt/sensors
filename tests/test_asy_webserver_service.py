@@ -2249,10 +2249,9 @@ def test_i1_many_entries_are_coalesced_into_size_bounded_batches_not_one_growing
 
 
 def test_i1_a_two_level_measurement_value_serialises_correctly_and_is_not_re_wrapped() -> None:
-    # asy_isl29125_driver.py is the first driver whose measurement body nests one level deeper
-    # ({"ISL29125": {"RGB": {"R": ...}}}) - _stream_dict_response() does one json.dumps() per
-    # TOP-LEVEL value, so a nested value has to come through intact and exactly once, neither
-    # flattened nor double-encoded into a JSON string.
+    # asy_isl29125_driver.py is the first driver whose measurement body nests a level deeper, and
+    # _stream_dict_response() does one json.dumps() per TOP-LEVEL value - so a nested value must
+    # come through intact and exactly once, neither flattened nor double-encoded.
     result = {
         "ISL29125": {
             "Lux": 123.45,

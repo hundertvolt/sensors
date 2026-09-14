@@ -261,10 +261,9 @@ def test_data_registers_are_green_red_blue_in_that_order() -> None:
 
 
 def test_a_config1_write_leaves_the_previous_cycles_data_in_place() -> None:
-    # Table 7 p10: with SYNC = 0 the ADC restarts on an I2C write to 0x01. The registers are
-    # double buffered, so what is readable until the next cycle completes is the PREVIOUS
-    # sample - taken on the old gain. That stale window is what the driver's settle wait exists
-    # to discard, so the fake has to present it rather than smooth it away.
+    # Table 7 p10: with SYNC = 0 the ADC restarts on an I2C write to 0x01, and the registers are
+    # double buffered - so what is readable until the next cycle completes is the PREVIOUS sample,
+    # on the old gain. The settle wait discards that window, so the fake must present it.
     chip = make_chip(dark_counts=0)
     configure(chip, _MODE_RGB)
     chip.set_illumination(187.5)
@@ -329,12 +328,9 @@ def test_persistence_restarts_when_the_reading_comes_back_inside_the_window() ->
 
 
 def test_a_status_read_that_finds_the_flag_clear_leaves_the_persistence_counter_running() -> None:
-    # Measured on real silicon 2026-09-13 (SPECIFICATION.md Part C.11.1.2): the persistence
-    # counter restarts when RGBTHF is CLEARED, not on every status read. The difference is not
-    # academic - the driver reads 0x08 once per sample, and at its own defaults (PRST = 4,
-    # ~303ms per cycle, SampleInterv = 1s) a read that reset the count unconditionally would knock
-    # it back to 0 before it ever reached 4, leaving the hardware fast path permanently dead in
-    # the twin while real silicon asserts every other second.
+    # Measured on real silicon (Part C.11.1.2): the persistence counter restarts when RGBTHF is
+    # CLEARED, not on every status read. The driver reads 0x08 once per sample, so a read that reset
+    # the count would knock it back before it ever reached PRST - a permanently dead fast path.
     pin = _RecordingPin()
     chip = make_chip(int_pin=pin, dark_counts=0)
     configure(chip, _MODE_RGB, 0x00, _INTSEL_GREEN | 0x08)  # PRST[1:0] = 10 -> 4 cycles
@@ -427,8 +423,7 @@ def test_cycle_time_follows_the_configured_resolution() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Register-map behaviours measured against real silicon (2026-09-12) - see the
-# "ISL29125 mock conformance" section of tests_hardware/README.md for the probe.
+# Register-map behaviours measured against real silicon - see tests_hardware/README.md's probe.
 # ---------------------------------------------------------------------------
 
 

@@ -11,10 +11,9 @@ import { resolveFieldValue } from "../js/definitions.js";
 
 /** @typedef {import("../js/definitions.js").FieldDef} FieldDef */
 
-// Mirrors js/render.js's own groupValuesFrom(). Duplicated deliberately and kept to the same
-// shape: that function is not exported, and exporting it purely for a test would widen the
-// module's surface for no runtime benefit. If the two ever disagree, this test goes red - which
-// is the failure mode worth having.
+// Mirrors js/render.js's own groupValuesFrom(), duplicated deliberately: that function is not
+// exported, and exporting it purely for a test would widen the module's surface for nothing.
+// If the two ever disagree this test goes red, which is the failure mode worth having.
 /**
  * @param {{key: string}} section
  * @param {{key: string}} group
@@ -81,10 +80,9 @@ function unrenderableReadonlyFields(defs, data) {
                     missing.push(`${section.key}/${group.key}/${field.key}`);
                     continue;
                 }
-                // A `path` naming a GROUP rather than a leaf resolves to the sub-object itself,
-                // which formatFieldValue() stringifies as "[object Object]". That is a rendered
-                // value, so the undefined check above cannot see it. gmtimestruct is the one
-                // format whose value legitimately is a struct.
+                // A `path` naming a GROUP rather than a leaf resolves to the sub-object, which
+                // renders as "[object Object]" - a value, so the check above cannot see it.
+                // gmtimestruct is the one format whose value legitimately is a struct.
                 if (field.format !== "gmtimestruct" && typeof resolved === "object" && resolved !== null) {
                     missing.push(`${section.key}/${group.key}/${field.key} (an object, not a leaf)`);
                 }
@@ -95,11 +93,9 @@ function unrenderableReadonlyFields(defs, data) {
 }
 
 describe("definitions and mockdata agree", () => {
-    // The gap this exists to catch has now happened twice in one branch, in both directions: the
-    // UART promotion added UARTLINK_Transfers/UARTLINK_Failures to dev's definitions with no
-    // mockdata behind them, and the ISL29125's GainMeas reached the definitions and the mockdata
-    // while the real device body never carried it. Nothing compared the two sources, so both
-    // rendered as a permanently blank row that looked like a device that had not reported yet.
+    // The gap this catches happened twice in one branch, in both directions: UARTLINK_* reached
+    // dev's definitions with no mockdata behind them, and GainMeas reached both while the real
+    // device body never carried it. Each rendered as a blank row, not as a defect.
     it("every readonly field dev's definitions name resolves in dev's mockdata", () => {
         expect(unrenderableReadonlyFields(dev, devData)).toEqual([]);
     });

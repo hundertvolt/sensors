@@ -25,10 +25,9 @@ SETTLE_S = 4.5  # SampleInterv=1 + the fixed 2-cycle settle + slack for a switch
 MAX_WAIT_S = 12.0
 MAX_SWITCHES = 4  # one up and one down is ideal; chatter would be dozens
 OVERLAP_LEVEL = 4  # ~150 lx on this rig: ~40% of the low range's full scale, so BOTH ranges can represent it
-# A relative bound on the gain step, not a calibration claim. The driver corrects the high range by
-# an applied ratio whose plausibility band is 20-34 around a nominal 26.67, so the worst a working
-# driver can be off by is ~25%; anything past that is a missing or inverted correction, not
-# calibration error. SPECIFICATION.md Part C.11.4 is where the accuracy question itself lives.
+# A relative bound on the gain step, not a calibration claim: the applied ratio's band is 20-34
+# around a nominal 26.67, so the worst a working driver can be off by is ~25%. Past that is a
+# missing or inverted correction. The accuracy question itself lives in Part C.11.4.
 MAX_RANGE_STEP = 0.25
 
 failures: "list[str]" = []
@@ -100,10 +99,9 @@ def _log_entries(counters: "ErrorLog") -> "tuple[list[tuple[str, int]], int]":
 
 def _make_reader(i2c1: "asy_i2c_driver.I2C") -> ISL29125_Reader:
     reader = ISL29125_Reader(i2c1, 6, max_module_error=999, fram=None, debug=None)
-    # Scratch filename, because this script is the one that calls _set_dict_cfg: its persist leg
-    # is a real write_config() to the board's own filesystem, which would otherwise stamp the
-    # seeded cache below over the PRODUCTION config_ISL29125.cfg. Same convention as
-    # reboot_persist_write.py's config_HWTEST_REBOOT.cfg - see tests_hardware/README.md.
+    # Scratch filename: this script calls _set_dict_cfg, whose persist leg is a real write_config()
+    # that would otherwise stamp the seeded cache over the PRODUCTION config_ISL29125.cfg. Same
+    # convention as reboot_persist_write.py's config_HWTEST_REBOOT.cfg.
     reader.cfgmgr.config_file = "config_HWTEST_ISL29125.cfg"
     reader.cfgmgr.valid = True
     # Seeded from the driver's own schema, never a hand-copied list - a key added there
@@ -169,10 +167,9 @@ async def _config_mechanisms(pixel: NeopixelDriver, reader: ISL29125_Reader, wdt
         notes.append(f"12bit vs 16bit on one static scene: {twelve.Lux:.2f} vs {sixteen.Lux:.2f} ({rel * 100:.1f}%)")
         check(rel < 0.5, f"12-bit and 16-bit disagree by {rel * 100:.1f}% on one scene - the <<4 normalisation looks wrong")
 
-    # Cross-range CONTINUITY: one stationary light, read on each range in turn. This is the only
-    # honest way to measure the gain step - the retired NeoPixel ramp sweep tried to catch it on a
-    # moving ramp, where the light's own rise (measured at ~22%/s through the switch point) swamps
-    # the step being measured. Two settled holds at one level have no such confound.
+    # Cross-range CONTINUITY: one stationary light, read on each range in turn - the only honest
+    # way to measure the gain step. The retired ramp sweep tried it on a moving ramp, where the
+    # light's own ~22%/s rise swamps the step. Two settled holds have no such confound.
     check(await reader._set_dict_cfg({"RangeAuto": False, "Range": 375}, reader.cfg_schema), "pinning the low range was rejected")
     on_low = await _hold(pixel, reader, wdt, OVERLAP_LEVEL, "continuity/low")
     check(await reader._set_dict_cfg({"Range": 10000}, reader.cfg_schema), "pinning the high range was rejected")
@@ -190,10 +187,9 @@ async def _config_mechanisms(pixel: NeopixelDriver, reader: ISL29125_Reader, wdt
             notes.append(f"cross-range continuity at level {OVERLAP_LEVEL}: {on_low.Lux:.2f} lx on 375 vs {on_high.Lux:.2f} lx on 10000 ({step * 100:.1f}% step)")
             check(step < MAX_RANGE_STEP, f"the same light reads {on_low.Lux:.2f} lx on the low range and {on_high.Lux:.2f} lx on the high one ({step * 100:.1f}%) - the range gain correction is not being applied")
 
-    # The applied ratio is config now and only a user PUT changes it, so the run asserts the
-    # trigger is accepted and reports whatever candidate the light allowed - whether the scene
-    # happened to sit in the overlap band is a property of the light, not of the driver. Each run
-    # is one more data point for the level-dependence recorded in SPECIFICATION.md Part C.11.4.
+    # The applied ratio is config now and only a user PUT changes it, so this asserts the trigger
+    # is accepted and reports whatever candidate the light allowed - the overlap band is a property
+    # of the light, not the driver. Each run is one more data point for Part C.11.4.
     check(await reader._set_dict_cfg({"ISLCalibrate": True}, reader.cfg_schema), "ISLCalibrate was rejected")
     check(reader._calibrating is True, "the calibration run did not start")
     notes.append(f"measured gain ratio during this run: {reader._measured_ratio()} (nominal {10000 / 375})")
@@ -216,11 +212,9 @@ async def _main() -> None:
 
         up = await _ascending(pixel, reader, wdt)
 
-        # The saturation detector must FIRE at full white (W12 is exactly that case, and this rig
-        # really does exceed the 10000 lx range at ~20mm). W13 is checked too, but one leg makes
-        # at most a couple of range decisions and the warning needs five periodic-only ones in a
-        # row, so its absence here is a guard, not a proof - isl29125_lighting_scenarios.py is
-        # where enough switches happen for it to be able to fire.
+        # The saturation detector must FIRE at full white - this rig really does exceed 10000 lx at
+        # ~20mm. W13 is checked too, but one leg makes a couple of range decisions and that warning
+        # needs five in a row, so its absence is a guard, not a proof (see the scenarios script).
         entries, count = _log_entries(await reader.get_error_counter())
         notes.append(f"ascending-leg log: count={count} entries={entries}")
         check(("W", 12) in entries, "no W12 after driving the part into hard saturation at full white - the saturation detector never fired")

@@ -51,10 +51,9 @@ def test_bmp3xx_same_device_read_write_concurrency(board: Board) -> None:
 
 
 def test_isl29125_same_device_read_write_concurrency(board: Board) -> None:
-    # No NVM-write-budget dependency either, and for a stronger reason than BMP3xx's: the ISL29125
-    # has no on-chip non-volatile memory at all (FN8424 p7 calls its config registers volatile
-    # memory outright), so rewriting its configuration costs nothing. The sharper hazard here is
-    # the DESTRUCTIVE 0x08 status read, which a config write landing mid-cycle must not tear.
+    # No NVM-write-budget dependency, for a stronger reason than BMP3xx's: the ISL29125 has no
+    # on-chip non-volatile memory at all (p7 calls its config registers volatile), so rewriting it
+    # costs nothing. The sharper hazard is the DESTRUCTIVE 0x08 read a config write must not tear.
     output = board.run_isolated(DEVICE_SCRIPTS / "isl29125_same_device_rw_concurrency.py", timeout_s=90.0)
     _assert_pass(output, "ISL29125 same-device read/write concurrency check")
 

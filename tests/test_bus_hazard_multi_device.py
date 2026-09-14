@@ -489,10 +489,9 @@ def test_sgp40_touches_only_its_own_address_except_reset_which_touches_only_the_
 
 
 def test_same_device_isl29125_concurrent_read_and_write_never_interleave_on_the_wire() -> None:
-    # The ISL's own same-device hazard is sharper than its siblings': the status read at 0x08 is
-    # DESTRUCTIVE (it clears the interrupt flag and releases the INT line), and the data burst
-    # that follows it belongs to the same logical cycle. A config write landing between the two
-    # would restart the conversion under a read that has already committed to its own status.
+    # The ISL's same-device hazard is sharper than its siblings': the status read at 0x08 is
+    # DESTRUCTIVE, and the data burst after it belongs to the same logical cycle. A config write
+    # between the two restarts the conversion under a read already committed to its status.
     i2c = make_i2c(1)
     isl = ISL29125_I2C(i2c, address=_ISL_ADDR)
     fake_bus = fake(i2c)

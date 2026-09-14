@@ -139,12 +139,8 @@ def test_mempause_over_real_rest_pauses_storage_and_does_not_survive_a_reboot(bo
 
 
 # ---------------------------------------------------------------------------
-# The ISL29125's gain ratio is an ordinary config value, so it survives a power cycle the same way
-# every other sensor's config does. Deliberately checked through the real production firmware over
-# REST rather than with an isolated-driver device script: such a script builds its own
-# AsyFramManager over the same chip and the allocator is deterministic, so it would overwrite
-# production's own first chunk (CLAUDE.md's FRAM rule, sharpest form).
-# ---------------------------------------------------------------------------
+# The gain ratio survives a power cycle like any config - over REST, since an isolated-driver
+# script would build its own AsyFramManager and overwrite production's first chunk.
 
 
 def test_isl29125_gain_ratio_survives_a_real_reboot_as_an_ordinary_config_value(board: Board, bench: BenchBridge, dut_ip: str) -> None:
