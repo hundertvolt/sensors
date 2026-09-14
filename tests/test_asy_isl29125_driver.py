@@ -777,6 +777,7 @@ def make_reader(
     *,
     max_module_error: int = 5,
     healthy: bool = True,
+    irq_pull_up: bool = True,
 ) -> "tuple[I2C, ISL29125_Reader]":
     FakeTimer.all_timers.clear()
     i2c = make_i2c()
@@ -787,6 +788,7 @@ def make_reader(
         6,
         max_module_error=max_module_error,
         cfg_path=_tmp_cfg_path(name),
+        irq_pull_up=irq_pull_up,
     )
     run(reader.cfgmgr.setup())
     return i2c, reader
@@ -835,11 +837,20 @@ def test_reader_construction_performs_no_bus_transactions() -> None:
 
 def test_reader_construction_enables_the_internal_pull_up_on_the_int_pin() -> None:
     # The only promoted driver that needs one: this INT is open-drain pull-down (p6), unlike
-    # SCD30's push-pull RDY line.
+    # SCD30's push-pull RDY line. irq_pull_up defaults True, so this is the no-argument shape.
     FakeTimer.all_timers.clear()
     _i2c, reader = make_reader("pullup")
     assert reader.irq_pin.mode == FakePin.IN
     assert reader.irq_pin.pull == FakePin.PULL_UP
+
+
+def test_reader_construction_can_disable_the_internal_pull_up_for_a_board_with_its_own_resistor() -> None:
+    # irq_pull_up=False -> a bare Pin.IN, matching SCD30's own no-pull construction exactly, for a
+    # board (like the real dev bench) that already carries an external pull-up on this line.
+    FakeTimer.all_timers.clear()
+    _i2c, reader = make_reader("no_pullup", irq_pull_up=False)
+    assert reader.irq_pin.mode == FakePin.IN
+    assert reader.irq_pin.pull == -1  # tests/machine.py's own Pin: -1 means "never configured"
 
 
 def test_init_returns_false_and_logs_errno_10_when_the_chip_is_absent() -> None:

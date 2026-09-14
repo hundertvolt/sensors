@@ -200,6 +200,7 @@ class ISL29125_Reader(SensorReaderConfig):
         self,
         i2c: "I2C",
         irq_pin: int,
+        *,
         address: int = 0x44,
         trigger_sec: int = 1,
         max_module_error: int = 5,
@@ -207,6 +208,7 @@ class ISL29125_Reader(SensorReaderConfig):
         cfg_path: str = "",
         fram: "AsyFramManager | None" = None,
         history_length: int = 10,
+        irq_pull_up: bool = True,
         debug: int | None = None,
     ) -> None:
         super().__init__(
@@ -222,10 +224,13 @@ class ISL29125_Reader(SensorReaderConfig):
             debug=debug,
         )
         self.isl = ISL29125_I2C(i2c, address=address)
-        # PULL_UP, unlike SCD30's bare Pin.IN: this INT is open-drain pull-down (p6), so the high
-        # level has to come from a resistor. The dev board has an external 10k, and enabling the
-        # internal one too is harmless there and is what makes the driver work on a board without.
-        self.irq_pin = Pin(irq_pin, mode=Pin.IN, pull=Pin.PULL_UP)
+        # This INT is open-drain (p6), so the high level has to come from a resistor somewhere -
+        # unlike SCD30's push-pull RDY, which needs neither. irq_pull_up=True (default) enables the
+        # internal one, for a board with no external resistor of its own. A board that already has
+        # one (irq_pull_up=False) gets a bare Pin.IN instead, matching SCD30's own no-pull style -
+        # deliberately never both, so a board whose own external resistor was picked for a specific
+        # value/rise-time is not silently pulled stronger by an internal one it never asked for.
+        self.irq_pin = Pin(irq_pin, mode=Pin.IN, pull=Pin.PULL_UP) if irq_pull_up else Pin(irq_pin, mode=Pin.IN)
         # Two flags, two tasks, matching SCD30's shape. read_event has TWO setters - the divider
         # and the pin IRQ - making the interrupt the fast path and the timer the guaranteed one: a
         # set with no waiter is remembered, so an INT mid-cycle coalesces into one extra cycle.

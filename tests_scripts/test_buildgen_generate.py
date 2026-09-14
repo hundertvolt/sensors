@@ -345,6 +345,18 @@ def test_isl29125_without_trigger_sec_or_fram_target_omits_both(tmp_path: Path, 
     call = next(line for line in result.module_source.splitlines() if "ISL29125_Reader(" in line)
     assert "trigger_sec" not in call
     assert "fram=" not in call
+    assert "irq_pull_up" not in call
+    ast.parse(result.module_source)
+
+
+def test_isl29125_irq_pull_up_false_is_rendered_into_the_constructor_call(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
+    # A board with its own external pull-up resistor (the real dev bench) sets this - the driver's
+    # own default (omitted here) is True, the internal pull-up, for a board with no resistor of
+    # its own.
+    doc = base_doc()
+    doc["instance"].append({"driver": "isl29125", "bus": "i2c0", "irq_pin": 6, "irq_pull_up": False})
+    result = generate_device(write_doc(tmp_path, "dev", doc), src_dir, ext_dir)
+    assert "irq_pull_up=False" in result.module_source
     ast.parse(result.module_source)
 
 

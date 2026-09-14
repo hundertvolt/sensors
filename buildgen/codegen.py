@@ -179,6 +179,10 @@ def _build_args_isl29125(spec: InstanceSpec, ctx: _Ctx) -> "tuple[list[str], lis
     fram_kw = _fram_kw(spec, ctx)
     if fram_kw:
         kw.append(fram_kw)
+    # Omitted -> the driver's own irq_pull_up=True default (the internal pull-up, for a board with
+    # no external resistor of its own); a device whose board already has one sets this false.
+    if "irq_pull_up" in f:
+        kw.append(("irq_pull_up", str(f["irq_pull_up"])))
     kw.append(("debug", "debug"))
     return pos, kw
 

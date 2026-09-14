@@ -29,8 +29,10 @@ OPTIONAL_TOML_FIELDS: dict[str, tuple[str, ...]] = {
     "sgp40": (),
     "bmp3xx": ("address", "trigger_sec"),
     # No "address": 0x44 is hard-wired (no address-select pin, datasheet p15) - FIXED_ADDRESS_DRIVERS
-    # territory below, like scd30/sgp40, not ADDRESS_CAPABLE_DRIVERS like bmp3xx.
-    "isl29125": ("trigger_sec",),
+    # territory below, like scd30/sgp40, not ADDRESS_CAPABLE_DRIVERS like bmp3xx. irq_pull_up: the
+    # INT line is open-drain (p6) - a board with its own external pull-up resistor sets this false
+    # so the internal one (the driver's own default, irq_pull_up=True) isn't also engaged.
+    "isl29125": ("trigger_sec", "irq_pull_up"),
     "fram": (),
     "neopixel": (),
     "notification": (),
