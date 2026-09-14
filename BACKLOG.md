@@ -508,9 +508,10 @@ constraints.
     **CLOSED 2026-09-14 — that run happened and passed.** Three sandwiches converged at ~24.0 with a
     1.8% spread across nine candidates, the applied ratio never moved under the driver, and copying
     the measured value across cut the cross-range continuity step from 11.4% to 0.4%. Full numbers
-    in SPECIFICATION.md Part C.11.3; the whole bench session, including everything the 2026-09-14
-    field removals and warning renumbering needed re-proving, is written up in
-    `ISL29125_HARDWARE_VERIFICATION.md` (temporary; deleted once its findings land permanently). The mock and twin tiers cover it end to end (including the
+    in SPECIFICATION.md Part C.11.3. Everything the 2026-09-14 field removals and warning
+    renumbering needed re-proving was re-run in the same bench session and passed; its temporary
+    write-up has been deleted now that every finding sits in its permanent home (the re-measured
+    fast path in C.11.1.3, the derived-cache rule in `tests_hardware/README.md`). The mock and twin tiers cover it end to end (including the
     measured-then-applied error shrink); the flash/bench tiers assert only that the trigger is
     accepted, the applied ratio does not move, and `GainMeas` is present.
 
@@ -688,6 +689,58 @@ constraints.
     CLAUDE.md's "Pre-push verification" scope, which requires a clean Ubuntu-noble *and* Debian-trixie
     chroot run before pushing, and this session cannot satisfy that gate. Recovery in the meantime is
     `rm` the binary and re-run `scripts/test.sh`, which rebuilds it.
+
+30. **`SPECIFICATION.md` carries six subsections about one sensor, and no other sensor has any.**
+    Raised 2026-09-14 while deciding where the calibration band-gate finding belongs; **the owner's
+    ruling is to leave the specification exactly as it stands, Finding 2 included, and tidy this up
+    in a session of its own.** Recorded here so that session does not have to re-derive the scan.
+
+    Three distinct patterns exist in the document, and only the third is the question:
+
+    - **Generic rule, named instance** — the dominant and legitimate one. C.4.3 cites SGP40 against
+      SCD30 to illustrate `SensorReader` vs `SensorReaderConfig`; C.7 names the drivers sharing the
+      `errno` block; D.15 uses `ISL29125_Reader.start_calibration()` as the worked example of the
+      amended starter rule. All 29 `src/` modules are named somewhere this way. Nothing to move.
+    - **Sections named after a module that *is* the architecture** — A.7/A.7.1 (the two
+      `sensortask_*.py` construction orders), A.8 (`asy_webserver_service.py`), C.5
+      (`config_manager.py`), C.6, C.7 (`print_log.py`/`base_classes.py`), and Part J
+      (`asy_uart_comm.py`). There is no generic version of "what order does `sensortask_wozi` build
+      things in". Part J is the strongest case and rests on a different justification again: the
+      UART protocol is a two-implementation contract with the Arduino peer, so that Part is the
+      interface definition both sides implement, which is why CLAUDE.md points at it by name.
+    - **Dedicated single-chip technical sections — ISL29125 only.** C.11.1.1 (`BOUTF`'s lifecycle
+      and where datasheet p12 is wrong), C.11.1.2 (the threshold persistence counter and the
+      destructive status read), C.11.1.3 (PRST derived from `SampleInterv`), C.11.2 ("ISL29125
+      reference layer"), C.11.3 (the calibration design, holding the band-gate finding), C.11.4
+      (the measured range-ratio table). Checked the other sensors the same way, with chip-only
+      identifier sets (`AmbPres`/`FRC`/`ASC`; `sraw` and the VOC-index terms; `_VAL_POV`/
+      oversampling/IIR): **SCD30, SGP40 and BMP3XX have no dedicated section anywhere.**
+
+    Two places *do* treat every driver alike, so the convention is not simply absent: A.4's
+    "functional behaviors confirmed intentional" list has one bullet per chip (ISL's is the same
+    shape and length as SCD30's and SGP40's), and C.7.1's registry has one row per module. Both are
+    consistent; the C.11 block is the outlier.
+
+    **The decision that gates the work**: is C.11's contract "generic rules only, chips cited as
+    examples", or "generic rules plus the worked example that established each one"? The block was
+    written under the second reading. Under the first, C.11.1.3 and C.11.3 should not simply move —
+    each has a generic kernel worth keeping in place ("a chip-side persistence window must stay
+    shorter than the software re-check interval, or software beats the interrupt to every decision";
+    "calibration is user-triggered, user-applied, and writes nothing by itself"), with the ISL
+    arithmetic and mechanics extracted out from under it. C.11.1.1/C.11.1.2 are pure single-chip
+    datasheet fact with no generic content, C.11.4 is measured data about one specimen, and C.11.2
+    is prior-art analysis that may belong with the attribution material instead.
+
+    **Where ISL-specific content would go instead**, if it leaves: CLAUDE.md caps every module
+    header block at 3 lines and `asy_isl29125_driver.py`'s is already exactly 3, so the header
+    cannot hold it — that same rule's next tier, "a short comment right next to the code it
+    explains", is the destination for a code fact, and `tests_hardware/README.md`'s NeoPixel rig
+    section for anything that is really an operator procedure. A new per-module doc file was
+    considered and is **not** recommended: the repo has no such convention, and a document beside
+    the code without being the code is what drifts.
+
+    **Independent session - out of the ISL29125 branch's scope and not blocked on it** (owner,
+    2026-09-14). Nothing here needs the colour sensor, the bench rig or PR #75 to land first.
 
 ## Deferred / explicitly out-of-scope work
 - **Two device scripts still hand-list their `cfgmgr._cache` keys, and will break as a "dead
