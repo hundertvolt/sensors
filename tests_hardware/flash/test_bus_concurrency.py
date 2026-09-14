@@ -7,6 +7,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pytest
 from harness import Board, wait_until
 
 DEVICE_SCRIPTS = Path(__file__).resolve().parent.parent / "device_scripts"
@@ -19,6 +20,7 @@ def _assert_pass(output: str, what: str) -> None:
     assert match.group(1) == "PASS", f"{what} failed: {match.group(2).strip()}\nfull output:\n{output}"
 
 
+@pytest.mark.scd30_nvm_write
 def test_scd30_same_device_read_write_concurrency_and_continuous_measurement_trigger(scd30_continuous_measurement_triggered: None) -> None:
     # Declaring the fixture as a parameter is what actually runs it (pytest fixture semantics) -
     # this test exists to give that one real NVM write its own clearly-named, first-to-run pass/
@@ -27,17 +29,20 @@ def test_scd30_same_device_read_write_concurrency_and_continuous_measurement_tri
     pass
 
 
+@pytest.mark.scd30_nvm_write
 def test_same_device_concurrent_sessions_never_corrupt_each_other(board: Board, scd30_continuous_measurement_triggered: None) -> None:
     # Generous relative to the device script's own ~90s internal asyncio.wait_for budget.
     output = board.run_isolated(DEVICE_SCRIPTS / "bus_concurrency_same_device_scd30.py", timeout_s=120.0)
     _assert_pass(output, "same-device concurrency check")
 
 
+@pytest.mark.scd30_nvm_write
 def test_cross_device_concurrent_sessions_genuinely_interleave(board: Board, scd30_continuous_measurement_triggered: None) -> None:
     output = board.run_isolated(DEVICE_SCRIPTS / "bus_concurrency_cross_device_scd30_sgp40.py", timeout_s=90.0)
     _assert_pass(output, "cross-device interleaving check")
 
 
+@pytest.mark.scd30_nvm_write
 def test_sgp40_general_call_reset_does_not_corrupt_a_concurrent_scd30_transaction(board: Board, scd30_continuous_measurement_triggered: None) -> None:
     output = board.run_isolated(DEVICE_SCRIPTS / "sgp40_general_call_reset_hazard.py", timeout_s=120.0)
     _assert_pass(output, "SGP40 general-call hazard regression check")

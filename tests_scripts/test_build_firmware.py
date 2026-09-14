@@ -225,3 +225,43 @@ def test_real_firmware_build_produces_a_valid_uf2(repo_root: Path, tmp_path: Pat
     data = output.read_bytes()
     assert data[:4] == b"UF2\n"
     assert len(data) > 0 and len(data) % 512 == 0  # UF2 files are a sequence of fixed 512-byte blocks
+
+
+# ---------------------------------------------------------------------------
+# GC policy as a build property (SPECIFICATION.md Part I.6)
+# ---------------------------------------------------------------------------
+
+
+def test_build_stage_dir_defaults_to_the_shipped_gc_policy(build_firmware: ModuleType, repo_root: Path, tmp_path: Path) -> None:
+    stage_dir = tmp_path / "stage"
+    stage_dir.mkdir()
+    build_firmware.build_stage_dir(stage_dir, "dev")
+    boot = (stage_dir / "main.py").read_text()
+    assert "gc.threshold(32768)" in boot
+    assert not (stage_dir / "memory_pressure.py").exists()
+
+
+def test_build_stage_dir_stages_the_instrument_only_for_a_pressure_build(build_firmware: ModuleType, repo_root: Path, tmp_path: Path) -> None:
+    # The instrument's absence from every other build is what makes "pressure tests never run
+    # against the shipped GC policy" structural rather than a convention someone has to remember.
+    stage_dir = tmp_path / "stage"
+    stage_dir.mkdir()
+    build_firmware.build_stage_dir(stage_dir, "dev", "reactive", memory_pressure=True)
+    boot = (stage_dir / "main.py").read_text()
+    assert "gc.threshold(-1)" in boot
+    staged = (stage_dir / "memory_pressure.py").read_text()
+    assert "class Pressure" in staged
+    assert staged == (repo_root / "tests_hardware" / "device_modules" / "memory_pressure.py").read_text()
+
+
+def test_cli_refuses_memory_pressure_on_the_shipped_policy(repo_root: Path, tmp_path: Path) -> None:
+    result = _run_cli(repo_root, ["dev", "--gc-policy", "threshold", "--memory-pressure", "--output", str(tmp_path / "out.uf2")])
+    assert result.returncode != 0
+    assert "reactive" in result.stderr
+    assert not (tmp_path / "out.uf2").exists()
+
+
+def test_cli_rejects_an_unknown_gc_policy(repo_root: Path, tmp_path: Path) -> None:
+    result = _run_cli(repo_root, ["dev", "--gc-policy", "proactive", "--output", str(tmp_path / "out.uf2")])
+    assert result.returncode != 0
+    assert "proactive" in result.stderr or "invalid choice" in result.stderr

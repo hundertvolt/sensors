@@ -15,7 +15,7 @@ DEVICE_SCRIPTS = Path(__file__).resolve().parent.parent / "device_scripts"
 def test_watchdog_starvation_triggers_a_real_hardware_reset(board: Board) -> None:
     start = time.monotonic()
     try:
-        board.run_isolated(DEVICE_SCRIPTS / "watchdog_starvation_reset.py", timeout_s=15.0)
+        board.run_isolated(DEVICE_SCRIPTS / "watchdog_starvation_reset.py", timeout_s=15.0, allow_recovery=False)
         raise AssertionError("run_isolated() returned normally - the watchdog never fired (the device script should never return)")
     except HardwareTestFailureError:
         pass  # expected: the connection dies mid-script when the watchdog resets the board

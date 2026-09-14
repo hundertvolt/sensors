@@ -7,7 +7,10 @@
 # deliberate, dedicated invocation (scripts/run_bench_soak_tests.sh, or a direct
 # --allow-multi-day-rollover-wait run), never bundled into this general suite run even if a caller
 # passes --soak-tier/--allow-multi-day-rollover-wait by mistake.
+# memory_pressure tests are excluded for a different reason: the churn instrument they need is
+# frozen into --memory-pressure builds only, so they belong to scripts/run_bench_gc_matrix.sh's
+# own pass rather than to any general run (SPECIFICATION.md Part I.6).
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
-scripts/_require_clean_hardware_run.sh tests_hardware/flash -m "not long_soak and not multi_day_rollover" "$@"
+scripts/_require_clean_hardware_run.sh tests_hardware/flash -m "not long_soak and not multi_day_rollover and not memory_pressure" "$@"

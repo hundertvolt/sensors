@@ -27,6 +27,38 @@ BENCH_ETH_CONN = "br0-eth0"
 BENCH_AP_CONN = "br0-wifi-ap"
 
 
+@dataclass(frozen=True)
+class FlashedBuild:
+    """What the board is really running, read off the frozen image rather than assumed from a flag:
+    the GC policy the build declares, the threshold that implies, and whether the memory_pressure
+    instrument is present. `live_threshold` is informational - see conftest.py's flashed_build."""
+
+    policy: str
+    threshold: int
+    live_threshold: int | None
+    has_pressure_module: bool
+
+
+# Signatures of a connection-level failure worth retrying rather than reporting, matched
+# case-insensitively against mpremote's stderr. The last two matter as much as the first three and
+# are easy to miss: a USB-wedged port makes mpremote die with a raw OSError traceback out of
+# pyserial (in_waiting, or rts during close) rather than its own "could not enter raw repl"
+# message, so without them the unbind/rebind recovery never engages on exactly the wedge it exists
+# for - four real test errors on the bench before this was added (2026-09-14).
+_TRANSIENT_MPREMOTE_MARKERS = (
+    "may be in use by another program",
+    "could not enter raw repl",
+    "could not open",
+    "input/output error",
+    "errno 5",
+)
+
+
+def is_transient_mpremote_failure(stderr: str) -> bool:
+    lowered = stderr.lower()
+    return any(marker in lowered for marker in _TRANSIENT_MPREMOTE_MARKERS)
+
+
 def _usb_reset_device(device: str) -> bool:
     """Unbind/rebind `device`'s USB device from the kernel `usb` driver - same effect as a
     physical unplug/replug, recovering a wedged raw-REPL-entry state (see tests_hardware/README.md).
@@ -109,7 +141,6 @@ class Board:
         USB-settle-race connection failures (see tests_hardware/README.md). `allow_recovery=False`
         (is_reachable()'s own use) skips retry, so a real expected disconnect isn't masked."""
         cmd = ["uv", "run", "mpremote", "connect", self.device, *args]
-        transient_markers = ("may be in use by another program", "could not enter raw repl", "could not open")
         grace_deadline = time.monotonic() + 10.0
         usb_reset_attempted = False
         while True:
@@ -126,7 +157,7 @@ class Board:
                 raise HardwareNotAvailableError(f"uv/mpremote not on PATH: {exc}") from exc
             except subprocess.TimeoutExpired as exc:
                 raise HardwareTestFailureError(f"mpremote {' '.join(args)} timed out after {timeout_s or self.default_timeout_s}s") from exc
-            transient = proc.returncode != 0 and any(marker in proc.stderr.lower() for marker in transient_markers)
+            transient = proc.returncode != 0 and is_transient_mpremote_failure(proc.stderr)
             if not transient or not allow_recovery:
                 return MpremoteResult(proc.returncode, proc.stdout, proc.stderr)
             if time.monotonic() < grace_deadline:
@@ -175,14 +206,18 @@ class Board:
             raise HardwareTestFailureError(f"mpremote exec {expr!r} failed (exit {result.returncode}):\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}")
         return result.stdout
 
-    def run_isolated(self, script_path: str | Path, *, soft_reset_after: bool = True, timeout_s: float | None = None) -> str:
+    def run_isolated(self, script_path: str | Path, *, soft_reset_after: bool = True, timeout_s: float | None = None, allow_recovery: bool = True) -> str:
         """Isolated-driver mode: `mpremote run <script>` interrupts the system into raw REPL to
         run `script_path` against real frozen `src/` drivers, re-arming the watchdog first - never
         leaves `main.py` running afterward (see tests_hardware/README.md)."""
+        # allow_recovery=False for a script whose DISCONNECT is the expected outcome (a deliberate
+        # watchdog starvation, say): the recovery path spends its full grace window retrying a
+        # connection that is supposed to be gone, which turns an expected ~1.5s drop into ~12s.
+        # Same reasoning is_reachable() already applies - don't recover what a test means to cause.
         args = ["exec", "import machine; machine.WDT(timeout=8000)", "run", str(script_path)]
         if soft_reset_after:
             args.append("soft-reset")
-        result = self._mpremote(*args, timeout_s=timeout_s)
+        result = self._mpremote(*args, timeout_s=timeout_s, allow_recovery=allow_recovery)
         if result.returncode != 0:
             # See exec()'s own comment: a device-side traceback lands on mpremote's stdout, not
             # stderr - both are included here for the same reason.

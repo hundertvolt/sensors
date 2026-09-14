@@ -80,11 +80,35 @@ uv run pytest tests_hardware/flash --allow-multi-day-rollover-wait -k test_ticks
 # default - this genuinely re-flashes the board, see SPECIFICATION.md Part E.6.3):
 scripts/run_flash_hardware_suite.sh --allow-flash-cycle
 
+# The GC-policy matrix (SPECIFICATION.md Part I.6). Builds and flashes THREE times - reactive,
+# reactive+pressure, then back to the shipped threshold build - and runs the matching suite after
+# each, so it needs its own deliberate flag on top of the usual per-session go-ahead:
+scripts/run_bench_gc_matrix.sh --allow-flash-cycles
+
+# One pass of that matrix by hand (flash first, then run - the fixture reads the board's own
+# gc.threshold() and fails loudly if it doesn't match what the run says it expects):
+uv run scripts/flash_dev_firmware.py --gc-policy reactive
+scripts/run_bench_hardware_suite.sh --expect-gc-policy reactive --skip-scd30-nvm-writes
+
+# Allocator-pressure tests need the instrument frozen in, which only a --memory-pressure build has:
+uv run scripts/flash_dev_firmware.py --gc-policy reactive --memory-pressure
+scripts/_require_clean_hardware_run.sh tests_hardware/flash tests_hardware/bench \
+    -m "memory_pressure and not long_soak and not multi_day_rollover" --expect-gc-policy reactive --skip-scd30-nvm-writes
+
+# --skip-scd30-nvm-writes is a FLAG, not an extra -m: a second -m replaces a suite runner's own
+# marker exclusions rather than adding to them, which silently re-selects what it had excluded.
+
 # Manual tests (interactive, prints instructions, waits for confirmation):
 scripts/run_manual_hardware_tests.sh --list          # see what's registered, run nothing
 scripts/run_manual_hardware_tests.sh --only <name>   # run just one
 scripts/run_manual_hardware_tests.sh                 # run all of them, in sequence
 ```
+
+**A `--memory-pressure` build is a test artifact, never a shipped one**, and
+`error_logging_under_memory_pressure.py` writes the same FRAM chunk production's error logs use -
+so after a matrix run, treat the board's FRAM-backed error history as overwritten (the same caveat
+this file already records for every isolated-driver FRAM script). The matrix ends by flashing the
+shipped `threshold` build back, so a board left mid-matrix is the only case to check for.
 
 Both automated scripts are plain `uv run pytest` wrappers - any pytest flag works (`-k <substring>`,
 `-m role_reversal`, `-v`, `--tb=short`, ...). `--collect-only` works with nothing attached at all
@@ -97,6 +121,32 @@ started. Read them before trusting a run's results blindly - a failure in one of
 point at a flagged assumption being wrong, not at a real product bug. Resolved items are struck
 through, kept (not deleted) so a reader mid-investigation doesn't wonder whether something was ever
 a live question:
+
+- **A USB-wedged serial port fails as a raw pyserial `OSError`, not as any mpremote message —
+  handled since 2026-09-14, and the reason `is_transient_mpremote_failure()` exists.** `_mpremote()`
+  has always retried and USB-unbind/rebind-recovered a wedged port, but matched only mpremote's own
+  wording (`"could not enter raw repl"` and two siblings). A real wedge instead kills the process
+  with `OSError: [Errno 5] Input/output error` from pyserial — out of `in_waiting` on a read, or
+  `rts` during `close()` — which matched nothing, so the recovery never fired on exactly the case it
+  was written for. Cost four `test_bus_concurrency.py` errors at session setup during the first
+  GC-matrix run. Both signatures are now recognised, and `tests_scripts/test_hardware_harness_transients.py`
+  pins them alongside the failures that must NEVER be treated as transient (a device-side
+  `MemoryError`/`ImportError`/`RESULT: FAIL`), so the retry can't quietly widen into one that masks
+  real faults.
+- **A board mid-USB-re-enumeration made the whole session skip — fixed 2026-09-14.** The `board`
+  fixture probed `is_reachable()` exactly once, and that call deliberately has no retry of its own
+  (`allow_recovery=False`, so a genuinely expected disconnect isn't masked). A board that had just
+  been reflashed, or just released by another `mpremote` call, therefore turned an entire run into
+  skips — which `_require_clean_hardware_run.sh` correctly reports as a failed run. The fixture now
+  allows a 20s settle window before skipping; nothing attached still skips, just later.
+- **Every isolated device script inherits an 8s watchdog and must feed it.** `run_isolated()` arms
+  `machine.WDT(timeout=8000)` before running the script, and nothing feeds it for you — a script
+  that runs longer than 8s between yields resets the board mid-run, which surfaces host-side as the
+  USB wedge above rather than as anything self-explanatory. Easy to underestimate under allocator
+  pressure: `error_logging_under_memory_pressure.py`'s 40 FRAM-write rounds take **15,257 ms** on a
+  reactive-GC build (~380ms/round, against a few ms unloaded), because with no proactive threshold
+  a fragmented heap pays a full collection on allocation after allocation. Any new long-running or
+  pressure-marked script feeds the watchdog in its own loop.
 
 - ~~The bench has never run MicroPython 1.29.0.~~ — **resolved (2026-09-11): it has, repeatedly.**
   Real `dev` firmware built from `src/` and flashed, with the flash, bench and mid soak tiers all

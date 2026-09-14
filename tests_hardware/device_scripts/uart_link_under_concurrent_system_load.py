@@ -9,6 +9,7 @@ import gc
 import time
 
 import machine
+import memory_pressure
 
 import asy_i2c_driver
 import asy_spi_driver
@@ -34,7 +35,6 @@ _MIN_TRANSFERS = 20  # measured 58 unloaded-by-comparison; this is a floor, not 
 # No transfer may come close to its own deadline: half the timeout still leaves the link visibly
 # healthy rather than merely not-yet-failing. Measured worst case under this load is ~114ms.
 _MAX_RTT_MS = TIMEOUT_MS // 2
-_CHURN_BLOCK = 512  # bytes per allocation in the churn task - enough to fragment, far from the cap
 
 
 def get_callback(cmd_id: int) -> "tuple[bool, bytes | None]":
@@ -52,8 +52,6 @@ class Load:
         self.i2c0_reads = 0
         self.i2c1_reads = 0
         self.spi_reads = 0
-        self.churn_blocks = 0
-        self.alloc_failures = 0
         self.stop = False
 
 
@@ -87,32 +85,16 @@ async def _fram_read_loop(fram: AsyFramManager, load: Load) -> None:
         await asyncio.sleep_ms(10)
 
 
-async def _memory_churn_loop(load: Load) -> None:
-    # Pressure on the allocator, which is what turns a latent one-big-allocation design into a
-    # failure (SPECIFICATION.md Part I). Held briefly, then dropped, so the heap keeps moving.
-    held: list[bytearray] = []
-    while not load.stop:
-        try:
-            held.append(bytearray(_CHURN_BLOCK))
-            load.churn_blocks += 1
-        except MemoryError:
-            load.alloc_failures += 1
-            held = []
-            gc.collect()
-        if len(held) > 24:
-            held = held[12:]
-        await asyncio.sleep_ms(2)
-
-
 async def _main() -> None:
     wdt = machine.WDT(timeout=8000)
     failures = []
     load = Load()
-    # CLAUDE.md's standing rule for a stress test: prove it under MicroPython's own real default
-    # (no proactive collection) before leaning on the project's chosen threshold. On real hardware
-    # that is the harder case by far - 264kB of RAM, no 8MB Unix-port heap to hide in.
-    gc.collect()
-    gc.threshold(-1)
+    # The GC policy is the BUILD's, never this script's: a --gc-policy reactive --memory-pressure
+    # firmware is the only one carrying memory_pressure at all, so what runs here is a real
+    # configuration rather than one the test mutated into place (SPECIFICATION.md Part I.6).
+    if gc.threshold() != -1:
+        print(f"RESULT: FAIL expected a reactive-GC build, but gc.threshold() is {gc.threshold()}")
+        return
 
     uart0 = asy_uart_driver.UART(0, 0, 1, baudrate=BAUDRATE, rxbuf=BUF_BYTES, txbuf=BUF_BYTES, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_IDLE_MS)
     uart1 = asy_uart_driver.UART(1, 8, 9, baudrate=BAUDRATE, rxbuf=BUF_BYTES, txbuf=BUF_BYTES, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_IDLE_MS)
@@ -149,8 +131,8 @@ async def _main() -> None:
         asyncio.create_task(_scd_load_loop(scd, load)),
         asyncio.create_task(_sgp_load_loop(sgp, load)),
         asyncio.create_task(_fram_read_loop(fram, load)),
-        asyncio.create_task(_memory_churn_loop(load)),
     ]
+    churn = memory_pressure.start()
     try:
         started_ms = time.ticks_ms()
         deadline = time.ticks_add(started_ms, RUN_MS)
@@ -172,6 +154,7 @@ async def _main() -> None:
         gc.collect()
         heap_at_end = gc.mem_alloc()
         load.stop = True
+        churn.stop = True
         for task in tasks:
             task.cancel()
         await asyncio.sleep_ms(50)
@@ -197,8 +180,13 @@ async def _main() -> None:
         failures.append(f"an I2C device was starved by the link: scd={load.i2c0_reads} sgp={load.i2c1_reads}")
     if not load.spi_reads:
         failures.append("the FRAM's SPI bus was starved by the link")
-    if not load.churn_blocks:
+    if not churn.blocks:
         failures.append("the allocation churn task never ran")
+    # Fragment mode keeps a headroom floor deliberately, so its own allocation failing means the
+    # instrument was mis-sized for this workload - a calibration fault that invalidates the run,
+    # not a finding about the link (SPECIFICATION.md Part I.6).
+    if churn.alloc_failures:
+        failures.append(f"the churn instrument itself hit {churn.alloc_failures} MemoryError(s) - its headroom is mis-calibrated for this workload, so this run proves nothing")
     # The memory half of the claim. A frame is 53 bytes; two thirds of the run happen after the
     # sample, so real per-transaction retention would be thousands of bytes, far above this bound.
     heap_growth = heap_at_end - heap_at_third
@@ -210,8 +198,8 @@ async def _main() -> None:
     else:
         print(
             f"RESULT: PASS {transfers} transfers (worst RTT {worst_rtt_ms}ms) while scd={load.i2c0_reads} "
-            f"sgp={load.i2c1_reads} spi={load.spi_reads} churn={load.churn_blocks} "
-            f"allocfail={load.alloc_failures} heapgrowth={heap_growth}B",
+            f"sgp={load.i2c1_reads} spi={load.spi_reads} churn={churn.blocks} "
+            f"drops={churn.drops} heapgrowth={heap_growth}B",
         )
 
 
