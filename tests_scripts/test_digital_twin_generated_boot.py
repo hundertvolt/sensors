@@ -24,6 +24,13 @@ _HOST = "127.0.0.1"
 _HTTP_OK = 200
 _BOOT_TIMEOUT_S = 30.0
 _SHUTDOWN_TIMEOUT_S = 15.0
+# Must comfortably outlast real boot-to-serving latency (measured ~1.9s for wozi on this host) plus
+# the 5-endpoint smoke loop's own sequential HTTP round trips - `3` used to pass only because an
+# older, slower `run_generic_integration.py` shutdown sequence added a few seconds of unintentional
+# slack after the sleep expired; a cleaner/faster shutdown (2026-09-14) removed that slack and
+# exposed this budget as always having been too tight, not a new regression to chase in the twin
+# itself (confirmed directly: the pre-refactor file reproduces the identical ~1.9s boot latency).
+_TWIN_DURATION_S = 6
 # No real static content is needed - this suite never requests "/" (asy_webserver_service.py's own
 # static route only touches frozen_html lazily, per request - see this file's own module docstring
 # reasoning, confirmed directly by reading that route's implementation).
@@ -107,7 +114,7 @@ def _boot_generated_device(repo_root: Path, micropython_bin: Path, src_dir: Path
         "--device", generated.model.device,
         "--host", _HOST,
         "--port", str(port),
-        "--duration", "3",
+        "--duration", str(_TWIN_DURATION_S),
     ]
     proc = subprocess.Popen(cmd, cwd=repo_root, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     failures: list[str] = []

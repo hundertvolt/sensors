@@ -28,8 +28,6 @@
 # Usage:
 #   scripts/run_unix_port_integration.sh                        # just launch wozi + serve forever, no flags
 #   scripts/run_unix_port_integration.sh --device dev            # same, for the dev bench variant
-#   scripts/run_unix_port_integration.sh --soak                 # bounded automated soak run, then serves forever
-#   scripts/run_unix_port_integration.sh --soak --duration 0    # same, but exits immediately after the soak
 #   scripts/run_unix_port_integration.sh --fault sgp40:writeto  # manual fault-injection exploration
 #   scripts/run_unix_port_integration.sh --host 0.0.0.0 --port 8080   # reachable from outside this machine
 #
@@ -37,10 +35,11 @@
 # picks which devices/<device>.toml-generated module/wiring plan to boot. Every other flag forwards
 # straight through to run_generic_integration.py's own parse_args() - see that module's own
 # docstring for the full list (--host/--port/--fram-state-path/--seed/--fault/--wifi-outcome/
-# --soak/--soak-cycles/--duration). No flags given just launches wozi and serves forever
-# (RunConfig's own defaults - localhost:8080), the same "reachable/observable" half of owner
-# decision 7 a real rp2040 boot would give you - the automated soak assertion is a specialty, opted
-# into via --soak (or --soak-cycles, which implies it), not part of the plain launch path.
+# --gc-threshold/--mem-sample-interval-ms/--duration). No flags given just launches wozi and serves
+# forever (RunConfig's own defaults - localhost:8080), the same "reachable/observable" half of owner
+# decision 7 a real rp2040 boot would give you. There is no --soak flag here any more - the
+# automated HTTP+memory-trend soak check moved host-side (SPECIFICATION.md's "Driver/DUT process
+# separation" Part) - run it via scripts/_digital_twin_ci_suite.py's own Run 11 instead.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 

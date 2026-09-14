@@ -425,8 +425,6 @@ fault-injection flag over `curl`. Every flag forwards straight through to
 ```sh
 scripts/run_unix_port_integration.sh                                 # wozi: just launch + serve forever, no flags
 scripts/run_unix_port_integration.sh --device dev                     # any other real device, same shape
-scripts/run_unix_port_integration.sh --soak                           # bounded automated soak run, then serves forever
-scripts/run_unix_port_integration.sh --soak --duration 0              # same, but exits immediately after the soak
 scripts/run_unix_port_integration.sh --fault sgp40:writeto             # manual fault-injection exploration
 scripts/run_unix_port_integration.sh --host 0.0.0.0 --port 8080        # reachable from outside this machine
 ```
@@ -434,11 +432,7 @@ scripts/run_unix_port_integration.sh --host 0.0.0.0 --port 8080        # reachab
 - `--device NAME` — which real device to boot (`wozi`/`dev`/`arzi`/`klkizi`/`grkizi`/`schlafzi`,
   default `wozi`); this script's own flag, not forwarded to the twin process.
 - `--host HOST` / `--port PORT` — bind address (default `localhost:8080`).
-- `--soak` — run a bounded automated HTTP+memory-trend soak check before serving (see
-  `run_generic_integration.py`'s `_soak()` for the methodology); prints a `PASS`/`FAIL` line.
-- `--soak-cycles N` — number of soak cycles (implies `--soak`); default 20.
-- `--duration SECONDS` — exit after a fixed run instead of serving forever (`0` exits immediately
-  after the soak, if any).
+- `--duration SECONDS` — exit after a fixed run instead of serving forever.
 - `--seed N` — seed every chip's random value walk for a reproducible run.
 - `--fault DEVICE:OP[:TIMES]` (repeatable) — same shape as `digital_twin/launch.py`'s `--fault`
   below.
@@ -448,6 +442,17 @@ scripts/run_unix_port_integration.sh --host 0.0.0.0 --port 8080        # reachab
 - `--fram-state-path PATH` / `--scd30-state-path PATH` — persist that chip's state to a JSON file
   across runs; default in-memory only (`""` also means in-memory only), unlike
   `scripts/_digital_twin_ci_suite.py`'s own explicit on-disk defaults for its persistence checks.
+- `--gc-threshold N` — override the boot-time `gc.threshold()` (default `32768`, matching every
+  real firmware boot); `-1` is MicroPython's own real reactive-only default.
+- `--mem-sample-interval-ms N` — arm a background task that logs a `gc.mem_free()` reading every
+  `N` ms (see `_mem_sampler()`); the twin's own only remaining contribution to the memory-trend
+  soak check below, which otherwise runs entirely host-side.
+
+There is no standalone `--soak` flag any more - the automated HTTP+memory-trend soak check moved
+host-side (SPECIFICATION.md's "Driver/DUT process separation" Part): request-driving now runs on
+the host, the same way every other digital-twin check already does, rather than sharing the twin's
+own heap. Run it via `scripts/_digital_twin_ci_suite.py --micropython-bin <path> --device <device>`
+(its own Run 11) - see `digital_twin/README.md`'s "Automated CI suite" section.
 
 Start the twin's standalone CLI demo (no website, twin only) directly with the same Unix-port binary
 `scripts/test.sh` builds:
@@ -509,13 +514,12 @@ establish this project's own known-working baseline (build → boot → set log 
 that level persisted → boot again with bus faults injected). Run each block from the repo root;
 `curl` and a browser both work against `http://127.0.0.1:8080` while a run is up.
 
-**1. Fresh build and boot** (`--soak` runs a built-in 20-cycle soak across every endpoint before it
-starts serving — watch for a `PASS` line; omit it for a plain launch straight into serving, the same
-as a real rp2040 boot):
+**1. Fresh build and boot** (straight into serving, the same as a real rp2040 boot - for the
+automated HTTP+memory-trend soak check instead, see `scripts/_digital_twin_ci_suite.py`'s Run 11):
 
 ```sh
 rm -rf digital_twin/config digital_twin/fram_state.json   # start from a clean, unconfigured device
-scripts/run_unix_port_integration.sh --host 127.0.0.1 --port 8080 --soak
+scripts/run_unix_port_integration.sh --host 127.0.0.1 --port 8080
 ```
 
 Leave this running in its own terminal. In a second terminal, walk every GET endpoint plus the
@@ -556,7 +560,7 @@ as it would skip any unsaved state on real hardware). Then boot again the same w
 `DebugLevel` survives):
 
 ```sh
-scripts/run_unix_port_integration.sh --host 127.0.0.1 --port 8080 --soak
+scripts/run_unix_port_integration.sh --host 127.0.0.1 --port 8080
 ```
 
 This boot's own console output is now the full verbose trace — every `PrintLog.evt()`/`.one()`/

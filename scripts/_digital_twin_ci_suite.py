@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import http.client
 import json
+import math
 import os
 import signal
 import socket
@@ -93,6 +94,49 @@ _TEST_SCD30_MEAS_INT = 4
 _MIN_VERBOSE_LOG_LINES = 5
 _SGP40_BOUNDED_FAULT_COUNT = 3
 _WIFI_SCRIPTED_FAILURES = 5  # asy_wifi_service.py's conn_fail_to_hotspot - the failure count that trips hotspot fallback
+
+# Run 11 (soak) - moved host-side from digital_twin/run_generic_integration.py's own now-retired
+# _soak() (SPECIFICATION.md's "Driver/DUT process separation" Part, 2026-09-14): this suite now
+# drives every soak request itself, over real HTTP, the same way Runs 1-10 already do via _http()
+# below, instead of delegating request-driving to the twin's own in-process HTTP client - the
+# client's own allocation/CPU work no longer shares the DUT's heap, ever.
+_SOAK_ENDPOINTS = ("/measurements", "/sensors", "/networking", "/system", "/notification", "/status", "/")
+# 40 (wozi's own original calibration) genuinely isn't enough warmup for `dev` specifically - its
+# two extra wired uart_link instances (devices/dev.toml; wozi has none) mean more one-time,
+# post-boot settling (module-level caches/config-derived structures populated once, the same
+# asymptotically-decaying-then-flat shape wozi's own boot already shows on a smaller scale, not a
+# real unbounded leak - confirmed directly, 2026-09-14: gc.mem_free() plateaus for both devices
+# given enough idle wall-clock time after boot, wozi's own curve flattening well inside 40 cycles'
+# worth of real time, dev's own needing roughly 2.5x that before it does too, reproduced with the
+# uart_link exercise/listen tasks fully disabled - so this is boot settling proportional to module
+# count, not UART traffic). 100 gives every device, not just wozi, real wall-clock room to finish
+# settling before the measured window starts, so the trend check measures a genuine plateau instead
+# of an in-progress one-time settle.
+_SOAK_WARMUP_CYCLES = 100
+_SOAK_CYCLES = 20
+# The one thing this move genuinely can't take host-side: gc.mem_free() only exists inside the
+# twin's own heap, and deliberately has no REST route. digital_twin/run_generic_integration.py's
+# --mem-sample-interval-ms arms a trivial background task there (_mem_sampler()) that prints one
+# "MEM_SAMPLE <time.time()> <gc.mem_free()>" line per interval, decoupled from request handling -
+# this suite reads those lines back out of the twin's own captured log the same way it already
+# reads watchdog.would_have_triggered_count (_would_have_triggered_count() below), never by calling
+# back into the twin process. 25ms is dense enough that even a fast warmup+cycles pass (a few
+# hundred ms of loopback HTTP) still yields plenty of samples for a meaningful quarter split - the
+# sampler itself costs one gc.collect()+print() per interval, cheap enough that a short interval
+# costs nothing measurable.
+_MEM_SAMPLE_INTERVAL_MS = 25
+# _MEM_TREND_*: originally calibrated (run_wozi_integration.py, since retired - its own module
+# docstring carried the full account, recovered from git history below since nothing else still
+# states it) from five independent 100-cycle soaks - 25-sample first/last quarters - measuring
+# trend deltas of +2623, +796, -410, +1729, -116 bytes (positive = memory declined): max magnitude
+# 2623, scattered around zero rather than a consistent decline (the evidence against a real leak,
+# not the absence of variance). The flat 8192-byte tolerance that produced (~3.1x that magnitude)
+# was calibrated for a 25-sample quarter; _SOAK_CYCLES=20's own 5-sample quarters are noisier, a
+# mismatch the original comment already named but never corrected. Scaled by quarter size instead
+# of a flat constant - trend is a difference of two quarter means, so its standard error scales
+# with 1/sqrt(quarter_size); at the calibration's own 25-sample quarters this reduces to exactly
+# the original 8192.
+_MEM_TREND_TOLERANCE_BYTES_AT_25_SAMPLES = 8192
 
 # A fixed, recognizable DNS transaction ID, so a real answer from the captive DNSServer can be told
 # apart from an echo of the query itself; the header prefix is _try_dns_query()'s own ">HH" unpack.
@@ -382,6 +426,29 @@ def _would_have_triggered_count(log_text: str) -> int | None:
             except ValueError:
                 return None
     return None
+
+
+_MEM_SAMPLE_LINE_FIELD_COUNT = 3  # "MEM_SAMPLE", the timestamp, the byte count
+
+
+def _parse_mem_samples(log_text: str) -> list[tuple[float, int]]:
+    # digital_twin/run_generic_integration.py's own _mem_sampler() (armed via
+    # --mem-sample-interval-ms) prints "MEM_SAMPLE <time.time()> <gc.mem_free()>" once per
+    # interval - the same captured-log-line pattern _would_have_triggered_count() above already
+    # uses for the twin's other internal-only value. Malformed/foreign lines are skipped rather
+    # than raising, matching _would_have_triggered_count()'s own tolerance for a partial log.
+    samples: list[tuple[float, int]] = []
+    for line in log_text.splitlines():
+        if not line.startswith("MEM_SAMPLE "):
+            continue
+        parts = line.split()
+        if len(parts) != _MEM_SAMPLE_LINE_FIELD_COUNT:
+            continue
+        try:
+            samples.append((float(parts[1]), int(parts[2])))
+        except ValueError:
+            continue
+    return samples
 
 
 def _build_dns_query(query_id: int = _DNS_QUERY_ID, qname: str = "example.com") -> bytes:
@@ -830,25 +897,99 @@ def _run_10_watchdog_hang_backstop(ctx: RunContext) -> None:
 
 
 def _run_11_soak(ctx: RunContext) -> None:
-    # ---- Run 11: a genuinely fresh, clean boot dedicated to the soak check. --soak/--soak-cycles
-    # (BUILD_CHAIN_PLAN.md's Session 6.2) is supported directly by run_generic_integration.py,
-    # ported verbatim from run_wozi_integration.py's/run_dev_integration.py's own machinery. Driven
-    # at ctx.gc_threshold like every other run in this suite - see main()'s own comment for why the
-    # whole suite (not just this run) executes once per gc.threshold() value, in order. ----
+    # ---- Run 11: a genuinely fresh, clean boot dedicated to the soak check - now driven entirely
+    # from THIS process, exactly like Runs 1-10 (SPECIFICATION.md's "Driver/DUT process separation"
+    # Part, 2026-09-14): warmup + cycle requests go out over real HTTP via _http() below, never
+    # through the twin's own in-process client. The one thing that genuinely can't move host-side -
+    # gc.mem_free(), which only exists inside the twin's own heap - is armed via
+    # --mem-sample-interval-ms and read back from the twin's own captured log after the fact (see
+    # _parse_mem_samples()'s own comment). Driven at ctx.gc_threshold like every other run in this
+    # suite - see main()'s own comment for why the whole suite executes once per gc.threshold()
+    # value, in order. ----
     _clean_state()
     log_path = ctx.logs_dir / "run11_soak.log"
-    proc = _spawn(ctx, ["--soak", "--soak-cycles", "20", "--duration", "0"], log_path)
-    ec = _wait_exit(proc, "Run 11", timeout_s=180.0)
-    _check(condition=ec == 0, msg=f"Run 11: soak run completed cleanly (exit code {ec})")
+    proc = _spawn(ctx, ["--mem-sample-interval-ms", str(_MEM_SAMPLE_INTERVAL_MS)], log_path)
+    http_failures: list[str] = []
+    cycles_start: float | None = None
+    cycles_end: float | None = None
+    try:
+        _wait_until_serving(proc)
+        for _ in range(_SOAK_WARMUP_CYCLES):
+            for path in _SOAK_ENDPOINTS:
+                try:
+                    _http("GET", path)
+                except (OSError, http.client.HTTPException) as e:
+                    # A real soak run must record a genuine allocation/transport failure as one
+                    # more failure, never let it abort the whole run before every other endpoint
+                    # and cycle has had its own chance to run.
+                    http_failures.append(f"warmup: GET {path} -> {e!r}")
+        cycles_start = time.time()
+        for cycle in range(_SOAK_CYCLES):
+            for path in _SOAK_ENDPOINTS:
+                try:
+                    status, _ = _http("GET", path)
+                except (OSError, http.client.HTTPException) as e:
+                    http_failures.append(f"cycle {cycle}: GET {path} -> {e!r}")
+                    continue
+                if status != _HTTP_OK:
+                    http_failures.append(f"cycle {cycle}: GET {path} -> {status}")
+        cycles_end = time.time()
+    except Exception as exc:  # CI orchestration: surface any failure as a suite failure, not a crash
+        _fail(f"Run 11 (soak): {exc!r}")
+    finally:
+        ec = _shutdown(proc, "Run 11")
+        _check(condition=ec == 0, msg=f"Run 11: clean shutdown (exit code {ec})")
+
+    for failure in http_failures:
+        print(f"FAIL: Run 11: {failure}")
+    total_requests = (_SOAK_WARMUP_CYCLES + _SOAK_CYCLES) * len(_SOAK_ENDPOINTS)
+    _check(condition=not http_failures, msg=f"Run 11: {total_requests} soak requests across every endpoint produced zero HTTP failures ({len(http_failures)} found)")
+
+    wdt11 = _would_have_triggered_count(_read_log(log_path))
+    _check(condition=wdt11 == 0, msg=f"Run 11: watchdog never starved across the soak (would_have_triggered_count={wdt11!r})")
+
+    if cycles_start is None or cycles_end is None:
+        return  # readiness/setup already failed and got its own _fail() above; nothing to trend-check
     log_text = _read_log(log_path)
-    _check(condition="soak summary" in log_text, msg="Run 11: soak summary was printed")
-    if "PASS -" not in log_text:
-        # This check alone doesn't say *why* - the soak's own summary line names the actual failed
-        # sub-check(s) (HTTP failures, watchdog, or memory trend) and, for HTTP failures, the real
-        # exception each one hit - print it so a CI failure is diagnosable from the job log alone,
-        # without needing the uploaded digital-twin-ci-logs-* artifact.
-        print(f"== Run 11 soak log ({log_path}):\n{log_text}")
-    _check(condition="PASS -" in log_text, msg="Run 11: soak run reported PASS (no HTTP failures, watchdog never starved, memory trend within tolerance)")
+    samples = [free for ts, free in _parse_mem_samples(log_text) if cycles_start <= ts <= cycles_end]
+    # Needs at least 4 samples for the quarters to mean anything - always true in practice at
+    # _MEM_SAMPLE_INTERVAL_MS=25 unless the cycles phase itself failed to run at all.
+    _check(condition=len(samples) // 4 >= 1, msg=f"Run 11: enough MEM_SAMPLE lines in the cycles window to compute a memory trend ({len(samples)} samples)")
+    trend_result = _mem_trend(samples)
+    if trend_result is None:
+        return
+    trend, tolerance, quarter, early_avg, late_avg = trend_result
+    print(
+        f"Run 11 memory trend: min={min(samples)} max={max(samples)} early_avg={early_avg:.0f} "
+        f"late_avg={late_avg:.0f} trend={trend:.0f} tolerance={tolerance:.0f} "
+        f"quarter_size={quarter} samples={len(samples)}",
+    )
+    _check(
+        condition=trend <= tolerance,
+        msg=(
+            f"Run 11: gc.mem_free() trend ({trend:.0f} bytes decline, early_avg={early_avg:.0f} -> "
+            f"late_avg={late_avg:.0f}) within the {tolerance:.0f}-byte tolerance (quarter_size={quarter})"
+        ),
+    )
+
+
+def _mem_trend(samples: list[int]) -> tuple[float, float, int, float, float] | None:
+    # Pure trend-vs-tolerance arithmetic, split out from _run_11_soak() so it's unit-testable
+    # without a live subprocess/HTTP server (tests_scripts/test_digital_twin_ci_suite_soak.py).
+    # Returns (trend, tolerance, quarter_size, early_avg, late_avg), or None if there aren't at
+    # least 4 samples (the caller's own _check() above already reports that case).
+    quarter = len(samples) // 4
+    if quarter < 1:
+        return None
+    early = samples[:quarter]
+    late = samples[-quarter:]
+    early_avg = sum(early) / len(early)
+    late_avg = sum(late) / len(late)
+    trend = early_avg - late_avg  # positive: memory declined between quarters
+    # trend's own standard error scales with 1/sqrt(quarter_size) (it's a difference of two quarter
+    # means) - see _MEM_TREND_TOLERANCE_BYTES_AT_25_SAMPLES's own module-level comment for why.
+    tolerance = _MEM_TREND_TOLERANCE_BYTES_AT_25_SAMPLES * math.sqrt(25 / quarter)
+    return trend, tolerance, quarter, early_avg, late_avg
 
 
 def run_suite(ctx: RunContext) -> None:

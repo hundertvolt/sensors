@@ -1,12 +1,12 @@
 """Generic digital-twin entry point: boots ANY `sensortask_<device>` module - most usefully a Session-3 `buildgen.generate.generate_device()`-generated one, written to disk by the caller first - against a `machine.configure_wiring()`-shaped wiring-plan JSON (produced host-side by `buildgen.twin_wiring.compute_twin_wiring()`, since this MicroPython process has no tomllib/buildgen of its own). Not a `tests/test_*.py` file - it can serve forever.
-This file's own fault/hang chip lookup is the generalized form of `run_wozi_integration.py`'s/`run_dev_integration.py`'s hardcoded `{"scd30": sensortask_wozi.i2c0._i2c.devices[0x61], ...}`; `--soak`/`--soak-cycles` (Session 6.2) is the same generalization applied to their own soak/memory-trend-check machinery - see `_soak()`'s own comment for the methodology, ported verbatim from `run_wozi_integration.py`.
+This file's own fault/hang chip lookup is the generalized form of `run_wozi_integration.py`'s/`run_dev_integration.py`'s hardcoded `{"scd30": sensortask_wozi.i2c0._i2c.devices[0x61], ...}`. The soak/memory-trend-check machinery itself moved host-side (`scripts/_digital_twin_ci_suite.py`'s own `_run_11_soak()`, 2026-09-14 - SPECIFICATION.md's "Driver/DUT process separation" Part) - this file's only remaining contribution to that check is `--mem-sample-interval-ms`, an optional background `gc.mem_free()` log-line emitter (see `_mem_sampler()`), the one value that check needs and has no source but this process's own heap.
 See `digital_twin/README.md`'s "Booting a generated device" section and BUILD_CHAIN_PLAN.md's Session 5/6.2 write-ups for the full design account."""
 
 import asyncio
 import gc
 import json
-import math
 import sys
+import time
 
 try:
     from typing import TYPE_CHECKING
@@ -18,7 +18,6 @@ if TYPE_CHECKING:
 
     import network
 
-import _http_client
 import machine
 from _unix_port_udp_addr_shim import patch_asy_udp_socket_for_unix_port
 from launch import (
@@ -34,39 +33,14 @@ _booted_module: "Any | None" = None  # set by main(), read by _print_wdt_status(
 # needed explicitly here since this file's own module is only known at runtime (parse_args()'s
 # --module), unlike run_wozi_integration.py/run_dev_integration.py's own static imports.
 
-# Ported verbatim from run_wozi_integration.py (BUILD_CHAIN_PLAN.md's Session 6.2 - confirmed by
-# direct comparison against run_dev_integration.py's own byte-identical copy that this machinery is
-# genuinely device-generic already, not wozi-specific: the same warm-up transient/noise band shows
-# up driving either module, since both boot the same shape of real object graph).
-_SOAK_ENDPOINTS = ("/measurements", "/sensors", "/networking", "/system", "/notification", "/status", "/")
-_SOAK_WARMUP_CYCLES = 40
-_SOAK_CYCLES_DEFAULT = 20
-# _MEM_TREND_*: originally calibrated (run_wozi_integration.py, since retired - its own module
-# docstring carried the full account, recovered from git history below since nothing else still
-# states it) from five independent 100-cycle soaks - 25-sample first/last quarters - measuring
-# trend deltas of +2623, +796, -410, +1729, -116 bytes (positive = memory declined): max magnitude
-# 2623, scattered around zero rather than a consistent decline (the evidence against a real leak,
-# not the absence of variance). The flat 8192-byte tolerance that produced (~3.1x that magnitude)
-# was calibrated for a 25-sample quarter; _SOAK_CYCLES_DEFAULT=20's own 5-sample quarters are
-# noisier, a mismatch the original comment already named but never corrected. Harmless while
-# digital_twin/_http_client.py's own fetch() called gc.collect() twice per request - that extra,
-# unrelated collection incidentally smoothed this measurement too - until removing it (a real fix,
-# see that file's own history) let the 20-cycle default's genuine noise floor through: a real CI
-# run measured a 9203-byte trend with zero HTTP failures and no leak (confirmed: run_generic_
-# integration.py's own soak methodology already rules that out the same way the original
-# calibration did). Scaled by quarter size instead of a flat constant - trend is a difference of
-# two quarter means, so its standard error scales with 1/sqrt(quarter_size); at the calibration's
-# own 25-sample quarters this reduces to exactly the original 8192.
-_MEM_TREND_TOLERANCE_BYTES_AT_25_SAMPLES = 8192
 # Matches buildgen.codegen.generate_boot_entry_source()'s own real-firmware boot entry (same value,
 # same one-time placement immediately before asyncio.run()) - the twin sets it too, by default, so a
 # non-soak run models production's actual memory-safety configuration, not just its allocation code.
-# Overridable via --gc-threshold specifically so _soak() (the one entry point this file exposes that
-# is genuinely a stress/hammer test, not a feature-behavior smoke run) can be driven at MicroPython's
-# own real reactive-only default too - CLAUDE.md's/SPECIFICATION.md Part I.4(e)'s standing rule that
-# a stress test must pass at gc.threshold(-1) *before* it's ever run with a chosen threshold, which a
-# single hardcoded gc.threshold(32768) here could never be checked against. See
-# scripts/_digital_twin_ci_suite.py's own Run 11a/11b for where that check actually happens.
+# Overridable via --gc-threshold so the whole suite (scripts/_digital_twin_ci_suite.py's main(), not
+# just the soak run) can be driven at MicroPython's own real reactive-only default too -
+# CLAUDE.md's/SPECIFICATION.md Part I.4(e)'s standing rule that the whole suite must pass at
+# gc.threshold(-1) *before* it's ever run with a chosen threshold, which a single hardcoded
+# gc.threshold(32768) here could never be checked against.
 _GC_THRESHOLD_DEFAULT = 32768
 
 
@@ -85,10 +59,9 @@ class RunConfig:
         hangs: "list[tuple[str, str, float, int]] | None" = None,
         wifi_outcomes: "list[int] | None" = None,
         *,
-        soak: bool = False,
-        soak_cycles: int = _SOAK_CYCLES_DEFAULT,
         duration: "float | None" = None,
         gc_threshold: int = _GC_THRESHOLD_DEFAULT,
+        mem_sample_interval_ms: "int | None" = None,
     ) -> None:
         self.module = module
         self.wiring_plan_path = wiring_plan_path
@@ -101,10 +74,9 @@ class RunConfig:
         self.faults = faults if faults is not None else []
         self.hangs = hangs if hangs is not None else []
         self.wifi_outcomes = wifi_outcomes if wifi_outcomes is not None else []
-        self.soak = soak
-        self.soak_cycles = soak_cycles
         self.duration = duration
         self.gc_threshold = gc_threshold
+        self.mem_sample_interval_ms = mem_sample_interval_ms
 
     def __eq__(self, other: "object") -> bool:
         if not isinstance(other, RunConfig):
@@ -121,10 +93,9 @@ class RunConfig:
             and self.faults == other.faults
             and self.hangs == other.hangs
             and self.wifi_outcomes == other.wifi_outcomes
-            and self.soak == other.soak
-            and self.soak_cycles == other.soak_cycles
             and self.duration == other.duration
             and self.gc_threshold == other.gc_threshold
+            and self.mem_sample_interval_ms == other.mem_sample_interval_ms
         )
 
     # Value equality without a matching hash: spell out what CPython already does implicitly for
@@ -137,8 +108,8 @@ class RunConfig:
             f"RunConfig(module={self.module!r}, wiring_plan_path={self.wiring_plan_path!r}, host={self.host!r}, "
             f"port={self.port!r}, device={self.device!r}, fram_state_path={self.fram_state_path!r}, "
             f"scd30_state_path={self.scd30_state_path!r}, seed={self.seed!r}, faults={self.faults!r}, "
-            f"hangs={self.hangs!r}, wifi_outcomes={self.wifi_outcomes!r}, soak={self.soak!r}, "
-            f"soak_cycles={self.soak_cycles!r}, duration={self.duration!r}, gc_threshold={self.gc_threshold!r})"
+            f"hangs={self.hangs!r}, wifi_outcomes={self.wifi_outcomes!r}, duration={self.duration!r}, "
+            f"gc_threshold={self.gc_threshold!r}, mem_sample_interval_ms={self.mem_sample_interval_ms!r})"
         )
 
 
@@ -161,10 +132,9 @@ def parse_args(argv: "list[str]") -> RunConfig:
     faults: list[tuple[str, str, int]] = []
     hangs: list[tuple[str, str, float, int]] = []
     wifi_outcomes: list[int] = []
-    soak = False
-    soak_cycles = _SOAK_CYCLES_DEFAULT
     duration: float | None = None
     gc_threshold = _GC_THRESHOLD_DEFAULT
+    mem_sample_interval_ms: int | None = None
 
     while remaining:
         arg = remaining.pop(0)
@@ -193,15 +163,12 @@ def parse_args(argv: "list[str]") -> RunConfig:
             hangs.append(parse_hang_spec(_pop_value(remaining, arg)))
         elif arg == "--wifi-outcome":
             wifi_outcomes.append(_parse_wifi_outcome(_pop_value(remaining, arg)))
-        elif arg == "--soak":
-            soak = True
-        elif arg == "--soak-cycles":
-            soak_cycles = int(_pop_value(remaining, arg))
-            soak = True  # passing a cycle count is itself opting into running the soak
         elif arg == "--duration":
             duration = float(_pop_value(remaining, arg))
         elif arg == "--gc-threshold":
             gc_threshold = int(_pop_value(remaining, arg))
+        elif arg == "--mem-sample-interval-ms":
+            mem_sample_interval_ms = int(_pop_value(remaining, arg))
         else:
             raise ValueError(f"unrecognized argument: {arg!r}")
 
@@ -222,10 +189,9 @@ def parse_args(argv: "list[str]") -> RunConfig:
         faults=faults,
         hangs=hangs,
         wifi_outcomes=wifi_outcomes,
-        soak=soak,
-        soak_cycles=soak_cycles,
         duration=duration,
         gc_threshold=gc_threshold,
+        mem_sample_interval_ms=mem_sample_interval_ms,
     )
 
 
@@ -290,14 +256,16 @@ async def _wait_until_built(module: "Any", timeout_s: float = 10.0) -> None:
     await asyncio.wait_for(poll(), timeout_s)
 
 
-def _wire_uart_crossover(module: "Any", plan: "dict[str, Any]") -> None:
+def _wire_uart_crossover(module: "Any", plan: "dict[str, Any]") -> "Any | None":
     # Generic, wiring-plan-JSON-driven equivalent of what main's own hand-written
     # run_dev_integration.py used to do by hand (device-name-specific): the bench's permanent
     # crossover jumper. Without it the twin models a dev board whose jumper is missing, and the
     # link exerciser the booted module now starts would spend the whole run timing out instead of
     # moving bytes (SPECIFICATION.md Part A.7/J). A no-op for any device with no "uart" key
     # (buildgen.twin_wiring.compute_twin_wiring() only emits one when the device TOML declares a
-    # uart_link initiator/responder pair - wozi never does).
+    # uart_link initiator/responder pair - wozi never does). Returns the built link (or None) so
+    # main() can hold a reference - needed for _wire_log_clearer() below, since the link itself is
+    # otherwise unreachable once this returns.
     #
     # Deliberately not inside machine.configure_wiring() itself (the plan this was drafted against
     # first suggested that): configure_wiring() runs BEFORE build_system() constructs anything, but
@@ -307,110 +275,67 @@ def _wire_uart_crossover(module: "Any", plan: "dict[str, Any]") -> None:
     # _collect_chips() below is a post-construction step too, not a pre-construction one.
     uart_plan = plan.get("uart")
     if uart_plan is None:
-        return
+        return None
     initiator = getattr(module, uart_plan["initiator_var"])
     responder = getattr(module, uart_plan["responder_var"])
     assert initiator is not None and responder is not None
     assert initiator.uart is not None and responder.uart is not None
     assert initiator.uart._uart is not None and responder.uart._uart is not None
-    _link, poll_a, poll_b = machine.attach_crossover_jumper(initiator.uart._uart, responder.uart._uart)
+    link, poll_a, poll_b = machine.attach_crossover_jumper(initiator.uart._uart, responder.uart._uart)
     initiator.uart.poller = poll_a
     responder.uart.poller = poll_b
+    return link
 
 
-async def _wait_until_serving(host: str, port: int, timeout_s: float = 10.0) -> None:
-    async def poll() -> None:
-        while True:
-            try:
-                # read_body=False: only ever checks that the request didn't raise - see fetch()'s
-                # own comment for why materializing a body nothing looks at is an avoidable
-                # allocation, not a free one.
-                await _http_client.fetch(host, port, "GET", "/", read_body=False)
-            except (OSError, MemoryError):  # MemoryError isn't an OSError subclass here
-                await asyncio.sleep_ms(50)
-            else:
-                return
+async def _mem_sampler(interval_ms: int) -> None:
+    # Optional (--mem-sample-interval-ms, unset by default): the ONE piece of this process a
+    # host-side driver genuinely cannot get any other way - gc.mem_free() only exists inside this
+    # process's own heap, and deliberately has no REST route (SPECIFICATION.md's "Driver/DUT
+    # process separation" Part - every request-driving/response-observing responsibility this file
+    # used to also carry, in the now-retired _soak(), moved host-side, to
+    # scripts/_digital_twin_ci_suite.py's own _run_11_soak(); this is the one thing that couldn't).
+    # Decoupled from any request/response path on purpose, running on its own fixed wall-clock timer
+    # rather than once per host-driven cycle - the host has no way to signal "a cycle just finished"
+    # into this process without adding exactly the kind of extra channel this design avoids, and a
+    # denser, timer-driven sample stream is at least as sensitive to a real trend as a
+    # once-per-cycle one. Each line is timestamped (time.time(), the same wall clock the host's own
+    # process reads) so the host can select just the samples taken during its own measurement
+    # window, the same way it already scrapes watchdog.would_have_triggered_count from this
+    # process's own stdout via _print_wdt_status() below - never by calling back into this process.
+    # gc.collect() here is measurement instrumentation, not a memory-pressure workaround: it runs on
+    # a fixed timer, decoupled from request handling, and cannot mask a real MemoryError (nothing
+    # here ever calls into the webserver or a driver) - SPECIFICATION.md Part I.4(e)'s own narrow,
+    # already-litigated exception for exactly this reason (verified directly, 2026-09-14: the
+    # now-retired in-process _soak() briefly ran without this same gc.collect() and the trend check
+    # got measurably worse, not better - min=99808/max=1347104 swings on a genuinely healthy run,
+    # a false positive from incidental reactive-GC timing, not from anything this collect() hides).
+    while True:
+        await asyncio.sleep_ms(interval_ms)
+        gc.collect()
+        print(f"MEM_SAMPLE {time.time():.3f} {gc.mem_free()}")
 
-    await asyncio.wait_for(poll(), timeout_s)
+
+_WIRE_LOG_CLEAR_INTERVAL_MS = 5000
 
 
-async def _soak(host: str, port: int, cycles: int) -> "list[str]":
-    # Ported verbatim from run_wozi_integration.py's own _soak() (BUILD_CHAIN_PLAN.md's Session
-    # 6.2) - deliberately strictly-sequential, see that function's own comment for why (a real
-    # MicroPython Unix-port interpreter segfault, found by exceeding WebserverService's own
-    # max_connections=4 with concurrent clients; tests/test_digital_twin_webserver_concurrency.py
-    # is the project's real regression coverage for that concurrency scale, never this soak).
-    failures: list[str] = []
-    for _ in range(_SOAK_WARMUP_CYCLES):
-        for path in _SOAK_ENDPOINTS:
-            try:
-                # read_body=False: this loop never reads a response body - see fetch()'s own
-                # comment for the real regression found by materializing one nothing looked at
-                # (a real MemoryError on the dev device's own, largest frozen website under
-                # gc.threshold(-1) - SPECIFICATION.md Part I.4(g)).
-                await _http_client.fetch(host, port, "GET", path, read_body=False)
-            except (OSError, MemoryError) as e:  # MemoryError isn't an OSError subclass here
-                # (CLAUDE.md's platform-facts note) - a real soak run must record a genuine
-                # allocation failure as one more failure, never let it crash the whole run
-                # uncaught before the summary below ever prints (found via a real CI failure).
-                failures.append(f"warmup: GET {path} -> {e!r}")
-    # gc.collect() here is measurement instrumentation, not a memory-pressure workaround - it never
-    # runs anywhere near a request/response and cannot mask a real MemoryError (every fetch() above
-    # already catches and records its own, independently of this). Tried removing it (2026-09-14,
-    # auditing c691cb3's own port from run_wozi_integration.py against CLAUDE.md's/SPECIFICATION.md
-    # Part I.4(e)'s sharpened rule) and confirmed directly it makes the trend check *worse*, not
-    # better: without a settled baseline, gc.mem_free() swings with incidental reactive-GC timing
-    # alone (measured on a genuinely healthy wozi run: min=99808, max=1347104 across 20 cycles, a
-    # false-positive "trend declined by 413990 bytes" against an 18318-byte tolerance calibrated for
-    # the collected regime) - a false failure has no diagnostic value and would train reviewers to
-    # ignore this check. Restored: this gc.collect() stabilizes what the *next* line measures, it
-    # does not relieve any allocation pressure the fetch() calls above already faced on their own.
-    gc.collect()
-    mem_samples: list[int] = [gc.mem_free()]  # index 0: post-warmup baseline, excluded from the
-    # trend comparison below (it's a single point, not a quarter average).
-    for cycle in range(cycles):
-        for path in _SOAK_ENDPOINTS:
-            try:
-                # read_body=False: only res.status_code is ever read below - see fetch()'s own
-                # comment and the warmup loop's above for why.
-                res = await _http_client.fetch(host, port, "GET", path, read_body=False)
-            except (OSError, MemoryError) as e:
-                failures.append(f"cycle {cycle}: GET {path} -> {e!r}")
-                continue
-            if res.status_code != 200:
-                failures.append(f"cycle {cycle}: GET {path} -> {res.status_code}")
-        gc.collect()  # see the post-warmup baseline's own comment above - same reasoning, per cycle.
-        mem_samples.append(gc.mem_free())
-    # Trend check - see this file's own _MEM_TREND_* module-level comment for the full methodology
-    # and why the tolerance below is scaled, not flat. Needs at least 4 per-cycle samples
-    # (cycles >= 4) for the quarters to mean anything; skipped below that (a --soak-cycles this
-    # small is a manual smoke run).
-    per_cycle_samples = mem_samples[1:]
-    quarter = len(per_cycle_samples) // 4
-    if quarter >= 1:
-        early = per_cycle_samples[:quarter]
-        late = per_cycle_samples[-quarter:]
-        early_avg = sum(early) / len(early)
-        late_avg = sum(late) / len(late)
-        trend = early_avg - late_avg  # positive: memory declined between quarters
-        # trend's own standard error scales with 1/sqrt(quarter_size) (it's a difference of two
-        # quarter means) - this reduces to exactly the original flat constant at the calibration's
-        # own 25-sample quarters, and widens correctly for a smaller/noisier one instead of
-        # silently re-applying a tolerance measured at a different sample size.
-        tolerance = _MEM_TREND_TOLERANCE_BYTES_AT_25_SAMPLES * math.sqrt(25 / quarter)
-        print(
-            f"digital_twin/run_generic_integration.py memory trend: baseline={mem_samples[0]} "
-            f"min={min(per_cycle_samples)} max={max(per_cycle_samples)} early_avg={early_avg:.0f} "
-            f"late_avg={late_avg:.0f} trend={trend:.0f} tolerance={tolerance:.0f} "
-            f"quarter_size={quarter} samples={len(per_cycle_samples)}",
-        )
-        if trend > tolerance:
-            failures.append(
-                f"gc.mem_free() trend declined by {trend:.0f} bytes (early_avg={early_avg:.0f} -> "
-                f"late_avg={late_avg:.0f}) over {cycles} cycles, exceeding the "
-                f"{tolerance:.0f}-byte tolerance (quarter_size={quarter})",
-            )
-    return failures
+async def _wire_log_clearer(link: "Any") -> None:
+    # digital_twin/machine.py's UARTLink.wire_log is unbounded by design (SPECIFICATION.md's own
+    # documented trap, "Clear it inside any measurement loop") - it exists so a unit test with
+    # direct object access can assert exactly what crossed the wire (tests/_uart_link_contract.py's
+    # check_wire_log_records_what_was_delivered(), tests/test_asy_uart_comm.py's byte-exact check),
+    # and every such test clears it itself between assertions. This process has no such access - it
+    # boots the twin as a real subprocess and never reads wire_log at all - so left alone it grows
+    # for as long as the crossover link carries traffic (src/asy_uart_link_driver.py's own
+    # UartLinkExerciser fires every second, independent of HTTP activity), eventually becoming a
+    # genuine, permanently-retained allocation and this process's own memory-safety violation -
+    # confirmed directly: this is what made Run 11's gc.mem_free() trend check fail for `dev`
+    # (the only device with a wired uart_link pair) while `wozi` (no UART bus at all) stayed flat.
+    # Clearing it here changes nothing about the link's real over-the-wire behavior - nothing in
+    # this process's own request/response path or asy_uart_comm.py ever reads it back.
+    while True:
+        await asyncio.sleep_ms(_WIRE_LOG_CLEAR_INTERVAL_MS)
+        link.a_to_b.wire_log = bytearray()
+        link.b_to_a.wire_log = bytearray()
 
 
 def _print_wdt_status(config: RunConfig) -> None:
@@ -430,7 +355,7 @@ def _ensure_dir(path: str) -> None:
         pass  # already exists
 
 
-async def main(config: RunConfig) -> "dict[str, Any]":
+async def main(config: RunConfig) -> None:
     global _booted_module
     # Must run before anything else in the process registers a poll object - see
     # unix_port_poll_prewarm.py's own module docstring.
@@ -453,8 +378,9 @@ async def main(config: RunConfig) -> "dict[str, Any]":
     print(
         f"digital_twin/run_generic_integration.py starting - device={config.device!r} module={config.module!r} "
         f"host={config.host!r} port={config.port!r} fram_state_path={config.fram_state_path!r} "
-        f"scd30_state_path={config.scd30_state_path!r} seed={config.seed!r} soak_cycles={config.soak_cycles!r} "
-        f"duration={config.duration!r} faults={config.faults!r} hangs={config.hangs!r} wifi_outcomes={config.wifi_outcomes!r}",
+        f"scd30_state_path={config.scd30_state_path!r} seed={config.seed!r} "
+        f"duration={config.duration!r} faults={config.faults!r} hangs={config.hangs!r} wifi_outcomes={config.wifi_outcomes!r} "
+        f"mem_sample_interval_ms={config.mem_sample_interval_ms!r}",
     )
 
     module = __import__(config.module)
@@ -462,10 +388,17 @@ async def main(config: RunConfig) -> "dict[str, Any]":
     main_task = asyncio.get_event_loop().create_task(
         module.main(cfg_path=_CONFIG_DIR, web_host=config.host, web_port=config.port),
     )
-    summary: dict[str, Any] = {"failures": [], "would_have_triggered_count": 0}
+    sampler_task = (
+        asyncio.get_event_loop().create_task(_mem_sampler(config.mem_sample_interval_ms))
+        if config.mem_sample_interval_ms is not None
+        else None
+    )
+    wire_log_clearer_task = None
     try:
         await _wait_until_built(module)
-        _wire_uart_crossover(module, plan)
+        uart_link = _wire_uart_crossover(module, plan)
+        if uart_link is not None:
+            wire_log_clearer_task = asyncio.get_event_loop().create_task(_wire_log_clearer(uart_link))
 
         assert module.conn is not None and module.watchdog is not None
         chips = _collect_chips(module, plan)
@@ -476,29 +409,6 @@ async def main(config: RunConfig) -> "dict[str, Any]":
         if config.wifi_outcomes:
             module.conn.wlan.script_connect_outcomes(config.wifi_outcomes)
 
-        # A queued --hang can fire during setup() (before this point) via a real, blocking
-        # time.sleep() that freezes the whole interpreter - the default 10s bound isn't enough to
-        # survive that, so it's widened by the total configured hang time whenever any are armed.
-        total_hang_s = sum(seconds * times for _device, _op, seconds, times in config.hangs)
-        await _wait_until_serving(config.host, config.port, timeout_s=10.0 + total_hang_s)
-
-        if config.soak:
-            failures = await _soak(config.host, config.port, config.soak_cycles)
-            if module.watchdog.would_have_triggered_count != 0:
-                failures.append(f"watchdog would have triggered {module.watchdog.would_have_triggered_count} time(s)")
-
-            summary = {
-                "soak_cycles": config.soak_cycles,
-                "failures": failures,
-                "would_have_triggered_count": module.watchdog.would_have_triggered_count,
-            }
-            print(f"digital_twin/run_generic_integration.py [{config.device}] soak summary:", summary)
-            if failures:
-                for failure in failures:
-                    print("FAIL:", failure)
-            else:
-                print(f"PASS - {config.soak_cycles} soak cycles across every endpoint, watchdog never starved")
-
         if config.duration is None:
             print(f"Serving forever at http://{config.host}:{config.port}/ - Ctrl+C to stop")
             while True:
@@ -507,6 +417,10 @@ async def main(config: RunConfig) -> "dict[str, Any]":
             await asyncio.sleep(config.duration)
     finally:
         _print_wdt_status(config)
+        if sampler_task is not None:
+            sampler_task.cancel()
+        if wire_log_clearer_task is not None:
+            wire_log_clearer_task.cancel()
         main_task.cancel()
         try:
             await main_task
@@ -514,34 +428,32 @@ async def main(config: RunConfig) -> "dict[str, Any]":
             # A real SIGINT can be re-delivered while this cleanup await is still in flight - see
             # run_wozi_integration.py's own identical comment. Already shutting down either way.
             pass
+        if sampler_task is not None:
+            try:
+                await sampler_task
+            except asyncio.CancelledError:
+                pass
+        if wire_log_clearer_task is not None:
+            try:
+                await wire_log_clearer_task
+            except asyncio.CancelledError:
+                pass
         machine.flush_fram()
         machine.flush_scd30()
-
-    return summary
 
 
 if __name__ == "__main__":
     _config = parse_args(sys.argv[1:])
     # Placed immediately before asyncio.run(), same as buildgen.codegen.generate_boot_entry_source()'s
     # own real-firmware boot entry - _GC_THRESHOLD_DEFAULT (32768) matches it exactly, so an ordinary
-    # (non-soak) twin run models production's real memory-safety configuration, not just its
-    # allocation code. --gc-threshold overrides it, which is what actually matters here: the real
-    # fix for PR #80's Run 11 MemoryError (repeated ~6-7.5KB `allocating N bytes` failures on GET /
-    # and GET /status during _soak()) was digital_twin/_http_client.py's own _read_exact()/
-    # _read_until_close() replacing Stream.readexactly()/read(-1)'s growth-by-concatenation
-    # accumulation with one right-sized buffer per fetch() (see that file's own history) - not this
-    # threshold. Verified directly: _soak() passes clean at gc.threshold(-1) (MicroPython's real
-    # reactive-only default, no proactive collection at all) with those two fixes in place and no
-    # threshold change whatsoever, matching SPECIFICATION.md Part I.4(e)'s standing rule that a
-    # stress test must prove this *before* it's ever run with a chosen threshold - a rule an earlier
-    # version of this comment (2026-09-13) violated by treating "the twin never set gc.threshold(32768)"
-    # itself as the root cause. Kept at 32768 by default anyway, same as every real boot: I.4(f) - a
-    # threshold is defense in depth on top of an already-safe design, never the fix for one that still
-    # needs it. scripts/_digital_twin_ci_suite.py's Run 11a/11b exercise both configurations.
+    # twin run models production's real memory-safety configuration, not just its allocation code.
+    # --gc-threshold overrides it - scripts/_digital_twin_ci_suite.py's own main() runs the WHOLE
+    # suite (not just one run) at both gc.threshold(-1) and gc.threshold(32768), in that order, per
+    # SPECIFICATION.md Part I.4(e)'s standing rule that the whole suite must pass clean at the real
+    # default before it's ever run again with the project's chosen threshold.
     gc.threshold(_config.gc_threshold)
-    _summary: "dict[str, Any] | None" = None
     try:
-        _summary = asyncio.run(main(_config))
+        asyncio.run(main(_config))
     except KeyboardInterrupt:
         # See run_wozi_integration.py's own identical comment for the confirmed MicroPython
         # Unix-port asyncio.run()/KeyboardInterrupt gap this works around.
@@ -550,5 +462,3 @@ if __name__ == "__main__":
         machine.flush_scd30()
         _print_wdt_status(_config)
         print("digital_twin/run_generic_integration.py: interrupted")
-    if _summary is not None and _summary["failures"]:
-        sys.exit(1)

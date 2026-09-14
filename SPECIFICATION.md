@@ -2011,7 +2011,16 @@ is a rule rather than an anecdote. E.7 is the largest of them and keeps its own 
   still catch, not from the noise you happened to see.
 - **The twin's `UARTLink.wire_log` is unbounded** — one byte per delivered byte, ~15-95 kB over a
   few hundred transactions. It reads as a leak in the code under test. Clear it inside any
-  measurement loop.
+  measurement loop with direct object access to the link (every `tests/`-tier test that touches it
+  already does). **`digital_twin/run_generic_integration.py` itself has no such access** — it boots
+  the twin as a real subprocess — so it did not, and this was exactly the mechanism behind a real
+  CI finding: `dev`'s Run 11 soak check (`scripts/_digital_twin_ci_suite.py`) reproducibly failed
+  its `gc.mem_free()` trend check (only `dev` wires a `uart_link` pair; `wozi` has no UART bus and
+  stayed flat), confirmed by isolating the run from CPU contention (magnitude dropped but the
+  failure persisted) and root-caused to this exact bullet. Fixed by giving
+  `run_generic_integration.py` its own periodic clearer (`_wire_log_clearer()`, every 5s, started
+  whenever `_wire_uart_crossover()` actually wires a link) — this process never reads `wire_log`
+  back, so clearing it here changes nothing about the link's real over-the-wire behavior.
 - **An asyncio loop-latency probe cannot separate "idle on a timer" from "blocked."** The driver's
   own cooperative `sleep_ms(poll_wait_ms)` puts both at ~2 ms. Time the C calls directly (F.5.8).
 - **A probe read before the watchdog task next runs reports 0 for everything.** Give it a turn —
