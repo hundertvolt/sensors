@@ -637,13 +637,14 @@ constraints.
   good-looking on major mobile/desktop browsers" goal still wants at least one real human pass on
   real Safari and a real mobile device, which no automation here can substitute for.
 - **UART sensor integration — still unwired as a *sensor*, though the link itself now exists.**
-  `asy_uart_comm.py` is promoted (SPECIFICATION.md Part J) and `src/sensortask_dev.py` constructs two
-  instances across the dev bench's crossover jumper, which is what makes the protocol's
-  self-compatibility property physically testable. What stays deliberately absent is any *sensor*
-  behind that link: no BME688/BSEC coprocessor, and no such wiring in any other variant. Not a legacy
-  deployed feature, so adding one would be a scope addition beyond feature-parity rather than a
-  postponed fix — owner-confirmed this stays as-is. The protocol module is standalone by design: its
-  BME688/BSEC first use case is explicitly out of scope and was **not** part of the promotion.
+  `asy_uart_comm.py` is promoted (SPECIFICATION.md Part J) and the buildgen-generated
+  `sensortask_dev.py` constructs two instances across the dev bench's crossover jumper, which is
+  what makes the protocol's self-compatibility property physically testable. What stays
+  deliberately absent is any *sensor* behind that link: no BME688/BSEC coprocessor, and no such
+  wiring in any other variant. Not a legacy deployed feature, so adding one would be a scope
+  addition beyond feature-parity rather than a postponed fix — owner-confirmed this stays as-is.
+  The protocol module is standalone by design: its BME688/BSEC first use case is explicitly out of
+  scope and was **not** part of the promotion.
 - **Owner requirement for the final wiring stage — fulfilled, entry kept only until the large
   post-merge audit closes.** Every `sensortask-*.py` built as part of the real rewrite needs a full
   Unix-port equivalent, runnable on a local computer, with whatever hardware is physically

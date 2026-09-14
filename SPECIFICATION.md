@@ -1961,10 +1961,14 @@ complementary.
 
 ## E.7 A digital-twin soak's wall clock measures GC timing, not the code under test
 
-`digital_twin/run_*_integration.py`'s bounded soak drives ~294 real HTTP requests through the whole
-constructed object graph. Its duration is **deterministic per build and meaningless across builds**:
-it is set by where `gc` collections land on the Unix port's 8 MB heap, and that moves with heap
-layout, which moves with almost any source change.
+Measured against the soak as it ran in-process at the time (`digital_twin/run_dev_integration.py`,
+since retired and replaced by `digital_twin/run_generic_integration.py` plus the host-side Run 11
+in `scripts/_digital_twin_ci_suite.py` - E.9): a bounded soak driving ~294 real HTTP requests
+through the whole constructed object graph. Its duration is **deterministic per build and
+meaningless across builds**: it is set by where `gc` collections land on the Unix port's 8 MB heap,
+and that moves with heap layout, which moves with almost any source change. The mechanism below is
+unchanged by where the soak's request-driving loop runs (in-process or host-side, E.9) - it is a
+property of the Unix port's allocator, not of which process issues the requests.
 
 Measured on the dev variant (2026-09-11), same probe, same host, interleaved, three rounds each,
 against three versions of `src/asy_uart_driver.py`:
@@ -1988,9 +1992,14 @@ Two consequences, both load-bearing:
   sites reached. Count the operation you actually care about instead: F.5.9's finding was
   established by counting poll rounds (14 039 → 839), which is a property of the code rather than
   of the allocator.
-- **A soak test's own `wait_for()` budget is a liveness backstop, not a performance assertion**, so
-  it belongs above the whole observed range rather than near it —
-  `tests/test_digital_twin_run_dev_integration.py` allows 120 s for a 44-62 s run.
+- **A soak's own timing budget is a liveness backstop, not a performance assertion**, so it belongs
+  above the whole observed range rather than near it — the in-process soak this was measured
+  against gave itself 120 s for a 44-62 s run (`tests/test_digital_twin_run_dev_integration.py`,
+  since retired). Run 11's own host-side equivalent (`scripts/_digital_twin_ci_suite.py`) has no
+  single such budget to mistune in the first place: each `_http()` round trip has its own 5 s
+  timeout and `_shutdown()` gives the subprocess 15 s to exit, neither tied to the soak's own
+  GC-dependent wall clock at all — this is what E.9's host-side move buys for free, not just where
+  the request-driving code lives.
 
 ## E.8 Measurement traps, and the guard-is-blind trap behind them
 
@@ -2056,6 +2065,45 @@ mutation that fails nothing is as much a finding as a test that fails nothing.
 `tests/test_uart_comm_hazard.py` registers each `_check_*` twice (`_nocrc`, `_crc16`) — 48 checks,
 96 tests. Two are single-mode by construction (`_MODE_SPECIFIC`), because their subject *is* one
 configuration. The deployed link runs `CRC_Pass`, so the no-CRC path is the one in the field.
+
+## E.9 Driver/DUT process separation
+
+**Anything that can run outside the digital twin's own MicroPython process without losing coverage
+must run outside it.** The twin (the DUT) is a real MicroPython Unix-port subprocess with its own
+heap; a real host-side test driver is a real CPython process with its own, unbounded one. Code that
+drives requests, observes responses, accumulates diagnostic history, or computes a pass/fail
+verdict belongs in the driver, not smuggled into the DUT just because it's convenient to write there
+— every byte it allocates competes with the exact allocation behavior the test exists to observe,
+turning a test of the code under test into an accidental test of the test's own bookkeeping instead.
+
+The one thing that never moves host-side: a value that only exists inside the DUT's own process and
+has no other way out — `gc.mem_free()` is the standing example, real nowhere but inside the twin's
+own heap. Get it out through the narrowest possible channel (a log line on a fixed timer, correlated
+back by timestamp — `_mem_sampler()`) and do nothing else with it in-process; compute, threshold,
+and report the verdict host-side.
+
+Two real findings this rule caught, both worth re-reading in full:
+- **The Run 11 memory-trend soak itself** used to drive its own request loop from inside the twin's
+  process via an in-process client, sharing the twin's own heap with the code under test. Moved
+  entirely host-side (2026-09-14): `scripts/_digital_twin_ci_suite.py`'s `_run_11_soak()` now drives
+  every warmup/cycle request over real HTTP from the CPython suite process itself, and
+  `digital_twin/run_generic_integration.py` (the retired per-device runners' replacement) keeps only
+  `_mem_sampler()` — the one `gc.mem_free()` emitter above — plus the `gc.collect()` that settles it
+  before each sample (I.4(e)'s own narrow, separately-litigated exception).
+- **`digital_twin/machine.py`'s `UARTLink.wire_log`** — E.8's own bullet — is unbounded by design,
+  fine for a unit test with direct object access to clear it, a real bug for any driver that boots
+  the twin as an opaque subprocess and has no such access. The fix wasn't to bound `wire_log` (that
+  would defeat its own purpose for the tests that need it) but to give the in-process side a
+  periodic clearer of its own (`_wire_log_clearer()`) — the DUT-side code stays exactly as
+  DUT-appropriate as before, the driver-shaped growth just stops happening where the driver can't
+  reach it.
+
+A fix under this rule must come out **strictly more capable of catching the real test case**, never
+merely lighter on the DUT — E.7/E.8 already show what a test that stops looking at the right thing
+costs. Moving request-driving host-side, in particular, converts a soak's wall clock from a
+GC-timing artifact (E.7) into something no longer even measured — the check now bounds real
+HTTP-failure counts and a `gc.mem_free()` trend directly, not a duration that never bounded anything
+real to begin with.
 
 # Part F — Platform Target & MicroPython Runtime Facts
 
@@ -3149,19 +3197,21 @@ or added `gc.collect()` calls anywhere in the business logic or the test's own s
 up. A test that only passes because a `MemoryError` was caught and logged without crashing anything
 is not a passing result at this stage — a caught-but-real allocation failure is exactly the signal
 this stage exists to catch, and "it didn't crash" is not the same claim as "it didn't happen."
-**One narrow, evidence-backed exception**: `digital_twin/run_generic_integration.py`'s `_soak()`
-calls `gc.collect()` twice per cycle (post-warmup baseline, then once per cycle) purely to settle
-`gc.mem_free()` before sampling it for the memory-trend leak check — it runs nowhere near a
-request/response and cannot mask a real `MemoryError` (every `fetch()` call already catches and
-records its own, independently). Removing it (2026-09-14, auditing `c691cb3`'s own port from the
-retired `run_wozi_integration.py` against this exact rule) was tried and confirmed directly to make
-the check *worse*: without a settled baseline, `gc.mem_free()` swings with incidental reactive-GC
-timing alone (measured on a genuinely healthy `wozi` run: `min=99808, max=1347104` across 20
-cycles, a false-positive "trend declined by 413990 bytes" against an 18318-byte tolerance
-calibrated for the collected regime). A `gc.collect()` call that stabilizes what a *later*,
-unrelated line measures — rather than relieving pressure an allocation it's adjacent to would
-otherwise have failed under — is not the pattern this rule exists to forbid; don't re-flag it
-without new evidence the trend check itself has changed.
+**One narrow, evidence-backed exception**: `digital_twin/run_generic_integration.py`'s
+`_mem_sampler()` calls `gc.collect()` on its own fixed wall-clock timer (`--mem-sample-interval-ms`,
+decoupled from the soak's request/response path entirely — E.9) purely to settle `gc.mem_free()`
+before sampling it for the host-side memory-trend leak check
+(`scripts/_digital_twin_ci_suite.py`'s Run 11). It runs nowhere near a request/response and cannot
+mask a real `MemoryError` (every `fetch()` call already catches and records its own, independently).
+Removing it (2026-09-14, auditing the now-retired in-process `_soak()`'s own identical `gc.collect()`
+against this exact rule when the soak moved host-side) was tried and confirmed directly to make the
+check *worse*: without a settled baseline, `gc.mem_free()` swings with incidental reactive-GC timing
+alone (measured on a genuinely healthy `wozi` run: `min=99808, max=1347104` across 20 cycles, a
+false-positive "trend declined by 413990 bytes" against an 18318-byte tolerance calibrated for the
+collected regime). A `gc.collect()` call that stabilizes what a *later*, unrelated line measures —
+rather than relieving pressure an allocation it's adjacent to would otherwise have failed under — is
+not the pattern this rule exists to forbid; don't re-flag it without new evidence the trend check
+itself has changed.
 **(f) A `gc.threshold()` value (or a `gc.collect()` call) is defense in depth applied only once (e)
 already holds — never the fix itself, and never reached for to make a failing (e)-stage test
 pass.** Every generated boot entry (`buildgen.codegen.generate_boot_entry_source()`, formerly the
