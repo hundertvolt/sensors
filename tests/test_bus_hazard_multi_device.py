@@ -5,6 +5,10 @@ standing rule on extending this file when a new I2C-facing driver is added."""
 import asyncio
 import struct
 
+from _bus_hazard_catalog import fake, make_i2c, seed_isl_ready
+from _bus_hazard_catalog import scd_data_frame as _scd_data_frame
+from _bus_hazard_catalog import scd_register_frame as _scd_register_frame
+from _bus_hazard_catalog import sgp_word as _sgp_word
 from _fram_chip_fake import FakeMB85RS64V
 from machine import I2C as FakeI2C
 
@@ -85,42 +89,6 @@ def _is_reserved(address: int) -> bool:
     return any(lo <= address <= hi for lo, hi in _RESERVED_RANGES)
 
 
-def make_i2c(port_id: int = 1) -> I2C:
-    return I2C(port_id, scl_pin=19, sda_pin=18, frequency=50000)
-
-
-def fake(i2c: I2C) -> FakeI2C:
-    return i2c._i2c  # type: ignore[return-value]
-
-
-def _crc8(data: bytes) -> int:
-    crc = 0xFF
-    for byte in data:
-        crc ^= byte
-        for _ in range(8):
-            crc = ((crc << 1) ^ 0x31) & 0xFF if crc & 0x80 else (crc << 1) & 0xFF
-    return crc
-
-
-def _sgp_word(value: int) -> bytes:
-    payload = bytes([(value >> 8) & 0xFF, value & 0xFF])
-    return payload + bytes([_crc8(payload)])
-
-
-def _scd_register_frame(value: int) -> bytes:
-    payload = struct.pack(">H", value)
-    return payload + bytes([_crc8(payload)])
-
-
-def _scd_data_frame(co2: float, temperature: float, humidity: float) -> bytes:
-    frame = bytearray()
-    for value in (co2, temperature, humidity):
-        raw = struct.pack(">f", value)
-        msw, lsw = raw[0:2], raw[2:4]
-        frame += msw + bytes([_crc8(msw)]) + lsw + bytes([_crc8(lsw)])
-    return bytes(frame)
-
-
 def queue_sgp_successful_init(fake_bus: FakeI2C) -> None:
     fake_bus.read_queue.append(_sgp_word(0x0000) + _sgp_word(0x1234) + _sgp_word(0x5678))
     fake_bus.read_queue.append(_sgp_word(0xD400))
@@ -160,13 +128,6 @@ def seed_bmp_ready(i2c: I2C, address: int = _BMP_ADDR) -> None:
 async def _settle(n: int = 8) -> None:
     for _ in range(n):
         await asyncio.sleep(0)
-
-
-def seed_isl_ready(i2c: I2C, address: int = _ISL_ADDR) -> None:
-    fake(i2c).registers[(address, 0x00)] = bytearray([0x7D])  # device ID (p9, Table 2)
-    fake(i2c).registers[(address, 0x01)] = bytearray([0x00, 0x00, 0x00])  # CONFIG1-3, post-reset
-    fake(i2c).registers[(address, 0x08)] = bytearray([0x00])  # status, BOUTF already clear
-    fake(i2c).registers[(address, 0x09)] = bytearray(struct.pack("<HHH", 0x2000, 0x1800, 0x1000))
 
 
 # ---------------------------------------------------------------------------

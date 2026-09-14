@@ -197,3 +197,85 @@ in an existing, mostly-built system.
 4. Wire TOML-driven assembly for the mock and digital-twin tiers on that one bus, diff its
    catching-power against the existing hand-written tests (Section 4 item 5), and report back
    before touching the real-hardware tiers or any other device.
+
+## 7. Phase 1 status — design decisions actually made, and what landed
+
+Section 4's questions resolved by research/judgment (no genuinely blocking ambiguity turned up —
+none needed raising to the project owner):
+
+1. **Driver declaration**: resolved to the doc's own leaned-toward answer. No new comment-tag
+   family. The specific/datasheet-derived hazard tests stay 100% hand-written
+   (`test_bus_hazard_multi_device.py` untouched in kind, only refactored for shared helpers — see
+   below). Only the generic, cross-sensor half is generated.
+2. **What "generated" means**: for the mock and digital-twin tiers (both run under the real
+   MicroPython Unix-port interpreter via `tests/microtest.py`), "generated" means *reading the
+   already-generated* `build/generated_src/sensortask_<device>_wiring_plan.json`
+   (`buildgen.twin_wiring.compute_twin_wiring()`'s own output, produced by
+   `scripts/_generate_sensortask_modules.py` before every test run — confirmed already required by
+   the existing `machine.configure_i2c_wiring("dev")` twin test) at test-collection/call time via
+   plain `json.load()`. **Not** a written `.py` file: MicroPython's Unix-port `tomllib`-free,
+   `buildgen`-free test process can't run `buildgen` itself (it's genuinely CPython-only host
+   tooling — `ast`/`tomllib` imports, no MicroPython stub for either), so the CPython-side JSON
+   artifact `buildgen` already produces for the twin's own wiring is the one bridge across that
+   process boundary — reused, not re-derived a third time. No new codegen work was needed in
+   `buildgen/` itself.
+3. **Where "all occupants at once" executes**: mock tier — one shared fake `I2C` bus, one instance
+   per real occupant (from a small per-driver adapter catalog, `tests/_bus_hazard_catalog.py`),
+   `asyncio.gather()` over all of them (genuinely N-way, not pairwise — confirmed new: no existing
+   test drives SCD30+SGP40+ISL29125 all three at once, only pairs). Digital-twin tier — the real
+   object graph already does this mechanically once booted; what was missing was the TOML-driven
+   half of *which* sensors' `get_data()` must be checked, now read from the same wiring-plan JSON
+   instead of a hardcoded sgp40/bmp3xx/scd30/isl29125 list. Real-hardware tiers: **out of scope this
+   phase**, per item 4 below — not resolved, not attempted.
+4. **Scope**: `dev`'s real `i2c1` (SCD30+SGP40+ISL29125) only, mock + digital-twin tiers only, as
+   the doc itself suggested. Confirmed via the boundary in this file's own governing instructions:
+   stop before any other device or the real-hardware tiers.
+5. **Replace vs. run-alongside**: run alongside. Nothing hand-written was deleted this phase.
+   `test_bus_hazard_multi_device.py`'s existing pairwise tests are untouched in behavior — only its
+   five shared byte/frame helpers (`make_i2c`, `fake`, `_crc8`/`_sgp_word`/`_scd_register_frame`/
+   `_scd_data_frame`, `seed_isl_ready`) moved into the new `tests/_bus_hazard_catalog.py` (imported
+   back under their original names) so the new generated coverage builds byte-identical frames
+   instead of a second hand-copy — a pure refactor, not a coverage change. Catching-power was
+   diffed by hand (not committed as a test): temporarily reverting `ISL29125_I2C`'s destructive-
+   status-read protection made `test_dev_i2c1_all_real_occupants_concurrent_reads_stay_correct_and_
+   genuinely_interleave` fail exactly as expected, then the revert was undone — see the PR
+   description for the full note. Both hand-written cross-sensor tests (Section 1) and the two new
+   generated files stay in the suite.
+
+What actually landed:
+
+- `tests/_bus_hazard_catalog.py` (new): the per-I2C-driver `I2CHazardAdapter` catalog (scd30/sgp40/
+  isl29125 — the three real occupants of `dev`'s `i2c1`; bmp3xx isn't in it yet since no real device
+  TOML ever shares a bus with it) plus four generic, driver-agnostic scenario builders:
+  all-occupants-concurrent-reads, a-write-vs-concurrent-sibling-reads, general-call-vs-concurrent-
+  siblings, and the per-occupant address sweep. Plain classes, not `@dataclass` — `dataclasses` has
+  no stub in the MicroPython-target typeshed this file type-checks under and nothing in
+  `src/`/`tests/`/`digital_twin/` uses it anywhere else (confirmed by grep before adding a second,
+  incompatible usage — `buildgen/` is genuinely CPython-only and doesn't share this file's runtime).
+- `tests/test_bus_hazard_generated.py` (new): the mock-tier assembly, deliberately hardcoded to
+  `dev`/`i2c1` (not a loop over every device/bus — see the file's own comment on why, and the
+  boundary this phase stops at).
+- `tests/test_digital_twin_bus_hazard_concurrency.py` (extended): one new TOML-driven test,
+  `test_dev_i2c1_bus_membership_from_the_toml_all_produce_real_data_under_concurrent_load`, running
+  alongside the existing hand-written `test_dev_real_task_graph_survives_concurrent_bus_load_
+  including_a_real_general_call`.
+- `tests/test_bus_hazard_multi_device.py`: refactored (imports only) to reuse the moved helpers;
+  zero behavior change.
+- `pyproject.toml`: one new `[tool.ruff.lint.per-file-ignores]` entry for
+  `tests/_bus_hazard_catalog.py` (`ANN401`, same "driver-agnostic fan-in seam" category already
+  used for `src/asy_notification_service.py`/`tests/test_setter_microdot_integration.py`).
+
+Verification run: `scripts/lint.sh` (ruff clean on every touched/added file) and `scripts/
+typecheck.sh` (main pass + `digital_twin/typecheck.ini` pass both clean; `host_typecheck.ini`'s
+pre-existing 201-error `pytest`/`pyserial`-stub gap in this sandbox is unrelated to this branch —
+confirmed identical on the pre-change tree via `git stash`) and `scripts/test.sh` (full MicroPython
+Unix-port suite, built from scratch in this session) — see the PR description for the actual run's
+result.
+
+**Stopping here per this file's own governing boundary** (Section 6 item 4 / the session's own
+instructions): not touching the real-hardware tiers, not extending to any other device/bus, not
+retiring the hand-written cross-sensor tests. Follow-on work, if the project owner wants it
+continued: generalize `test_bus_hazard_generated.py`'s hardcoded `dev`/`i2c1` into a loop over every
+real device/bus pairing with 2+ occupants (the file's own comment marks exactly where); add a
+`bmp3xx` adapter once some device TOML actually shares a bus with it; design the real-hardware
+tiers' own version of "all occupants at once" (Section 4 item 3's still-open half).

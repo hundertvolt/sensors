@@ -1277,9 +1277,14 @@ same-device read-vs-write concurrency coverage, cross-device interleaving covera
 bus), and an address/command sweep, across as many of four tiers as apply (cheapest first):
 
 1. **Mock/unit** (`tests/test_bus_hazard_multi_device.py`) — byte-exact wire-log proof, plus the
-   full address/command sweep.
+   full address/command sweep. **Automatically assembled per-bus coverage also exists**, generated
+   from a device's own real TOML wiring rather than hand-paired
+   (`tests/test_bus_hazard_generated.py` + the per-driver adapter catalog in
+   `tests/_bus_hazard_catalog.py`, BUS_HAZARD_TEST_GENERATION_REQUIREMENTS.md) — phase 1, scoped to
+   `dev`'s real `i2c1` three-way group; runs alongside the hand-written tests, does not replace them.
 2. **Digital twin** (`tests/test_digital_twin_bus_hazard_concurrency.py`) — the real object graph
-   against higher-fidelity chip fakes under genuine concurrent task load.
+   against higher-fidelity chip fakes under genuine concurrent task load. Also carries one
+   TOML-driven generic test (same phase-1 scope as above) alongside its hand-written ones.
 3. **Flash tier** (`tests_hardware/flash/test_bus_concurrency.py`) — real hardware, dev bench only.
    **Real-hardware write-safety constraints, project-owner-mandated**: (a) respect any real
    NVM/EEPROM write budget — ideally at most one real write per bus-hazard test group, via a

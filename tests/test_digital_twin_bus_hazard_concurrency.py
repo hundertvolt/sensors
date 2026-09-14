@@ -3,6 +3,7 @@ real digital_twin buses and proves SPECIFICATION.md Part C.8's locking model hol
 concurrent load; Part C.8 also covers this file's own device-scope rationale."""
 
 import asyncio
+import json
 import sys
 
 sys.path.insert(0, "ext")  # same convention as test_digital_twin_sensortask_integration.py's own comment
@@ -171,6 +172,60 @@ def test_dev_real_task_graph_survives_concurrent_bus_load_including_a_real_gener
         await sensortask_dev.build_system(cfg_path=_tmp_cfg_dir(), web_host="127.0.0.1", web_port=port)
         assert sensortask_dev.i2c1 is not None and sensortask_dev.i2c1._i2c is not None
         await _run_real_task_graph_and_assert_healthy(sensortask_dev, sensortask_dev.i2c1._i2c.log, run_seconds=9.0)
+
+    run_timed(scenario(), timeout_s=20.0)
+
+
+# Which get_data() field, per driver, proves that driver produced a real reading under load - the
+# digital-twin tier's own (much smaller) analogue of tests/_bus_hazard_catalog.py's mock-tier
+# adapters. Grows the same way: a new I2C driver added to a shared bus needs an entry here before it
+# gets this generic check (see the fail-loud assert in the test below).
+_I2C_DRIVER_HEALTH_FIELD: "dict[str, str]" = {"scd30": "CO2", "sgp40": "VOC", "bmp3xx": "Pres", "isl29125": "Lux"}
+
+
+def _dev_wiring_plan() -> "dict[str, Any]":
+    # The exact artifact machine.configure_i2c_wiring("dev") above already loads
+    # (buildgen.twin_wiring.compute_twin_wiring()) - read again here, not re-derived, so this test's
+    # own notion of "who's on i2c1" can never drift from what actually got wired.
+    with open("build/generated_src/sensortask_dev_wiring_plan.json") as f:
+        plan: dict[str, Any] = json.load(f)
+    return plan
+
+
+def test_dev_i2c1_bus_membership_from_the_toml_all_produce_real_data_under_concurrent_load() -> None:
+    # TOML-driven sibling of the hand-written test above (BUS_HAZARD_TEST_GENERATION_REQUIREMENTS.md
+    # Section 6's "wire TOML-driven assembly for... the digital-twin tier"): instead of a hardcoded
+    # sgp40/bmp3xx/scd30/isl29125 attribute list, this reads dev's own real generated wiring-plan
+    # JSON and checks generically whichever I2C drivers it actually names on i2c1 - a future driver
+    # added to dev's i2c1 gets this coverage automatically, once it has a _I2C_DRIVER_HEALTH_FIELD
+    # entry. Runs alongside the hand-written test above, not instead of it (deliberately not
+    # retired this session - see the requirements doc's own Section 4 item 5).
+    machine.configure_i2c_wiring("dev")
+    port = _next_test_port()
+    attachments = _dev_wiring_plan()["buses"]["i2c1"]
+
+    async def scenario() -> None:
+        await sensortask_dev.build_system(cfg_path=_tmp_cfg_dir(), web_host="127.0.0.1", web_port=port)
+        assert sensortask_dev.watchdog is not None and sensortask_dev.sysfunct is not None
+        assert sensortask_dev.i2c1 is not None and sensortask_dev.i2c1._i2c is not None
+        await sensortask_dev.sysfunct.start_timers(sensortask_dev._collect_timer_starters())
+        tasks = [starter() for starter in sensortask_dev._collect_task_starters()]
+        tasks.append(asyncio.get_event_loop().create_task(_feed_watchdog_periodically(sensortask_dev.watchdog)))
+        try:
+            await asyncio.sleep(9.0)
+            assert sensortask_dev.watchdog.would_have_triggered_count == 0
+            for attachment in attachments:
+                driver = attachment["driver"]
+                field = _I2C_DRIVER_HEALTH_FIELD.get(driver)
+                assert field is not None, f"no health-check field known for driver {driver!r} - add one to _I2C_DRIVER_HEALTH_FIELD before it can get generated digital-twin bus-hazard coverage"
+                instance = getattr(sensortask_dev, driver)
+                data = await instance.get_data()
+                assert getattr(data, field) is not None, f"{driver!r} never produced real data (missing {field!r}) under concurrent bus load"
+            if any(attachment["driver"] == "sgp40" for attachment in attachments):
+                assert _GENERAL_CALL_ENTRY in sensortask_dev.i2c1._i2c.log, "SGP40's general-call reset never fired during this run - test isn't exercising the real hazard window"
+        finally:
+            for task in tasks:
+                await _cancel(task)
 
     run_timed(scenario(), timeout_s=20.0)
 
