@@ -325,9 +325,7 @@ step: park the pixel dark and let auto-range settle onto the low range before ra
 overlap level.** Whether the gate should use peak for consistency with the range decision is a
 design question for the owner, not something to change from the bench.
 
-## Finding 3 — `scd30_same_device_rw_concurrency.py` reads across a soft reset with no settle
-
-Not changed, reported only — SCD30, outside this branch's scope, but it **blocks one ISL29125 test**.
+## Finding 3 — `scd30_same_device_rw_concurrency.py` read across a soft reset with no settle — FIXED
 
 `tests_hardware/flash/test_bus_concurrency.py::test_isl29125_cross_device_concurrency_with_its_i2c1_neighbours`
 errors in *setup*, not in the test: its session-scoped `scd30_continuous_measurement_triggered`
@@ -346,12 +344,16 @@ of the failure. The script's own sequence is the problem:
 
 So it asserts datasheet plausibility bounds against readings taken inside the exact window its
 sibling documents as untrustworthy. This is latent rather than new: it passes whenever the
-post-reset register content happens to land above 200 ppm, and fails when it does not. The fix is
-presumably the settle the sibling already has, but that is an SCD30 decision and the fixture is
-session-scoped because it costs a real NVM write, so it is left for the owner rather than tried
-repeatedly from the bench.
+post-reset register content happens to land above 200 ppm, and fails when it does not. **Fixed** (owner's direction, 2026-09-14): the script now
+discards a `_SETTLE_S = 12.0` window after `setup()` before applying any bound, *calling*
+`read_measurement()` through it rather than only sleeping — data-ready clears the instant it is
+read, so consuming the stale conversion is what actually clears it. 12 s is a few of the 2 s
+default measurement intervals: this script needs the registers to be real, not the CO2 value to be
+accurate, so it does not need the sibling's full 45 s response-time window. Exactly one
+`set_ambient_pressure()` remains, so the NVM-write budget is unchanged.
 
-Consequence for this branch: the two ISL bus-hazard tests that do not depend on that fixture pass
-(`test_isl29125_same_device_read_write_concurrency`,
-`test_isl29125_real_irq_edge_beats_the_periodic_fallback` — twice each). The cross-device one has
-still never executed.
+Verified: `RESULT: PASS reader=40/40 concurrent write clean`, and all three ISL29125 bus-hazard
+tests now pass twice in a row (44.05 s, 43.93 s) — including
+`test_isl29125_cross_device_concurrency_with_its_i2c1_neighbours`, **which had never executed
+before**. That test does not bounds-check SCD30 values itself (it only counts completed reads), so
+the fixture was its only blocker.

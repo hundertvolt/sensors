@@ -14,6 +14,14 @@ HUMIDITY_MIN_RH, HUMIDITY_MAX_RH = 0.0, 100.0
 TEMP_MIN_C, TEMP_MAX_C = -40.0, 70.0
 
 READ_ITERATIONS = 40
+# The SCD30's measurement interval is NVM-persisted, so the sensor resumes continuous measurement
+# on its own after the soft reset setup() issues, and raises data-ready while its registers still
+# hold that first, unsettled conversion. Reading straight through it made this script report a
+# stuck CO2=141.99 - below the floor above - on every iteration (measured 2026-09-14), erroring the
+# session fixture and blocking every test that depends on it. scd30_plausibility_read.py discards a
+# full 45s response-time window for the same reason; this script needs the registers to be REAL
+# rather than the CO2 value to be accurate, so a few measurement intervals (2s default) suffice.
+_SETTLE_S = 12.0
 
 
 async def _main() -> None:
@@ -21,6 +29,14 @@ async def _main() -> None:
     i2c1 = asy_i2c_driver.I2C(1, 15, 14, frequency=50000, timeout=200000)
     scd = SCD30_I2C(i2c1)
     await scd.setup()  # a real soft reset - RAM/operating-state only, not an NVM write, safe every run
+
+    # Deliberately discarded - see _SETTLE_S. read_measurement() is called rather than just slept
+    # through, because data-ready clears the instant it is read: consuming the stale conversion is
+    # what actually clears it, so sleeping alone would leave it waiting in the registers.
+    for _ in range(int(_SETTLE_S / 0.5)):
+        await scd.read_measurement()
+        wdt.feed()
+        await asyncio.sleep(0.5)
 
     read_errors = []
     read_completed = 0
