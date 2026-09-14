@@ -58,6 +58,16 @@ _SOAK_CYCLES_DEFAULT = 20
 # two quarter means, so its standard error scales with 1/sqrt(quarter_size); at the calibration's
 # own 25-sample quarters this reduces to exactly the original 8192.
 _MEM_TREND_TOLERANCE_BYTES_AT_25_SAMPLES = 8192
+# Matches buildgen.codegen.generate_boot_entry_source()'s own real-firmware boot entry (same value,
+# same one-time placement immediately before asyncio.run()) - the twin sets it too, by default, so a
+# non-soak run models production's actual memory-safety configuration, not just its allocation code.
+# Overridable via --gc-threshold specifically so _soak() (the one entry point this file exposes that
+# is genuinely a stress/hammer test, not a feature-behavior smoke run) can be driven at MicroPython's
+# own real reactive-only default too - CLAUDE.md's/SPECIFICATION.md Part I.4(e)'s standing rule that
+# a stress test must pass at gc.threshold(-1) *before* it's ever run with a chosen threshold, which a
+# single hardcoded gc.threshold(32768) here could never be checked against. See
+# scripts/_digital_twin_ci_suite.py's own Run 11a/11b for where that check actually happens.
+_GC_THRESHOLD_DEFAULT = 32768
 
 
 class RunConfig:
@@ -78,6 +88,7 @@ class RunConfig:
         soak: bool = False,
         soak_cycles: int = _SOAK_CYCLES_DEFAULT,
         duration: "float | None" = None,
+        gc_threshold: int = _GC_THRESHOLD_DEFAULT,
     ) -> None:
         self.module = module
         self.wiring_plan_path = wiring_plan_path
@@ -93,6 +104,7 @@ class RunConfig:
         self.soak = soak
         self.soak_cycles = soak_cycles
         self.duration = duration
+        self.gc_threshold = gc_threshold
 
     def __eq__(self, other: "object") -> bool:
         if not isinstance(other, RunConfig):
@@ -112,6 +124,7 @@ class RunConfig:
             and self.soak == other.soak
             and self.soak_cycles == other.soak_cycles
             and self.duration == other.duration
+            and self.gc_threshold == other.gc_threshold
         )
 
     # Value equality without a matching hash: spell out what CPython already does implicitly for
@@ -125,7 +138,7 @@ class RunConfig:
             f"port={self.port!r}, device={self.device!r}, fram_state_path={self.fram_state_path!r}, "
             f"scd30_state_path={self.scd30_state_path!r}, seed={self.seed!r}, faults={self.faults!r}, "
             f"hangs={self.hangs!r}, wifi_outcomes={self.wifi_outcomes!r}, soak={self.soak!r}, "
-            f"soak_cycles={self.soak_cycles!r}, duration={self.duration!r})"
+            f"soak_cycles={self.soak_cycles!r}, duration={self.duration!r}, gc_threshold={self.gc_threshold!r})"
         )
 
 
@@ -151,6 +164,7 @@ def parse_args(argv: "list[str]") -> RunConfig:
     soak = False
     soak_cycles = _SOAK_CYCLES_DEFAULT
     duration: float | None = None
+    gc_threshold = _GC_THRESHOLD_DEFAULT
 
     while remaining:
         arg = remaining.pop(0)
@@ -186,6 +200,8 @@ def parse_args(argv: "list[str]") -> RunConfig:
             soak = True  # passing a cycle count is itself opting into running the soak
         elif arg == "--duration":
             duration = float(_pop_value(remaining, arg))
+        elif arg == "--gc-threshold":
+            gc_threshold = int(_pop_value(remaining, arg))
         else:
             raise ValueError(f"unrecognized argument: {arg!r}")
 
@@ -209,6 +225,7 @@ def parse_args(argv: "list[str]") -> RunConfig:
         soak=soak,
         soak_cycles=soak_cycles,
         duration=duration,
+        gc_threshold=gc_threshold,
     )
 
 
@@ -484,17 +501,24 @@ async def main(config: RunConfig) -> "dict[str, Any]":
 
 
 if __name__ == "__main__":
-    # Matches buildgen.codegen.generate_boot_entry_source()'s own real-firmware boot entry exactly
-    # (same call, same one-time placement immediately before asyncio.run()) - a gap found while
-    # root-causing a real CI MemoryError (2026-09-13): this twin entry point never set it, so every
-    # twin run - not just this one - has always run in MicroPython's own reactive-only default
-    # (collect on allocation failure, never proactively), unlike real hardware, which collects every
-    # ~32KB allocated. Confirmed as the actual cause, not the request/response allocation patterns
-    # themselves (digital_twin/_http_client.py's own _read_exact()/_read_until_close() and
-    # src/asy_uart_comm.py's own steady-state buffers were independently re-verified clean - the twin
-    # was simply never running under the same memory-safety configuration production already does).
-    gc.threshold(32768)
     _config = parse_args(sys.argv[1:])
+    # Placed immediately before asyncio.run(), same as buildgen.codegen.generate_boot_entry_source()'s
+    # own real-firmware boot entry - _GC_THRESHOLD_DEFAULT (32768) matches it exactly, so an ordinary
+    # (non-soak) twin run models production's real memory-safety configuration, not just its
+    # allocation code. --gc-threshold overrides it, which is what actually matters here: the real
+    # fix for PR #80's Run 11 MemoryError (repeated ~6-7.5KB `allocating N bytes` failures on GET /
+    # and GET /status during _soak()) was digital_twin/_http_client.py's own _read_exact()/
+    # _read_until_close() replacing Stream.readexactly()/read(-1)'s growth-by-concatenation
+    # accumulation with one right-sized buffer per fetch() (see that file's own history) - not this
+    # threshold. Verified directly: _soak() passes clean at gc.threshold(-1) (MicroPython's real
+    # reactive-only default, no proactive collection at all) with those two fixes in place and no
+    # threshold change whatsoever, matching SPECIFICATION.md Part I.4(e)'s standing rule that a
+    # stress test must prove this *before* it's ever run with a chosen threshold - a rule an earlier
+    # version of this comment (2026-09-13) violated by treating "the twin never set gc.threshold(32768)"
+    # itself as the root cause. Kept at 32768 by default anyway, same as every real boot: I.4(f) - a
+    # threshold is defense in depth on top of an already-safe design, never the fix for one that still
+    # needs it. scripts/_digital_twin_ci_suite.py's Run 11a/11b exercise both configurations.
+    gc.threshold(_config.gc_threshold)
     _summary: "dict[str, Any] | None" = None
     try:
         _summary = asyncio.run(main(_config))

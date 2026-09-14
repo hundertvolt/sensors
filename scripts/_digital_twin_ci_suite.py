@@ -789,33 +789,57 @@ def _run_10_watchdog_hang_backstop(ctx: RunContext) -> None:
     _check(condition=wdt10 is not None and wdt10 >= 1, msg=f"Run 10: the watchdog backstop actually engaged for a genuinely wedged bus (would_have_triggered_count={wdt10!r})")
 
 
-def _run_11_soak(ctx: RunContext) -> None:
-    # ---- Run 11: a genuinely fresh, clean boot dedicated to the soak check. --soak/--soak-cycles
-    # (BUILD_CHAIN_PLAN.md's Session 6.2) is now supported directly by run_generic_integration.py,
-    # ported verbatim from run_wozi_integration.py's/run_dev_integration.py's own machinery. ----
+def _run_soak_at_threshold(ctx: RunContext, run_label: str, log_name: str, gc_threshold: int) -> None:
+    # Shared body for Run 11a/11b - a genuinely fresh, clean boot dedicated to the soak check.
+    # --soak/--soak-cycles (BUILD_CHAIN_PLAN.md's Session 6.2) is supported directly by
+    # run_generic_integration.py, ported verbatim from run_wozi_integration.py's/
+    # run_dev_integration.py's own machinery; --gc-threshold lets this one entry point be driven at
+    # both configurations Run 11a/11b need (see their own comments below for why both matter).
     _clean_state()
-    log11 = ctx.logs_dir / "run11_soak.log"
-    proc = _spawn(ctx, ["--soak", "--soak-cycles", "20", "--duration", "0"], log11)
+    log_path = ctx.logs_dir / log_name
+    proc = _spawn(ctx, ["--soak", "--soak-cycles", "20", "--duration", "0", "--gc-threshold", str(gc_threshold)], log_path)
     try:
         ec = proc.wait(timeout=180.0)
-        _check(condition=ec == 0, msg=f"Run 11: soak run completed cleanly (exit code {ec})")
+        _check(condition=ec == 0, msg=f"{run_label}: soak run completed cleanly (exit code {ec})")
     except subprocess.TimeoutExpired:
         proc.kill()
         proc.wait(timeout=5.0)
-        _fail("Run 11: soak run exceeded its 180s bound and was killed")
+        _fail(f"{run_label}: soak run exceeded its 180s bound and was killed")
     finally:
         log_file = getattr(proc, "ci_log_file", None)
         if log_file is not None:
             log_file.close()
-    log11_text = _read_log(log11)
-    _check(condition="soak summary" in log11_text, msg="Run 11: soak summary was printed")
-    if "PASS -" not in log11_text:
+    log_text = _read_log(log_path)
+    _check(condition="soak summary" in log_text, msg=f"{run_label}: soak summary was printed")
+    if "PASS -" not in log_text:
         # This check alone doesn't say *why* - the soak's own summary line names the actual failed
         # sub-check(s) (HTTP failures, watchdog, or memory trend) and, for HTTP failures, the real
         # exception each one hit - print it so a CI failure is diagnosable from the job log alone,
         # without needing the uploaded digital-twin-ci-logs-* artifact.
-        print(f"== Run 11 soak log ({log11}):\n{log11_text}")
-    _check(condition="PASS -" in log11_text, msg="Run 11: soak run reported PASS (no HTTP failures, watchdog never starved, memory trend within tolerance)")
+        print(f"== {run_label} soak log ({log_path}):\n{log_text}")
+    _check(condition="PASS -" in log_text, msg=f"{run_label}: soak run reported PASS (no HTTP failures, watchdog never starved, memory trend within tolerance)")
+
+
+def _run_11a_soak_at_gc_default(ctx: RunContext) -> None:
+    # The check that actually matters (CLAUDE.md's/SPECIFICATION.md Part I.4(e)'s standing rule): a
+    # stress/hammer test must pass under gc.threshold(-1) - MicroPython's own real reactive-only
+    # default, no proactive collection at all - *before* it's ever run with the project's chosen
+    # threshold. Run first, deliberately: PR #80's real Run 11 MemoryError was root-caused (not just
+    # made to go away) by digital_twin/_http_client.py's own _read_exact()/_read_until_close()
+    # replacing Stream.readexactly()/read(-1)'s growth-by-concatenation accumulation with one
+    # right-sized buffer per fetch() - confirmed directly by running this exact check with that fix
+    # in place and no gc.threshold() override at all. A future regression that only shows up here
+    # (and not in 11b) is exactly the "papered over by the threshold" failure mode this ordering
+    # exists to catch.
+    _run_soak_at_threshold(ctx, "Run 11a", "run11a_soak_gc_default.log", gc_threshold=-1)
+
+
+def _run_11b_soak_at_chosen_threshold(ctx: RunContext) -> None:
+    # Confirms the project's chosen gc.threshold(32768) (matching every real firmware boot,
+    # buildgen.codegen.generate_boot_entry_source()) remains a harmless, additional safety margin on
+    # top of 11a's already-clean result - never the thing 11a's own pass depends on (I.4(f)). Run
+    # second, after 11a, per that same ordering rule.
+    _run_soak_at_threshold(ctx, "Run 11b", "run11b_soak_gc_chosen.log", gc_threshold=32768)
 
 
 def run_suite(ctx: RunContext) -> int:
@@ -833,7 +857,8 @@ def run_suite(ctx: RunContext) -> int:
     _run_8_wifi_persistence_and_configure_ntp(ctx)
     _run_9_ntp_unreachable(ctx)
     _run_10_watchdog_hang_backstop(ctx)
-    _run_11_soak(ctx)
+    _run_11a_soak_at_gc_default(ctx)
+    _run_11b_soak_at_chosen_threshold(ctx)
 
     print()
     if _FAILURES:

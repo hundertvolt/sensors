@@ -547,13 +547,14 @@ can't yet complete the chain stays out until the missing piece exists (flagged p
 `strategy.matrix` over all 6 real device variants as of BUILD_CHAIN_PLAN.md's Session 6.2): wipes
 leftover twin state; builds the Unix port and the real production website for that device
 (`scripts/build_website.sh <device>`); `scripts/_digital_twin_ci_suite.py` drives
-`run_generic_integration.py` through eleven top-level subprocess runs (two of them, 5b/5c, further
-sub-runs of run 5 — thirteen real subprocess runs in total; fresh boot + every endpoint; settings
+`run_generic_integration.py` through twelve top-level subprocess runs (two of them, 5b/5c, further
+sub-runs of run 5 — fourteen real subprocess runs in total; fresh boot + every endpoint; settings
 persistence across reboot; a sustained fault matrix, derived from that device's own real wiring
 plan, proving graceful degradation and that the watchdog never starves under bounded failure; a
 persistence-correctness sweep; recovery after a bounded fault clears; hotspot fallback with a real
 answered UDP DNS query; NTP permanently unreachable; a real blocking hang proving the watchdog
-backstop engages; a clean soak run). Building this surfaced three confirmed Unix-port-only `socket`
+backstop engages; a clean soak run at both `gc.threshold(-1)` and the project's chosen
+`gc.threshold(32768)`, in that order — Part I.4(e)'s standing rule). Building this surfaced three confirmed Unix-port-only `socket`
 quirks (real, required behavior on real rp2 hardware, not a `src/` bug — BACKLOG.md has the
 source-level account) worked around entirely from twin-side code
 (`digital_twin/_unix_port_udp_addr_shim.py`).

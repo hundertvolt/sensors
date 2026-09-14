@@ -126,6 +126,22 @@ def test_parse_args_soak_cycles_implies_soak() -> None:
     assert config.soak_cycles == 5
 
 
+def test_parse_args_gc_threshold_defaults_to_matching_real_firmware() -> None:
+    # 32768 matches buildgen.codegen.generate_boot_entry_source()'s own real-firmware boot entry -
+    # an ordinary (non-soak) twin run should model production's real memory-safety configuration by
+    # default, not just its allocation code. See _GC_THRESHOLD_DEFAULT's own module-level comment.
+    config = parse_args(["--module", "m", "--wiring-plan", "p.json"])
+    assert config.gc_threshold == 32768
+
+
+def test_parse_args_gc_threshold_is_overridable() -> None:
+    # scripts/_digital_twin_ci_suite.py's Run 11a needs this to drive _soak() at MicroPython's own
+    # real reactive-only default (CLAUDE.md's/SPECIFICATION.md Part I.4(e)'s standing rule that a
+    # stress test must pass there *before* it's ever run with a chosen threshold).
+    config = parse_args(["--module", "m", "--wiring-plan", "p.json", "--gc-threshold", "-1"])
+    assert config.gc_threshold == -1
+
+
 # ---------------------------------------------------------------------------
 # _soak() resilience - regression coverage for a real crash found via a real user report running
 # this exact soak against the real assembled system, ported verbatim from

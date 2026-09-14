@@ -479,9 +479,10 @@ twin in for a Unix-port run" section — that's a separate `MICROPYPATH`-based i
 launcher.
 
 **Automated CI suite** — the manual walkthrough below turned into an unattended, CI-gating check:
-drives `digital_twin/run_generic_integration.py` through thirteen real, sequential subprocess runs
-(11 top-level, two of them sub-runs of one; fresh boot, every GET/PUT endpoint, `DebugLevel=5`
-verbose logging, bus fault injection, settings/error persistence across a real reboot, soak) and
+drives `digital_twin/run_generic_integration.py` through fourteen real, sequential subprocess runs
+(12 top-level, two of them sub-runs of one; fresh boot, every GET/PUT endpoint, `DebugLevel=5`
+verbose logging, bus fault injection, settings/error persistence across a real reboot, soak at both
+`gc.threshold()` configurations) and
 asserts every step. Runs against `wozi` by default, or any of the other 5 real device variants via
 an optional device argument. Builds the Unix port and the real website for that device first if
 either is missing (same `$PICO_TOOLCHAIN_DIR`/`SKIP_APT` convention as `scripts/test.sh`):

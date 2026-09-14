@@ -349,7 +349,7 @@ it checks and why; this section is the practical how-to.
 
 ```bash
 scripts/run_digital_twin_ci.sh          # wozi (default): clean -> build -> test, same as CI runs it
-scripts/run_digital_twin_ci.sh dev      # any other real device: same 11-run suite, that device's own module
+scripts/run_digital_twin_ci.sh dev      # any other real device: same 12-run suite, that device's own module
 ```
 
 **Clean**: removes any leftover `digital_twin/fram_state.json`/`digital_twin/scd30_state.json`/
@@ -367,7 +367,7 @@ placeholder). Must succeed before any test phase runs.
 `uv run` CPython script (stdlib-only — no `uv sync` needed) that drives
 `digital_twin/run_generic_integration.py` as a real subprocess, over real HTTP/UDP (`http.client`/
 `socket`, not `_http_client.py` — this script runs under CPython, not the twin's own MicroPython
-process), through thirteen real, sequential subprocess runs (11 top-level, two of them - 5b/5c -
+process), through fourteen real, sequential subprocess runs (12 top-level, two of them - 5b/5c -
 sub-runs of run 5) on a fixed port (`18080`, distinct from
 the manual entry point's `8080` default, so both can run side by side without colliding). The
 bus-fault matrix in runs 3/4 is derived from that device's own real wiring plan, never a hardcoded
@@ -471,10 +471,26 @@ driver list — a device without `bmp3xx` (4 of the 6 real devices) simply never
     errors (run 3) cannot demonstrate — that the watchdog backstop itself actually engages
     (`would_have_triggered_count >= 1`), matching CLAUDE.md's own settled "hardware watchdog is the
     accepted backstop" rule for a genuinely wedged bus.
-11. **Dedicated clean soak run** — a fresh `--soak --soak-cycles 20 --duration 0` run against a
-    freshly-wiped twin, checked for a clean exit and a printed `PASS` summary (see
-    `run_generic_integration.py`'s own `_soak()` for the memory-trend methodology, ported
-    verbatim from the retired `run_wozi_integration.py`).
+11. **Dedicated clean soak runs, at both `gc.threshold()` configurations (11a/11b)** — a fresh
+    `--soak --soak-cycles 20 --duration 0` run against a freshly-wiped twin, checked for a clean
+    exit and a printed `PASS` summary (see `run_generic_integration.py`'s own `_soak()` for the
+    memory-trend methodology, ported verbatim from the retired `run_wozi_integration.py`). Run
+    twice, in order, via `--gc-threshold`: **11a** at `-1` (MicroPython's own real reactive-only
+    default) first, then **11b** at `32768` (the project's chosen value, matching every real
+    firmware boot) second — CLAUDE.md's/SPECIFICATION.md Part I.4(e)'s standing rule that a
+    stress/hammer test must pass under the real default *before* it's ever run with a chosen
+    threshold, which a single hardcoded threshold could never actually be checked against. This
+    ordering exists because of a real regression: an earlier session found a genuine CI `MemoryError`
+    here (repeated `allocating ~6100 bytes` failures on `GET /status`) and initially "fixed" it by
+    giving the twin's boot entry `gc.threshold(32768)` for the first time, framing the twin never
+    having set it as the root cause. The project owner rejected that framing — errors going away
+    under a threshold change is not proof the underlying allocation pattern is safe, only that
+    collection now happens earlier. The actual root cause was `digital_twin/_http_client.py`'s own
+    `Stream.readexactly()`/`read(-1)` growth-by-concatenation accumulation on the client side,
+    fixed by `_read_exact()`/`_read_until_close()` (one right-sized buffer per `fetch()`, no
+    `gc.threshold()` involved) — confirmed by 11a passing clean with that fix in place and the
+    twin's own boot entry forced back to the real default. `gc.threshold(32768)` stays as 11b's own
+    defense-in-depth confirmation, never as 11a's fix.
 
 Each run's subprocess stdout/stderr is captured to `digital_twin_ci_logs/run<N>_*.log` (gitignored;
 uploaded as a CI build artifact via the `digital-twin-e2e` job's own `if: always()` upload step, so
