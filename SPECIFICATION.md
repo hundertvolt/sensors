@@ -2105,6 +2105,25 @@ GC-timing artifact (E.7) into something no longer even measured — the check no
 HTTP-failure counts and a `gc.mem_free()` trend directly, not a duration that never bounded anything
 real to begin with.
 
+Real GitHub-runner CI kept tripping the `gc.mem_free()` trend check occasionally even after that
+move (2026-09-14) — a different device each time. A same-tree local investigation both reproduced it
+directly (two independent `wozi` boots in a row, 3298/2854 and 4361/2847 bytes, past the
+then-current tolerance) and measured the actual mechanism: the tolerance was `8192 * sqrt(25 /
+quarter_size)`, assuming a trend's standard error shrinks with independent-sample statistics as
+`quarter_size` grows. It doesn't — consecutive 25ms `gc.mem_free()` samples are heavily
+autocorrelated (the same reactive-GC-paced heap barely moves between two adjacent readings), so the
+formula was tightening fastest exactly where real per-run noise needed it loosest. `_mem_trend()`
+(`scripts/_digital_twin_ci_suite.py`) now derives the tolerance from each attempt's own observed
+noise — each quarter's own internal spread, never the early-vs-late difference itself, so a genuine
+leak's own decline can't inflate the very tolerance meant to catch it — instead of a historical
+constant extrapolated through a scaling law real sampling never matched. `_run_11_soak()` also
+retries once — a second fully independent clean boot — before failing on the trend check
+specifically, the same standard E.8's "a guard is only established by removing what it guards and
+watching it fail" already sets: a real leak reproduces past tolerance on both independent boots,
+transient noise essentially never does. Never retries an HTTP/watchdog/shutdown failure — those
+aren't this measurement's own known noise source, and finding one still ends the run immediately,
+same as before.
+
 # Part F — Platform Target & MicroPython Runtime Facts
 
 ## F.1 Core platform facts

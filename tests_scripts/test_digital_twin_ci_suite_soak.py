@@ -57,8 +57,10 @@ def test_parse_mem_samples_skips_a_malformed_line_instead_of_raising(ci_suite: M
 
 def test_mem_trend_flags_a_genuine_steady_decline(ci_suite: ModuleType) -> None:
     # 20 samples (quarter_size=5), a steady decline of 15000 bytes/sample - early_avg (first
-    # quarter) vs. late_avg (last quarter) trend is comfortably past the scaled tolerance
-    # (8192 * sqrt(25/5) ~= 18318, matching the real 20-cycle default's own quarter size).
+    # quarter) vs. late_avg (last quarter) trend (225000) is comfortably past the tolerance the
+    # decline's own within-quarter spread produces (_MEM_TREND_TOLERANCE_SD_MULTIPLIER * ~21213 ~=
+    # 63639) - a genuine leak's own magnitude dwarfs even the noise its own steady progression adds
+    # to each quarter's internal spread.
     samples = [200_000 - 15_000 * i for i in range(20)]
     result = ci_suite._mem_trend(samples)
     assert result is not None
@@ -92,13 +94,33 @@ def test_mem_trend_returns_none_below_four_samples(ci_suite: ModuleType) -> None
     assert ci_suite._mem_trend([100_000, 90_000, 80_000]) is None
 
 
-def test_mem_trend_tolerance_reduces_to_the_original_flat_constant_at_25_sample_quarters(ci_suite: ModuleType) -> None:
-    # The scaled tolerance is defined to exactly reproduce the original flat 8192-byte constant at
-    # its own original calibration sample size (100 samples = 25-sample quarters) - see
-    # _MEM_TREND_TOLERANCE_BYTES_AT_25_SAMPLES's own module-level comment.
-    samples = [0] * 100
+def test_mem_trend_tolerance_is_zero_for_a_perfectly_noiseless_flat_profile(ci_suite: ModuleType) -> None:
+    # A degenerate edge case worth pinning directly: zero within-quarter spread means zero
+    # tolerance, not a historical floor - a real gc.mem_free() trace is never this quiet, but the
+    # formula itself (_MEM_TREND_TOLERANCE_SD_MULTIPLIER * max(pstdev(early), pstdev(late))) must
+    # degrade to exactly this at the limit.
+    samples = [123_456] * 100
     result = ci_suite._mem_trend(samples)
     assert result is not None
-    _trend, tolerance, quarter, _early_avg, _late_avg = result
+    trend, tolerance, quarter, _early_avg, _late_avg = result
     assert quarter == 25
-    assert tolerance == pytest.approx(8192)
+    assert trend == 0
+    assert tolerance == 0
+
+
+def test_mem_trend_tolerance_scales_with_each_attempts_own_observed_noise(ci_suite: ModuleType) -> None:
+    # The core property this design exists for (2026-09-14 CI investigation - see
+    # _MEM_TREND_TOLERANCE_SD_MULTIPLIER's own module-level comment): the SAME early-vs-late
+    # decline (200 bytes) gets a tighter tolerance from a quiet quarter than from a noisy one, since
+    # each attempt's own tolerance now tracks its own real noise level instead of a fixed historical
+    # constant (scaled or not) that real, heavily autocorrelated gc.mem_free() sampling never
+    # actually matched.
+    quiet = [100_010, 99_990, 100_010, 99_990, 99_810, 99_790, 99_810, 99_790]
+    noisy = [100_500, 99_500, 100_500, 99_500, 99_600, 100_400, 99_600, 100_400]
+    quiet_result = ci_suite._mem_trend(quiet)
+    noisy_result = ci_suite._mem_trend(noisy)
+    assert quiet_result is not None
+    assert noisy_result is not None
+    _quiet_trend, quiet_tolerance, _q1, _e1, _l1 = quiet_result
+    _noisy_trend, noisy_tolerance, _q2, _e2, _l2 = noisy_result
+    assert noisy_tolerance > quiet_tolerance > 0
