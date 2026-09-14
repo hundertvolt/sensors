@@ -480,10 +480,6 @@ constraints.
     ruling is to leave the specification exactly as it stands, Finding 2 included, and tidy this up
     in a session of its own.** Recorded here so that session does not have to re-derive the scan.
 
-    **One free fix for that session, found 2026-09-14 in the branch's final review**: the
-    subsections are also out of order in the file - `C.11.3` physically precedes `C.11.2`. Pure
-    document order, no content change.
-
     Three distinct patterns exist in the document, and only the third is the question:
 
     - **Generic rule, named instance** — the dominant and legitimate one. C.4.3 cites SGP40 against

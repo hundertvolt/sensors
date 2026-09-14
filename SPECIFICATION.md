@@ -1556,68 +1556,6 @@ now checks the dead-line warning per scenario *and* asserts the run made at leas
 switches, so the check can actually fire. Before that, nothing in the suite ever exercised it where
 it was reachable — the envelope test makes two switches and the warning needs five in a row.
 
-### C.11.3 Calibration is user-triggered, user-applied, and writes nothing by itself
-
-Owner's design, 2026-09-13, replacing an hourly background learner that persisted its own result
-to a FRAM chunk. Three separate properties, and each is load-bearing:
-
-**The applied factor is ordinary config.** `GainRatio` is a schema field like any other — `float`,
-plausibility-banded to 20.0–34.0, defaulting to the nominal 26.667 — and `_gain_correction()` is
-its only reader. **Only a user PUT ever changes it.** The driver never writes its own config, so
-every flash write on this module stays on the REST path, which is the property Part F.2's
-power-cycle recovery argument depends on. It is also what made the old ninth FRAM chunk redundant
-(Part A.7.1).
-
-**Measuring is a bounded run, started by hand.** `ISLCalibrate` is command-only (the special-alone
-schema shape, C.5.2.1) and starts a window of `_CAL_WINDOW_MS`. While it is open the read loop's
-own path takes sandwiches; the run ends early on convergence, or when the window closes. Nothing
-schedules it, so normal operation pays nothing: a sandwich costs two range switches and two settle
-windows, which would otherwise be a permanent tax on every sample interval.
-
-**The measurement is a sandwich, not a pair, and that is the whole point.** Read this range, the
-other, then **this range again**. The dominant error in this measurement is the scene changing
-between the two legs, and a pair alone cannot distinguish a real ratio from a light that moved —
-both produce a plausible number. If the first and third readings disagree by more than
-`_CAL_STABILITY_TOL`, the sandwich is discarded however good the ratio looks. Convergence then
-requires `_CAL_CONVERGE_N` consecutive stable sandwiches agreeing within `_CAL_CONVERGE_TOL`,
-because a slow drift produces a run of self-consistent wrong answers.
-
-**The result is a measurement, not a setting.** A candidate is published as `GainMeas`, riding the
-same tuple as `Lux` and the colour fields, and held for `_CAL_HOLD_MS` before clearing. The user
-reads it and copies it into `GainRatio` if they want it used. **A refused measurement is reported
-by absence**: `GainMeas` stays `None`, which is the feedback — there is deliberately no `wrnno` for
-an unusable scene, because a scene outside the overlap band is a fact about the light, not a fault.
-Refusal reasons go to the debug log only. A real bus failure during a leg still logs `errno=11`.
-
-**Proven on real silicon, 2026-09-14** — the first sandwich any real chip has measured. Three runs
-at ~138 lx (~37% of the low range's full scale), each converging early on three agreeing readings
-within ~6–8 s: `24.012 → 23.916 → 24.131`, `23.703 → 23.841 → 23.915`, `24.128 → 24.046 → 23.869`.
-All nine candidates inside 23.70–24.13, a 1.8% spread. `GainRatio` read 26.666666 before and after
-every run, confirming the driver never writes its own config. With the pixel parked dark the
-sequence is empty and the error log stays empty — refusal by absence, exactly as designed.
-
-**Applying the measured ratio cut the cross-range continuity step from 11.4% to 0.4%**, a ~28×
-reduction on the same stationary light. That is the half of the mechanism nothing had exercised
-before, and it is what the whole design is for.
-
-**One interaction the bench found, and it is not a defect in either half** (2026-09-14). The
-overlap-band gate tests **`green_counts`** — green is the quantity the sandwich divides, so it is
-green that must clear the dark floor — while `_evaluate_range()` decides on **`max(counts)`**,
-because a clipped red destroys Hue/Sat/CCT whatever green is doing. Both are right for their own
-question. The consequence is that a strongly-coloured scene can be parked by auto-range on the high
-range, where its green is too small to calibrate from, even though the *same* light on the low range
-gives green ~24× larger and calibrates immediately. Measured: a blue-dominant white at ~153 lx
-approached from above holds the high range with peak > 1044 counts and green ~1006, and calibration
-refuses for the whole 120 s window. Approached from below it settles on the low range and converges
-at once. **The operator procedure is therefore to park the scene dark first and let auto-range settle
-onto the low range before raising it to the overlap level.** Loosening the gate to peak would be
-worse, not better: it would admit scenes whose green is at the dark floor and silently produce a bad
-ratio instead of refusing.
-
-**One consequence worth knowing**: the third leg runs even when the second failed, because it is
-also what puts the range back. Skipping it on a clipped or unreadable partner would strand every
-later sample on the wrong range — caught by its own test, not by reasoning.
-
 ### C.11.2 ISL29125 reference layer — the prior art, and the traps it closes
 
 Every item here is something a future reader would otherwise re-derive, or "correct" back to a
@@ -1713,6 +1651,68 @@ promotion wanted are not reachable (the vendor site refuses, no mirror carries t
 things they were wanted for are settled without them: the 12-bit cycle time comes from the
 datasheet's own oscillator/counter model (p6, "the n-bit (n = 12, 16) counter inside the ADC", so
 101 ms × 2⁻⁴ ≈ 6.3 ms), and the CCT matrix is a placeholder by p13's own wording.
+
+### C.11.3 Calibration is user-triggered, user-applied, and writes nothing by itself
+
+Owner's design, 2026-09-13, replacing an hourly background learner that persisted its own result
+to a FRAM chunk. Three separate properties, and each is load-bearing:
+
+**The applied factor is ordinary config.** `GainRatio` is a schema field like any other — `float`,
+plausibility-banded to 20.0–34.0, defaulting to the nominal 26.667 — and `_gain_correction()` is
+its only reader. **Only a user PUT ever changes it.** The driver never writes its own config, so
+every flash write on this module stays on the REST path, which is the property Part F.2's
+power-cycle recovery argument depends on. It is also what made the old ninth FRAM chunk redundant
+(Part A.7.1).
+
+**Measuring is a bounded run, started by hand.** `ISLCalibrate` is command-only (the special-alone
+schema shape, C.5.2.1) and starts a window of `_CAL_WINDOW_MS`. While it is open the read loop's
+own path takes sandwiches; the run ends early on convergence, or when the window closes. Nothing
+schedules it, so normal operation pays nothing: a sandwich costs two range switches and two settle
+windows, which would otherwise be a permanent tax on every sample interval.
+
+**The measurement is a sandwich, not a pair, and that is the whole point.** Read this range, the
+other, then **this range again**. The dominant error in this measurement is the scene changing
+between the two legs, and a pair alone cannot distinguish a real ratio from a light that moved —
+both produce a plausible number. If the first and third readings disagree by more than
+`_CAL_STABILITY_TOL`, the sandwich is discarded however good the ratio looks. Convergence then
+requires `_CAL_CONVERGE_N` consecutive stable sandwiches agreeing within `_CAL_CONVERGE_TOL`,
+because a slow drift produces a run of self-consistent wrong answers.
+
+**The result is a measurement, not a setting.** A candidate is published as `GainMeas`, riding the
+same tuple as `Lux` and the colour fields, and held for `_CAL_HOLD_MS` before clearing. The user
+reads it and copies it into `GainRatio` if they want it used. **A refused measurement is reported
+by absence**: `GainMeas` stays `None`, which is the feedback — there is deliberately no `wrnno` for
+an unusable scene, because a scene outside the overlap band is a fact about the light, not a fault.
+Refusal reasons go to the debug log only. A real bus failure during a leg still logs `errno=11`.
+
+**Proven on real silicon, 2026-09-14** — the first sandwich any real chip has measured. Three runs
+at ~138 lx (~37% of the low range's full scale), each converging early on three agreeing readings
+within ~6–8 s: `24.012 → 23.916 → 24.131`, `23.703 → 23.841 → 23.915`, `24.128 → 24.046 → 23.869`.
+All nine candidates inside 23.70–24.13, a 1.8% spread. `GainRatio` read 26.666666 before and after
+every run, confirming the driver never writes its own config. With the pixel parked dark the
+sequence is empty and the error log stays empty — refusal by absence, exactly as designed.
+
+**Applying the measured ratio cut the cross-range continuity step from 11.4% to 0.4%**, a ~28×
+reduction on the same stationary light. That is the half of the mechanism nothing had exercised
+before, and it is what the whole design is for.
+
+**One interaction the bench found, and it is not a defect in either half** (2026-09-14). The
+overlap-band gate tests **`green_counts`** — green is the quantity the sandwich divides, so it is
+green that must clear the dark floor — while `_evaluate_range()` decides on **`max(counts)`**,
+because a clipped red destroys Hue/Sat/CCT whatever green is doing. Both are right for their own
+question. The consequence is that a strongly-coloured scene can be parked by auto-range on the high
+range, where its green is too small to calibrate from, even though the *same* light on the low range
+gives green ~24× larger and calibrates immediately. Measured: a blue-dominant white at ~153 lx
+approached from above holds the high range with peak > 1044 counts and green ~1006, and calibration
+refuses for the whole 120 s window. Approached from below it settles on the low range and converges
+at once. **The operator procedure is therefore to park the scene dark first and let auto-range settle
+onto the low range before raising it to the overlap level.** Loosening the gate to peak would be
+worse, not better: it would admit scenes whose green is at the dark floor and silently produce a bad
+ratio instead of refusing.
+
+**One consequence worth knowing**: the third leg runs even when the second failed, because it is
+also what puts the range back. Skipping it on a clipped or unreadable partner would strand every
+later sample on the wrong range — caught by its own test, not by reasoning.
 
 ### C.11.4 The range ratio is not a constant — it varies with signal level
 
@@ -2121,11 +2121,12 @@ line never fires a trace event and always shows a 0-hit miss despite being fully
 fold): a private `const()` has its whole assignment replaced by `pass` in the parse tree, while a
 public one keeps the store and therefore does register — which is why `ROLE_INITIATOR` and `CMD_GET`
 show as covered in `asy_uart_comm.py` while all 58 of its `_`-prefixed constants do not. This is not
-a rounding error on a const-heavy module: measured 2026-09-13, it accounts for **84 of
-`asy_isl29125_driver.py`'s 148 reported misses, 37 of `asy_bmp3xx_driver.py`'s 52, and 13 of
+a rounding error on a const-heavy module: re-measured 2026-09-14, it accounts for **82 of
+`asy_isl29125_driver.py`'s 95 reported misses, 37 of `asy_bmp3xx_driver.py`'s 52, and 13 of
 `asy_sgp40_driver.py`'s 17** — each of those three drivers carries only `_`-prefixed constants, so
 the rule above accounts for every one of them — while `base_classes.py` (no module-level `const()`
-at all) reports 100%. So a driver's headline percentage understates it by roughly ten points - read
+at all) reports 100%. So a driver's headline percentage understates it badly - on the ISL29125,
+86% of everything it reports missed is this one artefact. Read
 the per-line report, not the table, before concluding a driver is under-tested. A decorated function's traced
 event lands on the decorator line, not the `def` line, so every `@staticmethod`/`@classmethod`
 shows missed even when called throughout the suite. A bare `while True:` header never fires its own
@@ -2152,40 +2153,52 @@ defence in depth in a module contracted never to raise is cheaper than the day t
 moves.
 
 A fourth category is not a measurement artefact at all but reads like one: **a guard on a contract
-the real collaborator cannot violate.** `asy_isl29125_driver.py` is the worked example. Re-measured
-2026-09-14 after the calibration redesign (C.11.3) removed the gain-ratio FRAM path the earlier
-version of this passage was built on: 821 statements, **102 missed, 88%**, splitting as
+the real collaborator cannot violate.** `asy_isl29125_driver.py` is the worked example — and it is
+the example in both directions, because three lines once filed under this heading did not belong
+there. Re-measured 2026-09-14 on the finished driver: 847 statements, **95 missed, 89%**, splitting
+as
 
 | Missed | What |
 |---|---|
 | 82 | module-level `const()` assignments, folded away at compile time — pattern 1 above |
 | 9 | `@staticmethod` `def` lines, which never fire a trace event — pattern 2 |
 | 2 | `while True:` loop headers — pattern 3 |
-| 4 | genuinely untested error arms: `_reapply_persist`'s `except` (three lines) and `set_resolution`'s failure return |
-| 5 | **these** |
+| 2 | **these** |
 
-The five are `_read_sensor_dict`'s and `_snapshot_field`'s `decode_config(...) is None` arms
-(`get_config_snapshot()` raises unless it read exactly three bytes, which is the only input that
-makes that decoder return `None`); `_read_on`'s `_switch_range()`-failed arm; `persist_for_interval`'s
-trailing `return options[0]`, whose own comment states it is unreachable at the current schema
-bounds and exists as honest degradation if either bound ever moves; and `_measure_gain_ratio`'s
-`high_counts <= 0` divisor guard.
+The two are `_read_sensor_dict`'s and `_snapshot_field`'s `decode_config(...) is None` arms.
+`get_config_snapshot()` raises unless it read exactly three bytes, and three bytes is the one input
+that cannot make that decoder return `None` — so no collaborator the driver actually has reaches
+either line. They stay, and stay untested: forcing them means substituting a fake for a real
+collaborator, which Part E.4 forbids for exactly the reason it would prove nothing about the real
+one.
 
-**That last one came off this list on the day it was written, and how is the point.** A test named
-`test_a_partner_reading_of_zero_is_not_turned_into_a_ratio` had existed for it and passed — by
-calling `_measure_gain_ratio(0)`, which is below the overlap band, so the run returned at the band
-gate and the guard was never reached. The assertion held against a run that never happened. Only the
-coverage report showed it, and the fix was to start on the low range (the one arrangement where the
-*partner* leg is the divisor) and assert the range was restored, proving all three legs ran. A
-ceiling with no matching floor — the same pattern `tests_hardware/README.md` records six instances
-of in the hardware tier.
+**Three lines came off this list, and how each did is the point.**
 
-The other four stay, and stay untested, deliberately: reaching them needs a test double substituted
-for a real collaborator, which Part E.4 forbids for exactly the reason it would prove nothing about
-the real one. The distinction that matters when reading a coverage report is that these are **not**
-missed test cases — writing a test that forces them would be writing a test against a fake. **But
-that verdict is a claim to check, not a label to apply**: the divisor guard looked exactly like one
-of them and was really a vacuous test. The counter-example is directly below.
+`_measure_gain_ratio`'s `high_counts <= 0` divisor guard came off on the day the list was written.
+A test named `test_a_partner_reading_of_zero_is_not_turned_into_a_ratio` had existed for it and
+passed — by calling `_measure_gain_ratio(0)`, which is below the overlap band, so the run returned
+at the band gate and the guard was never reached. The assertion held against a run that never
+happened. Only the coverage report showed it; the fix was to start on the low range, the one
+arrangement where the *partner* leg is the divisor, and to assert the range was restored, which is
+true only if all three legs ran.
+
+`_read_on`'s `_switch_range()`-failed arm and `persist_for_interval`'s trailing `return options[0]`
+came off on 2026-09-14, and this passage had them wrong in the same sentence — it said reaching
+them needed a test double. Neither does. A failed range switch is a bus NAK, which is
+`tests/machine.py`'s `inject_fault()`, the raw-transaction surface E.4 prescribes rather than
+forbids. And `persist_for_interval()` is unreachable *from the reader*, whose `SampleInterv` cannot
+go below 1s against a 303ms cycle — but its own layer's contract takes no such bound, so a direct
+call reaches it. "Unreachable" had been read as a property of the line when it was a property of
+one caller.
+
+Two more lines left the list the ordinary way, by being tested: `_reapply_persist`'s `except` and
+`set_resolution`'s failure return, both listed here as genuinely untested error arms until
+2026-09-14.
+
+**So the verdict this category asks for is a claim to check, not a label to apply** — three of the
+five lines it was applied to did not survive checking, and one of those was a vacuous test rather
+than a guard at all. Check what the real collaborator can actually produce, and check which
+collaborator you mean.
 
 A `finally:` body is **not** one of these patterns, despite looking like one: its lines fire a trace
 event only when an exception actually passes through, so a `finally` that only ever runs on the
