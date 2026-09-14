@@ -621,7 +621,8 @@ constraints.
    `asy_sgp40_driver.py` (`errno` 10-18, `wrnno` 10-14), `asy_bmp3xx_driver.py`,
    `asy_scd30_driver.py`, `asy_fram_manager.py`/`asy_fram_driver.py`, and - checked 2026-09-13
    after the merge, since that driver and this audit were written concurrently and it appeared in
-   neither list - `asy_isl29125_driver.py` (`errno` 10-38, `wrnno` 10-17), clear of both reserved
+   neither list - `asy_isl29125_driver.py` (`errno` 10-38, `wrnno` 10-13 since the 2026-09-14
+   renumbering), clear of both reserved
    ranges.
    **No live clash exists** - none of the seven currently shares a logger with a `SensorReader`
    instance, so the reserved codes never reach the same history stream. It becomes a real defect
