@@ -286,11 +286,11 @@ async def _main() -> None:
     pixel = NeoPixel(Pin(_PIN_PIXEL, Pin.OUT), 1)
     reader = ISL29125_Reader(i2c1, 6, max_module_error=999, fram=None, debug=None)
     reader.cfgmgr.valid = True
-    reader.cfgmgr._cache = {
-        "SampleInterv": 1, "Resolution": 16, "RangeAuto": True, "Range": 10000,
-        "AutoRangeThresh": 85.0, "AutoRangeDwell": 0.0,
-        "IrCompOffset": 0, "IrCompAdjust": 40, "FiltCoeff": -1.0, "GainRatio": 10000 / 375,
-    }
+    # Seeded from the driver's own schema, never a hand-copied list - a key added there
+    # (GainRatio, f05f82d) otherwise leaves this one short of _N_FLOAT_CFG and _init_isl() never
+    # starts the read chain. Command-only entries have no default and are skipped.
+    reader.cfgmgr._cache = {field[0]: field[2] for field in reader.cfg_schema if field[2] is not None}
+    reader.cfgmgr._cache["AutoRangeDwell"] = 0.0  # no switch-down suppression: the scenarios drive the range loop on purpose
     reader.start_timer()
     tasks = [reader.start_asy_trigger(), reader.start_asy_read()]
     rig = Rig(pixel, reader, wdt)

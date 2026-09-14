@@ -305,8 +305,28 @@ Symptom was `samples=0`, `lux=1000000000.0..-1.0`, "the read chain stalled", and
 "sensor not responding or not wired to i2c1" — all of which read like a dead sensor or bad wiring.
 `isl29125_mechanism_envelope.py` already had the key, which is exactly why it was the one ISL test
 that passed. Fix: add `"GainRatio": 10000 / 375` to the three primed caches, matching the envelope
-script. All four caches now carry an identical 10-key set — every schema key except `ISLCalibrate`,
-which is a write-only command trigger init never reads. No stale keys remain in any of them.
+script.
+
+**Then fixed structurally** (owner's direction, 2026-09-14), so this class of bug cannot recur: all
+four scripts now *derive* the cache from the driver's own schema instead of hand-listing keys —
+
+```python
+reader.cfgmgr._cache = {field[0]: field[2] for field in reader.cfg_schema if field[2] is not None}
+```
+
+— and then override only what each script deliberately varies (`AutoRangeDwell = 0.0` in the
+envelope, scenarios and IRQ scripts; `SampleInterv = TRIGGER_SEC` in the IRQ script). A key added to
+the schema is picked up automatically; a command-only entry has no default and is skipped, which is
+exactly `ISLCalibrate` and nothing else.
+
+Verified on the device that the derived dict is **identical** to the hand-listed one it replaces —
+same 10 keys, same values, `ISLCalibrate` the only entry skipped — so the refactor changes no test's
+behaviour, only its exposure to schema drift. `reader.cfg_schema` is a public attribute
+(`base_classes.py`, SPECIFICATION.md Part C.5.1), so nothing private is being reached into.
+
+Device scripts must stay self-contained — `mpremote run` executes one file, and only frozen `src/`
+modules are importable — so this is an inline expression in each of the four rather than a shared
+helper. `tests_hardware/isl29125_conformance.py` is host-side and is not a counter-example.
 
 ## Finding 2 — the calibration band gate and the range decision use different quantities
 

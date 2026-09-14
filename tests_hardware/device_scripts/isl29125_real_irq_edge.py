@@ -98,11 +98,12 @@ async def _main() -> None:
     # reading inside 3s can only have come from the interrupt.
     reader = ISL29125_Reader(i2c1, 6, trigger_sec=TRIGGER_SEC, max_module_error=999, fram=None, debug=None)
     reader.cfgmgr.valid = True
-    reader.cfgmgr._cache = {
-        "SampleInterv": TRIGGER_SEC, "Resolution": 16, "RangeAuto": True, "Range": 10000,
-        "AutoRangeThresh": 85.0, "AutoRangeDwell": 0.0,
-        "IrCompOffset": 0, "IrCompAdjust": 40, "FiltCoeff": -1.0, "GainRatio": 10000 / 375,
-    }
+    # Seeded from the driver's own schema, never a hand-copied list - a key added there
+    # (GainRatio, f05f82d) otherwise leaves this one short of _N_FLOAT_CFG and _init_isl() never
+    # starts the read chain. Command-only entries have no default and are skipped.
+    reader.cfgmgr._cache = {field[0]: field[2] for field in reader.cfg_schema if field[2] is not None}
+    reader.cfgmgr._cache["SampleInterv"] = TRIGGER_SEC  # deliberately long: only a real interrupt can beat it
+    reader.cfgmgr._cache["AutoRangeDwell"] = 0.0  # no switch-down suppression while the INT edge is under test
     reader.start_timer()
     trigger_task = reader.start_asy_trigger()
     read_task = reader.start_asy_read()

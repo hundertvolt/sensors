@@ -106,11 +106,11 @@ def _make_reader(i2c1: "asy_i2c_driver.I2C") -> ISL29125_Reader:
     # reboot_persist_write.py's config_HWTEST_REBOOT.cfg - see tests_hardware/README.md.
     reader.cfgmgr.config_file = "config_HWTEST_ISL29125.cfg"
     reader.cfgmgr.valid = True
-    reader.cfgmgr._cache = {
-        "SampleInterv": 1, "Resolution": 16, "RangeAuto": True, "Range": 10000,
-        "AutoRangeThresh": 85.0, "AutoRangeDwell": 0.0,
-        "IrCompOffset": 0, "IrCompAdjust": 40, "FiltCoeff": -1.0, "GainRatio": 10000 / 375,
-    }
+    # Seeded from the driver's own schema, never a hand-copied list - a key added there
+    # (GainRatio, f05f82d) otherwise leaves this one short of _N_FLOAT_CFG and _init_isl() never
+    # starts the read chain. Command-only entries have no default and are skipped.
+    reader.cfgmgr._cache = {field[0]: field[2] for field in reader.cfg_schema if field[2] is not None}
+    reader.cfgmgr._cache["AutoRangeDwell"] = 0.0  # no switch-down suppression: the sweep drives the range loop on purpose
     return reader
 
 

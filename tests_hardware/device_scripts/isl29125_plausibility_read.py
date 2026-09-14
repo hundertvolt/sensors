@@ -32,14 +32,12 @@ async def _main() -> None:
     await asyncio.sleep_ms(300)
     i2c1 = asy_i2c_driver.I2C(1, 15, 14, frequency=50000, timeout=200000)
     reader = ISL29125_Reader(i2c1, 6, max_module_error=999, fram=None, debug=None)
-    # Prime config directly rather than reader.cfgmgr.setup() - no real flash file I/O. Defaults
-    # straight from asy_isl29125_driver.py's own _VAL_* schema entries.
+    # Prime config directly rather than reader.cfgmgr.setup() - no real flash file I/O.
     reader.cfgmgr.valid = True
-    reader.cfgmgr._cache = {
-        "SampleInterv": 1, "Resolution": 16, "RangeAuto": True, "Range": 10000,
-        "AutoRangeThresh": 85.0, "AutoRangeDwell": 10.0,
-        "IrCompOffset": 0, "IrCompAdjust": 40, "FiltCoeff": -1.0, "GainRatio": 10000 / 375,
-    }
+    # Seeded from the driver's own schema, never a hand-copied list - a key added there
+    # (GainRatio, f05f82d) otherwise leaves this one short of _N_FLOAT_CFG and _init_isl() never
+    # starts the read chain. Command-only entries have no default and are skipped.
+    reader.cfgmgr._cache = {field[0]: field[2] for field in reader.cfg_schema if field[2] is not None}
     reader.start_timer()  # wires the real 1s hardware timer and the falling-edge INT handler
     trigger_task = reader.start_asy_trigger()
     read_task = reader.start_asy_read()
