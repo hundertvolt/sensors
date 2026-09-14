@@ -2848,12 +2848,18 @@ def test_a_failed_partner_read_logs_errno_11_and_puts_the_range_back() -> None:
 
 def test_a_partner_reading_of_zero_is_not_turned_into_a_ratio() -> None:
     # A division guard, not a plausibility one: a zero on the high range would raise rather than
-    # produce a number the band gate could reject.
+    # produce a number the band gate could reject. Starting on the LOW range deliberately - that
+    # is the only arrangement in which the PARTNER leg is the divisor. Passing a green_counts of 0
+    # instead (which is what this test did until 2026-09-14) never reaches the guard at all: 0 is
+    # below the overlap band, so the run returns at the band gate and the assertion below passes
+    # without anything having been measured. The range assertion is the floor for that ceiling.
     _i2c, reader = calibrating_reader("cal_zero")
-    queue_legs(reader, (51800, 51800, 51800), (0, 0, 0))
+    reader._active_range = _RANGE_LOW_LUX
+    queue_legs(reader, (0, 0, 0), (2000, 2000, 2000))
     with _FastAsyncSleep():
-        run(reader._measure_gain_ratio(0))
+        run(reader._measure_gain_ratio(2000))
     assert reader._measured_ratio() is None
+    assert reader._active_range == _RANGE_LOW_LUX, "all three legs ran, so the divisor guard is what stopped this - not the band gate"
 
 
 if __name__ == "__main__":
