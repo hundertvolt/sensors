@@ -437,9 +437,11 @@ constraints.
     level-dependence itself is unchanged and worth keeping recorded, because it sets the limit of
     what any single number can do: a ratio measured near the switch point stays right there and
     drifts by the amounts tabulated above elsewhere.
-    **What is still genuinely open**, and needs a second board rather than a decision: whether the
-    ~28 → ~22 span is this specimen or the part. One unit, one geometry is thin evidence, and only
-    a reference meter can separate low-range compression from a high-range under-read.
+    **PARKED (owner, 2026-09-13): there is only one device, so this cannot be settled.** What
+    remains open — whether the ~28 → ~22 span is this specimen or the part — needs a second board
+    and a reference meter, not a decision, and neither exists. Do not re-raise it as actionable;
+    the measurements above stay recorded because they set the limit of what any single scalar can
+    do, and because a second unit arriving later would make them the baseline to compare against.
 
 21. **The ISL29125 flash-tier firmware — CLOSED (2026-09-13).** The bench board was carrying a
     pre-ISL `dev` build, so every ISL device script failed under `harness.Board.run_isolated()`
@@ -675,6 +677,11 @@ constraints.
     own `pkill` of a hardware suite, so it is a fragility rather than a latent bug, but nothing
     detects it: `scripts/test.sh` only checks `[ ! -x "$micropython_bin" ]`, so a *broken* binary is
     indistinguishable from a good one and is silently used.
+    **Out of scope for the ISL29125 promotion (owner, 2026-09-13)** — it is general test tooling
+    with nothing sensor-specific about it, and the documented workaround (`rm` the binary and
+    re-run `scripts/test.sh`) costs a rebuild rather than a wrong answer. It belongs to a session
+    already paying for a toolchain build, which is where the two-chroot pre-push gate below is
+    nearly free rather than the dominant cost.
     **Recommendation: make that guard a capability check rather than an existence check** — e.g.
     `"$micropython_bin" -c "import asyncio"` (or a small `-X heapsize` smoke import) alongside the
     `-x` test, rebuilding when it fails. Deliberately not implemented here: `scripts/` is inside
