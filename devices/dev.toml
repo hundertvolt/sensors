@@ -93,15 +93,18 @@ address = 0x77
 [instance.wiring]
 fram_target = "fram"
 
-# ISL29125: real dev-board wiring (i2c1, GPIO6 IRQ, PULL_UP), bench-validated on main - see
+# ISL29125: real dev-board wiring (i2c1, GPIO6 IRQ), bench-validated on main - see
 # ISL29125_BUILDGEN_MIGRATION_REQUIREMENTS.md. Placed last among the sensor drivers (FRAM
 # chunk-order consequence, SPECIFICATION.md Part A.7's bump-pointer allocator) - no "stay
 # byte-identical to wozi" constraint applies here since wozi never gets this instance at all.
+# irq_pull_up = false: this board carries its own external pull-up resistor on GPIO6, so the
+# internal one (the driver's own default) stays off rather than also engaging alongside it.
 [[instance]]
 driver = "isl29125"
 name_ext = ""
 bus = "i2c1"
 irq_pin = 6
+irq_pull_up = false
 
 [instance.wiring]
 fram_target = "fram"
