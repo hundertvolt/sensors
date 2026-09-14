@@ -211,7 +211,7 @@ chatter (2 switches across a full up-and-down, against a ceiling of 4); the retu
 range; fixed-range pinning at both ends; 12-bit and 16-bit agreeing to <1% on one static scene
 (which is what proves the `<< 4` normalisation); `ISLCalibrate` starting a run without moving the
 applied ratio; the saturation detector firing at
-full white (`W14` - this rig really does exceed the 10000 lx range at ~20 mm); **no `W15`**, which
+full white (`W12` - this rig really does exceed the 10000 lx range at ~20 mm); **no `W13`**, which
 is the driver's own "the interrupt may be dead" detector and therefore proves the INT line is
 carrying the range decisions rather than the periodic fallback silently doing the work; and zero
 `E`-type entries in the error log.
@@ -280,8 +280,10 @@ a live question:
   rule inverted when the background learner was removed (2026-09-13). There is no schedule left to
   race: a calibration run only happens when a user starts one, and a run that finds no usable scene
   reports that by leaving `GainMeas` null rather than by warning. The `allowed_warnings=(13, 16)`
-  allowance that used to be required now permits two `wrnno`s that no longer exist, so it silently
-  weakens whatever test carries it - use `assert_module_error_log_empty()`.
+  allowance that used to be required is worse than useless now: 16 no longer exists, and 13 has
+  since been REUSED by the renumbering (SPECIFICATION.md Part C.7.1) for the dead-line detector -
+  so that allowance would now wave through a live, meaningful warning. Use
+  `assert_module_error_log_empty()`.
 - **The ISL29125's gain ratio is a config value, not a FRAM one** (since 2026-09-13). Only a user
   PUT changes it, so a test comparing it across a reboot is an ordinary config-persistence check
   and needs no `RangeAuto` pinning - a calibration run cannot move it at all. A run publishes its
@@ -822,7 +824,7 @@ tasks. Without it, `cfgmgr.valid` stays `False`, the reader's first config read 
 the read loop fails silently (visible only at `debug=5`, e.g. "Error reading config data!") without
 ever attempting a real sensor read. Found independently in `bmp3xx_plausibility_read.py` and
 `sgp40_fram_backup_restore.py`. Never call `cfgmgr.setup()` in such scripts - that performs a real
-littlefs file write/read. The three `isl29125_*.py` scripts that build a
+littlefs file write/read. The four `isl29125_*.py` scripts that build an
 `ISL29125_Reader` (plausibility, real IRQ edge, mechanism envelope, lighting scenarios) follow the
 same pattern; the two
 concurrency ones, and the `_measure_*` half of `isl29125_real_irq_edge.py`, sidestep it entirely by

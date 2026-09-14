@@ -15,9 +15,10 @@ from asy_isl29125_driver import ISL29125_I2C, ISL29125_Reader
 
 # PRST is derived from SampleInterv now, and TRIGGER_SEC=30 is long enough to afford the largest
 # setting the part offers: 8 whole RGB cycles, ~2424ms at 16 bit, before the chip may raise RGBTHF
-# at all. The deadline has to clear that window plus a settle, and 3.0s (which predated the
-# derivation) no longer does. 6.0s is still 5x under the periodic fallback, so a pass continues to
-# mean the INT line carried the decision rather than the timer.
+# at all. The deadline has to clear that window plus the fixed 2-cycle settle (606ms at 16 bit),
+# so ~3030ms worst case; 3.0s (which predated the derivation) no longer does. 6.0s is still 5x
+# under the periodic fallback, so a pass continues to mean the INT line carried the decision
+# rather than the timer.
 FAST_PATH_DEADLINE_S = 6.0
 TRIGGER_SEC = 30  # deliberately long: only a real interrupt can beat it
 _CYCLE_MS_16BIT = 303  # 3 x tINT, tINT = 101ms typ (p3)

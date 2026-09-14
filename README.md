@@ -647,6 +647,11 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   the Python-internal changes explicitly recorded as having no C impact). Carries those decisions
   across the gap until that C source is imported into this repo and reconciled, then gets deleted.
   The protocol itself is specified in `SPECIFICATION.md` Part J, which is permanent.
+- **[`ISL29125_HARDWARE_VERIFICATION.md`](ISL29125_HARDWARE_VERIFICATION.md)** — the exact list of
+  ISL29125 behaviour that still needs a real bench run, written so a session with the hardware can
+  execute it without re-deriving it from the branch diff: the 2026-09-14 config migration, the
+  derived switch-down point, the fixed 2-cycle settle, the renumbered warnings, and the sandwich
+  calibration run BACKLOG 22 carries. Deleted once every item is green or re-filed into BACKLOG.md.
 
 **`DEVICE_REFERENCE.md`** (permanent, end-user-facing):
 

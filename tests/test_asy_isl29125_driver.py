@@ -4,24 +4,16 @@ import os
 import struct
 import time
 
-from _fram_chip_fake import FakeMB85RS64V
 from machine import I2C as FakeI2C
 from machine import Pin as FakePin
 from machine import Timer as FakeTimer
 
-import asy_spi_driver
-from asy_fram_manager import AsyFramManager
 from asy_i2c_driver import I2C
 from asy_isl29125_driver import (
     ISL29125,
     ISL29125_I2C,
     ISL29125_Reader,
 )
-from asy_spi_driver import SPI
-
-# Same one-process-per-test-file swap as test_asy_bmp3xx_driver.py: routes AsyFramManager's SPI
-# traffic to the simulated FRAM chip instead of unavailable real hardware.
-asy_spi_driver._SPI = FakeMB85RS64V  # type: ignore[misc]
 
 # Mirrors of asy_isl29125_driver.py's own underscore-prefixed micropython.const() values - those
 # are folded into every use site at compile time and are NOT importable module attributes (see
@@ -32,7 +24,6 @@ _CMD_RESET = 0x46
 _REG_ID = 0x00
 _REG_CONFIG1 = 0x01
 _REG_CONFIG2 = 0x02
-_REG_CONFIG3 = 0x03
 _REG_THRESHOLDS = 0x04
 _REG_STATUS = 0x08
 _REG_DATA = 0x09
@@ -785,27 +776,10 @@ def test_construction_performs_no_bus_transactions() -> None:
 # ---------------------------------------------------------------------------
 
 
-def make_fram_manager() -> "tuple[AsyFramManager, FakeMB85RS64V, SPI]":
-    spi_bus = SPI(0, sck_pin=2, mosi_pin=3, miso_pin=4)
-    manager = AsyFramManager(spi_bus, 1, max_size=0x2000)
-    chip = manager.fram._spidev.spi._spi
-    assert isinstance(chip, FakeMB85RS64V)
-    return manager, chip, spi_bus
-
-
-async def _always_synced() -> bool:
-    return True
-
-
-async def _never_synced() -> bool:
-    return False
-
-
 def make_reader(
     name: str,
     *,
     max_module_error: int = 5,
-    fram: "AsyFramManager | None" = None,
     healthy: bool = True,
 ) -> "tuple[I2C, ISL29125_Reader]":
     FakeTimer.all_timers.clear()
@@ -817,7 +791,6 @@ def make_reader(
         6,
         max_module_error=max_module_error,
         cfg_path=_tmp_cfg_path(name),
-        fram=fram,
     )
     run(reader.cfgmgr.setup())
     return i2c, reader
@@ -2045,8 +2018,8 @@ def test_starting_a_calibration_returns_valid_twice_in_a_row() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_the_gain_correction_is_one_on_the_low_range_and_learned_over_nominal_on_the_high_one() -> None:
-    # The LOW range is the reference, so the learned ratio only ever corrects the high one -
+def test_the_gain_correction_is_one_on_the_low_range_and_applied_over_nominal_on_the_high_one() -> None:
+    # The LOW range is the reference, so the applied ratio only ever corrects the high one -
     # correcting both would make the absolute scale drift with the calibration.
     _i2c, reader = make_reader("gain_direction")
     reader._gain_ratio = 25.9

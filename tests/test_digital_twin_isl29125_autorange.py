@@ -36,10 +36,9 @@ _RANGE_HIGH_LUX = 10000
 _GAIN_RATIO_NOMINAL = 26.666666666666668
 _CHIP_GAIN_RATIO = 25.9  # _isl29125_chip.py's own per-instance default - the value to be learned
 
-# The fake's effective full scales, and therefore the real switch points the driver lands on:
-# up at 85% of the low range's 375 lx, down at 1.5% of the high range's own 375 x 25.9.
+# The fake's effective full scale, and therefore the real switch-up point the driver lands on:
+# 85% of the low range's 375 lx. The switch-DOWN point is derived from it and is not needed here.
 _SWITCH_UP_LUX = 0.85 * 375.0
-_SWITCH_DOWN_LUX = 0.015 * 375.0 * _CHIP_GAIN_RATIO
 
 _TMP_DIR = "tests/_tmp"
 

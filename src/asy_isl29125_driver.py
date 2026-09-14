@@ -2,7 +2,7 @@
 # restructured/rewritten for asyncio + this project's driver shape, see THIRD_PARTY_LICENSES.md.
 # SPDX-License-Identifier: MIT
 
-"""Renesas/Intersil ISL29125 RGB colour sensor driver: lux, sensor RGB/HSB, relative CCT, and a self-calibrating auto-range state machine driven by the chip's own threshold interrupt.
+"""Renesas/Intersil ISL29125 RGB colour sensor driver: lux, sensor RGB/HSB, relative CCT, and an auto-range state machine driven by the chip's own threshold interrupt.
 ISL29125_I2C is the protocol layer; ISL29125_Reader is the asyncio task/config layer (see SPECIFICATION.md Part C).
 Verified against FN8424 Rev 3.00 (datasheets/isl29125/REN_isl29125_DST_20151201_1.pdf).
 """
@@ -651,6 +651,11 @@ class ISL29125_Reader(SensorReaderConfig):
             return None
         return self._cal_meas
 
+    async def _end_calibration(self, why: str) -> None:
+        self._calibrating = False
+        self._cal_recent = []
+        self.pr.one("Gain-ratio calibration finished:", why)
+
     async def _read_sensor_dict(self) -> "dict[str, int | float | str | bool | None]":
         # Reads the real registers rather than reporting the shadow, because this is the only
         # thing in the driver that can detect the two having diverged. Table 7 (p10) makes only a
@@ -979,11 +984,6 @@ class ISL29125_Reader(SensorReaderConfig):
         self._cal_recent = []
         self.pr.one("Gain-ratio calibration started - measuring while the scene stays in the overlap band.")
         return True
-
-    async def _end_calibration(self, why: str) -> None:
-        self._calibrating = False
-        self._cal_recent = []
-        self.pr.one("Gain-ratio calibration finished:", why)
 
     async def read_loop(self) -> bool:
         if not await self._init_isl():  # init sensor at startup

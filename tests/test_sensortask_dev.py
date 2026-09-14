@@ -294,8 +294,8 @@ def test_main_forwards_web_host_and_port_to_build_system() -> None:
 
 
 # ---------------------------------------------------------------------------
-# FRAM chunk order - seven chunks, exact relative sequence, stable across rebuilds by mirroring
-# wozi's own construction order.
+# FRAM chunk order - eight chunks on dev, exact relative sequence: wozi's own seven in wozi's own
+# construction order, plus the ISL29125's error log appended at the end (Part A.7.1).
 # ---------------------------------------------------------------------------
 
 

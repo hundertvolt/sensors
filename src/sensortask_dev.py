@@ -466,9 +466,9 @@ async def build_system(
     notify_service.register(NotificationSignal("WarnVOC", voc_value_callback, _FIELD_WARN_VOC, (0, 1, 0)))
     notify_service.register(NotificationSignal("WarnHum", hum_value_callback, _FIELD_WARN_HUM, (0, 0, 1)))
     notify_service.finalize()
-    # FRAM chunks 8 (its own error log) and 9 (the timestamped gain-ratio calibration), both
-    # allocated inside ISL29125_Reader.__init__ in that sub-order - the same shape SGP40 uses for
-    # its own chunks 2 and 3.
+    # FRAM chunk 8 (its own error log), allocated inside ISL29125_Reader.__init__. One chunk, not
+    # two: the gain ratio is an ordinary config value written only by a user PUT, so it needs no
+    # FRAM of its own (SPECIFICATION.md Part C.11.3).
     #
     # CONSTRUCTED HERE, OUT OF READING ORDER, DELIBERATELY. AsyFramManager is a bump allocator, so
     # instantiation order IS on-chip layout: putting this beside the other sensors would shift

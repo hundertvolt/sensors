@@ -253,7 +253,7 @@ async def _main() -> None:
     if failures:
         print(f"RESULT: FAIL {'; '.join(failures)}")
     else:
-        print(f"RESULT: PASS the whole illumination envelope, both ranges, both resolutions, fixed-range pinning, saturation detection and ISLResetCal all behaved ({len(notes)} observations)")
+        print(f"RESULT: PASS the whole illumination envelope, both ranges, both resolutions, fixed-range pinning, saturation detection and ISLCalibrate all behaved ({len(notes)} observations)")
 
 
 asyncio.run(_main())

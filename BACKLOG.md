@@ -62,15 +62,29 @@ constraints.
   D.15's "no change to any comment" clause was never meant to forbid moving a comment along with
   the method it documents; it has been amended to say what it meant (relocation yes, rewriting no),
   so a file organised into labelled functional sections can still be sorted.
-  **Eleven of 74 classes do not comply**, measured with an AST checker rather than by eye:
-  `UART_Comm` (privates and publics interleaved throughout, its starters/getters group last rather
-  than first), `UART` (`resync_framing` among the privates), `Framing_Base`/`Framing_COBS`
-  (`_checked` mid-public), `SCD30_Reader` (`_set_dict_cfg`, a base-class override), `AsyConnTime`,
-  `ConfigManager`, `SystemService`, and the three `asy_webserver_service.py` protocol stubs
-  `_ModuleLike`/`_StreamLike`/`_TimeoutStreamProxy`. Compliant today: `asy_bmp3xx_driver.py`,
-  `asy_sgp40_driver.py` and `asy_isl29125_driver.py` — the ISL driver was verified against the rule
-  as written, private group included (36 privates + 30 publics in the reader, 6 + 22 in the
-  hardware class), so it needs no further work.
+  **Amended again 2026-09-14, and this one moves methods between groups**: "starter" is now
+  defined as a role, not a prefix — what a `get_*_starters()` collection hands to the base class or
+  to `system_service.py` at boot, plus that collection and the `stop_*` pairing with such a
+  `start_*`. A `start_*` that is really an on-demand command is an Other. Re-sweeping `src/` under
+  the amended definition reclassifies eight methods across five files, in both directions:
+  `ISL29125_Reader.start_calibration`, `AsyConnTime._start_hotspot`, `SystemService._start_task` /
+  `start_timers` / `start_and_check_tasks` and both `stop_continuous_measurement`s become Others,
+  while `UART_Comm._listen_loop` becomes a starter (`get_task_starters` hands it over).
+  `SystemService`'s three are the genuinely arguable ones — they are the supervisor's own boot
+  entry points, so they *do* the handing over rather than being handed over; settle that when the
+  reorder is actually done rather than now.
+  **The "eleven of 74" enumeration below predates that amendment and needs re-measuring as part of
+  the reorder** — the classes named are still non-compliant, but the list is neither a current
+  count nor complete. As measured 2026-09-13: `UART_Comm` (privates and publics interleaved
+  throughout, its starters/getters group last rather than first), `UART` (`resync_framing` among
+  the privates), `Framing_Base`/`Framing_COBS` (`_checked` mid-public), `SCD30_Reader`
+  (`_set_dict_cfg`, a base-class override), `AsyConnTime`, `ConfigManager`, `SystemService`, and
+  the three `asy_webserver_service.py` protocol stubs
+  `_ModuleLike`/`_StreamLike`/`_TimeoutStreamProxy`. Compliant: `asy_bmp3xx_driver.py`,
+  `asy_sgp40_driver.py` and `asy_isl29125_driver.py` — the ISL driver is verified against the rule
+  including the 2026-09-14 amendment, private group included, so it needs no further work. Its one
+  real deviation (`_end_calibration` sitting between two publics) was fixed in the same pass that
+  amended the rule; `start_calibration` needed no move, since Others sort last either way.
   **Deliberately not done in the session that raised it** (owner's direction): it is a large,
   review-hostile diff across five working modules and three protocol stubs, several of them
   hardware-validated, and it belongs in a session of its own. Each class is a pure AST-verified
@@ -413,12 +427,12 @@ constraints.
     telling them apart needs a reference meter, so this stays stated as the observation).
 
     **Why it matters for `src/`, and why nothing was changed:** the driver models the ratio as one
-    scalar device constant (`_GAIN_RATIO_NOMINAL`, a `[20.0, 34.0]` plausibility gate, an hourly
-    EMA relearn). The whole observed span sits *inside* that gate, so the guard never fires. The
-    ratio is learned in the overlap band, where the low range is near its top and therefore reads
+    scalar (`GainRatio`, a config field with a `[20.0, 34.0]` plausibility gate). The whole observed
+    span sits *inside* that gate, so the guard never fires. The
+    ratio is measured in the overlap band, where the low range is near its top and therefore reads
     **~22-23** — which is right for switch-point continuity and is arguably exactly where it
-    should be learned. The corollary is the uncomfortable one: at genuinely low light the true
-    ratio is ~28, so a learned 22.5 would make a low-light cross-range comparison **worse**, not
+    should be measured. The corollary is the uncomfortable one: at genuinely low light the true
+    ratio is ~28, so an applied 22.5 would make a low-light cross-range comparison **worse**, not
     better. Measured instance: the driver reported one static ambient as 37.84 lx on the high range
     vs 39.91 lx on the low — 5.5% apart, matching nominal 26.67 against the true 28.08 exactly.
     Correcting my earlier note in this session: **28.16 is not "this unit's gain ratio"**, it is
@@ -525,7 +539,9 @@ constraints.
     now, and its persistence is the same config persistence every other field already has, covered
     by the bench reboot test rewritten alongside it. What is **not** yet proven on hardware is the
     new path: a calibration run measuring a real sandwich under the NeoPixel rig, and the operator
-    copying the candidate across. The mock and twin tiers cover it end to end (including the
+    copying the candidate across. **The executable procedure for that, and for everything else on
+    this branch still awaiting a bench run, is `ISL29125_HARDWARE_VERIFICATION.md`** (temporary; it
+    is deleted once its items are green or land back here). The mock and twin tiers cover it end to end (including the
     measured-then-applied error shrink); the flash/bench tiers assert only that the trigger is
     accepted, the applied ratio does not move, and `GainMeas` is present.
 
