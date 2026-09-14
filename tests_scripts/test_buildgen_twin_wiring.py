@@ -101,6 +101,17 @@ def test_fixed_addresses_table_matches_the_real_drivers_own_hardware_defaults() 
     assert FIXED_ADDRESSES == {"scd30": 0x61, "sgp40": 0x59, "isl29125": 0x44}
 
 
+def test_twin_machine_has_no_chip_fake_for_an_unknown_driver_fails_loud(digital_twin_machine: Any) -> None:
+    # digital_twin/machine.py's own _build_i2c_chip() analogue of
+    # test_bus_attached_driver_with_no_address_rule_fails_loud_not_silently_miswired below - a
+    # wiring-plan attachment naming a driver the twin has no chip fake for must fail loud, not
+    # silently produce a bus with a missing device. Driven directly (no real device TOML can name a
+    # driver machine.py doesn't know, since compute_twin_wiring() and _build_i2c_chip() are always
+    # kept in sync by hand for the same fixed driver set today).
+    with pytest.raises(ValueError, match=r"digital twin has no I2C chip fake for driver 'not_a_real_driver'"):
+        digital_twin_machine._build_i2c_chip({"driver": "not_a_real_driver"})
+
+
 def test_bus_attached_driver_with_no_address_rule_fails_loud_not_silently_miswired(monkeypatch: pytest.MonkeyPatch) -> None:
     # Guards compute_twin_wiring()'s own defensive fallback: a new driver added to
     # buildspec.BUS_ATTACHED_DRIVERS without a matching FIXED_ADDRESSES/ADDRESS_CAPABLE_DRIVERS
