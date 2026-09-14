@@ -22,6 +22,9 @@ _DEVICES_WITH_BMP3XX = {"wozi", "dev"}
 # "dev" is the only unit with a UART crossover jumper to exercise (CLAUDE.md: never wozi, which is
 # never physically flashed, and no other real device has this bench-only rig at all).
 _DEVICES_WITH_UART_LINK = {"dev"}
+# "dev" is the only unit that carries the real, bench-validated ISL29125 wiring (dev variant only,
+# per the migration's own scoping) - wozi and the four real devices never get this instance.
+_DEVICES_WITH_ISL29125 = {"dev"}
 # Driver kinds that can have more than one instance per device. uart_link always has exactly two
 # (initiator + responder) on a device that has it at all, disambiguated by name_ext like any other
 # member here - never a singleton the way fram/neopixel/notification are.
@@ -32,7 +35,7 @@ _SINGLETON_DRIVERS = {"fram", "neopixel", "notification"}
 _MANDATORY_INFRA_DRIVERS = {"wifi", "ntp", "system"}
 _REQUIRED_DEVICE_INFRA_FIELDS = ("conn_fail_to_hotspot", "hotspot_time_min")
 # Driver/service kinds whose fram=/fram_storage= wiring is individually optional.
-_FRAM_WIRABLE_INSTANCE_DRIVERS = {"scd30", "sgp40", "bmp3xx", "neopixel", "notification"}
+_FRAM_WIRABLE_INSTANCE_DRIVERS = {"scd30", "sgp40", "bmp3xx", "isl29125", "neopixel", "notification"}
 # Mandatory-infra-side mirror of [instance.wiring], under [device.wiring] - both fields optional.
 _DEVICE_WIRING = {"led_target": "neopixel", "fram_target": "fram"}
 
@@ -274,6 +277,8 @@ def test_instance_list_has_the_expected_driver_kinds(devices_dir: Path, device: 
         expected.add("bmp3xx")
     if device in _DEVICES_WITH_UART_LINK:
         expected.add("uart_link")
+    if device in _DEVICES_WITH_ISL29125:
+        expected.add("isl29125")
     assert set(drivers) == expected, f"{device}: instance driver set {sorted(set(drivers))} != expected {sorted(expected)}"
     # Repeats are fine for a _MULTI_INSTANCE_CAPABLE_DRIVERS member (disambiguated by name_ext -
     # dev's own uart_link initiator+responder pair is exactly this shape) - what must stay unique
@@ -380,6 +385,13 @@ def test_bmp3xx_only_present_on_wozi_and_dev(devices_dir: Path) -> None:
         doc = _load(devices_dir, device)
         drivers = {inst["driver"] for inst in doc["instance"]}
         assert ("bmp3xx" in drivers) == (device in _DEVICES_WITH_BMP3XX)
+
+
+def test_isl29125_only_present_on_dev(devices_dir: Path) -> None:
+    for device in DEVICE_NAMES:
+        doc = _load(devices_dir, device)
+        drivers = {inst["driver"] for inst in doc["instance"]}
+        assert ("isl29125" in drivers) == (device in _DEVICES_WITH_ISL29125)
 
 
 def test_klkizi_grkizi_schlafzi_share_identical_wiring(devices_dir: Path) -> None:

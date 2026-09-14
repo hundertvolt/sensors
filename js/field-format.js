@@ -5,7 +5,7 @@
 
 // Deliberately a narrow local shape, not `import("./definitions.js").FieldDef` - see
 // SPECIFICATION.md Part H.8.1 for why. A real FieldDef object satisfies it structurally either way.
-/** @typedef {{kind: string, mask?: boolean, format?: string, options?: {value: unknown, label: string}[]} & Record<string, unknown>} FormattableField */
+/** @typedef {{kind: string, mask?: boolean, format?: string, decimals?: number, options?: {value: unknown, label: string}[]} & Record<string, unknown>} FormattableField */
 
 /**
  * @param {FormattableField} field
@@ -29,6 +29,12 @@ export function formatFieldValue(field, value) {
         const t = /** @type {{year: number, month: number, mday: number, hour: number, minute: number, second: number}} */ (value);
         const pad = (/** @type {number} */ n) => String(n).padStart(2, "0");
         return `${t.year}-${pad(t.month)}-${pad(t.mday)} ${pad(t.hour)}:${pad(t.minute)}:${pad(t.second)}`;
+    }
+    // The `decimals` display hint, and the one place in the stack that rounds an emitted value: no
+    // driver in src/ rounds anything, so without this a declared precision is an aspiration.
+    // Finite numbers only - a string, struct, NaN or Infinity passes through untouched.
+    if (typeof field.decimals === "number" && typeof value === "number" && Number.isFinite(value)) {
+        return value.toFixed(field.decimals);
     }
     return String(value);
 }

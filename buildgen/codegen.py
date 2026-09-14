@@ -163,6 +163,26 @@ def _build_args_bmp3xx(spec: InstanceSpec, ctx: _Ctx) -> "tuple[list[str], list[
     return pos, kw
 
 
+def _build_args_isl29125(spec: InstanceSpec, ctx: _Ctx) -> "tuple[list[str], list[tuple[str, str]]]":
+    # irq_pin positional, like _build_args_scd30's own shape; cfg_path/optional trigger_sec kwargs,
+    # like _build_args_bmp3xx's own shape - ISL29125_Reader is a SensorReaderConfig (needs cfg_path)
+    # wired to a real interrupt pin (needs irq_pin), the one driver combining both facts.
+    f = spec.fields
+    pos = [ctx.bus_var(f["bus"]), str(f["irq_pin"])]
+    kw: list[tuple[str, str]] = []
+    if "trigger_sec" in f:
+        kw.append(("trigger_sec", str(f["trigger_sec"])))
+    kw.append(("max_module_error", "_MAX_MODULE_ERROR"))
+    if spec.name_ext:
+        kw.append(("name_ext", repr(spec.name_ext)))
+    kw.append(("cfg_path", "cfg_path"))
+    fram_kw = _fram_kw(spec, ctx)
+    if fram_kw:
+        kw.append(fram_kw)
+    kw.append(("debug", "debug"))
+    return pos, kw
+
+
 def _build_args_fram(spec: InstanceSpec, ctx: _Ctx) -> "tuple[list[str], list[tuple[str, str]]]":
     f = spec.fields
     pos = [ctx.bus_var(f["bus"]), str(f["cs_pin"])]
@@ -213,6 +233,7 @@ _BUILD_ARGS_HANDLERS: "dict[str, Callable[[InstanceSpec, _Ctx], tuple[list[str],
     "scd30": _build_args_scd30,
     "sgp40": _build_args_sgp40,
     "bmp3xx": _build_args_bmp3xx,
+    "isl29125": _build_args_isl29125,
     "fram": _build_args_fram,
     "neopixel": _build_args_neopixel,
     "notification": _build_args_notification,

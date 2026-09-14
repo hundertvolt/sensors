@@ -929,7 +929,7 @@ def _present_optional_instances(module: "Any", device: str) -> "tuple[str, ...]"
     # construction bug that silently drops a declared driver would read back as though the device
     # never had it, which getattr(module, name, None) can't tell apart from the truth).
     plan_instances = set(_wiring_plan(device)["instances"])
-    all_names = ("scd30", "sgp40", "bmp3xx", "neopixel", "notification")
+    all_names = ("scd30", "sgp40", "bmp3xx", "isl29125", "neopixel", "notification")
     present = tuple(name for name in all_names if name in plan_instances)
     for name in all_names:
         if name in present:
@@ -967,7 +967,7 @@ def _scenario_measurements_and_sensors_shape(device: str) -> None:
         task = module.webserver.get_task_starters()[0]()
         await asyncio.sleep(0.1)
         try:
-            expected = {name.upper() for name in _present_optional_instances(module, device) if name in ("scd30", "sgp40", "bmp3xx")}
+            expected = {name.upper() for name in _present_optional_instances(module, device) if name in ("scd30", "sgp40", "bmp3xx", "isl29125")}
             res = await _http_client.fetch("127.0.0.1", port, "GET", "/measurements")
             assert res.status_code == 200
             assert_sensor_payload_not_self_wrapped(res.json(), expected)

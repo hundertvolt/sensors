@@ -18,6 +18,7 @@ if TYPE_CHECKING:
 class Pin:
     IN = 0
     OUT = 1
+    PULL_UP = 2
     # Real rp2 values (confirmed against ports/rp2/machine_pin.c: IRQ_RISING maps to the pico-sdk's
     # GPIO_IRQ_EDGE_RISE=0x08, IRQ_FALLING to GPIO_IRQ_EDGE_FALL=0x04) - asy_scd30_driver.py only
     # ever passes these back opaquely to irq(), but matching the real bit values costs nothing.

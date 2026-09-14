@@ -21,6 +21,7 @@ def src_dir(repo_root: Path) -> Path:
         ("scd30", "asy_scd30_driver", "SCD30_Reader", "sensor", False),
         ("sgp40", "asy_sgp40_driver", "SGP40_Reader", "sensor", True),
         ("bmp3xx", "asy_bmp3xx_driver", "BMP3xx_Reader", "sensor", True),
+        ("isl29125", "asy_isl29125_driver", "ISL29125_Reader", "sensor", True),
         ("fram", "asy_fram_manager", "AsyFramManager", "service", True),
         ("neopixel", "asy_neopixel_driver", "NeopixelDriver", "service", False),
         ("notification", "asy_notification_service", "NotificationCoordinator", "service", True),
@@ -82,7 +83,7 @@ def test_singleton_service_drivers_excludes_uart_link() -> None:
 
 @pytest.mark.parametrize(
     "driver,expected_name",
-    [("scd30", "SCD30"), ("sgp40", "SGP40"), ("bmp3xx", "BMP3XX"), ("fram", "FRAM"), ("neopixel", "NEOPIXEL"), ("notification", "NOTIFY"), ("uart_link", "UART")],
+    [("scd30", "SCD30"), ("sgp40", "SGP40"), ("bmp3xx", "BMP3XX"), ("isl29125", "ISL29125"), ("fram", "FRAM"), ("neopixel", "NEOPIXEL"), ("notification", "NOTIFY"), ("uart_link", "UART")],
 )
 def test_parse_name_constant_real_drivers(src_dir: Path, driver: str, expected_name: str) -> None:
     info = resolve_driver(driver, src_dir, "dev")

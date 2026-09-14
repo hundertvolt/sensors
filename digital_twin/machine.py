@@ -45,6 +45,7 @@ if TYPE_CHECKING:
 class Pin:
     IN = 0
     OUT = 1
+    PULL_UP = 2
     IRQ_FALLING = 0x04
     IRQ_RISING = 0x08
 
@@ -229,6 +230,10 @@ def _build_i2c_chip(attachment: "dict[str, Any]") -> "Any":
         from _bmp3xx_chip import Bmp3xxChip
 
         return Bmp3xxChip(random_source=_random_source)
+    if driver == "isl29125":
+        from _isl29125_chip import Isl29125Chip
+
+        return Isl29125Chip(random_source=_random_source, int_pin=Pin(attachment["irq_pin"], mode=Pin.IN))
     raise ValueError(f"digital twin has no I2C chip fake for driver {driver!r} - add one to machine._build_i2c_chip()")
 
 

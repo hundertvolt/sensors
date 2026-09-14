@@ -192,6 +192,12 @@ def test_parse_limits_real_bmp3xx_driver(src_dir: Path) -> None:
     )
 
 
-def test_bmp3xx_is_the_only_src_module_declaring_limits(src_dir: Path) -> None:
+def test_parse_limits_real_isl29125_driver(src_dir: Path) -> None:
+    # No "address" limit, unlike bmp3xx - 0x44 is hard-wired with no address-select pin at all, so
+    # this driver has no TOML-configurable address field for a @limits tag to describe.
+    assert parse_limits(src_dir / "asy_isl29125_driver.py", "dev", "isl29125") == (LimitField("trigger_sec", None, 1, 3600),)
+
+
+def test_no_other_src_module_declares_an_unnoticed_limits_tag(src_dir: Path) -> None:
     tagged = {p.name for p in sorted(src_dir.glob("*.py")) if parse_limits(p, "dev", "x")}
-    assert tagged == {"asy_bmp3xx_driver.py"}
+    assert tagged == {"asy_bmp3xx_driver.py", "asy_isl29125_driver.py"}

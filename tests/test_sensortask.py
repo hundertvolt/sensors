@@ -228,7 +228,7 @@ def test_sweep_stale_tmp_dirs_tolerates_a_missing_tmp_dir_entirely() -> None:
 # _boot()/reflective helpers - the mechanism every parametrized scenario below shares.
 # ---------------------------------------------------------------------------
 
-_OPTIONAL_INSTANCE_NAMES = ("scd30", "sgp40", "bmp3xx", "neopixel", "notification")
+_OPTIONAL_INSTANCE_NAMES = ("scd30", "sgp40", "bmp3xx", "isl29125", "neopixel", "notification")
 
 
 async def _boot(device: str, cfg_path: "str | None" = None, **kwargs: "Any") -> "Any":
@@ -317,6 +317,8 @@ def _all_loggers(module: "Any") -> "list[Any]":
         loggers += [module.sgp40.pr, module.sgp40.cfgmgr.pr]
     if _has(module, "bmp3xx"):
         loggers += [module.bmp3xx.pr, module.bmp3xx.cfgmgr.pr]
+    if _has(module, "isl29125"):
+        loggers += [module.isl29125.pr, module.isl29125.cfgmgr.pr]
     loggers += [module.neopixel.pr, module.notification.pr, module.notification.cfgmgr.pr]
     if _has_uart_link(module):
         # No cfgmgr - UART_Comm has no config schema (its parameters are an out-of-band wire
@@ -341,6 +343,8 @@ def _expected_fram_chunk_calls(module: "Any") -> "list[str]":
     if _has(module, "sgp40"):
         calls += ["chunk", "timestamped"]
     if _has(module, "bmp3xx"):
+        calls.append("chunk")
+    if _has(module, "isl29125"):
         calls.append("chunk")
     calls += ["chunk", "chunk"]  # NeopixelDriver, NotificationCoordinator - always present
     return calls
@@ -953,10 +957,10 @@ def _scenario_webserver_pr_ram_only(device: str) -> None:
 def _scenario_webserver_measurements_and_sensors_get(device: str) -> None:
     # Shared shape with the twin's own equivalent check (tests/_shared_rest_roundtrip.py). Expected
     # sensor-name set is derived reflectively from this device's own present optional instances
-    # (scd30/sgp40/bmp3xx only - neopixel/notification aren't sensors=-registered), never a
+    # (scd30/sgp40/bmp3xx/isl29125 only - neopixel/notification aren't sensors=-registered), never a
     # hardcoded wozi/dev 3-sensor literal.
     module = build(device)
-    expected = {name.upper() for name in _present_optional_instances(module) if name in ("scd30", "sgp40", "bmp3xx")}
+    expected = {name.upper() for name in _present_optional_instances(module) if name in ("scd30", "sgp40", "bmp3xx", "isl29125")}
     res = _dispatch(module, "GET", "/measurements")
     assert res.status_code == 200
     measurements = json.loads(status_body(res))
@@ -1324,7 +1328,7 @@ def _scenario_hotspot_real_routes_unaffected(device: str) -> None:
 
     res = _dispatch(module, "GET", "/measurements")
     assert res.status_code == 200
-    expected = {name.upper() for name in _present_optional_instances(module) if name in ("scd30", "sgp40", "bmp3xx")}
+    expected = {name.upper() for name in _present_optional_instances(module) if name in ("scd30", "sgp40", "bmp3xx", "isl29125")}
     assert_sensor_payload_not_self_wrapped(json.loads(status_body(res)), expected)
 
 
