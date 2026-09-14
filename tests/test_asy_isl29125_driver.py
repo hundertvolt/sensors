@@ -1782,6 +1782,59 @@ def test_the_derivation_never_lets_the_window_outlast_the_sample_interval() -> N
     assert reader.isl.persist_for_interval(1) == 8  # ~152ms of 1000ms
 
 
+def test_the_derivation_degrades_to_the_shortest_window_when_none_fits() -> None:
+    # The fallback the reader itself cannot reach - _MIN_TRIGGER_SECS is 1s and a 16-bit cycle is
+    # 303ms, so some option always fits. The protocol layer takes no such bound, though, and the
+    # honest degradation if either ever moves is the SHORTEST rejection rather than a crash or a
+    # silent zero. Asserted here so a bound change surfaces as a decision, not as a surprise.
+    _i2c, isl = make_protocol()
+    assert isl.persist_for_interval(0) == 1
+    run(isl.configure(resolution=12))
+    assert isl.persist_for_interval(0) == 1
+
+
+def test_re_deriving_the_transient_rejection_logs_errno_24_when_that_write_fails() -> None:
+    # CONFIG3 is a real chip write, so it can fail like any other. Its own errno rather than the
+    # caller's, because the value that failed to land is derived - a reader seeing errno=25 or 16
+    # would look for a bad SampleInterv or Resolution that was in fact accepted.
+    i2c, reader = ready_reader("persist_write_fail")
+
+    async def scenario() -> "ErrorLog":
+        with _FastAsyncSleep():
+            fake(i2c).inject_fault("writeto_mem", OSError(errno_mod.EIO, "no ACK"), times=1)
+            assert await reader._reapply_persist(2) is False
+        return await reader.get_error_counter()
+
+    assert 24 in errors(run(scenario()))
+
+
+def test_set_resolution_reports_failure_when_the_derived_window_cannot_be_re_applied() -> None:
+    # The resolution byte itself landed, so this is not a rolled-back write - it is the second half
+    # of the same change failing. Reporting True would leave the chip rejecting transients over a
+    # window sized for the OLD cycle length, which at 16 -> 12 bit is 16x too long.
+    i2c, reader = ready_reader("resolution_persist_fail")
+    # inject_fault() queues from the NEXT call, and set_resolution() makes two: the resolution's
+    # own CONFIG1 burst first, then the re-derived CONFIG3. Only the second is this test's
+    # subject, so the fault is placed by call index rather than by queueing one up front.
+    chip = fake(i2c)
+    real_write = chip.writeto_mem
+    calls = [0]
+
+    def _fail_the_second_write(address: int, memaddr: int, buf: object, **kwargs: object) -> None:
+        calls[0] += 1
+        if calls[0] == 2:
+            raise OSError(errno_mod.EIO, "no ACK")
+        real_write(address, memaddr, buf, **kwargs)  # type: ignore[arg-type]
+
+    chip.writeto_mem = _fail_the_second_write  # type: ignore[method-assign]
+    try:
+        with _FastAsyncSleep():
+            assert run(reader.set_resolution(12)) is False
+    finally:
+        chip.writeto_mem = real_write  # type: ignore[method-assign]
+    assert calls[0] == 2, "the CONFIG1 burst must have landed before the CONFIG3 write failed"
+
+
 
 def test_pushing_the_software_knobs_changes_only_driver_state() -> None:
     # SampleInterv is deliberately NOT in this list any more: the derived transient rejection reads
@@ -2876,6 +2929,21 @@ def test_a_partner_reading_of_zero_is_not_turned_into_a_ratio() -> None:
         run(reader._measure_gain_ratio(2000))
     assert reader._measured_ratio() is None
     assert reader._active_range == _RANGE_LOW_LUX, "all three legs ran, so the divisor guard is what stopped this - not the band gate"
+
+
+def test_a_leg_whose_range_switch_fails_abandons_the_sandwich_without_a_candidate() -> None:
+    # The other way a leg can fail, distinct from the read failing: the switch that ARMS the leg
+    # never lands, so there is no reading to discard and nothing was measured on the wrong gain.
+    # The third leg still runs - it is also what puts the range back - so the run ends where it
+    # started rather than stranding every later sample on the partner's range.
+    i2c, reader = calibrating_reader("cal_switch_fail")
+    queue_legs(reader, (2000, 2000, 2000))
+    with _FastAsyncSleep():
+        fake(i2c).inject_fault("writeto_mem", OSError(errno_mod.EIO, "no ACK"), times=1)
+        run(reader._measure_gain_ratio(2000))
+    assert reader._measured_ratio() is None
+    assert reader._active_range == _RANGE_HIGH_LUX
+    assert 29 in errors(run(reader.get_error_counter()))
 
 
 if __name__ == "__main__":
