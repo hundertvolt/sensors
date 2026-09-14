@@ -3114,29 +3114,50 @@ exhaust memory or hold a large/growing allocation — not only once something ha
 This was largely already true before this audit; writing it down makes it checkable for new code
 too.
 
-**(a) Catch and handle where reasonable** — a call site that can raise `MemoryError` from a
-caller-controllable or growing allocation catches `(OSError, MemoryError)` and degrades locally.
-Not a blanket policy on every `asyncio` primitive (F.2) — only where a concrete risk exists.
-**(b) Degrade gracefully** — a caught failure produces a well-defined "unavailable"/`None`/`False`
-result, never an unguarded re-raise (`_dump_status_source()` et al. substitute
-`{"error":"unavailable"}` for one failed source rather than discarding the whole response).
-**(c) Restart the task when it really bubbles up** — `start_and_check_tasks()` already restarts
-any task that ends for any reason, `MemoryError` included; already correct. **(d) The watchdog is
-the final resort, and must stop being fed once self-healing has genuinely failed** — the
-`task_errors` counter escalates past repeated restarts to `reboot_system()`, at which point the
-loop stops feeding the watchdog — the same backstop principle as a wedged bus/WiFi link.
-**(e) Prove there are no memory issues under native `gc` defaults, first** — every stress test runs
-with `gc.threshold(-1)` before ever running with a chosen threshold; a test only passing with a
-threshold was never proving the code path memory-safe. **(f) A `gc.threshold()` value is defense in
-depth on top of an already-safe design, never the fix itself** — every generated boot entry
-(`buildgen.codegen.generate_boot_entry_source()`, formerly the hand-written `boot_entry/*_boot.py`)
-sets `gc.threshold(32768)` for exactly this reason, chosen *after* the `/status` fix already eliminated
-the real-hardware `MemoryError` with no threshold change at all. Don't "fix" a failing (e)-stage
-test by reaching for a threshold change instead of the underlying allocation pattern.
+**(a) Design for zero `MemoryError`s first — catching is a last-resort backstop for genuinely
+unavoidable, uncontrollable conditions, never an acceptable steady-state outcome of ordinary or
+worst-case load a well-designed code path should have avoided by construction.** A call site that
+can raise `MemoryError` from a caller-controllable or growing allocation catches
+`(OSError, MemoryError)` and degrades locally — but a caught `MemoryError`, even one that never
+crashes anything, is a design defect to fix at its source, not a handled case to accept. Not a
+blanket policy on every `asyncio` primitive (F.2) — only where a concrete, genuinely-unavoidable
+risk exists (an external condition outside this code's own control), never as a substitute for
+fixing an allocation pattern this code itself controls. **(b) Degrade gracefully** — a caught
+failure produces a well-defined "unavailable"/`None`/`False` result, never an unguarded re-raise
+(`_dump_status_source()` et al. substitute `{"error":"unavailable"}` for one failed source rather
+than discarding the whole response). **(c) Restart the task when it really bubbles up** —
+`start_and_check_tasks()` already restarts any task that ends for any reason, `MemoryError`
+included; already correct. **(d) The watchdog is the final resort, and must stop being fed once
+self-healing has genuinely failed** — the `task_errors` counter escalates past repeated restarts to
+`reboot_system()`, at which point the loop stops feeding the watchdog — the same backstop principle
+as a wedged bus/WiFi link.
+
+**(e) Prove there are no memory issues under native `gc` defaults, first — for every test, not only
+stress/hammer ones, and the bar is zero `MemoryError`s, caught or not.** The whole suite — digital
+twin and real hardware alike, no relaxed bar for either — must run to completion with
+`gc.threshold(-1)` (MicroPython's real reactive-only default) and with no nonstandard `gc` settings
+or added `gc.collect()` calls anywhere in the business logic or the test's own setup propping it
+up. A test that only passes because a `MemoryError` was caught and logged without crashing anything
+is not a passing result at this stage — a caught-but-real allocation failure is exactly the signal
+this stage exists to catch, and "it didn't crash" is not the same claim as "it didn't happen."
+**(f) A `gc.threshold()` value (or a `gc.collect()` call) is defense in depth applied only once (e)
+already holds — never the fix itself, and never reached for to make a failing (e)-stage test
+pass.** Every generated boot entry (`buildgen.codegen.generate_boot_entry_source()`, formerly the
+hand-written `boot_entry/*_boot.py`) sets `gc.threshold(32768)` for exactly this reason, chosen
+*after* the `/status` fix already eliminated the real-hardware `MemoryError` with no threshold
+change at all — it lifts an already-stable system further from a stability threshold it would
+otherwise sit close to, it does not create that stability. Once applied, the *same* full suite must
+still pass with it enabled too — it's an additive safety margin layered on an already-safe design,
+never a swap of one mode for another, and never itself the explanation for why a test now passes.
+**(g) When a genuine memory-pressure issue is found, fix it with a design-level technique that
+relieves the pressure directly** — chunking a large operation, reusing/pre-allocating buffers
+instead of churning same-shaped objects, streaming (`_stream_dict_response()`, I.3) — never a
+GC-policy change or an added `gc.collect()` call.
 
 **Applying this scheme to new code**: before adding a function/module that holds, builds, or grows
 an allocation whose size isn't a small, provably-fixed constant, run it through (a)-(d) at design
-time and give it its own (e)/(f)-shaped test pair.
+time and give it its own (e)/(f)-shaped test pair. This is a standing rule, not a one-time audit
+finding — it governs every test in this repo from now on, digital-twin and real-hardware alike.
 
 ## I.5 Real-hardware confirmation
 

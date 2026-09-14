@@ -250,23 +250,36 @@ information):
   creation.** A synthesized bridge MAC can drift across the bridge's own lifetime, silently
   orphaning the router's static DHCP reservation. Full incident account and the fix (both in
   `ensure_bench_bridge()` and `dev_legacy/README.md`'s manual recipe): SPECIFICATION.md Part B.13.
-- **Memory-safety discipline: catch→degrade→restart→watchdog, `gc`-default-first, always applied —
-  not only once something has already broken.** Any new function/module that holds, builds, or grows
-  an allocation whose size isn't a small, provably-fixed constant follows the same standing ladder
-  every existing module already mostly follows: catch `(OSError, MemoryError)` and degrade locally
-  where a concrete risk exists; never let that bubble into an unguarded crash of an otherwise-healthy
-  request/task; trust `system_service.py`'s task supervisor to restart a task that still dies (already
-  confirmed to catch `MemoryError` too — it's a direct `Exception` subclass, not nested under
-  `OSError`); let the hardware watchdog be the final backstop once restarts alone aren't keeping up.
-  Any new stress/hammer test for such code must pass with `gc.threshold(-1)` (MicroPython's own real
-  default) *before* it's ever run with the project's chosen `gc.threshold(32768)` — a threshold is
-  defense in depth on top of an already-safe design, never the fix for a design that still needs one
-  big contiguous allocation somewhere. A REST GET route whose response dict can grow with device
-  configuration/registration count (not a small, fixed handful of keys) streams it via
-  `asy_webserver_service.py`'s `_stream_dict_response()` instead of returning the dict directly for
-  Microdot to `json.dumps()` in one shot. Full research findings, the complete hotspot catalog (what
-  needed fixing vs. what was reviewed and found already safe), and the full scheme: SPECIFICATION.md
-  Part I.
+- **Memory-safety discipline: design for zero `MemoryError`s first, catch→degrade→restart→watchdog
+  as a last-resort backstop, `gc`-default-first, always applied — not only once something has
+  already broken.** Any new function/module that holds, builds, or grows an allocation whose size
+  isn't a small, provably-fixed constant follows the same standing ladder every existing module
+  already mostly follows: the code itself must run stable, with no memory issues, under all
+  scenarios including worst case, *before* any exception handling around it is credited as the
+  fix; catching `(OSError, MemoryError)` and degrading locally is a backstop for genuinely
+  unavoidable, uncontrollable conditions, not an accepted outcome of ordinary or hammering load — a
+  caught `MemoryError` that merely didn't crash anything is still a design defect to fix at its
+  source, never a passing test result; never let it bubble into an unguarded crash of an otherwise-
+  healthy request/task; trust `system_service.py`'s task supervisor to restart a task that still
+  dies (already confirmed to catch `MemoryError` too — it's a direct `Exception` subclass, not
+  nested under `OSError`); let the hardware watchdog be the final backstop once restarts alone
+  aren't keeping up. **Standing rule, every test, not only new stress/hammer ones, digital-twin runs
+  and real hardware alike**: the whole suite must pass with `gc.threshold(-1)` (MicroPython's own
+  real default) and with zero `MemoryError`s — caught-and-logged included — and with no
+  `gc.collect()` calls or other nonstandard `gc` settings anywhere in the business logic or the
+  test's own setup propping the result up, *before* it's ever run again with the project's chosen
+  `gc.threshold(32768)` enabled (which the full suite must then also still pass). A threshold (or a
+  `gc.collect()` call) is defense in depth on top of an already-safe design, lifting an anyhow-stable
+  system further from a stability threshold — it is forbidden as the fix itself for a design that
+  still needs one big contiguous allocation somewhere, or for any other memory-pressure issue; the
+  right fix is a design-level technique that relieves the pressure directly — chunking, reusing/
+  pre-allocating buffers instead of churning same-shaped objects, or streaming. A REST GET route
+  whose response dict can grow with device configuration/registration count (not a small, fixed
+  handful of keys) streams it via `asy_webserver_service.py`'s `_stream_dict_response()` instead of
+  returning the dict directly for Microdot to `json.dumps()` in one shot — the canonical example of
+  this "relieve the pressure, don't paper over it" fix. Full research findings, the complete hotspot
+  catalog (what needed fixing vs. what was reviewed and found already safe), and the full scheme:
+  SPECIFICATION.md Part I (I.4 for the standing scheme itself).
 - **When investigating any unexpected real-hardware error or reset — read the FRAM-persisted
   per-module error logs (`GET /status`'s `errcount`, the FRAM-backed subset: SGP40/BMP3XX/SCD30/
   SYSTEM/NEOPIXEL/NOTIFY per SPECIFICATION.md Part A.7's seven-chunk layout; WIFI/NTP/every
