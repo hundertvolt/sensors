@@ -182,16 +182,8 @@
                             "options": [ { "value": 375, "label": "375 lx" }, { "value": 10000, "label": "10000 lx" } ]
                         },
                         {
-                            "key": "AutoRangeUp", "label": "Switch-Up Point", "unit": "%", "kind": "number", "min": 50.0, "max": 95.0, "float": true,
-                            "description": "Percent of the low range's full scale above which the driver switches up."
-                        },
-                        {
-                            "key": "AutoRangeDown", "label": "Switch-Down Point", "unit": "%", "kind": "number", "min": 0.2, "max": 3.0, "float": true,
-                            "description": "Percent of the high range's full scale below which the driver switches back down. Must stay at or below Switch-Up Point / 53.3, or the loop chatters on noise alone."
-                        },
-                        {
-                            "key": "AutoRangeSettle", "label": "Settle Margin", "unit": "cycles", "kind": "number", "min": 1, "max": 10,
-                            "description": "Full conversion cycles discarded after any range or resolution change, each of which restarts the conversion."
+                            "key": "AutoRangeThresh", "label": "Switch Threshold", "unit": "%", "kind": "number", "min": 50.0, "max": 95.0, "float": true,
+                            "description": "Percent of the low range's full scale above which the driver switches up. The switch-back-down point is derived from this — 1/53.3 of it — so both ends of the hysteresis always move together and can never be set against each other."
                         },
                         {
                             "key": "AutoRangeDwell", "label": "Switch-Down Dwell", "unit": "s", "kind": "number", "min": 0.0, "max": 300.0, "float": true,

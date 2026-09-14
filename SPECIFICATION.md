@@ -1258,7 +1258,7 @@ is expected; only overlap *within* one row matters.
 | `asy_fram_manager.py`/`asy_fram_driver.py` (`FRAM`) | 10-98 | 60-83 | `AsyFramManager` 10-88 (busy/idle status-byte helper spreads a base across 2-7 values per call); `FRAM_SPI` 89-98 (not-initialized ×5, invalid-range ×2, readback mismatch, lock-timeout, device-ID guard) + `wrnno` 81-83 (WRDI-stuck, WEL-didn't-set ×2). |
 | `asy_bmp3xx_driver.py` (`BMP3XX`) | 10-22 | — | 10=init, 11=periodic read, 12=config read at init, 13=config write at init, 14=config read at store-time, 15-20=oversampling/filter forwards, 21=trigger-interval, 22=batched snapshot read. |
 | `asy_scd30_driver.py` (`SCD30`) | 10-25 | — | 10=init, 11=periodic read, 12=unused (no init-time config), 13=stop-continuous-measurement, 14-25=per-field forwards. |
-| `asy_isl29125_driver.py` (`ISL29125`) | 10-38 | 10, 14, 15 | 10=init, 11=periodic read, 12=config read at init, 13=config write at init, 14=config read at store-time, 15-22=get/set pairs for Resolution/Range/IrCompOffset/IrCompAdjust, 24=applying the derived threshold persistence (23 is free - it was the retired persistence getter), 25=trigger-interval, 26=filter coefficient, 27=any of the four software auto-range knobs (range or cross-field), 28=batched snapshot read, 29/30=threshold and CONFIG1 write inside a range switch, 31=status read, 32=bus-fault pattern confirmed by a failed device-ID re-read, 33=brownout re-apply, 34=shadow write outside a range switch, 38=RangeAuto's own two chip writes on the auto->off transition. **35-37 are free**: they were the gain-ratio FRAM read/write/clear, and the ratio is a config value now (C.11.3). `wrnno` **10, 14 and 15 only** - 10=brownout recovered, 14=saturated on the high range, 15=the periodic path made a range decision the interrupt should have made first, five times running (the dead-INT detector). The gaps are deliberate and all date from the 2026-09-13 calibration redesign (C.11.3): 11/12 were "no/stale stored gain ratio" and went with the FRAM chunk; 13 ("implausible ratio") and 16 ("the partner range clipped") are debug-log lines now, because a calibration run reports a refusal by leaving `GainMeas` null rather than by warning - it cannot write anything, so it has nothing to warn about; 17 was briefly a second five-in-a-row warning for a persistence window outlasting `SampleInterv`, which deriving that window made unreachable (C.11.1.3). **A test allowing `wrnno` 13/16 is stale and silently weakened** - an ISL29125 log should now be empty. |
+| `asy_isl29125_driver.py` (`ISL29125`) | 10-38 | 10-13 | 10=init, 11=periodic read, 12=config read at init, 13=config write at init, 14=config read at store-time, 15-22=get/set pairs for Resolution/Range/IrCompOffset/IrCompAdjust, 24=applying the derived threshold persistence (23 is free - it was the retired persistence getter), 25=trigger-interval, 26=filter coefficient, 27=either of the two software auto-range knobs (`AutoRangeThresh`, `AutoRangeDwell`) rejecting a value, 28=batched snapshot read, 29/30=threshold and CONFIG1 write inside a range switch, 31=status read, 32=bus-fault pattern confirmed by a failed device-ID re-read, 33=brownout re-apply, 34=shadow write outside a range switch, 38=RangeAuto's own two chip writes on the auto->off transition. **35-37 are free**: they were the gain-ratio FRAM read/write/clear, and the ratio is a config value now (C.11.3). `wrnno` **10-13, contiguous** - 10=brownout recovered, 11=the chip's config diverged from the shadow for some other reason and was re-applied, 12=saturated on the high range, 13=the periodic path made a range decision the interrupt should have made first, five times running (the dead-INT detector). Renumbered 2026-09-14 from a non-contiguous 10/14/15, and **10 was split in two at the same time**: brownout and shadow divergence had shared it, so a FRAM log could not say which had happened. Nothing constrains the numbering across modules - `wrnno` has no cross-driver meaning-per-number convention, unlike `errno` 10-14, whose opening block every sensor driver shares - and old bench logs from development have no reuse value (owner, 2026-09-14). The gaps this closed all dated from the 2026-09-13 calibration redesign (C.11.3): the old 11/12 were "no/stale stored gain ratio" and went with the FRAM chunk; 13 ("implausible ratio") and 16 ("the partner range clipped") became debug-log lines, because a calibration run reports a refusal by leaving `GainMeas` null rather than by warning; 17 was briefly a second five-in-a-row warning for a persistence window outlasting `SampleInterv`, which deriving that window made unreachable (C.11.1.3). **A test allowing any `wrnno` outside 10-13 is stale** - an ISL29125 log should be empty unless one of those four fired. |
 | `asy_sgp40_driver.py` (`SGP40`) | 10-18 | 10-14 | 10=init, 11=periodic read, 12=config read at init, 13-18=backup read/write/clear/deserialize/serialize/compensation. `wrnno`=backup missing/stale. |
 | `asy_wifi_service.py` (`WIFI`) | 11-18 | 1-7 | 11=mode-switch...17=hardware give-up, 18=disconnect-timeout; `wrnno` 1-3=missing-config, 4-7=WLAN status. |
 | `asy_ntp_client.py` (`NTP`) | 11-20 | 1-3 | 11=missing-config...19=time-calc, 18/20=interval-fallback/give-up; `wrnno`=callback failures. |
@@ -1517,8 +1517,9 @@ is no longer a software-only knob: changing it writes CONFIG3.
 `wrnno=17` is **gone**, and so is `persist_window_ms()`, its only caller. A warning that the
 derivation makes unreachable is complexity without a reader: keeping it as an invariant check was
 considered and rejected (owner, 2026-09-13) on the grounds that the ISL's surface is large enough
-already. `wrnno=15` therefore has a single meaning again - five decisions in a row went to the
-periodic path, so the line looks dead - which is the question it was always meant to answer.
+already. The dead-line detector therefore has a single meaning again - five decisions in a row went
+to the periodic path, so the line looks dead - which is the question it was always meant to answer.
+It is `wrnno=13` since the 2026-09-14 renumbering (C.7.1).
 
 Measured on the bench (2026-09-13), six forced crossings per setting, one reader, same scene:
 
@@ -1543,9 +1544,9 @@ also un-blinded the twin's own `isl29125:int_stuck_high` fault test, which had b
 unrelated timing reason rather than because the detector worked.
 
 **What this cost in test terms**: `test_isl29125_survives_recombined_realistic_lighting_scenarios`
-now checks `wrnno=15`/`17` per scenario *and* asserts the run made at least five range switches, so
-the check can actually fire. Before that, nothing in the suite ever exercised W15 where it was
-reachable — the envelope test makes two switches and the warning needs five in a row.
+now checks the dead-line warning per scenario *and* asserts the run made at least five range
+switches, so the check can actually fire. Before that, nothing in the suite ever exercised it where
+it was reachable — the envelope test makes two switches and the warning needs five in a row.
 
 ### C.11.3 Calibration is user-triggered, user-applied, and writes nothing by itself
 
@@ -1649,8 +1650,30 @@ destructive-read invariant above).
 
 **Config-field classification.** Device and maths constants are not config fields: requirement 1
 governs *preferences*, and a dark-count offset, a CCT floor or a gain-learn period is not one.
-`AutoRangeDown` additionally has a cross-field rule against `AutoRangeUp` — `d <= u / (2r)`, where
-`r` is the range ratio — which is what `_AR_CROSS_FIELD_DIVISOR` encodes as the no-chatter margin.
+
+**The switch-down point is derived, not configured** (owner, 2026-09-14). It was `AutoRangeDown`,
+a field carrying the one relation a per-field schema cannot express — `d <= u / (2r)`, with `r` the
+range ratio — policed at runtime by `_check_cross_field()` and `errno=27`. That made it the same
+class of trap `AutoRangePersist` was (C.11.1.3): a user-facing number whose only correct values are
+a function of another field, where a wrong one is a rejection the user has to decode, and where a
+single PUT moving both ends could pass or fail on key order alone. `_down_thresh()` now returns
+`AutoRangeThresh / _AR_DOWN_DIVISOR`, and the field, the check and the cross-field meaning of
+`errno=27` are all gone. `AutoRangeUp` was renamed `AutoRangeThresh` to match: it sets both ends of
+the hysteresis now, not just the upper one.
+
+The divisor stays `2 × 26.67`, the part's **nominal** range ratio, deliberately not the measured
+`GainRatio`. The factor 2 absorbs that field's whole 20.0–34.0 band — at the worst end a light
+sitting exactly at the threshold reads `t/34` after the switch, still 1.57× above `t/53.33` — so
+coupling the two would add a dependency without moving a single decision.
+
+**The settle margin is a constant, not a field** (same pass). `AutoRangeSettle` exposed 1–10
+conversion cycles to discard after a range change, where the hardware has exactly one principled
+answer and no scene, light level or resolution makes another one right. It is `_SETTLE_CYCLES = 2`:
+two rather than one because the ADC restarts during the I²C write itself (p10, Table 7) while the
+driver arms its deadline once that write has *returned*, so one cycle can land on the wrong side of
+that tie. The digital twin had already been forcing 2 for exactly this reason, with a nine-line
+comment explaining the workaround; both are gone. `ISL29125_I2C.settle_cycles` went with the field
+— the protocol layer no longer carries reader policy across the layer boundary at all.
 
 **The Renesas application notes are unobtainable — do not re-attempt.** The four Intersil notes the
 promotion wanted are not reachable (the vendor site refuses, no mirror carries them, and the

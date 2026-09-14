@@ -23,8 +23,7 @@
         "BMP3XX": { "SampleInterv": 5, "PressOvers": 4, "PressOffset": 0.0, "TempOvers": 4, "TempOffset": 0.0, "FiltCoeff": 3, "SeaLevelOffs": 0.0, "MeanAtmTemp": 15.0 },
         "ISL29125": {
             "SampleInterv": 5, "Resolution": 16, "RangeAuto": true, "Range": 10000,
-            "AutoRangeUp": 85.0, "AutoRangeDown": 1.5, "AutoRangeSettle": 1,
-            "AutoRangeDwell": 10.0,
+            "AutoRangeThresh": 85.0, "AutoRangeDwell": 10.0,
             "IrCompOffset": 0, "IrCompAdjust": 40, "FiltCoeff": -1.0, "GainRatio": 26.667,
             "ISLCalibrate": false
         }

@@ -189,9 +189,11 @@ all. **Whichever window is shorter decides every switch.**
 PRST is **derived** for exactly this reason and is no longer a config field at all
 (SPECIFICATION.md Part C.11.1.3): the driver picks the largest setting whose window still closes
 inside the sample interval. A device script setting its own `cfgmgr._cache` therefore cannot get
-this relationship wrong any more - there is nothing to seed. `wrnno=15` remains, and now has only
-one meaning: five range decisions in a row went to the periodic path, so the interrupt line itself
-looks dead.
+this relationship wrong any more - there is nothing to seed. The dead-line detector remains, as
+`wrnno=13` (renumbered from 15 when the warning block was made contiguous), and has only one
+meaning: five range decisions in a row went to the periodic path, so the INT line itself looks
+dead. A script seeding `cfgmgr._cache` seeds `AutoRangeThresh` alone - `AutoRangeDown` and
+`AutoRangeSettle` are derived and fixed respectively, and are likewise no longer config fields.
 
 ## The ISL29125 mechanism envelope
 

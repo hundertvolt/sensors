@@ -61,7 +61,7 @@ def _tmp_cfg_path(name: str) -> str:
     return path
 
 
-def make_dev_reader(name: str, *, resolution: int = 16, dwell_s: float = 0.0, settle_cycles: int = 2) -> "tuple[Isl29125Chip, ISL29125_Reader]":
+def make_dev_reader(name: str, *, resolution: int = 16, dwell_s: float = 0.0) -> "tuple[Isl29125Chip, ISL29125_Reader]":
     # The dev profile is the only one that wires this sensor at all (requirement 18).
     machine.configure_i2c_wiring("dev")
     Pin.reset_registry()
@@ -84,15 +84,6 @@ def make_dev_reader(name: str, *, resolution: int = 16, dwell_s: float = 0.0, se
         await reader.cfgmgr.setup()
         assert await reader._init_isl() is True
         reader._ar_dwell_s = dwell_s  # _init_isl() reloads it from the config file
-        # AutoRangeSettle = 2 rather than the shipped default of 1, and the reason is a property
-        # of SIMULATED time rather than of the driver. On real silicon the ADC restarts during
-        # the I2C write itself (Table 7 p10) while the driver arms its deadline once that write
-        # has returned - hundreds of microseconds later at 50 kHz - so one cycle of settle is
-        # genuinely enough. In the twin the write costs nothing, so the chip's next conversion
-        # and the driver's deadline land on the same millisecond and which wins is a coin flip.
-        # One extra cycle removes the tie without weakening anything: the settle-margin
-        # arithmetic itself is proven exactly at tier 1, for both 1 and 5 cycles.
-        assert await reader.set_autorange_settle(settle_cycles) is True
         if resolution != 16:
             assert await reader.set_resolution(resolution) is True
 
@@ -321,7 +312,7 @@ def test_a_dead_interrupt_line_eventually_warns_rather_than_staying_invisible() 
             await cycle(chip, reader, 40.0 if index % 2 == 0 else 900.0)
         return await reader.get_error_counter()
 
-    assert 15 in warnings(run(scenario()))
+    assert 13 in warnings(run(scenario()))
 
 
 # ---------------------------------------------------------------------------

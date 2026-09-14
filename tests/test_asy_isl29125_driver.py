@@ -45,6 +45,9 @@ _STATUS_BOUTF = 0x04
 _RANGE_LOW_LUX = 375
 _RANGE_HIGH_LUX = 10000
 _GAIN_RATIO_NOMINAL = 26.666666666666668
+_GAIN_RATIO_MIN = 20.0  # the plausibility band the GainRatio field itself allows
+_GAIN_RATIO_MAX = 34.0
+_AR_DOWN_DIVISOR = 53.333333333333336  # 2 x the nominal range ratio - the derived down point
 _CAL_CONVERGE_N = 3  # mirrors the driver's own const: consecutive agreeing readings that end a run
 
 try:
@@ -642,16 +645,16 @@ def test_configure_sets_the_settle_deadline_only_on_a_config1_write() -> None:
     assert isl.time_to_settle_ms() == 0
 
 
-def test_autorange_settle_of_five_waits_five_cycles_not_one() -> None:
-    # Requirement 14 calls this knob the settle MARGIN, so a value above 1 has to change the
-    # deadline itself and not merely bound a loop.
+def test_the_settle_window_is_two_full_cycles_at_either_resolution() -> None:
+    # Fixed at two, never configured: the ADC restarts during the I2C write itself (p10, Table 7)
+    # while the driver arms its deadline once that write has RETURNED, so a single cycle can land
+    # on the wrong side of that tie. The second cycle costs one sample and removes it outright.
     for bits, cycle_ms in ((16, 303), (12, 19)):
         _i2c, isl = ready_protocol()
         isl._resolution = bits
-        isl.settle_cycles = 5
         run(isl.configure(mode=_MODE_RGB))
         remaining = isl.time_to_settle_ms()
-        assert 4 * cycle_ms < remaining <= 5 * cycle_ms
+        assert cycle_ms < remaining <= 2 * cycle_ms
 
 
 def test_cycle_time_follows_the_configured_resolution() -> None:
@@ -928,9 +931,9 @@ def test_init_arms_the_thresholds_for_the_starting_range() -> None:
         assert run(init_reader(reader, i2c)) is True
     threshold_writes = [payload for register, payload in mem_writes(i2c) if register == _REG_THRESHOLDS]
     assert len(threshold_writes) == 1
-    # Starting on the high range, so only the DOWN crossing is armed: low = 1.5% of full scale,
-    # high parked at the resolution's own maximum.
-    assert threshold_writes[0] == struct.pack("<HH", 983, 65535)
+    # Starting on the high range, so only the DOWN crossing is armed: low = the derived
+    # 85/53.33 = 1.594% of full scale, high parked at the resolution's own maximum.
+    assert threshold_writes[0] == struct.pack("<HH", 1044, 65535)
 
 
 def test_init_leaves_no_state_behind_after_a_failed_attempt() -> None:
@@ -1241,7 +1244,7 @@ def test_a_genuinely_saturated_white_scene_survives_the_device_id_re_read() -> N
 
     results, counters = run(scenario())
     assert results[0] == 65535
-    assert 14 in warnings(counters)  # already on the high range, so the scene wins
+    assert 12 in warnings(counters)  # already on the high range, so the scene wins
 
 
 def test_the_dark_offset_is_subtracted_on_the_low_range_only() -> None:
@@ -1308,7 +1311,7 @@ def test_the_settle_wait_is_bounded_against_a_stream_of_config_writes() -> None:
 def test_switch_up_on_saturation_without_waiting_for_persistence() -> None:
     _i2c, reader = make_reader("sat_up")
     reader._active_range = _RANGE_LOW_LUX
-    # Well below AutoRangeUp's own count, so only the saturation fast path can decide this.
+    # Well below AutoRangeThresh's own count, so only the saturation fast path can decide this.
     assert reader._evaluate_range((1000, 1000, 1000), saturated=True) == _RANGE_HIGH_LUX
     assert reader._evaluate_range((1000, 1000, 1000), saturated=False) is None
 
@@ -1327,26 +1330,27 @@ def test_that_scene_does_not_switch_back_down_after_the_dwell_expires() -> None:
     _i2c, reader = make_reader("peak_down")
     reader._active_range = _RANGE_HIGH_LUX
     reader._ar_dwell_s = 0.0  # the dwell has expired
-    green_only = 900  # below AutoRangeDown's own 983 counts
+    green_only = 900  # below the derived down point's own 1044 counts
     red_still_bright = 40000
     assert reader._evaluate_range((green_only, red_still_bright, 300), saturated=False) is None
     # Green alone really would have decided to go back down - that is what makes this a proof.
     assert reader._evaluate_range((green_only, 300, 300), saturated=False) == _RANGE_LOW_LUX
 
 
-def test_switch_points_do_not_chatter_at_the_schema_defaults() -> None:
-    # Immediately after a switch up the same light reads u/r of the high range, so the no-chatter
-    # condition is u/r > d - swept here as a real state machine, not asserted as arithmetic.
-    for up, down in ((85.0, 1.5), (50.0, 0.9375)):  # the defaults, and the worst legal pair
-        _i2c, reader = make_reader(f"chatter_{up}")
-        reader._ar_up, reader._ar_down, reader._ar_dwell_s = up, down, 0.0
+def test_switch_points_cannot_chatter_anywhere_in_the_threshold_band() -> None:
+    # Immediately after a switch up the same light reads t/r of the high range, so the no-chatter
+    # condition is t/r > t/(2r) - swept here as a real state machine, not asserted as arithmetic.
+    # DERIVING the down point is what makes the whole legal band safe rather than one chosen pair.
+    for thresh in (50.0, 85.0, 95.0):  # both schema bounds, and the default between them
+        _i2c, reader = make_reader(f"chatter_{thresh}")
+        reader._ar_thresh, reader._ar_dwell_s = thresh, 0.0
         reader._active_range = _RANGE_LOW_LUX
-        up_counts = ISL29125_I2C.fraction_to_counts(up)
-        # Just past the up threshold on the low range.
-        assert reader._evaluate_range((up_counts, up_counts, up_counts), saturated=False) == _RANGE_HIGH_LUX
+        thresh_counts = ISL29125_I2C.fraction_to_counts(thresh)
+        # Just past the switch-up point on the low range.
+        assert reader._evaluate_range((thresh_counts, thresh_counts, thresh_counts), saturated=False) == _RANGE_HIGH_LUX
         reader._active_range = _RANGE_HIGH_LUX
         # The SAME light, now on the high range: 26.67x fewer counts. It must stay put.
-        after = int(up_counts / (10000.0 / 375.0))
+        after = int(thresh_counts / (10000.0 / 375.0))
         assert reader._evaluate_range((after, after, after), saturated=False) is None
 
 
@@ -1465,11 +1469,11 @@ def test_a_periodic_only_switch_warns_after_five_consecutive_occurrences() -> No
         return await reader.get_error_counter()
 
     counters = run(scenario())
-    assert 15 in warnings(counters)
+    assert 13 in warnings(counters)
 
 
 def test_an_interrupt_driven_switch_resets_the_periodic_only_counter() -> None:
-    i2c, reader = ready_reader("wrn15_reset")
+    i2c, reader = ready_reader("wrn13_reset")
     reader._ar_dwell_s = 0.0
 
     async def scenario() -> "ErrorLog":
@@ -1490,14 +1494,14 @@ def test_an_interrupt_driven_switch_resets_the_periodic_only_counter() -> None:
 
     counters = run(scenario())
     assert reader._periodic_only_switches == 0
-    assert 15 not in warnings(counters), "the counter was reset by reaching its warn point, not by the interrupt"
+    assert 13 not in warnings(counters), "the counter was reset by reaching its warn point, not by the interrupt"
 
 
 def test_a_latched_flag_with_no_pin_edge_still_counts_as_a_periodic_only_switch() -> None:
     # The fault requirement 17 actually names - a missing pull-up or a broken jumper - leaves the
     # CHIP working: it latches RGBTHF exactly as before, and only the line never moves. Keying the
     # detector on the flag alone would therefore report a healthy fast path throughout.
-    i2c, reader = ready_reader("wrn15_line_dead")
+    i2c, reader = ready_reader("wrn13_line_dead")
     reader._ar_dwell_s = 0.0
     with _FastAsyncSleep():
         seed_cycle(i2c, 100, 100, 100, status=_STATUS_RGBTHF)  # flag set...
@@ -1523,7 +1527,7 @@ def test_the_pin_handler_records_the_edge_as_well_as_waking_the_read_loop() -> N
 def test_five_periodic_led_decisions_in_a_row_report_a_possibly_dead_interrupt() -> None:
     # The derived window always leaves the chip time to raise RGBTHF first, so the periodic path
     # carrying five decisions running has exactly one reading left: the line is not delivering.
-    _i2c, reader = ready_reader("wrn15_12bit")
+    _i2c, reader = ready_reader("wrn13_12bit")
 
     async def scenario() -> "ErrorLog":
         await reader.isl.configure(resolution=12, persist=8)
@@ -1532,8 +1536,7 @@ def test_five_periodic_led_decisions_in_a_row_report_a_possibly_dead_interrupt()
         return await reader.get_error_counter()
 
     counters = run(scenario())
-    assert 15 in warnings(counters)
-    assert 17 not in warnings(counters)
+    assert 13 in warnings(counters)
 
 
 # ---------------------------------------------------------------------------
@@ -1686,7 +1689,10 @@ def test_read_sensor_dict_detects_a_diverged_mode_and_reapplies_the_shadow() -> 
         return await reader.get_error_counter()
 
     counters = run(scenario())
-    assert warnings(counters).count(10) == 1
+    # wrnno=11, NOT the brownout's own 10: a chip that disagrees with the shadow for any other
+    # reason - a stray write, a bus glitch - is a different event and has to be readable as one.
+    assert warnings(counters).count(11) == 1
+    assert 10 not in warnings(counters)
     assert any(register == _REG_CONFIG1 and len(payload) == 3 for register, payload in mem_writes(i2c))
 
 
@@ -1703,7 +1709,7 @@ def test_a_reserved_bit_difference_is_not_reported_as_divergence() -> None:
         return await reader.get_error_counter()
 
     counters = run(scenario())
-    assert 10 not in warnings(counters)
+    assert 11 not in warnings(counters)
 
 
 def test_get_dict_cfg_excludes_the_command_only_field() -> None:
@@ -1714,21 +1720,20 @@ def test_get_dict_cfg_excludes_the_command_only_field() -> None:
     assert "ISLCalibrate" not in body["ISL29125"]
     assert "SampleInterv" in body["ISL29125"]
     assert set(body["ISL29125"]) == {
-        "SampleInterv", "Resolution", "RangeAuto", "Range", "AutoRangeUp", "AutoRangeDown",
-        "AutoRangeSettle", "AutoRangeDwell", "IrCompOffset", "IrCompAdjust",
-        "FiltCoeff", "GainRatio",
+        "SampleInterv", "Resolution", "RangeAuto", "Range", "AutoRangeThresh",
+        "AutoRangeDwell", "IrCompOffset", "IrCompAdjust", "FiltCoeff", "GainRatio",
     }
 
 
 # ---------------------------------------------------------------------------
-# Config surface - the fourteen pushes, the setters and the five getters
+# Config surface - the eleven pushes, the setters and the four getters
 # ---------------------------------------------------------------------------
 
 
 def test_every_schema_field_has_a_push_callback() -> None:
     _i2c, reader = make_reader("push_coverage")
     names = [field[0] for field in reader.cfg_schema]
-    assert len(names) == 13  # GainRatio joined from FRAM; AutoRangePersist left, now derived
+    assert len(names) == 11  # AutoRangePersist, AutoRangeDown and AutoRangeSettle all derived now
     assert sorted(reader._push_callbacks) == sorted(names)
 
 
@@ -1747,7 +1752,7 @@ def test_each_push_rejects_the_wrong_type_without_touching_the_bus() -> None:
     i2c, reader = ready_reader("push_types")
     wrong: dict[str, int | float | str | bool | None] = {
         "SampleInterv": True, "Resolution": 16.0, "RangeAuto": 1, "Range": "10000",
-        "AutoRangeUp": 85, "AutoRangeDown": 2, "AutoRangeSettle": 1.0,
+        "AutoRangeThresh": 85,
         "AutoRangeDwell": 10, "IrCompOffset": False, "IrCompAdjust": 40.0, "FiltCoeff": 0,
         "GainRatio": 26, "ISLCalibrate": 1,
     }
@@ -1810,14 +1815,10 @@ def test_pushing_the_software_knobs_changes_only_driver_state() -> None:
     # it, so changing it legitimately reaches CONFIG3. Its own test is below.
     i2c, reader = ready_reader("push_software")
     with _FastAsyncSleep():
-        assert run(reader._push_callbacks["AutoRangeUp"](90.0)) is True
-        assert run(reader._push_callbacks["AutoRangeDown"](0.5)) is True
-        assert run(reader._push_callbacks["AutoRangeSettle"](5)) is True
+        assert run(reader._push_callbacks["AutoRangeThresh"](90.0)) is True
         assert run(reader._push_callbacks["AutoRangeDwell"](30.0)) is True
         assert run(reader._push_callbacks["FiltCoeff"](0.25)) is True
-    assert reader._ar_up == 90.0
-    assert reader._ar_down == 0.5
-    assert reader.isl.settle_cycles == 5
+    assert reader._ar_thresh == 90.0
     assert reader._ar_dwell_s == 30.0
     assert mem_writes(i2c) == []
 
@@ -1837,23 +1838,23 @@ def test_pushing_the_sample_interval_re_derives_the_transient_rejection() -> Non
     assert any(w[0] == _REG_CONFIG2 and w[1][1] & 0x0C == 0x0C for w in writes), "the new PRST has to reach CONFIG3"
 
 
-def test_autorange_down_is_rejected_when_it_violates_the_cross_field_constraint() -> None:
-    # FieldSchema's per-field min/max cannot express a relation between two fields, so the driver
-    # enforces d <= u/(2r) itself - and it has to hold whichever side moves.
-    _i2c, reader = ready_reader("cross_field")
+def test_the_down_point_is_derived_from_the_threshold_and_cannot_be_set() -> None:
+    # There is exactly one correct hysteresis gap for a given switch-up point, so the field that
+    # used to let a user get it wrong is gone along with the cross-field rule that policed it.
+    # Moving the threshold moves the down point in the same call: the two cannot disagree at all.
+    _i2c, reader = ready_reader("derived_down")
 
-    async def scenario() -> "ErrorLog":
-        reader._ar_up, reader._ar_down = 85.0, 1.5
-        assert await reader.set_autorange_down(3.0) is False  # 3.0 > 85/53.33 = 1.59
-        assert reader._ar_down == 1.5  # unchanged
-        assert await reader.set_autorange_down(1.5) is True
-        assert await reader.set_autorange_up(50.0) is False  # 1.5 > 50/53.33 = 0.94
-        assert reader._ar_up == 85.0
-        assert await reader.set_autorange_up(95.0) is True  # raising u is always safe
-        return await reader.get_error_counter()
+    async def scenario() -> None:
+        assert abs(reader._down_thresh() - 85.0 / _AR_DOWN_DIVISOR) < 1e-12
+        assert await reader.set_autorange_thresh(50.0) is True
+        assert abs(reader._down_thresh() - 50.0 / _AR_DOWN_DIVISOR) < 1e-12
+        assert await reader.set_autorange_thresh(95.0) is True
+        assert abs(reader._down_thresh() - 95.0 / _AR_DOWN_DIVISOR) < 1e-12
 
-    counters = run(scenario())
-    assert errors(counters).count(27) == 2
+    run(scenario())
+    assert "AutoRangeDown" not in reader._push_callbacks
+    assert not hasattr(reader, "set_autorange_down")
+    assert not hasattr(reader, "_check_cross_field")
 
 
 def test_turning_autorange_off_writes_intsel_zero_and_applies_the_stored_range() -> None:
@@ -2401,18 +2402,18 @@ def test_pinning_a_range_while_autorange_is_off_actually_programs_the_chip() -> 
     assert errors(counters).count(18) == 2
 
 
-def test_the_settle_and_dwell_setters_reject_out_of_range_values_with_errno_27() -> None:
+def test_the_two_remaining_auto_range_knobs_reject_out_of_range_values_with_errno_27() -> None:
     # Both are pure software knobs with no chip write, so a rejected value has to be caught here
-    # or it silently becomes the live policy - a zero settle discards nothing after a switch, and
-    # a negative dwell removes the asymmetry that stops the range chattering.
+    # or it silently becomes the live policy - a negative dwell removes the asymmetry that stops
+    # the range chattering, and a threshold below its floor leaves no headroom before saturation.
     _i2c, reader = ready_reader("knob_reject")
 
     async def scenario() -> "ErrorLog":
-        assert await reader.set_autorange_settle(1) is True  # the low boundary, inclusive
-        assert await reader.set_autorange_settle(10) is True  # the high boundary, inclusive
-        assert await reader.set_autorange_settle(0) is False
-        assert await reader.set_autorange_settle(11) is False
-        assert await reader.set_autorange_settle("x") is False  # type: ignore[arg-type]
+        assert await reader.set_autorange_thresh(50.0) is True  # the low boundary, inclusive
+        assert await reader.set_autorange_thresh(95.0) is True  # the high boundary, inclusive
+        assert await reader.set_autorange_thresh(49.9) is False
+        assert await reader.set_autorange_thresh(95.1) is False
+        assert await reader.set_autorange_thresh("x") is False  # type: ignore[arg-type]
         assert await reader.set_autorange_dwell(0.0) is True
         assert await reader.set_autorange_dwell(300.0) is True
         assert await reader.set_autorange_dwell(-0.1) is False
@@ -2421,7 +2422,7 @@ def test_the_settle_and_dwell_setters_reject_out_of_range_values_with_errno_27()
 
     counters = run(scenario())
     assert errors(counters).count(27) == 5, "one per rejected value, and neither boundary may count"
-    assert reader.isl.settle_cycles == 10, "a rejected value must not disturb the last good one"
+    assert reader._ar_thresh == 95.0, "a rejected value must not disturb the last good one"
     assert reader._ar_dwell_s == 300.0
 
 
@@ -2557,49 +2558,49 @@ def test_a_fractional_setting_is_rejected_rather_than_silently_truncated() -> No
 
     async def scenario() -> "ErrorLog":
         assert await reader.set_trigger_secs(12.5) is False
-        assert await reader.set_autorange_settle(2.5) is False
         assert await reader.set_trigger_secs(30.0) is True  # integral float: exactly representable
-        assert await reader.set_autorange_settle(3.0) is True
         assert await reader.set_autorange_dwell(10) is True  # int widened to float, always exact
+        assert await reader.set_autorange_thresh(85) is True  # the same widening, on a % field
         return await reader.get_error_counter()
 
     counters = run(scenario())
     assert errors(counters).count(25) == 1
-    assert errors(counters).count(27) == 1
+    assert errors(counters).count(27) == 0
     assert run(reader.trigger_period.get_value()) == 30
-    assert reader.isl.settle_cycles == 3
     assert reader._ar_dwell_s == 10.0
+    assert reader._ar_thresh == 85.0
 
 
 def test_a_bool_is_never_accepted_as_a_numeric_setting() -> None:
     # bool is an int subclass in MicroPython as in CPython, so a `True` reaching a numeric field
-    # would otherwise store 1 - inside every one of these fields' own bounds except AutoRangeUp.
+    # would otherwise store 1 - inside every one of these fields' own bounds except AutoRangeThresh.
     _i2c, reader = ready_reader("bool_reject")
 
     async def scenario() -> None:
         assert await reader.set_trigger_secs(True) is False
-        assert await reader.set_autorange_settle(True) is False
+        assert await reader.set_autorange_thresh(True) is False
         assert await reader.set_autorange_dwell(True) is False
         assert await reader.set_filter_coefficient(True) is False
 
     run(scenario())
-    assert reader.isl.settle_cycles == 1, "the seeded value, untouched"
+    assert reader._ar_thresh == 85.0, "the seeded value, untouched"
 
 
-def test_the_cross_field_bound_is_inclusive_at_its_own_boundary() -> None:
-    # d <= u/(2r) - the boundary itself is a legal setting, so a test that only proves the
-    # rejection side would pass just as well against an off-by-one strict comparison.
-    _i2c, reader = ready_reader("cross_edge")
+def test_the_derived_gap_keeps_its_margin_across_the_whole_gain_ratio_band() -> None:
+    # The divisor is 2x the part's NOMINAL 26.67, not the measured GainRatio. Deliberate: the
+    # factor 2 absorbs the entire [20, 34] band that field allows, so coupling the two would add
+    # a dependency without moving a single decision. Proven over the band rather than argued.
+    _i2c, reader = ready_reader("derived_margin")
 
     async def scenario() -> None:
-        assert await reader.set_autorange_up(80.0) is True
-        assert await reader.set_autorange_down(80.0 / 53.333333333333336) is True
-        assert await reader.set_autorange_down(80.0 / 53.333333333333336 + 0.01) is False
-        assert await reader.set_autorange_up(50.0) is False  # would strand the current down value
+        for thresh in (50.0, 85.0, 95.0):
+            assert await reader.set_autorange_thresh(thresh) is True
+            for ratio in (_GAIN_RATIO_MIN, _GAIN_RATIO_NOMINAL, _GAIN_RATIO_MAX):
+                # A light sitting exactly at the switch-up point reads thresh/ratio once the range
+                # has changed under it, and that has to stay clear of the derived down point.
+                assert thresh / ratio > reader._down_thresh()
 
     run(scenario())
-    assert abs(reader._ar_down - 1.5) < 1e-9
-    assert reader._ar_up == 80.0
 
 
 def test_configure_arms_and_disarms_the_threshold_interrupt_by_intent() -> None:
@@ -2745,8 +2746,8 @@ def test_calibration_waits_for_a_scene_inside_the_overlap_band() -> None:
     _i2c, reader = calibrating_reader("cal_band")
     queue_legs(reader, (51800, 51800, 51800), (2000, 2000, 2000))
     with _FastAsyncSleep():
-        run(reader._measure_gain_ratio(64000))  # above AutoRangeUp - the low range would clip
-        run(reader._measure_gain_ratio(10))  # below AutoRangeDown - at the dark floor
+        run(reader._measure_gain_ratio(64000))  # above AutoRangeThresh - the low range would clip
+        run(reader._measure_gain_ratio(10))  # below the derived down point - at the dark floor
     assert reader._measured_ratio() is None
     assert reader._calibrating is True, "an unusable scene pauses the run, it does not end it"
 

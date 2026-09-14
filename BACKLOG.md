@@ -345,11 +345,12 @@ constraints.
       already mostly does, and the only one with a reason behind it: quote an annotation that
       names a `TYPE_CHECKING`-only import, leave the rest bare. A sentence in SPECIFICATION.md
       Part D costs nothing; touching 31 files to enforce it buys nothing.
-    Separately, and already known: `SGPResetVOC` and now `ISLResetCal` are the only two config
+    Separately, and already known: `SGPResetVOC` and now `ISLCalibrate` are the only two config
     fields in `src/` carrying a device prefix. The retired promotion plan contradicted itself here
     (its prose said the ISL field carries no prefix, its schema table named it `ISLResetCal`); the
-    code follows the table, and the function spec agreed with the table. Recorded because the
-    naming question itself is still open, not the resolved contradiction.
+    code kept the table's prefix but not its name, the field having been rebuilt as a calibration
+    trigger rather than a resetter. Recorded because the prefix question itself is still open, not
+    the resolved contradiction.
 
 18. **Is the ISL29125's `BOUTF` actually high at power-up? — CLOSED (2026-09-13).** Yes, and the
     status *read* clears it, which p12 denies. Full lifecycle and evidence: SPECIFICATION.md Part
@@ -479,7 +480,7 @@ constraints.
     - `test_isl29125_mechanisms_hold_across_the_whole_illumination_envelope` — ascending and
       descending steady levels, 1.1 → 8829 lx; both ranges; 2 switches across a full up-and-down;
       fixed-range pinning; 12-bit vs 16-bit agreeing to 0.6% on one static scene; cross-range
-      continuity at 11.5% (item 19); `ISLResetCal`; `W14` firing at hard saturation.
+      continuity at 11.5% (item 19); the calibration trigger; `W14` firing at hard saturation.
     - `test_isl29125_survives_recombined_realistic_lighting_scenarios` — 10 scenarios, ~520
       samples, 1.1-8829 lx, 26 range switches, zero errors and zero coherence violations, and
       **no `W15`/`W17` with enough switches for either to have fired** — which is what actually
@@ -511,6 +512,13 @@ constraints.
       until a ratio is genuinely learned and persisted, matching `SGP40_Reader`'s own
       `last_backup`/`restored_from`; and no ISL test may assert an empty error log while
       auto-range is on, because the gain learner warns legitimately on its own schedule.
+      **The second of those two no longer holds**: the learner is gone, so an ISL log *should* be
+      empty and the tests assert exactly that (`tests_hardware/README.md` carries the live rule).
+    **Warning numbers above are as they were logged**, before the 2026-09-14 renumbering
+    (SPECIFICATION.md Part C.7.1). To read them against today's driver: `W14` (saturated) is now
+    `W12`, `W15` (dead-INT detector) is now `W13`, `W17` no longer exists at all, and today's `W11`
+    (shadow divergence) was split out of the `W10` those runs shared with brownout recovery.
+
     **Superseded in part by the 2026-09-13 calibration redesign** (Part C.11.3). The gain ratio no
     longer lives in FRAM, so the round-trip evidence above and the "a learned ratio surviving a
     reboot is unproven" gap both describe a mechanism that no longer exists — the ratio is config

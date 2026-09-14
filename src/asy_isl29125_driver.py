@@ -102,24 +102,20 @@ _CAL_HOLD_MS = const(600000)  # how long a finished run's candidate stays readab
 _CAL_CONVERGE_N = const(3)  # consecutive stable ratios that must agree before the run stops early
 _CAL_CONVERGE_TOL = const(0.01)  # 1%: one bench scene measured 28.11/28.01/28.09, a 0.4% spread
 _CAL_STABILITY_TOL = const(0.02)  # 2% between the sandwich's first and third reading of one range
-_AR_CROSS_FIELD_DIVISOR = const(53.333333333333336)  # 2 x the range ratio - the no-chatter margin
-# AutoRangeDown must clear: d <= u/(2r), see SPECIFICATION.md Part C.11.2.
+_AR_DOWN_DIVISOR = const(53.333333333333336)  # 2 x the NOMINAL range ratio - see _down_thresh()
+_SETTLE_CYCLES = const(2)  # conversions discarded after a range switch, fixed - see configure()
 _SETTLE_WAIT_MAX_ROUNDS = const(2)  # one extra cycle past the deadline, so a stream of concurrent
 # config writes can extend the settle but can never starve the read loop indefinitely.
 _PERIODIC_ONLY_WARN_AT = const(5)  # consecutive periodic-path switches with no preceding interrupt
 
 _MIN_TRIGGER_SECS = const(1)
 _MAX_TRIGGER_SECS = const(3600)
-_MIN_SETTLE_CYCLES = const(1)
-_MAX_SETTLE_CYCLES = const(10)
 _MIN_DWELL_S = const(0.0)
 _MAX_DWELL_S = const(300.0)
 _MIN_FILT_COEFF = const(-1.0)
 _MAX_FILT_COEFF = const(1.0)
-_MIN_AR_UP = const(50.0)
-_MAX_AR_UP = const(95.0)
-_MIN_AR_DOWN = const(0.2)
-_MAX_AR_DOWN = const(3.0)
+_MIN_AR_THRESH = const(50.0)
+_MAX_AR_THRESH = const(95.0)
 
 _VAL_SI = const((("SampleInterv", "int", 1, _MIN_TRIGGER_SECS, _MAX_TRIGGER_SECS, None),))
 # Resolution/Range/IrCompOffset are genuine discrete allowed-value sets, not
@@ -127,9 +123,10 @@ _VAL_SI = const((("SampleInterv", "int", 1, _MIN_TRIGGER_SECS, _MAX_TRIGGER_SECS
 _VAL_RES = const((("Resolution", "int", 16, None, None, _RESOLUTIONS),))
 _VAL_RA = const((("RangeAuto", "bool", True, None, None, None),))
 _VAL_RNG = const((("Range", "int", 10000, None, None, _RANGES),))
-_VAL_AR_UP = const((("AutoRangeUp", "float", 85.0, _MIN_AR_UP, _MAX_AR_UP, None),))
-_VAL_AR_DOWN = const((("AutoRangeDown", "float", 1.5, _MIN_AR_DOWN, _MAX_AR_DOWN, None),))
-_VAL_AR_SETTLE = const((("AutoRangeSettle", "int", 1, _MIN_SETTLE_CYCLES, _MAX_SETTLE_CYCLES, None),))
+# The single switch-up point, as a percentage of full scale. The down point is DERIVED from it
+# (_down_thresh()) rather than configured: there is one correct hysteresis gap for a given
+# threshold, and a second field could only ever be used to get it wrong.
+_VAL_AR_THRESH = const((("AutoRangeThresh", "float", 85.0, _MIN_AR_THRESH, _MAX_AR_THRESH, None),))
 _VAL_AR_DWELL = const((("AutoRangeDwell", "float", 10.0, _MIN_DWELL_S, _MAX_DWELL_S, None),))
 _VAL_ICO = const((("IrCompOffset", "int", 0, None, None, _IR_OFFSETS),))
 _VAL_ICA = const((("IrCompAdjust", "int", 40, 0, 63, None),))
@@ -145,8 +142,8 @@ _VAL_GR = const((("GainRatio", "float", _GAIN_RATIO_NOMINAL, _GAIN_RATIO_MIN, _G
 # ConfigManager's _cache, so either would fail at runtime rather than at type-check time.
 _VAL_CALIB = const((("ISLCalibrate", "bool", None, None, None, True),))
 
-_N_INT_CFG = const(6)  # SampleInterv + Resolution + Range + AutoRangeSettle + IrCompOffset + IrCompAdjust
-_N_FLOAT_CFG = const(5)  # AutoRangeUp + AutoRangeDown + AutoRangeDwell + FiltCoeff + GainRatio
+_N_INT_CFG = const(5)  # SampleInterv + Resolution + Range + IrCompOffset + IrCompAdjust
+_N_FLOAT_CFG = const(4)  # AutoRangeThresh + AutoRangeDwell + FiltCoeff + GainRatio
 _N_BOOL_CFG = const(1)  # RangeAuto ALONE - ISLCalibrate is command-only (see _VAL_CALIB above)
 _N_STORE_CFG = const(1)  # FiltCoeff ALONE - the only config value the store path reads per sample
 
@@ -181,8 +178,8 @@ class ISL29125_Reader(SensorReaderConfig):
             ISL29125(None, None, None, None, None, None, None, None, None, None, None),
             max_module_error,
             _NAME,
-            _VAL_SI + _VAL_RES + _VAL_RA + _VAL_RNG + _VAL_AR_UP + _VAL_AR_DOWN + _VAL_AR_SETTLE
-            + _VAL_AR_DWELL + _VAL_ICO + _VAL_ICA + _VAL_FC + _VAL_GR + _VAL_CALIB,
+            _VAL_SI + _VAL_RES + _VAL_RA + _VAL_RNG + _VAL_AR_THRESH + _VAL_AR_DWELL
+            + _VAL_ICO + _VAL_ICA + _VAL_FC + _VAL_GR + _VAL_CALIB,
             cfg_path=cfg_path,
             fram=fram,
             history_length=history_length,
@@ -209,8 +206,7 @@ class ISL29125_Reader(SensorReaderConfig):
         # Start on the high range: it cannot clip, so a first sample taken before any decision is
         # made is always usable, where starting low could saturate outright.
         self._active_range = _RANGE_HIGH_LUX
-        self._ar_up = 85.0
-        self._ar_down = 1.5
+        self._ar_thresh = 85.0
         self._ar_dwell_s = 10.0
         self._last_switch_ms = time.ticks_ms()
         self._brownout_seen = False
@@ -234,9 +230,7 @@ class ISL29125_Reader(SensorReaderConfig):
         self._push_callbacks[name_cfg(_VAL_RES)] = self._push_resolution
         self._push_callbacks[name_cfg(_VAL_RA)] = self._push_range_auto
         self._push_callbacks[name_cfg(_VAL_RNG)] = self._push_range
-        self._push_callbacks[name_cfg(_VAL_AR_UP)] = self._push_autorange_up
-        self._push_callbacks[name_cfg(_VAL_AR_DOWN)] = self._push_autorange_down
-        self._push_callbacks[name_cfg(_VAL_AR_SETTLE)] = self._push_autorange_settle
+        self._push_callbacks[name_cfg(_VAL_AR_THRESH)] = self._push_autorange_thresh
         self._push_callbacks[name_cfg(_VAL_AR_DWELL)] = self._push_autorange_dwell
         self._push_callbacks[name_cfg(_VAL_ICO)] = self._push_ir_comp_offset
         self._push_callbacks[name_cfg(_VAL_ICA)] = self._push_ir_comp_adjust
@@ -244,8 +238,8 @@ class ISL29125_Reader(SensorReaderConfig):
         self._push_callbacks[name_cfg(_VAL_GR)] = self._push_gain_ratio
         self._push_callbacks[name_cfg(_VAL_CALIB)] = self._push_calibrate
         # Live read-back for _set_dict_cfg's failed-push recovery chain (SPECIFICATION.md C.5.2).
-        # Only the five hardware-backed fields have one; the software knobs (the timer divider,
-        # the four auto-range policy numbers, the output filter) have nothing to read back, and
+        # Only the four hardware-backed fields have one; the software knobs (the timer divider,
+        # the two auto-range policy numbers, the output filter) have nothing to read back, and
         # ISLCalibrate is command-only so _recover_failed_push() skips it by design.
         self._get_callbacks[name_cfg(_VAL_RES)] = self.get_resolution
         self._get_callbacks[name_cfg(_VAL_RNG)] = self.get_range
@@ -265,10 +259,8 @@ class ISL29125_Reader(SensorReaderConfig):
 
         self.pr.one("Setting sensor config at startup.")
 
-        int_values = await self.cfgmgr.get_int_values(
-            _VAL_SI + _VAL_RES + _VAL_RNG + _VAL_AR_SETTLE + _VAL_ICO + _VAL_ICA,
-        )
-        float_values = await self.cfgmgr.get_float_values(_VAL_AR_UP + _VAL_AR_DOWN + _VAL_AR_DWELL + _VAL_FC + _VAL_GR)
+        int_values = await self.cfgmgr.get_int_values(_VAL_SI + _VAL_RES + _VAL_RNG + _VAL_ICO + _VAL_ICA)
+        float_values = await self.cfgmgr.get_float_values(_VAL_AR_THRESH + _VAL_AR_DWELL + _VAL_FC + _VAL_GR)
         # The bool batch is RangeAuto alone, and it is not optional: step 9 below cannot decide
         # whether to arm the thresholds without it.
         bool_values = await self.cfgmgr.get_bool_values(_VAL_RA)
@@ -286,9 +278,8 @@ class ISL29125_Reader(SensorReaderConfig):
         # set_trigger_secs() never raises (logs errno=25, keeps the previous value) - a bad stored
         # SampleInterv is a pure software timing knob, not a reason to fail this whole init attempt.
         await self.set_trigger_secs(int_values[0])
-        self._ar_up, self._ar_down, self._ar_dwell_s = float_values[0], float_values[1], float_values[2]
-        self._gain_ratio = float_values[4]  # already schema-bounded to [20, 34] on the way in
-        self.isl.settle_cycles = int_values[3]
+        self._ar_thresh, self._ar_dwell_s = float_values[0], float_values[1]
+        self._gain_ratio = float_values[3]  # already schema-bounded to [20, 34] on the way in
         self._range_auto = bool_values[0]
         self._fixed_range = int_values[2]
         self._active_range = _RANGE_HIGH_LUX if self._range_auto else int_values[2]
@@ -300,8 +291,8 @@ class ISL29125_Reader(SensorReaderConfig):
                 # persist_for_interval(). configure() applies the resolution from this same call,
                 # so the cycle length it is chosen against is the one about to be in force.
                 persist=self.isl.persist_for_interval(int_values[0]),
-                ir_offset=int_values[4],
-                ir_adjust=int_values[5],
+                ir_offset=int_values[3],
+                ir_adjust=int_values[4],
                 threshold_interrupt=self._range_auto,
             )
         except Exception as e:
@@ -378,7 +369,7 @@ class ISL29125_Reader(SensorReaderConfig):
                 self.pr.evt("range switch", sample_range, "->", target, "peak", max(counts))
                 await self._switch_range(target)
             elif saturated and sample_range == _RANGE_HIGH_LUX:
-                await self.pr.wrn_s("Saturated on the high range - the scene exceeds the part.", wrnno=14)
+                await self.pr.wrn_s("Saturated on the high range - the scene exceeds the part.", wrnno=12)
             await self._measure_gain_ratio(counts[0])
             self.pr.all("read")
             green, red, blue = counts
@@ -411,7 +402,7 @@ class ISL29125_Reader(SensorReaderConfig):
         # left now that persist_for_interval() derives the window: the chip is always given time to
         # raise RGBTHF first, so the periodic path carrying five decisions in a row means the line
         # itself is not delivering them.
-        await self.pr.wrn_s("Range decided by the periodic path only - the interrupt may be dead.", wrnno=15)
+        await self.pr.wrn_s("Range decided by the periodic path only - the interrupt may be dead.", wrnno=13)
 
     def _handle_status(self, status: object) -> "tuple[bool, bool]":
         decoded = self.isl.decode_status(status)
@@ -525,10 +516,10 @@ class ISL29125_Reader(SensorReaderConfig):
             return None  # a conversion restarted by the last switch has not completed yet
         peak = max(counts)
         if self._active_range == _RANGE_LOW_LUX:
-            if saturated or peak >= self.isl.fraction_to_counts(self._ar_up):
+            if saturated or peak >= self.isl.fraction_to_counts(self._ar_thresh):
                 return _RANGE_HIGH_LUX
             return None
-        if peak > self.isl.fraction_to_counts(self._ar_down):
+        if peak > self.isl.fraction_to_counts(self._down_thresh()):
             return None
         # React fast to bright, slowly to dark: PRST is one field applied to both crossings and so
         # cannot be asymmetric, which is what AutoRangeDwell is for. ticks_diff, never subtraction.
@@ -544,9 +535,9 @@ class ISL29125_Reader(SensorReaderConfig):
         # rescales them to the resolution the chip is actually running.
         try:  # thresholds FIRST: the other order leaves a window where the new gain is live
             if target_range == _RANGE_LOW_LUX:  # against the old thresholds
-                await self.isl.set_thresholds(0, self.isl.fraction_to_counts(self._ar_up))
+                await self.isl.set_thresholds(0, self.isl.fraction_to_counts(self._ar_thresh))
             else:  # the omitted up-crossing parks at the top of scale, where it cannot fire
-                await self.isl.set_thresholds(self.isl.fraction_to_counts(self._ar_down))
+                await self.isl.set_thresholds(self.isl.fraction_to_counts(self._down_thresh()))
         except Exception as e:
             await self.pr.err_s("Error writing auto-range thresholds:", e, errno=29)
             return False
@@ -589,7 +580,7 @@ class ISL29125_Reader(SensorReaderConfig):
             return
         # Only inside the overlap band - bright enough to be well clear of the dark floor on the
         # low range, dim enough not to clip it.
-        if not self.isl.fraction_to_counts(self._ar_down) < green_counts < self.isl.fraction_to_counts(self._ar_up):
+        if not self.isl.fraction_to_counts(self._down_thresh()) < green_counts < self.isl.fraction_to_counts(self._ar_thresh):
             self.pr.evt("calibration: scene outside the overlap band, waiting")
             return
         here = self._active_range
@@ -694,7 +685,7 @@ class ISL29125_Reader(SensorReaderConfig):
     async def _check_divergence(self, raw: bytes) -> None:
         if self.isl.matches_shadow(raw):
             return
-        await self.pr.wrn_s("Chip configuration diverged from the shadow - re-applying.", wrnno=10)
+        await self.pr.wrn_s("Chip configuration diverged from the shadow - re-applying.", wrnno=11)
         try:
             await self.isl.configure(force=True)
         except Exception as e:
@@ -737,15 +728,12 @@ class ISL29125_Reader(SensorReaderConfig):
             return False
         return True
 
-    async def _check_cross_field(self, *, up: float, down: float, field: str) -> bool:
-        # FieldSchema's per-field min/max cannot express a relation between two fields, so the
-        # driver enforces it: immediately after a switch up the same light reads u/r of the high
-        # range, so d must clear u/(2r) for the loop not to chatter on noise alone. Both arguments
-        # are already through _checked_cfg, so the division here cannot raise.
-        if down <= up / _AR_CROSS_FIELD_DIVISOR:
-            return True
-        await self.pr.err_s("Error setting", field, "- AutoRangeDown must be <=", f"{up / _AR_CROSS_FIELD_DIVISOR:.3f}", errno=27)
-        return False
+    def _down_thresh(self) -> float:
+        # DERIVED, never configured: immediately after a switch up the same light reads t/r of the
+        # high range, so the down point must clear t/(2r) for the loop not to chatter on noise
+        # alone. Against the part's NOMINAL 26.67, not the measured GainRatio - the factor 2
+        # absorbs that field's whole [20, 34] band, so coupling the two would move no decision.
+        return self._ar_thresh / _AR_DOWN_DIVISOR
 
     # -- push callbacks ----------------------------------------------------
 
@@ -761,14 +749,8 @@ class ISL29125_Reader(SensorReaderConfig):
     async def _push_range(self, value: "int | float | str | bool | None") -> bool:
         return type(value) is int and await self.set_range(value)
 
-    async def _push_autorange_up(self, value: "int | float | str | bool | None") -> bool:
-        return type(value) is float and await self.set_autorange_up(value)
-
-    async def _push_autorange_down(self, value: "int | float | str | bool | None") -> bool:
-        return type(value) is float and await self.set_autorange_down(value)
-
-    async def _push_autorange_settle(self, value: "int | float | str | bool | None") -> bool:
-        return type(value) is int and await self.set_autorange_settle(value)
+    async def _push_autorange_thresh(self, value: "int | float | str | bool | None") -> bool:
+        return type(value) is float and await self.set_autorange_thresh(value)
 
     async def _push_autorange_dwell(self, value: "int | float | str | bool | None") -> bool:
         return type(value) is float and await self.set_autorange_dwell(value)
@@ -816,7 +798,7 @@ class ISL29125_Reader(SensorReaderConfig):
             self.pr.err("Could not start timer:", e)
         # FALLING, not rising: the INT is active-low open-drain (p6). A line held low by a fault
         # produces exactly one edge and then silence - which is what the periodic path and
-        # wrnno=15 exist for, not a flood. The bound method is built once, here, not per edge.
+        # wrnno=13 exist for, not a flood. The bound method is built once, here, not per edge.
         self.irq_pin.irq(
             trigger=self.irq_pin.IRQ_FALLING,
             handler=self._on_irq,
@@ -860,8 +842,8 @@ class ISL29125_Reader(SensorReaderConfig):
         # is all-or-nothing and would KeyError on a key it never persisted.
         return await self._get_dict_cfg(
             _NAME,
-            _VAL_SI + _VAL_RES + _VAL_RA + _VAL_RNG + _VAL_AR_UP + _VAL_AR_DOWN + _VAL_AR_SETTLE
-            + _VAL_AR_DWELL + _VAL_ICO + _VAL_ICA + _VAL_FC + _VAL_GR,
+            _VAL_SI + _VAL_RES + _VAL_RA + _VAL_RNG + _VAL_AR_THRESH + _VAL_AR_DWELL
+            + _VAL_ICO + _VAL_ICA + _VAL_FC + _VAL_GR,
             callback=self._read_sensor_dict,
         )
 
@@ -937,25 +919,13 @@ class ISL29125_Reader(SensorReaderConfig):
             await self._switch_range(self._active_range)  # re-arm the thresholds for where we are
         return True
 
-    async def set_autorange_up(self, value: float) -> bool:
-        up = await self._checked_cfg(value, _VAL_AR_UP, 27)
-        if up is None or not await self._check_cross_field(up=float(up), down=self._ar_down, field="AutoRangeUp"):
+    async def set_autorange_thresh(self, value: float) -> bool:
+        # The down point follows automatically - it is computed from this value, not stored, so
+        # there is no second field to keep in step and no order in which a push can strand one.
+        thresh = await self._checked_cfg(value, _VAL_AR_THRESH, 27)
+        if thresh is None:
             return False
-        self._ar_up = float(up)
-        return True
-
-    async def set_autorange_down(self, value: float) -> bool:
-        down = await self._checked_cfg(value, _VAL_AR_DOWN, 27)
-        if down is None or not await self._check_cross_field(up=self._ar_up, down=float(down), field="AutoRangeDown"):
-            return False
-        self._ar_down = float(down)
-        return True
-
-    async def set_autorange_settle(self, value: float) -> bool:  # float, like set_trigger_secs: an integral float coerces (Part A.8)
-        cycles = await self._checked_cfg(value, _VAL_AR_SETTLE, 27)
-        if cycles is None:
-            return False
-        self.isl.settle_cycles = int(cycles)
+        self._ar_thresh = float(thresh)
         return True
 
     async def set_autorange_dwell(self, value: float) -> bool:
@@ -1053,9 +1023,6 @@ class ISL29125_I2C:
         self._int_select = _INTSEL_NONE
         self._conven = 0
         self._settle_until_ms = time.ticks_ms()
-        # Set by the reader whenever AutoRangeSettle is applied: the POLICY stays on the reader,
-        # the arithmetic lives next to the write that needs it.
-        self.settle_cycles = 1
 
     @staticmethod
     def _reject_unless(value: int, allowed: "tuple[int, ...]", what: str) -> None:
@@ -1354,7 +1321,7 @@ class ISL29125_I2C:
             # them - the range switch, a resolution push and brownout recovery. Setting the
             # deadline in the function that does the write makes it impossible for a caller to
             # forget, and refreshes it automatically when a config push lands mid-settle.
-            self._settle_until_ms = time.ticks_add(time.ticks_ms(), self.settle_cycles * self.cycle_ms())
+            self._settle_until_ms = time.ticks_add(time.ticks_ms(), _SETTLE_CYCLES * self.cycle_ms())
 
     async def read_counts(self) -> "tuple[int, int, int]":
         # "6s", NOT "<HHH": get_register_struct() returns unpacked[0] only, so a three-value

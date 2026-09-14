@@ -727,10 +727,10 @@ def test_real_microdot_sgp40_setter_end_to_end_write_fault_surfaces_as_failed_no
 
 # ---------------------------------------------------------------------------
 # Real Microdot end-to-end for the ISL29125's setter surface - the fourth _set_dict_cfg-backed
-# sensor route. Two things here have no equivalent above: a cross-field constraint the schema
-# itself cannot express (AutoRangeDown <= AutoRangeUp/53.3), and a command-only trigger whose
-# repeatability actually matters, since a recalibration that finds nothing to discard has not
-# failed and must not drag _recover_failed_push() in behind it.
+# sensor route. Two things here have no equivalent above: a push that legitimately changes more
+# state than the field it names (AutoRangeThresh also moves the derived down point), and a
+# command-only trigger whose repeatability actually matters, since a recalibration that finds
+# nothing to discard has not failed and must not drag _recover_failed_push() in behind it.
 # ---------------------------------------------------------------------------
 
 
@@ -768,21 +768,39 @@ def test_real_microdot_isl29125_setter_end_to_end_round_trips_a_software_knob() 
     assert run(reader.trigger_period.get_value()) == 4
 
 
-def test_real_microdot_isl29125_setter_end_to_end_rejects_a_cross_field_violation() -> None:
-    # The schema's own per-field min/max cannot express a relation between two fields, so this is
-    # the driver's own check surfacing through the real route: 3.0% is inside AutoRangeDown's own
-    # bounds and still illegal against the standing AutoRangeUp of 85%.
+def test_real_microdot_isl29125_setter_end_to_end_moves_the_derived_down_point_too() -> None:
+    # One PUT, two pieces of live state: the stored threshold and the down point derived from it.
+    # Only the real route proves the derivation is not bypassed by the push path, which reaches
+    # the setter through _set_dict_cfg's callback rather than by calling it directly.
     reader, _i2c = make_isl_reader()
     app = _isl_app(reader)
-    req = _make_request(app, "PUT", "/sensors/cmd", {"cmd": "setISL", "AutoRangeDown": 3.0})
+    before = reader._down_thresh()
+    req = _make_request(app, "PUT", "/sensors/cmd", {"cmd": "setISL", "AutoRangeThresh": 60.0})
     res = run(app.dispatch_request(req))
-    assert res.status_code == 200  # a rejected value is per-field detail, never a 500
+    assert res.status_code == 200
     body = json.loads(res.body)
     assert body["res"] == "OK"
-    assert body["result"] == {"AutoRangeDown": "Failed"}
-    assert reader._ar_down == 1.5  # unchanged
-    # And the failed push was corrected back in storage rather than left at the rejected value.
-    assert run(reader.cfgmgr.get_dict(["AutoRangeDown"])) == {"AutoRangeDown": 1.5}
+    assert body["result"] == {"AutoRangeThresh": "Valid"}
+    assert reader._ar_thresh == 60.0
+    assert reader._down_thresh() < before, "the derived down point has to follow the threshold down"
+    assert run(reader.cfgmgr.get_dict(["AutoRangeThresh"])) == {"AutoRangeThresh": 60.0}
+
+
+def test_real_microdot_isl29125_setter_end_to_end_rejects_an_out_of_band_threshold() -> None:
+    # "Invalid", not "Failed", and that distinction is the point: with the cross-field rule gone,
+    # EVERY rejection on this field is a plain schema rejection, so an out-of-band value is turned
+    # away before it can reach the driver at all. A rejected value is still per-field detail here,
+    # never a 500.
+    reader, _i2c = make_isl_reader()
+    app = _isl_app(reader)
+    req = _make_request(app, "PUT", "/sensors/cmd", {"cmd": "setISL", "AutoRangeThresh": 20.0})
+    res = run(app.dispatch_request(req))
+    assert res.status_code == 200
+    body = json.loads(res.body)
+    assert body["res"] == "OK"
+    assert body["result"] == {"AutoRangeThresh": "Invalid"}
+    assert reader._ar_thresh == 85.0  # unchanged
+    assert run(reader.cfgmgr.get_dict(["AutoRangeThresh"])) == {"AutoRangeThresh": 85.0}
 
 
 def test_real_microdot_isl29125_setter_end_to_end_calibrate_is_a_repeatable_trigger() -> None:

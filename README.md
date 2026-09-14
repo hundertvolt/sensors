@@ -693,7 +693,7 @@ planning docs below were retired under. The prior-art cross-check (four other IS
 implementations and where this driver departs from them), the one-owner-per-register table the
 shadow model depends on, the colour-chain decisions (why the sRGB matrix is pinned as literals, why
 the two McCamy forms are identical, why the matrix is a placeholder by the datasheet's own
-wording), the config-field classification rule and `AutoRangeDown`'s cross-field bound are now
+wording), the config-field classification rule and the derived switch-down point are now
 `SPECIFICATION.md` Part C.11.2; the log-level convention the drivers already followed is Part C.7;
 the persistence window's real unit — an RGB cycle, not the "integration cycle" its own datasheet calls
 it in both places it mentions the field — is Part A.4's conflatable-facts list, item 6, alongside

@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 
 # Steady levels, ascending: ambient only, then up through the range switch into hard saturation.
 LEVELS = (0, 2, 4, 8, 16, 40, 100, 255)
-SETTLE_S = 4.5  # SampleInterv=1 + AutoRangeSettle=1 cycle + slack for a switch to land
+SETTLE_S = 4.5  # SampleInterv=1 + the fixed 2-cycle settle + slack for a switch to land
 MAX_WAIT_S = 12.0
 MAX_SWITCHES = 4  # one up and one down is ideal; chatter would be dozens
 OVERLAP_LEVEL = 4  # ~150 lx on this rig: ~40% of the low range's full scale, so BOTH ranges can represent it
@@ -108,8 +108,7 @@ def _make_reader(i2c1: "asy_i2c_driver.I2C") -> ISL29125_Reader:
     reader.cfgmgr.valid = True
     reader.cfgmgr._cache = {
         "SampleInterv": 1, "Resolution": 16, "RangeAuto": True, "Range": 10000,
-        "AutoRangeUp": 85.0, "AutoRangeDown": 1.5, "AutoRangeSettle": 1,
-        "AutoRangeDwell": 0.0,
+        "AutoRangeThresh": 85.0, "AutoRangeDwell": 0.0,
         "IrCompOffset": 0, "IrCompAdjust": 40, "FiltCoeff": -1.0, "GainRatio": 10000 / 375,
     }
     return reader
@@ -217,15 +216,15 @@ async def _main() -> None:
 
         up = await _ascending(pixel, reader, wdt)
 
-        # The saturation detector must FIRE at full white (W14 is exactly that case, and this rig
-        # really does exceed the 10000 lx range at ~20mm). W15 is checked too, but one leg makes
+        # The saturation detector must FIRE at full white (W12 is exactly that case, and this rig
+        # really does exceed the 10000 lx range at ~20mm). W13 is checked too, but one leg makes
         # at most a couple of range decisions and the warning needs five periodic-only ones in a
         # row, so its absence here is a guard, not a proof - isl29125_lighting_scenarios.py is
         # where enough switches happen for it to be able to fire.
         entries, count = _log_entries(await reader.get_error_counter())
         notes.append(f"ascending-leg log: count={count} entries={entries}")
-        check(("W", 14) in entries, "no W14 after driving the part into hard saturation at full white - the saturation detector never fired")
-        check(("W", 15) not in entries, "W15 logged: the range was decided by the PERIODIC path only - the interrupt is not carrying the decisions")
+        check(("W", 12) in entries, "no W12 after driving the part into hard saturation at full white - the saturation detector never fired")
+        check(("W", 13) not in entries, "W13 logged: the range was decided by the PERIODIC path only - the interrupt is not carrying the decisions")
         check(not any(kind == "E" for kind, _ in entries), f"the ascending envelope logged real ERRORS, not just warnings: {entries}")
 
         down = await _descending(pixel, reader, wdt)

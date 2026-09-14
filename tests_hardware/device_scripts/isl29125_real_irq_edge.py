@@ -99,8 +99,7 @@ async def _main() -> None:
     reader.cfgmgr.valid = True
     reader.cfgmgr._cache = {
         "SampleInterv": TRIGGER_SEC, "Resolution": 16, "RangeAuto": True, "Range": 10000,
-        "AutoRangeUp": 85.0, "AutoRangeDown": 1.5, "AutoRangeSettle": 1,
-        "AutoRangeDwell": 0.0,
+        "AutoRangeThresh": 85.0, "AutoRangeDwell": 0.0,
         "IrCompOffset": 0, "IrCompAdjust": 40, "FiltCoeff": -1.0,
     }
     reader.start_timer()

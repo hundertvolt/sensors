@@ -332,9 +332,9 @@ class Isl29125Chip:
                 # The persistence counter restarts when the flag is CLEARED, not on every status
                 # read - measured 2026-09-13 (SPECIFICATION.md Part C.11.1.2). Resetting it here
                 # unconditionally is what a read cadence FASTER than PRST x one cycle turns into a
-                # permanently dead interrupt: at the driver's own defaults (PRST = 4, ~303ms per
-                # cycle, one status read per second) the count would be knocked back to 0 at every
-                # read and never reach 4, while real silicon asserts every other second.
+                # permanently dead interrupt: at the driver's own defaults (the derived PRST = 2,
+                # ~303ms per cycle, one status read per second) the count would be knocked back to
+                # 0 at every read and never reach 2, while real silicon asserts every other second.
                 self._prst_count = 0
             self._status &= ~(_STATUS_RGBTHF | _STATUS_CONVENF | _STATUS_BOUTF)
             self._release_int()
