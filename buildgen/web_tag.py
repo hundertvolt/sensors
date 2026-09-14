@@ -23,10 +23,14 @@ _KV_RE = re.compile(r'(?P<key>special:[^\s="]+|[A-Za-z][A-Za-z0-9]*)=(?:"(?P<qva
 
 _FIELD_KNOWN_KEYS = frozenset({
     "section", "submitGroup", "label", "unit", "description", "kind",
-    "onLabel", "offLabel", "mask", "dispatch", "defaultValue",
+    "onLabel", "offLabel", "mask", "dispatch", "defaultValue", "path", "decimals",
 })
 _GROUP_KNOWN_KEYS = frozenset({"section", "submitGroup", "label", "submit", "submitLabel"})
 _VALID_KINDS = frozenset({"readonly", "number", "string", "enum", "toggle"})
+# js/definitions.js's own validateFieldHints() ceiling (Number#toFixed()'s real RangeError
+# boundary) - kept in step by hand, the same "no shared constant across languages" situation every
+# other cross-language bound in this stack (schema mins/maxes) already has.
+_MAX_DECIMALS = 100
 _BOOL_VALUES = {"true": True, "false": False}
 SELF_GROUP = "self"
 
@@ -52,6 +56,8 @@ class WebFieldTag:
     dispatch: bool = False
     default_value: "bool | int | float | str | None" = None
     special: "tuple[tuple[str, str], ...]" = ()
+    path: "tuple[str, ...] | None" = None
+    decimals: "int | None" = None
 
 
 @dataclass(frozen=True)
@@ -88,6 +94,31 @@ def _coerce_bool(raw: str, *, device: str, path: Path, lineno: int, instance_lab
     if raw not in _BOOL_VALUES:
         raise BuildError(device, f"{path}:{lineno}: @web {key}= must be true or false, got {raw!r}", instance=instance_label)
     return _BOOL_VALUES[raw]
+
+
+def _coerce_path(raw: str, *, device: str, path: Path, lineno: int, instance_label: str, field_name: str) -> "tuple[str, ...]":
+    # Dot-joined, not a literal JSON array (Section 9/SPECIFICATION.md Part H.5.1's own design
+    # note): _KV_RE only captures a single quoted-or-bare scalar per key=value pair, so a real
+    # array literal has no home in this grammar - splitting a plain string at consumption time
+    # (buildgen.definitions) fits the existing shape instead of growing a second value grammar.
+    parts = tuple(raw.split("."))
+    if not parts or any(not p for p in parts):
+        raise BuildError(
+            device,
+            f'{path}:{lineno}: @web tag for {field_name!r} has malformed path={raw!r} - expected dot-joined non-empty segments, e.g. path="RGB.R"',
+            instance=instance_label, field=field_name,
+        )
+    return parts
+
+
+def _coerce_decimals(raw: str, *, device: str, path: Path, lineno: int, instance_label: str, field_name: str) -> int:
+    try:
+        value = int(raw)
+    except ValueError:
+        raise BuildError(device, f"{path}:{lineno}: @web tag for {field_name!r} has non-integer decimals={raw!r}", instance=instance_label, field=field_name) from None
+    if not (0 <= value <= _MAX_DECIMALS):
+        raise BuildError(device, f"{path}:{lineno}: @web tag for {field_name!r} has decimals={value} outside 0..{_MAX_DECIMALS}", instance=instance_label, field=field_name)
+    return value
 
 
 def _coerce_default_value(raw: str) -> "bool | int | float | str":
@@ -152,6 +183,10 @@ def parse_web_tags(path: Path, device: str, instance_label: str) -> "tuple[WebFi
         kind = plain.get("kind")
         if kind is not None and kind not in _VALID_KINDS:
             raise BuildError(device, f"{path}:{tok.lineno}: @web tag for {field_name!r} has unknown kind {kind!r}: {text!r}", instance=instance_label, field=field_name)
+        if "path" in plain and kind != "readonly":
+            # Mirrors js/definitions.js's own validateFieldHints() rule: a PUT body is always flat,
+            # so a path on a writable field would render one value and submit a different one.
+            raise BuildError(device, f"{path}:{tok.lineno}: @web tag for {field_name!r} has path= but is not kind=readonly: {text!r}", instance=instance_label, field=field_name)
         tags.append(WebFieldTag(
             field_name=field_name,
             section=plain["section"],
@@ -167,6 +202,8 @@ def parse_web_tags(path: Path, device: str, instance_label: str) -> "tuple[WebFi
             dispatch=_coerce_bool(plain["dispatch"], device=device, path=path, lineno=tok.lineno, instance_label=instance_label, key="dispatch") if "dispatch" in plain else False,
             default_value=_coerce_default_value(plain["defaultValue"]) if "defaultValue" in plain else None,
             special=special,
+            path=_coerce_path(plain["path"], device=device, path=path, lineno=tok.lineno, instance_label=instance_label, field_name=field_name) if "path" in plain else None,
+            decimals=_coerce_decimals(plain["decimals"], device=device, path=path, lineno=tok.lineno, instance_label=instance_label, field_name=field_name) if "decimals" in plain else None,
         ))
     check_for_near_miss_tags(tokens, path, device, instance_label, exact_matches, _SPECS_WEB)
     _check_no_duplicate_fields(tags, path, device, instance_label)

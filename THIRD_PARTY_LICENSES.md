@@ -31,6 +31,12 @@ applies to the one non-Adafruit file below. The following `src/` files are deriv
 - `src/asy_bmp3xx_driver.py` — from Adafruit's
   [`Adafruit_CircuitPython_BMP3XX`](https://github.com/adafruit/Adafruit_CircuitPython_BMP3XX),
   © 2018 Carter Nelson for Adafruit Industries, MIT.
+- `src/asy_isl29125_driver.py` — restructured for asyncio/buildgen from
+  [`jposada202020/MicroPython_ISL29125`](https://github.com/jposada202020/MicroPython_ISL29125)
+  (archived/deprecated December 2024), © 2023 Jose D. Montoya, MIT. Not the same file as the
+  pre-refactor `python/IndividualDrivers/asy_isl29125_driver.py` listed under "Shipped but not
+  promoted" below - that copy is separate, legacy, out-of-scope code (CLAUDE.md's "reference-only,
+  forever" rule) and carries its own identical attribution already.
 - `src/asy_scd30_driver.py` — from Adafruit's
   [`Adafruit_CircuitPython_SCD30`](https://github.com/adafruit/Adafruit_CircuitPython_SCD30),
   © 2020 Bryan Siepert for Adafruit Industries, MIT.

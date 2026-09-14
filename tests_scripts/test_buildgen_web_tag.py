@@ -112,6 +112,49 @@ def test_parse_web_tags_invalid_bool_rejected(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# path/decimals: the new Section 4 tag capability (SPECIFICATION.md Part H.5.1) - same accept/
+# reject bar every other tag key gets (BUILD_CHAIN_PLAN.md's "every tag family gets the same bar").
+# ---------------------------------------------------------------------------
+
+
+def test_parse_web_tags_path_is_dot_split_into_a_tuple(tmp_path: Path) -> None:
+    (tag,) = _parse(tmp_path, '# @web X section=measurements submitGroup=self kind=readonly label="L" path="RGB.R"\n')
+    assert tag.path == ("RGB", "R")
+
+
+def test_parse_web_tags_single_segment_path_is_a_one_tuple(tmp_path: Path) -> None:
+    (tag,) = _parse(tmp_path, '# @web X section=measurements submitGroup=self kind=readonly label="L" path="Lux"\n')
+    assert tag.path == ("Lux",)
+
+
+def test_parse_web_tags_decimals_is_coerced_to_int(tmp_path: Path) -> None:
+    (tag,) = _parse(tmp_path, '# @web X section=measurements submitGroup=self kind=readonly label="L" decimals=4\n')
+    assert tag.decimals == 4
+
+
+def test_parse_web_tags_path_with_empty_segment_rejected(tmp_path: Path) -> None:
+    _parse_expecting(tmp_path, '# @web X section=measurements submitGroup=self kind=readonly label="L" path="RGB."\n', "malformed path")
+
+
+def test_parse_web_tags_path_on_a_non_readonly_field_rejected(tmp_path: Path) -> None:
+    # A PUT body is always flat, so a path on a writable field would render one value and submit
+    # a different one - js/definitions.js's own validateFieldHints() enforces the identical rule.
+    _parse_expecting(tmp_path, '# @web X section=sensors submitGroup=self kind=number label="L" path="RGB.R"\n', "not kind=readonly")
+
+
+def test_parse_web_tags_non_integer_decimals_rejected(tmp_path: Path) -> None:
+    _parse_expecting(tmp_path, '# @web X section=measurements submitGroup=self kind=readonly label="L" decimals=abc\n', "non-integer decimals")
+
+
+def test_parse_web_tags_decimals_out_of_range_rejected(tmp_path: Path) -> None:
+    _parse_expecting(tmp_path, '# @web X section=measurements submitGroup=self kind=readonly label="L" decimals=101\n', "outside 0..100")
+
+
+def test_parse_web_tags_negative_decimals_rejected(tmp_path: Path) -> None:
+    _parse_expecting(tmp_path, '# @web X section=measurements submitGroup=self kind=readonly label="L" decimals=-1\n', "outside 0..100")
+
+
+# ---------------------------------------------------------------------------
 # D2/D3 dropped-piece grammar failures: a malformed key=value payload must fail loud via
 # _WebGrammarError -> "malformed @web tag", the same "dropped piece" direction
 # test_buildgen_requires_tag.py already walks for @requires (trailing junk, a dropped value).
@@ -393,6 +436,43 @@ def test_parse_web_tags_real_bmp3xx_field_names(src_dir: Path) -> None:
     assert {t.field_name for t in tags if t.section == "measurements"} == {"Pres", "Temp", "SLPres", "TS"}
 
 
+def test_parse_web_tags_real_isl29125_field_names(src_dir: Path) -> None:
+    tags = parse_web_tags(src_dir / "asy_isl29125_driver.py", "dev", "isl29125")
+    assert {t.field_name for t in tags if t.section == "sensors"} == {
+        "SampleInterv", "Resolution", "RangeAuto", "Range", "AutoRangeThresh", "AutoRangeDwell",
+        "IrCompOffset", "IrCompAdjust", "FiltCoeff", "GainRatio", "ISLCalibrate",
+    }
+    assert {t.field_name for t in tags if t.section == "measurements"} == {
+        "Lux", "R", "G", "B", "H", "S", "Bri", "CCT", "RangeAct", "GainMeas", "TS",
+    }
+
+
+def test_parse_web_tags_real_isl29125_enum_specials(src_dir: Path) -> None:
+    tags = parse_web_tags(src_dir / "asy_isl29125_driver.py", "dev", "isl29125")
+    resolution = next(t for t in tags if t.field_name == "Resolution")
+    assert dict(resolution.special) == {"12": "12 bit (fast)", "16": "16 bit (flicker-rejecting)"}
+    range_field = next(t for t in tags if t.field_name == "Range")
+    assert dict(range_field.special) == {"375": "375 lx", "10000": "10000 lx"}
+
+
+def test_parse_web_tags_real_isl29125_nested_measurement_fields_carry_path_and_decimals(src_dir: Path) -> None:
+    # R/G/B/H/S/Bri are the first (and, at the time of writing, only) fields in src/ whose
+    # measurement body is nested (get_dict_data()'s own hand-written {"RGB": {...}, "HSB": {...}}
+    # override) - this is the real driver this new tag capability was built for.
+    tags = parse_web_tags(src_dir / "asy_isl29125_driver.py", "dev", "isl29125")
+    red = next(t for t in tags if t.field_name == "R")
+    assert red.path == ("RGB", "R")
+    assert red.decimals == 4
+    hue = next(t for t in tags if t.field_name == "H")
+    assert hue.path == ("HSB", "H")
+    lux = next(t for t in tags if t.field_name == "Lux")
+    assert lux.path is None  # flat field, no nesting
+    assert lux.decimals == 2
+    gain_ratio = next(t for t in tags if t.field_name == "GainRatio")
+    assert gain_ratio.path is None  # a sensors (config) field can carry decimals with no path at all
+    assert gain_ratio.decimals == 3
+
+
 def test_parse_web_tags_real_sgp40_field_names_and_specials(src_dir: Path) -> None:
     # This is the file BUILD_CHAIN_PLAN.md flags as the real generator-behavior finding: each of
     # these three fields has a documented "0 means X" meaning despite an ordinary (special=None)
@@ -438,6 +518,7 @@ def test_parse_web_tags_real_notification_field_names(src_dir: Path) -> None:
         ("asy_scd30_driver.py", ("measurements", "self")),
         ("asy_sgp40_driver.py", ("measurements", "self")),
         ("asy_bmp3xx_driver.py", ("measurements", "self")),
+        ("asy_isl29125_driver.py", ("measurements", "self")),
         ("asy_wifi_service.py", ("networking", "identity")),
         ("asy_ntp_client.py", ("networking", "ntp")),
         ("system_service.py", ("system", "settings")),
@@ -452,6 +533,6 @@ def test_parse_web_group_tags_real_drivers_declare_expected_group(src_dir: Path,
 def test_no_other_src_driver_declares_an_unnoticed_web_tag(src_dir: Path) -> None:
     tagged = {p.name for p in sorted(src_dir.glob("*.py")) if parse_web_tags(p, "dev", "x")}
     assert tagged == {
-        "asy_scd30_driver.py", "asy_sgp40_driver.py", "asy_bmp3xx_driver.py",
+        "asy_scd30_driver.py", "asy_sgp40_driver.py", "asy_bmp3xx_driver.py", "asy_isl29125_driver.py",
         "asy_wifi_service.py", "asy_ntp_client.py", "system_service.py", "asy_notification_service.py",
     }

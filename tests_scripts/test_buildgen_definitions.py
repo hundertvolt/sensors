@@ -17,6 +17,7 @@ from buildgen.version import WEBSITE_VERSION
 
 DEVICE_NAMES = ["dev", "wozi", "arzi", "klkizi", "grkizi", "schlafzi"]
 BMP3XX_DEVICES = {"dev", "wozi"}
+ISL29125_DEVICES = {"dev"}
 
 
 @pytest.fixture
@@ -82,6 +83,17 @@ def test_bmp3xx_group_presence_matches_device_instance_set(repo_root: Path, src_
         assert "BMP3XX" in group_keys
     else:
         assert "BMP3XX" not in group_keys
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_isl29125_group_presence_matches_device_instance_set(repo_root: Path, src_dir: Path, device: str) -> None:
+    generated = _generate(repo_root, src_dir, device)
+    sensors_section = next(s for s in generated["sections"] if s["key"] == "sensors")
+    group_keys = {g["key"] for g in sensors_section["groups"]}
+    if device in ISL29125_DEVICES:
+        assert "ISL29125" in group_keys
+    else:
+        assert "ISL29125" not in group_keys
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)

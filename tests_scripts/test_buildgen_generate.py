@@ -107,6 +107,11 @@ def test_novel_combo_fixture_generates_successfully(fixtures_dir: Path, src_dir:
     assert "WarnCO2" in result.module_source
     assert "WarnVOC" not in result.module_source
     assert "WarnHum" not in result.module_source
+    # ISL29125 on i2c0 with no fram_target - proves the driver generalizes beyond dev.toml's own
+    # i2c1/GPIO6/fram-wired instance.
+    isl_call = next(line for line in result.module_source.splitlines() if "ISL29125_Reader(" in line)
+    assert "ISL29125_Reader(i2c0, 3, trigger_sec=5" in isl_call
+    assert "fram=" not in isl_call
 
 
 def test_novel_combo_construction_order_is_topologically_valid(fixtures_dir: Path, src_dir: Path, ext_dir: Path) -> None:
@@ -318,6 +323,28 @@ def test_bmp3xx_trigger_sec_is_rendered_into_the_constructor_call(tmp_path: Path
     doc["instance"].append({"driver": "bmp3xx", "bus": "i2c0", "address": 0x77, "trigger_sec": 42, "wiring": {"fram_target": "fram"}})
     result = generate_device(write_doc(tmp_path, "dev", doc), src_dir, ext_dir)
     assert "trigger_sec=42" in result.module_source
+    ast.parse(result.module_source)
+
+
+def test_isl29125_irq_pin_and_trigger_sec_are_rendered_into_the_constructor_call(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
+    # irq_pin is a required positional arg (like scd30's own shape); trigger_sec is optional (like
+    # bmp3xx's own shape) - ISL29125_Reader is the one driver combining both.
+    doc = base_doc()
+    doc["instance"].append({"driver": "isl29125", "bus": "i2c0", "irq_pin": 6, "trigger_sec": 5, "wiring": {"fram_target": "fram"}})
+    result = generate_device(write_doc(tmp_path, "dev", doc), src_dir, ext_dir)
+    assert "ISL29125_Reader(i2c0, 6, trigger_sec=5" in result.module_source
+    assert "fram=fram" in result.module_source
+    ast.parse(result.module_source)
+
+
+def test_isl29125_without_trigger_sec_or_fram_target_omits_both(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
+    # Both are optional - a device wiring neither must still generate a valid, minimal call.
+    doc = base_doc()
+    doc["instance"].append({"driver": "isl29125", "bus": "i2c0", "irq_pin": 6})
+    result = generate_device(write_doc(tmp_path, "dev", doc), src_dir, ext_dir)
+    call = next(line for line in result.module_source.splitlines() if "ISL29125_Reader(" in line)
+    assert "trigger_sec" not in call
+    assert "fram=" not in call
     ast.parse(result.module_source)
 
 

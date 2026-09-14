@@ -6,10 +6,11 @@ from typing import Any
 from buildgen.buildspec import ADDRESS_CAPABLE_DRIVERS, BUS_ATTACHED_DRIVERS, FIXED_ADDRESS_DRIVERS
 from buildgen.model import DeviceModel, instance_label
 
-# scd30/sgp40 carry no TOML `address` field (buildspec.py's own FIXED_ADDRESS_DRIVERS) - their real
-# I2C address is fixed in hardware, matching asy_scd30_driver.py's/asy_sgp40_driver.py's own
-# defaults - a twin-only named exception, not a broken generalization promise (see README.md).
-FIXED_ADDRESSES: "dict[str, int]" = {"scd30": 0x61, "sgp40": 0x59}
+# scd30/sgp40/isl29125 carry no TOML `address` field (buildspec.py's own FIXED_ADDRESS_DRIVERS) -
+# their real I2C address is fixed in hardware, matching asy_scd30_driver.py's/asy_sgp40_driver.py's/
+# asy_isl29125_driver.py's own defaults - a twin-only named exception, not a broken generalization
+# promise (see README.md).
+FIXED_ADDRESSES: "dict[str, int]" = {"scd30": 0x61, "sgp40": 0x59, "isl29125": 0x44}
 
 
 def _compute_uart_wiring(model: DeviceModel) -> "dict[str, str] | None":
@@ -61,7 +62,9 @@ def compute_twin_wiring(model: DeviceModel) -> "dict[str, Any]":
             # buildspec.py without a matching FIXED_ADDRESSES entry here.
             raise ValueError(f"digital twin twin_wiring has no address rule for bus-attached driver {spec.driver!r} - add it to buildgen.twin_wiring.FIXED_ADDRESSES or ADDRESS_CAPABLE_DRIVERS")
         attachment: dict[str, Any] = {"driver": spec.driver, "name_ext": spec.name_ext, "address": address}
-        if spec.driver == "scd30":
+        if spec.driver in ("scd30", "isl29125"):
+            # Both wire a real INT/RDY line the twin's chip fake has to drive edges on
+            # (machine._build_i2c_chip()) - bmp3xx/sgp40 have no such pin at all.
             attachment["irq_pin"] = spec.fields["irq_pin"]
         buses.setdefault(bus_name, []).append(attachment)
     return {"device": model.device, "buses": buses, "spi": spi, "uart": uart}

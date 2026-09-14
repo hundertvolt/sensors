@@ -39,7 +39,7 @@ _NOTIFICATION_SECTION_SKELETON: "dict[str, Any]" = {
 
 # Instances scanned per-device (their web-facing fields/groups vary by which TOML instance exists,
 # and by name_ext when more than one instance of the same driver is present).
-_SENSOR_DRIVERS = ("scd30", "sgp40", "bmp3xx")
+_SENSOR_DRIVERS = ("scd30", "sgp40", "bmp3xx", "isl29125")
 
 # buildgen.codegen._KNOWN_SIGNALS' own parallel: label/unit UI metadata for the same three warn_*
 # TOML wiring keys, keyed identically. Min/max match that catalog's own field-schema literals
@@ -102,18 +102,20 @@ _ERRCOUNT_CATALOG: "tuple[tuple[str, str, bool], ...]" = (
     ("scd30", "SCD30", False),  # NVM-backed - no local ConfigManager, so no CFGMGR_ companion (H.6)
     ("sgp40", "SGP40", True),
     ("bmp3xx", "BMP388", True),
+    ("isl29125", "ISL29125", True),
     ("neopixel", "Neopixel LED", False),
     ("notification", "Notification Service", True),
     ("webserver", "Web Server", False),
 )
 _ERRCOUNT_NAME: "dict[str, str]" = {
     "wifi": "WIFI", "dns": "DNSSRV", "ntp": "NTP", "fram": "FRAM", "system": "SYSTEM",
-    "scd30": "SCD30", "sgp40": "SGP40", "bmp3xx": "BMP3XX", "neopixel": "NEOPIXEL",
+    "scd30": "SCD30", "sgp40": "SGP40", "bmp3xx": "BMP3XX", "isl29125": "ISL29125", "neopixel": "NEOPIXEL",
     "notification": "NOTIFY", "webserver": "WEBSERVER",
 }
 _CFGMGR_LABEL: "dict[str, str]" = {
     "wifi": "Wi-Fi Config Store", "ntp": "NTP Config Store", "system": "System Config Store",
-    "sgp40": "SGP40 Config Store", "bmp3xx": "BMP388 Config Store", "notification": "Notification Config Store",
+    "sgp40": "SGP40 Config Store", "bmp3xx": "BMP388 Config Store", "isl29125": "ISL29125 Config Store",
+    "notification": "Notification Config Store",
 }
 
 
@@ -235,6 +237,10 @@ def _build_field_def(tag: WebFieldTag, schema: "FieldSchema | None", device: str
         out["dispatch"] = True
     if tag.default_value is not None:
         out["defaultValue"] = tag.default_value
+    if tag.path is not None:
+        out["path"] = list(tag.path)
+    if tag.decimals is not None:
+        out["decimals"] = tag.decimals
     return out
 
 

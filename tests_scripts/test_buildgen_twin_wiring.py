@@ -93,9 +93,10 @@ def test_bmp3xx_address_is_read_from_the_toml_not_the_fixed_table(repo_root: Pat
 
 
 def test_fixed_addresses_table_matches_the_real_drivers_own_hardware_defaults() -> None:
-    # src/asy_scd30_driver.py's own _SCD30_DEFAULT_ADDR and src/asy_sgp40_driver.py's own
-    # address=0x59 default - see buildgen/twin_wiring.py's own FIXED_ADDRESSES docstring.
-    assert FIXED_ADDRESSES == {"scd30": 0x61, "sgp40": 0x59}
+    # src/asy_scd30_driver.py's own _SCD30_DEFAULT_ADDR, src/asy_sgp40_driver.py's own
+    # address=0x59 default, and src/asy_isl29125_driver.py's own hard-wired 0x44 (no
+    # address-select pin at all) - see buildgen/twin_wiring.py's own FIXED_ADDRESSES docstring.
+    assert FIXED_ADDRESSES == {"scd30": 0x61, "sgp40": 0x59, "isl29125": 0x44}
 
 
 # ---------------------------------------------------------------------------

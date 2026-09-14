@@ -157,7 +157,7 @@ def test_configure_i2c_wiring_dev_matches_the_documented_layout() -> None:
     i2c1 = I2C(1, scl=Pin(15), sda=Pin(14), freq=50000)
     spi0 = SPI(0, sck=Pin(2), mosi=Pin(3), miso=Pin(4))
     assert i2c0.scan() == [0x77]  # BMP3xx alone
-    assert i2c1.scan() == [0x59, 0x61]  # SCD30 + SGP40 sharing the bus
+    assert i2c1.scan() == [0x44, 0x59, 0x61]  # SCD30 + SGP40 + ISL29125 sharing the bus
     assert spi0.device is not None
     assert spi0.device.size == 0x40000
     assert spi0.device.rdid_response == _DEV_FRAM_RDID
