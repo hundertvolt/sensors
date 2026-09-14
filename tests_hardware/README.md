@@ -824,12 +824,38 @@ tasks. Without it, `cfgmgr.valid` stays `False`, the reader's first config read 
 the read loop fails silently (visible only at `debug=5`, e.g. "Error reading config data!") without
 ever attempting a real sensor read. Found independently in `bmp3xx_plausibility_read.py` and
 `sgp40_fram_backup_restore.py`. Never call `cfgmgr.setup()` in such scripts - that performs a real
-littlefs file write/read. The four `isl29125_*.py` scripts that build an
-`ISL29125_Reader` (plausibility, real IRQ edge, mechanism envelope, lighting scenarios) follow the
-same pattern; the two
-concurrency ones, and the `_measure_*` half of `isl29125_real_irq_edge.py`, sidestep it entirely by
-constructing the protocol layer (`ISL29125_I2C`) alone, which has no `cfgmgr` at all - the shape
-Part C.8 requires of any concurrency script touching persisted config.
+littlefs file write/read.
+
+**DERIVE that cache from the driver's own schema; never hand-list the keys.** The one line to copy:
+
+```python
+reader.cfgmgr._cache = {field[0]: field[2] for field in reader.cfg_schema if field[2] is not None}
+```
+
+then override only what the script deliberately varies, on the following lines. `cfg_schema` is a
+public attribute (`base_classes.py`, SPECIFICATION.md Part C.5.1) and the predicate keeps every
+field that has a default while skipping command-only entries, which have none (`ISLCalibrate`,
+`SGPResetVOC`). Keep it inline per script - `mpremote run` executes a single file and only frozen
+`src/` modules are importable, so a shared helper in `device_scripts/` would not resolve on the
+device (`isl29125_conformance.py` is host-side and is not a counter-example).
+
+This is not a style preference. A hand-listed cache silently desynchronises the moment a driver
+gains a config key: the batch read in `_init_*()` comes back short of its `_N_*_CFG` length check,
+init logs its "Error reading config data!" errno and returns False, and the read chain never starts
+- which presents as a **dead or unwired sensor**, not as a config problem. That cost three of the
+four `isl29125_*.py` scripts on 2026-09-14 when `GainRatio` joined the schema; all four now derive.
+
+**Still hand-listed, and therefore still exposed** (both verified in sync as of 2026-09-14, so this
+is latent risk rather than a live bug - convert whichever one its driver's schema changes first):
+
+| Script | Keys | Note |
+|---|---|---|
+| `bmp3xx_plausibility_read.py` | 8 | matches all 8 BMP3XX schema defaults |
+| `sgp40_fram_backup_restore.py` | 3 | the literal appears **twice** in the file (reader1 and reader2), doubling the drift surface |
+
+The two ISL29125 concurrency scripts, and the `_measure_*` half of `isl29125_real_irq_edge.py`,
+sidestep priming entirely by constructing the protocol layer (`ISL29125_I2C`) alone, which has no
+`cfgmgr` at all - the shape Part C.8 requires of any concurrency script touching persisted config.
 
 ## Sixth pass - the `dut_ip()` fixture's retry/recovery methodology, and other bench-harness findings
 

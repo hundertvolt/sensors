@@ -690,6 +690,22 @@ constraints.
     `rm` the binary and re-run `scripts/test.sh`, which rebuilds it.
 
 ## Deferred / explicitly out-of-scope work
+- **Two device scripts still hand-list their `cfgmgr._cache` keys, and will break as a "dead
+  sensor" the day their driver gains a config key.** `bmp3xx_plausibility_read.py` (8 keys) and
+  `sgp40_fram_backup_restore.py` (3 keys, and the literal appears **twice** in that file, for
+  reader1 and reader2). Both were verified in sync on 2026-09-14, so this is latent risk, not a live
+  bug — which is exactly why it is easy to forget. The failure mode is not a config error: the batch
+  read in `_init_*()` comes back short of its `_N_*_CFG` length check, init logs its "Error reading
+  config data!" errno and returns False, and the read chain never starts, so the script reports
+  *"sensor not responding or not wired to i2c1"* / `samples=0`. That is precisely what happened to
+  three of the four `isl29125_*.py` scripts when `GainRatio` joined the ISL schema (2026-09-14):
+  hours look like a hardware fault before anyone suspects the cache. The fix is one line, already
+  applied to all four ISL scripts and written up as a standing rule in `tests_hardware/README.md`'s
+  priming note:
+  `reader.cfgmgr._cache = {field[0]: field[2] for field in reader.cfg_schema if field[2] is not None}`
+  plus explicit overrides. **Convert whichever script its driver's schema changes first** — doing it
+  pre-emptively needs a real-hardware run to re-verify each, which is the only reason it is deferred
+  rather than done. Not a general licence to leave new scripts hand-listed: anything new derives.
 - **A digital-twin soak's wall clock is set by GC timing, so it must never be bisected to a code
   change** (established 2026-09-11 after one was — see SPECIFICATION.md Part E.7 for the measurement
   and the inverted control). Not open work: the finding itself is the resolution, and
