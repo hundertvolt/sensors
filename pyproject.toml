@@ -551,7 +551,12 @@ follow_imports_for_stubs = true
 # MICROPYPATH resolves them from - scripts/typecheck.sh runs scripts/_generate_sensortask_modules.py
 # first so the directory is actually populated before mypy runs. No collision risk: this directory
 # holds only sensortask_<device>.py files, none of which exist under src/.
-mypy_path = ["typings", "src", "build/generated_src"]
+# tests_hardware/device_modules: MicroPython-target support modules frozen into a test-only
+# firmware build (memory_pressure, buildgen/gc_policy.py's PRESSURE_MODULE), imported by name from
+# device scripts exactly the way src/ modules are. On mypy_path rather than relying on `files`
+# below, because CI's own Mypy step passes an explicit scope list that overrides `files` - without
+# this, `import memory_pressure` resolves locally and fails only in CI.
+mypy_path = ["typings", "src", "build/generated_src", "tests_hardware/device_modules"]
 custom_typeshed_dir = "typings"
 # Without this, mypy also auto-discovers the dev venv's own packages (mypy/ruff/pytest's own
 # runtime dependencies, e.g. typing_extensions) as importable modules and tries to type-check
