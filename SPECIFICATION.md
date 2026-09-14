@@ -2706,9 +2706,37 @@ failures. **`micropython.heap_unlock()` is not a substitute** — it subtracts
 negative and still "locked".
 
 `digital_twin/unix_port_gc_unwedge.py` packages this, alongside `unix_port_poll_prewarm.py`'s
-similar Unix-port-quirk workaround; both digital-twin runners call it first in their
-`except KeyboardInterrupt:` handler, before `flush_fram()`/`flush_scd30()`. **`src/` needs nothing**
-— it has no `KeyboardInterrupt` shutdown path, and rp2 has no SIGINT.
+similar Unix-port-quirk workaround. **`src/` needs nothing** — it has no `KeyboardInterrupt`
+shutdown path, and rp2 has no SIGINT.
+
+**Two call sites, not one (found 2026-09-14 while chasing a `scripts/_digital_twin_ci_suite.py`
+`_shutdown()` timeout that needed an external SIGKILL, CI job `grkizi`).**
+`run_generic_integration.py`'s own `main()` coroutine has its own `try/finally` that calls
+`flush_fram()`/`flush_scd30()` directly (needed so a bounded `--duration` run, which never raises
+`KeyboardInterrupt` at all, still flushes on a clean exit) — before this fix, that `finally:` block
+called neither `unwedge_heap_after_interrupt()` nor anything else that clears a wedged heap before
+its own allocations, in violation of this Part's own stated rule ("call it first ... before
+`flush_fram()`/`flush_scd30()`"), which only ever described the *outer* `except KeyboardInterrupt:`
+handler around `asyncio.run()`. A `KeyboardInterrupt` reaches one site or the other depending on
+what the Unix-port SIGINT handler's `nlr_raise()` (an immediate, synchronous longjmp — see
+`ports/unix/unix_mphal.c`'s `sighandler()`, gated on `MICROPY_ASYNC_KBD_INTR`, which the `standard`
+build variant used here has enabled) happened to interrupt: `main()`'s own `finally:` runs only
+when the interrupt lands while `main()`'s own coroutine is the one currently executing (not
+suspended at its own `await asyncio.sleep(...)` line) — otherwise the exception propagates straight
+out of `asyncio.core.run_until_complete()`'s scheduler loop without ever entering `main()`'s frame,
+landing directly in the outer handler instead, which already called `unwedge_heap_after_interrupt()`
+correctly. Fixed by calling it unconditionally at the top of `main()`'s own `finally:` block too,
+matching this Part's "unconditional and cheap" reasoning for the outer site. **This was not
+reproduced locally** — the SIGINT-during-`gc_collect()` race is inherently timing-dependent
+(~5% per interrupt) and the `grkizi` failure's own captured job log has no
+`MemoryError: ... heap is locked` line to confirm this was the actual mechanism that run hit, only
+a bare `exit code -9` with zero other diagnostic content. This fix is offered as the one concrete,
+source-confirmed gap found against this Part's own documented invariant, not as a confirmed
+root cause. `scripts/_digital_twin_ci_suite.py`'s `_shutdown()` now captures `/proc/<pid>/status`
+(`State`/`VmRSS`), `/proc/<pid>/wchan` (which kernel function, if any, the process is blocked in —
+`select`/`poll` vs. a futex vs. genuinely runnable, distinguishing a wedged heap spinning in
+Python from a real stuck syscall) and the run's own last 20 log lines on a shutdown timeout, before
+the `SIGKILL` fallback — so a future recurrence is self-diagnosing from the CI job log alone.
 
 ---
 
