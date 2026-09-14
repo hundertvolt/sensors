@@ -910,8 +910,9 @@ class ISL29125_Reader(SensorReaderConfig):
         # write) and disarms the interrupt by writing INTSEL = 00 (a CONFIG3 write). Parking the
         # thresholds cannot disarm it - the part fires on "below OR EQUAL TO" the low threshold,
         # so a low threshold of 0x0000 still interrupts in total darkness.
-        self._range_auto = flag
-        try:
+        try:  # neither branch reads the flag, so it is cached only once the chip has taken it -
+            # a False here makes _recover_failed_push() roll the PERSISTED value back, and a cache
+            # updated regardless would leave the two disagreeing until the next restart.
             if flag:
                 await self.isl.configure(threshold_interrupt=True)
             else:
@@ -920,6 +921,7 @@ class ISL29125_Reader(SensorReaderConfig):
         except Exception as e:
             await self.pr.err_s("Error applying the auto-range mode:", e, errno=38)
             return False
+        self._range_auto = flag
         if flag:
             await self._switch_range(self._active_range)  # re-arm the thresholds for where we are
         return True

@@ -1868,6 +1868,22 @@ def test_turning_autorange_off_logs_errno_38_when_that_write_fails() -> None:
     assert 38 in errors(counters)
 
 
+def test_a_failed_autorange_mode_write_leaves_the_live_flag_where_the_config_still_says() -> None:
+    # The one setter that caches a config value in RAM *and* writes to the chip. The base class
+    # rolls the persisted value back when a push reports False (_recover_failed_push), so caching
+    # the new flag regardless would leave the reader auto-ranging against a config that says it is
+    # not - invisible until the next restart re-reads the file.
+    i2c, reader = ready_reader("auto_off_flag")
+
+    async def scenario() -> None:
+        with _FastAsyncSleep():
+            fake(i2c).inject_fault("writeto_mem", OSError(errno_mod.EIO, "no ACK"), times=1)
+            assert await reader.set_range_auto(flag=False) is False
+
+    run(scenario())
+    assert reader._range_auto is True
+
+
 def test_setting_range_while_autorange_is_on_stores_the_preference_without_a_chip_write() -> None:
     i2c, reader = ready_reader("range_pref")
     with _FastAsyncSleep():
