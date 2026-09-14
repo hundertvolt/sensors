@@ -80,7 +80,7 @@ uv run pytest tests_hardware/flash --allow-multi-day-rollover-wait -k test_ticks
 # default - this genuinely re-flashes the board, see SPECIFICATION.md Part E.6.3):
 scripts/run_flash_hardware_suite.sh --allow-flash-cycle
 
-# Add --allow-neopixel-sweep to also run the three ISL29125 light tests (skipped by default -
+# Add --allow-neopixel-sweep to also run the two ISL29125 light tests (skipped by default -
 # they need the NeoPixel rig physically set up, see "The ISL29125 NeoPixel light rig" below):
 scripts/run_flash_hardware_suite.sh --allow-neopixel-sweep
 

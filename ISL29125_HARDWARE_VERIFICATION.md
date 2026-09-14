@@ -324,3 +324,34 @@ Approached from *below* (dark first) the same light settles on the 375 range, wh
 step: park the pixel dark and let auto-range settle onto the low range before raising it to the
 overlap level.** Whether the gate should use peak for consistency with the range decision is a
 design question for the owner, not something to change from the bench.
+
+## Finding 3 — `scd30_same_device_rw_concurrency.py` reads across a soft reset with no settle
+
+Not changed, reported only — SCD30, outside this branch's scope, but it **blocks one ISL29125 test**.
+
+`tests_hardware/flash/test_bus_concurrency.py::test_isl29125_cross_device_concurrency_with_its_i2c1_neighbours`
+errors in *setup*, not in the test: its session-scoped `scd30_continuous_measurement_triggered`
+fixture runs `scd30_same_device_rw_concurrency.py`, which reported
+`CO2=141.9928 outside plausible bounds` identically on all 10 reported iterations.
+
+The sensor is fine — under production firmware the same chip read 596.9 and 605.9 ppm either side
+of the failure. The script's own sequence is the problem:
+
+- `scd30_plausibility_read.py` waits `_SETTLE_S = 45.0` after reset and **deliberately discards**
+  every reading inside it, with the reason in its docstring: "post-reset settle window (tau63% >10s)".
+- `scd30_same_device_rw_concurrency.py` calls `await scd.setup()` — its own comment says "a real
+  soft reset" — and then starts `reader()` **immediately**, with no settle at all, while applying
+  the *same* `CO2_MIN_PPM = 200` plausibility bound to those readings. It also never gates on
+  data-ready, so it can re-read stale registers.
+
+So it asserts datasheet plausibility bounds against readings taken inside the exact window its
+sibling documents as untrustworthy. This is latent rather than new: it passes whenever the
+post-reset register content happens to land above 200 ppm, and fails when it does not. The fix is
+presumably the settle the sibling already has, but that is an SCD30 decision and the fixture is
+session-scoped because it costs a real NVM write, so it is left for the owner rather than tried
+repeatedly from the bench.
+
+Consequence for this branch: the two ISL bus-hazard tests that do not depend on that fixture pass
+(`test_isl29125_same_device_read_write_concurrency`,
+`test_isl29125_real_irq_edge_beats_the_periodic_fallback` — twice each). The cross-device one has
+still never executed.
