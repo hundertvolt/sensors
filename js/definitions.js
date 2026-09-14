@@ -208,8 +208,10 @@ function validateFieldHints(field, where) {
             problems.push(`${where}.path is only valid on a readonly field, not kind "${String(f.kind)}"`);
         }
     }
-    if (f.decimals !== undefined && (typeof f.decimals !== "number" || !Number.isInteger(f.decimals) || f.decimals < 0)) {
-        problems.push(`${where}.decimals must be a non-negative integer when present`);
+    // 100 is Number#toFixed's own ceiling, above which it throws a RangeError - so a larger
+    // value would pass here and then break the card it is on, which is what this exists to stop.
+    if (f.decimals !== undefined && (typeof f.decimals !== "number" || !Number.isInteger(f.decimals) || f.decimals < 0 || f.decimals > 100)) {
+        problems.push(`${where}.decimals must be an integer from 0 to 100 when present`);
     }
     return problems;
 }

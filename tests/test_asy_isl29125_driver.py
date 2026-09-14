@@ -1793,6 +1793,68 @@ def test_the_derivation_degrades_to_the_shortest_window_when_none_fits() -> None
     assert isl.persist_for_interval(0) == 1
 
 
+def test_a_config_push_landing_mid_read_scales_the_sample_by_the_gain_it_was_taken_on() -> None:
+    # One read cycle has several awaits, and asyncio can run a REST handler at any of them, so a
+    # PUT changing Resolution or Range can land between the status read and the data read. The data
+    # registers are double-buffered (p13), so what comes back is still the conversion the part made
+    # under the OLD config - the new one has only just restarted. Scaling it by the new config is
+    # therefore wrong by 16x for a resolution change, which also drags the reading past the 12-bit
+    # maximum and reports a saturation that never happened.
+    i2c, reader = ready_reader("mid_read_push")
+    seed_cycle(i2c, 20000, 20000, 20000)
+    real_status = reader.isl.read_status
+
+    async def _status_then_a_rest_push() -> int:
+        value = await real_status()
+        assert await reader.set_resolution(12) is True
+        return value
+
+    reader.isl.read_status = _status_then_a_rest_push  # type: ignore[method-assign]
+    with _FastAsyncSleep():
+        green, red, blue, sample_range, _timestamp = run(reader._read_isl())
+    assert (green, red, blue) == (20000, 20000, 20000), "a 16-bit conversion must not be shifted as if it were 12-bit"
+    assert sample_range == _RANGE_HIGH_LUX
+    assert 12 not in warnings(run(reader.get_error_counter())), "no saturation happened, so none may be reported"
+
+
+def test_a_failed_config_write_leaves_the_shadow_on_the_value_the_chip_still_holds() -> None:
+    # The shadow is not bookkeeping - normalise() scales EVERY reading by it. A resolution the chip
+    # never took would make twelve_bit true against 16-bit data, shifting every later sample up by
+    # 16x and reporting saturation above 4095, which pins auto-range on the high range. Nothing in
+    # the read path would notice: the reads themselves keep succeeding.
+    i2c, isl = ready_protocol()
+    run(isl.setup())
+    fake(i2c).inject_fault("writeto_mem", OSError(errno_mod.EIO, "no ACK"), times=1)
+    raised = False
+    try:
+        run(isl.configure(resolution=12))
+    except OSError:
+        raised = True
+    assert raised, "configure() still reports the failure to its caller"
+    decoded = ISL29125_I2C.decode_config(isl.encode_shadow())
+    assert decoded is not None
+    assert decoded[0] == 16, "the chip is still at 16 bit, so the shadow must be too"
+    # And the consequence the shadow exists to get right, asserted through the real scaler.
+    counts, saturated = isl.normalise((20000, 20000, 20000), range_fs=_RANGE_HIGH_LUX)
+    assert counts == (20000, 20000, 20000), "a 16-bit reading must not be shifted as if it were 12-bit"
+    assert saturated is False
+
+
+def test_a_failed_config_write_does_not_make_the_divergence_check_see_a_phantom_change() -> None:
+    # The same defect seen from the other side: a shadow carrying a value the chip never took makes
+    # matches_shadow() report a divergence that is really the driver's own lost write, so the
+    # recovery path would re-apply a setting the caller was already told had failed.
+    i2c, isl = ready_protocol()
+    run(isl.setup())
+    on_chip = isl.encode_shadow()
+    fake(i2c).inject_fault("writeto_mem", OSError(errno_mod.EIO, "no ACK"), times=1)
+    try:
+        run(isl.configure(range_fs=_RANGE_HIGH_LUX, ir_adjust=7))
+    except OSError:
+        pass
+    assert isl.matches_shadow(on_chip) is True
+
+
 def test_re_deriving_the_transient_rejection_logs_errno_24_when_that_write_fails() -> None:
     # CONFIG3 is a real chip write, so it can fail like any other. Its own errno rather than the
     # caller's, because the value that failed to land is derived - a reader seeing errno=25 or 16
@@ -2933,17 +2995,25 @@ def test_a_partner_reading_of_zero_is_not_turned_into_a_ratio() -> None:
 
 def test_a_leg_whose_range_switch_fails_abandons_the_sandwich_without_a_candidate() -> None:
     # The other way a leg can fail, distinct from the read failing: the switch that ARMS the leg
-    # never lands, so there is no reading to discard and nothing was measured on the wrong gain.
-    # The third leg still runs - it is also what puts the range back - so the run ends where it
-    # started rather than stranding every later sample on the partner's range.
+    # never lands, so the reading that follows would be taken on the range the run is trying to
+    # measure AGAINST - the same gain as this leg, giving a ratio of 1 - unless the guard stops it.
+    #
+    # The legs are chosen so that swallowing the failure produces a PLAUSIBLE, publishable answer
+    # rather than an obviously wrong one: 53340/2000 is 26.67, dead on nominal and comfortably
+    # inside the [20, 34] band. A run that reads the partner leg off the unswitched chip therefore
+    # gets a candidate through every downstream gate, and only this guard refuses it. Picking a
+    # scene that the plausibility check would have caught anyway makes the assertion below pass
+    # against a driver with no guard at all - verified by mutation, not assumed.
     i2c, reader = calibrating_reader("cal_switch_fail")
-    queue_legs(reader, (2000, 2000, 2000))
+    queue_legs(reader, (53340, 53340, 53340), (2000, 2000, 2000))
     with _FastAsyncSleep():
         fake(i2c).inject_fault("writeto_mem", OSError(errno_mod.EIO, "no ACK"), times=1)
         run(reader._measure_gain_ratio(2000))
-    assert reader._measured_ratio() is None
+    assert 29 in errors(run(reader.get_error_counter())), "the switch really did fail"
+    assert reader._measured_ratio() is None, "a leg read off an unswitched chip must not become a candidate"
+    # The third leg still runs - it is also what puts the range back - so the run ends where it
+    # started rather than stranding every later sample on the partner's range.
     assert reader._active_range == _RANGE_HIGH_LUX
-    assert 29 in errors(run(reader.get_error_counter()))
 
 
 if __name__ == "__main__":

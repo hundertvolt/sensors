@@ -56,9 +56,9 @@ const SECTION_DATA_KEY = {
 /**
  * @param {Record<string, unknown>} defs
  * @param {Record<string, unknown>} data
- * @returns {string[]} "section/group/key" for every readonly field that resolves to nothing
+ * @returns {string[]} "section/group/key" for every readonly field that does not render
  */
-function unresolvedReadonlyFields(defs, data) {
+function unrenderableReadonlyFields(defs, data) {
     /** @type {string[]} */
     const missing = [];
     const { sections } = /** @type {{sections: {key: string, groups: {key: string, fields: FieldDef[]}[]}[]}} */ (defs);
@@ -76,8 +76,17 @@ function unresolvedReadonlyFields(defs, data) {
                 if (field.kind !== "readonly") {
                     continue;
                 }
-                if (resolveFieldValue(field, values) === undefined) {
+                const resolved = resolveFieldValue(field, values);
+                if (resolved === undefined) {
                     missing.push(`${section.key}/${group.key}/${field.key}`);
+                    continue;
+                }
+                // A `path` naming a GROUP rather than a leaf resolves to the sub-object itself,
+                // which formatFieldValue() stringifies as "[object Object]". That is a rendered
+                // value, so the undefined check above cannot see it. gmtimestruct is the one
+                // format whose value legitimately is a struct.
+                if (field.format !== "gmtimestruct" && typeof resolved === "object" && resolved !== null) {
+                    missing.push(`${section.key}/${group.key}/${field.key} (an object, not a leaf)`);
                 }
             }
         }
@@ -92,11 +101,11 @@ describe("definitions and mockdata agree", () => {
     // while the real device body never carried it. Nothing compared the two sources, so both
     // rendered as a permanently blank row that looked like a device that had not reported yet.
     it("every readonly field dev's definitions name resolves in dev's mockdata", () => {
-        expect(unresolvedReadonlyFields(dev, devData)).toEqual([]);
+        expect(unrenderableReadonlyFields(dev, devData)).toEqual([]);
     });
 
     it("every readonly field wozi's definitions name resolves in wozi's mockdata", () => {
-        expect(unresolvedReadonlyFields(wozi, woziData)).toEqual([]);
+        expect(unrenderableReadonlyFields(wozi, woziData)).toEqual([]);
     });
 
     // Guards the check itself: a resolver that silently returned a value for everything would make
@@ -105,6 +114,17 @@ describe("definitions and mockdata agree", () => {
         const defs = {
             sections: [{ key: "measurements", groups: [{ key: "GHOST", fields: [{ key: "Nope", label: "Nope", kind: "readonly" }] }] }],
         };
-        expect(unresolvedReadonlyFields(defs, { measurements: {} })).toEqual(["measurements/GHOST/Nope"]);
+        expect(unrenderableReadonlyFields(defs, { measurements: {} })).toEqual(["measurements/GHOST/Nope"]);
+    });
+
+    it("reports a nested path that stops on a group instead of a leaf", () => {
+        // The nested measurement group the ISL29125 introduced makes this reachable for the first
+        // time: `path: ["RGB"]` resolves, so the absence check above passes, and the card renders
+        // "[object Object]" where a number belongs.
+        const defs = {
+            sections: [{ key: "measurements", groups: [{ key: "ISL29125", fields: [{ key: "R", label: "Red", kind: "readonly", path: ["RGB"] }] }] }],
+        };
+        const data = { measurements: { ISL29125: { RGB: { R: 0.5, G: 0.25, B: 0.125 } } } };
+        expect(unrenderableReadonlyFields(defs, data)).toEqual(["measurements/ISL29125/R (an object, not a leaf)"]);
     });
 });

@@ -194,7 +194,10 @@ describe("validateDefinitions", () => {
     });
 
     it("rejects a malformed decimals hint", () => {
-        for (const decimals of [-1, 1.5, "2", null]) {
+        // 101 is the real ceiling, not a round number: Number#toFixed throws a RangeError above
+        // 100, so a definitions file declaring more would pass validation and then break the card
+        // it is on - which is exactly what this validator exists to prevent.
+        for (const decimals of [-1, 1.5, "2", null, 101]) {
             const problems = validateDefinitions(withField({ key: "Lux", label: "Lux", kind: "readonly", decimals }));
             expect(problems.some((p) => p.includes(".decimals")), JSON.stringify(decimals)).toBe(true);
         }

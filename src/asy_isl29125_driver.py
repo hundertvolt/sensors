@@ -336,6 +336,14 @@ class ISL29125_Reader(SensorReaderConfig):
             timestamp = time.mktime(time.gmtime())
             if self.isl.time_to_settle_ms() > 0:
                 await self._settle_wait()
+            # Both scaling inputs captured HERE, after the settle wait and before the first await
+            # that can let anything else run - the settle wait is what guarantees the conversion in
+            # the data registers was made under the config live at this instant. Two things move
+            # them later: the range switch below, and a REST push landing on any of this cycle's
+            # own awaits. The data registers are double-buffered (p13), so a later push changes
+            # only what this reading would wrongly be scaled BY - the range ratio, or 16x.
+            sample_range = self._active_range
+            sample_resolution = self.isl.resolution()
             try:
                 status = await self.isl.read_status()
             except Exception as e:  # distinguishable from a data-read failure, and not re-raised
@@ -358,11 +366,7 @@ class ISL29125_Reader(SensorReaderConfig):
                 await self.pr.err_s("All-ones data with an implausible status byte, confirmed by a failed device-ID re-read", errno=32)
                 return None, None, None, None, None
 
-            counts, saturated = self.isl.normalise(raw, range_fs=self._active_range)
-            # Captured BEFORE the switch below, which updates self._active_range: this sample was
-            # taken on the old gain and must be scaled by it, once per switch, in the direction
-            # that would otherwise make the error largest.
-            sample_range = self._active_range
+            counts, saturated = self.isl.normalise(raw, range_fs=sample_range, resolution=sample_resolution)
             target = self._evaluate_range(counts, saturated=saturated)
             if target is not None:
                 await self._note_decision_source(threshold_fired=threshold_fired and irq_fired)
@@ -1096,6 +1100,11 @@ class ISL29125_I2C:
     async def get_device_id(self) -> int:
         return await self._read_byte(_REGISTER_DEVICE_ID)
 
+    def resolution(self) -> int:
+        # The shadow's own value, for a caller that has to pair a reading with the resolution the
+        # part made it under rather than with whatever is live by the time it scales it.
+        return self._resolution
+
     async def set_thresholds(self, low_counts: int, high_counts: int | None = None) -> None:
         # Both counts arrive on the 16-bit scale and are rescaled DOWN to the active resolution
         # here: the threshold registers are compared against the RAW ADC value, so a 16-bit-scaled
@@ -1190,14 +1199,17 @@ class ISL29125_I2C:
         # impossible on a working part - and a non-int is layer 1 failing to produce a byte at all.
         return type(status) is not int or bool(status & _STATUS_RESERVED_MASK)
 
-    def normalise(self, raw: "tuple[int, int, int]", *, range_fs: int) -> "tuple[tuple[int, int, int], bool]":
+    def normalise(self, raw: "tuple[int, int, int]", *, range_fs: int, resolution: int | None = None) -> "tuple[tuple[int, int, int], bool]":
         # Saturation is judged RAW and before the rescale below, because a post-rescale
         # `== 65535` test is simply wrong at 12 bits, where 4095 << 4 is 65520 and the auto-range
         # fast path would be silently dead. ANY channel at its raw maximum counts: the output is a
         # colour triple, so a clipped red with green at 40% of full scale still destroys Hue, Sat
         # and CCT. range_fs is the range this sample was TAKEN on, not necessarily the live one.
+        # resolution defaults to the live shadow; a caller scaling a reading the part made EARLIER
+        # passes the one that was live then (see _read_isl()), because a mid-read config push moves
+        # the shadow while the double-buffered data registers still hold the old conversion.
         green, red, blue = raw
-        twelve_bit = self._resolution == _RESOLUTION_12BIT
+        twelve_bit = (self._resolution if resolution is None else resolution) == _RESOLUTION_12BIT
         maximum = (1 << _RESOLUTION_12BIT) - 1 if twelve_bit else _FULL_SCALE_COUNTS
         saturated = green >= maximum or red >= maximum or blue >= maximum
         # Then the rescale itself: 12- and 16-bit readings onto one 0-65535 scale, and the additive
@@ -1292,6 +1304,8 @@ class ISL29125_I2C:
         if persist is not None:
             self._reject_unless(persist, _PRST_SETTINGS, "threshold persistence")
         before = self.encode_shadow()
+        # Every mutable field, captured as one tuple so a failed write can put all of them back.
+        restore = (self._mode, self._range_fs, self._resolution, self._ir_offset, self._ir_adjust, self._persist, self._int_select, self._sync, self._conven)
         if mode is not None:
             self._mode = mode
         if range_fs is not None:
@@ -1317,7 +1331,17 @@ class ISL29125_I2C:
         if after == before and not force:
             return
         wrote_config1 = force or after[0] != before[0]
-        await self._write_shadow(_REGISTER_CONFIG1 if wrote_config1 else _REGISTER_CONFIG2)
+        try:
+            await self._write_shadow(_REGISTER_CONFIG1 if wrote_config1 else _REGISTER_CONFIG2)
+        except Exception:
+            # The shadow must never claim a value the part did not take: normalise() scales every
+            # reading by it, so a lost resolution write would shift every later sample 16x with the
+            # reads themselves still succeeding. Rolled back rather than left to the divergence
+            # check, which runs only on a config GET and would re-apply a setting whose caller has
+            # already been told it failed - the same reason _switch_range() declines to update its
+            # own range on a failure.
+            (self._mode, self._range_fs, self._resolution, self._ir_offset, self._ir_adjust, self._persist, self._int_select, self._sync, self._conven) = restore
+            raise
         if wrote_config1:
             # Any writer of CONFIG1 restarts the conversion (p10, Table 7), and there are three of
             # them - the range switch, a resolution push and brownout recovery. Setting the

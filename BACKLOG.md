@@ -747,6 +747,64 @@ constraints.
     **Independent session - out of the ISL29125 branch's scope and not blocked on it** (owner,
     2026-09-14). Nothing here needs the colour sensor, the bench rig or PR #75 to land first.
 
+31. **`_store_isl()` derives the normalisation span from live config rather than from the sample**
+    (found 2026-09-14 in the branch's final review; reported rather than fixed, because the choice
+    below is the owner's). `ISLResults` already carries `sample_range` precisely so the gain
+    correction uses the range the sample was taken on - its own comment says `_store_isl()` "must
+    not read the reader's current range back" - but the *span* the RGB/HSB outputs are divided by
+    (`_RANGE_HIGH_LUX` under auto-range, `_fixed_range` otherwise) is still read live, after an
+    `await`. A `RangeAuto` PUT landing between the data read and that line normalises one sample
+    against the wrong denominator - 26.67x too large and clamped to 1.0 turning auto off against a
+    fixed 375, 26.67x too small turning it back on.
+    **Neither persistent nor state-corrupting**: the EMA filter holds lux, not the normalised
+    values, so only that one sample's RGB/HSB/CCT are wrong and the next cycle is correct. It needs
+    a REST PUT to land inside one specific window of a 1s cycle.
+    Two ways to close it, and choosing between them is why it is not already done:
+    - **Carry the span with the sample**, the shape `sample_range` already establishes. Complete,
+      but widens `ISLResults` from five elements to six, which touches `_error_check()`'s own
+      None-count contract, the `TYPE_CHECKING` alias, and every test that builds one.
+    - **Read the two fields at the top of `_store_isl()`**, before its first `await`. Three lines
+      and no test churn - but airtight only while `_error_check()` has no yield point on its happy
+      path, which nothing enforces. It would look complete without being complete.
+
+32. **`js/mock-server.js`'s measurement jitter was sized for readings of order hundreds, and the
+    ISL29125's normalised 0-1 leaves are three orders smaller** (same review; the sign half of this
+    was already fixed on the branch, the magnitude half was not). `jitterInPlace()` uses a spread of
+    `max(|value| * 0.01, 0.05)` and rounds to two decimals, both chosen when CO2 ~600 was the
+    largest thing in the file. On an `RGB.R` of 0.0281 the absolute floor is +-178%, and two
+    decimals quantise the result to 0.03 - or to 0.00, which the card then renders as `0.0000`
+    against a `decimals: 4` hint. That is the "looks like a device that has not reported yet"
+    failure mode open question 28 exists to prevent, in the group this branch added.
+    **Mock-only**: no firmware and no real renderer is involved. The sign clamp added on this branch
+    stops the *invalid* half (a negative channel); what remains is fidelity.
+    **Proposed**: scale both with the value - `spread = |value| >= 1 ? max(|value| * 0.01, 0.05) :
+    |value| * 0.05`, and round to 4 decimals below 1 rather than 2. Nothing of ordinary magnitude
+    moves. Left for a ruling because it makes the existing sign clamp structurally unreachable: the
+    test that covers it ("never jitters a non-negative measurement leaf into a negative one") would
+    have to become a property assertion over the real mockdata rather than a check on that clamp,
+    and two tests pin the current exact values deliberately, with comments explaining the very
+    coarseness they work around.
+
+33. **A config burst that fails PART-WAY still leaves the chip and the shadow disagreeing, and
+    only a REST config GET notices** (found 2026-09-14 alongside the rollback fix in the same
+    review, which closed the common case but not this one). `configure()` now restores every shadow
+    field when `_write_shadow()` raises, so the usual failure - a NAK on the address phase, nothing
+    written - leaves the shadow describing the chip correctly. A NAK partway through the 3-byte
+    burst is rarer and different: CONFIG1 landed, CONFIG2/3 did not, the rollback puts the shadow
+    back to all-old, and the chip is now a mixture. `normalise()` then scales by the old resolution
+    while the part runs the new one - 16x out, with the reads themselves still succeeding.
+    **It does self-heal, but only through one path**: `_read_sensor_dict()` runs `matches_shadow()`
+    and re-applies with `force=True`, and `js/render.js` polls each section's own GET while that
+    section is open - so a device with someone watching corrects within a poll interval. A headless
+    device corrects on the next GET, whenever that is.
+    **What would close it**, and why it is a design question rather than a drive-by fix: the chip is
+    the authority after a torn write, so the honest recovery is to re-read it - but `decode_config()`
+    recovers only five of the nine shadow fields (mode, SYNC, CONVEN and INTSEL are not among them),
+    so it needs a full decoder; and an I2C read issued from inside the `except` of a failed I2C
+    write is itself likely to fail. The alternative is a dirty flag the read path checks, which
+    turns divergence detection into something reachable every cycle rather than only from a config
+    GET - about eight lines, one extra transaction only after a failed write, and a new mechanism.
+
 ## Deferred / explicitly out-of-scope work
 - **Two device scripts still hand-list their `cfgmgr._cache` keys, and will break as a "dead
   sensor" the day their driver gains a config key.** `bmp3xx_plausibility_read.py` (8 keys) and
