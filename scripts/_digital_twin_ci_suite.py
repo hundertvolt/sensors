@@ -18,7 +18,7 @@ import struct
 import subprocess
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -115,18 +115,44 @@ class RunContext:
     module: str
     wiring_plan_path: Path
     drivers: frozenset[str]
+    gc_threshold: int  # passed to every spawned run_generic_integration.py subprocess via
+    # --gc-threshold - CLAUDE.md's/SPECIFICATION.md Part I.4(e)'s standing rule (sharpened
+    # 2026-09-14 from "new stress/hammer tests" to every test, digital-twin runs included): the
+    # WHOLE suite must pass clean under MicroPython's own real gc.threshold(-1) default before it's
+    # ever run again with the project's chosen gc.threshold(32768) - main() runs run_suite() twice,
+    # once per value, never once with a single hardcoded threshold.
+
+
+# Sharpened memory-safety discipline (CLAUDE.md, SPECIFICATION.md Part I.4(e), 2026-09-14): every
+# OK/FAIL line is tagged with which gc.threshold() pass produced it, set once per run_suite() call -
+# every one of the ~14 run functions below stays untouched, no per-message edits needed.
+_CURRENT_PASS_LABEL = ""
 
 
 def _fail(msg: str) -> None:
-    _FAILURES.append(msg)
-    print(f"FAIL: {msg}", file=sys.stderr)
+    full_msg = f"{_CURRENT_PASS_LABEL}{msg}"
+    _FAILURES.append(full_msg)
+    print(f"FAIL: {full_msg}", file=sys.stderr)
 
 
 def _check(*, condition: bool, msg: str) -> None:
     if not condition:
         _fail(msg)
     else:
-        print(f"OK: {msg}")
+        print(f"OK: {_CURRENT_PASS_LABEL}{msg}")
+
+
+def _check_no_memory_error_in_log(log_path: Path, run_label: str) -> None:
+    # SPECIFICATION.md Part I.4(e) (sharpened 2026-09-14): zero MemoryErrors, caught-and-logged
+    # included - a caught allocation failure that merely avoided a crash is still a design defect,
+    # not a passing result. Checked for every run's log, not only the soak test's own HTTP-level
+    # failures list, since a MemoryError can just as well be logged by src/'s own catch-and-degrade
+    # handlers (SPECIFICATION.md Part I.4(a)/(b)) during any run, not only under soak-style hammering.
+    log_text = _read_log(log_path)
+    _check(
+        condition="MemoryError" not in log_text,
+        msg=f"{run_label}: log contains zero MemoryErrors (caught-and-logged counts as a failure too)",
+    )
 
 
 def _clean_state() -> None:
@@ -266,6 +292,11 @@ def _spawn(ctx: RunContext, extra_args: list[str], log_path: Path) -> subprocess
         # supplied explicitly, pointed at the same fixed paths _clean_state() wipes.
         "--fram-state-path", str(FRAM_STATE_PATH),
         "--scd30-state-path", str(SCD30_STATE_PATH),
+        # Applied to every run this suite spawns, not only the soak test - CLAUDE.md's/
+        # SPECIFICATION.md Part I.4(e)'s sharpened standing rule (2026-09-14) covers the whole
+        # suite, digital-twin runs alike, not just "new stress/hammer tests". main() runs the whole
+        # suite twice, once per RunContext.gc_threshold value.
+        "--gc-threshold", str(ctx.gc_threshold),
         *extra_args,
     ]
     print(f"== Launching: {' '.join(cmd)} (log: {log_path})")
@@ -283,7 +314,19 @@ def _spawn(ctx: RunContext, extra_args: list[str], log_path: Path) -> subprocess
     return proc
 
 
-def _shutdown(proc: subprocess.Popen[str], timeout_s: float = 15.0) -> int:
+def _close_log_and_check_memory_safety(proc: subprocess.Popen[str], run_label: str) -> None:
+    # Shared by _shutdown()/_wait_exit() below - every spawned run's log gets this check, not only
+    # the soak test's own HTTP-level failures list (SPECIFICATION.md Part I.4(e), sharpened
+    # 2026-09-14: zero MemoryErrors, caught-and-logged included, for every run).
+    log_file = getattr(proc, "ci_log_file", None)
+    if log_file is None:
+        return
+    log_path = Path(log_file.name)
+    log_file.close()
+    _check_no_memory_error_in_log(log_path, run_label)
+
+
+def _shutdown(proc: subprocess.Popen[str], run_label: str, timeout_s: float = 15.0) -> int:
     # SIGINT, not SIGTERM/terminate(): run_generic_integration.py's own graceful-shutdown path
     # (FRAM/SCD30 flush) only runs on KeyboardInterrupt (see that module's own __main__ block
     # comment) - a real SIGTERM would skip it entirely and lose this run's persisted state.
@@ -294,13 +337,12 @@ def _shutdown(proc: subprocess.Popen[str], timeout_s: float = 15.0) -> int:
         except subprocess.TimeoutExpired:
             proc.kill()
             proc.wait(timeout=5.0)
-    log_file = getattr(proc, "ci_log_file", None)
-    if log_file is not None:
-        log_file.close()
-    return proc.returncode if proc.returncode is not None else -1
+    ec = proc.returncode if proc.returncode is not None else -1
+    _close_log_and_check_memory_safety(proc, run_label)
+    return ec
 
 
-def _wait_exit(proc: subprocess.Popen[str], timeout_s: float) -> int:
+def _wait_exit(proc: subprocess.Popen[str], run_label: str, timeout_s: float) -> int:
     # For bounded (--duration N) runs that exit on their own - no signal needed or wanted.
     try:
         ec = proc.wait(timeout=timeout_s)
@@ -308,9 +350,7 @@ def _wait_exit(proc: subprocess.Popen[str], timeout_s: float) -> int:
         proc.kill()
         proc.wait(timeout=5.0)
         ec = -1
-    log_file = getattr(proc, "ci_log_file", None)
-    if log_file is not None:
-        log_file.close()
+    _close_log_and_check_memory_safety(proc, run_label)
     return ec
 
 
@@ -415,7 +455,7 @@ def _run_1_baseline(ctx: RunContext) -> None:
     except Exception as exc:  # CI orchestration: surface any failure as a suite failure, not a crash
         _fail(f"Run 1 (baseline boot + settings): {exc!r}")
     finally:
-        ec = _shutdown(proc)
+        ec = _shutdown(proc, "Run 1")
         _check(condition=ec == 0, msg=f"Run 1: clean shutdown (exit code {ec})")
     _check(condition=FRAM_STATE_PATH.exists() and SCD30_STATE_PATH.exists(), msg="Run 1: FRAM/SCD30 state files were persisted to disk on shutdown")
 
@@ -438,7 +478,7 @@ def _run_2_reboot_settings_persistence(ctx: RunContext) -> None:
     except Exception as exc:
         _fail(f"Run 2 (reboot + settings persistence): {exc!r}")
     finally:
-        ec = _shutdown(proc)
+        ec = _shutdown(proc, "Run 2")
         _check(condition=ec == 0, msg=f"Run 2: clean shutdown (exit code {ec})")
     verbose_lines = _count_verbose_log_lines(_read_log(log2))
     _check(condition=verbose_lines >= _MIN_VERBOSE_LOG_LINES, msg=f"Run 2: bootup produced verbose (DebugLevel={_TEST_DEBUG_LEVEL}) log output from multiple modules ({verbose_lines} matching lines)")
@@ -476,7 +516,7 @@ def _run_3_sustained_bus_fault_matrix(ctx: RunContext) -> None:
     except Exception as exc:
         _fail(f"Run 3 (sustained bus-fault matrix): {exc!r}")
     finally:
-        ec = _shutdown(proc)
+        ec = _shutdown(proc, "Run 3")
         _check(condition=ec == 0, msg=f"Run 3: process survived the sustained bus-fault matrix without crashing (exit code {ec})")
     wdt3 = _would_have_triggered_count(_read_log(log3))
     _check(condition=wdt3 == 0, msg=f"Run 3: watchdog never starved under sustained-but-bounded bus errors (would_have_triggered_count={wdt3!r})")
@@ -523,7 +563,7 @@ def _run_4_bus_fault_persistence_sweep(ctx: RunContext) -> None:
     except Exception as exc:
         _fail(f"Run 4 (bus-fault persistence-correctness sweep): {exc!r}")
     finally:
-        ec = _shutdown(proc)
+        ec = _shutdown(proc, "Run 4")
         _check(condition=ec == 0, msg=f"Run 4: clean shutdown (exit code {ec})")
 
 
@@ -552,7 +592,7 @@ def _run_5_recovery_after_bounded_fault(ctx: RunContext) -> None:
     except Exception as exc:
         _fail(f"Run 5 (recovery after a bounded fault): {exc!r}")
     finally:
-        ec = _shutdown(proc)
+        ec = _shutdown(proc, "Run 5")
         _check(condition=ec == 0, msg=f"Run 5: clean shutdown (exit code {ec})")
 
 
@@ -591,7 +631,7 @@ def _run_5b_error_log_restore_is_all_or_nothing(ctx: RunContext) -> None:
     except Exception as exc:
         _fail(f"Run 5b (error-log restore is all-or-nothing): {exc!r}")
     finally:
-        ec = _shutdown(proc)
+        ec = _shutdown(proc, "Run 5b")
         _check(condition=ec == 0, msg=f"Run 5b: clean shutdown (exit code {ec})")
 
 
@@ -620,7 +660,7 @@ def _run_5c_storage_paused_shutdown_never_loses_the_error_log(ctx: RunContext) -
     except Exception as exc:
         _fail(f"Run 5c (record then pause storage): {exc!r}")
     finally:
-        ec = _shutdown(proc)
+        ec = _shutdown(proc, "Run 5c-a")
         _check(condition=ec == 0, msg=f"Run 5c: clean shutdown after the storage pause (exit code {ec})")
 
     log5c_b = ctx.logs_dir / "run5c_b_history_survived_the_commanded_reboot.log"
@@ -650,7 +690,7 @@ def _run_5c_storage_paused_shutdown_never_loses_the_error_log(ctx: RunContext) -
     except Exception as exc:
         _fail(f"Run 5c (history survived the commanded reboot): {exc!r}")
     finally:
-        ec = _shutdown(proc)
+        ec = _shutdown(proc, "Run 5c-b")
         _check(condition=ec == 0, msg=f"Run 5c: clean shutdown (exit code {ec})")
 
 
@@ -669,7 +709,7 @@ def _run_6_configure_ssid(ctx: RunContext) -> None:
     except Exception as exc:
         _fail(f"Run 6 (configure SSID for WiFi test): {exc!r}")
     finally:
-        ec = _shutdown(proc)
+        ec = _shutdown(proc, "Run 6")
         _check(condition=ec == 0, msg=f"Run 6: clean shutdown (exit code {ec})")
 
 
@@ -719,7 +759,7 @@ def _run_7_wifi_hotspot_dns(ctx: RunContext) -> None:
     except Exception as exc:
         _fail(f"Run 7 (WiFi hotspot fallback + DNS): {exc!r}")
     finally:
-        ec = _shutdown(proc)
+        ec = _shutdown(proc, "Run 7")
         _check(condition=ec == 0, msg=f"Run 7: process survived the WiFi hotspot-fallback transition without crashing (exit code {ec})")
 
 
@@ -739,7 +779,7 @@ def _run_8_wifi_persistence_and_configure_ntp(ctx: RunContext) -> None:
     except Exception as exc:
         _fail(f"Run 8 (WIFI persistence check + configure unreachable NTP): {exc!r}")
     finally:
-        ec = _shutdown(proc)
+        ec = _shutdown(proc, "Run 8")
         _check(condition=ec == 0, msg=f"Run 8: clean shutdown (exit code {ec})")
 
 
@@ -759,7 +799,7 @@ def _run_9_ntp_unreachable(ctx: RunContext) -> None:
     except Exception as exc:
         _fail(f"Run 9 (NTP unreachable): {exc!r}")
     finally:
-        ec = _shutdown(proc)
+        ec = _shutdown(proc, "Run 9")
         _check(condition=ec == 0, msg=f"Run 9: clean shutdown (exit code {ec})")
 
 
@@ -780,69 +820,44 @@ def _run_10_watchdog_hang_backstop(ctx: RunContext) -> None:
     log10 = ctx.logs_dir / "run10_watchdog_hang_backstop.log"
     proc = _spawn(ctx, ["--hang", "sgp40:writeto:12", "--duration", "15"], log10)
     try:
-        ec = _wait_exit(proc, timeout_s=45.0)
+        ec = _wait_exit(proc, "Run 10", timeout_s=45.0)
         _check(condition=ec == 0, msg=f"Run 10: process survived a genuinely wedged bus and exited cleanly (exit code {ec})")
     except Exception as exc:
         _fail(f"Run 10 (watchdog hang backstop): {exc!r}")
-        _wait_exit(proc, timeout_s=5.0)
+        _wait_exit(proc, "Run 10", timeout_s=5.0)
     wdt10 = _would_have_triggered_count(_read_log(log10))
     _check(condition=wdt10 is not None and wdt10 >= 1, msg=f"Run 10: the watchdog backstop actually engaged for a genuinely wedged bus (would_have_triggered_count={wdt10!r})")
 
 
-def _run_soak_at_threshold(ctx: RunContext, run_label: str, log_name: str, gc_threshold: int) -> None:
-    # Shared body for Run 11a/11b - a genuinely fresh, clean boot dedicated to the soak check.
-    # --soak/--soak-cycles (BUILD_CHAIN_PLAN.md's Session 6.2) is supported directly by
-    # run_generic_integration.py, ported verbatim from run_wozi_integration.py's/
-    # run_dev_integration.py's own machinery; --gc-threshold lets this one entry point be driven at
-    # both configurations Run 11a/11b need (see their own comments below for why both matter).
+def _run_11_soak(ctx: RunContext) -> None:
+    # ---- Run 11: a genuinely fresh, clean boot dedicated to the soak check. --soak/--soak-cycles
+    # (BUILD_CHAIN_PLAN.md's Session 6.2) is supported directly by run_generic_integration.py,
+    # ported verbatim from run_wozi_integration.py's/run_dev_integration.py's own machinery. Driven
+    # at ctx.gc_threshold like every other run in this suite - see main()'s own comment for why the
+    # whole suite (not just this run) executes once per gc.threshold() value, in order. ----
     _clean_state()
-    log_path = ctx.logs_dir / log_name
-    proc = _spawn(ctx, ["--soak", "--soak-cycles", "20", "--duration", "0", "--gc-threshold", str(gc_threshold)], log_path)
-    try:
-        ec = proc.wait(timeout=180.0)
-        _check(condition=ec == 0, msg=f"{run_label}: soak run completed cleanly (exit code {ec})")
-    except subprocess.TimeoutExpired:
-        proc.kill()
-        proc.wait(timeout=5.0)
-        _fail(f"{run_label}: soak run exceeded its 180s bound and was killed")
-    finally:
-        log_file = getattr(proc, "ci_log_file", None)
-        if log_file is not None:
-            log_file.close()
+    log_path = ctx.logs_dir / "run11_soak.log"
+    proc = _spawn(ctx, ["--soak", "--soak-cycles", "20", "--duration", "0"], log_path)
+    ec = _wait_exit(proc, "Run 11", timeout_s=180.0)
+    _check(condition=ec == 0, msg=f"Run 11: soak run completed cleanly (exit code {ec})")
     log_text = _read_log(log_path)
-    _check(condition="soak summary" in log_text, msg=f"{run_label}: soak summary was printed")
+    _check(condition="soak summary" in log_text, msg="Run 11: soak summary was printed")
     if "PASS -" not in log_text:
         # This check alone doesn't say *why* - the soak's own summary line names the actual failed
         # sub-check(s) (HTTP failures, watchdog, or memory trend) and, for HTTP failures, the real
         # exception each one hit - print it so a CI failure is diagnosable from the job log alone,
         # without needing the uploaded digital-twin-ci-logs-* artifact.
-        print(f"== {run_label} soak log ({log_path}):\n{log_text}")
-    _check(condition="PASS -" in log_text, msg=f"{run_label}: soak run reported PASS (no HTTP failures, watchdog never starved, memory trend within tolerance)")
+        print(f"== Run 11 soak log ({log_path}):\n{log_text}")
+    _check(condition="PASS -" in log_text, msg="Run 11: soak run reported PASS (no HTTP failures, watchdog never starved, memory trend within tolerance)")
 
 
-def _run_11a_soak_at_gc_default(ctx: RunContext) -> None:
-    # The check that actually matters (CLAUDE.md's/SPECIFICATION.md Part I.4(e)'s standing rule): a
-    # stress/hammer test must pass under gc.threshold(-1) - MicroPython's own real reactive-only
-    # default, no proactive collection at all - *before* it's ever run with the project's chosen
-    # threshold. Run first, deliberately: PR #80's real Run 11 MemoryError was root-caused (not just
-    # made to go away) by digital_twin/_http_client.py's own _read_exact()/_read_until_close()
-    # replacing Stream.readexactly()/read(-1)'s growth-by-concatenation accumulation with one
-    # right-sized buffer per fetch() - confirmed directly by running this exact check with that fix
-    # in place and no gc.threshold() override at all. A future regression that only shows up here
-    # (and not in 11b) is exactly the "papered over by the threshold" failure mode this ordering
-    # exists to catch.
-    _run_soak_at_threshold(ctx, "Run 11a", "run11a_soak_gc_default.log", gc_threshold=-1)
-
-
-def _run_11b_soak_at_chosen_threshold(ctx: RunContext) -> None:
-    # Confirms the project's chosen gc.threshold(32768) (matching every real firmware boot,
-    # buildgen.codegen.generate_boot_entry_source()) remains a harmless, additional safety margin on
-    # top of 11a's already-clean result - never the thing 11a's own pass depends on (I.4(f)). Run
-    # second, after 11a, per that same ordering rule.
-    _run_soak_at_threshold(ctx, "Run 11b", "run11b_soak_gc_chosen.log", gc_threshold=32768)
-
-
-def run_suite(ctx: RunContext) -> int:
+def run_suite(ctx: RunContext) -> None:
+    # Runs the whole 12-top-level-run (14 real subprocess) sequence once, at ctx.gc_threshold - see
+    # main() for why this whole function runs twice, not just Run 11. Doesn't tally/print
+    # pass-or-fail on its own any more (main() does that once, after both passes) - _FAILURES is
+    # shared, deliberately, so a single combined report names every failure from either pass.
+    global _CURRENT_PASS_LABEL
+    _CURRENT_PASS_LABEL = f"[gc.threshold={ctx.gc_threshold}] "
     ctx.logs_dir.mkdir(parents=True, exist_ok=True)
 
     _run_1_baseline(ctx)
@@ -857,17 +872,7 @@ def run_suite(ctx: RunContext) -> int:
     _run_8_wifi_persistence_and_configure_ntp(ctx)
     _run_9_ntp_unreachable(ctx)
     _run_10_watchdog_hang_backstop(ctx)
-    _run_11a_soak_at_gc_default(ctx)
-    _run_11b_soak_at_chosen_threshold(ctx)
-
-    print()
-    if _FAILURES:
-        print(f"== digital-twin CI suite FAILED ({ctx.device}): {len(_FAILURES)} check(s) failed")
-        for msg in _FAILURES:
-            print(f"  - {msg}")
-        return 1
-    print(f"== digital-twin CI suite PASSED ({ctx.device}): every check succeeded")
-    return 0
+    _run_11_soak(ctx)
 
 
 def _drivers_in_plan(plan: dict[str, Any]) -> frozenset[str]:
@@ -903,17 +908,37 @@ def main() -> int:
         return 1
     plan = json.loads(wiring_plan_path.read_text())
 
-    ctx = RunContext(
+    base_ctx = RunContext(
         micropython_bin=args.micropython_bin,
-        logs_dir=Path(args.logs_dir),
+        logs_dir=Path(args.logs_dir),  # overridden per pass below
         device=args.device,
         module=module,
         wiring_plan_path=wiring_plan_path,
         drivers=_drivers_in_plan(plan),
+        gc_threshold=-1,  # overridden per pass below
     )
 
-    _clean_state()
-    return run_suite(ctx)
+    # Runs the WHOLE suite twice, not just Run 11 - CLAUDE.md's/SPECIFICATION.md Part I.4(e)'s
+    # standing rule, sharpened 2026-09-14 from "new stress/hammer tests" to every test, digital-twin
+    # runs included: the suite must pass clean under gc.threshold(-1) (MicroPython's own real
+    # reactive-only default, zero MemoryErrors anywhere - caught-and-logged included) BEFORE it's
+    # ever run again with the project's chosen gc.threshold(32768) (I.4(f): defense in depth on an
+    # already-safe design, never itself the reason a run passes). Order matters; -1 goes first. Two
+    # separate log subdirectories so a failure's own logs from either pass are never overwritten by
+    # the other.
+    for gc_threshold, subdir in ((-1, "gc_threshold_neg1"), (32768, "gc_threshold_32768")):
+        ctx = replace(base_ctx, logs_dir=base_ctx.logs_dir / subdir, gc_threshold=gc_threshold)
+        _clean_state()
+        run_suite(ctx)
+
+    print()
+    if _FAILURES:
+        print(f"== digital-twin CI suite FAILED ({args.device}): {len(_FAILURES)} check(s) failed")
+        for msg in _FAILURES:
+            print(f"  - {msg}")
+        return 1
+    print(f"== digital-twin CI suite PASSED ({args.device}): every check succeeded at both gc.threshold(-1) and gc.threshold(32768)")
+    return 0
 
 
 if __name__ == "__main__":

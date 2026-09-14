@@ -3140,6 +3140,19 @@ or added `gc.collect()` calls anywhere in the business logic or the test's own s
 up. A test that only passes because a `MemoryError` was caught and logged without crashing anything
 is not a passing result at this stage — a caught-but-real allocation failure is exactly the signal
 this stage exists to catch, and "it didn't crash" is not the same claim as "it didn't happen."
+**One narrow, evidence-backed exception**: `digital_twin/run_generic_integration.py`'s `_soak()`
+calls `gc.collect()` twice per cycle (post-warmup baseline, then once per cycle) purely to settle
+`gc.mem_free()` before sampling it for the memory-trend leak check — it runs nowhere near a
+request/response and cannot mask a real `MemoryError` (every `fetch()` call already catches and
+records its own, independently). Removing it (2026-09-14, auditing `c691cb3`'s own port from the
+retired `run_wozi_integration.py` against this exact rule) was tried and confirmed directly to make
+the check *worse*: without a settled baseline, `gc.mem_free()` swings with incidental reactive-GC
+timing alone (measured on a genuinely healthy `wozi` run: `min=99808, max=1347104` across 20
+cycles, a false-positive "trend declined by 413990 bytes" against an 18318-byte tolerance
+calibrated for the collected regime). A `gc.collect()` call that stabilizes what a *later*,
+unrelated line measures — rather than relieving pressure an allocation it's adjacent to would
+otherwise have failed under — is not the pattern this rule exists to forbid; don't re-flag it
+without new evidence the trend check itself has changed.
 **(f) A `gc.threshold()` value (or a `gc.collect()` call) is defense in depth applied only once (e)
 already holds — never the fix itself, and never reached for to make a failing (e)-stage test
 pass.** Every generated boot entry (`buildgen.codegen.generate_boot_entry_source()`, formerly the

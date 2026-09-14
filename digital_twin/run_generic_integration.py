@@ -322,7 +322,10 @@ async def _wait_until_serving(host: str, port: int, timeout_s: float = 10.0) -> 
     async def poll() -> None:
         while True:
             try:
-                await _http_client.fetch(host, port, "GET", "/")
+                # read_body=False: only ever checks that the request didn't raise - see fetch()'s
+                # own comment for why materializing a body nothing looks at is an avoidable
+                # allocation, not a free one.
+                await _http_client.fetch(host, port, "GET", "/", read_body=False)
             except (OSError, MemoryError):  # MemoryError isn't an OSError subclass here
                 await asyncio.sleep_ms(50)
             else:
@@ -341,25 +344,42 @@ async def _soak(host: str, port: int, cycles: int) -> "list[str]":
     for _ in range(_SOAK_WARMUP_CYCLES):
         for path in _SOAK_ENDPOINTS:
             try:
-                await _http_client.fetch(host, port, "GET", path)
+                # read_body=False: this loop never reads a response body - see fetch()'s own
+                # comment for the real regression found by materializing one nothing looked at
+                # (a real MemoryError on the dev device's own, largest frozen website under
+                # gc.threshold(-1) - SPECIFICATION.md Part I.4(g)).
+                await _http_client.fetch(host, port, "GET", path, read_body=False)
             except (OSError, MemoryError) as e:  # MemoryError isn't an OSError subclass here
                 # (CLAUDE.md's platform-facts note) - a real soak run must record a genuine
                 # allocation failure as one more failure, never let it crash the whole run
                 # uncaught before the summary below ever prints (found via a real CI failure).
                 failures.append(f"warmup: GET {path} -> {e!r}")
+    # gc.collect() here is measurement instrumentation, not a memory-pressure workaround - it never
+    # runs anywhere near a request/response and cannot mask a real MemoryError (every fetch() above
+    # already catches and records its own, independently of this). Tried removing it (2026-09-14,
+    # auditing c691cb3's own port from run_wozi_integration.py against CLAUDE.md's/SPECIFICATION.md
+    # Part I.4(e)'s sharpened rule) and confirmed directly it makes the trend check *worse*, not
+    # better: without a settled baseline, gc.mem_free() swings with incidental reactive-GC timing
+    # alone (measured on a genuinely healthy wozi run: min=99808, max=1347104 across 20 cycles, a
+    # false-positive "trend declined by 413990 bytes" against an 18318-byte tolerance calibrated for
+    # the collected regime) - a false failure has no diagnostic value and would train reviewers to
+    # ignore this check. Restored: this gc.collect() stabilizes what the *next* line measures, it
+    # does not relieve any allocation pressure the fetch() calls above already faced on their own.
     gc.collect()
     mem_samples: list[int] = [gc.mem_free()]  # index 0: post-warmup baseline, excluded from the
     # trend comparison below (it's a single point, not a quarter average).
     for cycle in range(cycles):
         for path in _SOAK_ENDPOINTS:
             try:
-                res = await _http_client.fetch(host, port, "GET", path)
+                # read_body=False: only res.status_code is ever read below - see fetch()'s own
+                # comment and the warmup loop's above for why.
+                res = await _http_client.fetch(host, port, "GET", path, read_body=False)
             except (OSError, MemoryError) as e:
                 failures.append(f"cycle {cycle}: GET {path} -> {e!r}")
                 continue
             if res.status_code != 200:
                 failures.append(f"cycle {cycle}: GET {path} -> {res.status_code}")
-        gc.collect()
+        gc.collect()  # see the post-warmup baseline's own comment above - same reasoning, per cycle.
         mem_samples.append(gc.mem_free())
     # Trend check - see this file's own _MEM_TREND_* module-level comment for the full methodology
     # and why the tolerance below is scaled, not flat. Needs at least 4 per-cycle samples
