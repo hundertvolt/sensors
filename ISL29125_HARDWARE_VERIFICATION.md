@@ -271,8 +271,11 @@ All nine candidates land in 23.70–24.13 (1.8% spread), inside the required 20.
 `GET /sensors`'s `GainRatio` read **26.666666 before and after** — the driver never writes its own
 config, so every flash write stays on the REST path.
 
-**Level recorded, per BACKLOG 20**: ~24.0 at ~37% of the low range's full scale. Consistent with
-that item's ~28-at-ambient to ~22-near-full-scale trend. One device, still PARKED.
+**Level recorded**: ~24.0 at ~37% of the low range's full scale. This is one more data point for
+the ~28-at-ambient to ~22-near-full-scale trend, and it sits where that trend predicts. BACKLOG 20
+was migrated out on 2026-09-14 (179a10c) — the level dependence is a settled property of the part in
+SPECIFICATION.md Part C.11.4, not an open question, so this is confirming evidence rather than
+anything to resolve.
 
 **The refusal works as designed**: with the pixel parked dark, the candidate sequence is empty and
 the ISL error log stays **empty** — refusal reported by absence, never by a `wrnno`.
