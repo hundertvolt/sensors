@@ -311,7 +311,7 @@ which is a write-only command trigger init never reads. No stale keys remain in 
 ## Finding 2 — the calibration band gate and the range decision use different quantities
 
 Not changed, reported only. `_evaluate_range()` decides on `max(counts)` (the **peak** channel,
-deliberately — see its own comment), while `_maybe_calibrate()`'s overlap-band gate tests
+deliberately — see its own comment), while `_measure_gain_ratio()`'s overlap-band gate tests
 **`green_counts`**, both against `fraction_to_counts(_down_thresh())` ≈ 1044 counts.
 
 For a strongly-coloured scene the two disagree. This rig's WS2812 white is blue-dominant, so at

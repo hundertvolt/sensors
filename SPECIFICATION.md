@@ -1529,10 +1529,18 @@ Measured on the bench (2026-09-13), six forced crossings per setting, one reader
 | 2 | 606 ms | **6 of 6** | 0 | 500-800 ms |
 | 1 | 303 ms | **6 of 6** | 0 | 200-613 ms |
 
-**Two changes came out of it.** The window is **derived**, so at a 1 s interval and 16 bit the
-driver picks 2 — still a cycle of transient rejection, and comfortably inside the interval — while
-a longer interval or 12-bit resolution buys more. And the detector now keys on the **line**, not
-the flag — see below. A third change, a separate `wrnno=17` for "the window outlasts the interval",
+**Re-measured 2026-09-14**, after the settle window was fixed at two cycles (C.11.2). Three runs
+of `isl29125_real_irq_edge.py`: **2.73 / 2.71 / 2.71 s**, all interrupt-led against a 30 s periodic
+fallback. **That is not a regression against the 500–800 ms above, and the two numbers are not
+comparable**: this script sets `SampleInterv = 30`, which the derivation turns into the largest PRST
+the part offers (8 cycles, 2424 ms) — so most of the difference is the chip being *asked* to wait
+longer before raising RGBTHF at all, and only ~303 ms of it is the settle doubling. The INT still
+leads decisively. `settle discard 605/606` is directly visible in the driver's debug output.
+
+**Two changes came out of the original measurement.** The window is **derived**, so at a 1 s interval
+and 16 bit the driver picks 2 — still a cycle of transient rejection, and comfortably inside the
+interval — while a longer interval or 12-bit resolution buys more. And the detector now keys on the
+**line**, not the flag — see below. A third change, a separate `wrnno=17` for "the window outlasts the interval",
 was made and then removed once deriving the window made that case unreachable.
 
 **Why the flag alone was not enough.** `_note_decision_source()` originally counted a decision as
@@ -1580,6 +1588,31 @@ reads it and copies it into `GainRatio` if they want it used. **A refused measur
 by absence**: `GainMeas` stays `None`, which is the feedback — there is deliberately no `wrnno` for
 an unusable scene, because a scene outside the overlap band is a fact about the light, not a fault.
 Refusal reasons go to the debug log only. A real bus failure during a leg still logs `errno=11`.
+
+**Proven on real silicon, 2026-09-14** — the first sandwich any real chip has measured. Three runs
+at ~138 lx (~37% of the low range's full scale), each converging early on three agreeing readings
+within ~6–8 s: `24.012 → 23.916 → 24.131`, `23.703 → 23.841 → 23.915`, `24.128 → 24.046 → 23.869`.
+All nine candidates inside 23.70–24.13, a 1.8% spread. `GainRatio` read 26.666666 before and after
+every run, confirming the driver never writes its own config. With the pixel parked dark the
+sequence is empty and the error log stays empty — refusal by absence, exactly as designed.
+
+**Applying the measured ratio cut the cross-range continuity step from 11.4% to 0.4%**, a ~28×
+reduction on the same stationary light. That is the half of the mechanism nothing had exercised
+before, and it is what the whole design is for.
+
+**One interaction the bench found, and it is not a defect in either half** (2026-09-14). The
+overlap-band gate tests **`green_counts`** — green is the quantity the sandwich divides, so it is
+green that must clear the dark floor — while `_evaluate_range()` decides on **`max(counts)`**,
+because a clipped red destroys Hue/Sat/CCT whatever green is doing. Both are right for their own
+question. The consequence is that a strongly-coloured scene can be parked by auto-range on the high
+range, where its green is too small to calibrate from, even though the *same* light on the low range
+gives green ~24× larger and calibrates immediately. Measured: a blue-dominant white at ~153 lx
+approached from above holds the high range with peak > 1044 counts and green ~1006, and calibration
+refuses for the whole 120 s window. Approached from below it settles on the low range and converges
+at once. **The operator procedure is therefore to park the scene dark first and let auto-range settle
+onto the low range before raising it to the overlap level.** Loosening the gate to peak would be
+worse, not better: it would admit scenes whose green is at the dark floor and silently produce a bad
+ratio instead of refusing.
 
 **One consequence worth knowing**: the third leg runs even when the second failed, because it is
 also what puts the range back. Skipping it on a clipped or unreadable partner would strand every

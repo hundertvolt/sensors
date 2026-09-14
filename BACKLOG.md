@@ -504,9 +504,13 @@ constraints.
     now, and its persistence is the same config persistence every other field already has, covered
     by the bench reboot test rewritten alongside it. What is **not** yet proven on hardware is the
     new path: a calibration run measuring a real sandwich under the NeoPixel rig, and the operator
-    copying the candidate across. **The executable procedure for that, and for everything else on
-    this branch still awaiting a bench run, is `ISL29125_HARDWARE_VERIFICATION.md`** (temporary; it
-    is deleted once its items are green or land back here). The mock and twin tiers cover it end to end (including the
+    copying the candidate across.
+    **CLOSED 2026-09-14 — that run happened and passed.** Three sandwiches converged at ~24.0 with a
+    1.8% spread across nine candidates, the applied ratio never moved under the driver, and copying
+    the measured value across cut the cross-range continuity step from 11.4% to 0.4%. Full numbers
+    in SPECIFICATION.md Part C.11.3; the whole bench session, including everything the 2026-09-14
+    field removals and warning renumbering needed re-proving, is written up in
+    `ISL29125_HARDWARE_VERIFICATION.md` (temporary; deleted once its findings land permanently). The mock and twin tiers cover it end to end (including the
     measured-then-applied error shrink); the flash/bench tiers assert only that the trigger is
     accepted, the applied ratio does not move, and `GainMeas` is present.
 
