@@ -498,7 +498,10 @@ information):
   re-diagnose this specific symptom as a new code bug if it recurs elsewhere.
 - **Known hang cause #2, fixed**: a digital-twin integration test that drives the real
   `sensortask_wozi.build_system()`/`start_and_check_tasks()` task graph to a clean, non-cancelled
-  completion (e.g. a bounded `--soak` run finishing normally, not via timeout) leaves its ~18
+  completion (e.g. the digital twin's now-retired `--soak` flag finishing normally, not via
+  timeout — the soak check itself has since moved host-side, SPECIFICATION.md's "Driver/DUT
+  process separation" Part, but any other run reaching a clean non-cancelled completion hits the
+  same underlying task-leak) leaves its ~18
   independently-`create_task()`-spawned sibling tasks (WiFi, sensor readers, the webserver, ...)
   parked in the shared, process-wide asyncio task queue after the test's own coroutine returns —
   `Task.cancel()` on the one task a test explicitly awaits (`main_task` in

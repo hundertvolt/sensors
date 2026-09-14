@@ -19,7 +19,9 @@ class HttpResponse:
         self.headers = headers
         # bytearray on the sized/common path (_read_exact()'s own right-sized buffer, never copied
         # into a fresh bytes object - see its own comment for why), bytes on the unsized fallback
-        # (Stream.read(-1)'s own return type). Nothing here or in any caller mutates it either way.
+        # (Stream.read(-1)'s own return type), or b"" when fetch()'s own read_body=False drained the
+        # response instead of materializing it (see fetch()'s own comment - .json() must not be
+        # called on a body fetched this way). Nothing here or in any caller mutates it either way.
         self.body = body
 
     # Every response body this client is ever asked to decode is a JSON *object* (the REST layer's
@@ -106,6 +108,21 @@ async def _read_until_close(reader: "Any") -> bytes:
     # Stream.readexactly() (`r += r2` on every partial read, extmod/asyncio/stream.py's own
     # Stream.read(-1)) and the same fix in spirit: fixed-size (bounded, never growing) chunks
     # collected in a list and joined exactly once, instead of one bigger contiguous copy per read.
+    #
+    # The final b"".join(chunks) below is still one allocation the size of the whole body (~7.5KB
+    # for the largest real device's own frozen website) - fine for a caller that actually needs the
+    # bytes (test_digital_twin_real_website_integration.py decompresses and verifies real content),
+    # but real hardware never does this: production's own browser client assembles the body from
+    # Microdot's own 1KB send_file_buffer_size chunks over the wire, so no real device process ever
+    # holds one contiguous ~7.5KB buffer for this route. A caller with no use for the bytes
+    # (_soak()/_wait_until_serving(), which only ever check status_code) should take
+    # _drain_until_close() instead - see SPECIFICATION.md Part I.4(g): relieve the pressure at its
+    # source (never materialize what nothing needs), not paper over an avoidable allocation with a
+    # GC-policy change. Found via a real digital-twin CI failure this discipline itself caught: the
+    # `dev` device's own frozen website (7579 bytes, ~168-483 bytes bigger than the other 5 real
+    # devices') tipped this exact allocation over a fragmented-heap edge under gc.threshold(-1) that
+    # wozi's/arzi's own, slightly smaller sites didn't - the fix is calling _drain_until_close() from
+    # the hot soak loop, not shrinking anything or reaching for a threshold.
     chunks: list[bytes] = []
     scratch = bytearray(_READ_UNTIL_CLOSE_CHUNK_BYTES)
     while True:
@@ -117,7 +134,41 @@ async def _read_until_close(reader: "Any") -> bytes:
     return b"".join(chunks)
 
 
-async def fetch(host: str, port: int, method: str, path: str, json_body: "dict[str, object] | None" = None) -> HttpResponse:
+async def _drain_until_close(reader: "Any") -> None:
+    # _read_until_close()'s own discard-everything sibling: reads and throws away each bounded
+    # chunk via one reused scratch buffer, never accumulating a list or joining a final buffer - the
+    # correct choice for a caller that only needs the connection fully, cleanly drained (so
+    # Connection: close's own EOF is reached and the socket can close) and never looks at the body
+    # itself. See _read_until_close()'s own comment for why this exists and the real regression it fixes.
+    scratch = bytearray(_READ_UNTIL_CLOSE_CHUNK_BYTES)
+    while True:
+        nread = await reader.readinto(scratch)
+        if nread == 0:
+            break
+
+
+async def _drain_exact(reader: "Any", n: int) -> None:
+    # _read_exact()'s own discard-everything sibling, same reasoning as _drain_until_close() above -
+    # one small reused scratch buffer, bounded reads, nothing accumulated or returned.
+    scratch = bytearray(min(n, _READ_UNTIL_CLOSE_CHUNK_BYTES))
+    got = 0
+    while got < n:
+        nread = await reader.readinto(memoryview(scratch)[: min(len(scratch), n - got)])
+        if nread == 0:
+            raise EOFError
+        if nread:
+            got += nread
+
+
+async def fetch(
+    host: str,
+    port: int,
+    method: str,
+    path: str,
+    json_body: "dict[str, object] | None" = None,
+    *,
+    read_body: bool = True,
+) -> HttpResponse:
     # reader/writer are the same underlying Stream object on this build (two names kept only for
     # readability/symmetry with Microdot's own convention) - close() is a no-op here, the socket
     # only actually closes via wait_closed() in the finally below.
@@ -139,7 +190,16 @@ async def fetch(host: str, port: int, method: str, path: str, json_body: "dict[s
         # Sized (JSON envelopes, most REST responses) takes _read_exact(); unsized (GET / - see
         # _read_until_close()'s own comment for why this is a live, heavily-used path, not a rare
         # fallback) takes _read_until_close(). Neither ever accumulates via growth-by-concatenation.
-        body = await _read_exact(reader, int(content_length)) if content_length is not None else await _read_until_close(reader)
+        # read_body=False (a caller that only checks status_code, e.g. _soak()) takes either drain
+        # sibling instead - same bounded-chunk reads, but never materializing/returning the body -
+        # see _read_until_close()'s own comment for the real regression this avoids.
+        body: bytes | bytearray = b""
+        if read_body:
+            body = await _read_exact(reader, int(content_length)) if content_length is not None else await _read_until_close(reader)
+        elif content_length is not None:
+            await _drain_exact(reader, int(content_length))
+        else:
+            await _drain_until_close(reader)
 
         return HttpResponse(status_code, headers, body)
     finally:

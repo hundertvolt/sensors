@@ -223,6 +223,64 @@ def test_read_until_close_returns_empty_bytes_for_an_immediately_closed_stream()
 
 
 # ---------------------------------------------------------------------------
+# _drain_exact()/_drain_until_close() - fetch(read_body=False)'s own discard-everything siblings of
+# _read_exact()/_read_until_close(): the real fix for a real digital-twin CI regression (the `dev`
+# device's own largest frozen website, 7579 bytes, tipped _read_until_close()'s final b"".join()
+# over a fragmented-heap edge under gc.threshold(-1) that wozi's/arzi's smaller sites didn't) -
+# _soak()/_wait_until_serving() never look at a fetched body, so they must never materialize one.
+# ---------------------------------------------------------------------------
+
+
+def test_drain_exact_consumes_every_byte_without_returning_anything() -> None:
+    reader = _ChunkedReader([b"abc", b"de", b"fgh"])
+    result = run_timed(http_client._drain_exact(reader, 8))
+    assert result is None
+
+
+def test_drain_exact_raises_eof_on_premature_stream_closure() -> None:
+    reader = _ChunkedReader([b"ab"])
+    try:
+        run_timed(http_client._drain_exact(reader, 5))
+        raise AssertionError("expected EOFError")
+    except EOFError:
+        pass
+
+
+def test_drain_exact_retries_a_spurious_none_read_instead_of_treating_it_as_eof() -> None:
+    reader = _ChunkedReader([None, b"ab", None, b"c"])
+    run_timed(http_client._drain_exact(reader, 3))  # no exception raised is the assertion
+
+
+def test_drain_exact_bounds_its_own_scratch_buffer_to_the_shared_chunk_size() -> None:
+    # A body bigger than _READ_UNTIL_CLOSE_CHUNK_BYTES must still drain correctly across multiple
+    # bounded reads, not allocate one n-byte buffer up front - the exact allocation this function
+    # exists to avoid (see this section's own comment).
+    original = http_client._READ_UNTIL_CLOSE_CHUNK_BYTES
+    http_client._READ_UNTIL_CLOSE_CHUNK_BYTES = 4
+    try:
+        reader = _EofReader([b"0123456789"])
+        run_timed(http_client._drain_exact(reader, 10))
+    finally:
+        http_client._READ_UNTIL_CLOSE_CHUNK_BYTES = original
+
+
+def test_drain_until_close_consumes_every_chunk_without_returning_anything() -> None:
+    reader = _EofReader([b"abc", b"de", b"fgh"])
+    result = run_timed(http_client._drain_until_close(reader))
+    assert result is None
+
+
+def test_drain_until_close_retries_a_spurious_none_read() -> None:
+    reader = _EofReader([None, b"ab", None, b"c"])
+    run_timed(http_client._drain_until_close(reader))  # no exception raised is the assertion
+
+
+def test_drain_until_close_returns_for_an_immediately_closed_stream() -> None:
+    reader = _EofReader([])
+    run_timed(http_client._drain_until_close(reader))  # no exception raised is the assertion
+
+
+# ---------------------------------------------------------------------------
 # HttpResponse.json() - response-body decoding
 # ---------------------------------------------------------------------------
 
@@ -328,6 +386,43 @@ def test_fetch_reads_a_body_with_no_content_length_until_the_connection_closes()
             assert res.status_code == 200
             assert "Content-Length" not in res.headers
             assert res.body == b"x" * 3000
+        finally:
+            server.close()
+            await server.wait_closed()
+
+    run_timed(scenario(), timeout_s=5.0)
+
+
+# ---------------------------------------------------------------------------
+# fetch(read_body=False) - the actual fix for the real digital-twin CI regression this section's
+# own _drain_exact()/_drain_until_close() tests above document. Both real-socket paths (sized via
+# Content-Length, unsized via connection-close) must still report the real status_code while never
+# materializing a body - body comes back as b"" either way, which callers must not decode.
+# ---------------------------------------------------------------------------
+
+
+def test_fetch_with_read_body_false_drains_a_sized_response_without_materializing_it() -> None:
+    async def scenario() -> None:
+        server = await asyncio.start_server(_canned_server, "127.0.0.1", 18102)
+        try:
+            res = await http_client.fetch("127.0.0.1", 18102, "GET", "/anything", read_body=False)
+            assert res.status_code == 200
+            assert res.body == b""
+        finally:
+            server.close()
+            await server.wait_closed()
+
+    run_timed(scenario(), timeout_s=5.0)
+
+
+def test_fetch_with_read_body_false_drains_an_unsized_response_without_materializing_it() -> None:
+    async def scenario() -> None:
+        server = await asyncio.start_server(_canned_server_no_content_length, "127.0.0.1", 18103)
+        try:
+            res = await http_client.fetch("127.0.0.1", 18103, "GET", "/anything", read_body=False)
+            assert res.status_code == 200
+            assert "Content-Length" not in res.headers
+            assert res.body == b""
         finally:
             server.close()
             await server.wait_closed()

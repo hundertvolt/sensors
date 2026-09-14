@@ -123,8 +123,6 @@ does exactly this — for `wozi` by default, or any real device via `--device`:
 ```bash
 scripts/run_unix_port_integration.sh                       # wozi: just launch + serve forever, no flags
 scripts/run_unix_port_integration.sh --device dev           # dev, same shape
-scripts/run_unix_port_integration.sh --soak                 # bounded automated soak run, then serves forever
-scripts/run_unix_port_integration.sh --soak --duration 0    # same, but exits right after the soak
 scripts/run_unix_port_integration.sh --fault sgp40:writeto  # manual fault-injection exploration
 ```
 
@@ -168,12 +166,17 @@ explicit `--fram-state-path`/`--scd30-state-path`, so a manual run through that 
 in-memory-only unless you pass them yourself; `scripts/_digital_twin_ci_suite.py` passes its own
 fixed paths explicitly instead, since its own persistence-across-a-real-reboot checks depend on
 them. Defaults to `--host localhost --port 8080` (browser-reachable). A bare, no-flags run just
-launches the real object graph and serves forever, the same as a real rp2040 boot would — the
-automated soak check (`--soak`, or `--soak-cycles N` which implies it) is a specialty, opted into
-explicitly rather than run by default. See `run_generic_integration.py`'s `parse_args()` for the
-full flag list, and its `_soak()`/`_MEM_TREND_*` comments for the soak methodology (ported verbatim
-from the retired `run_wozi_integration.py`, and confirmed genuinely device-generic already by
-direct comparison against `run_dev_integration.py`'s own byte-identical copy before it was retired).
+launches the real object graph and serves forever, the same as a real rp2040 boot would. There is
+no `--soak`/`--soak-cycles` flag any more — the automated HTTP+memory-trend soak check moved
+host-side (SPECIFICATION.md's "Driver/DUT process separation" Part): the twin only exposes the one
+piece of itself a host-side driver genuinely cannot get any other way, `gc.mem_free()`, via the
+opt-in `--mem-sample-interval-ms N` flag (prints `MEM_SAMPLE <time.time()> <gc.mem_free()>` lines
+to its own stdout on that cadence; unset by default, no sampling). See
+`run_generic_integration.py`'s `parse_args()` for the full flag list, and
+`scripts/_digital_twin_ci_suite.py`'s Run 11 (`_run_11_soak()`) for the actual soak methodology —
+now a plain host-side HTTP-cycling loop parsing those `MEM_SAMPLE` lines back out of the twin's
+captured log, the same pattern `_would_have_triggered_count()` already used for the watchdog
+counter.
 
 A second, lighter integration tier also landed alongside the full orchestrator:
 `tests/test_digital_twin_sensortask_integration.py` builds the real `sensortask_wozi` object graph
@@ -349,7 +352,7 @@ it checks and why; this section is the practical how-to.
 
 ```bash
 scripts/run_digital_twin_ci.sh          # wozi (default): clean -> build -> test, same as CI runs it
-scripts/run_digital_twin_ci.sh dev      # any other real device: same 11-run suite, that device's own module
+scripts/run_digital_twin_ci.sh dev      # any other real device: same 12-run suite, that device's own module
 ```
 
 **Clean**: removes any leftover `digital_twin/fram_state.json`/`digital_twin/scd30_state.json`/
@@ -367,11 +370,20 @@ placeholder). Must succeed before any test phase runs.
 `uv run` CPython script (stdlib-only — no `uv sync` needed) that drives
 `digital_twin/run_generic_integration.py` as a real subprocess, over real HTTP/UDP (`http.client`/
 `socket`, not `_http_client.py` — this script runs under CPython, not the twin's own MicroPython
-process), through thirteen real, sequential subprocess runs (11 top-level, two of them - 5b/5c -
+process), through fourteen real, sequential subprocess runs (12 top-level, two of them - 5b/5c -
 sub-runs of run 5) on a fixed port (`18080`, distinct from
-the manual entry point's `8080` default, so both can run side by side without colliding). The
-bus-fault matrix in runs 3/4 is derived from that device's own real wiring plan, never a hardcoded
-driver list — a device without `bmp3xx` (4 of the 6 real devices) simply never faults/checks it:
+the manual entry point's `8080` default, so both can run side by side without colliding). **The
+whole 12-top-level-run sequence itself runs twice, not just once** — `main()` calls `run_suite()`
+once at `--gc-threshold -1` (MicroPython's own real reactive-only default) and once at `32768` (the
+project's chosen value, matching every real firmware boot), each pass writing its own subdirectory
+under `digital_twin_ci_logs/` (`gc_threshold_neg1/`, `gc_threshold_32768/`). This is CLAUDE.md's/
+SPECIFICATION.md Part I.4(e)'s standing rule applied to the *entire* suite, not just the soak
+check (run 11, below) — every run in every pass must pass with zero `MemoryError`s (caught-and-
+logged included) under the real default before the same suite is trusted under the chosen
+threshold; `_close_log_and_check_memory_safety()` enforces this automatically on every subprocess
+shutdown, not just run 11's own explicit trend check. The bus-fault matrix in runs 3/4 is derived
+from that device's own real wiring plan, never a hardcoded driver list — a device without `bmp3xx`
+(4 of the 6 real devices) simply never faults/checks it:
 
 1. **Baseline boot** — walk every `GET` endpoint (`/measurements`, `/sensors`, `/networking`,
    `/system`, `/notification`, `/status`, `/`), then `PUT` a setting on each of
@@ -471,10 +483,41 @@ driver list — a device without `bmp3xx` (4 of the 6 real devices) simply never
     errors (run 3) cannot demonstrate — that the watchdog backstop itself actually engages
     (`would_have_triggered_count >= 1`), matching CLAUDE.md's own settled "hardware watchdog is the
     accepted backstop" rule for a genuinely wedged bus.
-11. **Dedicated clean soak run** — a fresh `--soak --soak-cycles 20 --duration 0` run against a
-    freshly-wiped twin, checked for a clean exit and a printed `PASS` summary (see
-    `run_generic_integration.py`'s own `_soak()` for the memory-trend methodology, ported
-    verbatim from the retired `run_wozi_integration.py`).
+11. **Clean soak run — host-driven, not a twin-side `--soak` flag.** A fresh clean-boot twin
+    subprocess is armed with `--mem-sample-interval-ms` only (no `--soak`/`--soak-cycles` — that
+    flag doesn't exist any more); the *host* (this script's own `_run_11_soak()`, plain CPython)
+    drives 100 warmup cycles then 20 measured cycles of the same
+    `/measurements`/`/sensors`/`/networking`/`/system`/`/notification`/`/status`/`/` endpoint sweep
+    directly over HTTP (100, not wozi's original 40 - `dev`'s two extra wired `uart_link` instances
+    mean more one-time post-boot settling, confirmed directly, 2026-09-14: `gc.mem_free()` plateaus
+    for both devices given enough idle wall-clock time after boot, `dev`'s own curve just needing
+    roughly 2.5x wozi's own before it does; 100 gives every device real room to finish settling
+    before the measured window starts), checks zero HTTP failures and `would_have_triggered_count ==
+    0`, then parses
+    the twin's own captured `MEM_SAMPLE <time.time()> <gc.mem_free()>` log lines (`gc.mem_free()`
+    has no REST route and no other way out of the process — SPECIFICATION.md's "Driver/DUT process
+    separation" Part) and computes the same early-quarter-vs-late-quarter memory-trend check the
+    twin used to run on itself (`_mem_trend()`, unit-tested directly in
+    `tests_scripts/test_digital_twin_ci_suite_soak.py` — no live subprocess needed for that half).
+    This one run is **not** split into an 11a/11b pair any more: since the *whole* suite now runs
+    once per `gc_threshold` value (see above), run 11 already gets its own real-default pass and
+    chosen-threshold pass for free, the same as every other run here. This moved host-side because
+    of a real false-positive lesson, not just tidiness: the soak check used to run its own
+    warmup/cycle loop and `gc.collect()`-based trend check *inside* the twin process — a driver
+    contaminating the very DUT resources it was trying to measure, the exact anti-pattern
+    SPECIFICATION.md's new rule now forbids — and a `gc.collect()` call embedded in that in-DUT
+    trend check was itself flagged as a violation of the "no `gc.collect()` propping up a result"
+    rule (SPECIFICATION.md Part I.4(e)) before the whole check was moved out. It also exists because
+    of an earlier, unrelated regression: an earlier session found a genuine CI `MemoryError` here
+    (repeated `allocating ~6100 bytes` failures on `GET /status`) and initially "fixed" it by giving
+    the twin's boot entry `gc.threshold(32768)` for the first time, framing the twin never having
+    set it as the root cause. The project owner rejected that framing — errors going away under a
+    threshold change is not proof the underlying allocation pattern is safe, only that collection
+    now happens earlier. The actual root cause was `digital_twin/_http_client.py`'s own
+    `Stream.readexactly()`/`read(-1)` growth-by-concatenation accumulation on the client side, fixed
+    by `_read_exact()`/`_read_until_close()` (one right-sized buffer per `fetch()`, no
+    `gc.threshold()` involved) — confirmed by the `gc_threshold=-1` pass running clean with that fix
+    in place and the twin's own boot entry forced back to the real default.
 
 Each run's subprocess stdout/stderr is captured to `digital_twin_ci_logs/run<N>_*.log` (gitignored;
 uploaded as a CI build artifact via the `digital-twin-e2e` job's own `if: always()` upload step, so

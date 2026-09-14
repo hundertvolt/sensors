@@ -33,7 +33,10 @@ async def _wait_until_serving(host: str, port: int, timeout_s: float = 10.0) -> 
     async def poll() -> None:
         while True:
             try:
-                await _http_client.fetch(host, port, "GET", "/")
+                # read_body=False: only ever checks that the request didn't raise - see
+                # _http_client.fetch()'s own comment for why materializing an unused body is an
+                # avoidable allocation this deliberately-aggressive tool has no reason to add back.
+                await _http_client.fetch(host, port, "GET", "/", read_body=False)
             except OSError:
                 await asyncio.sleep_ms(50)
             else:
@@ -46,7 +49,8 @@ async def _hammer_client(host: str, port: int, n_requests: int, client_id: int, 
     for i in range(n_requests):
         path = _ENDPOINTS[i % len(_ENDPOINTS)]
         try:
-            resp = await _http_client.fetch(host, port, "GET", path)
+            # read_body=False: results only ever record resp.status_code below.
+            resp = await _http_client.fetch(host, port, "GET", path, read_body=False)
             results.append(("ok", client_id, i, resp.status_code))
         except OSError as e:
             results.append(("err", client_id, i, str(e)))
