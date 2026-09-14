@@ -66,10 +66,14 @@ Kept completely separate so nothing here can accidentally affect the determinist
 - `unix_port_gc_unwedge.py` — its sibling for a second Unix-port quirk: a SIGINT landing inside
   `gc_collect()` leaves the GC heap permanently locked, so the shutdown flush dies with a
   misleading `MemoryError: ... heap is locked` on a heap that is mostly free. Measured at ~5% on
-  both `v1.28.0` and `v1.29.0`, so not a version-bump regression. Both runners call
-  `unwedge_heap_after_interrupt()` first in their `except KeyboardInterrupt:` handler — full
-  mechanism and why `gc.collect()` (not `micropython.heap_unlock()`) is the fix: SPECIFICATION.md
-  Part F.6.
+  both `v1.28.0` and `v1.29.0`, so not a version-bump regression. `run_generic_integration.py`
+  calls `unwedge_heap_after_interrupt()` first at **two** sites: unconditionally at the top of
+  `main()`'s own `finally:` block (which itself calls `flush_fram()`/`flush_scd30()`, so it needs
+  the same guard) and again in the outer `except KeyboardInterrupt:` handler around
+  `asyncio.run()` (reached instead of the first site whenever the interrupt lands while `main()`'s
+  own coroutine is suspended rather than currently running, so it never enters that `finally:` at
+  all) — full mechanism and why `gc.collect()` (not `micropython.heap_unlock()`) is the fix:
+  SPECIFICATION.md Part F.6.
 - `_crc8.py` / `_fault_injection.py` — small shared helpers (CRC-8 for SGP40/SCD30's word protocol;
   a generic op-keyed fault-injection queue, mirroring `tests/machine.py`'s own
   `inject_fault()`/`_maybe_raise()` convention) used by more than one chip fake.

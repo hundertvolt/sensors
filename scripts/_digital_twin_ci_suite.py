@@ -384,15 +384,57 @@ def _close_log_and_check_memory_safety(proc: subprocess.Popen[str], run_label: s
     _check_no_memory_error_in_log(log_path, run_label)
 
 
+def _proc_diagnostic_fields(pid: int) -> dict[str, str]:
+    # Best-effort /proc introspection (Linux-only, exactly what every CI runner and dev box here
+    # already is) for a process that ignored SIGINT for `timeout_s` seconds - `wchan` in particular
+    # names the kernel function the process is actually blocked in (e.g. "do_poll" vs
+    # "hrtimer_nanosleep" vs "do_futex"), which tells a real syscall-level wait apart from a wedged
+    # heap or a runaway CPU-bound loop without needing a debugger attached. Never allowed to raise -
+    # this is diagnostic-only, and a missing/unreadable /proc entry (process just exited, non-Linux,
+    # permission quirk) must not itself fail the suite or mask the real timeout.
+    fields: dict[str, str] = {}
+    proc_dir = Path(f"/proc/{pid}")
+    try:
+        status_text = (proc_dir / "status").read_text()
+        for line in status_text.splitlines():
+            if line.startswith(("State:", "VmRSS:")):
+                key, _, value = line.partition(":")
+                fields[key] = value.strip()
+    except OSError:
+        pass
+    try:
+        fields["wchan"] = (proc_dir / "wchan").read_text().strip() or "(running)"
+    except OSError:
+        pass
+    return fields
+
+
 def _shutdown(proc: subprocess.Popen[str], run_label: str, timeout_s: float = 15.0) -> int:
     # SIGINT, not SIGTERM/terminate(): run_generic_integration.py's own graceful-shutdown path
     # (FRAM/SCD30 flush) only runs on KeyboardInterrupt (see that module's own __main__ block
     # comment) - a real SIGTERM would skip it entirely and lose this run's persisted state.
     if proc.poll() is None:
         proc.send_signal(signal.SIGINT)
+        start = time.monotonic()
         try:
             proc.wait(timeout=timeout_s)
         except subprocess.TimeoutExpired:
+            # Never diagnosed before (see this suite's own module-level rationale for why this
+            # block exists): capture what the wedged process was actually doing before killing it,
+            # so a recurrence is self-diagnosing from the CI job log alone instead of leaving only
+            # "exit code -9" behind.
+            elapsed = time.monotonic() - start
+            diag = _proc_diagnostic_fields(proc.pid)
+            log_file = getattr(proc, "ci_log_file", None)
+            tail = ""
+            if log_file is not None:
+                tail = "\n".join(_read_log(Path(log_file.name)).splitlines()[-20:])
+            print(
+                f"DIAG: {run_label}: SIGINT ignored for {elapsed:.1f}s (timeout={timeout_s}s), "
+                f"about to SIGKILL pid={proc.pid} - /proc fields: {diag or '(unavailable)'}",
+            )
+            if tail:
+                print(f"DIAG: {run_label}: last 20 log lines before SIGKILL:\n{tail}")
             proc.kill()
             proc.wait(timeout=5.0)
     ec = proc.returncode if proc.returncode is not None else -1
