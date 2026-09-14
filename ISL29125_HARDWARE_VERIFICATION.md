@@ -187,3 +187,137 @@ Append results here rather than only in the session transcript: for each item, w
 printed, and whether it passed. Anything that fails is a finding to diagnose, not a bound to widen —
 `tests_hardware/README.md`'s "a hardware test that depends on an unstated rig condition" pattern
 (six instances so far) is the trap to check yourself against before concluding the driver is wrong.
+
+---
+
+# Results — 2026-09-14, bench Pi4, real dev hardware
+
+Firmware rebuilt from this branch (`scripts/build_firmware.py dev`, 91% flash) and flashed with
+`picotool load -x -v` after `mpremote bootloader`; the littlefs filesystem is untouched by a UF2
+load, which is what made §0's migration a real test rather than a fresh-config boot.
+
+**One code change was needed before anything could run — see "Finding 1" below.**
+
+## 0. Config migration — PASS (with a documentation correction)
+
+First boot after flashing logged `CFGMGR_ISL29125 = [W4, W4, W5]`, and the ISL29125 log stayed at
+its pre-flash count (7 → 7 over uptime 12 → 59), i.e. the new firmware logged nothing of its own.
+Second boot after reboot: `CFGMGR_ISL29125` clean, config rewrite persisted.
+
+**The §0 table above is incomplete in two ways** (both documentation gaps, not firmware defects —
+the migration did the right thing):
+
+- `AutoRangePersist` was **also** removed, alongside the three keys listed. It is folded into the
+  same W5 rewrite, so it changes no count.
+- `GainRatio` was **added** in the same branch (it moved out of FRAM into config, `f05f82d`). The
+  old config file had no such key, so it defaults with its own `wrnno=4`. **That is the second W4** —
+  the expected first boot is `W4, W4, W5`, not `W4, W5`.
+
+Persisted config after migration: `AutoRangeThresh 85.0`, `GainRatio 26.666666`, the four removed
+keys gone.
+
+## 1.1 / 1.3 Derived switch-down point and renumbered warnings — PASS (2 runs)
+
+`pytest tests_hardware/flash/test_sensor_accuracy.py -k isl29125 --allow-neopixel-sweep`:
+**4 passed** twice (698.09s, 698.20s). Two further direct runs of the envelope script for numbers:
+
+- **range switches across the full envelope: 2** (bound is 4; chatter would be dozens) — both runs
+- returned to the low range at ambient (`dn level=0 lux≈1.06 range=375`), both ranges used
+- **zero `E`-type entries**; log is `('W', 12)` only
+- **`W12` present** at hard saturation and **`W13` absent** — the renumbering reached real firmware
+- no `W10`/`W11`, as expected for a clean run
+- cross-range continuity at level 4: **11.4%** and **11.0%** (was 11.5% on 2026-09-13 — unchanged)
+- 12bit vs 16bit on one static scene: 0.7% / 0.4%
+
+## 1.2 Fixed 2-cycle settle — PASS, and the fast path re-measured
+
+`isl29125_real_irq_edge.py`, three runs: **elapsed 2.73 s / 2.71 s / 2.71 s**, all interrupt-led
+(periodic fallback 30 s). Against `FAST_PATH_DEADLINE_S = 6.0` that is 2.2× headroom, and it sits
+just under the doc's own ~3030 ms arithmetic worst case. `config1_restart=yes` and
+`persist_unit=rgb_cycles` both reproduced in all three.
+
+**The `500–800 ms` figure in SPECIFICATION.md Part C.11.1.3 is not the comparable number.** It was
+taken when PRST came from a config value; PRST is derived from `SampleInterv` now, and this script
+sets `SampleInterv = TRIGGER_SEC = 30`, which buys the largest PRST the part offers (8 cycles,
+2424 ms). The settle doubling accounts for ~303 ms of the change, the PRST derivation for the rest.
+The INT still leads decisively, so this is not the design finding §1.2 warned about.
+
+The 606 ms settle is directly visible in the driver's own debug output (`settle discard 605/606`).
+
+## 1.4 Bench tier — PASS (2 runs)
+
+All three tests, twice: **3 passed** in 95.58 s and 94.93 s, including
+`test_isl29125_gain_ratio_survives_a_real_reboot_as_an_ordinary_config_value` (its first run since
+the rewrite) and both `assert_module_error_log_empty` calls.
+
+## 2.1 A real sandwich calibration — PASS. First time on real silicon.
+
+Run as an isolated device script rather than over REST: the dev REST LED route
+(`PUT /notification {"lightCmdLED": ...}`) goes through `request_signal()`, which produces a signal
+*pattern* — measured drifting 106 → 77 → 42 lx — and a sandwich's dominant error is exactly the
+scene moving. A device script holds the pixel genuinely stationary.
+
+Three in-band runs at `OVERLAP_LEVEL = 4` (~138 lx on the 375 range, ~24 100 green counts, ~37% of
+that range's full scale):
+
+| Run | Candidate sequence | Converged on |
+|---|---|---|
+| 1 | 24.012 → 23.916 → 24.131 | 24.131 |
+| 2 | 23.703 → 23.841 → 23.915 | 23.915 |
+| 3 | 24.128 → 24.046 → 23.869 | 23.869 |
+
+Every run converged early on `_CAL_CONVERGE_N = 3` within ~6–8 s, well inside `_CAL_WINDOW_MS`.
+All nine candidates land in 23.70–24.13 (1.8% spread), inside the required 20.0–34.0.
+`GET /sensors`'s `GainRatio` read **26.666666 before and after** — the driver never writes its own
+config, so every flash write stays on the REST path.
+
+**Level recorded, per BACKLOG 20**: ~24.0 at ~37% of the low range's full scale. Consistent with
+that item's ~28-at-ambient to ~22-near-full-scale trend. One device, still PARKED.
+
+**The refusal works as designed**: with the pixel parked dark, the candidate sequence is empty and
+the ISL error log stays **empty** — refusal reported by absence, never by a `wrnno`.
+
+**Closing the loop (step 6)** — re-running the envelope's continuity measurement with the measured
+ratio applied instead of the nominal:
+
+| Applied ratio | Cross-range continuity step at level 4 |
+|---|---|
+| 26.667 (nominal) | **11.4%** / 11.0% |
+| 23.96 (measured) | **0.4%** |
+
+A ~28× reduction. This is the half of the mechanism nothing had ever exercised.
+
+---
+
+## Finding 1 — three device scripts could never initialise the driver (fixed in this session)
+
+`isl29125_plausibility_read.py`, `isl29125_lighting_scenarios.py` and `isl29125_real_irq_edge.py`
+prime `reader.cfgmgr._cache` by hand, and none of them was updated when `f05f82d` added `GainRatio`
+to the schema. `_init_isl()` fetches `_VAL_AR_THRESH + _VAL_AR_DWELL + _VAL_FC + _VAL_GR` and
+length-checks the result against `_N_FLOAT_CFG = 4`; with only three keys present the check fails,
+`errno=12` is logged and init returns False — so the read chain never starts and **no sample ever
+arrives**.
+
+Symptom was `samples=0`, `lux=1000000000.0..-1.0`, "the read chain stalled", and
+"sensor not responding or not wired to i2c1" — all of which read like a dead sensor or bad wiring.
+`isl29125_mechanism_envelope.py` already had the key, which is exactly why it was the one ISL test
+that passed. Fix: add `"GainRatio": 10000 / 375` to the three primed caches, matching the envelope
+script. All four caches now carry an identical 10-key set — every schema key except `ISLCalibrate`,
+which is a write-only command trigger init never reads. No stale keys remain in any of them.
+
+## Finding 2 — the calibration band gate and the range decision use different quantities
+
+Not changed, reported only. `_evaluate_range()` decides on `max(counts)` (the **peak** channel,
+deliberately — see its own comment), while `_maybe_calibrate()`'s overlap-band gate tests
+**`green_counts`**, both against `fraction_to_counts(_down_thresh())` ≈ 1044 counts.
+
+For a strongly-coloured scene the two disagree. This rig's WS2812 white is blue-dominant, so at
+~153 lx approached from *above*, peak stays above 1044 (auto-range correctly holds the high range)
+while green sits at ~1006, below the band's lower edge — and calibration refuses for the entire
+120 s window, logging "scene outside the overlap band, waiting" ~35 times. Reproduced twice.
+
+Approached from *below* (dark first) the same light settles on the 375 range, where green is
+~24 000 counts, and calibration converges immediately. **So §2.1's procedure above needs one extra
+step: park the pixel dark and let auto-range settle onto the low range before raising it to the
+overlap level.** Whether the gate should use peak for consistency with the range decision is a
+design question for the owner, not something to change from the bench.

@@ -289,7 +289,7 @@ async def _main() -> None:
     reader.cfgmgr._cache = {
         "SampleInterv": 1, "Resolution": 16, "RangeAuto": True, "Range": 10000,
         "AutoRangeThresh": 85.0, "AutoRangeDwell": 0.0,
-        "IrCompOffset": 0, "IrCompAdjust": 40, "FiltCoeff": -1.0,
+        "IrCompOffset": 0, "IrCompAdjust": 40, "FiltCoeff": -1.0, "GainRatio": 10000 / 375,
     }
     reader.start_timer()
     tasks = [reader.start_asy_trigger(), reader.start_asy_read()]
