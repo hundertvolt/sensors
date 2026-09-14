@@ -1872,6 +1872,26 @@ def test_a_failed_config_write_leaves_the_shadow_on_the_value_the_chip_still_hol
     assert saturated is False
 
 
+def test_a_reconciling_re_read_that_itself_fails_is_retried_on_the_following_cycle() -> None:
+    # The bus being down is exactly when a write fails, so the re-read that follows is likely to
+    # fail too. Recording it as reconciled anyway would drop the torn chip on the floor - the count
+    # stays behind instead, which is what makes the next cycle pick it up.
+    i2c, reader = ready_reader("reconcile_retry")
+    reader.isl._write_failures = 1
+
+    with _FastAsyncSleep():
+        fake(i2c).inject_fault("readfrom_mem", OSError(errno_mod.EIO, "no ACK"), times=1)
+        run(reader._verify_after_failed_write())
+    assert reader._reconciled_write_failures == 0, "a failed re-read reconciles nothing"
+
+    # The following cycle, with the bus back, does the work the failed one could not.
+    seed(i2c, _REG_CONFIG1, bytes([_BITS_12, 0x00, 0x00]))  # a chip that disagrees with the shadow
+    with _FastAsyncSleep():
+        run(reader._verify_after_failed_write())
+    assert reader._reconciled_write_failures == 1
+    assert 11 in warnings(run(reader.get_error_counter()))
+
+
 def test_a_write_that_fails_during_the_reconciling_re_read_is_not_lost() -> None:
     # Why the reader tracks a COUNT rather than clearing a flag. The re-read below takes one
     # transaction, and a REST push landing on it can fail too - with a flag, the clear that follows
