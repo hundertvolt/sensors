@@ -323,6 +323,30 @@ constraints.
     BUILD_CHAIN_PLAN.md's Session 4 post-merge self-audit; had never been migrated to this file before
     now, so it stayed unresolved and easy to lose track of.
 
+22. **`.github/workflows/ci.yml`'s Mypy step needs `tests_hardware/device_modules` appended to its
+    scope list — a one-line change, blocked only on token scope.** That step passes an explicit list
+    (`src tests tests_hardware/device_scripts`), which overrides `pyproject.toml`'s own `files`, so
+    the directory holding `memory_pressure.py` (the frozen allocator-pressure instrument,
+    SPECIFICATION.md Part I.6) is not type-checked in CI. **CI is not currently broken and this is
+    not urgent**: `tests_hardware/device_modules` is on `[tool.mypy]`'s `mypy_path`, so
+    `import memory_pressure` resolves from the two device scripts that use it, and a plain local
+    `scripts/typecheck.sh` does check the module itself via `files`. What is missing is only CI's
+    own coverage of that one file — so a finding inside it would be caught locally but not gated.
+    The fix is literally:
+
+    ```yaml
+    run: uv run scripts/typecheck.sh src tests tests_hardware/device_scripts tests_hardware/device_modules
+    ```
+
+    Left undone because pushing any `.github/workflows/` change needs a token carrying the
+    `workflow` OAuth scope, which the session that added the instrument did not have (PR #84,
+    2026-09-14) — the push is rejected outright with *"refusing to allow an OAuth App to create or
+    update workflow `.github/workflows/ci.yml` without `workflow` scope"*. Any session that does
+    have it can land this directly; there is nothing to decide, only to apply. **Worth a wider
+    check when applying it**: this same explicit-list-overrides-`files` mismatch will silently
+    exclude any future directory added to `[tool.mypy]`'s `files` without also being named in
+    `ci.yml`, and nothing currently guards against that divergence.
+
 16. **Seven `src/` modules number `errno`/`wrnno` inside the range `base_classes.py` reserves.**
    Part C.7 reserves `errno` 1-9 and `wrnno` 1-2 for `SensorReader`/`SensorReaderConfig`, and
    `api_response.py`'s `handle_set_cmd()` owns the fixed cross-module slot `errno=99`; the project
