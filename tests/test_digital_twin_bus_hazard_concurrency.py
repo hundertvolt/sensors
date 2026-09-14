@@ -126,6 +126,14 @@ async def _run_real_task_graph_and_assert_healthy(module: "ModuleType", shared_b
         assert sgp_data.VOC is not None, "SGP40 never produced real data under concurrent bus load"
         assert bmp_data.Pres is not None, "BMP3xx never produced real data under concurrent bus load"
         assert scd_data.CO2 is not None, "SCD30 never produced real data under concurrent bus load"
+        # dev-only: the ISL29125 shares i2c1 with both of the above AND drives its own INT pin
+        # concurrently, so it is the one sensor here whose reads can be interleaved with an
+        # interrupt-triggered extra cycle of its own (requirement 18 keeps it off wozi entirely).
+        isl_reader = getattr(module, "isl_reader", None)
+        if isl_reader is not None:
+            isl_data = await isl_reader.get_data()
+            assert isl_data.Lux is not None, "ISL29125 never produced real data under concurrent bus load"
+            assert isl_data.RangeAct is not None, "ISL29125 reported a sample with no range attached"
         # FRAM has its own dedicated SPI bus (no interleaving hazard here) but must stay healthy
         # through concurrent sensor error-log/backup writes onto it.
         assert module.fram.fram.initialized is True, "FRAM dropped out of the initialized state during concurrent bus load"
@@ -154,7 +162,7 @@ def test_wozi_real_task_graph_survives_concurrent_bus_load_including_a_real_gene
 
 
 def test_dev_real_task_graph_survives_concurrent_bus_load_including_a_real_general_call() -> None:
-    # dev's SCD30+SGP40-on-i2c1 pairing also gets real-hardware proof
+    # dev's SCD30+SGP40+ISL29125-on-i2c1 grouping also gets real-hardware proof
     # (tests_hardware/flash/test_bus_concurrency.py); this gives it fast, every-push CI coverage too.
     machine.configure_i2c_wiring("dev")
     port = _next_test_port()

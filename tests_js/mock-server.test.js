@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { installMockFetch } from "../js/mock-server.js";
 
 /** @type {import("../js/definitions.js").SiteDefinitions} */
@@ -29,6 +29,15 @@ const DEFS = {
                     label: "SGP40",
                     submit: true,
                     fields: [{ key: "SGPResetVOC", label: "Reset VOC Index", kind: "toggle" }],
+                },
+                {
+                    key: "ISL29125",
+                    label: "ISL29125",
+                    submit: true,
+                    fields: [
+                        { key: "IrCompAdjust", label: "IR Compensation Adjust", kind: "number", min: 0, max: 63 },
+                        { key: "ISLCalibrate", label: "Calibrate Gain Ratio", kind: "toggle" },
+                    ],
                 },
             ],
         },
@@ -126,8 +135,11 @@ const DEFS = {
 };
 
 const DATA = {
-    measurements: { SCD30: { CO2: 600, TS: 1000, Model: "SCD30" } },
-    sensorsConfig: { SCD30: { MeasInt: 5, ForceCalRef: 400 }, SGP40: {} },
+    measurements: {
+        SCD30: { CO2: 600, TS: 1000, Model: "SCD30" },
+        ISL29125: { Lux: 300, RGB: { R: 0.02, G: 0.03, B: 0.01 }, CCT: null, TS: 1000 },
+    },
+    sensorsConfig: { SCD30: { MeasInt: 5, ForceCalRef: 400 }, SGP40: {}, ISL29125: { IrCompAdjust: 40 } },
     networkingConfig: { Hostname: "wozi", PW: "hunter2hunter2" },
     systemConfig: {},
     notificationConfig: {},
@@ -386,6 +398,79 @@ describe("installMockFetch", () => {
         expect(body.SCD30.Model).toBe("SCD30"); // non-number leaf: untouched
         expect(body.SCD30.CO2).toBeGreaterThan(590);
         expect(body.SCD30.CO2).toBeLessThan(610);
+    });
+
+    it("jitters a nested measurement sub-object's leaves too, not just the top level", async () => {
+        // The ISL29125's body is the first with a third level; without the recursion those leaves
+        // sit static forever, which reads as a broken renderer. Math.random is pinned to its maximum
+        // so the expectations are exact: below 1 the spread is 5% and the rounding keeps 4 decimals.
+        const random = vi.spyOn(Math, "random").mockReturnValue(1);
+        uninstall = installMockFetch(DEFS, DATA);
+        const body = await (await fetch("/measurements")).json();
+        random.mockRestore();
+
+        expect(body.ISL29125.TS).toBe(1001); // top-level timestamp: still exactly +1
+        expect(body.ISL29125.CCT).toBeNull(); // a null leaf is not a number - left alone
+        expect(body.ISL29125.Lux).toBe(303); // at or above 1: unchanged, 300 + 1% of itself
+        // The nested leaves, each moved by 5% of itself - which only happens at all if
+        // jitterInPlace() recursed into the sub-object.
+        expect(body.ISL29125.RGB.R).toBe(0.021);
+        expect(body.ISL29125.RGB.G).toBe(0.0315);
+        expect(body.ISL29125.RGB.B).toBe(0.0105);
+    });
+
+    it("never jitters a non-negative measurement leaf into a negative one", async () => {
+        // A property of every leaf, not a check on one guard: a brightness of -0.01 is not plausible
+        // and the real site renders it verbatim. Asserted over the whole body with Math.random at 0,
+        // the most negative jitter there is, so a change to the spread rule fails here.
+        const random = vi.spyOn(Math, "random").mockReturnValue(0);
+        try {
+            uninstall = installMockFetch(DEFS, DATA);
+            const body = await (await fetch("/measurements")).json();
+
+            /** @param {Record<string, unknown>} group @param {string} where */
+            const assertNoNegativeLeaf = (group, where) => {
+                for (const [key, value] of Object.entries(group)) {
+                    if (value !== null && typeof value === "object") {
+                        assertNoNegativeLeaf(/** @type {Record<string, unknown>} */ (value), `${where}.${key}`);
+                    } else if (typeof value === "number") {
+                        expect(value, `${where}.${key}`).toBeGreaterThanOrEqual(0);
+                    }
+                }
+            };
+            assertNoNegativeLeaf(body, "measurements");
+
+            // And the values themselves, so this cannot pass by everything having gone to zero:
+            // each normalised leaf moved by 5% of itself, and stayed a usable number.
+            expect(body.ISL29125.RGB.R).toBe(0.019);
+            expect(body.ISL29125.RGB.G).toBe(0.0285);
+            expect(body.ISL29125.RGB.B).toBe(0.0095);
+            expect(body.ISL29125.Lux).toBe(297); // at or above 1: 300 - 1% of itself
+        } finally {
+            random.mockRestore();
+        }
+    });
+
+    it("omits the command-only ISLCalibrate from GET readback, as it already does for ContMeas/SGPResetVOC", async () => {
+        uninstall = installMockFetch(DEFS, DATA);
+        const accepted = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ ISL29125: { ISLCalibrate: true } }) });
+        expect((await accepted.json()).result.ISL29125.ISLCalibrate).toBe("Valid");
+
+        const body = await (await fetch("/sensors")).json();
+        expect("ISLCalibrate" in body.ISL29125).toBe(false); // never echoed back as if persisted
+        expect(body.ISL29125.IrCompAdjust).toBe(40); // its neighbours are unaffected
+    });
+
+    it("accepts ISLCalibrate repeatedly - it is a trigger, not a one-shot", async () => {
+        uninstall = installMockFetch(DEFS, DATA);
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+            // Sequential is the point: each PUT must be accepted after the previous one already
+            // fired, which running them in parallel would not show.
+            // eslint-disable-next-line no-await-in-loop -- see the comment above
+            const res = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ ISL29125: { ISLCalibrate: true } }) });
+            // eslint-disable-next-line no-await-in-loop -- same reasoning as above
+            expect((await res.json()).result.ISL29125.ISLCalibrate).toBe("Valid");
+        }
     });
 
     it("silently ignores a PUT /sensors group key that isn't a real sensor, applying the real ones normally", async () => {

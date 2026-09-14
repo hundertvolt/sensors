@@ -42,6 +42,17 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         help="Actually run @pytest.mark.flash_cycle tests (a deliberate re-provisioning flash - counts against the 'no extra flash cycles' constraint, never run as part of a routine pass). Skipped by default.",
     )
     parser.addoption(
+        "--allow-neopixel-sweep",
+        action="store_true",
+        default=False,
+        help=(
+            "Actually run @pytest.mark.neopixel_sweep tests - the ISL29125 auto-range sweep driven "
+            "by the board's own NeoPixel, which needs a physical geometry a routine bench run "
+            "cannot assume (the LED aimed at the sensor, ambient light excluded). Skipped by "
+            "default; see tests_hardware/README.md for the rig."
+        ),
+    )
+    parser.addoption(
         "--allow-multi-day-rollover-wait",
         action="store_true",
         default=False,
@@ -57,6 +68,7 @@ def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line("markers", "long_soak: real-hardware passive observation over one of three named duration tiers (short/mid/long) - skipped unless --soak-tier is passed; see scripts/run_bench_soak_tests.sh")
     config.addinivalue_line("markers", "multi_day_rollover: a real, fixed ~12.4-day wait, not tier-selectable - skipped unless --allow-multi-day-rollover-wait is passed")
     config.addinivalue_line("markers", "flash_cycle: a deliberate re-provisioning flash (counts against the 'no extra flash cycles' constraint), skipped unless --allow-flash-cycle is passed")
+    config.addinivalue_line("markers", "neopixel_sweep: needs the NeoPixel-aimed-at-the-ISL29125 rig physically set up (tests_hardware/README.md) - skipped unless --allow-neopixel-sweep is passed")
     config.addinivalue_line("markers", "role_reversal: bench radio temporarily stops hosting br0-wifi-ap to join the DUT's own hotspot - informational marker, not skip-gated")
 
 

@@ -12,8 +12,8 @@ worth knowing before trusting a run's results.
 go-ahead first, given directly in that session's own conversation** - see CLAUDE.md's own hard rule
 on this. Once granted, this file has everything else needed: prerequisites below, environment
 variables, the critical safety facts folded into "Known assumptions and open findings" (the
-`--allow-flash-cycle`/long-soak opt-in gates in "Running" below, the stage-6 permanent-WLAN-
-deactivation risk, `BENCH_AP_PASSWORD` handling in "Environment variables" below).
+`--allow-flash-cycle`/long-soak/`--allow-neopixel-sweep` opt-in gates in "Running" below, the
+stage-6 permanent-WLAN-deactivation risk, `BENCH_AP_PASSWORD` handling in "Environment variables" below).
 
 ## Prerequisites
 
@@ -80,6 +80,10 @@ uv run pytest tests_hardware/flash --allow-multi-day-rollover-wait -k test_ticks
 # default - this genuinely re-flashes the board, see SPECIFICATION.md Part E.6.3):
 scripts/run_flash_hardware_suite.sh --allow-flash-cycle
 
+# Add --allow-neopixel-sweep to also run the two ISL29125 light tests (skipped by default -
+# they need the NeoPixel rig physically set up, see "The ISL29125 NeoPixel light rig" below):
+scripts/run_flash_hardware_suite.sh --allow-neopixel-sweep
+
 # Manual tests (interactive, prints instructions, waits for confirmation):
 scripts/run_manual_hardware_tests.sh --list          # see what's registered, run nothing
 scripts/run_manual_hardware_tests.sh --only <name>   # run just one
@@ -90,6 +94,197 @@ Both automated scripts are plain `uv run pytest` wrappers - any pytest flag work
 `-m role_reversal`, `-v`, `--tb=short`, ...). `--collect-only` works with nothing attached at all
 (every fixture skips cleanly, never errors, when the hardware it needs isn't reachable).
 
+## The ISL29125 NeoPixel light rig
+
+`test_isl29125_mechanisms_hold_across_the_whole_illumination_envelope` and
+`test_isl29125_survives_recombined_realistic_lighting_scenarios` are the only tests in this tier
+gated on physical geometry rather than on time or wear, which is why they share the
+`--allow-neopixel-sweep` flag and have their own `KNOWN_PERMANENT_SKIPS` entries in
+`scripts/_require_clean_hardware_run.sh` (so an expected skip does not read as a failure). A third
+script, `isl29125_autorange_sweep.py`, used to live here and was retired: it drove a moving LED
+ramp, which confounds the gain step with the light's own rise, and its one unique measurement now
+lives in the envelope test as two settled holds. What the rig needs:
+
+- The dev board's own WS2812 (GP18) aimed at the ISL29125's window at a fixed, recorded distance -
+  close enough that a full-brightness white ramp drives the sensor through the 375 lx range's top
+  and into the 10000 lx range, so the sweep really crosses the switch point.
+- Ambient light excluded (an enclosure, or a darkened room). Ambient that already exceeds the low
+  range makes the whole ramp happen on the high range and the sweep fails with "only range N was
+  ever used", which is a rig problem, not a driver one.
+- Nothing else driving the pixel: the script goes through `request_signal()`'s real arbitration
+  path, and a notification signal landing mid-ramp is indistinguishable from a bad reading.
+- **Park the pixel dark before any isolated light-sensor run, and take an ambient baseline first.**
+  In a normal build the WS2812 is owned by the WiFi/notification signalling service, and a WS2812
+  *latches* its last value - so interrupting `main.py` into raw REPL (which every `mpremote run`
+  does) leaves the LED lit at whatever colour that service last wrote, frequently 100% white. That
+  is bright enough at this geometry to saturate the ISL29125's 375 lx range outright, and it looks
+  exactly like a sensor or driver fault rather than the rig. Found the hard way, 2026-09-12: a
+  register probe read 65444/65272/65323 on the low range and was briefly taken for a real
+  saturation finding; with the pixel explicitly written `(0, 0, 0)` first, the same bench reads
+  ~40 lx (10.7% of that range). The baseline is also the rig check proper - ambient that already
+  saturates the low range makes the whole sweep happen on the high range.
+
+Everything it asserts is **relative** - continuity across the range switch, hysteresis (no
+chatter), hue/saturation invariance while the level ramps, and gain-ratio convergence. Absolute lux
+and CCT against a WS2812's three narrow emission lines are meaningless, so they are deliberately
+not checked anywhere; the reference-meter half lives in
+`tests_hardware/manual/manual_sensor_accuracy.py` instead, alongside the geometry record.
+
+**Before running any ISL29125 device script**, CLAUDE.md's FRAM rule applies in its sharpest form:
+an isolated-driver script builds its own `AsyFramManager` over the same chip and the allocator is
+deterministic, so its first chunk *is* production's first chunk. Read the FRAM-persisted error logs
+first, and treat any log found afterwards as suspect unless you know what has been run against that
+board. The gain-ratio persistence check is deliberately a bench-tier REST test
+(`bench/test_rest_endpoints_over_sta.py`) rather than a device-script pair for exactly this reason.
+
+## ISL29125 bench-rig facts worth knowing before reading a result
+
+Three properties of this specific rig, all confirmed by the project owner or measured directly.
+None is a driver defect, and each one looks like one if you do not know it:
+
+- **The sensor can be covered or uncovered between runs.** Ambient at this bench measured ~40 lx
+  uncovered (10.7% of the 375 lx range); covered it is far lower. Any test comparing an absolute
+  reading taken before a cover change against one taken after will disagree for that reason alone -
+  which is why every assertion in these ISL tests is structural or relative, and why the
+  return-to-baseline check uses an LED-dominated level (~20) rather than ambient.
+- **The breakout board carries its own red LEDs**, so the red channel reads systematically a little
+  high relative to green and blue. Nothing here asserts channel equality or a specific hue, only
+  that the HSB triple stays in domain and coherent with RGB.
+- **An interrupted `main.py` leaves the WS2812 latched**, frequently at full white - see the sweep
+  rig section below. **Every ISL29125 device script must therefore park the pixel dark itself**
+  rather than assuming the bench is dark; they all do now. This is not cosmetic: it silently broke
+  `isl29125_real_irq_edge.py` on its first real run (2026-09-13). A latched-white pixel is ~2000 lx
+  at this geometry, which is a STATIC scene sitting comfortably inside the auto-range band - it
+  crosses no threshold, so no threshold interrupt fires, and the reader's first sample waits for
+  the periodic tick (30 s in that test) instead. The driver is correct; the test was depending on
+  an unstated rig condition. Measured both ways: latched white FAILs, parked dark PASSes in 0.60 s.
+- **The auto-range hysteresis band, measured on the covered rig (2026-09-12)**, in NeoPixel levels
+  at this geometry - needed by any test that wants to force, or deliberately avoid, a range switch:
+
+  | direction | low range (375 lx) holds | high range (10000 lx) takes over |
+  |---|---|---|
+  | rising | to level 6 (~197 lx) | from level 8 (~300 lx) |
+  | falling | from level 2 (~76 lx) | to level 3 (~112 lx) |
+
+  So **levels 2-8 sit INSIDE the band and cannot force a switch in either direction**. The
+  decision itself lands in 500-800 ms at the derived `PRST = 2` (see the next section);
+  `isl29125_lighting_scenarios.py` nonetheless holds a level for 8 s before asserting on a switch,
+  which is deliberate margin over that latency, not an estimate of it. The band is geometry- and
+  cover-dependent: re-measure with that script's own levels if the rig changes.
+
+## Writing a new device script: the three habits, and why
+
+A test depending on an unstated rig condition is this tier's recurring failure mode - six instances
+so far, every one found by running the test rather than by reading it, and every one of them passed
+first. The three habits that catch the class:
+
+- **Provide your own light** rather than trusting the bench state. `isl29125_plausibility_read.py`
+  passed while a preceding test happened to leave the pixel latched white, then failed once another
+  parked it dark - its own result depended on test ORDER, with the script itself unchanged.
+- **Restore or side-step every piece of shared state you touch** - light, config files, FRAM
+  chunks - so a script cannot decide a later one's result or corrupt production's. The envelope
+  script seeded `cfgmgr._cache` without calling `setup()`, so its `_set_dict_cfg()` calls wrote that
+  cache over the board's real `config_ISL29125.cfg`: six silent flash writes per run.
+- **Assert a minimum engagement beside every ceiling** - this must switch, both ranges must be
+  used - so a test cannot pass while the mechanism it targets never runs. A "no `W15`" check proved
+  nothing in a run making two switches when the warning needs five in a row, and an oscillation
+  scenario passed with `switches=0` because both its levels sat inside the hysteresis band.
+
+## Which path decides a range switch, and the rule that governs it
+
+Measured 2026-09-13, six forced crossings per setting: the chip cannot raise `RGBTHF` before
+`PRST` whole RGB cycles have passed (303 ms each at 16 bit), while the driver
+re-evaluates the same condition in software on every sample with no persistence requirement at
+all. **Whichever window is shorter decides every switch.**
+
+| `PRST` | window at 16 bit | against `SampleInterv = 1` | measured |
+|---|---|---|---|
+| 4 | 1212 ms | longer - software wins | 5 of 6 switches periodic-led, latency pinned at ~1000 ms |
+| 2 | 606 ms | shorter - interrupt wins | 6 of 6 interrupt-led, 500-800 ms |
+| 1 | 303 ms | shorter - interrupt wins | 6 of 6 interrupt-led, 200-613 ms |
+
+PRST is **derived** for exactly this reason and is no longer a config field at all
+(SPECIFICATION.md Part C.11.1.3): the driver picks the largest setting whose window still closes
+inside the sample interval. A device script setting its own `cfgmgr._cache` therefore cannot get
+this relationship wrong any more - there is nothing to seed. The dead-line detector remains, as
+`wrnno=13` (renumbered from 15 when the warning block was made contiguous), and has only one
+meaning: five range decisions in a row went to the periodic path, so the INT line itself looks
+dead. A script seeding `cfgmgr._cache` seeds `AutoRangeThresh` alone - `AutoRangeDown` and
+`AutoRangeSettle` are derived and fixed respectively, and are likewise no longer config fields.
+
+## The ISL29125 mechanism envelope
+
+`tests_hardware/flash/test_sensor_accuracy.py::test_isl29125_mechanisms_hold_across_the_whole_illumination_envelope`
+is the module's own "does everything actually work" proof, and it is deliberately **not** a
+calibration test - every assertion is structural or relative, and none depends on absolute lux
+being right. It drives the board's own NeoPixel through eight steady levels (ambient → hard
+saturation) and back down, using the **overlay** path (`pixel.led_overl_bri` + `on()`/`off()`), not
+a ramp: a ramp confounds a range-switch step with the light's own change, which on this rig moves
+at ~22%/s through the switch point.
+
+What one run proves: a live read chain at every level; `Bri == max(R, G, B)` and every field in
+domain; monotonic response across a 39 → 8900 lx envelope; both ranges used; hysteresis with no
+chatter (2 switches across a full up-and-down, against a ceiling of 4); the return to the low
+range; fixed-range pinning at both ends; 12-bit and 16-bit agreeing to <1% on one static scene
+(which is what proves the `<< 4` normalisation); `ISLCalibrate` starting a run without moving the
+applied ratio; the saturation detector firing at
+full white (`W12` - this rig really does exceed the 10000 lx range at ~20 mm); **no `W13`**, which
+is the driver's own "the interrupt may be dead" detector and therefore proves the INT line is
+carrying the range decisions rather than the periodic fallback silently doing the work; and zero
+`E`-type entries in the error log.
+
+It shares the `--allow-neopixel-sweep` gate with the sweep below - same physical prerequisite.
+
+## The ISL29125 lighting-scenario matrix
+
+`tests_hardware/flash/test_sensor_accuracy.py::test_isl29125_survives_recombined_realistic_lighting_scenarios`
+is the resilience proof: ten scenarios recombining colour, slope shape, direction, start/end level,
+pauses and threshold proximity, all asserted structurally. It drives the pixel **raw** on purpose -
+`NeopixelDriver` offers a steady white (`led_overl_bri` + `on()`) and a 0->peak->0 triangle
+(`request_signal`), and neither can express an arbitrary start level, end level, pause, step or
+per-channel waveform. Nothing else contends for the pixel in an isolated run.
+
+Scenarios: slow sunrise and sunset (55 s full-range ramps), a medium dimmer ramp on a warm mixture
+starting and ending non-zero with a pause, fast bulb-style 1 s ramps, instantaneous flash steps
+between arbitrary levels and pure colours, an oscillation that crosses **both** band edges, a dwell
+that stays **inside** the band, a constant "ambient" blue under a moving "dynamic" red, a
+constant-level colour walk, and a mixed-mode scenario using every shape over overlapping
+sub-ranges. One run: 520 samples, 1.0-8930 lx combined, zero errors.
+
+**The design lesson, learned the hard way here - a ceiling alone is not a test.** The first version
+of this file asserted only `switches <= N` and passed with `threshold_oscillation: switches=0`: the
+levels had been picked against the *uncovered* rig and both sat inside the hysteresis band, so the
+mechanism under test never engaged and the ceiling was satisfied trivially. Every scenario now
+carries a **minimum** engagement expectation as well (`min_switches`, and a must-use-both-ranges
+flag), and the scenarios that must cross a band edge start with a dark pre-roll so their starting
+range is deterministic rather than inherited from the preceding baseline. The complementary pair is
+what actually proves the behaviour: `threshold_oscillation_crossing` must switch at least 4 times,
+and `hysteresis_band_dwell_no_chatter` must switch **exactly zero** times while the light moves
+between 111 and 226 lx. A future edit that makes either vacuous will be caught by the other.
+
+Two further invariants run across every scenario: the inter-sample gap stays at the ~1240 ms sample
+interval (a stall means the read chain died, not that the light moved slowly), and after each
+scenario a **return-to-baseline** check re-reads one fixed LED-dominated level and compares it with
+the reference taken at the start - that is what catches a driver left wedged in a range or in a
+stuck state, which no per-sample invariant would notice.
+
+## The ISL29125 mock-conformance probe
+
+`tests_hardware/flash/test_sensor_accuracy.py::test_the_isl29125_mock_answers_the_bus_exactly_as_the_real_chip_does`
+is the only test in this tier that checks the **digital twin** rather than the firmware: it runs
+`device_scripts/isl29125_mock_conformance_probe.py` against the real part, runs the identical file
+against `digital_twin/_isl29125_chip.py` under the Unix port, and diffs every protocol key. Needs
+no rig beyond the board (it takes ~20s) and is not gated behind any flag.
+
+Two things to know before trusting a failure. The probe talks **raw `machine.I2C` only**, so it
+needs nothing from `src/` on the board - it runs against stock firmware, and a `mpremote mount` is
+never required. And it needs the Unix port already built (`scripts/test.sh` once); it raises a
+clear `FileNotFoundError` naming the path rather than skipping if not.
+
+A failure here means the fake and the part disagree - decide which one is wrong from the datasheet
+**and** a fresh measurement, never from the fake. SPECIFICATION.md Part C.11.1 lists what the first
+real run found and why each item mattered.
+
 ## Known assumptions and open findings
 
 Flagged while writing this tier against real source/datasheets, or found once real-hardware runs
@@ -97,6 +292,34 @@ started. Read them before trusting a run's results blindly - a failure in one of
 point at a flagged assumption being wrong, not at a real product bug. Resolved items are struck
 through, kept (not deleted) so a reader mid-investigation doesn't wonder whether something was ever
 a live question:
+
+- **An ISL29125 test asserts an EMPTY error log** - this note previously said the opposite, and the
+  rule inverted when the background learner was removed (2026-09-13). There is no schedule left to
+  race: a calibration run only happens when a user starts one, and a run that finds no usable scene
+  reports that by leaving `GainMeas` null rather than by warning. The `allowed_warnings=(13, 16)`
+  allowance that used to be required is worse than useless now: 16 no longer exists, and 13 has
+  since been REUSED by the renumbering (SPECIFICATION.md Part C.7.1) for the dead-line detector -
+  so that allowance would now wave through a live, meaningful warning. Use
+  `assert_module_error_log_empty()`.
+- **The ISL29125's gain ratio is a config value, not a FRAM one** (since 2026-09-13). Only a user
+  PUT changes it, so a test comparing it across a reboot is an ordinary config-persistence check
+  and needs no `RangeAuto` pinning - a calibration run cannot move it at all. A run publishes its
+  candidate as the `GainMeas` measurement instead, which is legitimately null until a stable pair
+  is measured, so assert its PRESENCE unless the rig's light is actually arranged.
+- **`test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly` expects FRAM
+  entries, and clears them afterwards.** Three hard resets landing inside real SPI writes are
+  meant to tear some: `E31` (status-byte failure on the write side), `W71` (dual-copy recovery
+  reading block 1 - the mechanism working) and `W72` (a chunk that lost both copies). Settled as
+  acceptable degradation rather than a robustness gap (owner, 2026-09-13), so the test permits
+  exactly those three and still fails on anything else. It clears the FRAM log in its own
+  `finally`, so no sibling test has to know it ran.
+- **An interrupted flash-tier run can leave the Unix-port unit-test interpreter unusable.**
+  `test_env_tier_flash_recurring_run_is_idempotent` runs the full `setup_toolchain.py env --tier
+  flash`, which builds the Unix port twice (frozen-verification manifest, then a vanilla rebuild that
+  restores the real test rig). Killing the suite between those two leaves a binary with no frozen
+  `asyncio`, and `scripts/test.sh` only checks that the file is executable - so every `tests/test_*.py`
+  then dies with `ImportError: no module named 'asyncio'`, which looks like a code failure and is not
+  one. Recovery: `rm` the binary and re-run `scripts/test.sh`. BACKLOG.md item 30.
 
 - ~~The bench has never run MicroPython 1.29.0.~~ — **resolved (2026-09-11): it has, repeatedly.**
   Real `dev` firmware built from `src/` and flashed, with the flash, bench and mid soak tiers all
@@ -113,6 +336,14 @@ a live question:
   `"Task N ended with exception"` (chased down as real on 2026-09-11; it was test data). CLAUDE.md's
   "read the FRAM logs before clearing" rule assumes a board that has been running normally — check
   what was last run against this one first.
+- **The config files on the flash filesystem are the same hazard, except it is a real write, not
+  just a stale read.** An isolated-driver script seeds `cfgmgr._cache` directly and never calls
+  `cfgmgr.setup()`, so the manager keeps its default `config_<NAME>.cfg` filename — and any call
+  reaching `_set_dict_cfg()` runs a real `write_config()`, stamping that seeded cache over the
+  production file. `isl29125_mechanism_envelope.py` did exactly that until 2026-09-13, rewriting
+  `config_ISL29125.cfg` six times per run with no sign of it in the test output. A script that
+  pushes config therefore points `cfgmgr.config_file` at a `config_HWTEST_*.cfg` scratch name,
+  the convention `reboot_persist_write.py` already uses; do the same for any new one.
 - **The UART crossover coverage is 5 flash-tier tests and 3 bench-tier tests, all passing as part
   of the full sweep** (2026-09-12: `run_bench_hardware_suite.sh` → 96 passed, 2 known-permanent
   skips, 41 min, with the four SCD30-EEPROM-write tests deselected). Three of the flash tests and
@@ -611,6 +842,37 @@ the read loop fails silently (visible only at `debug=5`, e.g. "Error reading con
 ever attempting a real sensor read. Found independently in `bmp3xx_plausibility_read.py` and
 `sgp40_fram_backup_restore.py`. Never call `cfgmgr.setup()` in such scripts - that performs a real
 littlefs file write/read.
+
+**DERIVE that cache from the driver's own schema; never hand-list the keys.** The one line to copy:
+
+```python
+reader.cfgmgr._cache = {field[0]: field[2] for field in reader.cfg_schema if field[2] is not None}
+```
+
+then override only what the script deliberately varies, on the following lines. `cfg_schema` is a
+public attribute (`base_classes.py`, SPECIFICATION.md Part C.5.1) and the predicate keeps every
+field that has a default while skipping command-only entries, which have none (`ISLCalibrate`,
+`SGPResetVOC`). Keep it inline per script - `mpremote run` executes a single file and only frozen
+`src/` modules are importable, so a shared helper in `device_scripts/` would not resolve on the
+device (`isl29125_conformance.py` is host-side and is not a counter-example).
+
+This is not a style preference. A hand-listed cache silently desynchronises the moment a driver
+gains a config key: the batch read in `_init_*()` comes back short of its `_N_*_CFG` length check,
+init logs its "Error reading config data!" errno and returns False, and the read chain never starts
+- which presents as a **dead or unwired sensor**, not as a config problem. That cost three of the
+four `isl29125_*.py` scripts on 2026-09-14 when `GainRatio` joined the schema; all four now derive.
+
+**Still hand-listed, and therefore still exposed** (both verified in sync as of 2026-09-14, so this
+is latent risk rather than a live bug - convert whichever one its driver's schema changes first):
+
+| Script | Keys | Note |
+|---|---|---|
+| `bmp3xx_plausibility_read.py` | 8 | matches all 8 BMP3XX schema defaults |
+| `sgp40_fram_backup_restore.py` | 3 | the literal appears **twice** in the file (reader1 and reader2), doubling the drift surface |
+
+The two ISL29125 concurrency scripts, and the `_measure_*` half of `isl29125_real_irq_edge.py`,
+sidestep priming entirely by constructing the protocol layer (`ISL29125_I2C`) alone, which has no
+`cfgmgr` at all - the shape Part C.8 requires of any concurrency script touching persisted config.
 
 ## Sixth pass - the `dut_ip()` fixture's retry/recovery methodology, and other bench-harness findings
 

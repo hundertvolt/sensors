@@ -202,6 +202,7 @@ def test_build_system_constructs_every_legacy_named_module() -> None:
             "scd_reader",
             "pixel",
             "notify_service",
+            "isl_reader",
             "watchdog",
         ),
     )
@@ -293,12 +294,11 @@ def test_main_forwards_web_host_and_port_to_build_system() -> None:
 
 
 # ---------------------------------------------------------------------------
-# FRAM chunk order - seven chunks, exact relative sequence, stable across rebuilds by mirroring
-# wozi's own construction order.
+# FRAM chunk order - wozi's seven in wozi's order, plus the ISL29125's log last (Part A.7.1).
 # ---------------------------------------------------------------------------
 
 
-def test_fram_chunk_allocation_order_matches_the_documented_seven_chunk_sequence() -> None:
+def test_fram_chunk_allocation_order_matches_the_documented_eight_chunk_sequence() -> None:
     calls: list[str] = []
     from asy_fram_manager import AsyFramManager
 
@@ -326,9 +326,10 @@ def test_fram_chunk_allocation_order_matches_the_documented_seven_chunk_sequence
         AsyFramManager.get_chunk = real_get_chunk  # type: ignore[method-assign]
         AsyFramManager.get_timestamped_chunk = real_get_timestamped_chunk  # type: ignore[method-assign]
 
-    # SystemService -> SGP40 log -> SGP40 VOC backup(timestamped) -> BMP3xx -> SCD30 -> Neopixel ->
-    # NotificationCoordinator, matching sensortask_wozi.py's own build_system() order.
-    assert calls == ["chunk", "chunk", "timestamped", "chunk", "chunk", "chunk", "chunk"]
+    # SystemService -> SGP40 log -> VOC backup(timestamped) -> BMP3xx -> SCD30 -> Neopixel -> Notify
+    # -> ISL log. Chunks 1-7 must stay byte-identical to wozi's order: the allocator is a bump
+    # pointer, so inserting the ISL earlier shifts every later address (Part A.7.1).
+    assert calls == ["chunk", "chunk", "timestamped", "chunk", "chunk", "chunk", "chunk", "chunk"]
 
 
 def test_fram_chunks_are_all_successfully_allocated_not_out_of_memory() -> None:
@@ -354,6 +355,9 @@ def test_fram_chunks_are_all_successfully_allocated_not_out_of_memory() -> None:
     assert sensortask_dev.pixel.pr.fram is not None
     assert isinstance(sensortask_dev.notify_service.pr, PrintLogHistoryStore)
     assert sensortask_dev.notify_service.pr.fram is not None
+    assert sensortask_dev.isl_reader is not None
+    assert isinstance(sensortask_dev.isl_reader.pr, PrintLogHistoryStore)
+    assert sensortask_dev.isl_reader.pr.fram is not None
 
 
 class _DeadFramChip(_FakeMB85RS2MTA):
@@ -517,6 +521,7 @@ def _all_loggers() -> "list[Any]":
     assert d.conn is not None and d.ntp is not None and d.fram is not None and d.sysfunct is not None
     assert d.sgp_reader is not None and d.bmp_reader is not None and d.scd_reader is not None
     assert d.pixel is not None and d.notify_service is not None and d.webserver is not None
+    assert d.isl_reader is not None
     assert d.uart_initiator is not None and d.uart_responder is not None
     return [
         d.conn.pr,
@@ -538,6 +543,8 @@ def _all_loggers() -> "list[Any]":
         d.uart_initiator.pr,  # the two ends of the bench rig's permanent UART crossover jumper,
         d.uart_responder.pr,  # each with its own name so their histories never merge
         d.webserver.pr,
+        d.isl_reader.pr,
+        d.isl_reader.cfgmgr.pr,
     ]
 
 
@@ -612,6 +619,7 @@ def test_collect_task_starters_includes_every_constructed_module() -> None:
         sensortask_dev.sysfunct,
         sensortask_dev.conn,
         sensortask_dev.ntp,
+        sensortask_dev.isl_reader,
     ):
         assert owner is not None
         for expected in owner.get_task_starters():
@@ -636,10 +644,96 @@ def test_collect_timer_starters_includes_every_constructed_module() -> None:
         sensortask_dev.conn,
         sensortask_dev.ntp,
         sensortask_dev.webserver,
+        sensortask_dev.isl_reader,
     ):
         assert owner is not None
         for expected in owner.get_timer_starters():
             assert expected in starters, f"no timer starter bound to {owner!r}"
+
+
+# ---------------------------------------------------------------------------
+# The ISL29125 - dev's one permanent divergence from wozi (requirement 18)
+# ---------------------------------------------------------------------------
+
+
+def test_isl29125_sits_on_i2c1_beside_scd30_and_sgp40() -> None:
+    # dev_legacy/sensortask-dev.py:137 constructs it on i2c1 (15, 14), the same bus SCD30 and
+    # SGP40 share - not i2c0, which carries BMP3xx alone on this bench unit.
+    run(sensortask_dev.build_system(cfg_path=_tmp_cfg_dir()))
+    assert sensortask_dev.isl_reader is not None
+    assert sensortask_dev.isl_reader.isl.i2c_isl29125.i2c_device.i2c is sensortask_dev.i2c1
+    assert sensortask_dev.isl_reader.isl.i2c_isl29125.i2c_device.device_address == 0x44
+
+
+def test_isl29125_interrupt_pin_is_gpio6_with_the_internal_pull_up_enabled() -> None:
+    # The INT is open-drain pull-down (FN8424 p6), so the high level has to come from a resistor.
+    # The dev board has an external 10k; enabling the internal one too is harmless there and is
+    # what makes the driver work on a board that lacks it.
+    run(sensortask_dev.build_system(cfg_path=_tmp_cfg_dir()))
+    assert sensortask_dev.isl_reader is not None
+    pin = sensortask_dev.isl_reader.irq_pin
+    assert pin.id == 6
+    assert pin.mode == machine.Pin.IN
+    assert pin.pull == machine.Pin.PULL_UP
+
+
+def test_isl29125_contributes_two_error_sources_and_two_level_setters() -> None:
+    # The module itself plus its own ConfigManager ("CFGMGR_ISL29125") - the same pairing every
+    # other ConfigManager-backed module contributes.
+    run(sensortask_dev.build_system(cfg_path=_tmp_cfg_dir()))
+    assert sensortask_dev.isl_reader is not None
+    sources = sensortask_dev._collect_error_sources()
+    assert sensortask_dev.isl_reader in sources
+    assert sensortask_dev.isl_reader.cfgmgr in sources
+    assert len(sensortask_dev._collect_level_setters()) == len(_all_loggers())
+
+
+def test_isl29125_is_constructed_after_notify_service_so_chunks_one_to_seven_are_unmoved() -> None:
+    # The hard constraint, asserted as a property rather than trusted to a comment: AsyFramManager
+    # is a bump allocator, so its own allocated_size at the moment each module is constructed IS
+    # that module's on-chip address. The ISL's chunk must be the LAST one allocated.
+    offsets: list[tuple[str, int]] = []
+    from asy_fram_manager import AsyFramManager
+
+    real_get_chunk = AsyFramManager.get_chunk
+    real_get_timestamped_chunk = AsyFramManager.get_timestamped_chunk
+
+    def _tracking_get_chunk(
+        self: "AsyFramManager", size: int, crc: "CRC_Base | None" = None, verify: int = 0, check_length: int = 8,
+    ) -> "AsyFramChunk | None":
+        offsets.append(("chunk", self.allocated_size))
+        return real_get_chunk(self, size, crc, verify, check_length)
+
+    def _tracking_get_timestamped_chunk(
+        self: "AsyFramManager", size: int, ntp_sync_callback: "Callable[[], Coroutine[Any, Any, bool]]",
+        crc: "CRC_Base | None" = None, verify: int = 0, check_length: int = 8,
+    ) -> "AsyFramTimestampedChunk | None":
+        offsets.append(("timestamped", self.allocated_size))
+        return real_get_timestamped_chunk(self, size, ntp_sync_callback, crc, verify, check_length)
+
+    AsyFramManager.get_chunk = _tracking_get_chunk  # type: ignore[method-assign]
+    AsyFramManager.get_timestamped_chunk = _tracking_get_timestamped_chunk  # type: ignore[method-assign]
+    try:
+        run(sensortask_dev.build_system(cfg_path=_tmp_cfg_dir()))
+    finally:
+        AsyFramManager.get_chunk = real_get_chunk  # type: ignore[method-assign]
+        AsyFramManager.get_timestamped_chunk = real_get_timestamped_chunk  # type: ignore[method-assign]
+    assert len(offsets) == 8
+    assert [kind for kind, _offset in offsets[7:]] == ["chunk"]
+    # Strictly increasing, and the first seven start where wozi's own seven do - chunk 1 at 0.
+    assert offsets[0][1] == 0
+    for index in range(1, len(offsets)):
+        assert offsets[index][1] > offsets[index - 1][1]
+
+
+def test_the_isl29125_gain_ratio_is_reachable_as_an_ordinary_config_field() -> None:
+    # It used to be a maintenance key fed from FRAM. It is config now, written only by a user PUT,
+    # so it has to arrive through the same GET every other tuning knob does.
+    run(sensortask_dev.build_system(cfg_path=_tmp_cfg_dir()))
+    assert sensortask_dev.isl_reader is not None
+    body = run(sensortask_dev.isl_reader.get_dict_cfg())
+    assert "GainRatio" in body["ISL29125"]
+    assert "ISLCalibrate" not in body["ISL29125"]  # command-only, never in the config cache
 
 
 def test_collect_task_starters_never_touches_start_and_check_tasks() -> None:
@@ -723,11 +817,11 @@ def test_webserver_measurements_and_sensors_get_include_every_real_sensor() -> N
     res = _dispatch("GET", "/measurements")
     assert res.status_code == 200
     measurements = json.loads(status_body(res))
-    assert_sensor_payload_not_self_wrapped(measurements, {"SCD30", "BMP3XX", "SGP40"})
+    assert_sensor_payload_not_self_wrapped(measurements, {"SCD30", "BMP3XX", "SGP40", "ISL29125"})
 
     res = _dispatch("GET", "/sensors")
     sensors = json.loads(status_body(res))
-    assert_sensor_payload_not_self_wrapped(sensors, {"SCD30", "BMP3XX", "SGP40"})
+    assert_sensor_payload_not_self_wrapped(sensors, {"SCD30", "BMP3XX", "SGP40", "ISL29125"})
 
 
 def test_webserver_sensors_put_round_trips_a_real_field_through_the_real_driver() -> None:
@@ -899,20 +993,22 @@ def test_webserver_status_get_reflects_the_real_object_graph() -> None:
     res = _dispatch("GET", "/status")
     body = json.loads(status_body(res))
     assert set(body.keys()) == {"networking", "system", "notification", "sensors", "errcount"}
-    # SGP40 is the only real sensor with maintenance data; UARTLINK is the bench rig's own link
-    # exerciser reporting through the same variable-length registration list.
+    # SGP40 is the only real sensor with maintenance data - the ISL29125's gain ratio moved to
+    # config when it stopped being FRAM-backed. UARTLINK is the bench rig's own link exerciser
+    # reporting through the same variable-length registration list.
     assert set(body["sensors"].keys()) == {"SGP40", "UARTLINK"}
     assert "BackupTS" in body["sensors"]["SGP40"] and "RestoreTS" in body["sensors"]["SGP40"]
     assert body["sensors"]["UARTLINK"] == {"Transfers": 0, "Failures": 0}  # no exerciser task run yet
     assert "SysUptime" in body["system"] and "LocalTime" in body["system"] and "UtcTime" in body["system"]
     assert "WifiUptime" in body["networking"] and "NtpSynced" in body["networking"]
     assert "Triggered" in body["notification"] and "PauseTime" in body["notification"]
-    # One entry per real module + per real ConfigManager + this service's own "WEBSERVER" entry -
-    # same 18-owner enumeration _collect_level_setters()/_collect_error_sources() both share, plus
-    # one. 18 rather than 16 since the bench rig's two UART crossover ends each register their own.
-    assert len(body["errcount"]) == 19
+    # One entry per module + per ConfigManager + this service's own "WEBSERVER" - the same 20-owner
+    # enumeration _collect_level_setters()/_collect_error_sources() share. 20 rather than wozi's 16:
+    # the dev-only ISL brings its own ConfigManager, and the two UART crossover ends their own.
+    assert len(body["errcount"]) == 21
     assert "UART_INIT" in body["errcount"]
     assert "UART_RESP" in body["errcount"]
+    assert "ISL29125" in body["errcount"] and "CFGMGR_ISL29125" in body["errcount"]
 
 
 def test_webserver_status_put_reset_errors_clears_a_real_modules_history() -> None:
@@ -982,7 +1078,7 @@ def test_is_hotspot_active_wiring_real_static_root_and_api_route_unaffected_in_h
 
     res = _dispatch("GET", "/measurements")
     assert res.status_code == 200
-    assert_sensor_payload_not_self_wrapped(json.loads(status_body(res)), {"SCD30", "BMP3XX", "SGP40"})
+    assert_sensor_payload_not_self_wrapped(json.loads(status_body(res)), {"SCD30", "BMP3XX", "SGP40", "ISL29125"})
 
 
 def test_is_hotspot_active_wiring_directory_traversal_still_404s_in_hotspot_mode() -> None:

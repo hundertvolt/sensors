@@ -1,6 +1,6 @@
-"""Dev-bench sibling of `src/sensortask_wozi.py` - same shape, same three sensors (SCD30/BMP3xx/SGP40),
+"""Dev-bench sibling of `src/sensortask_wozi.py` - same shape, plus the ISL29125 colour sensor wozi does not carry,
 wired for the "dev" bench unit's own pins (`dev_legacy/README.md`'s wiring table) instead of wozi's.
-See SPECIFICATION.md Part A.7 for the construction-order rationale this mirrors."""
+See SPECIFICATION.md Part A.7.1 for this variant's own eight-chunk construction order."""
 
 import asyncio
 import time
@@ -24,6 +24,7 @@ import asy_uart_driver
 import config_manager as cm
 from asy_bmp3xx_driver import BMP3xx_Reader
 from asy_fram_manager import AsyFramManager
+from asy_isl29125_driver import ISL29125_Reader
 from asy_neopixel_driver import NeopixelDriver
 from asy_notification_service import NotificationCoordinator, NotificationSignal
 from asy_ntp_client import AsyNtpClient
@@ -95,6 +96,7 @@ sysfunct: "SystemService | None" = None
 sgp_reader: "SGP40_Reader | None" = None
 bmp_reader: "BMP3xx_Reader | None" = None
 scd_reader: "SCD30_Reader | None" = None
+isl_reader: "ISL29125_Reader | None" = None
 pixel: "NeopixelDriver | None" = None
 notify_service: "NotificationCoordinator | None" = None
 webserver: "WebserverService | None" = None
@@ -266,6 +268,7 @@ async def _sgp_maintenance_status() -> "dict[str, Any]":
     return {"BackupTS": backup_ts, "RestoreTS": restore_ts}
 
 
+
 async def _networking_status() -> "dict[str, Any]":
     assert conn is not None and ntp is not None
     wifi_data = await conn.get_data()
@@ -310,13 +313,12 @@ async def _notification_status() -> "dict[str, Any]":
 
 
 def _collect_error_sources() -> "list[Any]":
-    # Every module + every ConfigManager instance ("CFGMGR_<name>") - same 16-owner enumeration as
-    # _collect_level_setters() below (one entry per logger in the whole constructed object graph),
-    # just the owning objects themselves rather than their bound set_level() methods. Feeds
-    # WebserverService's error_sources= registration list (its /status "errcount" aggregation).
+    # Every module + every ConfigManager instance ("CFGMGR_<name>") - the same 20-owner enumeration
+    # _collect_level_setters() makes, as owning objects rather than bound set_level() methods.
+    # Feeds WebserverService's error_sources= list (its /status "errcount" aggregation).
     assert conn is not None and ntp is not None and fram is not None and sysfunct is not None
     assert sgp_reader is not None and bmp_reader is not None and scd_reader is not None
-    assert pixel is not None and notify_service is not None
+    assert pixel is not None and notify_service is not None and isl_reader is not None
     assert uart_initiator is not None and uart_responder is not None
     return [
         conn,
@@ -339,6 +341,8 @@ def _collect_error_sources() -> "list[Any]":
         # their histories into a single /status entry and make a fault unattributable.
         uart_initiator,
         uart_responder,
+        isl_reader,
+        isl_reader.cfgmgr,
     ]
 
 
@@ -349,7 +353,7 @@ def _collect_level_setters() -> "list[Callable[[int], None]]":
     assert conn is not None and ntp is not None and fram is not None and sysfunct is not None
     assert sgp_reader is not None and bmp_reader is not None and scd_reader is not None
     assert pixel is not None and notify_service is not None and webserver is not None
-    assert uart_initiator is not None and uart_responder is not None
+    assert isl_reader is not None and uart_initiator is not None and uart_responder is not None
     return [
         conn.pr.set_level,
         conn.cfgmgr.pr.set_level,
@@ -370,6 +374,8 @@ def _collect_level_setters() -> "list[Callable[[int], None]]":
         uart_initiator.pr.set_level,  # no cfgmgr - the protocol's parameters are out-of-band agreements,
         uart_responder.pr.set_level,  # never runtime-writable (SPECIFICATION.md Part J.6)
         webserver.pr.set_level,  # no cfgmgr - no config schema (own safety constants only, see BACKLOG.md)
+        isl_reader.pr.set_level,  # dev-only: wozi carries no colour sensor (requirement 18)
+        isl_reader.cfgmgr.pr.set_level,
     ]
 
 
@@ -381,6 +387,7 @@ async def build_system(
     tests. Wired for the dev bench's own pins - see SPECIFICATION.md Part A.7 for the rationale."""
     global watchdog, conn, ntp, i2c0, i2c1, spi0, fram, sysfunct
     global sgp_reader, bmp_reader, scd_reader, pixel, notify_service, webserver, timers_running
+    global isl_reader
     global uart0, uart1, uart_initiator, uart_responder
     global uart_transfers, uart_failures
 
@@ -458,6 +465,17 @@ async def build_system(
     notify_service.register(NotificationSignal("WarnVOC", voc_value_callback, _FIELD_WARN_VOC, (0, 1, 0)))
     notify_service.register(NotificationSignal("WarnHum", hum_value_callback, _FIELD_WARN_HUM, (0, 0, 1)))
     notify_service.finalize()
+    # CONSTRUCTED OUT OF READING ORDER, DELIBERATELY: the allocator is a bump pointer, so
+    # instantiation order IS on-chip layout. Only here - after chunk 7, before the webserver - do
+    # dev and wozi keep identical chunks 1-7 (Part A.7.1). ISL on i2c1, INT on GPIO6.
+    isl_reader = ISL29125_Reader(
+        i2c1,
+        6,
+        max_module_error=_MAX_MODULE_ERROR,
+        cfg_path=cfg_path,
+        fram=fram,
+        debug=debug,
+    )
     conn.set_ext_led(pixel)  # callback for wifi led - after both conn and pixel exist
 
     # After every FRAM-allocating module and before the webserver: AsyFramManager is a bump-pointer
@@ -497,7 +515,7 @@ async def build_system(
         # reasoning as sensortask_wozi.py's own identical comment: keeps the seven-chunk FRAM
         # allocation order (SPECIFICATION.md Part A.7) exactly as documented - this module
         # allocates no FRAM chunk at all.
-        sensors=(scd_reader, bmp_reader, sgp_reader),  # type: ignore[arg-type]  # structurally
+        sensors=(scd_reader, bmp_reader, sgp_reader, isl_reader),  # type: ignore[arg-type]  # structurally
         # _ModuleLike-shaped (SensorReader/SensorReaderConfig subclasses) - _ModuleLike is a
         # narrower Protocol defined in asy_webserver_service.py, not importable here without a real
         # coupling to that module's private type; same treatment as that module's own
@@ -556,6 +574,9 @@ async def build_system(
     await ntp.setup()
     await sgp_reader.setup()
     await bmp_reader.setup()
+    # In the batch, unlike scd_reader: the ISL has a ConfigManager of its own, so it follows
+    # sgp_reader/bmp_reader rather than SCD30's "no local config" exemption (Part A.7).
+    await isl_reader.setup()
     await notify_service.setup()
     await uart_initiator.setup()
     await uart_responder.setup()
@@ -567,12 +588,13 @@ def _collect_task_starters() -> "list[Callable[[], asyncio.Task[Any]]]":
     # here, mirroring sensortask_wozi.py's own _collect_task_starters() exactly.
     assert scd_reader is not None and bmp_reader is not None and sgp_reader is not None
     assert pixel is not None and notify_service is not None and sysfunct is not None
-    assert conn is not None and ntp is not None and webserver is not None
+    assert conn is not None and ntp is not None and webserver is not None and isl_reader is not None
     assert uart_initiator is not None and uart_responder is not None
     return (
         scd_reader.get_task_starters()
         + bmp_reader.get_task_starters()
         + sgp_reader.get_task_starters()
+        + isl_reader.get_task_starters()
         + pixel.get_task_starters()
         + notify_service.get_task_starters()
         + sysfunct.get_task_starters()
@@ -596,12 +618,13 @@ def _collect_timer_starters() -> "list[Callable[[], None]]":
     # sensortask_wozi.py's own _collect_timer_starters().
     assert scd_reader is not None and bmp_reader is not None and sgp_reader is not None
     assert pixel is not None and notify_service is not None and sysfunct is not None
-    assert conn is not None and ntp is not None and webserver is not None
+    assert conn is not None and ntp is not None and webserver is not None and isl_reader is not None
     assert uart_initiator is not None and uart_responder is not None
     return (
         scd_reader.get_timer_starters()
         + bmp_reader.get_timer_starters()
         + sgp_reader.get_timer_starters()
+        + isl_reader.get_timer_starters()
         + pixel.get_timer_starters()
         + notify_service.get_timer_starters()
         + sysfunct.get_timer_starters()

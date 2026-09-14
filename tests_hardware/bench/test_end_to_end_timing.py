@@ -9,7 +9,7 @@ import time
 from typing import TYPE_CHECKING
 
 import http_client
-from error_log_helpers import assert_module_error_log_empty, reset_all_error_logs
+from error_log_helpers import assert_module_error_log_clean, assert_module_error_log_empty, reset_all_error_logs
 from harness import Board, wait_until
 
 if TYPE_CHECKING:
@@ -170,7 +170,10 @@ def test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly(bo
 
         # Full health check, not just "reachable" - the FRAM subsystem specifically must still work.
         assert_module_error_log_empty(dut_ip, "SGP40")
-        assert_module_error_log_empty(dut_ip, "FRAM")
+        # FRAM is NOT held to an empty log, and that is the point (owner's ruling): three hard resets
+        # inside real SPI writes are expected to tear some - E31 the write-side status failure, W71
+        # the dual-copy recovery working, W72 a chunk that lost both. Nothing else may appear.
+        assert_module_error_log_clean(dut_ip, "FRAM", allowed_warnings=(71, 72), allowed_errors=(31,))
 
         # One more real backup completing cleanly after all three resets proves the FRAM subsystem
         # itself is still genuinely functional, not merely "board reachable".
@@ -183,6 +186,13 @@ def test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly(bo
             description="a fresh real SGP40 VOC backup completing after the reset sequence",
         )
     finally:
+        # The torn-write entries are real persisted state, so whatever runs next would read them as
+        # evidence. Cleared here rather than by the next test, so no sibling has to know this one
+        # ran; on a failure they are already in the assertion message above.
+        try:
+            reset_all_error_logs(dut_ip)
+        except OSError:
+            pass  # unreachable board - the restore below does its own reachability recovery
         try:
             restore_res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"SGP40": {"BackupPeriod": original_backup_period}}, timeout_s=10.0)
         except OSError:

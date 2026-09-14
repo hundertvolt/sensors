@@ -31,6 +31,7 @@ import api_response as ar
 import config_manager as cm
 from asy_bmp3xx_driver import BMP3xx_Reader
 from asy_i2c_driver import I2C
+from asy_isl29125_driver import ISL29125_Reader
 from asy_ntp_client import AsyNtpClient
 from asy_scd30_driver import SCD30_Reader
 from asy_sgp40_driver import SGP40_Reader
@@ -101,7 +102,7 @@ def _tmp_cfg_dir() -> str:
         os.mkdir(path)
     except OSError:
         pass  # already exists from a stale previous run
-    for stale in ("config_WIFI.cfg", "config_NTP.cfg", "config_BMP3XX.cfg", "config_SGP40.cfg"):
+    for stale in ("config_WIFI.cfg", "config_NTP.cfg", "config_BMP3XX.cfg", "config_SGP40.cfg", "config_ISL29125.cfg"):
         try:
             os.remove(path + "/" + stale)
         except OSError:
@@ -722,6 +723,107 @@ def test_real_microdot_sgp40_setter_end_to_end_write_fault_surfaces_as_failed_no
     assert body["result"] == {"BackupPeriod": "Failed", "SGPResetVOC": "Failed"}
     assert reader.reset is False  # nothing was persisted, so nothing was pushed live either
     assert run(reader.cfgmgr.get_dict(["BackupPeriod"])) == {"BackupPeriod": 1}  # still the default
+
+
+# ---------------------------------------------------------------------------
+# Real Microdot for the ISL's setters: a push that moves more than it names, and a repeatable trigger.
+# ---------------------------------------------------------------------------
+
+
+def make_isl_reader() -> "tuple[ISL29125_Reader, I2C]":
+    i2c = I2C(1, scl_pin=19, sda_pin=18, frequency=50000)
+    reader = ISL29125_Reader(i2c, 6, cfg_path=_tmp_cfg_dir())
+    run(reader.cfgmgr.setup())
+    return reader, i2c
+
+
+def _isl_app(reader: ISL29125_Reader) -> Microdot:
+    app = Microdot()
+
+    @app.put("/sensors/cmd")
+    async def sensor_cmd(request: Request) -> "ar.ResponseEnvelope":
+        data, err = ar.parse_cmd_request(request, ["setISL"])
+        if err is not None:
+            return err
+        assert data is not None
+        fields = {k: v for k, v in data.items() if k != "cmd"}
+        return await ar.handle_set_cmd(reader, fields, reader.get_cfg_schema())
+
+    return app
+
+
+def test_real_microdot_isl29125_setter_end_to_end_round_trips_a_software_knob() -> None:
+    reader, _i2c = make_isl_reader()
+    app = _isl_app(reader)
+    req = _make_request(app, "PUT", "/sensors/cmd", {"cmd": "setISL", "AutoRangeDwell": 30.0, "SampleInterv": 4})
+    res = run(app.dispatch_request(req))
+    assert res.status_code == 200
+    body = json.loads(res.body)
+    assert body["result"] == {"AutoRangeDwell": "Valid", "SampleInterv": "Valid"}
+    assert reader._ar_dwell_s == 30.0  # the live push really landed, not just the persisted value
+    assert run(reader.trigger_period.get_value()) == 4
+
+
+def test_real_microdot_isl29125_setter_end_to_end_moves_the_derived_down_point_too() -> None:
+    # One PUT, two pieces of live state: the stored threshold and the down point derived from it.
+    # Only the real route proves the derivation is not bypassed by the push path, which reaches
+    # the setter through _set_dict_cfg's callback rather than by calling it directly.
+    reader, _i2c = make_isl_reader()
+    app = _isl_app(reader)
+    before = reader._down_thresh()
+    req = _make_request(app, "PUT", "/sensors/cmd", {"cmd": "setISL", "AutoRangeThresh": 60.0})
+    res = run(app.dispatch_request(req))
+    assert res.status_code == 200
+    body = json.loads(res.body)
+    assert body["res"] == "OK"
+    assert body["result"] == {"AutoRangeThresh": "Valid"}
+    assert reader._ar_thresh == 60.0
+    assert reader._down_thresh() < before, "the derived down point has to follow the threshold down"
+    assert run(reader.cfgmgr.get_dict(["AutoRangeThresh"])) == {"AutoRangeThresh": 60.0}
+
+
+def test_real_microdot_isl29125_setter_end_to_end_rejects_an_out_of_band_threshold() -> None:
+    # "Invalid", not "Failed", and that distinction is the point: with the cross-field rule gone,
+    # every rejection here is a plain schema rejection, so an out-of-band value never reaches the
+    # driver. Still per-field detail, never a 500.
+    reader, _i2c = make_isl_reader()
+    app = _isl_app(reader)
+    req = _make_request(app, "PUT", "/sensors/cmd", {"cmd": "setISL", "AutoRangeThresh": 20.0})
+    res = run(app.dispatch_request(req))
+    assert res.status_code == 200
+    body = json.loads(res.body)
+    assert body["res"] == "OK"
+    assert body["result"] == {"AutoRangeThresh": "Invalid"}
+    assert reader._ar_thresh == 85.0  # unchanged
+    assert run(reader.cfgmgr.get_dict(["AutoRangeThresh"])) == {"AutoRangeThresh": 85.0}
+
+
+def test_real_microdot_isl29125_setter_end_to_end_calibrate_is_a_repeatable_trigger() -> None:
+    # SPECIFICATION.md Part C.5.2.1 obligation 3: a special-alone command field always reports
+    # Valid once the type check passes. Fired twice in a row, through the real route.
+    reader, _i2c = make_isl_reader()
+    app = _isl_app(reader)
+    for _ in range(2):
+        req = _make_request(app, "PUT", "/sensors/cmd", {"cmd": "setISL", "ISLCalibrate": True})
+        res = run(app.dispatch_request(req))
+        assert res.status_code == 200
+        assert json.loads(res.body)["result"] == {"ISLCalibrate": "Valid"}
+    # Never persisted: get_dict() is all-or-nothing per key, so asking for it returns None.
+    assert run(reader.cfgmgr.get_dict(["ISLCalibrate"])) is None
+
+
+def test_real_microdot_isl29125_setter_end_to_end_bus_fault_surfaces_as_failed_not_500() -> None:
+    # Unlike the SGP40 above, this driver's hardware-backed fields really do touch the bus on the
+    # request path, so a dead sensor has to come back as per-field "Failed" rather than a raise.
+    reader, i2c = make_isl_reader()
+    _nak_i2c_address(i2c, 0x44)
+    app = _isl_app(reader)
+    req = _make_request(app, "PUT", "/sensors/cmd", {"cmd": "setISL", "IrCompAdjust": 55})
+    res = run(app.dispatch_request(req))
+    assert res.status_code == 200
+    body = json.loads(res.body)
+    assert body["res"] == "OK"
+    assert body["result"] == {"IrCompAdjust": "Failed"}
 
 
 # ---------------------------------------------------------------------------

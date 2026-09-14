@@ -325,8 +325,17 @@ jobs:
           persist-credentials: false
       - name: Install uv
         run: pip install uv
-      - name: Sync dev dependencies
-        run: uv sync
+      # `actionlint-py` ships no wheel and fetches its binary inside its own build backend, so a
+      # bad response there fails a job on a tree where nothing is wrong (HTTP 500 2026-09-13,
+      # 504 2026-09-14 - both on lanes that touched no shell script at all). Retried in every job.
+      - name: Sync dev dependencies (retried - third-party build downloads are not always up)
+        run: |
+          for attempt in 1 2 3; do
+              uv sync && exit 0
+              echo "uv sync failed on attempt $attempt/3; retrying in $((attempt * 10))s" >&2
+              sleep $((attempt * 10))
+          done
+          uv sync
       - name: Ruff (src/, tests/, digital_twin/)
         run: uv run ruff check src tests digital_twin boot_entry toolchain scripts tests_scripts tests_hardware
       - name: Mypy (src/, tests/, digital_twin/)
@@ -348,8 +357,14 @@ jobs:
           persist-credentials: false
       - name: Install uv
         run: pip install uv
-      - name: Sync dev dependencies
-        run: uv sync
+      - name: Sync dev dependencies (retried - third-party build downloads are not always up)
+        run: |
+          for attempt in 1 2 3; do
+              uv sync && exit 0
+              echo "uv sync failed on attempt $attempt/3; retrying in $((attempt * 10))s" >&2
+              sleep $((attempt * 10))
+          done
+          uv sync
       - name: Shellcheck (scripts/)
         run: uv run shellcheck scripts/*.sh
 
@@ -367,8 +382,14 @@ jobs:
           persist-credentials: false
       - name: Install uv
         run: pip install uv
-      - name: Sync dev dependencies
-        run: uv sync
+      - name: Sync dev dependencies (retried - third-party build downloads are not always up)
+        run: |
+          for attempt in 1 2 3; do
+              uv sync && exit 0
+              echo "uv sync failed on attempt $attempt/3; retrying in $((attempt * 10))s" >&2
+              sleep $((attempt * 10))
+          done
+          uv sync
       - name: Actionlint (.github/)
         run: uv run actionlint
 
@@ -387,8 +408,14 @@ jobs:
           persist-credentials: false
       - name: Install uv
         run: pip install uv
-      - name: Sync dev dependencies
-        run: uv sync
+      - name: Sync dev dependencies (retried - third-party build downloads are not always up)
+        run: |
+          for attempt in 1 2 3; do
+              uv sync && exit 0
+              echo "uv sync failed on attempt $attempt/3; retrying in $((attempt * 10))s" >&2
+              sleep $((attempt * 10))
+          done
+          uv sync
       - name: Zizmor (.github/)
         run: uv run zizmor --offline .github/
 

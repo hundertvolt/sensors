@@ -54,6 +54,45 @@ constraints.
   Unix-port-tests were pulled forward out of this order already, once `math_helpers.py` cleared the
   `src/` bar, and that's now standing practice for every new file, not a one-off.
 
+- **Sort every class in `src/` to SPECIFICATION.md D.15's method ordering — HIGH PRIORITY**
+  (owner's ruling, 2026-09-13, after an AST sweep measured the gap). **D.15's order as written
+  stands**: privates first, then publics, each group role-ordered (starters, getters, setters,
+  others). `asy_uart_comm.py`'s interleaved layout is **not** a precedent to codify — it was an
+  accident, the rule simply was not applied when that module was built.
+  D.15's "no change to any comment" clause was never meant to forbid moving a comment along with
+  the method it documents; it has been amended to say what it meant (relocation yes, rewriting no),
+  so a file organised into labelled functional sections can still be sorted.
+  **Amended again 2026-09-14, and this one moves methods between groups**: "starter" is now
+  defined as a role, not a prefix — what a `get_*_starters()` collection hands to the base class or
+  to `system_service.py` at boot, plus that collection and the `stop_*` pairing with such a
+  `start_*`. A `start_*` that is really an on-demand command is an Other. Re-sweeping `src/` under
+  the amended definition reclassifies eight methods across five files, in both directions:
+  `ISL29125_Reader.start_calibration`, `AsyConnTime._start_hotspot`, `SystemService._start_task` /
+  `start_timers` / `start_and_check_tasks` and both `stop_continuous_measurement`s become Others,
+  while `UART_Comm._listen_loop` becomes a starter (`get_task_starters` hands it over).
+  `SystemService`'s three are the genuinely arguable ones — they are the supervisor's own boot
+  entry points, so they *do* the handing over rather than being handed over; settle that when the
+  reorder is actually done rather than now.
+  **The "eleven of 74" enumeration below predates that amendment and needs re-measuring as part of
+  the reorder** — the classes named are still non-compliant, but the list is neither a current
+  count nor complete. As measured 2026-09-13: `UART_Comm` (privates and publics interleaved
+  throughout, its starters/getters group last rather than first), `UART` (`resync_framing` among
+  the privates), `Framing_Base`/`Framing_COBS` (`_checked` mid-public), `SCD30_Reader`
+  (`_set_dict_cfg`, a base-class override), `AsyConnTime`, `ConfigManager`, `SystemService`, and
+  the three `asy_webserver_service.py` protocol stubs
+  `_ModuleLike`/`_StreamLike`/`_TimeoutStreamProxy`. Compliant: `asy_bmp3xx_driver.py`,
+  `asy_sgp40_driver.py` and `asy_isl29125_driver.py` — the ISL driver is verified against the rule
+  including the 2026-09-14 amendment, private group included, so it needs no further work. Its one
+  real deviation (`_end_calibration` sitting between two publics) was fixed in the same pass that
+  amended the rule; `start_calibration` needed no move, since Others sort last either way.
+  **Deliberately not done in the session that raised it** (owner's direction): it is a large,
+  review-hostile diff across five working modules and three protocol stubs, several of them
+  hardware-validated, and it belongs in a session of its own. Each class is a pure AST-verified
+  sort with no behaviour change, so it can be done incrementally, one module per commit.
+  **Independent session - out of the ISL29125 branch's scope and not blocked on it** (owner,
+  2026-09-14). Nothing here needs the colour sensor, the bench rig or PR #75 to land first; it is
+  picked up on its own.
+
 - **The UART protocol's C implementation is not in this repo yet.** It runs on the Arduino peer and
   is the protocol's second implementation (SPECIFICATION.md Part J). A future session imports it,
   then reconciles it against `UART_C_PORT_CHANGELOG.md` — the running log of protocol changes made
@@ -281,7 +320,92 @@ constraints.
     deliberate asymmetry against `_store_err()`'s own guard, and the tier coverage:
     SPECIFICATION.md Part C.7.
 
-16. **Seven `src/` modules number `errno`/`wrnno` inside the range `base_classes.py` reserves.**
+17. **Five cross-file consistency findings from the ISL29125 promotion's bird's-eye `src/` scan
+    (CLAUDE.md: reported, not fixed — 2026-09-12).** None is a bug; each is a place two files
+    answer the same question differently, and each needs a decision rather than a drive-by edit.
+    **A recommendation was added to each on 2026-09-13**; all five still need the owner's yes/no,
+    and four of them would touch drivers this branch otherwise leaves alone.
+    - **`FiltCoeff` means two different things.** In `asy_bmp3xx_driver.py` it is the BMP3xx's
+      on-chip IIR register — a discrete `int` from `_IIR_SETTINGS` (0…127). In
+      `asy_isl29125_driver.py` it is a software EMA coefficient — a `float` in -1.0…1.0 with -1.0
+      meaning off. Same field name, same `/sensors` endpoint, different type and different
+      meaning. No wire collision (the sensor group namespaces it), and both names are locally
+      the natural one. Options: leave it, or give one of them a distinguishing name.
+      **Recommendation: leave it.** Renaming the BMP3xx field is a config-schema migration on
+      already-deployed units — open question 2's own data-loss risk, for a purely cosmetic gain;
+      renaming the ISL one makes the newer driver the odd one out. Both fields carry their own
+      `description` in `html/definitions/<device>.json`, which is where a user actually meets them.
+    - **Four names for two trigger-event roles.** `asy_bmp3xx_driver.py`/`asy_sgp40_driver.py` use
+      `trigger_event`; `asy_scd30_driver.py` uses `start_trigger_event` + `irq_trigger_event`;
+      `asy_isl29125_driver.py` uses `base_trigger_event` + `read_event`, and its own comment says
+      it matches SCD30's shape — which it does structurally, not by name.
+      **Recommendation: if one is chosen, it should be the ISL29125 pair** — `base_trigger_event`
+      for the 1 s divider input and `read_event` for "go and read now", which are the only two
+      roles any of the four drivers has, and the only naming that says which is which. A pure
+      rename with no behaviour attached, but it touches three drivers and their tests.
+    - **`from asyncio import ThreadSafeFlag` appears in exactly one file** (`asy_scd30_driver.py`);
+      every other file in `src/` writes `asyncio.ThreadSafeFlag`. Pre-existing, not ISL-introduced.
+      **Recommendation: change the one file.** Four lines in `asy_scd30_driver.py`, no behavioural
+      risk whatsoever, and the cheapest of the five to settle.
+    - **`_N_*_CFG` constants group on two different axes.** BMP3xx and ISL29125 group by type
+      (`_N_INT_CFG`/`_N_FLOAT_CFG`/`_N_BOOL_CFG`); SGP40 groups by purpose (`_N_SETUP_CFG`/
+      `_N_STORAGE_CFG`).
+      **Recommendation: close this as "both, and the rule is whichever axis separates them".** It
+      resolved itself on 2026-09-13: narrowing `_store_isl()`'s config read to `FiltCoeff` alone
+      gave the ISL29125 two float batches, and no type-based name can tell two float batches
+      apart — hence `_N_STORE_CFG` beside `_N_FLOAT_CFG`, which is exactly SGP40's own reasoning.
+      Type when type separates them, purpose when it does not.
+    - **Return-annotation quoting is mixed project-wide**, and most files use both forms. Twenty
+      files carry quoted subscripted return annotations, eleven carry unquoted ones. MicroPython
+      never evaluates annotations, so both are safe; there is simply no stated convention.
+      **Recommendation: state the rule, do not mass-edit.** The one that matches what the code
+      already mostly does, and the only one with a reason behind it: quote an annotation that
+      names a `TYPE_CHECKING`-only import, leave the rest bare. A sentence in SPECIFICATION.md
+      Part D costs nothing; touching 31 files to enforce it buys nothing.
+
+    **Independent session - out of the ISL29125 branch's scope and not blocked on it** (owner,
+    2026-09-14). Nothing here needs the colour sensor, the bench rig or PR #75 to land first; it is
+    picked up on its own.
+    Separately, and already known: `SGPResetVOC` and now `ISLCalibrate` are the only two config
+    fields in `src/` carrying a device prefix. The retired promotion plan contradicted itself here
+    (its prose said the ISL field carries no prefix, its schema table named it `ISLResetCal`); the
+    code kept the table's prefix but not its name, the field having been rebuilt as a calibration
+    trigger rather than a resetter. Recorded because the prefix question itself is still open, not
+    the resolved contradiction.
+
+24. **The two live-backend browser tests fail locally on a stale/stub frozen website** (observed
+    2026-09-13 on this branch; **not caused by it** — nothing in the ISL29125 work touches the web
+    lane, and 575/576 `tests_js` tests pass). `npx vitest run` reports 2 failed files, 1 failed
+    test:
+    - `tests_js/live-backend.test.js` — the browser-driven PUT round-trip fails with
+      `page.waitForSelector: Timeout 10000ms exceeded` waiting for `[data-section-key="system"]`.
+      The captured HTML in the failure shows why: the twin served the **wozi placeholder stub**
+      (`<title>wozi placeholder</title>`, `Hello, wozi! (placeholder stub)`), not the real site.
+    - `tests_js/live-backend-put-matrix.test.js` — fails at *collection* with
+      `startLiveMatrix failed: digital twin never started serving on 127.0.0.1:19412 within
+      20000ms`, twin stderr empty. Whether this is the same root cause surfacing earlier or a
+      separate boot/port problem was **not** established.
+
+    **Confirmed root cause for the first one.** `frozen_modules/` is a gitignored build artifact
+    and currently holds `frozen_html.py` at 8 KB — the stub, built by `scripts/build_frozen_html.sh`
+    from `html_stub/` — alongside a separate 84 KB `frozen_website_wozi.py`. `sensortask_dev.py`'s
+    top-level `import frozen_html` is what mounts `/html`, so the twin serves whatever that module
+    contains; here, the placeholder. The tracked `html/index.html` *is* the real site, so this is
+    purely about which artifact got built into `frozen_modules/`.
+
+    **Also worth fixing, and arguably the real defect:** `tests_js/live-backend.test.js`'s own
+    docstring promises it "skips itself with a clear message if the MicroPython toolchain/frozen
+    website aren't built yet, rather than failing the suite" — but `_live_twin_command.js`'s guard
+    only checks that the Unix-port binary exists. It does not check that the frozen module is the
+    **real** website, so a stub build fails with a confusing selector timeout instead of skipping
+    as designed. Widening that guard would have turned this into a one-line skip message.
+
+    Left for the web lane's owner: not investigated further, and nothing was rebuilt, since a
+    `scripts/build_website.sh` run changes a gitignored artifact that other work on this bench may
+    be relying on.
+
+
+25. **Seven `src/` modules number `errno`/`wrnno` inside the range `base_classes.py` reserves.**
    Part C.7 reserves `errno` 1-9 and `wrnno` 1-2 for `SensorReader`/`SensorReaderConfig`, and
    `api_response.py`'s `handle_set_cmd()` owns the fixed cross-module slot `errno=99`; the project
    owner's standing direction (2026-09-11) is that **every** module aligns to that reservation for
@@ -292,7 +416,11 @@ constraints.
    `asy_ntp_client.py` (`wrnno` 1-3), `asy_notification_service.py` (`wrnno` 1-5 - its `errno` was
    already renumbered to 10-13 for exactly this reason). Conformant today:
    `asy_sgp40_driver.py` (`errno` 10-18, `wrnno` 10-14), `asy_bmp3xx_driver.py`,
-   `asy_scd30_driver.py`, `asy_fram_manager.py`/`asy_fram_driver.py`.
+   `asy_scd30_driver.py`, `asy_fram_manager.py`/`asy_fram_driver.py`, and - checked 2026-09-13
+   after the merge, since that driver and this audit were written concurrently and it appeared in
+   neither list - `asy_isl29125_driver.py` (`errno` 10-38, `wrnno` 10-13 since the 2026-09-14
+   renumbering), clear of both reserved
+   ranges.
    **No live clash exists** - none of the seven currently shares a logger with a `SensorReader`
    instance, so the reserved codes never reach the same history stream. It becomes a real defect
    the moment one of them gains a `logger=` reach-through, which is exactly the pattern
@@ -303,8 +431,11 @@ constraints.
    (invalidating persisted history semantics for those modules on the next deployment) or only on
    each module's next substantial touch. Flagged, deliberately not fixed drive-by - see CLAUDE.md's
    "flag, don't silently change" rule.
+   **Independent session - out of the ISL29125 branch's scope and not blocked on it** (owner,
+   2026-09-14). Nothing here needs the colour sensor, the bench rig or PR #75 to land first; it is
+   picked up on its own.
 
-17. `asy_uart_comm.py`'s `wrnno` 11 ("drain bound reached - the peer never stopped sending") can
+26. `asy_uart_comm.py`'s `wrnno` 11 ("drain bound reached - the peer never stopped sending") can
     never reach the FRAM history through the path that produces it. SPECIFICATION.md Part C.7.1 allows one persisted
     warning per fault episode; `_resync()` logs `wrnno` 10 first and spends it, then calls
     `_drain()`, so 11 is always demoted to visible-only. Measured 2026-09-13: a resync whose drain
@@ -317,8 +448,117 @@ constraints.
     change to the one-per-episode budget. Needs an owner decision because it changes which entry an
     operator sees in a field log, the same class as the `errno` 32 decision of 2026-09-12.
     `SPECIFICATION.md` C.7.1 now states the actual behaviour rather than the intended one.
+    **Independent session - out of the ISL29125 branch's scope and not blocked on it** (owner,
+    2026-09-14). Nothing here needs the colour sensor, the bench rig or PR #75 to land first; it is
+    picked up on its own.
+
+29. **An interrupted `setup_toolchain.py env --tier flash` can leave the unit-test interpreter
+    broken, and `scripts/test.sh` will use it anyway** (hit 2026-09-13). The flash tier legitimately
+    rebuilds the MicroPython Unix port as part of `test_env_tier_flash_recurring_run_is_idempotent`,
+    and `run_verification_sequence()` builds it **twice**: first with the frozen-verification
+    manifest, then a vanilla rebuild that restores "the real test rig" (its own comment). Interrupt
+    the run between those two and the binary left on disk has no frozen `asyncio` at all — every
+    `tests/test_*.py` that imports asyncio then dies with `ImportError: no module named 'asyncio'`,
+    which reads like a code failure and is not one. The most likely trigger here was this session's
+    own `pkill` of a hardware suite, so it is a fragility rather than a latent bug, but nothing
+    detects it: `scripts/test.sh` only checks `[ ! -x "$micropython_bin" ]`, so a *broken* binary is
+    indistinguishable from a good one and is silently used.
+    **Out of scope for the ISL29125 promotion (owner, 2026-09-13)** — it is general test tooling
+    with nothing sensor-specific about it, and the documented workaround (`rm` the binary and
+    re-run `scripts/test.sh`) costs a rebuild rather than a wrong answer. It belongs to a session
+    already paying for a toolchain build, which is where the two-chroot pre-push gate below is
+    nearly free rather than the dominant cost.
+    **Recommendation: make that guard a capability check rather than an existence check** — e.g.
+    `"$micropython_bin" -c "import asyncio"` (or a small `-X heapsize` smoke import) alongside the
+    `-x` test, rebuilding when it fails. Deliberately not implemented here: `scripts/` is inside
+    CLAUDE.md's "Pre-push verification" scope, which requires a clean Ubuntu-noble *and* Debian-trixie
+    chroot run before pushing, and this session cannot satisfy that gate. Recovery in the meantime is
+    `rm` the binary and re-run `scripts/test.sh`, which rebuilds it.
+
+30. **`SPECIFICATION.md` carries six subsections about one sensor, and no other sensor has any.**
+    Raised 2026-09-14 while deciding where the calibration band-gate finding belongs; **the owner's
+    ruling is to leave the specification exactly as it stands, Finding 2 included, and tidy this up
+    in a session of its own.** Recorded here so that session does not have to re-derive the scan.
+
+    Three distinct patterns exist in the document, and only the third is the question:
+
+    - **Generic rule, named instance** — the dominant and legitimate one. C.4.3 cites SGP40 against
+      SCD30 to illustrate `SensorReader` vs `SensorReaderConfig`; C.7 names the drivers sharing the
+      `errno` block; D.15 uses `ISL29125_Reader.start_calibration()` as the worked example of the
+      amended starter rule. All 29 `src/` modules are named somewhere this way. Nothing to move.
+    - **Sections named after a module that *is* the architecture** — A.7/A.7.1 (the two
+      `sensortask_*.py` construction orders), A.8 (`asy_webserver_service.py`), C.5
+      (`config_manager.py`), C.6, C.7 (`print_log.py`/`base_classes.py`), and Part J
+      (`asy_uart_comm.py`). There is no generic version of "what order does `sensortask_wozi` build
+      things in". Part J is the strongest case and rests on a different justification again: the
+      UART protocol is a two-implementation contract with the Arduino peer, so that Part is the
+      interface definition both sides implement, which is why CLAUDE.md points at it by name.
+    - **Dedicated single-chip technical sections — ISL29125 only.** C.11.1.1 (`BOUTF`'s lifecycle
+      and where datasheet p12 is wrong), C.11.1.2 (the threshold persistence counter and the
+      destructive status read), C.11.1.3 (PRST derived from `SampleInterv`), C.11.2 ("ISL29125
+      reference layer"), C.11.3 (the calibration design, holding the band-gate finding), C.11.4
+      (the measured range-ratio table) and C.11.5 (the project owner's twenty settled requirements,
+      persisted there when the promotion doc that held them was deleted; the numbering is cited by
+      the driver and its tests, so that section moves as a unit or not at all). Checked the other
+      sensors the same way, with chip-only
+      identifier sets (`AmbPres`/`FRC`/`ASC`; `sraw` and the VOC-index terms; `_VAL_POV`/
+      oversampling/IIR): **SCD30, SGP40 and BMP3XX have no dedicated section anywhere.**
+
+    Two places *do* treat every driver alike, so the convention is not simply absent: A.4's
+    "functional behaviors confirmed intentional" list has one bullet per chip (ISL's is the same
+    shape and length as SCD30's and SGP40's), and C.7.1's registry has one row per module. Both are
+    consistent; the C.11 block is the outlier.
+
+    **The decision that gates the work**: is C.11's contract "generic rules only, chips cited as
+    examples", or "generic rules plus the worked example that established each one"? The block was
+    written under the second reading. Under the first, C.11.1.3 and C.11.3 should not simply move —
+    each has a generic kernel worth keeping in place ("a chip-side persistence window must stay
+    shorter than the software re-check interval, or software beats the interrupt to every decision";
+    "calibration is user-triggered, user-applied, and writes nothing by itself"), with the ISL
+    arithmetic and mechanics extracted out from under it. C.11.1.1/C.11.1.2 are pure single-chip
+    datasheet fact with no generic content, C.11.4 is measured data about one specimen, and C.11.2
+    is prior-art analysis that may belong with the attribution material instead.
+
+    **Where ISL-specific content would go instead**, if it leaves: CLAUDE.md caps every module
+    header block at 3 lines and `asy_isl29125_driver.py`'s is already exactly 3, so the header
+    cannot hold it — that same rule's next tier, "a short comment right next to the code it
+    explains", is the destination for a code fact, and `tests_hardware/README.md`'s NeoPixel rig
+    section for anything that is really an operator procedure. A new per-module doc file was
+    considered and is **not** recommended: the repo has no such convention, and a document beside
+    the code without being the code is what drifts.
+
+    **Independent session - out of the ISL29125 branch's scope and not blocked on it** (owner,
+    2026-09-14). Nothing here needs the colour sensor, the bench rig or PR #75 to land first.
+
+31. **The 3-line inline-comment cap is applied only to what the ISL29125 branch owns.** The cap
+    was tightened from "no hard numeric cap" to 3 lines per block on 2026-09-14 (owner; CLAUDE.md
+    records it), and every file that branch created, plus every block it added to a file it
+    modified, now complies - 95 blocks in created files and 34 in modified ones, plus six
+    over-length docstrings.
+    **What is left is pre-existing**: blocks written before that branch, in files it merely touched.
+    Measured the same day: `tests/test_asy_webserver_service.py` 48 over-length blocks (longest 22),
+    `tests/test_setter_microdot_integration.py` 23, `tests_js/render.test.js` 19, `js/mock-server.js`
+    18, and a long tail across ~30 more files - about 200 in total, none of them this branch's.
+    Deliberately not swept here: rewriting another promotion's comments inside a colour-sensor PR is
+    exactly the drive-by editing CLAUDE.md warns against, and the diff would bury the review.
 
 ## Deferred / explicitly out-of-scope work
+- **Two device scripts still hand-list their `cfgmgr._cache` keys, and will break as a "dead
+  sensor" the day their driver gains a config key.** `bmp3xx_plausibility_read.py` (8 keys) and
+  `sgp40_fram_backup_restore.py` (3 keys, and the literal appears **twice** in that file, for
+  reader1 and reader2). Both were verified in sync on 2026-09-14, so this is latent risk, not a live
+  bug — which is exactly why it is easy to forget. The failure mode is not a config error: the batch
+  read in `_init_*()` comes back short of its `_N_*_CFG` length check, init logs its "Error reading
+  config data!" errno and returns False, and the read chain never starts, so the script reports
+  *"sensor not responding or not wired to i2c1"* / `samples=0`. That is precisely what happened to
+  three of the four `isl29125_*.py` scripts when `GainRatio` joined the ISL schema (2026-09-14):
+  hours look like a hardware fault before anyone suspects the cache. The fix is one line, already
+  applied to all four ISL scripts and written up as a standing rule in `tests_hardware/README.md`'s
+  priming note:
+  `reader.cfgmgr._cache = {field[0]: field[2] for field in reader.cfg_schema if field[2] is not None}`
+  plus explicit overrides. **Convert whichever script its driver's schema changes first** — doing it
+  pre-emptively needs a real-hardware run to re-verify each, which is the only reason it is deferred
+  rather than done. Not a general licence to leave new scripts hand-listed: anything new derives.
 - **A digital-twin soak's wall clock is set by GC timing, so it must never be bisected to a code
   change** (established 2026-09-11 after one was — see SPECIFICATION.md Part E.7 for the measurement
   and the inverted control). Not open work: the finding itself is the resolution, and
@@ -634,9 +874,14 @@ constraints.
   `improved-quality/sensortask-wozi.py` is deleted, but `src/sensortask_wozi.py` itself still calls
   it by the current name, so this remains a real (if small) call-site update.
 - **`asy_i2c_driver.py`'s `get_bits`/`set_bits`/`get_register_struct` still call the allocating
-  `readfrom_mem()` rather than zero-copy `readfrom_mem_into()`** — no real caller needs the
-  zero-copy path yet, but worth doing before `asy_isl29125_driver.py` (its one plausible future
-  caller) is migrated.
+  `readfrom_mem()` rather than zero-copy `readfrom_mem_into()`** — this was written as "worth doing
+  before `asy_isl29125_driver.py` is migrated", and that migration has now happened without it.
+  **Still not done, deliberately, and worth a decision rather than silent carry-over**: the ISL's
+  own hot path is one `get_register_struct(_REGISTER_DATA, "6s")` per read cycle — a 6-byte
+  allocation at the configured sample interval, nowhere near the fixed-size-buffer bar Part I
+  reserves the zero-copy treatment for. The cost of doing it is a changed signature on three shared
+  methods every existing driver calls. Left as the same low-priority item it was, no longer blocked
+  on anything.
 - **`asy_scd30_driver.py`'s persistent NVM setters have no published write-cycle endurance figure**
   (checked every available Sensirion doc) — safe today only because every setter is REST-triggered,
   never called from a boot path or periodic loop. Don't add a periodic/high-frequency caller

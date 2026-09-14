@@ -44,6 +44,46 @@ describe("formatFieldValue", () => {
         const value = { year: 2025, month: 8, mday: 2, hour: 8, minute: 4, second: 3, weekday: 6 };
         expect(formatFieldValue(field, value)).toBe("2025-08-02 08:04:03");
     });
+
+    // The `decimals` hint (SPECIFICATION.md Part H): no driver in src/ rounds any output, so this
+    // is the one place a declared precision becomes a real property rather than an aspiration.
+    it("honours a decimals hint on a number", () => {
+        expect(formatFieldValue({ key: "H", label: "Hue", kind: "readonly", decimals: 1 }, 217.43859649122808)).toBe("217.4");
+        expect(formatFieldValue({ key: "CCT", label: "CCT", kind: "readonly", decimals: 0 }, 4183.72)).toBe("4184");
+        expect(formatFieldValue({ key: "R", label: "Red", kind: "readonly", decimals: 4 }, 0.02814159)).toBe("0.0281");
+    });
+
+    it("pads to the declared precision rather than only truncating", () => {
+        expect(formatFieldValue({ key: "Lux", label: "Lux", kind: "readonly", decimals: 2 }, 12)).toBe("12.00");
+    });
+
+    it("leaves a null at the em dash even with a decimals hint", () => {
+        // CCT is legitimately null in a dark room, and toFixed() on null would be a TypeError.
+        expect(formatFieldValue({ key: "CCT", label: "CCT", kind: "readonly", decimals: 0 }, null)).toBe("—");
+    });
+
+    it("passes a non-number through untouched, never into toFixed()", () => {
+        expect(formatFieldValue({ key: "Mode", label: "Mode", kind: "readonly", decimals: 2 }, "STA")).toBe("STA");
+        expect(formatFieldValue({ key: "On", label: "On", kind: "readonly", decimals: 2 }, true)).toBe("true");
+        expect(formatFieldValue({ key: "N", label: "N", kind: "readonly", decimals: 2 }, Number.NaN)).toBe("NaN");
+        expect(formatFieldValue({ key: "I", label: "I", kind: "readonly", decimals: 2 }, Number.POSITIVE_INFINITY)).toBe("Infinity");
+    });
+
+    it("leaves a field with no decimals hint exactly as it was, so the other three sensors cannot regress", () => {
+        expect(formatFieldValue({ key: "Temp", label: "Temp", kind: "readonly" }, 23.100000000000001)).toBe("23.1");
+        expect(formatFieldValue({ key: "CO2", label: "CO2", kind: "readonly" }, 612)).toBe("612");
+    });
+
+    it("lets an enum label win over a decimals hint", () => {
+        const field = {
+            key: "Resolution",
+            label: "ADC Resolution",
+            kind: /** @type {const} */ ("enum"),
+            decimals: 2,
+            options: [{ value: 16, label: "16 bit (flicker-rejecting)" }],
+        };
+        expect(formatFieldValue(field, 16)).toBe("16 bit (flicker-rejecting)");
+    });
 });
 
 describe("buildField", () => {
@@ -69,6 +109,13 @@ describe("buildField", () => {
         const el = mount(buildField({ key: "CO2", label: "CO2", unit: "ppm", kind: "readonly" }, 612, false));
         expect(el.querySelector("input")).toBeNull();
         expect(mustQuery(el, '[data-field-key="CO2"]').textContent).toBe("612");
+    });
+
+    it("renders a nested readonly field's own value, not [object Object]", () => {
+        // The whole point of the path walk: the caller resolves it, so what reaches buildField()
+        // is already the leaf. This pins that a resolved leaf renders as a value.
+        const el = mount(buildField({ key: "R", label: "Red", kind: "readonly", path: ["RGB", "R"], decimals: 4 }, 0.02814159, false));
+        expect(mustQuery(el, '[data-field-key="R"]').textContent).toBe("0.0281");
     });
 
     // An editable number/string field has two ".field-description"-classed <p>s (the "Current

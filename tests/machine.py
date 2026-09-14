@@ -23,6 +23,11 @@ class Pin:
     # ever passes these back opaquely to irq(), but matching the real bit values costs nothing.
     IRQ_FALLING = 0x04
     IRQ_RISING = 0x08
+    # Real rp2 values (ports/rp2/machine_pin.c at v1.29.0: GPIO_PULL_UP 1, GPIO_PULL_DOWN 2).
+    # asy_isl29125_driver.py is the first driver to need one - its INT line is open-drain and needs
+    # a pull-up; SCD30's RDY is push-pull, which is why nothing needed these before.
+    PULL_UP = 1
+    PULL_DOWN = 2
 
     def __init__(self, id: int, mode: int = -1, pull: int = -1, *, value: object = None) -> None:
         # Real rp2 Pin() raises for an invalid id: TypeError for a non-int, ValueError outside
