@@ -390,6 +390,11 @@ information):
   run's own wall-clock cost (roughly the same again as the plain pass) never sits on the critical
   path `digital-twin-e2e`/`firmware-build-verify` wait on; see `ci.yml`'s own job comments for the
   full account.
+  **`ci.yml`'s Mypy step passes an explicit scope list, which OVERRIDES `pyproject.toml`'s
+  `[tool.mypy]` `files` rather than adding to it** — so a directory added to `files` stays
+  un-type-checked in CI until `ci.yml` is edited too, and nothing guards the two against diverging.
+  Hit for real once (2026-09-14, `tests_hardware/device_modules/`): it resolved locally via
+  `mypy_path` and failed CI with `import-not-found`. When adding a scope, change both.
 - **`zizmor` audits the GitHub Actions workflows themselves** — `GITHUB_TOKEN` scope, checkout
   credential persistence, action pinning: the one part of the supply chain ruff/mypy can't see.
   Policy config is `.github/zizmor.yml` (only `unpinned-uses` is configured — `actions/*` may be
