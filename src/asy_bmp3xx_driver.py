@@ -86,11 +86,39 @@ _VAL_ATM = const((("MeanAtmTemp", "float", 15.0, -50.0, 50.0, None),))
 _N_INT_CFG = const(4)  # SampleInterv + PressOvers + TempOvers + FiltCoeff
 _N_FLOAT_CFG = const(4)  # PressOffset + TempOffset + SeaLevelOffs + MeanAtmTemp
 
+# @web-group section=sensors submitGroup=self label="BMP388 — Pressure, Temperature" submit=true
+# @web SampleInterv section=sensors submitGroup=self label="Measurement Interval" unit="s"
+# @web PressOvers section=sensors submitGroup=self label="Pressure Oversampling" special:1="×1" special:2="×2" special:4="×4" special:8="×8" special:16="×16" special:32="×32"
+# @web TempOvers section=sensors submitGroup=self label="Temperature Oversampling" special:1="×1" special:2="×2" special:4="×4" special:8="×8" special:16="×16" special:32="×32"
+# @web FiltCoeff section=sensors submitGroup=self label="Filter Coefficient" description="First-order IIR lowpass filter coefficient." special:0="Off" special:1="1" special:3="3" special:7="7" special:15="15" special:31="31" special:63="63" special:127="127"
+# @web PressOffset section=sensors submitGroup=self label="Pressure Offset" unit="hPa"
+# @web TempOffset section=sensors submitGroup=self label="Temperature Offset" unit="K"
+# @web SeaLevelOffs section=sensors submitGroup=self label="Sensor Sea Level Offset" unit="m"
+# @web MeanAtmTemp section=sensors submitGroup=self label="Mean Atmospheric Temperature" unit="°C"
+
 _NAME = const("BMP3XX")
 # Kept as a literal tuple inline (not `_FIELDS` below) because mypy's namedtuple plugin can only
 # infer field names from a literal at the call site, not through a variable indirection.
 BMP3XX = namedtuple("BMP3XX", ("Pres", "Temp", "SLPres", "TS"))
 _FIELDS = const(("Pres", "Temp", "SLPres", "TS"))  # kept in sync with BMP3XX's own fields above
+
+# @web-group section=measurements submitGroup=self label="BMP388 — Pressure, Temperature"
+# @web Pres section=measurements submitGroup=self kind=readonly label="Pressure" unit="hPa"
+# @web Temp section=measurements submitGroup=self kind=readonly label="Temperature" unit="°C"
+# @web SLPres section=measurements submitGroup=self kind=readonly label="Sea Level Pressure" unit="hPa"
+# @web TS section=measurements submitGroup=self kind=readonly label="Timestamp" unit="s"
+
+# This driver's one optional live cross-instance dependency (SPECIFICATION.md Part C.14): its own
+# FRAM backup target, resolved by buildgen/ (Session 3 of BUILD_CHAIN_PLAN.md) to an
+# already-constructed instance, passed directly as this driver's own fram= kwarg.
+# @wiring fram_target AsyFramManager fram optional kwarg
+
+# Driver-declared value domains (BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md's comment-tag section),
+# read by buildgen/limits.py from these tags - the bounds are kept in sync with _MIN_TRIGGER_SECS/
+# _MAX_TRIGGER_SECS above by hand, since a comment can't reference a name.
+# BMP388/390's SDO pin selects the address: exactly 0x76 (pulled low) or 0x77 (pulled high).
+# @limits address in {0x76, 0x77}
+# @limits trigger_sec 1..3600
 if TYPE_CHECKING:
     BMPResults = tuple[float | None, float | None, int | None]  # pressure, temperature, timestamp
 
@@ -102,6 +130,7 @@ class BMP3xx_Reader(SensorReaderConfig):
         address: int = 0x77,
         trigger_sec: int = 1,
         max_module_error: int = 5,
+        name_ext: str = "",
         cfg_path: str = "",
         fram: "AsyFramManager | None" = None,
         history_length: int = 10,
@@ -112,6 +141,7 @@ class BMP3xx_Reader(SensorReaderConfig):
             max_module_error,
             _NAME,
             _VAL_SI + _VAL_POV + _VAL_TOV + _VAL_FC + _VAL_PO + _VAL_TO + _VAL_SLO + _VAL_ATM,
+            name_ext=name_ext,
             cfg_path=cfg_path,
             fram=fram,
             history_length=history_length,
@@ -286,11 +316,11 @@ class BMP3xx_Reader(SensorReaderConfig):
 
     async def get_dict_data(self) -> dict[str, dict[str, int | float | str | bool | None]]:
         data = await self.get_data()
-        return make_dict(data, _FIELDS)
+        return make_dict(data, _FIELDS, name=self.name)
 
     async def get_dict_cfg(self) -> dict[str, dict[str, int | float | str | bool | None]]:
         return await self._get_dict_cfg(
-            _NAME,
+            self.name,
             _VAL_SI + _VAL_POV + _VAL_TOV + _VAL_FC + _VAL_PO + _VAL_TO + _VAL_SLO + _VAL_ATM,
             callback=self._read_sensor_dict,
         )

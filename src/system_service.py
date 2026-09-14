@@ -30,7 +30,7 @@ if TYPE_CHECKING:
 
     from asy_fram_manager import AsyFramManager
     from config_manager import ConfigSchema, WriteValidity
-    from print_log import ErrorLog
+    from print_log import ErrorLog, PrintLogHistory
 
     # Keyword-only call shape of AsyFramManager.set_pause(), which a plain Callable[...] alias
     # cannot express - same structural-Protocol convention as print_log.py's _FramChunk.
@@ -46,10 +46,18 @@ _TASK_FAIL_INCREMENT = const(100)  # absolute value important for decrease time,
 _TASK_FAIL_MAX = const(300)  # ...ratio important for triggering reset (multiple errors)
 _NAME = const("SYSTEM")
 
+# This service's one optional live cross-instance dependency (SPECIFICATION.md Part C.14): its own
+# FRAM error-log target, resolved by buildgen/ (Session 3 of BUILD_CHAIN_PLAN.md, from
+# [device.wiring].fram_target - SystemService is mandatory infra, never an [[instance]] entry
+# itself) to an already-constructed instance, passed directly as this service's own fram= kwarg.
+# @wiring fram_target AsyFramManager fram optional kwarg
+
 # General, module-independent system-settings schema (config_SYSTEM.cfg, via _NAME above) - see
 # SPECIFICATION.md Part C.5 for the setSGP/setBMP history this superseded. DebugLevel is the first
 # field; adding another is the same one-line _VAL_*-tuple-concatenation pattern every other
 # ConfigManager-backed module already uses (Part C).
+# @web-group section=system submitGroup=settings label="System Settings" submit=true
+# @web DebugLevel section=system submitGroup=settings label="Debug Level"
 _VAL_DEBUG_LEVEL = const((("DebugLevel", "int", 0, 0, 5, None),))  # range matches print_log.py's
 # PrintLog.level_off()..level_info() (0-5); default 0 matches the reference file's own debug=False.
 
@@ -262,6 +270,15 @@ class SystemService:
         # None until resolved; then a UTC timestamp if NTP synced, else random after _NTP_WAIT_TIME -
         # stable for the rest of this boot, so a later change means a reboot happened.
         return await self.boot_signature.get_value()
+
+    def get_error_sources(self) -> "list[Any]":
+        # Fan-in primitive (SPECIFICATION.md Part C.14/G.2) - matches base_classes.py's
+        # SensorReaderConfig.get_error_sources() shape (this class owns a cfgmgr too), duck-typed
+        # rather than inherited (see this module's own "not a SensorReaderConfig subclass" comment).
+        return [self, self.cfgmgr]
+
+    def get_loggers(self) -> "list[PrintLogHistory]":
+        return [self.pr, self.cfgmgr.pr]
 
     async def get_error_counter(self) -> "ErrorLog":
         return await self.pr.get_log()

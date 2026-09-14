@@ -248,6 +248,10 @@ class WebserverService:
         # onto it once, here; not itself importable for typing (see the microdot import comment above).
         sensors: "Sequence[_ModuleLike]" = (),
         settings: "dict[str, Sequence[SettingsGroup]] | None" = None,
+        build_info: "dict[str, Any] | None" = None,  # verbatim "build" sub-entry on GET /system's
+        # otherwise-flat response (firmwareVersion/websiteVersion/buildDate - BUILD_CHAIN_PLAN.md
+        # Session 7) - a fixed, generator-supplied fact this class never computes itself; None
+        # (default) omits the key entirely, matching every other optional constructor knob here.
         system_cmd: "SystemCmdFct | None" = None,
         notification_led: "NotificationLedFct | None" = None,
         notification_pause: "NotificationPauseFct | None" = None,
@@ -278,6 +282,7 @@ class WebserverService:
         self._app = app
         self._sensors = _index_by_name(sensors)
         self._settings: dict[str, list[SettingsGroup]] = {k: list(v) for k, v in (settings or {}).items()}
+        self._build_info = build_info
         self._system_cmd = system_cmd
         self._notification_led = notification_led
         self._notification_pause = notification_pause
@@ -420,7 +425,10 @@ class WebserverService:
         return ar.make_response(0, result=results)
 
     async def _get_system(self, _request: "_RequestLike") -> "Response":
-        return await _stream_dict_response(await self._get_settings_flat("system"))  # see _get_networking()'s own comment
+        result = await self._get_settings_flat("system")  # see _get_networking()'s own comment
+        if self._build_info is not None:
+            result["build"] = self._build_info
+        return await _stream_dict_response(result)
 
     async def _put_system(self, request: "_RequestLike") -> "ar.ResponseEnvelope":
         body = _body_as_dict(request)
@@ -689,6 +697,18 @@ class WebserverService:
         # empty rather than omitted so callers can treat every driver/service uniformly - matches
         # asy_neopixel_driver.py's/asy_notification_service.py's own identical precedent; found
         # missing entirely during the Step 7 audit, unlike those two).
+
+    def get_error_sources(self) -> "list[Any]":
+        # Fan-in primitive (SPECIFICATION.md Part C.14/G.2), same shape as base_classes.py's
+        # SensorReader.get_error_sources() - duck-typed, not inherited. Not actually consulted by
+        # sensortask_wozi.py's own _collect_error_sources() (this service's own /status "errcount"
+        # entry is added directly in _build_status_pieces() instead, see that method's own
+        # comment) - kept for get_loggers()'s own sibling consistency (D.10) and so a future caller
+        # doesn't have to special-case this one module.
+        return [self]
+
+    def get_loggers(self) -> "list[PrintLogHistory]":
+        return [self.pr]
 
     async def get_error_counter(self) -> "ErrorLog":
         return await self.pr.get_log()

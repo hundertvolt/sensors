@@ -24,6 +24,8 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
+    from typing import Any
+
     from asy_fram_manager import AsyFramManager
     from print_log import ErrorLog
 
@@ -71,6 +73,15 @@ class DNSServer:
         # mode="server" sockets receive from anyone - asy_udp_socket.py places source-address
         # trust on the caller. run() filters to the AP's own subnet before ever replying.
         self.udps = AsyUDPSocket(("0.0.0.0", 53), mode="server")
+
+    def get_error_sources(self) -> "list[Any]":
+        # Fan-in primitive (SPECIFICATION.md Part C.14/G.2), same shape as base_classes.py's
+        # SensorReader.get_error_sources() - duck-typed, not inherited (see this module's own
+        # docstring: it's owned by AsyConnTime, not itself a SensorReader subclass).
+        return [self]
+
+    def get_loggers(self) -> "list[PrintLogHistory]":
+        return [self.pr]
 
     async def get_error_counter(self) -> "ErrorLog":
         return await self.pr.get_log()

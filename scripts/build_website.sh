@@ -81,14 +81,33 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 device="${1:?Usage: scripts/build_website.sh <device> [output_path]}"
 out_file="${2:-frozen_modules/frozen_html.py}"
 
+stage_dir="$(mktemp -d)"
+# Separate from stage_dir on purpose: stage_dir becomes the served /html content root
+# (scripts/build_frozen_html.sh below scans its whole tree), so a generated definitions.json
+# written there would get frozen as its own extra /definitions.json.gz file - defeating the
+# "Inlining" design above (confirmed directly: an earlier version of this fallback wrote it into
+# stage_dir and a stray /definitions.json.gz reappeared in the freezefs manifest). scratch_dir
+# holds build-only intermediate files that must never be served.
+scratch_dir="$(mktemp -d)"
+trap 'rm -rf "$stage_dir" "$scratch_dir"' EXIT
+
+# wozi/dev keep their existing hand-written html/definitions/<device>.json unchanged (tests_js/'s
+# own PUT-matrix fixtures load it directly off disk - BUILD_CHAIN_PLAN.md's Session 4 proved these
+# two are already byte-shape-identical to buildgen's own generated output, so nothing is lost by
+# not switching them over yet; retiring them outright is a separate, deliberately deferred piece of
+# work - see BUILD_CHAIN_PLAN.md's Session 6 account). Every other device has no hand-written file
+# at all (only wozi.json/dev.json exist today) - generated fresh here via buildgen instead of
+# failing, so scripts/build_firmware.py can build any of the 6 real devices, not just these two.
 definitions_src="html/definitions/${device}.json"
 if [[ ! -f "$definitions_src" ]]; then
-    echo "error: no definitions file at $definitions_src" >&2
-    exit 1
+    device_toml="devices/${device}.toml"
+    if [[ ! -f "$device_toml" ]]; then
+        echo "error: no definitions file at $definitions_src and no $device_toml to generate one from" >&2
+        exit 1
+    fi
+    definitions_src="$scratch_dir/definitions.json"
+    python3 -m buildgen.definitions "$device_toml" --src-dir src --out "$definitions_src"
 fi
-
-stage_dir="$(mktemp -d)"
-trap 'rm -rf "$stage_dir"' EXIT
 
 STAGE_DIR="$stage_dir" DEFINITIONS_SRC="$definitions_src" python3 <<'PYEOF'
 import os

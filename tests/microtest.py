@@ -30,7 +30,7 @@ def run(namespace: dict[str, object]) -> None:
     # integration files) leaves independently-scheduled sibling tasks (WiFi, sensor readers, the
     # webserver, ...) parked in the shared, process-wide asyncio task queue after its own test
     # function returns - Task.cancel() on the one Task a test explicitly awaited (e.g. main_task in
-    # digital_twin/run_wozi_integration.py) never cascades to those siblings, since asyncio doesn't
+    # digital_twin/run_generic_integration.py) never cascades to those siblings, since asyncio doesn't
     # track parent/child task relationships. Falling off the end of this script used to leave the
     # Unix-port process waiting on that leftover queue instead of exiting - confirmed by direct
     # reproduction (system_service.py's own _timer_sequencer() fix was what first let a soak test

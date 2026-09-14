@@ -12,7 +12,10 @@ import { chromium, devices } from "playwright";
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const TOOLCHAIN_DIR = process.env.PICO_TOOLCHAIN_DIR || path.join(homedir(), "pico-toolchain");
 const MICROPYTHON_BIN = path.join(TOOLCHAIN_DIR, "micropython", "ports", "unix", "build-standard", "micropython");
-const MICROPYPATH = "src:digital_twin:ext:frozen_modules:.frozen";
+// build/generated_src first: no static src/sensortask_wozi.py exists any more
+// (BUILD_CHAIN_PLAN.md's Session 6 finish criterion) - .github/workflows/ci.yml's
+// web-cross-browser-smoke job generates it fresh there, via buildgen, before this spawns.
+const MICROPYPATH = "build/generated_src:src:digital_twin:ext:frozen_modules:.frozen";
 const HOST = "127.0.0.1";
 // Distinct from every other fixed port this repo already uses for a twin/integration run - see
 // tests_js/_live_twin_command.js's own comment for the full enumeration this continues (19411,
@@ -95,7 +98,23 @@ function spawnTwin() {
     return trackProcess(
         spawn(
             MICROPYTHON_BIN,
-            ["digital_twin/run_wozi_integration.py", "--host", HOST, "--port", String(PORT), "--fram-state-path", "", "--scd30-state-path", ""],
+            [
+                "digital_twin/run_generic_integration.py",
+                "--module",
+                "sensortask_wozi",
+                "--wiring-plan",
+                path.join(REPO_ROOT, "build", "generated_src", "sensortask_wozi_wiring_plan.json"),
+                "--device",
+                "wozi",
+                "--host",
+                HOST,
+                "--port",
+                String(PORT),
+                "--fram-state-path",
+                "",
+                "--scd30-state-path",
+                "",
+            ],
             { cwd: REPO_ROOT, env: { ...process.env, MICROPYPATH, TZ: "UTC" }, stdio: ["ignore", "ignore", "pipe"] },
         ),
         "twin",

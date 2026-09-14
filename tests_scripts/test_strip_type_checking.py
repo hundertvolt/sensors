@@ -2,24 +2,16 @@
 independent of build_firmware.py's own wiring (see test_build_firmware.py for that)."""
 
 import ast
-import importlib.util
 from pathlib import Path
 from types import ModuleType
 
 import pytest
+from _script_loader import load_script_module
 
 
 @pytest.fixture(scope="session")
 def strip_module(repo_root: Path) -> ModuleType:
-    module_path = repo_root / "scripts" / "_strip_type_checking.py"
-    spec = importlib.util.spec_from_file_location("_strip_type_checking", module_path)
-    # spec_from_file_location() returns None for an unloadable path and spec.loader is
-    # Optional in the general case - narrowed here so a renamed/missing script fails with a
-    # clear assertion instead of an AttributeError three lines later.
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    return load_script_module(repo_root / "scripts" / "_strip_type_checking.py", "_strip_type_checking")
 
 
 def test_no_type_checking_pattern_returns_source_byte_for_byte_unchanged(strip_module: ModuleType) -> None:

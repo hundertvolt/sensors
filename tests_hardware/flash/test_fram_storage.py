@@ -73,7 +73,7 @@ def test_error_log_history_is_all_or_nothing_across_a_reset_raced_chunk_write(bo
 # The error log's own boot window: a ResetErrors landing before a FRAM-backed logger has run its
 # own pr.setup() must still be persisted, and must survive that setup()
 # (SPECIFICATION.md Part C.7). Mirrored
-# at the mock tier (tests/test_print_log.py, tests/test_sensortask_wozi.py) and the twin tier
+# at the mock tier (tests/test_print_log.py, tests/test_sensortask.py) and the twin tier
 # (tests/test_digital_twin_sensortask_integration.py); this is the same claim on the real chip.
 # ---------------------------------------------------------------------------
 

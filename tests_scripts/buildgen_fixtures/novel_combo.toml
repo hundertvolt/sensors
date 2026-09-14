@@ -1,0 +1,141 @@
+# novel_combo.toml - the mandatory synthetic "novel combination" fixture device
+# (BUILD_CHAIN_PLAN.md's acceptance criteria #2): existing drivers mixed in a pin/bus layout none
+# of the 6 real devices/*.toml use, proving buildgen's full pipeline succeeds from this one file
+# with zero code changes elsewhere. Not a real device - never flashed, never referenced outside
+# tests_scripts/test_buildgen_*.py.
+#
+# What's novel here versus every real device: two SCD30 instances (multi-instance, disambiguated by
+# name_ext - no real device has more than one), SGP40 independently compensated - temperature from
+# the *second* SCD30, humidity from the *first* (§2.9's per-value generalization; every real device
+# sources both values from the same one sensor), BMP3xx at the alternate hardwired-address-select
+# value (0x76, every real device uses 0x77), NotificationCoordinator wired to only one of the three
+# warn_* signals (every real device wires all three or none), and a uart_link initiator/responder
+# pair on a GPIO pin pair no real device uses (proving the uart_link driver generalizes beyond
+# dev.toml's own GP0/1+GP8/9, per CLAUDE.md's standing "synthetic fixture proves generality" rule).
+
+[device]
+name = "NovelCombo"
+hostname = "SensorStationNovelCombo"
+hotspot_password = "12345678"
+conn_fail_to_hotspot = 3
+hotspot_time_min = 10
+
+[device.wiring]
+led_target = "neopixel"
+fram_target = "fram"
+
+[bus.i2c0]
+scl_pin = 1
+sda_pin = 0
+frequency = 50000
+timeout = 200000
+
+[bus.i2c1]
+scl_pin = 7
+sda_pin = 6
+frequency = 100000
+timeout = 200000
+
+[bus.spi0]
+sck_pin = 18
+mosi_pin = 19
+miso_pin = 4
+
+# uart0 = GP16/17, distinct from dev.toml's own GP0/1 - proves uart0 generalizes beyond the one
+# pair the real device happens to use. uart1 has only two legal pairs at all (GP4/5, GP8/9 -
+# buildgen.pico_gpio.UART_ROLE), and GP4 is already spi0's own miso_pin here, so GP8/9 is this
+# fixture's only option - same pair dev.toml uses for uart1, coincidentally, not because it's the
+# only one that would ever work in general.
+[bus.uart0]
+tx_pin = 16
+rx_pin = 17
+baudrate = 57600
+
+[bus.uart1]
+tx_pin = 8
+rx_pin = 9
+baudrate = 57600
+
+[[instance]]
+driver = "scd30"
+name_ext = "primary"
+bus = "i2c0"
+irq_pin = 2
+trigger_sec = 2
+
+[instance.wiring]
+fram_target = "fram"
+
+[[instance]]
+driver = "scd30"
+name_ext = "secondary"
+bus = "i2c1"
+irq_pin = 10
+trigger_sec = 4
+
+[instance.wiring]
+fram_target = "fram"
+
+[[instance]]
+driver = "sgp40"
+name_ext = ""
+bus = "i2c1"
+
+[instance.wiring]
+fram_target = "fram"
+
+# §2.9's richest corner: temperature and humidity independently sourced from two different real
+# scd30 instances - a combination no real device uses (every real device.toml compensates both
+# values off the same one sensor).
+[instance.wiring.temperature_source]
+source = "scd30_secondary"
+field = "Temp"
+
+[instance.wiring.humidity_source]
+source = "scd30_primary"
+field = "Hum"
+
+[[instance]]
+driver = "bmp3xx"
+name_ext = ""
+bus = "i2c0"
+address = 0x76
+
+[instance.wiring]
+fram_target = "fram"
+
+[[instance]]
+driver = "fram"
+bus = "spi0"
+cs_pin = 13
+max_size = 0x8000
+
+[[instance]]
+driver = "neopixel"
+pin = 14
+
+[instance.wiring]
+fram_target = "fram"
+
+[[instance]]
+driver = "notification"
+
+[instance.wiring]
+signal_sink = "neopixel"
+fram_target = "fram"
+
+[instance.wiring.warn_co2]
+source = "scd30_primary"
+field = "CO2"
+
+[[instance]]
+driver = "uart_link"
+name_ext = "a"
+bus = "uart0"
+role = "initiator"
+
+[[instance]]
+driver = "uart_link"
+name_ext = "b"
+bus = "uart1"
+role = "responder"

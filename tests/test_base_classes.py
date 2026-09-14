@@ -437,6 +437,31 @@ def test_sensorreader_name_defaults_to_empty_string() -> None:
     assert reader.pr.name == ""
 
 
+def test_sensorreader_empty_name_ext_reproduces_the_base_name_unchanged() -> None:
+    # instance_name()'s single-instance-device no-op guarantee (SPECIFICATION.md Part C.14) -
+    # name_ext="" (the default, every module today) must leave self.name/self.pr.name identical to
+    # pre-name_ext behavior.
+    reader = SensorReader(Meas(20.0, 50), max_module_error=3, name="SCD30", name_ext="")
+    assert reader.name == "SCD30"
+    assert reader.pr.name == "SCD30"
+
+
+def test_sensorreader_non_empty_name_ext_disambiguates_a_second_instance() -> None:
+    reader = SensorReader(Meas(20.0, 50), max_module_error=3, name="SCD30", name_ext="fan_pressure")
+    assert reader.name == "SCD30_fan_pressure"
+    assert reader.pr.name == "SCD30_fan_pressure"
+
+
+def test_sensorreader_get_error_sources_returns_just_itself() -> None:
+    reader = SensorReader(Meas(20.0, 50), max_module_error=3)
+    assert reader.get_error_sources() == [reader]
+
+
+def test_sensorreader_get_loggers_returns_just_its_own_logger() -> None:
+    reader = SensorReader(Meas(20.0, 50), max_module_error=3)
+    assert reader.get_loggers() == [reader.pr]
+
+
 def test_sensorreader_reuses_a_given_logger_instead_of_constructing_a_fresh_one() -> None:
     # Reach-through mechanism for a directly-bound sibling object that should share one
     # identity/history instead of each getting its own separate PrintLogHistory.
@@ -755,6 +780,46 @@ def test_sensorreaderconfig_forwards_its_name_to_the_base_class_logger() -> None
         assert reader.pr.name == "namefwd"
     finally:
         _remove(path_prefix + "config_namefwd.cfg")
+
+
+def test_sensorreaderconfig_name_ext_threads_into_filename_and_both_loggers() -> None:
+    # name_ext (SPECIFICATION.md Part C.14) must resolve once in super().__init__() and then be
+    # used consistently everywhere self.name is used here: the on-flash config filename, this
+    # object's own logger, and the nested ConfigManager's "CFGMGR_<name>" logger - not just the raw
+    # `name` positional (this driver type's fixed base name).
+    path_prefix = _tmp_path("") + "/"
+    _remove(path_prefix + "config_SCD30_fan_pressure.cfg")
+    try:
+        reader = SensorReaderConfig(Meas(20.0, 50), 3, "SCD30", _VAL_SI, name_ext="fan_pressure", cfg_path=path_prefix)
+        run(reader.cfgmgr.setup())
+        assert reader.name == "SCD30_fan_pressure"
+        assert reader.pr.name == "SCD30_fan_pressure"
+        assert reader.cfgmgr.config_file == path_prefix + "config_SCD30_fan_pressure.cfg"
+        assert reader.cfgmgr.pr.name == "CFGMGR_SCD30_fan_pressure"
+    finally:
+        _remove(path_prefix + "config_SCD30_fan_pressure.cfg")
+
+
+def test_sensorreaderconfig_get_error_sources_includes_its_cfgmgr() -> None:
+    path_prefix = _tmp_path("") + "/"
+    _remove(path_prefix + "config_errsrc.cfg")
+    try:
+        reader = SensorReaderConfig(Meas(20.0, 50), 3, "errsrc", _VAL_SI, cfg_path=path_prefix)
+        run(reader.cfgmgr.setup())
+        assert reader.get_error_sources() == [reader, reader.cfgmgr]
+    finally:
+        _remove(path_prefix + "config_errsrc.cfg")
+
+
+def test_sensorreaderconfig_get_loggers_includes_its_cfgmgrs_logger() -> None:
+    path_prefix = _tmp_path("") + "/"
+    _remove(path_prefix + "config_loggers.cfg")
+    try:
+        reader = SensorReaderConfig(Meas(20.0, 50), 3, "loggers", _VAL_SI, cfg_path=path_prefix)
+        run(reader.cfgmgr.setup())
+        assert reader.get_loggers() == [reader.pr, reader.cfgmgr.pr]
+    finally:
+        _remove(path_prefix + "config_loggers.cfg")
 
 
 def test_sensorreaderconfig_setup_awaits_cfgmgr_setup() -> None:

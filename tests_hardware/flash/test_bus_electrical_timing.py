@@ -75,7 +75,7 @@ def test_single_precision_float_boundary_at_2pow24(board: Board) -> None:
 # ---------------------------------------------------------------------------
 # Item 1 - SCD30 real clock-stretch timing under genuine bus load. Opportunistic/long-duration:
 # SCD30 stretches up to ~150ms roughly once per day for internal calibration (datasheets/scd30/
-# ..._Interface_Description.pdf p.2, already cited in tests/test_sensortask_wozi.py's own
+# ..._Interface_Description.pdf p.2, already cited in tests/test_sensortask.py's own
 # test_scd30s_own_i2c_bus_uses_a_clock_stretch_timeout_wide_enough_for_it) - not something a script
 # can force on demand, only watch for over an extended run.
 # ---------------------------------------------------------------------------

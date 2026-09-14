@@ -21,6 +21,11 @@ _OPCODE_RDID = 0x9F
 _WEL_BIT = 0x02
 _DEFAULT_RDID = bytes([0x04, 0x7F, 0x03, 0x02])  # real MB85RS64V device ID (datasheets/fram/)
 
+_ADDR_16BIT_MAX = 0xFFFF  # matches src/asy_fram_driver.py's own _ADDR_16BIT_MAX exactly: a chip at
+# or under this size gets a 2-byte address (3-byte opcode+address header); a larger chip (dev's
+# 256KB MB85RS2MTA) gets a 3-byte address (4-byte header) - _setup_addr_buffer()'s own
+# _ADDR_BUF_24BIT/_ADDR_BUF_16BIT split.
+
 _SAVE_CHUNK_SIZE = 512  # bytes per chunk streamed to disk in save_state() - avoids one contiguous
 # allocation for the whole buffer. See digital_twin/README.md's "FRAM persistence" for the real
 # MemoryError this fixed.
@@ -45,6 +50,8 @@ class FramChip:
         return bool(self.status & _WEL_BIT)
 
     def _decode_addr(self, data: bytes) -> int:
+        if self.size > _ADDR_16BIT_MAX:
+            return (data[1] << 16) | (data[2] << 8) | data[3]
         return (data[1] << 8) | data[2]
 
     def _load_state(self) -> None:

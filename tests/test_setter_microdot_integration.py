@@ -14,6 +14,7 @@ import errno as errno_mod
 import json
 import os
 import sys
+from collections import namedtuple
 
 # scripts/test.sh's own MICROPYPATH ("src:tests:.frozen") deliberately doesn't include ext/ - that
 # would be a scripts/ change, which CLAUDE.md's "Pre-push verification" requires a full clean-
@@ -60,7 +61,7 @@ def _sweep_stale_tmp_dirs(prefix: str) -> None:
     # Sweeps pre-existing <prefix>* scratch dirs left behind by an earlier scripts/test.sh run on
     # this machine - _next_dir always restarts at 0 per process, so without this a later run
     # silently reuses an earlier run's real, persisted config_*.cfg files instead of a genuinely
-    # fresh directory. See tests/test_sensortask_wozi.py's own _sweep_stale_tmp_dirs() for the full
+    # fresh directory. See tests/test_sensortask.py's own _sweep_stale_tmp_dirs() for the full
     # root-cause writeup (this exact _tmp_cfg_dir() shape is copy-pasted across every test file with
     # its own _TMP_DIR/_next_dir pair - same fix applied uniformly to each).
     try:
@@ -631,8 +632,15 @@ def test_real_microdot_ntp_setter_end_to_end_out_of_range_field_is_rejected_per_
 # ---------------------------------------------------------------------------
 
 
-async def _sgp_comp_data() -> "list[int | float | None]":
-    return [25.0, 50.0]
+_SgpComp = namedtuple("_SgpComp", ("Temp", "Hum"))
+
+
+class _FakeCompSource:
+    # Structural stand-in for temperature_source/humidity_source (SPECIFICATION.md Part C.14,
+    # BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md §2.9) - only get_data() is exercised, matching
+    # test_asy_sgp40_driver.py's own identical fixture.
+    async def get_data(self) -> "Any":
+        return _SgpComp(25.0, 50.0)
 
 
 def make_sgp_reader() -> "tuple[SGP40_Reader, I2C]":
@@ -640,7 +648,16 @@ def make_sgp_reader() -> "tuple[SGP40_Reader, I2C]":
     # integration.py's make_sgp_reader(): a real SGP40_Reader over the real asy_i2c_driver.py I2C
     # wrapper, mocked only at tests/machine.py's raw-bus boundary.
     i2c = I2C(1, scl_pin=19, sda_pin=18, frequency=50000)
-    reader = SGP40_Reader(i2c, _sgp_comp_data, max_module_error=5, cfg_path=_tmp_cfg_dir())
+    comp = _FakeCompSource()
+    reader = SGP40_Reader(
+        i2c,
+        temperature_source=comp,
+        temperature_field="Temp",
+        humidity_source=comp,
+        humidity_field="Hum",
+        max_module_error=5,
+        cfg_path=_tmp_cfg_dir(),
+    )
     run(reader.cfgmgr.setup())
     return reader, i2c
 
@@ -746,8 +763,8 @@ _FIELD_SCD_FORCE_CAL_REF: "cm.FieldSchema" = ("ForceCalRef", "int", 400, 400, 20
 def _scd_set_fields(
     reader: SCD30_Reader,
 ) -> "tuple[tuple[str, cm.FieldSchema, Callable[[Any], Coroutine[Any, Any, bool]]], ...]":
-    # Bound per reader instance (the real file builds this once against its one module-level
-    # scd_reader); iterated in a fixed order, which the one-shot bus fault below relies on.
+    # Bound per reader instance (the real generated module builds this once against its one
+    # module-level scd30); iterated in a fixed order, which the one-shot bus fault below relies on.
     return (
         ("MeasInt", _FIELD_SCD_MEAS_INT, reader.set_measurement_interval),
         ("AmbPres", _FIELD_SCD_AMB_PRES, reader.set_ambient_pressure),

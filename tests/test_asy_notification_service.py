@@ -37,7 +37,7 @@ def _sweep_stale_tmp_dirs(prefix: str) -> None:
     # Sweeps pre-existing <prefix>* scratch dirs left behind by an earlier scripts/test.sh run on
     # this machine - _next_dir always restarts at 0 per process, so without this a later run
     # silently reuses an earlier run's real, persisted config_*.cfg files instead of a genuinely
-    # fresh directory. See tests/test_sensortask_wozi.py's own _sweep_stale_tmp_dirs() for the full
+    # fresh directory. See tests/test_sensortask.py's own _sweep_stale_tmp_dirs() for the full
     # root-cause writeup (this exact _tmp_cfg_dir() shape is copy-pasted across every test file with
     # its own _TMP_DIR/_next_dir pair - same fix applied uniformly to each).
     try:
@@ -89,17 +89,22 @@ def _tmp_cfg_dir() -> str:
 
 
 class FakeValue:
-    # A controllable NotificationSignal.get_value() source: fixed return, or raises once armed.
-    def __init__(self, value: "int | float | None" = None) -> None:
+    # A controllable NotificationSignal producer (SPECIFICATION.md Part C.14.2): get_data()
+    # returns self, dynamically exposing exactly one attribute - whatever field name the caller
+    # configures - fixed value, or raises once armed. Mirrors a real *_Reader.get_data()'s "always
+    # available, individual field can be None" contract.
+    def __init__(self, value: "int | float | None" = None, field: str = "Value") -> None:
         self.value = value
+        self.field = field
         self.raise_exc: Exception | None = None
         self.calls = 0
 
-    async def get(self) -> "int | float | None":
+    async def get_data(self) -> "FakeValue":
         self.calls += 1
         if self.raise_exc is not None:
             raise self.raise_exc
-        return self.value
+        setattr(self, self.field, self.value)  # refreshed every call - picks up a mutated .value
+        return self
 
 
 class FakeClock:
@@ -174,9 +179,9 @@ def make_coordinator(
 def make_signal(
     name: str = "WarnCO2", *, above: bool = True, value: "int | float | None" = 1000, color: "tuple[int, int, int]" = (1, 0, 0),
 ) -> "tuple[NotificationSignal, FakeValue]":
-    fv = FakeValue(value)
+    fv = FakeValue(value, field=name)
     field_schema = ((name, "int", 1600, 0, 3000, None),)
-    return NotificationSignal(name, fv.get, field_schema, color, above=above), fv
+    return NotificationSignal(name, fv, name, field_schema, color, above=above), fv
 
 
 async def _one_cycle(_coordinator: NotificationCoordinator, task: "asyncio.Task[None]", wait: float = 0.1) -> None:
@@ -224,17 +229,17 @@ def test_register_collision_against_own_static_schema_is_rejected() -> None:
 
 def test_register_field_schema_with_zero_fields_is_rejected() -> None:
     coordinator, _clock, _cb = make_coordinator()
-    fv = FakeValue(1)
-    notif = NotificationSignal("Empty", fv.get, (), (1, 0, 0))
+    fv = FakeValue(1, field="Empty")
+    notif = NotificationSignal("Empty", fv, "Empty", (), (1, 0, 0))
     coordinator.register(notif)
     assert coordinator._registered == []
 
 
 def test_register_field_schema_with_two_fields_is_rejected() -> None:
     coordinator, _clock, _cb = make_coordinator()
-    fv = FakeValue(1)
+    fv = FakeValue(1, field="TwoFields")
     schema = (("A", "int", 1, 0, 10, None), ("B", "int", 1, 0, 10, None))
-    notif = NotificationSignal("TwoFields", fv.get, schema, (1, 0, 0))
+    notif = NotificationSignal("TwoFields", fv, "TwoFields", schema, (1, 0, 0))
     coordinator.register(notif)
     assert coordinator._registered == []
 
@@ -494,9 +499,9 @@ def test_registered_float_field_boundaries_and_coercion_enforced() -> None:
     # coerced for a float field (SPECIFICATION.md Part A.8) - a blanket accept, since every int is
     # exactly representable as a float.
     coordinator, _clock, _cb = make_coordinator()
-    fv = FakeValue(50.0)
+    fv = FakeValue(50.0, field="WarnHum")
     field_schema = (("WarnHum", "float", 65.0, 0.0, 100.0, None),)
-    signal = NotificationSignal("WarnHum", fv.get, field_schema, (0, 0, 1))
+    signal = NotificationSignal("WarnHum", fv, "WarnHum", field_schema, (0, 0, 1))
     coordinator.register(signal)
     coordinator.finalize()
     run(coordinator.cfgmgr.setup())

@@ -57,6 +57,21 @@ def _read_mem(chip: FramChip, addr: int, nbytes: int) -> bytes:
     return bytes(buf)
 
 
+# 24-bit-address variants of _write_mem()/_read_mem() above, matching src/asy_fram_driver.py's own
+# _setup_addr_buffer() for a chip whose max_size exceeds _ADDR_16BIT_MAX (dev's 256KB MB85RS2MTA) -
+# a 3-byte address (4-byte opcode+address header) instead of the 8KB chip's 2-byte address.
+def _write_mem24(chip: FramChip, addr: int, data: bytes) -> None:
+    chip.write(bytes([_OPCODE_WRITE, (addr >> 16) & 0xFF, (addr >> 8) & 0xFF, addr & 0xFF]))
+    chip.write(data)
+
+
+def _read_mem24(chip: FramChip, addr: int, nbytes: int) -> bytes:
+    chip.write(bytes([_OPCODE_READ, (addr >> 16) & 0xFF, (addr >> 8) & 0xFF, addr & 0xFF]))
+    buf = bytearray(nbytes)
+    chip.readinto(buf)
+    return bytes(buf)
+
+
 def test_rdid_reports_the_real_mb85rs64v_id_by_default() -> None:
     chip = FramChip(size=0x2000)
     assert _rdid(chip) == bytes([0x04, 0x7F, 0x03, 0x02])
@@ -273,6 +288,43 @@ def test_fault_injection_on_write_and_readinto() -> None:
         raise AssertionError("expected OSError")
     except OSError:
         pass
+
+
+def test_24_bit_address_write_and_read_round_trip_correctly_on_a_256kb_chip() -> None:
+    # A 256KB chip (dev's real MB85RS2MTA) sends a 3-byte address (opcode + 3 bytes = 4-byte
+    # header, src/asy_fram_driver.py's own _ADDR_BUF_24BIT) instead of the 8KB chip's 2-byte
+    # address - this chip is >_ADDR_16BIT_MAX, so it exercises that 3-byte path. A basic
+    # correctness check; see the next test for why a single-address round trip alone can't catch
+    # an aliasing bug (write and read would use the identically wrong decode).
+    chip = FramChip(size=0x40000)
+    _wren(chip)
+    _write_mem24(chip, 0x0100, b"\xaa\xbb\xcc")
+    assert _read_mem24(chip, 0x0100, 3) == b"\xaa\xbb\xcc"
+
+
+def test_24_bit_address_low_byte_is_not_dropped_so_aliasing_addresses_stay_distinct() -> None:
+    # BUILD_CHAIN_PLAN.md's Session 6.2: _decode_addr() used to always read exactly 2 address bytes
+    # (data[1]/data[2]), silently dropping the 256KB chip's true low-order address byte (data[3]) -
+    # real address `addr` aliased to `(addr >> 8) & 0xFF`, so any two real addresses sharing the
+    # same high byte (e.g. 0x0000 and 0x00FF) collapsed onto the same decoded address and a write to
+    # one silently clobbered the other, corrupting unrelated FRAM chunks (discovered via a real
+    # digital-twin CI suite failure against dev). This proves they now stay distinct.
+    chip = FramChip(size=0x40000)
+    _wren(chip)
+    _write_mem24(chip, 0x0000, b"\x11")
+    _wren(chip)
+    _write_mem24(chip, 0x00FF, b"\x22")
+    assert _read_mem24(chip, 0x0000, 1) == b"\x11"
+    assert _read_mem24(chip, 0x00FF, 1) == b"\x22"
+
+
+def test_16_bit_address_chip_is_unaffected_by_the_24_bit_address_path() -> None:
+    # The size threshold (_ADDR_16BIT_MAX) must keep every existing 8KB-chip caller on the original
+    # 2-byte decode - a regression here would silently break every non-dev device.
+    chip = FramChip(size=0x2000)
+    _wren(chip)
+    _write_mem(chip, 0x0100, b"\xdd")
+    assert _read_mem(chip, 0x0100, 1) == b"\xdd"
 
 
 if __name__ == "__main__":

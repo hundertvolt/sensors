@@ -30,18 +30,25 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
-    from typing import Any
+    from typing import Any, Protocol
 
     from asy_fram_manager import AsyFramChunkTimestampedBuffer, AsyFramManager
     from asy_i2c_driver import I2C
     from print_log import ErrorLog
+
+    class _ValueSource(Protocol):
+        # Structural stand-in for temperature_source/humidity_source's producer
+        # (BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md §2.9) - any *_Reader (or a `_Default*`
+        # fallback provider, see below) exposing the same get_data() -> NamedTuple contract every
+        # driver already has (SPECIFICATION.md C.4.2). Only get_data() is used here - same shape as
+        # asy_notification_service.py's own _ValueSource.
+        async def get_data(self) -> "Any": ...
 
 # roughly the time how often the data written to the FRAM is verified.
 # less a data safety feature here but rather a check if communication and integrity is generally okay
 _FRAM_VERIFY_MINS = const(60)
 _MAX_NTP_WAITTIME = const(600)  # 600s = 10min
 _BACKUP_COUNTER_MAX = const(100000)  # see _check_storage()'s own note on the 86400s = 1 day margin
-_N_COMP_VALUES = const(2)  # the compensation callback's own [Temperature, Humidity] result shape
 _SELF_TEST_PASS = const(0xD4)  # datasheet Table 13, high byte only (the low byte is "ignore")
 
 _VAL_BP = const((("BackupPeriod", "int", 1, 0, 1440, None),))
@@ -54,6 +61,12 @@ _N_SETUP_CFG = const(2)  # value count of the _VAL_BP + _VAL_WT batch read below
 # from get_dict_cfg()'s own schema argument below - this key is never in ConfigManager's _cache.
 _VAL_RESET = const((("SGPResetVOC", "bool", None, None, None, True),))
 
+# @web-group section=sensors submitGroup=self label="SGP40 — VOC Index" submit=true
+# @web BackupPeriod section=sensors submitGroup=self label="VOC Index Backup Interval" unit="min" special:0="Backups off"
+# @web BackupMaxAge section=sensors submitGroup=self label="VOC Index Backup Max Age" unit="min" special:0="Use all found backups"
+# @web WaitTimeNTP section=sensors submitGroup=self label="VOC Index NTP Wait Time" unit="s" special:0="Never wait for NTP sync"
+# @web SGPResetVOC section=sensors submitGroup=self label="Reset VOC Index" description="Only 'On' has effect. Resets the VOC algorithm and deletes the current backup." dispatch=true
+
 _NAME = const("SGP40")
 # VOC/Raw/TS also doubles as the full result of a read (see _read_sgp/_store_sgp) - no separate
 # results type needed, unlike asy_scd30_driver.py's SCDResults, which carries derived fields SGP40
@@ -63,13 +76,73 @@ _NAME = const("SGP40")
 SGP40 = namedtuple("SGP40", ("VOC", "Raw", "TS"))
 _FIELDS = const(("VOC", "Raw", "TS"))  # kept in sync with SGP40's own fields above
 
+# @web-group section=measurements submitGroup=self label="SGP40 — VOC Index"
+# @web VOC section=measurements submitGroup=self kind=readonly label="VOC Index"
+# @web Raw section=measurements submitGroup=self kind=readonly label="VOC Raw" unit="ticks"
+# @web TS section=measurements submitGroup=self kind=readonly label="Timestamp" unit="s"
+
+# This driver's live cross-instance dependencies (SPECIFICATION.md Part C.14): the optional FRAM
+# backup target, resolved by buildgen/ (Session 3 of BUILD_CHAIN_PLAN.md) to an already-constructed
+# instance, passed directly (fram_target maps to this driver's own fram_storage= kwarg, named
+# differently for historical reasons - see buildgen/buildspec.py), never a getter/callback.
+# The temperature/humidity compensation source used to be one whole-object comp_source field here
+# (required=True, fixed to SCD30_Reader) - BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md §2.9
+# generalized it into two independent per-value fields below (_VALUE_WIRING), each freely wireable
+# from *any* instance exposing a matching attribute name, not fixed to one producer class.
+# datasheets/sgp40/Sensirion_Gas_Sensors_Datasheet_SGP40.pdf Table 3: fSCL max 400 kHz
+# ("standard-mode" 100 kHz / "fast-mode" 400 kHz). A generator-checked build requirement
+# rather than a comment each device TOML author has to remember - a bus this driver shares
+# with an SCD30 is held to that sensor's own stricter 100 kHz tag on top of this one.
+# @requires bus.frequency<=400000
+# @wiring fram_target AsyFramManager fram_storage optional kwarg
+
+# Per-value measurement wiring (§2.9) - each field resolves independently, the same generic
+# {source, field} shape asy_notification_service.py's warn_* fields already use, matched by
+# attribute name alone (no fixed producer class). Both required: an SGP40 with no compensation
+# data at all needs an explicit default opt-in, per §2's wiring-defaults mechanism - see
+# _DefaultTemperatureSource/_DefaultHumiditySource below.
+# @value-wiring temperature_source temperature_source temperature_field required
+# @value-wiring humidity_source humidity_source humidity_field required
+
+_ConstValue = namedtuple("_ConstValue", ("value",))
+
+
+class _DefaultTemperatureSource:
+    """§2's wiring-defaults mechanism, opted into via [instance.wiring].temperature_source =
+    {default = true, temperature = 25} - a constant compensation fallback when no live temperature
+    source is wired. 25 degC matches SGP40_I2C.measure_raw()'s own datasheet-documented default
+    (Table 9). Every `_Default*` provider's get_data() returns an object exposing exactly one
+    attribute named "value" (a fixed, hardcoded contract - see BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md
+    §10.1 item 1), so buildgen always resolves a defaulted per-value field as (provider, "value")."""
+
+    def __init__(self, temperature: float = 25) -> None:
+        self._data = _ConstValue(float(temperature))
+
+    async def get_data(self) -> "_ConstValue":
+        return self._data
+
+
+class _DefaultHumiditySource:
+    """Same mechanism as _DefaultTemperatureSource, for relative humidity - 50%RH matches
+    SGP40_I2C.measure_raw()'s own datasheet-documented default (Table 9)."""
+
+    def __init__(self, relative_humidity: float = 50) -> None:
+        self._data = _ConstValue(float(relative_humidity))
+
+    async def get_data(self) -> "_ConstValue":
+        return self._data
+
 
 class SGP40_Reader(SensorReaderConfig):
     def __init__(
         self,
         i2c: "I2C",
-        asy_comp_callback: "Callable[[], Coroutine[Any, Any, list[int | float | None]]]",
+        temperature_source: "_ValueSource",
+        temperature_field: str,
+        humidity_source: "_ValueSource",
+        humidity_field: str,
         max_module_error: int = 5,
+        name_ext: str = "",
         cfg_path: str = "",
         fram_storage: "AsyFramManager | None" = None,
         fram_ntp_callback: "Callable[[], Coroutine[Any, Any, bool]] | None" = None,
@@ -81,6 +154,7 @@ class SGP40_Reader(SensorReaderConfig):
             max_module_error,
             _NAME,
             _VAL_BP + _VAL_BMAX + _VAL_WT + _VAL_RESET,
+            name_ext=name_ext,
             cfg_path=cfg_path,
             fram=fram_storage,
             history_length=history_length,
@@ -97,7 +171,15 @@ class SGP40_Reader(SensorReaderConfig):
         # real values are always set by _init_sgp() before read_loop() ever reads these
         self.voc_init = 0
         self.voc_write = 0
-        self.comp_callback = asy_comp_callback  # expects [Temperature, Humidity]
+        # Direct reference to each producer's own concurrency-safe value holder (its get_data(),
+        # already _datalock-guarded - SPECIFICATION.md Part C.14/G.2), not a wrapping getter
+        # function - _read_sgp() reads temperature_field/humidity_field off each directly every
+        # cycle, resolved independently (§2.9's per-value generalization) - the two may be the same
+        # producer instance (the common case, both off one SCD30) or two different ones.
+        self.temperature_source = temperature_source
+        self.temperature_field = temperature_field
+        self.humidity_source = humidity_source
+        self.humidity_field = humidity_field
         if fram_storage is None or fram_ntp_callback is None:
             self.ts_storage = None
         else:
@@ -179,13 +261,31 @@ class SGP40_Reader(SensorReaderConfig):
                 if not self._reset_fram_cleared:
                     await self.pr.err_s("Error clearing FRAM!", errno=15)
 
-        try:  # caller-supplied callback, could legitimately misbehave
-            comp_data = await self.comp_callback()  # [Temperature, Humidity]
+        # Direct read of each producer's own get_data() (SPECIFICATION.md Part C.14), resolved
+        # independently by attribute name (§2.9's per-value generalization - the same getattr()
+        # resolution asy_notification_service.py's own _check_one() already uses for warn_*) - no
+        # wrapping callback. get_data() never raises, but the named field can individually still be
+        # None (the producer hasn't completed its first real measurement yet, or its own error
+        # streak gave up) - a normal, expected input, not an exception (CLAUDE.md: no E/W log for
+        # expected startup jitter). Split the same way _check_one() already does: only get_data()
+        # itself raising - a genuine violation of its own never-raises contract - is a real fault
+        # worth logging; a getattr()-returned None is read via its own default, never routed through
+        # float() (which would raise TypeError on None and get misreported as a read failure) and
+        # never logged here on its own - a persistent producer failure is caught and logged by that
+        # producer's own driver already, not re-detected from this side.
+        temp_val: int | float | None
+        hum_val: int | float | None
+        try:
+            temp_data = await self.temperature_source.get_data()
+            hum_data = await self.humidity_source.get_data()
         except Exception as e:
-            await self.pr.err_s("Compensation data callback failed:", e, errno=18)
-            comp_data = [None, None]
-        if len(comp_data) != _N_COMP_VALUES or comp_data[0] is None or comp_data[1] is None:
-            await self.pr.wrn_s("No compensation data available!", wrnno=14)
+            await self.pr.err_s("Compensation data read failed:", e, errno=18)
+            temp_val, hum_val = None, None
+        else:
+            temp_val = getattr(temp_data, self.temperature_field, None)
+            hum_val = getattr(hum_data, self.humidity_field, None)
+
+        if temp_val is None or hum_val is None:
             if deserialize:
                 self.pr.evt("Retrying initialization...")
                 self.voc_init = 1  # retry init if triggered and no compensation data is available
@@ -205,8 +305,13 @@ class SGP40_Reader(SensorReaderConfig):
                 serialized,
                 deserialized,
             ) = await self.sgp.measure_index_and_raw(
-                temperature=float(comp_data[0]),
-                relative_humidity=float(comp_data[1]),
+                # float() rather than a plain narrowed value: temp_val/hum_val are only known
+                # not-None here (D.2), not known numeric - a non-numeric field value from a
+                # caller-supplied source (SPECIFICATION.md Part C.14) would raise here, same as a
+                # genuine I2C fault, and is caught by this same try/except below (errno=11) rather
+                # than escaping uncaught.
+                temperature=float(temp_val),
+                relative_humidity=float(hum_val),
                 reset=reset_for_measure,
                 buf=None if buf is None else buf.get_data_buf(),
                 serialize=serialize,
@@ -400,13 +505,13 @@ class SGP40_Reader(SensorReaderConfig):
 
     async def get_dict_data(self) -> dict[str, dict[str, int | float | str | bool | None]]:
         data = await self.get_data()
-        return make_dict(data, _FIELDS)
+        return make_dict(data, _FIELDS, name=self.name)
 
     async def get_dict_cfg(self) -> dict[str, dict[str, int | float | str | bool | None]]:
         # Deliberately excludes _VAL_RESET (SGPResetVOC) - see that const's own comment: it's never
         # in cfgmgr's _cache (special-alone, not persisted), and ConfigManager.get_dict() is
         # all-or-nothing per requested key, so including it here would break this whole read.
-        return await self._get_dict_cfg(_NAME, _VAL_BP + _VAL_BMAX + _VAL_WT)
+        return await self._get_dict_cfg(self.name, _VAL_BP + _VAL_BMAX + _VAL_WT)
 
     async def get_error_counter(self) -> "ErrorLog":
         return await self.pr.get_log()

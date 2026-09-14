@@ -1,10 +1,10 @@
-"""Digital-twin fake `machine` module - real-time-firing `Timer`, I2C/SPI wired to per-address chip
-simulators (see `configure_i2c_wiring()`), deliberately independent of `tests/machine.py`.
+"""Digital-twin fake `machine` module - real-time-firing `Timer`, I2C/SPI wired to per-address chip simulators via `configure_wiring()` (generic, buildgen-derived plan) or `configure_i2c_wiring()` (the "wozi"/"dev" legacy sugar), deliberately independent of `tests/machine.py`.
 See `digital_twin/README.md`'s "What's here" section for the full wiring/`Pin`-identity account."""
 
 import asyncio
 import errno
 import io
+import json
 import select
 import time
 from collections import deque
@@ -166,48 +166,74 @@ def flush_scd30() -> None:
         _current_scd30_chip.save_state()
 
 
-_i2c_wiring_profile = "wozi"  # dev's variant flips which bus carries which sensors (and SCD30's
-# own IRQ pin) relative to wozi - same module-level-hook pattern as configure_random_source()/
-# configure_fram_state_path() above. Default "wozi" keeps every existing caller unchanged.
+_wiring_plan: "dict[str, Any] | None" = None  # None until configure_wiring()/configure_i2c_wiring()
+# runs, or a bus is actually constructed - see _current_wiring_plan() below.
+
+
+def configure_wiring(plan: "dict[str, Any]") -> None:
+    # Called once, before build_system()-equivalent code constructs i2c0/i2c1/spi0 - a plain dict in
+    # buildgen.twin_wiring.compute_twin_wiring()'s own shape. Replaces the whole plan outright, the
+    # same "last configure_*() call before construction wins" convention every hook here already uses.
+    global _wiring_plan
+    if "buses" not in plan or "spi" not in plan:
+        raise ValueError("wiring plan must be a dict with 'buses' and 'spi' keys - see buildgen.twin_wiring.compute_twin_wiring()'s own docstring for the shape")
+    _wiring_plan = plan
 
 
 def configure_i2c_wiring(profile: str) -> None:
-    # Called once before i2c0/i2c1 are constructed, by an entry point wanting a non-default wiring
-    # (run_dev_integration.py's main() passes "dev"). Validated eagerly rather than inside
-    # _wire_i2c_devices(), so a typo surfaces at the call site instead of NAKing every transaction.
+    # Called once, before build_system()-equivalent code constructs i2c0/i2c1, by whatever caller
+    # wants a non-default wiring by name - legacy sugar over configure_wiring() kept for tests
+    # (digital_twin/README.md), not called by any real entry point since run_generic_integration.py
+    # takes a full wiring-plan dict instead. Loads the profile's own generated
+    # build/generated_src/sensortask_<profile>_wiring_plan.json (scripts/_generate_sensortask_modules.py,
+    # from the real devices/<profile>.toml via buildgen.twin_wiring.compute_twin_wiring()) - never a
+    # hand-typed literal, so devices/wozi.toml and dev.toml stay the only source of truth. Validated
+    # eagerly here rather than only inside configure_wiring() above, so a typo surfaces immediately at
+    # the call site instead of silently NAKing every I2C transaction later.
     if profile not in ("wozi", "dev"):
         raise ValueError(f"unknown I2C wiring profile {profile!r} - expected 'wozi' or 'dev'")
-    global _i2c_wiring_profile
-    _i2c_wiring_profile = profile
+    with open(f"build/generated_src/sensortask_{profile}_wiring_plan.json") as f:
+        configure_wiring(json.load(f))
+
+
+def _current_wiring_plan() -> "dict[str, Any]":
+    # Lazily defaults to wozi's own generated plan the first time any caller constructs a bus without
+    # ever calling configure_wiring()/configure_i2c_wiring() first (e.g.
+    # digital_twin/segfault_stress_repro.py's own main(), deliberately kept hardcoded to
+    # sensortask_wozi - see that module's own comment) - matches the old eager "default to wozi"
+    # behavior exactly, just loaded on first use instead of at import time (this file must stay
+    # importable even before build/generated_src/ exists, e.g. under a plain CPython cross-check).
+    if _wiring_plan is None:
+        configure_i2c_wiring("wozi")
+    return _wiring_plan  # type: ignore[return-value]  # configure_i2c_wiring() above always sets it
+
+
+def _build_i2c_chip(attachment: "dict[str, Any]") -> "Any":
+    # Dispatches on the wiring plan's own "driver" string - the twin's own hand-maintained chip-fake
+    # catalog (a genuinely new chip type still needs one hand-written, CLAUDE.md's named exception).
+    # Return type is deliberately Any, not _I2CDevice: no single real chip fake implements all four
+    # of that Protocol's methods, the same reason _wire_i2c_devices() below stays dict[int, Any].
+    global _current_scd30_chip
+    driver = attachment["driver"]
+    if driver == "scd30":
+        from _scd30_chip import Scd30Chip
+
+        chip = Scd30Chip(rdy_pin=Pin(attachment["irq_pin"], mode=Pin.IN), random_source=_random_source, state_path=_scd30_state_path)
+        _current_scd30_chip = chip
+        return chip
+    if driver == "sgp40":
+        from _sgp40_chip import Sgp40Chip
+
+        return Sgp40Chip(random_source=_random_source)
+    if driver == "bmp3xx":
+        from _bmp3xx_chip import Bmp3xxChip
+
+        return Bmp3xxChip(random_source=_random_source)
+    raise ValueError(f"digital twin has no I2C chip fake for driver {driver!r} - add one to machine._build_i2c_chip()")
 
 
 def _wire_i2c_devices(bus_id: int) -> "dict[int, Any]":
-    global _current_scd30_chip
-    from _bmp3xx_chip import Bmp3xxChip
-    from _scd30_chip import Scd30Chip
-    from _sgp40_chip import Sgp40Chip
-
-    if _i2c_wiring_profile == "dev":
-        # dev_legacy/README.md's wiring table: i2c0 (bus_id=0) carries BMP3xx alone; i2c1 (bus_id=1)
-        # carries SCD30 (IRQ/RDY=GPIO11) + SGP40 sharing the bus - the reverse pairing from wozi's
-        # own layout below.
-        if bus_id == 0:
-            return {0x77: Bmp3xxChip(random_source=_random_source)}
-        if bus_id == 1:
-            chip = Scd30Chip(rdy_pin=Pin(11, mode=Pin.IN), random_source=_random_source, state_path=_scd30_state_path)
-            _current_scd30_chip = chip
-            return {0x61: chip, 0x59: Sgp40Chip(random_source=_random_source)}
-        return {}
-
-    # "wozi" (default): i2c0 (bus_id=0) carries SCD30 alone (IRQ/RDY=GPIO8); i2c1 (bus_id=1) carries
-    # SGP40 + BMP3xx sharing the bus.
-    if bus_id == 0:
-        chip = Scd30Chip(rdy_pin=Pin(8, mode=Pin.IN), random_source=_random_source, state_path=_scd30_state_path)
-        _current_scd30_chip = chip
-        return {0x61: chip}
-    if bus_id == 1:
-        return {0x59: Sgp40Chip(random_source=_random_source), 0x77: Bmp3xxChip(random_source=_random_source)}
-    return {}
+    return {attachment["address"]: _build_i2c_chip(attachment) for attachment in _current_wiring_plan()["buses"].get(f"i2c{bus_id}", [])}
 
 
 class I2C:
@@ -288,22 +314,23 @@ def flush_fram() -> None:
 _DEV_FRAM_SIZE = 0x40000  # MB85RS2MTA, 256KB - sensortask_dev.py's own AsyFramManager(spi0, 5, max_size=0x40000, ...)
 _DEV_FRAM_RDID = bytes([0x04, 0x7F, 0x48, 0x03])  # manufacturer=Fujitsu, cont_code, product ID 0x4803 - asy_fram_driver.py's own _KNOWN_PRODUCT_IDS[0x40000], datasheets/fram/MB85RS2MTA-DS501-00032-3v0-E.pdf p.10
 
+# Real chip-model identity (the RDID bytes) isn't a TOML/DeviceModel fact - only max_size is - so
+# it's keyed by size as the best available proxy (unique today: 8KB MB85RS64V vs 256KB MB85RS2MTA).
+# Any size not listed falls back to FramChip's own default RDID (MB85RS64V's - wozi's own chip).
+_FRAM_RDID_BY_MAX_SIZE: "dict[int, bytes]" = {_DEV_FRAM_SIZE: _DEV_FRAM_RDID}
+
 
 def _wire_spi_device(bus_id: int) -> "FramChip | None":
     global _current_fram_chip
-    if bus_id == 0:
-        from _fram_chip import FramChip
+    attachment = _current_wiring_plan()["spi"].get(f"spi{bus_id}")
+    if attachment is None:
+        return None
+    from _fram_chip import FramChip
 
-        # Mirrors _wire_i2c_devices()'s own profile branch above - see digital_twin/README.md's
-        # "What's here" section for the real chip-identity bug this fixed.
-        chip = (
-            FramChip(size=_DEV_FRAM_SIZE, state_path=_fram_state_path, rdid_response=_DEV_FRAM_RDID)
-            if _i2c_wiring_profile == "dev"
-            else FramChip(state_path=_fram_state_path)
-        )
-        _current_fram_chip = chip
-        return chip
-    return None
+    max_size = attachment["max_size"]
+    chip = FramChip(size=max_size, state_path=_fram_state_path, rdid_response=_FRAM_RDID_BY_MAX_SIZE.get(max_size))
+    _current_fram_chip = chip
+    return chip
 
 
 class SPI:

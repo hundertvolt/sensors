@@ -67,7 +67,7 @@ def _sweep_stale_tmp_dirs(prefix: str) -> None:
     # Sweeps pre-existing <prefix>* scratch dirs left behind by an earlier scripts/test.sh run on
     # this machine - _next_dir always restarts at 0 per process, so without this a later run
     # silently reuses an earlier run's real, persisted config_*.cfg files instead of a genuinely
-    # fresh directory. See tests/test_sensortask_wozi.py's own _sweep_stale_tmp_dirs() for the full
+    # fresh directory. See tests/test_sensortask.py's own _sweep_stale_tmp_dirs() for the full
     # root-cause writeup (this exact _tmp_cfg_dir() shape is copy-pasted across every test file with
     # its own _TMP_DIR/_next_dir pair - same fix applied uniformly to each).
     try:
@@ -633,13 +633,22 @@ def make_scd30_reader(max_module_error: int = 1) -> SCD30_Reader:
     return SCD30_Reader(i2c, irq_pin=5, max_module_error=max_module_error)
 
 
-async def _no_comp_data() -> "list[float | None]":
-    return [None, None]
-
-
 def make_sgp40_reader(cfg_path: str, max_module_error: int = 1) -> SGP40_Reader:
     i2c = I2C(1, scl_pin=19, sda_pin=18, frequency=50000)
-    reader = SGP40_Reader(i2c, _no_comp_data, max_module_error=max_module_error, cfg_path=cfg_path)
+    # A real SCD30_Reader as temperature_source/humidity_source (SPECIFICATION.md Part C.14,
+    # BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md §2.9) - never read()/setup(), so its own
+    # get_data() just returns its unmeasured-sentinel namedtuple (every field None), matching what
+    # _no_comp_data() used to return directly.
+    scd_reader = make_scd30_reader()
+    reader = SGP40_Reader(
+        i2c,
+        temperature_source=scd_reader,
+        temperature_field="Temp",
+        humidity_source=scd_reader,
+        humidity_field="Hum",
+        max_module_error=max_module_error,
+        cfg_path=cfg_path,
+    )
     run(reader.cfgmgr.setup())
     return reader
 

@@ -78,6 +78,28 @@ def _make(name: str, cfg_vals: "cm.ConfigSchema" = _SCHEMA) -> "tuple[cm.ConfigM
 
 
 # ---------------------------------------------------------------------------
+# instance_name() - per-instance naming (SPECIFICATION.md Part C.14)
+# ---------------------------------------------------------------------------
+
+
+def test_instance_name_empty_ext_reproduces_base_name_unchanged() -> None:
+    # The single-instance-device no-op guarantee: every module today passes name_ext="", which
+    # must leave REST dict keys/config filenames/error-log keys byte-identical to pre-name_ext
+    # behavior.
+    assert cm.instance_name("SCD30", "") == "SCD30"
+
+
+def test_instance_name_non_empty_ext_appends_underscore_separated_suffix() -> None:
+    assert cm.instance_name("SCD30", "fan_pressure") == "SCD30_fan_pressure"
+
+
+def test_instance_name_empty_base_name_with_non_empty_ext() -> None:
+    # Not a realistic real-driver call (every base_name comes from a non-empty _NAME constant), but
+    # instance_name() itself has no such precondition - must not raise on it.
+    assert cm.instance_name("", "ext") == "_ext"
+
+
+# ---------------------------------------------------------------------------
 # schema_names / name_cfg / schema_dict / make_dict - pure schema parsing
 # ---------------------------------------------------------------------------
 
@@ -156,6 +178,25 @@ def test_make_dict_normal_namedtuple() -> None:
 
     Meas = namedtuple("Meas", ["temp", "hum"])
     assert cm.make_dict(Meas(20.5, 55), ("temp", "hum")) == {"Meas": {"temp": 20.5, "hum": 55}}
+
+
+def test_make_dict_explicit_name_overrides_type_introspection() -> None:
+    # SPECIFICATION.md Part C.14: a caller that can have more than one instance passes its own
+    # resolved self.name explicitly, since the namedtuple *type* itself is fixed at class-definition
+    # time and can't itself carry a per-instance disambiguating suffix.
+    from collections import namedtuple
+
+    Meas = namedtuple("Meas", ["temp", "hum"])
+    assert cm.make_dict(Meas(20.5, 55), ("temp", "hum"), name="SCD30_fan_pressure") == {"SCD30_fan_pressure": {"temp": 20.5, "hum": 55}}
+
+
+def test_make_dict_name_none_falls_back_to_type_introspection() -> None:
+    # The default (every single-instance caller today) must reproduce pre-name-parameter behavior
+    # unchanged - explicit None, not just omitting the argument.
+    from collections import namedtuple
+
+    Meas = namedtuple("Meas", ["temp"])
+    assert cm.make_dict(Meas(20.0), ("temp",), name=None) == {"Meas": {"temp": 20.0}}
 
 
 def test_make_dict_zero_field_namedtuple() -> None:

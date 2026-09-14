@@ -65,7 +65,9 @@ async def _main() -> None:
     interleaved_total = 0
     windows_with_interleaving = 0
     for sgp_start, sgp_end in sgp_windows:
-        count = sum(1 for s, e in scd_windows if time.ticks_diff(s, sgp_start) >= 0 and time.ticks_diff(e, sgp_end) <= 0)
+        # Ticks values wrap around - raw >=/<= comparison is unsafe across that boundary, hence
+        # ticks_diff() (same convention every other timing check in this test tier already uses).
+        count = sum(1 for s, e in scd_windows if time.ticks_diff(s, sgp_start) >= 0 and time.ticks_diff(sgp_end, e) >= 0)
         interleaved_total += count
         if count > 0:
             windows_with_interleaving += 1

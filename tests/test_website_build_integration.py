@@ -1,10 +1,11 @@
 """Real-pipeline integration test for the real website build (SPECIFICATION.md Part H.7): proves
 scripts/build_website.sh's staged, recursive merge - html/ + the production js/ module set, for one
-device - imports cleanly, mounts for real, and is served correctly end to end through a real
-WebserverService/Microdot() app, with the prototype-only files (js/app.js, js/mock-server.js,
-other devices' definitions) confirmed absent.
-The real chain: html/ + js/ -> scripts/build_website.sh wozi -> frozen_modules/frozen_website_wozi.py
--> `import frozen_website_wozi` (mount-on-import) -> WebserverService(static_mount=...)."""
+device - imports, mounts and serves correctly through a real WebserverService/Microdot() app."""
+
+# The real chain: html/ + js/ -> scripts/build_website.sh wozi -> frozen_modules/
+# frozen_website_wozi.py -> `import frozen_website_wozi` (mount-on-import) ->
+# WebserverService(static_mount=...). The prototype-only files (js/app.js, js/mock-server.js, other
+# devices' definitions) are confirmed absent from the result.
 # Requires frozen_modules/frozen_website_wozi.py already on MICROPYPATH - scripts/test.sh
 # regenerates it via scripts/build_website.sh before running the suite. `import
 # frozen_website_wozi` mounts /html as a real, unconditional side effect - safe to do once per
