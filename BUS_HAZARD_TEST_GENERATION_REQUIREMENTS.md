@@ -364,3 +364,88 @@ continued: generalize `test_bus_hazard_generated.py`'s hardcoded `dev`/`i2c1` in
 real device/bus pairing with 2+ occupants (the file's own comment marks exactly where); add a
 `bmp3xx` adapter once some device TOML actually shares a bus with it; design the real-hardware
 tiers' own version of "all occupants at once" (Section 4 item 3's still-open half).
+
+## 9. The full compliance audit, on request (project owner, 2026-09-14, follow-up to Section 8)
+
+Section 8's own two-gap spot-check was explicitly *not* an exhaustive audit. Asked directly to find
+and fix more rather than stop at a spot-check, this session did the full module-by-module pass
+Section 8 named as separate work: every `raise BuildError(...)`/`raise ValueError(...)`/etc. site in
+every `buildgen/*.py` module, cross-referenced against actual `tests_scripts/` test *content* (never
+a raw grep-count of `pytest.raises` occurrences — confirmed early on to be badly misleading, since
+many test files share one parametrized `pytest.raises()` helper across dozens of `@pytest.mark.
+parametrize` cases, undercounting real coverage 5-10x; several early "gap" candidates turned out to
+already be covered once the actual test body was read, not just grepped).
+
+**Confirmed real gaps found and fixed** (all in `tests_scripts/`, zero `buildgen/`/`src/` behavior
+changes):
+
+- `buildgen/web_tag.py`: `@web-group`'s own "must be at module level" rejection had no test at all,
+  unlike `@web`'s own `test_parse_web_tags_rejects_locations_inside_a_body` — added the `@web-group`
+  sibling.
+- `buildgen/definitions.py` (six real, TOML-reachable gaps + three `"internal:"` invariants): a
+  `@web` tag with no matching `ConfigSchema` constant and no explicit `kind=` override; `kind=enum`
+  declared but the schema has no discrete choice set; a tag's `special:` entries naming a value the
+  schema's own choice set doesn't contain; a schema's scalar sentinel `special` value with no
+  matching tag documentation; a mandatory `@web-group` (system/networking/notification settings)
+  never declared in any scanned file; a mandatory group declared but with no `@web` field tags
+  referencing it. All six reached via the established "mutate a copy of a real driver file"
+  technique (`_copy_driver_without`/`_copy_driver_replacing`, extended with one small generic
+  synthetic-notification-instance case). Plus the three `"internal:"` `resolved_name`/`driver_info`
+  invariant guards, driven directly against a hand-built `InstanceSpec`.
+- `buildgen/model.py`: `load_device()`'s "TOML parsed but not to a table at the top level" guard —
+  provably unreachable via real `tomllib.load()` behavior (TOML's own grammar guarantees a dict at
+  the document root), closed via `monkeypatch.setattr(tomllib, "load", ...)`.
+- `buildgen/codegen.py` (three `"internal:"` invariants, none previously covered — no dedicated test
+  file for this module exists): `_build_args_notification()`'s missing `signal_sink` wiring field;
+  `_emit_header_and_imports()`'s unresolved `driver_info`; `_emit_build_system()`'s construction-order
+  entry that is neither a known bare node nor an instance key. All three driven directly by mutating
+  an otherwise-valid, already-`build_model()`-validated model and calling the containing function
+  (`_build_args_notification`, `generate_module_source`) directly — the same "mutate a validated
+  model, call the internal function" technique `test_codegen_has_no_build_recipe_for_an_unknown_
+  driver` (already in the suite) established.
+- `buildgen/validate.py` — by far the largest concentration, all in the shared i2c/spi/uart bus-table
+  and GPIO-role-checking code: the **uart-kind branches never got the same dedicated test their i2c/
+  spi siblings did** (missing required `tx_pin`/`rx_pin`; `frequency` declared on a uart bus;
+  `rxbuf`/`txbuf`/`poll_wait_ms`/`poll_idle_ms` wrong type; unrecognized bus field; a pin with no
+  UART function at all; a real UART pin belonging to the *other* uart index; transposed tx/rx pins),
+  plus `uart_link`'s own `role` field holding a value that is neither `"initiator"` nor
+  `"responder"` (missing entirely was already tested; present-but-wrong was not). Five more
+  `"internal:"` invariants (`BUS_KIND_BY_DRIVER` missing an entry for a `BUS_ATTACHED_DRIVERS`
+  member; `resolved_name`/`driver_info` unresolved at three different check sites; a non-table
+  wiring value reaching `_check_default_value_selection()`) driven the same "hand-built
+  `InstanceSpec`, call the private check function directly" way this file's own pre-existing
+  `test_instance_name_collision_via_distinct_drivers_same_resolved_name` and
+  `test_device_wiring_required_field_missing_is_rejected` already do — not a new technique.
+- `digital_twin/machine.py`: the `_build_i2c_chip()` "no chip fake for this driver" fallback named
+  in Section 8 as found-but-not-fixed — fixed now, driven directly (no real device TOML can name a
+  driver `machine.py` doesn't know, since it and `compute_twin_wiring()` are kept in sync by hand for
+  the same fixed driver set today).
+
+**Confirmed clean, no fixes needed** (read in full, not just grep-counted):
+`buildgen/driver_registry.py`, `buildgen/tag_comments.py`, `buildgen/requires_tag.py`,
+`buildgen/graph.py`, `buildgen/defaults.py`, `buildgen/schema_ast.py` (its three raises are
+*internal control flow* for an intentional "best-effort, silently skip anything unparseable" design,
+already correctly tested via behavioral silent-skip assertions, not `pytest.raises` — reading the
+module's own docstring before concluding "zero raises tested = gap" mattered here),
+`buildgen/value_wiring.py`, `buildgen/wiring.py`, `buildgen/limits.py`.
+
+**A real mypy finding from this round**: two of the new tests (the `model.py` and `validate.py`
+`"internal:"` fixes) initially failed `host_typecheck.ini`'s dedicated pass — `no_implicit_reexport`,
+which the main `[tool.mypy]` pass relaxes for `tests/`'s own mocking convention but `tests_scripts/`
+never does — by accessing `some_module.NAME` where `NAME` was only *imported* into `some_module`,
+not defined there (`buildgen.model.tomllib`, `buildgen.validate.BUS_KIND_BY_DRIVER`). Fixed by
+importing the name directly from its origin module instead (`import tomllib` at the test's own top
+level; `from buildgen.buildspec import BUS_KIND_BY_DRIVER`) — both bind the identical shared object,
+so mutating either reference is still what the code under test reads.
+
+**Verification**: full `tests_scripts/` pytest suite (1100 passed, 7 skipped, up from 1067 before
+this round), all three `scripts/typecheck.sh` passes clean (main + `digital_twin/typecheck.ini` +
+`host_typecheck.ini`, modulo the pre-existing `pytest`/`pyserial`-stub sandbox gap unrelated to this
+branch), `ruff` clean.
+
+**Still not claimed**: this is now a genuinely thorough, function-by-function audit — not a
+statistical spot-check — but it is still one session's own reading, not a mechanically-verified
+100%-coverage guarantee (no coverage-gating tool was run against `buildgen/` specifically; `scripts/
+test.sh --coverage` measures `src/`, never `buildgen/`). If a coverage tool is ever pointed at
+`buildgen/` and finds a line this audit's manual read missed, that finding stands on its own merits,
+not as a contradiction of this section.
