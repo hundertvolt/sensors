@@ -1283,8 +1283,9 @@ bus), and an address/command sweep, across as many of four tiers as apply (cheap
    `tests/_bus_hazard_catalog.py`, BUS_HAZARD_TEST_GENERATION_REQUIREMENTS.md) — phase 1, scoped to
    `dev`'s real `i2c1` three-way group; runs alongside the hand-written tests, does not replace them.
 2. **Digital twin** (`tests/test_digital_twin_bus_hazard_concurrency.py`) — the real object graph
-   against higher-fidelity chip fakes under genuine concurrent task load. Also carries one
-   TOML-driven generic test (same phase-1 scope as above) alongside its hand-written ones.
+   against higher-fidelity chip fakes under genuine concurrent task load. Its shared
+   `_run_real_task_graph_and_assert_healthy()` helper also runs one TOML-driven generic pass (same
+   phase-1 scope as above) over the same already-booted graph, alongside its hand-written checks.
 3. **Flash tier** (`tests_hardware/flash/test_bus_concurrency.py`) — real hardware, dev bench only.
    **Real-hardware write-safety constraints, project-owner-mandated**: (a) respect any real
    NVM/EEPROM write budget — ideally at most one real write per bus-hazard test group, via a

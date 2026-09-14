@@ -235,12 +235,43 @@ none needed raising to the project owner):
    five shared byte/frame helpers (`make_i2c`, `fake`, `_crc8`/`_sgp_word`/`_scd_register_frame`/
    `_scd_data_frame`, `seed_isl_ready`) moved into the new `tests/_bus_hazard_catalog.py` (imported
    back under their original names) so the new generated coverage builds byte-identical frames
-   instead of a second hand-copy — a pure refactor, not a coverage change. Catching-power was
-   diffed by hand (not committed as a test): temporarily reverting `ISL29125_I2C`'s destructive-
-   status-read protection made `test_dev_i2c1_all_real_occupants_concurrent_reads_stay_correct_and_
-   genuinely_interleave` fail exactly as expected, then the revert was undone — see the PR
-   description for the full note. Both hand-written cross-sensor tests (Section 1) and the two new
-   generated files stay in the suite.
+   instead of a second hand-copy — a pure refactor, not a coverage change. The digital-twin tier's
+   TOML-driven check was folded into the existing shared `_run_real_task_graph_and_assert_healthy()`
+   helper as one more pass over the *same already-booted* graph, rather than a new test function
+   with its own second boot — see the real memory-pressure finding below for why. Both hand-written
+   cross-sensor tests (Section 1) and the new mock-tier generated file stay in the suite.
+
+**A real bug the new mock-tier catalog caught immediately** (the "does the catalog actually catch
+real bugs" proof, though not the kind expected going in): the very first N-way run of `dev`'s real
+`i2c1` group — SCD30 and SGP40 *concurrently* active, which no test anywhere had ever done before,
+mock or twin — corrupted both drivers' reads. Root cause: `tests/machine.py`'s `FakeI2C.read_queue`
+is one shared, address-agnostic FIFO (`readfrom_into()` "has no register to key off", per its own
+comment) — fine for every existing test, which never has *two* raw-word-protocol (register-less)
+devices reading concurrently on one shared fake bus, but wrong the moment two are: each device's
+`readfrom_into()` call popped whichever reply was next regardless of who actually asked, so SCD30
+and SGP40 read back fragments of *each other's* queued frames. Fixed with an additive,
+backward-compatible `read_queue_by_address: dict[int, list[bytes]]` on `FakeI2C`, checked before the
+existing shared queue (empty by default, so every existing caller — which only ever populates the
+shared one — is provably unaffected: the full `scripts/test.sh` suite was re-run afterward and
+every other file that touches `tests/machine.py`'s I2C fake still passes). `tests/
+_bus_hazard_catalog.py`'s `_seed_scd30`/`_seed_sgp40` seed by address now; `I2CHazardAdapter.seed`'s
+own signature grew a `address` parameter to support it. This is exactly the kind of gap that only
+surfaces once "all real occupants at once" is actually exercised generically instead of by hand —
+the whole reason this design work exists.
+
+A second, related finding while proving this against the real interpreter: adding a *second* full
+`sensortask_dev.build_system()` boot to `tests/test_digital_twin_bus_hazard_concurrency.py` (this
+file already runs 10 other heavy full-graph-boot tests sharing one Unix-port process/heap, per
+`scripts/test.sh`'s own `-X heapsize=8M`) pushed it into real, measured intermittent
+`MemoryError`s — roughly 1 run in 3 across repeated direct runs, a real violation of CLAUDE.md's
+"zero `MemoryError`s, not just usually" memory-safety discipline. Fixed by not adding a second boot
+at all: the TOML-driven check reuses the *same* already-booted graph the existing hand-written test
+already builds, as one more (free) pass over data already in hand — 5/5 clean repeated runs
+afterward, same as the pre-existing 8M-heap bar. Catching-power itself was confirmed by hand
+(temporarily reverting `ISL29125_I2C`'s destructive-status-read protection made the new mock-tier
+`test_dev_i2c1_all_real_occupants_concurrent_reads_stay_correct_and_genuinely_interleave` fail
+exactly as expected; the revert was then undone) — not committed as a test, since deliberately
+breaking production code as a checked-in regression test isn't this repo's pattern.
 
 What actually landed:
 
@@ -255,22 +286,27 @@ What actually landed:
 - `tests/test_bus_hazard_generated.py` (new): the mock-tier assembly, deliberately hardcoded to
   `dev`/`i2c1` (not a loop over every device/bus — see the file's own comment on why, and the
   boundary this phase stops at).
-- `tests/test_digital_twin_bus_hazard_concurrency.py` (extended): one new TOML-driven test,
-  `test_dev_i2c1_bus_membership_from_the_toml_all_produce_real_data_under_concurrent_load`, running
-  alongside the existing hand-written `test_dev_real_task_graph_survives_concurrent_bus_load_
-  including_a_real_general_call`.
+- `tests/machine.py`: additive `read_queue_by_address` fix (above) — required for the mock tier's
+  own SCD30+SGP40 concurrent case to work at all, not optional polish.
+- `tests/test_digital_twin_bus_hazard_concurrency.py` (extended): the existing shared
+  `_run_real_task_graph_and_assert_healthy()` helper (used by both the wozi and dev hand-written
+  tests) gained one more TOML-driven pass at the end, reading the real generated wiring-plan JSON's
+  own `i2c1` membership generically instead of a hardcoded sgp40/bmp3xx/scd30/isl29125 list — no new
+  test function, no second boot.
 - `tests/test_bus_hazard_multi_device.py`: refactored (imports only) to reuse the moved helpers;
   zero behavior change.
 - `pyproject.toml`: one new `[tool.ruff.lint.per-file-ignores]` entry for
   `tests/_bus_hazard_catalog.py` (`ANN401`, same "driver-agnostic fan-in seam" category already
   used for `src/asy_notification_service.py`/`tests/test_setter_microdot_integration.py`).
+- `.gitignore`: added the untracked `.mypy_cache/` (found while running `scripts/typecheck.sh` in
+  this session; unrelated to the bus-hazard work itself but a genuine pre-existing gap).
 
-Verification run: `scripts/lint.sh` (ruff clean on every touched/added file) and `scripts/
-typecheck.sh` (main pass + `digital_twin/typecheck.ini` pass both clean; `host_typecheck.ini`'s
-pre-existing 201-error `pytest`/`pyserial`-stub gap in this sandbox is unrelated to this branch —
-confirmed identical on the pre-change tree via `git stash`) and `scripts/test.sh` (full MicroPython
-Unix-port suite, built from scratch in this session) — see the PR description for the actual run's
-result.
+Verification run: `scripts/lint.sh`/`ruff` clean on every touched/added file; `scripts/typecheck.sh`
+(main pass + `digital_twin/typecheck.ini` pass both clean; `host_typecheck.ini`'s pre-existing
+201-error `pytest`/`pyserial`-stub gap in this sandbox is unrelated to this branch — confirmed
+identical on the pre-change tree via `git stash`); the full MicroPython Unix-port suite built from
+scratch in this session and re-run to green, plus 5 repeated direct runs each of the two new/changed
+files with zero failures — see the PR description for the actual run's result.
 
 **Stopping here per this file's own governing boundary** (Section 6 item 4 / the session's own
 instructions): not touching the real-hardware tiers, not extending to any other device/bus, not

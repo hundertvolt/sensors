@@ -100,7 +100,7 @@ class I2CHazardAdapter:
         self,
         driver: str,
         construct: "Callable[[I2C, int], Any]",  # (shared fake bus, this occupant's own address) -> driver instance
-        seed: "Callable[[FakeI2C, int], None]",  # (fake bus, iteration count) -> queues/registers enough for that many clean reads
+        seed: "Callable[[FakeI2C, int, int], None]",  # (fake bus, this occupant's own address, iteration count) -> queues/registers enough for that many clean reads
         read_once: "Callable[[Any], Coroutine[Any, Any, None]]",  # one correctness-checked read cycle; raises on corruption
         exercise: "Callable[[Any], Coroutine[Any, Any, None]]",  # sweeps this driver's own public API, for the address-sweep scenario
         write_once: "Callable[[Any], Coroutine[Any, Any, None]] | None" = None,  # one safe, non-destructive config write, if this driver has one
@@ -115,10 +115,15 @@ class I2CHazardAdapter:
         self.general_call = general_call
 
 
-def _seed_scd30(fake_bus: FakeI2C, iterations: int) -> None:
+def _seed_scd30(fake_bus: FakeI2C, address: int, iterations: int) -> None:
+    # Keyed by address, not the shared fake_bus.read_queue: SCD30 speaks the same register-less,
+    # write-then-read protocol shape SGP40 does, so when both share a bus (dev's real i2c1) their
+    # replies must not be pulled from one shared, address-agnostic FIFO (tests/machine.py's
+    # read_queue_by_address, added for exactly this - see its own comment).
+    queue = fake_bus.read_queue_by_address.setdefault(address, [])
     for _ in range(iterations):
-        fake_bus.read_queue.append(scd_register_frame(1))
-        fake_bus.read_queue.append(scd_data_frame(_SCD_CO2, _SCD_TEMPERATURE, _SCD_HUMIDITY))
+        queue.append(scd_register_frame(1))
+        queue.append(scd_data_frame(_SCD_CO2, _SCD_TEMPERATURE, _SCD_HUMIDITY))
 
 
 async def _read_once_scd30(instance: "Any") -> None:
@@ -157,9 +162,11 @@ async def _exercise_scd30(instance: "Any") -> None:
             pass
 
 
-def _seed_sgp40(fake_bus: FakeI2C, iterations: int) -> None:
+def _seed_sgp40(fake_bus: FakeI2C, address: int, iterations: int) -> None:
+    # Keyed by address - see _seed_scd30's own comment for why (the two share a bus on dev).
+    queue = fake_bus.read_queue_by_address.setdefault(address, [])
     for _ in range(iterations):
-        fake_bus.read_queue.append(sgp_word(_SGP_RAW))
+        queue.append(sgp_word(_SGP_RAW))
 
 
 async def _read_once_sgp40(instance: "Any") -> None:
@@ -184,11 +191,11 @@ async def _exercise_sgp40(instance: "Any") -> None:
             pass
 
 
-def _seed_isl29125(fake_bus: FakeI2C, iterations: int) -> None:
+def _seed_isl29125(fake_bus: FakeI2C, address: int, iterations: int) -> None:
     # Register-addressed, not queue-based (see seed_isl_ready()) - a fixed register snapshot stays
     # valid across any number of reads, so this adapter's own seed is a deliberate no-op; the real
     # seeding happens once, at construction time, via seed_isl_ready() below.
-    del fake_bus, iterations
+    del fake_bus, address, iterations
 
 
 async def _read_once_isl29125(instance: "Any") -> None:
@@ -278,7 +285,7 @@ async def scenario_all_occupants_concurrent_reads_stay_correct(fake_bus: FakeI2C
     serialization (same `>= occupant count` bar test_bus_hazard_multi_device.py's own pairwise
     tests already use, generalized from their hardcoded 2)."""
     for occ in occupants:
-        occ.adapter.seed(fake_bus, iterations)
+        occ.adapter.seed(fake_bus, occ.address, iterations)
 
     async def loop(occ: BusOccupant) -> None:
         for _ in range(iterations):
@@ -302,7 +309,7 @@ async def scenario_a_write_does_not_disturb_concurrent_sibling_reads(fake_bus: F
     writer = writers[0]
     readers = [occ for occ in occupants if occ is not writer]
     for occ in readers:
-        occ.adapter.seed(fake_bus, iterations)
+        occ.adapter.seed(fake_bus, occ.address, iterations)
 
     async def reader_loop(occ: BusOccupant) -> None:
         for _ in range(iterations):
@@ -326,7 +333,7 @@ async def scenario_general_call_does_not_disturb_concurrent_siblings(fake_bus: F
         return
     others = [occ for occ in occupants if occ.adapter.general_call is None]
     for occ in others:
-        occ.adapter.seed(fake_bus, iterations)
+        occ.adapter.seed(fake_bus, occ.address, iterations)
 
     async def sibling_loop(occ: BusOccupant) -> None:
         for _ in range(iterations):
