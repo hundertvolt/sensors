@@ -17,28 +17,31 @@ gate, the NeoPixel rig geometry) and CLAUDE.md's FRAM rule — read `GET /status
 ## 0. Do this before anything else: the config migration
 
 **This will break two bench tests on the first boot and it is not a defect.** The board's persisted
-`config_ISL29125.cfg` was written by the old schema. Three keys were removed and one renamed:
+`config_ISL29125.cfg` was written by the old schema. Four keys were removed, one renamed, one added:
 
 | Old key | Status |
 |---|---|
 | `AutoRangeUp` | renamed → `AutoRangeThresh` (same 50.0–95.0 band, same 85.0 default) |
 | `AutoRangeDown` | removed — derived as `AutoRangeThresh / 53.333` |
 | `AutoRangeSettle` | removed — fixed at 2 conversion cycles |
+| `AutoRangePersist` | removed — PRST derived from `SampleInterv` |
+| — | `GainRatio` **added** (`f05f82d`, moved out of FRAM into config) |
 
 `ConfigManager.read_config()` migrates this automatically, and says so in its log:
 
 - `AutoRangeThresh` is absent → `wrnno=4` ("has error or is missing, using default"), default applied
-- `AutoRangeUp` / `AutoRangeDown` / `AutoRangeSettle` are left over → `wrnno=5` ("Removed invalid
-  keys from config file"), and the file is rewritten
+- `GainRatio` is absent too → a **second** `wrnno=4`, default `26.666666` applied
+- `AutoRangeUp` / `AutoRangeDown` / `AutoRangeSettle` / `AutoRangePersist` are left over →
+  `wrnno=5` ("Removed invalid keys from config file"), and the file is rewritten
 
-So on the **first** boot after flashing, `CFGMGR_ISL29125` carries W4 and W5.
-`tests_hardware/bench/test_sensor_config_push_over_real_hardware.py` asserts
+So on the **first** boot after flashing, `CFGMGR_ISL29125` carries `[W4, W4, W5]` — two W4s, one per
+missing key, not one. `tests_hardware/bench/test_sensor_config_push_over_real_hardware.py` asserts
 `assert_module_error_log_empty(dut_ip, "CFGMGR_ISL29125")` and will fail against that.
 
-**Procedure**: flash → boot once → confirm the two warnings are exactly W4 and W5 and nothing else →
+**Procedure**: flash → boot once → confirm the warnings are exactly `W4, W4, W5` and nothing else →
 reboot. `CFGMGR_*` loggers are RAM-only (CLAUDE.md), so the second boot starts clean and the bench
 tier can run. **Record what the first boot actually logged before rebooting** — if it carries
-anything beyond W4/W5, that is a real finding, not migration noise.
+anything beyond those three, that is a real finding, not migration noise.
 
 **What this verifies**: that a deployed unit survives a schema change without hand-editing its
 config. Nothing in the mock or twin tiers covers a real file on real flash.
@@ -204,8 +207,9 @@ First boot after flashing logged `CFGMGR_ISL29125 = [W4, W4, W5]`, and the ISL29
 its pre-flash count (7 → 7 over uptime 12 → 59), i.e. the new firmware logged nothing of its own.
 Second boot after reboot: `CFGMGR_ISL29125` clean, config rewrite persisted.
 
-**The §0 table above is incomplete in two ways** (both documentation gaps, not firmware defects —
-the migration did the right thing):
+**The §0 table above was incomplete in two ways** (both documentation gaps, not firmware defects —
+the migration did the right thing). Corrected there on 2026-09-14; recorded here as what the run
+actually found:
 
 - `AutoRangePersist` was **also** removed, alongside the three keys listed. It is folded into the
   same W5 rewrite, so it changes no count.
