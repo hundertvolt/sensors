@@ -391,7 +391,8 @@ class ISL29125_Reader(SensorReaderConfig):
             # first await that can yield. p13: a later push cannot change what is read, only this.
             sample_range = self._active_range
             sample_resolution = self.isl.resolution()
-            sample_span = _RANGE_HIGH_LUX if self._range_auto else self._fixed_range
+            sample_range_auto = self._range_auto
+            sample_span = _RANGE_HIGH_LUX if sample_range_auto else self._fixed_range
             try:
                 status = await self.isl.read_status()
             except Exception as e:  # distinguishable from a data-read failure, and not re-raised
@@ -425,8 +426,11 @@ class ISL29125_Reader(SensorReaderConfig):
             # (no auto-switch will ever happen), or Automatic Range already parked on the highest
             # range with nowhere further to switch. A saturated LOW-range sample under Automatic
             # Range is excluded on purpose: target is already non-None for it above, so a switch
-            # is in progress - not "no option left".
-            self._last_overrange = saturated and (not self._range_auto or sample_range == _RANGE_HIGH_LUX)
+            # is in progress - not "no option left". Judged against sample_range_auto, the mode
+            # captured BEFORE the switch-range await above (same discipline as sample_range/
+            # sample_span just above): a concurrent set_range_auto() landing mid-switch must not
+            # retroactively change which mode this already-taken sample is judged against.
+            self._last_overrange = saturated and (not sample_range_auto or sample_range == _RANGE_HIGH_LUX)
             await self._measure_gain_ratio(counts[0])
             self.pr.all("read")
             green, red, blue = counts

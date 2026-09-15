@@ -2102,6 +2102,16 @@ absent; what survives is the decision.
     `tests/test_sensortask_dev.py` proved it for its own hand-written one — confirm this is actually
     covered rather than assuming it, since the two branches' construction paths are not the same
     code.
+21. **ADDED LATER (2026-09-15), not one of the original twenty above.** Saturation status is a
+    measurement-output field (`Overrange`), never a log entry. Originally logged as `wrnno=12`
+    ("saturated on the high range" — C.7.1's table), retired after a real-hardware bench test
+    failure showed a harmless, transient, always-current sensor state should never be able to fail
+    an error-log-empty assertion. `Overrange` is mode-aware: true whenever nothing left could
+    mitigate the saturation — the configured range itself under Fixed range (auto-range off, so
+    nothing will ever switch it), or Automatic Range already parked on its highest setting with
+    nowhere further to switch. A saturated low-range sample *under* Automatic Range is deliberately
+    excluded — requirement 17's own switch-up condition is already firing for it, so there is still
+    an option left.
 
 **One standing consequence, because it recurs**: CLAUDE.md's rule to verify a driver against the
 legacy driver's own actually-proven field behaviour **has no purchase for this device**. The legacy

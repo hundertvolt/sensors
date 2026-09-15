@@ -3194,9 +3194,14 @@ def test_configure_never_exposes_the_shadow_ahead_of_a_write_still_in_flight() -
         lock = isl.i2c_isl29125.asy_lock
         await lock.acquire()  # simulate another operation already in flight on this sensor
         writer = asyncio.get_event_loop().create_task(change_resolution())
-        await asyncio.sleep(0)  # let configure() run up to the point it must wait for the lock
-        assert isl.resolution() == 16, "the shadow changed before the write could even be attempted"
-        lock.release()
+        try:
+            await asyncio.sleep(0)  # let configure() run up to where it must wait for the lock
+            assert isl.resolution() == 16, "the shadow changed before the write could even be attempted"
+        finally:
+            # Always released, even if the assertion above fails - a held lock would leave
+            # `writer` permanently parked waiting on it, an unexplained hang layered on top of
+            # what should be a clean, immediately visible assertion failure.
+            lock.release()
         await writer
 
     run(scenario())
