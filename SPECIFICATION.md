@@ -1769,6 +1769,52 @@ reprogramming the Timer's period at runtime.
 separate `Timer.init()`-specific `MemoryError` path exists, but the widening is correct generic
 insurance regardless.
 
+**Why every sensor's own periodic read is triggered by a real `machine.Timer`, not
+`asyncio.sleep(trigger_sec)` inside the read task itself**: project owner's explicit design intent,
+confirmed correct against real rp2 hardware behavior (F.1's Timer-independence fact) — a `Timer` is
+interrupt-driven and, once armed, fires on an exact `t0 + n*period` schedule with no drift relative
+to any other Timer, any asyncio-loop activity, or CPU load; `asyncio.sleep()` has none of these
+guarantees (subject to event-loop scheduling jitter and whatever else is runnable). Every current
+sensor driver (SCD30, SGP40, BMP3xx, ISL29125) follows the same shape confirmed directly from
+source: `get_timer_starters()` arms a `Timer.PERIODIC` (see this section's own note above on why
+periodic, not one-shot) whose callback only sets an `asyncio.ThreadSafeFlag`; the actual read runs
+in a `get_task_starters()` task that `await`s that flag — never a sleep of its own. (BMP3xx/ISL29125
+additionally divide a fixed 1Hz base tick down to their own configurable `trigger_sec` via a
+counting sub-task, per this section's own note above; SGP40's cadence is hardcoded to the fixed 1s
+base tick with no `trigger_sec` of its own at all.)
+
+**`system_service.py`'s `_timer_sequencer()` (driven by `start_timers()`) arms every device's own
+sensor Timers with a distinct sub-second phase offset, spread across exactly one real second total
+regardless of how many Timers a device has** (`delay = int(_TIMER_BASE_PERIOD / (len(timers) + 1))`,
+chained via a `Timer.ONE_SHOT` per step — itself real-hardware-Timer-driven, not
+`asyncio.sleep`-paced, for the same jitter-free reason as above). Combined with F.1's no-drift
+guarantee, this means: **once every device's sensor Timers are armed (`start_timers()` completing
+fully before `start_and_check_tasks()` even begins - see `_emit_main()`'s generated call order), no
+two sensor reads can ever land on the same wall-clock instant again, for the rest of that boot's
+runtime, regardless of what `trigger_sec` each is configured to** — confirmed as a real design
+guarantee, not just an initial-offset heuristic, precisely because each Timer's own future firing
+times are anchored to its own prior target, never recomputed relative to "now" or any other Timer.
+One second being the shortest selectable sensor polling period (each schema-validated `trigger_sec`
+field, where one exists, is an `int` with `min=1` — BMP3xx's/ISL29125's own `_MIN_TRIGGER_SECS`) is
+exactly what makes a sub-second initial offset sufficient to guarantee this for every legal
+combination of intervals: two integer-second periods with distinct sub-second phases can never
+re-align to the same instant. **Two gaps in this guarantee's actual enforcement, worth knowing
+about rather than assuming closed**: SCD30's own `trigger_sec` is a plain constructor kwarg with no
+`_VAL_*` schema entry and no range check anywhere (fixed once from `devices/*.toml`, never
+runtime-settable) — nothing currently stops a future TOML value below 1s other than convention: and
+there is no single project-wide enforced constant for "1s minimum" — it exists only as this
+per-driver schema bound (BMP3xx/ISL29125) plus SGP40's own hardcoded 1s tick, not as one shared
+constant a future driver's own schema is guaranteed to inherit.
+
+This stagger is entirely independent of, and unaffected by, `SystemService.start_and_check_tasks()`
+own task-start stagger (`1.0/len(task_starters)`, further below) — `start_timers()` completes in
+full before that method is ever called, so by the time any task starts, every sensor's own Timer is
+already armed and phase-offset. `start_and_check_tasks()`'s own stagger governs a different
+concern entirely (the order/spacing of task starts themselves, which is what task-entry-point FRAM
+`setup()` calls contend with each other over) and carries no sensor-read-timing obligation of its
+own — a comment in an earlier revision of that method claimed otherwise; corrected in
+`system_service.py` directly.
+
 **Cascading-recovery-storm convention: a retry loop that fails non-raising (returns a sentinel)
 needs its own capped exponential backoff**, distinct from any outer exception-based backoff, or it
 spins at full speed — an outer `except Exception` never fires for a sentinel-returning failure.
@@ -3110,6 +3156,31 @@ guard on top of it.
 every call site must handle it. **`MemoryError` is not an `OSError` subclass** — both are direct
 sibling `Exception` subclasses; catch `(OSError, MemoryError)` wherever both are plausible. A plain
 `except Exception:` *does* catch `MemoryError`.
+
+**Every soft `machine.Timer` (the only kind this project uses — no `hard=True` anywhere) shares one
+default `alarm_pool`, backed by exactly ONE of the RP2040's 4 hardware alarm channels** (verified
+directly against the vendored `ports/rp2/machine_timer.c` and `pico-sdk/src/common/pico_time/time.c`
+sources: `alarm_pool_get_default()`, hardware alarm number fixed by
+`PICO_TIME_DEFAULT_ALARM_POOL_HARDWARE_ALARM_NUM=3` in `pico/time.h`, unmodified by this project's
+own `mpconfigport.h`) — the pool multiplexes up to **16 pending software timer entries**
+(`PICO_TIME_DEFAULT_ALARM_POOL_MAX_TIMERS=16`) in a target-sorted list, always rearming that one
+hardware register to the earliest pending target. `Timer.init()`'s `OSError(ENOMEM)` above is this
+16-entry software pool being full, not the 4 hardware channels — MicroPython's soft-Timer mechanism
+never touches the other 3.
+
+**A `Timer.PERIODIC`'s next firing is computed from its OWN previous scheduled target plus its own
+period, never from "now" plus period, and never from any other Timer's state** — confirmed directly
+in `time.c`'s alarm-pool IRQ handler (`next_time = earliest_target + delta_us` when the callback
+returns a negative delay, which is exactly what `machine_timer.c`'s periodic-mode callback does).
+Two independently-armed Timers with different periods and different start offsets therefore never
+drift relative to each other, never depend on asyncio-loop activity or CPU load, and never
+influence each other's own schedule, even though they share one underlying hardware alarm and one
+soft-IRQ dispatch queue for the callback itself — only the *callback delivery* is serialized (and,
+per the fact above this one, can be dropped under scheduler-queue pressure); the underlying
+`t0 + n*period` schedule for each Timer is exact and self-healing regardless. This is the hardware
+fact `system_service.py`'s `_timer_sequencer()` phase-stagger relies on (C.9) to guarantee two
+sensor Readers' own periodic reads can never coincide again once given distinct sub-second start
+offsets, for the entire runtime, not just initially.
 
 **RP2040's real firmware uses single-precision `float`** (24-bit mantissa, exact to `2**24`);
 **this project's Unix-port test rig uses double precision** (exact to `2**53`) — `float(int)`

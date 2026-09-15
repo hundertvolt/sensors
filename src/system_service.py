@@ -253,17 +253,23 @@ class SystemService:
             tasks[n] = await self._start_task(starter, n)
             self._feed_watchdog()
             # Spreads every task's own start across exactly one real second total, regardless of how
-            # many tasks a device has - NOT a fixed per-task gap. One second is the shortest
-            # selectable sensor polling period (CLAUDE.md/SPECIFICATION.md), so offsetting every
-            # task's own periodic internal read loop (each sensor Reader's own trigger_sec sleep) by
-            # a distinct sub-second phase within that one-second window guarantees two tasks can
-            # never land on the same wall-clock instant again once offset - shrinking this gap as
-            # more tasks are added is intentional, not a defect: it keeps the total spread fixed at
-            # one second (this method's own long-standing, load-bearing design, mirrored by
-            # _timer_sequencer()'s identical _TIMER_BASE_PERIOD-based spread for Timer starters
-            # below). Any FRAM/SPI-lock contention relief a device's own setup() calls need belongs
-            # in run_setup_batch() above instead, which has no such constraint. (Loop body only ever
-            # runs with len(task_starters) >= 1, since it iterates task_starters itself.)
+            # many tasks a device has - NOT a fixed per-task gap (project owner's explicit,
+            # standing direction: keep this identical in shape to _timer_sequencer()'s own
+            # _TIMER_BASE_PERIOD-based spread for Timer starters below - same "distribute across one
+            # second, one second being the shortest selectable sensor polling period" design intent).
+            # NOTE, confirmed by direct source investigation: every current sensor driver's own
+            # periodic read is actually triggered by a real machine.Timer set up via
+            # get_timer_starters()/start_timers() (which fully completes, and is itself already
+            # phase-spread by _timer_sequencer(), before this method ever starts) - none of them run
+            # an `await asyncio.sleep(trigger_sec)` loop of their own, so THIS stagger's own value
+            # has no effect on sensor-read phase separation one way or the other. It still governs
+            # the order/spacing in which task_starters (sysfunct/conn/ntp/each Reader's own
+            # start_asy_read, ...) begin running, which is what task-entry-point FRAM setup() calls
+            # (e.g. wlan_connect()'s/asy_ntp_time()'s own first pr.setup()) contend with each other
+            # over - any FRAM/SPI-lock relief a device's own build_system()-time setup() calls need
+            # belongs in run_setup_batch() above instead, which has no phase-timing constraint at
+            # all. (Loop body only ever runs with len(task_starters) >= 1, since it iterates
+            # task_starters itself.)
             await asyncio.sleep(1.0 / len(task_starters))
         task_errors = 0
 
