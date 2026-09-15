@@ -329,15 +329,23 @@ def _all_loggers(module: "Any") -> "list[Any]":
 
 
 def _expected_fram_chunk_calls(module: "Any") -> "list[str]":
-    # SystemService(chunk) -> SCD30_Reader(chunk) -> SGP40 own log(chunk) -> SGP40 VOC backup
-    # (timestamped) -> [BMP3xx_Reader(chunk), only if present] -> NeopixelDriver(chunk) ->
+    # AsyConnTime's own log(chunk) -> its DNSServer's log(chunk) -> AsyNtpClient's own log(chunk) -
+    # a buildgen FRAM-wiring session (SPECIFICATION.md Part A.7's construction-order note) added
+    # these three ahead of SystemService, present exactly when conn's own logger is FRAM-backed
+    # (reflected from the real module, not assumed - every real device wires them today, but a
+    # synthetic fixture with no [device.wiring].fram_target wouldn't). Then: SystemService(chunk) ->
+    # SCD30_Reader(chunk) -> SGP40 own log(chunk) -> SGP40 VOC backup (timestamped) ->
+    # [BMP3xx_Reader(chunk), only if present] -> NeopixelDriver(chunk) ->
     # NotificationCoordinator(chunk), in that order, unconditionally. SCD30 constructs before SGP40
     # (ordering-hazard #1, SPECIFICATION.md Part A.7/C.14 - SGP40 holds a direct reference to scd30
     # as its temperature_source/humidity_source, so the producer must exist first). Derived from the
     # module's own reflected instance set (_present_optional_instances()), not a hardcoded
     # per-device literal - every real device's own devices/*.toml lists its instances in this same
     # relative order (BUILD_CHAIN_PLAN.md's Session 2), so this fixed shape stays correct for all 6.
-    calls = ["chunk"]  # SystemService
+    # WebserverService is never in this list - it stays RAM-only, see
+    # _scenario_webserver_pr_ram_only below.
+    calls = ["chunk", "chunk", "chunk"] if isinstance(module.conn.pr, PrintLogHistoryStore) else []
+    calls.append("chunk")  # SystemService
     if _has(module, "scd30"):
         calls.append("chunk")
     if _has(module, "sgp40"):
