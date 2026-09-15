@@ -24,13 +24,17 @@ _HOST = "127.0.0.1"
 _HTTP_OK = 200
 _BOOT_TIMEOUT_S = 30.0
 _SHUTDOWN_TIMEOUT_S = 15.0
-# Must comfortably outlast real boot-to-serving latency (measured ~1.9s for wozi on this host) plus
-# the 5-endpoint smoke loop's own sequential HTTP round trips - `3` used to pass only because an
-# older, slower `run_generic_integration.py` shutdown sequence added a few seconds of unintentional
-# slack after the sleep expired; a cleaner/faster shutdown (2026-09-14) removed that slack and
-# exposed this budget as always having been too tight, not a new regression to chase in the twin
-# itself (confirmed directly: the pre-refactor file reproduces the identical ~1.9s boot latency).
-_TWIN_DURATION_S = 6
+# Must comfortably outlast real boot-to-serving latency plus the 5-endpoint smoke loop's own
+# sequential HTTP round trips - was `6` (before that `3`, sized against an old ~1.9s wozi boot),
+# but a later session's combined WiFi/NTP-prefix and per-`SensorReaderConfig`-own-`ConfigManager`
+# FRAM-wiring landed together added enough new chunks (wozi: 10 -> 15; dev: 13 -> 19) that the same
+# shared-SPI-bus-lock contention already documented for the webserver (asy_webserver_service.py's
+# own module comment, SPECIFICATION.md Part A.7) pushed *every* device's own boot-to-serving past
+# `6` outright, not just dev's - measured directly on this host post-merge: wozi ~6.6-6.7s (3/3
+# runs), dev (worst case: also has ISL29125+UART) ~8.7-8.7s (2/2 runs). `20` gives dev's own worst
+# case better than 2x headroom for a slower CI runner, matching `_BOOT_TIMEOUT_S`'s own scale
+# rather than picking a number just above the measured minimum.
+_TWIN_DURATION_S = 20
 # No real static content is needed - this suite never requests "/" (asy_webserver_service.py's own
 # static route only touches frozen_html lazily, per request - see this file's own module docstring
 # reasoning, confirmed directly by reading that route's implementation).

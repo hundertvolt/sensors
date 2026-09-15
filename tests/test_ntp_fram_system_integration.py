@@ -614,7 +614,17 @@ def test_system_service_restarts_a_real_sensor_reader_task_that_genuinely_gives_
                 break
             await asyncio.sleep(0.01)
         assert starts[0].done()  # the real read_loop() genuinely returned on its own (init failed)
-        await asyncio.sleep(2.5)  # real wall-clock wait for start_and_check_tasks()'s own 2s poll
+        for _ in range(300):  # bounded real wall-clock wait for start_and_check_tasks()'s own periodic
+            # poll (_TASK_CHECK_TIME) to detect the dead task and restart it - polls for the real
+            # signal (one restart observed) rather than a fixed sleep, since a NAK'd address makes
+            # the restarted task fail again on its own with no external trigger needed (unlike the
+            # NTP task above): a fixed sleep long enough to observe this restart risks also landing
+            # past the *next* periodic check and observing a second one, which start_and_check_tasks()'s
+            # own task-start stagger constant (_TASK_START_STAGGER_S) - a per-device-size-independent
+            # fixed gap, not the task count itself - directly affects the timing of.
+            if len(starts) >= 2:
+                break
+            await asyncio.sleep(0.01)
         await _cancel(svc_task)
         return len(starts)
 
@@ -679,7 +689,17 @@ def test_system_service_restarts_a_real_scd30_reader_task_that_genuinely_gives_u
                 break
             await asyncio.sleep(0.01)
         assert starts[0].done()  # the real read_loop() genuinely returned on its own (init failed)
-        await asyncio.sleep(2.5)  # real wall-clock wait for start_and_check_tasks()'s own 2s poll
+        for _ in range(300):  # bounded real wall-clock wait for start_and_check_tasks()'s own periodic
+            # poll (_TASK_CHECK_TIME) to detect the dead task and restart it - polls for the real
+            # signal (one restart observed) rather than a fixed sleep, since a NAK'd address makes
+            # the restarted task fail again on its own with no external trigger needed (unlike the
+            # NTP task above): a fixed sleep long enough to observe this restart risks also landing
+            # past the *next* periodic check and observing a second one, which start_and_check_tasks()'s
+            # own task-start stagger constant (_TASK_START_STAGGER_S) - a per-device-size-independent
+            # fixed gap, not the task count itself - directly affects the timing of.
+            if len(starts) >= 2:
+                break
+            await asyncio.sleep(0.01)
         await _cancel(svc_task)
         return len(starts)
 
@@ -709,7 +729,17 @@ def test_system_service_restarts_a_real_sgp40_reader_task_that_genuinely_gives_u
                 break
             await asyncio.sleep(0.01)
         assert starts[0].done()  # the real read_loop() genuinely returned on its own (init failed)
-        await asyncio.sleep(2.5)  # real wall-clock wait for start_and_check_tasks()'s own 2s poll
+        for _ in range(300):  # bounded real wall-clock wait for start_and_check_tasks()'s own periodic
+            # poll (_TASK_CHECK_TIME) to detect the dead task and restart it - polls for the real
+            # signal (one restart observed) rather than a fixed sleep, since a NAK'd address makes
+            # the restarted task fail again on its own with no external trigger needed (unlike the
+            # NTP task above): a fixed sleep long enough to observe this restart risks also landing
+            # past the *next* periodic check and observing a second one, which start_and_check_tasks()'s
+            # own task-start stagger constant (_TASK_START_STAGGER_S) - a per-device-size-independent
+            # fixed gap, not the task count itself - directly affects the timing of.
+            if len(starts) >= 2:
+                break
+            await asyncio.sleep(0.01)
         await _cancel(svc_task)
         return len(starts)
 
