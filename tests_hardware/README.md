@@ -978,3 +978,44 @@ Ninth pass's bug, just worth naming.
 
 Same honesty note as every real-hardware addition in this file: the new/changed files above are
 `ruff`/`mypy`-clean but unverified against real silicon this session.
+
+## Eleventh pass - FRAM chunk-capacity verification, closing a silent build-time blind spot
+
+`AsyFramManager` (`src/asy_fram_manager.py`) is a deterministic bump-pointer allocator - the total
+FRAM chunk size every module requests is fixed at build time, with no dynamic allocation ever
+happening at runtime (SPECIFICATION.md Part I.4/A.7). If that total ever exceeds the chip's real
+`max_size`, `get_chunk()`/`get_timestamped_chunk()` never raise - they log a bare, synchronous,
+non-history-tracked console print and hand the caller `None` (deliberately left unchanged: making
+these methods properly async-logged would need making them `async`, which would ripple into every
+FRAM-consuming module's own synchronous `__init__` - not worth it for a fact that is fully knowable
+once, at build time). Before this pass, nothing checked this at build time or test time; it would
+only ever be noticed by someone watching a live serial console at exactly the moment of boot.
+
+**Digital twin** (`tests/test_digital_twin_sensortask_integration.py`): a new parametrized
+`fram_capacity_is_not_exceeded` scenario runs for all 6 real `devices/*.toml` devices, asserting
+`fram.allocated_size <= fram.size` and - the actually load-bearing half, since `get_chunk()` already
+clamps `allocated_size` at `size` by construction, so that inequality alone can never fail - that
+every FRAM-backed module's logger (`sysfunct`/`scd30`/`sgp40`/`bmp3xx`/`isl29125`/`neopixel`/
+`notification`, whichever are present on that device) actually holds a real, non-`None` chunk, plus
+`sgp40`'s own VOC-backup timestamped chunk. A genuine negative test
+(`test_fram_capacity_check_catches_a_genuine_allocation_failure_with_an_undersized_chip`)
+monkeypatches `AsyFramManager.__init__` (not `src/` - the repo's own class-method-wrap test
+convention) to force an artificially tiny `max_size`, proving the check actually fails against a
+real overflow - every real device already fits its own real chip by construction, so the positive
+scenario alone never exercises the failing branch.
+
+**Flash tier**: `device_scripts/fram_capacity_after_full_system_build.py` +
+`flash/test_fram_storage.py`'s
+`test_real_fram_allocation_fits_the_real_chip_after_a_full_system_build` mirror the same check
+against `sensortask_dev`'s real object graph on real silicon, following
+`heap_headroom_after_full_system_build.py`'s own "call the real `build_system()`, then inspect the
+real object graph" shape. No new `/status` field or API route (deliberate - keeps this change's
+footprint minimal); read entirely via the existing `mpremote`-based harness. Imports
+`sensortask_dev` dynamically (`__import__()`, same convention `tests/test_sensortask.py` already
+uses), not statically like its sibling script - `pyproject.toml`'s own `[tool.mypy]` `mypy_path`
+comment specifically calls that sibling the only static importer in its pass, and `pyproject.toml`
+is outside this change's own scope to correct if a second static importer made that stale.
+
+Same honesty note as the Tenth pass above: the flash-tier script is `ruff`/`mypy`-clean but has not
+been run against real silicon this session (no real-hardware go-ahead was given in this
+conversation) - it needs a real `dev`-bench run before being considered fully verified.
