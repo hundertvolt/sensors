@@ -23,6 +23,13 @@ from typing import Any
 
 import tomllib
 
+# Same explicit sys.path convention scripts/build_firmware.py already uses for its own
+# toolchain/ sibling imports - required so this still resolves whether this file is run directly
+# (as __main__, which already gets its own directory on sys.path for free) or loaded via
+# tests_scripts/_script_loader.py's importlib mechanism, which does not.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import micropython_overrides
+
 # Confirmed GCC >=14 false positive in mbedtls_xor(), not a real bug (SPECIFICATION.md Part B.7);
 # suppressed outright since build_unix_port()/build_firmware() treat any "warning:" as a hard
 # failure. See Part B.7.1 for the periodic-recheck instructions before ever removing this.
@@ -309,20 +316,27 @@ def build_firmware(micropython_dir: Path, board: str, jobs: int, frozen_manifest
     return uf2
 
 
-def build_unix_port(micropython_dir: Path, jobs: int, frozen_manifest: Path | None = None) -> Path:
+def build_unix_port(micropython_dir: Path, toolchain_dir: Path, jobs: int, frozen_manifest: Path | None = None) -> Path:
     """Builds the "standard" Unix port variant; needs mpy-cross already built, and takes
     frozen_manifest like build_firmware(). Always MICROPY_PY_SYS_SETTRACE=1 so one binary backs both
-    plain and --coverage runs (CLAUDE.md); ports/rp2's build never gets that flag."""
+    plain and --coverage runs (CLAUDE.md); ports/rp2's build never gets that flag.
+    Also always applies micropython_overrides.apply_unix_kbd_intr_override() - forces MicroPython's
+    own safe, deferred SIGINT-delivery path instead of its default immediate one, closing a real
+    VM-state-corruption class of bug (SPECIFICATION.md Part B.14.1, CLAUDE.md Part F.6) - via
+    `VARIANT`/`VARIANT_DIR` make variables that never touch a single file inside micropython_dir."""
     label = "with the frozen verification module" if frozen_manifest else "standard, unchanged"
     log(f"Building the MicroPython Unix port ({label})")
     unix_dir = micropython_dir / "ports" / "unix"
     build_dir = unix_dir / "build-standard"
     if build_dir.exists():
         shutil.rmtree(build_dir)
+    overrides_dir = toolchain_dir / "build_overrides"
+    override_make_vars = micropython_overrides.apply_unix_kbd_intr_override(micropython_dir, overrides_dir)
     make_cmd = [
         "make",
         f"-j{jobs}",
         f"CFLAGS_EXTRA=-DMICROPY_PY_SYS_SETTRACE=1 {_MBEDTLS_GCC14_ARRAY_BOUNDS_WORKAROUND}",
+        *(f"{key}={value}" for key, value in override_make_vars.items()),
     ]
     if frozen_manifest is not None:
         make_cmd.append(f"FROZEN_MANIFEST={frozen_manifest}")
@@ -440,7 +454,7 @@ def run_verification_sequence(micropython_dir: Path, toolchain_dir: Path, board:
 
         unix_manifest = test_dir / "manifest_unix.py"
         write_freeze_manifest(unix_manifest, "variants/manifest.py")
-        unix_binary = build_unix_port(micropython_dir, jobs, frozen_manifest=unix_manifest)
+        unix_binary = build_unix_port(micropython_dir, toolchain_dir, jobs, frozen_manifest=unix_manifest)
         run_frozen_verify_on_unix(unix_binary)
 
         rp2_manifest = test_dir / "manifest_rp2.py"
@@ -451,7 +465,7 @@ def run_verification_sequence(micropython_dir: Path, toolchain_dir: Path, board:
 
     clean_frozen_verification_build_dirs(toolchain_dir, board)
 
-    unix_binary = build_unix_port(micropython_dir, jobs)  # vanilla rebuild: the real test rig
+    unix_binary = build_unix_port(micropython_dir, toolchain_dir, jobs)  # vanilla rebuild: the real test rig
 
     return mpy_cross_binary, unix_binary
 

@@ -43,6 +43,10 @@ information):
   results in SPECIFICATION.md Part F.5** — including what it found (`I2C`/`SPI` `deinit()` are
   no-ops on rp2, a new `OSError(EIO)` raise site on 32+ byte SPI reads) and what it ruled out
   (`extmod/asyncio/` byte-identical between the tags, so `getaddrinfo()`'s status is unchanged).
+  This same pass also covers `toolchain/micropython_overrides.py`'s own anchor checks (SPECIFICATION.md
+  Part B.14) — each `verify_*()` there already fails loudly on its own if its anchor text drifted,
+  but re-reading the real mechanism behind each anchor (not just whether the literal string still
+  matches) is still part of this practice, the same as everything else it covers.
 
 ## Hard rules
 
@@ -549,7 +553,27 @@ information):
   `except KeyboardInterrupt:` handlers. **The recovery is `gc.collect()`, not
   `micropython.heap_unlock()`** — the two lock states need opposite recoveries and the obvious one
   is wrong here. Full mechanism and evidence: SPECIFICATION.md Part F.6. Don't re-diagnose a
-  "heap is locked" `MemoryError` at twin shutdown as a project memory bug.
+  "heap is locked" `MemoryError` at twin shutdown as a project memory bug. **Superseded at the
+  root, not just worked around**: Part F.6's own amendment records that the very next bullet's
+  fix (`toolchain/micropython_overrides.py`'s `unix_kbd_intr` override, SPECIFICATION.md Part
+  B.14.1) closed the actual root cause — this specific race can no longer occur at all through
+  this project's own Unix-port build, and `unix_port_gc_unwedge.py`'s calls now stay wired in
+  purely as defense in depth.
+- **Known intermittent `digital-twin-e2e` shutdown flake, fixed**: a SIGINT-triggered shutdown
+  check (`Run 3`/`Run 5`/etc. "clean shutdown (exit code N)") intermittently exited with code 1,
+  only at `gc.threshold=32768`, never at `-1` in the same job — the same root mechanism as the
+  heap-lock bug above (the Unix port's default SIGINT handling calls `nlr_raise()` directly from
+  the async signal handler, unsafe at any point in interpreter execution, not just gc_collect()),
+  but a different, more severe symptom: reproduced directly as a genuinely **corrupted, impossible
+  traceback** (`TypeError: 'frame' object isn't iterable`, from a call stack that cannot exist),
+  i.e. real VM-state corruption that a userspace `gc.collect()` unwedge cannot repair. Fixed at the
+  root, not the symptom: `toolchain/micropython_overrides.py`'s `apply_unix_kbd_intr_override()`
+  forces the Unix port's own safe, deferred SIGINT-delivery path (`MICROPY_ASYNC_KBD_INTR=0`) for
+  every build, without editing the fetched checkout — see SPECIFICATION.md Part B.14 for the full
+  mechanism, why a plain `-D` can't do this, and the re-verification checklist for a MicroPython
+  version bump. Don't re-diagnose a shutdown-only exit-code-1 flake (with or without a garbled
+  traceback) at `gc.threshold=32768` as a new project bug before confirming this override is still
+  actually being applied.
 - **Known intermittent-`MemoryError` cause, fixed**: `scripts/test.sh` runs every `tests/test_*.py`
   file as one Unix-port process for all its test functions, sharing one heap — a file whose several
   heaviest tests each build the whole real `sensortask_wozi.build_system()` object graph (one test
