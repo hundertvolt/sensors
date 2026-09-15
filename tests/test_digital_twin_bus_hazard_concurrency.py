@@ -162,12 +162,13 @@ async def _run_real_task_graph_and_assert_healthy(module: "ModuleType", shared_b
         device = module.__name__[len("sensortask_") :]  # "sensortask_dev" -> "dev" - str.removeprefix() isn't used here since it's unproven under this MicroPython target
         with open(f"build/generated_src/sensortask_{device}_wiring_plan.json") as f:
             plan: dict[str, Any] = json.load(f)
-        for attachment in plan["buses"].get("i2c1", []):
-            driver = attachment["driver"]
-            field = _I2C_DRIVER_HEALTH_FIELD.get(driver)
-            assert field is not None, f"no health-check field known for driver {driver!r} - add one to _I2C_DRIVER_HEALTH_FIELD before it can get generated digital-twin bus-hazard coverage"
-            data = await getattr(module, driver).get_data()
-            assert getattr(data, field) is not None, f"{driver!r} never produced real data (missing {field!r}) under concurrent bus load, per the TOML-driven i2c1 membership check"
+        for bus_name, attachments in plan["buses"].items():
+            for attachment in attachments:
+                driver = attachment["driver"]
+                field = _I2C_DRIVER_HEALTH_FIELD.get(driver)
+                assert field is not None, f"no health-check field known for driver {driver!r} - add one to _I2C_DRIVER_HEALTH_FIELD before it can get generated digital-twin bus-hazard coverage"
+                data = await getattr(module, driver).get_data()
+                assert getattr(data, field) is not None, f"{driver!r} never produced real data (missing {field!r}) under concurrent bus load, per the TOML-driven {bus_name} membership check"
     finally:
         for task in tasks:
             await _cancel(task)

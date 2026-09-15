@@ -449,3 +449,102 @@ statistical spot-check — but it is still one session's own reading, not a mech
 test.sh --coverage` measures `src/`, never `buildgen/`). If a coverage tool is ever pointed at
 `buildgen/` and finds a line this audit's manual read missed, that finding stands on its own merits,
 not as a contradiction of this section.
+
+## 10. Phase 2 — timing sweep, all-buses iteration, BMP3xx, hand-written-test porting, real hardware (project owner, 2026-09-15)
+
+Follow-on direction, in the project owner's own words: systematically vary WHEN concurrency fires to
+find races (mock/twin unrestricted; real hardware's SCD30 gets an opt-in, one-write-only exception);
+iterate every real I2C bus, not just dev/i2c1; add the BMP3xx catalog adapter now (not deferred until
+some device shares a bus with it); fully port the hand-written pairwise tests
+(`test_bus_hazard_multi_device.py`) into the generation scheme, removing them only once 100% ported;
+and the whole scheme must be runnable at every tier, real hardware included, with the same SCD30
+exception applying there.
+
+**Landed, verified (mock + twin tiers — full `tests/test_bus_hazard_generated.py` +
+`tests/test_digital_twin_bus_hazard_concurrency.py` + `tests/test_bus_hazard_multi_device.py` runs,
+`ruff`, all three `scripts/typecheck.sh` passes, all clean):**
+
+- **BMP3xx adapter added to `I2C_HAZARD_CATALOG`** — `tests/_bus_hazard_catalog.py`'s `seed_bmp_ready`/
+  calibration-fixture helpers absorbed from `test_bus_hazard_multi_device.py`, plus a lazy-`setup()`
+  wrinkle unique to this driver (its correctness depends on real calibration registers computed by an
+  *async* `setup()`, unlike the other three adapters' sync-only `construct()` — primed on the
+  occupant's own first `read_once()` instead of widening the adapter API for one driver).
+- **`tests/test_bus_hazard_generated.py` now iterates every real device × every real I2C bus**,
+  discovered from `build/generated_src/sensortask_*_wiring_plan.json` (`os.listdir()` + filename
+  filtering — MicroPython's Unix-port test build has no `glob` module), not a hand-kept device list.
+  34 tests generated across all 6 devices' 10 real I2C buses today (up from 5 hardcoded to
+  `dev`/`i2c1`): every bus gets its own address/reserved-range sweep and same-occupant
+  write-vs-own-read check; a bus with 2+ occupants additionally gets the membership guard,
+  all-occupants-concurrent, cross-occupant-write and general-call scenarios. A 7th device or a
+  re-wired bus needs zero edits here.
+- **The digital-twin tier's own generic health-check pass now loops over every bus in the wiring
+  plan** (`plan["buses"].items()`), not a hardcoded `"i2c1"` key — harmless, deliberate overlap with
+  the pre-existing hardcoded checks on dev/wozi's own i2c0 buses (project's own "run alongside, don't
+  replace" policy for layered coverage).
+- **Systematic timing-offset sweep**, unrestricted on mock/twin: `scenario_a_write_does_not_disturb_
+  concurrent_sibling_reads`, `scenario_general_call_does_not_disturb_concurrent_siblings`, and a new
+  `scenario_same_occupant_own_write_does_not_disturb_own_concurrent_read` (see below) each rebuild
+  fresh bus/occupant state and re-run once per offset across `range(iterations)`, instead of firing
+  after one fixed `asyncio.sleep(0)`. Fresh state per offset is deliberate, not incidental — a fake
+  bus's `.log`/read queues are NOT naturally reset between trials the way a real bus's own protocol
+  state is, so reusing state across offsets could let one trial's stale log entry silently mask or
+  fake a later trial's own result (e.g. the general-call scenario's own "did it actually fire" check).
+- **New generic scenario closing a real hand-written-test-porting gap**:
+  `scenario_same_occupant_own_write_does_not_disturb_own_concurrent_read` — the SAME-device hazard
+  (one occupant's own write vs its own concurrent read loop), as opposed to the cross-occupant one
+  above. Generated unconditionally for every bus (even single-occupant ones), since it needs no
+  sibling to mean something — this is what gives arzi/klkizi/grkizi/schlafzi's lone-SCD30/lone-SGP40
+  buses genuine concurrency coverage for the first time, not just an address sweep.
+- **The reserved-I2C-address-range check is now generic too**, folded into
+  `scenario_each_occupant_never_touches_an_unexpected_address` (checked against every real occupant's
+  own TOML-declared address, not a hand-kept four-entry table).
+
+**Landed, NOT yet verified against real hardware (no go-ahead this session — CLAUDE.md's own
+standing gate; written, `ruff`/`mypy`-clean, structurally consistent with every proven-on-hardware
+script in `tests_hardware/`, but not run):**
+
+- Two new flash-tier tests closing a real coverage gap the mock-tier audit surfaced: no prior
+  real-hardware test proved a config WRITE from one dev/i2c1 occupant landing concurrently with its
+  SIBLINGS' own reads (only same-device write-vs-own-read and the SGP40-general-call-vs-SCD30 case
+  existed). `test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads` (ISL29125 as
+  writer — volatile register, unrestricted, part of the routine group) and
+  `test_scd30_config_write_does_not_disturb_concurrent_sibling_reads` (SCD30 as writer — one
+  additional real NVM write, gated behind the new `@pytest.mark.scd30_write` /
+  `--allow-scd30-writes` opt-in, same precedent as `--allow-flash-cycle`, off by default, never part
+  of the routine group's own one-write budget). See `tests_hardware/README.md`'s "Seventh pass" for
+  the full account and the honesty note about unverified status.
+- Real hardware has no literal equivalent of the mock tier's `asyncio.sleep(0)`-count offset sweep —
+  an artificial yield count means nothing against a real preemptible interpreter and real bus timing.
+  The two new device scripts substitute real hardware's own natural equivalent instead: many repeated
+  write cycles (`WRITE_CYCLES=8`) over a real multi-second window, so genuine uncontrolled
+  scheduling/serial jitter puts each write at a different real relative offset — the honest,
+  tier-appropriate reading of "systematically vary when it fires," not a literal port of the mock
+  tier's mechanism.
+
+**Explicitly NOT done this round — disclosed gaps, not silent ones:**
+
+- **`test_bus_hazard_multi_device.py` (the hand-written pairwise suite) has NOT been deleted.** Most
+  of its I2C scenarios now have a generated equivalent with parity or better (often stronger — the
+  timing sweep, and the all-occupants/3-way generalization on dev/i2c1), but three do not yet:
+  (1) its byte-exact wire-log command-sequence parse (`_parse_scd30_log`) proves non-interleaving at
+  the literal byte level, while the generic same-occupant scenario proves it via `read_once()`'s own
+  value-correctness assertion instead — the same bar every other generic scenario here already uses,
+  but not literally identical proof; (2) `test_general_call_absent_sibling_bmp3xx_alone_on_the_bus_
+  survives_a_broadcast_too` — a ROGUE general call from no real occupant's own driver, fired against
+  a lone occupant with no broadcaster on its bus at all — the generic scheme only ever fires a general
+  call that a real catalog occupant's own adapter issues, so a bus with no broadcasting occupant (e.g.
+  dev's own bmp3xx-alone i2c0) gets no general-call coverage generically at all; (3) FRAM (SPI) same-
+  device concurrency — entirely out of scope for `I2C_HAZARD_CATALOG`, and out of scope for this
+  round's own "iterate every I2C bus" direction, which named I2C specifically. Per the project
+  owner's own explicit conditional, the hand-written file is retired only once every one of its tests
+  has a demonstrated generated counterpart — not before, and not thinned in place in the meantime.
+- The rogue-general-call gap above (item 2) would need the per-bus occupant-factory to also expose
+  the raw shared `I2C` wrapper (today's factory returns only `(fake_bus, occupants)`), a small but
+  real interface widening not done this round to keep the already-verified scenario functions'
+  signatures stable while everything else changed underneath them.
+
+**Verification**: `tests/test_bus_hazard_generated.py` (34/34), `tests/test_digital_twin_bus_hazard_
+concurrency.py` (10/10), `tests/test_bus_hazard_multi_device.py` (13/13, unchanged, confirming no
+regression) all run clean under the real Unix-port interpreter (`-X heapsize=8M`); `ruff check`
+clean; all three `scripts/typecheck.sh` passes clean. The two new real-hardware tests/scripts are
+new code with no execution evidence yet — see their own "NOT yet verified" callout above.

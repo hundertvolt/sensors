@@ -51,12 +51,26 @@ def pytest_addoption(parser: pytest.Parser) -> None:
             "deliberately its own separate flag, never bundled with --soak-tier. Skipped by default."
         ),
     )
+    parser.addoption(
+        "--allow-scd30-writes",
+        action="store_true",
+        default=False,
+        help=(
+            "Actually run @pytest.mark.scd30_write tests - each issues one additional real "
+            "NVM-persisted SCD30 write beyond the one routine write "
+            "scd30_continuous_measurement_triggered already spends for the whole flash-tier "
+            "bus-hazard group (SPECIFICATION.md Part C.8). Skipped by default, same precedent as "
+            "--allow-flash-cycle: an explicit, rare, deliberately-opted-into extra real write, "
+            "never run as part of a routine pass."
+        ),
+    )
 
 
 def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line("markers", "long_soak: real-hardware passive observation over one of three named duration tiers (short/mid/long) - skipped unless --soak-tier is passed; see scripts/run_bench_soak_tests.sh")
     config.addinivalue_line("markers", "multi_day_rollover: a real, fixed ~12.4-day wait, not tier-selectable - skipped unless --allow-multi-day-rollover-wait is passed")
     config.addinivalue_line("markers", "flash_cycle: a deliberate re-provisioning flash (counts against the 'no extra flash cycles' constraint), skipped unless --allow-flash-cycle is passed")
+    config.addinivalue_line("markers", "scd30_write: one additional real NVM-persisted SCD30 write beyond the routine per-session budget, skipped unless --allow-scd30-writes is passed")
     config.addinivalue_line("markers", "role_reversal: bench radio temporarily stops hosting br0-wifi-ap to join the DUT's own hotspot - informational marker, not skip-gated")
 
 

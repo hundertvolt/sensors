@@ -1280,12 +1280,13 @@ bus), and an address/command sweep, across as many of four tiers as apply (cheap
    full address/command sweep. **Automatically assembled per-bus coverage also exists**, generated
    from a device's own real TOML wiring rather than hand-paired
    (`tests/test_bus_hazard_generated.py` + the per-driver adapter catalog in
-   `tests/_bus_hazard_catalog.py`, BUS_HAZARD_TEST_GENERATION_REQUIREMENTS.md) — phase 1, scoped to
-   `dev`'s real `i2c1` three-way group; runs alongside the hand-written tests, does not replace them.
+   `tests/_bus_hazard_catalog.py`, BUS_HAZARD_TEST_GENERATION_REQUIREMENTS.md) — runs alongside the
+   hand-written tests today, pending full parity (see the promotion checklist below), not replacing
+   them yet.
 2. **Digital twin** (`tests/test_digital_twin_bus_hazard_concurrency.py`) — the real object graph
    against higher-fidelity chip fakes under genuine concurrent task load. Its shared
-   `_run_real_task_graph_and_assert_healthy()` helper also runs one TOML-driven generic pass (same
-   phase-1 scope as above) over the same already-booted graph, alongside its hand-written checks.
+   `_run_real_task_graph_and_assert_healthy()` helper also runs one TOML-driven generic pass over the
+   same already-booted graph, alongside its hand-written checks.
 3. **Flash tier** (`tests_hardware/flash/test_bus_concurrency.py`) — real hardware, dev bench only.
    **Real-hardware write-safety constraints, project-owner-mandated**: (a) respect any real
    NVM/EEPROM write budget — ideally at most one real write per bus-hazard test group, via a
@@ -1295,6 +1296,63 @@ bus), and an address/command sweep, across as many of four tiers as apply (cheap
 4. **Bench tier** (`tests_hardware/bench/test_bus_concurrency_under_api_load.py`) — real hardware,
    full HTTP stack, concurrent load. Extend the worker set only with requests safe under both
    constraints above (`GET` always safe; `PUT` only if documented command-only/never-persisted).
+
+**The generated (mock + twin) coverage's own full requirements — every one of these is required to
+call a bus-facing module's generated bus-hazard coverage "fully promoted and integrated", not
+optional polish (project owner's explicit direction):**
+
+- **Iterate every real I2C bus on every real device**, not a hardcoded single device/bus pair —
+  `tests/test_bus_hazard_generated.py` dynamically generates one test group per `(device, bus)` pair
+  found in that device's own generated wiring-plan JSON (`build/generated_src/
+  sensortask_<device>_wiring_plan.json`), so a bus with 2+ real occupants automatically gets the full
+  cross-sensor scenario set and every bus (single-occupant included) gets its own address/command
+  sweep and its own same-device write-vs-own-read check. A new device or a re-wired bus needs *zero*
+  edits to this file to be picked up.
+- **Every real bus-attached driver has a `tests/_bus_hazard_catalog.py` adapter** — `scd30`, `sgp40`,
+  `isl29125`, `bmp3xx` today. `build_bus_occupants()`/the address-sweep scenario both fail loud
+  (`KeyError`) for a driver with none, rather than silently skipping that driver's own coverage.
+- **Every timing-sensitive scenario systematically sweeps WHEN the hazard fires**, not one fixed
+  injection point — a single fixed `asyncio.sleep(0)` before a write/general-call can miss a race a
+  different timing would catch. `scenario_a_write_does_not_disturb_concurrent_sibling_reads`,
+  `scenario_general_call_does_not_disturb_concurrent_siblings` and
+  `scenario_same_occupant_own_write_does_not_disturb_own_concurrent_read` each rebuild fresh
+  bus/occupant state and re-run once per offset across the reader loop's own iteration count, so one
+  trial's leftover queue/log state can never mask or fake a later trial's result. Unrestricted on
+  mock/twin (a fake bus has no real write-wear budget); real hardware's own limit is the next bullet.
+- **Real-hardware tier parity, including the timing sweep, is required, not optional** — the generic
+  scenario engine must be runnable against real silicon too (flash tier), with exactly one exception:
+  **SCD30's own on-chip NVM write is opt-in and capped at one real write per test session**, reusing
+  `tests_hardware/flash/conftest.py`'s existing `scd30_continuous_measurement_triggered` session-
+  scoped-fixture pattern — the timing sweep still runs its full systematic set of offsets, but only
+  the *first* offset in the sweep actually performs SCD30's real NVM write; every other offset in the
+  same sweep reuses that one already-triggered state rather than writing NVM again. This opt-in must
+  be off by default (matching the existing `--allow-flash-cycle` precedent for other genuinely
+  re-provisioning real-hardware operations) and only engage when a session has both real-hardware
+  go-ahead (CLAUDE.md's own standing gate) and this specific SCD30-write opt-in passed explicitly.
+  Every other real write exercised by the sweep (BMP3xx's/ISL29125's own config registers, both
+  volatile per their datasheets) has no such budget and runs fully unrestricted on real hardware too.
+- **A hand-written pairwise test is retired only once its exact scenario has a generated equivalent
+  with parity or better** — never before. `test_bus_hazard_multi_device.py` stays in place, run
+  alongside the generated coverage, until every one of its tests has a demonstrated generated
+  counterpart; only then is it deleted outright, not thinned in place (BUS_HAZARD_TEST_GENERATION_REQUIREMENTS.md
+  tracks the parity status while this migration is in progress).
+
+**Per-real-device applicability, re-verified against all 6 device TOMLs (BUILD_CHAIN_PLAN.md's
+Session 6.2)**: "cross-device interleaving if sharing a bus" only actually applies to a device that
+does. Checked directly against every real `devices/*.toml`: `wozi` wires `sgp40`+`bmp3xx` together
+on `i2c1`, and `dev` wires `scd30`+`sgp40`+`isl29125` together on `i2c1` (the `isl29125` instance is
+dev-only — the ISL29125 migration's own scoping) — the only two real devices with any sensor pair
+sharing a bus at all. `arzi`/`klkizi`/`grkizi`/`schlafzi` each wire `scd30` alone on `i2c0` and
+`sgp40` alone on `i2c1` (no `bmp3xx`/`isl29125` instance at all) — there is no cross-device
+interleaving window on these 4 devices for tier 2's own
+`test_<device>_real_task_graph_survives_concurrent_bus_load_including_a_real_general_call()`
+scenario to prove anything about, so that test staying wozi/dev-only is complete coverage, not a
+gap to extend. FRAM's own same-device hazard coverage (tier 2's remaining tests: injected-fault
+recovery, RX-overrun absorption, write-protect/storage-pause gating) and the WiFi-disconnect-under-
+load scenario are device-independent by construction (FRAM sits alone on its own dedicated SPI bus
+on every real device, unaffected by which other sensors exist alongside it) — proven once, against
+one real assembled object graph (wozi), rather than six times over at six times the real
+wall-clock cost (the WiFi-disconnect scenario alone is an unavoidable real ~75s).
 
 **Per-real-device applicability, re-verified against all 6 device TOMLs (BUILD_CHAIN_PLAN.md's
 Session 6.2)**: "cross-device interleaving if sharing a bus" only actually applies to a device that

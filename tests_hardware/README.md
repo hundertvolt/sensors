@@ -80,6 +80,12 @@ uv run pytest tests_hardware/flash --allow-multi-day-rollover-wait -k test_ticks
 # default - this genuinely re-flashes the board, see SPECIFICATION.md Part E.6.3):
 scripts/run_flash_hardware_suite.sh --allow-flash-cycle
 
+# Add --allow-scd30-writes to also run the one test that issues an ADDITIONAL real SCD30 NVM write
+# beyond the routine one scd30_continuous_measurement_triggered already spends (skipped by default -
+# same precedent as --allow-flash-cycle, see SPECIFICATION.md Part C.8's bus-hazard promotion
+# checklist and bus_concurrency_scd30_write_vs_siblings.py's own docstring):
+scripts/run_flash_hardware_suite.sh --allow-scd30-writes
+
 # Manual tests (interactive, prints instructions, waits for confirmation):
 scripts/run_manual_hardware_tests.sh --list          # see what's registered, run nothing
 scripts/run_manual_hardware_tests.sh --only <name>   # run just one
@@ -711,3 +717,40 @@ wherever the console survives the step; `countdown()` is reserved for genuine po
 where it doesn't. `state_expected_outcome()` prints what "passed" should look like before the
 script's own verdict, for tests that end in a human visual/instrument check rather than a
 script-only assertion.
+
+## Seventh pass - cross-occupant write-vs-siblings real-hardware coverage (mock-tier gap closure)
+
+`tests/_bus_hazard_catalog.py`'s generic mock-tier scenario
+(`scenario_a_write_does_not_disturb_concurrent_sibling_reads`) surfaced a real gap once its own
+"same test bar as `src/`" audit was extended to the real-hardware tier: no existing flash-tier test
+proved a config WRITE from one dev/i2c1 occupant landing concurrently with its SIBLINGS' own reads -
+only same-device write-vs-own-read (`bus_concurrency_same_device_scd30.py`,
+`isl29125_same_device_rw_concurrency.py`) and the SGP40 general-call broadcast case
+(`sgp40_general_call_reset_hazard.py`, SCD30 sibling only, not ISL29125). Two new tests close this:
+
+- **`test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads`**
+  (`device_scripts/bus_concurrency_isl29125_write_vs_siblings.py`) - ISL29125's own `configure()` is
+  the writer (a volatile config register, no NVM-write-budget concern per FN8424 p7), repeated
+  `WRITE_CYCLES=8` times over a real multi-second window with SCD30 and SGP40 both reading
+  concurrently. Part of the routine group, no opt-in needed.
+- **`test_scd30_config_write_does_not_disturb_concurrent_sibling_reads`**
+  (`device_scripts/bus_concurrency_scd30_write_vs_siblings.py`) - the SCD30-as-writer half of the
+  same gap. SCD30's own `set_temperature_offset()` is a real NVM write, so this is deliberately
+  **not** part of the routine group: gated behind `@pytest.mark.scd30_write` /
+  `--allow-scd30-writes` (this pass's own new flag, same precedent as `--allow-flash-cycle`), fires
+  the one additional real write exactly once per invocation, and must never be folded into the one
+  routine write `scd30_continuous_measurement_triggered` already spends for the whole flash-tier
+  bus-hazard group (SPECIFICATION.md Part C.8's own write-budget rule).
+
+**Honesty note - neither test has been run against real hardware yet.** Both were written and typed
+during a session with no real-hardware go-ahead (CLAUDE.md's own standing gate) and no ability to
+verify against the real bench Pi4/dev board - they pass `ruff`/`mypy` and follow the same structural
+conventions as every proven-on-hardware script in this directory (window-overlap interleaving proof,
+`RESULT: PASS/FAIL` line, `wdt.feed()` cadence, plausibility bounds), but that is not the same as a
+real run. Treat both as a first cut to be smoke-tested (and fixed if wrong) on the next real-hardware
+session, not as already-confirmed coverage - flagged here explicitly rather than left to look
+finished. The mock-tier's own systematic timing-offset sweep
+(`BUS_HAZARD_TEST_GENERATION_REQUIREMENTS.md`) has no real-hardware equivalent that literally injects
+a controllable offset - real hardware's own natural scheduling/serial jitter across many repeated
+write cycles is used instead as the honest, tier-appropriate substitute (an artificial `sleep(0)`
+yield count has no meaning against a real preemptible interpreter and real bus timing).
