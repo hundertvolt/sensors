@@ -1687,13 +1687,10 @@ this branch's byte-identical driver/chip-fake port.
 `machine.I2C` only** — the single layer the real board and `digital_twin/machine.py` both
 implement — so the identical file runs against real silicon over `mpremote` and against the chip
 fake under the Unix port. `tests_hardware/isl29125_conformance.py` runs the twin half and diffs
-the two; on `main`, `tests_hardware/flash/test_sensor_accuracy.py::
-test_the_isl29125_mock_answers_the_bus_exactly_as_the_real_chip_does` is the flash-tier gate that
-calls it — **this branch has ported the two scripts and `isl29125_conformance.py` itself
-(`tests_hardware/isl29125_conformance.py`) but has not yet wired an equivalent pytest gate calling
-them**, since that wiring fell outside this porting session's explicit file list; a future session
-should add it to `tests_hardware/flash/test_sensor_accuracy.py` rather than leave the probe
-orphaned indefinitely. Keys whose value depends on the light falling on the part are excluded **by
+the two; the flash-tier gate that calls it is
+`tests_hardware/flash/test_sensor_accuracy.py::test_isl29125_register_probe_matches_the_digital_twins_fake_chip`
+(wired 2026-09-15 — the porting session above had left this orphaned, per its own note that used to
+stand here). Keys whose value depends on the light falling on the part are excluded **by
 value** and covered by the probe's own derived yes/no keys instead, so nothing is merely unchecked.
 
 **What the first real run found (2026-09-12), every item a fake that no test could have caught:**
@@ -1829,9 +1826,11 @@ also un-blinded the twin's own `isl29125:int_stuck_high` fault test, which had b
 unrelated timing reason rather than because the detector worked.
 
 **What this cost in test terms**: `test_isl29125_survives_recombined_realistic_lighting_scenarios`
-(ported here as `tests_hardware/device_scripts/isl29125_lighting_scenarios.py`, written but not
-run) checks the dead-line warning per scenario *and* asserts the run made at least five range
-switches, so the check can actually fire.
+(ported here as `tests_hardware/device_scripts/isl29125_lighting_scenarios.py`, wired into
+`tests_hardware/flash/test_sensor_accuracy.py` 2026-09-15 — real segment durations sum to ~8.5
+minutes, a genuinely long single test, not yet run against silicon) checks the dead-line warning
+per scenario *and* asserts the run made at least five range switches, so the check can actually
+fire.
 
 ### C.11.2 ISL29125 reference layer — the prior art, and the traps it closes
 
