@@ -372,6 +372,11 @@ def _emit_build_system(lines: "list[str]", model: DeviceModel, ctx: _Ctx, instan
     lines.append("    global " + ", ".join(global_names))
     lines.append("")
     lines.append("    watchdog = WDT(timeout=8000)")
+    lines.append("")
+    lines.append("    def _feed_watchdog() -> None:")
+    lines.append("        if watchdog is not None:")
+    lines.append("            watchdog.feed()")
+    lines.append("")
     lines.append(f"    conn = AsyConnTime(conn_fail_to_hotspot={dev['conn_fail_to_hotspot']}, hotspot_time_min={dev['hotspot_time_min']}, max_module_error=_MAX_MODULE_ERROR, cfg_path=cfg_path, debug=debug)")
     lines.append("    ntp = AsyNtpClient(conn.get_wifi_mode_lock(), conn.network_available, conn.get_dns_server_ip, max_module_error=_MAX_MODULE_ERROR, dns_timeout_ms=_DNS_TIMEOUT_MS, dns_tries=_DNS_TRIES, ntp_fetch_timeout_ms=_NTP_FETCH_TIMEOUT_MS, cfg_path=cfg_path, debug=debug)")
     for bus_id, bus_table in model.doc["bus"].items():
@@ -435,7 +440,9 @@ def _emit_build_system(lines: "list[str]", model: DeviceModel, ctx: _Ctx, instan
             continue
         if spec.driver_info and spec.driver_info.needs_setup:
             setup_order.append(ctx.instance_var(node))
-    lines.extend(f"    await {name}.setup()" for name in setup_order)
+    for name in setup_order:
+        lines.append(f"    await {name}.setup()")
+        lines.append("    _feed_watchdog()")
     lines.append("")
 
 

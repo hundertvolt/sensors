@@ -58,6 +58,39 @@ def test_real_device_constructs_watchdog_exactly_once(repo_root: Path, src_dir: 
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_real_device_feeds_the_watchdog_immediately_after_every_setup_call(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
+    # Regression test for the watchdog-starvation fix: WDT(timeout=8000) is constructed at the top
+    # of build_system(), then the sequential setup() batch that follows can take several real
+    # seconds on a device with many FRAM-backed modules (SPECIFICATION.md Part A.7) with no feed at
+    # all otherwise. Every "await X.setup()" line must be immediately followed by "_feed_watchdog()"
+    # in the exact generated order, so the watchdog can never starve across the batch regardless of
+    # how many modules a device grows to.
+    result = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir)
+    lines = result.module_source.splitlines()
+    setup_call_indices = [i for i, line in enumerate(lines) if re.match(r"^\s*await \w+\.setup\(\)\s*$", line)]
+    assert setup_call_indices, "expected at least one 'await X.setup()' line in the generated setup batch"
+    for i in setup_call_indices:
+        assert lines[i + 1].strip() == "_feed_watchdog()", f"line {i} ({lines[i]!r}) not immediately followed by a feed"
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_real_device_feed_watchdog_helper_is_defined_once_and_tolerates_no_watchdog(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
+    # The module-level `watchdog` global is declared "WDT | None" (defaults to None before
+    # build_system() runs) - _feed_watchdog() must guard against that rather than assume
+    # WDT(timeout=8000) always succeeded, so a future device/config that constructs no real
+    # watchdog still degrades safely without every call site needing its own guard.
+    result = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir)
+    assert result.module_source.count("def _feed_watchdog()") == 1
+    tree = ast.parse(result.module_source, filename=f"sensortask_{device}.py")
+    build_system = next(n for n in tree.body if isinstance(n, ast.AsyncFunctionDef) and n.name == "build_system")
+    feed_fn = next(n for n in ast.walk(build_system) if isinstance(n, ast.FunctionDef) and n.name == "_feed_watchdog")
+    feed_src = ast.get_source_segment(result.module_source, feed_fn)
+    assert feed_src is not None
+    assert "if watchdog is not None" in feed_src
+    assert "watchdog.feed()" in feed_src
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_real_device_boot_entry_imports_the_right_module(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
     result = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir)
     assert f"from sensortask_{device} import main" in result.boot_entry_source
