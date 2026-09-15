@@ -594,3 +594,33 @@ was added), all three `scripts/typecheck.sh` passes clean, `scripts/lint.sh` (sh
 zizmor included) clean. All real-hardware device-script/bench changes in this section carry the same
 honesty caveat as Section 10's: written and typed with no real-hardware go-ahead this session, not
 yet run against silicon.
+
+## 12. Anchoring real-hardware parity as a general rule, then auditing against it (project owner, 2026-09-15)
+
+Two more follow-ups in the same thread: (1) the "every mock/twin test needs a real-hardware
+equivalent" expectation should be anchored in `SPECIFICATION.md` as a standing rule, not left as
+narrative in this file or `tests_hardware/README.md`; (2) once anchored, are the bus-hazard tests
+actually adhering to it?
+
+**(1) Anchored**: `SPECIFICATION.md` Part E.6.6 (new) states the general rule — every mock/twin test
+exercising real-hardware-facing behavior needs a real-hardware equivalent wherever technically
+possible — scoped against three pre-existing exceptions so it doesn't contradict them: only `dev` is
+ever bench-tested (CLAUDE.md), a behavior with no real API/hardware surface gets a documented
+structural exception, and a human-only check gets `tests_hardware/manual/`. Part C.8's own
+real-hardware-parity bullet is now stated as one instance of this general rule.
+
+**(2) Audited, and one real, non-obvious miscoverage found**: checking the *pre-existing* flash-tier
+bus-hazard tests (not just this session's own additions) against their bench-tier counterparts found
+that `test_bus_concurrency_under_api_load.py`'s `sgp40_reset_trigger_worker()` looks like it exercises
+the SGP40 general-call hazard but does not — `PUT SGPResetVOC` only reaches a software-only VOC reset,
+never the real `_reset()`/general-call broadcast, which has no REST trigger on a live system at all.
+Closed as a documented structural exception (not fixable - a bench test can't force this without a
+real reboot mid-load). Two more gaps were closeable and closed: SGP40 was never schema-sanity-checked
+in any bench GET worker (a real corrupted-VOC-reading blind spot); BMP3xx's same-device
+write-vs-own-read had no bench counterpart despite having real REST-pushable fields. SCD30's own
+same-device write-vs-own-read shares its write-vs-siblings hazard's existing structural exception
+(zero `_push_callbacks`), recorded as the same note, not a new one. Full account:
+`tests_hardware/README.md`'s own "Ninth pass".
+
+**Verification**: `ruff check` and all three `scripts/typecheck.sh` passes clean on the changed bench
+file. Same real-hardware honesty caveat as every other section here: not yet run against silicon.

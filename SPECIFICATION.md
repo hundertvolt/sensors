@@ -1552,11 +1552,18 @@ optional polish (project owner's explicit direction):**
   — whatever gets added to `tests_hardware/flash/test_bus_concurrency.py` gets a bench-tier
   counterpart in `tests_hardware/bench/test_bus_concurrency_under_api_load.py` too, driven through
   the real HTTP/REST stack instead of the bare driver (a `PUT`/`GET` pair reaching the same real I2C
-  write/read the flash-tier script drives directly). The one allowed exception is a hazard with no
-  possible REST-layer path at all — e.g. SCD30's own write-vs-siblings hazard has no bench-tier
-  counterpart because `asy_scd30_driver.py` registers zero `_push_callbacks`, so no `PUT /sensors`
-  field can ever reach that write; this is a structural absence of `src/`'s own REST surface, not a
-  scope gap, and must be recorded as such rather than left as a silent asymmetry between the tiers.
+  write/read the flash-tier script drives directly). Two allowed, structural exception shapes — both
+  must be recorded explicitly as such, never left as a silent asymmetry between the tiers:
+  1. **No REST-layer path exists to the write at all** — e.g. SCD30 registers zero `_push_callbacks`
+     (`asy_scd30_driver.py`), so no `PUT /sensors` field can ever reach either its write-vs-siblings
+     or its same-device write-vs-own-read hazard.
+  2. **The hazard's own trigger is only reachable at driver setup/task-restart, never on a live,
+     already-running system** — e.g. SGP40's real general-call broadcast only fires from
+     `SGP40_I2C._reset()`, itself only called from `initialize()` at setup time; the one REST field
+     that superficially resembles a trigger (`SGPResetVOC`) calls a software-only
+     `vocalgorithm_reset()` instead and never reaches it. A bench test cannot force this hazard
+     without a real reboot mid-load, which would confound the very load under test — confirmed by
+     reading the real call chain, not assumed from the field's name.
 - **A hand-written pairwise test is retired only once its exact scenario has a generated equivalent
   with parity or better** — never before. `test_bus_hazard_multi_device.py` stays in place, run
   alongside the generated coverage, until every one of its tests has a demonstrated generated

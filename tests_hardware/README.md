@@ -817,3 +817,40 @@ recorded here rather than left as a silent asymmetry between the two tiers.
 Same honesty note as the Seventh pass: none of this pass's changes have been run against real
 hardware either (still no go-ahead this session) - `ruff`/`mypy` clean, structurally consistent with
 proven scripts, but unverified on silicon until a real bench session confirms it.
+
+## Ninth pass - auditing the flash-tier/bench-tier bus-hazard pairing itself, and a real miscoverage found
+
+Direct follow-up question: does *every* pre-existing flash-tier bus-hazard test (not just the ones
+this session added) actually have a bench-tier counterpart? Checking systematically found one
+genuine, surprising miscoverage plus two closeable gaps:
+
+- **SGP40's general-call hazard has ZERO real bench-tier coverage, despite `test_bus_concurrency_
+  under_api_load.py` appearing to exercise it.** Every one of that file's four tests already runs a
+  `sgp40_reset_trigger_worker()` PUTting `SGPResetVOC` concurrently with GET load - reasonable to
+  assume, from the name and the pattern, that this re-triggers the same general-call broadcast the
+  flash tier's `sgp40_general_call_reset_hazard.py` proves survives concurrent reads. **It does not.**
+  Read the real call chain directly: `reset_voc()` only sets a flag consumed by the next
+  `measure_index_and_raw(reset=True)` call, which calls `vocalgorithm_reset()` - a software-only VOC
+  algorithm reset. The real broadcast only ever fires from `SGP40_I2C._reset()`, itself only called
+  from `initialize()`, itself only ever invoked internally at driver setup/task-supervisor restart -
+  never through any `_push_callbacks`/REST field. There is currently no way to force this hazard on a
+  live, already-running system via REST at all - a bench test would need a real reboot mid-load,
+  which would confound the very load being measured. Documented as a structural exception (module
+  docstring, `test_bus_concurrency_under_api_load.py`) rather than left implied by the
+  superficially-similar-looking worker.
+- **SGP40 was never schema-sanity-checked in any bench GET worker at all** - `_schema_sanity_findings()`
+  checked SCD30/BMP3xx/ISL29125's own config fields but no SGP40 field, so a torn/corrupted VOC
+  reading under bench load would have gone completely undetected. Closed: checks `SGP40.VOC` against
+  the same `[0, 500]` bounds `sgp40_voc_algorithm_quality.py` already uses.
+- **BMP3xx's same-device write-vs-own-read had no bench-tier counterpart**, even though (unlike
+  SCD30) BMP3xx has real REST-pushable fields already exercised elsewhere
+  (`test_sensor_config_push_over_real_hardware.py`). Closed:
+  `test_bmp3xx_config_write_does_not_disturb_its_own_concurrent_reads_under_api_load` - alternates
+  `PressOvers` between both real valid settings concurrently with this same sensor's own GET reads,
+  restoring the original value afterward.
+- **SCD30's own same-device write-vs-own-read** has the identical structural absence as its
+  write-vs-siblings hazard (zero `_push_callbacks`) - recorded as the same exception, not a second
+  one, right next to the existing note.
+
+Same honesty note again: the two new/closed items above are `ruff`/`mypy`-clean but unverified
+against real silicon this session.
