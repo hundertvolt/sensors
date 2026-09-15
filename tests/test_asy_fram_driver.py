@@ -1115,6 +1115,60 @@ def test_task_cancelled_while_holding_frams_own_lock_still_releases_it() -> None
     run(scenario())
 
 
+# ---------------------------------------------------------------------------
+# Bus-hazard coverage moved from tests/test_bus_hazard_multi_device.py (SPECIFICATION.md Part
+# C.8): FRAM is SPI, no address/bus-sharing concept, so same-device concurrency is its whole slice.
+# Complements the concurrency-counter proof above with a real read/write data-integrity check.
+# ---------------------------------------------------------------------------
+
+_HAZARD_READ_REGION = (0x0000, 16)  # (start_address, length) - never touched by the writer below
+_HAZARD_WRITE_REGION = (0x1000, 16)  # disjoint from the read region, well within the 0x2000 chip's range
+_HAZARD_SEED_PATTERN = bytes(range(16))  # 0x00..0x0F - fixed, known, easy to spot corruption in
+_HAZARD_WRITE_PATTERN = bytes(range(0xF0, 0x100))  # 0xF0..0xFF - deliberately distinct from the seed
+
+
+def test_same_device_concurrent_read_and_write_never_corrupt_each_other() -> None:
+    fram, chip = make_fram()
+    run(setup_fram(fram))
+    chip.memory[_HAZARD_READ_REGION[0] : _HAZARD_READ_REGION[0] + _HAZARD_READ_REGION[1]] = _HAZARD_SEED_PATTERN
+
+    read_iterations = 20
+    reads_completed = 0
+    write_completed = False
+    read_mismatches: list[str] = []
+
+    async def reader() -> None:
+        nonlocal reads_completed
+        buf = bytearray(_HAZARD_READ_REGION[1])
+        for i in range(read_iterations):
+            ok = await fram.get_values(buf, addr_start=_HAZARD_READ_REGION[0])
+            if not ok or bytes(buf) != _HAZARD_SEED_PATTERN:
+                read_mismatches.append(f"iter {i}: ok={ok} got={bytes(buf).hex()} expected={_HAZARD_SEED_PATTERN.hex()}")
+            reads_completed += 1
+
+    async def writer() -> None:
+        nonlocal write_completed
+        await asyncio.sleep(0)  # let the reader get partway into its run first
+        ok = await fram.set_values(_HAZARD_WRITE_PATTERN, addr_start=_HAZARD_WRITE_REGION[0])
+        assert ok, "FRAM write failed outright under concurrent read load"
+        write_completed = True
+
+    async def locked_call(coro: "Coroutine[Any, Any, None]") -> None:
+        async with fram:
+            await coro
+
+    async def scenario() -> None:
+        await asyncio.gather(locked_call(reader()), locked_call(writer()))
+
+    run(scenario())
+
+    assert reads_completed == read_iterations
+    assert write_completed
+    assert not read_mismatches, f"{len(read_mismatches)} corrupted/torn read(s) under concurrent write: {read_mismatches[:5]}"
+    written_back = bytes(chip.memory[_HAZARD_WRITE_REGION[0] : _HAZARD_WRITE_REGION[0] + _HAZARD_WRITE_REGION[1]])
+    assert written_back == _HAZARD_WRITE_PATTERN, f"write region shows {written_back.hex()}, expected {_HAZARD_WRITE_PATTERN.hex()} - torn/corrupted write"
+
+
 if __name__ == "__main__":
     import microtest
 

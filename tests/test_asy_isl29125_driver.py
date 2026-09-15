@@ -3095,6 +3095,79 @@ def test_a_leg_whose_range_switch_fails_abandons_the_sandwich_without_a_candidat
     assert reader._active_range == _RANGE_HIGH_LUX
 
 
+# ---------------------------------------------------------------------------
+# Bus-hazard coverage moved from tests/test_bus_hazard_multi_device.py (SPECIFICATION.md Part
+# C.8): genuinely ISL29125-specific - the same-device test targets this chip's own destructive
+# 0x08 status-register read, a real datasheet quirk, not a generic template.
+# ---------------------------------------------------------------------------
+
+
+async def _gather(a: "Coroutine[Any, Any, Any]", b: "Coroutine[Any, Any, Any]") -> None:
+    # asyncio.gather() itself returns a Future, not a Coroutine - mypy rejects passing it straight
+    # to run() (same call-shape convention test_asy_i2c_driver.py's own scenario() wrapping uses).
+    await asyncio.gather(a, b)
+
+
+def test_concurrent_read_and_write_never_interleave_on_the_wire() -> None:
+    # The ISL's own same-device hazard is sharper than its siblings': the status read at 0x08 is
+    # DESTRUCTIVE (it clears the interrupt flag and releases the INT line), and the data burst
+    # that follows it belongs to the same logical cycle. A config write landing between the two
+    # would restart the conversion under a read that has already committed to its own status.
+    i2c, isl = ready_protocol()
+    seed(i2c, _REG_DATA, counts_burst(0x2000, 0x1800, 0x1000))
+    read_iterations = 6
+
+    async def reader() -> None:
+        for _ in range(read_iterations):
+            await isl.read_status()
+            counts = await isl.read_counts()
+            assert counts == (0x2000, 0x1800, 0x1000), f"a concurrent write tore the data burst: {counts}"
+            await asyncio.sleep(0)
+
+    async def writer() -> None:
+        await asyncio.sleep(0)  # let the reader get partway into its first cycle first
+        for adjust in (10, 20, 30):
+            await isl.configure(ir_adjust=adjust)
+            await asyncio.sleep(0)
+
+    with _FastAsyncSleep():
+        run(_gather(reader(), writer()))
+
+    # Every logged transaction went to this one address, and the config writes really did land.
+    touched = {entry[1] for entry in fake(i2c).log if entry[0] in ("writeto", "readfrom_into", "readfrom_mem", "writeto_mem")}
+    assert touched == {_ADDR}
+    config_writes = [entry for entry in fake(i2c).log if entry[0] == "writeto_mem" and entry[2] == _REG_CONFIG2]
+    assert len(config_writes) == 3
+
+
+def test_never_touches_any_address_but_its_own() -> None:
+    i2c, isl = ready_protocol()
+    seed(i2c, _REG_DATA, counts_burst(0x2000, 0x1800, 0x1000))
+
+    async def exercise() -> None:
+        for call in (
+            isl.setup,
+            isl.reset,
+            isl.get_device_id,
+            isl.read_status,
+            isl.clear_brownout,
+            isl.read_counts,
+            isl.get_config_snapshot,
+            lambda: isl.configure(mode=0x05, range_fs=375, resolution=12),
+            lambda: isl.set_thresholds(983, 55705),
+        ):
+            try:
+                await call()
+            except Exception:  # only the addresses *touched* matter for this sweep, not success
+                pass
+
+    with _FastAsyncSleep():
+        run(exercise())
+
+    touched = {entry[1] for entry in fake(i2c).log if entry[0] in ("writeto", "readfrom_into", "readfrom_mem", "writeto_mem")}
+    assert touched == {_ADDR}, f"ISL29125_I2C touched unexpected address(es): {touched - {_ADDR}}"
+
+
 if __name__ == "__main__":
     import microtest
 

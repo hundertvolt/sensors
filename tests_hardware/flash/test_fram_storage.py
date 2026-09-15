@@ -87,6 +87,9 @@ def test_error_log_reset_during_the_boot_window_is_persisted_and_not_undone(boar
 # real write AND a real read, and can be cleared again - not just "can a chunk be written at all".
 # Reads being gated too is intended, accepted behavior (SPECIFICATION.md Part A.4's FRAM entry),
 # asserted identically at the mock and twin tiers.
+#
+# Flash-only, no bench counterpart, structurally (E.6.6 exception 2): get_write_protected()/
+# set_write_protected() have no REST route at all - no PUT/GET a bench test could drive to reach it.
 # ---------------------------------------------------------------------------
 
 

@@ -65,32 +65,24 @@ constraints.
   running the C side exists and can be connected to the dev board, so the reconciliation session can
   test the two implementations against each other for real rather than only reading them side by
   side.
-- **A full test-suite scan for tier/layering-completeness and superficially-passing-but-wrong-hazard
-  gaps is HIGH PRIORITY, not a nice-to-have (project owner, 2026-09-15).** The bus-hazard work
-  (BUS_HAZARD_TEST_GENERATION_REQUIREMENTS.md, now largely reconciled into SPECIFICATION.md Part
-  C.8/E.6.6) only ever audited its own one domain, and even there, checking systematically (not just
-  spot-checking) found a real, non-obvious miscoverage: `tests_hardware/bench/
-  test_bus_concurrency_under_api_load.py`'s `sgp40_reset_trigger_worker()` looks like it exercises
-  SGP40's real I2C general-call broadcast hazard (it PUTs a field named `SGPResetVOC`, concurrently
-  with GET load, the exact shape a general-call-vs-siblings test should take) but does not — read the
-  real call chain directly: that field only reaches a software-only `vocalgorithm_reset()`, never
-  `SGP40_I2C._reset()` (the real broadcast), which has no REST trigger on a live system at all. This
-  test passed the whole time, for the wrong reason - it just never actually raced anything against
-  the hazard it looked like it was named for. **Two things need a full sweep, not just bus-hazard's
-  own corner**: (1) **tier/layering completeness** — SPECIFICATION.md Part E.6.6 (every mock/twin
-  test exercising real-hardware-facing behavior needs a real-hardware equivalent, wherever
-  technically possible) and Part E.6.1's `bench ⊇ flash` (whatever a flash-tier test proves, a
-  bench-tier test proves too, driven through the real REST/HTTP stack) are both now anchored as
-  general rules, but were only ever checked against bus-hazard tests specifically — no one has swept
-  the rest of `tests_hardware/flash/`↔`tests_hardware/bench/` pairs, or the rest of `tests/`↔
-  `tests_hardware/` mock/twin-to-real-hardware pairs, against either rule yet; (2) **the SGP40 shape
-  itself, generalized**: any test whose worker/trigger *name* or *superficial pattern* matches a
-  hazard, but whose real call chain was never actually traced end-to-end to confirm it reaches the
-  code path the test is named for. This is a distinct failure mode from a missing test — a present,
-  green, wrongly-trusted one — and the only way it was caught here was reading `asy_sgp40_driver.py`'s
-  actual `_push_callbacks`/`reset_voc()`/`measure_index_and_raw()` chain line by line rather than
-  trusting the field name. A dedicated future session should scan the whole suite for both at once,
-  not treat this as closed just because the one instance found so far is fixed/documented.
+- **The full test-suite scan for tier/layering-completeness and wrongly-trusted-hazard tests
+  (project owner, 2026-09-15) has now run once, beyond bus-hazard's own corner** — UART,
+  WiFi/network/NTP/DNS, FRAM/memory/reboot/watchdog, and webserver/notification/config-push were all
+  swept, real call chains traced end-to-end rather than grep-counted. Full account, including what
+  was fixed, what's a confirmed structural exception, and what's named-but-not-fixed (needing either
+  a dedicated real-hardware session or a project-owner design decision): `tests_hardware/README.md`'s
+  "Tenth pass". No second instance of the SGP40-shaped bug (a real hardware trigger silently
+  substituted with a software-only one) turned up, but several real tier-parity gaps did, most now
+  closed. **Named follow-ons still open, tracked in that section, not repeated here**: a real-hardware
+  test for UART's F.5.8 "never blocks" invariant against the actual shipped driver (not a hand-rolled
+  clamp); wiring a periodic SET into the bench UART exerciser's live load; deciding whether the mock
+  tier's ~20-scenario UART fault-injection catalog is a genuine real-hardware structural exception or
+  needs a raw-second-UART injection technique; a project-owner design review before any
+  `rotate_ap_password()` bench test (real AP credential rotation on the shared bench rig); a
+  real-hardware test for `_reboot()`'s alarm-pool-exhaustion fallback; and a hard-reset-recovery bench
+  test for NOTIFY's own FRAM chunk (needs an observable-write signal analogous to SGP40's `BackupTS`
+  first). Re-running this sweep against other domains (it did not touch e.g. sensortask/system_service
+  integration beyond what FRAM/memory covered) is future work, not assumed done everywhere.
 
 ## Open questions (need owner input or further investigation)
 

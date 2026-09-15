@@ -1,5 +1,5 @@
-"""Flash-tier automated tests: real SCD30/BMP3xx/SGP40 (incl. VOC algorithm) reading plausibility
-(sane datasheet bounds, not exact-reference calibration - see
+"""Flash-tier automated tests: real SCD30/BMP3xx/SGP40/ISL29125 (incl. VOC algorithm) reading
+plausibility (sane datasheet bounds, not exact-reference calibration - see
 tests_hardware/manual/manual_sensor_accuracy.py for the reference-calibrated variant)."""
 
 from __future__ import annotations
@@ -38,3 +38,11 @@ def test_sgp40_voc_algorithm_produces_plausible_and_stable_results(board: Board)
     match = RESULT_RE.search(output)
     assert match is not None, f"device script printed no RESULT line - full output:\n{output}"
     assert match.group(1) == "PASS", f"SGP40/VOC algorithm quality check failed: {match.group(2).strip()}\nfull output:\n{output}"
+
+
+def test_isl29125_real_reading_is_within_datasheet_plausible_bounds(board: Board) -> None:
+    # dev-only sensor (i2c1); ~15s worst-case wait window - see the device script's own docstring.
+    output = board.run_isolated(DEVICE_SCRIPTS / "isl29125_plausibility_read.py", timeout_s=30.0)
+    match = RESULT_RE.search(output)
+    assert match is not None, f"device script printed no RESULT line - full output:\n{output}"
+    assert match.group(1) == "PASS", f"ISL29125 plausibility check failed: {match.group(2).strip()}\nfull output:\n{output}"

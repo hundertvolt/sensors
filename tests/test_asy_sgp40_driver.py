@@ -2306,6 +2306,40 @@ def test_measure_index_and_raw_returns_none_index_when_raw_measurement_fails() -
     assert (voc_index, raw, serialized, deserialized) == (None, None, False, False)
 
 
+# ---------------------------------------------------------------------------
+# Bus-hazard coverage moved from tests/test_bus_hazard_multi_device.py (SPECIFICATION.md Part
+# C.8): genuinely SGP40-specific (only this driver's own API and its own general-call exception),
+# not a generic cross-sensor shape.
+# ---------------------------------------------------------------------------
+
+def test_touches_only_its_own_address_except_reset_which_touches_only_the_general_call_address() -> None:
+    sgp = make_sgp()
+    fake_bus = bus(sgp.i2c_sgp40.i2c_device.i2c)
+    for _ in range(10):
+        fake_bus.read_queue.append(_word(0x8000))
+    queue_successful_init(fake_bus)
+
+    async def exercise_non_reset() -> None:
+        for call in (
+            sgp.setup,  # includes one initialize() -> _reset() call - excluded from this half's assertion below
+            sgp.get_raw,
+            lambda: sgp.measure_raw(25, 50),
+            lambda: sgp.measure_index_and_raw(25, 50),
+        ):
+            try:
+                await call()
+            except Exception:  # only the addresses touched matter for this sweep, not success
+                pass
+
+    with _FastAsyncSleep():
+        run(exercise_non_reset())
+
+    touched = {entry[1] for entry in fake_bus.log if entry[0] in ("writeto", "readfrom_into", "readfrom_mem", "writeto_mem")}
+    # setup() calls initialize() -> _reset(), so 0x00 (the general call address) is expected here
+    # too; this sweep's job is only to confirm no *third*, unexpected address shows up.
+    assert touched <= {0x59, 0x00}, f"SGP40_I2C touched unexpected address(es): {touched - {0x59, 0x00}}"
+
+
 if __name__ == "__main__":
     import microtest
 

@@ -72,7 +72,7 @@ def test_isl29125_cross_device_concurrency_with_its_i2c1_neighbours(board: Board
 
 def test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads(board: Board, scd30_continuous_measurement_triggered: None) -> None:
     # Real-hardware counterpart to tests/_bus_hazard_catalog.py's own
-    # scenario_a_write_does_not_disturb_concurrent_sibling_reads (BUS_HAZARD_TEST_GENERATION_REQUIREMENTS.md):
+    # scenario_a_write_does_not_disturb_concurrent_sibling_reads (SPECIFICATION.md Part C.8):
     # closes a real gap the generic mock-tier scenario surfaced - no prior real-hardware test proved
     # a WRITE from one dev/i2c1 occupant landing concurrently with its siblings' own reads, only
     # same-device write-vs-own-read and the SGP40 general-call broadcast case. Uses ISL29125 (a

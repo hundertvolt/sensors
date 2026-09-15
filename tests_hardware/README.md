@@ -854,3 +854,127 @@ genuine, surprising miscoverage plus two closeable gaps:
 
 Same honesty note again: the two new/closed items above are `ruff`/`mypy`-clean but unverified
 against real silicon this session.
+
+## Tenth pass - full test-suite sweep for tier/layering completeness and wrongly-trusted tests, beyond bus-hazard (project owner, 2026-09-15, BACKLOG.md HIGH PRIORITY item)
+
+Direct follow-up to the Ninth pass's own SGP40 miscoverage: is that failure mode (a test whose
+name/pattern matches a hazard but whose real call chain doesn't reach it) present anywhere else in
+the suite, and does E.6.6/E.6.1's tier-parity requirement hold outside the bus-hazard domain? Swept
+UART, WiFi/network/NTP/DNS, FRAM/memory/reboot/watchdog, and webserver/notification/config-push -
+each domain's own real call chains traced against the test files that claim to exercise them, not
+grepped for coverage. No second instance of the exact SGP40 bug (a real hardware trigger silently
+substituted with a software-only one) turned up, but several real tier-parity gaps did.
+
+**Fixed this pass:**
+
+- **`isl29125_plausibility_read.py` was a real, working, silicon-ready device script with no pytest
+  wrapper at all** - written during the ISL29125 promotion (PR #83) but never wired into
+  `test_sensor_accuracy.py`, so it never actually ran as part of this suite. Closed:
+  `test_isl29125_real_reading_is_within_datasheet_plausible_bounds`.
+- **ISL29125's entire real REST config-push surface had zero bench-tier coverage** - unlike SCD30
+  (explicitly excluded, zero `_push_callbacks`), ISL29125 has four hardware-backed, read-back-able
+  fields (`Resolution`/`Range`/`IrCompOffset`/`IrCompAdjust`) with no exclusion comment, suggesting
+  oversight rather than a decision. Closed:
+  `test_isl29125_resolution_range_and_ir_comp_push_over_real_rest_and_readback` in
+  `test_sensor_config_push_over_real_hardware.py` - also pushes `RangeAuto: False` alongside `Range`,
+  since under real auto-ranging (the driver's own default) the chip's own range bit is the state
+  machine's choice, not the user's setting, and `_read_sensor_dict()` omits `Range` from a live
+  snapshot entirely rather than misreport it (`asy_isl29125_driver.py`'s own comment) - a real
+  readback of a pushed `Range` needs auto-ranging off first.
+- **FRAM's write-protect gate (`get_write_protected()`/`set_write_protected()`) had real flash-tier
+  coverage with its own bench-vs-flash split never written down anywhere**, unlike storage-pause
+  gating's own explicitly-documented split. Confirmed structural (E.6.6 exception 2: neither method
+  has a REST route at all, by grep) and now stated as such directly in `test_fram_storage.py`.
+- **`SystemService.start_and_check_tasks()`'s own real restart-a-dead-task mechanism had no
+  real-hardware test at all** - the exact recovery rung CLAUDE.md's memory-safety-discipline rule
+  leans on ("trust `system_service.py`'s task supervisor to restart a task that still dies"), proven
+  only at the mock/twin tiers. New: `device_scripts/system_service_restarts_a_real_dead_task.py` +
+  `tests_hardware/flash/test_task_supervisor.py`'s
+  `test_start_and_check_tasks_restarts_a_real_dead_task` - a starter that dies immediately, checked
+  called at least twice within one real `_TASK_CHECK_TIME` (2s) cycle. Deliberately stops at ~3.6s
+  real time (task_errors capped at 200): a task that dies immediately adds `_TASK_FAIL_INCREMENT`
+  (100) per cycle, and `_TASK_FAIL_MAX` (300) would otherwise trip a real reboot around the 4th
+  cycle (~7s) - not what this script is testing.
+- **`PUT /notification`'s `PauseTime` field was initially misjudged as an unfixable structural
+  exception during this pass (no GET /notification field reads it back) - wrong**: buildgen's own
+  generated `_notification_status()` puts a live `PauseTime` (`await notification.get_override_led()`)
+  into `GET /status`'s own `"notification"` section on every real device, the same real signal
+  `tests/test_digital_twin_sensortask_integration.py`'s own
+  `test_put_pause_time_round_trips_and_counts_down_over_real_http` already reads. Closed (once
+  found, not left as the wrong "exception"):
+  `test_notification_pause_time_push_counts_down_over_real_rest` in
+  `test_sensor_config_push_over_real_hardware.py` - proves the real `auto_led_override()` background
+  task actually decrements the pushed value to 0 on real hardware, not just that the PUT stuck.
+
+**Confirmed structural exceptions (no fix possible, recorded so the absence reads as a decision, not
+a gap):**
+
+- **`PUT /notification`'s `lightCmdLED` field has no bench-tier equivalent, and currently cannot** -
+  it drives the Neopixel directly, and WS2812 has no read protocol at all (the same reason its own
+  timing check is manual-only - see the Known assumptions entry above). Not fixable without a real
+  scope/logic-analyzer in the bench rig's own automated toolchain.
+- **Neopixel/WS2812 signal timing** - already a documented structural exception (Known assumptions
+  entry above); reconfirmed still accurate, not re-litigated.
+- **SCD30's real IRQ-pin edge and same-device write-vs-own-read** - already-documented structural
+  exceptions (zero `_push_callbacks`); reconfirmed, not re-litigated.
+
+**Named, not fixed this pass** (real, credible findings from the domain sweeps below, each requiring
+either a dedicated real-hardware session to get right or a project-owner decision this pass
+shouldn't make unilaterally - disclosed rather than silently dropped, per BACKLOG.md's own
+"resolved or migrated, never silently dropped" rule):
+
+- **UART's sharpest invariant (`asy_uart_driver.py`/`asy_uart_comm.py` may never block the loop -
+  CLAUDE.md) has its F.5.8 half real-hardware-tested only via a hand-rolled clamp, never the shipped
+  driver's own `ready()`/`_buffered()`.** `device_scripts/uart_read_never_blocks_the_loop.py`
+  deliberately uses raw `machine.UART` "so it stays true independently of how `asy_uart_driver` is
+  arranged internally" (its own docstring) - honest, not a wrongly-trusted test, but it means no
+  real-hardware run ever calls the actual shipped clamp. F.5.9 (idle poll rate) already has a
+  real-driver-object proof (`uart_idle_poll_rate.py`); F.5.8 needs the analogous script.
+- **Bench-tier UART traffic under load never issues a multi-chunk SET** - `UartLinkExerciser.
+  _exercise_loop()` only ever calls `uart_get(_CMD_BANNER)`, so "bench ⊇ flash" (E.6.1) doesn't hold
+  for the multi-chunk SET train the flash tier proves (`uart_crossover_exchange.py`). The exerciser
+  already has `_CMD_ECHO`/`_set_callback` wired for exactly this; wiring a periodic SET into the live
+  loop touches the real production exerciser, not just a test, so it's named here rather than done
+  blind.
+- **The mock-tier UART hazard catalog (~20 fault-injection scenarios: corruption, drop, truncate,
+  duplicate, receive-overrun, lost-final-ACK, peer-reset-mid-transaction, and more) has only two
+  real-hardware equivalents (silence, baud desync).** Plausibly a genuine E.6.6 structural exception
+  (no MITM device sits on the crossover jumper to corrupt/drop/duplicate real bytes) but - unlike the
+  SCD30/FRAM-write-protect precedents above - this was never actually written down as one anywhere,
+  and a hand-built corrupt frame via a second raw `machine.UART` write (the same technique the mock
+  tier's own `raw_frame()` helper uses in-process) is at least plausible. Needs someone with bench
+  access to actually try it before this can be closed either way.
+- **`BenchBridge.rotate_ap_password()` is built (real `nmcli`) but has zero call sites** - the bench
+  five-backend table (E.6.1) lists "credential rotation" as a real fault-injection capability the
+  harness supports, but no automated test or `manual/` script ever exercises it, so the documented
+  capability table currently overstates real coverage. Not attempted here deliberately: a botched
+  credential-rotation test on the shared bench rig's real AP risks exactly the kind of
+  destructive-network-change lockout CLAUDE.md's dead-man's-switch rule (Part B.13) exists for: this
+  needs a project-owner-reviewed design, not a blind first attempt.
+- **`_reboot()`'s own alarm-pool-exhaustion fallback (`_force_watchdog_starve = True`) is mock-only.**
+  The technique to exhaust a real alarm pool already exists on real hardware
+  (`fram_pause_unpause_and_gating.py`), so a flash-tier script is straightforward in principle - it
+  would deliberately trigger a real watchdog-starvation reset (safe, same shape as
+  `test_watchdog_starvation.py`), but getting the real timing right without a live board to verify
+  against is exactly the kind of thing worth doing in a dedicated real-hardware session rather than
+  blind.
+- **NOTIFY's own FRAM chunk has no hard-reset-recovery bench test**, unlike SGP40's
+  (`test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly`). Extending that
+  ~5-minute, 3-real-hard-reset test to a second FRAM-backed module needs first identifying NOTIFY's
+  own equivalent of `BackupTS` (an observable "a fresh write just completed" signal) - not confirmed
+  to exist yet, so left named rather than guessed at.
+
+**Confirmed clean, no fixes needed** (traced end-to-end, not just grep-counted): WiFi's real bench
+worker call chains (`ap_down`/`ap_up`, UDP block/redirect, `netem` fault injection, hotspot
+role-reversal, spoofed-NTP-source) all genuinely reach the real mechanism their names claim; the
+wedged-WiFi `isconnected()` backstop has real, automated bench coverage with real timing data
+(`test_network_resilience.py`), not just a one-off manual finding; UART's flash-tier fault-injection
+and idle-poll-rate scripts, and mock/twin/flash parity for the core happy-path and one-sided-silence
+scenarios, are all genuine; BMP3xx/SGP40's REST config-push is proven end-to-end via real
+GET-after-PUT readback; the bench mempause test and the flash/bench memory-stress split are both
+honestly and correctly scoped, not wrongly-trusted; SGP40's `SGPResetVOC` push is a thin test (it
+never asserts the reset's own effect) but says so in its own comment - not a new instance of the
+Ninth pass's bug, just worth naming.
+
+Same honesty note as every real-hardware addition in this file: the new/changed files above are
+`ruff`/`mypy`-clean but unverified against real silicon this session.

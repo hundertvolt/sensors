@@ -1489,13 +1489,33 @@ a bus (project owner's explicit standing direction)**: every promoted I2C/SPI de
 same-device read-vs-write concurrency coverage, cross-device interleaving coverage (if sharing a
 bus), and an address/command sweep, across as many of four tiers as apply (cheapest first):
 
-1. **Mock/unit** (`tests/test_bus_hazard_multi_device.py`) — byte-exact wire-log proof, plus the
-   full address/command sweep. **Automatically assembled per-bus coverage also exists**, generated
-   from a device's own real TOML wiring rather than hand-paired
-   (`tests/test_bus_hazard_generated.py` + the per-driver adapter catalog in
-   `tests/_bus_hazard_catalog.py`, BUS_HAZARD_TEST_GENERATION_REQUIREMENTS.md) — runs alongside the
-   hand-written tests today, pending full parity (see the promotion checklist below), not replacing
-   them yet.
+1. **Mock/unit, two distinct collections, by design (project owner's own reframing,
+   2026-09-15) — not one migrating into the other**:
+   - **Sensor/module-specific hazards** — a driver's own known quirk, whose assertions only make
+     sense for that one driver (ISL29125's destructive `0x08` status-read interleave, a driver's
+     own full-API-surface address/command sweep) — live in that driver's own test file
+     (`tests/test_asy_<driver>_driver.py`), alongside its other unit tests. These are hand-written,
+     from the datasheet, and stay that way; no generic template could derive them.
+   - **Genuinely generic, cross-sensor/driver-agnostic hazards** — the scenario *shape* (cross-device
+     interleaving, general-call/broadcast effects, fault isolation, parallel sessions on one
+     device, and whatever else belongs in this catalog) applies regardless of which specific
+     drivers are involved — live in `tests/test_bus_hazard_multi_device.py`, which runs
+     unconditionally as the permanent home for this category. It is not a staging area for the
+     generated scheme below and is never retired or thinned once a generated equivalent exists for
+     one of its scenarios (see the note at the end of this list) — extend it directly whenever a new
+     driver-agnostic hazard shape is identified, the same way a new sensor-specific one goes into
+     that driver's own file.
+   - **Automatically assembled per-bus coverage also exists, alongside both of the above**,
+     generated from a device's own real TOML wiring rather than hand-paired
+     (`tests/test_bus_hazard_generated.py` + the per-driver adapter catalog in
+     `tests/_bus_hazard_catalog.py`) — a third, complementary source of generic cross-sensor
+     coverage, not a replacement for the hand-written generic collection above. The two are
+     deliberately allowed to overlap in what they prove (layered coverage, not redundancy to prune)
+     since they answer different questions: the generated scheme proves "this real device's actual
+     wiring survives its own worst case," assembled automatically from the TOML so a new device or
+     rewired bus needs no hand-written test at all; the hand-written generic file proves a hazard
+     *shape* in isolation (including shapes the generated scheme structurally cannot produce, e.g.
+     a rogue general call against a bus with no real broadcasting occupant).
 2. **Digital twin** (`tests/test_digital_twin_bus_hazard_concurrency.py`) — the real object graph
    against higher-fidelity chip fakes under genuine concurrent task load. Its shared
    `_run_real_task_graph_and_assert_healthy()` helper also runs one TOML-driven generic pass over the
@@ -1564,28 +1584,15 @@ optional polish (project owner's explicit direction):**
      `vocalgorithm_reset()` instead and never reaches it. A bench test cannot force this hazard
      without a real reboot mid-load, which would confound the very load under test — confirmed by
      reading the real call chain, not assumed from the field's name.
-- **A hand-written pairwise test is retired only once its exact scenario has a generated equivalent
-  with parity or better** — never before. `test_bus_hazard_multi_device.py` stays in place, run
-  alongside the generated coverage, until every one of its tests has a demonstrated generated
-  counterpart; only then is it deleted outright, not thinned in place (BUS_HAZARD_TEST_GENERATION_REQUIREMENTS.md
-  tracks the parity status while this migration is in progress).
-
-**Per-real-device applicability, re-verified against all 6 device TOMLs (BUILD_CHAIN_PLAN.md's
-Session 6.2)**: "cross-device interleaving if sharing a bus" only actually applies to a device that
-does. Checked directly against every real `devices/*.toml`: `wozi` wires `sgp40`+`bmp3xx` together
-on `i2c1`, and `dev` wires `scd30`+`sgp40`+`isl29125` together on `i2c1` (the `isl29125` instance is
-dev-only — the ISL29125 migration's own scoping) — the only two real devices with any sensor pair
-sharing a bus at all. `arzi`/`klkizi`/`grkizi`/`schlafzi` each wire `scd30` alone on `i2c0` and
-`sgp40` alone on `i2c1` (no `bmp3xx`/`isl29125` instance at all) — there is no cross-device
-interleaving window on these 4 devices for tier 2's own
-`test_<device>_real_task_graph_survives_concurrent_bus_load_including_a_real_general_call()`
-scenario to prove anything about, so that test staying wozi/dev-only is complete coverage, not a
-gap to extend. FRAM's own same-device hazard coverage (tier 2's remaining tests: injected-fault
-recovery, RX-overrun absorption, write-protect/storage-pause gating) and the WiFi-disconnect-under-
-load scenario are device-independent by construction (FRAM sits alone on its own dedicated SPI bus
-on every real device, unaffected by which other sensors exist alongside it) — proven once, against
-one real assembled object graph (wozi), rather than six times over at six times the real
-wall-clock cost (the WiFi-disconnect scenario alone is an unavoidable real ~75s).
+- **`test_bus_hazard_multi_device.py` is never retired** (project owner's own reframing,
+  2026-09-15, superseding an earlier plan to retire it once every test had a generated
+  counterpart) — it is the permanent home for genuinely generic, driver-agnostic hazard shapes
+  (item 1 above), run unconditionally alongside the generated scheme, not a staging area migrating
+  into it. A generated equivalent existing for one of its scenarios is not a reason to delete or
+  thin that scenario; the two are complementary, layered coverage. A test in this file that turns
+  out, on inspection, to actually be sensor/module-specific (its assertions only make sense for one
+  driver's own quirk) moves into that driver's own test file instead — the file's own bar is
+  "genuinely generic," not "not yet generated."
 
 **Per-real-device applicability, re-verified against all 6 device TOMLs (BUILD_CHAIN_PLAN.md's
 Session 6.2)**: "cross-device interleaving if sharing a bus" only actually applies to a device that
@@ -4651,30 +4658,25 @@ host-side pytest, not MicroPython:
 - `tests_scripts/buildgen_fixtures/novel_combo.toml` — extend the synthetic multi-driver fixture so
   the driver is exercised there too, the same way `uart_link`/`isl29125` both were.
 
-**Bus-hazard coverage, all four tiers, standing rule (CLAUDE.md, explicit)** — same-device
-read/write concurrency, cross-device interleaving with every real neighbour on a shared bus, and an
-address/command sweep:
-- **Sensor-specific hazards are hand-written, from the datasheet, and probably always will be** —
-  they encode a specific chip's own failure mode (ISL29125's destructive `0x08` status read;
-  SCD30's finite NVM write budget) that no generic template could derive. `tests/
-  test_bus_hazard_multi_device.py` (mock) and its digital-twin/`tests_hardware/flash/`/
-  `tests_hardware/bench/` siblings are the four files to add to, following the shape of the
-  driver's closest existing precedent there.
-- **Cross-sensor hazard coverage — check current status before treating either half of this bullet
-  as settled.** As of this writing (2026-09-14), cross-sensor tests are still hand-paired by
-  whoever promotes each driver (e.g. ISL29125-vs-SGP40, PR #83) — write one per real bus-sharing
-  neighbour, in all four tiers, the same way. **A TOML-driven auto-generation capability for
-  exactly this — assembling a per-bus "worst case, every real occupant, all at once" test
-  automatically from the device's own wiring, for both the twin and hardware suites — is in
-  active design** (`BUS_HAZARD_TEST_GENERATION_REQUIREMENTS.md` if it still exists, or its own
-  landed PR's description otherwise; check `git log --oneline -- BUS_HAZARD_TEST_GENERATION_REQUIREMENTS.md`
-  and the buildgen driver-to-bus mapping in `buildgen/twin_wiring.py`/`buildgen/buildspec.py` for
-  whether it's landed). **Once it has landed**, this bullet's own instruction inverts: confirm the
-  new driver's cross-sensor coverage is picked up automatically by the generator (its own tests,
-  per K.3 item wherever that capability's own checklist entry ends up), and hand-write a pairwise
-  cross-sensor test only for something the generic catalog genuinely can't express — not as the
-  default path anymore. Until then, the hand-paired approach above is the real, current bar; don't
-  claim generation coverage that doesn't exist yet.
+**Bus-hazard coverage, all four tiers, standing rule (CLAUDE.md, explicit — full detail in Part
+C.8)** — same-device read/write concurrency, cross-device interleaving with every real neighbour on
+a shared bus, and an address/command sweep:
+- **Sensor-specific hazards are hand-written, from the datasheet, and live in the driver's own test
+  file** (`tests/test_asy_<driver>_driver.py`), never in the cross-sensor collection — they encode a
+  specific chip's own failure mode (ISL29125's destructive `0x08` status read; SCD30's finite NVM
+  write budget) that no generic template could derive. Add the digital-twin/`tests_hardware/flash/`/
+  `tests_hardware/bench/` equivalents too, following the shape of the driver's closest existing
+  precedent there.
+- **Cross-sensor hazard coverage is automatic for the generic scenario catalog, no longer
+  hand-paired per driver.** Add the new driver to `tests/_bus_hazard_catalog.py`'s
+  `I2C_HAZARD_CATALOG` (an adapter: construct/seed/read_once/exercise, plus write_once/general_call
+  if it has a safe write or a real broadcast) and `tests/test_bus_hazard_generated.py` picks up
+  every real bus this driver shares with another occupant automatically, on every real device TOML,
+  with no further edits (C.8's own promotion checklist lists the full requirements). Only write a
+  new **hand-written** cross-sensor test in `tests/test_bus_hazard_multi_device.py` for a scenario
+  *shape* the generated scheme structurally can't produce (e.g. a rogue general call against a bus
+  with no real broadcasting occupant) — that file is the permanent home for such shapes, not a
+  fallback for drivers the generator hasn't reached yet.
 
 ## K.7 `devices/*.toml` and `tests_hardware/bus_topology.py`
 
