@@ -417,9 +417,11 @@ if __name__ == "__main__":
         asyncio.run(main(_config))
     except KeyboardInterrupt:
         # Same MicroPython Unix-port asyncio.run()/KeyboardInterrupt gap run_generic_integration.py's
-        # identical handler works around: a SIGINT landing inside gc_collect_start_common()'s window
-        # can leave the heap locked for the rest of the process, and main()'s own `finally` (which
-        # calls flush_fram()/flush_scd30()) cannot be relied on to run first - unwedge before touching
+        # identical handler works around (SPECIFICATION.md Part F.6, now defense in depth only per
+        # its amendment - Part B.14.1 forces safe SIGINT delivery for this project's own Unix-port
+        # build): a SIGINT landing inside gc_collect_start_common()'s window can leave the heap
+        # locked for the rest of the process, and main()'s own `finally` (which calls
+        # flush_fram()/flush_scd30()) cannot be relied on to run first - unwedge before touching
         # either flush, or a --fram-state-path/--scd30-state-path run can fail to persist on exit.
         unwedge_heap_after_interrupt()
         machine.flush_fram()

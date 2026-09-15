@@ -849,6 +849,218 @@ nmcli connection up "Wired connection 1"
 5. Once confirmed, disarm: `sudo systemctl stop bench-recovery.timer bench-recovery.service`.
    Confirm it's gone.
 
+## B.14 MicroPython build overrides: a canonical, zero-touch patching framework
+
+**Standing need**: a handful of real problems (so far: one fixed, two identified and planned) need
+MicroPython's own *build behavior* changed — not this project's code — and none of them are things
+upstream exposes as an ordinary, safe-by-default option. The wrong way to solve this is a one-off
+hand-edit to the fetched `$PICO_TOOLCHAIN_DIR/micropython` checkout: it has to be reapplied by hand
+after every fresh clone or version bump, it is invisible to code review, and it leaves no trace of
+*why* once someone forgets. **`toolchain/micropython_overrides.py` is the one canonical place these
+live instead** — every override there generates files or extra build flags entirely *outside* the
+fetched checkout (never a single byte written into it), applied automatically by
+`toolchain/setup_toolchain.py` on every build, from tracked, reviewed Python code. Each override
+also *verifies a known anchor* in the pinned source before doing anything — a short excerpt of the
+exact text it depends on — and raises a clear, actionable `OverrideError` if that anchor is gone,
+rather than silently building an unpatched (or, worse, half-patched) binary. This is the same
+"re-check every MicroPython-facing construct on a version bump" discipline CLAUDE.md's "Platform
+target" section already establishes as standing practice — these anchors are exactly the kind of
+thing to re-verify on the next `toolchain/versions.toml` `[micropython] ref` bump, alongside
+everything else that section already tracks.
+
+**Why not just a `CFLAGS_EXTRA -D...`, the way the mbedtls GCC-14 workaround and
+`MICROPY_PY_SYS_SETTRACE=1` already do it?** That remains the right tool whenever the target macro
+is itself written as `#ifndef X #define X ... #endif` upstream (lwIP's own options are - B.14.2).
+It does **not** work for a plain, unguarded `#define` (B.14.1's case): confirmed directly
+(2026-09-15) that a later plain `#define` in the same translation unit always wins over an earlier
+command-line `-D`, unconditionally, and this project's own build already treats the resulting
+"macro redefined" warning as a hard failure (`build_unix_port()`/`build_firmware()` grep their own
+output for `warning:`). Those cases need a different mechanism - B.14.1 below.
+
+**General shape every override in `toolchain/micropython_overrides.py` follows**: a `verify_*()`
+function that reads one specific pinned-source file and raises `OverrideError` (naming the exact
+file/line it expected, what to re-derive, and what real problem skipping the check would
+reintroduce) if a known anchor string is missing; an `apply_*()` function that calls the verify
+step first, then either writes small generator files into a directory the caller supplies
+(never inside `micropython_dir`) or returns extra `make`/CMake variables, or both; and a docstring
+covering the exact mechanism, why it's the mechanism (not a simpler one that doesn't actually
+work), and what was verified. `toolchain/setup_toolchain.py`'s `build_unix_port()`/`build_firmware()`
+call the relevant `apply_*()` unconditionally, every build - there is no opt-out flag, since an
+override existing at all means the *unpatched* build is the one considered unsafe/insufficient.
+
+**The first real test of any override here is not a dedicated test file - it's every ordinary
+build.** Because `apply_*()` runs unconditionally inside `build_unix_port()`/`build_firmware()`,
+simply running `uv run toolchain/setup_toolchain.py setup` (or `test`, or any of `scripts/test.sh`/
+`scripts/run_digital_twin_ci.sh`/`scripts/run_unix_port_integration.sh`/`scripts/build_firmware.py`
+— every one of them reaches the toolchain build through this same entry point, with no alternate
+path anywhere in this project's own tooling) already exercises the anchor check and the generated
+override end to end, on a genuinely fresh checkout, before a single dedicated test runs. A broken
+anchor or a build that no longer accepts the injected variables surfaces immediately as a hard
+`OverrideError`/build failure at that point - `tests_scripts/test_micropython_overrides.py`'s own
+synthetic-fixture coverage exists for fast, isolated *unit* feedback on the override logic itself
+(and for asserting the generated content's exact shape, which a successful build alone doesn't
+check), not as the first or only place a regression would be caught.
+
+### B.14.1 `unix_kbd_intr` (implemented) - safe SIGINT delivery for the Unix port test binary
+
+**The problem, found root-causing a real, intermittent `digital-twin-e2e` CI failure**
+(2026-09-14/15): `scripts/_digital_twin_ci_suite.py`'s shutdown step sends a real `SIGINT` to the
+twin subprocess and expects a clean exit. Intermittently, only at `gc.threshold=32768` (never at
+`gc.threshold=-1` in the same job), the process instead exited with code 1. Root-caused by
+reproducing it directly (a tight hammer loop of the real `Run 3`/`Run 5` suite functions,
+gc.threshold=32768, immediate SIGINT after boot, across all 6 real devices): the crash is a
+genuinely **corrupted, impossible traceback** —
+```
+Traceback (most recent call last):
+  File "digital_twin/run_generic_integration.py", line 473, in <module>
+  File "/home/user/sensors/digital_twin/machine.py", line 1, in _build_i2c_chip
+TypeError: 'frame' object isn't iterable
+```
+— line 473 is a plain `print()` statement that cannot call anything, `machine.py:1` is that file's
+own module docstring not a function definition, and MicroPython has no user-facing `frame` type at
+all. This is VM-internal state corruption, not an application bug: `mp_obj_get_type_str()` read a
+type name from memory that used to hold (or still holds) an internal frame/code-state struct.
+
+**Root mechanism, confirmed against the pinned `v1.29.0` source** (`ports/unix/unix_mphal.c`'s
+`sighandler()`, gated by `ports/unix/variants/mpconfigvariant_common.h`'s `MICROPY_ASYNC_KBD_INTR
+(!MICROPY_PY_THREAD_GIL)` - true for this project's non-threaded "standard" variant build): the
+Unix port's default SIGINT handling calls `nlr_raise()` - an immediate, `longjmp`-based stack
+unwind - **directly from the async signal handler**, which can fire at *any* point in the
+interpreter's C execution, not just a safe bytecode-dispatch boundary. `gc.threshold(32768)` (vs.
+MicroPython's own reactive-only `-1` default) means proactive `gc_collect()` calls happen far more
+often, at essentially arbitrary points in real wall-clock time - which is exactly why the exit-1
+flake only ever showed up at that threshold: it dramatically raises the odds that a real SIGINT
+lands mid some non-reentrant operation. This is the *same root mechanism* as the already-fixed
+Part F.6 heap-lock bug (SIGINT landing mid `gc_collect()` specifically leaves `GC_COLLECT_FLAG`
+stuck) - `digital_twin/unix_port_gc_unwedge.py`'s `unwedge_heap_after_interrupt()` patches that one
+specific downstream symptom, but does nothing for an interrupt landing mid some *other*
+non-reentrant operation (frame/exception bookkeeping, in the reproduced case), which can corrupt VM
+state beyond anything a userspace `gc.collect()` call can repair. Closing the root cause - never
+delivering the interrupt at an unsafe point at all - closes every symptom in this whole class, not
+just the one already found.
+
+**The fix**: MicroPython's own `unix_mphal.c` already implements the safe alternative in its
+`#else` branch (used automatically whenever `MICROPY_ASYNC_KBD_INTR` is 0) -
+`mp_sched_keyboard_interrupt()`, which only *schedules* the interrupt, actually raised later at the
+VM's own next safe bytecode-dispatch checkpoint via `mp_handle_pending()`. This is the same
+deferred-signal-handling pattern CPython itself uses. `toolchain/micropython_overrides.py`'s
+`apply_unix_kbd_intr_override()` forces this path for the Unix "standard" variant this project's
+tests/twin actually run under, without editing anything inside the fetched checkout:
+
+- `verify_unix_kbd_intr_anchor()` checks that `ports/unix/variants/mpconfigvariant_common.h` still
+  contains the exact pinned line `#define MICROPY_ASYNC_KBD_INTR         (!MICROPY_PY_THREAD_GIL)`
+  before doing anything else.
+- The mechanism: `make`'s own `VARIANT_DIR` (`ports/unix/Makefile`: `VARIANT_DIR ?=
+  variants/$(VARIANT)`) is only ever defaulted with `?=`, so passing it explicitly on the command
+  line cleanly redirects the whole variant-config lookup with no `-I`-ordering tricks needed (a
+  `CFLAGS_EXTRA`-appended `-I` was tried and empirically confirmed to lose: `ports/unix/Makefile`'s
+  own `-I$(VARIANT_DIR)` is added to `CFLAGS` *before* `CFLAGS_EXTRA`, so the compiler always finds
+  the real, unpatched header first). The override directory contains a generated
+  `mpconfigvariant.h` that `#include`s the real one **by absolute path** and then
+  `#undef`/`#define`s `MICROPY_ASYNC_KBD_INTR` to `0`; a generated `mpconfigvariant.mk` that plain
+  `include`s the real one; and (mirrored via the freeze-manifest DSL's own `include()` primitive,
+  never copied - so it can never silently drift from a future pinned-version change) a generated
+  `manifest.py` that includes the real one. **Deliberately never a symlink**: [MicroPython issue
+  #12671](https://github.com/micropython/micropython/issues/12671) documents that the Unix port's
+  build breaks when the variant directory itself is a symlink, because the real
+  `mpconfigvariant.h`'s own `#include "../mpconfigvariant_common.h"` fails to resolve through it -
+  using a real file with an absolute-path `#include` instead sidesteps this entirely, since the
+  *real* header's own relative include still resolves correctly relative to its own real,
+  non-symlinked location. `VARIANT=standard` is passed alongside `VARIANT_DIR` explicitly, since
+  otherwise `VARIANT_DIR ?= variants/$(VARIANT)`'s own companion line (`VARIANT ?=
+  $(notdir $(VARIANT_DIR:/=))`) would derive `VARIANT` from the *override* directory's name and
+  rename `BUILD ?= build-$(VARIANT)` away from `build-standard`, which every other script in this
+  repo hardcodes.
+- **This whole pattern (an external, `_DIR`-suffixed variable redirecting a port's own config
+  lookup to an out-of-tree directory) is not a workaround invented for this project** - it is
+  MicroPython's own officially-documented mechanism on other ports (`make BOARD=myboard
+  BOARD_DIR=~/src/projects/myboard`, from the project's own porting guide); the Unix port's
+  `VARIANT_DIR` is the same `?=`-based mechanism, just not spelled out in that port's own README
+  (which only documents selecting an *in-tree* variant via `VARIANT=`).
+
+**Verified**: preprocessing the resulting `unix_mphal.c` directly confirms the safe branch
+(`mp_sched_keyboard_interrupt()`) is selected, never `nlr_raise()`. End-to-end: a hammer loop of
+the real `Run 3` (sustained bus-fault matrix) + `Run 5` (bounded-fault recovery) suite functions at
+`gc.threshold=32768`, across all 6 real devices, ran clean for a combined 700+ iterations against
+the patched binary with zero shutdown failures - the same harness reproduced the real corrupted
+traceback directly against the unpatched, upstream-default binary. `build_unix_port()` (both call
+sites - the frozen-verification build and the vanilla test-rig rebuild) applies this unconditionally.
+Unit coverage (synthetic fixture trees, no real compile): `tests_scripts/test_micropython_overrides.py`.
+
+**Re-verification checklist for a MicroPython version bump** (do this alongside CLAUDE.md's
+existing "Platform target" re-check practice, not as a separate pass): re-read
+`ports/unix/unix_mphal.c`'s `sighandler()` and `ports/unix/variants/mpconfigvariant_common.h` at
+the new pinned tag. If the anchor line is untouched, nothing else to do -
+`verify_unix_kbd_intr_anchor()` passing is itself the confirmation. If it changed shape (renamed,
+`#ifndef`-guarded, or the whole async/immediate-interrupt mechanism restructured), update the
+anchor string and, if the mechanism itself changed, `apply_unix_kbd_intr_override()`'s generated
+`#undef`/`#define` pair - then re-run this section's own hammer-loop verification before trusting
+the new pin's shutdown safety again; do not assume "it built" is sufficient. If a future
+MicroPython release makes deferred keyboard-interrupt delivery the Unix port's own default (i.e.
+inverts `MICROPY_ASYNC_KBD_INTR`'s default value), this whole override becomes a documented no-op
+and can be retired outright once confirmed.
+
+### B.14.2 `lwip_connection_counts` (documented, not yet implemented)
+
+**Real future need**: increase the number of simultaneous TCP connections/`netconn`s lwIP allows
+(rp2 port firmware only - `ports/rp2/lwip_inc/lwipopts.h`), for scenarios needing more concurrent
+sockets than the built-in defaults allow (the real webserver's own `max_connections` ceiling is a
+separate, `src/`-level concern - this is about how many the underlying TCP stack itself can hold
+open at once, upstream of that).
+
+**Mechanism, verified workable against the pinned source, not yet wired in**: unlike B.14.1's case,
+lwIP's own `lib/lwip/src/include/lwip/opt.h` guards every one of these options properly -
+```c
+#if !defined MEMP_NUM_TCP_PCB || defined __DOXYGEN__
+#define MEMP_NUM_TCP_PCB                5
+#endif
+```
+(likewise `MEMP_NUM_NETCONN`, default `4`, and every other `MEMP_NUM_*`/`TCP_*` count in that
+file) - and this project's own `ports/rp2/lwip_inc/lwipopts.h` does not currently set any of them,
+so there is nothing to conflict with. A plain `CFLAGS_EXTRA` `-D` addition in `build_firmware()`
+(the same mechanism already carrying the mbedtls GCC-14 workaround) would therefore work cleanly,
+e.g. `-DMEMP_NUM_TCP_PCB=8 -DMEMP_NUM_NETCONN=8` - no generated files, no `VARIANT_DIR`-style
+redirection needed at all.
+
+**What a real implementation still needs**: a `verify_lwip_connection_counts_anchor()` checking the
+exact `#if !defined MEMP_NUM_TCP_PCB` guard (and each other option actually being overridden) is
+still present and still a real, honored `#ifndef`-family guard at the pinned tag - a future lwIP
+import that, say, hardcodes these instead would need this override reworked, not silently ignored.
+Pick real target values against a concrete scenario (a specific concurrent-client count this
+project actually needs to support) rather than an arbitrary increase - each `MEMP_NUM_*` bump also
+grows the lwIP memory pool's own static RAM footprint, which is a real, finite budget on a Pico W
+(SPECIFICATION.md Part I.1's own CYW43-firmware-reduces-usable-heap finding applies here too).
+
+### B.14.3 `littlefs_flash_storage_size` (documented, not yet implemented)
+
+**Real future need**: reduce (or otherwise resize) the bytes of on-board flash the rp2 port
+reserves for its own littlefs filesystem, freeing that space for something else in the firmware's
+own flash layout.
+
+**Mechanism, verified workable against the pinned source, not yet wired in**: this is not a raw
+macro at all — it is already a **first-class, directly-supported `make` variable** on this pinned
+version. `ports/rp2/Makefile` already forwards it straight through:
+```makefile
+CMAKE_ARGS += -DMICROPY_HW_FLASH_STORAGE_BYTES=$(MICROPY_HW_FLASH_STORAGE_BYTES)
+```
+and the board's own `boards/RPI_PICO_W/mpconfigboard.cmake` wraps its default in `if(NOT DEFINED
+MICROPY_HW_FLASH_STORAGE_BYTES) set(MICROPY_HW_FLASH_STORAGE_BYTES 868352) endif()` (848KB;
+`mpconfigport.h`'s own generic rp2 default, used by boards that don't override it, is `1408 * 1024`
+= 1408KB) - a passed-in value cleanly wins. So the real implementation is a single extra `make`
+argument to `build_firmware()`, e.g. `f"MICROPY_HW_FLASH_STORAGE_BYTES={value}"` - no CFLAGS, no
+generated files, no guard concerns of any kind.
+
+**What a real implementation still needs**: a `verify_littlefs_flash_storage_size_anchor()`
+checking both that `ports/rp2/Makefile` still forwards this exact variable name into `CMAKE_ARGS`
+*and* that the target board's own `mpconfigboard.cmake` still guards its default with `if(NOT
+DEFINED ...)` (a board file rewritten to hardcode the value instead would silently ignore an
+override otherwise) - both at the pinned tag, before trusting a passed-in value took effect.
+**This one is real-hardware-adjacent in a way the other two aren't**: shrinking the reserved
+littlefs region changes the on-flash layout of a board that may already have deployed units
+carrying real persisted state there - CLAUDE.md's own "real hardware go-ahead" gate and
+SPECIFICATION.md Part C.8's flash/NVM write-safety rules apply to *validating* a chosen value on
+real hardware, not just to building it.
+
 ---
 
 # Part C — Sensor Driver Architecture Specification
@@ -3174,6 +3386,27 @@ root cause. `scripts/_digital_twin_ci_suite.py`'s `_shutdown()` now captures `/p
 `select`/`poll` vs. a futex vs. genuinely runnable, distinguishing a wedged heap spinning in
 Python from a real stuck syscall) and the run's own last 20 log lines on a shutdown timeout, before
 the `SIGKILL` fallback — so a future recurrence is self-diagnosing from the CI job log alone.
+
+**Amendment (2026-09-15): the root cause above is now closed, not just worked around.** This
+whole race exists only because `MICROPY_ASYNC_KBD_INTR` (named explicitly two paragraphs up) makes
+the Unix port's SIGINT handler call `nlr_raise()` directly from the async signal handler — unsafe
+at *any* point in interpreter execution, not just inside `gc_collect()`; chasing a different,
+more severe symptom of the same root cause (real VM-state corruption, not just a locked heap)
+found and fixed this at the source: Part B.14.1's `unix_kbd_intr` build override forces
+`MICROPY_ASYNC_KBD_INTR` to `0` for every Unix-port binary this project ever builds (there is no
+other build path — every script that needs this binary goes through `toolchain/setup_toolchain.py
+setup`), so the interrupt is now always deferred to the VM's own safe bytecode-dispatch checkpoint
+(`py/vm.c`'s `pending_exception_check`) and can structurally never land mid `gc_collect()` again.
+**`unwedge_heap_after_interrupt()`'s three call sites are kept, deliberately, as defense in
+depth** — CLAUDE.md's own memory-safety-discipline ladder already treats a cheap, unconditional
+`gc.collect()` this way — but none of them should be expected to ever actually recover a genuinely
+wedged heap again via this mechanism; a real recurrence now points at something else entirely
+(a different Unix-port SIGINT path, or a binary built outside this project's own tooling). The
+digital-twin CI suite's own interrupt-driven shutdowns (cited above and in
+`tests/test_digital_twin_unix_port_gc_unwedge.py`'s own comment as this mechanism's real-world
+validation) no longer exercise the wedged-heap path at all now that they can't reach it — they
+still prove the *shutdown paths themselves* stay correct, just not this specific recovery branch
+within them.
 
 ---
 

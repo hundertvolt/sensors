@@ -24,7 +24,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 sys.path.insert(0, str(REPO_ROOT / "toolchain"))
-import setup_toolchain as st  # type: ignore[import-not-found]  # noqa: E402
+import setup_toolchain as st  # noqa: E402
 
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 from _strip_type_checking import strip_type_checking_blocks  # type: ignore[import-not-found]  # noqa: E402
