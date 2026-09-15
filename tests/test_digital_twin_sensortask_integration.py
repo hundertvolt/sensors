@@ -31,6 +31,7 @@ from _shared_rest_roundtrip import assert_named_modules_constructed, assert_sens
 
 from asy_scd30_driver import SCD30  # noqa: E402  # used only by this file's own reboot-survival section below
 from asy_sgp40_driver import SGP40  # noqa: E402  # used only by this file's own boot-race regression test below
+from print_log import PrintLogHistory, PrintLogHistoryStore  # noqa: E402  # used only by this file's own WiFi/NTP FRAM-wiring section below
 
 try:
     from typing import TYPE_CHECKING
@@ -637,10 +638,18 @@ def test_wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server_a
         webserver_task = await _start_webserver()  # real is_hotspot_active=conn.is_hotspot_active
         # wiring (SPECIFICATION.md Part A.5) - free coverage once this test drives real hotspot mode.
         try:
-            await asyncio.sleep(0.2)  # let wlan_connect()'s own synchronous prefix
-            # (_reset_wlan_connect_state(), which unconditionally zeroes connection_failures) run
-            # first - setting the field before the task got a chance to start would just be
-            # immediately overwritten once it did.
+            # Let wlan_connect()'s own prefix (await self.pr.setup(); await
+            # self.dns_server.pr.setup(); THEN _reset_wlan_connect_state(), which unconditionally
+            # zeroes connection_failures) run first - setting the field before the task got a
+            # chance to start would just be immediately overwritten once it did. wozi wires
+            # fram_target (a buildgen FRAM-wiring session), so both pr.setup() calls now do a
+            # real FRAM read each - a fixed sleep tuned for the old, instant-setup RAM-only path
+            # measured flaky/failing here once they stopped being instant, so this polls the real
+            # readiness signal (both loggers' own .initialized flag, the same seam
+            # test_asy_wifi_service.py's own wlan_connect() tests already use) instead of guessing
+            # a duration.
+            ready = await _wait_until(lambda: conn.pr.initialized and conn.dns_server.pr.initialized, timeout_s=5.0)
+            assert ready, "wlan_connect()'s own pr.setup()/dns_server.pr.setup() prefix never completed"
             # Fast-forwards the real conn_fail_to_hotspot=5 streak (sensortask_wozi.py's own real
             # construction call) to "one real scripted failure away from hotspot fallback" - the
             # same direct-attribute test-seam convention test_sensortask.py's own
@@ -882,6 +891,68 @@ def test_mempause_over_real_http_reaches_the_real_fram_manager_and_unpauses() ->
             await _cancel(task)
 
     run_timed(scenario(), timeout_s=20.0)
+
+
+# ---------------------------------------------------------------------------
+# WiFi/NTP FRAM wiring (a buildgen FRAM-wiring session): wozi.toml already wires
+# [device.wiring].fram_target = "fram" for sysfunct (see the mempause test above) - this proves the
+# two newly-added consumers actually receive the real, already-constructed fram= too, through the
+# real generated build_system(), not just when unit-tested in isolation
+# (tests/test_wifi_ntp_webserver_fram_wiring.py covers that half already). The webserver stays
+# RAM-only, deliberately - that session measured a real ~3s boot-latency regression from wiring it
+# the same way (asy_webserver_service.py's own module comment; SPECIFICATION.md Part A.7's
+# construction-order note) - so this also regression-proofs that it stays plain PrintLogHistory
+# even though the device wires fram_target for everything else.
+# ---------------------------------------------------------------------------
+
+
+def test_wifi_and_ntp_loggers_are_fram_backed_through_the_real_generated_build_system_but_webserver_stays_ram_only() -> None:
+    async def scenario() -> None:
+        await _boot(_next_test_port())
+        assert sensortask_wozi.conn is not None and sensortask_wozi.ntp is not None and sensortask_wozi.webserver is not None
+        assert isinstance(sensortask_wozi.conn.pr, PrintLogHistoryStore)
+        assert isinstance(sensortask_wozi.conn.dns_server.pr, PrintLogHistoryStore)
+        assert isinstance(sensortask_wozi.ntp.pr, PrintLogHistoryStore)
+        assert type(sensortask_wozi.webserver.pr) is PrintLogHistory
+
+    run_timed(scenario(), timeout_s=10.0)
+
+
+def test_wifi_error_log_survives_a_simulated_reboot_through_the_real_generated_build_system() -> None:
+    # Same "persist to disk, rebuild the whole real object graph fresh" technique as the SGP40
+    # VOC-backup reboot test above, applied to conn's own WIFI log instead of sgp40's VOC backup -
+    # proves the reordering that moved fram ahead of conn/ntp/sysfunct (SPECIFICATION.md Part A.7)
+    # didn't just build cleanly but actually produces a chunk that survives a real reboot.
+    async def scenario() -> None:
+        cfg_path = _tmp_cfg_dir()
+        state_path = cfg_path + "fram_state.json"
+        machine.configure_fram_state_path(state_path)
+        try:
+            machine.configure_wiring(_wiring_plan("wozi"))
+            await sensortask_wozi.build_system(cfg_path=cfg_path, web_host="127.0.0.1", web_port=_next_test_port())
+            assert sensortask_wozi.conn is not None
+            conn1 = sensortask_wozi.conn
+            await conn1.pr.setup()
+            await conn1.pr.err_s("simulated boot failure", errno=7)
+            assert (await conn1.pr.get_log())["WIFI"]["ErrCount"] == 1
+
+            # --- Simulated reboot: persist the twin's FRAM image to disk, then rebuild the whole
+            # real object graph fresh from the SAME cfg_path/FRAM state. ---
+            machine.flush_fram()
+            machine.configure_wiring(_wiring_plan("wozi"))
+            await sensortask_wozi.build_system(cfg_path=cfg_path, web_host="127.0.0.1", web_port=_next_test_port())
+            assert sensortask_wozi.conn is not None
+            conn2 = sensortask_wozi.conn
+            assert conn2 is not conn1  # a genuinely fresh object, not memory surviving the "reboot"
+            await conn2.pr.setup()
+            log = await conn2.pr.get_log()
+            assert log["WIFI"]["ErrCount"] == 1
+            assert log["WIFI"]["ErrNum"][-1] == 7
+        finally:
+            machine.configure_fram_state_path(None)  # see the SGP40 reboot test's own identical comment
+            gc.collect()
+
+    run_timed(scenario(), timeout_s=15.0)
 
 
 # ---------------------------------------------------------------------------

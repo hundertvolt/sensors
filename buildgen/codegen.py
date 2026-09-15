@@ -110,6 +110,20 @@ def _fram_kw(spec: InstanceSpec, ctx: _Ctx) -> "tuple[str, str] | None":
     return (fram_wf.target, ctx.wiring_expr(spec, fram_wf)) if fram_wf is not None and "fram_target" in spec.wiring else None
 
 
+def _device_fram_var(model: DeviceModel, ctx: _Ctx) -> "str | None":
+    # [device.wiring].fram_target's mandatory-infra side (validate.py's _DEVICE_WIRING_CONSUMERS):
+    # conn/ntp/sysfunct all resolve it the same way, always under the literal kwarg name "fram"
+    # (matching every one of their own @wiring tags) - one shared helper rather than each call site
+    # re-deriving it. WebserverService is deliberately NOT a consumer - see its own module comment.
+    fram_target = model.doc.get("device", {}).get("wiring", {}).get("fram_target")
+    return ctx.instance_var(resolve_instance_key(model, fram_target)) if fram_target else None
+
+
+def _device_fram_arg(model: DeviceModel, ctx: _Ctx) -> str:
+    fram_var = _device_fram_var(model, ctx)
+    return f", fram={fram_var}" if fram_var is not None else ""
+
+
 def _build_args_scd30(spec: InstanceSpec, ctx: _Ctx) -> "tuple[list[str], list[tuple[str, str]]]":
     f = spec.fields
     pos = [ctx.bus_var(f["bus"]), str(f["irq_pin"])]
@@ -372,8 +386,6 @@ def _emit_build_system(lines: "list[str]", model: DeviceModel, ctx: _Ctx, instan
     lines.append("    global " + ", ".join(global_names))
     lines.append("")
     lines.append("    watchdog = WDT(timeout=8000)")
-    lines.append(f"    conn = AsyConnTime(conn_fail_to_hotspot={dev['conn_fail_to_hotspot']}, hotspot_time_min={dev['hotspot_time_min']}, max_module_error=_MAX_MODULE_ERROR, cfg_path=cfg_path, debug=debug)")
-    lines.append("    ntp = AsyNtpClient(conn.get_wifi_mode_lock(), conn.network_available, conn.get_dns_server_ip, max_module_error=_MAX_MODULE_ERROR, dns_timeout_ms=_DNS_TIMEOUT_MS, dns_tries=_DNS_TRIES, ntp_fetch_timeout_ms=_NTP_FETCH_TIMEOUT_MS, cfg_path=cfg_path, debug=debug)")
     for bus_id, bus_table in model.doc["bus"].items():
         var = ctx.bus_var(bus_id)
         if bus_id.startswith("i2c"):
@@ -391,17 +403,32 @@ def _emit_build_system(lines: "list[str]", model: DeviceModel, ctx: _Ctx, instan
             extra_kw = "".join(f", {f}={bus_table[f]}" for f in ("rxbuf", "txbuf", "poll_wait_ms", "poll_idle_ms") if f in bus_table)
             lines.append(f"    {var} = asy_uart_driver.UART({port}, {bus_table['tx_pin']}, {bus_table['rx_pin']}, baudrate={bus_table['baudrate']}{extra_kw})")
 
+    # fram is built right after the buses (before conn/ntp/sysfunct) - unlike every other
+    # instance, always emitted here, out of its own construction_order position, purely so
+    # conn/ntp/sysfunct below can each receive an already-built fram= kwarg (webserver
+    # deliberately excluded - see asy_webserver_service.py's own module comment). Safe to move
+    # unconditionally: fram itself never wires a reference to another instance (buildspec.py's own
+    # REQUIRED_TOML_FIELDS for it is bus/cs_pin/max_size only), so it has no ordering dependency of
+    # its own to violate.
+    fram_key = ("fram", "")
+    if fram_key in instances:
+        fram_spec = instances[fram_key]
+        lines.append(f"    {ctx.instance_var(fram_key)} = {_build_call(fram_spec, ctx)}")
+
+    fram_arg = _device_fram_arg(model, ctx)
+    lines.append(f"    conn = AsyConnTime(conn_fail_to_hotspot={dev['conn_fail_to_hotspot']}, hotspot_time_min={dev['hotspot_time_min']}, max_module_error=_MAX_MODULE_ERROR, cfg_path=cfg_path{fram_arg}, debug=debug)")
+    lines.append(f"    ntp = AsyNtpClient(conn.get_wifi_mode_lock(), conn.network_available, conn.get_dns_server_ip, max_module_error=_MAX_MODULE_ERROR, dns_timeout_ms=_DNS_TIMEOUT_MS, dns_tries=_DNS_TRIES, ntp_fetch_timeout_ms=_NTP_FETCH_TIMEOUT_MS, cfg_path=cfg_path{fram_arg}, debug=debug)")
+
     for node in construction_order:
         if node in ("conn", "ntp"):
             continue  # already emitted above, unconditionally, ahead of the buses
         if node == "sysfunct":
-            device_wiring = model.doc.get("device", {}).get("wiring", {})
-            fram_target = device_wiring.get("fram_target")
-            fram_arg = f", fram={ctx.instance_var(resolve_instance_key(model, fram_target))}" if fram_target else ""
             lines.append(f"    sysfunct = SystemService(ntp.ntp_issynced, watchdog=watchdog{fram_arg}, cfg_path=cfg_path, debug=debug)")
             continue
         if not isinstance(node, tuple):
             raise BuildError(model.device, f"internal: construction_order entry {node!r} is not a known bare node or an instance key")
+        if node == fram_key:
+            continue  # already emitted above, ahead of conn/ntp
         spec = instances[node]
         var = ctx.instance_var(node)
         lines.append(f"    {var} = {_build_call(spec, ctx)}")

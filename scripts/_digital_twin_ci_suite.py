@@ -77,8 +77,11 @@ _DRIVER_ERRCOUNT_NAME = {"scd30": "SCD30", "sgp40": "SGP40", "bmp3xx": "BMP3XX",
 _MEASUREMENT_DRIVERS = frozenset({"scd30", "sgp40", "bmp3xx"})
 _IN_MEMORY_ERROR_DRIVERS = frozenset({"scd30", "bmp3xx", "fram"})
 _PERSISTED_ERROR_MODULES = ("SGP40",)  # only fault-injectable module whose error log survives a
-# reboot; used by Run 5b/5c. WIFI is also in-memory-only (SPECIFICATION.md Part A.7) but isn't
-# bus-fault-injectable (no chip fake of its own) - checked separately (Run 8), not via ctx.drivers.
+# reboot; used by Run 5b/5c. WIFI's own error log is ALSO FRAM-persisted now (a later buildgen
+# FRAM-wiring session moved it off the in-memory-only list, SPECIFICATION.md Part A.7) - not added
+# here since it isn't bus-fault-injectable (no chip fake of its own), so it can't go through
+# ctx.drivers/_bus_fault_drivers() the way this tuple's own consumers do; checked separately in
+# Run 8 instead, with the same all-or-nothing-restore assertion shape Run 5b uses for this tuple.
 
 # The one HTTP status every endpoint in this suite is expected to answer with - a non-200 anywhere
 # is a suite failure, never an alternative success path.
@@ -887,14 +890,24 @@ def _run_7_wifi_hotspot_dns(ctx: RunContext) -> None:
 
 
 def _run_8_wifi_persistence_and_configure_ntp(ctx: RunContext) -> None:
-    # ---- Run 8: reboot fault-free - WIFI's own persistence-correctness check (in-memory-only,
-    # should reset to 0), plus configure an unreachable NTP host (persisted) for Run 9. ----
+    # ---- Run 8: reboot fault-free onto Run 7's state - WIFI's own persistence-correctness check,
+    # plus configure an unreachable NTP host (persisted) for Run 9. WIFI's error log is FRAM-backed
+    # now (a later buildgen FRAM-wiring session - SPECIFICATION.md Part A.7), so Run 7's 5 scripted
+    # failures SHOULD come back here; this used to assert the opposite (counter reset to 0), which
+    # was correct for the pre-wiring in-memory-only logger but is now stale. Run 7's own shutdown is
+    # the same abrupt SIGINT teardown Run 5's is (see _shutdown()'s own comment), so this follows
+    # Run 5b's exact all-or-nothing shape for the same reason: an abrupt shutdown can (rarely) catch
+    # a chunk write in flight and lose the whole ring, which is accepted behavior, not a defect
+    # (project owner's call, 2026-09-11) - never a partial/garbled restore. Polls rather than samples
+    # immediately for the same reason Run 5b does: the webserver answers before WIFI's own
+    # FRAM-backed pr.setup() (the restore itself, inside wlan_connect()'s task entry) completes. ----
     log8 = ctx.logs_dir / "run8_wifi_persistence_and_configure_ntp.log"
     proc = _spawn(ctx, [], log8)
     try:
         _wait_until_serving(proc)
-        entry = _errcount("WIFI")
-        _check(condition=entry.get("counter", 0) == 0, msg=f"Run 8: WIFI's error count correctly did NOT persist across reboot (in-memory-only by design) ({entry!r})")
+        entry = _wait_for_errcount_above("WIFI", _WIFI_SCRIPTED_FAILURES - 1, timeout_s=30.0)
+        restored = entry.get("counter", 0)
+        _check(condition=restored == 0 or restored >= _WIFI_SCRIPTED_FAILURES, msg=f"Run 8: WIFI's FRAM-backed error count came back all-or-nothing after an abrupt restart - never a partial remnant ({entry!r})")
         # 192.0.2.1: RFC 5737 TEST-NET-1, guaranteed non-routable - a deliberate, reproducible
         # "unreachable" address rather than relying on incidental CI sandbox network policy.
         status, body = _http("PUT", "/networking", {"NTP_Host": "192.0.2.1"})

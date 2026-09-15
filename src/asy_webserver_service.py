@@ -88,6 +88,28 @@ if TYPE_CHECKING:
     HotspotActiveFct = Callable[[], bool]
 
 _NAME = const("WEBSERVER")
+# Deliberately NOT wired to [device.wiring].fram_target the way asy_wifi_service.py/
+# asy_ntp_client.py/system_service.py are (a later buildgen FRAM-wiring session tried this and
+# reverted it, real-measured against the real digital-twin boot, not an isolated-call estimate):
+# this service's own setup() awaits self.pr.setup() before start_server() (see _run() below), and
+# a fram=-backed pr.setup() does a real FRAM read over the same shared SPI-bus lock every other
+# FRAM-backed module's own boot-time pr.setup() also contends for. The cost is NOT a short queue of
+# fixed-size waits (~170ms each, as an isolated one-at-a-time probe of a few modules would suggest)
+# - on "dev", ~9 FRAM-backed modules' own task-entry pr.setup() calls (asy_wifi_service.py's
+# wlan_connect(), asy_ntp_client.py's asy_ntp_time(), ...) all start racing for the same lock within
+# milliseconds of each other once start_and_check_tasks() finishes staggering task creation, and
+# under that real concurrent contention each individual call's own measured duration balloons
+# (500ms-4.8s per call in a real repro, not ~170ms) rather than adding cleanly. webserver's own task
+# is created last in the collection order, so its setup() joins the tail of this already-congested
+# queue: measured 4.2-4.3s of real added latency across repeated runs (~3.0s baseline -> ~7.2-7.3s
+# wired), not the smaller ~3s/~2.5s->~5.4s figure an earlier pass here first reported (that estimate
+# used the same real digital-twin boot but a single measurement pair, not the repeated/instrumented
+# reproduction that pinned the mechanism down; the "shared SPI bus/lock contention" diagnosis itself
+# holds up, an isolated per-module timing estimate just understated how it compounds under real
+# concurrent load). No other wired consumer's own setup() gates anything externally observable the
+# way this one gates the whole REST API's own first-request readiness, so this is the one case
+# where that contention becomes directly user-visible. Revisit if a future session gives
+# per-consumer FRAM setup() its own priority/ordering.
 _SYSTEM_CMDS = ("reboot", "bootloader", "mempause")  # the only enum values ever forwarded to
 # system_cmd() - never a client-supplied duration (mempause's fixed 300s lives in system_cmd()'s own
 # implementation, e.g. SystemService.pause_permanent_storage() - see SPECIFICATION.md Part A.8).

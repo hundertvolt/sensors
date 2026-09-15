@@ -65,10 +65,22 @@ _REQUIRED_DEVICE_INT_FIELDS = ("conn_fail_to_hotspot", "hotspot_time_min")
 _ALLOWED_DEVICE_FIELDS = frozenset(_REQUIRED_DEVICE_FIELDS) | {"wiring"}
 _WPA2_MIN_PASSWORD_LEN = 8  # WPA2-PSK's own minimum (IEEE 802.11i)
 
-# [device.wiring] fields and which mandatory-infra consumer's own _WIRING they resolve against -
+# [device.wiring] fields and which mandatory-infra consumer(s)' own _WIRING they resolve against -
 # both fixed and known ahead of time (BUILD_CHAIN_PLAN.md's schema section: exactly these two
 # fields exist today), unlike [instance.wiring]'s fully generic per-driver resolution below.
-_DEVICE_WIRING_CONSUMERS = {"led_target": ("asy_wifi_service.py", "AsyConnTime", "conn"), "fram_target": ("system_service.py", "SystemService", "sysfunct")}
+# fram_target has three consumers (every mandatory-infra module capable of an optional FRAM-backed
+# error log EXCEPT WebserverService - see its own module docstring comment for the real, measured
+# reason it's excluded) - each must declare its own matching @wiring tag, checked independently
+# below, so one consumer's own module drifting out of sync (e.g. a tag typo/removal) is caught by
+# name rather than silently skipped.
+_DEVICE_WIRING_CONSUMERS: "dict[str, tuple[tuple[str, str, str], ...]]" = {
+    "led_target": (("asy_wifi_service.py", "AsyConnTime", "conn"),),
+    "fram_target": (
+        ("asy_wifi_service.py", "AsyConnTime", "conn"),
+        ("asy_ntp_client.py", "AsyNtpClient", "ntp"),
+        ("system_service.py", "SystemService", "sysfunct"),
+    ),
+}
 
 
 def _bus_kind(bus_name: str, device: str) -> str:
@@ -566,29 +578,30 @@ def _check_value_wiring(model: DeviceModel) -> None:
 def _check_device_wiring(model: DeviceModel, src_dir: Path) -> None:
     wiring = model.doc.get("device", {}).get("wiring", {})
     for toml_field, value in wiring.items():
-        consumer_info = _DEVICE_WIRING_CONSUMERS.get(toml_field)
-        if consumer_info is None:
+        consumers = _DEVICE_WIRING_CONSUMERS.get(toml_field)
+        if consumers is None:
             raise BuildError(model.device, f"[device.wiring] declares unknown field {toml_field!r}", field=toml_field)
-        module_file, _class_name, consumer_label = consumer_info
-        schema = parse_wiring(src_dir / module_file, model.device, consumer_label)
-        wf = _resolve_wiring_field(schema, toml_field)
-        if wf is None:
-            raise BuildError(model.device, f"[device.wiring].{toml_field} declared, but {module_file} has no matching @wiring tag", field=toml_field)
         if not isinstance(value, str):
             raise BuildError(model.device, f"[device.wiring].{toml_field} must be a string instance reference, got {value!r}", field=toml_field)
-        _check_wiring_reference(model, wf, value, "device.wiring", toml_field)
+        for module_file, _class_name, consumer_label in consumers:
+            schema = parse_wiring(src_dir / module_file, model.device, consumer_label)
+            wf = _resolve_wiring_field(schema, toml_field)
+            if wf is None:
+                raise BuildError(model.device, f"[device.wiring].{toml_field} declared, but {module_file} has no matching @wiring tag", field=toml_field)
+            _check_wiring_reference(model, wf, value, "device.wiring", toml_field)
 
     # Required-field enforcement, mirroring _check_instance_wiring's own pass below - both known
     # device-wiring fields are optional today, so this was previously untested/untriggered dead
-    # code potential; kept in sync so a future required _WIRING entry on conn/sysfunct can't
+    # code potential; kept in sync so a future required _WIRING entry on any consumer can't
     # silently go unenforced the way [instance.wiring]'s required fields already are.
-    for toml_field, (module_file, _class_name, consumer_label) in _DEVICE_WIRING_CONSUMERS.items():
+    for toml_field, consumers in _DEVICE_WIRING_CONSUMERS.items():
         if toml_field in wiring:
             continue
-        schema = parse_wiring(src_dir / module_file, model.device, consumer_label)
-        wf = _resolve_wiring_field(schema, toml_field)
-        if wf is not None and wf.required:
-            raise BuildError(model.device, f"[device.wiring] is missing required field {toml_field!r}", field=toml_field)
+        for module_file, _class_name, consumer_label in consumers:
+            schema = parse_wiring(src_dir / module_file, model.device, consumer_label)
+            wf = _resolve_wiring_field(schema, toml_field)
+            if wf is not None and wf.required:
+                raise BuildError(model.device, f"[device.wiring] is missing required field {toml_field!r}", field=toml_field)
 
 
 def _check_requires_tags(model: DeviceModel, buses: "dict[str, TomlDoc]") -> None:

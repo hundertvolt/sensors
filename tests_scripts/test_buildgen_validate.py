@@ -909,6 +909,35 @@ def test_device_wiring_reference_wrong_class(tmp_path: Path, src_dir: Path) -> N
         _build(tmp_path, src_dir, doc)
 
 
+def test_device_wiring_fram_target_reference_unresolved(tmp_path: Path, src_dir: Path) -> None:
+    doc = base_doc()
+    doc["device"]["wiring"]["fram_target"] = "does_not_exist"
+    with pytest.raises(BuildError, match="does not resolve to any declared instance"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_device_wiring_fram_target_reference_wrong_class(tmp_path: Path, src_dir: Path) -> None:
+    # Mirrors test_device_wiring_reference_wrong_class above, but for fram_target's own multi-
+    # consumer path (conn/ntp/webserver/sysfunct) - this buildgen FRAM-wiring session.
+    doc = base_doc()
+    doc["device"]["wiring"]["fram_target"] = "neopixel"  # neopixel is NeopixelDriver, not AsyFramManager
+    with pytest.raises(BuildError, match="requires a AsyFramManager"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_device_wiring_fram_target_with_no_matching_tag_on_a_new_consumer(tmp_path: Path, src_dir: Path) -> None:
+    # test_device_wiring_field_with_no_matching_tag_on_the_consumer above proves this for conn - this session
+    # extended fram_target to two more consumers (ntp/sysfunct - the third candidate, webserver, was
+    # tried and reverted, see asy_webserver_service.py's own module comment), each independently
+    # checked (_check_device_wiring iterates every consumer, not just the first), so a tag missing
+    # from any one of them - not only the first checked - must still be caught.
+    filename = "asy_ntp_client.py"
+    staged = _staged_src(tmp_path, src_dir, filename, "# @wiring fram_target AsyFramManager fram optional kwarg", "")
+    path = write_doc(tmp_path, "dev", base_doc())
+    with pytest.raises(BuildError, match="has no matching @wiring tag"):
+        build_model(path, staged)
+
+
 def test_device_wiring_optional_field_absent_is_fine(tmp_path: Path, src_dir: Path) -> None:
     doc = base_doc()
     del doc["device"]["wiring"]["led_target"]
@@ -947,7 +976,7 @@ def test_device_wiring_required_field_missing_is_rejected(tmp_path: Path, src_di
     import buildgen.validate as validate_mod
     from buildgen.model import DeviceModel
 
-    monkeypatch.setitem(validate_mod._DEVICE_WIRING_CONSUMERS, "signal_sink", ("asy_notification_service.py", "NotificationCoordinator", "signal_sink"))
+    monkeypatch.setitem(validate_mod._DEVICE_WIRING_CONSUMERS, "signal_sink", (("asy_notification_service.py", "NotificationCoordinator", "signal_sink"),))
     model = DeviceModel("dev", tmp_path / "dev.toml", {"device": {"wiring": {}}})
     with pytest.raises(BuildError, match="missing required field 'signal_sink'"):
         validate_mod._check_device_wiring(model, src_dir)

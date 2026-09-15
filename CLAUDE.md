@@ -286,8 +286,14 @@ information):
   SPECIFICATION.md Part I (I.4 for the standing scheme itself).
 - **When investigating any unexpected real-hardware error or reset — read the FRAM-persisted
   per-module error logs (`GET /status`'s `errcount`, the FRAM-backed subset: SGP40/BMP3XX/SCD30/
-  SYSTEM/NEOPIXEL/NOTIFY per SPECIFICATION.md Part A.7's seven-chunk layout; WIFI/NTP/every
-  `CFGMGR_*` logger are RAM-only and don't survive a reboot) BEFORE issuing any `PUT /status
+  SYSTEM/NEOPIXEL/NOTIFY/WIFI/DNSSRV/NTP per SPECIFICATION.md Part A.7's construction order —
+  WIFI/DNSSRV/NTP joined the FRAM-backed set in a later buildgen FRAM-wiring session, present whenever
+  `[device.wiring].fram_target` is wired, true of every real device today; WEBSERVER stays RAM-only
+  **deliberately** (that same session measured a real several-second boot-latency regression from
+  wiring it the same way, refined by a later re-investigation to ~4.2-4.3s under real concurrent
+  boot load rather than a short fixed queue - SPECIFICATION.md Part A.7's own construction-order
+  note); every `CFGMGR_*` logger
+  stays RAM-only regardless) BEFORE issuing any `PUT /status
   {"ResetErrors": true}` call or otherwise clearing state.** This is the one piece of real
   diagnostic evidence a reboot itself doesn't erase, and clearing it is irreversible — confirmed the
   hard way (2026-09-08): a single real `WDT_RESET` was investigated down to "GC ruled out, cause

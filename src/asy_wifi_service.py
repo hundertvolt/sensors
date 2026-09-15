@@ -75,6 +75,11 @@ _FIELDS = const(("Mode", "Connected", "IP", "TS"))  # kept in sync with WIFI's o
 # `conn.set_ext_led(<resolved instance>)` once, after both already exist.
 # @wiring led_target NeopixelDriver set_ext_led optional setter
 
+# Second optional device-level cross-instance dependency, same [device.wiring] mechanism as
+# led_target above: this service's own FRAM error-log target (buildgen/ forwards it into
+# self.dns_server's own fram= too - see __init__ below).
+# @wiring fram_target AsyFramManager fram optional kwarg
+
 _STA_DISCONNECT_WAIT_ITERS = const(20)  # 20 * 0.5s = 10s max wait for isconnected() to clear -
 # bounds _disconnect_sta_and_wait()'s loop; a real disconnect() completes far faster than this.
 
