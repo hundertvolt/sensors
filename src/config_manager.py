@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from typing import Any, Literal, NamedTuple, TypeVar
 
+    from asy_fram_manager import AsyFramManager
     from print_log import ErrorLog
 
     T = TypeVar("T", int, float, str)
@@ -50,7 +51,7 @@ if TYPE_CHECKING:
     # value just to serve the generator (BUILD_CHAIN_PLAN.md's quality bar). See
     # SPECIFICATION.md Part C.14.2 for the grammars and buildgen/wiring.py for the parser.
 
-from print_log import PrintLogHistory
+from print_log import make_logger
 
 
 def _special_bypass(check_val: "CfgValue", val_special: "CfgSpecial", scalar_type: type, *, check_special: bool) -> "bool | None":
@@ -235,8 +236,19 @@ if TYPE_CHECKING:
 
 
 class ConfigManager:
-    def __init__(self, filename: str, cfg_vals: "ConfigSchema", name: str) -> None:
-        self.pr = PrintLogHistory(name="CFGMGR_" + name)
+    def __init__(
+        self,
+        filename: str,
+        cfg_vals: "ConfigSchema",
+        name: str,
+        fram: "AsyFramManager | None" = None,
+        history_length: int = 10,
+        debug: int | None = None,
+    ) -> None:
+        # fram=None (every pre-existing call site) reproduces the old RAM-only PrintLogHistory
+        # unchanged - a caller with its own fram in scope (base_classes.py's SensorReaderConfig)
+        # now forwards it here instead of silently dropping it before constructing this logger.
+        self.pr = make_logger(fram, history_length, debug, "CFGMGR_" + name)
         self.name = "CFGMGR_" + name  # matches self.pr.name - the _ModuleLike registration shape
         # asy_webserver_service.py's registration lists key on (error_sources=).
         self.config_lock = asyncio.Lock()
@@ -360,6 +372,9 @@ class ConfigManager:
                 return True, dict_results
 
     async def setup(self) -> None:
+        await self.pr.setup()  # required for all logged warnings and errors - a no-op for the
+        # RAM-only default (fram=None), but this is what actually makes a FRAM-backed self.pr
+        # persist/restore its history, same convention as every other module's own setup().
         data: dict[str, CfgValue] | None = None
         try:
             if (os.stat(self.config_file)[0] & 0x4000) == 0:  # 0x4000 = MP_S_IFDIR, MicroPython's own

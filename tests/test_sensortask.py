@@ -329,24 +329,31 @@ def _all_loggers(module: "Any") -> "list[Any]":
 
 
 def _expected_fram_chunk_calls(module: "Any") -> "list[str]":
-    # SystemService(chunk) -> SCD30_Reader(chunk) -> SGP40 own log(chunk) -> SGP40 VOC backup
-    # (timestamped) -> [BMP3xx_Reader(chunk), only if present] -> NeopixelDriver(chunk) ->
-    # NotificationCoordinator(chunk), in that order, unconditionally. SCD30 constructs before SGP40
-    # (ordering-hazard #1, SPECIFICATION.md Part A.7/C.14 - SGP40 holds a direct reference to scd30
-    # as its temperature_source/humidity_source, so the producer must exist first). Derived from the
-    # module's own reflected instance set (_present_optional_instances()), not a hardcoded
+    # SystemService(chunk) -> SCD30_Reader(chunk) -> SGP40 own log(chunk) -> SGP40's own cfgmgr
+    # (chunk, WP2) -> SGP40 VOC backup (timestamped) -> [BMP3xx_Reader(chunk) -> its own cfgmgr
+    # (chunk, WP2), only if present] -> [ISL29125_Reader(chunk) -> its own cfgmgr (chunk, WP2),
+    # only if present] -> NeopixelDriver(chunk, no cfgmgr - no schema) -> NotificationCoordinator
+    # (chunk) -> its own cfgmgr (chunk, WP2), in that order, unconditionally. SCD30 constructs
+    # before SGP40 (ordering-hazard #1, SPECIFICATION.md Part A.7/C.14 - SGP40 holds a direct
+    # reference to scd30 as its temperature_source/humidity_source, so the producer must exist
+    # first). Every FRAM-wired SensorReaderConfig now allocates one extra chunk for its own
+    # ConfigManager (base_classes.py forwards fram= into it, WP2) - SystemService's own cfgmgr
+    # stays RAM-only (it isn't a SensorReaderConfig subclass and doesn't forward fram into its
+    # own ConfigManager - a separate, known, unfixed gap, tracked outside this file). Derived from
+    # the module's own reflected instance set (_present_optional_instances()), not a hardcoded
     # per-device literal - every real device's own devices/*.toml lists its instances in this same
     # relative order (BUILD_CHAIN_PLAN.md's Session 2), so this fixed shape stays correct for all 6.
     calls = ["chunk"]  # SystemService
     if _has(module, "scd30"):
         calls.append("chunk")
     if _has(module, "sgp40"):
-        calls += ["chunk", "timestamped"]
+        calls += ["chunk", "chunk", "timestamped"]  # own error log, own cfgmgr (WP2), VOC backup
     if _has(module, "bmp3xx"):
-        calls.append("chunk")
+        calls += ["chunk", "chunk"]  # own error log, own cfgmgr (WP2)
     if _has(module, "isl29125"):
-        calls.append("chunk")
-    calls += ["chunk", "chunk"]  # NeopixelDriver, NotificationCoordinator - always present
+        calls += ["chunk", "chunk"]  # own error log, own cfgmgr (WP2)
+    calls += ["chunk"]  # NeopixelDriver - always present, no cfgmgr (no schema)
+    calls += ["chunk", "chunk"]  # NotificationCoordinator - always present: own error log, own cfgmgr (WP2)
     return calls
 
 
@@ -499,7 +506,8 @@ def _scenario_main_forwards_web_host_port(device: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# FRAM chunk order - exact relative sequence (six or seven chunks, depending on bmp3xx presence).
+# FRAM chunk order - exact relative sequence (count varies per device's own optional-instance set
+# and, since WP2, per FRAM-wired SensorReaderConfig's own extra ConfigManager chunk).
 # ---------------------------------------------------------------------------
 
 

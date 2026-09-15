@@ -372,22 +372,33 @@ on-chip layout and must stay identical across firmware versions (A.4's determini
    `wozi` is never physically flashed (CLAUDE.md), so reordering carries no deployed-data-loss risk.
 9. `sgp40 = SGP40_Reader(i2c1, temperature_source=scd30, temperature_field="Temp",
    humidity_source=scd30, humidity_field="Hum", fram_storage=fram,
-   fram_ntp_callback=ntp.ntp_issynced, ...)` — **chunks 3-4** (error log, then VOC backup).
-   `scd30` is passed directly as both value sources (C.14.3's generalized per-value
-   measurement wiring) — no wrapping callback; the two fields resolve independently, so a future
-   device could compensate temperature and humidity from two different sensors.
-10. `bmp3xx = BMP3xx_Reader(i2c1, ..., fram=fram, ...)` — **chunk 5**. No cross-instance wiring
-    dependency of its own on `wozi` (SCD30's `AmbPres` stays a static config value even though
-    `wozi` physically has a live BMP388 — A.4's own note), so unconstrained by ordering-hazard #1.
-11. `neopixel = NeopixelDriver(15, fram=fram, ...)` — **chunk 6**.
+   fram_ntp_callback=ntp.ntp_issynced, ...)` — **chunks 3-5** (own error log, then its own
+   `ConfigManager`'s `CFGMGR_SGP40` chunk — `base_classes.py`'s `SensorReaderConfig.__init__` now
+   forwards `fram=` into its `ConfigManager(...)` call, WP2 — then VOC backup). `scd30` is passed
+   directly as both value sources (C.14.3's generalized per-value measurement wiring) — no
+   wrapping callback; the two fields resolve independently, so a future device could compensate
+   temperature and humidity from two different sensors.
+10. `bmp3xx = BMP3xx_Reader(i2c1, ..., fram=fram, ...)` — **chunks 6-7** (own error log, then its
+    own `ConfigManager`'s `CFGMGR_BMP3XX` chunk, same WP2 mechanism as `sgp40` above). No
+    cross-instance wiring dependency of its own on `wozi` (SCD30's `AmbPres` stays a static config
+    value even though `wozi` physically has a live BMP388 — A.4's own note), so unconstrained by
+    ordering-hazard #1.
+11. `neopixel = NeopixelDriver(15, fram=fram, ...)` — **chunk 8**. `NeopixelDriver` has no schema/
+    `ConfigManager` (C.5.1), so it allocates only the one chunk, unlike the `SensorReaderConfig`
+    subclasses above and below.
 12. `notification = NotificationCoordinator(neopixel.request_signal, ntp.cettime, fram=fram, ...)`,
     staged `register()` ×3 (each a direct `(source, field)` reference — `scd30`/`"CO2"`,
-    `sgp40`/`"VOC"`, `scd30`/`"Hum"`, Part C.14) then `finalize()` — **chunk 7**.
+    `sgp40`/`"VOC"`, `scd30`/`"Hum"`, Part C.14) then `finalize()` — **chunks 9-10** (own error
+    log, then its own `ConfigManager`'s `CFGMGR_NOTIFY` chunk, same WP2 mechanism).
 13. `conn.set_ext_led(neopixel)`.
-13b. *(`dev` only)* two buildgen-generated `[[instance]]` entries construct
+13b. *(`dev` only)* an `isl29125` `[[instance]]` entry constructs `ISL29125_Reader(..., fram=fram,
+    ...)` after `bmp3xx` (matching its position in `devices/dev.toml`'s own instance list) —
+    **two more chunks** (own error log, then its own `ConfigManager`'s `CFGMGR_ISL29125` chunk,
+    same WP2 mechanism). `wozi` has no such step (C.11.5 requirement 18).
+13c. *(`dev` only)* two buildgen-generated `[[instance]]` entries construct
     `asy_uart_driver.UART(...)` ×2, then the new UART-crossover wrapper module (§Part J) wraps each
     in a `UART_Comm(...)` across the permanent crossover jumper — **no `fram=`**, for the same
-    reason as the webserver below, so the seven-chunk order above is untouched. Placed here, after
+    reason as the webserver below, so the chunk order above is untouched. Placed here, after
     every FRAM-allocating module and immediately before the webserver, because the webserver's own
     `error_sources=` list includes them. `wozi` has no such step. The variant also runs a small
     **link exerciser** task on the initiator side: nothing on a live system would otherwise initiate
@@ -401,17 +412,29 @@ on-chip layout and must stay identical across firmware versions (A.4's determini
 14. `app = Microdot(); webserver = WebserverService(app, sensors=(...), ..., static_mount="/html",
     is_hotspot_active=conn.is_hotspot_active, host=web_host, port=web_port)` — **no `fram=`**
     (deliberately RAM-only — a connection-reclaim warning could churn faster than a sensor's fault
-    log, and this keeps the seven-chunk order unchanged). `static_mount="/html"` registers the
+    log, and this keeps the chunk order above unchanged). `static_mount="/html"` registers the
     static route pair last, so an exact-match API route always wins.
 15. `sysfunct.set_level_setters(_collect_level_setters())` — after every module has constructed.
 16. **`await x.setup()` batch**: `sysfunct → fram → conn → ntp → sgp40 → bmp3xx →
     notification`. One hard constraint: `notification.setup()` needs `finalize()` (step 12)
     already run, satisfied by batching at the end. `scd30.setup()` isn't in this batch (no
-    local config).
+    local config). Every batched module's own `ConfigManager.setup()` now also calls `await
+    self.pr.setup()` first (WP2, `config_manager.py`) — a no-op for the RAM-only default, but
+    what actually makes a FRAM-backed `CFGMGR_<name>` logger persist/restore its own history.
 
-**Real FRAM chunk order**: SystemService → SCD30 → SGP40 error log → SGP40 VOC backup → BMP3xx →
-Neopixel → NotificationCoordinator. Seven chunks — every module with a FRAM-backed error log uses
-it; must stay in this relative order. `src/` has no earlier on-chip layout to preserve.
+**Real FRAM chunk order (`wozi`)**: SystemService → SCD30 → SGP40 error log → SGP40's own
+`ConfigManager` (`CFGMGR_SGP40`) → SGP40 VOC backup → BMP3xx error log → BMP3xx's own
+`ConfigManager` (`CFGMGR_BMP3XX`) → Neopixel → NotificationCoordinator error log →
+NotificationCoordinator's own `ConfigManager` (`CFGMGR_NOTIFY`). **Ten chunks** (up from seven —
+WP2 gave every FRAM-wired `SensorReaderConfig` one more chunk for its own `ConfigManager`, since
+`base_classes.py` now forwards `fram=` into it instead of silently dropping it); must stay in this
+relative order. `src/` has no earlier on-chip layout to preserve. `dev` additionally wires
+`isl29125` (own error log + its own `ConfigManager`'s `CFGMGR_ISL29125` chunk, two more chunks,
+positioned per 13b above) — **twelve chunks** total on `dev`. `SystemService`'s own `ConfigManager`
+stays RAM-only regardless: `SystemService` isn't a `SensorReaderConfig` subclass (C.13's own note)
+and doesn't forward its `fram` into its own directly-embedded `ConfigManager(...)` call — a
+separate, known, not-yet-fixed gap (flagged, not silently fixed, in the WP2 PR that added this
+paragraph).
 
 **This order, and `i2c0`'s SCD30-specific `timeout=200000`, are wozi's own — derived from
 `devices/wozi.toml`.** `buildgen` derives both from each device's own TOML rather than assuming
@@ -1295,6 +1318,23 @@ guarantees clean input) — don't remove them, covered independently by
 production one is dangerous — `setup()` treats any on-disk key not in the constructed schema as
 invalid and silently drops it on rewrite. A one-off script touching one field must still construct
 with the *entire* real schema, or every sibling field gets reset to its default.
+
+**`ConfigManager`'s own `CFGMGR_<name>` history is FRAM-backed when a `fram=` is supplied** (WP2):
+`ConfigManager.__init__` takes the same `fram`/`history_length`/`debug` triple every other
+`make_logger()`-backed module does and builds `self.pr` via `make_logger()`, exactly like
+`SensorReader`/`SystemService`/`captive_dns.DNSServer`. `base_classes.py`'s
+`SensorReaderConfig.__init__` forwards its own `fram`/`history_length`/`debug` into this call — it
+already had `fram` in scope for its own `self.pr` (via `super().__init__()`), and previously
+dropped it before constructing `self.cfgmgr` (the bug this closed). `ConfigManager.setup()` now
+also awaits `self.pr.setup()` first, the same "required for all logged warnings and errors"
+convention every other `pr`-owning `setup()` already follows — without it, a FRAM-backed
+`self.pr` would never leave `initialized=False`, and the write-through to FRAM `_store_err()`
+gates on would never fire. `fram=None` (every pre-existing call site, and `SystemService`'s own
+directly-embedded `ConfigManager` — C.13's own note that it isn't a `SensorReaderConfig`
+subclass, a separate, not-yet-fixed instance of the same gap) reproduces the old RAM-only
+behavior byte-for-byte. **Chunk-count consequence**: every FRAM-wired `SensorReaderConfig` now
+allocates one more FRAM chunk, for its own `ConfigManager` — see A.7's construction-order/chunk-
+count tally for the concrete count on `wozi`/`dev`.
 
 Four typed accessors — `get_int_values()`/`get_float_values()`/`get_str_values()`/
 `get_bool_values()` — return already-narrowed cache values for a key list; a new driver's getters

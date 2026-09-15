@@ -580,7 +580,15 @@ information):
   builds it twice) could exhaust the interpreter's 2MB default heap roughly 1 run in 3, depending on
   MicroPython's own non-deterministic test-function run order. Fixed with `-X heapsize=8M` (verified
   10/10 clean runs) — a Unix-port-only test-harness setting, unrelated to the real rp2040's own RAM
-  budget. Don't re-diagnose a flaky `MemoryError` in a heavy test file as a new code bug before
+  budget. **Raised again to `-X heapsize=16M`** once `ConfigManager` started inheriting its owning
+  module's own `fram=` (WP2, `config_manager.py`/`base_classes.py`): every FRAM-wired
+  `SensorReaderConfig` now allocates one more chunk for its own `ConfigManager`, and
+  `tests/test_sensortask.py` (321 scenarios, each a full `build_system()` call),
+  `tests/test_digital_twin_sensortask_integration.py` and
+  `tests/test_digital_twin_webserver_concurrency.py` all started failing with real `MemoryError`s at
+  8M as a direct, confirmed consequence — A/B tested directly by reverting WP2 alone at the same 8M
+  and getting a clean 100% across all three, isolating the cause to added memory footprint, not a
+  logic bug. Don't re-diagnose a flaky `MemoryError` in a heavy test file as a new code bug before
   checking this flag is still in place.
 - **Local test runs pin `$TZ=UTC` (Unix port only).** The Unix port's `time.mktime()`
   (`ports/unix/modtime.c`) calls the host's real libc `mktime()`, which interprets its input as
