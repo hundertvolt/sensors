@@ -429,16 +429,28 @@ below):
     `self.pr.setup()` before `asyncio.start_server()` (see this Part's own note above on why —
     "the webserver's task does nothing before `start_server()`" was a deliberate, already-shipped
     fix for a `ResetErrors`-boot-window race), and a `fram=`-backed `pr.setup()` does a real FRAM
-    read over the same shared SPI bus/lock every other FRAM-backed module's own boot-time `setup()`
-    already contends for. On `dev` (several FRAM-backed modules sharing that one bus) this queued
-    read measured **~3 real seconds of added latency**, pushing first-REST-response readiness from
-    ~2.5s to ~5.4s in the digital twin — every other wired consumer's own `setup()` gates nothing
-    externally observable, so this is the one case where the shared-bus contention every
-    `fram_target` consumer already accepts becomes directly user-visible, on every boot, not just
-    under fault injection. Kept RAM-only; the mechanism stays available (`WebserverService.__init__`
-    still accepts `fram=` directly, unit-tested) for a future session to revisit with a
-    priority/ordering fix for FRAM-backed `setup()` if this ever needs revisiting. `static_mount=
-    "/html"` registers the static route pair last, so an exact-match API route always wins.
+    read over the same shared SPI-bus lock every other FRAM-backed module's own boot-time
+    `pr.setup()` also contends for. **The cost is not a short, fixed-size queue** (an isolated
+    one-at-a-time probe of a few modules measures ~170ms per call, which would suggest only a few
+    hundred ms added) **— it's real concurrent-load contention.** On `dev`, ~9 FRAM-backed modules'
+    own task-entry `pr.setup()` calls (`wlan_connect()`, `asy_ntp_time()`, ...) all start racing for
+    the same lock within milliseconds of each other once `start_and_check_tasks()` finishes
+    staggering task creation, and under that real contention each individual call's own duration
+    balloons (500ms-4.8s per call in a real, instrumented reproduction against the actual digital
+    twin, not the isolated ~170ms estimate) instead of adding cleanly. `webserver`'s own task is
+    created last in the collection order, so its `setup()` joins the tail of this already-congested
+    queue: **measured 4.2-4.3s of real added latency across repeated runs** (~3.0s baseline →
+    ~7.2-7.3s wired) — every other wired consumer's own `setup()` gates nothing externally
+    observable, so this is the one case where that contention becomes directly user-visible, on
+    every boot, not just under fault injection. (An earlier pass here first reported a smaller
+    ~3s/~2.5s→~5.4s figure from a single measurement pair rather than a repeated, instrumented
+    reproduction; the "shared SPI-bus lock" diagnosis itself holds up under closer scrutiny, that
+    earlier estimate just understated how much the cost compounds under real concurrent load — see
+    `src/asy_webserver_service.py`'s own module comment for the same correction.) Kept RAM-only; the
+    mechanism stays available (`WebserverService.__init__` still accepts `fram=` directly,
+    unit-tested) for a future session to revisit with a priority/ordering fix for FRAM-backed
+    `setup()` if this ever needs revisiting. `static_mount="/html"` registers the static route pair
+    last, so an exact-match API route always wins.
 14. `sysfunct.set_level_setters(_collect_level_setters())` — after every module has constructed.
 15. **`await x.setup()` batch**: `sysfunct → fram → conn → ntp → sgp40 → bmp3xx →
     notification`. Unaffected by the reordering above — every `.pr.setup()` call (the one that
