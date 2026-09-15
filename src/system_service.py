@@ -42,12 +42,6 @@ _MAX_STORAGE_PAUSE = const(3600)  # one hour max pause for FRAM
 _NTP_WAIT_TIME = const(120)  # 2 mins until random boot signature is used
 _TIMER_BASE_PERIOD = const(1000)  # milliseconds for sensor triggers base period
 _TASK_CHECK_TIME = const(2)  # seconds period to check running tasks (keep << watchdog timeout!)
-_SETUP_CALL_STAGGER_S = const(0.25)  # fixed per-call gap between setup() calls in run_setup_batch()
-# below - unrelated to start_and_check_tasks()'s own task-start stagger (which must stay
-# 1.0/len(task_starters), see that method's own comment): setup() calls are one-time boot-time
-# calls, not periodic sensor reads, so there is no phase/harmonics concern to preserve here - this
-# gap exists purely to give each FRAM-backed module's own setup() room to clear the shared FRAM/SPI
-# lock, same reasoning the task-start stagger used to (wrongly) carry before this split.
 _TASK_FAIL_INCREMENT = const(100)  # absolute value important for decrease time,...
 _TASK_FAIL_MAX = const(300)  # ...ratio important for triggering reset (multiple errors)
 _NAME = const("SYSTEM")
@@ -231,20 +225,25 @@ class SystemService:
             self.watchdog.feed()
 
     async def run_setup_batch(self, setup_callers: "list[Callable[[], Coroutine[Any, Any, Any]]]") -> None:
-        # A separate, independently-paced list from get_task_starters()/get_timer_starters() below -
-        # these are one-time boot-time setup() calls, not periodic sensor reads, so they carry none
-        # of start_and_check_tasks()'s/_timer_sequencer()'s own "spread within one second" obligation
+        # A separate list from get_task_starters()/get_timer_starters() below - these are one-time
+        # boot-time setup() calls, not periodic sensor reads, so they carry none of
+        # start_and_check_tasks()'s/_timer_sequencer()'s own "spread within one second" obligation
         # (see those methods' own comments for why that invariant exists and must not be disturbed).
         # WDT(timeout=8000) is constructed before any of this runs (buildgen's generated
         # build_system()), so an unfed sequential batch of several real FRAM reads (one per
         # FRAM-backed module's own ConfigManager.setup(), config_manager.py) can approach the
-        # hardware cap on a device with many such modules - feeding after every call, with a small
-        # gap to let each one's own FRAM/SPI-lock use clear before the next, prevents that
-        # regardless of how large a device's own setup_callers list grows.
+        # hardware cap on a device with many such modules - feeding after every call prevents that
+        # regardless of how large a device's own setup_callers list grows. No artificial delay
+        # between calls: this loop is purely sequential (never concurrent with itself), so there is
+        # no FRAM/SPI-lock contention here to relieve - a per-call sleep was tried and reverted
+        # (2026-09-15): it added boot latency for no real benefit and, compounded across the many
+        # repeated build_system() calls tests/test_digital_twin_sensortask_integration.py's own
+        # process makes, was directly responsible for an intermittent test hang (see that file's
+        # own module docstring). Real task-entry-point FRAM contention (e.g. wlan_connect()'s own
+        # first pr.setup()) is a start_and_check_tasks()-time concern, not this batch's.
         for caller in setup_callers:
             await caller()
             self._feed_watchdog()
-            await asyncio.sleep(_SETUP_CALL_STAGGER_S)
 
     async def start_and_check_tasks(self, task_starters: "list[Callable[[], asyncio.Task[Any]]]") -> None:
         await self.pr.setup()  # required for all logged warnings and errors

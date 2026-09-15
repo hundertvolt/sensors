@@ -470,12 +470,15 @@ measured, not speculative, see step 13's own note below):
     mechanism stays available (`WebserverService.__init__` still accepts `fram=` directly,
     unit-tested) for a future session to revisit with a priority/ordering fix for FRAM-backed
     `setup()` if this ever needs revisiting — a later watchdog-boot-safety session made the watchdog
-    itself immune to this contention (`system_service.py`'s `SystemService.run_setup_batch()`, step
-    15 below) and gave the sequential setup() batch's own real FRAM reads a fixed, non-shrinking gap
-    to clear the lock in, which should reduce (likely resolve) the underlying contention this
-    measurement describes as a side effect, but that hasn't itself been re-measured yet — treat the
-    figures above as the last confirmed measurement, not the current one, until a session re-runs
-    this comparison. That same session deliberately did **not** touch `start_and_check_tasks()`'s own
+    itself immune to starvation across the sequential setup() batch (`system_service.py`'s
+    `SystemService.run_setup_batch()`, step 15 below) but did **not** change this contention's own
+    timing: the batch is purely sequential (never concurrent with itself), so there was never a
+    lock-clearing gap to add there — an artificial per-call delay was tried and reverted (see that
+    method's own comment; it also caused an unrelated, real test-suite hang once combined with WP2's
+    added FRAM-touching `cfgmgr.setup()` calls, confirmed directly). The figures above are the last
+    confirmed measurement; the actual task-entry-point contention this section describes is
+    unaffected by anything in this fix and would need its own re-measurement to revisit separately.
+    That same session deliberately did **not** touch `start_and_check_tasks()`'s own
     task-start stagger (step 16 below): a fixed per-task gap was tried there once and reverted, since
     that stagger's whole one-second-total spread exists to keep sensor Readers' own periodic read
     tasks out of phase with each other (project owner's explicit direction), not to relieve FRAM
@@ -486,19 +489,25 @@ measured, not speculative, see step 13's own note below):
 15. **`await sysfunct.run_setup_batch([...])`**: one call, generated with every setup-needing
     module's own bound `.setup` method in construction order — `sysfunct → fram → conn → ntp →
     sgp40 → bmp3xx → notification`, unaffected by the reordering above. `run_setup_batch()`
-    (`system_service.py`) awaits each in turn, then calls `self._feed_watchdog()` and a fixed,
-    independent `await asyncio.sleep(_SETUP_CALL_STAGGER_S)` between calls — a later
-    watchdog-boot-safety session's fix: `WDT(timeout=8000)` is constructed before any of this runs,
-    and this sequential batch (each module's own `cfgmgr.setup()`, which since WP2
-    (`config_manager.py`) also calls `await self.pr.setup()` first — a no-op for the RAM-only
-    default, but what actually makes a FRAM-backed `CFGMGR_<name>` logger persist/restore its own
-    history, and therefore a real FRAM read on every FRAM-wired module) previously ran completely
-    unfed against that ~8s cap on a device with enough FRAM-backed modules. This list is
-    deliberately separate from, and independently paced from, `start_and_check_tasks()`'s own
-    task-starter list (step 16 below) — see that method's own docstring for why the two must never
-    share one stagger constant. One hard constraint: `notification.setup()` needs `finalize()` (step
-    11) already run, satisfied by batching at the end. `scd30.setup()` isn't in this batch (no local
-    config).
+    (`system_service.py`) awaits each in turn, then calls `self._feed_watchdog()` — no delay between
+    calls: a later watchdog-boot-safety session's fix, needed because `WDT(timeout=8000)` is
+    constructed before any of this runs, and this sequential batch (each module's own
+    `cfgmgr.setup()`, which since WP2 (`config_manager.py`) also calls `await self.pr.setup()`
+    first — a no-op for the RAM-only default, but what actually makes a FRAM-backed
+    `CFGMGR_<name>` logger persist/restore its own history, and therefore a real FRAM read on every
+    FRAM-wired module) previously ran completely unfed against that ~8s cap on a device with enough
+    FRAM-backed modules. **An artificial per-call `asyncio.sleep()` was tried here and reverted**
+    (2026-09-15): the loop is purely sequential, so there was never any FRAM/SPI-lock contention
+    between its own calls to relieve, and the added latency, compounded across the many repeated
+    `build_system()` calls `tests/test_digital_twin_sensortask_integration.py`'s own single Unix-port
+    process makes, was directly responsible for an intermittent test hang (fixed by removing the
+    sleep, not by working around the hang - see that test file's own module docstring and
+    `run_setup_batch()`'s own comment). This list is deliberately separate from
+    `start_and_check_tasks()`'s own task-starter list (step 16 below), which still spreads its own
+    task starts across one real second total — see that method's own docstring for why the two must
+    never share one stagger mechanism. One hard constraint: `notification.setup()` needs
+    `finalize()` (step 11) already run, satisfied by batching at the end. `scd30.setup()` isn't in
+    this batch (no local config).
 16. `await sysfunct.start_and_check_tasks(task_starters)` (in `main()`, after `build_system()`
     returns): spreads every task's own start across exactly one real second total
     (`1.0/len(task_starters)`, not a fixed per-task gap — project owner's explicit, standing

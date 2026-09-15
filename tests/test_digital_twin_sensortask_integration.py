@@ -1,6 +1,8 @@
 """Middle integration tier: builds the real sensortask_wozi object graph against real digital_twin
-buses, driving real REST traffic while starting only the tasks each test needs (the task-supervisor-
-restart section below is the one exception). See digital_twin/README.md and this file's own section comments for the full account, including device-scope reasoning and a real bug this tier already found."""
+buses, driving real REST traffic while starting only the tasks each test needs (the two tests that
+drive the real, full task_starter list concurrently live in test_digital_twin_full_task_graph.py
+instead, their own process). See digital_twin/README.md and this file's own section comments for
+the full account, including device-scope reasoning and a real bug this tier already found."""
 
 import asyncio
 import gc
@@ -464,147 +466,11 @@ def test_sensors_put_round_trips_a_real_scd30_field_over_real_http() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Watchdog escalation - a short, real, fully-supervised run (owner decision 7: automated assertion
-# *and* manually observable - the manual side lives in digital_twin/run_generic_integration.py
-# (--module sensortask_wozi --wiring-plan ... --device wozi), this is the automated side).
-#
-# Deliberately does NOT drive this through sensortask_wozi.main()/start_and_check_tasks(): a real
-# regression found while building this file - MicroPython's globals() does not preserve
-# definition order (confirmed directly: this file's own test_* functions ran in a different order
-# than written), so "the last test in the file" is not actually "the last test to run", and
-# start_and_check_tasks() keeps its own started tasks in a local variable with no way for a caller
-# to reach and cancel them - main_task.cancel() only ever cancelled the *outer* wrapper coroutine,
-# leaving every real task it had started (webserver server, sensor timers, WDT countdown, ...)
-# running in the background for the rest of this process. Across the other tests' own repeated
-# build_system() calls (each allocating a fresh 8KB FramChip, fresh ConfigManagers, ...), those
-# orphaned tasks' lingering references were enough to starve the Unix-port heap - a real
-# MemoryError once, and a hard interpreter segfault once (with a `run()`-inside-`run()` bug of this
-# file's own stacked on top - see git history for the full story). Fix: start exactly the same real
-# task starters sensortask_wozi.main() itself would, but keep every one of them in a list this test
-# owns and explicitly cancels in `finally` - the same controlled pattern _start_webserver() already
-# uses above, just extended to every task instead of one. Runs its own small watchdog-feed loop
-# rather than start_and_check_tasks()'s own (already covered by tests/test_system_service.py) -
-# this test's own job is only "does the real, twin-backed object graph's real concurrent tasks ever
-# block the event loop long enough to starve a feed loop running alongside them", which needs the
-# real tasks running for real but not that specific feed implementation.
-# ---------------------------------------------------------------------------
-
-
-async def _feed_watchdog_periodically(watchdog: "machine.WDT") -> None:
-    while True:
-        watchdog.feed()
-        await asyncio.sleep(1.0)
-
-
-def test_watchdog_is_never_starved_while_every_real_task_runs_concurrently() -> None:
-    port = _next_test_port()
-
-    async def scenario() -> None:
-        await _boot(port)
-        assert sensortask_wozi.watchdog is not None and sensortask_wozi.sysfunct is not None
-        await sensortask_wozi.sysfunct.start_timers(sensortask_wozi._collect_timer_starters())
-        # Each starter already returns its own asyncio.Task (system_service.py's own _start_task()
-        # calls them exactly this way - `return starter()`, no extra create_task() wrapping).
-        tasks = [starter() for starter in sensortask_wozi._collect_task_starters()]
-        tasks.append(asyncio.get_event_loop().create_task(_feed_watchdog_periodically(sensortask_wozi.watchdog)))
-        try:
-            await asyncio.sleep(9.0)  # just over the hardcoded 8000ms WDT timeout - long enough that
-            # a real, unintended stall (not just this test's own feed loop existing) is what keeps
-            # the count at 0, not merely "not enough wall-clock time has passed yet".
-            assert sensortask_wozi.watchdog.would_have_triggered_count == 0
-        finally:
-            for task in tasks:
-                await _cancel(task)
-
-    run_timed(scenario(), timeout_s=15.0)
-
-
-# ---------------------------------------------------------------------------
-# Task-supervisor restart, end-to-end (BACKLOG.md "Whole-system integration test scope") - a real
-# task drawn from the REAL, full _collect_task_starters() list (build_system()'s own real object
-# graph, not a hand-built/synthetic task list) actually dying and being rediscovered/restarted by
-# SystemService.start_and_check_tasks()'s own real supervisor loop, via the real get_task_starters()
-# indirection - not a fake of the supervisor itself. The one test in this file that starts the real
-# full task list through the real supervisor rather than a hand-picked subset (see this file's own
-# module docstring).
-# ---------------------------------------------------------------------------
-
-
-def test_start_and_check_tasks_restarts_a_real_dead_task_from_the_real_full_task_list() -> None:
-    port = _next_test_port()
-
-    async def scenario() -> None:
-        await _boot(port)
-        assert sensortask_wozi.sysfunct is not None and sensortask_wozi.bmp3xx is not None
-        sysfunct = sensortask_wozi.sysfunct
-        task_starters = sensortask_wozi._collect_task_starters()  # the REAL, full list - every
-        # constructed module's own get_task_starters(), exactly what main() itself would use.
-
-        started: dict[int, list[Any]] = {}  # values are asyncio.Task[Any] | None - real _start_task()'s own return type
-        from system_service import SystemService
-
-        real_start_task = SystemService._start_task
-
-        async def _tracking_start_task(self: "SystemService", starter: "Callable[[], asyncio.Task[Any]]", n: "int") -> "asyncio.Task[Any] | None":
-            # Observes the real supervisor's own real task-(re)start calls without changing its
-            # behavior at all - the same non-invasive class-method-wrap convention
-            # test_sensortask.py's own FRAM-chunk-order test already uses.
-            task = await real_start_task(self, starter, n)
-            started.setdefault(n, []).append(task)
-            return task
-
-        SystemService._start_task = _tracking_start_task  # type: ignore[method-assign]
-        supervisor_task = asyncio.get_event_loop().create_task(sysfunct.start_and_check_tasks(task_starters))
-        try:
-            # bmp3xx.start_asy_trigger's own task (_base_trigger()) is just a real event-wait
-            # loop with no I/O and no Timer armed in this test (start_timers() was never called) -
-            # a real, side-effect-free task to kill and watch get restarted. The real restart logic
-            # itself (start_and_check_tasks()) never inspects which task died or why, only
-            # task.done(), so this pick is representative of any real task in the list.
-            target_idx = task_starters.index(sensortask_wozi.bmp3xx.start_asy_trigger)
-            assert await _wait_until(lambda: target_idx in started, timeout_s=5.0), (
-                "the real task was never started by the real supervisor at all"
-            )
-            assert len(started[target_idx]) == 1
-            first_task = started[target_idx][0]
-            assert first_task is not None and not first_task.done()
-
-            first_task.cancel()  # a real task genuinely ending - the same observable state
-            # (task.done() == True) a real crash would leave behind; start_and_check_tasks() only
-            # ever inspects .done(), never *why* a task ended.
-            assert await _wait_until(lambda: len(started[target_idx]) == 2, timeout_s=6.0), (
-                "start_and_check_tasks() never rediscovered and restarted the real dead task"
-            )
-            second_task = started[target_idx][1]
-            assert second_task is not None
-            assert second_task is not first_task
-            assert not second_task.done()
-        finally:
-            SystemService._start_task = real_start_task  # type: ignore[method-assign]
-            await _cancel(supervisor_task)  # only cancels the outer wrapper (see this file's own
-            # watchdog-section comment above) - every real started task is cancelled individually
-            # below too.
-            for tasks in started.values():
-                for task in tasks:
-                    if task is not None:
-                        await _cancel(task)
-            # Defensive: the real, unmodified wlan_connect task (started as part of the real full
-            # list above) can independently reach real hotspot activation and start its own real
-            # DNSServer task within this test's own window - not cancelled by the loop above since
-            # it's spawned internally by AsyConnTime, not through _start_task(). Left running, it
-            # would hold real UDP port 53 into the next section's own test.
-            if sensortask_wozi.conn is not None and sensortask_wozi.conn.dns_server_task is not None:
-                await _cancel(sensortask_wozi.conn.dns_server_task)
-            # This test starts the REAL full task list (every registered task, twice for the one
-            # that gets restarted) - a known real failure mode on this file's own shared per-process
-            # heap otherwise (see the watchdog section's own comment above: orphaned task references
-            # from one test starved a later test's build_system() with a real MemoryError before an
-            # explicit collect() here was added).
-            gc.collect()
-
-    run_timed(scenario(), timeout_s=20.0)
-
-
+# The two tests that drive the real, full task_starter list concurrently (watchdog-starvation and
+# task-supervisor-restart) moved to tests/test_digital_twin_full_task_graph.py, in their own
+# process (2026-09-15) - even with every task each of them starts cancelled in its own `finally`,
+# sharing this file's process with them intermittently hung a later, unrelated test here. See that
+# file's own module docstring and its watchdog test's comment for the full account.
 # ---------------------------------------------------------------------------
 # WiFi hotspot/DNS/LED chain, end-to-end (BACKLOG.md "Whole-system integration test scope") - a real
 # STA connect failure driving AsyConnTime through a real STA -> hotspot mode transition, starting a
@@ -688,8 +554,9 @@ def test_wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server_a
             await _cancel(webserver_task)
             if conn.dns_server_task is not None:
                 await _cancel(conn.dns_server_task)
-            gc.collect()  # see the task-supervisor-restart section's own comment above - this test
-            # starts several real background tasks (wifi, pixel, hotspot DNS, webserver) too.
+            gc.collect()  # this test starts several real background tasks (wifi, pixel, hotspot
+            # DNS, webserver) too - see test_digital_twin_full_task_graph.py's own module docstring
+            # for the general reason every heavy-task test here does this.
 
     run_timed(scenario(), timeout_s=35.0)
 
@@ -774,9 +641,10 @@ def test_sgp40_voc_backup_survives_a_simulated_reboot_through_the_real_fram_chun
         finally:
             machine.configure_fram_state_path(None)  # module-level, process-wide - must not leak
             # into any other test in this file regardless of run order (MicroPython's globals()
-            # doesn't preserve definition order - see this file's own watchdog-section comment).
-            gc.collect()  # see the task-supervisor-restart section's own comment above - this test
-            # builds the whole real object graph twice in one run.
+            # doesn't preserve definition order - confirmed directly while building this file).
+            gc.collect()  # this test builds the whole real object graph twice in one run - see
+            # test_digital_twin_full_task_graph.py's own module docstring for the general reason
+            # every heavy-task test here does this.
 
     run_timed(scenario(), timeout_s=30.0)
 

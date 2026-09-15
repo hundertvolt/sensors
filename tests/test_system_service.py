@@ -1021,35 +1021,33 @@ def test_run_setup_batch_propagates_a_raising_callers_exception() -> None:
         raise AssertionError("expected RuntimeError to propagate")
 
 
-def test_run_setup_batch_stagger_is_independent_of_task_start_stagger() -> None:
-    # Regression test: run_setup_batch()'s own per-call gap must NOT scale with the number of setup
-    # callers the way start_and_check_tasks()'s one-second-total task-start spread does - setup()
-    # calls are one-time boot calls with no periodic-read phase to preserve, so a fixed gap per call
-    # is correct here (unlike that other method, where a fixed gap was tried and reverted).
+def test_run_setup_batch_never_sleeps_between_calls() -> None:
+    # Regression test: run_setup_batch()'s own loop is purely sequential (never concurrent with
+    # itself), so there is no FRAM/SPI-lock contention here to relieve with an artificial delay - a
+    # per-call sleep was tried and reverted (2026-09-15, this method's own comment): it added boot
+    # latency for no real benefit and, compounded across the many repeated build_system() calls
+    # tests/test_digital_twin_sensortask_integration.py's own process makes, was directly
+    # responsible for an intermittent test hang. Proven here by monkeypatching asyncio.sleep and
+    # asserting it's never called, rather than trusting a fast test run to mean "no sleep happened".
     svc = make_service()
-    recorded: list[float] = []
     real_sleep = asyncio.sleep
+    sleep_calls = 0
 
-    async def _recording_sleep(seconds: float) -> None:
-        recorded.append(seconds)
+    async def _counting_sleep(seconds: float) -> None:
+        nonlocal sleep_calls
+        sleep_calls += 1
         await real_sleep(0)
 
     async def noop_setup() -> None:
         return None
 
-    asyncio.sleep = _recording_sleep  # type: ignore[assignment]  # deliberate monkeypatch, restored below
+    asyncio.sleep = _counting_sleep  # type: ignore[assignment]  # deliberate monkeypatch, restored below
     try:
-        run(svc.run_setup_batch([noop_setup] * 2))
-        two_calls = list(recorded)
-        recorded.clear()
         run(svc.run_setup_batch([noop_setup] * 5))
-        five_calls = list(recorded)
     finally:
         asyncio.sleep = real_sleep
 
-    assert len(set(two_calls)) == 1
-    assert len(set(five_calls)) == 1
-    assert two_calls[0] == five_calls[0]  # same fixed gap regardless of how many setup callers there are
+    assert sleep_calls == 0
 
 
 # ---------------------------------------------------------------------------
