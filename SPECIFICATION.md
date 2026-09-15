@@ -386,10 +386,20 @@ on-chip layout and must stay identical across firmware versions (A.4's determini
 13. `conn.set_ext_led(neopixel)`.
 13b. *(`dev` only)* two buildgen-generated `[[instance]]` entries construct
     `asy_uart_driver.UART(...)` ×2, then the new UART-crossover wrapper module (§Part J) wraps each
-    in a `UART_Comm(...)` across the permanent crossover jumper — **no `fram=`**, for the same
-    reason as the webserver below, so the seven-chunk order above is untouched. Placed here, after
-    every FRAM-allocating module and immediately before the webserver, because the webserver's own
-    `error_sources=` list includes them. `wozi` has no such step. The variant also runs a small
+    in a `UART_Comm(...)` across the permanent crossover jumper. Each end's `fram_target`/
+    `logger_target` wiring is individually optional, exactly like every other `fram_target`-wirable
+    driver (C.14.2) — `UartLinkExerciser` forwards whichever the TOML wires straight into its own
+    `UART_Comm`, which already supported both (J.9). `devices/dev.toml` wires `fram_target = "fram"`
+    on both real instances — **own chunk each, chunks 9-10** of `dev`'s real, already-ISL29125-
+    extended layout (SystemService → SCD30 → SGP40 error → SGP40 VOC backup → BMP3xx → ISL29125 →
+    Neopixel → NotificationCoordinator → UART initiator → UART responder — see the "Real FRAM chunk
+    order" note below, which stays wozi's own canonical seven since wozi never gets a UART instance
+    at all), never a `logger_target` reach-through onto each other: a shared logger would merge both
+    ends' faults into one `/status` entry and make a fault unattributable to a single end (see
+    `tests/test_digital_twin_uart_link.py`'s own distinct-loggers test). Placed here, after every
+    FRAM-allocating module and immediately before the webserver, so these two new chunks only ever
+    append to `dev`'s on-chip layout, and because the webserver's own `error_sources=` list includes
+    them. `wozi` has no such step. The variant also runs a small
     **link exerciser** task on the initiator side: nothing on a live system would otherwise initiate
     a transfer, so every claim about the link coexisting with the webserver would be a claim about
     an idle link. Its transfer/failure counts ride the variable-length `maintenance_sensors`

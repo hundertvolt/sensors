@@ -146,10 +146,15 @@ source = "scd30"
 field = "Hum"
 
 # --- UART crossover link exerciser (bench-only) -------------------------------------------------
-# No [instance.wiring] on either - the protocol carries no application semantics of its own
-# (SPECIFICATION.md Part J.1), so neither instance takes a fram_target or any other cross-instance
-# reference. wozi never gets a UART instance - it is never physically flashed, so wiring it there
-# would add an untestable peripheral (CLAUDE.md).
+# Each end gets its own FRAM-backed error/warning log (UartLinkExerciser's inner UART_Comm already
+# supports this, SPECIFICATION.md Part J.9/C.14) - kept as two separate chunks, one per end, rather
+# than a logger_target reach-through onto the other end: a shared history would merge both ends'
+# faults into one /status entry and make a fault unattributable to a single end (see
+# tests/test_digital_twin_uart_link.py's own distinct-loggers test). wozi never gets a UART
+# instance - it is never physically flashed, so wiring it there would add an untestable peripheral
+# (CLAUDE.md). Placed last in this file's own construction order (after every other FRAM-consuming
+# instance), so these two new chunks only ever append to dev's on-chip layout, never shift one
+# already allocated to an earlier module (SPECIFICATION.md Part A.7's bump-pointer allocator).
 
 [[instance]]
 driver = "uart_link"
@@ -157,8 +162,14 @@ name_ext = "init"
 bus = "uart0"
 role = "initiator"
 
+[instance.wiring]
+fram_target = "fram"
+
 [[instance]]
 driver = "uart_link"
 name_ext = "resp"
 bus = "uart1"
 role = "responder"
+
+[instance.wiring]
+fram_target = "fram"

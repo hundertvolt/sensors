@@ -178,16 +178,24 @@ def test_the_two_ends_sit_on_distinct_peripherals_with_sized_buffers() -> None:
         assert driver.poll_wait_ms < 10  # single-digit, or poll latency dominates throughput
 
 
-def test_the_fram_chunk_order_is_unchanged_by_the_new_modules() -> None:
-    # AsyFramManager is a bump-pointer allocator, so instantiation order *is* the on-chip
-    # layout - an inserted chunk would turn every previously persisted log into garbage. Both UART
-    # instances take RAM-only loggers, so they allocate nothing at all here.
+def test_both_uart_instances_now_take_their_own_fram_chunk() -> None:
+    # devices/dev.toml wires fram_target = "fram" on both ends (own chunk each, not a
+    # logger_target reach-through onto the other end - see that TOML's own comment for why).
+    # AsyFramManager is a bump-pointer allocator, so instantiation order *is* the on-chip layout:
+    # both chunks must land strictly after every earlier FRAM-consuming module's own chunk (proving
+    # they only ever append, never shift an already-allocated offset), and the two must be distinct
+    # chunks (proving each got its own, neither shares the other's).
     build_linked_system()
     dev = sensortask_dev
-    assert dev.fram is not None
+    assert dev.fram is not None and dev.notification is not None
     assert dev.uart_link_init is not None and dev.uart_link_resp is not None
-    assert not hasattr(dev.uart_link_init.pr, "fram")
-    assert not hasattr(dev.uart_link_resp.pr, "fram")
+    init_chunk = dev.uart_link_init.pr.fram
+    resp_chunk = dev.uart_link_resp.pr.fram
+    notif_chunk = dev.notification.pr.fram
+    assert init_chunk is not None and resp_chunk is not None and notif_chunk is not None
+    assert init_chunk.block_addr != resp_chunk.block_addr  # each got its own chunk
+    assert init_chunk.block_addr[0] > notif_chunk.block_addr[0]  # appended, not inserted
+    assert resp_chunk.block_addr[0] > init_chunk.block_addr[0]  # in declared/construction order
 
 
 # ---------------------------------------------------------------------------

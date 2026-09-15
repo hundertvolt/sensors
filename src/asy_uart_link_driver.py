@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from typing import Any
 
+    from asy_fram_manager import AsyFramManager
     from asy_uart_driver import UART
     from print_log import ErrorLog, PrintLogHistory
 
@@ -37,6 +38,15 @@ _BANNER = b"dev-uart-crossover"
 # coexisting with the webserver would be a claim about an idle link (SPECIFICATION.md Part A.7).
 _EXERCISE_PERIOD_MS = const(1000)
 
+# This wrapper's own optional live cross-instance dependencies (SPECIFICATION.md Part C.14): the
+# inner UART_Comm already supports both an own FRAM chunk and a logger= reach-through onto an
+# already-built sibling's own logger (Part J.9's "asy_fram_manager.py is its closest structural
+# match") - this class only forwards whichever the TOML wires straight through, unchanged. The two
+# are mutually exclusive per make_logger()'s own precedence (logger wins whenever both are given),
+# so a device wires at most one per instance.
+# @wiring fram_target AsyFramManager fram optional kwarg
+# @wiring logger_target UartLinkExerciser pr optional attr
+
 
 class UartLinkExerciser:
     def __init__(
@@ -46,8 +56,10 @@ class UartLinkExerciser:
         payload_size: int = 48,
         timeout: int = 1000,
         name_ext: str = "",
+        fram: "AsyFramManager | None" = None,
         history_length: int = 10,
         debug: int | None = None,
+        logger: "PrintLogHistory | None" = None,
     ) -> None:
         self.role = role
         self.uart = uart  # public: the digital twin reaches the underlying machine fake through it
@@ -55,8 +67,9 @@ class UartLinkExerciser:
         # way it already reaches every other bus-attached instance's own bus object - see
         # digital_twin/run_generic_integration.py's _wire_uart_crossover()).
         resolved_name = instance_name(_NAME, name_ext)
-        # No fram= - matches UART_Comm's own construction on main: the protocol carries no
-        # application semantics, so neither does this bench-only wrapper around it.
+        # fram=/logger= forwarded straight through to UART_Comm's own already-correct construction
+        # (Part J.9) - this wrapper adds no logging behavior of its own, so there is nothing here to
+        # duplicate or wrap.
         self._comm = UART_Comm(
             uart,
             role,
@@ -65,9 +78,11 @@ class UartLinkExerciser:
             get_callback=self._get_callback if role == ROLE_RESPONDER else None,
             set_callback=self._set_callback if role == ROLE_RESPONDER else None,
             message_callback=self._message_callback if role == ROLE_RESPONDER else None,
+            fram=fram,
             history_length=history_length,
             debug=debug,
             name=resolved_name,
+            logger=logger,
         )
         self.name = self._comm.name  # matches self.pr.name - the _ModuleLike registration shape
         self.pr = self._comm.pr
