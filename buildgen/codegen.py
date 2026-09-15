@@ -218,13 +218,20 @@ def _build_args_notification(spec: InstanceSpec, ctx: _Ctx) -> "tuple[list[str],
 
 
 def _build_args_uart_link(spec: InstanceSpec, ctx: _Ctx) -> "tuple[list[str], list[tuple[str, str]]]":
-    # No fram= - matches asy_uart_comm.UART_Comm's own construction on main (Part J.1: "no
-    # application semantics" also means no FRAM-backed error log of its own).
+    # Optional FRAM-backed error/warning log (own chunk) or a reach-through to an upstream
+    # sibling's own logger (shared history) - UartLinkExerciser forwards whichever the TOML wires
+    # straight into its own UART_Comm (SPECIFICATION.md Part J.9/C.14).
     f = spec.fields
     pos = [ctx.bus_var(f["bus"]), repr(f["role"])]
     kw: list[tuple[str, str]] = []
     if spec.name_ext:
         kw.append(("name_ext", repr(spec.name_ext)))
+    fram_kw = _fram_kw(spec, ctx)
+    if fram_kw:
+        kw.append(fram_kw)
+    logger_wf = _wf(spec, "logger_target")
+    if logger_wf is not None and "logger_target" in spec.wiring:
+        kw.append(("logger", ctx.wiring_expr(spec, logger_wf)))
     kw.append(("debug", "debug"))
     return pos, kw
 
