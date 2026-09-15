@@ -93,6 +93,11 @@ NTP = namedtuple("NTP", ("Synced", "LastSyncAge", "TS"))
 _FIELDS = const(("Synced", "LastSyncAge", "TS"))  # kept in sync with NTP's own fields above
 GMTimeStruct = namedtuple("GMTimeStruct", ("year", "month", "mday", "hour", "minute", "second", "weekday", "yearday"))
 
+# This service's one optional device-level cross-instance dependency (SPECIFICATION.md Part C.14),
+# same [device.wiring] mechanism as asy_wifi_service.py's own led_target/fram_target: its own FRAM
+# error-log target.
+# @wiring fram_target AsyFramManager fram optional kwarg
+
 
 class AsyNtpClient(SensorReaderConfig):
     def __init__(

@@ -124,7 +124,8 @@ entries** — every buildable device has all three unconditionally. Their own pe
 crosslinks to optional instances live in `[device.wiring]` (`led_target`/`fram_target`, both
 optional). The webserver is also unconditional and never modeled as an instance — its constructor
 takes no independent per-device facts, only references to whichever other instances the TOML already
-declares.
+declares (including its own `[device.wiring].fram_target` resolution, the same mechanism the other
+three mandatory-infra modules use).
 
 ```toml
 # example-device.toml - illustrative shape only; the 6 real files are devices/*.toml.
@@ -138,7 +139,8 @@ hotspot_time_min = 8
 
 [device.wiring]
 led_target = "neopixel"                    # optional; WiFi status LED
-fram_target = "fram"                       # optional; SystemService's own error log
+fram_target = "fram"                       # optional; feeds every mandatory-infra module's own
+                                            # error log at once (WiFi/DNS/NTP/SystemService/webserver)
 
 [bus.i2c0]
 scl_pin = 13

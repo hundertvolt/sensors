@@ -350,68 +350,89 @@ importing the generated device module stays safe under tests.
 **Why order matters**: `AsyFramManager` is a bump-pointer allocator — instantiation order is
 on-chip layout and must stay identical across firmware versions (A.4's determinism rule).
 
-**Construction order, top to bottom**:
+**Construction order, top to bottom** (reordered by BUILD_CHAIN_PLAN.md's WP1 session, WiFi/NTP/
+webserver FRAM wiring: `fram` now has to exist before `conn`/`ntp`/`sysfunct` can receive it, so
+its own construction moved from step 6 to step 3, ahead of both — a bump-pointer allocator's own
+construction order is on-chip layout, and reordering it is explicitly zero-risk today, CLAUDE.md's
+"Hard rules": no deployed unit exists besides the routinely-reflashed bench `dev` board):
 
 1. `watchdog = WDT(timeout=8000)` — hardcoded, no injection point.
-2. `conn = AsyConnTime(...)` — owns `DNSServer` internally (`captive_dns.py`).
-3. `ntp = AsyNtpClient(conn.get_wifi_mode_lock(), conn.network_available,
-   conn.get_dns_server_ip, ...)` — bound methods off `conn`.
-4. `i2c0`, `i2c1` = `asy_i2c_driver.I2C(...)` ×2. `i2c0` (SCD30, step 10) sets `timeout=200000`
+2. `i2c0`, `i2c1` = `asy_i2c_driver.I2C(...)` ×2. `i2c0` (SCD30, step 9) sets `timeout=200000`
    (200ms): SCD30 documents up to 150ms clock stretching/day, past rp2's 50ms default — without the
    override that expected stretch surfaces as a spurious `OSError`. `i2c1` (SGP40/BMP3xx) keeps the
-   port default.
-5. `spi0 = asy_spi_driver.SPI(...)`.
-6. `fram = AsyFramManager(spi0, 1, max_size=0x2000, ...)` — no chunk of its own.
-7. `sysfunct = SystemService(ntp.ntp_issynced, watchdog=watchdog, fram=fram, ...)` — **FRAM chunk 1**.
-8. `scd30 = SCD30_Reader(i2c0, 8, trigger_sec=3, ..., fram=fram, ...)` — **chunk 2**; no
+   port default. `spi0 = asy_spi_driver.SPI(...)`.
+3. `fram = AsyFramManager(spi0, 1, max_size=0x2000, ...)` — no chunk of its own. Built immediately
+   after the buses, ahead of every mandatory-infra module below, purely so each of them can receive
+   an already-constructed `fram=` kwarg.
+4. `conn = AsyConnTime(..., fram=fram, ...)` — **FRAM chunk 1** (`self.pr`, its own `"WIFI"`-named
+   log), then **chunk 2** (`self.dns_server`'s own separate `"DNSSRV"`-named log — `AsyConnTime`
+   forwards its own `fram=` straight through to the `DNSServer` it owns internally,
+   `captive_dns.py`).
+5. `ntp = AsyNtpClient(conn.get_wifi_mode_lock(), conn.network_available,
+   conn.get_dns_server_ip, ..., fram=fram, ...)` — bound methods off `conn`; **chunk 3**.
+6. `sysfunct = SystemService(ntp.ntp_issynced, watchdog=watchdog, fram=fram, ...)` — **chunk 4**.
+7. `scd30 = SCD30_Reader(i2c0, 8, trigger_sec=3, ..., fram=fram, ...)` — **chunk 5**; no
    config schema (params live on-sensor). Constructed before `sgp40` (ordering-hazard #1,
    Part C.14): `sgp40` holds a direct reference to this already-built object as its
    `temperature_source`/`humidity_source`, so the producer must exist first — a pure Python
    name-resolution requirement, not a FRAM one (chunk order is random-access and doesn't itself
    care), but the two facts are deliberately kept in the same relative order here for readability.
    `wozi` is never physically flashed (CLAUDE.md), so reordering carries no deployed-data-loss risk.
-9. `sgp40 = SGP40_Reader(i2c1, temperature_source=scd30, temperature_field="Temp",
+8. `sgp40 = SGP40_Reader(i2c1, temperature_source=scd30, temperature_field="Temp",
    humidity_source=scd30, humidity_field="Hum", fram_storage=fram,
-   fram_ntp_callback=ntp.ntp_issynced, ...)` — **chunks 3-4** (error log, then VOC backup).
+   fram_ntp_callback=ntp.ntp_issynced, ...)` — **chunks 6-7** (error log, then VOC backup).
    `scd30` is passed directly as both value sources (C.14.3's generalized per-value
    measurement wiring) — no wrapping callback; the two fields resolve independently, so a future
    device could compensate temperature and humidity from two different sensors.
-10. `bmp3xx = BMP3xx_Reader(i2c1, ..., fram=fram, ...)` — **chunk 5**. No cross-instance wiring
+9. `bmp3xx = BMP3xx_Reader(i2c1, ..., fram=fram, ...)` — **chunk 8**. No cross-instance wiring
     dependency of its own on `wozi` (SCD30's `AmbPres` stays a static config value even though
     `wozi` physically has a live BMP388 — A.4's own note), so unconstrained by ordering-hazard #1.
-11. `neopixel = NeopixelDriver(15, fram=fram, ...)` — **chunk 6**.
-12. `notification = NotificationCoordinator(neopixel.request_signal, ntp.cettime, fram=fram, ...)`,
+10. `neopixel = NeopixelDriver(15, fram=fram, ...)` — **chunk 9**.
+11. `notification = NotificationCoordinator(neopixel.request_signal, ntp.cettime, fram=fram, ...)`,
     staged `register()` ×3 (each a direct `(source, field)` reference — `scd30`/`"CO2"`,
-    `sgp40`/`"VOC"`, `scd30`/`"Hum"`, Part C.14) then `finalize()` — **chunk 7**.
-13. `conn.set_ext_led(neopixel)`.
-13b. *(`dev` only)* two buildgen-generated `[[instance]]` entries construct
+    `sgp40`/`"VOC"`, `scd30`/`"Hum"`, Part C.14) then `finalize()` — **chunk 10**.
+12. `conn.set_ext_led(neopixel)`.
+12b. *(`dev` only)* two buildgen-generated `[[instance]]` entries construct
     `asy_uart_driver.UART(...)` ×2, then the new UART-crossover wrapper module (§Part J) wraps each
-    in a `UART_Comm(...)` across the permanent crossover jumper — **no `fram=`**, for the same
-    reason as the webserver below, so the seven-chunk order above is untouched. Placed here, after
-    every FRAM-allocating module and immediately before the webserver, because the webserver's own
-    `error_sources=` list includes them. `wozi` has no such step. The variant also runs a small
-    **link exerciser** task on the initiator side: nothing on a live system would otherwise initiate
-    a transfer, so every claim about the link coexisting with the webserver would be a claim about
-    an idle link. Its transfer/failure counts ride the variable-length `maintenance_sensors`
-    registration and surface through `/status`, which the bench tier asserts advancing under load
-    (`tests_hardware/README.md`). The exercise logic lives in the wrapper module (not the generated
-    file itself) because only application-level code knows what to ask a peer — the protocol itself
-    carries no application semantics (Part J.1). See Part J for the wrapper module's exact shape and
-    generated variable names.
-14. `app = Microdot(); webserver = WebserverService(app, sensors=(...), ..., static_mount="/html",
-    is_hotspot_active=conn.is_hotspot_active, host=web_host, port=web_port)` — **no `fram=`**
-    (deliberately RAM-only — a connection-reclaim warning could churn faster than a sensor's fault
-    log, and this keeps the seven-chunk order unchanged). `static_mount="/html"` registers the
-    static route pair last, so an exact-match API route always wins.
-15. `sysfunct.set_level_setters(_collect_level_setters())` — after every module has constructed.
-16. **`await x.setup()` batch**: `sysfunct → fram → conn → ntp → sgp40 → bmp3xx →
-    notification`. One hard constraint: `notification.setup()` needs `finalize()` (step 12)
-    already run, satisfied by batching at the end. `scd30.setup()` isn't in this batch (no
-    local config).
+    in a `UART_Comm(...)` across the permanent crossover jumper — **no `fram=`** (Part J.1: "no
+    application semantics" means no FRAM-backed error log of its own, unrelated to the webserver's
+    own, separate `fram=` decision below). Placed here, after every other FRAM-allocating module and
+    immediately before the webserver, because the webserver's own `error_sources=` list includes
+    them. `wozi` has no such step. The variant also runs a small **link exerciser** task on the
+    initiator side: nothing on a live system would otherwise initiate a transfer, so every claim
+    about the link coexisting with the webserver would be a claim about an idle link. Its
+    transfer/failure counts ride the variable-length `maintenance_sensors` registration and surface
+    through `/status`, which the bench tier asserts advancing under load (`tests_hardware/README.md`).
+    The exercise logic lives in the wrapper module (not the generated file itself) because only
+    application-level code knows what to ask a peer — the protocol itself carries no application
+    semantics (Part J.1). See Part J for the wrapper module's exact shape and generated variable
+    names.
+13. `app = Microdot(); webserver = WebserverService(app, sensors=(...), ..., fram=fram,
+    static_mount="/html", is_hotspot_active=conn.is_hotspot_active, host=web_host, port=web_port)` —
+    **chunk 11** when `[device.wiring].fram_target` is wired (every real device today), absent
+    (RAM-only) otherwise. **This reverses an earlier, deliberate decision recorded here** (a
+    connection-reclaim warning could in principle churn faster than a sensor's own fault log) —
+    WP1's own work package explicitly named `WebserverService` as one of the three FRAM-wiring gaps
+    to close, so it's now wired identically to every other mandatory-infra consumer, through the same
+    `[device.wiring].fram_target` mechanism, rather than carrying a bespoke exception. Flagged, not
+    silently decided, in that session's own PR description — revisit if real-hardware churn ever
+    turns out to matter in practice. `static_mount="/html"` registers the static route pair last, so
+    an exact-match API route always wins.
+14. `sysfunct.set_level_setters(_collect_level_setters())` — after every module has constructed.
+15. **`await x.setup()` batch**: `sysfunct → fram → conn → ntp → sgp40 → bmp3xx →
+    notification`. Unaffected by the reordering above — every `.pr.setup()` call (the one that
+    actually depends on `fram` already existing) happens lazily, inside each module's own task entry
+    point (`wlan_connect()`, `asy_ntp_time()`, `WebserverService._run()`), not in this batch; this
+    batch is `cfgmgr.setup()` only, which never touches FRAM. One hard constraint:
+    `notification.setup()` needs `finalize()` (step 11) already run, satisfied by batching at the
+    end. `scd30.setup()` isn't in this batch (no local config).
 
-**Real FRAM chunk order**: SystemService → SCD30 → SGP40 error log → SGP40 VOC backup → BMP3xx →
-Neopixel → NotificationCoordinator. Seven chunks — every module with a FRAM-backed error log uses
-it; must stay in this relative order. `src/` has no earlier on-chip layout to preserve.
+**Real FRAM chunk order**: WIFI → DNSSRV → NTP → SystemService → SCD30 → SGP40 error log → SGP40
+VOC backup → BMP3xx → Neopixel → NotificationCoordinator → WebserverService (when wired). Eleven
+chunks on a device wiring `fram_target` everywhere it's offered (every real device today) — every
+module with a FRAM-backed error log uses it; must stay in this relative order. `src/` has no earlier
+on-chip layout to preserve, and reordering the previous seven-chunk layout to this one is confirmed
+zero-risk (no deployed device besides the routinely-reflashed bench `dev` board).
 
 **This order, and `i2c0`'s SCD30-specific `timeout=200000`, are wozi's own — derived from
 `devices/wozi.toml`.** `buildgen` derives both from each device's own TOML rather than assuming

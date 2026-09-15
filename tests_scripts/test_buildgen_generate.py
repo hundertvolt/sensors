@@ -58,6 +58,49 @@ def test_real_device_constructs_watchdog_exactly_once(repo_root: Path, src_dir: 
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_real_device_wires_fram_into_conn_ntp_sysfunct_and_webserver(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
+    # WP1 (buildgen FRAM wiring session): every real devices/*.toml already wires
+    # [device.wiring].fram_target = "fram" (previously consumed only by sysfunct) - this proves the
+    # three newly-added consumers actually receive fram= too, not just sysfunct as before.
+    result = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir)
+    conn_line = next(line for line in result.module_source.splitlines() if line.strip().startswith("conn = AsyConnTime("))
+    ntp_line = next(line for line in result.module_source.splitlines() if line.strip().startswith("ntp = AsyNtpClient("))
+    sysfunct_line = next(line for line in result.module_source.splitlines() if line.strip().startswith("sysfunct = SystemService("))
+    assert "fram=fram" in conn_line
+    assert "fram=fram" in ntp_line
+    assert "fram=fram" in sysfunct_line
+    assert "        fram=fram,\n" in result.module_source  # webserver's own multi-line kwarg
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_real_device_constructs_fram_before_conn_ntp_sysfunct_and_webserver(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
+    result = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir)
+    lines = result.module_source.splitlines()
+    fram_idx = next(i for i, line in enumerate(lines) if line.strip().startswith("fram = AsyFramManager("))
+    for needle in ("conn = AsyConnTime(", "ntp = AsyNtpClient(", "sysfunct = SystemService(", "webserver = WebserverService("):
+        needle_idx = next(i for i, line in enumerate(lines) if line.strip().startswith(needle))
+        assert fram_idx < needle_idx, f"fram must be constructed before {needle!r}"
+
+
+def test_device_level_fram_target_unwired_omits_fram_kwarg_everywhere(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
+    # Mirrors test_device_level_led_target_unwired_omits_set_ext_led below and
+    # test_buildgen_validate.py's test_device_wiring_fram_target_left_unwired_is_fine - the
+    # generated-code-level proof that removing [device.wiring].fram_target disables fram= on all
+    # four mandatory-infra consumers at once, not just sysfunct as before WP1.
+    doc = base_doc()
+    del doc["device"]["wiring"]["fram_target"]
+    result = generate_device(write_doc(tmp_path, "no_fram_target", doc), src_dir, ext_dir)
+    ast.parse(result.module_source)
+    conn_line = next(line for line in result.module_source.splitlines() if line.strip().startswith("conn = AsyConnTime("))
+    ntp_line = next(line for line in result.module_source.splitlines() if line.strip().startswith("ntp = AsyNtpClient("))
+    sysfunct_line = next(line for line in result.module_source.splitlines() if line.strip().startswith("sysfunct = SystemService("))
+    assert "fram=" not in conn_line
+    assert "fram=" not in ntp_line
+    assert "fram=" not in sysfunct_line
+    assert "fram=fram" not in result.module_source
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_real_device_boot_entry_imports_the_right_module(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
     result = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir)
     assert f"from sensortask_{device} import main" in result.boot_entry_source

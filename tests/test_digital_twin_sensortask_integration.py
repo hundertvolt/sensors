@@ -31,6 +31,7 @@ from _shared_rest_roundtrip import assert_named_modules_constructed, assert_sens
 
 from asy_scd30_driver import SCD30  # noqa: E402  # used only by this file's own reboot-survival section below
 from asy_sgp40_driver import SGP40  # noqa: E402  # used only by this file's own boot-race regression test below
+from print_log import PrintLogHistoryStore  # noqa: E402  # used only by this file's own WiFi/NTP/webserver FRAM-wiring section below
 
 try:
     from typing import TYPE_CHECKING
@@ -882,6 +883,64 @@ def test_mempause_over_real_http_reaches_the_real_fram_manager_and_unpauses() ->
             await _cancel(task)
 
     run_timed(scenario(), timeout_s=20.0)
+
+
+# ---------------------------------------------------------------------------
+# WiFi/NTP/webserver FRAM wiring (buildgen's WP1 session): wozi.toml already wires
+# [device.wiring].fram_target = "fram" for sysfunct (see the mempause test above) - this proves the
+# three newly-added consumers actually receive the real, already-constructed fram= too, through the
+# real generated build_system(), not just when unit-tested in isolation
+# (tests/test_wifi_ntp_webserver_fram_wiring.py covers that half already).
+# ---------------------------------------------------------------------------
+
+
+def test_wifi_ntp_and_webserver_loggers_are_fram_backed_through_the_real_generated_build_system() -> None:
+    async def scenario() -> None:
+        await _boot(_next_test_port())
+        assert sensortask_wozi.conn is not None and sensortask_wozi.ntp is not None and sensortask_wozi.webserver is not None
+        assert isinstance(sensortask_wozi.conn.pr, PrintLogHistoryStore)
+        assert isinstance(sensortask_wozi.conn.dns_server.pr, PrintLogHistoryStore)
+        assert isinstance(sensortask_wozi.ntp.pr, PrintLogHistoryStore)
+        assert isinstance(sensortask_wozi.webserver.pr, PrintLogHistoryStore)
+
+    run_timed(scenario(), timeout_s=10.0)
+
+
+def test_wifi_error_log_survives_a_simulated_reboot_through_the_real_generated_build_system() -> None:
+    # Same "persist to disk, rebuild the whole real object graph fresh" technique as the SGP40
+    # VOC-backup reboot test above, applied to conn's own WIFI log instead of sgp40's VOC backup -
+    # proves the reordering that moved fram ahead of conn/ntp/sysfunct (SPECIFICATION.md Part A.7)
+    # didn't just build cleanly but actually produces a chunk that survives a real reboot.
+    async def scenario() -> None:
+        cfg_path = _tmp_cfg_dir()
+        state_path = cfg_path + "fram_state.json"
+        machine.configure_fram_state_path(state_path)
+        try:
+            machine.configure_wiring(_wiring_plan("wozi"))
+            await sensortask_wozi.build_system(cfg_path=cfg_path, web_host="127.0.0.1", web_port=_next_test_port())
+            assert sensortask_wozi.conn is not None
+            conn1 = sensortask_wozi.conn
+            await conn1.pr.setup()
+            await conn1.pr.err_s("simulated boot failure", errno=7)
+            assert (await conn1.pr.get_log())["WIFI"]["ErrCount"] == 1
+
+            # --- Simulated reboot: persist the twin's FRAM image to disk, then rebuild the whole
+            # real object graph fresh from the SAME cfg_path/FRAM state. ---
+            machine.flush_fram()
+            machine.configure_wiring(_wiring_plan("wozi"))
+            await sensortask_wozi.build_system(cfg_path=cfg_path, web_host="127.0.0.1", web_port=_next_test_port())
+            assert sensortask_wozi.conn is not None
+            conn2 = sensortask_wozi.conn
+            assert conn2 is not conn1  # a genuinely fresh object, not memory surviving the "reboot"
+            await conn2.pr.setup()
+            log = await conn2.pr.get_log()
+            assert log["WIFI"]["ErrCount"] == 1
+            assert log["WIFI"]["ErrNum"][-1] == 7
+        finally:
+            machine.configure_fram_state_path(None)  # see the SGP40 reboot test's own identical comment
+            gc.collect()
+
+    run_timed(scenario(), timeout_s=15.0)
 
 
 # ---------------------------------------------------------------------------

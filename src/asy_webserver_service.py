@@ -88,6 +88,10 @@ if TYPE_CHECKING:
     HotspotActiveFct = Callable[[], bool]
 
 _NAME = const("WEBSERVER")
+# This service's one optional device-level cross-instance dependency (SPECIFICATION.md Part C.14),
+# same [device.wiring] mechanism as asy_wifi_service.py's own led_target/fram_target: its own FRAM
+# error/warning-log target.
+# @wiring fram_target AsyFramManager fram optional kwarg
 _SYSTEM_CMDS = ("reboot", "bootloader", "mempause")  # the only enum values ever forwarded to
 # system_cmd() - never a client-supplied duration (mempause's fixed 300s lives in system_cmd()'s own
 # implementation, e.g. SystemService.pause_permanent_storage() - see SPECIFICATION.md Part A.8).
