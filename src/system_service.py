@@ -42,6 +42,11 @@ _MAX_STORAGE_PAUSE = const(3600)  # one hour max pause for FRAM
 _NTP_WAIT_TIME = const(120)  # 2 mins until random boot signature is used
 _TIMER_BASE_PERIOD = const(1000)  # milliseconds for sensor triggers base period
 _TASK_CHECK_TIME = const(2)  # seconds period to check running tasks (keep << watchdog timeout!)
+_TASK_START_STAGGER_S = const(0.25)  # fixed per-task gap between task starts in start_and_check_tasks()
+# below - NOT 1.0/len(task_starters): that shrinks as more FRAM-backed tasks are added to a device,
+# which is exactly backwards (each new task's own first-time pr.setup() call, at ~170ms uncontended,
+# needs room to clear the shared FRAM/SPI lock before the next task starts contending for it too). A
+# fixed gap keeps that room constant regardless of device size.
 _TASK_FAIL_INCREMENT = const(100)  # absolute value important for decrease time,...
 _TASK_FAIL_MAX = const(300)  # ...ratio important for triggering reset (multiple errors)
 _NAME = const("SYSTEM")
@@ -216,12 +221,21 @@ class SystemService:
         self._timer_sequencer(timers, counter=0)
         await self.timers_running.wait()
 
+    def _feed_watchdog(self) -> None:
+        # Single guarded feed point - degrades to a no-op with no watchdog configured (tests,
+        # anything building SystemService standalone), the same "optional dependency" treatment
+        # self.fram already gets in __init__. _force_watchdog_starve additionally silences a real,
+        # present watchdog once reboot_system()/reboot_bootloader() can't arm their own reset timer.
+        if self.watchdog is not None and not self._force_watchdog_starve:
+            self.watchdog.feed()
+
     async def start_and_check_tasks(self, task_starters: "list[Callable[[], asyncio.Task[Any]]]") -> None:
         await self.pr.setup()  # required for all logged warnings and errors
         tasks: list[asyncio.Task[Any] | None] = [None] * len(task_starters)
         for n, starter in enumerate(task_starters):
             tasks[n] = await self._start_task(starter, n)
-            await asyncio.sleep(1.0 / len(task_starters))
+            self._feed_watchdog()
+            await asyncio.sleep(_TASK_START_STAGGER_S)
         task_errors = 0
 
         while True:
@@ -244,8 +258,7 @@ class SystemService:
                     self.pr.evt("Task error counter reduced to", task_errors)
 
             if task_errors <= _TASK_FAIL_MAX:
-                if self.watchdog is not None and not self._force_watchdog_starve:
-                    self.watchdog.feed()
+                self._feed_watchdog()
             else:
                 await self.pr.err_s("Task error counter above", _TASK_FAIL_MAX, "- reboot triggered!", errno=4)
                 self.reboot_system()
