@@ -1013,6 +1013,35 @@ def _present_optional_instances(module: "Any", device: str) -> "tuple[str, ...]"
     return present
 
 
+def _assert_module_has_fram_chunk(instance: "Any", name: str) -> None:
+    # get_chunk()/get_timestamped_chunk() never raise on overflow - a bare console print, then None
+    # (tests_hardware/README.md's Eleventh pass). None on a module's own logger.fram means a real,
+    # otherwise-silent allocation failure - not "no FRAM wiring" (that case has no .fram at all).
+    pr = instance.pr
+    assert hasattr(pr, "fram"), f"{name}'s logger was never constructed with fram= at all"
+    assert pr.fram is not None, f"{name}'s FRAM-backed logger chunk allocation failed (FRAM out of capacity)"
+
+
+_FRAM_CHUNK_MODULE_NAMES = ("scd30", "sgp40", "bmp3xx", "isl29125", "neopixel", "notification")
+
+
+def _assert_fram_capacity_ok(module: "Any", device: str) -> None:
+    # allocated_size can never itself exceed size (get_chunk() checks BEFORE incrementing it), so
+    # that inequality alone can never fail - the real signal is a module whose own chunk allocation
+    # was silently refused, hence the per-module check below (tests_hardware/README.md's Eleventh pass).
+    fram = module.fram
+    assert fram is not None, "module.fram (AsyFramManager) was not constructed"
+    assert fram.allocated_size <= fram.size, f"AsyFramManager over-allocated: {fram.allocated_size} > {fram.size} bytes"
+    assert module.sysfunct is not None
+    _assert_module_has_fram_chunk(module.sysfunct, "sysfunct")
+    present = _present_optional_instances(module, device)
+    for name in _FRAM_CHUNK_MODULE_NAMES:
+        if name in present:
+            _assert_module_has_fram_chunk(getattr(module, name), name)
+    if "sgp40" in present:
+        assert module.sgp40.ts_storage is not None, "sgp40's VOC-backup timestamped FRAM chunk allocation failed (FRAM out of capacity)"
+
+
 @_register_param("build_system_boots_against_the_real_twin_buses_without_exception")
 def _scenario_boots_against_real_twin_buses(device: str) -> None:
     # Confirms every FRAM chunk (SPECIFICATION.md Part A.7) allocates cleanly against the twin's
@@ -1022,6 +1051,18 @@ def _scenario_boots_against_real_twin_buses(device: str) -> None:
         module = await _boot_device(_next_test_port(), device)
         mandatory = ("conn", "ntp", "i2c0", "i2c1", "spi0", "fram", "sysfunct", "neopixel", "notification", "webserver", "watchdog")
         assert_named_modules_constructed(module, mandatory + _present_optional_instances(module, device))
+
+    run_timed(scenario(), timeout_s=10.0)
+
+
+@_register_param("fram_capacity_is_not_exceeded")
+def _scenario_fram_capacity_ok(device: str) -> None:
+    # Closes a real, previously-silent build-time blind spot for every real devices/*.toml device -
+    # tests_hardware/README.md's Eleventh pass. The genuine-overflow case is this file's own
+    # undersized-chip negative test below - every real device already fits its own chip.
+    async def scenario() -> None:
+        module = await _boot_device(_next_test_port(), device)
+        _assert_fram_capacity_ok(module, device)
 
     run_timed(scenario(), timeout_s=10.0)
 
@@ -1096,6 +1137,42 @@ def _scenario_bus_fault_degrades(device: str) -> None:
     run_timed(scenario(), timeout_s=10.0)
 
 
+# ---------------------------------------------------------------------------
+# Negative case: every real devices/*.toml already fits its own chip, so the scenario above never
+# exercises the failing branch - this proves the check genuinely catches a real overflow rather
+# than trivially always passing (tests_hardware/README.md's Eleventh pass).
+# ---------------------------------------------------------------------------
+
+
+def test_fram_capacity_check_catches_a_genuine_allocation_failure_with_an_undersized_chip() -> None:
+    from asy_fram_manager import AsyFramManager
+
+    real_init = AsyFramManager.__init__
+
+    def _tiny_init(self: "AsyFramManager", spi_bus: "Any", spi_cs: int, max_size: int = 0x2000, history_length: int = 10, debug: "int | None" = None) -> None:
+        # Monkeypatched, not src/ - same class-method-wrap convention as this file's own
+        # SystemService._start_task wrap above - forces a real get_chunk() overflow partway
+        # through wozi's real seven-chunk layout (SPECIFICATION.md Part A.7).
+        real_init(self, spi_bus, spi_cs, max_size=1, history_length=history_length, debug=debug)
+
+    AsyFramManager.__init__ = _tiny_init  # type: ignore[method-assign]
+    port = _next_test_port()
+
+    async def scenario() -> None:
+        module = await _boot_device(port, "wozi")
+        caught = False
+        try:
+            _assert_fram_capacity_ok(module, "wozi")
+        except AssertionError:
+            caught = True
+        assert caught, "the capacity check must fail against a real, artificially undersized FRAM chip - it never did"
+
+    try:
+        run_timed(scenario(), timeout_s=10.0)
+    finally:
+        AsyFramManager.__init__ = real_init  # type: ignore[method-assign]
+
+
 # Registration: one test_<scenario>_<device> per (scenario, device) pair - microtest.py discovers
 # every callable in globals() named test_*, the only parametrization mechanism available here (no
 # real pytest on MicroPython - SPECIFICATION.md Part E.1). fn/device are bound as default-argument
@@ -1109,7 +1186,7 @@ for _param_name, _param_fn in _PARAM_SCENARIOS:
                 try:
                     fn(device)
                 finally:
-                    # This section's own 18 generated tests (3 scenarios x 6 devices) each build a
+                    # This section's own 24 generated tests (4 scenarios x 6 devices) each build a
                     # whole real build_system() object graph, on top of the ~11 heavier tests above
                     # in this same file/process - confirmed the hard way (BUILD_CHAIN_PLAN.md's
                     # Session 6.2): without this, dev's 256KB FRAM chip fake intermittently raised a

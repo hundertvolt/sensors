@@ -122,3 +122,14 @@ def test_storage_pause_gates_the_real_chip_and_the_real_auto_unpause_timer_fires
 
 def test_both_blocks_left_busy_lock_the_real_chunk_until_it_is_rewritten(board: Board) -> None:
     _run_and_assert_pass(board, "fram_busy_status_lockout.py", timeout_s=45.0, label="FRAM busy-status lockout")
+
+
+# ---------------------------------------------------------------------------
+# The real, deployed `sensortask_dev` object graph's total FRAM chunk allocation genuinely fits the
+# real chip - get_chunk()/get_timestamped_chunk() never raise on overflow, only a bare console
+# print (tests_hardware/README.md's Eleventh pass; digital-twin equivalent covers the other devices).
+# ---------------------------------------------------------------------------
+
+
+def test_real_fram_allocation_fits_the_real_chip_after_a_full_system_build(board: Board) -> None:
+    _run_and_assert_pass(board, "fram_capacity_after_full_system_build.py", timeout_s=120.0, label="FRAM capacity after a full system build")

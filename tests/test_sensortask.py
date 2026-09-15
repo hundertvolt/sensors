@@ -335,15 +335,18 @@ def _expected_fram_chunk_calls(module: "Any") -> "list[str]":
     # (reflected from the real module, not assumed - every real device wires them today, but a
     # synthetic fixture with no [device.wiring].fram_target wouldn't). Then: SystemService(chunk) ->
     # SCD30_Reader(chunk) -> SGP40 own log(chunk) -> SGP40 VOC backup (timestamped) ->
-    # [BMP3xx_Reader(chunk), only if present] -> NeopixelDriver(chunk) ->
-    # NotificationCoordinator(chunk), in that order, unconditionally. SCD30 constructs before SGP40
-    # (ordering-hazard #1, SPECIFICATION.md Part A.7/C.14 - SGP40 holds a direct reference to scd30
-    # as its temperature_source/humidity_source, so the producer must exist first). Derived from the
-    # module's own reflected instance set (_present_optional_instances()), not a hardcoded
-    # per-device literal - every real device's own devices/*.toml lists its instances in this same
-    # relative order (BUILD_CHAIN_PLAN.md's Session 2), so this fixed shape stays correct for all 6.
-    # WebserverService is never in this list - it stays RAM-only, see
-    # _scenario_webserver_pr_ram_only below.
+    # [BMP3xx_Reader(chunk), only if present] -> [ISL29125(chunk), only if present] ->
+    # NeopixelDriver(chunk) -> NotificationCoordinator(chunk) -> [UartLinkExerciser(chunk) x2, only
+    # if present, own chunk each - devices/dev.toml wires fram_target on both, never a
+    # logger_target reach-through between them, SPECIFICATION.md Part J.9/C.14], in that order,
+    # unconditionally save for the WiFi/NTP prefix and the two optional-instance brackets. SCD30
+    # constructs before SGP40 (ordering-hazard #1, SPECIFICATION.md Part A.7/C.14 - SGP40 holds a
+    # direct reference to scd30 as its temperature_source/humidity_source, so the producer must
+    # exist first). Derived from the module's own reflected instance set
+    # (_present_optional_instances()), not a hardcoded per-device literal - every real device's own
+    # devices/*.toml lists its instances in this same relative order (BUILD_CHAIN_PLAN.md's
+    # Session 2), so this fixed shape stays correct for all 6. WebserverService is never in this
+    # list - it stays RAM-only, see _scenario_webserver_pr_ram_only below.
     calls = ["chunk", "chunk", "chunk"] if isinstance(module.conn.pr, PrintLogHistoryStore) else []
     calls.append("chunk")  # SystemService
     if _has(module, "scd30"):
@@ -355,6 +358,8 @@ def _expected_fram_chunk_calls(module: "Any") -> "list[str]":
     if _has(module, "isl29125"):
         calls.append("chunk")
     calls += ["chunk", "chunk"]  # NeopixelDriver, NotificationCoordinator - always present
+    if _has_uart_link(module):
+        calls += ["chunk", "chunk"]  # uart_link_init, uart_link_resp - each its own chunk
     return calls
 
 
@@ -572,6 +577,11 @@ def _scenario_fram_chunks_allocated(device: str) -> None:
     if _has(module, "bmp3xx"):
         assert isinstance(module.bmp3xx.pr, PrintLogHistoryStore)
         assert module.bmp3xx.pr.fram is not None
+    if _has_uart_link(module):
+        assert isinstance(module.uart_link_init.pr, PrintLogHistoryStore)
+        assert module.uart_link_init.pr.fram is not None
+        assert isinstance(module.uart_link_resp.pr, PrintLogHistoryStore)
+        assert module.uart_link_resp.pr.fram is not None
 
 
 class _DeadFramChip(FakeMB85RS64V):

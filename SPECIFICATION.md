@@ -396,8 +396,20 @@ below):
 12. `conn.set_ext_led(neopixel)`.
 12b. *(`dev` only)* two buildgen-generated `[[instance]]` entries construct
     `asy_uart_driver.UART(...)` ×2, then the new UART-crossover wrapper module (§Part J) wraps each
-    in a `UART_Comm(...)` across the permanent crossover jumper — **no `fram=`** (Part J.1: "no
-    application semantics" means no FRAM-backed error log of its own). Placed here, after every
+    in a `UART_Comm(...)` across the permanent crossover jumper. Each end's `fram_target`/
+    `logger_target` wiring is individually optional, exactly like every other `fram_target`-wirable
+    driver (C.14.2) — `UartLinkExerciser` forwards whichever the TOML wires straight into its own
+    `UART_Comm`, which already supported both (J.9). `devices/dev.toml` wires `fram_target = "fram"`
+    on both real instances — **own chunk each, chunks 12-13** of `dev`'s real, already-ISL29125-
+    extended layout (WIFI → DNSSRV → NTP → SystemService → SCD30 → SGP40 error → SGP40 VOC backup →
+    BMP3xx → ISL29125 → Neopixel → NotificationCoordinator → UART initiator → UART responder — see
+    the "Real FRAM chunk order" note below; chunks 1-3 are the WiFi/NTP prefix a later session added
+    ahead of everything here, so this pair's own numbering shifted from the originally-recorded
+    "chunks 9-10" once that prefix landed — `wozi` never gets a UART instance or an ISL29125 at all,
+    so its own canonical order stays the ten-chunk WIFI-through-NotificationCoordinator sequence),
+    never a `logger_target` reach-through onto each other: a shared logger would merge both ends'
+    faults into one `/status` entry and make a fault unattributable to a single end (see
+    `tests/test_digital_twin_uart_link.py`'s own distinct-loggers test). Placed here, after every
     other FRAM-allocating module and immediately before the webserver, because the webserver's own
     `error_sources=` list includes them. `wozi` has no such step. The variant also runs a small
     **link exerciser** task on the initiator side: nothing on a live system would otherwise
@@ -438,10 +450,18 @@ below):
 
 **Real FRAM chunk order**: WIFI → DNSSRV → NTP → SystemService → SCD30 → SGP40 error log → SGP40
 VOC backup → BMP3xx → Neopixel → NotificationCoordinator. Ten chunks on a device wiring
-`fram_target` everywhere it's offered (every real device today) — every module with a FRAM-backed
-error log uses it; must stay in this relative order. `src/` has no earlier on-chip layout to
-preserve, and reordering the previous seven-chunk layout to this one is confirmed zero-risk (no
-deployed device besides the routinely-reflashed bench `dev` board).
+`fram_target` everywhere it's offered with no device-specific extras of its own (every real device
+today except `dev`) — every module with a FRAM-backed error log uses it; must stay in this relative
+order. `dev` extends the same prefix with its own two extra sensor/link instances, in construction
+order: WIFI → DNSSRV → NTP → SystemService → SCD30 → SGP40 error log → SGP40 VOC backup → BMP3xx →
+ISL29125 → Neopixel → NotificationCoordinator → UART initiator → UART responder — thirteen chunks
+(this paragraph previously undercounted `dev`'s own layout at "seven chunks" with no ISL29125 and
+no UART pair even after both were wired, a stale summary caught and fixed while merging in the
+WiFi/NTP prefix above — the numbered steps above were already correct on ISL29125, this paragraph
+just hadn't been kept in sync with them). `src/` has no earlier on-chip layout to preserve, and
+reordering the previous layout to either of these (the WiFi/NTP prefix, and each device's own
+subsequent extras) is confirmed zero-risk (no deployed device besides the routinely-reflashed bench
+`dev` board).
 
 **This order, and `i2c0`'s SCD30-specific `timeout=200000`, are wozi's own — derived from
 `devices/wozi.toml`.** `buildgen` derives both from each device's own TOML rather than assuming

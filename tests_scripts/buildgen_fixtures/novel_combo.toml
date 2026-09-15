@@ -12,6 +12,9 @@
 # warn_* signals (every real device wires all three or none), and a uart_link initiator/responder
 # pair on a GPIO pin pair no real device uses (proving the uart_link driver generalizes beyond
 # dev.toml's own GP0/1+GP8/9, per CLAUDE.md's standing "synthetic fixture proves generality" rule).
+# The pair also exercises both of UART_Comm's optional logging backends at once - dev.toml wires
+# only fram_target (see its own comment for why) - "a" gets its own FRAM chunk, "b" reaches through
+# to "a"'s own logger instead of allocating a second chunk (logger_target).
 
 [device]
 name = "NovelCombo"
@@ -144,8 +147,14 @@ name_ext = "a"
 bus = "uart0"
 role = "initiator"
 
+[instance.wiring]
+fram_target = "fram"
+
 [[instance]]
 driver = "uart_link"
 name_ext = "b"
 bus = "uart1"
 role = "responder"
+
+[instance.wiring]
+logger_target = "uart_link_a"

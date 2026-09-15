@@ -186,15 +186,23 @@ def test_wozi_real_task_graph_survives_concurrent_bus_load_including_a_real_gene
 def test_dev_real_task_graph_survives_concurrent_bus_load_including_a_real_general_call() -> None:
     # dev's SCD30+SGP40+ISL29125-on-i2c1 grouping also gets real-hardware proof
     # (tests_hardware/flash/test_bus_concurrency.py); this gives it fast, every-push CI coverage too.
+    # run_seconds=15.0 (was 9.0, same as wozi's below, before a buildgen FRAM-wiring session added
+    # WIFI/DNSSRV/NTP to the FRAM-backed set - SPECIFICATION.md Part A.7): dev now has 13 real FRAM
+    # chunks (wozi's 10 plus its own ISL29125+UART pair), so its boot-time setup() batch queues more
+    # real SPI-bus reads/writes behind the same shared asy_spi_driver.py lock (accepted contention,
+    # same mechanism as the webserver-latency finding that Part notes) before SGP40 gets its own
+    # first bus turn - confirmed empirically (bisected against the pre-WiFi/NTP-wiring base branch,
+    # where 9.0 still passed) rather than assumed; 9.0/10.0 both measured too tight (10.0 passed but
+    # with ~1s of headroom, no cushion for slower/parallel-worktree CI hosts), 11.0 passed cleanly.
     machine.configure_i2c_wiring("dev")
     port = _next_test_port()
 
     async def scenario() -> None:
         await sensortask_dev.build_system(cfg_path=_tmp_cfg_dir(), web_host="127.0.0.1", web_port=port)
         assert sensortask_dev.i2c1 is not None and sensortask_dev.i2c1._i2c is not None
-        await _run_real_task_graph_and_assert_healthy(sensortask_dev, sensortask_dev.i2c1._i2c.log, run_seconds=9.0)
+        await _run_real_task_graph_and_assert_healthy(sensortask_dev, sensortask_dev.i2c1._i2c.log, run_seconds=15.0)
 
-    run_timed(scenario(), timeout_s=20.0)
+    run_timed(scenario(), timeout_s=30.0)
 
 
 def test_wozi_fram_recovers_after_an_injected_spi_write_fault() -> None:
