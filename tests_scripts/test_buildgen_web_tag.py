@@ -457,7 +457,7 @@ def test_parse_web_tags_real_isl29125_field_names(src_dir: Path) -> None:
         "IrCompOffset", "IrCompAdjust", "FiltCoeff", "GainRatio", "ISLCalibrate",
     }
     assert {t.field_name for t in tags if t.section == "measurements"} == {
-        "Lux", "R", "G", "B", "H", "S", "Bri", "CCT", "RangeAct", "GainMeas", "TS",
+        "Lux", "R", "G", "B", "H", "S", "Bri", "CCT", "RangeAct", "Overrange", "GainMeas", "TS",
     }
 
 

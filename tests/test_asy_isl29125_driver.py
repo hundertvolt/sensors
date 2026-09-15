@@ -1069,10 +1069,11 @@ def test_store_produces_the_documented_nested_body() -> None:
     body = run(reader.get_dict_data())
     assert set(body) == {"ISL29125"}
     group = body["ISL29125"]
-    assert set(group) == {"Lux", "RGB", "HSB", "CCT", "RangeAct", "GainMeas", "TS"}
+    assert set(group) == {"Lux", "RGB", "HSB", "CCT", "RangeAct", "Overrange", "GainMeas", "TS"}
     assert set(group["RGB"]) == {"R", "G", "B"}
     assert set(group["HSB"]) == {"H", "S", "B"}
     assert group["RangeAct"] == _RANGE_HIGH_LUX
+    assert group["Overrange"] is False
 
 
 def test_cct_is_none_below_the_low_light_floor_and_present_above_it() -> None:
@@ -1224,7 +1225,38 @@ def test_a_genuinely_saturated_white_scene_survives_the_device_id_re_read() -> N
 
     results, counters = run(scenario())
     assert results[0] == 65535
-    assert 12 in warnings(counters)  # already on the high range, so the scene wins
+    # Overrange belongs in the measurement output, not the log (BACKLOG.md) - already on the high
+    # range with nowhere further to switch, so the scene wins and the field says so directly.
+    assert warnings(counters) == []
+    assert reader._last_overrange is True
+
+
+def test_fixed_range_saturation_on_the_low_range_is_overrange_too() -> None:
+    # A real gap the old W12 warning never covered (it only ever checked sample_range ==
+    # _RANGE_HIGH_LUX): with RangeAuto off, nothing will ever switch a saturated LOW range up, so
+    # "no option left to mitigate it" is equally true there - the low range is whatever the user
+    # pinned, and a saturated fixed-low reading silently under-reported before this field existed.
+    i2c, reader = ready_reader("fixed_low_sat")
+    reader._range_auto = False
+    reader._active_range = _RANGE_LOW_LUX
+    seed_cycle(i2c, 0xFFFF, 0xFFFF, 0xFFFF)
+    with _FastAsyncSleep():
+        run(reader._read_isl())
+    assert reader._last_overrange is True
+
+
+def test_autorange_saturation_on_the_low_range_is_not_overrange_while_a_switch_is_under_way() -> None:
+    # The mirror-image case: under Automatic Range, a saturated LOW-range sample always triggers
+    # an immediate switch-up (_evaluate_range), so there IS an option left to mitigate it - that
+    # is a normal, expected, momentary state on the way to the high range, not "nothing left".
+    i2c, reader = ready_reader("auto_low_sat")
+    assert reader._range_auto is True
+    reader._active_range = _RANGE_LOW_LUX
+    seed_cycle(i2c, 0xFFFF, 0xFFFF, 0xFFFF)
+    with _FastAsyncSleep():
+        run(reader._read_isl())
+    assert reader._last_overrange is False
+    assert reader._active_range == _RANGE_HIGH_LUX  # the switch really did happen
 
 
 def test_the_dark_offset_is_subtracted_on_the_low_range_only() -> None:
@@ -2371,7 +2403,7 @@ def test_get_data_returns_the_all_none_namedtuple_before_the_first_read() -> Non
     _i2c, reader = make_reader("predata")
     data = run(reader.get_data())
     assert isinstance(data, ISL29125)
-    assert data == ISL29125(None, None, None, None, None, None, None, None, None, None, None)
+    assert data == ISL29125(None, None, None, None, None, None, None, None, None, None, None, None)
 
 
 # ---------------------------------------------------------------------------
@@ -3138,6 +3170,37 @@ def test_concurrent_read_and_write_never_interleave_on_the_wire() -> None:
     assert touched == {_ADDR}
     config_writes = [entry for entry in fake(i2c).log if entry[0] == "writeto_mem" and entry[2] == _REG_CONFIG2]
     assert len(config_writes) == 3
+
+
+def test_configure_never_exposes_the_shadow_ahead_of_a_write_still_in_flight() -> None:
+    # Regression for the real-hardware divergence finding recorded in BACKLOG.md: configure()
+    # used to mutate self._mode/_range_fs/_resolution/... (what encode_shadow()/matches_shadow()
+    # read) BEFORE acquiring the device-session lock that SPECIFICATION.md Part C.8 says is what
+    # serializes a multi-transaction sequence against a concurrent coroutine on the same sensor -
+    # only the actual wire write was ever inside that lock. Under real concurrent API load a
+    # configure() call could be suspended (waiting for that lock) after mutating the shadow but
+    # before its write reached the chip, letting a concurrent reader observe a shadow already
+    # describing a value the chip had not yet taken - a false "diverged from the shadow" report
+    # with nothing actually wrong. Reproduced directly by holding the very lock configure() needs,
+    # standing in for a concurrent in-flight operation (e.g. read_loop()'s own background reads):
+    # the shadow must stay exactly where it was for as long as that lock is held by someone else.
+    _i2c, isl = ready_protocol()
+    assert isl.resolution() == 16
+
+    async def change_resolution() -> None:
+        await isl.configure(resolution=12)
+
+    async def scenario() -> None:
+        lock = isl.i2c_isl29125.asy_lock
+        await lock.acquire()  # simulate another operation already in flight on this sensor
+        writer = asyncio.get_event_loop().create_task(change_resolution())
+        await asyncio.sleep(0)  # let configure() run up to the point it must wait for the lock
+        assert isl.resolution() == 16, "the shadow changed before the write could even be attempted"
+        lock.release()
+        await writer
+
+    run(scenario())
+    assert isl.resolution() == 12  # the write did land, once the lock actually freed up
 
 
 def test_never_touches_any_address_but_its_own() -> None:
