@@ -109,7 +109,7 @@ _GENERAL_CALL_ENTRY = ("writeto", 0x00, b"\x06", True)
 # Which get_data() field, per driver, proves that driver produced a real reading under load - the
 # digital-twin tier's own (much smaller) analogue of tests/_bus_hazard_catalog.py's mock-tier
 # adapters, used by the TOML-driven pass at the end of _run_real_task_graph_and_assert_healthy()
-# below (BUS_HAZARD_TEST_GENERATION_REQUIREMENTS.md Section 6). A new driver added to a device's
+# below (SPECIFICATION.md Part C.8). A new driver added to a device's
 # own i2c1 needs an entry here before it gets this generic check (see the fail-loud assert there).
 _I2C_DRIVER_HEALTH_FIELD: "dict[str, str]" = {"scd30": "CO2", "sgp40": "VOC", "bmp3xx": "Pres", "isl29125": "Lux"}
 
@@ -151,14 +151,9 @@ async def _run_real_task_graph_and_assert_healthy(module: "ModuleType", shared_b
         # fired at least once, landing concurrently with its bus-sharing sibling's own startup.
         assert _GENERAL_CALL_ENTRY in shared_bus_log, "SGP40's general-call reset never fired during this run - test isn't exercising the real hazard window"
 
-        # TOML-driven pass (BUS_HAZARD_TEST_GENERATION_REQUIREMENTS.md Section 6): re-checks the
-        # same already-booted graph generically, from the real generated wiring-plan JSON's own i2c1
-        # membership, instead of the hardcoded sgp40/bmp3xx/scd30/isl29125 list above - a second,
-        # cheap look at data already fetched/computed, not a second system boot, so it costs nothing
-        # extra in this file's own shared-heap-per-process budget. Deliberately not a replacement for
-        # the checks above (BUS_HAZARD_TEST_GENERATION_REQUIREMENTS.md Section 4 item 5's "run
-        # alongside, don't retire proven coverage" caution) even though they overlap in practice -
-        # this is the one that stays automatically correct if a device's own i2c1 membership changes.
+        # TOML-driven pass (SPECIFICATION.md Part C.8): a second, cheap look at the same
+        # already-booted graph, from the real wiring-plan JSON's own i2c1 membership rather than the
+        # hardcoded list above - runs alongside it, staying correct if that membership changes.
         device = module.__name__[len("sensortask_") :]  # "sensortask_dev" -> "dev" - str.removeprefix() isn't used here since it's unproven under this MicroPython target
         with open(f"build/generated_src/sensortask_{device}_wiring_plan.json") as f:
             plan: dict[str, Any] = json.load(f)

@@ -660,12 +660,6 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   the Python-internal changes explicitly recorded as having no C impact). Carries those decisions
   across the gap until that C source is imported into this repo and reconciled, then gets deleted.
   The protocol itself is specified in `SPECIFICATION.md` Part J, which is permanent.
-- **[`BUS_HAZARD_TEST_GENERATION_REQUIREMENTS.md`](BUS_HAZARD_TEST_GENERATION_REQUIREMENTS.md)** —
-  design record and phase tracker for teaching `buildgen` to assemble a device's own cross-sensor
-  bus-hazard test coverage from its TOML wiring, instead of every new driver needing it hand-written
-  (SPECIFICATION.md Part C.8's standing rule). Updated as phases complete; deleted once the work
-  lands and is reconciled with its own PR, same lifecycle as `UART_PROMOTION_REQUIREMENTS.md`/
-  `ISL29125_BUILDGEN_MIGRATION_REQUIREMENTS.md` before it.
 
 **`BUILD_CHAIN_PLAN.md`** (working doc, active for the device-genericization initiative):
 

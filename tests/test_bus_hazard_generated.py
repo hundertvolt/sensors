@@ -1,5 +1,5 @@
-"""Mock-tier bus-hazard coverage assembled FROM the real TOML wiring
-(BUS_HAZARD_TEST_GENERATION_REQUIREMENTS.md), not hand-paired like test_bus_hazard_multi_device.py.
+"""Mock-tier bus-hazard coverage assembled FROM the real TOML wiring (SPECIFICATION.md Part C.8),
+not hand-paired like test_bus_hazard_multi_device.py.
 
 Iterates every real device's own generated wiring plan and every I2C bus on it (project owner's
 direction, phase 2): a bus with 2+ real occupants gets the full cross-sensor scenario set; every
@@ -107,8 +107,8 @@ def _register_bus_tests(namespace: "dict[str, object]", device: str, bus_name: s
 
     if len(attachments) < 2:
         # Nothing to interleave - a lone occupant on its own bus has no cross-sensor hazard to
-        # prove anything about (BUS_HAZARD_TEST_GENERATION_REQUIREMENTS.md's own >= 2 scoping,
-        # generalized here from dev/i2c1-only to every device/bus).
+        # prove anything about (the original dev/i2c1-only >= 2 scoping, generalized to every
+        # device/bus).
         return
 
     def test_bus_membership_matches_the_real_toml_group() -> None:

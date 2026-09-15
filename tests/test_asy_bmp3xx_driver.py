@@ -2008,6 +2008,47 @@ def test_read_loop_gives_up_and_returns_false_after_max_errors() -> None:
         assert run(scenario()) is False
 
 
+# ---------------------------------------------------------------------------
+# Bus-hazard coverage moved from tests/test_bus_hazard_multi_device.py (SPECIFICATION.md Part
+# C.8): genuinely BMP3xx-specific (only this driver's own API, no other sensor involved), not a
+# generic cross-sensor shape.
+# ---------------------------------------------------------------------------
+
+
+def test_never_touches_any_address_but_its_own() -> None:
+    i2c, bmp = ready_bmp()
+    seed_chip_id(i2c, _BMP388_CHIP_ID)
+    seed_calibration(i2c)
+    seed_data(i2c, _adc_to_data6(_ADC_P, _ADC_T))
+
+    async def exercise() -> None:
+        for call in (
+            bmp.setup,
+            bmp.reset,
+            bmp.get_pressure,
+            bmp.get_temperature,
+            bmp.get_pressure_and_temperature,
+            bmp.get_altitude,
+            bmp.get_pressure_oversampling,
+            bmp.get_temperature_oversampling,
+            bmp.get_filter_coefficient,
+            bmp.get_config_snapshot,
+            lambda: bmp.set_pressure_oversampling(2),
+            lambda: bmp.set_temperature_oversampling(2),
+            lambda: bmp.set_filter_coefficient(3),
+        ):
+            try:
+                await call()
+            except Exception:  # only the addresses *touched* matter for this sweep, not success
+                pass
+
+    with _FastAsyncSleep():
+        run(exercise())
+
+    touched = {entry[1] for entry in fake(i2c).log if entry[0] in ("writeto", "readfrom_into", "readfrom_mem", "writeto_mem")}
+    assert touched == {_ADDR}, f"BMP3XX_I2C touched unexpected address(es): {touched - {_ADDR}}"
+
+
 if __name__ == "__main__":
     import microtest
 
