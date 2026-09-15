@@ -203,6 +203,12 @@
               "decimals": 0
             },
             {
+              "key": "Overrange",
+              "label": "Overrange",
+              "kind": "readonly",
+              "description": "True whenever the current reading is saturated with nothing left to mitigate it: on Fixed range, the configured range itself; under Automatic Range, only once already on the highest range with nowhere further to switch. Not an error - a transient, harmless, always-current status."
+            },
+            {
               "key": "GainMeas",
               "label": "Measured Gain Ratio",
               "kind": "readonly",

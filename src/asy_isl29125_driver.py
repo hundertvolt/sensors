@@ -161,8 +161,8 @@ _N_STORE_CFG = const(1)  # FiltCoeff ALONE - the only config value the store pat
 _NAME = const("ISL29125")
 # Kept as a literal tuple inline (not `_FIELDS` below) because mypy's namedtuple plugin can only
 # infer field names from a literal at the call site, not through a variable indirection.
-ISL29125 = namedtuple("ISL29125", ("Lux", "Red", "Green", "Blue", "Hue", "Sat", "Bri", "CCT", "RangeAct", "GainMeas", "TS"))
-_FIELDS = const(("Lux", "Red", "Green", "Blue", "Hue", "Sat", "Bri", "CCT", "RangeAct", "GainMeas", "TS"))  # kept in sync with ISL29125's own fields above
+ISL29125 = namedtuple("ISL29125", ("Lux", "Red", "Green", "Blue", "Hue", "Sat", "Bri", "CCT", "RangeAct", "Overrange", "GainMeas", "TS"))
+_FIELDS = const(("Lux", "Red", "Green", "Blue", "Hue", "Sat", "Bri", "CCT", "RangeAct", "Overrange", "GainMeas", "TS"))  # kept in sync with ISL29125's own fields above
 if TYPE_CHECKING:
     # Narrow on purpose: _error_check() counts a failed read when ANY element is None, and CCT is
     # legitimately None in a dark room. Elements 4 and 5 travel WITH the sample - the range the lux
@@ -179,6 +179,7 @@ if TYPE_CHECKING:
 # @web Bri section=measurements submitGroup=self kind=readonly label="Brightness" path="HSB.B" decimals=4 description="Same scale and denominator as RGB, so a dim room reads near 0.003. Read Illuminance when magnitude matters."
 # @web CCT section=measurements submitGroup=self kind=readonly label="Colour Temperature" unit="K" decimals=0 description="Relative and uncalibrated - a documented placeholder RGB->XYZ matrix, so repeatable and monotonic rather than a colorimeter reading. Blank below the low-light floor."
 # @web RangeAct section=measurements submitGroup=self kind=readonly label="Active Range" unit="lx" decimals=0 description="The full-scale range this sample was taken on, which under automatic ranging is not always the one currently programmed."
+# @web Overrange section=measurements submitGroup=self kind=readonly label="Overrange" description="True whenever the current reading is saturated with nothing left to mitigate it: on Fixed range, the configured range itself; under Automatic Range, only once already on the highest range with nowhere further to switch. Not an error - a transient, harmless, always-current status."
 # @web GainMeas section=measurements submitGroup=self kind=readonly label="Measured Gain Ratio" decimals=3 description="A candidate measured by the last calibration run, held for ten minutes and then cleared. Blank unless a run produced one. Nothing applies it - copy it into Range Gain Ratio if you want it used."
 # @web TS section=measurements submitGroup=self kind=readonly label="Timestamp" unit="s" decimals=0
 
@@ -212,7 +213,7 @@ class ISL29125_Reader(SensorReaderConfig):
         debug: int | None = None,
     ) -> None:
         super().__init__(
-            ISL29125(None, None, None, None, None, None, None, None, None, None, None),
+            ISL29125(None, None, None, None, None, None, None, None, None, None, None, None),
             max_module_error,
             _NAME,
             _VAL_SI + _VAL_RES + _VAL_RA + _VAL_RNG + _VAL_AR_THRESH + _VAL_AR_DWELL
@@ -251,6 +252,11 @@ class ISL29125_Reader(SensorReaderConfig):
         self._last_switch_ms = time.ticks_ms()
         self._brownout_seen = False
         self._periodic_only_switches = 0
+        # The Overrange output field's value for the most recent successfully-stored sample - set
+        # once per successful read cycle in _read_isl(), read back by _store_isl() (BACKLOG.md:
+        # this used to be wrnno=12, a log entry; it belongs in the measurement output instead,
+        # since it's a harmless, transient, always-current status, not a fault).
+        self._last_overrange = False
         # The protocol layer's failed-write count as of the last reconciliation - see
         # _verify_after_failed_write(). Starts level with it, so a clean boot reconciles nothing.
         self._reconciled_write_failures = 0
@@ -385,7 +391,8 @@ class ISL29125_Reader(SensorReaderConfig):
             # first await that can yield. p13: a later push cannot change what is read, only this.
             sample_range = self._active_range
             sample_resolution = self.isl.resolution()
-            sample_span = _RANGE_HIGH_LUX if self._range_auto else self._fixed_range
+            sample_range_auto = self._range_auto
+            sample_span = _RANGE_HIGH_LUX if sample_range_auto else self._fixed_range
             try:
                 status = await self.isl.read_status()
             except Exception as e:  # distinguishable from a data-read failure, and not re-raised
@@ -414,8 +421,16 @@ class ISL29125_Reader(SensorReaderConfig):
                 await self._note_decision_source(threshold_fired=threshold_fired and irq_fired)
                 self.pr.evt("range switch", sample_range, "->", target, "peak", max(counts))
                 await self._switch_range(target)
-            elif saturated and sample_range == _RANGE_HIGH_LUX:
-                await self.pr.wrn_s("Saturated on the high range - the scene exceeds the part.", wrnno=12)
+            # Overrange (the output field, not a log entry - BACKLOG.md): true whenever nothing
+            # left could mitigate the saturation - the configured range itself under Fixed range
+            # (no auto-switch will ever happen), or Automatic Range already parked on the highest
+            # range with nowhere further to switch. A saturated LOW-range sample under Automatic
+            # Range is excluded on purpose: target is already non-None for it above, so a switch
+            # is in progress - not "no option left". Judged against sample_range_auto, the mode
+            # captured BEFORE the switch-range await above (same discipline as sample_range/
+            # sample_span just above): a concurrent set_range_auto() landing mid-switch must not
+            # retroactively change which mode this already-taken sample is judged against.
+            self._last_overrange = saturated and (not sample_range_auto or sample_range == _RANGE_HIGH_LUX)
             await self._measure_gain_ratio(counts[0])
             self.pr.all("read")
             green, red, blue = counts
@@ -529,6 +544,7 @@ class ISL29125_Reader(SensorReaderConfig):
                 Bri=bri,
                 CCT=self._colour_temperature(green, norm),
                 RangeAct=sample_range,
+                Overrange=self._last_overrange,
                 GainMeas=self._measured_ratio(),  # None unless a recent run produced a candidate
                 TS=timestamp,
             ),
@@ -882,6 +898,7 @@ class ISL29125_Reader(SensorReaderConfig):
                 "HSB": {"H": data.Hue, "S": data.Sat, "B": data.Bri},
                 "CCT": data.CCT,
                 "RangeAct": data.RangeAct,
+                "Overrange": data.Overrange,
                 "GainMeas": data.GainMeas,
                 "TS": data.TS,
             },
@@ -1117,13 +1134,16 @@ class ISL29125_I2C:
             raise OSError(f"failed to read register {register:#x}")
         return value
 
-    async def _write_shadow(self, first_register: int) -> None:
+    async def _write_shadow_locked(self, i2c: I2CDevice, first_register: int) -> None:
+        # Caller must already hold both the device-session and bus locks (configure() does, for
+        # its whole mutate-then-write sequence - see that method's own comment) - this performs
+        # no locking of its own, on purpose: acquiring it here a second time would be exactly the
+        # gap that let a concurrent reader observe a mutated shadow against an unwritten chip.
         payload = self.encode_shadow()[first_register - _REGISTER_CONFIG1 :]
-        async with self.i2c_isl29125 as isl, isl.i2c_device as i2c:
-            # set_register_struct() takes one value but accepts bytes, so an "Ns" format is how a
-            # burst write goes through the promoted bus layer. The payload is already bytes of the
-            # exact length because struct.pack() truncates silently on MicroPython.
-            await i2c.set_register_struct(first_register, f"{len(payload)}s", payload)
+        # set_register_struct() takes one value but accepts bytes, so an "Ns" format is how a
+        # burst write goes through the promoted bus layer. The payload is already bytes of the
+        # exact length because struct.pack() truncates silently on MicroPython.
+        await i2c.set_register_struct(first_register, f"{len(payload)}s", payload)
 
     async def get_config_snapshot(self) -> bytes:
         # One 3-byte burst under one device-session lock, returned UNDECODED: decoding here would
@@ -1324,47 +1344,61 @@ class ISL29125_I2C:
             self._reject_outside(ir_adjust, 0, _CONFIG2_ALSCC_MASK, "IR compensation adjust")
         if persist is not None:
             self._reject_unless(persist, _PRST_SETTINGS, "threshold persistence")
-        before = self.encode_shadow()
-        # Every mutable field, captured as one tuple so a failed write can put all of them back.
-        restore = (self._mode, self._range_fs, self._resolution, self._ir_offset, self._ir_adjust, self._persist, self._int_select, self._sync, self._conven)
-        if mode is not None:
-            self._mode = mode
-        if range_fs is not None:
-            self._range_fs = range_fs
-        if resolution is not None:
-            self._resolution = resolution
-        if ir_offset is not None:
-            self._ir_offset = ir_offset
-        if ir_adjust is not None:
-            self._ir_adjust = ir_adjust
-        if persist is not None:
-            self._persist = persist
-        if threshold_interrupt is not None:
-            # INTSEL selects ONE channel (p11, Table 11) and green is the one the auto-range state
-            # machine watches, so "armed" and "green" are the same choice - the caller asks for the
-            # behaviour and this owns the encoding.
-            self._int_select = _INTSEL_GREEN if threshold_interrupt else _INTSEL_NONE
-        if sync is not None:
-            self._sync = sync
-        if conven is not None:
-            self._conven = conven
-        after = self.encode_shadow()
-        if after == before and not force:
-            return
-        wrote_config1 = force or after[0] != before[0]
-        try:
-            await self._write_shadow(_REGISTER_CONFIG1 if wrote_config1 else _REGISTER_CONFIG2)
-        except Exception:
-            # The shadow must never claim a value the part did not take: normalise() scales every
-            # reading by it, so a lost resolution write would shift every later sample 16x with the
-            # reads still succeeding. Rolled back, as _switch_range() declines to update its range.
-            (self._mode, self._range_fs, self._resolution, self._ir_offset, self._ir_adjust, self._persist, self._int_select, self._sync, self._conven) = restore
-            self._write_failures += 1
-            raise
+        # Validate-mutate-write(-rollback-on-failure) runs under ONE hold of the device-session
+        # lock, not just the final write: SPECIFICATION.md Part C.8 documents that lock as what
+        # serializes "a multi-transaction sequence against another coroutine starting its own
+        # sequence on the same sensor", and mutating self._mode/_range_fs/etc (what
+        # encode_shadow()/matches_shadow() read) BEFORE acquiring it left exactly that gap - a
+        # concurrent get_config_snapshot()/matches_shadow() could observe the shadow already
+        # showing a pending change while the chip still held the old value, under real concurrent
+        # API load (BACKLOG.md's ISL29125 shadow-divergence entry - a false "diverged from the
+        # shadow" report with nothing actually wrong on the wire).
+        wrote_config1 = False
+        async with self.i2c_isl29125 as isl, isl.i2c_device as i2c:
+            before = self.encode_shadow()
+            # Every mutable field, captured as one tuple so a failed write can put all of them back.
+            restore = (self._mode, self._range_fs, self._resolution, self._ir_offset, self._ir_adjust, self._persist, self._int_select, self._sync, self._conven)
+            if mode is not None:
+                self._mode = mode
+            if range_fs is not None:
+                self._range_fs = range_fs
+            if resolution is not None:
+                self._resolution = resolution
+            if ir_offset is not None:
+                self._ir_offset = ir_offset
+            if ir_adjust is not None:
+                self._ir_adjust = ir_adjust
+            if persist is not None:
+                self._persist = persist
+            if threshold_interrupt is not None:
+                # INTSEL selects ONE channel (p11, Table 11) and green is the one the auto-range
+                # state machine watches, so "armed" and "green" are the same choice - the caller
+                # asks for the behaviour and this owns the encoding.
+                self._int_select = _INTSEL_GREEN if threshold_interrupt else _INTSEL_NONE
+            if sync is not None:
+                self._sync = sync
+            if conven is not None:
+                self._conven = conven
+            after = self.encode_shadow()
+            if after == before and not force:
+                return
+            wrote_config1 = force or after[0] != before[0]
+            try:
+                await self._write_shadow_locked(i2c, _REGISTER_CONFIG1 if wrote_config1 else _REGISTER_CONFIG2)
+            except Exception:
+                # The shadow must never claim a value the part did not take: normalise() scales
+                # every reading by it, so a lost resolution write would shift every later sample
+                # 16x with the reads still succeeding. Rolled back, as _switch_range() declines to
+                # update its range - still inside the lock, so this is never observable either.
+                (self._mode, self._range_fs, self._resolution, self._ir_offset, self._ir_adjust, self._persist, self._int_select, self._sync, self._conven) = restore
+                self._write_failures += 1
+                raise
         if wrote_config1:
             # Any writer of CONFIG1 restarts the conversion (p10, Table 7), and there are three.
             # Arming the deadline in the function that does the write makes it impossible for a
-            # caller to forget, and refreshes it when a config push lands mid-settle.
+            # caller to forget, and refreshes it when a config push lands mid-settle. Outside the
+            # lock on purpose: it's a timing bookkeeping field, not part of the shadow-vs-chip
+            # consistency this lock exists to protect.
             self._settle_until_ms = time.ticks_add(time.ticks_ms(), _SETTLE_CYCLES * self.cycle_ms())
 
     async def read_counts(self) -> "tuple[int, int, int]":

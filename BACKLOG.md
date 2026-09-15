@@ -145,6 +145,47 @@ constraints.
 
 ## Open questions (need owner input or further investigation)
 
+- **ISL29125's chip configuration divergence under concurrent API load (PR #84/commit `679c2b0`'s
+  isolation work, HIGH IMPORTANCE, completely unforeseen — project owner, 2026-09-15) — fixed in
+  code and unit-tested; real-hardware re-verification still pending.** Root cause, traced through
+  the real code: `ISL29125_I2C.configure()` mutated the in-memory shadow fields
+  `encode_shadow()`/`matches_shadow()` read (`self._mode`, `self._range_fs`, `self._resolution`,
+  ...) *before* it ever acquired the per-sensor device-session lock that SPECIFICATION.md Part C.8
+  documents as what serializes "a multi-transaction sequence against another coroutine starting its
+  own sequence on the same sensor" — only the actual wire write was ever inside that lock. Under
+  real concurrent load (`read_loop()`'s own background reads/`_switch_range()` calls, or a second
+  concurrent request) that lock does get contended, so a `configure()` call could be suspended
+  *after* mutating the shadow but *before* its write reached the chip, letting a concurrent `GET`'s
+  `get_config_snapshot()` + `matches_shadow()` observe the shadow already showing the new value
+  against a chip that still held the old one — a false "diverged from the shadow" `wrnno=11` report
+  with nothing actually wrong on the wire, which is why three quiet trials never reproduced it but
+  2 concurrent `GET` workers did (twice, per the original isolation). The existing mock test that
+  looked like it should cover this
+  (`test_concurrent_read_and_write_never_interleave_on_the_wire`) only ever proved wire-level
+  atomicity, never this shadow-vs-chip timing race. **Fixed** by widening the device-session lock in
+  `configure()` to span the whole validate-mutate-write(-rollback-on-failure) sequence, matching
+  Part C.8's own documented intent (`_write_shadow()` renamed `_write_shadow_locked()`: no longer
+  self-locking, the caller now holds the lock for the whole critical section). Regression test:
+  `tests/test_asy_isl29125_driver.py::test_configure_never_exposes_the_shadow_ahead_of_a_write_still_in_flight`
+  holds the exact lock `configure()` needs (standing in for real contention) and confirms the
+  shadow cannot change while `configure()` is blocked waiting for it. **Still open**: this needs a
+  real-hardware re-run (the original finding only ever manifested under real concurrent bench load)
+  before it can be considered fully closed — needs the project owner's go-ahead per CLAUDE.md's
+  standing real-hardware gate, not given in this session.
+- **The sibling `W12` ("saturated on the high range") finding from the same isolation work is
+  resolved differently, by design rather than by fixing a bug (project owner, 2026-09-15):**
+  saturation status was never a fault, so it no longer lives in the error/warning log at all. It's
+  now a live, mode-aware `Overrange` measurement field on `ISL29125` (`src/asy_isl29125_driver.py`):
+  true whenever nothing left could mitigate the saturation — the configured range itself under
+  Fixed range (nothing will ever switch it), or Automatic Range already parked on its highest
+  setting with nowhere further to go. This structurally can't fail an error-log-empty bench
+  assertion again, and closes a real pre-existing gap the old warning never covered: a saturated
+  *fixed low-range* reading used to go unreported entirely (the old condition only ever checked
+  `sample_range == _RANGE_HIGH_LUX`). Covered by three new/updated tests in
+  `tests/test_asy_isl29125_driver.py`; `tests_hardware/device_scripts/isl29125_mechanism_envelope.py`
+  updated to check the field directly instead of the retired `W12` log entry (also pending
+  real-hardware re-run). `html/definitions/dev.json`/`mockdata/dev.json` updated with the new field.
+
 1. `modules/_boot.py`'s `import sensortask.py` (literal `.py`) — works reliably on real hardware
    (pinned to MicroPython 1.26), but MicroPython's documented freeze/import behavior says it should
    raise `ImportError`. **The mechanism itself is now confirmed, not a mystery**: traced

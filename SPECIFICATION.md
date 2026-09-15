@@ -1442,7 +1442,7 @@ is expected; only overlap *within* one row matters.
 | `asy_fram_manager.py`/`asy_fram_driver.py` (`FRAM`) | 10-98 | 60-83 | `AsyFramManager` 10-88 (busy/idle status-byte helper spreads a base across 2-7 values per call); `FRAM_SPI` 89-98 (not-initialized ×5, invalid-range ×2, readback mismatch, lock-timeout, device-ID guard) + `wrnno` 81-83 (WRDI-stuck, WEL-didn't-set ×2). |
 | `asy_bmp3xx_driver.py` (`BMP3XX`) | 10-22 | — | 10=init, 11=periodic read, 12=config read at init, 13=config write at init, 14=config read at store-time, 15-20=oversampling/filter forwards, 21=trigger-interval, 22=batched snapshot read. |
 | `asy_scd30_driver.py` (`SCD30`) | 10-25 | — | 10=init, 11=periodic read, 12=unused (no init-time config), 13=stop-continuous-measurement, 14-25=per-field forwards. |
-| `asy_isl29125_driver.py` (`ISL29125`) | 10-38 | 10-13 | 10=init, 11=periodic read, 12=config read at init, 13=config write at init, 14=config read at store-time, 15/17/19/21=resolution/range/IR-offset/IR-adjust getters, 16/18/20/22=their setters, 24=derived-persistence reapply, 25=trigger-interval, 26=gain-ratio/filter-coefficient setters (shared), 27=autorange-threshold/dwell setters (shared), 28=`_read_sensor_dict()`, 29=auto-range threshold-register write, 30=auto-range RNG-bit write, 31=status read, 32=all-ones bus-fault confirmation, 33=brownout re-apply, 34=diverged-config re-apply, 38=`set_range_auto()`. `wrnno` 10=brownout detected, 11=chip config diverged from shadow, 12=saturated on the high range, 13=range decided by the periodic path only for 5 decisions running (the interrupt line may be dead, requirement 17/C.11.5). |
+| `asy_isl29125_driver.py` (`ISL29125`) | 10-38 | 10-13 | 10=init, 11=periodic read, 12=config read at init, 13=config write at init, 14=config read at store-time, 15/17/19/21=resolution/range/IR-offset/IR-adjust getters, 16/18/20/22=their setters, 24=derived-persistence reapply, 25=trigger-interval, 26=gain-ratio/filter-coefficient setters (shared), 27=autorange-threshold/dwell setters (shared), 28=`_read_sensor_dict()`, 29=auto-range threshold-register write, 30=auto-range RNG-bit write, 31=status read, 32=all-ones bus-fault confirmation, 33=brownout re-apply, 34=diverged-config re-apply, 38=`set_range_auto()`. `wrnno` 10=brownout detected, 11=chip config diverged from shadow, 13=range decided by the periodic path only for 5 decisions running (the interrupt line may be dead, requirement 17/C.11.5). **12 is retired, not reused**: it used to mean "saturated on the high range", but that status is a harmless, transient, always-current measurement fact, not a fault — it now lives in the measurement output as the `Overrange` field (mode-aware: true whenever nothing left could mitigate the saturation — the configured range itself under Fixed range, or Automatic Range already on its highest setting) rather than as a log entry. |
 | `asy_sgp40_driver.py` (`SGP40`) | 10-18 | 10-13 | 10=init, 11=periodic read, 12=config read at init, 13-18=backup read/write/clear/deserialize/serialize/compensation. `wrnno`=backup missing/stale — a missing/not-yet-available *compensation* reading is no longer one of these (C.14.2's own note), only a genuine compensation-source read exception (`errno=18`) still logs. |
 | `asy_wifi_service.py` (`WIFI`) | 11-18 | 1-7 | 11=mode-switch...17=hardware give-up, 18=disconnect-timeout; `wrnno` 1-3=missing-config, 4-7=WLAN status. |
 | `asy_ntp_client.py` (`NTP`) | 11-20 | 1-3 | 11=missing-config...19=time-calc, 18/20=interval-fallback/give-up; `wrnno`=callback failures. |
@@ -2101,6 +2101,16 @@ absent; what survives is the decision.
     `tests/test_sensortask_dev.py` proved it for its own hand-written one — confirm this is actually
     covered rather than assuming it, since the two branches' construction paths are not the same
     code.
+21. **ADDED LATER (2026-09-15), not one of the original twenty above.** Saturation status is a
+    measurement-output field (`Overrange`), never a log entry. Originally logged as `wrnno=12`
+    ("saturated on the high range" — C.7.1's table), retired after a real-hardware bench test
+    failure showed a harmless, transient, always-current sensor state should never be able to fail
+    an error-log-empty assertion. `Overrange` is mode-aware: true whenever nothing left could
+    mitigate the saturation — the configured range itself under Fixed range (auto-range off, so
+    nothing will ever switch it), or Automatic Range already parked on its highest setting with
+    nowhere further to switch. A saturated low-range sample *under* Automatic Range is deliberately
+    excluded — requirement 17's own switch-up condition is already firing for it, so there is still
+    an option left.
 
 **One standing consequence, because it recurs**: CLAUDE.md's rule to verify a driver against the
 legacy driver's own actually-proven field behaviour **has no purchase for this device**. The legacy
