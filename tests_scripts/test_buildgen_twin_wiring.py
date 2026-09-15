@@ -7,6 +7,8 @@ from typing import Any
 
 import pytest
 
+from buildgen import twin_wiring
+from buildgen.model import DeviceModel, InstanceSpec
 from buildgen.twin_wiring import FIXED_ADDRESSES, compute_twin_wiring
 from buildgen.validate import build_model
 
@@ -97,6 +99,34 @@ def test_fixed_addresses_table_matches_the_real_drivers_own_hardware_defaults() 
     # address=0x59 default, and src/asy_isl29125_driver.py's own hard-wired 0x44 (no
     # address-select pin at all) - see buildgen/twin_wiring.py's own FIXED_ADDRESSES docstring.
     assert FIXED_ADDRESSES == {"scd30": 0x61, "sgp40": 0x59, "isl29125": 0x44}
+
+
+def test_twin_machine_has_no_chip_fake_for_an_unknown_driver_fails_loud(digital_twin_machine: Any) -> None:
+    # digital_twin/machine.py's own _build_i2c_chip() analogue of
+    # test_bus_attached_driver_with_no_address_rule_fails_loud_not_silently_miswired below - a
+    # wiring-plan attachment naming a driver the twin has no chip fake for must fail loud, not
+    # silently produce a bus with a missing device. Driven directly (no real device TOML can name a
+    # driver machine.py doesn't know, since compute_twin_wiring() and _build_i2c_chip() are always
+    # kept in sync by hand for the same fixed driver set today).
+    with pytest.raises(ValueError, match=r"digital twin has no I2C chip fake for driver 'not_a_real_driver'"):
+        digital_twin_machine._build_i2c_chip({"driver": "not_a_real_driver"})
+
+
+def test_bus_attached_driver_with_no_address_rule_fails_loud_not_silently_miswired(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Guards compute_twin_wiring()'s own defensive fallback: a new driver added to
+    # buildspec.BUS_ATTACHED_DRIVERS without a matching FIXED_ADDRESSES/ADDRESS_CAPABLE_DRIVERS
+    # entry here must fail loud, never silently mis-wire the twin. Unreachable via any real device
+    # TOML today - buildspec.py's own three driver-classification sets already partition
+    # BUS_ATTACHED_DRIVERS exhaustively (FIXED_ADDRESS_DRIVERS's own definition is exactly
+    # BUS_ATTACHED_DRIVERS minus the other two) - so this constructs the gap directly via
+    # monkeypatch, same technique test_buildgen_validate.py's own
+    # test_driver_resolvable_but_missing_buildspec_entry_reports_the_real_cause uses for its
+    # otherwise-unreachable branch.
+    monkeypatch.setattr(twin_wiring, "BUS_ATTACHED_DRIVERS", frozenset({"fakebus"}))
+    spec = InstanceSpec(driver="fakebus", name_ext="", fields={"bus": "i2c0"}, wiring={}, order_index=0)
+    model = DeviceModel(device="test", path=Path("test.toml"), doc={}, instances={("fakebus", ""): spec})
+    with pytest.raises(ValueError, match=r"no address rule for bus-attached driver 'fakebus'"):
+        compute_twin_wiring(model)
 
 
 # ---------------------------------------------------------------------------

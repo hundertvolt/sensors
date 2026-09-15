@@ -298,6 +298,120 @@ def test_duplicate_mandatory_group_across_two_files_fails_loud(tmp_path: Path, s
         _generate_with_patched_ntp()
 
 
+def test_web_tag_with_no_schema_and_no_kind_override_fails_loud(tmp_path: Path, src_dir: Path) -> None:
+    # ContMeas is deliberately freestanding (test_buildgen_schema_ast.py's own confirmation: no
+    # _VAL_* ConfigSchema constant at all) - its "kind=toggle" override is the only thing that lets
+    # _infer_kind() resolve it. Drop the override and _infer_kind() has neither a schema-derived
+    # field_type nor an explicit kind to fall back on.
+    mutated = _copy_driver_replacing(tmp_path, src_dir, "asy_scd30_driver.py", " kind=toggle", "")
+    model = _single_scd30_model("dev", mutated)
+    with pytest.raises(BuildError, match="no matching ConfigSchema constant and no explicit kind"):
+        generate_definitions(model, src_dir)
+
+
+def test_web_tag_kind_enum_with_no_discrete_schema_choice_set_fails_loud(tmp_path: Path, src_dir: Path) -> None:
+    # Same freestanding ContMeas field, forced to kind=enum instead of dropped entirely - _enum_field()
+    # needs a tuple/list `special` from the schema, and ContMeas has no schema at all.
+    mutated = _copy_driver_replacing(tmp_path, src_dir, "asy_scd30_driver.py", "kind=toggle", "kind=enum")
+    model = _single_scd30_model("dev", mutated)
+    with pytest.raises(BuildError, match="kind=enum but its ConfigSchema has no discrete choice set"):
+        generate_definitions(model, src_dir)
+
+
+def test_web_tag_declares_extra_special_label_not_in_schema_choice_set_fails_loud(tmp_path: Path, src_dir: Path) -> None:
+    # The reverse direction of test_missing_special_label_for_an_enum_schema_value_fails_loud: every
+    # schema choice already has a matching special: label (proven by the golden-file test), so
+    # adding one more special: entry for a value the schema's own choice set doesn't contain is the
+    # only way to reach the "declares special: option(s) ... not present" branch.
+    mutated = _copy_driver_replacing(tmp_path, src_dir, "asy_bmp3xx_driver.py", ' special:127="127"', ' special:127="127" special:999="Extra"')
+    spec = InstanceSpec(
+        driver="bmp3xx", name_ext="", fields={}, wiring={}, order_index=0,
+        driver_info=DriverInfo(driver="bmp3xx", module="asy_bmp3xx_driver", class_name="BMP3xx_Reader", kind="sensor", source_path=mutated, needs_setup=True),
+        resolved_name="BMP3XX",
+    )
+    model = DeviceModel(device="dev", path=Path("dev.toml"), doc={"device": {"name": "dev"}}, instances={("bmp3xx", ""): spec}, construction_order=[("bmp3xx", "")])
+    with pytest.raises(BuildError, match=r"declares special: option\(s\) \['999'\] not present"):
+        generate_definitions(model, src_dir)
+
+
+def test_web_tag_schema_sentinel_value_with_no_matching_special_label_fails_loud(tmp_path: Path, src_dir: Path) -> None:
+    # AmbPres's ConfigSchema declares a scalar sentinel (special=0, not a tuple/list choice set -
+    # test_extract_field_schemas_real_scd30... confirms fields["AmbPres"] == ("int", None, 700, 1400, 0)),
+    # documented today by its own "special:0=..." tag entry. Drop that one documentation entry and
+    # the sentinel is left with nothing to explain it.
+    mutated = _copy_driver_replacing(tmp_path, src_dir, "asy_scd30_driver.py", ' special:0="Compensation off / use Altitude"', "")
+    model = _single_scd30_model("dev", mutated)
+    with pytest.raises(BuildError, match=r"has a sentinel special value 0 but no matching special:0"):
+        generate_definitions(model, src_dir)
+
+
+def test_mandatory_group_never_declared_anywhere_fails_loud(tmp_path: Path, src_dir: Path) -> None:
+    # _mandatory_group()'s own "len(declaring) == 0" branch - distinct from
+    # test_duplicate_mandatory_group_across_two_files_fails_loud's "declared twice" branch above.
+    # system_service.py is the sole owner of section=system submitGroup=settings (asy_ntp_client.py
+    # deliberately never declares it - see that test's own comment); drop it entirely instead of
+    # duplicating it, and no scanned file declares this mandatory group at all.
+    patched_src = tmp_path / "src"
+    patched_src.mkdir()
+    for existing in src_dir.glob("*.py"):
+        (patched_src / existing.name).write_bytes(existing.read_bytes())
+    mutated = _copy_driver_without(tmp_path, src_dir, "system_service.py", '# @web-group section=system submitGroup=settings label="System Settings"')
+    (patched_src / "system_service.py").write_bytes(mutated.read_bytes())
+    model = DeviceModel(device="dev", path=Path("dev.toml"), doc={"device": {"name": "dev"}}, instances={}, construction_order=[])
+    with pytest.raises(BuildError, match=r"no @web-group tag declares section='system' submitGroup='settings' in any scanned file"):
+        generate_definitions(model, patched_src)
+
+
+def test_mandatory_group_declared_but_no_fields_reference_it_fails_loud(tmp_path: Path, src_dir: Path) -> None:
+    # _mandatory_group()'s own "declared but empty" branch: the @web-group tag survives, but every
+    # @web field tag that would normally reference notification/autoConfig is stripped, so the
+    # group has nothing to show. Uses a synthetic notification instance (driver_registry.py's own
+    # NotificationCoordinator mapping) since _mandatory_group("notification", "autoConfig", ...) is
+    # only reached when the model actually has one.
+    original = (src_dir / "asy_notification_service.py").read_text(encoding="utf-8")
+    lines = [line for line in original.splitlines(keepends=True) if not line.lstrip().startswith("# @web ")]
+    mutated = tmp_path / "asy_notification_service.py"
+    mutated.write_text("".join(lines), encoding="utf-8")
+    spec = InstanceSpec(
+        driver="notification", name_ext="", fields={}, wiring={}, order_index=0,
+        driver_info=DriverInfo(driver="notification", module="asy_notification_service", class_name="NotificationCoordinator", kind="service", source_path=mutated, needs_setup=True),
+    )
+    model = DeviceModel(device="dev", path=Path("dev.toml"), doc={"device": {"name": "dev"}}, instances={("notification", ""): spec}, construction_order=[("notification", "")])
+    with pytest.raises(BuildError, match=r"section='notification' submitGroup='autoConfig' has an @web-group declaration but no @web field tags reference it"):
+        generate_definitions(model, src_dir)
+
+
+def test_resolved_key_fails_loud_if_resolved_name_still_unset() -> None:
+    # _resolved_key()'s own "internal:" invariant guard - buildgen.validate._resolve_instances()
+    # always sets resolved_name before definitions generation ever runs on a real model.
+    from buildgen.definitions import _resolved_key
+
+    spec = InstanceSpec(driver="scd30", name_ext="", fields={}, wiring={}, order_index=0)  # resolved_name defaults to None
+    with pytest.raises(BuildError, match="internal: resolved_name unresolved before definitions generation"):
+        _resolved_key(spec, "dev")
+
+
+def test_measurements_and_sensors_sections_fails_loud_if_driver_info_still_unset() -> None:
+    # _measurements_and_sensors_sections()'s own "internal:" invariant guard - same
+    # always-resolved-by-validate.py reasoning as _resolved_key() above.
+    from buildgen.definitions import _measurements_and_sensors_sections
+
+    spec = InstanceSpec(driver="scd30", name_ext="", fields={}, wiring={}, order_index=0, resolved_name="SCD30")  # driver_info defaults to None
+    model = DeviceModel(device="dev", path=Path("dev.toml"), doc={"device": {"name": "dev"}}, instances={("scd30", ""): spec}, construction_order=[("scd30", "")])
+    with pytest.raises(BuildError, match="internal: driver_info unresolved before definitions generation"):
+        _measurements_and_sensors_sections(model, {})
+
+
+def test_notification_section_fails_loud_if_driver_info_still_unset() -> None:
+    # _notification_section()'s own "internal:" invariant guard, same reasoning as above.
+    from buildgen.definitions import _notification_section
+
+    spec = InstanceSpec(driver="notification", name_ext="", fields={}, wiring={}, order_index=0)  # driver_info defaults to None
+    model = DeviceModel(device="dev", path=Path("dev.toml"), doc={"device": {"name": "dev"}}, instances={("notification", ""): spec}, construction_order=[("notification", "")])
+    with pytest.raises(BuildError, match="internal: driver_info unresolved before definitions generation"):
+        _notification_section(model, {}, {"notification"})
+
+
 def test_no_notification_instance_omits_notification_section(src_dir: Path) -> None:
     model = DeviceModel(device="dev", path=Path("dev.toml"), doc={"device": {"name": "dev"}}, instances={}, construction_order=[])
     generated = generate_definitions(model, src_dir)

@@ -331,6 +331,20 @@ def test_parse_web_group_tags_rejects_malformed_payload_shapes(tmp_path: Path, s
     _parse_group_expecting(tmp_path, source, "malformed @web-group tag")
 
 
+@pytest.mark.parametrize(
+    "source",
+    [
+        'class Foo:\n    def __init__(self):\n        # @web-group section=sensors submitGroup=self label="L"\n        pass\n',
+        'class Foo:\n    # @web-group section=sensors submitGroup=self label="L"\n    X = 1\n',
+    ],
+)
+def test_parse_web_group_tags_rejects_locations_inside_a_body(tmp_path: Path, source: str) -> None:
+    # The @web-group sibling of test_parse_web_tags_rejects_locations_inside_a_body above - same
+    # D4 location dimension, same "module level" rejection, but for parse_web_group_tags()'s own
+    # separate inside_block check, which had no test of its own.
+    _parse_group_expecting(tmp_path, source, "module level")
+
+
 # ---------------------------------------------------------------------------
 # D7 near-miss / "present or close to present" enforcement
 # ---------------------------------------------------------------------------

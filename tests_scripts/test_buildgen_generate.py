@@ -397,6 +397,54 @@ def test_codegen_has_no_build_recipe_for_an_unknown_driver(tmp_path: Path, src_d
         _build_call(spec, _Ctx(model))
 
 
+def test_notification_with_no_signal_sink_wiring_field_fails_loud(tmp_path: Path, src_dir: Path) -> None:
+    # _build_args_notification()'s own "internal:" invariant - notification's signal_sink wiring
+    # field is always resolved by validate.py's own _check_wiring_references() before codegen ever
+    # runs (base_doc()'s own notification instance always declares it), so this is unreachable via
+    # any real TOML; driven the same way test_codegen_has_no_build_recipe_for_an_unknown_driver
+    # above reaches its own otherwise-unreachable branch - mutate an already-validated spec directly.
+    from buildgen.codegen import _build_args_notification, _Ctx
+    from buildgen.validate import build_model
+
+    model = build_model(write_doc(tmp_path, "dev", base_doc()), src_dir)
+    spec = model.instances[("notification", "")]
+    spec.wiring_schema = tuple(wf for wf in spec.wiring_schema if wf.toml_field != "signal_sink")
+    with pytest.raises(BuildError, match="no signal_sink wiring field by codegen time"):
+        _build_args_notification(spec, _Ctx(model))
+
+
+def test_instance_with_no_driver_info_fails_loud_at_codegen_time(tmp_path: Path, src_dir: Path) -> None:
+    # _emit_header_and_imports()'s own "internal:" invariant - driver_info is always resolved by
+    # validate.py's _resolve_instances() before codegen runs. Driven via generate_module_source()
+    # directly (the same seam generate_device() itself calls through), on an otherwise-valid model
+    # with one instance's driver_info cleared after validation.
+    from buildgen.codegen import generate_module_source
+    from buildgen.graph import build_construction_order
+    from buildgen.validate import build_model
+
+    model = build_model(write_doc(tmp_path, "dev", base_doc()), src_dir)
+    build_construction_order(model)
+    model.instances[("scd30", "")].driver_info = None
+    with pytest.raises(BuildError, match="driver_info unresolved by codegen time"):
+        generate_module_source(model, model.construction_order, "2026-01-01T00:00:00Z")
+
+
+def test_construction_order_entry_that_is_neither_a_bare_node_nor_an_instance_key_fails_loud(tmp_path: Path, src_dir: Path) -> None:
+    # _emit_build_system()'s own "internal:" invariant - buildgen.graph.build_construction_order()
+    # only ever emits "conn"/"ntp"/"sysfunct" or a real (driver, name_ext) instance key, so no real
+    # TOML can reach this; driven by inserting a bogus bare string into an otherwise-valid,
+    # already-computed construction order.
+    from buildgen.codegen import generate_module_source
+    from buildgen.graph import build_construction_order
+    from buildgen.validate import build_model
+
+    model = build_model(write_doc(tmp_path, "dev", base_doc()), src_dir)
+    build_construction_order(model)
+    mutated_order = [*model.construction_order, "bogus_node"]
+    with pytest.raises(BuildError, match="is not a known bare node or an instance key"):
+        generate_module_source(model, mutated_order, "2026-01-01T00:00:00Z")
+
+
 def test_cli_entry_point_writes_both_files_and_exits_zero(tmp_path: Path, repo_root: Path) -> None:
     # The one real entry point a person invokes by hand. Run as a subprocess so the __main__ guard
     # and the process exit code are both genuinely exercised, not just main()'s return value.
