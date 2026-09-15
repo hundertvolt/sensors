@@ -366,6 +366,15 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_repeated_r
 # scenario_a_write_does_not_disturb_concurrent_sibling_reads).
 # ---------------------------------------------------------------------------
 
+# A PUT whose value already equals the stored one comes back "Unchanged", not "Valid" - a fully
+# accepted request that simply had nothing to write (config_manager.py's set_dict_cfg()). Both
+# writers below alternate between two settings, so the FIRST write lands on whichever one the board
+# already holds roughly half the time; src/system_service.py's own set_debug_level() treats the pair
+# the same way. Accepting both would let a run that genuinely wrote nothing pass, so the writers
+# count real "Valid" results and the tests assert at least one.
+_ACCEPTED_WRITE_RESULTS = ("Valid", "Unchanged")
+
+
 _ISL29125_RESOLUTIONS = (12, 16)  # the only two real, valid settings (asy_isl29125_driver.py's own _RESOLUTIONS)
 _ISL29125_WRITE_CYCLES = 4  # modest relative to flash tier's 8 - each cycle here is a real HTTP round trip, not a bare I2C write
 
@@ -396,6 +405,8 @@ def test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads_under_a
             for finding in _schema_sanity_findings(res.json(), ""):
                 _record(f"worker {worker_id} iter {i}: {finding}")
 
+    real_writes: list[str] = []
+
     def isl29125_write_worker() -> None:
         # Systematically alternates between both real, valid settings - a real config WRITE landing
         # concurrently with the GET workers' own reads, repeated several times over the run so
@@ -409,8 +420,12 @@ def test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads_under_a
             except Exception as e:
                 _record(f"isl29125 write {i}: {type(e).__name__}: {e}")
                 continue
-            if res.status_code != 200 or res.json().get("result", {}).get("ISL29125", {}).get("Resolution") != "Valid":
+            outcome = res.json().get("result", {}).get("ISL29125", {}).get("Resolution")
+            if res.status_code != 200 or outcome not in _ACCEPTED_WRITE_RESULTS:
                 _record(f"isl29125 write {i}: PUT /sensors Resolution={value} rejected: {res.status_code} {res.body!r}")
+            elif outcome == "Valid":
+                with errors_lock:
+                    real_writes.append(f"Resolution={value}")
 
     threads = [threading.Thread(target=get_sensors_worker, args=(w,)) for w in range(_GET_WORKERS)]
     threads.append(threading.Thread(target=isl29125_write_worker))
@@ -421,11 +436,12 @@ def test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads_under_a
             t.join(timeout=120.0)
             assert not t.is_alive(), "a worker thread never finished within 120s - possible real deadlock under concurrent load"
         assert not errors, f"{len(errors)} issue(s) under concurrent API load: {'; '.join(errors[:10])}"
+        assert real_writes, "no write actually changed the stored Resolution - this run exercised no real config write at all"
     finally:
         # Restore the board's original config regardless of outcome - same "shared bench rig" duty
         # test_sensor_config_push_over_real_hardware.py's own BMP3xx push test already owes.
         restore_res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"ISL29125": {"Resolution": original_resolution}}, timeout_s=10.0)
-        assert restore_res.status_code == 200 and restore_res.json()["result"]["ISL29125"].get("Resolution") == "Valid", f"failed to restore original ISL29125 Resolution={original_resolution!r}: {restore_res.status_code} {restore_res.body!r}"
+        assert restore_res.status_code == 200 and restore_res.json()["result"]["ISL29125"].get("Resolution") in _ACCEPTED_WRITE_RESULTS, f"failed to restore original ISL29125 Resolution={original_resolution!r}: {restore_res.status_code} {restore_res.body!r}"
 
     wait_until(
         lambda: http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200,
@@ -484,6 +500,8 @@ def test_bmp3xx_config_write_does_not_disturb_its_own_concurrent_reads_under_api
             for finding in _schema_sanity_findings(res.json(), ""):
                 _record(f"worker {worker_id} iter {i}: {finding}")
 
+    real_writes: list[str] = []
+
     def bmp3xx_write_worker() -> None:
         # Same varied-offset spirit as the ISL29125 writer above, scaled to BMP3xx's own two-value
         # discrete setting - alternates repeatedly so genuine HTTP/scheduling jitter puts each write
@@ -496,8 +514,12 @@ def test_bmp3xx_config_write_does_not_disturb_its_own_concurrent_reads_under_api
             except Exception as e:
                 _record(f"bmp3xx write {i}: {type(e).__name__}: {e}")
                 continue
-            if res.status_code != 200 or res.json().get("result", {}).get("BMP3XX", {}).get("PressOvers") != "Valid":
+            outcome = res.json().get("result", {}).get("BMP3XX", {}).get("PressOvers")
+            if res.status_code != 200 or outcome not in _ACCEPTED_WRITE_RESULTS:
                 _record(f"bmp3xx write {i}: PUT /sensors PressOvers={value} rejected: {res.status_code} {res.body!r}")
+            elif outcome == "Valid":
+                with errors_lock:
+                    real_writes.append(f"PressOvers={value}")
 
     threads = [threading.Thread(target=get_sensors_worker, args=(w,)) for w in range(_GET_WORKERS)]
     threads.append(threading.Thread(target=bmp3xx_write_worker))
@@ -508,9 +530,10 @@ def test_bmp3xx_config_write_does_not_disturb_its_own_concurrent_reads_under_api
             t.join(timeout=120.0)
             assert not t.is_alive(), "a worker thread never finished within 120s - possible real deadlock under concurrent load"
         assert not errors, f"{len(errors)} issue(s) under concurrent API load: {'; '.join(errors[:10])}"
+        assert real_writes, "no write actually changed the stored PressOvers - this run exercised no real config write at all"
     finally:
         restore_res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"BMP3XX": {"PressOvers": original_press_overs}}, timeout_s=10.0)
-        assert restore_res.status_code == 200 and restore_res.json()["result"]["BMP3XX"].get("PressOvers") == "Valid", f"failed to restore original BMP3XX PressOvers={original_press_overs!r}: {restore_res.status_code} {restore_res.body!r}"
+        assert restore_res.status_code == 200 and restore_res.json()["result"]["BMP3XX"].get("PressOvers") in _ACCEPTED_WRITE_RESULTS, f"failed to restore original BMP3XX PressOvers={original_press_overs!r}: {restore_res.status_code} {restore_res.body!r}"
 
     wait_until(
         lambda: http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200,

@@ -10,10 +10,11 @@ from typing import TYPE_CHECKING
 import http_client
 import pytest
 from error_log_helpers import get_errcount, reset_all_error_logs
+from memory_pressure_log import assert_instrument_healthy, parse_samples
 from soak_tiers import SOAK_TIER_SECONDS
 
 if TYPE_CHECKING:
-    from harness import Board
+    from harness import Board, FlashedBuild
 
 # The six FRAM-backed modules (SPECIFICATION.md Part A.7) - WIFI/NTP/every CFGMGR_* logger are
 # RAM-only. CLAUDE.md's standing rule: read these before clearing state on any unexpected error.
@@ -102,6 +103,28 @@ def test_real_hardware_survives_max_speed_hammer_load_without_memoryerror_or_reb
     # counted against this - see _run_max_speed_hammer_load()'s own reject-when-full comment.
     assert success_count > 100, f"too few successful requests got through during the hammer load ({success_count} ok, {len(request_errors)} rejected/errored) - server may have wedged"
     reset_all_error_logs(dut_ip)
+
+
+@pytest.mark.memory_pressure
+def test_real_hardware_survives_max_speed_hammer_load_with_the_allocator_under_churn(board: Board, dut_ip: str, pressure_build: FlashedBuild) -> None:
+    """The sharpest form of SPECIFICATION.md Part I's original finding: the same max-speed hammer,
+    but on a reactive-GC build whose heap is being fragmented underneath it. The streaming GET path
+    has to hold with no proactive collection AND no easy contiguous space."""
+    reset_all_error_logs(dut_ip)
+    lines, success_count, request_errors = _run_max_speed_hammer_load(board, dut_ip, _HAMMER_DURATION_S)
+    errcount_after = get_errcount(dut_ip)
+    fram_errcount_after = {mod: errcount_after[mod] for mod in _FRAM_BACKED_MODULES if errcount_after.get(mod, {}).get("counter", 0) > 0}
+    try:
+        # The instrument's own health first: a starved or mis-calibrated churn task makes every
+        # other assertion below meaningless rather than merely weaker.
+        assert_instrument_healthy(parse_samples(lines), "the max-speed hammer load")
+        _assert_no_crash_or_reboot(lines)
+        # A caught-and-logged MemoryError counts as a failure here, not a pass - that is the whole
+        # point of the reactive-GC bar (I.4(e)), and errcount is where a caught one surfaces.
+        assert not fram_errcount_after, f"a FRAM-backed module logged a real error while under allocator churn - captured before any cleanup: {fram_errcount_after!r}"
+        assert success_count > 100, f"too few successful requests got through while under allocator churn ({success_count} ok, {len(request_errors)} rejected/errored) - server may have wedged"
+    finally:
+        reset_all_error_logs(dut_ip)
 
 
 @pytest.mark.long_soak

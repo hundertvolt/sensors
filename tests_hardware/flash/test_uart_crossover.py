@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 if TYPE_CHECKING:
-    from harness import Board
+    from harness import Board, FlashedBuild
 
 DEVICE_SCRIPTS = Path(__file__).resolve().parent.parent / "device_scripts"
 RESULT_RE = re.compile(r"^RESULT: (PASS|FAIL)(.*)$", re.MULTILINE)
@@ -72,7 +72,8 @@ def test_an_idle_listener_polls_at_the_idle_rate_not_the_transaction_rate(board:
     _assert_pass(output, "UART idle poll rate")
 
 
-def test_the_link_keeps_transferring_while_every_other_subsystem_is_busy(board: Board) -> None:
+@pytest.mark.memory_pressure
+def test_the_link_keeps_transferring_while_every_other_subsystem_is_busy(board: Board, pressure_build: FlashedBuild) -> None:
     # The realistic worst case for a stop-and-wait link sharing one core: both I2C devices, the
     # FRAM's SPI bus and heavy allocation churn all running against it. Asserts in both directions
     # - the link must keep progressing, and it must not have done so by starving anything else.

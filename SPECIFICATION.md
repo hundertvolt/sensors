@@ -4088,9 +4088,13 @@ pass.** Every generated boot entry (`buildgen.codegen.generate_boot_entry_source
 hand-written `boot_entry/*_boot.py`) sets `gc.threshold(32768)` for exactly this reason, chosen
 *after* the `/status` fix already eliminated the real-hardware `MemoryError` with no threshold
 change at all — it lifts an already-stable system further from a stability threshold it would
-otherwise sit close to, it does not create that stability. Once applied, the *same* full suite must
+otherwise sit close to, it does not create that stability. Once applied, the same full suite must
 still pass with it enabled too — it's an additive safety margin layered on an already-safe design,
 never a swap of one mode for another, and never itself the explanation for why a test now passes.
+**One deliberate asymmetry, added with the real-hardware matrix (I.6)**: the allocator-pressure
+tests run in the reactive pass only, because the instrument they need is frozen into that build
+alone and a proactive threshold would collect its churn away — so the two passes are the same suite
+*plus* a pressure selection that only the harder one can carry, never a weaker bar for either.
 **(g) When a genuine memory-pressure issue is found, fix it with a design-level technique that
 relieves the pressure directly** — chunking a large operation, reusing/pre-allocating buffers
 instead of churning same-shaped objects, streaming (`_stream_dict_response()`, I.3) — never a
@@ -4114,6 +4118,116 @@ enough requests through); the headroom the system starts from is asserted separa
 `tests_hardware/flash/test_memory_stress.py`'s `test_real_gc_heap_headroom_survives_a_full_system_build`
 (Part F.5.3 for the 1.29 figures). Note the 91,312 B above is a *loaded* floor and the F.5.3
 numbers are at rest — don't compare them directly.
+
+## I.6 GC policy is a build property, and allocator pressure is an instrument
+
+I.4(e) demands that every test pass under MicroPython's own reactive-only default before the
+project's `gc.threshold(32768)` is credited with anything. On the digital twin that is a runtime
+flag (`run_generic_integration.py --gc-threshold`). On real hardware it cannot be: the bench tier
+observes a *live* system passively over the serial log, and every `mpremote exec()` route
+interrupts an `asyncio.run()` that then never resumes (`tests_hardware/README.md`). A test that
+sets its own `gc.threshold()` is also measuring a configuration nobody ships.
+
+**So the policy belongs to the build.** `buildgen/gc_policy.py` names exactly two, and
+`generate_boot_entry_source()` emits the matching `gc.threshold()` call into the boot entry:
+
+| policy | `gc.threshold()` | what it is |
+| --- | --- | --- |
+| `reactive` | `-1` | MicroPython's own default (`py/modgc.c` disables the threshold for any negative value). The harder case, and the vital bar. |
+| `threshold` | `32768` | What ships. Additive margin on an already-safe design, never the reason something passes. |
+
+`scripts/build_firmware.py --gc-policy` selects it; the shipped variant keeps the plain
+`build/firmware-<device>.uf2` name and a test-only variant gets its own, so the two never get
+confused at flash time. **The board is the source of truth, not the flag**: `gc.threshold()` with
+no argument returns the live value, so `tests_hardware/conftest.py`'s `flashed_build` fixture reads
+it off the DUT once per session and `--expect-gc-policy` merely states what the run *intends* — a
+mismatch fails the run loudly instead of quietly measuring the other build.
+
+### The pressure instrument
+
+`tests_hardware/device_modules/memory_pressure.py` makes the heap genuinely scarce and fragmented
+while real code runs. It is frozen **only** into a `--gc-policy reactive --memory-pressure` build,
+which is what makes "pressure tests never run against the shipped GC policy" structural rather than
+conventional: against any other build the import simply fails. A `--memory-pressure` build is
+refused outright on the `threshold` policy, because a proactive collector collects the churn away
+and the run measures the collector rather than the design.
+
+Four properties make it an instrument rather than a hazard, and all four are load-bearing:
+
+- **Mixed block sizes** (64/256/512/1024 B), not one uniform block — same-sized holes are trivially
+  reusable, so a fixed-size churn measures occupancy rather than fragmentation.
+- **Hold, then release half** — the heap keeps *moving* instead of filling and emptying, which is
+  the difference between fragmentation pressure and a sawtooth.
+- **A headroom floor** (`fragment` mode, the default). Without one the instrument starves whatever
+  it is co-resident with and every result says "out of memory" no matter how sound the design under
+  test is. This is the calibration that matters: pressure aimed at code that *itself* makes large or
+  repeated allocations is exactly where a mis-sized instrument produces false findings.
+- **Its own failures are counted separately and never raised.** In `fragment` mode an allocation
+  failure inside the instrument means its headroom is mis-sized for that workload — a calibration
+  fault that invalidates the run, asserted as such, not a finding about the code under test. The
+  `exhaust` mode exists for deliberately driving to the ceiling; there the instrument's own
+  `MemoryError` is the point.
+
+This is the one carve-out to I.4(e)'s "zero `MemoryError`s, caught or not": the designated pressure
+source is the only site permitted to see one. Everywhere else — the serial log, and every
+FRAM-backed `errcount` — it stays a failure. The instrument itself prints nothing on a caught
+failure, so it can never be mistaken for one in the log; it reports progress on its own fixed timer
+instead (`MEMPRESSURE` lines, parsed host-side by `tests_hardware/memory_pressure_log.py`), the same
+print-to-log/parse-from-host separation E.9 already requires.
+
+### The matrix
+
+`scripts/run_bench_gc_matrix.sh` runs all three passes in order, flashing between them and ending
+on the shipped build so the bench is left as it normally sits:
+
+1. `reactive`, full bench suite — the vital bar.
+2. `reactive` + pressure, `-m memory_pressure` only — the same design with the heap made scarce.
+   Scoped to the marked tests deliberately: running the whole suite under churn would add hours
+   while telling us nothing about, say, hotspot role reversal.
+3. `threshold`, full bench suite — the shipped defense in depth, still clean.
+
+Pass 1 is the one that must hold. Note what this means and does not: pressure tests are validated
+in a configuration that is *not* the shipped one. That is the correct direction of conservatism —
+prove it in the harder configuration, ship the easier one — and not a discrepancy to tidy away.
+
+### What the first real run measured (2026-09-14, bench Pi4, dev board)
+
+The mechanism reaches real hardware end to end: each build declares its own policy as
+`BUILD_GC_POLICY` in the generated device module and the fixture reads it back off the frozen
+image, so what a run reports is what is actually flashed rather than what the build command asked
+for. All three passes ran green.
+
+- **Pass 1 (reactive, full bench suite): 95 passed, 2 skipped, 45 min.** The generated dev firmware
+  boots, serves, and holds with no proactive collection at all: UART crossover integration, WiFi and
+  hotspot role reversal, bus concurrency under API load, watchdog starvation, end-to-end timing.
+  Four `test_bus_concurrency.py` errors in the same run were a harness wedge in tests since excluded
+  for spending the SCD30's NVM write budget, not a result about the build (`tests_hardware/README.md`).
+- **Pass 3 (threshold, full bench suite): 95 passed, 2 skipped, 42 min.** The shipped defense in
+  depth changes nothing the vital bar had not already established, which is exactly what (f) claims
+  of it.
+- **Pass 2 (reactive + churn, pressure tests): 3 passed.** The max-speed HTTP hammer holds while the
+  heap is actively fragmented underneath it — the sharpest form of I.3's original finding, and the
+  first time the streaming GET path has been shown to hold with neither proactive collection nor
+  easy contiguous space. The UART link keeps transferring under the same conditions, and the
+  FRAM-backed diagnostic path records and reads back 40 entries intact with zero degraded
+  `PrintLogHistory` allocations. `alloc_failures == 0` throughout: the instrument's headroom was
+  correctly sized, so these are results about the code, not about a starved board.
+
+**Three defects this run found, all in the validation apparatus rather than in `src/`** — recorded
+because each is the kind that makes a green run meaningless rather than red: the `flashed_build`
+fixture originally read a live `gc.threshold()`, which races the boot (a raw-REPL interrupt landing
+before `main.py` reports the interpreter's `-1` default and misreads a threshold build as reactive —
+62 setup errors); `harness._mpremote()`'s USB-wedge recovery matched only mpremote's own wording and
+never fired on the raw pyserial `OSError` a real wedge produces; and adding those signatures then
+made the harness try to *recover* the disconnect `test_watchdog_starvation` deliberately causes,
+pushing an expected 1.5s drop to 12.3s. `tests_hardware/README.md` carries the operational detail.
+
+**One measurement worth keeping on its own.** Reactive-only GC under sustained fragmentation is
+*expensive*: `error_logging_under_memory_pressure.py`'s 40 FRAM-write rounds take 15,257 ms
+(~380 ms/round) on a reactive build under churn, against a few ms unloaded. Nothing fails — the
+design is correct either way, which is the point of pass 1 — but it is a concrete measure of what
+`gc.threshold(32768)` buys beyond safety margin, and it is why an 8s watchdog catches a pressure
+script that would never come close otherwise (`tests_hardware/README.md`).
 
 ---
 

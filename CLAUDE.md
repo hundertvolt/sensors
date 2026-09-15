@@ -272,7 +272,20 @@ information):
   real default) and with zero `MemoryError`s — caught-and-logged included — and with no
   `gc.collect()` calls or other nonstandard `gc` settings anywhere in the business logic or the
   test's own setup propping the result up, *before* it's ever run again with the project's chosen
-  `gc.threshold(32768)` enabled (which the full suite must then also still pass). A threshold (or a
+  `gc.threshold(32768)` enabled (which the full suite must then also still pass). **On real
+  hardware the GC policy is a property of the BUILD, never something a test sets at runtime** —
+  `scripts/build_firmware.py --gc-policy {reactive,threshold}`, with the board's own live
+  `gc.threshold()` as the source of truth and `--expect-gc-policy` as the run's stated intent
+  (SPECIFICATION.md Part I.6). A test that mutates GC policy itself is measuring a configuration
+  nobody ships; the bench tier could not do it anyway, since every `exec()` route interrupts a live
+  `asyncio.run()` that never resumes. **Allocator-pressure tests are an instrument, with one
+  carve-out to the zero-`MemoryError` bar**: the designated pressure source
+  (`tests_hardware/device_modules/memory_pressure.py`, frozen only into a `--memory-pressure`
+  build) is the only site permitted to see one, and in its default headroom-keeping mode even its
+  own failure is a calibration fault that invalidates the run rather than a finding. Pressure aimed
+  at code that itself makes large or repeated allocations is exactly where a mis-sized instrument
+  manufactures false findings — calibrate it, don't just turn it up. `scripts/run_bench_gc_matrix.sh`
+  runs the whole three-pass matrix. A threshold (or a
   `gc.collect()` call) is defense in depth on top of an already-safe design, lifting an anyhow-stable
   system further from a stability threshold — it is forbidden as the fix itself for a design that
   still needs one big contiguous allocation somewhere, or for any other memory-pressure issue; the
@@ -381,6 +394,11 @@ information):
   run's own wall-clock cost (roughly the same again as the plain pass) never sits on the critical
   path `digital-twin-e2e`/`firmware-build-verify` wait on; see `ci.yml`'s own job comments for the
   full account.
+  **`ci.yml`'s Mypy step passes an explicit scope list, which OVERRIDES `pyproject.toml`'s
+  `[tool.mypy]` `files` rather than adding to it** — so a directory added to `files` stays
+  un-type-checked in CI until `ci.yml` is edited too, and nothing guards the two against diverging.
+  Hit for real once (2026-09-14, `tests_hardware/device_modules/`): it resolved locally via
+  `mypy_path` and failed CI with `import-not-found`. When adding a scope, change both.
 - **`zizmor` audits the GitHub Actions workflows themselves** — `GITHUB_TOKEN` scope, checkout
   credential persistence, action pinning: the one part of the supply chain ruff/mypy can't see.
   Policy config is `.github/zizmor.yml` (only `unpinned-uses` is configured — `actions/*` may be

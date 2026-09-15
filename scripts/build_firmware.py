@@ -35,6 +35,7 @@ from _strip_type_checking import strip_type_checking_blocks  # type: ignore[impo
 # be on sys.path for `import buildgen` to resolve.
 sys.path.insert(0, str(REPO_ROOT))
 from buildgen.errors import BuildError  # noqa: E402
+from buildgen.gc_policy import DEFAULT_GC_POLICY, GC_POLICIES, PRESSURE_MODULE, check_pressure_policy  # noqa: E402
 from buildgen.generate import generate_device  # noqa: E402
 
 # Mirrors boards/RPI_PICO_W/manifest.py + boards/manifest.py combined - the default manifest's own
@@ -60,14 +61,14 @@ def _stage_stripped(src_file: Path, dest: Path) -> None:
     dest.write_text(strip_type_checking_blocks(src_file.read_text()))
 
 
-def build_stage_dir(stage_dir: Path, device: str) -> None:
+def build_stage_dir(stage_dir: Path, device: str, gc_policy: str = DEFAULT_GC_POLICY, *, memory_pressure: bool = False) -> None:
     # Every device needs its own devices/<device>.toml (buildgen's own device definition) - fail
     # loud, before staging anything, converting buildgen's own BuildError (malformed TOML,
     # unresolved wiring, ...) into a plain RuntimeError so this function's own contract (raise
     # RuntimeError on any build-impossible condition) stays uniform for every failure mode below.
     device_toml = REPO_ROOT / "devices" / f"{device}.toml"
     try:
-        generated = generate_device(device_toml, REPO_ROOT / "src", REPO_ROOT / "ext")
+        generated = generate_device(device_toml, REPO_ROOT / "src", REPO_ROOT / "ext", gc_policy=gc_policy, memory_pressure=memory_pressure)
     except BuildError as e:
         raise RuntimeError(str(e)) from e
 
@@ -95,6 +96,8 @@ def build_stage_dir(stage_dir: Path, device: str) -> None:
     # content. Fail loud instead.
     entry_module = f"sensortask_{generated.model.device}"
     reserved = {"main.py", "frozen_html.py", f"{entry_module}.py"}
+    if memory_pressure:
+        reserved.add(f"{PRESSURE_MODULE}.py")
     collisions = reserved & {f"{m}.py" for m in module_files}
     if collisions:
         raise RuntimeError(f"generated module(s) for device {device!r} collide with this build's own reserved staging names: {sorted(collisions)}")
@@ -110,6 +113,12 @@ def build_stage_dir(stage_dir: Path, device: str) -> None:
     # means USB never initializes at all).
     (stage_dir / f"{entry_module}.py").write_text(generated.module_source)
     (stage_dir / "main.py").write_text(generated.boot_entry_source)
+
+    # The pressure instrument is frozen ONLY into a --memory-pressure build, so a pressure test
+    # run against an ordinary build fails on the import instead of silently measuring nothing
+    # (SPECIFICATION.md Part I.6).
+    if memory_pressure:
+        _stage_stripped(REPO_ROOT / "tests_hardware" / "device_modules" / f"{PRESSURE_MODULE}.py", stage_dir / f"{PRESSURE_MODULE}.py")
 
     # The real website, built fresh for this device and frozen under the same "frozen_html" name
     # the generated entry module's own `import frozen_html` already expects (SPECIFICATION.md Part
@@ -133,11 +142,30 @@ def main() -> int:
         help="Directory holding the already-installed toolchain (see toolchain/setup_toolchain.py) - not built by this script",
     )
     parser.add_argument("--jobs", type=int, default=os.cpu_count() or 4, help="Parallel make jobs")
+    parser.add_argument(
+        "--gc-policy",
+        choices=GC_POLICIES,
+        default=DEFAULT_GC_POLICY,
+        help="GC policy the generated boot entry sets: 'threshold' (32768, what ships) or 'reactive' (MicroPython's own default, the harder bar every test must pass first). See buildgen/gc_policy.py.",
+    )
+    parser.add_argument(
+        "--memory-pressure",
+        action="store_true",
+        help="Also freeze the memory_pressure instrument and start its churn task from the boot entry - a test-only build, never shipped. Requires --gc-policy reactive.",
+    )
     args = parser.parse_args()
 
     device_toml = REPO_ROOT / "devices" / f"{args.device}.toml"
     if not device_toml.is_file():
         print(f"error: no device definition at {device_toml}", file=sys.stderr)
+        return 1
+
+    # Refused before anything is built, not warned about afterwards (BUILD_CHAIN_PLAN.md's
+    # build-script quality bar).
+    try:
+        check_pressure_policy(args.gc_policy, args.device, memory_pressure=args.memory_pressure)
+    except BuildError as e:
+        print(f"error: {e}", file=sys.stderr)
         return 1
 
     versions = st.load_versions(REPO_ROOT / "toolchain" / "versions.toml")
@@ -147,7 +175,12 @@ def main() -> int:
         print(f"error: no MicroPython checkout at {micropython_dir} - run `uv run toolchain/setup_toolchain.py setup` first", file=sys.stderr)
         return 1
 
-    output = args.output or (REPO_ROOT / "build" / f"firmware-{args.device}.uf2")
+    # The shipped variant keeps the plain name every existing caller already uses; a test-only
+    # variant gets its own, so the two can coexist in build/ and never be confused at flash time.
+    suffix = "" if args.gc_policy == DEFAULT_GC_POLICY else f"-{args.gc_policy}"
+    if args.memory_pressure:
+        suffix += "-pressure"
+    output = args.output or (REPO_ROOT / "build" / f"firmware-{args.device}{suffix}.uf2")
     output.parent.mkdir(parents=True, exist_ok=True)
 
     with tempfile.TemporaryDirectory() as tmp:
@@ -157,7 +190,7 @@ def main() -> int:
         # directory: freeze()'s own directory walk must never pick up manifest.py itself.
         stage_dir = tmp_path / "stage"
         stage_dir.mkdir()
-        build_stage_dir(stage_dir, args.device)
+        build_stage_dir(stage_dir, args.device, args.gc_policy, memory_pressure=args.memory_pressure)
 
         manifest_path = tmp_path / "manifest.py"
         manifest_path.write_text(_MANIFEST_TEMPLATE.format(board=board, stage_dir=str(stage_dir)))
@@ -172,7 +205,7 @@ def main() -> int:
             shutil.rmtree(mpy_cross_build_dir)
         st.build_mpy_cross(micropython_dir, args.jobs)
 
-        log(f"Building firmware for BOARD={board}, device={args.device!r}")
+        log(f"Building firmware for BOARD={board}, device={args.device!r}, gc_policy={args.gc_policy!r}, memory_pressure={args.memory_pressure}")
         uf2 = st.build_firmware(micropython_dir, board, args.jobs, frozen_manifest=manifest_path)
         shutil.copy(uf2, output)
 

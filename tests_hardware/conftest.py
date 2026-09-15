@@ -6,6 +6,7 @@ nothing attached. See tests_hardware/README.md for how a dedicated hardware sess
 from __future__ import annotations
 
 import sys
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -15,8 +16,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))  # tests_hardware/ itse
 
 import http_client
 from bench_control import BenchBridge
-from harness import Board, HardwareTestFailureError, wait_until
+from harness import Board, FlashedBuild, HardwareTestFailureError, wait_until
 from soak_tiers import SOAK_TIER_SECONDS
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # repo root, for `import buildgen`
+
+from buildgen.gc_policy import GC_POLICY_THRESHOLDS, PRESSURE_MODULE
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -40,6 +45,28 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         action="store_true",
         default=False,
         help="Actually run @pytest.mark.flash_cycle tests (a deliberate re-provisioning flash - counts against the 'no extra flash cycles' constraint, never run as part of a routine pass). Skipped by default.",
+    )
+    parser.addoption(
+        "--skip-scd30-nvm-writes",
+        action="store_true",
+        default=False,
+        help=(
+            "Deselect every @pytest.mark.scd30_nvm_write test - the SCD30's on-chip NVM has a "
+            "finite write budget, so a run that only needs everything else can decline to spend "
+            "one. A flag rather than an extra -m expression on purpose: a second -m REPLACES the "
+            "suite runner's own marker exclusions instead of adding to them."
+        ),
+    )
+    parser.addoption(
+        "--expect-gc-policy",
+        choices=sorted(GC_POLICY_THRESHOLDS),
+        default=None,
+        help=(
+            "Assert the flashed firmware was built with this GC policy (buildgen/gc_policy.py). "
+            "The board's own gc.threshold() is the source of truth - this states what the run "
+            "intends, so a run against the wrong flashed build fails loudly instead of quietly "
+            "measuring the other one. See scripts/run_bench_gc_matrix.sh."
+        ),
     )
     parser.addoption(
         "--allow-multi-day-rollover-wait",
@@ -70,16 +97,44 @@ def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line("markers", "long_soak: real-hardware passive observation over one of three named duration tiers (short/mid/long) - skipped unless --soak-tier is passed; see scripts/run_bench_soak_tests.sh")
     config.addinivalue_line("markers", "multi_day_rollover: a real, fixed ~12.4-day wait, not tier-selectable - skipped unless --allow-multi-day-rollover-wait is passed")
     config.addinivalue_line("markers", "flash_cycle: a deliberate re-provisioning flash (counts against the 'no extra flash cycles' constraint), skipped unless --allow-flash-cycle is passed")
+    config.addinivalue_line("markers", "scd30_nvm_write: spends one of the SCD30's finite on-chip NVM writes (set_ambient_pressure(), via the session-scoped scd30_continuous_measurement_triggered fixture) - deselect with -m 'not scd30_nvm_write' for a run that must not touch the write budget")
     config.addinivalue_line("markers", "scd30_write: one additional real NVM-persisted SCD30 write beyond the routine per-session budget, skipped unless --allow-scd30-writes is passed")
+    config.addinivalue_line("markers", "memory_pressure: needs a firmware built with --gc-policy reactive --memory-pressure (the frozen churn instrument is absent from every other build) - deselected by the general suite runners, selected by scripts/run_bench_gc_matrix.sh's own pressure pass")
     config.addinivalue_line("markers", "role_reversal: bench radio temporarily stops hosting br0-wifi-ap to join the DUT's own hotspot - informational marker, not skip-gated")
+
+
+# A board mid-USB-re-enumeration (just reflashed, or just released by another mpremote call) is
+# not the same thing as no board attached, but is_reachable() deliberately has no retry of its own
+# (allow_recovery=False, so a genuinely expected disconnect isn't masked). Without a settle window
+# here, that momentary state turns the WHOLE session into skips - which _require_clean_hardware_run.sh
+# then reports as a failed run. Found on the bench, 2026-09-14. Nothing attached still skips, just
+# _SETTLE_TIMEOUT_S later; --collect-only bypasses fixtures entirely, so it costs that path nothing.
+_SETTLE_TIMEOUT_S = 20.0
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    if not config.getoption("--skip-scd30-nvm-writes"):
+        return
+    kept: list[pytest.Item] = []
+    deselected: list[pytest.Item] = []
+    for item in items:
+        (deselected if item.get_closest_marker("scd30_nvm_write") else kept).append(item)
+    if deselected:
+        config.hook.pytest_deselected(items=deselected)
+        items[:] = kept
 
 
 @pytest.fixture(scope="session")
 def board(request: pytest.FixtureRequest) -> Iterator[Board]:
     b = Board(device=request.config.getoption("--device"))
+    deadline = time.monotonic() + _SETTLE_TIMEOUT_S
+    while not b.is_reachable():
+        if time.monotonic() >= deadline:
+            break
+        time.sleep(1.0)
     if not b.is_reachable():
         pytest.skip(
-            f"no real board reachable at {b.device} - this fixture only runs against real hardware "
+            f"no real board reachable at {b.device} after {_SETTLE_TIMEOUT_S:.0f}s - this fixture only runs against real hardware "
             "(see tests_hardware/README.md for provisioning). Not a failure: this tier is meant to "
             "be collectible with nothing attached.",
         )
@@ -129,8 +184,79 @@ def _recover_stale_dut_credentials(bench: BenchBridge) -> None:
         bench.leave_dut_hotspot_and_restore_bridge()
 
 
+# The bench is dev-only (CLAUDE.md), so the frozen device module's name is fixed.
+_DEVICE_MODULE = "sensortask_dev"
+
+
 @pytest.fixture(scope="session")
-def dut_ip(board: Board, bench: BenchBridge) -> str:
+def flashed_build(board: Board, request: pytest.FixtureRequest) -> FlashedBuild:
+    """What is ACTUALLY on the board, read off the frozen image: the GC policy the build declares,
+    and whether the pressure instrument is present. An --expect-gc-policy mismatch fails here rather
+    than letting a whole run silently measure the build nobody meant to test."""
+    # BUILD_GC_POLICY, not a live gc.threshold() read. Entering the raw REPL can land before main.py
+    # has run, and a fresh interpreter reports the -1 default no matter what the boot entry would
+    # have set - which misreads a threshold build as a reactive one and fails 62 tests at setup
+    # (seen on the bench, 2026-09-14). Importing the device module only binds names; main() is what
+    # starts anything, and the module is already resident on a booted board anyway.
+    try:
+        output = board.exec(
+            "import gc\n"
+            f"import {_DEVICE_MODULE}\n"
+            f"print('GC_POLICY=' + {_DEVICE_MODULE}.BUILD_GC_POLICY)\n"
+            "print('LIVE_THRESHOLD=' + str(gc.threshold()))\n"
+            "try:\n"
+            f"    import {PRESSURE_MODULE}\n"
+            "    print('PRESSURE_MODULE=1')\n"
+            "except ImportError:\n"
+            "    print('PRESSURE_MODULE=0')",
+            timeout_s=30.0,
+        )
+    finally:
+        board.hard_reset()
+
+    policy = None
+    live_threshold = None
+    has_pressure = False
+    for line in output.splitlines():
+        if line.startswith("GC_POLICY="):
+            policy = line[len("GC_POLICY=") :].strip()
+        elif line.startswith("LIVE_THRESHOLD="):
+            live_threshold = int(line[len("LIVE_THRESHOLD=") :].strip())
+        elif line.startswith("PRESSURE_MODULE="):
+            has_pressure = line.strip().endswith("1")
+    if policy is None:
+        raise HardwareTestFailureError(
+            f"could not read {_DEVICE_MODULE}.BUILD_GC_POLICY off the board - a firmware predating "
+            f"the GC-policy build option, or a failed import. Full output:\n{output}",
+        )
+    if policy not in GC_POLICY_THRESHOLDS:
+        raise HardwareTestFailureError(f"the board declares an unknown GC policy {policy!r} - expected one of {sorted(GC_POLICY_THRESHOLDS)}")
+
+    build = FlashedBuild(policy=policy, threshold=GC_POLICY_THRESHOLDS[policy], live_threshold=live_threshold, has_pressure_module=has_pressure)
+    expected = request.config.getoption("--expect-gc-policy")
+    if expected is not None and build.policy != expected:
+        raise HardwareTestFailureError(
+            f"this run expects a {expected!r} build (--expect-gc-policy) but the board is running a "
+            f"{build.policy!r} one. Flash the intended firmware first: "
+            f"uv run scripts/flash_dev_firmware.py --gc-policy {expected}",
+        )
+    return build
+
+
+@pytest.fixture
+def pressure_build(flashed_build: FlashedBuild) -> FlashedBuild:
+    """Gate for @pytest.mark.memory_pressure tests: the churn instrument must really be frozen in."""
+    if not flashed_build.has_pressure_module:
+        pytest.skip(
+            f"the flashed {flashed_build.policy!r} build carries no {PRESSURE_MODULE} module - pressure tests "
+            "need `uv run scripts/build_firmware.py dev --gc-policy reactive --memory-pressure` "
+            "(see scripts/run_bench_gc_matrix.sh)",
+        )
+    return flashed_build
+
+
+@pytest.fixture(scope="session")
+def dut_ip(board: Board, bench: BenchBridge, flashed_build: FlashedBuild) -> str:
     """The DUT's real STA-mode IP on the bench bridge network, for live-system HTTP checks. Retries
     hard_reset()+kick_all_stations() through known reconnect flakiness, then falls back to
     stale-credential recovery - see tests_hardware/README.md for the full findings trail."""

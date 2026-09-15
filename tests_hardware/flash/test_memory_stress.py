@@ -12,7 +12,7 @@ import pytest
 from soak_tiers import SOAK_TIER_SECONDS
 
 if TYPE_CHECKING:
-    from harness import Board
+    from harness import Board, FlashedBuild
 
 DEVICE_SCRIPTS = Path(__file__).resolve().parent.parent / "device_scripts"
 RESULT_RE = re.compile(r"^RESULT: (PASS|FAIL)(.*)$", re.MULTILINE)
@@ -46,3 +46,14 @@ def test_single_core_timing_headroom_holds_under_normal_full_task_load(board: Bo
     traceback_markers = [ln for ln in lines if "Traceback" in ln or "MemoryError" in ln]
     assert not reboot_markers, f"observed what looks like an unexpected mid-soak reboot (WDT starvation?) - boot markers: {reboot_markers}\nfull log:\n{joined}"
     assert not traceback_markers, "observed an unexpected traceback/MemoryError during the soak window:\n" + "\n".join(traceback_markers)
+
+
+@pytest.mark.memory_pressure
+def test_error_logging_still_records_and_reads_back_under_allocator_churn(board: Board, pressure_build: FlashedBuild) -> None:
+    # The diagnostic path is the one that must not degrade quietly: print_log.py's own history
+    # allocation has a MemoryError fallback to a zero-length deque, and a FRAM-backed log that
+    # silently stops recording under pressure loses exactly the evidence a pressure incident needs.
+    output = board.run_isolated(DEVICE_SCRIPTS / "error_logging_under_memory_pressure.py", timeout_s=180.0)
+    match = RESULT_RE.search(output)
+    assert match is not None, f"device script printed no RESULT line - full output:\n{output}"
+    assert match.group(1) == "PASS", f"error logging under allocator churn failed: {match.group(2).strip()}\nfull output:\n{output}"

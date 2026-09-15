@@ -250,7 +250,15 @@ uv run scripts/build_firmware.py wozi                                   # -> bui
 uv run scripts/build_firmware.py wozi --output build/my-firmware.uf2    # explicit output path
 uv run scripts/build_firmware.py wozi --jobs 8                          # override parallel make jobs
 uv run scripts/build_firmware.py wozi --toolchain-dir /path             # toolchain installed somewhere other than $PICO_TOOLCHAIN_DIR/~/pico-toolchain
+uv run scripts/build_firmware.py dev --gc-policy reactive               # -> build/firmware-dev-reactive.uf2
+uv run scripts/build_firmware.py dev --gc-policy reactive --memory-pressure  # test-only build carrying the allocator-churn instrument
 ```
+
+`--gc-policy` picks the `gc.threshold()` value the generated boot entry sets: `threshold` (32768,
+the default and what ships) or `reactive` (MicroPython's own default — the harder case every test
+must pass first, SPECIFICATION.md Part I.6). A non-default policy gets its own output filename so
+the two can never be confused at flash time. `--memory-pressure` additionally freezes the
+allocator-pressure instrument in; it requires `reactive` and is never a shipped artifact.
 
 `<device>` (positional, required) must match an `html/definitions/<device>.json` file (`wozi` and
 `dev` today — `dev` is the bench-only variant, never built for field deployment, but a real
