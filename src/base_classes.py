@@ -282,6 +282,9 @@ class SensorReaderConfig(SensorReader):
             cfg_path + "config_" + self.name + ".cfg",
             default_vals,
             self.name,
+            fram=fram,
+            history_length=history_length,
+            debug=debug,
         )
         # Per-field live-push callbacks: a subclass registers {field_name: async_push_fn} entries
         # after super().__init__(); a field with no entry is persist-only (see SPECIFICATION.md C.5.2).

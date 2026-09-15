@@ -141,30 +141,47 @@ failed=0
 # _StepPoller). This timeout/retry, and the stdbuf line-buffering below, didn't fix the hang and
 # aren't required for it (an isolation test with both reverted, running only the _StepPoller fix,
 # passed 8/8 clean CI jobs) - they're kept as a standing "hanging is never allowed" backstop
-# against any *future* hang, not as the fix for this one. 180s is a deliberate multiple of the
-# slowest observed healthy file (test_asy_sgp40_driver.py's real-time FRAM backup/restore tests,
-# ~90s worst case seen in CI) - generous enough to never false-positive-kill a legitimately slow
+# against any *future* hang, not as the fix for this one. 300s is a deliberate multiple of the
+# slowest observed healthy file - generous enough to never false-positive-kill a legitimately slow
 # file, while being far below the 30-minute job cap. Two retries absorb transient contention
 # without ever failing the whole job for infra noise; a third consecutive timeout on the same
 # file is treated as a real failure. --kill-after guarantees the process is gone even if SIGTERM
-# alone doesn't land. Worst case for one stuck file is 3 * (180 + 10)s = ~9.5 minutes, still
+# alone doesn't land. Worst case for one stuck file is 3 * (300 + 10)s = ~15.5 minutes, still
 # comfortably under the job cap even if it happens more than once in the same run.
+#
+# 180s -> 300s (WP2, config_manager.py/base_classes.py inheriting fram= into ConfigManager):
+# tests/test_sensortask.py's own 321 scenarios (each a full build_system() call, across all 6
+# devices) measured ~246s real wall-clock time once WP2's added per-instance FRAM chunk
+# allocation let it actually finish instead of crashing early on the old 8M heap (see the -X
+# heapsize note below) - low CPU time (~30s user+sys) confirms this is real asyncio-driven
+# wall-clock work accumulating across 321 builds, not a CPU-bound slowdown. This file is now the
+# slowest observed, displacing test_asy_sgp40_driver.py's own ~90s real-time FRAM backup/restore
+# tests (the previous basis for 180s).
 #
 # stdbuf -oL -eL forces line buffering instead of MicroPython's default full block buffering
 # (4096 bytes) whenever stdout isn't a tty - true for any GH Actions step. Harmless and cheap to
 # keep even though it turned out not to be what was causing the hang (see above); small,
 # immediate, line-buffered writes are still a reasonable default for CI log output.
 #
-# -X heapsize=8M (default 2097152 = 2MB) - tests/test_digital_twin_sensortask_integration.py's own
+# -X heapsize=16M (default 2097152 = 2MB) - tests/test_digital_twin_sensortask_integration.py's own
 # heaviest tests each build the whole real object graph (a fresh 8KB FramChip, ConfigManagers, ...)
 # one or more times per test, sharing one process/heap across every test function in the file (this
 # binary is invoked once per file, not once per test). Confirmed directly: with the 2MB default,
 # that file failed with a real MemoryError roughly 1 run in 3 depending on MicroPython's own
 # non-deterministic test-function run order (this file's own docstring already notes run order
-# differs from definition order); 8M cleared 5/5 consecutive runs. This is a Unix-port-only test-
-# harness setting - unrelated to the real rp2040's own RAM budget (SPECIFICATION.md Part F.1), and
-# every test file still runs under the same GC the real target uses either way.
-per_file_timeout_s="${PER_FILE_TIMEOUT_S:-180}"
+# differs from definition order); 8M cleared 5/5 consecutive runs. Raised again to 16M once
+# ConfigManager started inheriting its owning module's own fram= (WP2, config_manager.py/
+# base_classes.py): every FRAM-wired SensorReaderConfig now allocates one more chunk for its own
+# ConfigManager, and tests/test_sensortask.py (321 scenarios, each a full build_system() call),
+# tests/test_digital_twin_sensortask_integration.py and tests/test_digital_twin_webserver_
+# concurrency.py all started failing with real MemoryErrors at 8M as a direct, confirmed
+# consequence (A/B tested directly: 321/321, 31/31 and 90/90 respectively at 16M; the same three
+# files regressed to 90/321, 30/31 and 86/90 at 8M with the WP2 change applied, and back to a
+# clean 100% with WP2 reverted at the same 8M - isolating the cause to added memory footprint, not
+# a logic bug). This is still a Unix-port-only test-harness setting - unrelated to the real
+# rp2040's own RAM budget (SPECIFICATION.md Part F.1), and every test file still runs under the
+# same GC the real target uses either way.
+per_file_timeout_s="${PER_FILE_TIMEOUT_S:-300}"
 max_attempts=3
 failed_files=()
 passed_count=0
@@ -186,7 +203,7 @@ for test_file in tests/test_*.py; do
         cmd=("$test_file")
     fi
     for attempt in $(seq 1 "$max_attempts"); do
-        if MICROPYPATH="build/generated_src:src:tests:frozen_modules:.frozen" stdbuf -oL -eL timeout --kill-after=10 "$per_file_timeout_s" "$micropython_bin" -X heapsize=8M "${cmd[@]}"; then
+        if MICROPYPATH="build/generated_src:src:tests:frozen_modules:.frozen" stdbuf -oL -eL timeout --kill-after=10 "$per_file_timeout_s" "$micropython_bin" -X heapsize=16M "${cmd[@]}"; then
             ec=0
         else
             ec=$?

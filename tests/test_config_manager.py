@@ -2,7 +2,16 @@ import asyncio
 import json
 import os
 
+from _fram_chip_fake import FakeMB85RS64V
+
+import asy_spi_driver
 import config_manager as cm
+from asy_fram_manager import AsyFramManager
+from asy_spi_driver import SPI
+from print_log import PrintLogHistory, PrintLogHistoryStore
+
+# Same one-process-per-test-file swap as test_base_classes.py/test_print_log.py.
+asy_spi_driver._SPI = FakeMB85RS64V  # type: ignore[misc]
 
 try:
     from typing import TYPE_CHECKING
@@ -75,6 +84,16 @@ def _make(name: str, cfg_vals: "cm.ConfigSchema" = _SCHEMA) -> "tuple[cm.ConfigM
     mgr = cm.ConfigManager(path, cfg_vals, "TEST")
     run(mgr.setup())
     return mgr, path
+
+
+def make_fram_manager(max_size: int = 0x2000) -> "tuple[AsyFramManager, FakeMB85RS64V]":
+    # Same fixture as test_base_classes.py/test_print_log.py: a real AsyFramManager driven by the
+    # simulated MB85RS64V chip, for WP2's FRAM-backed ConfigManager coverage below.
+    bus = SPI(0, sck_pin=2, mosi_pin=3, miso_pin=4)
+    manager = AsyFramManager(bus, 1, max_size=max_size)
+    chip = manager.fram._spidev.spi._spi
+    assert isinstance(chip, FakeMB85RS64V)
+    return manager, chip
 
 
 # ---------------------------------------------------------------------------
@@ -2136,6 +2155,101 @@ def test_configmanager_corrupt_json_warning_recorded_via_wrn_s() -> None:
         assert log["CFGMGR_TEST"]["ErrCount"] == 1
     finally:
         _remove(path)
+
+
+# ---------------------------------------------------------------------------
+# WP2: ConfigManager inherits FRAM from its owning module (fram=, real AsyFramManager over the
+# simulated MB85RS64V chip - same fixture/pattern as test_base_classes.py/test_print_log.py).
+# ---------------------------------------------------------------------------
+
+
+def test_configmanager_fram_none_default_keeps_ram_only_printloghistory() -> None:
+    # Regression-proof the default path: no fram= argument (every pre-existing call site) must
+    # still build a plain, RAM-only PrintLogHistory, never the FRAM-backed subclass.
+    mgr, path = _make("fram_default.cfg")
+    try:
+        assert type(mgr.pr) is PrintLogHistory
+    finally:
+        _remove(path)
+
+
+def test_configmanager_fram_given_uses_printloghistorystore() -> None:
+    manager, _chip = make_fram_manager()
+    path = _tmp_path("fram_given.cfg")
+    _remove(path)
+    try:
+        mgr = cm.ConfigManager(path, _SCHEMA, "TEST", fram=manager)
+        run(mgr.setup())
+        assert isinstance(mgr.pr, PrintLogHistoryStore)
+        assert mgr.valid is True
+    finally:
+        _remove(path)
+
+
+def test_configmanager_fram_allocation_failure_falls_back_to_ram_only_cleanly() -> None:
+    # Chunk allocation itself fails (chip too small for any real chunk) - must degrade to
+    # RAM-only in-memory logging, never crash or leave the manager half-built.
+    manager, _chip = make_fram_manager(max_size=1)
+    path = _tmp_path("fram_toosmall.cfg")
+    _remove(path)
+    try:
+        mgr = cm.ConfigManager(path, _SCHEMA, "TEST", fram=manager)
+        run(mgr.setup())
+        assert isinstance(mgr.pr, PrintLogHistoryStore)
+        assert mgr.pr.fram is None
+        assert mgr.valid is True
+        ok, _results = run(mgr.write_config({"Count": 7}, _VAL_INT))
+        assert ok is True
+    finally:
+        _remove(path)
+
+
+def test_configmanager_fram_backed_write_failure_errno_persists_across_simulated_reboot() -> None:
+    # A real write_config() failure (errno=14) must be visible in get_error_counter() immediately
+    # and survive a simulated reboot: a fresh ConfigManager/AsyFramManager pair attached to the
+    # same underlying chip must read the same history back (test_base_classes.py's own
+    # "simulated reboot" pattern, applied to ConfigManager's own CFGMGR_<name> logger).
+    manager, chip = make_fram_manager()
+    run(manager.setup())
+    subdir = _TMP_DIR + "/fram_writefail_subdir"
+    try:
+        os.mkdir(subdir)
+    except OSError:
+        pass  # already exists
+    path = subdir + "/fram_writefail.cfg"
+    _remove(path)
+    try:
+        mgr = cm.ConfigManager(path, _VAL_INT, "TEST", fram=manager)
+        run(mgr.setup())  # first-time setup on a not-yet-existing file logs its own wrnno=3 -
+        # capture that baseline dynamically rather than assuming a magic starting count.
+        assert mgr.valid is True
+        baseline = run(mgr.get_error_counter())["CFGMGR_TEST"]["ErrCount"]
+        os.remove(path)
+        os.rmdir(subdir)  # parent directory gone - the write below genuinely fails
+        ok, results = run(mgr.write_config({"Count": 8}, _VAL_INT))
+        assert (ok, results) == (False, {})
+        log = run(mgr.get_error_counter())
+        assert log["CFGMGR_TEST"]["ErrCount"] == baseline + 1
+
+        # Simulate a reboot: restore only cfgmgr's own logger (pr.setup()) over the same chip,
+        # not the whole ConfigManager.setup() - a fresh setup() against this same now-gone path
+        # would log its own new "not found" wrnno=3 on top, muddying the persistence check itself
+        # (same "restore the logger directly" precedent as
+        # test_sensorreader_fram_backed_error_check_persists_and_survives_reboot).
+        manager2, _chip2 = make_fram_manager()
+        manager2.fram._spidev.spi._spi = chip
+        run(manager2.setup())
+        mgr2 = cm.ConfigManager(_tmp_path("fram_writefail_reboot.cfg"), _VAL_INT, "TEST", fram=manager2)
+        run(mgr2.pr.setup())
+        log2 = run(mgr2.get_error_counter())
+        assert log2["CFGMGR_TEST"]["ErrCount"] == baseline + 1
+    finally:
+        _remove(path)
+        _remove(_tmp_path("fram_writefail_reboot.cfg"))
+        try:
+            os.rmdir(subdir)
+        except OSError:
+            pass  # already gone
 
 
 # ---------------------------------------------------------------------------
