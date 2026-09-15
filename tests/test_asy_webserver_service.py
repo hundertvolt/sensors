@@ -2162,7 +2162,7 @@ def test_h2_stream_many_error_sources_are_coalesced_into_size_bounded_batches_no
 # Unit-test-tier companions to BACKLOG.md's real-hardware hammer-load investigation (2026-09-05):
 # the same 5-concurrent-client pattern that produced 237 real MemoryErrors on real hardware before
 # the streaming fix, and 0 after (confirmed with no gc.threshold() change at all). This Unix-port
-# process has an 8MB heap (scripts/test.sh's own -X heapsize=8M) and can never reproduce a genuine
+# process has a 16MB heap (scripts/test.sh's own -X heapsize=16M) and can never reproduce a genuine
 # embedded-scale MemoryError - these are correctness/regression guards, not memory-pressure
 # reproductions: many concurrent /status requests against a real-hardware-scale (17 module)
 # registration must all still complete cleanly and produce one valid, correctly-shaped JSON
@@ -2236,7 +2236,7 @@ def test_h3_hammer_concurrent_status_requests_stay_valid_with_the_chosen_gc_thre
 # single-large-contiguous-allocation shape /status itself used to have before its own real-hardware
 # MemoryError was root-caused (BACKLOG.md). I.1 exercises the shared primitive directly; I.2/I.3
 # hammer the newly-streamed routes the same way H.3 already hammers /status - these Unix-port runs
-# (8MB heap, scripts/test.sh's own -X heapsize=8M) are correctness/regression guards, never a real
+# (16MB heap, scripts/test.sh's own -X heapsize=16M) are correctness/regression guards, never a real
 # embedded-scale memory-pressure reproduction, exactly like H.3's own framing.
 
 

@@ -765,6 +765,9 @@ def test_sensorreaderconfig_wires_a_real_configmanager() -> None:
         run(reader.cfgmgr.setup())
         assert reader.cfgmgr.config_file == path_prefix + "config_temp.cfg"
         assert reader.cfgmgr.valid is True
+        # WP2 regression proof: no fram= (the default) must still build cfgmgr's own logger as a
+        # plain, RAM-only PrintLogHistory, never the FRAM-backed subclass.
+        assert type(reader.cfgmgr.pr) is PrintLogHistory
     finally:
         _remove(path_prefix + "config_temp.cfg")
 
@@ -990,6 +993,8 @@ def test_sensorreaderconfig_fram_backed_logging_with_real_config_file() -> None:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "fram1", _VAL_SI, cfg_path=path_prefix, fram=manager)
         run(reader.cfgmgr.setup())
         assert isinstance(reader.pr, PrintLogHistoryStore)
+        # WP2: cfgmgr now inherits the owning module's fram too, not just reader.pr itself.
+        assert isinstance(reader.cfgmgr.pr, PrintLogHistoryStore)
         assert reader.cfgmgr.valid is True
         result = run(reader._get_dict_cfg("Sensor", _VAL_SI))
         assert result == {"Sensor": {"SampleInterv": 2}}
@@ -1037,11 +1042,92 @@ def test_sensorreaderconfig_fram_allocation_failure_and_missing_config_file_toge
         run(reader.cfgmgr.setup())
         assert isinstance(reader.pr, PrintLogHistoryStore)
         assert reader.pr.fram is None
+        # WP2: cfgmgr's own logger degrades the same way, independently - both allocate from the
+        # same too-small chip, and neither failure may derail the other or raise.
+        assert isinstance(reader.cfgmgr.pr, PrintLogHistoryStore)
+        assert reader.cfgmgr.pr.fram is None
         assert reader.cfgmgr.valid is True
         result = run(reader._get_dict_cfg("Sensor", _VAL_SI))
         assert result == {"Sensor": {"SampleInterv": 2}}
     finally:
         _remove(path_prefix + "config_fram3.cfg")
+
+
+def test_sensorreaderconfig_cfgmgr_write_failure_errno_persists_across_simulated_reboot() -> None:
+    # WP2: a real cfgmgr write failure (errno=14) must persist through the FRAM chunk it now
+    # allocates from the owning module's own fram, and survive a simulated reboot - same
+    # "fresh manager/reader pair over the same chip" pattern as
+    # test_sensorreader_fram_backed_error_check_persists_and_survives_reboot above.
+    subdir = _tmp_path("") + "/cfgmgr_reboot_subdir"
+    try:
+        os.mkdir(subdir)
+    except OSError:
+        pass  # already exists
+    path = subdir + "/config_cfgmgrreboot.cfg"
+    _remove(path)
+    try:
+        manager, chip = make_fram_manager()
+        run(manager.setup())
+        reader = SensorReaderConfig(Meas(20.0, 50), 3, "cfgmgrreboot", _VAL_SI, cfg_path=subdir + "/", fram=manager)
+        run(reader.setup())  # first-time setup on a not-yet-existing file logs its own wrnno=3 -
+        # capture that baseline dynamically rather than assuming a magic starting count.
+        assert reader.cfgmgr.valid is True
+        baseline = run(reader.cfgmgr.get_error_counter())["CFGMGR_cfgmgrreboot"]["ErrCount"]
+        os.remove(path)
+        os.rmdir(subdir)  # parent directory gone - the write below genuinely fails
+        ok, results = run(reader.cfgmgr.write_config({"SampleInterv": 8}, _VAL_SI))
+        assert (ok, results) == (False, {})
+        log = run(reader.cfgmgr.get_error_counter())
+        assert log["CFGMGR_cfgmgrreboot"]["ErrCount"] == baseline + 1
+
+        # Simulate a reboot: restore only cfgmgr's own logger (pr.setup()) over the same chip, not
+        # the whole SensorReaderConfig.setup() - a fresh setup() against this same now-gone path
+        # would log its own new "not found" wrnno=3 on top, muddying the persistence check itself
+        # (same "restore the logger directly" precedent as
+        # test_sensorreader_fram_backed_error_check_persists_and_survives_reboot above).
+        manager2, _chip2 = make_fram_manager()
+        manager2.fram._spidev.spi._spi = chip
+        run(manager2.setup())
+        rebooted = SensorReaderConfig(
+            Meas(20.0, 50), 3, "cfgmgrreboot", _VAL_SI, cfg_path=_tmp_path("") + "/", fram=manager2,
+        )
+        run(rebooted.cfgmgr.pr.setup())
+        rebooted_log = run(rebooted.cfgmgr.get_error_counter())
+        assert rebooted_log["CFGMGR_cfgmgrreboot"]["ErrCount"] == baseline + 1
+    finally:
+        _remove(path)
+        _remove(_tmp_path("") + "/config_cfgmgrreboot.cfg")
+        try:
+            os.rmdir(subdir)
+        except OSError:
+            pass  # already gone
+
+
+def test_sensorreaderconfig_error_source_fan_in_surfaces_fram_backed_cfgmgr_history() -> None:
+    # DoD proof: /status's generic errcount fan-in (get_error_sources()/get_loggers(), C.14.3)
+    # must surface a FRAM-backed CFGMGR_<name> history correctly with zero webserver/API-layer
+    # code change - drives the same module.get_error_counter() call
+    # asy_webserver_service.py's own _build_status_pieces() makes on every get_error_sources()
+    # entry, rather than reaching into reader.cfgmgr directly.
+    path_prefix = _tmp_path("") + "/"
+    _remove(path_prefix + "config_faninlog.cfg")
+    try:
+        manager, _chip = make_fram_manager()
+        reader = SensorReaderConfig(Meas(20.0, 50), 3, "faninlog", _VAL_SI, cfg_path=path_prefix, fram=manager)
+        run(reader.setup())
+        sources = reader.get_error_sources()
+        loggers = reader.get_loggers()
+        assert sources == [reader, reader.cfgmgr]
+        assert loggers == [reader.pr, reader.cfgmgr.pr]
+        assert isinstance(loggers[1], PrintLogHistoryStore)
+        # First-time setup() on a not-yet-existing file already logged its own wrnno=3 - capture
+        # that baseline dynamically rather than assuming a magic starting count.
+        baseline = run(sources[1].get_error_counter())["CFGMGR_faninlog"]["ErrCount"]
+        run(reader.cfgmgr.write_config({"SampleInterv": 999999}, _VAL_SI))  # out of range -> errno=12
+        log = run(sources[1].get_error_counter())
+        assert log["CFGMGR_faninlog"]["ErrCount"] == baseline + 1
+    finally:
+        _remove(path_prefix + "config_faninlog.cfg")
 
 
 def test_sensorreaderconfig_write_config_is_reflected_by_get_dict_cfg() -> None:

@@ -286,14 +286,18 @@ information):
   SPECIFICATION.md Part I (I.4 for the standing scheme itself).
 - **When investigating any unexpected real-hardware error or reset — read the FRAM-persisted
   per-module error logs (`GET /status`'s `errcount`, the FRAM-backed subset: SGP40/BMP3XX/SCD30/
-  SYSTEM/NEOPIXEL/NOTIFY/WIFI/DNSSRV/NTP per SPECIFICATION.md Part A.7's construction order —
-  WIFI/DNSSRV/NTP joined the FRAM-backed set in a later buildgen FRAM-wiring session, present whenever
-  `[device.wiring].fram_target` is wired, true of every real device today; WEBSERVER stays RAM-only
-  **deliberately** (that same session measured a real several-second boot-latency regression from
-  wiring it the same way, refined by a later re-investigation to ~4.2-4.3s under real concurrent
-  boot load rather than a short fixed queue - SPECIFICATION.md Part A.7's own construction-order
-  note); every `CFGMGR_*` logger
-  stays RAM-only regardless) BEFORE issuing any `PUT /status
+  SYSTEM/NEOPIXEL/NOTIFY/WIFI/DNSSRV/NTP, plus every FRAM-wired module's own `CFGMGR_*` logger
+  (`CFGMGR_WIFI`/`CFGMGR_NTP`/`CFGMGR_SGP40`/`CFGMGR_BMP3XX`/`CFGMGR_ISL29125`/`CFGMGR_NOTIFY` —
+  **`CFGMGR_SYSTEM` is the one exception, stuck RAM-only** because `SystemService` isn't a
+  `SensorReaderConfig` subclass and doesn't forward its own `fram` into the `ConfigManager` it
+  builds directly, a separate known gap) per SPECIFICATION.md Part A.7's construction order —
+  WIFI/DNSSRV/NTP joined the FRAM-backed set in a later buildgen FRAM-wiring session, and every
+  `CFGMGR_*` above joined in a still-later session that made `ConfigManager` inherit FRAM from its
+  owning module (WP2) — both present whenever `[device.wiring].fram_target` is wired, true of every
+  real device today; WEBSERVER stays RAM-only **deliberately** (that first session measured a real
+  several-second boot-latency regression from wiring it the same way, refined by a later
+  re-investigation to ~4.2-4.3s under real concurrent boot load rather than a short fixed queue -
+  SPECIFICATION.md Part A.7's own construction-order note)) BEFORE issuing any `PUT /status
   {"ResetErrors": true}` call or otherwise clearing state.** This is the one piece of real
   diagnostic evidence a reboot itself doesn't erase, and clearing it is irreversible — confirmed the
   hard way (2026-09-08): a single real `WDT_RESET` was investigated down to "GC ruled out, cause
@@ -586,7 +590,15 @@ information):
   builds it twice) could exhaust the interpreter's 2MB default heap roughly 1 run in 3, depending on
   MicroPython's own non-deterministic test-function run order. Fixed with `-X heapsize=8M` (verified
   10/10 clean runs) — a Unix-port-only test-harness setting, unrelated to the real rp2040's own RAM
-  budget. Don't re-diagnose a flaky `MemoryError` in a heavy test file as a new code bug before
+  budget. **Raised again to `-X heapsize=16M`** once `ConfigManager` started inheriting its owning
+  module's own `fram=` (WP2, `config_manager.py`/`base_classes.py`): every FRAM-wired
+  `SensorReaderConfig` now allocates one more chunk for its own `ConfigManager`, and
+  `tests/test_sensortask.py` (321 scenarios, each a full `build_system()` call),
+  `tests/test_digital_twin_sensortask_integration.py` and
+  `tests/test_digital_twin_webserver_concurrency.py` all started failing with real `MemoryError`s at
+  8M as a direct, confirmed consequence — A/B tested directly by reverting WP2 alone at the same 8M
+  and getting a clean 100% across all three, isolating the cause to added memory footprint, not a
+  logic bug. Don't re-diagnose a flaky `MemoryError` in a heavy test file as a new code bug before
   checking this flag is still in place.
 - **Local test runs pin `$TZ=UTC` (Unix port only).** The Unix port's `time.mktime()`
   (`ports/unix/modtime.c`) calls the host's real libc `mktime()`, which interprets its input as

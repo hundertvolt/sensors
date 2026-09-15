@@ -329,37 +329,47 @@ def _all_loggers(module: "Any") -> "list[Any]":
 
 
 def _expected_fram_chunk_calls(module: "Any") -> "list[str]":
-    # AsyConnTime's own log(chunk) -> its DNSServer's log(chunk) -> AsyNtpClient's own log(chunk) -
-    # a buildgen FRAM-wiring session (SPECIFICATION.md Part A.7's construction-order note) added
-    # these three ahead of SystemService, present exactly when conn's own logger is FRAM-backed
-    # (reflected from the real module, not assumed - every real device wires them today, but a
-    # synthetic fixture with no [device.wiring].fram_target wouldn't). Then: SystemService(chunk) ->
-    # SCD30_Reader(chunk) -> SGP40 own log(chunk) -> SGP40 VOC backup (timestamped) ->
-    # [BMP3xx_Reader(chunk), only if present] -> [ISL29125(chunk), only if present] ->
-    # NeopixelDriver(chunk) -> NotificationCoordinator(chunk) -> [UartLinkExerciser(chunk) x2, only
-    # if present, own chunk each - devices/dev.toml wires fram_target on both, never a
-    # logger_target reach-through between them, SPECIFICATION.md Part J.9/C.14], in that order,
-    # unconditionally save for the WiFi/NTP prefix and the two optional-instance brackets. SCD30
-    # constructs before SGP40 (ordering-hazard #1, SPECIFICATION.md Part A.7/C.14 - SGP40 holds a
-    # direct reference to scd30 as its temperature_source/humidity_source, so the producer must
-    # exist first). Derived from the module's own reflected instance set
-    # (_present_optional_instances()), not a hardcoded per-device literal - every real device's own
-    # devices/*.toml lists its instances in this same relative order (BUILD_CHAIN_PLAN.md's
-    # Session 2), so this fixed shape stays correct for all 6. WebserverService is never in this
-    # list - it stays RAM-only, see _scenario_webserver_pr_ram_only below.
-    calls = ["chunk", "chunk", "chunk"] if isinstance(module.conn.pr, PrintLogHistoryStore) else []
+    # AsyConnTime's own log(chunk) -> its own cfgmgr (chunk, WP2 - AsyConnTime IS a
+    # SensorReaderConfig subclass too, so it gets the same cfgmgr-inherits-fram treatment as every
+    # sensor driver below) -> its DNSServer's log(chunk, no cfgmgr - DNSServer has no config schema,
+    # owned by conn but not itself a SensorReaderConfig) -> AsyNtpClient's own log(chunk) -> its own
+    # cfgmgr (chunk, WP2) - a buildgen FRAM-wiring session (SPECIFICATION.md Part A.7's
+    # construction-order note) added this five-chunk prefix ahead of SystemService, present exactly
+    # when conn's own logger is FRAM-backed (reflected from the real module, not assumed - every
+    # real device wires them today, but a synthetic fixture with no [device.wiring].fram_target
+    # wouldn't; conn/cfgmgr/dns_server/ntp/cfgmgr all share that one `fram` kwarg, so one guard
+    # covers all five). Then: SystemService(chunk, no cfgmgr - it isn't a SensorReaderConfig
+    # subclass and doesn't forward fram into its own ConfigManager, a separate known unfixed gap
+    # tracked outside this file) -> SCD30_Reader(chunk, no cfgmgr - plain SensorReader, no config
+    # schema) -> SGP40 own log(chunk) -> SGP40's own cfgmgr (chunk, WP2) -> SGP40 VOC backup
+    # (timestamped) -> [BMP3xx_Reader(chunk) -> its own cfgmgr (chunk, WP2), only if present] ->
+    # [ISL29125_Reader(chunk) -> its own cfgmgr (chunk, WP2), only if present] ->
+    # NeopixelDriver(chunk, no cfgmgr - no schema) -> NotificationCoordinator(chunk) -> its own
+    # cfgmgr (chunk, WP2) -> [UartLinkExerciser(chunk) x2, only if present, own chunk each, no
+    # cfgmgr - devices/dev.toml wires fram_target on both, never a logger_target reach-through
+    # between them, SPECIFICATION.md Part J.9/C.14], in that order, unconditionally save for the
+    # WiFi/NTP prefix and the two optional-instance brackets. SCD30 constructs before SGP40
+    # (ordering-hazard #1, SPECIFICATION.md Part A.7/C.14 - SGP40 holds a direct reference to scd30
+    # as its temperature_source/humidity_source, so the producer must exist first). Derived from
+    # the module's own reflected instance set (_present_optional_instances()), not a hardcoded
+    # per-device literal - every real device's own devices/*.toml lists its instances in this same
+    # relative order (BUILD_CHAIN_PLAN.md's Session 2), so this fixed shape stays correct for all 6.
+    # WebserverService is never in this list - it stays RAM-only, see _scenario_webserver_pr_ram_only
+    # below.
+    calls = ["chunk", "chunk", "chunk", "chunk", "chunk"] if isinstance(module.conn.pr, PrintLogHistoryStore) else []
     calls.append("chunk")  # SystemService
     if _has(module, "scd30"):
         calls.append("chunk")
     if _has(module, "sgp40"):
-        calls += ["chunk", "timestamped"]
+        calls += ["chunk", "chunk", "timestamped"]  # own error log, own cfgmgr (WP2), VOC backup
     if _has(module, "bmp3xx"):
-        calls.append("chunk")
+        calls += ["chunk", "chunk"]  # own error log, own cfgmgr (WP2)
     if _has(module, "isl29125"):
-        calls.append("chunk")
-    calls += ["chunk", "chunk"]  # NeopixelDriver, NotificationCoordinator - always present
+        calls += ["chunk", "chunk"]  # own error log, own cfgmgr (WP2)
+    calls += ["chunk"]  # NeopixelDriver - always present, no cfgmgr (no schema)
+    calls += ["chunk", "chunk"]  # NotificationCoordinator - always present: own error log, own cfgmgr (WP2)
     if _has_uart_link(module):
-        calls += ["chunk", "chunk"]  # uart_link_init, uart_link_resp - each its own chunk
+        calls += ["chunk", "chunk"]  # uart_link_init, uart_link_resp - each its own chunk, no cfgmgr
     return calls
 
 
@@ -512,7 +522,8 @@ def _scenario_main_forwards_web_host_port(device: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# FRAM chunk order - exact relative sequence (six or seven chunks, depending on bmp3xx presence).
+# FRAM chunk order - exact relative sequence (count varies per device's own optional-instance set
+# and, since WP2, per FRAM-wired SensorReaderConfig's own extra ConfigManager chunk).
 # ---------------------------------------------------------------------------
 
 
