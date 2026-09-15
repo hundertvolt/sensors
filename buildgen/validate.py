@@ -68,16 +68,16 @@ _WPA2_MIN_PASSWORD_LEN = 8  # WPA2-PSK's own minimum (IEEE 802.11i)
 # [device.wiring] fields and which mandatory-infra consumer(s)' own _WIRING they resolve against -
 # both fixed and known ahead of time (BUILD_CHAIN_PLAN.md's schema section: exactly these two
 # fields exist today), unlike [instance.wiring]'s fully generic per-driver resolution below.
-# fram_target has four consumers (every mandatory-infra module capable of an optional FRAM-backed
-# error log) - each must declare its own matching @wiring tag, checked independently below, so one
-# consumer's own module drifting out of sync (e.g. a tag typo/removal) is caught by name rather than
-# silently skipped.
+# fram_target has three consumers (every mandatory-infra module capable of an optional FRAM-backed
+# error log EXCEPT WebserverService - see its own module docstring comment for the real, measured
+# reason it's excluded) - each must declare its own matching @wiring tag, checked independently
+# below, so one consumer's own module drifting out of sync (e.g. a tag typo/removal) is caught by
+# name rather than silently skipped.
 _DEVICE_WIRING_CONSUMERS: "dict[str, tuple[tuple[str, str, str], ...]]" = {
     "led_target": (("asy_wifi_service.py", "AsyConnTime", "conn"),),
     "fram_target": (
         ("asy_wifi_service.py", "AsyConnTime", "conn"),
         ("asy_ntp_client.py", "AsyNtpClient", "ntp"),
-        ("asy_webserver_service.py", "WebserverService", "webserver"),
         ("system_service.py", "SystemService", "sysfunct"),
     ),
 }

@@ -350,11 +350,13 @@ importing the generated device module stays safe under tests.
 **Why order matters**: `AsyFramManager` is a bump-pointer allocator — instantiation order is
 on-chip layout and must stay identical across firmware versions (A.4's determinism rule).
 
-**Construction order, top to bottom** (reordered by BUILD_CHAIN_PLAN.md's WP1 session, WiFi/NTP/
-webserver FRAM wiring: `fram` now has to exist before `conn`/`ntp`/`sysfunct` can receive it, so
-its own construction moved from step 6 to step 3, ahead of both — a bump-pointer allocator's own
-construction order is on-chip layout, and reordering it is explicitly zero-risk today, CLAUDE.md's
-"Hard rules": no deployed unit exists besides the routinely-reflashed bench `dev` board):
+**Construction order, top to bottom** (reordered by a later WiFi/NTP FRAM-wiring session: `fram`
+now has to exist before `conn`/`ntp`/`sysfunct` can receive it, so its own construction moved from
+step 6 to step 3, ahead of both — a bump-pointer allocator's own construction order is on-chip
+layout, and reordering it is explicitly zero-risk today, CLAUDE.md's "Hard rules": no deployed unit
+exists besides the routinely-reflashed bench `dev` board. The same session also tried wiring the
+webserver the identical way and reverted it - measured, not speculative, see step 13's own note
+below):
 
 1. `watchdog = WDT(timeout=8000)` — hardcoded, no injection point.
 2. `i2c0`, `i2c1` = `asy_i2c_driver.I2C(...)` ×2. `i2c0` (SCD30, step 9) sets `timeout=200000`
@@ -395,44 +397,51 @@ construction order is on-chip layout, and reordering it is explicitly zero-risk 
 12b. *(`dev` only)* two buildgen-generated `[[instance]]` entries construct
     `asy_uart_driver.UART(...)` ×2, then the new UART-crossover wrapper module (§Part J) wraps each
     in a `UART_Comm(...)` across the permanent crossover jumper — **no `fram=`** (Part J.1: "no
-    application semantics" means no FRAM-backed error log of its own, unrelated to the webserver's
-    own, separate `fram=` decision below). Placed here, after every other FRAM-allocating module and
-    immediately before the webserver, because the webserver's own `error_sources=` list includes
-    them. `wozi` has no such step. The variant also runs a small **link exerciser** task on the
-    initiator side: nothing on a live system would otherwise initiate a transfer, so every claim
-    about the link coexisting with the webserver would be a claim about an idle link. Its
-    transfer/failure counts ride the variable-length `maintenance_sensors` registration and surface
-    through `/status`, which the bench tier asserts advancing under load (`tests_hardware/README.md`).
-    The exercise logic lives in the wrapper module (not the generated file itself) because only
-    application-level code knows what to ask a peer — the protocol itself carries no application
-    semantics (Part J.1). See Part J for the wrapper module's exact shape and generated variable
-    names.
-13. `app = Microdot(); webserver = WebserverService(app, sensors=(...), ..., fram=fram,
-    static_mount="/html", is_hotspot_active=conn.is_hotspot_active, host=web_host, port=web_port)` —
-    **chunk 11** when `[device.wiring].fram_target` is wired (every real device today), absent
-    (RAM-only) otherwise. **This reverses an earlier, deliberate decision recorded here** (a
-    connection-reclaim warning could in principle churn faster than a sensor's own fault log) —
-    WP1's own work package explicitly named `WebserverService` as one of the three FRAM-wiring gaps
-    to close, so it's now wired identically to every other mandatory-infra consumer, through the same
-    `[device.wiring].fram_target` mechanism, rather than carrying a bespoke exception. Flagged, not
-    silently decided, in that session's own PR description — revisit if real-hardware churn ever
-    turns out to matter in practice. `static_mount="/html"` registers the static route pair last, so
-    an exact-match API route always wins.
+    application semantics" means no FRAM-backed error log of its own). Placed here, after every
+    other FRAM-allocating module and immediately before the webserver, because the webserver's own
+    `error_sources=` list includes them. `wozi` has no such step. The variant also runs a small
+    **link exerciser** task on the initiator side: nothing on a live system would otherwise
+    initiate a transfer, so every claim about the link coexisting with the webserver would be a
+    claim about an idle link. Its transfer/failure counts ride the variable-length
+    `maintenance_sensors` registration and surface through `/status`, which the bench tier asserts
+    advancing under load (`tests_hardware/README.md`). The exercise logic lives in the wrapper
+    module (not the generated file itself) because only application-level code knows what to ask a
+    peer — the protocol itself carries no application semantics (Part J.1). See Part J for the
+    wrapper module's exact shape and generated variable names.
+13. `app = Microdot(); webserver = WebserverService(app, sensors=(...), ..., static_mount="/html",
+    is_hotspot_active=conn.is_hotspot_active, host=web_host, port=web_port)` — **no `fram=`,
+    deliberately, still.** The same FRAM-wiring session tried wiring it through the identical
+    `[device.wiring].fram_target` mechanism as `conn`/`ntp`/`sysfunct` above (its own work package
+    explicitly named `WebserverService` as one of three FRAM-wiring gaps to close) and reverted it
+    after measuring the real effect on the digital twin: `WebserverService._run()` awaits
+    `self.pr.setup()` before `asyncio.start_server()` (see this Part's own note above on why —
+    "the webserver's task does nothing before `start_server()`" was a deliberate, already-shipped
+    fix for a `ResetErrors`-boot-window race), and a `fram=`-backed `pr.setup()` does a real FRAM
+    read over the same shared SPI bus/lock every other FRAM-backed module's own boot-time `setup()`
+    already contends for. On `dev` (several FRAM-backed modules sharing that one bus) this queued
+    read measured **~3 real seconds of added latency**, pushing first-REST-response readiness from
+    ~2.5s to ~5.4s in the digital twin — every other wired consumer's own `setup()` gates nothing
+    externally observable, so this is the one case where the shared-bus contention every
+    `fram_target` consumer already accepts becomes directly user-visible, on every boot, not just
+    under fault injection. Kept RAM-only; the mechanism stays available (`WebserverService.__init__`
+    still accepts `fram=` directly, unit-tested) for a future session to revisit with a
+    priority/ordering fix for FRAM-backed `setup()` if this ever needs revisiting. `static_mount=
+    "/html"` registers the static route pair last, so an exact-match API route always wins.
 14. `sysfunct.set_level_setters(_collect_level_setters())` — after every module has constructed.
 15. **`await x.setup()` batch**: `sysfunct → fram → conn → ntp → sgp40 → bmp3xx →
     notification`. Unaffected by the reordering above — every `.pr.setup()` call (the one that
     actually depends on `fram` already existing) happens lazily, inside each module's own task entry
-    point (`wlan_connect()`, `asy_ntp_time()`, `WebserverService._run()`), not in this batch; this
-    batch is `cfgmgr.setup()` only, which never touches FRAM. One hard constraint:
-    `notification.setup()` needs `finalize()` (step 11) already run, satisfied by batching at the
-    end. `scd30.setup()` isn't in this batch (no local config).
+    point (`wlan_connect()`, `asy_ntp_time()`), not in this batch; this batch is `cfgmgr.setup()`
+    only, which never touches FRAM. One hard constraint: `notification.setup()` needs `finalize()`
+    (step 11) already run, satisfied by batching at the end. `scd30.setup()` isn't in this batch (no
+    local config).
 
 **Real FRAM chunk order**: WIFI → DNSSRV → NTP → SystemService → SCD30 → SGP40 error log → SGP40
-VOC backup → BMP3xx → Neopixel → NotificationCoordinator → WebserverService (when wired). Eleven
-chunks on a device wiring `fram_target` everywhere it's offered (every real device today) — every
-module with a FRAM-backed error log uses it; must stay in this relative order. `src/` has no earlier
-on-chip layout to preserve, and reordering the previous seven-chunk layout to this one is confirmed
-zero-risk (no deployed device besides the routinely-reflashed bench `dev` board).
+VOC backup → BMP3xx → Neopixel → NotificationCoordinator. Ten chunks on a device wiring
+`fram_target` everywhere it's offered (every real device today) — every module with a FRAM-backed
+error log uses it; must stay in this relative order. `src/` has no earlier on-chip layout to
+preserve, and reordering the previous seven-chunk layout to this one is confirmed zero-risk (no
+deployed device besides the routinely-reflashed bench `dev` board).
 
 **This order, and `i2c0`'s SCD30-specific `timeout=200000`, are wozi's own — derived from
 `devices/wozi.toml`.** `buildgen` derives both from each device's own TOML rather than assuming

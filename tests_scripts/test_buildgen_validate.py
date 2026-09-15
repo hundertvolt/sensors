@@ -918,19 +918,20 @@ def test_device_wiring_fram_target_reference_unresolved(tmp_path: Path, src_dir:
 
 def test_device_wiring_fram_target_reference_wrong_class(tmp_path: Path, src_dir: Path) -> None:
     # Mirrors test_device_wiring_reference_wrong_class above, but for fram_target's own multi-
-    # consumer path (conn/ntp/webserver/sysfunct) - WP1's buildgen FRAM wiring session.
+    # consumer path (conn/ntp/webserver/sysfunct) - this buildgen FRAM-wiring session.
     doc = base_doc()
     doc["device"]["wiring"]["fram_target"] = "neopixel"  # neopixel is NeopixelDriver, not AsyFramManager
     with pytest.raises(BuildError, match="requires a AsyFramManager"):
         _build(tmp_path, src_dir, doc)
 
 
-@pytest.mark.parametrize("filename,tag", [("asy_ntp_client.py", "fram_target"), ("asy_webserver_service.py", "fram_target")])
-def test_device_wiring_fram_target_with_no_matching_tag_on_a_new_consumer(tmp_path: Path, src_dir: Path, filename: str, tag: str) -> None:
-    # test_device_wiring_field_with_no_matching_tag_on_the_consumer above proves this for conn - WP1
-    # extended fram_target to three more consumers (ntp/webserver/sysfunct), each independently
+def test_device_wiring_fram_target_with_no_matching_tag_on_a_new_consumer(tmp_path: Path, src_dir: Path) -> None:
+    # test_device_wiring_field_with_no_matching_tag_on_the_consumer above proves this for conn - this session
+    # extended fram_target to two more consumers (ntp/sysfunct - the third candidate, webserver, was
+    # tried and reverted, see asy_webserver_service.py's own module comment), each independently
     # checked (_check_device_wiring iterates every consumer, not just the first), so a tag missing
     # from any one of them - not only the first checked - must still be caught.
+    filename = "asy_ntp_client.py"
     staged = _staged_src(tmp_path, src_dir, filename, "# @wiring fram_target AsyFramManager fram optional kwarg", "")
     path = write_doc(tmp_path, "dev", base_doc())
     with pytest.raises(BuildError, match="has no matching @wiring tag"):

@@ -521,6 +521,19 @@ constraints.
   config-seeding step — not a `buildgen/`-only change. A tripwire test
   (`test_hostname_and_hotspot_password_are_not_yet_wired_into_generated_code`) and a code comment in
   `validate.py` hold the current state in place so the gap can't quietly change shape unnoticed.
+- **`WebserverService` is deliberately excluded from `[device.wiring].fram_target`'s consumer set,
+  unlike WiFi/NTP/SystemService (a buildgen FRAM-wiring session, following up on PR #84's
+  investigation).** Wiring it through the identical mechanism was tried and reverted after
+  measuring its real effect on the digital twin: `_run()` awaits `self.pr.setup()` before
+  `asyncio.start_server()`, and a `fram=`-backed `pr.setup()` does a real FRAM read over the same
+  shared SPI bus/lock every other FRAM-backed module's own boot-time `setup()` already contends
+  for — on `dev` this queued read measured **~3 real seconds of added latency**, pushing
+  first-REST-response readiness from ~2.5s to ~5.4s in the digital twin, every boot, not just under
+  fault injection. Full account: `src/asy_webserver_service.py`'s own module comment and
+  SPECIFICATION.md Part A.7's construction-order note (step 13). Revisiting this needs a real
+  design, not a mechanical retry: giving FRAM-backed `setup()` calls a priority/ordering scheme (so
+  a boot-blocking consumer's own restore isn't queued behind sensors that have no such deadline)
+  before webserver's own `fram=` could be safely added back.
 - **A digital-twin soak's wall clock is set by GC timing, so it must never be bisected to a code
   change** (established 2026-09-11 after one was — see SPECIFICATION.md Part E.7 for the measurement
   and the inverted control). Not open work: the finding itself is the resolution, and

@@ -112,9 +112,9 @@ def _fram_kw(spec: InstanceSpec, ctx: _Ctx) -> "tuple[str, str] | None":
 
 def _device_fram_var(model: DeviceModel, ctx: _Ctx) -> "str | None":
     # [device.wiring].fram_target's mandatory-infra side (validate.py's _DEVICE_WIRING_CONSUMERS):
-    # conn/ntp/sysfunct/webserver all resolve it the same way, always under the literal kwarg name
-    # "fram" (matching every one of their own @wiring tags) - one shared helper rather than each
-    # call site re-deriving it.
+    # conn/ntp/sysfunct all resolve it the same way, always under the literal kwarg name "fram"
+    # (matching every one of their own @wiring tags) - one shared helper rather than each call site
+    # re-deriving it. WebserverService is deliberately NOT a consumer - see its own module comment.
     fram_target = model.doc.get("device", {}).get("wiring", {}).get("fram_target")
     return ctx.instance_var(resolve_instance_key(model, fram_target)) if fram_target else None
 
@@ -397,11 +397,12 @@ def _emit_build_system(lines: "list[str]", model: DeviceModel, ctx: _Ctx, instan
             lines.append(f"    {var} = asy_uart_driver.UART({port}, {bus_table['tx_pin']}, {bus_table['rx_pin']}, baudrate={bus_table['baudrate']}{extra_kw})")
 
     # fram is built right after the buses (before conn/ntp/sysfunct) - unlike every other
-    # instance, always emitted here, out of its own construction_order position, purely so any of
-    # the three mandatory-infra consumers below can receive an already-built fram= kwarg. Safe to
-    # move unconditionally: fram itself never wires a reference to another instance (buildspec.py's
-    # own REQUIRED_TOML_FIELDS for it is bus/cs_pin/max_size only), so it has no ordering dependency
-    # of its own to violate.
+    # instance, always emitted here, out of its own construction_order position, purely so
+    # conn/ntp/sysfunct below can each receive an already-built fram= kwarg (webserver
+    # deliberately excluded - see asy_webserver_service.py's own module comment). Safe to move
+    # unconditionally: fram itself never wires a reference to another instance (buildspec.py's own
+    # REQUIRED_TOML_FIELDS for it is bus/cs_pin/max_size only), so it has no ordering dependency of
+    # its own to violate.
     fram_key = ("fram", "")
     if fram_key in instances:
         fram_spec = instances[fram_key]
@@ -437,7 +438,7 @@ def _emit_build_system(lines: "list[str]", model: DeviceModel, ctx: _Ctx, instan
         (ctx.instance_var(n) for n in construction_order if isinstance(n, tuple) and instances[n].driver == "uart_link" and instances[n].fields.get("role") == "initiator"),
         None,
     )
-    _emit_webserver(lines, have, sensor_vars, uart_initiator_var, _device_fram_var(model, ctx))
+    _emit_webserver(lines, have, sensor_vars, uart_initiator_var)
 
     lines.append("    timers_running = ThreadSafeFlag()")
     lines.append("    sysfunct.set_level_setters(_collect_level_setters())")
@@ -568,7 +569,7 @@ def _emit_callbacks(lines: "list[str]", have: "set[str]") -> None:
         lines.append("")
 
 
-def _emit_webserver(lines: "list[str]", have: "set[str]", sensor_vars: "list[str]", uart_initiator_var: "str | None", fram_var: "str | None") -> None:
+def _emit_webserver(lines: "list[str]", have: "set[str]", sensor_vars: "list[str]", uart_initiator_var: "str | None") -> None:
     lines.append("    app = Microdot()")
     lines.append("    webserver = WebserverService(")
     lines.append("        app,")
@@ -608,8 +609,6 @@ def _emit_webserver(lines: "list[str]", have: "set[str]", sensor_vars: "list[str
         comma = "," if len(maintenance_entries) == 1 else ""
         lines.append(f"        maintenance_sensors=({', '.join(maintenance_entries)}{comma}),")
     lines.append("        error_sources=_collect_error_sources(),")
-    if fram_var is not None:
-        lines.append(f"        fram={fram_var},")
     lines.append("        debug=debug,")
     lines.append('        static_mount="/html",')
     lines.append("        is_hotspot_active=conn.is_hotspot_active,")

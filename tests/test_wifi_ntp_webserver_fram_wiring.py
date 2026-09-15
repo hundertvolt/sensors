@@ -1,6 +1,9 @@
-"""Mock-tier proof for buildgen's WP1 FRAM-wiring session: AsyConnTime/AsyNtpClient/WebserverService
-get a real FRAM-backed PrintLogHistoryStore logger when constructed with fram= (surviving a
-simulated reboot through the real chunk), stay plain RAM-only PrintLogHistory without it, and
+"""Mock-tier proof for buildgen's WiFi/NTP/webserver FRAM-wiring session: AsyConnTime/AsyNtpClient/WebserverService
+all get a real FRAM-backed PrintLogHistoryStore logger when directly constructed with fram=
+(surviving a simulated reboot through the real chunk) and stay plain RAM-only PrintLogHistory
+without it - class-level capability, exercised here independent of whether buildgen actually wires
+it for a given consumer (it does for conn/ntp; WebserverService's own module comment explains why
+buildgen deliberately never passes fram= to it, despite this class-level support). Also proves
 AsyConnTime forwards the real AsyFramManager into its own DNSServer rather than None."""
 
 import asyncio

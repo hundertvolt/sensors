@@ -88,10 +88,17 @@ if TYPE_CHECKING:
     HotspotActiveFct = Callable[[], bool]
 
 _NAME = const("WEBSERVER")
-# This service's one optional device-level cross-instance dependency (SPECIFICATION.md Part C.14),
-# same [device.wiring] mechanism as asy_wifi_service.py's own led_target/fram_target: its own FRAM
-# error/warning-log target.
-# @wiring fram_target AsyFramManager fram optional kwarg
+# Deliberately NOT wired to [device.wiring].fram_target the way asy_wifi_service.py/
+# asy_ntp_client.py/system_service.py are (a later buildgen FRAM-wiring session tried this and
+# reverted it, real-measured, not speculative): this service's own setup() awaits self.pr.setup()
+# before start_server() (see _run() below), and a fram=-backed pr.setup() does a real FRAM
+# read/restore over the same shared SPI bus/lock every other FRAM-backed module's own boot-time
+# setup() contends for - on a device with several such modules (e.g. "dev"), that queued read
+# measured ~3s of real added latency, pushing REST availability from ~2.5s to ~5.4s at boot. No
+# other wired consumer's own setup() gates anything externally observable the way this one gates
+# the whole REST API's own first-request readiness, so this is the one case where the shared bus
+# contention every fram_target consumer already accepts becomes directly user-visible. Revisit if
+# a future session gives per-consumer FRAM setup() its own priority/ordering.
 _SYSTEM_CMDS = ("reboot", "bootloader", "mempause")  # the only enum values ever forwarded to
 # system_cmd() - never a client-supplied duration (mempause's fixed 300s lives in system_cmd()'s own
 # implementation, e.g. SystemService.pause_permanent_storage() - see SPECIFICATION.md Part A.8).
