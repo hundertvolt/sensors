@@ -1534,7 +1534,8 @@ optional polish (project owner's explicit direction):**
   mock/twin (a fake bus has no real write-wear budget); real hardware's own limit is the next bullet.
 - **Real-hardware tier parity is required, not optional — every generic mock/twin scenario type
   needs a real-hardware equivalent** for whichever bus a real device's own topology makes it
-  applicable to, with exactly one exception: **SCD30's own on-chip NVM write is opt-in and capped at
+  applicable to (E.6.6's own general rule, applied here to bus-hazard specifically), with exactly
+  one exception: **SCD30's own on-chip NVM write is opt-in and capped at
   one real write per test session**, reusing `tests_hardware/flash/conftest.py`'s existing
   `scd30_continuous_measurement_triggered` fixture pattern for the routine group and its own new
   `@pytest.mark.scd30_write`/`--allow-scd30-writes` flag (mirroring the existing
@@ -2680,7 +2681,46 @@ WiFi, Webserver, Sensortask each found complementary, with only small pockets of
 low-value duplication — one real cluster (Sensortask: 4 near-identical "same REST round-trip, once
 direct, once over real HTTP" pairs) is the cluster `_shared_rest_roundtrip.py` targets.
 Consolidation should target that specific shape, not force uniformity onto pairs already correctly
-complementary.
+complementary. **This complementary relationship is about which *aspect* of a behavior each backend
+proves (E.6.1's own table) — it does not exempt real-hardware-facing behavior from needing a
+real-hardware check at all; see E.6.6.**
+
+### E.6.6 Real-hardware parity requirement
+
+**Standing rule (project owner's direction): every mock/digital-twin test that exercises
+real-hardware-facing behavior needs a real-hardware equivalent, wherever technically possible** —
+a real bus transaction shape, real timing, a real fault-injection scenario, a real REST endpoint
+that reaches real hardware state, and so on. This generalizes what SPECIFICATION.md Part C.8's own
+bus-hazard promotion checklist already requires for that one domain (mock → twin → flash → bench,
+with flash ⊆ bench per E.6.1) to the whole test suite — C.8 is an instance of this rule, not a
+special case of it. A gap here is a real gap to close, the same way a missing bus-hazard tier is,
+not a documentation nicety.
+
+This does **not** override three already-established, deliberate exceptions — the rule is scoped by
+them, not in tension with them:
+
+1. **Only `dev` is ever physically bench-tested** (CLAUDE.md's own hard rule). `wozi`/`arzi`/
+   `klkizi`/`grkizi`/`schlafzi` have no real board to flash at all, so real-hardware parity for
+   anything specific to one of them is structurally impossible, not a gap to chase — their own
+   correctness is established entirely through mock/twin, by design (CLAUDE.md's "WoZi is the
+   exemplary/base variant" entry). Only `dev`'s own real wiring/behavior can ever be checked for a
+   missing real-hardware counterpart under this rule.
+2. **A behavior with no real API/hardware surface to reach it at all** cannot get a real-hardware
+   test for that specific path — e.g. SCD30 has zero REST-pushable fields (`asy_scd30_driver.py`
+   registers no `_push_callbacks`), so no bench-tier `PUT` can ever reach its own NVM write (C.8's
+   own SCD30/bench note). Document the structural absence explicitly, the way C.8 now does, rather
+   than leaving it as a silent, unexplained gap — a documented structural exception is compliant
+   with this rule; a silently missing test is not.
+3. **A behavior only a human can verify** (a visual/instrument check, genuine power loss, a
+   calibrated-reference accuracy claim) gets `tests_hardware/manual/` coverage instead of an
+   automated one — `manual` is a different *execution mode* of the same real-hardware tier (E.6's
+   own "`manual` is an execution mode, not a tier"), not a waiver from this rule.
+
+**Out of scope entirely**: a test with no hardware-facing behavior to verify in the first place
+(`math_helpers` formulas, config-schema validation, pure JSON/string handling, buildgen's own
+CPython-only logic, ...) — a "real hardware equivalent" of testing arithmetic is meaningless. This
+rule is about tests whose value comes from proving something a fake bus/network/filesystem can only
+approximate, not every test in the suite indiscriminately.
 
 ---
 
