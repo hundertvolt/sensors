@@ -333,11 +333,13 @@ def _expected_fram_chunk_calls(module: "Any") -> "list[str]":
     # (chunk, WP2) -> SGP40 VOC backup (timestamped) -> [BMP3xx_Reader(chunk) -> its own cfgmgr
     # (chunk, WP2), only if present] -> [ISL29125_Reader(chunk) -> its own cfgmgr (chunk, WP2),
     # only if present] -> NeopixelDriver(chunk, no cfgmgr - no schema) -> NotificationCoordinator
-    # (chunk) -> its own cfgmgr (chunk, WP2), in that order, unconditionally. SCD30 constructs
-    # before SGP40 (ordering-hazard #1, SPECIFICATION.md Part A.7/C.14 - SGP40 holds a direct
-    # reference to scd30 as its temperature_source/humidity_source, so the producer must exist
-    # first). Every FRAM-wired SensorReaderConfig now allocates one extra chunk for its own
-    # ConfigManager (base_classes.py forwards fram= into it, WP2) - SystemService's own cfgmgr
+    # (chunk) -> its own cfgmgr (chunk, WP2) -> [UartLinkExerciser(chunk) x2, only if present, own
+    # chunk each, no cfgmgr - devices/dev.toml wires fram_target on both, never a logger_target
+    # reach-through between them, SPECIFICATION.md Part J.9/C.14], in that order, unconditionally.
+    # SCD30 constructs before SGP40 (ordering-hazard #1, SPECIFICATION.md Part A.7/C.14 - SGP40
+    # holds a direct reference to scd30 as its temperature_source/humidity_source, so the producer
+    # must exist first). Every FRAM-wired SensorReaderConfig now allocates one extra chunk for its
+    # own ConfigManager (base_classes.py forwards fram= into it, WP2) - SystemService's own cfgmgr
     # stays RAM-only (it isn't a SensorReaderConfig subclass and doesn't forward fram into its
     # own ConfigManager - a separate, known, unfixed gap, tracked outside this file). Derived from
     # the module's own reflected instance set (_present_optional_instances()), not a hardcoded
@@ -354,6 +356,8 @@ def _expected_fram_chunk_calls(module: "Any") -> "list[str]":
         calls += ["chunk", "chunk"]  # own error log, own cfgmgr (WP2)
     calls += ["chunk"]  # NeopixelDriver - always present, no cfgmgr (no schema)
     calls += ["chunk", "chunk"]  # NotificationCoordinator - always present: own error log, own cfgmgr (WP2)
+    if _has_uart_link(module):
+        calls += ["chunk", "chunk"]  # uart_link_init, uart_link_resp - each its own chunk, no cfgmgr
     return calls
 
 
@@ -572,6 +576,11 @@ def _scenario_fram_chunks_allocated(device: str) -> None:
     if _has(module, "bmp3xx"):
         assert isinstance(module.bmp3xx.pr, PrintLogHistoryStore)
         assert module.bmp3xx.pr.fram is not None
+    if _has_uart_link(module):
+        assert isinstance(module.uart_link_init.pr, PrintLogHistoryStore)
+        assert module.uart_link_init.pr.fram is not None
+        assert isinstance(module.uart_link_resp.pr, PrintLogHistoryStore)
+        assert module.uart_link_resp.pr.fram is not None
 
 
 class _DeadFramChip(FakeMB85RS64V):

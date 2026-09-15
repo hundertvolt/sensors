@@ -6,6 +6,7 @@ from machine import LinkPoller, UARTLink
 from asy_uart_comm import ROLE_INITIATOR, ROLE_RESPONDER
 from asy_uart_driver import UART
 from asy_uart_link_driver import UartLinkExerciser
+from print_log import PrintLogHistoryStore
 
 try:
     from typing import TYPE_CHECKING
@@ -15,6 +16,8 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 if TYPE_CHECKING:
     from collections.abc import Coroutine
     from typing import Any, TypeVar
+
+    from crc_checks import CRC_Base
 
     T = TypeVar("T")
 
@@ -203,6 +206,152 @@ def test_exercise_loop_counts_a_failure_when_nothing_answers() -> None:
         assert answer is None
 
     run(go())
+
+
+# ---------------------------------------------------------------------------
+# WP3: fram=/logger= forwarding into UART_Comm's own already-correct construction (SPECIFICATION.md
+# Part J.9/C.14). UartLinkExerciser adds no logging behavior of its own - these tests cover the
+# forwarding itself, not UART_Comm's own fram=/logger= handling (already covered by
+# tests/test_asy_uart_comm.py).
+# ---------------------------------------------------------------------------
+
+
+class _FakeFramChunk:
+    def __init__(self) -> None:
+        self.buf = bytearray(64)
+        self.fail_writes = 0  # simulates a transient FRAM write hiccup - see the resilience test below
+
+    def get_buffer(self) -> "_FakeFramChunk":
+        return self
+
+    def get_data_buf(self) -> bytearray:
+        return self.buf
+
+    async def write_into(self, buf: "_FakeFramChunk", *, override_pause: bool = False) -> bool:
+        if self.fail_writes > 0:
+            self.fail_writes -= 1
+            return False
+        self.buf[:] = buf.get_data_buf()
+        return True
+
+    async def read_into(self, buf: "_FakeFramChunk", *, override_pause: bool = False) -> bool:
+        buf.get_data_buf()[:] = self.buf
+        return True
+
+
+class _FakeFramManager:
+    def __init__(self, chunk: "_FakeFramChunk") -> None:
+        self.chunk = chunk
+
+    def get_chunk(self, size: int, crc: "CRC_Base | None" = None, verify: int = 0, check_length: int = 8) -> "_FakeFramChunk":
+        return self.chunk
+
+
+class _RaisingFramManager:
+    # Models a real allocator whose FRAM chip never came up - PrintLogHistoryStore.__init__ wraps
+    # this call broadly (print_log.py's own module docstring), so construction must not crash.
+    def get_chunk(self, size: int, crc: "CRC_Base | None" = None, verify: int = 0, check_length: int = 8) -> "_FakeFramChunk":
+        raise OSError("synthetic FRAM allocation failure")
+
+
+def test_default_construction_stays_ram_only_like_before() -> None:
+    # Regression pin: with no fram=/logger= passed (every existing call site, including every
+    # generated device today except dev.toml's own two instances), behavior is byte-for-byte what
+    # it was before this wiring existed - a plain, in-memory-only PrintLogHistory.
+    driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS)
+    exerciser = UartLinkExerciser(driver, ROLE_INITIATOR)
+    assert type(exerciser.pr).__name__ == "PrintLogHistory"
+    assert not hasattr(exerciser.pr, "fram")
+
+
+def test_fram_backed_variant_survives_a_reboot() -> None:
+    # Own-chunk path: errno history persists through a simulated FRAM write/read cycle, mirroring
+    # every other fram_target-wirable driver's own reboot test (e.g. test_asy_neopixel_driver.py's
+    # test_fram_backed_variant_survives_a_reboot).
+    chunk = _FakeFramChunk()
+    fram = _FakeFramManager(chunk)
+    driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS)
+    exerciser1 = UartLinkExerciser(driver, ROLE_INITIATOR, fram=fram)  # type: ignore[arg-type]
+    assert type(exerciser1.pr).__name__ == "PrintLogHistoryStore"
+
+    async def scenario1() -> None:
+        await exerciser1.pr.setup()  # FRAM persistence is inert until setup() runs
+        await exerciser1.pr.err_s("boom", errno=1)
+
+    run(scenario1())
+
+    driver2 = UART(1, tx_pin=8, rx_pin=9, poll_wait_ms=POLL_WAIT_MS)
+    exerciser2 = UartLinkExerciser(driver2, ROLE_RESPONDER, fram=fram)  # type: ignore[arg-type]
+
+    async def scenario2() -> None:
+        await exerciser2.pr.setup()
+
+    run(scenario2())
+    assert exerciser2.pr.err_count == exerciser1.pr.err_count
+
+
+def test_fram_allocation_failure_falls_back_to_ram_only_without_crashing() -> None:
+    driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS)
+    exerciser = UartLinkExerciser(driver, ROLE_INITIATOR, fram=_RaisingFramManager())  # type: ignore[arg-type]
+    assert isinstance(exerciser.pr, PrintLogHistoryStore)  # allocation attempted...
+    assert exerciser.pr.fram is None  # ...but degraded to RAM-only, not crashed
+    run(exerciser.pr.err_s("still logs, just not durably", errno=1))
+    assert exerciser.pr.err_count == 1
+
+
+def test_a_transient_fram_write_failure_does_not_break_logging_or_transfers() -> None:
+    # Resilience: a write hiccup mid-operation must not crash the exerciser or the link it wraps -
+    # print_log.py's own broad exception guard plus PrintLogHistoryStore._write()'s bool return are
+    # what make this safe; this test proves it end to end through UartLinkExerciser's own forwarding.
+    chunk = _FakeFramChunk()
+    chunk.fail_writes = 1
+    fram = _FakeFramManager(chunk)
+    driver_a = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS)
+    driver_b = UART(1, tx_pin=8, rx_pin=9, poll_wait_ms=POLL_WAIT_MS)
+    fake_a: FakeUART = driver_a._uart  # type: ignore[assignment]
+    fake_b: FakeUART = driver_b._uart  # type: ignore[assignment]
+    UARTLink(fake_a, fake_b)
+    driver_a.poller = LinkPoller(fake_a)  # type: ignore[assignment]
+    driver_b.poller = LinkPoller(fake_b)  # type: ignore[assignment]
+    initiator = UartLinkExerciser(driver_a, ROLE_INITIATOR)
+    responder = UartLinkExerciser(driver_b, ROLE_RESPONDER, fram=fram)  # type: ignore[arg-type]
+
+    async def go() -> None:
+        assert await initiator.setup() and await responder.setup()
+        await responder._comm.pr.err_s("first write fails", errno=1)  # swallowed, returns False internally
+        listener = asyncio.create_task(responder._comm.uart_listen())
+        try:
+            answer = await initiator._comm.uart_get(0x01)
+        finally:
+            await asyncio.wait_for(listener, 5)
+        assert answer is not None and bytes(answer) == b"dev-uart-crossover"  # the link itself is unaffected
+
+    run(go())
+
+
+def test_logger_reach_through_shares_the_upstream_pr_object() -> None:
+    driver_a = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS)
+    driver_b = UART(1, tx_pin=8, rx_pin=9, poll_wait_ms=POLL_WAIT_MS)
+    upstream = UartLinkExerciser(driver_a, ROLE_INITIATOR, name_ext="up")
+    downstream = UartLinkExerciser(driver_b, ROLE_RESPONDER, name_ext="down", logger=upstream.pr)
+    assert downstream.pr is upstream.pr  # the AsyFramManager-style reach-through (base_classes.py's own precedent)
+    assert downstream.name == "UART_down"  # its own identity is independent of the shared logger's own name
+    assert downstream.get_loggers() == [upstream.pr]
+
+
+def test_fram_and_logger_are_mutually_exclusive_logger_wins() -> None:
+    # Both wired at once is not a schema requirement to reject (buildgen.validate.py adds no such
+    # check today) - UART_Comm's own make_logger()-vs-logger precedence already resolves it: the
+    # reach-through wins and the fram= chunk is never touched. Pinned here so a change to that
+    # precedence is a deliberate decision, not a silent behavior change for this wrapper.
+    chunk = _FakeFramChunk()
+    fram = _FakeFramManager(chunk)
+    upstream_driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS)
+    upstream = UartLinkExerciser(upstream_driver, ROLE_INITIATOR, name_ext="up")
+    driver = UART(1, tx_pin=8, rx_pin=9, poll_wait_ms=POLL_WAIT_MS)
+    exerciser = UartLinkExerciser(driver, ROLE_RESPONDER, name_ext="down", fram=fram, logger=upstream.pr)  # type: ignore[arg-type]
+    assert exerciser.pr is upstream.pr
+    assert not hasattr(exerciser.pr, "fram")  # upstream's own plain, in-memory PrintLogHistory
 
 
 if __name__ == "__main__":

@@ -397,10 +397,22 @@ on-chip layout and must stay identical across firmware versions (A.4's determini
     same WP2 mechanism). `wozi` has no such step (C.11.5 requirement 18).
 13c. *(`dev` only)* two buildgen-generated `[[instance]]` entries construct
     `asy_uart_driver.UART(...)` ×2, then the new UART-crossover wrapper module (§Part J) wraps each
-    in a `UART_Comm(...)` across the permanent crossover jumper — **no `fram=`**, for the same
-    reason as the webserver below, so the chunk order above is untouched. Placed here, after
-    every FRAM-allocating module and immediately before the webserver, because the webserver's own
-    `error_sources=` list includes them. `wozi` has no such step. The variant also runs a small
+    in a `UART_Comm(...)` across the permanent crossover jumper. Each end's `fram_target`/
+    `logger_target` wiring is individually optional, exactly like every other `fram_target`-wirable
+    driver (C.14.2) — `UartLinkExerciser` forwards whichever the TOML wires straight into its own
+    `UART_Comm`, which already supported both (J.9). `devices/dev.toml` wires `fram_target = "fram"`
+    on both real instances — **own chunk each, chunks 13-14** of `dev`'s real, WP2-and-ISL29125-
+    extended layout (SystemService → SCD30 → SGP40 error → SGP40 cfgmgr → SGP40 VOC backup →
+    BMP3xx error → BMP3xx cfgmgr → ISL29125 error → ISL29125 cfgmgr → Neopixel →
+    NotificationCoordinator error → NotificationCoordinator cfgmgr → UART initiator → UART
+    responder — see the "Real FRAM chunk order" note below, which stays wozi's own canonical ten
+    since wozi never gets a UART instance at all), never a `logger_target` reach-through onto each
+    other: a shared logger would merge both ends' faults into one `/status` entry and make a fault
+    unattributable to a single end (see `tests/test_digital_twin_uart_link.py`'s own
+    distinct-loggers test). Placed here, after every FRAM-allocating module and immediately before
+    the webserver, so these two new chunks only ever append to `dev`'s on-chip layout, and because
+    the webserver's own `error_sources=` list includes them. `wozi` has no such step. The variant
+    also runs a small
     **link exerciser** task on the initiator side: nothing on a live system would otherwise initiate
     a transfer, so every claim about the link coexisting with the webserver would be a claim about
     an idle link. Its transfer/failure counts ride the variable-length `maintenance_sensors`
@@ -430,11 +442,13 @@ WP2 gave every FRAM-wired `SensorReaderConfig` one more chunk for its own `Confi
 `base_classes.py` now forwards `fram=` into it instead of silently dropping it); must stay in this
 relative order. `src/` has no earlier on-chip layout to preserve. `dev` additionally wires
 `isl29125` (own error log + its own `ConfigManager`'s `CFGMGR_ISL29125` chunk, two more chunks,
-positioned per 13b above) — **twelve chunks** total on `dev`. `SystemService`'s own `ConfigManager`
-stays RAM-only regardless: `SystemService` isn't a `SensorReaderConfig` subclass (C.13's own note)
-and doesn't forward its `fram` into its own directly-embedded `ConfigManager(...)` call — a
-separate, known, not-yet-fixed gap (flagged, not silently fixed, in the WP2 PR that added this
-paragraph).
+positioned per 13b above) and the two `UartLinkExerciser` instances (own chunk each, no
+`ConfigManager` of their own — no schema, per Part J.6 — positioned per 13c above) — **fourteen
+chunks** total on `dev` (twelve FRAM-wired `SensorReader`/`SensorReaderConfig` chunks plus the two
+UART link chunks). `SystemService`'s own `ConfigManager` stays RAM-only regardless: `SystemService`
+isn't a `SensorReaderConfig` subclass (C.13's own note) and doesn't forward its `fram` into its own
+directly-embedded `ConfigManager(...)` call — a separate, known, not-yet-fixed gap (flagged, not
+silently fixed, in the WP2 PR that added this paragraph).
 
 **This order, and `i2c0`'s SCD30-specific `timeout=200000`, are wozi's own — derived from
 `devices/wozi.toml`.** `buildgen` derives both from each device's own TOML rather than assuming
