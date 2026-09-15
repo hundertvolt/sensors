@@ -1,5 +1,5 @@
 """Workaround for a MicroPython Unix-port race that leaves the GC heap permanently locked when a real SIGINT lands during a `gc_collect()` — every later allocation then fails with `MemoryError: memory allocation failed, heap is locked`, including the shutdown flush.
-Call `unwedge_heap_after_interrupt()` first in any `except KeyboardInterrupt:` handler that still needs to allocate. Full mechanism: SPECIFICATION.md Part F.6."""
+Call `unwedge_heap_after_interrupt()` first in any `except KeyboardInterrupt:` handler that still needs to allocate. Full mechanism: SPECIFICATION.md Part F.6, whose amendment notes toolchain/micropython_overrides.py's unix_kbd_intr override (Part B.14.1) has since closed the root cause - this module stays wired in as defense in depth only."""
 
 import gc
 

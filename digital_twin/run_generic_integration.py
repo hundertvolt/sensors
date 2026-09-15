@@ -416,13 +416,16 @@ async def main(config: RunConfig) -> None:
         elif config.duration > 0:
             await asyncio.sleep(config.duration)
     finally:
-        # SPECIFICATION.md Part F.6: a SIGINT landing inside gc_collect() can leave the heap
-        # permanently locked, and this whole block allocates (f-strings, task bookkeeping,
-        # flush_fram()/flush_scd30() below) - unwedge unconditionally, first, exactly like the
-        # __main__ except KeyboardInterrupt: handler below does, rather than only there. Before
-        # this call existed here, a KeyboardInterrupt landing while THIS coroutine (not a sibling
-        # task) was the one running never reached that outer handler until after this block's own
-        # allocations had already run against a potentially-locked heap.
+        # SPECIFICATION.md Part F.6 (see its amendment: this project's own Unix-port build now
+        # forces safe, deferred SIGINT delivery - Part B.14.1 - so this specific race should no
+        # longer be reachable at all; kept as defense in depth, not a load-bearing fix anymore):
+        # a SIGINT landing inside gc_collect() can leave the heap permanently locked, and this
+        # whole block allocates (f-strings, task bookkeeping, flush_fram()/flush_scd30() below) -
+        # unwedge unconditionally, first, exactly like the __main__ except KeyboardInterrupt:
+        # handler below does, rather than only there. Before this call existed here, a
+        # KeyboardInterrupt landing while THIS coroutine (not a sibling task) was the one running
+        # never reached that outer handler until after this block's own allocations had already
+        # run against a potentially-locked heap.
         unwedge_heap_after_interrupt()
         _print_wdt_status(config)
         if sampler_task is not None:
@@ -467,7 +470,8 @@ if __name__ == "__main__":
         # Reached when the KeyboardInterrupt lands while main()'s own coroutine is suspended (not
         # currently running) - it never enters main()'s try/finally at all in that case, so this is
         # not just a backstop for a wedge missed above; it is the only cleanup that runs at all for
-        # that case. See SPECIFICATION.md Part F.6 for the gc_collect()-heap-lock mechanism.
+        # that case. See SPECIFICATION.md Part F.6 (and its amendment - Part B.14.1) for the
+        # gc_collect()-heap-lock mechanism and why it's defense in depth now, not the live fix.
         unwedge_heap_after_interrupt()
         machine.flush_fram()
         machine.flush_scd30()

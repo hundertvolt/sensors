@@ -89,7 +89,9 @@ Kept completely separate so nothing here can accidentally affect the determinist
   `asyncio.run()` (reached instead of the first site whenever the interrupt lands while `main()`'s
   own coroutine is suspended rather than currently running, so it never enters that `finally:` at
   all) — full mechanism and why `gc.collect()` (not `micropython.heap_unlock()`) is the fix:
-  SPECIFICATION.md Part F.6.
+  SPECIFICATION.md Part F.6, whose amendment records that `toolchain/micropython_overrides.py`'s
+  `unix_kbd_intr` override (Part B.14.1) has since closed the root SIGINT-safety gap this quirk
+  came from — the calls stay wired in as defense in depth, not because the race is still reachable.
 - `_crc8.py` / `_fault_injection.py` — small shared helpers (CRC-8 for SGP40/SCD30's word protocol;
   a generic op-keyed fault-injection queue, mirroring `tests/machine.py`'s own
   `inject_fault()`/`_maybe_raise()` convention) used by more than one chip fake.
