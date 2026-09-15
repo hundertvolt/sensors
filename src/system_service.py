@@ -42,11 +42,12 @@ _MAX_STORAGE_PAUSE = const(3600)  # one hour max pause for FRAM
 _NTP_WAIT_TIME = const(120)  # 2 mins until random boot signature is used
 _TIMER_BASE_PERIOD = const(1000)  # milliseconds for sensor triggers base period
 _TASK_CHECK_TIME = const(2)  # seconds period to check running tasks (keep << watchdog timeout!)
-_TASK_START_STAGGER_S = const(0.25)  # fixed per-task gap between task starts in start_and_check_tasks()
-# below - NOT 1.0/len(task_starters): that shrinks as more FRAM-backed tasks are added to a device,
-# which is exactly backwards (each new task's own first-time pr.setup() call, at ~170ms uncontended,
-# needs room to clear the shared FRAM/SPI lock before the next task starts contending for it too). A
-# fixed gap keeps that room constant regardless of device size.
+_SETUP_CALL_STAGGER_S = const(0.25)  # fixed per-call gap between setup() calls in run_setup_batch()
+# below - unrelated to start_and_check_tasks()'s own task-start stagger (which must stay
+# 1.0/len(task_starters), see that method's own comment): setup() calls are one-time boot-time
+# calls, not periodic sensor reads, so there is no phase/harmonics concern to preserve here - this
+# gap exists purely to give each FRAM-backed module's own setup() room to clear the shared FRAM/SPI
+# lock, same reasoning the task-start stagger used to (wrongly) carry before this split.
 _TASK_FAIL_INCREMENT = const(100)  # absolute value important for decrease time,...
 _TASK_FAIL_MAX = const(300)  # ...ratio important for triggering reset (multiple errors)
 _NAME = const("SYSTEM")
@@ -229,13 +230,41 @@ class SystemService:
         if self.watchdog is not None and not self._force_watchdog_starve:
             self.watchdog.feed()
 
+    async def run_setup_batch(self, setup_callers: "list[Callable[[], Coroutine[Any, Any, Any]]]") -> None:
+        # A separate, independently-paced list from get_task_starters()/get_timer_starters() below -
+        # these are one-time boot-time setup() calls, not periodic sensor reads, so they carry none
+        # of start_and_check_tasks()'s/_timer_sequencer()'s own "spread within one second" obligation
+        # (see those methods' own comments for why that invariant exists and must not be disturbed).
+        # WDT(timeout=8000) is constructed before any of this runs (buildgen's generated
+        # build_system()), so an unfed sequential batch of several real FRAM reads (one per
+        # FRAM-backed module's own ConfigManager.setup(), config_manager.py) can approach the
+        # hardware cap on a device with many such modules - feeding after every call, with a small
+        # gap to let each one's own FRAM/SPI-lock use clear before the next, prevents that
+        # regardless of how large a device's own setup_callers list grows.
+        for caller in setup_callers:
+            await caller()
+            self._feed_watchdog()
+            await asyncio.sleep(_SETUP_CALL_STAGGER_S)
+
     async def start_and_check_tasks(self, task_starters: "list[Callable[[], asyncio.Task[Any]]]") -> None:
         await self.pr.setup()  # required for all logged warnings and errors
         tasks: list[asyncio.Task[Any] | None] = [None] * len(task_starters)
         for n, starter in enumerate(task_starters):
             tasks[n] = await self._start_task(starter, n)
             self._feed_watchdog()
-            await asyncio.sleep(_TASK_START_STAGGER_S)
+            # Spreads every task's own start across exactly one real second total, regardless of how
+            # many tasks a device has - NOT a fixed per-task gap. One second is the shortest
+            # selectable sensor polling period (CLAUDE.md/SPECIFICATION.md), so offsetting every
+            # task's own periodic internal read loop (each sensor Reader's own trigger_sec sleep) by
+            # a distinct sub-second phase within that one-second window guarantees two tasks can
+            # never land on the same wall-clock instant again once offset - shrinking this gap as
+            # more tasks are added is intentional, not a defect: it keeps the total spread fixed at
+            # one second (this method's own long-standing, load-bearing design, mirrored by
+            # _timer_sequencer()'s identical _TIMER_BASE_PERIOD-based spread for Timer starters
+            # below). Any FRAM/SPI-lock contention relief a device's own setup() calls need belongs
+            # in run_setup_batch() above instead, which has no such constraint. (Loop body only ever
+            # runs with len(task_starters) >= 1, since it iterates task_starters itself.)
+            await asyncio.sleep(1.0 / len(task_starters))
         task_errors = 0
 
         while True:

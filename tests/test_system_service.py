@@ -83,8 +83,9 @@ async def _pump(flag: "asyncio.ThreadSafeFlag", ticks: int, settle: int = 5) -> 
 
 
 class _FastAsyncSleep:
-    # start_and_check_tasks() staggers task startup by a fixed _TASK_START_STAGGER_S real seconds
-    # per task and checks tasks every real _TASK_CHECK_TIME=2s - both far too slow for a test that just wants
+    # start_and_check_tasks() staggers task startup across one real second total (1.0/len(task_starters)
+    # per task - see that method's own comment for why) and checks tasks every real _TASK_CHECK_TIME=2s -
+    # both far too slow for a test that just wants
     # to drive a handful of supervisor cycles. asyncio.sleep is a shared, process-wide function
     # (unlike the per-module `time` swap above, there's exactly one to patch); restored on
     # __exit__ regardless of how the `with` block exits.
@@ -937,6 +938,121 @@ def test_feed_watchdog_stays_silent_once_force_watchdog_starve_is_set() -> None:
 
 
 # ---------------------------------------------------------------------------
+# run_setup_batch
+# ---------------------------------------------------------------------------
+
+
+def test_run_setup_batch_empty_list_never_fails() -> None:
+    svc = make_service(watchdog=machine.WDT())
+    run(svc.run_setup_batch([]))  # must not raise
+
+
+def test_run_setup_batch_calls_every_setup_caller_exactly_once_in_order() -> None:
+    svc = make_service()
+    calls: list[str] = []
+
+    async def setup_a() -> None:
+        calls.append("a")
+
+    async def setup_b() -> None:
+        calls.append("b")
+
+    async def setup_c() -> None:
+        calls.append("c")
+
+    with _FastAsyncSleep():
+        run(svc.run_setup_batch([setup_a, setup_b, setup_c]))
+
+    assert calls == ["a", "b", "c"]
+
+
+def test_run_setup_batch_feeds_the_watchdog_once_per_call() -> None:
+    wdt = machine.WDT()
+    svc = make_service(watchdog=wdt)
+
+    async def noop_setup() -> None:
+        return None
+
+    with _FastAsyncSleep():
+        run(svc.run_setup_batch([noop_setup, noop_setup, noop_setup]))
+
+    assert wdt.feed_count == 3
+
+
+def test_run_setup_batch_without_a_watchdog_does_not_raise() -> None:
+    svc = make_service(watchdog=None)
+
+    async def noop_setup() -> None:
+        return None
+
+    with _FastAsyncSleep():
+        run(svc.run_setup_batch([noop_setup, noop_setup]))  # must not raise despite watchdog being None
+
+
+def test_run_setup_batch_stops_feeding_once_force_watchdog_starve_is_set() -> None:
+    wdt = machine.WDT()
+    svc = make_service(watchdog=wdt)
+    svc._force_watchdog_starve = True
+
+    async def noop_setup() -> None:
+        return None
+
+    with _FastAsyncSleep():
+        run(svc.run_setup_batch([noop_setup, noop_setup]))
+
+    assert wdt.feed_count == 0
+
+
+def test_run_setup_batch_propagates_a_raising_callers_exception() -> None:
+    # Unlike _start_task() (a driver-supplied task starter, guarded broadly since a dead task is
+    # recoverable via the supervisor's own restart loop), a setup() call that raises during boot is
+    # not a scenario this method silently swallows - the same "let it surface" contract every other
+    # setup()-batch caller (buildgen's generated build_system(), main()) already assumes.
+    svc = make_service()
+
+    async def raising_setup() -> None:
+        raise RuntimeError("boom")
+
+    try:
+        run(svc.run_setup_batch([raising_setup]))
+    except RuntimeError as e:
+        assert str(e) == "boom"
+    else:
+        raise AssertionError("expected RuntimeError to propagate")
+
+
+def test_run_setup_batch_stagger_is_independent_of_task_start_stagger() -> None:
+    # Regression test: run_setup_batch()'s own per-call gap must NOT scale with the number of setup
+    # callers the way start_and_check_tasks()'s one-second-total task-start spread does - setup()
+    # calls are one-time boot calls with no periodic-read phase to preserve, so a fixed gap per call
+    # is correct here (unlike that other method, where a fixed gap was tried and reverted).
+    svc = make_service()
+    recorded: list[float] = []
+    real_sleep = asyncio.sleep
+
+    async def _recording_sleep(seconds: float) -> None:
+        recorded.append(seconds)
+        await real_sleep(0)
+
+    async def noop_setup() -> None:
+        return None
+
+    asyncio.sleep = _recording_sleep  # type: ignore[assignment]  # deliberate monkeypatch, restored below
+    try:
+        run(svc.run_setup_batch([noop_setup] * 2))
+        two_calls = list(recorded)
+        recorded.clear()
+        run(svc.run_setup_batch([noop_setup] * 5))
+        five_calls = list(recorded)
+    finally:
+        asyncio.sleep = real_sleep
+
+    assert len(set(two_calls)) == 1
+    assert len(set(five_calls)) == 1
+    assert two_calls[0] == five_calls[0]  # same fixed gap regardless of how many setup callers there are
+
+
+# ---------------------------------------------------------------------------
 # start_and_check_tasks
 # ---------------------------------------------------------------------------
 
@@ -1065,9 +1181,10 @@ def test_start_and_check_tasks_without_watchdog_and_multiple_starters_does_not_r
 
 def test_start_and_check_tasks_feeds_the_watchdog_once_per_task_start() -> None:
     # Regression test for the per-task-loop feed: with real (unpatched) timing, 3 staggered task
-    # starts at _TASK_START_STAGGER_S=0.25s apart complete well within 1 real second, long before
-    # the supervisor's own _TASK_CHECK_TIME=2s while-loop tick could ever fire its own feed - so a
-    # feed count >=3 here can only have come from the per-task-start loop itself, not the tail loop.
+    # starts 1.0/3s apart (start_and_check_tasks()'s own one-second-total spread, not a fixed
+    # per-task gap - see that method's own comment) complete within ~1 real second, well before the
+    # supervisor's own _TASK_CHECK_TIME=2s while-loop tick could ever fire its own feed - so a feed
+    # count >=3 here can only have come from the per-task-start loop itself, not the tail loop.
     wdt = machine.WDT()
     svc = make_service(watchdog=wdt)
 
@@ -1079,7 +1196,7 @@ def test_start_and_check_tasks_feeds_the_watchdog_once_per_task_start() -> None:
 
     async def scenario() -> None:
         task = asyncio.create_task(svc.start_and_check_tasks([long_lived_starter] * 3))
-        await asyncio.sleep(1.0)
+        await asyncio.sleep(1.3)  # comfortable margin above the ~1.0s total stagger, still well under 2s
         assert wdt.feed_count >= 3
         task.cancel()
         try:
@@ -1094,9 +1211,7 @@ def _measure_stagger_calls(num_starters: int) -> "list[float]":
     # Records every asyncio.sleep() duration start_and_check_tasks() requests for a device with
     # num_starters task starters, returning just the first num_starters of them - the per-task
     # stagger loop's own calls, before the tail while-loop's differently-timed _TASK_CHECK_TIME
-    # sleep could ever be recorded. _TASK_START_STAGGER_S itself is a micropython.const() value -
-    # not readable as a module attribute at runtime (unlike CPython) - so this compares behavior
-    # across differently-sized starter lists instead of asserting against the literal.
+    # sleep could ever be recorded.
     svc = make_service()
     recorded: list[float] = []
     real_sleep = asyncio.sleep
@@ -1132,20 +1247,28 @@ def _measure_stagger_calls(num_starters: int) -> "list[float]":
     return recorded[:num_starters]
 
 
-def test_start_and_check_tasks_stagger_is_fixed_per_task_not_scaled_by_task_count() -> None:
-    # Regression test: the stagger between task starts must stay a fixed per-task delay regardless
-    # of how many task starters a device has. The old 1.0/len(task_starters) formula shrank as more
-    # FRAM-backed tasks were added - exactly backwards, since each task's own first-time
-    # pr.setup() call needs the same amount of room to clear the shared FRAM/SPI lock no matter how
-    # many other tasks a device also starts. Proven here by comparing two different starter-list
-    # sizes: under the old formula, two_starter_calls would be 1.0/2=0.5s and five_starter_calls
-    # would be 1.0/5=0.2s - different from each other. A fixed stagger keeps them identical.
+def test_start_and_check_tasks_stagger_spreads_task_starts_across_one_second_total_regardless_of_task_count() -> None:
+    # Load-bearing regression test, explicitly reconfirmed by the project owner: the per-task-start
+    # stagger MUST stay 1.0/len(task_starters), i.e. every task start spread across exactly one real
+    # second total, however many task starters a device has - NOT a fixed per-task gap. One second
+    # is the shortest selectable sensor polling period, so offsetting each sensor Reader's own task
+    # (and its own periodic internal trigger_sec read loop) by a distinct sub-second phase within
+    # that one-second window is what guarantees two tasks' own periodic reads can never coincide on
+    # the same wall-clock instant again - shrinking the per-task gap as more tasks are added is
+    # therefore intentional, not a defect to "fix" (a fixed gap was tried here once and reverted:
+    # it would let the total spread grow past one second on a device with enough tasks, breaking the
+    # phase guarantee). Any FRAM/SPI-lock contention relief a device's own setup() calls need is
+    # SystemService.run_setup_batch()'s job instead (a separate, independently-paced list - see its
+    # own tests below), never this method's.
     two_starter_calls = _measure_stagger_calls(2)
     five_starter_calls = _measure_stagger_calls(5)
 
     assert len(set(two_starter_calls)) == 1  # every stagger within one run is identical...
+    assert two_starter_calls[0] == 1.0 / 2  # same 1.0/n division the real code performs - exact, not approximate
     assert len(set(five_starter_calls)) == 1
-    assert two_starter_calls[0] == five_starter_calls[0]  # ...and identical across run sizes too
+    assert five_starter_calls[0] == 1.0 / 5
+    assert sum(two_starter_calls) == 1.0  # ...and the TOTAL spread stays one second...
+    assert abs(sum(five_starter_calls) - 1.0) < 1e-9  # ...regardless of task count (5*0.2 has float slop)
 
 
 def test_start_and_check_tasks_restarts_a_dead_task_and_logs_a_warning() -> None:

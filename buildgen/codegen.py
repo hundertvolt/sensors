@@ -387,10 +387,6 @@ def _emit_build_system(lines: "list[str]", model: DeviceModel, ctx: _Ctx, instan
     lines.append("")
     lines.append("    watchdog = WDT(timeout=8000)")
     lines.append("")
-    lines.append("    def _feed_watchdog() -> None:")
-    lines.append("        if watchdog is not None:")
-    lines.append("            watchdog.feed()")
-    lines.append("")
     for bus_id, bus_table in model.doc["bus"].items():
         var = ctx.bus_var(bus_id)
         if bus_id.startswith("i2c"):
@@ -467,9 +463,8 @@ def _emit_build_system(lines: "list[str]", model: DeviceModel, ctx: _Ctx, instan
             continue
         if spec.driver_info and spec.driver_info.needs_setup:
             setup_order.append(ctx.instance_var(node))
-    for name in setup_order:
-        lines.append(f"    await {name}.setup()")
-        lines.append("    _feed_watchdog()")
+    setup_callers = ", ".join(f"{name}.setup" for name in setup_order)
+    lines.append(f"    await sysfunct.run_setup_batch([{setup_callers}])")
     lines.append("")
 
 

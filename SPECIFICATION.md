@@ -469,26 +469,45 @@ measured, not speculative, see step 13's own note below):
     `src/asy_webserver_service.py`'s own module comment for the same correction.) Kept RAM-only; the
     mechanism stays available (`WebserverService.__init__` still accepts `fram=` directly,
     unit-tested) for a future session to revisit with a priority/ordering fix for FRAM-backed
-    `setup()` if this ever needs revisiting — a later watchdog-boot-safety session (see Part F's own
-    note) made the watchdog itself immune to this contention and gave each task's own first-time
-    FRAM `setup()` a fixed, non-shrinking stagger window to clear the lock in, which should reduce
-    (likely resolve) the underlying contention this measurement describes as a side effect, but that
-    hasn't itself been re-measured yet — treat the figures above as the last confirmed measurement,
-    not the current one, until a session re-runs this comparison. `static_mount="/html"` registers
-    the static route pair last, so an exact-match API route always wins.
+    `setup()` if this ever needs revisiting — a later watchdog-boot-safety session made the watchdog
+    itself immune to this contention (`system_service.py`'s `SystemService.run_setup_batch()`, step
+    15 below) and gave the sequential setup() batch's own real FRAM reads a fixed, non-shrinking gap
+    to clear the lock in, which should reduce (likely resolve) the underlying contention this
+    measurement describes as a side effect, but that hasn't itself been re-measured yet — treat the
+    figures above as the last confirmed measurement, not the current one, until a session re-runs
+    this comparison. That same session deliberately did **not** touch `start_and_check_tasks()`'s own
+    task-start stagger (step 16 below): a fixed per-task gap was tried there once and reverted, since
+    that stagger's whole one-second-total spread exists to keep sensor Readers' own periodic read
+    tasks out of phase with each other (project owner's explicit direction), not to relieve FRAM
+    contention — a fixed gap would have grown that spread past one second on a device with enough
+    tasks, undoing the phase guarantee. `static_mount="/html"` registers the static route pair last,
+    so an exact-match API route always wins.
 14. `sysfunct.set_level_setters(_collect_level_setters())` — after every module has constructed.
-15. **`await x.setup()` batch**: `sysfunct → fram → conn → ntp → sgp40 → bmp3xx →
-    notification`. Unaffected by the reordering above — every `.pr.setup()` call (the one that
-    actually depends on `fram` already existing) happens lazily, inside each module's own task entry
-    point (`wlan_connect()`, `asy_ntp_time()`), not in this batch; this batch is `cfgmgr.setup()`
-    only, which never touches FRAM directly itself. One hard constraint: `notification.setup()`
-    needs `finalize()` (step 11) already run, satisfied by batching at the end. `scd30.setup()` isn't
-    in this batch (no local config). Every batched module's own `ConfigManager.setup()` now also
-    calls `await self.pr.setup()` first (WP2, `config_manager.py`) — a no-op for the RAM-only
+15. **`await sysfunct.run_setup_batch([...])`**: one call, generated with every setup-needing
+    module's own bound `.setup` method in construction order — `sysfunct → fram → conn → ntp →
+    sgp40 → bmp3xx → notification`, unaffected by the reordering above. `run_setup_batch()`
+    (`system_service.py`) awaits each in turn, then calls `self._feed_watchdog()` and a fixed,
+    independent `await asyncio.sleep(_SETUP_CALL_STAGGER_S)` between calls — a later
+    watchdog-boot-safety session's fix: `WDT(timeout=8000)` is constructed before any of this runs,
+    and this sequential batch (each module's own `cfgmgr.setup()`, which since WP2
+    (`config_manager.py`) also calls `await self.pr.setup()` first — a no-op for the RAM-only
     default, but what actually makes a FRAM-backed `CFGMGR_<name>` logger persist/restore its own
-    history. A later watchdog-boot-safety session also has the generated code call a guarded
-    `_feed_watchdog()` after every line in this batch (Part F's own note) — the whole batch, plus the
-    task-start stagger loop below it, previously ran completely unfed against `watchdog`'s ~8s cap.
+    history, and therefore a real FRAM read on every FRAM-wired module) previously ran completely
+    unfed against that ~8s cap on a device with enough FRAM-backed modules. This list is
+    deliberately separate from, and independently paced from, `start_and_check_tasks()`'s own
+    task-starter list (step 16 below) — see that method's own docstring for why the two must never
+    share one stagger constant. One hard constraint: `notification.setup()` needs `finalize()` (step
+    11) already run, satisfied by batching at the end. `scd30.setup()` isn't in this batch (no local
+    config).
+16. `await sysfunct.start_and_check_tasks(task_starters)` (in `main()`, after `build_system()`
+    returns): spreads every task's own start across exactly one real second total
+    (`1.0/len(task_starters)`, not a fixed per-task gap — project owner's explicit, standing
+    direction) and feeds the watchdog after each one, same `self._feed_watchdog()` mechanism as
+    `run_setup_batch()` above. One second is the shortest selectable sensor polling period, so this
+    spread is what keeps two sensor Readers' own periodic internal read loops from ever landing on
+    the same wall-clock instant once offset — see `system_service.py`'s own comment on this method
+    and `_timer_sequencer()`'s identical `_TIMER_BASE_PERIOD`-based spread for Timer starters, the
+    same underlying design applied to the other starter mechanism.
 
 **Real FRAM chunk order**: WIFI → CFGMGR_WIFI → DNSSRV → NTP → CFGMGR_NTP → SystemService → SCD30 →
 SGP40 error log → CFGMGR_SGP40 → SGP40 VOC backup → BMP3xx error log → CFGMGR_BMP3XX → Neopixel →

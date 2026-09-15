@@ -108,36 +108,40 @@ def test_device_level_fram_target_unwired_omits_fram_kwarg_on_conn_ntp_and_sysfu
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
-def test_real_device_feeds_the_watchdog_immediately_after_every_setup_call(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
-    # Regression test for the watchdog-starvation fix: WDT(timeout=8000) is constructed at the top
-    # of build_system(), then the sequential setup() batch that follows can take several real
-    # seconds on a device with many FRAM-backed modules (SPECIFICATION.md Part A.7) with no feed at
-    # all otherwise. Every "await X.setup()" line must be immediately followed by "_feed_watchdog()"
-    # in the exact generated order, so the watchdog can never starve across the batch regardless of
-    # how many modules a device grows to.
+def test_real_device_runs_its_setup_batch_through_a_single_run_setup_batch_call(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
+    # Regression test for the watchdog-starvation fix, in its current shape: WDT(timeout=8000) is
+    # constructed at the top of build_system(), then a sequential batch of real per-module setup()
+    # calls follows that can take several real seconds on a device with many FRAM-backed modules
+    # (SPECIFICATION.md Part A.7) - unlike an earlier version of this fix, feeding (and the
+    # independent per-call stagger that gives each module's own FRAM/SPI-lock use room to clear) now
+    # happens inside SystemService.run_setup_batch() itself, not via a generated-code-level helper
+    # feeding after each flat "await X.setup()" line - see that method's own docstring for why this
+    # must stay a separate, independently-paced list from the task-start stagger. Proves the
+    # generated code calls it exactly once, with every setup-needing module's own bound .setup
+    # method in the documented order (sysfunct first), and that no bare "await X.setup()" line (the
+    # old, pre-refactor shape) remains anywhere in the batch.
     result = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir)
     lines = result.module_source.splitlines()
-    setup_call_indices = [i for i, line in enumerate(lines) if re.match(r"^\s*await \w+\.setup\(\)\s*$", line)]
-    assert setup_call_indices, "expected at least one 'await X.setup()' line in the generated setup batch"
-    for i in setup_call_indices:
-        assert lines[i + 1].strip() == "_feed_watchdog()", f"line {i} ({lines[i]!r}) not immediately followed by a feed"
+    batch_lines = [line for line in lines if "run_setup_batch(" in line]
+    assert len(batch_lines) == 1, f"expected exactly one run_setup_batch(...) call, found {len(batch_lines)}"
+    match = re.search(r"await sysfunct\.run_setup_batch\(\[(.*)\]\)", batch_lines[0])
+    assert match is not None, f"unexpected run_setup_batch(...) call shape: {batch_lines[0]!r}"
+    setup_callers = [name.strip() for name in match.group(1).split(",")]
+    assert setup_callers[0] == "sysfunct.setup"
+    assert all(name.endswith(".setup") for name in setup_callers)
+    assert len(setup_callers) == len(set(setup_callers))  # every module setup exactly once
+    bare_setup_calls = [line for line in lines if re.match(r"^\s*await \w+\.setup\(\)\s*$", line)]
+    assert bare_setup_calls == [], f"old flat per-line setup pattern still present: {bare_setup_calls!r}"
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
-def test_real_device_feed_watchdog_helper_is_defined_once_and_tolerates_no_watchdog(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
-    # The module-level `watchdog` global is declared "WDT | None" (defaults to None before
-    # build_system() runs) - _feed_watchdog() must guard against that rather than assume
-    # WDT(timeout=8000) always succeeded, so a future device/config that constructs no real
-    # watchdog still degrades safely without every call site needing its own guard.
+def test_real_device_generated_code_has_no_local_feed_watchdog_helper(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
+    # Companion to the run_setup_batch test above: feeding now happens exclusively inside
+    # SystemService (both run_setup_batch() and start_and_check_tasks() call self._feed_watchdog(),
+    # already unit-tested in tests/test_system_service.py) - generated code has no business defining
+    # its own copy of that guard logic any more.
     result = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir)
-    assert result.module_source.count("def _feed_watchdog()") == 1
-    tree = ast.parse(result.module_source, filename=f"sensortask_{device}.py")
-    build_system = next(n for n in tree.body if isinstance(n, ast.AsyncFunctionDef) and n.name == "build_system")
-    feed_fn = next(n for n in ast.walk(build_system) if isinstance(n, ast.FunctionDef) and n.name == "_feed_watchdog")
-    feed_src = ast.get_source_segment(result.module_source, feed_fn)
-    assert feed_src is not None
-    assert "if watchdog is not None" in feed_src
-    assert "watchdog.feed()" in feed_src
+    assert "_feed_watchdog" not in result.module_source
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
