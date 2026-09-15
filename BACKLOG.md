@@ -86,6 +86,60 @@ constraints.
 
 ## Open questions (need owner input or further investigation)
 
+- **HIGH IMPORTANCE — ISL29125's chip configuration diverges from its own shadow under concurrent
+  API load. Completely unforeseen (project owner, 2026-09-15). Not fixed yet — root cause
+  understood, candidate fixes pending project-owner discussion before any implementation.**
+  Originally found on the (discarded) real-hardware-validation branch,
+  `claude/real-hardware-memory-validation-p3vkxr` / PR #84, commit `679c2b0`'s own isolation work —
+  recorded here because that branch/PR is being discarded once its two real findings are
+  independently resolved on this branch; this is not a new discovery of this session's own.
+  `asy_isl29125_driver.py`'s `_check_divergence()` fires
+  `wrn_s("Chip configuration diverged from the shadow - re-applying.", wrnno=11)` and re-applies —
+  the self-heal works, but the divergence itself fails a bench test independently of anything else,
+  since `assert_module_error_log_empty()` counts warnings as well as errors (`/status`'s `errcount`
+  `counter`). **Isolated by the original session**: three trials of a quiet `Resolution` 16→12→16
+  change with no other traffic logged nothing at all; the identical change under 2 concurrent `GET`
+  workers logged `W11` twice in one run. A `W12` ("Saturated on the high range") also appeared in
+  the same loaded run and looks lighting-environment-dependent rather than concurrency-related, but
+  fails the same assertion — a separate, smaller test-design question (does an environment-
+  dependent warning belong in an error-log-empty bench assertion at all?) from the `W11` root cause.
+  **Root cause, traced through the real code (this session)**: `ISL29125_I2C.configure()` mutates
+  the in-memory shadow fields that `encode_shadow()`/`matches_shadow()` read (`self._mode`,
+  `self._range_fs`, `self._resolution`, ...) synchronously, *before* it ever acquires the per-sensor
+  device-session lock (`self.i2c_isl29125`, a `Lockable`) that SPECIFICATION.md Part C.8 documents
+  as what serializes "a multi-transaction sequence against another coroutine starting its own
+  sequence on the same sensor" — only the actual wire write (`_write_shadow()`) is inside that lock.
+  Under no contention this window closes with zero elapsed time (MicroPython/asyncio only switches
+  tasks at a genuine suspension point, and an uncontended `asyncio.Lock.acquire()` never suspends),
+  which is exactly why the quiet trial never reproduced it. Under real concurrent load the
+  device-session lock does get contended (by `read_loop()`'s own background reads/`_switch_range()`
+  calls, or a second concurrent request), so a `configure()` call can be suspended *after* mutating
+  the shadow but *before* its write reaches/completes on the chip; a concurrent `GET`'s
+  `get_config_snapshot()` + `matches_shadow()` (`_read_sensor_dict()`) can then legitimately observe
+  the shadow already showing the new value while the chip still holds the old one, and correctly
+  (from its own narrow view) reports a divergence that was never a real hardware fault. The existing
+  mock regression test that looks like it should cover this
+  (`tests/test_asy_isl29125_driver.py::test_concurrent_read_and_write_never_interleave_on_the_wire`)
+  only proves wire-level atomicity (a config write never tears a data-burst read mid-transaction) —
+  it does not, and structurally cannot as written, exercise the shadow-vs-chip timing relationship a
+  concurrent config *snapshot* read depends on, which is the actual gap. **Candidate fixes** (none
+  implemented; tradeoffs for the project owner to weigh): (a) widen the device-session lock in
+  `configure()` to span the whole validate-mutate-write(-rollback-on-failure) sequence, matching
+  Part C.8's own documented intent for what that lock is for — the direct, structural fix, at the
+  cost of a marginally wider critical section; (b) restructure `configure()` to compute the
+  prospective shadow bytes without touching instance state, write them, and only commit the mutation
+  to `self._mode`/`self._range_fs`/etc. after a successful write while still holding the same lock —
+  functionally the same fix as (a), and removes the current mutate-then-roll-back-on-failure
+  bookkeeping, at the cost of a more invasive rewrite of `configure()`'s internals; (c) a
+  softer/non-structural option — make `_check_divergence()` tolerant of a single-shot mismatch (e.g.
+  require a mismatch to persist across a re-read before reporting), which suppresses the false
+  positive without closing the underlying race and so is a weaker guarantee than (a)/(b). **Also
+  structural**: the flash tier cannot catch this at all —
+  `tests_hardware/flash/test_bus_concurrency.py`'s ISL29125 test drives raw I2C through a device
+  script with no REST push, no driver shadow, no flash write — so the bench tier is the only tier
+  where this hazard exists, a real instance of Part E.6.1's `bench ⊇ flash` rather than a redundant
+  duplicate.
+
 1. `modules/_boot.py`'s `import sensortask.py` (literal `.py`) — works reliably on real hardware
    (pinned to MicroPython 1.26), but MicroPython's documented freeze/import behavior says it should
    raise `ImportError`. **The mechanism itself is now confirmed, not a mystery**: traced
