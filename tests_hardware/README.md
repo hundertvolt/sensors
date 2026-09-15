@@ -749,8 +749,71 @@ conventions as every proven-on-hardware script in this directory (window-overlap
 `RESULT: PASS/FAIL` line, `wdt.feed()` cadence, plausibility bounds), but that is not the same as a
 real run. Treat both as a first cut to be smoke-tested (and fixed if wrong) on the next real-hardware
 session, not as already-confirmed coverage - flagged here explicitly rather than left to look
-finished. The mock-tier's own systematic timing-offset sweep
-(`BUS_HAZARD_TEST_GENERATION_REQUIREMENTS.md`) has no real-hardware equivalent that literally injects
-a controllable offset - real hardware's own natural scheduling/serial jitter across many repeated
-write cycles is used instead as the honest, tier-appropriate substitute (an artificial `sleep(0)`
-yield count has no meaning against a real preemptible interpreter and real bus timing).
+finished.
+
+## Eighth pass - full mock/twin-to-real-hardware scenario parity for dev's own topology, and flash-tier/bench-tier parity
+
+Follow-up direction (project owner): every generic mock/twin bus-hazard scenario type must have a
+real-hardware equivalent for whichever bus dev's own real wiring makes it applicable to (SCD30 stays
+under its write-budget restriction), and whatever gets added to the flash tier must also get a
+bench-tier counterpart - flash-tier bus-hazard coverage is always a subset of bench-tier coverage,
+never the other half.
+
+**The mock tier's timing-offset sweep, made explicit on real hardware, not just implicit in natural
+jitter**: the Seventh pass's own two new scripts originally relied on a fixed write cadence (ISL29125)
+or natural scheduling jitter alone to vary timing. `bus_concurrency_isl29125_write_vs_siblings.py` now
+cycles through a deliberately varied, explicit set of pre-write delays
+(`_WRITE_DELAYS_MS = (5, 15, 40, 80, 120)`, each exercised twice) instead of one fixed 30ms cadence -
+a designed spread of relative timings against the siblings' own read loops, not merely hoping
+uncontrolled jitter happens to cover a range. `bus_concurrency_scd30_write_vs_siblings.py` still fires
+at exactly ONE fixed offset (0.3s in) - the one-write budget makes a real multi-offset sweep
+structurally impossible there, not a design choice to skip it; its own docstring now says so
+explicitly rather than silently reading like an oversight. Real hardware still has no literal
+equivalent of the mock tier's `asyncio.sleep(0)`-count offset (a yield count means nothing against a
+real preemptible interpreter and real bus timing) - a real elapsed-time delay is the honest,
+tier-appropriate substitute.
+
+**Two real gaps closed in dev's own general-call/address-sweep coverage**, found by checking every
+mock-tier generic scenario type against what real hardware actually covers for dev's real topology
+(i2c0: BMP3xx alone; i2c1: SCD30+SGP40+ISL29125):
+
+- `sgp40_general_call_reset_hazard.py` used to run its concurrent-sibling check against SCD30 only,
+  even though ISL29125 is also a real, non-broadcasting sibling on the same bus (mirroring
+  `tests/_bus_hazard_catalog.py`'s own `scenario_general_call_does_not_disturb_concurrent_siblings`,
+  which runs against every non-broadcasting occupant, not just one). Now reads both concurrently
+  while SGP40's own `initialize()` fires its real general-call broadcast; the flash-tier test this
+  wraps was renamed to `test_sgp40_general_call_reset_does_not_corrupt_concurrent_scd30_and_isl29125_
+  transactions` to say so.
+- `bus_topology_autodetect_and_hazard_sweep.py`'s own `KNOWN_ADDRESSES` table had drifted out of
+  sync with `tests_hardware/bus_topology.py`'s own copy (its own module docstring's stated
+  invariant) - it was missing ISL29125 (`0x44`) entirely, so the address sweep never probed/labeled
+  it and the lone-device self-hazard branch could never apply to it. Fixed: `ISL29125_I2C` support
+  added to both the address table and the self-hazard construction/read branch.
+  - Everything else in the mock tier's generic scenario set already had a real-hardware equivalent
+    for dev's own topology once this pass checked systematically: same-occupant write-vs-own-read
+    (per-driver same-device scripts, all three occupants), all-occupants-concurrent-reads
+    (`isl29125_cross_device_concurrency.py` already runs all three of i2c1's occupants at once), and
+    the "rogue general call against a lone occupant with no real broadcaster" case (i2c0's own
+    BMP3xx-alone bus) - the topology script's own self-hazard branch already covered this before this
+    pass, for whichever known device turns out to be the bus's sole occupant.
+
+**Flash-tier -> bench-tier parity**: added
+`test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads_under_api_load`
+(`tests_hardware/bench/test_bus_concurrency_under_api_load.py`) - the same ISL29125-writes-while-
+siblings-read hazard as the flash-tier test above, driven through the real HTTP/REST stack instead of
+the bare driver (`PUT /sensors {"ISL29125": {"Resolution": ...}}` alternating between both real valid
+settings, concurrent with `GET /sensors` hammering, with the board's original `Resolution` restored
+in a `finally` block - the same push/restore duty `test_sensor_config_push_over_real_hardware.py`'s
+own BMP3xx test already owes for a shared bench rig).
+
+**SCD30 has no bench-tier (or any REST-layer) counterpart, and this is structural, not a scope gap**:
+`asy_scd30_driver.py` registers zero `_push_callbacks` (already noted by
+`test_sensor_config_push_over_real_hardware.py`'s own comment) - there is no `PUT /sensors` field
+that could ever reach SCD30's own NVM write at all. The flash tier's own
+`bus_concurrency_scd30_write_vs_siblings.py` (gated behind `--allow-scd30-writes`) is therefore the
+only real-hardware coverage this specific hazard can ever have, by construction of `src/` itself -
+recorded here rather than left as a silent asymmetry between the two tiers.
+
+Same honesty note as the Seventh pass: none of this pass's changes have been run against real
+hardware either (still no go-ahead this session) - `ruff`/`mypy` clean, structurally consistent with
+proven scripts, but unverified on silicon until a real bench session confirms it.

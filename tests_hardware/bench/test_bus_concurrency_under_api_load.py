@@ -347,3 +347,93 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_repeated_r
         for module in ("SCD30", "BMP3XX", "SGP40", "ISL29125", "FRAM"):
             assert_module_error_log_empty(dut_ip, module)
     reset_all_error_logs(dut_ip)
+
+
+# ---------------------------------------------------------------------------
+# Flash-tier parity (project owner's standing direction: flash-tier bus-hazard coverage is always a
+# subset of bench-tier coverage - whatever gets added to tests_hardware/flash/test_bus_concurrency.py
+# gets a bench-tier counterpart here too, driven through the real HTTP/REST stack instead of the bare
+# driver). Real-hardware, API-load counterpart to
+# tests_hardware/flash/test_bus_concurrency.py::test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads
+# (itself the real-hardware counterpart to tests/_bus_hazard_catalog.py's own
+# scenario_a_write_does_not_disturb_concurrent_sibling_reads).
+# ---------------------------------------------------------------------------
+
+_ISL29125_RESOLUTIONS = (12, 16)  # the only two real, valid settings (asy_isl29125_driver.py's own _RESOLUTIONS)
+_ISL29125_WRITE_CYCLES = 4  # modest relative to flash tier's 8 - each cycle here is a real HTTP round trip, not a bare I2C write
+
+
+def test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads_under_api_load(board: Board, dut_ip: str) -> None:
+    reset_all_error_logs(dut_ip)
+    get_before = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=10.0)
+    assert get_before.status_code == 200, f"GET /sensors failed: {get_before.status_code} {get_before.body!r}"
+    original_resolution = get_before.json()["ISL29125"]["Resolution"]
+
+    errors: list[str] = []
+    errors_lock = threading.Lock()
+
+    def _record(msg: str) -> None:
+        with errors_lock:
+            errors.append(msg)
+
+    def get_sensors_worker(worker_id: int) -> None:
+        for i in range(_GET_ITERATIONS_PER_WORKER):
+            try:
+                res = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=15.0)
+            except Exception as e:
+                _record(f"worker {worker_id} iter {i}: {type(e).__name__}: {e}")
+                continue
+            if res.status_code != 200:
+                _record(f"worker {worker_id} iter {i}: GET /sensors returned {res.status_code}: {res.body!r}")
+                continue
+            for finding in _schema_sanity_findings(res.json(), ""):
+                _record(f"worker {worker_id} iter {i}: {finding}")
+
+    def isl29125_write_worker() -> None:
+        # Systematically alternates between both real, valid settings - a real config WRITE landing
+        # concurrently with the GET workers' own reads, repeated several times over the run so
+        # genuine HTTP/scheduling jitter puts each write at a different real relative timing against
+        # the readers (the tier-appropriate substitute for the mock tier's own explicit
+        # asyncio.sleep(0)-count offset sweep - see tests_hardware/README.md's own account of why).
+        for i in range(_ISL29125_WRITE_CYCLES):
+            value = _ISL29125_RESOLUTIONS[i % 2]
+            try:
+                res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"ISL29125": {"Resolution": value}}, timeout_s=15.0)
+            except Exception as e:
+                _record(f"isl29125 write {i}: {type(e).__name__}: {e}")
+                continue
+            if res.status_code != 200 or res.json().get("result", {}).get("ISL29125", {}).get("Resolution") != "Valid":
+                _record(f"isl29125 write {i}: PUT /sensors Resolution={value} rejected: {res.status_code} {res.body!r}")
+
+    threads = [threading.Thread(target=get_sensors_worker, args=(w,)) for w in range(_GET_WORKERS)]
+    threads.append(threading.Thread(target=isl29125_write_worker))
+    try:
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=120.0)
+            assert not t.is_alive(), "a worker thread never finished within 120s - possible real deadlock under concurrent load"
+        assert not errors, f"{len(errors)} issue(s) under concurrent API load: {'; '.join(errors[:10])}"
+    finally:
+        # Restore the board's original config regardless of outcome - same "shared bench rig" duty
+        # test_sensor_config_push_over_real_hardware.py's own BMP3xx push test already owes.
+        restore_res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"ISL29125": {"Resolution": original_resolution}}, timeout_s=10.0)
+        assert restore_res.status_code == 200 and restore_res.json()["result"]["ISL29125"].get("Resolution") == "Valid", f"failed to restore original ISL29125 Resolution={original_resolution!r}: {restore_res.status_code} {restore_res.body!r}"
+
+    wait_until(
+        lambda: http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200,
+        timeout_s=30.0,
+        poll_interval_s=2.0,
+        description="webserver serving normally again after the ISL29125-write-vs-siblings load test",
+    )
+    for module in ("SCD30", "BMP3XX", "SGP40", "ISL29125", "CFGMGR_ISL29125", "FRAM"):
+        assert_module_error_log_empty(dut_ip, module)
+    reset_all_error_logs(dut_ip)
+
+
+# SCD30 has NO bench-tier (or any REST-layer) counterpart for the write-vs-siblings hazard, and this
+# is a structural absence, not a scope gap: asy_scd30_driver.py registers zero _push_callbacks (see
+# test_sensor_config_push_over_real_hardware.py's own identical note), so there is no PUT /sensors
+# field that could ever reach SCD30's own NVM write at all - the flash tier's own
+# bus_concurrency_scd30_write_vs_siblings.py (gated behind --allow-scd30-writes) is therefore the
+# ONLY real-hardware coverage this specific hazard can ever have, by construction of src/ itself.

@@ -39,7 +39,10 @@ def test_cross_device_concurrent_sessions_genuinely_interleave(board: Board, scd
     _assert_pass(output, "cross-device interleaving check")
 
 
-def test_sgp40_general_call_reset_does_not_corrupt_a_concurrent_scd30_transaction(board: Board, scd30_continuous_measurement_triggered: None) -> None:
+def test_sgp40_general_call_reset_does_not_corrupt_concurrent_scd30_and_isl29125_transactions(board: Board, scd30_continuous_measurement_triggered: None) -> None:
+    # Both real i2c1 siblings, not just SCD30 - closes a gap tests/_bus_hazard_catalog.py's own
+    # generic scenario_general_call_does_not_disturb_concurrent_siblings surfaced (it runs against
+    # every non-broadcasting occupant of the bus, which real hardware used to only partially mirror).
     output = board.run_isolated(DEVICE_SCRIPTS / "sgp40_general_call_reset_hazard.py", timeout_s=120.0)
     _assert_pass(output, "SGP40 general-call hazard regression check")
 

@@ -6,7 +6,13 @@ scd30_same_device_rw_concurrency.py's set_ambient_pressure()) has a real write-w
 script is NOT part of the routine flash-tier bus-hazard group - it is its own separate,
 explicitly-opt-in extra real write (see tests_hardware/flash/conftest.py's --allow-scd30-writes /
 @pytest.mark.scd30_write), fires exactly ONCE per invocation, and must never be folded into the
-group's own one-routine-write budget already spent by scd30_continuous_measurement_triggered."""
+group's own one-routine-write budget already spent by scd30_continuous_measurement_triggered.
+
+Unlike bus_concurrency_isl29125_write_vs_siblings.py's own deliberately varied multi-offset sweep,
+this fires at exactly ONE fixed, deliberately-chosen offset (0.3s in - both siblings well into their
+own read loops, neither at the very first transaction) - the one-write budget makes a real sweep
+across several distinct timings structurally impossible here, not a design choice to skip it. This
+is the honest tradeoff the SCD30 write-budget restriction imposes, not something to silently omit."""
 
 import asyncio
 import time

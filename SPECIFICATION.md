@@ -1480,7 +1480,7 @@ sibling device, and this fires on every SGP40 task-supervisor restart. **Low-ris
 neither sibling's datasheet documents general-call listening, and address `0x00` gets no special
 handling in the pinned rp2 `machine_i2c.c` (an unacknowledged broadcast just times out/NAKs like
 any unaddressed write, already handled). A real-hardware regression test exists
-(`test_sgp40_general_call_reset_does_not_corrupt_a_concurrent_scd30_transaction`). The only
+(`test_sgp40_general_call_reset_does_not_corrupt_concurrent_scd30_and_isl29125_transactions`). The only
 structural fix (a bus-wide "quiesce every session before broadcasting" mechanism) is flagged for a
 project-owner decision if ever revisited, not justified without evidence of a live risk.
 
@@ -1532,18 +1532,30 @@ optional polish (project owner's explicit direction):**
   bus/occupant state and re-run once per offset across the reader loop's own iteration count, so one
   trial's leftover queue/log state can never mask or fake a later trial's result. Unrestricted on
   mock/twin (a fake bus has no real write-wear budget); real hardware's own limit is the next bullet.
-- **Real-hardware tier parity, including the timing sweep, is required, not optional** — the generic
-  scenario engine must be runnable against real silicon too (flash tier), with exactly one exception:
-  **SCD30's own on-chip NVM write is opt-in and capped at one real write per test session**, reusing
-  `tests_hardware/flash/conftest.py`'s existing `scd30_continuous_measurement_triggered` session-
-  scoped-fixture pattern — the timing sweep still runs its full systematic set of offsets, but only
-  the *first* offset in the sweep actually performs SCD30's real NVM write; every other offset in the
-  same sweep reuses that one already-triggered state rather than writing NVM again. This opt-in must
-  be off by default (matching the existing `--allow-flash-cycle` precedent for other genuinely
-  re-provisioning real-hardware operations) and only engage when a session has both real-hardware
-  go-ahead (CLAUDE.md's own standing gate) and this specific SCD30-write opt-in passed explicitly.
-  Every other real write exercised by the sweep (BMP3xx's/ISL29125's own config registers, both
+- **Real-hardware tier parity is required, not optional — every generic mock/twin scenario type
+  needs a real-hardware equivalent** for whichever bus a real device's own topology makes it
+  applicable to, with exactly one exception: **SCD30's own on-chip NVM write is opt-in and capped at
+  one real write per test session**, reusing `tests_hardware/flash/conftest.py`'s existing
+  `scd30_continuous_measurement_triggered` fixture pattern for the routine group and its own new
+  `@pytest.mark.scd30_write`/`--allow-scd30-writes` flag (mirroring the existing
+  `--allow-flash-cycle` precedent) for any additional test that needs to fire SCD30's own write a
+  second time. Real hardware has no literal equivalent of the mock tier's `asyncio.sleep(0)`-count
+  offset sweep (a yield count means nothing against a real preemptible interpreter and real bus
+  timing) — a deliberately varied set of real elapsed-time delays is the honest, tier-appropriate
+  substitute, cycled across several write cycles for an unrestricted writer; a write under SCD30's
+  one-shot budget fires at one deliberately chosen representative offset instead, since a real
+  multi-offset sweep is structurally impossible under that budget, not a design choice to skip it.
+  Every other real write the sweep exercises (BMP3xx's/ISL29125's own config registers, both
   volatile per their datasheets) has no such budget and runs fully unrestricted on real hardware too.
+- **Flash-tier bus-hazard coverage is always a subset of bench-tier coverage, never the other half**
+  — whatever gets added to `tests_hardware/flash/test_bus_concurrency.py` gets a bench-tier
+  counterpart in `tests_hardware/bench/test_bus_concurrency_under_api_load.py` too, driven through
+  the real HTTP/REST stack instead of the bare driver (a `PUT`/`GET` pair reaching the same real I2C
+  write/read the flash-tier script drives directly). The one allowed exception is a hazard with no
+  possible REST-layer path at all — e.g. SCD30's own write-vs-siblings hazard has no bench-tier
+  counterpart because `asy_scd30_driver.py` registers zero `_push_callbacks`, so no `PUT /sensors`
+  field can ever reach that write; this is a structural absence of `src/`'s own REST surface, not a
+  scope gap, and must be recorded as such rather than left as a silent asymmetry between the tiers.
 - **A hand-written pairwise test is retired only once its exact scenario has a generated equivalent
   with parity or better** — never before. `test_bus_hazard_multi_device.py` stays in place, run
   alongside the generated coverage, until every one of its tests has a demonstrated generated

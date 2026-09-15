@@ -548,3 +548,49 @@ concurrency.py` (10/10), `tests/test_bus_hazard_multi_device.py` (13/13, unchang
 regression) all run clean under the real Unix-port interpreter (`-X heapsize=8M`); `ruff check`
 clean; all three `scripts/typecheck.sh` passes clean. The two new real-hardware tests/scripts are
 new code with no execution evidence yet — see their own "NOT yet verified" callout above.
+
+## 11. Full mock/twin-to-real-hardware scenario parity, and flash-tier/bench-tier parity (project owner, 2026-09-15, follow-up to Section 10)
+
+Direct follow-up: does every generic mock/twin scenario type have a real-hardware equivalent, and
+does everything added to the flash tier also exist at the bench tier (flash-tier bus-hazard coverage
+is always meant as a subset of bench-tier coverage)? Checked systematically against dev's own real
+topology (i2c0: BMP3xx alone; i2c1: SCD30+SGP40+ISL29125) — full account in
+`tests_hardware/README.md`'s own "Eighth pass" section; summary here:
+
+- **Timing-offset sweep, made explicit on real hardware**: `bus_concurrency_isl29125_write_vs_
+  siblings.py` (unrestricted writer) now cycles through a deliberately varied, explicit set of
+  pre-write delays (`5, 15, 40, 80, 120` ms, each used twice) instead of a fixed cadence — a designed
+  spread of relative timings, not reliance on natural jitter alone.
+  `bus_concurrency_scd30_write_vs_siblings.py` still fires at exactly one fixed offset — the one-write
+  budget makes a real sweep structurally impossible there, now stated explicitly in its own docstring
+  rather than left implicit.
+- **Two real gaps closed**: `sgp40_general_call_reset_hazard.py` now reads ISL29125 concurrently too
+  (it only checked SCD30 before, even though ISL29125 is also a real non-broadcasting sibling on
+  dev's i2c1) — the flash-tier test wrapping it was renamed to `test_sgp40_general_call_reset_does_
+  not_corrupt_concurrent_scd30_and_isl29125_transactions` to say so. `bus_topology_autodetect_and_
+  hazard_sweep.py`'s own `KNOWN_ADDRESSES` table had silently drifted out of sync with
+  `tests_hardware/bus_topology.py`'s copy (its own docstring's stated invariant) — missing ISL29125
+  (`0x44`) entirely; fixed, and the self-hazard branch now also handles it.
+- **Everything else already had a real-hardware equivalent** once checked systematically:
+  same-occupant write-vs-own-read (per-driver same-device scripts), all-occupants-concurrent-reads
+  (`isl29125_cross_device_concurrency.py` already runs all three of i2c1's real occupants at once),
+  and the rogue-general-call-against-a-lone-occupant case (the topology script's own self-hazard
+  branch, which — unlike the mock tier's own generic scheme (Section 10's own item 2) — already
+  covered this before this pass, since it isn't tied to any real occupant's own adapter issuing the
+  broadcast).
+- **Flash-tier → bench-tier parity**: added `test_isl29125_config_write_does_not_disturb_concurrent_
+  sibling_reads_under_api_load` (`tests_hardware/bench/test_bus_concurrency_under_api_load.py`) —
+  the same hazard as the flash-tier ISL29125 test, driven through real `PUT`/`GET /sensors` instead
+  of the bare driver, with the board's original `Resolution` restored afterward.
+- **SCD30 has no bench-tier counterpart, and this is structural, not a scope gap**:
+  `asy_scd30_driver.py` registers zero `_push_callbacks`, so there is no `PUT /sensors` field that
+  could ever reach SCD30's own write at all — the flash tier's own opt-in test is the only real-
+  hardware coverage this hazard can ever have, by construction of `src/` itself. Recorded explicitly
+  rather than left as a silent asymmetry between the two tiers.
+
+**Verification**: `ruff check` clean (after extracting a `_failures()` helper in
+`sgp40_general_call_reset_hazard.py` to stay under the C901 complexity gate once the ISL29125 branch
+was added), all three `scripts/typecheck.sh` passes clean, `scripts/lint.sh` (shellcheck/actionlint/
+zizmor included) clean. All real-hardware device-script/bench changes in this section carry the same
+honesty caveat as Section 10's: written and typed with no real-hardware go-ahead this session, not
+yet run against silicon.
