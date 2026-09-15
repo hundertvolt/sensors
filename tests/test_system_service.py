@@ -83,8 +83,8 @@ async def _pump(flag: "asyncio.ThreadSafeFlag", ticks: int, settle: int = 5) -> 
 
 
 class _FastAsyncSleep:
-    # start_and_check_tasks() staggers task startup by 1.0/len(task_starters) real seconds and
-    # checks tasks every real _TASK_CHECK_TIME=2s - both far too slow for a test that just wants
+    # start_and_check_tasks() staggers task startup by a fixed _TASK_START_STAGGER_S real seconds
+    # per task and checks tasks every real _TASK_CHECK_TIME=2s - both far too slow for a test that just wants
     # to drive a handful of supervisor cycles. asyncio.sleep is a shared, process-wide function
     # (unlike the per-module `time` swap above, there's exactly one to patch); restored on
     # __exit__ regardless of how the `with` block exits.
@@ -910,6 +910,33 @@ def test_start_task_starter_exception_returns_none_and_logs_once() -> None:
 
 
 # ---------------------------------------------------------------------------
+# _feed_watchdog
+# ---------------------------------------------------------------------------
+
+
+def test_feed_watchdog_without_a_watchdog_is_a_no_op() -> None:
+    svc = make_service(watchdog=None)
+    svc._feed_watchdog()  # must not raise despite watchdog being None
+
+
+def test_feed_watchdog_feeds_a_real_watchdog_every_call() -> None:
+    wdt = machine.WDT()
+    svc = make_service(watchdog=wdt)
+    svc._feed_watchdog()
+    svc._feed_watchdog()
+    svc._feed_watchdog()
+    assert wdt.feed_count == 3
+
+
+def test_feed_watchdog_stays_silent_once_force_watchdog_starve_is_set() -> None:
+    wdt = machine.WDT()
+    svc = make_service(watchdog=wdt)
+    svc._force_watchdog_starve = True
+    svc._feed_watchdog()
+    assert wdt.feed_count == 0
+
+
+# ---------------------------------------------------------------------------
 # start_and_check_tasks
 # ---------------------------------------------------------------------------
 
@@ -1008,6 +1035,117 @@ def test_start_and_check_tasks_without_watchdog_does_not_raise() -> None:
 
     with _FastAsyncSleep():
         run(scenario())  # must not raise despite watchdog being None
+
+
+def test_start_and_check_tasks_without_watchdog_and_multiple_starters_does_not_raise() -> None:
+    # Same resilience proof as the single-starter case above, but across several concurrent task
+    # starts through the per-task stagger loop - the no-watchdog guard must hold at every iteration,
+    # not just the one the single-starter test happens to exercise.
+    svc = make_service(watchdog=None)
+
+    def long_lived_starter() -> "asyncio.Task[None]":
+        async def _c() -> None:
+            await asyncio.sleep(3600)
+
+        return asyncio.create_task(_c())
+
+    async def scenario() -> None:
+        task = asyncio.create_task(svc.start_and_check_tasks([long_lived_starter] * 4))
+        for _ in range(10):
+            await asyncio.sleep(0)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+    with _FastAsyncSleep():
+        run(scenario())  # must not raise despite watchdog being None
+
+
+def test_start_and_check_tasks_feeds_the_watchdog_once_per_task_start() -> None:
+    # Regression test for the per-task-loop feed: with real (unpatched) timing, 3 staggered task
+    # starts at _TASK_START_STAGGER_S=0.25s apart complete well within 1 real second, long before
+    # the supervisor's own _TASK_CHECK_TIME=2s while-loop tick could ever fire its own feed - so a
+    # feed count >=3 here can only have come from the per-task-start loop itself, not the tail loop.
+    wdt = machine.WDT()
+    svc = make_service(watchdog=wdt)
+
+    def long_lived_starter() -> "asyncio.Task[None]":
+        async def _c() -> None:
+            await asyncio.sleep(3600)
+
+        return asyncio.create_task(_c())
+
+    async def scenario() -> None:
+        task = asyncio.create_task(svc.start_and_check_tasks([long_lived_starter] * 3))
+        await asyncio.sleep(1.0)
+        assert wdt.feed_count >= 3
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+    run(scenario())  # deliberately real timing - _FastAsyncSleep would collapse the very gap being tested
+
+
+def _measure_stagger_calls(num_starters: int) -> "list[float]":
+    # Records every asyncio.sleep() duration start_and_check_tasks() requests for a device with
+    # num_starters task starters, returning just the first num_starters of them - the per-task
+    # stagger loop's own calls, before the tail while-loop's differently-timed _TASK_CHECK_TIME
+    # sleep could ever be recorded. _TASK_START_STAGGER_S itself is a micropython.const() value -
+    # not readable as a module attribute at runtime (unlike CPython) - so this compares behavior
+    # across differently-sized starter lists instead of asserting against the literal.
+    svc = make_service()
+    recorded: list[float] = []
+    real_sleep = asyncio.sleep
+
+    async def _recording_sleep(seconds: float) -> None:
+        recorded.append(seconds)
+        await real_sleep(0)
+
+    def long_lived_starter() -> "asyncio.Task[None]":
+        async def _c() -> None:
+            await real_sleep(3600)
+
+        return asyncio.create_task(_c())
+
+    starters = [long_lived_starter] * num_starters
+
+    async def scenario() -> None:
+        task = asyncio.create_task(svc.start_and_check_tasks(starters))
+        for _ in range(30):
+            await real_sleep(0)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+    asyncio.sleep = _recording_sleep  # type: ignore[assignment]  # deliberate monkeypatch, restored below
+    try:
+        run(scenario())
+    finally:
+        asyncio.sleep = real_sleep
+
+    return recorded[:num_starters]
+
+
+def test_start_and_check_tasks_stagger_is_fixed_per_task_not_scaled_by_task_count() -> None:
+    # Regression test: the stagger between task starts must stay a fixed per-task delay regardless
+    # of how many task starters a device has. The old 1.0/len(task_starters) formula shrank as more
+    # FRAM-backed tasks were added - exactly backwards, since each task's own first-time
+    # pr.setup() call needs the same amount of room to clear the shared FRAM/SPI lock no matter how
+    # many other tasks a device also starts. Proven here by comparing two different starter-list
+    # sizes: under the old formula, two_starter_calls would be 1.0/2=0.5s and five_starter_calls
+    # would be 1.0/5=0.2s - different from each other. A fixed stagger keeps them identical.
+    two_starter_calls = _measure_stagger_calls(2)
+    five_starter_calls = _measure_stagger_calls(5)
+
+    assert len(set(two_starter_calls)) == 1  # every stagger within one run is identical...
+    assert len(set(five_starter_calls)) == 1
+    assert two_starter_calls[0] == five_starter_calls[0]  # ...and identical across run sizes too
 
 
 def test_start_and_check_tasks_restarts_a_dead_task_and_logs_a_warning() -> None:
