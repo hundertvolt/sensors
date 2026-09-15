@@ -8,6 +8,7 @@ import machine
 
 import asy_i2c_driver
 from asy_bmp3xx_driver import BMP3XX_I2C
+from asy_isl29125_driver import ISL29125_I2C
 from asy_scd30_driver import SCD30_I2C
 from asy_sgp40_driver import SGP40_I2C
 
@@ -17,7 +18,7 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 
-KNOWN_ADDRESSES = {0x61: "SCD30", 0x59: "SGP40", 0x77: "BMP3xx"}
+KNOWN_ADDRESSES = {0x61: "SCD30", 0x59: "SGP40", 0x77: "BMP3xx", 0x44: "ISL29125"}
 GENERAL_CALL_ADDRESS = 0x00
 RESERVED_RANGES = ((0x00, 0x07), (0x78, 0x7F))
 _OTHER_RESERVED = [a for lo, hi in RESERVED_RANGES for a in range(lo, hi + 1) if a != GENERAL_CALL_ADDRESS]
@@ -75,6 +76,17 @@ async def _read_sgp40_once(sgp: "SGP40_I2C") -> "str | None":
         return None
 
 
+async def _read_isl29125_once(isl: "ISL29125_I2C") -> "str | None":
+    try:
+        green, red, blue = await isl.read_counts()
+        if not all(0 <= channel <= 0xFFFF for channel in (green, red, blue)):
+            return f"counts=({green}, {red}, {blue}) outside the 16-bit range - a torn burst"
+    except Exception as e:
+        return f"{type(e).__name__}: {e}"
+    else:
+        return None
+
+
 async def _self_hazard_check(i2c: "asy_i2c_driver.I2C", port_id: int, address: int) -> "list[str]":
     """A lone known device on a bus, read repeatedly while general-call broadcasts race those
     reads. A module-level function rather than an inline block so no closure here captures the
@@ -97,6 +109,10 @@ async def _self_hazard_check(i2c: "asy_i2c_driver.I2C", port_id: int, address: i
             sgp = SGP40_I2C(i2c, address=address)
             await sgp.setup()
             read_once = lambda: _read_sgp40_once(sgp)  # noqa: E731
+        elif address == 0x44:
+            isl = ISL29125_I2C(i2c, address=address)
+            await isl.setup()
+            read_once = lambda: _read_isl29125_once(isl)  # noqa: E731
     except Exception as e:
         return [f"bus {port_id}: {name} setup() before self-hazard check failed: {type(e).__name__}: {e}"]
 

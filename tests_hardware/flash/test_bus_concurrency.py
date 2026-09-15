@@ -43,7 +43,10 @@ def test_cross_device_concurrent_sessions_genuinely_interleave(board: Board, scd
 
 
 @pytest.mark.scd30_nvm_write
-def test_sgp40_general_call_reset_does_not_corrupt_a_concurrent_scd30_transaction(board: Board, scd30_continuous_measurement_triggered: None) -> None:
+def test_sgp40_general_call_reset_does_not_corrupt_concurrent_scd30_and_isl29125_transactions(board: Board, scd30_continuous_measurement_triggered: None) -> None:
+    # Both real i2c1 siblings, not just SCD30 - closes a gap tests/_bus_hazard_catalog.py's own
+    # generic scenario_general_call_does_not_disturb_concurrent_siblings surfaced (it runs against
+    # every non-broadcasting occupant of the bus, which real hardware used to only partially mirror).
     output = board.run_isolated(DEVICE_SCRIPTS / "sgp40_general_call_reset_hazard.py", timeout_s=120.0)
     _assert_pass(output, "SGP40 general-call hazard regression check")
 
@@ -53,6 +56,59 @@ def test_bmp3xx_same_device_read_write_concurrency(board: Board) -> None:
     # script's own docstring), so this needs no session fixture.
     output = board.run_isolated(DEVICE_SCRIPTS / "bmp3xx_same_device_rw_concurrency.py", timeout_s=90.0)
     _assert_pass(output, "BMP3xx same-device read/write concurrency check")
+
+
+def test_isl29125_same_device_read_write_concurrency(board: Board) -> None:
+    # No NVM-write-budget dependency either, and for a stronger reason than BMP3xx's: the ISL29125
+    # has no on-chip non-volatile memory at all (FN8424 p7 calls its config registers volatile
+    # memory outright), so rewriting its configuration costs nothing. The sharper hazard here is
+    # the DESTRUCTIVE 0x08 status read, which a config write landing mid-cycle must not tear.
+    output = board.run_isolated(DEVICE_SCRIPTS / "isl29125_same_device_rw_concurrency.py", timeout_s=90.0)
+    _assert_pass(output, "ISL29125 same-device read/write concurrency check")
+
+
+@pytest.mark.scd30_nvm_write
+def test_isl29125_cross_device_concurrency_with_its_i2c1_neighbours(board: Board, scd30_continuous_measurement_triggered: None) -> None:
+    # The SCD30 leg reads real measurements, so it needs the same session fixture the other
+    # SCD30-touching tests take; the ISL and SGP40 legs would run fine without it.
+    output = board.run_isolated(DEVICE_SCRIPTS / "isl29125_cross_device_concurrency.py", timeout_s=90.0)
+    _assert_pass(output, "ISL29125 cross-device interleaving check")
+
+
+@pytest.mark.scd30_nvm_write
+def test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads(board: Board, scd30_continuous_measurement_triggered: None) -> None:
+    # Real-hardware counterpart to tests/_bus_hazard_catalog.py's own
+    # scenario_a_write_does_not_disturb_concurrent_sibling_reads (BUS_HAZARD_TEST_GENERATION_REQUIREMENTS.md):
+    # closes a real gap the generic mock-tier scenario surfaced - no prior real-hardware test proved
+    # a WRITE from one dev/i2c1 occupant landing concurrently with its siblings' own reads, only
+    # same-device write-vs-own-read and the SGP40 general-call broadcast case. Uses ISL29125 (a
+    # volatile config register, no NVM-write-budget concern) as the writer, not SCD30 - see
+    # bus_concurrency_isl29125_write_vs_siblings.py's own docstring for why SCD30 needs its own
+    # separate, opt-in, budget-capped test instead.
+    output = board.run_isolated(DEVICE_SCRIPTS / "bus_concurrency_isl29125_write_vs_siblings.py", timeout_s=90.0)
+    _assert_pass(output, "ISL29125 config-write-vs-concurrent-sibling-reads check")
+
+
+@pytest.mark.scd30_nvm_write
+@pytest.mark.scd30_write
+def test_scd30_config_write_does_not_disturb_concurrent_sibling_reads(board: Board, scd30_continuous_measurement_triggered: None, request: pytest.FixtureRequest) -> None:
+    # The SCD30-as-writer half of the same real coverage gap - deliberately NOT part of the routine
+    # group (unlike the ISL29125 version above): this issues one ADDITIONAL real NVM-persisted SCD30
+    # write beyond the one scd30_continuous_measurement_triggered already spends, so it only runs
+    # when explicitly opted into (see conftest.py's --allow-scd30-writes / this file's own
+    # bus_concurrency_scd30_write_vs_siblings.py docstring for the full budget reasoning).
+    if not request.config.getoption("--allow-scd30-writes"):
+        pytest.skip("this issues one additional real SCD30 NVM write - pass --allow-scd30-writes to deliberately run it")
+    output = board.run_isolated(DEVICE_SCRIPTS / "bus_concurrency_scd30_write_vs_siblings.py", timeout_s=90.0)
+    _assert_pass(output, "SCD30 config-write-vs-concurrent-sibling-reads check")
+
+
+def test_isl29125_real_irq_edge_beats_the_periodic_fallback(board: Board) -> None:
+    # Also measures the two datasheet questions no document answers - whether a CONFIG1 write
+    # restarts the conversion, and whether PRST counts RGB cycles or single-channel integrations.
+    # Both are reported on the RESULT line whatever the verdict; neither gates the pass.
+    output = board.run_isolated(DEVICE_SCRIPTS / "isl29125_real_irq_edge.py", timeout_s=90.0)
+    _assert_pass(output, "ISL29125 real INT-pin falling-edge fast-path check")
 
 
 def test_bus_topology_autodetect_address_and_reserved_range_sweep(board: Board) -> None:

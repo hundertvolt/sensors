@@ -5,6 +5,10 @@ standing rule on extending this file when a new I2C-facing driver is added."""
 import asyncio
 import struct
 
+from _bus_hazard_catalog import fake, make_i2c, seed_isl_ready
+from _bus_hazard_catalog import scd_data_frame as _scd_data_frame
+from _bus_hazard_catalog import scd_register_frame as _scd_register_frame
+from _bus_hazard_catalog import sgp_word as _sgp_word
 from _fram_chip_fake import FakeMB85RS64V
 from machine import I2C as FakeI2C
 
@@ -12,6 +16,7 @@ import asy_spi_driver
 from asy_bmp3xx_driver import BMP3XX_I2C
 from asy_fram_driver import FRAM_SPI
 from asy_i2c_driver import I2C
+from asy_isl29125_driver import ISL29125_I2C
 from asy_scd30_driver import SCD30_I2C
 from asy_sgp40_driver import SGP40_I2C
 from asy_spi_driver import SPI as AsySPI
@@ -72,6 +77,7 @@ class _FastAsyncSleep:
 _SCD_ADDR = 0x61
 _BMP_ADDR = 0x77
 _SGP_ADDR = 0x59
+_ISL_ADDR = 0x44  # hard-wired (FN8424 p15) - dev-only, sharing i2c1 with SCD30 and SGP40
 _GENERAL_CALL_ADDR = 0x00
 # I2C spec reserved address ranges (0x00-0x07: general call/CBUS/reserved/Hs-mode; 0x78-0x7F:
 # 10-bit addressing/reserved) - every real device address this codebase uses must fall outside
@@ -81,42 +87,6 @@ _RESERVED_RANGES = ((0x00, 0x07), (0x78, 0x7F))
 
 def _is_reserved(address: int) -> bool:
     return any(lo <= address <= hi for lo, hi in _RESERVED_RANGES)
-
-
-def make_i2c(port_id: int = 1) -> I2C:
-    return I2C(port_id, scl_pin=19, sda_pin=18, frequency=50000)
-
-
-def fake(i2c: I2C) -> FakeI2C:
-    return i2c._i2c  # type: ignore[return-value]
-
-
-def _crc8(data: bytes) -> int:
-    crc = 0xFF
-    for byte in data:
-        crc ^= byte
-        for _ in range(8):
-            crc = ((crc << 1) ^ 0x31) & 0xFF if crc & 0x80 else (crc << 1) & 0xFF
-    return crc
-
-
-def _sgp_word(value: int) -> bytes:
-    payload = bytes([(value >> 8) & 0xFF, value & 0xFF])
-    return payload + bytes([_crc8(payload)])
-
-
-def _scd_register_frame(value: int) -> bytes:
-    payload = struct.pack(">H", value)
-    return payload + bytes([_crc8(payload)])
-
-
-def _scd_data_frame(co2: float, temperature: float, humidity: float) -> bytes:
-    frame = bytearray()
-    for value in (co2, temperature, humidity):
-        raw = struct.pack(">f", value)
-        msw, lsw = raw[0:2], raw[2:4]
-        frame += msw + bytes([_crc8(msw)]) + lsw + bytes([_crc8(lsw)])
-    return bytes(frame)
 
 
 def queue_sgp_successful_init(fake_bus: FakeI2C) -> None:
@@ -479,10 +449,138 @@ def test_sgp40_touches_only_its_own_address_except_reset_which_touches_only_the_
     assert not _is_reserved(_SGP_ADDR)
 
 
+def test_same_device_isl29125_concurrent_read_and_write_never_interleave_on_the_wire() -> None:
+    # The ISL's own same-device hazard is sharper than its siblings': the status read at 0x08 is
+    # DESTRUCTIVE (it clears the interrupt flag and releases the INT line), and the data burst
+    # that follows it belongs to the same logical cycle. A config write landing between the two
+    # would restart the conversion under a read that has already committed to its own status.
+    i2c = make_i2c(1)
+    isl = ISL29125_I2C(i2c, address=_ISL_ADDR)
+    fake_bus = fake(i2c)
+    seed_isl_ready(i2c)
+    read_iterations = 6
+
+    async def reader() -> None:
+        for _ in range(read_iterations):
+            await isl.read_status()
+            counts = await isl.read_counts()
+            assert counts == (0x2000, 0x1800, 0x1000), f"a concurrent write tore the data burst: {counts}"
+            await asyncio.sleep(0)
+
+    async def writer() -> None:
+        await asyncio.sleep(0)  # let the reader get partway into its first cycle first
+        for adjust in (10, 20, 30):
+            await isl.configure(ir_adjust=adjust)
+            await asyncio.sleep(0)
+
+    with _FastAsyncSleep():
+        run(_gather(reader(), writer()))
+
+    # Every logged transaction went to this one address, and the config writes really did land.
+    assert _touched_addresses(fake_bus) == {_ISL_ADDR}
+    config_writes = [entry for entry in fake_bus.log if entry[0] == "writeto_mem" and entry[2] == 0x02]
+    assert len(config_writes) == 3
+
+
+def test_cross_device_isl29125_and_sgp40_interleave_and_both_stay_correct() -> None:
+    # dev's own i2c1 grouping: the ISL is register-addressed while the SGP40 speaks a raw
+    # word protocol, so the two exercise completely different transaction shapes on one bus.
+    i2c = make_i2c(1)
+    isl = ISL29125_I2C(i2c, address=_ISL_ADDR)
+    sgp = SGP40_I2C(i2c, address=_SGP_ADDR)
+    fake_bus = fake(i2c)
+    seed_isl_ready(i2c)
+
+    isl_iterations = 6
+    sgp_iterations = 4
+    for _ in range(sgp_iterations):
+        fake_bus.read_queue.append(_sgp_word(0x8000))
+
+    isl_results: list[tuple[int, int, int]] = []
+    sgp_results: list[int | None] = []
+
+    async def isl_loop() -> None:
+        for _ in range(isl_iterations):
+            isl_results.append(await isl.read_counts())
+            await asyncio.sleep(0)
+
+    async def sgp_loop() -> None:
+        for _ in range(sgp_iterations):
+            sgp_results.append(await sgp.measure_raw(temperature=25, relative_humidity=50))
+            await asyncio.sleep(0)
+
+    with _FastAsyncSleep():
+        run(_gather(isl_loop(), sgp_loop()))
+
+    assert len(isl_results) == isl_iterations
+    assert all(counts == (0x2000, 0x1800, 0x1000) for counts in isl_results)
+    assert sgp_results == [0x8000] * sgp_iterations
+    addressed = [entry[1] for entry in fake_bus.log if entry[0] in ("writeto", "readfrom_into", "readfrom_mem", "writeto_mem")]
+    switches = sum(1 for i in range(len(addressed) - 1) if addressed[i] != addressed[i + 1])
+    assert switches >= 2, f"only {switches} address switch(es) - looks fully serialized, not interleaved: {addressed}"
+
+
+def test_sgp40_general_call_reset_does_not_disturb_a_concurrent_isl29125_read() -> None:
+    # The general-call broadcast hazard again, this time against the sibling that actually shares
+    # a bus with the SGP40 on dev (SPECIFICATION.md Part C.8's own standing note).
+    i2c = make_i2c(1)
+    isl = ISL29125_I2C(i2c, address=_ISL_ADDR)
+    sgp = SGP40_I2C(i2c, address=_SGP_ADDR)
+    fake_bus = fake(i2c)
+    seed_isl_ready(i2c)
+    results: list[tuple[int, int, int]] = []
+
+    async def isl_loop() -> None:
+        for _ in range(6):
+            results.append(await isl.read_counts())
+            await asyncio.sleep(0)
+
+    async def broadcaster() -> None:
+        await asyncio.sleep(0)
+        await sgp._reset()  # a true I2C general call to address 0x00
+
+    with _FastAsyncSleep():
+        run(_gather(isl_loop(), broadcaster()))
+
+    assert all(counts == (0x2000, 0x1800, 0x1000) for counts in results)
+    assert any(entry[0] == "writeto" and entry[1] == 0x00 for entry in fake_bus.log), "the general call never fired - this test isn't exercising the hazard"
+
+
+def test_isl29125_never_touches_any_address_but_its_own() -> None:
+    i2c = make_i2c(1)
+    isl = ISL29125_I2C(i2c, address=_ISL_ADDR)
+    fake_bus = fake(i2c)
+    seed_isl_ready(i2c)
+
+    async def exercise() -> None:
+        for call in (
+            isl.setup,
+            isl.reset,
+            isl.get_device_id,
+            isl.read_status,
+            isl.clear_brownout,
+            isl.read_counts,
+            isl.get_config_snapshot,
+            lambda: isl.configure(mode=0x05, range_fs=375, resolution=12),
+            lambda: isl.set_thresholds(983, 55705),
+        ):
+            try:
+                await call()
+            except Exception:  # only the addresses *touched* matter for this sweep, not success
+                pass
+
+    with _FastAsyncSleep():
+        run(exercise())
+
+    touched = _touched_addresses(fake_bus)
+    assert touched == {_ISL_ADDR}, f"ISL29125_I2C touched unexpected address(es): {touched - {_ISL_ADDR}}"
+    assert not _is_reserved(_ISL_ADDR)
+
+
 def test_no_reserved_i2c_address_collides_with_any_promoted_devices_own_address() -> None:
     # Regression guard for future device additions (SPECIFICATION.md Part C.8): a new driver whose
     # default address falls in a reserved I2C range is caught here before reaching real hardware.
-    for name, address in (("SCD30", _SCD_ADDR), ("BMP3xx", _BMP_ADDR), ("SGP40", _SGP_ADDR)):
+    for name, address in (("SCD30", _SCD_ADDR), ("BMP3xx", _BMP_ADDR), ("SGP40", _SGP_ADDR), ("ISL29125", _ISL_ADDR)):
         assert not _is_reserved(address), f"{name}'s own address {address:#x} falls inside a reserved I2C range"
 
 

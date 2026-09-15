@@ -3,6 +3,7 @@ real digital_twin buses and proves SPECIFICATION.md Part C.8's locking model hol
 concurrent load; Part C.8 also covers this file's own device-scope rationale."""
 
 import asyncio
+import json
 import sys
 
 sys.path.insert(0, "ext")  # same convention as test_digital_twin_sensortask_integration.py's own comment
@@ -105,6 +106,13 @@ async def _feed_watchdog_periodically(watchdog: "WDT") -> None:
 
 _GENERAL_CALL_ENTRY = ("writeto", 0x00, b"\x06", True)
 
+# Which get_data() field, per driver, proves that driver produced a real reading under load - the
+# digital-twin tier's own (much smaller) analogue of tests/_bus_hazard_catalog.py's mock-tier
+# adapters, used by the TOML-driven pass at the end of _run_real_task_graph_and_assert_healthy()
+# below (BUS_HAZARD_TEST_GENERATION_REQUIREMENTS.md Section 6). A new driver added to a device's
+# own i2c1 needs an entry here before it gets this generic check (see the fail-loud assert there).
+_I2C_DRIVER_HEALTH_FIELD: "dict[str, str]" = {"scd30": "CO2", "sgp40": "VOC", "bmp3xx": "Pres", "isl29125": "Lux"}
+
 
 async def _run_real_task_graph_and_assert_healthy(module: "ModuleType", shared_bus_log: "Container[object]", run_seconds: float) -> None:
     # Shared scenario body for both variants: starts the real timer/task starters build_system()
@@ -126,6 +134,14 @@ async def _run_real_task_graph_and_assert_healthy(module: "ModuleType", shared_b
         assert sgp_data.VOC is not None, "SGP40 never produced real data under concurrent bus load"
         assert bmp_data.Pres is not None, "BMP3xx never produced real data under concurrent bus load"
         assert scd_data.CO2 is not None, "SCD30 never produced real data under concurrent bus load"
+        # dev-only: the ISL29125 shares i2c1 with both of the above AND drives its own INT pin
+        # concurrently, so it is the one sensor here whose reads can be interleaved with an
+        # interrupt-triggered extra cycle of its own (wozi never carries this instance at all).
+        isl29125 = getattr(module, "isl29125", None)
+        if isl29125 is not None:
+            isl_data = await isl29125.get_data()
+            assert isl_data.Lux is not None, "ISL29125 never produced real data under concurrent bus load"
+            assert isl_data.RangeAct is not None, "ISL29125 reported a sample with no range attached"
         # FRAM has its own dedicated SPI bus (no interleaving hazard here) but must stay healthy
         # through concurrent sensor error-log/backup writes onto it.
         assert module.fram.fram.initialized is True, "FRAM dropped out of the initialized state during concurrent bus load"
@@ -134,6 +150,25 @@ async def _run_real_task_graph_and_assert_healthy(module: "ModuleType", shared_b
         # SGP40_I2C._reset()'s general-call broadcast (SPECIFICATION.md Part C.8) must actually have
         # fired at least once, landing concurrently with its bus-sharing sibling's own startup.
         assert _GENERAL_CALL_ENTRY in shared_bus_log, "SGP40's general-call reset never fired during this run - test isn't exercising the real hazard window"
+
+        # TOML-driven pass (BUS_HAZARD_TEST_GENERATION_REQUIREMENTS.md Section 6): re-checks the
+        # same already-booted graph generically, from the real generated wiring-plan JSON's own i2c1
+        # membership, instead of the hardcoded sgp40/bmp3xx/scd30/isl29125 list above - a second,
+        # cheap look at data already fetched/computed, not a second system boot, so it costs nothing
+        # extra in this file's own shared-heap-per-process budget. Deliberately not a replacement for
+        # the checks above (BUS_HAZARD_TEST_GENERATION_REQUIREMENTS.md Section 4 item 5's "run
+        # alongside, don't retire proven coverage" caution) even though they overlap in practice -
+        # this is the one that stays automatically correct if a device's own i2c1 membership changes.
+        device = module.__name__[len("sensortask_") :]  # "sensortask_dev" -> "dev" - str.removeprefix() isn't used here since it's unproven under this MicroPython target
+        with open(f"build/generated_src/sensortask_{device}_wiring_plan.json") as f:
+            plan: dict[str, Any] = json.load(f)
+        for bus_name, attachments in plan["buses"].items():
+            for attachment in attachments:
+                driver = attachment["driver"]
+                field = _I2C_DRIVER_HEALTH_FIELD.get(driver)
+                assert field is not None, f"no health-check field known for driver {driver!r} - add one to _I2C_DRIVER_HEALTH_FIELD before it can get generated digital-twin bus-hazard coverage"
+                data = await getattr(module, driver).get_data()
+                assert getattr(data, field) is not None, f"{driver!r} never produced real data (missing {field!r}) under concurrent bus load, per the TOML-driven {bus_name} membership check"
     finally:
         for task in tasks:
             await _cancel(task)
@@ -154,7 +189,7 @@ def test_wozi_real_task_graph_survives_concurrent_bus_load_including_a_real_gene
 
 
 def test_dev_real_task_graph_survives_concurrent_bus_load_including_a_real_general_call() -> None:
-    # dev's SCD30+SGP40-on-i2c1 pairing also gets real-hardware proof
+    # dev's SCD30+SGP40+ISL29125-on-i2c1 grouping also gets real-hardware proof
     # (tests_hardware/flash/test_bus_concurrency.py); this gives it fast, every-push CI coverage too.
     machine.configure_i2c_wiring("dev")
     port = _next_test_port()

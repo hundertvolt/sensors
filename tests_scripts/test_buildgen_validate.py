@@ -101,6 +101,25 @@ def test_instance_table_of_the_wrong_type_entirely_is_rejected(tmp_path: Path, s
         build_model(path, src_dir)
 
 
+def test_toml_document_not_parsing_to_a_table_at_the_top_level_is_rejected(tmp_path: Path, src_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # buildgen.model.load_device()'s own `if not isinstance(doc, dict)` guard - provably
+    # unreachable via any real file: tomllib.load() always returns a dict for any TOML document it
+    # successfully parses (the grammar itself requires the document root to be a table), so no
+    # malformed-but-parseable input can ever reach this branch. Reached here the same way
+    # test_buildgen_twin_wiring.py's own otherwise-unreachable ValueError guard is: monkeypatch the
+    # one thing the real code trusts (tomllib.load's return value) rather than leave the guard
+    # itself completely untested.
+    import tomllib
+
+    # Patches the real, single cached tomllib module object every importer (buildgen.model
+    # included) shares - never `buildgen.model.tomllib`, which mypy's host_typecheck.ini
+    # (no_implicit_reexport) rejects as accessing a name buildgen.model only imported, not exported.
+    monkeypatch.setattr(tomllib, "load", lambda f: ["not", "a", "table"])
+    path = write_text(tmp_path, "dev", '[device]\nname = "Test"\n')
+    with pytest.raises(BuildError, match=r"did not parse to a table at the top level"):
+        build_model(path, src_dir)
+
+
 def test_device_int_field_wrong_type(tmp_path: Path, src_dir: Path) -> None:
     doc = base_doc()
     doc["device"]["conn_fail_to_hotspot"] = "five"
@@ -515,6 +534,79 @@ def test_instance_name_collision_via_distinct_drivers_same_resolved_name(tmp_pat
     model.instances[("b", "")] = InstanceSpec("b", "", {}, {}, 1, resolved_name="SAME")
     with pytest.raises(BuildError, match="instance_name collision"):
         _check_instance_name_collisions(model)
+
+
+def test_instance_name_collision_check_fails_loud_if_resolved_name_still_unset(tmp_path: Path) -> None:
+    # The same function's own "internal:" invariant guard - _resolve_instances() always sets
+    # resolved_name before this check ever runs in build_model()'s own pipeline, so this is driven
+    # directly against a synthetic spec, same technique as the collision test just above.
+    from buildgen.model import DeviceModel, InstanceSpec
+    from buildgen.validate import _check_instance_name_collisions
+
+    model = DeviceModel("dev", tmp_path / "dev.toml", {})
+    model.instances[("a", "")] = InstanceSpec("a", "", {}, {}, 0)  # resolved_name defaults to None
+    with pytest.raises(BuildError, match="internal: resolved_name unresolved by collision-check time"):
+        _check_instance_name_collisions(model)
+
+
+def test_required_fields_check_fails_loud_for_a_bus_attached_driver_with_no_bus_kind_entry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # _check_required_fields()'s own "internal:" invariant guard - buildspec.py's own comment states
+    # every BUS_ATTACHED_DRIVERS member must appear in BUS_KIND_BY_DRIVER, true for all real drivers
+    # today, so this drives it via monkeypatch, same technique as
+    # test_device_wiring_required_field_missing_is_rejected below.
+    import buildgen.validate as validate_mod
+    from buildgen.buildspec import BUS_KIND_BY_DRIVER
+    from buildgen.model import DeviceModel, InstanceSpec
+
+    # Imported directly from its origin module, not accessed as validate_mod.BUS_KIND_BY_DRIVER -
+    # mypy's host_typecheck.ini (no_implicit_reexport) rejects the latter as accessing a name
+    # validate.py only imported, not exported; both names bind the exact same dict object, so
+    # mutating this one is still what _check_required_fields() itself reads.
+    monkeypatch.delitem(BUS_KIND_BY_DRIVER, "scd30")
+    model = DeviceModel("dev", tmp_path / "dev.toml", {})
+    model.instances[("scd30", "")] = InstanceSpec("scd30", "", {"bus": "i2c0", "irq_pin": 8}, {}, 0)
+    with pytest.raises(BuildError, match=r"is in BUS_ATTACHED_DRIVERS but has no buildgen\.buildspec\.BUS_KIND_BY_DRIVER entry"):
+        validate_mod._check_required_fields(model, {"i2c0": {}})
+
+
+def test_wiring_reference_check_fails_loud_if_target_driver_info_still_unset(tmp_path: Path) -> None:
+    # _check_wiring_reference()'s own "internal:" invariant guard - _resolve_instances() always sets
+    # driver_info on every real instance before any wiring-reference check ever runs.
+    from buildgen.model import DeviceModel, InstanceSpec
+    from buildgen.validate import _check_wiring_reference
+    from buildgen.wiring import WiringField
+
+    model = DeviceModel("dev", tmp_path / "dev.toml", {})
+    model.instances[("neopixel", "")] = InstanceSpec("neopixel", "", {}, {}, 0)  # driver_info defaults to None
+    wf = WiringField("signal_sink", "NeopixelDriver", "request_signal", True, "attr")
+    with pytest.raises(BuildError, match=r"internal: target\.driver_info unresolved by wiring-reference-check time"):
+        _check_wiring_reference(model, wf, "neopixel", "notification", "signal_sink")
+
+
+def test_default_provider_params_check_fails_loud_if_driver_info_still_unset(tmp_path: Path) -> None:
+    # _check_default_provider_params()'s own "internal:" invariant guard - shared by both
+    # _WIRING-based and _VALUE_WIRING-based defaults, same driver_info-always-resolved reasoning.
+    from buildgen.model import DeviceModel, InstanceSpec
+    from buildgen.validate import _check_default_provider_params
+
+    model = DeviceModel("dev", tmp_path / "dev.toml", {})
+    spec = InstanceSpec("sgp40", "", {}, {}, 0)  # driver_info defaults to None
+    with pytest.raises(BuildError, match="internal: driver_info unresolved by default-provider-check time"):
+        _check_default_provider_params(model, spec, "temperature_source", {"default": True})
+
+
+def test_default_value_selection_check_fails_loud_for_a_non_table_wiring_value(tmp_path: Path) -> None:
+    # _check_default_value_selection()'s own "internal:" invariant guard - its only real caller,
+    # _check_value_wiring(), already confirms isinstance(value, dict) before ever calling this.
+    from buildgen.model import DeviceModel, InstanceSpec
+    from buildgen.validate import _check_default_value_selection
+    from buildgen.value_wiring import ValueWiringField
+
+    model = DeviceModel("dev", tmp_path / "dev.toml", {})
+    spec = InstanceSpec("sgp40", "", {}, {"temperature_source": "not-a-table"}, 0)
+    vwf = ValueWiringField("temperature_source", "temperature_source", "temperature_field", True)
+    with pytest.raises(BuildError, match="internal: default-selection check reached with a non-table wiring value"):
+        _check_default_value_selection(model, spec, vwf)
 
 
 def test_instance_label_collision_synthetic(tmp_path: Path, src_dir: Path) -> None:
@@ -1167,3 +1259,85 @@ def test_uart_link_initiator_with_no_responder_at_all_is_rejected(tmp_path: Path
 
 def test_device_with_no_uart_link_instances_at_all_is_fine(tmp_path: Path, src_dir: Path) -> None:
     _build(tmp_path, src_dir, base_doc())  # no raise - base_doc() has no uart_link instance
+
+
+# ---------------------------------------------------------------------------
+# uart_link: the uart-kind branches of _check_bus_tables()/_check_gpio_collisions() - each already
+# has an i2c and/or spi sibling test (test_bus_missing_required_wire_pin, test_spi_bus_declares_
+# frequency, test_bus_unknown_field_rejected, test_gpio_with_no_i2c_function_rejected,
+# test_i2c_pin_belonging_to_the_other_i2c_index_rejected, test_i2c_pin_role_transposed_rejected)
+# but the parallel uart branch of the same shared code was never given its own.
+# ---------------------------------------------------------------------------
+
+
+def test_uart_bus_missing_required_wire_pin(tmp_path: Path, src_dir: Path) -> None:
+    doc = _with_uart_pair(base_doc())
+    del doc["bus"]["uart0"]["tx_pin"]
+    with pytest.raises(BuildError, match=r"bus\.uart0 \(uart\) is missing required field 'tx_pin'"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_uart_bus_declares_frequency(tmp_path: Path, src_dir: Path) -> None:
+    doc = _with_uart_pair(base_doc())
+    doc["bus"]["uart0"]["frequency"] = 50000
+    with pytest.raises(BuildError, match=r"bus\.uart0 \(uart\) declares frequency - its own driver has no such parameter"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_uart_bus_missing_baudrate(tmp_path: Path, src_dir: Path) -> None:
+    doc = _with_uart_pair(base_doc())
+    del doc["bus"]["uart0"]["baudrate"]
+    with pytest.raises(BuildError, match=r"bus\.uart0 \(uart\) is missing an int baudrate"):
+        _build(tmp_path, src_dir, doc)
+
+
+@pytest.mark.parametrize("field", ["rxbuf", "txbuf", "poll_wait_ms", "poll_idle_ms"])
+def test_uart_bus_optional_int_field_wrong_type(tmp_path: Path, src_dir: Path, field: str) -> None:
+    doc = _with_uart_pair(base_doc())
+    doc["bus"]["uart0"][field] = "not-an-int"
+    with pytest.raises(BuildError, match=rf"bus\.uart0 \(uart\) {field} must be an int, got 'not-an-int'"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_uart_bus_unknown_field_rejected(tmp_path: Path, src_dir: Path) -> None:
+    doc = _with_uart_pair(base_doc())
+    doc["bus"]["uart0"]["bogus_field"] = 1
+    with pytest.raises(BuildError, match=r"bus\.uart0 \(uart\) declares unrecognized field\(s\) \['bogus_field'\]"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_uart_pin_with_no_uart_function_rejected(tmp_path: Path, src_dir: Path) -> None:
+    # GP7 has no UART function at all (buildgen/pico_gpio.py's own _UART_PAIRS docstring) and isn't
+    # claimed by any of base_doc()/_with_uart_pair()'s own other pins (i2c0 12/13, spi0 2/3/4, fram
+    # cs_pin 1, neopixel pin 15, scd30 irq_pin 6, uart0 16/17, uart1 8/9) - a claimed-elsewhere pin
+    # would hit the GPIO-collision check first instead of the one this test targets.
+    doc = _with_uart_pair(base_doc())
+    doc["bus"]["uart0"]["tx_pin"] = 7
+    with pytest.raises(BuildError, match=r"bus\.uart0\.tx_pin=GP7 has no UART function on the Pico W"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_uart_pin_belonging_to_the_other_uart_index_rejected(tmp_path: Path, src_dir: Path) -> None:
+    # GP5 is a real UART RX pin, but it's uart1's, not uart0's (_UART_PAIRS: (4, 5, "uart1")) - and
+    # unclaimed elsewhere, unlike GP4 (spi0's own miso_pin) or GP8/9 (uart1's own real pins here).
+    doc = _with_uart_pair(base_doc())
+    doc["bus"]["uart0"]["rx_pin"] = 5
+    with pytest.raises(BuildError, match=r"bus\.uart0\.rx_pin=GP5 is wired to uart1, not uart0"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_uart_pin_role_transposed_rejected(tmp_path: Path, src_dir: Path) -> None:
+    # uart0's own pair is (16, 17) = (tx, rx) - swapping them puts the real RX pin in the TX slot.
+    doc = _with_uart_pair(base_doc())
+    doc["bus"]["uart0"]["tx_pin"], doc["bus"]["uart0"]["rx_pin"] = 17, 16
+    with pytest.raises(BuildError, match=r"bus\.uart0\.tx_pin=GP17 is uart0's RX pin, not its TX pin - pins transposed\?"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_uart_link_invalid_role_value_rejected(tmp_path: Path, src_dir: Path) -> None:
+    # Missing role entirely is already caught earlier (a different, tested raise site - required-
+    # field presence); this is the "present but not one of the two legal values" branch instead.
+    doc = _with_uart_pair(base_doc())
+    doc["instance"][-1]["role"] = "peer"
+    with pytest.raises(BuildError, match=r"role must be one of \['initiator', 'responder'\], got 'peer'"):
+        _build(tmp_path, src_dir, doc)

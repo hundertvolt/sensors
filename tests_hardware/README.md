@@ -80,6 +80,12 @@ uv run pytest tests_hardware/flash --allow-multi-day-rollover-wait -k test_ticks
 # default - this genuinely re-flashes the board, see SPECIFICATION.md Part E.6.3):
 scripts/run_flash_hardware_suite.sh --allow-flash-cycle
 
+# Add --allow-scd30-writes to also run the one test that issues an ADDITIONAL real SCD30 NVM write
+# beyond the routine one scd30_continuous_measurement_triggered already spends (skipped by default -
+# same precedent as --allow-flash-cycle, see SPECIFICATION.md Part C.8's bus-hazard promotion
+# checklist and bus_concurrency_scd30_write_vs_siblings.py's own docstring):
+scripts/run_flash_hardware_suite.sh --allow-scd30-writes
+
 # The GC-policy matrix (SPECIFICATION.md Part I.6). Builds and flashes THREE times - reactive,
 # reactive+pressure, then back to the shipped threshold build - and runs the matching suite after
 # each, so it needs its own deliberate flag on top of the usual per-session go-ahead:
@@ -97,6 +103,10 @@ scripts/_require_clean_hardware_run.sh tests_hardware/flash tests_hardware/bench
 
 # --skip-scd30-nvm-writes is a FLAG, not an extra -m: a second -m replaces a suite runner's own
 # marker exclusions rather than adding to them, which silently re-selects what it had excluded.
+# It is the opposite axis to --allow-scd30-writes above, not a duplicate of it: every test taking
+# the session fixture carries scd30_nvm_write and this flag declines the one routine write those
+# share, while scd30_write marks the ADDITIONAL write --allow-scd30-writes opts into (a test can
+# carry both markers, and the skip flag wins).
 
 # Manual tests (interactive, prints instructions, waits for confirmation):
 scripts/run_manual_hardware_tests.sh --list          # see what's registered, run nothing
@@ -761,3 +771,140 @@ wherever the console survives the step; `countdown()` is reserved for genuine po
 where it doesn't. `state_expected_outcome()` prints what "passed" should look like before the
 script's own verdict, for tests that end in a human visual/instrument check rather than a
 script-only assertion.
+
+## Seventh pass - cross-occupant write-vs-siblings real-hardware coverage (mock-tier gap closure)
+
+`tests/_bus_hazard_catalog.py`'s generic mock-tier scenario
+(`scenario_a_write_does_not_disturb_concurrent_sibling_reads`) surfaced a real gap once its own
+"same test bar as `src/`" audit was extended to the real-hardware tier: no existing flash-tier test
+proved a config WRITE from one dev/i2c1 occupant landing concurrently with its SIBLINGS' own reads -
+only same-device write-vs-own-read (`bus_concurrency_same_device_scd30.py`,
+`isl29125_same_device_rw_concurrency.py`) and the SGP40 general-call broadcast case
+(`sgp40_general_call_reset_hazard.py`, SCD30 sibling only, not ISL29125). Two new tests close this:
+
+- **`test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads`**
+  (`device_scripts/bus_concurrency_isl29125_write_vs_siblings.py`) - ISL29125's own `configure()` is
+  the writer (a volatile config register, no NVM-write-budget concern per FN8424 p7), repeated
+  `WRITE_CYCLES=8` times over a real multi-second window with SCD30 and SGP40 both reading
+  concurrently. Part of the routine group, no opt-in needed.
+- **`test_scd30_config_write_does_not_disturb_concurrent_sibling_reads`**
+  (`device_scripts/bus_concurrency_scd30_write_vs_siblings.py`) - the SCD30-as-writer half of the
+  same gap. SCD30's own `set_temperature_offset()` is a real NVM write, so this is deliberately
+  **not** part of the routine group: gated behind `@pytest.mark.scd30_write` /
+  `--allow-scd30-writes` (this pass's own new flag, same precedent as `--allow-flash-cycle`), fires
+  the one additional real write exactly once per invocation, and must never be folded into the one
+  routine write `scd30_continuous_measurement_triggered` already spends for the whole flash-tier
+  bus-hazard group (SPECIFICATION.md Part C.8's own write-budget rule).
+
+**Honesty note - neither test has been run against real hardware yet.** Both were written and typed
+during a session with no real-hardware go-ahead (CLAUDE.md's own standing gate) and no ability to
+verify against the real bench Pi4/dev board - they pass `ruff`/`mypy` and follow the same structural
+conventions as every proven-on-hardware script in this directory (window-overlap interleaving proof,
+`RESULT: PASS/FAIL` line, `wdt.feed()` cadence, plausibility bounds), but that is not the same as a
+real run. Treat both as a first cut to be smoke-tested (and fixed if wrong) on the next real-hardware
+session, not as already-confirmed coverage - flagged here explicitly rather than left to look
+finished.
+
+## Eighth pass - full mock/twin-to-real-hardware scenario parity for dev's own topology, and flash-tier/bench-tier parity
+
+Follow-up direction (project owner): every generic mock/twin bus-hazard scenario type must have a
+real-hardware equivalent for whichever bus dev's own real wiring makes it applicable to (SCD30 stays
+under its write-budget restriction), and whatever gets added to the flash tier must also get a
+bench-tier counterpart - flash-tier bus-hazard coverage is always a subset of bench-tier coverage,
+never the other half.
+
+**The mock tier's timing-offset sweep, made explicit on real hardware, not just implicit in natural
+jitter**: the Seventh pass's own two new scripts originally relied on a fixed write cadence (ISL29125)
+or natural scheduling jitter alone to vary timing. `bus_concurrency_isl29125_write_vs_siblings.py` now
+cycles through a deliberately varied, explicit set of pre-write delays
+(`_WRITE_DELAYS_MS = (5, 15, 40, 80, 120)`, each exercised twice) instead of one fixed 30ms cadence -
+a designed spread of relative timings against the siblings' own read loops, not merely hoping
+uncontrolled jitter happens to cover a range. `bus_concurrency_scd30_write_vs_siblings.py` still fires
+at exactly ONE fixed offset (0.3s in) - the one-write budget makes a real multi-offset sweep
+structurally impossible there, not a design choice to skip it; its own docstring now says so
+explicitly rather than silently reading like an oversight. Real hardware still has no literal
+equivalent of the mock tier's `asyncio.sleep(0)`-count offset (a yield count means nothing against a
+real preemptible interpreter and real bus timing) - a real elapsed-time delay is the honest,
+tier-appropriate substitute.
+
+**Two real gaps closed in dev's own general-call/address-sweep coverage**, found by checking every
+mock-tier generic scenario type against what real hardware actually covers for dev's real topology
+(i2c0: BMP3xx alone; i2c1: SCD30+SGP40+ISL29125):
+
+- `sgp40_general_call_reset_hazard.py` used to run its concurrent-sibling check against SCD30 only,
+  even though ISL29125 is also a real, non-broadcasting sibling on the same bus (mirroring
+  `tests/_bus_hazard_catalog.py`'s own `scenario_general_call_does_not_disturb_concurrent_siblings`,
+  which runs against every non-broadcasting occupant, not just one). Now reads both concurrently
+  while SGP40's own `initialize()` fires its real general-call broadcast; the flash-tier test this
+  wraps was renamed to `test_sgp40_general_call_reset_does_not_corrupt_concurrent_scd30_and_isl29125_
+  transactions` to say so.
+- `bus_topology_autodetect_and_hazard_sweep.py`'s own `KNOWN_ADDRESSES` table had drifted out of
+  sync with `tests_hardware/bus_topology.py`'s own copy (its own module docstring's stated
+  invariant) - it was missing ISL29125 (`0x44`) entirely, so the address sweep never probed/labeled
+  it and the lone-device self-hazard branch could never apply to it. Fixed: `ISL29125_I2C` support
+  added to both the address table and the self-hazard construction/read branch.
+  - Everything else in the mock tier's generic scenario set already had a real-hardware equivalent
+    for dev's own topology once this pass checked systematically: same-occupant write-vs-own-read
+    (per-driver same-device scripts, all three occupants), all-occupants-concurrent-reads
+    (`isl29125_cross_device_concurrency.py` already runs all three of i2c1's occupants at once), and
+    the "rogue general call against a lone occupant with no real broadcaster" case (i2c0's own
+    BMP3xx-alone bus) - the topology script's own self-hazard branch already covered this before this
+    pass, for whichever known device turns out to be the bus's sole occupant.
+
+**Flash-tier -> bench-tier parity**: added
+`test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads_under_api_load`
+(`tests_hardware/bench/test_bus_concurrency_under_api_load.py`) - the same ISL29125-writes-while-
+siblings-read hazard as the flash-tier test above, driven through the real HTTP/REST stack instead of
+the bare driver (`PUT /sensors {"ISL29125": {"Resolution": ...}}` alternating between both real valid
+settings, concurrent with `GET /sensors` hammering, with the board's original `Resolution` restored
+in a `finally` block - the same push/restore duty `test_sensor_config_push_over_real_hardware.py`'s
+own BMP3xx test already owes for a shared bench rig).
+
+**SCD30 has no bench-tier (or any REST-layer) counterpart, and this is structural, not a scope gap**:
+`asy_scd30_driver.py` registers zero `_push_callbacks` (already noted by
+`test_sensor_config_push_over_real_hardware.py`'s own comment) - there is no `PUT /sensors` field
+that could ever reach SCD30's own NVM write at all. The flash tier's own
+`bus_concurrency_scd30_write_vs_siblings.py` (gated behind `--allow-scd30-writes`) is therefore the
+only real-hardware coverage this specific hazard can ever have, by construction of `src/` itself -
+recorded here rather than left as a silent asymmetry between the two tiers.
+
+Same honesty note as the Seventh pass: none of this pass's changes have been run against real
+hardware either (still no go-ahead this session) - `ruff`/`mypy` clean, structurally consistent with
+proven scripts, but unverified on silicon until a real bench session confirms it.
+
+## Ninth pass - auditing the flash-tier/bench-tier bus-hazard pairing itself, and a real miscoverage found
+
+Direct follow-up question: does *every* pre-existing flash-tier bus-hazard test (not just the ones
+this session added) actually have a bench-tier counterpart? Checking systematically found one
+genuine, surprising miscoverage plus two closeable gaps:
+
+- **SGP40's general-call hazard has ZERO real bench-tier coverage, despite `test_bus_concurrency_
+  under_api_load.py` appearing to exercise it.** Every one of that file's four tests already runs a
+  `sgp40_reset_trigger_worker()` PUTting `SGPResetVOC` concurrently with GET load - reasonable to
+  assume, from the name and the pattern, that this re-triggers the same general-call broadcast the
+  flash tier's `sgp40_general_call_reset_hazard.py` proves survives concurrent reads. **It does not.**
+  Read the real call chain directly: `reset_voc()` only sets a flag consumed by the next
+  `measure_index_and_raw(reset=True)` call, which calls `vocalgorithm_reset()` - a software-only VOC
+  algorithm reset. The real broadcast only ever fires from `SGP40_I2C._reset()`, itself only called
+  from `initialize()`, itself only ever invoked internally at driver setup/task-supervisor restart -
+  never through any `_push_callbacks`/REST field. There is currently no way to force this hazard on a
+  live, already-running system via REST at all - a bench test would need a real reboot mid-load,
+  which would confound the very load being measured. Documented as a structural exception (module
+  docstring, `test_bus_concurrency_under_api_load.py`) rather than left implied by the
+  superficially-similar-looking worker.
+- **SGP40 was never schema-sanity-checked in any bench GET worker at all** - `_schema_sanity_findings()`
+  checked SCD30/BMP3xx/ISL29125's own config fields but no SGP40 field, so a torn/corrupted VOC
+  reading under bench load would have gone completely undetected. Closed: checks `SGP40.VOC` against
+  the same `[0, 500]` bounds `sgp40_voc_algorithm_quality.py` already uses.
+- **BMP3xx's same-device write-vs-own-read had no bench-tier counterpart**, even though (unlike
+  SCD30) BMP3xx has real REST-pushable fields already exercised elsewhere
+  (`test_sensor_config_push_over_real_hardware.py`). Closed:
+  `test_bmp3xx_config_write_does_not_disturb_its_own_concurrent_reads_under_api_load` - alternates
+  `PressOvers` between both real valid settings concurrently with this same sensor's own GET reads,
+  restoring the original value afterward.
+- **SCD30's own same-device write-vs-own-read** has the identical structural absence as its
+  write-vs-siblings hazard (zero `_push_callbacks`) - recorded as the same exception, not a second
+  one, right next to the existing note.
+
+Same honesty note again: the two new/closed items above are `ruff`/`mypy`-clean but unverified
+against real silicon this session.

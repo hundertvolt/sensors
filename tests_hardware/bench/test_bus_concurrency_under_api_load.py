@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import threading
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import http_client
 from error_log_helpers import assert_module_error_log_empty, reset_all_error_logs
@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 
 CO2_MIN_PPM, CO2_MAX_PPM = 200, 10_000
 PRESSURE_MIN_HPA, PRESSURE_MAX_HPA = 300.0, 1250.0
+VOC_MIN, VOC_MAX = 0, 500  # same bounds as device_scripts/sgp40_voc_algorithm_quality.py
 
 # Total concurrent worker count is _GET_WORKERS + 1 (the SGP40 reset thread runs alongside the GET
 # workers) - must stay under max_connections=4 with real margin, not exactly at it, or a brief
@@ -24,6 +25,29 @@ PRESSURE_MIN_HPA, PRESSURE_MAX_HPA = 300.0, 1250.0
 _GET_WORKERS = 2
 _GET_ITERATIONS_PER_WORKER = 8
 _PUT_RESET_COUNT = 2
+
+
+def _schema_sanity_findings(body: dict[str, Any], context: str) -> list[str]:
+    """Range-checks one GET /sensors body against each driver's own schema. A value outside it is
+    not a driver bug but a torn/corrupted read - the property every worker below is really watching
+    for, extracted here so all four tests check exactly the same thing (and stay under C901)."""
+    findings = []
+    meas_int = body.get("SCD30", {}).get("MeasInt")
+    if meas_int is not None and not (2 <= meas_int <= 1800):
+        findings.append(f"SCD30 MeasInt={meas_int!r} outside valid schema range{context} - possible torn/corrupted config read")
+    press_overs = body.get("BMP3XX", {}).get("PressOvers")
+    if press_overs is not None and press_overs not in (1, 2, 4, 8, 16, 32):
+        findings.append(f"BMP3XX PressOvers={press_overs!r} outside valid schema range{context} - possible torn/corrupted config read")
+    resolution = body.get("ISL29125", {}).get("Resolution")
+    if resolution is not None and resolution not in (12, 16):
+        findings.append(f"ISL29125 Resolution={resolution!r} outside valid schema range{context} - possible torn/corrupted config read")
+    # SGP40's own real DATA field, not a config field like the three above - closes a real gap
+    # (BUS_HAZARD_TEST_GENERATION_REQUIREMENTS.md): every other real occupant of dev's own i2c1 was
+    # schema-checked here, but a torn/corrupted SGP40 VOC reading under bench load went undetected.
+    voc = body.get("SGP40", {}).get("VOC")
+    if voc is not None and not (VOC_MIN <= voc <= VOC_MAX):
+        findings.append(f"SGP40 VOC={voc!r} outside valid schema range{context} - possible torn/corrupted data read")
+    return findings
 
 
 def test_concurrent_get_sensors_under_real_multi_client_load_never_corrupts_or_crashes(board: Board, dut_ip: str) -> None:
@@ -46,15 +70,8 @@ def test_concurrent_get_sensors_under_real_multi_client_load_never_corrupts_or_c
             if res.status_code != 200:
                 _record(f"worker {worker_id} iter {i}: GET /sensors returned {res.status_code}: {res.body!r}")
                 continue
-            body = res.json()
-            scd30 = body.get("SCD30", {})
-            bmp = body.get("BMP3XX", {})
-            meas_int = scd30.get("MeasInt")
-            if meas_int is not None and not (2 <= meas_int <= 1800):
-                _record(f"worker {worker_id} iter {i}: SCD30 MeasInt={meas_int!r} outside valid schema range - possible torn/corrupted config read")
-            press_overs = bmp.get("PressOvers")
-            if press_overs is not None and press_overs not in (1, 2, 4, 8, 16, 32):
-                _record(f"worker {worker_id} iter {i}: BMP3XX PressOvers={press_overs!r} outside valid schema range - possible torn/corrupted config read")
+            for finding in _schema_sanity_findings(res.json(), ""):
+                _record(f"worker {worker_id} iter {i}: {finding}")
 
     def sgp40_reset_trigger_worker() -> None:
         for i in range(_PUT_RESET_COUNT):
@@ -86,10 +103,10 @@ def test_concurrent_get_sensors_under_real_multi_client_load_never_corrupts_or_c
         description="webserver serving normally again after the concurrent bus-load test",
     )
 
-    # The whole system must have stayed genuinely healthy, not just "no thread hung" - SCD30/BMP3XX
-    # (whose reads this test drove directly), SGP40 (whose reset it triggered), and FRAM (which
-    # every one of those sensors' own error-log writes lands on) must all report nothing wrong.
-    for module in ("SCD30", "BMP3XX", "SGP40", "FRAM"):
+    # The whole system must have stayed genuinely healthy, not just "no thread hung" - SCD30/BMP3XX/
+    # ISL29125 (whose reads this test drove directly), SGP40 (whose reset it triggered), and FRAM
+    # (which every one of those sensors' own error-log writes lands on) must all report nothing wrong.
+    for module in ("SCD30", "BMP3XX", "SGP40", "ISL29125", "FRAM"):
         assert_module_error_log_empty(dut_ip, module)
 
     # Final sanity: the real system is still serving plausible measurements after the load, not
@@ -133,15 +150,8 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_light_netw
                 continue
             if res.status_code != 200:
                 continue
-            body = res.json()
-            scd30 = body.get("SCD30", {})
-            bmp = body.get("BMP3XX", {})
-            meas_int = scd30.get("MeasInt")
-            if meas_int is not None and not (2 <= meas_int <= 1800):
-                _record(f"worker {worker_id} iter {i}: SCD30 MeasInt={meas_int!r} outside valid schema range under degraded network - possible torn/corrupted config read")
-            press_overs = bmp.get("PressOvers")
-            if press_overs is not None and press_overs not in (1, 2, 4, 8, 16, 32):
-                _record(f"worker {worker_id} iter {i}: BMP3XX PressOvers={press_overs!r} outside valid schema range under degraded network - possible torn/corrupted config read")
+            for finding in _schema_sanity_findings(res.json(), " under degraded network"):
+                _record(f"worker {worker_id} iter {i}: {finding}")
 
     def sgp40_reset_trigger_worker() -> None:
         for i in range(_PUT_RESET_COUNT):
@@ -176,7 +186,7 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_light_netw
         poll_interval_s=2.0,
         description="webserver serving normally again after concurrent bus load + degraded network",
     )
-    for module in ("SCD30", "BMP3XX", "SGP40", "FRAM"):
+    for module in ("SCD30", "BMP3XX", "SGP40", "ISL29125", "FRAM"):
         assert_module_error_log_empty(dut_ip, module)
     reset_all_error_logs(dut_ip)
 
@@ -219,15 +229,8 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_tra
                 continue
             if res.status_code != 200:
                 continue
-            body = res.json()
-            scd30 = body.get("SCD30", {})
-            bmp = body.get("BMP3XX", {})
-            meas_int = scd30.get("MeasInt")
-            if meas_int is not None and not (2 <= meas_int <= 1800):
-                _record(f"worker {worker_id} iter {i}: SCD30 MeasInt={meas_int!r} outside valid schema range during NTP outage - possible torn/corrupted config read")
-            press_overs = bmp.get("PressOvers")
-            if press_overs is not None and press_overs not in (1, 2, 4, 8, 16, 32):
-                _record(f"worker {worker_id} iter {i}: BMP3XX PressOvers={press_overs!r} outside valid schema range during NTP outage - possible torn/corrupted config read")
+            for finding in _schema_sanity_findings(res.json(), " during NTP outage"):
+                _record(f"worker {worker_id} iter {i}: {finding}")
 
     def sgp40_reset_trigger_worker() -> None:
         for i in range(_PUT_RESET_COUNT):
@@ -264,7 +267,7 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_tra
     # NTP must resync via its own retry timer (well inside 15s _NTP_RETRY_INTERV), no hard_reset()
     # anywhere - same bar the standalone test holds, now proven concurrently with real bus load.
     wait_until(_synced, timeout_s=20.0, poll_interval_s=1.0, description="NTP resynced via its own retry timer after a transient outage, concurrent with real bus load")
-    for module in ("SCD30", "BMP3XX", "SGP40", "FRAM"):
+    for module in ("SCD30", "BMP3XX", "SGP40", "ISL29125", "FRAM"):
         assert_module_error_log_empty(dut_ip, module)
     reset_all_error_logs(dut_ip)
 
@@ -295,15 +298,8 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_repeated_r
                 continue
             if res.status_code != 200:
                 continue
-            body = res.json()
-            scd30 = body.get("SCD30", {})
-            bmp = body.get("BMP3XX", {})
-            meas_int = scd30.get("MeasInt")
-            if meas_int is not None and not (2 <= meas_int <= 1800):
-                _record(f"worker {worker_id} iter {i}: SCD30 MeasInt={meas_int!r} outside valid schema range during WiFi flapping - possible torn/corrupted config read")
-            press_overs = bmp.get("PressOvers")
-            if press_overs is not None and press_overs not in (1, 2, 4, 8, 16, 32):
-                _record(f"worker {worker_id} iter {i}: BMP3XX PressOvers={press_overs!r} outside valid schema range during WiFi flapping - possible torn/corrupted config read")
+            for finding in _schema_sanity_findings(res.json(), " during WiFi flapping"):
+                _record(f"worker {worker_id} iter {i}: {finding}")
 
     def sgp40_reset_trigger_worker() -> None:
         for i in range(_PUT_RESET_COUNT):
@@ -355,6 +351,187 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_repeated_r
         print("RESULT NOTE: recovered via a fallback hard_reset() after the flapping+bus-load compound")
 
     if not recovered_via_hard_reset:
-        for module in ("SCD30", "BMP3XX", "SGP40", "FRAM"):
+        for module in ("SCD30", "BMP3XX", "SGP40", "ISL29125", "FRAM"):
             assert_module_error_log_empty(dut_ip, module)
     reset_all_error_logs(dut_ip)
+
+
+# ---------------------------------------------------------------------------
+# Flash-tier parity (project owner's standing direction: flash-tier bus-hazard coverage is always a
+# subset of bench-tier coverage - whatever gets added to tests_hardware/flash/test_bus_concurrency.py
+# gets a bench-tier counterpart here too, driven through the real HTTP/REST stack instead of the bare
+# driver). Real-hardware, API-load counterpart to
+# tests_hardware/flash/test_bus_concurrency.py::test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads
+# (itself the real-hardware counterpart to tests/_bus_hazard_catalog.py's own
+# scenario_a_write_does_not_disturb_concurrent_sibling_reads).
+# ---------------------------------------------------------------------------
+
+_ISL29125_RESOLUTIONS = (12, 16)  # the only two real, valid settings (asy_isl29125_driver.py's own _RESOLUTIONS)
+_ISL29125_WRITE_CYCLES = 4  # modest relative to flash tier's 8 - each cycle here is a real HTTP round trip, not a bare I2C write
+
+
+def test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads_under_api_load(board: Board, dut_ip: str) -> None:
+    reset_all_error_logs(dut_ip)
+    get_before = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=10.0)
+    assert get_before.status_code == 200, f"GET /sensors failed: {get_before.status_code} {get_before.body!r}"
+    original_resolution = get_before.json()["ISL29125"]["Resolution"]
+
+    errors: list[str] = []
+    errors_lock = threading.Lock()
+
+    def _record(msg: str) -> None:
+        with errors_lock:
+            errors.append(msg)
+
+    def get_sensors_worker(worker_id: int) -> None:
+        for i in range(_GET_ITERATIONS_PER_WORKER):
+            try:
+                res = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=15.0)
+            except Exception as e:
+                _record(f"worker {worker_id} iter {i}: {type(e).__name__}: {e}")
+                continue
+            if res.status_code != 200:
+                _record(f"worker {worker_id} iter {i}: GET /sensors returned {res.status_code}: {res.body!r}")
+                continue
+            for finding in _schema_sanity_findings(res.json(), ""):
+                _record(f"worker {worker_id} iter {i}: {finding}")
+
+    def isl29125_write_worker() -> None:
+        # Systematically alternates between both real, valid settings - a real config WRITE landing
+        # concurrently with the GET workers' own reads, repeated several times over the run so
+        # genuine HTTP/scheduling jitter puts each write at a different real relative timing against
+        # the readers (the tier-appropriate substitute for the mock tier's own explicit
+        # asyncio.sleep(0)-count offset sweep - see tests_hardware/README.md's own account of why).
+        for i in range(_ISL29125_WRITE_CYCLES):
+            value = _ISL29125_RESOLUTIONS[i % 2]
+            try:
+                res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"ISL29125": {"Resolution": value}}, timeout_s=15.0)
+            except Exception as e:
+                _record(f"isl29125 write {i}: {type(e).__name__}: {e}")
+                continue
+            if res.status_code != 200 or res.json().get("result", {}).get("ISL29125", {}).get("Resolution") != "Valid":
+                _record(f"isl29125 write {i}: PUT /sensors Resolution={value} rejected: {res.status_code} {res.body!r}")
+
+    threads = [threading.Thread(target=get_sensors_worker, args=(w,)) for w in range(_GET_WORKERS)]
+    threads.append(threading.Thread(target=isl29125_write_worker))
+    try:
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=120.0)
+            assert not t.is_alive(), "a worker thread never finished within 120s - possible real deadlock under concurrent load"
+        assert not errors, f"{len(errors)} issue(s) under concurrent API load: {'; '.join(errors[:10])}"
+    finally:
+        # Restore the board's original config regardless of outcome - same "shared bench rig" duty
+        # test_sensor_config_push_over_real_hardware.py's own BMP3xx push test already owes.
+        restore_res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"ISL29125": {"Resolution": original_resolution}}, timeout_s=10.0)
+        assert restore_res.status_code == 200 and restore_res.json()["result"]["ISL29125"].get("Resolution") == "Valid", f"failed to restore original ISL29125 Resolution={original_resolution!r}: {restore_res.status_code} {restore_res.body!r}"
+
+    wait_until(
+        lambda: http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200,
+        timeout_s=30.0,
+        poll_interval_s=2.0,
+        description="webserver serving normally again after the ISL29125-write-vs-siblings load test",
+    )
+    for module in ("SCD30", "BMP3XX", "SGP40", "ISL29125", "CFGMGR_ISL29125", "FRAM"):
+        assert_module_error_log_empty(dut_ip, module)
+    reset_all_error_logs(dut_ip)
+
+
+# SCD30 has NO bench-tier (or any REST-layer) counterpart for the write-vs-siblings hazard, and this
+# is a structural absence, not a scope gap: asy_scd30_driver.py registers zero _push_callbacks (see
+# test_sensor_config_push_over_real_hardware.py's own identical note), so there is no PUT /sensors
+# field that could ever reach SCD30's own NVM write at all - the flash tier's own
+# bus_concurrency_scd30_write_vs_siblings.py (gated behind --allow-scd30-writes) is therefore the
+# ONLY real-hardware coverage this specific hazard can ever have, by construction of src/ itself.
+# The identical reasoning applies to SCD30's own SAME-device write-vs-own-read hazard too (flash
+# tier's bus_concurrency_same_device_scd30.py) - no REST field reaches it either, so that one has no
+# bench-tier counterpart for the same structural reason, not a second, separate gap.
+
+
+# ---------------------------------------------------------------------------
+# Real-hardware counterpart to tests_hardware/flash/test_bus_concurrency.py::
+# test_bmp3xx_same_device_read_write_concurrency, driven through the real HTTP/REST stack (flash-tier
+# bus-hazard coverage is always a subset of bench-tier coverage - SPECIFICATION.md Part C.8/E.6.6).
+# ---------------------------------------------------------------------------
+
+_BMP3XX_OVERSAMPLING_SETTINGS = (1, 2)  # cycled - both real, valid settings (asy_bmp3xx_driver.py's own _OSR_SETTINGS)
+
+
+def test_bmp3xx_config_write_does_not_disturb_its_own_concurrent_reads_under_api_load(board: Board, dut_ip: str) -> None:
+    reset_all_error_logs(dut_ip)
+    get_before = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=10.0)
+    assert get_before.status_code == 200, f"GET /sensors failed: {get_before.status_code} {get_before.body!r}"
+    original_press_overs = get_before.json()["BMP3XX"]["PressOvers"]
+
+    errors: list[str] = []
+    errors_lock = threading.Lock()
+
+    def _record(msg: str) -> None:
+        with errors_lock:
+            errors.append(msg)
+
+    def get_sensors_worker(worker_id: int) -> None:
+        for i in range(_GET_ITERATIONS_PER_WORKER):
+            try:
+                res = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=15.0)
+            except Exception as e:
+                _record(f"worker {worker_id} iter {i}: {type(e).__name__}: {e}")
+                continue
+            if res.status_code != 200:
+                _record(f"worker {worker_id} iter {i}: GET /sensors returned {res.status_code}: {res.body!r}")
+                continue
+            for finding in _schema_sanity_findings(res.json(), ""):
+                _record(f"worker {worker_id} iter {i}: {finding}")
+
+    def bmp3xx_write_worker() -> None:
+        # Same varied-offset spirit as the ISL29125 writer above, scaled to BMP3xx's own two-value
+        # discrete setting - alternates repeatedly so genuine HTTP/scheduling jitter puts each write
+        # at a different real relative timing against this SAME sensor's own concurrent GET reads
+        # (a same-device hazard, unlike the ISL29125 test's cross-occupant one).
+        for i in range(_ISL29125_WRITE_CYCLES):
+            value = _BMP3XX_OVERSAMPLING_SETTINGS[i % 2]
+            try:
+                res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"BMP3XX": {"PressOvers": value}}, timeout_s=15.0)
+            except Exception as e:
+                _record(f"bmp3xx write {i}: {type(e).__name__}: {e}")
+                continue
+            if res.status_code != 200 or res.json().get("result", {}).get("BMP3XX", {}).get("PressOvers") != "Valid":
+                _record(f"bmp3xx write {i}: PUT /sensors PressOvers={value} rejected: {res.status_code} {res.body!r}")
+
+    threads = [threading.Thread(target=get_sensors_worker, args=(w,)) for w in range(_GET_WORKERS)]
+    threads.append(threading.Thread(target=bmp3xx_write_worker))
+    try:
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=120.0)
+            assert not t.is_alive(), "a worker thread never finished within 120s - possible real deadlock under concurrent load"
+        assert not errors, f"{len(errors)} issue(s) under concurrent API load: {'; '.join(errors[:10])}"
+    finally:
+        restore_res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"BMP3XX": {"PressOvers": original_press_overs}}, timeout_s=10.0)
+        assert restore_res.status_code == 200 and restore_res.json()["result"]["BMP3XX"].get("PressOvers") == "Valid", f"failed to restore original BMP3XX PressOvers={original_press_overs!r}: {restore_res.status_code} {restore_res.body!r}"
+
+    wait_until(
+        lambda: http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200,
+        timeout_s=30.0,
+        poll_interval_s=2.0,
+        description="webserver serving normally again after the BMP3xx same-device load test",
+    )
+    for module in ("SCD30", "BMP3XX", "CFGMGR_BMP3XX", "SGP40", "ISL29125", "FRAM"):
+        assert_module_error_log_empty(dut_ip, module)
+    reset_all_error_logs(dut_ip)
+
+
+# SGP40's general-call hazard (flash tier: sgp40_general_call_reset_hazard.py) has NO real bench-tier
+# coverage, and this is a structural absence found auditing this file against that one, not a scope
+# gap left unclosed: the real I2C general-call broadcast only fires from SGP40_I2C._reset(), which is
+# only ever called from initialize() - itself only invoked internally at driver setup/task-supervisor
+# restart, never exposed through any _push_callbacks/REST field. PUT /sensors {"SGP40":
+# {"SGPResetVOC": true}} (this file's own sgp40_reset_trigger_worker(), used by four tests above) does
+# NOT reach it - confirmed directly against source: reset_voc() only sets a flag consumed by the next
+# measure_index_and_raw(reset=True) call, which calls vocalgorithm_reset() (a software-only VOC
+# algorithm reset), never _reset(). There is currently no REST-reachable way to force a real SGP40
+# general-call broadcast on a live, already-running system at all, so no bench-tier test can exercise
+# this hazard without a real reboot mid-load (which would confound the very load being tested) -
+# recorded here explicitly rather than left implied by the superficially-similar-looking worker above.

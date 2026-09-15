@@ -65,6 +65,32 @@ constraints.
   running the C side exists and can be connected to the dev board, so the reconciliation session can
   test the two implementations against each other for real rather than only reading them side by
   side.
+- **A full test-suite scan for tier/layering-completeness and superficially-passing-but-wrong-hazard
+  gaps is HIGH PRIORITY, not a nice-to-have (project owner, 2026-09-15).** The bus-hazard work
+  (BUS_HAZARD_TEST_GENERATION_REQUIREMENTS.md, now largely reconciled into SPECIFICATION.md Part
+  C.8/E.6.6) only ever audited its own one domain, and even there, checking systematically (not just
+  spot-checking) found a real, non-obvious miscoverage: `tests_hardware/bench/
+  test_bus_concurrency_under_api_load.py`'s `sgp40_reset_trigger_worker()` looks like it exercises
+  SGP40's real I2C general-call broadcast hazard (it PUTs a field named `SGPResetVOC`, concurrently
+  with GET load, the exact shape a general-call-vs-siblings test should take) but does not — read the
+  real call chain directly: that field only reaches a software-only `vocalgorithm_reset()`, never
+  `SGP40_I2C._reset()` (the real broadcast), which has no REST trigger on a live system at all. This
+  test passed the whole time, for the wrong reason - it just never actually raced anything against
+  the hazard it looked like it was named for. **Two things need a full sweep, not just bus-hazard's
+  own corner**: (1) **tier/layering completeness** — SPECIFICATION.md Part E.6.6 (every mock/twin
+  test exercising real-hardware-facing behavior needs a real-hardware equivalent, wherever
+  technically possible) and Part E.6.1's `bench ⊇ flash` (whatever a flash-tier test proves, a
+  bench-tier test proves too, driven through the real REST/HTTP stack) are both now anchored as
+  general rules, but were only ever checked against bus-hazard tests specifically — no one has swept
+  the rest of `tests_hardware/flash/`↔`tests_hardware/bench/` pairs, or the rest of `tests/`↔
+  `tests_hardware/` mock/twin-to-real-hardware pairs, against either rule yet; (2) **the SGP40 shape
+  itself, generalized**: any test whose worker/trigger *name* or *superficial pattern* matches a
+  hazard, but whose real call chain was never actually traced end-to-end to confirm it reaches the
+  code path the test is named for. This is a distinct failure mode from a missing test — a present,
+  green, wrongly-trusted one — and the only way it was caught here was reading `asy_sgp40_driver.py`'s
+  actual `_push_callbacks`/`reset_voc()`/`measure_index_and_raw()` chain line by line rather than
+  trusting the field name. A dedicated future session should scan the whole suite for both at once,
+  not treat this as closed just because the one instance found so far is fixed/documented.
 
 ## Open questions (need owner input or further investigation)
 
@@ -689,9 +715,14 @@ constraints.
   `improved-quality/sensortask-wozi.py` is deleted, but `buildgen/codegen.py` itself still generates
   a call to it by the current name, so this remains a real (if small) call-site update.
 - **`asy_i2c_driver.py`'s `get_bits`/`set_bits`/`get_register_struct` still call the allocating
-  `readfrom_mem()` rather than zero-copy `readfrom_mem_into()`** — no real caller needs the
-  zero-copy path yet, but worth doing before `asy_isl29125_driver.py` (its one plausible future
-  caller) is migrated.
+  `readfrom_mem()` rather than zero-copy `readfrom_mem_into()`** — this was flagged as worth doing
+  before `asy_isl29125_driver.py` was migrated, and that migration has now happened without it.
+  **Still not done, deliberately, and worth a decision rather than silent carry-over**: the ISL's
+  own hot path is one `get_register_struct(_REGISTER_DATA, "6s")` per read cycle — a 6-byte
+  allocation at the configured sample interval, nowhere near the fixed-size-buffer bar
+  SPECIFICATION.md Part I reserves the zero-copy treatment for. The cost of doing it is a changed
+  signature on three shared methods every existing driver calls. Left as the same low-priority item
+  it was, no longer blocked on anything.
 - **`asy_scd30_driver.py`'s persistent NVM setters have no published write-cycle endurance figure**
   (checked every available Sensirion doc) — safe today only because every setter is REST-triggered,
   never called from a boot path or periodic loop. Don't add a periodic/high-frequency caller

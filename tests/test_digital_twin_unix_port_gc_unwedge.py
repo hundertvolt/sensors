@@ -20,10 +20,13 @@ from unix_port_gc_unwedge import unwedge_heap_after_interrupt
 # is locked" MemoryError - but it sets a different field, and the two need opposite recoveries
 # (confirmed directly: gc.collect() clears the stuck collect flag but not heap_lock()'s depth
 # counter; heap_unlock() does the reverse). Testing against heap_lock() would therefore assert the
-# wrong contract. The real recovery is proven by out-of-process reproduction instead - see
-# SPECIFICATION.md Part F.6 - and by the digital-twin CI suite's own eleven interrupt-driven
-# shutdowns per device. What is checkable here is that it is safe on the healthy path it runs on
-# every time.
+# wrong contract. What is checkable here is that it is safe on the healthy path it runs on every
+# time. The original real reproduction (out-of-process, plus the digital-twin CI suite's own
+# interrupt-driven shutdowns) is historical now, not a standing validation path: SPECIFICATION.md
+# Part F.6's amendment - toolchain/micropython_overrides.py's unix_kbd_intr override (Part B.14.1)
+# closed the root SIGINT-safety gap this whole module works around, so those shutdowns can no
+# longer actually reach the wedged-heap state at all. unwedge_heap_after_interrupt() stays wired
+# in as defense in depth only; these two tests are what is left checkable about it going forward.
 
 
 def test_unwedge_is_a_harmless_no_op_on_an_unlocked_heap() -> None:

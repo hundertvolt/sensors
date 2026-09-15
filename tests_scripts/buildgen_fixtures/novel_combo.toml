@@ -104,6 +104,16 @@ address = 0x76
 [instance.wiring]
 fram_target = "fram"
 
+# ISL29125 on i2c0 (dev.toml wires it on i2c1) with an irq_pin/trigger_sec combo no real device
+# uses, and deliberately no [instance.wiring] - dev.toml's own instance always wires fram_target,
+# so this fixture is what exercises the "no fram_target" branch of _build_args_isl29125.
+[[instance]]
+driver = "isl29125"
+name_ext = ""
+bus = "i2c0"
+irq_pin = 3
+trigger_sec = 5
+
 [[instance]]
 driver = "fram"
 bus = "spi0"

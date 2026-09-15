@@ -18,6 +18,7 @@ if TYPE_CHECKING:
 class Pin:
     IN = 0
     OUT = 1
+    PULL_UP = 2
     # Real rp2 values (confirmed against ports/rp2/machine_pin.c: IRQ_RISING maps to the pico-sdk's
     # GPIO_IRQ_EDGE_RISE=0x08, IRQ_FALLING to GPIO_IRQ_EDGE_FALL=0x04) - asy_scd30_driver.py only
     # ever passes these back opaquely to irq(), but matching the real bit values costs nothing.
@@ -121,6 +122,11 @@ class I2C:
         self.log = _CallLog()
         self.registers: dict[tuple[int, int], bytearray] = {}  # a real round trip through readfrom_mem/writeto_mem
         self.read_queue: list[bytes] = []  # its raw-transaction counterpart: readfrom_into() has no register to key off
+        self.read_queue_by_address: dict[int, list[bytes]] = {}  # opt-in per-address queue, checked
+        # before the shared one above - needed the first time two raw-word-protocol devices (no
+        # register to key off) were driven concurrently on one shared bus (dev's real i2c1
+        # SCD30+SGP40), which would otherwise each pop whichever reply was next regardless of who
+        # asked. Empty by default: every existing caller of the shared queue is unaffected.
         self.nak_addresses: set[int] = set()  # convenience: EIO (no ACK) on every op to this address
         self.busy = False  # convenience: ETIMEDOUT (bus/clock-stretch timeout) on every op, any address
         self._faults: dict[str, list[Exception]] = {}  # op name -> FIFO queue, one exception per matching call
@@ -158,13 +164,14 @@ class I2C:
             raise queue.pop(0)
         return sorted({addr for addr, _ in self.registers} - self.nak_addresses)
 
-    def _next_read_bytes(self, nbytes: int) -> bytes:
-        data = self.read_queue.pop(0) if self.read_queue else b""
+    def _next_read_bytes(self, address: int, nbytes: int) -> bytes:
+        per_address = self.read_queue_by_address.get(address)
+        data = per_address.pop(0) if per_address else (self.read_queue.pop(0) if self.read_queue else b"")
         return (data + bytes(nbytes))[:nbytes]  # always exactly nbytes, zero-padded/truncated like real hw
 
     def readfrom_into(self, address: int, buf: object, stop: bool = True) -> None:
         self._maybe_raise("readfrom_into", address)
-        data = self._next_read_bytes(len(buf))  # type: ignore[arg-type]
+        data = self._next_read_bytes(address, len(buf))  # type: ignore[arg-type]
         buf[:] = data  # type: ignore[index]
         self.log.append(("readfrom_into", address, data, stop))
 

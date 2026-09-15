@@ -427,6 +427,11 @@ max-returns = 12
 "tests/test_notification_scd30_sgp40_integration.py" = ["ANN401"]
 "tests/test_notification_sgp40_integration.py" = ["ANN401"]
 "tests/test_setter_microdot_integration.py" = ["ANN401"]
+# ANN401, category 5 (same reasoning, one more driver-agnostic fan-in seam): I2CHazardAdapter's own
+# construct()/read_once()/exercise()/write_once()/general_call() callables each take one real
+# driver instance (SCD30_I2C/SGP40_I2C/ISL29125_I2C/...), and no single element type satisfies every
+# one of them - that genericness across the whole I2C_HAZARD_CATALOG registry is this module's point.
+"tests/_bus_hazard_catalog.py" = ["ANN401"]
 # ANN401, category 6 - a dynamically `__import__()`ed module object (run_generic_integration.py's
 # own `--module` flag) has no static type at all - that genericness is this file's whole point, so
 # there is no fixed shape (`types.ModuleType` would type-check but reject every `.i2c0`/`.conn`/

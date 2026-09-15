@@ -4,7 +4,7 @@
         "SGP40": { "VOC": 95, "Raw": 28850, "TS": 1755000000 },
         "SHTC3": { "Temp": 23.3, "Hum": 39.1, "WetBulb": 15.8, "DewPoint": 8.4, "TS": 1755000000 },
         "MPRLS": { "Pres": 1002.9, "TS": 1755000000 },
-        "ISL29125": { "Red": 1840, "Green": 2210, "Blue": 990, "TS": 1755000000 }
+        "ISL29125": { "Lux": 245.3, "RGB": { "R": 0.184, "G": 0.221, "B": 0.099 }, "HSB": { "H": 217.4, "S": 0.552, "B": 0.221 }, "CCT": 5200, "RangeAct": 10000, "GainMeas": null, "TS": 1755000000 }
     },
     "sensorsConfig": {
         "SCD30": { "MeasInt": 10, "TempOffs": 1.5, "AmbPres": 950, "Altitude": 0, "ForceCalRef": 400, "SelfCal": false },
@@ -12,9 +12,9 @@
         "SHTC3": { "SampleInterv": 10, "TempOffset": 0.0, "FiltCoeff": 0.2 },
         "MPRLS": { "SampleInterv": 10, "PressOffset": 0.0, "FiltCoeff": -1.0 },
         "ISL29125": {
-            "SampleInterv": 5, "OperationMode": 5, "SensingRange": 1, "AdcResolution": 0,
-            "IrCompensation": -1, "InterruptAssignment": 0, "InterruptHighThres": 0,
-            "InterruptLowThres": 0, "InterruptAutoClear": -1, "PersistentControl": 0
+            "SampleInterv": 1, "Resolution": 16, "RangeAuto": true, "Range": 10000,
+            "AutoRangeThresh": 85.0, "AutoRangeDwell": 10.0, "IrCompOffset": 0, "IrCompAdjust": 40,
+            "FiltCoeff": -1.0, "GainRatio": 26.667
         }
     },
     "networkingConfig": {
