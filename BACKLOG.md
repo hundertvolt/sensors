@@ -143,58 +143,19 @@ constraints.
   first). Re-running this sweep against other domains (it did not touch e.g. sensortask/system_service
   integration beyond what FRAM/memory covered) is future work, not assumed done everywhere.
 
-- **`isl29125_lighting_scenarios.py`'s `hysteresis_band_dwell_no_chatter` scenario is the only one
-  of its ten with no dark pre-roll, so it inherits the HIGH range from the preceding baseline and
-  counts the driver's own correct switch back DOWN as forbidden chatter. A test defect, not a driver
-  one — root-caused on real hardware, deliberately not fixed here (see the last paragraph).** Fails
-  3 of 3 runs, always with exactly 1 range switch where 0 is required; the other nine scenarios pass,
-  including the complementary `threshold_oscillation_crossing` (needs ≥4 switches, reliably gets 6).
+- **`isl29125_lighting_scenarios.py`'s `W13` dead-interrupt warning fired in 2 of 4 runs before the
+  entry-park fix and in 0 of 3 after it — plausibly explained, not proven.** The warning needs five
+  *consecutive* range decisions taken by the periodic safety net with no threshold interrupt behind
+  them. The pre-fix runs had three scenarios entering on an inherited wrong range, each of which
+  forced an unplanned corrective down-switch — a decision no threshold crossing ever announced,
+  because the light had not actually crossed one, so exactly the kind that feeds that counter. That
+  would explain both the firing and its disappearance, but three clean runs is thin evidence for an
+  intermittent, and the mechanism was never confirmed against the driver's own decision path.
+  Worth one dedicated look: if it is right, nothing is wrong; if W13 returns on a green-entry run,
+  it is a real signal about the INT path that the passing
+  `test_isl29125_real_irq_edge_beats_the_periodic_fallback` does not cover, since that one proves a
+  single edge arrives, not that edges keep carrying decisions under sustained range activity.
 
-  **The rig was cleared first.** A fixed-level probe mirroring the script's own reader setup
-  (same seeded config, same `AutoRangeDwell=0.0`) showed the bench is not the problem and nothing
-  else steers the NeoPixel: ambient with the pixel dark is **1.0 lx, spread 0.0**, and six held
-  repetitions each of level 3 and level 6 gave 101.3–103.0 lx (mean 102.2) and 187.0–189.4 lx
-  (mean 188.3) — about ±1.5%, on the low range, with **zero** range switches. So held statically,
-  the scenario's own levels really are inside the band, and no commanded level in it can exceed
-  ~188 lx. The failing runs reported peaks of 217.0 / 710.9 / 360.0 lx, which therefore cannot be
-  real light.
-
-  **What actually happens**, traced sample by sample:
-
-  | entry condition | range | level 5 reads |
-  |---|---|---|
-  | baseline at `_BASELINE_LEVEL=20` (runs before every scenario) | 10000 (high), ~717 lx | — |
-  | straight to level 5, no dark pre-roll (this scenario) | **stays 10000** | 179.6 lx |
-  | dark pre-roll first, then level 5 (every other scenario) | drops to 375 (low) | 159.6 lx |
-
-  The scenario runs its whole level 3–6 program on the high range, where readings sit ~12.5% high —
-  the documented step an uncalibrated `GainRatio` produces ("nominally 26.667; every real part
-  differs, and the error shows as a step at each range change", `asy_isl29125_driver.py`'s own
-  `@web` schema line; the isolated script always seeds schema defaults, so it never runs calibrated).
-  Stepping down toward level 3 eventually crosses the down-switch threshold and the driver correctly
-  switches to the low range — the one switch the scenario forbids. The inflated peaks are stale
-  high-range samples, not light: run 2's 710.9 lx is the preceding baseline's own ~717 lx landing in
-  the scenario's first sample.
-
-  This is exactly the trap the file's own author documented on `sunrise_white_slow` — "the dark
-  pre-roll makes the starting range deterministic: without it the scenario inherits the high range
-  from the preceding baseline and the low range is never touched - which is how the first version of
-  this file passed while proving nothing" — and it is the one scenario that never got one.
-
-  **Why it is not fixed here**: simply adding `("hold", dark, dark, sh)` to its segment list does
-  not work, because the pre-roll's own high→low switch is itself counted, and this scenario's whole
-  point is `max_switches=0`. The range has to be normalised *before* counting starts, which means a
-  change to `_run_scenario()`/`reset_scenario()` that alters what every other scenario counts too —
-  an ISL29125-owner decision about the file's own measurement contract, not a drive-by edit.
-  **The driver is correct throughout**; the range-decision logic was also untouched by the
-  shadow-divergence fix (`_evaluate_range()`, `_down_thresh()`, `_switch_range()` unchanged), so
-  this is not a regression from it.
-  **Second, intermittent finding from the same runs, still open**: one run of three logged `W13`
-  ("Range decided by the periodic path only - the interrupt may be dead") against
-  `bulb_fast_on_off`. The dedicated INT-line test
-  (`test_isl29125_real_irq_edge_beats_the_periodic_fallback`) passes, so the line is not dead; this
-  looks like that scenario's fast ramps outrunning the interrupt path, but 1-in-3 is too thin to
-  conclude and it needs its own look.
 - **The SCD30 "write or don't write" decision shall be ONE command-line flag that propagates
   centrally to every potentially-writing test (project owner, 2026-09-15).** Today there are two
   separate, opposite-polarity mechanisms that a reader has to hold in their head at once:

@@ -36,9 +36,12 @@ _SETTLE_S = 4.0
 _MAX_SAMPLE_GAP_S = 8.0  # a longer stall means the read chain died, not that light moved slowly
 _BASELINE_LEVEL = 20
 _BASELINE_TOL = 0.35  # return-to-baseline: same light must read the same after ANY scenario
+_PARK_STABLE_SAMPLES = 3  # consecutive same-range samples that count as "the entry range has settled"
+_PARK_TIMEOUT_S = 20.0
 
 failures: "list[str]" = []
 notes: "list[str]" = []
+w13_seen: "list[str]" = []  # scenarios during which the driver's cross-scenario W13 run-of-five surfaced
 
 
 def check(condition: object, message: str) -> None:
@@ -140,6 +143,31 @@ async def _drive(rig: Rig, segments: "list[tuple[str, tuple[int, int, int], tupl
             rig.write(end)
 
 
+async def _park(rig: Rig, rgb: "tuple[int, int, int]") -> bool:
+    """Forces the entry range before a scenario starts counting; False if it never settled on one.
+
+    Deliberately NOT rig.observe(): a switch caused by getting INTO position is not the scenario's
+    own behaviour and must not land in its switch budget - which is exactly the bug this closes.
+    """
+    rig.write(rgb)
+    last: int | None = None
+    run = 0
+    deadline = time.ticks_add(time.ticks_ms(), int(_PARK_TIMEOUT_S * 1000))
+    last_ts = None
+    while time.ticks_diff(deadline, time.ticks_ms()) > 0:
+        data = await rig.reader.get_data()
+        if data.RangeAct is not None and data.TS is not None and data.TS != last_ts:
+            last_ts = data.TS
+            run = run + 1 if data.RangeAct == last else 1
+            last = data.RangeAct
+            if run >= _PARK_STABLE_SAMPLES:
+                rig.last_ts = data.TS  # observe() skips stale timestamps; don't re-count this one
+                return True
+        rig.wdt.feed()
+        await asyncio.sleep_ms(_SAMPLE_MS)
+    return False
+
+
 async def _settled(rig: Rig, rgb: "tuple[int, int, int]") -> "ISL29125 | None":
     """Parks at one colour, waits out the settle, and returns one fresh sample."""
     rig.write(rgb)
@@ -160,18 +188,27 @@ def _log_entries(counters: "ErrorLog") -> "list[tuple[str, int]]":
     return [(types[i], nums[i]) for i in range(min(len(types), len(nums)))]
 
 
-async def _run_scenario(rig: Rig, spec: "tuple[str, list[tuple[str, tuple[int, int, int], tuple[int, int, int], float]], int, int, bool]") -> None:
-    name, segments, min_switches, max_switches, both_ranges = spec
+async def _run_scenario(rig: Rig, spec: "tuple[str, tuple[int, int, int], list[tuple[str, tuple[int, int, int], tuple[int, int, int], float]], int, int, bool]") -> None:
+    name, entry, segments, min_switches, max_switches, both_ranges = spec
+    # Every scenario starts from a range it CHOSE, never the one _baseline()'s own level-20 light
+    # happened to leave behind. A scenario whose light sits inside the hysteresis band cannot derive
+    # its entry range - either one is stable there, which is what hysteresis means - so it declares
+    # the light that forces the one it wants, and this proves the part actually got there.
+    check(await _park(rig, entry), f"{name}: the entry light {entry} never settled on one range within {_PARK_TIMEOUT_S:.0f}s - the scenario's starting range is undefined")
     rig.reset_scenario(name)
     await rig.reader.reset_error_counter()
     await _drive(rig, segments)
     entries = _log_entries(await rig.reader.get_error_counter())
     errors = [pair for pair in entries if pair[0] == "E"]
     check(not errors, f"{name}: the module logged real ERRORS: {errors}")
-    # W13 is the driver's own dead-interrupt detector: five range decisions in a row made by the
-    # periodic safety net with no preceding threshold interrupt. It only means something once
-    # enough switches have happened for it to be reachable, which _main() checks at the end.
-    check(("W", 13) not in entries, f"{name}: W13 logged - five range decisions running came from the PERIODIC path, so the interrupt is not carrying them")
+    # W13 is the driver's own dead-interrupt detector: five range decisions IN A ROW made by the
+    # periodic safety net. That run of five is driver state (_periodic_only_switches) which no
+    # per-scenario reset touches - reset_error_counter() clears the log, not the counter - so it can
+    # legitimately span scenarios and blaming whichever one it surfaces in would be arbitrary. It is
+    # recorded here and asserted once per RUN in _main(), next to the check that enough switches
+    # happened for it to be reachable at all.
+    if ("W", 13) in entries:
+        w13_seen.append(name)
     check(rig.samples >= 3, f"{name}: only {rig.samples} samples arrived - the read chain stalled")
     check(rig.max_gap_ms <= int(_MAX_SAMPLE_GAP_S * 1000), f"{name}: {rig.max_gap_ms}ms between samples - the read chain stalled mid-scenario")
     check(rig.switches <= max_switches, f"{name}: {rig.switches} range switches (limit {max_switches}) - chattering")
@@ -198,8 +235,11 @@ async def _baseline(rig: Rig, tag: str, reference: "list[float]") -> None:
     check(rel <= _BASELINE_TOL, f"baseline after {tag}: {data.Lux:.2f} lux vs reference {reference[0]:.2f} ({rel * 100:.0f}% off) - the module did not return to a consistent state")
 
 
-def _scenarios() -> "list[tuple[str, list[tuple[str, tuple[int, int, int], tuple[int, int, int], float]], int, int, bool]]":
-    """(name, segments, min_switches, max_switches, must_use_both_ranges).
+def _scenarios() -> "list[tuple[str, tuple[int, int, int], list[tuple[str, tuple[int, int, int], tuple[int, int, int], float]], int, int, bool]]":
+    """(name, entry_light, segments, min_switches, max_switches, must_use_both_ranges).
+
+    entry_light is parked and range-settled BEFORE counting starts, so a scenario's switch budget
+    only ever measures its own light program. Dark forces the low range, full forces the high one.
 
     Levels are chosen against this rig's MEASURED hysteresis band, so only a level <= 1 or >= 8 can
     force a switch; holds that must produce one are >= _SWITCH_HOLD_S, a decision's real latency.
@@ -207,64 +247,64 @@ def _scenarios() -> "list[tuple[str, list[tuple[str, tuple[int, int, int], tuple
     dark, below, inside, full = (0, 0, 0), 1, 5, 255
     lo, hi, sh = _BAND_BELOW, _BAND_ABOVE, _SWITCH_HOLD_S
     return [
-        # Slow, sunrise-like. The dark pre-roll makes the starting range deterministic: without it
-        # the scenario inherits the high range from the preceding baseline and the low range is
-        # never touched - which is how the first version of this file passed while proving nothing.
-        ("sunrise_white_slow", [
-            ("hold", dark, dark, sh), ("ramp", dark, (full, full, full), 55.0),
+        # Slow, sunrise-like. Starting range comes from the declared entry light, not from a dark
+        # pre-roll segment inside the program: an inherited range is how the first version of this
+        # file passed while proving nothing, and _park() now rules that out for every scenario.
+        ("sunrise_white_slow", dark, [
+            ("ramp", dark, (full, full, full), 55.0),
         ], 1, 4, True),
-        ("sunset_white_slow", [
+        ("sunset_white_slow", (full, full, full), [
             ("hold", (full, full, full), (full, full, full), 5.0),
             ("ramp", (full, full, full), dark, 55.0), ("hold", dark, dark, sh),
         ], 1, 4, True),
         # Medium, dimmer-like, non-zero start and end, paused mid-way, warm mixture.
-        ("dimmer_warm_mid", [
-            ("hold", dark, dark, sh), ("ramp", dark, (60, 26, 0), 14.0),
+        ("dimmer_warm_mid", dark, [
+            ("ramp", dark, (60, 26, 0), 14.0),
             ("hold", (60, 26, 0), (60, 26, 0), 5.0), ("ramp", (60, 26, 0), (2, 1, 0), 14.0),
             ("hold", (2, 1, 0), (2, 1, 0), sh), ("ramp", (2, 1, 0), (120, 52, 0), 14.0),
         ], 2, 6, True),
         # Fast, bulb-turn-on-like, with holds long enough at both ends for the decision to land.
-        ("bulb_fast_on_off", [
-            ("hold", dark, dark, sh), ("ramp", dark, (full, full, full), 1.0),
+        ("bulb_fast_on_off", dark, [
+            ("ramp", dark, (full, full, full), 1.0),
             ("hold", (full, full, full), (full, full, full), sh),
             ("ramp", (full, full, full), dark, 1.0), ("hold", dark, dark, sh),
             ("ramp", dark, (30, 30, 30), 1.5), ("hold", (30, 30, 30), (30, 30, 30), 6.0),
         ], 2, 8, True),
         # Instantaneous steps, flash-like, between arbitrary levels and pure colours.
-        ("flash_steps", [
-            ("hold", dark, dark, sh), ("step", dark, (full, full, full), sh),
+        ("flash_steps", dark, [
+            ("step", dark, (full, full, full), sh),
             ("step", dark, (below, below, below), sh), ("step", dark, (full, 0, 0), 6.0),
             ("step", dark, (0, 0, full), 6.0), ("step", dark, (inside, inside, inside), 6.0),
         ], 2, 10, True),
         # Oscillation that genuinely crosses BOTH edges of the band - this is the chatter test.
-        ("threshold_oscillation_crossing", [
+        ("threshold_oscillation_crossing", dark, [
             ("hold", (lo, lo, lo), (lo, lo, lo), sh), ("step", dark, (hi, hi, hi), sh),
             ("step", dark, (lo, lo, lo), sh), ("step", dark, (hi, hi, hi), sh),
             ("step", dark, (lo, lo, lo), sh), ("step", dark, (hi, hi, hi), sh),
         ], 4, 12, True),
         # The complement, and the more important half: light that moves a lot but stays INSIDE the
         # band must produce NO switch at all. This is what hysteresis is for.
-        ("hysteresis_band_dwell_no_chatter", [
+        ("hysteresis_band_dwell_no_chatter", dark, [
             ("hold", (inside, inside, inside), (inside, inside, inside), 6.0),
             ("step", dark, (4, 4, 4), 5.0), ("step", dark, (6, 6, 6), 5.0),
             ("step", dark, (3, 3, 3), 5.0), ("step", dark, (6, 6, 6), 5.0),
             ("ramp", (3, 3, 3), (6, 6, 6), 8.0), ("ramp", (6, 6, 6), (3, 3, 3), 8.0),
         ], 0, 0, False),
         # A constant "ambient" channel with a moving "dynamic" one on top of it.
-        ("ambient_blue_plus_dynamic_red", [
+        ("ambient_blue_plus_dynamic_red", dark, [
             ("hold", (0, 0, 10), (0, 0, 10), 6.0), ("ramp", (0, 0, 10), (150, 0, 10), 18.0),
             ("hold", (150, 0, 10), (150, 0, 10), 6.0), ("ramp", (150, 0, 10), (0, 0, 10), 18.0),
         ], 0, 6, False),
         # Single colours and two-colour mixtures at one commanded level.
-        ("colour_walk_constant_level", [
+        ("colour_walk_constant_level", dark, [
             ("step", dark, (60, 0, 0), 5.0), ("step", dark, (0, 60, 0), 5.0),
             ("step", dark, (0, 0, 60), 5.0), ("step", dark, (60, 60, 0), 5.0),
             ("step", dark, (0, 60, 60), 5.0), ("step", dark, (60, 0, 60), 5.0),
             ("step", dark, (60, 60, 60), 5.0),
         ], 0, 8, False),
         # Mixed mode: every shape, overlapping sub-ranges, never returning to zero mid-scenario.
-        ("mixed_mode_overlapping", [
-            ("hold", dark, dark, sh), ("step", dark, (3, 3, 3), 5.0),
+        ("mixed_mode_overlapping", dark, [
+            ("step", dark, (3, 3, 3), 5.0),
             ("ramp", (3, 3, 3), (25, 10, 40), 10.0), ("hold", (25, 10, 40), (25, 10, 40), 5.0),
             ("step", dark, (200, 200, 60), 6.0), ("ramp", (200, 200, 60), (8, 30, 8), 12.0),
             ("hold", (8, 30, 8), (8, 30, 8), 5.0), ("ramp", (8, 30, 8), (140, 140, 140), 9.0),
@@ -300,10 +340,11 @@ async def _main() -> None:
             await _baseline(rig, spec[0], reference)
         # Collectively the scenarios must have covered a real dynamic range, not one corner of it.
         check(span_hi > span_lo * 100.0, f"the scenario set only spanned {span_lo:.1f}..{span_hi:.1f} lux - the brightness range was not really covered")
-        # Without this the per-scenario W13 checks above prove nothing: the warning needs five
+        # Without this the W13 check below proves nothing: the warning needs five
         # consecutive periodic-only decisions, so a run with four switches in total could not have
         # produced it however dead the interrupt line was.
-        check(rig.total_switches >= 5, f"only {rig.total_switches} range switches across the whole run - too few for the W13 dead-interrupt check above to be able to fire at all")
+        check(rig.total_switches >= 5, f"only {rig.total_switches} range switches across the whole run - too few for the W13 dead-interrupt check below to be able to fire at all")
+        check(not w13_seen, f"W13 logged during {w13_seen} - five range decisions running came from the PERIODIC path, so the interrupt is not carrying them")
         notes.append(f"combined span across every scenario: {span_lo:.1f}..{span_hi:.1f} lux, {rig.total_switches} range switches in total")
     finally:
         pixel[0] = (0, 0, 0)

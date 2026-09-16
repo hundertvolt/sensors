@@ -1827,10 +1827,27 @@ unrelated timing reason rather than because the detector worked.
 
 **What this cost in test terms**: `test_isl29125_survives_recombined_realistic_lighting_scenarios`
 (ported here as `tests_hardware/device_scripts/isl29125_lighting_scenarios.py`, wired into
-`tests_hardware/flash/test_sensor_accuracy.py` 2026-09-15 — real segment durations sum to ~8.5
-minutes, a genuinely long single test, not yet run against silicon) checks the dead-line warning
-per scenario *and* asserts the run made at least five range switches, so the check can actually
-fire.
+`tests_hardware/flash/test_sensor_accuracy.py` 2026-09-15 — ~9.5 minutes against real silicon, a
+genuinely long single test) asserts the dead-line warning never fires *and* that the run made at
+least five range switches, so the check can actually fire. **Both assertions are run-level, not
+per-scenario, and deliberately so**: the driver's `_periodic_only_switches` run-of-five is state no
+per-scenario reset touches (`reset_error_counter()` clears the log, not the counter), so it can span
+scenarios and attributing it to whichever one it surfaced in would be arbitrary.
+
+**Every scenario declares the light it parks at before counting starts** (`_park()`), and the run
+fails if that light does not settle on one range. This is not a convenience: a scenario whose
+program sits inside the hysteresis band cannot *derive* its entry range, because either range is
+stable there — that is what hysteresis means — so the range it starts from is whatever the previous
+step left behind unless it is forced. First real-hardware run (2026-09-16) proved the cost of not
+doing this: three of the ten scenarios had no dark pre-roll, inherited the high range from the
+preceding level-20 baseline, and ran their whole program on it. `hysteresis_band_dwell_no_chatter`
+failed 3 of 3 runs — it counted the driver's own correct switch back down as forbidden chatter, and
+reported peaks of 217/711/360 lux for a program whose brightest commanded level measures ~188 —
+while `ambient_blue_plus_dynamic_red` and `colour_walk_constant_level` passed 0/0 switches without
+ever touching the low range, proving nothing. With the entry park all ten pass, and those two now
+genuinely cross the band. Readings inherited from the wrong range also sit ~12.5% high, the step an
+uncalibrated `GainRatio` produces — the isolated script always seeds schema defaults, so it never
+runs calibrated.
 
 ### C.11.2 ISL29125 reference layer — the prior art, and the traps it closes
 
