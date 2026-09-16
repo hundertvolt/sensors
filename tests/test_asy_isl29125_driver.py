@@ -993,11 +993,27 @@ def test_no_exception_escapes_the_reader_layer() -> None:
             run(reader.set_resolution(12))
         if method in ("read_status", "read_counts"):
             assert results[0] is None, method
+            # Never-raise is only half the contract: a read that fails silently is indistinguishable
+            # from one that succeeded, so it must also SAY so. Without this the reader could swallow
+            # the exception, log nothing, and still satisfy the assertion above.
+            assert errors(run(reader.get_error_counter())), f"{method} failed the read but logged no error at all"
 
 
-# ---------------------------------------------------------------------------
-# Read path and derived outputs - R4-R7, R11
-# ---------------------------------------------------------------------------
+def test_a_failed_read_logs_errno_11_not_just_an_all_none_result() -> None:
+    # The read path's own catch-all. errno 11 is the ONLY number this driver uses at two different
+    # sites (here, and _measure_gain_ratio()'s paired read) - every other promoted driver gives each
+    # site its own, so a test can name which one fired. If that is ever split, this test names the
+    # site it means rather than the number alone.
+    _i2c, reader = ready_reader("read_fail_errno")
+
+    async def boom(*_args: object, **_kwargs: object) -> None:
+        raise OSError(errno_mod.EIO, "injected")
+
+    reader.isl.read_counts = boom  # type: ignore[method-assign]
+    with _FastAsyncSleep():
+        results = run(reader._read_isl())
+    assert results[0] is None
+    assert 11 in errors(run(reader.get_error_counter()))
 
 
 def test_read_returns_a_narrow_results_tuple_without_cct() -> None:
@@ -3087,6 +3103,7 @@ def test_starting_a_calibration_with_false_is_a_no_op() -> None:
 
 def test_a_failed_partner_read_logs_errno_11_and_puts_the_range_back() -> None:
     _i2c, reader = calibrating_reader("cal_read_fails")
+    started_on = reader._active_range
 
     async def _boom() -> "tuple[int, int, int]":
         raise OSError(5)
@@ -3095,7 +3112,12 @@ def test_a_failed_partner_read_logs_errno_11_and_puts_the_range_back() -> None:
     with _FastAsyncSleep():
         run(reader._measure_gain_ratio(2000))
     assert reader._measured_ratio() is None
-    assert (run(reader.get_error_counter()))["ISL29125"]["ErrCount"] >= 1
+    # Both halves of this test's own name, which an ErrCount >= 1 check alone satisfied without
+    # proving either: any errno at all used to pass it, and a regression that skipped the third
+    # sandwich leg - stranding every later sample on the partner range, the exact failure
+    # _measure_gain_ratio()'s own comment calls "far worse than the wasted read" - passed it too.
+    assert 11 in errors(run(reader.get_error_counter()))
+    assert reader._active_range == started_on
 
 
 def test_a_partner_reading_of_zero_is_not_turned_into_a_ratio() -> None:

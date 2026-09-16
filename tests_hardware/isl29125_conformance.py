@@ -12,20 +12,25 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PROBE = REPO_ROOT / "tests_hardware" / "device_scripts" / "isl29125_mock_conformance_probe.py"
 
-# Keys whose value is a function of the actual light falling on the part, not of the protocol. The
-# probe derives a separate yes/no key for every structural property of these, and those ARE
-# compared - so nothing here is simply unchecked, only checked in a light-independent form.
-PHYSICAL_KEYS = frozenset({
-    "B05_green_low_byte_now",
-    "B05_status_burst_2",
-    "C09_read_8_from_0x0d_rollover",
-    "E01_counts_16bit_hi_range",
-    "E02_data_partial_read_from_0x0b",
-    "E03_data_burst_8_past_end",
-    "E04_counts_16bit_lo_range",
-    "E05_counts_12bit_lo_range",
-    "H07_prst4_ms",
-})
+# Keys whose value is a function of the actual light falling on the part, not of the protocol, each
+# mapped to the light-independent key(s) that carry its structural half - or to () when the property
+# is genuinely covered elsewhere instead, which is then named. Excluding a key WITHOUT a stand-in is
+# how a conformance probe goes quietly blind, so tests_scripts/test_isl29125_conformance_keys.py
+# machine-checks this table against what the probe actually emits rather than trusting the comment.
+PHYSICAL_KEYS: dict[str, tuple[str, ...]] = {
+    "B05_green_low_byte_now": ("B06_status_burst_2_second_byte_is_data",),
+    "B05_status_burst_2": ("B06_status_burst_2_second_byte_is_data",),
+    "C09_read_8_from_0x0d_rollover": ("C09_past_end_zeros_not_rollover",),
+    "E02_data_partial_read_from_0x0b": (),  # pointer flatness across the data map: C09/E03's past-end keys
+    "E03_data_burst_8_past_end": ("E03_past_end_zeros",),
+    "E05_counts_12bit_lo_range": ("E06_12bit_within_4095",),
+    "H07_prst4_ms": ("H08_prst4_unit",),
+    # Raw counts at one illumination: no light-independent form exists, and none is invented here.
+    # The hi/lo-range and resolution relationships they would show are proven on real silicon by
+    # test_isl29125_mechanism_envelope_holds_across_range_resolution_and_calibration instead.
+    "E01_counts_16bit_hi_range": (),
+    "E04_counts_16bit_lo_range": (),
+}
 
 _TWIN_ENTRY = """import sys
 sys.path.insert(0, "digital_twin")

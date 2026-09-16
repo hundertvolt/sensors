@@ -1692,6 +1692,18 @@ the two; the flash-tier gate that calls it is
 (wired 2026-09-15 — the porting session above had left this orphaned, per its own note that used to
 stand here). Keys whose value depends on the light falling on the part are excluded **by
 value** and covered by the probe's own derived yes/no keys instead, so nothing is merely unchecked.
+**That last sentence is now machine-checked rather than asserted in prose**, because an audit
+(2026-09-16) found it was not true: `PHYSICAL_KEYS` is a mapping from each excluded key to the
+light-independent key(s) standing in for it, and `tests_scripts/test_isl29125_conformance_keys.py`
+fails if an excluded key names no stand-in, if a named stand-in is not one the probe emits, or if a
+stand-in is itself excluded. The audit's finding was not cosmetic: `C09_read_8_from_0x0d_rollover`
+and `E03_data_burst_8_past_end` — the two keys carrying the past-0x0E behaviour, which is one of the
+five divergences the first silicon run below found — were excluded outright with no stand-in, so the
+probe could not have caught a regression in exactly the property it exists to guard. They now emit
+`C09_past_end_zeros_not_rollover` and `E03_past_end_zeros`, computed from bytes already read. Two
+keys legitimately have no light-independent form (`E01`/`E04`, raw counts at one illumination); the
+table says so explicitly and names the real-hardware test that covers them instead, rather than
+leaving a silent hole.
 
 **What the first real run found (2026-09-12), every item a fake that no test could have caught:**
 

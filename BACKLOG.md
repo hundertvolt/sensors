@@ -156,6 +156,19 @@ constraints.
   `test_isl29125_real_irq_edge_beats_the_periodic_fallback` does not cover, since that one proves a
   single edge arrives, not that edges keep carrying decisions under sustained range activity.
 
+- **`asy_isl29125_driver.py` uses `errno=11` at two unrelated sites — the only promoted driver that
+  reuses an error number at all.** `_read_isl()`'s catch-all ("Read failed") and `_read_on()`'s
+  calibration leg ("Paired gain-ratio reading failed") share it; `asy_scd30_driver.py`,
+  `asy_sgp40_driver.py` and `asy_bmp3xx_driver.py` each give every site its own number (checked
+  mechanically across all four). The consequence is diagnostic, not functional: a FRAM-persisted
+  `E11` in a field log cannot be attributed to either "the whole read failed" or "a best-effort
+  calibration leg failed", which are very different severities, and no test can assert which one
+  fired. Both sites now have their own assertion (an audit, 2026-09-16, found neither did - see the
+  test-name note below), so a split is safe to make: pick a free number for the calibration site and
+  update the two tests naming 11. Left to the owner because it changes a shipped diagnostic value,
+  even though error numbers are not user-facing (no `DEVICE_REFERENCE.md` entry, nothing in `js/`
+  or `html/` reads `ErrNum`). Free in this driver today: 15, 17, 19, 21, 23, 26, 27, 35, 36, 37.
+
 - **The SCD30 "write or don't write" decision shall be ONE command-line flag that propagates
   centrally to every potentially-writing test (project owner, 2026-09-15).** Today there are two
   separate, opposite-polarity mechanisms that a reader has to hold in their head at once:

@@ -34,6 +34,21 @@ _BMP3XX_TEST_VALUES = {"PressOvers": 4, "TempOvers": 2, "FiltCoeff": 3}
 _ISL29125_TEST_VALUES = {"Resolution": 12, "Range": 375, "RangeAuto": False, "IrCompOffset": 1, "IrCompAdjust": 20}
 
 
+# A PUT whose value already equals the stored one comes back "Unchanged", not "Valid" - a fully
+# accepted request that simply had nothing to write (config_manager.py's set_dict_cfg(); src/
+# system_service.py's own set_debug_level() treats the pair the same way). These tests push a FIXED
+# set of values, so a board already holding one of them - a previous run that died before its
+# restore, most often - turned an accepted push into "real hardware push rejected". The read-back
+# assertion below is what actually proves the push reached hardware, so accepting both outcomes
+# costs nothing; requiring at least one genuine "Valid" across the push-and-restore pair is what
+# stops the test quietly degrading into one that writes nothing at all.
+_ACCEPTED_WRITE_RESULTS = ("Valid", "Unchanged")
+
+
+def _rejected(results: dict[str, Any], wanted: dict[str, Any]) -> dict[str, Any]:
+    return {k: results.get(k) for k in wanted if results.get(k) not in _ACCEPTED_WRITE_RESULTS}
+
+
 def test_bmp3xx_oversampling_and_filter_push_over_real_rest_and_readback(board: Board, dut_ip: str) -> None:
     reset_all_error_logs(dut_ip)
     get_before = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=10.0)
@@ -44,7 +59,7 @@ def test_bmp3xx_oversampling_and_filter_push_over_real_rest_and_readback(board: 
         put_res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"BMP3XX": _BMP3XX_TEST_VALUES}, timeout_s=10.0)
         assert put_res.status_code == 200, f"PUT /sensors failed: {put_res.status_code} {put_res.body!r}"
         results = put_res.json()["result"]["BMP3XX"]
-        failed = {k: results.get(k) for k in _BMP3XX_TEST_VALUES if results.get(k) != "Valid"}
+        failed = _rejected(results, _BMP3XX_TEST_VALUES)
         assert not failed, f"real hardware push rejected one or more fields: {failed!r} (full result: {results!r})"
 
         get_after = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=10.0)
@@ -57,7 +72,8 @@ def test_bmp3xx_oversampling_and_filter_push_over_real_rest_and_readback(board: 
         restore_res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"BMP3XX": original}, timeout_s=10.0)
         assert restore_res.status_code == 200, f"failed to restore original BMP3XX config {original!r}: {restore_res.status_code} {restore_res.body!r}"
         restore_results = restore_res.json()["result"]["BMP3XX"]
-        assert all(v == "Valid" for v in restore_results.values()), f"restoring original BMP3XX config was rejected: {restore_results!r}"
+        assert not _rejected(restore_results, original), f"restoring original BMP3XX config was rejected: {restore_results!r}"
+        assert "Valid" in list(results.values()) + list(restore_results.values()), f"neither the push nor the restore changed anything - the board already held _BMP3XX_TEST_VALUES, so this run proved no real write at all: pushed {results!r}, restored {restore_results!r}"
 
     # A fully valid push-and-restore round trip is not a fault - config_manager.py's errno=12 only
     # fires on a rejected key, which none of these were.
@@ -75,7 +91,7 @@ def test_isl29125_resolution_range_and_ir_comp_push_over_real_rest_and_readback(
         put_res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"ISL29125": _ISL29125_TEST_VALUES}, timeout_s=10.0)
         assert put_res.status_code == 200, f"PUT /sensors failed: {put_res.status_code} {put_res.body!r}"
         results = put_res.json()["result"]["ISL29125"]
-        failed = {k: results.get(k) for k in _ISL29125_TEST_VALUES if results.get(k) != "Valid"}
+        failed = _rejected(results, _ISL29125_TEST_VALUES)
         assert not failed, f"real hardware push rejected one or more fields: {failed!r} (full result: {results!r})"
 
         get_after = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=10.0)
@@ -88,7 +104,8 @@ def test_isl29125_resolution_range_and_ir_comp_push_over_real_rest_and_readback(
         restore_res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"ISL29125": original}, timeout_s=10.0)
         assert restore_res.status_code == 200, f"failed to restore original ISL29125 config {original!r}: {restore_res.status_code} {restore_res.body!r}"
         restore_results = restore_res.json()["result"]["ISL29125"]
-        assert all(v == "Valid" for v in restore_results.values()), f"restoring original ISL29125 config was rejected: {restore_results!r}"
+        assert not _rejected(restore_results, original), f"restoring original ISL29125 config was rejected: {restore_results!r}"
+        assert "Valid" in list(results.values()) + list(restore_results.values()), f"neither the push nor the restore changed anything - the board already held _ISL29125_TEST_VALUES, so this run proved no real write at all: pushed {results!r}, restored {restore_results!r}"
 
     # A fully valid push-and-restore round trip is not a fault - config_manager.py's errno=12 only
     # fires on a rejected key, which none of these were.
@@ -105,7 +122,7 @@ def test_notification_pause_time_push_counts_down_over_real_rest(board: Board, d
     reset_all_error_logs(dut_ip)
     put_res = http_client.fetch(dut_ip, 80, "PUT", "/notification", {"PauseTime": 3}, timeout_s=10.0)
     assert put_res.status_code == 200, f"PUT /notification PauseTime failed: {put_res.status_code} {put_res.body!r}"
-    assert put_res.json()["result"].get("PauseTime") == "Valid", f"real PauseTime push was rejected: {put_res.json()['result']!r}"
+    assert put_res.json()["result"].get("PauseTime") in _ACCEPTED_WRITE_RESULTS, f"real PauseTime push was rejected: {put_res.json()['result']!r}"
 
     get_res = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0)
     assert get_res.status_code == 200, f"GET /status failed: {get_res.status_code} {get_res.body!r}"

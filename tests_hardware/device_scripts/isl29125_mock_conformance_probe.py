@@ -132,7 +132,13 @@ async def _section_c_reserved(p: "Probe") -> None:
     # round to the device ID (0x7d) rather than running into zero padding.
     p.wr(REG_C1, [MODE_RGB, 0x28, 0x00])
     await settle(700)
-    emit("C09_read_8_from_0x0d_rollover", hx(p.rd(0x0D, 8)))
+    past_end = p.rd(0x0D, 8)
+    emit("C09_read_8_from_0x0d_rollover", hx(past_end))
+    # 0x0D/0x0E are blue data (light-dependent, so the raw key above cannot be compared), but what
+    # happens PAST 0x0E is pure protocol: the real part clocks zeros, it does NOT wrap to the device
+    # ID the datasheet's burst text promises. That is one of the five divergences the first silicon
+    # run found, so it gets its own light-independent key rather than riding on the excluded one.
+    emit("C09_past_end_zeros_not_rollover", "yes" if set(past_end[2:]) == {0x00} else "no")
     p.reset()
 
 
@@ -155,7 +161,11 @@ async def _section_e_conversion(p: "Probe") -> None:
     g16, r16, b16 = p.counts()
     emit("E01_counts_16bit_hi_range", f"{g16},{r16},{b16}")
     emit("E02_data_partial_read_from_0x0b", hx(p.rd(0x0B, 4)))
-    emit("E03_data_burst_8_past_end", hx(p.rd(REG_DATA, 8)))
+    burst8 = p.rd(REG_DATA, 8)
+    emit("E03_data_burst_8_past_end", hx(burst8))
+    # Same protocol property reached from the other end of the map: 0x09-0x0E is the six data bytes,
+    # so bytes 6 and 7 are past the last register and must be zero rather than wrapped-around data.
+    emit("E03_past_end_zeros", "yes" if set(burst8[6:]) == {0x00} else "no")
 
     p.wr(REG_C1, [MODE_RGB, 0x28, 0x00])  # 375 lx range, 16 bit
     await settle(1000)
