@@ -1094,7 +1094,13 @@ def test_sensorreaderconfig_malformed_config_file_repairs_cleanly_with_fram_back
 def test_sensorreaderconfig_fram_allocation_failure_and_missing_config_file_together() -> None:
     # Two independent subsystems degrading at once: FRAM allocation fails (pr.fram stays None) while
     # the config file doesn't exist yet either (gets created with defaults) - neither failure may
-    # raise, nor may one derail the other.
+    # raise, nor may one derail the other. Also WP4/Topic 6's own negative case: proves the "every
+    # FRAM-chunk-holding module actually has a non-None chunk" check
+    # (tests/test_sensortask.py's fram_chunks_are_all_successfully_allocated_not_out_of_memory,
+    # run for every real device) can genuinely fail, not just never has - allocated_size can never
+    # exceed size by construction (get_chunk() checks before incrementing, never after), so that
+    # comparison alone would be a tautology; a None chunk reference is the real, observable signal
+    # capacity was insufficient, for both a module's own logger and (WP2) its owned cfgmgr's.
     path_prefix = _tmp_path("") + "/"
     _remove(path_prefix + "config_fram3.cfg")
     try:
@@ -1110,6 +1116,8 @@ def test_sensorreaderconfig_fram_allocation_failure_and_missing_config_file_toge
         run(reader.cfgmgr.setup())
         assert isinstance(reader.pr, PrintLogHistoryStore)
         assert reader.pr.fram is None
+        assert isinstance(reader.cfgmgr.pr, PrintLogHistoryStore)
+        assert reader.cfgmgr.pr.fram is None
         assert reader.cfgmgr.valid is True
         result = run(reader._get_dict_cfg("Sensor", _VAL_SI))
         assert result == {"Sensor": {"SampleInterv": 2}}

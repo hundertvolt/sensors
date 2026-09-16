@@ -1030,3 +1030,28 @@ real SCD30 writes, cleanly.
   it is ever invoked without `--allow-scd30-writes`, as a backstop: correct marker placement on every
   dependent test makes this unreachable via the collection-time deselection above, but a future test
   that forgets the marker fails hard here instead of silently spending a real write.
+
+## WP4/Topic 6 - FRAM capacity check, real-hardware tier
+
+`test_fram_storage.py::test_every_fram_wired_module_gets_a_real_chunk_after_a_full_system_build`
+(device script `fram_capacity_after_full_system_build.py`) closes the real-hardware leg of
+CLAUDE.md's implicit-FRAM-wiring rule's own capacity backstop: a shipped firmware asking for more
+FRAM than its own chip has must be a hard, automatic, pre-flash test failure, not a silent
+boot-time console print nobody's watching. Builds the real `dev` object graph
+(`sensortask_dev.build_system()`) on the real board, then checks that every module which should
+have inherited a real FRAM chunk (its own `pr`, plus its own `cfgmgr` where one exists) actually
+got one rather than silently degrading to RAM-only.
+
+**Deliberately not `fram.allocated_size <= fram.size`** - `AsyFramManager.get_chunk()` checks
+capacity *before* incrementing `allocated_size`, never after, so that comparison can never be
+false by construction and would be a tautology, not a check. A `None` chunk reference on a module
+that should have gotten one is the real, observable signal that capacity ran out; the mock-tier
+equivalent (`tests/test_sensortask.py`'s `fram_chunks_are_all_successfully_allocated_not_out_of_memory`,
+run for every real device) uses the same shape, and
+`tests/test_base_classes.py`'s `test_sensorreaderconfig_fram_allocation_failure_and_missing_config_file_together`
+is the negative case proving it can actually fail.
+
+**mpremote-only by design (owner's own decision)**: no new `/status` field - this is a one-time,
+build-deterministic build-validity fact (`AsyFramManager` is a bump-pointer allocator with no
+deallocation, so "does everything fit" is fully decided once construction finishes, and stays true
+for that build's entire life), not live operational state a client needs to query.

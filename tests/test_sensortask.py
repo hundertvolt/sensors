@@ -565,6 +565,13 @@ def _scenario_fram_chunks_allocated(device: str) -> None:
     # Every FRAM-chunk-owning module's own PrintLogHistoryStore/AsyFramTimestampedChunk degrades to
     # in-memory-only on allocation failure rather than raising (base_classes.py's own contract) -
     # assert the happy path actually got real FRAM-backed chunks, not a silently-degraded one.
+    # This is also WP4/Topic 6's own "does everything fit" capacity check, run for every real
+    # device (parametrized like every other scenario in this file): the real, deterministic
+    # enforcement is exactly this - no chunk-holding module ended up with a None chunk reference -
+    # not `allocated_size <= size`, which can never be false by construction (get_chunk() checks
+    # capacity before incrementing, never after) and so would be a tautology rather than a check.
+    # See test_sensorreaderconfig_fram_allocation_failure_and_missing_config_file_together
+    # (tests/test_base_classes.py) for the negative case proving this same shape can actually fail.
     assert module.conn is not None and module.ntp is not None
     assert module.sysfunct is not None and module.neopixel is not None and module.notification is not None
     assert isinstance(module.conn.pr, PrintLogHistoryStore)
