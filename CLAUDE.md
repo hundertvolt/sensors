@@ -205,6 +205,14 @@ information):
 - **Long-blocking operations must not stall timing-sensitive work** — standing design principle
   for all new code; full reasoning (including the retired `get_long_block_lock()` mechanism) is in
   SPECIFICATION.md Part F.3.
+- **Boot latency is not a metric to optimise for its own sake** (WP6, owner-established
+  requirement). These devices run for months between reboots, and a short period of API
+  unavailability right after one is normal for any networked device — a multi-second one-time delay
+  at boot is not itself a problem. What *is* a problem is approaching the hardware watchdog's own
+  timeout while the one-time boot `setup()` batch runs, which is what `SystemService.feed_watchdog()`
+  exists to prevent (SPECIFICATION.md Part A.7/G.2). Don't "fix" a slow boot by trimming that batch,
+  reordering it for speed, or otherwise treating its wall-clock cost as a defect — the accepted
+  target is "does not starve the watchdog," not "boots fast."
 - **`asy_uart_driver.py` and `asy_uart_comm.py` may never block the asyncio loop — not even in a
   wait state.** They may time out and handle it; they may not wait synchronously (project owner,
   2026-09-11). This is sharper than F.3's general principle and is easy to violate by accident:

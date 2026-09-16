@@ -4,8 +4,9 @@ cfgmgr where one exists) actually has one, not a silently-degraded RAM-only fall
 NOT `fram.allocated_size <= fram.size` - that can never be false by construction
 (AsyFramManager.get_chunk() checks capacity before incrementing, never after), so it would be a
 tautology, not a check; a None chunk reference on a module that should have gotten one is the real,
-observable signal capacity ran out. mpremote-only by design (owner's own decision, WP_RESTART_HANDOVER.md's
-Topic 6) - no new /status field, this is a one-time build-validity fact, not live operational state."""
+observable signal capacity ran out. mpremote-only by design (owner's own decision, see
+tests_hardware/README.md's own "WP4/Topic 6" section) - no new /status field, this is a one-time
+build-validity fact, not live operational state."""
 
 import asyncio
 

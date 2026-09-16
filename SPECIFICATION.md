@@ -461,21 +461,34 @@ preserve. (A device with no `[device.wiring].fram_target` keeps `conn`/`ntp`/`sy
 fallback path; a `uart_link` instance with no `fram_target` in its own `[instance.wiring]` stays
 RAM-only the same way, unaffected by whether the device's `fram_target` is set anywhere else.)
 
-**Boot-latency note (WP1)**: `conn`/`ntp`/`sysfunct`/`webserver`'s FRAM-backed loggers only draw
-their chunk at construction time (bump-pointer, instant); each one's *real* first chunk read/write
-happens later, inside its own `self.pr.setup()` call, sharing one process-wide `asyncio.Lock`
-(`FRAM_SPI`'s own, `asy_fram_driver.py`) with every other FRAM-wired module. `sysfunct → fram →
-conn → ntp → ...`'s own explicit setup batch (step 16) runs before any task starts, so those four
-calls never contend with anything. `webserver`'s own `self.pr.setup()` is different: it runs lazily
-inside `_run()`, `webserver`'s own task — and `system_service.py`'s `start_and_check_tasks()`
-starts every task within one ~1-second stagger window (Part C's own task-starter-staggering
-design), with `webserver`'s task always last. By the time it runs, every other FRAM-wired module's
-own task-start-time FRAM access is already contending for the same lock, so `webserver`'s first
-setup() call queues behind all of it — measured directly (BACKLOG.md) at up to several seconds on a
-busy boot. This is a one-time, self-resolving cost (steady-state serving is unaffected) and not
-something to "fix" by reordering `webserver` in the stagger — see BACKLOG.md for the full account
-and why it may need revisiting once WP2 adds another chunk per FRAM-wired sensor's own
-`ConfigManager`.
+**Boot-latency note (WP1/WP2, both resolved — the finding below is the resolution, not open
+work)**: `conn`/`ntp`/`sysfunct`/`webserver`'s FRAM-backed loggers only draw their chunk at
+construction time (bump-pointer, instant); each one's *real* first chunk read/write happens later,
+inside its own `self.pr.setup()` call, sharing one process-wide `asyncio.Lock` (`FRAM_SPI`'s own,
+`asy_fram_driver.py`) with every other FRAM-wired module. `sysfunct → fram → conn → ntp → ...`'s own
+explicit setup batch (step 16) runs before any task starts, so those calls never contend with
+anything, including every `SensorReaderConfig`-based module's own `cfgmgr.setup()` (WP2) — it rides
+the same pre-task-start batch as its owner, not the contended window below. `webserver`'s own
+`self.pr.setup()` is different: it runs lazily inside `_run()`, `webserver`'s own task — and
+`system_service.py`'s `start_and_check_tasks()` starts every task within one ~1-second stagger
+window (Part C.9's own task-starter-staggering design, distinct from Part C.9.1's timer stagger),
+with `webserver`'s task always last. By the time it runs, every other FRAM-wired module's own
+task-start-time FRAM access is already contending for the same lock, so `webserver`'s first
+setup() call queues behind all of it. **Measured directly against the real generated code for all 6
+devices under the digital twin**: boot-to-first-`200` was ~1.9-2.2s before WP1; WP1 alone (wiring
+`conn`/`ntp`/`sysfunct`/`webserver`'s own loggers into FRAM) moved it to ~4.5-6.3s (`dev` slowest —
+the most FRAM-wired instances); WP2 (adding every `SensorReaderConfig`-based module's own `cfgmgr`
+chunk) moved it further to ~6.1s (`wozi`) / ~7.7s (`dev`) — a modest further increase, not the much
+larger jump the lock-contention theory alone would predict, precisely because WP2's own new chunks
+ride the uncontended pre-task-start batch as just explained; only `webserver`'s own lazy setup is
+exposed to the contended window, and WP2 adds no new chunk to `webserver` itself (still no
+`cfgmgr`). Both final numbers stay comfortably inside `tests_scripts/
+test_digital_twin_generated_boot.py`'s own 15s budget (raised from 6s for exactly this reason - see
+that constant's own comment). This is a one-time, self-resolving cost (steady-state serving is
+unaffected) and not something to "fix" by reordering `webserver` in the stagger, or by treating the
+latency itself as a defect (CLAUDE.md's own "boot latency is not a metric to optimise" rule) — worth
+re-checking if a real-hardware run ever shows this mattering there, but the design itself needs no
+change on this evidence.
 
 **This order, and `i2c0`'s SCD30-specific `timeout=200000`, are wozi's own — derived from
 `devices/wozi.toml`.** `buildgen` derives both from each device's own TOML rather than assuming
@@ -1503,7 +1516,11 @@ the failure — `AsyUDPSocket.disconnect()`, `WebserverService._close_writer()`,
 ### C.7.1 Running `errno`/`wrnno` table
 
 Real numbers per module — each module's history stream is independent, so overlap *between* rows
-is expected; only overlap *within* one row matters.
+is expected; only overlap *within* one row matters. **The base range (`errno` 1-9/`wrnno` 1-2,
+reserved to `base_classes.py`) and each driver's own 10+ numbering are a convention this table
+records, not one the code itself enforces** — nothing raises if a new module picks a colliding
+number or starts below 10; get it right by checking this table before assigning a new one (WP8),
+the same "check the shared catalog first" discipline Part G.1 states generally.
 
 | Module | `errno` | `wrnno` | Notes |
 |---|---|---|---|
@@ -1732,7 +1749,13 @@ of some sensor's own period, reintroducing the exact coincidence this design exi
   plain `await asyncio.sleep(1.0 / len(task_starters))` inside `start_and_check_tasks()`, a coarse,
   scheduler-timed spread with no coincidence claim attached to it. The two mechanisms share
   "~1 second, N participants" only because both happened to pick that shape independently, not
-  because they are the same code path — don't conflate them.
+  because they are the same code path — don't conflate them. **A third list, the one-time boot
+  `setup()` batch (WP6, this Part's own text above the timer stagger), is deliberately not staggered
+  at all** — no delay of any kind between calls, only a `feed_watchdog()` after each. It carries none
+  of the read-timer stagger's coincidence concerns (these are one-shot construction calls, not
+  periodic triggers) and must not be folded into either staggering mechanism, nor have a delay
+  inserted between its own calls to "match" them — that would only reintroduce the very watchdog-
+  starvation risk WP6 closes, for no benefit.
 - Each software-counter-based driver (`asy_bmp3xx_driver.py`/`asy_isl29125_driver.py`) arms its own
   `Timer.PERIODIC` at a fixed 1000ms base tick (`asy_sgp40_driver.py`'s is also 1000ms, fixed, and
   never divided down — "voc algorithm needs 1s period fixed", its own comment) and increments a
