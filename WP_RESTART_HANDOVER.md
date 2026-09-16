@@ -993,6 +993,21 @@ See WP7 above for the full action list.
 These were stated by the owner across the decision messages but do not belong to a single work
 package. They are requirements, not suggestions.
 
+### FRAM logging is optional for every module — except the FRAM module itself
+The governing principle behind Topics 2, 3 and 5, stated by the owner directly: **every module
+shall have optional FRAM logging. The only module that never gets its own FRAM logging is the FRAM
+module**, because persisting a FRAM fault into that same FRAM is pointless.
+
+That is the rule the individual wiring decisions follow from — WiFi/NTP/webserver being wired
+implicitly, `ConfigManager` inheriting from its owner, and `UART_Comm` gaining the option are
+instances of it, not separate special cases. Anything found later that is FRAM-capable but never
+given the chance is the same gap again.
+
+- [ ] Treat this as the general rule when wiring any module, present or future; the FRAM module is
+      the sole exception.
+- [ ] When a module gets FRAM logging, it falls back to RAM logging when no FRAM chip is present —
+      never to no logging at all.
+
 ### `self.pr.err()` → `err_s()`, wired through to API and website
 The bare synchronous print-only `err()` is to be upgraded to the recording `err_s()` form and wired
 through to the API and the website, so the failure actually shows up rather than only printing.
