@@ -10,7 +10,7 @@ import socket
 import sys
 import time
 
-sys.path.insert(0, "ext")  # same convention as test_sensortask.py's own comment - reaches the
+sys.path.insert(0, "ext")  # same convention as _sensortask_scenarios.py's own comment - reaches the
 # real, vendored ext/microdot.py that sensortask_wozi.py transitively imports.
 sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comment for why
 
@@ -514,7 +514,7 @@ def test_start_and_check_tasks_restarts_a_real_dead_task_from_the_real_full_task
         async def _tracking_start_task(self: "SystemService", starter: "Callable[[], asyncio.Task[Any]]", n: "int") -> "asyncio.Task[Any] | None":
             # Observes the real supervisor's own real task-(re)start calls without changing its
             # behavior at all - the same non-invasive class-method-wrap convention
-            # test_sensortask.py's own FRAM-chunk-order test already uses.
+            # _sensortask_scenarios.py's own FRAM-chunk-order test already uses.
             task = await real_start_task(self, starter, n)
             started.setdefault(n, []).append(task)
             return task
@@ -610,7 +610,7 @@ def test_wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server_a
             # immediately overwritten once it did.
             # Fast-forwards the real conn_fail_to_hotspot=5 streak (sensortask_wozi.py's own real
             # construction call) to "one real scripted failure away from hotspot fallback" - the
-            # same direct-attribute test-seam convention test_sensortask.py's own
+            # same direct-attribute test-seam convention _sensortask_scenarios.py's own
             # test_webserver_networking_put_ntp_fields_forces_a_resync() already uses
             # (`sensortask_wozi.ntp.ntp_retries = 3`), not a fake of
             # _register_sta_connection_failure() itself. Waiting out 5 real scripted-failure cycles
@@ -892,7 +892,7 @@ async def _boot_device(port: int, device: str) -> "Any":
 
 def _present_optional_instances(module: "Any", device: str) -> "tuple[str, ...]":
     # Derived from the wiring plan's own pre-construction "instances" list, not the built module's
-    # own attributes - see tests/test_sensortask.py's own identical helper/comment for why (a real
+    # own attributes - see tests/_sensortask_scenarios.py's own identical helper/comment for why (a real
     # construction bug that silently drops a declared driver would read back as though the device
     # never had it, which getattr(module, name, None) can't tell apart from the truth).
     plan_instances = set(_wiring_plan(device)["instances"])
@@ -902,7 +902,7 @@ def _present_optional_instances(module: "Any", device: str) -> "tuple[str, ...]"
         if name in present:
             assert getattr(module, name, None) is not None, f"{name} is in devices/{device}.toml's own instances but build_system() never constructed it"
         else:
-            # The reverse direction matters too - see tests/test_sensortask.py's own identical
+            # The reverse direction matters too - see tests/_sensortask_scenarios.py's own identical
             # check for why (a wiring plan that silently under-reports a driver must not let this
             # check quietly agree with it and stop testing a real, live object).
             assert getattr(module, name, None) is None, f"{name} is NOT in devices/{device}.toml's own instances, but build_system() constructed it anyway"
@@ -1017,7 +1017,7 @@ for _param_name, _param_fn in _PARAM_SCENARIOS:
                     # Session 6.2): without this, dev's 256KB FRAM chip fake intermittently raised a
                     # real MemoryError, garbage from earlier generated tests outpacing MicroPython's
                     # own gc.threshold(32768)-triggered collection at this file's now-higher test
-                    # volume. Same fix as test_digital_twin_webserver_concurrency.py's own generated
+                    # volume. Same fix as _webserver_concurrency_scenarios.py's own generated
                     # tests use, for the same reason.
                     gc.collect()
 

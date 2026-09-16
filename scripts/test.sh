@@ -142,8 +142,16 @@ fi
 raw_dir=""
 if [ "$coverage" = "1" ]; then
     raw_dir="$(mktemp -d)"
-    trap 'rm -rf "$raw_dir"' EXIT
 fi
+# One shared results_dir regardless of --coverage: every parallel test-file job (below) writes its
+# own PASS/FAIL status here instead of returning it as its own process exit code or mutating a
+# shared bash array from a background subshell (which wouldn't be visible to the parent shell).
+# Removing raw_dir's own narrower trap in favor of this one, unconditional trap - bash's `trap ...
+# EXIT` replaces any previously registered EXIT handler outright rather than stacking, so the two
+# cleanups must live in one trap. `rm -rf ""` (raw_dir when --coverage was never passed) is a
+# harmless no-op, not an error.
+results_dir="$(mktemp -d)"
+trap 'rm -rf "$raw_dir" "$results_dir"' EXIT
 
 failed=0
 # Per-file timeout with two retries (three attempts total), not just the job-level
@@ -200,28 +208,41 @@ per_file_timeout_s="${PER_FILE_TIMEOUT_S:-240}"
 # on top of an already-marginal baseline, not a large one, but 180s no longer has real margin.
 # That "240s clears this file with room to spare" claim has since gone stale, corrected below.
 #
-# Per-file overrides for two files that grew past the 240s default outright - not a hang, and not
-# fixed by raising everyone's default (that would just make a genuine future hang 2-3x slower to
-# detect for the other ~50 files that still comfortably fit in 240s). Measured directly, 2026-09-16,
-# single full attempt each (not the 3x-retry-shortened runs CI otherwise sees), same toolchain/
-# heapsize as CI: tests/test_sensortask.py 447s real - it builds all 6 real devices' full
-# build_system() object graph once per scenario (327 scenario x device combinations in one process,
-# see that file's own docstring), and WP1+WP2's implicit-FRAM-wiring rule (CLAUDE.md) plus WP6's
-# added watchdog-feed scenario made each of those builds real-world heavier, the same way it made a
-# real device's own boot latency heavier (SPECIFICATION.md Part A.7). tests/
-# test_digital_twin_webserver_concurrency.py 268s real - already the heaviest file in the suite
-# before WP1 (see the comment above); WP1's own webserver.pr FRAM-backed wait bump was the last
-# straw that pushed it just past the 240s default this same comment once called safe margin. Both
-# get a value comfortably above their measured real time, not just past it, to absorb ordinary
-# CI-runner variance without falling back to retries for the common case.
-declare -A per_file_timeout_overrides_s=(
-    ["tests/test_sensortask.py"]=600
-    ["tests/test_digital_twin_webserver_concurrency.py"]=350
-)
+# Per-file overrides for files that grew past the 240s default outright - not a hang, and not fixed
+# by raising everyone's default (that would just make a genuine future hang 2-3x slower to detect
+# for the other ~60 files that still comfortably fit in 240s). Empty as of the tests/test_sensortask_
+# <device>.py / tests/test_digital_twin_webserver_concurrency_<device>.py split (see those two
+# modules' own tests/_sensortask_scenarios.py / tests/_webserver_concurrency_scenarios.py library
+# docstrings): the former monolithic files (447s/268s real, single-process, all 6 devices in one
+# run - CLAUDE.md's step-session-workflow history has the full measurement trail) needed their own
+# override; each per-device file now does 1/6th the real object-graph-building work of its own
+# monolith, comfortably inside the 240s default (re-measure and re-add an entry here if a future
+# device/scenario addition ever pushes one back past it).
+declare -A per_file_timeout_overrides_s=()
 max_attempts=3
-failed_files=()
-passed_count=0
-for test_file in tests/test_*.py; do
+# TEST_PARALLELISM: how many test_*.py files run at once. Each file is already a fully isolated
+# Unix-port OS process (its own heap, its own machine.py-fake global state) with no shared memory
+# with any other file's process, so running several concurrently changes wall-clock only, never
+# behavior - confirmed no cross-file collision risk from the two things that could actually break
+# under real concurrency: TmpScratch keys (every test_*.py file already uses a key unique to that
+# file - tests/_tmp_scratch.py's own docstring; the per-device split above gives each of its 12 new
+# files its own key for exactly this reason) and real socket ports (every file that binds one
+# already claims its own fixed, disjoint base range by convention - see e.g.
+# tests/_webserver_concurrency_scenarios.py's own port-range comment). Defaults to the runner's own
+# core count so CI gets real parallelism without a hardcoded number that's wrong on a different
+# runner size; override downward (e.g. TEST_PARALLELISM=1 to fully recover the old strictly-
+# sequential behavior) if a future file is ever found to violate one of those two assumptions.
+max_parallel="${TEST_PARALLELISM:-$(nproc 2>/dev/null || echo 4)}"
+
+# Runs one test_*.py file's own timeout+retry loop to completion and writes PASS/FAIL to
+# status_file - never returns a nonzero exit status itself (failure is communicated through the
+# status file, not the function's own return code), so backgrounding this behind `&` and reaping it
+# with `wait`/`wait -n` below never trips this script's own `set -e`.
+run_test_file() {
+    local test_file="$1"
+    local status_file="$2"
+    local tag cmd file_timeout_s attempt ec
+    tag="$(basename "$test_file" .py)"
     echo "== Running $test_file"
     # .frozen must be included explicitly: MICROPYPATH replaces MicroPython's default sys.path
     # rather than extending it, and the default path is what makes frozen-in modules (asyncio
@@ -233,21 +254,25 @@ for test_file in tests/test_*.py; do
     # `sensortask_dev` resolve to the freshly buildgen-generated module built above, not any
     # same-named file that might otherwise be found elsewhere on this path.
     if [ "$coverage" = "1" ]; then
-        raw_out="$raw_dir/$(basename "$test_file" .py).json"
-        cmd=(tests/_coverage_runner.py "$test_file" "$raw_out")
+        cmd=(tests/_coverage_runner.py "$test_file" "$raw_dir/$tag.json")
     else
         cmd=("$test_file")
     fi
     file_timeout_s="${per_file_timeout_overrides_s[$test_file]:-$per_file_timeout_s}"
     for attempt in $(seq 1 "$max_attempts"); do
-        if MICROPYPATH="build/generated_src:src:tests:frozen_modules:.frozen" stdbuf -oL -eL timeout --kill-after=10 "$file_timeout_s" "$micropython_bin" -X heapsize=32M "${cmd[@]}"; then
+        # 2>&1 | sed, not two separate streams: several of these now run concurrently, and
+        # per-line tagging (rather than relying on stdout/stderr ordering alone) is what keeps a
+        # multi-file log human-readable. `set -o pipefail` (top of file) makes the pipeline's own
+        # exit status the real interpreter's (timeout's) - sed itself only ever exits 0/nonzero on
+        # its own unrelated failure, never masking a real 124/1 from the command it's piping.
+        if MICROPYPATH="build/generated_src:src:tests:frozen_modules:.frozen" stdbuf -oL -eL timeout --kill-after=10 "$file_timeout_s" "$micropython_bin" -X heapsize=32M "${cmd[@]}" 2>&1 | sed -u "s/^/[$tag] /"; then
             ec=0
         else
             ec=$?
         fi
         if [ "$ec" -eq 0 ]; then
-            passed_count=$((passed_count + 1))
-            break
+            echo "PASS" >"$status_file"
+            return 0
         elif [ "$ec" -eq 124 ] && [ "$attempt" -lt "$max_attempts" ]; then
             echo "== $test_file exceeded ${file_timeout_s}s on attempt $attempt/$max_attempts - retrying in case of transient runner contention" >&2
             continue
@@ -255,11 +280,38 @@ for test_file in tests/test_*.py; do
             if [ "$ec" -eq 124 ]; then
                 echo "== $test_file exceeded ${file_timeout_s}s on all $max_attempts attempts - treating as a real failure instead of hanging the job" >&2
             fi
-            failed=1
-            failed_files+=("$test_file")
-            break
+            echo "FAIL" >"$status_file"
+            return 0
         fi
     done
+}
+
+test_files=(tests/test_*.py)
+for test_file in "${test_files[@]}"; do
+    # Bound concurrency at max_parallel: block here (reaping any one finished job with `wait -n`)
+    # before starting a new one once that many are already running. `|| true` on both `wait -n`
+    # calls below: a job's own function body always returns 0 (see run_test_file's own comment), so
+    # a nonzero `wait -n` here can only mean "no background jobs left" (bash returns 127) - a
+    # harmless race against this same loop's own job count check, never a real test failure to
+    # propagate through `set -e`.
+    while [ "$(jobs -rp | wc -l)" -ge "$max_parallel" ]; do
+        wait -n || true
+    done
+    status_file="$results_dir/$(basename "$test_file" .py).status"
+    run_test_file "$test_file" "$status_file" &
+done
+wait || true
+
+failed_files=()
+passed_count=0
+for test_file in "${test_files[@]}"; do
+    status_file="$results_dir/$(basename "$test_file" .py).status"
+    if [ "$(cat "$status_file" 2>/dev/null)" = "PASS" ]; then
+        passed_count=$((passed_count + 1))
+    else
+        failed=1
+        failed_files+=("$test_file")
+    fi
 done
 
 if [ "$coverage" = "1" ]; then
