@@ -143,56 +143,6 @@ constraints.
   first). Re-running this sweep against other domains (it did not touch e.g. sensortask/system_service
   integration beyond what FRAM/memory covered) is future work, not assumed done everywhere.
 
-- **A config-persisting `PUT /sensors` resets its own HTTP connection when it lands under
-  concurrent API load. HIGH IMPORTANCE, must be fixed — completely unforeseen (project owner,
-  2026-09-15); it is not to be tolerated in a test, and the failing test must not be weakened to
-  accommodate it.** Found by the two bench-tier config-write tests the bus-hazard work added
-  (`tests_hardware/bench/test_bus_concurrency_under_api_load.py`'s
-  `test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads_under_api_load` and
-  `test_bmp3xx_config_write_does_not_disturb_its_own_concurrent_reads_under_api_load`), running
-  against the real dev board on the shipped `threshold` build. **Isolated to the flash write
-  itself**, three conditions, 2 GET workers × 8 iterations + 4 PUTs each, repeated:
-
-  | condition | connection resets |
-  |---|---|
-  | GET load only | 0 |
-  | GET load + PUTs returning `"Unchanged"` (accepted, nothing written) | 0 |
-  | GET load + PUTs that really persist to the flash filesystem | 1–2 per run, **every one on the writing connection** |
-
-  The host sees `ConnectionResetError: [Errno 104]`. Reproduced on most runs (5 resets across 3
-  `change`-mode rounds in the isolation probe, plus 4 of 4 pytest runs before it). Three facts
-  narrow it: a bystander GET is **never** reset, only the connection whose own request is being
-  serviced; the config always persists correctly afterwards (no data loss, no corruption); and the
-  DUT's own `WEBSERVER` error log stays completely empty, so nothing on the device notices. A quiet
-  (unloaded) persisting PUT never reproduces it.
-  **Why this is a design question, not a test question**: an RP2040 flash erase/program is
-  inherently uninterruptible — XIP is disabled and interrupts are off for the duration, so the
-  CYW43 link is unserviced and lwIP's timers do not run, which is exactly CLAUDE.md's F.3
-  "long-blocking operations must not stall timing-sensitive work" meeting an operation that cannot
-  yield. The fix therefore has to be a design-level one in the REST/persistence layer (send the
-  response before performing the persist, defer the write to a point where no connection is
-  mid-response, or similar), decided by the project owner — not a tolerance added to the assertion.
-  Note this interacts with an already-settled safety property: CLAUDE.md's WiFi-power-cycle recovery
-  rule depends on "every real flash write is reachable only through the REST PUT path", so any
-  redesign that moves the write off that path must re-establish that argument.
-- **The ISL29125 driver's chip configuration diverges from its own shadow whenever a config write
-  lands under concurrent API load. HIGH IMPORTANCE, must be fixed — completely unforeseen (project
-  owner, 2026-09-15).** Same test and same run as the item above. `asy_isl29125_driver.py`'s
-  `_check_divergence()` fires `wrn_s("Chip configuration diverged from the shadow - re-applying.",
-  wrnno=11)` and re-applies; the self-heal works, but the divergence itself is the finding, and it
-  makes the new bench test fail independently of the connection reset (`assert_module_error_log_empty()`
-  counts warnings as well as errors, via `/status`'s `errcount` `counter`). **Isolated the same
-  way**: three trials of a quiet `Resolution` 16→12→16 change with no other traffic logged
-  **nothing at all**; the identical change under 2 GET workers logged `W11` **twice** in one run.
-  A `W12` ("Saturated on the high range - the scene exceeds the part") appeared in the same loaded
-  run and looks environmental (bench lighting) rather than concurrency-related — but it fails the
-  same assertion, so the fix needs a position on whether a lighting-dependent warning may count
-  against an error-log-empty check at all.
-  Worth knowing for whoever picks this up: the **flash-tier counterpart structurally cannot catch
-  it.** `tests_hardware/flash/test_bus_concurrency.py::test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads`
-  drives raw I2C through a device script — no REST push, no driver shadow, no flash write — so the
-  bench tier is the only tier where this hazard exists at all. That is a real instance of Part
-  E.6.1's `bench ⊇ flash` earning its keep, not a redundant duplicate.
 - **The SCD30 "write or don't write" decision shall be ONE command-line flag that propagates
   centrally to every potentially-writing test (project owner, 2026-09-15).** Today there are two
   separate, opposite-polarity mechanisms that a reader has to hold in their head at once:
@@ -210,24 +160,6 @@ constraints.
   runner's own marker exclusions instead of adding to them, silently re-selecting what it had
   excluded. Touches `tests_hardware/conftest.py`, `tests_hardware/flash/test_bus_concurrency.py`,
   `scripts/run_bench_gc_matrix.sh`, `tests_hardware/README.md` and SPECIFICATION.md Part C.8.
-- **Four ISL29125 real-hardware device scripts have no pytest gate at all — this is accidental and
-  they must be wired in (project owner, 2026-09-15).** `tests_hardware/device_scripts/`'s
-  `isl29125_plausibility_read.py`, `isl29125_lighting_scenarios.py`, `isl29125_mechanism_envelope.py`
-  and `isl29125_mock_conformance_probe.py` (plus its host-side driver `tests_hardware/isl29125_conformance.py`)
-  were ported from `main`'s PR #75 but nothing calls them, so they have never run on this bench —
-  they are invisible to every suite runner and to `--collect-only`. SPECIFICATION.md Part C.11.1
-  already records the conformance probe's half of this ("has not yet wired an equivalent pytest gate
-  calling them ... a future session should add it to `tests_hardware/flash/test_sensor_accuracy.py`
-  rather than leave the probe orphaned indefinitely"); the other three are in the same state. The
-  conformance probe is the one with the most leverage — it is the standing guard that keeps
-  `digital_twin/_isl29125_chip.py` honest against real silicon, and its first real run on `main`
-  found five separate fake-vs-chip divergences no other test could have caught. Note
-  `isl29125_lighting_scenarios.py` asserts at least five range switches, so it needs real varied
-  illumination to pass, and Part C.11.1 records it as "written but not run" — decide whether it
-  belongs in the automated flash tier or in `tests_hardware/manual/`. Wiring all four also needs a
-  check against Part E.6.6: whichever of them prove real-hardware-facing behavior want a bench-tier
-  counterpart too, per `bench ⊇ flash`.
-
 ## Open questions (need owner input or further investigation)
 
 - **ISL29125's chip configuration divergence under concurrent API load (PR #84/commit `679c2b0`'s
