@@ -80,11 +80,15 @@ uv run pytest tests_hardware/flash --allow-multi-day-rollover-wait -k test_ticks
 # default - this genuinely re-flashes the board, see SPECIFICATION.md Part E.6.3):
 scripts/run_flash_hardware_suite.sh --allow-flash-cycle
 
-# Add --allow-scd30-writes to also run the one test that issues an ADDITIONAL real SCD30 NVM write
-# beyond the routine one scd30_continuous_measurement_triggered already spends (skipped by default -
-# same precedent as --allow-flash-cycle, see SPECIFICATION.md Part C.8's bus-hazard promotion
-# checklist and bus_concurrency_scd30_write_vs_siblings.py's own docstring):
+# SCD30 NVM writes are off by default (flash wear on real hardware) - a plain run above spends zero
+# real SCD30 writes, and every SCD30-dependent bus-hazard test (routine or additional) deselects
+# cleanly. Add --allow-scd30-writes for the global permission (runs the routine group, one real
+# write for the whole session); add --allow-scd30-extra-write ON TOP of that (AND-gated, not a
+# substitute) to also run the one test that spends a SECOND real write (skipped/deselected by
+# default - same precedent as --allow-flash-cycle; see SPECIFICATION.md Part C.8's bus-hazard
+# promotion checklist and bus_concurrency_scd30_write_vs_siblings.py's own docstring):
 scripts/run_flash_hardware_suite.sh --allow-scd30-writes
+scripts/run_flash_hardware_suite.sh --allow-scd30-writes --allow-scd30-extra-write
 
 # Manual tests (interactive, prints instructions, waits for confirmation):
 scripts/run_manual_hardware_tests.sh --list          # see what's registered, run nothing
@@ -736,11 +740,13 @@ only same-device write-vs-own-read (`bus_concurrency_same_device_scd30.py`,
 - **`test_scd30_config_write_does_not_disturb_concurrent_sibling_reads`**
   (`device_scripts/bus_concurrency_scd30_write_vs_siblings.py`) - the SCD30-as-writer half of the
   same gap. SCD30's own `set_temperature_offset()` is a real NVM write, so this is deliberately
-  **not** part of the routine group: gated behind `@pytest.mark.scd30_write` /
-  `--allow-scd30-writes` (this pass's own new flag, same precedent as `--allow-flash-cycle`), fires
-  the one additional real write exactly once per invocation, and must never be folded into the one
-  routine write `scd30_continuous_measurement_triggered` already spends for the whole flash-tier
-  bus-hazard group (SPECIFICATION.md Part C.8's own write-budget rule).
+  **not** part of the routine group: gated behind `@pytest.mark.scd30_write` +
+  `@pytest.mark.scd30_extra_write` / `--allow-scd30-writes` AND-gated with
+  `--allow-scd30-extra-write` (same precedent as `--allow-flash-cycle` - see the Eleventh pass
+  below for the full consolidated gating design), fires the one additional real write exactly once
+  per invocation, and must never be folded into the one routine write
+  `scd30_continuous_measurement_triggered` already spends for the whole flash-tier bus-hazard group
+  (SPECIFICATION.md Part C.8's own write-budget rule).
 
 **Honesty note - neither test has been run against real hardware yet.** Both were written and typed
 during a session with no real-hardware go-ahead (CLAUDE.md's own standing gate) and no ability to
@@ -810,9 +816,10 @@ own BMP3xx test already owes for a shared bench rig).
 `asy_scd30_driver.py` registers zero `_push_callbacks` (already noted by
 `test_sensor_config_push_over_real_hardware.py`'s own comment) - there is no `PUT /sensors` field
 that could ever reach SCD30's own NVM write at all. The flash tier's own
-`bus_concurrency_scd30_write_vs_siblings.py` (gated behind `--allow-scd30-writes`) is therefore the
-only real-hardware coverage this specific hazard can ever have, by construction of `src/` itself -
-recorded here rather than left as a silent asymmetry between the two tiers.
+`bus_concurrency_scd30_write_vs_siblings.py` (gated behind both `--allow-scd30-writes` and
+`--allow-scd30-extra-write` - see the Eleventh pass below) is therefore the only real-hardware
+coverage this specific hazard can ever have, by construction of `src/` itself - recorded here
+rather than left as a silent asymmetry between the two tiers.
 
 Same honesty note as the Seventh pass: none of this pass's changes have been run against real
 hardware either (still no go-ahead this session) - `ruff`/`mypy` clean, structurally consistent with
@@ -978,3 +985,48 @@ Ninth pass's bug, just worth naming.
 
 Same honesty note as every real-hardware addition in this file: the new/changed files above are
 `ruff`/`mypy`-clean but unverified against real silicon this session.
+
+## SCD30 write-gating: one global flag plus an AND-gated extra flag
+
+**Standing design, project owner's own choice**: SCD30 real on-chip NVM writes are gated by two
+flags/markers, deliberately not one, in a strict hierarchy —
+- `--allow-scd30-writes`/`@pytest.mark.scd30_write` is the single **global** permission: without
+  it, no real SCD30 write test runs at all, including the routine per-session write
+  `scd30_continuous_measurement_triggered` makes for the whole flash-tier bus-hazard group (the 7
+  flash-tier tests that depend on it, directly or transitively).
+- `--allow-scd30-extra-write`/`@pytest.mark.scd30_extra_write` is a **narrower** opt-in, carried
+  ALONGSIDE `@pytest.mark.scd30_write` (never in place of it) on the one test that spends a second
+  write beyond the routine one. It is AND-gated with the global flag in code, not just by
+  convention — passing it alone, without `--allow-scd30-writes`, still deselects that test.
+
+This shape exists because a real, unbypassable rule and a real, opt-in-only rarity are two
+different things: SCD30's on-chip NVM has a finite write-wear budget, so it must be possible to run
+the full flash-tier bus-hazard suite (dozens of tests) without spending a single real SCD30 write —
+that's the global flag's job. Separately, one specific test spends a second write beyond the
+routine one and stays behind its own narrower opt-in, since running the routine group should never
+implicitly commit to that extra write too. Both flags are skipped/deselected by default, matching
+every other opt-in real-hardware gate in this file — a plain
+`scripts/run_flash_hardware_suite.sh`/`scripts/run_bench_hardware_suite.sh` invocation spends zero
+real SCD30 writes, cleanly.
+
+**Mechanism:**
+
+- `tests_hardware/conftest.py`'s `pytest_collection_modifyitems()` is the single deselection point:
+  it deselects every `scd30_write`-marked item when `--allow-scd30-writes` is absent, and every
+  additionally `scd30_extra_write`-marked item when `--allow-scd30-extra-write` is absent. No test
+  checks either flag inline. This matters beyond style: `scripts/_require_clean_hardware_run.sh`
+  fails a run on any *unexpected* `SKIPPED` test, and has no allowance for either SCD30 flag the way
+  it does for `--allow-flash-cycle`/`--soak-tier`/`--allow-multi-day-rollover-wait` — a plain
+  `scripts/run_flash_hardware_suite.sh` invocation (no extra flags) needs the SCD30 tests to
+  disappear from the run cleanly. Collection-time deselection reports as `N deselected` in pytest's
+  own summary line, never a per-test `SKIPPED`, so that script's grep never needs an entry for it.
+- Every test that depends on `scd30_continuous_measurement_triggered`, directly or transitively,
+  carries `@pytest.mark.scd30_write` — the 6 routine-group tests, plus two ISL29125-named tests
+  (`test_isl29125_cross_device_concurrency_with_its_i2c1_neighbours`,
+  `test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads`) whose SCD30 leg also
+  depends on that fixture. Marker placement is derived from the fixture's real dependents, not from
+  which tests look SCD30-related by name.
+- `scd30_continuous_measurement_triggered` (`tests_hardware/flash/conftest.py`) raises loudly if
+  it is ever invoked without `--allow-scd30-writes`, as a backstop: correct marker placement on every
+  dependent test makes this unreachable via the collection-time deselection above, but a future test
+  that forgets the marker fails hard here instead of silently spending a real write.
