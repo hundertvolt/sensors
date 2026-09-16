@@ -104,37 +104,6 @@ constraints.
 
 ## Open questions (need owner input or further investigation)
 
-- **A full `scripts/test.sh` run's own `tests/_tmp` directory grows unboundedly across the whole
-  run, and once it accumulates enough entries this causes real, multi-minute-scale test slowdowns —
-  found while verifying WP1/WP2, confirmed unrelated to either.** Every `tests/test_*.py` file that
-  needs its own per-test config-file isolation creates fresh subdirectories under the one shared
-  `tests/_tmp` (e.g. `_tmp_cfg_dir()`/`dtcc_<n>`/`dtrw_<n>`-style helpers, one per file, each
-  sweeping only *its own* prefix at its own start via `_sweep_stale_tmp_dirs(prefix)`) — nothing
-  sweeps any other file's leftovers, so the directory's total entry count only ever grows across a
-  single `scripts/test.sh` invocation's full 66-file sequence. **Confirmed directly, isolated from
-  any WP1/WP2 code change**: pre-populating `tests/_tmp` with 900 generic, unrelated directories
-  (simulating "60 other files already ran") and then running `tests/test_sensortask.py` alone — a
-  file whose own code was not touched by this experiment — took **7m2s instead of its normal <2
-  minutes**, with `user` time barely changing (33s vs the normal ~10s) - almost the entire extra
-  time is blocked on filesystem I/O (`os.mkdir()`/`os.listdir()`/`os.rmdir()` calls scaling badly
-  with directory entry count on this container's filesystem), not test logic. This is exactly what
-  was intermittently timing out `tests/test_sensortask.py` and
-  `tests/test_digital_twin_webserver_concurrency.py` — the suite's two heaviest, most
-  temp-dir-hungry files — inside full `scripts/test.sh` runs during this session, even after
-  raising `-X heapsize` and the per-file timeout for unrelated, real reasons (see this file's other
-  WP1/WP2 entries): both passed **every single test correctly**, every time, whether standalone or
-  mid-suite; only the *wall-clock budget* was ever at risk, and only once the shared directory had
-  grown enough. **Not fixed here — needs a design decision, not a quick patch**: candidates include
-  a single global sweep of the whole `tests/_tmp` tree once at the very start of `scripts/test.sh`
-  (before any test file runs, rather than each file sweeping only its own prefix), giving each test
-  *file* (not just each test function) a directory that's fully removed (not swept-by-prefix) when
-  that file's own run starts, or moving to a scheme that doesn't accumulate at all. Whichever is
-  chosen must not weaken the isolation these directories exist for. Real CI (GitHub Actions) starts
-  each job from a fresh checkout with no directory to have accumulated *before* that job's own
-  `scripts/test.sh` invocation, but every one of that invocation's own 66 files still shares the
-  same `tests/_tmp` across that one run, so the same growth-across-one-run mechanism applies there
-  too, not just in a long-lived local sandbox - this is worth confirming against a real CI run
-  before assuming it never bites there.
 - **ISL29125's chip configuration divergence under concurrent API load (PR #84/commit `679c2b0`'s
   isolation work, HIGH IMPORTANCE, completely unforeseen — project owner, 2026-09-15) — fixed in
   code and unit-tested; real-hardware re-verification still pending.** Root cause, traced through

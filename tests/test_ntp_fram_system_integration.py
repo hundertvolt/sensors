@@ -2,7 +2,6 @@
 Extends tests/test_ntp_wifi_dns_integration.py's real-object approach to ntp.ntp_issynced's two downstream consumers: proves the real, currently-wired chain's value/timing behavior (including the no-deadlock assumption around wifi_mode_lock) that lambda-based unit tests alone can't observe."""
 
 import asyncio
-import os
 import select
 import socket
 import struct
@@ -10,6 +9,7 @@ import time
 
 import network
 from _fram_chip_fake import FakeMB85RS64V
+from _tmp_scratch import TmpScratch
 
 import asy_ntp_client as ntpmod
 import asy_spi_driver
@@ -59,64 +59,13 @@ def _wlan(conn: AsyConnTime) -> "Any":  # Any is the point here, not an omission
 # tests/test_fram_integration.py's make_manager().
 # ---------------------------------------------------------------------------
 
-_TMP_DIR = "tests/_tmp"
-_next_dir = 0
-
-
-def _sweep_stale_tmp_dirs(prefix: str) -> None:
-    # Sweeps pre-existing <prefix>* scratch dirs left behind by an earlier scripts/test.sh run on
-    # this machine - _next_dir always restarts at 0 per process, so without this a later run
-    # silently reuses an earlier run's real, persisted config_*.cfg files instead of a genuinely
-    # fresh directory. See tests/test_sensortask.py's own _sweep_stale_tmp_dirs() for the full
-    # root-cause writeup (this exact _tmp_cfg_dir() shape is copy-pasted across every test file with
-    # its own _TMP_DIR/_next_dir pair - same fix applied uniformly to each).
-    try:
-        entries = os.listdir(_TMP_DIR)
-    except OSError:
-        return  # tests/_tmp itself doesn't exist yet - nothing to clean
-    for entry in entries:
-        if not entry.startswith(prefix):
-            continue
-        dir_path = _TMP_DIR + "/" + entry
-        try:
-            for filename in os.listdir(dir_path):
-                try:
-                    os.remove(dir_path + "/" + filename)
-                except OSError:
-                    pass
-            os.rmdir(dir_path)
-        except OSError:
-            pass
-
-
-_sweep_stale_tmp_dirs("ntpfram_")
-
-
-def _remove_any(path: str) -> None:
-    try:
-        os.remove(path)
-    except OSError:
-        try:
-            os.rmdir(path)
-        except OSError:
-            pass  # already gone, or genuinely not removable - not this helper's problem
+# Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that
+# module's own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage.
+_scratch = TmpScratch("ntpfram")
 
 
 def _tmp_cfg_dir() -> str:
-    global _next_dir
-    try:
-        os.mkdir(_TMP_DIR)
-    except OSError:
-        pass  # already exists
-    _next_dir += 1
-    path = _TMP_DIR + "/ntpfram_" + str(_next_dir)
-    try:
-        os.mkdir(path)
-    except OSError:
-        pass  # already exists from a stale previous run
-    _remove_any(path + "/config_WIFI.cfg")
-    _remove_any(path + "/config_NTP.cfg")
-    return path + "/"
+    return _scratch.dir()
 
 
 def make_conn() -> AsyConnTime:

@@ -12,6 +12,7 @@ sys.path.insert(0, "digital_twin")
 import machine
 import sensortask_dev
 import sensortask_wozi
+from _tmp_scratch import TmpScratch
 
 from crc_checks import CRC8
 
@@ -36,52 +37,15 @@ def run_timed(coro: "Coroutine[Any, Any, T]", timeout_s: float) -> "T":
     return asyncio.run(asyncio.wait_for(coro, timeout_s))
 
 
-_TMP_DIR = "tests/_tmp"
-_next_dir = 0
+# Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that
+# module's own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage.
+_scratch = TmpScratch("dtbh")
 _next_port = 19400  # own range, avoids TIME_WAIT/port collision with the 19100+ range in
 # test_digital_twin_sensortask_integration.py, should both ever share one process.
 
 
-def _sweep_stale_tmp_dirs(prefix: str) -> None:
-    import os
-
-    try:
-        entries = os.listdir(_TMP_DIR)
-    except OSError:
-        return
-    for entry in entries:
-        if not entry.startswith(prefix):
-            continue
-        dir_path = _TMP_DIR + "/" + entry
-        try:
-            for filename in os.listdir(dir_path):
-                try:
-                    os.remove(dir_path + "/" + filename)
-                except OSError:
-                    pass
-            os.rmdir(dir_path)
-        except OSError:
-            pass
-
-
-_sweep_stale_tmp_dirs("dtbh_")
-
-
 def _tmp_cfg_dir() -> str:
-    import os
-
-    global _next_dir
-    try:
-        os.mkdir(_TMP_DIR)
-    except OSError:
-        pass
-    _next_dir += 1
-    path = _TMP_DIR + "/dtbh_" + str(_next_dir)
-    try:
-        os.mkdir(path)
-    except OSError:
-        pass
-    return path + "/"
+    return _scratch.dir()
 
 
 def _next_test_port() -> int:

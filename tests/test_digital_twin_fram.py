@@ -7,6 +7,7 @@ import sys
 sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comment for why
 
 from _fram_chip import FramChip
+from _tmp_scratch import TmpScratch
 
 _OPCODE_WREN = 0x06
 _OPCODE_WRDI = 0x04
@@ -16,15 +17,13 @@ _OPCODE_READ = 0x03
 _OPCODE_WRITE = 0x02
 _OPCODE_RDID = 0x9F
 
-_TMP_DIR = "tests/_tmp"
+# Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that module's
+# own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage.
+_scratch = TmpScratch("digital_twin_fram")
 
 
 def _tmp_path(name: str) -> str:
-    try:
-        os.mkdir(_TMP_DIR)
-    except OSError:
-        pass
-    return _TMP_DIR + "/" + name
+    return _scratch.path(name)
 
 
 def _rdsr(chip: FramChip) -> int:

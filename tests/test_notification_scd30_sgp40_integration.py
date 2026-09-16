@@ -2,9 +2,10 @@
 Fills the gap test_notification_scd30_integration.py/test_notification_sgp40_integration.py each leave (their own separate coordinator/pixel pair): proves both chains trigger correctly without cross-contaminating, and a hardware fault on one sensor stays isolated to its own error log."""
 
 import asyncio
-import os
 import struct
 from collections import namedtuple
+
+from _tmp_scratch import TmpScratch
 
 from asy_i2c_driver import I2C
 from asy_neopixel_driver import NeopixelDriver
@@ -51,64 +52,14 @@ class _FastAsyncSleep:
         asyncio.sleep = self._real_sleep
 
 
-_TMP_DIR = "tests/_tmp"
-_next_dir = 0
-
-
-def _sweep_stale_tmp_dirs(prefix: str) -> None:
-    # Sweeps pre-existing <prefix>* scratch dirs left behind by an earlier scripts/test.sh run on
-    # this machine - _next_dir always restarts at 0 per process, so without this a later run
-    # silently reuses an earlier run's real, persisted config_*.cfg files instead of a genuinely
-    # fresh directory. See tests/test_sensortask.py's own _sweep_stale_tmp_dirs() for the full
-    # root-cause writeup (this exact _tmp_cfg_dir() shape is copy-pasted across every test file with
-    # its own _TMP_DIR/_next_dir pair - same fix applied uniformly to each).
-    try:
-        entries = os.listdir(_TMP_DIR)
-    except OSError:
-        return  # tests/_tmp itself doesn't exist yet - nothing to clean
-    for entry in entries:
-        if not entry.startswith(prefix):
-            continue
-        dir_path = _TMP_DIR + "/" + entry
-        try:
-            for filename in os.listdir(dir_path):
-                try:
-                    os.remove(dir_path + "/" + filename)
-                except OSError:
-                    pass
-            os.rmdir(dir_path)
-        except OSError:
-            pass
-
-
-_sweep_stale_tmp_dirs("notify_dual_")
-
-
-def _remove_any(path: str) -> None:
-    try:
-        os.remove(path)
-    except OSError:
-        try:
-            os.rmdir(path)
-        except OSError:
-            pass
+# Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that module's
+# own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage. `label`
+# (e.g. "scd30"/"sgp40") keeps this file's two-sensors-in-one-coordinator directories readable.
+_scratch = TmpScratch("notify_dual")
 
 
 def _tmp_cfg_dir(label: str) -> str:
-    global _next_dir
-    try:
-        os.mkdir(_TMP_DIR)
-    except OSError:
-        pass
-    _next_dir += 1
-    path = _TMP_DIR + "/notify_dual_" + label + "_" + str(_next_dir)
-    try:
-        os.mkdir(path)
-    except OSError:
-        pass
-    _remove_any(path + "/config_NOTIFY.cfg")
-    _remove_any(path + "/config_SGP40.cfg")
-    return path + "/"
+    return _scratch.dir(label)
 
 
 class _FakeTime:

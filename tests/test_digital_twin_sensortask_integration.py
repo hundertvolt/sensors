@@ -5,7 +5,6 @@ restart section below is the one exception). See digital_twin/README.md and this
 import asyncio
 import gc
 import json
-import os
 import select
 import socket
 import sys
@@ -28,6 +27,7 @@ patch_asy_udp_socket_for_unix_port()
 import machine  # noqa: E402
 import sensortask_wozi  # noqa: E402
 from _shared_rest_roundtrip import assert_named_modules_constructed, assert_sensor_payload_not_self_wrapped  # noqa: E402
+from _tmp_scratch import TmpScratch  # noqa: E402
 
 from asy_scd30_driver import SCD30  # noqa: E402  # used only by this file's own reboot-survival section below
 from asy_sgp40_driver import SGP40  # noqa: E402  # used only by this file's own boot-race regression test below
@@ -52,55 +52,16 @@ def run_timed(coro: "Coroutine[Any, Any, T]", timeout_s: float) -> "T":
     return asyncio.run(asyncio.wait_for(coro, timeout_s))
 
 
-# ---------------------------------------------------------------------------
-# Per-test config-file isolation - same _tmp_cfg_dir()/_sweep_stale_tmp_dirs() shape every other
-# test file uses (see tests/test_sensortask.py's own comment for the full root-cause story on
-# why the sweep is required, not just the fresh-directory-name counter alone).
-# ---------------------------------------------------------------------------
-
-_TMP_DIR = "tests/_tmp"
-_next_dir = 0
+# Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that
+# module's own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage.
+_scratch = TmpScratch("dtsi")
 _next_port = 19100  # a fixed, non-privileged test-only range - never the production 8080 default,
 # never the real 0.0.0.0:80 - a fresh port per test avoids any TIME_WAIT reuse flakiness rather
 # than relying on one shared port across every test_* function in this one process.
 
 
-def _sweep_stale_tmp_dirs(prefix: str) -> None:
-    try:
-        entries = os.listdir(_TMP_DIR)
-    except OSError:
-        return
-    for entry in entries:
-        if not entry.startswith(prefix):
-            continue
-        dir_path = _TMP_DIR + "/" + entry
-        try:
-            for filename in os.listdir(dir_path):
-                try:
-                    os.remove(dir_path + "/" + filename)
-                except OSError:
-                    pass
-            os.rmdir(dir_path)
-        except OSError:
-            pass
-
-
-_sweep_stale_tmp_dirs("dtsi_")
-
-
 def _tmp_cfg_dir() -> str:
-    global _next_dir
-    try:
-        os.mkdir(_TMP_DIR)
-    except OSError:
-        pass
-    _next_dir += 1
-    path = _TMP_DIR + "/dtsi_" + str(_next_dir)
-    try:
-        os.mkdir(path)
-    except OSError:
-        pass
-    return path + "/"
+    return _scratch.dir()
 
 
 def _next_test_port() -> int:

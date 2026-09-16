@@ -28,7 +28,6 @@ tests/test_asy_webserver_service.py Section F's in-process _serve()-against-fake
 import asyncio
 import gc
 import json
-import os
 import sys
 import time
 
@@ -38,6 +37,7 @@ sys.path.insert(0, "digital_twin")
 
 import _http_client
 import machine
+from _tmp_scratch import TmpScratch
 
 try:
     from typing import TYPE_CHECKING
@@ -70,53 +70,16 @@ def _wiring_plan(device: str) -> "dict[str, Any]":
     return plan
 
 
-# ---------------------------------------------------------------------------
-# Per-test config-file isolation - same shape every other tests/test_digital_twin_*.py integration
-# file uses. Own port range (19700+), distinct from test_digital_twin_sensortask_integration.py's
-# 19100+ and test_digital_twin_real_website_integration.py's 19300+.
-# ---------------------------------------------------------------------------
-
-_TMP_DIR = "tests/_tmp"
-_next_dir = 0
+# Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that module's
+# own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage. Own port
+# range (19700+), distinct from test_digital_twin_sensortask_integration.py's 19100+ and
+# test_digital_twin_real_website_integration.py's 19300+.
+_scratch = TmpScratch("dtcc")
 _next_port = 19700
 
 
-def _sweep_stale_tmp_dirs(prefix: str) -> None:
-    try:
-        entries = os.listdir(_TMP_DIR)
-    except OSError:
-        return
-    for entry in entries:
-        if not entry.startswith(prefix):
-            continue
-        dir_path = _TMP_DIR + "/" + entry
-        try:
-            for filename in os.listdir(dir_path):
-                try:
-                    os.remove(dir_path + "/" + filename)
-                except OSError:
-                    pass
-            os.rmdir(dir_path)
-        except OSError:
-            pass
-
-
-_sweep_stale_tmp_dirs("dtcc_")
-
-
 def _tmp_cfg_dir() -> str:
-    global _next_dir
-    try:
-        os.mkdir(_TMP_DIR)
-    except OSError:
-        pass
-    _next_dir += 1
-    path = _TMP_DIR + "/dtcc_" + str(_next_dir)
-    try:
-        os.mkdir(path)
-    except OSError:
-        pass
-    return path + "/"
+    return _scratch.dir()
 
 
 def _next_test_port() -> int:

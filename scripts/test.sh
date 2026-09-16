@@ -48,6 +48,19 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 # GitHub-hosted-runner behavior (implicitly UTC) regardless of the developer's own machine.
 export TZ=UTC
 
+# One-time, bounded sweep of the WHOLE tests/_tmp tree, before any test file runs - not a
+# per-file/per-prefix sweep. Every test_*.py file's own per-test scratch directories
+# (tests/_tmp_scratch.py's TmpScratch) already wipe and re-remove their own subtree on every run
+# regardless of this, so this line exists only to bound a long-lived local sandbox's own
+# tests/_tmp against anything that accumulated there before that mechanism existed (or from a
+# file that was killed - e.g. a segfault, see this file's own known-segfault-cause comment below -
+# before its own teardown ran). A real `rm -rf`, not a MicroPython os.listdir() loop: it costs a
+# constant, negligible amount of shell/kernel work regardless of how many entries have piled up,
+# so it can't itself hit the MemoryError this replaces (see this repo's tests/_tmp_scratch.py and
+# tests/test_tmp_scratch.py for the mechanism that MemoryError used to come from). A no-op on
+# real CI, which always starts from a fresh checkout with no tests/_tmp to begin with.
+rm -rf tests/_tmp
+
 coverage=0
 for arg in "$@"; do
     case "$arg" in

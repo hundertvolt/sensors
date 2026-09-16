@@ -4,7 +4,6 @@ scripts/build_firmware.py's real ARM build, which can only be compiled here, nev
 
 import asyncio
 import json
-import os
 import sys
 
 sys.path.insert(0, "ext")  # reaches the real, vendored ext/microdot.py - same convention as
@@ -22,6 +21,7 @@ sys.modules["frozen_html"] = frozen_website_wozi
 
 import _http_client  # noqa: E402
 import sensortask_wozi  # noqa: E402
+from _tmp_scratch import TmpScratch  # noqa: E402
 
 # Mirrors asy_wifi_service.py's own _PHASE_STA_SEEKING/_PHASE_HOTSPOT values - same
 # not-importable-once-const()-folded reasoning as tests/test_asy_wifi_service.py's own copy; keep in
@@ -45,26 +45,16 @@ def run_timed(coro: "Coroutine[Any, Any, T]", timeout_s: float) -> "T":
     return asyncio.run(asyncio.wait_for(coro, timeout_s))
 
 
-# Same per-test config-file isolation shape as test_digital_twin_sensortask_integration.py, own
-# port range (19300+) so a parallel/adjacent run of that file never collides on either.
-_TMP_DIR = "tests/_tmp"
-_next_dir = 0
+# Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that module's
+# own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage. Own port
+# range (19300+) so a parallel/adjacent run of test_digital_twin_sensortask_integration.py never
+# collides on either.
+_scratch = TmpScratch("dtrw")
 _next_port = 19300
 
 
 def _tmp_cfg_dir() -> str:
-    global _next_dir
-    try:
-        os.mkdir(_TMP_DIR)
-    except OSError:
-        pass
-    _next_dir += 1
-    path = _TMP_DIR + "/dtrw_" + str(_next_dir)
-    try:
-        os.mkdir(path)
-    except OSError:
-        pass
-    return path + "/"
+    return _scratch.dir()
 
 
 def _next_test_port() -> int:

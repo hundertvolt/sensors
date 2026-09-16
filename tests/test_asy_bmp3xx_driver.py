@@ -1,9 +1,9 @@
 import asyncio
 import errno as errno_mod
-import os
 import struct
 
 from _fram_chip_fake import FakeMB85RS64V
+from _tmp_scratch import TmpScratch
 from machine import I2C as FakeI2C
 from machine import Timer as FakeTimer
 
@@ -878,22 +878,15 @@ def test_bus_deinit_write_no_ops_silently_but_read_raises_oserror() -> None:
 # BMP3xx_Reader - low-level forwards log failures instead of swallowing them
 # ---------------------------------------------------------------------------
 
-_TMP_DIR = "tests/_tmp"
+# Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that module's
+# own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage. cfg_path just
+# needs to be a directory ConfigManager can append "config_BMP3XX.cfg" onto - a fresh, labeled
+# TmpScratch directory does that as well as the old hand-built filename-prefix ever did.
+_scratch = TmpScratch("bmp3xx")
 
 
 def _tmp_cfg_path(name: str) -> str:
-    # cfg_path is a filename *prefix* (ConfigManager builds cfg_path + "config_" + name + ".cfg"),
-    # not a directory - each test gets its own prefix so runs never collide with one another.
-    try:
-        os.mkdir(_TMP_DIR)
-    except OSError:
-        pass  # already exists
-    prefix = _TMP_DIR + "/" + name + "_"
-    try:
-        os.remove(prefix + "config_BMP3XX.cfg")
-    except OSError:
-        pass  # already gone
-    return prefix
+    return _scratch.dir(name)
 
 
 def make_reader(name: str) -> BMP3xx_Reader:

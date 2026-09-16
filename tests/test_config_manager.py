@@ -2,6 +2,8 @@ import asyncio
 import json
 import os
 
+from _tmp_scratch import TmpScratch
+
 import config_manager as cm
 
 try:
@@ -20,7 +22,11 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to complet
     return asyncio.run(coro)
 
 
-_TMP_DIR = "tests/_tmp"
+# Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that module's
+# own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage. Every test
+# below writes its own uniquely-named config file, so they can safely share this one directory.
+_scratch = TmpScratch("config_manager")
+_SHARED_CFG_DIR = _scratch.dir()
 
 # One field of each schema "type" (int/float/str/bool), plus a special-only (not persisted) field,
 # concatenated the same way every real _VAL_* driver constant is (see asy_bmp3xx_driver.py). Each
@@ -55,11 +61,7 @@ _LARGE_MIXED_SCHEMA: "cm.ConfigSchema" = _VAL_INT + _VAL_FLOAT + _VAL_STR + _VAL
 
 
 def _tmp_path(name: str) -> str:
-    try:
-        os.mkdir(_TMP_DIR)
-    except OSError:
-        pass  # already exists
-    return _TMP_DIR + "/" + name
+    return _SHARED_CFG_DIR + name
 
 
 def _remove(path: str) -> None:
@@ -1359,7 +1361,7 @@ def test_configmanager_parent_directory_missing_leaves_invalid() -> None:
     # Exercises both OSError paths in setup(): os.stat() fails on the initial read, and
     # open(..., "w") also fails on the fallback write - neither is reachable in isolation without
     # a nonexistent parent directory, since every other test's tmp dir exists.
-    path = _TMP_DIR + "/no_such_subdir/x.cfg"
+    path = _scratch.dir() + "no_such_subdir/x.cfg"
     mgr = cm.ConfigManager(path, _SCHEMA, "TEST")
     run(mgr.setup())
     assert mgr.valid is False
@@ -1974,7 +1976,7 @@ def test_write_config_genuine_write_failure_leaves_cache_unchanged() -> None:
     # successful write (see _flush_staged's own comment) - confirms it's still the old, unchanged
     # value afterwards, not left half-updated, and that a later read no longer sees the failed
     # staged value either (the accepted residual-risk outcome, not silently wrong some other way).
-    subdir = _TMP_DIR + "/writefail_subdir"
+    subdir = _scratch.dir() + "writefail_subdir"
     try:
         os.mkdir(subdir)
     except OSError:

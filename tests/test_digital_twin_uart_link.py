@@ -6,7 +6,6 @@ pre-generates it into build/generated_src/ (first on MICROPYPATH) via buildgen b
 ever runs; `import sensortask_dev` below resolves to that generated module."""
 
 import asyncio
-import os
 import sys
 import time
 
@@ -26,6 +25,7 @@ prewarm_poll_set()
 patch_asy_udp_socket_for_unix_port()
 
 import sensortask_dev  # noqa: E402
+from _tmp_scratch import TmpScratch  # noqa: E402
 from machine import LinkPoller, UARTLink  # noqa: E402
 
 try:
@@ -43,7 +43,9 @@ if TYPE_CHECKING:
     from machine import UART as TwinUART
     from machine import UARTLink as TwinLink
 
-_TMP_DIR = "tests/_tmp"
+# Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that module's
+# own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage.
+_scratch = TmpScratch("twin_uart")
 
 
 def run(coro: "Coroutine[Any, Any, T]", limit: int = 30) -> "T":
@@ -51,15 +53,7 @@ def run(coro: "Coroutine[Any, Any, T]", limit: int = 30) -> "T":
 
 
 def _tmp_cfg_dir() -> str:
-    path = _TMP_DIR + "/twin_uart/"
-    for part in (_TMP_DIR, path):
-        try:
-            os.mkdir(part)
-        except OSError:  # already there
-            pass
-    for name in os.listdir(path):
-        os.remove(path + name)
-    return path
+    return _scratch.dir()
 
 
 def fakes() -> "tuple[TwinUART, TwinUART]":
