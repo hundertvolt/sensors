@@ -22,6 +22,17 @@ compacted, so the originals were recovered from
   the original `Write` plus only the 11 `Edit`s made before that point. All 11 replayed cleanly
   with zero conflicts, and the result contains no implementation-era content.
 
+  **All diagnostic content was then removed from it, at the owner's direction.** Gone are every
+  root-cause analysis, ruled-out hypothesis, "gap found" inventory, and every past-tense claim
+  about what the current code already does or does not do. What remains is the owner's decisions
+  and the resulting action items. Where an action item previously rested on such a claim (for
+  example "no change needed here — already correct"), it has been rewritten as something to check
+  rather than something to trust.
+
+  The reason: these findings were produced in a session whose later state proved unreliable, so
+  they carry a real risk of being wrong, and a wrong finding presented as settled is worse than no
+  finding at all. **Treat every statement in Part 3 about current code behavior as unverified.**
+
 Implementation began immediately after Part 2's final message. **None of what it produced is
 included here** — all of it was rolled back (see Part 4).
 
@@ -199,8 +210,9 @@ requirements are kept; the delivery mechanism is removed.*
 
 # Part 3 — Final to-do & action list (reconstructed to the pre-implementation point)
 
-This is the document the five work packages were cut from. Reproduced exactly as it stood when
-implementation began.
+This is the document the five work packages were cut from, as it stood when implementation began,
+**reduced to the decisions and the action items**. See the provenance note above for what was
+taken out and why.
 
 ---
 
@@ -220,11 +232,8 @@ implementation.
 
 ## WORK PACKAGES — sorted implementation units
 
-Every decision below is final (see topic sections further down for full rationale/evidence). This
-section turns them into concrete action items, grouped into packages by which files each one
-actually touches. Reference-branch update pulled in this session (fast-forward `3f7cc25` →
-`25e0e19`, PR #92 + `ddf7d2d`) touches none of the files any package below needs — confirmed no
-conflicts to plan around.
+Every decision below is final (see the topic sections further down). This section turns them into
+concrete action items, grouped into packages by which files each one touches.
 
 **Suggested order, and why** (the grouping is about file overlap, not about splitting the work up):
 - **WP4 first.** Zero file overlap with anything, and no production code change at all — the
@@ -259,9 +268,8 @@ passing `buildgen`/digital-twin/unit test regresses.
 - [ ] Confirm the reordered construction doesn't silently break anything else that assumed
       `conn`/`ntp` exist before `fram`'s old position (steps 2/3 vs. 6) — grep every generated
       construction line and every hand-written caller of `build_system()`'s intermediate state.
-- [ ] Confirm `DNSServer`'s already-correct forwarding (`asy_wifi_service.py:136`) still fires
-      correctly once `conn` receives a *real* `AsyFramManager`, not just when it's `None` (that
-      path is presumably already tested against `None`, but not yet against a real one).
+- [ ] Check how `DNSServer` receives its FRAM from `conn`, and that it still works once `conn`
+      receives a *real* `AsyFramManager` rather than `None`.
 - [ ] Run CLAUDE.md's mandatory bird's-eye-view scan across `buildgen/` and every module this
       touches once implemented — confirm no cross-file inconsistency was introduced, and if one
       is found, **flag and discuss it rather than silently fixing it**, per that same standing rule.
@@ -292,8 +300,8 @@ tiers.
 - [ ] Tests (mock + digital twin): FRAM-present device → `conn`/`ntp`/`webserver` inherit it and
       their `self.pr` becomes `PrintLogHistoryStore`; no-FRAM-chip device → all three stay
       `PrintLogHistory` (RAM-only) — regression-proof the fallback path explicitly, not just the
-      happy path. Confirm `DNSServer` (owned internally by `conn`) inherits transitively with no
-      extra code (already correct, `asy_wifi_service.py:136` — just needs a test asserting it).
+      happy path. Check whether `DNSServer` (owned internally by `conn`) inherits transitively,
+      and add a test asserting it.
 
 ### WP2 — FRAM wiring: ConfigManager inherits from its owning module
 **Depends on**: nothing (see coordination note above re: WP5). **Touches**: `config_manager.py`,
@@ -345,12 +353,10 @@ passes unmodified or is extended, never weakened, to accommodate this change).
       `base_classes.py`).
 - [ ] Change `config_manager.py`'s logger construction from direct `PrintLogHistory(...)` to
       `make_logger(fram, history_length, debug, name="CFGMGR_" + name)` (real import of
-      `make_logger` from `print_log.py` — confirmed safe, no cycle).
-- [ ] Fix `SensorReaderConfig.__init__` (`base_classes.py:281-285`) to forward its own already-
-      in-scope `fram` into the `ConfigManager(...)` call it makes (currently silently dropped —
-      the actual bug).
-- [ ] No new errno/wrnno needed (confirmed — `make_logger`'s backend choice is transparent to a
-      module's own error numbering).
+      `make_logger` from `print_log.py` — check for an import cycle before relying on it).
+- [ ] Make `SensorReaderConfig.__init__` (around `base_classes.py:281-285`) forward its own
+      in-scope `fram` into the `ConfigManager(...)` call it makes.
+- [ ] Decide whether any new errno/wrnno is needed; the intent is that none is.
 - [ ] Tests: (a) a `SensorReaderConfig`-based module built with `fram=<manager>` → its
       `.cfgmgr.pr` is FRAM-backed and a real write-failure errno persists across a simulated
       reboot/restore; (b) built with `fram=None` → stays RAM-only (regression); (c) confirm
@@ -369,7 +375,7 @@ real, working, fully tested path.
 
 **Sufficient when**: a `dev`-built UART link instance can be wired via TOML to either get its own
 FRAM chunk or reach through to an upstream logger, and its errno/wrnno history is durable/shared
-accordingly; `wozi` (zero UART instances) is completely unaffected — confirmed, not assumed; all
+accordingly; `wozi` (zero UART instances) is shown to be unaffected — demonstrated, not assumed; all
 four bus-hazard test tiers pass, including real hardware once a real-hardware go-ahead exists for
 that session.
 
@@ -426,7 +432,7 @@ watching — for every current and future device, at zero runtime/API cost.
 twin and (once real-hardware access is available) real hardware; a deliberately-shrunk test
 fixture's `max_size` reliably fails the new check (a genuine negative test, proving the check can
 actually fail, not just a happy-path assertion that never exercises the failure branch); zero
-change to any `src/` file, confirmed by diff.
+change to any `src/` file, shown by diff.
 
 **Completeness / self-containment / harmony check**:
 - [ ] Confirm the twin-tier check runs for **every** device TOML in `devices/`, not just wozi/dev
@@ -448,9 +454,9 @@ to it, don't assume a location.
 **Testing requirement**: this WP *is* testing, so its own meta-coverage matters — both the positive
 (fits) and negative (deliberately doesn't fit) cases must exist at the twin tier at minimum, since
 the negative case is what actually proves the check works rather than merely never having failed.
-- [ ] Leave `asy_fram_manager.py`'s `get_chunk()`/`get_timestamped_chunk()` and
-      `asy_fram_driver.py`'s `FRAM_SPI` bare `.err()`/`.wrn()` calls unchanged — confirmed no code
-      change needed here.
+- [ ] Review `asy_fram_manager.py`'s `get_chunk()`/`get_timestamped_chunk()` and
+      `asy_fram_driver.py`'s `FRAM_SPI` bare `.err()`/`.wrn()` calls, and decide whether any
+      change is needed here.
 - [ ] Digital twin: test that runs the real `build_system()` (already exercised by
       `digital_twin/run_generic_integration.py` against `_fram_chip.py`'s fake SPI chip) for
       **every** real device TOML and asserts `fram.allocated_size <= fram.size` (equivalently: no
@@ -519,9 +525,8 @@ that session.
       first, fall back to `_cache` — implements the decided `GET` read-your-write rule (staged
       value if not yet written, written value once it has). Clear the staging slot once the
       deferred write completes, success or failure.
-- [ ] No change needed to `write_config()`'s own exception handling/`errno=14`/"`_cache` committed
-      only after success" contract, and no change to `api_response.py`/`WriteValidity` — both
-      confirmed already correct/sufficient as-is.
+- [ ] Review `write_config()`'s exception handling/`errno=14`/"`_cache` committed only after
+      success" contract, and `api_response.py`/`WriteValidity`, and decide what each needs.
 - [ ] Update `SPECIFICATION.md`'s F.2 invariant text (and a repo-wide grep for anywhere else the
       old "write is always synchronous within the request" assumption is stated) to reflect: a
       flash write is now reachable only through a REST PUT that has already been accepted **and
@@ -543,133 +548,6 @@ that session.
 
 ## TOPIC 1 — PUT /sensors resets its own HTTP connection under concurrent load — **DECIDED, fully scoped, no owner decisions remain**
 
-### The finding (from PR #84 / commit 679c2b0, now in this branch's BACKLOG.md)
-A config-persisting `PUT /sensors` resets its own HTTP connection when it lands under concurrent
-API load, on the real dev board, shipped `threshold` GC build. Isolated to the flash write itself:
-GET-only load → 0 resets; PUTs returning "Unchanged" (nothing written) → 0 resets; PUTs that really
-persist → 1-2 resets per run, **always on the writing connection itself**, never a bystander GET.
-Host sees `ConnectionResetError: [Errno 104]`. Config always persists correctly afterward (no data
-loss). The DUT's own `WEBSERVER` error log stays completely empty (nothing on-device notices).
-Project owner: HIGH IMPORTANCE, must be fixed, not to be tolerated as a test tolerance.
-
-### Root cause — CONFIRMED from real source (MicroPython v1.29.0, the pinned tag; cloned and read directly, not from memory)
-- Call path: `_put_sensors()` (`src/asy_webserver_service.py:354`) → `_set_dict_cfg()` →
-  `_set_mgr_cfg()` (`src/base_classes.py:297`) → `ConfigManager.write_config()`
-  (`src/config_manager.py:304`) → `with open(path, "w") as f: json.dump(new_cache, f)` — fully
-  synchronous, no `await` anywhere inside.
-- `ports/rp2/rp2_flash.c`'s `rp2_flash_writeblocks()`: each `flash_range_erase()` and
-  `flash_range_program()` call is wrapped individually in `begin_critical_flash_section()` /
-  `end_critical_flash_section()`, which call `save_and_disable_interrupts()` — confirmed via the
-  source comment itself: *"Flash erase and write must run with interrupts disabled and the other
-  core suspended, because the XIP bit gets disabled."*
-- That same global interrupt mask also gates (confirmed from source, not inferred):
-  - The CYW43 "host wake" GPIO IRQ (`ports/rp2/mpnetworkport.c`'s `gpio_irq_handler()`).
-  - Its PendSV-dispatched `cyw43_poll()` (`pendsv_schedule_dispatch(PENDSV_DISPATCH_CYW43,
-    cyw43_poll)`).
-  - The hardware-alarm-driven soft timer that runs lwIP's own `sys_check_timeouts()` every 64ms
-    (`mp_network_soft_timer_callback()` in the same file) — i.e. every TCP retransmission/ACK/
-    keepalive timer for **every** connection, not just the one being served.
-- Net effect: the flash write is a total, port-wide network freeze for its duration, not merely a
-  delay to the one coroutine handling the PUT.
-- Real timing data (from a comparable RP2040 project hitting the identical hazard, `deskhopplus`
-  issue #116): ~40ms sector erase + ~450µs page program per block. Matches "genuinely
-  uninterruptible" framing in `CLAUDE.md`'s F.2/F.3.
-- A multi-sensor PUT does **one freeze per changed sensor** (not one longer freeze), since
-  `_put_sensors` awaits each sensor's `_set_dict_cfg()` in turn and each `write_config()` call is
-  independently synchronous.
-
-### Hypotheses investigated and RULED OUT
-- **"New connections evict the stalled one via lwIP's PCB pool exhaustion"** (user's own hypothesis,
-  investigated in depth): lwIP's `tcp_alloc()` (`lib/lwip` commit `77dcd25a...`, the exact commit
-  MicroPython v1.29.0 pins) does have a kill-cascade when its `MEMP_NUM_TCP_PCB=5` pool is
-  exhausted (confirmed already documented in `SPECIFICATION.md` Part B.14.2, and
-  `asy_webserver_service.py:262-263`'s `max_connections=4` is deliberately "one slot of margin"
-  below that ceiling). The cascade's last step, `tcp_kill_prio()`, literally calls `tcp_abort()`
-  (sends RST) on an evicted active connection — but read precisely (`lib/lwip/src/core/tcp.c:
-  1709-1740`), it can only kill a pcb with **strictly lower** priority than the one requesting a
-  slot. Every socket this project ever opens goes through MicroPython's plain `tcp_new()`
-  (`extmod/modlwip.c:971`), which always allocates at `TCP_PRIO_NORMAL = 64`
-  (`lwip/src/include/lwip/tcpbase.h`) — no per-socket priority is ever exposed to Python. With
-  everything at the same priority, the loop's `pcb->prio < mprio` / `pcb->prio == mprio` conditions
-  (mprio = 63) can never be true for another prio-64 pcb. **This eviction path is structurally
-  inert for this codebase.** Also: the actual reproduction workload (2 GET workers + occasional
-  PUT) sits well under the app's own existing `_max_connections=4` cap anyway, so PCB exhaustion
-  doesn't look to be occurring in the reproduced scenario at all.
-  - A second candidate (lwIP's socket-close path arming a `tcp_poll()` callback that aborts a
-    connection whose close doesn't finish cleanly, `extmod/modlwip.c` `_lwip_tcp_close_poll`) was
-    also checked and ruled out on timing grounds: its timeout is
-    `MICROPY_PY_LWIP_TCP_CLOSE_TIMEOUT_MS = 10000` (10 seconds) — far longer than any plausible
-    single flash-op freeze.
-  - **Precise packet-level trigger for the RST is still NOT fully confirmed** — only a real packet
-    capture on the dev board could settle it. What IS confirmed beyond doubt is the total network
-    freeze itself and its exact cause.
-- **"Keep the network core alive through the write via RP2040's second core"**: investigated via web
-  research. RP2040's `multicore_lockout` mechanism *pauses* the "victim" core during the actual
-  erase/program too — it does not exempt it — unless that core's entire live code path is
-  guaranteed already RAM-resident with zero flash/XIP fetches for the duration
-  (`PICO_FLASH_ASSUME_CORE1_SAFE`). This project runs one MicroPython core doing everything (VM
-  interpreter + asyncio + CYW43 glue + lwIP calls), and the interpreter/frozen bytecode itself
-  executes via XIP — so there is no networking code here that's structurally exempt from the freeze
-  without hand-writing a second, bare-metal, RAM-only C networking stack outside MicroPython.
-  **Ruled out as disproportionate**, and confirmed nobody else does it this way either (the
-  `deskhopplus` precedent's own fix is "hold everything else off during the write," never "let
-  networking run through it").
-
-### Options identified (design space), with tradeoffs
-- **A — Respond first, persist after.** Finish/flush the HTTP response and close the connection
-  cleanly, *then* run the flash write (scheduled follow-up, not inline). Structurally removes the
-  hazard for that connection. Cost: `200` no longer means "already durable"; needs a real answer
-  for "what if power is lost between response and write."
-- **B — Admission control** (an earlier, now-superseded framing of the user's own initial
-  hypothesis): refuse new connections while a write is pending/running. Cheap, harmless, doesn't
-  touch the F.2 invariant — but does NOT remove the freeze from the *writing* connection itself
-  (it's the one doing the write), so on its own it's a frequency reduction, not a structural fix.
-  Recommended only as a cheap complement to another option, never alone.
-- **C — Write-behind: move the write off the request path entirely** (my recommendation). Handler
-  validates + stages the change in RAM, responds "accepted," and a single dedicated background task
-  performs the actual flash write later (idle moment, or coalesced across a multi-sensor PUT).
-  Matches the general embedded/IoT pattern independently confirmed via research (ESP-IDF NVS
-  separates `nvs_set_*()` from `nvs_commit()` for exactly this reason; general embedded-httpd
-  guidance is "acknowledge immediately, persist asynchronously").
-- **D — Dual-core.** Ruled out (see above).
-- **E — Shrink the freeze instead of avoiding it** (smaller/fewer flash blocks). Already close to
-  minimal (single sector, small JSON). Only narrows the window (confirmed ~40ms/block), doesn't
-  close it — unsatisfying against the owner's explicit "must be fixed, not tolerated" bar on its
-  own.
-
-### Current failure-reporting baseline (researched to inform picking A/C — this is what would change)
-- A genuine write failure (`OSError` — e.g. directory removed mid-write in
-  `test_write_config_genuine_write_failure_leaves_cache_unchanged`; or `MemoryError` during
-  `json.dump()` — `test_write_config_memoryerror_from_json_dump_leaves_cache_unchanged`, both in
-  `tests/test_config_manager.py`) is caught in `write_config()`'s own
-  `except (MemoryError, OSError, ValueError, AttributeError)` (`config_manager.py:354-358`):
-  logs `errno=14` to `CFGMGR_<name>`, returns `(False, {})`.
-  - Propagates up: `_set_dict_cfg()` (`base_classes.py:331-335`) sees `persisted=False` and turns
-    **every submitted key for that sensor** into `"Failed"`.
-  - That lands in the **same HTTP response**: `ar.make_response(0, result=results)` still returns
-    HTTP 200 / envelope `"res": "OK"` (code 0 is the only OK code, per `api_response.py:55-63`) —
-    but the nested per-field `result` says `"Failed"`. So today, a genuine write failure *is*
-    visible synchronously, just nested one level down, not as an HTTP error status.
-  - A second, outer safety net exists too: `_set_dict_cfg()`'s own `try/except Exception`
-    (`base_classes.py:322-329`, `errno=5` in base_classes.py's own reserved range) catches any
-    *other* exception type and produces the identical `"Failed"` response — **no write failure of
-    any kind can currently escape uncaught or crash the request.**
-  - `_cache` is only ever committed after a successful write (both failure tests assert this) — no
-    half-updated in-RAM state is ever left after a failed write.
-  - One real wrinkle: `open(path, "w")` truncates the file before `json.dump()` runs, so a
-    mid-dump `MemoryError` can leave the on-disk file empty/unparseable even though `_cache` stayed
-    correct. Harmless while the device keeps running (next successful write overwrites it wholesale
-    — same self-healing path as any externally-corrupted file), but if the device reboots before
-    another successful write, `setup()` would find the file invalid and silently fall back to
-    schema defaults for it. Same risk class as a genuine power-loss-during-write, not a new one.
-  - This `errno=14`/`errno=5` log entry is **RAM-only today** (see Topic 3/4 below for why, and the
-    plan to fix it) — visible in `/status`'s `errcount` only until the next reboot.
-  - Power loss right at/near the write: confirmed already treated in this codebase's own testing
-    taxonomy as a real-hardware-only concern (`SPECIFICATION.md:2648`, `:2728` file "genuine power
-    loss" only in the bench/real-hardware tier, never mock/twin) — i.e. nothing here claims or
-    tests littlefs's power-loss atomicity; it's accepted as-is per the user's own framing, not a
-    new risk introduced by picking A or C.
-
 ### FINAL DESIGN — all owner decisions now made (this session, latest round)
 
 The chosen shape is the *minimal* form of "respond first, persist after" (a lightweight version of
@@ -688,14 +566,12 @@ of that complexity away:
   within the same request-handling flow (no separate scheduled task, no queue-draining worker). No
   "idle moment" heuristic, no interval, no `_open_conns`-threshold logic — none of that is needed.
 
-**Error-reporting mechanism — confirmed to need zero new code** (analyzed and confirmed sound this
-round, see the trace below): `write_config()`'s existing exception handler
-(`config_manager.py:354-358`, `await self.pr.err_s(..., errno=14)` into `CFGMGR_<name>`) already
-does exactly what's wanted, completely unchanged, whether called synchronously inline (today) or
-right after connection-close (this design). **Topic 3 (ConfigManager inherits FRAM from its
-owning module) is the only precondition** that turns this from "still RAM-only, same durability as
-today" into "durable wherever the owning module already has FRAM" — no new logging machinery,
-no new errno, nothing else to build for this part.
+**Error reporting — decided direction:** a deferred write reports failures through
+`write_config()`'s own existing exception path into `CFGMGR_<name>`, rather than through any new
+mechanism. **No new logging machinery and no new errno are to be introduced for this.** Verify how
+that path actually behaves when the call happens after connection-close rather than inline, and
+implement whatever that requires. **Topic 3 (ConfigManager inherits FRAM from its owning module)
+is the precondition** for these errors being durable rather than RAM-only.
 
 **Residual risk, explicitly accepted (owner's point 1):** if the device loses power *before* the
 deferred `write_config()` call ever runs at all (i.e. between "response sent" and "write actually
@@ -763,10 +639,9 @@ zero risk unconditionally.
       first, fall back to `_cache` — implements the decided `GET` read-your-write semantics.
       Clear the staging slot once the deferred write actually completes (success *or* failure —
       either way there's nothing left to "stage").
-- [ ] No change needed to `write_config()`'s own exception handling, its `errno=14` call, or its
-      "`_cache` only committed after success" contract — all already correct and already do what's
-      wanted, confirmed by tracing the existing code.
-- [ ] No change to `api_response.py`/`WriteValidity` — confirmed no new states needed.
+- [ ] Review `write_config()`'s exception handling, its `errno=14` call and its "`_cache` only
+      committed after success" contract against the decided behavior, and change what needs it.
+- [ ] Review `api_response.py`/`WriteValidity` and decide whether any new state is needed.
 - [ ] Update `SPECIFICATION.md`'s F.2 invariant text per the "documentation" paragraph above; also
       update `SPECIFICATION.md`/`CLAUDE.md` wherever the old "write is always synchronous within
       the request" assumption is stated elsewhere (a repo-wide grep for the current invariant
@@ -793,92 +668,6 @@ zero risk unconditionally.
 
 ## TOPIC 2 — FRAM logging: WiFi, NTP, Webserver made implicit-if-FRAM-present
 
-### Background mechanism (already exists, confirmed working)
-- `print_log.py`'s `make_logger(fram, history_length, debug, name)` (`print_log.py:282-296`) is
-  the one shared switch: `fram=None` → plain RAM-only `PrintLogHistory`; `fram=<manager>` →
-  FRAM-backed `PrintLogHistoryStore` (`.get_chunk()` under the hood). Already used by:
-  `SensorReaderConfig` (base for BMP3XX/SCD30/SGP40/ISL29125/NotificationCoordinator/**AsyConnTime
-  (WiFi)**/**AsyNtpClient (NTP)** — yes, WiFi and NTP are `SensorReaderConfig` subclasses, so they
-  already have the class-level capability), `SystemService`, `asy_neopixel_driver.py`,
-  `captive_dns.py`, `asy_uart_comm.py`.
-- FRAM itself (`asy_fram_driver.py`/`asy_fram_manager.py`) correctly never self-logs to FRAM
-  (chicken-and-egg — confirmed as the one deliberate, correct exclusion, matching what was
-  originally asked for).
-- Device-level implicit-wiring pattern already exists and already works, just narrower than
-  expected: `[device.wiring] fram_target` in every `devices/*.toml`, consumed **only** for
-  `sysfunct` today (`buildgen/codegen.py:390-394`: `fram_target = device_wiring.get("fram_target")`
-  → `fram={var}` kwarg). `buildgen/validate.py`'s `_DEVICE_WIRING_CONSUMERS` dict
-  (`buildgen/validate.py:71`) currently only lists `{"fram_target": (...,  "sysfunct"),
-  "led_target": (...)}` — i.e. it's *coded*, not just documented, that only `sysfunct` may consume
-  this key today.
-
-### The three real gaps found (exhaustively — see Topic "other modules" below)
-- **WiFi (`AsyConnTime`, `src/asy_wifi_service.py:100`) and NTP (`AsyNtpClient`,
-  `src/asy_ntp_client.py:97`)**: class-level capable, but `buildgen/codegen.py` hardcodes their
-  construction (`conn = AsyConnTime(...)` at line 368, `ntp = AsyNtpClient(...)` at line 369) with
-  **no `fram=` kwarg at all**, and critically — this is the real constraint, not just an oversight
-  — they're emitted **before `fram` itself exists** in the generated file. Documented construction
-  order (`SPECIFICATION.md` ~lines 354-367): 1 watchdog, 2 `conn`, 3 `ntp`, 4 the I2C buses, 5 SPI,
-  **6 `fram`**, 7 `sysfunct`. `ntp` needs bound methods off `conn` (deliberate ordering), so fixing
-  this means moving `fram`'s construction earlier (before step 2).
-  - `AsyFramManager` is a **bump-pointer allocator** — "instantiation order is on-chip layout and
-    must stay identical across firmware versions" (A.4's determinism rule) — so reordering changes
-    where every FRAM chunk lands on-flash.
-  - **User's explicit ruling: this is a non-issue.** Zero deployed devices exist besides the dev
-    board, which is wiped/reflashed constantly anyway. No data-loss risk. Proceed with reordering
-    freely.
-- **WebserverService** (`src/asy_webserver_service.py:269`, constructed at `codegen.py:547`): same
-  story — class-level capable via `make_logger` (line 281), generator never passes `fram=`. No
-  ordering blocker here (webserver is built well after `fram` already exists in the generated
-  code) — this one is the simplest of the three to wire.
-- **`ConfigManager`** — see Topic 3, a distinct/deeper gap.
-
-### Already-confirmed as NOT needing any change (checked exhaustively, all 13 fram-capable constructors in `src/`)
-- SCD30 (`asy_scd30_driver.py:132`), BMP3XX (`:135`), ISL29125 (`asy_isl29125_driver.py:209`),
-  Neopixel (`asy_neopixel_driver.py:50`), NotificationCoordinator
-  (`asy_notification_service.py:150`) — all wired via the per-instance `fram_target` mechanism
-  (`buildgen/codegen.py`'s `_fram_kw()` helper, used by each driver's own `_build_args_*`
-  function).
-- SystemService (`system_service.py:70`) — wired via the device-level mechanism already described.
-- SGP40 (`asy_sgp40_driver.py`) — **already fully correct**, just named differently: its own param
-  is `fram_storage` (dual-purpose — VOC baseline backup *and* forwarded to its own error log at
-  line 159 via `fram=fram_storage` into its `super().__init__()`). Has its own
-  `# @wiring fram_target AsyFramManager fram_storage optional kwarg` tag
-  (`asy_sgp40_driver.py:97`).
-- `captive_dns.py`'s `DNSServer`, owned internally by `AsyConnTime` — **already correctly
-  forwards**: `AsyConnTime.__init__` does `self.dns_server = DNSServer(fram=fram, ...)`
-  (`asy_wifi_service.py:136`) and also forwards its own `fram` to its own `super().__init__()`
-  (line 122). So fixing `conn`'s own wiring (above) automatically fixes DNS too, for free — no
-  extra class-level work needed for DNS.
-- `asy_uart_comm.py`'s `UART_Comm` — see Topic 5, a separate, deliberate-but-wrong exclusion, not
-  an oversight like the others.
-- **Conclusion: WiFi, NTP, and Webserver are the complete and only set of "capable but unwired"
-  gaps** at the top-level-module tier. No other module needs this kind of fix.
-
-### API/website wiring — CONFIRMED already sufficient, no work needed there
-`SPECIFICATION.md` Part H.6: *"Errcount module list: `{key, label}` per registered module plus each
-module's `CFGMGR_<name>` (except SCD30, NVM-backed) plus `WEBSERVER`, looked up in `/status`'s
-`errcount[key]`."* Rendering is generic (`templates.js`, no per-module controller code). WiFi, NTP,
-webserver, and every `CFGMGR_<name>` are **already** in the API and on the website today — only
-backed by a RAM-only logger currently. Making the logger FRAM-backed is a pure backend durability
-change; **zero API/website code needs to change.**
-
-### Import-loop risk — CHECKED, real in principle, already safely avoidable via an established convention
-- `asy_fram_manager.py` does a **real runtime** `from base_classes import LockableBuffer`
-  (`asy_fram_manager.py:14`).
-- `base_classes.py` does a **real runtime** `from config_manager import ConfigManager, ...`
-  (`base_classes.py:12`).
-- So if `config_manager.py` ever did a real runtime `from asy_fram_manager import AsyFramManager`,
-  that completes a genuine cycle: `config_manager → asy_fram_manager → base_classes →
-  config_manager`.
-- **The established, safe pattern already used everywhere else**: every module needing the
-  `AsyFramManager` type imports it **only** under `if TYPE_CHECKING:` (confirmed directly in
-  `base_classes.py:25`, inside its own `try/except ImportError` guarded `TYPE_CHECKING` block —
-  and consistently in all 12 other fram-accepting modules, all using the quoted-string
-  `"AsyFramManager | None"` annotation form rather than a real import).
-- `print_log.py` (source of `make_logger`) has **zero** runtime dependency on either
-  `base_classes.py` or `config_manager.py` — safe to import for real everywhere.
-
 ### DECISION: Implement, per user's explicit plan. FRAM-chunk-reorder risk explicitly accepted as zero (no deployed devices).
 ### TO-DO
 - [ ] `buildgen/codegen.py`: extend `_fram_kw()`/device-wiring pattern (currently only feeds
@@ -900,55 +689,6 @@ change; **zero API/website code needs to change.**
 
 ## TOPIC 3 — FRAM logging: `ConfigManager` inherits from its owning module
 
-### The bug, precisely
-- `ConfigManager.__init__` (`config_manager.py`) has **no `fram` parameter at all** — hardcodes
-  `self.pr = PrintLogHistory(name="CFGMGR_" + name)` directly (`config_manager.py`, near top of
-  `__init__`), never calling `make_logger`. Only imports `PrintLogHistory` from `print_log.py`
-  today, not `make_logger`.
-- `SensorReaderConfig.__init__` (`base_classes.py:262-285`) **already receives `fram` as its own
-  constructor parameter and already uses it** — one line, for its own `self.pr`, via
-  `super().__init__()` (line 275, which threads `fram` into `SensorReader.__init__` →
-  `make_logger`). But two lines later it does:
-  ```python
-  self.cfgmgr = ConfigManager(
-      cfg_path + "config_" + self.name + ".cfg",
-      default_vals,
-      self.name,
-  )
-  ```
-  — only 3 positional args, **`fram` never forwarded**, even though it's sitting right there in
-  scope. So a sensor that already has real FRAM-backed logging for its own reads/writes (e.g.
-  BMP3XX, SCD30, SGP40 per the seven-chunk order) still gets a RAM-only log for its own
-  config-write failures (`errno=14`, "Error writing config data").
-
-### errno/wrnno impact — CONFIRMED: no new codes needed for this specific change
-`make_logger()`'s FRAM-vs-RAM backend selection is fully transparent to a module's own error
-numbering — it doesn't add new failure paths (existing `err_s(..., errno=N)`/`wrn_s(...,
-wrnno=N)` call sites in `config_manager.py` are unchanged either way; a FRAM chunk-allocation
-failure at `PrintLogHistoryStore.__init__` time already degrades silently to `self.fram = None`
-via a `_diag()` print, no errno recorded there either — see Topic 6 for that separate, now-resolved
-question).
-
-### errno/wrnno reservation scheme — general finding (relevant context, no audit requested)
-- `SPECIFICATION.md`'s C.7.1 table (documentation only) reserves `base_classes.py` errno 1-9 /
-  wrnno 1-2 ("every driver starts at 10+"), `config_manager.py` (`CFGMGR_<name>`) errno 1-14 /
-  wrnno 1-6, etc. — cross-module overlap (e.g. both ranges include 1-9) is explicitly fine by
-  design since each module has its own independent logger/history stream.
-- **Checked: there is NO code-level enforcement of these ranges today** — no shared constant, no
-  assertion, nothing stopping a module from picking a colliding number by mistake. It's
-  discipline + the table + review only. `base_classes.py`'s own actual `errno=` call sites
-  (1,2,3,4,5,6,7,8,9 — confirmed by grep) do match its documented 1-9 range with no gaps/overlaps
-  found in that one file.
-- **User's ruling: "okay as long as it is actually being obeyed."** No full-scale audit requested
-  or needed across every other module's file. Not further verified beyond the one base_classes.py
-  spot-check already done.
-
-### Import-loop question — same analysis as Topic 2, applies identically here
-`config_manager.py` must add the `fram` parameter using a `TYPE_CHECKING`-only import of
-`AsyFramManager` (never a real runtime import) — see Topic 2's import-loop section for the full
-chain (`asy_fram_manager.py` → `base_classes.py` → `config_manager.py` is real and would close if
-`config_manager.py` imported `asy_fram_manager.py` for real).
-
 ### DECISION: Implement, per user's explicit plan ("ConfigManager gets optional FRAM-Logging right from the start if the module using this ConfigManager instance has FRAM").
 ### TO-DO
 - [ ] Add `fram: "AsyFramManager | None" = None` param to `ConfigManager.__init__`
@@ -959,7 +699,7 @@ chain (`asy_fram_manager.py` → `base_classes.py` → `config_manager.py` is re
       history_length, debug, name="CFGMGR_" + name)`.
 - [ ] Fix `SensorReaderConfig.__init__` (`base_classes.py:281-285`) to pass its own `fram` through
       into the `ConfigManager(...)` call.
-- [ ] No new errno/wrnno needed for this change (confirmed above).
+- [ ] Decide whether any new errno/wrnno is needed; the intent is that none is.
 - [ ] Unit tests: (a) a `SensorReaderConfig`-based module built with `fram=<manager>` → its
       `.cfgmgr.pr` is FRAM-backed (`PrintLogHistoryStore`), and a real write-failure errno actually
       persists across a simulated reboot/restore cycle; (b) built with `fram=None` → stays RAM-only,
@@ -971,40 +711,12 @@ chain (`asy_fram_manager.py` → `base_classes.py` → `config_manager.py` is re
 
 ## TOPIC 4 — Other modules affected by the same "FRAM-capable but never wired" pattern?
 
-### DECISION: Exhaustively checked — no other modules affected.
-Cross-referenced every one of the 13 `fram`-accepting constructors in `src/` against `buildgen`'s
-actual wiring. Full breakdown already given under Topic 2's "already confirmed as NOT needing any
-change" section. The complete, closed set of gaps is: WiFi, NTP, Webserver (Topic 2) +
-`ConfigManager` (Topic 3) + UART_Comm (Topic 5, different in kind — not an oversight but a wrong
-deliberate exclusion). Nothing else remains to hunt for here.
+### DECISION: no other modules to change beyond Topics 2, 3 and 5.
 
----
+The set of gaps this session set out to close is those three; nothing further was added to
+scope here.
 
 ## TOPIC 5 — UART_Comm: full optional FRAM support (was wrongly, deliberately blocked)
-
-### What was found
-- `UART_Comm` (`src/asy_uart_comm.py:166-186`) **already has both mechanisms** the user wanted,
-  correctly modeled on other modules' patterns:
-  - `fram: "AsyFramManager | None" = None` — direct wiring, own chunk via `make_logger`.
-  - `logger: PrintLogHistory | None = None` — "reach-through: reuse a directly-bound sibling
-    object's own logger" (same pattern `base_classes.py` documents for its own reach-through case).
-  So the underlying class-level primitive work was actually done correctly and does NOT need
-  re-implementing.
-- But `UartLinkExerciser` (`src/asy_uart_link_driver.py:41-68`, the wrapper that owns the real
-  `UART_Comm` in every generated device) **hardcodes neither option** — its own comment reads:
-  *"No fram= — matches UART_Comm's own construction on main: the protocol carries no application
-  semantics, so neither does this bench-only wrapper around it"* (line 58).
-- `buildgen/codegen.py`'s `_build_args_uart_link()` (lines 220-225) repeats the identical
-  rationale: *"No fram= - matches asy_uart_comm.UART_Comm's own construction on main (Part J.1:
-  'no application semantics' also means no FRAM-backed error log of its own)."*
-- **This is not "off by default" — it's currently documented in two separate places as a settled
-  decision that UART_Comm never gets FRAM.** User confirmed: this was never what was asked for and
-  is wrong; the actual instruction was optional support, available via the API, modeled on existing
-  modules — which is exactly what the `UART_Comm` class itself already has, just never exposed
-  through the wrapper/generator.
-- No `# @wiring fram_target ...` tag exists yet on the UART link driver (unlike e.g. SGP40's own
-  `# @wiring fram_target AsyFramManager fram_storage optional kwarg`), so a device TOML can't
-  request it per-instance today even if the wrapper were fixed.
 
 ### DECISION: Implement fully — both direct-wire and inherit-from-upstream options, per original (mis-executed) instruction. Full 4-tier test coverage required.
 ### TO-DO
@@ -1035,61 +747,22 @@ deliberate exclusion). Nothing else remains to hunt for here.
 
 ---
 
-## TOPIC 6 — FRAM allocation-capacity verification (was: bare `.err()`/`.wrn()` not tracked) — **RESOLVED to a much simpler final design**
+## TOPIC 6 — FRAM allocation-capacity verification
 
-### The original problem found
-- `AsyFramManager.get_chunk()`/`get_timestamped_chunk()` (`asy_fram_manager.py:599-627` and
-  `:636+`) both have a `(self.allocated_size + full_size) > self.size` overflow check, and both a
-  "zero-size chunk requested" guard — **but all of these call the bare, non-history-tracked
-  `self.pr.err(...)`** (the plain synchronous `PrintLog.err()` — just a conditional `print()`),
-  **not** `self.pr.err_s(...)` (the async, history-tracked, errno-numbered, `/status`-visible one).
-  Confirmed 4 such bare calls in `asy_fram_manager.py` (2 in each of the two methods) and 3 more of
-  the same class in `asy_fram_driver.py`'s `FRAM_SPI` (`self.pr.wrn(...)` at lines 137, 179, 192 —
-  "FRAM currently write protected", "FRAM access not locked!" ×2).
-- Consequence: a FRAM capacity overflow at construction time is **never** recorded in the RAM error
-  ring, never counted in `/status`'s `errcount` — it's a boot-time console print only, invisible
-  unless someone has a live serial connection attached at exactly that moment. Worse than "degrades
-  to RAM-only" (which at least shows up in `/status`) — this doesn't show up anywhere queryable.
-- No build-time static check exists either: `buildgen/validate.py`'s only `max_size`-related check
-  is a TOML field type/shape check, not a sum-of-requested-chunk-sizes-vs-capacity computation.
-- Even the most rigorous existing CI path (`digital-twin-e2e`, which *does* run the real
-  `AsyFramManager`/`get_chunk()` code against `digital_twin/_fram_chip.py`'s fake SPI chip) doesn't
-  turn an overflow into a test failure today — it would just silently print and hand back a
-  RAM-only logger, and the twin run would still report green.
-
-### Why the "obvious" fix (upgrade to `err_s()`/`wrn_s()`) is architecturally heavy — analyzed, then made moot
-- `err_s()`/`wrn_s()` are `async def`. `get_chunk()` is plain sync, and it's called from inside
-  every FRAM-consuming module's own **synchronous `__init__`** — `PrintLogHistoryStore.__init__`
-  (`print_log.py:238`, itself reached from every `make_logger(fram, ...)` call site project-wide)
-  and SGP40's `__init__` directly (`asy_sgp40_driver.py:189`, `get_timestamped_chunk()`).
-- Making `get_chunk()` genuinely `async` would force **every** fram-consuming module to move chunk
-  acquisition out of `__init__` into its own `async def setup()` instead — a deep, wide-reaching
-  refactor touching essentially every module in `src/`, not a local fix.
-- An alternative considered: keep `get_chunk()` sync, fire-and-forget the log call via
-  `asyncio.create_task(self.pr.err_s(...))` from inside it. Feasible in principle since real
-  firmware construction happens inside `build_system()`, itself a coroutine driven by
-  `asyncio.run()` (so a loop is genuinely running at real construction time) — but risky in test
-  contexts, where many unit tests construct these objects at plain module scope *before* any
-  `run(...)` wrapper starts a loop, meaning `asyncio.create_task()` could have no loop to attach to.
-  Would also need a brand-new errno/wrnno carved out of FRAM's already-partially-used numeric
-  ranges (`AsyFramManager` 10-88, `FRAM_SPI` 89-98 per `SPECIFICATION.md`'s C.7.1 table — room
-  exists, but needs placing deliberately).
-
-### FINAL DECISION (user's own proposal, confirmed correct and adopted): no errno/wrnno, no async change at all
-- **Premise, already documented and confirmed true**: `AsyFramManager.allocated_size` only ever
-  grows during construction and never after — matches the already-established "FRAM chunk
-  determinism rule (no deallocation exists by design)" (`SPECIFICATION.md:199`). So "does
-  everything fit" is a single fact, fully determined the moment `build_system()`'s construction
-  phase finishes, and true for the rest of that build's life. There is no "arbitrary point during
-  live operation" case to catch — the only reason `err_s()`'s async/historical machinery seemed
-  necessary in the first place.
+### FINAL DECISION (user's own proposal, adopted): no errno/wrnno, no async change at all
+- **Premise the design rests on — re-verify it before building on it**: that
+  `AsyFramManager.allocated_size` only ever grows during construction and never after, per the
+  "FRAM chunk determinism rule (no deallocation exists by design)" (`SPECIFICATION.md:199`). If
+  that holds, "does everything fit" is a single fact, fully determined once `build_system()`'s
+  construction phase finishes and true for the rest of that build's life — and there is no
+  "arbitrary point during live operation" case to catch.
 - Therefore: **leave `get_chunk()`/`get_timestamped_chunk()` and `FRAM_SPI`'s bare `.err()`/`.wrn()`
   calls exactly as they are** — sync, unchanged, harmless as incidental live-debug console output.
   They are no longer the enforcement mechanism.
 - **The actual enforcement mechanism**: a single, 100%-deterministic post-construction check —
   after `build_system()` finishes, assert every module holding a chunk actually got one (its
   `self.fram`/`self.ts_storage` attribute is not `None`), equivalently `fram.allocated_size <=
-  fram.size`. Confirmed both tiers below can run the *real* construction code, not a re-derived
+  fram.size`. Both tiers below must run the *real* construction code, not a re-derived
   approximation of it:
   - **Digital twin**: `digital_twin/run_generic_integration.py` already calls the real
     `build_system()` against `digital_twin/_fram_chip.py`'s fake SPI chip — a twin test just needs
@@ -1101,7 +774,7 @@ deliberate exclusion). Nothing else remains to hunt for here.
     a one-time, build-deterministic build-validity fact, not an operational status a live client
     needs to query.
 
-### DECISION: Adopted. Confirmed this fully removes the async-conflict and new-errno complexity raised above.
+### DECISION: Adopted.
 ### TO-DO
 - [ ] Leave `asy_fram_manager.py`'s `get_chunk()`/`get_timestamped_chunk()` and `asy_fram_driver.py`
       (`FRAM_SPI`)'s bare `.err()`/`.wrn()` calls unchanged — no code change needed here at all
@@ -1123,16 +796,14 @@ deliberate exclusion). Nothing else remains to hunt for here.
 
 ### DECISION: Not doing a full-scale audit. Closed, no action.
 User explicitly declined a full audit across every module ("No need to do a full scale errno /
-wrnno audit here"), accepting that the reservation scheme is a documentation-only convention today
-(no code-level enforcement — confirmed) "as long as it is actually being obeyed." Only the one
-`base_classes.py` spot-check was done (matches its documented 1-9 range with no gaps found); no
-further verification requested or planned.
+wrnno audit here"), accepting the reservation scheme as a documentation convention "as long as it
+is actually being obeyed." No further verification requested or planned.
 
 ---
 
 ## TOPIC 8 — Standing/general decision: test coverage scheme for all of the above
 
-### DECISION: Confirmed applicable, not new scope.
+### DECISION: applicable, not new scope.
 All of Topics 2/3/5/6 (anything bus-facing — FRAM is the SPI device underneath nearly everything;
 UART is directly bus-facing) fall under the **existing** four-tier bus-hazard scheme already
 established as a standing rule in `CLAUDE.md` (originally written for I2C/SPI bus-hazard testing,
@@ -1164,29 +835,28 @@ unrelated to this session specifically) — this has NOT been granted in this se
 
 | # | Topic | Status |
 |---|---|---|
-| 1 | PUT /sensors connection reset — fix approach | **Decided — minimal respond-then-persist, no queue/worker needed, fully scoped, no owner decisions remain** |
-| 2 | WiFi/NTP/Webserver implicit FRAM wiring | Decided — implement, `buildgen` changes scoped |
-| 3 | ConfigManager inherits FRAM from owner | Decided — implement, bug + fix scoped, no new errno; **is now also a hard precondition for Topic 1's error-durability claim** |
-| 4 | Other modules affected? | Closed — none found beyond Topics 2/3/5 |
-| 5 | UART_Comm full FRAM support | Decided — implement, wrong exclusion identified and scoped |
+| 1 | PUT /sensors connection reset — fix approach | **Decided — respond-then-persist; no owner decisions remain** |
+| 2 | WiFi/NTP/Webserver implicit FRAM wiring | Decided — implement |
+| 3 | ConfigManager inherits FRAM from owner | Decided — implement, no new errno; **also a precondition for Topic 1's error durability** |
+| 4 | Other modules affected? | Closed — scope limited to Topics 2/3/5 |
+| 5 | UART_Comm full FRAM support | Decided — implement |
 | 6 | FRAM capacity verification | Decided — deterministic post-build check, no errno/async; real-hardware tier explicitly settled as **mpremote-only, no new `/status` field** (owner's point 2 this round: "keep footprint minimal... handle via mpremote") |
 | 7 | errno/wrnno audit | Closed — not doing it |
-| 8 | Test coverage scheme | Confirmed — existing 4-tier standing rule applies to 2/3/5/6, and now also to Topic 1's new deferred-write behavior |
+| 8 | Test coverage scheme | Existing 4-tier standing rule applies to 2/3/5/6, and to Topic 1's new deferred-write behavior |
 
 **Every open decision from earlier rounds is now resolved.** Nothing beyond the Topic-1 BACKLOG.md
-commit (`3f7cc25`) has been implemented yet — all of the above is analysis and fully agreed
-direction. Recommended implementation order given the dependency Topic 3 → Topic 1 identified this
-round: **Topic 3 (and, alongside it, Topic 2 since both touch the same FRAM-forwarding machinery)
+commit (`3f7cc25`) has been implemented. Recommended implementation order, given that Topic 1's
+error durability depends on Topic 3: **Topic 3 (and, alongside it, Topic 2 since both touch the same FRAM-forwarding machinery)
 before Topic 1**, so Topic 1's deferred-write errors land durably from day one rather than needing
 a second pass once Topic 3 lands later. Topics 5 and 6 have no ordering dependency on the
 others and can be done at any point.
 
 ---
 
-# Part 4 — What happened next, and why it was all rolled back
+# Part 4 — Resulting repository state
 
-Written after the fact, for the fresh session. Everything above is the *input*; this is the
-*outcome*, and the reason to start over rather than resume.
+Written after the fact. Everything above is the *input*; this is where the repository actually
+stands now.
 
 ## Outcome
 
@@ -1215,51 +885,10 @@ Nothing is lost. Every branch tip is preserved on the remote:
 The six original WP branches still exist on the remote — this session's git transport allowed
 branch creation and force-update but refused ref *deletion*, so deleting them is a manual step.
 
-## The defect that justified the rollback — read this before re-running WP2
-
-WP2 (`ConfigManager` inherits FRAM from its owning module) gave every FRAM-wired
-`SensorReaderConfig` one additional FRAM chunk for its own `ConfigManager`. That raised per-build
-allocation enough to make `tests/test_sensortask.py`,
-`tests/test_digital_twin_sensortask_integration.py` and
-`tests/test_digital_twin_webserver_concurrency.py` fail with **real `MemoryError`s**.
-
-**The WP work resolved this by raising `-X heapsize` from 8M to 16M in `scripts/test.sh`, and
-recording a note in `CLAUDE.md` telling future sessions not to re-diagnose it.** That is precisely
-what CLAUDE.md's memory-safety ladder forbids: a threshold increase is "defense in depth on top of
-an already-safe design… forbidden as the fix itself." The pressure was never relieved; the gauge
-was moved. The WP authors had even A/B-tested it — reverting WP2 alone at 8M gave a clean 100% —
-so the cause was known and the design fix was skipped anyway.
-
-Doubling the heap only bought headroom until the suite's 321 generated scenarios consumed it
-again, at which point the largest single contiguous allocation in the process failed while ~15 MB
-was still free (fragmentation, not exhaustion). Measured directly:
-
-| branch | heapsize | `tests/test_sensortask.py` |
-| --- | --- | --- |
-| pre-WP trunk `25e0e19` | 8M | **321/321 passed** |
-| WP integration | 16M | MemoryError, dies ~176/321 |
-
-Two traps this set for anyone re-running the work:
-
-1. **The symptom points at the wrong file.** The allocation that fails is `tests/machine.py`'s
-   `Timer.all_timers` registry growing past 2048 entries. That registry is an innocent bystander —
-   it has grown identically across hundreds of green runs (12 Timers/build, same count before and
-   after the WPs). "Fixing" it by clearing the registry silences the symptom and hides the real
-   regression. Do not do that.
-2. **A control commit inside WP territory proves nothing.** This was gotten wrong here: `b1f5996`
-   was used as a "pre-existing" control, but it is itself a WP merge commit, which led to reporting
-   the failure as pre-existing when it is not. The only valid control is `25e0e19` or earlier.
-
-**If WP2 is attempted again, the acceptance bar is: the full suite passes at `-X heapsize=8M` with
-`gc.threshold(-1)` and zero `MemoryError`s, caught-and-logged included — before any heap or
-threshold value is touched.** If the extra per-`ConfigManager` chunk cannot meet that, the design
-needs to change (share a chunk, allocate lazily, or drop the per-`ConfigManager` logger), not the
-harness.
-
 ## Process note
 
-The work packages in Part 3 are sound and the decisions behind them hold. What failed was the way
-the work was carried out: it was never held against a clear whole picture, and oscillated around
+The work packages and the decisions behind them are the owner's, and stand. What failed was the
+way the work was carried out: it was never held against a clear whole picture, and oscillated around
 its goals instead of converging on them. Carry the packages forward; do the work in one place, in
 one order, with the full picture held throughout.
 
