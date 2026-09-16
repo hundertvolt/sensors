@@ -1,9 +1,9 @@
 import asyncio
 import errno as errno_mod
-import os
 import struct
 import time
 
+from _tmp_scratch import TmpScratch
 from machine import I2C as FakeI2C
 from machine import Pin as FakePin
 from machine import Timer as FakeTimer
@@ -101,20 +101,13 @@ class _RaiseOnArm:
         FakeTimer.raise_on_arm_exc = OSError
 
 
-_TMP_DIR = "tests/_tmp"
+# Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that module's
+# own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage.
+_scratch = TmpScratch("isl29125")
 
 
 def _tmp_cfg_path(name: str) -> str:
-    try:
-        os.mkdir(_TMP_DIR)
-    except OSError:
-        pass
-    path = _TMP_DIR + "/isl_" + name + "_"
-    try:
-        os.remove(path + "config_ISL29125.cfg")
-    except OSError:
-        pass
-    return path
+    return _scratch.dir(name)
 
 
 def make_i2c() -> I2C:

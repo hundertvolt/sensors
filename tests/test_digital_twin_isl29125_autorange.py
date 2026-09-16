@@ -2,7 +2,6 @@
 This is the CI-every-commit version of the NeoPixel rig - continuity, hysteresis, colour invariance, requirement 17's dead-interrupt path and gain-ratio convergence, none of which any mock-tier test can prove because none of them has a chip whose gain actually changes."""
 
 import asyncio
-import os
 import sys
 
 try:
@@ -26,6 +25,7 @@ if TYPE_CHECKING:
 sys.path.insert(0, "digital_twin")
 
 import machine
+from _tmp_scratch import TmpScratch
 from machine import Pin
 
 import asy_i2c_driver
@@ -40,7 +40,9 @@ _CHIP_GAIN_RATIO = 25.9  # _isl29125_chip.py's own per-instance default - the va
 # 85% of the low range's 375 lx. The switch-DOWN point is derived from it and is not needed here.
 _SWITCH_UP_LUX = 0.85 * 375.0
 
-_TMP_DIR = "tests/_tmp"
+# Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that module's
+# own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage.
+_scratch = TmpScratch("digital_twin_isl29125")
 
 
 def run(coro: "Coroutine[Any, Any, T]") -> "T":
@@ -48,16 +50,7 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":
 
 
 def _tmp_cfg_path(name: str) -> str:
-    try:
-        os.mkdir(_TMP_DIR)
-    except OSError:
-        pass
-    path = _TMP_DIR + "/isltwin_" + name + "_"
-    try:
-        os.remove(path + "config_ISL29125.cfg")
-    except OSError:
-        pass
-    return path
+    return _scratch.dir(name)
 
 
 def make_dev_reader(name: str, *, resolution: int = 16, dwell_s: float = 0.0) -> "tuple[Isl29125Chip, ISL29125_Reader]":

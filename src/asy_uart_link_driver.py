@@ -21,10 +21,12 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from typing import Any
 
+    from asy_fram_manager import AsyFramManager
     from asy_uart_driver import UART
     from print_log import ErrorLog, PrintLogHistory
 
 _NAME = const("UART")
+# @wiring fram_target AsyFramManager fram optional kwarg
 
 # The two bench-only command ids this exerciser answers/asks across the jumper - never protocol-
 # level (UART_Comm itself carries no application semantics, SPECIFICATION.md Part J.1). Bench-only:
@@ -46,8 +48,10 @@ class UartLinkExerciser:
         payload_size: int = 48,
         timeout: int = 1000,
         name_ext: str = "",
+        fram: "AsyFramManager | None" = None,
         history_length: int = 10,
         debug: int | None = None,
+        logger: "PrintLogHistory | None" = None,
     ) -> None:
         self.role = role
         self.uart = uart  # public: the digital twin reaches the underlying machine fake through it
@@ -55,8 +59,11 @@ class UartLinkExerciser:
         # way it already reaches every other bus-attached instance's own bus object - see
         # digital_twin/run_generic_integration.py's _wire_uart_crossover()).
         resolved_name = instance_name(_NAME, name_ext)
-        # No fram= - matches UART_Comm's own construction on main: the protocol carries no
-        # application semantics, so neither does this bench-only wrapper around it.
+        # fram=/logger= forwarded straight through to UART_Comm's own already-supported reach-
+        # through (asy_uart_comm.py: make_logger(fram, ...) when logger is None, else logger as
+        # given) - the protocol itself still carries no application semantics (Part J.1), but its
+        # own errno/wrnno history is real diagnostic state, so it takes the same optional-FRAM
+        # treatment as every other module's logger. WP3 (was wrongly, deliberately excluded).
         self._comm = UART_Comm(
             uart,
             role,
@@ -65,9 +72,11 @@ class UartLinkExerciser:
             get_callback=self._get_callback if role == ROLE_RESPONDER else None,
             set_callback=self._set_callback if role == ROLE_RESPONDER else None,
             message_callback=self._message_callback if role == ROLE_RESPONDER else None,
+            fram=fram,
             history_length=history_length,
             debug=debug,
             name=resolved_name,
+            logger=logger,
         )
         self.name = self._comm.name  # matches self.pr.name - the _ModuleLike registration shape
         self.pr = self._comm.pr

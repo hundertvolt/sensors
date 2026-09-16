@@ -5,7 +5,6 @@ restart section below is the one exception). See digital_twin/README.md and this
 import asyncio
 import gc
 import json
-import os
 import select
 import socket
 import sys
@@ -28,6 +27,7 @@ patch_asy_udp_socket_for_unix_port()
 import machine  # noqa: E402
 import sensortask_wozi  # noqa: E402
 from _shared_rest_roundtrip import assert_named_modules_constructed, assert_sensor_payload_not_self_wrapped  # noqa: E402
+from _tmp_scratch import TmpScratch  # noqa: E402
 
 from asy_scd30_driver import SCD30  # noqa: E402  # used only by this file's own reboot-survival section below
 from asy_sgp40_driver import SGP40  # noqa: E402  # used only by this file's own boot-race regression test below
@@ -52,55 +52,16 @@ def run_timed(coro: "Coroutine[Any, Any, T]", timeout_s: float) -> "T":
     return asyncio.run(asyncio.wait_for(coro, timeout_s))
 
 
-# ---------------------------------------------------------------------------
-# Per-test config-file isolation - same _tmp_cfg_dir()/_sweep_stale_tmp_dirs() shape every other
-# test file uses (see tests/test_sensortask.py's own comment for the full root-cause story on
-# why the sweep is required, not just the fresh-directory-name counter alone).
-# ---------------------------------------------------------------------------
-
-_TMP_DIR = "tests/_tmp"
-_next_dir = 0
+# Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that
+# module's own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage.
+_scratch = TmpScratch("dtsi")
 _next_port = 19100  # a fixed, non-privileged test-only range - never the production 8080 default,
 # never the real 0.0.0.0:80 - a fresh port per test avoids any TIME_WAIT reuse flakiness rather
 # than relying on one shared port across every test_* function in this one process.
 
 
-def _sweep_stale_tmp_dirs(prefix: str) -> None:
-    try:
-        entries = os.listdir(_TMP_DIR)
-    except OSError:
-        return
-    for entry in entries:
-        if not entry.startswith(prefix):
-            continue
-        dir_path = _TMP_DIR + "/" + entry
-        try:
-            for filename in os.listdir(dir_path):
-                try:
-                    os.remove(dir_path + "/" + filename)
-                except OSError:
-                    pass
-            os.rmdir(dir_path)
-        except OSError:
-            pass
-
-
-_sweep_stale_tmp_dirs("dtsi_")
-
-
 def _tmp_cfg_dir() -> str:
-    global _next_dir
-    try:
-        os.mkdir(_TMP_DIR)
-    except OSError:
-        pass
-    _next_dir += 1
-    path = _TMP_DIR + "/dtsi_" + str(_next_dir)
-    try:
-        os.mkdir(path)
-    except OSError:
-        pass
-    return path + "/"
+    return _scratch.dir()
 
 
 def _next_test_port() -> int:
@@ -135,8 +96,14 @@ async def _boot(port: int) -> None:
 async def _start_webserver() -> "asyncio.Task[None]":
     assert sensortask_wozi.webserver is not None
     task = sensortask_wozi.webserver.get_task_starters()[0]()
-    await asyncio.sleep(0.1)  # let _run() actually reach start_server()/bind - same bound
-    # test_asy_webserver_service.py's own F.8 test uses for the identical real-socket startup race.
+    # WP1/CLAUDE.md's implicit-FRAM-wiring rule made webserver.pr real-FRAM-backed whenever the
+    # device wires FRAM (every real device today): _run() now awaits a real self.pr.setup() call
+    # (a real chunk read/write) before it ever reaches start_server()/bind, not the instant no-op
+    # a RAM-only logger's own setup() was - test_asy_webserver_service.py's own F.8 test still uses
+    # the old 0.05s bound because its own WebserverService fixture is never constructed with fram=.
+    # Measured directly against this file's own real digital_twin machine fakes: consistently ready
+    # within ~400ms; 1.0s keeps a real (~2.5x) margin rather than a bare-minimum guess.
+    await asyncio.sleep(1.0)
     return task
 
 
@@ -965,7 +932,10 @@ def _scenario_measurements_and_sensors_shape(device: str) -> None:
     async def scenario() -> None:
         module = await _boot_device(port, device)
         task = module.webserver.get_task_starters()[0]()
-        await asyncio.sleep(0.1)
+        # See _start_webserver()'s own comment above (this file's shared helper, used elsewhere in
+        # this same file): WP1 made webserver.pr real-FRAM-backed on every real device, so _run()
+        # now awaits a real self.pr.setup() before start_server()/bind - measured at ~400ms here too.
+        await asyncio.sleep(1.0)
         try:
             expected = {name.upper() for name in _present_optional_instances(module, device) if name in ("scd30", "sgp40", "bmp3xx", "isl29125")}
             res = await _http_client.fetch("127.0.0.1", port, "GET", "/measurements")
@@ -1012,7 +982,10 @@ def _scenario_bus_fault_degrades(device: str) -> None:
         # build_system() calls.
         sgp40_chip.fault.inject_fault("writeto", OSError(errno.EIO, "test-injected"), times=5)
         task = module.webserver.get_task_starters()[0]()
-        await asyncio.sleep(0.1)
+        # See _start_webserver()'s own comment above (this file's shared helper, used elsewhere in
+        # this same file): WP1 made webserver.pr real-FRAM-backed on every real device, so _run()
+        # now awaits a real self.pr.setup() before start_server()/bind - measured at ~400ms here too.
+        await asyncio.sleep(1.0)
         try:
             res = await _http_client.fetch("127.0.0.1", port, "GET", "/measurements")
             assert res.status_code == 200  # never a 500 - a sensor read failure degrades to

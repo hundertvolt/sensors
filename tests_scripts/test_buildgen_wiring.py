@@ -235,8 +235,17 @@ def test_parse_wiring_leaves_non_tags_alone(tmp_path: Path, source: str) -> None
         ("asy_neopixel_driver.py", (WiringField("fram_target", "AsyFramManager", "fram", False, "kwarg"),)),
         ("asy_scd30_driver.py", (WiringField("fram_target", "AsyFramManager", "fram", False, "kwarg"),)),
         ("asy_sgp40_driver.py", (WiringField("fram_target", "AsyFramManager", "fram_storage", False, "kwarg"),)),
-        ("asy_wifi_service.py", (WiringField("led_target", "NeopixelDriver", "set_ext_led", False, "setter"),)),
+        (
+            "asy_wifi_service.py",
+            (
+                WiringField("led_target", "NeopixelDriver", "set_ext_led", False, "setter"),
+                WiringField("fram_target", "AsyFramManager", "fram", False, "kwarg"),
+            ),
+        ),
+        ("asy_ntp_client.py", (WiringField("fram_target", "AsyFramManager", "fram", False, "kwarg"),)),
+        ("asy_webserver_service.py", (WiringField("fram_target", "AsyFramManager", "fram", False, "kwarg"),)),
         ("system_service.py", (WiringField("fram_target", "AsyFramManager", "fram", False, "kwarg"),)),
+        ("asy_uart_link_driver.py", (WiringField("fram_target", "AsyFramManager", "fram", False, "kwarg"),)),
         (
             "asy_notification_service.py",
             (
@@ -258,8 +267,11 @@ def test_no_other_src_module_declares_an_unnoticed_wiring_tag(src_dir: Path) -> 
         "asy_isl29125_driver.py",
         "asy_neopixel_driver.py",
         "asy_notification_service.py",
+        "asy_ntp_client.py",
         "asy_scd30_driver.py",
         "asy_sgp40_driver.py",
+        "asy_uart_link_driver.py",
+        "asy_webserver_service.py",
         "asy_wifi_service.py",
         "system_service.py",
     }

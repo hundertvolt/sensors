@@ -19,6 +19,11 @@
 # are deselected, not skipped) - this whitelist only matters for a direct invocation of this file
 # that doesn't apply that marker exclusion, e.g. scripts/run_bench_soak_tests.sh's own -m long_soak
 # selection (where --soak-tier IS expected to be passed, so these become "must pass", not "may skip").
+# --allow-scd30-writes/--allow-scd30-extra-write deliberately need NO entry in the loop below, unlike
+# the three flags above: tests_hardware/conftest.py's own pytest_collection_modifyitems() deselects
+# every scd30_write/scd30_extra_write-marked test at collection time when its flag is absent (same
+# mechanism as the long_soak/multi_day_rollover markers above), rather than a per-test pytest.skip()
+# - so those tests already never appear as a per-test SKIPPED line for this script's grep to catch.
 set -uo pipefail  # deliberately not -e: this script inspects pytest's own output before deciding its own exit code
 
 # The one currently-known, deliberate, permanent skip: raw-socket off-subnet-source-address

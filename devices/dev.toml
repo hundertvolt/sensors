@@ -146,10 +146,13 @@ source = "scd30"
 field = "Hum"
 
 # --- UART crossover link exerciser (bench-only) -------------------------------------------------
-# No [instance.wiring] on either - the protocol carries no application semantics of its own
-# (SPECIFICATION.md Part J.1), so neither instance takes a fram_target or any other cross-instance
-# reference. wozi never gets a UART instance - it is never physically flashed, so wiring it there
-# would add an untestable peripheral (CLAUDE.md).
+# Each end takes its own fram_target - own chunk, not a shared one, so a fault on one end is
+# attributable without merging both links' histories into a single logger (matches every other
+# per-instance fram_target consumer's own "own chunk" shape; WP3 - was wrongly, deliberately
+# excluded, since the protocol itself still carries no application semantics of its own,
+# SPECIFICATION.md Part J.1 - only its own errno/wrnno history is being made durable here). wozi
+# never gets a UART instance - it is never physically flashed, so wiring it there would add an
+# untestable peripheral (CLAUDE.md).
 
 [[instance]]
 driver = "uart_link"
@@ -157,8 +160,14 @@ name_ext = "init"
 bus = "uart0"
 role = "initiator"
 
+[instance.wiring]
+fram_target = "fram"
+
 [[instance]]
 driver = "uart_link"
 name_ext = "resp"
 bus = "uart1"
 role = "responder"
+
+[instance.wiring]
+fram_target = "fram"

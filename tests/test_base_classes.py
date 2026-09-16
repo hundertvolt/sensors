@@ -3,6 +3,7 @@ import os
 from collections import namedtuple
 
 from _fram_chip_fake import FakeMB85RS64V
+from _tmp_scratch import TmpScratch
 
 import asy_spi_driver
 from asy_fram_manager import AsyFramManager
@@ -100,18 +101,14 @@ class _RaisingFramManager:
 
 Meas = namedtuple("Meas", ["temp", "hum"])
 
-_TMP_DIR = "tests/_tmp"
+# Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that module's
+# own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage. Every test
+# below writes its own uniquely-named config file, so they can safely share this one directory.
+_scratch = TmpScratch("base_classes")
+_SHARED_CFG_DIR = _scratch.dir()
 _VAL_SI: "cm.ConfigSchema" = (("SampleInterv", "int", 2, 1, 3600, None),)
 _VAL_BOOL: "cm.ConfigSchema" = (("SelfCal", "bool", False, None, None, None),)
 _VAL_SPECIAL: "cm.ConfigSchema" = (("Trigger", "bool", None, None, None, True),)  # special-alone, mirrors asy_sgp40_driver.py's SGPResetVOC
-
-
-def _tmp_path(name: str) -> str:
-    try:
-        os.mkdir(_TMP_DIR)
-    except OSError:
-        pass  # already exists
-    return _TMP_DIR + "/" + name
 
 
 def _remove(path: str) -> None:
@@ -758,7 +755,7 @@ def test_sensorreader_fram_setup_fails_cleanly_when_both_read_and_write_fail() -
 
 
 def test_sensorreaderconfig_wires_a_real_configmanager() -> None:
-    path_prefix = _tmp_path("") + "/"
+    path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_temp.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "temp", _VAL_SI, cfg_path=path_prefix)
@@ -772,7 +769,7 @@ def test_sensorreaderconfig_wires_a_real_configmanager() -> None:
 def test_sensorreaderconfig_forwards_its_name_to_the_base_class_logger() -> None:
     # SensorReaderConfig.__init__ already took name to build the config filename - it must also
     # forward it to super().__init__() so reader.pr's own identity matches, not just cfgmgr's.
-    path_prefix = _tmp_path("") + "/"
+    path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_namefwd.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "namefwd", _VAL_SI, cfg_path=path_prefix)
@@ -787,7 +784,7 @@ def test_sensorreaderconfig_name_ext_threads_into_filename_and_both_loggers() ->
     # used consistently everywhere self.name is used here: the on-flash config filename, this
     # object's own logger, and the nested ConfigManager's "CFGMGR_<name>" logger - not just the raw
     # `name` positional (this driver type's fixed base name).
-    path_prefix = _tmp_path("") + "/"
+    path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_SCD30_fan_pressure.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "SCD30", _VAL_SI, name_ext="fan_pressure", cfg_path=path_prefix)
@@ -801,7 +798,7 @@ def test_sensorreaderconfig_name_ext_threads_into_filename_and_both_loggers() ->
 
 
 def test_sensorreaderconfig_get_error_sources_includes_its_cfgmgr() -> None:
-    path_prefix = _tmp_path("") + "/"
+    path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_errsrc.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "errsrc", _VAL_SI, cfg_path=path_prefix)
@@ -812,7 +809,7 @@ def test_sensorreaderconfig_get_error_sources_includes_its_cfgmgr() -> None:
 
 
 def test_sensorreaderconfig_get_loggers_includes_its_cfgmgrs_logger() -> None:
-    path_prefix = _tmp_path("") + "/"
+    path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_loggers.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "loggers", _VAL_SI, cfg_path=path_prefix)
@@ -826,7 +823,7 @@ def test_sensorreaderconfig_setup_awaits_cfgmgr_setup() -> None:
     # SensorReaderConfig's own async def setup() extends ConfigManager's sync-__init__/
     # async-setup() readiness-gate pattern one level up (SPECIFICATION.md C.13) - awaiting
     # it must leave cfgmgr exactly as ready as calling cfgmgr.setup() directly would.
-    path_prefix = _tmp_path("") + "/"
+    path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_ownsetup.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "ownsetup", _VAL_SI, cfg_path=path_prefix)
@@ -847,7 +844,7 @@ def test_sensorreaderconfig_get_cfg_schema_returns_the_schema_it_was_built_with(
     # already passes into super().__init__(), whether or not the subclass itself keeps a local
     # reference. self.cfg_schema stays a public attribute too (existing callers - the legacy REST
     # layer, this file's own earlier tests - already read it directly).
-    path_prefix = _tmp_path("") + "/"
+    path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_getschema.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "getschema", _VAL_SI, cfg_path=path_prefix)
@@ -861,7 +858,7 @@ def test_sensorreaderconfig_get_cfg_schema_returns_the_schema_it_was_built_with(
 def test_sensorreaderconfig_get_cfg_schema_is_a_plain_sync_call() -> None:
     # Deliberately sync, unlike _get_mgr_cfg/_get_dict_cfg: the schema is static, fixed at
     # construction, no I/O or locking involved - calling it directly (no run()/await) is the point.
-    path_prefix = _tmp_path("") + "/"
+    path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_syncschema.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "syncschema", _VAL_SI, cfg_path=path_prefix)
@@ -877,7 +874,7 @@ def test_sensorreaderconfig_get_cfg_schema_reflects_a_concatenated_multi_field_s
     # _VAL_SI + _VAL_POV + ...), not a single-field one - confirms the getter returns the exact
     # concatenated object, not just a single-field happy path.
     combined = _VAL_SI + _VAL_BOOL
-    path_prefix = _tmp_path("") + "/"
+    path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_combinedschema.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "combinedschema", combined, cfg_path=path_prefix)
@@ -890,7 +887,7 @@ def test_sensorreaderconfig_get_cfg_schema_reflects_a_concatenated_multi_field_s
 def test_sensorreaderconfig_is_a_sensorreader_with_a_real_mgr_cfg_override() -> None:
     # Inheritance-level check: SensorReaderConfig IS-A SensorReader, and _get_mgr_cfg's override
     # actually replaces the base class's always-{} stub rather than just adding cfgmgr alongside it.
-    path_prefix = _tmp_path("") + "/"
+    path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_isa.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "isa", _VAL_SI, cfg_path=path_prefix)
@@ -904,7 +901,7 @@ def test_sensorreaderconfig_is_a_sensorreader_with_a_real_mgr_cfg_override() -> 
 def test_get_mgr_cfg_logs_a_cross_reference_line_before_calling_into_cfgmgr() -> None:
     # A line via the owner's self.pr whenever _get_mgr_cfg actually calls into self.cfgmgr, pairing
     # with ConfigManager's own "CFGMGR_"-identified log line for a human/future-rsyslog reader.
-    path_prefix = _tmp_path("") + "/"
+    path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_crossrefget.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "crossrefget", _VAL_SI, cfg_path=path_prefix)
@@ -920,7 +917,7 @@ def test_get_mgr_cfg_logs_a_cross_reference_line_before_calling_into_cfgmgr() ->
 def test_sensorreaderconfig_get_dict_cfg_round_trips_a_real_bool_field() -> None:
     # asy_scd30_driver.py's SelfCal is a real "bool"-schema field flowing through this exact path -
     # confirms the dict actually carries a bool (not a stringified/int-coerced stand-in).
-    path_prefix = _tmp_path("") + "/"
+    path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_boolfield.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "boolfield", _VAL_BOOL, cfg_path=path_prefix)
@@ -937,7 +934,7 @@ def test_sensorreaderconfig_configmanager_has_its_own_separate_logger_instance()
     # of reusing its owner's self.pr - reusing the owner's logger would mislabel every
     # config-related log line as coming from the owner itself, not from config management. Deliberately the inverse of what
     # this test used to assert (a pre-Cluster-2 shared-instance design).
-    path_prefix = _tmp_path("") + "/"
+    path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_shared.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "shared", _VAL_SI, cfg_path=path_prefix)
@@ -948,7 +945,7 @@ def test_sensorreaderconfig_configmanager_has_its_own_separate_logger_instance()
 
 
 def test_sensorreaderconfig_get_dict_cfg_reads_real_config_file() -> None:
-    path_prefix = _tmp_path("") + "/"
+    path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_temp2.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "temp2", _VAL_SI, cfg_path=path_prefix)
@@ -963,7 +960,7 @@ def test_sensorreaderconfig_malformed_schema_propagates_none_through_get_dict_cf
     # An empty default_vals schema makes ConfigManager itself invalid (see config_manager.py's
     # own "Defaults are empty" check) - confirms that invalidity propagates cleanly all the way up
     # through SensorReaderConfig's own public surface, not just when calling ConfigManager directly.
-    path_prefix = _tmp_path("") + "/"
+    path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_badschema.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "badschema", (), cfg_path=path_prefix)
@@ -983,7 +980,7 @@ def test_sensorreaderconfig_malformed_schema_propagates_none_through_get_dict_cf
 
 
 def test_sensorreaderconfig_fram_backed_logging_with_real_config_file() -> None:
-    path_prefix = _tmp_path("") + "/"
+    path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_fram1.cfg")
     try:
         manager, _chip = make_fram_manager()
@@ -997,11 +994,84 @@ def test_sensorreaderconfig_fram_backed_logging_with_real_config_file() -> None:
         _remove(path_prefix + "config_fram1.cfg")
 
 
+def test_sensorreaderconfig_cfgmgr_inherits_fram_from_its_owning_module() -> None:
+    # WP2/CLAUDE.md's implicit-FRAM-wiring rule: SensorReaderConfig forwards its own in-scope fram=
+    # into the ConfigManager it owns (base_classes.py's own single-line gap this WP closes), rather
+    # than always constructing it RAM-only. Own separate chunk from reader.pr's own chunk.
+    path_prefix = _SHARED_CFG_DIR
+    _remove(path_prefix + "config_fram_cfgmgr.cfg")
+    try:
+        manager, _chip = make_fram_manager()
+        reader = SensorReaderConfig(Meas(20.0, 50), 3, "fram_cfgmgr", _VAL_SI, cfg_path=path_prefix, fram=manager)
+        run(reader.cfgmgr.setup())
+        assert isinstance(reader.cfgmgr.pr, PrintLogHistoryStore)
+        assert isinstance(reader.pr, PrintLogHistoryStore)
+        assert reader.cfgmgr.pr.fram is not None
+        assert reader.cfgmgr.pr.fram is not reader.pr.fram  # each draws its own separate chunk
+    finally:
+        _remove(path_prefix + "config_fram_cfgmgr.cfg")
+
+
+def test_sensorreaderconfig_cfgmgr_write_failure_errno_persists_across_a_simulated_reboot() -> None:
+    # The actual durability WP2 exists for: a real write_config() failure (errno=10, an unknown key)
+    # must survive a reboot through cfgmgr's own now-FRAM-backed logger, exactly like reader.pr's
+    # own error history already does (test_sensorreader_fram_backed_error_check_persists_and_survives_reboot).
+    path_prefix = _SHARED_CFG_DIR
+    path = path_prefix + "config_fram_reboot.cfg"
+    _remove(path)
+    try:
+        manager, chip = make_fram_manager()
+        run(manager.setup())
+        reader = SensorReaderConfig(Meas(20.0, 50), 3, "fram_reboot", _VAL_SI, cfg_path=path_prefix, fram=manager)
+        run(reader.cfgmgr.setup())
+        # setup() on a brand-new config file already records one wrn_s() ("Config file ... not
+        # found") - a real, pre-existing, expected first-boot condition, not this test's own
+        # failure - so the baseline is 1, not 0, before write_config() even runs.
+        baseline_err_count = reader.cfgmgr.pr.err_count
+        assert baseline_err_count == 1
+        ok, results = run(reader.cfgmgr.write_config({"NotARealKey": 1}, _VAL_SI))
+        # An unrecognized key alone never sets changed=True, so write_config's own "nothing to
+        # write" path returns (True, ...) - "ok" means "no exception", not "every field valid";
+        # the per-field "Invalid" result plus the persisted errno are what this test is really about.
+        assert ok is True
+        assert results == {"NotARealKey": "Invalid"}
+        assert reader.cfgmgr.pr.err_count == baseline_err_count + 1
+
+        # Simulate a reboot: a fresh manager/reader pair attached to the same underlying chip (same
+        # pattern as test_sensorreader_fram_backed_error_check_persists_and_survives_reboot). The
+        # config file exists now, so this second setup() records no further "not found" warning.
+        manager2, _chip2 = make_fram_manager()
+        manager2.fram._spidev.spi._spi = chip
+        run(manager2.setup())
+        rebooted = SensorReaderConfig(Meas(20.0, 50), 3, "fram_reboot", _VAL_SI, cfg_path=path_prefix, fram=manager2)
+        run(rebooted.cfgmgr.setup())
+        assert rebooted.cfgmgr.pr.err_count == baseline_err_count + 1
+    finally:
+        _remove(path)
+
+
+def test_sensorreaderconfig_cfgmgr_stays_ram_only_when_fram_is_none() -> None:
+    # Regression: the pre-WP2 default behavior (no fram= passed at all) must stay exactly RAM-only,
+    # not just "still works" - same shape as test_sensorreader_uses_in_memory_logging_when_fram_is_none.
+    path_prefix = _SHARED_CFG_DIR
+    _remove(path_prefix + "config_no_fram_cfgmgr.cfg")
+    try:
+        reader = SensorReaderConfig(Meas(20.0, 50), 3, "no_fram_cfgmgr", _VAL_SI, cfg_path=path_prefix)
+        run(reader.cfgmgr.setup())
+        assert isinstance(reader.cfgmgr.pr, PrintLogHistory)
+        assert not isinstance(reader.cfgmgr.pr, PrintLogHistoryStore)
+    finally:
+        _remove(path_prefix + "config_no_fram_cfgmgr.cfg")
+
+
 def test_sensorreaderconfig_malformed_config_file_repairs_cleanly_with_fram_backed_logger() -> None:
-    # ConfigManager's repair warnings go through its own separate, in-memory-only "CFGMGR_" + name
-    # PrintLogHistory - not reader.pr, the FRAM-backed logger this test constructs - so
-    # reader.pr.err_count stays 0 regardless of the repair, and nothing is persisted to FRAM either way.
-    path_prefix = _tmp_path("") + "/"
+    # ConfigManager's repair warnings go through its own separate "CFGMGR_" + name logger - not
+    # reader.pr, the FRAM-backed logger this test constructs directly - so reader.pr.err_count stays
+    # 0 regardless of the repair. As of WP2 (CLAUDE.md's implicit-FRAM-wiring rule), cfgmgr's own
+    # logger is FRAM-backed too when fram= is passed here, exactly like reader.pr - but a repair
+    # warning uses pr.wrn()/pr.err(), never the _s() persisting variants, so nothing is actually
+    # written to FRAM by either logger regardless of which one is or isn't FRAM-backed.
+    path_prefix = _SHARED_CFG_DIR
     path = path_prefix + "config_fram2.cfg"
     _remove(path)
     with open(path, "w") as f:
@@ -1021,8 +1091,14 @@ def test_sensorreaderconfig_malformed_config_file_repairs_cleanly_with_fram_back
 def test_sensorreaderconfig_fram_allocation_failure_and_missing_config_file_together() -> None:
     # Two independent subsystems degrading at once: FRAM allocation fails (pr.fram stays None) while
     # the config file doesn't exist yet either (gets created with defaults) - neither failure may
-    # raise, nor may one derail the other.
-    path_prefix = _tmp_path("") + "/"
+    # raise, nor may one derail the other. Also WP4/Topic 6's own negative case: proves the "every
+    # FRAM-chunk-holding module actually has a non-None chunk" check
+    # (tests/test_sensortask.py's fram_chunks_are_all_successfully_allocated_not_out_of_memory,
+    # run for every real device) can genuinely fail, not just never has - allocated_size can never
+    # exceed size by construction (get_chunk() checks before incrementing, never after), so that
+    # comparison alone would be a tautology; a None chunk reference is the real, observable signal
+    # capacity was insufficient, for both a module's own logger and (WP2) its owned cfgmgr's.
+    path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_fram3.cfg")
     try:
         manager, _chip = make_fram_manager(max_size=1)  # too small for any real chunk
@@ -1037,6 +1113,8 @@ def test_sensorreaderconfig_fram_allocation_failure_and_missing_config_file_toge
         run(reader.cfgmgr.setup())
         assert isinstance(reader.pr, PrintLogHistoryStore)
         assert reader.pr.fram is None
+        assert isinstance(reader.cfgmgr.pr, PrintLogHistoryStore)
+        assert reader.cfgmgr.pr.fram is None
         assert reader.cfgmgr.valid is True
         result = run(reader._get_dict_cfg("Sensor", _VAL_SI))
         assert result == {"Sensor": {"SampleInterv": 2}}
@@ -1048,7 +1126,7 @@ def test_sensorreaderconfig_write_config_is_reflected_by_get_dict_cfg() -> None:
     # Closes the loop on the read-only integration tests above: a write through the wired
     # ConfigManager (config_manager.py) must be visible through SensorReaderConfig's own public
     # surface (base_classes.py), with no error logged through the real PrintLogHistory (print_log.py).
-    path_prefix = _tmp_path("") + "/"
+    path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_writeback.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "writeback", _VAL_SI, cfg_path=path_prefix)
@@ -1079,7 +1157,7 @@ def test_sensorreaderconfig_write_config_is_reflected_by_get_dict_cfg() -> None:
 
 
 def test_set_mgr_cfg_delegates_to_the_real_configmanager() -> None:
-    path_prefix = _tmp_path("") + "/"
+    path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_setmgr.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "setmgr", _VAL_SI, cfg_path=path_prefix)
@@ -1094,7 +1172,7 @@ def test_set_mgr_cfg_delegates_to_the_real_configmanager() -> None:
 
 def test_set_mgr_cfg_logs_a_cross_reference_line_before_calling_into_cfgmgr() -> None:
     # Setter mirror of test_get_mgr_cfg_logs_a_cross_reference_line_before_calling_into_cfgmgr.
-    path_prefix = _tmp_path("") + "/"
+    path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_crossrefset.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "crossrefset", _VAL_SI, cfg_path=path_prefix)
@@ -1110,7 +1188,7 @@ def test_set_mgr_cfg_logs_a_cross_reference_line_before_calling_into_cfgmgr() ->
 def test_set_dict_cfg_persist_only_field_with_no_push_callback_registered() -> None:
     # Matches asy_ntp_client.py's real shape today: every field is persist-only, zero setter
     # methods, self._push_callbacks stays the empty dict SensorReaderConfig.__init__ defaults it to.
-    path_prefix = _tmp_path("") + "/"
+    path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_persistonly.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "persistonly", _VAL_SI, cfg_path=path_prefix)
@@ -1123,7 +1201,7 @@ def test_set_dict_cfg_persist_only_field_with_no_push_callback_registered() -> N
 
 
 def test_set_dict_cfg_registered_push_callback_is_invoked_with_the_new_value() -> None:
-    path_prefix = _tmp_path("") + "/"
+    path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_pushed.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "pushed", _VAL_SI, cfg_path=path_prefix)
@@ -1149,7 +1227,7 @@ def test_set_dict_cfg_push_callback_returning_false_marks_the_field_failed() -> 
     # before this request (no getter registered here, so the pre-write snapshot - not the schema
     # default - wins) - only the underlying persisted value changes, the reported status stays
     # "Failed" either way.
-    path_prefix = _tmp_path("") + "/"
+    path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_pushfail.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "pushfail", _VAL_SI, cfg_path=path_prefix)
@@ -1178,7 +1256,7 @@ def test_set_dict_cfg_push_callback_returning_false_marks_the_field_failed() -> 
 def test_set_dict_cfg_push_callback_raising_marks_the_field_failed_and_logs() -> None:
     # callback is caller-supplied (each module's own bound method) - its runtime behavior isn't
     # statically known, same reasoning as _get_dict_cfg's own callback handling.
-    path_prefix = _tmp_path("") + "/"
+    path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_pushraise.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "pushraise", _VAL_SI, cfg_path=path_prefix)
@@ -1200,7 +1278,7 @@ def test_set_dict_cfg_failed_push_recovers_via_getter_when_registered() -> None:
     # The getter rung (self._get_callbacks) is authoritative when present - it wins over both the
     # pre-write snapshot and the schema default, since it reflects what the sensor actually has
     # right now, the most trustworthy source of truth for what the persisted value should become.
-    path_prefix = _tmp_path("") + "/"
+    path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_pushfailgetter.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "pushfailgetter", _VAL_SI, cfg_path=path_prefix)
@@ -1230,7 +1308,7 @@ def test_set_dict_cfg_failed_push_recovers_via_getter_when_registered() -> None:
 def test_set_dict_cfg_failed_push_falls_back_to_old_value_when_getter_raises() -> None:
     # getter is caller-supplied, same as a push callback - a raising getter must not crash the
     # recovery attempt, just fall through to the next rung (the pre-write snapshot).
-    path_prefix = _tmp_path("") + "/"
+    path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_pushfailgetterraise.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "pushfailgetterraise", _VAL_SI, cfg_path=path_prefix)
@@ -1263,7 +1341,7 @@ def test_set_dict_cfg_failed_push_getter_returning_out_of_schema_value_falls_thr
     # treated the same as the getter raising (test above): fall through to the next rung (the
     # pre-write snapshot), not silently accept/attempt-persist a value _set_mgr_cfg would itself
     # reject as "Invalid", which would otherwise leave the recovery attempt doing nothing.
-    path_prefix = _tmp_path("") + "/"
+    path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_pushfailgetteroor.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "pushfailgetteroor", _VAL_SI, cfg_path=path_prefix)
@@ -1296,7 +1374,7 @@ def test_set_dict_cfg_failed_push_getter_returning_coercible_value_is_coerced_be
     # own type_or_range_error() call must coerce it the same way any other entry point does, not
     # just accept/reject on type alone. Confirms the coerced (int) value - not the getter's raw
     # float - is what actually gets persisted.
-    path_prefix = _tmp_path("") + "/"
+    path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_pushfailgettercoerce.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "pushfailgettercoerce", _VAL_SI, cfg_path=path_prefix)
@@ -1329,7 +1407,7 @@ def test_set_dict_cfg_failed_push_on_first_ever_request_recovers_to_schema_defau
     # No prior successful write and no getter registered - the pre-write snapshot itself is just
     # the freshly-created config's own default, so the fallback chain's last rung (the schema
     # default) is what actually ends up (re)persisted.
-    path_prefix = _tmp_path("") + "/"
+    path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_pushfailfirst.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "pushfailfirst", _VAL_SI, cfg_path=path_prefix)
@@ -1351,7 +1429,7 @@ def test_set_dict_cfg_failed_push_on_special_alone_field_skips_recovery_entirely
     # command-only/special-alone field (e.g. a trigger) has nothing to persist-correct - it's never
     # in ConfigManager's _cache to begin with. A getter that raises if ever called proves the
     # recovery path returns immediately without reaching it.
-    path_prefix = _tmp_path("") + "/"
+    path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_pushfailtrigger.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "pushfailtrigger", _VAL_SPECIAL, cfg_path=path_prefix)
@@ -1384,7 +1462,7 @@ def test_set_dict_cfg_special_alone_field_write_never_logs_a_spurious_config_rea
     # old_values) already skips a special-alone field outright, so the fetched value was never even
     # used. Fixed by filtering the snapshot fetch itself down to genuinely persisted keys, using the
     # same schema-derived check _recover_failed_push() already applies at the point of use.
-    path_prefix = _tmp_path("") + "/"
+    path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_specialnospuriouserr.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "specialnospuriouserr", _VAL_SPECIAL, cfg_path=path_prefix)
@@ -1414,7 +1492,7 @@ def test_set_dict_cfg_mixed_persisted_and_special_alone_fields_in_one_request() 
     # old-value snapshot is still correctly fetched and used for real push-failure recovery - the
     # filtering change must not have accidentally dropped it too.
     combined = _VAL_SI + _VAL_SPECIAL
-    path_prefix = _tmp_path("") + "/"
+    path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_mixedpersistedspecial.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "mixedpersistedspecial", combined, cfg_path=path_prefix)
@@ -1458,7 +1536,7 @@ def test_set_dict_cfg_old_value_snapshot_read_exception_falls_back_to_default() 
         async def _get_mgr_cfg(self, _cfg: "list[str]") -> "dict[str, int | float | str | bool | None] | None":
             raise RuntimeError("simulated read failure")
 
-    path_prefix = _tmp_path("") + "/"
+    path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_pushfailsnapraise.cfg")
     try:
         reader = RaisingGetMgrCfgReader(Meas(20.0, 50), 3, "pushfailsnapraise", _VAL_SI, cfg_path=path_prefix)
@@ -1483,7 +1561,7 @@ def test_recover_failed_push_unknown_key_is_a_defensive_noop() -> None:
     # after already being validated present in cfg_vals), but exercised directly the same way this
     # file's other "shouldn't happen" branches (e.g. MissingKeySetMgrCfgReader) are - proves the
     # defensive early return actually holds, not just that it's never hit in practice.
-    path_prefix = _tmp_path("") + "/"
+    path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_recoverunknown.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "recoverunknown", _VAL_SI, cfg_path=path_prefix)
@@ -1512,7 +1590,7 @@ def test_set_dict_cfg_recover_failed_push_correction_write_exception_is_caught()
                 return await super()._set_mgr_cfg(data, cfg_vals)
             raise RuntimeError("simulated correction-write failure")
 
-    path_prefix = _tmp_path("") + "/"
+    path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_pushfailcorrectionraise.cfg")
     try:
         reader = FlakyOnSecondWriteReader(Meas(20.0, 50), 3, "pushfailcorrectionraise", _VAL_SI, cfg_path=path_prefix)
@@ -1535,7 +1613,7 @@ def test_set_dict_cfg_multiple_fields_recover_independently_via_different_rungs(
     # correct for a single isolated failure (mirrors this file's own "multiple invalid fields"
     # tests, applied to the recovery chain instead of plain validation).
     combined = _VAL_SI + _VAL_BOOL
-    path_prefix = _tmp_path("") + "/"
+    path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_pushfailmulti.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "pushfailmulti", combined, cfg_path=path_prefix)
@@ -1570,7 +1648,7 @@ def test_set_dict_cfg_multiple_fields_recover_independently_via_different_rungs(
 
 
 def test_set_dict_cfg_invalid_value_is_reported_and_never_pushed() -> None:
-    path_prefix = _tmp_path("") + "/"
+    path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_invalidnopush.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "invalidnopush", _VAL_SI, cfg_path=path_prefix)
@@ -1594,7 +1672,7 @@ def test_set_dict_cfg_invalid_value_is_reported_and_never_pushed() -> None:
 def test_set_dict_cfg_unchanged_value_is_reported_and_never_pushed() -> None:
     # No generic force-resend semantics: an unchanged value is a no-op for the hardware, matching
     # the legacy pipeline's own default (set_sensor_value only pushes on prev_updated or force=True).
-    path_prefix = _tmp_path("") + "/"
+    path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_unchangednopush.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "unchangednopush", _VAL_SI, cfg_path=path_prefix)
@@ -1618,7 +1696,7 @@ def test_set_dict_cfg_unknown_key_is_reported_invalid_individually_not_whole_req
     # Final project decision: an unrecognized key is just another per-field "Invalid" outcome
     # (matching ConfigManager.write_config's own existing per-key tolerance) - it does not
     # invalidate the rest of a multi-field request.
-    path_prefix = _tmp_path("") + "/"
+    path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_unknownkey.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "unknownkey", _VAL_SI, cfg_path=path_prefix)
@@ -1632,7 +1710,7 @@ def test_set_dict_cfg_unknown_key_is_reported_invalid_individually_not_whole_req
 
 def test_set_dict_cfg_multi_field_request_reports_each_field_independently() -> None:
     combined = _VAL_SI + _VAL_BOOL
-    path_prefix = _tmp_path("") + "/"
+    path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_multifield.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "multifield", combined, cfg_path=path_prefix)
@@ -1657,7 +1735,7 @@ def test_set_dict_cfg_multiple_invalid_fields_neither_pushed() -> None:
     # covered by test_config_manager.py's own test_write_config_multiple_keys_mixed_outcomes_in_one_call
     # - neither invalid field's callback fires, and both are left at their untouched defaults.
     combined = _VAL_SI + _VAL_BOOL
-    path_prefix = _tmp_path("") + "/"
+    path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_multiinvalid.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "multiinvalid", combined, cfg_path=path_prefix)
@@ -1686,7 +1764,7 @@ def test_set_dict_cfg_whole_persist_failure_marks_every_field_failed() -> None:
     # A genuinely invalid ConfigManager (e.g. malformed schema) makes write_config() itself return
     # (False, {}) - every key in the request comes back "Failed", not silently dropped or "Invalid"
     # (which would misleadingly suggest the values themselves were the problem).
-    path_prefix = _tmp_path("") + "/"
+    path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_wholefail.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "wholefail", (), cfg_path=path_prefix)
@@ -1707,7 +1785,7 @@ def test_set_dict_cfg_set_mgr_cfg_override_raising_marks_every_field_failed() ->
         ) -> "tuple[bool, cm.WriteValidity]":
             raise RuntimeError("simulated persistence failure")
 
-    path_prefix = _tmp_path("") + "/"
+    path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_raisingmgr.cfg")
     try:
         reader = RaisingSetMgrCfgReader(Meas(20.0, 50), 3, "raisingmgr", _VAL_SI, cfg_path=path_prefix)
@@ -1730,7 +1808,7 @@ def test_set_dict_cfg_set_mgr_cfg_override_malformed_result_marks_every_field_fa
         ) -> "tuple[bool, cm.WriteValidity]":
             return True, "not a dict"  # type: ignore[return-value]  # deliberately malformed, simulating a misbehaving override
 
-    path_prefix = _tmp_path("") + "/"
+    path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_malformedmgr.cfg")
     try:
         reader = MalformedSetMgrCfgReader(Meas(20.0, 50), 3, "malformedmgr", _VAL_SI, cfg_path=path_prefix)
@@ -1755,7 +1833,7 @@ def test_set_dict_cfg_set_mgr_cfg_override_missing_key_marks_it_failed() -> None
         ) -> "tuple[bool, cm.WriteValidity]":
             return True, {}  # reports success but never mentions any of the requested keys
 
-    path_prefix = _tmp_path("") + "/"
+    path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_missingkeymgr.cfg")
     try:
         reader = MissingKeySetMgrCfgReader(Meas(20.0, 50), 3, "missingkeymgr", _VAL_SI, cfg_path=path_prefix)
@@ -1767,7 +1845,7 @@ def test_set_dict_cfg_set_mgr_cfg_override_missing_key_marks_it_failed() -> None
 
 
 def test_set_dict_cfg_empty_data_returns_empty_result() -> None:
-    path_prefix = _tmp_path("") + "/"
+    path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_emptyset.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "emptyset", _VAL_SI, cfg_path=path_prefix)
@@ -1780,7 +1858,7 @@ def test_set_dict_cfg_empty_data_returns_empty_result() -> None:
 def test_set_dict_cfg_push_callbacks_default_to_empty_and_are_per_instance() -> None:
     # Registered once per instance at construction time (project decision), never shared/leaked
     # across two separate instances of the same class.
-    path_prefix = _tmp_path("") + "/"
+    path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_percallback1.cfg")
     _remove(path_prefix + "config_percallback2.cfg")
     try:

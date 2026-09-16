@@ -183,6 +183,50 @@ def test_multi_instance_same_module_merges_distinct_default_extras(tmp_path: Pat
     assert "_DefaultTemperatureSource" in import_line
 
 
+def test_device_level_fram_target_wires_fram_into_conn_ntp_sysfunct_and_webserver(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
+    # CLAUDE.md's implicit-FRAM-wiring rule (WP1/Topic 2): every mandatory-infra module inherits the
+    # device's own FRAM chip, exactly like every FRAM-wirable [[instance]] already can - base_doc()
+    # already declares [device.wiring].fram_target = "fram", so this is the happy path.
+    doc = base_doc()
+    result = generate_device(write_doc(tmp_path, "device_fram_present", doc), src_dir, ext_dir)
+    ast.parse(result.module_source)
+    conn_line = next(line for line in result.module_source.splitlines() if line.strip().startswith("conn = AsyConnTime("))
+    ntp_line = next(line for line in result.module_source.splitlines() if line.strip().startswith("ntp = AsyNtpClient("))
+    sysfunct_line = next(line for line in result.module_source.splitlines() if line.strip().startswith("sysfunct = SystemService("))
+    assert "fram=fram" in conn_line
+    assert "fram=fram" in ntp_line
+    assert "fram=fram" in sysfunct_line
+    assert "fram=fram" in result.module_source.split("webserver = WebserverService(")[1].split(")\n")[0]
+    # fram must actually be constructed before all three consume it - a real NameError on device,
+    # not just a codegen-shape check.
+    fram_pos = result.module_source.index("fram = AsyFramManager(")
+    assert fram_pos < result.module_source.index(conn_line)
+    assert fram_pos < result.module_source.index(ntp_line)
+    assert fram_pos < result.module_source.index(sysfunct_line)
+
+
+def test_device_with_no_fram_target_leaves_conn_ntp_sysfunct_and_webserver_ram_only(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
+    # Regression/fallback path: a device that never wires [device.wiring].fram_target at all (or
+    # has no fram instance) must build byte-for-byte as it always has - no fram= kwarg anywhere on
+    # the mandatory-infra constructors, and no forced construction-order dependency on fram either.
+    doc = base_doc()
+    del doc["device"]["wiring"]["fram_target"]
+    result = generate_device(write_doc(tmp_path, "device_fram_absent", doc), src_dir, ext_dir)
+    ast.parse(result.module_source)
+    conn_line = next(line for line in result.module_source.splitlines() if line.strip().startswith("conn = AsyConnTime("))
+    ntp_line = next(line for line in result.module_source.splitlines() if line.strip().startswith("ntp = AsyNtpClient("))
+    sysfunct_line = next(line for line in result.module_source.splitlines() if line.strip().startswith("sysfunct = SystemService("))
+    assert "fram=" not in conn_line
+    assert "fram=" not in ntp_line
+    assert "fram=" not in sysfunct_line
+    webserver_call = result.module_source.split("webserver = WebserverService(")[1].split(")\n")[0]
+    assert "fram=" not in webserver_call
+    # conn is still built first among mandatory infra - nothing forces fram ahead of it when there's
+    # no device-level fram_target to justify that dependency.
+    order = [n if isinstance(n, str) else f"{n[0]}_{n[1]}" if n[1] else n[0] for n in result.model.construction_order]
+    assert order.index("conn") < order.index("fram")
+
+
 def test_multi_instance_same_module_dedupes_identical_default_extra(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
     # Same mechanism, opposite corner: both sgp40 instances default the *same* field
     # (humidity_source, with different constants) - default_class_name() maps the field name alone

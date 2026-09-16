@@ -28,7 +28,6 @@ tests/test_asy_webserver_service.py Section F's in-process _serve()-against-fake
 import asyncio
 import gc
 import json
-import os
 import sys
 import time
 
@@ -38,6 +37,7 @@ sys.path.insert(0, "digital_twin")
 
 import _http_client
 import machine
+from _tmp_scratch import TmpScratch
 
 try:
     from typing import TYPE_CHECKING
@@ -70,53 +70,16 @@ def _wiring_plan(device: str) -> "dict[str, Any]":
     return plan
 
 
-# ---------------------------------------------------------------------------
-# Per-test config-file isolation - same shape every other tests/test_digital_twin_*.py integration
-# file uses. Own port range (19700+), distinct from test_digital_twin_sensortask_integration.py's
-# 19100+ and test_digital_twin_real_website_integration.py's 19300+.
-# ---------------------------------------------------------------------------
-
-_TMP_DIR = "tests/_tmp"
-_next_dir = 0
+# Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that module's
+# own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage. Own port
+# range (19700+), distinct from test_digital_twin_sensortask_integration.py's 19100+ and
+# test_digital_twin_real_website_integration.py's 19300+.
+_scratch = TmpScratch("dtcc")
 _next_port = 19700
 
 
-def _sweep_stale_tmp_dirs(prefix: str) -> None:
-    try:
-        entries = os.listdir(_TMP_DIR)
-    except OSError:
-        return
-    for entry in entries:
-        if not entry.startswith(prefix):
-            continue
-        dir_path = _TMP_DIR + "/" + entry
-        try:
-            for filename in os.listdir(dir_path):
-                try:
-                    os.remove(dir_path + "/" + filename)
-                except OSError:
-                    pass
-            os.rmdir(dir_path)
-        except OSError:
-            pass
-
-
-_sweep_stale_tmp_dirs("dtcc_")
-
-
 def _tmp_cfg_dir() -> str:
-    global _next_dir
-    try:
-        os.mkdir(_TMP_DIR)
-    except OSError:
-        pass
-    _next_dir += 1
-    path = _TMP_DIR + "/dtcc_" + str(_next_dir)
-    try:
-        os.mkdir(path)
-    except OSError:
-        pass
-    return path + "/"
+    return _scratch.dir()
 
 
 def _next_test_port() -> int:
@@ -140,8 +103,24 @@ async def _boot(port: int, device: str) -> "Any":
 async def _start_webserver(module: "Any") -> "asyncio.Task[None]":
     assert module.webserver is not None
     task: asyncio.Task[None] = module.webserver.get_task_starters()[0]()
-    await asyncio.sleep(0.1)  # let _run() actually reach start_server()/bind - same bound
-    # test_asy_webserver_service.py's own F.8 test uses for the identical real-socket startup race.
+    # WP1/CLAUDE.md's implicit-FRAM-wiring rule made webserver.pr real-FRAM-backed whenever the
+    # device wires FRAM (every real device today): _run() now awaits a real self.pr.setup() call
+    # (a real chunk read/write) before it ever reaches start_server()/bind, not the instant no-op
+    # a RAM-only logger's own setup() was - test_asy_webserver_service.py's own F.8 test still uses
+    # the old 0.05s bound because its own WebserverService fixture is never constructed with fram=.
+    # A polling readiness check was tried here instead of a fixed sleep (to avoid wasting the same
+    # margin on every one of this file's ~15 call sites) but made things measurably worse both ways
+    # tried: a real _http_client.fetch() probe broke this file's own max_connections-exactness tests
+    # (its own connection wasn't reliably released before the real scenario opened its own N), and a
+    # bare TCP connect-then-close probe broke far more of them, for a reason not fully understood -
+    # this server's own connection-accounting is evidently sensitive to a well-formed-but-unread
+    # connection landing before the real scenario's own connections do, in a way a fixed sleep
+    # (which touches the socket layer not at all) never triggers. Reverted to a fixed sleep,
+    # recalibrated down from the first attempt's 1.0s (measured ~400ms typical in this file's own
+    # no-other-tasks-running boot shape) - 0.5s keeps real margin without this file's own ~15 call
+    # sites' cumulative cost pushing it over scripts/test.sh's 180s per-file timeout inside a full
+    # suite run the way 1.0s did (confirmed directly: passes standalone, only times out mid-suite).
+    await asyncio.sleep(0.5)
     return task
 
 

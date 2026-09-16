@@ -4,7 +4,6 @@ scripts/build_firmware.py's real ARM build, which can only be compiled here, nev
 
 import asyncio
 import json
-import os
 import sys
 
 sys.path.insert(0, "ext")  # reaches the real, vendored ext/microdot.py - same convention as
@@ -22,6 +21,7 @@ sys.modules["frozen_html"] = frozen_website_wozi
 
 import _http_client  # noqa: E402
 import sensortask_wozi  # noqa: E402
+from _tmp_scratch import TmpScratch  # noqa: E402
 
 # Mirrors asy_wifi_service.py's own _PHASE_STA_SEEKING/_PHASE_HOTSPOT values - same
 # not-importable-once-const()-folded reasoning as tests/test_asy_wifi_service.py's own copy; keep in
@@ -45,26 +45,16 @@ def run_timed(coro: "Coroutine[Any, Any, T]", timeout_s: float) -> "T":
     return asyncio.run(asyncio.wait_for(coro, timeout_s))
 
 
-# Same per-test config-file isolation shape as test_digital_twin_sensortask_integration.py, own
-# port range (19300+) so a parallel/adjacent run of that file never collides on either.
-_TMP_DIR = "tests/_tmp"
-_next_dir = 0
+# Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that module's
+# own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage. Own port
+# range (19300+) so a parallel/adjacent run of test_digital_twin_sensortask_integration.py never
+# collides on either.
+_scratch = TmpScratch("dtrw")
 _next_port = 19300
 
 
 def _tmp_cfg_dir() -> str:
-    global _next_dir
-    try:
-        os.mkdir(_TMP_DIR)
-    except OSError:
-        pass
-    _next_dir += 1
-    path = _TMP_DIR + "/dtrw_" + str(_next_dir)
-    try:
-        os.mkdir(path)
-    except OSError:
-        pass
-    return path + "/"
+    return _scratch.dir()
 
 
 def _next_test_port() -> int:
@@ -80,8 +70,14 @@ async def _boot(port: int) -> None:
 async def _start_webserver() -> "asyncio.Task[None]":
     assert sensortask_wozi.webserver is not None
     task = sensortask_wozi.webserver.get_task_starters()[0]()
-    await asyncio.sleep(0.1)  # let _run() actually reach start_server()/bind - same bound
-    # test_asy_webserver_service.py's own F.8 test uses for the identical real-socket startup race.
+    # WP1/CLAUDE.md's implicit-FRAM-wiring rule made webserver.pr real-FRAM-backed whenever the
+    # device wires FRAM (every real device today): _run() now awaits a real self.pr.setup() call
+    # (a real chunk read/write) before it ever reaches start_server()/bind, not the instant no-op
+    # a RAM-only logger's own setup() was - test_asy_webserver_service.py's own F.8 test still uses
+    # the old 0.05s bound because its own WebserverService fixture is never constructed with fram=.
+    # Measured directly against this file's own real digital_twin machine fakes: consistently ready
+    # within ~400ms; 1.0s keeps a real (~2.5x) margin rather than a bare-minimum guess.
+    await asyncio.sleep(1.0)
     return task
 
 

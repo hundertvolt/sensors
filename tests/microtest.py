@@ -1,5 +1,7 @@
 import sys
 
+import _tmp_scratch
+
 
 def run(namespace: dict[str, object]) -> None:
     # A minimal test collector/runner, not the CPython stdlib `unittest`: it isn't part of the
@@ -12,18 +14,24 @@ def run(namespace: dict[str, object]) -> None:
     # the way CPython does, so there is no module object to look the test functions up on.
     total = 0
     failed = 0
-    for name, value in namespace.items():
-        if not name.startswith("test_") or not callable(value):
-            continue
-        total += 1
-        try:
-            value()
-        except Exception as exc:
-            failed += 1
-            print(f"FAIL {name}:")
-            sys.print_exception(exc)  # full traceback - a bare str(exc) is empty for AssertionError
-        else:
-            print(f"PASS {name}")
+    try:
+        for name, value in namespace.items():
+            if not name.startswith("test_") or not callable(value):
+                continue
+            total += 1
+            try:
+                value()
+            except Exception as exc:
+                failed += 1
+                print(f"FAIL {name}:")
+                sys.print_exception(exc)  # full traceback - a bare str(exc) is empty for AssertionError
+            else:
+                print(f"PASS {name}")
+    finally:
+        # Real per-file teardown for every tests/_tmp/<key>/ scratch dir this file's own
+        # TmpScratch instance(s) created - see _tmp_scratch.py's own docstring. Runs even on a
+        # test failure, so a file's scratch dir never outlives its own run.
+        _tmp_scratch.teardown_all()
     print(f"{total - failed}/{total} passed")
     # Always exits explicitly, not just on failure: a test that spins up the real
     # sensortask_wozi.build_system()/start_and_check_tasks() task graph (the digital-twin

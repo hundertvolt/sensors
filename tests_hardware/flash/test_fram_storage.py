@@ -122,3 +122,14 @@ def test_storage_pause_gates_the_real_chip_and_the_real_auto_unpause_timer_fires
 
 def test_both_blocks_left_busy_lock_the_real_chunk_until_it_is_rewritten(board: Board) -> None:
     _run_and_assert_pass(board, "fram_busy_status_lockout.py", timeout_s=45.0, label="FRAM busy-status lockout")
+
+
+# ---------------------------------------------------------------------------
+# WP4/Topic 6: a shipped firmware asking for more FRAM than its own chip has must be caught before
+# flash, not discovered as a silent boot-time console print nobody's watching. mpremote-only by
+# design (owner's own decision) - no new /status field, this is a one-time build-validity fact.
+# ---------------------------------------------------------------------------
+
+
+def test_every_fram_wired_module_gets_a_real_chunk_after_a_full_system_build(board: Board) -> None:
+    _run_and_assert_pass(board, "fram_capacity_after_full_system_build.py", timeout_s=60.0, label="FRAM capacity check")

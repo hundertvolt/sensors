@@ -4,7 +4,6 @@ wiring; deep per-route behavior stays tests/test_asy_webserver_service.py's job.
 
 import asyncio
 import json
-import os
 import sys
 
 # Same convention as tests/test_asy_webserver_service.py's own module docstring: scripts/test.sh's
@@ -20,10 +19,11 @@ from _shared_rest_roundtrip import (
     assert_sensor_payload_not_self_wrapped,
     drain_json_response_body,
 )
+from _tmp_scratch import TmpScratch
 from microdot import Request, Response  # type: ignore[import-not-found]
 
 import asy_spi_driver
-from print_log import PrintLog, PrintLogHistory, PrintLogHistoryStore
+from print_log import PrintLog, PrintLogHistoryStore
 
 # Mirrors asy_wifi_service.py's own _PHASE_STA_SEEKING/_PHASE_HOTSPOT values - same
 # not-importable-once-const()-folded reasoning as tests/test_asy_wifi_service.py's own copy; keep in
@@ -102,126 +102,24 @@ def _fram_fake_class(device: str) -> "type[FakeMB85RS64V]":
 
 
 # ---------------------------------------------------------------------------
-# Per-test config-file isolation - same pattern as test_ntp_fram_system_integration.py's own
-# _tmp_cfg_dir(): build_system() constructs several real ConfigManager-backed modules (conn, ntp,
-# sgp40, [bmp3xx], notification), each of which writes/reads a real config_<NAME>.cfg file at its
-# cfg_path - repeated calls across test_* functions in this one process must not collide on the
-# same files, and must not touch the real repo-root config files either. One shared "sensortask_"
-# prefix, not one per device, now that this file collapses what used to be two separate files
-# (BUILD_CHAIN_PLAN.md's Session 6.2) - _next_dir's own per-process counter already keeps every
-# call's own directory unique regardless of which device that call happens to be for.
+# Per-test config-file isolation via the shared tests/_tmp_scratch.py helper: build_system()
+# constructs several real ConfigManager-backed modules (conn, ntp, sgp40, [bmp3xx], notification),
+# each of which writes/reads a real config_<NAME>.cfg file at its cfg_path - repeated calls across
+# test_* functions in this one process must not collide on the same files, and must not touch the
+# real repo-root config files either. One shared "sensortask" key, not one per device, now that
+# this file collapses what used to be two separate files (BUILD_CHAIN_PLAN.md's Session 6.2) -
+# TmpScratch's own per-instance counter already keeps every call's own directory unique regardless
+# of which device that call happens to be for. See _tmp_scratch.py's own docstring for the
+# construction-time wipe and tests/microtest.py's teardown_all() call that replace this file's old,
+# self-contained _sweep_stale_tmp_dirs()/_next_dir pair - tests/test_tmp_scratch.py now carries the
+# regression coverage that used to live here as test_sweep_stale_tmp_dirs_*().
 # ---------------------------------------------------------------------------
 
-_TMP_DIR = "tests/_tmp"
-_next_dir = 0
-
-
-def _sweep_stale_tmp_dirs(prefix: str) -> None:
-    # _next_dir always restarts at 0 per process, so a second scripts/test.sh run on the same
-    # machine reuses the exact same directory names an earlier run already left behind - and
-    # "already exists from a stale previous run" (the comment below used to say) turns out not to
-    # be harmless: the earlier run's real, persisted config_*.cfg files are still sitting there, so
-    # a write that should be a genuine value change instead compares against yesterday's
-    # already-matching value and gets misreported "Unchanged" instead of "Valid" (confirmed by
-    # direct reproduction against this file's own former two halves). This exact _tmp_cfg_dir()
-    # shape is copy-pasted across every test_*.py file with its own _TMP_DIR/_next_dir pair - same
-    # fix applied uniformly to each. Sweeping at import time, rather than only guarding against the
-    # empty-directory case os.mkdir()'s own try/except already handled, is what actually restores
-    # the "must not collide"/fresh-directory guarantee this helper's own docstring promises.
-    try:
-        entries = os.listdir(_TMP_DIR)
-    except OSError:
-        return  # tests/_tmp itself doesn't exist yet - nothing to clean
-    for entry in entries:
-        if not entry.startswith(prefix):
-            continue
-        dir_path = _TMP_DIR + "/" + entry
-        try:
-            for filename in os.listdir(dir_path):
-                try:
-                    os.remove(dir_path + "/" + filename)
-                except OSError:
-                    pass
-            os.rmdir(dir_path)
-        except OSError:
-            pass
-
-
-_sweep_stale_tmp_dirs("sensortask_")
+_scratch = TmpScratch("sensortask")
 
 
 def _tmp_cfg_dir() -> str:
-    global _next_dir
-    try:
-        os.mkdir(_TMP_DIR)
-    except OSError:
-        pass  # already exists
-    _next_dir += 1
-    path = _TMP_DIR + "/sensortask_" + str(_next_dir)
-    try:
-        os.mkdir(path)
-    except OSError:
-        pass  # already exists from a stale previous run
-    return path + "/"
-
-
-# ---------------------------------------------------------------------------
-# _sweep_stale_tmp_dirs() itself - regression coverage for the actual bug (a later scripts/test.sh
-# run silently reusing an earlier run's persisted config files), not just a re-assertion of the
-# pre-existing "config write applies" expectation. Device-independent (no build_system() call at
-# all), so these run once, not parametrized.
-# ---------------------------------------------------------------------------
-
-
-def test_sweep_stale_tmp_dirs_removes_a_pre_existing_matching_directory_and_its_contents() -> None:
-    try:
-        os.mkdir(_TMP_DIR)
-    except OSError:
-        pass
-    stale_dir = _TMP_DIR + "/sensortask_stale_test_marker"
-    try:
-        os.mkdir(stale_dir)
-    except OSError:
-        pass
-    with open(stale_dir + "/config_LEFTOVER.cfg", "w") as f:
-        f.write('{"NTP_Host": "time.example.org"}')  # shaped like a real persisted config write
-
-    _sweep_stale_tmp_dirs("sensortask_stale_test_marker")
-
-    try:
-        os.stat(stale_dir)
-        raise AssertionError("expected the stale directory to have been removed")
-    except OSError:
-        pass  # gone, as expected
-
-
-def test_sweep_stale_tmp_dirs_leaves_non_matching_entries_alone() -> None:
-    try:
-        os.mkdir(_TMP_DIR)
-    except OSError:
-        pass
-    keep_dir = _TMP_DIR + "/not_sensortask_prefixed_marker"
-    try:
-        os.mkdir(keep_dir)
-    except OSError:
-        pass
-
-    _sweep_stale_tmp_dirs("sensortask_")  # this file's own real prefix - must not touch an unrelated name
-
-    os.stat(keep_dir)  # still there - raises OSError (failing this test) if it got swept
-    os.rmdir(keep_dir)  # this test's own responsibility to clean up, not _sweep_stale_tmp_dirs()'s
-
-
-def test_sweep_stale_tmp_dirs_tolerates_a_missing_tmp_dir_entirely() -> None:
-    # Nothing to assert beyond "doesn't raise" - the real-world case this guards is the very first
-    # scripts/test.sh run ever, before tests/_tmp exists at all.
-    try:
-        os.listdir(_TMP_DIR)  # raises immediately (before any iteration) if _TMP_DIR is missing
-    except OSError:
-        pass  # confirms this environment's own tests/_tmp is absent for this particular check
-    else:
-        return  # tests/_tmp already exists (other tests created it) - nothing new to prove here
-    _sweep_stale_tmp_dirs("sensortask_")
+    return _scratch.dir()
 
 
 # ---------------------------------------------------------------------------
@@ -329,24 +227,45 @@ def _all_loggers(module: "Any") -> "list[Any]":
 
 
 def _expected_fram_chunk_calls(module: "Any") -> "list[str]":
-    # SystemService(chunk) -> SCD30_Reader(chunk) -> SGP40 own log(chunk) -> SGP40 VOC backup
-    # (timestamped) -> [BMP3xx_Reader(chunk), only if present] -> NeopixelDriver(chunk) ->
-    # NotificationCoordinator(chunk), in that order, unconditionally. SCD30 constructs before SGP40
+    # AsyConnTime(chunk) -> its own CFGMGR_WIFI(chunk) -> its own DNSServer(chunk) ->
+    # AsyNtpClient(chunk) -> its own CFGMGR_NTP(chunk) -> SystemService(chunk) -> its own
+    # CFGMGR_SYSTEM(chunk) -> SCD30_Reader(chunk, no cfgmgr - params live on-sensor) -> SGP40 own
+    # log(chunk) -> its own CFGMGR_SGP40(chunk) -> SGP40 VOC backup (timestamped) ->
+    # [BMP3xx_Reader(chunk) + its own CFGMGR_BMP3XX(chunk), only if present] ->
+    # [ISL29125_Reader(chunk) + its own CFGMGR_ISL29125(chunk), only if present] ->
+    # NeopixelDriver(chunk, no cfgmgr) -> NotificationCoordinator(chunk) -> its own
+    # CFGMGR_NOTIFY(chunk) -> [UartLinkExerciser x2 (chunk each, no cfgmgr), only if present, WP3] ->
+    # WebserverService(chunk, no cfgmgr), in that order, unconditionally.
+    # WP1/CLAUDE.md's implicit-FRAM-wiring rule: conn/ntp/webserver - and conn's own DNSServer -
+    # draw a chunk too, on every real device's own [device.wiring].fram_target. WP2, the same rule
+    # applied to ConfigManager: every SensorReaderConfig-based module's own cfgmgr draws its own
+    # separate chunk immediately after that module's own pr chunk (base_classes.py's
+    # SensorReaderConfig.__init__ builds self.pr then self.cfgmgr in that order) - SystemService is
+    # not a SensorReaderConfig subclass but embeds its own ConfigManager directly the same way
+    # (system_service.py's own comment), so it follows the identical "own chunk, then cfgmgr chunk"
+    # shape. NeopixelDriver/WebserverService/SCD30_Reader/UartLinkExerciser have no on-flash config
+    # at all, so none of them ever contributes a cfgmgr chunk. SCD30 constructs before SGP40
     # (ordering-hazard #1, SPECIFICATION.md Part A.7/C.14 - SGP40 holds a direct reference to scd30
     # as its temperature_source/humidity_source, so the producer must exist first). Derived from the
     # module's own reflected instance set (_present_optional_instances()), not a hardcoded
     # per-device literal - every real device's own devices/*.toml lists its instances in this same
     # relative order (BUILD_CHAIN_PLAN.md's Session 2), so this fixed shape stays correct for all 6.
-    calls = ["chunk"]  # SystemService
+    calls = ["chunk", "chunk", "chunk"]  # AsyConnTime, its own CFGMGR_WIFI, its own DNSServer
+    calls += ["chunk", "chunk"]  # AsyNtpClient, its own CFGMGR_NTP
+    calls += ["chunk", "chunk"]  # SystemService, its own CFGMGR_SYSTEM
     if _has(module, "scd30"):
-        calls.append("chunk")
+        calls.append("chunk")  # SCD30_Reader - no cfgmgr
     if _has(module, "sgp40"):
-        calls += ["chunk", "timestamped"]
+        calls += ["chunk", "chunk", "timestamped"]  # SGP40, its own CFGMGR_SGP40, VOC backup
     if _has(module, "bmp3xx"):
-        calls.append("chunk")
+        calls += ["chunk", "chunk"]  # BMP3xx_Reader, its own CFGMGR_BMP3XX
     if _has(module, "isl29125"):
-        calls.append("chunk")
-    calls += ["chunk", "chunk"]  # NeopixelDriver, NotificationCoordinator - always present
+        calls += ["chunk", "chunk"]  # ISL29125_Reader, its own CFGMGR_ISL29125
+    calls.append("chunk")  # NeopixelDriver - always present, no cfgmgr
+    calls += ["chunk", "chunk"]  # NotificationCoordinator, its own CFGMGR_NOTIFY - always present
+    if _has_uart_link(module):
+        calls += ["chunk", "chunk"]  # UartLinkExerciser x2 (init, resp) - no cfgmgr, WP3
+    calls.append("chunk")  # WebserverService - no cfgmgr
     return calls
 
 
@@ -547,13 +466,37 @@ def _scenario_fram_chunks_allocated(device: str) -> None:
     # Every FRAM-chunk-owning module's own PrintLogHistoryStore/AsyFramTimestampedChunk degrades to
     # in-memory-only on allocation failure rather than raising (base_classes.py's own contract) -
     # assert the happy path actually got real FRAM-backed chunks, not a silently-degraded one.
+    # This is also WP4/Topic 6's own "does everything fit" capacity check, run for every real
+    # device (parametrized like every other scenario in this file): the real, deterministic
+    # enforcement is exactly this - no chunk-holding module ended up with a None chunk reference -
+    # not `allocated_size <= size`, which can never be false by construction (get_chunk() checks
+    # capacity before incrementing, never after) and so would be a tautology rather than a check.
+    # See test_sensorreaderconfig_fram_allocation_failure_and_missing_config_file_together
+    # (tests/test_base_classes.py) for the negative case proving this same shape can actually fail.
+    assert module.conn is not None and module.ntp is not None
     assert module.sysfunct is not None and module.neopixel is not None and module.notification is not None
+    assert isinstance(module.conn.pr, PrintLogHistoryStore)
+    assert module.conn.pr.fram is not None
+    assert isinstance(module.conn.cfgmgr.pr, PrintLogHistoryStore)
+    assert module.conn.cfgmgr.pr.fram is not None
+    assert isinstance(module.conn.dns_server.pr, PrintLogHistoryStore)
+    assert module.conn.dns_server.pr.fram is not None
+    assert isinstance(module.ntp.pr, PrintLogHistoryStore)
+    assert module.ntp.pr.fram is not None
+    assert isinstance(module.ntp.cfgmgr.pr, PrintLogHistoryStore)
+    assert module.ntp.cfgmgr.pr.fram is not None
     assert isinstance(module.sysfunct.pr, PrintLogHistoryStore)
     assert module.sysfunct.pr.fram is not None
+    assert isinstance(module.sysfunct.cfgmgr.pr, PrintLogHistoryStore)
+    assert module.sysfunct.cfgmgr.pr.fram is not None
     assert isinstance(module.neopixel.pr, PrintLogHistoryStore)
     assert module.neopixel.pr.fram is not None
     assert isinstance(module.notification.pr, PrintLogHistoryStore)
     assert module.notification.pr.fram is not None
+    assert isinstance(module.notification.cfgmgr.pr, PrintLogHistoryStore)
+    assert module.notification.cfgmgr.pr.fram is not None
+    assert isinstance(module.webserver.pr, PrintLogHistoryStore)
+    assert module.webserver.pr.fram is not None
     if _has(module, "scd30"):
         assert isinstance(module.scd30.pr, PrintLogHistoryStore)
         assert module.scd30.pr.fram is not None
@@ -561,9 +504,24 @@ def _scenario_fram_chunks_allocated(device: str) -> None:
         assert isinstance(module.sgp40.pr, PrintLogHistoryStore)
         assert module.sgp40.pr.fram is not None
         assert module.sgp40.ts_storage is not None
+        assert isinstance(module.sgp40.cfgmgr.pr, PrintLogHistoryStore)
+        assert module.sgp40.cfgmgr.pr.fram is not None
     if _has(module, "bmp3xx"):
         assert isinstance(module.bmp3xx.pr, PrintLogHistoryStore)
         assert module.bmp3xx.pr.fram is not None
+        assert isinstance(module.bmp3xx.cfgmgr.pr, PrintLogHistoryStore)
+        assert module.bmp3xx.cfgmgr.pr.fram is not None
+    if _has(module, "isl29125"):
+        assert isinstance(module.isl29125.pr, PrintLogHistoryStore)
+        assert module.isl29125.pr.fram is not None
+        assert isinstance(module.isl29125.cfgmgr.pr, PrintLogHistoryStore)
+        assert module.isl29125.cfgmgr.pr.fram is not None
+    if _has_uart_link(module):
+        # WP3 - own chunk each, no cfgmgr (UART_Comm has no on-flash config schema).
+        assert isinstance(module.uart_link_init.pr, PrintLogHistoryStore)
+        assert module.uart_link_init.pr.fram is not None
+        assert isinstance(module.uart_link_resp.pr, PrintLogHistoryStore)
+        assert module.uart_link_resp.pr.fram is not None
 
 
 class _DeadFramChip(FakeMB85RS64V):
@@ -942,15 +900,20 @@ def _scenario_main_call_order(device: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-@_register("webserver_pr_is_ram_only_not_fram_backed")
-def _scenario_webserver_pr_ram_only(device: str) -> None:
-    # Deliberate decision (see build_system()'s own comment): a warning on every per-call/outer-cap
-    # reclaim could churn far faster than any sensor's rare-hardware-fault log - keeping it RAM-only
-    # also preserves the FRAM allocation order (see SPECIFICATION.md Part A.7) unchanged.
+@_register("webserver_pr_is_fram_backed_when_device_wires_fram")
+def _scenario_webserver_pr_fram_backed(device: str) -> None:
+    # WP1/CLAUDE.md's implicit-FRAM-wiring rule (SPECIFICATION.md Part A.7): every real device's own
+    # TOML declares [device.wiring].fram_target, so webserver's own self.pr is FRAM-backed on all 6,
+    # exactly like conn/ntp/sysfunct - superseding the earlier RAM-only-by-design decision (a
+    # connection-reclaim warning could in principle churn faster than a sensor's rare hardware-fault
+    # log, still worth watching - see BACKLOG.md). A device with no device-level fram_target at all
+    # is covered instead at the buildgen/codegen level (tests_scripts/test_buildgen_generate.py's
+    # test_device_with_no_fram_target_leaves_conn_ntp_sysfunct_and_webserver_ram_only), since none of
+    # the 6 real devices this file builds exercises that fallback path.
     module = build(device)
     assert module.webserver is not None
-    assert isinstance(module.webserver.pr, PrintLogHistory)
-    assert not isinstance(module.webserver.pr, PrintLogHistoryStore)
+    assert isinstance(module.webserver.pr, PrintLogHistoryStore)
+    assert module.webserver.pr.fram is not None
 
 
 @_register("webserver_measurements_and_sensors_get_include_every_real_sensor")
