@@ -442,10 +442,18 @@ def _emit_build_system(lines: "list[str]", model: DeviceModel, ctx: _Ctx, instan
     lines.append("    timers_running = ThreadSafeFlag()")
     lines.append("    sysfunct.set_level_setters(_collect_level_setters())")
     lines.append("")
-    setup_order = ["sysfunct"]
+    # fram must come before sysfunct: sysfunct.setup() -> cfgmgr.setup() -> its own FRAM-backed
+    # logger's pr.setup() (WP2) needs AsyFramManager already initialized to do a real chunk
+    # read/write - sysfunct-before-fram left CFGMGR_SYSTEM's own setup() finding
+    # `self.fram.initialized is False` every boot, degrading instantly (confirmed directly:
+    # 0ms vs every other FRAM-backed cfgmgr's ~170ms real setup cost) rather than ever
+    # persisting/restoring its own history. fram.setup() has no dependency on sysfunct in the
+    # other direction (confirmed: AsyFramManager.setup() only touches its own pr/fram, never
+    # sysfunct), so this reorder is safe.
+    setup_order = []
     if "fram" in have:
         setup_order.append(ctx.instance_var(("fram", "")))
-    setup_order += ["conn", "ntp"]
+    setup_order += ["sysfunct", "conn", "ntp"]
     for node in construction_order:
         if node == "sysfunct" or not isinstance(node, tuple):
             continue
