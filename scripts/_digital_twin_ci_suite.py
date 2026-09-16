@@ -109,6 +109,20 @@ _MIN_VERBOSE_LOG_LINES = 5
 _SGP40_BOUNDED_FAULT_COUNT = 3
 _WIFI_SCRIPTED_FAILURES = 5  # asy_wifi_service.py's conn_fail_to_hotspot - the failure count that trips hotspot fallback
 
+# PUT /status {"ResetErrors": true} (asy_webserver_service.py's _put_status()) sequentially calls
+# reset_error_counter() on every registered error source, and each FRAM-backed one's own reset()
+# does a real, non-negligible FRAM write (print_log.py's PrintLogHistoryStore._write()) - not the
+# single fixed-cost op the suite's other requests are. WP1/WP2/WP3 grew the FRAM-backed subset to
+# 10+ entries on `dev` specifically (every CFGMGR_* logger, WIFI/NTP/WEBSERVER/SYSTEM, SGP40/BMP3XX,
+# plus dev's own two uart_link instances that no other device carries - CLAUDE.md's FRAM-backed-
+# subset list), so `dev` is the one device whose ResetErrors call can plausibly exceed _http()'s
+# plain 5.0s default under CI-runner contention. Confirmed directly: PR #103's first two CI runs on
+# `dev` both failed with the exact same two checks (Run 1's and Run 5c's own ResetErrors PUT, at
+# both gc.threshold passes, 4 failures total) and no others - not a boot-time or wifi/fram-assertion
+# flake, a genuine per-request timeout on this one heavier-than-usual call. Matches the boot-wait
+# budget (_wait_until_serving's own 20.0s default) rather than inventing a new number.
+_RESET_ERRORS_TIMEOUT_S = 20.0
+
 # Run 11 (soak) - moved host-side from digital_twin/run_generic_integration.py's own now-retired
 # _soak() (SPECIFICATION.md's "Driver/DUT process separation" Part, 2026-09-14): this suite now
 # drives every soak request itself, over real HTTP, the same way Runs 1-10 already do via _http()
@@ -589,7 +603,7 @@ def _run_1_baseline(ctx: RunContext) -> None:
         status, body = _http("PUT", "/networking", {"Hostname": "ci-digital-twin"})
         _check(condition=status == _HTTP_OK and body.get("result", {}).get("Hostname") in ("Valid", "Unchanged"), msg="Run 1: PUT /networking Hostname accepted")
 
-        status, body = _http("PUT", "/status", {"ResetErrors": True})
+        status, body = _http("PUT", "/status", {"ResetErrors": True}, timeout=_RESET_ERRORS_TIMEOUT_S)
         _check(condition=status == _HTTP_OK, msg="Run 1: PUT /status ResetErrors accepted")
     except Exception as exc:  # CI orchestration: surface any failure as a suite failure, not a crash
         _fail(f"Run 1 (baseline boot + settings): {exc!r}")
@@ -828,7 +842,7 @@ def _run_5c_storage_paused_shutdown_never_loses_the_error_log(ctx: RunContext) -
         # the chip. Deliberately issued after the poll above confirmed setup() ran, so this checks
         # the ordinary case; a reset issued *before* setup() is covered separately (Part C.7
         # - it persists straight away now and the later setup() must not undo it).
-        status, _ = _http("PUT", "/status", {"ResetErrors": True})
+        status, _ = _http("PUT", "/status", {"ResetErrors": True}, timeout=_RESET_ERRORS_TIMEOUT_S)
         _check(condition=status == _HTTP_OK, msg=f"Run 5c: PUT /status ResetErrors accepted (status {status})")
         entry = _errcount("SGP40")
         _check(condition=_error_type_count(entry) == 0, msg=f"Run 5c: the restored history was actually cleared by ResetErrors, not just masked ({entry!r})")
