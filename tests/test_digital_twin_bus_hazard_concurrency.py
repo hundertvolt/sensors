@@ -5,6 +5,7 @@ concurrent load; Part C.8 also covers this file's own device-scope rationale."""
 import asyncio
 import json
 import sys
+import time
 
 sys.path.insert(0, "ext")  # same convention as test_digital_twin_sensortask_integration.py's own comment
 sys.path.insert(0, "digital_twin")
@@ -114,6 +115,35 @@ _GENERAL_CALL_ENTRY = ("writeto", 0x00, b"\x06", True)
 _I2C_DRIVER_HEALTH_FIELD: "dict[str, str]" = {"scd30": "CO2", "sgp40": "VOC", "bmp3xx": "Pres", "isl29125": "Lux"}
 
 
+_SETTLE_POLL_MS = 250
+_SETTLE_EXTRA_S = 12.0  # bounded headroom on top of run_seconds, well inside the callers' own timeout
+
+
+async def _await_first_samples(module: "ModuleType") -> None:
+    """Waits until every sensor on the graph has produced one real sample, or gives up quietly.
+
+    run_seconds alone made this a HOST-SPEED measurement: it is how long the graph is exposed to
+    concurrent load, not how long a loaded machine needs to get a first sample out, and asserting
+    immediately after it failed on a busy host while the code under test was perfectly healthy
+    (reproduced 2/2 under 4-way CPU load on the bench Pi4, 4/4 clean unloaded, 2026-09-16 - the same
+    sleep-instead-of-poll shape the twin's fault runs already had to fix once). Giving up quietly is
+    deliberate: the caller's own per-sensor assertions still run and still name the sensor that
+    never reported, so a genuinely dead one fails exactly as loudly as before - only later.
+    """
+    fields = (("sgp40", "VOC"), ("bmp3xx", "Pres"), ("scd30", "CO2"), ("isl29125", "Lux"))
+    deadline = time.ticks_add(time.ticks_ms(), int(_SETTLE_EXTRA_S * 1000))
+    while time.ticks_diff(deadline, time.ticks_ms()) > 0:
+        pending = False
+        for name, field in fields:
+            reader = getattr(module, name, None)
+            if reader is not None and getattr(await reader.get_data(), field) is None:
+                pending = True
+                break
+        if not pending:
+            return
+        await asyncio.sleep_ms(_SETTLE_POLL_MS)
+
+
 async def _run_real_task_graph_and_assert_healthy(module: "ModuleType", shared_bus_log: "Container[object]", run_seconds: float) -> None:
     # Shared scenario body for both variants: starts the real timer/task starters build_system()
     # itself would, then asserts the run produced fresh data from every sensor and never starved
@@ -126,6 +156,7 @@ async def _run_real_task_graph_and_assert_healthy(module: "ModuleType", shared_b
     tasks.append(asyncio.get_event_loop().create_task(_feed_watchdog_periodically(module.watchdog)))
     try:
         await asyncio.sleep(run_seconds)
+        await _await_first_samples(module)
         assert module.watchdog.would_have_triggered_count == 0
 
         sgp_data = await module.sgp40.get_data()
@@ -180,7 +211,7 @@ def test_wozi_real_task_graph_survives_concurrent_bus_load_including_a_real_gene
         assert sensortask_wozi.i2c1 is not None and sensortask_wozi.i2c1._i2c is not None
         await _run_real_task_graph_and_assert_healthy(sensortask_wozi, sensortask_wozi.i2c1._i2c.log, run_seconds=9.0)
 
-    run_timed(scenario(), timeout_s=20.0)
+    run_timed(scenario(), timeout_s=40.0)
 
 
 def test_dev_real_task_graph_survives_concurrent_bus_load_including_a_real_general_call() -> None:
@@ -194,7 +225,7 @@ def test_dev_real_task_graph_survives_concurrent_bus_load_including_a_real_gener
         assert sensortask_dev.i2c1 is not None and sensortask_dev.i2c1._i2c is not None
         await _run_real_task_graph_and_assert_healthy(sensortask_dev, sensortask_dev.i2c1._i2c.log, run_seconds=9.0)
 
-    run_timed(scenario(), timeout_s=20.0)
+    run_timed(scenario(), timeout_s=40.0)
 
 
 def test_wozi_fram_recovers_after_an_injected_spi_write_fault() -> None:

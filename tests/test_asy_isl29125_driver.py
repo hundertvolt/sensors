@@ -1000,16 +1000,17 @@ def test_no_exception_escapes_the_reader_layer() -> None:
 
 
 def test_a_failed_read_logs_errno_11_not_just_an_all_none_result() -> None:
-    # The read path's own catch-all. errno 11 is the ONLY number this driver uses at two different
-    # sites (here, and _measure_gain_ratio()'s paired read) - every other promoted driver gives each
-    # site its own, so a test can name which one fired. If that is ever split, this test names the
-    # site it means rather than the number alone.
+    # The read path's own catch-all, and 11 now means only this. It used to cover the calibration
+    # sandwich's own failed leg as well - the one number in any promoted driver used at two sites -
+    # so a field log could not tell a dead read path from a best-effort calibration leg giving up.
+    # That site is errno 35 now; test_a_failed_partner_read_logs_errno_35_and_puts_the_range_back
+    # holds the other half, and this assertion is what keeps the two from drifting back together.
     _i2c, reader = ready_reader("read_fail_errno")
 
-    async def boom(*_args: object, **_kwargs: object) -> None:
+    async def _boom() -> "tuple[int, int, int]":
         raise OSError(errno_mod.EIO, "injected")
 
-    reader.isl.read_counts = boom  # type: ignore[method-assign]
+    reader.isl.read_counts = _boom  # type: ignore[method-assign]
     with _FastAsyncSleep():
         results = run(reader._read_isl())
     assert results[0] is None
@@ -3101,7 +3102,7 @@ def test_starting_a_calibration_with_false_is_a_no_op() -> None:
     assert reader._calibrating is False
 
 
-def test_a_failed_partner_read_logs_errno_11_and_puts_the_range_back() -> None:
+def test_a_failed_partner_read_logs_errno_35_and_puts_the_range_back() -> None:
     _i2c, reader = calibrating_reader("cal_read_fails")
     started_on = reader._active_range
 
@@ -3116,7 +3117,7 @@ def test_a_failed_partner_read_logs_errno_11_and_puts_the_range_back() -> None:
     # proving either: any errno at all used to pass it, and a regression that skipped the third
     # sandwich leg - stranding every later sample on the partner range, the exact failure
     # _measure_gain_ratio()'s own comment calls "far worse than the wasted read" - passed it too.
-    assert 11 in errors(run(reader.get_error_counter()))
+    assert 35 in errors(run(reader.get_error_counter()))
     assert reader._active_range == started_on
 
 
