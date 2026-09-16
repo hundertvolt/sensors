@@ -143,50 +143,58 @@ constraints.
   first). Re-running this sweep against other domains (it did not touch e.g. sensortask/system_service
   integration beyond what FRAM/memory covered) is future work, not assumed done everywhere.
 
-- **`isl29125_lighting_scenarios.py`'s `hysteresis_band_dwell_no_chatter` scenario fails on the
-  real bench, reproducibly — and the light it actually measures is not reproducible run-to-run.**
-  First real-hardware run of this script (it was ported as "written but not run", SPECIFICATION.md
-  Part C.11.1, and wired into `tests_hardware/flash/test_sensor_accuracy.py` on this branch); run
-  against the merged dev board on the shipped `threshold` build, after the shadow-divergence fix.
-  **Nine of the ten scenarios pass**, including the complementary `threshold_oscillation_crossing`,
-  which needs ≥4 range switches and reliably gets 6. The dwell scenario, which commands only levels
-  3–6 (documented as INSIDE the measured hysteresis band, so it must produce **0** switches),
-  produced exactly **1** switch in 3 of 3 runs — `RESULT: FAIL (1 findings)
-  hysteresis_band_dwell_no_chatter: 1 range switches (limit 0) - chattering`.
+- **`isl29125_lighting_scenarios.py`'s `hysteresis_band_dwell_no_chatter` scenario is the only one
+  of its ten with no dark pre-roll, so it inherits the HIGH range from the preceding baseline and
+  counts the driver's own correct switch back DOWN as forbidden chatter. A test defect, not a driver
+  one — root-caused on real hardware, deliberately not fixed here (see the last paragraph).** Fails
+  3 of 3 runs, always with exactly 1 range switch where 0 is required; the other nine scenarios pass,
+  including the complementary `threshold_oscillation_crossing` (needs ≥4 switches, reliably gets 6).
 
-  The measured light for that one scenario, with identical commanded levels each time:
+  **The rig was cleared first.** A fixed-level probe mirroring the script's own reader setup
+  (same seeded config, same `AutoRangeDwell=0.0`) showed the bench is not the problem and nothing
+  else steers the NeoPixel: ambient with the pixel dark is **1.0 lx, spread 0.0**, and six held
+  repetitions each of level 3 and level 6 gave 101.3–103.0 lx (mean 102.2) and 187.0–189.4 lx
+  (mean 188.3) — about ±1.5%, on the low range, with **zero** range switches. So held statically,
+  the scenario's own levels really are inside the band, and no commanded level in it can exceed
+  ~188 lx. The failing runs reported peaks of 217.0 / 710.9 / 360.0 lx, which therefore cannot be
+  real light.
 
-  | run | observed lux span | switches |
+  **What actually happens**, traced sample by sample:
+
+  | entry condition | range | level 5 reads |
   |---|---|---|
-  | 1 | 101.2 – 217.0 | 1 |
-  | 2 | 101.7 – 710.9 | 1 |
-  | 3 | 101.1 – 360.0 | 1 |
+  | baseline at `_BASELINE_LEVEL=20` (runs before every scenario) | 10000 (high), ~717 lx | — |
+  | straight to level 5, no dark pre-roll (this scenario) | **stays 10000** | 179.6 lx |
+  | dark pre-roll first, then level 5 (every other scenario) | drops to 375 (low) | 159.6 lx |
 
-  The floor is rock-steady (~101 lx); the **peak varies 3.3×** for the same NeoPixel levels. That is
-  the part to explain first — the chatter finding may well be a symptom of it rather than a driver
-  defect. Two things argue against a plain rig-drift explanation: the script's own between-scenario
-  baseline check (`_BASELINE_LEVEL=20`, 35% tolerance, "the module did not return to a consistent
-  state") **passed every time**, and in run 2 the dwell peak (710.9) almost exactly matched the
-  preceding `threshold_oscillation_crossing` scenario's own peak (709.5), which would fit a
-  carry-over/settling effect that the baseline check does not catch. Neither is confirmed.
-  The script's own header records the calibration this scenario depends on — "measured on the
-  covered rig: rising, the low range holds to level 6 (~197 lx) and the high takes over at level 8
-  (~300 lx); falling, high holds to level 3 (~112 lx) and low takes back at level 2 (~76 lx)" — and
-  the observed floor of ~101 lx already sits BELOW that documented ~112 lx falling edge, so the
-  scenario's levels may simply no longer be inside the band on this rig. Deliberately not retuned
-  here: whether the answer is recalibrating the levels, measuring the band at runtime instead of
-  hardcoding it, settling longer between scenarios, or a real driver-side finding is the ISL29125
-  owner's call, and silently moving another session's calibration constants would erase the evidence.
-  **The range-decision logic itself was not touched by the shadow-divergence fix** (`_evaluate_range()`,
-  `_down_thresh()` and `_switch_range()` are unchanged in that diff; only saturation reporting and a
-  `sample_range_auto` capture changed), so this is not a regression from it.
-  **Second, intermittent finding from the same runs**: one run of three also logged `W13` ("Range
-  decided by the periodic path only - the interrupt may be dead", `asy_isl29125_driver.py`) against
-  the `bulb_fast_on_off` scenario — five consecutive range decisions arriving via the periodic path
-  rather than the INT line. The dedicated INT-line test
+  The scenario runs its whole level 3–6 program on the high range, where readings sit ~12.5% high —
+  the documented step an uncalibrated `GainRatio` produces ("nominally 26.667; every real part
+  differs, and the error shows as a step at each range change", `asy_isl29125_driver.py`'s own
+  `@web` schema line; the isolated script always seeds schema defaults, so it never runs calibrated).
+  Stepping down toward level 3 eventually crosses the down-switch threshold and the driver correctly
+  switches to the low range — the one switch the scenario forbids. The inflated peaks are stale
+  high-range samples, not light: run 2's 710.9 lx is the preceding baseline's own ~717 lx landing in
+  the scenario's first sample.
+
+  This is exactly the trap the file's own author documented on `sunrise_white_slow` — "the dark
+  pre-roll makes the starting range deterministic: without it the scenario inherits the high range
+  from the preceding baseline and the low range is never touched - which is how the first version of
+  this file passed while proving nothing" — and it is the one scenario that never got one.
+
+  **Why it is not fixed here**: simply adding `("hold", dark, dark, sh)` to its segment list does
+  not work, because the pre-roll's own high→low switch is itself counted, and this scenario's whole
+  point is `max_switches=0`. The range has to be normalised *before* counting starts, which means a
+  change to `_run_scenario()`/`reset_scenario()` that alters what every other scenario counts too —
+  an ISL29125-owner decision about the file's own measurement contract, not a drive-by edit.
+  **The driver is correct throughout**; the range-decision logic was also untouched by the
+  shadow-divergence fix (`_evaluate_range()`, `_down_thresh()`, `_switch_range()` unchanged), so
+  this is not a regression from it.
+  **Second, intermittent finding from the same runs, still open**: one run of three logged `W13`
+  ("Range decided by the periodic path only - the interrupt may be dead") against
+  `bulb_fast_on_off`. The dedicated INT-line test
   (`test_isl29125_real_irq_edge_beats_the_periodic_fallback`) passes, so the line is not dead; this
-  looks like the fast ramps in that scenario outrunning the interrupt path, but 1-in-3 is too thin
-  to conclude anything and it needs its own look.
+  looks like that scenario's fast ramps outrunning the interrupt path, but 1-in-3 is too thin to
+  conclude and it needs its own look.
 - **The SCD30 "write or don't write" decision shall be ONE command-line flag that propagates
   centrally to every potentially-writing test (project owner, 2026-09-15).** Today there are two
   separate, opposite-polarity mechanisms that a reader has to hold in their head at once:
