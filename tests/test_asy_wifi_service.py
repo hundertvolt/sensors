@@ -4,6 +4,7 @@ import select
 import socket
 
 import network
+from _tmp_scratch import TmpScratch
 from machine import Timer
 
 import asy_wifi_service
@@ -69,67 +70,13 @@ def _wlan(client: AsyConnTime) -> "Any":
     return client.wlan
 
 
-_TMP_DIR = "tests/_tmp"
-_next_dir = 0
-
-
-def _sweep_stale_tmp_dirs(prefix: str) -> None:
-    # Sweeps pre-existing <prefix>* scratch dirs left behind by an earlier scripts/test.sh run on
-    # this machine - _next_dir always restarts at 0 per process, so without this a later run
-    # silently reuses an earlier run's real, persisted config_*.cfg files instead of a genuinely
-    # fresh directory. See tests/test_sensortask.py's own _sweep_stale_tmp_dirs() for the full
-    # root-cause writeup (this exact _tmp_cfg_dir() shape is copy-pasted across every test file with
-    # its own _TMP_DIR/_next_dir pair - same fix applied uniformly to each).
-    try:
-        entries = os.listdir(_TMP_DIR)
-    except OSError:
-        return  # tests/_tmp itself doesn't exist yet - nothing to clean
-    for entry in entries:
-        if not entry.startswith(prefix):
-            continue
-        dir_path = _TMP_DIR + "/" + entry
-        try:
-            for filename in os.listdir(dir_path):
-                try:
-                    os.remove(dir_path + "/" + filename)
-                except OSError:
-                    pass
-            os.rmdir(dir_path)
-        except OSError:
-            pass
-
-
-_sweep_stale_tmp_dirs("wifi_")
-
-
-def _remove_any(path: str) -> None:
-    try:
-        os.remove(path)
-    except OSError:
-        try:
-            os.rmdir(path)
-        except OSError:
-            pass  # already gone, or genuinely not removable - not this helper's problem
+# Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that
+# module's own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage.
+_scratch = TmpScratch("wifi")
 
 
 def _tmp_cfg_dir() -> str:
-    # Same one-fresh-directory-per-call approach as test_asy_ntp_client.py's own _tmp_cfg_dir() -
-    # asy_wifi_service names its own config file unconditionally ("config_WIFI.cfg", from
-    # base_classes.py's SensorReaderConfig), so a fresh directory is what isolates tests from each
-    # other, not a distinct filename.
-    global _next_dir
-    try:
-        os.mkdir(_TMP_DIR)
-    except OSError:
-        pass  # already exists
-    _next_dir += 1
-    path = _TMP_DIR + "/wifi_" + str(_next_dir)
-    try:
-        os.mkdir(path)
-    except OSError:
-        pass  # already exists from a stale previous run
-    _remove_any(path + "/config_WIFI.cfg")  # clear any stale leftover (file or directory) from a previous run
-    return path + "/"
+    return _scratch.dir()
 
 
 class FakeLED:

@@ -4,7 +4,7 @@ a not-paused-first reset race or a circumventable watchdog."""
 
 import os
 
-_SRC_DIR = "src"  # scripts/test.sh always invokes tests from the repo root, like every other test file's own _TMP_DIR = "tests/_tmp" convention
+_SRC_DIR = "src"  # scripts/test.sh always invokes tests from the repo root, like tests/_tmp_scratch.py's own "tests/_tmp" convention
 
 
 def _src_files() -> "list[str]":

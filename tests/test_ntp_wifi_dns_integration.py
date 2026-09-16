@@ -7,13 +7,13 @@ Found and fixed a real bug this way: AsyNtpClient used to call get_dns_server_ip
 # tests/test_asy_dns_client.py and tests/test_asy_ntp_client.py.
 
 import asyncio
-import os
 import select
 import socket
 import struct
 import time
 
 import network
+from _tmp_scratch import TmpScratch
 
 import asy_ntp_client as ntpmod
 from asy_ntp_client import AsyNtpClient
@@ -46,67 +46,13 @@ def _wlan(conn: AsyConnTime) -> "Any":  # Any is the point here, not an omission
     return conn.wlan
 
 
-_TMP_DIR = "tests/_tmp"
-_next_dir = 0
-
-
-def _sweep_stale_tmp_dirs(prefix: str) -> None:
-    # Sweeps pre-existing <prefix>* scratch dirs left behind by an earlier scripts/test.sh run on
-    # this machine - _next_dir always restarts at 0 per process, so without this a later run
-    # silently reuses an earlier run's real, persisted config_*.cfg files instead of a genuinely
-    # fresh directory. See tests/test_sensortask.py's own _sweep_stale_tmp_dirs() for the full
-    # root-cause writeup (this exact _tmp_cfg_dir() shape is copy-pasted across every test file with
-    # its own _TMP_DIR/_next_dir pair - same fix applied uniformly to each).
-    try:
-        entries = os.listdir(_TMP_DIR)
-    except OSError:
-        return  # tests/_tmp itself doesn't exist yet - nothing to clean
-    for entry in entries:
-        if not entry.startswith(prefix):
-            continue
-        dir_path = _TMP_DIR + "/" + entry
-        try:
-            for filename in os.listdir(dir_path):
-                try:
-                    os.remove(dir_path + "/" + filename)
-                except OSError:
-                    pass
-            os.rmdir(dir_path)
-        except OSError:
-            pass
-
-
-_sweep_stale_tmp_dirs("integ_")
-
-
-def _remove_any(path: str) -> None:
-    try:
-        os.remove(path)
-    except OSError:
-        try:
-            os.rmdir(path)
-        except OSError:
-            pass  # already gone, or genuinely not removable - not this helper's problem
+# Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that
+# module's own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage.
+_scratch = TmpScratch("integ")
 
 
 def _tmp_cfg_dir() -> str:
-    # One fresh directory per call, shared by both services below - AsyConnTime names its own
-    # file "config_WIFI.cfg" and AsyNtpClient names its own "config_NTP.cfg" (both from
-    # base_classes.py's SensorReaderConfig), so the two never collide even sharing one directory.
-    global _next_dir
-    try:
-        os.mkdir(_TMP_DIR)
-    except OSError:
-        pass  # already exists
-    _next_dir += 1
-    path = _TMP_DIR + "/integ_" + str(_next_dir)
-    try:
-        os.mkdir(path)
-    except OSError:
-        pass  # already exists from a stale previous run
-    _remove_any(path + "/config_WIFI.cfg")
-    _remove_any(path + "/config_NTP.cfg")
-    return path + "/"
+    return _scratch.dir()
 
 
 def make_conn(cfg_path: "str | None" = None) -> AsyConnTime:
@@ -169,8 +115,7 @@ async def _cancel(task: "asyncio.Task[Any]") -> None:
 
 def _last_err(counter: "ErrorLog", field: 'Literal["ErrNum", "ErrType"]') -> "int | str | None":
     # Same helper as tests/test_asy_ntp_client.py's own _last_err() - duplicated, not imported,
-    # matching this file's existing convention of small per-file test helpers (e.g.
-    # _sweep_stale_tmp_dirs above).
+    # matching this file's existing convention of small per-file test helpers.
     value = counter["NTP"][field]  # ErrNum/ErrType are list-shaped once _error_check() has run once
     assert isinstance(value, list)
     return value[-1] if value else None

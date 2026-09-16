@@ -4,7 +4,6 @@ wiring; deep per-route behavior stays tests/test_asy_webserver_service.py's job.
 
 import asyncio
 import json
-import os
 import sys
 
 # Same convention as tests/test_asy_webserver_service.py's own module docstring: scripts/test.sh's
@@ -20,6 +19,7 @@ from _shared_rest_roundtrip import (
     assert_sensor_payload_not_self_wrapped,
     drain_json_response_body,
 )
+from _tmp_scratch import TmpScratch
 from microdot import Request, Response  # type: ignore[import-not-found]
 
 import asy_spi_driver
@@ -102,126 +102,24 @@ def _fram_fake_class(device: str) -> "type[FakeMB85RS64V]":
 
 
 # ---------------------------------------------------------------------------
-# Per-test config-file isolation - same pattern as test_ntp_fram_system_integration.py's own
-# _tmp_cfg_dir(): build_system() constructs several real ConfigManager-backed modules (conn, ntp,
-# sgp40, [bmp3xx], notification), each of which writes/reads a real config_<NAME>.cfg file at its
-# cfg_path - repeated calls across test_* functions in this one process must not collide on the
-# same files, and must not touch the real repo-root config files either. One shared "sensortask_"
-# prefix, not one per device, now that this file collapses what used to be two separate files
-# (BUILD_CHAIN_PLAN.md's Session 6.2) - _next_dir's own per-process counter already keeps every
-# call's own directory unique regardless of which device that call happens to be for.
+# Per-test config-file isolation via the shared tests/_tmp_scratch.py helper: build_system()
+# constructs several real ConfigManager-backed modules (conn, ntp, sgp40, [bmp3xx], notification),
+# each of which writes/reads a real config_<NAME>.cfg file at its cfg_path - repeated calls across
+# test_* functions in this one process must not collide on the same files, and must not touch the
+# real repo-root config files either. One shared "sensortask" key, not one per device, now that
+# this file collapses what used to be two separate files (BUILD_CHAIN_PLAN.md's Session 6.2) -
+# TmpScratch's own per-instance counter already keeps every call's own directory unique regardless
+# of which device that call happens to be for. See _tmp_scratch.py's own docstring for the
+# construction-time wipe and tests/microtest.py's teardown_all() call that replace this file's old,
+# self-contained _sweep_stale_tmp_dirs()/_next_dir pair - tests/test_tmp_scratch.py now carries the
+# regression coverage that used to live here as test_sweep_stale_tmp_dirs_*().
 # ---------------------------------------------------------------------------
 
-_TMP_DIR = "tests/_tmp"
-_next_dir = 0
-
-
-def _sweep_stale_tmp_dirs(prefix: str) -> None:
-    # _next_dir always restarts at 0 per process, so a second scripts/test.sh run on the same
-    # machine reuses the exact same directory names an earlier run already left behind - and
-    # "already exists from a stale previous run" (the comment below used to say) turns out not to
-    # be harmless: the earlier run's real, persisted config_*.cfg files are still sitting there, so
-    # a write that should be a genuine value change instead compares against yesterday's
-    # already-matching value and gets misreported "Unchanged" instead of "Valid" (confirmed by
-    # direct reproduction against this file's own former two halves). This exact _tmp_cfg_dir()
-    # shape is copy-pasted across every test_*.py file with its own _TMP_DIR/_next_dir pair - same
-    # fix applied uniformly to each. Sweeping at import time, rather than only guarding against the
-    # empty-directory case os.mkdir()'s own try/except already handled, is what actually restores
-    # the "must not collide"/fresh-directory guarantee this helper's own docstring promises.
-    try:
-        entries = os.listdir(_TMP_DIR)
-    except OSError:
-        return  # tests/_tmp itself doesn't exist yet - nothing to clean
-    for entry in entries:
-        if not entry.startswith(prefix):
-            continue
-        dir_path = _TMP_DIR + "/" + entry
-        try:
-            for filename in os.listdir(dir_path):
-                try:
-                    os.remove(dir_path + "/" + filename)
-                except OSError:
-                    pass
-            os.rmdir(dir_path)
-        except OSError:
-            pass
-
-
-_sweep_stale_tmp_dirs("sensortask_")
+_scratch = TmpScratch("sensortask")
 
 
 def _tmp_cfg_dir() -> str:
-    global _next_dir
-    try:
-        os.mkdir(_TMP_DIR)
-    except OSError:
-        pass  # already exists
-    _next_dir += 1
-    path = _TMP_DIR + "/sensortask_" + str(_next_dir)
-    try:
-        os.mkdir(path)
-    except OSError:
-        pass  # already exists from a stale previous run
-    return path + "/"
-
-
-# ---------------------------------------------------------------------------
-# _sweep_stale_tmp_dirs() itself - regression coverage for the actual bug (a later scripts/test.sh
-# run silently reusing an earlier run's persisted config files), not just a re-assertion of the
-# pre-existing "config write applies" expectation. Device-independent (no build_system() call at
-# all), so these run once, not parametrized.
-# ---------------------------------------------------------------------------
-
-
-def test_sweep_stale_tmp_dirs_removes_a_pre_existing_matching_directory_and_its_contents() -> None:
-    try:
-        os.mkdir(_TMP_DIR)
-    except OSError:
-        pass
-    stale_dir = _TMP_DIR + "/sensortask_stale_test_marker"
-    try:
-        os.mkdir(stale_dir)
-    except OSError:
-        pass
-    with open(stale_dir + "/config_LEFTOVER.cfg", "w") as f:
-        f.write('{"NTP_Host": "time.example.org"}')  # shaped like a real persisted config write
-
-    _sweep_stale_tmp_dirs("sensortask_stale_test_marker")
-
-    try:
-        os.stat(stale_dir)
-        raise AssertionError("expected the stale directory to have been removed")
-    except OSError:
-        pass  # gone, as expected
-
-
-def test_sweep_stale_tmp_dirs_leaves_non_matching_entries_alone() -> None:
-    try:
-        os.mkdir(_TMP_DIR)
-    except OSError:
-        pass
-    keep_dir = _TMP_DIR + "/not_sensortask_prefixed_marker"
-    try:
-        os.mkdir(keep_dir)
-    except OSError:
-        pass
-
-    _sweep_stale_tmp_dirs("sensortask_")  # this file's own real prefix - must not touch an unrelated name
-
-    os.stat(keep_dir)  # still there - raises OSError (failing this test) if it got swept
-    os.rmdir(keep_dir)  # this test's own responsibility to clean up, not _sweep_stale_tmp_dirs()'s
-
-
-def test_sweep_stale_tmp_dirs_tolerates_a_missing_tmp_dir_entirely() -> None:
-    # Nothing to assert beyond "doesn't raise" - the real-world case this guards is the very first
-    # scripts/test.sh run ever, before tests/_tmp exists at all.
-    try:
-        os.listdir(_TMP_DIR)  # raises immediately (before any iteration) if _TMP_DIR is missing
-    except OSError:
-        pass  # confirms this environment's own tests/_tmp is absent for this particular check
-    else:
-        return  # tests/_tmp already exists (other tests created it) - nothing new to prove here
-    _sweep_stale_tmp_dirs("sensortask_")
+    return _scratch.dir()
 
 
 # ---------------------------------------------------------------------------

@@ -18,17 +18,15 @@ sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comme
 
 from _crc8 import crc8, word
 from _scd30_chip import Scd30Chip
+from _tmp_scratch import TmpScratch
 
-_TMP_DIR = "tests/_tmp"
+# Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that module's
+# own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage.
+_scratch = TmpScratch("digital_twin_scd30")
 
 
 def _tmp_path(name: str) -> str:
-    # Same convention as test_digital_twin_fram.py's own _tmp_path() helper.
-    try:
-        os.mkdir(_TMP_DIR)
-    except OSError:
-        pass
-    return _TMP_DIR + "/" + name
+    return _scratch.path(name)
 
 
 class _FixedRandom:

@@ -26,6 +26,7 @@ sys.path.insert(0, "ext")
 
 # ext/ isn't on this project's mypy search path yet (see pyproject.toml's [tool.mypy]) - same gap
 # as src/asy_webserver_service.py's own import of this module.
+from _tmp_scratch import TmpScratch
 from microdot import Microdot, Request  # type: ignore[import-not-found]
 
 import api_response as ar
@@ -53,68 +54,13 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to complet
     return asyncio.run(coro)
 
 
-_TMP_DIR = "tests/_tmp"
-_next_dir = 0
-
-
-def _sweep_stale_tmp_dirs(prefix: str) -> None:
-    # Sweeps pre-existing <prefix>* scratch dirs left behind by an earlier scripts/test.sh run on
-    # this machine - _next_dir always restarts at 0 per process, so without this a later run
-    # silently reuses an earlier run's real, persisted config_*.cfg files instead of a genuinely
-    # fresh directory. See tests/test_sensortask.py's own _sweep_stale_tmp_dirs() for the full
-    # root-cause writeup (this exact _tmp_cfg_dir() shape is copy-pasted across every test file with
-    # its own _TMP_DIR/_next_dir pair - same fix applied uniformly to each).
-    try:
-        entries = os.listdir(_TMP_DIR)
-    except OSError:
-        return  # tests/_tmp itself doesn't exist yet - nothing to clean
-    for entry in entries:
-        if not entry.startswith(prefix):
-            continue
-        dir_path = _TMP_DIR + "/" + entry
-        try:
-            for filename in os.listdir(dir_path):
-                try:
-                    os.remove(dir_path + "/" + filename)
-                except OSError:
-                    pass
-            os.rmdir(dir_path)
-        except OSError:
-            pass
-
-
-_sweep_stale_tmp_dirs("msi_")
+# Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that
+# module's own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage.
+_scratch = TmpScratch("msi")
 
 
 def _tmp_cfg_dir() -> str:
-    # tests/_tmp is never wiped between local invocations of this file (unlike CI's always-fresh
-    # checkout - same reasoning as test_asy_sgp40_driver.py's own _sgp_cfg_dir()) - _next_dir alone
-    # isn't enough to guarantee a fresh config file, since a directory name repeats across runs of
-    # the same process. Clear any config file left over from a previous local run explicitly.
-    global _next_dir
-    try:
-        os.mkdir(_TMP_DIR)
-    except OSError:
-        pass  # already exists
-    _next_dir += 1
-    path = _TMP_DIR + "/msi_" + str(_next_dir)
-    try:
-        os.mkdir(path)
-    except OSError:
-        pass  # already exists from a stale previous run
-    for stale in ("config_WIFI.cfg", "config_NTP.cfg", "config_BMP3XX.cfg", "config_SGP40.cfg"):
-        try:
-            os.remove(path + "/" + stale)
-        except OSError:
-            try:
-                # _break_cfg_file() below deliberately leaves a *directory* behind under this name
-                # (that's how it makes a real config write fail) - os.remove() can't clear that one,
-                # and leaving it would make the next local run's ConfigManager.setup() reject the
-                # config outright ("exists but is not a file") instead of starting fresh.
-                os.rmdir(path + "/" + stale)
-            except OSError:
-                pass  # no stale file or directory - already fresh
-    return path + "/"
+    return _scratch.dir()
 
 
 def make_wifi_client() -> AsyConnTime:

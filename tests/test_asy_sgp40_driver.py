@@ -4,10 +4,10 @@
 
 import asyncio
 import json
-import os
 from collections import namedtuple
 
 from _fram_chip_fake import FakeMB85RS64V
+from _tmp_scratch import TmpScratch
 from machine import I2C as FakeI2C
 from machine import Timer
 
@@ -37,15 +37,13 @@ if TYPE_CHECKING:
 # Same one-process-per-test-file FRAM chip swap as tests/test_fram_integration.py.
 asy_spi_driver._SPI = FakeMB85RS64V  # type: ignore[misc]
 
-_TMP_DIR = "tests/_tmp"
-
-
-def _tmp_path(name: str) -> str:
-    try:
-        os.mkdir(_TMP_DIR)
-    except OSError:
-        pass  # already exists
-    return _TMP_DIR + "/" + name
+# Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that module's
+# own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage. Most tests in
+# this file share this one directory (_SHARED_CFG_DIR): they only ever rely on schema defaults, so
+# they never write conflicting values and don't need their own directory - see _sgp_cfg_dir() below
+# for the tests that do write real per-test values and need real isolation from each other.
+_scratch = TmpScratch("sgp40")
+_SHARED_CFG_DIR = _scratch.dir()
 
 _CRC_POLY = 0x31  # datasheet Table 7
 
@@ -334,7 +332,7 @@ class _FakeCompSource:
 
 
 def make_reader(**kwargs: "Any") -> SGP40_Reader:
-    kwargs.setdefault("cfg_path", _tmp_path("") + "/")
+    kwargs.setdefault("cfg_path", _SHARED_CFG_DIR)
     reader = SGP40_Reader(
         make_i2c(),
         temperature_source=_FakeCompSource(),
@@ -369,7 +367,7 @@ def test_read_sgp_without_compensation_data_returns_all_none() -> None:
         humidity_source=_FakeCompSource(None, None),
         humidity_field="Hum",
         max_module_error=2,
-        cfg_path=_tmp_path("") + "/",
+        cfg_path=_SHARED_CFG_DIR,
     )
     run(reader.cfgmgr.setup())
     data, compensated, serialized = run(reader._read_sgp(None, serialize=False, deserialize=False))
@@ -394,7 +392,7 @@ def test_read_sgp_without_compensation_data_yet_logs_nothing() -> None:
         humidity_source=_FakeCompSource(None, None),
         humidity_field="Hum",
         max_module_error=2,
-        cfg_path=_tmp_path("") + "/",
+        cfg_path=_SHARED_CFG_DIR,
     )
     run(reader.cfgmgr.setup())
     run(reader.pr.setup())
@@ -417,7 +415,7 @@ def test_read_sgp_with_one_of_two_compensation_fields_still_none_logs_nothing() 
         humidity_source=_FakeCompSource(25.0, None),
         humidity_field="Hum",
         max_module_error=2,
-        cfg_path=_tmp_path("") + "/",
+        cfg_path=_SHARED_CFG_DIR,
     )
     run(reader.cfgmgr.setup())
     run(reader.pr.setup())
@@ -692,7 +690,7 @@ def test_reset_never_drops_but_each_sub_part_completes_at_most_once() -> None:
         fram_storage=manager,
         fram_ntp_callback=_ntp_synced,
         max_module_error=5,
-        cfg_path=_tmp_path("") + "/",
+        cfg_path=_SHARED_CFG_DIR,
     )
     run(reader.cfgmgr.setup())
     fake_bus = bus(reader.sgp.i2c_sgp40.i2c_device.i2c)
@@ -750,7 +748,7 @@ def test_reset_retries_only_the_fram_half_once_the_algo_half_already_succeeded()
         fram_storage=manager,
         fram_ntp_callback=_ntp_synced,
         max_module_error=5,
-        cfg_path=_tmp_path("") + "/",
+        cfg_path=_SHARED_CFG_DIR,
     )
     run(reader.cfgmgr.setup())
     fake_bus = bus(reader.sgp.i2c_sgp40.i2c_device.i2c)
@@ -898,7 +896,7 @@ def test_run_backup_genuine_fram_write_failure_is_logged_as_an_error() -> None:
         fram_storage=manager,
         fram_ntp_callback=_ntp_synced,
         max_module_error=5,
-        cfg_path=_tmp_path("") + "/",
+        cfg_path=_SHARED_CFG_DIR,
     )
     run(reader.cfgmgr.setup())
     fake_bus = bus(reader.sgp.i2c_sgp40.i2c_device.i2c)
@@ -935,7 +933,7 @@ def test_run_restore_applies_backup_anyway_once_wait_time_ntp_budget_is_exhauste
             fram_storage=manager,
             fram_ntp_callback=_ntp_synced,
             max_module_error=5,
-            cfg_path=_tmp_path("") + "/",
+            cfg_path=_SHARED_CFG_DIR,
         )
         await writer.cfgmgr.setup()
         fake_bus = bus(writer.sgp.i2c_sgp40.i2c_device.i2c)
@@ -954,7 +952,7 @@ def test_run_restore_applies_backup_anyway_once_wait_time_ntp_budget_is_exhauste
             fram_storage=manager2,
             fram_ntp_callback=_ntp_not_synced,  # the *reader's* own current time is never NTP-synced
             max_module_error=5,
-            cfg_path=_tmp_path("") + "/",
+            cfg_path=_SHARED_CFG_DIR,
         )
         await reader.cfgmgr.setup()
         fake_bus2 = bus(reader.sgp.i2c_sgp40.i2c_device.i2c)
@@ -990,7 +988,7 @@ def test_run_backup_writes_without_timestamp_once_wait_time_ntp_budget_is_exhaus
             fram_storage=manager,
             fram_ntp_callback=_ntp_not_synced,
             max_module_error=5,
-            cfg_path=_tmp_path("") + "/",
+            cfg_path=_SHARED_CFG_DIR,
         )
         await writer.cfgmgr.setup()
         fake_bus = bus(writer.sgp.i2c_sgp40.i2c_device.i2c)
@@ -1086,7 +1084,7 @@ def test_simultaneous_restore_and_backup_in_one_cycle_reads_then_rewrites_the_sa
             fram_storage=manager,
             fram_ntp_callback=_ntp_synced,
             max_module_error=5,
-            cfg_path=_tmp_path("") + "/",
+            cfg_path=_SHARED_CFG_DIR,
         )
         await writer.cfgmgr.setup()
         fake_bus = bus(writer.sgp.i2c_sgp40.i2c_device.i2c)
@@ -1110,7 +1108,7 @@ def test_simultaneous_restore_and_backup_in_one_cycle_reads_then_rewrites_the_sa
             fram_storage=manager2,
             fram_ntp_callback=_ntp_synced,
             max_module_error=5,
-            cfg_path=_tmp_path("") + "/",
+            cfg_path=_SHARED_CFG_DIR,
         )
         await reader.cfgmgr.setup()
         fake_bus2 = bus(reader.sgp.i2c_sgp40.i2c_device.i2c)
@@ -1201,31 +1199,13 @@ def test_set_dict_cfg_works_out_of_the_box_with_zero_driver_changes() -> None:
 
 
 def _sgp_cfg_dir(name: str) -> str:
-    # A fresh subdirectory per test, not the shared _tmp_path("") every other test in this file
-    # uses - those never write custom values, only ever rely on schema defaults, so they don't
-    # collide; these tests write real per-test config files and must not see each other's state.
-    # _tmp_path("") first: guarantees _TMP_DIR itself exists before nesting a subdirectory under
-    # it - on a fresh checkout (no leftover tests/_tmp from a prior local run) this test file's own
-    # first call could otherwise hit ENOENT (parent missing), which the bare `except OSError: pass`
-    # below would silently swallow together with the real "already exists" case it's meant for,
-    # leaving the directory never actually created (caught by CI, not by a local rerun that reused
-    # an already-existing tests/_tmp from an earlier session).
-    _tmp_path("")
-    path = _TMP_DIR + "/sgpcfg_" + name
-    try:
-        os.mkdir(path)
-    except OSError:
-        pass  # already exists
-    try:
-        # A directory persisting from a previous local run of this file (tests/_tmp is never wiped
-        # between invocations, unlike CI's always-fresh checkout) would otherwise let this test
-        # pollute its own next run - e.g. test_run_backup_updates_verify_when_backup_period_changes_
-        # after_init writes a real BackupPeriod here, silently turning its own "change it" step into
-        # a no-op on the following local rerun. Force a genuinely fresh config file every time.
-        os.remove(path + "/config_SGP40.cfg")
-    except OSError:
-        pass  # no config file yet - already fresh
-    return path + "/"
+    # A fresh subdirectory per test, not _SHARED_CFG_DIR every other test in this file uses - those
+    # never write custom values, only ever rely on schema defaults, so they don't collide; these
+    # tests write real per-test config files and must not see each other's state. _scratch.dir()
+    # is always a brand new, guaranteed-empty directory (see TmpScratch's own docstring), so - unlike
+    # the old hand-rolled version - there's no stale-leftover-from-a-previous-local-run case to
+    # separately guard against here.
+    return _scratch.dir(name)
 
 
 def _write_sgp_cfg(cfg_dir: str, values: dict[str, object]) -> None:
@@ -1509,7 +1489,7 @@ def test_fram_backup_writes_and_restore_recovers_full_algorithm_state() -> None:
             fram_storage=manager,
             fram_ntp_callback=_ntp_synced,
             max_module_error=5,
-            cfg_path=_tmp_path("") + "/",
+            cfg_path=_SHARED_CFG_DIR,
         )
         await writer.cfgmgr.setup()
         fake_bus = bus(writer.sgp.i2c_sgp40.i2c_device.i2c)
@@ -1533,7 +1513,7 @@ def test_fram_backup_writes_and_restore_recovers_full_algorithm_state() -> None:
             fram_storage=manager2,
             fram_ntp_callback=_ntp_synced,
             max_module_error=5,
-            cfg_path=_tmp_path("") + "/",
+            cfg_path=_SHARED_CFG_DIR,
         )
         await reader.cfgmgr.setup()
         fake_bus2 = bus(reader.sgp.i2c_sgp40.i2c_device.i2c)
@@ -1592,7 +1572,7 @@ def test_fram_restore_rejects_backup_older_than_backup_max_age() -> None:
             fram_storage=manager,
             fram_ntp_callback=_ntp_synced,
             max_module_error=5,
-            cfg_path=_tmp_path("") + "/",
+            cfg_path=_SHARED_CFG_DIR,
         )
         await writer.cfgmgr.setup()
         fake_bus = bus(writer.sgp.i2c_sgp40.i2c_device.i2c)
@@ -1617,7 +1597,7 @@ def test_fram_restore_rejects_backup_older_than_backup_max_age() -> None:
             fram_storage=manager2,
             fram_ntp_callback=_ntp_synced,
             max_module_error=5,
-            cfg_path=_tmp_path("") + "/",
+            cfg_path=_SHARED_CFG_DIR,
         )
         await reader.cfgmgr.setup()
         fake_bus2 = bus(reader.sgp.i2c_sgp40.i2c_device.i2c)
@@ -1643,7 +1623,7 @@ def test_fram_restore_finds_no_backup_on_a_never_written_chunk() -> None:
             fram_storage=manager,
             fram_ntp_callback=_ntp_synced,
             max_module_error=5,
-            cfg_path=_tmp_path("") + "/",
+            cfg_path=_SHARED_CFG_DIR,
         )
         await reader.cfgmgr.setup()
         fake_bus = bus(reader.sgp.i2c_sgp40.i2c_device.i2c)
@@ -1673,7 +1653,7 @@ def test_fram_backup_without_ntp_sync_is_deferred_not_lost() -> None:
             fram_storage=manager,
             fram_ntp_callback=_ntp_not_synced,
             max_module_error=5,
-            cfg_path=_tmp_path("") + "/",
+            cfg_path=_SHARED_CFG_DIR,
         )
         await writer.cfgmgr.setup()
         fake_bus = bus(writer.sgp.i2c_sgp40.i2c_device.i2c)
@@ -1707,7 +1687,7 @@ def test_read_sgp_comp_callback_exception_is_caught_not_propagated() -> None:
         humidity_source=_FakeCompSource(raise_exc=True),
         humidity_field="Hum",
         max_module_error=2,
-        cfg_path=_tmp_path("") + "/",
+        cfg_path=_SHARED_CFG_DIR,
     )
     run(reader.cfgmgr.setup())
     run(reader.pr.setup())
@@ -1809,7 +1789,7 @@ def test_reader_with_fram_storage_gets_a_fram_backed_print_log() -> None:
         fram_storage=manager,
         fram_ntp_callback=_ntp_synced,
         max_module_error=2,
-        cfg_path=_tmp_path("") + "/",
+        cfg_path=_SHARED_CFG_DIR,
     )
     run(reader.cfgmgr.setup())
     assert isinstance(reader.pr, PrintLogHistoryStore)
@@ -1838,7 +1818,7 @@ def test_reader_survives_get_timestamped_chunk_raising_instead_of_returning_none
         fram_storage=manager,
         fram_ntp_callback=_ntp_synced,
         max_module_error=2,
-        cfg_path=_tmp_path("") + "/",
+        cfg_path=_SHARED_CFG_DIR,
     )
     run(reader.cfgmgr.setup())
     assert reader.ts_storage is None
@@ -1859,7 +1839,7 @@ def test_sgp40_error_log_survives_a_simulated_reboot_via_fram() -> None:
             fram_storage=manager,
             fram_ntp_callback=_ntp_synced,
             max_module_error=2,
-            cfg_path=_tmp_path("") + "/",
+            cfg_path=_SHARED_CFG_DIR,
         )
         await reader.cfgmgr.setup()
         await reader.pr.setup()
@@ -1876,7 +1856,7 @@ def test_sgp40_error_log_survives_a_simulated_reboot_via_fram() -> None:
             fram_storage=manager2,
             fram_ntp_callback=_ntp_synced,
             max_module_error=2,
-            cfg_path=_tmp_path("") + "/",
+            cfg_path=_SHARED_CFG_DIR,
         )
         await reader2.cfgmgr.setup()
         await reader2.pr.setup()  # loads the persisted history back from FRAM
@@ -1918,7 +1898,7 @@ def test_init_sgp_fails_and_logs_when_config_data_unreadable() -> None:
         fram_storage=manager,
         fram_ntp_callback=_ntp_synced,
         max_module_error=5,
-        cfg_path=_tmp_path("") + "/",
+        cfg_path=_SHARED_CFG_DIR,
     )
     run(reader.cfgmgr.setup())
     fake_bus = bus(reader.sgp.i2c_sgp40.i2c_device.i2c)
@@ -1946,7 +1926,7 @@ def test_init_sgp_caps_a_stale_out_of_schema_wait_time_ntp() -> None:
         fram_storage=manager,
         fram_ntp_callback=_ntp_synced,
         max_module_error=5,
-        cfg_path=_tmp_path("") + "/",
+        cfg_path=_SHARED_CFG_DIR,
     )
     run(reader.cfgmgr.setup())
     fake_bus = bus(reader.sgp.i2c_sgp40.i2c_device.i2c)
@@ -1969,7 +1949,7 @@ def test_check_storage_fails_and_logs_when_config_data_unreadable() -> None:
         fram_storage=manager,
         fram_ntp_callback=_ntp_synced,
         max_module_error=5,
-        cfg_path=_tmp_path("") + "/",
+        cfg_path=_SHARED_CFG_DIR,
     )
     run(reader.cfgmgr.setup())
     fake_bus = bus(reader.sgp.i2c_sgp40.i2c_device.i2c)
@@ -2004,7 +1984,7 @@ def test_run_restore_backup_without_timestamp_clears_voc_init_and_still_restores
             fram_storage=manager,
             fram_ntp_callback=_ntp_not_synced,  # every write from here on lacks a timestamp
             max_module_error=5,
-            cfg_path=_tmp_path("") + "/",
+            cfg_path=_SHARED_CFG_DIR,
         )
         await writer.cfgmgr.setup()
         fake_bus = bus(writer.sgp.i2c_sgp40.i2c_device.i2c)
@@ -2024,7 +2004,7 @@ def test_run_restore_backup_without_timestamp_clears_voc_init_and_still_restores
             fram_storage=manager2,
             fram_ntp_callback=_ntp_synced,
             max_module_error=5,
-            cfg_path=_tmp_path("") + "/",
+            cfg_path=_SHARED_CFG_DIR,
         )
         await reader.cfgmgr.setup()
         fake_bus2 = bus(reader.sgp.i2c_sgp40.i2c_device.i2c)
@@ -2057,7 +2037,7 @@ def test_run_restore_valid_timestamp_but_unknown_age_waits_for_ntp() -> None:
             fram_storage=manager,
             fram_ntp_callback=_ntp_synced,
             max_module_error=5,
-            cfg_path=_tmp_path("") + "/",
+            cfg_path=_SHARED_CFG_DIR,
         )
         await writer.cfgmgr.setup()
         fake_bus = bus(writer.sgp.i2c_sgp40.i2c_device.i2c)
@@ -2076,7 +2056,7 @@ def test_run_restore_valid_timestamp_but_unknown_age_waits_for_ntp() -> None:
             fram_storage=manager2,
             fram_ntp_callback=_ntp_not_synced,  # this reader's own clock isn't synced yet
             max_module_error=5,
-            cfg_path=_tmp_path("") + "/",
+            cfg_path=_SHARED_CFG_DIR,
         )
         await reader.cfgmgr.setup()
         fake_bus2 = bus(reader.sgp.i2c_sgp40.i2c_device.i2c)
@@ -2178,7 +2158,7 @@ def test_read_sgp_retries_deserialize_when_compensation_data_missing() -> None:
         humidity_source=_FakeCompSource(None, None),
         humidity_field="Hum",
         max_module_error=2,
-        cfg_path=_tmp_path("") + "/",
+        cfg_path=_SHARED_CFG_DIR,
     )
     run(reader.cfgmgr.setup())
     reader.voc_init = 0
