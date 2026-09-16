@@ -42,6 +42,20 @@ compacted, so the originals were recovered from
 Implementation began immediately after Part 2's final message. **None of what it produced is
 included here** — all of it was rolled back (see Part 4).
 
+**A note on how much to trust the specifics below, added on review of this document itself**:
+Part 3's action items still state a number of current-code facts as confident, specific
+imperatives — exact file/line references (`codegen.py:390-394`, `validate.py:71`,
+`asy_uart_link_driver.py:58`, `codegen.py:220-225`, `base_classes.py:281-285`, and others like
+them) rather than "verify, then act" language. Only Topic 6's premise ("FRAM chunk-count only ever
+grows during construction") carries an explicit "re-verify this before building on it" caveat —
+that caveat is not the exception, it is the standard that should read on every other such
+reference too. These specifics plausibly came from real reads of the actual files earlier in the
+session, before its later state proved unreliable, but they were not re-confirmed as part of this
+cleanup pass. **Treat every file/line/function reference throughout Part 3 as a lead to verify
+against the real repository, not as an already-confirmed fact** — the same treatment Part 3's own
+provenance note already gives to every diagnostic claim, just stated once here explicitly instead
+of file-line by file-line.
+
 ---
 
 # Part 1 — The initiating prompt (verbatim)
@@ -645,7 +659,45 @@ stagger obligation.
 - [ ] Add the regression test above.
 - [ ] Document the mechanism and its rationale in `SPECIFICATION.md` (see Part 5).
 
+### WP8 — `self.pr.err()` → `err_s()` upgrade, wired through to API and website
+**Depends on**: nothing. **Touches**: unscoped — its own first step is to establish the touched-file
+list; do not assume it is small until that's done. **Corresponds to**: Topic 11 below (the one
+cross-cutting requirement from Part 2 with no work package of its own until this entry was added on
+review of this document — added here so a fresh session working WP-by-WP does not skip it).
 
+**Goal**: every bare, print-only `self.pr.err()` call site that should instead be recorded and
+surfaced (per the owner's decision message 9) is upgraded to `err_s()`, and the resulting recorded
+error reaches the REST API and the website the same way every other module's `errno`/`wrnno` history
+already does.
+
+**Sufficient when**: every genuine call site is identified and upgraded (or explicitly, individually
+justified as correctly staying print-only, not silently skipped); each newly-recorded error is
+visible through `/status`'s existing `errcount` convention with no bespoke per-module display
+invented; `scripts/lint.sh`, `scripts/typecheck.sh`, and `scripts/test.sh` stay clean; no currently-
+passing test regresses.
+
+**Completeness / self-containment / harmony check**:
+- [ ] Do not reuse any call-site list from this document or from memory of the earlier session — it
+      is exactly the kind of finding Part 3's provenance note says to distrust. Re-derive it from a
+      fresh grep/read of `src/`.
+- [ ] Run CLAUDE.md's mandatory bird's-eye-view scan across every touched module once the real scope
+      is known — flag and discuss any cross-file inconsistency rather than silently fixing it.
+
+**Spec-conformance requirement**: check every touched file against `SPECIFICATION.md` Part D's
+checklist; confirm the upgrade doesn't invent a second error-recording pattern where `err_s()`'s
+existing one already covers the shape needed.
+
+**Testing requirement**: full normal flow, full error handling/self-healing/resilience, biting
+coverage, and regression tests, per the owner's own wording for this item — not a lighter bar than
+the other WPs.
+
+- [ ] Grep `src/` for every `self.pr.err(` (bare, non-`_s` form) call site and read each one in
+      context to decide whether it should become `err_s()`.
+- [ ] Upgrade the genuine cases; leave any call site that should stay print-only with a comment
+      explaining why, rather than silently skipping it.
+- [ ] Confirm each upgraded error surfaces through `/status`'s existing `errcount` convention with no
+      new API shape.
+- [ ] Add the tests above.
 
 ---
 
@@ -1068,7 +1120,7 @@ design was preferred, not as an open option.
 | 8 | Test coverage scheme | Existing 4-tier standing rule applies to 2/3/5/6, and to Topic 1's new deferred-write behavior |
 | 9 | Boot-time watchdog feeding | Decided — feed after every one-time `setup()`; watchdog optional, no-op default |
 | 10 | Sensor read-timer architecture | Existing design stands — verify against real source, document, do not rescale |
-| 11 | Cross-cutting requirements | `err_s()` upgrade + API/website wiring; project-wide errno realignment; mandatory-module invariant |
+| 11 | Cross-cutting requirements | `err_s()` upgrade + API/website wiring (→ **WP8**, added on review — no WP covered this until then); project-wide errno realignment; mandatory-module invariant |
 
 **Every open decision from earlier rounds is now resolved.** Nothing beyond the Topic-1 BACKLOG.md
 commit (`3f7cc25`) has been implemented. Topics 9 and 10 were settled *after* this checklist was
@@ -1076,7 +1128,7 @@ first written and have no ordering dependency on the rest; Topic 10 is mostly ve
 documentation of an existing design. Recommended implementation order, given that Topic 1's error
 durability depends on Topic 3: **Topic 3 (and, alongside it, Topic 2 since both touch the same FRAM-forwarding machinery)
 before Topic 1**, so Topic 1's deferred-write errors land durably from day one rather than needing
-a second pass once Topic 3 lands later. Topics 5 and 6 have no ordering dependency on the
+a second pass once Topic 3 lands later. Topics 5, 6 and 8/WP8 have no ordering dependency on the
 others and can be done at any point.
 
 ---
