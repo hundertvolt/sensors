@@ -75,6 +75,13 @@ _FIELDS = const(("Mode", "Connected", "IP", "TS"))  # kept in sync with WIFI's o
 # `conn.set_ext_led(<resolved instance>)` once, after both already exist.
 # @wiring led_target NeopixelDriver set_ext_led optional setter
 
+# This service's other optional live cross-instance dependency: its own FRAM error-log target,
+# resolved by buildgen/ the same way system_service.py's own identical tag is (from
+# [device.wiring].fram_target, implicitly, since AsyConnTime is mandatory infra too) to an
+# already-constructed AsyFramManager instance, passed directly as this service's own fram= kwarg
+# (see __init__ below - forwarded into both super().__init__() and its own DNSServer).
+# @wiring fram_target AsyFramManager fram optional kwarg
+
 _STA_DISCONNECT_WAIT_ITERS = const(20)  # 20 * 0.5s = 10s max wait for isconnected() to clear -
 # bounds _disconnect_sta_and_wait()'s loop; a real disconnect() completes far faster than this.
 
@@ -370,7 +377,7 @@ class AsyConnTime(SensorReaderConfig):
             self.ledflash = None
         self.pr.evt("Client connected to hotspot, timer stopped")
 
-    def _hotspot_client_absent(self) -> None:
+    async def _hotspot_client_absent(self) -> None:
         if not self.hotspot_timer_running:
             self.pr.evt("No client connected - hotspot timer started")
             try:
@@ -393,7 +400,10 @@ class AsyConnTime(SensorReaderConfig):
             # Part F.1's soft-Timer-callback-drop gotcha).
             self.hotspot_timer_ticks_since_armed += 1
             if self.hotspot_timer_ticks_since_armed * self.wifi_refresh_sec * 1000 >= 2 * self.hotspot_time:
-                self.pr.err("Hotspot timer callback appears dropped, forcing reconnect")
+                # WP8: a real, actionable self-heal event (SPECIFICATION.md Part F.1's soft-Timer-
+                # callback-drop gotcha actually firing), not routine WiFi-mode-transition noise -
+                # persisted, unlike this module's other, deliberately print-only observations.
+                await self.pr.err_s("Hotspot timer callback appears dropped, forcing reconnect", errno=19)
                 self.hotspot_timeout_trigger_event.set()
         if self.ledflash is None:
             evtloop = asyncio.get_event_loop()
@@ -553,7 +563,7 @@ class AsyConnTime(SensorReaderConfig):
         if len(stations) > 0:  # at least one client connected
             self._hotspot_client_connected()
         else:  # no client connected
-            self._hotspot_client_absent()
+            await self._hotspot_client_absent()
 
     async def _run_sta_mode(self) -> None:
         await self.wifi_mode_lock.acquire()

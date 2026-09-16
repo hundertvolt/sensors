@@ -350,68 +350,153 @@ importing the generated device module stays safe under tests.
 **Why order matters**: `AsyFramManager` is a bump-pointer allocator — instantiation order is
 on-chip layout and must stay identical across firmware versions (A.4's determinism rule).
 
-**Construction order, top to bottom**:
+**Construction order, top to bottom** (as of WP1/CLAUDE.md's implicit-FRAM-wiring rule: `fram` moved
+ahead of `conn`/`ntp`/`sysfunct`, and all three — plus `conn`'s own `DNSServer` and the webserver —
+now inherit it too, whenever `[device.wiring].fram_target` is set, which every real device's own
+TOML does today):
 
 1. `watchdog = WDT(timeout=8000)` — hardcoded, no injection point.
-2. `conn = AsyConnTime(...)` — owns `DNSServer` internally (`captive_dns.py`).
-3. `ntp = AsyNtpClient(conn.get_wifi_mode_lock(), conn.network_available,
-   conn.get_dns_server_ip, ...)` — bound methods off `conn`.
-4. `i2c0`, `i2c1` = `asy_i2c_driver.I2C(...)` ×2. `i2c0` (SCD30, step 10) sets `timeout=200000`
+2. `i2c0`, `i2c1` = `asy_i2c_driver.I2C(...)` ×2. `i2c0` (SCD30, step 8) sets `timeout=200000`
    (200ms): SCD30 documents up to 150ms clock stretching/day, past rp2's 50ms default — without the
    override that expected stretch surfaces as a spurious `OSError`. `i2c1` (SGP40/BMP3xx) keeps the
    port default.
-5. `spi0 = asy_spi_driver.SPI(...)`.
-6. `fram = AsyFramManager(spi0, 1, max_size=0x2000, ...)` — no chunk of its own.
-7. `sysfunct = SystemService(ntp.ntp_issynced, watchdog=watchdog, fram=fram, ...)` — **FRAM chunk 1**.
-8. `scd30 = SCD30_Reader(i2c0, 8, trigger_sec=3, ..., fram=fram, ...)` — **chunk 2**; no
-   config schema (params live on-sensor). Constructed before `sgp40` (ordering-hazard #1,
-   Part C.14): `sgp40` holds a direct reference to this already-built object as its
-   `temperature_source`/`humidity_source`, so the producer must exist first — a pure Python
-   name-resolution requirement, not a FRAM one (chunk order is random-access and doesn't itself
-   care), but the two facts are deliberately kept in the same relative order here for readability.
-   `wozi` is never physically flashed (CLAUDE.md), so reordering carries no deployed-data-loss risk.
+3. `spi0 = asy_spi_driver.SPI(...)`.
+4. `fram = AsyFramManager(spi0, 1, max_size=0x2000, ...)` — no chunk of its own (Topic 11's rule:
+   every module gets optional FRAM logging except the FRAM module itself — logging a FRAM fault into
+   that same FRAM is pointless). Built here, before every mandatory-infra module below, specifically
+   so each can receive a real chunk rather than `fram=None` — `buildgen.graph.build_construction_order()`
+   adds an explicit dependency edge from each of `conn`/`ntp`/`sysfunct` onto `fram` whenever
+   `[device.wiring].fram_target` is set (a device with none keeps the pre-WP1 order: `conn`/`ntp`
+   first, `fram` wherever its own instance ordering puts it).
+5. `conn = AsyConnTime(..., fram=fram, ...)` — **FRAM chunk 1**; `SensorReaderConfig.__init__`
+   (which `AsyConnTime` goes through) builds its own `self.pr` chunk first, then its owned
+   `ConfigManager` — **chunk 2** (WP2/CLAUDE.md's implicit-FRAM-wiring rule: every
+   `SensorReaderConfig`'s own `cfgmgr` inherits the same `fram` its owner was given, its own
+   separate `"CFGMGR_<name>"`-named logger, never folded into the owner's own history). `conn` then
+   owns `DNSServer` internally (`captive_dns.py`), constructed with the same `fram=fram` —
+   **chunk 3**, its own separate `"DNSSRV"`-named logger.
+6. `ntp = AsyNtpClient(conn.get_wifi_mode_lock(), conn.network_available,
+   conn.get_dns_server_ip, ..., fram=fram, ...)` — bound methods off `conn` — **chunk 4**, its own
+   `cfgmgr` — **chunk 5**.
+7. `sysfunct = SystemService(ntp.ntp_issynced, watchdog=watchdog, fram=fram, ...)` — **chunk 6**.
+   Not a `SensorReaderConfig` subclass (no measurement data), but embeds its own `ConfigManager`
+   directly the same way (`system_service.py`'s own comment) — **chunk 7**, same "own chunk, then
+   cfgmgr chunk" shape as every `SensorReaderConfig`-based module.
+8. `scd30 = SCD30_Reader(i2c0, 8, trigger_sec=3, ..., fram=fram, ...)` — **chunk 8**; no
+   config schema (params live on-sensor, so no `cfgmgr`/chunk of its own). Constructed before
+   `sgp40` (ordering-hazard #1, Part C.14): `sgp40` holds a direct reference to this already-built
+   object as its `temperature_source`/`humidity_source`, so the producer must exist first — a pure
+   Python name-resolution requirement, not a FRAM one (chunk order is random-access and doesn't
+   itself care), but the two facts are deliberately kept in the same relative order here for
+   readability. `wozi` is never physically flashed (CLAUDE.md), so reordering carries no
+   deployed-data-loss risk.
 9. `sgp40 = SGP40_Reader(i2c1, temperature_source=scd30, temperature_field="Temp",
    humidity_source=scd30, humidity_field="Hum", fram_storage=fram,
-   fram_ntp_callback=ntp.ntp_issynced, ...)` — **chunks 3-4** (error log, then VOC backup).
+   fram_ntp_callback=ntp.ntp_issynced, ...)` — **chunk 9** (error log), then its own `cfgmgr` —
+   **chunk 10**, then the VOC backup (**timestamped chunk**, not part of this numbering).
    `scd30` is passed directly as both value sources (C.14.3's generalized per-value
    measurement wiring) — no wrapping callback; the two fields resolve independently, so a future
    device could compensate temperature and humidity from two different sensors.
-10. `bmp3xx = BMP3xx_Reader(i2c1, ..., fram=fram, ...)` — **chunk 5**. No cross-instance wiring
-    dependency of its own on `wozi` (SCD30's `AmbPres` stays a static config value even though
-    `wozi` physically has a live BMP388 — A.4's own note), so unconstrained by ordering-hazard #1.
-11. `neopixel = NeopixelDriver(15, fram=fram, ...)` — **chunk 6**.
-12. `notification = NotificationCoordinator(neopixel.request_signal, ntp.cettime, fram=fram, ...)`,
-    staged `register()` ×3 (each a direct `(source, field)` reference — `scd30`/`"CO2"`,
-    `sgp40`/`"VOC"`, `scd30`/`"Hum"`, Part C.14) then `finalize()` — **chunk 7**.
+10. `bmp3xx = BMP3xx_Reader(i2c1, ..., fram=fram, ...)` — **chunk 11**, own `cfgmgr` — **chunk 12**.
+    No cross-instance wiring dependency of its own on `wozi` (SCD30's `AmbPres` stays a static
+    config value even though `wozi` physically has a live BMP388 — A.4's own note), so
+    unconstrained by ordering-hazard #1. (`dev`-only `isl29125` follows the identical
+    "own chunk, then cfgmgr chunk" shape, positioned here too when present.)
+11. `neopixel = NeopixelDriver(15, fram=fram, ...)` — **chunk 13**; no on-flash config, no `cfgmgr`.
+12. `notification = NotificationCoordinator(neopixel.request_signal, ntp.cettime, fram=fram, ...)`
+    — **chunk 14**, own `cfgmgr` — **chunk 15**; staged `register()` ×3 (each a direct
+    `(source, field)` reference — `scd30`/`"CO2"`, `sgp40`/`"VOC"`, `scd30`/`"Hum"`, Part C.14) then
+    `finalize()`.
 13. `conn.set_ext_led(neopixel)`.
 13b. *(`dev` only)* two buildgen-generated `[[instance]]` entries construct
     `asy_uart_driver.UART(...)` ×2, then the new UART-crossover wrapper module (§Part J) wraps each
-    in a `UART_Comm(...)` across the permanent crossover jumper — **no `fram=`**, for the same
-    reason as the webserver below, so the seven-chunk order above is untouched. Placed here, after
-    every FRAM-allocating module and immediately before the webserver, because the webserver's own
-    `error_sources=` list includes them. `wozi` has no such step. The variant also runs a small
-    **link exerciser** task on the initiator side: nothing on a live system would otherwise initiate
-    a transfer, so every claim about the link coexisting with the webserver would be a claim about
-    an idle link. Its transfer/failure counts ride the variable-length `maintenance_sensors`
-    registration and surface through `/status`, which the bench tier asserts advancing under load
-    (`tests_hardware/README.md`). The exercise logic lives in the wrapper module (not the generated
-    file itself) because only application-level code knows what to ask a peer — the protocol itself
-    carries no application semantics (Part J.1). See Part J for the wrapper module's exact shape and
-    generated variable names.
+    in a `UART_Comm(...)` across the permanent crossover jumper — `dev.toml` wires
+    `fram_target = "fram"` on both instances (WP3 - was wrongly, deliberately excluded; `UART_Comm`
+    already supported `fram=`/`logger=` at the class level, only the buildgen wiring was missing),
+    so `uart_link_init` and `uart_link_resp` each draw their own chunk here, right after
+    `notification`'s own `cfgmgr` chunk (step 12) and before the webserver's (step 14) — never
+    shared between the two instances, so a fault on one end stays attributable to it. Neither is a
+    `SensorReaderConfig`, so neither gets a `cfgmgr` chunk of its own — the same "no absolute
+    number, `dev`-only, positioned here when present" treatment step 10 already gives `isl29125`.
+    Placed here, after every FRAM-allocating module and immediately before the webserver, because
+    the webserver's own `error_sources=` list includes them. `wozi` has no such step, and no such
+    chunks. The variant
+    also runs a small **link exerciser** task on the initiator side: nothing on a live system would
+    otherwise initiate a transfer, so every claim about the link coexisting with the webserver would
+    be a claim about an idle link. Its transfer/failure counts ride the variable-length
+    `maintenance_sensors` registration and surface through `/status`, which the bench tier asserts
+    advancing under load (`tests_hardware/README.md`). The exercise logic lives in the wrapper
+    module (not the generated file itself) because only application-level code knows what to ask a
+    peer — the protocol itself carries no application semantics (Part J.1). See Part J for the
+    wrapper module's exact shape and generated variable names.
 14. `app = Microdot(); webserver = WebserverService(app, sensors=(...), ..., static_mount="/html",
-    is_hotspot_active=conn.is_hotspot_active, host=web_host, port=web_port)` — **no `fram=`**
-    (deliberately RAM-only — a connection-reclaim warning could churn faster than a sensor's fault
-    log, and this keeps the seven-chunk order unchanged). `static_mount="/html"` registers the
-    static route pair last, so an exact-match API route always wins.
+    is_hotspot_active=conn.is_hotspot_active, host=web_host, port=web_port, fram=fram)` —
+    **chunk 16** (as of WP1 — previously deliberately RAM-only; now folds into the same
+    implicit-if-FRAM-present rule as every other mandatory-infra module); no on-flash config, no
+    `cfgmgr`. `static_mount="/html"` registers the static route pair last, so an exact-match API
+    route always wins.
 15. `sysfunct.set_level_setters(_collect_level_setters())` — after every module has constructed.
 16. **`await x.setup()` batch**: `sysfunct → fram → conn → ntp → sgp40 → bmp3xx →
     notification`. One hard constraint: `notification.setup()` needs `finalize()` (step 12)
     already run, satisfied by batching at the end. `scd30.setup()` isn't in this batch (no
-    local config).
+    local config); neither is `webserver.setup()` — its own `self.pr.setup()` runs lazily, the
+    first time its `_run()` task actually starts (see the boot-latency note below).
+    **`sysfunct.feed_watchdog()` follows every single call in this batch** (WP6) — a one-time,
+    boot-only, non-looping feed site, which is what makes it safe regardless of how many modules a
+    device wires: it cannot degenerate into something that keeps feeding a genuinely hung system
+    forever. `feed_watchdog()` itself is a no-op on a watchdog-less build or once
+    `_force_watchdog_starve` latches (Part G.2), so this needs no per-device special-casing either.
 
-**Real FRAM chunk order**: SystemService → SCD30 → SGP40 error log → SGP40 VOC backup → BMP3xx →
-Neopixel → NotificationCoordinator. Seven chunks — every module with a FRAM-backed error log uses
-it; must stay in this relative order. `src/` has no earlier on-chip layout to preserve.
+**Real FRAM chunk order** (full wiring — every real device's own TOML today, wozi's own 16
+`PrintLogHistoryStore` chunks plus 1 timestamped chunk): AsyConnTime → its own `CFGMGR_WIFI` →
+DNSServer → AsyNtpClient → its own `CFGMGR_NTP` → SystemService → its own `CFGMGR_SYSTEM` → SCD30
+(no `cfgmgr`) → SGP40 error log → its own `CFGMGR_SGP40` → SGP40 VOC backup (timestamped) → BMP3xx
+→ its own `CFGMGR_BMP3XX` → (`dev`-only: ISL29125 → its own `CFGMGR_ISL29125`) → Neopixel (no
+`cfgmgr`) → NotificationCoordinator → its own `CFGMGR_NOTIFY` → (`dev`-only: `UART_init` →
+`UART_resp`, WP3 — neither has a `cfgmgr`) → WebserverService (no `cfgmgr`).
+Every module with a FRAM-backed error log, and every `SensorReaderConfig`-based module's own
+`cfgmgr` (WP2), uses it; must stay in this relative order. `src/` has no earlier on-chip layout to
+preserve. (A device with no `[device.wiring].fram_target` keeps `conn`/`ntp`/`sysfunct`/
+`webserver` RAM-only and none of them draw a chunk at all — WP1 changed nothing about that
+fallback path; a `uart_link` instance with no `fram_target` in its own `[instance.wiring]` stays
+RAM-only the same way, unaffected by whether the device's `fram_target` is set anywhere else.)
+
+**Boot-latency note (WP1/WP2, both resolved — the finding below is the resolution, not open
+work)**: `conn`/`ntp`/`sysfunct`/`webserver`'s FRAM-backed loggers only draw their chunk at
+construction time (bump-pointer, instant); each one's *real* first chunk read/write happens later,
+inside its own `self.pr.setup()` call, sharing one process-wide `asyncio.Lock` (`FRAM_SPI`'s own,
+`asy_fram_driver.py`) with every other FRAM-wired module. `sysfunct → fram → conn → ntp → ...`'s own
+explicit setup batch (step 16) runs before any task starts, so those calls never contend with
+anything, including every `SensorReaderConfig`-based module's own `cfgmgr.setup()` (WP2) — it rides
+the same pre-task-start batch as its owner, not the contended window below. `webserver`'s own
+`self.pr.setup()` is different: it runs lazily inside `_run()`, `webserver`'s own task — and
+`system_service.py`'s `start_and_check_tasks()` starts every task within one ~1-second stagger
+window (Part C.9's own task-starter-staggering design, distinct from Part C.9.1's timer stagger),
+with `webserver`'s task always last. By the time it runs, every other FRAM-wired module's own
+task-start-time FRAM access is already contending for the same lock, so `webserver`'s first
+setup() call queues behind all of it. **Measured directly against the real generated code for all 6
+devices under the digital twin**: boot-to-first-`200` was ~1.9-2.2s before WP1; WP1 alone (wiring
+`conn`/`ntp`/`sysfunct`/`webserver`'s own loggers into FRAM) moved it to ~4.5-6.3s (`dev` slowest —
+the most FRAM-wired instances); WP2 (adding every `SensorReaderConfig`-based module's own `cfgmgr`
+chunk) moved it further to ~6.1s (`wozi`) / ~7.7s (`dev`) — a modest further increase, not the much
+larger jump the lock-contention theory alone would predict, precisely because WP2's own new chunks
+ride the uncontended pre-task-start batch as just explained; only `webserver`'s own lazy setup is
+exposed to the contended window, and WP2 adds no new chunk to `webserver` itself (still no
+`cfgmgr`). Both final numbers stay comfortably inside `tests_scripts/
+test_digital_twin_generated_boot.py`'s own 15s budget (raised from 6s for exactly this reason - see
+that constant's own comment). This is a one-time, self-resolving cost (steady-state serving is
+unaffected) and not something to "fix" by reordering `webserver` in the stagger, or by treating the
+latency itself as a defect (CLAUDE.md's own "boot latency is not a metric to optimise" rule) — **but
+every number above is a digital-twin measurement, not a real-hardware one.**
+`digital_twin/_fram_chip.py` answers SPI opcodes in memory with zero wire time, so these numbers
+exclude the entire real cost of a FRAM transaction; the "design itself needs no change on this
+evidence" conclusion this paragraph previously drew is exactly the thing a real-hardware run could
+overturn, since the dominant term in a real FRAM setup call (SPI wire time under lock contention) is
+precisely what the twin cannot measure. **Not yet re-checked on real hardware as of this note** —
+see `REAL_HARDWARE_HANDOVER.md` (temporary, deleted once its findings land here) for the exact
+measurement plan and what to do if the contended `webserver` setup call turns out to matter for
+real. Do not treat this paragraph's numbers as validated for anything beyond "the twin's task
+graph resolves in this many simulated seconds."
 
 **This order, and `i2c0`'s SCD30-specific `timeout=200000`, are wozi's own — derived from
 `devices/wozi.toml`.** `buildgen` derives both from each device's own TOML rather than assuming
@@ -1310,10 +1395,16 @@ sync `get_cfg_schema()` (no I/O, deliberately not `async`) and as a public attri
 
 `_set_mgr_cfg(data, cfg_vals) -> (bool, WriteValidity)` (`SensorReaderConfig`-only extension point;
 SCD30 keeps hand-rolled setters) delegates to `cfgmgr.write_config(...)`. `_set_dict_cfg(data,
-cfg_vals) -> WriteValidity` persists first, then pushes live only fields that both changed
-(`"Valid"`, not `"Unchanged"`) and have a registered push callback; every field reports
-independently including unrecognized keys; a whole-operation persist failure marks every requested
-key `"Failed"`. **A push callback always receives the coerced, persisted value, not the caller's
+cfg_vals) -> WriteValidity` validates and stages first, then pushes live only fields that both
+changed (`"Valid"`, not `"Unchanged"`) and have a registered push callback; every field reports
+independently including unrecognized keys; a whole-operation validation failure (an invalid
+`ConfigManager`, or an internal error raised out of `write_config()`/`_set_mgr_cfg()` itself, never
+a later flash-write failure - see below) marks every requested key `"Failed"`. **Since WP5**
+(SPECIFICATION.md Part F.2), the actual flash write is deferred to an independent task, so
+`"persisted"` here really means "validated and staged" - a genuine disk write failure surfaces only
+later, as a logged `errno` on `cfgmgr.pr`, never back through this return value or the caller's own
+response; `_set_dict_cfg()` therefore has no way to observe it and none is expected to. **A push
+callback always receives the coerced, persisted value, not the caller's
 raw one** — a type-checking callback would otherwise wrongly reject a coercible value like `45.0`
 for an int field. `self._push_callbacks` is a plain `{field: async_fn}` dict populated per subclass
 `__init__` (no central registry). **For an `int`-typed field, narrow with `type(value) is not int`,
@@ -1433,21 +1524,25 @@ the failure — `AsyUDPSocket.disconnect()`, `WebserverService._close_writer()`,
 ### C.7.1 Running `errno`/`wrnno` table
 
 Real numbers per module — each module's history stream is independent, so overlap *between* rows
-is expected; only overlap *within* one row matters.
+is expected; only overlap *within* one row matters. **The base range (`errno` 1-9/`wrnno` 1-2,
+reserved to `base_classes.py`) and each driver's own 10+ numbering are a convention this table
+records, not one the code itself enforces** — nothing raises if a new module picks a colliding
+number or starts below 10; get it right by checking this table before assigning a new one (WP8),
+the same "check the shared catalog first" discipline Part G.1 states generally.
 
 | Module | `errno` | `wrnno` | Notes |
 |---|---|---|---|
 | `base_classes.py` | 1-9 | 1-2 | Reserved base range — every driver starts at 10+. |
-| `config_manager.py` (`CFGMGR_<name>`) | 1-14 | 1-6 | Sequential in source order. |
-| `asy_fram_manager.py`/`asy_fram_driver.py` (`FRAM`) | 10-98 | 60-83 | `AsyFramManager` 10-88 (busy/idle status-byte helper spreads a base across 2-7 values per call); `FRAM_SPI` 89-98 (not-initialized ×5, invalid-range ×2, readback mismatch, lock-timeout, device-ID guard) + `wrnno` 81-83 (WRDI-stuck, WEL-didn't-set ×2). |
+| `config_manager.py` (`CFGMGR_<name>`) | 1-15 | 1-6 | Sequential in source order. 14=the deferred flush's own write failure (`_flush_staged()`, WP5); 15=a validation-phase `MemoryError`/`AttributeError` in `write_config()` itself, split off 14 once the actual file write moved into the separate deferred method. |
+| `asy_fram_manager.py`/`asy_fram_driver.py` (`FRAM`) | 10-100 | 60-84 | `AsyFramManager` 10-88 (busy/idle status-byte helper spreads a base across 2-7 values per call); `FRAM_SPI` 89-98 (not-initialized ×5, invalid-range ×2, readback mismatch, lock-timeout, device-ID guard) + `wrnno` 81-83 (WRDI-stuck, WEL-didn't-set ×2). **WP8**: 99=`get_values()`'s own "access not locked" internal-contract violation, 100=`set_values()`'s (each its own number per the "grouped by the raising method" convention, matching the sibling not-initialized pair); `wrnno` 84=`_write()`'s "currently write protected" refusal — a benign, expected outcome (matches `AsyFramManager`'s own "communication paused" `wrn_s` precedent, `wrnno` 60/70/80), so `wrnno` rather than `errno` unlike the two lock violations. |
 | `asy_bmp3xx_driver.py` (`BMP3XX`) | 10-22 | — | 10=init, 11=periodic read, 12=config read at init, 13=config write at init, 14=config read at store-time, 15-20=oversampling/filter forwards, 21=trigger-interval, 22=batched snapshot read. |
 | `asy_scd30_driver.py` (`SCD30`) | 10-25 | — | 10=init, 11=periodic read, 12=unused (no init-time config), 13=stop-continuous-measurement, 14-25=per-field forwards. |
 | `asy_isl29125_driver.py` (`ISL29125`) | 10-38 | 10-13 | 10=init, 11=periodic read, 12=config read at init, 13=config write at init, 14=config read at store-time, 15/17/19/21=resolution/range/IR-offset/IR-adjust getters, 16/18/20/22=their setters, 24=derived-persistence reapply, 25=trigger-interval, 26=gain-ratio/filter-coefficient setters (shared), 27=autorange-threshold/dwell setters (shared), 28=`_read_sensor_dict()`, 29=auto-range threshold-register write, 30=auto-range RNG-bit write, 31=status read, 32=all-ones bus-fault confirmation, 33=brownout re-apply, 34=diverged-config re-apply, 38=`set_range_auto()`. `wrnno` 10=brownout detected, 11=chip config diverged from shadow, 13=range decided by the periodic path only for 5 decisions running (the interrupt line may be dead, requirement 17/C.11.5). **12 is retired, not reused**: it used to mean "saturated on the high range", but that status is a harmless, transient, always-current measurement fact, not a fault — it now lives in the measurement output as the `Overrange` field (mode-aware: true whenever nothing left could mitigate the saturation — the configured range itself under Fixed range, or Automatic Range already on its highest setting) rather than as a log entry. |
 | `asy_sgp40_driver.py` (`SGP40`) | 10-18 | 10-13 | 10=init, 11=periodic read, 12=config read at init, 13-18=backup read/write/clear/deserialize/serialize/compensation. `wrnno`=backup missing/stale — a missing/not-yet-available *compensation* reading is no longer one of these (C.14.2's own note), only a genuine compensation-source read exception (`errno=18`) still logs. |
-| `asy_wifi_service.py` (`WIFI`) | 11-18 | 1-7 | 11=mode-switch...17=hardware give-up, 18=disconnect-timeout; `wrnno` 1-3=missing-config, 4-7=WLAN status. |
+| `asy_wifi_service.py` (`WIFI`) | 11-19 | 1-7 | 11=mode-switch...17=hardware give-up, 18=disconnect-timeout; `wrnno` 1-3=missing-config, 4-7=WLAN status. **WP8**: 19=the hotspot auto-shutoff timer's own soft-callback-drop self-heal (`_hotspot_client_absent()`, F.1) actually firing — a real, actionable event, not the routine WiFi-mode-transition noise this file's own module docstring already documents everything else here as. |
 | `asy_ntp_client.py` (`NTP`) | 11-20 | 1-3 | 11=missing-config...19=time-calc, 18/20=interval-fallback/give-up; `wrnno`=callback failures. |
 | `captive_dns.py` (`DNSSRV`) | 1-3 | 1-3 | 1=invalid server_ip/netmask, 2=loop exception, 3=disconnect-cleanup; `wrnno` 1=dropped reply, 2=invalid recvfrom, 3=socket teardown incomplete. |
-| `system_service.py` (`SYSTEM`) | 1-6 | dynamic (`n+1`) | 4=task-error-budget-exceeded, 5=`_log_dead_task()` recovering a real raised exception, 6=recovering a `CancelledError`-ended task (previously invisible, now persists). |
+| `system_service.py` (`SYSTEM`) | 1-7 | dynamic (`n+1`) | 4=task-error-budget-exceeded, 5=`_log_dead_task()` recovering a real raised exception, 6=recovering a `CancelledError`-ended task (previously invisible, now persists). **WP8**: 7=`_apply_level()`'s own caller-supplied level-setter callback failing — the one caller-supplied-callback call site in this codebase that hadn't already persisted via `err_s()`. |
 | `asy_notification_service.py` (`NOTIFY`) | 10-13 | 1-5 | 10=value-callback, 11=threshold-config-read, 12=`local_time_callback`, 13=`request_signal_cb`. Renumbered off 1-4 once `_error_check()`'s active use here collided with base's reserved 1/2. |
 | `api_response.py`'s `handle_set_cmd()` | 99 | — | One defense-in-depth catch (a caller `post_fct`/`post_asy_fct` raising) — fixed at 99 since it runs against any registered module's `.pr`. |
 | `asy_webserver_service.py` (`WEBSERVER`) | 1-6 | 1-5 | 1=unexpected exception in dispatch, 2=`system_cmd` callback, 3=`notification_led` callback, 4=uncaught exception via `errorhandler(Exception)`, 5=`notification_pause` callback, 6=one `/status` streamed-fragment source failed. `wrnno` 1-5=connection-lifecycle reclaim reasons. |
@@ -1555,12 +1650,18 @@ optional polish (project owner's explicit direction):**
 - **Real-hardware tier parity is required, not optional — every generic mock/twin scenario type
   needs a real-hardware equivalent** for whichever bus a real device's own topology makes it
   applicable to (E.6.6's own general rule, applied here to bus-hazard specifically), with exactly
-  one exception: **SCD30's own on-chip NVM write is opt-in and capped at
-  one real write per test session**, reusing `tests_hardware/flash/conftest.py`'s existing
-  `scd30_continuous_measurement_triggered` fixture pattern for the routine group and its own new
-  `@pytest.mark.scd30_write`/`--allow-scd30-writes` flag (mirroring the existing
-  `--allow-flash-cycle` precedent) for any additional test that needs to fire SCD30's own write a
-  second time. Real hardware has no literal equivalent of the mock tier's `asyncio.sleep(0)`-count
+  one exception: **SCD30's own on-chip NVM write is opt-in, off by default, and capped at one real
+  write per test session** — every real SCD30 write, flash wear being a real, always-relevant
+  concern on real hardware, is gated behind `tests_hardware/conftest.py`'s
+  `--allow-scd30-writes`/`@pytest.mark.scd30_write` (the single global permission: without it, a
+  full flash-tier run spends zero real SCD30 writes, including the one routine per-session write
+  `scd30_continuous_measurement_triggered` would otherwise make for the whole bus-hazard group).
+  Any additional test that needs to fire SCD30's own write a second time is gated behind a further,
+  narrower flag/marker pair, `--allow-scd30-extra-write`/`@pytest.mark.scd30_extra_write`, that is
+  AND-gated on top of the global one — never an independent flag standing in for it, and never
+  substitutable for it (passing only the extra-write flag still deselects the test). One flag
+  decides whether any real SCD30 write happens at all; the second only ever narrows that further.
+  Real hardware has no literal equivalent of the mock tier's `asyncio.sleep(0)`-count
   offset sweep (a yield count means nothing against a real preemptible interpreter and real bus
   timing) — a deliberately varied set of real elapsed-time delays is the honest, tier-appropriate
   substitute, cycled across several write cycles for an unrestricted writer; a write under SCD30's
@@ -1631,6 +1732,87 @@ reprogramming the Timer's period at runtime.
 `OSError`** (F.1) — its documented failure is `OSError(MP_ENOMEM)` on alarm-pool exhaustion; no
 separate `Timer.init()`-specific `MemoryError` path exists, but the widening is correct generic
 insurance regardless.
+
+### C.9.1 Read-trigger timer stagger: no-coincidence guarantee (WP7, verified 2026-09-16)
+
+**Design intent (owner-established, not re-derived here)**: every sensor's read period is settable
+in whole multiples of one second, one second being the shortest. The read-trigger timers are
+started **staggered evenly across exactly one second in total** — not at a fixed per-timer gap —
+so that, being real hardware timers that do not drift relative to one another once armed, **no two
+sensor reads ever coincide, for the entire runtime, for any combination of configured periods**: no
+harmonics, no beat frequencies, no races from period overlap. This is also why the timer starters
+are triggered by another real timer (precise, interrupt/alarm driven) and not by `asyncio.sleep()`,
+which offers only coarse, drift-prone timing. The one-second *total* spread is load-bearing and
+must not become a fixed per-task gap or be rescaled — a fixed gap of `g` ms for `N` timers spans
+`(N-1)*g` ms, which grows without bound as more timers are added and can itself become a multiple
+of some sensor's own period, reintroducing the exact coincidence this design exists to prevent.
+
+**The mechanism, traced end to end**:
+- `SystemService._timer_sequencer()`/`start_timers()` (this file) starts each `get_timer_starters()`
+  entry via a chain of `Timer.ONE_SHOT` callbacks, `_TIMER_BASE_PERIOD` (1000ms) divided by
+  `len(timers) + 1` apart — the `+1` is what keeps the total span strictly under 1000ms even as the
+  *last* timer starts, so every start offset lands strictly inside `(0, 1000)` ms, never at 0 or at
+  a multiple of 1000ms itself. **This is a different stagger from the one three paragraphs up in
+  Part A.7's boot-latency note** — that one staggers `get_task_starters()` *asyncio task* starts via
+  plain `await asyncio.sleep(1.0 / len(task_starters))` inside `start_and_check_tasks()`, a coarse,
+  scheduler-timed spread with no coincidence claim attached to it. The two mechanisms share
+  "~1 second, N participants" only because both happened to pick that shape independently, not
+  because they are the same code path — don't conflate them. **A third list, the one-time boot
+  `setup()` batch (WP6, this Part's own text above the timer stagger), is deliberately not staggered
+  at all** — no delay of any kind between calls, only a `feed_watchdog()` after each. It carries none
+  of the read-timer stagger's coincidence concerns (these are one-shot construction calls, not
+  periodic triggers) and must not be folded into either staggering mechanism, nor have a delay
+  inserted between its own calls to "match" them — that would only reintroduce the very watchdog-
+  starvation risk WP6 closes, for no benefit.
+- Each software-counter-based driver (`asy_bmp3xx_driver.py`/`asy_isl29125_driver.py`) arms its own
+  `Timer.PERIODIC` at a fixed 1000ms base tick (`asy_sgp40_driver.py`'s is also 1000ms, fixed, and
+  never divided down — "voc algorithm needs 1s period fixed", its own comment) and increments a
+  plain counter (`trigger_counter`/`self.trigger_counter`) each tick, firing the real read-trigger
+  event only once the counter reaches the user-configured `trigger_period` (whole seconds). So the
+  real read-trigger time for one of these three sensors is exactly `start_offset + k * 1000ms` for
+  integer `k`, where `start_offset` is that sensor's own `_timer_sequencer()`-assigned start moment.
+- **The no-coincidence proof**: every configured period is `1000 * n` ms for a positive integer
+  `n`, so `gcd` of any two sensors' periods is itself always a multiple of 1000ms. Two sensors'
+  read times coincide only if the difference between their `start_offset`s is congruent to 0 modulo
+  that `gcd` — i.e. only if it is itself a multiple of 1000ms. Since `_timer_sequencer()` assigns
+  every `start_offset` a distinct value strictly inside `(0, 1000)` ms (never 0, never ≥ 1000, and
+  never repeated - integer division of 1000 by up to a handful of distinct small divisors doesn't
+  coincide in practice either, and even a tie would only delay, never invalidate, the argument since
+  the *sequencer* itself never reissues the same delay to two different timers at the same instant),
+  that difference can never be a multiple of 1000ms — so the two sensors' read times can never
+  coincide, for any combination of configured periods. This holds for the entire runtime, not just
+  at startup, precisely because the underlying mechanism (below) never drifts.
+- **Confirmed against the real rp2 MicroPython source, not assumed** (`ports/rp2/machine_timer.c`,
+  the pinned v1.29.0 tag): a `Timer.PERIODIC`'s underlying Pico-SDK repeating alarm reschedules
+  itself by returning `-self->delta_us` from its own alarm callback (`alarm_callback()`) — a
+  **negative** return value tells the SDK's alarm pool to reschedule relative to the alarm's own
+  previous *target* time, not to "now" (a positive return would do the latter, accumulating drift
+  under scheduling jitter). This reschedule happens unconditionally inside the low-level alarm
+  callback itself, before `mp_irq_dispatch()` ever runs the Python-level callback - so even a
+  dropped **soft** callback (Part F.1's own documented depth-8-scheduler-queue drop) only ever
+  costs that one tick's `.set()` notification, never the timer's own phase: the next tick still
+  fires at the mathematically exact target time, not "one period after whenever the previous
+  callback happened to run." This is precisely what "do not drift relative to one another once
+  armed" means in the design intent above, and it is what makes the no-coincidence proof hold for
+  the whole runtime rather than only approximately, near startup.
+- **One real, deliberate exception to the pure phase-math argument, found while verifying this**:
+  `asy_scd30_driver.py` does **not** use the counter-based mechanism — its own 500ms base tick
+  (`start_trigger_timer`) only counts consecutive ticks (`trigger_half_sec = 2 * trigger_sec`)
+  towards *arming* an IRQ-driven trigger (`scd_init_irq()`), and the actual read fires on the
+  sensor's own physical data-ready interrupt (`irq_pin`), not at a purely-computed phase offset.
+  SCD30's own base tick still gets a staggered, drift-free start via the identical
+  `_timer_sequencer()` mechanism, but its *real* read time additionally depends on the physical
+  sensor's own internal measurement cycle - so the strict "never coincide" proof above applies
+  rigorously to BMP3xx/ISL29125/SGP40 relative to each other and to SCD30's own IRQ-*arming* checks,
+  but SCD30's actual read moment is IRQ-modulated on top of that, not purely phase-determined. This
+  matches the sensor's own real field behavior (an IRQ-driven data-ready signal, not a synthetic
+  polling schedule) and is not a defect - flagged here, per this Part's own scope, as a fact about
+  the design's actual boundary rather than left implicit.
+- **Regression coverage**: `tests/test_system_service.py`'s `_timer_sequencer()`/`start_timers()`
+  tests already cover the stagger's own arithmetic (`_TIMER_BASE_PERIOD / (len(timers) + 1)`, one
+  ONE_SHOT chain, `timers_running` only set once every starter has run); no new test was added for
+  this WP, since it verifies and documents an existing, already-tested mechanism rather than
+  changing it (`system_service.py`/`buildgen/codegen.py` are read-only for WP7, per its own scope).
 
 **Cascading-recovery-storm convention: a retry loop that fails non-raising (returns a sentinel)
 needs its own capped exponential backoff**, distinct from any outer exception-based backoff, or it
@@ -3090,11 +3272,28 @@ asymmetry, not chased further since the fallback covers either case regardless.
 `network.STAT_GOT_IP` is not STA-only (an AP interface reports it too) — `_run_hotspot_mode()`'s
 `status != STAT_GOT_IP` branch is only true on the first tick after entering hotspot mode.
 
-**This backstop is inherently safe**: every real `ConfigManager.write_config()` call is reachable
-only through the REST PUT path, so a device whose API is unreachable structurally cannot have a
-flash write in flight — a power cycle carries zero flash-corruption risk. Combined with the
-reboot-safe boot chain (A.4), power-cycle recovery is a deliberately stable, intended feature, not
-merely a fallback.
+**This backstop is safe in practice, with one narrow, accepted residual window (WP5,
+2026-09-16).** Every real flash write is still *triggered* only through the REST PUT path — nothing
+else ever calls `ConfigManager.write_config()`. But `write_config()` itself no longer performs that
+write inline: it validates and stages synchronously, then hands the actual `open()`/`json.dump()`
+call to an independent `asyncio.create_task()`, decoupled from the request/response entirely (see
+this Part's own note below and BACKLOG.md, 2026-09-15 — the RP2040 flash write disables interrupts
+port-wide for its duration, and doing it inline was resetting the very HTTP connection whose PUT
+triggered it — see `config_manager.py`'s own `write_config()`/`_flush_staged()` comments for the
+full mechanism). So the older, stronger claim — "a device whose API is unreachable structurally
+cannot have a flash write in flight" — is no longer exactly true: there is now a brief window,
+between the response being sent and the deferred flush actually running, where the API could in
+principle already read as unreachable while a write is still pending. In practice this window is a
+single scheduler tick (microseconds to low milliseconds), while the WiFi backstop only ever power-
+cycles after a *sustained* outage (F.2's own measured data: essentially never inside 150s) — so the
+two are separated by many orders of magnitude, and a power cycle triggered by that backstop lands
+long after any pending flush has already resolved one way or the other. The real, intentionally-
+accepted residual risk is narrower and different in kind: a power loss landing in that same brief
+window loses the just-accepted config change silently (never corrupts anything - `_flush_staged()`
+only ever replaces `_cache`/the on-disk file after its own write actually succeeds, exactly as
+`write_config()` always did). Combined with the reboot-safe boot chain (A.4), power-cycle recovery
+is still a deliberately stable, intended feature - this residual window narrows what "inherently
+safe" means, it doesn't remove the design's own safety property.
 
 ## F.3 Long-blocking operations must not stall timing-sensitive work
 
@@ -3651,6 +3850,13 @@ backend-only or frontend-only validation/coercion policy change in this project.
   `get_loggers()` (structurally, `base_classes.py` provides the default for `SensorReader`/
   `SensorReaderConfig`); an aggregator calls these uniformly instead of hand-enumerating each
   module's own nested sub-objects. See Part C.14.3.
+- **Watchdog feed** — `system_service.py`'s `SystemService.feed_watchdog()`, never a hand-rolled
+  `if self.watchdog is not None: self.watchdog.feed()` at the call site. No-op-safe on a
+  watchdog-less build and once `_force_watchdog_starve` latches, so every caller (the task-
+  supervisor loop, and buildgen's own one-time boot setup batch, WP6) takes the identical path with
+  no branching of its own. Only ever called from a one-time or bounded-loop context, never a place
+  that could keep feeding a genuinely hung system forever - that constraint lives with the caller,
+  not the method itself.
 
 ## G.3 Re-validating the existing project against this Part
 

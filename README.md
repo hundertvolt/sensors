@@ -538,8 +538,10 @@ open http://127.0.0.1:8080/   # the real website - a browser (not curl) is the u
 
 **2. Set the log level to `all` (5) via the real API, then reboot to see a full startup log.**
 `DebugLevel` is a persisted `/system` setting (0-5, see `print_log.py`'s `PrintLog.level_*()`
-methods) — like every config write, it's saved to disk immediately, and takes effect immediately
-too: `system_service.py`'s `set_level_setters()`/`_apply_level()` registry pushes any accepted
+methods) — like every config write, it takes effect immediately (the accepted value is pushed live
+the moment the request is validated) and is saved to disk shortly after, off the request's own
+critical path (`config_manager.py`'s deferred-flush design, SPECIFICATION.md Part F.2):
+`system_service.py`'s `set_level_setters()`/`_apply_level()` registry pushes any accepted
 `DebugLevel` write straight out to every other already-constructed module's own
 `PrintLog.set_level()`, live, no reboot required (confirmed directly — a running twin's console
 starts emitting full per-cycle event traces the instant the PUT below lands). The reboot that

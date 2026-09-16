@@ -3,10 +3,12 @@ scenario_a_write_does_not_disturb_concurrent_sibling_reads (tests/_bus_hazard_ca
 ONE case bus_concurrency_isl29125_write_vs_siblings.py deliberately doesn't cover - SCD30 itself as
 the writer. SCD30's own NVM-persisted write (set_temperature_offset(), same shape as
 scd30_same_device_rw_concurrency.py's set_ambient_pressure()) has a real write-wear budget, so this
-script is NOT part of the routine flash-tier bus-hazard group - it is its own separate,
-explicitly-opt-in extra real write (see tests_hardware/flash/conftest.py's --allow-scd30-writes /
-@pytest.mark.scd30_write), fires exactly ONCE per invocation, and must never be folded into the
-group's own one-routine-write budget already spent by scd30_continuous_measurement_triggered.
+script is NOT part of the routine flash-tier bus-hazard group - it is its own separate, explicitly
+opt-in extra real write, AND-gated behind BOTH tests_hardware/conftest.py's --allow-scd30-writes
+(the global "any real SCD30 write at all" permission) AND --allow-scd30-extra-write (this one extra
+write specifically - see @pytest.mark.scd30_write/@pytest.mark.scd30_extra_write on the test that
+wraps this script). Fires exactly ONCE per invocation, and must never be folded into the group's own
+one-routine-write budget already spent by scd30_continuous_measurement_triggered.
 
 Unlike bus_concurrency_isl29125_write_vs_siblings.py's own deliberately varied multi-offset sweep,
 this fires at exactly ONE fixed, deliberately-chosen offset (0.3s in - both siblings well into their
@@ -83,8 +85,7 @@ async def _main() -> None:
         start = time.ticks_ms()
         try:
             # THE one extra real NVM write this script makes - see its own module docstring. Fires
-            # exactly once; this script must never be called more than once per --allow-scd30-writes
-            # opt-in run.
+            # exactly once; this script must never be called more than once per opt-in run.
             await scd.set_temperature_offset(4.0)
             write_window = (start, time.ticks_ms())
         except Exception as e:

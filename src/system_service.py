@@ -104,7 +104,7 @@ class SystemService:
         # convention every other module already uses. self.cfg_schema stays public, matching
         # SPECIFICATION.md's convention for a module whose caller writes to cfgmgr directly.
         self.cfg_schema: ConfigSchema = _VAL_DEBUG_LEVEL
-        self.cfgmgr = ConfigManager(cfg_path + "config_" + _NAME + ".cfg", self.cfg_schema, _NAME)
+        self.cfgmgr = ConfigManager(cfg_path + "config_" + _NAME + ".cfg", self.cfg_schema, _NAME, fram=fram)
         # get_debug_level()'s own source of truth - starts at the schema default; setup()/
         # set_debug_level() keep it current from there.
         self._current_debug_level = 0
@@ -117,6 +117,16 @@ class SystemService:
         # other logger is pushed a live update), matching every other optional dependency on this
         # class (watchdog, fram).
         self._level_setters: list[Callable[[int], None]] = []
+
+    def feed_watchdog(self) -> None:
+        # The one reusable, no-op-safe watchdog access point (WP6, SPECIFICATION.md Part D.9/G.2) -
+        # every feed site (the task-supervisor loop below, and buildgen's own one-time boot setup
+        # batch) calls this instead of repeating the same "watchdog=None, or the reset timer failed
+        # to arm" check inline. A device built with no watchdog, and one whose _reboot() couldn't
+        # arm its reset timer (_force_watchdog_starve - a deliberate one-way "let it die" signal),
+        # both take this identical path with no special-casing at any call site.
+        if self.watchdog is not None and not self._force_watchdog_starve:
+            self.watchdog.feed()
 
     def _reboot(self, message: str, action: "Callable[[], None]") -> None:
         self.reset_timer.deinit()
@@ -244,8 +254,7 @@ class SystemService:
                     self.pr.evt("Task error counter reduced to", task_errors)
 
             if task_errors <= _TASK_FAIL_MAX:
-                if self.watchdog is not None and not self._force_watchdog_starve:
-                    self.watchdog.feed()
+                self.feed_watchdog()
             else:
                 await self.pr.err_s("Task error counter above", _TASK_FAIL_MAX, "- reboot triggered!", errno=4)
                 self.reboot_system()
@@ -294,7 +303,7 @@ class SystemService:
         if level is None:
             return
         self._current_debug_level = level[0]
-        self._apply_level(level[0])
+        await self._apply_level(level[0])
 
     def get_cfg_schema(self) -> "ConfigSchema":
         return self.cfg_schema
@@ -322,7 +331,7 @@ class SystemService:
             level = await self.cfgmgr.get_int_values(_VAL_DEBUG_LEVEL)
             if level is not None:
                 self._current_debug_level = level[0]
-                self._apply_level(level[0])
+                await self._apply_level(level[0])
         return results
 
     def set_level_setters(self, setters: "list[Callable[[int], None]]") -> None:
@@ -332,14 +341,18 @@ class SystemService:
         # again on every future level change, not just once.
         self._level_setters = list(setters)
 
-    def _apply_level(self, value: int) -> None:
+    async def _apply_level(self, value: int) -> None:
         # Each call individually guarded (same "caller-supplied callback could misbehave" defense
         # as _timer_sequencer()'s own per-starter try/except) - one bad entry can't stop the rest.
+        # async (WP8): both call sites are already async (setup(), _set_dict_cfg()), and every
+        # other caller-supplied-callback call site in this codebase already persists its own
+        # failure via err_s() (_dispatch_system_cmd(), _dispatch_notification_led(), ...) - this one
+        # was the odd one out.
         for setter in self._level_setters:
             try:
                 setter(value)
             except Exception as e:
-                self.pr.err("Level setter failed:", e)
+                await self.pr.err_s("Level setter failed:", e, errno=7)
 
     def get_debug_level(self) -> int:
         return self._current_debug_level

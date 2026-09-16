@@ -58,6 +58,22 @@ def test_real_device_constructs_watchdog_exactly_once(repo_root: Path, src_dir: 
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_real_device_feeds_the_watchdog_after_every_setup_call_in_order(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
+    # WP6 (SPECIFICATION.md Part D.9/G.2): the one-time boot setup batch must not starve the
+    # hardware watchdog, no matter how many modules a device wires - a feed after every await
+    # X.setup() line, never inside a loop, is what makes this safe regardless of setup count.
+    # SystemService.feed_watchdog() itself is unit-tested (tests/test_system_service.py) for the
+    # no-watchdog/force-starve no-op cases; this proves codegen actually emits the call at every
+    # site, for every real device, not just wozi/dev.
+    result = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir)
+    lines = result.module_source.splitlines()
+    setup_lines = [i for i, line in enumerate(lines) if re.match(r"\s*await \w+\.setup\(\)\s*$", line)]
+    assert len(setup_lines) > 0, "no setup() calls found in the generated boot sequence"
+    for i in setup_lines:
+        assert lines[i + 1].strip() == "sysfunct.feed_watchdog()", f"{device}: {lines[i].strip()!r} not immediately followed by a feed"
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_real_device_boot_entry_imports_the_right_module(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
     result = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir)
     assert f"from sensortask_{device} import main" in result.boot_entry_source
@@ -181,6 +197,50 @@ def test_multi_instance_same_module_merges_distinct_default_extras(tmp_path: Pat
     import_line = next(line for line in result.module_source.splitlines() if line.startswith("from asy_sgp40_driver import"))
     assert "_DefaultHumiditySource" in import_line
     assert "_DefaultTemperatureSource" in import_line
+
+
+def test_device_level_fram_target_wires_fram_into_conn_ntp_sysfunct_and_webserver(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
+    # CLAUDE.md's implicit-FRAM-wiring rule (WP1/Topic 2): every mandatory-infra module inherits the
+    # device's own FRAM chip, exactly like every FRAM-wirable [[instance]] already can - base_doc()
+    # already declares [device.wiring].fram_target = "fram", so this is the happy path.
+    doc = base_doc()
+    result = generate_device(write_doc(tmp_path, "device_fram_present", doc), src_dir, ext_dir)
+    ast.parse(result.module_source)
+    conn_line = next(line for line in result.module_source.splitlines() if line.strip().startswith("conn = AsyConnTime("))
+    ntp_line = next(line for line in result.module_source.splitlines() if line.strip().startswith("ntp = AsyNtpClient("))
+    sysfunct_line = next(line for line in result.module_source.splitlines() if line.strip().startswith("sysfunct = SystemService("))
+    assert "fram=fram" in conn_line
+    assert "fram=fram" in ntp_line
+    assert "fram=fram" in sysfunct_line
+    assert "fram=fram" in result.module_source.split("webserver = WebserverService(")[1].split(")\n")[0]
+    # fram must actually be constructed before all three consume it - a real NameError on device,
+    # not just a codegen-shape check.
+    fram_pos = result.module_source.index("fram = AsyFramManager(")
+    assert fram_pos < result.module_source.index(conn_line)
+    assert fram_pos < result.module_source.index(ntp_line)
+    assert fram_pos < result.module_source.index(sysfunct_line)
+
+
+def test_device_with_no_fram_target_leaves_conn_ntp_sysfunct_and_webserver_ram_only(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
+    # Regression/fallback path: a device that never wires [device.wiring].fram_target at all (or
+    # has no fram instance) must build byte-for-byte as it always has - no fram= kwarg anywhere on
+    # the mandatory-infra constructors, and no forced construction-order dependency on fram either.
+    doc = base_doc()
+    del doc["device"]["wiring"]["fram_target"]
+    result = generate_device(write_doc(tmp_path, "device_fram_absent", doc), src_dir, ext_dir)
+    ast.parse(result.module_source)
+    conn_line = next(line for line in result.module_source.splitlines() if line.strip().startswith("conn = AsyConnTime("))
+    ntp_line = next(line for line in result.module_source.splitlines() if line.strip().startswith("ntp = AsyNtpClient("))
+    sysfunct_line = next(line for line in result.module_source.splitlines() if line.strip().startswith("sysfunct = SystemService("))
+    assert "fram=" not in conn_line
+    assert "fram=" not in ntp_line
+    assert "fram=" not in sysfunct_line
+    webserver_call = result.module_source.split("webserver = WebserverService(")[1].split(")\n")[0]
+    assert "fram=" not in webserver_call
+    # conn is still built first among mandatory infra - nothing forces fram ahead of it when there's
+    # no device-level fram_target to justify that dependency.
+    order = [n if isinstance(n, str) else f"{n[0]}_{n[1]}" if n[1] else n[0] for n in result.model.construction_order]
+    assert order.index("conn") < order.index("fram")
 
 
 def test_multi_instance_same_module_dedupes_identical_default_extra(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:

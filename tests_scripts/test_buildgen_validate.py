@@ -915,6 +915,42 @@ def test_device_wiring_optional_field_absent_is_fine(tmp_path: Path, src_dir: Pa
     _build(tmp_path, src_dir, doc)  # no raise
 
 
+def test_device_wiring_fram_target_reference_unresolved(tmp_path: Path, src_dir: Path) -> None:
+    # fram_target has 4 consumers today (sysfunct/conn/ntp/webserver, WP1's implicit-FRAM-wiring
+    # rule) - a bad reference must still be caught exactly like led_target's single-consumer case
+    # above, regardless of how many consumers actually check it.
+    doc = base_doc()
+    doc["device"]["wiring"]["fram_target"] = "does_not_exist"
+    with pytest.raises(BuildError, match="does not resolve to any declared instance"):
+        _build(tmp_path, src_dir, doc)
+
+
+def test_device_wiring_fram_target_reference_wrong_class(tmp_path: Path, src_dir: Path) -> None:
+    doc = base_doc()
+    doc["device"]["wiring"]["fram_target"] = "neopixel"  # neopixel is NeopixelDriver, not AsyFramManager
+    with pytest.raises(BuildError, match="requires a AsyFramManager"):
+        _build(tmp_path, src_dir, doc)
+
+
+@pytest.mark.parametrize(
+    "filename,tag",
+    [
+        ("system_service.py", "# @wiring fram_target AsyFramManager fram optional kwarg"),
+        ("asy_wifi_service.py", "# @wiring fram_target AsyFramManager fram optional kwarg"),
+        ("asy_ntp_client.py", "# @wiring fram_target AsyFramManager fram optional kwarg"),
+        ("asy_webserver_service.py", "# @wiring fram_target AsyFramManager fram optional kwarg"),
+    ],
+)
+def test_device_wiring_fram_target_checks_every_consumers_own_tag(tmp_path: Path, src_dir: Path, filename: str, tag: str) -> None:
+    # Proves _check_device_wiring() actually walks ALL of fram_target's consumers, not just the
+    # first one in _DEVICE_WIRING_CONSUMERS - each is staged to lose its tag in turn, and each one's
+    # absence alone must still be caught.
+    staged = _staged_src(tmp_path, src_dir, filename, tag, "")
+    path = write_doc(tmp_path, "dev", base_doc())
+    with pytest.raises(BuildError, match="has no matching @wiring tag"):
+        build_model(path, staged)
+
+
 def test_partial_instance_level_fram_wiring_is_fine(tmp_path: Path, src_dir: Path) -> None:
     # §4.3 axis 4's "partial" state: FRAM present, some fram-wirable instances wire fram_target,
     # others explicitly don't - every existing test either wires it uniformly (base_doc's own
@@ -947,7 +983,7 @@ def test_device_wiring_required_field_missing_is_rejected(tmp_path: Path, src_di
     import buildgen.validate as validate_mod
     from buildgen.model import DeviceModel
 
-    monkeypatch.setitem(validate_mod._DEVICE_WIRING_CONSUMERS, "signal_sink", ("asy_notification_service.py", "NotificationCoordinator", "signal_sink"))
+    monkeypatch.setitem(validate_mod._DEVICE_WIRING_CONSUMERS, "signal_sink", (("asy_notification_service.py", "NotificationCoordinator", "signal_sink"),))
     model = DeviceModel("dev", tmp_path / "dev.toml", {"device": {"wiring": {}}})
     with pytest.raises(BuildError, match="missing required field 'signal_sink'"):
         validate_mod._check_device_wiring(model, src_dir)

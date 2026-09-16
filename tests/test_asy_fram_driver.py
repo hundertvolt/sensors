@@ -1042,25 +1042,28 @@ def test_wrdi_stuck_after_retry_logs_a_persisted_warning() -> None:
     assert 0x80 + 81 in fram.pr.history  # wrn_s()'s history entries are offset by _NO_WRN (0x80)
 
 
-def test_write_protected_and_access_not_locked_stay_on_non_persisted_logging() -> None:
-    # The two message categories deliberately excluded from the err_s()/wrn_s() upgrade above:
-    # "currently write protected" (routine, expected outcome) and "access not locked" (a caller
-    # contract violation, not a hardware fault). Neither should touch the persisted history.
+def test_write_protected_and_access_not_locked_are_now_persisted() -> None:
+    # WP8: "currently write protected" (a benign, expected refusal - matches AsyFramManager's own
+    # "communication paused" wrn_s precedent) and "access not locked" (a caller contract violation,
+    # a real code defect if it ever fires, so errno rather than wrnno) both now persist, replacing
+    # the print-only degrade this file's own test previously pinned as deliberate.
     fram, _chip = make_fram()
     run(setup_fram(fram))
     assert run(fram.set_write_protected(value=True)) is True
 
     async def scenario() -> tuple[bool, bool]:
-        no_lock = await fram.get_values(bytearray(1), 0)  # no `async with fram:` wrapper
+        no_lock = await fram.get_values(bytearray(1), 0)  # no `async with fram:` wrapper - errno=99
         async with fram:
-            still_protected = await fram.set_values(b"x", 0)
+            still_protected = await fram.set_values(b"x", 0)  # locked, so this reaches _write() - wrnno=84
         return no_lock, still_protected
 
     no_lock, still_protected = run(scenario())
     assert no_lock is False
     assert still_protected is False
-    assert fram.pr.err_count == 0
-    assert list(fram.pr.history) == [0] * 10
+    assert fram.pr.err_count == 2
+    log = run(fram.pr.get_log())[fram.pr.name]
+    assert log["ErrNum"][-2:] == [99, 84]
+    assert log["ErrType"][-2:] == ["E", "W"]
 
 
 def test_two_operations_on_the_same_fram_never_run_concurrently() -> None:

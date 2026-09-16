@@ -172,6 +172,41 @@ def test_init_without_watchdog_defaults_to_none() -> None:
     assert svc.watchdog is None
 
 
+# ---------------------------------------------------------------------------
+# feed_watchdog() - WP6's one reusable, no-op-safe watchdog access point. start_and_check_tasks()'s
+# own tests further below already exercise it indirectly through the task-supervisor loop; these
+# cover the method itself directly, since buildgen's generated boot setup batch calls it too.
+# ---------------------------------------------------------------------------
+
+
+def test_feed_watchdog_feeds_a_real_watchdog() -> None:
+    wdt = machine.WDT()
+    svc = make_service(watchdog=wdt)
+    svc.feed_watchdog()
+    assert wdt.feed_count == 1
+    svc.feed_watchdog()
+    assert wdt.feed_count == 2
+
+
+def test_feed_watchdog_is_a_silent_no_op_without_a_watchdog() -> None:
+    # A watchdog-less build takes the identical code path, no special-casing at the call site.
+    svc = make_service()
+    assert svc.watchdog is None
+    svc.feed_watchdog()  # must not raise
+
+
+def test_feed_watchdog_stops_once_force_watchdog_starve_latches() -> None:
+    # _force_watchdog_starve is _reboot()'s own one-way "let the hardware watchdog do it instead"
+    # signal (alarm-pool exhaustion when arming the reset timer) - feed_watchdog() must honor it
+    # even with a real watchdog present, exactly like start_and_check_tasks()'s own loop already did
+    # before this method existed to share the check.
+    wdt = machine.WDT()
+    svc = make_service(watchdog=wdt)
+    svc._force_watchdog_starve = True
+    svc.feed_watchdog()
+    assert wdt.feed_count == 0
+
+
 def test_init_zero_history_length_is_accepted_in_memory() -> None:
     # Unusual-but-typing-valid content: 0 is a legal int, not just the documented default of 10.
     svc = make_service(history_length=0)
@@ -1295,6 +1330,21 @@ def test_one_bad_setter_does_not_stop_the_rest_of_the_registry() -> None:
     ok = run(svc.set_debug_level(PrintLog.level_warn()))
     assert ok is True  # persistence itself is unaffected by a registry-side failure
     assert calls == [0, 0, PrintLog.level_warn(), PrintLog.level_warn()]  # both good setters still ran, both times
+
+
+def test_a_bad_setter_now_persists_its_own_failure() -> None:
+    # WP8: every other caller-supplied-callback call site in this codebase already persists via
+    # err_s() - this was the one odd-one-out still degrading via the non-persisting self.pr.err().
+    def _raising_setter(_value: int) -> None:
+        raise RuntimeError("simulated bad setter")
+
+    svc = make_service(cfg_path=_tmp_cfg_dir())
+    svc.set_level_setters([_raising_setter])
+    run(svc.setup())
+    run(svc.set_debug_level(PrintLog.level_warn()))
+    log = run(svc.pr.get_log())[svc.pr.name]
+    assert log["ErrNum"][-1] == 7
+    assert log["ErrType"][-1] == "E"
 
 
 def test_debug_level_survives_a_simulated_reboot() -> None:

@@ -23,7 +23,7 @@ from _shared_rest_roundtrip import (
 from microdot import Request, Response  # type: ignore[import-not-found]
 
 import asy_spi_driver
-from print_log import PrintLog, PrintLogHistory, PrintLogHistoryStore
+from print_log import PrintLog, PrintLogHistoryStore
 
 # Mirrors asy_wifi_service.py's own _PHASE_STA_SEEKING/_PHASE_HOTSPOT values - same
 # not-importable-once-const()-folded reasoning as tests/test_asy_wifi_service.py's own copy; keep in
@@ -329,24 +329,45 @@ def _all_loggers(module: "Any") -> "list[Any]":
 
 
 def _expected_fram_chunk_calls(module: "Any") -> "list[str]":
-    # SystemService(chunk) -> SCD30_Reader(chunk) -> SGP40 own log(chunk) -> SGP40 VOC backup
-    # (timestamped) -> [BMP3xx_Reader(chunk), only if present] -> NeopixelDriver(chunk) ->
-    # NotificationCoordinator(chunk), in that order, unconditionally. SCD30 constructs before SGP40
+    # AsyConnTime(chunk) -> its own CFGMGR_WIFI(chunk) -> its own DNSServer(chunk) ->
+    # AsyNtpClient(chunk) -> its own CFGMGR_NTP(chunk) -> SystemService(chunk) -> its own
+    # CFGMGR_SYSTEM(chunk) -> SCD30_Reader(chunk, no cfgmgr - params live on-sensor) -> SGP40 own
+    # log(chunk) -> its own CFGMGR_SGP40(chunk) -> SGP40 VOC backup (timestamped) ->
+    # [BMP3xx_Reader(chunk) + its own CFGMGR_BMP3XX(chunk), only if present] ->
+    # [ISL29125_Reader(chunk) + its own CFGMGR_ISL29125(chunk), only if present] ->
+    # NeopixelDriver(chunk, no cfgmgr) -> NotificationCoordinator(chunk) -> its own
+    # CFGMGR_NOTIFY(chunk) -> [UartLinkExerciser x2 (chunk each, no cfgmgr), only if present, WP3] ->
+    # WebserverService(chunk, no cfgmgr), in that order, unconditionally.
+    # WP1/CLAUDE.md's implicit-FRAM-wiring rule: conn/ntp/webserver - and conn's own DNSServer -
+    # draw a chunk too, on every real device's own [device.wiring].fram_target. WP2, the same rule
+    # applied to ConfigManager: every SensorReaderConfig-based module's own cfgmgr draws its own
+    # separate chunk immediately after that module's own pr chunk (base_classes.py's
+    # SensorReaderConfig.__init__ builds self.pr then self.cfgmgr in that order) - SystemService is
+    # not a SensorReaderConfig subclass but embeds its own ConfigManager directly the same way
+    # (system_service.py's own comment), so it follows the identical "own chunk, then cfgmgr chunk"
+    # shape. NeopixelDriver/WebserverService/SCD30_Reader/UartLinkExerciser have no on-flash config
+    # at all, so none of them ever contributes a cfgmgr chunk. SCD30 constructs before SGP40
     # (ordering-hazard #1, SPECIFICATION.md Part A.7/C.14 - SGP40 holds a direct reference to scd30
     # as its temperature_source/humidity_source, so the producer must exist first). Derived from the
     # module's own reflected instance set (_present_optional_instances()), not a hardcoded
     # per-device literal - every real device's own devices/*.toml lists its instances in this same
     # relative order (BUILD_CHAIN_PLAN.md's Session 2), so this fixed shape stays correct for all 6.
-    calls = ["chunk"]  # SystemService
+    calls = ["chunk", "chunk", "chunk"]  # AsyConnTime, its own CFGMGR_WIFI, its own DNSServer
+    calls += ["chunk", "chunk"]  # AsyNtpClient, its own CFGMGR_NTP
+    calls += ["chunk", "chunk"]  # SystemService, its own CFGMGR_SYSTEM
     if _has(module, "scd30"):
-        calls.append("chunk")
+        calls.append("chunk")  # SCD30_Reader - no cfgmgr
     if _has(module, "sgp40"):
-        calls += ["chunk", "timestamped"]
+        calls += ["chunk", "chunk", "timestamped"]  # SGP40, its own CFGMGR_SGP40, VOC backup
     if _has(module, "bmp3xx"):
-        calls.append("chunk")
+        calls += ["chunk", "chunk"]  # BMP3xx_Reader, its own CFGMGR_BMP3XX
     if _has(module, "isl29125"):
-        calls.append("chunk")
-    calls += ["chunk", "chunk"]  # NeopixelDriver, NotificationCoordinator - always present
+        calls += ["chunk", "chunk"]  # ISL29125_Reader, its own CFGMGR_ISL29125
+    calls.append("chunk")  # NeopixelDriver - always present, no cfgmgr
+    calls += ["chunk", "chunk"]  # NotificationCoordinator, its own CFGMGR_NOTIFY - always present
+    if _has_uart_link(module):
+        calls += ["chunk", "chunk"]  # UartLinkExerciser x2 (init, resp) - no cfgmgr, WP3
+    calls.append("chunk")  # WebserverService - no cfgmgr
     return calls
 
 
@@ -547,13 +568,37 @@ def _scenario_fram_chunks_allocated(device: str) -> None:
     # Every FRAM-chunk-owning module's own PrintLogHistoryStore/AsyFramTimestampedChunk degrades to
     # in-memory-only on allocation failure rather than raising (base_classes.py's own contract) -
     # assert the happy path actually got real FRAM-backed chunks, not a silently-degraded one.
+    # This is also WP4/Topic 6's own "does everything fit" capacity check, run for every real
+    # device (parametrized like every other scenario in this file): the real, deterministic
+    # enforcement is exactly this - no chunk-holding module ended up with a None chunk reference -
+    # not `allocated_size <= size`, which can never be false by construction (get_chunk() checks
+    # capacity before incrementing, never after) and so would be a tautology rather than a check.
+    # See test_sensorreaderconfig_fram_allocation_failure_and_missing_config_file_together
+    # (tests/test_base_classes.py) for the negative case proving this same shape can actually fail.
+    assert module.conn is not None and module.ntp is not None
     assert module.sysfunct is not None and module.neopixel is not None and module.notification is not None
+    assert isinstance(module.conn.pr, PrintLogHistoryStore)
+    assert module.conn.pr.fram is not None
+    assert isinstance(module.conn.cfgmgr.pr, PrintLogHistoryStore)
+    assert module.conn.cfgmgr.pr.fram is not None
+    assert isinstance(module.conn.dns_server.pr, PrintLogHistoryStore)
+    assert module.conn.dns_server.pr.fram is not None
+    assert isinstance(module.ntp.pr, PrintLogHistoryStore)
+    assert module.ntp.pr.fram is not None
+    assert isinstance(module.ntp.cfgmgr.pr, PrintLogHistoryStore)
+    assert module.ntp.cfgmgr.pr.fram is not None
     assert isinstance(module.sysfunct.pr, PrintLogHistoryStore)
     assert module.sysfunct.pr.fram is not None
+    assert isinstance(module.sysfunct.cfgmgr.pr, PrintLogHistoryStore)
+    assert module.sysfunct.cfgmgr.pr.fram is not None
     assert isinstance(module.neopixel.pr, PrintLogHistoryStore)
     assert module.neopixel.pr.fram is not None
     assert isinstance(module.notification.pr, PrintLogHistoryStore)
     assert module.notification.pr.fram is not None
+    assert isinstance(module.notification.cfgmgr.pr, PrintLogHistoryStore)
+    assert module.notification.cfgmgr.pr.fram is not None
+    assert isinstance(module.webserver.pr, PrintLogHistoryStore)
+    assert module.webserver.pr.fram is not None
     if _has(module, "scd30"):
         assert isinstance(module.scd30.pr, PrintLogHistoryStore)
         assert module.scd30.pr.fram is not None
@@ -561,9 +606,24 @@ def _scenario_fram_chunks_allocated(device: str) -> None:
         assert isinstance(module.sgp40.pr, PrintLogHistoryStore)
         assert module.sgp40.pr.fram is not None
         assert module.sgp40.ts_storage is not None
+        assert isinstance(module.sgp40.cfgmgr.pr, PrintLogHistoryStore)
+        assert module.sgp40.cfgmgr.pr.fram is not None
     if _has(module, "bmp3xx"):
         assert isinstance(module.bmp3xx.pr, PrintLogHistoryStore)
         assert module.bmp3xx.pr.fram is not None
+        assert isinstance(module.bmp3xx.cfgmgr.pr, PrintLogHistoryStore)
+        assert module.bmp3xx.cfgmgr.pr.fram is not None
+    if _has(module, "isl29125"):
+        assert isinstance(module.isl29125.pr, PrintLogHistoryStore)
+        assert module.isl29125.pr.fram is not None
+        assert isinstance(module.isl29125.cfgmgr.pr, PrintLogHistoryStore)
+        assert module.isl29125.cfgmgr.pr.fram is not None
+    if _has_uart_link(module):
+        # WP3 - own chunk each, no cfgmgr (UART_Comm has no on-flash config schema).
+        assert isinstance(module.uart_link_init.pr, PrintLogHistoryStore)
+        assert module.uart_link_init.pr.fram is not None
+        assert isinstance(module.uart_link_resp.pr, PrintLogHistoryStore)
+        assert module.uart_link_resp.pr.fram is not None
 
 
 class _DeadFramChip(FakeMB85RS64V):
@@ -731,6 +791,24 @@ def _scenario_setup_batch_order(device: str) -> None:
         expected.append("bmp")
     expected.append("notify_setup")
     assert calls == expected
+
+
+@_register("boot_feeds_the_watchdog_exactly_once_per_setup_call")
+def _scenario_boot_feeds_the_watchdog(device: str) -> None:
+    # WP6 (SPECIFICATION.md Part D.9/G.2): the real, generated boot sequence must actually execute
+    # a feed after every setup() call, not just emit one in source (tests_scripts/
+    # test_buildgen_generate.py's own test_real_device_feeds_the_watchdog_after_every_setup_call_in_order
+    # proves the codegen shape, generically, for all 6 devices - this proves it actually runs,
+    # end to end, against the real object graph). The expected count is derived from the same
+    # generated source buildgen wrote for this device, not a hand-maintained per-device number.
+    with open(f"build/generated_src/sensortask_{device}.py") as f:
+        source_lines = f.readlines()
+    expected_feeds = sum(1 for line in source_lines if line.strip().startswith("await ") and line.strip().endswith(".setup()"))
+    assert expected_feeds > 0
+    module = build(device)
+    assert module.sysfunct is not None and module.watchdog is not None
+    assert module.sysfunct.watchdog is module.watchdog
+    assert module.watchdog.feed_count == expected_feeds
 
 
 def _bmp3xx_devices() -> "frozenset[str]":
@@ -942,15 +1020,20 @@ def _scenario_main_call_order(device: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-@_register("webserver_pr_is_ram_only_not_fram_backed")
-def _scenario_webserver_pr_ram_only(device: str) -> None:
-    # Deliberate decision (see build_system()'s own comment): a warning on every per-call/outer-cap
-    # reclaim could churn far faster than any sensor's rare-hardware-fault log - keeping it RAM-only
-    # also preserves the FRAM allocation order (see SPECIFICATION.md Part A.7) unchanged.
+@_register("webserver_pr_is_fram_backed_when_device_wires_fram")
+def _scenario_webserver_pr_fram_backed(device: str) -> None:
+    # WP1/CLAUDE.md's implicit-FRAM-wiring rule (SPECIFICATION.md Part A.7): every real device's own
+    # TOML declares [device.wiring].fram_target, so webserver's own self.pr is FRAM-backed on all 6,
+    # exactly like conn/ntp/sysfunct - superseding the earlier RAM-only-by-design decision (a
+    # connection-reclaim warning could in principle churn faster than a sensor's rare hardware-fault
+    # log, still worth watching - see BACKLOG.md). A device with no device-level fram_target at all
+    # is covered instead at the buildgen/codegen level (tests_scripts/test_buildgen_generate.py's
+    # test_device_with_no_fram_target_leaves_conn_ntp_sysfunct_and_webserver_ram_only), since none of
+    # the 6 real devices this file builds exercises that fallback path.
     module = build(device)
     assert module.webserver is not None
-    assert isinstance(module.webserver.pr, PrintLogHistory)
-    assert not isinstance(module.webserver.pr, PrintLogHistoryStore)
+    assert isinstance(module.webserver.pr, PrintLogHistoryStore)
+    assert module.webserver.pr.fram is not None
 
 
 @_register("webserver_measurements_and_sensors_get_include_every_real_sensor")
@@ -1051,6 +1134,24 @@ def _scenario_system_put_reboot(device: str) -> None:
     assert json.loads(res.body)["result"]["SystemCmd"] == "Valid"
     module.sysfunct.reset_timer.trigger()  # fake Timer - fires the armed callback synchronously
     assert machine.reset_count == before + 1
+
+
+@_register("webserver_system_put_reboot_flushes_a_still_pending_config_write_first")
+def _scenario_system_put_reboot_flushes_pending_write(device: str) -> None:
+    # A commanded reboot must not drop a write that's still only staged
+    # (buildgen/codegen.py's generated _flush_pending_configs(), src/config_manager.py's own
+    # flush_pending()) - unlike the accepted power-loss residual risk (SPECIFICATION.md Part F.2),
+    # this path is software-triggered and can easily wait the flush out. One PUT body carrying both
+    # a settings-group change and SystemCmd=reboot is the real, single-request shape this actually
+    # happens in (asy_webserver_service.py's _put_system() applies settings before dispatching the
+    # command), not two separate requests.
+    module = build(device)
+    assert module.sysfunct is not None
+    res = _dispatch(module, "PUT", "/system", {"DebugLevel": PrintLog.level_err(), "SystemCmd": "reboot"})
+    result = json.loads(res.body)["result"]
+    assert result["DebugLevel"] == "Valid"
+    assert result["SystemCmd"] == "Valid"
+    assert module.sysfunct.cfgmgr._pending_flush is None  # the exact thing being proven: already flushed, not merely scheduled
 
 
 @_register("webserver_system_put_invalid_cmd_is_rejected_without_side_effects")

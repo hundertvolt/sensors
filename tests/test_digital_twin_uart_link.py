@@ -178,16 +178,18 @@ def test_the_two_ends_sit_on_distinct_peripherals_with_sized_buffers() -> None:
         assert driver.poll_wait_ms < 10  # single-digit, or poll latency dominates throughput
 
 
-def test_the_fram_chunk_order_is_unchanged_by_the_new_modules() -> None:
+def test_both_ends_get_their_own_real_fram_chunk() -> None:
     # AsyFramManager is a bump-pointer allocator, so instantiation order *is* the on-chip
-    # layout - an inserted chunk would turn every previously persisted log into garbage. Both UART
-    # instances take RAM-only loggers, so they allocate nothing at all here.
+    # layout - an inserted chunk would turn every previously persisted log into garbage. dev.toml
+    # wires fram_target = "fram" on both uart_link instances (WP3), each getting its own chunk -
+    # a shared one would merge two links' histories into a single unattributable /status entry.
     build_linked_system()
     dev = sensortask_dev
     assert dev.fram is not None
     assert dev.uart_link_init is not None and dev.uart_link_resp is not None
-    assert not hasattr(dev.uart_link_init.pr, "fram")
-    assert not hasattr(dev.uart_link_resp.pr, "fram")
+    assert hasattr(dev.uart_link_init.pr, "fram") and dev.uart_link_init.pr.fram is not None
+    assert hasattr(dev.uart_link_resp.pr, "fram") and dev.uart_link_resp.pr.fram is not None
+    assert dev.uart_link_init.pr.fram is not dev.uart_link_resp.pr.fram
 
 
 # ---------------------------------------------------------------------------

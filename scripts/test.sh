@@ -155,16 +155,56 @@ failed=0
 # keep even though it turned out not to be what was causing the hang (see above); small,
 # immediate, line-buffered writes are still a reasonable default for CI log output.
 #
-# -X heapsize=8M (default 2097152 = 2MB) - tests/test_digital_twin_sensortask_integration.py's own
+# -X heapsize=32M (default 2097152 = 2MB) - tests/test_digital_twin_sensortask_integration.py's own
 # heaviest tests each build the whole real object graph (a fresh 8KB FramChip, ConfigManagers, ...)
 # one or more times per test, sharing one process/heap across every test function in the file (this
 # binary is invoked once per file, not once per test). Confirmed directly: with the 2MB default,
 # that file failed with a real MemoryError roughly 1 run in 3 depending on MicroPython's own
 # non-deterministic test-function run order (this file's own docstring already notes run order
-# differs from definition order); 8M cleared 5/5 consecutive runs. This is a Unix-port-only test-
-# harness setting - unrelated to the real rp2040's own RAM budget (SPECIFICATION.md Part F.1), and
-# every test file still runs under the same GC the real target uses either way.
-per_file_timeout_s="${PER_FILE_TIMEOUT_S:-180}"
+# differs from definition order); 8M cleared 5/5 consecutive runs at the time. Raised again, from 8M
+# to 32M, once WP1+WP2 (CLAUDE.md's implicit-FRAM-wiring rule, extended to WiFi/NTP/webserver and to
+# every SensorReaderConfig's own ConfigManager) made tests/test_sensortask.py's own per-device
+# object graphs meaningfully heavier - it builds all 6 real devices' full graphs repeatedly across
+# ~300 test functions in one process, and each device now carries roughly 2.5x as many FRAM-backed
+# PrintLogHistoryStore instances as before (conn/ntp/sysfunct/webserver plus every FRAM-wired
+# module's own cfgmgr). Confirmed directly, not estimated: 8M/16M both still failed with real
+# MemoryErrors partway through that file (81/321 and 176/321 passed respectively - a roughly linear
+# relationship with heap size, consistent with this file's own fixed, finite per-run garbage total
+# rather than an unbounded leak), 32M cleared multiple consecutive runs. This is a Unix-port-only
+# test-harness setting - unrelated to the real rp2040's own RAM budget (SPECIFICATION.md Part F.1):
+# real hardware only ever builds one device's own object graph once per boot, never six devices'
+# worth of graphs repeatedly in one process - and every test file still runs under the same GC the
+# real target uses either way.
+per_file_timeout_s="${PER_FILE_TIMEOUT_S:-240}"
+# Raised from 180 to 240 alongside the WP1 webserver-startup-race fix above:
+# tests/test_digital_twin_webserver_concurrency.py's own real-socket concurrency scenarios were
+# already the single heaviest file in this suite (measured standalone: ~230s even before WP1, ~11s
+# of that actual CPU time - the rest is this file's own deliberate scenario-body sleeps simulating
+# realistic timeouts/flaky connections, not busy work), so it was already running close to the old
+# 180s ceiling before this change. WP1 making webserver.pr real-FRAM-backed needed its own
+# ~15-call-site wait bumped from 0.1s to a measured-safe 0.5s (see that file's own comment for why
+# a polling readiness check made things worse, not better, and was reverted) - a real ~35s addition
+# on top of an already-marginal baseline, not a large one, but 180s no longer has real margin.
+# That "240s clears this file with room to spare" claim has since gone stale, corrected below.
+#
+# Per-file overrides for two files that grew past the 240s default outright - not a hang, and not
+# fixed by raising everyone's default (that would just make a genuine future hang 2-3x slower to
+# detect for the other ~50 files that still comfortably fit in 240s). Measured directly, 2026-09-16,
+# single full attempt each (not the 3x-retry-shortened runs CI otherwise sees), same toolchain/
+# heapsize as CI: tests/test_sensortask.py 447s real - it builds all 6 real devices' full
+# build_system() object graph once per scenario (327 scenario x device combinations in one process,
+# see that file's own docstring), and WP1+WP2's implicit-FRAM-wiring rule (CLAUDE.md) plus WP6's
+# added watchdog-feed scenario made each of those builds real-world heavier, the same way it made a
+# real device's own boot latency heavier (SPECIFICATION.md Part A.7). tests/
+# test_digital_twin_webserver_concurrency.py 268s real - already the heaviest file in the suite
+# before WP1 (see the comment above); WP1's own webserver.pr FRAM-backed wait bump was the last
+# straw that pushed it just past the 240s default this same comment once called safe margin. Both
+# get a value comfortably above their measured real time, not just past it, to absorb ordinary
+# CI-runner variance without falling back to retries for the common case.
+declare -A per_file_timeout_overrides_s=(
+    ["tests/test_sensortask.py"]=600
+    ["tests/test_digital_twin_webserver_concurrency.py"]=350
+)
 max_attempts=3
 failed_files=()
 passed_count=0
@@ -185,8 +225,9 @@ for test_file in tests/test_*.py; do
     else
         cmd=("$test_file")
     fi
+    file_timeout_s="${per_file_timeout_overrides_s[$test_file]:-$per_file_timeout_s}"
     for attempt in $(seq 1 "$max_attempts"); do
-        if MICROPYPATH="build/generated_src:src:tests:frozen_modules:.frozen" stdbuf -oL -eL timeout --kill-after=10 "$per_file_timeout_s" "$micropython_bin" -X heapsize=8M "${cmd[@]}"; then
+        if MICROPYPATH="build/generated_src:src:tests:frozen_modules:.frozen" stdbuf -oL -eL timeout --kill-after=10 "$file_timeout_s" "$micropython_bin" -X heapsize=32M "${cmd[@]}"; then
             ec=0
         else
             ec=$?
@@ -195,11 +236,11 @@ for test_file in tests/test_*.py; do
             passed_count=$((passed_count + 1))
             break
         elif [ "$ec" -eq 124 ] && [ "$attempt" -lt "$max_attempts" ]; then
-            echo "== $test_file exceeded ${per_file_timeout_s}s on attempt $attempt/$max_attempts - retrying in case of transient runner contention" >&2
+            echo "== $test_file exceeded ${file_timeout_s}s on attempt $attempt/$max_attempts - retrying in case of transient runner contention" >&2
             continue
         else
             if [ "$ec" -eq 124 ]; then
-                echo "== $test_file exceeded ${per_file_timeout_s}s on all $max_attempts attempts - treating as a real failure instead of hanging the job" >&2
+                echo "== $test_file exceeded ${file_timeout_s}s on all $max_attempts attempts - treating as a real failure instead of hanging the job" >&2
             fi
             failed=1
             failed_files+=("$test_file")

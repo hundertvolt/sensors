@@ -135,8 +135,14 @@ async def _boot(port: int) -> None:
 async def _start_webserver() -> "asyncio.Task[None]":
     assert sensortask_wozi.webserver is not None
     task = sensortask_wozi.webserver.get_task_starters()[0]()
-    await asyncio.sleep(0.1)  # let _run() actually reach start_server()/bind - same bound
-    # test_asy_webserver_service.py's own F.8 test uses for the identical real-socket startup race.
+    # WP1/CLAUDE.md's implicit-FRAM-wiring rule made webserver.pr real-FRAM-backed whenever the
+    # device wires FRAM (every real device today): _run() now awaits a real self.pr.setup() call
+    # (a real chunk read/write) before it ever reaches start_server()/bind, not the instant no-op
+    # a RAM-only logger's own setup() was - test_asy_webserver_service.py's own F.8 test still uses
+    # the old 0.05s bound because its own WebserverService fixture is never constructed with fram=.
+    # Measured directly against this file's own real digital_twin machine fakes: consistently ready
+    # within ~400ms; 1.0s keeps a real (~2.5x) margin rather than a bare-minimum guess.
+    await asyncio.sleep(1.0)
     return task
 
 
@@ -965,7 +971,10 @@ def _scenario_measurements_and_sensors_shape(device: str) -> None:
     async def scenario() -> None:
         module = await _boot_device(port, device)
         task = module.webserver.get_task_starters()[0]()
-        await asyncio.sleep(0.1)
+        # See _start_webserver()'s own comment above (this file's shared helper, used elsewhere in
+        # this same file): WP1 made webserver.pr real-FRAM-backed on every real device, so _run()
+        # now awaits a real self.pr.setup() before start_server()/bind - measured at ~400ms here too.
+        await asyncio.sleep(1.0)
         try:
             expected = {name.upper() for name in _present_optional_instances(module, device) if name in ("scd30", "sgp40", "bmp3xx", "isl29125")}
             res = await _http_client.fetch("127.0.0.1", port, "GET", "/measurements")
@@ -1012,7 +1021,10 @@ def _scenario_bus_fault_degrades(device: str) -> None:
         # build_system() calls.
         sgp40_chip.fault.inject_fault("writeto", OSError(errno.EIO, "test-injected"), times=5)
         task = module.webserver.get_task_starters()[0]()
-        await asyncio.sleep(0.1)
+        # See _start_webserver()'s own comment above (this file's shared helper, used elsewhere in
+        # this same file): WP1 made webserver.pr real-FRAM-backed on every real device, so _run()
+        # now awaits a real self.pr.setup() before start_server()/bind - measured at ~400ms here too.
+        await asyncio.sleep(1.0)
         try:
             res = await _http_client.fetch("127.0.0.1", port, "GET", "/measurements")
             assert res.status_code == 200  # never a 500 - a sensor read failure degrades to

@@ -86,6 +86,13 @@ _VAL_DST = const((("DSTOffset", "int", 3600, -43200, 43200, None),))
 # @web GMTOffset section=system submitGroup=settings label="GMT Offset" unit="s" description="Timezone offset to GMT; affects local time only."
 # @web DSTOffset section=system submitGroup=settings label="DST Offset" unit="s" description="Daylight Savings offset; affects local time only."
 
+# This service's one optional live cross-instance dependency (SPECIFICATION.md Part C.14): its own
+# FRAM error-log target, resolved by buildgen/ from [device.wiring].fram_target, implicitly, since
+# AsyNtpClient is mandatory infra too (never an [[instance]] entry itself) - same mechanism as
+# system_service.py's/asy_wifi_service.py's own identical tag, to an already-constructed
+# AsyFramManager instance passed directly as this service's own fram= kwarg.
+# @wiring fram_target AsyFramManager fram optional kwarg
+
 _NAME = const("NTP")
 # Kept as a literal tuple inline (not `_FIELDS` below) because mypy's namedtuple plugin can only
 # infer field names from a literal at the call site, not through a variable indirection.

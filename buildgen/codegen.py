@@ -110,6 +110,25 @@ def _fram_kw(spec: InstanceSpec, ctx: _Ctx) -> "tuple[str, str] | None":
     return (fram_wf.target, ctx.wiring_expr(spec, fram_wf)) if fram_wf is not None and "fram_target" in spec.wiring else None
 
 
+def _device_fram_arg(model: DeviceModel, ctx: _Ctx) -> str:
+    # Mandatory infra's own device-level counterpart to _fram_kw() above: [device.wiring].fram_target
+    # (always a plain instance-name string, never a §2 default-provider dict - _check_device_wiring()
+    # already enforces that) is implicitly wired into every mandatory-infra consumer that declares its
+    # own "# @wiring fram_target ..." tag (sysfunct/conn/ntp/webserver today), same mechanism, one
+    # shared helper instead of the inline expression each call site used to duplicate.
+    fram_target = model.doc.get("device", {}).get("wiring", {}).get("fram_target")
+    return f"fram={ctx.instance_var(resolve_instance_key(model, fram_target))}" if fram_target else ""
+
+
+def _device_fram_kwarg_suffix(model: DeviceModel, ctx: _Ctx) -> str:
+    # ", fram=<var>" ready to splice directly into an existing inline call's argument list (conn's/
+    # ntp's/sysfunct's own one-line constructor calls below) - _emit_webserver() below needs the bare
+    # "fram=<var>" form instead (its own call is emitted one kwarg per line), so it calls
+    # _device_fram_arg() directly rather than through this wrapper.
+    arg = _device_fram_arg(model, ctx)
+    return f", {arg}" if arg else ""
+
+
 def _build_args_scd30(spec: InstanceSpec, ctx: _Ctx) -> "tuple[list[str], list[tuple[str, str]]]":
     f = spec.fields
     pos = [ctx.bus_var(f["bus"]), str(f["irq_pin"])]
@@ -218,13 +237,17 @@ def _build_args_notification(spec: InstanceSpec, ctx: _Ctx) -> "tuple[list[str],
 
 
 def _build_args_uart_link(spec: InstanceSpec, ctx: _Ctx) -> "tuple[list[str], list[tuple[str, str]]]":
-    # No fram= - matches asy_uart_comm.UART_Comm's own construction on main (Part J.1: "no
-    # application semantics" also means no FRAM-backed error log of its own).
+    # fram= is the same optional per-instance _fram_kw() every other driver with a "# @wiring
+    # fram_target ..." tag uses (WP3 - was wrongly, deliberately excluded; UartLinkExerciser's own
+    # class-level support already existed in asy_uart_comm.py, only the buildgen wiring was missing).
     f = spec.fields
     pos = [ctx.bus_var(f["bus"]), repr(f["role"])]
     kw: list[tuple[str, str]] = []
     if spec.name_ext:
         kw.append(("name_ext", repr(spec.name_ext)))
+    fram_kw = _fram_kw(spec, ctx)
+    if fram_kw:
+        kw.append(fram_kw)
     kw.append(("debug", "debug"))
     return pos, kw
 
@@ -365,8 +388,6 @@ def _emit_build_system(lines: "list[str]", model: DeviceModel, ctx: _Ctx, instan
     lines.append("    global " + ", ".join(global_names))
     lines.append("")
     lines.append("    watchdog = WDT(timeout=8000)")
-    lines.append(f"    conn = AsyConnTime(conn_fail_to_hotspot={dev['conn_fail_to_hotspot']}, hotspot_time_min={dev['hotspot_time_min']}, max_module_error=_MAX_MODULE_ERROR, cfg_path=cfg_path, debug=debug)")
-    lines.append("    ntp = AsyNtpClient(conn.get_wifi_mode_lock(), conn.network_available, conn.get_dns_server_ip, max_module_error=_MAX_MODULE_ERROR, dns_timeout_ms=_DNS_TIMEOUT_MS, dns_tries=_DNS_TRIES, ntp_fetch_timeout_ms=_NTP_FETCH_TIMEOUT_MS, cfg_path=cfg_path, debug=debug)")
     for bus_id, bus_table in model.doc["bus"].items():
         var = ctx.bus_var(bus_id)
         if bus_id.startswith("i2c"):
@@ -385,13 +406,18 @@ def _emit_build_system(lines: "list[str]", model: DeviceModel, ctx: _Ctx, instan
             lines.append(f"    {var} = asy_uart_driver.UART({port}, {bus_table['tx_pin']}, {bus_table['rx_pin']}, baudrate={bus_table['baudrate']}{extra_kw})")
 
     for node in construction_order:
-        if node in ("conn", "ntp"):
-            continue  # already emitted above, unconditionally, ahead of the buses
+        if node == "conn":
+            # Placed here, not hardcoded ahead of the bus loop, specifically so it can come after
+            # fram's own construction line whenever a device-level fram_target wires it in
+            # (buildgen.graph.build_construction_order() adds that dependency for exactly this) -
+            # a device with no fram_target keeps conn as the very first thing built, unchanged.
+            lines.append(f"    conn = AsyConnTime(conn_fail_to_hotspot={dev['conn_fail_to_hotspot']}, hotspot_time_min={dev['hotspot_time_min']}, max_module_error=_MAX_MODULE_ERROR, cfg_path=cfg_path{_device_fram_kwarg_suffix(model, ctx)}, debug=debug)")
+            continue
+        if node == "ntp":
+            lines.append(f"    ntp = AsyNtpClient(conn.get_wifi_mode_lock(), conn.network_available, conn.get_dns_server_ip, max_module_error=_MAX_MODULE_ERROR, dns_timeout_ms=_DNS_TIMEOUT_MS, dns_tries=_DNS_TRIES, ntp_fetch_timeout_ms=_NTP_FETCH_TIMEOUT_MS, cfg_path=cfg_path{_device_fram_kwarg_suffix(model, ctx)}, debug=debug)")
+            continue
         if node == "sysfunct":
-            device_wiring = model.doc.get("device", {}).get("wiring", {})
-            fram_target = device_wiring.get("fram_target")
-            fram_arg = f", fram={ctx.instance_var(resolve_instance_key(model, fram_target))}" if fram_target else ""
-            lines.append(f"    sysfunct = SystemService(ntp.ntp_issynced, watchdog=watchdog{fram_arg}, cfg_path=cfg_path, debug=debug)")
+            lines.append(f"    sysfunct = SystemService(ntp.ntp_issynced, watchdog=watchdog{_device_fram_kwarg_suffix(model, ctx)}, cfg_path=cfg_path, debug=debug)")
             continue
         if not isinstance(node, tuple):
             raise BuildError(model.device, f"internal: construction_order entry {node!r} is not a known bare node or an instance key")
@@ -411,15 +437,23 @@ def _emit_build_system(lines: "list[str]", model: DeviceModel, ctx: _Ctx, instan
         (ctx.instance_var(n) for n in construction_order if isinstance(n, tuple) and instances[n].driver == "uart_link" and instances[n].fields.get("role") == "initiator"),
         None,
     )
-    _emit_webserver(lines, have, sensor_vars, uart_initiator_var)
+    _emit_webserver(lines, have, sensor_vars, uart_initiator_var, _device_fram_arg(model, ctx))
 
     lines.append("    timers_running = ThreadSafeFlag()")
     lines.append("    sysfunct.set_level_setters(_collect_level_setters())")
     lines.append("")
-    setup_order = ["sysfunct"]
+    # fram must come before sysfunct: sysfunct.setup() -> cfgmgr.setup() -> its own FRAM-backed
+    # logger's pr.setup() (WP2) needs AsyFramManager already initialized to do a real chunk
+    # read/write - sysfunct-before-fram left CFGMGR_SYSTEM's own setup() finding
+    # `self.fram.initialized is False` every boot, degrading instantly (confirmed directly:
+    # 0ms vs every other FRAM-backed cfgmgr's ~170ms real setup cost) rather than ever
+    # persisting/restoring its own history. fram.setup() has no dependency on sysfunct in the
+    # other direction (confirmed: AsyFramManager.setup() only touches its own pr/fram, never
+    # sysfunct), so this reorder is safe.
+    setup_order = []
     if "fram" in have:
         setup_order.append(ctx.instance_var(("fram", "")))
-    setup_order += ["conn", "ntp"]
+    setup_order += ["sysfunct", "conn", "ntp"]
     for node in construction_order:
         if node == "sysfunct" or not isinstance(node, tuple):
             continue
@@ -428,7 +462,12 @@ def _emit_build_system(lines: "list[str]", model: DeviceModel, ctx: _Ctx, instan
             continue
         if spec.driver_info and spec.driver_info.needs_setup:
             setup_order.append(ctx.instance_var(node))
-    lines.extend(f"    await {name}.setup()" for name in setup_order)
+    for name in setup_order:
+        lines.append(f"    await {name}.setup()")
+        # WP6 (SPECIFICATION.md Part D.9/G.2): fed after every one-time setup() call, never inside a
+        # loop - that's what makes this safe regardless of how many modules a device wires. No-op on
+        # a watchdog-less build or once _force_watchdog_starve latches, via feed_watchdog() itself.
+        lines.append("    sysfunct.feed_watchdog()")
     lines.append("")
 
 
@@ -456,24 +495,48 @@ def generate_module_source(model: DeviceModel, construction_order: "list[str | t
     lines: list[str] = []
     _emit_header_and_imports(lines, model, ctx, instances, have, build_date)
     _emit_globals(lines, instances, have, all_vars)
-    _emit_callbacks(lines, have)
+    _emit_callbacks(lines, have, construction_order, ctx)
     _emit_build_system(lines, model, ctx, instances, have, construction_order, all_vars, sensor_vars)
     _emit_collectors(lines, construction_order, ctx)
     _emit_main(lines)
     return "\n".join(lines) + "\n"
 
 
-def _emit_callbacks(lines: "list[str]", have: "set[str]") -> None:
+def _emit_flush_pending_configs(lines: "list[str]", construction_order: "list[str | tuple[str, str]]", ctx: _Ctx) -> None:
+    # A commanded reboot/bootloader must not drop a write that's still only staged
+    # (ConfigManager.write_config()'s deferred flash flush) - the accepted residual-risk window is
+    # power loss between "response sent" and "write attempted" (SPECIFICATION.md Part F.2), not a
+    # software-triggered reboot 4 seconds later that could easily wait. getattr(module, "cfgmgr",
+    # None) generically, not a new get_*() fan-in method on every module class: only
+    # SensorReaderConfig subclasses and SystemService itself ever have one (confirmed - grep for
+    # "self.cfgmgr =" across src/), so a virtual method every other module class would have to stub
+    # out to "return []" bought nothing here.
+    modules = _module_names(construction_order, ctx)
+    lines.append("async def _flush_pending_configs() -> None:")
+    for name in modules:
+        lines.append(f"    assert {name} is not None")
+    lines.append("    assert webserver is not None")  # mandatory infra, never optional
+    lines.append(f"    for module in ({', '.join(modules)}, webserver,):")
+    lines.append('        cfgmgr = getattr(module, "cfgmgr", None)')
+    lines.append("        if cfgmgr is not None:")
+    lines.append("            await cfgmgr.flush_pending()")
+    lines.append("")
+
+
+def _emit_callbacks(lines: "list[str]", have: "set[str]", construction_order: "list[str | tuple[str, str]]", ctx: _Ctx) -> None:
     lines.append('def _gmtimestruct_to_dict(t: "Any") -> "dict[str, int] | None":')
     lines.append("    if t is None:")
     lines.append("        return None")
     lines.append('    return {"year": t[0], "month": t[1], "mday": t[2], "hour": t[3], "minute": t[4], "second": t[5], "weekday": t[6], "yearday": t[7]}')
     lines.append("")
+    _emit_flush_pending_configs(lines, construction_order, ctx)
     lines.append("async def _system_cmd_callback(cmd: str) -> bool:")
     lines.append("    assert sysfunct is not None")
     lines.append('    if cmd == "reboot":')
+    lines.append("        await _flush_pending_configs()")
     lines.append("        sysfunct.reboot_system()")
     lines.append('    elif cmd == "bootloader":')
+    lines.append("        await _flush_pending_configs()")
     lines.append("        sysfunct.reboot_bootloader()")
     lines.append('    elif cmd == "mempause":')
     lines.append("        sysfunct.pause_permanent_storage(300)")
@@ -542,7 +605,7 @@ def _emit_callbacks(lines: "list[str]", have: "set[str]") -> None:
         lines.append("")
 
 
-def _emit_webserver(lines: "list[str]", have: "set[str]", sensor_vars: "list[str]", uart_initiator_var: "str | None") -> None:
+def _emit_webserver(lines: "list[str]", have: "set[str]", sensor_vars: "list[str]", uart_initiator_var: "str | None", fram_arg: str) -> None:
     lines.append("    app = Microdot()")
     lines.append("    webserver = WebserverService(")
     lines.append("        app,")
@@ -587,11 +650,17 @@ def _emit_webserver(lines: "list[str]", have: "set[str]", sensor_vars: "list[str
     lines.append("        is_hotspot_active=conn.is_hotspot_active,")
     lines.append("        host=web_host,")
     lines.append("        port=web_port,")
+    if fram_arg:
+        lines.append(f"        {fram_arg},")
     lines.append("    )")
 
 
+def _module_names(construction_order: "list[str | tuple[str, str]]", ctx: _Ctx) -> "list[str]":
+    return ["conn", "ntp"] + [ctx.instance_var(n) if isinstance(n, tuple) else n for n in construction_order if n not in ("conn", "ntp")]
+
+
 def _emit_collectors(lines: "list[str]", construction_order: "list[str | tuple[str, str]]", ctx: _Ctx) -> None:
-    modules = ["conn", "ntp"] + [ctx.instance_var(n) if isinstance(n, tuple) else n for n in construction_order if n not in ("conn", "ntp")]
+    modules = _module_names(construction_order, ctx)
     # fram (AsyFramManager) has get_error_sources()/get_loggers() but, unlike every other
     # constructed module, no get_task_starters()/get_timer_starters() at all - a synchronous
     # flash-backed store owns no asyncio task or Timer of its own. Every hand-written

@@ -1228,7 +1228,7 @@ def test_status_getters_return_locked_defaults_during_a_real_concurrent_outage_r
 
 def test_reconnect_wifi_sets_the_trigger_and_tears_down_hotspot_bookkeeping() -> None:
     client = make_client(hotspot_time_min=1)
-    client._hotspot_client_absent()  # arms hotspot_timer + starts a real ledflash task
+    run(client._hotspot_client_absent())  # arms hotspot_timer + starts a real ledflash task
 
     async def scenario() -> "tuple[bool, bool, bool]":
         await asyncio.sleep(0)
@@ -1262,7 +1262,7 @@ def test_hotspot_client_connected_stops_the_shutoff_timer_and_turns_the_led_on()
 
 def test_hotspot_client_absent_arms_the_shutoff_timer_once() -> None:
     client = make_client(hotspot_time_min=1)
-    client._hotspot_client_absent()
+    run(client._hotspot_client_absent())
     assert client.hotspot_timer_running is True
     assert client.hotspot_timer.mode == Timer.ONE_SHOT
     assert client.hotspot_timer.period == 60000  # hotspot_time_min=1 -> 60000ms
@@ -1273,7 +1273,7 @@ def test_hotspot_client_absent_shutoff_timer_fires_reconnect() -> None:
     # the IRQ callback, see C.9) - _watch_hotspot_timeout() is the coroutine that actually calls
     # reconnect_wifi() once woken by that flag.
     client = make_client(hotspot_time_min=1)
-    client._hotspot_client_absent()
+    run(client._hotspot_client_absent())
 
     async def scenario() -> bool:
         watcher = client.start_hotspot_timeout_watcher()
@@ -1288,7 +1288,7 @@ def test_hotspot_client_absent_shutoff_timer_fires_reconnect() -> None:
 
 def test_hotspot_timeout_watcher_calls_reconnect_wifi_directly_when_woken() -> None:
     client = make_client(hotspot_time_min=1)
-    client._hotspot_client_absent()  # arms hotspot_timer + starts a real ledflash task
+    run(client._hotspot_client_absent())  # arms hotspot_timer + starts a real ledflash task
     ledflash_before = client.ledflash
 
     async def scenario() -> bool:
@@ -1309,7 +1309,7 @@ def test_hotspot_client_absent_self_heals_a_dropped_timer_callback() -> None:
     # fires, but this method's own periodic re-invocation (every wifi_refresh_sec, matching the
     # main loop's real cadence) must still eventually notice and force the reconnect itself.
     client = make_client(hotspot_time_min=1, wifi_refresh_sec=5)
-    client._hotspot_client_absent()  # arms the timer (never triggered)
+    run(client._hotspot_client_absent())  # arms the timer (never triggered)
     assert client.hotspot_timer_running is True
     # hotspot_time = 60000ms; wifi_refresh_sec=5 -> the 2x-hotspot_time threshold is 24 ticks.
     # One tick short - the next call below is the one that must cross it.
@@ -1317,7 +1317,7 @@ def test_hotspot_client_absent_self_heals_a_dropped_timer_callback() -> None:
 
     async def scenario() -> bool:
         watcher = client.start_hotspot_timeout_watcher()
-        client._hotspot_client_absent()  # crosses the threshold this tick
+        await client._hotspot_client_absent()  # crosses the threshold this tick
         await asyncio.sleep(0)
         result = client.reconn_wifi
         await _cancel(watcher)
@@ -1326,10 +1326,25 @@ def test_hotspot_client_absent_self_heals_a_dropped_timer_callback() -> None:
     assert run(scenario()) is True
 
 
+def test_hotspot_client_absent_self_heal_persists_its_own_errno() -> None:
+    # WP8: a real, actionable self-heal event (F.1's soft-Timer-callback-drop gotcha actually
+    # firing), not routine WiFi-mode-transition noise - the one sibling of this file's own
+    # module-docstring "routine observations degrade silently" policy that genuinely needed
+    # upgrading to err_s().
+    client = make_client(hotspot_time_min=1, wifi_refresh_sec=5)
+    run(client._hotspot_client_absent())  # arms the timer (never triggered)
+    client.hotspot_timer_ticks_since_armed = 23  # one tick short of the threshold
+
+    run(client._hotspot_client_absent())  # crosses the threshold this tick
+    log = run(client.pr.get_log())[client.pr.name]
+    assert log["ErrNum"][-1] == 19
+    assert log["ErrType"][-1] == "E"
+
+
 def test_hotspot_client_absent_degrades_gracefully_when_alarm_pool_exhausted() -> None:
     client = make_client(hotspot_time_min=1)
     with _RaiseOnArm():
-        client._hotspot_client_absent()  # must not raise despite the timer failing to arm
+        run(client._hotspot_client_absent())  # must not raise despite the timer failing to arm
     assert client.hotspot_timer_running is False  # left False so the next cycle retries arming it
 
 
@@ -1339,7 +1354,7 @@ def test_hotspot_client_absent_degrades_gracefully_on_a_memory_error() -> None:
     # wifi_refresh_sec cycle retries arming it rather than getting stuck.
     client = make_client(hotspot_time_min=1)
     with _RaiseOnArm(MemoryError):
-        client._hotspot_client_absent()  # must not raise despite the timer failing to arm
+        run(client._hotspot_client_absent())  # must not raise despite the timer failing to arm
     assert client.hotspot_timer_running is False  # left False so the next cycle retries arming it
 
 
@@ -1347,7 +1362,7 @@ def test_hotspot_client_absent_starts_the_led_flash_task() -> None:
     client = make_client()
 
     async def scenario() -> None:
-        client._hotspot_client_absent()
+        await client._hotspot_client_absent()
         assert client.ledflash is not None
         await _cancel(client.ledflash)
 
@@ -2580,7 +2595,7 @@ def test_hotspot_client_connected_cancels_an_already_running_ledflash_task() -> 
     client = make_client()
 
     async def scenario() -> bool:
-        client._hotspot_client_absent()  # starts a real ledflash task
+        await client._hotspot_client_absent()  # starts a real ledflash task
         first_flash = client.ledflash
         assert first_flash is not None
         client._hotspot_client_connected()  # must call first_flash.cancel() itself

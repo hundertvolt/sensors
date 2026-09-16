@@ -722,12 +722,16 @@ def test_real_microdot_sgp40_setter_end_to_end_i2c_bus_fault_still_succeeds_and_
 
 
 def test_real_microdot_sgp40_setter_end_to_end_write_fault_surfaces_as_failed_not_500() -> None:
-    # SGP40's real "Failed" path (see the bus-fault test above for why it isn't an I2C one): a
-    # broken persistence layer. ConfigManager.write_config() catches its own OSError and reports the
-    # whole write failed, so base_classes.py's _set_dict_cfg() marks every requested key "Failed" -
-    # including the never-persisted trigger field, which correctly does *not* fire its push callback
-    # off a failed write. Same assertion shape as the BMP3xx fault test: a normal 200 carrying
-    # per-field detail, not a raised exception and not a bare Microdot 500.
+    # SGP40's real broken-persistence-layer path (see the bus-fault test above for why an I2C fault
+    # isn't this one). WP5 (SPECIFICATION.md Part F.2): ConfigManager.write_config() no longer
+    # touches the filesystem inline - it validates and stages synchronously, then hands the actual
+    # open()/json.dump() write to an independent asyncio.create_task(), decoupled from this request
+    # entirely. A broken persistence layer is therefore invisible to base_classes.py's own
+    # "persisted" check - the response reports the ordinary Valid outcome, and the never-persisted
+    # trigger field's push callback fires exactly as it would on a healthy write, since nothing about
+    # its own correctness depends on whether the disk write it's unrelated to ever lands. The fault
+    # only ever surfaces later, as a logged errno - never back through this response, and never a
+    # raised exception or a bare Microdot 500 either.
     reader, _i2c = make_sgp_reader()
     _break_cfg_file(reader.cfgmgr.config_file)
     app = _sgp_app(reader)
@@ -736,9 +740,10 @@ def test_real_microdot_sgp40_setter_end_to_end_write_fault_surfaces_as_failed_no
     assert res.status_code == 200
     body = json.loads(res.body)
     assert body["res"] == "OK"  # the request itself was validly processed and dispatched
-    assert body["result"] == {"BackupPeriod": "Failed", "SGPResetVOC": "Failed"}
-    assert reader.reset is False  # nothing was persisted, so nothing was pushed live either
-    assert run(reader.cfgmgr.get_dict(["BackupPeriod"])) == {"BackupPeriod": 1}  # still the default
+    assert body["result"] == {"BackupPeriod": "Valid", "SGPResetVOC": "Valid"}
+    assert reader.reset is True  # pushed live regardless of the still-pending, doomed flash write
+    run(reader.cfgmgr.flush_pending())  # now the deferred flush actually runs, and fails (EISDIR)
+    assert run(reader.cfgmgr.get_dict(["BackupPeriod"])) == {"BackupPeriod": 1}  # never made it to disk
 
 
 # ---------------------------------------------------------------------------

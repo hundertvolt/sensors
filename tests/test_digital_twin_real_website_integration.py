@@ -80,8 +80,14 @@ async def _boot(port: int) -> None:
 async def _start_webserver() -> "asyncio.Task[None]":
     assert sensortask_wozi.webserver is not None
     task = sensortask_wozi.webserver.get_task_starters()[0]()
-    await asyncio.sleep(0.1)  # let _run() actually reach start_server()/bind - same bound
-    # test_asy_webserver_service.py's own F.8 test uses for the identical real-socket startup race.
+    # WP1/CLAUDE.md's implicit-FRAM-wiring rule made webserver.pr real-FRAM-backed whenever the
+    # device wires FRAM (every real device today): _run() now awaits a real self.pr.setup() call
+    # (a real chunk read/write) before it ever reaches start_server()/bind, not the instant no-op
+    # a RAM-only logger's own setup() was - test_asy_webserver_service.py's own F.8 test still uses
+    # the old 0.05s bound because its own WebserverService fixture is never constructed with fram=.
+    # Measured directly against this file's own real digital_twin machine fakes: consistently ready
+    # within ~400ms; 1.0s keeps a real (~2.5x) margin rather than a bare-minimum guess.
+    await asyncio.sleep(1.0)
     return task
 
 

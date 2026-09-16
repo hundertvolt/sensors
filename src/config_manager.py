@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from typing import Any, Literal, NamedTuple, TypeVar
 
+    from asy_fram_manager import AsyFramManager
     from print_log import ErrorLog
 
     T = TypeVar("T", int, float, str)
@@ -50,7 +51,7 @@ if TYPE_CHECKING:
     # value just to serve the generator (BUILD_CHAIN_PLAN.md's quality bar). See
     # SPECIFICATION.md Part C.14.2 for the grammars and buildgen/wiring.py for the parser.
 
-from print_log import PrintLogHistory
+from print_log import PrintLogHistory, make_logger
 
 
 def _special_bypass(check_val: "CfgValue", val_special: "CfgSpecial", scalar_type: type, *, check_special: bool) -> "bool | None":
@@ -235,8 +236,12 @@ if TYPE_CHECKING:
 
 
 class ConfigManager:
-    def __init__(self, filename: str, cfg_vals: "ConfigSchema", name: str) -> None:
-        self.pr = PrintLogHistory(name="CFGMGR_" + name)
+    def __init__(self, filename: str, cfg_vals: "ConfigSchema", name: str, fram: "AsyFramManager | None" = None) -> None:
+        # Inherits its owning module's FRAM durability (CLAUDE.md's implicit-FRAM-wiring rule: every
+        # module gets optional FRAM logging, and this one is no exception) - falls back to the exact
+        # same RAM-only PrintLogHistory as before whenever fram is None, so a caller that never
+        # passes it sees no observable change at all.
+        self.pr: PrintLogHistory = make_logger(fram, name="CFGMGR_" + name)
         self.name = "CFGMGR_" + name  # matches self.pr.name - the _ModuleLike registration shape
         # asy_webserver_service.py's registration lists key on (error_sources=).
         self.config_lock = asyncio.Lock()
@@ -244,6 +249,17 @@ class ConfigManager:
         self.cfg_vals = cfg_vals
         self.valid = False
         self._cache: dict[str, CfgValue] = {}
+        # Staging slot for write_config()'s deferred flash write (SPECIFICATION.md Part F.2) - not
+        # yet on disk, but the read path serves it first so a GET reflects a just-accepted PUT
+        # immediately rather than waiting for the actual flash write to complete.
+        self._staged: dict[str, CfgValue] | None = None
+        self._pending_flush: asyncio.Task[None] | None = None
+
+    def _current(self) -> "dict[str, CfgValue]":
+        # write_config() always stages a full snapshot (dict(self._cache) plus the changed keys),
+        # never a partial one, so a plain swap - not a per-key merge - is correct here: read-your-
+        # write for a value not yet flushed, exactly as it would read once the flush completes.
+        return self._staged if self._staged is not None else self._cache
 
     async def _get_values(self, keys: "ConfigSchema") -> "list[Any] | None":
         if not self.valid:
@@ -251,7 +267,8 @@ class ConfigManager:
             return None
         self.pr.all(self.config_file, "- Reading config data into list.")
         try:
-            return [self._cache[key] for key in schema_names(keys)]
+            current = self._current()
+            return [current[key] for key in schema_names(keys)]
         except KeyError as e:  # unknown key
             await self.pr.err_s(self.config_file, "- Config read error:", e, errno=6)
             return None
@@ -272,14 +289,17 @@ class ConfigManager:
         await self.pr.reset()
 
     async def get_dict(self, keys: "list[str]") -> "dict[str, CfgValue] | None":
-        # Reads _cache directly - no lock needed (write_config never awaits mid-mutation, so no
-        # partial state is observable here; see module docstring for the cache design).
+        # Reads _cache (or _staged, if a write_config() this instant is between staging and its own
+        # flush actually landing - read-your-write) directly - no lock needed: neither write_config()
+        # nor _flush_staged() ever awaits mid-mutation of the field this reads, so no partial state
+        # is observable here (see module docstring for the cache design).
         if not self.valid:
             await self.pr.err_s(self.config_file, "- Config is not valid, cannot read!", errno=7)
             return None
         self.pr.all(self.config_file, "- Reading config data into dict.")
         try:
-            return {key: self._cache[key] for key in keys}
+            current = self._current()
+            return {key: current[key] for key in keys}
         except (KeyError, TypeError) as e:  # unknown key, or a non-iterable/malformed keys param
             await self.pr.err_s(self.config_file, "- Config read error:", e, errno=8)
             return None
@@ -304,12 +324,24 @@ class ConfigManager:
     async def write_config(
         self, data: "dict[str, CfgValue]", cfg_vals: "ConfigSchema",
     ) -> "tuple[bool, WriteValidity]":
+        # Validates and stages synchronously, then hands the actual flash write to an independent
+        # asyncio.create_task() instead of awaiting it inline (SPECIFICATION.md Part F.2): an
+        # RP2040 flash write disables interrupts port-wide for its whole duration, and doing it
+        # inline here reset the very HTTP connection whose PUT triggered it (BACKLOG.md, 2026-09-15
+        # - a real bench-hardware finding). The write no longer needs to share a breath with the
+        # response - by the time it actually runs, that connection is typically already closed.
         if not self.valid:
             await self.pr.err_s(self.config_file, "- Config is not valid, cannot write!", errno=9)
             return False, {}
         async with self.config_lock:
             try:
-                new_cache = dict(self._cache)  # working copy - only committed to _cache after a successful write
+                # Built off _current(), not the raw _cache: a second write_config() call can enter
+                # this block before an earlier one's own _flush_staged() has actually run (that task
+                # is only scheduled, not started, by the time this one's own lock-holding stretch
+                # begins) - basing new_cache on the not-yet-flushed staged snapshot instead is what
+                # keeps a rapid pair of writes additive rather than the second one silently
+                # clobbering the first's still-pending change.
+                new_cache = dict(self._current())  # working copy - only staged/committed after validation
                 changed = False
                 defaults = schema_dict(cfg_vals)
                 dict_results: WriteValidity = {}
@@ -347,19 +379,74 @@ class ConfigManager:
                 if not changed:
                     self.pr.evt(self.config_file, "- No new / unchanged config data.")
                     return True, dict_results
-                with open(self.config_file, "w") as f:
-                    json.dump(new_cache, f)
-                self._cache = new_cache  # only commit once the write has actually succeeded
-                self.pr.evt(self.config_file, "- Config data was written.")
-            except (MemoryError, OSError, ValueError, AttributeError) as e:  # file errors, a non-dict
-                # `data` param (AttributeError on .items()), or json.dump() exhausting the heap;
-                # ValueError is defensive since dump() no longer reads/reparses json here.
-                await self.pr.err_s(self.config_file, "- Error writing config data:", e, errno=14)
+                # Staged, not yet on flash - get_dict()/_get_values() consult this first (read-your-
+                # write), and _cache stays "what's actually on disk" until _flush_staged() commits it.
+                self._staged = new_cache
+                self._pending_flush = asyncio.create_task(self._flush_staged(new_cache))
+                self.pr.evt(self.config_file, "- Config data staged, flash write scheduled.")
+            except (MemoryError, AttributeError) as e:  # a non-dict `data` param (AttributeError on
+                # .items()), or dict()/the validation loop exhausting the heap - no file I/O happens
+                # in this method anymore (see _flush_staged), so OSError/ValueError no longer apply.
+                await self.pr.err_s(self.config_file, "- Error validating config data:", e, errno=15)
                 return False, {}
             else:
                 return True, dict_results
 
+    async def _flush_staged(self, staged: "dict[str, CfgValue]") -> None:
+        # The actual, still-synchronous-and-uninterruptible flash write, now fully decoupled from
+        # whatever request originally triggered it. Re-acquires the same lock write_config() uses,
+        # so at most one write (validate-and-stage, or flush) is ever in flight per ConfigManager -
+        # a later write_config() call simply queues behind this one, seeing the fresh _cache once it
+        # resumes, exactly as if the two calls had run back-to-back synchronously.
+        async with self.config_lock:
+            if self._staged is not staged:
+                # A newer write_config() call staged (and scheduled its own flush for) something
+                # else while this task was waiting for the lock - this snapshot is superseded, and
+                # writing it now would silently regress a value already replaced. Not reachable by
+                # arrival order alone (create_task() runs tasks in creation order), only if this
+                # task's own turn was ever skipped past whoever's flush already committed the newer
+                # snapshot - defensive, so the "last write always wins" property never depends on
+                # asyncio's own scheduling order being FIFO.
+                return
+            try:
+                with open(self.config_file, "w") as f:
+                    json.dump(staged, f)
+                self._cache = staged  # only commit once the write has actually succeeded
+                self.pr.evt(self.config_file, "- Config data was written.")
+            except (MemoryError, OSError, ValueError, AttributeError) as e:  # file errors, or
+                # json.dump() exhausting the heap; ValueError is defensive since dump() no longer
+                # reads/reparses json here. _cache is deliberately left untouched - "what's on disk,
+                # as far as we know" per the module docstring - this is the accepted, logged-only
+                # residual-risk outcome (SPECIFICATION.md Part F.2), never re-raised into the caller.
+                await self.pr.err_s(self.config_file, "- Error writing config data:", e, errno=14)
+            finally:
+                if self._staged is staged:  # nothing newer staged while this flush was running
+                    self._staged = None
+                if self._pending_flush is asyncio.current_task():
+                    self._pending_flush = None
+
+    async def flush_pending(self) -> None:
+        # Waits for a write_config()-spawned flush to actually finish rather than merely being
+        # scheduled. Most real callers tolerate the deferred write per this module's own design
+        # (SPECIFICATION.md Part F.2) and never need this - the one exception is a commanded
+        # reboot/bootloader (buildgen/codegen.py's generated _flush_pending_configs(), called from
+        # _system_cmd_callback() before either action): that path is software-triggered and can
+        # easily wait a flush out, so it should, rather than inheriting the power-loss-only residual
+        # risk this module's design otherwise accepts.
+        # Only ever holds the LATEST write_config() call's own task - a still-outstanding earlier
+        # one it superseded is never awaited directly, but is always safe to leave unawaited: it
+        # either already ran (in creation order, the common case) or will still run and detect
+        # itself superseded via _flush_staged()'s own snapshot-identity check, a no-op either way.
+        pending = self._pending_flush
+        if pending is not None:
+            await pending
+
     async def setup(self) -> None:
+        await self.pr.setup()  # required for all logged warnings and errors, matches every other
+        # FRAM-capable module's own setup() - a real gap before WP2 (CLAUDE.md's implicit-FRAM-
+        # wiring rule): harmless no-op while self.pr was always RAM-only, but load-bearing now that
+        # it can be a real PrintLogHistoryStore - without this, self.pr.initialized never becomes
+        # True and every later err_s()/wrn_s() call here silently skips its own FRAM write.
         data: dict[str, CfgValue] | None = None
         try:
             if (os.stat(self.config_file)[0] & 0x4000) == 0:  # 0x4000 = MP_S_IFDIR, MicroPython's own

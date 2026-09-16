@@ -134,7 +134,10 @@ class FRAM_SPI(Lockable):
 
     async def _write(self, start_address: int, data: bytes | bytearray | memoryview) -> bool:
         if await self.get_write_protected():
-            self.pr.wrn("FRAM currently write protected.")
+            # WP8: persisted, matching AsyFramManager's own "communication paused, not writing"
+            # precedent (asy_fram_manager.py, wrnno=60/70/80) for the same class of condition - a
+            # refused-but-expected write against a deliberately-gated chip, not a hardware fault.
+            await self.pr.wrn_s("FRAM currently write protected.", wrnno=84)
             return False
         if not await self._enable_write():
             await self.pr.wrn_s("FRAM write enable latch did not set, aborting write.", wrnno=82)
@@ -176,7 +179,10 @@ class FRAM_SPI(Lockable):
             await self.pr.err_s("FRAM not initialized, run setup first!", errno=90)
             return False
         if not self.asy_lock.locked():  # from Lockable class
-            self.pr.wrn("FRAM access not locked!")
+            # WP8: an internal-contract violation (a caller failing to hold the lock the Lockable
+            # base class requires), not a hardware fault - a real code defect if it ever fires, so
+            # errno rather than wrnno, unlike the benign, expected refusals above/below.
+            await self.pr.err_s("get_values: FRAM access not locked!", errno=99)
             return False
         if (addr_start < 0) or (addr_start + len(buf) > self._max_size):
             await self.pr.err_s("get_values: Invalid FRAM address range!", errno=91)
@@ -189,7 +195,10 @@ class FRAM_SPI(Lockable):
             await self.pr.err_s("FRAM not initialized, run setup first!", errno=92)
             return False
         if not self.asy_lock.locked():  # from Lockable class
-            self.pr.wrn("FRAM access not locked!")
+            # WP8: same internal-contract violation as get_values() above, own errno per the
+            # "grouped by the raising method" convention (SPECIFICATION.md C.7.1) - matches how the
+            # sibling "not initialized" check is already numbered separately per method here.
+            await self.pr.err_s("set_values: FRAM access not locked!", errno=100)
             return False
         if (addr_start < 0) or (addr_start + len(buf) > self._max_size):
             await self.pr.err_s("set_values: Invalid FRAM address range!", errno=93)

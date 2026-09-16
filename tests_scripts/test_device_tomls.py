@@ -35,7 +35,7 @@ _SINGLETON_DRIVERS = {"fram", "neopixel", "notification"}
 _MANDATORY_INFRA_DRIVERS = {"wifi", "ntp", "system"}
 _REQUIRED_DEVICE_INFRA_FIELDS = ("conn_fail_to_hotspot", "hotspot_time_min")
 # Driver/service kinds whose fram=/fram_storage= wiring is individually optional.
-_FRAM_WIRABLE_INSTANCE_DRIVERS = {"scd30", "sgp40", "bmp3xx", "isl29125", "neopixel", "notification"}
+_FRAM_WIRABLE_INSTANCE_DRIVERS = {"scd30", "sgp40", "bmp3xx", "isl29125", "neopixel", "notification", "uart_link"}
 # Mandatory-infra-side mirror of [instance.wiring], under [device.wiring] - both fields optional.
 _DEVICE_WIRING = {"led_target": "neopixel", "fram_target": "fram"}
 
