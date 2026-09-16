@@ -492,11 +492,48 @@ every number above is a digital-twin measurement, not a real-hardware one.**
 exclude the entire real cost of a FRAM transaction; the "design itself needs no change on this
 evidence" conclusion this paragraph previously drew is exactly the thing a real-hardware run could
 overturn, since the dominant term in a real FRAM setup call (SPI wire time under lock contention) is
-precisely what the twin cannot measure. **Not yet re-checked on real hardware as of this note** —
-see `REAL_HARDWARE_HANDOVER.md` (temporary, deleted once its findings land here) for the exact
-measurement plan and what to do if the contended `webserver` setup call turns out to matter for
-real. Do not treat this paragraph's numbers as validated for anything beyond "the twin's task
-graph resolves in this many simulated seconds."
+precisely what the twin cannot measure. **Now re-checked on real hardware (2026-09-16, `dev` bench board, real
+`dev` firmware built from each commit's own tree) — the twin numbers above are kept because they
+still show the design's shape, but the real figures below are the validated ones.** Protocol: one
+`picotool load -x -v` per commit, then 5 timed `hard_reset()` cycles (the first post-flash boot
+discarded as warm-up), `kick_all_stations()` before each, polling `GET /status` every 200ms for a
+real `200`.
+
+| Commit | What it is | Real boot-to-first-`200` (median of 5) | Spread | DUT's own `SysUptime` at first `200` |
+|---|---|---|---|---|
+| `25e0e19` | pre-WP baseline | **7.74s** | 7.70-7.76s | 5s |
+| `9cf8a9c` | WP1+WP2 | **9.80s** | 9.75-9.81s | 6s |
+| `e47d4e1` | WP1-WP8 complete | **9.76s** | 9.73-10.58s | 5-6s |
+| `7cd8dd1` | + the `CFGMGR_SYSTEM` setup-order fix | **10.66s** | 10.65-10.73s | 6s |
+
+Three things this settles. **(1) The real cost of WP1+WP2 is ~+2.05s** (7.74s → 9.80s, +27%), on a
+baseline the twin never modelled at all — the twin's own ~1.9-2.2s "before WP1" figure is not a
+real-hardware baseline, it is the task graph resolving with zero wire time, and real pre-WP boot is
+already 7.7s because WiFi association and DHCP dominate it. **(2) WP3-WP8 add nothing measurable**
+(9.80s → 9.76s, inside the run-to-run spread), so the whole delta belongs to WP1+WP2's chunk growth,
+as predicted. **(3) The twin's *delta* prediction was good even though its absolute numbers were
+not**: it predicted WP2 alone would add ~1.4-1.8s, and the real WP1+WP2 delta is ~2.05s. The
+run-to-run spread is ±0.06s at the two earlier points, so the ~2s difference is far outside noise.
+
+**The `webserver` lazy-setup hypothesis is not the explanation, and the fix it proposed is not
+needed.** `webserver`'s own `self.pr.setup()` was confirmed on real hardware to *succeed* (its
+logger reads back `initialized == True` from a clean boot), so the contended window costs it time,
+not correctness — and since WP2 adds no new chunk to `webserver` itself, it cannot account for a
+delta that WP1+WP2 jointly produce. Giving `WebserverService` a real `setup()` in the uncontended
+batch would move at most one module's single chunk operation and is not justified by this
+measurement. Against CLAUDE.md's actual standard for boot latency — "does not starve the watchdog,"
+not "boots fast" — a ~9.8s wall-clock boot whose on-device portion is 5-6s, with WP6 feeding the
+watchdog after every `setup()` call, passes: 23 consecutive real reboots across the four flashed
+images produced no `WDT_RESET`. Left as-is deliberately.
+
+**The fourth row is the cost of a correctness fix, not of WP1-WP8.** `7cd8dd1` moves `fram` ahead of
+`sysfunct` in `setup_order` so `CFGMGR_SYSTEM`'s own logger can actually reach an initialized
+`AsyFramManager` (BACKLOG.md has the full defect); verified on the same board that `CFGMGR_SYSTEM`
+now reads back `initialized == True` where it previously read `False`. It costs +0.90s of real boot
+latency (9.76s → 10.66s, spread ±0.04s), which is **more than the ~170ms a single additional
+FRAM-backed logger's `setup()` is known to cost** and is not yet explained - worth understanding
+before treating the same reorder as free elsewhere. It does not threaten the watchdog budget, so it
+is not a reason to revert the fix.
 
 **This order, and `i2c0`'s SCD30-specific `timeout=200000`, are wozi's own — derived from
 `devices/wozi.toml`.** `buildgen` derives both from each device's own TOML rather than assuming

@@ -9,6 +9,28 @@ constraints.
 
 ## Refactor targets not yet done
 
+- **`CFGMGR_SYSTEM`'s FRAM-backed logger never initialized at boot - root-caused, fixed (7cd8dd1),
+  and the fix verified on real hardware (2026-09-16, `dev` bench board). Kept here only for the
+  measured cost the fix carries; the defect itself is closed.** `buildgen/codegen.py`'s `setup_order`
+  put `sysfunct` first and `fram` second, so `SystemService.setup()`'s own `await self.cfgmgr.setup()`
+  -> `pr.setup()` ran while `AsyFramManager` was not yet set up; both `_read()` and `_write()` failed,
+  `initialized` stayed `False`, and `print_log.py`'s `_store_err()` then took its
+  `if not self.initialized: return` branch on every later call - the entry was appended to the in-RAM
+  `history` deque and never written to FRAM, i.e. the exact opposite of WP2's intent for that logger,
+  and a quiet hole in CLAUDE.md's "read the FRAM-persisted per-module error logs before clearing
+  anything" rule for this one module. Confirmed on real hardware before the fix: from a clean boot
+  `d.sysfunct.cfgmgr.pr.initialized` was `False` while `CFGMGR_WIFI`/`CFGMGR_NTP`/`CFGMGR_SGP40`/
+  `SYSTEM`/`WEBSERVER` were all `True`, and `CFGMGR_SYSTEM` appeared zero times in a full boot log
+  that showed all six sibling `CFGMGR_*` loggers doing their FRAM read. The chunk was always
+  allocated (`pr.fram is not None`), so this was never a capacity problem - purely setup ordering.
+  Re-verified after the fix on the same board, same protocol: `CFGMGR_SYSTEM` now reads back
+  `initialized == True`. **The open part is the cost**: moving `fram` ahead of `sysfunct` raised real
+  boot-to-first-`200` on `dev` from 9.76s to 10.66s median (+0.90s, ±0.04s spread, so far outside
+  noise) - substantially more than the ~170ms one additional FRAM-backed logger's `setup()` should
+  cost, and not yet explained. Worth understanding before the same reorder is assumed free
+  elsewhere; it does not threaten the watchdog budget (SPECIFICATION.md's boot-latency note), so it
+  is not urgent.
+
 - **A config-persisting `PUT /sensors` reset its own HTTP connection under concurrent API load -
   fixed (WP5, 2026-09-16), pending real-hardware re-confirmation.** Root cause: an RP2040 flash
   write disables interrupts port-wide for its whole duration (`ports/rp2/rp2_flash.c`'s
@@ -117,11 +139,11 @@ constraints.
   earlier attempt's own branch, 176/321 again on this one). **Not yet done**: establishing exactly
   where the ~2.5x-per-device `PrintLogHistoryStore` growth (`scripts/test.sh`'s own comment gives
   the inventory: conn/ntp/sysfunct/webserver plus every FRAM-wired module's own `cfgmgr`) actually
-  goes by measurement rather than inference (`REAL_HARDWARE_HANDOVER.md`'s Topic 2a already traced
-  the matching *wall-clock* slowdown to the same 5-6 new FRAM-backed `cfgmgr` instances per device,
-  each paying an existing, unchanged ~170ms-per-instance setup cost - the same new instances are the
-  natural first place to look for the memory growth too, though the two haven't been tied together
-  by direct measurement yet), and looking for a design-level relief before accepting
+  goes by measurement rather than inference (the matching *wall-clock* slowdown was already traced,
+  by Unix-port instrumentation, to the same 5-6 new FRAM-backed `cfgmgr` instances per device, each
+  paying an existing, unchanged ~170ms-per-instance `setup()` cost that predates this branch - the
+  same new instances are the natural first place to look for the memory growth too, though the two
+  haven't been tied together by direct measurement yet), and looking for a design-level relief before accepting
   32M as permanent - whether every `ConfigManager` genuinely needs its own history ring, whether
   ring length can be shared/reduced, or whether `tests/test_sensortask.py` specifically (it builds
   all 6 devices' full object graphs repeatedly in one process - see that file's own docstring) can

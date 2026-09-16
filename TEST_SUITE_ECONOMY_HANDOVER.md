@@ -1,6 +1,7 @@
 # Test-suite economy handover — wall-clock + heap footprint
 
-Temporary file, same convention as `WP_RESTART_HANDOVER.md`/`REAL_HARDWARE_HANDOVER.md`: delete once
+Temporary file, same convention as the `WP_RESTART_HANDOVER.md`/`REAL_HARDWARE_HANDOVER.md` pair
+that preceded it (both since migrated and deleted): delete once
 its findings are either implemented-and-migrated (SPECIFICATION.md Part E, CLAUDE.md, BACKLOG.md)
 or confirmed not to apply. Written for a standalone session picking up this one unit of work.
 
