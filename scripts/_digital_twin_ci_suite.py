@@ -73,12 +73,26 @@ _DRIVER_ERRCOUNT_NAME = {"scd30": "SCD30", "sgp40": "SGP40", "bmp3xx": "BMP3XX",
 # Which bus-attached drivers produce a real /measurements reading (Run 4's "came back after being
 # faulted" check) vs which keep their error log FRAM-persisted (survives a reboot by design,
 # SPECIFICATION.md Part A.7) rather than in-memory-only (must reset to 0 across a reboot, Run 4's
-# other check) - both are real per-driver facts, not per-device ones.
+# other check) - both are real per-driver facts, not per-device ones. "fram" is deliberately absent
+# from _IN_MEMORY_ERROR_DRIVERS despite its own error log genuinely being in-memory-only
+# (AsyFramManager.pr is a plain PrintLogHistory, no fram= kwarg - confirmed directly): Run 3's own
+# `fram:write` fault can leave the persisted chip's chunk status byte stuck mid-write ("torn"), and
+# the dual-block+CRC self-healing read every other FRAM-backed module's own restore goes through
+# (asy_fram_manager.py's _read_chunk()) correctly detects and logs that as a genuine, fresh "FRAM"-
+# level error/warning on Run 4's very next boot - confirmed directly: the exact same history Run 3
+# itself already asserted was recorded reappears unchanged on Run 4's fresh process. Not old data
+# surviving (a real regression would be BMP3XX/SCD30 failing too, and they correctly show 0), and not
+# a defect - self-healing detecting real torn state IS the FRAM driver working as designed, the same
+# reasoning that already excludes SGP40's own history from an assertion here for the identical root
+# cause (see this function's own comment below).
 _MEASUREMENT_DRIVERS = frozenset({"scd30", "sgp40", "bmp3xx"})
-_IN_MEMORY_ERROR_DRIVERS = frozenset({"scd30", "bmp3xx", "fram"})
+_IN_MEMORY_ERROR_DRIVERS = frozenset({"scd30", "bmp3xx"})
 _PERSISTED_ERROR_MODULES = ("SGP40",)  # only fault-injectable module whose error log survives a
-# reboot; used by Run 5b/5c. WIFI is also in-memory-only (SPECIFICATION.md Part A.7) but isn't
-# bus-fault-injectable (no chip fake of its own) - checked separately (Run 8), not via ctx.drivers.
+# reboot; used by Run 5b/5c. WIFI's own top-level error log is FRAM-backed too (WP1's
+# implicit-FRAM-wiring rule, CLAUDE.md/SPECIFICATION.md Part A.7 - AsyConnTime passes fram=fram
+# through to SensorReader.__init__ same as every other FRAM-wired module's own self.pr), so it
+# follows the same all-or-nothing abrupt-restart guarantee - checked separately (Run 8), not via
+# ctx.drivers, since it isn't bus-fault-injectable (no chip fake of its own).
 
 # The one HTTP status every endpoint in this suite is expected to answer with - a non-200 anywhere
 # is a suite failure, never an alternative success path.
@@ -247,14 +261,16 @@ def _http(method: str, path: str, body: dict[str, Any] | None = None, timeout: f
         conn.close()
 
 
-def _error_type_count(entry: dict[str, Any]) -> int:
+def _error_type_count(entry: dict[str, Any], type_char: str = "E") -> int:
     # entry["counter"] (PrintLogHistory's own ErrCount) increments on both errors ("E") AND
     # warnings ("W") pushed into the same history - a driver's own "recovered after N failures"
     # notice is itself a "W" entry (see e.g. src/asy_sgp40_driver.py's own read-loop recovery path),
-    # so a real recovery can bump "counter" without any NEW failure. Counting "E"-typed history
-    # entries specifically is the actual "did more real errors happen" signal this suite needs.
+    # so a real recovery can bump "counter" without any NEW failure. Counting one specific type's
+    # history entries (default "E") is the actual "did N of THIS kind of event happen" signal this
+    # suite needs - WIFI's own scripted connect failures are "W"-typed (asy_wifi_service.py's
+    # conn_fail_to_hotspot uses wrn_s(), not err_s()), so Run 8 passes type_char="W".
     history = entry.get("history", [])
-    return sum(1 for item in history if isinstance(item, dict) and item.get("type") == "E")
+    return sum(1 for item in history if isinstance(item, dict) and item.get("type") == type_char)
 
 
 def _errcount(name: str) -> dict[str, Any]:
@@ -300,17 +316,17 @@ def _wait_for_errcount_above(name: str, floor: int, timeout_s: float) -> dict[st
     return entry
 
 
-def _wait_for_error_type_count(name: str, target: int, timeout_s: float) -> dict[str, Any]:
-    # Same "poll, never guess a sleep" reasoning as _wait_for_errcount_above(), but keyed on the
-    # "E"-typed count _error_type_count() extracts rather than the raw counter (which a "W" recovery
-    # notice also bumps). A fixed sleep here encodes a host-speed assumption: on this project's own
-    # bench Pi4 a bounded 3-fault SGP40 run needs ~8s to record all three and settle, where an x86
-    # CI runner needs ~2s, so a 6s sleep passes there and samples mid-sequence here.
+def _wait_for_error_type_count(name: str, target: int, timeout_s: float, type_char: str = "E") -> dict[str, Any]:
+    # Same "poll, never guess a sleep" reasoning as _wait_for_errcount_above(), but keyed on one
+    # specific type's count _error_type_count() extracts rather than the raw counter (which a "W"
+    # recovery notice also bumps). A fixed sleep here encodes a host-speed assumption: on this
+    # project's own bench Pi4 a bounded 3-fault SGP40 run needs ~8s to record all three and settle,
+    # where an x86 CI runner needs ~2s, so a 6s sleep passes there and samples mid-sequence here.
     deadline = time.monotonic() + timeout_s
     entry: dict[str, Any] = {}
     while time.monotonic() < deadline:
         entry = _errcount(name)
-        if _error_type_count(entry) >= target:
+        if _error_type_count(entry, type_char) >= target:
             return entry
         time.sleep(1.0)
     return entry
@@ -647,9 +663,9 @@ def _run_3_sustained_bus_fault_matrix(ctx: RunContext) -> None:
 
 def _run_4_bus_fault_persistence_sweep(ctx: RunContext) -> None:
     # ---- Run 4: reboot fault-free after Run 3's matrix - what must reset, and that every faulted
-    # bus actually comes back. Whichever of SCD30/BMP3XX/FRAM this device actually has are
-    # in-memory-only by design and must read back 0 (SPECIFICATION.md Part A.7); that direction is
-    # deterministic and is what this run proves. ----
+    # bus actually comes back. Whichever of SCD30/BMP3XX this device actually has are in-memory-only
+    # by design and must read back 0 (SPECIFICATION.md Part A.7); that direction is deterministic
+    # and is what this run proves. ----
     #
     # This run deliberately does NOT assert that SGP40's FRAM-backed history survived Run 3 - it
     # cannot. Run 3's own matrix faults `fram:write` (when this device has a fram instance, which
@@ -662,6 +678,12 @@ def _run_4_bus_fault_persistence_sweep(ctx: RunContext) -> None:
     # behavior, not a defect (project owner's call, 2026-09-11): no recovery scheme is wanted for a
     # reboot that catches the chip mid-operation. The real persistence claim is proven in Run 5b
     # instead, where the chip is healthy and the outcome is deterministic on any host.
+    #
+    # FRAM's own error log is excluded from the reset-to-0 sweep below for the same root cause, one
+    # layer down (see _IN_MEMORY_ERROR_DRIVERS's own comment): Run 3's `fram:write` fault can leave
+    # a chunk's status byte torn mid-write, and the dual-block+CRC self-healing read every other
+    # FRAM-backed module's restore goes through then correctly detects and logs that as a genuine,
+    # fresh "FRAM"-level entry on this very run's own boot - not persisted data, and not a defect.
     log4 = ctx.logs_dir / "run4_bus_fault_persistence_sweep.log"
     proc = _spawn(ctx, [], log4)
     try:
@@ -887,14 +909,26 @@ def _run_7_wifi_hotspot_dns(ctx: RunContext) -> None:
 
 
 def _run_8_wifi_persistence_and_configure_ntp(ctx: RunContext) -> None:
-    # ---- Run 8: reboot fault-free - WIFI's own persistence-correctness check (in-memory-only,
-    # should reset to 0), plus configure an unreachable NTP host (persisted) for Run 9. ----
+    # ---- Run 8: reboot fault-free - WIFI's own persistence-correctness check, plus configure an
+    # unreachable NTP host (persisted) for Run 9.
+    #
+    # WIFI's own top-level error log is FRAM-backed (WP1's implicit-FRAM-wiring rule - see
+    # _PERSISTED_ERROR_MODULES's own comment above), so - like SGP40's Run 5b - it follows the
+    # all-or-nothing abrupt-restart guarantee, never a guaranteed-reset-to-0: Run 7's own shutdown
+    # is the same ordinary _shutdown() (SIGINT) every run uses, which can still catch a FRAM chunk
+    # write in flight even after the REST-visible counter has already updated (Run 5b's own finding
+    # - the counter and the physical write are separate, not atomic). This used to assert
+    # counter==0 under a stale, pre-WP1 in-memory-only assumption that real CI never actually
+    # exercised until WP1/WP2 finally went through it (confirmed stale, not a design ambiguity: the
+    # fram=fram wiring and CLAUDE.md's own FRAM-backed-subset list both already state the current,
+    # intended behavior). ----
     log8 = ctx.logs_dir / "run8_wifi_persistence_and_configure_ntp.log"
     proc = _spawn(ctx, [], log8)
     try:
         _wait_until_serving(proc)
-        entry = _errcount("WIFI")
-        _check(condition=entry.get("counter", 0) == 0, msg=f"Run 8: WIFI's error count correctly did NOT persist across reboot (in-memory-only by design) ({entry!r})")
+        entry = _wait_for_error_type_count("WIFI", _WIFI_SCRIPTED_FAILURES, timeout_s=30.0, type_char="W")
+        restored = _error_type_count(entry, type_char="W")
+        _check(condition=restored in (0, _WIFI_SCRIPTED_FAILURES), msg=f"Run 8: WIFI's FRAM-backed history came back all-or-nothing after an abrupt restart - never a partial {restored}-entry remnant ({entry!r})")
         # 192.0.2.1: RFC 5737 TEST-NET-1, guaranteed non-routable - a deliberate, reproducible
         # "unreachable" address rather than relying on incidental CI sandbox network policy.
         status, body = _http("PUT", "/networking", {"NTP_Host": "192.0.2.1"})
