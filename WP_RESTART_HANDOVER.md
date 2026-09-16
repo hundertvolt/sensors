@@ -255,6 +255,125 @@ implementation.
 
 ---
 
+## REFINEMENT PASS — cross-checked against real code, before implementation (session 2)
+
+Done after the restart, before touching any work package: read every topic below against the real
+source (not memory), the real generated `build_system()` output, every `devices/*.toml`, and the
+pinned MicroPython source directly, specifically looking for places where the doc's own
+specificity had drifted from what the code actually needs, and for related gaps the original
+eight-topic list didn't name. Findings below are folded into the individual WP sections further
+down; this section is the one-place summary of *what changed and why*, so a fresh reader doesn't
+have to diff the two passes by hand.
+
+### The one cross-cutting finding underlying Topics 1/2/3/5
+
+Topics 2, 3, 5, and half of Topic 1 are not four independent gaps — they are **one missing
+"forward what you were given" step, in one specific place**, showing up wherever something builds
+on top of it. Traced the real object graph: `AsyConnTime` (`conn`) and `AsyNtpClient` (`ntp`) are
+**already `SensorReaderConfig` subclasses**; `WebserverService` **already takes `fram=` and already
+wires it to `make_logger()`**; `DNSServer` (owned by `conn`) **already receives `fram=` forwarded
+from `conn`'s own constructor** (`asy_wifi_service.py:136`); `UART_Comm` **already accepts `fram=`**
+at the class level (`asy_uart_comm.py:177,186`). Every one of those forwarding hops already works
+correctly today. The **only** place in the whole architecture that actually drops `fram` on the
+floor is `SensorReaderConfig.__init__` itself (`base_classes.py:281-285`): it receives `fram`,
+forwards it into `super().__init__()` for its own logger, then builds the `ConfigManager` it owns
+two lines later with no `fram=` at all. That one omission is Topic 3's entire bug, and it is also
+the *reason* Topic 1 looks like it touches three classes when two of them need no class-level
+change at all (see WP1 below) — and it's why Topic 1's own to-do phrased this as "extend FRAM
+support to conn/ntp/webserver" when the real gap is one line in one already-shared base class plus
+three missing buildgen kwargs.
+
+### Corrections to individual topics (detail lives in each WP section below)
+
+- **WP1 is smaller than described.** No `src/` class changes needed at all — `conn`/`ntp`/
+  `webserver` already fully support `fram=`. Every real `devices/*.toml` already declares
+  `fram_target = "fram"` at every point this needs it (confirmed by grep across all 6). The real
+  generated `sensortask_wozi.py` shows `fram` is already constructed right after `spi0`, before
+  every sensor — `conn`/`ntp` are the *only* two things currently built earlier than it. The
+  "reorder construction" step is moving two lines, not restructuring the generator.
+- **WP5's scope decision (was "question 1" this session): fix generically, not `/sensors`-only.**
+  `write_config()`'s synchronous-flash-write bug is reachable from all four PUT-backed routes
+  (`/sensors`, `/networking`, `/system`, `/notification`), not just `/sensors` — they all go through
+  the same `ConfigManager.write_config()`. Owner's decision: fix it once in the shared
+  `ConfigManager`/`SensorReaderConfig` machinery so all four are covered, not just the one that
+  happened to get bench-tested under load. Checked for a reason this could break the two settings-
+  route post-write hooks that fire inline (`conn.reconnect_wifi`, `ntp.ntp_force_sync`): both are
+  pure trigger/flag-setters (`asy_wifi_service.py:748`, `asy_ntp_client.py:395`) that don't
+  themselves read the just-written value — the real credential/host read happens later, inside the
+  WiFi/NTP state machines' own loops, well after a fire-and-forget deferred write would already have
+  run. No redesign needed there.
+- **WP5 also needs to handle more than one staged write per request.** BACKLOG.md's own existing
+  root-cause entry (see below) already establishes that a multi-sensor `/sensors` PUT does **one
+  blackout window per changed sensor**, not one combined window, since `_put_sensors()` awaits each
+  sensor's `_set_dict_cfg()` in turn and each is its own synchronous file write. The generic fix
+  needs to stage/flush potentially several `ConfigManager`s from one request, not assume exactly one.
+- **The root cause itself needed no re-derivation — it's already independently confirmed, in more
+  depth than this document has, in `BACKLOG.md`'s existing "HIGH IMPORTANCE" entry** (the one this
+  session's own step 1 was told to add — it has since been extended past that by a source-only
+  follow-up). It traces `begin_critical_flash_section()`/`end_critical_flash_section()` in the real
+  pinned `ports/rp2/rp2_flash.c` (independently re-confirmed this pass, same conclusion: a real
+  `save_and_disable_interrupts()` around every `flash_range_erase()`/`flash_range_program()` call),
+  and goes further than a re-derivation from scratch would have: it also identifies that the same
+  interrupt-disable blacks out the CYW43 "host wake" IRQ and lwIP's own `sys_check_timeouts()` timer
+  (`ports/rp2/mpnetworkport.c`), and it explicitly rules out one candidate RST mechanism (lwIP's
+  `tcp_poll()`-driven close-timeout abort, ruled out on timing — its 10000ms default is far longer
+  than any plausible single flash-op blackout) while leaving the precise packet-level trigger open,
+  honestly, as something only a real packet capture can settle. **Read that entry, don't
+  re-investigate it** — it's more thorough than anything achievable from source alone a second time.
+- **`README.md`'s manual-walkthrough section states the old assumption as fact and will need
+  updating once WP5 lands**: "like every config write, it's saved to disk immediately, and takes
+  effect immediately too" (`README.md:541`). This is exactly the kind of place WP5's own to-do
+  already asks to grep for — found it, naming it here so it isn't missed among the `SPECIFICATION.md`
+  copies of the same invariant.
+- **Topic 2's "errcount must stay uniform" requirement (owner's point 7) is already structurally
+  guaranteed, not something to build.** `get_error_sources()` already returns `[self, self.cfgmgr]`
+  for every `SensorReaderConfig`; `buildgen`'s generated `_collect_error_sources()` already fans
+  every module's list into one flat registry that `/status` displays generically, by name, with no
+  per-module special-casing anywhere in `asy_webserver_service.py`. Once WP2 lands, `CFGMGR_<name>`
+  just starts appearing FRAM-backed instead of RAM-only — no webserver-layer changes needed. The
+  to-do item here is a regression test confirming this keeps holding, not new plumbing.
+- **WP6 is not a consequence of WP1/WP2/WP3 adding more FRAM setups.** The real generated
+  `setup_order` for wozi is `sysfunct, fram, conn, ntp, sgp40, bmp3xx, notification` — the calls
+  actually capable of running long are `conn.setup()` (WiFi association + hotspot fallback) and
+  `ntp.setup()` (NTP/DNS round-trips), not the FRAM-backed loggers, which are fast and deterministic
+  SPI checks. WP6 is an independent, pre-existing latent risk this pass surfaced while reading the
+  boot sequence — worth fixing regardless of whether WP1/2/3 ship, and not something WP1/2/3 make
+  meaningfully worse.
+- **WP4 becomes load-bearing the moment WP1+WP2 land** (they add roughly one new FRAM chunk per
+  FRAM-wired sensor's `ConfigManager`, plus one each for `conn`/`ntp`/`webserver`/`DNSServer` — on
+  the order of 6-8 new chunks device-wide). Recommend running WP4's twin-tier check both before and
+  after WP1+WP2 land, to get a real number against the 8KB chip rather than trusting an estimate.
+- **WP8's real scope is much smaller than "sweep the codebase," and in the opposite direction from
+  what its billing implies.** A fresh grep (not reusing any list from memory, per WP8's own
+  instruction) found 34 bare `self.pr.err()`/`.wrn()` call sites across 11 files. Reading each in
+  context: ~10 are inside `Timer.init()` failure handlers or `Timer` callback bodies (synchronous,
+  no event loop — can't call `err_s()` without restructuring the caller, and shouldn't); 5 are the
+  FRAM allocation-capacity sites in `asy_fram_manager.py`/`asy_sgp40_driver.py` that Topic 6 already,
+  separately, decided must stay exactly as they are; 3 are LED on/off/toggle failures in
+  `asy_wifi_service.py` that already carry their own explicit comment explaining why they degrade
+  silently (a caller-supplied LED object, deliberately not fed into `hw_op_failed`/`_error_check()`);
+  and roughly a dozen more are in `asy_wifi_service.py`'s own "observation vs. attempt" tiering,
+  **already stated as deliberate policy in that file's own module docstring** (`asy_wifi_service.py:
+  4-6`): "attempt" operations already persist via `err_s()`, "routine state observations" already
+  degrade silently on purpose. Upgrading any of those would misreport routine, expected WiFi-mode-
+  transition noise as persisted device faults — exactly the kind of thing to flag, not silently
+  "fix." **The genuine gaps found**, all inside `async def` methods with no sync-context excuse:
+  `system_service.py:342`'s `_apply_level()` (a caller-supplied level-setter callback failing —
+  every other caller-supplied-callback call site in this codebase already persists via `err_s()`);
+  `asy_wifi_service.py:396`'s "hotspot timer callback appears dropped, forcing reconnect" (inside
+  `async def _activate_hotspot_ap()` — a real, actionable self-heal event worth persisting, not
+  routine noise); and three sites in `asy_fram_driver.py` — `_write()`'s write-protected refusal
+  (`:137`) and the two "access not locked" internal-invariant checks in `get_values()`/
+  `set_values()` (`:179`, `:192`). `FRAM_SPI`'s own reserved `wrnno` range is documented as 81-83 in
+  `SPECIFICATION.md`'s errno/wrnno table, but only 81 and 82 are ever actually used anywhere in the
+  file — 83 is sitting there unused, and there are exactly the right number of unlogged warning
+  conditions here to plausibly fill it. **Net: WP8 shrinks from "sweep ~34 call sites" to "confirm
+  ~28 of them are correctly, already-deliberately print-only, and fix the 5 real ones."** Owner's
+  decision (this session): fold these 5 into WP8's scope rather than tracking them separately, and
+  keep watching for the same pattern elsewhere as WP8 is actually implemented.
+
+---
+
 ## WORK PACKAGES — sorted implementation units
 
 Every decision below is final (see the topic sections further down). This section turns them into
@@ -282,6 +401,17 @@ verification and documentation of an existing design rather than new implementat
 automatically whenever a device's TOML wires a FRAM chip, with zero behavior change for devices
 that don't — closing the gap where all three already have the class-level capability (same
 mechanism every already-wired sensor uses) but the generator never gives them the chance.
+
+**Confirmed against real code this session**: no `src/` class changes are needed at all.
+`AsyConnTime`/`AsyNtpClient` are already `SensorReaderConfig` subclasses that already forward
+`fram` correctly; `WebserverService` already takes `fram=` and already wires it to `make_logger()`;
+`DNSServer` already receives `fram=` forwarded from `conn`'s own constructor. Every real
+`devices/*.toml` already declares `fram_target = "fram"` at every point this needs it (checked all
+6). The real generated `sensortask_wozi.py` shows `fram` already constructed right after `spi0`,
+before every sensor — `conn`/`ntp` are the only two things currently built earlier than it, so the
+"reorder" step is moving those two lines later, not restructuring the generator. This whole WP is
+buildgen-only: three missing `fram=` kwargs at the `AsyConnTime(...)`/`AsyNtpClient(...)`/
+`WebserverService(...)` call sites, one dict extension in `validate.py`, and the reorder.
 
 **Sufficient when**: a FRAM-equipped device's generated `build_system()` constructs `conn`, `ntp`,
 and `webserver` with real FRAM chunks; a non-FRAM device's generated build is behaviorally
@@ -495,59 +625,94 @@ the negative case is what actually proves the check works rather than merely nev
       footprint minimal, per explicit direction.
 - [ ] Run this check against every currently-defined real device TOML, not just wozi/dev.
 
-### WP5 — PUT /sensors deferred-write fix (the original connection-reset bug)
+### WP5 — deferred config-write fix (the original connection-reset bug), generalized to every PUT-backed config route
 **Depends on**: nothing code-wise (see coordination note above re: WP2 for full FRAM-durability
-value). **Touches**: `asy_webserver_service.py`, `config_manager.py`, `SPECIFICATION.md` (F.2
-invariant + related docs), confirm-only on `api_response.py`. **Corresponds to**: Topic 1 below.
+value). **Touches**: `config_manager.py`, `base_classes.py` (the shared setter-dispatch path every
+`SensorReaderConfig` PUT route already goes through), `SPECIFICATION.md` (F.2 invariant + related
+docs), `README.md`'s manual-walkthrough section, confirm-only on `asy_webserver_service.py` and
+`api_response.py`. **Corresponds to**: Topic 1 below.
 
-**Goal**: Close the confirmed real-hardware connection-reset defect without weakening the failing
-bench tests that found it, without losing any error visibility (a genuine write failure must still
-be discoverable, durably where WP2 applies), and without changing the client-visible API contract
-— by deferring the flash write until after the response and connection are safely clear of the
-network freeze it causes.
+**Scope decision made this session (was "question 1"): fix this in the shared `ConfigManager`/
+`SensorReaderConfig` machinery, not only in `_put_sensors()`.** The synchronous-flash-write defect
+is reachable from all four PUT-backed config routes (`/sensors`, `/networking`, `/system`,
+`/notification`) — they all funnel through the same `ConfigManager.write_config()`. Fixing it at
+that shared layer closes the bug everywhere it exists for the same implementation cost as fixing it
+in one handler, instead of leaving the identical risk latent on three routes nobody has bench-tested
+under load yet. `SCD30` is confirmed structurally unaffected either way (it dispatches through its
+own non-persisting setter, never through `ConfigManager.write_config()`).
+
+**Mechanism, corrected this session: decouple the write from the connection lifecycle entirely —
+don't hook `_close_writer()`/`_serve()` at all.** Earlier drafts of this refinement chased how to
+tie the deferred write to *this specific connection's* close event (a real problem: Microdot's
+per-connection task model gives a route handler no channel back to the code that closes its
+connection). That coupling isn't needed. Since the response is validation-only and a write failure
+is just a log entry (owner's framing), the write only needs to not share a breath with the
+response: **stage the validated data, then hand the actual `write_config()` call to its own
+independent `asyncio.create_task()` (fire-and-forget)** instead of awaiting it inline. The handler
+returns immediately; Microdot sends the response and closes the connection on its own schedule,
+completely decoupled from when the spawned task actually runs the flash write. No hook into
+`_serve()`, no per-connection tracking, no sweep of other connections — `asy_webserver_service.py`
+needs no changes for this at all beyond what already exists.
+
+**A single request can stage more than one write.** `_put_sensors()` (and the settings-group
+dispatch behind the other three routes) can touch several sensors/fields in one PUT, awaiting each
+one's `_set_dict_cfg()` in turn — confirmed by `BACKLOG.md`'s own root-cause entry, which notes a
+multi-sensor PUT already causes one flash-write blackout *per changed sensor* today, not one
+combined blackout. The fix needs to spawn (or otherwise trigger) one deferred-write task per
+`ConfigManager` that actually got a staged value this request, not assume exactly one.
 
 **Sufficient when**: the two real bench tests that found this
 (`test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads_under_api_load`,
 `test_bmp3xx_config_write_does_not_disturb_its_own_concurrent_reads_under_api_load`) pass on real
-hardware with zero connection resets and unmodified, un-weakened assertions; no existing
+hardware with zero connection resets and unmodified, un-weakened assertions; the equivalent
+concurrent-load scenario is at least covered by a mock/twin-tier test for `/networking`/`/system`/
+`/notification` too, since no bench test exists yet for those three; no existing
 `tests/test_asy_webserver_service.py`/`tests/test_config_manager.py`/`tests/test_base_classes.py`
-test regresses; `GET /sensors`'s staged-vs-written correctness is independently and explicitly
-tested, not merely implied by the PUT tests passing.
+test regresses; every settings-flavored `GET`'s staged-vs-written correctness is independently and
+explicitly tested, not merely implied by the PUT tests passing.
 
 **Completeness / self-containment / harmony check**:
-- [ ] Confirm this does **not** get silently applied to SCD30 — per `SPECIFICATION.md`, SCD30
-      "dispatches through its own non-persisting setter (no `cfgmgr`, NVM-backed)," so it doesn't
-      go through `ConfigManager.write_config()` at all. Explicitly verify and test that SCD30 is
-      unaffected, rather than assuming the staging mechanism naturally skips it.
-- [ ] Run CLAUDE.md's mandatory bird's-eye-view scan across `src/` given this changes a
-      cross-cutting pattern (every `SensorReaderConfig`-based PUT path) — confirm whether the other
-      PUT-backed endpoints (`/networking`, `/system`, `/notification`) also need this treatment or
-      are deliberately, explicitly out of scope; **flag and discuss, don't silently decide either
-      way**.
-- [ ] Confirm the "at most one staged value per sensor at a time" assumption (which this whole
-      design's simplicity rests on) genuinely holds for **every** existing `/sensors` PUT caller in
-      the codebase — the web UI, `js/mock-server.js`, any device/bench script — not just the two
+- [x] Confirmed this does **not** apply to SCD30 — it dispatches through its own non-persisting
+      setter (no `cfgmgr`, NVM-backed), never through `ConfigManager.write_config()` at all. Still
+      worth one explicit regression test rather than resting on this analysis alone.
+- [x] Confirmed the two inline settings-route post-write hooks that fire synchronously within the
+      request (`conn.reconnect_wifi`, `ntp.ntp_force_sync`) are unaffected — both are pure
+      trigger/flag-setters (`asy_wifi_service.py:748`, `asy_ntp_client.py:395`) that don't
+      themselves read the just-staged value; the real credential/host read happens later, inside
+      the WiFi/NTP state machines' own loops, well after a fire-and-forget deferred write would
+      already have completed. Re-verify this holds once the real diff exists, not just from this
+      reading.
+- [ ] Confirm the "at most one *unflushed* staged value per sensor at a time" assumption (which
+      this design's simplicity rests on) genuinely holds for **every** existing PUT caller across
+      all four routes — the web UI, `js/mock-server.js`, any device/bench script — not just the two
       bench tests that originally found the bug.
+- [ ] Run CLAUDE.md's mandatory bird's-eye-view scan across `src/` given this changes a
+      cross-cutting pattern (every `SensorReaderConfig`-based PUT path, now confirmed to be all
+      four routes, not a maybe) — flag and discuss anything the scan turns up rather than silently
+      fixing it.
 
-**Spec-conformance requirement**: check `asy_webserver_service.py`, `config_manager.py`, and
-`api_response.py` against `SPECIFICATION.md` Part A.5 (Microdot/REST layer) and Part C.5.2 (setter
-dispatch) explicitly; update the F.2 invariant and search the rest of `SPECIFICATION.md`/
-`CLAUDE.md` for any other place still stating or implying that a config write is always synchronous
-within the request — every one of those needs updating, not just the one already identified.
+**Spec-conformance requirement**: check `config_manager.py`, `base_classes.py`, and (confirm-only)
+`asy_webserver_service.py`/`api_response.py` against `SPECIFICATION.md` Part A.5 (Microdot/REST
+layer) and Part C.5.2 (setter dispatch) explicitly; update the F.2 invariant; also update
+`README.md:541`'s manual-walkthrough line ("like every config write, it's saved to disk immediately,
+and takes effect immediately too" — found this session, not in the original grep) and search the
+rest of `SPECIFICATION.md`/`CLAUDE.md` for any other place still stating or implying that a config
+write is always synchronous within the request.
 
-**Testing requirement**: functional (staged → written happy path; `GET` returns the correct value
-at each stage); resilience/biting coverage (the deferred write genuinely fails with a real
-`OSError`/`MemoryError` — confirm the errno lands in the right place per WP2's wiring for that
-module; the accepted power-loss-before-attempt case behaves exactly as accepted, not worse in some
-other way); regression (every currently-passing synchronous-path test for an ordinary, uncontended
-single PUT); plus the real-hardware confirmation above, once a real-hardware go-ahead exists for
-that session.
-- [ ] `asy_webserver_service.py`'s `_put_sensors()`/`_serve()`: after the (unchanged,
-      validation-only) response is built, defer the actual `write_config()` call(s) to run
-      **after** `_close_writer()` completes for that connection — one fire-and-forget call per
-      closed connection with a staged write, no task queue (API design guarantees at most one
-      staged value per sensor at a time).
-- [ ] `config_manager.py`: add a single per-`ConfigManager` staging slot (not a queue) holding the
+**Testing requirement**: functional (staged → written happy path across all four routes; `GET`
+returns the correct value at each stage); resilience/biting coverage (the deferred write genuinely
+fails with a real `OSError`/`MemoryError` — confirm the errno lands in the right place per WP2's
+wiring for that module; a single request staging writes to more than one `ConfigManager`; the
+accepted power-loss-before-attempt case behaves exactly as accepted, not worse in some other way);
+regression (every currently-passing synchronous-path test for an ordinary, uncontended single PUT,
+on all four routes); plus the real-hardware confirmation above, once a real-hardware go-ahead
+exists for that session.
+- [ ] `base_classes.py`'s `_set_dict_cfg()`/`_set_mgr_cfg()` (or `config_manager.py`'s
+      `write_config()` itself, whichever ends up the cleaner seam — a design call for
+      implementation time, not fixed here): after validation, stage the coerced values and spawn
+      the actual flash write as an independent `asyncio.create_task()` instead of awaiting it
+      inline. No task queue, no connection-lifecycle hook.
+- [ ] `config_manager.py`: add a per-`ConfigManager` staging slot (not a queue) holding the
       validated-but-not-yet-written data between "response sent" and "write executes."
 - [ ] `config_manager.py`'s read path (`get_dict()`/`_get_values()`): consult the staging slot
       first, fall back to `_cache` — implements the decided `GET` read-your-write rule (staged
@@ -556,19 +721,21 @@ that session.
 - [ ] Review `write_config()`'s exception handling/`errno=14`/"`_cache` committed only after
       success" contract, and `api_response.py`/`WriteValidity`, and decide what each needs.
 - [ ] Update `SPECIFICATION.md`'s F.2 invariant text (and a repo-wide grep for anywhere else the
-      old "write is always synchronous within the request" assumption is stated) to reflect: a
-      flash write is now reachable only through a REST PUT that has already been accepted **and
-      whose connection has already closed**; note the accepted residual-risk window explicitly
-      rather than implying zero risk unconditionally.
+      old "write is always synchronous within the request" assumption is stated, `README.md:541`
+      included) to reflect: a flash write is now reachable only through a REST PUT that has already
+      been accepted **and whose validated response has already been returned**; note the accepted
+      residual-risk window explicitly rather than implying zero risk unconditionally.
 - [ ] Add a test asserting the `/status` errcount presentation stays uniform across every module as
       WP1/WP3 add more FRAM-wired modules (no module special-cases how its own entry vs. its
-      `CFGMGR_<name>` entry is shown).
+      `CFGMGR_<name>` entry is shown) — this should already hold structurally per the refinement-pass
+      finding above; the test confirms it rather than builds it.
 - [ ] Full test coverage: normal flow (staged → written, GET reflects the right value at each
-      stage), error handling (deferred write fails → errno recorded in the right place per WP2's
-      wiring for that module, `_cache` unchanged exactly as today), the accepted residual-risk case
-      (simulated restart between response and deferred write — confirm it's silently lossy exactly
-      as accepted, not silently *wrong* some other way), and regression against every existing
-      `write_config()`/`_set_dict_cfg()` test for the ordinary uncontended-PUT case.
+      stage, across all four routes), error handling (deferred write fails → errno recorded in the
+      right place per WP2's wiring for that module, `_cache` unchanged exactly as today), the
+      multi-staged-write-per-request case, the accepted residual-risk case (simulated restart
+      between response and deferred write — confirm it's silently lossy exactly as accepted, not
+      silently *wrong* some other way), and regression against every existing `write_config()`/
+      `_set_dict_cfg()` test for the ordinary uncontended-PUT case.
 - [ ] Re-verify the finished implementation against `CLAUDE.md`'s F.3 rule and the updated
       WiFi-power-cycle-recovery invariant explicitly, once code is written.
 ### WP6 — Boot-time watchdog safety for the one-time setup batch
@@ -592,6 +759,19 @@ through the same code path.
   elegantly and generally — the owner's proposal was that `SystemService` take the watchdog as a
   constructor argument, defaulting to a no-op when absent, rather than sprinkling `if wdt is not
   None` at every call site.
+
+**Confirmed against real code this session, not just the generated shape**: `SystemService` already
+takes `watchdog: WDT | None = None` and already stores it (`system_service.py:69,97`), but today
+only feeds it inside `start_and_check_tasks()`'s own loop (`:247-248`), via an inline `if
+self.watchdog is not None` check, not yet a reusable no-op-safe method. The actual one-time setup
+batch this WP targets is `buildgen/codegen.py:431`'s flat `lines.extend(f"    await {name}.setup()"
+for name in setup_order)` — no feed between calls today. **The real generated `setup_order` for
+wozi is `sysfunct, fram, conn, ntp, sgp40, bmp3xx, notification`** (confirmed from the actual
+generated `sensortask_wozi.py`, not inferred) — `conn.setup()` (WiFi association + hotspot
+fallback) and `ntp.setup()` (NTP/DNS round-trips) are the two calls actually capable of running
+long; the FRAM-backed loggers' own setup is a fast, deterministic SPI check. **This means the risk
+this WP fixes already exists today, independent of WP1/WP2/WP3** — it is not something those three
+work packages make meaningfully worse by adding more FRAM-backed setups to the batch.
 
 **Sufficient when**: the setup batch feeds the watchdog after each call; a no-watchdog build runs
 the identical path with a no-op and needs no special-casing; `scripts/lint.sh`,
@@ -660,41 +840,90 @@ stagger obligation.
 - [ ] Document the mechanism and its rationale in `SPECIFICATION.md` (see Part 5).
 
 ### WP8 — `self.pr.err()` → `err_s()` upgrade, wired through to API and website
-**Depends on**: nothing. **Touches**: unscoped — its own first step is to establish the touched-file
-list; do not assume it is small until that's done. **Corresponds to**: Topic 11 below (the one
-cross-cutting requirement from Part 2 with no work package of its own until this entry was added on
-review of this document — added here so a fresh session working WP-by-WP does not skip it).
+**Depends on**: nothing. **Touches**: `system_service.py`, `asy_wifi_service.py`,
+`asy_fram_driver.py`, `SPECIFICATION.md`'s errno/wrnno table (C.7.1). **Corresponds to**: Topic 11
+below (the one cross-cutting requirement from Part 2 with no work package of its own until this
+entry was added on review of this document — added here so a fresh session working WP-by-WP does
+not skip it).
 
-**Goal**: every bare, print-only `self.pr.err()` call site that should instead be recorded and
-surfaced (per the owner's decision message 9) is upgraded to `err_s()`, and the resulting recorded
-error reaches the REST API and the website the same way every other module's `errno`/`wrnno` history
-already does.
+**Scope resolved this session (was "question 2"): a fresh grep found 34 bare `self.pr.err()`/
+`.wrn()` call sites across 11 files; reading each in context, ~28 are already correctly,
+deliberately print-only, and 5 are genuine gaps.** Owner's decision: fold the 5 real gaps into this
+WP's scope, and keep watching for the same pattern (a call site that looks like an oversight but is
+actually already a documented, deliberate choice, or vice versa) as this WP is actually
+implemented — the categories below are a snapshot from this pass, not guaranteed exhaustive.
 
-**Sufficient when**: every genuine call site is identified and upgraded (or explicitly, individually
-justified as correctly staying print-only, not silently skipped); each newly-recorded error is
-visible through `/status`'s existing `errcount` convention with no bespoke per-module display
-invented; `scripts/lint.sh`, `scripts/typecheck.sh`, and `scripts/test.sh` stay clean; no currently-
-passing test regresses.
+**Already correctly print-only — do not touch, and do not re-flag without new evidence:**
+- ~10 sites inside `Timer.init()` failure handlers or `Timer` callback bodies (`asy_wifi_service.py`,
+  `asy_ntp_client.py`, `asy_scd30_driver.py`, `asy_isl29125_driver.py`, `asy_bmp3xx_driver.py`,
+  `asy_sgp40_driver.py`, `system_service.py`'s `_timer_sequencer()`/`_reboot()`/
+  `start_uptime_timer()`) — synchronous, no event loop; `err_s()` isn't reachable without
+  restructuring the caller, and `SPECIFICATION.md` C.7 already documents this as the standing
+  legitimate exception.
+- 5 sites in `asy_fram_manager.py`'s `get_chunk()`/`get_timestamped_chunk()` (×4) and
+  `asy_sgp40_driver.py`'s FRAM backup allocation at construction time (×1) — Topic 6/WP4 already,
+  separately, decided these stay exactly as they are (sync FRAM-allocation context, no
+  errno/async change wanted).
+- 3 sites in `asy_wifi_service.py`'s `_led_on()`/`_led_off()`/`_led_toggle()` — each already carries
+  its own explicit comment: a caller-supplied LED object that "could misbehave, so this degrades
+  silently rather than feeding `hw_op_failed`/`_error_check()`."
+- ~12 more sites in `asy_wifi_service.py` (`_wlan_status_or_none()`, `_wlan_isconnected_or_false()`,
+  `_get_hotspot_stations()`, the diagnostic/`ifconfig`/`rssi` reads, the two `Timer.init()` sites
+  already counted above) — the file's own module docstring (`asy_wifi_service.py:4-6`) **already
+  states this as deliberate policy**: "attempt" operations persist via `err_s()`; "routine state
+  observations" degrade silently via `err()` on purpose. Upgrading these would misreport routine,
+  expected WiFi-mode-transition noise as persisted device faults.
+
+**Genuine gaps found this session (all inside `async def` methods, no sync-context excuse):**
+- `system_service.py:342`, `_apply_level()` — a caller-supplied level-setter callback failing.
+  Every other caller-supplied-callback call site in this codebase already persists via `err_s()`
+  (`_dispatch_system_cmd()`, `_dispatch_notification_led()`, etc.) — this one is the odd one out.
+  Confirm it's reachable only from async call sites before converting it to `async def`.
+- `asy_wifi_service.py:396`, "Hotspot timer callback appears dropped, forcing reconnect" — inside
+  `async def _activate_hotspot_ap()`. This is the soft-Timer-callback-drop self-heal path
+  (`SPECIFICATION.md` Part F.1's gotcha) actually firing — a real, actionable, diagnostically
+  valuable event if it ever happens on real hardware, not routine noise.
+- `asy_fram_driver.py:137`, `_write()`'s write-protected refusal; `:179` and `:192`, the "FRAM
+  access not locked!" internal-invariant checks in `get_values()`/`set_values()` (a caller failing
+  to hold the lock the `Lockable` base class requires — a real code defect if it ever fires, not a
+  hardware fault). `FRAM_SPI`'s own reserved range is documented as `wrnno` 81-83 in
+  `SPECIFICATION.md`'s C.7.1 table, but only 81 and 82 are ever assigned anywhere in the file — 83
+  is unused and unclaimed, which is either a coincidence or the slot these three were meant to fill;
+  confirm before assuming either way.
+
+**Sufficient when**: the 5 genuine gaps above are upgraded (or, if closer investigation at
+implementation time finds one shouldn't be, explicitly justified in a comment rather than silently
+dropped) and any *additional* genuine gap this WP's own implementation pass turns up is treated the
+same way; every call site confirmed-correct above is left untouched with no re-litigation; each
+newly-recorded error is visible through `/status`'s existing `errcount` convention with no bespoke
+per-module display invented; `scripts/lint.sh`, `scripts/typecheck.sh`, and `scripts/test.sh` stay
+clean; no currently-passing test regresses.
 
 **Completeness / self-containment / harmony check**:
-- [ ] Do not reuse any call-site list from this document or from memory of the earlier session — it
-      is exactly the kind of finding Part 3's provenance note says to distrust. Re-derive it from a
-      fresh grep/read of `src/`.
-- [ ] Run CLAUDE.md's mandatory bird's-eye-view scan across every touched module once the real scope
-      is known — flag and discuss any cross-file inconsistency rather than silently fixing it.
+- [x] Fresh grep done this session, not reused from the earlier session's memory (34 sites, listed
+      above by category) — per Part 3's own provenance-distrust standard.
+- [ ] Run CLAUDE.md's mandatory bird's-eye-view scan across every touched module once the real diff
+      exists — flag and discuss any cross-file inconsistency rather than silently fixing it.
+- [ ] Re-check the "already correctly print-only" categorization above against the real diff context
+      at implementation time — this pass read each site's immediate surroundings, not necessarily
+      every caller.
 
 **Spec-conformance requirement**: check every touched file against `SPECIFICATION.md` Part D's
 checklist; confirm the upgrade doesn't invent a second error-recording pattern where `err_s()`'s
-existing one already covers the shape needed.
+existing one already covers the shape needed; if `wrnno` 83 is assigned, update C.7.1's table entry
+for `FRAM_SPI` to say what it now means instead of leaving it implicitly unused.
 
 **Testing requirement**: full normal flow, full error handling/self-healing/resilience, biting
 coverage, and regression tests, per the owner's own wording for this item — not a lighter bar than
 the other WPs.
 
-- [ ] Grep `src/` for every `self.pr.err(` (bare, non-`_s` form) call site and read each one in
-      context to decide whether it should become `err_s()`.
-- [ ] Upgrade the genuine cases; leave any call site that should stay print-only with a comment
-      explaining why, rather than silently skipping it.
+- [ ] Upgrade the 5 genuine cases identified above; leave every already-correct call site untouched.
+- [ ] If `_apply_level()` becomes `async def`, check both its call sites (`setup()` and
+      `set_debug_level()`/`_set_dict_cfg()`) are themselves async and can await it.
+- [ ] Decide `asy_fram_driver.py`'s three sites' `wrnno`/`errno` assignment against the already-
+      reserved-but-unused 83 slot (and whichever of the three genuinely need one — the "not locked"
+      checks may warrant `errno` instead of `wrnno`, being an internal-contract violation rather than
+      a warning-tier condition; a design call for implementation time).
 - [ ] Confirm each upgraded error surfaces through `/status`'s existing `errcount` convention with no
       new API shape.
 - [ ] Add the tests above.
@@ -702,6 +931,33 @@ the other WPs.
 ---
 
 ## TOPIC 1 — PUT /sensors resets its own HTTP connection under concurrent load — **DECIDED, fully scoped, no owner decisions remain**
+
+### MECHANISM CORRECTED THIS SESSION, AND SCOPE GENERALIZED — read before the "FINAL DESIGN" below
+
+Two changes from the round that produced the section below, both owner-confirmed this session
+("question 1" and its follow-up, see the REFINEMENT PASS section near the top of this document):
+
+1. **Scope: this is not a `/sensors`-only fix.** `write_config()`'s synchronous-flash-write bug is
+   reachable from all four PUT-backed config routes (`/sensors`, `/networking`, `/system`,
+   `/notification`) — they share the same `ConfigManager.write_config()` call underneath. Fix it
+   once in `config_manager.py`/`base_classes.py`'s shared setter-dispatch path, not only in
+   `asy_webserver_service.py`'s `_put_sensors()`.
+2. **Mechanism: don't hook `_close_writer()`/`_serve()` at all.** The "right after that
+   connection's HTTP response has been sent and the connection closed" framing below describes
+   *when* the write should happen, correctly — but the natural reading (tie the deferred write to
+   *this specific connection's* close event) runs into a real problem: Microdot gives a route
+   handler no channel back to the code that closes its own connection, and each connection is its
+   own `asyncio.Task`. That problem doesn't need solving, because it doesn't need to be *that*
+   connection's close specifically — the response is validation-only and a write failure is just a
+   log entry, so the write only needs to not share a breath with the response. **Stage the
+   validated data, then hand the actual `write_config()` call to its own independent
+   `asyncio.create_task()` (fire-and-forget)** instead of awaiting it inline. The handler returns
+   immediately; Microdot sends the response and closes the connection on whatever schedule it
+   already uses, fully decoupled from when the spawned task actually runs. This needs zero changes
+   to `_serve()`/`_close_writer()`.
+
+The rest of this section (residual risk, HTTP contract, `GET` read-your-write semantics) is
+unaffected by either change and stands as decided.
 
 ### FINAL DESIGN — all owner decisions now made (this session, latest round)
 
@@ -714,12 +970,13 @@ of that complexity away:
   sensor's config is always submitted as one complete, all-at-once field set per PUT (owner's own
   point 2). There is never a "second PUT arrives before the first one's write has landed" case to
   reconcile, so there is nothing to queue or coalesce — at most one staged value can ever exist per
-  sensor at a time.
+  sensor at a time. (A single request can still stage more than one *sensor's* write at once — see
+  the mechanism note above; the "at most one" guarantee is per sensor, not per request.)
 - **Each sensor's write is already atomic per module by API design** (owner's own point 3) — so the
   simplest possible trigger is correct and sufficient: **perform the actual `write_config()` call
-  right after that connection's HTTP response has been sent and the connection closed**, still
-  within the same request-handling flow (no separate scheduled task, no queue-draining worker). No
-  "idle moment" heuristic, no interval, no `_open_conns`-threshold logic — none of that is needed.
+  right after that connection's HTTP response has been sent** — see the mechanism note above for
+  how this is actually achieved (a spawned task, not a connection-close hook). No "idle moment"
+  heuristic, no interval, no `_open_conns`-threshold logic — none of that is needed.
 
 **Error reporting — decided direction:** a deferred write reports failures through
 `write_config()`'s own existing exception path into `CFGMGR_<name>`, rather than through any new
@@ -773,20 +1030,26 @@ asserting this uniformity holds (see to-do below) rather than trusting it by ins
 `SPECIFICATION.md` (*"every real `ConfigManager.write_config()` call is reachable only through the
 REST PUT path, so a device whose API is unreachable structurally cannot have a flash write in
 flight"*) must be rewritten to state the new reality precisely: a flash write is now reachable only
-through a REST PUT that has **already been accepted and whose connection has already closed** —
-still true that an unreachable API cannot have a *new* write triggered, but now also true that a
-**staged-but-not-yet-executed** write can exist very briefly after the response was sent and before
-the connection-close trigger fires. The WiFi-power-cycle-recovery argument still holds (a device
-whose API is unreachable can't accept a *new* PUT to begin with), but the "zero flash-corruption
-risk" framing should explicitly note the accepted residual-risk window from above rather than imply
-zero risk unconditionally.
+through a REST PUT that has **already been accepted and whose validated response has already been
+returned** — still true that an unreachable API cannot have a *new* write triggered, but now also
+true that a **staged-but-not-yet-executed** write can exist very briefly after the response was
+sent and before the spawned write task actually runs. The WiFi-power-cycle-recovery argument still
+holds (a device whose API is unreachable can't accept a *new* PUT to begin with), but the "zero
+flash-corruption risk" framing should explicitly note the accepted residual-risk window from above
+rather than imply zero risk unconditionally.
 
 ### TO-DO
-- [ ] `asy_webserver_service.py`'s `_put_sensors()`/`_serve()`: after the response is built (still
-      based on validation only, unchanged), defer the actual `write_config()` call(s) to run
-      **after** `_close_writer()` completes for that connection (no separate task queue — one
-      fire-and-forget call per closed connection that had a staged write is sufficient, since at
-      most one staged value can exist per sensor at a time by API design).
+- [ ] `base_classes.py`'s `_set_dict_cfg()`/`_set_mgr_cfg()` (or `config_manager.py`'s
+      `write_config()` itself — a design call for implementation time, whichever is the cleaner
+      seam): after validation, stage the coerced values and spawn the actual flash write as an
+      independent `asyncio.create_task()` (fire-and-forget) instead of awaiting it inline. No task
+      queue, and **no hook into `_serve()`/`_close_writer()` at all** — the write's timing only
+      needs to be decoupled from the response, not tied to this specific connection's close (see
+      the "MECHANISM CORRECTED THIS SESSION" note above for why the connection-close framing was
+      replaced). Fix this at the shared layer so all four PUT-backed routes (`/sensors`,
+      `/networking`, `/system`, `/notification`) are covered, not `_put_sensors()` alone. A single
+      request may need to spawn more than one such task (one per sensor/`ConfigManager` that
+      actually got a staged value this request).
 - [ ] `config_manager.py`: add a per-`ConfigManager` staging slot (single pending dict, not a
       queue) holding the validated-but-not-yet-written data between "response sent" and "write
       executes." No locking/coalescing logic needed beyond what `config_lock` already provides.
@@ -798,14 +1061,15 @@ zero risk unconditionally.
       committed after success" contract against the decided behavior, and change what needs it.
 - [ ] Review `api_response.py`/`WriteValidity` and decide whether any new state is needed.
 - [ ] Update `SPECIFICATION.md`'s F.2 invariant text per the "documentation" paragraph above; also
-      update `SPECIFICATION.md`/`CLAUDE.md` wherever the old "write is always synchronous within
-      the request" assumption is stated elsewhere (a repo-wide grep for the current invariant
-      wording is needed before editing — not yet done this session).
+      update `README.md:541`'s manual-walkthrough line ("like every config write, it's saved to disk
+      immediately, and takes effect immediately too" — found this session) and search the rest of
+      `SPECIFICATION.md`/`CLAUDE.md` for any other place still stating or implying that a config
+      write is always synchronous within the request.
 - [ ] Add a test explicitly asserting the `/status` errcount presentation stays uniform across every
-      module once WiFi/NTP/Webserver/UART_Comm join the FRAM-wiring scheme (Topics 2/5) — i.e. no
-      module special-cases how its own entry vs. its `CFGMGR_<name>` entry is shown, confirming
-      owner's point 7's "must fold this in consistently" requirement holds structurally, not just
-      by inspection.
+      module once WiFi/NTP/Webserver/UART_Comm join the FRAM-wiring scheme (Topics 2/5) — this
+      should already hold structurally per this session's refinement-pass finding (`/status`'s
+      `errcount` fan-in is already generic, by name, via `get_error_sources()`); the test confirms
+      it rather than builds new plumbing.
 - [ ] Full test coverage for the new deferred-write behavior itself: normal flow (staged → written,
       GET reflects staged then written value at the right times), error handling (deferred write
       fails → errno recorded in the right place, RAM or FRAM depending on Topic 3's wiring for that
@@ -1067,9 +1331,20 @@ Owner's words: "Needs to be updated and wired up through the API to the website 
 (full normal flow, full error handling / self-healing / resilience, biting coverage, regression) to
 be added."
 
-- [ ] Determine which call sites this applies to — the earlier list was produced by this session's
-      own analysis and is **not** carried forward; re-establish it from the code.
-- [ ] Wire the recorded errors through to the API/status and the website.
+- [x] Determine which call sites this applies to — the earlier list was produced by this session's
+      own analysis and is **not** carried forward; re-established from a fresh grep this session
+      instead (34 candidate sites across 11 files). Result, and why it's much narrower than it
+      first looked: see WP8 above, and the REFINEMENT PASS section near the top of this document.
+      Only 5 are genuine gaps; the rest are already correct, several already self-documented as
+      deliberately print-only (`asy_wifi_service.py`'s own module docstring already states the
+      "attempt vs. observation" policy; Topic 6 already separately decided the FRAM-allocation
+      sites stay as they are). **Owner's decision this session: fold the 5 real gaps into WP8, and
+      keep watching for the same pattern (miscategorized in either direction) as WP8 is actually
+      implemented — this list is a snapshot, not guaranteed final.**
+- [ ] Wire the recorded errors through to the API/status and the website — already structurally
+      free for the 5 identified gaps (every module's error history already fans into `/status`'s
+      generic `errcount` display via `get_error_sources()`, confirmed this session), so this is
+      confirm-and-test, not new plumbing.
 - [ ] Full test set per the owner's wording above.
 
 ### errno/wrnno conflicts are realigned project-wide, not worked around
@@ -1110,17 +1385,17 @@ design was preferred, not as an open option.
 
 | # | Topic | Status |
 |---|---|---|
-| 1 | PUT /sensors connection reset — fix approach | **Decided — respond-then-persist; no owner decisions remain** |
-| 2 | WiFi/NTP/Webserver implicit FRAM wiring | Decided — implement |
-| 3 | ConfigManager inherits FRAM from owner | Decided — implement, no new errno; **also a precondition for Topic 1's error durability** |
+| 1 | PUT /sensors connection reset — fix approach | **Decided — respond-then-persist, generalized to all 4 PUT-backed config routes (not just /sensors), via a fire-and-forget task, no connection-lifecycle hook; root cause independently re-confirmed against real MicroPython source and already documented in more depth in `BACKLOG.md`** |
+| 2 | WiFi/NTP/Webserver implicit FRAM wiring | Decided — implement; **confirmed buildgen-only, no `src/` class changes needed** (all three classes already support `fram=`) |
+| 3 | ConfigManager inherits FRAM from owner | Decided — implement, no new errno; **also a precondition for Topic 1's error durability**; confirmed as the one real gap — every other FRAM-forwarding hop in the codebase already works correctly |
 | 4 | Other modules affected? | Closed — scope limited to Topics 2/3/5 |
-| 5 | UART_Comm full FRAM support | Decided — implement |
-| 6 | FRAM capacity verification | Decided — deterministic post-build check, no errno/async; real-hardware tier explicitly settled as **mpremote-only, no new `/status` field** (owner's point 2 this round: "keep footprint minimal... handle via mpremote") |
+| 5 | UART_Comm full FRAM support | Decided — implement; confirmed class-level `fram=` support already exists, this is wiring-only |
+| 6 | FRAM capacity verification | Decided — deterministic post-build check, no errno/async; real-hardware tier explicitly settled as **mpremote-only, no new `/status` field** (owner's point 2 this round: "keep footprint minimal... handle via mpremote"); **becomes load-bearing once Topics 2/3 land (~6-8 new chunks device-wide) — run it before and after** |
 | 7 | errno/wrnno audit | Closed — not doing it |
 | 8 | Test coverage scheme | Existing 4-tier standing rule applies to 2/3/5/6, and to Topic 1's new deferred-write behavior |
-| 9 | Boot-time watchdog feeding | Decided — feed after every one-time `setup()`; watchdog optional, no-op default |
-| 10 | Sensor read-timer architecture | Existing design stands — verify against real source, document, do not rescale |
-| 11 | Cross-cutting requirements | `err_s()` upgrade + API/website wiring (→ **WP8**, added on review — no WP covered this until then); project-wide errno realignment; mandatory-module invariant |
+| 9 | Boot-time watchdog feeding | Decided — feed after every one-time `setup()`; watchdog optional, no-op default; **confirmed pre-existing risk independent of Topics 2/3/5, dominated by `conn.setup()`/`ntp.setup()`, not FRAM growth** |
+| 10 | Sensor read-timer architecture | Existing design stands — verify against real source, document, do not rescale; confirmed exactly matching real code (`_TIMER_BASE_PERIOD=1000`, real-timer-driven, not `asyncio.sleep()`) |
+| 11 | Cross-cutting requirements | `err_s()` upgrade + API/website wiring (→ **WP8**, added on review); **scope re-derived by fresh grep this session: ~28 of 34 candidate call sites are already correctly, deliberately print-only (several with their own explicit justifying comments already in place) — only 5 are genuine gaps, now named in WP8**; project-wide errno realignment; mandatory-module invariant |
 
 **Every open decision from earlier rounds is now resolved.** Nothing beyond the Topic-1 BACKLOG.md
 commit (`3f7cc25`) has been implemented. Topics 9 and 10 were settled *after* this checklist was
