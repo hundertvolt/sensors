@@ -138,22 +138,29 @@ def test_teardown_all_clears_every_registered_scratch_and_the_registry_itself() 
     teardown_all()
 
 
-def test_large_unrelated_sibling_entry_count_does_not_slow_or_crash_this_files_own_scratch() -> None:
-    # Direct regression for the real, reproduced failure mode this helper replaces: the old
-    # per-file _sweep_stale_tmp_dirs(prefix) called os.listdir() on tests/_tmp's shared ROOT, an
-    # allocation that scaled with (and, at a large enough count, crashed with a real MemoryError
-    # on) every OTHER file's own leftover entries, not just this file's. TmpScratch never lists
-    # the shared root at all - every operation is scoped to this file's own key subdirectory - so
-    # it must stay fast and crash-free no matter how many unrelated sibling entries pile up
-    # alongside it. 4000 flat sibling directories is well beyond anything one real
-    # scripts/test.sh run's own 66 files could organically create in the numbered-subdir shape
-    # this replaces, and already large enough to make an O(n) shared-root listdir cost show up
-    # against the bounded, O(1)-in-n cost this test asserts on.
+def _old_style_shared_root_listdir() -> None:
+    # A minimal reproduction of the retired per-file _sweep_stale_tmp_dirs(prefix)'s one expensive
+    # operation (see tests/test_sensortask.py's git history before this PR): os.listdir() on
+    # tests/_tmp's shared ROOT - an allocation that scales with every file's own leftover entries,
+    # not just the caller's own.
+    os.listdir(_ROOT)
+
+
+def test_large_unrelated_sibling_entry_count_crashes_the_old_shared_root_listdir_but_not_tmpscratch() -> None:
+    # Direct regression for the real, reproduced failure mode this helper replaces. 400,000 flat
+    # sibling entries is the exact, directly-confirmed count at which os.listdir() on tests/_tmp's
+    # shared root raises a real, uncaught MemoryError under -X heapsize=32M - the same flag
+    # scripts/test.sh always runs this suite with. This test proves both halves of the fix in one
+    # place: the old shape genuinely does break at this scale (not just asserted in prose), and
+    # TmpScratch - which never lists the shared root at all, only ever its own key subdirectory -
+    # does not, because the failure mode is structurally unreachable for it regardless of how
+    # large an unrelated sibling count grows. mkdir/rmdir at this scale cost ~10s/~4s respectively
+    # (measured directly) - affordable relative to this suite's own per-file timeout budget.
     try:
         os.mkdir(_ROOT)
     except OSError:
         pass
-    sibling_count = 4000
+    sibling_count = 400_000
     for i in range(sibling_count):
         try:
             os.mkdir(_ROOT + "/unrelated_sibling_" + str(i))
@@ -161,6 +168,13 @@ def test_large_unrelated_sibling_entry_count_does_not_slow_or_crash_this_files_o
             pass
 
     try:
+        try:
+            _old_style_shared_root_listdir()
+        except MemoryError:
+            pass  # confirms this population is genuinely large enough to reproduce the real bug
+        else:
+            raise AssertionError(f"expected the old shared-root os.listdir() to MemoryError against {sibling_count} entries - this population is no longer large enough to prove the regression it's meant to")
+
         t0 = time.ticks_ms()
         scratch = TmpScratch("scratchtest_large_sibling_count")
         try:
