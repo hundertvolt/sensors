@@ -1708,6 +1708,81 @@ reprogramming the Timer's period at runtime.
 separate `Timer.init()`-specific `MemoryError` path exists, but the widening is correct generic
 insurance regardless.
 
+### C.9.1 Read-trigger timer stagger: no-coincidence guarantee (WP7, verified 2026-09-16)
+
+**Design intent (owner-established, not re-derived here)**: every sensor's read period is settable
+in whole multiples of one second, one second being the shortest. The read-trigger timers are
+started **staggered evenly across exactly one second in total** — not at a fixed per-timer gap —
+so that, being real hardware timers that do not drift relative to one another once armed, **no two
+sensor reads ever coincide, for the entire runtime, for any combination of configured periods**: no
+harmonics, no beat frequencies, no races from period overlap. This is also why the timer starters
+are triggered by another real timer (precise, interrupt/alarm driven) and not by `asyncio.sleep()`,
+which offers only coarse, drift-prone timing. The one-second *total* spread is load-bearing and
+must not become a fixed per-task gap or be rescaled — a fixed gap of `g` ms for `N` timers spans
+`(N-1)*g` ms, which grows without bound as more timers are added and can itself become a multiple
+of some sensor's own period, reintroducing the exact coincidence this design exists to prevent.
+
+**The mechanism, traced end to end**:
+- `SystemService._timer_sequencer()`/`start_timers()` (this file) starts each `get_timer_starters()`
+  entry via a chain of `Timer.ONE_SHOT` callbacks, `_TIMER_BASE_PERIOD` (1000ms) divided by
+  `len(timers) + 1` apart — the `+1` is what keeps the total span strictly under 1000ms even as the
+  *last* timer starts, so every start offset lands strictly inside `(0, 1000)` ms, never at 0 or at
+  a multiple of 1000ms itself. **This is a different stagger from the one three paragraphs up in
+  Part A.7's boot-latency note** — that one staggers `get_task_starters()` *asyncio task* starts via
+  plain `await asyncio.sleep(1.0 / len(task_starters))` inside `start_and_check_tasks()`, a coarse,
+  scheduler-timed spread with no coincidence claim attached to it. The two mechanisms share
+  "~1 second, N participants" only because both happened to pick that shape independently, not
+  because they are the same code path — don't conflate them.
+- Each software-counter-based driver (`asy_bmp3xx_driver.py`/`asy_isl29125_driver.py`) arms its own
+  `Timer.PERIODIC` at a fixed 1000ms base tick (`asy_sgp40_driver.py`'s is also 1000ms, fixed, and
+  never divided down — "voc algorithm needs 1s period fixed", its own comment) and increments a
+  plain counter (`trigger_counter`/`self.trigger_counter`) each tick, firing the real read-trigger
+  event only once the counter reaches the user-configured `trigger_period` (whole seconds). So the
+  real read-trigger time for one of these three sensors is exactly `start_offset + k * 1000ms` for
+  integer `k`, where `start_offset` is that sensor's own `_timer_sequencer()`-assigned start moment.
+- **The no-coincidence proof**: every configured period is `1000 * n` ms for a positive integer
+  `n`, so `gcd` of any two sensors' periods is itself always a multiple of 1000ms. Two sensors'
+  read times coincide only if the difference between their `start_offset`s is congruent to 0 modulo
+  that `gcd` — i.e. only if it is itself a multiple of 1000ms. Since `_timer_sequencer()` assigns
+  every `start_offset` a distinct value strictly inside `(0, 1000)` ms (never 0, never ≥ 1000, and
+  never repeated - integer division of 1000 by up to a handful of distinct small divisors doesn't
+  coincide in practice either, and even a tie would only delay, never invalidate, the argument since
+  the *sequencer* itself never reissues the same delay to two different timers at the same instant),
+  that difference can never be a multiple of 1000ms — so the two sensors' read times can never
+  coincide, for any combination of configured periods. This holds for the entire runtime, not just
+  at startup, precisely because the underlying mechanism (below) never drifts.
+- **Confirmed against the real rp2 MicroPython source, not assumed** (`ports/rp2/machine_timer.c`,
+  the pinned v1.29.0 tag): a `Timer.PERIODIC`'s underlying Pico-SDK repeating alarm reschedules
+  itself by returning `-self->delta_us` from its own alarm callback (`alarm_callback()`) — a
+  **negative** return value tells the SDK's alarm pool to reschedule relative to the alarm's own
+  previous *target* time, not to "now" (a positive return would do the latter, accumulating drift
+  under scheduling jitter). This reschedule happens unconditionally inside the low-level alarm
+  callback itself, before `mp_irq_dispatch()` ever runs the Python-level callback - so even a
+  dropped **soft** callback (Part F.1's own documented depth-8-scheduler-queue drop) only ever
+  costs that one tick's `.set()` notification, never the timer's own phase: the next tick still
+  fires at the mathematically exact target time, not "one period after whenever the previous
+  callback happened to run." This is precisely what "do not drift relative to one another once
+  armed" means in the design intent above, and it is what makes the no-coincidence proof hold for
+  the whole runtime rather than only approximately, near startup.
+- **One real, deliberate exception to the pure phase-math argument, found while verifying this**:
+  `asy_scd30_driver.py` does **not** use the counter-based mechanism — its own 500ms base tick
+  (`start_trigger_timer`) only counts consecutive ticks (`trigger_half_sec = 2 * trigger_sec`)
+  towards *arming* an IRQ-driven trigger (`scd_init_irq()`), and the actual read fires on the
+  sensor's own physical data-ready interrupt (`irq_pin`), not at a purely-computed phase offset.
+  SCD30's own base tick still gets a staggered, drift-free start via the identical
+  `_timer_sequencer()` mechanism, but its *real* read time additionally depends on the physical
+  sensor's own internal measurement cycle - so the strict "never coincide" proof above applies
+  rigorously to BMP3xx/ISL29125/SGP40 relative to each other and to SCD30's own IRQ-*arming* checks,
+  but SCD30's actual read moment is IRQ-modulated on top of that, not purely phase-determined. This
+  matches the sensor's own real field behavior (an IRQ-driven data-ready signal, not a synthetic
+  polling schedule) and is not a defect - flagged here, per this Part's own scope, as a fact about
+  the design's actual boundary rather than left implicit.
+- **Regression coverage**: `tests/test_system_service.py`'s `_timer_sequencer()`/`start_timers()`
+  tests already cover the stagger's own arithmetic (`_TIMER_BASE_PERIOD / (len(timers) + 1)`, one
+  ONE_SHOT chain, `timers_running` only set once every starter has run); no new test was added for
+  this WP, since it verifies and documents an existing, already-tested mechanism rather than
+  changing it (`system_service.py`/`buildgen/codegen.py` are read-only for WP7, per its own scope).
+
 **Cascading-recovery-storm convention: a retry loop that fails non-raising (returns a sentinel)
 needs its own capped exponential backoff**, distinct from any outer exception-based backoff, or it
 spins at full speed — an outer `except Exception` never fires for a sentinel-returning failure.
