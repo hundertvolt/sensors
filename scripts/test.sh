@@ -185,7 +185,26 @@ per_file_timeout_s="${PER_FILE_TIMEOUT_S:-240}"
 # ~15-call-site wait bumped from 0.1s to a measured-safe 0.5s (see that file's own comment for why
 # a polling readiness check made things worse, not better, and was reverted) - a real ~35s addition
 # on top of an already-marginal baseline, not a large one, but 180s no longer has real margin.
-# Confirmed directly: 240s clears this file with room to spare, standalone and inside the full suite.
+# That "240s clears this file with room to spare" claim has since gone stale, corrected below.
+#
+# Per-file overrides for two files that grew past the 240s default outright - not a hang, and not
+# fixed by raising everyone's default (that would just make a genuine future hang 2-3x slower to
+# detect for the other ~50 files that still comfortably fit in 240s). Measured directly, 2026-09-16,
+# single full attempt each (not the 3x-retry-shortened runs CI otherwise sees), same toolchain/
+# heapsize as CI: tests/test_sensortask.py 447s real - it builds all 6 real devices' full
+# build_system() object graph once per scenario (327 scenario x device combinations in one process,
+# see that file's own docstring), and WP1+WP2's implicit-FRAM-wiring rule (CLAUDE.md) plus WP6's
+# added watchdog-feed scenario made each of those builds real-world heavier, the same way it made a
+# real device's own boot latency heavier (SPECIFICATION.md Part A.7). tests/
+# test_digital_twin_webserver_concurrency.py 268s real - already the heaviest file in the suite
+# before WP1 (see the comment above); WP1's own webserver.pr FRAM-backed wait bump was the last
+# straw that pushed it just past the 240s default this same comment once called safe margin. Both
+# get a value comfortably above their measured real time, not just past it, to absorb ordinary
+# CI-runner variance without falling back to retries for the common case.
+declare -A per_file_timeout_overrides_s=(
+    ["tests/test_sensortask.py"]=600
+    ["tests/test_digital_twin_webserver_concurrency.py"]=350
+)
 max_attempts=3
 failed_files=()
 passed_count=0
@@ -206,8 +225,9 @@ for test_file in tests/test_*.py; do
     else
         cmd=("$test_file")
     fi
+    file_timeout_s="${per_file_timeout_overrides_s[$test_file]:-$per_file_timeout_s}"
     for attempt in $(seq 1 "$max_attempts"); do
-        if MICROPYPATH="build/generated_src:src:tests:frozen_modules:.frozen" stdbuf -oL -eL timeout --kill-after=10 "$per_file_timeout_s" "$micropython_bin" -X heapsize=32M "${cmd[@]}"; then
+        if MICROPYPATH="build/generated_src:src:tests:frozen_modules:.frozen" stdbuf -oL -eL timeout --kill-after=10 "$file_timeout_s" "$micropython_bin" -X heapsize=32M "${cmd[@]}"; then
             ec=0
         else
             ec=$?
@@ -216,11 +236,11 @@ for test_file in tests/test_*.py; do
             passed_count=$((passed_count + 1))
             break
         elif [ "$ec" -eq 124 ] && [ "$attempt" -lt "$max_attempts" ]; then
-            echo "== $test_file exceeded ${per_file_timeout_s}s on attempt $attempt/$max_attempts - retrying in case of transient runner contention" >&2
+            echo "== $test_file exceeded ${file_timeout_s}s on attempt $attempt/$max_attempts - retrying in case of transient runner contention" >&2
             continue
         else
             if [ "$ec" -eq 124 ]; then
-                echo "== $test_file exceeded ${per_file_timeout_s}s on all $max_attempts attempts - treating as a real failure instead of hanging the job" >&2
+                echo "== $test_file exceeded ${file_timeout_s}s on all $max_attempts attempts - treating as a real failure instead of hanging the job" >&2
             fi
             failed=1
             failed_files+=("$test_file")

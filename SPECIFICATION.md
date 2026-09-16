@@ -486,9 +486,17 @@ exposed to the contended window, and WP2 adds no new chunk to `webserver` itself
 test_digital_twin_generated_boot.py`'s own 15s budget (raised from 6s for exactly this reason - see
 that constant's own comment). This is a one-time, self-resolving cost (steady-state serving is
 unaffected) and not something to "fix" by reordering `webserver` in the stagger, or by treating the
-latency itself as a defect (CLAUDE.md's own "boot latency is not a metric to optimise" rule) — worth
-re-checking if a real-hardware run ever shows this mattering there, but the design itself needs no
-change on this evidence.
+latency itself as a defect (CLAUDE.md's own "boot latency is not a metric to optimise" rule) — **but
+every number above is a digital-twin measurement, not a real-hardware one.**
+`digital_twin/_fram_chip.py` answers SPI opcodes in memory with zero wire time, so these numbers
+exclude the entire real cost of a FRAM transaction; the "design itself needs no change on this
+evidence" conclusion this paragraph previously drew is exactly the thing a real-hardware run could
+overturn, since the dominant term in a real FRAM setup call (SPI wire time under lock contention) is
+precisely what the twin cannot measure. **Not yet re-checked on real hardware as of this note** —
+see `REAL_HARDWARE_HANDOVER.md` (temporary, deleted once its findings land here) for the exact
+measurement plan and what to do if the contended `webserver` setup call turns out to matter for
+real. Do not treat this paragraph's numbers as validated for anything beyond "the twin's task
+graph resolves in this many simulated seconds."
 
 **This order, and `i2c0`'s SCD30-specific `timeout=200000`, are wozi's own — derived from
 `devices/wozi.toml`.** `buildgen` derives both from each device's own TOML rather than assuming

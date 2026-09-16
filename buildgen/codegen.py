@@ -487,24 +487,48 @@ def generate_module_source(model: DeviceModel, construction_order: "list[str | t
     lines: list[str] = []
     _emit_header_and_imports(lines, model, ctx, instances, have, build_date)
     _emit_globals(lines, instances, have, all_vars)
-    _emit_callbacks(lines, have)
+    _emit_callbacks(lines, have, construction_order, ctx)
     _emit_build_system(lines, model, ctx, instances, have, construction_order, all_vars, sensor_vars)
     _emit_collectors(lines, construction_order, ctx)
     _emit_main(lines)
     return "\n".join(lines) + "\n"
 
 
-def _emit_callbacks(lines: "list[str]", have: "set[str]") -> None:
+def _emit_flush_pending_configs(lines: "list[str]", construction_order: "list[str | tuple[str, str]]", ctx: _Ctx) -> None:
+    # A commanded reboot/bootloader must not drop a write that's still only staged
+    # (ConfigManager.write_config()'s deferred flash flush) - the accepted residual-risk window is
+    # power loss between "response sent" and "write attempted" (SPECIFICATION.md Part F.2), not a
+    # software-triggered reboot 4 seconds later that could easily wait. getattr(module, "cfgmgr",
+    # None) generically, not a new get_*() fan-in method on every module class: only
+    # SensorReaderConfig subclasses and SystemService itself ever have one (confirmed - grep for
+    # "self.cfgmgr =" across src/), so a virtual method every other module class would have to stub
+    # out to "return []" bought nothing here.
+    modules = _module_names(construction_order, ctx)
+    lines.append("async def _flush_pending_configs() -> None:")
+    for name in modules:
+        lines.append(f"    assert {name} is not None")
+    lines.append("    assert webserver is not None")  # mandatory infra, never optional
+    lines.append(f"    for module in ({', '.join(modules)}, webserver,):")
+    lines.append('        cfgmgr = getattr(module, "cfgmgr", None)')
+    lines.append("        if cfgmgr is not None:")
+    lines.append("            await cfgmgr.flush_pending()")
+    lines.append("")
+
+
+def _emit_callbacks(lines: "list[str]", have: "set[str]", construction_order: "list[str | tuple[str, str]]", ctx: _Ctx) -> None:
     lines.append('def _gmtimestruct_to_dict(t: "Any") -> "dict[str, int] | None":')
     lines.append("    if t is None:")
     lines.append("        return None")
     lines.append('    return {"year": t[0], "month": t[1], "mday": t[2], "hour": t[3], "minute": t[4], "second": t[5], "weekday": t[6], "yearday": t[7]}')
     lines.append("")
+    _emit_flush_pending_configs(lines, construction_order, ctx)
     lines.append("async def _system_cmd_callback(cmd: str) -> bool:")
     lines.append("    assert sysfunct is not None")
     lines.append('    if cmd == "reboot":')
+    lines.append("        await _flush_pending_configs()")
     lines.append("        sysfunct.reboot_system()")
     lines.append('    elif cmd == "bootloader":')
+    lines.append("        await _flush_pending_configs()")
     lines.append("        sysfunct.reboot_bootloader()")
     lines.append('    elif cmd == "mempause":')
     lines.append("        sysfunct.pause_permanent_storage(300)")
@@ -623,8 +647,12 @@ def _emit_webserver(lines: "list[str]", have: "set[str]", sensor_vars: "list[str
     lines.append("    )")
 
 
+def _module_names(construction_order: "list[str | tuple[str, str]]", ctx: _Ctx) -> "list[str]":
+    return ["conn", "ntp"] + [ctx.instance_var(n) if isinstance(n, tuple) else n for n in construction_order if n not in ("conn", "ntp")]
+
+
 def _emit_collectors(lines: "list[str]", construction_order: "list[str | tuple[str, str]]", ctx: _Ctx) -> None:
-    modules = ["conn", "ntp"] + [ctx.instance_var(n) if isinstance(n, tuple) else n for n in construction_order if n not in ("conn", "ntp")]
+    modules = _module_names(construction_order, ctx)
     # fram (AsyFramManager) has get_error_sources()/get_loggers() but, unlike every other
     # constructed module, no get_task_starters()/get_timer_starters() at all - a synchronous
     # flash-backed store owns no asyncio task or Timer of its own. Every hand-written

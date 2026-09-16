@@ -105,8 +105,26 @@ constraints.
 ## Open questions (need owner input or further investigation)
 
 - **A full `scripts/test.sh` run's own `tests/_tmp` directory grows unboundedly across the whole
-  run, and once it accumulates enough entries this causes real, multi-minute-scale test slowdowns —
-  found while verifying WP1/WP2, confirmed unrelated to either.** Every `tests/test_*.py` file that
+  run, and once it accumulates enough entries this causes real, multi-minute-scale test slowdowns.**
+  **Correction (2026-09-16): the "confirmed unrelated to WP1/WP2" claim this entry originally made
+  was wrong and has been retracted.** Two independent sessions since measured `tests/
+  test_sensortask.py` standalone (no `tests/_tmp` accumulation from other files at all) across the
+  single commit boundary that is WP1+WP2 (`4f1c802` immediately before, `9cf8a9c`/`dfb85ff` on or
+  after): 12s before, 446-447s after - a ~37x slowdown from that commit alone, with zero
+  `tests/_tmp` growth involved. WP1/WP2's own heavier per-device object graph (see `scripts/
+  test.sh`'s own `-X heapsize` comment: ~2.5x as many FRAM-backed `PrintLogHistoryStore` instances
+  per device) is therefore the *primary*, dominant driver of this file's slowdown, not a secondary
+  factor riding on top of the `tests/_tmp` mechanism below - the two are separate, compounding
+  effects, and this entry's original framing had the emphasis backwards. The `tests/_tmp` growth
+  mechanism documented below is still real and still worth fixing (confirmed by the isolated
+  900-directory-prefill experiment, which changed nothing about WP1/WP2's own code), but it is not
+  the reason these two files became slow in the first place - it only makes an already-slow file
+  slower still as a CI run's `tests/_tmp` tree grows. The immediate CI-red symptom (both files
+  exceeding `scripts/test.sh`'s per-file timeout) is fixed by a per-file timeout override
+  (`per_file_timeout_s` overrides for exactly these two files, sized against the ~447s/~268s
+  measured real need) rather than by reverting WP1/WP2, which the project owner's own review
+  confirmed is intentional, wanted diagnostic coverage, not a defect.
+  Every `tests/test_*.py` file that
   needs its own per-test config-file isolation creates fresh subdirectories under the one shared
   `tests/_tmp` (e.g. `_tmp_cfg_dir()`/`dtcc_<n>`/`dtrw_<n>`-style helpers, one per file, each
   sweeping only *its own* prefix at its own start via `_sweep_stale_tmp_dirs(prefix)`) — nothing
@@ -135,6 +153,33 @@ constraints.
   same `tests/_tmp` across that one run, so the same growth-across-one-run mechanism applies there
   too, not just in a long-lived local sandbox - this is worth confirming against a real CI run
   before assuming it never bites there.
+- **`scripts/test.sh`'s `-X heapsize` bump (8M→32M) is masking WP1/WP2's real memory-footprint
+  growth, not fixing it — an open workaround, not a resolved item (independent-review finding,
+  2026-09-16).** CLAUDE.md's own memory-safety ladder is explicit that a heap increase is "defense
+  in depth on top of an already-safe design... forbidden as the fix itself for a design that still
+  needs one big contiguous allocation somewhere, or for any other memory-pressure issue; the right
+  fix is a design-level technique that relieves the pressure directly." This is the *second* time
+  this exact pattern has occurred on this line of work (an earlier, since-rolled-back parallel
+  attempt raised 8M→16M for the identical cause and left the same kind of "don't re-diagnose this"
+  note behind - the WP1/WP2 growth this heap bump is compensating for is real, independently
+  confirmed at 16M by two separate sessions: 176/321 tests passed before `MemoryError` on the
+  earlier attempt's own branch, 176/321 again on this one). **Not yet done**: establishing exactly
+  where the ~2.5x-per-device `PrintLogHistoryStore` growth (`scripts/test.sh`'s own comment gives
+  the inventory: conn/ntp/sysfunct/webserver plus every FRAM-wired module's own `cfgmgr`) actually
+  goes by measurement rather than inference (`REAL_HARDWARE_HANDOVER.md`'s Topic 2a already traced
+  the matching *wall-clock* slowdown to the same 5-6 new FRAM-backed `cfgmgr` instances per device,
+  each paying an existing, unchanged ~170ms-per-instance setup cost - the same new instances are the
+  natural first place to look for the memory growth too, though the two haven't been tied together
+  by direct measurement yet), and looking for a design-level relief before accepting
+  32M as permanent - whether every `ConfigManager` genuinely needs its own history ring, whether
+  ring length can be shared/reduced, or whether `tests/test_sensortask.py` specifically (it builds
+  all 6 devices' full object graphs repeatedly in one process - see that file's own docstring) can
+  build fewer full graphs per process. Per CLAUDE.md's standing rule, the target to clear before
+  tuning any heap value further is the suite passing at the real default `gc.threshold(-1)` with
+  zero `MemoryError`s (caught-and-logged included), which has not been attempted here - 32M was
+  confirmed sufficient and left in place, not verified to be minimal or necessary. The real
+  target is unaffected either way (one device, one graph, one boot, on real rp2040 RAM) - the
+  concern is a harness knob quietly absorbing a growth trend nobody is otherwise tracking.
 - **ISL29125's chip configuration divergence under concurrent API load (PR #84/commit `679c2b0`'s
   isolation work, HIGH IMPORTANCE, completely unforeseen — project owner, 2026-09-15) — fixed in
   code and unit-tested; real-hardware re-verification still pending.** Root cause, traced through

@@ -426,9 +426,13 @@ class ConfigManager:
                     self._pending_flush = None
 
     async def flush_pending(self) -> None:
-        # Test/shutdown convenience: waits for a write_config()-spawned flush to actually finish
-        # rather than merely being scheduled. Nothing in src/ needs this - every real caller already
-        # tolerates the deferred write per this module's own design (SPECIFICATION.md Part F.2).
+        # Waits for a write_config()-spawned flush to actually finish rather than merely being
+        # scheduled. Most real callers tolerate the deferred write per this module's own design
+        # (SPECIFICATION.md Part F.2) and never need this - the one exception is a commanded
+        # reboot/bootloader (buildgen/codegen.py's generated _flush_pending_configs(), called from
+        # _system_cmd_callback() before either action): that path is software-triggered and can
+        # easily wait a flush out, so it should, rather than inheriting the power-loss-only residual
+        # risk this module's design otherwise accepts.
         # Only ever holds the LATEST write_config() call's own task - a still-outstanding earlier
         # one it superseded is never awaited directly, but is always safe to leave unawaited: it
         # either already ran (in creation order, the common case) or will still run and detect

@@ -1136,6 +1136,24 @@ def _scenario_system_put_reboot(device: str) -> None:
     assert machine.reset_count == before + 1
 
 
+@_register("webserver_system_put_reboot_flushes_a_still_pending_config_write_first")
+def _scenario_system_put_reboot_flushes_pending_write(device: str) -> None:
+    # A commanded reboot must not drop a write that's still only staged
+    # (buildgen/codegen.py's generated _flush_pending_configs(), src/config_manager.py's own
+    # flush_pending()) - unlike the accepted power-loss residual risk (SPECIFICATION.md Part F.2),
+    # this path is software-triggered and can easily wait the flush out. One PUT body carrying both
+    # a settings-group change and SystemCmd=reboot is the real, single-request shape this actually
+    # happens in (asy_webserver_service.py's _put_system() applies settings before dispatching the
+    # command), not two separate requests.
+    module = build(device)
+    assert module.sysfunct is not None
+    res = _dispatch(module, "PUT", "/system", {"DebugLevel": PrintLog.level_err(), "SystemCmd": "reboot"})
+    result = json.loads(res.body)["result"]
+    assert result["DebugLevel"] == "Valid"
+    assert result["SystemCmd"] == "Valid"
+    assert module.sysfunct.cfgmgr._pending_flush is None  # the exact thing being proven: already flushed, not merely scheduled
+
+
 @_register("webserver_system_put_invalid_cmd_is_rejected_without_side_effects")
 def _scenario_system_put_invalid_cmd(device: str) -> None:
     module = build(device)
