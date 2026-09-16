@@ -195,7 +195,23 @@ constraints.
 
 - **A full `scripts/test.sh` run's own `tests/_tmp` directory grows unboundedly across the whole
   run, and once it accumulates enough entries this causes real, multi-minute-scale test slowdowns —
-  found while verifying WP1/WP2, confirmed unrelated to either.** Every `tests/test_*.py` file that
+  found while verifying WP1/WP2.** **The "confirmed unrelated to WP1/WP2" half of that
+  conclusion is wrong, and the correction matters more than the original finding** (measured on the
+  bench Pi4, 2026-09-16, `tests/_tmp` wiped immediately before every run, same interpreter, same
+  `-X heapsize=32M`): `tests/test_sensortask.py` takes **15s at `9cf8a9c^` and 498s at `9cf8a9c`**
+  itself - the WP1+WP2 commit - a **33x slowdown from that one change**, reproduced at 501s on a
+  second idle run of the merged tree. All 321 tests pass in both cases; only wall clock moved. That
+  alone puts the file at more than double `scripts/test.sh`'s own 240s per-file timeout with a
+  pristine temp directory, so it fails the suite with or without the accumulation described below.
+  `tests/test_digital_twin_webserver_concurrency.py` is in the same position at 273s.
+  The mechanism is visible in the diff: every `ConfigManager` now builds its logger through
+  `make_logger(fram, ...)` and awaits `self.pr.setup()`, so a graph that constructs many
+  ConfigManagers pays a real FRAM-backed logger setup per manager instead of a bare
+  `PrintLogHistory()`. On real hardware `build_system()` runs once per boot, so this is a boot-time
+  and FRAM-chunk-budget question (SPECIFICATION.md Part A.7's chunk layout) rather than a
+  steady-state one - but it is a WP1/WP2 question, not a temp-directory one, and the entry below
+  should not send the next session looking in the wrong place.
+  The temp-directory growth is real too, and still worth fixing on its own: Every `tests/test_*.py` file that
   needs its own per-test config-file isolation creates fresh subdirectories under the one shared
   `tests/_tmp` (e.g. `_tmp_cfg_dir()`/`dtcc_<n>`/`dtrw_<n>`-style helpers, one per file, each
   sweeping only *its own* prefix at its own start via `_sweep_stale_tmp_dirs(prefix)`) — nothing
