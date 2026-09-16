@@ -1055,3 +1055,14 @@ is the negative case proving it can actually fail.
 build-deterministic build-validity fact (`AsyFramManager` is a bump-pointer allocator with no
 deallocation, so "does everything fit" is fully decided once construction finishes, and stays true
 for that build's entire life), not live operational state a client needs to query.
+
+**Extended by WP3**: `_CANDIDATE_MODULE_NAMES` now also checks `uart_link_init`/`uart_link_resp` -
+`dev.toml`'s only two `uart_link` instances, both wired with `fram_target = "fram"` - so this same
+real-hardware check covers the UART crossover link's own errno/wrnno history getting a real chunk,
+not just the sensor/infra modules it already covered. `UartLinkExerciser`'s own `fram=`/`logger=`
+forwarding is otherwise covered by `tests/test_asy_uart_link_driver.py` (mock tier: functionality,
+the no-`fram=` regression, the allocation-failure fallback, the `logger=` reach-through, and a
+simulated-reboot roundtrip) and `tests/test_digital_twin_uart_link.py`'s
+`test_both_ends_get_their_own_real_fram_chunk` (twin tier) - real-hardware visibility through
+`/status` was already covered pre-WP3 by `tests_hardware/bench/test_uart_link_under_api_load.py`'s
+own `get_errcount()` calls, since that was never conditional on RAM-vs-FRAM backing.

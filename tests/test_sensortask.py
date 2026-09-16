@@ -336,7 +336,8 @@ def _expected_fram_chunk_calls(module: "Any") -> "list[str]":
     # [BMP3xx_Reader(chunk) + its own CFGMGR_BMP3XX(chunk), only if present] ->
     # [ISL29125_Reader(chunk) + its own CFGMGR_ISL29125(chunk), only if present] ->
     # NeopixelDriver(chunk, no cfgmgr) -> NotificationCoordinator(chunk) -> its own
-    # CFGMGR_NOTIFY(chunk) -> WebserverService(chunk, no cfgmgr), in that order, unconditionally.
+    # CFGMGR_NOTIFY(chunk) -> [UartLinkExerciser x2 (chunk each, no cfgmgr), only if present, WP3] ->
+    # WebserverService(chunk, no cfgmgr), in that order, unconditionally.
     # WP1/CLAUDE.md's implicit-FRAM-wiring rule: conn/ntp/webserver - and conn's own DNSServer -
     # draw a chunk too, on every real device's own [device.wiring].fram_target. WP2, the same rule
     # applied to ConfigManager: every SensorReaderConfig-based module's own cfgmgr draws its own
@@ -344,10 +345,10 @@ def _expected_fram_chunk_calls(module: "Any") -> "list[str]":
     # SensorReaderConfig.__init__ builds self.pr then self.cfgmgr in that order) - SystemService is
     # not a SensorReaderConfig subclass but embeds its own ConfigManager directly the same way
     # (system_service.py's own comment), so it follows the identical "own chunk, then cfgmgr chunk"
-    # shape. NeopixelDriver/WebserverService/SCD30_Reader have no on-flash config at all, so neither
-    # ever contributes a cfgmgr chunk. SCD30 constructs before SGP40 (ordering-hazard #1,
-    # SPECIFICATION.md Part A.7/C.14 - SGP40 holds a direct reference to scd30 as its
-    # temperature_source/humidity_source, so the producer must exist first). Derived from the
+    # shape. NeopixelDriver/WebserverService/SCD30_Reader/UartLinkExerciser have no on-flash config
+    # at all, so none of them ever contributes a cfgmgr chunk. SCD30 constructs before SGP40
+    # (ordering-hazard #1, SPECIFICATION.md Part A.7/C.14 - SGP40 holds a direct reference to scd30
+    # as its temperature_source/humidity_source, so the producer must exist first). Derived from the
     # module's own reflected instance set (_present_optional_instances()), not a hardcoded
     # per-device literal - every real device's own devices/*.toml lists its instances in this same
     # relative order (BUILD_CHAIN_PLAN.md's Session 2), so this fixed shape stays correct for all 6.
@@ -364,6 +365,8 @@ def _expected_fram_chunk_calls(module: "Any") -> "list[str]":
         calls += ["chunk", "chunk"]  # ISL29125_Reader, its own CFGMGR_ISL29125
     calls.append("chunk")  # NeopixelDriver - always present, no cfgmgr
     calls += ["chunk", "chunk"]  # NotificationCoordinator, its own CFGMGR_NOTIFY - always present
+    if _has_uart_link(module):
+        calls += ["chunk", "chunk"]  # UartLinkExerciser x2 (init, resp) - no cfgmgr, WP3
     calls.append("chunk")  # WebserverService - no cfgmgr
     return calls
 
@@ -615,6 +618,12 @@ def _scenario_fram_chunks_allocated(device: str) -> None:
         assert module.isl29125.pr.fram is not None
         assert isinstance(module.isl29125.cfgmgr.pr, PrintLogHistoryStore)
         assert module.isl29125.cfgmgr.pr.fram is not None
+    if _has_uart_link(module):
+        # WP3 - own chunk each, no cfgmgr (UART_Comm has no on-flash config schema).
+        assert isinstance(module.uart_link_init.pr, PrintLogHistoryStore)
+        assert module.uart_link_init.pr.fram is not None
+        assert isinstance(module.uart_link_resp.pr, PrintLogHistoryStore)
+        assert module.uart_link_resp.pr.fram is not None
 
 
 class _DeadFramChip(FakeMB85RS64V):

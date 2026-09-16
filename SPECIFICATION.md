@@ -410,10 +410,17 @@ TOML does today):
 13. `conn.set_ext_led(neopixel)`.
 13b. *(`dev` only)* two buildgen-generated `[[instance]]` entries construct
     `asy_uart_driver.UART(...)` ×2, then the new UART-crossover wrapper module (§Part J) wraps each
-    in a `UART_Comm(...)` across the permanent crossover jumper — **no `fram=`** (WP3, not yet
-    implemented: `UART_Comm` supports it at the class level, but no device TOML requests it today).
+    in a `UART_Comm(...)` across the permanent crossover jumper — `dev.toml` wires
+    `fram_target = "fram"` on both instances (WP3 - was wrongly, deliberately excluded; `UART_Comm`
+    already supported `fram=`/`logger=` at the class level, only the buildgen wiring was missing),
+    so `uart_link_init` and `uart_link_resp` each draw their own chunk here, right after
+    `notification`'s own `cfgmgr` chunk (step 12) and before the webserver's (step 14) — never
+    shared between the two instances, so a fault on one end stays attributable to it. Neither is a
+    `SensorReaderConfig`, so neither gets a `cfgmgr` chunk of its own — the same "no absolute
+    number, `dev`-only, positioned here when present" treatment step 10 already gives `isl29125`.
     Placed here, after every FRAM-allocating module and immediately before the webserver, because
-    the webserver's own `error_sources=` list includes them. `wozi` has no such step. The variant
+    the webserver's own `error_sources=` list includes them. `wozi` has no such step, and no such
+    chunks. The variant
     also runs a small **link exerciser** task on the initiator side: nothing on a live system would
     otherwise initiate a transfer, so every claim about the link coexisting with the webserver would
     be a claim about an idle link. Its transfer/failure counts ride the variable-length
@@ -440,12 +447,14 @@ TOML does today):
 DNSServer → AsyNtpClient → its own `CFGMGR_NTP` → SystemService → its own `CFGMGR_SYSTEM` → SCD30
 (no `cfgmgr`) → SGP40 error log → its own `CFGMGR_SGP40` → SGP40 VOC backup (timestamped) → BMP3xx
 → its own `CFGMGR_BMP3XX` → (`dev`-only: ISL29125 → its own `CFGMGR_ISL29125`) → Neopixel (no
-`cfgmgr`) → NotificationCoordinator → its own `CFGMGR_NOTIFY` → WebserverService (no `cfgmgr`).
+`cfgmgr`) → NotificationCoordinator → its own `CFGMGR_NOTIFY` → (`dev`-only: `UART_init` →
+`UART_resp`, WP3 — neither has a `cfgmgr`) → WebserverService (no `cfgmgr`).
 Every module with a FRAM-backed error log, and every `SensorReaderConfig`-based module's own
 `cfgmgr` (WP2), uses it; must stay in this relative order. `src/` has no earlier on-chip layout to
 preserve. (A device with no `[device.wiring].fram_target` keeps `conn`/`ntp`/`sysfunct`/
 `webserver` RAM-only and none of them draw a chunk at all — WP1 changed nothing about that
-fallback path.)
+fallback path; a `uart_link` instance with no `fram_target` in its own `[instance.wiring]` stays
+RAM-only the same way, unaffected by whether the device's `fram_target` is set anywhere else.)
 
 **Boot-latency note (WP1)**: `conn`/`ntp`/`sysfunct`/`webserver`'s FRAM-backed loggers only draw
 their chunk at construction time (bump-pointer, instant); each one's *real* first chunk read/write

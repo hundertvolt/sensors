@@ -19,6 +19,7 @@ failures: list[str] = []
 # same way the mock tier's own tests are, so it stays correct if dev's own TOML ever changes).
 _CANDIDATE_MODULE_NAMES = (
     "conn", "ntp", "sysfunct", "scd30", "sgp40", "bmp3xx", "isl29125", "neopixel", "notification", "webserver",
+    "uart_link_init", "uart_link_resp",
 )
 
 

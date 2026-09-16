@@ -237,13 +237,17 @@ def _build_args_notification(spec: InstanceSpec, ctx: _Ctx) -> "tuple[list[str],
 
 
 def _build_args_uart_link(spec: InstanceSpec, ctx: _Ctx) -> "tuple[list[str], list[tuple[str, str]]]":
-    # No fram= - matches asy_uart_comm.UART_Comm's own construction on main (Part J.1: "no
-    # application semantics" also means no FRAM-backed error log of its own).
+    # fram= is the same optional per-instance _fram_kw() every other driver with a "# @wiring
+    # fram_target ..." tag uses (WP3 - was wrongly, deliberately excluded; UartLinkExerciser's own
+    # class-level support already existed in asy_uart_comm.py, only the buildgen wiring was missing).
     f = spec.fields
     pos = [ctx.bus_var(f["bus"]), repr(f["role"])]
     kw: list[tuple[str, str]] = []
     if spec.name_ext:
         kw.append(("name_ext", repr(spec.name_ext)))
+    fram_kw = _fram_kw(spec, ctx)
+    if fram_kw:
+        kw.append(fram_kw)
     kw.append(("debug", "debug"))
     return pos, kw
 
