@@ -9,6 +9,65 @@ constraints.
 
 ## Refactor targets not yet done
 
+- **A config-persisting `PUT /sensors` resets its own HTTP connection when it lands under
+  concurrent API load. HIGH IMPORTANCE, must be fixed — completely unforeseen (project owner,
+  2026-09-15); it is not to be tolerated in a test, and the failing test must not be weakened to
+  accommodate it.** Found by the two bench-tier config-write tests the bus-hazard work added
+  (`tests_hardware/bench/test_bus_concurrency_under_api_load.py`'s
+  `test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads_under_api_load` and
+  `test_bmp3xx_config_write_does_not_disturb_its_own_concurrent_reads_under_api_load`), running
+  against the real dev board on the shipped `threshold` build. **Isolated to the flash write
+  itself**, three conditions, 2 GET workers × 8 iterations + 4 PUTs each, repeated:
+
+  | condition | connection resets |
+  |---|---|
+  | GET load only | 0 |
+  | GET load + PUTs returning `"Unchanged"` (accepted, nothing written) | 0 |
+  | GET load + PUTs that really persist to the flash filesystem | 1–2 per run, **every one on the writing connection** |
+
+  The host sees `ConnectionResetError: [Errno 104]`. Reproduced on most runs (5 resets across 3
+  `change`-mode rounds in the isolation probe, plus 4 of 4 pytest runs before it). Three facts
+  narrow it: a bystander GET is **never** reset, only the connection whose own request is being
+  serviced; the config always persists correctly afterwards (no data loss, no corruption); and the
+  DUT's own `WEBSERVER` error log stays completely empty, so nothing on the device notices. A quiet
+  (unloaded) persisting PUT never reproduces it.
+  **Why this is a design question, not a test question**: an RP2040 flash erase/program is
+  inherently uninterruptible — XIP is disabled and interrupts are off for the duration, so the
+  CYW43 link is unserviced and lwIP's timers do not run, which is exactly CLAUDE.md's F.3
+  "long-blocking operations must not stall timing-sensitive work" meeting an operation that cannot
+  yield. The fix therefore has to be a design-level one in the REST/persistence layer (send the
+  response before performing the persist, defer the write to a point where no connection is
+  mid-response, or similar), decided by the project owner — not a tolerance added to the assertion.
+  Note this interacts with an already-settled safety property: CLAUDE.md's WiFi-power-cycle recovery
+  rule depends on "every real flash write is reachable only through the REST PUT path", so any
+  redesign that moves the write off that path must re-establish that argument.
+  **Source**: found and isolated by the real-hardware session on branch
+  `claude/real-hardware-memory-validation-p3vkxr` (PR #84), recorded in its commit `679c2b0`; that
+  branch/PR is being discarded once this and its sibling ISL29125 finding are independently
+  resolved on this branch, so this entry — not the PR — is now the record of it. A follow-up
+  investigation on this branch (source/docs only, no real-hardware access) confirmed the mechanism
+  against the pinned MicroPython v1.29.0 source directly: `ports/rp2/rp2_flash.c`'s
+  `begin_critical_flash_section()`/`end_critical_flash_section()` wrap *each* `flash_range_erase()`
+  and `flash_range_program()` call individually in `save_and_disable_interrupts()` (plus a
+  multicore lockout, unused here since this project is single-core), and that same global
+  interrupt disable also gates the CYW43 GPIO "host wake" IRQ, its PendSV-dispatched `cyw43_poll()`,
+  and the hardware-alarm-driven soft timer that runs lwIP's own `sys_check_timeouts()`
+  (`ports/rp2/mpnetworkport.c`) — so the blackout isn't specific to the one coroutine handling the
+  PUT, it is a total, port-wide freeze of every connection's TCP housekeeping and of the WiFi
+  radio's own servicing for the operation's duration. A multi-sensor PUT does one such blackout
+  window per changed sensor (each `write_config()` call is a separate synchronous, unyielding
+  `open()`/`json.dump()`/close file write with no `await` inside it), not one longer window, since
+  `_put_sensors` awaits each sensor's `_set_dict_cfg()` in turn. What source alone could **not**
+  confirm: the precise packet-level trigger for the RST specifically (vs. a plain stall). One
+  candidate mechanism was found and then ruled out on timing grounds — `extmod/modlwip.c`'s socket
+  close path arms a `tcp_poll()` callback that aborts (RSTs) a connection whose close doesn't
+  complete cleanly, but only after `MICROPY_PY_LWIP_TCP_CLOSE_TIMEOUT_MS` (10000ms) — far longer
+  than any plausible single flash-op blackout, so this is very unlikely to be it. The remaining
+  candidates (an immediate `tcp_abort()` fallback when `tcp_close()` itself returns non-OK, e.g.
+  `ERR_MEM`; or lwIP's own RFC-793 response to a segment that arrives for that PCB during the
+  blackout and looks stale/out-of-window once processing resumes) are plausible but need a real
+  packet capture against the dev board to confirm — a future real-hardware session's job, not
+  something resolvable from source alone.
 - **Mypy shall be configured to disallow `Any` types** (owner-specified). Mostly addressed, but
   not by the flag it was originally written about: all three passes now run full `--strict`
   (`disallow_any_generics` included), so no *implicit* `Any` from a bare `dict`/`list`/`tuple`
@@ -65,32 +124,24 @@ constraints.
   running the C side exists and can be connected to the dev board, so the reconciliation session can
   test the two implementations against each other for real rather than only reading them side by
   side.
-- **A full test-suite scan for tier/layering-completeness and superficially-passing-but-wrong-hazard
-  gaps is HIGH PRIORITY, not a nice-to-have (project owner, 2026-09-15).** The bus-hazard work
-  (BUS_HAZARD_TEST_GENERATION_REQUIREMENTS.md, now largely reconciled into SPECIFICATION.md Part
-  C.8/E.6.6) only ever audited its own one domain, and even there, checking systematically (not just
-  spot-checking) found a real, non-obvious miscoverage: `tests_hardware/bench/
-  test_bus_concurrency_under_api_load.py`'s `sgp40_reset_trigger_worker()` looks like it exercises
-  SGP40's real I2C general-call broadcast hazard (it PUTs a field named `SGPResetVOC`, concurrently
-  with GET load, the exact shape a general-call-vs-siblings test should take) but does not — read the
-  real call chain directly: that field only reaches a software-only `vocalgorithm_reset()`, never
-  `SGP40_I2C._reset()` (the real broadcast), which has no REST trigger on a live system at all. This
-  test passed the whole time, for the wrong reason - it just never actually raced anything against
-  the hazard it looked like it was named for. **Two things need a full sweep, not just bus-hazard's
-  own corner**: (1) **tier/layering completeness** — SPECIFICATION.md Part E.6.6 (every mock/twin
-  test exercising real-hardware-facing behavior needs a real-hardware equivalent, wherever
-  technically possible) and Part E.6.1's `bench ⊇ flash` (whatever a flash-tier test proves, a
-  bench-tier test proves too, driven through the real REST/HTTP stack) are both now anchored as
-  general rules, but were only ever checked against bus-hazard tests specifically — no one has swept
-  the rest of `tests_hardware/flash/`↔`tests_hardware/bench/` pairs, or the rest of `tests/`↔
-  `tests_hardware/` mock/twin-to-real-hardware pairs, against either rule yet; (2) **the SGP40 shape
-  itself, generalized**: any test whose worker/trigger *name* or *superficial pattern* matches a
-  hazard, but whose real call chain was never actually traced end-to-end to confirm it reaches the
-  code path the test is named for. This is a distinct failure mode from a missing test — a present,
-  green, wrongly-trusted one — and the only way it was caught here was reading `asy_sgp40_driver.py`'s
-  actual `_push_callbacks`/`reset_voc()`/`measure_index_and_raw()` chain line by line rather than
-  trusting the field name. A dedicated future session should scan the whole suite for both at once,
-  not treat this as closed just because the one instance found so far is fixed/documented.
+- **The full test-suite scan for tier/layering-completeness and wrongly-trusted-hazard tests
+  (project owner, 2026-09-15) has now run once, beyond bus-hazard's own corner** — UART,
+  WiFi/network/NTP/DNS, FRAM/memory/reboot/watchdog, and webserver/notification/config-push were all
+  swept, real call chains traced end-to-end rather than grep-counted. Full account, including what
+  was fixed, what's a confirmed structural exception, and what's named-but-not-fixed (needing either
+  a dedicated real-hardware session or a project-owner design decision): `tests_hardware/README.md`'s
+  "Tenth pass". No second instance of the SGP40-shaped bug (a real hardware trigger silently
+  substituted with a software-only one) turned up, but several real tier-parity gaps did, most now
+  closed. **Named follow-ons still open, tracked in that section, not repeated here**: a real-hardware
+  test for UART's F.5.8 "never blocks" invariant against the actual shipped driver (not a hand-rolled
+  clamp); wiring a periodic SET into the bench UART exerciser's live load; deciding whether the mock
+  tier's ~20-scenario UART fault-injection catalog is a genuine real-hardware structural exception or
+  needs a raw-second-UART injection technique; a project-owner design review before any
+  `rotate_ap_password()` bench test (real AP credential rotation on the shared bench rig); a
+  real-hardware test for `_reboot()`'s alarm-pool-exhaustion fallback; and a hard-reset-recovery bench
+  test for NOTIFY's own FRAM chunk (needs an observable-write signal analogous to SGP40's `BackupTS`
+  first). Re-running this sweep against other domains (it did not touch e.g. sensortask/system_service
+  integration beyond what FRAM/memory covered) is future work, not assumed done everywhere.
 
 - **A config-persisting `PUT /sensors` resets its own HTTP connection when it lands under
   concurrent API load. HIGH IMPORTANCE, must be fixed — completely unforeseen (project owner,
@@ -178,6 +229,47 @@ constraints.
   counterpart too, per `bench ⊇ flash`.
 
 ## Open questions (need owner input or further investigation)
+
+- **ISL29125's chip configuration divergence under concurrent API load (PR #84/commit `679c2b0`'s
+  isolation work, HIGH IMPORTANCE, completely unforeseen — project owner, 2026-09-15) — fixed in
+  code and unit-tested; real-hardware re-verification still pending.** Root cause, traced through
+  the real code: `ISL29125_I2C.configure()` mutated the in-memory shadow fields
+  `encode_shadow()`/`matches_shadow()` read (`self._mode`, `self._range_fs`, `self._resolution`,
+  ...) *before* it ever acquired the per-sensor device-session lock that SPECIFICATION.md Part C.8
+  documents as what serializes "a multi-transaction sequence against another coroutine starting its
+  own sequence on the same sensor" — only the actual wire write was ever inside that lock. Under
+  real concurrent load (`read_loop()`'s own background reads/`_switch_range()` calls, or a second
+  concurrent request) that lock does get contended, so a `configure()` call could be suspended
+  *after* mutating the shadow but *before* its write reached the chip, letting a concurrent `GET`'s
+  `get_config_snapshot()` + `matches_shadow()` observe the shadow already showing the new value
+  against a chip that still held the old one — a false "diverged from the shadow" `wrnno=11` report
+  with nothing actually wrong on the wire, which is why three quiet trials never reproduced it but
+  2 concurrent `GET` workers did (twice, per the original isolation). The existing mock test that
+  looked like it should cover this
+  (`test_concurrent_read_and_write_never_interleave_on_the_wire`) only ever proved wire-level
+  atomicity, never this shadow-vs-chip timing race. **Fixed** by widening the device-session lock in
+  `configure()` to span the whole validate-mutate-write(-rollback-on-failure) sequence, matching
+  Part C.8's own documented intent (`_write_shadow()` renamed `_write_shadow_locked()`: no longer
+  self-locking, the caller now holds the lock for the whole critical section). Regression test:
+  `tests/test_asy_isl29125_driver.py::test_configure_never_exposes_the_shadow_ahead_of_a_write_still_in_flight`
+  holds the exact lock `configure()` needs (standing in for real contention) and confirms the
+  shadow cannot change while `configure()` is blocked waiting for it. **Still open**: this needs a
+  real-hardware re-run (the original finding only ever manifested under real concurrent bench load)
+  before it can be considered fully closed — needs the project owner's go-ahead per CLAUDE.md's
+  standing real-hardware gate, not given in this session.
+- **The sibling `W12` ("saturated on the high range") finding from the same isolation work is
+  resolved differently, by design rather than by fixing a bug (project owner, 2026-09-15):**
+  saturation status was never a fault, so it no longer lives in the error/warning log at all. It's
+  now a live, mode-aware `Overrange` measurement field on `ISL29125` (`src/asy_isl29125_driver.py`):
+  true whenever nothing left could mitigate the saturation — the configured range itself under
+  Fixed range (nothing will ever switch it), or Automatic Range already parked on its highest
+  setting with nowhere further to go. This structurally can't fail an error-log-empty bench
+  assertion again, and closes a real pre-existing gap the old warning never covered: a saturated
+  *fixed low-range* reading used to go unreported entirely (the old condition only ever checked
+  `sample_range == _RANGE_HIGH_LUX`). Covered by three new/updated tests in
+  `tests/test_asy_isl29125_driver.py`; `tests_hardware/device_scripts/isl29125_mechanism_envelope.py`
+  updated to check the field directly instead of the retired `W12` log entry (also pending
+  real-hardware re-run). `html/definitions/dev.json`/`mockdata/dev.json` updated with the new field.
 
 1. `modules/_boot.py`'s `import sensortask.py` (literal `.py`) — works reliably on real hardware
    (pinned to MicroPython 1.26), but MicroPython's documented freeze/import behavior says it should

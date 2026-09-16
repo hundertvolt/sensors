@@ -1403,6 +1403,119 @@ def test_send_dev_command_raises_when_crc_generation_produces_the_wrong_length()
     assert raised
 
 
+# ---------------------------------------------------------------------------
+# Bus-hazard coverage moved from tests/test_bus_hazard_multi_device.py (SPECIFICATION.md Part
+# C.8): genuinely SCD30-specific (decodes this driver's own wire protocol/API), not a generic
+# cross-sensor shape, so it belongs here instead.
+# ---------------------------------------------------------------------------
+
+
+async def _gather(a: "Coroutine[Any, Any, Any]", b: "Coroutine[Any, Any, Any]") -> None:
+    # asyncio.gather() itself returns a Future, not a Coroutine - mypy rejects passing it straight
+    # to run() (same call-shape convention test_asy_i2c_driver.py's own scenario() wrapping uses).
+    await asyncio.gather(a, b)
+
+
+_CMD_GET_DATA_READY = b"\x02\x02"
+_CMD_READ_MEASUREMENT = b"\x03\x00"
+_CMD_SET_TEMPERATURE_OFFSET = b"\x54\x03"
+
+
+def _parse_scd30_log(log: "list[tuple[Any, ...]]", read_iterations: int) -> None:
+    # Command-byte-based proof that same-device ops never interleave on the wire: parses the log
+    # into non-overlapping runs and fails outright on any stray/out-of-place entry. A simpler
+    # before/after log-length "span" check was tried and rejected - a coroutine legitimately
+    # blocked on the lock naturally overlaps the holder's span, which is correct serialization.
+    reads_parsed = 0
+    writes_parsed = 0
+    i = 0
+    while i < len(log):
+        entry = log[i]
+        if entry[0] == "writeto" and bytes(entry[2][:2]) == _CMD_GET_DATA_READY:
+            assert i + 3 < len(log), f"truncated read_measurement() sequence at log index {i}: {log[i:]}"
+            assert log[i + 1][0] == "readfrom_into", f"expected readfrom_into at index {i + 1}, got {log[i + 1]}"
+            assert log[i + 2][0] == "writeto" and bytes(log[i + 2][2][:2]) == _CMD_READ_MEASUREMENT, f"expected writeto(READ_MEASUREMENT) at index {i + 2}, got {log[i + 2]}"
+            assert log[i + 3][0] == "readfrom_into", f"expected readfrom_into at index {i + 3}, got {log[i + 3]}"
+            reads_parsed += 1
+            i += 4
+        elif entry[0] == "writeto" and bytes(entry[2][:2]) == _CMD_SET_TEMPERATURE_OFFSET:
+            writes_parsed += 1
+            i += 1
+        else:
+            raise AssertionError(f"unexpected/misplaced log entry at index {i} (interleaving corruption): {entry}")
+    assert reads_parsed == read_iterations, f"parsed {reads_parsed} read cycles, expected {read_iterations}"
+    assert writes_parsed == 1, f"parsed {writes_parsed} write(s), expected exactly 1"
+
+
+def test_concurrent_read_and_write_never_interleave_on_the_wire_byte_exact() -> None:
+    scd, i2c = make_scd()
+    read_iterations = 6
+
+    for _ in range(read_iterations):
+        i2c.read_queue.append(register_frame(1))  # data-ready
+        i2c.read_queue.append(data_frame(412.5, 23.4, 45.6))
+
+    reads_completed = 0
+    write_completed = False
+
+    async def reader() -> None:
+        nonlocal reads_completed
+        for _ in range(read_iterations):
+            await scd.read_measurement()
+            reads_completed += 1
+
+    async def writer() -> None:
+        nonlocal write_completed
+        await asyncio.sleep(0)  # let the reader get partway into its first cycle first
+        await scd.set_temperature_offset(12.34)
+        write_completed = True
+
+    with _FastAsyncSleep():
+        run(_gather(reader(), writer()))
+
+    assert reads_completed == read_iterations
+    assert write_completed
+    _parse_scd30_log(i2c.log, read_iterations)
+
+
+def test_never_touches_any_address_but_its_own() -> None:
+    scd, i2c = make_scd()
+    for _ in range(40):  # generous - some methods issue more than one read
+        i2c.read_queue.append(register_frame(1))
+        i2c.read_queue.append(data_frame(400.0, 20.0, 50.0))
+
+    async def exercise() -> None:
+        for call in (
+            scd.setup,
+            scd.reset,
+            scd.get_measurement_interval,
+            scd.get_self_calibration_enabled,
+            scd.get_ambient_pressure,
+            scd.get_altitude,
+            scd.get_temperature_offset,
+            scd.get_forced_recalibration_reference,
+            scd.get_config_snapshot,
+            scd.read_measurement,
+            scd.stop_continuous_measurement,
+            lambda: scd.set_measurement_interval(5),
+            lambda: scd.set_self_calibration_enabled(True),
+            lambda: scd.set_ambient_pressure(1013),
+            lambda: scd.set_altitude(100),
+            lambda: scd.set_temperature_offset(1.0),
+            lambda: scd.set_forced_recalibration_reference(500),
+        ):
+            try:
+                await call()
+            except Exception:  # only the addresses *touched* matter for this sweep, not success
+                pass
+
+    with _FastAsyncSleep():
+        run(exercise())
+
+    touched = {entry[1] for entry in i2c.log if entry[0] in ("writeto", "readfrom_into", "readfrom_mem", "writeto_mem")}
+    assert touched == {_ADDR}, f"SCD30_I2C touched unexpected address(es): {touched - {_ADDR}}"
+
+
 if __name__ == "__main__":
     import microtest
 

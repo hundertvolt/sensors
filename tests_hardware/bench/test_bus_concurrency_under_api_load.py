@@ -42,7 +42,7 @@ def _schema_sanity_findings(body: dict[str, Any], context: str) -> list[str]:
     if resolution is not None and resolution not in (12, 16):
         findings.append(f"ISL29125 Resolution={resolution!r} outside valid schema range{context} - possible torn/corrupted config read")
     # SGP40's own real DATA field, not a config field like the three above - closes a real gap
-    # (BUS_HAZARD_TEST_GENERATION_REQUIREMENTS.md): every other real occupant of dev's own i2c1 was
+    # (SPECIFICATION.md Part C.8): every other real occupant of dev's own i2c1 was
     # schema-checked here, but a torn/corrupted SGP40 VOC reading under bench load went undetected.
     voc = body.get("SGP40", {}).get("VOC")
     if voc is not None and not (VOC_MIN <= voc <= VOC_MAX):

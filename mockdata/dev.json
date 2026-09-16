@@ -4,7 +4,7 @@
         "SGP40": { "VOC": 95, "Raw": 28850, "TS": 1755000000 },
         "SHTC3": { "Temp": 23.3, "Hum": 39.1, "WetBulb": 15.8, "DewPoint": 8.4, "TS": 1755000000 },
         "MPRLS": { "Pres": 1002.9, "TS": 1755000000 },
-        "ISL29125": { "Lux": 245.3, "RGB": { "R": 0.184, "G": 0.221, "B": 0.099 }, "HSB": { "H": 217.4, "S": 0.552, "B": 0.221 }, "CCT": 5200, "RangeAct": 10000, "GainMeas": null, "TS": 1755000000 }
+        "ISL29125": { "Lux": 245.3, "RGB": { "R": 0.184, "G": 0.221, "B": 0.099 }, "HSB": { "H": 217.4, "S": 0.552, "B": 0.221 }, "CCT": 5200, "RangeAct": 10000, "Overrange": false, "GainMeas": null, "TS": 1755000000 }
     },
     "sensorsConfig": {
         "SCD30": { "MeasInt": 10, "TempOffs": 1.5, "AmbPres": 950, "Altitude": 0, "ForceCalRef": 400, "SelfCal": false },

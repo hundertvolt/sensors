@@ -1,6 +1,6 @@
-"""Generic, TOML-bus-membership-driven cross-sensor hazard scenarios plus the small per-I2C-driver
-adapter catalog they run against (BUS_HAZARD_TEST_GENERATION_REQUIREMENTS.md). Shared wire-frame
-helpers moved here from test_bus_hazard_multi_device.py so both files build identical bytes."""
+"""Generic, TOML-bus-membership-driven cross-sensor hazard scenarios (SPECIFICATION.md Part C.8)
+plus the small per-I2C-driver adapter catalog they run against. Shared wire-frame helpers moved
+here from test_bus_hazard_multi_device.py so both files build identical bytes."""
 
 import asyncio
 import struct
@@ -126,9 +126,8 @@ _ISL_COUNTS = (0x2000, 0x1800, 0x1000)
 # ---------------------------------------------------------------------------
 # Per-driver adapter: enough to construct/seed/drive one instance generically, without any of this
 # module knowing which concrete driver it is. Only covers drivers that actually share a bus with
-# another driver on some real device today (BUS_HAZARD_TEST_GENERATION_REQUIREMENTS.md's own
-# dev/i2c1 scoping) - bmp3xx never does, so it isn't in I2C_HAZARD_CATALOG yet; add it the same way
-# the moment a device wires it alongside another I2C driver.
+# another driver on some real device today - a driver with no bus-sharing neighbour anywhere
+# isn't in I2C_HAZARD_CATALOG yet; add it the same way the moment one wires it alongside another.
 # ---------------------------------------------------------------------------
 
 
@@ -373,10 +372,8 @@ def _touched_addresses(fake_bus: FakeI2C) -> "set[int]":
 
 async def scenario_all_occupants_concurrent_reads_stay_correct(fake_bus: FakeI2C, occupants: "list[BusOccupant]", iterations: int = 6) -> None:
     """Every real occupant of one bus reads concurrently, not pairwise - the "all sharers at once"
-    half of BUS_HAZARD_TEST_GENERATION_REQUIREMENTS.md Section 0. Each read_once() already asserts
-    its own correctness; the switch-count floor below additionally rules out silent full
-    serialization (same `>= occupant count` bar test_bus_hazard_multi_device.py's own pairwise
-    tests already use, generalized from their hardcoded 2)."""
+    half of SPECIFICATION.md Part C.8. Each read_once() already asserts its own correctness; the
+    switch-count floor below additionally rules out silent full serialization."""
     for occ in occupants:
         occ.adapter.seed(fake_bus, occ.address, iterations)
 
@@ -472,15 +469,15 @@ async def scenario_same_occupant_own_write_does_not_disturb_own_concurrent_read(
     offsets: "list[int] | None" = None,
 ) -> None:
     """Same-DEVICE hazard (as opposed to the cross-occupant one above): one occupant's own config
-    write landing concurrently with its OWN read loop must never tear it - the generic form of
-    test_bus_hazard_multi_device.py's own byte-exact same-device interleave proofs
-    (BUS_HAZARD_TEST_GENERATION_REQUIREMENTS.md's hand-written-test-porting follow-on). Correctness
-    is proven the same way every other generic scenario here proves it - read_once()'s own
-    corruption-detecting assertion - rather than a per-driver wire-byte parser, so this stays generic
-    across any adapter without teaching the catalog each driver's own command-byte shapes. Applies
-    per-occupant, independent of how many siblings share the bus; a no-op for an occupant with no
-    safe write to exercise. Systematically swept across timing offsets, same reasoning and same
-    fresh-state-per-offset rebuild as the cross-occupant write scenario above."""
+    write landing concurrently with its OWN read loop must never tear it - the generic counterpart
+    to a sensor-specific byte-exact same-device interleave proof (e.g. tests/test_asy_scd30_driver.py's
+    own). Correctness is proven the same way every other generic scenario here proves it -
+    read_once()'s own corruption-detecting assertion - rather than a per-driver wire-byte parser, so
+    this stays generic across any adapter without teaching the catalog each driver's own
+    command-byte shapes. Applies per-occupant, independent of how many siblings share the bus; a
+    no-op for an occupant with no safe write to exercise. Systematically swept across timing
+    offsets, same reasoning and same fresh-state-per-offset rebuild as the cross-occupant write
+    scenario above."""
     offsets = list(range(iterations)) if offsets is None else offsets
     _fake_bus, occupants = build_fresh_bus_and_occupants()
     writers = [occ.adapter.driver for occ in occupants if occ.adapter.write_once is not None]
@@ -543,13 +540,10 @@ async def scenario_general_call_does_not_disturb_concurrent_siblings(
 
 
 async def scenario_each_occupant_never_touches_an_unexpected_address(attachments: "list[dict[str, Any]]") -> None:
-    """Automatic inclusion of Section 0's "sensor-specific" address sweep: every real occupant of a
-    bus, freshly constructed alone on its own private fake bus (this check is inherently per-driver,
-    not a joint one - see BUS_HAZARD_TEST_GENERATION_REQUIREMENTS.md Section 3's own catalog note),
-    must never touch any address but its own, except a documented general call - and its own real
-    TOML-declared address must never fall in a reserved I2C range in the first place (the generic
-    form of test_bus_hazard_multi_device.py's own
-    test_no_reserved_i2c_address_collides_with_any_promoted_devices_own_address)."""
+    """Automatic, generic form of each driver's own address sweep: every real occupant of a bus,
+    freshly constructed alone on its own private fake bus (this check is inherently per-driver, not
+    a joint one), must never touch any address but its own, except a documented general call - and
+    its own real TOML-declared address must never fall in a reserved I2C range in the first place."""
     for attachment in attachments:
         driver = attachment["driver"]
         adapter = I2C_HAZARD_CATALOG.get(driver)

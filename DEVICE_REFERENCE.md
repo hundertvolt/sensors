@@ -38,7 +38,7 @@ The two `0`s point in opposite directions: one turns a feature off, the other tu
 
 ## ISL29125 colour sensor (dev units only)
 
-Four things about this sensor read as bugs if you don't know them.
+Five things about this sensor read as bugs if you don't know them.
 
 **Its RGB is not a colour you can trust as a colour.** The three channels are the raw response of
 three filters on one silicon die, normalised to 0–1. They are *not* sRGB, not colorimetric, and not
@@ -71,6 +71,14 @@ slower software re-check. The unit now works it out from the measurement interva
 resolution — always the most transient rejection that still lets the chip react first — so there is
 nothing left to get wrong. A side effect worth knowing: changing the measurement interval now also
 reconfigures the sensor, where before it only retimed the software.
+
+**`Overrange` means the scene is brighter than this reading can represent, with nothing left to
+fix it automatically.** It is not an error and never breaks anything — the reading is simply
+clipped at the top of whatever range applies. Under automatic ranging it only turns on once the
+unit is already on its brightest range (10000 lx) and still pegged at maximum; on a range you have
+pinned by hand (`RangeAuto` off), it turns on the moment *that* range clips, since nothing will
+ever switch it for you. If it stays on, move the sensor back from the light or point it away —
+there is no setting that raises the ceiling further.
 
 **Calibration is yours to run, and yours to accept.** Every real chip's two ranges differ slightly
 from the nominal 26.67× ratio between them, and that error is the small step you see when a reading
