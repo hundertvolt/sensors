@@ -33,6 +33,12 @@ compacted, so the originals were recovered from
   they carry a real risk of being wrong, and a wrong finding presented as settled is worse than no
   finding at all. **Treat every statement in Part 3 about current code behavior as unverified.**
 
+- **Later additions.** WP6, WP7 and Topics 9-11 in Part 3, and all of Part 5, were written after
+  the checklist existed. They record design decisions and background the owner gave during the
+  implementation attempt — the owner's own explanations, not findings from this session's analysis.
+  Part 5 is the standing requirement to move that background into the permanent docs once the work
+  is implemented and verified.
+
 Implementation began immediately after Part 2's final message. **None of what it produced is
 included here** — all of it was rolled back (see Part 4).
 
@@ -208,11 +214,16 @@ requirements are kept; the delivery mechanism is removed.*
 
 ---
 
-# Part 3 — Final to-do & action list (reconstructed to the pre-implementation point)
+# Part 3 — Final to-do & action list
 
-This is the document the five work packages were cut from, as it stood when implementation began,
-**reduced to the decisions and the action items**. See the provenance note above for what was
-taken out and why.
+Two things are combined here:
+
+- The document the original five work packages were cut from, as it stood when implementation
+  began, **reduced to the decisions and the action items** (see the provenance note above for what
+  was taken out and why).
+- **WP6, WP7 and Topics 9-11, added afterwards.** These cover design decisions the owner explained
+  *after* that checklist was written, so they were never part of it. They are requirements on the
+  same footing as everything else here.
 
 ---
 
@@ -234,6 +245,9 @@ implementation.
 
 Every decision below is final (see the topic sections further down). This section turns them into
 concrete action items, grouped into packages by which files each one touches.
+
+WP6 and WP7 were added later than WP1-WP5 and are not part of the original five; WP7 is largely
+verification and documentation of an existing design rather than new implementation.
 
 **Suggested order, and why** (the grouping is about file overlap, not about splitting the work up):
 - **WP4 first.** Zero file overlap with anything, and no production code change at all — the
@@ -543,6 +557,95 @@ that session.
       `write_config()`/`_set_dict_cfg()` test for the ordinary uncontended-PUT case.
 - [ ] Re-verify the finished implementation against `CLAUDE.md`'s F.3 rule and the updated
       WiFi-power-cycle-recovery invariant explicitly, once code is written.
+### WP6 — Boot-time watchdog safety for the one-time setup batch
+**Depends on**: nothing. **Touches**: `system_service.py`, `buildgen/codegen.py` (generated
+`build_system()`), `tests/test_system_service.py`. **Corresponds to**: Topic 9 below.
+
+**Goal**: the one-time `setup()` calls made during boot cannot starve the hardware watchdog, no
+matter how many modules a device wires, and a device built without a watchdog behaves identically
+through the same code path.
+
+**Background the owner established (implement against this, it is the requirement):**
+- A one-time multi-second delay at boot is **not** itself a problem. These devices run for months
+  and are rarely rebooted, and a short period of API unavailability after a reboot is normal for
+  any networked device. Do not optimise boot latency for its own sake.
+- What *is* a problem is approaching the watchdog's timeout while those one-time `setup()` calls
+  run. `WDT(timeout=8000)` is armed before them (~8388ms hard cap, `SPECIFICATION.md` Part F).
+- The owner's chosen remedy: **feed the watchdog after every `setup()` call.** These calls happen
+  once, at boot, outside any loop — so a feed placed there cannot degenerate into something that
+  keeps feeding a hung system forever. That property is what makes it safe, and it must stay true.
+- A device may legitimately have **no** watchdog. That case must be handled by the same code path,
+  elegantly and generally — the owner's proposal was that `SystemService` take the watchdog as a
+  constructor argument, defaulting to a no-op when absent, rather than sprinkling `if wdt is not
+  None` at every call site.
+
+**Sufficient when**: the setup batch feeds the watchdog after each call; a no-watchdog build runs
+the identical path with a no-op and needs no special-casing; `scripts/lint.sh`,
+`scripts/typecheck.sh` and `scripts/test.sh` stay clean.
+
+**Completeness / self-containment / harmony check**:
+- [ ] Confirm the feed cannot be reached from any repeating/looping context — its safety rests
+      entirely on being one-time and boot-only.
+- [ ] Confirm the no-watchdog default genuinely removes the branch rather than hiding it.
+- [ ] Run CLAUDE.md's bird's-eye-view scan over `src/` afterwards; flag any cross-file
+      inconsistency for discussion rather than silently fixing it.
+
+**Spec-conformance requirement**: check every touched file against `SPECIFICATION.md` Part D's
+checklist and Part G's shared-primitive catalog — in particular, do not invent a second
+watchdog-access pattern if one already exists.
+
+**Testing requirement**: functionality (feed happens per call, in order); resilience/edge cases
+(no-watchdog build; empty setup list; a `setup()` that raises); biting coverage (a long batch
+that would starve the watchdog without the feed); regression (existing boot/task-supervisor tests).
+
+- [ ] Give `SystemService` an optional watchdog, defaulting to a no-op, and route every feed
+      through it.
+- [ ] Feed after each call in the one-time boot setup sequence.
+- [ ] Have `buildgen` emit whatever call shape this settles on.
+- [ ] Add the unit tests above — the owner asked explicitly for functionality, error handling /
+      resilience, coverage and regression tests on this change.
+
+### WP7 — Sensor read-timer architecture: preserve, verify, document
+**Depends on**: nothing. **Touches**: `system_service.py` (read-only unless a defect is found),
+`SPECIFICATION.md`. **Corresponds to**: Topic 10 below.
+
+**Goal**: the existing sensor read-trigger timing design is understood, proven correct against the
+real rp2 MicroPython build, left intact, and written down — so no future change erodes it by
+accident.
+
+**Background the owner established — this is the design intent, not an observation to re-derive:**
+- Every sensor's read period is settable in **whole multiples of one second, one second being the
+  shortest**.
+- The read-trigger timers are therefore **staggered evenly across exactly one second in total** —
+  not at a fixed per-timer gap. With N timers spread over that one second, they sit at the maximum
+  achievable mutual distance for the shortest possible period.
+- Because they are **system timers**, they do not drift relative to one another once armed. Their
+  phase relationship is fixed for the whole runtime.
+- Those two facts together are the point: **no two sensor reads ever coincide, for any combination
+  of configured periods, for the entire runtime** — no harmonics, no beat frequencies, no races
+  from period overlay.
+- This is also why the timer starters are triggered by **another real timer** (precise, interrupt,
+  callback driven) and **not** by an `asyncio.sleep()`, which offers only coarse timing.
+- Consequence for any future work: the one-second *total* spread is load-bearing and must not be
+  changed into a fixed per-task gap, nor rescaled. One-time boot `setup()` calls are a **separate
+  list** with no such obligation (Topic 9 / WP6) and must not be folded back into this mechanism.
+
+**Sufficient when**: the above is verified against the pinned rp2 MicroPython source (not from
+memory, per CLAUDE.md's standing rule), any deviation between intent and code is reported rather
+than silently "fixed", and the reasoning is recorded in `SPECIFICATION.md`.
+
+**Testing requirement**: a regression test that pins the *total* one-second spread and fails if it
+is turned into a fixed per-task interval or rescaled; a test that the setup-call list carries no
+stagger obligation.
+
+- [ ] Verify the no-relative-drift and one-second-spread claims against the pinned MicroPython
+      rp2 source and the current rp2 port docs.
+- [ ] Verify the running code actually implements the intent; **report any mismatch, do not
+      silently change it** (CLAUDE.md's flag-don't-fix rule).
+- [ ] Add the regression test above.
+- [ ] Document the mechanism and its rationale in `SPECIFICATION.md` (see Part 5).
+
+
 
 ---
 
@@ -828,6 +931,111 @@ hardware at all).
 owner's go-ahead given directly in that session's own conversation** (standing `CLAUDE.md` rule,
 unrelated to this session specifically) — this has NOT been granted in this session; all
 `tests_hardware/`-tier work above is planning only until a session has that go-ahead.
+## TOPIC 9 — Boot-time watchdog feeding and setup-call pacing
+
+### DECISION: feed the watchdog after every one-time `setup()` call; carry the watchdog as an optional, no-op-defaulting dependency.
+
+Owner's reasoning, recorded because it is the requirement rather than a preference:
+
+- **A one-time delay at boot is acceptable.** The device runs for months and is barely ever
+  rebooted in real use, and an API unreachable for a few seconds after a reboot is what almost
+  every networked device does. Boot latency is explicitly *not* a thing to optimise for its own
+  sake.
+- **Watchdog starvation during that window is the real risk**, and it is what the fix targets.
+- **Why feeding there is safe**: these `setup()` calls run once, at boot, outside any loop. A feed
+  in that position can never accidentally keep feeding a hung system forever — the property that
+  makes it acceptable. Any future refactor that moves this code into a loop breaks that argument
+  and must be rejected.
+- **No-watchdog builds must be handled generally, not special-cased.** The owner's own proposal:
+  `SystemService` takes the watchdog instance as an argument; absent, feeding degrades to a no-op.
+
+**Superseded along the way, recorded so it is not re-proposed:** an earlier idea was to pace the
+`setup()` calls with `await asyncio.sleep()` between them, mirroring the task starters. That was
+replaced by Topic 10's decision — the setup calls get their **own separate list** with no stagger
+obligation at all. Do not reintroduce a delay between setup calls.
+
+### TO-DO
+See WP6 above for the full action list.
+
+---
+
+## TOPIC 10 — Sensor read-timer architecture (existing design, to be preserved and documented)
+
+### DECISION: the existing timing scheme stands. Verify it, document it, and do not rescale it.
+
+This is background the owner supplied directly. It is the design intent behind code that already
+exists — treat it as the specification, and check the code against it rather than the reverse.
+
+- Sensor read periods are settable in **whole multiples of one second, minimum one second**.
+- The read-trigger timers are staggered **evenly across one second in total** — deliberately a
+  total spread, not a fixed per-timer gap. For N timers this yields the maximum achievable mutual
+  spacing at the shortest selectable period.
+- They are **system timers**, so they **do not drift relative to each other** once armed; their
+  phase relationship holds for the entire runtime.
+- Therefore **no two sensor reads ever coincide**, for any combination of configured periods, for
+  the whole runtime. That is the property the design exists to guarantee: no harmonics, no beats,
+  no races from period overlay.
+- The timer starters are themselves triggered by **another real timer** — precise, interrupt and
+  callback driven — rather than by `asyncio.sleep()`, whose timing is only coarse. This is
+  deliberate and is part of the same guarantee.
+
+**Standing constraints this places on all future work:**
+- The one-second **total** spread must not become a fixed per-task gap, and must not be rescaled.
+- One-time boot `setup()` calls belong to a **separate list** (Topic 9) and must never be folded
+  back into this mechanism.
+- Verification is against the pinned MicroPython rp2 source and current port docs, per CLAUDE.md's
+  standing "don't rely on training memory" rule.
+
+### TO-DO
+See WP7 above for the full action list.
+## TOPIC 11 — Cross-cutting requirements carried from the decision rounds
+
+These were stated by the owner across the decision messages but do not belong to a single work
+package. They are requirements, not suggestions.
+
+### `self.pr.err()` → `err_s()`, wired through to API and website
+The bare synchronous print-only `err()` is to be upgraded to the recording `err_s()` form and wired
+through to the API and the website, so the failure actually shows up rather than only printing.
+Owner's words: "Needs to be updated and wired up through the API to the website with all unit tests
+(full normal flow, full error handling / self-healing / resilience, biting coverage, regression) to
+be added."
+
+- [ ] Determine which call sites this applies to — the earlier list was produced by this session's
+      own analysis and is **not** carried forward; re-establish it from the code.
+- [ ] Wire the recorded errors through to the API/status and the website.
+- [ ] Full test set per the owner's wording above.
+
+### errno/wrnno conflicts are realigned project-wide, not worked around
+If a change introduces errno/wrnno values that conflict with conventions already in use elsewhere,
+**the conflicting existing values are adapted across the whole project**, and every usage — the unit
+tests explicitly included — is aligned with them. Reservation lives in the base classes and is not
+mutable by individual modules.
+
+- [ ] Before adding any code, check for a conflict.
+- [ ] If one exists, realign project-wide including all test usages, rather than picking a free
+      number to dodge it.
+
+### WiFi, NTP and the webserver are implicitly mandatory in every build
+Owner's framing: all three are mandatory modules of every build. They take FRAM logging implicitly
+whenever the TOML declares a FRAM chip, exactly as the already-wired modules do, and fall back to
+RAM logging when no FRAM chip is present. `buildgen` is adapted to enforce this rather than each
+device's TOML restating it.
+
+- [ ] Treat this as a build-level invariant, not a per-device option.
+
+### Superseded: "prioritize existing connections over new ones"
+Recorded so it is not re-proposed. The owner's first instinct on the connection-reset defect was to
+refuse new incoming connections while an established one is awaiting its response, prioritising
+existing connections over new ones. This was **not** the design ultimately chosen — Topic 1's
+respond-then-persist is, on the owner's own later reasoning that the write is atomic per module by
+API design and so the simplest possible trigger suffices. Keep it as context for why the simpler
+design was preferred, not as an open option.
+
+---
+
+
+---
+
 
 ---
 
@@ -843,10 +1051,15 @@ unrelated to this session specifically) — this has NOT been granted in this se
 | 6 | FRAM capacity verification | Decided — deterministic post-build check, no errno/async; real-hardware tier explicitly settled as **mpremote-only, no new `/status` field** (owner's point 2 this round: "keep footprint minimal... handle via mpremote") |
 | 7 | errno/wrnno audit | Closed — not doing it |
 | 8 | Test coverage scheme | Existing 4-tier standing rule applies to 2/3/5/6, and to Topic 1's new deferred-write behavior |
+| 9 | Boot-time watchdog feeding | Decided — feed after every one-time `setup()`; watchdog optional, no-op default |
+| 10 | Sensor read-timer architecture | Existing design stands — verify against real source, document, do not rescale |
+| 11 | Cross-cutting requirements | `err_s()` upgrade + API/website wiring; project-wide errno realignment; mandatory-module invariant |
 
 **Every open decision from earlier rounds is now resolved.** Nothing beyond the Topic-1 BACKLOG.md
-commit (`3f7cc25`) has been implemented. Recommended implementation order, given that Topic 1's
-error durability depends on Topic 3: **Topic 3 (and, alongside it, Topic 2 since both touch the same FRAM-forwarding machinery)
+commit (`3f7cc25`) has been implemented. Topics 9 and 10 were settled *after* this checklist was
+first written and have no ordering dependency on the rest; Topic 10 is mostly verification and
+documentation of an existing design. Recommended implementation order, given that Topic 1's error
+durability depends on Topic 3: **Topic 3 (and, alongside it, Topic 2 since both touch the same FRAM-forwarding machinery)
 before Topic 1**, so Topic 1's deferred-write errors land durably from day one rather than needing
 a second pass once Topic 3 lands later. Topics 5 and 6 have no ordering dependency on the
 others and can be done at any point.
@@ -900,3 +1113,67 @@ one order, with the full picture held throughout.
   design already in hand — see Topic 1's "FINAL DESIGN" section.
 - `BACKLOG.md`'s entry for the original finding was committed before implementation began and
   survives the rollback.
+
+---
+
+# Part 5 — Background knowledge to persist once implemented and verified
+
+**Standing requirement from the project owner.** The explanations in this document are currently
+held only here, in a temporary file that is meant to be deleted. Several of them are design intent
+that existing code already depends on, and losing them is how a later session erodes a guarantee by
+accident.
+
+So: **once the new session has implemented and verified the work, the background knowledge below
+moves into the permanent documentation** — `SPECIFICATION.md` for anything architectural and reused
+elsewhere, `CLAUDE.md` for anything that is a standing rule or operating constraint for future
+sessions. This is part of the work, not an optional follow-up, and it happens *after* verification
+so that what gets written down is what was actually confirmed — not what was merely intended.
+
+CLAUDE.md's own rule applies to how it is written: a short pointer in the code's header block, the
+substance in the relevant `SPECIFICATION.md` Part. Do not paste these paragraphs into source
+comments.
+
+### What must be persisted, and roughly where
+
+1. **Sensor read-timer architecture** → `SPECIFICATION.md`, alongside the existing Part F timer
+   facts. The full chain of reasoning: one-second minimum period in whole-second multiples → even
+   stagger across one second *total* (not a per-timer gap) → system timers hold their phase with no
+   relative drift → therefore no two reads ever coincide for any period combination, for the whole
+   runtime. Include *why* a real timer rather than `asyncio.sleep()` drives the starters. State the
+   total-spread rule as load-bearing, so a future reader does not "simplify" it into a fixed
+   interval.
+2. **Boot-time `setup()` calls are a separate list** → same place, as the counterpart rule: they
+   carry no stagger obligation, must not be folded into the read-timer mechanism, and must not have
+   a delay inserted between them.
+3. **Why feeding the watchdog in the setup batch is safe** → `SPECIFICATION.md` Part F near the WDT
+   facts: it is one-time and boot-only, outside any loop, so it cannot keep feeding a hung system.
+   Record the constraint that follows — moving that code into a loop invalidates the argument.
+4. **Boot latency is explicitly not a metric to optimise** → `CLAUDE.md`, as an operating
+   constraint. Rare reboots; brief post-reboot API unavailability is normal and accepted. This
+   stops a future session from "fixing" a boot delay that nobody considers a defect.
+5. **The no-watchdog build is a first-class case** → wherever the watchdog dependency ends up being
+   documented: handled by an optional dependency defaulting to a no-op, not by conditionals at call
+   sites.
+6. **FRAM logging is optional for every module except the FRAM module itself** → `SPECIFICATION.md`
+   with the FRAM/logging architecture, including the reason: logging a FRAM fault into that same
+   FRAM is pointless. Also record which modules are implicitly wired when a TOML declares a FRAM
+   chip, and that `ConfigManager` inherits its owner's FRAM.
+7. **The deferred-write persistence contract** → `SPECIFICATION.md` Part A.5/F.2 as the topics
+   settle: `"Valid"` means validated, persistence is signalled by the absence of an errno against
+   that write, `GET` returns the staged value before the write lands and the written value after,
+   and the API envelope is unchanged. Update every existing place that still states or implies a
+   config write is synchronous within the request.
+8. **The accepted residual risk** → alongside it: power loss between "response sent" and "write
+   attempted" loses the change with no trace, accepted as no worse than the status quo.
+9. **FRAM capacity is verified after the build, not at runtime** → with the FRAM documentation:
+   allocation is deterministic and fixed once a build is done, so a post-construction check is
+   sufficient; no errno, no runtime machinery, failures handled via `mpremote`.
+10. **errno/wrnno ranges are reserved in the base classes and not mutable by modules** →
+    `SPECIFICATION.md` where the numbering convention lives, noting it is a convention the code
+    does not enforce.
+
+### The rule this is meant to establish
+
+Any future work that touches a guarantee recorded above must state which guarantee it touches and
+show it still holds. That is only possible if the reasoning — not just the rule — is written down,
+which is the whole point of persisting it rather than leaving it in a deleted scratch file.
