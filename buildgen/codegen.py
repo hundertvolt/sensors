@@ -111,6 +111,25 @@ def _fram_kw(spec: InstanceSpec, ctx: _Ctx) -> "tuple[str, str] | None":
     return (fram_wf.target, ctx.wiring_expr(spec, fram_wf)) if fram_wf is not None and "fram_target" in spec.wiring else None
 
 
+def _device_fram_arg(model: DeviceModel, ctx: _Ctx) -> str:
+    # Mandatory infra's own device-level counterpart to _fram_kw() above: [device.wiring].fram_target
+    # (always a plain instance-name string, never a §2 default-provider dict - _check_device_wiring()
+    # already enforces that) is implicitly wired into every mandatory-infra consumer that declares its
+    # own "# @wiring fram_target ..." tag (sysfunct/conn/ntp/webserver today), same mechanism, one
+    # shared helper instead of the inline expression each call site used to duplicate.
+    fram_target = model.doc.get("device", {}).get("wiring", {}).get("fram_target")
+    return f"fram={ctx.instance_var(resolve_instance_key(model, fram_target))}" if fram_target else ""
+
+
+def _device_fram_kwarg_suffix(model: DeviceModel, ctx: _Ctx) -> str:
+    # ", fram=<var>" ready to splice directly into an existing inline call's argument list (conn's/
+    # ntp's/sysfunct's own one-line constructor calls below) - _emit_webserver() below needs the bare
+    # "fram=<var>" form instead (its own call is emitted one kwarg per line), so it calls
+    # _device_fram_arg() directly rather than through this wrapper.
+    arg = _device_fram_arg(model, ctx)
+    return f", {arg}" if arg else ""
+
+
 def _build_args_scd30(spec: InstanceSpec, ctx: _Ctx) -> "tuple[list[str], list[tuple[str, str]]]":
     f = spec.fields
     pos = [ctx.bus_var(f["bus"]), str(f["irq_pin"])]
@@ -370,8 +389,6 @@ def _emit_build_system(lines: "list[str]", model: DeviceModel, ctx: _Ctx, instan
     lines.append("    global " + ", ".join(global_names))
     lines.append("")
     lines.append("    watchdog = WDT(timeout=8000)")
-    lines.append(f"    conn = AsyConnTime(conn_fail_to_hotspot={dev['conn_fail_to_hotspot']}, hotspot_time_min={dev['hotspot_time_min']}, max_module_error=_MAX_MODULE_ERROR, cfg_path=cfg_path, debug=debug)")
-    lines.append("    ntp = AsyNtpClient(conn.get_wifi_mode_lock(), conn.network_available, conn.get_dns_server_ip, max_module_error=_MAX_MODULE_ERROR, dns_timeout_ms=_DNS_TIMEOUT_MS, dns_tries=_DNS_TRIES, ntp_fetch_timeout_ms=_NTP_FETCH_TIMEOUT_MS, cfg_path=cfg_path, debug=debug)")
     for bus_id, bus_table in model.doc["bus"].items():
         var = ctx.bus_var(bus_id)
         if bus_id.startswith("i2c"):
@@ -390,13 +407,18 @@ def _emit_build_system(lines: "list[str]", model: DeviceModel, ctx: _Ctx, instan
             lines.append(f"    {var} = asy_uart_driver.UART({port}, {bus_table['tx_pin']}, {bus_table['rx_pin']}, baudrate={bus_table['baudrate']}{extra_kw})")
 
     for node in construction_order:
-        if node in ("conn", "ntp"):
-            continue  # already emitted above, unconditionally, ahead of the buses
+        if node == "conn":
+            # Placed here, not hardcoded ahead of the bus loop, specifically so it can come after
+            # fram's own construction line whenever a device-level fram_target wires it in
+            # (buildgen.graph.build_construction_order() adds that dependency for exactly this) -
+            # a device with no fram_target keeps conn as the very first thing built, unchanged.
+            lines.append(f"    conn = AsyConnTime(conn_fail_to_hotspot={dev['conn_fail_to_hotspot']}, hotspot_time_min={dev['hotspot_time_min']}, max_module_error=_MAX_MODULE_ERROR, cfg_path=cfg_path{_device_fram_kwarg_suffix(model, ctx)}, debug=debug)")
+            continue
+        if node == "ntp":
+            lines.append(f"    ntp = AsyNtpClient(conn.get_wifi_mode_lock(), conn.network_available, conn.get_dns_server_ip, max_module_error=_MAX_MODULE_ERROR, dns_timeout_ms=_DNS_TIMEOUT_MS, dns_tries=_DNS_TRIES, ntp_fetch_timeout_ms=_NTP_FETCH_TIMEOUT_MS, cfg_path=cfg_path{_device_fram_kwarg_suffix(model, ctx)}, debug=debug)")
+            continue
         if node == "sysfunct":
-            device_wiring = model.doc.get("device", {}).get("wiring", {})
-            fram_target = device_wiring.get("fram_target")
-            fram_arg = f", fram={ctx.instance_var(resolve_instance_key(model, fram_target))}" if fram_target else ""
-            lines.append(f"    sysfunct = SystemService(ntp.ntp_issynced, watchdog=watchdog{fram_arg}, cfg_path=cfg_path, debug=debug)")
+            lines.append(f"    sysfunct = SystemService(ntp.ntp_issynced, watchdog=watchdog{_device_fram_kwarg_suffix(model, ctx)}, cfg_path=cfg_path, debug=debug)")
             continue
         if not isinstance(node, tuple):
             raise BuildError(model.device, f"internal: construction_order entry {node!r} is not a known bare node or an instance key")
@@ -416,7 +438,7 @@ def _emit_build_system(lines: "list[str]", model: DeviceModel, ctx: _Ctx, instan
         (ctx.instance_var(n) for n in construction_order if isinstance(n, tuple) and instances[n].driver == "uart_link" and instances[n].fields.get("role") == "initiator"),
         None,
     )
-    _emit_webserver(lines, have, sensor_vars, uart_initiator_var)
+    _emit_webserver(lines, have, sensor_vars, uart_initiator_var, _device_fram_arg(model, ctx))
 
     lines.append("    timers_running = ThreadSafeFlag()")
     lines.append("    sysfunct.set_level_setters(_collect_level_setters())")
@@ -547,7 +569,7 @@ def _emit_callbacks(lines: "list[str]", have: "set[str]") -> None:
         lines.append("")
 
 
-def _emit_webserver(lines: "list[str]", have: "set[str]", sensor_vars: "list[str]", uart_initiator_var: "str | None") -> None:
+def _emit_webserver(lines: "list[str]", have: "set[str]", sensor_vars: "list[str]", uart_initiator_var: "str | None", fram_arg: str) -> None:
     lines.append("    app = Microdot()")
     lines.append("    webserver = WebserverService(")
     lines.append("        app,")
@@ -592,6 +614,8 @@ def _emit_webserver(lines: "list[str]", have: "set[str]", sensor_vars: "list[str
     lines.append("        is_hotspot_active=conn.is_hotspot_active,")
     lines.append("        host=web_host,")
     lines.append("        port=web_port,")
+    if fram_arg:
+        lines.append(f"        {fram_arg},")
     lines.append("    )")
 
 

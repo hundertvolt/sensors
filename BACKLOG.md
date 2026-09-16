@@ -193,25 +193,37 @@ constraints.
   and whether the outer `run_timed()` timeouts still make sense once inner waits can stretch - the
   two here went 20s -> 40s so the safety net cannot fire before the bounded wait finishes.
 
-- **The SCD30 "write or don't write" decision shall be ONE command-line flag that propagates
-  centrally to every potentially-writing test (project owner, 2026-09-15).** Today there are two
-  separate, opposite-polarity mechanisms that a reader has to hold in their head at once:
-  `--skip-scd30-nvm-writes` (opt-OUT, deselects `@pytest.mark.scd30_nvm_write` — every test taking
-  the session-scoped `scd30_continuous_measurement_triggered` fixture, which together spend ONE
-  routine NVM write) and `--allow-scd30-writes` (opt-IN, gates `@pytest.mark.scd30_write` — the one
-  test issuing an ADDITIONAL write, checked inside the test body via `request.config.getoption()`
-  rather than by deselection). Both markers currently coexist on that one test, and the polarity
-  clash is exactly the kind of thing that silently spends a write budget nobody meant to spend.
-  Wanted instead: **one combinatory selector/deselector** — a single flag that decides "this run may
-  spend SCD30 NVM writes, or it may not", applied centrally in `tests_hardware/conftest.py`'s own
-  `pytest_collection_modifyitems()` so every affected test is selected or deselected by it, with no
-  per-test `getoption()` check and no second flag. Keep the FLAG-not-`-m` property that
-  `--skip-scd30-nvm-writes` was given for a real reason: a second `-m` expression REPLACES a suite
-  runner's own marker exclusions instead of adding to them, silently re-selecting what it had
-  excluded. Touches `tests_hardware/conftest.py`, `tests_hardware/flash/test_bus_concurrency.py`,
-  `scripts/run_bench_gc_matrix.sh`, `tests_hardware/README.md` and SPECIFICATION.md Part C.8.
-## Open questions (need owner input or further investigation)
-
+- **A full `scripts/test.sh` run's own `tests/_tmp` directory grows unboundedly across the whole
+  run, and once it accumulates enough entries this causes real, multi-minute-scale test slowdowns —
+  found while verifying WP1/WP2, confirmed unrelated to either.** Every `tests/test_*.py` file that
+  needs its own per-test config-file isolation creates fresh subdirectories under the one shared
+  `tests/_tmp` (e.g. `_tmp_cfg_dir()`/`dtcc_<n>`/`dtrw_<n>`-style helpers, one per file, each
+  sweeping only *its own* prefix at its own start via `_sweep_stale_tmp_dirs(prefix)`) — nothing
+  sweeps any other file's leftovers, so the directory's total entry count only ever grows across a
+  single `scripts/test.sh` invocation's full 66-file sequence. **Confirmed directly, isolated from
+  any WP1/WP2 code change**: pre-populating `tests/_tmp` with 900 generic, unrelated directories
+  (simulating "60 other files already ran") and then running `tests/test_sensortask.py` alone — a
+  file whose own code was not touched by this experiment — took **7m2s instead of its normal <2
+  minutes**, with `user` time barely changing (33s vs the normal ~10s) - almost the entire extra
+  time is blocked on filesystem I/O (`os.mkdir()`/`os.listdir()`/`os.rmdir()` calls scaling badly
+  with directory entry count on this container's filesystem), not test logic. This is exactly what
+  was intermittently timing out `tests/test_sensortask.py` and
+  `tests/test_digital_twin_webserver_concurrency.py` — the suite's two heaviest, most
+  temp-dir-hungry files — inside full `scripts/test.sh` runs during this session, even after
+  raising `-X heapsize` and the per-file timeout for unrelated, real reasons (see this file's other
+  WP1/WP2 entries): both passed **every single test correctly**, every time, whether standalone or
+  mid-suite; only the *wall-clock budget* was ever at risk, and only once the shared directory had
+  grown enough. **Not fixed here — needs a design decision, not a quick patch**: candidates include
+  a single global sweep of the whole `tests/_tmp` tree once at the very start of `scripts/test.sh`
+  (before any test file runs, rather than each file sweeping only its own prefix), giving each test
+  *file* (not just each test function) a directory that's fully removed (not swept-by-prefix) when
+  that file's own run starts, or moving to a scheme that doesn't accumulate at all. Whichever is
+  chosen must not weaken the isolation these directories exist for. Real CI (GitHub Actions) starts
+  each job from a fresh checkout with no directory to have accumulated *before* that job's own
+  `scripts/test.sh` invocation, but every one of that invocation's own 66 files still shares the
+  same `tests/_tmp` across that one run, so the same growth-across-one-run mechanism applies there
+  too, not just in a long-lived local sandbox - this is worth confirming against a real CI run
+  before assuming it never bites there.
 - **ISL29125's chip configuration divergence under concurrent API load (PR #84/commit `679c2b0`'s
   isolation work, HIGH IMPORTANCE, completely unforeseen — project owner, 2026-09-15) — fixed in
   code and unit-tested; real-hardware re-verification still pending.** Root cause, traced through
@@ -588,6 +600,33 @@ constraints.
   config-seeding step — not a `buildgen/`-only change. A tripwire test
   (`test_hostname_and_hotspot_password_are_not_yet_wired_into_generated_code`) and a code comment in
   `validate.py` hold the current state in place so the gap can't quietly change shape unnoticed.
+- **Wiring WiFi/NTP/webserver into the device's FRAM chip (WP1, CLAUDE.md's implicit-FRAM-wiring
+  rule) measurably increases one-time boot latency, via lock contention on the FRAM chip's single
+  shared `asyncio.Lock` (`FRAM_SPI`, `src/asy_fram_driver.py`), not via any per-op slowness.** Every
+  FRAM-backed module's own task calls `self.pr.setup()` (a real chunk read, and a write on first
+  boot) the first time it runs; `system_service.py`'s `start_and_check_tasks()` starts every task
+  within one ~1-second stagger window, so once `conn`/`ntp`/`webserver`/`conn`'s own `DNSServer`
+  joined the existing FRAM-wired set (`sysfunct`/`scd30`/`sgp40`/`bmp3xx`/`neopixel`/`notification`),
+  all of them now contend for that one lock in the same busy window. Measured directly against the
+  real generated code for all 6 devices under the digital twin: boot-to-first-`200` now lands between
+  ~4.5s and ~6.3s (`dev` slowest — the device with the most FRAM-wired instances), versus ~1.9-2.2s
+  before WP1. **Not open work**: the finding is the resolution — this is a one-time, self-resolving
+  boot cost (steady-state serving is unaffected), matching CLAUDE.md's own already-accepted position
+  that boot latency isn't a thing to optimise for its own sake, so
+  `tests_scripts/test_digital_twin_generated_boot.py`'s own `_TWIN_DURATION_S` was raised (6 → 15) to
+  sit comfortably above the new observed range rather than inside it — see that constant's own
+  comment for the full measurement. **Re-measured after WP2 landed** (every `SensorReaderConfig`-
+  based module's own `ConfigManager` now also draws its own separate chunk): boot-to-first-`200`
+  moved to ~6.1s (wozi) / ~7.7s (dev), a modest further increase over WP1-alone's ~5.1s/~6.3s, not
+  the much larger jump the lock-contention theory alone would predict — because every one of WP2's
+  new chunks (`conn`/`ntp`/`sysfunct`/`sgp40`/`bmp3xx`/`notification`'s own `cfgmgr`) has its
+  `setup()` called as part of that same module's own `.setup()`, which rides the pre-task-start
+  setup batch (`sysfunct → fram → conn → ntp → sgp40 → bmp3xx → notification`, SPECIFICATION.md's
+  own step 16) rather than the contended task-starter stagger window - only `webserver`'s own lazy
+  `self.pr.setup()` is exposed to that contention, and WP2 adds no new chunk to `webserver` itself
+  (it still has no `cfgmgr`). Both numbers stay comfortably inside the 15s test budget. Still worth
+  watching if a real-hardware run ever shows this mattering there, but the design itself needs no
+  changes on this evidence.
 - **A digital-twin soak's wall clock is set by GC timing, so it must never be bisected to a code
   change** (established 2026-09-11 after one was — see SPECIFICATION.md Part E.7 for the measurement
   and the inverted control). Not open work: the finding itself is the resolution, and

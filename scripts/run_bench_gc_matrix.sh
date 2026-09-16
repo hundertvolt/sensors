@@ -10,9 +10,9 @@
 # the reason something passes (CLAUDE.md's memory-safety discipline, Part I.4(e)/(f)). Pass 3 runs
 # last so the bench is left on the firmware it normally carries.
 #
-# Passes --skip-scd30-nvm-writes throughout: this script runs the full suite twice, and the SCD30
-# bus-hazard group spends one of the sensor's finite on-chip NVM writes per pytest session. That
-# group needs its own deliberate run, not two more writes every time the GC matrix is exercised.
+# Spends no SCD30 NVM writes, and needs no flag of its own to say so: every real SCD30 write now
+# sits behind conftest.py's --allow-scd30-writes, which is off by default. This script runs the full
+# suite twice, so that default is what keeps the sensor's finite write-wear budget untouched here.
 #
 # THIS FLASHES THE BOARD THREE TIMES. That is the point of the script, but it is not a routine
 # action - it needs the project owner's go-ahead like everything else in this tier, plus
@@ -33,20 +33,20 @@ echo "==========================================================================
 echo "== Pass 1/3: reactive GC, full bench suite (the vital bar)"
 echo "=============================================================================="
 uv run scripts/flash_dev_firmware.py --gc-policy reactive
-scripts/run_bench_hardware_suite.sh --expect-gc-policy reactive --skip-scd30-nvm-writes "$@"
+scripts/run_bench_hardware_suite.sh --expect-gc-policy reactive "$@"
 
 echo "=============================================================================="
 echo "== Pass 2/3: reactive GC + allocator churn, pressure tests only"
 echo "=============================================================================="
 uv run scripts/flash_dev_firmware.py --gc-policy reactive --memory-pressure
 scripts/_require_clean_hardware_run.sh tests_hardware/flash tests_hardware/bench \
-    -m "memory_pressure and not long_soak and not multi_day_rollover" --expect-gc-policy reactive --skip-scd30-nvm-writes "$@"
+    -m "memory_pressure and not long_soak and not multi_day_rollover" --expect-gc-policy reactive "$@"
 
 echo "=============================================================================="
 echo "== Pass 3/3: threshold GC (what ships), full bench suite"
 echo "=============================================================================="
 uv run scripts/flash_dev_firmware.py --gc-policy threshold
-scripts/run_bench_hardware_suite.sh --expect-gc-policy threshold --skip-scd30-nvm-writes "$@"
+scripts/run_bench_hardware_suite.sh --expect-gc-policy threshold "$@"
 
 echo ""
 echo "OK: the whole GC-policy matrix passed - reactive, reactive+pressure, and threshold."

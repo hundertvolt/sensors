@@ -24,13 +24,27 @@ _HOST = "127.0.0.1"
 _HTTP_OK = 200
 _BOOT_TIMEOUT_S = 30.0
 _SHUTDOWN_TIMEOUT_S = 15.0
-# Must comfortably outlast real boot-to-serving latency (measured ~1.9s for wozi on this host) plus
-# the 5-endpoint smoke loop's own sequential HTTP round trips - `3` used to pass only because an
-# older, slower `run_generic_integration.py` shutdown sequence added a few seconds of unintentional
-# slack after the sleep expired; a cleaner/faster shutdown (2026-09-14) removed that slack and
-# exposed this budget as always having been too tight, not a new regression to chase in the twin
-# itself (confirmed directly: the pre-refactor file reproduces the identical ~1.9s boot latency).
-_TWIN_DURATION_S = 6
+# Must comfortably outlast real boot-to-serving latency plus the 5-endpoint smoke loop's own
+# sequential HTTP round trips - `3` used to pass only because an older, slower
+# `run_generic_integration.py` shutdown sequence added a few seconds of unintentional slack after
+# the sleep expired; a cleaner/faster shutdown (2026-09-14) removed that slack and exposed this
+# budget as always having been too tight, not a new regression to chase in the twin itself
+# (confirmed directly: the pre-refactor file reproduces the identical ~1.9s boot latency it had
+# before this margin was raised the first time). Raised again, deliberately, from 6 to 15 once WP1
+# (WiFi/NTP/webserver inheriting the device's FRAM chip when one is wired, CLAUDE.md's implicit-
+# FRAM-wiring rule) wired a real FRAM-backed logger into `conn`/`ntp`/`webserver` (plus `conn`'s own
+# `DNSServer`): each now performs a real chunk read/write the first time its own task runs, sharing
+# one process-wide `asyncio.Lock` (`FRAM_SPI`'s own, `src/asy_fram_driver.py`) with every other
+# already-FRAM-wired module whose own task is starting in the very same ~1s task-start stagger
+# window (`system_service.py`'s `start_and_check_tasks()`) - measured directly, not estimated:
+# boot-to-first-200 across all 6 real devices lands between ~4.5s and ~6.3s (`dev` slowest, the
+# device with the most FRAM-wired instances), for a real, expected reason - not a new hang, and not
+# something to chase down as a code defect. It is a boot-time-only, self-resolving cost (steady-
+# state serving is unaffected - the lock is only ever this contended during the one-time startup
+# window), matching CLAUDE.md's own already-accepted position that boot latency is not a thing to
+# optimise for its own sake; see BACKLOG.md for the finding, in case FRAM-chunk-lock contention at
+# boot ever needs its own fix once WP2 adds another chunk per FRAM-wired sensor's own ConfigManager.
+_TWIN_DURATION_S = 15
 # No real static content is needed - this suite never requests "/" (asy_webserver_service.py's own
 # static route only touches frozen_html lazily, per request - see this file's own module docstring
 # reasoning, confirmed directly by reading that route's implementation).

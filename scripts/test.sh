@@ -155,16 +155,37 @@ failed=0
 # keep even though it turned out not to be what was causing the hang (see above); small,
 # immediate, line-buffered writes are still a reasonable default for CI log output.
 #
-# -X heapsize=8M (default 2097152 = 2MB) - tests/test_digital_twin_sensortask_integration.py's own
+# -X heapsize=32M (default 2097152 = 2MB) - tests/test_digital_twin_sensortask_integration.py's own
 # heaviest tests each build the whole real object graph (a fresh 8KB FramChip, ConfigManagers, ...)
 # one or more times per test, sharing one process/heap across every test function in the file (this
 # binary is invoked once per file, not once per test). Confirmed directly: with the 2MB default,
 # that file failed with a real MemoryError roughly 1 run in 3 depending on MicroPython's own
 # non-deterministic test-function run order (this file's own docstring already notes run order
-# differs from definition order); 8M cleared 5/5 consecutive runs. This is a Unix-port-only test-
-# harness setting - unrelated to the real rp2040's own RAM budget (SPECIFICATION.md Part F.1), and
-# every test file still runs under the same GC the real target uses either way.
-per_file_timeout_s="${PER_FILE_TIMEOUT_S:-180}"
+# differs from definition order); 8M cleared 5/5 consecutive runs at the time. Raised again, from 8M
+# to 32M, once WP1+WP2 (CLAUDE.md's implicit-FRAM-wiring rule, extended to WiFi/NTP/webserver and to
+# every SensorReaderConfig's own ConfigManager) made tests/test_sensortask.py's own per-device
+# object graphs meaningfully heavier - it builds all 6 real devices' full graphs repeatedly across
+# ~300 test functions in one process, and each device now carries roughly 2.5x as many FRAM-backed
+# PrintLogHistoryStore instances as before (conn/ntp/sysfunct/webserver plus every FRAM-wired
+# module's own cfgmgr). Confirmed directly, not estimated: 8M/16M both still failed with real
+# MemoryErrors partway through that file (81/321 and 176/321 passed respectively - a roughly linear
+# relationship with heap size, consistent with this file's own fixed, finite per-run garbage total
+# rather than an unbounded leak), 32M cleared multiple consecutive runs. This is a Unix-port-only
+# test-harness setting - unrelated to the real rp2040's own RAM budget (SPECIFICATION.md Part F.1):
+# real hardware only ever builds one device's own object graph once per boot, never six devices'
+# worth of graphs repeatedly in one process - and every test file still runs under the same GC the
+# real target uses either way.
+per_file_timeout_s="${PER_FILE_TIMEOUT_S:-240}"
+# Raised from 180 to 240 alongside the WP1 webserver-startup-race fix above:
+# tests/test_digital_twin_webserver_concurrency.py's own real-socket concurrency scenarios were
+# already the single heaviest file in this suite (measured standalone: ~230s even before WP1, ~11s
+# of that actual CPU time - the rest is this file's own deliberate scenario-body sleeps simulating
+# realistic timeouts/flaky connections, not busy work), so it was already running close to the old
+# 180s ceiling before this change. WP1 making webserver.pr real-FRAM-backed needed its own
+# ~15-call-site wait bumped from 0.1s to a measured-safe 0.5s (see that file's own comment for why
+# a polling readiness check made things worse, not better, and was reverted) - a real ~35s addition
+# on top of an already-marginal baseline, not a large one, but 180s no longer has real margin.
+# Confirmed directly: 240s clears this file with room to spare, standalone and inside the full suite.
 max_attempts=3
 failed_files=()
 passed_count=0
@@ -186,7 +207,7 @@ for test_file in tests/test_*.py; do
         cmd=("$test_file")
     fi
     for attempt in $(seq 1 "$max_attempts"); do
-        if MICROPYPATH="build/generated_src:src:tests:frozen_modules:.frozen" stdbuf -oL -eL timeout --kill-after=10 "$per_file_timeout_s" "$micropython_bin" -X heapsize=8M "${cmd[@]}"; then
+        if MICROPYPATH="build/generated_src:src:tests:frozen_modules:.frozen" stdbuf -oL -eL timeout --kill-after=10 "$per_file_timeout_s" "$micropython_bin" -X heapsize=32M "${cmd[@]}"; then
             ec=0
         else
             ec=$?

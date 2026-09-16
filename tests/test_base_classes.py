@@ -997,10 +997,83 @@ def test_sensorreaderconfig_fram_backed_logging_with_real_config_file() -> None:
         _remove(path_prefix + "config_fram1.cfg")
 
 
+def test_sensorreaderconfig_cfgmgr_inherits_fram_from_its_owning_module() -> None:
+    # WP2/CLAUDE.md's implicit-FRAM-wiring rule: SensorReaderConfig forwards its own in-scope fram=
+    # into the ConfigManager it owns (base_classes.py's own single-line gap this WP closes), rather
+    # than always constructing it RAM-only. Own separate chunk from reader.pr's own chunk.
+    path_prefix = _tmp_path("") + "/"
+    _remove(path_prefix + "config_fram_cfgmgr.cfg")
+    try:
+        manager, _chip = make_fram_manager()
+        reader = SensorReaderConfig(Meas(20.0, 50), 3, "fram_cfgmgr", _VAL_SI, cfg_path=path_prefix, fram=manager)
+        run(reader.cfgmgr.setup())
+        assert isinstance(reader.cfgmgr.pr, PrintLogHistoryStore)
+        assert isinstance(reader.pr, PrintLogHistoryStore)
+        assert reader.cfgmgr.pr.fram is not None
+        assert reader.cfgmgr.pr.fram is not reader.pr.fram  # each draws its own separate chunk
+    finally:
+        _remove(path_prefix + "config_fram_cfgmgr.cfg")
+
+
+def test_sensorreaderconfig_cfgmgr_write_failure_errno_persists_across_a_simulated_reboot() -> None:
+    # The actual durability WP2 exists for: a real write_config() failure (errno=10, an unknown key)
+    # must survive a reboot through cfgmgr's own now-FRAM-backed logger, exactly like reader.pr's
+    # own error history already does (test_sensorreader_fram_backed_error_check_persists_and_survives_reboot).
+    path_prefix = _tmp_path("") + "/"
+    path = path_prefix + "config_fram_reboot.cfg"
+    _remove(path)
+    try:
+        manager, chip = make_fram_manager()
+        run(manager.setup())
+        reader = SensorReaderConfig(Meas(20.0, 50), 3, "fram_reboot", _VAL_SI, cfg_path=path_prefix, fram=manager)
+        run(reader.cfgmgr.setup())
+        # setup() on a brand-new config file already records one wrn_s() ("Config file ... not
+        # found") - a real, pre-existing, expected first-boot condition, not this test's own
+        # failure - so the baseline is 1, not 0, before write_config() even runs.
+        baseline_err_count = reader.cfgmgr.pr.err_count
+        assert baseline_err_count == 1
+        ok, results = run(reader.cfgmgr.write_config({"NotARealKey": 1}, _VAL_SI))
+        # An unrecognized key alone never sets changed=True, so write_config's own "nothing to
+        # write" path returns (True, ...) - "ok" means "no exception", not "every field valid";
+        # the per-field "Invalid" result plus the persisted errno are what this test is really about.
+        assert ok is True
+        assert results == {"NotARealKey": "Invalid"}
+        assert reader.cfgmgr.pr.err_count == baseline_err_count + 1
+
+        # Simulate a reboot: a fresh manager/reader pair attached to the same underlying chip (same
+        # pattern as test_sensorreader_fram_backed_error_check_persists_and_survives_reboot). The
+        # config file exists now, so this second setup() records no further "not found" warning.
+        manager2, _chip2 = make_fram_manager()
+        manager2.fram._spidev.spi._spi = chip
+        run(manager2.setup())
+        rebooted = SensorReaderConfig(Meas(20.0, 50), 3, "fram_reboot", _VAL_SI, cfg_path=path_prefix, fram=manager2)
+        run(rebooted.cfgmgr.setup())
+        assert rebooted.cfgmgr.pr.err_count == baseline_err_count + 1
+    finally:
+        _remove(path)
+
+
+def test_sensorreaderconfig_cfgmgr_stays_ram_only_when_fram_is_none() -> None:
+    # Regression: the pre-WP2 default behavior (no fram= passed at all) must stay exactly RAM-only,
+    # not just "still works" - same shape as test_sensorreader_uses_in_memory_logging_when_fram_is_none.
+    path_prefix = _tmp_path("") + "/"
+    _remove(path_prefix + "config_no_fram_cfgmgr.cfg")
+    try:
+        reader = SensorReaderConfig(Meas(20.0, 50), 3, "no_fram_cfgmgr", _VAL_SI, cfg_path=path_prefix)
+        run(reader.cfgmgr.setup())
+        assert isinstance(reader.cfgmgr.pr, PrintLogHistory)
+        assert not isinstance(reader.cfgmgr.pr, PrintLogHistoryStore)
+    finally:
+        _remove(path_prefix + "config_no_fram_cfgmgr.cfg")
+
+
 def test_sensorreaderconfig_malformed_config_file_repairs_cleanly_with_fram_backed_logger() -> None:
-    # ConfigManager's repair warnings go through its own separate, in-memory-only "CFGMGR_" + name
-    # PrintLogHistory - not reader.pr, the FRAM-backed logger this test constructs - so
-    # reader.pr.err_count stays 0 regardless of the repair, and nothing is persisted to FRAM either way.
+    # ConfigManager's repair warnings go through its own separate "CFGMGR_" + name logger - not
+    # reader.pr, the FRAM-backed logger this test constructs directly - so reader.pr.err_count stays
+    # 0 regardless of the repair. As of WP2 (CLAUDE.md's implicit-FRAM-wiring rule), cfgmgr's own
+    # logger is FRAM-backed too when fram= is passed here, exactly like reader.pr - but a repair
+    # warning uses pr.wrn()/pr.err(), never the _s() persisting variants, so nothing is actually
+    # written to FRAM by either logger regardless of which one is or isn't FRAM-backed.
     path_prefix = _tmp_path("") + "/"
     path = path_prefix + "config_fram2.cfg"
     _remove(path)

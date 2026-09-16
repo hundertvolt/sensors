@@ -458,8 +458,9 @@ def test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads_under_a
 # is a structural absence, not a scope gap: asy_scd30_driver.py registers zero _push_callbacks (see
 # test_sensor_config_push_over_real_hardware.py's own identical note), so there is no PUT /sensors
 # field that could ever reach SCD30's own NVM write at all - the flash tier's own
-# bus_concurrency_scd30_write_vs_siblings.py (gated behind --allow-scd30-writes) is therefore the
-# ONLY real-hardware coverage this specific hazard can ever have, by construction of src/ itself.
+# bus_concurrency_scd30_write_vs_siblings.py (gated behind BOTH --allow-scd30-writes AND
+# --allow-scd30-extra-write) is therefore the ONLY real-hardware coverage this specific hazard can
+# ever have, by construction of src/ itself.
 # The identical reasoning applies to SCD30's own SAME-device write-vs-own-read hazard too (flash
 # tier's bus_concurrency_same_device_scd30.py) - no REST field reaches it either, so that one has no
 # bench-tier counterpart for the same structural reason, not a second, separate gap.

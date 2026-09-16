@@ -26,10 +26,13 @@ def test_wozi_construction_order_matches_reference_ordering_constraints(repo_roo
     result = generate_device(repo_root / "devices" / "wozi.toml", src_dir, ext_dir)
     order = [n if isinstance(n, str) else f"{n[0]}_{n[1]}" if n[1] else n[0] for n in result.model.construction_order]
     # src/sensortask_wozi.py's own real, hand-verified construction order (SPECIFICATION.md Part
-    # A.7): conn/ntp before fram/sysfunct, fram before sysfunct (SystemService's own fram= kwarg),
-    # scd30 before sgp40 (temperature_source/humidity_source, §2.9), every fram-wired instance
-    # after fram, notification last (signal_sink -> neopixel, and every warn_* source already built).
+    # A.7): fram before conn/ntp/sysfunct (every one of the three inherits wozi's own device-level
+    # fram_target implicitly, CLAUDE.md's implicit-FRAM-wiring rule), conn before ntp before
+    # sysfunct, scd30 before sgp40 (temperature_source/humidity_source, §2.9), every fram-wired
+    # instance after fram, notification last (signal_sink -> neopixel, every warn_* source built).
     assert order.index("conn") < order.index("ntp") < order.index("sysfunct")
+    assert order.index("fram") < order.index("conn")
+    assert order.index("fram") < order.index("ntp")
     assert order.index("fram") < order.index("sysfunct")
     assert order.index("scd30") < order.index("sgp40")
     assert order.index("neopixel") < order.index("notification")
