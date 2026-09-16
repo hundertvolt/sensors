@@ -1555,12 +1555,18 @@ optional polish (project owner's explicit direction):**
 - **Real-hardware tier parity is required, not optional — every generic mock/twin scenario type
   needs a real-hardware equivalent** for whichever bus a real device's own topology makes it
   applicable to (E.6.6's own general rule, applied here to bus-hazard specifically), with exactly
-  one exception: **SCD30's own on-chip NVM write is opt-in and capped at
-  one real write per test session**, reusing `tests_hardware/flash/conftest.py`'s existing
-  `scd30_continuous_measurement_triggered` fixture pattern for the routine group and its own new
-  `@pytest.mark.scd30_write`/`--allow-scd30-writes` flag (mirroring the existing
-  `--allow-flash-cycle` precedent) for any additional test that needs to fire SCD30's own write a
-  second time. Real hardware has no literal equivalent of the mock tier's `asyncio.sleep(0)`-count
+  one exception: **SCD30's own on-chip NVM write is opt-in, off by default, and capped at one real
+  write per test session** — every real SCD30 write, flash wear being a real, always-relevant
+  concern on real hardware, is gated behind `tests_hardware/conftest.py`'s
+  `--allow-scd30-writes`/`@pytest.mark.scd30_write` (the single global permission: without it, a
+  full flash-tier run spends zero real SCD30 writes, including the one routine per-session write
+  `scd30_continuous_measurement_triggered` would otherwise make for the whole bus-hazard group).
+  Any additional test that needs to fire SCD30's own write a second time is gated behind a further,
+  narrower flag/marker pair, `--allow-scd30-extra-write`/`@pytest.mark.scd30_extra_write`, that is
+  AND-gated on top of the global one — never an independent flag standing in for it, and never
+  substitutable for it (passing only the extra-write flag still deselects the test). One flag
+  decides whether any real SCD30 write happens at all; the second only ever narrows that further.
+  Real hardware has no literal equivalent of the mock tier's `asyncio.sleep(0)`-count
   offset sweep (a yield count means nothing against a real preemptible interpreter and real bus
   timing) — a deliberately varied set of real elapsed-time delays is the honest, tier-appropriate
   substitute, cycled across several write cycles for an unrestricted writer; a write under SCD30's
