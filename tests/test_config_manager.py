@@ -1724,14 +1724,75 @@ def test_write_config_special_only_key_reported_valid_but_not_stored() -> None:
 
 
 def test_write_config_key_missing_from_cache_marked_failed() -> None:
-    # write_config's "key not in <the current state>" check now reads _cache (see module
-    # docstring), not the file - simulate the drift by poking _cache directly instead of the file.
+    # write_config's "key not in <the current state>" check now reads _current() (_staged if a
+    # flush is pending, else _cache - see module docstring), not the file - simulate the drift by
+    # poking _cache directly instead of the file.
     mgr, path = _make("writefailed.cfg")
     try:
         del mgr._cache["Count"]  # simulate _cache having lost a key out-of-band
         ok, results = run(mgr.write_config({"Count": 8}, _VAL_INT))
         assert ok is True
         assert results == {"Count": "Failed"}
+    finally:
+        _remove(path)
+
+
+# ---------------------------------------------------------------------------
+# write_config()'s deferred flush (SPECIFICATION.md Part F.2 / BACKLOG.md 2026-09-15): the actual
+# flash write is staged and handed to an independent asyncio.create_task(), never awaited inline -
+# see write_config()'s own comment for why (an RP2040 flash write disables interrupts port-wide for
+# its duration, and doing it inline reset the HTTP connection whose PUT triggered it).
+# ---------------------------------------------------------------------------
+
+
+def test_get_dict_reads_the_staged_value_before_the_deferred_flush_lands() -> None:
+    # The read-your-write guarantee this whole design exists to preserve: a GET must not have to
+    # wait for the actual flash write to see a just-accepted PUT.
+    mgr, path = _make("readyourwrite.cfg")
+    try:
+
+        async def write_then_read() -> "dict[str, cm.CfgValue] | None":
+            # One coroutine, no intervening await on the happy path - see
+            # test_write_config_genuine_write_failure_leaves_cache_unchanged's own comment for why
+            # two separate top-level run() calls would race the independently-scheduled flush task.
+            await mgr.write_config({"Count": 8}, _VAL_INT)
+            return await mgr.get_dict(["Count"])
+
+        assert run(write_then_read()) == {"Count": 8}
+        # Deliberately not asserting mgr._cache's exact value here: whether the deferred flush has
+        # physically completed by this specific point is scheduling detail this test harness's own
+        # asyncio.run()-per-call boundary makes non-deterministic (a real device's single, long-
+        # running event loop has no such boundary), never something get_dict()'s own contract
+        # promises either way. What must hold regardless is exactly what was just asserted above:
+        # get_dict() returns the just-written value immediately.
+        run(mgr.flush_pending())
+        assert run(mgr.get_dict(["Count"])) == {"Count": 8}  # still correct once actually flushed
+        assert mgr._cache["Count"] == 8  # the default multi-field _SCHEMA - other keys stay defaulted
+        with open(path) as f:
+            assert json.load(f)["Count"] == 8
+    finally:
+        _remove(path)
+
+
+def test_a_second_write_to_the_same_key_before_the_first_flush_lands_is_not_lost() -> None:
+    # The "at most one unflushed staged value per sensor at a time" assumption WP5's own design
+    # rests on: two writes to the SAME key, staged back to back before either flush has actually
+    # run, must not let the first one's flush later clobber the second's value once both complete -
+    # exactly the hazard _flush_staged()'s own superseded-snapshot check exists to close.
+    mgr, path = _make("doublestage.cfg")
+    try:
+
+        async def write_twice() -> None:
+            await mgr.write_config({"Count": 7}, _VAL_INT)
+            await mgr.write_config({"Count": 9}, _VAL_INT)
+
+        run(write_twice())
+        assert run(mgr.get_dict(["Count"])) == {"Count": 9}
+        run(mgr.flush_pending())  # only ever holds the LATEST task - see flush_pending()'s own note
+        assert mgr._cache["Count"] == 9  # the default multi-field _SCHEMA - other keys stay defaulted
+        assert mgr._staged is None
+        with open(path) as f:
+            assert json.load(f)["Count"] == 9
     finally:
         _remove(path)
 
@@ -1839,6 +1900,9 @@ def test_write_config_multiple_keys_mixed_outcomes_in_one_call() -> None:
             "Enabled": "Failed",
             "Ghost": "Invalid",
         }
+        run(mgr.flush_pending())  # the actual flash write is deferred (SPECIFICATION.md Part F.2) -
+        # wait for it before inspecting the file/_cache directly, rather than get_dict()'s own
+        # staged-read-through.
         with open(path) as f:
             on_disk = json.load(f)
         assert on_disk["Count"] == 8
@@ -1892,6 +1956,7 @@ def test_write_config_repairs_a_file_corrupted_after_valid_init() -> None:
             f.write("{not valid json")
         ok, results = run(mgr.write_config({"Count": 1}, _VAL_INT))
         assert (ok, results) == (True, {"Count": "Valid"})
+        run(mgr.flush_pending())  # the repair write is deferred (SPECIFICATION.md Part F.2)
         with open(path) as f:
             assert json.load(f)["Count"] == 1  # file is valid json again, repaired by the write
     finally:
@@ -1901,9 +1966,14 @@ def test_write_config_repairs_a_file_corrupted_after_valid_init() -> None:
 def test_write_config_genuine_write_failure_leaves_cache_unchanged() -> None:
     # A real write failure (not just a pre-existing corrupt file, which the test above shows gets
     # silently repaired) - here the parent directory itself is removed after a valid init, so
-    # open(path, "w") genuinely raises OSError. _cache must only ever be committed to *after* a
-    # successful write (see write_config's own comment) - confirms it's still the old, unchanged
-    # value afterwards, not left half-updated.
+    # open(path, "w") genuinely raises OSError inside the deferred flush. write_config() itself no
+    # longer touches the filesystem at all (SPECIFICATION.md Part F.2 - the write is staged, then
+    # handed to an independent asyncio.create_task()), so it reports validation success regardless;
+    # the failure only ever surfaces once the flush actually runs, as a logged errno, never back
+    # through write_config()'s own return value. _cache must only ever be committed to *after* a
+    # successful write (see _flush_staged's own comment) - confirms it's still the old, unchanged
+    # value afterwards, not left half-updated, and that a later read no longer sees the failed
+    # staged value either (the accepted residual-risk outcome, not silently wrong some other way).
     subdir = _TMP_DIR + "/writefail_subdir"
     try:
         os.mkdir(subdir)
@@ -1916,12 +1986,27 @@ def test_write_config_genuine_write_failure_leaves_cache_unchanged() -> None:
     try:
         assert mgr.valid is True
         os.remove(path)
-        os.rmdir(subdir)  # parent directory gone - the write below will genuinely fail
-        ok, results = run(mgr.write_config({"Count": 8}, _VAL_INT))
-        assert (ok, results) == (False, {})
+        os.rmdir(subdir)  # parent directory gone - the deferred flush below will genuinely fail
+
+        async def write_then_read() -> "tuple[bool, cm.WriteValidity, dict[str, cm.CfgValue] | None]":
+            # Both calls in one coroutine, back to back with no intervening await on the happy
+            # path: the only way to observe the staged value deterministically before the
+            # independently-scheduled flush task gets a turn to run (and, here, fail) - two
+            # separate top-level run() calls would race it, since this test file's run() is a
+            # fresh asyncio.run() per call and MicroPython's scheduler can service an already-
+            # pending task in between two such calls.
+            ok, results = await mgr.write_config({"Count": 8}, _VAL_INT)
+            staged_view = await mgr.get_dict(["Count"])
+            return ok, results, staged_view
+
+        ok, results, staged_view = run(write_then_read())
+        assert (ok, results) == (True, {"Count": "Valid"})  # validation succeeded - write only staged so far
+        assert staged_view == {"Count": 8}  # read-your-write, while the flush is still pending
+        run(mgr.flush_pending())  # now the deferred flush actually runs, and fails
         assert mgr._cache == {"Count": 5}  # untouched - still the original default
+        assert run(mgr.get_dict(["Count"])) == {"Count": 5}  # staged value cleared once the flush failed
     finally:
-        _remove(path)
+        _remove(path)  # a no-op here - the parent directory is gone, so there's nothing to remove
         try:
             os.rmdir(subdir)
         except OSError:
@@ -2172,10 +2257,12 @@ class _MemoryErrorJson:
 
 
 def test_write_config_memoryerror_from_json_dump_leaves_cache_unchanged() -> None:
-    # MemoryError is not an OSError subclass (see CLAUDE.md) - write_config's except clause lists
+    # MemoryError is not an OSError subclass (see CLAUDE.md) - _flush_staged's except clause lists
     # it explicitly, and this is the only way that arm is ever reached. Same "commit _cache only
     # after a successful write" contract as test_write_config_genuine_write_failure_leaves_cache_
-    # unchanged above, but with the heap-exhaustion cause instead of a real file error.
+    # unchanged above, but with the heap-exhaustion cause instead of a real file error. The fault
+    # must stay patched in through flush_pending(), not just through write_config()'s own return -
+    # the actual json.dump() call now happens inside the deferred flush, not synchronously here.
     mgr, path = _make("memerrwrite.cfg", cfg_vals=_VAL_INT)
     try:
         assert mgr.valid is True
@@ -2183,11 +2270,12 @@ def test_write_config_memoryerror_from_json_dump_leaves_cache_unchanged() -> Non
         cm.json = _MemoryErrorJson(raise_on_dump=True)  # type: ignore[assignment]
         try:
             ok, results = run(mgr.write_config({"Count": 8}, _VAL_INT))
+            assert (ok, results) == (True, {"Count": "Valid"})  # validation succeeded - staged only so far
+            run(mgr.flush_pending())  # now the deferred flush actually runs, and fails
         finally:
             cm.json = original_json
-        assert (ok, results) == (False, {})
         assert mgr._cache == {"Count": 5}  # untouched - still the original default
-        assert run(mgr.get_dict(["Count"])) == {"Count": 5}
+        assert run(mgr.get_dict(["Count"])) == {"Count": 5}  # staged value cleared once the flush failed
         # The on-disk file is a different matter: open(..., "w") already truncated it before
         # json.dump() ever ran, so a mid-dump failure leaves it unparseable. _cache stays
         # authoritative regardless, and the next successful write repairs the file exactly like
@@ -2197,6 +2285,7 @@ def test_write_config_memoryerror_from_json_dump_leaves_cache_unchanged() -> Non
             assert f.read() == ""
         ok, results = run(mgr.write_config({"Count": 8}, _VAL_INT))  # no fault injected this time
         assert (ok, results) == (True, {"Count": "Valid"})
+        run(mgr.flush_pending())
         with open(path) as f:
             assert json.load(f) == {"Count": 8}
     finally:
