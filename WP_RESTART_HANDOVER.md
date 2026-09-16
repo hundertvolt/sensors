@@ -374,6 +374,42 @@ three missing buildgen kwargs.
 
 ---
 
+## STANDING GROUND RULES FOR IMPLEMENTING WP1-WP8 (owner, given before implementation started)
+
+Apply these throughout every work package below, not just once at the start. Re-read this list
+periodically during implementation, the same way the specs themselves need periodic re-reading.
+
+1. **Consulting external sources is always allowed, whenever it would clarify an imminent
+   question** — current MicroPython/Microdot docs (CLAUDE.md's own standing rule already requires
+   this and is not being loosened, just restated), but also other repos, forums, and the real
+   datasheets in `datasheets/` when a hardware-interaction question comes up. Don't guess or rely on
+   training memory when a real source is one lookup away.
+2. **Must adhere to `SPECIFICATION.md`/`CLAUDE.md` — re-read them regularly, not just once.** A
+   work package that was scoped against these docs at the start of this effort can still drift from
+   them during implementation; re-check against the actual spec text before considering any single
+   item done, not just against this handover document's own summary of it.
+3. **Every addition or change ships with tests in four categories**: normal functionality, failure-
+   handling/resilience, biting edge-case coverage, and regression protection — every time something
+   is added or changed, not only for the headline feature of whichever WP is in progress. This is
+   already each WP's own stated testing requirement above; stated here again as a standing rule so
+   it isn't read as WP-specific.
+4. **No regressions, ever — every existing test must keep passing, with no working around a
+   failure.** Weakening or disabling a test to make a change land is not an option. **Adapting an
+   existing test is only acceptable with a solid, specific justification**, not "the test was in the
+   way" — e.g. the boot-timing stagger this effort might introduce pushing a real, deliberately-added
+   delay past an existing boot-timeout test's current bound is a legitimate reason to raise that
+   test's bound, *because* the new delay is an intended, measured change with reasonable margin
+   added on top, not an accidental slowdown. A test failing for any other reason is a real bug to
+   fix, not a test to adjust.
+5. **Keep a running, updated record of unrelated issues, gaps, or CI failures found along the way
+   that aren't part of the current change.** `BACKLOG.md` is the existing, permanent mechanism for
+   exactly this (see its own opening paragraph) — log anything found there as it's found, don't let
+   it live only in a session's own memory or get silently fixed/ignored in passing. A CI failure
+   that isn't caused by the current diff gets the same "root-cause or flag, don't paper over"
+   treatment as everything else in this project's standing CI-failure rules.
+
+---
+
 ## WORK PACKAGES — sorted implementation units
 
 Every decision below is final (see the topic sections further down). This section turns them into
