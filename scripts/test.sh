@@ -175,7 +175,17 @@ failed=0
 # real hardware only ever builds one device's own object graph once per boot, never six devices'
 # worth of graphs repeatedly in one process - and every test file still runs under the same GC the
 # real target uses either way.
-per_file_timeout_s="${PER_FILE_TIMEOUT_S:-180}"
+per_file_timeout_s="${PER_FILE_TIMEOUT_S:-240}"
+# Raised from 180 to 240 alongside the WP1 webserver-startup-race fix above:
+# tests/test_digital_twin_webserver_concurrency.py's own real-socket concurrency scenarios were
+# already the single heaviest file in this suite (measured standalone: ~230s even before WP1, ~11s
+# of that actual CPU time - the rest is this file's own deliberate scenario-body sleeps simulating
+# realistic timeouts/flaky connections, not busy work), so it was already running close to the old
+# 180s ceiling before this change. WP1 making webserver.pr real-FRAM-backed needed its own
+# ~15-call-site wait bumped from 0.1s to a measured-safe 0.5s (see that file's own comment for why
+# a polling readiness check made things worse, not better, and was reverted) - a real ~35s addition
+# on top of an already-marginal baseline, not a large one, but 180s no longer has real margin.
+# Confirmed directly: 240s clears this file with room to spare, standalone and inside the full suite.
 max_attempts=3
 failed_files=()
 passed_count=0

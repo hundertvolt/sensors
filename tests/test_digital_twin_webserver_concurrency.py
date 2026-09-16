@@ -145,9 +145,19 @@ async def _start_webserver(module: "Any") -> "asyncio.Task[None]":
     # (a real chunk read/write) before it ever reaches start_server()/bind, not the instant no-op
     # a RAM-only logger's own setup() was - test_asy_webserver_service.py's own F.8 test still uses
     # the old 0.05s bound because its own WebserverService fixture is never constructed with fram=.
-    # Measured directly against this file's own real digital_twin machine fakes: consistently ready
-    # within ~400ms; 1.0s keeps a real (~2.5x) margin rather than a bare-minimum guess.
-    await asyncio.sleep(1.0)
+    # A polling readiness check was tried here instead of a fixed sleep (to avoid wasting the same
+    # margin on every one of this file's ~15 call sites) but made things measurably worse both ways
+    # tried: a real _http_client.fetch() probe broke this file's own max_connections-exactness tests
+    # (its own connection wasn't reliably released before the real scenario opened its own N), and a
+    # bare TCP connect-then-close probe broke far more of them, for a reason not fully understood -
+    # this server's own connection-accounting is evidently sensitive to a well-formed-but-unread
+    # connection landing before the real scenario's own connections do, in a way a fixed sleep
+    # (which touches the socket layer not at all) never triggers. Reverted to a fixed sleep,
+    # recalibrated down from the first attempt's 1.0s (measured ~400ms typical in this file's own
+    # no-other-tasks-running boot shape) - 0.5s keeps real margin without this file's own ~15 call
+    # sites' cumulative cost pushing it over scripts/test.sh's 180s per-file timeout inside a full
+    # suite run the way 1.0s did (confirmed directly: passes standalone, only times out mid-suite).
+    await asyncio.sleep(0.5)
     return task
 
 
