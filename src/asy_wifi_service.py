@@ -377,7 +377,7 @@ class AsyConnTime(SensorReaderConfig):
             self.ledflash = None
         self.pr.evt("Client connected to hotspot, timer stopped")
 
-    def _hotspot_client_absent(self) -> None:
+    async def _hotspot_client_absent(self) -> None:
         if not self.hotspot_timer_running:
             self.pr.evt("No client connected - hotspot timer started")
             try:
@@ -400,7 +400,10 @@ class AsyConnTime(SensorReaderConfig):
             # Part F.1's soft-Timer-callback-drop gotcha).
             self.hotspot_timer_ticks_since_armed += 1
             if self.hotspot_timer_ticks_since_armed * self.wifi_refresh_sec * 1000 >= 2 * self.hotspot_time:
-                self.pr.err("Hotspot timer callback appears dropped, forcing reconnect")
+                # WP8: a real, actionable self-heal event (SPECIFICATION.md Part F.1's soft-Timer-
+                # callback-drop gotcha actually firing), not routine WiFi-mode-transition noise -
+                # persisted, unlike this module's other, deliberately print-only observations.
+                await self.pr.err_s("Hotspot timer callback appears dropped, forcing reconnect", errno=19)
                 self.hotspot_timeout_trigger_event.set()
         if self.ledflash is None:
             evtloop = asyncio.get_event_loop()
@@ -560,7 +563,7 @@ class AsyConnTime(SensorReaderConfig):
         if len(stations) > 0:  # at least one client connected
             self._hotspot_client_connected()
         else:  # no client connected
-            self._hotspot_client_absent()
+            await self._hotspot_client_absent()
 
     async def _run_sta_mode(self) -> None:
         await self.wifi_mode_lock.acquire()

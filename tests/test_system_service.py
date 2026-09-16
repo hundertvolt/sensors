@@ -1332,6 +1332,21 @@ def test_one_bad_setter_does_not_stop_the_rest_of_the_registry() -> None:
     assert calls == [0, 0, PrintLog.level_warn(), PrintLog.level_warn()]  # both good setters still ran, both times
 
 
+def test_a_bad_setter_now_persists_its_own_failure() -> None:
+    # WP8: every other caller-supplied-callback call site in this codebase already persists via
+    # err_s() - this was the one odd-one-out still degrading via the non-persisting self.pr.err().
+    def _raising_setter(_value: int) -> None:
+        raise RuntimeError("simulated bad setter")
+
+    svc = make_service(cfg_path=_tmp_cfg_dir())
+    svc.set_level_setters([_raising_setter])
+    run(svc.setup())
+    run(svc.set_debug_level(PrintLog.level_warn()))
+    log = run(svc.pr.get_log())[svc.pr.name]
+    assert log["ErrNum"][-1] == 7
+    assert log["ErrType"][-1] == "E"
+
+
 def test_debug_level_survives_a_simulated_reboot() -> None:
     cfg_path = _tmp_cfg_dir()
     svc = make_service(cfg_path=cfg_path)
