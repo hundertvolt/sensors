@@ -176,26 +176,38 @@ failed=0
 # keep even though it turned out not to be what was causing the hang (see above); small,
 # immediate, line-buffered writes are still a reasonable default for CI log output.
 #
-# -X heapsize=32M (default 2097152 = 2MB) - tests/test_digital_twin_sensortask_integration.py's own
+# -X heapsize=8M (default 2097152 = 2MB) - tests/test_digital_twin_sensortask_integration.py's own
 # heaviest tests each build the whole real object graph (a fresh 8KB FramChip, ConfigManagers, ...)
 # one or more times per test, sharing one process/heap across every test function in the file (this
 # binary is invoked once per file, not once per test). Confirmed directly: with the 2MB default,
 # that file failed with a real MemoryError roughly 1 run in 3 depending on MicroPython's own
 # non-deterministic test-function run order (this file's own docstring already notes run order
-# differs from definition order); 8M cleared 5/5 consecutive runs at the time. Raised again, from 8M
-# to 32M, once WP1+WP2 (CLAUDE.md's implicit-FRAM-wiring rule, extended to WiFi/NTP/webserver and to
-# every SensorReaderConfig's own ConfigManager) made tests/test_sensortask.py's own per-device
-# object graphs meaningfully heavier - it builds all 6 real devices' full graphs repeatedly across
-# ~300 test functions in one process, and each device now carries roughly 2.5x as many FRAM-backed
-# PrintLogHistoryStore instances as before (conn/ntp/sysfunct/webserver plus every FRAM-wired
-# module's own cfgmgr). Confirmed directly, not estimated: 8M/16M both still failed with real
-# MemoryErrors partway through that file (81/321 and 176/321 passed respectively - a roughly linear
-# relationship with heap size, consistent with this file's own fixed, finite per-run garbage total
-# rather than an unbounded leak), 32M cleared multiple consecutive runs. This is a Unix-port-only
-# test-harness setting - unrelated to the real rp2040's own RAM budget (SPECIFICATION.md Part F.1):
-# real hardware only ever builds one device's own object graph once per boot, never six devices'
-# worth of graphs repeatedly in one process - and every test file still runs under the same GC the
-# real target uses either way.
+# differs from definition order); 8M cleared 5/5 consecutive runs at the time.
+#
+# Raised to 32M, once WP1+WP2 (CLAUDE.md's implicit-FRAM-wiring rule, extended to WiFi/NTP/webserver
+# and to every SensorReaderConfig's own ConfigManager) made the former, monolithic
+# tests/test_sensortask.py's own per-device object graphs meaningfully heavier - it built all 6 real
+# devices' full graphs repeatedly across ~330 test functions IN ONE PROCESS, and each device now
+# carries roughly 2.5x as many FRAM-backed PrintLogHistoryStore instances as before (conn/ntp/
+# sysfunct/webserver plus every FRAM-wired module's own cfgmgr). Confirmed directly, not estimated:
+# 8M/16M both still failed with real MemoryErrors partway through that file (81/321 and 176/321
+# passed respectively - a roughly linear relationship with heap size, consistent with a fixed,
+# finite per-run garbage total rather than an unbounded leak), 32M cleared multiple consecutive runs.
+#
+# Brought back down to 8M once that file was split by device (tests/_sensortask_scenarios.py's own
+# docstring): the real driver of the 32M requirement was never "one device's object graph" but
+# "how many of them pile up as garbage in one process before GC reclaims them" - splitting the
+# monolith into six tests/test_sensortask_<device>.py files (55 builds per process instead of 330)
+# addresses that directly, at the root, not by raising the ceiling further. Confirmed directly, not
+# assumed: the single heaviest per-device file (tests/test_sensortask_dev.py - dev has both a larger
+# 256KB FRAM chip fake and the extra uart_link instances no other device wires) failed with a real
+# MemoryError at 2M, and passed cleanly (55/55) at both 4M and 8M; 8M is kept rather than the
+# confirmed-passing 4M floor for the same real margin the original 8M pick above already established
+# for a different file, not because 4M was found to be unsafe. This is a Unix-port-only test-harness
+# setting - unrelated to the real rp2040's own RAM budget (SPECIFICATION.md Part F.1): real hardware
+# only ever builds one device's own object graph once per boot, never six devices' worth of graphs
+# repeatedly in one process - and every test file still runs under the same GC the real target uses
+# either way.
 per_file_timeout_s="${PER_FILE_TIMEOUT_S:-240}"
 # Raised from 180 to 240 alongside the WP1 webserver-startup-race fix above:
 # tests/test_digital_twin_webserver_concurrency.py's own real-socket concurrency scenarios were
@@ -210,14 +222,19 @@ per_file_timeout_s="${PER_FILE_TIMEOUT_S:-240}"
 #
 # Per-file overrides for files that grew past the 240s default outright - not a hang, and not fixed
 # by raising everyone's default (that would just make a genuine future hang 2-3x slower to detect
-# for the other ~60 files that still comfortably fit in 240s). Empty as of the tests/test_sensortask_
+# for the other ~70 files that still comfortably fit in 240s). Empty as of the tests/test_sensortask_
 # <device>.py / tests/test_digital_twin_webserver_concurrency_<device>.py split (see those two
 # modules' own tests/_sensortask_scenarios.py / tests/_webserver_concurrency_scenarios.py library
 # docstrings): the former monolithic files (447s/268s real, single-process, all 6 devices in one
-# run - CLAUDE.md's step-session-workflow history has the full measurement trail) needed their own
-# override; each per-device file now does 1/6th the real object-graph-building work of its own
-# monolith, comfortably inside the 240s default (re-measure and re-add an entry here if a future
-# device/scenario addition ever pushes one back past it).
+# run) needed their own override; measured directly, not estimated, each split-out family's own
+# per-device file runs in ~90s (sensortask_*) / ~45s (webserver_concurrency_*) standalone -
+# comfortably inside the 240s default with real margin (re-measure and re-add an entry here if a
+# future device/scenario addition ever pushes one back past it). Running all 6 of one family's
+# files at once (the common case once TEST_PARALLELISM > 1 below) took 114.8s / 59.5s wall-clock
+# total, not 6x a single file's own time: almost all of each build's cost is real wall-clock SPI
+# CS-settle sleeping (asy_spi_driver.py), not CPU work (measured: ~35s of user CPU time across the
+# whole ~9-minute *sequential* 6-file sensortask run), so concurrent processes barely contend with
+# each other even beyond the host's own core count.
 declare -A per_file_timeout_overrides_s=()
 max_attempts=3
 # TEST_PARALLELISM: how many test_*.py files run at once. Each file is already a fully isolated
@@ -265,7 +282,7 @@ run_test_file() {
         # multi-file log human-readable. `set -o pipefail` (top of file) makes the pipeline's own
         # exit status the real interpreter's (timeout's) - sed itself only ever exits 0/nonzero on
         # its own unrelated failure, never masking a real 124/1 from the command it's piping.
-        if MICROPYPATH="build/generated_src:src:tests:frozen_modules:.frozen" stdbuf -oL -eL timeout --kill-after=10 "$file_timeout_s" "$micropython_bin" -X heapsize=32M "${cmd[@]}" 2>&1 | sed -u "s/^/[$tag] /"; then
+        if MICROPYPATH="build/generated_src:src:tests:frozen_modules:.frozen" stdbuf -oL -eL timeout --kill-after=10 "$file_timeout_s" "$micropython_bin" -X heapsize=8M "${cmd[@]}" 2>&1 | sed -u "s/^/[$tag] /"; then
             ec=0
         else
             ec=$?
