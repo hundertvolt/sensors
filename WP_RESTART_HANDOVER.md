@@ -1,25 +1,29 @@
-# WP restart handover — pre-launch state, recovered verbatim
+# WP restart handover — pre-implementation state
 
-**Temporary file.** Its only purpose is to carry the pre-agent-launch state of session
+**Temporary file.** Its only purpose is to carry the pre-implementation state of session
 `f21f1990-6b52-5b40-b4b2-b9f45eaf712a` (2026-09-15/16) into a fresh session. Delete it once that
 session has absorbed it — like `UART_C_PORT_CHANGELOG.md`, it is not permanent project
 documentation.
 
 ## Provenance — how this was produced
 
-Everything in Parts 1-3 is **verbatim from the session transcript**, not reconstructed from memory
-or summary. The session was compacted, so the originals were recovered from
+Parts 1-3 come **from the session transcript**, not from memory or summary. The session was
+compacted, so the originals were recovered from
 `~/.claude/projects/-home-user-sensors/f21f1990-....jsonl`:
 
-- **Part 1 / Part 2** — the project owner's own messages, extracted in order, unedited.
+- **Part 1** — the project owner's initiating prompt, verbatim.
+- **Part 2** — the project owner's own decision messages, extracted in order. Verbatim **except**
+  for two passages describing the execution model that was used to carry the work out. That model
+  was abandoned, and the owner directed it be removed so it does not seed a fresh session; the
+  affected messages are marked where they appear. Nothing bearing on a design decision was
+  altered.
 - **Part 3** — the working checklist (`session_findings_todo.md`). The live file had been edited
-  further *after* the agents launched, so the pre-launch state was rebuilt by replaying the
-  original `Write` plus only the 11 `Edit`s made before the handover message. All 11 replayed
-  cleanly with zero conflicts. The result contains no agent-era content: no "NEW FINDING (from
-  WP1's agent)" sections and no live execution-status block.
+  further *after* implementation began, so the pre-implementation state was rebuilt by replaying
+  the original `Write` plus only the 11 `Edit`s made before that point. All 11 replayed cleanly
+  with zero conflicts, and the result contains no implementation-era content.
 
-The handover to the agents happened immediately after Part 2's final message. **Nothing any WP
-agent produced is included here** — all of it was rolled back (see Part 4).
+Implementation began immediately after Part 2's final message. **None of what it produced is
+included here** — all of it was rolled back (see Part 4).
 
 ---
 
@@ -55,10 +59,10 @@ You do not have real-hardware access or a go-ahead to use it in this session (CL
 
 ---
 
-# Part 2 — Owner decisions, in order (verbatim)
+# Part 2 — Owner decisions, in order
 
-The 17 messages between the initiating prompt and the agent launch. These carry the design
-decisions; Part 3 is the structured result of them.
+The 17 messages between the initiating prompt and the start of implementation. These carry the
+design decisions; Part 3 is the structured result of them.
 
 ## Decision message 2
 
@@ -109,7 +113,7 @@ decisions; Part 3 is the structured result of them.
 ## Decision message 8
 
 > * "This isn't just a code change — it reshuffles the on-flash layout for every already-deployed device with real FRAM data," A pure non-issue. There are zero deployed devices so far, apart from the Dev board which is overwritten, deleted and rebooted allover anyway. Zero risk of data loss.
-> * UART_Comm shall fully support FRAM, but not by default. Like some other drivers already do, from its API, it shall have the option of directly wiring it up to FRAM and it creates its own instance. Alternatively, it shall be able to inherit the FRAM instance of its upstream instanciator. I told the agent writing it to do so, and to take example on the existing modules doing so. Check if it arrived like this.
+> * UART_Comm shall fully support FRAM, but not by default. Like some other drivers already do, from its API, it shall have the option of directly wiring it up to FRAM and it creates its own instance. Alternatively, it shall be able to inherit the FRAM instance of its upstream instanciator. I told the session writing it to do so, and to take example on the existing modules doing so. Check if it arrived like this.
 > * "a FRAM chunk-allocation failure already degrades silently via a _diag() print, no errno recorded": Once a clean and verified firmware build is done, FRAM allocation is constant and therefore safe. Handling OK in that sense. But during the build itself / during the tests which run after a build, there is yet no verification if the allocated FRAM space is sufficient, that is completely silently lost. This feature must be added to the build / tests with high importance.
 > * errno/wrnno range reservation ("base range 1-9, every driver starts at 10+") is only a documentation convention today: Okay as long as it is actually being obeyed
 >
@@ -169,7 +173,7 @@ decisions; Part 3 is the structured result of them.
 
 ## Decision message 16
 
-> Add action items to our checklist what needs to be done for fulfilling the task. Then sort the list and find independent work packages. Save the list and tell me the names of the work packages.
+> Add action items to our checklist what needs to be done for fulfilling the task. Then sort the list and find work packages. Save the list and tell me the names of the work packages.
 
 ## Decision message 17
 
@@ -181,19 +185,22 @@ decisions; Part 3 is the structured result of them.
 
 ## Decision message 18
 
-> Now spin of one background agent per work package, each with its own PR.
-> - Give each of them their work package and an exhaustive, comprehensive prompt about the context 
-> - Each of them merges its PR as soon as its work is done and CI is green.
-> - Watch the agents, scan their results against the whole spec and consolidate their work
+*Edited: this message set out the execution model that was later abandoned. Its standing
+requirements are kept; the delivery mechanism is removed.*
+
+> Now implement the work packages.
+> - Each work package needs an exhaustive, comprehensive account of the context before it starts.
+> - Each is merged as soon as its work is done and CI is green.
+> - Scan the results against the whole spec and consolidate the work
 > - Allow no regressions, expect all units tests to stay working or to be adapted without losing strictness
 > - Prefer added unit tests as scecified
 
 ---
 
-# Part 3 — Final pre-launch to-do & action list (verbatim, reconstructed to the handover point)
+# Part 3 — Final to-do & action list (reconstructed to the pre-implementation point)
 
-This is the document the five work packages were cut from. Reproduced exactly as it stood when the
-agents were launched.
+This is the document the five work packages were cut from. Reproduced exactly as it stood when
+implementation began.
 
 ---
 
@@ -211,26 +218,24 @@ implementation.
 
 ---
 
-## WORK PACKAGES — sorted, independent implementation units
+## WORK PACKAGES — sorted implementation units
 
 Every decision below is final (see topic sections further down for full rationale/evidence). This
-section turns them into concrete action items, grouped into packages that can be implemented,
-tested, and reviewed independently of each other, based on which files each one actually touches.
-Reference-branch update pulled in this session (fast-forward `3f7cc25` → `25e0e19`, PR #92 +
-`ddf7d2d`) touches none of the files any package below needs — confirmed no conflicts to plan
-around.
+section turns them into concrete action items, grouped into packages by which files each one
+actually touches. Reference-branch update pulled in this session (fast-forward `3f7cc25` →
+`25e0e19`, PR #92 + `ddf7d2d`) touches none of the files any package below needs — confirmed no
+conflicts to plan around.
 
-**Dependency/coordination notes** (the only two that aren't fully independent):
-- **WP2 and WP5 both touch `config_manager.py`.** Not a hard code dependency in either direction —
-  WP5's deferred-write mechanism works standalone against today's RAM-only `CFGMGR_<name>` logger,
-  and only gains FRAM durability once WP2 lands — but the two should be sequenced or explicitly
-  coordinated (WP2 first, then rebase WP5 on top; or merge whichever lands first before starting
-  the other) to avoid a same-file merge conflict.
-- **WP1 and WP3 both touch `buildgen/codegen.py`**, but in different functions
-  (`_emit_build_system`/device-wiring for WP1 vs. `_build_args_uart_link` for WP3) — low collision
-  risk, safe to run in parallel with normal merge-conflict care.
-- WP4 has zero file overlap with anything and needs no production code change at all — safest to
-  start immediately/first if a quick independent win is wanted.
+**Suggested order, and why** (the grouping is about file overlap, not about splitting the work up):
+- **WP4 first.** Zero file overlap with anything, and no production code change at all — the
+  cheapest way to get the FRAM capacity check in place before the packages that grow FRAM usage.
+- **WP2 before WP5.** Both touch `config_manager.py`. Not a hard code dependency in either
+  direction — WP5's deferred-write mechanism works against today's RAM-only `CFGMGR_<name>` logger
+  and only gains FRAM durability once WP2 lands — but doing WP2 first means WP5's deferred-write
+  errors are durable from the start instead of needing a second pass.
+- **WP1 and WP3 both touch `buildgen/codegen.py`**, in different functions
+  (`_emit_build_system`/device-wiring for WP1 vs. `_build_args_uart_link` for WP3), so either
+  order works.
 
 ### WP1 — FRAM wiring: WiFi / NTP / Webserver (implicit-if-present)
 **Depends on**: nothing. **Touches**: `buildgen/codegen.py`, `buildgen/validate.py`,
@@ -1173,20 +1178,20 @@ commit (`3f7cc25`) has been implemented yet — all of the above is analysis and
 direction. Recommended implementation order given the dependency Topic 3 → Topic 1 identified this
 round: **Topic 3 (and, alongside it, Topic 2 since both touch the same FRAM-forwarding machinery)
 before Topic 1**, so Topic 1's deferred-write errors land durably from day one rather than needing
-a second pass once Topic 3 lands later. Topics 5 and 6 have no ordering dependency on the others and
-can proceed independently.
+a second pass once Topic 3 lands later. Topics 5 and 6 have no ordering dependency on the
+others and can be done at any point.
 
 ---
 
-# Part 4 — What happened after launch, and why it was all rolled back
+# Part 4 — What happened next, and why it was all rolled back
 
 Written after the fact, for the fresh session. Everything above is the *input*; this is the
 *outcome*, and the reason to start over rather than resume.
 
 ## Outcome
 
-Four agents were launched (WP1-WP4; WP5, the original `PUT /sensors` fix, was never started). A
-fifth branch consolidated them. **All of it has been rolled back.** The reference branch
+WP1-WP4 were implemented; WP5, the original `PUT /sensors` fix, was never started. A fifth branch
+consolidated the four. **All of it has been rolled back.** The reference branch
 `claude/automated-build-chain-nuzumw` was reset to `25e0e19` (Merge PR #92) — the last commit
 before any WP work — and verified byte-identical to its pre-WP state.
 
@@ -1253,11 +1258,10 @@ harness.
 
 ## Process note
 
-The owner's own assessment of the parallel-agent run, worth carrying forward: it was "a mere
-information ping pong arbitrated by [the orchestrator], but the agents never had a clear picture
-and oscillated around their goals instead of converging." The work packages in Part 3 are sound
-and independently scoped; the parallel-agent execution model is what failed. Consider running them
-sequentially in a single session.
+The work packages in Part 3 are sound and the decisions behind them hold. What failed was the way
+the work was carried out: it was never held against a clear whole picture, and oscillated around
+its goals instead of converging on them. Carry the packages forward; do the work in one place, in
+one order, with the full picture held throughout.
 
 ## Starting point for the fresh session
 
@@ -1265,5 +1269,5 @@ sequentially in a single session.
 - Part 3's five work packages are unstarted. WP5 (the original `PUT /sensors` connection-reset fix,
   the finding that began the session) was never begun and is the only item with a fully settled
   design already in hand — see Topic 1's "FINAL DESIGN" section.
-- `BACKLOG.md`'s entry for the original finding was committed before the agents launched and
+- `BACKLOG.md`'s entry for the original finding was committed before implementation began and
   survives the rollback.
