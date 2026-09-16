@@ -88,6 +88,15 @@ if TYPE_CHECKING:
     HotspotActiveFct = Callable[[], bool]
 
 _NAME = const("WEBSERVER")
+
+# This service's one optional live cross-instance dependency (SPECIFICATION.md Part C.14): its own
+# FRAM error-log target, resolved by buildgen/ from [device.wiring].fram_target, implicitly, since
+# WebserverService is mandatory infra too (never an [[instance]] entry itself) - same mechanism as
+# system_service.py's/asy_wifi_service.py's/asy_ntp_client.py's own identical tag, to an
+# already-constructed AsyFramManager instance passed directly as this service's own fram= kwarg
+# (already used by make_logger() below, in __init__).
+# @wiring fram_target AsyFramManager fram optional kwarg
+
 _SYSTEM_CMDS = ("reboot", "bootloader", "mempause")  # the only enum values ever forwarded to
 # system_cmd() - never a client-supplied duration (mempause's fixed 300s lives in system_cmd()'s own
 # implementation, e.g. SystemService.pause_permanent_storage() - see SPECIFICATION.md Part A.8).

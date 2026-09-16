@@ -104,7 +104,7 @@ class SystemService:
         # convention every other module already uses. self.cfg_schema stays public, matching
         # SPECIFICATION.md's convention for a module whose caller writes to cfgmgr directly.
         self.cfg_schema: ConfigSchema = _VAL_DEBUG_LEVEL
-        self.cfgmgr = ConfigManager(cfg_path + "config_" + _NAME + ".cfg", self.cfg_schema, _NAME)
+        self.cfgmgr = ConfigManager(cfg_path + "config_" + _NAME + ".cfg", self.cfg_schema, _NAME, fram=fram)
         # get_debug_level()'s own source of truth - starts at the schema default; setup()/
         # set_debug_level() keep it current from there.
         self._current_debug_level = 0

@@ -521,6 +521,33 @@ constraints.
   config-seeding step — not a `buildgen/`-only change. A tripwire test
   (`test_hostname_and_hotspot_password_are_not_yet_wired_into_generated_code`) and a code comment in
   `validate.py` hold the current state in place so the gap can't quietly change shape unnoticed.
+- **Wiring WiFi/NTP/webserver into the device's FRAM chip (WP1, CLAUDE.md's implicit-FRAM-wiring
+  rule) measurably increases one-time boot latency, via lock contention on the FRAM chip's single
+  shared `asyncio.Lock` (`FRAM_SPI`, `src/asy_fram_driver.py`), not via any per-op slowness.** Every
+  FRAM-backed module's own task calls `self.pr.setup()` (a real chunk read, and a write on first
+  boot) the first time it runs; `system_service.py`'s `start_and_check_tasks()` starts every task
+  within one ~1-second stagger window, so once `conn`/`ntp`/`webserver`/`conn`'s own `DNSServer`
+  joined the existing FRAM-wired set (`sysfunct`/`scd30`/`sgp40`/`bmp3xx`/`neopixel`/`notification`),
+  all of them now contend for that one lock in the same busy window. Measured directly against the
+  real generated code for all 6 devices under the digital twin: boot-to-first-`200` now lands between
+  ~4.5s and ~6.3s (`dev` slowest — the device with the most FRAM-wired instances), versus ~1.9-2.2s
+  before WP1. **Not open work**: the finding is the resolution — this is a one-time, self-resolving
+  boot cost (steady-state serving is unaffected), matching CLAUDE.md's own already-accepted position
+  that boot latency isn't a thing to optimise for its own sake, so
+  `tests_scripts/test_digital_twin_generated_boot.py`'s own `_TWIN_DURATION_S` was raised (6 → 15) to
+  sit comfortably above the new observed range rather than inside it — see that constant's own
+  comment for the full measurement. **Re-measured after WP2 landed** (every `SensorReaderConfig`-
+  based module's own `ConfigManager` now also draws its own separate chunk): boot-to-first-`200`
+  moved to ~6.1s (wozi) / ~7.7s (dev), a modest further increase over WP1-alone's ~5.1s/~6.3s, not
+  the much larger jump the lock-contention theory alone would predict — because every one of WP2's
+  new chunks (`conn`/`ntp`/`sysfunct`/`sgp40`/`bmp3xx`/`notification`'s own `cfgmgr`) has its
+  `setup()` called as part of that same module's own `.setup()`, which rides the pre-task-start
+  setup batch (`sysfunct → fram → conn → ntp → sgp40 → bmp3xx → notification`, SPECIFICATION.md's
+  own step 16) rather than the contended task-starter stagger window - only `webserver`'s own lazy
+  `self.pr.setup()` is exposed to that contention, and WP2 adds no new chunk to `webserver` itself
+  (it still has no `cfgmgr`). Both numbers stay comfortably inside the 15s test budget. Still worth
+  watching if a real-hardware run ever shows this mattering there, but the design itself needs no
+  changes on this evidence.
 - **A digital-twin soak's wall clock is set by GC timing, so it must never be bisected to a code
   change** (established 2026-09-11 after one was — see SPECIFICATION.md Part E.7 for the measurement
   and the inverted control). Not open work: the finding itself is the resolution, and

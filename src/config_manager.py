@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from typing import Any, Literal, NamedTuple, TypeVar
 
+    from asy_fram_manager import AsyFramManager
     from print_log import ErrorLog
 
     T = TypeVar("T", int, float, str)
@@ -50,7 +51,7 @@ if TYPE_CHECKING:
     # value just to serve the generator (BUILD_CHAIN_PLAN.md's quality bar). See
     # SPECIFICATION.md Part C.14.2 for the grammars and buildgen/wiring.py for the parser.
 
-from print_log import PrintLogHistory
+from print_log import PrintLogHistory, make_logger
 
 
 def _special_bypass(check_val: "CfgValue", val_special: "CfgSpecial", scalar_type: type, *, check_special: bool) -> "bool | None":
@@ -235,8 +236,12 @@ if TYPE_CHECKING:
 
 
 class ConfigManager:
-    def __init__(self, filename: str, cfg_vals: "ConfigSchema", name: str) -> None:
-        self.pr = PrintLogHistory(name="CFGMGR_" + name)
+    def __init__(self, filename: str, cfg_vals: "ConfigSchema", name: str, fram: "AsyFramManager | None" = None) -> None:
+        # Inherits its owning module's FRAM durability (CLAUDE.md's implicit-FRAM-wiring rule: every
+        # module gets optional FRAM logging, and this one is no exception) - falls back to the exact
+        # same RAM-only PrintLogHistory as before whenever fram is None, so a caller that never
+        # passes it sees no observable change at all.
+        self.pr: PrintLogHistory = make_logger(fram, name="CFGMGR_" + name)
         self.name = "CFGMGR_" + name  # matches self.pr.name - the _ModuleLike registration shape
         # asy_webserver_service.py's registration lists key on (error_sources=).
         self.config_lock = asyncio.Lock()
@@ -360,6 +365,11 @@ class ConfigManager:
                 return True, dict_results
 
     async def setup(self) -> None:
+        await self.pr.setup()  # required for all logged warnings and errors, matches every other
+        # FRAM-capable module's own setup() - a real gap before WP2 (CLAUDE.md's implicit-FRAM-
+        # wiring rule): harmless no-op while self.pr was always RAM-only, but load-bearing now that
+        # it can be a real PrintLogHistoryStore - without this, self.pr.initialized never becomes
+        # True and every later err_s()/wrn_s() call here silently skips its own FRAM write.
         data: dict[str, CfgValue] | None = None
         try:
             if (os.stat(self.config_file)[0] & 0x4000) == 0:  # 0x4000 = MP_S_IFDIR, MicroPython's own
