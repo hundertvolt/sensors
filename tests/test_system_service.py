@@ -172,6 +172,41 @@ def test_init_without_watchdog_defaults_to_none() -> None:
     assert svc.watchdog is None
 
 
+# ---------------------------------------------------------------------------
+# feed_watchdog() - WP6's one reusable, no-op-safe watchdog access point. start_and_check_tasks()'s
+# own tests further below already exercise it indirectly through the task-supervisor loop; these
+# cover the method itself directly, since buildgen's generated boot setup batch calls it too.
+# ---------------------------------------------------------------------------
+
+
+def test_feed_watchdog_feeds_a_real_watchdog() -> None:
+    wdt = machine.WDT()
+    svc = make_service(watchdog=wdt)
+    svc.feed_watchdog()
+    assert wdt.feed_count == 1
+    svc.feed_watchdog()
+    assert wdt.feed_count == 2
+
+
+def test_feed_watchdog_is_a_silent_no_op_without_a_watchdog() -> None:
+    # A watchdog-less build takes the identical code path, no special-casing at the call site.
+    svc = make_service()
+    assert svc.watchdog is None
+    svc.feed_watchdog()  # must not raise
+
+
+def test_feed_watchdog_stops_once_force_watchdog_starve_latches() -> None:
+    # _force_watchdog_starve is _reboot()'s own one-way "let the hardware watchdog do it instead"
+    # signal (alarm-pool exhaustion when arming the reset timer) - feed_watchdog() must honor it
+    # even with a real watchdog present, exactly like start_and_check_tasks()'s own loop already did
+    # before this method existed to share the check.
+    wdt = machine.WDT()
+    svc = make_service(watchdog=wdt)
+    svc._force_watchdog_starve = True
+    svc.feed_watchdog()
+    assert wdt.feed_count == 0
+
+
 def test_init_zero_history_length_is_accepted_in_memory() -> None:
     # Unusual-but-typing-valid content: 0 is a legal int, not just the documented default of 10.
     svc = make_service(history_length=0)

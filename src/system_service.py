@@ -118,6 +118,16 @@ class SystemService:
         # class (watchdog, fram).
         self._level_setters: list[Callable[[int], None]] = []
 
+    def feed_watchdog(self) -> None:
+        # The one reusable, no-op-safe watchdog access point (WP6, SPECIFICATION.md Part D.9/G.2) -
+        # every feed site (the task-supervisor loop below, and buildgen's own one-time boot setup
+        # batch) calls this instead of repeating the same "watchdog=None, or the reset timer failed
+        # to arm" check inline. A device built with no watchdog, and one whose _reboot() couldn't
+        # arm its reset timer (_force_watchdog_starve - a deliberate one-way "let it die" signal),
+        # both take this identical path with no special-casing at any call site.
+        if self.watchdog is not None and not self._force_watchdog_starve:
+            self.watchdog.feed()
+
     def _reboot(self, message: str, action: "Callable[[], None]") -> None:
         self.reset_timer.deinit()
         self.storage_timer.deinit()
@@ -244,8 +254,7 @@ class SystemService:
                     self.pr.evt("Task error counter reduced to", task_errors)
 
             if task_errors <= _TASK_FAIL_MAX:
-                if self.watchdog is not None and not self._force_watchdog_starve:
-                    self.watchdog.feed()
+                self.feed_watchdog()
             else:
                 await self.pr.err_s("Task error counter above", _TASK_FAIL_MAX, "- reboot triggered!", errno=4)
                 self.reboot_system()

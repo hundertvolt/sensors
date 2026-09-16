@@ -58,6 +58,22 @@ def test_real_device_constructs_watchdog_exactly_once(repo_root: Path, src_dir: 
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_real_device_feeds_the_watchdog_after_every_setup_call_in_order(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
+    # WP6 (SPECIFICATION.md Part D.9/G.2): the one-time boot setup batch must not starve the
+    # hardware watchdog, no matter how many modules a device wires - a feed after every await
+    # X.setup() line, never inside a loop, is what makes this safe regardless of setup count.
+    # SystemService.feed_watchdog() itself is unit-tested (tests/test_system_service.py) for the
+    # no-watchdog/force-starve no-op cases; this proves codegen actually emits the call at every
+    # site, for every real device, not just wozi/dev.
+    result = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir)
+    lines = result.module_source.splitlines()
+    setup_lines = [i for i, line in enumerate(lines) if re.match(r"\s*await \w+\.setup\(\)\s*$", line)]
+    assert len(setup_lines) > 0, "no setup() calls found in the generated boot sequence"
+    for i in setup_lines:
+        assert lines[i + 1].strip() == "sysfunct.feed_watchdog()", f"{device}: {lines[i].strip()!r} not immediately followed by a feed"
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_real_device_boot_entry_imports_the_right_module(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
     result = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir)
     assert f"from sensortask_{device} import main" in result.boot_entry_source

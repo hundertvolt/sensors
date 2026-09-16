@@ -793,6 +793,24 @@ def _scenario_setup_batch_order(device: str) -> None:
     assert calls == expected
 
 
+@_register("boot_feeds_the_watchdog_exactly_once_per_setup_call")
+def _scenario_boot_feeds_the_watchdog(device: str) -> None:
+    # WP6 (SPECIFICATION.md Part D.9/G.2): the real, generated boot sequence must actually execute
+    # a feed after every setup() call, not just emit one in source (tests_scripts/
+    # test_buildgen_generate.py's own test_real_device_feeds_the_watchdog_after_every_setup_call_in_order
+    # proves the codegen shape, generically, for all 6 devices - this proves it actually runs,
+    # end to end, against the real object graph). The expected count is derived from the same
+    # generated source buildgen wrote for this device, not a hand-maintained per-device number.
+    with open(f"build/generated_src/sensortask_{device}.py") as f:
+        source_lines = f.readlines()
+    expected_feeds = sum(1 for line in source_lines if line.strip().startswith("await ") and line.strip().endswith(".setup()"))
+    assert expected_feeds > 0
+    module = build(device)
+    assert module.sysfunct is not None and module.watchdog is not None
+    assert module.sysfunct.watchdog is module.watchdog
+    assert module.watchdog.feed_count == expected_feeds
+
+
 def _bmp3xx_devices() -> "frozenset[str]":
     # Which of _DEVICES actually declare a bmp3xx instance, derived from each device's own wiring
     # plan (buildgen-computed from devices/*.toml) rather than a hardcoded "wozi/dev" literal -

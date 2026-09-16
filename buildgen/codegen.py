@@ -454,7 +454,12 @@ def _emit_build_system(lines: "list[str]", model: DeviceModel, ctx: _Ctx, instan
             continue
         if spec.driver_info and spec.driver_info.needs_setup:
             setup_order.append(ctx.instance_var(node))
-    lines.extend(f"    await {name}.setup()" for name in setup_order)
+    for name in setup_order:
+        lines.append(f"    await {name}.setup()")
+        # WP6 (SPECIFICATION.md Part D.9/G.2): fed after every one-time setup() call, never inside a
+        # loop - that's what makes this safe regardless of how many modules a device wires. No-op on
+        # a watchdog-less build or once _force_watchdog_starve latches, via feed_watchdog() itself.
+        lines.append("    sysfunct.feed_watchdog()")
     lines.append("")
 
 

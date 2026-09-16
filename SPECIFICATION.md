@@ -441,6 +441,11 @@ TOML does today):
     already run, satisfied by batching at the end. `scd30.setup()` isn't in this batch (no
     local config); neither is `webserver.setup()` — its own `self.pr.setup()` runs lazily, the
     first time its `_run()` task actually starts (see the boot-latency note below).
+    **`sysfunct.feed_watchdog()` follows every single call in this batch** (WP6) — a one-time,
+    boot-only, non-looping feed site, which is what makes it safe regardless of how many modules a
+    device wires: it cannot degenerate into something that keeps feeding a genuinely hung system
+    forever. `feed_watchdog()` itself is a no-op on a watchdog-less build or once
+    `_force_watchdog_starve` latches (Part G.2), so this needs no per-device special-casing either.
 
 **Real FRAM chunk order** (full wiring — every real device's own TOML today, wozi's own 16
 `PrintLogHistoryStore` chunks plus 1 timestamped chunk): AsyConnTime → its own `CFGMGR_WIFI` →
@@ -3739,6 +3744,13 @@ backend-only or frontend-only validation/coercion policy change in this project.
   `get_loggers()` (structurally, `base_classes.py` provides the default for `SensorReader`/
   `SensorReaderConfig`); an aggregator calls these uniformly instead of hand-enumerating each
   module's own nested sub-objects. See Part C.14.3.
+- **Watchdog feed** — `system_service.py`'s `SystemService.feed_watchdog()`, never a hand-rolled
+  `if self.watchdog is not None: self.watchdog.feed()` at the call site. No-op-safe on a
+  watchdog-less build and once `_force_watchdog_starve` latches, so every caller (the task-
+  supervisor loop, and buildgen's own one-time boot setup batch, WP6) takes the identical path with
+  no branching of its own. Only ever called from a one-time or bounded-loop context, never a place
+  that could keep feeding a genuinely hung system forever - that constraint lives with the caller,
+  not the method itself.
 
 ## G.3 Re-validating the existing project against this Part
 
