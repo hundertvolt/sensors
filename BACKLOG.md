@@ -9,6 +9,34 @@ constraints.
 
 ## Refactor targets not yet done
 
+- **Real hardware: `build_system()` breaches the heap-headroom floor on the first build after the
+  FRAM content is invalid - the exact state a device is in after a firmware update.** Found by a
+  routine flash-tier run on the merged tree (2026-09-16), `tests_hardware/flash/test_memory_stress.py::
+  test_real_gc_heap_headroom_survives_a_full_system_build`: `largest obtainable block fell below the
+  floor: 33168 < 80000`. **Free memory is not the problem - fragmentation is**: the run reports
+  `baseline free=139104 largest_block=129440` then `after_build_system free=109536
+  largest_block=33168`, so ~109 KB stays free (comfortably over Part I.5's own `mem_free` floor)
+  while the largest contiguous block collapses to a quarter of it.
+
+  **Not random - it tracks FRAM re-initialisation.** 2 failures in 10 consecutive runs, and the
+  failing ones are the runs whose output carries `FRAM Invalid data in block 0/1` + `Writing block 0
+  data` (4 such lines in the failing suite run, 0 in a passing one). So the breach happens when the
+  build has to rebuild FRAM blocks rather than find them valid - which is the first build after a
+  fresh flash, and also after any isolated device script has overwritten the chunks (the flash tier
+  does that routinely, CLAUDE.md's own caveat). A real unit hits this path on its first boot after
+  every firmware update, so this is not a bench-only artifact.
+
+  **Attribution not separated, deliberately stated rather than guessed.** Two changes since the last
+  full flash-tier run that included this test both add objects to the `build_system()` graph: the
+  ISL29125 instance on dev, and WP1/WP2's per-`ConfigManager` FRAM-backed logger (`make_logger(fram,
+  ...)` + `await self.pr.setup()`, the same change independently measured as a 33x host-side
+  slowdown elsewhere in this file). The second is the better suspect - many small, interleaved
+  allocations are what fragments a heap - but proving it needs a pre-WP firmware flashed and this
+  one test run against it, which no session has done yet. **Do that before designing a fix**:
+  CLAUDE.md's memory-safety ladder is explicit that a threshold or a `gc.collect()` is forbidden as
+  the fix for a design that needs a large contiguous allocation, so the answer has to be whatever
+  relieves the fragmentation at its source, and which change created it decides what that is.
+
 - **A config-persisting `PUT /sensors` resets its own HTTP connection when it lands under
   concurrent API load. HIGH IMPORTANCE, must be fixed — completely unforeseen (project owner,
   2026-09-15); it is not to be tolerated in a test, and the failing test must not be weakened to
