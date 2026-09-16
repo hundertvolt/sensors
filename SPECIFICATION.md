@@ -1369,10 +1369,16 @@ sync `get_cfg_schema()` (no I/O, deliberately not `async`) and as a public attri
 
 `_set_mgr_cfg(data, cfg_vals) -> (bool, WriteValidity)` (`SensorReaderConfig`-only extension point;
 SCD30 keeps hand-rolled setters) delegates to `cfgmgr.write_config(...)`. `_set_dict_cfg(data,
-cfg_vals) -> WriteValidity` persists first, then pushes live only fields that both changed
-(`"Valid"`, not `"Unchanged"`) and have a registered push callback; every field reports
-independently including unrecognized keys; a whole-operation persist failure marks every requested
-key `"Failed"`. **A push callback always receives the coerced, persisted value, not the caller's
+cfg_vals) -> WriteValidity` validates and stages first, then pushes live only fields that both
+changed (`"Valid"`, not `"Unchanged"`) and have a registered push callback; every field reports
+independently including unrecognized keys; a whole-operation validation failure (an invalid
+`ConfigManager`, or an internal error raised out of `write_config()`/`_set_mgr_cfg()` itself, never
+a later flash-write failure - see below) marks every requested key `"Failed"`. **Since WP5**
+(SPECIFICATION.md Part F.2), the actual flash write is deferred to an independent task, so
+`"persisted"` here really means "validated and staged" - a genuine disk write failure surfaces only
+later, as a logged `errno` on `cfgmgr.pr`, never back through this return value or the caller's own
+response; `_set_dict_cfg()` therefore has no way to observe it and none is expected to. **A push
+callback always receives the coerced, persisted value, not the caller's
 raw one** — a type-checking callback would otherwise wrongly reject a coercible value like `45.0`
 for an int field. `self._push_callbacks` is a plain `{field: async_fn}` dict populated per subclass
 `__init__` (no central registry). **For an `int`-typed field, narrow with `type(value) is not int`,
@@ -1497,7 +1503,7 @@ is expected; only overlap *within* one row matters.
 | Module | `errno` | `wrnno` | Notes |
 |---|---|---|---|
 | `base_classes.py` | 1-9 | 1-2 | Reserved base range — every driver starts at 10+. |
-| `config_manager.py` (`CFGMGR_<name>`) | 1-14 | 1-6 | Sequential in source order. |
+| `config_manager.py` (`CFGMGR_<name>`) | 1-15 | 1-6 | Sequential in source order. 14=the deferred flush's own write failure (`_flush_staged()`, WP5); 15=a validation-phase `MemoryError`/`AttributeError` in `write_config()` itself, split off 14 once the actual file write moved into the separate deferred method. |
 | `asy_fram_manager.py`/`asy_fram_driver.py` (`FRAM`) | 10-98 | 60-83 | `AsyFramManager` 10-88 (busy/idle status-byte helper spreads a base across 2-7 values per call); `FRAM_SPI` 89-98 (not-initialized ×5, invalid-range ×2, readback mismatch, lock-timeout, device-ID guard) + `wrnno` 81-83 (WRDI-stuck, WEL-didn't-set ×2). |
 | `asy_bmp3xx_driver.py` (`BMP3XX`) | 10-22 | — | 10=init, 11=periodic read, 12=config read at init, 13=config write at init, 14=config read at store-time, 15-20=oversampling/filter forwards, 21=trigger-interval, 22=batched snapshot read. |
 | `asy_scd30_driver.py` (`SCD30`) | 10-25 | — | 10=init, 11=periodic read, 12=unused (no init-time config), 13=stop-continuous-measurement, 14-25=per-field forwards. |
@@ -3155,11 +3161,28 @@ asymmetry, not chased further since the fallback covers either case regardless.
 `network.STAT_GOT_IP` is not STA-only (an AP interface reports it too) — `_run_hotspot_mode()`'s
 `status != STAT_GOT_IP` branch is only true on the first tick after entering hotspot mode.
 
-**This backstop is inherently safe**: every real `ConfigManager.write_config()` call is reachable
-only through the REST PUT path, so a device whose API is unreachable structurally cannot have a
-flash write in flight — a power cycle carries zero flash-corruption risk. Combined with the
-reboot-safe boot chain (A.4), power-cycle recovery is a deliberately stable, intended feature, not
-merely a fallback.
+**This backstop is safe in practice, with one narrow, accepted residual window (WP5,
+2026-09-16).** Every real flash write is still *triggered* only through the REST PUT path — nothing
+else ever calls `ConfigManager.write_config()`. But `write_config()` itself no longer performs that
+write inline: it validates and stages synchronously, then hands the actual `open()`/`json.dump()`
+call to an independent `asyncio.create_task()`, decoupled from the request/response entirely (see
+this Part's own note below and BACKLOG.md, 2026-09-15 — the RP2040 flash write disables interrupts
+port-wide for its duration, and doing it inline was resetting the very HTTP connection whose PUT
+triggered it — see `config_manager.py`'s own `write_config()`/`_flush_staged()` comments for the
+full mechanism). So the older, stronger claim — "a device whose API is unreachable structurally
+cannot have a flash write in flight" — is no longer exactly true: there is now a brief window,
+between the response being sent and the deferred flush actually running, where the API could in
+principle already read as unreachable while a write is still pending. In practice this window is a
+single scheduler tick (microseconds to low milliseconds), while the WiFi backstop only ever power-
+cycles after a *sustained* outage (F.2's own measured data: essentially never inside 150s) — so the
+two are separated by many orders of magnitude, and a power cycle triggered by that backstop lands
+long after any pending flush has already resolved one way or the other. The real, intentionally-
+accepted residual risk is narrower and different in kind: a power loss landing in that same brief
+window loses the just-accepted config change silently (never corrupts anything - `_flush_staged()`
+only ever replaces `_cache`/the on-disk file after its own write actually succeeds, exactly as
+`write_config()` always did). Combined with the reboot-safe boot chain (A.4), power-cycle recovery
+is still a deliberately stable, intended feature - this residual window narrows what "inherently
+safe" means, it doesn't remove the design's own safety property.
 
 ## F.3 Long-blocking operations must not stall timing-sensitive work
 
