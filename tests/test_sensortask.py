@@ -781,12 +781,14 @@ def _scenario_setup_batch_order(device: str) -> None:
 
             BMP3xx_Reader.setup = real_bmp_setup  # type: ignore[method-assign]
 
-    # notify_finalize runs during synchronous construction, before any setup() call; sysfunct is
-    # first *within* the async setup() batch - resolves the real persisted debug level as early as
-    # possible (this module's own docstring). conn/ntp were both built before fram/sysfunct but are
-    # placed after them here too, matching sysfunct's/fram's own already-fixed positions; conn before
-    # ntp mirrors their own real construction order. bmp only appears for a device that has one.
-    expected = ["notify_finalize", "sysfunct", "fram", "conn", "ntp", "sgp"]
+    # notify_finalize runs during synchronous construction, before any setup() call; fram is first
+    # *within* the async setup() batch - sysfunct's own cfgmgr.pr.setup() is FRAM-backed and needs
+    # AsyFramManager already initialized, or it degrades instantly instead of ever reading/writing
+    # its own FRAM chunk (fixed: fram.setup() has no dependency on sysfunct in the other direction).
+    # conn/ntp were both built before fram/sysfunct but are placed after them here too, matching
+    # sysfunct's/fram's own already-fixed positions; conn before ntp mirrors their own real
+    # construction order. bmp only appears for a device that has one.
+    expected = ["notify_finalize", "fram", "sysfunct", "conn", "ntp", "sgp"]
     if _has(module, "bmp3xx"):
         expected.append("bmp")
     expected.append("notify_setup")
