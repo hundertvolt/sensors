@@ -84,6 +84,29 @@ if [ ! -x "$micropython_bin" ]; then
     uv run toolchain/setup_toolchain.py setup --toolchain-dir "$toolchain_dir" "${skip_apt_flag[@]}"
 fi
 
+# tests_scripts/ is genuinely independent of everything below this point - real CPython/pytest code
+# (never MICROPYPATH/build/generated_src/frozen_modules-dependent, see tests_scripts/conftest.py's
+# own docstring) that only ever touches pytest's own isolated tmp_path fixtures or OS-assigned free
+# ports (test_digital_twin_generated_boot.py's own _free_port()), never this repo's real
+# build/generated_src/ or frozen_modules/ - confirmed directly, no test file in tests_scripts/
+# references either outside a tmp_path. So it needs nothing from the setcap/frozen_html/
+# frozen_website/buildgen steps below, and backgrounding it here - instead of the old placement
+# right before the MicroPython test-file loop - overlaps its own real ~4-minute wall-clock (measured
+# directly: 247.93s under pytest's own timer) with essentially the *entire* rest of this script
+# rather than serializing in front of it. Counted the same as any other job against
+# max_parallel/TEST_PARALLELISM below (it backgrounds itself the same way, into the same shell), not
+# an extra unbounded process on top of that budget - same "everything here is a fully isolated OS
+# process" reasoning the job-pool comment below already gives, just applied one job earlier.
+echo "== Running tests_scripts/ (CPython-side build-tooling tests)"
+tests_scripts_status_file="$(mktemp)"
+(
+    if uv run pytest tests_scripts -q; then
+        echo "PASS" >"$tests_scripts_status_file"
+    else
+        echo "FAIL" >"$tests_scripts_status_file"
+    fi
+) &
+
 # tests/test_digital_twin_sensortask_integration.py's own hotspot/DNS test binds the real
 # privileged port 53 (src/captive_dns.py's DNSServer) from a genuine, organically-triggered hotspot
 # scenario - a GitHub Actions runner (or any non-root dev environment) can't bind that port without
@@ -124,20 +147,14 @@ scripts/build_website.sh wozi frozen_modules/frozen_website_wozi.py
 echo "== Generating buildgen device modules into build/generated_src/"
 uv run scripts/_generate_sensortask_modules.py
 
-# CPython-side tests for the build tooling itself (scripts/build_frozen_html.sh, scripts/
+# tests_scripts/ itself (CPython-side build-tooling tests: scripts/build_frozen_html.sh, scripts/
 # build_website.sh, scripts/build_firmware.py - SPECIFICATION.md Part B.11's "fully verified"
-# follow-up) - see tests_scripts/conftest.py's own docstring for why these run under CPython/
-# pytest rather than the MicroPython Unix port loop below: none of these scripts are MicroPython-
-# target code. RUN_SLOW_FIRMWARE_BUILD is deliberately left unset here, so the one real (but cheap,
-# ~1 minute with a warm toolchain) ARM firmware compile it gates stays opt-in for fast local
-# iteration - .github/workflows/ci.yml's firmware-build-verify job is what actually sets it.
-echo "== Running tests_scripts/ (CPython-side build-tooling tests)"
-# Captured rather than left to `set -e` so a failure here still lets the (much slower) MicroPython
-# suite below run to completion - one full-run summary beats an early abort mid-report.
-tests_scripts_result="PASS"
-if ! uv run pytest tests_scripts -q; then
-    tests_scripts_result="FAIL"
-fi
+# follow-up; see tests_scripts/conftest.py's own docstring for why these run under CPython/pytest
+# rather than the MicroPython Unix port loop below) is already running in the background, launched
+# right after the toolchain check above - nothing here. RUN_SLOW_FIRMWARE_BUILD is deliberately left
+# unset for that run, so the one real (but cheap, ~1 minute with a warm toolchain) ARM firmware
+# compile it gates stays opt-in for fast local iteration - .github/workflows/ci.yml's
+# firmware-build-verify job is what actually sets it.
 
 raw_dir=""
 if [ "$coverage" = "1" ]; then
@@ -151,7 +168,7 @@ fi
 # cleanups must live in one trap. `rm -rf ""` (raw_dir when --coverage was never passed) is a
 # harmless no-op, not an error.
 results_dir="$(mktemp -d)"
-trap 'rm -rf "$raw_dir" "$results_dir"' EXIT
+trap 'rm -rf "$raw_dir" "$results_dir" "$tests_scripts_status_file"' EXIT
 
 failed=0
 # Per-file timeout with two retries (three attempts total), not just the job-level
@@ -381,6 +398,15 @@ for test_file in "${test_files[@]}"; do
     run_test_file "$test_file" "$status_file" &
 done
 wait || true
+
+# The tests_scripts/ background job (started before this loop, see the toolchain-check block
+# above) is reaped by the same unqualified `wait` just above like any other job; its own status
+# file is written unconditionally in both its PASS and FAIL branches, so a missing/empty read here
+# would itself be a bug, not a legitimate "still running" state - never treated as PASS by omission.
+tests_scripts_result="$(cat "$tests_scripts_status_file" 2>/dev/null)"
+if [ "$tests_scripts_result" != "PASS" ]; then
+    tests_scripts_result="FAIL"
+fi
 
 failed_files=()
 passed_count=0
