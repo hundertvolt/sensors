@@ -410,6 +410,18 @@ def free_run_profile(max_runs=12, floor=256):
 A healthy heap profiles as `[<almost everything>, small, small, ...]`. A fragmented one profiles as
 several comparable mid-size runs — which is exactly the failure signature.
 
+**Correction, 2026-09-17, verified by running it.** The sketch above **MemoryErrors on its own
+probe**: `held.append(...)` may have to *grow* the list, and the only region it could grow into is
+the one `bytearray(n)` just claimed. It dies precisely on the fragmented heaps it exists to measure.
+Pre-size both lists and guard the claim — `tests/_heap_fragmentation_model.py` carries the corrected
+instrument, and `tests_scripts/test_heap_fragmentation_model.py::test_the_profiler_survives_the_fragmented_heap_it_exists_to_measure`
+is the regression cover. Two further ordering traps found the same way, both of which silently
+corrupt the numbers rather than raising: `gc.collect()` must run **before** the measurement (§2.2 is
+right that this is the crux — measuring pre-collect reports reclaimable garbage as fragmentation and
+flatters the interleaved case), and `gc.mem_free()` must be read **before** `largest_block()`,
+because the binary search leaves its own probe allocations behind as uncollected garbage — enough to
+report the impossible `largest > free`.
+
 ### 2.9.2 Tier 0 — synthetic mechanism model. **Works today, zero infrastructure.**
 
 Reproduces the defect's signature in under a second with the project's existing Unix-port binary at
