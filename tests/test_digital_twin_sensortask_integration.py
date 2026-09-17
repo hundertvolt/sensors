@@ -252,6 +252,11 @@ def test_every_get_endpoint_is_reachable_over_real_http_and_shaped_correctly() -
             assert set(res.json().keys()) == {"networking", "system", "notification", "sensors", "errcount"}
         finally:
             await _cancel(task)
+            # This file's own ~29 real build_system() calls (18 generated + this file's own hand-
+            # written heavier tests) share one process/heap - the generated section's own comment
+            # already documents this accumulation; closing the same gap here rather than relying
+            # solely on gc.threshold(32768)'s own periodic collection to keep pace.
+            gc.collect()
 
     run_timed(scenario(), timeout_s=10.0)
 
@@ -271,6 +276,7 @@ def test_static_site_stub_is_served_over_real_http() -> None:
             assert len(res.body) > 0
         finally:
             await _cancel(task)
+            gc.collect()  # see the "every GET endpoint" test's own comment above for why
 
     run_timed(scenario(), timeout_s=10.0)
 
@@ -292,6 +298,7 @@ def test_put_round_trips_through_a_real_twin_backed_driver_over_real_http() -> N
             assert await sensortask_wozi.notification.cfgmgr.get_dict(["WarnCO2"]) == {"WarnCO2": 1800}
         finally:
             await _cancel(task)
+            gc.collect()  # see the "every GET endpoint" test's own comment above for why
 
     run_timed(scenario(), timeout_s=10.0)
 
@@ -321,6 +328,7 @@ def test_reset_errors_over_real_http_is_not_undone_by_a_fram_loggers_later_setup
             assert 99 not in log["SGP40"]["ErrNum"], "setup() restored the pre-reset history over a reset that returned 200"
         finally:
             await _cancel(task)
+            gc.collect()  # see the "every GET endpoint" test's own comment above for why
 
     run_timed(scenario(), timeout_s=10.0)
 
@@ -349,6 +357,7 @@ def test_sgp40_reading_before_scd30_has_measured_yet_logs_no_bogus_error() -> No
         assert data == SGP40(None, None, None)
         log = await sgp.get_error_counter()
         assert log["SGP40"]["ErrCount"] == 0, f"expected startup jitter must not log any E/W entry ({log!r})"
+        gc.collect()  # see the "every GET endpoint" test's own comment above for why
 
     run_timed(scenario(), timeout_s=10.0)
 
@@ -395,6 +404,7 @@ def test_put_pause_time_round_trips_and_counts_down_over_real_http() -> None:
         finally:
             for task in tasks:
                 await _cancel(task)
+            gc.collect()  # see the "every GET endpoint" test's own comment above for why
 
     run_timed(scenario(), timeout_s=15.0)
 
@@ -418,6 +428,7 @@ def test_sensors_put_round_trips_a_real_scd30_field_over_real_http() -> None:
             assert res.json()["result"] == {"SCD30": {"MeasInt": "Valid"}}
         finally:
             await _cancel(task)
+            gc.collect()  # see the "every GET endpoint" test's own comment above for why
 
     run_timed(scenario(), timeout_s=10.0)
 
@@ -481,6 +492,7 @@ def test_watchdog_is_never_starved_while_every_real_task_runs_concurrently() -> 
         finally:
             for task in tasks:
                 await _cancel(task)
+            gc.collect()  # see the "every GET endpoint" test's own comment above for why
 
     run_timed(scenario(), timeout_s=15.0)
 

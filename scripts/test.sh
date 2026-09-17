@@ -308,7 +308,55 @@ run_test_file() {
     done
 }
 
-test_files=(tests/test_*.py)
+# Dispatch order: heaviest-known files first, not plain alphabetical glob order. The job pool
+# below fills max_parallel slots in whatever order test_files lists them - alphabetical glob order
+# clusters same-prefix heavy files together (all six tests/test_sensortask_<device>.py sort
+# adjacent to each other, as do all six tests/test_digital_twin_webserver_concurrency_<device>.py
+# plus tests/test_digital_twin_{bus_hazard_concurrency,sensortask_integration,uart_link}.py), so
+# several of the suite's heaviest files end up competing for the same few slots at once instead of
+# overlapping with the ~60 sub-second files that could otherwise fill in around them - confirmed
+# directly (2026-09-17): running all 6 tests/test_sensortask_<device>.py files at once (their own
+# natural glob-order cluster) took 114.8s wall-clock even though only one core's worth of real work
+# is needed per slot. Measured standalone times for every tests/test_*.py file that same session,
+# sorted descending - the fifteen heaviest, listed here so they each grab a slot immediately rather
+# than queueing behind their own same-prefix siblings. Order among these fifteen doesn't matter
+# much (they're comparable magnitude, ~50-116s each); what matters is each getting its own slot as
+# early as possible. Hand-curated from that one measurement run, not dynamically computed - re-measure
+# and update this list if the suite's file-cost distribution shifts meaningfully (a new heavy file
+# added, or one of these split further the way the two originally-monolithic files already were).
+_heavy_files_priority=(
+    tests/test_digital_twin_bus_hazard_concurrency.py
+    tests/test_sensortask_dev.py
+    tests/test_asy_wifi_service.py
+    tests/test_digital_twin_sensortask_integration.py
+    tests/test_sensortask_wozi.py
+    tests/test_uart_comm_hazard.py
+    tests/test_asy_sgp40_driver.py
+    tests/test_sensortask_schlafzi.py
+    tests/test_sensortask_klkizi.py
+    tests/test_sensortask_grkizi.py
+    tests/test_sensortask_arzi.py
+    tests/test_bus_hazard_generated.py
+    tests/test_digital_twin_webserver_concurrency_dev.py
+    tests/test_digital_twin_uart_link.py
+    tests/test_digital_twin_webserver_concurrency_wozi.py
+)
+all_test_files=(tests/test_*.py)
+declare -A _dispatched=()
+test_files=()
+for test_file in "${_heavy_files_priority[@]}"; do
+    if [ -f "$test_file" ] && [ -z "${_dispatched[$test_file]:-}" ]; then
+        test_files+=("$test_file")
+        _dispatched[$test_file]=1
+    fi
+done
+for test_file in "${all_test_files[@]}"; do
+    if [ -z "${_dispatched[$test_file]:-}" ]; then
+        test_files+=("$test_file")
+        _dispatched[$test_file]=1
+    fi
+done
+
 for test_file in "${test_files[@]}"; do
     # Bound concurrency at max_parallel: block here (reaping any one finished job with `wait -n`)
     # before starting a new one once that many are already running. `|| true` on both `wait -n`
