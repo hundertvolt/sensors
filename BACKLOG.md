@@ -104,25 +104,6 @@ constraints.
 
 ## Open questions (need owner input or further investigation)
 
-- **`scripts/test.sh`'s `-X heapsize=32M` is still not reduced, though its own wall-clock cause now
-  is.** The former, monolithic `tests/test_sensortask.py`/`tests/test_digital_twin_webserver_
-  concurrency.py` (447s/268s standalone, all 6 devices' object graphs built repeatedly in one
-  process) are now split by device into `tests/test_sensortask_<device>.py`/`tests/
-  test_digital_twin_webserver_concurrency_<device>.py` (six thin files each, sharing one scenario
-  library apiece - `tests/_sensortask_scenarios.py`/`tests/_webserver_concurrency_scenarios.py` -
-  so no scenario/device/assertion coverage was reduced), and `scripts/test.sh` now runs every
-  `test_*.py` file through a bounded parallel job pool (`TEST_PARALLELISM`, default `nproc`) instead
-  of strictly sequentially - measured directly: 114.8s/59.5s wall-clock running all 6 of one
-  family's files at once, vs. 447s/268s before. **The heap ceiling itself was tried at 8M** (the
-  single heaviest per-device file, `tests/test_sensortask_dev.py`, passes cleanly there and even at
-  4M in isolation) **but reverted: a full-suite run at 8M surfaced a genuine `MemoryError` in an
-  unrelated file** (`tests/test_digital_twin_sensortask_integration.py`, allocating dev's own 256KB
-  FRAM chip fake alongside other heavier object graphs) **and an intermittent real-timing-window miss
-  in another** (`tests/test_digital_twin_bus_hazard_concurrency.py`'s concurrent-bus-load scenario) -
-  neither reproduces at 32M. Since the flag is shared across every file in the suite, not just the
-  split ones, bringing it down safely needs either a full headroom audit of the ~75 other files or a
-  per-file heap override mechanism - neither attempted here. Full account: `scripts/test.sh`'s own
-  `-X heapsize=32M` comment.
 - **ISL29125's chip configuration divergence under concurrent API load (PR #84/commit `679c2b0`'s
   isolation work, HIGH IMPORTANCE, completely unforeseen — project owner, 2026-09-15) — fixed in
   code and unit-tested; real-hardware re-verification still pending.** Root cause, traced through
