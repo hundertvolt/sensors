@@ -558,10 +558,21 @@ constraints.
     (SPECIFICATION.md Part F.2's accepted residual risk) — **suspected, not proven**; all that is
     established is that the persisting write is necessary. Note the write path is now gated behind
     `@pytest.mark.persistence_write`, so reproducing it needs `--allow-persistence-writes`.
-    **Where to look first**: whether the reset correlates with `ConfigManager`'s `json.dump()` to the
-    flash filesystem specifically (instrument around that call) rather than with the ISL29125 driver
-    at all — the same PUT shape against BMP3XX now passes, which points at load/timing rather than
-    at this one driver.
+    **Where to look first — corrected 2026-09-17 after comparing the two arms properly.** An earlier
+    version of this item said the BMP3XX arm passing "points at load/timing rather than at this one
+    driver". That reads the evidence backwards. The two tests are the *same* shape: 2 GET workers on
+    `/sensors` plus one writer alternating between two valid values, same endpoint, same
+    `ConfigManager.write_config()` flash path. Identical setup, opposite outcome, so the flash write
+    the two share cannot be what distinguishes them — the difference is in what each driver's own
+    push does on the bus. `BMP3XX._push_pressure_oversampling()` is a single `set_*` write.
+    `ISL29125._push_resolution()` → `set_resolution()` is a **three-step reconfiguration**:
+    `isl.configure(resolution=...)`, then `_reapply_persist()` (the derived persistence counter
+    changes with the cycle length), then — because `RangeAuto` defaults to `True` and `dev` leaves it
+    there — `_switch_range()` to re-arm threshold registers that are scaled to the old resolution.
+    That is a far longer critical section against two concurrent readers, and it is the first thing
+    to instrument. **Cheap bisection**: `RangeAuto` is a plain REST bool, so `PUT /sensors
+    {"ISL29125": {"RangeAuto": false}}` drops the third leg without touching any code — if the reset
+    rate falls, the re-arm is implicated; if it does not, it is the first two.
 
 ## Deferred / explicitly out-of-scope work
 - **Session 7's `pyproject.toml` `max-args` ratchet (21 → 22, for `WebserverService.__init__`'s new
