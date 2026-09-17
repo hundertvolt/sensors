@@ -453,11 +453,13 @@ max-returns = 12
 # module a given parametrized scenario is booting - the identical structural reason as the other
 # ANN401 exemptions in this same category.
 "tests/_sensortask_scenarios.py" = ["ANN401"]
-# tests/test_digital_twin_sensortask_integration.py's own "Construction across every real device"
-# section (BUILD_CHAIN_PLAN.md's Session 6.2) does the same dynamic __import__() for its own
-# parametrized scenarios, alongside this file's pre-existing static `sensortask_wozi` import for
-# every other (wozi-scoped) test.
-"tests/test_digital_twin_sensortask_integration.py" = ["ANN401"]
+# tests/_digital_twin_construction_scenarios.py (BUILD_CHAIN_PLAN.md's Session 6.2's "Construction
+# across every real device" section, split out of tests/test_digital_twin_sensortask_integration.py
+# into this shared-library-plus-six-per-device-files shape later - see that module's own docstring)
+# does the same dynamic __import__() for its own parametrized scenarios - the identical structural
+# reason as the other ANN401 exemptions in this same category. The file it was split out of no
+# longer needs this exemption: its remaining wozi-only tests use a static `sensortask_wozi` import.
+"tests/_digital_twin_construction_scenarios.py" = ["ANN401"]
 "digital_twin/launch.py" = ["S105"]
 "tests/test_digital_twin_network_neopixel.py" = ["S106"]
 # asy_webserver_service.py makes the same documented Part C.5.2 `_set_dict_cfg` dispatch call as
@@ -640,6 +642,9 @@ exclude = [
     # webserver_concurrency_<device>.py files), but exercises the exact same twin-only
     # machine/network API surface for the exact same reason - see this module's own docstring.
     "tests/_webserver_concurrency_scenarios\\.py$",
+    # Same exception, same reason, one file over: tests/_digital_twin_construction_scenarios.py
+    # (imported by six tests/test_digital_twin_construction_<device>.py files).
+    "tests/_digital_twin_construction_scenarios\\.py$",
 ]
 
 show_error_context = true
