@@ -2743,7 +2743,8 @@ buffer methods *before* their `try:` block started — fixed by widening both to
 body.
 
 **The allocator is the one other sanctioned mocking surface**, on the same
-no-real-class-equivalent reasoning: an 8MB test heap cannot be starved at a chosen moment, so
+no-real-class-equivalent reasoning: the Unix-port test heap (`scripts/test.sh`'s own `-X heapsize`,
+a deliberately generous multiple of the 2MB default) cannot be starved at a chosen moment, so
 `tests/test_asy_uart_comm.py`'s `_StarvedAlloc` shadows *that module's own* `bytearray` global —
 the reassign-a-module-name mechanism the rest of `tests/` already uses, pointed at an allocation
 instead of a method. Two rules make it safe, both learned by getting them wrong first: it must be
@@ -2802,7 +2803,7 @@ fire through any call path that exists. Measured one by one: `_write_frame_with_
 destination nor a push callback, so `_run_get()` always allocates one). `asy_uart_driver.py` adds
 four more of a different kind — the `except MemoryError` around `msg += add` in
 `read_until_complete()`/`readline_until_complete()`, which guard an accumulator growing across rounds
-with no deterministic injection point under the 8M test heap. Kept, like the rest — one branch of
+with no deterministic injection point under the Unix-port test heap. Kept, like the rest — one branch of
 defence in depth in a module contracted never to raise is cheaper than the day the surrounding logic
 moves.
 

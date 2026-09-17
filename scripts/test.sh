@@ -84,13 +84,26 @@ if [ ! -x "$micropython_bin" ]; then
     uv run toolchain/setup_toolchain.py setup --toolchain-dir "$toolchain_dir" "${skip_apt_flag[@]}"
 fi
 
+# No static src/sensortask_wozi.py/sensortask_dev.py exist any more (BUILD_CHAIN_PLAN.md's Session
+# 6 finish criterion) - every device's own sensortask_<device>.py is generated fresh here, via
+# buildgen, into build/generated_src/ (gitignored - see scripts/_generate_sensortask_modules.py's
+# own docstring for why NOT into src/ itself). tests/_sensortask_scenarios.py (dynamic __import__()
+# per device) and every tests/test_digital_twin_*.py file that statically imports a sensortask_<device>
+# module keep working unchanged: MICROPYPATH below puts this directory first, so `import
+# sensortask_wozi` resolves to the freshly generated module.
+#
+# Runs BEFORE tests_scripts/ is backgrounded below, not after - see that block's own comment for
+# the devices/*.toml race this ordering closes.
+echo "== Generating buildgen device modules into build/generated_src/"
+uv run scripts/_generate_sensortask_modules.py
+
 # tests_scripts/ is genuinely independent of everything below this point - real CPython/pytest code
 # (never MICROPYPATH/build/generated_src/frozen_modules-dependent, see tests_scripts/conftest.py's
 # own docstring) that only ever touches pytest's own isolated tmp_path fixtures or OS-assigned free
 # ports (test_digital_twin_generated_boot.py's own _free_port()), never this repo's real
 # build/generated_src/ or frozen_modules/ - confirmed directly, no test file in tests_scripts/
 # references either outside a tmp_path. So it needs nothing from the setcap/frozen_html/
-# frozen_website/buildgen steps below, and backgrounding it here - instead of the old placement
+# frozen_website steps below, and backgrounding it here - instead of the old placement
 # right before the MicroPython test-file loop - overlaps its own real ~4-minute wall-clock (measured
 # directly: 247.93s under pytest's own timer) with essentially the *entire* rest of this script
 # rather than serializing in front of it. Counted the same as any other job against
@@ -106,6 +119,16 @@ fi
 # a real failure worth reporting as one. 1200s is ~5x its measured ~248s, so it only ever fires on
 # a genuine hang, never on ordinary slowness. CI's own timeout-minutes stays the outer backstop,
 # not the defense (see .github/workflows/ci.yml's own comment on that distinction).
+#
+# MUST stay behind the buildgen generation step above, which globs devices/*.toml: one
+# tests_scripts/ test (test_build_website_sh.py's malformed-TOML case) writes a throwaway
+# devices/zz_test_*.toml into the live tree and removes it again, and build_website.sh resolves
+# devices/<device>.toml from the repo root, so it cannot be given a tmp_path tree instead. Generated
+# first, that file's brief existence is never observed; backgrounded first, a glob landing inside
+# that window aborts the whole run under `set -e` with a BuildError naming a device nobody added.
+# Nothing else in the foreground re-globs devices/ once generation is done (the test loop reads the
+# generated wiring-plan JSONs, and build_website.sh below names one device explicitly).
+
 echo "== Running tests_scripts/ (CPython-side build-tooling tests)"
 tests_scripts_status_file="$(mktemp)"
 tests_scripts_timeout_s="${TESTS_SCRIPTS_TIMEOUT_S:-1200}"
@@ -150,16 +173,6 @@ scripts/build_frozen_html.sh
 # mount; every other test file is unaffected by its presence on MICROPYPATH.
 echo "== Building frozen_modules/frozen_website_wozi.py"
 scripts/build_website.sh wozi frozen_modules/frozen_website_wozi.py
-
-# No static src/sensortask_wozi.py/sensortask_dev.py exist any more (BUILD_CHAIN_PLAN.md's Session
-# 6 finish criterion) - every device's own sensortask_<device>.py is generated fresh here, via
-# buildgen, into build/generated_src/ (gitignored - see scripts/_generate_sensortask_modules.py's
-# own docstring for why NOT into src/ itself). tests/_sensortask_scenarios.py (dynamic __import__()
-# per device) and every tests/test_digital_twin_*.py file that statically imports a sensortask_<device>
-# module keep working unchanged: MICROPYPATH below puts this directory first, so `import
-# sensortask_wozi` resolves to the freshly generated module.
-echo "== Generating buildgen device modules into build/generated_src/"
-uv run scripts/_generate_sensortask_modules.py
 
 # tests_scripts/ itself (CPython-side build-tooling tests: scripts/build_frozen_html.sh, scripts/
 # build_website.sh, scripts/build_firmware.py - SPECIFICATION.md Part B.11's "fully verified"
@@ -316,8 +329,10 @@ max_attempts=3
 # "free" concurrency here. At 16, the bottleneck shifts entirely to the backgrounded tests_scripts/
 # job's own single-process pytest runtime (measured: 224s, matching the 3m44.855s total almost
 # exactly) - going further would need tests_scripts/ itself parallelized (e.g. pytest-xdist) to see
-# any more benefit, not attempted. Override downward (e.g. TEST_PARALLELISM=1 to fully recover the
-# old strictly-sequential behavior, or a smaller multiple) if a future file is ever found to violate
+# any more benefit, not attempted. Override downward (e.g. TEST_PARALLELISM=1 to run the test files
+# themselves one at a time - not a full return to the old strictly-sequential behavior, since the
+# backgrounded tests_scripts/ job holds that single slot until it finishes, so the first test file
+# only starts once pytest is done - or a smaller multiple) if a future file is ever found to violate
 # one of the two collision-safety assumptions above, or if a given runner's real memory/CPU-quota
 # limits make 4x too aggressive.
 #

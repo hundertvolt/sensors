@@ -613,10 +613,15 @@ information):
   file as one Unix-port process for all its test functions, sharing one heap — a file whose several
   heaviest tests each build the whole real `sensortask_wozi.build_system()` object graph (one test
   builds it twice) could exhaust the interpreter's 2MB default heap roughly 1 run in 3, depending on
-  MicroPython's own non-deterministic test-function run order. Fixed with `-X heapsize=8M` (verified
-  10/10 clean runs) — a Unix-port-only test-harness setting, unrelated to the real rp2040's own RAM
-  budget. Don't re-diagnose a flaky `MemoryError` in a heavy test file as a new code bug before
-  checking this flag is still in place.
+  MicroPython's own non-deterministic test-function run order. Fixed with an explicit `-X heapsize`
+  — a Unix-port-only test-harness setting, unrelated to the real rp2040's own RAM budget. **The
+  value is not fixed and has moved with the suite's own shape** (8M → 32M when WP1+WP2 made the
+  monolithic `test_sensortask.py` build all 6 devices' graphs in one process, then back down to
+  today's 16M once that file was split per device — root-caused, not overridden); `scripts/test.sh`'s
+  own comment above the flag is the authoritative history, kept there rather than duplicated here.
+  Don't re-diagnose a flaky `MemoryError` in a heavy test file as a new code bug before checking the
+  flag is still in place — and don't raise it as the fix, which that history is a standing example
+  against.
 - **Local test runs pin `$TZ=UTC` (Unix port only).** The Unix port's `time.mktime()`
   (`ports/unix/modtime.c`) calls the host's real libc `mktime()`, which interprets its input as
   **local time** per the process's `$TZ` — unlike the deployed rp2 firmware, whose

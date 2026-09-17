@@ -71,10 +71,19 @@ _BUS_FAULT_ERROR_COUNT = 500  # sustained/high-repeat-count - see Run 3's own co
 # fault-injectable drivers, not instance_name()/`_NAME` resolution reused generically.
 _DRIVER_ERRCOUNT_NAME = {"scd30": "SCD30", "sgp40": "SGP40", "bmp3xx": "BMP3XX", "fram": "FRAM"}
 # Which bus-attached drivers produce a real /measurements reading (Run 4's "came back after being
-# faulted" check) vs which keep their error log FRAM-persisted (survives a reboot by design,
-# SPECIFICATION.md Part A.7) rather than in-memory-only (must reset to 0 across a reboot, Run 4's
-# other check) - both are real per-driver facts, not per-device ones. "fram" is deliberately absent
-# from _IN_MEMORY_ERROR_DRIVERS despite its own error log genuinely being in-memory-only
+# faulted" check) vs which Run 4 asserts came back at 0.
+#
+# That second set is NOT "the ones whose error log is in-memory" - it used to be named and described
+# that way and the claim was simply false. SCD30/SGP40/BMP3XX are ALL FRAM-backed (each is
+# constructed with fram=fram - see build/generated_src/sensortask_<device>.py, and CLAUDE.md's
+# FRAM-backed-subset list), so none of them is in-memory-only by design. What actually makes
+# SCD30/BMP3XX reset to 0 here is narrower and entirely situational: Run 3 faults `fram:write`, so
+# the chip is dead for the whole run and nothing they logged could ever reach it. The property this
+# set asserts is therefore "with FRAM faulted, nothing persisted", not "these logs never persist" -
+# a real but much weaker claim, and one nothing currently re-checks against a HEALTHY chip. SGP40 is
+# excluded because Run 5b/5c give it that stronger, chip-healthy treatment; SCD30/BMP3XX have no
+# equivalent, which is a genuine coverage gap recorded in BACKLOG.md rather than papered over here.
+# "fram" is deliberately absent too, despite its own error log genuinely being in-memory-only
 # (AsyFramManager.pr is a plain PrintLogHistory, no fram= kwarg - confirmed directly): Run 3's own
 # `fram:write` fault can leave the persisted chip's chunk status byte stuck mid-write ("torn"), and
 # the dual-block+CRC self-healing read every other FRAM-backed module's own restore goes through
@@ -86,9 +95,11 @@ _DRIVER_ERRCOUNT_NAME = {"scd30": "SCD30", "sgp40": "SGP40", "bmp3xx": "BMP3XX",
 # reasoning that already excludes SGP40's own history from an assertion here for the identical root
 # cause (see this function's own comment below).
 _MEASUREMENT_DRIVERS = frozenset({"scd30", "sgp40", "bmp3xx"})
-_IN_MEMORY_ERROR_DRIVERS = frozenset({"scd30", "bmp3xx"})
-_PERSISTED_ERROR_MODULES = ("SGP40",)  # only fault-injectable module whose error log survives a
-# reboot; used by Run 5b/5c. WIFI's own top-level error log is FRAM-backed too (WP1's
+_NO_PERSIST_WHEN_FRAM_FAULTED = frozenset({"scd30", "bmp3xx"})
+_PERSISTED_ERROR_MODULES = ("SGP40",)  # the only fault-injectable module whose reboot persistence
+# is actually PROVEN here, not the only one that has it - SCD30/BMP3XX are FRAM-backed too and
+# simply have no equivalent chip-healthy check (see above, and BACKLOG.md).
+# Used by Run 5b/5c. WIFI's own top-level error log is FRAM-backed too (WP1's
 # implicit-FRAM-wiring rule, CLAUDE.md/SPECIFICATION.md Part A.7 - AsyConnTime passes fram=fram
 # through to SensorReader.__init__ same as every other FRAM-wired module's own self.pr), so it
 # follows the same all-or-nothing abrupt-restart guarantee - checked separately (Run 8), not via
@@ -115,13 +126,21 @@ _WIFI_SCRIPTED_FAILURES = 5  # asy_wifi_service.py's conn_fail_to_hotspot - the 
 # single fixed-cost op the suite's other requests are. WP1/WP2/WP3 grew the FRAM-backed subset to
 # 10+ entries on `dev` specifically (every CFGMGR_* logger, WIFI/NTP/WEBSERVER/SYSTEM, SGP40/BMP3XX,
 # plus dev's own two uart_link instances that no other device carries - CLAUDE.md's FRAM-backed-
-# subset list), so `dev` is the one device whose ResetErrors call can plausibly exceed _http()'s
-# plain 5.0s default under CI-runner contention. Confirmed directly: PR #103's first two CI runs on
-# `dev` both failed with the exact same two checks (Run 1's and Run 5c's own ResetErrors PUT, at
+# subset list), so it exceeds _http()'s plain 5.0s default. Confirmed directly: the first two CI runs
+# on `dev` both failed with the exact same two checks (Run 1's and Run 5c's own ResetErrors PUT, at
 # both gc.threshold passes, 4 failures total) and no others - not a boot-time or wifi/fram-assertion
-# flake, a genuine per-request timeout on this one heavier-than-usual call. Matches the boot-wait
-# budget (_wait_until_serving's own 20.0s default) rather than inventing a new number.
-_RESET_ERRORS_TIMEOUT_S = 20.0
+# flake, a genuine per-request timeout on this one heavier-than-usual call.
+#
+# The value is DERIVED from the server's own per-request cap, not chosen freely: a client timeout at
+# or above that cap can never actually fire, because the server aborts the request first. An earlier
+# flat 20.0 here was exactly that - inert, and misleading about the real budget, since it also sat
+# above the 15s the real web UI gives up at (js/poll-manager.js's DEFAULT_TIMEOUT_MS). Sitting just
+# ABOVE the cap is deliberate: the suite then observes the server's own abort, which is diagnosable,
+# rather than a bare client-side timeout that says only "something took too long". What is still
+# missing is an explicit elapsed-time budget well below the cap - this timeout is a backstop, not a
+# performance assertion, and the suite is blind to the whole 5-15s band (BACKLOG.md item 24).
+_SERVER_OUTER_CAP_S = 15.0  # mirrors asy_webserver_service.py's own outer_cap_s default - keep in sync
+_RESET_ERRORS_TIMEOUT_S = _SERVER_OUTER_CAP_S + 2.0
 
 # Run 11 (soak) - moved host-side from digital_twin/run_generic_integration.py's own now-retired
 # _soak() (SPECIFICATION.md's "Driver/DUT process separation" Part, 2026-09-14): this suite now
@@ -694,7 +713,7 @@ def _run_4_bus_fault_persistence_sweep(ctx: RunContext) -> None:
     # instead, where the chip is healthy and the outcome is deterministic on any host.
     #
     # FRAM's own error log is excluded from the reset-to-0 sweep below for the same root cause, one
-    # layer down (see _IN_MEMORY_ERROR_DRIVERS's own comment): Run 3's `fram:write` fault can leave
+    # layer down (see _NO_PERSIST_WHEN_FRAM_FAULTED's own comment): Run 3's `fram:write` fault can leave
     # a chunk's status byte torn mid-write, and the dual-block+CRC self-healing read every other
     # FRAM-backed module's restore goes through then correctly detects and logs that as a genuine,
     # fresh "FRAM"-level entry on this very run's own boot - not persisted data, and not a defect.
@@ -704,11 +723,11 @@ def _run_4_bus_fault_persistence_sweep(ctx: RunContext) -> None:
         _wait_until_serving(proc)
         fault_drivers = _bus_fault_drivers(ctx)
         for driver in fault_drivers:
-            if driver not in _IN_MEMORY_ERROR_DRIVERS:
+            if driver not in _NO_PERSIST_WHEN_FRAM_FAULTED:
                 continue  # WIFI's own reset check is Run 8, after its own fault run (Run 7)
             name = _DRIVER_ERRCOUNT_NAME[driver]
             entry = _errcount(name)
-            _check(condition=entry.get("counter", 0) == 0, msg=f"Run 4: {name}'s error count correctly did NOT persist across reboot (in-memory-only by design) ({entry!r})")
+            _check(condition=entry.get("counter", 0) == 0, msg=f"Run 4: {name}'s error count correctly did NOT persist across reboot (FRAM was faulted dead for all of Run 3, so nothing it logged could reach the chip) ({entry!r})")
         # Every bus Run 3 faulted must be live again, not merely answering 200 with stale state -
         # this is the recovery half of Run 3's story, and the one claim about SGP40 here that does
         # not depend on what did or didn't reach the FRAM.

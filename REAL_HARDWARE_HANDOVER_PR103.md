@@ -18,12 +18,13 @@ Read the code on whichever branch you are checked out on; it is identical either
 What that code does: it fixes two `digital-twin-e2e` staleness bugs surfaced by WP1's FRAM wiring,
 then a real (not flaky) CI timeout on `dev`'s `PUT /status {"ResetErrors": true}`. WP1/WP2/WP3 grew
 `dev`'s FRAM-backed error-log subset to 10+ entries (every `CFGMGR_<name>` logger, WIFI/NTP/
-WEBSERVER/SYSTEM, SGP40/BMP3XX, plus `dev`'s own two `uart_link` instances `UART_init`/`UART_resp`
-that no other device carries — `devices/dev.toml`'s two `driver = "uart_link"` blocks, each with its
-own `fram_target = "fram"`), and `_put_status()` resets every one of them sequentially, each paying
-a real FRAM write. Fixed by raising that one call's timeout in the CI suite
-(`scripts/_digital_twin_ci_suite.py`'s `_RESET_ERRORS_TIMEOUT_S = 20.0`), not by changing any
-runtime behavior. Separately, this branch merged in the base branch's test-economy work
+WEBSERVER/SYSTEM, SGP40/BMP3XX/SCD30, plus `dev`'s own two `uart_link` instances
+`UART_init`/`UART_resp` that no other device carries — `devices/dev.toml`'s two
+`driver = "uart_link"` blocks, each with its own `fram_target = "fram"`), and `_put_status()` resets
+every one of them sequentially, each paying a real FRAM write. Fixed by giving that one call its own
+client timeout in the CI suite (`scripts/_digital_twin_ci_suite.py`'s `_RESET_ERRORS_TIMEOUT_S`,
+derived from the server's own 15s per-request cap), not by changing any runtime behavior.
+Separately, this branch merged in the base branch's test-economy work
 (`TEST_PARALLELISM`, heap size, per-device test splitting) — that part is host/CI-sandbox-only and
 has **no real-hardware implication at all**; don't spend bench time on it (see "What NOT to do").
 
@@ -44,11 +45,15 @@ reporting the logs as real evidence; `tests_hardware/README.md` has the full mec
 
 ### 1. Real wall-clock time for `PUT /status {"ResetErrors": true}` on `dev`
 
-The CI suite's 20.0s timeout was sized to survive **CI-runner contention**, not calibrated as an
-expected real-hardware duration — on an uncontended real bench board this call should be much
-faster, but there is no real number to confirm that. Measure, on `dev`'s own real entry point/config
-(not `wozi`'s hardcoded pins on the `dev` board — CLAUDE.md's WoZi/dev policy, that combination
-"tests nothing at all"):
+**This is the highest-value measurement on the list, and the bar is not a test timeout — it is the
+product's own 15s ceiling.** The server aborts any request at `outer_cap_s = 15.0`
+(`src/asy_webserver_service.py`), and the real web UI gives up at the same 15s
+(`js/poll-manager.js`'s `DEFAULT_TIMEOUT_MS`). So a device whose reset sweep approaches 15s is
+broken for its own operators, not merely slow in CI. The call already resets 10+ FRAM-backed sources
+sequentially on `dev` and grows with every WP, and **no number for it has ever been taken on real
+hardware** — the suite's client timeout is a backstop, not a budget, and nothing asserts elapsed
+time (BACKLOG.md item 24). Measure, on `dev`'s own real entry point/config (not `wozi`'s hardcoded
+pins on the `dev` board — CLAUDE.md's WoZi/dev policy, that combination "tests nothing at all"):
 
 - End-to-end HTTP round-trip time for a real `PUT /status {"ResetErrors": true}` once the board has
   been running long enough to have accumulated at least one real entry in several of the FRAM-backed
@@ -59,6 +64,12 @@ faster, but there is no real number to confirm that. Measure, on `dev`'s own rea
   afterward — not just that the HTTP call itself returned in time.
 - **Before this call**, per CLAUDE.md's standing rule: read `GET /status`'s FRAM-backed error logs
   first and record what's there — this call is destructive/irreversible for that evidence.
+- Report the number against the 15s ceiling, not just as a duration: comfortably under (say < 5s)
+  closes BACKLOG item 24; anything past roughly half of it makes the sequential-reset design a real
+  item to fix at the source — batched or concurrent reset, or one shared chunk — rather than
+  something to absorb with a larger timeout anywhere. Also worth having: the same number on one
+  non-`dev` device, since `dev`'s two `uart_link` instances make it the worst case and a second
+  point says how much of the cost is per-source.
 
 ### 2. WIFI's FRAM-backed error log across a real abrupt restart
 

@@ -402,7 +402,7 @@ constraints.
     BUILD_CHAIN_PLAN.md's Session 4 post-merge self-audit; had never been migrated to this file before
     now, so it stayed unresolved and easy to lose track of.
 
-16. **Seven `src/` modules number `errno`/`wrnno` inside the range `base_classes.py` reserves.**
+22. **Seven `src/` modules number `errno`/`wrnno` inside the range `base_classes.py` reserves.**
    Part C.7 reserves `errno` 1-9 and `wrnno` 1-2 for `SensorReader`/`SensorReaderConfig`, and
    `api_response.py`'s `handle_set_cmd()` owns the fixed cross-module slot `errno=99`; the project
    owner's standing direction (2026-09-11) is that **every** module aligns to that reservation for
@@ -425,7 +425,7 @@ constraints.
    each module's next substantial touch. Flagged, deliberately not fixed drive-by - see CLAUDE.md's
    "flag, don't silently change" rule.
 
-17. `asy_uart_comm.py`'s `wrnno` 11 ("drain bound reached - the peer never stopped sending") can
+23. `asy_uart_comm.py`'s `wrnno` 11 ("drain bound reached - the peer never stopped sending") can
     never reach the FRAM history through the path that produces it. SPECIFICATION.md Part C.7.1 allows one persisted
     warning per fault episode; `_resync()` logs `wrnno` 10 first and spends it, then calls
     `_drain()`, so 11 is always demoted to visible-only. Measured 2026-09-13: a resync whose drain
@@ -438,6 +438,44 @@ constraints.
     change to the one-per-episode budget. Needs an owner decision because it changes which entry an
     operator sees in a field log, the same class as the `errno` 32 decision of 2026-09-12.
     `SPECIFICATION.md` C.7.1 now states the actual behaviour rather than the intended one.
+
+24. **`PUT /status {"ResetErrors": true}` now costs a large, still-growing fraction of the product's
+    own request ceiling — and nothing anywhere measures it.** `asy_webserver_service.py`'s
+    `_put_status()` resets every registered error source sequentially, and each FRAM-backed one pays
+    a real FRAM write; WP1/WP2/WP3 grew that set to 10+ on `dev` (every `CFGMGR_*`, WIFI/NTP/
+    WEBSERVER/SYSTEM, SGP40/BMP3XX/SCD30, plus `dev`'s two `uart_link` instances). Two real ceilings
+    bound it, both confirmed directly: the server aborts any request at `outer_cap_s = 15.0`
+    (`asy_webserver_service.py:275`, applied via `asyncio.wait_for()` at `:667`), and the real web UI
+    gives up at `DEFAULT_TIMEOUT_MS = 15000` (`js/poll-manager.js:8`). So this is not a test-harness
+    concern — a device whose reset sweep crosses 15s is broken for its own operators. The CI suite's
+    `_RESET_ERRORS_TIMEOUT_S = 20.0` sits *above* both, which means it can never actually fire (the
+    server's own abort always lands first) and the suite is blind to the whole 5-15s band with no
+    elapsed-time assertion in its place; `tests_hardware/error_log_helpers.py`'s
+    `reset_all_error_logs()` meanwhile still uses `timeout_s=10.0` against the real board over real
+    WiFi. **Where to fix**: an explicit elapsed-time budget in the suite rather than a bare timeout,
+    and — if the real number is anywhere near the ceiling — a design-level fix at the source (batched
+    or concurrent reset, or one shared chunk) rather than a larger client timeout, per CLAUDE.md's
+    standing root-cause-don't-raise-the-limit rule. Needs the real per-device wall-clock number
+    first; requested in `REAL_HARDWARE_HANDOVER_PR103.md`.
+
+25. **SCD30/BMP3XX error-log persistence is never checked against a healthy FRAM chip.** Both are
+    FRAM-backed (`fram=fram` in every generated `sensortask_<device>.py`), so they should follow the
+    same all-or-nothing abrupt-restart guarantee SGP40 has. The only place the digital-twin CI suite
+    touches their persistence is Run 4's `_NO_PERSIST_WHEN_FRAM_FAULTED` sweep, which runs after Run
+    3 has faulted `fram:write` dead for the whole run — so it asserts "nothing persisted through a
+    chip that was unavailable", a much weaker property than its old name and message claimed (both
+    corrected). SGP40 gets the real treatment in Run 5b/5c; SCD30/BMP3XX have no equivalent, so a
+    genuine regression in their FRAM persistence would pass CI today. **Where to fix**: give them a
+    chip-healthy persistence run modelled on 5b/5c.
+
+26. **WP3's `uart_link` FRAM wiring (`UART_init`/`UART_resp`) has no digital-twin coverage at all.**
+    `devices/dev.toml` gives both instances their own `fram_target = "fram"`, and they appear in
+    `/status`'s `errcount` like every other FRAM-backed source — but the CI suite never asserts they
+    are present, never exercises their persistence, and they are `dev`-only so no other device's run
+    would catch it. The only coverage anywhere is `tests_hardware/bench/test_uart_link_under_api_load.py`,
+    which needs the owner's real-hardware go-ahead to run. They also add real time to the
+    `ResetErrors` sweep item 24 is about. **Where to fix**: an errcount-presence assertion in the
+    suite's `dev` run is cheap and would close most of the gap.
 
 ## Deferred / explicitly out-of-scope work
 - **Session 7's `pyproject.toml` `max-args` ratchet (21 → 22, for `WebserverService.__init__`'s new
