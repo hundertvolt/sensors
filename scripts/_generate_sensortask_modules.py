@@ -49,7 +49,7 @@ def main() -> int:
         # "instances" is this script's own addition, not part of compute_twin_wiring()'s documented
         # shape (that stays digital_twin/machine.py's own I2C/SPI-only contract): every driver name
         # devices/<device>.toml declares, bus-attached or not (neopixel/notification included) - an
-        # independent, pre-construction oracle tests/test_sensortask.py's own optional-instance
+        # independent, pre-construction oracle tests/_sensortask_scenarios.py's own optional-instance
         # checks read instead of reflecting back on the very module they're verifying.
         wiring_plan["instances"] = sorted({spec.driver for spec in generated.model.instances.values()})
         (out_dir / f"sensortask_{device}_wiring_plan.json").write_text(json.dumps(wiring_plan))

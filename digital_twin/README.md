@@ -490,8 +490,10 @@ from that device's own real wiring plan, never a hardcoded driver list — a dev
    raises, never crashes the process, it just never starts listening, so no amount of waiting fixes
    it. Confirmed directly: two real CI failures here were a timeout-budget red herring; the actual
    fix was the capability grant, not a longer wait.
-8. **Reboot fault-free** — WIFI's own persistence-correctness check (in-memory-only, should reset
-   to `0`), plus configures an unreachable NTP host (`192.0.2.1`, RFC 5737 TEST-NET-1) for run 9.
+8. **Reboot fault-free** — WIFI's own persistence-correctness check (FRAM-backed since WP1, same
+   all-or-nothing abrupt-restart guarantee as SGP40's run 5b — restored count must be `0` or the
+   full scripted-failure count, never partial), plus configures an unreachable NTP host
+   (`192.0.2.1`, RFC 5737 TEST-NET-1) for run 9.
 9. **Reboot with NTP permanently unreachable** — the other "network connections" real-world case.
    Confirms the webserver stays fully healthy past NTP's own 5s fetch timeout, not just eventually.
 10. **The dedicated watchdog-backstop case** — a real, *blocking* (`time.sleep()`, not

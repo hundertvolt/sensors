@@ -1046,7 +1046,7 @@ got one rather than silently degrading to RAM-only.
 capacity *before* incrementing `allocated_size`, never after, so that comparison can never be
 false by construction and would be a tautology, not a check. A `None` chunk reference on a module
 that should have gotten one is the real, observable signal that capacity ran out; the mock-tier
-equivalent (`tests/test_sensortask.py`'s `fram_chunks_are_all_successfully_allocated_not_out_of_memory`,
+equivalent (`tests/_sensortask_scenarios.py`'s `fram_chunks_are_all_successfully_allocated_not_out_of_memory`,
 run for every real device) uses the same shape, and
 `tests/test_base_classes.py`'s `test_sensorreaderconfig_fram_allocation_failure_and_missing_config_file_together`
 is the negative case proving it can actually fail.

@@ -84,6 +84,29 @@ if [ ! -x "$micropython_bin" ]; then
     uv run toolchain/setup_toolchain.py setup --toolchain-dir "$toolchain_dir" "${skip_apt_flag[@]}"
 fi
 
+# tests_scripts/ is genuinely independent of everything below this point - real CPython/pytest code
+# (never MICROPYPATH/build/generated_src/frozen_modules-dependent, see tests_scripts/conftest.py's
+# own docstring) that only ever touches pytest's own isolated tmp_path fixtures or OS-assigned free
+# ports (test_digital_twin_generated_boot.py's own _free_port()), never this repo's real
+# build/generated_src/ or frozen_modules/ - confirmed directly, no test file in tests_scripts/
+# references either outside a tmp_path. So it needs nothing from the setcap/frozen_html/
+# frozen_website/buildgen steps below, and backgrounding it here - instead of the old placement
+# right before the MicroPython test-file loop - overlaps its own real ~4-minute wall-clock (measured
+# directly: 247.93s under pytest's own timer) with essentially the *entire* rest of this script
+# rather than serializing in front of it. Counted the same as any other job against
+# max_parallel/TEST_PARALLELISM below (it backgrounds itself the same way, into the same shell), not
+# an extra unbounded process on top of that budget - same "everything here is a fully isolated OS
+# process" reasoning the job-pool comment below already gives, just applied one job earlier.
+echo "== Running tests_scripts/ (CPython-side build-tooling tests)"
+tests_scripts_status_file="$(mktemp)"
+(
+    if uv run pytest tests_scripts -q; then
+        echo "PASS" >"$tests_scripts_status_file"
+    else
+        echo "FAIL" >"$tests_scripts_status_file"
+    fi
+) &
+
 # tests/test_digital_twin_sensortask_integration.py's own hotspot/DNS test binds the real
 # privileged port 53 (src/captive_dns.py's DNSServer) from a genuine, organically-triggered hotspot
 # scenario - a GitHub Actions runner (or any non-root dev environment) can't bind that port without
@@ -124,26 +147,28 @@ scripts/build_website.sh wozi frozen_modules/frozen_website_wozi.py
 echo "== Generating buildgen device modules into build/generated_src/"
 uv run scripts/_generate_sensortask_modules.py
 
-# CPython-side tests for the build tooling itself (scripts/build_frozen_html.sh, scripts/
+# tests_scripts/ itself (CPython-side build-tooling tests: scripts/build_frozen_html.sh, scripts/
 # build_website.sh, scripts/build_firmware.py - SPECIFICATION.md Part B.11's "fully verified"
-# follow-up) - see tests_scripts/conftest.py's own docstring for why these run under CPython/
-# pytest rather than the MicroPython Unix port loop below: none of these scripts are MicroPython-
-# target code. RUN_SLOW_FIRMWARE_BUILD is deliberately left unset here, so the one real (but cheap,
-# ~1 minute with a warm toolchain) ARM firmware compile it gates stays opt-in for fast local
-# iteration - .github/workflows/ci.yml's firmware-build-verify job is what actually sets it.
-echo "== Running tests_scripts/ (CPython-side build-tooling tests)"
-# Captured rather than left to `set -e` so a failure here still lets the (much slower) MicroPython
-# suite below run to completion - one full-run summary beats an early abort mid-report.
-tests_scripts_result="PASS"
-if ! uv run pytest tests_scripts -q; then
-    tests_scripts_result="FAIL"
-fi
+# follow-up; see tests_scripts/conftest.py's own docstring for why these run under CPython/pytest
+# rather than the MicroPython Unix port loop below) is already running in the background, launched
+# right after the toolchain check above - nothing here. RUN_SLOW_FIRMWARE_BUILD is deliberately left
+# unset for that run, so the one real (but cheap, ~1 minute with a warm toolchain) ARM firmware
+# compile it gates stays opt-in for fast local iteration - .github/workflows/ci.yml's
+# firmware-build-verify job is what actually sets it.
 
 raw_dir=""
 if [ "$coverage" = "1" ]; then
     raw_dir="$(mktemp -d)"
-    trap 'rm -rf "$raw_dir"' EXIT
 fi
+# One shared results_dir regardless of --coverage: every parallel test-file job (below) writes its
+# own PASS/FAIL status here instead of returning it as its own process exit code or mutating a
+# shared bash array from a background subshell (which wouldn't be visible to the parent shell).
+# Removing raw_dir's own narrower trap in favor of this one, unconditional trap - bash's `trap ...
+# EXIT` replaces any previously registered EXIT handler outright rather than stacking, so the two
+# cleanups must live in one trap. `rm -rf ""` (raw_dir when --coverage was never passed) is a
+# harmless no-op, not an error.
+results_dir="$(mktemp -d)"
+trap 'rm -rf "$raw_dir" "$results_dir" "$tests_scripts_status_file"' EXIT
 
 failed=0
 # Per-file timeout with two retries (three attempts total), not just the job-level
@@ -168,26 +193,53 @@ failed=0
 # keep even though it turned out not to be what was causing the hang (see above); small,
 # immediate, line-buffered writes are still a reasonable default for CI log output.
 #
-# -X heapsize=32M (default 2097152 = 2MB) - tests/test_digital_twin_sensortask_integration.py's own
-# heaviest tests each build the whole real object graph (a fresh 8KB FramChip, ConfigManagers, ...)
-# one or more times per test, sharing one process/heap across every test function in the file (this
-# binary is invoked once per file, not once per test). Confirmed directly: with the 2MB default,
-# that file failed with a real MemoryError roughly 1 run in 3 depending on MicroPython's own
-# non-deterministic test-function run order (this file's own docstring already notes run order
-# differs from definition order); 8M cleared 5/5 consecutive runs at the time. Raised again, from 8M
-# to 32M, once WP1+WP2 (CLAUDE.md's implicit-FRAM-wiring rule, extended to WiFi/NTP/webserver and to
-# every SensorReaderConfig's own ConfigManager) made tests/test_sensortask.py's own per-device
-# object graphs meaningfully heavier - it builds all 6 real devices' full graphs repeatedly across
-# ~300 test functions in one process, and each device now carries roughly 2.5x as many FRAM-backed
-# PrintLogHistoryStore instances as before (conn/ntp/sysfunct/webserver plus every FRAM-wired
-# module's own cfgmgr). Confirmed directly, not estimated: 8M/16M both still failed with real
-# MemoryErrors partway through that file (81/321 and 176/321 passed respectively - a roughly linear
-# relationship with heap size, consistent with this file's own fixed, finite per-run garbage total
-# rather than an unbounded leak), 32M cleared multiple consecutive runs. This is a Unix-port-only
-# test-harness setting - unrelated to the real rp2040's own RAM budget (SPECIFICATION.md Part F.1):
-# real hardware only ever builds one device's own object graph once per boot, never six devices'
-# worth of graphs repeatedly in one process - and every test file still runs under the same GC the
-# real target uses either way.
+# -X heapsize=16M (default 2097152 = 2MB) - history of this value, most recent first:
+#
+# WP1+WP2 (CLAUDE.md's implicit-FRAM-wiring rule) made the former, monolithic
+# tests/test_sensortask.py build all 6 real devices' full graphs repeatedly across ~330 test
+# functions IN ONE PROCESS, pushing this from 8M to 32M (8M/16M both still failed with real
+# MemoryErrors partway through that file at the time - 81/321 and 176/321 passed respectively).
+# Fixed at the root, not worked around: splitting that file by device (six
+# tests/test_sensortask_<device>.py files, 55 builds per process instead of 330 - see
+# tests/_sensortask_scenarios.py's own docstring) let its own heaviest per-device file
+# (tests/test_sensortask_dev.py) pass cleanly even at 4M in isolation.
+#
+# That alone didn't let this shared flag come down, though: a full-suite run at a lower value
+# surfaced two OTHER, unrelated files that had never failed at 32M. Both were root-caused, not
+# patched over with a gc.collect() call (forbidden as a stabilization tool in this codebase, and
+# confirmed directly this session not to even work for one of the two - see git history around
+# 2026-09-17 for the reverted attempt) or a per-file heap override (would only have hidden the
+# same symptom, not fixed it):
+#
+# - tests/test_digital_twin_sensortask_integration.py had the exact same "many real devices' full
+#   graphs in one process" shape the old test_sensortask.py did (its own "construction across
+#   every real device" section: 18 real, socket-backed build_system() calls sharing one process
+#   with this file's own ~11 wozi-only heavy tests). Fixed the same way: split that section out
+#   into tests/_digital_twin_construction_scenarios.py + six
+#   tests/test_digital_twin_construction_<device>.py files, cutting the worst case sharing one
+#   process from ~29 real builds down to this file's own ~11.
+#
+# - tests/test_digital_twin_bus_hazard_concurrency.py's own dev-variant concurrent-bus-load
+#   scenario is a genuinely different mechanism, confirmed by direct isolated bisection (no other
+#   process running, so not a contention artifact): it reproducibly misses its own fixed 9-second
+#   real-clock budget for real background sensor tasks to produce real data at 8M, in EVERY
+#   isolated run, with no external contention needed at all - and a gc.collect() call placed right
+#   before that budget starts had zero effect on the outcome (also confirmed directly, then
+#   reverted). This is not an accumulation problem a split can fix (this file is already
+#   deliberately wozi/dev-scoped, not parametrized across all 6 devices, specifically to avoid
+#   the opposite problem - see that file's own docstring) - it is this specific test genuinely
+#   needing more real-time margin against GC overhead at lower heap. Bisected cleanly in isolation:
+#   fails at 8M, passes at 16M and every value tried above it. Not chased further into changing
+#   this test's own real-time budget (run_seconds) - that changes what the test actually proves,
+#   not a test-harness knob, and wasn't this session's call to make unilaterally.
+#
+# 16M is therefore the real, validated floor across every file in the suite as of this session,
+# not a re-run of the same "guess and check the whole suite" approach that got 32M picked before
+# - confirmed by an actual full-suite scripts/test.sh run at this value. This is a Unix-port-only
+# test-harness setting - unrelated to the real rp2040's own RAM budget (SPECIFICATION.md Part
+# F.1): real hardware only ever builds one device's own object graph once per boot, never several
+# devices' worth of graphs repeatedly in one process - and every test file still runs under the
+# same GC the real target uses either way.
 per_file_timeout_s="${PER_FILE_TIMEOUT_S:-240}"
 # Raised from 180 to 240 alongside the WP1 webserver-startup-race fix above:
 # tests/test_digital_twin_webserver_concurrency.py's own real-socket concurrency scenarios were
@@ -200,28 +252,57 @@ per_file_timeout_s="${PER_FILE_TIMEOUT_S:-240}"
 # on top of an already-marginal baseline, not a large one, but 180s no longer has real margin.
 # That "240s clears this file with room to spare" claim has since gone stale, corrected below.
 #
-# Per-file overrides for two files that grew past the 240s default outright - not a hang, and not
-# fixed by raising everyone's default (that would just make a genuine future hang 2-3x slower to
-# detect for the other ~50 files that still comfortably fit in 240s). Measured directly, 2026-09-16,
-# single full attempt each (not the 3x-retry-shortened runs CI otherwise sees), same toolchain/
-# heapsize as CI: tests/test_sensortask.py 447s real - it builds all 6 real devices' full
-# build_system() object graph once per scenario (327 scenario x device combinations in one process,
-# see that file's own docstring), and WP1+WP2's implicit-FRAM-wiring rule (CLAUDE.md) plus WP6's
-# added watchdog-feed scenario made each of those builds real-world heavier, the same way it made a
-# real device's own boot latency heavier (SPECIFICATION.md Part A.7). tests/
-# test_digital_twin_webserver_concurrency.py 268s real - already the heaviest file in the suite
-# before WP1 (see the comment above); WP1's own webserver.pr FRAM-backed wait bump was the last
-# straw that pushed it just past the 240s default this same comment once called safe margin. Both
-# get a value comfortably above their measured real time, not just past it, to absorb ordinary
-# CI-runner variance without falling back to retries for the common case.
-declare -A per_file_timeout_overrides_s=(
-    ["tests/test_sensortask.py"]=600
-    ["tests/test_digital_twin_webserver_concurrency.py"]=350
-)
+# Per-file overrides for files that grew past the 240s default outright - not a hang, and not fixed
+# by raising everyone's default (that would just make a genuine future hang 2-3x slower to detect
+# for the other ~70 files that still comfortably fit in 240s). Empty as of the tests/test_sensortask_
+# <device>.py / tests/test_digital_twin_webserver_concurrency_<device>.py split (see those two
+# modules' own tests/_sensortask_scenarios.py / tests/_webserver_concurrency_scenarios.py library
+# docstrings): the former monolithic files (447s/268s real, single-process, all 6 devices in one
+# run) needed their own override; measured directly, not estimated, each split-out family's own
+# per-device file runs in ~90s (sensortask_*) / ~45s (webserver_concurrency_*) standalone -
+# comfortably inside the 240s default with real margin (re-measure and re-add an entry here if a
+# future device/scenario addition ever pushes one back past it). Running all 6 of one family's
+# files at once (the common case once TEST_PARALLELISM > 1 below) took 114.8s / 59.5s wall-clock
+# total, not 6x a single file's own time: almost all of each build's cost is real wall-clock SPI
+# CS-settle sleeping (asy_spi_driver.py), not CPU work (measured: ~35s of user CPU time across the
+# whole ~9-minute *sequential* 6-file sensortask run), so concurrent processes barely contend with
+# each other even beyond the host's own core count.
+declare -A per_file_timeout_overrides_s=()
 max_attempts=3
-failed_files=()
-passed_count=0
-for test_file in tests/test_*.py; do
+# TEST_PARALLELISM: how many test_*.py files run at once. Each file is already a fully isolated
+# Unix-port OS process (its own heap, its own machine.py-fake global state) with no shared memory
+# with any other file's process, so running several concurrently changes wall-clock only, never
+# behavior - confirmed no cross-file collision risk from the two things that could actually break
+# under real concurrency: TmpScratch keys (every test_*.py file already uses a key unique to that
+# file - tests/_tmp_scratch.py's own docstring; the per-device split above gives each of its 12 new
+# files its own key for exactly this reason) and real socket ports (every file that binds one
+# already claims its own fixed, disjoint base range by convention - see e.g.
+# tests/_webserver_concurrency_scenarios.py's own port-range comment).
+#
+# Defaults to 4x the runner's own core count, not 1x: measured directly on a 4-core sandbox
+# (matching a GitHub-hosted ubuntu-latest runner's core count), total `user` CPU time across the
+# whole suite stayed flat (~4m21s-4m27s) at TEST_PARALLELISM 4/8/16 while wall-clock dropped
+# 8m27s -> 4m28s -> 3m45s - direct confirmation the suite is genuinely sleep-bound (real SPI
+# CS-settle sleeping in asy_spi_driver.py dominates each build's cost, see the per-file-timeout
+# comment above), not CPU-bound, so oversubscribing well past the physical core count is close to
+# "free" concurrency here. At 16, the bottleneck shifts entirely to the backgrounded tests_scripts/
+# job's own single-process pytest runtime (measured: 224s, matching the 3m44.855s total almost
+# exactly) - going further would need tests_scripts/ itself parallelized (e.g. pytest-xdist) to see
+# any more benefit, not attempted. Override downward (e.g. TEST_PARALLELISM=1 to fully recover the
+# old strictly-sequential behavior, or a smaller multiple) if a future file is ever found to violate
+# one of the two collision-safety assumptions above, or if a given runner's real memory/CPU-quota
+# limits make 4x too aggressive.
+max_parallel="${TEST_PARALLELISM:-$(( $(nproc 2>/dev/null || echo 4) * 4 ))}"
+
+# Runs one test_*.py file's own timeout+retry loop to completion and writes PASS/FAIL to
+# status_file - never returns a nonzero exit status itself (failure is communicated through the
+# status file, not the function's own return code), so backgrounding this behind `&` and reaping it
+# with `wait`/`wait -n` below never trips this script's own `set -e`.
+run_test_file() {
+    local test_file="$1"
+    local status_file="$2"
+    local tag cmd file_timeout_s attempt ec
+    tag="$(basename "$test_file" .py)"
     echo "== Running $test_file"
     # .frozen must be included explicitly: MICROPYPATH replaces MicroPython's default sys.path
     # rather than extending it, and the default path is what makes frozen-in modules (asyncio
@@ -233,21 +314,25 @@ for test_file in tests/test_*.py; do
     # `sensortask_dev` resolve to the freshly buildgen-generated module built above, not any
     # same-named file that might otherwise be found elsewhere on this path.
     if [ "$coverage" = "1" ]; then
-        raw_out="$raw_dir/$(basename "$test_file" .py).json"
-        cmd=(tests/_coverage_runner.py "$test_file" "$raw_out")
+        cmd=(tests/_coverage_runner.py "$test_file" "$raw_dir/$tag.json")
     else
         cmd=("$test_file")
     fi
     file_timeout_s="${per_file_timeout_overrides_s[$test_file]:-$per_file_timeout_s}"
     for attempt in $(seq 1 "$max_attempts"); do
-        if MICROPYPATH="build/generated_src:src:tests:frozen_modules:.frozen" stdbuf -oL -eL timeout --kill-after=10 "$file_timeout_s" "$micropython_bin" -X heapsize=32M "${cmd[@]}"; then
+        # 2>&1 | sed, not two separate streams: several of these now run concurrently, and
+        # per-line tagging (rather than relying on stdout/stderr ordering alone) is what keeps a
+        # multi-file log human-readable. `set -o pipefail` (top of file) makes the pipeline's own
+        # exit status the real interpreter's (timeout's) - sed itself only ever exits 0/nonzero on
+        # its own unrelated failure, never masking a real 124/1 from the command it's piping.
+        if MICROPYPATH="build/generated_src:src:tests:frozen_modules:.frozen" stdbuf -oL -eL timeout --kill-after=10 "$file_timeout_s" "$micropython_bin" -X heapsize=16M "${cmd[@]}" 2>&1 | sed -u "s/^/[$tag] /"; then
             ec=0
         else
             ec=$?
         fi
         if [ "$ec" -eq 0 ]; then
-            passed_count=$((passed_count + 1))
-            break
+            echo "PASS" >"$status_file"
+            return 0
         elif [ "$ec" -eq 124 ] && [ "$attempt" -lt "$max_attempts" ]; then
             echo "== $test_file exceeded ${file_timeout_s}s on attempt $attempt/$max_attempts - retrying in case of transient runner contention" >&2
             continue
@@ -255,11 +340,95 @@ for test_file in tests/test_*.py; do
             if [ "$ec" -eq 124 ]; then
                 echo "== $test_file exceeded ${file_timeout_s}s on all $max_attempts attempts - treating as a real failure instead of hanging the job" >&2
             fi
-            failed=1
-            failed_files+=("$test_file")
-            break
+            echo "FAIL" >"$status_file"
+            return 0
         fi
     done
+}
+
+# Dispatch order: heaviest-known files first, not plain alphabetical glob order. The job pool
+# below fills max_parallel slots in whatever order test_files lists them - alphabetical glob order
+# clusters same-prefix heavy files together (all six tests/test_sensortask_<device>.py sort
+# adjacent to each other, as do all six tests/test_digital_twin_webserver_concurrency_<device>.py
+# plus tests/test_digital_twin_{bus_hazard_concurrency,sensortask_integration,uart_link}.py), so
+# several of the suite's heaviest files end up competing for the same few slots at once instead of
+# overlapping with the ~60 sub-second files that could otherwise fill in around them - confirmed
+# directly (2026-09-17): running all 6 tests/test_sensortask_<device>.py files at once (their own
+# natural glob-order cluster) took 114.8s wall-clock even though only one core's worth of real work
+# is needed per slot. Measured standalone times for every tests/test_*.py file that same session,
+# sorted descending - the fifteen heaviest, listed here so they each grab a slot immediately rather
+# than queueing behind their own same-prefix siblings. Order among these fifteen doesn't matter
+# much (they're comparable magnitude, ~50-116s each); what matters is each getting its own slot as
+# early as possible. Hand-curated from that one measurement run, not dynamically computed - re-measure
+# and update this list if the suite's file-cost distribution shifts meaningfully (a new heavy file
+# added, or one of these split further the way the two originally-monolithic files already were).
+_heavy_files_priority=(
+    tests/test_digital_twin_bus_hazard_concurrency.py
+    tests/test_sensortask_dev.py
+    tests/test_asy_wifi_service.py
+    tests/test_digital_twin_sensortask_integration.py
+    tests/test_sensortask_wozi.py
+    tests/test_uart_comm_hazard.py
+    tests/test_asy_sgp40_driver.py
+    tests/test_sensortask_schlafzi.py
+    tests/test_sensortask_klkizi.py
+    tests/test_sensortask_grkizi.py
+    tests/test_sensortask_arzi.py
+    tests/test_bus_hazard_generated.py
+    tests/test_digital_twin_webserver_concurrency_dev.py
+    tests/test_digital_twin_uart_link.py
+    tests/test_digital_twin_webserver_concurrency_wozi.py
+)
+all_test_files=(tests/test_*.py)
+declare -A _dispatched=()
+test_files=()
+for test_file in "${_heavy_files_priority[@]}"; do
+    if [ -f "$test_file" ] && [ -z "${_dispatched[$test_file]:-}" ]; then
+        test_files+=("$test_file")
+        _dispatched[$test_file]=1
+    fi
+done
+for test_file in "${all_test_files[@]}"; do
+    if [ -z "${_dispatched[$test_file]:-}" ]; then
+        test_files+=("$test_file")
+        _dispatched[$test_file]=1
+    fi
+done
+
+for test_file in "${test_files[@]}"; do
+    # Bound concurrency at max_parallel: block here (reaping any one finished job with `wait -n`)
+    # before starting a new one once that many are already running. `|| true` on both `wait -n`
+    # calls below: a job's own function body always returns 0 (see run_test_file's own comment), so
+    # a nonzero `wait -n` here can only mean "no background jobs left" (bash returns 127) - a
+    # harmless race against this same loop's own job count check, never a real test failure to
+    # propagate through `set -e`.
+    while [ "$(jobs -rp | wc -l)" -ge "$max_parallel" ]; do
+        wait -n || true
+    done
+    status_file="$results_dir/$(basename "$test_file" .py).status"
+    run_test_file "$test_file" "$status_file" &
+done
+wait || true
+
+# The tests_scripts/ background job (started before this loop, see the toolchain-check block
+# above) is reaped by the same unqualified `wait` just above like any other job; its own status
+# file is written unconditionally in both its PASS and FAIL branches, so a missing/empty read here
+# would itself be a bug, not a legitimate "still running" state - never treated as PASS by omission.
+tests_scripts_result="$(cat "$tests_scripts_status_file" 2>/dev/null)"
+if [ "$tests_scripts_result" != "PASS" ]; then
+    tests_scripts_result="FAIL"
+fi
+
+failed_files=()
+passed_count=0
+for test_file in "${test_files[@]}"; do
+    status_file="$results_dir/$(basename "$test_file" .py).status"
+    if [ "$(cat "$status_file" 2>/dev/null)" = "PASS" ]; then
+        passed_count=$((passed_count + 1))
+    else
+        failed=1
+        failed_files+=("$test_file")
+    fi
 done
 
 if [ "$coverage" = "1" ]; then
