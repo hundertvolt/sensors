@@ -3,7 +3,6 @@ real digital_twin buses and proves SPECIFICATION.md Part C.8's locking model hol
 concurrent load; Part C.8 also covers this file's own device-scope rationale."""
 
 import asyncio
-import gc
 import json
 import sys
 
@@ -89,14 +88,6 @@ async def _run_real_task_graph_and_assert_healthy(module: "ModuleType", shared_b
     await module.sysfunct.start_timers(module._collect_timer_starters())
     tasks = [starter() for starter in module._collect_task_starters()]
     tasks.append(asyncio.get_event_loop().create_task(_feed_watchdog_periodically(module.watchdog)))
-    # A real, fixed-length real-clock budget starts at the next line: the sensor tasks above have
-    # exactly run_seconds of genuine wall-clock time to complete a real read cycle each, and a
-    # stop-the-world GC pass eats into that budget exactly like any other coroutine's own work.
-    # Collecting now, once (before the clock starts, not during it), sweeps whatever this test's own
-    # boot/task-starter setup left behind so the real run below isn't the one paying to reclaim it -
-    # confirmed directly (2026-09-17 session) that this scenario's own dev variant reproducibly
-    # misses this deadline at a reduced heap in isolation, with no external contention needed.
-    gc.collect()
     try:
         await asyncio.sleep(run_seconds)
         assert module.watchdog.would_have_triggered_count == 0
