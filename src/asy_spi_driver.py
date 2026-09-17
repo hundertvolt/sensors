@@ -8,9 +8,11 @@ CS-pin wrapper). Sole consumer: asy_fram_driver.py's FRAM_SPI.
 # Full raise-site analysis: SPECIFICATION.md Part F.5.
 
 import asyncio
+import time
 
 from machine import SPI as _SPI
 from machine import Pin
+from micropython import const
 
 from base_classes import Lockable
 
@@ -23,6 +25,11 @@ if TYPE_CHECKING:
     from typing import Literal
 
     from typing_extensions import Self
+
+# CS setup/hold settle. Both FRAM parts need tCSU/tCSH >= 10ns and tD >= 40ns (MB85RS2MTA) or
+# 60ns (MB85RS64V); rp2's sleep_us() busy-waits on time_us_64(), so sleep_us(1) only guarantees
+# an elapsed time in (0, 1]us - 2 guarantees >= 1us, over 16x the longest requirement.
+_CS_SETTLE_US = const(2)
 
 
 class SPI:
@@ -134,7 +141,9 @@ class SPIDevice(Lockable):
                 firstbit=self.firstbit,
             )
             self.cs_pin.value(self.cs_active_value)
-            await asyncio.sleep(0.001)
+            # Blocking, not `await asyncio.sleep()`: an await here would hand the loop to other
+            # coroutines while CS is asserted and this bus's lock is held.
+            time.sleep_us(_CS_SETTLE_US)
         except BaseException:
             self.cs_pin.value(not self.cs_active_value)  # deassert if asserted
             self.asy_lock.release()
@@ -150,7 +159,7 @@ class SPIDevice(Lockable):
         # params are only forwarded to super().__aexit__(), never inspected. CS deassert runs
         # first, while the lock is still held.
         self.cs_pin.value(not self.cs_active_value)
-        await asyncio.sleep(0.001)
+        time.sleep_us(_CS_SETTLE_US)  # hold time must elapse before the lock lets other traffic on
         return await super().__aexit__(exc_type, exc_val, exc_tb)
 
     async def setup(self) -> None:

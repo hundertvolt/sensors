@@ -501,7 +501,11 @@ def test_aenter_releases_the_lock_if_configure_raises() -> None:
     run(retry())  # a later session on the same device must still be able to acquire the lock
 
 
-def test_aenter_releases_the_lock_if_cancelled_during_the_settle_sleep() -> None:
+def test_aenter_has_no_cancellation_point_after_cs_is_asserted() -> None:
+    # The CS settle is a blocking time.sleep_us(), so __aenter__ no longer parks in the scheduler
+    # between asserting CS and handing control to the body - a cancellation cannot land there at
+    # all, which is stronger than releasing the lock afterwards. __aenter__'s own except path is
+    # still covered by test_aenter_releases_the_lock_if_configure_raises.
     spi = make_spi()
     device = make_device(spi)
     entered = False
@@ -509,19 +513,52 @@ def test_aenter_releases_the_lock_if_cancelled_during_the_settle_sleep() -> None
     async def enter_only() -> None:
         nonlocal entered
         async with device:
-            entered = True  # pragma: no cover - not expected to be reached before cancellation
+            entered = True
 
     async def scenario() -> None:
         task = asyncio.create_task(enter_only())
-        await asyncio.sleep(0)  # let it start: acquire lock, configure(), assert CS, hit sleep(0.001)
+        await asyncio.sleep(0)  # one scheduler pass now covers the whole session
+        task.cancel()  # arrives too late to interrupt anything: the session already finished
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        assert entered
+        assert not spi.async_lock.locked()
+        assert device.cs_pin.value() == 1
+
+    run(scenario())
+
+
+def test_session_does_not_yield_to_other_tasks_while_cs_is_asserted() -> None:
+    # Bus-hazard invariant: nothing else on the loop may run inside an open chip-select window,
+    # so no other coroutine can touch the bus (or allocate) between assert and deassert.
+    spi = make_spi()
+    device = make_device(spi)
+    passes = 0
+    stop = False
+
+    async def spinner() -> None:
+        nonlocal passes
+        while not stop:
+            passes += 1
+            await asyncio.sleep(0)
+
+    async def scenario() -> None:
+        nonlocal stop
+        task = asyncio.create_task(spinner())
+        await asyncio.sleep(0)  # let the spinner reach its first yield
+        before = passes
+        async with device:
+            assert device.cs_pin.value() == 0  # CS asserted
+            assert passes == before  # nothing else ran while CS is asserted
+        assert passes == before  # nor across the deassert and its hold time
+        stop = True
         task.cancel()
         try:
             await task
         except asyncio.CancelledError:
             pass
-        assert not entered
-        assert not spi.async_lock.locked()  # released via __aenter__'s own except, not leaked
-        assert device.cs_pin.value() == 1  # deasserted too, not left stuck asserted
 
     run(scenario())
 
