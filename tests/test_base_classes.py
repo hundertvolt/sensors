@@ -1093,7 +1093,7 @@ def test_sensorreaderconfig_fram_allocation_failure_and_missing_config_file_toge
     # the config file doesn't exist yet either (gets created with defaults) - neither failure may
     # raise, nor may one derail the other. Also WP4/Topic 6's own negative case: proves the "every
     # FRAM-chunk-holding module actually has a non-None chunk" check
-    # (tests/test_sensortask.py's fram_chunks_are_all_successfully_allocated_not_out_of_memory,
+    # (tests/_sensortask_scenarios.py's fram_chunks_are_all_successfully_allocated_not_out_of_memory,
     # run for every real device) can genuinely fail, not just never has - allocated_size can never
     # exceed size by construction (get_chunk() checks before incrementing, never after), so that
     # comparison alone would be a tautology; a None chunk reference is the real, observable signal

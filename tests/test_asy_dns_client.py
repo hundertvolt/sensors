@@ -26,7 +26,9 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to complet
 
 
 _HOST = "127.0.0.1"
-_next_port = 54000
+# Below the OS ephemeral range (32768-60999) so a concurrently-running ephemeral socket can
+# never be assigned this port - see scripts/test.sh's own TEST_PARALLELISM comment.
+_next_port = 24000
 
 
 def make_port() -> int:  # a fresh loopback port per call, so tests never contend for the same address

@@ -27,17 +27,26 @@ instead, since WP3–WP8 (including the reboot-flush fix below) landed after tha
   *scheduled*, not run. Fixed: `buildgen/codegen.py`'s generated `_flush_pending_configs()` now
   awaits every constructed module's `cfgmgr.flush_pending()` before `reboot_system()`/
   `reboot_bootloader()`. Regression test:
-  `tests/test_sensortask.py::webserver_system_put_reboot_flushes_a_still_pending_config_write_first`
-  (all 6 devices). This closes the one *avoidable* residual-risk gap in WP5's design — the accepted,
+  `tests/_sensortask_scenarios.py`'s own
+  `webserver_system_put_reboot_flushes_a_still_pending_config_write_first` scenario, registered into
+  each of the six `tests/test_sensortask_<device>.py` files (so still all 6 devices).
+  This closes the one *avoidable* residual-risk gap in WP5's design — the accepted,
   power-loss-only risk window (SPECIFICATION.md Part F.2) is unaffected and still applies.
-- **CI red on `tests/test_sensortask.py` / `tests/test_digital_twin_webserver_concurrency.py`** —
-  both now need more real wall-clock time than `scripts/test.sh`'s 240s per-file default (measured
-  standalone: ~447s / ~268s respectively, corroborated independently by two separate sessions
-  measuring the identical ~447s figure for the first file). This is WP1/WP2's own heavier
-  per-device object graph (more FRAM-backed loggers/`ConfigManager`s per device), an *intentional*
-  consequence of decisions the project owner's own review already confirmed as wanted, not a defect
-  to revert. Fixed with a per-file timeout override (600s / 350s) in `scripts/test.sh`, not by
-  touching WP1/WP2. No hardware implication — this is purely a CI/test-harness timing budget.
+- **CI red on the former monolithic `tests/test_sensortask.py` /
+  `tests/test_digital_twin_webserver_concurrency.py`** — both outgrew `scripts/test.sh`'s 240s
+  per-file default (measured standalone: ~447s / ~268s respectively, corroborated independently by
+  two separate sessions measuring the identical ~447s figure for the first file). This is WP1/WP2's
+  own heavier per-device object graph (more FRAM-backed loggers/`ConfigManager`s per device), an
+  *intentional* consequence of decisions the project owner's own review already confirmed as wanted,
+  not a defect to revert. **Resolved at the root** (2026-09-17), superseding the per-file timeout
+  override (600s / 350s) this entry originally recorded: both files were split by device into a
+  shared scenario library plus six thin per-device files each
+  (`tests/_sensortask_scenarios.py` + `tests/test_sensortask_<device>.py`,
+  `tests/_webserver_concurrency_scenarios.py` + `tests/test_digital_twin_webserver_concurrency_<device>.py`),
+  so each device's own batch runs as its own parallelizable process (~90s / ~45s standalone) and
+  `scripts/test.sh`'s override table is empty again. Same scenarios, same devices, same assertions —
+  WP1/WP2 untouched. No hardware implication either way — this was purely a CI/test-harness timing
+  budget.
 
 ## What still needs real hardware — in priority order
 
@@ -123,8 +132,9 @@ existed (`SystemService`/`SCD30`/`SGP40`/`BMP3XX`/`Neopixel`/`NotificationCoordi
 pre-WP). WP1/WP2/WP3 didn't make each instance slower - they added **5-6 more instances** of an
 already-expensive fixed cost per device (`CFGMGR_WIFI`/`CFGMGR_NTP`/`CFGMGR_SYSTEM`/`CFGMGR_SGP40`/
 `CFGMGR_BMP3XX`/`CFGMGR_NOTIFY`), which is why the visible impact looks so much larger than the
-2.5-3x chunk-count growth alone would suggest: 327 real `build_system()` calls (`tests/
-test_sensortask.py`'s own scenario x device matrix) x ~5.5 new ~170ms operations each is
+2.5-3x chunk-count growth alone would suggest: 327 real `build_system()` calls (the scenario x
+device matrix, as measured then — now `tests/_sensortask_scenarios.py`'s, split across six
+per-device files) x ~5.5 new ~170ms operations each is
 ~305 real seconds of new cost on its own - the dominant share of the measured ~435s increase.
 This is fully consistent with, and cross-confirms, `SPECIFICATION.md`'s own already-documented
 twin measurement that WP2 alone added ~1.4-1.8s to boot-to-`200` (6 new loggers x ~170ms plus
@@ -156,16 +166,20 @@ as separate follow-up work, not assumed to need fixing. **Do not "fix" this by t
 heavily-audited FRAM logic (SPECIFICATION.md Part C.3.1) and any change there needs its own scoped
 review, not a drive-by from a timing investigation.
 
-### 3. Heap-footprint growth (`-X heapsize` 8M→32M) — mock-tier only, but worth knowing about
+### 3. Heap-footprint growth (`-X heapsize`) — mock-tier only, resolved, but worth knowing about
 
 Not itself a real-hardware task (the real rp2040 never builds more than one device's own object
-graph once per boot — SPECIFICATION.md Part F.1), but flagged here so a hardware session doesn't
-waste time chasing it as a hardware symptom if it comes up: `scripts/test.sh`'s Unix-port test
-harness heap was raised 8M→32M to accommodate `tests/test_sensortask.py`'s ~300+ repeated
-full-object-graph builds in one process. This is confirmed real (WP1/WP2's ~2.5x more
-`PrintLogHistoryStore` instances per device) but is currently a workaround, not a resolved design
-question — see the matching `BACKLOG.md` entry (search "masking WP1/WP2's real memory-footprint
-growth") for the full account and what's still open.
+graph once per boot — SPECIFICATION.md Part F.1), but kept here so a hardware session doesn't waste
+time chasing it as a hardware symptom if it comes up. `scripts/test.sh`'s Unix-port test harness
+heap had been raised 8M→32M to accommodate the former monolithic `tests/test_sensortask.py`'s ~330
+repeated full-object-graph builds in one process. The underlying growth is real (WP1/WP2's ~2.5x
+more `PrintLogHistoryStore` instances per device), but the heap bump itself was a workaround, and
+**has since been resolved at the root** (2026-09-17): splitting that file and
+`tests/test_digital_twin_sensortask_integration.py`'s own device-generic section by device cut the
+worst case sharing one process from ~330/~29 real builds to ~55/~11, and `-X heapsize` came back
+down to a measured, validated 16M floor across the whole suite. `scripts/test.sh`'s own
+`-X heapsize` comment carries the full account, including the one test whose fixed real-clock budget
+(not accumulation) sets that 16M floor. Nothing here has a real-hardware implication either way.
 
 ### 4. Once step 1/2 conclude: update `SPECIFICATION.md`
 

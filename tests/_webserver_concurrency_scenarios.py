@@ -1,6 +1,12 @@
-"""Real-socket concurrent-connection regression coverage for WebserverService, booted against the
-real digital_twin buses across all 6 real devices - genuinely concurrent TCP connections, unlike
-tests/test_asy_webserver_service.py Section F's in-process _serve()-against-fakes tests."""
+"""Shared scenario library: real-socket concurrent-connection regression coverage for
+WebserverService, booted against the real digital_twin buses - genuinely concurrent TCP
+connections, unlike tests/test_asy_webserver_service.py Section F's in-process
+_serve()-against-fakes tests. Not a test file itself (leading underscore, like
+tests/_sensortask_scenarios.py) - register_for_device() is imported by six thin
+tests/test_digital_twin_webserver_concurrency_<device>.py files, one per real device, so
+scripts/test.sh can run each device's own scenario batch as its own independent, parallelizable
+Unix-port process (see BACKLOG.md's resolved heap-footprint entry). Changes nothing about which
+scenarios run or what they assert."""
 
 # See SPECIFICATION.md Part H.7 and this module's own comments below for the full rationale.
 
@@ -72,18 +78,30 @@ def _wiring_plan(device: str) -> "dict[str, Any]":
 
 # Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that module's
 # own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage. Own port
-# range (19700+), distinct from test_digital_twin_sensortask_integration.py's 19100+ and
+# range base (19700+, one 200-port block per device - see _PORT_BASE_BY_DEVICE below), distinct
+# from test_digital_twin_sensortask_integration.py's 19100+ and
 # test_digital_twin_real_website_integration.py's 19300+.
-_scratch = TmpScratch("dtcc")
-_next_port = 19700
+#
+# Both _scratch's key and the port range are keyed per-device (register_for_device() below sets
+# them up), not shared across all 6 devices in one process like the old single-file design: since
+# scripts/test.sh now runs each device's own tests/test_digital_twin_webserver_concurrency_<device>.py
+# as its own OS process, potentially concurrently with every other device's own process, two
+# devices' processes must never resolve TmpScratch's fixed tests/_tmp/<key>/ path - or a real
+# localhost bind - to the same location.
+_PORT_BASE_BY_DEVICE = {device: 19700 + 200 * i for i, device in enumerate(_DEVICES)}
+
+_scratch: "TmpScratch | None" = None
+_next_port = 0
 
 
 def _tmp_cfg_dir() -> str:
+    assert _scratch is not None, "register_for_device() must run before any scenario calls _tmp_cfg_dir()"
     return _scratch.dir()
 
 
 def _next_test_port() -> int:
     global _next_port
+    assert _next_port != 0, "register_for_device() must run before any scenario calls _next_test_port()"
     _next_port += 1
     return _next_port
 
@@ -630,30 +648,38 @@ async def _scenario_mixed_traffic_above_ceiling(device: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Registration: one test_<scenario>_<device> per (scenario, device) pair - microtest.py discovers
-# every callable in globals() named test_*, the only parametrization mechanism available here
-# (no real pytest on MicroPython - SPECIFICATION.md Part E.1). fn/device/timeout are bound as
-# default-argument values, not read from the loop variable, since a closure over a `for` loop's own
-# variable would otherwise have every generated test share the SAME (last-iteration) device/fn.
+# Registration: one test_<scenario> per scenario, for whichever single device the caller names -
+# microtest.py discovers every callable in globals() named test_*, the only parametrization
+# mechanism available here (no real pytest on MicroPython - SPECIFICATION.md Part E.1). fn/timeout
+# are bound as default-argument values, not read from the loop variable, since a closure over a
+# `for` loop's own variable would otherwise have every generated test share the SAME
+# (last-iteration) fn.
 #
-# gc.collect() after every one of the 90 (15 scenarios x 6 devices) real object-graph builds this
-# file now does in one process (previously just 15, one per scenario, all against the same
-# already-imported sensortask_wozi module) - a real MemoryError was found without it (dev's 256KB
-# FRAM chip fake failing to allocate on test ~70-something) once every device's own build_system()
-# accumulated enough discarded-but-uncollected garbage across the run. MicroPython's own
+# gc.collect() after every real object-graph build this module does (15 scenarios) - a real
+# MemoryError was found without it (dev's 256KB FRAM chip fake failing to allocate on test
+# ~70-something, back when one process built all 6 devices' worth, 90 builds total) once enough
+# discarded-but-uncollected garbage accumulated across a process's run. MicroPython's own
 # gc.threshold(32768)-triggered automatic collection alone wasn't enough to keep pace with this
-# file's own before-under-test object churn at this new, much higher call volume - confirmed
-# directly: adding this one explicit collect() after each test resolved it with room to spare
-# (measured well under scripts/test.sh's own 180s per-file timeout).
+# module's own before-under-test object churn at that call volume - confirmed directly: adding
+# this one explicit collect() after each test resolved it with room to spare. Kept even now that
+# the per-device split (this module's own docstring) means one process only ever does 15 of these
+# builds, not 90 - a proven defense-in-depth backstop, not the fix for anything currently observed
+# to be broken at the smaller per-process volume.
 # ---------------------------------------------------------------------------
 
-for _scenario_name, _scenario_fn, _scenario_timeout in _SCENARIOS:
-    for _device in _DEVICES:
+
+def register_for_device(device: str) -> "dict[str, Callable[[], None]]":
+    global _scratch, _next_port
+    assert device in _DEVICES, f"{device!r} is not one of this module's own real devices {_DEVICES!r}"
+    _scratch = TmpScratch(f"dtcc_{device}")
+    _next_port = _PORT_BASE_BY_DEVICE[device]
+
+    tests: dict[str, Callable[[], None]] = {}
+    for scenario_name, scenario_fn, scenario_timeout in _SCENARIOS:
 
         def _make_test(
-            fn: "Callable[[str], Coroutine[Any, Any, None]]" = _scenario_fn,
-            device: str = _device,
-            timeout_s: float = _scenario_timeout,
+            fn: "Callable[[str], Coroutine[Any, Any, None]]" = scenario_fn,
+            timeout_s: float = scenario_timeout,
         ) -> "Callable[[], None]":
             def test() -> None:
                 try:
@@ -663,10 +689,5 @@ for _scenario_name, _scenario_fn, _scenario_timeout in _SCENARIOS:
 
             return test
 
-        globals()[f"test_{_scenario_name}_{_device}"] = _make_test()
-
-
-if __name__ == "__main__":
-    import microtest
-
-    microtest.run(globals())
+        tests[f"test_{scenario_name}"] = _make_test()
+    return tests

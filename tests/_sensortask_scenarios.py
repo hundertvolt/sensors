@@ -1,6 +1,20 @@
-"""Construction/wiring tests for every real device's buildgen-generated sensortask_<device>.py
-build_system() - SPECIFICATION.md Part A.7 has the full reference. Also covers real webserver
-wiring; deep per-route behavior stays tests/test_asy_webserver_service.py's job."""
+"""Shared scenario library for every real device's buildgen-generated sensortask_<device>.py
+build_system() construction/wiring tests - SPECIFICATION.md Part A.7 has the full reference. Also
+covers real webserver wiring; deep per-route behavior stays tests/test_asy_webserver_service.py's
+job. Not a test file itself (leading underscore, like _shared_rest_roundtrip.py) - register_for_device()
+is imported by six thin tests/test_sensortask_<device>.py files, one per real device, so
+scripts/test.sh runs each device's own ~55-scenario batch as its own independent, parallelizable
+Unix-port process instead of one process building all 6 devices' object graphs 55 times each
+(see BACKLOG.md's resolved heap-footprint entry and CLAUDE.md's step-session-workflow history for
+why this split exists - it changes nothing about which scenarios run or what they assert).
+
+Not a reversion to the pre-BUILD_CHAIN_PLAN.md-Session-6.2 tests/test_sensortask_wozi.py/
+test_sensortask_dev.py split that file's own history records collapsing: that collapse was about
+eliminating device-specific test-body DUPLICATION (each per-device file used to carry its own copy
+of every scenario, with hardcoded expectations) in favor of one generic, device-derived scenario
+set - a correctness/maintainability fix this file preserves in full. Every scenario body still
+lives here exactly once, still fully device-generic; the six per-device files are trivial,
+near-empty wrappers (one register_for_device(<device>) call each), not a second copy of any logic."""
 
 import asyncio
 import json
@@ -106,19 +120,24 @@ def _fram_fake_class(device: str) -> "type[FakeMB85RS64V]":
 # constructs several real ConfigManager-backed modules (conn, ntp, sgp40, [bmp3xx], notification),
 # each of which writes/reads a real config_<NAME>.cfg file at its cfg_path - repeated calls across
 # test_* functions in this one process must not collide on the same files, and must not touch the
-# real repo-root config files either. One shared "sensortask" key, not one per device, now that
-# this file collapses what used to be two separate files (BUILD_CHAIN_PLAN.md's Session 6.2) -
-# TmpScratch's own per-instance counter already keeps every call's own directory unique regardless
-# of which device that call happens to be for. See _tmp_scratch.py's own docstring for the
+# real repo-root config files either. Keyed per-device (register_for_device() below sets this up),
+# not one shared "sensortask" key - since scripts/test.sh now runs each device's own batch as its
+# own OS process, potentially concurrently with every other device's own process (the whole point
+# of the tests/test_sensortask_<device>.py split - see this module's own docstring), two devices'
+# processes must never resolve TmpScratch's fixed tests/_tmp/<key>/ path to the same directory, or
+# one process's construction-time wipe (TmpScratch.__init__) could race the other's still-running
+# writes. TmpScratch's own per-instance counter still keeps every call's own directory unique
+# within one process regardless of device. See _tmp_scratch.py's own docstring for the
 # construction-time wipe and tests/microtest.py's teardown_all() call that replace this file's old,
 # self-contained _sweep_stale_tmp_dirs()/_next_dir pair - tests/test_tmp_scratch.py now carries the
 # regression coverage that used to live here as test_sweep_stale_tmp_dirs_*().
 # ---------------------------------------------------------------------------
 
-_scratch = TmpScratch("sensortask")
+_scratch: "TmpScratch | None" = None
 
 
 def _tmp_cfg_dir() -> str:
+    assert _scratch is not None, "register_for_device() must run before any scenario calls _tmp_cfg_dir()"
     return _scratch.dir()
 
 
@@ -290,7 +309,7 @@ def _dispatch(module: "Any", method: str, path: str, json_body: "dict[str, Any] 
 # ---------------------------------------------------------------------------
 # Scenario bodies - one per distinct construction/wiring/webserver-registration concern, each
 # parametrized by `device` and registered once per real device below via _register()/globals(),
-# mirroring tests/test_digital_twin_webserver_concurrency.py's own dynamic-registration convention
+# mirroring tests/_webserver_concurrency_scenarios.py's own dynamic-registration convention
 # (the only parametrization mechanism available without a real pytest - SPECIFICATION.md Part E.1).
 # ---------------------------------------------------------------------------
 
@@ -915,7 +934,7 @@ def _scenario_main_call_order(device: str) -> None:
 # (right module, right fields, right hooks) - not the generic dispatch/aggregation logic itself,
 # which tests/test_asy_webserver_service.py's own uniform-fake suite already covers in full depth
 # (its own endpoint-design decision), and not real concurrent-connection behavior, which
-# tests/test_digital_twin_webserver_concurrency.py already covers, also parametrized across all 6
+# tests/_webserver_concurrency_scenarios.py already covers, also parametrized across all 6
 # devices.
 # ---------------------------------------------------------------------------
 
@@ -1356,26 +1375,32 @@ def _scenario_hotspot_put_unmatched_405(device: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Registration: one test_<scenario>_<device> per (scenario, device) pair - microtest.py discovers
-# every callable in globals() named test_*, the only parametrization mechanism available here
-# (no real pytest on MicroPython - SPECIFICATION.md Part E.1). fn/device are bound as
-# default-argument values, not read from the loop variable, since a closure over a `for` loop's own
-# variable would otherwise have every generated test share the SAME (last-iteration) device/fn.
+# Registration: one test_<scenario> per scenario, for whichever single device the caller names -
+# microtest.py discovers every callable in globals() named test_*, the only parametrization
+# mechanism available here (no real pytest on MicroPython - SPECIFICATION.md Part E.1). fn is bound
+# as a default-argument value, not read from the loop variable, since a closure over a `for` loop's
+# own variable would otherwise have every generated test share the SAME (last-iteration) fn.
+#
+# One device per call, not all of _DEVICES in one pass: each tests/test_sensortask_<device>.py file
+# calls this exactly once, for its own device only, so this module's ~55 scenarios run as their own
+# independent Unix-port process per device (6 processes total) instead of one process building all
+# 6 devices' object graphs 55 times each (this module's own docstring has the full rationale).
 # ---------------------------------------------------------------------------
 
-for _scenario_name, _scenario_fn in _SCENARIOS:
-    for _device in _DEVICES:
 
-        def _make_test(fn: "Callable[[str], None]" = _scenario_fn, device: str = _device) -> "Callable[[], None]":
+def register_for_device(device: str) -> "dict[str, Callable[[], None]]":
+    global _scratch
+    assert device in _DEVICES, f"{device!r} is not one of this module's own real devices {_DEVICES!r}"
+    _scratch = TmpScratch(f"sensortask_{device}")
+
+    tests: dict[str, Callable[[], None]] = {}
+    for scenario_name, scenario_fn in _SCENARIOS:
+
+        def _make_test(fn: "Callable[[str], None]" = scenario_fn) -> "Callable[[], None]":
             def test() -> None:
                 fn(device)
 
             return test
 
-        globals()[f"test_{_scenario_name}_{_device}"] = _make_test()
-
-
-if __name__ == "__main__":
-    import microtest
-
-    microtest.run(globals())
+        tests[f"test_{scenario_name}"] = _make_test()
+    return tests

@@ -129,7 +129,9 @@ def make_fram_manager(max_size: int = 0x2000) -> "tuple[AsyFramManager, FakeMB85
 # FakeNtpServer/_RedirectNtpNetworking, kept file-local per this suite's per-file convention.
 # ---------------------------------------------------------------------------
 
-_next_port = 56000
+# Below the OS ephemeral range (32768-60999) so a concurrently-running ephemeral socket can
+# never be assigned this port - see scripts/test.sh's own TEST_PARALLELISM comment.
+_next_port = 26000
 
 
 def make_addr() -> "tuple[str, int]":

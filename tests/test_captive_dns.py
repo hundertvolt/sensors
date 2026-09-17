@@ -26,7 +26,9 @@ def make_pr(level: int | None = None) -> PrintLogHistory:  # a fresh, independen
     return PrintLogHistory(level=level, name="TESTDNS")
 
 
-_next_port = 52000
+# Below the OS ephemeral range (32768-60999) so a concurrently-running ephemeral socket can
+# never be assigned this port - see scripts/test.sh's own TEST_PARALLELISM comment.
+_next_port = 22000
 
 
 def make_port() -> int:

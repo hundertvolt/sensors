@@ -3,8 +3,8 @@ helper every test_*.py with its own config-file isolation needs now uses instead
 copy-pasted _TMP_DIR/_next_dir/_sweep_stale_tmp_dirs() trio."""
 
 import os
-import time
 
+import _tmp_scratch  # the module object itself, for the os-swap in the shared-root invariant test
 from _tmp_scratch import _ROOT, TmpScratch, teardown_all
 
 
@@ -138,58 +138,101 @@ def test_teardown_all_clears_every_registered_scratch_and_the_registry_itself() 
     teardown_all()
 
 
-def _old_style_shared_root_listdir() -> None:
-    # A minimal reproduction of the retired per-file _sweep_stale_tmp_dirs(prefix)'s one expensive
-    # operation (see tests/test_sensortask.py's git history before this PR): os.listdir() on
-    # tests/_tmp's shared ROOT - an allocation that scales with every file's own leftover entries,
-    # not just the caller's own.
-    os.listdir(_ROOT)
+class _RecordingOs:
+    # Stands in for the `os` binding inside _tmp_scratch itself, recording (call, path) for every
+    # directory operation and forwarding to the real one. Swapping a module's own imported name is
+    # this project's established mocking mechanism (MicroPython has no unittest.mock - CLAUDE.md);
+    # the built-in `os` module itself can't be monkeypatched here, only a Python module's reference
+    # to it, which is what _tmp_scratch.py actually calls through anyway.
+    def __init__(self, calls: "list[tuple[str, str]]") -> None:
+        self._calls = calls
+
+    def listdir(self, path: str) -> "list[str]":
+        self._calls.append(("listdir", path))
+        return os.listdir(path)
+
+    def mkdir(self, path: str) -> None:
+        self._calls.append(("mkdir", path))
+        os.mkdir(path)
+
+    def rmdir(self, path: str) -> None:
+        self._calls.append(("rmdir", path))
+        os.rmdir(path)
+
+    def remove(self, path: str) -> None:
+        self._calls.append(("remove", path))
+        os.remove(path)
 
 
-def test_large_unrelated_sibling_entry_count_crashes_the_old_shared_root_listdir_but_not_tmpscratch() -> None:
-    # Direct regression for the real, reproduced failure mode this helper replaces. 400,000 flat
-    # sibling entries is the exact, directly-confirmed count at which os.listdir() on tests/_tmp's
-    # shared root raises a real, uncaught MemoryError under -X heapsize=32M - the same flag
-    # scripts/test.sh always runs this suite with. This test proves both halves of the fix in one
-    # place: the old shape genuinely does break at this scale (not just asserted in prose), and
-    # TmpScratch - which never lists the shared root at all, only ever its own key subdirectory -
-    # does not, because the failure mode is structurally unreachable for it regardless of how
-    # large an unrelated sibling count grows. mkdir/rmdir at this scale cost ~10s/~4s respectively
-    # (measured directly) - affordable relative to this suite's own per-file timeout budget.
+def test_no_operation_ever_reads_the_shared_root_only_its_own_key_subtree() -> None:
+    # The whole point of TmpScratch over the retired per-file _sweep_stale_tmp_dirs(prefix) trio,
+    # asserted as the structural invariant it actually is (_tmp_scratch.py's own docstring: "Every
+    # op stays scoped to <key>, never tests/_tmp's shared root") rather than inferred from a
+    # symptom. The old shape's real failure was an os.listdir() on the shared root, whose
+    # allocation scales with EVERY file's leftover entries - so what has to stay true is simply
+    # that no TmpScratch operation ever reads that root. Proven directly here by recording every
+    # os call a full lifecycle makes.
+    #
+    # This replaces a test that populated the shared root with 400,000 real sibling directories to
+    # reproduce that MemoryError for real. That version cost 396MB of physical disk writes on every
+    # single run (measured directly via /proc/diskstats), in both the unit-tests and
+    # unit-tests-coverage CI jobs plus every local run - a lot of avoidable SSD wear to
+    # re-demonstrate a defect in an implementation this repo no longer contains. This assertion is
+    # also strictly stronger: a reintroduced listdir(_ROOT) fails here immediately, where the
+    # scale test only noticed once the root had grown enormous.
+    calls: list[tuple[str, str]] = []
+    key = "scratchtest_root_untouched"
+    own = _ROOT + "/" + key
+    _tmp_scratch.os = _RecordingOs(calls)  # type: ignore[assignment]
+    try:
+        scratch = TmpScratch(key)  # construction wipes its own subtree
+        _write(scratch.path("flat.cfg"))
+        _write(scratch.dir() + "nested.cfg")
+        scratch.dir("labelled")
+        scratch.teardown()
+    finally:
+        _tmp_scratch.os = os  # restoring the real module needs no ignore - only the stand-in above does
+
+    assert calls, "recorded nothing - the os wrappers never took effect, so this test proves nothing"
+    for name, path in calls:
+        assert not (name == "listdir" and path.rstrip("/") == _ROOT), f"{name}({path!r}) reads tests/_tmp's shared root - the one thing TmpScratch must never do, since that allocation scales with every other file's entries"
+        # mkdir(_ROOT) is the one legitimate touch of the root itself: idempotent, EEXIST-swallowed,
+        # and what makes concurrent construction from several test processes safe.
+        assert path.rstrip("/") == _ROOT or path.startswith(own + "/") or path == own, f"{name}({path!r}) escapes this scratch's own {own!r} subtree"
+
+    assert not _exists(own)  # teardown still actually removed it
+
+
+def test_unrelated_siblings_in_the_shared_root_do_not_affect_a_scratchs_own_behavior() -> None:
+    # The behavioral companion to the structural assertion above: with unrelated entries sitting in
+    # the shared root, a scratch's own construct/dir/teardown cycle still works and still leaves
+    # those entries completely alone. A small, deliberately cheap population - the invariant is
+    # independence from sibling COUNT, which a handful proves as well as a huge number would (and
+    # see that test's own comment for what the huge number used to cost).
     try:
         os.mkdir(_ROOT)
     except OSError:
         pass
-    sibling_count = 400_000
-    for i in range(sibling_count):
+    siblings = [_ROOT + "/unrelated_sibling_" + str(i) for i in range(25)]
+    for path in siblings:
         try:
-            os.mkdir(_ROOT + "/unrelated_sibling_" + str(i))
+            os.mkdir(path)
         except OSError:
             pass
-
     try:
-        try:
-            _old_style_shared_root_listdir()
-        except MemoryError:
-            pass  # confirms this population is genuinely large enough to reproduce the real bug
-        else:
-            raise AssertionError(f"expected the old shared-root os.listdir() to MemoryError against {sibling_count} entries - this population is no longer large enough to prove the regression it's meant to")
-
-        t0 = time.ticks_ms()
-        scratch = TmpScratch("scratchtest_large_sibling_count")
-        try:
-            for _ in range(20):
-                scratch.dir()
-        finally:
-            scratch.teardown()
-        elapsed_ms = time.ticks_diff(time.ticks_ms(), t0)
-        # Generous bound (a healthy run is low tens of ms): this is a crash/scaling regression
-        # guard, not a tight performance budget - see this test's own docstring.
-        assert elapsed_ms < 5000, f"TmpScratch work took {elapsed_ms}ms against {sibling_count} unrelated siblings - expected it to be insensitive to that count entirely"
+        scratch = TmpScratch("scratchtest_sibling_independence")
+        created = [scratch.dir() for _ in range(3)]
+        for path in created:
+            assert _exists(path)
+        scratch.teardown()
+        for path in created:
+            assert not _exists(path)
+        for path in siblings:
+            assert _exists(path), f"teardown removed an unrelated sibling {path!r} - it must only ever touch its own key subtree"
     finally:
-        for i in range(sibling_count):
+        for path in siblings:
             try:
-                os.rmdir(_ROOT + "/unrelated_sibling_" + str(i))
+                os.rmdir(path)
             except OSError:
                 pass
 
