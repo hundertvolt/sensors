@@ -243,7 +243,7 @@ information):
   target's flash/NVM** (project owner's explicit, standing direction, 2026-09-17). On the *target*
   this is already institutionalized and stays that way: every operation that spends a
   limited-endurance write cycle is a default-off, explicitly-opted-into marker with a tracked budget
-  — `flash_cycle` ("counts against the 'no extra flash cycles' constraint"), `scd30_write` for any
+  — `flash_cycle` ("counts against the 'no extra flash cycles' constraint"), `persistence_write` for any
   real NVM-persisted SCD30 write, `scd30_extra_write` AND-gated on top for a *second* one beyond the
   routine per-session write, plus `long_soak`/`multi_day_rollover` (`tests_hardware/conftest.py`,
   `tests_hardware/README.md`). **The same lens applies to host I/O, where it had been missing**: a

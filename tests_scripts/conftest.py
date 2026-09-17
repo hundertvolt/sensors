@@ -19,6 +19,17 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _reclaim_leaked_device_fixtures() -> None:
+    """Removes any `devices/zz_test_*.toml` left behind by a KILLED earlier run, once, before any
+    test runs. Race-free by construction: at session start nothing has created one yet, so whatever
+    is there is a leak - which a test asserting the live tree holds exactly the 6 real devices could
+    otherwise only detect by racing the fixture that legitimately creates one mid-session."""
+    for stale in sorted((REPO_ROOT / "devices").glob("zz_test_*.toml")):
+        stale.unlink()
+        print(f"reclaimed leaked live-tree device fixture: {stale.name}")
+
+
 @pytest.fixture(scope="session")
 def repo_root() -> Path:
     return REPO_ROOT

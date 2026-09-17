@@ -8,6 +8,7 @@ import time
 from typing import TYPE_CHECKING, Any
 
 import http_client
+import pytest
 from error_log_helpers import assert_module_error_log_empty, reset_all_error_logs
 
 if TYPE_CHECKING:
@@ -34,6 +35,7 @@ _BMP3XX_TEST_VALUES = {"PressOvers": 4, "TempOvers": 2, "FiltCoeff": 3}
 _ISL29125_TEST_VALUES = {"Resolution": 12, "Range": 375, "RangeAuto": False, "IrCompOffset": 1, "IrCompAdjust": 20}
 
 
+@pytest.mark.persistence_write
 def test_bmp3xx_oversampling_and_filter_push_over_real_rest_and_readback(board: Board, dut_ip: str) -> None:
     reset_all_error_logs(dut_ip)
     get_before = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=10.0)
@@ -65,6 +67,7 @@ def test_bmp3xx_oversampling_and_filter_push_over_real_rest_and_readback(board: 
     assert_module_error_log_empty(dut_ip, "CFGMGR_BMP3XX")
 
 
+@pytest.mark.persistence_write
 def test_isl29125_resolution_range_and_ir_comp_push_over_real_rest_and_readback(board: Board, dut_ip: str) -> None:
     reset_all_error_logs(dut_ip)
     get_before = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=10.0)

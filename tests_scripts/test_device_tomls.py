@@ -245,7 +245,12 @@ def check_device_infra_fields_present_and_valid(doc: _TomlDoc, label: str) -> No
 
 
 def test_all_six_device_files_exist(devices_dir: Path) -> None:
-    found = {p.stem for p in devices_dir.glob("*.toml")}
+    # zz_test_* excluded deliberately: test_build_website_sh.py legitimately creates one in the live
+    # tree for the length of one test (it cannot be handed a tmp_path tree), so comparing against the
+    # raw glob would make this test race that one the day this suite runs in parallel. A LEAKED one
+    # is caught instead at session start, before anything can have created it - conftest.py's own
+    # _reclaim_leaked_device_fixtures().
+    found = {p.stem for p in devices_dir.glob("*.toml") if not p.stem.startswith("zz_test_")}
     assert found == set(DEVICE_NAMES), f"devices/ should hold exactly the 6 real device TOML files, found {found}"
 
 

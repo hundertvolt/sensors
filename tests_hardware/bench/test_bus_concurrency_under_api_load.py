@@ -9,6 +9,7 @@ import time
 from typing import TYPE_CHECKING, Any
 
 import http_client
+import pytest
 from error_log_helpers import assert_module_error_log_empty, reset_all_error_logs
 from harness import Board, wait_until
 
@@ -199,6 +200,7 @@ def test_concurrent_get_sensors_under_real_multi_client_load_survives_light_netw
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.persistence_write
 def test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_transient_outage_and_retry(board: Board, bench: BenchBridge, dut_ip: str) -> None:
     reset_all_error_logs(dut_ip)
     get_before = http_client.fetch(dut_ip, 80, "GET", "/networking", timeout_s=10.0)
@@ -370,6 +372,7 @@ _ISL29125_RESOLUTIONS = (12, 16)  # the only two real, valid settings (asy_isl29
 _ISL29125_WRITE_CYCLES = 4  # modest relative to flash tier's 8 - each cycle here is a real HTTP round trip, not a bare I2C write
 
 
+@pytest.mark.persistence_write
 def test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads_under_api_load(board: Board, dut_ip: str) -> None:
     reset_all_error_logs(dut_ip)
     get_before = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=10.0)
@@ -442,7 +445,7 @@ def test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads_under_a
 # is a structural absence, not a scope gap: asy_scd30_driver.py registers zero _push_callbacks (see
 # test_sensor_config_push_over_real_hardware.py's own identical note), so there is no PUT /sensors
 # field that could ever reach SCD30's own NVM write at all - the flash tier's own
-# bus_concurrency_scd30_write_vs_siblings.py (gated behind BOTH --allow-scd30-writes AND
+# bus_concurrency_scd30_write_vs_siblings.py (gated behind BOTH --allow-persistence-writes AND
 # --allow-scd30-extra-write) is therefore the ONLY real-hardware coverage this specific hazard can
 # ever have, by construction of src/ itself.
 # The identical reasoning applies to SCD30's own SAME-device write-vs-own-read hazard too (flash
@@ -459,6 +462,7 @@ def test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads_under_a
 _BMP3XX_OVERSAMPLING_SETTINGS = (1, 2)  # cycled - both real, valid settings (asy_bmp3xx_driver.py's own _OSR_SETTINGS)
 
 
+@pytest.mark.persistence_write
 def test_bmp3xx_config_write_does_not_disturb_its_own_concurrent_reads_under_api_load(board: Board, dut_ip: str) -> None:
     reset_all_error_logs(dut_ip)
     get_before = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=10.0)

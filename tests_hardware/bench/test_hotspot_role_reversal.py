@@ -146,6 +146,7 @@ def test_bench_radio_receives_a_valid_dhcp_lease(bench: BenchBridge, joined_hots
     assert len(parts) == 4 and all(p.isdigit() for p in parts), f"own_ip_on() returned something that doesn't look like an IPv4 address: {ip!r}"
 
 
+@pytest.mark.persistence_write
 def test_leased_ip_falls_within_the_aps_own_subnet(bench: BenchBridge, joined_hotspot: str) -> None:
     own_ip = bench.own_ip_on()
     gateway_ip = joined_hotspot
@@ -172,12 +173,14 @@ def test_repeated_associate_disassociate_cycles_dont_wedge_the_dhcp_server(bench
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.persistence_write
 def test_arbitrary_hostname_resolves_to_the_aps_own_ip(joined_hotspot: str) -> None:
     response = dns_probe.query(joined_hotspot, "www.example.com")
     assert response is not None, f"no DNS response from {joined_hotspot}:53 for an arbitrary hostname"
     assert dns_probe.extract_answer_ip(response) == joined_hotspot, f"DNS answer didn't point back at the AP's own IP {joined_hotspot}"
 
 
+@pytest.mark.persistence_write
 def test_devices_own_hostname_resolves_the_same_way(joined_hotspot: str, hotspot_ssid: str) -> None:
     # src/captive_dns.py answers every query identically regardless of the queried name - the
     # device's own real Hostname must not be special-cased differently from an arbitrary one.
@@ -186,6 +189,7 @@ def test_devices_own_hostname_resolves_the_same_way(joined_hotspot: str, hotspot
     assert dns_probe.extract_answer_ip(response) == joined_hotspot
 
 
+@pytest.mark.persistence_write
 def test_genuine_root_domain_query_is_answered_correctly(joined_hotspot: str) -> None:
     # A root query (QNAME = the zero-length root label alone) - the `_parsed_ok` real-vs-malformed
     # distinction src/captive_dns.py's own code comments call out.
@@ -197,6 +201,7 @@ def test_genuine_root_domain_query_is_answered_correctly(joined_hotspot: str) ->
     assert dns_probe.extract_answer_ip(response) == joined_hotspot
 
 
+@pytest.mark.persistence_write
 def test_malformed_truncated_packet_is_silently_dropped(joined_hotspot: str) -> None:
     # A truncated packet (fewer than 12 header bytes) - src/captive_dns.py's response() returns
     # None for this (confirmed by reading the module), i.e. no response should ever arrive.
@@ -221,6 +226,7 @@ def test_spoofed_off_subnet_source_address_is_ignored(joined_hotspot: str) -> No
     raise AssertionError("should never run - see skip reason")
 
 
+@pytest.mark.persistence_write
 def test_dns_flood_backoff_curve_recovers_once_flood_stops(joined_hotspot: str) -> None:
     # A garbage-but-present UDP payload still yields a real (data, addr) from recvfrom() (UDP has
     # no content validation), so this flood takes the same pr.evt()-only path as a normal query,
@@ -246,12 +252,14 @@ def test_dns_flood_backoff_curve_recovers_once_flood_stops(joined_hotspot: str) 
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.persistence_write
 def test_every_get_endpoint_reachable_and_shaped_over_the_hotspot_link(joined_hotspot: str) -> None:
     for path in ("/measurements", "/sensors", "/networking", "/system", "/notification", "/status", "/"):
         res = http_client.fetch(joined_hotspot, 80, "GET", path, timeout_s=10.0)
         assert res.status_code == 200, f"GET {path} over the hotspot link -> {res.status_code}"
 
 
+@pytest.mark.persistence_write
 def test_representative_put_round_trips_over_the_hotspot_link(joined_hotspot: str) -> None:
     # /notification's WarnCO2 - the same shared REST-round-trip shape as
     # tests/_shared_rest_roundtrip.py's mock/twin coverage, now over a real wireless hotspot link.
@@ -262,6 +270,7 @@ def test_representative_put_round_trips_over_the_hotspot_link(joined_hotspot: st
     assert res.json().get("result") == {"WarnCO2": "Valid"} or res.json().get("result") == {"WarnCO2": "Unchanged"}, f"unexpected PUT result over the hotspot link: {res.json()!r}"
 
 
+@pytest.mark.persistence_write
 def test_real_static_website_content_serves_over_the_hotspot_link(joined_hotspot: str) -> None:
     # The same real property test_digital_twin_real_website_integration.py already proves for the
     # twin (SPECIFICATION.md Part A.9), now over real hardware/RF.
@@ -270,6 +279,7 @@ def test_real_static_website_content_serves_over_the_hotspot_link(joined_hotspot
     assert len(res.body) > 0
 
 
+@pytest.mark.persistence_write
 def test_nonsense_path_redirects_to_root_over_the_hotspot_link(joined_hotspot: str) -> None:
     # The hotspot-mode-only counterpart to test_network_resilience.py's STA-mode 404 test -
     # joined_hotspot only yields once is_hotspot_active() is genuinely True. A raw socket is
@@ -298,6 +308,7 @@ def test_nonsense_path_redirects_to_root_over_the_hotspot_link(joined_hotspot: s
     assert_module_error_log_empty(joined_hotspot, "WEBSERVER")
 
 
+@pytest.mark.persistence_write
 def test_put_to_nonsense_path_is_405_not_a_redirect_over_the_hotspot_link(joined_hotspot: str) -> None:
     # A non-GET request to an unmatched path resolves to 405 inside Microdot's own routing before
     # _serve_static() is ever reached - confirms the redirect fallback can't leak into an unrelated
@@ -314,6 +325,7 @@ def test_put_to_nonsense_path_is_405_not_a_redirect_over_the_hotspot_link(joined
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.persistence_write
 def test_malformed_http_request_over_real_wireless_degrades_cleanly(joined_hotspot: str) -> None:
     import socket
 
@@ -360,6 +372,7 @@ def test_concurrent_multi_client_burst_is_out_of_scope_here(joined_hotspot: str)
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.persistence_write
 def test_invalid_credentials_rejected_without_triggering_reconnect(bench: BenchBridge, joined_hotspot: str) -> None:
     # post_fct (the /networking group's reconnect_wifi() hook) fires if ANY field in the PUT
     # validates - sending PW alone keeps `results` to just that one entry, so a single invalid
@@ -374,6 +387,7 @@ def test_invalid_credentials_rejected_without_triggering_reconnect(bench: BenchB
     assert bench.gateway_ip() == joined_hotspot, "DUT appears to have reconnected after a PUT that should have been entirely rejected"
 
 
+@pytest.mark.persistence_write
 def test_real_credentials_put_succeeds_and_confirms_accepted_values(bench: BenchBridge, joined_hotspot: str, hotspot_ssid: str) -> None:
     # bench.ap_password() reads the real PSK via `nmcli --show-secrets` by default now, so this
     # test needs no manual BENCH_AP_PASSWORD setup (still honored as an explicit override) - see

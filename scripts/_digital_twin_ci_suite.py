@@ -150,6 +150,15 @@ _WIFI_SCRIPTED_FAILURES = 5  # asy_wifi_service.py's conn_fail_to_hotspot - the 
 # value for a reason the twin does not share: real WiFi latency on the abort's own close.
 _SERVER_OUTER_CAP_S = 15.0  # mirrors asy_webserver_service.py's own outer_cap_s default - keep in sync
 _RESET_ERRORS_TIMEOUT_S = _SERVER_OUTER_CAP_S + 2.0  # loopback: no WiFi close latency to absorb
+# The BUDGET, as opposed to the timeout above: a timeout only catches a call that never finished, so
+# without this the suite was blind to the whole band between "normal" and the cap. Sized from both
+# real datasets rather than picked: the twin's own worst observed `dev` sweep is 8.259s (5 reps,
+# 21 chunks) and real hardware is 6.32s idle / 11.58s under three concurrent readers, so 80% of the
+# cap sits ~45% above anything legitimate ever measured while still tripping well before the server
+# would abort. In chunk terms - the regression this actually guards against - `dev` would need ~10
+# more FRAM-backed sources to breach it, which is about what WP1/WP2/WP3 added between them. Only
+# checked on the idle path the suite actually drives; it runs no concurrent readers during a reset.
+_RESET_ERRORS_BUDGET_S = _SERVER_OUTER_CAP_S * 0.8
 
 # Run 11 (soak) - moved host-side from digital_twin/run_generic_integration.py's own now-retired
 # _soak() (SPECIFICATION.md's "Driver/DUT process separation" Part, 2026-09-14): this suite now
@@ -303,6 +312,20 @@ def _http(method: str, path: str, body: dict[str, Any] | None = None, timeout: f
         conn.close()
 
 
+def _put_reset_errors_timed(run_label: str) -> int:
+    # The one request with a real elapsed-time budget (_RESET_ERRORS_BUDGET_S above). Returns the
+    # HTTP status so callers keep asserting that themselves; the budget check is made here so both
+    # call sites get it without either having to remember to.
+    started = time.monotonic()
+    status, _ = _http("PUT", "/status", {"ResetErrors": True}, timeout=_RESET_ERRORS_TIMEOUT_S)
+    elapsed = time.monotonic() - started
+    _check(
+        condition=elapsed < _RESET_ERRORS_BUDGET_S,
+        msg=f"{run_label}: the ResetErrors sweep finished inside its {_RESET_ERRORS_BUDGET_S:.1f}s budget ({elapsed:.2f}s, {elapsed / _SERVER_OUTER_CAP_S * 100:.0f}% of the server's own {_SERVER_OUTER_CAP_S:.1f}s cap)",
+    )
+    return status
+
+
 def _error_type_count(entry: dict[str, Any], type_char: str = "E") -> int:
     # entry["counter"] (PrintLogHistory's own ErrCount) increments on both errors ("E") AND
     # warnings ("W") pushed into the same history - a driver's own "recovered after N failures"
@@ -316,19 +339,28 @@ def _error_type_count(entry: dict[str, Any], type_char: str = "E") -> int:
 
 
 def _errcount(name: str) -> dict[str, Any]:
-    # Returns {} for any /status read it could not parse - deliberately tolerant, because the polling
-    # helpers below call this in a loop and a transient non-200 during boot must retry, not abort.
-    # THE CONTRACT THAT FOLLOWS FROM THAT, stated once here rather than at each call site: {} reads
-    # as counter 0 and an empty history, so an assertion whose EXPECTED value is 0 would hold
-    # vacuously against a server that answered nothing at all. Every such assertion must therefore
-    # test readability separately - `entry.get("counter", -1)`, or a `bool(entry)` term - never a
-    # bare == 0. Every registered error source appears in errcount whether or not it ever logged, so
-    # a missing entry is always a real failure and never an empty log.
+    # TOLERANT: answers {} for any /status read it could not parse, because the polling helpers below
+    # call this in a loop and a transient non-200 during boot must retry, not abort. That tolerance
+    # is a hazard at an assertion site: {} reads as counter 0 with an empty history, so any check
+    # whose EXPECTED value is 0 would hold just as happily against a server that answered nothing.
+    # Assertions must use _errcount_required() below instead - the split is what stops that mistake
+    # being reachable at all, rather than a rule each new call site has to remember.
     status, body = _http("GET", "/status")
     if status != _HTTP_OK or not isinstance(body, dict):
         return {}
     entry = body.get("errcount", {}).get(name, {})
     return entry if isinstance(entry, dict) else {}
+
+
+def _errcount_required(name: str) -> dict[str, Any]:
+    # STRICT: for assertion sites. Raises rather than returning {}, so an unreadable /status becomes
+    # the enclosing run function's own `except Exception` -> _fail() instead of a silent pass. Every
+    # registered error source is present in errcount whether or not it ever logged, so a missing
+    # entry is always a real failure and never an empty log.
+    entry = _errcount(name)
+    if not entry:
+        raise RuntimeError(f"GET /status did not yield a readable errcount entry for {name!r} - the server answered nothing usable, so no assertion about its counter would mean anything")
+    return entry
 
 
 def _mem_paused() -> bool | None:
@@ -639,7 +671,7 @@ def _run_1_baseline(ctx: RunContext) -> None:
         status, body = _http("PUT", "/networking", {"Hostname": "ci-digital-twin"})
         _check(condition=status == _HTTP_OK and body.get("result", {}).get("Hostname") in ("Valid", "Unchanged"), msg="Run 1: PUT /networking Hostname accepted")
 
-        status, body = _http("PUT", "/status", {"ResetErrors": True}, timeout=_RESET_ERRORS_TIMEOUT_S)
+        status = _put_reset_errors_timed("Run 1")
         _check(condition=status == _HTTP_OK, msg="Run 1: PUT /status ResetErrors accepted")
     except Exception as exc:  # CI orchestration: surface any failure as a suite failure, not a crash
         _fail(f"Run 1 (baseline boot + settings): {exc!r}")
@@ -743,8 +775,7 @@ def _run_4_bus_fault_persistence_sweep(ctx: RunContext) -> None:
             if driver not in _NO_PERSIST_WHEN_FRAM_FAULTED:
                 continue  # WIFI's own reset check is Run 8, after its own fault run (Run 7)
             name = _DRIVER_ERRCOUNT_NAME[driver]
-            entry = _errcount(name)
-            # -1, not 0, as the absent-field default - see _errcount()'s own contract comment.
+            entry = _errcount_required(name)
             _check(condition=entry.get("counter", -1) == 0, msg=f"Run 4: {name}'s error count correctly did NOT persist across reboot (FRAM was faulted dead for all of Run 3, so nothing it logged could reach the chip) ({entry!r})")
         # Every bus Run 3 faulted must be live again, not merely answering 200 with stale state -
         # this is the recovery half of Run 3's story, and the one claim about SGP40 here that does
@@ -879,11 +910,10 @@ def _run_5c_storage_paused_shutdown_never_loses_the_error_log(ctx: RunContext) -
         # the chip. Deliberately issued after the poll above confirmed setup() ran, so this checks
         # the ordinary case; a reset issued *before* setup() is covered separately (Part C.7
         # - it persists straight away now and the later setup() must not undo it).
-        status, _ = _http("PUT", "/status", {"ResetErrors": True}, timeout=_RESET_ERRORS_TIMEOUT_S)
+        status = _put_reset_errors_timed("Run 5c")
         _check(condition=status == _HTTP_OK, msg=f"Run 5c: PUT /status ResetErrors accepted (status {status})")
-        entry = _errcount("SGP40")
-        # bool(entry): an unreadable /status must not read as a cleared log (_errcount()'s contract).
-        _check(condition=bool(entry) and _error_type_count(entry) == 0, msg=f"Run 5c: the restored history was actually cleared by ResetErrors, not just masked ({entry!r})")
+        entry = _errcount_required("SGP40")
+        _check(condition=_error_type_count(entry) == 0, msg=f"Run 5c: the restored history was actually cleared by ResetErrors, not just masked ({entry!r})")
     except Exception as exc:
         _fail(f"Run 5c (history survived the commanded reboot): {exc!r}")
     finally:
@@ -978,11 +1008,12 @@ def _run_8_wifi_persistence_and_configure_ntp(ctx: RunContext) -> None:
     proc = _spawn(ctx, [], log8)
     try:
         _wait_until_serving(proc)
-        entry = _wait_for_error_type_count("WIFI", _WIFI_SCRIPTED_FAILURES, timeout_s=30.0, type_char="W")
+        # Poll tolerantly, then re-read STRICTLY before asserting: this is the one check whose
+        # expected set admits 0, so the poller's own {}-on-unreadable return would satisfy it.
+        _wait_for_error_type_count("WIFI", _WIFI_SCRIPTED_FAILURES, timeout_s=30.0, type_char="W")
+        entry = _errcount_required("WIFI")
         restored = _error_type_count(entry, type_char="W")
-        # bool(entry) is load-bearing here, not decoration: this property admits 0 as a legitimate
-        # outcome, which is exactly the case _errcount()'s own contract comment warns about.
-        _check(condition=bool(entry) and restored in (0, _WIFI_SCRIPTED_FAILURES), msg=f"Run 8: WIFI's FRAM-backed history came back all-or-nothing after an abrupt restart - never a partial {restored}-entry remnant ({entry!r})")
+        _check(condition=restored in (0, _WIFI_SCRIPTED_FAILURES), msg=f"Run 8: WIFI's FRAM-backed history came back all-or-nothing after an abrupt restart - never a partial {restored}-entry remnant ({entry!r})")
         # 192.0.2.1: RFC 5737 TEST-NET-1, guaranteed non-routable - a deliberate, reproducible
         # "unreachable" address rather than relying on incidental CI sandbox network policy.
         status, body = _http("PUT", "/networking", {"NTP_Host": "192.0.2.1"})

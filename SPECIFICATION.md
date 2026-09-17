@@ -1673,7 +1673,7 @@ optional polish (project owner's explicit direction):**
   one exception: **SCD30's own on-chip NVM write is opt-in, off by default, and capped at one real
   write per test session** — every real SCD30 write, flash wear being a real, always-relevant
   concern on real hardware, is gated behind `tests_hardware/conftest.py`'s
-  `--allow-scd30-writes`/`@pytest.mark.scd30_write` (the single global permission: without it, a
+  `--allow-persistence-writes`/`@pytest.mark.persistence_write` (the single global permission: without it, a
   full flash-tier run spends zero real SCD30 writes, including the one routine per-session write
   `scd30_continuous_measurement_triggered` would otherwise make for the whole bus-hazard group).
   Any additional test that needs to fire SCD30's own write a second time is gated behind a further,
@@ -3999,7 +3999,7 @@ number/string field's caption** — a toggle/enum field's round-trip needs a gen
 | Card/nav visual treatment | Modernized flat cards; slide-in drawer nav | Soft border/shadow, real light/dark tokens. |
 | Rendering safety | `textContent` only, never `innerHTML` | XSS-safe by construction. |
 | Numeric coercion/validation | `type_or_range_error()`/`coerce_numeric()`, mirrored in `mock-server.js` | Canonical for every numeric field (A.8, Part G). |
-| Dispatch-only PUT fields | `SystemCmd`, `PauseTime`, `lightCmdLED`, `ResetErrors` | None persisted — each re-dispatches fresh every submission. An enum field with no GET-matching state renders a blank placeholder by default. |
+| Dispatch-only PUT fields | `SystemCmd`, `PauseTime`, `lightCmdLED`, `ResetErrors`, plus every schema field carrying `dispatch=true` in its own `@web` tag (`SGPResetVOC`, `ISLCalibrate` today — derive the set from the tags, never from this list alone) | None persisted — each re-dispatches fresh every submission. **This distinction is load-bearing beyond the UI**: a PUT to any *other* field is written straight through to the RP2040's flash filesystem by `config_manager.py`'s own `json.dump()`, i.e. it spends a real flash cycle, which is why `tests_hardware/`'s `@pytest.mark.persistence_write` gate exists and why a dispatch-only PUT is deliberately outside it. An enum field with no GET-matching state renders a blank placeholder by default. |
 | PUT-result coloring | 4-state (`Valid`/`Unchanged`/`Invalid`/`Failed`), colored at group and field level | Matches the backend vocabulary. A whole-request failure marks every field `Failed` individually. |
 | PUT/GET error handling | Non-2xx / null body / `res:"ERR"` = whole-request failure, surfacing the server's `descr` | A field missing from `result` shows `"Failed"`. A GET failure shows a per-section banner without clearing stale data. |
 | Per-device page-scheme mechanism | The definitions file itself | `render.js`/`nav.js` have zero device-specific branching. |

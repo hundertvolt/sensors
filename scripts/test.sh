@@ -150,16 +150,34 @@ tests_scripts_timeout_s="${TESTS_SCRIPTS_TIMEOUT_S:-1200}"
 # `set -e`: an orphaned pytest would then keep running for up to its own timeout and transiently
 # write a devices/zz_test_*.toml into the live tree, re-opening the very glob hazard the generation
 # ordering above closes. Both halves confirmed directly by reproducing the pattern: with no trap the
-# inner `timeout` outlives the aborted parent, with this one it is gone. Reaching that child needs
-# pkill, which is best-effort (absent in a --variant=minbase chroot) - without it the child still
-# self-terminates inside its own budget. `rm -rf ""` is a harmless no-op for either dir before its mktemp has run,
+# inner `timeout` outlives the aborted parent, with this one it is gone. `rm -rf ""` is a harmless no-op for either dir before its mktemp has run,
 # and tests_scripts_pid is cleared once the job is reaped so this can never signal a recycled PID.
 raw_dir=""
 results_dir=""
 tests_scripts_pid=""
-trap 'if [ -n "$tests_scripts_pid" ]; then pkill -P "$tests_scripts_pid" 2>/dev/null || true; kill "$tests_scripts_pid" 2>/dev/null || true; fi; rm -rf "$raw_dir" "$results_dir" "$tests_scripts_status_file"' EXIT
+tests_scripts_inner_pidfile="$(mktemp)"
+# shellcheck disable=SC2329  # invoked indirectly, by the `trap _cleanup EXIT` below
+_cleanup() {
+    # The subshell alone is not enough to kill: its `timeout` child would be reparented and keep
+    # running (with pytest under it) for the rest of its own budget. The subshell therefore records
+    # that child's pid, so both are signalled by pid - exact, and with no dependency on pkill/procps,
+    # which a --variant=minbase chroot does not have. `timeout` forwards the signal to pytest
+    # itself, so one SIGTERM takes the whole chain down.
+    if [ -n "$tests_scripts_pid" ]; then
+        inner="$(cat "$tests_scripts_inner_pidfile" 2>/dev/null || true)"
+        if [ -n "$inner" ]; then
+            kill "$inner" 2>/dev/null || true
+        fi
+        kill "$tests_scripts_pid" 2>/dev/null || true
+    fi
+    rm -rf "$raw_dir" "$results_dir" "$tests_scripts_status_file" "$tests_scripts_inner_pidfile"
+}
+trap _cleanup EXIT
 (
-    if timeout --kill-after=10 "$tests_scripts_timeout_s" uv run pytest tests_scripts -q; then
+    timeout --kill-after=10 "$tests_scripts_timeout_s" uv run pytest tests_scripts -q &
+    inner_pid=$!
+    echo "$inner_pid" >"$tests_scripts_inner_pidfile"
+    if wait "$inner_pid"; then
         echo "PASS" >"$tests_scripts_status_file"
     else
         ec=$?
@@ -358,7 +376,18 @@ max_attempts=3
 # ntp_fram_system / wifi_service). A new test file that binds a socket claims an unused base below
 # 32768 - never a neighbour's, never inside the ephemeral range.
 #
-# Defaults to 4x the runner's own core count, not 1x: measured directly on a 4-core sandbox
+# The multiplier is AUTODETECTED from the host's real capability, not fixed at 4x, because 4x is
+# safe on a fast host and demonstrably not safe on a slow one: the same 4 cores that make a
+# GitHub-hosted runner comfortable at 16 concurrent processes make the bench Pi4 starve a twin
+# test's real-time budget (BACKLOG.md item 28). Core COUNT cannot tell those two apart - both are
+# 4-core - so the probe below measures core SPEED instead, by timing a fixed integer loop in the
+# very interpreter the tests run under (the most honest proxy available, and ~120ms on a fast x86
+# host). The thresholds are calibrated against that measurement, not guessed. TEST_PARALLELISM
+# still overrides everything, which is what the bench Pi4 should use if the probe ever misjudges it.
+#
+# The 4x branch preserves exactly the behaviour measured below, so nothing changes on CI.
+#
+# Defaults to 4x the runner's own core count on a fast host, not 1x: measured directly on a 4-core sandbox
 # (matching a GitHub-hosted ubuntu-latest runner's core count), total `user` CPU time across the
 # whole suite stayed flat (~4m21s-4m27s) at TEST_PARALLELISM 4/8/16 while wall-clock dropped
 # 8m27s -> 4m28s -> 3m45s - direct confirmation the suite is genuinely sleep-bound (real SPI
@@ -385,7 +414,41 @@ max_attempts=3
 # CLAUDE.md's hard rule on avoidable hardware wear covers the host's own disk, not just the
 # target's flash, and a second file of that shape would contend with everything else here rather
 # than overlap with it.
-max_parallel="${TEST_PARALLELISM:-$(( $(nproc 2>/dev/null || echo 4) * 4 ))}"
+_detect_parallelism() {
+    local cores quota period probe_start probe_ms multiplier
+    cores="$(nproc 2>/dev/null || echo 4)"
+    # A container's CPU quota bounds real parallelism far below what nproc reports (cgroup v2; v1
+    # and "max" both fall through to the nproc value unchanged).
+    if [ -r /sys/fs/cgroup/cpu.max ]; then
+        read -r quota period < /sys/fs/cgroup/cpu.max || true
+        if [ "${quota:-max}" != "max" ] && [ "${period:-0}" -gt 0 ] 2>/dev/null; then
+            local quota_cores=$(( (quota + period - 1) / period ))
+            [ "$quota_cores" -ge 1 ] && [ "$quota_cores" -lt "$cores" ] && cores="$quota_cores"
+        fi
+    fi
+    # Speed probe. Never allowed to fail the run: any error, and we fall through to the fast-host
+    # multiplier, i.e. exactly the previous behaviour.
+    probe_start="$(date +%s%N 2>/dev/null || echo 0)"
+    "$micropython_bin" -c 'x=0
+for i in range(500000):
+    x+=i' >/dev/null 2>&1 || true
+    probe_ms=$(( ( $(date +%s%N 2>/dev/null || echo 0) - probe_start ) / 1000000 ))
+    if [ "$probe_ms" -le 0 ] || [ "$probe_ms" -le 250 ]; then
+        multiplier=4            # fast host (measured: ~120ms on this project's own x86 sandbox)
+    elif [ "$probe_ms" -le 900 ]; then
+        multiplier=2            # mid host - the bench Pi4's class; halves the oversubscription
+    else                        # that starved a twin test's real-time budget at 4x
+        multiplier=1
+    fi
+    echo "$(( cores * multiplier )) $cores $multiplier $probe_ms"
+}
+if [ -n "${TEST_PARALLELISM:-}" ]; then
+    max_parallel="$TEST_PARALLELISM"
+    echo "== Test parallelism: $max_parallel (TEST_PARALLELISM override)"
+else
+    read -r max_parallel _cores _multiplier _probe_ms < <(_detect_parallelism)
+    echo "== Test parallelism: $max_parallel ($_cores usable cores x $_multiplier, interpreter speed probe ${_probe_ms}ms)"
+fi
 # Clamped to >= 1: the dispatch loop below blocks while the running-job count is >= max_parallel, so
 # a 0 or negative value (a plausible "turn parallelism off" guess - 1 is what actually does that)
 # makes that `wait -n || true` spin forever without ever dispatching a test. Confirmed directly, and

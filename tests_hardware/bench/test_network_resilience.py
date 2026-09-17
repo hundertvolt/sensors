@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 
 import http_client
 import ntp_probe
+import pytest
 from error_log_helpers import (
     assert_module_error_log_contains,
     assert_module_error_log_empty,
@@ -242,6 +243,7 @@ def test_real_operations_survive_duplicated_and_reordered_packets(board: Board, 
     reset_all_error_logs(dut_ip)
 
 
+@pytest.mark.persistence_write
 def test_ntp_recovers_via_its_own_retry_timer_after_a_transient_outage_with_no_reboot(board: Board, bench: BenchBridge, dut_ip: str) -> None:
     # Real-hardware form of tests/test_asy_ntp_client.py's retry-after-one-dropped-request test:
     # proves the retry-timer mechanism itself (no reboot) recovers from one transient outage.
@@ -429,6 +431,7 @@ def test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source(board: B
 _GARBAGE_NTP_HOST = "this-host-will-never-resolve.invalid"
 
 
+@pytest.mark.persistence_write
 def test_garbage_ntp_host_via_rest_config_degrades_and_recovers_cleanly(board: Board, bench: BenchBridge, dut_ip: str) -> None:
     get_before = http_client.fetch(dut_ip, 80, "GET", "/networking", timeout_s=10.0)
     assert get_before.status_code == 200, f"GET /networking failed: {get_before.status_code} {get_before.body!r}"
@@ -505,6 +508,7 @@ _GARBAGE_SSID = "wozi-test-net-does-not-exist"  # <=32 chars (_VAL_SSID's own ca
 _HOTSPOT_PASSWORD = "12345678"  # hardcoded in src/asy_wifi_service.py's _configure_hotspot_ap()
 
 
+@pytest.mark.persistence_write
 def test_garbage_ssid_via_rest_config_is_handled_gracefully(board: Board, bench: BenchBridge, dut_ip: str) -> None:
     get_before = http_client.fetch(dut_ip, 80, "GET", "/networking", timeout_s=10.0)
     assert get_before.status_code == 200, f"GET /networking failed: {get_before.status_code} {get_before.body!r}"

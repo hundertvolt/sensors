@@ -60,8 +60,13 @@ def test_the_live_tree_fixture_test_uses_the_reserved_prefix(repo_root: Path) ->
             assert name.startswith(_RESERVED_FIXTURE_PREFIX), f"a fixture written into the live devices/ tree must be named {_RESERVED_FIXTURE_PREFIX}* so scripts/test.sh's sweep can reclaim it after a kill, got {name!r}"
 
 
-def test_no_real_device_uses_the_reserved_fixture_prefix(repo_root: Path) -> None:
-    # The other half of the reservation: the sweep deletes unconditionally, so a real device named
-    # into that namespace would be removed from the tree by an ordinary test run.
-    offenders = [p.name for p in (repo_root / "devices").glob("*.toml") if p.stem.startswith(_RESERVED_FIXTURE_PREFIX)]
-    assert offenders == [], f"devices/{_RESERVED_FIXTURE_PREFIX}* is reserved for live-tree test fixtures and is swept by scripts/test.sh - found {offenders}"
+def test_a_leaked_fixture_is_reclaimed_at_session_start_too(repo_root: Path) -> None:
+    # The sweep in scripts/test.sh only helps runs that go through scripts/test.sh. conftest.py
+    # reclaims the same namespace at pytest session start, which covers a direct `pytest
+    # tests_scripts` run and - unlike any test that globs the live tree - cannot race the fixture
+    # that legitimately creates one mid-session, because at session start nothing has created it yet.
+    # Asserted structurally rather than by globbing devices/ here, for exactly that reason.
+    conftest = (repo_root / "tests_scripts" / "conftest.py").read_text()
+    assert "_reclaim_leaked_device_fixtures" in conftest, "conftest.py must reclaim leaked live-tree device fixtures at session start"
+    assert 'glob("zz_test_*.toml")' in conftest, "the session-start reclamation must target the reserved namespace"
+    assert "autouse=True" in conftest, "the reclamation fixture must be autouse - nothing requests it by name"

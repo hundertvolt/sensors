@@ -492,92 +492,76 @@ constraints.
     7.396s / 5.207s at `gc.threshold(-1)`. Useful for spotting a twin-side regression; not a
     predictor of real-hardware cost in either direction.
 
-25. **SCD30/BMP3XX error-log persistence is never checked against a healthy FRAM chip.** Both are
-    FRAM-backed (`fram=fram` in every generated `sensortask_<device>.py`), so they should follow the
-    same all-or-nothing abrupt-restart guarantee SGP40 has. The only place the digital-twin CI suite
-    touches their persistence is Run 4's `_NO_PERSIST_WHEN_FRAM_FAULTED` sweep, which runs after Run
-    3 has faulted `fram:write` dead for the whole run — so it asserts "nothing persisted through a
-    chip that was unavailable", a much weaker property than its old name and message claimed (both
-    corrected). SGP40 gets the real treatment in Run 5b/5c; SCD30/BMP3XX have no equivalent, so a
-    genuine regression in their FRAM persistence would pass CI today. **Where to fix**: give them a
-    chip-healthy persistence run modelled on 5b/5c.
+25. **Persistence coverage against a HEALTHY store, not just a faulted one.** The digital-twin
+    suite only touches SCD30/BMP3XX persistence through Run 4's `_NO_PERSIST_WHEN_FRAM_FAULTED`
+    sweep, which runs after Run 3 faulted `fram:write` dead — so it proves "nothing persisted
+    through a chip that was unavailable", a far weaker property than the name it used to carry.
+    SGP40 gets the real chip-healthy treatment in Run 5b/5c; nothing else does, so a genuine
+    regression in another module's FRAM persistence passes CI today. **Where to fix**: extend Run 5c
+    to sweep every FRAM-backed source rather than adding runs per module — much cheaper in CI
+    wall-clock than a 5b/5c pair each.
 
-26. **WP3's `uart_link` FRAM wiring (`UART_init`/`UART_resp`) has no digital-twin coverage at all.**
-    `devices/dev.toml` gives both instances their own `fram_target = "fram"`, and they appear in
-    `/status`'s `errcount` like every other FRAM-backed source — but the CI suite never asserts they
-    are present, never exercises their persistence, and they are `dev`-only so no other device's run
-    would catch it. The only coverage anywhere is `tests_hardware/bench/test_uart_link_under_api_load.py`,
-    which needs the owner's real-hardware go-ahead to run. They also add real time to the
-    `ResetErrors` sweep item 24 is about. **Where to fix**: an errcount-presence assertion in the
-    suite's `dev` run is cheap and would close most of the gap.
-    **Real hardware has since exercised them (2026-09-17)** — both instances reset independently
-    alongside the other 19 chunks, and the link held its never-block invariant through three
-    back-to-back `ResetErrors` calls (SPECIFICATION.md's own note, Part A.7). That closes the
-    real-hardware question but **not this item**: the twin still asserts nothing about them, so a
-    regression would reach the bench tier before CI ever saw it.
+26. **`uart_link`'s gap is narrower than this item used to claim.** It said "no digital-twin
+    coverage at all". That was wrong: `tests/test_digital_twin_uart_link.py` carries 16 twin tests
+    against the real generated `sensortask_dev` graph, including
+    `test_both_ends_get_their_own_real_fram_chunk`, which asserts exactly the WP3 wiring. Real
+    hardware has since exercised both instances through `ResetErrors` too (SPECIFICATION.md Part
+    A.7). What is genuinely missing is narrow and `dev`-only: the **end-to-end CI suite**
+    (`scripts/_digital_twin_ci_suite.py`) never asserts `UART_init`/`UART_resp` appear in `/status`'s
+    `errcount`, so a regression that dropped them from the registration list would reach the bench
+    tier before CI noticed. **Where to fix**: one errcount-presence assertion in that suite's `dev`
+    run.
 
-27. **`PUT /status {"ResetErrors": true}` answers `OK` even when an individual FRAM-backed log's
-    on-chip reset write silently failed.** Found while auditing the reset path for item 24, not by a
-    failure. `print_log.py`'s `PrintLogHistory.reset()` clears the in-RAM ring and `err_count`
-    *before* attempting the write, and a failed `_write()` is only `_diag()`-logged (it returns
-    early, leaving `initialized` False) — while `asy_webserver_service.py`'s `_put_status()` neither
-    inspects per-module results nor has any to inspect, and returns `make_response(0)` regardless.
-    The observable consequence is narrow but genuinely misleading: `GET /status` reads 0 for that
-    module afterwards, so the operator sees a successful clear, and the *old* history reappears on
-    the next boot when `setup()`'s `_read()` restores what was never overwritten. Only reachable
-    with a faulty/unavailable chip, and the catch→degrade behaviour itself is correct per
-    SPECIFICATION.md Part I.4 — it is the `OK` that overstates what happened. Flagged rather than
-    changed (CLAUDE.md's "flag, don't silently change" for cross-file/behavioural discrepancies):
-    the fix is a REST-semantics decision, not a local one. **Options**: have `reset()` report its
-    write outcome up through `reset_error_counter()` and answer a non-zero envelope code when any
-    source failed; or leave the response alone and surface the per-module `initialized` state in
-    `GET /status` so the UI can show "cleared, not persisted". Note a related asymmetry worth
-    deciding at the same time: a raising `reset_error_counter()` would abort `_put_status()`'s
-    sequential loop part-way, leaving the remaining sources un-reset behind a 500 — today nothing can
-    raise (every `_write()` path catches broadly), so this is a latent property of the loop's shape,
-    not a live bug.
+27. **`PUT /status {"ResetErrors": true}` answering `OK` on a failed on-chip write — settled, no
+    change.** Owner decision, 2026-09-17: detecting a chip that acknowledged a write it did not
+    physically store would need a deferred read-back and a second failure path, which is overkill
+    for the risk. **If the bus transfer completed without error, the chip is trusted to have stored
+    the value.** Recorded here only so the reasoning is not re-derived: `print_log.py`'s `reset()`
+    clears the in-RAM ring before attempting the write, so `/status` reads 0 either way, and a
+    chip-level failure surfaces at the next boot when `setup()` restores the old history rather than
+    at the call. That is accepted behaviour, not a defect. (The narrower case where `_write()` itself
+    returns False — a *detected* failure that is `_diag()`-logged and not reflected in the response —
+    shares the same disposition: it is only reachable with a chip that is already failing.)
 
-28. **`TEST_PARALLELISM`'s 4x-core-count default can fail a healthy twin test through CPU starvation
-    alone.** Found on the bench Pi4 (2026-09-17, real-hardware session).
-    `tests/test_digital_twin_sensortask_integration.py`'s
-    `test_wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server_and_status_led` fails
-    with `"real hotspot activation never started the real DNSServer task"` under the full parallel
-    suite, and — decisively — **reproduces with twelve synthetic CPU busy-loops and no parallel test
-    processes at all**, which rules out port contention, the chroot, and the missing-capability
-    lookalike (`digital_twin/README.md`: the same message appears when the interpreter lacks
-    `CAP_NET_BIND_SERVICE`, for an unrelated reason — check `getcap` first). Standalone with the
-    capability granted it passes 13/13 across four runs. Which file loses is non-deterministic; a
-    second (`test_digital_twin_webserver_concurrency_dev.py`) lost on one host run.
-    **Mechanism**: the assertion waits on a real background state transition whose nominal duration
-    is one `wifi_refresh_sec` (5s) cycle plus the twin's `_CONNECT_DELAY_S` (0.7s), against a
-    100-poll budget — about 4x margin nominally, which heavy starvation on slow cores still exhausts.
+28. **`TEST_PARALLELISM` now autodetects host capability — the residual is a calibration question,
+    not an open design decision.** The 4x-core-count default failed a healthy twin test on the bench
+    Pi4 through CPU starvation alone (reproduced with twelve synthetic busy-loops and no parallel
+    test processes), while being entirely safe on a fast 4-core x86 host — core *count* cannot tell
+    those apart. `scripts/test.sh` now times a fixed integer loop in the very interpreter the tests
+    run under and picks the multiplier from that (4x at <=250ms, 2x at <=900ms, 1x beyond), honouring
+    a cgroup CPU quota when one is set, with `TEST_PARALLELISM` still overriding everything.
+    Measured: 117ms -> 16 jobs on this project's x86 sandbox (unchanged from before), and a simulated
+    Pi4-class 704ms -> 8 jobs. **What is left**: the thresholds are calibrated from one fast host
+    plus a simulated slow one, not from the Pi4 itself — if a real bench run still starves that twin
+    assertion at 2x, the next step is 1x for that class, or widening the assertion's own budget.
     Note `_wait_until()` counts poll *iterations*, not wall clock, so making it a true wall-clock
-    timer would make this worse, not better; the outer `run_timed(..., 35.0)` is the only real
-    wall-clock bound.
-    **Why it matters beyond one test**: `scripts/test.sh`'s `TEST_PARALLELISM` comment claimed
-    concurrency "changes wall-clock only, never behavior" provided two enumerated hazards
-    (TmpScratch keys, fixed socket ports) stay disjoint. A real-time-budgeted twin assertion is a
-    **third** hazard that audit never covered — the list was treated as complete and was not. The
-    comment now says so; this item is the open decision.
-    **Not reproducible on a fast 4-core sandbox at the same nominal load** (tried directly, 12
-    busy-loops: 13/13 pass), and GitHub's own runners have not hit it — so CI is not currently red.
-    Introduced with the base branch's test-economy work (the 4x default), not by PR #103.
-    **Where to fix — owner's call, deliberately not taken unilaterally**: (a) lower the default
-    multiplier on low-core or slow hosts — the measurement behind 4x showed 4 jobs 8m27s, 8 jobs
-    4m28s, 16 jobs 3m45s, so 2x buys most of the gain and 4x only ~43s more; (b) widen that one
-    assertion's budget and any sibling with the same shape; (c) mark real-time-budgeted twin tests
-    non-parallel. (a) is the only one that addresses the class rather than the instance.
+    timer would make this worse rather than better.
 
 29. **A real WiFi outage logs `W4` ("WLAN wrong password") twice alongside the expected `W5`
     ("access point not found"), on a network whose password never changed.** Observed on the dev
-    bench board during `test_real_wifi_outage_and_recovery_while_in_normal_sta_mode`
-    (2026-09-17). `tests_hardware/bench/test_network_resilience.py`'s own
+    bench board during `test_real_wifi_outage_and_recovery_while_in_normal_sta_mode` (2026-09-17).
+    `tests_hardware/bench/test_network_resilience.py`'s own
     `_assert_wifi_log_has_only_benign_ap_not_found_warning()` expects only `W5`. Either the CYW43
     driver reports a misleading status during an AP-down transition and
-    `asy_wifi_service.py`'s `_poll_sta_connect_status()` faithfully records it (in which case the
-    test's expectation is wrong), or the status mapping there is off. Not chased — one look is
-    probably enough to tell which.
+    `asy_wifi_service.py`'s `_poll_sta_connect_status()` faithfully records it (making the test's
+    expectation wrong), or the status mapping there is off. Not chased — one look should tell which.
 
+30. **ISL29125 HTTP connection reset under concurrent API load — root-cause not yet established.**
+    Owner's direction: chase, root-cause and resolve. Needs **both** a config-persisting PUT and >=2
+    concurrent readers (four-arm isolation on the dev bench, 2026-09-17: PUT alone 0/10, PUT + 1
+    reader 0/6, PUT + 2 readers **6/18**, plain GET + 2 readers 0/6), so it is a real residual, not a
+    test artifact, and not the `max_connections=4` reject path (that one is a clean single-worker RST
+    at 5 concurrent workers, by design). Failures land at 21-72ms against 0.5-2.2s for successful
+    writes — two cleanly separated populations, and the connection dies before reaching the handler.
+    **The DUT logs nothing**: `WEBSERVER`'s counter stays 0, so this is invisible to FRAM forensics.
+    The suspected mechanism is the deferred flash write's own interrupt-disable window
+    (SPECIFICATION.md Part F.2's accepted residual risk) — **suspected, not proven**; all that is
+    established is that the persisting write is necessary. Note the write path is now gated behind
+    `@pytest.mark.persistence_write`, so reproducing it needs `--allow-persistence-writes`.
+    **Where to look first**: whether the reset correlates with `ConfigManager`'s `json.dump()` to the
+    flash filesystem specifically (instrument around that call) rather than with the ISL29125 driver
+    at all — the same PUT shape against BMP3XX now passes, which points at load/timing rather than
+    at this one driver.
 
 ## Deferred / explicitly out-of-scope work
 - **Session 7's `pyproject.toml` `max-args` ratchet (21 → 22, for `WebserverService.__init__`'s new
