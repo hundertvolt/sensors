@@ -279,10 +279,19 @@ max_attempts=3
 # per-device split above gives each of its 12 new files its own key for exactly this reason) and
 # real socket ports (each file's own fixed base range, with headroom over what it actually
 # allocates - see e.g. tests/_webserver_concurrency_scenarios.py's own port-range comment). That
-# audit found one violation the first pass had missed - test_asy_wifi_service.py and
+# audit found two violations the first pass had missed. One: test_asy_wifi_service.py and
 # test_asy_dns_client.py both allocated from 54000, harmless while this loop was sequential, a real
-# race once it wasn't (silent, not EADDRINUSE: see that file's own comment); wifi_service moved to
-# 57000. A new test file that binds a socket claims an unused base, never a neighbour's.
+# race once it wasn't. Two, the same hazard from outside the loop entirely: the whole 51000-57000
+# tier sat INSIDE the OS ephemeral range (32768-60999, /proc/sys/net/ipv4/ip_local_port_range), so
+# any concurrent ephemeral socket could be handed one of those exact ports - including
+# tests_scripts/'s own _free_port(), which binds (host, 0) and now runs alongside this loop rather
+# than in front of it. Both failure modes are silent rather than EADDRINUSE for UDP (see
+# test_asy_wifi_service.py's own comment), i.e. an inexplicable timeout, not an error. Fixed by
+# moving that whole tier below the ephemeral range, where the twin tier already sat. Bases now:
+# 19100 / 19300 / 19400 / 19500+ / 19700+ (twin, TCP) and 21000 / 22000 / 23000 / 24000 / 25000 /
+# 26000 / 27000 (udp_socket / captive_dns / ntp_client / dns_client / ntp_wifi_dns /
+# ntp_fram_system / wifi_service). A new test file that binds a socket claims an unused base below
+# 32768 - never a neighbour's, never inside the ephemeral range.
 #
 # Defaults to 4x the runner's own core count, not 1x: measured directly on a 4-core sandbox
 # (matching a GitHub-hosted ubuntu-latest runner's core count), total `user` CPU time across the
@@ -297,6 +306,16 @@ max_attempts=3
 # old strictly-sequential behavior, or a smaller multiple) if a future file is ever found to violate
 # one of the two collision-safety assumptions above, or if a given runner's real memory/CPU-quota
 # limits make 4x too aggressive.
+#
+# One caveat on "sleep-bound", since that was measured as `user` CPU time, which excludes the
+# kernel: tests/test_tmp_scratch.py is the suite's one genuinely kernel-bound file - it deliberately
+# creates and removes 400,000 flat sibling directories in the shared tests/_tmp root to prove the
+# retired sweep-by-prefix shape really does MemoryError at that scale, costing ~18.6s of *system*
+# time against ~2.6s user (measured directly, 2026-09-17; it is essentially the whole suite's
+# `sys` total). Those 800k operations serialize on one directory inode's own lock, which every other
+# file's TmpScratch construction also has to take briefly - real contention, but bounded and
+# confirmed harmless (full suite green at this parallelism). Worth knowing before adding a second
+# file of that shape, which would contend with this one rather than overlap with it.
 max_parallel="${TEST_PARALLELISM:-$(( $(nproc 2>/dev/null || echo 4) * 4 ))}"
 # Clamped to >= 1: the dispatch loop below blocks while the running-job count is >= max_parallel, so
 # a 0 or negative value (a plausible "turn parallelism off" guess - 1 is what actually does that)

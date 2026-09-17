@@ -149,9 +149,12 @@ def _old_style_shared_root_listdir() -> None:
 
 def test_large_unrelated_sibling_entry_count_crashes_the_old_shared_root_listdir_but_not_tmpscratch() -> None:
     # Direct regression for the real, reproduced failure mode this helper replaces. 400,000 flat
-    # sibling entries is the exact, directly-confirmed count at which os.listdir() on tests/_tmp's
-    # shared root raises a real, uncaught MemoryError under -X heapsize=32M - the same flag
-    # scripts/test.sh always runs this suite with. This test proves both halves of the fix in one
+    # sibling entries is the count at which os.listdir() on tests/_tmp's shared root was directly
+    # confirmed to raise a real, uncaught MemoryError under the -X heapsize=32M scripts/test.sh ran
+    # this suite with at the time; that flag is 16M now, which only makes the same population
+    # reproduce the failure more readily, not less (confirmed still passing at 16M), so the count
+    # stays valid without being re-derived. It is a floor, not a tuned value - re-confirm it still
+    # MemoryErrors if the heap flag is ever raised well past 32M. This test proves both halves of the fix in one
     # place: the old shape genuinely does break at this scale (not just asserted in prose), and
     # TmpScratch - which never lists the shared root at all, only ever its own key subdirectory -
     # does not, because the failure mode is structurally unreachable for it regardless of how

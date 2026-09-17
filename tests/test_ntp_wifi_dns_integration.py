@@ -246,7 +246,9 @@ def test_ntp_sync_holding_the_lock_blocks_a_concurrent_real_wifi_mode_switch() -
 # resolver - the closest thing to production wiring this test suite can reach without root.
 # ---------------------------------------------------------------------------
 
-_next_port = 55000
+# Below the OS ephemeral range (32768-60999) so a concurrently-running ephemeral socket can
+# never be assigned this port - see scripts/test.sh's own TEST_PARALLELISM comment.
+_next_port = 25000
 
 
 def make_addr() -> "tuple[str, int]":

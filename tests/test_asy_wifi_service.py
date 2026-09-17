@@ -2203,13 +2203,15 @@ def test_wlan_connect_recovers_the_streak_on_alternating_failure_and_success() -
 # ever starting the hotspot, since DNSServer.run() only ever touches self.udps, never rebuilds it.
 # ===========================================================================
 
-# 57000+, not the 54000 this file used to share with tests/test_asy_dns_client.py: scripts/test.sh
+# 27000+, not the 54000 this file used to share with tests/test_asy_dns_client.py: scripts/test.sh
 # runs test files concurrently now, so a base must be disjoint from every OTHER file's, not just
-# from its own reuse. A duplicate unicast UDP bind does not fail with EADDRINUSE here (both sockets
-# set SO_REUSEADDR, src/asy_udp_socket.py - confirmed directly that the second bind succeeds); it
-# silently delivers each datagram to one socket only, so a collision surfaces as an inexplicable
-# timeout, not an error. Bases taken today: 19100/19300/19400/19500+/19700+ (twin), 51000-57000.
-_next_port = 57000
+# from its own reuse, and must sit below the OS ephemeral range (32768-60999) so no concurrently-
+# running ephemeral socket can be assigned it either. A duplicate unicast UDP bind does not fail
+# with EADDRINUSE here (both sockets set SO_REUSEADDR, src/asy_udp_socket.py - confirmed directly
+# that the second bind succeeds); it silently delivers each datagram to one socket only, so a
+# collision surfaces as an inexplicable timeout, not an error. See scripts/test.sh's own
+# TEST_PARALLELISM comment for the full base allocation.
+_next_port = 27000
 
 
 def make_addr() -> "tuple[str, int]":

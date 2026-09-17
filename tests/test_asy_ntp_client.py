@@ -140,7 +140,9 @@ class _RaiseOnArm:
         Timer.raise_on_arm_exc = OSError
 
 
-_next_port = 53000
+# Below the OS ephemeral range (32768-60999) so a concurrently-running ephemeral socket can
+# never be assigned this port - see scripts/test.sh's own TEST_PARALLELISM comment.
+_next_port = 23000
 
 
 def make_addr() -> "tuple[str, int]":
