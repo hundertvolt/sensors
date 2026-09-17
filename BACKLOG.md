@@ -574,6 +574,37 @@ constraints.
     {"ISL29125": {"RangeAuto": false}}` drops the third leg without touching any code — if the reset
     rate falls, the re-arm is implicated; if it does not, it is the first two.
 
+31. **The website's errcount catalog is keyed by driver KIND, while the API publishes one key per
+    logger INSTANCE — latent today, wrong for any multi-instance device.** Found 2026-09-17 while
+    adding cross-tier parity coverage; reported rather than fixed, per CLAUDE.md's "flag, don't
+    silently change" rule for a cross-file discrepancy a scan turns up. The API side derives itself
+    from the live object graph (`SensorReaderConfig.get_error_sources()` returns `[self,
+    self.cfgmgr]`; the generated `_collect_error_sources()` loops over every constructed module), so
+    an instance named `scd30_primary` publishes `SCD30_primary`/`CFGMGR_SCD30_primary`.
+    `buildgen/definitions.py`'s `_errcount_group()` receives only a `set[str]` of have-keys — no
+    instance information reaches it at all — so it emits one fixed row per driver kind, plus the two
+    hardcoded `UART_init`/`UART_resp` rows.
+    **Not live**: verified against all six real devices, the two sides match exactly (dev 21 keys,
+    wozi 17, the other four 15) — no real device declares two instances of one driver, and `dev`'s
+    `uart_link` pair happens to use precisely the `name_ext` values the catalog hardcodes.
+    **Both synthetic fixtures are affected**, which is what a fixture is for (CLAUDE.md's standing
+    "synthetic fixture proves generality" rule). Measured by booting each in the twin and reading
+    `GET /status`:
+    - `novel_combo` publishes `SCD30_primary`, `SCD30_secondary`, `UART_a`, `UART_b`; the catalog
+      offers `SCD30`, `UART_init`, `UART_resp`.
+    - `multi_instance` publishes `SCD30_a/_b`, `SGP40_a/_b`, `BMP3XX_only` and their `CFGMGR_`
+      companions; the catalog offers the bare `SCD30`/`SGP40`/`BMP3XX` rows.
+    **Both drift directions are silent in the product.** A published source with no row is simply
+    never rendered; a row with no source renders a permanent, reassuring **0**, because
+    `js/templates.js` falls back to `errcount[key] ?? {counter: 0}`. Neither shows an error.
+    **Decision needed**: whether `_errcount_group()` should take the instance list (it would then
+    derive rows and labels per instance, the way the measurements section already does for
+    `SCD30_primary`/`SCD30_secondary`), or whether multi-instance devices are out of scope for the
+    errcount UI. Until then the gap is pinned exactly in
+    `tests_scripts/test_digital_twin_generated_boot.py`'s `_KNOWN_CATALOG_DRIFT`, which fails if the
+    drift changes shape *or* if it is fixed without deleting the exemption.
+
+
 ## Deferred / explicitly out-of-scope work
 - **Session 7's `pyproject.toml` `max-args` ratchet (21 → 22, for `WebserverService.__init__`'s new
   `build_info=` parameter) only got the noble leg of CLAUDE.md's required two-target clean-chroot
