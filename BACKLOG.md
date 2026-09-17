@@ -439,60 +439,58 @@ constraints.
     operator sees in a field log, the same class as the `errno` 32 decision of 2026-09-12.
     `SPECIFICATION.md` C.7.1 now states the actual behaviour rather than the intended one.
 
-24. **`PUT /status {"ResetErrors": true}` now costs a large, still-growing fraction of the product's
-    own request ceiling — and nothing anywhere measures it.** `asy_webserver_service.py`'s
-    `_put_status()` resets every registered error source sequentially, and each FRAM-backed one pays
-    a real FRAM write; WP1/WP2/WP3 grew that set to 10+ on `dev` (every `CFGMGR_*`, WIFI/NTP/
-    WEBSERVER/SYSTEM, SGP40/BMP3XX/SCD30, plus `dev`'s two `uart_link` instances). Two real ceilings
-    bound it, both confirmed directly: the server aborts any request at `outer_cap_s = 15.0`
-    (`asy_webserver_service.py:275`, applied via `asyncio.wait_for()` at `:667`), and the real web UI
-    gives up at `DEFAULT_TIMEOUT_MS = 15000` (`js/poll-manager.js:8`). So this is not a test-harness
-    concern — a device whose reset sweep crosses 15s is broken for its own operators. Both client
-    timeouts have since been placed against that cap rather than guessed (the CI suite's
-    `_RESET_ERRORS_TIMEOUT_S` is now derived from a mirrored `_SERVER_OUTER_CAP_S`, and
-    `tests_hardware/error_log_helpers.py`'s `reset_all_error_logs()` raised from a below-the-cap
-    10.0s to 17.0s), and `tests_scripts/test_request_timeout_ceiling.py` now enforces all four copies
-    of the ceiling against `outer_cap_s` itself so none can drift again. **What is still open**: the
-    suite remains blind to the whole 5-15s band — a timeout is a backstop, not a budget, and nothing
-    asserts elapsed time. **Where to fix**: an explicit elapsed-time budget in the suite, and — if
-    the real number is anywhere near the ceiling — a design-level fix at the source (batched or
-    concurrent reset, or one shared chunk) rather than a larger client timeout, per CLAUDE.md's
-    standing root-cause-don't-raise-the-limit rule.
-    **Measured on the digital twin, 2026-09-17** (5 repetitions per point, idle host, loopback;
-    `/status`'s own `errcount` key count for the source count):
+24. **`PUT /status {"ResetErrors": true}` costs a large, slowly-growing fraction of the product's
+    own request ceiling. Now measured on real hardware; one question left.**
+    `asy_webserver_service.py`'s `_put_status()` resets every registered error source sequentially
+    and each FRAM-backed one pays a real FRAM write; WP1/WP2/WP3 grew that set to 21 on `dev`. Two
+    real ceilings bound it, both confirmed directly: the server aborts any request at
+    `outer_cap_s = 15.0` (`asy_webserver_service.py:275`, via `asyncio.wait_for()` at `:667`), and
+    the real web UI gives up at `DEFAULT_TIMEOUT_MS = 15000` (`js/poll-manager.js:8`). A device whose
+    sweep crosses 15s is broken for its own operators, not merely slow in CI.
 
-    | device | error sources | `gc.threshold(32768)`, as shipped | `gc.threshold(-1)` |
-    | --- | --- | --- | --- |
-    | `dev` | 21 | **8.151s** (7.901-8.259) | 7.396s (7.333-7.728) |
-    | `wozi` | 17 | **5.592s** (5.534-5.746) | 5.207s (5.116-5.525) |
+    **Real hardware, `dev` bench board, 2026-09-17, 21 FRAM-backed chunks** — the numbers that
+    supersede every twin estimate below:
 
-    So `dev` already sits at **54% of the product's own 15.0s ceiling**, and this is a *floor*: the
-    twin's FRAM chip answers SPI opcodes in memory with zero wire time, so real hardware pays real
-    clocking and real FM25xx write latency on top of it. Two further facts fall out. The cost is
-    **not** `dev`-only — `wozi` at 5.59s is over `_http()`'s old 5.0s default too, so the comment
-    claiming `dev` was "the one device" was wrong (corrected). And the marginal cost of one more
-    FRAM-backed source is **~0.6s** (the 4-source `dev`/`wozi` delta, consistent at both GC
-    policies), which leaves roughly 10 more sources of headroom before `dev` reaches the cap —
-    WP1/WP2/WP3 together added about that many. The shipped threshold is the slower of the two
-    policies, so the headline number is the one that ships. Still wanted: the real-hardware number
-    to size the gap between floor and reality (requested in `REAL_HARDWARE_HANDOVER_PR103.md`).
+    | condition | wall clock | % of the 15s ceiling |
+    | --- | --- | --- |
+    | idle, real accumulated history | **6.32s** | 42% |
+    | idle, repeated on already-empty logs | 6.40-6.62s | 43-44% |
+    | via `reset_all_error_logs()` | 6.89-6.98s | 46% |
+    | **3 concurrent `GET /status` workers** | **11.58s** | **77%** |
 
-    **A partial calibration for that gap already exists and was previously being ignored here.**
-    `origin/claude/real-hardware-boot-latency-measurements` (`358c08f`, *not* merged into this
-    base as of 2026-09-17) measured real boot-to-first-`200` on the `dev` bench board across four
-    flashed images: 7.74s pre-WP → 9.80s at WP1+WP2, i.e. **~+2.05s of real cost for exactly the
-    FRAM chunk growth this item is about**, against a twin *delta* prediction of ~1.4-1.8s for WP2.
-    The lesson recorded there is the one that matters here: the twin's **absolute** numbers are not a
-    real baseline (it models no WiFi/DHCP and zero SPI wire time), but its **delta** for FRAM-backed
-    work held to roughly the right order — it is not off by a large factor. Read across to the 8.151s
-    floor above, that puts a real `dev` `ResetErrors` sweep plausibly around 10-12s: inside the 15s
-    ceiling, but tight — the "add an elapsed-time assertion" branch of this item rather than the
-    "redesign the sweep" one. **This is a prior, not a substitute for the measurement**: a boot
-    `setup()` is one chunk read/write per instance spread across a staggered start, whereas
-    `ResetErrors` is N chunk *writes* back to back in one request, so the two workloads are not
-    interchangeable. Same source also records an existing, unchanged **~170ms per FRAM-backed
-    instance `setup()`** cost (Unix-port instrumentation), which is well under this item's measured
-    ~0.6s twin marginal cost per source — worth reconciling when the real number is taken.
+    Correctness confirmed alongside: HTTP 200, all 21 counters (`UART_init`/`UART_resp` included)
+    read back 0 with every history ring cleared.
+
+    **Three things this settles, two of which contradict what this item previously said.**
+    **(1) The twin is not a floor.** Real idle (6.32s) is *faster* than the twin's own `dev` figure
+    (8.151s) — the Unix-port interpreter plus the fake chip's Python-level work cost more than real
+    SPI wire time saves. The "real hardware pays real clocking on top of it" claim here was wrong,
+    and so was the ~10-12s extrapolation drawn from the boot-latency branch's delta calibration
+    (`358c08f`); a staggered boot `setup()` genuinely does not predict a back-to-back write burst.
+    **(2) The cost is fixed PER CHUNK (~305ms), not per history entry** — clearing 21 chunks holding
+    real history costs the same as clearing 21 empty ones, consistent with the ~170ms-per-FRAM-logger
+    `setup()` figure being paid roughly twice (a read+write pair). So the "~0.6s marginal per source"
+    figure previously derived from the 4-source `dev`/`wozi` twin delta overstated it; that delta
+    was never purely 4 chunks. **(3) The event loop is not blocked**: concurrent `GET /status` stayed
+    0.56-0.76s throughout a `PUT` lasting 8.1s, so the 8388ms watchdog cap is not threatened — the
+    time is yielded, not held.
+
+    **What is still open — and it is the load case, not the idle one.** At 11.58s under three
+    concurrent readers, `dev` sits at 77% of its own ceiling, and per-chunk cost roughly doubles
+    under that contention (~551ms). That leaves headroom of roughly **6 more chunks under load**, not
+    the ~10 the twin numbers suggested. Nothing asserts elapsed time anywhere: both client timeouts
+    are backstops placed against the cap (the CI suite derives `_RESET_ERRORS_TIMEOUT_S` from a
+    mirrored `_SERVER_OUTER_CAP_S`; `tests_hardware/error_log_helpers.py` carries a measured 30.0s),
+    and `tests_scripts/test_request_timeout_ceiling.py` enforces every copy against `outer_cap_s`
+    itself — but a backstop is not a budget. **Where to fix**: an explicit elapsed-time budget, sized
+    against the load case rather than the idle one; and if a future device's chunk count approaches
+    ~27, a design-level fix at the source (batched or concurrent reset, one shared chunk) rather than
+    a larger client timeout, per CLAUDE.md's root-cause-don't-raise-the-limit rule.
+
+    Twin figures kept only as the harness baseline they are (5 reps, idle host, loopback): `dev`
+    8.151s (7.901-8.259) / `wozi` 5.592s (5.534-5.746) at the shipped `gc.threshold(32768)`, and
+    7.396s / 5.207s at `gc.threshold(-1)`. Useful for spotting a twin-side regression; not a
+    predictor of real-hardware cost in either direction.
 
 25. **SCD30/BMP3XX error-log persistence is never checked against a healthy FRAM chip.** Both are
     FRAM-backed (`fram=fram` in every generated `sensortask_<device>.py`), so they should follow the
@@ -512,6 +510,11 @@ constraints.
     which needs the owner's real-hardware go-ahead to run. They also add real time to the
     `ResetErrors` sweep item 24 is about. **Where to fix**: an errcount-presence assertion in the
     suite's `dev` run is cheap and would close most of the gap.
+    **Real hardware has since exercised them (2026-09-17)** — both instances reset independently
+    alongside the other 19 chunks, and the link held its never-block invariant through three
+    back-to-back `ResetErrors` calls (SPECIFICATION.md's own note, Part A.7). That closes the
+    real-hardware question but **not this item**: the twin still asserts nothing about them, so a
+    regression would reach the bench tier before CI ever saw it.
 
 27. **`PUT /status {"ResetErrors": true}` answers `OK` even when an individual FRAM-backed log's
     on-chip reset write silently failed.** Found while auditing the reset path for item 24, not by a
@@ -533,6 +536,48 @@ constraints.
     sequential loop part-way, leaving the remaining sources un-reset behind a 500 — today nothing can
     raise (every `_write()` path catches broadly), so this is a latent property of the loop's shape,
     not a live bug.
+
+28. **`TEST_PARALLELISM`'s 4x-core-count default can fail a healthy twin test through CPU starvation
+    alone.** Found on the bench Pi4 (2026-09-17, real-hardware session).
+    `tests/test_digital_twin_sensortask_integration.py`'s
+    `test_wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server_and_status_led` fails
+    with `"real hotspot activation never started the real DNSServer task"` under the full parallel
+    suite, and — decisively — **reproduces with twelve synthetic CPU busy-loops and no parallel test
+    processes at all**, which rules out port contention, the chroot, and the missing-capability
+    lookalike (`digital_twin/README.md`: the same message appears when the interpreter lacks
+    `CAP_NET_BIND_SERVICE`, for an unrelated reason — check `getcap` first). Standalone with the
+    capability granted it passes 13/13 across four runs. Which file loses is non-deterministic; a
+    second (`test_digital_twin_webserver_concurrency_dev.py`) lost on one host run.
+    **Mechanism**: the assertion waits on a real background state transition whose nominal duration
+    is one `wifi_refresh_sec` (5s) cycle plus the twin's `_CONNECT_DELAY_S` (0.7s), against a
+    100-poll budget — about 4x margin nominally, which heavy starvation on slow cores still exhausts.
+    Note `_wait_until()` counts poll *iterations*, not wall clock, so making it a true wall-clock
+    timer would make this worse, not better; the outer `run_timed(..., 35.0)` is the only real
+    wall-clock bound.
+    **Why it matters beyond one test**: `scripts/test.sh`'s `TEST_PARALLELISM` comment claimed
+    concurrency "changes wall-clock only, never behavior" provided two enumerated hazards
+    (TmpScratch keys, fixed socket ports) stay disjoint. A real-time-budgeted twin assertion is a
+    **third** hazard that audit never covered — the list was treated as complete and was not. The
+    comment now says so; this item is the open decision.
+    **Not reproducible on a fast 4-core sandbox at the same nominal load** (tried directly, 12
+    busy-loops: 13/13 pass), and GitHub's own runners have not hit it — so CI is not currently red.
+    Introduced with the base branch's test-economy work (the 4x default), not by PR #103.
+    **Where to fix — owner's call, deliberately not taken unilaterally**: (a) lower the default
+    multiplier on low-core or slow hosts — the measurement behind 4x showed 4 jobs 8m27s, 8 jobs
+    4m28s, 16 jobs 3m45s, so 2x buys most of the gain and 4x only ~43s more; (b) widen that one
+    assertion's budget and any sibling with the same shape; (c) mark real-time-budgeted twin tests
+    non-parallel. (a) is the only one that addresses the class rather than the instance.
+
+29. **A real WiFi outage logs `W4` ("WLAN wrong password") twice alongside the expected `W5`
+    ("access point not found"), on a network whose password never changed.** Observed on the dev
+    bench board during `test_real_wifi_outage_and_recovery_while_in_normal_sta_mode`
+    (2026-09-17). `tests_hardware/bench/test_network_resilience.py`'s own
+    `_assert_wifi_log_has_only_benign_ap_not_found_warning()` expects only `W5`. Either the CYW43
+    driver reports a misleading status during an AP-down transition and
+    `asy_wifi_service.py`'s `_poll_sta_connect_status()` faithfully records it (in which case the
+    test's expectation is wrong), or the status mapping there is off. Not chased — one look is
+    probably enough to tell which.
+
 
 ## Deferred / explicitly out-of-scope work
 - **Session 7's `pyproject.toml` `max-args` ratchet (21 → 22, for `WebserverService.__init__`'s new

@@ -324,8 +324,22 @@ max_attempts=3
 # TEST_PARALLELISM: how many test_*.py files run at once. Each file is already a fully isolated
 # Unix-port OS process (its own heap, its own machine.py-fake global state) with no shared memory
 # with any other file's process, so running several concurrently changes wall-clock only, never
-# behavior - PROVIDED the two things that can actually break under real concurrency stay disjoint
-# across files, both re-audited by enumerating every file (2026-09-17, not spot-checked): TmpScratch
+# behavior - EXCEPT for a THIRD hazard this list did not originally name, and which is NOT closed:
+# a twin test asserting that a real background state transition completed within a fixed budget is
+# measuring host speed, so CPU starvation can fail it while the code under test is healthy. Found on
+# the bench Pi4 (2026-09-17): test_digital_twin_sensortask_integration.py's hotspot/DNS test fails
+# with "real hotspot activation never started the real DNSServer task" under the full parallel suite,
+# and - decisively - reproduces with twelve synthetic CPU busy-loops and NO parallel test processes
+# at all, ruling out port contention and the chroot. Which file loses is non-deterministic; a second
+# file (test_digital_twin_webserver_concurrency_dev.py) lost on one run. The default below is 4x core
+# count, i.e. 16 concurrent Unix-port processes on that 4-core host, whose cores are far slower than
+# the sandbox the 4x multiplier was measured on. Not reproducible here at the same nominal load, and
+# GitHub's own runners have not hit it. BACKLOG.md carries the open decision (lower the default on
+# low-core hosts / widen the budget / mark such tests non-parallel) - do not assume a failure in one
+# of those files is a code bug before checking host load.
+#
+# The two hazards this list DID name stay disjoint, both re-audited by enumerating every file
+# (2026-09-17, not spot-checked): TmpScratch
 # keys (all 29 in the suite confirmed pairwise distinct - tests/_tmp_scratch.py's own docstring; the
 # per-device split above gives each of its 12 new files its own key for exactly this reason) and
 # real socket ports (each file's own fixed base range, with headroom over what it actually

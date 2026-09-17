@@ -1489,6 +1489,26 @@ are uninitialized, and which ones is decided by task-scheduling order. The resul
 clear behind a `200`, inconsistent across modules. Fixed 2026-09-11; covered at the mock, twin and
 flash tiers.
 
+**Confirmed on real hardware (dev bench board, 2026-09-17).** Three properties of this layer that
+had only ever been shown against the twin's fake chip were re-run against the real FM25xx, with the
+board's own `dev` firmware:
+
+- **The all-or-nothing abrupt-restart guarantee holds, with the "all" branch actually exercised.**
+  WIFI's FRAM-backed log read `counter=3`, history `W5, W4, W4` before an abrupt `hard_reset()` and
+  byte-identical values after it — not a partial remnant, and not the vacuous `0 → 0` a test built on
+  a deauth would produce (`bench.kick_all_stations()` logs nothing at all; only a real
+  `bench.ap_down()` outage generates entries).
+- **`PUT /status {"ResetErrors": true}` clears every chunk and yields while doing it.** All 21 of
+  `dev`'s chunks (`UART_init`/`UART_resp` included) read back 0 with their rings cleared, and a
+  concurrent `GET /status` stayed at 0.56-0.76s throughout a `PUT` lasting 8.1s — so the sweep never
+  holds the event loop and cannot threaten the 8388ms watchdog cap. Its cost is fixed **per chunk**
+  (~305ms), not per history entry. Timings and the remaining load-case concern: BACKLOG.md item 24.
+- **The UART link keeps its never-block invariant under sustained FRAM writing.** Across a 20.8s
+  window carrying three back-to-back `ResetErrors` calls (~6.9s each, i.e. near-continuous chunk
+  writing), `dev`'s crossover pair completed 23 further transfers with zero failures and held its 1s
+  exerciser cadence — the guarantee in CLAUDE.md's `asy_uart_comm.py` rule, shown against the real
+  peripheral rather than only the bench jumper at idle.
+
 Log-level methods, two tiers: `pr.one`/`pr.evt`/`pr.all` (sync, print-only, no history) for
 info/trace; `pr.err_s`/`pr.wrn_s` (async, persist to history/FRAM) for anything counting against
 `get_error_counter()`; `pr.err`/`pr.wrn` (sync, non-persisting) for a genuinely sync call site

@@ -139,8 +139,17 @@ _WIFI_SCRIPTED_FAILURES = 5  # asy_wifi_service.py's conn_fail_to_hotspot - the 
 # rather than a bare client-side timeout that says only "something took too long". What is still
 # missing is an explicit elapsed-time budget well below the cap - this timeout is a backstop, not a
 # performance assertion, and the suite is blind to the whole 5-15s band (BACKLOG.md item 24).
+#
+# Real hardware has since measured the call itself (dev bench board, 2026-09-17, 21 chunks): 6.32s
+# idle, 11.58s with three concurrent GET /status workers - see BACKLOG.md item 24. That is BELOW the
+# twin's own 8.151s for the same device, so the twin is not the optimistic end of this comparison.
+# It also settles a recommendation made from that session, which was to keep a flat 20.0 here: the
+# concern behind it (the budget must clear a call that really can take 11.6s) is already satisfied,
+# because the value below is above the server's own cap and the server aborts anything slower at
+# 15.0s - a legitimate reset cannot reach 17s in the first place. The bench tier keeps a larger
+# value for a reason the twin does not share: real WiFi latency on the abort's own close.
 _SERVER_OUTER_CAP_S = 15.0  # mirrors asy_webserver_service.py's own outer_cap_s default - keep in sync
-_RESET_ERRORS_TIMEOUT_S = _SERVER_OUTER_CAP_S + 2.0
+_RESET_ERRORS_TIMEOUT_S = _SERVER_OUTER_CAP_S + 2.0  # loopback: no WiFi close latency to absorb
 
 # Run 11 (soak) - moved host-side from digital_twin/run_generic_integration.py's own now-retired
 # _soak() (SPECIFICATION.md's "Driver/DUT process separation" Part, 2026-09-14): this suite now

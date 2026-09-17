@@ -597,7 +597,17 @@ to actually be bindable, same as run 7 — `scripts/test.sh` now grants the buil
 `CAP_NET_BIND_SERVICE` unconditionally (mirroring `scripts/run_digital_twin_ci.sh`'s own identical
 grant, see that script's own comment for the full mechanism/rationale), not just
 `run_digital_twin_ci.sh`, since this test now runs as part of the plain unit-tests suite too, not
-only the separate digital-twin-e2e job. Works
+only the separate digital-twin-e2e job.
+
+> **Two different faults produce the identical message** `"real hotspot activation never started the
+> real DNSServer task"`, and telling them apart costs one command. Running that file directly with
+> the interpreter instead of through `scripts/test.sh` skips the `setcap` grant, so `DNSServer`'s
+> `bind()` to port 53 fails and the task never starts — check `getcap` on the binary before drawing
+> any conclusion from a standalone run. The other cause is plain CPU starvation exhausting the
+> assertion's own budget (BACKLOG.md item 28), which needs no missing capability at all. Neither is a
+> bug in the code under test.
+
+Works
 around three confirmed MicroPython-Unix-port-only `socket` quirks that otherwise make a real UDP
 round trip (DNS, NTP) impossible under this harness, entirely from twin-side code:
 

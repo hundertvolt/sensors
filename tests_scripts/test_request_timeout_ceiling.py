@@ -39,19 +39,13 @@ def _default_for_parameter(source_path: Path, param: str) -> float:
     return found.pop()
 
 
-def _keyword_in_call(source_path: Path, func_name: str, keyword: str) -> float:
-    """The literal value passed as `keyword=` by a call inside `func_name`."""
+def _module_constant(source_path: Path, name: str) -> float:
+    """A module-level numeric constant's literal value."""
     tree = ast.parse(source_path.read_text())
-    for node in ast.walk(tree):
-        if not (isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and node.name == func_name):
-            continue
-        for call in ast.walk(node):
-            if not isinstance(call, ast.Call):
-                continue
-            for kw in call.keywords:
-                if kw.arg == keyword and isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, int | float):
-                    return float(kw.value.value)
-    raise AssertionError(f"no literal {keyword}= found in {func_name}() in {source_path}")
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, int | float) and any(isinstance(t, ast.Name) and t.id == name for t in node.targets):
+            return float(node.value.value)
+    raise AssertionError(f"no module-level numeric constant {name!r} in {source_path}")
 
 
 @pytest.fixture(scope="session")
@@ -85,6 +79,13 @@ def test_the_ci_suites_reset_errors_timeout_can_actually_fire_as_a_server_abort(
 def test_the_bench_tiers_reset_errors_timeout_sits_above_the_same_ceiling(repo_root: Path, outer_cap_s: float) -> None:
     # tests_hardware/ hardcodes its own value rather than deriving it (it has no import path to
     # src/), so it is the copy most likely to drift. Below the cap, a slow-but-legitimate reset on
-    # real hardware reads as a client timeout and gets misdiagnosed as a network fault.
-    reset_timeout = _keyword_in_call(repo_root / "tests_hardware" / "error_log_helpers.py", "reset_all_error_logs", "timeout_s")
+    # real hardware reads as a client timeout and gets misdiagnosed as a network fault - measured at
+    # 6.32s idle and 11.58s under concurrent readers on the dev bench board, 2026-09-17. Only the
+    # lower bound is asserted: unlike the twin's loopback copy, this one deliberately carries extra
+    # slack for real WiFi latency on the server abort's own close.
+    helpers = repo_root / "tests_hardware" / "error_log_helpers.py"
+    reset_timeout = _module_constant(helpers, "_RESET_ERRORS_TIMEOUT_S")
     assert reset_timeout > outer_cap_s, f"tests_hardware/error_log_helpers.py's reset timeout ({reset_timeout}s) must sit above the server's own {outer_cap_s}s cap"
+    # It must also actually be the value the helper passes - a named constant that no call site uses
+    # would satisfy the bound above while every real request still ran on a stale literal.
+    assert "timeout_s=_RESET_ERRORS_TIMEOUT_S" in helpers.read_text(), "reset_all_error_logs() must pass _RESET_ERRORS_TIMEOUT_S, not a literal of its own"
