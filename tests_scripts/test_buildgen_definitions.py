@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from _devices import DEVICE_NAMES
 
 from buildgen.definitions import generate_definitions
 from buildgen.driver_registry import DriverInfo
@@ -15,7 +16,6 @@ from buildgen.model import DeviceModel, InstanceSpec
 from buildgen.validate import build_model
 from buildgen.version import WEBSITE_VERSION
 
-DEVICE_NAMES = ["dev", "wozi", "arzi", "klkizi", "grkizi", "schlafzi"]
 BMP3XX_DEVICES = {"dev", "wozi"}
 ISL29125_DEVICES = {"dev"}
 

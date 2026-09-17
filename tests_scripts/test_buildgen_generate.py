@@ -12,13 +12,12 @@ from datetime import datetime
 from pathlib import Path
 
 import pytest
+from _devices import DEVICE_NAMES
 from _toml_fixtures import base_doc, write_doc
 
 from buildgen.errors import BuildError
 from buildgen.generate import generate_device
 from buildgen.version import FIRMWARE_VERSION, WEBSITE_VERSION
-
-DEVICE_NAMES = ["dev", "wozi", "arzi", "klkizi", "grkizi", "schlafzi"]
 
 
 @pytest.fixture

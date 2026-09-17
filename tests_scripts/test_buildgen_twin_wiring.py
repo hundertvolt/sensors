@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from _devices import DEVICE_NAMES
 
 from buildgen import twin_wiring
 from buildgen.model import DeviceModel, InstanceSpec
@@ -69,14 +70,14 @@ def test_configure_i2c_wiring_loads_the_real_generated_plan(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("device", ["dev", "wozi", "arzi", "klkizi", "grkizi", "schlafzi"])
+@pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_generated_plan_is_json_round_trippable(repo_root: Path, src_dir: Path, device: str) -> None:
     model = build_model(repo_root / "devices" / f"{device}.toml", src_dir)
     plan = compute_twin_wiring(model)
     assert json.loads(json.dumps(plan)) == plan
 
 
-@pytest.mark.parametrize("device", ["dev", "wozi", "arzi", "klkizi", "grkizi", "schlafzi"])
+@pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_every_real_device_wires_fram_on_its_own_declared_spi_bus(repo_root: Path, src_dir: Path, device: str) -> None:
     model = build_model(repo_root / "devices" / f"{device}.toml", src_dir)
     plan = compute_twin_wiring(model)

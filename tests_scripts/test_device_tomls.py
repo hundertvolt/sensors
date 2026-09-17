@@ -3,17 +3,17 @@ modules only in [[instance]]; wifi/ntp/system are mandatory infra, tuned via [de
 Hand-implements the collision checks until Session 3's generator/validator exists."""
 
 import copy
+import re
 from pathlib import Path
 from typing import Any
 
 import pytest
 import tomllib
+from _devices import DEVICE_NAMES
 
 # A parsed TOML table (tomllib.load()'s own return shape, and every [[instance]]/[bus.*]/[device]
 # sub-table sliced out of it) - str keys, arbitrarily nested str/int/float/bool/list/dict values.
 _TomlDoc = dict[str, Any]
-
-DEVICE_NAMES = ["dev", "wozi", "arzi", "klkizi", "grkizi", "schlafzi"]
 
 # Optional-module driver kinds every device declares, plus scd30/sgp40 (every device has both).
 # bmp3xx is present only on wozi/dev. wifi/ntp/system are mandatory infra, never [[instance]].
@@ -244,15 +244,43 @@ def check_device_infra_fields_present_and_valid(doc: _TomlDoc, label: str) -> No
 # --- shape/parse tests, run against the 6 real files --------------------------------------------
 
 
-def test_all_six_device_files_exist(devices_dir: Path) -> None:
-    # zz_test_* excluded deliberately: test_build_website_sh.py legitimately creates one in the live
-    # tree for the length of one test (it cannot be handed a tmp_path tree), so comparing against the
-    # raw glob would make this test race that one the day this suite runs in parallel. A LEAKED one
-    # is caught instead at session start, before anything can have created it - conftest.py's own
-    # _reclaim_leaked_device_fixtures().
-    found = {p.stem for p in devices_dir.glob("*.toml") if not p.stem.startswith("zz_test_")}
-    assert found == set(DEVICE_NAMES), f"devices/ should hold exactly the 6 real device TOML files, found {found}"
+def test_every_device_is_covered_by_the_micropython_tiers_per_device_files(repo_root: Path) -> None:
+    """The MicroPython tier cannot discover devices the way DEVICE_NAMES does, so it is checked
+    against them instead: tests/ runs one process per test FILE, and no import-time glob conjures
+    a file. Replaces an older devices/-holds-exactly-DEVICE_NAMES check, tautological since."""
+    # Each scenario library's own `_DEVICES` tuple stays hand-written too, and deliberately: its
+    # ORDER assigns the twin's TCP port bases (_PORT_BASE_BY_DEVICE). What must not stay silent is
+    # a device added to devices/ while these are not - it would ship with none of those suites
+    # covering it, and every one of them would still pass.
+    expected = set(DEVICE_NAMES)
+    problems = []
+    for family in ("test_sensortask", "test_digital_twin_construction", "test_digital_twin_webserver_concurrency"):
+        present = {p.stem[len(family) + 1 :] for p in (repo_root / "tests").glob(f"{family}_*.py")}
+        if present != expected:
+            problems.append(f"tests/{family}_<device>.py covers {sorted(present)}, but devices/ holds {sorted(expected)}")
+    for scenarios in ("_sensortask_scenarios.py", "_digital_twin_construction_scenarios.py", "_webserver_concurrency_scenarios.py"):
+        text = (repo_root / "tests" / scenarios).read_text()
+        match = re.search(r"^_DEVICES = \(([^)]*)\)", text, re.MULTILINE)
+        if match is None:
+            problems.append(f"tests/{scenarios} no longer declares a _DEVICES tuple - update this check with it")
+            continue
+        listed = {name.strip().strip('"') for name in match.group(1).split(",") if name.strip()}
+        if listed != expected:
+            problems.append(f"tests/{scenarios}'s _DEVICES is {sorted(listed)}, but devices/ holds {sorted(expected)}")
+    assert not problems, "the MicroPython tier does not cover every real device:\n  " + "\n  ".join(problems)
 
+def test_every_device_is_in_the_ci_workflow_matrices(repo_root: Path) -> None:
+    """A GitHub Actions matrix is a literal - no expression can glob devices/ at parse time, so the
+    two lists stay hand-written and are checked here instead. Without this a seventh device would
+    generate, build and pass locally while CI silently kept exercising the old six."""
+    # Regex rather than a YAML parse: pyyaml is not a dependency of this repo, and the matrix line
+    # is a fixed one-line flow sequence. A reshaped matrix fails the count assert below, loudly.
+    text = (repo_root / ".github" / "workflows" / "ci.yml").read_text()
+    matrices = re.findall(r"^\s*device: \[([^\]]*)\]", text, re.MULTILINE)
+    assert len(matrices) == 2, f"expected exactly 2 device matrices in ci.yml (digital-twin-e2e, firmware-build-verify), found {len(matrices)} - update this check with the workflow"
+    for matrix in matrices:
+        listed = {name.strip() for name in matrix.split(",") if name.strip()}
+        assert listed == set(DEVICE_NAMES), f"a ci.yml device matrix is {sorted(listed)}, but devices/ holds {sorted(DEVICE_NAMES)}"
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_parses_as_valid_toml(devices_dir: Path, device: str) -> None:
