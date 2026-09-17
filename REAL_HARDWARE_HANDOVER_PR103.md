@@ -49,11 +49,17 @@ reporting the logs as real evidence; `tests_hardware/README.md` has the full mec
 product's own 15s ceiling.** The server aborts any request at `outer_cap_s = 15.0`
 (`src/asy_webserver_service.py`), and the real web UI gives up at the same 15s
 (`js/poll-manager.js`'s `DEFAULT_TIMEOUT_MS`). So a device whose reset sweep approaches 15s is
-broken for its own operators, not merely slow in CI. The call already resets 10+ FRAM-backed sources
-sequentially on `dev` and grows with every WP, and **no number for it has ever been taken on real
-hardware** — the suite's client timeout is a backstop, not a budget, and nothing asserts elapsed
-time (BACKLOG.md item 24). Measure, on `dev`'s own real entry point/config (not `wozi`'s hardcoded
-pins on the `dev` board — CLAUDE.md's WoZi/dev policy, that combination "tests nothing at all"):
+broken for its own operators, not merely slow in CI. The suite's client timeout is a backstop, not a
+budget, and nothing asserts elapsed time (BACKLOG.md item 24).
+
+**There is now a twin baseline to compare against** (measured 2026-09-17, 5 reps, idle host,
+loopback, shipped `gc.threshold(32768)`): `dev` **8.151s** across its 21 registered error sources,
+`wozi` **5.592s** across 17 — i.e. `dev` is already at 54% of the ceiling before any real wire time
+exists at all, since the twin's FRAM chip answers in memory. **The one number nobody has is how much
+real hardware adds on top of that floor**, and that is what decides whether BACKLOG item 24 is a
+closed question or a design task. Measure, on `dev`'s own real entry point/config (not `wozi`'s
+hardcoded pins on the `dev` board — CLAUDE.md's WoZi/dev policy, that combination "tests nothing at
+all"):
 
 - End-to-end HTTP round-trip time for a real `PUT /status {"ResetErrors": true}` once the board has
   been running long enough to have accumulated at least one real entry in several of the FRAM-backed
@@ -64,12 +70,15 @@ pins on the `dev` board — CLAUDE.md's WoZi/dev policy, that combination "tests
   afterward — not just that the HTTP call itself returned in time.
 - **Before this call**, per CLAUDE.md's standing rule: read `GET /status`'s FRAM-backed error logs
   first and record what's there — this call is destructive/irreversible for that evidence.
-- Report the number against the 15s ceiling, not just as a duration: comfortably under (say < 5s)
-  closes BACKLOG item 24; anything past roughly half of it makes the sequential-reset design a real
-  item to fix at the source — batched or concurrent reset, or one shared chunk — rather than
-  something to absorb with a larger timeout anywhere. Also worth having: the same number on one
-  non-`dev` device, since `dev`'s two `uart_link` instances make it the worst case and a second
-  point says how much of the cost is per-source.
+- Report it against the 15s ceiling and against the 8.151s twin floor, not just as a duration. The
+  twin already puts `dev` past half the ceiling, so "is it comfortably clear?" is settled — **no**.
+  What the real number decides is narrower: if hardware adds only a little (say under ~10s total),
+  the sequential reset is merely tight and item 24 is about adding an elapsed-time assertion; if it
+  adds a lot (near or past 15s), the design needs fixing at the source — batched or concurrent
+  reset, or one shared chunk — and never by raising a timeout, since the web UI gives up at 15s too.
+- The per-source marginal cost is already known from the twin (~0.6s, from the 4-source `dev`/`wozi`
+  delta), so a second device is **not** needed for that. It is still worth one `wozi`-equivalent
+  reading if it is cheap, purely to confirm real hardware scales the same way the twin does.
 
 ### 2. WIFI's FRAM-backed error log across a real abrupt restart
 

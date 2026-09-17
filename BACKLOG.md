@@ -455,8 +455,25 @@ constraints.
     WiFi. **Where to fix**: an explicit elapsed-time budget in the suite rather than a bare timeout,
     and — if the real number is anywhere near the ceiling — a design-level fix at the source (batched
     or concurrent reset, or one shared chunk) rather than a larger client timeout, per CLAUDE.md's
-    standing root-cause-don't-raise-the-limit rule. Needs the real per-device wall-clock number
-    first; requested in `REAL_HARDWARE_HANDOVER_PR103.md`.
+    standing root-cause-don't-raise-the-limit rule.
+    **Measured on the digital twin, 2026-09-17** (5 repetitions per point, idle host, loopback;
+    `/status`'s own `errcount` key count for the source count):
+
+    | device | error sources | `gc.threshold(32768)`, as shipped | `gc.threshold(-1)` |
+    | --- | --- | --- | --- |
+    | `dev` | 21 | **8.151s** (7.901-8.259) | 7.396s (7.333-7.728) |
+    | `wozi` | 17 | **5.592s** (5.534-5.746) | 5.207s (5.116-5.525) |
+
+    So `dev` already sits at **54% of the product's own 15.0s ceiling**, and this is a *floor*: the
+    twin's FRAM chip answers SPI opcodes in memory with zero wire time, so real hardware pays real
+    clocking and real FM25xx write latency on top of it. Two further facts fall out. The cost is
+    **not** `dev`-only — `wozi` at 5.59s is over `_http()`'s old 5.0s default too, so the comment
+    claiming `dev` was "the one device" was wrong (corrected). And the marginal cost of one more
+    FRAM-backed source is **~0.6s** (the 4-source `dev`/`wozi` delta, consistent at both GC
+    policies), which leaves roughly 10 more sources of headroom before `dev` reaches the cap —
+    WP1/WP2/WP3 together added about that many. The shipped threshold is the slower of the two
+    policies, so the headline number is the one that ships. Still wanted: the real-hardware number
+    to size the gap between floor and reality (requested in `REAL_HARDWARE_HANDOVER_PR103.md`).
 
 25. **SCD30/BMP3XX error-log persistence is never checked against a healthy FRAM chip.** Both are
     FRAM-backed (`fram=fram` in every generated `sensortask_<device>.py`), so they should follow the
