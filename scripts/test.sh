@@ -277,11 +277,22 @@ max_attempts=3
 # file - tests/_tmp_scratch.py's own docstring; the per-device split above gives each of its 12 new
 # files its own key for exactly this reason) and real socket ports (every file that binds one
 # already claims its own fixed, disjoint base range by convention - see e.g.
-# tests/_webserver_concurrency_scenarios.py's own port-range comment). Defaults to the runner's own
-# core count so CI gets real parallelism without a hardcoded number that's wrong on a different
-# runner size; override downward (e.g. TEST_PARALLELISM=1 to fully recover the old strictly-
-# sequential behavior) if a future file is ever found to violate one of those two assumptions.
-max_parallel="${TEST_PARALLELISM:-$(nproc 2>/dev/null || echo 4)}"
+# tests/_webserver_concurrency_scenarios.py's own port-range comment).
+#
+# Defaults to 4x the runner's own core count, not 1x: measured directly on a 4-core sandbox
+# (matching a GitHub-hosted ubuntu-latest runner's core count), total `user` CPU time across the
+# whole suite stayed flat (~4m21s-4m27s) at TEST_PARALLELISM 4/8/16 while wall-clock dropped
+# 8m27s -> 4m28s -> 3m45s - direct confirmation the suite is genuinely sleep-bound (real SPI
+# CS-settle sleeping in asy_spi_driver.py dominates each build's cost, see the per-file-timeout
+# comment above), not CPU-bound, so oversubscribing well past the physical core count is close to
+# "free" concurrency here. At 16, the bottleneck shifts entirely to the backgrounded tests_scripts/
+# job's own single-process pytest runtime (measured: 224s, matching the 3m44.855s total almost
+# exactly) - going further would need tests_scripts/ itself parallelized (e.g. pytest-xdist) to see
+# any more benefit, not attempted. Override downward (e.g. TEST_PARALLELISM=1 to fully recover the
+# old strictly-sequential behavior, or a smaller multiple) if a future file is ever found to violate
+# one of the two collision-safety assumptions above, or if a given runner's real memory/CPU-quota
+# limits make 4x too aggressive.
+max_parallel="${TEST_PARALLELISM:-$(( $(nproc 2>/dev/null || echo 4) * 4 ))}"
 
 # Runs one test_*.py file's own timeout+retry loop to completion and writes PASS/FAIL to
 # status_file - never returns a nonzero exit status itself (failure is communicated through the
