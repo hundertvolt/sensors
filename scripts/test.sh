@@ -97,12 +97,26 @@ fi
 # max_parallel/TEST_PARALLELISM below (it backgrounds itself the same way, into the same shell), not
 # an extra unbounded process on top of that budget - same "everything here is a fully isolated OS
 # process" reasoning the job-pool comment below already gives, just applied one job earlier.
+#
+# timeout-wrapped like every test file in the loop below, for the same standing "hanging tests are
+# never allowed" reason (CLAUDE.md) - it was the one job in this pool without one, which mattered
+# more once it moved here: a hung pytest holds the final `wait` open indefinitely, and nothing else
+# in this script would ever time it out. No retry, unlike the per-file loop: that retry exists for
+# transient runner contention on a single file's own budget, where a whole-suite pytest timeout is
+# a real failure worth reporting as one. 1200s is ~5x its measured ~248s, so it only ever fires on
+# a genuine hang, never on ordinary slowness. CI's own timeout-minutes stays the outer backstop,
+# not the defense (see .github/workflows/ci.yml's own comment on that distinction).
 echo "== Running tests_scripts/ (CPython-side build-tooling tests)"
 tests_scripts_status_file="$(mktemp)"
+tests_scripts_timeout_s="${TESTS_SCRIPTS_TIMEOUT_S:-1200}"
 (
-    if uv run pytest tests_scripts -q; then
+    if timeout --kill-after=10 "$tests_scripts_timeout_s" uv run pytest tests_scripts -q; then
         echo "PASS" >"$tests_scripts_status_file"
     else
+        ec=$?
+        if [ "$ec" -eq 124 ]; then
+            echo "== tests_scripts/ exceeded ${tests_scripts_timeout_s}s - treating as a real failure instead of hanging the job" >&2
+        fi
         echo "FAIL" >"$tests_scripts_status_file"
     fi
 ) &
