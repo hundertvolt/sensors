@@ -8,14 +8,20 @@ run against real hardware — see CLAUDE.md's standing gate ("A session needs th
 go-ahead, given directly in that session's own conversation, before running anything against real
 hardware"). Nothing in this file authorizes skipping that gate.
 
-## Context: what this branch actually changed
+## Context: why these measurements are being asked for
 
-This branch fixes two `digital-twin-e2e` staleness bugs surfaced by WP1's FRAM wiring, then a real
-(not flaky) CI timeout on `dev`'s `PUT /status {"ResetErrors": true}`: WP1/WP2/WP3 grew `dev`'s
-FRAM-backed error-log subset to 10+ entries (every `CFGMGR_<name>` logger, WIFI/NTP/WEBSERVER/
-SYSTEM, SGP40/BMP3XX, plus `dev`'s own two `uart_link` instances `UART_init`/`UART_resp` that no
-other device carries), and `_put_status()` resets every one of them sequentially, each paying a
-real FRAM write. Fixed by raising that one call's timeout in the CI suite
+The code these requests are about now lives on the **base branch**
+(`claude/automated-build-chain-nuzumw`), which this branch carries in full — its two commits were
+cherry-picked there (`cd459bf`, `90aece7`), so this branch's own remaining diff is just this file.
+Read the code on whichever branch you are checked out on; it is identical either way.
+
+What that code does: it fixes two `digital-twin-e2e` staleness bugs surfaced by WP1's FRAM wiring,
+then a real (not flaky) CI timeout on `dev`'s `PUT /status {"ResetErrors": true}`. WP1/WP2/WP3 grew
+`dev`'s FRAM-backed error-log subset to 10+ entries (every `CFGMGR_<name>` logger, WIFI/NTP/
+WEBSERVER/SYSTEM, SGP40/BMP3XX, plus `dev`'s own two `uart_link` instances `UART_init`/`UART_resp`
+that no other device carries — `devices/dev.toml`'s two `driver = "uart_link"` blocks, each with its
+own `fram_target = "fram"`), and `_put_status()` resets every one of them sequentially, each paying
+a real FRAM write. Fixed by raising that one call's timeout in the CI suite
 (`scripts/_digital_twin_ci_suite.py`'s `_RESET_ERRORS_TIMEOUT_S = 20.0`), not by changing any
 runtime behavior. Separately, this branch merged in the base branch's test-economy work
 (`TEST_PARALLELISM`, heap size, per-device test splitting) — that part is host/CI-sandbox-only and
@@ -26,6 +32,15 @@ FRAM chip (`digital_twin/_fram_chip.py`, zero real wire time) or reasoned about 
 it has a real number yet.
 
 ## What to measure — in priority order
+
+**Run these before any `tests_hardware/flash/` or `tests_hardware/bench/` isolated-driver run on the
+same board.** All three requests below treat FRAM-backed error logs as evidence, and CLAUDE.md's
+2026-09-11 caveat applies directly: an isolated-driver device script builds its own
+`AsyFramManager` over the same chip, and the allocator is deterministic, so its first chunk *is*
+production's first chunk — such a run overwrites the real logs, and one leaving a well-formed chunk
+behind fabricates a plausible-looking entry that reads as genuine. If a flash/bench-tier suite has
+already run against this board since its last normal boot, say so in the findings rather than
+reporting the logs as real evidence; `tests_hardware/README.md` has the full mechanism.
 
 ### 1. Real wall-clock time for `PUT /status {"ResetErrors": true}` on `dev`
 
