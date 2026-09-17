@@ -78,3 +78,19 @@ def test_the_dispatch_only_fields_are_not_treated_as_persistence_writes(repo_roo
     # stay selected by default. test_memory_stress_bench.py is exactly that case.
     gated = _collect(repo_root, target=_BENCH)
     assert "test_real_hardware_survives_max_speed_hammer_load_without_memoryerror_or_reboot" in gated, "a SGPResetVOC-only test must not be gated - it persists nothing"
+
+
+_FLASH = "tests_hardware/flash"
+
+
+def test_the_flash_tier_gates_its_config_writing_reboot_tests_too(repo_root: Path) -> None:
+    # The counted assertions above target ONE file, so they cannot see a marker placed anywhere else
+    # in the tier. These two write real config through ConfigManager.write_config() from their own
+    # device scripts (reboot_persist_write.py, system_debug_level_raise_for_boot_log_check.py) - a
+    # flash cycle each, and nothing to do with SCD30, which is exactly the class this gate grew to
+    # cover. Named rather than counted: a count breaks on every unrelated test added to the tier.
+    gated = _collect(repo_root, target=_FLASH)
+    ungated = _collect(repo_root, "--allow-persistence-writes", target=_FLASH)
+    for name in ("test_config_value_survives_a_genuine_hard_reset", "test_boot_import_mechanism_actually_boots_the_real_system"):
+        assert name not in gated, f"{name} writes real config to flash and must be deselected without --allow-persistence-writes"
+        assert name in ungated, f"{name} must run once --allow-persistence-writes is passed"

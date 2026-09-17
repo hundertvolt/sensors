@@ -94,10 +94,9 @@ def pytest_configure(config: pytest.Config) -> None:
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
-    """Central deselection point for every real limited-endurance persistence write - AND-gates
-    @pytest.mark.scd30_extra_write on top of @pytest.mark.persistence_write, so
-    --allow-persistence-writes alone decides whether any such write happens at all;
-    --allow-scd30-extra-write only narrows further, and only for SCD30's own second write."""
+    """Central deselection point for every real limited-endurance persistence write. AND-gates
+    scd30_extra_write on top of persistence_write: the global flag alone decides whether any such
+    write happens, and --allow-scd30-extra-write only narrows further, for SCD30's second write."""
     allow_writes = config.getoption("--allow-persistence-writes")
     allow_extra_write = config.getoption("--allow-scd30-extra-write")
     kept: list[pytest.Item] = []

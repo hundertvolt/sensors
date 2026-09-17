@@ -3,6 +3,7 @@ hazard is closed by ordering, and devices/zz_test_*.toml is a reserved live-tree
 Both are ordering/naming contracts, so they are asserted against the script's own source."""
 
 import re
+import subprocess
 from pathlib import Path
 
 _RESERVED_FIXTURE_PREFIX = "zz_test_"
@@ -70,3 +71,63 @@ def test_a_leaked_fixture_is_reclaimed_at_session_start_too(repo_root: Path) -> 
     assert "_reclaim_leaked_device_fixtures" in conftest, "conftest.py must reclaim leaked live-tree device fixtures at session start"
     assert 'glob("zz_test_*.toml")' in conftest, "the session-start reclamation must target the reserved namespace"
     assert "autouse=True" in conftest, "the reclamation fixture must be autouse - nothing requests it by name"
+
+
+# ---------------------------------------------------------------------------
+# TEST_PARALLELISM autodetection. Executed for real against stub interpreters rather than asserted
+# structurally: the whole point of the probe is what it DOES on a slow host, and the bench Pi4 that
+# motivated it (BACKLOG.md item 28) is not reachable from here.
+# ---------------------------------------------------------------------------
+
+
+def _run_detector(repo_root: Path, tmp_path: Path, probe_sleep_s: float) -> tuple[int, int, int, int]:
+    """Runs scripts/test.sh's own _detect_parallelism() against a stub interpreter of chosen speed."""
+    body = re.search(r"^_detect_parallelism\(\) \{.*?^\}", _test_sh_text(repo_root), re.DOTALL | re.MULTILINE)
+    assert body is not None, "scripts/test.sh no longer defines _detect_parallelism() - update this test with it"
+    stub = tmp_path / "stub_interpreter"
+    stub.write_text(f"#!/bin/sh\nsleep {probe_sleep_s}\n")
+    stub.chmod(0o755)
+    script = tmp_path / "probe.sh"
+    script.write_text(f'#!/usr/bin/env bash\nset -uo pipefail\nmicropython_bin="{stub}"\n{body.group(0)}\n_detect_parallelism\n')
+    out = subprocess.run(["/bin/bash", str(script)], capture_output=True, text=True, check=True).stdout.split()
+    jobs, cores, multiplier, probe_ms = (int(v) for v in out)
+    return jobs, cores, multiplier, probe_ms
+
+
+def test_a_fast_host_keeps_the_original_four_times_multiplier(repo_root: Path, tmp_path: Path) -> None:
+    jobs, cores, multiplier, probe_ms = _run_detector(repo_root, tmp_path, 0.0)
+    assert multiplier == 4, f"a ~0ms probe must stay on the pre-autodetection 4x default (probe {probe_ms}ms)"
+    assert jobs == cores * 4
+
+
+def test_a_bench_pi4_class_host_drops_to_two_times(repo_root: Path, tmp_path: Path) -> None:
+    # ~700ms is the class the real Pi4 lands in: 4 cores, but cores slow enough that 16 concurrent
+    # Unix-port processes starve a twin test's real-time budget.
+    jobs, cores, multiplier, _ = _run_detector(repo_root, tmp_path, 0.7)
+    assert multiplier == 2
+    assert jobs == cores * 2
+
+
+def test_a_genuinely_slow_host_drops_to_one_times(repo_root: Path, tmp_path: Path) -> None:
+    jobs, cores, multiplier, _ = _run_detector(repo_root, tmp_path, 1.0)
+    assert multiplier == 1
+    assert jobs == cores
+
+
+def test_a_broken_probe_falls_back_to_the_previous_behaviour_rather_than_going_slow(repo_root: Path, tmp_path: Path) -> None:
+    # A missing/unusable interpreter must not silently halve everyone's parallelism - the probe is an
+    # optimisation, and its own failure is never allowed to change the answer from what it was before.
+    body = re.search(r"^_detect_parallelism\(\) \{.*?^\}", _test_sh_text(repo_root), re.DOTALL | re.MULTILINE)
+    assert body is not None
+    script = tmp_path / "probe_broken.sh"
+    script.write_text(f'#!/usr/bin/env bash\nset -uo pipefail\nmicropython_bin="{tmp_path}/does_not_exist"\n{body.group(0)}\n_detect_parallelism\n')
+    out = subprocess.run(["/bin/bash", str(script)], capture_output=True, text=True, check=True).stdout.split()
+    assert int(out[2]) == 4, f"a broken probe must fall back to 4x, got {out}"
+
+
+def test_the_env_override_still_wins_over_autodetection(repo_root: Path) -> None:
+    # The documented escape hatch the bench Pi4 uses if the probe ever misjudges it.
+    text = _test_sh_text(repo_root)
+    override_at = text.find('if [ -n "${TEST_PARALLELISM:-}" ]; then')
+    assert override_at != -1, "scripts/test.sh must still honour a TEST_PARALLELISM override"
+    assert text.find("_detect_parallelism)", override_at) > override_at, "autodetection must sit in the else branch, never ahead of the override"

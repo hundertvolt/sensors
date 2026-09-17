@@ -433,7 +433,10 @@ _detect_parallelism() {
 for i in range(500000):
     x+=i' >/dev/null 2>&1 || true
     probe_ms=$(( ( $(date +%s%N 2>/dev/null || echo 0) - probe_start ) / 1000000 ))
-    if [ "$probe_ms" -le 0 ] || [ "$probe_ms" -le 250 ]; then
+    # A failed probe lands here too, and deliberately so: its probe_ms is <= 0, which picks the
+    # fast-host multiplier, i.e. exactly the behaviour this autodetection replaced. Never silently
+    # slower than before because the probe itself broke.
+    if [ "$probe_ms" -le 250 ]; then
         multiplier=4            # fast host (measured: ~120ms on this project's own x86 sandbox)
     elif [ "$probe_ms" -le 900 ]; then
         multiplier=2            # mid host - the bench Pi4's class; halves the oversubscription

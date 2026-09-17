@@ -986,28 +986,46 @@ Ninth pass's bug, just worth naming.
 Same honesty note as every real-hardware addition in this file: the new/changed files above are
 `ruff`/`mypy`-clean but unverified against real silicon this session.
 
-## SCD30 write-gating: one global flag plus an AND-gated extra flag
+## Persistence-write gating: one global flag plus an AND-gated extra flag
 
-**Standing design, project owner's own choice**: SCD30 real on-chip NVM writes are gated by two
-flags/markers, deliberately not one, in a strict hierarchy —
-- `--allow-persistence-writes`/`@pytest.mark.persistence_write` is the single **global** permission: without
-  it, no real SCD30 write test runs at all, including the routine per-session write
-  `scd30_continuous_measurement_triggered` makes for the whole flash-tier bus-hazard group (the 7
-  flash-tier tests that depend on it, directly or transitively).
+**Standing design, project owner's own choice** (broadened from SCD30-only to all persistence,
+2026-09-17): every real write to a **limited-endurance** store is gated by two flags/markers,
+deliberately not one, in a strict hierarchy —
+- `--allow-persistence-writes`/`@pytest.mark.persistence_write` is the single **global** permission:
+  without it, no test spending a real limited-endurance write runs at all. That covers the routine
+  per-session SCD30 write `scd30_continuous_measurement_triggered` makes for the flash-tier
+  bus-hazard group (7 tests, directly or transitively), the two flash-tier reboot tests that write
+  real config through `ConfigManager.write_config()`, and every bench-tier test issuing a
+  config-persisting PUT.
 - `--allow-scd30-extra-write`/`@pytest.mark.scd30_extra_write` is a **narrower** opt-in, carried
   ALONGSIDE `@pytest.mark.persistence_write` (never in place of it) on the one test that spends a second
   write beyond the routine one. It is AND-gated with the global flag in code, not just by
   convention — passing it alone, without `--allow-persistence-writes`, still deselects that test.
 
+**What counts as a limited-endurance store**: the SCD30's own on-chip NVM, and the RP2040's flash
+filesystem — which every accepted *config-persisting* PUT writes through `config_manager.py`'s own
+`json.dump()`, so a REST write is a flash cycle, not just a network round trip. A **dispatch-only**
+PUT is deliberately outside the gate, because it is never persisted at all: `SystemCmd`,
+`PauseTime`, `lightCmdLED`, `ResetErrors`, plus any schema field carrying `dispatch=true` in its own
+`@web` tag (`SGPResetVOC`, `ISLCalibrate` today — derive that set from the tags, never from this
+list going stale). FRAM is **not** in scope: its endurance is effectively unbounded at this
+project's write rates.
+
 This shape exists because a real, unbypassable rule and a real, opt-in-only rarity are two
-different things: SCD30's on-chip NVM has a finite write-wear budget, so it must be possible to run
-the full flash-tier bus-hazard suite (dozens of tests) without spending a single real SCD30 write —
+different things: both stores have a finite write-wear budget, so it must be possible to run the
+full flash- and bench-tier suites (dozens of tests) without spending a single real one —
 that's the global flag's job. Separately, one specific test spends a second write beyond the
 routine one and stays behind its own narrower opt-in, since running the routine group should never
 implicitly commit to that extra write too. Both flags are skipped/deselected by default, matching
 every other opt-in real-hardware gate in this file — a plain
 `scripts/run_flash_hardware_suite.sh`/`scripts/run_bench_hardware_suite.sh` invocation spends zero
-real SCD30 writes, cleanly.
+real persistence writes, cleanly.
+
+**Read the deselected count in the verdict.** Because the gate deselects at collection time rather
+than skipping per test, a gated run is invisible to every check in
+`scripts/_require_clean_hardware_run.sh` — so that script now names the count in its own OK line
+(23 of the bench tier's 71 tests, 9 of the flash tier's 51, as of this writing). "Clean" there means
+"everything that ran, passed", not "everything ran".
 
 **Mechanism:**
 
