@@ -605,6 +605,29 @@ constraints.
     drift changes shape *or* if it is fixed without deleting the exemption.
 
 
+32. **The bench tier's `ResetErrors` timeout was raised 10.0s → 30.0s with no elapsed-time budget
+    to replace what that bound was incidentally enforcing.** Recorded 2026-09-17 during a
+    self-audit of this branch; it is the one change on it that loosens rather than tightens.
+    The old `10.0` was genuinely miscalibrated — it sat *below* the product's own
+    `outer_cap_s = 15.0`, so a legitimate sweep (measured 6.32s idle, **11.58s under three
+    concurrent readers** on the dev bench) failed as a client timeout before the server could abort,
+    and the test could never observe the server's real behaviour at all. Raising it was correct.
+    **But the twin got a compensating `_RESET_ERRORS_BUDGET_S` (12.0s, asserted per sweep by
+    `_put_reset_errors_timed()`) and the bench tier did not.** `reset_all_error_logs()` passes the
+    timeout and asserts nothing about elapsed time, so a sweep that degraded to, say, 25s on real
+    hardware would now pass silently where the old bound would at least have gone red — for the
+    wrong reason, but red.
+    **Why no bench budget was set instead of recording this.** Sizing one needs the reader-count
+    curve `REAL_HARDWARE_HANDOVER_PR103.md` §2.1 asks for (0/1/2/3/4/6 readers). Two points do not
+    say whether it flattens: the twin's 12.0s is already below the 11.58s-at-3-readers measurement
+    plus any margin, so copying it across would flake the bench suite, and anything above ~15s
+    cannot fire before the server's own abort. Both halves of the owner's standing requirement for
+    this budget — "reliably won't fail the pipeline accidentally with a false positive" **and**
+    "will reliably fail if something really went wrong" — are unsatisfiable until that curve exists.
+    **Close this by** taking the curve, then adding the bench analogue of the twin's own budget
+    check to `tests_hardware/error_log_helpers.py`.
+
+
 ## Deferred / explicitly out-of-scope work
 - **Session 7's `pyproject.toml` `max-args` ratchet (21 → 22, for `WebserverService.__init__`'s new
   `build_info=` parameter) only got the noble leg of CLAUDE.md's required two-target clean-chroot
