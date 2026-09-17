@@ -95,14 +95,47 @@ class MpremoteResult:
     stderr: str
 
 
+_BOARD_BY_ID_GLOB = "usb-MicroPython_Board_in_FS_mode_*-if00"
+
+
+def resolve_board_device() -> str:
+    """The board's current serial node, preferring the stable by-id symlink over a ttyACM index.
+
+    `/dev/serial/by-id/` names the device by its USB serial number, so it survives the
+    re-enumeration a hard reset causes; the bare ttyACM index does not (observed moving
+    ttyACM0 -> ttyACM1 mid-suite). Falls back to the lowest present ttyACM node, then to
+    ttyACM0 so the error message stays the familiar one when no board is attached at all."""
+    by_id = sorted(Path("/dev/serial/by-id").glob(_BOARD_BY_ID_GLOB)) if Path("/dev/serial/by-id").is_dir() else []
+    if by_id:
+        return str(by_id[0])
+    acm = sorted(Path("/dev").glob("ttyACM*"))
+    return str(acm[0]) if acm else "/dev/ttyACM0"
+
+
 class Board:
     """Wraps `uv run mpremote connect <device> ...`, the one generic isolated-driver mechanism,
     so individual test files never shell out to mpremote themselves. Also where
     `machine.bootloader()` re-flash and hard-reset live, for tests_hardware/flash/test_toolchain_flash_boot.py."""
 
     def __init__(self, device: str | None = None, default_timeout_s: float = 60.0) -> None:
-        self.device = device or os.environ.get("MPREMOTE_DEVICE", "/dev/ttyACM0")
+        self._pinned_device = device or os.environ.get("MPREMOTE_DEVICE")
+        self.device = self._pinned_device or resolve_board_device()
         self.default_timeout_s = default_timeout_s
+
+    def _rebind_device_if_moved(self) -> bool:
+        """Re-resolves the serial node when the current one has vanished. Returns True if it moved.
+
+        A hard reset re-enumerates the CDC-ACM device, and the kernel does not guarantee the same
+        ttyACM index afterwards - observed moving ttyACM0 -> ttyACM1 mid-suite, which failed every
+        later serial-using test with mpremote's generic "may be in use by another program". An
+        explicitly pinned device (constructor arg or MPREMOTE_DEVICE) is never second-guessed."""
+        if self._pinned_device is not None or Path(self.device).exists():
+            return False
+        rebound = resolve_board_device()
+        if rebound == self.device:
+            return False
+        self.device = rebound
+        return True
 
     def _mpremote(self, *args: str, timeout_s: float | None = None, allow_recovery: bool = True) -> MpremoteResult:
         """Runs one `uv run mpremote connect <device> ...` call, retrying past known transient
@@ -135,6 +168,12 @@ class Board:
             # The 10s settle-wait grace window above is sometimes not enough - this bench's USB
             # device can wedge into indefinite raw-REPL-entry failure until unbound/rebound (see
             # tests_hardware/README.md). Escalate once, never more than once per call.
+            if self._rebind_device_if_moved():
+                # The node moved under us (re-enumeration after a reset) - retry on the new one
+                # before escalating to a USB unbind/rebind, which would not have helped.
+                cmd = ["uv", "run", "mpremote", "connect", self.device, *args]
+                grace_deadline = time.monotonic() + 10.0
+                continue
             if not usb_reset_attempted:
                 usb_reset_attempted = True
                 if _usb_reset_device(self.device):
@@ -175,14 +214,18 @@ class Board:
             raise HardwareTestFailureError(f"mpremote exec {expr!r} failed (exit {result.returncode}):\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}")
         return result.stdout
 
-    def run_isolated(self, script_path: str | Path, *, soft_reset_after: bool = True, timeout_s: float | None = None) -> str:
+    def run_isolated(self, script_path: str | Path, *, soft_reset_after: bool = True, timeout_s: float | None = None, allow_recovery: bool = True) -> str:
         """Isolated-driver mode: `mpremote run <script>` interrupts the system into raw REPL to
         run `script_path` against real frozen `src/` drivers, re-arming the watchdog first - never
-        leaves `main.py` running afterward (see tests_hardware/README.md)."""
+        leaves `main.py` running afterward (see tests_hardware/README.md).
+
+        `allow_recovery=False` for a script whose own disconnect is the EXPECTED outcome: the retry
+        path spends its full 10s grace window before reporting, which a caller timing how fast the
+        connection drops would otherwise measure instead of the drop itself."""
         args = ["exec", "import machine; machine.WDT(timeout=8000)", "run", str(script_path)]
         if soft_reset_after:
             args.append("soft-reset")
-        result = self._mpremote(*args, timeout_s=timeout_s)
+        result = self._mpremote(*args, timeout_s=timeout_s, allow_recovery=allow_recovery)
         if result.returncode != 0:
             # See exec()'s own comment: a device-side traceback lands on mpremote's stdout, not
             # stderr - both are included here for the same reason.

@@ -59,6 +59,17 @@ def joined_hotspot(board: Board, bench: BenchBridge, dut_ip: str, hotspot_ssid: 
     reachable again) in teardown - module-scoped since each join/leave costs a real ~15-30s WiFi
     association. Yields the DUT's gateway IP for every stage-3+ test to talk to."""
     # Stage 0 - precondition: force hotspot mode on demand rather than waiting for organic failure.
+    # Read the real SSID back first: this fixture is what destroys it, so this fixture is what owns
+    # restoring it (see the stage-7 teardown). Relying on stage 6's own credential push to put it
+    # back leaves the board permanently stranded in hotspot mode whenever stage 6 does not run or
+    # does not pass - a terminal state no reset clears, since the cleared SSID is persisted to
+    # flash. Observed for real on the bench (2026-09-17): a mid-suite failure before stage 6 left
+    # the DUT unreachable and needing a manual serial-side config repair.
+    original = http_client.fetch(dut_ip, 80, "GET", "/networking", timeout_s=10.0)
+    assert original.status_code == 200, f"GET /networking (to record the SSID before clearing it) failed: {original.status_code} {original.body!r}"
+    original_ssid = original.json().get("SSID") or ""
+    assert original_ssid, f"GET /networking returned no SSID to restore later - refusing to clear it: {original.json()!r}"
+
     res = http_client.fetch(dut_ip, 80, "PUT", "/networking", {"SSID": ""})
     assert res.status_code == 200 and res.json().get("result", {}).get("SSID") == "Valid", f"PUT /networking SSID='' failed: {res.status_code} {res.json() if res.status_code == 200 else res.body!r}"
 
@@ -77,7 +88,18 @@ def joined_hotspot(board: Board, bench: BenchBridge, dut_ip: str, hotspot_ssid: 
 
     yield gateway_ip
 
-    # Stage 7 - flip back.
+    # Stage 7 - flip back. Restore the SSID stage 0 cleared BEFORE leaving the hotspot: over the
+    # hotspot is the only link to the DUT that still exists at this point. Best-effort and never
+    # raising - stage 6 has usually already restored it, and a failure here must not mask whatever
+    # real failure is unwinding this fixture; stage 8 below is what still fails loudly if the DUT
+    # does not come back.
+    try:
+        restored = http_client.fetch(gateway_ip, 80, "PUT", "/networking", {"SSID": original_ssid}, timeout_s=15.0)
+        if restored.status_code != 200 or restored.json().get("result", {}).get("SSID") not in ("Valid", "Unchanged"):
+            print(f"RESULT NOTE: SSID restore over the hotspot was not accepted: {restored.status_code} {restored.body!r}")
+    except OSError as exc:
+        print(f"RESULT NOTE: SSID restore over the hotspot failed to reach the DUT: {exc!r}")
+
     bench.leave_dut_hotspot_and_restore_bridge()
     # Stage 8 - confirm the DUT is reachable again over the normal bridge network. Safety net, not
     # routine: a failed stage-6 STA reconnect at this point leads to _PHASE_DEACTIVATED, a terminal

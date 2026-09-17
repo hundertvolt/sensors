@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
-    parser.addoption("--device", default=None, help="Serial device path for the flash-tier board (default: $MPREMOTE_DEVICE or /dev/ttyACM0)")
+    parser.addoption("--device", default=None, help="Serial device path for the flash-tier board (default: $MPREMOTE_DEVICE, else the board's stable /dev/serial/by-id symlink - see harness.resolve_board_device())")
     parser.addoption(
         "--soak-tier",
         choices=sorted(SOAK_TIER_SECONDS),
