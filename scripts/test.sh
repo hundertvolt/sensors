@@ -176,43 +176,53 @@ failed=0
 # keep even though it turned out not to be what was causing the hang (see above); small,
 # immediate, line-buffered writes are still a reasonable default for CI log output.
 #
-# -X heapsize=32M (default 2097152 = 2MB) - tests/test_digital_twin_sensortask_integration.py's own
-# heaviest tests each build the whole real object graph (a fresh 8KB FramChip, ConfigManagers, ...)
-# one or more times per test, sharing one process/heap across every test function in the file (this
-# binary is invoked once per file, not once per test). Confirmed directly: with the 2MB default,
-# that file failed with a real MemoryError roughly 1 run in 3 depending on MicroPython's own
-# non-deterministic test-function run order (this file's own docstring already notes run order
-# differs from definition order); 8M cleared 5/5 consecutive runs at the time. Raised again, from 8M
-# to 32M, once WP1+WP2 (CLAUDE.md's implicit-FRAM-wiring rule, extended to WiFi/NTP/webserver and to
-# every SensorReaderConfig's own ConfigManager) made the former, monolithic tests/test_sensortask.py's
-# own per-device object graphs meaningfully heavier - it built all 6 real devices' full graphs
-# repeatedly across ~330 test functions IN ONE PROCESS, and each device now carries roughly 2.5x as
-# many FRAM-backed PrintLogHistoryStore instances as before (conn/ntp/sysfunct/webserver plus every
-# FRAM-wired module's own cfgmgr). Confirmed directly, not estimated: 8M/16M both still failed with
-# real MemoryErrors partway through that file (81/321 and 176/321 passed respectively - a roughly
-# linear relationship with heap size, consistent with a fixed, finite per-run garbage total rather
-# than an unbounded leak), 32M cleared multiple consecutive runs.
+# -X heapsize=16M (default 2097152 = 2MB) - history of this value, most recent first:
 #
-# Tried bringing this back down once tests/test_sensortask.py was split by device (six
+# WP1+WP2 (CLAUDE.md's implicit-FRAM-wiring rule) made the former, monolithic
+# tests/test_sensortask.py build all 6 real devices' full graphs repeatedly across ~330 test
+# functions IN ONE PROCESS, pushing this from 8M to 32M (8M/16M both still failed with real
+# MemoryErrors partway through that file at the time - 81/321 and 176/321 passed respectively).
+# Fixed at the root, not worked around: splitting that file by device (six
 # tests/test_sensortask_<device>.py files, 55 builds per process instead of 330 - see
-# tests/_sensortask_scenarios.py's own docstring): the single heaviest per-device file
-# (tests/test_sensortask_dev.py, dev's own larger 256KB FRAM chip fake plus its extra uart_link
-# instances) does pass cleanly in isolation at 8M, even 4M. But this flag is shared across every
-# test_*.py file in the suite, not just the split ones, and a full-suite run at 8M surfaced two real
-# regressions in OTHER, unrelated files that had never failed at 32M: tests/
-# test_digital_twin_sensortask_integration.py hit a genuine `MemoryError: ... allocating 262144
-# bytes` (dev's own 256KB FRAM chip fake, built inside a heavier test alongside other object
-# graphs), and tests/test_digital_twin_bus_hazard_concurrency.py's own real-timing-dependent
-# concurrent-bus-load scenario intermittently missed its window (plausibly more frequent GC passes
-# under real memory pressure shifting scheduling enough to matter - not confirmed further). Kept at
-# 32M rather than gambling on an intermediate value without re-verifying the WHOLE suite against
-# it: the split's real, measured win is wall-clock (this file's own TEST_PARALLELISM section below),
-# not a lower heap ceiling - lowering this shared flag safely would need either auditing every one
-# of the ~75 other files' own headroom or a per-file heap override mechanism, neither done here.
-# This is a Unix-port-only test-harness setting - unrelated to the real rp2040's own RAM budget
-# (SPECIFICATION.md Part F.1): real hardware only ever builds one device's own object graph once per
-# boot, never six devices' worth of graphs repeatedly in one process - and every test file still
-# runs under the same GC the real target uses either way.
+# tests/_sensortask_scenarios.py's own docstring) let its own heaviest per-device file
+# (tests/test_sensortask_dev.py) pass cleanly even at 4M in isolation.
+#
+# That alone didn't let this shared flag come down, though: a full-suite run at a lower value
+# surfaced two OTHER, unrelated files that had never failed at 32M. Both were root-caused, not
+# patched over with a gc.collect() call (forbidden as a stabilization tool in this codebase, and
+# confirmed directly this session not to even work for one of the two - see git history around
+# 2026-09-17 for the reverted attempt) or a per-file heap override (would only have hidden the
+# same symptom, not fixed it):
+#
+# - tests/test_digital_twin_sensortask_integration.py had the exact same "many real devices' full
+#   graphs in one process" shape the old test_sensortask.py did (its own "construction across
+#   every real device" section: 18 real, socket-backed build_system() calls sharing one process
+#   with this file's own ~11 wozi-only heavy tests). Fixed the same way: split that section out
+#   into tests/_digital_twin_construction_scenarios.py + six
+#   tests/test_digital_twin_construction_<device>.py files, cutting the worst case sharing one
+#   process from ~29 real builds down to this file's own ~11.
+#
+# - tests/test_digital_twin_bus_hazard_concurrency.py's own dev-variant concurrent-bus-load
+#   scenario is a genuinely different mechanism, confirmed by direct isolated bisection (no other
+#   process running, so not a contention artifact): it reproducibly misses its own fixed 9-second
+#   real-clock budget for real background sensor tasks to produce real data at 8M, in EVERY
+#   isolated run, with no external contention needed at all - and a gc.collect() call placed right
+#   before that budget starts had zero effect on the outcome (also confirmed directly, then
+#   reverted). This is not an accumulation problem a split can fix (this file is already
+#   deliberately wozi/dev-scoped, not parametrized across all 6 devices, specifically to avoid
+#   the opposite problem - see that file's own docstring) - it is this specific test genuinely
+#   needing more real-time margin against GC overhead at lower heap. Bisected cleanly in isolation:
+#   fails at 8M, passes at 16M and every value tried above it. Not chased further into changing
+#   this test's own real-time budget (run_seconds) - that changes what the test actually proves,
+#   not a test-harness knob, and wasn't this session's call to make unilaterally.
+#
+# 16M is therefore the real, validated floor across every file in the suite as of this session,
+# not a re-run of the same "guess and check the whole suite" approach that got 32M picked before
+# - confirmed by an actual full-suite scripts/test.sh run at this value. This is a Unix-port-only
+# test-harness setting - unrelated to the real rp2040's own RAM budget (SPECIFICATION.md Part
+# F.1): real hardware only ever builds one device's own object graph once per boot, never several
+# devices' worth of graphs repeatedly in one process - and every test file still runs under the
+# same GC the real target uses either way.
 per_file_timeout_s="${PER_FILE_TIMEOUT_S:-240}"
 # Raised from 180 to 240 alongside the WP1 webserver-startup-race fix above:
 # tests/test_digital_twin_webserver_concurrency.py's own real-socket concurrency scenarios were
@@ -287,7 +297,7 @@ run_test_file() {
         # multi-file log human-readable. `set -o pipefail` (top of file) makes the pipeline's own
         # exit status the real interpreter's (timeout's) - sed itself only ever exits 0/nonzero on
         # its own unrelated failure, never masking a real 124/1 from the command it's piping.
-        if MICROPYPATH="build/generated_src:src:tests:frozen_modules:.frozen" stdbuf -oL -eL timeout --kill-after=10 "$file_timeout_s" "$micropython_bin" -X heapsize=32M "${cmd[@]}" 2>&1 | sed -u "s/^/[$tag] /"; then
+        if MICROPYPATH="build/generated_src:src:tests:frozen_modules:.frozen" stdbuf -oL -eL timeout --kill-after=10 "$file_timeout_s" "$micropython_bin" -X heapsize=16M "${cmd[@]}" 2>&1 | sed -u "s/^/[$tag] /"; then
             ec=0
         else
             ec=$?
