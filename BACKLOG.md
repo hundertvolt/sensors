@@ -228,8 +228,10 @@ constraints.
    tier had fast coverage for the *combined concurrent GET+config-write* traffic shape the real
    bench hammer-load test (`tests_hardware/bench/test_memory_stress_bench.py`) exercises. Added
    `tests/test_asy_webserver_service.py`'s Section I.4 (unit tier) and
-   `tests/test_digital_twin_webserver_concurrency.py::test_realistic_mixed_polling_and_a_concurrent_real_config_write`
-   (twin tier, real assembled system, at `max_connections=4`). Not added to flash tier (no network
+   `tests/_webserver_concurrency_scenarios.py`'s own
+   `realistic_mixed_polling_and_a_concurrent_real_config_write` scenario (twin tier, real assembled
+   system, at `max_connections=4`, registered into all six
+   `tests/test_digital_twin_webserver_concurrency_<device>.py` files). Not added to flash tier (no network
    there, see `test_memory_stress.py`'s own header comment) or as a second bench test (already
    covered).
 6. ~~Should `asy_wifi_service.py` gain an independent WiFi reachability check?~~ — **closed

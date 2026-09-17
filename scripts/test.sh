@@ -140,8 +140,8 @@ scripts/build_website.sh wozi frozen_modules/frozen_website_wozi.py
 # No static src/sensortask_wozi.py/sensortask_dev.py exist any more (BUILD_CHAIN_PLAN.md's Session
 # 6 finish criterion) - every device's own sensortask_<device>.py is generated fresh here, via
 # buildgen, into build/generated_src/ (gitignored - see scripts/_generate_sensortask_modules.py's
-# own docstring for why NOT into src/ itself). tests/test_sensortask.py (dynamic __import__() per
-# device) and every tests/test_digital_twin_*.py file that statically imports a sensortask_<device>
+# own docstring for why NOT into src/ itself). tests/_sensortask_scenarios.py (dynamic __import__()
+# per device) and every tests/test_digital_twin_*.py file that statically imports a sensortask_<device>
 # module keep working unchanged: MICROPYPATH below puts this directory first, so `import
 # sensortask_wozi` resolves to the freshly generated module.
 echo "== Generating buildgen device modules into build/generated_src/"
@@ -242,15 +242,16 @@ failed=0
 # same GC the real target uses either way.
 per_file_timeout_s="${PER_FILE_TIMEOUT_S:-240}"
 # Raised from 180 to 240 alongside the WP1 webserver-startup-race fix above:
-# tests/test_digital_twin_webserver_concurrency.py's own real-socket concurrency scenarios were
-# already the single heaviest file in this suite (measured standalone: ~230s even before WP1, ~11s
-# of that actual CPU time - the rest is this file's own deliberate scenario-body sleeps simulating
-# realistic timeouts/flaky connections, not busy work), so it was already running close to the old
-# 180s ceiling before this change. WP1 making webserver.pr real-FRAM-backed needed its own
-# ~15-call-site wait bumped from 0.1s to a measured-safe 0.5s (see that file's own comment for why
-# a polling readiness check made things worse, not better, and was reverted) - a real ~35s addition
-# on top of an already-marginal baseline, not a large one, but 180s no longer has real margin.
-# That "240s clears this file with room to spare" claim has since gone stale, corrected below.
+# the real-socket concurrency scenarios now in tests/_webserver_concurrency_scenarios.py were, as
+# one then-monolithic file, already the single heaviest in this suite (measured standalone: ~230s
+# even before WP1, ~11s of that actual CPU time - the rest is those scenario bodies' own deliberate
+# sleeps simulating realistic timeouts/flaky connections, not busy work), so it was already running
+# close to the old 180s ceiling before this change. WP1 making webserver.pr real-FRAM-backed needed
+# its own ~15-call-site wait bumped from 0.1s to a measured-safe 0.5s (see that module's own comment
+# for why a polling readiness check made things worse, not better, and was reverted) - a real ~35s
+# addition on top of an already-marginal baseline, not a large one, but 180s no longer had real
+# margin. That "240s clears this file with room to spare" claim has since gone stale, corrected
+# below.
 #
 # Per-file overrides for files that grew past the 240s default outright - not a hang, and not fixed
 # by raising everyone's default (that would just make a genuine future hang 2-3x slower to detect
@@ -272,12 +273,16 @@ max_attempts=3
 # TEST_PARALLELISM: how many test_*.py files run at once. Each file is already a fully isolated
 # Unix-port OS process (its own heap, its own machine.py-fake global state) with no shared memory
 # with any other file's process, so running several concurrently changes wall-clock only, never
-# behavior - confirmed no cross-file collision risk from the two things that could actually break
-# under real concurrency: TmpScratch keys (every test_*.py file already uses a key unique to that
-# file - tests/_tmp_scratch.py's own docstring; the per-device split above gives each of its 12 new
-# files its own key for exactly this reason) and real socket ports (every file that binds one
-# already claims its own fixed, disjoint base range by convention - see e.g.
-# tests/_webserver_concurrency_scenarios.py's own port-range comment).
+# behavior - PROVIDED the two things that can actually break under real concurrency stay disjoint
+# across files, both re-audited by enumerating every file (2026-09-17, not spot-checked): TmpScratch
+# keys (all 29 in the suite confirmed pairwise distinct - tests/_tmp_scratch.py's own docstring; the
+# per-device split above gives each of its 12 new files its own key for exactly this reason) and
+# real socket ports (each file's own fixed base range, with headroom over what it actually
+# allocates - see e.g. tests/_webserver_concurrency_scenarios.py's own port-range comment). That
+# audit found one violation the first pass had missed - test_asy_wifi_service.py and
+# test_asy_dns_client.py both allocated from 54000, harmless while this loop was sequential, a real
+# race once it wasn't (silent, not EADDRINUSE: see that file's own comment); wifi_service moved to
+# 57000. A new test file that binds a socket claims an unused base, never a neighbour's.
 #
 # Defaults to 4x the runner's own core count, not 1x: measured directly on a 4-core sandbox
 # (matching a GitHub-hosted ubuntu-latest runner's core count), total `user` CPU time across the
@@ -293,6 +298,14 @@ max_attempts=3
 # one of the two collision-safety assumptions above, or if a given runner's real memory/CPU-quota
 # limits make 4x too aggressive.
 max_parallel="${TEST_PARALLELISM:-$(( $(nproc 2>/dev/null || echo 4) * 4 ))}"
+# Clamped to >= 1: the dispatch loop below blocks while the running-job count is >= max_parallel, so
+# a 0 or negative value (a plausible "turn parallelism off" guess - 1 is what actually does that)
+# makes that `wait -n || true` spin forever without ever dispatching a test. Confirmed directly, and
+# a hang is exactly what this script's own standing backstops exist to rule out (CLAUDE.md).
+if ! [ "$max_parallel" -ge 1 ] 2>/dev/null; then
+    echo "== TEST_PARALLELISM=${TEST_PARALLELISM:-} is not a positive integer - falling back to 1 (sequential)" >&2
+    max_parallel=1
+fi
 
 # Runs one test_*.py file's own timeout+retry loop to completion and writes PASS/FAIL to
 # status_file - never returns a nonzero exit status itself (failure is communicated through the

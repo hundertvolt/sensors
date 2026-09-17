@@ -140,7 +140,8 @@ def test_teardown_all_clears_every_registered_scratch_and_the_registry_itself() 
 
 def _old_style_shared_root_listdir() -> None:
     # A minimal reproduction of the retired per-file _sweep_stale_tmp_dirs(prefix)'s one expensive
-    # operation (see tests/test_sensortask.py's git history before this PR): os.listdir() on
+    # operation (see the git history of the then-monolithic tests/test_sensortask.py, since split
+    # into tests/_sensortask_scenarios.py + six per-device files): os.listdir() on
     # tests/_tmp's shared ROOT - an allocation that scales with every file's own leftover entries,
     # not just the caller's own.
     os.listdir(_ROOT)

@@ -385,7 +385,11 @@ files directly, independent of `buildgen`'s own validator.
      `run_wozi_integration.py`/`run_dev_integration.py` retired outright once nothing depended on
      them uniquely; `tests/test_sensortask_wozi.py`/`test_sensortask_dev.py` collapsed into one
      `tests/test_sensortask.py` (315 tests, device-derived expectations, never a hardcoded 3-sensor
-     literal); `tests/test_digital_twin_sensortask_integration.py`/
+     literal) — since re-split for wall-clock/heap reasons into one shared, still fully
+     device-generic scenario library (`tests/_sensortask_scenarios.py`) plus six thin
+     `tests/test_sensortask_<device>.py` wrappers, preserving this collapse's own
+     no-duplicated-scenario-bodies gain in full (see that library's own docstring);
+     `tests/test_digital_twin_sensortask_integration.py`/
      `test_digital_twin_bus_hazard_concurrency.py` stay a deliberate hybrid — their fast,
      no-real-wall-clock scenarios are parametrized across all 6 devices, their heavier
      seconds-to-tens-of-seconds scenarios (WiFi/hotspot fallback, watchdog escalation, FRAM/SGP40
@@ -415,7 +419,7 @@ files directly, independent of `buildgen`'s own validator.
    `pip`-versioned). No bump mechanism exists yet — one clear, documented place to change the two
    constants, no automation, matching `toolchain/versions.toml`'s own precedent. Test coverage:
    `tests_scripts/test_buildgen_{generate,definitions,version}.py`,
-   `tests/test_asy_webserver_service.py`, `tests/test_sensortask.py`,
+   `tests/test_asy_webserver_service.py`, `tests/_sensortask_scenarios.py`,
    `tests/test_digital_twin_sensortask_integration.py`.
 8. **Closing consistency pass (Session 8)** — bird's-eye scan across everything Sessions 1-7 touched, confirming
    zero device-specific content remains outside the 6 TOML files. `src/`, `buildgen/`, and the bulk

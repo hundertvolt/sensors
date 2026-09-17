@@ -134,14 +134,19 @@ scripts/test.sh            # runs every test in tests/, under a real MicroPython
 scripts/test.sh --coverage # same, plus a src/-only line coverage report (HTML/XML/markdown) - see below
 ```
 
-`test.sh` takes no positional arguments (only the `--coverage` flag above); two environment
+`test.sh` takes no positional arguments (only the `--coverage` flag above); four environment
 variables tune it: `PICO_TOOLCHAIN_DIR` (where to find/build the toolchain, default
 `~/pico-toolchain`), `SKIP_APT=1` (skip apt package installs if the Unix port needs building and
-they're already present), and `PER_FILE_TIMEOUT_S` (per-test-file timeout in seconds before a retry,
-default 180). Every `tests/test_*.py` file runs as its own interpreter process and prints its own
-`PASS`/`FAIL` lines plus an `N/N passed` count as it goes; **the run ends with one rolled-up
-summary** (`tests_scripts/`'s own pass/fail, the MicroPython file count, and every failed file named
-by path) so a failure earlier in a long run doesn't require scrolling back through the log:
+they're already present), `PER_FILE_TIMEOUT_S` (per-test-file timeout in seconds before a retry,
+default 240), and `TEST_PARALLELISM` (how many test files run at once, default 4x the machine's own
+core count — the suite is sleep-bound rather than CPU-bound, so oversubscribing is close to free
+here; set `TEST_PARALLELISM=1` for strictly sequential runs). Every `tests/test_*.py` file runs as
+its own interpreter process and prints its own `PASS`/`FAIL` lines plus an `N/N passed` count as it
+goes, each line prefixed with that file's own name in brackets (e.g. `[test_sensortask_dev]`) since
+several files' output interleaves when they run concurrently; **the run ends with one rolled-up
+summary** (`tests_scripts/`'s own pass/fail, the
+MicroPython file count, and every failed file named by path) so a failure earlier in a long run
+doesn't require scrolling back through the log:
 
 ```
 == Test summary ==

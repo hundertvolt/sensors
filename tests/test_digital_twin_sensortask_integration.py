@@ -22,7 +22,7 @@ import socket
 import sys
 import time
 
-sys.path.insert(0, "ext")  # same convention as test_sensortask.py's own comment - reaches the
+sys.path.insert(0, "ext")  # same convention as _sensortask_scenarios.py's own comment - reaches the
 # real, vendored ext/microdot.py that sensortask_wozi.py transitively imports.
 sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comment for why
 
@@ -521,7 +521,7 @@ def test_start_and_check_tasks_restarts_a_real_dead_task_from_the_real_full_task
         async def _tracking_start_task(self: "SystemService", starter: "Callable[[], asyncio.Task[Any]]", n: "int") -> "asyncio.Task[Any] | None":
             # Observes the real supervisor's own real task-(re)start calls without changing its
             # behavior at all - the same non-invasive class-method-wrap convention
-            # test_sensortask.py's own FRAM-chunk-order test already uses.
+            # _sensortask_scenarios.py's own FRAM-chunk-order scenario already uses.
             task = await real_start_task(self, starter, n)
             started.setdefault(n, []).append(task)
             return task
@@ -617,8 +617,8 @@ def test_wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server_a
             # immediately overwritten once it did.
             # Fast-forwards the real conn_fail_to_hotspot=5 streak (sensortask_wozi.py's own real
             # construction call) to "one real scripted failure away from hotspot fallback" - the
-            # same direct-attribute test-seam convention test_sensortask.py's own
-            # test_webserver_networking_put_ntp_fields_forces_a_resync() already uses
+            # same direct-attribute test-seam convention _sensortask_scenarios.py's own
+            # webserver_networking_put_ntp_fields_forces_a_resync scenario already uses
             # (`sensortask_wozi.ntp.ntp_retries = 3`), not a fake of
             # _register_sta_connection_failure() itself. Waiting out 5 real scripted-failure cycles
             # (each with its own real wifi_refresh_sec sleep) would exercise the identical real
