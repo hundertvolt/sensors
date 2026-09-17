@@ -89,3 +89,66 @@ def test_the_bench_tiers_reset_errors_timeout_sits_above_the_same_ceiling(repo_r
     # It must also actually be the value the helper passes - a named constant that no call site uses
     # would satisfy the bound above while every real request still ran on a stale literal.
     assert "timeout_s=_RESET_ERRORS_TIMEOUT_S" in helpers.read_text(), "reset_all_error_logs() must pass _RESET_ERRORS_TIMEOUT_S, not a literal of its own"
+
+
+# ---------------------------------------------------------------------------
+# The parsers' own guards. Every mirror check above is only as trustworthy as the number it reads
+# out of src/, so the two ways that read can go quietly wrong - no default found, or several
+# conflicting ones - are exercised directly against synthetic sources rather than assumed.
+# ---------------------------------------------------------------------------
+
+
+def test_conflicting_defaults_are_refused_rather_than_silently_picking_one(tmp_path: Path) -> None:
+    # The drift this catches: a second overload/helper declaring the same parameter with its own
+    # value. ast.walk() order is not the source order a reader would assume, so "whichever came
+    # first" would pin an arbitrary one of the two and still report every mirror as in sync.
+    source = tmp_path / "two_defaults.py"
+    source.write_text("def serve(*, outer_cap_s: float = 15.0) -> None: ...\ndef helper(outer_cap_s: float = 30.0) -> None: ...\n")
+    with pytest.raises(AssertionError, match="conflicting defaults"):
+        _default_for_parameter(source, "outer_cap_s")
+
+
+def test_a_parameter_that_carries_no_literal_default_is_refused(tmp_path: Path) -> None:
+    # A required parameter, or one defaulting to an expression rather than a literal, leaves nothing
+    # to mirror. Failing loud here is what stops the ceiling checks degrading into no-ops.
+    source = tmp_path / "no_default.py"
+    source.write_text("_CAP = 15.0\ndef serve(outer_cap_s: float) -> None: ...\ndef other(*, outer_cap_s: float = _CAP) -> None: ...\n")
+    with pytest.raises(AssertionError, match="no literal default"):
+        _default_for_parameter(source, "outer_cap_s")
+
+
+def test_the_same_default_declared_twice_is_not_a_conflict(tmp_path: Path) -> None:
+    # The guard must bite on disagreement only - two signatures agreeing on the ceiling is exactly
+    # the mirroring this file wants, not a failure.
+    source = tmp_path / "agreeing.py"
+    source.write_text("def serve(*, outer_cap_s: float = 15.0) -> None: ...\ndef again(outer_cap_s: int = 15) -> None: ...\n")
+    assert _default_for_parameter(source, "outer_cap_s") == 15.0
+
+
+def test_defaults_are_read_from_every_argument_position(tmp_path: Path) -> None:
+    # Python binds posonly/positional/kwonly defaults from two separate ast lists, and the real
+    # signature has moved between those positions before. Missing one reads as "no default at all".
+    posonly = tmp_path / "posonly.py"
+    posonly.write_text("def serve(outer_cap_s: float = 15.0, /) -> None: ...\n")
+    assert _default_for_parameter(posonly, "outer_cap_s") == 15.0
+    trailing = tmp_path / "trailing.py"
+    trailing.write_text("def serve(self, app: object, outer_cap_s: float = 15.0) -> None: ...\n")
+    assert _default_for_parameter(trailing, "outer_cap_s") == 15.0
+
+
+def test_a_missing_module_constant_is_refused_rather_than_read_as_zero(tmp_path: Path) -> None:
+    # tests_hardware/'s copy is the one most likely to be renamed away, and a parser returning a
+    # falsy placeholder would make the "above the cap" bound fail confusingly instead of naming it.
+    source = tmp_path / "constants.py"
+    source.write_text("_OTHER_TIMEOUT_S = 30.0\n")
+    with pytest.raises(AssertionError, match="no module-level numeric constant"):
+        _module_constant(source, "_RESET_ERRORS_TIMEOUT_S")
+
+
+def test_a_non_numeric_constant_does_not_satisfy_the_lookup(tmp_path: Path) -> None:
+    # A constant turned into a string/None keeps the name alive while making every comparison
+    # against it meaningless - so the name matching is deliberately not enough on its own.
+    source = tmp_path / "stringly.py"
+    source.write_text('_RESET_ERRORS_TIMEOUT_S = "30.0"\n')
+    with pytest.raises(AssertionError, match="no module-level numeric constant"):
+        _module_constant(source, "_RESET_ERRORS_TIMEOUT_S")

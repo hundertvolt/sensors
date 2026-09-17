@@ -105,7 +105,9 @@ if [ -n "$unexpected_skips" ]; then
     exit 1
 fi
 
-if ! grep -qE '[0-9]+ passed' "$logfile"; then
+# [1-9][0-9]* rather than [0-9]+: a literal "0 passed" must not satisfy a check whose entire job is
+# refusing a vacuous run. pytest omits the word entirely today, so this is defensive, not observed.
+if ! grep -qE '[1-9][0-9]* passed' "$logfile"; then
     echo "" >&2
     echo "FAILED: zero real passes - real hardware is expected to be attached and reachable for this run." >&2
     exit 1
