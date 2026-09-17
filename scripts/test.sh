@@ -61,6 +61,18 @@ export TZ=UTC
 # real CI, which always starts from a fresh checkout with no tests/_tmp to begin with.
 rm -rf tests/_tmp
 
+# Same "bound a long-lived local sandbox against a killed run's leftovers" reasoning as the sweep
+# above, for the one test fixture that has to live in the real tree: tests_scripts/
+# test_build_website_sh.py's malformed-TOML case writes devices/zz_test_<name>.toml and removes it
+# in `finally`, which a SIGKILL (the pytest job below is timeout-wrapped) defeats. A leaked file
+# there is not merely untidy - scripts/_generate_sensortask_modules.py globs devices/*.toml and
+# exits 1 on the first BuildError, so under `set -e` it aborts THIS script, scripts/typecheck.sh and
+# both twin runners outright, naming a device nobody added. `devices/zz_test_*.toml` is therefore a
+# reserved namespace for live-tree test fixtures (both halves of that reservation, and this
+# sweep's own placement ahead of the generation step, are asserted by tests_scripts/test_test_sh.py);
+# a real device may never be named that way. No-op on CI, which always starts from a fresh checkout.
+rm -f devices/zz_test_*.toml
+
 coverage=0
 for arg in "$@"; do
     case "$arg" in
@@ -132,6 +144,19 @@ uv run scripts/_generate_sensortask_modules.py
 echo "== Running tests_scripts/ (CPython-side build-tooling tests)"
 tests_scripts_status_file="$(mktemp)"
 tests_scripts_timeout_s="${TESTS_SCRIPTS_TIMEOUT_S:-1200}"
+# Pre-declared empty and the trap armed HERE, before the background job exists - not alongside the
+# two mktemp -d calls further down. Bash does not kill its background jobs when the parent exits,
+# and every step between this point and there (setcap, the two frozen-module builds) can abort under
+# `set -e`: an orphaned pytest would then keep running for up to its own timeout and transiently
+# write a devices/zz_test_*.toml into the live tree, re-opening the very glob hazard the generation
+# ordering above closes. Killing the subshell's own `timeout` child needs pkill, which is
+# best-effort (absent in a --variant=minbase chroot) - without it that child still self-terminates
+# inside its own budget. `rm -rf ""` is a harmless no-op for either dir before its mktemp has run,
+# and tests_scripts_pid is cleared once the job is reaped so this can never signal a recycled PID.
+raw_dir=""
+results_dir=""
+tests_scripts_pid=""
+trap 'if [ -n "$tests_scripts_pid" ]; then pkill -P "$tests_scripts_pid" 2>/dev/null || true; kill "$tests_scripts_pid" 2>/dev/null || true; fi; rm -rf "$raw_dir" "$results_dir" "$tests_scripts_status_file"' EXIT
 (
     if timeout --kill-after=10 "$tests_scripts_timeout_s" uv run pytest tests_scripts -q; then
         echo "PASS" >"$tests_scripts_status_file"
@@ -143,6 +168,7 @@ tests_scripts_timeout_s="${TESTS_SCRIPTS_TIMEOUT_S:-1200}"
         echo "FAIL" >"$tests_scripts_status_file"
     fi
 ) &
+tests_scripts_pid=$!
 
 # tests/test_digital_twin_sensortask_integration.py's own hotspot/DNS test binds the real
 # privileged port 53 (src/captive_dns.py's DNSServer) from a genuine, organically-triggered hotspot
@@ -183,19 +209,16 @@ scripts/build_website.sh wozi frozen_modules/frozen_website_wozi.py
 # compile it gates stays opt-in for fast local iteration - .github/workflows/ci.yml's
 # firmware-build-verify job is what actually sets it.
 
-raw_dir=""
 if [ "$coverage" = "1" ]; then
     raw_dir="$(mktemp -d)"
 fi
 # One shared results_dir regardless of --coverage: every parallel test-file job (below) writes its
 # own PASS/FAIL status here instead of returning it as its own process exit code or mutating a
 # shared bash array from a background subshell (which wouldn't be visible to the parent shell).
-# Removing raw_dir's own narrower trap in favor of this one, unconditional trap - bash's `trap ...
-# EXIT` replaces any previously registered EXIT handler outright rather than stacking, so the two
-# cleanups must live in one trap. `rm -rf ""` (raw_dir when --coverage was never passed) is a
-# harmless no-op, not an error.
+# Both dirs are cleaned by the single EXIT trap armed with the pytest job above - bash's `trap ...
+# EXIT` replaces any previously registered EXIT handler outright rather than stacking, so every
+# cleanup this script needs has to live in that one trap.
 results_dir="$(mktemp -d)"
-trap 'rm -rf "$raw_dir" "$results_dir" "$tests_scripts_status_file"' EXIT
 
 failed=0
 # Per-file timeout with two retries (three attempts total), not just the job-level
@@ -472,6 +495,7 @@ for test_file in "${test_files[@]}"; do
     run_test_file "$test_file" "$status_file" &
 done
 wait || true
+tests_scripts_pid=""  # reaped by the `wait` above - cleared so the EXIT trap can't signal a recycled PID
 
 # The tests_scripts/ background job (started before this loop, see the toolchain-check block
 # above) is reaped by the same unqualified `wait` just above like any other job; its own status

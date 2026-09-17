@@ -12,8 +12,12 @@ hardware"). Nothing in this file authorizes skipping that gate.
 
 The code these requests are about now lives on the **base branch**
 (`claude/automated-build-chain-nuzumw`), which this branch carries in full — its two commits were
-cherry-picked there (`cd459bf`, `90aece7`), so this branch's own remaining diff is just this file.
-Read the code on whichever branch you are checked out on; it is identical either way.
+cherry-picked there (`cd459bf`, `90aece7`), so nothing below depends on being checked out here
+rather than on base: read the code on whichever branch you are on, it is identical either way. (This
+branch has since grown further work of its own — a `devices/*.toml` race fix in `scripts/test.sh`,
+both `ResetErrors` client timeouts re-derived from the 15s cap section 1 describes, and test
+coverage for all of it — but none of it changes any runtime behaviour, so none of it changes what is
+being asked for here.)
 
 What that code does: it fixes two `digital-twin-e2e` staleness bugs surfaced by WP1's FRAM wiring,
 then a real (not flaky) CI timeout on `dev`'s `PUT /status {"ResetErrors": true}`. WP1/WP2/WP3 grew

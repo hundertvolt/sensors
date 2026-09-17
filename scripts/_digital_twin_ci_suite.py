@@ -727,7 +727,12 @@ def _run_4_bus_fault_persistence_sweep(ctx: RunContext) -> None:
                 continue  # WIFI's own reset check is Run 8, after its own fault run (Run 7)
             name = _DRIVER_ERRCOUNT_NAME[driver]
             entry = _errcount(name)
-            _check(condition=entry.get("counter", 0) == 0, msg=f"Run 4: {name}'s error count correctly did NOT persist across reboot (FRAM was faulted dead for all of Run 3, so nothing it logged could reach the chip) ({entry!r})")
+            # -1, not 0, as the "field absent" default: _errcount() answers {} for any /status read
+            # it couldn't parse (a non-200, a non-dict body), and a 0 default would turn exactly
+            # that degraded read into a PASS - the assertion would hold vacuously against a server
+            # that answered nothing. Every registered error source is present in errcount whether or
+            # not it ever logged, so a missing entry is always a real failure, never an empty log.
+            _check(condition=entry.get("counter", -1) == 0, msg=f"Run 4: {name}'s error count correctly did NOT persist across reboot (FRAM was faulted dead for all of Run 3, so nothing it logged could reach the chip) ({entry!r})")
         # Every bus Run 3 faulted must be live again, not merely answering 200 with stale state -
         # this is the recovery half of Run 3's story, and the one claim about SGP40 here that does
         # not depend on what did or didn't reach the FRAM.
@@ -864,7 +869,10 @@ def _run_5c_storage_paused_shutdown_never_loses_the_error_log(ctx: RunContext) -
         status, _ = _http("PUT", "/status", {"ResetErrors": True}, timeout=_RESET_ERRORS_TIMEOUT_S)
         _check(condition=status == _HTTP_OK, msg=f"Run 5c: PUT /status ResetErrors accepted (status {status})")
         entry = _errcount("SGP40")
-        _check(condition=_error_type_count(entry) == 0, msg=f"Run 5c: the restored history was actually cleared by ResetErrors, not just masked ({entry!r})")
+        # Same "an unreadable /status must not read as a cleared log" guard as Run 4/Run 8 above -
+        # every assertion whose expected value is 0 needs it, since that is exactly what _errcount()
+        # answers for a read it couldn't parse.
+        _check(condition=bool(entry) and _error_type_count(entry) == 0, msg=f"Run 5c: the restored history was actually cleared by ResetErrors, not just masked ({entry!r})")
     except Exception as exc:
         _fail(f"Run 5c (history survived the commanded reboot): {exc!r}")
     finally:
@@ -961,7 +969,12 @@ def _run_8_wifi_persistence_and_configure_ntp(ctx: RunContext) -> None:
         _wait_until_serving(proc)
         entry = _wait_for_error_type_count("WIFI", _WIFI_SCRIPTED_FAILURES, timeout_s=30.0, type_char="W")
         restored = _error_type_count(entry, type_char="W")
-        _check(condition=restored in (0, _WIFI_SCRIPTED_FAILURES), msg=f"Run 8: WIFI's FRAM-backed history came back all-or-nothing after an abrupt restart - never a partial {restored}-entry remnant ({entry!r})")
+        # `entry` truthiness is part of the condition, not decoration: the all-or-nothing property
+        # admits 0 as a legitimate outcome, and _errcount() also answers {} (hence a 0 count) for a
+        # /status read it couldn't parse - so without this the check would pass just as happily
+        # against a server that answered nothing at all. WIFI is a registered error source on every
+        # device, so its entry is always present once /status is genuinely readable.
+        _check(condition=bool(entry) and restored in (0, _WIFI_SCRIPTED_FAILURES), msg=f"Run 8: WIFI's FRAM-backed history came back all-or-nothing after an abrupt restart - never a partial {restored}-entry remnant ({entry!r})")
         # 192.0.2.1: RFC 5737 TEST-NET-1, guaranteed non-routable - a deliberate, reproducible
         # "unreachable" address rather than relying on incidental CI sandbox network policy.
         status, body = _http("PUT", "/networking", {"NTP_Host": "192.0.2.1"})

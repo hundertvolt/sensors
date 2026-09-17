@@ -447,14 +447,16 @@ constraints.
     bound it, both confirmed directly: the server aborts any request at `outer_cap_s = 15.0`
     (`asy_webserver_service.py:275`, applied via `asyncio.wait_for()` at `:667`), and the real web UI
     gives up at `DEFAULT_TIMEOUT_MS = 15000` (`js/poll-manager.js:8`). So this is not a test-harness
-    concern — a device whose reset sweep crosses 15s is broken for its own operators. The CI suite's
-    `_RESET_ERRORS_TIMEOUT_S = 20.0` sits *above* both, which means it can never actually fire (the
-    server's own abort always lands first) and the suite is blind to the whole 5-15s band with no
-    elapsed-time assertion in its place; `tests_hardware/error_log_helpers.py`'s
-    `reset_all_error_logs()` meanwhile still uses `timeout_s=10.0` against the real board over real
-    WiFi. **Where to fix**: an explicit elapsed-time budget in the suite rather than a bare timeout,
-    and — if the real number is anywhere near the ceiling — a design-level fix at the source (batched
-    or concurrent reset, or one shared chunk) rather than a larger client timeout, per CLAUDE.md's
+    concern — a device whose reset sweep crosses 15s is broken for its own operators. Both client
+    timeouts have since been placed against that cap rather than guessed (the CI suite's
+    `_RESET_ERRORS_TIMEOUT_S` is now derived from a mirrored `_SERVER_OUTER_CAP_S`, and
+    `tests_hardware/error_log_helpers.py`'s `reset_all_error_logs()` raised from a below-the-cap
+    10.0s to 17.0s), and `tests_scripts/test_request_timeout_ceiling.py` now enforces all four copies
+    of the ceiling against `outer_cap_s` itself so none can drift again. **What is still open**: the
+    suite remains blind to the whole 5-15s band — a timeout is a backstop, not a budget, and nothing
+    asserts elapsed time. **Where to fix**: an explicit elapsed-time budget in the suite, and — if
+    the real number is anywhere near the ceiling — a design-level fix at the source (batched or
+    concurrent reset, or one shared chunk) rather than a larger client timeout, per CLAUDE.md's
     standing root-cause-don't-raise-the-limit rule.
     **Measured on the digital twin, 2026-09-17** (5 repetitions per point, idle host, loopback;
     `/status`'s own `errcount` key count for the source count):
@@ -493,6 +495,27 @@ constraints.
     which needs the owner's real-hardware go-ahead to run. They also add real time to the
     `ResetErrors` sweep item 24 is about. **Where to fix**: an errcount-presence assertion in the
     suite's `dev` run is cheap and would close most of the gap.
+
+27. **`PUT /status {"ResetErrors": true}` answers `OK` even when an individual FRAM-backed log's
+    on-chip reset write silently failed.** Found while auditing the reset path for item 24, not by a
+    failure. `print_log.py`'s `PrintLogHistory.reset()` clears the in-RAM ring and `err_count`
+    *before* attempting the write, and a failed `_write()` is only `_diag()`-logged (it returns
+    early, leaving `initialized` False) — while `asy_webserver_service.py`'s `_put_status()` neither
+    inspects per-module results nor has any to inspect, and returns `make_response(0)` regardless.
+    The observable consequence is narrow but genuinely misleading: `GET /status` reads 0 for that
+    module afterwards, so the operator sees a successful clear, and the *old* history reappears on
+    the next boot when `setup()`'s `_read()` restores what was never overwritten. Only reachable
+    with a faulty/unavailable chip, and the catch→degrade behaviour itself is correct per
+    SPECIFICATION.md Part I.4 — it is the `OK` that overstates what happened. Flagged rather than
+    changed (CLAUDE.md's "flag, don't silently change" for cross-file/behavioural discrepancies):
+    the fix is a REST-semantics decision, not a local one. **Options**: have `reset()` report its
+    write outcome up through `reset_error_counter()` and answer a non-zero envelope code when any
+    source failed; or leave the response alone and surface the per-module `initialized` state in
+    `GET /status` so the UI can show "cleared, not persisted". Note a related asymmetry worth
+    deciding at the same time: a raising `reset_error_counter()` would abort `_put_status()`'s
+    sequential loop part-way, leaving the remaining sources un-reset behind a 500 — today nothing can
+    raise (every `_write()` path catches broadly), so this is a latent property of the loop's shape,
+    not a live bug.
 
 ## Deferred / explicitly out-of-scope work
 - **Session 7's `pyproject.toml` `max-args` ratchet (21 → 22, for `WebserverService.__init__`'s new
