@@ -225,9 +225,13 @@ describe.each(CASES)("PUT $device $sectionKey/$groupKey/$field.key ($field.kind)
         const { maxLength } = /** @type {{maxLength: number}} */ (field);
         const validLengths = [...new Set([Math.max(minLength, 1), Math.min(minLength + 3, maxLength), maxLength])];
 
-        it.each(validLengths.map((len) => "x".repeat(len)).filter((v) => v !== currentValue))(
+        // Lengths, not strings - see live-backend-put-matrix.test.js's own note. This copy never
+        // wedged a run only because it has no failure-screenshot path; the oversized test name is
+        // identical, so it is fixed alongside rather than left as the next one to bite.
+        it.each(validLengths.filter((len) => "x".repeat(len) !== currentValue))(
             "accepts a %s-char string (a valid value distributed across the length range): Valid, and it gets persisted",
-            async (value) => {
+            async (len) => {
+                const value = "x".repeat(len);
                 const { status, getBody } = await putAndGet(testCase, literalOf(value));
                 expect(status).toBe("Valid");
                 expect(currentValueIn(getBody, testCase)).toBe(value);
