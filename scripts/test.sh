@@ -322,14 +322,16 @@ max_attempts=3
 # limits make 4x too aggressive.
 #
 # One caveat on "sleep-bound", since that was measured as `user` CPU time, which excludes the
-# kernel: tests/test_tmp_scratch.py is the suite's one genuinely kernel-bound file - it deliberately
-# creates and removes 400,000 flat sibling directories in the shared tests/_tmp root to prove the
-# retired sweep-by-prefix shape really does MemoryError at that scale, costing ~18.6s of *system*
-# time against ~2.6s user (measured directly, 2026-09-17; it is essentially the whole suite's
-# `sys` total). Those 800k operations serialize on one directory inode's own lock, which every other
-# file's TmpScratch construction also has to take briefly - real contention, but bounded and
-# confirmed harmless (full suite green at this parallelism). Worth knowing before adding a second
-# file of that shape, which would contend with this one rather than overlap with it.
+# kernel, so a file doing heavy filesystem work would not show up in it at all. Nothing in the
+# suite does today: the whole run writes ~46MB and spends ~8.7s of system time (measured directly,
+# 2026-09-17). It used to be ~10x that, because tests/test_tmp_scratch.py created and removed
+# 400,000 flat sibling directories in the shared tests/_tmp root on every run - ~396MB of writes
+# and ~18.6s of system time by itself, serialized on one directory inode's own lock that every
+# other file's TmpScratch construction also has to take. That test now asserts the invariant
+# directly instead (see its own comment), which is both cheaper and stronger. Keep it that way:
+# CLAUDE.md's hard rule on avoidable hardware wear covers the host's own disk, not just the
+# target's flash, and a second file of that shape would contend with everything else here rather
+# than overlap with it.
 max_parallel="${TEST_PARALLELISM:-$(( $(nproc 2>/dev/null || echo 4) * 4 ))}"
 # Clamped to >= 1: the dispatch loop below blocks while the running-job count is >= max_parallel, so
 # a 0 or negative value (a plausible "turn parallelism off" guess - 1 is what actually does that)
