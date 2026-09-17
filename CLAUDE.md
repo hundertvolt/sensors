@@ -239,6 +239,26 @@ information):
   Full checklist, plus the two real-hardware write-safety constraints any new device's own on-chip
   NVM or the RP2040's own flash filesystem must respect: SPECIFICATION.md Part C.8's own standing
   rule, right after its general-call hazard finding.
+- **No test may inflict avoidable wear on real hardware — the host's own SSD included, not just the
+  target's flash/NVM** (project owner's explicit, standing direction, 2026-09-17). On the *target*
+  this is already institutionalized and stays that way: every operation that spends a
+  limited-endurance write cycle is a default-off, explicitly-opted-into marker with a tracked budget
+  — `flash_cycle` ("counts against the 'no extra flash cycles' constraint"), `scd30_write` for any
+  real NVM-persisted SCD30 write, `scd30_extra_write` AND-gated on top for a *second* one beyond the
+  routine per-session write, plus `long_soak`/`multi_day_rollover` (`tests_hardware/conftest.py`,
+  `tests_hardware/README.md`). **The same lens applies to host I/O, where it had been missing**: a
+  test must not generate mass filesystem churn, and an invariant gets proven *structurally* — assert
+  the property the current code must hold — rather than by brute-forcing a scale large enough to
+  reproduce a symptom. Found the hard way: `tests/test_tmp_scratch.py` created 400,000 flat sibling
+  directories per run to re-demonstrate that a *retired* implementation's shared-root `os.listdir()`
+  raises `MemoryError`, costing a measured **396MB of physical disk writes on every single run**
+  (`/proc/diskstats`) — in `unit-tests` and `unit-tests-coverage` both, plus every local run — for
+  coverage of code this repo no longer contains. Replaced by recording the `os` calls a full
+  `TmpScratch` lifecycle actually makes and asserting none of them reads the shared root: 0.006s
+  instead of 21.3s, 392KB instead of 396MB, and strictly stronger (a reintroduced `listdir(_ROOT)`
+  now fails immediately rather than only once the root has grown enormous — verified by injecting
+  exactly that regression). When a test seems to need brute-force scale, that is the signal to find
+  the invariant instead.
 - **A session needs the project owner's go-ahead, given directly in that session's own
   conversation, before running anything against real hardware** (any `mpremote` command, `nmcli`/
   `iw`/`iptables` call, `picotool`, or `tests_hardware/`'s own suite runners) — a go-ahead given to
