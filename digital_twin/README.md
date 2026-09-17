@@ -431,10 +431,18 @@ from that device's own real wiring plan, never a hardcoded driver list — a dev
    produces bounded, immediately-raised `OSError`s, never an indefinite hang, so nothing here can
    actually block the event loop long enough to matter — see run 10 below for the one scenario that can.
 4. **Reboot fault-free — what must reset, and that every faulted bus comes back** — whichever of
-   SCD30/BMP3XX/FRAM this device actually has must have its counts reset to `0` (in-memory-only by
-   design — SPECIFICATION.md Part A.7), and every bus-attached sensor must produce real readings
-   again after a run in which every bus, the FRAM included, was faulted throughout. This run
-   deliberately does **not** claim SGP40's
+   SCD30/BMP3XX this device actually has must read back `0`, and every bus-attached sensor must
+   produce real readings again after a run in which every bus, the FRAM included, was faulted
+   throughout. **Not** because those two logs are in-memory: they are FRAM-backed like every other
+   (`fram=fram` in the generated module), and this line claiming otherwise — citing a Part A.7 that
+   never said it — was the same stale assumption the suite's own `_IN_MEMORY_ERROR_DRIVERS` carried
+   until both were corrected. They read `0` for a narrower, situational reason: run 3 faults
+   `fram:write` dead for its whole duration, so nothing either of them logged could ever reach the
+   chip. That makes this a much weaker claim than "these never persist", and one nothing re-checks
+   against a *healthy* chip (BACKLOG.md). FRAM itself is deliberately excluded from the sweep for a
+   different reason: its dual-block+CRC self-healing read correctly detects run 3's torn chunk and
+   logs a genuine, fresh entry on this run's own boot — the driver working as designed, not data
+   surviving. This run also deliberately does **not** claim SGP40's
    FRAM-backed history survived run 3 — it cannot, because run 3's own matrix faults `fram:write`,
    so the chip is unwritable for that whole run. The check that used to stand here (`counter > 0`)
    was unsound twice over: `counter` counts `"W"` as well as `"E"`, so it was only ever satisfied by

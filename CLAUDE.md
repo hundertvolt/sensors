@@ -470,8 +470,11 @@ information):
   tooling instead (`scripts/build_frozen_html.sh`, `scripts/build_website.sh`, `scripts/
   build_firmware.py`), none of which are MicroPython-target code, so the real-interpreter rationale
   above doesn't apply to them; see `tests_scripts/conftest.py`'s own docstring. `scripts/test.sh`
-  runs both: the MicroPython suite as described above, plus `uv run pytest tests_scripts` as one
-  more step before it. `tests_scripts/` — together with `scripts/`, `toolchain/` and `buildgen/`,
+  runs both: the MicroPython suite as described above, plus `uv run pytest tests_scripts`, which it
+  **launches first but backgrounds** so that single-process tier overlaps the whole MicroPython loop
+  rather than serializing in front of it (it used to run as one step before it — SPECIFICATION.md
+  Part E.1 has the current account, including the `devices/*.toml` ordering constraint that
+  concurrency creates). `tests_scripts/` — together with `scripts/`, `toolchain/` and `buildgen/`,
   the host-side build chain it exercises, plus `tests_hardware/`'s own host-CPython pytest code —
   **is** linted and type-checked (project owner's direction: "add all build scripts to the full
   CI"), but through `host_typecheck.ini`'s dedicated mypy pass rather than the main `[tool.mypy]`

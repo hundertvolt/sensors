@@ -59,9 +59,21 @@ budget, and nothing asserts elapsed time (BACKLOG.md item 24).
 **There is now a twin baseline to compare against** (measured 2026-09-17, 5 reps, idle host,
 loopback, shipped `gc.threshold(32768)`): `dev` **8.151s** across its 21 registered error sources,
 `wozi` **5.592s** across 17 — i.e. `dev` is already at 54% of the ceiling before any real wire time
-exists at all, since the twin's FRAM chip answers in memory. **The one number nobody has is how much
-real hardware adds on top of that floor**, and that is what decides whether BACKLOG item 24 is a
-closed question or a design task. Measure, on `dev`'s own real entry point/config (not `wozi`'s
+exists at all, since the twin's FRAM chip answers in memory. **What is missing is how much real
+hardware adds on top of that floor**, and that is what decides whether BACKLOG item 24 is a closed
+question or a design task.
+
+There is a partial prior, and it is worth reading before you measure so you know what would be
+surprising: `origin/claude/real-hardware-boot-latency-measurements` (`358c08f`, not merged into this
+base) measured the same `dev` bench board's boot-to-first-`200` at 7.74s pre-WP and 9.80s at WP1+WP2
+— ~+2.05s of real cost for the FRAM chunk growth, against a twin *delta* prediction of ~1.4-1.8s.
+So for FRAM-backed work the twin has already been shown to get the **delta** roughly right even
+though its **absolute** numbers are not a baseline. Extrapolated (loosely — a staggered boot
+`setup()` is not N back-to-back chunk writes in one request), that points at roughly 10-12s here:
+inside the ceiling, but tight. A result near that range confirms the prior; a result past 15s means
+the extrapolation does not hold for a write burst and the design needs work.
+
+Measure, on `dev`'s own real entry point/config (not `wozi`'s
 hardcoded pins on the `dev` board — CLAUDE.md's WoZi/dev policy, that combination "tests nothing at
 all"):
 

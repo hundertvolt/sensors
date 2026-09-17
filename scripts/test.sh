@@ -149,9 +149,10 @@ tests_scripts_timeout_s="${TESTS_SCRIPTS_TIMEOUT_S:-1200}"
 # and every step between this point and there (setcap, the two frozen-module builds) can abort under
 # `set -e`: an orphaned pytest would then keep running for up to its own timeout and transiently
 # write a devices/zz_test_*.toml into the live tree, re-opening the very glob hazard the generation
-# ordering above closes. Killing the subshell's own `timeout` child needs pkill, which is
-# best-effort (absent in a --variant=minbase chroot) - without it that child still self-terminates
-# inside its own budget. `rm -rf ""` is a harmless no-op for either dir before its mktemp has run,
+# ordering above closes. Both halves confirmed directly by reproducing the pattern: with no trap the
+# inner `timeout` outlives the aborted parent, with this one it is gone. Reaching that child needs
+# pkill, which is best-effort (absent in a --variant=minbase chroot) - without it the child still
+# self-terminates inside its own budget. `rm -rf ""` is a harmless no-op for either dir before its mktemp has run,
 # and tests_scripts_pid is cleared once the job is reaped so this can never signal a recycled PID.
 raw_dir=""
 results_dir=""

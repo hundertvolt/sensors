@@ -5,14 +5,6 @@ subprocess/HTTP server, the same way test_digital_twin_ci_suite_soak.py does for
 from pathlib import Path
 from types import ModuleType
 
-import pytest
-from _script_loader import load_script_module
-
-
-@pytest.fixture(scope="session")
-def ci_suite(repo_root: Path) -> ModuleType:
-    return load_script_module(repo_root / "scripts" / "_digital_twin_ci_suite.py", "_digital_twin_ci_suite")
-
 
 def _entry(*history: tuple[int, str], counter: int | None = None) -> dict[str, object]:
     """One GET /status errcount entry, in asy_webserver_service.py's own published shape."""

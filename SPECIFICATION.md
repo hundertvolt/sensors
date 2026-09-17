@@ -2685,9 +2685,21 @@ Unit tests for `src/`. Get the current count with `ls tests/test_*.py | wc -l` a
 Tests run under a **real MicroPython interpreter** (the Unix port), not CPython plus
 MicroPython-flavored stubs. `scripts/test.sh` shells out to a built Unix-port binary directly, once
 per `tests/test_*.py`, and checks its exit code. `pytest` covers the host-only side instead:
-`tests_scripts/` exercises the build tooling (`scripts/build_firmware.py`, `build_frozen_html.sh`,
-`build_website.sh`) under real CPython, since none of that is MicroPython-target code.
-`scripts/test.sh` runs both suites, pytest first.
+`tests_scripts/` runs under real CPython, since none of what it covers is MicroPython-target code —
+the build tooling (`scripts/build_firmware.py`, `build_frozen_html.sh`, `build_website.sh`),
+`buildgen/` and `toolchain/`, `devices/*.toml`'s own shape, the pure helpers of host-side scripts
+like `scripts/_digital_twin_ci_suite.py`, `tests_hardware/`'s pytest-level marker gating, and
+cross-file invariants that can only be checked by reading real source text (`scripts/test.sh`'s own
+step ordering; the `outer_cap_s` ceiling's mirrors, Part H.4).
+
+`scripts/test.sh` runs both suites. **It launches pytest first but does not wait for it** — the
+pytest tier is backgrounded so its single-process runtime overlaps the whole MicroPython loop
+instead of serializing in front of it, and both are reaped by one `wait` at the end (it counts
+against the same `TEST_PARALLELISM` budget as any test file, and carries its own `timeout` for the
+standing "hanging tests are never allowed" rule). One ordering constraint follows from that
+concurrency and is load-bearing: every step that globs `devices/*.toml` must run **before** the
+background launch, because one `tests_scripts/` test necessarily writes a throwaway
+`devices/zz_test_*.toml` into the live tree. See that script's own comments.
 
 ## E.2 Test framework
 
@@ -3959,7 +3971,8 @@ number/string field's caption** — a toggle/enum field's round-trip needs a gen
 | REST target | `asy_webserver_service.py` (A.8) | Six endpoints, sparse-body PUT, no `cmd` envelope, no `Led` prefix. |
 | Nav grouping | Mirrors the 6 REST endpoints 1:1 | Measurements, Sensors, Networking, System, Status, Notification. |
 | History depth | Counts always visible; full history on demand; no pagination | A realistic depth stays well under 20 entries, rides along in `/status`. |
-| Poll coordination | One shared poll-manager (single-flight queue) | Measurements and status/settings groups are never polled concurrently by design; every fetch has a shared `AbortController` timeout. |
+| Poll coordination | One shared poll-manager (single-flight queue) | Measurements and status/settings groups are never polled concurrently by design; every fetch has a shared `AbortController` timeout — `DEFAULT_TIMEOUT_MS = 15000`, see the row below for why that exact value. |
+| Per-request timeout value | `poll-manager.js`'s `DEFAULT_TIMEOUT_MS` deliberately **equals** `asy_webserver_service.py`'s `outer_cap_s` (15.0s) | Not an independently-chosen UI number: the server aborts any request at `outer_cap_s` (applied via `asyncio.wait_for()`), so matching it is what makes a slow request surface as *the server's own abort*, which the UI can report, rather than a client-side give-up it cannot explain. Giving up earlier would hide real server aborts behind a generic timeout; later would leave the UI hanging past the point the server already gave up. The heaviest real request is `PUT /status {"ResetErrors": true}`, which resets every error source sequentially (BACKLOG item 24) — this ceiling is a product constraint for its operators, not a test-harness number. The mirror is enforced structurally by `tests_scripts/test_request_timeout_ceiling.py`, which parses `outer_cap_s` out of `src/` with `ast` and pins this constant and both test tiers' own `ResetErrors` client timeouts against it. |
 | API reachability | No dedicated API-browser page | Reachable somewhere in the ordinary GUI is enough. |
 | Definitions validation | Strict — visible error banner on mismatch | Checks shape/version including `pollGroup` and poll-interval fields. |
 | Landing page | Measurements | Matches legacy's default. |

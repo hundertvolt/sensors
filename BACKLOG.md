@@ -477,6 +477,23 @@ constraints.
     policies, so the headline number is the one that ships. Still wanted: the real-hardware number
     to size the gap between floor and reality (requested in `REAL_HARDWARE_HANDOVER_PR103.md`).
 
+    **A partial calibration for that gap already exists and was previously being ignored here.**
+    `origin/claude/real-hardware-boot-latency-measurements` (`358c08f`, *not* merged into this
+    base as of 2026-09-17) measured real boot-to-first-`200` on the `dev` bench board across four
+    flashed images: 7.74s pre-WP → 9.80s at WP1+WP2, i.e. **~+2.05s of real cost for exactly the
+    FRAM chunk growth this item is about**, against a twin *delta* prediction of ~1.4-1.8s for WP2.
+    The lesson recorded there is the one that matters here: the twin's **absolute** numbers are not a
+    real baseline (it models no WiFi/DHCP and zero SPI wire time), but its **delta** for FRAM-backed
+    work held to roughly the right order — it is not off by a large factor. Read across to the 8.151s
+    floor above, that puts a real `dev` `ResetErrors` sweep plausibly around 10-12s: inside the 15s
+    ceiling, but tight — the "add an elapsed-time assertion" branch of this item rather than the
+    "redesign the sweep" one. **This is a prior, not a substitute for the measurement**: a boot
+    `setup()` is one chunk read/write per instance spread across a staggered start, whereas
+    `ResetErrors` is N chunk *writes* back to back in one request, so the two workloads are not
+    interchangeable. Same source also records an existing, unchanged **~170ms per FRAM-backed
+    instance `setup()`** cost (Unix-port instrumentation), which is well under this item's measured
+    ~0.6s twin marginal cost per source — worth reconciling when the real number is taken.
+
 25. **SCD30/BMP3XX error-log persistence is never checked against a healthy FRAM chip.** Both are
     FRAM-backed (`fram=fram` in every generated `sensortask_<device>.py`), so they should follow the
     same all-or-nothing abrupt-restart guarantee SGP40 has. The only place the digital-twin CI suite

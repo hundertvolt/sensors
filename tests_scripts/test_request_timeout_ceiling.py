@@ -8,18 +8,12 @@ from pathlib import Path
 from types import ModuleType
 
 import pytest
-from _script_loader import load_script_module
-
-
-@pytest.fixture(scope="session")
-def ci_suite(repo_root: Path) -> ModuleType:
-    return load_script_module(repo_root / "scripts" / "_digital_twin_ci_suite.py", "_digital_twin_ci_suite")
 
 
 def _default_for_parameter(source_path: Path, param: str) -> float:
     """The literal default of a keyword parameter, found anywhere in a module's function/method
-    signatures. src/ is MicroPython-target code (`from machine import ...` at module level), so it
-    is read with ast rather than imported - the same way buildgen already walks driver source."""
+    signatures. src/ is MicroPython-target code (`from machine import ...` at module level), so it is
+    read with ast, never imported - same posonlyargs+args/defaults idiom as buildgen/defaults.py."""
     tree = ast.parse(source_path.read_text())
     # Collected rather than short-circuited on the first hit: a second signature declaring the same
     # parameter with a different default would make "the" ceiling ambiguous, and silently pinning

@@ -5,8 +5,10 @@ the real MicroPython Unix-port interpreter tests/ uses (SPECIFICATION.md Part E.
 import os
 import sys
 from pathlib import Path
+from types import ModuleType
 
 import pytest
+from _script_loader import load_script_module
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -20,6 +22,14 @@ sys.path.insert(0, str(REPO_ROOT))
 @pytest.fixture(scope="session")
 def repo_root() -> Path:
     return REPO_ROOT
+
+
+@pytest.fixture(scope="session")
+def ci_suite(repo_root: Path) -> ModuleType:
+    """scripts/_digital_twin_ci_suite.py as a real module - a standalone `uv run`-style script, not a
+    package member, so its pure helpers are only reachable through the loader. Session-scoped and
+    shared, so the three test files exercising it execute the module once between them, not once each."""
+    return load_script_module(repo_root / "scripts" / "_digital_twin_ci_suite.py", "_digital_twin_ci_suite")
 
 
 @pytest.fixture(scope="session")
