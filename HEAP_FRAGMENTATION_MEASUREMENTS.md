@@ -425,9 +425,15 @@ still over 16x the longest requirement. This is what `f6a182d` fixes (§8).
 Every entry [TWIN], audit-clean (byte-identical bus work, unchanged `initialized`), ensembled over
 both perturbation families.
 
-### 6.1 Churn volume does not control the outcome
+### 6.1 Churn volume alone does not control the outcome
 
-Five independent demonstrations. The layer ladder, each rung removing one layer's allocations:
+**Corrected by §6A — read that first.** Every variant in this subsection reduced churn by changing
+which code ran, so each also changed the allocation **size mix** and object **count**. The
+factorial holds those fixed and finds churn volume *is* monotonically causal (at Y=0: 5,000 B ->
+in_big 0; 160,000 B -> 3; 843,232 B -> 21). What this subsection actually establishes is narrower
+and still useful: **cutting total bytes, by itself, predicts nothing**, because a change that cuts
+bytes while shifting the mix toward small objects makes it worse. The ladder, each rung removing
+one layer's allocations:
 
 | rung | churn per logger setup | worst largest-free | in_big |
 |---|---|---|---|
@@ -527,6 +533,112 @@ from a 6-perturbation set; the 16-run both-family ensemble gives base 26,784 / 4
 variants only within the same set.)
 
 ---
+
+## 6A. The factorial: what actually controls it
+
+Everything in §6 varied churn by changing *which code ran*, which changed allocation **size mix**,
+object **count** and **position** at the same time. A synthetic injector separates those axes. It
+replaces `PrintLogHistoryStore.setup` — the first line of every module's own `setup()`, so it sits
+at exactly the real position, distributed one-per-module across the batch — with a controllable
+number of transient allocations of controllable size, plus a controllable number of
+`await asyncio.sleep(0)` loop yields.
+
+Calibration, [TWIN], all windows identity-verified (§1.2): `bytearray(n)` costs
+`ceil(n/32)*32 + 32`; a bare awaited immediate-return coroutine costs **224 B** and is **not** a
+scheduler round-trip; `await asyncio.sleep(0)` costs **896 B**. Because a yield itself costs 896 B,
+the filler count is reduced to compensate, so total churn stays fixed while the yield count varies.
+At C = 843,232 B / Y = 172 the injector reproduces base's churn, its total loop-yield count
+(9 x 172 + 2 = `sleep=1552`, identical to base) and its position, with `cs=2` — no real FRAM I/O.
+
+### 6A.1 Synthetic small-object churn reproduces the defect
+
+| cell | churn/logger | yields/logger | in_big (p=0/3/13) | kept% |
+|---|---|---|---|---|
+| A | 843,232 | 172 | 9 / 9 / 9 | 45 / 42 / 49 |
+| B | 843,232 | **0** | **21 / 21 / 15** | 29 / 30 / 31 |
+| C | 160,000 | 172 | **0 / 0 / 0** | 101 / 100 / 100 |
+| D | 160,000 | 0 | 3 / 3 / 3 | 48 / 48 / 47 |
+| E | 5,000 | 0 | 0 / 0 / 0 | 101 / 100 / 100 |
+| base (real FRAM I/O) | 843,232 | 172 | 2 / 2 / 4 | 64 / 70 / 63 |
+| noio | ~0 | ~0 | 0 / 0 / 0 | 100 |
+
+Plain `bytearray(64)` churn at that position **reproduces the defect and exceeds it** — worse than
+the real FRAM path. So the defect is **not FRAM-specific, not SPI-specific and not chunk-layer
+specific**; the FRAM logger path is one instance of a general pattern.
+
+### 6A.2 Allocation size is the threshold variable
+
+Total churn 843,232 B and Y = 0 held constant; only the unit size varies, so object count varies
+inversely:
+
+| unit | cost/object | objects | in_big (p0/p3) | kept% |
+|---|---|---|---|---|
+| 32 B | 64 B (2 blk) | 13,175 | 21 / 21 | 30% |
+| 64 B | 96 B (3 blk) | 8,783 | 21 / 19 | 30% |
+| 128 B | 160 B (5 blk) | 5,270 | 21 / 17 | 30% |
+| **256 B** | **288 B (9 blk)** | **2,927** | **0 / 0** | **101%** |
+| 512 B | 544 B (17 blk) | 1,550 | 0 / 0 | 101% |
+| 1024 B | 1056 B (33 blk) | 798 | 0 / 0 | 101% |
+
+A sharp, reproducible knee between 5 and 9 GC blocks. **This is the binary "either heavy or none"
+character observed in the field, produced by one knob.**
+
+### 6A.3 Why: the churn and the survivors compete for the same holes
+
+Seam free-hole histogram, [TWIN]: 1,058 small free holes totalling 6,798 blocks. What fits where:
+
+| request | fits | holding, of the dust blocks |
+|---|---|---|
+| 2 blk (64 B) | **870 of 1,058 holes (82%)** | 97% |
+| 5 blk (160 B) | 464 (43%) | 79% |
+| 9 blk (288 B) | 226 (21%) | 56% |
+| 28 blk (896 B, one `sleep(0)`) | 12 (1%) | 12% |
+
+**The batch's own long-lived survivors are mean 52 B — about 2 blocks.** They compete for exactly
+the 82% of holes that 2-3 block churn can occupy. Matched mid-churn non-collecting map dumps
+confirm the occupancy directly:
+
+| churn unit | dust-hole blocks live at a matched sample | live inside the big run |
+|---|---|---|
+| 32 B (2 blk) | **82%** | 0% |
+| 256 B (9 blk) | **16%** | 0% |
+
+82% measured against 82% predicted by the histogram. So: small-object churn fills the dust region,
+first-fit then walks each newly-born long-lived object past it into the single large free run, and
+the churn's later collection strands it there. Churn of >= 9 blocks cannot fit those holes, leaves
+them free for the survivors, and the big run survives byte-for-byte.
+
+### 6A.4 Loop yields are protective, not harmful
+
+At constant total churn, in every perturbation: A (Y=172) in_big 9 vs B (Y=0) in_big **21**; C
+(Y=172) in_big 0 vs D (Y=0) in_big 3. A yield allocates an 896 B / 28-block object that fits 1% of
+the dust holes, so **every byte spent on a yield is a byte not spent filling a hole a survivor
+needs.** Writing a hot path to be extra friendly to cooperative multitasking is not the aggravating
+factor here; it is mildly protective at equal churn.
+
+### 6A.5 Small-object count, total bytes held constant
+
+Balance of the byte budget in 1024 B units, which cannot fit a dust hole:
+
+| small (64 B) objects per logger | big units | in_big (p0/p3) | kept% |
+|---|---|---|---|
+| 0 / 100 / 300 / 600 / 900 / 1,500 / 3,000 | 798 → 525 | **0 / 0** throughout | 100-101% |
+| 8,783 (pure small) | 0 | 11 / 15 | 42% |
+
+Up to at least 3,000 small transients per logger setup is harmless when the byte-budget balance is
+large-object churn. **Not established:** whether that count threshold is mediated by collection
+frequency (a large allocation fails sooner, forcing an earlier collection that repacks low).
+Single-sample occupancy does not discriminate the two ends (21% at n=3,000 vs 22% at n=8,783)
+because the quantity fluctuates with the collection cycle, and one dump cannot characterise it.
+The size result in §6A.2/§6A.3 does not depend on this.
+
+### 6A.6 The corrected model
+
+A long-lived object born **while** a large population of same-size-class transients is live gets
+displaced into the one large free run. The controlling quantities are, in order: **the transients'
+size class relative to the survivors'** (a threshold), **their count**, and **whether they are live
+at the moment a survivor is allocated** (position). Total bytes matter only through those. This
+subsumes §2.3-§2.5 and supersedes the framing in §6.1.
 
 ## 7. Remedy candidates, measured
 
@@ -635,7 +747,10 @@ transcript.
 | "one logger `setup()` churns **215,872 B**" (and "215 KB") | `mem_alloc()` window truncated by a mid-window collection (§1.2 defect 1). True value **843,232 B** |
 | "`_read()` of the 13-byte chunk = **81,696 B**; `_write()` = **78,080 B**" | same truncation. True values §3.3 |
 | "one chip-select session ~**1.7 KB** in-path" | derived from the truncated figures. True value **5,501 B** (§3.2) |
-| "`await asyncio.sleep(0)` = **896 B**; `sleep(0.001)` = **1,056 B**" | shared-heap harness (§1.2 defect 6). Superseded by §5's one-process-per-scenario figures (1,440 / 1,280 B) |
+| "`sleep(0.001)` = **1,056 B**" | shared-heap harness (§1.2 defect 6). Superseded by §5's 1,440 B |
+| ~~"`await asyncio.sleep(0)` = 896 B"~~ — **this retraction was itself wrong** | 896 B is correct: it reproduces exactly on a clean 64 MB heap with a verified window (§6A calibration) and independently matches the handover's own [TWIN] figure. It was quarantined by conflating it with the different forms `sleep(float>0)` = 1,440 B, `sleep_ms(n>0)` = 1,280 B and `sleep_ms(0)` = ~1,152 B. Each form has its own cost; none supersedes another |
+| the `bare` control, and the Q10 answer "each SPI transaction alone does not fragment" that rested on it | `bare` injects its whole burst immediately after `fram.setup()` via `_after_fram()` — **one contiguous block early in the batch, not distributed one-per-module** the way the real logger setups are. Since position is decisive (§2.5) it measured the churn-first configuration, not the interleaved one. §6A.1 runs the equivalent at the correct position and it **does** reproduce the defect |
+| the claim that churn volume does not control the outcome (§6.1 as first written) | confounded: every rung changed size mix and object count along with volume. See §6A.1/§6A.2 |
 | "the FRAM logger retains **nothing** (-224 B)" | below that instrument's resolution. The map diff is ~10x more sensitive: **~60 B per logger**, 16-17 objects per consolidated pass |
 | "**7** survivors attributable to the FRAM I/O" | artifact of subtracting two different variants. Measured directly by before/after map dump: **16-17** |
 | every "RAM-only logging" result before the `sys.modules` rebinding fix | measured the unmodified FRAM path (§1.2 defect 2) |
@@ -664,7 +779,7 @@ built per §1.4 and run from the repo root with `MICROPYPATH=.frozen`.
 | harness | what it does |
 |---|---|
 | `probe.py` | whole-batch heap-layout probe over the real `src/` object graph; `<cfg> <mode[:param]> <audit 0\|1> [k] [q]` |
-| `solo.py` | §4's per-module census; `<cfg> <nofram\|fram> [audit] [base\|newsettle]` |
+|  `solo.py` | §4's per-module census; `<cfg> <nofram\|fram> [audit] [base\|newsettle]` |
 | `framsolo.py` | §3.3's standalone FRAM-path pricing, per-phase, with CS and wire-byte counters |
 | `hp.py` | heap stats, map dumps, and the independent largest-allocatable-bytearray probe |
 | `parse.py` | block-map reconstruction by absolute address (§1.1) |
@@ -672,6 +787,9 @@ built per §1.4 and run from the repo root with `MICROPYPATH=.frozen`.
 | `sleepbench.py` | §5's sleep-cost scenarios, one process each |
 | `ens.sh` / `ens2.sh` | the two perturbation families (§1.3) |
 | `audit_check.py` / `constchk.py` | per-variant semantic audits; the `const()` visibility check |
+| `probe.py synth` mode | §6A's factorial injector. argv: `<cfg> synth <audit> <pert> <q> <churn_b> <yields> <blk\|coro> <unit> [peak] [small_n]` |
+| `fgrid.py` / `holes.py` / `peak.py` / `hist.py` | in_big + kept% per run; dust-hole occupancy; matched non-collecting peak dumps; the seam hole-size histogram |
+| `unitcost.py` / `unit2.py` | per-allocation cost calibration (`bytearray(n)`, bare await, `sleep(0)`) |
 
 Two runtime neutralisations are applied in every harness, and are twin artifacts with no counterpart
 on the device: `_fram_chip.FramChip.__init__` shrunk from a 262 KB backing bytearray to 8 KB (the
