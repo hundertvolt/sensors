@@ -399,7 +399,7 @@ reopened only if A.6's measurement asks for it.
 
 ### A.6 Decision gate after A
 
-- [ ] **Owner's decision, and the criterion is corrected here.** This box was written as "does A
+- [x] **Owner's decision, and the criterion is corrected here.** This box was written as "does A
       alone clear the tripwire" — the wrong test: the 80,000 B floor is a regression tripwire at
       69% of one healthy board reading, not a demand any allocation makes (§7A.8, §7A.9), and the
       goal is fewer long-lived survivors scattered through the heap. **On the goal as stated, A
@@ -408,7 +408,12 @@ reopened only if A.6's measurement asks for it.
       an axis §6A.12 puts an order of magnitude below its own threshold) and the ratio slightly
       worse. So B is not pure defense in depth, it is what §7B.5 says it is, and I.4 is amended as
       B.4 states — **which is the owner's call to make, since B.4 rewrites a standing
-      prohibition.** Nothing in B proceeds until it is made.
+      prohibition.**
+      **ANSWERED, owner, 2026-09-18: "A6 is free from my side."** B.4's amendment is granted, so
+      measure B is unblocked. The gate itself is void rather than passed — it could only ever
+      resolve one way once the tripwire stopped being the criterion. **B is deliberately not
+      started**: the owner asked to wait for an explicit go, because real-hardware measurements
+      are coming and may change what B is measured against.
 - [ ] Reopen §3B.4 lever 3 (the lock hierarchy) **only** if the combination in B.6 falls short
       and the measurement points at within-module smear rather than between-module placement
       (§7B.3 says which is which: collects fix between-module, churn fixes within-module).
@@ -419,10 +424,12 @@ reopened only if A.6's measurement asks for it.
       saves 288 B per FRAM operation and **0 B** at `setup()`, while costing 299 B of permanent
       retention per store — ~6,300 B across the 21 stores. A ~1:1 trade of transient churn for
       permanent survivors, which is the quantity the goal names. Owner's decision.
-- [ ] `AsyFramChunkBuffer` per store instead of per `get_buffer()` call: `print_log.py`'s
-      `_write()`/`_read()` and `asy_sgp40_driver.py`'s `ts_storage` paths. Saves a `bytearray` +
-      an `asyncio.Lock` per operation; a consumer-side change with its own tests. Propose, don't
-      do, unless the owner folds it in.
+- [x] `AsyFramChunkBuffer` per store instead of per `get_buffer()` call: `print_log.py`'s
+      `_write()`/`_read()` and `asy_sgp40_driver.py`'s `ts_storage` paths.
+      **RULED OUT, owner, 2026-09-18.** Not to be built. The measurement above is the reason: it
+      trades transient churn for permanent survivors at roughly 1:1 and saves nothing in the phase
+      the defect lives in. No scoped exception is needed after all, and `print_log.py` /
+      `asy_sgp40_driver.py` stay untouched.
 - [x] BACKLOG entry: I2C has no synchronous session form (A.3's flagged discrepancy).
       **Done** — `BACKLOG.md`'s deferred list, recorded as flagged and not fixed.
 
@@ -433,10 +440,12 @@ reopened only if A.6's measurement asks for it.
       **5.8x the total wall time**), and it recovers **no memory at all** — allocation is a flat
       160 B per `_crc` call regardless of length, since `sleep(0)` is free on this build. The fix
       is size-dependent, not granularity-only. Owner's decision.
-- [ ] `src/crc_checks.py`'s `_crc()` yields after every byte; the FRAM path calls it on 13-byte
-      buffers. Making the yield granularity a constructor parameter (default: unchanged) or
-      yielding per N bytes is a latency-only fix (0 B on the real VM; 448 → ~100 B per CRC on
-      the settrace build, §3A.6). Not part of A; listed so it is not forgotten.
+- [x] `src/crc_checks.py`'s `_crc()` yields after every byte.
+      **CLOSED, owner, 2026-09-18: "pure wall clock time is not such an issue, don't touch."**
+      `crc_checks.py` is not to be modified. It recovers no memory (§7C.3), so it was never part
+      of the remediation; the 5.8x wall-time cost is accepted, and the owner's original reason for
+      the per-byte yield stands. **Not** carried to BACKLOG as an open item — it is decided, not
+      deferred. §11 item 1 is closed with it.
 
 ## B. `gc.collect()` confined to the two boot lists
 

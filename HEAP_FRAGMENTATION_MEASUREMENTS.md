@@ -2783,10 +2783,12 @@ allocation — hence rung r0's -68,992 B is an artifact, not a real saving.
    produces today, the memory-safety suite's included, carries a per-call and per-resume cost the
    firmware does not have. Touches `toolchain/setup_toolchain.py` and `scripts/`, so it is behind
    the two-target clean-chroot gate; the recipe that produced `build-nosettrace` is in §10.
-1. **Ship the CRC yield-granularity fix (§3.4) on its own merits?** `src/crc_checks.py` is under no
-   editing restriction. Justified on latency alone now — 448 B per CRC on the real VM, not 16,800
-   (§3A.6); measured **not** to improve fragmentation (worst 26,528 vs base 26,784), so it is an
-   efficiency fix, not the remedy.
+1. **Ship the CRC yield-granularity fix (§3.4) on its own merits?** **CLOSED, owner, 2026-09-18:
+   "pure wall clock time is not such an issue, don't touch."** `src/crc_checks.py` is not to be
+   modified. §7C.3 measured the allocation as a flat 160 B per `_crc` call regardless of buffer
+   length, so there was never any memory in it; the 5.8x wall-time cost of per-byte yielding is
+   accepted, and the owner's original reason for the yield (a 256 B CRC stalling other tasks) holds.
+   Not deferred to BACKLOG — decided.
 2. **Are `asy_fram_driver.py`/`asy_fram_manager.py` — and `asy_spi_driver.py` — open for a scoped
    exception, for §3B's restructure?** This item's earlier form proposed cutting *transactions* (one
    2-byte status write instead of two, one WREN envelope per chunk operation): **withdrawn** — the
