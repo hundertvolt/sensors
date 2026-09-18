@@ -2340,6 +2340,23 @@ missing is a boot-phase contract, which is what §12's seam + contiguity guard w
 
 ## 8. What is committed
 
+**Reverted, 2026-09-18, at the owner's instruction.** Every change this investigation made to
+established `src/` and test files was taken back to `claude/automated-build-chain-nuzumw`'s state
+so the remediation starts clean: `f6a182d`/`04ef56a` (`src/asy_spi_driver.py`,
+`tests/test_asy_spi_driver.py`) and the Tier-0 model pair from `99080ff`
+(`tests/_heap_fragmentation_model.py`, `tests_scripts/test_heap_fragmentation_model.py`), plus the
+handover paragraph that pointed at it. The findings below stand as measurements — the blocking
+settle's datasheet grounding, the §5.1 hazard, and §8.1's lesson that the CS path must keep a
+scheduling point per session — and are re-done inside `HEAP_REMEDIATION_PLAN.md` A.1.1 with fresh
+tests (A.2). The three defects the Tier-0 pair found in the handover's own instrument sketch are kept here so
+the revert does not lose them: its `free_run_profile()` **MemoryErrors on its own probe**
+(`held.append(...)` may have to grow the list, and the only region it can grow into is the one
+`bytearray(n)` just claimed - pre-size both lists and guard the claim); `gc.collect()` must run
+**before** the measurement (measuring pre-collect reports reclaimable garbage as fragmentation);
+and `gc.mem_free()` must be read **before** `largest_block()` (the binary search leaves its own
+probe allocations behind, enough to report the impossible `largest > free`). Everything after this
+paragraph describes the state *before* the revert.
+
 **`f6a182d`** — `src/asy_spi_driver.py`: both `await asyncio.sleep(0.001)` calls in
 `SPIDevice.__aenter__`/`__aexit__` replaced with `time.sleep_us(_CS_SETTLE_US)`,
 `_CS_SETTLE_US = const(2)`. Plus `tests/test_asy_spi_driver.py` (50/50).

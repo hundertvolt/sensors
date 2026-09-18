@@ -669,6 +669,12 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   the Python-internal changes explicitly recorded as having no C impact). Carries those decisions
   across the gap until that C source is imported into this repo and reconciled, then gets deleted.
   The protocol itself is specified in `SPECIFICATION.md` Part J, which is permanent.
+- **[`HEAP_REMEDIATION_PLAN.md`](HEAP_REMEDIATION_PLAN.md)** — the implementation to-do list for
+  the two approved heap-fragmentation measures (the wire-identical FRAM path restructure and the
+  boot-confined `gc.collect()` placement resets): what is fixed before a line is written, the
+  design decided per file, tests-first items per tier, the measurement and hardware steps, the
+  `SPECIFICATION.md` I.4 amendment, and what is out of scope. Deleted once every box is ticked and
+  its durable parts have moved into `SPECIFICATION.md`/CLAUDE.md/BACKLOG.md.
 - **[`HEAP_FRAGMENTATION_MEASUREMENTS.md`](HEAP_FRAGMENTATION_MEASUREMENTS.md)** — the measured
   evidence base for the heap-fragmentation defect (the collapse of the largest contiguous block
   across WP1+WP2, which fails `tests_hardware/flash/test_memory_stress.py`'s 80,000 B floor):

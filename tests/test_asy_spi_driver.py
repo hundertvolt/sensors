@@ -501,11 +501,7 @@ def test_aenter_releases_the_lock_if_configure_raises() -> None:
     run(retry())  # a later session on the same device must still be able to acquire the lock
 
 
-def test_aenter_has_no_cancellation_point_after_cs_is_asserted() -> None:
-    # The CS settle is a blocking time.sleep_us(), so __aenter__ no longer parks in the scheduler
-    # between asserting CS and handing control to the body - a cancellation cannot land there at
-    # all, which is stronger than releasing the lock afterwards. __aenter__'s own except path is
-    # still covered by test_aenter_releases_the_lock_if_configure_raises.
+def test_aenter_releases_the_lock_if_cancelled_during_the_settle_sleep() -> None:
     spi = make_spi()
     device = make_device(spi)
     entered = False
@@ -513,96 +509,19 @@ def test_aenter_has_no_cancellation_point_after_cs_is_asserted() -> None:
     async def enter_only() -> None:
         nonlocal entered
         async with device:
-            entered = True
+            entered = True  # pragma: no cover - not expected to be reached before cancellation
 
     async def scenario() -> None:
         task = asyncio.create_task(enter_only())
-        await asyncio.sleep(0)  # one scheduler pass now covers the whole session
-        task.cancel()  # arrives too late to interrupt anything: the session already finished
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
-        assert entered
-        assert not spi.async_lock.locked()
-        assert device.cs_pin.value() == 1
-
-    run(scenario())
-
-
-def test_session_does_not_yield_to_other_tasks_while_cs_is_asserted() -> None:
-    # Bus-hazard invariant: nothing else on the loop may run inside an open chip-select window,
-    # so no other coroutine can touch the bus (or allocate) between assert and deassert.
-    spi = make_spi()
-    device = make_device(spi)
-    passes = 0
-    stop = False
-
-    async def spinner() -> None:
-        nonlocal passes
-        while not stop:
-            passes += 1
-            await asyncio.sleep(0)
-
-    async def scenario() -> None:
-        nonlocal stop
-        task = asyncio.create_task(spinner())
-        await asyncio.sleep(0)  # let the spinner reach its first yield
-        before = passes
-        async with device:
-            assert device.cs_pin.value() == 0  # CS asserted
-            assert passes == before  # nothing else ran while CS is asserted
-            assert device.asy_lock.locked()
-        # The window is closed here: CS is deasserted and the lock released, so the one yield
-        # __aexit__ ends with is outside it. That yield is required, not incidental - without any
-        # scheduling point in the session a long burst of one-byte bus commands holds the loop for
-        # its whole duration (see test_a_burst_of_sessions_lets_other_tasks_run below).
-        assert device.cs_pin.value() == 1
-        assert not device.asy_lock.locked()
-        assert passes > before
-        stop = True
+        await asyncio.sleep(0)  # let it start: acquire lock, configure(), assert CS, hit sleep(0.001)
         task.cancel()
         try:
             await task
         except asyncio.CancelledError:
             pass
-
-    run(scenario())
-
-
-def test_a_burst_of_sessions_lets_other_tasks_run() -> None:
-    # Regression: the chip-select path's only scheduling points used to be its two awaited settle
-    # sleeps. Replacing them with a blocking delay (correct - an await there hands the loop away
-    # with CS asserted) left a burst of sessions holding the loop for its entire duration, which
-    # broke a digital-twin integration test that needs the WiFi state machine to keep advancing
-    # while FRAM logging runs. __aexit__ therefore yields once per session, after the window.
-    spi = make_spi()
-    device = make_device(spi)
-    passes = 0
-    stop = False
-
-    async def spinner() -> None:
-        nonlocal passes
-        while not stop:
-            passes += 1
-            await asyncio.sleep(0)
-
-    async def scenario() -> None:
-        nonlocal stop
-        task = asyncio.create_task(spinner())
-        await asyncio.sleep(0)
-        before = passes
-        for _ in range(20):
-            async with device:
-                pass
-        # at least one scheduler pass per session, so a long burst cannot starve the loop
-        assert passes - before >= 20, f"burst of 20 sessions yielded only {passes - before} times"
-        stop = True
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
+        assert not entered
+        assert not spi.async_lock.locked()  # released via __aenter__'s own except, not leaked
+        assert device.cs_pin.value() == 1  # deasserted too, not left stuck asserted
 
     run(scenario())
 
