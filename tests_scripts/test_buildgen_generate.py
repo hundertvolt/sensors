@@ -360,18 +360,15 @@ def test_cli_reports_build_error_on_stderr_and_exits_nonzero(tmp_path: Path, cap
     assert "hotspot_time_min" in captured.err
 
 
-def test_hostname_and_hotspot_password_are_not_yet_wired_into_generated_code(repo_root: Path, src_dir: Path, ext_dir: Path) -> None:
-    # Documents a real, pre-existing gap found during this session's own review (see
-    # buildgen/validate.py's _check_device_table() comment for the full account): [device].name/
-    # hostname/hotspot_password are validated (presence, shape, the SensorStation<name> formula)
-    # but neither this generator nor any hand-written sensortask_*.py actually has a
-    # constructor-time injection point for them - AsyConnTime's Hostname/HotspotPW are
-    # ConfigManager-persisted runtime values with one hardcoded default shared by every device's
-    # build. This test is a tripwire: it should start failing (and get deleted/updated) the day a
-    # future session actually wires either value into generated code.
+def test_hostname_and_hotspot_password_are_wired_into_generated_code(repo_root: Path, src_dir: Path, ext_dir: Path) -> None:
+    # The inverse of the tripwire this replaces. [device].hostname/hotspot_password were validated
+    # (presence, shape, the SensorStation<name> formula) and then reached nothing: every device
+    # booted as the shared "SensorNode" default, whatever its TOML said. They are now passed to
+    # AsyConnTime as the per-device defaults for the two ConfigManager-persisted fields.
     result = generate_device(repo_root / "devices" / "wozi.toml", src_dir, ext_dir)
-    assert "SensorStationWozi" not in result.module_source
-    assert "12345678" not in result.module_source
+    assert "hostname='SensorStationWozi'" in result.module_source
+    assert "hotspot_password='12345678'" in result.module_source
+    ast.parse(result.module_source)
 
 
 def test_bmp3xx_trigger_sec_is_rendered_into_the_constructor_call(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:

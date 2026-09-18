@@ -157,21 +157,35 @@ def bench(board: Board) -> Iterator[BenchBridge]:
     yield bridge
 
 
-_DUT_DEFAULT_HOSTNAME = "SensorNode"  # src/asy_wifi_service.py's _VAL_HOST schema default - this bench's own DUT has never been reconfigured with a different one (dev_legacy/README.md's "Current bench state")
-_DUT_HOTSPOT_PASSWORD = "12345678"  # hardcoded in src/asy_wifi_service.py's _configure_hotspot_ap() - same value as test_hotspot_role_reversal.py's own _HOTSPOT_PASSWORD
+# The DUT's hotspot SSID is its Hostname config value, and since 2026-09-18 a build injects
+# devices/<device>.toml's own [device].hostname as that field's DEFAULT (BACKLOG). A board whose
+# config file predates that still carries the persisted "SensorNode" and keeps using it, so both are
+# legitimately live depending on when the board's filesystem was last wiped - hence a candidate list
+# rather than one name. Ordered newest-first, so a freshly flashed board is found on the first scan.
+_DUT_HOSTNAME_CANDIDATES = ("SensorStationDev", "SensorNode")
+_DUT_HOTSPOT_PASSWORD = "12345678"  # src/asy_wifi_service.py's _VAL_HOTSPOT_PW default, which every devices/*.toml also declares - same value as test_hotspot_role_reversal.py's own _HOTSPOT_PASSWORD
 
 
 def _recover_stale_dut_credentials(bench: BenchBridge) -> None:
     """Last-resort recovery for dut_ip(): if the DUT can't join the bench AP after two hard_reset()
     retries, stale stored WiFi credentials are the likely cause - joins the DUT's own hotspot
     fallback and PUTs the bench AP's current credentials to it (see tests_hardware/README.md)."""
+    found: list[str] = []
+
+    def _any_candidate_visible() -> bool:
+        for ssid in _DUT_HOSTNAME_CANDIDATES:
+            if bench.is_ssid_visible(ssid):
+                found.append(ssid)
+                return True
+        return False
+
     wait_until(
-        lambda: bench.is_ssid_visible(_DUT_DEFAULT_HOSTNAME),
+        _any_candidate_visible,
         timeout_s=30.0,
         poll_interval_s=2.0,
-        description=f"DUT's own hotspot ({_DUT_DEFAULT_HOSTNAME!r}) to become scannable during automatic stale-credential recovery",
+        description=f"DUT's own hotspot (one of {list(_DUT_HOSTNAME_CANDIDATES)}) to become scannable during automatic stale-credential recovery",
     )
-    bench.join_dut_hotspot(_DUT_DEFAULT_HOSTNAME, _DUT_HOTSPOT_PASSWORD, timeout_s=45.0)
+    bench.join_dut_hotspot(found[0], _DUT_HOTSPOT_PASSWORD, timeout_s=45.0)
     try:
         gateway = bench.gateway_ip()
         ssid = bench.ap_ssid()

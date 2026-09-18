@@ -67,26 +67,6 @@ _SMOKE_ENDPOINTS = ("/measurements", "/sensors", "/networking", "/system", "/sta
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _FIXTURE_TOMLS = sorted(p.name for p in (_REPO_ROOT / "tests_scripts" / "buildgen_fixtures").glob("*.toml") if not p.name.startswith("malformed_"))
 
-# Reported, not fixed (BACKLOG item 31, and CLAUDE.md's "flag, don't silently change" rule for a
-# cross-file discrepancy a scan turns up). buildgen/definitions.py's _errcount_group() is keyed by
-# DRIVER KIND - it receives only a set of have-keys and has no instance information at all - while
-# the API publishes one key per LOGGER INSTANCE. No real device is affected (none declares two
-# instances of one driver, and dev's uart_link pair happens to use exactly the name_ext values the
-# catalog hardcodes), so this is latent, not live. Both synthetic fixtures are affected, which is
-# precisely what a fixture is for. Pinned exactly rather than waved through: closing the gap makes
-# this fail and prompts the exemption's removal, and any OTHER drift still fails immediately.
-# Each value is (published-but-never-displayed, displayed-but-never-published).
-_KNOWN_CATALOG_DRIFT: dict[str, tuple[frozenset[str], frozenset[str]]] = {
-    "novel_combo": (
-        frozenset({"SCD30_primary", "SCD30_secondary", "UART_a", "UART_b"}),
-        frozenset({"SCD30", "UART_init", "UART_resp"}),
-    ),
-    "multi_instance": (
-        frozenset({"BMP3XX_only", "CFGMGR_BMP3XX_only", "CFGMGR_SGP40_a", "CFGMGR_SGP40_b", "SCD30_a", "SCD30_b", "SGP40_a", "SGP40_b"}),
-        frozenset({"BMP3XX", "CFGMGR_BMP3XX", "CFGMGR_SGP40", "SCD30", "SGP40"}),
-    ),
-}
-
 
 @pytest.fixture
 def src_dir(repo_root: Path) -> Path:
@@ -158,18 +138,15 @@ def _errcount_parity_failures(model: DeviceModel, src_dir: Path, status_body: ob
         return ["GET /status carried no usable errcount object, so no parity claim would mean anything"]
     published = set(status_body["errcount"])
     displayed = _website_errcount_keys(model, src_dir)
-    expected_missing, expected_extra = _KNOWN_CATALOG_DRIFT.get(model.device, (frozenset(), frozenset()))
-    missing = (published - displayed) - expected_missing
-    extra = (displayed - published) - expected_extra
+    # No exemptions: _errcount_group() derives its rows per logger instance now (BACKLOG item 31,
+    # fixed 2026-09-18), so the two multi-instance fixtures agree exactly like the six real devices.
+    missing = published - displayed
+    extra = displayed - published
     failures = []
     if missing:
         failures.append(f"error sources published by GET /status with no website row (never displayed): {sorted(missing)}")
     if extra:
         failures.append(f"website errcount rows with no published source (each renders a permanent 0): {sorted(extra)}")
-    # The exemption is a record of a REPORTED gap, not a licence. Once the catalog derives per
-    # instance, these stop being drift and the stale entry has to go - loudly, not quietly.
-    if expected_missing and not (expected_missing & published):
-        failures.append(f"{model.device}'s _KNOWN_CATALOG_DRIFT entry is stale - the gap appears to be fixed, so delete it (and BACKLOG item 31) rather than carrying it")
     return failures
 
 

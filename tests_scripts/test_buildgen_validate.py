@@ -141,6 +141,17 @@ def test_hostname_mismatch(tmp_path: Path, src_dir: Path) -> None:
         _build(tmp_path, src_dir, doc)
 
 
+def test_hostname_longer_than_the_network_cap_is_rejected(tmp_path: Path, src_dir: Path) -> None:
+    # Really a cap on [device].name, since hostname is derived from it. Now that the value is
+    # actually injected into the build, an over-long one would be dropped back to the shared
+    # "SensorNode" default at boot instead of failing - a device quietly not answering to its name.
+    doc = base_doc()
+    doc["device"]["name"] = "A" * 20  # "SensorStation" (13) + 20 = 33, one over network.hostname()'s cap
+    doc["device"]["hostname"] = "SensorStation" + doc["device"]["name"]
+    with pytest.raises(BuildError, match="caps at 32"):
+        _build(tmp_path, src_dir, doc)
+
+
 @pytest.mark.parametrize("bad_name", [5, ""])
 def test_device_name_invalid_rejected(tmp_path: Path, src_dir: Path, bad_name: object) -> None:
     # §7.1 #9: [device].name's own type/non-emptiness check, exercised only implicitly by every

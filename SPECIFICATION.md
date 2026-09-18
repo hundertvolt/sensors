@@ -768,7 +768,7 @@ Verified end-to-end in a clean `debootstrap` Ubuntu 24.04 chroot for both the de
 and latest stable; an in-place version update leaves no stale state; `test` alone completes in
 ~30s offline; both `setup`/`test` were run against a deliberately hostile environment (poisoned
 `PATH`, garbage `CFLAGS`/`CMAKE_*`, non-English `LANG`) with zero poison surviving into the build.
-See CLAUDE.md's "Pre-push verification" for the re-check recipe.
+See CLAUDE.md's "Build-environment verification" for the re-check recipe.
 
 ### B.7.1 GCC ≥14 host: mbedtls array-bounds workaround
 
@@ -1594,7 +1594,7 @@ the same "check the shared catalog first" discipline Part G.1 states generally.
 | `asy_webserver_service.py` (`WEBSERVER`) | 1-6 | 1-5 | 1=unexpected exception in dispatch, 2=`system_cmd` callback, 3=`notification_led` callback, 4=uncaught exception via `errorhandler(Exception)`, 5=`notification_pause` callback, 6=one `/status` streamed-fragment source failed. `wrnno` 1-5=connection-lifecycle reclaim reasons. |
 | `asy_neopixel_driver.py` | — | — | No persisted logging. |
 | `asy_i2c_driver.py`/`asy_spi_driver.py`, `asy_udp_socket.py`, `asy_dns_client.py` (client) | — | — | Deliberately no logging — every failure surfaces to exactly one upstream owner. Coverage audit closed, no gaps. |
-| `asy_uart_comm.py` (`UART`, `_NAME` only as the default) | 10-34 | 10-14 | 10-16=construction refusals (payload_size, timeout, role, bus handle, allocation — the module's own buffers *and* a frame codec whose one long-lived scratch failed, since a codec that reports itself not ready would otherwise fail every write instead — rxbuf, missing callback), 17=not-ready gate, 18=role refusal, 19=frame validation, 20=missing/mismatched ACK, 21=write, 22=read timeout, 23=payload too large, 24=destination allocation, 25=size mismatch, 26=callback, 27=re-entrant call, 28=wrong frame kind, 29=GET id mismatch, 30=listen loop, 31=peer initiated simultaneously, 32=bytes arriving but no frame ever valid (a CRC/baud/`payload_size` mismatch), 33=streamed chunk short-filled, 34=a caller's own argument refused (command id outside a byte, a non-integer or negative size, a non-buffer payload or destination). `wrnno` 10=resync, 11=drain bound reached, 12=fault episode cleared, 13=a *rise* in the driver's cumulative `cancel_unacknowledged` (reading it as a flag reported every later healthy cancel as wedged), 14=a callback declined a command id. **Exactly one of 10/11/14 is persisted per fault episode, and 14 at most once per command id until a `reset_error_counter()`** — deduping only the `errno` left every fault still persisting its own resync warning, which refilled the bounded history and evicted the entry naming the cause — and 14 escaped that fix until 2026-09-12, so a peer polling one unimplemented id spent two slots per refusal and erased a ten-slot history in five rounds; remembering only the *last* declined id then left an alternation between two unimplemented ids flooding it just the same, which a 32-byte one-bit-per-id map closed on 2026-09-13. **A consequence worth knowing before reading a field log: `wrnno` 11 never reaches FRAM through the path that produces it** — `_resync()` persists 10 first and that spends the episode's one slot, so "the peer never stopped sending" is only ever visible-only, and a babbling peer shows as 10 (plus `errno` 32 when no frame ever validated). Measured 2026-09-13; whether 11 should outrank 10 is BACKLOG open question 23, not a silent change. Numbered from 10 to stay clear of `base_classes.py`'s reservation even though this is not a `SensorReader` subclass, and disjoint from any owner's own range where the logger is reached through. |
+| `asy_uart_comm.py` (`UART`, `_NAME` only as the default) | 10-34 | 10-14 | 10-16=construction refusals (payload_size, timeout, role, bus handle, allocation — the module's own buffers *and* a frame codec whose one long-lived scratch failed, since a codec that reports itself not ready would otherwise fail every write instead — rxbuf, missing callback), 17=not-ready gate, 18=role refusal, 19=frame validation, 20=missing/mismatched ACK, 21=write, 22=read timeout, 23=payload too large, 24=destination allocation, 25=size mismatch, 26=callback, 27=re-entrant call, 28=wrong frame kind, 29=GET id mismatch, 30=listen loop, 31=peer initiated simultaneously, 32=bytes arriving but no frame ever valid (a CRC/baud/`payload_size` mismatch), 33=streamed chunk short-filled, 34=a caller's own argument refused (command id outside a byte, a non-integer or negative size, a non-buffer payload or destination). `wrnno` 10=resync, 11=drain bound reached, 12=fault episode cleared, 13=a *rise* in the driver's cumulative `cancel_unacknowledged` (reading it as a flag reported every later healthy cancel as wedged), 14=a callback declined a command id. **Exactly one of 10/11/14 is persisted per fault episode, and 14 at most once per command id until a `reset_error_counter()`** — deduping only the `errno` left every fault still persisting its own resync warning, which refilled the bounded history and evicted the entry naming the cause — and 14 escaped that fix until 2026-09-12, so a peer polling one unimplemented id spent two slots per refusal and erased a ten-slot history in five rounds; remembering only the *last* declined id then left an alternation between two unimplemented ids flooding it just the same, which a 32-byte one-bit-per-id map closed on 2026-09-13. **`wrnno` 11 outranks 10 for the episode's single slot** (owner decision, 2026-09-18, closing BACKLOG open question 23) — `_resync()` drains first and then persists 11 when the drain hit its bound, 10 otherwise, so "the peer never stopped sending", the one signal separating a babbling or misconfigured peer from ordinary line noise, is what a field log actually carries. The budget is unchanged at one persisted warning per episode. The same change closed the inverse leak: `setup()`'s boot drain is deliberately not a fault and not counted, yet it used to persist 11 on every boot of a babbling link, because the bound logged itself rather than flagging the caller. Numbered from 10 to stay clear of `base_classes.py`'s reservation even though this is not a `SensorReader` subclass, and disjoint from any owner's own range where the logger is reached through. |
 | `asy_uart_driver.py` | — | — | Deliberately no logging — every failure surfaces to its one upstream owner (`asy_uart_comm.py`), the same treatment the other bus drivers get. `cancel_unacknowledged` is a plain counter that owner reads and logs under its own `wrnno` 13. |
 
 ## C.8 Concurrency & locking model
@@ -4319,6 +4319,18 @@ buffers (small, fixed, datasheet-derived sizes); `ConfigManager` (each instance 
 file, no aggregation); `asy_fram_manager.py`'s `allocated_size` (tracks FRAM address space, not
 RAM); `asy_wifi_service.py` (no `network.WLAN.scan()` call anywhere).
 
+**Revisited 2026-09-18 — the I2C register buffers were safe but wasteful.** They are small and
+datasheet-derived, as stated above, but `get_bits()`/`set_bits()`/`get_register_struct()` allocated
+a *fresh* `bytes` for every single register read, at every sensor's own read interval, forever —
+the churning-same-shaped-objects pattern I.4 names as the thing to fix at the source rather than
+absorb. They now read through `machine.I2C.readfrom_mem_into()` into one long-lived 32-byte scratch
+per `I2C` instance (a `memoryview` slice per call, which `struct.unpack()` already allocated anyway).
+No public signature changed. The buffer is shared across every device on a bus, which is safe only
+because each of these methods fills and decodes it with no `await` in between and no `Timer`/
+`Pin.irq` callback in this codebase touches I2C — both verified against the real code. A read larger
+than the scratch (nothing today; BMP3XX's 21-byte calibration block is the largest) falls back to
+the allocating call rather than being refused.
+
 ## I.3 The shared primitive: `_stream_dict_response()`
 
 Generalizes the already-shipped `/status` mitigation to any flat, dict-shaped GET response: one
@@ -4986,7 +4998,7 @@ a shared bus, and an address/command sweep:
   with no real broadcasting occupant) — that file is the permanent home for such shapes, not a
   fallback for drivers the generator hasn't reached yet.
 
-## K.7 `devices/*.toml` and `tests_hardware/bus_topology.py`
+## K.7 `devices/*.toml`
 
 Add the `[[instance]]` block **only to the real devices that actually carry this hardware** —
 `wozi` never gets a bench-only or not-yet-deployed-everywhere sensor just because `dev` does (C.f.
@@ -4996,10 +5008,14 @@ never invented — cite where the fact came from in a TOML comment (a prior hand
 `sensortask_<device>.py`'s own construction comment, a real bench measurement, a datasheet page).
 Placement within the `[[instance]]` list has FRAM-chunk-order consequences (bump-pointer allocator,
 Part A.7) — no hard rule on where to put it beyond "after every earlier sensor whose chunk layout
-shouldn't move," which usually just means "last." **Also update `tests_hardware/bus_topology.py`**
-— a hand-kept, tool-uncross-checked mirror of the same wiring facts (its own docstring says so
-directly); nothing enforces that it stays in sync, so it has to be part of this same checklist
-entry, not an afterthought.
+shouldn't move," which usually just means "last." The TOML is now the only host-side copy of these
+facts: `tests_hardware/bus_topology.py`, a hand-kept mirror that nothing imported and no tooling
+cross-checked, was deleted (2026-09-18, BACKLOG item 20). Its one enforced invariant — no device
+address inside an I2C-reserved range — moved to `tests_scripts/test_device_tomls.py`, where it runs
+against the real device set rather than two hardcoded tuples. The on-target sweep
+(`device_scripts/bus_topology_autodetect_and_hazard_sweep.py`) keeps its own address table, since it
+is MicroPython on the board and cannot import host test code; it detects the live topology anyway,
+so it does not need the wiring half at all.
 
 ## K.8 Regenerate and spot-check generated artifacts
 
@@ -5074,7 +5090,9 @@ Check off per promotion; note explicitly (not silently) anywhere a step didn't a
 - [ ] Bus-hazard, all four tiers: sensor-specific (hand-written) + cross-sensor (auto-generated if
       that capability has landed by the time you read this — check; hand-paired otherwise)
 - [ ] `devices/*.toml` — only the real devices that carry this hardware, wiring facts cited to a
-      real source; `tests_hardware/bus_topology.py` updated to match
+      real source (the only host-side copy there is; see K.7)
+- [ ] `device_scripts/bus_topology_autodetect_and_hazard_sweep.py`'s `KNOWN_ADDRESSES` — the
+      on-target table, which cannot import host code, so it needs the new address added by hand
 - [ ] `html/definitions/*.json` regenerated and spot-checked; `mockdata/*.json` checked for stale
       placeholder fields
 - [ ] SPECIFICATION.md Part C (+ C.7.1/C.8 if applicable), `DEVICE_REFERENCE.md`,
@@ -5139,7 +5157,13 @@ can most easily break without any test naming them:
 - **Naming**: `SensorStation<Name>` is the base stub — default hostname and website display
   identity. The hotspot AP's SSID is literally the `Hostname` config field's value; the hotspot
   password is a per-device TOML field defaulting to the existing hardcoded `"12345678"` (accepted
-  risk, CLAUDE.md).
+  risk, CLAUDE.md). Both reach the device as **defaults, not fixed values**: the generator passes
+  them to `AsyConnTime(hostname=..., hotspot_password=...)`, which substitutes them into the two
+  `ConfigManager`-persisted fields' schemas (`_with_default()`), so a rename through the web UI
+  still wins on every later boot. Until 2026-09-18 nothing passed them at all and every device
+  booted as the shared `"SensorNode"` whatever its TOML said. `[device].hostname` is capped at
+  `network.hostname()`'s own 32 characters at build time, because an over-long one would be dropped
+  back to that shared default at boot rather than failing.
 - **Cross-instance wiring is fully static, resolved at generation time, never at runtime.** There
   is no runtime registry or bus. Each driver declares a `# @wiring` comment tag naming which TOML
   field supplies a source instance and what class it must be (L.6); the generator resolves each

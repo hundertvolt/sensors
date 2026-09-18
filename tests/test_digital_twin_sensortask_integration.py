@@ -224,7 +224,7 @@ def test_every_get_endpoint_is_reachable_over_real_http_and_shaped_correctly() -
                 "SSID": "",
                 "PW": "********",
                 "Country": "DE",
-                "Hostname": "SensorNode",
+                "Hostname": "SensorStationWozi",  # devices/wozi.toml's own [device].hostname, injected by buildgen
                 "LedWifiOn": True,
                 "NTP_Host": "pool.ntp.org",
                 "NTP_Offset_S": 0,

@@ -10,7 +10,7 @@ import sys
 # Same sys.path convention as tests/test_setter_microdot_integration.py (see its own module
 # docstring for why: scripts/test.sh's MICROPYPATH deliberately excludes ext/, and extending
 # sys.path here reaches the real, vendored ext/microdot.py without touching MICROPYPATH/
-# pyproject.toml/scripts/test.sh - a "Pre-push verification" scope change this file must not need.
+# pyproject.toml/scripts/test.sh - a "Build-environment verification" scope change this file must not need.
 sys.path.insert(0, "ext")
 
 from _shared_rest_roundtrip import drain_json_response_body

@@ -17,7 +17,7 @@ import sys
 from collections import namedtuple
 
 # scripts/test.sh's own MICROPYPATH ("src:tests:.frozen") deliberately doesn't include ext/ - that
-# would be a scripts/ change, which CLAUDE.md's "Pre-push verification" requires a full clean-
+# would be a scripts/ change, which CLAUDE.md's "Build-environment verification" requires a full clean-
 # chroot re-verification for. Extending sys.path at runtime, scoped to this one file, reaches the
 # same real ext/microdot.py without touching scripts/test.sh, MICROPYPATH, or pyproject.toml at
 # all - confirmed directly against the pinned interpreter that a plain sys.path.insert() before the

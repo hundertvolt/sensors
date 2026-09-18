@@ -290,6 +290,11 @@ class I2C:
         self.log.append(("readfrom_mem", address, memaddr, nbytes, addrsize))
         return data
 
+    def readfrom_mem_into(self, address: int, memaddr: int, buf: object, *, addrsize: int = 8) -> None:
+        # Delegates, so fault injection (--fault <chip>:readfrom_mem) and the bus log stay one
+        # implementation regardless of which of the two read forms the driver under test calls.
+        buf[:] = self.readfrom_mem(address, memaddr, len(buf), addrsize=addrsize)  # type: ignore[index,arg-type]
+
     def writeto_mem(self, address: int, memaddr: int, buf: object, *, addrsize: int = 8) -> None:
         device = self._device_or_nak(address)
         device.handle_writeto_mem(memaddr, bytes(buf))  # type: ignore[call-overload]

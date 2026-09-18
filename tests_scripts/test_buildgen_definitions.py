@@ -373,7 +373,7 @@ def test_mandatory_group_declared_but_no_fields_reference_it_fails_loud(tmp_path
     mutated = tmp_path / "asy_notification_service.py"
     mutated.write_text("".join(lines), encoding="utf-8")
     spec = InstanceSpec(
-        driver="notification", name_ext="", fields={}, wiring={}, order_index=0,
+        driver="notification", name_ext="", fields={}, wiring={}, order_index=0, resolved_name="NOTIFY",  # errcount rows are per instance now, so this must be filled as validate.py always fills it
         driver_info=DriverInfo(driver="notification", module="asy_notification_service", class_name="NotificationCoordinator", kind="service", source_path=mutated, needs_setup=True),
     )
     model = DeviceModel(device="dev", path=Path("dev.toml"), doc={"device": {"name": "dev"}}, instances={("notification", ""): spec}, construction_order=[("notification", "")])

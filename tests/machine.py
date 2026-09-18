@@ -188,6 +188,11 @@ class I2C:
         self.log.append(("readfrom_mem", address, memaddr, nbytes, addrsize))
         return data
 
+    def readfrom_mem_into(self, address: int, memaddr: int, buf: object, *, addrsize: int = 8) -> None:
+        # Delegates, so the fault hook, the log entry and the stored-register semantics stay one
+        # implementation - a test faulting "readfrom_mem" keeps working whichever form the driver calls.
+        buf[:] = self.readfrom_mem(address, memaddr, len(buf), addrsize=addrsize)  # type: ignore[index,arg-type]
+
     def writeto_mem(self, address: int, memaddr: int, buf: object, *, addrsize: int = 8) -> None:
         self._maybe_raise("writeto_mem", address)
         self.registers[(address, memaddr)] = bytearray(buf)  # type: ignore[call-overload]

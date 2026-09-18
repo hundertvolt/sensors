@@ -797,6 +797,65 @@ def test_the_drain_is_bounded_against_a_peer_that_never_stops() -> None:
     assert run(scenario(), limit=20) is True  # terminates at the bound instead of looping forever
 
 
+def test_a_drain_that_hits_its_bound_spends_the_episode_slot_on_the_more_specific_warning() -> None:
+    # W11 is what separates a babbling or misconfigured peer from ordinary line noise. It used to be
+    # unreachable in FRAM: _resync() persisted W10 first and spent the episode's one slot on it.
+    pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()))
+
+    async def flood() -> None:
+        while True:
+            pair.fake_a.feed_rx(b"\xff" * 32)
+            await asyncio.sleep_ms(1)
+
+    async def scenario() -> bool:
+        flooder = asyncio.create_task(flood())
+        try:
+            async with pair.driver_a as device:
+                await asyncio.wait_for(pair.initiator._resync(device), 10)
+        finally:
+            flooder.cancel()
+        return True
+
+    assert run(scenario(), limit=20) is True
+    # Exactly one, not both: the budget the whole episode gets is still a single persisted warning.
+    assert persisted(pair.initiator) == ["W11"], persisted(pair.initiator)
+
+
+def test_a_quiet_resync_still_persists_the_plain_resync_warning() -> None:
+    # The other side of the choice above - nothing about W10's own case changed.
+    pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()))
+
+    async def scenario() -> None:
+        async with pair.driver_a as device:
+            await pair.initiator._resync(device)
+
+    run(scenario(), limit=10)
+    assert persisted(pair.initiator) == ["W10"], persisted(pair.initiator)
+
+
+def test_a_boot_drain_that_hits_its_bound_persists_nothing() -> None:
+    # setup()'s drain is deliberately not a fault and not counted, but it shares _drain() - and while
+    # the bound logged itself, a babbling peer put an entry in FRAM on every single boot.
+    comm = make_comm()
+
+    async def flood() -> None:
+        while True:
+            comm.uart._uart.feed_rx(b"\xff" * 32)  # type: ignore[union-attr]
+            await asyncio.sleep_ms(1)
+
+    async def scenario() -> bool:
+        flooder = asyncio.create_task(flood())
+        try:
+            await asyncio.wait_for(comm.setup(), 10)
+        finally:
+            flooder.cancel()
+        return True
+
+    assert run(scenario(), limit=20) is True
+    assert comm._drain_bound_hit is True  # the bound really was reached, so the check is not vacuous
+    assert persisted(comm) == [], persisted(comm)
+
+
 def test_the_drain_reads_into_the_scratch_buffer() -> None:
     # read() would allocate per round, on exactly the degraded link where the heap is most
     # fragmented. Asserted on what the fake was asked to do.

@@ -411,7 +411,10 @@ def _emit_build_system(lines: "list[str]", model: DeviceModel, ctx: _Ctx, instan
             # fram's own construction line whenever a device-level fram_target wires it in
             # (buildgen.graph.build_construction_order() adds that dependency for exactly this) -
             # a device with no fram_target keeps conn as the very first thing built, unchanged.
-            lines.append(f"    conn = AsyConnTime(conn_fail_to_hotspot={dev['conn_fail_to_hotspot']}, hotspot_time_min={dev['hotspot_time_min']}, max_module_error=_MAX_MODULE_ERROR, cfg_path=cfg_path{_device_fram_kwarg_suffix(model, ctx)}, debug=debug)")
+            # hostname/hotspot_password are [device]'s own values, passed as the per-device DEFAULTS
+            # for the two ConfigManager-persisted fields (asy_wifi_service._with_default). Before
+            # this, every device booted as the shared "SensorNode" whatever its TOML said.
+            lines.append(f"    conn = AsyConnTime(conn_fail_to_hotspot={dev['conn_fail_to_hotspot']}, hotspot_time_min={dev['hotspot_time_min']}, max_module_error=_MAX_MODULE_ERROR, cfg_path=cfg_path, hostname={dev['hostname']!r}, hotspot_password={dev['hotspot_password']!r}{_device_fram_kwarg_suffix(model, ctx)}, debug=debug)")
             continue
         if node == "ntp":
             lines.append(f"    ntp = AsyNtpClient(conn.get_wifi_mode_lock(), conn.network_available, conn.get_dns_server_ip, max_module_error=_MAX_MODULE_ERROR, dns_timeout_ms=_DNS_TIMEOUT_MS, dns_tries=_DNS_TRIES, ntp_fetch_timeout_ms=_NTP_FETCH_TIMEOUT_MS, cfg_path=cfg_path{_device_fram_kwarg_suffix(model, ctx)}, debug=debug)")

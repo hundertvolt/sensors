@@ -105,8 +105,13 @@ _ERRCOUNT_CATALOG: "tuple[tuple[str, str, bool], ...]" = (
     ("isl29125", "ISL29125", True),
     ("neopixel", "Neopixel LED", False),
     ("notification", "Notification Service", True),
+    ("uart_link", "UART Link", False),  # no CFGMGR_ companion: UART_Comm has no config schema - its
+    # parameters are an out-of-band two-implementation wire contract, never runtime-writable (Part J.6)
     ("webserver", "Web Server", False),
 )
+# Display names for the name_ext values a multi-instance driver carries, where the raw suffix is an
+# abbreviation. Anything absent renders as the raw name_ext, which is what a device author typed.
+_NAME_EXT_LABEL: "dict[str, str]" = {"init": "Initiator", "resp": "Responder"}
 _ERRCOUNT_NAME: "dict[str, str]" = {
     "wifi": "WIFI", "dns": "DNSSRV", "ntp": "NTP", "fram": "FRAM", "system": "SYSTEM",
     "scd30": "SCD30", "sgp40": "SGP40", "bmp3xx": "BMP3XX", "isl29125": "ISL29125", "neopixel": "NEOPIXEL",
@@ -356,33 +361,44 @@ def _system_section(src_dir: Path, device: str, cache: "dict[Path, _DriverTags]"
     return section
 
 
-def _errcount_group(have: "set[str]") -> "dict[str, Any]":
+def _suffixed(label: str, name_ext: str) -> str:
+    return label if not name_ext else f"{label} ({_NAME_EXT_LABEL.get(name_ext, name_ext)})"
+
+
+def _errcount_group(model: DeviceModel) -> "dict[str, Any]":
+    # Keyed per logger INSTANCE, matching what the API actually publishes: the live object graph
+    # decides those names (SensorReaderConfig.get_error_sources() -> [self, self.cfgmgr], and the
+    # generated _collect_error_sources() loops over every constructed module), so an instance named
+    # scd30_primary publishes SCD30_primary/CFGMGR_SCD30_primary and needs a row under that key.
+    # A kind-keyed catalog rendered neither: an unmatched published source is never shown, and an
+    # unmatched row renders a permanent, reassuring 0 (js/templates.js's `?? {counter: 0}` fallback).
     modules: list[dict[str, str]] = []
+    by_driver: dict[str, list[InstanceSpec]] = {}
+    for spec in model.instances.values():
+        by_driver.setdefault(spec.driver, []).append(spec)
     for key, label, has_cfgmgr in _ERRCOUNT_CATALOG:
         if key == "webserver":
             continue  # always the very last entry - see below, matching every hand-written
-            # definitions.json's own fixed ordering (UART's two rows land between notification and
-            # it, never after it).
-        if key not in _MANDATORY_ERRCOUNT_KEYS and key not in have:
+            # definitions.json's own fixed ordering (UART's rows land between notification and it,
+            # never after it).
+        if key in _MANDATORY_ERRCOUNT_KEYS:
+            # wifi/dns/ntp/system are mandatory infrastructure, never [[instance]] - one logger each,
+            # with a fixed name no device can vary.
+            modules.append({"key": _ERRCOUNT_NAME[key], "label": label})
+            if has_cfgmgr:
+                modules.append({"key": f"CFGMGR_{_ERRCOUNT_NAME[key]}", "label": _CFGMGR_LABEL[key]})
             continue
-        modules.append({"key": _ERRCOUNT_NAME[key], "label": label})
-        if has_cfgmgr:
-            modules.append({"key": f"CFGMGR_{_ERRCOUNT_NAME[key]}", "label": _CFGMGR_LABEL[key]})
-    if "uart_link" in have:
-        # No CFGMGR_ companion (UART_Comm has no config schema - its parameters are an out-of-band
-        # two-implementation wire contract, never runtime-writable, SPECIFICATION.md Part J.6) and
-        # no generic per-instance derivation the way scd30/sgp40 get (buildgen.definitions'
-        # cross-cutting status/errcount sections are a fixed, hand-maintained catalog for every
-        # driver today, not @web-tag-derived - see this module's own docstring). Two fixed rows,
-        # matching UartLinkExerciser's own name_ext="init"/"resp" -> instance_name() resolution.
-        modules.append({"key": "UART_init", "label": "UART Link (Initiator)"})
-        modules.append({"key": "UART_resp", "label": "UART Link (Responder)"})
+        for spec in by_driver.get(key, []):  # TOML declaration order, so two instances read in the order written
+            name = _resolved_key(spec, model.device)
+            modules.append({"key": name, "label": _suffixed(label, spec.name_ext)})
+            if has_cfgmgr:
+                modules.append({"key": f"CFGMGR_{name}", "label": _suffixed(_CFGMGR_LABEL[key], spec.name_ext)})
     webserver_label = next(label for key, label, _has_cfgmgr in _ERRCOUNT_CATALOG if key == "webserver")
     modules.append({"key": _ERRCOUNT_NAME["webserver"], "label": webserver_label})
     return {"key": "errcount", "label": "Error Counts & History", "kind": "errcount", "modules": modules}
 
 
-def _status_section(have: "set[str]") -> "dict[str, Any]":
+def _status_section(model: DeviceModel, have: "set[str]") -> "dict[str, Any]":
     section = dict(_SECTION_SKELETON[4])
     networking_fields = [
         {"key": "Mode", "label": "Wi-Fi Mode", "kind": "readonly"},
@@ -443,7 +459,7 @@ def _status_section(have: "set[str]") -> "dict[str, Any]":
             {"key": "TS", "label": "Last Trigger Timestamp", "kind": "readonly"},
             {"key": "PauseTime", "label": "Remaining Pause Time", "unit": "s", "kind": "readonly"},
         ]})
-    groups.append(_errcount_group(have))
+    groups.append(_errcount_group(model))
     groups.append(dict(_RESET_ERRORS_GROUP))
     section["groups"] = groups
     return section
@@ -488,7 +504,7 @@ def generate_definitions(model: DeviceModel, src_dir: Path) -> "dict[str, Any]":
         sensors,
         _networking_section(src_dir, model.device, cache),
         _system_section(src_dir, model.device, cache),
-        _status_section(have),
+        _status_section(model, have),
     ]
     notification = _notification_section(model, cache, have)
     if notification is not None:

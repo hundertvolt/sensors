@@ -1,6 +1,6 @@
 """Isolated-driver device script: live-detects this board's actual I2C topology and runs an
 address/command sweep, a reserved-address-range sweep, and (for a lone known device on a bus) a
-self-hazard broadcast-vs-read check. Keep KNOWN_ADDRESSES in sync with tests_hardware/bus_topology.py."""
+self-hazard broadcast-vs-read check."""
 
 import asyncio
 
@@ -18,6 +18,8 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 
+# The on-target copy of the address table: this is MicroPython running on the board, so it cannot
+# import the host-side device model. Adding a driver means adding it here too (Part K.7).
 KNOWN_ADDRESSES = {0x61: "SCD30", 0x59: "SGP40", 0x77: "BMP3xx", 0x44: "ISL29125"}
 GENERAL_CALL_ADDRESS = 0x00
 RESERVED_RANGES = ((0x00, 0x07), (0x78, 0x7F))

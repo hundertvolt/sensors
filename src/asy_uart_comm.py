@@ -206,6 +206,7 @@ class UART_Comm:
         self._episode_events = 0  # the repeat rule applied to the recovery warnings, not just the errno
         self._valid_frames = 0
         self._blind_resyncs = 0  # resyncs that saw bytes but never a valid frame
+        self._drain_bound_hit = False  # set by _drain(), read by the resync that called it
         self._cancel_unacked_seen = 0  # the driver's counter is cumulative; only a rise is news
         self._init_errno = self._validate_config()
         # Re-checked locally, never the caller's raw values: `5 + "48"` raises, and __init__ is the
@@ -541,12 +542,16 @@ class UART_Comm:
             return 0
         quiet_ms = self._resync_window_ms()
         bound_ms = quiet_ms * _DRAIN_BOUND_MULT  # derived from timeout, not from poll_wait_ms
+        self._drain_bound_hit = False
         wait_ms = quiet_ms if first_ms is None else max(first_ms, 1)
         start = time.ticks_ms()
         total = 0
         while True:
             if time.ticks_diff(time.ticks_ms(), start) > bound_ms:
-                await self._episode_wrn(_WRN_DRAIN_BOUND, "Drain bound reached, resyncing anyway")
+                # Visible only, and flagged rather than persisted here: the caller owns the episode's
+                # one slot, and setup()'s boot drain owns no episode at all (item 23).
+                self._drain_bound_hit = True
+                self.pr.wrn("Drain bound reached, resyncing anyway")
                 break
             got = await device.readinto(buf, len(buf), timeout_ms=wait_ms)
             if got is None:  # the line has been quiet for a whole window
@@ -560,8 +565,14 @@ class UART_Comm:
             return
         self._in_resync = True
         try:
-            await self._episode_wrn(_WRN_RESYNC, "Resyncing the link")
             drained = await self._drain(device)
+            # The episode's single persisted slot goes to the more specific of the two: 11 separates a
+            # babbling or misconfigured peer from ordinary line noise, 10 only says a resync happened.
+            # Logged after the drain for that reason - the drain is what decides which one this is.
+            if self._drain_bound_hit:
+                await self._episode_wrn(_WRN_DRAIN_BOUND, "Resynced the link - drain bound reached, the peer never stopped sending")
+            else:
+                await self._episode_wrn(_WRN_RESYNC, "Resyncing the link")
             self._hold_off_writes()
             if self.uart is not None:
                 self.uart.resync_framing()  # inert unless a delimited codec is selected (Part G.2)

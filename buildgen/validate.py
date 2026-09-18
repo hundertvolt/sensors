@@ -61,6 +61,7 @@ _UART_LINK_ROLES = frozenset({"initiator", "responder"})  # asy_uart_comm.ROLE_I
 # AST-only-parsing rule exists to avoid), so the two string literals are the contract instead.
 _UART_OPTIONAL_INT_FIELDS = ("rxbuf", "txbuf", "poll_wait_ms", "poll_idle_ms")
 _REQUIRED_DEVICE_FIELDS = ("name", "hostname", "hotspot_password", "conn_fail_to_hotspot", "hotspot_time_min")
+_HOSTNAME_MAX_LEN = 32  # network.hostname()'s real cap; asy_wifi_service._VAL_HOST carries the same number
 _REQUIRED_DEVICE_INT_FIELDS = ("conn_fail_to_hotspot", "hotspot_time_min")
 _ALLOWED_DEVICE_FIELDS = frozenset(_REQUIRED_DEVICE_FIELDS) | {"wiring"}
 _WPA2_MIN_PASSWORD_LEN = 8  # WPA2-PSK's own minimum (IEEE 802.11i)
@@ -91,28 +92,10 @@ def _bus_kind(bus_name: str, device: str) -> str:
 
 
 def _check_device_table(model: DeviceModel) -> None:
-    # KNOWN GAP, discovered during this session's own review, pre-existing (not introduced here):
-    # `name`/`hostname`/`hotspot_password` are validated below (presence, shape, the
-    # SensorStation<name> derivation formula) but this generator never actually wires any of the
-    # three into generated code - neither AsyConnTime.__init__ nor any generated
-    # sensortask_<device>.py (buildgen.generate.generate_device(), Session 6) has a constructor-time
-    # injection point for them. Hostname/HotspotPW are ConfigManager-persisted runtime values with a
-    # single hardcoded shared default ("SensorNode"/"12345678" - asy_wifi_service.py's own
-    # _VAL_HOST/_VAL_HOTSPOT_PW), identical across every device's frozen build; confirmed directly
-    # that no generated sensortask_<device>.py sets them either. So today, every device actually
-    # boots with hostname "SensorNode", not "SensorStationWozi" etc., regardless of what
-    # devices/*.toml says.
-    # Flagged in this session's PR rather than silently left implicit - fixing it needs either a
-    # `src/` constructor-time override mechanism (out of this session's narrow-additive-only scope)
-    # or a build-artifact-tree config-seeding step, not a buildgen/-only fix. STILL NOT FIXED as of
-    # SPECIFICATION.md Part L.4 -
-    # that session's own explicit finish criterion was eliminating the hand-written
-    # src/sensortask_wozi.py/sensortask_dev.py entry points and generalizing the digital-twin test
-    # suite, not closing this gap; `src/asy_wifi_service.py`'s `AsyConnTime.__init__` would need a
-    # real constructor parameter for `hostname=`/`hotspot_password=` (a heavily-tested core driver
-    # change, several existing tests assert the literal "SensorNode"/"12345678" defaults) before
-    # buildgen could pass devices/*.toml's own values through - a real, separately-scoped piece of
-    # work, not attempted here.
+    # `name`/`hostname`/`hotspot_password` are validated here AND wired into generated code as of
+    # 2026-09-18 (BACKLOG): codegen passes hostname=/hotspot_password= to AsyConnTime, which
+    # substitutes them as the per-device defaults of the two ConfigManager-persisted fields. Until
+    # then all three were checked and then reached nothing, so every device booted as "SensorNode".
     dev = model.doc.get("device")
     if not isinstance(dev, dict):
         raise BuildError(model.device, "missing [device] table")
@@ -136,6 +119,12 @@ def _check_device_table(model: DeviceModel) -> None:
     expected_hostname = "SensorStation" + dev["name"]
     if dev["hostname"] != expected_hostname:
         raise BuildError(model.device, f"[device].hostname is {dev['hostname']!r}, expected {expected_hostname!r} (SensorStation<name>)", field="hostname")
+    # network.hostname()'s own cap, mirrored from asy_wifi_service._VAL_HOST's upper bound. Now that
+    # the value is really injected, an over-long one would be silently dropped back to "SensorNode"
+    # at boot by _with_default()'s backstop - a device quietly not answering to its own name. The
+    # formula above means this is really a cap on [device].name, which is what the message says.
+    if len(dev["hostname"]) > _HOSTNAME_MAX_LEN:
+        raise BuildError(model.device, f"[device].hostname is {len(dev['hostname'])} characters - network.hostname() caps at {_HOSTNAME_MAX_LEN}, so [device].name may be at most {_HOSTNAME_MAX_LEN - len('SensorStation')}", field="hostname")
     unknown = set(dev) - _ALLOWED_DEVICE_FIELDS
     if unknown:
         raise BuildError(model.device, f"[device] declares unrecognized field(s) {sorted(unknown)} - typo, or copy-pasted from an unrelated table?", field=min(unknown))
