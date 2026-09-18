@@ -1,20 +1,6 @@
-"""Isolated-driver device script: real-hardware counterpart to
-scenario_a_write_does_not_disturb_concurrent_sibling_reads (tests/_bus_hazard_catalog.py) for the
-ONE case bus_concurrency_isl29125_write_vs_siblings.py deliberately doesn't cover - SCD30 itself as
-the writer. SCD30's own NVM-persisted write (set_temperature_offset(), same shape as
-scd30_same_device_rw_concurrency.py's set_ambient_pressure()) has a real write-wear budget, so this
-script is NOT part of the routine flash-tier bus-hazard group - it is its own separate, explicitly
-opt-in extra real write, AND-gated behind BOTH tests_hardware/conftest.py's --allow-persistence-writes
-(the global "any real SCD30 write at all" permission) AND --allow-scd30-extra-write (this one extra
-write specifically - see @pytest.mark.persistence_write/@pytest.mark.scd30_extra_write on the test that
-wraps this script). Fires exactly ONCE per invocation, and must never be folded into the group's own
-one-routine-write budget already spent by scd30_continuous_measurement_triggered.
-
-Unlike bus_concurrency_isl29125_write_vs_siblings.py's own deliberately varied multi-offset sweep,
-this fires at exactly ONE fixed, deliberately-chosen offset (0.3s in - both siblings well into their
-own read loops, neither at the very first transaction) - the one-write budget makes a real sweep
-across several distinct timings structurally impossible here, not a design choice to skip it. This
-is the honest tradeoff the SCD30 write-budget restriction imposes, not something to silently omit."""
+"""The one writer bus_concurrency_isl29125_write_vs_siblings.py cannot cover: SCD30 itself, whose
+NVM write carries a real wear budget, so this fires ONCE at one chosen offset and is AND-gated
+behind --allow-persistence-writes plus --allow-scd30-extra-write (SPECIFICATION.md Part C.8)."""
 
 import asyncio
 import time

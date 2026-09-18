@@ -1,20 +1,6 @@
-"""Shared scenario library for every real device's buildgen-generated sensortask_<device>.py
-build_system() construction/wiring tests - SPECIFICATION.md Part A.7 has the full reference. Also
-covers real webserver wiring; deep per-route behavior stays tests/test_asy_webserver_service.py's
-job. Not a test file itself (leading underscore, like _shared_rest_roundtrip.py) - register_for_device()
-is imported by six thin tests/test_sensortask_<device>.py files, one per real device, so
-scripts/test.sh runs each device's own ~55-scenario batch as its own independent, parallelizable
-Unix-port process instead of one process building all 6 devices' object graphs 55 times each
-(see BACKLOG.md's resolved heap-footprint entry and CLAUDE.md's step-session-workflow history for
-why this split exists - it changes nothing about which scenarios run or what they assert).
-
-Not a reversion to the pre-SPECIFICATION.md Part L-Session-6.2 tests/test_sensortask_wozi.py/
-test_sensortask_dev.py split that file's own history records collapsing: that collapse was about
-eliminating device-specific test-body DUPLICATION (each per-device file used to carry its own copy
-of every scenario, with hardcoded expectations) in favor of one generic, device-derived scenario
-set - a correctness/maintainability fix this file preserves in full. Every scenario body still
-lives here exactly once, still fully device-generic; the six per-device files are trivial,
-near-empty wrappers (one register_for_device(<device>) call each), not a second copy of any logic."""
+"""Shared scenario library: build_system() construction/wiring for every real device, plus real
+webserver wiring (deep per-route behavior stays tests/test_asy_webserver_service.py's job).
+Not a test file - register_for_device() is the export; SPECIFICATION.md Part E.2.1 has the split."""
 
 import asyncio
 import json
@@ -541,6 +527,19 @@ def _scenario_fram_chunks_allocated(device: str) -> None:
         assert module.uart_link_init.pr.fram is not None
         assert isinstance(module.uart_link_resp.pr, PrintLogHistoryStore)
         assert module.uart_link_resp.pr.fram is not None
+
+
+@_register("the_fram_manager_is_the_only_error_source_whose_own_log_is_not_fram_backed")
+def _scenario_only_the_fram_manager_logs_in_memory(device: str) -> None:
+    module = build(device)
+    # scripts/_digital_twin_ci_suite.py's Run 5c sweeps the whole errcount table for "nothing was
+    # lost across a commanded reboot" and exempts exactly its _IN_MEMORY_ONLY_ERROR_SOURCES. That
+    # exemption is pinned here from the real object graph rather than trusted as a hand-kept list:
+    # AsyFramManager builds a plain PrintLogHistory because the store cannot persist its own failure
+    # history through itself, and it is the only source allowed to. A module that quietly lost its
+    # fram= wiring would otherwise just be added to that set and stop being swept.
+    in_memory = sorted(logger.name for logger in _all_loggers(module) if not isinstance(logger, PrintLogHistoryStore))
+    assert in_memory == ["FRAM"], f"{device}: only the FRAM manager's own log may be in-memory-only, found {in_memory}"
 
 
 class _DeadFramChip(FakeMB85RS64V):

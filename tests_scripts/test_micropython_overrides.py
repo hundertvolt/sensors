@@ -1,7 +1,6 @@
-"""Tests toolchain/micropython_overrides.py's unix_kbd_intr override in isolation: the anchor
-verification (loud failure on upstream drift) and the generated override files, against synthetic
-fixture trees - never a real compile (that's what scripts/run_digital_twin_ci.sh's own real Unix
-port build already proves). See SPECIFICATION.md Part B.14 for the full mechanism."""
+"""Tests toolchain/micropython_overrides.py's unix_kbd_intr override in isolation - the anchor
+verification and the generated files, against synthetic fixture trees, never a real compile (that
+is what the real Unix-port build already proves). SPECIFICATION.md Part B.14 has the mechanism."""
 
 from pathlib import Path
 from types import ModuleType
@@ -129,10 +128,9 @@ class TestApplyUnixKbdIntrOverride:
 
 
 class TestBuildUnixPortAppliesTheOverride:
-    """Guards the wiring itself, not just the override function in isolation - a future edit that
-    drops build_unix_port()'s own call to apply_unix_kbd_intr_override() (or stops threading its
-    returned make variables into the real command) must fail a test, not silently ship an
-    unpatched binary again."""
+    """Guards the wiring, not just the override function: an edit that drops build_unix_port()'s
+    call to apply_unix_kbd_intr_override(), or stops threading its make variables into the real
+    command, must fail a test rather than silently ship an unpatched binary again."""
 
     @pytest.fixture
     def setup_toolchain(self, repo_root: Path) -> ModuleType:

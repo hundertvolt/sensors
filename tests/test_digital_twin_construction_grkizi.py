@@ -1,7 +1,5 @@
-"""Digital-twin-tier "construction across every real device" checks for grkizi specifically -
-one of six per-device files generated from the shared tests/_digital_twin_construction_scenarios.py
-scenario library (see that module's own docstring for the full scenario set and the rationale for
-the per-device split)."""
+"""Digital-twin construction/wiring/REST checks for grkizi - one of six wrappers over the shared
+tests/_digital_twin_construction_scenarios.py library (SPECIFICATION.md Part E.2.1)."""
 
 from _digital_twin_construction_scenarios import register_for_device
 

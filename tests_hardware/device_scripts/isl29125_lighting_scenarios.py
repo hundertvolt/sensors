@@ -145,10 +145,8 @@ async def _drive(rig: Rig, segments: "list[tuple[str, tuple[int, int, int], tupl
 
 async def _park(rig: Rig, rgb: "tuple[int, int, int]") -> bool:
     """Forces the entry range before a scenario starts counting; False if it never settled on one.
-
     Deliberately NOT rig.observe(): a switch caused by getting INTO position is not the scenario's
-    own behaviour and must not land in its switch budget - which is exactly the bug this closes.
-    """
+    own behaviour and must not land in its switch budget - the bug this closes."""
     rig.write(rgb)
     last: int | None = None
     run = 0
@@ -236,14 +234,9 @@ async def _baseline(rig: Rig, tag: str, reference: "list[float]") -> None:
 
 
 def _scenarios() -> "list[tuple[str, tuple[int, int, int], list[tuple[str, tuple[int, int, int], tuple[int, int, int], float]], int, int, bool]]":
-    """(name, entry_light, segments, min_switches, max_switches, must_use_both_ranges).
-
-    entry_light is parked and range-settled BEFORE counting starts, so a scenario's switch budget
-    only ever measures its own light program. Dark forces the low range, full forces the high one.
-
-    Levels are chosen against this rig's MEASURED hysteresis band, so only a level <= 1 or >= 8 can
-    force a switch; holds that must produce one are >= _SWITCH_HOLD_S, a decision's real latency.
-    """
+    """(name, entry_light, segments, min_switches, max_switches, must_use_both_ranges). entry_light
+    is parked and settled BEFORE counting, so a budget measures only its own program. Levels come
+    from the rig's MEASURED hysteresis band - tests_hardware/README.md has the table and holds."""
     dark, below, inside, full = (0, 0, 0), 1, 5, 255
     lo, hi, sh = _BAND_BELOW, _BAND_ABOVE, _SWITCH_HOLD_S
     return [

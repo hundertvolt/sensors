@@ -106,6 +106,24 @@ def test_every_faultable_driver_has_both_an_op_and_an_errcount_name(ci_suite: Mo
     assert set(ci_suite._DRIVER_ERRCOUNT_NAME) >= ci_suite._MEASUREMENT_DRIVERS
 
 
+def test_run_5c_faults_every_bus_attached_driver_but_never_the_store_itself(ci_suite: ModuleType) -> None:
+    # Run 5c's premise is a HEALTHY chip, so its sweep set is _bus_fault_drivers() minus "fram" -
+    # faulting the store is the one thing that voids it, and is what makes Run 3/4's own sweep a
+    # weaker claim. Checked as an identity, not a literal list, so a new bus driver joins both.
+    ctx = _ctx(ci_suite, {"scd30", "sgp40", "bmp3xx", "isl29125", "fram"})
+    assert ci_suite._healthy_store_fault_drivers(ctx) == ["bmp3xx", "isl29125", "scd30", "sgp40"]
+    assert set(ci_suite._healthy_store_fault_drivers(ctx)) == set(ci_suite._bus_fault_drivers(ctx)) - {"fram"}
+
+
+def test_the_only_error_source_exempt_from_run_5cs_loss_sweep_is_the_store_itself(ci_suite: ModuleType) -> None:
+    # Everything else in errcount is FRAM-backed and must come back across a commanded reboot.
+    # AsyFramManager cannot persist its own failure history through the store that failed, which is
+    # the one legitimate exemption; tests/_sensortask_scenarios.py pins the same fact from the real
+    # built object graph, so the two tiers have to agree before a name can be added here.
+    assert sorted(ci_suite._IN_MEMORY_ONLY_ERROR_SOURCES) == ["FRAM"]
+    assert set(ci_suite._DRIVER_ERRCOUNT_NAME.values()) >= ci_suite._IN_MEMORY_ONLY_ERROR_SOURCES
+
+
 def test_every_i2c_or_spi_attached_driver_a_real_device_declares_is_faultable(ci_suite: ModuleType) -> None:
     # The three tables above are only checked against EACH OTHER, which is what let the ISL29125 be
     # consistently absent from all of them and silently skipped by _bus_fault_drivers() from the day
@@ -174,6 +192,64 @@ def test_errcount_required_raises_for_a_source_missing_from_a_readable_status(ci
 def test_errcount_required_returns_the_entry_when_status_is_genuinely_readable(ci_suite: ModuleType, _http_stub: "Callable[[int, object], None]") -> None:
     _http_stub(200, _READABLE)
     assert ci_suite._errcount_required("SGP40") == {"counter": 0, "history": [{"num": 0, "type": "N"}]}
+
+
+def test_errcount_all_raises_rather_than_sweeping_an_unreadable_status(ci_suite: ModuleType, _http_stub: "Callable[[int, object], None]") -> None:
+    # Run 5c's device-wide sweep iterates whatever this returns, so a tolerant {} here would turn
+    # "the server answered nothing" into "no source lost anything" - the same vacuous pass the
+    # _errcount()/_errcount_required() split exists to prevent, one level up.
+    _http_stub(503, None)
+    with pytest.raises(RuntimeError, match="readable body"):
+        ci_suite._errcount_all()
+    _http_stub(200, "not-a-dict")
+    with pytest.raises(RuntimeError, match="readable body"):
+        ci_suite._errcount_all()
+
+
+def test_errcount_all_raises_on_a_200_carrying_no_usable_table(ci_suite: ModuleType, _http_stub: "Callable[[int, object], None]") -> None:
+    bodies: list[object] = [{}, {"errcount": {}}, {"errcount": "not-a-dict"}]
+    for body in bodies:
+        _http_stub(200, body)
+        with pytest.raises(RuntimeError, match="no usable errcount table"):
+            ci_suite._errcount_all()
+
+
+def test_errcount_all_drops_only_the_rows_that_are_not_entries(ci_suite: ModuleType, _http_stub: "Callable[[int, object], None]") -> None:
+    _http_stub(200, {"errcount": {"SGP40": {"counter": 1, "history": []}, "JUNK": "not-a-dict"}})
+    assert ci_suite._errcount_all() == {"SGP40": {"counter": 1, "history": []}}
+
+
+def test_error_counts_settle_only_once_consecutive_reads_agree(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Snapshotting mid-fault is the failure this guards: the reboot would then be compared against
+    # entries that landed AFTER the snapshot, and a run that lost nothing would read as a loss.
+    reads = iter([1, 2, 3, 3, 3])
+    monkeypatch.setattr(ci_suite, "_errcount_all", lambda: {"SGP40": _entry(*[(10, "E")] * next(reads))})
+    monkeypatch.setattr(ci_suite.time, "sleep", lambda _s: None)
+    assert ci_suite._wait_for_error_counts_to_settle(["SGP40"], timeout_s=30.0) == {"SGP40": 3}
+
+
+def test_error_counts_that_never_settle_raise_instead_of_returning_a_moving_target(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch) -> None:
+    toggle = [0]
+
+    def _never_agrees() -> dict[str, dict[str, object]]:
+        toggle[0] ^= 1
+        return {"SGP40": _entry(*[(10, "E")] * (1 + toggle[0]))}
+
+    monkeypatch.setattr(ci_suite, "_errcount_all", _never_agrees)
+    monkeypatch.setattr(ci_suite.time, "sleep", lambda _s: None)
+    with pytest.raises(RuntimeError, match="never settled"):
+        ci_suite._wait_for_error_counts_to_settle(["SGP40"], timeout_s=0.2, interval_s=0.0)
+
+
+def test_error_counts_settle_across_every_name_at_once_not_one_at_a_time(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch) -> None:
+    # A per-name settle would call SGP40 settled while SCD30 was still climbing, and snapshot both.
+    pairs = iter([(3, 1), (3, 2), (3, 3), (3, 3), (3, 3)])
+    def _table() -> dict[str, dict[str, object]]:
+        sgp, scd = next(pairs)
+        return {"SGP40": _entry(*[(10, "E")] * sgp), "SCD30": _entry(*[(10, "E")] * scd)}
+    monkeypatch.setattr(ci_suite, "_errcount_all", _table)
+    monkeypatch.setattr(ci_suite.time, "sleep", lambda _s: None)
+    assert ci_suite._wait_for_error_counts_to_settle(["SGP40", "SCD30"], timeout_s=30.0) == {"SGP40": 3, "SCD30": 3}
 
 
 def test_the_run_4_assertion_shape_fails_closed_on_an_empty_entry(ci_suite: ModuleType) -> None:

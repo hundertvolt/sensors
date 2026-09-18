@@ -1,12 +1,6 @@
-"""Shared scenario library: real-socket concurrent-connection regression coverage for
-WebserverService, booted against the real digital_twin buses - genuinely concurrent TCP
-connections, unlike tests/test_asy_webserver_service.py Section F's in-process
-_serve()-against-fakes tests. Not a test file itself (leading underscore, like
-tests/_sensortask_scenarios.py) - register_for_device() is imported by six thin
-tests/test_digital_twin_webserver_concurrency_<device>.py files, one per real device, so
-scripts/test.sh can run each device's own scenario batch as its own independent, parallelizable
-Unix-port process (see BACKLOG.md's resolved heap-footprint entry). Changes nothing about which
-scenarios run or what they assert."""
+"""Shared scenario library: real-socket concurrent-connection coverage for WebserverService over
+the real digital_twin buses - genuinely concurrent TCP, unlike test_asy_webserver_service.py
+Section F. Not a test file; SPECIFICATION.md Parts H.7 and E.2.1 have the rationale."""
 
 # See SPECIFICATION.md Part H.7 and this module's own comments below for the full rationale.
 
@@ -156,10 +150,9 @@ async def _healthy_request(host: str, port: int, path: str = "/measurements") ->
 
 
 async def _flaky_connection(host: str, port: int) -> None:
-    """Opens a real connection, sends a deliberately incomplete request (no terminating blank
-    line, no Host header), then disconnects without ever completing it - exercises the same
-    EOFError/timeout reclaim path a real client on a lossy network or a killed browser tab would
-    trigger (WebserverService._serve(), src/asy_webserver_service.py)."""
+    """Opens a real connection, sends a deliberately incomplete request (no terminating blank line,
+    no Host header), then disconnects - the same EOFError/timeout reclaim path a lossy network or a
+    killed browser tab triggers (WebserverService._serve())."""
     _reader, writer = await asyncio.open_connection(host, port)
     try:
         writer.write(b"GET / HTTP/1.1\r\n")
@@ -188,14 +181,9 @@ async def _still_serving(host: str, port: int, timeout_s: float = 5.0) -> bool:
 
 
 async def _browser_page_load(host: str, port: int) -> "list[int]":
-    """Simulates one browser tab's page-load connection burst - two concurrent GETs, matching the
-    real production website's own post-inlining footprint (SPECIFICATION.md Part H.7:
-    style.css/definitions.json are now inlined directly into index.html at build time, cutting a
-    real page load from four connections to two - index.html + app.js). Uses this test file's own
-    default (html_stub) mount's real routes ("/" and "/style.css" both exist there too) rather than
-    swapping in the real website like test_digital_twin_real_website_integration.py does - this
-    file cares about connection-count/timing behavior, not content, so reusing whatever's already
-    mounted keeps it dependency-light while still exercising two real, concurrently-opened sockets."""
+    """One browser tab's page-load burst: two concurrent GETs, the real post-inlining footprint
+    (SPECIFICATION.md Part H.7). Served from the default html_stub mount, not the real website -
+    this file is about connection count and timing, not content."""
 
     async def _get(path: str) -> int:
         res = await _http_client.fetch(host, port, "GET", path)
@@ -217,11 +205,9 @@ async def _openhab_poll(host: str, port: int) -> "list[int]":
 
 
 async def _slow_but_healthy_put(host: str, port: int, delay_s: float) -> int:
-    """Opens a real connection and sends a legitimate, harmless PUT (an empty /system body - a real
-    no-op, SPECIFICATION.md Part A.8) with its own body trickled in two halves and a real delay
-    between them - stays genuinely open and in-flight for `delay_s`, unlike _flaky_connection()
-    (which never completes a request at all). Used to prove an existing, legitimately slow
-    connection survives a concurrent overflow burst landing while it's still in flight."""
+    """A legitimate, harmless PUT (empty /system body - a real no-op, SPECIFICATION.md Part A.8)
+    trickled in two halves, so it stays genuinely in flight for `delay_s` - unlike
+    _flaky_connection(), which never completes at all. Proves a slow connection survives a burst."""
     reader, writer = await asyncio.open_connection(host, port)
     try:
         body = b"{}"
@@ -241,15 +227,9 @@ async def _slow_but_healthy_put(host: str, port: int, delay_s: float) -> int:
 
 
 async def _real_config_write(host: str, port: int, interval: int) -> int:
-    """A real, harmless, valid config write - PUT /sensors {"SCD30": {"Interval": interval}} -
-    against the real, currently-registered SCD30 driver (unlike _slow_but_healthy_put()'s own
-    no-op empty /system PUT above, this genuinely reaches ConfigManager.write_config() through the
-    real object graph; SCD30 is present on every real device - SPECIFICATION.md Part L.3).
-    Used to prove concurrent GET polling survives a real concurrent config write, not just another
-    concurrent read - the digital-twin-tier equivalent of
-    tests_hardware/bench/test_memory_stress_bench.py's own real-hardware hammer-load test (GET
-    /measurements+/sensors concurrent with a real PUT-triggered SGP40 reset) and
-    tests/test_asy_webserver_service.py's own I.4 unit-level equivalent."""
+    """A real config write reaching ConfigManager.write_config() through the real object graph
+    (SCD30 is on every device, Part L.3) - unlike _slow_but_healthy_put()'s no-op above. Proves
+    concurrent GET polling survives a real write; bench and unit equivalents exist per tier."""
     res = await _http_client.fetch(host, port, "PUT", "/sensors", {"SCD30": {"Interval": interval}})
     return res.status_code
 

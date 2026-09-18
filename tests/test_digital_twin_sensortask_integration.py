@@ -1,18 +1,6 @@
-"""Middle integration tier: builds the real sensortask_wozi object graph against real digital_twin
-buses, driving real REST traffic while starting only the tasks each test needs (the task-supervisor-
-restart section below is the one exception). See digital_twin/README.md and this file's own section comments for the full account, including device-scope reasoning and a real bug this tier already found.
-
-Deliberately wozi-only (unlike this tier's own "construction across every real device" checks, split
-out into tests/_digital_twin_construction_scenarios.py + six tests/test_digital_twin_construction_
-<device>.py files - see that module's own docstring): every test here drives several real seconds-
-to-tens-of-seconds wall-clock waits through mandatory infrastructure plus SCD30/SGP40 only (never
-bmp3xx, present on every device), so the mechanism each one proves is already device-independent -
-a full ×6 parametrization was judged out of proportion to what a bmp3xx-blind mechanism actually
-needs proven six times over. Confirmed directly (2026-09-17 session): before the split, this file's
-own real, socket-backed build_system() calls (18 device-generic + these ~11 wozi-only, ~29 total in
-one process) intermittently failed with a real MemoryError under scripts/test.sh's real concurrent
-parallel job pool at a reduced Unix-port test heap, passing reliably in isolation - the split cuts
-the worst case sharing one process down to just this file's own ~11, at the root."""
+"""Middle integration tier: the real sensortask_wozi object graph against real digital_twin buses,
+driving real REST traffic while starting only the tasks each test needs (the task-supervisor
+section below excepted). Deliberately wozi-only - SPECIFICATION.md Part E.2.1 says why."""
 
 import asyncio
 import gc

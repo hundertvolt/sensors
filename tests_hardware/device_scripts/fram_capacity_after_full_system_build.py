@@ -1,12 +1,6 @@
-"""Isolated-driver device script: WP4/Topic 6's own real-hardware capacity check - after a full
-build_system(), every module that should have inherited a real FRAM chunk (own pr, plus its own
-cfgmgr where one exists) actually has one, not a silently-degraded RAM-only fallback. Deliberately
-NOT `fram.allocated_size <= fram.size` - that can never be false by construction
-(AsyFramManager.get_chunk() checks capacity before incrementing, never after), so it would be a
-tautology, not a check; a None chunk reference on a module that should have gotten one is the real,
-observable signal capacity ran out. mpremote-only by design (owner's own decision, see
-tests_hardware/README.md's own "WP4/Topic 6" section) - no new /status field, this is a one-time
-build-validity fact, not live operational state."""
+"""Isolated-driver device script: WP4/Topic 6's real-hardware capacity check - after a full
+build_system(), every module that should hold a real FRAM chunk does, rather than a silently
+degraded RAM-only fallback. mpremote-only by design; tests_hardware/README.md has both reasons."""
 
 import asyncio
 

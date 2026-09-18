@@ -417,15 +417,9 @@ async def scenario_a_write_does_not_disturb_concurrent_sibling_reads(
     iterations: int = 6,
     offsets: "list[int] | None" = None,
 ) -> None:
-    """One occupant's own config write lands concurrently with every sibling's own read loop - the
-    N-way generalization of the existing cross-device pairwise "both stay correct" tests. A no-op
-    (not a skip) if nothing on this bus has a safe write to exercise.
-
-    Systematically sweeps WHEN the write fires relative to the readers' own progress (project
-    owner's direction: a single fixed injection point can miss a race a different timing would
-    catch), rebuilding fresh bus/occupant state per offset so one trial's leftover queue/log state
-    can never mask or fake a later trial's result. Unrestricted here (mock tier) - the real-hardware
-    tier's own SCD30 NVM-write-budget limit (SPECIFICATION.md Part C.8) does not apply to a fake bus."""
+    """One occupant's own config write concurrent with every sibling's read loop - the N-way form
+    of the pairwise cross-device tests. A no-op, not a skip, if nothing here has a safe write.
+    Swept across timing offsets on fresh state per offset: SPECIFICATION.md Part C.8 says why."""
     offsets = list(range(iterations)) if offsets is None else offsets
     failures: list[str] = []
     for offset in offsets:
@@ -468,16 +462,9 @@ async def scenario_same_occupant_own_write_does_not_disturb_own_concurrent_read(
     iterations: int = 6,
     offsets: "list[int] | None" = None,
 ) -> None:
-    """Same-DEVICE hazard (as opposed to the cross-occupant one above): one occupant's own config
-    write landing concurrently with its OWN read loop must never tear it - the generic counterpart
-    to a sensor-specific byte-exact same-device interleave proof (e.g. tests/test_asy_scd30_driver.py's
-    own). Correctness is proven the same way every other generic scenario here proves it -
-    read_once()'s own corruption-detecting assertion - rather than a per-driver wire-byte parser, so
-    this stays generic across any adapter without teaching the catalog each driver's own
-    command-byte shapes. Applies per-occupant, independent of how many siblings share the bus; a
-    no-op for an occupant with no safe write to exercise. Systematically swept across timing
-    offsets, same reasoning and same fresh-state-per-offset rebuild as the cross-occupant write
-    scenario above."""
+    """Same-DEVICE hazard: an occupant's own config write concurrent with its OWN read loop must
+    never tear it. Proven through read_once()'s corruption assertion, not a per-driver wire-byte
+    parser, so it stays generic. Offsets swept as above (SPECIFICATION.md Part C.8)."""
     offsets = list(range(iterations)) if offsets is None else offsets
     _fake_bus, occupants = build_fresh_bus_and_occupants()
     writers = [occ.adapter.driver for occ in occupants if occ.adapter.write_once is not None]
@@ -522,10 +509,9 @@ async def scenario_general_call_does_not_disturb_concurrent_siblings(
     iterations: int = 6,
     offsets: "list[int] | None" = None,
 ) -> None:
-    """A real general-call broadcast (SPECIFICATION.md Part C.8's known structural gap) fired
-    concurrently with every non-broadcasting sibling's own read loop, at systematically varied
-    timing offsets (see scenario_a_write_does_not_disturb_concurrent_sibling_reads's own comment for
-    why, and why fresh state per offset). A no-op if no real occupant of this bus ever broadcasts."""
+    """A real general-call broadcast (SPECIFICATION.md Part C.8's known structural gap) concurrent
+    with every non-broadcasting sibling's read loop, across swept timing offsets.
+    A no-op if no real occupant of this bus ever broadcasts."""
     offsets = list(range(iterations)) if offsets is None else offsets
     failures: list[str] = []
     for offset in offsets:
@@ -540,10 +526,9 @@ async def scenario_general_call_does_not_disturb_concurrent_siblings(
 
 
 async def scenario_each_occupant_never_touches_an_unexpected_address(attachments: "list[dict[str, Any]]") -> None:
-    """Automatic, generic form of each driver's own address sweep: every real occupant of a bus,
-    freshly constructed alone on its own private fake bus (this check is inherently per-driver, not
-    a joint one), must never touch any address but its own, except a documented general call - and
-    its own real TOML-declared address must never fall in a reserved I2C range in the first place."""
+    """Generic form of each driver's own address sweep: every real bus occupant, constructed alone
+    on its own private fake bus, must touch no address but its own bar a documented general call -
+    and its TOML-declared address must not fall in a reserved I2C range to begin with."""
     for attachment in attachments:
         driver = attachment["driver"]
         adapter = I2C_HAZARD_CATALOG.get(driver)

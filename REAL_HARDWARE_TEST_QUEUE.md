@@ -269,6 +269,7 @@ were put to the owner as open decisions and the answer was "record for the real-
 | F4 | **Row A4's marker count was wrong** (three `persistence_write`, not two). Corrected in place. A reminder that these counts drift; read the deselected number from the run. | DONE |
 
 ---
+| R15 | **The twin now proves chip-healthy reboot persistence for every FRAM-backed error source; real hardware proves it for none of them by name** (2026-09-18). `scripts/_digital_twin_ci_suite.py`'s Run 5c faults each bus-attached driver in its own process against a HEALTHY chip, then verifies the whole `errcount` table across a storage-paused reboot. The flash tier's `test_error_log_history_persists_in_the_real_chip_across_a_simulated_reboot` covers the *mechanism* through an isolated-driver script's own manager, never the production object graph's per-module wiring across a real reset. One run closes the parity gap (SPECIFICATION.md Part E.6.6): note `GET /status`'s `errcount` before a `PUT /system {"SystemCmd": "reboot"}`, and confirm every non-zero row comes back — `FRAM`'s own row excepted, in-memory by design. Needs no fault injection: whatever the board has already logged is the subject. | SPECIFICATION.md Part E.6.6; digital_twin/README.md's Run 5c | OPEN |
 
 ## 3. Coverage gaps that need a bench session to close
 

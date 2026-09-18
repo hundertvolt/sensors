@@ -1,7 +1,5 @@
-"""build_system() construction/wiring tests for grkizi specifically - one of six per-device
-files generated from the shared tests/_sensortask_scenarios.py scenario library (see that module's
-own docstring for the full scenario set, the rationale for the per-device split, and every pointer
-to SPECIFICATION.md/CLAUDE.md this used to carry directly)."""
+"""build_system() construction/wiring tests for grkizi - one of six wrappers over the shared
+tests/_sensortask_scenarios.py library (SPECIFICATION.md Part E.2.1)."""
 
 from _sensortask_scenarios import register_for_device
 

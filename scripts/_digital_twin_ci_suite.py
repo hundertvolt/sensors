@@ -71,6 +71,12 @@ _BUS_FAULT_ERROR_COUNT = 500  # sustained/high-repeat-count - see Run 3's own co
 # "NOTIFICATION") - this table is the verified, narrow exception for exactly these four bus-attached,
 # fault-injectable drivers, not instance_name()/`_NAME` resolution reused generically.
 _DRIVER_ERRCOUNT_NAME = {"scd30": "SCD30", "sgp40": "SGP40", "bmp3xx": "BMP3XX", "isl29125": "ISL29125", "fram": "FRAM"}
+# The one registered error source whose own log is deliberately NOT FRAM-backed: AsyFramManager
+# builds a plain PrintLogHistory (asy_fram_manager.py), since the store cannot persist its own
+# failure history through itself. Run 5c's loss sweep therefore exempts it - everything else in
+# errcount must come back. tests/_sensortask_scenarios.py pins the set from the built object graph,
+# so a module that quietly loses its FRAM wiring cannot be waved through by adding a name here.
+_IN_MEMORY_ONLY_ERROR_SOURCES = frozenset({"FRAM"})
 # Which bus-attached drivers produce a real /measurements reading (Run 4's "came back after being
 # faulted" check) vs which Run 4 asserts came back at 0.
 #
@@ -82,8 +88,8 @@ _DRIVER_ERRCOUNT_NAME = {"scd30": "SCD30", "sgp40": "SGP40", "bmp3xx": "BMP3XX",
 # the chip is dead for the whole run and nothing they logged could ever reach it. The property this
 # set asserts is therefore "with FRAM faulted, nothing persisted", not "these logs never persist" -
 # a real but much weaker claim, and one nothing currently re-checks against a HEALTHY chip. SGP40 is
-# excluded because Run 5b/5c give it that stronger, chip-healthy treatment; SCD30/BMP3XX have no
-# equivalent, which is a genuine coverage gap recorded in BACKLOG.md rather than papered over here.
+# excluded because Run 5b/5c give it that stronger, chip-healthy treatment, which Run 5c now
+# extends to every bus-attached driver this device wires (SCD30/BMP3XX/ISL29125 included).
 # "fram" is deliberately absent too, despite its own error log genuinely being in-memory-only
 # (AsyFramManager.pr is a plain PrintLogHistory, no fram= kwarg - confirmed directly): Run 3's own
 # `fram:write` fault can leave the persisted chip's chunk status byte stuck mid-write ("torn"), and
@@ -97,10 +103,10 @@ _DRIVER_ERRCOUNT_NAME = {"scd30": "SCD30", "sgp40": "SGP40", "bmp3xx": "BMP3XX",
 # cause (see this function's own comment below).
 _MEASUREMENT_DRIVERS = frozenset({"scd30", "sgp40", "bmp3xx", "isl29125"})
 _NO_PERSIST_WHEN_FRAM_FAULTED = frozenset({"scd30", "bmp3xx", "isl29125"})
-_PERSISTED_ERROR_MODULES = ("SGP40",)  # the only fault-injectable module whose reboot persistence
-# is actually PROVEN here, not the only one that has it - SCD30/BMP3XX are FRAM-backed too and
-# simply have no equivalent chip-healthy check (see above, and BACKLOG.md).
-# Used by Run 5b/5c. WIFI's own top-level error log is FRAM-backed too (WP1's
+_PERSISTED_ERROR_MODULES = ("SGP40",)  # Run 5b's own abrupt-restart subject, not a claim about
+# who has persistence: Run 5b reboots straight onto Run 5's state, and Run 5 faults only SGP40.
+# Run 5c proves the chip-healthy half for every bus-attached driver, via its own sweep set.
+# WIFI's own top-level error log is FRAM-backed too (WP1's
 # implicit-FRAM-wiring rule, CLAUDE.md/SPECIFICATION.md Part A.7 - AsyConnTime passes fram=fram
 # through to SensorReader.__init__ same as every other FRAM-wired module's own self.pr), so it
 # follows the same all-or-nothing abrupt-restart guarantee - checked separately (Run 8), not via
@@ -118,7 +124,9 @@ _TEST_DEBUG_LEVEL = 5
 _TEST_WARN_CO2 = 1800
 _TEST_SCD30_MEAS_INT = 4
 _MIN_VERBOSE_LOG_LINES = 5
-_SGP40_BOUNDED_FAULT_COUNT = 3
+_BOUNDED_FAULT_COUNT = 3  # injected bus failures per bounded-fault run - SGP40's alone in Run
+# 5/5b, then one link per bus-attached driver in Run 5c. Not device- or driver-specific, and
+# deliberately small: each one ends the driver's read task, and three is the supervisor's budget.
 _WIFI_SCRIPTED_FAILURES = 5  # asy_wifi_service.py's conn_fail_to_hotspot - the failure count that trips hotspot fallback
 
 # PUT /status {"ResetErrors": true} (asy_webserver_service.py's _put_status()) sequentially calls
@@ -228,10 +236,9 @@ _FAILURES: list[str] = []
 
 @dataclass(frozen=True)
 class RunContext:
-    """Everything a single device's run of this suite needs, computed once in main() - which real
-    MicroPython Unix-port binary to launch, which generated module/wiring-plan pair to boot it
-    against, and which bus-attached drivers that device's own wiring plan actually declares (so the
-    bus-fault matrix below never has to hardcode "wozi/dev have bmp3xx, the other four don't")."""
+    """Everything one device's run of this suite needs, computed once in main(): which Unix-port
+    binary to launch, which generated module/wiring-plan pair to boot, and which bus-attached
+    drivers that device declares - so the fault matrix never hardcodes who has a bmp3xx."""
 
     micropython_bin: str
     logs_dir: Path
@@ -362,6 +369,39 @@ def _errcount_required(name: str) -> dict[str, Any]:
     if not entry:
         raise RuntimeError(f"GET /status did not yield a readable errcount entry for {name!r} - the server answered nothing usable, so no assertion about its counter would mean anything")
     return entry
+
+
+def _errcount_all() -> dict[str, dict[str, Any]]:
+    # The whole errcount table from ONE /status read, for the sweeps that compare every registered
+    # source across a reboot. A per-name loop would read a different /status per row and could not
+    # tell a real loss from two reads straddling a fresh entry. Strict like _errcount_required().
+    status, body = _http("GET", "/status")
+    if status != _HTTP_OK or not isinstance(body, dict):
+        raise RuntimeError(f"GET /status did not yield a readable body (status {status}) - no sweep over its errcount table would mean anything")
+    table = body.get("errcount", {})
+    if not isinstance(table, dict) or not table:
+        raise RuntimeError(f"GET /status carried no usable errcount table ({table!r})")
+    return {name: entry for name, entry in table.items() if isinstance(entry, dict)}
+
+
+def _wait_for_error_counts_to_settle(names: list[str], timeout_s: float, samples: int = 3, interval_s: float = 2.0) -> dict[str, int]:
+    # A bounded fault is exhausted when its drivers stop adding "E" entries - an observable event,
+    # not a wall-clock guess, so this samples until `samples` consecutive reads agree for every name.
+    # Needed because a snapshot taken mid-fault would be compared after the reboot against entries
+    # that landed after it, which reads as a persistence failure when nothing was lost at all.
+    deadline = time.monotonic() + timeout_s
+    agreed = 0
+    previous: dict[str, int] = {}
+    current: dict[str, int] = {}
+    while time.monotonic() < deadline:
+        table = _errcount_all()
+        current = {name: _error_type_count(table.get(name, {})) for name in names}
+        agreed = agreed + 1 if current == previous else 0
+        if agreed >= samples - 1:
+            return current
+        previous = current
+        time.sleep(interval_s)
+    raise RuntimeError(f"bounded-fault error counts never settled within {timeout_s}s - last read {current!r}, the one before {previous!r}")
 
 
 def _mem_paused() -> bool | None:
@@ -652,6 +692,13 @@ def _bus_fault_drivers(ctx: RunContext) -> list[str]:
     return sorted(d for d in ctx.drivers if d in _BUS_FAULT_OPS)
 
 
+def _healthy_store_fault_drivers(ctx: RunContext) -> list[str]:
+    # Run 5c's own sweep set: every bus-fault-injectable driver this device wires EXCEPT the store
+    # itself. Faulting `fram` is precisely what voids the chip-healthy premise Run 5c exists to
+    # prove, which is why Run 3's matrix (which does fault it) can never stand in for this one.
+    return [driver for driver in _bus_fault_drivers(ctx) if driver != "fram"]
+
+
 def _run_1_baseline(ctx: RunContext) -> None:
     # ---- Run 1: fresh boot, walk every GET endpoint, PUT settings to carry forward. ----
     log1 = ctx.logs_dir / "run1_baseline.log"
@@ -806,14 +853,14 @@ def _run_5_recovery_after_bounded_fault(ctx: RunContext) -> None:
     # (SPECIFICATION.md Part L.3), so this run needs no device-conditional logic at all. ----
     _clean_state()
     log5 = ctx.logs_dir / "run5_recovery_after_bounded_fault.log"
-    proc = _spawn(ctx, ["--fault", f"sgp40:writeto:{_SGP40_BOUNDED_FAULT_COUNT}"], log5)
+    proc = _spawn(ctx, ["--fault", f"sgp40:writeto:{_BOUNDED_FAULT_COUNT}"], log5)
     try:
         _wait_until_serving(proc)
         # Poll rather than sleep a guessed interval: the fault is exhausted when the third "E"
         # lands, which is a real event to wait for, not a wall-clock duration to assume.
-        entry = _wait_for_error_type_count("SGP40", _SGP40_BOUNDED_FAULT_COUNT, timeout_s=30.0)
+        entry = _wait_for_error_type_count("SGP40", _BOUNDED_FAULT_COUNT, timeout_s=30.0)
         errors_after_exhaustion = _error_type_count(entry)
-        _check(condition=errors_after_exhaustion == _SGP40_BOUNDED_FAULT_COUNT, msg=f"Run 5: SGP40's bounded fault ({_SGP40_BOUNDED_FAULT_COUNT} failures) was fully recorded, no more ({entry!r})")
+        _check(condition=errors_after_exhaustion == _BOUNDED_FAULT_COUNT, msg=f"Run 5: SGP40's bounded fault ({_BOUNDED_FAULT_COUNT} failures) was fully recorded, no more ({entry!r})")
         time.sleep(3.0)  # a few more cycles past exhaustion - real ("E") errors should NOT keep climbing
         # (a "W" recovery notice may legitimately appear here - see _error_type_count()'s own comment)
         entry2 = _errcount("SGP40")
@@ -830,7 +877,7 @@ def _run_5_recovery_after_bounded_fault(ctx: RunContext) -> None:
 
 def _run_5b_error_log_restore_is_all_or_nothing(ctx: RunContext) -> None:
     # ---- Run 5b: reboot straight onto Run 5's state, fault-free. Run 5 left exactly
-    # _SGP40_BOUNDED_FAULT_COUNT "E" entries on a HEALTHY chip, write-through (print_log.py's
+    # _BOUNDED_FAULT_COUNT "E" entries on a HEALTHY chip, write-through (print_log.py's
     # _store_err() writes on every push - no deferred flush to race), so they SHOULD come back. But
     # Run 5 shut down abruptly, and an abrupt shutdown can catch a chunk write in flight: both
     # status bytes are set to _STATUS_BUSY before the payload is touched, so an interrupted write
@@ -855,9 +902,9 @@ def _run_5b_error_log_restore_is_all_or_nothing(ctx: RunContext) -> None:
             # The webserver answers well before the FRAM-backed loggers finish their own setup(),
             # and that setup() IS the restore - so poll for it rather than sampling immediately,
             # the same host-speed trap the old Run 4 check fell into, one layer down.
-            entry = _wait_for_error_type_count(name, _SGP40_BOUNDED_FAULT_COUNT, timeout_s=30.0)
+            entry = _wait_for_error_type_count(name, _BOUNDED_FAULT_COUNT, timeout_s=30.0)
             restored = _error_type_count(entry)
-            _check(condition=restored in (0, _SGP40_BOUNDED_FAULT_COUNT), msg=f"Run 5b: {name}'s FRAM-backed history came back all-or-nothing after an abrupt restart - never a partial {restored}-entry remnant ({entry!r})")
+            _check(condition=restored in (0, _BOUNDED_FAULT_COUNT), msg=f"Run 5b: {name}'s FRAM-backed history came back all-or-nothing after an abrupt restart - never a partial {restored}-entry remnant ({entry!r})")
             if restored:
                 _check(condition=entry.get("counter", 0) >= restored, msg=f"Run 5b: {name}'s restored error COUNT is consistent with the {restored} restored entries, not left behind ({entry!r})")
     except Exception as exc:
@@ -876,33 +923,72 @@ def _run_5c_storage_paused_shutdown_never_loses_the_error_log(ctx: RunContext) -
     # here against roughly 1-in-8 loss for the unpaused abrupt shutdown Run 5b covers.
     #
     # This is what makes the pair sound: Run 5b alone would pass even if persistence never worked at
-    # all (an empty ring satisfies all-or-nothing), which is exactly the hole the old Run 4 check had. ----
+    # all (an empty ring satisfies all-or-nothing), which is exactly the hole the old Run 4 check had.
+    #
+    # Device-wide since 2026-09-18: every bus-fault-injectable driver this device wires gets its
+    # own chip-healthy fault link, and the final reboot then checks the whole errcount table.
+    #
+    # One fault per PROCESS, chained onto the previous link's persisted state rather than faulting
+    # every driver at once: three together exhaust the task-restart budget and the DEVICE reboots
+    # itself mid-run, which is not the commanded reboot under test (SPECIFICATION.md Part C.4.1).
+    # Chaining also makes each link a restore check, which one fault-everything boot could not be. ----
     _clean_state()
-    log5c_a = ctx.logs_dir / "run5c_a_record_then_pause_storage.log"
-    proc = _spawn(ctx, ["--fault", f"sgp40:writeto:{_SGP40_BOUNDED_FAULT_COUNT}"], log5c_a)
-    try:
-        _wait_until_serving(proc)
-        entry = _wait_for_error_type_count("SGP40", _SGP40_BOUNDED_FAULT_COUNT, timeout_s=30.0)
-        _check(condition=_error_type_count(entry) == _SGP40_BOUNDED_FAULT_COUNT, msg=f"Run 5c: SGP40 recorded all {_SGP40_BOUNDED_FAULT_COUNT} bounded failures before the commanded reboot ({entry!r})")
-        status, _ = _http("PUT", "/system", {"SystemCmd": "mempause"})
-        _check(condition=status == _HTTP_OK, msg=f"Run 5c: PUT /system mempause accepted (status {status})")
-        paused = _wait_for_mem_paused(expected=True, timeout_s=15.0)
-        _check(condition=paused, msg="Run 5c: storage actually reported paused before the shutdown, not just a 200")
-        time.sleep(2.0)  # let anything already in flight finish - nothing new can start while paused
-    except Exception as exc:
-        _fail(f"Run 5c (record then pause storage): {exc!r}")
-    finally:
-        ec = _shutdown(proc, "Run 5c-a")
-        _check(condition=ec == 0, msg=f"Run 5c: clean shutdown after the storage pause (exit code {ec})")
+    drivers = _healthy_store_fault_drivers(ctx)
+    recorded: dict[str, int] = {}
+    snapshot_table: dict[str, dict[str, Any]] = {}
+    for driver in drivers:
+        name = _DRIVER_ERRCOUNT_NAME[driver]
+        log5c_a = ctx.logs_dir / f"run5c_a_{driver}_record_then_pause_storage.log"
+        proc = _spawn(ctx, ["--fault", f"{driver}:{_BUS_FAULT_OPS[driver]}:{_BOUNDED_FAULT_COUNT}"], log5c_a)
+        try:
+            _wait_until_serving(proc)
+            for earlier, expected in recorded.items():
+                found = _error_type_count(_errcount_required(earlier))
+                _check(condition=found == expected, msg=f"Run 5c: {earlier}'s {expected} chip-healthy error(s) were still on the chip when {name}'s own fault link booted ({found} found)")
+            _wait_for_error_type_count(name, 1, timeout_s=45.0)
+            # Snapshot only once the bounded fault has stopped producing entries. Taken mid-fault,
+            # it would be compared after the reboot against entries that landed after it, and a run
+            # that lost nothing at all would read as a persistence failure.
+            settled = _wait_for_error_counts_to_settle([name], timeout_s=90.0)
+            _check(condition=settled[name] > 0, msg=f"Run 5c: {name}'s bounded fault was recorded as a real error against a HEALTHY store ({settled!r})")
+            if name == "SGP40":
+                _check(condition=settled[name] == _BOUNDED_FAULT_COUNT, msg=f"Run 5c: SGP40 recorded all {_BOUNDED_FAULT_COUNT} bounded failures and no more before the commanded reboot ({settled!r})")
+            snapshot_table = _errcount_all()
+            status, _ = _http("PUT", "/system", {"SystemCmd": "mempause"})
+            _check(condition=status == _HTTP_OK, msg=f"Run 5c: PUT /system mempause accepted before {name}'s reboot (status {status})")
+            paused = _wait_for_mem_paused(expected=True, timeout_s=15.0)
+            _check(condition=paused, msg=f"Run 5c: storage actually reported paused before {name}'s shutdown, not just a 200")
+            time.sleep(2.0)  # let anything already in flight finish - nothing new can start while paused
+            at_pause = _error_type_count(_errcount_required(name))
+            _check(condition=at_pause == settled[name], msg=f"Run 5c: nothing more was logged for {name} between the snapshot and the storage pause, so the snapshot is what the chip actually holds ({settled[name]} snapshot, {at_pause} at the pause)")
+            recorded[name] = settled[name]
+        except Exception as exc:
+            _fail(f"Run 5c ({driver}: record then pause storage): {exc!r}")
+        finally:
+            ec = _shutdown(proc, f"Run 5c-a ({driver})")
+            _check(condition=ec == 0, msg=f"Run 5c: clean shutdown after {name}'s storage pause (exit code {ec})")
 
     log5c_b = ctx.logs_dir / "run5c_b_history_survived_the_commanded_reboot.log"
     proc = _spawn(ctx, [], log5c_b)
     try:
         _wait_until_serving(proc)
-        entry = _wait_for_error_type_count("SGP40", _SGP40_BOUNDED_FAULT_COUNT, timeout_s=30.0)
-        restored = _error_type_count(entry)
-        _check(condition=restored == _SGP40_BOUNDED_FAULT_COUNT, msg=f"Run 5c: SGP40's {_SGP40_BOUNDED_FAULT_COUNT} errors survived a reboot taken with storage paused - the one case that must never lose them ({restored} found, {entry!r})")
-        _check(condition=entry.get("counter", 0) >= _SGP40_BOUNDED_FAULT_COUNT, msg=f"Run 5c: SGP40's persisted error COUNT was restored too, not just the history ring ({entry!r})")
+        _wait_for_error_type_count("SGP40", _BOUNDED_FAULT_COUNT, timeout_s=30.0)
+        restored_table = _errcount_all()
+        for name, expected in recorded.items():
+            entry = restored_table.get(name, {})
+            restored = _error_type_count(entry)
+            _check(condition=restored == expected, msg=f"Run 5c: {name}'s {expected} chip-healthy error(s) survived a reboot taken with storage paused - the one case that must never lose them ({restored} found, {entry!r})")
+            _check(condition=entry.get("counter", 0) >= expected, msg=f"Run 5c: {name}'s persisted error COUNT was restored too, not just the history ring ({entry!r})")
+        # Every OTHER registered source in the same breath - the ones with no fault-injection seam
+        # (SYSTEM/NOTIFY/NTP/WEBSERVER/DNSSRV, every CFGMGR_*, dev's two uart_link instances). A
+        # fresh entry from THIS boot is legitimate, so the claim is "nothing was lost", not equality.
+        for name, before in snapshot_table.items():
+            if name in recorded or name in _IN_MEMORY_ONLY_ERROR_SOURCES:
+                continue
+            had = _error_type_count(before)
+            now = _error_type_count(restored_table.get(name, {}))
+            _check(condition=now >= had, msg=f"Run 5c: {name} kept the {had} error(s) it had logged before the commanded reboot ({now} found, {restored_table.get(name)!r})")
+        _check(condition=sorted(restored_table) == sorted(snapshot_table), msg=f"Run 5c: the reboot registered exactly the same error sources, so no row silently dropped out of this sweep (before {sorted(snapshot_table)!r}, after {sorted(restored_table)!r})")
         _check(condition=_mem_paused() is False, msg="Run 5c: the storage pause did NOT survive the reboot (it is RAM-only by design)")
         # Every real device wires SGP40's compensation source to SCD30 (devices/*.toml); a
         # compensation read racing SCD30's cold-start after this fresh boot used to log a real,
@@ -912,13 +998,16 @@ def _run_5c_storage_paused_shutdown_never_loses_the_error_log(ctx: RunContext) -
         # stays about ResetErrors actually clearing the log, not about racing any boot-time read.
         time.sleep(3.0)
         # The restored history must not be a read-only relic: a ResetErrors PUT has to clear it on
-        # the chip. Deliberately issued after the poll above confirmed setup() ran, so this checks
-        # the ordinary case; a reset issued *before* setup() is covered separately (Part C.7
+        # the chip, for every swept source at once rather than only the one this run faulted first.
+        # Deliberately issued after the poll above confirmed setup() ran, so this checks the
+        # ordinary case; a reset issued *before* setup() is covered separately (Part C.7
         # - it persists straight away now and the later setup() must not undo it).
         status = _put_reset_errors_timed("Run 5c")
         _check(condition=status == _HTTP_OK, msg=f"Run 5c: PUT /status ResetErrors accepted (status {status})")
-        entry = _errcount_required("SGP40")
-        _check(condition=_error_type_count(entry) == 0, msg=f"Run 5c: the restored history was actually cleared by ResetErrors, not just masked ({entry!r})")
+        cleared_table = _errcount_all()
+        for name in recorded:
+            entry = cleared_table.get(name, {})
+            _check(condition=_error_type_count(entry) == 0, msg=f"Run 5c: {name}'s restored history was actually cleared by ResetErrors, not just masked ({entry!r})")
     except Exception as exc:
         _fail(f"Run 5c (history survived the commanded reboot): {exc!r}")
     finally:
@@ -1142,11 +1231,9 @@ def _run_11_soak_attempt(ctx: RunContext, log_path: Path, attempt_label: str) ->
 
 
 def _report_soak_attempt(attempt: _SoakAttempt, label: str) -> bool:
-    """Prints/_check()s everything about one attempt except the trend-vs-tolerance verdict itself
-    (the caller decides that, since it's the one thing _run_11_soak() below may retry past). Returns
-    whether every non-trend aspect of this attempt was clean - a false here means _run_11_soak()
-    must not retry (an HTTP/watchdog/shutdown failure is never the environment-noise this retry
-    exists to absorb, SPECIFICATION.md Part E.7/E.8 - only the trend check itself is)."""
+    """Reports one attempt except the trend-vs-tolerance verdict, which the caller owns because it
+    is the only thing _run_11_soak() may retry past. False means it must NOT retry: an HTTP,
+    watchdog or shutdown failure is never the environment noise that retry absorbs (Part E.7/E.8)."""
     for failure in attempt.http_failures:
         print(f"FAIL: Run 11: {failure}")
     total_requests = (_SOAK_WARMUP_CYCLES + _SOAK_CYCLES) * len(_SOAK_ENDPOINTS)

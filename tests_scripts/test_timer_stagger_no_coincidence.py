@@ -1,8 +1,6 @@
-"""Host-CPython proof of WP7's own read-trigger no-coincidence claim (SPECIFICATION.md Part
-C.9.1): replicates system_service.py's own stagger arithmetic exactly (never imports/executes
-MicroPython-target code) and confirms, empirically and for the general case, that no two
-software-counter-driven sensors' read times ever coincide for any combination of whole-second
-periods."""
+"""Host-CPython proof of WP7's read-trigger no-coincidence claim (SPECIFICATION.md Part C.9.1):
+replicates system_service.py's stagger arithmetic exactly, never importing MicroPython-target code,
+and confirms no two software-counter-driven sensors coincide for any whole-second periods."""
 
 import math
 

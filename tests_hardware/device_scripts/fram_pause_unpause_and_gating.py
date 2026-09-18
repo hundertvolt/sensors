@@ -1,7 +1,6 @@
-"""Isolated-driver device script: the FRAM storage-pause gate against the real SPI FRAM chip -
-that a pause genuinely prevents the bus write (not just returns False), that override_pause still
-reaches the chip, and that a REAL machine.Timer auto-unpause actually fires (SPECIFICATION.md F.1's
-soft-Timer-callback-drop gotcha makes that a hardware-only claim)."""
+"""Isolated-driver device script: the FRAM storage-pause gate against the real chip - a pause
+genuinely prevents the bus write rather than only returning False, override_pause still reaches the
+chip, and a real machine.Timer auto-unpause fires (hardware-only, per Part F.1's soft-Timer gotcha)."""
 
 import asyncio
 
@@ -25,10 +24,8 @@ wdt: "machine.WDT | None" = None
 
 async def sleep_fed(seconds: float) -> None:
     """asyncio.sleep() that keeps the watchdog fed. Load-bearing: mpremote's soft reset does NOT
-    disarm an already-armed rp2 watchdog, so any device script whose own runtime exceeds the ~8s
-    timeout resets the board mid-run (confirmed directly - it presents as a bare serial EIO, which
-    looks nothing like a watchdog reset). Every long-running script in this directory feeds one for
-    this reason; the auto-unpause windows below are what make this script one of them."""
+    disarm an armed rp2 watchdog, so a script running past the ~8s timeout resets the board mid-run,
+    presenting as a bare serial EIO. tests_hardware/README.md has the full account."""
     remaining = seconds
     while remaining > 0:
         step = min(remaining, 1.0)

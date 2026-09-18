@@ -399,9 +399,13 @@ information):
   short comment right next to the code it explains otherwise — never dropped outright. **Machine-read
   tag lines are data, not commentary, and are exempt**: `# @web`, `# @web-group`, `# @wiring`,
   `# @value-wiring`, `# @limits` and `# @requires` are buildgen's input, one line per field by
-  construction (SPECIFICATION.md Part L.6.4) — the prose introducing them is not exempt. Applied
-  across `src/` in one pass (project owner's direction, 2026-09-18); the remaining scopes are
-  measured per scope in BACKLOG.md. Keep new code to this bar.
+  construction (SPECIFICATION.md Part L.6.4) — the prose introducing them is not exempt. **JSDoc
+  `@typedef`/`@param`/`@returns` annotations are the same case** — `npm run typecheck` really
+  checks them with `tsc`, so `js/definitions.js`'s ~37-line `@typedef` run is a type declaration,
+  not a comment; the prose above it is not exempt. Applied across `src/` in one pass (project
+  owner's direction, 2026-09-18), and the header blocks are at zero repo-wide since the
+  concentrated run the same day; the remaining inline blocks are measured per scope in BACKLOG.md.
+  Keep new code to this bar.
 - Prefer flagging genuinely ambiguous/architecturally significant decisions to the project owner
   over guessing — several open questions in BACKLOG.md exist precisely because the code's actual
   intent wasn't obvious from reading it alone.
