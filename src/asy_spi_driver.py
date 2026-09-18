@@ -160,7 +160,15 @@ class SPIDevice(Lockable):
         # first, while the lock is still held.
         self.cs_pin.value(not self.cs_active_value)
         time.sleep_us(_CS_SETTLE_US)  # hold time must elapse before the lock lets other traffic on
-        return await super().__aexit__(exc_type, exc_val, exc_tb)
+        res = await super().__aexit__(exc_type, exc_val, exc_tb)
+        # One yield per session, AFTER CS is deasserted and the bus lock released, so it is outside
+        # the hazard window the blocking settle above exists to protect. A long burst of one-byte
+        # bus commands would otherwise hold the loop for its whole duration - the awaited settles
+        # this replaced were the only scheduling points in the chip-select path. Restores the
+        # pre-existing between-session interleaving (which had two such points), it does not add
+        # any; a cancellation landing here supersedes a body exception, with nothing left to leak.
+        await asyncio.sleep(0)
+        return res
 
     async def setup(self) -> None:
         self.cs_pin.init(self.cs_pin.OUT)

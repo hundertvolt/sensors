@@ -552,7 +552,51 @@ def test_session_does_not_yield_to_other_tasks_while_cs_is_asserted() -> None:
         async with device:
             assert device.cs_pin.value() == 0  # CS asserted
             assert passes == before  # nothing else ran while CS is asserted
-        assert passes == before  # nor across the deassert and its hold time
+            assert device.asy_lock.locked()
+        # The window is closed here: CS is deasserted and the lock released, so the one yield
+        # __aexit__ ends with is outside it. That yield is required, not incidental - without any
+        # scheduling point in the session a long burst of one-byte bus commands holds the loop for
+        # its whole duration (see test_a_burst_of_sessions_lets_other_tasks_run below).
+        assert device.cs_pin.value() == 1
+        assert not device.asy_lock.locked()
+        assert passes > before
+        stop = True
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+    run(scenario())
+
+
+def test_a_burst_of_sessions_lets_other_tasks_run() -> None:
+    # Regression: the chip-select path's only scheduling points used to be its two awaited settle
+    # sleeps. Replacing them with a blocking delay (correct - an await there hands the loop away
+    # with CS asserted) left a burst of sessions holding the loop for its entire duration, which
+    # broke a digital-twin integration test that needs the WiFi state machine to keep advancing
+    # while FRAM logging runs. __aexit__ therefore yields once per session, after the window.
+    spi = make_spi()
+    device = make_device(spi)
+    passes = 0
+    stop = False
+
+    async def spinner() -> None:
+        nonlocal passes
+        while not stop:
+            passes += 1
+            await asyncio.sleep(0)
+
+    async def scenario() -> None:
+        nonlocal stop
+        task = asyncio.create_task(spinner())
+        await asyncio.sleep(0)
+        before = passes
+        for _ in range(20):
+            async with device:
+                pass
+        # at least one scheduler pass per session, so a long burst cannot starve the loop
+        assert passes - before >= 20, "burst of 20 sessions yielded only %d times" % (passes - before)
         stop = True
         task.cancel()
         try:

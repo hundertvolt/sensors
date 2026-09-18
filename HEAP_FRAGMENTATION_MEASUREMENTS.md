@@ -616,6 +616,10 @@ the dust holes, so **every byte spent on a yield is a byte not spent filling a h
 needs.** Writing a hot path to be extra friendly to cooperative multitasking is not the aggravating
 factor here; it is mildly protective at equal churn.
 
+**This is a statement about layout only, and it must not be read as licence to remove yields.** They
+carry an entirely separate, load-bearing obligation — keeping the event loop turning — and removing
+them broke a real test. See §8.1.
+
 ### 6A.5 Small-object count, total bytes held constant
 
 Balance of the byte budget in 1024 B units, which cannot fit a dust hole:
@@ -793,12 +797,49 @@ Sources: [Maximising MicroPython speed](https://docs.micropython.org/en/latest/r
 `SPIDevice.__aenter__`/`__aexit__` replaced with `time.sleep_us(_CS_SETTLE_US)`,
 `_CS_SETTLE_US = const(2)`. Plus `tests/test_asy_spi_driver.py` (50/50).
 
-What it buys, measured:
-- 3,071 B of the 5,501 B per chip-select session (**56%**); bare session 8,064 -> 4,768 B.
-- Whole-boot churn 11,727,552 -> 6,338,688 B (**1.85x**); one module's `setup()` (sysfunct, which is
-  almost entirely its logger's FRAM round trip) 942,720 -> 493,408 B.
+What it buys, measured (figures as amended by §8.1):
+- 3,071 B of the 5,501 B per chip-select session; bare session 8,064 -> 4,768 B before the §8.1 fix.
+- Whole-boot churn 11,740,992 -> 8,830,208 B (**1.33x**, after §8.1; it was 1.85x before that fix
+  restored a scheduling point).
 - Removal of a scheduler yield that occurred **while CS was asserted and the bus lock held** (§5.1).
 - ~94 ms of pure sleeping per chunk operation — the likely bulk of the 6.4 s `ResetErrors` [HW].
+
+### 8.1 A regression `f6a182d` caused, and the fix
+
+`f6a182d` removed the chip-select path's **only two scheduling points**. The blocking settle is
+correct — an `await` between CS assert and deassert hands the loop away with the bus locked — but
+with both awaits gone, a burst of one-byte bus commands holds the event loop for its entire
+duration. `AsyFramManager` issues 74 such sessions per logger setup, so a logger's FRAM round trip
+became one uninterruptible block.
+
+That broke a real test, deterministically, not as a flake:
+`tests/test_digital_twin_sensortask_integration.py::test_wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server_and_status_led`
+— `AssertionError: real hotspot activation never started the real DNSServer task`. It waits up to
+25 s of real time for the WiFi state machine to reach hotspot fallback while the rest of the system
+runs, and the starved loop never got it there. **Bisected to a single variable**: reverting only
+`src/asy_spi_driver.py` to the base branch's version makes the file pass 13/13; with `f6a182d` it
+fails 12/13 in every isolated run. Two CI runs on docs-only commits had already failed — first
+`test_uart_comm_hazard`, then this file — which initially looked like runner contention and was not.
+
+**The fix:** `__aexit__` ends with one `await asyncio.sleep(0)`, placed **after** CS is deasserted
+and the bus lock released, so it is outside the window the blocking settle protects. That restores a
+bounded scheduling point per session while keeping the hazard closed. Cost, measured: **2,785 B per
+session** — more than the 896 B a bare `sleep(0)` costs, because the suspension also retains
+`__aexit__`'s own frame — which is why the whole-boot figure moves from 1.85x to 1.33x. Per §6A that
+extra churn is in the harmless size class for layout (28 blocks, fits 1% of dust holes).
+
+`tests/test_asy_spi_driver.py`: `test_session_does_not_yield_to_other_tasks_while_cs_is_asserted`
+asserted no scheduler pass *after* the session as well, which was never the real invariant — it now
+asserts the window is closed (CS deasserted, lock released) and that the yield did happen. Added
+`test_a_burst_of_sessions_lets_other_tasks_run`, which pins the property the regression violated: 20
+back-to-back sessions must yield at least 20 times.
+
+**Reported, not changed:** `I2CDevice` inherits `Lockable.__aenter__`/`__aexit__` unchanged, so an
+I2C session burst has no scheduling point either — the same structural property, pre-existing rather
+than a regression. `SPECIFICATION.md` F.5.8 explicitly declines to generalise the UART never-block
+rule to `asy_i2c_driver.py`/`asy_spi_driver.py`, and no I2C path issues anything like 74 sessions in
+a row (the sensor chip inits are 4-12 operations, §4.1), so this is recorded for a decision rather
+than fixed here.
 
 What it does **not** buy: contiguity. Measured neutral-to-worse in isolation (§6.7). The commit
 message and PR #105 say so explicitly with the numbers, so it cannot be misread as the remediation.
