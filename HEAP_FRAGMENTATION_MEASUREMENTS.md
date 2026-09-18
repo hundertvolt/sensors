@@ -14,7 +14,11 @@ defects themselves, because each one is a trap a future session will otherwise r
 with every observation it accounts for; §0A.6 is the whole thing in one paragraph, and §0A.3 is the
 load-bearing part. §0B is the test record, and §0B.7 is what is still open. **§1.2 item 7 (2026-09-18) is a
 correction to every absolute byte figure in the file: the twin's build flag inflates allocation 4-5x; the
-board-faithful re-pricing of the FRAM path is §3A, and §3B prices the restructuring that keeps the wire protocol byte-identical (38-90x).** **§0** is the ledger of every hypothesis this investigation tested — whose it was, what
+board-faithful re-pricing of the FRAM path is §3A, and §3B prices the restructuring that keeps the wire protocol byte-identical (38-90x).** **§1.5
+(2026-09-18) bounds the whole corpus differently again: every figure here is at `gc.threshold(-1)`,
+while the firmware's own boot entry sets `gc.threshold(32768)`, where the twin shows no layout
+defect at any churn dose — §7A measures the owner's boot-confined `gc.collect()` scheme against
+both.** **§0** is the ledger of every hypothesis this investigation tested — whose it was, what
 tested it, and whether it is confirmed, suggestive, refuted, withdrawn or still untested. The rest
 of the document is the evidence those verdicts rest on. §6A.13's scorecard is the same thing
 narrowed to the factors that control the defect.
@@ -60,6 +64,7 @@ falsified theory gets re-proposed and so every conclusion carries its strength a
 | O9 | The sawtooth: churn repeatedly allocates the whole free memory, gc collects often because fill is high, the level sawtooths across the whole heap, and survivors thrown at random points stay where they land, ending evenly distributed | **confirmed** | fill driven to **64 bytes free**, amplitude 272,576 of ~278,000 (§6A.6); survivors smeared across all ten heap deciles at span 96-99% when broken vs the bottom 1-2 deciles at 18-40% when clean (§6A.7) |
 | O10 | There is no churn budget: it is a lottery, pure chance plus nonlinearity — a conjunction of parallelism, volume and interleaving, each with a threshold, and the knee is where all conditions are met at once | **confirmed for the conjunction and the absence of a budget; component verdicts differ** | volume x survivor population interact multiplicatively (§6A.11); interleaving null — a yield allocates nothing on the real VM (§1.2 item 7); **parallelism is absent from the boot batch entirely** (§0B.6), so it cannot be one of the met conditions there. "No budget" now has a mechanism: the churn knee is a property of the *pair*, not of the churn (§6A.11). The chance is not between runs — the outcome is deterministic per configuration (§6.3, §6.4) — it is a fixed order's sensitivity to any shift in it |
 | O12 | The FRAM path's churn is an architectural inefficiency of the driver/protocol *construction*: a critical-path run should generate orders of magnitude fewer short-lived allocations, with every integrity feature of the storage kept | **confirmed by a wire-identical prototype** | same 74 CS cycles, same bytes on the bus, asserted event by event; board-equivalent `setup()` 118,144 -> 3,072 B (38x) with everything below the lock synchronous, ~1,300 (~90x) with one lock acquisition per chunk operation (§3B) |
+| O13 | `gc.collect()`, confined to the boot lists - start, between each module, end, and the same for the async setup list - actively compacts the initially generated permanent survivors, and stays forbidden everywhere else | **the effect is confirmed and is the strongest measured; the stated mechanism is not what happens; and it is null at the threshold the firmware ships** | ten collects take the worst case from 13% to 59% kept and clear the 55% floor 15 of 15 against base's 0 of 15, with a clean dose-response in the number of collects (§7A.2). But nothing is compacted - MicroPython never moves an object; the collects reset the allocator's free-scan index, so later survivors pack low instead of smearing (§7A.4). At the shipped `gc.threshold(32768)` (§1.5) it moves the worst case from 87% to 86% (§7A.6) |
 | O11 | The survivor population is itself one of the conditions | **confirmed, decisively** | churn alone 0%, survivors alone -18%, both together **-88%** of the largest free block (§6A.11) |
 
 ### 0.2 This session's hypotheses
@@ -77,6 +82,7 @@ falsified theory gets re-proposed and so every conclusion carries its strength a
 | C9 | Cutting the 74 chip-select sessions to ~6 will clear the contiguity floor | **withdrawn as stated; the achievable side reopened by §3B** | ~12x against a required 40-100x; 70,000 B per logger measures in_big 14 / span 97%, inside the saturated regime (§6A.8). §3B now reaches 38-90x *without* cutting a session; the required side was computed in settrace bytes and is not re-derived (§3A.6), so whether that clears the floor is untested |
 | C12 | The status-byte pair, the two copies and the per-write WREN/WRDI envelope are redundant bookkeeping | **withdrawn — owner's account, 2026-09-18** | each element is grounded (§3B.1): the status bytes are a lock against a copy caught mid-operation, the pair written separately so a torn pair is detectable; the copies restore the last valid value; the CRC catches bus errors; each CS cycle is what commits a command at the chip. The wire protocol is the integrity feature; the cost is the Python that carries it |
 | C10 | Loop yields are protective for layout | **withdrawn — a settrace artifact** | it held, confound-checked, on the settrace build (§6A.4), where each yield allocated a 28-block object that competed for no survivor's hole and forced early collections. On the real VM a yield allocates 0 B (§1.2 item 7), so it can be neither protective nor harmful to layout |
+| C13 | Every figure in this file is the `gc.threshold(-1)` picture, and the firmware ships `gc.threshold(32768)`, where the twin shows no layout defect at any churn dose | **confirmed [SRC] + [TWIN], and it puts the [HW] symptom in question** | the threshold is set in the generated boot entry, which the harnesses never execute (§1.5); at 32,768 B `base` keeps 87% against 18%, survivors span 12% of the heap against 92%, and every churn dose from zero to base's own clears the floor (§7A.5). The cited [HW] 18% was measured on a board whose own entry sets it - unresolved, and it needs one `mem_info()` on hardware (§1.5, §0B.7) |
 | C11 | Pre-allocating each module's permanent objects at construction is the remedy the evidence favours | **refuted** | the mechanism is real — the same objects placed pre-seam give in_big 0 and 100% kept where in-window they give 380 and 12% — but it holds only below the churn threshold. At the real 843,232 B dose pre-seam objects are unprotected (kept ~50%), and the real system's 76 survivors are already an order of magnitude below the survivor axis's own onset, so that axis is not the binding constraint (§6A.12) |
 
 ## 0A. The model
@@ -498,12 +504,20 @@ is why a 2-block change of one object's size moves the result and why nothing co
 - **What in base's churn does the stranding**, given uniform churn does not (§0B.4). Its size mix was
   the named suspect — and §1.2 item 7 now weighs against it too: on the settrace-free build the
   transient population is entirely different (no frame/code object per call, no 28-block object per
-  yield, 4.75x fewer bytes) and the defect is **stronger** (in_big 30 vs 11, kept 18% vs 59%). The
-  §0B.4 series has not been re-run on that build; that is the next test.
+  yield, 4.75x fewer bytes) and the defect is **stronger** (in_big 30 vs 11, kept 18% vs 59%). **The
+  dose series is now run on that build** (§7A.5): the transition sits between a 90x and a 172x cut,
+  so base's dose is far above it and §3B's 38-90x does not reach it. What in base's churn does the
+  stranding at a *given* dose is still open; the injector matched base's own kept% at base's dose,
+  so the size mix is not needed to reproduce the outcome there.
 - **Gap 9, parallelism** — the question is now narrower than "not re-run": §0B.6 shows the real
   startup phase has *none*, so §6A.10's added-parallelism arm describes a regime the boot batch
   never enters. What is still untested is whether parallelism matters *after* boot, once the task
   graph is live (§12).
+- **Which configuration the [HW] symptom belongs to** (§1.5, C13) — the firmware's own boot entry
+  sets `gc.threshold(32768)`, where the twin shows the defect essentially absent at every churn
+  dose, yet the cited [HW] figure is 18% kept, the twin's `threshold(-1)` shape. One
+  `micropython.mem_info(1)` on the board right after `build_system()` under the shipped entry
+  settles it, and it decides whether any remedy in this file is needed on a real unit.
 - **Gap 10, hardware** — unchanged, and no go-ahead. A GC block is 16 B there against 32 B here, so
   the "1-block objects are immune" boundary in §0B.2 falls at a different byte size on the board and
   the eligible population may be a different fraction of the whole.
@@ -529,7 +543,7 @@ figure. `mem_info(1)` prints the block map but **abbreviates two or more consecu
 as `(N lines all free)`**, so any reconstruction must work by absolute address, not by counting
 printed lines.
 
-### 1.2 Seven instrument defects, each of which silently produced wrong numbers
+### 1.2 Eight instrument defects, each of which silently produced wrong numbers
 
 Recorded because every one of these is re-enterable, and each was caught only by an explicit audit.
 **Item 7 is the largest and was found last (2026-09-18); it inflates every absolute byte figure
@@ -614,6 +628,13 @@ measured before it, and is therefore stated first.**
    construction changes the outcome it is measuring (25,216 vs 4,896).
 6. **Scenarios sharing one heap are not independent.** Sleep-cost scenarios E-G started from a
    destroyed 6.8 KB seam because A-D ran first in the same process. One process per scenario.
+8. **The synthetic injector's yield-cost constant is settrace-specific.** `probe.py synth` holds the
+   byte budget constant by subtracting `_YCOST = 896` per yield - the settrace build's cost of one
+   `asyncio.sleep(0)`. On the settrace-free binary a yield allocates **0 B** (item 7), so every
+   synth dose run there is understated by `yields x 896`: 154,112 B per logger at the default 172
+   yields, which silently turns a 22,190 B dose into a refusal and base's own 843,232 B into
+   689,120 B. Now an env knob (`YCOST=0` for `build-nosettrace`); §7A.5's dose series is the first
+   run with it correct, and no earlier synth figure in this file was measured on that binary.
 
 ### 1.3 The metric that works, and the one that does not
 
@@ -662,6 +683,48 @@ Freezing `digital_twin/` is the faithful analogue, not an extra: on real hardwar
 firmware. **Correction to the handover's §2.9.3:** the freeze manifest must include the *variant's*
 manifest (`variants/standard/manifest.py`), not `$(PORT_DIR)/variants/manifest.py` — the latter omits
 `extmod/asyncio`, so `import sensortask_dev` dies with `ImportError: no module named 'asyncio'`.
+
+### 1.5 Every figure in this file is at `gc.threshold(-1)`; the firmware ships `gc.threshold(32768)`
+
+[SRC] `buildgen/codegen.py`'s `generate_boot_entry_source()` emits `gc.threshold(32768)` into the
+generated boot entry, and `scripts/build_firmware.py:112` writes that entry onto the board as
+`main.py` - so a flashed unit runs the whole batch with a 32,768 B allocation threshold. The
+harnesses here import `sensortask_<dev>` directly and never execute that entry, so every figure in
+this file (and in the handover) was measured at `gc.threshold(-1)`, MicroPython's own default, where
+a collection happens only when an allocation cannot be satisfied (§0A.1). For the legacy deployed
+tree `-1` is exactly faithful: it sets no threshold and calls no `gc.collect()` anywhere [SRC].
+
+That is the correct baseline - CLAUDE.md and `SPECIFICATION.md` I.4(e) require the native-default
+case to hold on its own - but it bounds what the corpus claims: **it is the (e)-stage picture, not
+the shipped one.**
+
+[TWIN, settrace-free] `base`, one perturbation per cell:
+
+| heap | fill after the batch | kept% at `threshold(-1)` | kept% at `threshold(32768)` |
+|---|---|---|---|
+| 300k | 83% | 100 (the seam's big run is already only 17,280 B) | 45 |
+| 340k | 74% | 19 | 71 |
+| 380k | 66% | 13 | 80 |
+| **455k** (§1.4's calibration for this binary) | **55%** | **18** | **87** |
+| 560k | 45% | 19 | 91 |
+| 700k | 36% | 19 | 94 |
+
+Ensembled over §1.3's 15 perturbations at 455k, `base` keeps **13 / 18 / 23%** (worst/median/best)
+with the threshold off and **87 / 87 / 89%** with it on, and clears the 55% floor 0 of 15 times
+against 15 of 15. Retention is identical either way (253,312 B used against 253,760); only placement
+moves - survivors span 92% of the heap at `-1` and **12%** at 32,768 (§6A.7's metric). The mechanism
+is §0A.1's: every collection resets the allocator's free-scan index to zero, so the next survivor
+takes the lowest fitting hole instead of one above the churn's high-water mark, and at 32,768 B the
+batch's own churn triggers one every few hundred allocations.
+
+**The discrepancy this opens, and it is not resolved here.** The [HW] symptom (§2.1) is largest
+115,536 -> 20,592 B, i.e. **18% kept** - which is what the twin produces with the threshold **off**,
+not on. Candidates, none testable without hardware: the [HW] figure was taken through a path that
+never runs the generated `main.py` (an `mpremote`-pushed device script, or the legacy firmware,
+neither of which sets a threshold); or the board's 16 B blocks change the outcome; or it was read at
+a later moment than the seam. One `micropython.mem_info(1)` on the board immediately after
+`build_system()`, under the shipped entry, settles it. Until then **"the shipped configuration is
+already clean" is a twin result only**, and the corpus's own baseline stands.
 
 ---
 
@@ -1885,6 +1948,151 @@ Sources: [Maximising MicroPython speed](https://docs.micropython.org/en/latest/r
 
 ---
 
+## 7A. The boot-confined `gc.collect()` exception, measured (owner's proposal, 2026-09-18)
+
+The proposal in the owner's terms: the setup phase runs exactly once and lays foundations that may
+never change again, so heap hygiene there is crucial; `gc.collect()` is called by the system
+service's own boot list (at the start of the list, between each instantiated module, and at the
+end), and the same scheme is applied to the async setup list; it stays forbidden for all business
+logic and for the whole run phase, so it is called a handful of times, concentrated in boot, and
+then never again.
+
+### 7A.1 What was run
+
+[TWIN, settrace-free, 455k, `gc.threshold(-1)` unless a row says otherwise] The generated batch is
+`await X.setup()` followed by `sysfunct.feed_watchdog()`, ten times over
+(`build/generated_src/sensortask_dev.py:228-247`), so `feed_watchdog()` **is** the system-service
+call that sits between two modules and after the last one - wrapping it puts a collect at exactly
+the proposed sites with a single wrapper. The wrapper is installed after the seam dump, so the seam
+is byte-identical to `base`'s, and the start-of-list collect is already in every arm because
+`hp.mapdump("seam")` collects. `gcboot` collects after every module; `gcboot2` / `gcboot5` /
+`gcboot10` after every second / fifth / tenth, which is the cadence dose series.
+`basex` / `gcbootx` extend the run to the async setup list: `start_and_check_tasks()`'s own starter
+loop, replicated to the point where its `while True` supervisor would begin (22 tasks), without and
+with a collect after each starter.
+
+15 perturbations per variant (§1.3's two families). **Retention is unchanged across every arm** -
+253,312 B used after the batch for `base` against 253,472 for `gcboot`, 207,104 B free against
+206,944 - so nothing below is a consumption effect, and nothing below is the wrapper either
+(`gcboot2` carries the identical wrapper and measures half the benefit).
+
+### 7A.2 The boot list: a clean dose-response
+
+| collects during the batch | worst | median | best | clears the 55% floor |
+|---|---|---|---|---|
+| 0 - `base` | 13% | 18% | 23% | **0 / 15** |
+| 1, after the last module | 12% | 14% | 26% | 0 / 15 |
+| 2, every fifth | 16% | 24% | 56% | 1 / 15 |
+| 5, every second | 34% | 34% | 76% | 2 / 15 |
+| **10, after every module** | **59%** | **60%** | **87%** | **15 / 15** |
+
+Absolutely: worst-case largest free block 23,584 -> **104,640 B**, median 32,576 -> 104,800. **One
+collect at the end achieves nothing**, which is the point - this is not about freeing garbage (every
+map dump collects first anyway), it is about *when* placement is reset relative to each survivor's
+birth. It is also the first variant in this file to clear the floor on **every** run rather than on
+the median (§7.1, §7.2).
+
+### 7A.3 The async setup list
+
+Boot list plus task-starter list, 6 perturbations per arm, same binary and heap:
+
+| | kept, worst | kept, median | largest free block, median |
+|---|---|---|---|
+| `basex` | 5% | 6% | 11,296 |
+| **`gcbootx`** | **40%** | **41%** | **72,032** |
+| `basex`, `threshold(32768)` | 81% | 81% | 165,376 |
+| `gcbootx`, `threshold(32768)` | 80% | 81% | 165,648 |
+
+Starting the 22 tasks is itself a heavy survivor event - it takes `base` from 18% to 6% kept and
+adds ~220 survivors, so the async list matters as much as the setup list. The scheme recovers a 6.4x
+larger block there too, but **40% does not clear the 55% floor**: at native defaults, boot collects
+alone do not make the whole boot sequence safe.
+
+### 7A.4 It is not compaction, and the difference matters
+
+MicroPython's collector never moves an object (§0A.1). Nothing is compacted; every survivor already
+placed stays exactly where it is. What the collects change is where the *next* allocations go -
+`gc_collect_end()` resets the free-scan index to zero, so each module's permanent objects take the
+lowest fitting holes instead of being pushed above the churn's high-water mark. Measured as survivor
+placement (§6A.7's decile histogram, k=0):
+
+| | span | median gap | deciles, low -> high |
+|---|---|---|---|
+| `base` | 92% | 1,504 B | 20 5 4 2 1 5 5 13 4 5 |
+| `gcboot` | 85% | 224 B | 29 7 0 0 1 0 0 0 32 0 |
+| `base`, `threshold(32768)` | 12% | 320 B | 0 0 0 0 2 53 7 0 0 0 |
+
+Two tight clusters instead of a smear. That also explains why `in_big` *rises* (26 -> 32) while the
+outcome improves: the survivors sit packed at the bottom of the seam's big run rather than strewn
+through it, so `in_big` counts all of them and the run above them stays whole. **`in_big` is not a
+valid metric for a collecting arm** - the largest-free-block figure is, and the independent
+`probe_largest` allocation agrees with it to within 24 B in every run above.
+
+### 7A.5 What it is worth against the alternatives
+
+Same binary, heap and 15 perturbations:
+
+| variant | worst | median | clears the floor |
+|---|---|---|---|
+| `r4` - chunk layer removed (172x less churn; removes integrity features, not a candidate) | 88% | 89% | 15 / 15 |
+| **`gcboot`** | **59%** | **60%** | **15 / 15** |
+| `base` | 13% | 18% | 0 / 15 |
+| `syncdeep` - §7's runner-up on the settrace build | 8% | 8% | 0 / 15 |
+
+Two corrections fall out of that column. `syncdeep` measured **2.3x better than base** on the
+settrace build (§7) and measures **worse than base** here, deterministically across all 15 runs:
+§7's ranking is a settrace ranking and does not transfer. And the churn axis itself, re-run on this
+build with the injector's yield cost corrected (§1.2 item 8) - §0B.7's named next test, now run:
+
+| synthetic churn per logger | at `threshold(-1)` | at `threshold(32768)` |
+|---|---|---|
+| 843,232 B - base's own dose | 16% - 0 of 10 | 85% - 10 of 10 |
+| 113,536 B - 7.4x cut (`syncdeep`'s) | 17% - 0 of 10 | 89% - 10 of 10 |
+| **22,190 B - 38x cut (§3B's P2)** | **14% - 0 of 10** | 92% - 10 of 10 |
+| **9,369 B - 90x cut (§3B's floor)** | **45% - 0 of 10** | 92% - 10 of 10 |
+| 4,896 B - 172x cut (`r4`'s) | 68% - 10 of 10 | 94% - 10 of 10 |
+| 0 | 93% - 10 of 10 | 97% - 10 of 10 |
+
+(worst-case kept%, and how many of 10 perturbations clear the 55% floor.)
+
+**§3B's restructure does not clear the floor at native defaults** - not at 38x, not at its own 90x
+floor; the transition sits between 90x and 172x. That is C9's withdrawal confirmed by direct
+measurement instead of arithmetic, and it answers §11 item 2's open question: §3B is an efficiency
+fix, exactly as it claimed, and not the remedy. **At the shipped threshold the churn axis does not
+bind at all** - every dose from zero to base's own clears the floor at 85-97%.
+
+### 7A.6 Where this leaves the rule it asks to bend
+
+`SPECIFICATION.md` I.4(e) requires the native-default case to be clean on its own, and I.4(f) makes a
+`gc.threshold()` value or a `gc.collect()` call defense in depth **once (e) already holds** - "never
+the fix itself, and never reached for to make a failing (e)-stage test pass". The measured effect of
+this scheme is precisely and only on the (e)-stage configuration: 0 of 15 -> 15 of 15 against the
+floor at `threshold(-1)`, and at the shipped `threshold(32768)` 87% -> 86% worst and 87% -> 92%
+median, i.e. nothing. On the evidence it **is** the (e)-stage fix I.4(f) names rather than defense in
+depth on top of one, so adopting it is an amendment to I.4, not an application of it. That is a
+decision (§11 item 4), not a measurement.
+
+What would make it genuine defense in depth: a design-level fix that clears the floor at native
+defaults by itself, with the boot collects added on top. The dose table above prices that at a ~172x
+churn cut, against §3B's 38-90x.
+
+### 7A.7 What is not claimed
+
+- **No hardware.** Every figure is [TWIN], and §1.5's unresolved [HW]/threshold discrepancy applies
+  here too - it is the question that decides whether any of this is needed on a real unit.
+- **The run phase is untouched** and unmeasured. The scheme forbids collects there, and nothing here
+  tests what the heap does over months of uptime.
+- **Cost, as far as it can be stated.** Ten full mark-sweeps in the boot list and 22 in the task
+  list, each measured at 300-490 us over the twin's 455 KB heap on an x86-64 host. That figure does
+  not transfer to the RP2040. What transfers is the shape - one mark-sweep per module, each already
+  adjacent to a `sysfunct.feed_watchdog()` call - and that boot latency is explicitly not a metric to
+  optimise (CLAUDE.md) while starving the watchdog is.
+- **Not measured with §3B's restructure in place**, which is the configuration the project is
+  heading for. §7A.5's dose table is the nearest proxy: at 38-90x less churn the native-default case
+  is still below the floor, so the two levers are not redundant with each other there.
+
+---
+
 ## 8. What is committed
 
 **`f6a182d`** — `src/asy_spi_driver.py`: both `await asyncio.sleep(0.001)` calls in
@@ -2027,6 +2235,8 @@ built per §1.4 and run from the repo root with `MICROPYPATH=.frozen`.
 | `cmp_settrace.sh` / `sleepcost2.py` | the same measurements on the settrace and settrace-free binaries side by side; the `asyncio.sleep`/`Lock` forms on both |
 | `along.py` | per module `setup()`: allocated and retained in the module's own code before, during and after its logger's round trip; twin `Timer`/`WDT` fakes neutralised |
 | `fill.py` | post-`build_system()` fill on a large heap, for §1.4's fill-fraction calibration of either binary |
+| `probe.py` gc modes | §7A: `gcboot` / `gcboot2` / `gcboot5` / `gcboot10` wrap `SystemService.feed_watchdog()` — the call the generated batch already makes between two modules — and collect after every / every second / fifth / tenth module; `basex` / `gcbootx` additionally run `start_and_check_tasks()`'s own starter loop. `GCTHRESH=<n>` applies a `gc.threshold()` where the generated boot entry applies it, `YCOST=0` corrects the synth budget on the settrace-free binary (§1.2 item 8). `GCUS` reports each collect's own microseconds |
+| `gcens.sh` / `gcsum.py` / `gcsum2.py` / `gcx.py` / `gch.py` | §7A's ensembles: `gcens.sh <variant> <build> <heapsize> <tag>` emits the 15 perturbation runs; `gcsum2.py` tabulates worst/median/best kept% with retained and free bytes per arm, `gcx.py` the task-list arms, `gch.py` the heap-size x threshold sweep behind §1.5 |
 | `proto.py` | §3B: records every CS edge and transfer on the twin's `machine.SPI`/`Pin` for the current path and for each wire-identical prototype (`SyncFramChip`, `ProtoChunk`, `Proto2Chunk`) and asserts the traces equal; prices each in a collection-free window, first with the twin's fakes as they are, then with `machine.SPI.init/write/readinto` and `FramChip.write/readinto` replaced by allocation-free equivalents (the board-equivalent pass — the raw replay of the whole trace then costs 128 B). No argv; uses `build/generated_src/sensortask_dev_wiring_plan.json` |
 | `build-nosettrace` | `make -j8 BUILD=build-nosettrace VARIANT=standard VARIANT_DIR=<toolchain>/build_overrides/unix_kbd_intr_variant "CFLAGS_EXTRA=-DMICROPY_PY_SYS_SETTRACE=0 -Wno-array-bounds" FROZEN_MANIFEST=<scratchpad>/manifest_heap.py` in `ports/unix` — the heapprobe recipe with the flag off, into its own build dir; builds clean with no warnings |
 
@@ -2059,8 +2269,9 @@ allocation — hence rung r0's -68,992 B is an artifact, not a real saving.
    board-equivalent bytes (38x) with everything below the lock synchronous and the lock held per
    block operation, and to ~1,300 (~90x) with one acquisition per chunk operation. §7's `syncdeep`
    was the first rung of the same lever. Still an efficiency fix by the model's own account
-   (§6A.8; C9), not the remedy — what a 38-90x cut does to the defect is the §0B.4 dose series on
-   the settrace-free build, not yet run. Decisions inside it: the lock hierarchy (§3B.4 lever 3)
+   (§6A.8; C9), not the remedy — and that is now **measured, not inferred**: on the settrace-free
+   build a 38x cut keeps 14% of the seam's big run and a 90x cut 45%, both below the 55% floor,
+   with the transition between 90x and 172x (§7A.5). Decisions inside it: the lock hierarchy (§3B.4 lever 3)
    and the yield policy (§3B.5), both yours. Measured, not committed.
    **What the evidence now points at, and what needs your call.** Of the three levers §6A.9 listed,
    two are closed by measurement: (b) pre-allocating every module's permanent objects at construction
@@ -2086,10 +2297,28 @@ allocation — hence rung r0's -68,992 B is an artifact, not a real saving.
    `start_and_check_tasks()` runs after it, so there are no concurrent tasks to race with; the real
    cost is the persistence window, not a race.
 
-**Two constraints already settled and not to be re-proposed.** `gc.collect()`/`gc.threshold()` as
-the remedy is forbidden by `SPECIFICATION.md` I.4(e)/(f)/(g) and independently rejected by the owner
-(removes the symptom, breaks with any GC behaviour change, and loads the processor and I/O system).
-The 80,000 B floor is not to be lowered.
+4. **The boot-confined `gc.collect()` exception (§7A) — take it, and on what grounds?** Put by the
+   owner on 2026-09-18 and measured the same day. It works, and at native `gc` defaults it is the
+   strongest remedy in this file: 0 of 15 perturbations clearing the 55% floor becomes 15 of 15,
+   worst-case largest free block 23,584 -> 104,640 B, with a clean dose-response in the number of
+   collects and **no** effect from a single collect at the end. Three things belong in the decision.
+   (i) It is **not compaction** — nothing moves; it resets where the *next* survivors are placed
+   (§7A.4), so the grounding is placement, not hygiene. (ii) At the `gc.threshold(32768)` the
+   firmware's own boot entry already sets, it buys nothing measurable (87% -> 86% worst case), and
+   whether the board really runs that way is §1.5's unresolved question — settle that first, because
+   it decides whether there is anything to fix. (iii) On the evidence the scheme is the (e)-stage fix
+   I.4(f) explicitly forbids rather than defense in depth on top of one (§7A.6), so taking it means
+   amending `SPECIFICATION.md` I.4, with the boot-only confinement and the audit that keeps it
+   confined written into the rule. The alternative shape that needs no amendment: a design-level fix
+   that clears the floor at native defaults on its own, with the collects added on top — priced at a
+   ~172x churn cut against §3B's 38-90x (§7A.5).
+
+**One constraint already settled and not to be re-proposed.** The 80,000 B floor is not to be
+lowered. The second, `gc.collect()`/`gc.threshold()` as the remedy — forbidden by
+`SPECIFICATION.md` I.4(e)/(f)/(g) and previously rejected by the owner outright (removes the
+symptom, breaks with any GC behaviour change, and loads the processor and I/O system) — was
+**reopened by the owner on 2026-09-18** as the boot-confined exception above, and is item 4, not a
+closed door. The general prohibition for business logic and the run phase stands unchanged.
 
 ---
 
