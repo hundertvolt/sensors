@@ -168,7 +168,7 @@ reopened only if A.6's measurement asks for it.
 
 ### A.2 Tests first (mock tier, `tests/`)
 
-- [ ] **The trace-equality invariant becomes a test**: `tests/test_asy_fram_wire_trace.py` (new),
+- [x] **The trace-equality invariant becomes a test**: `tests/test_asy_fram_wire_trace.py` (new),
       built from `proto.py`'s recorder (§10): wrap `tests/machine.py`'s `SPI`/`Pin` to record
       every CS edge, every `init`, and every transfer's bytes; run `PrintLogHistoryStore.setup()`
       against a blank chip and against a valid chip; assert the recorded traces equal the
@@ -177,6 +177,13 @@ reopened only if A.6's measurement asks for it.
       is measured against it. Also a `write_into` and a `read_into` on a
       `AsyFramTimestampedChunk`, and a `clear()`, each with its own golden trace. Verified to
       bite by deliberately dropping one WRDI.
+      **Done**: `tests/test_asy_fram_wire_trace.py`, 8 tests, green against today's `src/`. The
+      mock tier reproduces the twin's counts exactly - 342 events / 74 CS blank, 219 / 47 valid -
+      plus 230 / 50 for a timestamped `write_into`, 224 / 48 for `read_into` and 138 / 30 for
+      `clear()`. The golden form is one line per CS cycle; the envelope (one `SPI.init()` at the
+      fixed bus config, one CS low/high pair, no transfer outside a CS window) is asserted rather
+      than elided, and a test proves the compact form accounts for every raw event. Both bite
+      checks pass: a single dropped WRDI and a single changed payload byte each fail it.
 - [ ] **`tests/test_asy_spi_driver.py`** (49 tests today, at the base branch's state): add the
       synchronous session's own tests mirroring the async ones that apply — `session_begin`
       raises before `setup()`, CS active only inside, deassert on exception in the body,
