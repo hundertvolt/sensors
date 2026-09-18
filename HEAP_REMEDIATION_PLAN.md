@@ -211,12 +211,20 @@ reopened only if A.6's measurement asks for it.
       no public entry point changes. The caller-holds-the-lock contract needed no new guard:
       `SPI.configure()`'s existing `First acquire async lock!` check already enforces it, and a
       test pins that.
-- [ ] **`tests/test_asy_fram_driver.py`** (71 tests today): every existing test stays green
+- [x] **`tests/test_asy_fram_driver.py`** (71 tests today): every existing test stays green
       unchanged. Add: the 5-CS envelope is issued under **one** bus-lock hold (count acquire/
       release on `spi.async_lock`), `set_values()` yields exactly once per byte-level command
       (count scheduler passes with the existing `_StepPoller`-style counting), and each of
       `wrnno` 81/82/84 is still persisted from `set_values()`/`set_write_protected()` with the
       same message (three tests, one per number, asserting the FRAM-backed logger's history).
+      **Done**: 71 -> 78 tests, all green, wire traces unchanged. The three warning tests record
+      every `wrn_s()` call and assert the full `(message, wrnno)` pair and that it is logged
+      exactly once, which is what "the logging site moves up, the number and message do not" needs
+      pinning. Read commands get the same one-hold and one-yield tests as writes. One test in
+      `tests/test_asy_fram_wire_trace.py` changed with the implementation: its bite check patched
+      `FRAM_SPI._send_opcode(opcode: int)`, which is now `_send_command(command: bytes)`.
+      Measured on the mock tier, settrace binary, median of five: a blank logger `setup()` went
+      820,096 -> 299,328 B and a valid one 564,960 -> 238,368 B with only A.1.1 and A.1.2 in place.
 - [ ] **`tests/test_asy_fram_manager.py`** (105 tests today): every existing test stays green
       unchanged. Add: `_set_check_sb`/`_handle_status_bytes` errno spreads reproduced from the
       public `write`/`read`/`clear` entry points for every branch (`err`, `err+1`, `err+2`,

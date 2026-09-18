@@ -41,6 +41,14 @@ _SPI_OPCODE_READ = const(0x03)  # Read memory code
 _SPI_OPCODE_WRITE = const(0x02)  # Write memory code
 _SPI_OPCODE_RDID = const(0x9F)  # Read device ID
 
+# The four fixed single-byte commands, as module-level constants rather than a `bytearray([...])`
+# built on every call - each of those lands in the 32-96 byte size class the heap-layout model
+# cares about (HEAP_FRAGMENTATION_MEASUREMENTS.md section 0A.3), several times per stored byte.
+_CMD_WREN = b"\x06"
+_CMD_WRDI = b"\x04"
+_CMD_RDSR = b"\x05"
+_CMD_RDID = b"\x9f"
+
 # Status register bits (datasheet): bit7 WPEN, bits6-4 unused, bit3 BP1, bit2 BP0, bit1 WEL, bit0
 # fixed 0. Block protection always covers the whole array (BP0+BP1 together), never a sub-range.
 _SR_WEL = const(0x02)
@@ -58,6 +66,15 @@ _ADDR_BUF_16BIT = const(3)
 # accidental lock-reentry to a finite wait. Not test-monkeypatchable: MicroPython inlines const()
 # at every use site regardless of name (verified directly), so the one test needing this waits it out.
 _VERIFY_PRESENT_LOCK_TIMEOUT_S = const(1.0)
+
+# Outcomes of the synchronous write bodies below, as a bit set. They decide what happened; the
+# coroutine that owns the operation logs it, with the same wrnno/errno and message as before -
+# awaiting a persisted log entry is not something a body holding the bus lock may do.
+_W_OK = const(0)
+_W_PROTECTED = const(1)  # wrnno 84
+_W_WEL_NOT_SET = const(2)  # wrnno 82 (write) / 83 (write protection)
+_W_WEL_STUCK = const(4)  # wrnno 81 - advisory: the operation itself still completed
+_W_WP_MISMATCH = const(8)  # errno 95
 
 
 class FRAM_SPI(Lockable):
@@ -84,69 +101,115 @@ class FRAM_SPI(Lockable):
         self._id_buf = bytearray(4)
         self._status_buf = bytearray(1)
         self._addr_buf = bytearray(_ADDR_BUF_24BIT) if self._max_size > _ADDR_16BIT_MAX else bytearray(_ADDR_BUF_16BIT)
+        self._wrsr_buf = bytearray(2)  # WRSR opcode + target status byte, the one two-byte command
+        # The innermost of the three locks, taken once per command rather than once per CS cycle:
+        # a five-CS write envelope is indivisible on the wire, and the bus stays interleavable
+        # between commands. SPIDevice's own async session takes this same lock for other callers.
+        self._bus_lock = self._spidev.asy_lock
 
-    async def _check_device_id(self) -> bool:
+    # One CS cycle each, on a bus lock the caller already holds. Everything from here down to
+    # _write() is synchronous: the chip is driven by blocking register writes, so a coroutine per
+    # CS cycle bought nothing but allocations. The scheduling points live in the public coroutines
+    # below, one per command - see HEAP_REMEDIATION_PLAN.md A.1.2.
+    def _send_command(self, command: bytes | bytearray) -> None:
+        # WREN/WRDI are each a complete, standalone one-byte command (datasheet timing diagrams
+        # show CS low only for the opcode); WRSR is the one two-byte command that ends here too.
+        spidev = self._spidev
+        spidev.session_begin()
+        try:
+            spidev.write_sync(command)
+        finally:
+            spidev.session_end()
+
+    def _send_and_read(self, command: bytes | bytearray, read_buffer: bytearray | memoryview) -> None:
+        spidev = self._spidev
+        spidev.session_begin()
+        try:
+            spidev.write_sync(command)
+            spidev.readinto_sync(read_buffer)
+        finally:
+            spidev.session_end()
+
+    def _send_and_write(self, command: bytes | bytearray, data: bytes | bytearray | memoryview) -> None:
+        spidev = self._spidev
+        spidev.session_begin()
+        try:
+            spidev.write_sync(command)
+            spidev.write_sync(data)
+        finally:
+            spidev.session_end()
+
+    def _check_device_id(self) -> bool:
         expected_prod_id = _KNOWN_PRODUCT_IDS.get(self._max_size)
         if expected_prod_id is None:
             raise ValueError(f"FRAM max_size {self._max_size:#x} has no known product ID to verify against - add it to _KNOWN_PRODUCT_IDS")
-        async with self._spidev as spidev:
-            await spidev.write(bytearray([_SPI_OPCODE_RDID]))
-            await spidev.readinto(self._id_buf)
+        self._send_and_read(_CMD_RDID, self._id_buf)
         prod_id = (self._id_buf[2] << 8) + self._id_buf[3]
         return self._id_buf[0] == _SPI_MANF_ID and self._id_buf[1] == _SPI_CONT_CODE and prod_id == expected_prod_id
 
-    async def _read_address(self, address: int, read_buffer: bytearray | memoryview) -> None:
-        async with self._spidev as spidev:
-            await spidev.write(self._setup_addr_buffer(address, _SPI_OPCODE_READ))
-            await spidev.readinto(read_buffer)
+    def _read_address(self, address: int, read_buffer: bytearray | memoryview) -> None:
+        self._send_and_read(self._setup_addr_buffer(address, _SPI_OPCODE_READ), read_buffer)
 
-    async def _read_status(self) -> int:
-        async with self._spidev as spidev:
-            await spidev.write(bytearray([_SPI_OPCODE_RDSR]))
-            await spidev.readinto(self._status_buf)
+    def _read_status(self) -> int:
+        self._send_and_read(_CMD_RDSR, self._status_buf)
         return self._status_buf[0]
 
-    async def _send_opcode(self, opcode: int) -> None:
-        # WREN/WRDI are each a complete, standalone one-byte command (datasheet timing diagrams
-        # show CS low only for the opcode) - the only two opcodes this driver ever sends alone.
-        async with self._spidev as spidev:
-            await spidev.write(bytearray([opcode]))
+    def _wel_is_set(self) -> bool:
+        return bool(self._read_status() & _SR_WEL)
 
-    async def _wel_is_set(self) -> bool:
-        return bool(await self._read_status() & _SR_WEL)
-
-    async def _enable_write(self) -> bool:
+    def _enable_write(self) -> bool:
         # Shared WREN-and-verify preamble for WRITE/WRSR (datasheet: WEL gates both). Verifying
         # via RDSR instead of trusting WREN blindly catches a corrupted WREN transfer, which the
         # chip would otherwise silently ignore the following WRITE/WRSR for.
-        await self._send_opcode(_SPI_OPCODE_WREN)
-        return await self._wel_is_set()
+        self._send_command(_CMD_WREN)
+        return self._wel_is_set()
 
-    async def _disable_write(self) -> None:
+    def _disable_write(self) -> bool:
         # Shared WRDI-and-verify epilogue: WEL auto-clears after WRITE/WRSR anyway (datasheet), so
         # this is defense-in-depth against that mechanism itself glitching - one cheap retry, then
-        # only a warning, since a stuck latch doesn't undo the already-completed operation.
-        await self._send_opcode(_SPI_OPCODE_WRDI)
-        if await self._wel_is_set():
-            await self._send_opcode(_SPI_OPCODE_WRDI)
-            if await self._wel_is_set():
-                await self.pr.wrn_s("FRAM write enable latch did not clear after WRDI retry.", wrnno=81)
+        # False, which the caller turns into a warning: a stuck latch doesn't undo the operation.
+        self._send_command(_CMD_WRDI)
+        if not self._wel_is_set():
+            return True
+        self._send_command(_CMD_WRDI)
+        return not self._wel_is_set()
 
-    async def _write(self, start_address: int, data: bytes | bytearray | memoryview) -> bool:
-        if await self.get_write_protected():
-            # WP8: persisted, matching AsyFramManager's own "communication paused, not writing"
-            # precedent (asy_fram_manager.py, wrnno=60/70/80) for the same class of condition - a
-            # refused-but-expected write against a deliberately-gated chip, not a hardware fault.
-            await self.pr.wrn_s("FRAM currently write protected.", wrnno=84)
-            return False
-        if not await self._enable_write():
-            await self.pr.wrn_s("FRAM write enable latch did not set, aborting write.", wrnno=82)
-            return False
-        async with self._spidev as spidev:
-            await spidev.write(self._setup_addr_buffer(start_address, _SPI_OPCODE_WRITE))
-            await spidev.write(data)
-        await self._disable_write()
-        return True
+    def _is_write_protected(self) -> bool:
+        # The value get_write_protected() reports, without its not-initialized guard: every caller
+        # of this one has already passed that guard at the public entry point.
+        return self._wp if self._wp_pin is None else not bool(self._wp_pin.value())  # WP active-low
+
+    def _write(self, start_address: int, data: bytes | bytearray | memoryview) -> int:
+        if self._is_write_protected():
+            # WP8: persisted by the caller, matching AsyFramManager's own "communication paused,
+            # not writing" precedent (asy_fram_manager.py, wrnno=60/70/80) for the same class of
+            # condition - a refused-but-expected write against a deliberately-gated chip.
+            return _W_PROTECTED
+        if not self._enable_write():
+            return _W_WEL_NOT_SET
+        self._send_and_write(self._setup_addr_buffer(start_address, _SPI_OPCODE_WRITE), data)
+        return _W_OK if self._disable_write() else _W_WEL_STUCK
+
+    def _set_write_protected(self, *, value: bool) -> int:
+        # Always protects the entire array (BP0+BP1) - per-block ranges are unused.
+        target = _SR_WP_SET if value else _SR_WP_CLEAR
+        if not self._enable_write():
+            return _W_WEL_NOT_SET
+        if self._wp_pin is not None:
+            self._wp_pin.value(True)  # deassert WP first - WP=0 would else block this WRSR too
+        self._wrsr_buf[0] = _SPI_OPCODE_WRSR
+        self._wrsr_buf[1] = target
+        self._send_command(self._wrsr_buf)
+        ok = (self._read_status() & _SR_WP_MASK) == target  # verify the one way this can change
+        status = _W_OK if self._disable_write() else _W_WEL_STUCK
+        if not ok:
+            if self._wp_pin is not None:
+                self._wp_pin.value(not self._wp)  # unchanged - restore the pin to match reality
+            return status | _W_WP_MISMATCH
+        self._wp = value
+        if self._wp_pin is not None:
+            self._wp_pin.value(not value)  # WP active-low, see setup()
+        return status
 
     def _setup_addr_buffer(self, addr: int, opcode: int) -> bytearray:
         # Buffer width is fixed once in __init__ from max_size, which is trusted, not re-derived
@@ -169,7 +232,7 @@ class FRAM_SPI(Lockable):
         if not self.initialized:
             await self.pr.err_s("FRAM not initialized, run setup first!", errno=89)
             return False
-        return self._wp if self._wp_pin is None else not bool(self._wp_pin.value())  # WP active-low
+        return self._is_write_protected()
 
     async def get_size(self) -> int:
         return self._max_size
@@ -187,7 +250,12 @@ class FRAM_SPI(Lockable):
         if (addr_start < 0) or (addr_start + len(buf) > self._max_size):
             await self.pr.err_s("get_values: Invalid FRAM address range!", errno=91)
             return False
-        await self._read_address(addr_start, buf)
+        await self._bus_lock.acquire()
+        try:
+            self._read_address(addr_start, buf)
+        finally:
+            self._bus_lock.release()
+        await asyncio.sleep(0)  # the per-command yield, outside the CS window and outside the lock
         return True
 
     async def set_values(self, buf: bytes | bytearray | memoryview, addr_start: int) -> bool:
@@ -203,40 +271,57 @@ class FRAM_SPI(Lockable):
         if (addr_start < 0) or (addr_start + len(buf) > self._max_size):
             await self.pr.err_s("set_values: Invalid FRAM address range!", errno=93)
             return False
-        return await self._write(addr_start, buf)
+        await self._bus_lock.acquire()
+        try:
+            status = self._write(addr_start, buf)
+        finally:
+            self._bus_lock.release()
+        await asyncio.sleep(0)  # the per-command yield, outside the CS window and outside the lock
+        if status & _W_PROTECTED:
+            await self.pr.wrn_s("FRAM currently write protected.", wrnno=84)
+            return False
+        if status & _W_WEL_NOT_SET:
+            await self.pr.wrn_s("FRAM write enable latch did not set, aborting write.", wrnno=82)
+            return False
+        if status & _W_WEL_STUCK:
+            await self.pr.wrn_s("FRAM write enable latch did not clear after WRDI retry.", wrnno=81)
+        return True
 
     async def set_write_protected(self, *, value: bool) -> bool:
         # Always protects the entire array (BP0+BP1) - per-block ranges are unused.
         if not self.initialized:
             await self.pr.err_s("FRAM not initialized, run setup first!", errno=94)
             return False
-        target = _SR_WP_SET if value else _SR_WP_CLEAR
-        if not await self._enable_write():
+        await self._bus_lock.acquire()
+        try:
+            status = self._set_write_protected(value=value)
+        finally:
+            self._bus_lock.release()
+        await asyncio.sleep(0)  # the per-command yield, outside the CS window and outside the lock
+        if status & _W_WEL_NOT_SET:
             await self.pr.wrn_s("FRAM write enable latch did not set, write protection not changed.", wrnno=83)
             return False
-        if self._wp_pin is not None:
-            self._wp_pin.value(True)  # deassert WP first - WP=0 would else block this WRSR too
-        async with self._spidev as spidev:
-            await spidev.write(bytearray([_SPI_OPCODE_WRSR, target]))
-        ok = (await self._read_status() & _SR_WP_MASK) == target  # verify the one way this can change
-        await self._disable_write()
-        if not ok:
-            if self._wp_pin is not None:
-                self._wp_pin.value(not self._wp)  # unchanged - restore the pin to match reality
+        if status & _W_WEL_STUCK:
+            await self.pr.wrn_s("FRAM write enable latch did not clear after WRDI retry.", wrnno=81)
+        if status & _W_WP_MISMATCH:
             await self.pr.err_s("FRAM write protection readback mismatch, not applied!", errno=95)
             return False
-        self._wp = value
-        if self._wp_pin is not None:
-            self._wp_pin.value(not value)  # WP active-low, see setup()
         self.pr.evt("FRAM Write Protection set to", value)
         return True
 
     async def setup(self) -> None:
         await self._spidev.setup()
-        if not await self._check_device_id():
+        await self._bus_lock.acquire()
+        try:
+            present = self._check_device_id()
+            if present:
+                # WPEN/BP0/BP1 are nonvolatile (datasheet) - re-sync _wp from hardware, not the ctor's wp=.
+                self._wp = (self._read_status() & _SR_WP_MASK) == _SR_WP_SET
+        finally:
+            self._bus_lock.release()
+        await asyncio.sleep(0)
+        if not present:
             raise OSError("FRAM SPI device not found.")
-        # WPEN/BP0/BP1 are nonvolatile (datasheet) - re-sync _wp from hardware, not the ctor's wp=.
-        self._wp = (await self._read_status() & _SR_WP_MASK) == _SR_WP_SET
         if self._wp_pin is not None:
             self._wp_pin.init(self._wp_pin.OUT)
             self._wp_pin.value(not self._wp)  # WP is active-low (datasheet)
@@ -256,14 +341,21 @@ class FRAM_SPI(Lockable):
             await self.pr.err_s("FRAM verify_present: lock busy, giving up.", errno=97)
             return False
         try:
+            id_error: ValueError | None = None
+            await self._bus_lock.acquire()
             try:
-                present = await self._check_device_id()
+                present = self._check_device_id()
             except ValueError as e:
+                id_error = e
+                present = False
+            finally:
+                self._bus_lock.release()
+            await asyncio.sleep(0)
+            if id_error is not None:
                 # Provably unreachable (self._max_size is fixed post-construction, and reaching here
                 # already required a prior successful setup() with that same size) - kept per Part
                 # E.5.1's documented precedent for this exact class of defensive branch, not chased.
-                await self.pr.err_s("FRAM verify_present: device ID check failed.", e, errno=98)
-                present = False
+                await self.pr.err_s("FRAM verify_present: device ID check failed.", id_error, errno=98)
             if not present:
                 self.initialized = False
         finally:

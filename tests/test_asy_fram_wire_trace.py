@@ -32,7 +32,7 @@ if TYPE_CHECKING:
 
 # The one bus config SPIDevice.__aenter__ applies, as one recorded event. Every CS cycle carries it.
 _INIT_EVENT = "init 1000000/0/0/8/0"
-_OPCODE_WRDI = 0x04  # asy_fram_driver.py's own _SPI_OPCODE_WRDI is a const() and so not importable
+_WRDI = b"\x04"  # asy_fram_driver.py's own _SPI_OPCODE_WRDI is a const() and so not importable
 
 
 def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
@@ -521,27 +521,27 @@ def test_a_single_dropped_wrdi_breaks_the_blank_golden() -> None:
     # The golden's whole purpose, checked rather than assumed: one command removed from the wire
     # must fail it. The chip auto-clears WEL after a WRITE, so the skipped WRDI's own verification
     # still passes - the only trace left of it is the missing CS cycle, which is the point.
-    original = FRAM_SPI._send_opcode
+    original = FRAM_SPI._send_command
     dropped: list[int] = []
 
-    async def _drop_first_wrdi(self: FRAM_SPI, opcode: int) -> None:
-        if opcode == _OPCODE_WRDI and not dropped:
-            dropped.append(opcode)
+    def _drop_first_wrdi(self: FRAM_SPI, command: "bytes | bytearray") -> None:
+        if bytes(command) == _WRDI and not dropped:
+            dropped.append(_WRDI[0])
             return
-        await original(self, opcode)
+        original(self, command)
 
     async def _body() -> "tuple[str, ...]":
         manager, logger, _chunk = await _rig()  # built before the patch: setup() stays untouched
-        FRAM_SPI._send_opcode = _drop_first_wrdi  # type: ignore[method-assign]
+        FRAM_SPI._send_command = _drop_first_wrdi  # type: ignore[method-assign]
         try:
             _arm(manager)
             await logger.setup()
             return _disarm()[0]
         finally:
-            FRAM_SPI._send_opcode = original  # type: ignore[method-assign]
+            FRAM_SPI._send_command = original  # type: ignore[method-assign]
 
     got = run(_body())
-    assert dropped == [_OPCODE_WRDI]
+    assert dropped == [_WRDI[0]]
     assert got != _golden(_GOLDEN_BLANK_SETUP)
 
 
