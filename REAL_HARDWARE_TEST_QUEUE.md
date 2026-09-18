@@ -19,6 +19,11 @@ Status values: **OPEN** (owed), **BLOCKED** (waiting on a decision or another ro
 
 These change what gets run, so settle them first.
 
+**Answered for the 2026-09-18 session (owner gave the go-ahead but not the decisions, so the
+session took them and recorded them): D1 no** — no `--allow-persistence-writes`, per CLAUDE.md's
+wear rule; every D1-blocked row below is still owed. **D2 no** — sweep left gated. **D3** `dev`
+from this branch's tip. **D4 yes** — the pair was run, see §1A.
+
 | # | Decision | Why it matters | Status |
 | --- | --- | --- | --- |
 | D1 | **Does the bench spend flash/NVM writes this round?** A default run deselects 13 of the bench tier's 73 tests and 9 of the flash tier's 51; `--allow-persistence-writes` runs them and spends real cycles. `--allow-scd30-extra-write` is AND-gated on top for one further SCD30 NVM write. | Several rows below are *only* reachable with the flag — R1 and R4 in particular. Deselection is invisible to the pass/fail check, so this must be a knowing choice (CLAUDE.md's wear rule). | OPEN |
@@ -32,8 +37,8 @@ These change what gets run, so settle them first.
 
 | # | Run | Notes | Status |
 | --- | --- | --- | --- |
-| S1 | `scripts/run_flash_hardware_suite.sh` | Full flash tier. Read the verdict's **deselected** count, not just "clean" (`scripts/_require_clean_hardware_run.sh`). | OPEN |
-| S2 | `scripts/run_bench_hardware_suite.sh` | Full bench tier (strict superset of flash). Same deselected-count caveat. | OPEN |
+| S1 | `scripts/run_flash_hardware_suite.sh` | **DONE 2026-09-18, on BOTH arms.** Tip: `3 failed, 33 passed, 3 skipped, 12 deselected` (864.67 s). Before arm: `2 failed, 34 passed, 3 skipped, 12 deselected` (844.84 s). Failure attribution in §1A-R. | DONE |
+| S2 | `scripts/run_bench_hardware_suite.sh` | **DONE 2026-09-18 (tip): `3 failed, 90 passed, 4 skipped, 27 deselected`** (2,288.40 s) — the same three failures as S1, no bench-only ones. The heap reading was 28,864 B again, byte-identical to S1. | DONE |
 | S3 | The same two with `--allow-persistence-writes` | Only if D1 says yes. This is what makes R1/R4 reachable at all. | BLOCKED on D1 |
 | S3b | `scripts/run_flash_hardware_suite.sh --allow-neopixel-sweep` | Only if D2 says the rig is in place. Runs the two long ISL29125 light programs (~10 min combined); they skip otherwise. | BLOCKED on D2 |
 | M1 | `scripts/run_manual_hardware_tests.sh --only isl29125_real_lux_vs_reference_meter_and_neopixel_rig_geometry` | Interactive. Repeatability on an unchanged scene, continuity across the range switch, **and** setting up and writing down the rig geometry S3b depends on. Worth doing before S3b, not after. | OPEN |
@@ -52,6 +57,10 @@ plausible-looking fabricated entry behind (`tests_hardware/README.md` has the me
 Added 2026-09-18: the owner reports the branch is on the bench in another session. Until then this
 work was §5-excluded; that exclusion is lifted for the rows below and nothing else on PR #105.
 
+**All rows below were run on 2026-09-18** against a real `dev` bench board with the owner's
+go-ahead. Results are in each row; the analysis is §1A-R and `HEAP_FRAGMENTATION_MEASUREMENTS.md`
+§7D. Three rows produced findings rather than clean results — see §2A.
+
 Two separable questions, and they want different runs: **does the restructured FRAM path still do
 everything the old one did on real silicon** (A2-A5, A8), and **what did it actually buy** (A0-A1,
 A6-A7). The functional rows can run on their own; the gain rows only mean anything as a matched
@@ -68,16 +77,37 @@ not an expected consequence.
 
 | # | Run | Notes | Status |
 | --- | --- | --- | --- |
-| A0 | **The "before" heap reading.** Build and flash `dev` from the merge base (`claude/automated-build-chain-nuzumw`), then run `uv run pytest tests_hardware/flash/test_memory_stress.py -k test_real_gc_heap_headroom -v` **five times**, recording the `HEAP after_build_system: free=… alloc=… largest_block=…` line from each. | **Expect this arm to FAIL** — the 80,000 B floor is the defect this branch addresses (board read 20,592 B on 2026-09-17). The failure message includes the full device output, so every `HEAP` line still comes back. Five runs because one reading cannot separate the level from the spread. | OPEN |
-| A1 | **The "after" heap reading.** Same five runs on a `dev` build from this branch's tip. | Same command, same five-times rule. Both arms must be the same board, same sitting, same ambient state — a reading taken weeks apart against a differently-provisioned board is not a before/after. | OPEN |
-| A2 | **FRAM functionality, flash tier**: `uv run pytest tests_hardware/flash/test_fram_storage.py -v` | All 9 tests. Drives 10 of the 13 `device_scripts/fram_*.py` plus `sgp40_fram_backup_restore.py`: manager roundtrip, SGP40 VOC backup/restore, error-log roundtrip, the error-log reset race (seed+verify), the boot-window reset, write-protect, pause/unpause gating, busy-status lockout, capacity after a full build. This is the row that says the restructure kept every safety measure. | OPEN |
-| A3 | **FRAM bus hazards, flash tier** (tier 3 of CLAUDE.md's four): `uv run pytest tests_hardware/flash/test_bus_concurrency.py -v -k "fram or deinit"` | `test_fram_same_device_read_write_concurrency`, `test_fram_cs_pin_hijack_fault_injection_and_recovery`, `test_fram_hard_reset_race_during_write_and_recovery` (the remaining 3 `fram_*.py` scripts), plus `test_i2c_and_spi_deinit_are_silent_noops_and_each_bus_id_is_a_singleton` — included because A touched `asy_spi_driver.py`, not because FRAM needs it. | OPEN |
-| A4 | **Bus hazards under real API load, bench tier** (tier 4): `uv run pytest tests_hardware/bench/test_bus_concurrency_under_api_load.py -v` | 6 tests, each of which asserts FRAM stays initialized and responsive while real HTTP clients hammer the API. Two of the six are `@pytest.mark.persistence_write`. | 4 of 6: OPEN / 2: BLOCKED on D1 |
-| A5 | **The second-SPI-device question is NOT testable here — do not report it as verified.** The bus lock's scope widened from one command (~5 CS, ~100 µs) to a whole block operation (~25 CS, ~600 µs), so a second SPI device would wait ~6x longer. No `devices/*.toml` wires a second SPI device, so nothing on this bench can contend with the FRAM for SPI0. | Record as structurally untestable on the current rig, the same way `tests/test_bus_hazard_multi_device.py` covers the shape no generated TOML can produce. A6's hold-time number is the closest real evidence available. | OPEN (record, do not run) |
-| A6 | **Hold time, measured on real wire** (plan T.4, sharpened by the per-block-operation scope). The twin cannot answer this at all: `digital_twin/_fram_chip.py` answers SPI opcodes in memory with zero wire time (this queue's own R7 already says so). Script below. | Two distinct numbers, and conflating them is the trap: **(a)** the longest *synchronous, non-yielding* stretch, which is what blocks the asyncio loop — one command envelope; **(b)** the *bus-lock hold*, which is the whole block operation including the yields inside it, and is what a second SPI device would wait. (a) is the F.3 number; (b) is the A5 number. | OPEN |
-| A7 | **Boot cost, for the record only** (plan T.5): `time.ticks_ms()` across `build_system()`, median of 5, on both arms. | Boot latency is explicitly not a metric to optimise (CLAUDE.md, WP6) — this exists to confirm nothing approaches the 8,388 ms watchdog cap, and to feed this queue's R7, whose whole point is that Part A.7's FRAM setup-cost figures are twin-only. If R6/R7 are run in the same sitting, fold this into them rather than booting separately. | OPEN |
-| A8 | **Re-read `GET /status`'s `errcount` after A2-A4 and check for anything the restructured path could have logged**: errno 90/91/92/93/99/100 (the byte-level read/write guards) and wrnno 81/82/84 (write-protect/WEL). | Every one of these numbers and messages was preserved verbatim through the restructure and is asserted by the mock tier, but only the real chip can produce the status bits that trigger them. A clean run here is the functional result; a *new* entry is the most valuable thing this whole block could produce. | OPEN |
-| A9 | R10's `fram_write_protect_roundtrip.py` (fixed-in-source, never executed) now also exercises A's `set_write_protected()` self-acquiring-the-bus path. | Cross-reference only — the run itself is R10's, and A2 covers it. Do not run it twice. | see R10 |
+| A0 | **The "before" heap reading.** | **DONE 2026-09-18.** Standalone: 108,528-108,768 free / 85,696-86,736 largest, 5/5 **PASS** — the arm did NOT fail as predicted. In-suite: free 108,736, **largest 20,592** — reproduces 2026-09-17 to the byte. See §1A-R below. | DONE |
+| A1 | **The "after" heap reading.** | **DONE 2026-09-18.** Standalone: 104,864-105,008 free / 94,704-95,104 largest, 5/5 PASS. In-suite: free 105,216, **largest 28,864**. | DONE |
+| A2 | **FRAM functionality, flash tier** | **DONE 2026-09-18: 9 passed** in 108.9 s. The restructure kept every safety measure. | DONE |
+| A3 | **FRAM bus hazards, flash tier** | **DONE 2026-09-18: 2 passed, 2 FAILED.** `test_fram_cs_pin_hijack_fault_injection_and_recovery` and `test_fram_hard_reset_race_during_write_and_recovery` fail on the tip and **pass on the before arm** — attributed to A. They are broken *tests*, not a broken driver (§1A-R). | DONE (finding) |
+| A4 | **Bus hazards under real API load, bench tier** | **DONE 2026-09-18: 3 passed, 3 deselected.** Note the row's own count was wrong: **three** of the six carry `@pytest.mark.persistence_write` (`...ntp_transient_outage_and_retry`, `...isl29125_config_write...`, `...bmp3xx_config_write...`), not two. | DONE (4th/5th/6th still owed under D1) |
+| A5 | **The second-SPI-device question is NOT testable here.** | **RECORDED 2026-09-18, not run.** Structurally untestable: no `devices/*.toml` wires a second SPI device. A6 supplies the closest evidence — a second device would now wait **21.3 ms**, not the ~600 us this row assumed. | DONE (recorded) |
+| A6 | **Hold time, measured on real wire** | **DONE 2026-09-18.** `write_5cs=2849us read_1cs=772us block_operation=21269us`. Both ~28-35x the estimates in this row. (a) non-yielding stretch **2,849 us**; (b) bus hold **21,269 us**. ~2,550 us of (a) is interpreter overhead, not wire time — which inverts this row's and R7's stated premise. | DONE |
+| A7 | **Boot cost, for the record only** | **DONE 2026-09-18 (AFTER arm):** 912/910/957/926/919 ms, **median 919 ms**. Far clear of the 8,388 ms cap. | DONE |
+| A8 | **Re-read `GET /status`'s `errcount`** | **DONE 2026-09-18: clean.** No errno 90/91/92/93/99/100, no wrnno 81/82/84, `FRAM` counter still 0 across A2/A3/A4 and two full flash suites. (Counters for NTP/SYSTEM/UART went to 0 — the `fram_*.py` scripts overwrote production's chunks, the documented hazard observed live.) | DONE |
+| A9 | R10's `fram_write_protect_roundtrip.py` | **DONE via R10: PASS.** A's `set_write_protected()` self-acquiring-the-bus path confirmed on silicon. | DONE |
+
+### §1A-R — what the pair actually showed
+
+Full write-up is **`HEAP_FRAGMENTATION_MEASUREMENTS.md` §7D** (the first [HW] section on this
+branch). The three things that matter here:
+
+1. **The defect is position-dependent and a cold build cannot see it.** Same firmware, same board,
+   same sitting: standalone `largest_block=95,104`, in-suite `28,864`, with `free`/`alloc`
+   identical to 0.2 %. `Board.run_isolated()` interrupts the already-running firmware rather than
+   resetting, so the script builds inside `main.py`'s aged heap. **Every standalone heap reading
+   measures the wrong thing** — including A0/A1's own five-run pairs.
+2. **A buys ~40 % of the in-suite contiguity** (20,592 -> 28,864 B), reproducibly (the bench tier
+   returned 28,864 again, byte-identical). It does not clear the tripwire and was never expected
+   to. This contradicts §7B.1/§7C.2's "no layout gain" — the twin was measuring the cold
+   configuration, in which the defect does not exist.
+3. **A fixed one real failure and broke two tests.**
+   `test_the_link_keeps_transferring_while_every_other_subsystem_is_busy` fails on the before arm
+   (`heap grew 3584 bytes ... under parallel load`) and passes on the tip. The two A3 injectors
+   fail on the tip because `cs_yanker()` needs an await point inside the command envelope, and A
+   replaced that awaited settle with a blocking `time.sleep_us(2)`. They need a new injection
+   technique (timer IRQ, or the second core); they currently cover nothing.
 
 **A6's script.** Not committed as a test (T.4 decides whether it becomes one) — save it and run it
 with `scripts/mpremote_connect.sh exec "import machine; machine.WDT(timeout=8000)"` then
@@ -175,8 +205,19 @@ wrong tree, both of which the twin cannot reproduce.
 | R6 | **Boot latency for WP1–WP8.** Already measured (pre-WP **7.74 s** → WP1+WP2 **9.80 s** → WP1–WP8 **9.76 s** → +`CFGMGR_SYSTEM` fix **10.66 s**, medians of 5, spread ±0.06 s; 23 reboots, no `WDT_RESET`) — but **only inside unmerged PR #102**. Re-run only if that PR is abandoned rather than landed. The open sub-question either way: the `CFGMGR_SYSTEM` setup-order fix costs **+0.90 s**, far more than one extra FRAM-backed logger's `setup()` should, and is unexplained. | PR #102; `REAL_HARDWARE_HANDOVER.md` | BLOCKED on the PR #102 decision |
 | R8 | **Two newly adopted bench tests, never yet run on silicon** (ported from `main` 2026-09-18, see BACKLOG item 33). `test_isl29125_calibrate_command_push_over_real_rest` pins that a calibration run never moves the *applied* `GainRatio` and that `GainMeas` reaches `/measurements`; `test_isl29125_gain_ratio_survives_a_real_reboot_as_an_ordinary_config_value` pins that ratio across a real hard reset. The second is `@pytest.mark.persistence_write`-marked here (it owns two persisting PUTs) where `main` left it unmarked, so it needs D1. Both were written against `main`'s API shape and adapted to this branch's nested `PUT /sensors {"ISL29125": {...}}` body — expect the adaptation to be where a first run goes wrong, if anywhere. | BACKLOG 33 | calibrate: OPEN / reboot: BLOCKED on D1 |
 | R9 | **The ISL29125 shadow-divergence fix, and the `Overrange` field that replaced `W12`, have never run on silicon.** `configure()`'s device-session lock was widened to span the whole validate-mutate-write(-rollback) sequence (WP-era fix, unit-tested by `test_configure_never_exposes_the_shadow_ahead_of_a_write_still_in_flight`), but the false `wrnno=11` it fixes only ever manifested under real concurrent bench load - so only real load re-confirms it. Same run covers the `Overrange` half: `device_scripts/isl29125_mechanism_envelope.py` now reads the live field instead of the retired `W12` log entry. | BACKLOG, "Open questions" first entry | OPEN |
-| R10 | **Two `tests_hardware/device_scripts/` bugs are fixed in source but have never been executed since.** `fram_write_protect_roundtrip.py` called `set_write_protected(False)` positionally at four sites after the parameter became keyword-only (`TypeError` on its first call, on every run since); `wifi_service_reconnect_repro.py` called `task.exception()`, which MicroPython's `Task` does not have (`AttributeError` at exactly the moment it was reporting why a task died, now `task.data`). Both grounded in source, neither re-run. A flash-tier session confirms both. | BACKLOG, "Deferred" | OPEN |
-| R7 | **`SPECIFICATION.md` Part A.7's FRAM setup-cost figures are twin-only.** `digital_twin/_fram_chip.py` answers SPI opcodes in memory with zero wire time, so every number there excludes the dominant real term (SPI wire time under lock contention). Re-measure on silicon. Largely the same instrumentation as R6. | SPECIFICATION.md Part A.7 | OPEN |
+| R10 | **Two `tests_hardware/device_scripts/` bugs are fixed in source but have never been executed since.** **DONE 2026-09-18, split result.** `fram_write_protect_roundtrip.py`: **PASS** — the keyword-only fix is good, and it exercised A's self-acquiring-the-bus path (A9). `wifi_service_reconnect_repro.py`: the `task.data` fix is confirmed (it now runs deep into the real CYW43 reconnect, reaching `EPERM`, where it used to die at first contact) but the script **does not complete** — the board drops the USB CDC mid-run and mpremote ends in `OSError: [Errno 5]`. It likely needs `run_isolated_expect_reset()`. **It also left the bench stranded — see §2A.** | DONE (finding) |
+| R7 | **`SPECIFICATION.md` Part A.7's FRAM setup-cost figures are twin-only.** `digital_twin/_fram_chip.py` answers SPI opcodes in memory with zero wire time, so every number there excludes the real per-transaction cost. Re-measure on silicon. Largely the same instrumentation as R6. **Premise corrected by A6 (2026-09-18):** the omitted term is *not* mainly SPI wire time — at 1 MHz six transactions are ~300 us of the measured 2,849 us, so ~90 % is MicroPython interpreter / `machine.SPI` call overhead. Frame the re-measurement that way. | SPECIFICATION.md Part A.7 | OPEN |
+
+---
+
+## 2A. Findings opened by the 2026-09-18 session
+
+| # | Finding | Status |
+| --- | --- | --- |
+| F1 | **`wifi_service_reconnect_repro.py` persists a garbage SSID and never restores it.** Its own step "overwriting SSID with a garbage value via the real `_set_dict_cfg()` path" writes `SSID = "wozi-diag2-net-does-not-exist"` into `config_WIFI.cfg` on the RP2040 **flash filesystem**. Because the script then dies on the reset (R10), the restore never runs. Observed directly: the DUT went unreachable and the REPL showed the garbage value. Recovered by writing the real SSID (`sensors-bench-fa9707`) back over the serial REPL and hard-resetting; stored password was untouched. **This is the exact class of incident CLAUDE.md's stage-0 trap warns about, via a script no warning covers** — `test_hotspot_role_reversal.py` got a stage-7 restore after the 2026-09-17 incident; this script never did. It also is **not** `@pytest.mark.persistence_write`-marked although the write is test-owned, which `tests_scripts/test_persistence_write_marker_completeness.py` cannot catch because it pins pytest tests, not `device_scripts/` invoked directly. | OPEN — needs a restore (read the real SSID first, restore in a `finally`) and a marker decision |
+| F2 | **The two FRAM fault injectors need a new injection technique.** `fram_cs_hijack_fault_injection_and_recovery.py` and the reset-race script both rely on `await asyncio.sleep(0)` scheduling the injector *inside* the victim's command envelope. Measure A replaced that awaited settle with a blocking `time.sleep_us(2)`, so the window no longer exists and neither can inject. They fail honestly rather than mis-measure, but they cover nothing. Needs a timer IRQ or second-core injector. | OPEN — belongs to the PR #105 session (§6's carve-out) |
+| F3 | **A standalone heap reading measures the wrong thing.** `Board.run_isolated()` interrupts the already-running firmware instead of resetting, so a device script builds inside `main.py`'s aged heap. Freshly flashed, the heap test reads 95,104 B and passes; deep in a suite the same firmware reads 28,864 B and fails, with `free` unchanged. Any future heap row must state its suite position or it is not comparable. | OPEN — record in SPECIFICATION.md when §7D migrates |
+| F4 | **Row A4's marker count was wrong** (three `persistence_write`, not two). Corrected in place. A reminder that these counts drift; read the deselected number from the run. | DONE |
 
 ---
 
@@ -209,8 +250,9 @@ a test to *write* against real hardware, not just a run.
 
 ## 5. Excluded on purpose
 
-- **Heap fragmentation, beyond §1A.** §1A now carries measure A's own rows, because the owner
-  reported the branch on the bench (2026-09-18). Everything else on PR #105 still belongs to the
+- **Heap fragmentation, beyond §1A.** §1A's rows are **all run as of 2026-09-18** — results in
+  the rows themselves, §1A-R, and `HEAP_FRAGMENTATION_MEASUREMENTS.md` §7D, which is the first
+  [HW] section on this branch. Everything else on PR #105 still belongs to the
   session working it (`HANDOVER_HARNESS_AND_HEAP_FRAGMENTATION.md` is its handover): measure B (the
   boot-confined `gc.collect()`) is not built, so its rows — plan T.1's A+B column, T.5's collect
   timing — cannot be run yet. The one failure left at PR #103's close is that defect.

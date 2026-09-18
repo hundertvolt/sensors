@@ -30,8 +30,10 @@ Provenance, same markers the handover uses:
 - **[TWIN]** = measured host-side in the digital twin, on a frozen MicroPython 1.29.0 Unix port,
   by this branch's sessions. Independently reproducible; the harnesses are named in §10.
 - **[SRC]** = read directly from the code in this repo, verified.
-- **[HW]** = real `dev` bench board. **This branch had no real-hardware go-ahead** — every [HW]
-  figure below is cited from the handover, not re-measured here.
+- **[HW]** = real `dev` bench board. Figures before §7D are cited from the handover, not
+  re-measured — the branch had no go-ahead when they were written. **§7D is this branch's own
+  real-hardware measurement** (go-ahead given 2026-09-18) and supersedes the twin where they
+  disagree; §7D.4 names each correction.
 - **[EXT]** = external source, URL given.
 
 **Unit warning, applies to every [TWIN] byte figure.** A GC block is **32 bytes** on the 64-bit Unix
@@ -2599,6 +2601,176 @@ in. That is the same trade A.1.3's buffer hoisting already made (+7,232 B perman
 measured slightly net-negative on placement and did not reduce scatter. Permanent survivors are the
 quantity the goal names. **Recommendation: do not take A.7.** The 288 B/operation is a run-phase
 saving worth under 10% of a block operation's ~3,200 B, and it is not worth 21 more survivors.
+
+---
+
+## 7D. Measure A on real silicon — the first [HW] figures this branch produced (2026-09-18)
+
+**Provenance: [HW] throughout.** Real `dev` bench board, real-hardware go-ahead given directly by
+the project owner in the running session. This is the section §7A.7 named as missing ("No hardware.
+Every figure is [TWIN] ... it is the question that decides whether any of this is needed on a real
+unit") and §1.5 bounded the whole corpus against. It answers it.
+
+### 7D.1 How the two arms were built, and why not from the merge base
+
+`REAL_HARDWARE_TEST_QUEUE.md` A0 asked for the "before" image to come from
+`claude/automated-build-chain-nuzumw`. It was built differently, deliberately, and the difference
+matters for what the numbers mean.
+
+Measure A's source changes are confined to `asy_fram_driver.py`, `asy_fram_manager.py` and
+`asy_spi_driver.py`, and those three files were touched **only** by A's four implementation commits
+(`7132088`, `c621cfb`, `9415902`, `8951387`) since `335479d^` = `ec13efc`. The new synchronous API
+(`session_begin`/`write_sync`/`set_values_sync`/...) has zero references anywhere outside them.
+So the "before" arm is **this branch's tip with exactly those three files checked out at
+`ec13efc`** — isolating A, where the branch-tip form would have dragged in every unrelated merge
+difference as well.
+
+Independent evidence the two images really differ: 2,234,880 B vs 2,237,440 B (+2,560 B), and the
+device script's own `baseline` heap line differs (139,008 vs 138,496 B free) before anything is
+built.
+
+### 7D.2 The defect is position-dependent, and a cold build cannot see it
+
+The same firmware, on the same board, in the same sitting, read two completely different numbers
+depending on **when in a suite** the measurement was taken:
+
+| context | free (B) | alloc (B) | largest_block (B) |
+|---|---|---|---|
+| standalone `run_isolated()`, freshly flashed | 105,008 | 87,968 | **95,104** |
+| inside the full flash suite | 105,216 | 87,760 | **28,864** |
+
+`free` and `alloc` agree to within 0.2 %. **Only contiguity collapsed — by 70 %.** This is the
+cleanest possible confirmation that the defect is pure layout, not consumption, and it fixes a
+methodological trap: `Board.run_isolated()` (`tests_hardware/harness.py:266`) interrupts the
+**already-running** firmware into the raw REPL and never resets first, so the device script builds
+its graph inside whatever heap `main.py` has been living in. Freshly flashed that is seconds of
+uptime; deep in a suite it is many minutes across many tests.
+
+**Consequence: a standalone heap reading measures the wrong thing.** It is a valid controlled
+comparison of two builds' construction cost, but it cannot see the defect — which is exactly why
+both arms passed the 80,000 B floor standalone and both failed it in-suite.
+
+### 7D.3 The matched in-suite pair — what A actually bought
+
+Both arms flashed back to back, same board, same sitting, same
+`scripts/run_flash_hardware_suite.sh` with no gates:
+
+| arm | free (B) | alloc (B) | largest_block (B) |
+|---|---|---|---|
+| BEFORE | 108,736 | 84,240 | **20,592** |
+| AFTER | 105,216 | 87,760 | **28,864** |
+
+**The BEFORE arm reproduces the handover's 2026-09-17 reading of 20,592 B to the byte** — the same
+figure §7A.9 reasons about as "the board's own broken end". That is the strongest available
+evidence that the rig is in the state the defect was first found in and that the two arms are the
+right comparison.
+
+**Measure A improves the in-suite largest obtainable block by 8,272 B, +40.2 %.** The bench suite,
+run separately over 38 minutes, returned 28,864 B again — byte-identical, so the figure is
+deterministic given suite position, not a draw.
+
+### 7D.4 What this confirms and what it corrects
+
+**Confirms.** §7C.2's finding that A removes the variance holds on silicon and is if anything
+stronger: the AFTER arm returned an identical 95,104 B in 4 of 5 standalone runs (range 400 B)
+where BEFORE swung 1,040 B and never repeated a value.
+
+**Corrects, and this is the substantive one.** §7B.1 and §7C.2 concluded A buys no layout gain.
+On real hardware it buys 40 % of one. The twin could not see this: §7C.2's ensemble measured a
+cold, single-purpose process, which §7D.2 now shows is the configuration in which the defect does
+not exist. The twin was measuring the arm of the comparison that has nothing to find.
+
+**Corrects, smaller.** §7C.2 priced A's retention at +7,232 B. On silicon the construction-seam
+delta is **+3,664 B allocated / -3,632 B free** — half that. The mechanism still matches (the 20
+hoisted per-chunk buffers dominate); the magnitude does not transfer, consistent with the file's
+own standing unit warning that ratios transfer and absolutes do not.
+
+**Does not change.** A does not clear the tripwire, and was never expected to (§7B.1). Read against
+§7A.9's framing — the floor is a regression tripwire ~5x above anything the firmware can be asked
+to allocate — the honest statement is that A moves the board's broken end from 1.26x margin over
+the worst reachable 16,384 B allocation to **1.76x**. That is a real improvement in the quantity
+§7A.9 says the floor is actually proxying for, and it is still not headroom.
+
+### 7D.5 A fixed a heap-growth failure, and broke two fault injectors
+
+Running the full flash suite on **both** arms gives direct attribution, which no single-arm run can:
+
+| test | BEFORE | AFTER | attribution |
+|---|---|---|---|
+| `test_real_gc_heap_headroom_survives_a_full_system_build` | FAIL 20,592 | FAIL 28,864 | improved 40 %, not fixed |
+| `test_the_link_keeps_transferring_while_every_other_subsystem_is_busy` | **FAIL** | **PASS** | **A fixed this** |
+| `test_fram_cs_pin_hijack_fault_injection_and_recovery` | PASS | **FAIL** | **A broke this** |
+| `test_fram_hard_reset_race_during_write_and_recovery` | PASS | **FAIL** | **A broke this** |
+
+Totals: BEFORE `2 failed, 34 passed, 3 skipped, 12 deselected` (844.84 s); AFTER `3 failed,
+33 passed, 3 skipped, 12 deselected` (864.67 s). The bench tier on the AFTER arm: `3 failed,
+90 passed, 4 skipped, 27 deselected` (2,288.40 s), the same three.
+
+**The fix is a real one and belongs in A's ledger.** The UART crossover test fails on BEFORE with
+`heap grew 3584 bytes over the last two thirds of the run under parallel load` and passes on AFTER.
+That is a run-phase allocation-growth check — the phase §7A.7 lists as untouched and unmeasured —
+and A closes it.
+
+**The two breakages are broken tests, not a broken driver.** Both are GPIO-level fault injectors
+whose technique depends on an await point that A removed.
+`fram_cs_hijack_fault_injection_and_recovery.py`'s `cs_yanker()` does `await asyncio.sleep(0)` and
+then deasserts CS, relying on being scheduled *inside* the victim's command envelope; its own
+docstring says so ("whether the yanker actually ran before the victim's own `__aenter__` sleep
+elapsed"). That awaited settle is precisely what `f6a182d`/A replaced with a blocking
+`time.sleep_us(2)`. With no scheduling point left in the envelope the injector cannot inject, the
+write completes intact, and the test reports "the hijacked write was not reliably blocked". The
+reset-race test fails the same way.
+
+So the driver is not less safe — a shorter non-yielding CS window is harder to corrupt. What was
+lost is the **injection technique**. Both tests need one that does not depend on an await point (a
+hardware timer IRQ, or injection from the second core). Until then they fail honestly rather than
+mis-measuring, which is the better failure mode, but they cover nothing.
+
+### 7D.6 Hold time on real wire — the number the twin structurally cannot produce
+
+`digital_twin/_fram_chip.py` answers SPI opcodes in memory with zero wire time. Measured on the
+real chip (queue row A6, AFTER arm):
+
+```
+HOLD write_5cs=2849us  read_1cs=772us  block_operation=21269us
+```
+
+Both are **~28-35x the working estimates** the queue and §7B carried (~100 us per command, ~600 us
+per block operation).
+
+- **Longest synchronous, non-yielding stretch: 2,849 us.** This is the F.3 number, and it is large
+  enough to matter — CLAUDE.md treats the UART's measured 4.4 ms frame as a forbidden loop block,
+  and this is the same order of magnitude. A 1-byte `set_values_sync()` is ~6 CS envelopes
+  (`_is_write_protected` 1, `_enable_write` 2, `_send_and_write` 1, `_disable_write` 2), all now
+  inside one non-yielding stretch.
+- **Bus-lock hold for a block operation: 21,269 us (21.3 ms).** This is the A5 number — what a
+  second SPI device would wait. No `devices/*.toml` wires one, so it stays structurally untestable
+  on this rig; 21.3 ms is the closest real evidence, against the ~600 us previously assumed.
+
+**Where the time goes, and why it corrects a stated premise.** SPI runs at 1 MHz
+(`asy_spi_driver.py:57`), so six short transactions is ~300 us of actual wire time — roughly
+2,550 us of the 2,849 us is MicroPython interpreter and `machine.SPI` call overhead. The 2 us CS
+settle contributes ~12 us in total and is irrelevant to the result. Queue rows A6 and R7 both name
+"SPI wire time under lock contention" as the dominant real term the twin omits; on this silicon the
+dominant term is **interpreter overhead per transaction**, not wire time.
+
+### 7D.7 Boot cost, for the record
+
+`build_system()` on the AFTER arm, 5 runs: 912, 910, 957, 926, 919 ms — **median 919 ms**, spread
+47 ms. Comfortably clear of the 8,388 ms watchdog cap, which is the only thing this figure is for
+(boot latency is explicitly not an optimisation target, CLAUDE.md WP6).
+
+### 7D.8 What is still not answered
+
+- **Measure B is unmeasured on hardware.** It is not built (owner is holding it for an explicit go),
+  so the A+B column of §7B.3 and §7A's whole dose-response remain [TWIN].
+- **The `gc.threshold(32768)` question §1.5 raises is still open at the decisive point.** The
+  device script reads `after_build_system` at MicroPython's reactive default and then sets 32768;
+  in every run on both arms the two lines were identical, so the threshold moved nothing *at that
+  instant*. That is not the same as measuring the firmware's own boot path under its own threshold
+  from the start, which remains untested on hardware.
+- **The run phase over months of uptime** is still untouched, exactly as §7A.7 says — though §7D.5's
+  UART result is the first real-hardware evidence that A helps there.
 
 ---
 
