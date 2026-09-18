@@ -365,13 +365,22 @@ reopened only if A.6's measurement asks for it.
 
 ### A.5 Measurement, A alone (twin, no hardware)
 
-- [ ] Re-run the §7A.8 protocol on the real path with A in place: settrace-free binary
+- [x] Re-run the §7A.8 protocol on the real path with A in place: settrace-free binary
       (`build-nosettrace`, §10), `gc.threshold(-1)`, calibrated heap (508k after
       `build_system()`, 560k after the task list), 15 + 6 perturbations, **largest/free** as the
       metric and the bare fill reported. Record as §7C in `HEAP_FRAGMENTATION_MEASUREMENTS.md`
       beside `base`'s 11.9-14.2% / 8.1-8.4% and the synthetic prediction for a 38x cut (9.6%,
       i.e. no layout gain expected from A alone — §7B.1). The point of this row is the honest
       (e)/(f) record, not a pass.
+      **Done.** Recorded as §7C.2. §7B.1's prediction holds and the row is not a pass, but the
+      result is sharper than "no gain": A's largest contiguous block is **31,328 B in all fifteen
+      perturbations** (12.4-12.5%) where `base` swings 30,752-60,800 B (11.9-23.4%). The
+      perturbations still land — A's seam-time largest and retained bytes both move with `k` — so
+      the churn removal converted a lottery into a fixed outcome, which is §0A's model predicting
+      its own consequence unprompted. It is fixed slightly *below* `base`'s median (7.4% against
+      8.4% after the whole sequence), and the mechanism is priced: A retains **+7,232 B**, all of
+      it at construction, 3,200 B of it the 20 chunks' hoisted buffers measured directly. The
+      tripwire needs B, or B plus C.
 - [x] Re-run the allocation census of §3A.3 for one logger `setup()` on the settrace-free build
       and confirm the 38x against the prototype's 3,072 B (the prototype was not the real code;
       this is the first real number).

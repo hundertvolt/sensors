@@ -2429,6 +2429,63 @@ concurrent task still observes a block marked BUSY and then IDLE again during on
 
 **Closed**: §11 item 6, answered 2026-09-18.
 
+### 7C.2 The perturbation ensemble on the real path — A removes the lottery, not the fragmentation
+
+§7A.8's protocol, re-run with A in place: `build-nosettrace` rebuilt against the restructured
+`src/` through `manifest_heap.py` (so the frozen bytecode is the shipped code, not a live-source
+import whose own code objects would sit on the measured heap), `gc.threshold(-1)`, the same
+calibrated heaps, `largest contiguous / free` after the batch, `hp.mapdump()`'s own `gc.collect()`
+before each reading. The 508k arm is the 10 `k` perturbations §7A.8 published plus its 5 `q` runs;
+the 560k arm is the 6 `k` perturbations `base` has, so the comparison is like for like.
+
+| configuration | | largest contiguous | largest / free | clears 55% |
+|---|---|---|---|---|
+| after `build_system()`, 508k | `base`, 15 | 30,752 - 60,800 | **11.9 - 23.4%** (med 14.3) | 0 / 15 |
+| after `build_system()`, 508k | **A, 15** | **31,328 - 31,328** | **12.4 - 12.5%** (med 12.4) | 0 / 15 |
+| the whole boot sequence, 560k | `base`, 6 | 23,648 - 24,832 | **8.1 - 8.5%** (med 8.4) | 0 / 6 |
+| the whole boot sequence, 560k | **A, 6** | **21,088 - 21,376** | **7.3 - 7.4%** (med 7.4) | 0 / 6 |
+
+**The finding is the second column, not the fourth.** A's largest contiguous block is **31,328 B in
+all fifteen runs** where `base` swings by a factor of two. The perturbations are demonstrably still
+landing: `A`'s seam-time largest moves with `k` (219,808 → 218,016 B) and its retained bytes rise
+monotonically with it, exactly as the injected survivors demand — yet the post-batch outcome does
+not move at all. §2.3 said placement is the variable; what made it a *lottery* was the ~1 MB of
+same-size-class churn the batch ran through. Remove 9/10ths of that churn and the outcome is decided
+by the permanent object graph alone. This is the sharpest confirmation of §0A's model in this file:
+the model predicts that with the churn gone the result should become deterministic, and it did,
+without being asked to.
+
+**It is deterministic at a worse number than `base`'s median.** 12.4% against 14.3% after
+`build_system()`, and 7.4% against 8.4% after the whole sequence. §7B.1 predicted no layout gain
+from A alone and that is what happened, but the small loss has a mechanism worth naming, because it
+is the cost side of A.1.3's buffer hoisting:
+
+| dump | `base` retained | A retained | delta |
+|---|---|---|---|
+| `import` (before any construction) | 166,624 | 167,648 | **+1,024** |
+| `seam` (after construction) | 253,408 | 260,640 | **+7,232** |
+| `after` (post setup batch) | 254,304 | 261,536 | **+7,232** |
+
+All of it is construction-time: the setup batch itself retains **+896 B in both arms, identically**,
+which is its own independent check that the restructure changed the batch's churn and not its
+product. Of the 7,232 B, **3,200 B is measured directly** — the 20 chunks' hoisted `bytearray(1)` +
+`bytearray(check_length=8)` + `memoryview`, priced by nulling the three references and collecting,
+160 B per chunk — and 1,024 B is import residue from the new methods. The remaining ~3,000 B is
+construction-phase and **not attributed**. One hypothesis was measured and **ruled out**: a chunk's
+instance dict growing past a rehash step. The step is real (334 B per instance at ≤ 17 attributes,
+430 B at ≥ 18) but `AsyFramChunk` carries exactly **17**, one below it, so it would have shown as
++1,920 B and did not.
+
+So A trades ~7 KB of permanent retention for 9/10ths of the churn, and on this metric that trade is
+very slightly negative. **That is the honest I.4(e)/(f) record this row exists for** (HEAP_REMEDIATION_PLAN.md
+A.5): A is an allocation-count fix worth 9.0x per logger `setup()`, it removes the variance that made
+the defect a lottery, and it does not move the tripwire. The tripwire needs B, or B plus C.
+
+*Instrument note, in §1.2's spirit.* Adding a `len(chunk.__dict__)` call to the attribution script to
+count those 17 attributes inflated the hoisted-buffer figure measured immediately after it from 3,200
+to 3,520 B — the `__dict__` access allocates 320 B of its own, the same artifact `mapdump_live` has.
+The 3,200 B above is from the run without it.
+
 ---
 
 ## 8. What is committed
