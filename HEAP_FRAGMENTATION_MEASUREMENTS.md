@@ -382,7 +382,7 @@ over 25 operations = **~6,900 B per operation**.
 21 bytes of calibration coefficients, soft reset with `cmd_rdy` polling, full config — takes **12**
 I2C operations. Persisting one module's 12-byte error history to FRAM takes **74** SPI sessions. Six
 times the bus traffic of initialising an actual sensor chip, to store 12 bytes. Across the boot: **25
-I2C operations for every sensor on the board, against 888 FRAM sessions for 11 x 12 = 132 bytes of
+I2C operations for every sensor on the board, against 888 FRAM sessions for 12 x 12 = 144 bytes of
 log history.**
 
 Cross-harness consistency check, two independently written harnesses: the setup batch proper is
