@@ -61,10 +61,10 @@ _NAME = const("NOTIFY")
 class _DefaultSignalSink:
     """§2's wiring-defaults mechanism (BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md), opted into via
     [instance.wiring].signal_sink = {default = true} - a no-op LED sink for a notification setup
-    that shouldn't blink any LED. request_signal's own signature/return-value contract matches
-    NeopixelDriver.request_signal exactly, since codegen's existing attr-mode rendering
-    (f"{var}.{wf.target}") needs no mode-specific special-casing for a defaulted attr-mode field."""
+    that shouldn't blink any LED."""
 
+    # Signature and return-value contract match NeopixelDriver.request_signal exactly, so codegen's
+    # existing attr-mode rendering (f"{var}.{wf.target}") needs no special-casing for a defaulted field.
     async def request_signal(self, r: int, g: int, b: int, t: float) -> bool:
         return False
 

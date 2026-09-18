@@ -7,6 +7,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import http_client
+import pytest
 from harness import wait_until
 
 if TYPE_CHECKING:
@@ -112,3 +113,51 @@ def test_mempause_over_real_rest_pauses_storage_and_does_not_survive_a_reboot(bo
     )
     after = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0)
     assert after.json()["system"]["MemPaused"] is False, f"storage was still paused after a real reboot - the pause is supposed to be RAM-only: {after.json()['system']!r}"
+
+
+# ---------------------------------------------------------------------------
+# ISL29125's applied gain ratio, across a real reboot. The flash tier already proves the config
+# mechanism survives a hard reset generically (test_config_value_survives_a_genuine_hard_reset);
+# what this adds is the one field whose classification is newest - GainRatio stopped being a
+# self-learned runtime value and became ordinary config, written only by a user PUT - exercised
+# over the real REST stack rather than through a device script.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.persistence_write
+def test_isl29125_gain_ratio_survives_a_real_reboot_as_an_ordinary_config_value(board: Board, bench: BenchBridge, dut_ip: str) -> None:
+    # Marked: this test OWNS its persisting writes (the probe PUT and the restore PUT), unlike the
+    # dispatch-only ISLCalibrate push, which stores nothing. CLAUDE.md's wear rule, and the reason
+    # tests_scripts/test_persistence_write_marker_completeness.py would fail without the marker.
+    before = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=10.0)
+    assert before.status_code == 200, f"GET /sensors failed: {before.status_code} {before.body!r}"
+    original = before.json()["ISL29125"]["GainRatio"]
+    assert original is not None, "GainRatio is a schema field with a default - it can never be absent"
+
+    # Distinguishable from the nominal default, so the reboot leg proves persistence rather than
+    # re-defaulting. Inside the driver's own [20, 34] band and exactly representable as a float.
+    probe = 24.5 if abs(original - 24.5) > 0.01 else 27.25
+    put = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"ISL29125": {"GainRatio": probe}}, timeout_s=10.0)
+    assert put.status_code == 200, f"PUT /sensors GainRatio={probe} failed: {put.status_code} {put.body!r}"
+    assert put.json()["result"]["ISL29125"].get("GainRatio") == "Valid", f"could not set GainRatio={probe}: {put.json()['result']['ISL29125']!r}"
+
+    try:
+        bench.kick_all_stations()  # see conftest.py's dut_ip docstring for why this precedes every reconnect-expecting reset
+        board.hard_reset()
+        wait_until(
+            lambda: http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=5.0).status_code == 200,
+            timeout_s=120.0,
+            poll_interval_s=3.0,
+            description="DUT serving /sensors again after the reboot this persistence check needs",
+        )
+        after = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=10.0).json()["ISL29125"]["GainRatio"]
+        assert after == probe, f"GainRatio did not survive a real reboot: set {probe!r}, read back {after!r}"
+    finally:
+        # Restore regardless of outcome - this mutates the real, persisted config of a shared rig,
+        # and the applied ratio scales every later reading across a range change.
+        restore = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"ISL29125": {"GainRatio": original}}, timeout_s=10.0)
+        assert restore.status_code == 200, f"failed to restore GainRatio={original!r}: {restore.status_code} {restore.body!r}"
+        verdict = restore.json()["result"]["ISL29125"].get("GainRatio")
+        # "Unchanged" counts as restored: if the probe PUT never landed, the board still holds the
+        # original and this is a legitimate no-op - rejecting it would mask the real failure.
+        assert verdict in ("Valid", "Unchanged"), f"restoring GainRatio={original!r} was rejected: {verdict!r}"

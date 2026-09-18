@@ -52,6 +52,21 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         ),
     )
     parser.addoption(
+        "--allow-neopixel-sweep",
+        action="store_true",
+        default=False,
+        help=(
+            "Actually run @pytest.mark.neopixel_sweep tests - the two long ISL29125 light programs "
+            "that drive the board's own WS2812 and read the part back. They need a PHYSICAL rig the "
+            "bench does not have by default: the on-board NeoPixel aimed at the ISL29125's window at "
+            "a fixed distance with ambient light excluded (set up and recorded by the manual tier's "
+            "own isl29125_real_lux_vs_reference_meter_and_neopixel_rig_geometry). Without that rig "
+            "they do not merely mis-measure, they fail - and they cost ~10 minutes of real light "
+            "programs when they do run. Spends no write of any kind, so it is its own flag rather "
+            "than a persistence one. Skipped by default."
+        ),
+    )
+    parser.addoption(
         "--allow-persistence-writes",
         action="store_true",
         default=False,
@@ -93,6 +108,7 @@ def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line("markers", "flash_cycle: a deliberate re-provisioning flash (counts against the 'no extra flash cycles' constraint), skipped unless --allow-flash-cycle is passed")
     config.addinivalue_line("markers", "persistence_write: the TEST ITSELF spends a real limited-endurance write (SCD30 on-chip NVM, or the RP2040 flash filesystem behind any config-persisting PUT), directly or through a helper it drives - deselected unless --allow-persistence-writes is passed. A write that is a shared PREREQUISITE rather than the thing under test stays unmarked and allowed - see tests_hardware/README.md")
     config.addinivalue_line("markers", "scd30_extra_write: a SECOND real NVM-persisted SCD30 write beyond the routine per-session one already spent by a persistence_write test - always carried alongside @pytest.mark.persistence_write on the same test, deselected unless BOTH --allow-persistence-writes AND --allow-scd30-extra-write are passed")
+    config.addinivalue_line("markers", "neopixel_sweep: needs the physical NeoPixel-aimed-at-the-ISL29125 rig (manual tier records its geometry) - skipped unless --allow-neopixel-sweep is passed; ~10 minutes of real light programs when it runs, and a hard failure rather than a soft one without the rig")
     config.addinivalue_line("markers", "role_reversal: bench radio temporarily stops hosting br0-wifi-ap to join the DUT's own hotspot - informational marker, not skip-gated")
 
 

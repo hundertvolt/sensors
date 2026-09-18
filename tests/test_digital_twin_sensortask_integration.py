@@ -333,7 +333,8 @@ def test_reset_errors_over_real_http_is_not_undone_by_a_fram_loggers_later_setup
 
 
 def test_sgp40_reading_before_scd30_has_measured_yet_logs_no_bogus_error() -> None:
-    # Regression test for BACKLOG.md item 17, against the real wozi wiring (devices/wozi.toml wires
+    # Regression test for the SGP40 boot-race false error (SPECIFICATION.md Part C.14.2), against
+    # the real wozi wiring (devices/wozi.toml wires
     # sgp40.temperature_source/humidity_source to scd30's own Temp/Hum fields) rather than a fake
     # stand-in - this is exactly the real object graph the bug was originally found through (a real
     # digital-twin CI failure, "dev"'s digital-twin-e2e matrix leg, Run 5c). Deliberately does NOT

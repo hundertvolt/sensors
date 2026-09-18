@@ -901,8 +901,8 @@ def _run_5c_storage_paused_shutdown_never_loses_the_error_log(ctx: RunContext) -
         _check(condition=_mem_paused() is False, msg="Run 5c: the storage pause did NOT survive the reboot (it is RAM-only by design)")
         # Every real device wires SGP40's compensation source to SCD30 (devices/*.toml); a
         # compensation read racing SCD30's cold-start after this fresh boot used to log a real,
-        # spurious E18/W14 pair for that ordinary startup timing (BACKLOG.md item 17, fixed
-        # 2026-09-12 - found via this exact check racing that timing). Fixed at the source now, so
+        # spurious E18/W14 pair for that ordinary startup timing (SPECIFICATION.md Part C.14.2,
+        # fixed 2026-09-12 - found via this exact check racing that timing). Fixed at the source now, so
         # this sleep is no longer covering that up; kept as a plain settle window so the check below
         # stays about ResetErrors actually clearing the log, not about racing any boot-time read.
         time.sleep(3.0)

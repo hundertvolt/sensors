@@ -377,7 +377,8 @@ def test_read_sgp_without_compensation_data_returns_all_none() -> None:
 
 
 def test_read_sgp_without_compensation_data_yet_logs_nothing() -> None:
-    # Regression test for BACKLOG.md item 17: a compensation source whose field is legitimately
+    # Regression test for the boot-race false error (SPECIFICATION.md Part C.14.2): a compensation
+    # source whose field is legitimately
     # still None (e.g. SCD30 hasn't completed its first post-boot measurement yet) is expected
     # startup jitter, not a fault - CLAUDE.md's standing rule is that no E/W entry is ever logged
     # for that. The old code called float(getattr(...)) inside the same try that's supposed to
@@ -839,7 +840,7 @@ def test_read_sgp_comp_source_get_data_raising_is_caught_not_propagated() -> Non
     log = run(reader.get_error_counter())
     # Exactly one entry (the real get_data() failure, errno=18) - not also a second, redundant "no
     # compensation data available" warning for a condition the exception already explains
-    # (BACKLOG.md item 17).
+    # (SPECIFICATION.md Part C.14.2).
     assert log["SGP40"]["ErrCount"] == 1
     assert _last_err(log, "ErrNum") == 18
     assert _last_err(log, "ErrType") == "E"

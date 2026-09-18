@@ -683,7 +683,7 @@ class ISL29125_Reader(SensorReaderConfig):
             await self._settle_wait()
             raw = await self.isl.read_counts()
         except Exception as e:
-            await self.pr.err_s("Paired gain-ratio reading failed:", e, errno=11)
+            await self.pr.err_s("Paired gain-ratio reading failed:", e, errno=35)
             return None
         counts, saturated = self.isl.normalise(raw, range_fs=self._active_range)
         if saturated:

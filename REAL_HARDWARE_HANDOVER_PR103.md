@@ -17,7 +17,7 @@ to focus on within it, what to measure on top, and the one special test worth ad
   *any* limited-endurance write, not just the SCD30's NVM: the RP2040's flash filesystem counts,
   because every accepted config-persisting `PUT` goes through `config_manager.py`'s own
   `json.dump()`. `--allow-scd30-extra-write` is unchanged and still AND-gated on the global flag.
-- **Without the flag, 12 of the bench tier's 71 tests and 9 of the flash tier's 51 are deselected.**
+- **Without the flag, 13 of the bench tier's 73 tests and 9 of the flash tier's 51 are deselected.**
   (Was 23 on the bench tier until 2026-09-18: eleven `test_hotspot_role_reversal.py` tests carried
   the marker purely for depending on `joined_hotspot`, which the owner's own rule keeps unmarked.)
   Deselection is invisible to `scripts/_require_clean_hardware_run.sh`'s skip check, so that script

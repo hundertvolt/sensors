@@ -160,3 +160,40 @@ def test_sgp40_reset_voc_command_push_over_real_rest(board: Board, dut_ip: str) 
     get_res = http_client.fetch(dut_ip, 80, "GET", "/measurements", timeout_s=10.0)
     assert get_res.status_code == 200, f"GET /measurements after a real VOC reset failed: {get_res.status_code} {get_res.body!r}"
     assert_module_error_log_empty(dut_ip, "SGP40")
+
+
+def test_isl29125_calibrate_command_push_over_real_rest(board: Board, dut_ip: str) -> None:
+    # The one ISL29125 config field the push/readback test above deliberately excludes, for exactly
+    # the reason that makes it worth its own test: ISLCalibrate is command-only (dispatch-only, so
+    # outside the persistence gate - it writes nothing), which means a readback can never show it
+    # took effect. What CAN be pinned is the pair of invariants a calibration run must respect, and
+    # neither is reachable from the mock tier's _set_dict_cfg() call or from a device script run in
+    # isolation - only from the real REST stack against the real part.
+    reset_all_error_logs(dut_ip)
+    before = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=10.0)
+    assert before.status_code == 200, f"GET /sensors failed: {before.status_code} {before.body!r}"
+    applied = before.json()["ISL29125"]["GainRatio"]
+    assert applied is not None, "GainRatio is a schema field with a default - it can never be absent"
+
+    put_res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"ISL29125": {"ISLCalibrate": True}}, timeout_s=10.0)
+    assert put_res.status_code == 200, f"PUT /sensors ISLCalibrate failed: {put_res.status_code} {put_res.body!r}"
+    result = put_res.json()["result"]["ISL29125"]
+    assert result.get("ISLCalibrate") == "Valid", f"real start_calibration() push was rejected: {result!r}"
+
+    # Invariant 1: a calibration run measures a CANDIDATE ratio and must never become the applied
+    # one - GainRatio is ordinary config, moved only by a user PUT (asy_isl29125_driver.py's own
+    # "the APPLIED factor, replaced only by a config push").
+    after = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=10.0)
+    assert after.status_code == 200, f"GET /sensors after starting a calibration failed: {after.status_code} {after.body!r}"
+    assert after.json()["ISL29125"]["GainRatio"] == applied, f"a calibration run must never move the applied ratio: was {applied!r}, now {after.json()['ISL29125']['GainRatio']!r}"
+
+    # Invariant 2: the measured candidate reaches the operator through the measurement body, which
+    # is the only place it is published. Its PRESENCE is the contract, not its value - a run that
+    # finds no usable scene legitimately leaves it null, and the bench light is not arranged.
+    meas = http_client.fetch(dut_ip, 80, "GET", "/measurements", timeout_s=10.0)
+    assert meas.status_code == 200, f"GET /measurements after starting a calibration failed: {meas.status_code} {meas.body!r}"
+    assert "GainMeas" in meas.json()["ISL29125"], f"GET /measurements lost GainMeas: {meas.json()['ISL29125']!r}"
+
+    # An empty log, not an allowlist: a run that finds no usable scene reports that by leaving
+    # GainMeas null, never by warning.
+    assert_module_error_log_empty(dut_ip, "ISL29125")

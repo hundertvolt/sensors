@@ -74,7 +74,7 @@ _MAX_TRIGGER_SECS = const(3600)
 _VAL_SI = const((("SampleInterv", "int", 2, _MIN_TRIGGER_SECS, _MAX_TRIGGER_SECS, None),))
 # PressOvers/TempOvers/FiltCoeff are genuine discrete allowed-value sets, not continuous ranges -
 # a plain min/max (the old shape) wrongly accepted e.g. PressOvers=20, which _set_osr_setting()
-# would then reject at the hardware layer (see BACKLOG.md's architecture-review note, now closed).
+# would then reject at the hardware layer - validation belongs in the schema, not on the wire.
 _VAL_POV = const((("PressOvers", "int", 1, None, None, _OSR_SETTINGS),))
 _VAL_TOV = const((("TempOvers", "int", 1, None, None, _OSR_SETTINGS),))
 _VAL_FC = const((("FiltCoeff", "int", 0, None, None, _IIR_SETTINGS),))
@@ -170,8 +170,8 @@ class BMP3xx_Reader(SensorReaderConfig):
 
     async def _read_sensor_dict(self) -> dict[str, int | float | str | bool | None]:
         # Single batched read (get_config_snapshot()), not three independent get_*() calls - closes
-        # the torn-read window BACKLOG.md flagged (a concurrent config write landing mid-batch used
-        # to be able to mix pre-/post-write values). Unlike the three independent get_*() wrappers
+        # a torn-read window: a concurrent config write landing mid-batch used to be able to mix
+        # pre-/post-write values. Unlike the three independent get_*() wrappers
         # this replaced, get_config_snapshot() can raise on a bus fault (BMP3XX_I2C's own "allowed
         # to raise" layer) - caught here, not left to get_dict_cfg()'s own callback try/except,
         # because that would skip the dict update entirely and leave these three fields at their
@@ -599,8 +599,8 @@ class BMP3XX_I2C:
     async def get_config_snapshot(self) -> "tuple[int, int, int]":
         # (PressOvers, TempOvers, FiltCoeff) - one device-session lock hold across all 3 bit-field
         # reads, closing the torn-read window a concurrent set_*_oversampling()/set_filter_coefficient()
-        # call (also i2c_bmp3xx-locked) could otherwise land inside mid-batch (BACKLOG.md's
-        # BMP3xx_Reader.get_dict_cfg() torn-read entry). Same "allowed to raise" layer as every other
+        # call (also i2c_bmp3xx-locked) could otherwise land inside mid-batch, producing a dict that
+        # mixes pre- and post-write values. Same "allowed to raise" layer as every other
         # BMP3XX_I2C method - a mid-batch fault fails the whole snapshot rather than a mix of fresh
         # and stale fields.
         async with self.i2c_bmp3xx as bmp3xx, bmp3xx.i2c_device as i2c:
