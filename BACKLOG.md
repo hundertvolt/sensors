@@ -723,16 +723,48 @@ usual; that file exists so the real-hardware subset does not have to be reassemb
       `REAL_HARDWARE_HANDOVER_PR103.md` already carry. Nothing further needs recovering from that
       machine unless the owner knows of content beyond those five.
 
-    **One further `main`-vs-branch coverage gap this check turned up**, listed here because it is the
-    merge's to resolve rather than a separate loss: `main`'s
-    `tests/test_setter_microdot_integration.py` carries **five real-Microdot end-to-end ISL29125
-    setter tests** (calibrate as a repeatable trigger, out-of-band threshold rejected, bus fault
-    surfacing as `Failed` not 500, a software knob round-tripping, the derived down-point moving with
-    it) and this branch carries **none** — that file has zero ISL29125 mentions here. It is one of the
-    30 conflicts, so taking `main`'s side on those five is what preserves them. `main` likewise has
-    `test_isl29125_calibrate_command_push_over_real_rest`,
-    `test_isl29125_gain_ratio_survives_a_real_reboot_as_an_ordinary_config_value` and the manual
-    `test_isl29125_real_lux_vs_reference_meter_and_neopixel_rig_geometry`, none of which exist here.
+    **The `main`-only ISL29125 tests were assessed one by one and the worthwhile ones are now
+    adopted here (2026-09-18), so the merge no longer has to preserve them.** What each was worth:
+    - **`main`'s five real-Microdot ISL29125 setter tests — NOT adopted, near-redundant by
+      construction.** On this branch production `PUT /sensors` is only three driver-agnostic steps
+      deep (`body` → `self._sensors.get(name)` → `module._set_dict_cfg(fields, schema)` →
+      `ar.make_response()`), and everything above `_set_dict_cfg` is already exercised in that same
+      file for BMP3XX/SGP40/SCD30/NTP/WiFi, with the Valid/Invalid/Failed verdict logic living in
+      `base_classes.py` and asserted nine times in `test_base_classes.py`. Every ISL-specific half is
+      covered one rung lower in `tests/test_asy_isl29125_driver.py`, in places *stronger* than
+      `main`'s (its out-of-range knob test checks both inclusive boundaries, a type rejection, errno
+      counting and last-good-value preservation). **The one thing none of them pinned** was which
+      rung rejects an out-of-band value — `"Invalid"` (schema caught it, never reached the driver)
+      versus `"Failed"` (the setter ran and refused). Verified empirically that this branch already
+      answers `"Invalid"`, then pinned it with one new test,
+      `test_an_out_of_band_knob_is_rejected_by_the_schema_rung_not_the_setter`, proven non-vacuous by
+      widening the schema bound and confirming it fails.
+    - **`test_isl29125_calibrate_command_push_over_real_rest` — adopted.** Genuinely additive: the
+      branch's own bench push/readback test deliberately excludes `ISLCalibrate` ("command-only, with
+      nothing to read back"), so the field had no bench-tier coverage at all. It pins two invariants
+      nothing else does — a calibration run must never move the *applied* `GainRatio`, and `GainMeas`
+      must reach `/measurements`. Modelled on the file's own `test_sgp40_reset_voc_command_push_over_real_rest`,
+      and correctly left unmarked: `ISLCalibrate` is dispatch-only and persists nothing.
+    - **`test_isl29125_gain_ratio_survives_a_real_reboot_as_an_ordinary_config_value` — adopted, with
+      the marker `main` was missing.** The mechanism is already covered generically by the flash
+      tier's `test_config_value_survives_a_genuine_hard_reset`; what this adds is the one field whose
+      classification is newest (`GainRatio` stopped being self-learned and became ordinary config in
+      `f05f82d`), over the real REST stack. It owns two persisting PUTs, so it carries
+      `@pytest.mark.persistence_write` here — `tests_scripts/test_persistence_write_marker_completeness.py`
+      would fail without it, which is exactly the guard doing its job on a ported test.
+    - **`test_isl29125_real_lux_vs_reference_meter_and_neopixel_rig_geometry` — adopted.** The manual
+      tier had BMP3XX and SGP40 and no ISL29125 at all. It is also the test that sets up and records
+      the rig the next item depends on, so the two belong together as `main` designed them.
+    - **The `neopixel_sweep` gate — adopted, and the highest operational value of the set.** Ungated,
+      a flash-tier run here spent ~10 minutes on the two long light programs and failed outright on a
+      bench without the rig. Now `@pytest.mark.neopixel_sweep` + `--allow-neopixel-sweep`, with the
+      matching contextual entry in `scripts/_require_clean_hardware_run.sh` (a skip without the flag
+      is expected; a skip *with* it is still a real failure) and the rig written up in
+      `tests_hardware/README.md`'s prerequisites.
+
+    Adopting these moved the bench tier from **71 to 73 tests and 12 to 13 deselected** by default;
+    the flash tier's 51/9 is unchanged, since the two new gates skip rather than deselect. Every
+    quoted count was re-measured by a real `--collect-only` run, not adjusted by hand.
     And the two sides disagree on **gating**: `main` puts `@pytest.mark.neopixel_sweep` +
     `--allow-neopixel-sweep` on the two long ISL29125 lighting tests ("needs the NeoPixel-aimed-at-the-
     sensor rig physically set up"), while this branch runs both ungated — so on this branch a flash-tier

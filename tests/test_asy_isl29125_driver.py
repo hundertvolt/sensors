@@ -2646,6 +2646,25 @@ def test_the_two_remaining_auto_range_knobs_reject_out_of_range_values_with_errn
     assert reader._ar_dwell_s == 300.0
 
 
+def test_an_out_of_band_knob_is_rejected_by_the_schema_rung_not_the_setter() -> None:
+    # WHICH rung rejects it is the point, not just that it is rejected. "Invalid" means the schema
+    # bound caught it and the value never reached the driver; "Failed" would mean the setter ran and
+    # refused, which for a pure software knob would leave the live policy momentarily reachable with
+    # an unvalidated value. The test above pins the setter's own guard; this pins that _set_dict_cfg
+    # never gets that far. Both are needed: neither implies the other.
+    _i2c, reader = ready_reader("knob_rung")
+
+    async def scenario() -> "list[Any]":
+        with _FastAsyncSleep():
+            low = await reader._set_dict_cfg({"AutoRangeThresh": 20.0}, reader.cfg_schema)
+            good = await reader._set_dict_cfg({"AutoRangeThresh": 60.0}, reader.cfg_schema)
+            dwell = await reader._set_dict_cfg({"AutoRangeDwell": -5.0}, reader.cfg_schema)
+        return [low["AutoRangeThresh"], good["AutoRangeThresh"], dwell["AutoRangeDwell"]]
+
+    assert run(scenario()) == ["Invalid", "Valid", "Invalid"]
+    assert reader._ar_thresh == 60.0, "the accepted value is the one that must be live afterwards"
+
+
 # ---------------------------------------------------------------------------
 # The hardware driver's own field guard, and the reader's coercion policy
 # ---------------------------------------------------------------------------

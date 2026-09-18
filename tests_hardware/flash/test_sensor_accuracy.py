@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import isl29125_conformance
+import pytest
 
 if TYPE_CHECKING:
     from harness import Board
@@ -50,7 +51,10 @@ def test_isl29125_real_reading_is_within_datasheet_plausible_bounds(board: Board
     assert match.group(1) == "PASS", f"ISL29125 plausibility check failed: {match.group(2).strip()}\nfull output:\n{output}"
 
 
-def test_isl29125_mechanism_envelope_holds_across_range_resolution_and_calibration(board: Board) -> None:
+@pytest.mark.neopixel_sweep
+def test_isl29125_mechanism_envelope_holds_across_range_resolution_and_calibration(board: Board, request: pytest.FixtureRequest) -> None:
+    if not request.config.getoption("--allow-neopixel-sweep"):
+        pytest.skip("needs the NeoPixel-aimed-at-the-ISL29125 rig physically set up - pass --allow-neopixel-sweep once it is (tests_hardware/README.md's rig section, recorded by the manual tier)")
     # Drives the board's own NeoPixel through 8 steady levels each way (16 holds) plus 6 more holds
     # in _config_mechanisms() - 22 holds x SETTLE_S=4.5s is ~99s of guaranteed settle alone, plus up
     # to MAX_WAIT_S=12s per hold for a fresh sample worst-case; timeout is generous relative to that.
@@ -60,7 +64,10 @@ def test_isl29125_mechanism_envelope_holds_across_range_resolution_and_calibrati
     assert match.group(1) == "PASS", f"ISL29125 mechanism envelope check failed: {match.group(2).strip()}\nfull output:\n{output}"
 
 
-def test_isl29125_survives_recombined_realistic_lighting_scenarios(board: Board) -> None:
+@pytest.mark.neopixel_sweep
+def test_isl29125_survives_recombined_realistic_lighting_scenarios(board: Board, request: pytest.FixtureRequest) -> None:
+    if not request.config.getoption("--allow-neopixel-sweep"):
+        pytest.skip("needs the NeoPixel-aimed-at-the-ISL29125 rig physically set up - pass --allow-neopixel-sweep once it is (tests_hardware/README.md's rig section, recorded by the manual tier)")
     # Ten recombined lighting scenarios (colours, mixtures, slow/medium/fast slopes, steps, holds,
     # threshold oscillation) driven through the board's own NeoPixel - real segment durations alone
     # sum to ~8.5 minutes (see the device script's own _scenarios() table), plus per-scenario

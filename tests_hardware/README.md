@@ -37,6 +37,17 @@ deactivation risk, `BENCH_AP_PASSWORD` handling in "Environment variables" below
    rebuild picotool on the real hardware session's own machine (or confirm the apt-packaged
    `picotool` there already has USB support - check for the same warning line) rather than assuming
    this session's cached build works.
+4. **The NeoPixel sweep rig** - only for `--allow-neopixel-sweep`, and not provisioned by any
+   `setup_toolchain.py` tier because it is physical, not software. The board's own WS2812 (GP18 on
+   this bench) has to be aimed at the ISL29125's window at a fixed, recorded distance, with ambient
+   light excluded (an enclosure or a darkened room). Two flash-tier tests depend on it -
+   `test_isl29125_mechanism_envelope_holds_across_range_resolution_and_calibration` and
+   `test_isl29125_survives_recombined_realistic_lighting_scenarios` - and without the rig they fail
+   outright rather than mis-measuring, which is why both are opt-in and skip by default. Setting the
+   rig up and writing its geometry down is the manual tier's own
+   `isl29125_real_lux_vs_reference_meter_and_neopixel_rig_geometry`; run that once, record the
+   distance here, and the automated pair becomes meaningful. They are also the suite's longest pair
+   at roughly ten minutes combined, so opting in is a deliberate choice about wall clock as well.
 
 ## Environment variables
 
@@ -96,6 +107,12 @@ scripts/run_flash_hardware_suite.sh --allow-flash-cycle
 # promotion checklist and bus_concurrency_scd30_write_vs_siblings.py's own docstring):
 scripts/run_flash_hardware_suite.sh --allow-persistence-writes
 scripts/run_flash_hardware_suite.sh --allow-persistence-writes --allow-scd30-extra-write
+
+# The two long ISL29125 light programs need a PHYSICAL rig, not a permission: the on-board WS2812
+# aimed at the sensor's window at a fixed distance with ambient light excluded (see "The NeoPixel
+# sweep rig" below). Without it they FAIL rather than mis-measure, and they cost ~10 minutes when
+# they do run - so they are opt-in, and skip by default:
+scripts/run_flash_hardware_suite.sh --allow-neopixel-sweep
 
 # Manual tests (interactive, prints instructions, waits for confirmation):
 scripts/run_manual_hardware_tests.sh --list          # see what's registered, run nothing
@@ -1049,7 +1066,7 @@ oversight — gating them would deselect the dozen-odd tests they exist to enabl
 **Read the deselected count in the verdict.** Because the gate deselects at collection time rather
 than skipping per test, a gated run is invisible to every check in
 `scripts/_require_clean_hardware_run.sh` — so that script now names the count in its own OK line
-(12 of the bench tier's 71 tests, 9 of the flash tier's 51, as of this writing - measured by real
+(13 of the bench tier's 73 tests, 9 of the flash tier's 51, as of this writing - measured by real
 `--collect-only` runs, not estimated). "Clean" there means
 "everything that ran, passed", not "everything ran".
 
