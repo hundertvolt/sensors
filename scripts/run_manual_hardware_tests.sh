@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs the manual real-hardware test tier (tests_hardware/manual/, HARDWARE_TEST_PLAN.md §7) -
+# Runs the manual real-hardware test tier (tests_hardware/manual/, SPECIFICATION.md Part E.6) -
 # structurally separate from the automated suites above, never invoked by pytest. Interactive: prints
 # instructions and waits for operator confirmation. Pass --list to see every registered test without
 # running any, or --only <name> to run just one.

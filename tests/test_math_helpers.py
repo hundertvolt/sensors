@@ -425,6 +425,15 @@ def test_rgb_to_xyz_pure_red_matches_the_sRGB_matrix_column() -> None:
     assert approx(z_val, 0.0193339)
 
 
+def test_rgb_to_xyz_coefficients_are_the_pinned_literals() -> None:
+    # Exact equality, not approx(): two published roundings of this matrix differ in the 6th decimal
+    # (Part C.11.2) and both would pass a 1e-6 tolerance. The constants are const()-folded and not
+    # readable as attributes, so reading them back through a pure primary is the only way to pin.
+    assert mh.rgb_to_xyz(1.0, 0.0, 0.0) == (0.4124564, 0.2126729, 0.0193339)
+    assert mh.rgb_to_xyz(0.0, 1.0, 0.0) == (0.3575761, 0.7151522, 0.1191920)
+    assert mh.rgb_to_xyz(0.0, 0.0, 1.0) == (0.1804375, 0.0721750, 0.9503041)
+
+
 def test_rgb_to_xyz_white_matches_the_d65_white_point() -> None:
     # A known, independently-published check value: sRGB white (1,1,1) -> the D65 reference white
     # point (~0.95047, 1.0, 1.08883) - real evidence the three coefficient rows weren't transposed

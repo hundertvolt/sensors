@@ -27,6 +27,21 @@ constraints.
   `test_bmp3xx_config_write_does_not_disturb_its_own_concurrent_reads_under_api_load`) against the
   real dev board, once a real-hardware go-ahead exists for a session - this entry stays until that
   confirmation lands.
+  **Half of that confirmation has since landed, and it split the two arms — read item 30 with this
+  entry, not separately** (noted 2026-09-18 by the pre-merge sweep; the two were written a day apart
+  and never cross-referenced). The bench session of 2026-09-17, on firmware carrying this WP5 fix,
+  found the **BMP3XX arm passing** and the **ISL29125 arm still failing** (four-arm isolation: PUT
+  alone 0/10, PUT + 1 reader 0/6, PUT + 2 readers **6/18**, plain GET + 2 readers 0/6). So the
+  deferral fixed what it was built to fix - the *shared* synchronous flash write is no longer the
+  discriminator, which is precisely what the two arms having opposite outcomes on the same flash path
+  proves - but a second, ISL29125-specific mechanism remains, and that residual is item 30, where the
+  next step (the `RangeAuto=false` bisection) already lives. **What is genuinely still owed here is
+  therefore only the BMP3XX arm's re-confirmation being treated as durable** rather than one bench
+  run; the ISL29125 arm is not "pending re-confirmation", it is a known open defect with its own item.
+
+  Note the bench re-run that produced these numbers needs `--allow-persistence-writes`: the write path
+  is now gated behind `@pytest.mark.persistence_write`, so a default bench run deselects both arms and
+  re-confirms neither.
 - **Mypy shall be configured to disallow `Any` types** (owner-specified). Mostly addressed, but
   not by the flag it was originally written about: all three passes now run full `--strict`
   (`disallow_any_generics` included), so no *implicit* `Any` from a bare `dict`/`list`/`tuple`
@@ -639,11 +654,65 @@ constraints.
     **Close this by** taking the curve, then adding the bench analogue of the twin's own budget
     check to `tests_hardware/error_log_helpers.py`.
 
+33. **Three bodies of finished work target `claude/automated-build-chain-nuzumw` and have never
+    landed on it — merging that branch into `main` orphans all three.** Recorded 2026-09-18 by the
+    pre-merge sweep; each was verified absent from the branch by file, not inferred from the PR
+    description. The decision (land, re-target, or abandon) is the owner's, and it has to be taken
+    *before* the merge, because the base branch is what these hang off.
+    - **PR #102** (`claude/real-hardware-boot-latency-measurements`, open, not draft, docs-only,
+      5 files) is the real-hardware execution of `REAL_HARDWARE_HANDOVER.md`'s own step 1: measured
+      boot latency across four flashed images (pre-WP baseline **7.74s** → WP1+WP2 **9.80s** →
+      WP1-WP8 **9.76s** → +the `CFGMGR_SYSTEM` fix **10.66s**, medians of 5, spread ±0.06s), 23
+      consecutive reboots with no `WDT_RESET`, and it retires that handover doc. **None of it is on
+      the branch** — `SPECIFICATION.md`'s boot-latency note still carries only the digital-twin
+      figures the PR replaces, and `REAL_HARDWARE_HANDOVER.md` is still in the tree asking for a
+      measurement that has already been taken. The PR also carries one finding worth keeping either
+      way: the `CFGMGR_SYSTEM` setup-order fix costs **+0.90s** of real boot latency, far more than
+      one extra FRAM-backed logger's `setup()` should, and is unexplained.
+    - **PR #84** (`claude/real-hardware-memory-validation-p3vkxr`, open, not draft, 63 files,
+      +2839/−404, 29 commits) makes GC policy a property of the build (`buildgen/gc_policy.py`,
+      `scripts/build_firmware.py --gc-policy`, `BUILD_GC_POLICY` read back off the frozen image) and
+      turns allocator pressure into an instrument (`tests_hardware/device_modules/memory_pressure.py`,
+      `tests_scripts/test_hardware_harness_transients.py`, SPECIFICATION.md Part I.6). It is the
+      real-hardware half of CLAUDE.md's own "every test must pass under `gc.threshold(-1)`" rule, and
+      it reports three full bench passes. **Not one of its files exists on this branch.** Its overlap
+      with the separate heap-fragmentation effort (PR #105) needs deciding rather than assuming.
+    - **`claude/pr103-real-hardware-fram-validation` (6 commits) is not on the remote at all** and
+      has no PR. `HANDOVER_HARNESS_AND_HEAP_FRAGMENTATION.md` §1.0 names its contents — an errno
+      11→35 correction, the ISL29125 conformance stand-in table and its guard test, the bench
+      `"Unchanged"` fix, a twin bus-hazard settle fix, and a `REAL_HARDWARE_FINDINGS_PR103.md` — and
+      records that **only the lighting-scenario fix was carried across**. Confirmed by search: those
+      commits are in no clone or ref reachable from GitHub, so unless that branch still exists on the
+      machine that made it (most likely the bench Pi4), the other five items are gone and would have
+      to be redone from the handover's description.
+
 
 ## Deferred / explicitly out-of-scope work
+- **CLAUDE.md's two-target clean-chroot pre-push gate is unsatisfied for every build-environment
+  change this branch made after 2026-09-12 — owner's call whether to waive it or run it before
+  `claude/automated-build-chain-nuzumw` merges.** CLAUDE.md requires a clean Ubuntu-noble (GCC 13)
+  *and* Debian-trixie (GCC 14) chroot run before pushing any change to `pyproject.toml`, `scripts/`,
+  `toolchain/versions.toml` "or anything else touching the dev-tooling/build-environment setup", plus
+  a **second, separate** verification (a full `uv run toolchain/setup_toolchain.py`, not the
+  lint/typecheck recipe) for any change to `toolchain/setup_toolchain.py`/`versions.toml` itself.
+  CLAUDE.md's own record says the legs were last satisfied **2026-09-12**. Since then this branch has
+  changed, against `main`: `scripts/test.sh` (+520 lines — parallelism autodetection, the backgrounded
+  `tests_scripts/` job and its timeout, the heap-size and port-base moves), `scripts/typecheck.sh`,
+  `scripts/lint.sh`, `scripts/build_firmware.py`, `scripts/_require_clean_hardware_run.sh`,
+  `scripts/run_digital_twin_ci.sh`, `scripts/run_unix_port_integration.sh`, `pyproject.toml` (+159),
+  and — the highest-risk class, because the lint/typecheck recipe never exercises the installer at
+  all — `toolchain/setup_toolchain.py` and the new `toolchain/micropython_overrides.py` (PR #90's
+  `MICROPY_ASYNC_KBD_INTR=0` Unix-port build override, SPECIFICATION.md Part B.14.1). None of it has
+  been through either gate. The sessions that made these changes had no chroot available: one attempt
+  damaged its own sandbox's `/dev` (a `rm -rf` over live bind mounts) and was abandoned; another hit
+  the same `deb.debian.org` egress block recorded below. The bench Pi4 (trixie/GCC 14.2) or the
+  owner's own box is where this gets satisfied. **Note the residual risk is not uniform**: a
+  `scripts/test.sh` change is host-tooling and low-risk, while the `setup_toolchain.py`/
+  `micropython_overrides.py` pair changes how the MicroPython Unix port is *built*, which is exactly
+  what a compiler-version-sensitive break would show up in.
 - **Session 7's `pyproject.toml` `max-args` ratchet (21 → 22, for `WebserverService.__init__`'s new
   `build_info=` parameter) only got the noble leg of CLAUDE.md's required two-target clean-chroot
-  pre-push verification.** The trixie leg — required by the same rule whenever `pyproject.toml`
+  pre-push verification** — the narrower, earlier instance of the entry above. The trixie leg — required by the same rule whenever `pyproject.toml`
   changes, specifically to catch a GCC>=14-only issue the noble/GCC-13 leg can't see (the precedent:
   the mbedtls `-Warray-bounds` false positive, SPECIFICATION.md Part B.7.1) — couldn't be run from
   that session's own sandbox: `debootstrap --variant=minbase trixie` needs `deb.debian.org`, which
