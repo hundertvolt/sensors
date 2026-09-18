@@ -3014,6 +3014,13 @@ position P2 needs on the AFTER arm.
   run, so the next in-suite run yields the number without having to make the test fail to see it.
 - **An aged-heap AFTER reading**, which is what P2 actually turns on (§7F.4), and which needs
   §7F.5's second defect addressed first.
+  **Amended (PR #105 session): it does not.** §7F.5's own run 1 — 10,128 B / 10% on the BEFORE arm,
+  taken right after the suite — is a valid aged reading obtained *with* the defect present. The
+  defect breaks the saturation **check**, not the reading, so the AFTER arm's aged figure costs one
+  invocation at the end of the next suite run. The check itself is replaced rather than repaired:
+  one reading after the flash suite and one after the bench suite, each following its own run, which
+  age the heap by different amounts and need nothing to survive in between — the same argument §7D.3
+  already made for the tripwire's 28,864 B appearing in both.
 - **The AFTER arm's threshold-first reading.** The BEFORE arm's was taken: with
   `gc.threshold(32768)` set *before* the run, `after_starter_list` is **75,536 B / 79%** against
   the reactive default's 66,144 B / 70% — so on the A-only image the firmware's own threshold gives

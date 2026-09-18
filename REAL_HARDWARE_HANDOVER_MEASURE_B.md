@@ -207,6 +207,17 @@ the aged heap this reading depends on.
 > aged, right after the suite) `after_starter_list` = **10,128 B / 10%**; run 2 a minute later
 > **66,144 B / 70%** with a fresh `baseline`. The disagreement is the reset. A real check must leave
 > `main.py` running between readings.
+>
+> **Amended 2026-09-18 (PR #105 session): the defect breaks the *check*, not the *reading*.** Run 1
+> above is a valid aged reading, taken exactly as §4.3 says, and it is the worst layout figure this
+> project has measured on silicon. So an aged AFTER reading — the one thing P2 turns on — costs **one
+> invocation at the end of the next suite run**, not a method redesign; nothing has to survive
+> between readings to obtain it. What is lost is only the evidence that "right after the suite" is a
+> sound stand-in for "in the suite". **Use this instead of the re-run**: take one reading after the
+> flash suite and one after the bench suite, each immediately following its own run. Those age the
+> heap by different amounts, so agreement is the saturation evidence the re-run was meant to give,
+> and neither reading needs the board to survive the other. It is the same argument §7D.3 already
+> made for the tripwire, which read 28,864 B from both suites.
 
 **Validity check, and it is not optional.** §7D.3 read a byte-identical 28,864 B from both the flash
 and the bench suite, which suggests the ageing effect saturates. Confirm that here rather than assume
