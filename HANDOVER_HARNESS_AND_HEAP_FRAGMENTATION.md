@@ -5,6 +5,14 @@ migrated and deleted): delete
 once its contents are migrated into `SPECIFICATION.md`/`CLAUDE.md`/`BACKLOG.md`, or confirmed not to
 apply.
 
+**Status, 2026-09-18 — only Part 2 is still live.** Part 1 is spent: every harness change it
+describes is committed on `claude/automated-build-chain-nuzumw`, its durable facts are in
+`tests_hardware/README.md` and `CLAUDE.md`'s wear rule, and its one remaining bench ask (§1.7 item
+2's banner assertion) is now `REAL_HARDWARE_TEST_QUEUE.md` row R14. Part 2 is superseded by PR
+#105's own `HEAP_FRAGMENTATION_MEASUREMENTS.md`/`HEAP_REMEDIATION_PLAN.md` — but those live on that
+PR's unmerged branch, so this file is still the only copy of that evidence *here*. **It is therefore
+deleted when PR #105 merges, not before**, and nothing in it needs reading until then.
+
 Written 2026-09-17 by a session that **had** the project owner's real-hardware go-ahead and used it.
 Part 1 describes uncommitted working-tree changes that a following session must decide what to do
 with. Part 2 is everything known about the heap-fragmentation defect, arranged so a session can

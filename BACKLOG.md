@@ -336,7 +336,7 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     boot**, because the bound logged itself rather than flagging its caller. It now persists nothing.
     Covered by three tests in `tests/test_asy_uart_comm.py` (the bound case takes the slot, the quiet
     case is unchanged, the boot drain persists nothing - the first proven non-vacuous by inverting the
-    choice and watching it fail); `UART_C_PORT_CHANGELOG.md` B30; SPECIFICATION.md C.7.1 restated.
+    choice and watching it fail); `UART_C_PORT_CHANGELOG.md` B32; SPECIFICATION.md C.7.1 restated.
 
 24. **`PUT /status {"ResetErrors": true}` costs a large, slowly-growing fraction of the product's
     own request ceiling. Now measured on real hardware; one question left.**

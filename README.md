@@ -686,7 +686,10 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   nothing — CLAUDE.md's real-hardware go-ahead gate still applies, and `tests_hardware/README.md`
   stays the technical reference for how to actually run any of it.
 - **[`HANDOVER_HARNESS_AND_HEAP_FRAGMENTATION.md`](HANDOVER_HARNESS_AND_HEAP_FRAGMENTATION.md)** —
-  the last remaining `*_HANDOVER*.md` file, owned by the session working PR #105. These are
+  the last remaining `*_HANDOVER*.md` file, owned by the session working PR #105. Only its Part 2
+  is still live — Part 1's harness changes all landed on this branch, and its one open bench ask is
+  `REAL_HARDWARE_TEST_QUEUE.md` row R14 — and that half is superseded by PR #105's own measurement/
+  plan docs, which are not on this branch yet, so the file goes when that PR merges. These are
   per-effort throwaways, each owned by the session or pull request named in its own first lines and
   deleted once its findings are migrated or confirmed not to apply; the two real-hardware ones that
   preceded it went that way on 2026-09-18, their still-open asks consolidated into
