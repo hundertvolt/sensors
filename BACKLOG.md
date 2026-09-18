@@ -405,6 +405,18 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     regression in another module's FRAM persistence passes CI today. **Where to fix**: extend Run 5c
     to sweep every FRAM-backed source rather than adding runs per module — much cheaper in CI
     wall-clock than a 5b/5c pair each.
+    **Queued for this session's own test audit (owner, 2026-09-18) — not to be started before it.**
+    **Scanned 2026-09-18, and the gap is much wider than this item's own first paragraph says.**
+    It is not an SCD30/BMP3XX gap: `dev`'s generated module makes **12** FRAM-wired constructions,
+    plus one implicit `CFGMGR_<name>` logger per `SensorReaderConfig`-based module (WP2's rule), and
+    **exactly two of them have any chip-healthy reboot-persistence proof at all** — SGP40 via Run
+    5b/5c (`_PERSISTED_ERROR_MODULES` is literally `("SGP40",)`) and WIFI via Run 8. Everything else
+    — SCD30, BMP3XX, ISL29125, SYSTEM, NOTIFY, NTP, WEBSERVER, DNSSRV, every `CFGMGR_*`, and `dev`'s
+    two `uart_link` instances — is covered only by the faulted-chip sweep, which cannot distinguish
+    "persistence works and the chip was dead" from "persistence never worked". NEOPIXEL is the one
+    real exemption (no persisted logging at all, Part C.7.1). The audit's own first task is
+    therefore to decide the sweep's shape, since a per-module 5b/5c pair × ~12 is not affordable in
+    CI wall-clock and a single generalized Run 5c sweep is.
 
 28. **`TEST_PARALLELISM` now autodetects host capability — the residual is a calibration question,
     not an open design decision.** The 4x-core-count default failed a healthy twin test on the bench
