@@ -57,6 +57,7 @@ fi
 if [ "$soak_tier" = 0 ]; then
     KNOWN_PERMANENT_SKIPS+=(
         "test_real_hardware_memory_does_not_leak_under_real_http_soak_traffic"
+        "test_real_hardware_survives_extended_max_speed_hammer_load_with_fram_diagnostics_preserved"
         "test_single_core_timing_headroom_holds_under_normal_full_task_load"
         "test_scd30_real_clock_stretch_never_exceeds_the_configured_timeout"
     )

@@ -20,9 +20,10 @@ sys.path.insert(0, "ext")  # run_generic_integration.py transitively imports a b
 sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comment for why
 
 import machine
+import network
 import run_generic_integration
 from machine import I2C, SPI, Pin
-from run_generic_integration import RunConfig, _collect_chips, main, parse_args
+from run_generic_integration import RunConfig, _apply_fault, _apply_hang, _collect_chips, main, parse_args
 
 
 def run_timed(coro: "Coroutine[Any, Any, T]", timeout_s: float = 5.0) -> "T":
@@ -251,6 +252,41 @@ def test_main_boots_arms_a_fault_and_shuts_down_cleanly() -> None:
     booted = run_generic_integration._booted_module
     assert booted is not None
     assert booted.watchdog.would_have_triggered_count == 0
+
+
+# ---------------------------------------------------------------------------
+# _apply_fault/_apply_hang - a name in the vocabulary is not a chip on THIS device
+# ---------------------------------------------------------------------------
+
+
+def test_a_fault_naming_a_driver_this_device_does_not_carry_is_refused_by_name() -> None:
+    # The generic entry point boots whatever a device's own TOML declares, so the miss is routine
+    # rather than exotic: bmp3xx is wozi/dev-only and isl29125 is dev-only, yet both parse on every
+    # device. The refusal has to name the device asked for AND what is actually wired.
+    try:
+        _apply_fault("bmp3xx", "readfrom_mem", 1, {"scd30": object(), "fram": object()}, network.WLAN(network.STA_IF))
+    except ValueError as e:
+        assert "bmp3xx" in str(e), e
+        assert "fram" in str(e) and "scd30" in str(e), "the message must list what this device did wire"
+    else:
+        raise AssertionError("an unwired driver must be refused, not KeyError from inside the plumbing")
+
+
+def test_a_hang_naming_a_driver_this_device_does_not_carry_is_refused_the_same_way() -> None:
+    try:
+        _apply_hang("bmp3xx", "readfrom_mem", 0.1, 1, {})
+    except ValueError as e:
+        assert "bmp3xx" in str(e), e
+    else:
+        raise AssertionError("--hang must refuse an unwired driver too, not only --fault")
+
+
+def test_a_wlan_fault_still_bypasses_the_wiring_check() -> None:
+    # wlan never appears in `chips`, so the guard must sit after that branch - in front of it, every
+    # --fault wlan:* run on every device would raise instead of arming the outcome.
+    wlan = network.WLAN(network.STA_IF)
+    _apply_fault("wlan", "connect", 1, {}, wlan)
+    assert "connect" in wlan.raise_on
 
 
 if __name__ == "__main__":

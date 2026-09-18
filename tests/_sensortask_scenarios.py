@@ -1227,7 +1227,11 @@ def _scenario_status_get(device: str) -> None:
     assert "Triggered" in body["notification"] and "PauseTime" in body["notification"]
     # One entry per real module + per real ConfigManager + this service's own "WEBSERVER" entry -
     # derived from _all_loggers()'s own reflected shape, never a hardcoded wozi/dev-specific count.
-    assert len(body["errcount"]) == len(_all_loggers(module))
+    # By NAME, not just by count: a count agrees just as happily with a logger published under
+    # the wrong name, and the name is what the website's own errcount rows are keyed by (Part
+    # H.6) - a published key nothing matches renders nothing at all.
+    assert {logger.name for logger in _all_loggers(module)} == set(body["errcount"].keys())
+    assert len(body["errcount"]) == len(_all_loggers(module)), "two loggers sharing a name would collapse into one row"
 
 
 @_register("webserver_system_get_reports_the_real_build_info")
