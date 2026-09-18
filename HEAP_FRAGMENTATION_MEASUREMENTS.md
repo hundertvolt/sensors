@@ -189,26 +189,37 @@ Three of these were recorded as baffling when measured, and one was recorded as 
 A model that only accounted for the headline (small churn is bad) would predict the opposite in all
 four cases.
 
-### 0A.6 What this model does not yet explain
+### 0A.6 What is still open — audited claim by claim
 
-Stated so "settled" is not overclaimed:
+Each load-bearing claim of §0A.3, classified as **[V]** verified against source, **[M]** directly
+measured, **[I]** inferred from a correlation, or **[U]** untested. Ranked by how much the model
+leans on it.
 
-- **The churn-axis onset is not derived.** Hole-count exhaustion fits the *survivor* axis
-  numerically: 870 holes fit a 2-block request, and the measured onset is between 795 and 1,148
-  survivor objects — 91% to 132% of the fitting holes. The *churn* axis onset is 8,000-20,000 B per
-  logger, which at ~96 B per object is only 83-208 objects, far below 870. The model's account is
-  that transients are repeatedly allocated and freed so their *live* peak is what holds holes, and
-  that a collection cycle's cumulative demand (843,232 x 9 = 7.6 MB against ~278 KB free, >= 29
-  collections measured) re-sorts placement many times over. **The live transient peak at the knee
-  has not been measured**, and until it is, the 870-hole figure is a candidate quantitative law for
-  one axis rather than a derived threshold for both.
-- **Whether hole *count* or hole *capacity* is the binding quantity.** The two coincide in every
-  configuration measured so far.
-- **Parallelism's contribution is suggestive, not established** (n=6, and the churn task adds its
-  own retained objects — §6A.10).
-- **Everything is [TWIN] except the symptom.** The mechanism has not been confirmed on the board;
-  block size is 16 B there against 32 B here, so hole counts and thresholds are expected to differ
-  in absolute terms while the structure should carry.
+**Closed since the first draft of this section.** Both ports run a **single fixed heap area with no
+growth**: `MICROPY_GC_SPLIT_HEAP` and `..._AUTO` default to 0 (`py/mpconfig.h:774-780`), the Unix
+port does not override them, and rp2 ties the former to `MICROPY_HW_ENABLE_PSRAM`
+(`ports/rp2/mpconfigport.h:100-101`), which a Pico W does not have. So every `#if
+MICROPY_GC_SPLIT_HEAP` branch is compiled out on both — including the **second** hint-advance site
+at `py/gc.c:952-956`. The `n_free == 1` advance at `:987` is the only one that exists on either
+port, and the heap cannot acquire a new area mid-run. The model's foundation transfers structurally;
+only its numbers are port-specific.
+
+| # | claim | status | what is missing, and what would close it |
+|---|---|---|---|
+| 1 | **A survivor is placed in the large run *because* no hole below it could fit at that instant** | **[I]** — the central claim, and correlational only | Evidence is an association (82% hole occupancy alongside high in_big) plus the exact complementarity `in_big + surv_in_dust = total`. The causal step has never been observed for a single object. Closing it: allocate a marked 2-block probe at controlled instants during the churn, capture the hole state immediately before, and record where the probe actually landed. The model predicts *lands in the large run **iff** no fitting hole exists below it*, with no exceptions — a per-object prediction, falsifiable by one counterexample |
+| 2 | **On the churn axis the binding quantity is the live transient peak** | **[U]** | 870 holes fit a 2-block request, and the survivor-axis onset (795-1,148 objects) sits at 91-132% of that — a clean numerical fit. But the churn-axis onset is 8,000-20,000 B per logger, only 83-208 objects, **an order of magnitude below 870**. The model's account is that transients are allocated and freed repeatedly so their *live* population is what holds holes; that peak has never been measured. Until it is, 870 is a candidate law for one axis, not a derived threshold for both |
+| 3 | **The stranded objects are other modules' permanent objects, displaced** | **[I]**, and partly contradicted by my own data | §2.2 reports the in_big size signature as a cluster of **64 B objects plus one 160 B and one 192 B, nearly all "other head"** — which reads like retained coroutine/generator residue, not module state. §6A.11's isolated consolidated pass retains **16-17 objects of its own**. So some of the stranded set may be the churn's *own* retained objects — **self-stranding rather than displacement**, a materially different story for part of the damage. Never resolved. Closing it: identify the in_big objects by owner, or compare the in_big population between a churn variant that retains nothing and one that does |
+| 4 | **The survivors' own size class is what makes them vulnerable** | **[U]** — and this is a sharp, untested prediction | Only the *transients'* size was ever varied (5 -> 9 blocks). The model says eligibility is symmetric: a survivor needing 9 blocks should find only 21% of holes available and so be **more** readily stranded, even by large transients. Varying survivor size is a clean discriminator between "size class of the pair" and "size class of the churn", and it has not been run |
+| 5 | **The dust is the construction phase's residue** | **[I]** | This is what the heap-size-irrelevance result rests on (§6.5): a bigger heap adds a bigger large run, not more dust. But the hole distribution has never been compared **after import** against **after construction**, so the dust's origin is assumed. Cheap to close with two map dumps |
+| 6 | **Hole *count* is the binding quantity, not hole *capacity*** | **[I]** | The two coincide in every configuration measured. They can be separated by holding total dust blocks fixed while changing the hole-size distribution |
+| 7 | **The damage is a coincidence count** | **[I]** | This is the model's explanation for the lottery, the heavy tail and the non-additivity, and it is qualitative. It has never been counted: the number of survivor births falling inside a held-hole window has not been recorded and checked against in_big. Doing so would make the model **predictive** rather than only explanatory |
+| 8 | **The 82%-predicted / 82%-measured agreement** | **[M]**, with a known sampling weakness | The strongest single piece of evidence, but occupancy was sampled at **one** matched point mid-churn — and §6A.11 later showed a single sample cannot characterise this quantity (21% at n=3,000 against 22% at n=8,783, on opposite sides of the outcome). The agreement should be re-established as a time-average, or at several matched points, before being leaned on further |
+| 9 | **Added parallelism worsens the tail** | **[I]**, suggestive | n=6 rather than 16; this campaign's base ran unusually clean (in_big 2-6 against 7-16 elsewhere); and the churn task retains its own objects, moving the survivor population 69 -> 82, so it is not a pure isolation (§6A.10) |
+| 10 | **The mechanism holds on the real board** | **[U]** | Everything but the symptom is [TWIN]. A GC block is **16 B** there against 32 B here, so the 52 B survivor is ~4 blocks rather than 2, and every hole-fit fraction and threshold shifts. The structure should carry (§0A.1 is port-independent now); **none of the quantitative thresholds have been re-derived for 16 B blocks**, and no real-hardware run has been made against this model |
+
+**Order these would settle the model fastest:** 1 (the causal step), 3 (what is actually stranded),
+2 (the churn-axis quantity), 4 (survivor size symmetry). Items 5-8 tighten it; 9 and 10 are scope
+rather than mechanism.
 
 ## 1. The instrument
 
