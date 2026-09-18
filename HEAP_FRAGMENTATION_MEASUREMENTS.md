@@ -10,7 +10,8 @@ defective instrument, or that a later and stronger measurement overturned, are n
 are quarantined in §9, named, with the reason, so nobody re-uses them. §1 records the instrument
 defects themselves, because each one is a trap a future session will otherwise re-enter.
 
-**Start at §0.** It is the ledger of every hypothesis this investigation tested — whose it was, what
+**Start at §0A** for the mechanism — what is happening and why it produces the observed effects,
+with every observation it accounts for. **§0** is the ledger of every hypothesis this investigation tested — whose it was, what
 tested it, and whether it is confirmed, suggestive, refuted, withdrawn or still untested. The rest
 of the document is the evidence those verdicts rest on. §6A.13's scorecard is the same thing
 narrowed to the factors that control the defect.
@@ -72,6 +73,142 @@ falsified theory gets re-proposed and so every conclusion carries its strength a
 | C9 | Cutting the 74 chip-select sessions to ~6 will clear the contiguity floor | **withdrawn** | ~12x against a required 40-100x; 70,000 B per logger measures in_big 14 / span 97%, inside the saturated regime (§6A.8) |
 | C10 | Loop yields are protective for layout | **confirmed, and confound-checked** | first measured at constant total bytes, which entangled it with small-object count; re-run at fixed small-object count it holds — in_big 21 -> 4 -> 2 as yields rise (§6A.4) |
 | C11 | Pre-allocating each module's permanent objects at construction is the remedy the evidence favours | **refuted** | the mechanism is real — the same objects placed pre-seam give in_big 0 and 100% kept where in-window they give 380 and 12% — but it holds only below the churn threshold. At the real 843,232 B dose pre-seam objects are unprotected (kept ~50%), and the real system's 76 survivors are already an order of magnitude below the survivor axis's own onset, so that axis is not the binding constraint (§6A.12) |
+
+## 0A. The settled mechanism
+
+What is happening and why it produces what was observed. Every claim here is either [SRC] verified
+against the pinned MicroPython v1.29.0 source, or [TWIN] measured in the sections below. §0A.6 lists
+what this model does *not* yet explain, which is the honest boundary of "settled".
+
+### 0A.1 What the allocator actually does
+
+Verified by reading `py/gc.c` at tag `v1.29.0`, not from memory:
+
+- **Allocation is lowest-fit over the whole heap.** `gc_alloc()` scans the allocation table from
+  `area->gc_last_free_atb_index` upward and takes the **first** run of `n_blocks` free blocks it
+  finds (`py/gc.c:938-948`). There is no size-class free list and no best-fit search.
+- **The scan hint is a lower bound, not a cursor.** It advances only when the request was for
+  exactly one block — `if (n_free == 1)` at `:987-991`, whose own comment says this is "to reduce
+  fragmentation ... which guarantees that there are no free blocks before this one". A multi-block
+  allocation leaves the hint where it was.
+- **The hint retreats on every free below it**: `if (block / BLOCKS_PER_ATB < area->gc_last_free_atb_index)`
+  at `:1110-1111`, and likewise in `gc_realloc` at `:1241`.
+- **A collection resets it to zero** for every area (`gc_collect_end()`, `:611-613`).
+- **A collection only happens when an allocation cannot be satisfied** — `gc_alloc()` falls through
+  to `gc_collect()` only after a full scan finds nothing (`:960-973`). Under `gc.threshold(-1)`,
+  MicroPython's real default, nothing else triggers one.
+- **The collector never moves an object.** Mark-and-sweep, no compaction.
+
+Two consequences carry the whole model. **Every allocation is served from the lowest free run that
+fits it**, so the heap is filled bottom-upward and a request reaches high memory only when nothing
+lower can hold it. And **placement is final** — an object placed high stays high for the process's
+life.
+
+### 0A.2 The heap the construction phase hands over
+
+Measured at the construction/setup seam [TWIN]:
+
+| | value |
+|---|---|
+| small free holes ("dust") | **1,058**, totalling 6,798 blocks (217,536 B) |
+| one large free run | ~56,000-60,000 B, high in the heap |
+| holes that fit a 2-block request | **870 (82%)**, holding 97% of the dust blocks |
+| holes that fit a 5-block request | 464 (43%) |
+| holes that fit a 9-block request | **226 (21%)** |
+| holes that fit a 28-block request | **12 (1%)** |
+
+The dust is the construction phase's own residue: it allocated and freed, and a non-compacting
+collector leaves the gaps behind. **The single large run is the only source of a large contiguous
+allocation, and the 80,000 B floor is a statement about it alone.**
+
+### 0A.3 The mechanism
+
+Two populations are allocated during the setup batch, and they are the **same size class**:
+
+- **transients** — the FRAM logger path's churn, dominated by 2-7 block objects (1-byte
+  `bytearray`s, coroutine frames, small tuples): 843,232 B per logger setup;
+- **survivors** — each module's own permanent objects: 72-76 in total, ~4,000 B, **mean 52 B, which
+  is 2 blocks**.
+
+Because allocation is lowest-fit, both draw from the same 870 dust holes. The chain:
+
+1. Transients are allocated into the lowest fitting dust holes and, until the next collection, they
+   are **live** — they hold those holes.
+2. A survivor born while enough of those holes are held cannot be satisfied anywhere below the large
+   run, so lowest-fit places it **inside the large run** — the only remaining place a 2-block
+   request can be met.
+3. Placement is final. When the transients are later collected the dust frees again, but the
+   survivor stays where it was put.
+4. Each such survivor splits the large run once more. **13-21 of them, totalling under 2 KB, reduce
+   it from ~132 KB to ~43 KB.**
+
+That is the whole defect: **a handful of 52-byte permanent objects are placed inside the one large
+free run because transient objects of their own size class were holding every lower hole at the
+instant they were born, and a non-compacting collector can never move them out again.**
+
+It is a *coincidence count* — how many survivor births happen to fall in a window where the dust is
+held — which is why the outcome is a heavy-tailed lottery rather than a function of the inputs.
+
+### 0A.4 Why each observation follows
+
+| observation | what the model says |
+|---|---|
+| Largest block collapses 5.6x while free falls only 16% [HW] | the survivors cost ~4 KB of *space* but sit *inside* the one run that matters. Consumption and layout are different quantities (§2.1) |
+| Survivors span 88-98% of the heap across 53-63 distinct runs | each is placed wherever the lowest fitting hole happened to be at its own birth instant, and those instants are spread through the batch (§2.2, §6A.7) |
+| Suppressing logger FRAM I/O leaves the big run byte-for-byte intact, with the *same* survivors | no transients means no held holes, so every survivor is satisfied low. Same objects, different placement — identity was never the variable (§2.3) |
+| One logger setup is as damaging as twenty | 843,232 B is already ~3x the free heap, so the holes are held from the first logger onward. Holding is binary; more churn cannot hold them "more" (§2.4) |
+| Running the same churn *after* the batch gives exactly 100% kept, in_big 0 | there are no survivor births left to coincide with. The only exact zero ever measured (§2.5) |
+| Allocation size is a hard threshold between 5 and 9 blocks | a >= 9-block transient fits only 21% of the dust holes and cannot hold the 2-block holes a survivor needs; a 2-3 block transient fits 82% and can (§6A.2, §6A.3) |
+| Measured dust occupancy 82% (2-block churn) vs 16% (9-block) | 82% is exactly the fraction of holes a 2-block request fits — predicted and measured agree (§6A.3) |
+| Small churn drives free to **64 bytes**; large churn collects at **220,864 B** still free | a small request keeps finding *some* hole, so no allocation fails and no collection is triggered until the heap is genuinely full. A large request fails on *contiguity* long before that, forcing an early collection that frees the dust again (§6A.6) |
+| Loop yields are **protective** at fixed small-object count | `asyncio.sleep(0)` allocates 896 B = 28 blocks, which fits 12 of 1,058 holes. It cannot hold a survivor's hole, and it fails-and-collects early like any large request (§6A.4) |
+| Survivor population and churn volume interact multiplicatively (0%, -18%, -88%) | both populations consume the same 870 holes. Survivors hold theirs *permanently*, so they raise the baseline occupancy the transients add to (§6A.11) |
+| No fixed churn budget exists | the churn needed to hold "enough" holes depends on how many the permanent population already holds. The knee is a property of the pair (§6A.11) |
+| Heap size is irrelevant — broken at 560k, 4M and 16M alike | the dust is the *construction phase's* residue and its absolute size is heap-independent. A bigger heap adds a bigger large run, not more dust, so the holding condition is unchanged (§6.5) |
+| Cutting 63% of churn (r2) is slightly *worse*; cutting 99.4% (r4) is clean | r2 removed the `async with` envelope — the 224 B frames and 896 B sleeps, i.e. the **large**, hole-safe part — leaving the small part that does the holding and removing its early-collection relief. r4 removed the small part too (§6.1) |
+| `synccrc` cut churn 11.9x, more than any other variant, and measured *worse* than base | it additionally removed the per-byte `sleep(0)`, i.e. 28-block protective allocations, while leaving small-object churn (§7) |
+| Pre-seam permanent objects are fully protected at 4,800 B churn and unprotected at 843,232 B | placed while the dust is free, they are never displaced; but they also consume dust holes permanently, so at a churn dose that holds the rest, the batch's own survivors are displaced exactly as before (§6A.12) |
+| Nothing composes — five combinations worse than their better half | the damage is a coincidence count between two independent timelines. Two changes that each lower its mean also re-phase it, and phase is not additive (§6.6) |
+| Two perturbation families disagree in *direction* on the same variant | same reason: a placement offset re-phases the coincidences (§6A.10) |
+| Added parallelism worsens the tail (worst in_big 6 -> 20) but barely the median | more concurrent transient activity means more instants at which holes are held, so more births can coincide — a tail effect, as a coincidence count should be (§6A.10) |
+
+### 0A.5 The four results that only this model explains
+
+Three of these were recorded as baffling when measured, and one was recorded as a contradiction:
+
+1. **Reducing churn made things worse** (r2, `synccrc`). Explained: those variants preferentially
+   removed *large* allocations, which are both hole-safe and collection-forcing. Churn is not one
+   quantity; it is two with opposite signs.
+2. **Yields are protective.** Explained: a yield is a 28-block allocation. The idiom that looks like
+   pure overhead is, for layout, on the right side.
+3. **No churn budget.** Explained: the budget is set by the *pair*, and the survivor population
+   moves it.
+4. **Hoisting permanent objects earlier does not help at the real dose.** Explained: it protects the
+   hoisted objects but consumes the dust the un-hoisted ones need.
+
+A model that only accounted for the headline (small churn is bad) would predict the opposite in all
+four cases.
+
+### 0A.6 What this model does not yet explain
+
+Stated so "settled" is not overclaimed:
+
+- **The churn-axis onset is not derived.** Hole-count exhaustion fits the *survivor* axis
+  numerically: 870 holes fit a 2-block request, and the measured onset is between 795 and 1,148
+  survivor objects — 91% to 132% of the fitting holes. The *churn* axis onset is 8,000-20,000 B per
+  logger, which at ~96 B per object is only 83-208 objects, far below 870. The model's account is
+  that transients are repeatedly allocated and freed so their *live* peak is what holds holes, and
+  that a collection cycle's cumulative demand (843,232 x 9 = 7.6 MB against ~278 KB free, >= 29
+  collections measured) re-sorts placement many times over. **The live transient peak at the knee
+  has not been measured**, and until it is, the 870-hole figure is a candidate quantitative law for
+  one axis rather than a derived threshold for both.
+- **Whether hole *count* or hole *capacity* is the binding quantity.** The two coincide in every
+  configuration measured so far.
+- **Parallelism's contribution is suggestive, not established** (n=6, and the churn task adds its
+  own retained objects — §6A.10).
+- **Everything is [TWIN] except the symptom.** The mechanism has not been confirmed on the board;
+  block size is 16 B there against 32 B here, so hole counts and thresholds are expected to differ
+  in absolute terms while the structure should carry.
 
 ## 1. The instrument
 
@@ -219,11 +356,14 @@ Nearly the same objects, same count, same mean size, same type mix — and the b
 and without FRAM. A couple of kilobytes of data, in a dozen-odd objects, destroys ~90 KB of
 contiguous space.
 
-Mechanism [SRC]: MicroPython's GC is mark-and-sweep, **non-compacting**, first-fit from a scan hint
-that `gc_collect_end()` resets to 0. With no churn, a few dozen small allocations are satisfied out
-of the ~950 small dust holes low in the heap and the allocator never reaches the big run. With ~1,000
-chip-select sessions sweeping the allocator across the heap, an object born at any moment lands
-wherever the sweep has reached.
+Mechanism: **see §0A for the verified account** — this paragraph's original wording described the
+allocator as a *sweep* whose position at an object's birth decided its placement, which reading
+`py/gc.c` does not support. Allocation is **lowest-fit**: the hint advances only on single-block
+requests and retreats on every free below it, so each allocation takes the lowest run that fits it.
+The correct statement of this result is therefore: with no churn, the batch's few dozen small
+permanent allocations are all satisfied out of the ~1,058 dust holes low in the heap and never reach
+the big run; with the churn running, transients of the same size class are *holding* those holes at
+the moment a survivor is born, and lowest-fit then has nowhere below the big run to put it.
 
 ### 2.4 The minimum sufficient dose is one
 
