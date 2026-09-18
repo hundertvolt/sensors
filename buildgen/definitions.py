@@ -19,8 +19,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # SCHEMA_VERSION is this file's own wire-format shape version (does js/definitions.js understand
 # what it was just served); WEBSITE_VERSION (buildgen.version) is this project's own product/build
-# version, a genuinely different concept - never conflate the two (CLAUDE.md/BUILD_CHAIN_PLAN.md
-# Session 7).
+# version, a genuinely different concept - never conflate the two (CLAUDE.md/SPECIFICATION.md
+# Part L.7).
 SCHEMA_VERSION = "1.0.0"
 
 # Fixed, generator-owned REST-endpoint skeleton (H.4: "Nav grouping: Mirrors the 6 REST endpoints

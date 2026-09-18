@@ -104,7 +104,7 @@ def test_every_real_device_has_all_six_sections(repo_root: Path, src_dir: Path, 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_every_real_device_stamps_the_website_version(repo_root: Path, src_dir: Path, device: str) -> None:
-    # BUILD_CHAIN_PLAN.md Session 7: buildgen.version.WEBSITE_VERSION is a build-provenance-only
+    # SPECIFICATION.md Part L.7: buildgen.version.WEBSITE_VERSION is a build-provenance-only
     # stamp, independent of schemaVersion (the wire-format shape version) - a genuinely different
     # concept, so the two must never collide on the same key.
     generated = _generate(repo_root, src_dir, device)

@@ -234,8 +234,8 @@ def test_every_get_endpoint_is_reachable_over_real_http_and_shaped_correctly() -
             res = await _http_client.fetch("127.0.0.1", port, "GET", "/system")
             assert res.status_code == 200
             # DebugLevel is sourced from sysfunct (flat) - GMTOffset/DSTOffset from ntp (nested),
-            # same fix as /networking above. "build" is the one extra key (BUILD_CHAIN_PLAN.md
-            # Session 7's buildgen-supplied firmware/website version + build date, verbatim from
+            # same fix as /networking above. "build" is the one extra key (SPECIFICATION.md
+            # Part L.7's buildgen-supplied firmware/website version + build date, verbatim from
             # src/asy_webserver_service.py's build_info= kwarg) - checked for shape only, since the
             # exact values (a real timestamp, this build's own version strings) aren't something this
             # MicroPython-run test can cross-check against buildgen itself (host-CPython-only tooling).
@@ -431,7 +431,7 @@ def test_sensors_put_round_trips_a_real_scd30_field_over_real_http() -> None:
 
 
 # test_a_real_bus_fault_degrades_to_a_clean_response_not_a_crash - moved into the "Construction
-# across every real device" section near the end of this file (BUILD_CHAIN_PLAN.md's Session 6.2),
+# across every real device" section near the end of this file (SPECIFICATION.md Part L.4),
 # parametrized across all 6 real devices: SGP40 is fixed-address (0x59) on every one, but which BUS
 # it's actually wired to varies (wozi/dev differ from each other already), so the parametrized
 # version resolves the bus from the device's own wiring plan instead of assuming i2c1.

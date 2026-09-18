@@ -1,5 +1,5 @@
 """End-to-end: buildgen.generate.generate_device() against all 6 real devices/*.toml plus the
-mandatory synthetic "novel combination" fixture (BUILD_CHAIN_PLAN.md acceptance criteria #2) -
+mandatory synthetic "novel combination" fixture (SPECIFICATION.md Part L.1's acceptance criterion #2) -
 the full validate -> sort -> generate pipeline from one TOML file, no code changes elsewhere."""
 
 # Correctness-proof scope: generated output is proven syntactically valid Python matching the
@@ -49,7 +49,7 @@ def test_real_device_constructs_watchdog_exactly_once(repo_root: Path, src_dir: 
     # The CPython-side half of tests/test_reset_call_site_invariant.py's own
     # test_wdt_constructed_only_in_sensortask_entry_point_files(): that test scans committed
     # src/*.py files and skips anything named sensortask_*.py, which is now vacuous (no
-    # sensortask_<device>.py is ever committed to src/ any more - BUILD_CHAIN_PLAN.md's Session 6
+    # sensortask_<device>.py is ever committed to src/ any more - SPECIFICATION.md Part L.4
     # finish criterion) - so the generated module's own single WDT() construction site needs its
     # own, separate proof instead of relying on that skip ever actually exercising it again.
     result = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir)
@@ -80,7 +80,7 @@ def test_real_device_boot_entry_imports_the_right_module(repo_root: Path, src_di
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_real_device_embeds_and_reports_version_and_build_date_exactly_once(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
-    # BUILD_CHAIN_PLAN.md Session 7 (as corrected - GET /system's "build" sub-entry, not GET
+    # SPECIFICATION.md Part L.7 (as corrected - GET /system's "build" sub-entry, not GET
     # /status): buildgen.version.FIRMWARE_VERSION/WEBSITE_VERSION are the one source of truth for
     # the two version constants; the build date is a fresh, explicitly-injected value (never
     # computed on-device) so this test can assert an exact match instead of a moving "now".
@@ -106,8 +106,8 @@ def test_real_device_defaults_to_a_real_current_build_date_when_none_is_given(re
 
 
 def test_novel_combo_fixture_generates_successfully(fixtures_dir: Path, src_dir: Path, ext_dir: Path) -> None:
-    # The mandatory synthetic "novel combination" fixture (BUILD_CHAIN_PLAN.md's acceptance
-    # criteria #2): existing drivers mixed in a layout none of the 6 real devices use (two SCD30s,
+    # The mandatory synthetic "novel combination" fixture (SPECIFICATION.md Part L.1's
+    # acceptance criterion #2): existing drivers mixed in a layout none of the 6 real devices use (two SCD30s,
     # SGP40 independently compensated - temperature from the second SCD30, humidity from the first
     # (§2.9) - BMP3xx at the alternate address, a partial notification signal set) - proving the
     # generator's generality, not just the 6 hand-verified real files.

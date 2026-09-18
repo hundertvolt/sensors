@@ -55,7 +55,7 @@ information):
   or — its last remaining file, `sensortask-wozi.py` — confirmed fully superseded by
   `src/sensortask_wozi.py` (that file itself has since been retired too — every device's own
   `sensortask_<device>.py` is now `buildgen`-generated at build time, never committed to `src/` —
-  BUILD_CHAIN_PLAN.md's Session 6 finish criterion; the construction/wiring facts described below
+  SPECIFICATION.md Part L.2; the construction/wiring facts described below
   live in `devices/*.toml` now) + `src/asy_webserver_service.py` (construction/wiring and REST routing
   both independently rebuilt there, more generically, with real gaps in the old file fixed along
   the way — e.g. `conn.setup()`/`ntp.setup()` were never called anywhere in the old flow) and
@@ -446,7 +446,7 @@ information):
   when actionlint learns it. **Adding a SHA-pinned third-party action means bumping that SHA by
   hand** — no Dependabot is configured.
 - **Scope is eight directories**: `src/`, `tests/`, `digital_twin/`, `buildgen/` (the
-  device-TOML-to-firmware-module generator, BUILD_CHAIN_PLAN.md's Session 3), `toolchain/`,
+  device-TOML-to-firmware-module generator, SPECIFICATION.md Part L.4), `toolchain/`,
   `scripts/`, `tests_scripts/` and `tests_hardware/` — `tests_hardware/` in full for ruff; only its
   `device_scripts/` subtree (real MicroPython code pushed to the board, checked alongside
   `src/`/`tests/` in the main mypy pass) for mypy, since the rest of `tests_hardware/`
@@ -567,7 +567,7 @@ information):
   parked in the shared, process-wide asyncio task queue after the test's own coroutine returns —
   `Task.cancel()` on the one task a test explicitly awaits (`main_task` in
   `digital_twin/run_generic_integration.py` today; `run_wozi_integration.py` at the time this was
-  found, since retired in favor of it — BUILD_CHAIN_PLAN.md's Session 6.2) never cascades to those
+  found, since retired in favor of it — SPECIFICATION.md Part L.4) never cascades to those
   siblings, since MicroPython's
   asyncio has no parent/child task tracking. `tests/test_*.py` files run one Unix-port process per
   file (see `scripts/test.sh`'s own comment) sharing one process-wide task queue across every test

@@ -1,6 +1,6 @@
 """Shared "specially formatted comment near a schema" scanning infrastructure: the mechanism behind
 `# @requires`/`# @wiring`/`# @value-wiring`/`# @limits`/`# @web`/`# @web-group`, and the standing
-rule that a near-miss attempt at one must fail the build loud (BUILD_CHAIN_PLAN.md's quality bar)."""
+rule that a near-miss attempt at one must fail the build loud (SPECIFICATION.md Part L.5)."""
 
 import re
 import tokenize
@@ -253,7 +253,7 @@ def check_for_near_miss_tags(tokens: "list[CommentToken]", path: Path, device: s
     each grammar module passes its own, so a valid tag of another family isn't misreported."""
     # The failure mode this guards against is real: a driver signature change once silently broke
     # two tests_hardware/device_scripts/ call sites for a full day because nothing validated the
-    # comment that should have caught it - see BUILD_CHAIN_PLAN.md's quality bar for the incident.
+    # comment that should have caught it - see SPECIFICATION.md Part L.5 for the incident.
     for tok in tokens:
         if (tok.lineno, tok.col) in exact_matches:
             continue

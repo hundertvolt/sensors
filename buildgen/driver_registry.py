@@ -1,6 +1,6 @@
 """Resolves a device TOML's `driver = "<name>"` to its real `src/` class via the existing
 `asy_<name>_driver.py` -> `<Name>_Reader` convention (SPECIFICATION.md Part C.2/C.5), AST-parsed -
-BUILD_CHAIN_PLAN.md acceptance criteria #1. An explicit table covers the named exceptions."""
+SPECIFICATION.md Part L.1's acceptance criterion #1. An explicit table covers the named exceptions."""
 
 import ast
 from dataclasses import dataclass
@@ -10,8 +10,8 @@ from buildgen.errors import BuildError
 
 _READER_BASES = {"SensorReader", "SensorReaderConfig"}
 
-# Drivers that genuinely can't follow asy_<name>_driver.py/*_Reader (BUILD_CHAIN_PLAN.md's
-# "Acceptance criteria" #1's own named exception): none of the four defines a SensorReader/
+# Drivers that genuinely can't follow asy_<name>_driver.py/*_Reader (SPECIFICATION.md
+# Part L.1's acceptance criterion #1 and its own named exception): none of the four defines a SensorReader/
 # SensorReaderConfig subclass at all, and fram/notification/uart_link's own files aren't even named
 # "_driver.py" to begin with (asy_uart_link_driver.py IS "_driver.py"-named, but still needs the
 # override - the naming convention alone was never sufficient, only necessary).

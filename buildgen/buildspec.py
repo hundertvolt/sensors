@@ -10,7 +10,7 @@ datasheet-checked by Session 2, not re-derived here)."""
 
 # TOML fields every instance of this driver must declare (beyond "driver"/"name_ext", which
 # model.py itself already requires/defaults) - a missing one is a build-time error
-# (BUILD_CHAIN_PLAN.md's "missing required pin/bus field").
+# (SPECIFICATION.md Part L.5's "missing required pin/bus field").
 REQUIRED_TOML_FIELDS: dict[str, tuple[str, ...]] = {
     "scd30": ("bus", "irq_pin"),
     "sgp40": ("bus",),
@@ -41,7 +41,7 @@ OPTIONAL_TOML_FIELDS: dict[str, tuple[str, ...]] = {
 
 # Every field an instance of this driver may legitimately declare (beyond "driver"/"name_ext") -
 # a field outside this set is a copy-paste/typo error, not a silently-dropped no-op
-# (BUILD_CHAIN_PLAN.md's "a copy-paste duplicate... plain wrong/missing/copy-pasted fields").
+# (SPECIFICATION.md Part L.5's "a copy-paste duplicate... plain wrong/missing/copy-pasted fields").
 ALLOWED_INSTANCE_FIELDS: dict[str, frozenset[str]] = {
     driver: frozenset(REQUIRED_TOML_FIELDS[driver]) | frozenset(OPTIONAL_TOML_FIELDS[driver]) for driver in REQUIRED_TOML_FIELDS
 }
@@ -70,7 +70,7 @@ ADDRESS_CAPABLE_DRIVERS = frozenset({"bmp3xx"})
 
 # Bus-attached drivers with no address field at all - the chip's own I2C address is fixed in
 # hardware (SCD30/SGP40's own datasheets), so two such instances sharing one bus can never be told
-# apart (BUILD_CHAIN_PLAN.md's "two hardwired-address instances of the same chip type sharing a
+# apart (SPECIFICATION.md Part L.5's "two hardwired-address instances of the same chip type sharing a
 # bus with no way to distinguish them at all" case). "uart_link" lands here too, for a related but
 # distinct reason: a UART bus is a point-to-point peripheral, not a multi-drop one, so it never has
 # an address concept at all - the same "no way to tell two instances on one bus apart" collision

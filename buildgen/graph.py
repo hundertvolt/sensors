@@ -1,4 +1,4 @@
-"""Topological construction ordering (BUILD_CHAIN_PLAN.md's "ordering hazard #1", SPECIFICATION.md
+"""Topological construction ordering (SPECIFICATION.md Part L.2's ordering hazard #1, SPECIFICATION.md
 Part C.14.2): a consumer references its producer's already-built object, so the producer is
 constructed first. Rejects a cycle as a build-time error."""
 

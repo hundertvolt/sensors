@@ -1,6 +1,6 @@
 """AST-discovers a driver module's `_Default<ToMLFieldInPascalCase>` classes - the wiring-defaults
 mechanism's schema-by-construction, where the class's own `__init__` signature IS the schema for a
-`{default = true, ...}` TOML sub-table (BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md §2)."""
+`{default = true, ...}` TOML sub-table (SPECIFICATION.md Part L.6.2)."""
 
 import ast
 from dataclasses import dataclass

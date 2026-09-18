@@ -8,7 +8,7 @@ Unix-port process instead of one process building all 6 devices' object graphs 5
 (see BACKLOG.md's resolved heap-footprint entry and CLAUDE.md's step-session-workflow history for
 why this split exists - it changes nothing about which scenarios run or what they assert).
 
-Not a reversion to the pre-BUILD_CHAIN_PLAN.md-Session-6.2 tests/test_sensortask_wozi.py/
+Not a reversion to the pre-SPECIFICATION.md Part L-Session-6.2 tests/test_sensortask_wozi.py/
 test_sensortask_dev.py split that file's own history records collapsing: that collapse was about
 eliminating device-specific test-body DUPLICATION (each per-device file used to carry its own copy
 of every scenario, with hardcoded expectations) in favor of one generic, device-derived scenario
@@ -224,7 +224,7 @@ def _all_loggers(module: "Any") -> "list[Any]":
     # scd30 before sgp40 before bmp3xx: matches buildgen's own construction/collection order
     # (topological - sgp40 depends on scd30 as its temperature/humidity source, so scd30 is built
     # and collected first) - every real device's own devices/*.toml lists its instances in this
-    # same relative order (BUILD_CHAIN_PLAN.md's Session 2), so this fixed shape (rather than a
+    # same relative order (SPECIFICATION.md Part L.3), so this fixed shape (rather than a
     # generic reflective walk of buildgen's own construction order) stays correct for all 6. This
     # test pairs setters[i] with loggers[i] by index elsewhere in this file, so this order is
     # load-bearing.
@@ -268,7 +268,7 @@ def _expected_fram_chunk_calls(module: "Any") -> "list[str]":
     # as its temperature_source/humidity_source, so the producer must exist first). Derived from the
     # module's own reflected instance set (_present_optional_instances()), not a hardcoded
     # per-device literal - every real device's own devices/*.toml lists its instances in this same
-    # relative order (BUILD_CHAIN_PLAN.md's Session 2), so this fixed shape stays correct for all 6.
+    # relative order (SPECIFICATION.md Part L.3), so this fixed shape stays correct for all 6.
     calls = ["chunk", "chunk", "chunk"]  # AsyConnTime, its own CFGMGR_WIFI, its own DNSServer
     calls += ["chunk", "chunk"]  # AsyNtpClient, its own CFGMGR_NTP
     calls += ["chunk", "chunk"]  # SystemService, its own CFGMGR_SYSTEM
@@ -1232,7 +1232,7 @@ def _scenario_status_get(device: str) -> None:
 
 @_register("webserver_system_get_reports_the_real_build_info")
 def _scenario_system_get_build_info(device: str) -> None:
-    # BUILD_CHAIN_PLAN.md Session 7: every generated device embeds buildgen.version.FIRMWARE_VERSION/
+    # SPECIFICATION.md Part L.7: every generated device embeds buildgen.version.FIRMWARE_VERSION/
     # WEBSITE_VERSION plus a real build timestamp and reports them live under GET /system's "build"
     # sub-entry, alongside the ordinary flat DebugLevel/GMTOffset/DSTOffset settings fields (no
     # existing scenario in this file does a plain GET /system, so this is this module's only proof

@@ -1,4 +1,4 @@
-"""Shape/collision smoke tests for devices/*.toml against BUILD_CHAIN_PLAN.md's schema (optional
+"""Shape/collision smoke tests for devices/*.toml against SPECIFICATION.md Part L.3's schema (optional
 modules only in [[instance]]; wifi/ntp/system are mandatory infra, tuned via [device] instead).
 Hand-implements the collision checks until Session 3's generator/validator exists."""
 
@@ -106,7 +106,7 @@ def check_singleton_drivers_never_declare_name_ext(doc: _TomlDoc, label: str) ->
             assert "name_ext" not in inst, f"{label}: singleton driver {inst['driver']!r} declares name_ext - singleton service kinds never do"
 
 
-# sgp40's per-value measurement wiring (BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md §2.9):
+# sgp40's per-value measurement wiring (SPECIFICATION.md Part L.6.3):
 # temperature_source/humidity_source are independent {source, field} references, generalized from
 # the old single whole-object comp_source field - every real device today sources both off scd30.
 _SGP40_VALUE_WIRING = {"temperature_source": "Temp", "humidity_source": "Hum"}

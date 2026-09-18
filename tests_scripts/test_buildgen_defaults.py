@@ -1,5 +1,5 @@
 """Tests for buildgen.defaults: AST-discovering a driver's `_Default<Field>` classes (§2 of
-BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md) - the wiring-defaults mechanism's own schema-by-
+SPECIFICATION.md Part L.6) - the wiring-defaults mechanism's own schema-by-
 construction. Covers the three real default providers already in src/ plus every malformed shape."""
 
 from pathlib import Path

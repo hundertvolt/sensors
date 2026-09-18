@@ -68,7 +68,7 @@ WIFI = namedtuple("WIFI", ("Mode", "Connected", "IP", "TS"))
 _FIELDS = const(("Mode", "Connected", "IP", "TS"))  # kept in sync with WIFI's own fields above
 
 # This service's one optional live cross-instance dependency (SPECIFICATION.md Part C.14): the
-# status LED it drives, resolved by buildgen/ (Session 3 of BUILD_CHAIN_PLAN.md, from
+# status LED it drives, resolved by buildgen/ (SPECIFICATION.md Part L.4, from
 # [device.wiring].led_target - AsyConnTime is mandatory infra, never an [[instance]] entry itself)
 # to an already-constructed NeopixelDriver instance. "setter" mode: set_ext_led() is a
 # post-construction call (see set_ext_led() below), not a constructor kwarg - the generator emits

@@ -95,7 +95,7 @@ def test_manifest_template_includes_the_default_board_manifest_and_freezes_stage
 @pytest.mark.parametrize("device", ["wozi", "dev"])
 def test_build_stage_dir_stages_exactly_the_computed_frozen_modules(build_firmware: ModuleType, repo_root: Path, tmp_path: Path, device: str) -> None:
     # No longer "every src/*.py file unconditionally" - only this device's own buildgen-computed
-    # dependency closure (BUILD_CHAIN_PLAN.md's "Frozen-module selection is dependency-driven",
+    # dependency closure (SPECIFICATION.md Part L.2's "frozen-module selection is dependency-driven",
     # wired into this script by this session) gets staged, a real, smaller-firmware behavior change
     # from this script's own pre-buildgen shape.
     from buildgen.frozen_modules import compute_frozen_modules
@@ -140,7 +140,7 @@ def test_build_stage_dir_writes_the_generated_entry_module_and_boot_entry(build_
 
     # Pins generate_device()'s own default build_date so build_stage_dir()'s internal call and this
     # test's separate reference call below embed the identical timestamp, rather than racing a real
-    # wall clock against each other (BUILD_CHAIN_PLAN.md Session 7).
+    # wall clock against each other (SPECIFICATION.md Part L.7).
     monkeypatch.setattr("buildgen.generate.current_build_date", lambda: "2026-09-12T10:00:00Z")
 
     build_firmware.build_stage_dir(tmp_path, device)

@@ -1,6 +1,6 @@
 """Parses a driver module's `# @wiring <toml_field> <ProducerClass> <target> <required|optional>
 <kwarg|attr|setter>` comment tags (SPECIFICATION.md Part C.14.2 documents the shape and all three
-modes) - a comment, never a real Python value, per BUILD_CHAIN_PLAN.md's quality bar."""
+modes) - a comment, never a real Python value, per SPECIFICATION.md Part L.5."""
 
 import re
 from dataclasses import dataclass

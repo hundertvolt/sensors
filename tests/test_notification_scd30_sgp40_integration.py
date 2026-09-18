@@ -143,7 +143,7 @@ _CompReading = namedtuple("_CompReading", ("Temp", "Hum"))
 
 class _FakeCompSource:
     # Structural stand-in for temperature_source/humidity_source (SPECIFICATION.md Part C.14,
-    # BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md §2.9) - a fixed value independent of this test's
+    # SPECIFICATION.md Part L.6.3) - a fixed value independent of this test's
     # own real scd_reader, matching the removed _comp_data() stub's own fixed [25.0, 50.0] return
     # exactly (scd_reader's real reading is deliberately not used here - _settle_and_spike() below
     # needs 200 compensated SGP40 cycles well before this test ever drives scd_reader for its own

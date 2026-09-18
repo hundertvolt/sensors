@@ -1,4 +1,4 @@
-"""The full validation pass (BUILD_CHAIN_PLAN.md's quality bar): structural shape, every
+"""The full validation pass (SPECIFICATION.md Part L.5): structural shape, every
 global-resource-collision class, and wiring-reference resolution. `build_model()` either raises a
 `BuildError` naming device/instance/field, or returns a fully-resolved, safe-to-generate model."""
 
@@ -66,7 +66,7 @@ _ALLOWED_DEVICE_FIELDS = frozenset(_REQUIRED_DEVICE_FIELDS) | {"wiring"}
 _WPA2_MIN_PASSWORD_LEN = 8  # WPA2-PSK's own minimum (IEEE 802.11i)
 
 # [device.wiring] fields and which mandatory-infra consumer(s)' own _WIRING they resolve against -
-# both fixed and known ahead of time (BUILD_CHAIN_PLAN.md's schema section: exactly these two
+# both fixed and known ahead of time (SPECIFICATION.md Part L.3: exactly these two
 # fields exist today), unlike [instance.wiring]'s fully generic per-driver resolution below.
 # fram_target has more than one consumer (CLAUDE.md's implicit-FRAM-wiring rule: every mandatory-
 # infra module inherits the device's FRAM chip when one is wired) - each entry's own "# @wiring
@@ -105,7 +105,7 @@ def _check_device_table(model: DeviceModel) -> None:
     # Flagged in this session's PR rather than silently left implicit - fixing it needs either a
     # `src/` constructor-time override mechanism (out of this session's narrow-additive-only scope)
     # or a build-artifact-tree config-seeding step, not a buildgen/-only fix. STILL NOT FIXED as of
-    # BUILD_CHAIN_PLAN.md's Session 6 (build chain + CI matrix + digital-twin test generalization) -
+    # SPECIFICATION.md Part L.4 -
     # that session's own explicit finish criterion was eliminating the hand-written
     # src/sensortask_wozi.py/sensortask_dev.py entry points and generalizing the digital-twin test
     # suite, not closing this gap; `src/asy_wifi_service.py`'s `AsyConnTime.__init__` would need a
@@ -261,8 +261,8 @@ def _check_required_fields(model: DeviceModel, buses: "dict[str, TomlDoc]") -> N
             if f in spec.fields and not (isinstance(spec.fields[f], int) and not isinstance(spec.fields[f], bool)):
                 raise BuildError(model.device, f"{spec.label}.{f} must be an int, got {spec.fields[f]!r}", instance=spec.label, field=f)
         # Catch-all: any field beyond "driver"/"name_ext" (structural, handled by model.py) and
-        # this driver's own required+optional set is a copy-paste/typo error (BUILD_CHAIN_PLAN.md's
-        # "plain wrong/missing/copy-pasted fields") - e.g. an "irq_pin" left over from copying a
+        # this driver's own required+optional set is a copy-paste/typo error (SPECIFICATION.md Part L.5's
+        # "plain wrong/missing/copy-pasted fields" error class) - e.g. an "irq_pin" left over from copying a
         # scd30 block to make a new sgp40 instance, silently ignored by codegen otherwise since it
         # never appears in any driver's own _build_call() branch.
         unknown = set(spec.fields) - {"driver", "name_ext"} - ALLOWED_INSTANCE_FIELDS.get(spec.driver, frozenset())

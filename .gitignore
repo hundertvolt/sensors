@@ -24,7 +24,7 @@ python/build/
 firmware.uf2
 *.uf2
 
-# buildgen-generated per-device build tree (BUILD_CHAIN_PLAN.md's "generation is build-time only,
+# buildgen-generated per-device build tree (SPECIFICATION.md Part L's "generation is build-time only,
 # nothing committed" design decision) - scripts/build_firmware.py's own default --output directory,
 # and the natural home for any future build/<device>/{py,html,frozen,firmware} staging tree. Fully
 # regenerated on every build; `rm -rf build/` is the complete cleanup.

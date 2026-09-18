@@ -425,7 +425,7 @@ jobs:
     # observed 6-hour hang before timeout-minutes existed - see CLAUDE.md's "CI hang investigation"
     # note). Real GitHub-hosted-runner timings, measured directly rather than assumed (Session 8's
     # closing-pass PR, two independent cold-cache runs - no prior run on this exact branch/PR scope
-    # to inherit a cache from, see BUILD_CHAIN_PLAN.md for the mechanism): this job's own plain pass
+    # to inherit a cache from, see SPECIFICATION.md Part L for the mechanism): this job's own plain pass
     # took 16m58s and 16m42s from a cold cache (full from-scratch ARM+MicroPython Unix-port
     # toolchain build included); a warm cache drops that to the ~13-15 minutes the test suite itself
     # takes (~17 minutes measured on a real runner, 2026-09-13). The coverage pass used to run
@@ -589,7 +589,7 @@ jobs:
     # does) - a fundamentally different, heavier kind of check than the fast unit-test tier, not a
     # duplicate of it.
     #
-    # strategy.matrix over all 6 real devices (BUILD_CHAIN_PLAN.md's Session 6.2, mirroring
+    # strategy.matrix over all 6 real devices (SPECIFICATION.md Part L.4, mirroring
     # firmware-build-verify's own precedent below) - each device's own 11-run suite is an
     # independent job, attributable directly in the job list, rather than one long serial script
     # that would otherwise need roughly 6x the wall-clock budget of a single device's run (several
@@ -638,7 +638,7 @@ jobs:
     # (that entry itself stays open - it's specifically about the legacy build-*.sh scripts, a
     # separate, not-yet-done piece of work).
     #
-    # strategy.matrix over all 6 real devices (BUILD_CHAIN_PLAN.md's Session 6) - each is its own
+    # strategy.matrix over all 6 real devices (SPECIFICATION.md Part L.4) - each is its own
     # job, so a failure names exactly which device's generated build broke directly in the job
     # list, rather than one job silently only ever having covered wozi/dev the way this job did
     # before every device had a buildgen-generated entry point to build from. fail-fast: false so

@@ -6,7 +6,7 @@
 # reference and SPECIFICATION.md's "any new module joins the twin" rule this exists to enforce.
 #
 # Usage: scripts/run_digital_twin_ci.sh [device]   (default: wozi)
-# Device-generic since BUILD_CHAIN_PLAN.md's Session 6.2 - .github/workflows/ci.yml's
+# Device-generic since SPECIFICATION.md Part L.4 - .github/workflows/ci.yml's
 # digital-twin-e2e job runs this once per real device via its own strategy.matrix (mirroring
 # firmware-build-verify's own precedent), so each device's own 11-run suite is independently
 # attributable in the job list rather than serialized into one long wozi-only run.
@@ -66,7 +66,7 @@ fi
 echo "== Building the real $device website into frozen_modules/frozen_html.py"
 scripts/build_website.sh "$device"
 
-# No static src/sensortask_*.py exists any more (BUILD_CHAIN_PLAN.md's Session 6 finish criterion)
+# No static src/sensortask_*.py exists any more (SPECIFICATION.md Part L.2)
 # - every real device's module + wiring plan is generated fresh here, via buildgen, into
 # build/generated_src/ (gitignored); see scripts/_digital_twin_ci_suite.py's own MICROPYPATH
 # constant for where run_generic_integration.py's `--module sensortask_<device>` actually resolves

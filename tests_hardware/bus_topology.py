@@ -1,7 +1,7 @@
 """Declarative bus-topology registry for tests_hardware/ - host-side mirror of digital_twin/
 machine.py's wiring declaration (dev is the only bench-tested variant; wozi is documentation-only).
 A hand-kept second copy of devices/dev.toml's/wozi.toml's own wiring facts, cross-checked by no
-tooling and imported by nothing today (BUILD_CHAIN_PLAN.md's Session 8 closing pass; BACKLOG.md)."""
+tooling and imported by nothing today (SPECIFICATION.md Part L.1; BACKLOG.md)."""
 
 from __future__ import annotations
 

@@ -48,7 +48,7 @@ if TYPE_CHECKING:
     # TOML fields have - is NOT declared here, and deliberately isn't a Python value at all: it
     # lives in `# @wiring`/`# @value-wiring`/`# @limits` comment tags beside the schema it
     # describes, because nothing the running firmware reads should become a real frozen-bytecode
-    # value just to serve the generator (BUILD_CHAIN_PLAN.md's quality bar). See
+    # value just to serve the generator (SPECIFICATION.md Part L.5). See
     # SPECIFICATION.md Part C.14.2 for the grammars and buildgen/wiring.py for the parser.
 
 from print_log import PrintLogHistory, make_logger

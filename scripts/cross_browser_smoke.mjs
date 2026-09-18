@@ -13,7 +13,7 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..
 const TOOLCHAIN_DIR = process.env.PICO_TOOLCHAIN_DIR || path.join(homedir(), "pico-toolchain");
 const MICROPYTHON_BIN = path.join(TOOLCHAIN_DIR, "micropython", "ports", "unix", "build-standard", "micropython");
 // build/generated_src first: no static src/sensortask_wozi.py exists any more
-// (BUILD_CHAIN_PLAN.md's Session 6 finish criterion) - .github/workflows/ci.yml's
+// (SPECIFICATION.md Part L.2) - .github/workflows/ci.yml's
 // web-cross-browser-smoke job generates it fresh there, via buildgen, before this spawns.
 const MICROPYPATH = "build/generated_src:src:digital_twin:ext:frozen_modules:.frozen";
 const HOST = "127.0.0.1";

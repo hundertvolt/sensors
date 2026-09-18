@@ -1,5 +1,5 @@
 """Proves a Session-3-generated `sensortask_<device>.py` module actually boots under the digital twin's real MicroPython Unix-port environment and serves real REST requests - not just that it `ast.parse()`s (buildgen/'s own documented proof depth ceiling) or that buildgen.twin_wiring's plan looks right in isolation (test_buildgen_twin_wiring.py).
-Spawns the real Unix-port binary as a subprocess and speaks plain HTTP to it, the same pattern scripts/_digital_twin_ci_suite.py already uses for the hand-written sensortask_wozi.py; wiring this into scripts/run_digital_twin_ci.sh stays Session 6's job (BUILD_CHAIN_PLAN.md's Session 5 write-up).
+Spawns the real Unix-port binary as a subprocess and speaks plain HTTP to it, the same pattern scripts/_digital_twin_ci_suite.py already uses for the hand-written sensortask_wozi.py; wiring this into scripts/run_digital_twin_ci.sh stays Session 6's job (SPECIFICATION.md Part L.4).
 See digital_twin/README.md's "Booting a generated device" section for the full mechanism this exercises."""
 
 from __future__ import annotations
@@ -237,7 +237,7 @@ def _boot_generated_device(repo_root: Path, micropython_bin: Path, src_dir: Path
 def test_synthetic_fixture_boots_and_serves_over_real_http(
     repo_root: Path, micropython_bin: Path, src_dir: Path, ext_dir: Path, fixtures_dir: Path, tmp_path: Path, device_toml_name: str,
 ) -> None:
-    # The two mandatory synthetic fixtures (BUILD_CHAIN_PLAN.md's acceptance criteria #2) - proves
+    # The two mandatory synthetic fixtures (SPECIFICATION.md Part L.1's acceptance criterion #2) - proves
     # the generic wiring mechanism handles a hardware combination none of the 6 real devices use,
     # not just wozi/dev's own two already-hand-verified layouts.
     device_toml = fixtures_dir / device_toml_name
@@ -252,7 +252,7 @@ def test_real_device_boots_its_generated_module_and_serves_over_real_http(
 ) -> None:
     # Every real device's own TOML, generated fresh here - the actual proof that Session 3's
     # generator produces a module that runs, for every real device, not just ast.parse()s
-    # (BUILD_CHAIN_PLAN.md's Session 5 write-up: "ideally every" entry point).
+    # (SPECIFICATION.md Part L.4: "ideally every" entry point).
     toml_path = device_toml_path(device)
     port = _free_port()
     failures = _boot_generated_device(repo_root, micropython_bin, src_dir, ext_dir, toml_path, tmp_path, port)

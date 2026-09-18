@@ -1,4 +1,4 @@
-"""Tests for buildgen.version (BUILD_CHAIN_PLAN.md Session 7) - the product-version constants and
+"""Tests for buildgen.version (SPECIFICATION.md Part L.7) - the product-version constants and
 current_build_date() are well-formed and match the plan's own starting values; no bump mechanism
 is assumed to exist (see that session's own account for why)."""
 
@@ -22,7 +22,7 @@ def test_website_version_is_a_well_formed_version_string() -> None:
 
 
 def test_starting_values_match_the_plan() -> None:
-    # BUILD_CHAIN_PLAN.md's own Session 7 scope line: "firmware + website, both starting at 2.0b0".
+    # SPECIFICATION.md Part L.7: "firmware + website, both starting at 2.0b0".
     assert FIRMWARE_VERSION == "2.0b0"
     assert WEBSITE_VERSION == "2.0b0"
 

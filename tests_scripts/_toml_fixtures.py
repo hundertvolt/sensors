@@ -3,7 +3,7 @@
 of hand-editing another near-identical TOML blob."""
 
 # dump_toml() is not a general TOML writer - it covers only the shape buildgen/'s own schema uses
-# (BUILD_CHAIN_PLAN.md's "Device TOML schema"), which is all these fixtures ever need.
+# (SPECIFICATION.md Part L.3's device TOML schema), which is all these fixtures ever need.
 
 import copy
 import json

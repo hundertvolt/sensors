@@ -1,5 +1,5 @@
 # multi_instance.toml - axis 9's own dedicated multi-instance fixture
-# (BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md §10.7 item 1): the richest corner of the whole
+# (SPECIFICATION.md Part L.1's acceptance criterion #2): the richest corner of the whole
 # clean-build matrix, deliberately distinct from tests_scripts/buildgen_fixtures/novel_combo.toml
 # (2x scd30 + 1x sgp40 + bmp3xx, both device-wiring fields wired, signal_sink a real reference).
 #

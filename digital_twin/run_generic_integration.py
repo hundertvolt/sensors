@@ -1,6 +1,6 @@
 """Generic digital-twin entry point: boots ANY `sensortask_<device>` module - most usefully a Session-3 `buildgen.generate.generate_device()`-generated one, written to disk by the caller first - against a `machine.configure_wiring()`-shaped wiring-plan JSON (produced host-side by `buildgen.twin_wiring.compute_twin_wiring()`, since this MicroPython process has no tomllib/buildgen of its own). Not a `tests/test_*.py` file - it can serve forever.
 This file's own fault/hang chip lookup is the generalized form of `run_wozi_integration.py`'s/`run_dev_integration.py`'s hardcoded `{"scd30": sensortask_wozi.i2c0._i2c.devices[0x61], ...}`. The soak/memory-trend-check machinery itself moved host-side (`scripts/_digital_twin_ci_suite.py`'s own `_run_11_soak()`, 2026-09-14 - SPECIFICATION.md's "Driver/DUT process separation" Part) - this file's only remaining contribution to that check is `--mem-sample-interval-ms`, an optional background `gc.mem_free()` log-line emitter (see `_mem_sampler()`), the one value that check needs and has no source but this process's own heap.
-See `digital_twin/README.md`'s "Booting a generated device" section and BUILD_CHAIN_PLAN.md's Session 5/6.2 write-ups for the full design account."""
+See `digital_twin/README.md`'s "Booting a generated device" section and SPECIFICATION.md Part L.4/6.2 write-ups for the full design account."""
 
 import asyncio
 import gc

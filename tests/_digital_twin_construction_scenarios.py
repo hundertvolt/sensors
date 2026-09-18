@@ -1,5 +1,4 @@
-"""Shared scenario library: "construction across every real device" (BUILD_CHAIN_PLAN.md's Session
-6.2) - fast, no real wall-clock waits, digital-twin-tier construction/wiring/REST checks parametrized
+"""Shared scenario library: "construction across every real device" (SPECIFICATION.md Part L.4) - fast, no real wall-clock waits, digital-twin-tier construction/wiring/REST checks parametrized
 across all 6 real devices. Split out of tests/test_digital_twin_sensortask_integration.py (which
 still carries this tier's own heavier, deliberately wozi-only tests) so scripts/test.sh can run each
 device's own 3-scenario batch as its own independent Unix-port process, the same

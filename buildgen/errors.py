@@ -1,4 +1,4 @@
-"""Fail-loud build errors (BUILD_CHAIN_PLAN.md's "Build/generator script quality bar"): every
+"""Fail-loud build errors (SPECIFICATION.md Part L.5's build-tooling quality bar): every
 abort names exactly what's wrong and where - device, instance/bus, field - never a raw traceback
 or a generic "build failed"."""
 

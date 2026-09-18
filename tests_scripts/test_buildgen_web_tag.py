@@ -1,5 +1,5 @@
 """Tests for buildgen.web_tag: the `# @web <Field> key=value ...` / `# @web-group key=value ...`
-comment-tag parsers (BUILD_CHAIN_PLAN.md's "Build/generator script quality bar" - the same bar
+comment-tag parsers (SPECIFICATION.md Part L.5's build-tooling quality bar - the same bar
 test_buildgen_requires_tag.py already covers for `@requires`, mirrored here for the newer family)."""
 
 # Matrix dimensions:
@@ -113,7 +113,7 @@ def test_parse_web_tags_invalid_bool_rejected(tmp_path: Path) -> None:
 
 # ---------------------------------------------------------------------------
 # path/decimals: the new Section 4 tag capability (SPECIFICATION.md Part H.5.1) - same accept/
-# reject bar every other tag key gets (BUILD_CHAIN_PLAN.md's "every tag family gets the same bar").
+# reject bar every other tag key gets (SPECIFICATION.md Part L.5's "every tag family gets the same bar").
 # ---------------------------------------------------------------------------
 
 
@@ -488,7 +488,7 @@ def test_parse_web_tags_real_isl29125_nested_measurement_fields_carry_path_and_d
 
 
 def test_parse_web_tags_real_sgp40_field_names_and_specials(src_dir: Path) -> None:
-    # This is the file BUILD_CHAIN_PLAN.md flags as the real generator-behavior finding: each of
+    # This is the file SPECIFICATION.md Part L flags as the real generator-behavior finding: each of
     # these three fields has a documented "0 means X" meaning despite an ordinary (special=None)
     # schema tuple, so the tag's own special: entries - not the schema - must survive parsing.
     tags = parse_web_tags(src_dir / "asy_sgp40_driver.py", "dev", "sgp40")
@@ -512,7 +512,7 @@ def test_parse_web_tags_real_ntp_field_names(src_dir: Path) -> None:
     tags = parse_web_tags(src_dir / "asy_ntp_client.py", "dev", "ntp")
     assert {t.field_name for t in tags if t.section == "networking"} == {"NTP_Host", "NTP_Offset_S", "NTP_Interv_H"}
     # GMTOffset/DSTOffset are real asy_ntp_client.py fields that render on the System page instead
-    # (BUILD_CHAIN_PLAN.md) - a cross-file section/group assignment, not a mistake to "fix".
+    # (a deliberate cross-file section/group assignment, not a mistake to "fix").
     assert {t.field_name for t in tags if t.section == "system"} == {"GMTOffset", "DSTOffset"}
 
 

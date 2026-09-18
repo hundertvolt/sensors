@@ -2,7 +2,7 @@
 # Every non-type lint pass in one place: ruff over src/ (fully-reviewed code - see CLAUDE.md),
 # tests/ (their unit tests), digital_twin/ (the hardware simulator, SPECIFICATION.md Part A.10),
 # tests_hardware/ (the real-hardware suite and the device scripts it pushes), and the whole
-# host-side build chain - buildgen/ (the device-TOML generator, BUILD_CHAIN_PLAN.md's Session 3),
+# host-side build chain - buildgen/ (the device-TOML generator, SPECIFICATION.md Part L.4),
 # scripts/ and toolchain/ (the dev-tooling/build-environment scripts) and tests_scripts/ (their
 # pytest suite) - plus shellcheck over scripts/, and actionlint + zizmor over the GitHub Actions
 # workflows. All expected to stay fully clean. Lint only: `ruff format` is deliberately not part of

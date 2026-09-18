@@ -318,7 +318,7 @@ _CompReading = namedtuple("_CompReading", ("Temp", "Hum"))
 
 class _FakeCompSource:
     # Structural stand-in for temperature_source/humidity_source: SCD30_Reader (SPECIFICATION.md
-    # Part C.14, BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md §2.9's per-value generalization) - only
+    # Part C.14, SPECIFICATION.md Part L.6.3's per-value generalization) - only
     # get_data() is exercised, matching the real driver's own direct-reference read.
     def __init__(self, temp: "float | None" = 25.0, hum: "float | None" = 50.0, *, raise_exc: bool = False) -> None:
         self._temp = temp

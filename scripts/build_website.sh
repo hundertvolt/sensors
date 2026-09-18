@@ -92,10 +92,10 @@ scratch_dir="$(mktemp -d)"
 trap 'rm -rf "$stage_dir" "$scratch_dir"' EXIT
 
 # wozi/dev keep their existing hand-written html/definitions/<device>.json unchanged (tests_js/'s
-# own PUT-matrix fixtures load it directly off disk - BUILD_CHAIN_PLAN.md's Session 4 proved these
+# own PUT-matrix fixtures load it directly off disk - SPECIFICATION.md Part L.4 proved these
 # two are already byte-shape-identical to buildgen's own generated output, so nothing is lost by
 # not switching them over yet; retiring them outright is a separate, deliberately deferred piece of
-# work - see BUILD_CHAIN_PLAN.md's Session 6 account). Every other device has no hand-written file
+# work - see SPECIFICATION.md Part L.4). Every other device has no hand-written file
 # at all (only wozi.json/dev.json exist today) - generated fresh here via buildgen instead of
 # failing, so scripts/build_firmware.py can build any of the 6 real devices, not just these two.
 definitions_src="html/definitions/${device}.json"

@@ -286,7 +286,7 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     intended behavior, not a second bug to weigh here: see SPECIFICATION.md Part A.4's FRAM entry.
 20. **`tests_hardware/bus_topology.py` is a second, hand-kept, unenforced copy of `devices/dev.toml`'s/
     `wozi.toml`'s own wiring facts, and — found while checking it — appears to be dead code today.**
-    Found by BUILD_CHAIN_PLAN.md's Session 8 closing-consistency pass (the one real gap that scan
+    Found by the build chain's own closing-consistency scan (the one real gap it
     surfaced against the "every device-specific fact lives in exactly one place" acceptance
     criterion; everywhere else checked was already clean or a previously-documented exception).
     `DEV_I2C_BUSES`/`WOZI_I2C_BUSES`/`DEV_SPI_CS`/`WOZI_SPI_CS` hand-duplicate real per-device I2C
@@ -513,7 +513,7 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     hardware would now pass silently where the old bound would at least have gone red — for the
     wrong reason, but red.
     **Why no bench budget was set instead of recording this.** Sizing one needs the reader-count
-    curve `REAL_HARDWARE_HANDOVER_PR103.md` §2.1 asks for (0/1/2/3/4/6 readers). Two points do not
+    curve `REAL_HARDWARE_TEST_QUEUE.md`'s R2 asks for (0/1/2/3/4/6 readers). Two points do not
     say whether it flattens: the twin's 12.0s is already below the 11.58s-at-3-readers measurement
     plus any margin, so copying it across would flake the bench suite, and anything above ~15s
     cannot fire before the server's own abort. Both halves of the owner's standing requirement for
@@ -529,9 +529,8 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     branches stay on the remote, so the diffs remain readable if anything is wanted later.
     **Carried across before closing**: PR #102's real boot-latency figures and its disproven
     `webserver` lazy-setup hypothesis are now in SPECIFICATION.md Part A.7's boot-latency note, its
-    unexplained **+0.90s** `CFGMGR_SYSTEM` cost is queue row R6, and `REAL_HARDWARE_HANDOVER.md`
-    carries a banner marking every one of its steps answered (it is deletable by its own criterion
-    now; kept only so its §2/§2a reasoning stays next to the measurement that settled it).
+    unexplained **+0.90s** `CFGMGR_SYSTEM` cost is queue row R6. `REAL_HARDWARE_HANDOVER.md` itself was
+    deleted once every step it asked for was answered and migrated, as its own first lines instruct.
     **Deliberately NOT carried, which is the one thing to know if this is ever revisited**: none of
     PR #84 exists on any other branch — `buildgen/gc_policy.py`, `scripts/build_firmware.py
     --gc-policy`, `--memory-pressure`, `tests_hardware/device_modules/memory_pressure.py`,
@@ -555,7 +554,7 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     Also settled here: of the six items `HANDOVER_HARNESS_AND_HEAP_FRAGMENTATION.md` §1.0 calls
     lost, five are accounted for on this branch or on `main` (checked item by item, not taken at
     face value); only `REAL_HARDWARE_FINDINGS_PR103.md` is unaccounted for, and it never existed in
-    any ref here — its substance appears to be what item 30 and `REAL_HARDWARE_HANDOVER_PR103.md`
+    any ref here — its substance appears to be what item 30 and queue row R1
     already carry. `claude/pr103-real-hardware-fram-validation` is not on the remote and has no PR.
 
 
@@ -613,8 +612,8 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   no alternate Debian mirror to fall back to. The change itself is a pure ruff/pylint lint-rule
   threshold with no compiler-version sensitivity, so the residual risk is judged low, not zero — a
   from-scratch trixie leg (or a run on the bench Pi4, which already runs trixie/GCC 14.2) should
-  still confirm it whenever one is next convenient. Full account: BUILD_CHAIN_PLAN.md's "Session 7
-  done" entry.
+  still confirm it whenever one is next convenient. The change itself is the `build_info=` parameter
+  SPECIFICATION.md Part L.7 describes.
 - **`buildgen/buildspec.py`'s per-driver schema is hand-maintained — making it AST-derivable is a
   separate, unstarted unit of work.** Everything else `buildgen/` needs from a driver is derived
   from `src/` automatically (the class itself via `driver_registry.py`'s naming convention,
@@ -626,7 +625,7 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   forgetting to is a real (if now clearly-reported) failure. **The small half is already done**: a
   driver that resolves via `driver_registry` but has no `buildspec.py` entry raises a dedicated
   error naming that as the cause, instead of reporting every one of its real fields as
-  "unrecognized" (BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md's "Known limitation" section). The large half —
+  "unrecognized" (SPECIFICATION.md Part L.6's "Known limitation" section). The large half —
   deriving the schema from each driver's own constructor signature, or from a new declarative tuple
   beside `_WIRING` — needs real design, not a mechanical continuation, and hasn't been started.
 - **`[device].name`/`hostname`/`hotspot_password` are validated but never wired into any boot
@@ -788,11 +787,11 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     (6h) production-duration run itself - `mid` is a genuine real-hardware pass at 10 minutes, not
     a substitute for the full 6h window this item was always about
     (`REAL_HARDWARE_TEST_QUEUE.md` S4).
-- **Website definitions-file autogeneration — done (BUILD_CHAIN_PLAN.md Session 4).** The
+- **Website definitions-file autogeneration — done (SPECIFICATION.md Part L.4).** The
   `@web`/`@web-group` comment-tag family and `buildgen/definitions.py`'s generator now exist,
   resolving every open question this entry used to track (anchoring a non-driver-schema value like
   `lightCmdLED`, `@web-group`'s relationship to `SettingsGroup(...)` wiring, the formal grammar's
-  scope) — see BUILD_CHAIN_PLAN.md's own "Session 4 done" account for the resolutions and
+  scope) — see SPECIFICATION.md Part L.4 for the resolutions and
   `tests_scripts/test_buildgen_web_tag.py`/`test_buildgen_definitions.py` for the test coverage.
   Generating `html/definitions/<device>.json` for real was Session 6's own job; that session
   closed two of its three parts — `arzi`/`klkizi`/`grkizi`/`schlafzi` (the four devices that never
@@ -801,15 +800,14 @@ cites is deleted outright, its permanent content migrated per the policy above. 
   retiring `wozi`/`dev`'s own hand-written `html/definitions/{wozi,dev}.json` in favor of generated
   output — deliberately deferred, since `tests_js/live-backend-put-matrix.test.js`/
   `mock-server-put-matrix.test.js` read those two files directly as fixtures and switching them
-  over needs a `tests_js/` fixture audit no session has done yet (BUILD_CHAIN_PLAN.md's "Session 6
-  done" account). **The same wozi/dev-only scope shows up in the browser prototype too**: `js/
+  over needs a `tests_js/` fixture audit nobody has done yet. **The same wozi/dev-only scope shows up in the browser prototype too**: `js/
   app.js`'s `KNOWN_DEVICES = ["wozi", "dev"]` (its `?device=` switch, prototype-only per that file's
   own docstring — real firmware ships exactly one device's `definitions.json`, never branches on a
   query param) is a real, literal device-name list living outside `devices/*.toml`, but it isn't an
   independent gap: it exists because `mockdata/`/`html/definitions/` only carry fixtures for those
   two devices, the same limitation this entry already tracks. Extending it to all 6 needs generating
   `mockdata/<device>.json` fixtures for the other four first, not just a `KNOWN_DEVICES` edit — found
-  by BUILD_CHAIN_PLAN.md's Session 8 closing pass, flagged here rather than fixed piecemeal.
+  by SPECIFICATION.md Part L.1, flagged here rather than fixed piecemeal.
 - **Manual cross-browser/cross-device spot check not yet done — needs the project owner directly.**
   Automated coverage (Part H.7's cross-browser smoke script, Vitest's browser-mode suite) only ever
   exercises Chromium/WebKitGTK/Firefox/Edge on Linux CI runners — Part H.1's "stable and
