@@ -7,6 +7,11 @@ operating constraints/architecture reference) or README.md (human-facing orienta
 migrated there rather than duplicated here. See README.md for orientation, CLAUDE.md for operating
 constraints.
 
+**Anything in here that needs the dev bench is also listed in `REAL_HARDWARE_TEST_QUEUE.md`**, which
+is the single running queue a go-ahead session works through in one pass. Items stay tracked here as
+usual; that file exists so the real-hardware subset does not have to be reassembled from this file,
+`tests_hardware/README.md` and the handover docs every time.
+
 ## Refactor targets not yet done
 
 - **A config-persisting `PUT /sensors` reset its own HTTP connection under concurrent API load -
@@ -325,6 +330,15 @@ constraints.
     than via soft-reset semantics - each poll costs ~8s of uptime and restarts the count. Any real
     multi-day run needs the poll to re-feed or disable the watchdog, or to observe passively
     (`tail_log()`) instead.
+    **Acted on 2026-09-18, having sat as an answered-but-unapplied finding.** The test still carried a
+    `# NEEDS VERIFICATION` comment pointing back at this item, and - worse - would have **passed
+    vacuously within about two hours**: the second poll reads a board that rebooted ~8s after the
+    first, so `now < before` is satisfied by the reboot alone and the loop breaks claiming a wrap it
+    never saw. A wrap is now only accepted when the previous read was already within two hours of
+    2**30 (`_WRAP_FLOOR_MS`), which a watchdog-rebooting board can never reach - so the test fails
+    honestly instead, with an assertion message naming this mechanism. **Still open**: the
+    measurement method itself, tracked as C7 in `REAL_HARDWARE_TEST_QUEUE.md`. This item stays until
+    that lands, but its *question* is answered - do not re-investigate the soft-reset semantics.
 13. **Is "reads also blocked while the chip is write-protected" intended? — CLOSED
     (2026-09-11).** Yes: intended and accepted, an access gate rather than data loss. Full
     behaviour, the two properties distinguishing it from the pause gate, and the tier coverage
@@ -405,17 +419,19 @@ constraints.
     `bus_topology_autodetect_and_hazard_sweep.py` should import its `KNOWN_ADDRESSES` from it instead
     of keeping a third copy, and whether CLAUDE.md's own bus-hazard rule should drop the citation or
     point at a real, live consumer, are all real design decisions this pass didn't make unilaterally.
-21. **SPECIFICATION.md Part H.5.1's `dispatch: true` claim doesn't match the real `wozi.json`/`dev.json`
-    for two of its five named fields.** Part H.5.1 says `dispatch: true` "marks a repeatable command
-    field (H.6, minus `ContMeas`)" — i.e. every field in H.6's dispatch-only list
-    (`SystemCmd`/`PauseTime`/`lightCmdLED`/`ResetErrors`/`SGPResetVOC`) except `ContMeas`. Confirmed
-    directly against `html/definitions/wozi.json`: only `SystemCmd`/`ResetErrors`/`SGPResetVOC`
-    actually carry `dispatch: true`; `PauseTime` and `lightCmdLED` (both instances) carry none.
-    `buildgen/definitions.py` faithfully reproduces this real, golden behavior either way, so this is
-    a pre-existing spec-vs-reality mismatch to resolve with the project owner (which side is actually
-    correct — the doc's claim or the shipped JSON), not a generator bug. Found by
-    BUILD_CHAIN_PLAN.md's Session 4 post-merge self-audit; had never been migrated to this file before
-    now, so it stayed unresolved and easy to lose track of.
+21. **SPECIFICATION.md Part H.5.1's `dispatch: true` claim didn't match the real `wozi.json`/
+    `dev.json` — RESOLVED 2026-09-18 in favour of the shipped JSON; the doc was wrong.** Part H.5.1
+    said the flag "marks a repeatable command field (H.6, minus `ContMeas`)", which reads as a claim
+    that all five of `SystemCmd`/`PauseTime`/`lightCmdLED`/`ResetErrors`/`SGPResetVOC` carry it; only
+    the first, fourth and fifth actually do. Settled by reading the one consumer rather than asking:
+    `js/render.js`'s `collectGroupBody()` consults `field.dispatch` at exactly **two** sites — the
+    `kind: "toggle"` branch and the `kind: "enum"` branch — because those are the only kinds whose
+    sparse-omission test is "the control still equals `resolveFieldValue()`". A `number`/`string` is
+    omitted only when its input is blank and a `composite` only when no sub-input is filled, so the
+    flag has no code path to affect on either. `PauseTime` is a `number` and `lightCmdLED` a
+    `composite`: both are dispatch-only behaviourally (H.6) and both would be inert if marked. The
+    generator (`buildgen/definitions.py`) already emits exactly the right three. H.5.1 now states the
+    toggle/enum-only scope and why. **Nothing left to do** — item comes out once confirmed.
 
 22. **Seven `src/` modules number `errno`/`wrnno` inside the range `base_classes.py` reserves.**
    Part C.7 reserves `errno` 1-9 and `wrnno` 1-2 for `SensorReader`/`SensorReaderConfig`, and
@@ -521,11 +537,17 @@ constraints.
     against the real generated `sensortask_dev` graph, including
     `test_both_ends_get_their_own_real_fram_chunk`, which asserts exactly the WP3 wiring. Real
     hardware has since exercised both instances through `ResetErrors` too (SPECIFICATION.md Part
-    A.7). What is genuinely missing is narrow and `dev`-only: the **end-to-end CI suite**
-    (`scripts/_digital_twin_ci_suite.py`) never asserts `UART_init`/`UART_resp` appear in `/status`'s
-    `errcount`, so a regression that dropped them from the registration list would reach the bench
-    tier before CI noticed. **Where to fix**: one errcount-presence assertion in that suite's `dev`
-    run.
+    A.7). The gap this item still named — that nothing in CI would catch `UART_init`/`UART_resp`
+    disappearing from the registration list — **is closed** (verified 2026-09-18, not inferred).
+    `tests_scripts/test_digital_twin_generated_boot.py::test_real_device_boots_its_generated_module_and_serves_over_real_http`
+    is parametrized over every real device, boots `dev`'s own generated module in the twin, fetches
+    `/status` and runs `_errcount_parity_failures()` on the body it already has. That helper compares
+    the published key set against the website catalog **in both directions**, and `buildgen/
+    definitions.py` emits the `UART_init`/`UART_resp` rows unconditionally for a device with a
+    `uart_link` pair — so dropping either registration surfaces immediately as "website errcount rows
+    with no published source". `dev` carries no `_KNOWN_CATALOG_DRIFT` exemption, so nothing masks it.
+    Landed in `c62d6c1`/`038228a`; the `dev` case passes today. **Nothing left to do here** — this
+    item comes out once someone confirms the reading.
 
 27. **`PUT /status {"ResetErrors": true}` answering `OK` on a failed on-chip write — settled, no
     change.** Owner decision, 2026-09-17: detecting a chip that acknowledged a write it did not
@@ -678,13 +700,72 @@ constraints.
       it reports three full bench passes. **Not one of its files exists on this branch.** Its overlap
       with the separate heap-fragmentation effort (PR #105) needs deciding rather than assuming.
     - **`claude/pr103-real-hardware-fram-validation` (6 commits) is not on the remote at all** and
-      has no PR. `HANDOVER_HARNESS_AND_HEAP_FRAGMENTATION.md` §1.0 names its contents — an errno
-      11→35 correction, the ISL29125 conformance stand-in table and its guard test, the bench
-      `"Unchanged"` fix, a twin bus-hazard settle fix, and a `REAL_HARDWARE_FINDINGS_PR103.md` — and
-      records that **only the lighting-scenario fix was carried across**. Confirmed by search: those
-      commits are in no clone or ref reachable from GitHub, so unless that branch still exists on the
-      machine that made it (most likely the bench Pi4), the other five items are gone and would have
-      to be redone from the handover's description.
+      has no PR — but the alarm its handover raises is mostly unfounded, checked item by item rather
+      than taken at face value (2026-09-18). `HANDOVER_HARNESS_AND_HEAP_FRAGMENTATION.md` §1.0 names
+      its contents and says **only the lighting-scenario fix was carried across**; in fact four of the
+      five others are already accounted for. The bench `"Unchanged"` fix **landed on this branch** as
+      `ec816d5`. The ISL29125 **conformance stand-in table is present and byte-identical to main's**
+      (`tests_hardware/isl29125_conformance.py`), and **its guard test exists**, renamed —
+      `test_isl29125_register_probe_matches_the_digital_twins_fake_chip` here,
+      `test_the_isl29125_mock_answers_the_bus_exactly_as_the_real_chip_does` on main. The
+      bus-hazard **settle fix is on `main`** (`8905d2b`, a 12 s discard window in
+      `device_scripts/scd30_same_device_rw_concurrency.py` after the SCD30 soft reset) and its file
+      is **not** one of the 30 conflicts, so the merge brings it in unchanged. The **errno 11→35
+      correction was real and is now done here**: `asy_isl29125_driver.py`'s `_read_on()` (a
+      gain-ratio calibration leg) shared `errno=11` with the periodic read, which
+      `SPECIFICATION.md` C.7.1 assigns to the periodic read alone — two distinct faults
+      indistinguishable in the FRAM-persisted history the errcount UI reads back. Renumbered to 35
+      (free in that module's 10-38 span), spec table updated, and
+      `test_a_failed_partner_read_logs_errno_35_and_puts_the_range_back` now asserts the logged code
+      instead of only `ErrCount >= 1`, which its old name already claimed to do. **Only
+      `REAL_HARDWARE_FINDINGS_PR103.md` is genuinely unaccounted for**, and it never existed in any
+      ref here; its substance appears to be what BACKLOG item 30 and
+      `REAL_HARDWARE_HANDOVER_PR103.md` already carry. Nothing further needs recovering from that
+      machine unless the owner knows of content beyond those five.
+
+    **One further `main`-vs-branch coverage gap this check turned up**, listed here because it is the
+    merge's to resolve rather than a separate loss: `main`'s
+    `tests/test_setter_microdot_integration.py` carries **five real-Microdot end-to-end ISL29125
+    setter tests** (calibrate as a repeatable trigger, out-of-band threshold rejected, bus fault
+    surfacing as `Failed` not 500, a software knob round-tripping, the derived down-point moving with
+    it) and this branch carries **none** — that file has zero ISL29125 mentions here. It is one of the
+    30 conflicts, so taking `main`'s side on those five is what preserves them. `main` likewise has
+    `test_isl29125_calibrate_command_push_over_real_rest`,
+    `test_isl29125_gain_ratio_survives_a_real_reboot_as_an_ordinary_config_value` and the manual
+    `test_isl29125_real_lux_vs_reference_meter_and_neopixel_rig_geometry`, none of which exist here.
+    And the two sides disagree on **gating**: `main` puts `@pytest.mark.neopixel_sweep` +
+    `--allow-neopixel-sweep` on the two long ISL29125 lighting tests ("needs the NeoPixel-aimed-at-the-
+    sensor rig physically set up"), while this branch runs both ungated — so on this branch a flash-tier
+    run spends ~10 minutes on them and fails outright if the LED is not aimed at the part. The
+    2026-09-17 bench session ran them ungated and they passed, which suggests the rig is in place;
+    confirm rather than assume (`REAL_HARDWARE_TEST_QUEUE.md` D2).
+    Checked and **not** a loss, for the record: `tests/test_math_helpers.py` (this branch has equal or
+    more coverage on every colour/EMA topic, only differently named), `tests/test_bus_hazard_multi_device.py`
+    (superseded by `test_bus_hazard_generated.py`, which derives the address sweep per bus per device
+    from the real TOML wiring), FRAM same-device concurrency, and `build_stage_dir`'s own tests.
+
+
+34. **CLAUDE.md's 3-line header-comment cap has quietly eroded across this branch — reported, not
+    fixed, per the "flag, don't silently change" rule for a cross-file consistency finding.** Measured
+    2026-09-18 over every triple-quoted module/class/function header in the eight lint scopes: `main`
+    carries **18 over-cap blocks out of 290 (6.2 %)**, this branch **63 out of 431 (14.6 %)**, and 58
+    of the 63 sit in files this branch touched — so it is a drift introduced here, not the repo's
+    pre-existing state. By scope (main → branch): `tests/` 7 → 30, `tests_hardware/` 10 → 17,
+    `tests_scripts/` 1 → 9, `toolchain/` 0 → 3, `scripts/` 0 → 2, **`src/` 0 → 2**.
+    The worst offenders are module headers that became mini-essays: `tests/_sensortask_scenarios.py`
+    (17 lines), `tests_hardware/device_scripts/bus_concurrency_scd30_write_vs_siblings.py` (17),
+    `bus_concurrency_isl29125_write_vs_siblings.py` (16), `tests/test_digital_twin_sensortask_integration.py`
+    (15), `tests/_digital_twin_construction_scenarios.py` (14),
+    `toolchain/micropython_overrides.py::apply_unix_kbd_intr_override` (13).
+    **`src/` is the part that actually matters**, being the fully-reviewed bar and clean on `main`:
+    `asy_notification_service.py::_DefaultSignalSink` (5 lines) and
+    `asy_sgp40_driver.py::_DefaultTemperatureSource` (6 lines).
+    **Decision needed before anything moves**: whether to hold the whole branch to the cap (a
+    ~58-block edit touching many files, all of it prose relocation into `SPECIFICATION.md`/
+    `digital_twin/README.md`/adjacent inline comments per the rule's own escape hatch), to fix only
+    the two `src/` blocks now and treat the test-side ones as acceptable for scaffolding, or to
+    revise the cap itself for test/device-script files whose header genuinely has to explain a
+    hardware scenario. Not decided here; the rule says report and discuss first.
 
 
 ## Deferred / explicitly out-of-scope work

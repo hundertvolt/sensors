@@ -3078,7 +3078,9 @@ def test_starting_a_calibration_with_false_is_a_no_op() -> None:
     assert reader._calibrating is False
 
 
-def test_a_failed_partner_read_logs_errno_11_and_puts_the_range_back() -> None:
+def test_a_failed_partner_read_logs_errno_35_and_puts_the_range_back() -> None:
+    # 35, not 11: the periodic read owns 11 (SPECIFICATION.md C.7.1), so sharing it would make the
+    # two indistinguishable in the FRAM-persisted history the errcount UI reads back.
     _i2c, reader = calibrating_reader("cal_read_fails")
 
     async def _boom() -> "tuple[int, int, int]":
@@ -3088,7 +3090,12 @@ def test_a_failed_partner_read_logs_errno_11_and_puts_the_range_back() -> None:
     with _FastAsyncSleep():
         run(reader._measure_gain_ratio(2000))
     assert reader._measured_ratio() is None
-    assert (run(reader.get_error_counter()))["ISL29125"]["ErrCount"] >= 1
+    counter = (run(reader.get_error_counter()))["ISL29125"]
+    assert counter["ErrCount"] >= 1
+    err_num = counter["ErrNum"]
+    assert isinstance(err_num, list)
+    assert 35 in err_num, f"the calibration leg's own failure must log errno=35, got {err_num}"
+    assert 11 not in err_num, f"errno=11 belongs to the periodic read, not this path: {err_num}"
 
 
 def test_a_partner_reading_of_zero_is_not_turned_into_a_ratio() -> None:

@@ -672,6 +672,18 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   the Python-internal changes explicitly recorded as having no C impact). Carries those decisions
   across the gap until that C source is imported into this repo and reconciled, then gets deleted.
   The protocol itself is specified in `SPECIFICATION.md` Part J, which is permanent.
+- **[`REAL_HARDWARE_TEST_QUEUE.md`](REAL_HARDWARE_TEST_QUEUE.md)** — the single list of everything
+  waiting on the dev bench (suite runs, targeted investigations, coverage gaps that need silicon,
+  bench-host tasks), so one go-ahead session can work it in one pass instead of rediscovering it
+  across BACKLOG.md, `tests_hardware/README.md` and the handover docs. Each row is deleted once its
+  result is migrated into the permanent docs; the file goes when the last row does. It authorizes
+  nothing — CLAUDE.md's real-hardware go-ahead gate still applies, and `tests_hardware/README.md`
+  stays the technical reference for how to actually run any of it.
+- The **`*_HANDOVER*.md` files at the repo root** are per-effort throwaways, each owned by the
+  session or pull request named in its own first lines, each deleted once its findings are migrated
+  or confirmed not to apply. They are listed here only so they are locatable; do not treat one as a
+  durable reference, and prefer `REAL_HARDWARE_TEST_QUEUE.md` above for anything bench-related,
+  which is where their still-open real-hardware asks have been consolidated.
 
 **`BUILD_CHAIN_PLAN.md`** (working doc, active for the device-genericization initiative):
 

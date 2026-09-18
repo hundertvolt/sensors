@@ -96,9 +96,24 @@ def test_scd30_real_clock_stretch_never_exceeds_the_configured_timeout(board: Bo
 
 
 # ---------------------------------------------------------------------------
-# Item 6 - time.ticks_ms() real 2**30 rollover (~12.4 days). See harness docstrings for the open
-# "does soft_reset() reset the underlying counter?" question this design depends on.
+# Item 6 - time.ticks_ms() real 2**30 rollover (~12.4 days).
+#
+# The "does soft_reset() reset the underlying counter?" question this design was written around is
+# ANSWERED (real hardware, 2026-09-11, BACKLOG.md item 12): it does not - the counter is free-running
+# hardware time. But the answer moved the hazard rather than clearing it. An `mpremote exec` stops
+# main.py, so nothing feeds the watchdog and the board takes a genuine HARD reset ~8s later, which
+# DOES zero the counter (measured: 1368364ms then 5323ms across two reads 12s apart). Every poll
+# below therefore costs the board a reboot, and a later read landing below an earlier one is the
+# ordinary consequence of that reboot, not evidence of a 2**30 wrap - the two are indistinguishable
+# from ticks_ms() alone. _WRAP_FLOOR_MS exists so that ambiguity fails honestly instead of passing:
+# see the assertion's own message for what a real method would need.
 # ---------------------------------------------------------------------------
+
+# A genuine 2**30 wrap can only be observed when the PREVIOUS read was already close to 2**30. A
+# watchdog reboot can land the next read below the previous one from any starting value, so a drop
+# from anywhere else proves nothing. Two hours of headroom, comfortably wider than the poll interval
+# below, so a real wrap straddling one poll is still recognised.
+_WRAP_FLOOR_MS = (2**30) - 2 * 60 * 60 * 1000
 
 
 @pytest.mark.multi_day_rollover
@@ -108,8 +123,6 @@ def test_ticks_ms_real_2pow30_rollover(board: Board, request: pytest.FixtureRequ
     # whenever it happens to run), not something any duration tier could meaningfully shorten.
     if not request.config.getoption("--allow-multi-day-rollover-wait"):
         pytest.skip("real ~12.4-day wait for the actual 2**30 rollover - pass --allow-multi-day-rollover-wait to actually run this (never bundled with --soak-tier)")
-    # NEEDS VERIFICATION: whether machine.soft_reset() resets the ticks_ms() counter - see
-    # BACKLOG.md's open question on this; confirm on the first real run before trusting the result.
     before_output = board.exec("import time; print('RESULT: PASS ticks_ms=' + str(time.ticks_ms()))")
     before = int(before_output.strip().split("=")[-1])
     target_wait_s = ((2**30) - before) / 1000.0 + 60  # +60s headroom past the exact boundary
@@ -120,8 +133,15 @@ def test_ticks_ms_real_2pow30_rollover(board: Board, request: pytest.FixtureRequ
         time.sleep(min(poll_interval_s, max(deadline - time.monotonic(), 0)))
         check_output = board.exec("import time; print('RESULT: PASS ticks_ms=' + str(time.ticks_ms()))")
         now = int(check_output.strip().split("=")[-1])
-        if now < before:
+        if now < before and before >= _WRAP_FLOOR_MS:
             wrapped = True
             break
         before = now
-    assert wrapped, f"time.ticks_ms() never wrapped below its own earlier value within {target_wait_s:.0f}s"
+    assert wrapped, (
+        f"time.ticks_ms() never wrapped within {target_wait_s:.0f}s. Expect this to be the outcome "
+        f"as long as this test polls with board.exec(): each poll starves the watchdog and reboots "
+        f"the board ~8s later, zeroing the counter, so it can never climb toward 2**30 between "
+        f"polls (BACKLOG.md item 12). A real method has to leave the board running - feed or "
+        f"disable the watchdog from inside the polled code, or observe passively via tail_log() - "
+        f"and that redesign is tracked in REAL_HARDWARE_TEST_QUEUE.md, not worked around here."
+    )
