@@ -66,9 +66,9 @@ falsified theory gets re-proposed and so every conclusion carries its strength a
 | C2 | Collections during the batch strand the survivors (collection-stranding) | **refuted by my own test** | base is broken at 560k, 4M *and* 16M, where the entire 8.4 MB of churn fits with room to spare (§6.5) |
 | C3 | The churn's sweep *extent* is the variable | **refuted** | no dose-response: 4 loggers (498 sessions) keep 100% in 5/5 runs while 1 logger (126 sessions) keeps 51-62% (§9) |
 | C4 | A large heap will clear the defect | **prediction failed, recorded as such** | broken at 16 MB, kept 49%, in_big 41 (§6.5) |
-| C5 | Churn volume does not control the outcome | **confounded; restated** | every rung changed size mix and object count along with volume; held fixed, volume *is* monotonic 0 -> 3 -> 21 (§6.1, §6A.1) |
+| C5 | Churn volume does not control the outcome | **confounded; restated**, and §0B.4 now shows uniform small churn strands nothing at a natural survivor population even at 2.3x base's volume | every rung changed size mix and object count along with volume; held fixed, volume *is* monotonic 0 -> 3 -> 21 (§6.1, §6A.1) |
 | C6 | The `bare` control shows a bare SPI transaction is harmless | **withdrawn** | `_after_fram()` injects the whole burst as one early block, so it measured the churn-first configuration, not the interleaved one (§9) |
-| C7 | Churn and survivors compete for the *same* dust holes, because they are the same size class | **confirmed, quantitatively** | survivors are mean 52 B ~ 2 blocks; a 2-block request fits 82% of the 1,058 seam holes, a 9-block request 21%; measured mid-churn occupancy 82% vs 16% — 82% measured against 82% predicted (§6A.3) |
+| C7 | Churn and survivors compete for the *same* dust holes, because they are the same size class | **confirmed per object, 162/162** (§0B.1); refined — only survivors needing >= 2 contiguous blocks are eligible, which is 25 of the 76 (§0B.2) | survivors are mean 52 B ~ 2 blocks; a 2-block request fits 82% of the 1,058 seam holes, a 9-block request 21%; measured mid-churn occupancy 82% vs 16% — 82% measured against 82% predicted (§6A.3) |
 | C8 | The size threshold is mediated by collection frequency — a large request fails on contiguity and forces an early, shallow collection | **confirmed** | large-unit churn collects at a median 220,864 B still free vs 1,440 B for small-unit churn (§6A.6) |
 | C9 | Cutting the 74 chip-select sessions to ~6 will clear the contiguity floor | **withdrawn** | ~12x against a required 40-100x; 70,000 B per logger measures in_big 14 / span 97%, inside the saturated regime (§6A.8) |
 | C10 | Loop yields are protective for layout | **confirmed, and confound-checked** | first measured at constant total bytes, which entangled it with small-object count; re-run at fixed small-object count it holds — in_big 21 -> 4 -> 2 as yields rise (§6A.4) |
@@ -134,8 +134,9 @@ Because allocation is lowest-fit, both draw from the same 870 dust holes. The ch
 
 1. Transients are allocated into the lowest fitting dust holes and, until the next collection, they
    are **live** — they hold those holes.
-2. A survivor born while enough of those holes are held cannot be satisfied anywhere below the large
-   run, so lowest-fit places it **inside the large run** — the only remaining place a 2-block
+2. A survivor **needing two or more contiguous blocks** (§0B.2: 1-block objects are structurally
+   immune, and they are 51 of the 76) born while enough of those holes are held cannot be satisfied
+   anywhere below the large run, so lowest-fit places it **inside the large run** — the only remaining place a 2-block
    request can be met.
 3. Placement is final. When the transients are later collected the dust frees again, but the
    survivor stays where it was put.
@@ -191,6 +192,10 @@ four cases.
 
 ### 0A.6 What is still open — audited claim by claim
 
+**Superseded in part by §0B**, which reports the runs made against these items: 1, 3, 5 and 7 are
+closed, 6 and 8 dissolved, 2 advanced but still open, and two of the model's statements were
+changed rather than confirmed. This table is kept as the audit that generated that work.
+
 Each load-bearing claim of §0A.3, classified as **[V]** verified against source, **[M]** directly
 measured, **[I]** inferred from a correlation, or **[U]** untested. Ranked by how much the model
 leans on it.
@@ -220,6 +225,139 @@ only its numbers are port-specific.
 **Order these would settle the model fastest:** 1 (the causal step), 3 (what is actually stranded),
 2 (the churn-axis quantity), 4 (survivor size symmetry). Items 5-8 tighten it; 9 and 10 are scope
 rather than mechanism.
+
+## 0B. Confirming the model — what the tests closed, and what they changed
+
+The §0A.6 audit named ten open items. This section reports the runs made against them. Two results
+**changed** the model rather than confirming it, and they are stated first.
+
+### 0B.1 The central claim, tested per object — 162 of 162, no counterexamples
+
+Gap 1 asked for the causal step itself: *is a survivor placed in the large free run **because** no
+hole below it could fit at that instant?* Made falsifiable by allocating a **probe survivor** at
+controlled birth points — a runtime-built tuple, which is a **single** allocation whose address
+`id()` reports (a `bytearray` is two allocations, object plus buffer, and a 1-block request also
+advances the GC hint, so neither is usable). The probe's true block extent is read from the final
+map, never assumed.
+
+**Design correction made mid-experiment.** The first version dumped the map *before* allocating, and
+produced one counterexample at 16 blocks: 2 fitting holes existed, yet the probe landed in the large
+run. Measured cause — **the dump itself allocates 320 B (10 blocks), every time, consistently** —
+so the snapshot was stale by more than the slack it was measuring. Re-designed to allocate **first**
+and dump **after**, reconstructing the pre-state by marking the probe's own blocks free again, which
+leaves nothing allocated between the probe and its own snapshot. The counterexample disappeared.
+
+| probe size | probes | counterexamples | fitting holes below, at the first probe |
+|---|---|---|---|
+| 1 block | 23 | **0** | 833 |
+| 2 blocks (the survivors' own class) | 23 | **0** | 667 |
+| 8 blocks | 23 | **0** | 267 |
+| 16 blocks | 23 | **0** | 72 |
+| **at real survivor positions**, real churn, 7 perturbations | **70** | **0** | 403 |
+| **total** | **162** | **0** | |
+
+The transition lands exactly where the model says. In the synthetic runs the count of fitting holes
+below the large run falls monotonically — 833, 743, 694, ... 51, 33, **0** — every probe lands low
+while it is non-zero, **every probe lands in the large run once it reaches zero**, and at the probe
+after a collection the count jumps back to 1,142 and placement returns to the dust.
+
+This also settles **gap 7**: the "coincidence count" is no longer a qualitative story. Each probe is
+a birth, and the model predicts its individual fate correctly **162 times out of 162**.
+
+### 0B.2 Changed: only multi-block survivors can ever be stranded
+
+Gap 3 asked what the stranded objects actually are, since §2.2's size signature looked like
+coroutine residue. Answered by typing them from the block map's own legend:
+
+| run | inside the large run | in the dust |
+|---|---|---|
+| base, k=0 | **8** — all "other head"; sizes 2,2,2,2,2,3,5,6 blocks | 68 |
+| base, k=3 | **9** — all "other head"; sizes 2x5, 3, 4, 5, 6 | 67 |
+| `noio` | **0** | 76 — other head 55, float 11, dict 7, tuple 2, list 1 |
+| synthetic churn | **0** | 76 — **histogram identical to `noio`** |
+
+Two things follow, and the second is new.
+
+**The stranded set is the batch's own permanent population, not churn residue.** The total is the
+same 75-77 objects with and without churn, and the type histograms match exactly; only the placement
+differs. The §2.2 worry is resolved — and note the synthetic churn retains *nothing*, so any
+stranding under it is necessarily of batch survivors.
+
+**The vulnerable population is far smaller than 76.** The dust population is **51 one-block objects
+plus 25 multi-block ones**, and every stranded object in every run is multi-block (2-6 blocks). A
+1-block request can be met by *any* free single block, and one essentially always exists — so
+**two-thirds of the survivors are structurally immune**. The eligible population is ~25, of which
+8-9 strand in base: about a third of what can be hit. §0A.3's "a survivor born while the holes are
+held" should be read as **"a survivor needing two or more contiguous blocks"**.
+
+### 0B.3 Changed: the dust is mostly import residue, not construction residue
+
+Gap 5. §0A.4 explained heap-size irrelevance by saying the dust is the construction phase's residue.
+Measured across three stages of one base run:
+
+| stage | holes | blocks | fit 2 blocks | largest run |
+|---|---|---|---|---|
+| after **import**, before any construction | **520** | 2,162 | 354 | 289,984 |
+| at the **seam**, after construction | 736 | 4,658 | 670 | 121,504 |
+| **after** the setup batch | 733 | 5,297 | 673 | **91,008** |
+
+**Import alone leaves 71% of the seam's hole count and 46% of its blocks.** Construction adds only
+216 holes. The conclusion in §6.5 survives — import and construction are both fixed workloads, so
+the dust is still heap-size independent — but the attribution was wrong and is corrected here.
+
+Worth noting in the same table: the batch barely changes the hole *count* (736 -> 733) while taking
+the largest run from 121,504 to 91,008. It is not creating dust; it is splitting the one run.
+
+### 0B.4 Gap 2 advanced, not closed — and it now points somewhere specific
+
+The churn-axis question was: what quantity binds, given that the onset is at 83-208 objects while
+870 holes fit a 2-block request. Probed directly by running the per-object experiment across churn
+doses at a natural-scale survivor population (10 per logger, 90 total against the real 76):
+
+| synthetic churn per logger | probes | minimum fitting holes reached | stranded |
+|---|---|---|---|
+| 0 / 960 B / 4,800 B / 19,200 B | 23 each | 1 | **0** |
+| 96,000 B / 288,000 B | 23 each | 1 | **0** |
+| 823,000 B (base's own dose) | 23 | 1 | **0** |
+| 1,875,000 B (2.3x base) | 23 | 1 | **0** |
+
+**Uniform small-object churn does not strand anything at a natural survivor population, even at
+2.3x base's volume.** Yet base does strand 8-9. So base's churn differs from uniform small churn in
+a way that matters, and the candidates are concrete: its **size mix** (it contains 2-block
+`bytearray`s, 5-6 block frames and 28-block sleep objects, not one uniform class) and its own
+retained objects. §6A.8's "churn budget" figures were measured with the equal-total-bytes injector
+and should not be read as a property of churn volume alone.
+
+At the real survivor birth positions the same instrumentation shows why the system is so
+knife-edged: across 7 perturbations the fitting-hole count at the ten probe points is reproducible
+to within a few percent — 403, **1**, ~220, **1**, ~40, ~360, **1**, ~30, ~330, **1** — so three or
+four of ten real births occur with **exactly one** fitting hole left, the one the survivor then
+takes. One more competing demand at those instants and it strands.
+
+**Not closed:** 70 probes at real positions produced no stranding, while base strands 8-9 of 76. The
+probes are placed once per module `setup()`; the survivors that do strand are born at instants that
+sampling does not reach. The positive branch of the law is therefore confirmed 20+ times
+synthetically and **zero times at a real survivor position**.
+
+### 0B.5 Two gaps dissolved rather than answered
+
+- **Gap 6, hole count versus hole capacity.** The per-object law is neither: it is *does any single
+  fitting hole exist below the large run*. Aggregate count and aggregate capacity are both emergent
+  summaries of that, so no separate aggregate law is needed and the question does not arise.
+- **Gap 8, the single-sample occupancy weakness.** Superseded. The 82%/82% agreement was one
+  mid-churn sample; the per-probe fitting-hole counts are a direct per-birth measurement of the
+  quantity that actually governs placement, taken 162 times.
+
+### 0B.6 Still open
+
+- **Gap 2's positive branch at real positions** (§0B.4) — the one remaining mechanism gap.
+- **What in base's churn does the stranding**, given uniform churn does not (§0B.4). Its size mix is
+  the named suspect and is directly testable.
+- **Gap 9, parallelism** — not re-run; still n=6 and confounded by the churn task's own retained
+  objects (§6A.10).
+- **Gap 10, hardware** — unchanged, and no go-ahead. A GC block is 16 B there against 32 B here, so
+  the "1-block objects are immune" boundary in §0B.2 falls at a different byte size on the board and
+  the eligible population may be a different fraction of the whole.
 
 ## 1. The instrument
 
@@ -1324,6 +1462,9 @@ built per §1.4 and run from the repo root with `MICROPYPATH=.frozen`.
 | `probe.py synthpar` / `parplus` modes | §6A.10's concurrent-churn task. `synthpar` no-ops the logger setups (and so starves its own task of scheduling slots - the batch's awaits are what create the parallelism); `parplus` keeps the real batch intact and adds the task on top, which is the one that isolates added parallelism |
 | `spread.py` / `saw.py` | survivor decile histogram, heap span and distinct-run count; the fill-sawtooth trace analysis |
 | `probe.py synth` arg 12 (`surv_n`) | §6A.11's retained-survivor knob: extra kept 64 B bytearrays per logger setup, interleaved with the churn. `svgrid.py` tabulates the churn x survivor grid |
+| `probe.py` args 14-15 (`probe_every`, `s1\|s2\|s8\|s16`) | §0B.1's per-object placement probe. A runtime-built tuple (one allocation, `id()` is its address); allocate first, dump `post<k>` after, and `causal.py` reconstructs the pre-state by freeing the probe's own blocks — the pre-dump order was invalid because `mapdump_live` itself allocates 320 B |
+| `probe.py probemod` mode | §0B.4's probe at the REAL survivor birth positions: wraps every module's `setup()` and probes after it returns, with the real FRAM churn untouched |
+| `causal.py` / `whatstranded.py` / `holehist.py` | the per-object verdict table; typing of the stranded objects from the map legend; hole-size histogram at any named dump (`import`/`seam`/`after`) |
 | `probe.py` arg 13 (`presurv`) | §6A.12's pre-seam partner, hooked on `AsyFramManager.__init__` so the objects land in the construction phase. Works with any mode including plain `base`, which is how the real-churn arm is run. Both retention containers are sized exactly and allocated in-phase — §6A.12's instrument note has the two container artifacts that invalidated earlier attempts |
 | `fgrid.py` / `holes.py` / `peak.py` / `hist.py` | in_big + kept% per run; dust-hole occupancy; matched non-collecting peak dumps; the seam hole-size histogram |
 | `unitcost.py` / `unit2.py` | per-allocation cost calibration (`bytearray(n)`, bare await, `sleep(0)`) |
