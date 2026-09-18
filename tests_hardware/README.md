@@ -124,6 +124,121 @@ Both automated scripts are plain `uv run pytest` wrappers - any pytest flag work
 `-m role_reversal`, `-v`, `--tb=short`, ...). `--collect-only` works with nothing attached at all
 (every fixture skips cleanly, never errors, when the hardware it needs isn't reachable).
 
+## The NeoPixel sweep rig
+
+Two flash-tier tests are gated on physical geometry rather than on wear or wall clock -
+`test_isl29125_mechanism_envelope_holds_across_range_resolution_and_calibration` and
+`test_isl29125_survives_recombined_realistic_lighting_scenarios`, both behind `--allow-neopixel-sweep`
+and both whitelisted in `scripts/_require_clean_hardware_run.sh` so an expected skip does not read as
+a failure. What the rig needs:
+
+- The dev board's own WS2812 (GP18) aimed at the ISL29125's window at a fixed, recorded distance -
+  close enough that full-brightness white crosses the 375 lx range's top into the 10000 lx range.
+  Record the geometry through the manual tier's
+  `isl29125_real_lux_vs_reference_meter_and_neopixel_rig_geometry`.
+- Ambient excluded (enclosure or darkened room). Ambient above the low range puts the whole run on
+  the high range and fails with "only range N was ever used" - a rig fault, not a driver one.
+- Nothing else driving the pixel: these scripts go through `request_signal()`'s real arbitration, and
+  a notification signal landing mid-scenario is indistinguishable from a bad reading.
+
+Every assertion is **relative** - continuity across the switch, no chatter, hue/saturation invariance
+while the level moves, gain-ratio convergence. Absolute lux and CCT against a WS2812's three narrow
+emission lines are meaningless and are asserted nowhere; the reference-meter half is the manual
+tier's job. CLAUDE.md's FRAM rule applies in its sharpest form to every script here - see "A hardware
+run overwrites the production modules' FRAM chunks" below before treating any log as evidence.
+
+## ISL29125 bench-rig facts, before reading any result
+
+Each of these looks like a driver defect and is not:
+
+- **An interrupted `main.py` leaves the WS2812 latched**, often at full white (~2000 lx at this
+  geometry), because a WS2812 holds its last value and every `mpremote run` interrupts `main.py`.
+  Every ISL29125 script that reads light therefore parks the pixel dark itself and takes an ambient
+  baseline first. Found twice: a register probe read 65444/65272/65323 and was briefly taken for real
+  saturation (parked dark, the same bench reads ~40 lx, 10.7% of the low range); and
+  `isl29125_real_irq_edge.py` failed its first real run because latched white is a **static** scene -
+  it crosses no threshold, no interrupt fires, and the first sample waits for the 30 s periodic tick.
+  Parked dark it passes in 0.60 s.
+- **The sensor can be covered or uncovered between runs** (~40 lx uncovered here, far less covered),
+  so nothing compares an absolute reading across a cover change and the return-to-baseline check uses
+  an LED-dominated level rather than ambient.
+- **The breakout carries its own red LEDs**, so red reads systematically high against green and blue.
+  Nothing asserts channel equality or a specific hue, only that HSB stays in domain and coherent with
+  RGB.
+- **The auto-range hysteresis band**, measured covered at this geometry (2026-09-12), in NeoPixel
+  levels:
+
+  | direction | low range (375 lx) holds | high range (10000 lx) takes over |
+  |---|---|---|
+  | rising | to level 6 (~197 lx) | from level 8 (~300 lx) |
+  | falling | from level 2 (~76 lx) | to level 3 (~112 lx) |
+
+  **Levels 2-8 sit inside the band and cannot force a switch either way.** Re-measure if the rig or
+  the cover changes.
+
+## Which path decides a range switch
+
+Measured 2026-09-13, six forced crossings per setting. The chip cannot raise `RGBTHF` before `PRST`
+whole RGB cycles have passed (303 ms each at 16 bit), while the driver re-checks the same condition
+in software every sample with no persistence requirement. **The shorter window decides every switch.**
+
+| `PRST` | window at 16 bit | against `SampleInterv = 1` | measured |
+|---|---|---|---|
+| 4 | 1212 ms | longer - software wins | 5 of 6 periodic-led, latency ~1000 ms |
+| 2 | 606 ms | shorter - interrupt wins | 6 of 6 interrupt-led, 500-800 ms |
+| 1 | 303 ms | shorter - interrupt wins | 6 of 6 interrupt-led, 200-613 ms |
+
+That is why the window is derived rather than configured (SPECIFICATION.md Part C.11.1.3), and why
+`wrnno=13` - five range decisions in a row taken by the periodic path - means the INT line looks dead
+rather than that a setting is wrong.
+
+## What the two gated light tests prove
+
+- **Mechanism envelope** (`isl29125_mechanism_envelope.py`, ~99 s of settles alone): eight steady
+  levels up and back down through the overlay path, never a ramp - a ramp confounds the range step
+  with the light's own change. One run proves a live read chain at every level, `Bri == max(R, G, B)`
+  with every field in domain, monotonic response across the envelope, both ranges used, hysteresis
+  with no chatter, the return to the low range, fixed-range pinning at both ends, 12-bit and 16-bit
+  agreeing on one static scene (which is what proves the `<< 4` normalisation), `ISLCalibrate`
+  starting a run without moving the applied ratio, `Overrange` true at full white (this rig really
+  does exceed 10000 lx at ~20 mm), no `W13`, and zero `E` entries.
+- **Lighting scenarios** (`isl29125_lighting_scenarios.py`, ~8.5 min of real segments): ten scenarios
+  recombining colour, slope shape, direction, start/end level, pauses and threshold proximity, driven
+  **raw** because `NeopixelDriver` offers only a steady white and a 0->peak->0 triangle. Two
+  cross-scenario invariants: the inter-sample gap stays at the sample interval (a stall means the read
+  chain died, not that the light moved slowly), and a return-to-baseline re-read after each scenario
+  catches a driver left wedged in a range.
+
+## Writing a new device script: three habits
+
+A test depending on an unstated rig condition is this tier's recurring failure mode - six instances
+so far, every one found by running the test rather than reading it, and every one green first:
+
+- **Provide your own light.** `isl29125_plausibility_read.py` passed while a preceding test left the
+  pixel latched white, then failed once another parked it dark - its result depended on test ORDER,
+  with the script itself unchanged.
+- **Restore or side-step every piece of shared state you touch** - light, config files, FRAM chunks.
+  The envelope script once seeded `cfgmgr._cache` without calling `setup()`, so its `_set_dict_cfg()`
+  calls wrote that cache over the board's real `config_ISL29125.cfg`: six silent flash writes per run.
+- **Assert a minimum engagement beside every ceiling**, or a test passes while the mechanism it
+  targets never runs. A "no `W13`" check proves nothing in a run making two switches when the warning
+  needs five in a row, and an oscillation scenario passed with `switches=0` because both its levels
+  sat inside the band. Every scenario now carries `min_switches` and a must-use-both-ranges flag
+  beside its ceiling: `threshold_oscillation_crossing` must switch at least 4 times and
+  `hysteresis_band_dwell_no_chatter` exactly zero, so an edit making either vacuous fails the other.
+
+## The ISL29125 mock-conformance probe
+
+`test_isl29125_register_probe_matches_the_digital_twins_fake_chip` is the only test in this tier that
+checks the **digital twin** rather than the firmware: `device_scripts/isl29125_mock_conformance_probe.py`
+runs against the real part and then against `digital_twin/_isl29125_chip.py` under the Unix port, and
+every protocol key is diffed (`tests_hardware/isl29125_conformance.py` holds the shared expectation
+table). It talks raw `machine.I2C` only, so it needs nothing from `src/` on the board and no
+`mpremote mount`, and it needs the Unix port already built - it raises a `FileNotFoundError` naming
+the path rather than skipping. A failure means the fake and the part disagree: decide which is wrong
+from the datasheet **and** a fresh measurement, never from the fake (SPECIFICATION.md Part C.11.1
+lists what the first real run found).
+
 ## Known assumptions and open findings
 
 Flagged while writing this tier against real source/datasheets, or found once real-hardware runs

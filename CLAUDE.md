@@ -381,17 +381,22 @@ information):
 - **Every module gets exactly one header comment block — module/function/class `"""..."""`
   docstrings in Python, the equivalent leading `/** ... */`/`//` block in JS — capped at 3 lines,
   prefer fewer: a concise header, not an essay. This applies to all code in the repo, not just
-  Python — `js/`, `tests_js/`, `html/style.css`, `digital_twin/`, everything.** Inline comments
-  (`#` in Python, `//`/inline `/** */` in JS) have no hard numeric cap, but stay disciplined: a few
-  short, genuinely load-bearing WHY notes next to the line they explain, never a multi-paragraph
-  block of narrative reasoning. Load-bearing detail that doesn't fit that bar moves to: the
+  Python — `js/`, `tests_js/`, `html/style.css`, `digital_twin/`, everything.** **The same 3-line
+  cap applies to every inline comment block** (`#` in Python, `//`/inline `/** */` in JS) — tightened
+  from "no hard numeric cap" by the project owner on 2026-09-14, after a promotion accumulated
+  5-to-9-line blocks that read as essays, and re-confirmed on 2026-09-18: a few short, genuinely
+  load-bearing WHY notes next to the line they explain, never a multi-paragraph block of narrative
+  reasoning. Load-bearing detail that doesn't fit that bar moves to: the
   relevant `SPECIFICATION.md` Part if the fact is architectural and reused elsewhere (leave a short
   pointer in the header block, the same "Moved to `SPECIFICATION.md` Part X" pattern this file
   itself already uses — website-facing facts go to Part H specifically),
   `digital_twin/README.md` for anything `digital_twin/`-specific, or a
-  short comment right next to the code it explains otherwise — never dropped outright. Applied
-  repo-wide across `src/`, `digital_twin/`, `tests/`, `js/`, `tests_js/` in one pass (project
-  owner's direction); keep new code to this bar too.
+  short comment right next to the code it explains otherwise — never dropped outright. **Machine-read
+  tag lines are data, not commentary, and are exempt**: `# @web`, `# @web-group`, `# @wiring`,
+  `# @value-wiring`, `# @limits` and `# @requires` are buildgen's input, one line per field by
+  construction (SPECIFICATION.md Part L.6.4) — the prose introducing them is not exempt. Applied
+  across `src/` in one pass (project owner's direction, 2026-09-18); the remaining scopes are
+  measured per scope in BACKLOG.md. Keep new code to this bar.
 - Prefer flagging genuinely ambiguous/architecturally significant decisions to the project owner
   over guessing — several open questions in BACKLOG.md exist precisely because the code's actual
   intent wasn't obvious from reading it alone.
@@ -655,6 +660,20 @@ information):
   `scripts/test.sh` exports `TZ=UTC` before invoking the Unix-port binary for exactly this reason.
   Don't diagnose a consistent (not intermittent) failure in a live-clock assertion as a new code bug
   before checking the runner's `$TZ`.
+- **Two suites that both bind real ports must never run at the same time.** `scripts/test.sh`'s
+  MicroPython tier serves real HTTP and a real port-53 DNS server, and so does `npm test`'s mock
+  server, so running them concurrently makes a test connect to the *other* suite's listener. It does
+  not look like contention: a 200/404 mix
+  (`AssertionError: [200, 404, 200, 404, 'rejected', 'rejected']`), an empty body where stub content
+  was expected, a 404 for a page that plainly exists - exactly what a broken static mount or a bad
+  merge would produce. Confirmed 2026-09-13: nine failures across
+  `test_digital_twin_webserver_concurrency.py` and `test_frozen_html_integration.py` on a merge
+  commit, all nine gone on a re-run with nothing else running. Run the two tiers one after the
+  other; don't re-diagnose this pattern as a code or merge defect. `scripts/test.sh`'s own
+  backgrounded `tests_scripts/` tier is a deliberate non-instance: its HTTP ports are ephemeral
+  (`_free_port()` binds port 0), and the one fixed port a booted twin also wants - captive DNS on
+  53 - is `SO_REUSEADDR` and degrades to "not connected" after its retries rather than failing the
+  boot (`asy_udp_socket.py`), so the two tiers overlap safely.
 - **`ruff format` is deliberately not used anywhere** — line breaks are hand-chosen throughout this
   codebase; `line-length = 320` (ruff's own ceiling) plus an `E501` ignore keep this a non-issue even
   if `format` is ever run by accident. Lint rule selection (`E`/`F`/`W`/`I`/`UP`/`B`) is stricter

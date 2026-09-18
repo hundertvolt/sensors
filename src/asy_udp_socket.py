@@ -1,14 +1,6 @@
-# Attribution note (no formal SPDX identifier - see THIRD_PARTY_LICENSES.md for the full
-# explanation): this class's shape (lazy _connect(), a select.poll()-based ready(mask, timeout_ms)
-# gate, a combined write+read convenience method, explicit disconnect() teardown) is close to
-# karfas's AsyUDPClient (github.com/karfas/upy-simple-app, lib/asy_udp_client.py). That repo carries
-# no LICENSE file, but karfas posted both this file and its NTP-client sibling publicly in
-# github.com/orgs/micropython/discussions/12967 as "a starting point" in direct response to a
-# request for exactly this kind of async UDP/NTP code, and didn't object when another poster said
-# they'd use them - treated as the author's own public offer of the code for this kind of reuse.
-# Method names/signatures were changed from karfas's original (sendto/write/recvfrom/
-# write_and_recvfrom vs. send/receive/send_and_receive), and mode="server" support, asyncio.Lock
-# serialization, __aenter__/__aexit__, and input validation were added here, not present upstream.
+# Attribution, no formal SPDX identifier: this class's shape is close to karfas's AsyUDPClient
+# (github.com/karfas/upy-simple-app), offered publicly by its author for exactly this reuse.
+# THIRD_PARTY_LICENSES.md carries the full account and what was changed or added here.
 
 """Async, non-blocking UDP wrapper around one socket.socket, driven by a hand-rolled select.poll
 loop. Two modes: mode="client" for a one-shot outbound request/response exchange, mode="server" for a bound socket answering inbound datagrams; also usable as `async with AsyUDPSocket(...) as sock:`.
@@ -209,13 +201,8 @@ class AsyUDPSocket:
         return None, None
 
     async def disconnect(self) -> bool:
-        # Serialized against _connect() via the same self._connect_lock - without this, a
-        # disconnect() concurrent with an in-flight _connect() retry could crash it.
-        # Returns True if teardown completed cleanly, False if unregister()/close() raised (state
-        # is still always cleared either way - see _disconnect_locked()). This class deliberately
-        # has no logger of its own (every I/O method is a plain sentinel-return, never-raises
-        # primitive - see module docstring), so a caller that wants to log a failed teardown reads
-        # this return value with its own logger, the same way it already does for every other
-        # method here - never a silent bare `pass` with no signal at all (Step 6 finding).
+        # Serialized against _connect() through the same lock - a concurrent disconnect() could
+        # otherwise crash an in-flight retry. Returns False if teardown raised (state is cleared
+        # either way): this class owns no logger, so the caller logs it (Part C.7's bool rule).
         async with self._connect_lock:
             return await self._disconnect_locked()

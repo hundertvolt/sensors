@@ -2,10 +2,9 @@
 protected scalars (LockedCounter, LockedFlag, LockedValue), and the sensor-driver base (SensorReader, SensorReaderConfig) with error bookkeeping and optional JSON config storage.
 Every method returns a well-defined value, never raises.
 """
-# `__init__` never calls `self.pr.setup()` (sync vs. async) - the caller's own async setup must, or
-# FRAM persistence stays inert. `SensorReaderConfig` mirrors that split one level up: `__init__`
-# only constructs `self.cfgmgr` (cheap, synchronous), and its own `async def setup()` awaits
-# `self.cfgmgr.setup()`.
+# `__init__` never calls `self.pr.setup()` (sync vs. async) - the caller's async setup must, or FRAM
+# persistence stays inert. `SensorReaderConfig` mirrors that split: `__init__` only constructs
+# `self.cfgmgr`, and its own `async def setup()` awaits `self.cfgmgr.setup()`.
 
 import asyncio
 
@@ -231,11 +230,9 @@ class SensorReader:
         return True
 
     def get_error_sources(self) -> "list[Any]":
-        # N-to-1 fan-in primitive (SPECIFICATION.md Part C.14/G.2): every module callable from a
-        # top-level *_collect_error_sources()* implements this, structurally (no shared base
-        # required - matches asy_webserver_service.py's own _ModuleLike Protocol precedent), so the
-        # aggregator can hold a plain, generically-collected list of instances instead of a
-        # hand-enumerated one. Plain SensorReader has no nested error-logging sub-object of its own.
+        # N-to-1 fan-in primitive (Part C.14/G.2): every module the generated
+        # _collect_error_sources() reaches implements this structurally, no shared base required, so
+        # the aggregator holds a collected list rather than a hand-enumerated one.
         return [self]
 
     def get_loggers(self) -> "list[PrintLogHistory]":
@@ -274,10 +271,9 @@ class SensorReaderConfig(SensorReader):
     ) -> None:
         super().__init__(init_data, max_module_error, fram, history_length, debug, name=name, name_ext=name_ext)
         self.cfg_schema = default_vals
-        # self.name (already instance_name(name, name_ext), resolved by super().__init__() above)
-        # threads the same per-instance extension into both the on-flash filename and this
-        # ConfigManager's own "CFGMGR_<name>" logger (SPECIFICATION.md Part C.14) - not the raw
-        # `name` param, which is only this driver type's fixed base name.
+        # self.name - already instance_name(name, name_ext) from super().__init__() - threads the
+        # per-instance extension into both the on-flash filename and this ConfigManager's own
+        # "CFGMGR_<name>" logger (Part C.14). Never the raw `name`, which is the type's base name.
         self.cfgmgr = ConfigManager(
             cfg_path + "config_" + self.name + ".cfg",
             default_vals,
@@ -306,11 +302,9 @@ class SensorReaderConfig(SensorReader):
     async def _set_dict_cfg(
         self, data: "dict[str, int | float | str | bool | None]", cfg_vals: "ConfigSchema",
     ) -> "WriteValidity":
-        # Setter mirror of _get_dict_cfg (see SPECIFICATION.md C.5.2): persist first, then push live only
-        # changed fields with a callback. Snapshot each field's pre-write value first - the one
-        # _recover_failed_push rung that only exists here, before the write below overwrites it.
-        # Filtered to genuinely-persisted keys only: an unfiltered snapshot fetch logged a spurious
-        # CFGMGR_* errno=8 for every command-only/special-alone field write (e.g. SGP40's SGPResetVOC).
+        # Setter mirror of _get_dict_cfg (Part C.5.2): persist first, then push only the changed
+        # fields. Pre-write values are snapshotted for _recover_failed_push, filtered to persisted
+        # keys - an unfiltered fetch logged a spurious errno=8 for every command-only field write.
         persisted_keys = [key for key, field in schema_dict(cfg_vals).items() if key in data and check_cfg_get_default(field)[0]]
         try:  # _get_mgr_cfg is an overridable extension point, same defense as _get_dict_cfg's own use of it
             old_values = await self._get_mgr_cfg(persisted_keys) if persisted_keys else {}

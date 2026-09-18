@@ -113,10 +113,9 @@ _FIELDS = const(("Pres", "Temp", "SLPres", "TS"))  # kept in sync with BMP3XX's 
 # already-constructed instance, passed directly as this driver's own fram= kwarg.
 # @wiring fram_target AsyFramManager fram optional kwarg
 
-# Driver-declared value domains (SPECIFICATION.md Part L.6.4),
-# read by buildgen/limits.py from these tags - the bounds are kept in sync with _MIN_TRIGGER_SECS/
-# _MAX_TRIGGER_SECS above by hand, since a comment can't reference a name.
-# BMP388/390's SDO pin selects the address: exactly 0x76 (pulled low) or 0x77 (pulled high).
+# Driver-declared value domains (SPECIFICATION.md Part L.6.4), read by buildgen/limits.py from the
+# tags below - bounds kept in sync with _MIN/_MAX_TRIGGER_SECS by hand, since a comment cannot
+# reference a name. BMP388/390's SDO pin selects the address: exactly 0x76 (low) or 0x77 (high).
 # @limits address in {0x76, 0x77}
 # @limits trigger_sec 1..3600
 if TYPE_CHECKING:
@@ -169,13 +168,9 @@ class BMP3xx_Reader(SensorReaderConfig):
         self._get_callbacks[name_cfg(_VAL_FC)] = self.get_filter_coefficient
 
     async def _read_sensor_dict(self) -> dict[str, int | float | str | bool | None]:
-        # Single batched read (get_config_snapshot()), not three independent get_*() calls - closes
-        # a torn-read window: a concurrent config write landing mid-batch used to be able to mix
-        # pre-/post-write values. Unlike the three independent get_*() wrappers
-        # this replaced, get_config_snapshot() can raise on a bus fault (BMP3XX_I2C's own "allowed
-        # to raise" layer) - caught here, not left to get_dict_cfg()'s own callback try/except,
-        # because that would skip the dict update entirely and leave these three fields at their
-        # persisted config-file defaults instead of None.
+        # One batched read, not three get_*() calls, closing a torn-read window a concurrent config
+        # write could land in. It can raise on a bus fault, caught here rather than by get_dict_cfg()'s
+        # try/except - which would skip the dict update and leave these fields at their defaults.
         try:
             pressure_oversampling, temperature_oversampling, filter_coefficient = await self.bmp.get_config_snapshot()
         except Exception as e:
@@ -597,12 +592,9 @@ class BMP3XX_I2C:
         return result
 
     async def get_config_snapshot(self) -> "tuple[int, int, int]":
-        # (PressOvers, TempOvers, FiltCoeff) - one device-session lock hold across all 3 bit-field
-        # reads, closing the torn-read window a concurrent set_*_oversampling()/set_filter_coefficient()
-        # call (also i2c_bmp3xx-locked) could otherwise land inside mid-batch, producing a dict that
-        # mixes pre- and post-write values. Same "allowed to raise" layer as every other
-        # BMP3XX_I2C method - a mid-batch fault fails the whole snapshot rather than a mix of fresh
-        # and stale fields.
+        # One device-session lock hold across all three bit-field reads, closing the torn-read window
+        # a concurrent set_*_oversampling()/set_filter_coefficient() could land in. Same "allowed to
+        # raise" layer as every other BMP3XX_I2C method: a mid-batch fault fails the whole snapshot.
         async with self.i2c_bmp3xx as bmp3xx, bmp3xx.i2c_device as i2c:
             osr_p = await i2c.get_bits(3, _REGISTER_OSR, 0)
             osr_t = await i2c.get_bits(3, _REGISTER_OSR, 3)

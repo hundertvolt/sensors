@@ -1,20 +1,13 @@
-# SPDX-FileCopyrightText: Copyright (c) 2013, 2014 micropython-lib contributors - the NTP query
-# byte (0x1B in a 48-byte packet), the struct.unpack("!I", msg[40:44]) transmit-timestamp read, the
-# NTP/Unix epoch-delta subtraction, and _parse_ntp_reply()'s RTC().datetime((tm[0], tm[1], tm[2],
-# tm[6] + 1, tm[3], tm[4], tm[5], 0)) call all match micropython-lib's own ntptime.py module
-# byte-for-byte in the parts that overlap; see THIRD_PARTY_LICENSES.md. Leap-indicator/stratum
-# rejection, the min/max plausibility window (replacing ntptime.py's newer, differently-shaped
-# Y2036 fix), async/AsyUDPSocket integration, and the config/retry/timer machinery below are this
-# file's own additions, not present in ntptime.py.
+# SPDX-FileCopyrightText: Copyright (c) 2013, 2014 micropython-lib contributors
 # SPDX-License-Identifier: MIT
+# Overlaps ntptime.py in the query byte, timestamp read and epoch delta - THIRD_PARTY_LICENSES.md.
 
 """Async NTP client + CET/CEST local-time helper. Not a sensor, but config-managed the same way:
 extends base_classes.py's SensorReaderConfig, owns its own config_NTP.cfg (see SPECIFICATION.md Part C).
 """
-# Every field is persist-only - nothing here needs a live push, so base_classes.py's generic
-# _set_dict_cfg() already provides full setter support with zero changes to this file (no
-# self._push_callbacks entries registered). errno/wrnno numbering starts at 11 here (1-4/10 are
-# base_classes.py's own).
+# Every field is persist-only, so base_classes.py's generic _set_dict_cfg() gives full setter
+# support with no _push_callbacks entries here at all. errno/wrnno numbering starts at 11, clear of
+# base_classes.py's own reservation (SPECIFICATION.md Part C.7.1).
 
 import asyncio
 import struct
@@ -79,18 +72,15 @@ _VAL_DST = const((("DSTOffset", "int", 3600, -43200, 43200, None),))
 # @web NTP_Offset_S section=networking submitGroup=ntp label="NTP Offset" unit="s" description="Added to Unix time; affects system time and all timestamps."
 # @web NTP_Interv_H section=networking submitGroup=ntp label="NTP Sync Interval" unit="h"
 
-# Contributed into system_service.py's own "settings" group (System Settings card) - GMTOffset/
-# DSTOffset are real cettime() inputs owned by this module, not system_service.py, even though they
-# render on the System page (system_service.py's own @web-group section=system submitGroup=settings
-# tag is the sole declaration for that group; this file only adds fields to it).
+# Contributed into system_service.py's "settings" group: GMTOffset/DSTOffset are real cettime()
+# inputs owned by this module even though they render on the System page. That group is declared
+# once, by system_service.py's own @web-group tag; this file only adds fields to it.
 # @web GMTOffset section=system submitGroup=settings label="GMT Offset" unit="s" description="Timezone offset to GMT; affects local time only."
 # @web DSTOffset section=system submitGroup=settings label="DST Offset" unit="s" description="Daylight Savings offset; affects local time only."
 
-# This service's one optional live cross-instance dependency (SPECIFICATION.md Part C.14): its own
-# FRAM error-log target, resolved by buildgen/ from [device.wiring].fram_target, implicitly, since
-# AsyNtpClient is mandatory infra too (never an [[instance]] entry itself) - same mechanism as
-# system_service.py's/asy_wifi_service.py's own identical tag, to an already-constructed
-# AsyFramManager instance passed directly as this service's own fram= kwarg.
+# This service's one optional live cross-instance dependency (Part C.14): its FRAM error-log target,
+# resolved from [device.wiring].fram_target implicitly because AsyNtpClient is mandatory infra,
+# never an [[instance]] entry - the same tag system_service and asy_wifi_service carry.
 # @wiring fram_target AsyFramManager fram optional kwarg
 
 _NAME = const("NTP")

@@ -188,11 +188,9 @@ if TYPE_CHECKING:
 # already-constructed instance, passed directly as this driver's own fram= kwarg.
 # @wiring fram_target AsyFramManager fram optional kwarg
 
-# Driver-declared value domains (SPECIFICATION.md Part L.6.4),
-# read by buildgen/limits.py from these tags - the bounds are kept in sync with _MIN_TRIGGER_SECS/
-# _MAX_TRIGGER_SECS above by hand, since a comment can't reference a name.
-# 0x44 is hard-wired (p15, "1000100") - there is no address-select pin, so this driver has no
-# TOML-configurable `address` field at all (buildgen/buildspec.py's FIXED_ADDRESS_DRIVERS).
+# Driver-declared value domains (SPECIFICATION.md Part L.6.4), read by buildgen/limits.py from the
+# tags below - bounds kept in sync with _MIN/_MAX_TRIGGER_SECS by hand, since a comment cannot
+# reference a name. 0x44 is hard-wired (p15), so this driver has no TOML `address` field at all.
 # @limits trigger_sec 1..3600
 
 
@@ -225,12 +223,9 @@ class ISL29125_Reader(SensorReaderConfig):
             debug=debug,
         )
         self.isl = ISL29125_I2C(i2c, address=address)
-        # This INT is open-drain (p6), so the high level has to come from a resistor somewhere -
-        # unlike SCD30's push-pull RDY, which needs neither. irq_pull_up=True (default) enables the
-        # internal one, for a board with no external resistor of its own. A board that already has
-        # one (irq_pull_up=False) gets a bare Pin.IN instead, matching SCD30's own no-pull style -
-        # deliberately never both, so a board whose own external resistor was picked for a specific
-        # value/rise-time is not silently pulled stronger by an internal one it never asked for.
+        # This INT is open-drain (p6), so the high level needs a resistor somewhere - unlike SCD30's
+        # push-pull RDY. irq_pull_up=True enables the internal one; a board with its own external
+        # resistor passes False and gets a bare Pin.IN, so the two are never stacked.
         self.irq_pin = Pin(irq_pin, mode=Pin.IN, pull=Pin.PULL_UP) if irq_pull_up else Pin(irq_pin, mode=Pin.IN)
         # Two flags, two tasks, matching SCD30's shape. read_event has TWO setters - the divider
         # and the pin IRQ - making the interrupt the fast path and the timer the guaranteed one: a
@@ -252,18 +247,16 @@ class ISL29125_Reader(SensorReaderConfig):
         self._last_switch_ms = time.ticks_ms()
         self._brownout_seen = False
         self._periodic_only_switches = 0
-        # The Overrange output field's value for the most recent successfully-stored sample - set
-        # once per successful read cycle in _read_isl(), read back by _store_isl() (BACKLOG.md:
-        # this used to be wrnno=12, a log entry; it belongs in the measurement output instead,
-        # since it's a harmless, transient, always-current status, not a fault).
+        # The Overrange output field for the most recent stored sample, set once per read cycle in
+        # _read_isl() and read back by _store_isl(). It used to be wrnno=12; a harmless, transient,
+        # always-current status belongs in the measurement output, not the error log (C.7.1).
         self._last_overrange = False
         # The protocol layer's failed-write count as of the last reconciliation - see
         # _verify_after_failed_write(). Starts level with it, so a clean boot reconciles nothing.
         self._reconciled_write_failures = 0
-        # Set by the pin handler, consumed once per read cycle. RGBTHF alone cannot stand in for
-        # it: the flag is raised by the CHIP, so it is set just the same when the line itself is
-        # dead - which is precisely the missing pull-up / broken jumper requirement 17
-        # (SPECIFICATION.md Part C.11.5) names.
+        # Set by the pin handler, consumed once per read cycle. RGBTHF cannot stand in for it: the
+        # CHIP raises that flag, so it is set just the same when the line itself is dead - the
+        # missing-pull-up case requirement 17 names (SPECIFICATION.md Part C.11.5).
         self._irq_fired = False
         self._gain_ratio = _GAIN_RATIO_NOMINAL  # the APPLIED factor, replaced only by a config push
         # Calibration-run state, all RAM-only: a run is user-started, bounded, and publishes a
@@ -421,14 +414,12 @@ class ISL29125_Reader(SensorReaderConfig):
                 await self._note_decision_source(threshold_fired=threshold_fired and irq_fired)
                 self.pr.evt("range switch", sample_range, "->", target, "peak", max(counts))
                 await self._switch_range(target)
-            # Overrange (the output field, not a log entry - BACKLOG.md): true whenever nothing
-            # left could mitigate the saturation - the configured range itself under Fixed range
-            # (no auto-switch will ever happen), or Automatic Range already parked on the highest
-            # range with nowhere further to switch. A saturated LOW-range sample under Automatic
-            # Range is excluded on purpose: target is already non-None for it above, so a switch
-            # is in progress - not "no option left". Judged against sample_range_auto, the mode
-            # captured BEFORE the switch-range await above (same discipline as sample_range/
-            # sample_span just above): a concurrent set_range_auto() landing mid-switch must not
+            # Overrange is true only when nothing left could mitigate the saturation: the configured
+            # range under Fixed, or Automatic already on its highest. A saturated LOW-range sample
+            # under Automatic is excluded - target is non-None above, so a switch is in progress.
+
+            # Judged against sample_range_auto, the mode captured BEFORE the switch-range await, like
+            # sample_range/sample_span: a concurrent set_range_auto() landing mid-switch must not
             # retroactively change which mode this already-taken sample is judged against.
             self._last_overrange = saturated and (not sample_range_auto or sample_range == _RANGE_HIGH_LUX)
             await self._measure_gain_ratio(counts[0])
@@ -1135,10 +1126,9 @@ class ISL29125_I2C:
         return value
 
     async def _write_shadow_locked(self, i2c: I2CDevice, first_register: int) -> None:
-        # Caller must already hold both the device-session and bus locks (configure() does, for
-        # its whole mutate-then-write sequence - see that method's own comment) - this performs
-        # no locking of its own, on purpose: acquiring it here a second time would be exactly the
-        # gap that let a concurrent reader observe a mutated shadow against an unwritten chip.
+        # The caller already holds both the device-session and bus locks, so this takes none of its
+        # own on purpose: acquiring the session lock again here is exactly the gap that let a
+        # concurrent reader observe a mutated shadow against an unwritten chip.
         payload = self.encode_shadow()[first_register - _REGISTER_CONFIG1 :]
         # set_register_struct() takes one value but accepts bytes, so an "Ns" format is how a
         # burst write goes through the promoted bus layer. The payload is already bytes of the
@@ -1344,15 +1334,9 @@ class ISL29125_I2C:
             self._reject_outside(ir_adjust, 0, _CONFIG2_ALSCC_MASK, "IR compensation adjust")
         if persist is not None:
             self._reject_unless(persist, _PRST_SETTINGS, "threshold persistence")
-        # Validate-mutate-write(-rollback-on-failure) runs under ONE hold of the device-session
-        # lock, not just the final write: SPECIFICATION.md Part C.8 documents that lock as what
-        # serializes "a multi-transaction sequence against another coroutine starting its own
-        # sequence on the same sensor", and mutating self._mode/_range_fs/etc (what
-        # encode_shadow()/matches_shadow() read) BEFORE acquiring it left exactly that gap - a
-        # concurrent get_config_snapshot()/matches_shadow() could observe the shadow already
-        # showing a pending change while the chip still held the old value, under real concurrent
-        # API load (BACKLOG.md's ISL29125 shadow-divergence entry - a false "diverged from the
-        # shadow" report with nothing actually wrong on the wire).
+        # Validate-mutate-write(-rollback) runs under ONE hold of the device-session lock, not just
+        # the final write (Part C.8). Mutating the shadow before acquiring it let a concurrent
+        # matches_shadow() see a pending change the chip had not taken - a false divergence report.
         wrote_config1 = False
         async with self.i2c_isl29125 as isl, isl.i2c_device as i2c:
             before = self.encode_shadow()
@@ -1386,19 +1370,16 @@ class ISL29125_I2C:
             try:
                 await self._write_shadow_locked(i2c, _REGISTER_CONFIG1 if wrote_config1 else _REGISTER_CONFIG2)
             except Exception:
-                # The shadow must never claim a value the part did not take: normalise() scales
-                # every reading by it, so a lost resolution write would shift every later sample
-                # 16x with the reads still succeeding. Rolled back, as _switch_range() declines to
-                # update its range - still inside the lock, so this is never observable either.
+                # The shadow must never claim a value the part did not take: normalise() scales every
+                # reading by it, so a lost resolution write shifts every later sample 16x while the
+                # reads still succeed. Rolled back inside the lock, so it is never observable.
                 (self._mode, self._range_fs, self._resolution, self._ir_offset, self._ir_adjust, self._persist, self._int_select, self._sync, self._conven) = restore
                 self._write_failures += 1
                 raise
         if wrote_config1:
-            # Any writer of CONFIG1 restarts the conversion (p10, Table 7), and there are three.
-            # Arming the deadline in the function that does the write makes it impossible for a
-            # caller to forget, and refreshes it when a config push lands mid-settle. Outside the
-            # lock on purpose: it's a timing bookkeeping field, not part of the shadow-vs-chip
-            # consistency this lock exists to protect.
+            # Any writer of CONFIG1 restarts the conversion (p10, Table 7), and there are three, so
+            # arming the deadline where the write happens makes it impossible to forget. Outside the
+            # lock on purpose: timing bookkeeping, not the shadow-vs-chip consistency it protects.
             self._settle_until_ms = time.ticks_add(time.ticks_ms(), _SETTLE_CYCLES * self.cycle_ms())
 
     async def read_counts(self) -> "tuple[int, int, int]":

@@ -1,7 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2020 Bryan Siepert for Adafruit Industries (original
-# adafruit_sgp40, CircuitPython) - restructured/rewritten for asyncio + MicroPython, see
-# THIRD_PARTY_LICENSES.md.
+# SPDX-FileCopyrightText: Copyright (c) 2020 Bryan Siepert for Adafruit Industries
 # SPDX-License-Identifier: MIT
+# From adafruit_sgp40, restructured for asyncio + MicroPython - see THIRD_PARTY_LICENSES.md.
 
 """Sensirion SGP40 VOC sensor driver: SGP40_I2C (chip protocol) and SGP40_Reader (async wrapper - trigger timer, read loop, error counting, config schema, FRAM backup/restore of voc_algorithm.py's VOCAlgorithm state).
 Same shape as asy_scd30_driver.py/asy_bmp3xx_driver.py (see SPECIFICATION.md Part C).
@@ -37,11 +36,9 @@ if TYPE_CHECKING:
     from print_log import ErrorLog
 
     class _ValueSource(Protocol):
-        # Structural stand-in for temperature_source/humidity_source's producer
-        # (SPECIFICATION.md Part L.6.3) - any *_Reader (or a `_Default*`
-        # fallback provider, see below) exposing the same get_data() -> NamedTuple contract every
-        # driver already has (SPECIFICATION.md C.4.2). Only get_data() is used here - same shape as
-        # asy_notification_service.py's own _ValueSource.
+        # Structural stand-in for temperature_source/humidity_source's producer (Part L.6.3): any
+        # *_Reader, or a `_Default*` fallback below, exposing the get_data() -> NamedTuple contract
+        # every driver already has (C.4.2). Same shape as asy_notification_service's _ValueSource.
         async def get_data(self) -> "Any": ...
 
 # roughly the time how often the data written to the FRAM is verified.
@@ -68,11 +65,9 @@ _VAL_RESET = const((("SGPResetVOC", "bool", None, None, None, True),))
 # @web SGPResetVOC section=sensors submitGroup=self label="Reset VOC Index" description="Only 'On' has effect. Resets the VOC algorithm and deletes the current backup." dispatch=true
 
 _NAME = const("SGP40")
-# VOC/Raw/TS also doubles as the full result of a read (see _read_sgp/_store_sgp) - no separate
-# results type needed, unlike asy_scd30_driver.py's SCDResults, which carries derived fields SGP40
-# doesn't have.
-# Kept as a literal tuple inline (not `_FIELDS` below) because mypy's namedtuple plugin can only
-# infer field names from a literal at the call site, not through a variable indirection.
+# VOC/Raw/TS doubles as a read's full result, so no separate results type is needed - unlike
+# SCDResults, which carries derived fields this driver has none of. Kept as a literal tuple, not
+# `_FIELDS`: mypy's namedtuple plugin infers field names only from a literal at the call site.
 SGP40 = namedtuple("SGP40", ("VOC", "Raw", "TS"))
 _FIELDS = const(("VOC", "Raw", "TS"))  # kept in sync with SGP40's own fields above
 
@@ -81,26 +76,23 @@ _FIELDS = const(("VOC", "Raw", "TS"))  # kept in sync with SGP40's own fields ab
 # @web Raw section=measurements submitGroup=self kind=readonly label="VOC Raw" unit="ticks"
 # @web TS section=measurements submitGroup=self kind=readonly label="Timestamp" unit="s"
 
-# This driver's live cross-instance dependencies (SPECIFICATION.md Part C.14): the optional FRAM
-# backup target, resolved by buildgen/ (SPECIFICATION.md Part L.4) to an already-constructed
-# instance, passed directly (fram_target maps to this driver's own fram_storage= kwarg, named
-# differently for historical reasons - see buildgen/buildspec.py), never a getter/callback.
-# The temperature/humidity compensation source used to be one whole-object comp_source field here
-# (required=True, fixed to SCD30_Reader) - SPECIFICATION.md Part L.6.3
-# generalized it into two independent per-value fields below (_VALUE_WIRING), each freely wireable
-# from *any* instance exposing a matching attribute name, not fixed to one producer class.
-# datasheets/sgp40/Sensirion_Gas_Sensors_Datasheet_SGP40.pdf Table 3: fSCL max 400 kHz
-# ("standard-mode" 100 kHz / "fast-mode" 400 kHz). A generator-checked build requirement
-# rather than a comment each device TOML author has to remember - a bus this driver shares
-# with an SCD30 is held to that sensor's own stricter 100 kHz tag on top of this one.
+# This driver's live cross-instance dependencies (SPECIFICATION.md Parts C.14 and L.4): the optional
+# FRAM backup target, resolved to an already-constructed instance (fram_target maps to this driver's
+# own fram_storage= kwarg, for historical reasons - buildgen/buildspec.py), never a getter.
+
+# Temperature/humidity compensation used to be one whole-object comp_source fixed to SCD30_Reader;
+# Part L.6.3 generalized it into two independent per-value fields, each wireable from any instance
+# exposing a matching attribute name.
+
+# datasheets/sgp40/Sensirion_Gas_Sensors_Datasheet_SGP40.pdf Table 3: fSCL max 400 kHz. A
+# generator-checked build requirement, not a comment a TOML author must remember - a bus shared
+# with an SCD30 is additionally held to that sensor's stricter 100 kHz tag.
 # @requires bus.frequency<=400000
 # @wiring fram_target AsyFramManager fram_storage optional kwarg
 
-# Per-value measurement wiring (§2.9) - each field resolves independently, the same generic
-# {source, field} shape asy_notification_service.py's warn_* fields already use, matched by
-# attribute name alone (no fixed producer class). Both required: an SGP40 with no compensation
-# data at all needs an explicit default opt-in, per §2's wiring-defaults mechanism - see
-# _DefaultTemperatureSource/_DefaultHumiditySource below.
+# Per-value measurement wiring (Part L.6.3): each field resolves independently in the same
+# {source, field} shape the warn_* fields use, matched by attribute name alone. Both are required,
+# so an SGP40 with no compensation data at all has to opt in explicitly through a `_Default*`.
 # @value-wiring temperature_source temperature_source temperature_field required
 # @value-wiring humidity_source humidity_source humidity_field required
 
@@ -172,11 +164,9 @@ class SGP40_Reader(SensorReaderConfig):
         # real values are always set by _init_sgp() before read_loop() ever reads these
         self.voc_init = 0
         self.voc_write = 0
-        # Direct reference to each producer's own concurrency-safe value holder (its get_data(),
-        # already _datalock-guarded - SPECIFICATION.md Part C.14/G.2), not a wrapping getter
-        # function - _read_sgp() reads temperature_field/humidity_field off each directly every
-        # cycle, resolved independently (§2.9's per-value generalization) - the two may be the same
-        # producer instance (the common case, both off one SCD30) or two different ones.
+        # A direct reference to each producer's own concurrency-safe holder (its already
+        # _datalock-guarded get_data(), Part C.14/G.2), never a wrapping getter. The two may be the
+        # same instance - the common case, both off one SCD30 - or two different ones.
         self.temperature_source = temperature_source
         self.temperature_field = temperature_field
         self.humidity_source = humidity_source
@@ -262,18 +252,13 @@ class SGP40_Reader(SensorReaderConfig):
                 if not self._reset_fram_cleared:
                     await self.pr.err_s("Error clearing FRAM!", errno=15)
 
-        # Direct read of each producer's own get_data() (SPECIFICATION.md Part C.14), resolved
-        # independently by attribute name (§2.9's per-value generalization - the same getattr()
-        # resolution asy_notification_service.py's own _check_one() already uses for warn_*) - no
-        # wrapping callback. get_data() never raises, but the named field can individually still be
-        # None (the producer hasn't completed its first real measurement yet, or its own error
-        # streak gave up) - a normal, expected input, not an exception (CLAUDE.md: no E/W log for
-        # expected startup jitter). Split the same way _check_one() already does: only get_data()
-        # itself raising - a genuine violation of its own never-raises contract - is a real fault
-        # worth logging; a getattr()-returned None is read via its own default, never routed through
-        # float() (which would raise TypeError on None and get misreported as a read failure) and
-        # never logged here on its own - a persistent producer failure is caught and logged by that
-        # producer's own driver already, not re-detected from this side.
+        # Direct read of each producer's get_data() (Part C.14), resolved by attribute name like
+        # _check_one() does for warn_*. get_data() never raises, but the named field can be None -
+        # the producer has not measured yet, or its error streak gave up - which is expected input.
+
+        # Split the way _check_one() splits it: only get_data() itself raising, a real violation of
+        # its never-raises contract, is worth logging. A None field takes its own default and is
+        # never routed through float(), which would raise and be misreported as a read failure.
         temp_val: int | float | None
         hum_val: int | float | None
         try:
@@ -306,11 +291,9 @@ class SGP40_Reader(SensorReaderConfig):
                 serialized,
                 deserialized,
             ) = await self.sgp.measure_index_and_raw(
-                # float() rather than a plain narrowed value: temp_val/hum_val are only known
-                # not-None here (D.2), not known numeric - a non-numeric field value from a
-                # caller-supplied source (SPECIFICATION.md Part C.14) would raise here, same as a
-                # genuine I2C fault, and is caught by this same try/except below (errno=11) rather
-                # than escaping uncaught.
+                # float(), not a plain narrowed value: these are known not-None here but not known
+                # numeric, so a non-numeric field from a caller-supplied source raises here like a
+                # genuine I2C fault and is caught below (errno=11) rather than escaping.
                 temperature=float(temp_val),
                 relative_humidity=float(hum_val),
                 reset=reset_for_measure,
