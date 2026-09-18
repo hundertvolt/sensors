@@ -66,6 +66,8 @@ _NAME = const("WIFI")
 # infer field names from a literal at the call site, not through a variable indirection.
 WIFI = namedtuple("WIFI", ("Mode", "Connected", "IP", "TS"))
 _FIELDS = const(("Mode", "Connected", "IP", "TS"))  # kept in sync with WIFI's own fields above
+
+
 def _with_default(schema: "tuple[tuple[str, str, str, int, int, str | None], ...]", value: "str | None") -> "tuple[tuple[str, str, str, int, int, str | None], ...]":
     # Substitutes a build-time per-device default into a one-field schema. Only the DEFAULT moves,
     # never the bounds - a value already persisted by a user rename still wins at boot.
@@ -76,9 +78,10 @@ def _with_default(schema: "tuple[tuple[str, str, str, int, int, str | None], ...
     if value is None:
         return schema
     name, kind, _default, low, high, special = schema[0]
-    if kind == "str" and not (low <= len(value) <= high):
-        return schema
+    if kind != "str" or not (low <= len(value) <= high):
+        return schema  # a non-str field would be substituted unchecked - keep the built-in default
     return ((name, kind, value, low, high, special),)
+
 
 # This service's one optional live cross-instance dependency (SPECIFICATION.md Part C.14): the
 # status LED it drives, resolved by buildgen/ (SPECIFICATION.md Part L.4, from

@@ -537,12 +537,12 @@ class UART_Comm:
         # Reads into the RX scratch, never read(): a degraded link must not allocate hardest on the
         # most fragmented heap, and the loop is hard-bounded against a peer that never stops
         # first_ms shortens only the first probe, so a healthy boot skips a full quiet wait.
+        self._drain_bound_hit = False  # before any early return, so no caller reads a previous drain's verdict
         buf = self._rx.get_buf()
         if buf is None:
             return 0
         quiet_ms = self._resync_window_ms()
         bound_ms = quiet_ms * _DRAIN_BOUND_MULT  # derived from timeout, not from poll_wait_ms
-        self._drain_bound_hit = False
         wait_ms = quiet_ms if first_ms is None else max(first_ms, 1)
         start = time.ticks_ms()
         total = 0

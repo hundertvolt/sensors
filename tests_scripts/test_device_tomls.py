@@ -820,21 +820,25 @@ def _is_reserved(address: int) -> bool:
     return any(lo <= address <= hi for lo, hi in _RESERVED_I2C_RANGES)
 
 
+def _declared_i2c_addresses(doc: dict[str, Any]) -> list[tuple[str, int]]:
+    # Filtered on the instance's own bus, not just on the presence of an `address` field: a reserved
+    # I2C range says nothing about an address on any other kind of bus, and a future SPI/UART driver
+    # carrying an `address` field would otherwise be judged against ranges that do not apply to it.
+    return [(inst["driver"], inst["address"]) for inst in doc.get("instance", []) if "address" in inst and str(inst.get("bus", "")).startswith("i2c")]
+
+
 @pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_no_declared_i2c_address_falls_in_a_reserved_range(devices_dir: Path, device: str) -> None:
-    doc = _load(devices_dir, device)
-    for inst in doc.get("instance", []):
-        if "address" not in inst:
-            continue  # fixed-address driver - covered by the fixed-address test below
-        address = inst["address"]
-        assert not _is_reserved(address), f"{device}: {inst['driver']} declares I2C address {address:#04x}, which is in a reserved range"
+    for driver, address in _declared_i2c_addresses(_load(devices_dir, device)):
+        assert not _is_reserved(address), f"{device}: {driver} declares I2C address {address:#04x}, which is in a reserved range"
 
 
 def test_the_reserved_range_sweep_actually_sees_a_declared_address(devices_dir: Path) -> None:
     # Part E.8's guard-is-blind trap: only bmp3xx carries a TOML address field today, so a schema
-    # change that renamed it would turn the per-device sweep above into a silent no-op on every device.
-    seen = [inst["address"] for device in DEVICE_NAMES for inst in _load(devices_dir, device).get("instance", []) if "address" in inst]
-    assert seen, "no device declares an address field at all - the reserved-range sweep above is checking nothing"
+    # change that renamed it - or moved the bus field - would turn the per-device sweep above into a
+    # silent no-op on every device, and a passing suite would say nothing at all.
+    seen = [pair for device in DEVICE_NAMES for pair in _declared_i2c_addresses(_load(devices_dir, device))]
+    assert seen, "no device declares an I2C address field at all - the reserved-range sweep above is checking nothing"
 
 
 def test_no_fixed_driver_address_falls_in_a_reserved_range() -> None:

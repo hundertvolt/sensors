@@ -5162,8 +5162,9 @@ can most easily break without any test naming them:
   `ConfigManager`-persisted fields' schemas (`_with_default()`), so a rename through the web UI
   still wins on every later boot. Until 2026-09-18 nothing passed them at all and every device
   booted as the shared `"SensorNode"` whatever its TOML said. `[device].hostname` is capped at
-  `network.hostname()`'s own 32 characters at build time, because an over-long one would be dropped
-  back to that shared default at boot rather than failing.
+  `network.hostname()`'s own 32 characters at build time, and `[device].hotspot_password` is held to
+  WPA2-PSK's own 8-63, because a value outside either field's schema bounds is dropped back to that
+  shared default at boot rather than failing - for the password, back to the one published in `src/`.
 - **Cross-instance wiring is fully static, resolved at generation time, never at runtime.** There
   is no runtime registry or bus. Each driver declares a `# @wiring` comment tag naming which TOML
   field supplies a source instance and what class it must be (L.6); the generator resolves each

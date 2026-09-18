@@ -16,6 +16,7 @@ from asy_uart_comm import (
     UART_Comm,
 )
 from asy_uart_driver import UART
+from base_classes import LockableBuffer
 from crc_checks import CRC16
 from framing_codecs import Framing_COBS
 
@@ -2176,6 +2177,19 @@ def test_the_legacy_bsec_bus_parameters_meet_every_floor_but_one() -> None:
     # Everything else the legacy link declared is accepted unchanged: 115200 baud, a 1000ms reply
     # budget, payload_size 20, and a CRC16 underneath the protocol.
     assert deployed(128).payload_size == _BSEC_PAYLOAD_SIZE
+
+
+def test_a_drain_that_cannot_run_clears_the_previous_drains_verdict() -> None:
+    # _drain()'s verdict outlives the call - the resync that called it reads it afterwards - so it is
+    # cleared before the early return, not after. A construction whose RX buffer failed is the only
+    # way to reach that return, and it must not hand the next resync the last drain's answer.
+    comm = make_comm()
+    comm._drain_bound_hit = True
+    comm._rx = LockableBuffer(-1)  # a failed allocation, which is what hands its owner None
+    assert comm._rx.get_buf() is None  # the early return really is the path taken
+    assert run(comm._drain(comm.uart)) == 0  # type: ignore[arg-type]
+    assert comm._drain_bound_hit is False
+
 
 if __name__ == "__main__":
     import microtest

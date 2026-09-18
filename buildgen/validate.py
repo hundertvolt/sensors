@@ -65,6 +65,7 @@ _HOSTNAME_MAX_LEN = 32  # network.hostname()'s real cap; asy_wifi_service._VAL_H
 _REQUIRED_DEVICE_INT_FIELDS = ("conn_fail_to_hotspot", "hotspot_time_min")
 _ALLOWED_DEVICE_FIELDS = frozenset(_REQUIRED_DEVICE_FIELDS) | {"wiring"}
 _WPA2_MIN_PASSWORD_LEN = 8  # WPA2-PSK's own minimum (IEEE 802.11i)
+_WPA2_MAX_PASSWORD_LEN = 63  # its maximum too; asy_wifi_service._VAL_HOTSPOT_PW carries the same pair
 
 # [device.wiring] fields and which mandatory-infra consumer(s)' own _WIRING they resolve against -
 # both fixed and known ahead of time (SPECIFICATION.md Part L.3: exactly these two
@@ -114,8 +115,11 @@ def _check_device_table(model: DeviceModel) -> None:
     # hotspot the CYW43 can't bring up at all.
     if not isinstance(dev["hotspot_password"], str):
         raise BuildError(model.device, f"[device].hotspot_password must be a string, got {dev['hotspot_password']!r}", field="hotspot_password")
-    if len(dev["hotspot_password"]) < _WPA2_MIN_PASSWORD_LEN:
-        raise BuildError(model.device, f"[device].hotspot_password is {len(dev['hotspot_password'])} characters - WPA2 requires at least {_WPA2_MIN_PASSWORD_LEN}", field="hotspot_password")
+    if not (_WPA2_MIN_PASSWORD_LEN <= len(dev["hotspot_password"]) <= _WPA2_MAX_PASSWORD_LEN):
+        # Both ends, for the same reason the hostname cap below exists: the value is really injected
+        # now, and one outside _VAL_HOTSPOT_PW's own bounds is dropped at boot back to the shared
+        # default - which for this field is the password published in src/, on every device at once.
+        raise BuildError(model.device, f"[device].hotspot_password is {len(dev['hotspot_password'])} characters - WPA2 allows {_WPA2_MIN_PASSWORD_LEN} to {_WPA2_MAX_PASSWORD_LEN}", field="hotspot_password")
     expected_hostname = "SensorStation" + dev["name"]
     if dev["hostname"] != expected_hostname:
         raise BuildError(model.device, f"[device].hostname is {dev['hostname']!r}, expected {expected_hostname!r} (SensorStation<name>)", field="hostname")

@@ -581,6 +581,20 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     defined by the module. It is not a mechanism to lift wholesale; each of these two needs its own
     answer to "what is an episode here", which is the part needing a decision.
 
+36. **`web-unit-tests` has under 2x headroom against its own 20-minute `timeout-minutes`, and that
+    margin has now been spent twice.** CI run `35372354351` (head `b0f755c`) was cancelled at
+    19m33s with every other job green; the same suite on the same tree runs in **9m36s locally**
+    (11 files, 778 tests, exit 0, measured 2026-09-18), and the previous CI run on an identical
+    `js/`/`tests_js/`/`html/` tree took 9m23s. So this is wall-clock on GitHub's runner, not a test
+    regression - the same failure the job's own comment already records once before (PR #50, run
+    `33856690559`), whose fix then was splitting `web-coverage` out rather than widening the budget.
+    Nothing is proposed here: the budget is the owner's to set, and the suite's real cost is a
+    headless-browser tier plus a live digital-twin subprocess, neither of which shrinks by trying
+    harder. Worth noting that a cancelled run also **skips** `web-coverage` and
+    `web-cross-browser-smoke`, so one slow runner silently removes three signals, not one. Options
+    if it recurs: raise `timeout-minutes` for that job, or split the live-backend PUT matrix into
+    its own job the way coverage already is.
+
 ## Deferred / explicitly out-of-scope work
 
 - **The `main` merge conflict: how it resolves was settled 2026-09-14/18; only WHEN is open.**

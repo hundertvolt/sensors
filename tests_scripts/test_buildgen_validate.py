@@ -76,14 +76,25 @@ def test_device_hotspot_password_too_short_rejected(tmp_path: Path, src_dir: Pat
     # 8 characters is WPA2-PSK's own minimum - below it the CYW43 can't bring the hotspot up at all.
     doc = base_doc()
     doc["device"]["hotspot_password"] = value
-    with pytest.raises(BuildError, match="at least 8"):
+    with pytest.raises(BuildError, match="WPA2 allows 8 to 63"):
         _build(tmp_path, src_dir, doc)
 
 
-def test_device_hotspot_password_at_the_minimum_length_is_accepted(tmp_path: Path, src_dir: Path) -> None:
+def test_device_hotspot_password_longer_than_wpa2_allows_is_rejected(tmp_path: Path, src_dir: Path) -> None:
+    # The upper bound matters for the same reason the hostname cap does, and costs more: the value
+    # is injected as _VAL_HOTSPOT_PW's default now, and one outside that field's own bounds is
+    # dropped at boot back to the password published in src/ - silently, on every device at once.
     doc = base_doc()
-    doc["device"]["hotspot_password"] = "12345678"
-    assert _build(tmp_path, src_dir, doc).doc["device"]["hotspot_password"] == "12345678"
+    doc["device"]["hotspot_password"] = "p" * 64
+    with pytest.raises(BuildError, match="WPA2 allows 8 to 63"):
+        _build(tmp_path, src_dir, doc)
+
+
+@pytest.mark.parametrize("value", ["12345678", "p" * 63])
+def test_device_hotspot_password_at_either_bound_is_accepted(tmp_path: Path, src_dir: Path, value: str) -> None:
+    doc = base_doc()
+    doc["device"]["hotspot_password"] = value
+    assert _build(tmp_path, src_dir, doc).doc["device"]["hotspot_password"] == value
 
 
 def test_single_bracket_instance_table_names_the_real_mistake(tmp_path: Path, src_dir: Path) -> None:

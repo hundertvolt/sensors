@@ -2793,6 +2793,43 @@ def test_configure_hotspot_ap_reconfigures_after_the_interface_was_externally_de
     run(scenario())
 
 
+
+def test_an_over_long_hotspot_password_falls_back_instead_of_invalidating_the_config() -> None:
+    # The upper bound is the rung that matters most: an unsatisfiable default makes ConfigManager
+    # answer None to every read, costing the device its whole networking config. buildgen refuses
+    # such a value at build time; this is the backstop that keeps a device that got one bootable.
+    client = AsyConnTime(cfg_path=_tmp_cfg_dir(), hotspot_password="p" * 64)
+    run(client.cfgmgr.setup())
+    assert run(client.cfgmgr.get_dict(["HotspotPW"])) == {"HotspotPW": "12345678"}
+
+
+def test_a_persisted_rename_survives_a_later_build_injecting_a_different_default() -> None:
+    # The reason these arrive as defaults rather than fixed values: a device renamed through the web
+    # UI must keep that name across a reflash whose TOML says something else. Two constructions over
+    # one config directory is exactly what that reflash looks like from the config file's side.
+    cfg_path = _tmp_cfg_dir()
+    first = AsyConnTime(cfg_path=cfg_path, hostname="SensorStationWozi")
+
+    async def rename() -> "Any":
+        await first.cfgmgr.setup()
+        results = await first._set_dict_cfg({"Hostname": "KitchenPi"}, first.get_cfg_schema())
+        await first.cfgmgr.flush_pending()  # the real file write is an independent task, never inline
+        return results
+
+    assert run(rename()) == {"Hostname": "Valid"}
+    second = AsyConnTime(cfg_path=cfg_path, hostname="SensorStationSomethingElse")
+    run(second.cfgmgr.setup())
+    assert run(second.cfgmgr.get_dict(["Hostname"])) == {"Hostname": "KitchenPi"}
+
+
+def test_a_default_is_only_substituted_into_a_bounded_string_field() -> None:
+    # The bounds check is what keeps an unusable default out of the config, and it can only read the
+    # length of a str. Any other field shape therefore keeps its own default rather than taking an
+    # unchecked one - the two fields buildgen injects are both bounded strings.
+    schema: Any = (("LedWifiOn", "bool", True, None, None, None),)
+    assert asy_wifi_service._with_default(schema, "yes") is schema
+
+
 if __name__ == "__main__":
     import microtest
 
