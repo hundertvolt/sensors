@@ -41,6 +41,11 @@ def test_bmp3xx_oversampling_and_filter_push_over_real_rest_and_readback(board: 
     get_before = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=10.0)
     assert get_before.status_code == 200, f"GET /sensors failed: {get_before.status_code} {get_before.body!r}"
     original: dict[str, Any] = {k: get_before.json()["BMP3XX"][k] for k in _BMP3XX_TEST_VALUES}
+    # An earlier run aborted before its own restore leaves the board already holding a test value.
+    # That field's PUT is then reported "Unchanged" and never pushed live (base_classes.py's
+    # _set_dict_cfg), so name the cause here rather than let it surface below as "push rejected".
+    already_set = {k: v for k, v in original.items() if v == _BMP3XX_TEST_VALUES[k]}
+    assert not already_set, f"the board already holds {already_set!r} - an earlier run aborted before restoring; put those fields back before rerunning"
 
     try:
         put_res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"BMP3XX": _BMP3XX_TEST_VALUES}, timeout_s=10.0)
@@ -59,7 +64,10 @@ def test_bmp3xx_oversampling_and_filter_push_over_real_rest_and_readback(board: 
         restore_res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"BMP3XX": original}, timeout_s=10.0)
         assert restore_res.status_code == 200, f"failed to restore original BMP3XX config {original!r}: {restore_res.status_code} {restore_res.body!r}"
         restore_results = restore_res.json()["result"]["BMP3XX"]
-        assert all(v == "Valid" for v in restore_results.values()), f"restoring original BMP3XX config was rejected: {restore_results!r}"
+        # "Unchanged" counts as restored: if the body failed before its own PUT landed, the board is
+        # still at `original` and this is a legitimate no-op - rejecting it would replace the real
+        # failure with a cleanup assertion.
+        assert all(v in ("Valid", "Unchanged") for v in restore_results.values()), f"restoring original BMP3XX config was rejected: {restore_results!r}"
 
     # A fully valid push-and-restore round trip is not a fault - config_manager.py's errno=12 only
     # fires on a rejected key, which none of these were.
@@ -73,6 +81,11 @@ def test_isl29125_resolution_range_and_ir_comp_push_over_real_rest_and_readback(
     get_before = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=10.0)
     assert get_before.status_code == 200, f"GET /sensors failed: {get_before.status_code} {get_before.body!r}"
     original: dict[str, Any] = {k: get_before.json()["ISL29125"][k] for k in _ISL29125_TEST_VALUES}
+    # An earlier run aborted before its own restore leaves the board already holding a test value.
+    # That field's PUT is then reported "Unchanged" and never pushed live (base_classes.py's
+    # _set_dict_cfg), so name the cause here rather than let it surface below as "push rejected".
+    already_set = {k: v for k, v in original.items() if v == _ISL29125_TEST_VALUES[k]}
+    assert not already_set, f"the board already holds {already_set!r} - an earlier run aborted before restoring; put those fields back before rerunning"
 
     try:
         put_res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"ISL29125": _ISL29125_TEST_VALUES}, timeout_s=10.0)
@@ -91,7 +104,10 @@ def test_isl29125_resolution_range_and_ir_comp_push_over_real_rest_and_readback(
         restore_res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"ISL29125": original}, timeout_s=10.0)
         assert restore_res.status_code == 200, f"failed to restore original ISL29125 config {original!r}: {restore_res.status_code} {restore_res.body!r}"
         restore_results = restore_res.json()["result"]["ISL29125"]
-        assert all(v == "Valid" for v in restore_results.values()), f"restoring original ISL29125 config was rejected: {restore_results!r}"
+        # "Unchanged" counts as restored: if the body failed before its own PUT landed, the board is
+        # still at `original` and this is a legitimate no-op - rejecting it would replace the real
+        # failure with a cleanup assertion.
+        assert all(v in ("Valid", "Unchanged") for v in restore_results.values()), f"restoring original ISL29125 config was rejected: {restore_results!r}"
 
     # A fully valid push-and-restore round trip is not a fault - config_manager.py's errno=12 only
     # fires on a rejected key, which none of these were.

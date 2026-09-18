@@ -405,8 +405,12 @@ def test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads_under_a
         # genuine HTTP/scheduling jitter puts each write at a different real relative timing against
         # the readers (the tier-appropriate substitute for the mock tier's own explicit
         # asyncio.sleep(0)-count offset sweep - see tests_hardware/README.md's own account of why).
+        # Start away from whatever the board currently holds. An already-equal PUT is reported
+        # "Unchanged", and base_classes.py's _set_dict_cfg() pushes only "Valid" fields live - so
+        # that write would reach no hardware at all and exercise no hazard.
+        first = 1 if original_resolution == _ISL29125_RESOLUTIONS[0] else 0
         for i in range(_ISL29125_WRITE_CYCLES):
-            value = _ISL29125_RESOLUTIONS[i % 2]
+            value = _ISL29125_RESOLUTIONS[(first + i) % 2]
             try:
                 res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"ISL29125": {"Resolution": value}}, timeout_s=15.0)
             except Exception as e:
@@ -428,7 +432,10 @@ def test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads_under_a
         # Restore the board's original config regardless of outcome - same "shared bench rig" duty
         # test_sensor_config_push_over_real_hardware.py's own BMP3xx push test already owes.
         restore_res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"ISL29125": {"Resolution": original_resolution}}, timeout_s=10.0)
-        assert restore_res.status_code == 200 and restore_res.json()["result"]["ISL29125"].get("Resolution") == "Valid", f"failed to restore original ISL29125 Resolution={original_resolution!r}: {restore_res.status_code} {restore_res.body!r}"
+        # "Unchanged" is a success here, not a rejection: the alternation above can legitimately end
+        # on the original value, which makes this restore a no-op. Accepting only "Valid" would fail
+        # the fixture's own cleanup and mask whatever the body was actually reporting.
+        assert restore_res.status_code == 200 and restore_res.json()["result"]["ISL29125"].get("Resolution") in ("Valid", "Unchanged"), f"failed to restore original ISL29125 Resolution={original_resolution!r}: {restore_res.status_code} {restore_res.body!r}"
 
     wait_until(
         lambda: http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200,
@@ -494,8 +501,12 @@ def test_bmp3xx_config_write_does_not_disturb_its_own_concurrent_reads_under_api
         # discrete setting - alternates repeatedly so genuine HTTP/scheduling jitter puts each write
         # at a different real relative timing against this SAME sensor's own concurrent GET reads
         # (a same-device hazard, unlike the ISL29125 test's cross-occupant one).
+        # Same reason as the ISL29125 writer above - and PressOvers' own driver default is 1, which
+        # IS _BMP3XX_OVERSAMPLING_SETTINGS[0], so a board at defaults would otherwise spend its very
+        # first write on a no-op every single run.
+        first = 1 if original_press_overs == _BMP3XX_OVERSAMPLING_SETTINGS[0] else 0
         for i in range(_ISL29125_WRITE_CYCLES):
-            value = _BMP3XX_OVERSAMPLING_SETTINGS[i % 2]
+            value = _BMP3XX_OVERSAMPLING_SETTINGS[(first + i) % 2]
             try:
                 res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"BMP3XX": {"PressOvers": value}}, timeout_s=15.0)
             except Exception as e:
@@ -515,7 +526,8 @@ def test_bmp3xx_config_write_does_not_disturb_its_own_concurrent_reads_under_api
         assert not errors, f"{len(errors)} issue(s) under concurrent API load: {'; '.join(errors[:10])}"
     finally:
         restore_res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"BMP3XX": {"PressOvers": original_press_overs}}, timeout_s=10.0)
-        assert restore_res.status_code == 200 and restore_res.json()["result"]["BMP3XX"].get("PressOvers") == "Valid", f"failed to restore original BMP3XX PressOvers={original_press_overs!r}: {restore_res.status_code} {restore_res.body!r}"
+        # "Unchanged" is a success here for the same reason the ISL29125 restore above accepts it.
+        assert restore_res.status_code == 200 and restore_res.json()["result"]["BMP3XX"].get("PressOvers") in ("Valid", "Unchanged"), f"failed to restore original BMP3XX PressOvers={original_press_overs!r}: {restore_res.status_code} {restore_res.body!r}"
 
     wait_until(
         lambda: http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200,

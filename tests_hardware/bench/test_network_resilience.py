@@ -436,6 +436,10 @@ def test_garbage_ntp_host_via_rest_config_degrades_and_recovers_cleanly(board: B
     get_before = http_client.fetch(dut_ip, 80, "GET", "/networking", timeout_s=10.0)
     assert get_before.status_code == 200, f"GET /networking failed: {get_before.status_code} {get_before.body!r}"
     original_host = get_before.json()["NTP_Host"]
+    # An earlier run aborted before its own restore leaves the board already on the garbage value.
+    # The PUT below is then reported "Unchanged" and fires no post_asy_fct, so name that cause here
+    # rather than let it surface as "rejected at the schema level", which it would not have been.
+    assert original_host != _GARBAGE_NTP_HOST, f"the board is already on {_GARBAGE_NTP_HOST!r} - an earlier run aborted before restoring; put NTP_Host back before rerunning"
 
     try:
         reset_all_error_logs(dut_ip)
@@ -467,7 +471,11 @@ def test_garbage_ntp_host_via_rest_config_degrades_and_recovers_cleanly(board: B
         reset_all_error_logs(dut_ip)
         restore_res = http_client.fetch(dut_ip, 80, "PUT", "/networking", {"NTP_Host": original_host}, timeout_s=10.0)
         assert restore_res.status_code == 200, f"failed to restore original NTP_Host {original_host!r}: {restore_res.status_code} {restore_res.body!r}"
-        assert restore_res.json()["result"].get("NTP_Host") == "Valid", f"restoring the original NTP_Host was rejected: {restore_res.json()!r}"
+        # "Unchanged" counts as restored, same as _restore_ssid_over() below already has it and
+        # as the two sensor-config files do: if the body failed before its own PUT landed, the
+        # board is still on original_host and this is a legitimate no-op - insisting on "Valid"
+        # would replace the real failure with a cleanup assertion.
+        assert restore_res.json()["result"].get("NTP_Host") in ("Valid", "Unchanged"), f"restoring the original NTP_Host was rejected: {restore_res.json()!r}"
 
     # Recovery: the next forced resync (post_asy_fct fires on this restore PUT too) must actually
     # succeed - checked via NtpSynced under GET /status's nested "networking" object, not
@@ -514,6 +522,10 @@ def test_garbage_ssid_via_rest_config_is_handled_gracefully(board: Board, bench:
     assert get_before.status_code == 200, f"GET /networking failed: {get_before.status_code} {get_before.body!r}"
     original_ssid = get_before.json()["SSID"]
     original_hostname = get_before.json()["Hostname"]
+    # Same as the garbage-NTP_Host test above: an aborted earlier run leaves the board already on
+    # the garbage SSID, making the PUT below "Unchanged" - no reconnect_wifi() post_fct fires, and
+    # the failure would blame schema validation for what is a board-state problem.
+    assert original_ssid != _GARBAGE_SSID, f"the board is already on {_GARBAGE_SSID!r} - an earlier run aborted before restoring; put SSID back before rerunning"
 
     reset_all_error_logs(dut_ip)
     put_res = http_client.fetch(dut_ip, 80, "PUT", "/networking", {"SSID": _GARBAGE_SSID}, timeout_s=10.0)

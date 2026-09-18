@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -16,6 +17,11 @@ import serial
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+# For `import setup_toolchain` below - the same bare-sibling shape as that module's own
+# `import micropython_overrides` (host_typecheck.ini's own account of why both need a path slot).
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "toolchain"))
+from setup_toolchain import detect_pico_serial_devices
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -31,7 +37,10 @@ def _usb_reset_device(device: str) -> bool:
     """Unbind/rebind `device`'s USB device from the kernel `usb` driver - same effect as a
     physical unplug/replug, recovering a wedged raw-REPL-entry state (see tests_hardware/README.md).
     Returns True if a reset was attempted, False if the device path couldn't be resolved."""
-    name = Path(device).name  # e.g. "ttyACM0"
+    # .resolve() first: `device` is normally the /dev/serial/by-id symlink resolve_board_device()
+    # returns, and that name has no /sys/class/tty entry - without this the whole unbind/rebind
+    # recovery below silently no-ops (returns False) on the default device path.
+    name = Path(device).resolve().name  # e.g. "ttyACM0"
     sys_tty_device = Path("/sys/class/tty") / name / "device"
     if not sys_tty_device.exists():
         return False
@@ -52,8 +61,10 @@ def _usb_reset_device(device: str) -> bool:
 
 
 class HardwareNotAvailableError(RuntimeError):
-    """Raised when a real board/bench isn't reachable. conftest.py's fixtures turn this into a
-    skip, not a failure, so this tier stays collectible with nothing attached."""
+    """Raised when a real board/bench isn't reachable - conftest.py's fixtures turn that into a skip,
+    so this tier stays collectible with nothing attached. resolve_board_device()'s ambiguous-hardware
+    raise is the deliberate exception: `board` builds a Board before probing, so two attached boards
+    surface as an error naming both, never as a silently skipped run."""
 
 
 class HardwareTestFailureError(AssertionError):
@@ -96,20 +107,56 @@ class MpremoteResult:
 
 
 _BOARD_BY_ID_GLOB = "usb-MicroPython_Board_in_FS_mode_*-if00"
+# Returned when no Pico-family board is attached at all: a path that cannot exist, so the `board`
+# fixture's own is_reachable() probe fails and SKIPS (this tier stays collectible with nothing
+# attached) without mpremote ever opening some other device's port to find that out.
+_NO_BOARD_DEVICE = "/dev/no-pico-serial-device-detected"
+# Bounded for the same reason the USB unbind/rebind escalation below is: a node that keeps
+# vanishing and reappearing under an alternating name would otherwise extend the grace window
+# forever, and no single subprocess timeout breaks out of _mpremote()'s own loop.
+_MAX_DEVICE_REBINDS = 2
 
 
-def resolve_board_device() -> str:
-    """The board's current serial node, preferring the stable by-id symlink over a ttyACM index.
+def _stable_name_for(dev_path: Path, by_id_dir: Path) -> str:
+    """The `/dev/serial/by-id` symlink pointing at `dev_path`, or `dev_path` itself if none does.
+    Matching by target rather than by name drops the old hardcoded product string, so a board whose
+    USB descriptor reads differently still resolves to a stable name."""
+    if by_id_dir.is_dir():
+        for link in sorted(by_id_dir.iterdir()):
+            if link.resolve() == dev_path.resolve():
+                return str(link)
+    return str(dev_path)
 
-    `/dev/serial/by-id/` names the device by its USB serial number, so it survives the
+
+def resolve_board_device(
+    by_id_dir: Path = Path("/dev/serial/by-id"),
+    sys_tty_dir: Path = Path("/sys/class/tty"),
+    dev_dir: Path = Path("/dev"),
+) -> str:
+    """The board's current serial node, identified by USB vendor ID and named by its stable by-id
+    symlink. Directories are overridable for tests, like detect_pico_serial_devices()' own.
+
+    Which device: setup_toolchain.py's vendor-ID detection is the single source of truth, so this
+    can never select a non-Pico ACM device (the bench's Arduino UART peer) the way a bare `ttyACM*`
+    scan could. Two matches is a hard error rather than a silent sorted()[0] - driving the wrong
+    board is worse than not starting - mirroring resolve_pico_device()'s own rule.
+
+    Which name: `/dev/serial/by-id/` names the device by USB serial number, so it survives the
     re-enumeration a hard reset causes; the bare ttyACM index does not (observed moving
-    ttyACM0 -> ttyACM1 mid-suite). Falls back to the lowest present ttyACM node, then to
-    ttyACM0 so the error message stays the familiar one when no board is attached at all."""
-    by_id = sorted(Path("/dev/serial/by-id").glob(_BOARD_BY_ID_GLOB)) if Path("/dev/serial/by-id").is_dir() else []
-    if by_id:
-        return str(by_id[0])
-    acm = sorted(Path("/dev").glob("ttyACM*"))
-    return str(acm[0]) if acm else "/dev/ttyACM0"
+    ttyACM0 -> ttyACM1 mid-suite). The by-id glob is also the fallback identification path, for a
+    host whose /sys is unreadable - it is Pico-specific too, so neither route can pick a stranger."""
+    candidates = detect_pico_serial_devices(sys_tty_dir, dev_dir)
+    if not candidates and by_id_dir.is_dir():
+        candidates = [link.resolve() for link in sorted(by_id_dir.glob(_BOARD_BY_ID_GLOB))]
+    if len(candidates) > 1:
+        names = ", ".join(str(c) for c in candidates)
+        raise HardwareNotAvailableError(
+            f"multiple Raspberry Pi USB serial devices found ({names}) - pass --device or set "
+            "MPREMOTE_DEVICE to pick one explicitly, rather than have the suite guess which board to drive",
+        )
+    if not candidates:
+        return _NO_BOARD_DEVICE
+    return _stable_name_for(candidates[0], by_id_dir)
 
 
 class Board:
@@ -145,6 +192,7 @@ class Board:
         transient_markers = ("may be in use by another program", "could not enter raw repl", "could not open")
         grace_deadline = time.monotonic() + 10.0
         usb_reset_attempted = False
+        rebinds_left = _MAX_DEVICE_REBINDS
         while True:
             try:
                 proc = subprocess.run(
@@ -168,7 +216,8 @@ class Board:
             # The 10s settle-wait grace window above is sometimes not enough - this bench's USB
             # device can wedge into indefinite raw-REPL-entry failure until unbound/rebound (see
             # tests_hardware/README.md). Escalate once, never more than once per call.
-            if self._rebind_device_if_moved():
+            if rebinds_left > 0 and self._rebind_device_if_moved():
+                rebinds_left -= 1
                 # The node moved under us (re-enumeration after a reset) - retry on the new one
                 # before escalating to a USB unbind/rebind, which would not have helped.
                 cmd = ["uv", "run", "mpremote", "connect", self.device, *args]

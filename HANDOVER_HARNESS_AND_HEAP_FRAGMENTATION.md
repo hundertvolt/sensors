@@ -122,6 +122,111 @@ tests were deselected and no flash cycles or SCD30 NVM writes were spent. The ga
 collection: bench 48/71 default vs 71 with the flag; flash 42/51 vs 50/51 vs 51 with both flags;
 `--allow-scd30-extra-write` alone changes nothing (the AND-gate holds).
 
+## 1.7 Follow-up fixes from a host-side review (2026-09-18) — **re-verify on the bench**
+
+Five defects found by reading Part 1's changes against the code they touch. All are committed.
+The reviewing session had no real-hardware go-ahead, so it landed them as [SRC] only; the bench
+session has since validated them from the bench host — see §1.7.1 for what that covered and what it
+did not.
+
+1. **`_usb_reset_device()` was silently dead on the new default path.** It does
+   `name = Path(device).name` and looks for `/sys/class/tty/<name>/device`. With §1.1's by-id
+   symlink as `self.device`, that name has no `/sys/class/tty` entry, so the function returned
+   `False` and the documented unbind/rebind recovery for a wedged raw-REPL state never ran. The
+   rebind path in §1.1 cannot cover it: a wedged-but-*present* node makes
+   `_rebind_device_if_moved()` return `False`, which is exactly when the unbind/rebind was meant to
+   fire. Fixed with `Path(device).resolve().name`. Confirmed on the bench (§1.7.1). **Still worth
+   watching on the next wedge:** the unbind/rebind prints nothing, so look for the ~5s pause and
+   recovery rather than a hard failure.
+2. **`test_watchdog_starvation` could pass without the watchdog firing.** It treats any
+   `HardwareTestFailureError` as the expected reset. With §1.3's `allow_recovery=False`, a transient
+   `"may be in use by another program"` at connect — the case the retry existed to absorb — raises
+   the same error just as fast, clears the `< 10.0s` bound, and then both `wait_until` probes pass
+   instantly because the board never went away. It now asserts the device script's own
+   `"WDT armed, starving now"` banner appears in the failure text, which only happens if the script
+   really got onto the board. The banner check sits **after** the 10.0s timing bound, not before
+   it: `_mpremote()`'s own `subprocess.TimeoutExpired` path (`harness.py:169`) reports with no
+   stdout at all, and that case is a 15s hang the timing bound already names correctly — checking
+   the banner first would relabel it as a script that never started. **On rerun:** this is the one
+   fix that could turn a previously green test red. If it does, read whether the banner is
+   genuinely absent (a real connect failure — the fix working) or merely not captured (mpremote
+   dropping buffered device stdout when the link dies — in which case the marker is the wrong
+   instrument and the reset needs proving another way).
+3. **The rebind retry was unbounded**, unlike the deliberately once-only USB reset in the same loop:
+   each rebind added another 10s of grace, and no single `subprocess` timeout breaks out of
+   `_mpremote()`'s `while True`. Capped at `_MAX_DEVICE_REBINDS = 2`. The verifying run saw the node
+   move twice across the whole suite, never twice within one call, so this should be invisible.
+4. **The §1.2 teardown caught only `OSError`.** `fetch()` itself only raises `OSError` subclasses,
+   but `.json()` on a 200 with a non-JSON body raises `ValueError`, which would escape the
+   best-effort block and mask the failure unwinding the fixture — the one thing its comment says it
+   must not do. Now `(OSError, ValueError)`.
+5. **`tests_hardware/README.md` still documented the `/dev/ttyACM0` default.** §1.4 updated
+   `conftest.py`'s help string but not the durable reference. Updated, including the note that
+   `scripts/mpremote_connect.sh` genuinely does still default to `ttyACM0`.
+
+### 1.7.1 Validation by the bench session (2026-09-18)
+
+Run by the session that holds the bench, reported back rather than committed; recorded here by the
+reviewing session, so this subsection is **relayed, not first-hand**. Nothing below needed a board
+command — the empirical parts are filesystem reads and host-side test runs.
+
+| Item | How verified |
+|---|---|
+| #1 `_usb_reset_device()` dead on the by-id path | **[HW-host]** On the bench: `resolve_board_device()` → `/dev/serial/by-id/usb-MicroPython_Board_in_FS_mode_e66130100f372d34-if00`; `Path(d).name` → no `/sys/class/tty` entry (old code: recovery dead), `Path(d).resolve().name` → `ttyACM0`, entry exists. The defect was real and the fix works. |
+| #2 watchdog banner assertion | **[SRC]** Banner present at `watchdog_starvation_reset.py:10`; `run_isolated()`'s raise (`harness.py:241`) carries stdout, so the assertion has something to match. Not exercised — that needs the board. |
+| #3 rebind cap | **[SRC]** No behaviour change when the node has not moved. |
+| #4 `ValueError` on `.json()` | **[SRC]** `http_client.py:23` is a bare `json.loads`, so the escape route was real. |
+| #5 README | **[SRC]** Text accurate, including that `scripts/mpremote_connect.sh` still defaults to `ttyACM0` (its line 8) and that a pinned path is never re-resolved (`harness.py:139`). |
+| `c1ab149` — the vitest parametrisation | **[SRC]** Equivalent transformation: `"x".repeat(len)` is injective over lengths and `validLengths` is already `new Set`-deduped, so map-then-filter and filter-with-mapped-predicate select the same set; the added `CASE_TIMEOUT_MS` is the correct `it.each(...)(name, fn, timeout)` third argument. |
+| `mock-server-put-matrix.test.js` | **[HW-host]** Re-run independently: 390/390 passed in 116s. |
+| `live-backend-put-matrix.test.js` | **[HW-host]** 243/243 passed, 708s, exit 0, against a real twin in a real browser. |
+
+The last row closes a gap `c1ab149` itself recorded as unclosable: its commit message and PR #103's
+description both say that file's change rests on inference from its sibling plus eslint/tsc, because
+that session had no live backend. The "live backend" turns out to be the Unix-port binary plus a
+spawned twin — no hardware — and the bench host has both. It needs `scripts/build_website.sh wozi`
+first (skipping the pretest build fails at `waitForSelector`).
+
+**Still unvalidated, by nature:** #2 is the only one of the five that changes what a real board run
+asserts, and nothing short of a bench go-ahead settles it.
+
+**A flash-wear question §1.2 raised, now settled by the project owner (2026-09-18).** Six tests in
+`test_hotspot_role_reversal.py` use the `joined_hotspot` fixture without carrying
+`@pytest.mark.persistence_write`, so in a default run with no `--allow-persistence-writes` — §1.6's
+run 3 — the fixture still instantiates, stage 0's SSID clear writes the RP2040 flash filesystem, and
+the teardown restore writes it a second time (stage 6 is deselected in that mode, so the restore is
+a real change, not an `"Unchanged"` no-op). **That is correct, not a gap**: the gate covers a write
+a test *owns*, not one it is reached through, and these are prerequisite writes that exist so a
+dozen other tests can run at all. Gating them would deselect exactly what they enable. The flag
+chooses between "test everything and accept the higher wear" and "test everything that matters and
+keep wear as low as it can go" — never "spend zero". Recorded in `CLAUDE.md`, `tests_hardware/
+README.md` and the completeness guard itself, whose `joined_hotspot` entry had justified the
+exemption on a different and untrue ground ("every dependent is marked").
+
+**Closed by `9cfb3b3`** (bench session): `resolve_board_device()` no longer carries a second,
+looser copy of device discovery — it imports `detect_pico_serial_devices()` from
+`toolchain/setup_toolchain.py`, so the two cannot drift, and takes the same injectable directories.
+Identification is by USB vendor ID, two boards attached is a hard error naming both, and no board
+returns a path that cannot exist so the `board` fixture still skips rather than opening a stranger's
+port. Named by the by-id symlink as before, now matched by target rather than by the hardcoded
+product string. Seven host-side tests over fabricated `/sys`, `/dev` and by-id trees
+(`tests_scripts/test_resolve_board_device.py`) cover the multi-device cases the one-board bench
+cannot; on the bench itself the new implementation returns the previous answer byte for byte.
+
+**One correction to this section's own framing, from that work:** the claim above that the bare
+`ttyACM*` fallback "could select the Arduino UART peer rather than the Pico" was too strong. With
+both devices present the old code already picked correctly — the by-id glob is Pico-specific and
+runs first — so it could only pick a foreign device when **no board was attached at all**, opening
+that peer's port to find out. Real, but never "drives the wrong board".
+
+**Still open, deliberately not taken:** `scripts/mpremote_connect.sh:8`'s
+`device="${MPREMOTE_DEVICE:-/dev/ttyACM0}"` is the last hardcoded node, and now the only entry point
+an erratic re-enumeration can strand. A `scripts/` change owes CLAUDE.md's two-chroot pre-push gate,
+which is the project owner's call rather than a drive-by edit; `tests_hardware/README.md` names it
+as a known exposure in the meantime.
+
+---
+
 ---
 
 # PART 2 — The heap-fragmentation defect
