@@ -2236,6 +2236,106 @@ much contiguity this firmware actually needs.
   heading for. §7A.5's dose table is the nearest proxy: at 38-90x less churn the native-default case
   is still below the floor, so the two levers are not redundant with each other there.
 
+## 7B. The two remedies side by side (owner's question, 2026-09-18)
+
+Asked for as: the gain to expect from each method, its effort and risk, the gain from both combined,
+whether this is a flaw of the FRAM infrastructure or of the garbage collector, and what best practice
+suggests. "A" is §3B's restructure, "B" is §7A's boot-confined collects. Every layout figure below is
+at native `gc` defaults on the board's own metric (largest contiguous over free) at board-matched
+fill (§7A.8); A's figures are the synthetic injector at the real positions, which tracks the
+non-collecting arm to within a point and is therefore trustworthy for A alone.
+
+### 7B.1 Gain
+
+| | A: FRAM restructure | B: boot collects |
+|---|---|---|
+| layout, after `build_system()` | **P2 (38x): none** - 9.6% against base's 15.4%, worst-case kept 14% against 16%. **One lock per chunk operation (~90x): partial** - 51%, 0 of 10 clear 55% | 14.2% -> **45.0%** (3.2x), 0 of 10 clear 55% |
+| layout, after the task list too | not measured | 8.4% -> **57.8%** (6.9x), 6 of 6 clear 55%, 0 of 6 clear 74% |
+| against the 80,000 B tripwire at the device script's own point (after `build_system()`, 109-131 KB free on the board) | 90x: ~55-67 KB, **fails** | 45% ~ 49-59 KB, **fails** |
+| gain that is certain regardless of layout | logger `setup()` 118,144 -> 3,072 B (38x) / ~1,300 (~90x) board-equivalent; ~10 MB of churn off the twin's boot; **every run-phase error persist** (`print_log.py`'s `_store_err()` -> `_write()`, 50 CS cycles) from ~80 KB to ~1.3 KB | none outside layout |
+| at the shipped `threshold(32768)` | efficiency only | nothing (87% -> 86%) |
+
+Why A's two forms differ so sharply: §6A.8's knee is 8,000-20,000 B of small-object churn per logger.
+P2 lands at 22 KB, just above it, inside the saturated regime, so it buys nothing on layout; the 90x
+form lands at 9.4 KB, inside the knee, and is partial. Only ~5 KB per logger (`r4`'s 172x) clears the
+floor alone.
+
+### 7B.2 Effort and risk
+
+**A** is the expensive one: three files under C.3.1 (§11 item 2), a synchronous session form in
+`SPIDevice`, synchronous `read_block`/`write_block` under a caller-held lock, the lock-hierarchy and
+yield-policy decisions, bus-hazard coverage across all four tiers, and a hold-time measurement on
+hardware (~1 ms synchronous stretches, estimated; F.3). It touches the storage integrity path, and
+`f6a182d` already produced one regression on the same driver (§8.1). The mitigation exists:
+`proto.py`'s event-for-event bus trace equality (342 / 219 events, §3B.2) is the invariant and
+becomes the test. Its payoff does not depend on the layout outcome.
+
+**B** is one line at each of two sites (the generated setup loop in `buildgen/codegen.py`, the
+starter loop in `system_service.py`) plus a test that the count equals the list lengths and that none
+occurs after the supervisor starts. Its risks are not in the code:
+
+1. It amends I.4 and sets a precedent. It needs the same grep guard `method-assign` has
+   (`scripts/lint.sh`), so that `gc.collect(` can exist in exactly those two sites.
+2. It rests on `gc_collect_end()` resetting the free-scan index (`py/gc.c:612` at `v1.29.0`), which
+   has no documented contract - though the pinned tag's own documentation recommends precisely this
+   practice [SRC]: a demanded GC "is advantageous ... firstly to preempt fragmentation and secondly
+   for performance", and "`gc.collect()` issued after the import will ameliorate the problem"
+   (`docs/reference/constrained.rst:413-437`).
+3. It dampens the tripwire. The device script runs `build_system()`, which would carry the
+   collects, so a future churn regression shows ~3x weaker than it does today.
+4. It does nothing for the run phase, which is months of uptime and where the identical FRAM path
+   runs on every logged error.
+
+Boot cost is 32 mark-sweeps, each next to a `feed_watchdog()`; the docs put a collection at "several
+milliseconds ... about 1ms on the Pyboard", and boot latency is not a metric here (CLAUDE.md).
+
+### 7B.3 Combined
+
+They act on different links of §6A.9's chain, which is why they compose: B resets placement
+*between* modules, A shrinks the sweep *within* a module so the survivors born mid-setup stop being
+pushed above the churn's high-water mark. The proxy gives 87.5% for both 38x+collects and
+90x+collects (§7A.8), but overstates the collecting arm by 25 points (70.0% against a real 45.0% at
+base's dose), so the corrected expectation is **60-80% after `build_system()`**: 55% likely cleared,
+74% uncertain, and on the board 66-104 KB, straddling the tripwire. It has to be built to be known.
+One decision-simplifying reading: with B in place, 38x and 90x measure the same, so §3B.4's lever 3
+(the lock hierarchy, the riskiest abstraction change) becomes an efficiency choice rather than a
+layout one.
+
+### 7B.4 Whose flaw
+
+The FRAM infrastructure has a confirmed architectural inefficiency (O12): the Python around each CS
+cycle costs ~40x the cycle's payload - a flaw by the owner's own principle (§3B), independent of any
+GC.
+
+The GC has no defect. It has three deliberate properties [SRC, `py/gc.c`]: it is a conservative
+mark-sweep that scans the C stack and registers for anything pointer-shaped, so it *cannot* move
+objects (compaction is impossible by construction, not omitted); one pool, lowest-fit, no size
+classes, so small transients and small permanents share the same holes (C7); and no collection until
+exhaustion at default, so the sawtooth reaches 64 B free (§6A.6). The consequence is a property, not
+a bug: **a permanent object's address is decided by whatever churn is running at its birth.** The
+documentation says to design around it with exactly two tools - collect at initialisation, threshold
+at run - and the project already uses the second.
+
+The actual defect is the boot design: it interleaves each module's permanent allocations with ~1 MB
+of same-size-class churn on that allocator with no placement discipline. Neither party alone. What is
+missing is a boot-phase contract, which is what §12's seam + contiguity guard would enforce.
+
+### 7B.5 Recommendation
+
+1. Grant §11 item 2 and build A on its own merits: it is the design-level fix I.4(g) prescribes, the
+   only lever that reaches the run phase, and its benefit is certain. Start at P2 and leave the lock
+   hierarchy alone; escalate to the 90x form only if the measurement asks for it.
+2. Take §11 item 4 as boot-phase placement discipline, written narrowly into I.4: emitted only by
+   the two boot lists, never a fix for an allocation that fails, confined by a lint guard. The
+   grounding is the pinned documentation's own recommendation plus the measured mechanism (§7A.4).
+3. Sequence them: A first, measured alone on the twin at calibrated fill and on the board against the
+   unlowered 80,000 B; then B on top, measured again. That keeps the (e)/(f) record honest: if A
+   alone passes the tripwire, B is pure defense in depth and needs no amendment; if not, the
+   amendment states what it is.
+4. Keep `threshold(32768)`. Do not lower the floor. Do not take B alone: it fails the tripwire at the
+   device script's measurement point and would set the precedent without the design fix.
+5. Add §12's per-module contiguity guard, which restores the sensitivity B takes from the tripwire.
+
 ---
 
 ## 8. What is committed
@@ -2465,6 +2565,8 @@ allocation — hence rung r0's -68,992 B is an artifact, not a real saving.
    collecting arm by 25 points against the real path, so the combination needs §3B built - item 2 -
    before it can be measured rather than estimated. If the decision is to be evidence-led, item 2's
    exception is the one that unblocks the measurement item 4 turns on.
+   **§7B lays the two side by side** - gain, effort, risk, the combination, whose flaw it is, and a
+   recommended order (A first, measured alone; B on top, measured again).
 
 **One constraint already settled and not to be re-proposed.** The 80,000 B floor is not to be
 lowered. The second, `gc.collect()`/`gc.threshold()` as the remedy — forbidden by
