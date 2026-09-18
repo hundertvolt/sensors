@@ -641,6 +641,18 @@ constraints.
 
 
 ## Deferred / explicitly out-of-scope work
+- **`SPIDevice` now has a synchronous session (`session_begin()`/`session_end()` plus
+  `write_sync()`/`readinto_sync()`/`write_readinto_sync()`); `I2CDevice` does not — flagged, not
+  fixed.** The SPI form exists because the FRAM path drives the chip through blocking register
+  writes and paid a coroutine pair plus a bus-lock cycle for every CS cycle (the heap-fragmentation
+  work, HEAP_REMEDIATION_PLAN.md A.1.1). `I2CDevice` has no CS pin, no per-session `configure()`
+  and no settle, so it has nothing equivalent to make synchronous: its `async with` is
+  `Lockable`'s plain lock acquisition, and its own `async def` transfer wrappers already sit
+  directly on blocking `machine.I2C` calls. Generalising the session shape to I2C is explicitly
+  refused by SPECIFICATION.md Part F.5.8 for the neighbouring read-clamp case, and would be a
+  rewrite of every I2C driver's call sites for no measured gain. Recorded here per CLAUDE.md's
+  flag-don't-silently-fix rule for cross-file API divergence (Part D.10), as a known and deliberate
+  asymmetry rather than an inconsistency to tidy up.
 - **Session 7's `pyproject.toml` `max-args` ratchet (21 → 22, for `WebserverService.__init__`'s new
   `build_info=` parameter) only got the noble leg of CLAUDE.md's required two-target clean-chroot
   pre-push verification.** The trixie leg — required by the same rule whenever `pyproject.toml`

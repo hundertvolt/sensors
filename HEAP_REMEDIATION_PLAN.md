@@ -158,6 +158,17 @@ reopened only if A.6's measurement asks for it.
    per 5-CS envelope, not five). The driver lock stays per block operation. This is the
    "multi-device compatibility preserved" choice from §0 and the lower-risk one; it costs the
    ~1,800 B per setup that separates 3,072 from ~1,300, which B makes irrelevant to layout.
+   **Correction, from the build (2026-09-18).** This paragraph's cost figure is wrong by an order
+   of magnitude, and the error changed the outcome. §3B's P1 **and** P2 both took the bus lock
+   *once per block operation*; §3B.3's "the floor is now set entirely by lock acquisitions" counts
+   four block-operation acquisitions, and its ~1,800 B is the gap between per-block-operation and
+   per-*chunk*-operation locking (lever 3) - not between per-command and per-block-operation. The
+   real cost of taking it per command is **~15,000 B per blank `setup()`**: A as built lands at
+   18,240 B board-equivalent (6.7x) where P2 was 3,072 (38x). P2's synchronous status-byte protocol
+   is also unreachable at per-command granularity, since `_set_check_sb()`'s callees are the very
+   coroutines that acquire the bus. The measured ladder and the per-node costs are §7C.1; the
+   decision itself is §11 item 6, put to the owner and not taken unilaterally.
+
 5. **What the twin and mock fakes need**: nothing new in `tests/machine.py`'s `SPI` /
    `digital_twin/machine.py`'s `SPI` (their `write`/`readinto`/`write_readinto`/`init` are already
    synchronous, as the real ones are), nothing in `tests/_fram_chip_fake.py`'s `FakeMB85RS64V` or
@@ -225,7 +236,7 @@ reopened only if A.6's measurement asks for it.
       `FRAM_SPI._send_opcode(opcode: int)`, which is now `_send_command(command: bytes)`.
       Measured on the mock tier, settrace binary, median of five: a blank logger `setup()` went
       820,096 -> 299,328 B and a valid one 564,960 -> 238,368 B with only A.1.1 and A.1.2 in place.
-- [ ] **`tests/test_asy_fram_manager.py`** (105 tests today): every existing test stays green
+- [x] **`tests/test_asy_fram_manager.py`** (105 tests today): every existing test stays green
       unchanged. Add: `_set_check_sb`/`_handle_status_bytes` errno spreads reproduced from the
       public `write`/`read`/`clear` entry points for every branch (`err`, `err+1`, `err+2`,
       `err+gap`, `err+2*gap` for `check_idle=True` and `False`); a block operation yields at
@@ -233,7 +244,25 @@ reopened only if A.6's measurement asks for it.
       `compare_with` scratch buffer is allocated once per chunk, not per call; a `MemoryError` on
       that allocation at construction degrades the chunk the same way a negative `check_length`
       does today.
-- [ ] **Allocation-count test, board-comparable**: `tests/test_asy_fram_allocation_budget.py`
+      **Done**: 105 -> 114 tests, all green. The six errno branches that had no coverage are
+      now pinned from the public entry points: 19 and 20 (`_write_chunk`'s IDLE mark, bytes 1 and
+      2), 33, 34 and 35 (`_read_chunk`'s BUSY mark on status byte 2 - read failure, not-idle, write
+      failure) and 51 (`_clear_chunk`, byte 2). The progress test is stronger than "yields at least
+      once": a concurrent task observes the block marked BUSY *and* IDLE again during one
+      `write()`, which a non-yielding block operation could not show.
+      **Deviation from A.1.3, bullet 1.** `_set_check_sb()`/`_handle_status_bytes()` could **not**
+      become synchronous. Their callees are `FRAM_SPI.get_values()`/`set_values()`, which under
+      A.1.4's decision take the bus lock per command and must therefore stay coroutines; making
+      the status-byte helpers synchronous would require the manager to hold the bus lock across a
+      whole block operation, which is exactly the lock-hierarchy change A.1.4 declined. Their
+      logging also stays at its own site: the reason for moving reporting up in the driver was
+      that those bodies hold the bus lock and must not await, and these do not. What was taken
+      from the bullet is the part that actually costs bytes - the per-call `bytearray(1)` and
+      `bytearray([val])` become one `bytearray(1)` per chunk, the `_compare_with` scratch buffer
+      and its memoryview move to construction, the two per-call callback closures become chunk
+      state and one plain `_read_progress()` taking ints, and `_read_chunk`'s per-iteration slice
+      tuples and doubled `mv[a:b]` slicing collapse to one slice per iteration.
+- [x] **Allocation-count test, board-comparable**: `tests/test_asy_fram_allocation_budget.py`
       (new) — one blank `setup()` and one valid `setup()` each inside a collection-free window
       (the §1.2 identity `(free_before − free_after) == (alloc_after − alloc_before)` asserted),
       asserting the retained-plus-transient bytes are below a budget set from §3B.3 with margin
@@ -241,7 +270,13 @@ reopened only if A.6's measurement asks for it.
       the first passing run and recorded in the test's own comment with the settrace caveat, §1.2
       item 7). This is the (e)-stage test pair I.4 asks new code to carry, in its efficiency
       form; it fails if a coroutine-per-cycle regresses back in.
-- [ ] **Hazard tiers 1 and 2** (CLAUDE.md's standing four-tier rule): FRAM has no I2C neighbour
+      **Done**: `tests/test_asy_fram_allocation_budget.py`, 3 tests. The projected budgets did not
+      survive contact with the measurement and are replaced by measured ones, with ~15% margin and
+      a pair per build selected at runtime on `hasattr(sys, "settrace")`: 344,000 B blank /
+      270,000 B valid on the settrace build, 34,000 / 24,000 on a settrace-free one. A third test
+      asserts the budgets are not trivially satisfied, and the pair was confirmed to fail against
+      the pre-restructure `src/` (798,720 B and 549,248 B on the settrace build).
+- [x] **Hazard tiers 1 and 2** (CLAUDE.md's standing four-tier rule): FRAM has no I2C neighbour
       and sits alone on `spi0` in every device TOML, so the cross-device scenarios are the
       *twin* tier's real task graph under bus load. `tests/test_bus_hazard_multi_device.py`
       gains the one shape the generated scheme cannot produce for SPI — two `SPIDevice`s on one
@@ -250,29 +285,39 @@ reopened only if A.6's measurement asks for it.
       SPI compatibility" means in a test). `tests/test_digital_twin_bus_hazard_concurrency.py`'s
       ten tests (FRAM fault injection, rx overrun, storage pause, write protect) run unchanged
       and are the twin tier's proof.
-- [ ] **`tests/test_fram_integration.py`** (11) and **`tests/test_print_log.py`**,
+      **Done**: `tests/test_bus_hazard_multi_device.py` goes 8 -> 10, with the async and the
+      synchronous session interleaving over twelve rounds each on one bus with no CS overlap, and
+      an rx overrun inside the synchronous session leaving neither the shared lock nor the
+      neighbour's access stranded. The twin tier's ten tests run unchanged.
+- [x] **`tests/test_fram_integration.py`** (11) and **`tests/test_print_log.py`**,
       **`tests/test_notification_fram_integration.py`**, **`tests/test_ntp_fram_system_integration.py`**:
       run unchanged; they are the consumer-side pins of "public API unchanged".
+      **Done**: all unchanged and green, together with `tests/test_base_classes.py` (119) and
+      `tests/test_ntp_fram_system_integration.py` (12).
 
 ### A.3 Implementation
 
-- [ ] `src/asy_spi_driver.py` per A.1.1. Header docstring stays ≤ 3 lines; one short WHY note
+- [x] `src/asy_spi_driver.py` per A.1.1. Header docstring stays ≤ 3 lines; one short WHY note
       each on the blocking settle and on the post-session yield, next to the line.
-- [ ] `src/asy_fram_driver.py` per A.1.2.
-- [ ] `src/asy_fram_manager.py` per A.1.3.
-- [ ] `micropython.const()` for any new module-level constant that is an int; `bytes` constants
+- [x] `src/asy_fram_driver.py` per A.1.2.
+- [x] `src/asy_fram_manager.py` per A.1.3.
+- [x] `micropython.const()` for any new module-level constant that is an int; `bytes` constants
       for the opcode frames.
-- [ ] The trace test, the 51+71+105 existing tests and the new ones all green under
+- [x] The trace test, the 51+71+105 existing tests and the new ones all green under
       `scripts/test.sh` (one Unix-port process per file, `-X heapsize` as set there).
-- [ ] `scripts/lint.sh` and `scripts/typecheck.sh` exit 0. **No `method-assign` suppression in
+- [x] `scripts/lint.sh` and `scripts/typecheck.sh` exit 0. **No `method-assign` suppression in
       `src/`** (the lint guard fails otherwise). `mypy --strict` on the three files: the
       synchronous/async pairs need no `type: ignore`.
-- [ ] Bird's-eye scan over `src/` (CLAUDE.md, "whenever a new file is added" — applied here to a
+- [x] Bird's-eye scan over `src/` (CLAUDE.md, "whenever a new file is added" — applied here to a
       new *shape*): `asy_i2c_driver.I2CDevice` inherits `Lockable`'s async session too, and the
       PR #105 description already reports it has no scheduling point per burst. **Do not extend
       the synchronous session to I2C in this work**; record the discrepancy (SPI now has a
       synchronous form, I2C does not) in BACKLOG.md as a flagged, not fixed, item — CLAUDE.md's
       flag-don't-fix rule and F.5.8's explicit refusal to generalise.
+      **Done**: recorded in BACKLOG.md's deferred list. The scan found no other divergence - the
+      synchronous/async pairing is confined to `SPIDevice`, `I2CDevice` has no CS pin, no
+      per-session `configure()` and no settle to make synchronous, and every other `src/` module
+      reaches the bus through one of those two.
 
 ### A.4 The digital twin
 
@@ -295,9 +340,18 @@ reopened only if A.6's measurement asks for it.
       beside `base`'s 11.9-14.2% / 8.1-8.4% and the synthetic prediction for a 38x cut (9.6%,
       i.e. no layout gain expected from A alone — §7B.1). The point of this row is the honest
       (e)/(f) record, not a pass.
-- [ ] Re-run the allocation census of §3A.3 for one logger `setup()` on the settrace-free build
+- [x] Re-run the allocation census of §3A.3 for one logger `setup()` on the settrace-free build
       and confirm the 38x against the prototype's 3,072 B (the prototype was not the real code;
       this is the first real number).
+      **Done, and it does not confirm the 38x.** Recorded as §7C in
+      `HEAP_FRAGMENTATION_MEASUREMENTS.md`. Board-equivalent on the twin, median of five: a blank
+      `setup()` costs **18,240 B against the base branch's 122,880 (6.7x)** and a valid one 13,536
+      against 80,384 (5.9x). The synchronous five-CS write envelope itself is down to **32 B**, so
+      the bus work is effectively free; what is left is await machinery, ~6,900 B of it the
+      per-command bus lock that A.1.4 chose and mis-priced. §7C.1 has the per-node table and the
+      ladder of lock scopes with their measured costs; the decision is `HEAP_FRAGMENTATION_MEASUREMENTS.md`
+      §11 item 6, put to the owner. The ensemble measurement below is held until it is answered, so
+      it is not run twice against two different structures.
 
 ### A.6 Decision gate after A
 

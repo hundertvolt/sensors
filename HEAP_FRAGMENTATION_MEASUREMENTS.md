@@ -2338,6 +2338,80 @@ missing is a boot-phase contract, which is what §12's seam + contiguity guard w
 
 ---
 
+## 7C. A, built and measured — what the real code costs (2026-09-18)
+
+§3B priced prototypes. This is the first measurement of the **real** restructured `src/`, built per
+HEAP_REMEDIATION_PLAN.md A.1.1-A.1.3: `SPIDevice` gains a synchronous session with a blocking
+`sleep_us(2)` settle, `FRAM_SPI`'s internals become plain functions over it with the bus lock taken
+once per byte-level command and one `sleep(0)` after it, and the chunk layer's per-call scratch
+buffers, callback closures and per-iteration slices are hoisted or removed.
+
+Method: §3A.3's census, settrace-free binary, twin fakes first as they are and then made
+allocation-free (the board-equivalent pass, §3B's own protocol), median of five, each `setup()` in
+its own collection-free window. `max_size=0x40000`, so the address buffer is the 4-byte form.
+
+| arm | blank `setup()` (74 CS) | valid `setup()` (47 CS) |
+|---|---|---|
+| base branch, twin fakes as-is | 141,952 | 92,640 |
+| **base branch, board-equivalent** | **122,880** | **80,384** |
+| A built, twin fakes as-is | 33,728 | 23,744 |
+| **A built, board-equivalent** | **18,240 (6.7x)** | **13,536 (5.9x)** |
+| §3B's P2 prototype, for reference | 3,072 (38x) | 1,984 (39x) |
+
+The wire protocol is byte-identical throughout — `tests/test_asy_fram_wire_trace.py` asserts every
+CS cycle and every transfer's bytes against goldens captured from the pre-restructure code.
+
+### 7C.1 Why the real code lands at 6.7x and not 38x
+
+Per-node, board-equivalent, same run:
+
+| node | cost |
+|---|---|
+| bus lock acquire + release (bare `Lock`) | 288 |
+| the whole synchronous 5-CS write envelope, lock already held | **32** |
+| `async with FRAM_SPI` (the driver lock, once per block operation) | 608 |
+| `set_values(1 B)` including its own `async with` on the driver | 992 |
+| `crc.add_into()` over one chunk | 576 |
+| `_write_chunk` (one block) | 4,576 |
+| `_read_into` (one block) | 5,632 |
+| `_compare_with` (one block) | 6,400 |
+
+The bus work itself is now **32 B per five CS cycles** — the goal of the restructure, reached. What
+remains is await machinery, and almost all of it is the bus lock: a blank `setup()` issues 18
+byte-level commands (14 writes x 5 CS + 4 reads x 1 CS = 74), and each pays one
+`asyncio.Lock.acquire()` coroutine at 288 B plus its own entry-point coroutine. That is ~6,900 B of
+the 18,240, with the six `async with self.fram` block-operation locks adding ~3,600 more.
+
+**This is a decision the plan got wrong, not a defect in the build.** HEAP_REMEDIATION_PLAN.md A.1.4
+chose to take the bus lock **per byte-level command** and estimated the cost of that choice at
+"~1,800 B per setup". The real figure is ~15,000 B, because **§3B's P1 and P2 both took the bus lock
+once per block operation, not per command** — §3B.3's own sentence, "the floor is now set entirely
+by lock acquisitions", is about four block-operation acquisitions, and its ~1,800 B is the gap
+between per-block-operation and per-*chunk*-operation locking (lever 3), not between per-command and
+per-block-operation. P2's synchronous status-byte protocol is not reachable at all at per-command
+granularity: `_set_check_sb()`'s callees are `get_values()`/`set_values()`, which must stay
+coroutines if they are the ones acquiring the bus.
+
+So the ladder, with the measured cost of each rung:
+
+| bus-lock scope | blank `setup()` | what another SPI device waits for |
+|---|---|---|
+| per byte-level command (built, A.1.4's choice) | 18,240 | one command, ~5 CS cycles |
+| per block operation (§3B's P1 and P2) | ~3,000-13,000 | one block operation, ~25 CS cycles |
+| per chunk operation (§3B.4 lever 3) | ~1,300 | both blocks, ~50 CS cycles |
+
+The middle rung's range is wide because it is two changes, not one: moving the acquisition alone
+removes ~6,900 B, and making the status-byte protocol synchronous on top of it is what took P1's
+7,296 to P2's 3,072. Only the first is measured here; the second is inferred from §3B.
+
+Yield granularity is unaffected either way — `sleep(0)` allocates nothing (§5), so the per-command
+yield policy stays whatever the lock scope is, and the loop is never starved for a block operation's
+duration. What the lock scope decides is only how finely a *second* SPI device could interleave.
+
+**Open**: §11 item 6.
+
+---
+
 ## 8. What is committed
 
 **Reverted, 2026-09-18, at the owner's instruction.** Every change this investigation made to
@@ -2584,6 +2658,22 @@ allocation — hence rung r0's -68,992 B is an artifact, not a real saving.
    exception is the one that unblocks the measurement item 4 turns on.
    **§7B lays the two side by side** - gain, effort, risk, the combination, whose flaw it is, and a
    recommended order (A first, measured alone; B on top, measured again).
+
+6. **How finely should the SPI bus lock be taken inside the FRAM path?** (Raised 2026-09-18 by the
+   build, not by an earlier plan.) A is built and measured at **6.7x** (§7C), against §3B's
+   projected 38x. The whole gap is one decision: HEAP_REMEDIATION_PLAN.md A.1.4 takes the bus lock
+   **per byte-level command**, while §3B's P1 *and* P2 both took it **once per block operation** -
+   and the plan priced its own choice at ~1,800 B when the measured cost is ~15,000 B per blank
+   `setup()`. The choice is not about safety or about the wire protocol (byte-identical either way,
+   asserted by a golden-trace test) and not about loop fairness (yields cost nothing and stay
+   per-command either way). It is only about how finely a **second SPI device** could interleave
+   with the FRAM: one ~5-CS command, or one ~25-CS block operation. There is no second SPI device
+   in any device TOML today; the constraint is the owner's stated "potential future multi-device SPI
+   compatibility". Taking the coarser scope also unlocks P2's synchronous status-byte protocol,
+   which §3B measured as a further 7,296 -> 3,072. **Options**: (a) keep per-command, accept 6.7x;
+   (b) move to per block operation, expected ~3,000-13,000 B, interleaving granularity one block
+   operation; (c) lever 3, per chunk operation, ~1,300 B, granularity both blocks. §7C.1 has the
+   ladder and the measured per-node costs behind it.
 
 **One constraint already settled and not to be re-proposed.** The 80,000 B floor is not to be
 lowered. The second, `gc.collect()`/`gc.threshold()` as the remedy — forbidden by
