@@ -170,8 +170,8 @@ class DNSQuery:
         self._question_end = 0  # set below once a full question is actually parsed
         # A root-domain query (a single zero-length label, ".") parses to the same empty
         # self.domain a truncated/malformed datagram falls back to - this flag is the only thing
-        # that tells them apart, so response() can still answer a genuine root query (BACKLOG.md's
-        # "can't be told apart from a failed parse" entry).
+        # that tells them apart, so response() can still answer a genuine root query rather than
+        # treating it as the failed parse it is otherwise indistinguishable from.
         self._parsed_ok = False
         self.pr = pr
         # RFC 1035 section 4.1.1/4.1.2: opcode is bits 3-6 of header byte 2; the question section

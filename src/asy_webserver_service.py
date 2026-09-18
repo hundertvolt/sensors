@@ -110,8 +110,8 @@ _PAUSE_TIME_FIELD: "cm.FieldSchema" = ("PauseTime", "int", 0, 0, _PAUSE_TIME_MAX
 # SPECIFICATION.md Part A.8) instead of a second, hand-rolled strict check.
 
 _MAX_STATUS_PIECE_BYTES = const(1024)  # _coalesce_json_fragments()'s own per-piece cap for
-# /status's "sensors"/"errcount" sections - see that function's own comment and BACKLOG.md's
-# real-hardware finding (2026-09-05) for why a per-*section* bound isn't enough on its own.
+# /status's "sensors"/"errcount" sections - see that function's own comment and SPECIFICATION.md
+# Part I for why a per-*section* bound isn't enough on its own (real hardware, 2026-09-05).
 
 _ERROR_SHAPES = (  # (status_code, descr) - registered via @app.errorhandler for shaped JSON bodies,
     # per "Criteria for this step to finish": at least 400/404/405/413/500 wired.

@@ -151,9 +151,9 @@ class SCD30_Reader(SensorReader):
         self.scd_timer_triggers = 0
 
     async def _read_sensor_dict(self) -> dict[str, int | float | str | bool | None]:
-        # Single batched read (get_config_snapshot()), not six independent get_*() calls - closes
-        # the torn-read window BACKLOG.md flagged (a concurrent config write landing between two of
-        # the six separately-locked reads used to be able to mix pre-/post-write values).
+        # Single batched read (get_config_snapshot()), not six independent get_*() calls - closes a
+        # torn-read window: a concurrent config write landing between two of the six separately-locked
+        # reads used to be able to mix pre-/post-write values.
         temp_offset, measurement_interval, ambient_pressure, altitude, frc, self_cal = await self.scd.get_config_snapshot()
         return {
             name_cfg(_VAL_TO): temp_offset,
@@ -528,7 +528,7 @@ class SCD30_I2C:
         # (TempOffs, MeasInt, AmbPres, Altitude, ForceCalRef, SelfCal) - one device-session lock hold
         # across all 6 config registers, closing the torn-read window a concurrent set_*() call (also
         # i2c_scd30-locked) could otherwise land inside mid-batch, producing a dict that mixes pre-
-        # and post-write values (BACKLOG.md's SCD30_Reader.get_dict_cfg() torn-read entry). Same
+        # and post-write values for SCD30_Reader.get_dict_cfg() to publish. Same
         # "allowed to raise" layer as every other SCD30_I2C method - a mid-batch fault fails the whole
         # snapshot rather than a mix of fresh and stale fields.
         async with self.i2c_scd30 as scd30, scd30.i2c_device as i2c:

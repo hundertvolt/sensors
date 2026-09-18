@@ -110,14 +110,15 @@ _ConstValue = namedtuple("_ConstValue", ("value",))
 class _DefaultTemperatureSource:
     """§2's wiring-defaults mechanism, opted into via [instance.wiring].temperature_source =
     {default = true, temperature = 25} - a constant compensation fallback when no live temperature
-    source is wired. 25 degC matches SGP40_I2C.measure_raw()'s own datasheet-documented default
-    (Table 9). Every `_Default*` provider's get_data() returns an object exposing exactly one
-    attribute named "value" (a fixed, hardcoded contract - see BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md
-    §10.1 item 1), so buildgen always resolves a defaulted per-value field as (provider, "value")."""
+    source is wired (BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md)."""
 
+    # 25 degC is not an arbitrary pick: it matches SGP40_I2C.measure_raw()'s own datasheet-documented
+    # default (Table 9), so a defaulted source and an unwired one compensate identically.
     def __init__(self, temperature: float = 25) -> None:
         self._data = _ConstValue(float(temperature))
 
+    # Every `_Default*` provider returns an object exposing exactly one attribute named "value" (a
+    # fixed contract, §10.1 item 1), so buildgen resolves a defaulted per-value field as (provider, "value").
     async def get_data(self) -> "_ConstValue":
         return self._data
 

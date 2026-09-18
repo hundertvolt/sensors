@@ -39,8 +39,7 @@ actually boots as `"SensorNode"`/`"12345678"`); `wozi`/`dev`'s hand-written `htm
 still aren't retired in favor of generated output (blocks `js/app.js`'s `?device=` switch from
 listing all 6 devices); `tests_hardware/bus_topology.py` is a dead, unenforced duplicate of two real
 devices' wiring facts (BACKLOG.md item 20); `buildgen/buildspec.py`'s per-driver schema is still
-hand-maintained (BACKLOG.md's "Deferred" section); SPECIFICATION.md Part H.5.1's `dispatch: true`
-claim doesn't match two real fields in `wozi.json`/`dev.json` (BACKLOG.md item 21).
+hand-maintained (BACKLOG.md's "Deferred" section).
 
 ## Target device variants
 
@@ -396,7 +395,7 @@ files directly, independent of `buildgen`'s own validator.
      reboot survival) stay wozi/dev-scoped since the mechanism they prove is device-independent and
      a full ×6 parametrization would overrun `scripts/test.sh`'s per-file timeout with no real
      margin. **Session 6.3** closed the remaining SGP40 boot-race false-error finding
-     (BACKLOG.md item 17).
+     (SPECIFICATION.md Part C.14.2).
    - Test coverage: `tests_scripts/test_buildgen_generate.py::test_real_device_constructs_watchdog_exactly_once`
      (parametrized over all 6 devices — the CPython-side replacement for
      `tests/test_reset_call_site_invariant.py`'s now-vacuous `sensortask_*.py`-skip logic);

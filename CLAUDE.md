@@ -90,11 +90,15 @@ information):
   it before changing anything, the same "flag, don't silently change" treatment Part D.1 already
   gives formula/behavior discrepancies, applied here to cross-file consistency instead.
 - **Do not "fix" `modules/_boot.py`'s `import sensortask.py`** (literal `.py` in the import
-  statement) without testing on real hardware first. It works reliably today; MicroPython's
-  documented freeze/import behavior says the module should be named `sensortask` with the
-  extension stripped, so this *looks* like it should raise `ModuleNotFoundError` — the mechanism
-  is genuinely unresolved (see BACKLOG.md #1). Changing it blind risks breaking every deployed
-  unit's autostart.
+  statement) without testing on real hardware first. It works reliably today, yet the import
+  machinery says it should not: traced through the pinned source at 1.28 and re-verified at 1.29.0,
+  a plain `import sensortask` is unambiguously the correct form and the dotted one should raise,
+  because it requires "sensortask" to resolve as a package (BACKLOG.md #1 has the trace). **That
+  does not make the file safe to change** — the trace is against 1.28/1.29, while these units run
+  1.26, whose own import machinery was never separately verified and never will be (the legacy tree
+  gets no work, below). So the *mechanism* is answered and the *rule* stands unchanged: changing it
+  blind risks breaking every deployed unit's autostart, and extrapolating from a different version's
+  source is exactly the blind change this rule exists to prevent.
 - **`python/CommonDrivers/microdot.py` is vendored third-party code.** Don't restyle or "clean
   up" it; if you need to change its behavior, treat that as a deliberate fork decision, not
   routine editing. **It is not, however, current** — an earlier note here claimed it matched
@@ -160,7 +164,7 @@ information):
   too**, provided the code actually under test is genuinely dev-native (dev's own correct pins/
   config via its own entry point), never wozi's own hardcoded build forced onto dev hardware. That
   specific mismatch (`scripts/build_firmware.py wozi` — wozi's hardcoded pins — flashed onto the dev
-  bench) produced two false "bugs" once (see BACKLOG.md's "Per-variant `sensortask-*.py` generator" entry) — it
+  bench) produced two false "bugs" once — it
   isn't a shortcut for testing wozi, it's testing nothing at all, and must not be repeated.
 - **The legacy tree is reference-only, forever — it never gets work of any kind** (project owner,
   2026-09-11). `python/`, `modules/` and the four `build-*.sh` scripts exist to be *read*: to check
@@ -766,8 +770,8 @@ information):
   cases, and `warn_unused_ignores = true` would then fail the day the stubs are fixed.
 - **`improved-quality/microdot.py` no longer exists** — it was a confirmed *unintentional* fork of
   vendored Microdot, removed and replaced with a fresh, unmodified sync at `ext/microdot.py`
-  (pinned to tag `v2.6.2`; see "Hard rules" above and "Microdot / REST layer" below). See
-  BACKLOG.md's "Deferred" list for the resulting dead `pyproject.toml` exclude entry.
+  (pinned to tag `v2.6.2`; see "Hard rules" above and "Microdot / REST layer" below).
+  `pyproject.toml`'s own comment block records what that deletion left behind.
 
 ## Pre-push verification (clean chroot: Ubuntu 24.04 **and** Debian trixie)
 
