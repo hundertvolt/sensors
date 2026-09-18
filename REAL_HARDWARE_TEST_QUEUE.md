@@ -13,6 +13,11 @@ prerequisites, flags and safety facts; this file only says *what* is owed and *w
 Status values: **OPEN** (owed), **BLOCKED** (waiting on a decision or another row), **DONE**
 (result migrated — row deleted at that point), **EXCLUDED** (belongs to another effort).
 
+**Where things stand (2026-09-18).** §1A (measure A) is **run and closed** — §7D. §1B (measure B)
+is **run but partial** — §7F, headline settled (the tripwire passes in-suite for the first time),
+four items still owed in §7F.6. **§1C is untouched**: features that landed with the merge and have
+hardware implications neither §1A nor §1B covers.
+
 ---
 
 ## 0. Decide before the run
@@ -206,11 +211,25 @@ unconfirmed half of this branch exactly as §7B.1 was before §7D refuted it.
 
 | # | Run | Notes | Status |
 | --- | --- | --- | --- |
-| B1 | **The matched in-suite pair**, A-only against A + B. | Plan T.1's A + B column. Both arms: `scripts/run_flash_hardware_suite.sh`, read the tripwire's `largest_block`. The BEFORE arm is the tip with `src/system_service.py` + `buildgen/codegen.py` at `da9bcf1`, rebuilt — §7D.1's isolation technique, and the rebuild is load-bearing because `codegen.py` is a build-time file. | OPEN |
-| B2 | **The whole boot sequence, not just `build_system()`.** New script `device_scripts/heap_layout_after_full_boot_sequence.py` (added 2026-09-18, validated host-side against the twin, never run on a board). | The existing `heap_headroom_after_full_system_build.py` stops at `build_system()` and so reaches only the first of measure B's two collect sites. §7E.3: with the batch collects but not the starter-list ones, the whole-sequence figure falls back from 88.7 % to 10.1 % — the half the existing instrument cannot see. Comes with its own position-saturation validity check. | OPEN |
-| B3 | **Boot cost with the collects in.** | Plan T.5. The B2 script's own `BOOT` line. A-only is a median 919 ms (§7D.7) against the 8,388 ms cap; watchdog-margin check only, boot latency is not a metric (CLAUDE.md WP6). | OPEN |
-| B4 | **The threshold-first reading** — the firmware's own boot path under its own `gc.threshold(32768)` from the start. | §7D.8's second open item, still open after the 2026-09-18 run: both scripts read at the reactive default and set 32768 afterwards. One extra `mpremote` invocation settles it. The twin sees no layout defect at all at 32768 while the board's cited symptom is the `threshold(-1)` shape — one of the two is wrong. | OPEN |
-| B5 | **F1/F2's fixes on silicon** — the two FRAM fault injectors and the SSID script. | Covered by B1's suite run for the injectors (both must PASS on both arms; `mpremote run` pushes `tests_hardware/` from the working tree, so both images get the fixed versions). The SSID script is optional and goes last — see §2A F1 and the handover's §6.2 recovery recipe. | OPEN |
+| B1 | **The matched in-suite pair**, A-only against A + B. | **DONE 2026-09-18 — P1 CONFIRMED.** BEFORE (A only) `free=105,088 largest_block=28,736` **FAIL**; AFTER (A+B) **PASS**, suite `36 passed, 3 skipped, 12 deselected`, zero failures. First in-suite pass on any image ever measured. Exact AFTER figure not captured (§7F.6). Results: §7F | DONE |
+| B2 | **The whole boot sequence, not just `build_system()`.** New script `device_scripts/heap_layout_after_full_boot_sequence.py` (added 2026-09-18, validated host-side against the twin, never run on a board). | **DONE 2026-09-18, fresh-heap position only.** Four points on both arms, `starters=22 timers=8` matching §7E. **P3 confirmed** (BEFORE 89% → 70% across the starter list, so the instrument sees it). **P2 untested** — a fresh heap has no defect to fix, so A+B reads slightly worse there; §7F.4 explains why that is not evidence against B. An aged-heap AFTER reading is still owed, and the handover's saturation check is broken (§7F.5) | PARTIAL |
+| B3 | **Boot cost with the collects in.** | **DONE 2026-09-18 — P4 CONFIRMED.** `build_system_ms` 943 → **1,402**, i.e. ~455 ms for B's 11 batch collects (~41 ms each). Under the ~2,000 ms falsifier and the 8,388 ms cap; no `WDT_RESET`. First measured RP2040 collect cost — ~85x the twin's 300-490 us, as §7A.7 predicted would not transfer | DONE |
+| B4 | **The threshold-first reading** — the firmware's own boot path under its own `gc.threshold(32768)` from the start. | **PARTIAL 2026-09-18.** BEFORE arm taken: threshold-first `after_starter_list` **75,536 / 79%** against the reactive default's 66,144 / 70% — the firmware's own threshold gives the *better* layout on A-only. **AFTER arm owed**, one invocation | PARTIAL |
+| B5 | **F1/F2's fixes on silicon** — the two FRAM fault injectors and the SSID script. | **F2 DONE 2026-09-18: both injectors PASS on both arms** — first real-chip proof the hijacked payload is actually refused (the twin's fake chip ignores CS, so host-side validation never could). Neither reported the "nothing was injected" guard. **F1's SSID script deliberately NOT run** (B-D3) | F2 DONE / F1 OPEN |
+
+---
+
+## 1C. Added features the measure-B handover does not cover
+
+Changes that landed with `b0f755c`/`debff43`'s merge and have real-hardware implications of their
+own. None is part of measure A or B, so neither §1A's nor §1B's runs speak to them.
+
+| # | Item | Notes | Status |
+| --- | --- | --- | --- |
+| C1 | **The I2C shared scratch buffer is a bus-facing change, so CLAUDE.md's four-tier rule applies.** `asy_i2c_driver.py` gained one long-lived 32-byte `bytearray` **per bus**, reused by every register read; `_read_into_scratch()` returns a `memoryview` over it valid **only until the next read on that bus**. The safety argument is that every method fills and decodes it with no `await` in between and that no `Timer`/`Pin.irq` callback touches I2C. | Verified structurally (`_read_into_scratch` is synchronous and its callers decode before returning), but it has never had a real concurrent hardware run, and the buffer is shared **across every device on the bus** — the cross-device interleaving hazard the standing rule names. `dev` has four I2C devices across two buses, so it is reachable here. **Tier 3**: `test_bus_concurrency.py` in full, not just the FRAM subset. **Tier 4**: `test_bus_concurrency_under_api_load.py` — §1A ran these clean but **before** this change landed. A torn read would surface as an out-of-range sensor value, not an exception, so read the values, not just the exit code. | OPEN |
+| C2 | **The oversized-read fallback** (`nbytes > 32` allocates instead of sharing) is never taken on this hardware — BMP3XX's 21-byte calibration block is the largest read and stays under the threshold. | Record as structurally unexercised on `dev`, the same treatment A5 got for the second-SPI-device question. | OPEN (record) |
+| C3 | **`asy_wifi_service._with_default()`** substitutes a build-time per-device default into the one-field hostname/SSID schema, dropping a value outside the field's own bounds rather than installing it — an unsatisfiable default makes `ConfigManager` answer `None` to every read, which would cost a device its networking config entirely. | The failure mode is "device boots with no networking config", so one look on the one board that can show it: `GET /networking`'s `Hostname` against `devices/dev.toml` after a clean boot. | OPEN |
+| C4 | **`asy_uart_comm.py` reclassified which warning takes the episode's single persisted slot** — `_WRN_DRAIN_BOUND` (11) now wins over `_WRN_RESYNC` (10) when the drain bound was hit, because 11 separates a babbling peer from ordinary line noise. The boot drain persists nothing. | **Receiver-side only, no emitted bytes change**, so it is the preferred class of protocol change and a mixed-version pair still works — but it still needs a `UART_C_PORT_CHANGELOG.md` entry, which should be confirmed. `dev`'s two `uart_link` instances make it observable: check `errcount`'s `UART_init`/`UART_resp` history after a run that forces a resync. | OPEN |
 
 ---
 

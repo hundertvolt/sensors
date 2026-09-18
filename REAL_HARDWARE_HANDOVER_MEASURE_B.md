@@ -2,8 +2,16 @@
 
 Temporary file, same convention as every handover before it: **delete once its results are migrated**
 into `HEAP_FRAGMENTATION_MEASUREMENTS.md` §7F, `SPECIFICATION.md` and `REAL_HARDWARE_TEST_QUEUE.md`.
-Written 2026-09-18 by the PR #105 session, which has **no** real-hardware go-ahead — every figure
-below is [TWIN] or [SRC], and nothing here has been run on a board.
+Written 2026-09-18 by the PR #105 session, which had **no** real-hardware go-ahead — every figure
+below was [TWIN] or [SRC] when written.
+
+> **RUN, PARTIALLY, 2026-09-18 by a session that did have the go-ahead. Results:
+> `HEAP_FRAGMENTATION_MEASUREMENTS.md` §7F.** The headline (P1) is settled: the tripwire **passes
+> in-suite on A + B**, having failed on every image ever measured. P3 and P4 confirmed, P2 untested
+> (§7F.4 — the fresh-heap position cannot test it), P5 owed. **Two defects in this file's own
+> protocol were found by following it — §4.1's build check and §4.3's saturation check are both
+> broken; see the boxed notes in each, and §7F.5.** Do not re-run from scratch: §7F.6 lists the
+> four things still owed.
 
 **Nothing in this file authorizes anything.** CLAUDE.md's gate stands: the session that runs this
 needs the project owner's go-ahead **in its own conversation**, and a go-ahead given to this session
@@ -145,6 +153,15 @@ scripts/build_firmware.py dev
 # flash, run §4.2 and §4.3, record
 ```
 
+> **DEFECT, found 2026-09-18 by running it.** The `grep -c` commands below **do not work**.
+> `build/generated_src/` is written by `scripts/_generate_sensortask_modules.py`, not by
+> `scripts/build_firmware.py`, which generates into a `tempfile.TemporaryDirectory()`. The copy
+> there predates measure B, so the check reports **0 on a correct AFTER build** — indistinguishable
+> from the stale-module failure it exists to catch. The `.uf2` size comparison is inert too: both
+> images are exactly 2,238,464 bytes. **Use instead:** call `generate_device()` directly and count
+> `gc.collect()` in its `module_source` (AFTER 11 / BEFORE 0), `grep -c` on `src/system_service.py`
+> (AFTER 2 / BEFORE 0), and `md5sum` on the two images (they differ in 523,556 bytes).
+
 **`buildgen/codegen.py` is a build-time file — the BEFORE image is only correct if the module is
 regenerated after reverting it.** `scripts/build_firmware.py` calls `generate_device()` on every
 invocation [SRC], so a plain rebuild does it; a stale `build/generated_src/` copied in by hand would
@@ -183,6 +200,13 @@ scripts/mpremote_connect.sh exec "import machine; machine.WDT(timeout=8000)" \
 The `WDT(timeout=8000)` re-arm is what `Board.run_isolated()` does first [SRC]; without it the
 script's own runtime can starve the watchdog. Do **not** append `soft-reset` — a reset would discard
 the aged heap this reading depends on.
+
+> **DEFECT, found 2026-09-18 by running it.** The re-run check below **cannot work**. This script
+> strands `main.py` and leaves `WDT(timeout=8000)` armed, so the board resets ~8 s after it ends and
+> the second run always measures a **fresh** heap, never the aged one. Observed: run 1 (genuinely
+> aged, right after the suite) `after_starter_list` = **10,128 B / 10%**; run 2 a minute later
+> **66,144 B / 70%** with a fresh `baseline`. The disagreement is the reset. A real check must leave
+> `main.py` running between readings.
 
 **Validity check, and it is not optional.** §7D.3 read a byte-identical 28,864 B from both the flash
 and the bench suite, which suggests the ageing effect saturates. Confirm that here rather than assume
@@ -223,19 +247,26 @@ arm applies.
 Fill both arms in. Every cell is a number off a `HEAP`/`BOOT`/`RESULT` line — nothing here needs
 interpretation at the bench.
 
+**Filled in 2026-09-18 [HW].** Full analysis in `HEAP_FRAGMENTATION_MEASUREMENTS.md` §7F.
+
 | reading | BEFORE (A only) | AFTER (A + B) |
 |---|---|---|
-| `after_build_system` free / largest / pct, in-suite (§4.2) | | |
-| tripwire `RESULT:` (floor 80,000 B) | | |
-| `after_build_system` free / largest / pct (§4.3 script) | | |
-| `after_start_timers` free / largest / pct | | |
-| `after_starter_list` free / largest / pct | | |
-| `after_starter_list_production_threshold` | | |
-| §4.3 re-run five minutes later — same or different? | | |
-| §4.4 threshold-first `after_starter_list` | | |
-| `BOOT build_system_ms / start_timers_ms` | | |
-| `LISTS starters= timers=` | | |
-| `GET /status` `errcount` before / after | | |
+| `after_build_system` free / largest / pct, in-suite (§4.2) | 105,088 / **28,736** / 27% | **not captured** — see §7F.6 |
+| tripwire `RESULT:` (floor 80,000 B) | **FAIL** | **PASS** (suite: 36 passed, 0 failed) |
+| `after_build_system` free / largest / pct (§4.3 script, fresh heap) | 104,192 / 93,728 / 89% | 104,128 / 90,720 / 87% |
+| `after_start_timers` free / largest / pct | 101,760 / 93,728 / 92% | 101,696 / 90,720 / 89% |
+| `after_starter_list` free / largest / pct | 93,632 / 66,144 / 70% | 94,272 / 57,424 / 60% |
+| `after_starter_list_production_threshold` | 93,632 / 49,152 / 52% | 94,272 / 49,152 / 52% |
+| §4.3 re-run five minutes later — same or different? | **check is broken** — see the §4.3 note; genuinely-aged run gave 10,128 / 10% | not taken |
+| §4.4 threshold-first `after_starter_list` | 94,928 / **75,536 / 79%** | **owed** |
+| `BOOT build_system_ms / start_timers_ms` | 943-951 / 789-790 | **1,402** / 789 |
+| `LISTS starters= timers=` | starters=22 timers=8 | starters=22 timers=8 |
+| `GET /status` `errcount` before / after | NTP 11, SYSTEM 1 (W4), rest 0 | after-read **owed** (P5) |
+
+**Verdicts: P1 confirmed. P3 confirmed. P4 confirmed. F2 confirmed fixed on silicon (both
+injectors pass on both arms). P2 untested — the fresh-heap position cannot test it (§7F.4), and
+the fresh-heap column above will read as "B is harmful" if taken at face value; it is not.
+P5 owed.**
 
 ### The predictions, each with its falsifier
 

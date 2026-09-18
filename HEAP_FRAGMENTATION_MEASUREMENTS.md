@@ -2890,6 +2890,142 @@ fact from the remedy's side.
 
 ---
 
+## 7F. A + B on real silicon — the run §7E was waiting for (2026-09-18, PARTIAL)
+
+**Provenance: [HW] throughout.** Real `dev` bench board, go-ahead given directly by the project
+owner in the running session. Run against `REAL_HARDWARE_HANDOVER_MEASURE_B.md`'s protocol.
+**This run is incomplete** — §7F.6 lists exactly what is still owed and why; nothing below depends
+on the missing pieces.
+
+Arms built per that handover's §4.1 isolation: the AFTER arm is the branch tip; the BEFORE arm is
+the tip with `src/system_service.py` and `buildgen/codegen.py` at `da9bcf1` (= `7ccbe8d^`) and the
+device module **regenerated**, so it is A-only. Verified before flashing: freshly generated
+`sensortask_dev` carries **11** `gc.collect()` on the AFTER arm and **0** on the BEFORE arm;
+`src/system_service.py` carries **2** and **0**. The two `.uf2` files differ in 523,556 bytes.
+
+### 7F.1 The headline: the tripwire passes in-suite for the first time
+
+| arm | in-suite `test_real_gc_heap_headroom_survives_a_full_system_build` |
+|---|---|
+| BEFORE (A only) | `free=105,088 alloc=87,888 largest_block=28,736` → **FAIL** (floor 80,000 B) |
+| AFTER (A + B) | **PASS** — full flash suite `36 passed, 3 skipped, 12 deselected`, zero failures |
+
+The tripwire has failed in-suite on **every image ever measured**: 20,592 B on base (§7D.3),
+28,864 B and 28,736 B on A-only across two independent sittings. On A + B it passes.
+
+**P1 confirmed.** Its stated falsifier — an AFTER in-suite reading under ~40,000 B, which would
+have made §7E twin-only — did not occur. The BEFORE arm's 28,736 B also reproduces §7D.3's
+A-only 28,864 B to within 128 B across a reflash and a different sitting, which is what makes the
+pair trustworthy.
+
+**The exact AFTER figure is not in hand** — only the bound `largest_block >= 80,000` and
+`free >= 100,000` that passing implies. See §7F.6.
+
+### 7F.2 The whole boot sequence, on a fresh heap
+
+`heap_layout_after_full_boot_sequence.py`, the instrument this run existed to introduce (the
+previous one stops at `build_system()` and so reaches only the first of B's two collect sites).
+All readings below are at the **standalone/fresh-heap position**, at `gc.threshold(-1)`:
+
+| reading (free / largest_block / pct) | BEFORE (A only) | AFTER (A + B) |
+|---|---|---|
+| `baseline` | 137,632 / 135,392 / 98% | 137,632 / 127,808 / 92% |
+| `after_build_system` | 104,192 / 93,728 / **89%** | 104,128 / 90,720 / **87%** |
+| `after_start_timers` | 101,760 / 93,728 / 92% | 101,696 / 90,720 / 89% |
+| `after_starter_list` | 93,632 / 66,144 / **70%** | 94,272 / 57,424 / **60%** |
+| `after_starter_list_production_threshold` | 93,632 / 49,152 / 52% | 94,272 / 49,152 / 52% |
+| `BOOT build_system_ms` | 943 - 951 | **1,402** |
+| `BOOT start_timers_ms` | 789 - 790 | 789 |
+| `LISTS` | starters=22 timers=8 | starters=22 timers=8 |
+
+`starters=22 timers=8` matches §7E's [SRC] count, so the starter loop really does run 23 collects
+on the AFTER arm.
+
+### 7F.3 P3 confirmed — the instrument sees the starter list
+
+On the **BEFORE** arm `after_starter_list` (70%) is materially worse than `after_build_system`
+(89%). That is the control: with nothing resetting placement, the starter list scatters survivors.
+Had it not held, P1 and P2 would have meant nothing. Twin base moves 14.2% → 8.4% over the same
+span; the board moves 89% → 70%, same direction, much gentler.
+
+### 7F.4 P2 is NOT confirmed at this position — and the position is the reason
+
+On the fresh heap, A + B is **slightly worse** than A alone at every point (87% vs 89% after
+`build_system()`, 60% vs 70% after the starter list). Read naively that is P2 falsified.
+
+It is not, and §7D.2 is why. **A fresh heap is the configuration in which the defect does not
+exist** — both arms are already at 87-89%, near the 98% baseline, with nothing to recover. B's
+collects cannot improve a layout that is not broken, and they cost. The configuration where the
+defect does exist is the in-suite one, and there the same two images give 28,736 B → PASS.
+
+**So P2 is untested, not refuted.** Testing it needs an aged-heap AFTER reading, which §7F.5's
+second defect prevented this session from taking. Anyone reading the §7F.2 table in isolation will
+conclude B is harmful; it is the single most misreadable number in this file.
+
+### 7F.5 Two defects in the handover's own method, found by following it
+
+**1. §4.1's build verification points at a stale file and cannot fail correctly.** It says to run
+`grep -c "gc.collect()" build/generated_src/sensortask_dev.py`, expecting 11 on the AFTER arm.
+That path holds an artifact dated **before measure B landed**: `scripts/build_firmware.py` calls
+`generate_device()` into a `tempfile.TemporaryDirectory()` [SRC] and never writes
+`build/generated_src/` at all — that directory is written by `scripts/_generate_sensortask_modules.py`.
+Following §4.1 literally **reports 0 on a correct AFTER build**, which looks exactly like the
+"stale generated module" failure the check exists to catch. Its companion check is inert too: the
+two `.uf2` files are **byte-identical in size** (2,238,464 each), so "compare the two sizes" cannot
+discriminate. Working replacements, used here: call `generate_device()` and count on its
+`module_source` (AFTER 11 / BEFORE 0), `grep -c` on `src/system_service.py` (AFTER 2 / BEFORE 0),
+and `md5sum`/`cmp` on the images (523,556 bytes differ).
+
+**2. §4.3's saturation check cannot work as written.** It says to re-run the layout script "about
+five minutes later" and treat agreement as evidence the ageing has saturated. But the script
+strands `main.py` and leaves `WDT(timeout=8000)` armed, so **the board resets ~8 s after it ends**
+— the second run always measures a fresh heap. Observed directly: run 1, taken genuinely aged right
+after the suite, gave `after_starter_list` **10,128 B / 10%**; run 2 a minute later gave
+**66,144 B / 70%** with a fresh `baseline` of 137,632 B. The disagreement is the reset, not
+position-confounding, and reading it as the latter would be a false finding about the method. A
+real check has to leave `main.py` running between readings.
+
+That aged reading is worth keeping on its own: **10,128 B / 10% on the BEFORE arm after the whole
+boot sequence** is the worst layout figure this project has measured on silicon, and it is the
+position P2 needs on the AFTER arm.
+
+### 7F.6 What is still owed
+
+- **The exact AFTER in-suite `largest_block`.** `heap_headroom_after_full_system_build.py` prints
+  its `HEAP` lines unconditionally, but `test_memory_stress.py` only surfaces the captured output
+  in its **failure** message, so a passing run discards it. **`pytest -s` does not help** —
+  confirmed by re-running the suite with it; `Board.run_isolated()` captures device stdout into a
+  Python string rather than letting it reach the terminal. Getting the number needs a one-line
+  change to that test to print the captured output on pass. P1 stands without it.
+- **An aged-heap AFTER reading**, which is what P2 actually turns on (§7F.4), and which needs
+  §7F.5's second defect addressed first.
+- **The AFTER arm's threshold-first reading.** The BEFORE arm's was taken: with
+  `gc.threshold(32768)` set *before* the run, `after_starter_list` is **75,536 B / 79%** against
+  the reactive default's 66,144 B / 70% — so on the A-only image the firmware's own threshold gives
+  a *better* layout than the reactive default, which is the direction §1.5 and §7D.8 flag as the
+  open question. One invocation on the AFTER arm closes it.
+- **P5**, the `errcount` re-read. Pre-flight was NTP 11 (`E1`x6, `E2`, `E20`, `E1`, `E1`) and
+  SYSTEM 1 (`W4`), everything else 0.
+- The F1 SSID script (handover §6.2) was **deliberately not run** (B-D3), it being the script that
+  stranded the bench on 2026-09-18.
+
+### 7F.7 P4 confirmed, and F2 confirmed fixed on silicon
+
+**P4.** `build_system_ms` rises 943 → **1,402 ms**, so B's 11 batch collects cost ~455 ms, about
+41 ms each on the RP2040's real heap. Far under the ~2,000 ms falsifier and under the 8,388 ms
+watchdog cap; no `WDT_RESET` was observed across the run's reboots. The twin's 300-490 us per
+collect [TWIN] does not transfer, as §7A.7 said it would not — the real figure is ~85x that, which
+is the first RP2040 collect cost this project has measured.
+
+**F2 (queue finding).** Both rewritten FRAM fault injectors —
+`test_fram_cs_pin_hijack_fault_injection_and_recovery` and
+`test_fram_hard_reset_race_during_write_and_recovery` — **pass on both arms**. They failed on the A
+arm on 2026-09-18, and this is the first real-chip confirmation that the hijacked payload is
+actually *refused*: the twin's fake chip ignores CS, so host-side validation could only ever show
+that the injection fires. Neither reported the "nothing was injected, so nothing was tested" guard.
+
+---
+
 ## 8. What is committed
 
 **Reverted, 2026-09-18, at the owner's instruction.** Every change this investigation made to
