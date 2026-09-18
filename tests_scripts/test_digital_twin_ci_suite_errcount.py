@@ -7,6 +7,8 @@ from types import ModuleType
 from typing import TYPE_CHECKING
 
 import pytest
+import tomllib
+from _devices import DEVICE_NAMES, device_toml
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -102,6 +104,21 @@ def test_every_faultable_driver_has_both_an_op_and_an_errcount_name(ci_suite: Mo
     assert set(ci_suite._BUS_FAULT_OPS) == set(ci_suite._DRIVER_ERRCOUNT_NAME)
     assert set(ci_suite._DRIVER_ERRCOUNT_NAME) >= ci_suite._NO_PERSIST_WHEN_FRAM_FAULTED
     assert set(ci_suite._DRIVER_ERRCOUNT_NAME) >= ci_suite._MEASUREMENT_DRIVERS
+
+
+def test_every_i2c_or_spi_attached_driver_a_real_device_declares_is_faultable(ci_suite: ModuleType) -> None:
+    # The three tables above are only checked against EACH OTHER, which is what let the ISL29125 be
+    # consistently absent from all of them and silently skipped by _bus_fault_drivers() from the day
+    # it shipped. This is the outward check: the real device set decides who has to be in there.
+    # Scoped to i2c/spi because those are the buses digital_twin/'s chip fakes can inject a fault on
+    # - uart_link's peer is a second UART_Comm, not a faultable chip fake, so it is out by mechanism
+    # rather than by an allowlist that would have to be remembered.
+    attached = set()
+    for device in DEVICE_NAMES:
+        doc = tomllib.loads(device_toml(device).read_text())
+        attached |= {inst["driver"] for inst in doc.get("instance", []) if str(inst.get("bus", "")).startswith(("i2c", "spi"))}
+    missing = sorted(attached - set(ci_suite._BUS_FAULT_OPS))
+    assert not missing, f"bus-attached driver(s) {missing} are declared by a real device but absent from _BUS_FAULT_OPS, so Run 3/4 skip them without saying so"
 
 
 # ---------------------------------------------------------------------------

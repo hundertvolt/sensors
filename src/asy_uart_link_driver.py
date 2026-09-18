@@ -59,11 +59,9 @@ class UartLinkExerciser:
         # way it already reaches every other bus-attached instance's own bus object - see
         # digital_twin/run_generic_integration.py's _wire_uart_crossover()).
         resolved_name = instance_name(_NAME, name_ext)
-        # fram=/logger= forwarded straight through to UART_Comm's own already-supported reach-
-        # through (asy_uart_comm.py: make_logger(fram, ...) when logger is None, else logger as
-        # given) - the protocol itself still carries no application semantics (Part J.1), but its
-        # own errno/wrnno history is real diagnostic state, so it takes the same optional-FRAM
-        # treatment as every other module's logger. WP3 (was wrongly, deliberately excluded).
+        # fram=/logger= forwarded straight into UART_Comm's own reach-through. The protocol carries
+        # no application semantics (Part J.1), but its errno/wrnno history is real diagnostic state,
+        # so it gets the same optional-FRAM treatment as every other module's logger.
         self._comm = UART_Comm(
             uart,
             role,
@@ -133,10 +131,9 @@ class UartLinkExerciser:
         return await self._comm.setup()
 
     def get_task_starters(self) -> "list[Callable[[], _asyncio.Task[Any]]]":
-        # The role decides the task set, same as UART_Comm's own get_task_starters(): an initiator
-        # exposing a listen task would mean both ends initiate, and the protocol has no
-        # arbitration for that. The initiating half is this class's own job instead, for the
-        # complementary reason - UART_Comm cannot know what a caller wants to ask its peer.
+        # The role decides the task set, as in UART_Comm's own get_task_starters(): both ends
+        # initiating has no arbitration in this protocol (Part J.2). The initiating half is this
+        # class's job instead - UART_Comm cannot know what a caller wants to ask its peer.
         starters = self._comm.get_task_starters()
         if self.role == ROLE_INITIATOR:
             starters = starters + [lambda: asyncio.create_task(self._exercise_loop())]
@@ -146,10 +143,9 @@ class UartLinkExerciser:
         return self._comm.get_timer_starters()  # empty - no machine.Timer anywhere in this file either
 
     def get_error_sources(self) -> "list[Any]":
-        # Fan-in primitive (SPECIFICATION.md Part C.14/G.2) - delegates entirely to the inner
-        # UART_Comm, which already satisfies the _ModuleLike error-source surface (name/
-        # get_error_counter()/reset_error_counter()) on its own; this wrapper has no error state of
-        # its own beyond it.
+        # Fan-in primitive (SPECIFICATION.md Part C.14/G.2) - delegated entirely to the inner
+        # UART_Comm, which already satisfies the _ModuleLike error-source surface; this wrapper
+        # holds no error state of its own.
         return [self._comm]
 
     def get_loggers(self) -> "list[PrintLogHistory]":

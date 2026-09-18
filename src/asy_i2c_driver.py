@@ -30,10 +30,9 @@ class I2C:
     ) -> None:
         self._i2c: _I2C | None = None
         self.async_lock = asyncio.Lock()
-        # One long-lived read buffer per bus instead of a fresh bytes object per register read
-        # (Part I: reuse, don't churn same-shaped objects). Safe to share across the devices on this
-        # bus because every method below fills and decodes it with no await in between, and no
-        # Timer/Pin.irq callback in this codebase touches I2C - both checked, not assumed.
+        # One long-lived read buffer per bus, not a fresh bytes per register read (Part I). Sharing
+        # it across this bus's devices is sound only because every method fills and decodes it with
+        # no await between, and no Timer/Pin.irq callback here touches I2C - both checked (Part G.2).
         self._scratch = bytearray(_SCRATCH_SIZE)
         self.init(port_id, scl_pin, sda_pin, frequency, timeout)
 
@@ -169,10 +168,9 @@ class I2C:
         frequency: int,
         timeout: int | None = None,
     ) -> None:
-        # deinit() first so a re-init always goes through the same "bus unavailable" state a
-        # caller-visible deinit() produces, rather than swapping self._i2c under live readers.
-        # timeout=None omits the kwarg entirely instead of duplicating machine.I2C's own default,
-        # so it can't drift out of sync with whatever that default actually is.
+        # deinit() first, so a re-init goes through the same "bus unavailable" state a caller-visible
+        # deinit() produces rather than swapping self._i2c under live readers. timeout=None omits the
+        # kwarg instead of duplicating machine.I2C's own default, which could then drift.
         self.deinit()
         if timeout is None:
             self._i2c = _I2C(port_id, sda=Pin(sda_pin), scl=Pin(scl_pin), freq=frequency)
@@ -180,10 +178,9 @@ class I2C:
             self._i2c = _I2C(port_id, sda=Pin(sda_pin), scl=Pin(scl_pin), freq=frequency, timeout=timeout)
 
     def deinit(self) -> None:
-        # machine.I2C.deinit() does NOT deactivate the rp2 hardware bus - it is forwarded for
-        # portability/forward-compatibility only, and dropping self._i2c is what actually puts
-        # this wrapper into its documented "bus unavailable" state. See SPECIFICATION.md Part
-        # F.5 for why (and for the hard MicroPython 1.29 floor this call carries).
+        # machine.I2C.deinit() does NOT deactivate the rp2 bus - it is forwarded for portability
+        # only, and dropping self._i2c is what puts this wrapper into "bus unavailable". Why, plus
+        # the hard MicroPython 1.29 floor this call carries: SPECIFICATION.md Part F.5.
         if self._i2c is not None:
             self._i2c.deinit()
             self._i2c = None

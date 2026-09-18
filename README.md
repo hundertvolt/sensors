@@ -17,7 +17,7 @@ CLAUDE.md's hard rules for why wozi, not dev, is never flashed).
 | arzi | SCD30 (CO2/temp/hum), SGP40 (VOC) | yes | active (8000ms) | `html_raw/arzi` |
 | neu ×3 | same as arzi, different pin assignments | yes | active (8000ms) | `html_raw/arzi` (reused) |
 | wozi | SCD30, SGP40, BMP388 (pressure/temp) | yes | active (8000ms) | `html_raw/wozi` |
-| dev | SCD30, SGP40, BMP388 — same drivers as wozi, different I2C bus pairing (Part C.8) | yes | active (8000ms) | `html_raw/dev` (bench rig) |
+| dev | SCD30, SGP40, BMP388, ISL29125 (RGB colour/lux, dev-only) — the other three share wozi's drivers with a different I2C bus pairing (Part C.8) | yes | active (8000ms) | `html_raw/dev` (bench rig) |
 
 ## Repository layout, architecture, refactor status, and the build process
 
@@ -709,7 +709,11 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   `REAL_HARDWARE_TEST_QUEUE.md` §1B is its index row; this file is what a bench session reads top to
   bottom. Deleted once its results are migrated.
 - **[`HANDOVER_HARNESS_AND_HEAP_FRAGMENTATION.md`](HANDOVER_HARNESS_AND_HEAP_FRAGMENTATION.md)** —
-  the other `*_HANDOVER*.md` file, owned by the session working PR #105. These are
+  the other `*_HANDOVER*.md` file besides the measure-B one above, owned by the session working
+  PR #105. Only its Part 2 is still live — Part 1's harness changes all landed on this branch, and
+  its one open bench ask is `REAL_HARDWARE_TEST_QUEUE.md` row R14 — and that half is superseded by
+  PR #105's own measurement/plan docs, which this branch carries, so the file goes when this PR
+  merges. These are
   per-effort throwaways, each owned by the session or pull request named in its own first lines and
   deleted once its findings are migrated or confirmed not to apply; the two real-hardware ones that
   preceded it went that way on 2026-09-18, their still-open asks consolidated into
@@ -741,6 +745,16 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   decide to fold it into `SPECIFICATION.md` the way `src/README.md`/`tests/README.md` were) —
   listed here for now so it isn't only locatable by cross-reference in the meantime. See
   `SPECIFICATION.md` Part A.10 for how it fits into the rest of the architecture.
+
+**`tests_hardware/README.md`** (permanent, kept current):
+
+- **`tests_hardware/README.md`** — the durable technical reference for the real-hardware tier:
+  prerequisites, environment variables, how to run each tier, the safety facts (the
+  `--allow-flash-cycle`/`--allow-persistence-writes`/`--allow-neopixel-sweep`/long-soak opt-in
+  gates, the stage-6 permanent-WLAN-deactivation risk, the FRAM-chunk overwrite trap), the ISL29125
+  bench-rig facts and the numbered audit passes that found this tier's own gaps. CLAUDE.md's
+  real-hardware hard rule points here for what a session with the owner's go-ahead needs to know;
+  `REAL_HARDWARE_TEST_QUEUE.md` above says *what* is owed, this file says *how*.
 
 **`dev_legacy/README.md`** (permanent, kept current):
 

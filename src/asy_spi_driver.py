@@ -1,11 +1,9 @@
 """Async wrapper around machine.SPI: SPI (bus primitives) plus SPIDevice (per-device, lock-scoped
 CS-pin wrapper). Sole consumer: asy_fram_driver.py's FRAM_SPI.
 """
-# Real RP2040 SPI has no ACK/NAK concept, so write() cannot raise; a *reading* transfer of 32+
-# bytes can, since MicroPython 1.29, raise OSError(EIO) on an RX overrun, which propagates like
-# I2C's does. write_readinto() additionally turns machine.SPI's own ValueError on mismatched
-# buffer lengths into None. Setup (__init__/init(), configure()) is exempt and may raise.
-# Full raise-site analysis: SPECIFICATION.md Part F.5.
+# RP2040 SPI has no ACK/NAK, so write() cannot raise; a 32+ byte READ can raise OSError(EIO) on an
+# RX overrun since 1.29. write_readinto() turns machine.SPI's mismatched-length ValueError into
+# None; setup (__init__/init(), configure()) may raise. Raise sites: SPECIFICATION.md Part F.5.
 
 import asyncio
 import time

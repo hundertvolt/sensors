@@ -3909,8 +3909,11 @@ backend-only or frontend-only validation/coercion policy change in this project.
   algorithm state **directly into the FRAM chunk's payload region**, and the chunk then writes itself
   out — one allocation, zero copies, across three module layers. Long-lived per-instance scratch
   buffers (`asy_fram_driver.py`'s `_id_buf`/`_status_buf`/`_addr_buf`, `asy_sgp40_driver.py`'s
-  `_measure_command`) are the same rule applied to fixed-size command/status traffic, replacing the
-  legacy per-call `bytearray([...])`.
+  `_measure_command`, `asy_i2c_driver.py`'s `_scratch`) are the same rule applied to fixed-size
+  command/status traffic, replacing the legacy per-call `bytearray([...])`. `_scratch` is the one
+  shared by more than one caller — every device on that bus reads through it — which is sound only
+  because each method fills and decodes it with no `await` in between; a scratch reused across a
+  suspension point needs an owner and a lock instead, not this shape.
 - **Memory-bounded streaming of a dict-shaped GET response** — `_stream_dict_response()` (Part I).
   Any route whose response scales with device configuration returns `await
   _stream_dict_response(result)` instead of `return result`.
@@ -4177,7 +4180,13 @@ above; BACKLOG.md).
 ## H.6 Errcount (Status section) and dispatch-only field conventions
 
 **Errcount module list**: `{key, label}` per registered module plus each module's `CFGMGR_<name>`
-(except SCD30, NVM-backed) plus `WEBSERVER`, looked up in `/status`'s `errcount[key]`. **History
+(except SCD30, NVM-backed) plus `WEBSERVER`, looked up in `/status`'s `errcount[key]`. **Keyed per
+logger instance, not per driver kind**: the key has to be the name the live object graph actually
+publishes, so an instance named `scd30_fan_pressure` needs rows under `SCD30_fan_pressure`/
+`CFGMGR_SCD30_fan_pressure` (Part L's instance-naming rule, applied to the website). Getting this
+wrong fails in both directions and neither is visible — a published source with no row is never
+rendered at all, and a row with no published source renders a permanent, reassuring `0` from
+`templates.js`'s own `?? {counter: 0}` fallback. **History
 entry**: `{"num": <raw errno>, "type": "N"|"E"|"W"}`, a fixed `history_length`-long list, no
 per-entry timestamp — `type` only colors `num`. **Errcount UX**: same `.card` shell as other
 groups, starts collapsed to a rollup + two filter buttons, wired entirely inside `templates.js`
@@ -4686,7 +4695,10 @@ opens: a peer mid-train, or one that outlived this side's reset, leaves partial-
 receive buffer, and recovering from those reactively would log a fault on every boot of a live link
 — indistinguishable in the FRAM history from a real one. That boot drain shortens only its *first*
 probe, so a healthy link pays nothing for it; once a byte does turn up, every later round uses the
-full quiet window exactly as a resync does.
+full quiet window exactly as a resync does. **Hitting the bound is reported by flagging the caller,
+never by logging in place**: the boot drain is not a fault and so persists nothing, while a resync
+persists the more specific of its two warnings, once the drain has decided which case this is
+(C.7.1's `wrnno` 10/11 note).
 
 ## J.6 Deployment parameters
 

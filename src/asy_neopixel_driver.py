@@ -28,9 +28,8 @@ if TYPE_CHECKING:
 _NAME = const("NEOPIXEL")
 _MIN_SIGNAL_S = const(0.1)  # floor for a signal's ramp duration; also the NaN/garbage fallback
 
-# This driver's one optional live cross-instance dependency (SPECIFICATION.md Part C.14): its own
-# FRAM backup target, resolved by buildgen/ (SPECIFICATION.md Part L.4) to an
-# already-constructed instance, passed directly as this driver's own fram= kwarg.
+# This driver's one optional live cross-instance dependency (SPECIFICATION.md Parts C.14 and L.4):
+# its own FRAM backup target, resolved to an already-constructed instance and passed as fram=.
 # @wiring fram_target AsyFramManager fram optional kwarg
 
 

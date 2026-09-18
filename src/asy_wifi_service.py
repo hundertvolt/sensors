@@ -46,10 +46,9 @@ _VAL_PW = const((("PW", "str", "", 8, 63, ""),))
 _VAL_CTRY = const((("Country", "str", "DE", 2, 2, None),))
 _VAL_HOST = const((("Hostname", "str", "SensorNode", 1, 32, None),))  # 32 = network.hostname()'s real cap
 _VAL_LED = const((("LedWifiOn", "bool", True, None, None, None),))
-# Hotspot AP password - real WPA2-PSK length (8-63), defaulting to the existing hardcoded
-# "12345678" (CLAUDE.md's "Hard rules": a known, accepted-risk credential, made per-device
-# configurable here rather than removed/rotated). Same masking treatment as _VAL_PW - see
-# _mask_pw() below.
+# Hotspot AP password - real WPA2-PSK length (8-63), defaulting to the hardcoded "12345678": a
+# known, accepted-risk credential (CLAUDE.md's hard rules), made per-device configurable rather
+# than removed or rotated. Masked like _VAL_PW.
 _VAL_HOTSPOT_PW = const((("HotspotPW", "str", "12345678", 8, 63, None),))
 
 # @web-group section=networking submitGroup=identity label="Wi-Fi & Identity" submit=true
@@ -70,11 +69,11 @@ _FIELDS = const(("Mode", "Connected", "IP", "TS"))  # kept in sync with WIFI's o
 
 def _with_default(schema: "tuple[tuple[str, str, str, int, int, str | None], ...]", value: "str | None") -> "tuple[tuple[str, str, str, int, int, str | None], ...]":
     # Substitutes a build-time per-device default into a one-field schema. Only the DEFAULT moves,
-    # never the bounds - a value already persisted by a user rename still wins at boot.
-    # A value outside the field's own bounds is dropped rather than installed: ConfigManager treats
-    # an unsatisfiable default as an invalid config and then answers None to every read, which would
-    # cost a device its networking config entirely. buildgen.validate is the rung that actually
-    # refuses such a value, at build time; this is the backstop that keeps the device bootable.
+    # never the bounds, so a value a user already persisted still wins at boot.
+
+    # A value outside the field's bounds is dropped rather than installed: ConfigManager treats an
+    # unsatisfiable default as an invalid config and answers None to every read, costing the device
+    # its networking config. buildgen.validate refuses it at build time; this keeps it bootable.
     if value is None:
         return schema
     name, kind, _default, low, high, special = schema[0]
@@ -83,19 +82,14 @@ def _with_default(schema: "tuple[tuple[str, str, str, int, int, str | None], ...
     return ((name, kind, value, low, high, special),)
 
 
-# This service's one optional live cross-instance dependency (SPECIFICATION.md Part C.14): the
-# status LED it drives, resolved by buildgen/ (SPECIFICATION.md Part L.4, from
-# [device.wiring].led_target - AsyConnTime is mandatory infra, never an [[instance]] entry itself)
-# to an already-constructed NeopixelDriver instance. "setter" mode: set_ext_led() is a
-# post-construction call (see set_ext_led() below), not a constructor kwarg - the generator emits
-# `conn.set_ext_led(<resolved instance>)` once, after both already exist.
+# This service's one optional live cross-instance dependency (Parts C.14 and L.4): the status LED it
+# drives, resolved from [device.wiring].led_target to an already-constructed NeopixelDriver.
+# "setter" mode - the generator emits `conn.set_ext_led(<instance>)` once, after both exist.
 # @wiring led_target NeopixelDriver set_ext_led optional setter
 
-# This service's other optional live cross-instance dependency: its own FRAM error-log target,
-# resolved by buildgen/ the same way system_service.py's own identical tag is (from
-# [device.wiring].fram_target, implicitly, since AsyConnTime is mandatory infra too) to an
-# already-constructed AsyFramManager instance, passed directly as this service's own fram= kwarg
-# (see __init__ below - forwarded into both super().__init__() and its own DNSServer).
+# Its other optional dependency: the FRAM error-log target, resolved from [device.wiring].fram_target
+# implicitly because AsyConnTime is mandatory infra, exactly as system_service.py's own tag is.
+# __init__ forwards it into both super().__init__() and this service's own DNSServer.
 # @wiring fram_target AsyFramManager fram optional kwarg
 
 _STA_DISCONNECT_WAIT_ITERS = const(20)  # 20 * 0.5s = 10s max wait for isconnected() to clear -
@@ -687,12 +681,9 @@ class AsyConnTime(SensorReaderConfig):
         )
 
     def get_error_sources(self) -> "list[Any]":
-        # Extends SensorReaderConfig.get_error_sources() with this class's own independently-
-        # logged sub-object (self.dns_server, "DNSSRV" - see its own __init__ comment on why it's
-        # not folded into self.pr). List concatenation, not a `[*x, y]` star-unpack display - the
-        # latter raises SyntaxError ("*x must be assignment target") on this project's pinned
-        # MicroPython build at parse time, confirmed directly against the real interpreter
-        # (SPECIFICATION.md Part F.1) - unrelated to super() specifically.
+        # Extends SensorReaderConfig.get_error_sources() with this class's own independently-logged
+        # sub-object, self.dns_server ("DNSSRV"). List concatenation, never a `[*x, y]` display -
+        # that raises SyntaxError at parse time on the pinned MicroPython build (Part F.1).
         return super().get_error_sources() + [self.dns_server]
 
     def get_loggers(self) -> "list[PrintLogHistory]":
@@ -701,10 +692,9 @@ class AsyConnTime(SensorReaderConfig):
     async def get_error_counter(self) -> "ErrorLog":
         return await self.pr.get_log()
 
-    # Locking convention for these getters (see SPECIFICATION.md Part C.8's "Known inconsistency"):
-    # network_available() below assumes the caller already holds wifi_mode_lock; every getter below
-    # this comment checks .locked() itself instead and degrades to None/False. A new getter must
-    # pick one shape deliberately, not copy whichever neighbor happens to be closest.
+    # Locking convention for these getters (Part C.8's "Known inconsistency"): network_available()
+    # assumes the caller holds wifi_mode_lock; every getter below checks .locked() itself and
+    # degrades. A new getter picks one shape deliberately, never by copying its nearest neighbour.
     def get_wlan_ifconfig(self) -> tuple[str, str, str, str] | None:
         if self.wifi_mode_lock.locked():
             return None

@@ -18,7 +18,7 @@ sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comme
 
 import machine
 import network
-from launch import LaunchConfig, main, parse_args, parse_fault_spec
+from launch import LaunchConfig, _apply_fault, _apply_hang, main, parse_args, parse_fault_spec
 
 
 def run(coro: "Coroutine[Any, Any, T]") -> "T":
@@ -260,6 +260,42 @@ def test_main_long_enough_duration_reaches_a_real_wdt_feed_and_scd30s_timer_driv
     summary = run(asyncio.wait_for(main(config), 15))
     assert summary["readings"] >= 5  # several rounds across 4.5s, well past SCD30's 2s cadence
     assert summary["would_have_triggered_count"] == 0  # fed for real, well under the 8000ms timeout
+
+
+# ---------------------------------------------------------------------------
+# _apply_fault/_apply_hang - the wiring check between "the name parses" and "the chip is here"
+# ---------------------------------------------------------------------------
+
+
+def test_a_fault_naming_a_chip_this_run_never_wired_is_refused_by_name() -> None:
+    # parse_fault_spec() only proves the NAME is in the shared op vocabulary; this launcher's own
+    # wiring is fixed and carries no ISL29125, so the spec parses and the chip still is not there.
+    # Without the guard this is a bare KeyError from inside the fault plumbing, naming nothing.
+    try:
+        _apply_fault("isl29125", "readfrom_mem", 1, {"scd30": object()}, network.WLAN(network.STA_IF))
+    except ValueError as e:
+        assert "isl29125" in str(e), e
+        assert "scd30" in str(e), "the message must name what IS wired, or it cannot be acted on"
+    else:
+        raise AssertionError("an unwired chip must be refused, not KeyError from inside the plumbing")
+
+
+def test_a_hang_naming_a_chip_this_run_never_wired_is_refused_the_same_way() -> None:
+    # Same guard, second entry point: --hang reaches inject_hang() through its own function.
+    try:
+        _apply_hang("isl29125", "readfrom_mem", 0.1, 1, {})
+    except ValueError as e:
+        assert "isl29125" in str(e), e
+    else:
+        raise AssertionError("--hang must refuse an unwired chip too, not only --fault")
+
+
+def test_a_wlan_fault_still_bypasses_the_wiring_check() -> None:
+    # wlan is not a chip in `chips` at all - it is the WLAN object itself - so the guard must sit
+    # after that branch, not in front of it. Placing it first would break every --fault wlan:* run.
+    wlan = network.WLAN(network.STA_IF)
+    _apply_fault("wlan", "connect", 1, {}, wlan)
+    assert "connect" in wlan.raise_on
 
 
 if __name__ == "__main__":

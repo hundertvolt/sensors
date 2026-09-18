@@ -336,7 +336,7 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     boot**, because the bound logged itself rather than flagging its caller. It now persists nothing.
     Covered by three tests in `tests/test_asy_uart_comm.py` (the bound case takes the slot, the quiet
     case is unchanged, the boot drain persists nothing - the first proven non-vacuous by inverting the
-    choice and watching it fail); `UART_C_PORT_CHANGELOG.md` B30; SPECIFICATION.md C.7.1 restated.
+    choice and watching it fail); `UART_C_PORT_CHANGELOG.md` B32; SPECIFICATION.md C.7.1 restated.
 
 24. **`PUT /status {"ResetErrors": true}` costs a large, slowly-growing fraction of the product's
     own request ceiling. Now measured on real hardware; one question left.**
@@ -534,7 +534,8 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     **Deliberately NOT carried, which is the one thing to know if this is ever revisited**: none of
     PR #84 exists on any other branch — `buildgen/gc_policy.py`, `scripts/build_firmware.py
     --gc-policy`, `--memory-pressure`, `tests_hardware/device_modules/memory_pressure.py`,
-    `tests_scripts/test_hardware_harness_transients.py` and SPECIFICATION.md Part I.6 — so that
+    `tests_scripts/test_hardware_harness_transients.py` and a Part I.6 that was only ever written on
+    that branch (nothing here references it, and no such section exists in SPECIFICATION.md) — so that
     build-and-instrument tooling, and the four validation-apparatus fixes that came with it, are
     unshipped by decision rather than by oversight. Its three bench passes stand as executed (queue
     §5).
@@ -594,6 +595,105 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     `web-cross-browser-smoke`, so one slow runner silently removes three signals, not one. Options
     if it recurs: raise `timeout-minutes` for that job, or split the live-backend PUT matrix into
     its own job the way coverage already is.
+
+37. **Five cross-file consistency findings carried over from `main`, each re-verified on this branch
+    (2026-09-18) and each still needing an owner yes/no.** They were raised on `main` by the
+    ISL29125 promotion's bird's-eye `src/` scan (2026-09-12) with recommendations added 2026-09-13,
+    and this branch had never picked them up. None is a bug; each is a place two files answer the
+    same question differently.
+    - **`FiltCoeff` means two different things** - BMP3xx's on-chip IIR register (discrete `int`
+      from `_IIR_SETTINGS`) and the ISL29125's software EMA coefficient (`float`, -1.0 = off), same
+      field name on the same `/sensors` endpoint. No wire collision (the sensor group namespaces
+      it). **Recommendation: leave it** - renaming the BMP3xx field is a config-schema migration on
+      deployed units for a cosmetic gain, and both carry their own `description` in
+      `html/definitions/<device>.json`, which is where a user meets them.
+    - **Four names for two trigger-event roles**: `trigger_event` (BMP3xx/SGP40),
+      `start_trigger_event` + `irq_trigger_event` (SCD30), `base_trigger_event` + `read_event`
+      (ISL29125). **Recommendation: the ISL29125 pair if any** - it is the only naming that says
+      which role is which. A pure rename, but it touches three drivers and their tests.
+    - **`from asyncio import ThreadSafeFlag` appears in exactly one file** (`asy_scd30_driver.py`);
+      every other file writes `asyncio.ThreadSafeFlag`. **Recommendation: change the one file** -
+      four lines, no behavioural risk, the cheapest of the five.
+    - **`_N_*_CFG` constants group on two axes** - by type (BMP3xx, ISL29125) and by purpose
+      (SGP40). **Closed as "both, and the rule is whichever axis separates them"**: the ISL29125
+      ended up with two float batches, which no type-based name can tell apart, hence
+      `_N_STORE_CFG` beside `_N_FLOAT_CFG` - SGP40's own reasoning. Both are present here.
+    - **Return-annotation quoting is mixed project-wide**: 22 `src/` files carry quoted subscripted
+      return annotations, 11 carry unquoted ones, 9 carry both. MicroPython never evaluates
+      annotations, so both are safe and there is simply no stated convention. **Recommendation:
+      state the rule, do not mass-edit** - quote an annotation naming a `TYPE_CHECKING`-only
+      import, leave the rest bare, as a sentence in SPECIFICATION.md Part D.
+
+38. **Seven `src/` modules number `errno`/`wrnno` inside the range `base_classes.py` reserves, and
+    the owner's standing direction (2026-09-11) is that every module aligns to it** - carried over
+    from `main`, re-verified here 2026-09-18. Part C.7 reserves `errno` 1-9 and `wrnno` 1-2;
+    `api_response.py` owns the fixed cross-module slot 99. Non-conformant: `config_manager.py`,
+    `system_service.py`, `asy_webserver_service.py`, `captive_dns.py` (all `errno` and `wrnno`),
+    plus `asy_wifi_service.py`, `asy_ntp_client.py` and `asy_notification_service.py` on `wrnno`
+    alone. **No live clash exists** - none of the seven currently shares a logger with a
+    `SensorReader` instance. It becomes a real defect the moment one gains a `logger=`
+    reach-through, which is exactly what `AsyFramManager`/`FRAM_SPI` do and what this branch's
+    `asy_uart_comm.py` adopted (C.7.1 records it numbering from 10 for that reason). Renumbering is
+    mechanical but not free: every changed code is a persisted value in deployed FRAM histories and
+    appears in C.7.1, the errcount UI's raw `num`, and existing tests. Needs an owner decision.
+
+39. **An interrupted `setup_toolchain.py env --tier flash` can leave the Unix-port binary without a
+    frozen `asyncio`, and `scripts/test.sh` uses it anyway** - carried over from `main` (hit
+    2026-09-13). `run_verification_sequence()` builds the interpreter twice (frozen-verification
+    manifest, then a vanilla rebuild restoring the real test rig); interrupting between the two
+    leaves every `tests/test_*.py` dying with `ImportError: no module named 'asyncio'`, which reads
+    as a code failure and is not one. `scripts/test.sh` only checks `[ ! -x "$micropython_bin" ]`,
+    so a broken binary is indistinguishable from a good one. Recovery: `rm` the binary and re-run.
+    **Recommendation: make that guard a capability check** (`"$micropython_bin" -c "import asyncio"`
+    beside the `-x` test, rebuilding when it fails). `main` deferred it because `scripts/` was
+    inside a blocking two-chroot pre-push gate; that gate became an owner-run periodic check on
+    2026-09-18, so the recommendation is actionable now and only needs the owner's go-ahead.
+
+40. **`SPECIFICATION.md` carries seven subsections about one sensor, and no other sensor has any**
+    - carried over from `main`, where the owner ruled (2026-09-14) to leave the document exactly as
+    it stands and tidy this in a session of its own. Three patterns exist and only the third is the
+    question: *generic rule, named instance* (C.4.3, C.7, D.15 - the dominant, legitimate one);
+    *sections named after a module that IS the architecture* (A.7, A.8, C.5, C.6, C.7, Part J -
+    Part J additionally being a two-implementation interface definition); and *dedicated
+    single-chip technical sections*, which only the ISL29125 has (C.11.1 through C.11.5, including
+    C.11.1.1-C.11.1.3). Recorded so that session does not re-derive the scan.
+
+41. **Two device scripts still hand-list their `cfgmgr._cache` keys and will silently miss a new
+    schema field** - carried over from `main`, verified here 2026-09-18.
+    `bmp3xx_plausibility_read.py` and `sgp40_fram_backup_restore.py` prime the cache from a literal
+    dict; the four ISL29125 scripts already derive it from the driver's own schema
+    (`{field[0]: field[2] for field in reader.cfg_schema if field[2] is not None}`) and then
+    override only what the script deliberately changes. A field added to either driver leaves the
+    hand-listed script reading a default that no longer exists, which looks like a driver fault.
+    The generic form is a two-line change in each, but it can only be validated on the bench - so
+    it rides the next real-hardware session rather than being pushed blind
+    (`REAL_HARDWARE_TEST_QUEUE.md`).
+
+42. **The 3-line comment cap is enforced in `src/` and measured everywhere else.** The cap was
+    tightened from "no hard numeric cap" to 3 lines per inline block by the project owner on
+    2026-09-14 and re-confirmed 2026-09-18; `main` had recorded that only the ISL29125 branch's own
+    files complied and estimated ~200 pre-existing blocks. The real repo-wide figure, measured
+    2026-09-18 with buildgen's machine-read tag lines (`# @web`, `# @wiring`, `# @limits`,
+    `# @requires`) excluded as data rather than commentary, is **1,445 over-length blocks**:
+
+    | scope | blocks | files |
+    | --- | --- | --- |
+    | `tests/` | 842 | 87 |
+    | `tests_hardware/` | 144 | 43 |
+    | `tests_scripts/` | 125 | 30 |
+    | `tests_js/` | 74 | 12 |
+    | `scripts/` | 73 | 5 |
+    | `js/` | 70 | 9 |
+    | `buildgen/` | 62 | 15 |
+    | `digital_twin/` | 46 | 14 |
+    | `toolchain/` | 9 | 2 |
+
+    `src/` was swept to **zero** in the same pass (121 blocks, of which ~27 turned out to be tag
+    runs), because it is the shipped firmware and the one scope where the rule earns its keep;
+    nothing was deleted, only tightened or moved to the Part that already owned the fact. The rest
+    is deliberately left: rewriting ~1,400 comment blocks in one diff would bury any review, and
+    each one still needs the judgement call about where its detail belongs. Best taken scope by
+    scope, `tests/` last - it is 58% of the total on its own.
 
 ## Deferred / explicitly out-of-scope work
 

@@ -1,7 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2020 Bryan Siepert for Adafruit Industries (original
-# adafruit_scd30, CircuitPython) - restructured/rewritten for asyncio + MicroPython, see
-# THIRD_PARTY_LICENSES.md.
+# SPDX-FileCopyrightText: Copyright (c) 2020 Bryan Siepert for Adafruit Industries
 # SPDX-License-Identifier: MIT
+# From adafruit_scd30, restructured for asyncio + MicroPython - see THIRD_PARTY_LICENSES.md.
 
 """Async I2C driver for the Sensirion SCD30 CO2/temperature/relative-humidity sensor. SCD30_I2C
 wraps the raw command set (16-bit commands, CRC-8 protected); SCD30_Reader runs the read loop plus an IRQ-pin self-healing trigger, feeding CO2/Temp/Hum/WetBulb/DewPoint (see SPECIFICATION.md Part C).
@@ -84,11 +83,9 @@ _FORCED_RECAL_MAX = const(2000)
 # check_from() return on success (total written / payload length respectively).
 _WORD_BYTES = const(2)
 _WORD_CRC_BYTES = const(3)
-# Deliberately no _VAL_* entry for "ContMeas" - the SCD30 can't report whether continuous
-# measurement is currently running, so it can't join this schema the way the other fields do.
-# No local default either: these params are stored on the sensor itself, not cached locally.
-# Freestanding @web tag (no matching schema constant, per the comment above) - kind/onLabel/
-# offLabel/defaultValue supply everything a real _VAL_* tuple would otherwise let the generator infer.
+# Deliberately no _VAL_* entry for "ContMeas": the SCD30 cannot report whether continuous
+# measurement is running, and these params live on the sensor rather than in a local cache. The
+# freestanding @web tag below supplies what a real _VAL_* tuple would otherwise let buildgen infer.
 # @web ContMeas section=sensors submitGroup=self kind=toggle label="Continuous Measurement" onLabel="On" offLabel="Off" description="Setting this to Off stops continuous measurement; restart it via Ambient Pressure above." defaultValue=true
 
 _NAME = const("SCD30")
@@ -105,12 +102,9 @@ _FIELDS = const(("CO2", "Temp", "Hum", "WetBulb", "DewPoint", "TS"))  # kept in 
 # @web DewPoint section=measurements submitGroup=self kind=readonly label="Dew Point" unit="°C"
 # @web TS section=measurements submitGroup=self kind=readonly label="Timestamp" unit="s"
 
-# Datasheets/scd30/..._Interface_Description.pdf p.2: clock stretching is normally <=30ms but can
-# reach 150ms once/day for internal calibration, past rp2's own I2C timeout default (50ms) - every
-# device TOML's own bus.i2c*.timeout comment already cites this same fact (see e.g.
-# devices/wozi.toml). Enforced here as a real, generator-checked build requirement
-# (SPECIFICATION.md Part L.5's build-tooling quality bar) instead of
-# only a comment a device TOML author has to remember by hand.
+# Datasheets/scd30/..._Interface_Description.pdf p.2: clock stretching is normally <=30ms but
+# reaches 150ms once a day for internal calibration, past rp2's own 50ms I2C default. Enforced as a
+# generator-checked build requirement (Part L.5), not a comment each TOML author must remember.
 # @requires bus.timeout>=200000
 # Datasheet hard maximum, same source (Interface Description p.2): "Maximal I2C speed is
 # 100 kHz" - Sensirion recommends 50 kHz or less, which every device TOML uses today.
@@ -255,30 +249,21 @@ class SCD30_Reader(SensorReader):
         )
 
     def get_cfg_schema(self) -> "ConfigSchema":
-        # SCD30_Reader is a plain SensorReader, not a SensorReaderConfig subclass (no local cfgmgr -
-        # these params live on the sensor itself, see this file's own _VAL_* comment above), so it
-        # doesn't inherit base_classes.SensorReaderConfig's own get_cfg_schema(). But
-        # asy_webserver_service.py's _put_sensors() route calls module.get_cfg_schema() uniformly for
-        # every registered sensor (this file's own _set_dict_cfg() docstring already documents that
-        # expectation) - without this method, every real PUT /sensors touching SCD30 crashed with a
-        # 500 (AttributeError), found during baseline verification.
-        # Same schema _set_dict_cfg()'s own schema_dict(cfg_vals) call already expects, and identical
-        # to get_dict_cfg()'s own combined schema above.
+        # SCD30_Reader is a plain SensorReader with no local cfgmgr, so it does not inherit
+        # SensorReaderConfig.get_cfg_schema() - but _put_sensors() calls that uniformly on every
+        # registered sensor, and without this every PUT /sensors touching SCD30 raised a 500.
         return _VAL_TO + _VAL_MI + _VAL_AP + _VAL_ALT + _VAL_CAL + _VAL_SC
 
     async def _set_dict_cfg(
         self, data: dict[str, int | float | str | bool | None], cfg_vals: "ConfigSchema",
     ) -> dict[str, str]:
-        # Schema-driven generic setter, structurally mirroring base_classes.SensorReaderConfig's own
-        # _set_dict_cfg() validate-against-schema/dispatch-by-name shape (decided gap closure -
-        # SCD30 has no cfgmgr, "these params are stored on the sensor
-        # itself, not cached locally" per this file's own _VAL_* comment) - but with NO persistence
-        # step at all: each validated field calls straight through to its already-existing individual
-        # setter (a real I2C write), no local cache/file involved. ContMeas has no _VAL_* schema entry
-        # (the sensor can't report whether continuous measurement is running - see get_dict_cfg()'s
-        # own comment), so it's dispatched here directly rather than through the schema loop, keeping
-        # asy_webserver_service.py itself fully sensor-agnostic - it always just calls
-        # module._set_dict_cfg(fields, module.get_cfg_schema()) uniformly for every sensor.
+        # Schema-driven setter mirroring SensorReaderConfig._set_dict_cfg()'s validate-then-dispatch
+        # shape, but with no persistence step: each validated field calls straight through to its own
+        # setter, a real I2C write, because these params live on the sensor.
+
+        # ContMeas has no _VAL_* entry, so it is dispatched here directly rather than through the
+        # schema loop - which keeps asy_webserver_service.py sensor-agnostic, always just calling
+        # module._set_dict_cfg(fields, module.get_cfg_schema()).
         dispatch: dict[str, Callable[[Any], Coroutine[Any, Any, bool]]] = {
             name_cfg(_VAL_TO): self.set_temperature_offset,
             name_cfg(_VAL_MI): self.set_measurement_interval,
@@ -292,11 +277,9 @@ class SCD30_Reader(SensorReader):
         for key, value in data.items():
             if key == "ContMeas":
                 if isinstance(value, bool):
-                    # stop_continuous_measurement(value=True) is a legitimate, already-tested pure no-op
-                    # (see test_reader_stop_continuous_measurement_true_is_a_pure_noop) whose own
-                    # contract returns False for it, meaning "nothing to do", not "failed" - only a
-                    # real stop attempt (value=False) can genuinely fail (a bus fault). Normalize
-                    # here before the generic "Valid"/"Failed" mapping below ever sees it.
+                    # stop_continuous_measurement(value=True) is a pure no-op whose contract returns
+                    # False meaning "nothing to do", not "failed" - only a real stop (value=False) can
+                    # fail. Normalized here, before the generic "Valid"/"Failed" mapping sees it.
                     applied = await self.stop_continuous_measurement(value=value)
                     results[key] = "Valid" if (applied or value) else "Failed"
                 else:
@@ -525,12 +508,9 @@ class SCD30_I2C:
         return await self._read_register(_CMD_SET_FORCED_RECALIBRATION_FACTOR)
 
     async def get_config_snapshot(self) -> "tuple[float, int, int, int, int, bool]":
-        # (TempOffs, MeasInt, AmbPres, Altitude, ForceCalRef, SelfCal) - one device-session lock hold
-        # across all 6 config registers, closing the torn-read window a concurrent set_*() call (also
-        # i2c_scd30-locked) could otherwise land inside mid-batch, producing a dict that mixes pre-
-        # and post-write values for SCD30_Reader.get_dict_cfg() to publish. Same
-        # "allowed to raise" layer as every other SCD30_I2C method - a mid-batch fault fails the whole
-        # snapshot rather than a mix of fresh and stale fields.
+        # One device-session lock hold across all 6 config registers, closing the torn-read window a
+        # concurrent set_*() could land inside mid-batch. Same "allowed to raise" layer as every
+        # other SCD30_I2C method: a mid-batch fault fails the snapshot, never mixes fresh and stale.
         async with self.i2c_scd30 as scd30, scd30.i2c_device as i2c:
             temp_offset = await self._read_dev_register(i2c, _CMD_SET_TEMPERATURE_OFFSET) / 100.0
             measurement_interval = await self._read_dev_register(i2c, _CMD_SET_MEASUREMENT_INTERVAL)

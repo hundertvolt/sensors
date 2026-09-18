@@ -48,12 +48,9 @@ if TYPE_CHECKING:
 _MAX_OVERRIDE_TIME = const(3600)
 _NAME = const("NOTIFY")
 
-# This driver's live cross-instance dependencies (SPECIFICATION.md Part C.14): the LED it signals
-# through (required - resolved by buildgen/, SPECIFICATION.md Part L.4 - "attr" mode: the
-# resolved NeopixelDriver instance's own request_signal bound method is passed as
-# request_signal_cb, not the instance itself, per SPECIFICATION.md Part L.2's "no getters, no callback
-# functions in generated code" - the callback-shaped constructor parameter itself stays as-is, only
-# how the generator supplies it changes), plus the optional FRAM backup target.
+# This driver's live cross-instance dependencies (Parts C.14 and L.4): the LED it signals through,
+# required, in "attr" mode - the resolved NeopixelDriver's own request_signal bound method is passed
+# as request_signal_cb, per Part L.2's "no getters in generated code" - plus the optional FRAM.
 # @wiring signal_sink NeopixelDriver request_signal required attr
 # @wiring fram_target AsyFramManager fram optional kwarg
 
@@ -80,15 +77,12 @@ _VAL_INTERV = const((("Interv", "float", 300.0, 60.0, 3600.0, None),))
 _VAL_FLASH_DUR = const((("FlashDur", "float", 2.0, 0.5, 10.0, None),))
 _VAL_AUTO_ON = const((("AutoOn", "bool", True, None, None, None),))
 
-# WarnCO2/WarnVOC/WarnHum (registered per-signal at runtime, not one of this file's own _VAL_*
-# constants - see finalize()/_combined_schema() above) render in this same group too; their web
-# metadata is buildgen.definitions._WARN_SIGNAL_WEB_CATALOG, the generator-owned parallel of
-# buildgen.codegen._KNOWN_SIGNALS (SPECIFICATION.md Part L.5: neither is a real per-device
-# fact this file could tag - every device using a given signal wires it to the same threshold).
-# Literal submitGroup ("autoConfig"), not the "self" instance-resolved-name sentinel scd30/sgp40/
-# bmp3xx use: NotificationCoordinator is a singleton service (driver_registry.SERVICE_DRIVERS -
-# never more than one per device), so there is no multi-instance disambiguation need, and the
-# hand-written definitions files already established this literal key.
+# WarnCO2/WarnVOC/WarnHum are registered per signal at runtime, not as _VAL_* constants here, so
+# their web metadata is generator-owned (buildgen.definitions._WARN_SIGNAL_WEB_CATALOG, the parallel
+# of codegen._KNOWN_SIGNALS) - neither is a per-device fact this file could tag (Part L.5).
+
+# Literal submitGroup ("autoConfig"), not the "self" sentinel the sensors use: this is a singleton
+# service, so there is nothing to disambiguate, and the hand-written definitions established it.
 # @web-group section=notification submitGroup=autoConfig label="Automatic Notification Configuration" submit=true
 # @web AutoOn section=notification submitGroup=autoConfig label="Automatic Notifications" description="Auto On must be before Off, on the same day."
 # @web OnH section=notification submitGroup=autoConfig label="Auto On Hour"
@@ -106,10 +100,9 @@ _VAL_BOOL_FIELDS = _VAL_AUTO_ON
 # assembles at runtime from however many signals registered.
 _VAL_OWN_SCHEMA = _VAL_INT_FIELDS + _VAL_FLOAT_FIELDS + _VAL_BOOL_FIELDS
 
-# Minimal but real measurement snapshot (SPECIFICATION.md C.4.2's get_data()/get_dict_data() shape, same as
-# every other Reader) - whether anything was triggered as of the most recently completed poll cycle.
-# Kept as a literal tuple inline (not `_FIELDS` below) because mypy's namedtuple plugin can only
-# infer field names from a literal at the call site, not through a variable indirection.
+# Minimal but real measurement snapshot in C.4.2's get_data() shape, like every other Reader:
+# whether anything was triggered as of the last completed poll cycle. Kept as a literal tuple, not
+# `_FIELDS`: mypy's namedtuple plugin infers field names only from a literal at the call site.
 NOTIFY = namedtuple("NOTIFY", ("Triggered", "TS"))
 _FIELDS = const(("Triggered", "TS"))  # kept in sync with NOTIFY's own fields above
 
@@ -126,10 +119,9 @@ class NotificationSignal:
         above: bool = True,
     ) -> None:
         self.name = name
-        # Direct reference to the producer's own get_data() (SPECIFICATION.md Part C.14) plus the
-        # field to read off its namedtuple result - no wrapping getter/callback function. Replaces
-        # the old get_value: Callable parameter (sensortask_wozi.py's co2_value_callback()/
-        # voc_value_callback()/hum_value_callback() as a category).
+        # A direct reference to the producer's own get_data() (Part C.14) plus the field to read off
+        # its namedtuple result - never a wrapping getter. This replaced the old get_value: Callable
+        # parameter as a category.
         self.source = source
         self.field = field
         self.field_schema = field_schema
@@ -344,11 +336,9 @@ class NotificationCoordinator(SensorReaderConfig):
             return
         await self.pr.setup()  # required for all logged warnings and errors
         self._err_cnt_internal = 0
-        # No self._auto_active = True here (unlike __init__/auto_led_override(), which own it) -
-        # this task only ever reads it (line below). A restart of *this* task (supervisor-driven,
-        # after too many own-config-read failures) used to unconditionally reset it, silently
-        # clobbering an LED override auto_led_override() had legitimately set active mid-run - a
-        # race between two independently-restartable tasks over one shared, unlocked flag.
+        # No self._auto_active = True here, unlike __init__/auto_led_override() which own it - this
+        # task only reads it. A supervisor-driven restart of this task used to reset it, clobbering
+        # an override set mid-run: two independently-restartable tasks over one unlocked flag.
         while True:
             t0 = time.ticks_ms()
             await self._flush_pending_registration_warnings()

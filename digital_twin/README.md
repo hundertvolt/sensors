@@ -566,6 +566,16 @@ whole interpreter for real wall-clock seconds, the only way to simulate a truly 
 than a bus that merely errors. `wlan` has no `--hang` vocabulary — its faults are a synchronous
 `raise_on[]` check, not a bus transaction with a real HAL call underneath.
 
+### `Isl29125Chip.configure_fault()` (a persistent behaviour, not a queued exception)
+
+The one fault mode that is neither a bounded `OSError` nor a freeze: with
+`configure_fault("isl29125:int_stuck_high")` the bus keeps answering and conversions keep happening,
+but the INT line never moves. That is the silent failure the driver's periodic range evaluation
+exists to survive, and nothing in `_fault_injection.py` can express it, so it lives on the chip
+itself rather than behind a `--fault`/`--hang` flag. An unknown mode raises rather than no-opping.
+Reached from a test holding the chip object (`tests/test_digital_twin_isl29125*.py`); `dev` is the
+only device that wires the part at all.
+
 ### `WDT._arm()`'s late-feed backstop
 
 A real `--hang` freezes the whole interpreter, so every asyncio task — including `WDT`'s own
