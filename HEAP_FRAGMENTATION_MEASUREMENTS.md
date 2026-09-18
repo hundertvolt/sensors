@@ -12,7 +12,7 @@ defects themselves, because each one is a trap a future session will otherwise r
 
 **Start at §0A** for the mechanism — what is happening and why it produces the observed effects,
 with every observation it accounts for; §0A.6 is the whole thing in one paragraph, and §0A.3 is the
-load-bearing part. §0B is the test record, and §0B.6 is what is still open. **§0** is the ledger of every hypothesis this investigation tested — whose it was, what
+load-bearing part. §0B is the test record, and §0B.7 is what is still open. **§0** is the ledger of every hypothesis this investigation tested — whose it was, what
 tested it, and whether it is confirmed, suggestive, refuted, withdrawn or still untested. The rest
 of the document is the evidence those verdicts rest on. §6A.13's scorecard is the same thing
 narrowed to the factors that control the defect.
@@ -48,15 +48,15 @@ falsified theory gets re-proposed and so every conclusion carries its strength a
 | # | hypothesis | standing | evidence |
 |---|---|---|---|
 | O1 | Without the FRAM, fragmentation is negligible | **confirmed** | big run survives byte-for-byte, 132,416 -> 132,416, in_big 0 every repeat (§2.3) |
-| O2 | Other modules allocate in the same region when instantiating, without pain | **confirmed literally, but an artifact of nesting** | every module's `setup()` is 936-971 KB — but that is its logger's FRAM round trip; own work is 5-18 KB (§4.1, §4.2) |
+| O2 | Other modules allocate in the same region when instantiating, without pain | **confirmed literally, but an artifact of nesting** | every module's `setup()` is 936-971 KB — but that is its logger's FRAM round trip; own work is 5-18 KB (§4.1, §4.2). All ten setups also contribute permanent objects to the seam's free space, 4-10 eligible each (§0B.6) |
 | O3 | Something inside the FRAM path is plainly inefficient — masses of short-lived allocations | **confirmed and quantified** | 74 chip-select sessions to persist 12 bytes; 40 of the 50 write sessions carry four flag bytes (§3.1) |
 | O4 | A shared per-instance buffer would beat short-lived per-call allocations | **refuted as a lever** | hoisting all 80 throwaways saves 3,488 B of 843,040 (0.41%) and fragmentation is no better, mostly worse (§6.2) |
 | O5 | It IS findable — fragmentation was always either heavy or absent, never partial | **confirmed, and reproduced from one knob** | allocation size 5 -> 9 GC blocks flips in_big 21 -> 0 at constant volume and yields (§6A.2) |
 | O6 | Replace the awaited CS settle with `time.sleep_us(2)` | **implemented; churn win real, contiguity not** | 56% of each session's allocation and a real hazard removed, but neutral-to-worse on layout (§8) — and it caused a regression (§8.1) |
 | O7 | Arbitrate the bus with `threading.Lock` + `ThreadSafeFlag` | **refuted** | wrong primitive: only one task may wait on a `ThreadSafeFlag`, and `machine.SPI` is already blocking (§7.3) |
-| O8 | The pattern: moderate per-call churn x very many calls x asyncio-friendly frequent yields x emergent across files x running in parallel with long-lived allocation | **confirmed in structure; one element inverted** | plain `bytearray(64)` churn at that position reproduces the defect and exceeds it, so it is not FRAM/SPI/chunk-specific (§6A.1). The yield element measures protective, not harmful (§6A.4) |
+| O8 | The pattern: moderate per-call churn x very many calls x asyncio-friendly frequent yields x emergent across files x running in parallel with long-lived allocation | **confirmed in structure; two elements inverted** | plain `bytearray(64)` churn at that position reproduces the defect and exceeds it, so it is not FRAM/SPI/chunk-specific (§6A.1). The yield element measures protective, not harmful (§6A.4). "In parallel" is refuted outright for the boot batch: 0 of 1,562 yields had another `src/` task runnable, and `build_system()` creates no task at all — the interleaving is one task alternating churn with its own survivors (§0B.6) |
 | O9 | The sawtooth: churn repeatedly allocates the whole free memory, gc collects often because fill is high, the level sawtooths across the whole heap, and survivors thrown at random points stay where they land, ending evenly distributed | **confirmed** | fill driven to **64 bytes free**, amplitude 272,576 of ~278,000 (§6A.6); survivors smeared across all ten heap deciles at span 96-99% when broken vs the bottom 1-2 deciles at 18-40% when clean (§6A.7) |
-| O10 | There is no churn budget: it is a lottery, pure chance plus nonlinearity — a conjunction of parallelism, volume and interleaving, each with a threshold, and the knee is where all conditions are met at once | **confirmed for the conjunction and the absence of a budget; component verdicts differ** | volume x survivor population interact multiplicatively (§6A.11); parallelism suggestive (§6A.10); interleaving inverted (§6A.4). "No budget" now has a mechanism: the churn knee is a property of the *pair*, not of the churn (§6A.11) |
+| O10 | There is no churn budget: it is a lottery, pure chance plus nonlinearity — a conjunction of parallelism, volume and interleaving, each with a threshold, and the knee is where all conditions are met at once | **confirmed for the conjunction and the absence of a budget; component verdicts differ** | volume x survivor population interact multiplicatively (§6A.11); interleaving inverted (§6A.4); **parallelism is absent from the boot batch entirely** (§0B.6), so it cannot be one of the met conditions there. "No budget" now has a mechanism: the churn knee is a property of the *pair*, not of the churn (§6A.11). The chance is not between runs — the outcome is deterministic per configuration (§6.3, §6.4) — it is a fixed order's sensitivity to any shift in it |
 | O11 | The survivor population is itself one of the conditions | **confirmed, decisively** | churn alone 0%, survivors alone -18%, both together **-88%** of the largest free block (§6A.11) |
 
 ### 0.2 This session's hypotheses
@@ -246,7 +246,7 @@ fall on the wrong side. Each one that does splits the only large run there is, w
 1, 3, 5 and 7 closed; 6 and 8 dissolved; 2 advanced and still open; and two of the model's own
 statements changed rather than being confirmed, which is why §0A.3 was rewritten. **§0A.7's own
 wording predates that rewrite** — where it says transients "hold" the holes, read §0A.3's
-self-limiting account instead. For what is open *now*, see §0B.6.
+self-limiting account instead. For what is open *now*, see §0B.7.
 
 Each load-bearing claim of §0A.3, classified as **[V]** verified against source, **[M]** directly
 measured, **[I]** inferred from a correlation, or **[U]** untested. Ranked by how much the model
@@ -401,13 +401,102 @@ synthetically and **zero times at a real survivor position**.
   mid-churn sample; the per-probe fitting-hole counts are a direct per-birth measurement of the
   quantity that actually governs placement, taken 162 times.
 
-### 0B.6 Still open
+### 0B.6 Changed: the startup phase has no parallelism at all
+
+Prompted by the owner's restatement of the model as three patterns present in the original code:
+distributed long-lived survivors, high churn in the FRAM graph, and **both interleaving in the
+startup phase**. The first two hold (below, and §3/§4). The third does not hold in the sense of
+task-level parallelism — it is refuted at the source, and the interleaving that does exist is of a
+different kind.
+
+**[SRC] The setup batch is a straight sequential await chain.** `buildgen/codegen.py:465-466`
+emits one `await <instance>.setup()` per module with `sysfunct.feed_watchdog()` between them — no
+`create_task`, no `gather`. Tasks start only *after* `build_system()` returns (`_emit_main`:
+`start_timers`, `ntp_force_sync`, `start_and_check_tasks`). All 25 `create_task` sites in `src/`
+sit in a `start_*` method that `_collect_task_starters()` invokes there; the two that do not —
+`config_manager.py:385`'s deferred flash flush and `asy_wifi_service.py:367`'s DNS server — are on
+the REST and connect paths, and `ConfigManager.setup()` itself only awaits its logger and reads the
+file (`config_manager.py:444-456`).
+
+**[TWIN] Measured at every yield of the real batch**, by reading `asyncio.core._task_queue.peek()`
+at each one (validated against a two-task control: `None` when the running task is alone, the other
+task's coro when one exists). The twin's two hardware fakes are neutralised here — see below.
+
+| module `setup()` | yields | yields with another `src/` task runnable | CS sessions | I2C sessions |
+|---|---|---|---|---|
+| `AsyFramManager` | 4 | **0** | 2 | 0 |
+| `SystemService` | 172 | **0** | 74 | 0 |
+| `AsyConnTime` | 172 | **0** | 74 | 0 |
+| `AsyNtpClient` | 172 | **0** | 74 | 0 |
+| `SGP40_Reader` | 172 | **0** | 74 | 0 |
+| `BMP3xx_Reader` | 172 | **0** | 74 | 0 |
+| `ISL29125_Reader` | 172 | **0** | 74 | 0 |
+| `NotificationCoordinator` | 172 | **0** | 74 | 0 |
+| `UartLinkExerciser` x2 | 354 | **0** | 148 | 0 |
+| **total** | **1,562** | **0** | **668** | **0** |
+
+Tasks in the scheduler queue when `build_system()` returns: **0**. So nothing the construction or
+setup phase does creates a task, and **every `await asyncio.sleep(0)` in the batch is a round trip
+to the scheduler and straight back into the same task.** The I2C column is 0 because
+`SensorReaderConfig.setup()` is only `await self.cfgmgr.setup()` (`base_classes.py:419-420`) — a
+sensor's own chip init happens later, in its read-loop task. **The setup batch's entire I/O is the
+FRAM's.**
+
+**The twin's own two tasks are fakes of hardware.** Left live, `peek()` was non-`None` at 1,554 of
+1,579 yields — every one of them `digital_twin/machine.py`'s `Timer._run` (:811) or
+`WDT._countdown` (:890), which model an rp2040 hardware timer and the hardware watchdog as asyncio
+tasks. Neither is a task on the board. They were also mostly parked on a future deadline rather
+than runnable: across the whole batch the twin delivered **5** timer callbacks and **0** watchdog
+expiries (11 arms, 10 countdown tasks each cancelled by the next feed). So foreign execution during
+the batch is 5 events against 1,579 yields even in the twin, and zero on hardware. **Carry this as
+a caveat:** these two fakes were live in every other twin run in this file, and they are the only
+parallelism any of them had — which is the concrete form of gap 9's confound.
+
+**What the interleaving actually is.** Not two tasks racing, but one task alternating, inside each
+module's own `setup()`: its logger's FRAM round trip (74 chip-select sessions, ~843 KB) and its own
+permanent allocations, module after module. Attributing survivors to the phase that creates them —
+blocks free at the seam that are occupied by the end of that phase, grouped into contiguous runs:
+
+| module `setup()` | objects born in seam-free blocks | of those, >= 2 blocks (eligible) | bytes |
+|---|---|---|---|
+| `AsyFramManager` | 12 | 9 | 1,216 |
+| `SystemService` | 14 | 5 | 1,088 |
+| `AsyConnTime` | 14 | 6 | 832 |
+| `AsyNtpClient` | 13 | 6 | 1,120 |
+| `SGP40_Reader` | 13 | 8 | 1,184 |
+| `BMP3xx_Reader` | 15 | 4 | 896 |
+| `ISL29125_Reader` | 20 | 10 | 1,408 |
+| `NotificationCoordinator` | 16 | 7 | 1,344 |
+| `UartLinkExerciser` | 14 | 7 | 1,184 |
+| `UartLinkExerciser` | 8 | 4 | 736 |
+| **total** | **139** | **66** | **11,008** |
+
+**All ten setups contribute, and all ten contribute eligible objects** — 4 to 10 each. The survivor
+population is genuinely distributed across modules rather than concentrated in one, which is the
+part of the owner's first pattern that needed measuring. Two caveats. This is an instrumented run
+(a collect and a map dump at every phase boundary), so it measures *births*, not base's placement:
+the cumulative 139 exceeds the ~76 alive at the end because some die in a later phase. And `in_big`
+was **0** in this run — which is §0A.3's self-limiting mechanism seen from the other side: with
+every hole restored at each boundary, lowest-fit always finds one below. It is recorded as model
+confirmation, not as a remedy (SPECIFICATION.md I.4(e)-(g) forbids that one).
+
+**Why the model is unaffected, and what it strengthens.** The placement law is instantaneous — *is
+there a fitting hole below, at this instant* — so it needs an order, not a race. Sequential
+execution supplies one. And it accounts for something already in the record that a genuine lottery
+would not predict: the outcome is **reproducible**, not variable — §6.3's in_big 22 and 24 and
+§6.4's 17-22 are all noted as deterministic across all six perturbations. The chance in this system
+is not chance between runs; it is the extreme sensitivity of a fixed order to any shift in it, which
+is why a 2-block change of one object's size moves the result and why nothing composes.
+
+### 0B.7 Still open
 
 - **Gap 2's positive branch at real positions** (§0B.4) — the one remaining mechanism gap.
 - **What in base's churn does the stranding**, given uniform churn does not (§0B.4). Its size mix is
   the named suspect and is directly testable.
-- **Gap 9, parallelism** — not re-run; still n=6 and confounded by the churn task's own retained
-  objects (§6A.10).
+- **Gap 9, parallelism** — the question is now narrower than "not re-run": §0B.6 shows the real
+  startup phase has *none*, so §6A.10's added-parallelism arm describes a regime the boot batch
+  never enters. What is still untested is whether parallelism matters *after* boot, once the task
+  graph is live (§12).
 - **Gap 10, hardware** — unchanged, and no go-ahead. A GC block is 16 B there against 32 B here, so
   the "1-block objects are immune" boundary in §0B.2 falls at a different byte size on the board and
   the eligible population may be a different fraction of the whole.
@@ -1521,6 +1610,8 @@ built per §1.4 and run from the repo root with `MICROPYPATH=.frozen`.
 | `probe.py` arg 13 (`presurv`) | §6A.12's pre-seam partner, hooked on `AsyFramManager.__init__` so the objects land in the construction phase. Works with any mode including plain `base`, which is how the real-churn arm is run. Both retention containers are sized exactly and allocated in-phase — §6A.12's instrument note has the two container artifacts that invalidated earlier attempts |
 | `fgrid.py` / `holes.py` / `peak.py` / `hist.py` | in_big + kept% per run; dust-hole occupancy; matched non-collecting peak dumps; the seam hole-size histogram |
 | `unitcost.py` / `unit2.py` | per-allocation cost calibration (`bytearray(n)`, bare await, `sleep(0)`) |
+| `conc.py` | §0B.6's concurrency instrument: `_task_queue.peek()` at every yield of the real batch, phase-tagged per module `setup()`, with CS/I2C counters. `<cfg> [nofake] [census\|maps]` — `nofake` neutralises the twin's `Timer`/`WDT` task fakes (the real-hardware equivalent), `census` reports net retained bytes per phase, `maps` dumps the map at the seam and after each phase |
+| `qdbg.py` / `cattr.py` / `twinpar.py` | the two-task control validating `peek()`; per-module survivor attribution from `conc.py maps`; the count of twin `Timer`/`WDT` fake executions during the batch |
 
 Two runtime neutralisations are applied in every harness, and are twin artifacts with no counterpart
 on the device: `_fram_chip.FramChip.__init__` shrunk from a 262 KB backing bytearray to 8 KB (the
