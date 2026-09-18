@@ -643,8 +643,11 @@ information):
   before checking the runner's `$TZ`.
 - **`ruff format` is deliberately not used anywhere** — line breaks are hand-chosen throughout this
   codebase; `line-length = 320` (ruff's own ceiling) plus an `E501` ignore keep this a non-issue even
-  if `format` is ever run by accident. Lint rule selection (`E`/`F`/`W`/`I`/`UP`/`B`) is stricter
-  than ruff's default but well short of enabling everything.
+  if `format` is ever run by accident. Lint rule selection is `select = ["ALL"]` — every non-preview
+  rule ruff ships, narrowed only by an explicitly justified `ignore` list (`pyproject.toml`'s
+  `[tool.ruff.lint]`, where each exclusion carries its own reasoning). That opt-in-to-everything
+  choice is exactly why ruff is pinned: an unpinned upgrade would hard-fail CI on a rule nobody
+  chose.
 - **Bare `except:` (E722) is intentionally left enabled**, unlike the old `improved-quality/pycheck.sh`
   — the project owner wants ruff to flag existing bare excepts as a tracked to-do, not silence them
   before they're fixed (test-driven-development framing, confirmed directly).

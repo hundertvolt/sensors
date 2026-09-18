@@ -669,6 +669,17 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   the Python-internal changes explicitly recorded as having no C impact). Carries those decisions
   across the gap until that C source is imported into this repo and reconciled, then gets deleted.
   The protocol itself is specified in `SPECIFICATION.md` Part J, which is permanent.
+- **[`HEAP_FRAGMENTATION_MEASUREMENTS.md`](HEAP_FRAGMENTATION_MEASUREMENTS.md)** — the measured
+  evidence base for the heap-fragmentation defect (the collapse of the largest contiguous block
+  across WP1+WP2, which fails `tests_hardware/flash/test_memory_stress.py`'s 80,000 B floor):
+  what the instrument is validated against and the six ways it silently lied before that, the
+  per-module allocation census, the FRAM logging path priced per transaction, the negative results
+  that constrain any fix, and every remedy candidate's ensembled numbers. Continues
+  `HANDOVER_HARNESS_AND_HEAP_FRAGMENTATION.md`'s Part 2, which states the defect and the ideas on
+  the table; read that first for context. Its §9 quarantines every figure a defective instrument
+  produced or a later measurement overturned — check there before reusing any number found in an
+  older transcript or doc. Deleted once its durable parts are migrated into `SPECIFICATION.md`
+  Part I / CLAUDE.md / BACKLOG.md and the defect is closed.
 
 **`BUILD_CHAIN_PLAN.md`** (working doc, active for the device-genericization initiative):
 
