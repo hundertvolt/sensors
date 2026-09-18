@@ -626,19 +626,106 @@ Balance of the byte budget in 1024 B units, which cannot fit a dust hole:
 | 8,783 (pure small) | 0 | 11 / 15 | 42% |
 
 Up to at least 3,000 small transients per logger setup is harmless when the byte-budget balance is
-large-object churn. **Not established:** whether that count threshold is mediated by collection
-frequency (a large allocation fails sooner, forcing an earlier collection that repacks low).
-Single-sample occupancy does not discriminate the two ends (21% at n=3,000 vs 22% at n=8,783)
-because the quantity fluctuates with the collection cycle, and one dump cannot characterise it.
-The size result in §6A.2/§6A.3 does not depend on this.
+large-object churn. The mechanism behind that — left open in an earlier revision of this section —
+**is now established by the sawtooth trace in §6A.7**: a large allocation fails on contiguity long
+before the heap is actually full, so it forces an early, shallow collection and the fill sweep never
+reaches the dust holes.
 
-### 6A.6 The corrected model
+### 6A.6 The fill sawtooth, measured
 
-A long-lived object born **while** a large population of same-size-class transients is live gets
-displaced into the one large free run. The controlling quantities are, in order: **the transients'
-size class relative to the survivors'** (a threshold), **their count**, and **whether they are live
-at the moment a survivor is allocated** (position). Total bytes matter only through those. This
-subsumes §2.3-§2.5 and supersedes the framing in §6.1.
+`gc.mem_free()` sampled through the churn (sampling only — `mem_free()` does not collect). An upward
+jump is a collection, so the trace gives the collection count, the amplitude, and how deep the fill
+sweep penetrates before it is reset. Free at the seam is ~278,000 B.
+
+| variant | free range | amplitude | collections | median pre-collection free | outcome |
+|---|---|---|---|---|---|
+| 32 B units (small) | **64** .. 272,640 | 272,576 | >= 29 | **1,440 B** (min **64 B**) | broken |
+| 1024 B units (large) | 174,752 .. 273,920 | 99,168 | >= 89 | **220,864 B** | clean |
+| 3,000 small + 525 large | 864 .. 274,016 | 273,152 | >= 68 | **191,488 B** | clean |
+
+Small-object churn drives the heap to **64 bytes free** — it consumes literally every hole,
+including every dust hole a survivor would want, and the level sawtooths across the entire free
+space. Large-object churn **cannot**: a 33-block contiguous request fails on fragmentation while
+~220 KB is still free in pieces too small for it, so it collects early and shallow and never claims
+the dust. Amplitude alone is not the discriminator — the mixed variant's amplitude is as wild as the
+small one's and it is clean. **The discriminating quantity is how deep the sweep penetrates the
+small-hole population before a collection resets it**, and allocation size is the gate on that.
+
+### 6A.7 Where the survivors end up: the spread metric
+
+`in_big` counts only the survivors landing in the single largest seam free run. The decile
+histogram of survivor addresses over the whole heap shows that is the tip of the real effect:
+
+| variant | span of heap | in_big | survivor deciles (low -> high) |
+|---|---|---|---|
+| 3,000 small + large balance | **18%** | 0 | `62 16 0 0 0 0 0 0 0 0` |
+| 256 B units, full volume | **40%** | 0 | `43 22 4 6 1 0 0 0 0 0` |
+| noio | 67% | 0 | `26 7 1 7 7 5 23 0 0 0` |
+| base (real FRAM I/O) | 96-98% | 2-9 | `27 15 9 12 3 0 1 2 6 1` |
+| 32 B units, full volume | **99%** | 21 | `26 4 0 2 1 2 7 7 5 21` |
+
+Clean variants pile the survivors into the bottom one or two deciles. Broken ones **smear them
+across all ten**, with a distinct pile in the top decile where the large free run lives. Note `noio`
+spans 67% with in_big 0: spread by itself is not the defect — what matters is whether the survivor
+front reaches the **top** deciles, where the one usable contiguous run is.
+
+### 6A.8 The churn budget: a step function, and it is out of reach
+
+All-small (64 B) units, Y = 0, one campaign so the figures are mutually comparable:
+
+| churn per logger setup | span% | in_big | top decile |
+|---|---|---|---|
+| 0 (`noio`) | 67% | 0 | 0 |
+| 1,000 | 70% | 0 | 0 |
+| 3,000 | 74% | 0 | 0 |
+| 8,000 | 86% | **0** | 0 |
+| **20,000** | **99%** | **13** | **13** |
+| 35,000 | 95% | 6 | 6 |
+| 120,000 | 97% | 18 | 18 |
+| 843,232 | 97% | 13 | 13 |
+| base (real) | 98% | 9 | 9 |
+
+Below the knee the survivor front advances **gradually** (67 -> 70 -> 74 -> 86% span) without ever
+reaching the big run. Above it the outcome **saturates** and shows no further dependence on volume
+across a 42x range. **The knee sits between 8,000 and 20,000 B of small-object churn per logger
+setup** — against base's 843,232 B, a required reduction of **40-100x**.
+
+This is the step function behind the field observation that fragmentation was always either heavy or
+absent, never partial. It also **retires churn reduction as a remedy**: the 74 -> ~6 chip-select
+transaction reduction that §3.1's arithmetic points to is a ~12x cut, landing near 70,000 B per
+logger — measured at in_big 14, span 97%, firmly inside the saturated regime. A prediction made in
+an earlier session that this fix would clear the defect is **withdrawn**; the measurement says it
+will not.
+
+### 6A.9 The closing model
+
+A long-lived object born **while** transient churn is sweeping the free space gets placed wherever
+first-fit can satisfy it at that instant. The chain, every link measured:
+
+1. Small transients (2-3 GC blocks, the same size class as the 52 B mean survivor) fit **82% of the
+   1,058 dust holes** the construction phase leaves (§6A.3).
+2. Enough of them therefore drive the fill sweep to the heap floor — **64 B free** — consuming every
+   hole a survivor could otherwise use (§6A.6).
+3. The sweep sawtooths across the whole free space, and the batch's other modules create their own
+   long-lived objects at effectively random points in that cycle (the many loop yields make the
+   interleaving fine-grained), so each lands at whatever height is free at that instant (§6A.7).
+4. Being live, they are never moved — the GC is non-compacting — so they stay, smeared across all
+   ten deciles including the top, where the only usable contiguous run is.
+5. The transients are then collected, leaving those survivors stranded in what had been the big run.
+
+The controlling quantities, in order: **transient size class relative to the survivors'** (a
+threshold — >= 9 blocks is clean at any volume tested), **whether the sweep penetrates to the dust
+holes** (gated by that size, and by volume up to a knee at ~8-20 KB per logger), and **whether
+long-lived allocation is happening in that window at all** (position — §2.5's dose-1 result is the
+only configuration reaching exact zero). Total bytes matter only through the second.
+
+This subsumes §2.3-§2.5 and supersedes the framing in §6.1.
+
+**Cross-campaign caveat.** The probe's own code changed between campaigns (the trace sampler, the
+mixed-shape branch), which shifts the seam and therefore the placement lottery — measured directly:
+the same configuration read in_big 3 in one campaign and 8 in another. Compare figures only within
+the campaign that produced them; each table above is internally consistent and was reproduced across
+both perturbation families.
 
 ## 7. Remedy candidates, measured
 
@@ -805,11 +892,24 @@ allocation — hence rung r0's -68,992 B is an artifact, not a real saving.
 1. **Ship the CRC yield-granularity fix (§3.4) on its own merits?** `src/crc_checks.py` is under no
    editing restriction. Justified on latency and churn alone; measured **not** to improve
    fragmentation (worst 26,528 vs base 26,784), so it is an efficiency fix, not the remedy.
-2. **Are `asy_fram_driver.py`/`asy_fram_manager.py` open for a scoped exception?** Both the
-   `syncdeep` synchronous critical section (§7) and the transaction-count reduction the §3.1
-   arithmetic points to — one 2-byte status write instead of two 1-byte writes, one WREN envelope per
-   chunk operation instead of per byte-level op — are inside files CLAUDE.md and `SPECIFICATION.md`
-   C.3.1 make vendored-adjacent. Measured, not committed.
+2. **Are `asy_fram_driver.py`/`asy_fram_manager.py` open for a scoped exception?** The
+   transaction-count reduction the §3.1 arithmetic points to — one 2-byte status write instead of two
+   1-byte writes, one WREN envelope per chunk operation instead of per byte-level op — is a ~12x
+   churn cut, and **§6A.8 now predicts it will not clear the contiguity defect** (70,000 B per logger
+   is still inside the saturated regime; the budget is 8,000-20,000 B). It remains worth doing on its
+   own merits — 74 bus transactions to persist 12 bytes, 80% of them bookkeeping, plus the ~94 ms of
+   sleeping per chunk operation behind the 6.4 s `ResetErrors` — but as an efficiency fix, not the
+   remedy. Same for `syncdeep` (§7). Both are inside files CLAUDE.md and `SPECIFICATION.md` C.3.1
+   make vendored-adjacent. Measured, not committed.
+   **What §6A does point at, and what needs your call:** the three levers the mechanism leaves are
+   (a) move the churn out of the window where long-lived allocation happens (§2.5's dose-1 result,
+   the only exact zero found); (b) ensure nothing long-lived is *born* in that window — pre-allocate
+   every module's permanent objects during construction, which is `SPECIFICATION.md` I.1's existing
+   "instantiate large permanent buffers early" guidance, now with a measured layout mechanism behind
+   it and an argument for extending it to *small* permanent objects, which is the opposite emphasis;
+   (c) raise the transients' size class above ~9 GC blocks so they cannot claim dust holes, which is
+   I.4(g)'s "reuse/pre-allocate instead of churning same-shaped objects" read as a layout rule rather
+   than a consumption one. (a) and (b) are outside the restricted files.
 3. **The ordering guarantee.** Deferring only the per-logger `PrintLogHistoryStore.setup()` to one
    pass after the batch is implementable in `print_log.py` plus one generated step in
    `buildgen/codegen.py` (the batch is a single `setup_order` list at `:453-469`), without touching
