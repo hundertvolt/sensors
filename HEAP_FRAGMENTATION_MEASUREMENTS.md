@@ -64,7 +64,7 @@ falsified theory gets re-proposed and so every conclusion carries its strength a
 | O9 | The sawtooth: churn repeatedly allocates the whole free memory, gc collects often because fill is high, the level sawtooths across the whole heap, and survivors thrown at random points stay where they land, ending evenly distributed | **confirmed** | fill driven to **64 bytes free**, amplitude 272,576 of ~278,000 (§6A.6); survivors smeared across all ten heap deciles at span 96-99% when broken vs the bottom 1-2 deciles at 18-40% when clean (§6A.7) |
 | O10 | There is no churn budget: it is a lottery, pure chance plus nonlinearity — a conjunction of parallelism, volume and interleaving, each with a threshold, and the knee is where all conditions are met at once | **confirmed for the conjunction and the absence of a budget; component verdicts differ** | volume x survivor population interact multiplicatively (§6A.11); interleaving null — a yield allocates nothing on the real VM (§1.2 item 7); **parallelism is absent from the boot batch entirely** (§0B.6), so it cannot be one of the met conditions there. "No budget" now has a mechanism: the churn knee is a property of the *pair*, not of the churn (§6A.11). The chance is not between runs — the outcome is deterministic per configuration (§6.3, §6.4) — it is a fixed order's sensitivity to any shift in it |
 | O12 | The FRAM path's churn is an architectural inefficiency of the driver/protocol *construction*: a critical-path run should generate orders of magnitude fewer short-lived allocations, with every integrity feature of the storage kept | **confirmed by a wire-identical prototype** | same 74 CS cycles, same bytes on the bus, asserted event by event; board-equivalent `setup()` 118,144 -> 3,072 B (38x) with everything below the lock synchronous, ~1,300 (~90x) with one lock acquisition per chunk operation (§3B) |
-| O13 | `gc.collect()`, confined to the boot lists - start, between each module, end, and the same for the async setup list - keeps the boot's permanent survivors packed at the bottom of the heap by giving each of them a fitting hole low down, and stays forbidden everywhere else. Clarified by the owner, 2026-09-18: survivors are never moved, and packing the *later* ones low is what was meant by "compacted" | **the mechanism is confirmed exactly as stated; the size of the effect falls short of the floor on its own; and it is null at the threshold the firmware ships** | each collect resets the allocator's free-scan index, so the next module's survivors take the lowest fitting hole instead of a hole above the churn's high-water mark - deciles 20/5/4/2/1/5/5/13/4/5 at span 92% become 29/7/0/0/1/0/0/0/32/0 at median gap 224 B (§7A.4), and the number of collects gives a clean dose-response (§7A.2). On the board's own metric at the board's own fill it is worth 3.2-6.9x, reaching 45% of free after `build_system()` and 58% after the task list, against a floor of 55-74% (§7A.8): the strongest single remedy measured, and still short. At the shipped `gc.threshold(32768)` (§1.5) it changes nothing (§7A.6) |
+| O13 | `gc.collect()`, confined to the boot lists - start, between each module, end, and the same for the async setup list - keeps the boot's permanent survivors packed at the bottom of the heap by giving each of them a fitting hole low down, and stays forbidden everywhere else. Clarified by the owner, 2026-09-18: survivors are never moved, and packing the *later* ones low is what was meant by "compacted" | **the mechanism is confirmed exactly as stated; the size of the effect falls short of the floor on its own; and it is null at the threshold the firmware ships** | each collect resets the allocator's free-scan index, so the next module's survivors take the lowest fitting hole instead of a hole above the churn's high-water mark - deciles 20/5/4/2/1/5/5/13/4/5 at span 92% become 29/7/0/0/1/0/0/0/32/0 at median gap 224 B (§7A.4), and the number of collects gives a clean dose-response (§7A.2). On the board's own metric at the board's own fill it is worth 3.2-6.9x, reaching 45% of free after `build_system()` and 58% after the task list, against a tripwire of 55-74% that is itself ~5x above the firmware's own worst reachable allocation (§7A.8, §7A.9): the strongest single remedy measured, and still short. At the shipped `gc.threshold(32768)` (§1.5) it changes nothing (§7A.6) |
 | O11 | The survivor population is itself one of the conditions | **confirmed, decisively** | churn alone 0%, survivors alone -18%, both together **-88%** of the largest free block (§6A.11) |
 
 ### 0.2 This session's hypotheses
@@ -2118,10 +2118,9 @@ values. Measured on the real dev board at MicroPython 1.29.0 (2026-09-11): free=
 largest_block=116032 after a full `build_system()`. These sit ~23%/~31% below that, so an ordinary
 allocation-pattern change won't trip them but a real regression will." The 80,000 is therefore a
 **regression tripwire at 69% of a healthy board measurement**, and the probe's shape is justified as
-"the same shape a real `json.dumps()`/read buffer needs", not as an 80 KB consumer. Nothing in `src/`
-allocates anywhere near it: the largest named buffer is `_DNS_RECV_BUF = 512`, the UART frames are
-53 B, and `asy_webserver_service.py` streams a growing dict precisely so no single large
-`json.dumps()` ever happens. The handover's §2.12 gloss - "encodes a real product property (an 80 KB
+"the same shape a real `json.dumps()`/read buffer needs", not as an 80 KB consumer. Nothing in the firmware
+allocates anywhere near it - **§7A.9 prices every reachable path: 4,096 B as configured, 16,384 B
+worst case, everything else at or under 1,024 B.** The handover's §2.12 gloss - "encodes a real product property (an 80 KB
 contiguous allocation must remain obtainable after boot)" - is an interpretation of that tripwire,
 not something traced to a consumer, and this file had repeated it as a requirement. **What the floor
 is good for is unchanged**: it is the one assertion that catches a layout regression on real
@@ -2156,9 +2155,11 @@ for the full sequence]
 (worst and median; the two collecting rows are the owner's scheme applied to the setup list alone
 and to both lists.)
 
-**The answer, stated plainly: not settled, and closer to "no" than to "yes".** The scheme is worth a
-factor of 3.2 to 6.9 on the board's own metric, and it lands *on* the floor rather than clearly
-above it - over the optimistic 55% form for the full sequence, under it after `build_system()`
+**The answer, stated plainly: against the tripwire, not settled and closer to "no" than to "yes";
+against what the firmware actually allocates, the question does not arise** (§7A.9 - the worst
+reachable allocation is 16,384 B and even the broken board covers it). The scheme is worth a factor
+of 3.2 to 6.9 on the board's own metric, and it lands *on* the tripwire rather than clearly above
+it - over the optimistic 55% form for the full sequence, under it after `build_system()`
 alone, and under the conservative 74% form in both. `base` is nowhere near either, at 8-14%.
 
 Two further readings of the same table. The twin at this calibration **reproduces the board's cited
@@ -2182,6 +2183,43 @@ gives 45.0%, a 25-point gap that does not exist in the non-collecting arm (15.4%
 read the combination as *directionally* strong and not as 87%. The real number needs §3B built,
 which needs §11 item 2's scoped exception; that is the measurement that would actually settle the
 owner's question, and it is not available from the twin as the code stands.
+
+### 7A.9 What the firmware's largest real contiguous allocation is [SRC]
+
+The owner's point, 2026-09-18: nothing in the firmware comes near a third of physical memory,
+contiguous or scattered, so an 80 KB requirement would be madness. Checked against the code, and it
+is right. Every allocation path that can be driven from outside:
+
+| path | largest single contiguous allocation | where |
+|---|---|---|
+| HTTP request body, as the project configures it | **4,096 B** | `asy_webserver_service.py:311` sets `Request.max_content_length = 4096` |
+| HTTP request body, worst case actually reachable | **16,384 B** | `ext/microdot.py:425` buffers the body whenever `content_length <= Request.max_body_length`, whose 16 KB default the project never overrides; the 4 KB check runs later, in `dispatch_request` (`:1443`), so an oversized body is fully allocated and *then* answered 413 |
+| static file / website asset | **1,024 B** per chunk | `ext/microdot.py:567` `send_file_buffer_size`; `style.css` is 11,257 B on disk and never held whole |
+| REST GET response | streamed | `_stream_dict_response()` exists precisely so a growing dict is never one `json.dumps()` (CLAUDE.md) |
+| DNS receive buffer | 512 B | `asy_dns_client.py:21` `_DNS_RECV_BUF` |
+| UART frame | 53 B | `asy_uart_comm.py`, fixed by the two-implementation contract |
+| FRAM chunk buffer | tens of bytes | `asy_fram_manager.py`, per chunk |
+
+So the tripwire sits about **5x above anything the firmware can be asked to allocate**, and 20x above
+the intended ceiling. Two consequences, and they point in opposite directions.
+
+**It weakens "the defect breaks something".** At the board's own broken end (largest 20,592 B) the
+worst reachable allocation still fits, with 1.26x margin, and the intended 4 KB one fits five times
+over. No `MemoryError` occurred in any twin run in this file, at any variant or dose. What failed on
+real hardware is an assertion calibrated to a healthy measurement, not a consumer.
+
+**It does not make the floor pointless.** 1.26x is thin: the same degradation that took the board
+from 115,536 to 20,592 B, applied once more, puts the reachable 16 KB body read at risk, and the
+tripwire is what catches that a layout regression happened at all. Keep it; read a number below it
+as "the heap's layout has regressed this far", not as "an allocation is failing".
+
+**Reported, not changed (CLAUDE.md's flag-don't-fix rule).** The 4,096 B cap does not bound what is
+allocated, only what is answered: `Request.max_body_length` stays at microdot's 16 KB default, so a
+12 KB `PUT` to any route is read into one contiguous buffer before the 413. `ext/microdot.py` is
+vendored and never edited; the one-line fix belongs next to the existing
+`Request.max_content_length` assignment in `asy_webserver_service.py`. Not this branch's to make -
+it is a webserver change, not a heap-layout one - but it is the single allocation that decides how
+much contiguity this firmware actually needs.
 
 ### 7A.7 What is not claimed
 
