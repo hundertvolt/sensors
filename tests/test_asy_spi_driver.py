@@ -596,7 +596,7 @@ def test_a_burst_of_sessions_lets_other_tasks_run() -> None:
             async with device:
                 pass
         # at least one scheduler pass per session, so a long burst cannot starve the loop
-        assert passes - before >= 20, "burst of 20 sessions yielded only %d times" % (passes - before)
+        assert passes - before >= 20, f"burst of 20 sessions yielded only {passes - before} times"
         stop = True
         task.cancel()
         try:
