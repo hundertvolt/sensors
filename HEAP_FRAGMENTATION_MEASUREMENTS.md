@@ -714,7 +714,9 @@ across a 42x range. **The knee sits between 8,000 and 20,000 B of small-object c
 setup** — against base's 843,232 B, a required reduction of **40-100x**.
 
 This is the step function behind the field observation that fragmentation was always either heavy or
-absent, never partial. It also **retires churn reduction as a remedy**: the 74 -> ~6 chip-select
+absent, never partial. **§6A.12 amends where the knee comes from**: these figures are all at the
+natural ~76-survivor population, and the knee moves with that population rather than being a
+property of the churn. It also **retires churn reduction as a remedy**: the 74 -> ~6 chip-select
 transaction reduction that §3.1's arithmetic points to is a ~12x cut, landing near 70,000 B per
 logger — measured at in_big 14, span 97%, firmly inside the saturated regime. A prediction made in
 an earlier session that this fix would clear the defect is **withdrawn**; the measurement says it
@@ -787,6 +789,65 @@ been a fixed ~76 objects / ~4 KB in every run here, never varied. "More permanen
 during the churn window" is a plausible fourth condition and is directly testable by injecting extra
 *retained* allocations during the batch, which no experiment here does.
 
+### 6A.12 The survivor population — the factor that explains why there is no budget
+
+The knob: extra **retained** 64 B bytearrays per logger setup, interleaved with the churn at the
+same position and in the same size class as the batch's own ~52 B survivors. Accounting audited —
+`survn=25` gives `retained=225` (9 injections x 25), and the map shows 526 survivors against a
+baseline 76, i.e. 225 x **2**: each retained `bytearray(64)` is two heap objects, its header and its
+data buffer.
+
+**Survivors alone** (no churn at all) do almost nothing:
+
+| extra srv/logger | survivors | in_big | largest free |
+|---|---|---|---|
+| 0 | 76 | 0 | 58,336 |
+| 25 | 526 | 0 | 58,304 |
+| 40 | 797 | 1 | 53,536 |
+| 60 | 1,156 | 1 | 49,440 |
+| 90 | 1,695 | 7 | 43,424 |
+| 100 | 1,877 | 5 | 47,552 |
+
+25x the survivor population costs 18% of the largest free block — that is consumption, not a layout
+collapse.
+
+**Churn alone** at 50 small objects per logger (4,800 B — **176x below** base's 843,232 and well
+under §6A.8's 8,000-20,000 B knee) is likewise harmless: in_big 0, largest free 58,304.
+
+**Together, the same two harmless doses are catastrophic:**
+
+| churn 4,800 B + extra srv/logger | survivors | in_big | span% | largest free |
+|---|---|---|---|---|
+| 0 | 76 | 0 | 78% | 58,304 |
+| 10 | 257 | 0 | 84% | 58,304 |
+| 25 | 525 | **0** | 85% | **58,304** |
+| 40 | 795 | 7 | 91% | 47,520 |
+| **60** | 1,148 | **119** | 95% | **26,144** |
+| 75 | 1,426 | 164 | 97% | 13,312 |
+| 90 | 1,692 | 260 | 99% | 7,328 |
+| 100 | 1,866 | **390** | 98% | **6,784** |
+
+Identical in both perturbation families at every point. Decomposed against the 58,336 B clean
+baseline: churn alone **0%**, survivors alone **-18%**, both **-88%**. Neither marginal effect
+predicts the joint one — a textbook interaction, and the effect at 4,800 B of churn is *worse* than
+base's own 843,232 B at the natural survivor count (6,784 vs 18,400).
+
+**This is why no churn budget exists.** The 8,000-20,000 B knee in §6A.8 is not a property of the
+churn; it is a property of the **pair**. Measured at the natural ~76-survivor population it sits
+there; raise the population and 4,800 B suffices. Onset in the survivor axis is equally sharp —
+nothing at all up to 525 survivors, then 0 -> 7 -> 119 between 795 and 1,148. Both axes have a
+threshold, and the defect needs both crossed at once, which is exactly the conjunction model in
+§6A.11.
+
+**Limit of this experiment, and the next step it names.** The knob only *adds* survivors, so the
+**sub-76 regime is untested** — and that is precisely where remedy lever (b) operates (pre-allocate
+each module's permanent objects at construction, so fewer are born inside the churn window). The
+2D shape makes that lever look right for the first time on evidence rather than analogy, but
+confirming it needs a variant that *hoists* the batch's own survivors out of the window, which is a
+real code change, not a knob. Cells at 400 extra survivors per logger, and at 3,000 churn objects
+with 100, are absent because they `MemoryError` — 3,600 retained bytearrays is ~230 KB on a 278 KB
+free heap. Out of range by construction, not a defect, and not read as data.
+
 ### 6A.11 Scorecard against the conjunction model
 
 The model that matches the evidence: the defect needs several conditions met at once, each with a
@@ -795,11 +856,11 @@ threshold, and above them the outcome is a heavy-tailed lottery rather than a gr
 | candidate factor | verdict |
 |---|---|
 | **allocation size class** of the transients relative to the survivors | **decisive, hard threshold** (§6A.2/§6A.3) — 5 vs 9 GC blocks flips it binary at constant everything else, with 82% vs 16% dust-hole occupancy measured and predicted from the hole histogram. The sharpest single knob found |
-| **churn volume** | **threshold, then saturation** (§6A.8) — gradual front advance to 8,000 B per logger, saturated from 20,000 B, then flat across a 42x range |
+| **churn volume** | **threshold, then saturation** (§6A.8) — gradual front advance to 8,000 B per logger, saturated from 20,000 B, then flat across a 42x range. **But the threshold is not a property of the churn**: §6A.12 shows it moves with the survivor population, and at a raised population 4,800 B is enough |
 | **position** relative to long-lived allocation | **decisive** (§2.5) — the only exact zero found anywhere |
 | **parallelism** (churn concurrent with survivor births) | **suggestive**: worse tail and lower median (§6A.10), not established |
 | **interleaving / yield count** | **measured in the opposite direction** — protective at fixed small-object count (§6A.4), with a mechanism that explains why. Note this is a layout statement only; §8.1 is what removing yields costs |
-| **survivor population size** | **untested** (§6A.10) |
+| **survivor population size** | **confirmed, threshold, and it interacts multiplicatively with churn volume** (§6A.12) — alone -18%, with a 176x-below-knee churn dose -88%. The sub-76 regime, where remedy lever (b) operates, is still untested |
 
 ## 7. Remedy candidates, measured
 
@@ -988,6 +1049,7 @@ built per §1.4 and run from the repo root with `MICROPYPATH=.frozen`.
 | `probe.py synth` mode | §6A's factorial injector. argv: `<cfg> synth <audit> <pert> <q> <churn_b> <yields> <blk\|coro> <unit> [peak\|trace] [small_n]`. With `small_n >= 0` the three knobs (small objects, yields, hole-proof 1024 B units) are set explicitly and interleaved evenly, which is how §6A.4's confound-free yield sweep is run; with `small_n` omitted the byte budget is held constant instead |
 | `probe.py synthpar` / `parplus` modes | §6A.10's concurrent-churn task. `synthpar` no-ops the logger setups (and so starves its own task of scheduling slots - the batch's awaits are what create the parallelism); `parplus` keeps the real batch intact and adds the task on top, which is the one that isolates added parallelism |
 | `spread.py` / `saw.py` | survivor decile histogram, heap span and distinct-run count; the fill-sawtooth trace analysis |
+| `probe.py synth` arg 12 (`surv_n`) | §6A.12's retained-survivor knob: extra kept 64 B bytearrays per logger setup, interleaved with the churn. `svgrid.py` tabulates the churn x survivor grid |
 | `fgrid.py` / `holes.py` / `peak.py` / `hist.py` | in_big + kept% per run; dust-hole occupancy; matched non-collecting peak dumps; the seam hole-size histogram |
 | `unitcost.py` / `unit2.py` | per-allocation cost calibration (`bytearray(n)`, bare await, `sleep(0)`) |
 
