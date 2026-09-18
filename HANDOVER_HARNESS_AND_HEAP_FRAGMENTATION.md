@@ -122,6 +122,65 @@ tests were deselected and no flash cycles or SCD30 NVM writes were spent. The ga
 collection: bench 48/71 default vs 71 with the flag; flash 42/51 vs 50/51 vs 51 with both flags;
 `--allow-scd30-extra-write` alone changes nothing (the AND-gate holds).
 
+## 1.7 Follow-up fixes from a host-side review (2026-09-18) — **re-verify on the bench**
+
+Five defects found by reading Part 1's changes against the code they touch. All are committed.
+**None has been run against hardware** — this session had no go-ahead and did not ask for one — so
+every claim below is [SRC], and the bench rerun is what settles them.
+
+1. **`_usb_reset_device()` was silently dead on the new default path.** It does
+   `name = Path(device).name` and looks for `/sys/class/tty/<name>/device`. With §1.1's by-id
+   symlink as `self.device`, that name has no `/sys/class/tty` entry, so the function returned
+   `False` and the documented unbind/rebind recovery for a wedged raw-REPL state never ran. The
+   rebind path in §1.1 cannot cover it: a wedged-but-*present* node makes
+   `_rebind_device_if_moved()` return `False`, which is exactly when the unbind/rebind was meant to
+   fire. Fixed with `Path(device).resolve().name`. **On rerun:** if the bench wedges again, confirm
+   the unbind/rebind actually fires (it prints nothing — watch for the ~5s pause and recovery
+   rather than a hard failure).
+2. **`test_watchdog_starvation` could pass without the watchdog firing.** It treats any
+   `HardwareTestFailureError` as the expected reset. With §1.3's `allow_recovery=False`, a transient
+   `"may be in use by another program"` at connect — the case the retry existed to absorb — raises
+   the same error just as fast, clears the `< 10.0s` bound, and then both `wait_until` probes pass
+   instantly because the board never went away. It now asserts the device script's own
+   `"WDT armed, starving now"` banner appears in the failure text, which only happens if the script
+   really got onto the board. **On rerun:** this is the one fix that could turn a previously green
+   test red. If it does, read whether the banner is genuinely absent (a real connect failure — the
+   fix working) or merely not captured (mpremote dropping buffered device stdout when the link dies
+   — in which case the marker is the wrong instrument and the reset needs proving another way).
+3. **The rebind retry was unbounded**, unlike the deliberately once-only USB reset in the same loop:
+   each rebind added another 10s of grace, and no single `subprocess` timeout breaks out of
+   `_mpremote()`'s `while True`. Capped at `_MAX_DEVICE_REBINDS = 2`. The verifying run saw the node
+   move twice across the whole suite, never twice within one call, so this should be invisible.
+4. **The §1.2 teardown caught only `OSError`.** `fetch()` itself only raises `OSError` subclasses,
+   but `.json()` on a 200 with a non-JSON body raises `ValueError`, which would escape the
+   best-effort block and mask the failure unwinding the fixture — the one thing its comment says it
+   must not do. Now `(OSError, ValueError)`.
+5. **`tests_hardware/README.md` still documented the `/dev/ttyACM0` default.** §1.4 updated
+   `conftest.py`'s help string but not the durable reference. Updated, including the note that
+   `scripts/mpremote_connect.sh` genuinely does still default to `ttyACM0`.
+
+**One pre-existing thing §1.2 makes worth stating** (not introduced by it, not changed here): six
+tests in `test_hotspot_role_reversal.py` use the `joined_hotspot` fixture without carrying
+`@pytest.mark.persistence_write` (the ones at stage 0-2 and the DHCP pair). So in a default run with
+no `--allow-persistence-writes` — §1.6's run 3 — the fixture still instantiates, stage 0's SSID
+clear still writes the RP2040 flash filesystem, and the new teardown restore now writes it a second
+time (stage 6 is deselected in that mode, so the restore is a real change, not an `"Unchanged"`
+no-op). That is the right trade against stranding the board, but it means the gated bench run costs
+2 flash writes it is documented as not spending. Deciding whether those six tests should carry the
+marker changes which tests run by default, so it is left to the project owner rather than taken
+here.
+
+**Still open, not fixed:** `resolve_board_device()` is a second device-discovery implementation
+alongside `toolchain/setup_toolchain.py`'s vendor-ID one (`detect_pico_serial_devices()` /
+`resolve_pico_device()`), and the looser of the two — it takes `sorted(...)[0]` silently where the
+existing one makes an ambiguous pick a hard error, and its bare `ttyACM*` fallback could select the
+Arduino UART peer rather than the Pico. It also hardcodes `/dev` and `/sys`, so unlike its sibling
+(which takes overridable dirs explicitly "for tests") it cannot be unit-tested, and neither new
+function has host-side coverage. Consolidating the two is a real change to how the board is found
+and wants a bench run behind it.
+
+---
+
 ---
 
 # PART 2 — The heap-fragmentation defect

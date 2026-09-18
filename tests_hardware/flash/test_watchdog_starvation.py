@@ -10,6 +10,7 @@ from pathlib import Path
 from harness import Board, HardwareTestFailureError, wait_until
 
 DEVICE_SCRIPTS = Path(__file__).resolve().parent.parent / "device_scripts"
+_ARMED_BANNER = "WDT armed, starving now"  # printed by device_scripts/watchdog_starvation_reset.py
 
 
 def test_watchdog_starvation_triggers_a_real_hardware_reset(board: Board) -> None:
@@ -21,8 +22,13 @@ def test_watchdog_starvation_triggers_a_real_hardware_reset(board: Board) -> Non
         # assertion was measuring the retry policy rather than the watchdog.
         board.run_isolated(DEVICE_SCRIPTS / "watchdog_starvation_reset.py", timeout_s=15.0, allow_recovery=False)
         raise AssertionError("run_isolated() returned normally - the watchdog never fired (the device script should never return)")
-    except HardwareTestFailureError:
-        pass  # expected: the connection dies mid-script when the watchdog resets the board
+    except HardwareTestFailureError as exc:
+        # The connection dying is expected - but allow_recovery=False means a transient connect
+        # failure (the case the retry normally absorbs) now raises the same error just as fast, and
+        # would satisfy every check below without the watchdog ever being armed. The device script's
+        # own banner reaches mpremote's stdout only if the script really started, so it is what
+        # tells a real watchdog reset apart from never having got onto the board at all.
+        assert _ARMED_BANNER in str(exc), f"the connection dropped without {_ARMED_BANNER!r} ever arriving - the device script never started, so this was a connect failure, not a watchdog reset:\n{exc}"
 
     elapsed = time.monotonic() - start
     assert elapsed < 10.0, (

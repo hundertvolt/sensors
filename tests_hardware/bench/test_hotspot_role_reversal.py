@@ -97,7 +97,10 @@ def joined_hotspot(board: Board, bench: BenchBridge, dut_ip: str, hotspot_ssid: 
         restored = http_client.fetch(gateway_ip, 80, "PUT", "/networking", {"SSID": original_ssid}, timeout_s=15.0)
         if restored.status_code != 200 or restored.json().get("result", {}).get("SSID") not in ("Valid", "Unchanged"):
             print(f"RESULT NOTE: SSID restore over the hotspot was not accepted: {restored.status_code} {restored.body!r}")
-    except OSError as exc:
+    except (OSError, ValueError) as exc:
+        # ValueError covers .json() on a 200 whose body is not JSON - fetch() itself only ever
+        # raises OSError subclasses, so a decode failure would otherwise escape this best-effort
+        # block and mask the very failure the comment above says it must not.
         print(f"RESULT NOTE: SSID restore over the hotspot failed to reach the DUT: {exc!r}")
 
     bench.leave_dut_hotspot_and_restore_bridge()

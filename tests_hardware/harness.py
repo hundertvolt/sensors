@@ -31,7 +31,10 @@ def _usb_reset_device(device: str) -> bool:
     """Unbind/rebind `device`'s USB device from the kernel `usb` driver - same effect as a
     physical unplug/replug, recovering a wedged raw-REPL-entry state (see tests_hardware/README.md).
     Returns True if a reset was attempted, False if the device path couldn't be resolved."""
-    name = Path(device).name  # e.g. "ttyACM0"
+    # .resolve() first: `device` is normally the /dev/serial/by-id symlink resolve_board_device()
+    # returns, and that name has no /sys/class/tty entry - without this the whole unbind/rebind
+    # recovery below silently no-ops (returns False) on the default device path.
+    name = Path(device).resolve().name  # e.g. "ttyACM0"
     sys_tty_device = Path("/sys/class/tty") / name / "device"
     if not sys_tty_device.exists():
         return False
@@ -96,6 +99,10 @@ class MpremoteResult:
 
 
 _BOARD_BY_ID_GLOB = "usb-MicroPython_Board_in_FS_mode_*-if00"
+# Bounded for the same reason the USB unbind/rebind escalation below is: a node that keeps
+# vanishing and reappearing under an alternating name would otherwise extend the grace window
+# forever, and no single subprocess timeout breaks out of _mpremote()'s own loop.
+_MAX_DEVICE_REBINDS = 2
 
 
 def resolve_board_device() -> str:
@@ -145,6 +152,7 @@ class Board:
         transient_markers = ("may be in use by another program", "could not enter raw repl", "could not open")
         grace_deadline = time.monotonic() + 10.0
         usb_reset_attempted = False
+        rebinds_left = _MAX_DEVICE_REBINDS
         while True:
             try:
                 proc = subprocess.run(
@@ -168,7 +176,8 @@ class Board:
             # The 10s settle-wait grace window above is sometimes not enough - this bench's USB
             # device can wedge into indefinite raw-REPL-entry failure until unbound/rebound (see
             # tests_hardware/README.md). Escalate once, never more than once per call.
-            if self._rebind_device_if_moved():
+            if rebinds_left > 0 and self._rebind_device_if_moved():
+                rebinds_left -= 1
                 # The node moved under us (re-enumeration after a reset) - retry on the new one
                 # before escalating to a USB unbind/rebind, which would not have helped.
                 cmd = ["uv", "run", "mpremote", "connect", self.device, *args]
