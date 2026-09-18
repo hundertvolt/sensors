@@ -2497,10 +2497,46 @@ instance dict growing past a rehash step. The step is real (334 B per instance a
 430 B at ≥ 18) but `AsyFramChunk` carries exactly **17**, one below it, so it would have shown as
 +1,920 B and did not.
 
-So A trades ~7 KB of permanent retention for 9/10ths of the churn, and on this metric that trade is
-very slightly negative. **That is the honest I.4(e)/(f) record this row exists for** (HEAP_REMEDIATION_PLAN.md
-A.5): A is an allocation-count fix worth 9.0x per logger `setup()`, it removes the variance that made
-the defect a lottery, and it does not move the tripwire. The tripwire needs B, or B plus C.
+**The measurement that actually matches the goal.** The goal is fewer long-lived survivors
+scattered through the heap, not a largest/free ratio and certainly not the 80,000 B tripwire
+(§7A.8, §7A.9 — a regression detector at 69% of one healthy board reading, ~5x above anything the
+firmware can be asked to allocate). §6A.7's spread instrument, on the same matched runs:
+
+| | `base` | A |
+|---|---|---|
+| survivors the batch leaves, whole boot sequence | 285 - 290 | **257 - 263** |
+| of those, landing in the seam's big free run | 225 - 226 | **190 - 194** |
+| distinct free runs they occupy | 52 - 55 | **44 - 50** |
+| heap span | 97 - 98% | 99% |
+| the setup batch alone, 508k | 65 | 64 - 65 |
+
+~10% fewer survivors across the whole boot, consistent in all six matched pairs, and all of the
+reduction is in the task-starter phase — the setup batch's own 65 is unchanged. The scatter is
+**not** meaningfully reduced: still 44-50 distinct free runs at 99% span. And the instrument counts
+only survivors born *in the batch*, so A's +7,232 B of construction-time retention is invisible to
+it; on total permanent objects the two arms are close to a wash.
+
+**Why that is the expected result, not a disappointment.** §6A.12 gives the two axes separate
+thresholds. The survivor axis has onset between 795 and 1,148; the system sits at 288, an order of
+magnitude below, so removing 30 survivors cannot change a saturated outcome. The binding axis is
+churn, and A moved it 9.0x. §7A.8's synthetic sweep brackets the churn threshold between **9,369
+B/logger (51.1%)** and **22,190 B/logger (9.6%)**, and that injector is calibrated in the
+non-collecting arm (it predicted 15.4% where `base` measured 14.2%). A's real dose is **13,696
+B/logger** and it measured **12.4%** — inside the bracket, on the high side, exactly where the
+injector says that dose lands. Instrument and real code agree.
+
+**So A stopped just short of a threshold whose position is now bracketed**, and the residue that
+would cross it is named: ~2,300 B of `crc_checks`' `async` per-byte CRC (§11 item 1 / plan A.8) and
+~5,000 B of chunk-layer coroutines and per-`get_buffer()` `Lock`s (plan A.7), both **outside** the
+three files this measure's scoped exception covers. Taking them would put the dose near 6,400
+B/logger, below the 9,369 B point that measured 51.1%. That reclassifies A.7 and A.8 from optional
+follow-ups to the remainder of the churn fix — a prediction, cheap to test, not a claim.
+
+**That is the honest I.4(e)/(f) record this row exists for** (HEAP_REMEDIATION_PLAN.md A.5): A is an
+allocation-count fix worth 9.0x, it reduces batch survivors ~10% on an axis that is not binding, it
+does not reduce their scatter, and it leaves the churn axis short of its own threshold. Survivor
+*scatter* is what measure B addresses directly — §7A.4's deciles go from 20/5/4/2/1/5/5/13/4/5 at a
+1,504 B median gap to 29/7/0/0/1/0/0/0/32/0 at 224 B — and §7B.5 sequences it exactly here.
 
 *Instrument note, in §1.2's spirit.* Adding a `len(chunk.__dict__)` call to the attribution script to
 count those 17 attributes inflated the hoisted-buffer figure measured immediately after it from 3,200

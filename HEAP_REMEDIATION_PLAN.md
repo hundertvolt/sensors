@@ -399,9 +399,16 @@ reopened only if A.6's measurement asks for it.
 
 ### A.6 Decision gate after A
 
-- [ ] If A alone clears the tripwire at `threshold(-1)` on the twin at calibrated fill (it is
-      not expected to), B is pure I.4(f) defense in depth and needs no amendment — record and go
-      to B. Otherwise, B is what §7B.5 says it is and I.4 is amended as B.4 states.
+- [ ] **Owner's decision, and the criterion is corrected here.** This box was written as "does A
+      alone clear the tripwire" — the wrong test: the 80,000 B floor is a regression tripwire at
+      69% of one healthy board reading, not a demand any allocation makes (§7A.8, §7A.9), and the
+      goal is fewer long-lived survivors scattered through the heap. **On the goal as stated, A
+      alone does not get there either**: §7C.2 measures the survivor scatter essentially unchanged
+      (44-50 distinct free runs at 99% span against `base`'s 52-55 at 97-98%; 288 → 258 survivors,
+      an axis §6A.12 puts an order of magnitude below its own threshold) and the ratio slightly
+      worse. So B is not pure defense in depth, it is what §7B.5 says it is, and I.4 is amended as
+      B.4 states — **which is the owner's call to make, since B.4 rewrites a standing
+      prohibition.** Nothing in B proceeds until it is made.
 - [ ] Reopen §3B.4 lever 3 (the lock hierarchy) **only** if the combination in B.6 falls short
       and the measurement points at within-module smear rather than between-module placement
       (§7B.3 says which is which: collects fix between-module, churn fixes within-module).
@@ -412,7 +419,8 @@ reopened only if A.6's measurement asks for it.
       `_write()`/`_read()` and `asy_sgp40_driver.py`'s `ts_storage` paths. Saves a `bytearray` +
       an `asyncio.Lock` per operation; a consumer-side change with its own tests. Propose, don't
       do, unless the owner folds it in.
-- [ ] BACKLOG entry: I2C has no synchronous session form (A.3's flagged discrepancy).
+- [x] BACKLOG entry: I2C has no synchronous session form (A.3's flagged discrepancy).
+      **Done** — `BACKLOG.md`'s deferred list, recorded as flagged and not fixed.
 
 ### A.8 §11 item 1, folded in only if the owner says so
 
