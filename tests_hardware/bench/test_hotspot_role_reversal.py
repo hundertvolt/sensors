@@ -57,7 +57,14 @@ def hotspot_ssid(board: Board, dut_ip: str) -> str:
 def joined_hotspot(board: Board, bench: BenchBridge, dut_ip: str, hotspot_ssid: str) -> Iterator[str]:
     """Stages 0-2 (precondition, associate, DHCP) in setup; stages 7-8 (flip back, confirm
     reachable again) in teardown - module-scoped since each join/leave costs a real ~15-30s WiFi
-    association. Yields the DUT's gateway IP for every stage-3+ test to talk to."""
+    association. Yields the DUT's gateway IP for every stage-3+ test to talk to.
+
+    Its stage-0/stage-7 writes persist to flash and are deliberately UNMARKED (owner's rule,
+    2026-09-18: the gate covers the write a test OWNS, never one it is merely reached through), so
+    only the three tests below that PUT a persisting field themselves carry @persistence_write. An
+    earlier revision marked eleven more purely for depending on this fixture; that deselected them
+    by default while the fixture still ran for their unmarked siblings - coverage lost, no wear
+    saved. Do not re-add a marker here for reaching the hotspot; add one for spending a write."""
     # Stage 0 - precondition: force hotspot mode on demand rather than waiting for organic failure.
     # Read the real SSID back first: this fixture is what destroys it, so this fixture is what owns
     # restoring it (see the stage-7 teardown). Relying on stage 6's own credential push to put it
@@ -171,7 +178,6 @@ def test_bench_radio_receives_a_valid_dhcp_lease(bench: BenchBridge, joined_hots
     assert len(parts) == 4 and all(p.isdigit() for p in parts), f"own_ip_on() returned something that doesn't look like an IPv4 address: {ip!r}"
 
 
-@pytest.mark.persistence_write
 def test_leased_ip_falls_within_the_aps_own_subnet(bench: BenchBridge, joined_hotspot: str) -> None:
     own_ip = bench.own_ip_on()
     gateway_ip = joined_hotspot
@@ -198,14 +204,12 @@ def test_repeated_associate_disassociate_cycles_dont_wedge_the_dhcp_server(bench
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.persistence_write
 def test_arbitrary_hostname_resolves_to_the_aps_own_ip(joined_hotspot: str) -> None:
     response = dns_probe.query(joined_hotspot, "www.example.com")
     assert response is not None, f"no DNS response from {joined_hotspot}:53 for an arbitrary hostname"
     assert dns_probe.extract_answer_ip(response) == joined_hotspot, f"DNS answer didn't point back at the AP's own IP {joined_hotspot}"
 
 
-@pytest.mark.persistence_write
 def test_devices_own_hostname_resolves_the_same_way(joined_hotspot: str, hotspot_ssid: str) -> None:
     # src/captive_dns.py answers every query identically regardless of the queried name - the
     # device's own real Hostname must not be special-cased differently from an arbitrary one.
@@ -214,7 +218,6 @@ def test_devices_own_hostname_resolves_the_same_way(joined_hotspot: str, hotspot
     assert dns_probe.extract_answer_ip(response) == joined_hotspot
 
 
-@pytest.mark.persistence_write
 def test_genuine_root_domain_query_is_answered_correctly(joined_hotspot: str) -> None:
     # A root query (QNAME = the zero-length root label alone) - the `_parsed_ok` real-vs-malformed
     # distinction src/captive_dns.py's own code comments call out.
@@ -226,7 +229,6 @@ def test_genuine_root_domain_query_is_answered_correctly(joined_hotspot: str) ->
     assert dns_probe.extract_answer_ip(response) == joined_hotspot
 
 
-@pytest.mark.persistence_write
 def test_malformed_truncated_packet_is_silently_dropped(joined_hotspot: str) -> None:
     # A truncated packet (fewer than 12 header bytes) - src/captive_dns.py's response() returns
     # None for this (confirmed by reading the module), i.e. no response should ever arrive.
@@ -251,7 +253,6 @@ def test_spoofed_off_subnet_source_address_is_ignored(joined_hotspot: str) -> No
     raise AssertionError("should never run - see skip reason")
 
 
-@pytest.mark.persistence_write
 def test_dns_flood_backoff_curve_recovers_once_flood_stops(joined_hotspot: str) -> None:
     # A garbage-but-present UDP payload still yields a real (data, addr) from recvfrom() (UDP has
     # no content validation), so this flood takes the same pr.evt()-only path as a normal query,
@@ -277,7 +278,6 @@ def test_dns_flood_backoff_curve_recovers_once_flood_stops(joined_hotspot: str) 
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.persistence_write
 def test_every_get_endpoint_reachable_and_shaped_over_the_hotspot_link(joined_hotspot: str) -> None:
     for path in ("/measurements", "/sensors", "/networking", "/system", "/notification", "/status", "/"):
         res = http_client.fetch(joined_hotspot, 80, "GET", path, timeout_s=10.0)
@@ -295,7 +295,6 @@ def test_representative_put_round_trips_over_the_hotspot_link(joined_hotspot: st
     assert res.json().get("result") == {"WarnCO2": "Valid"} or res.json().get("result") == {"WarnCO2": "Unchanged"}, f"unexpected PUT result over the hotspot link: {res.json()!r}"
 
 
-@pytest.mark.persistence_write
 def test_real_static_website_content_serves_over_the_hotspot_link(joined_hotspot: str) -> None:
     # The same real property test_digital_twin_real_website_integration.py already proves for the
     # twin (SPECIFICATION.md Part A.9), now over real hardware/RF.
@@ -304,7 +303,6 @@ def test_real_static_website_content_serves_over_the_hotspot_link(joined_hotspot
     assert len(res.body) > 0
 
 
-@pytest.mark.persistence_write
 def test_nonsense_path_redirects_to_root_over_the_hotspot_link(joined_hotspot: str) -> None:
     # The hotspot-mode-only counterpart to test_network_resilience.py's STA-mode 404 test -
     # joined_hotspot only yields once is_hotspot_active() is genuinely True. A raw socket is
@@ -333,7 +331,6 @@ def test_nonsense_path_redirects_to_root_over_the_hotspot_link(joined_hotspot: s
     assert_module_error_log_empty(joined_hotspot, "WEBSERVER")
 
 
-@pytest.mark.persistence_write
 def test_put_to_nonsense_path_is_405_not_a_redirect_over_the_hotspot_link(joined_hotspot: str) -> None:
     # A non-GET request to an unmatched path resolves to 405 inside Microdot's own routing before
     # _serve_static() is ever reached - confirms the redirect fallback can't leak into an unrelated
@@ -350,7 +347,6 @@ def test_put_to_nonsense_path_is_405_not_a_redirect_over_the_hotspot_link(joined
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.persistence_write
 def test_malformed_http_request_over_real_wireless_degrades_cleanly(joined_hotspot: str) -> None:
     import socket
 

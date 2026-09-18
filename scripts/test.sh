@@ -96,6 +96,152 @@ if [ ! -x "$micropython_bin" ]; then
     uv run toolchain/setup_toolchain.py setup --toolchain-dir "$toolchain_dir" "${skip_apt_flag[@]}"
 fi
 
+# TEST_PARALLELISM: how many test_*.py files run at once. Each file is already a fully isolated
+# Unix-port OS process (its own heap, its own machine.py-fake global state) with no shared memory
+# with any other file's process, so running several concurrently changes wall-clock only, never
+# behavior - EXCEPT for a THIRD hazard this list did not originally name, and which is NOT closed:
+# a twin test asserting that a real background state transition completed within a fixed budget is
+# measuring host speed, so CPU starvation can fail it while the code under test is healthy. Found on
+# the bench Pi4 (2026-09-17): test_digital_twin_sensortask_integration.py's hotspot/DNS test fails
+# with "real hotspot activation never started the real DNSServer task" under the full parallel suite,
+# and - decisively - reproduces with twelve synthetic CPU busy-loops and NO parallel test processes
+# at all, ruling out port contention and the chroot. Which file loses is non-deterministic; a second
+# file (test_digital_twin_webserver_concurrency_dev.py) lost on one run. The default that produced it
+# was a flat 4x core count, i.e. 16 concurrent Unix-port processes on that 4-core host, whose cores
+# are far slower than the sandbox the 4x multiplier was measured on. Not reproducible here at the
+# same nominal load, and GitHub's own runners have not hit it. The autodetection below is the first
+# half of the answer (it drops that host to 2x); BACKLOG.md item 28 carries what is left - do not
+# assume a failure in one of those files is a code bug before checking host load.
+#
+# The two hazards this list DID name stay disjoint, both re-audited by enumerating every file
+# (2026-09-17, not spot-checked): TmpScratch
+# keys (all 29 in the suite confirmed pairwise distinct - tests/_tmp_scratch.py's own docstring; the
+# per-device split above gives each of its 12 new files its own key for exactly this reason) and
+# real socket ports (each file's own fixed base range, with headroom over what it actually
+# allocates - see e.g. tests/_webserver_concurrency_scenarios.py's own port-range comment). That
+# audit found two violations the first pass had missed. One: test_asy_wifi_service.py and
+# test_asy_dns_client.py both allocated from 54000, harmless while this loop was sequential, a real
+# race once it wasn't. Two, the same hazard from outside the loop entirely: the whole 51000-57000
+# tier sat INSIDE the OS ephemeral range (32768-60999, /proc/sys/net/ipv4/ip_local_port_range), so
+# any concurrent ephemeral socket could be handed one of those exact ports - including
+# tests_scripts/'s own _free_port(), which binds (host, 0) and now runs alongside this loop rather
+# than in front of it. Both failure modes are silent rather than EADDRINUSE for UDP (see
+# test_asy_wifi_service.py's own comment), i.e. an inexplicable timeout, not an error. Fixed by
+# moving that whole tier below the ephemeral range, where the twin tier already sat. Bases now:
+# 19100 / 19300 / 19400 / 19500+ / 19700+ (twin, TCP) and 21000 / 22000 / 23000 / 24000 / 25000 /
+# 26000 / 27000 (udp_socket / captive_dns / ntp_client / dns_client / ntp_wifi_dns /
+# ntp_fram_system / wifi_service). A new test file that binds a socket claims an unused base below
+# 32768 - never a neighbour's, never inside the ephemeral range.
+#
+# The multiplier is AUTODETECTED from the host's real capability, not fixed at 4x, because 4x is
+# safe on a fast host and demonstrably not safe on a slow one: the same 4 cores that make a
+# GitHub-hosted runner comfortable at 16 concurrent processes make the bench Pi4 starve a twin
+# test's real-time budget (BACKLOG.md item 28). Core COUNT cannot tell those two apart - both are
+# 4-core - so the probe below measures core SPEED instead, by timing a fixed integer loop in the
+# very interpreter the tests run under (the most honest proxy available, and ~135ms on a fast x86
+# host). The thresholds are calibrated against that measurement, not guessed. TEST_PARALLELISM
+# still overrides everything, which is what the bench Pi4 should use if the probe ever misjudges it.
+#
+# THIS WHOLE BLOCK'S PLACEMENT IS LOAD-BEARING: it must stay ahead of the tests_scripts/ background
+# launch below. The probe times a real process on a real host, so it measures whatever that host is
+# doing at the moment it runs - and once pytest is backgrounded, that includes a fully saturated
+# core set. Measured directly on this project's own 4-core x86 sandbox (2026-09-18) while the probe
+# still sat after the launch: 131-141ms across 8 idle samples, but 391ms in situ, i.e. 2x/8 jobs
+# where the host genuinely warrants 4x/16. The misreading cost little wall clock there only because
+# the backgrounded pytest tier (263s) was the binding constraint at both settings - 4m30.9s
+# autodetected vs 4m26.6s pinned at 16 - but it was non-deterministic run to run, and a heavier
+# moment crossing 900ms would have picked 1x, where the MicroPython loop does exceed that floor.
+# Nothing between here and the launch is needed by the probe ($micropython_bin is resolved and
+# built just above), and tests_scripts/test_test_sh.py asserts this ordering.
+#
+# The 4x branch preserves exactly the behaviour measured below, so nothing changes on a fast runner.
+#
+# Defaults to 4x the runner's own core count on a fast host, not 1x: measured directly on a 4-core sandbox
+# (matching a GitHub-hosted ubuntu-latest runner's core count), total `user` CPU time across the
+# whole suite stayed flat (~4m21s-4m27s) at TEST_PARALLELISM 4/8/16 while wall-clock dropped
+# 8m27s -> 4m28s -> 3m45s - direct confirmation the suite is genuinely sleep-bound (real SPI
+# CS-settle sleeping in asy_spi_driver.py dominates each build's cost, see the per-file-timeout
+# comment above), not CPU-bound, so oversubscribing well past the physical core count is close to
+# "free" concurrency here. At 16, the bottleneck shifts entirely to the backgrounded tests_scripts/
+# job's own single-process pytest runtime (measured: 224s, matching the 3m44.855s total almost
+# exactly) - going further would need tests_scripts/ itself parallelized (e.g. pytest-xdist) to see
+# any more benefit, not attempted. Override downward (e.g. TEST_PARALLELISM=1 to run the test files
+# themselves one at a time - not a full return to the old strictly-sequential behavior, since the
+# backgrounded tests_scripts/ job holds that single slot until it finishes, so the first test file
+# only starts once pytest is done - or a smaller multiple) if a future file is ever found to violate
+# one of the two collision-safety assumptions above, or if a given runner's real memory/CPU-quota
+# limits make 4x too aggressive.
+#
+# One caveat on "sleep-bound", since that was measured as `user` CPU time, which excludes the
+# kernel, so a file doing heavy filesystem work would not show up in it at all. Nothing in the
+# suite does today: the whole run writes ~46MB and spends ~8.7s of system time (measured directly,
+# 2026-09-17). It used to be ~10x that, because tests/test_tmp_scratch.py created and removed
+# 400,000 flat sibling directories in the shared tests/_tmp root on every run - ~396MB of writes
+# and ~18.6s of system time by itself, serialized on one directory inode's own lock that every
+# other file's TmpScratch construction also has to take. That test now asserts the invariant
+# directly instead (see its own comment), which is both cheaper and stronger. Keep it that way:
+# CLAUDE.md's hard rule on avoidable hardware wear covers the host's own disk, not just the
+# target's flash, and a second file of that shape would contend with everything else here rather
+# than overlap with it.
+_detect_parallelism() {
+    local cores quota period probe_start probe_end probe_ms multiplier
+    cores="$(nproc 2>/dev/null || echo 4)"
+    # A container's CPU quota bounds real parallelism far below what nproc reports (cgroup v2; v1
+    # and "max" both fall through to the nproc value unchanged).
+    if [ -r /sys/fs/cgroup/cpu.max ]; then
+        read -r quota period < /sys/fs/cgroup/cpu.max || true
+        if [ "${quota:-max}" != "max" ] && [ "${period:-0}" -gt 0 ] 2>/dev/null; then
+            local quota_cores=$(( (quota + period - 1) / period ))
+            [ "$quota_cores" -ge 1 ] && [ "$quota_cores" -lt "$cores" ] && cores="$quota_cores"
+        fi
+    fi
+    # Speed probe. Never allowed to fail the run: any error, and we fall through to the fast-host
+    # multiplier, i.e. exactly the previous behaviour.
+    probe_start="$(date +%s%N 2>/dev/null || echo 0)"
+    "$micropython_bin" -c 'x=0
+for i in range(500000):
+    x+=i' >/dev/null 2>&1 || true
+    probe_end="$(date +%s%N 2>/dev/null || echo 0)"
+    # An unusable clock resolves to 0, NOT to whatever the arithmetic happens to produce. Taking the
+    # difference unguarded made the two clock-failure directions disagree: a failed SECOND date gave
+    # a negative probe_ms (fast branch, as intended), but a failed FIRST one left probe_start at 0
+    # and made probe_ms the epoch in milliseconds - the 1x branch, i.e. the slowest possible answer
+    # from the failure the comment below promises is always the fastest. The -gt guards also absorb
+    # a `date` that prints a literal "%N" instead of nanoseconds, which is the realistic way to get
+    # here at all (GNU coreutils never fails outright).
+    if [ "$probe_start" -gt 0 ] 2>/dev/null && [ "$probe_end" -gt "$probe_start" ] 2>/dev/null; then
+        probe_ms=$(( (probe_end - probe_start) / 1000000 ))
+    else
+        probe_ms=0
+    fi
+    # A failed probe lands here too, and deliberately so: its probe_ms is <= 0, which picks the
+    # fast-host multiplier, i.e. exactly the behaviour this autodetection replaced. Never silently
+    # slower than before because the probe itself broke.
+    if [ "$probe_ms" -le 250 ]; then
+        multiplier=4            # fast host (measured: 131-141ms on this project's own x86 sandbox)
+    elif [ "$probe_ms" -le 900 ]; then
+        multiplier=2            # mid host - the bench Pi4's class; halves the oversubscription
+    else                        # that starved a twin test's real-time budget at 4x
+        multiplier=1
+    fi
+    echo "$(( cores * multiplier )) $cores $multiplier $probe_ms"
+}
+if [ -n "${TEST_PARALLELISM:-}" ]; then
+    max_parallel="$TEST_PARALLELISM"
+    echo "== Test parallelism: $max_parallel (TEST_PARALLELISM override)"
+else
+    read -r max_parallel _cores _multiplier _probe_ms < <(_detect_parallelism)
+    echo "== Test parallelism: $max_parallel ($_cores usable cores x $_multiplier, interpreter speed probe ${_probe_ms}ms)"
+fi
+# Clamped to >= 1: the dispatch loop below blocks while the running-job count is >= max_parallel, so
+# a 0 or negative value (a plausible "turn parallelism off" guess - 1 is what actually does that)
+# makes that `wait -n || true` spin forever without ever dispatching a test. Confirmed directly, and
+# a hang is exactly what this script's own standing backstops exist to rule out (CLAUDE.md).
+if ! [ "$max_parallel" -ge 1 ] 2>/dev/null; then
+    echo "== TEST_PARALLELISM=${TEST_PARALLELISM:-} is not a positive integer - falling back to 1 (sequential)" >&2
+    max_parallel=1
+fi
+
 # No static src/sensortask_wozi.py/sensortask_dev.py exist any more (BUILD_CHAIN_PLAN.md's Session
 # 6 finish criterion) - every device's own sensortask_<device>.py is generated fresh here, via
 # buildgen, into build/generated_src/ (gitignored - see scripts/_generate_sensortask_modules.py's
@@ -119,7 +265,7 @@ uv run scripts/_generate_sensortask_modules.py
 # right before the MicroPython test-file loop - overlaps its own real ~4-minute wall-clock (measured
 # directly: 247.93s under pytest's own timer) with essentially the *entire* rest of this script
 # rather than serializing in front of it. Counted the same as any other job against
-# max_parallel/TEST_PARALLELISM below (it backgrounds itself the same way, into the same shell), not
+# max_parallel/TEST_PARALLELISM above (it backgrounds itself the same way, into the same shell), not
 # an extra unbounded process on top of that budget - same "everything here is a fully isolated OS
 # process" reasoning the job-pool comment below already gives, just applied one job earlier.
 #
@@ -332,134 +478,13 @@ per_file_timeout_s="${PER_FILE_TIMEOUT_S:-240}"
 # per-device file runs in ~90s (sensortask_*) / ~45s (webserver_concurrency_*) standalone -
 # comfortably inside the 240s default with real margin (re-measure and re-add an entry here if a
 # future device/scenario addition ever pushes one back past it). Running all 6 of one family's
-# files at once (the common case once TEST_PARALLELISM > 1 below) took 114.8s / 59.5s wall-clock
+# files at once (the common case once TEST_PARALLELISM > 1, resolved above) took 114.8s / 59.5s wall-clock
 # total, not 6x a single file's own time: almost all of each build's cost is real wall-clock SPI
 # CS-settle sleeping (asy_spi_driver.py), not CPU work (measured: ~35s of user CPU time across the
 # whole ~9-minute *sequential* 6-file sensortask run), so concurrent processes barely contend with
 # each other even beyond the host's own core count.
 declare -A per_file_timeout_overrides_s=()
 max_attempts=3
-# TEST_PARALLELISM: how many test_*.py files run at once. Each file is already a fully isolated
-# Unix-port OS process (its own heap, its own machine.py-fake global state) with no shared memory
-# with any other file's process, so running several concurrently changes wall-clock only, never
-# behavior - EXCEPT for a THIRD hazard this list did not originally name, and which is NOT closed:
-# a twin test asserting that a real background state transition completed within a fixed budget is
-# measuring host speed, so CPU starvation can fail it while the code under test is healthy. Found on
-# the bench Pi4 (2026-09-17): test_digital_twin_sensortask_integration.py's hotspot/DNS test fails
-# with "real hotspot activation never started the real DNSServer task" under the full parallel suite,
-# and - decisively - reproduces with twelve synthetic CPU busy-loops and NO parallel test processes
-# at all, ruling out port contention and the chroot. Which file loses is non-deterministic; a second
-# file (test_digital_twin_webserver_concurrency_dev.py) lost on one run. The default below is 4x core
-# count, i.e. 16 concurrent Unix-port processes on that 4-core host, whose cores are far slower than
-# the sandbox the 4x multiplier was measured on. Not reproducible here at the same nominal load, and
-# GitHub's own runners have not hit it. BACKLOG.md carries the open decision (lower the default on
-# low-core hosts / widen the budget / mark such tests non-parallel) - do not assume a failure in one
-# of those files is a code bug before checking host load.
-#
-# The two hazards this list DID name stay disjoint, both re-audited by enumerating every file
-# (2026-09-17, not spot-checked): TmpScratch
-# keys (all 29 in the suite confirmed pairwise distinct - tests/_tmp_scratch.py's own docstring; the
-# per-device split above gives each of its 12 new files its own key for exactly this reason) and
-# real socket ports (each file's own fixed base range, with headroom over what it actually
-# allocates - see e.g. tests/_webserver_concurrency_scenarios.py's own port-range comment). That
-# audit found two violations the first pass had missed. One: test_asy_wifi_service.py and
-# test_asy_dns_client.py both allocated from 54000, harmless while this loop was sequential, a real
-# race once it wasn't. Two, the same hazard from outside the loop entirely: the whole 51000-57000
-# tier sat INSIDE the OS ephemeral range (32768-60999, /proc/sys/net/ipv4/ip_local_port_range), so
-# any concurrent ephemeral socket could be handed one of those exact ports - including
-# tests_scripts/'s own _free_port(), which binds (host, 0) and now runs alongside this loop rather
-# than in front of it. Both failure modes are silent rather than EADDRINUSE for UDP (see
-# test_asy_wifi_service.py's own comment), i.e. an inexplicable timeout, not an error. Fixed by
-# moving that whole tier below the ephemeral range, where the twin tier already sat. Bases now:
-# 19100 / 19300 / 19400 / 19500+ / 19700+ (twin, TCP) and 21000 / 22000 / 23000 / 24000 / 25000 /
-# 26000 / 27000 (udp_socket / captive_dns / ntp_client / dns_client / ntp_wifi_dns /
-# ntp_fram_system / wifi_service). A new test file that binds a socket claims an unused base below
-# 32768 - never a neighbour's, never inside the ephemeral range.
-#
-# The multiplier is AUTODETECTED from the host's real capability, not fixed at 4x, because 4x is
-# safe on a fast host and demonstrably not safe on a slow one: the same 4 cores that make a
-# GitHub-hosted runner comfortable at 16 concurrent processes make the bench Pi4 starve a twin
-# test's real-time budget (BACKLOG.md item 28). Core COUNT cannot tell those two apart - both are
-# 4-core - so the probe below measures core SPEED instead, by timing a fixed integer loop in the
-# very interpreter the tests run under (the most honest proxy available, and ~120ms on a fast x86
-# host). The thresholds are calibrated against that measurement, not guessed. TEST_PARALLELISM
-# still overrides everything, which is what the bench Pi4 should use if the probe ever misjudges it.
-#
-# The 4x branch preserves exactly the behaviour measured below, so nothing changes on CI.
-#
-# Defaults to 4x the runner's own core count on a fast host, not 1x: measured directly on a 4-core sandbox
-# (matching a GitHub-hosted ubuntu-latest runner's core count), total `user` CPU time across the
-# whole suite stayed flat (~4m21s-4m27s) at TEST_PARALLELISM 4/8/16 while wall-clock dropped
-# 8m27s -> 4m28s -> 3m45s - direct confirmation the suite is genuinely sleep-bound (real SPI
-# CS-settle sleeping in asy_spi_driver.py dominates each build's cost, see the per-file-timeout
-# comment above), not CPU-bound, so oversubscribing well past the physical core count is close to
-# "free" concurrency here. At 16, the bottleneck shifts entirely to the backgrounded tests_scripts/
-# job's own single-process pytest runtime (measured: 224s, matching the 3m44.855s total almost
-# exactly) - going further would need tests_scripts/ itself parallelized (e.g. pytest-xdist) to see
-# any more benefit, not attempted. Override downward (e.g. TEST_PARALLELISM=1 to run the test files
-# themselves one at a time - not a full return to the old strictly-sequential behavior, since the
-# backgrounded tests_scripts/ job holds that single slot until it finishes, so the first test file
-# only starts once pytest is done - or a smaller multiple) if a future file is ever found to violate
-# one of the two collision-safety assumptions above, or if a given runner's real memory/CPU-quota
-# limits make 4x too aggressive.
-#
-# One caveat on "sleep-bound", since that was measured as `user` CPU time, which excludes the
-# kernel, so a file doing heavy filesystem work would not show up in it at all. Nothing in the
-# suite does today: the whole run writes ~46MB and spends ~8.7s of system time (measured directly,
-# 2026-09-17). It used to be ~10x that, because tests/test_tmp_scratch.py created and removed
-# 400,000 flat sibling directories in the shared tests/_tmp root on every run - ~396MB of writes
-# and ~18.6s of system time by itself, serialized on one directory inode's own lock that every
-# other file's TmpScratch construction also has to take. That test now asserts the invariant
-# directly instead (see its own comment), which is both cheaper and stronger. Keep it that way:
-# CLAUDE.md's hard rule on avoidable hardware wear covers the host's own disk, not just the
-# target's flash, and a second file of that shape would contend with everything else here rather
-# than overlap with it.
-_detect_parallelism() {
-    local cores quota period probe_start probe_ms multiplier
-    cores="$(nproc 2>/dev/null || echo 4)"
-    # A container's CPU quota bounds real parallelism far below what nproc reports (cgroup v2; v1
-    # and "max" both fall through to the nproc value unchanged).
-    if [ -r /sys/fs/cgroup/cpu.max ]; then
-        read -r quota period < /sys/fs/cgroup/cpu.max || true
-        if [ "${quota:-max}" != "max" ] && [ "${period:-0}" -gt 0 ] 2>/dev/null; then
-            local quota_cores=$(( (quota + period - 1) / period ))
-            [ "$quota_cores" -ge 1 ] && [ "$quota_cores" -lt "$cores" ] && cores="$quota_cores"
-        fi
-    fi
-    # Speed probe. Never allowed to fail the run: any error, and we fall through to the fast-host
-    # multiplier, i.e. exactly the previous behaviour.
-    probe_start="$(date +%s%N 2>/dev/null || echo 0)"
-    "$micropython_bin" -c 'x=0
-for i in range(500000):
-    x+=i' >/dev/null 2>&1 || true
-    probe_ms=$(( ( $(date +%s%N 2>/dev/null || echo 0) - probe_start ) / 1000000 ))
-    # A failed probe lands here too, and deliberately so: its probe_ms is <= 0, which picks the
-    # fast-host multiplier, i.e. exactly the behaviour this autodetection replaced. Never silently
-    # slower than before because the probe itself broke.
-    if [ "$probe_ms" -le 250 ]; then
-        multiplier=4            # fast host (measured: ~120ms on this project's own x86 sandbox)
-    elif [ "$probe_ms" -le 900 ]; then
-        multiplier=2            # mid host - the bench Pi4's class; halves the oversubscription
-    else                        # that starved a twin test's real-time budget at 4x
-        multiplier=1
-    fi
-    echo "$(( cores * multiplier )) $cores $multiplier $probe_ms"
-}
-if [ -n "${TEST_PARALLELISM:-}" ]; then
-    max_parallel="$TEST_PARALLELISM"
-    echo "== Test parallelism: $max_parallel (TEST_PARALLELISM override)"
-else
-    read -r max_parallel _cores _multiplier _probe_ms < <(_detect_parallelism)
-    echo "== Test parallelism: $max_parallel ($_cores usable cores x $_multiplier, interpreter speed probe ${_probe_ms}ms)"
-fi
-# Clamped to >= 1: the dispatch loop below blocks while the running-job count is >= max_parallel, so
-# a 0 or negative value (a plausible "turn parallelism off" guess - 1 is what actually does that)
-# makes that `wait -n || true` spin forever without ever dispatching a test. Confirmed directly, and
-# a hang is exactly what this script's own standing backstops exist to rule out (CLAUDE.md).
-if ! [ "$max_parallel" -ge 1 ] 2>/dev/null; then
-    echo "== TEST_PARALLELISM=${TEST_PARALLELISM:-} is not a positive integer - falling back to 1 (sequential)" >&2
-    max_parallel=1
-fi
 
 # Runs one test_*.py file's own timeout+retry loop to completion and writes PASS/FAIL to
 # status_file - never returns a nonzero exit status itself (failure is communicated through the

@@ -1031,18 +1031,26 @@ project's write rates.
 
 This shape exists because a real, unbypassable rule and a real, opt-in-only rarity are two
 different things: both stores have a finite write-wear budget, so it must be possible to run the
-full flash- and bench-tier suites (dozens of tests) without spending a single real one —
+full flash- and bench-tier suites (dozens of tests) without spending any write a test *owns* —
 that's the global flag's job. Separately, one specific test spends a second write beyond the
 routine one and stays behind its own narrower opt-in, since running the routine group should never
 implicitly commit to that extra write too. Both flags are skipped/deselected by default, matching
-every other opt-in real-hardware gate in this file — a plain
-`scripts/run_flash_hardware_suite.sh`/`scripts/run_bench_hardware_suite.sh` invocation spends zero
-real persistence writes, cleanly.
+every other opt-in real-hardware gate in this file.
+
+**Be precise about what a plain invocation costs**, since it is not zero and an earlier revision of
+this section said it was, two paragraphs after stating the rule that makes it false. A plain
+`scripts/run_flash_hardware_suite.sh` spends no real persistence write at all — every prerequisite
+writer named above is bench-only. A plain `scripts/run_bench_hardware_suite.sh` spends the
+prerequisite ones: `joined_hotspot`'s stage-0 `PUT {"SSID": ""}` and its stage-7 restore on every
+run that reaches the hotspot module, plus `_recover_stale_dut_credentials()`'s SSID/PW push on a run
+where the DUT cannot rejoin the bench AP. That is the deliberate cost of the owner's rule, not an
+oversight — gating them would deselect the dozen-odd tests they exist to enable.
 
 **Read the deselected count in the verdict.** Because the gate deselects at collection time rather
 than skipping per test, a gated run is invisible to every check in
 `scripts/_require_clean_hardware_run.sh` — so that script now names the count in its own OK line
-(23 of the bench tier's 71 tests, 9 of the flash tier's 51, as of this writing). "Clean" there means
+(12 of the bench tier's 71 tests, 9 of the flash tier's 51, as of this writing - measured by real
+`--collect-only` runs, not estimated). "Clean" there means
 "everything that ran, passed", not "everything ran".
 
 **Mechanism:**

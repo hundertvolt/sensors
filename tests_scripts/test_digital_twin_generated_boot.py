@@ -14,6 +14,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import pytest
+from _devices import DEVICE_NAMES
+from _devices import device_toml as device_toml_path
 
 from buildgen.definitions import generate_definitions
 from buildgen.generate import generate_device
@@ -56,8 +58,13 @@ _SMOKE_ENDPOINTS = ("/measurements", "/sensors", "/networking", "/system", "/sta
 # Discovered, never listed: a device TOML added to devices/ is covered by every test below with no
 # edit here, which is the whole point of a generated build chain. Same for a new synthetic fixture,
 # minus the deliberately malformed ones (they exist to be rejected, not booted).
+#
+# Through _devices.DEVICE_NAMES, not this file's own glob of devices/*.toml. That glob ran at import
+# (i.e. collection) time, before conftest.py's session-start reclamation fixture has removed a
+# devices/zz_test_*.toml a SIGKILLed earlier run leaked - and this is the one suite that would
+# actually BOOT it, the leaked fixture being a deliberately malformed TOML. _devices.py filters that
+# namespace out for exactly this reason; six other modules already go through it.
 _REPO_ROOT = Path(__file__).resolve().parent.parent
-_REAL_DEVICE_TOMLS = sorted(p.name for p in (_REPO_ROOT / "devices").glob("*.toml"))
 _FIXTURE_TOMLS = sorted(p.name for p in (_REPO_ROOT / "tests_scripts" / "buildgen_fixtures").glob("*.toml") if not p.name.startswith("malformed_"))
 
 # Reported, not fixed (BACKLOG item 31, and CLAUDE.md's "flag, don't silently change" rule for a
@@ -239,14 +246,14 @@ def test_synthetic_fixture_boots_and_serves_over_real_http(
     assert failures == []
 
 
-@pytest.mark.parametrize("device_toml_name", _REAL_DEVICE_TOMLS)
+@pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_real_device_boots_its_generated_module_and_serves_over_real_http(
-    repo_root: Path, micropython_bin: Path, src_dir: Path, ext_dir: Path, tmp_path: Path, device_toml_name: str,
+    repo_root: Path, micropython_bin: Path, src_dir: Path, ext_dir: Path, tmp_path: Path, device: str,
 ) -> None:
     # Every real device's own TOML, generated fresh here - the actual proof that Session 3's
     # generator produces a module that runs, for every real device, not just ast.parse()s
     # (BUILD_CHAIN_PLAN.md's Session 5 write-up: "ideally every" entry point).
-    device_toml = repo_root / "devices" / device_toml_name
+    toml_path = device_toml_path(device)
     port = _free_port()
-    failures = _boot_generated_device(repo_root, micropython_bin, src_dir, ext_dir, device_toml, tmp_path, port)
+    failures = _boot_generated_device(repo_root, micropython_bin, src_dir, ext_dir, toml_path, tmp_path, port)
     assert failures == []

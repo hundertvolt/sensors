@@ -26,7 +26,7 @@
 # pytest.skip() - so those tests never appear as a per-test SKIPPED line for this script's grep.
 # That is exactly why the final verdict below REPORTS the deselected count rather than saying only
 # "clean": deselection is invisible to every check in this file, and since the persistence gate
-# stopped being SCD30-only it covers 23 of the bench tier's 71 tests - a third of the suite quietly
+# stopped being SCD30-only it covers 12 of the bench tier's 71 tests - a sixth of the suite quietly
 # not running is the same "looks identical to a real clean run" ambiguity this whole file exists to
 # rule out, just arriving through collection instead of through unreachable hardware.
 set -uo pipefail  # deliberately not -e: this script inspects pytest's own output before deciding its own exit code
