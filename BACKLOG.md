@@ -402,7 +402,7 @@ constraints.
     BUILD_CHAIN_PLAN.md's Session 4 post-merge self-audit; had never been migrated to this file before
     now, so it stayed unresolved and easy to lose track of.
 
-16. **Seven `src/` modules number `errno`/`wrnno` inside the range `base_classes.py` reserves.**
+22. **Seven `src/` modules number `errno`/`wrnno` inside the range `base_classes.py` reserves.**
    Part C.7 reserves `errno` 1-9 and `wrnno` 1-2 for `SensorReader`/`SensorReaderConfig`, and
    `api_response.py`'s `handle_set_cmd()` owns the fixed cross-module slot `errno=99`; the project
    owner's standing direction (2026-09-11) is that **every** module aligns to that reservation for
@@ -425,7 +425,7 @@ constraints.
    each module's next substantial touch. Flagged, deliberately not fixed drive-by - see CLAUDE.md's
    "flag, don't silently change" rule.
 
-17. `asy_uart_comm.py`'s `wrnno` 11 ("drain bound reached - the peer never stopped sending") can
+23. `asy_uart_comm.py`'s `wrnno` 11 ("drain bound reached - the peer never stopped sending") can
     never reach the FRAM history through the path that produces it. SPECIFICATION.md Part C.7.1 allows one persisted
     warning per fault episode; `_resync()` logs `wrnno` 10 first and spends it, then calls
     `_drain()`, so 11 is always demoted to visible-only. Measured 2026-09-13: a resync whose drain
@@ -438,6 +438,195 @@ constraints.
     change to the one-per-episode budget. Needs an owner decision because it changes which entry an
     operator sees in a field log, the same class as the `errno` 32 decision of 2026-09-12.
     `SPECIFICATION.md` C.7.1 now states the actual behaviour rather than the intended one.
+
+24. **`PUT /status {"ResetErrors": true}` costs a large, slowly-growing fraction of the product's
+    own request ceiling. Now measured on real hardware; one question left.**
+    `asy_webserver_service.py`'s `_put_status()` resets every registered error source sequentially
+    and each FRAM-backed one pays a real FRAM write; WP1/WP2/WP3 grew that set to 21 on `dev`. Two
+    real ceilings bound it, both confirmed directly: the server aborts any request at
+    `outer_cap_s = 15.0` (`asy_webserver_service.py:275`, via `asyncio.wait_for()` at `:667`), and
+    the real web UI gives up at `DEFAULT_TIMEOUT_MS = 15000` (`js/poll-manager.js:8`). A device whose
+    sweep crosses 15s is broken for its own operators, not merely slow in CI.
+
+    **Real hardware, `dev` bench board, 2026-09-17, 21 FRAM-backed chunks** — the numbers that
+    supersede every twin estimate below:
+
+    | condition | wall clock | % of the 15s ceiling |
+    | --- | --- | --- |
+    | idle, real accumulated history | **6.32s** | 42% |
+    | idle, repeated on already-empty logs | 6.40-6.62s | 43-44% |
+    | via `reset_all_error_logs()` | 6.89-6.98s | 46% |
+    | **3 concurrent `GET /status` workers** | **11.58s** | **77%** |
+
+    Correctness confirmed alongside: HTTP 200, all 21 counters (`UART_init`/`UART_resp` included)
+    read back 0 with every history ring cleared.
+
+    **Three things this settles, two of which contradict what this item previously said.**
+    **(1) The twin is not a floor.** Real idle (6.32s) is *faster* than the twin's own `dev` figure
+    (8.151s) — the Unix-port interpreter plus the fake chip's Python-level work cost more than real
+    SPI wire time saves. The "real hardware pays real clocking on top of it" claim here was wrong,
+    and so was the ~10-12s extrapolation drawn from the boot-latency branch's delta calibration
+    (`358c08f`); a staggered boot `setup()` genuinely does not predict a back-to-back write burst.
+    **(2) The cost is fixed PER CHUNK (~305ms), not per history entry** — clearing 21 chunks holding
+    real history costs the same as clearing 21 empty ones, consistent with the ~170ms-per-FRAM-logger
+    `setup()` figure being paid roughly twice (a read+write pair). So the "~0.6s marginal per source"
+    figure previously derived from the 4-source `dev`/`wozi` twin delta overstated it; that delta
+    was never purely 4 chunks. **(3) The event loop is not blocked**: concurrent `GET /status` stayed
+    0.56-0.76s throughout a `PUT` lasting 8.1s, so the 8388ms watchdog cap is not threatened — the
+    time is yielded, not held.
+
+    **What is still open — and it is the load case, not the idle one.** At 11.58s under three
+    concurrent readers, `dev` sits at 77% of its own ceiling, and per-chunk cost roughly doubles
+    under that contention (~551ms). That leaves headroom of roughly **6 more chunks under load**, not
+    the ~10 the twin numbers suggested. Nothing asserts elapsed time anywhere: both client timeouts
+    are backstops placed against the cap (the CI suite derives `_RESET_ERRORS_TIMEOUT_S` from a
+    mirrored `_SERVER_OUTER_CAP_S`; `tests_hardware/error_log_helpers.py` carries a measured 30.0s),
+    and `tests_scripts/test_request_timeout_ceiling.py` enforces every copy against `outer_cap_s`
+    itself — but a backstop is not a budget. **Where to fix**: an explicit elapsed-time budget, sized
+    against the load case rather than the idle one; and if a future device's chunk count approaches
+    ~27, a design-level fix at the source (batched or concurrent reset, one shared chunk) rather than
+    a larger client timeout, per CLAUDE.md's root-cause-don't-raise-the-limit rule.
+
+    Twin figures kept only as the harness baseline they are (5 reps, idle host, loopback): `dev`
+    8.151s (7.901-8.259) / `wozi` 5.592s (5.534-5.746) at the shipped `gc.threshold(32768)`, and
+    7.396s / 5.207s at `gc.threshold(-1)`. Useful for spotting a twin-side regression; not a
+    predictor of real-hardware cost in either direction.
+
+25. **Persistence coverage against a HEALTHY store, not just a faulted one.** The digital-twin
+    suite only touches SCD30/BMP3XX persistence through Run 4's `_NO_PERSIST_WHEN_FRAM_FAULTED`
+    sweep, which runs after Run 3 faulted `fram:write` dead — so it proves "nothing persisted
+    through a chip that was unavailable", a far weaker property than the name it used to carry.
+    SGP40 gets the real chip-healthy treatment in Run 5b/5c; nothing else does, so a genuine
+    regression in another module's FRAM persistence passes CI today. **Where to fix**: extend Run 5c
+    to sweep every FRAM-backed source rather than adding runs per module — much cheaper in CI
+    wall-clock than a 5b/5c pair each.
+
+26. **`uart_link`'s gap is narrower than this item used to claim.** It said "no digital-twin
+    coverage at all". That was wrong: `tests/test_digital_twin_uart_link.py` carries 16 twin tests
+    against the real generated `sensortask_dev` graph, including
+    `test_both_ends_get_their_own_real_fram_chunk`, which asserts exactly the WP3 wiring. Real
+    hardware has since exercised both instances through `ResetErrors` too (SPECIFICATION.md Part
+    A.7). What is genuinely missing is narrow and `dev`-only: the **end-to-end CI suite**
+    (`scripts/_digital_twin_ci_suite.py`) never asserts `UART_init`/`UART_resp` appear in `/status`'s
+    `errcount`, so a regression that dropped them from the registration list would reach the bench
+    tier before CI noticed. **Where to fix**: one errcount-presence assertion in that suite's `dev`
+    run.
+
+27. **`PUT /status {"ResetErrors": true}` answering `OK` on a failed on-chip write — settled, no
+    change.** Owner decision, 2026-09-17: detecting a chip that acknowledged a write it did not
+    physically store would need a deferred read-back and a second failure path, which is overkill
+    for the risk. **If the bus transfer completed without error, the chip is trusted to have stored
+    the value.** Recorded here only so the reasoning is not re-derived: `print_log.py`'s `reset()`
+    clears the in-RAM ring before attempting the write, so `/status` reads 0 either way, and a
+    chip-level failure surfaces at the next boot when `setup()` restores the old history rather than
+    at the call. That is accepted behaviour, not a defect. (The narrower case where `_write()` itself
+    returns False — a *detected* failure that is `_diag()`-logged and not reflected in the response —
+    shares the same disposition: it is only reachable with a chip that is already failing.)
+
+28. **`TEST_PARALLELISM` now autodetects host capability — the residual is a calibration question,
+    not an open design decision.** The 4x-core-count default failed a healthy twin test on the bench
+    Pi4 through CPU starvation alone (reproduced with twelve synthetic busy-loops and no parallel
+    test processes), while being entirely safe on a fast 4-core x86 host — core *count* cannot tell
+    those apart. `scripts/test.sh` now times a fixed integer loop in the very interpreter the tests
+    run under and picks the multiplier from that (4x at <=250ms, 2x at <=900ms, 1x beyond), honouring
+    a cgroup CPU quota when one is set, with `TEST_PARALLELISM` still overriding everything.
+    Measured: 117ms -> 16 jobs on this project's x86 sandbox (unchanged from before), and a simulated
+    Pi4-class 704ms -> 8 jobs. **What is left**: the thresholds are calibrated from one fast host
+    plus a simulated slow one, not from the Pi4 itself — if a real bench run still starves that twin
+    assertion at 2x, the next step is 1x for that class, or widening the assertion's own budget.
+    Note `_wait_until()` counts poll *iterations*, not wall clock, so making it a true wall-clock
+    timer would make this worse rather than better.
+
+29. **A real WiFi outage logs `W4` ("WLAN wrong password") twice alongside the expected `W5`
+    ("access point not found"), on a network whose password never changed.** Observed on the dev
+    bench board during `test_real_wifi_outage_and_recovery_while_in_normal_sta_mode` (2026-09-17).
+    `tests_hardware/bench/test_network_resilience.py`'s own
+    `_assert_wifi_log_has_only_benign_ap_not_found_warning()` expects only `W5`. Either the CYW43
+    driver reports a misleading status during an AP-down transition and
+    `asy_wifi_service.py`'s `_poll_sta_connect_status()` faithfully records it (making the test's
+    expectation wrong), or the status mapping there is off. Not chased — one look should tell which.
+
+30. **ISL29125 HTTP connection reset under concurrent API load — root-cause not yet established.**
+    Owner's direction: chase, root-cause and resolve. Needs **both** a config-persisting PUT and >=2
+    concurrent readers (four-arm isolation on the dev bench, 2026-09-17: PUT alone 0/10, PUT + 1
+    reader 0/6, PUT + 2 readers **6/18**, plain GET + 2 readers 0/6), so it is a real residual, not a
+    test artifact, and not the `max_connections=4` reject path (that one is a clean single-worker RST
+    at 5 concurrent workers, by design). Failures land at 21-72ms against 0.5-2.2s for successful
+    writes — two cleanly separated populations, and the connection dies before reaching the handler.
+    **The DUT logs nothing**: `WEBSERVER`'s counter stays 0, so this is invisible to FRAM forensics.
+    The suspected mechanism is the deferred flash write's own interrupt-disable window
+    (SPECIFICATION.md Part F.2's accepted residual risk) — **suspected, not proven**; all that is
+    established is that the persisting write is necessary. Note the write path is now gated behind
+    `@pytest.mark.persistence_write`, so reproducing it needs `--allow-persistence-writes`.
+    **Where to look first — corrected 2026-09-17 after comparing the two arms properly.** An earlier
+    version of this item said the BMP3XX arm passing "points at load/timing rather than at this one
+    driver". That reads the evidence backwards. The two tests are the *same* shape: 2 GET workers on
+    `/sensors` plus one writer alternating between two valid values, same endpoint, same
+    `ConfigManager.write_config()` flash path. Identical setup, opposite outcome, so the flash write
+    the two share cannot be what distinguishes them — the difference is in what each driver's own
+    push does on the bus. `BMP3XX._push_pressure_oversampling()` is a single `set_*` write.
+    `ISL29125._push_resolution()` → `set_resolution()` is a **three-step reconfiguration**:
+    `isl.configure(resolution=...)`, then `_reapply_persist()` (the derived persistence counter
+    changes with the cycle length), then — because `RangeAuto` defaults to `True` and `dev` leaves it
+    there — `_switch_range()` to re-arm threshold registers that are scaled to the old resolution.
+    That is a far longer critical section against two concurrent readers, and it is the first thing
+    to instrument. **Cheap bisection**: `RangeAuto` is a plain REST bool, so `PUT /sensors
+    {"ISL29125": {"RangeAuto": false}}` drops the third leg without touching any code — if the reset
+    rate falls, the re-arm is implicated; if it does not, it is the first two.
+
+31. **The website's errcount catalog is keyed by driver KIND, while the API publishes one key per
+    logger INSTANCE — latent today, wrong for any multi-instance device.** Found 2026-09-17 while
+    adding cross-tier parity coverage; reported rather than fixed, per CLAUDE.md's "flag, don't
+    silently change" rule for a cross-file discrepancy a scan turns up. The API side derives itself
+    from the live object graph (`SensorReaderConfig.get_error_sources()` returns `[self,
+    self.cfgmgr]`; the generated `_collect_error_sources()` loops over every constructed module), so
+    an instance named `scd30_primary` publishes `SCD30_primary`/`CFGMGR_SCD30_primary`.
+    `buildgen/definitions.py`'s `_errcount_group()` receives only a `set[str]` of have-keys — no
+    instance information reaches it at all — so it emits one fixed row per driver kind, plus the two
+    hardcoded `UART_init`/`UART_resp` rows.
+    **Not live**: verified against all six real devices, the two sides match exactly (dev 21 keys,
+    wozi 17, the other four 15) — no real device declares two instances of one driver, and `dev`'s
+    `uart_link` pair happens to use precisely the `name_ext` values the catalog hardcodes.
+    **Both synthetic fixtures are affected**, which is what a fixture is for (CLAUDE.md's standing
+    "synthetic fixture proves generality" rule). Measured by booting each in the twin and reading
+    `GET /status`:
+    - `novel_combo` publishes `SCD30_primary`, `SCD30_secondary`, `UART_a`, `UART_b`; the catalog
+      offers `SCD30`, `UART_init`, `UART_resp`.
+    - `multi_instance` publishes `SCD30_a/_b`, `SGP40_a/_b`, `BMP3XX_only` and their `CFGMGR_`
+      companions; the catalog offers the bare `SCD30`/`SGP40`/`BMP3XX` rows.
+    **Both drift directions are silent in the product.** A published source with no row is simply
+    never rendered; a row with no source renders a permanent, reassuring **0**, because
+    `js/templates.js` falls back to `errcount[key] ?? {counter: 0}`. Neither shows an error.
+    **Decision needed**: whether `_errcount_group()` should take the instance list (it would then
+    derive rows and labels per instance, the way the measurements section already does for
+    `SCD30_primary`/`SCD30_secondary`), or whether multi-instance devices are out of scope for the
+    errcount UI. Until then the gap is pinned exactly in
+    `tests_scripts/test_digital_twin_generated_boot.py`'s `_KNOWN_CATALOG_DRIFT`, which fails if the
+    drift changes shape *or* if it is fixed without deleting the exemption.
+
+
+32. **The bench tier's `ResetErrors` timeout was raised 10.0s → 30.0s with no elapsed-time budget
+    to replace what that bound was incidentally enforcing.** Recorded 2026-09-17 during a
+    self-audit of this branch; it is the one change on it that loosens rather than tightens.
+    The old `10.0` was genuinely miscalibrated — it sat *below* the product's own
+    `outer_cap_s = 15.0`, so a legitimate sweep (measured 6.32s idle, **11.58s under three
+    concurrent readers** on the dev bench) failed as a client timeout before the server could abort,
+    and the test could never observe the server's real behaviour at all. Raising it was correct.
+    **But the twin got a compensating `_RESET_ERRORS_BUDGET_S` (12.0s, asserted per sweep by
+    `_put_reset_errors_timed()`) and the bench tier did not.** `reset_all_error_logs()` passes the
+    timeout and asserts nothing about elapsed time, so a sweep that degraded to, say, 25s on real
+    hardware would now pass silently where the old bound would at least have gone red — for the
+    wrong reason, but red.
+    **Why no bench budget was set instead of recording this.** Sizing one needs the reader-count
+    curve `REAL_HARDWARE_HANDOVER_PR103.md` §2.1 asks for (0/1/2/3/4/6 readers). Two points do not
+    say whether it flattens: the twin's 12.0s is already below the 11.58s-at-3-readers measurement
+    plus any margin, so copying it across would flake the bench suite, and anything above ~15s
+    cannot fire before the server's own abort. Both halves of the owner's standing requirement for
+    this budget — "reliably won't fail the pipeline accidentally with a false positive" **and**
+    "will reliably fail if something really went wrong" — are unsatisfiable until that curve exists.
+    **Close this by** taking the curve, then adding the bench analogue of the twin's own budget
+    check to `tests_hardware/error_log_helpers.py`.
+
 
 ## Deferred / explicitly out-of-scope work
 - **Session 7's `pyproject.toml` `max-args` ratchet (21 → 22, for `WebserverService.__init__`'s new

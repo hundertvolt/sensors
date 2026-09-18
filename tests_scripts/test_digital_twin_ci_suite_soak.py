@@ -3,20 +3,7 @@ and _mem_trend() - without a live twin subprocess/HTTP server. Host-driven reque
 (the actual fix - SPECIFICATION.md's "Driver/DUT process separation" Part) is exercised for real by
 scripts/run_digital_twin_ci.sh's own end-to-end run, not re-mocked here."""
 
-from pathlib import Path
 from types import ModuleType
-
-import pytest
-from _script_loader import load_script_module
-
-
-@pytest.fixture(scope="session")
-def ci_suite(repo_root: Path) -> ModuleType:
-    """Imports scripts/_digital_twin_ci_suite.py as a real module (it's a `uv run`-style
-    standalone script, not a package member) so _parse_mem_samples()/_mem_trend() can be checked
-    directly instead of only through a real subprocess run."""
-    return load_script_module(repo_root / "scripts" / "_digital_twin_ci_suite.py", "_digital_twin_ci_suite")
-
 
 # ---------------------------------------------------------------------------
 # _parse_mem_samples() - the log-line-scraping half of the "gc.mem_free() has no other source"

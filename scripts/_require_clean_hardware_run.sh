@@ -19,11 +19,16 @@
 # are deselected, not skipped) - this whitelist only matters for a direct invocation of this file
 # that doesn't apply that marker exclusion, e.g. scripts/run_bench_soak_tests.sh's own -m long_soak
 # selection (where --soak-tier IS expected to be passed, so these become "must pass", not "may skip").
-# --allow-scd30-writes/--allow-scd30-extra-write deliberately need NO entry in the loop below, unlike
-# the three flags above: tests_hardware/conftest.py's own pytest_collection_modifyitems() deselects
-# every scd30_write/scd30_extra_write-marked test at collection time when its flag is absent (same
-# mechanism as the long_soak/multi_day_rollover markers above), rather than a per-test pytest.skip()
-# - so those tests already never appear as a per-test SKIPPED line for this script's grep to catch.
+# --allow-persistence-writes/--allow-scd30-extra-write deliberately need NO entry in the loop below,
+# unlike the three flags above: tests_hardware/conftest.py's own pytest_collection_modifyitems()
+# deselects every persistence_write/scd30_extra_write-marked test at collection time when its flag is
+# absent (same mechanism as the long_soak/multi_day_rollover markers above), rather than a per-test
+# pytest.skip() - so those tests never appear as a per-test SKIPPED line for this script's grep.
+# That is exactly why the final verdict below REPORTS the deselected count rather than saying only
+# "clean": deselection is invisible to every check in this file, and since the persistence gate
+# stopped being SCD30-only it covers 23 of the bench tier's 71 tests - a third of the suite quietly
+# not running is the same "looks identical to a real clean run" ambiguity this whole file exists to
+# rule out, just arriving through collection instead of through unreachable hardware.
 set -uo pipefail  # deliberately not -e: this script inspects pytest's own output before deciding its own exit code
 
 # The one currently-known, deliberate, permanent skip: raw-socket off-subnet-source-address
@@ -100,11 +105,22 @@ if [ -n "$unexpected_skips" ]; then
     exit 1
 fi
 
-if ! grep -qE '[0-9]+ passed' "$logfile"; then
+# [1-9][0-9]* rather than [0-9]+: a literal "0 passed" must not satisfy a check whose entire job is
+# refusing a vacuous run. pytest omits the word entirely today, so this is defensive, not observed.
+if ! grep -qE '[1-9][0-9]* passed' "$logfile"; then
     echo "" >&2
     echo "FAILED: zero real passes - real hardware is expected to be attached and reachable for this run." >&2
     exit 1
 fi
 
+# Deselected tests are invisible to every check above (see the header's own note), so the verdict
+# names them rather than implying everything ran. pytest prints the count in its own summary line.
+deselected="$(grep -oE '[0-9]+ deselected' "$logfile" | tail -1)"
 echo ""
-echo "OK: real-hardware suite run clean - no unexpected skips, no failures."
+if [ -n "$deselected" ]; then
+    echo "OK: real-hardware suite run clean - no unexpected skips, no failures."
+    echo "    NOTE: $deselected by an opt-in gate and therefore never executed - this run does NOT"
+    echo "    cover them. Add --allow-persistence-writes (and/or the other --allow-* flags) to."
+else
+    echo "OK: real-hardware suite run clean - no unexpected skips, no failures, nothing deselected."
+fi

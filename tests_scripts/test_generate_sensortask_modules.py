@@ -7,13 +7,12 @@ from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
 import pytest
+from _devices import DEVICE_NAMES
 from _script_loader import load_script_module
 
 from buildgen.errors import BuildError
 from buildgen.generate import generate_device
 from buildgen.twin_wiring import compute_twin_wiring
-
-DEVICE_NAMES = ["dev", "wozi", "arzi", "klkizi", "grkizi", "schlafzi"]
 
 
 @pytest.fixture

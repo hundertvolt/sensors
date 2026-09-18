@@ -243,10 +243,25 @@ information):
   target's flash/NVM** (project owner's explicit, standing direction, 2026-09-17). On the *target*
   this is already institutionalized and stays that way: every operation that spends a
   limited-endurance write cycle is a default-off, explicitly-opted-into marker with a tracked budget
-  — `flash_cycle` ("counts against the 'no extra flash cycles' constraint"), `scd30_write` for any
-  real NVM-persisted SCD30 write, `scd30_extra_write` AND-gated on top for a *second* one beyond the
-  routine per-session write, plus `long_soak`/`multi_day_rollover` (`tests_hardware/conftest.py`,
-  `tests_hardware/README.md`). **The same lens applies to host I/O, where it had been missing**: a
+  — `flash_cycle` ("counts against the 'no extra flash cycles' constraint"), `persistence_write`
+  (`--allow-persistence-writes`) for any real write to a limited-endurance store — the SCD30's own
+  on-chip NVM **and** the RP2040's flash filesystem, which every accepted config-persisting `PUT`
+  writes through `config_manager.py`'s `json.dump()`; a *dispatch-only* PUT persists nothing and is
+  deliberately outside the gate, and FRAM is out of scope (effectively unbounded endurance here) —
+  `scd30_extra_write` AND-gated on top for a *second* SCD30 NVM write beyond the routine
+  per-session one, plus `long_soak`/`multi_day_rollover` (`tests_hardware/conftest.py`,
+  `tests_hardware/README.md`). Because that gate DESELECTS rather than skips, a gated run is
+  invisible to `scripts/_require_clean_hardware_run.sh`'s own skip check, which is why its verdict
+  names the deselected count: "clean" there means "everything that ran, passed", not "everything
+  ran". **The gate covers the write a test OWNS, not one it is merely reached through** (owner's
+  clarification, 2026-09-18): a persisting write that *is* the thing under test is optional and
+  belongs behind the marker, while one that is a shared **prerequisite** — a fixture forcing a mode
+  many tests then exercise, a recovery path — stays unmarked and allowed, since gating it would
+  deselect the very tests it exists to enable. The choice the flag offers is therefore "test
+  everything and accept the higher wear" versus "test everything that matters and keep wear as low
+  as it can go", never "spend zero"; `tests_scripts/test_persistence_write_marker_completeness.py`
+  pins the prerequisite set by name so a new one is triaged against that rule rather than joining it
+  silently. **The same lens applies to host I/O, where it had been missing**: a
   test must not generate mass filesystem churn, and an invariant gets proven *structurally* — assert
   the property the current code must hold — rather than by brute-forcing a scale large enough to
   reproduce a symptom. Found the hard way: `tests/test_tmp_scratch.py` created 400,000 flat sibling
@@ -470,8 +485,11 @@ information):
   tooling instead (`scripts/build_frozen_html.sh`, `scripts/build_website.sh`, `scripts/
   build_firmware.py`), none of which are MicroPython-target code, so the real-interpreter rationale
   above doesn't apply to them; see `tests_scripts/conftest.py`'s own docstring. `scripts/test.sh`
-  runs both: the MicroPython suite as described above, plus `uv run pytest tests_scripts` as one
-  more step before it. `tests_scripts/` — together with `scripts/`, `toolchain/` and `buildgen/`,
+  runs both: the MicroPython suite as described above, plus `uv run pytest tests_scripts`, which it
+  **launches first but backgrounds** so that single-process tier overlaps the whole MicroPython loop
+  rather than serializing in front of it (it used to run as one step before it — SPECIFICATION.md
+  Part E.1 has the current account, including the `devices/*.toml` ordering constraint that
+  concurrency creates). `tests_scripts/` — together with `scripts/`, `toolchain/` and `buildgen/`,
   the host-side build chain it exercises, plus `tests_hardware/`'s own host-CPython pytest code —
   **is** linted and type-checked (project owner's direction: "add all build scripts to the full
   CI"), but through `host_typecheck.ini`'s dedicated mypy pass rather than the main `[tool.mypy]`
@@ -613,10 +631,15 @@ information):
   file as one Unix-port process for all its test functions, sharing one heap — a file whose several
   heaviest tests each build the whole real `sensortask_wozi.build_system()` object graph (one test
   builds it twice) could exhaust the interpreter's 2MB default heap roughly 1 run in 3, depending on
-  MicroPython's own non-deterministic test-function run order. Fixed with `-X heapsize=8M` (verified
-  10/10 clean runs) — a Unix-port-only test-harness setting, unrelated to the real rp2040's own RAM
-  budget. Don't re-diagnose a flaky `MemoryError` in a heavy test file as a new code bug before
-  checking this flag is still in place.
+  MicroPython's own non-deterministic test-function run order. Fixed with an explicit `-X heapsize`
+  — a Unix-port-only test-harness setting, unrelated to the real rp2040's own RAM budget. **The
+  value is not fixed and has moved with the suite's own shape** (8M → 32M when WP1+WP2 made the
+  monolithic `test_sensortask.py` build all 6 devices' graphs in one process, then back down to
+  today's 16M once that file was split per device — root-caused, not overridden); `scripts/test.sh`'s
+  own comment above the flag is the authoritative history, kept there rather than duplicated here.
+  Don't re-diagnose a flaky `MemoryError` in a heavy test file as a new code bug before checking the
+  flag is still in place — and don't raise it as the fix, which that history is a standing example
+  against.
 - **Local test runs pin `$TZ=UTC` (Unix port only).** The Unix port's `time.mktime()`
   (`ports/unix/modtime.c`) calls the host's real libc `mktime()`, which interprets its input as
   **local time** per the process's `$TZ` — unlike the deployed rp2 firmware, whose

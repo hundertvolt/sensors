@@ -10,21 +10,33 @@ from pathlib import Path
 from harness import Board, HardwareTestFailureError, wait_until
 
 DEVICE_SCRIPTS = Path(__file__).resolve().parent.parent / "device_scripts"
+_ARMED_BANNER = "WDT armed, starving now"  # printed by device_scripts/watchdog_starvation_reset.py
 
 
 def test_watchdog_starvation_triggers_a_real_hardware_reset(board: Board) -> None:
     start = time.monotonic()
+    failure = ""
     try:
-        board.run_isolated(DEVICE_SCRIPTS / "watchdog_starvation_reset.py", timeout_s=15.0)
+        # allow_recovery=False: the connection dying IS the expected outcome here, so the harness's
+        # transient-disconnect retry must not run - it spends a full 10s grace window first, which
+        # put this measurement at ~13.2s (reproducibly) against its own 10.0s bound below, i.e. the
+        # assertion was measuring the retry policy rather than the watchdog.
+        board.run_isolated(DEVICE_SCRIPTS / "watchdog_starvation_reset.py", timeout_s=15.0, allow_recovery=False)
         raise AssertionError("run_isolated() returned normally - the watchdog never fired (the device script should never return)")
-    except HardwareTestFailureError:
-        pass  # expected: the connection dies mid-script when the watchdog resets the board
+    except HardwareTestFailureError as exc:
+        failure = str(exc)  # expected: the connection dies mid-script. `exc` is unbound after this block
 
     elapsed = time.monotonic() - start
     assert elapsed < 10.0, (
         f"took {elapsed:.1f}s to observe the connection drop - the device script's own watchdog "
         "is armed for 1.5s, so something else likely timed out instead of a real watchdog reset"
     )
+    # After the timing bound, not before it: _mpremote()'s subprocess.TimeoutExpired path reports
+    # with no stdout at all, and that case is a 15s hang the bound above already names correctly.
+    # allow_recovery=False means a transient connect failure - the case the retry normally absorbs -
+    # raises the same error just as fast and satisfies every other check here without the watchdog
+    # ever being armed; the banner reaches mpremote's stdout only if the script really ran.
+    assert _ARMED_BANNER in failure, f"the connection dropped within the bound but without {_ARMED_BANNER!r} ever arriving - the device script never started, so this was a connect failure, not a watchdog reset:\n{failure}"
 
     # Checked via is_device_present()/is_reachable() rather than tail_log() content, since log
     # output is gated behind DebugLevel (0 by default) and this must hold regardless of that config.

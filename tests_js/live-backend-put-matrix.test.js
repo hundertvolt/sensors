@@ -280,11 +280,17 @@ if (boot.skipped) {
                 CASE_TIMEOUT_MS,
             );
 
-            it.each(validLengths.map((len) => "x".repeat(len)).filter((v) => v !== currentValue))(
+            // Parametrised over LENGTHS, not over the generated strings: `%s` interpolates whatever
+            // it is handed into the test NAME, and vitest derives a failure-screenshot filename from
+            // that name. NTP_Host is maxLength 1024, so handing it the string produced a >255-byte
+            // filename, ENAMETOOLONG on the screenshot write, and a wedged run that only ended at the
+            // job's own 20-minute cap. The message always meant the length anyway.
+            it.each(validLengths.filter((len) => "x".repeat(len) !== currentValue))(
                 "accepts a %s-char string (a valid value distributed across the length range), rendered correctly",
-                async (value) => {
-                    await applyAndExpectRendered(value, "Valid");
+                async (len) => {
+                    await applyAndExpectRendered("x".repeat(len), "Valid");
                 },
+                CASE_TIMEOUT_MS,
             );
         }
 

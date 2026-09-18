@@ -8,9 +8,20 @@ from typing import Any
 
 import http_client
 
+# MEASURED on the dev bench board, 2026-09-17, 21 FRAM-backed chunks: 6.32s idle with real
+# accumulated history, 6.4-7.0s repeated, and 11.58s with three concurrent GET /status workers. Cost
+# is fixed PER CHUNK (~305ms), not per history entry - clearing 21 full chunks costs the same as 21
+# empty ones. The server aborts any request at its own 15.0s outer_cap_s, so a legitimate reset can
+# never exceed that; this sits well above it rather than just above (as the loopback-only twin suite
+# does) to absorb real WiFi latency on the abort's own close, which the twin has none of. Below the
+# cap - the 10.0s this used to be - a slow-but-legitimate reset reads as a client timeout and gets
+# misdiagnosed as a network fault; it failed a bench test on its first statement for exactly that.
+# Gates ~70 call sites across all 8 bench test files.
+_RESET_ERRORS_TIMEOUT_S = 30.0
+
 
 def reset_all_error_logs(dut_ip: str) -> None:
-    res = http_client.fetch(dut_ip, 80, "PUT", "/status", {"ResetErrors": True}, timeout_s=10.0)
+    res = http_client.fetch(dut_ip, 80, "PUT", "/status", {"ResetErrors": True}, timeout_s=_RESET_ERRORS_TIMEOUT_S)
     assert res.status_code == 200 and res.json().get("res") == "OK", f"failed to reset error logs via PUT /status: {res.status_code} {res.body!r}"
 
 

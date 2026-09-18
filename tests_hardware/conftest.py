@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
-    parser.addoption("--device", default=None, help="Serial device path for the flash-tier board (default: $MPREMOTE_DEVICE or /dev/ttyACM0)")
+    parser.addoption("--device", default=None, help="Serial device path for the flash-tier board (default: $MPREMOTE_DEVICE, else the board's stable /dev/serial/by-id symlink - see harness.resolve_board_device())")
     parser.addoption(
         "--soak-tier",
         choices=sorted(SOAK_TIER_SECONDS),
@@ -52,19 +52,20 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         ),
     )
     parser.addoption(
-        "--allow-scd30-writes",
+        "--allow-persistence-writes",
         action="store_true",
         default=False,
         help=(
-            "Global permission to spend ANY real NVM-persisted SCD30 write at all - actually run "
-            "@pytest.mark.scd30_write tests. The SCD30's on-chip NVM has a finite write-wear "
-            "budget, so without this flag a full flash-tier run (dozens of tests) spends zero real "
-            "SCD30 writes, including the one routine per-session write "
-            "scd30_continuous_measurement_triggered would otherwise make (SPECIFICATION.md Part "
-            "C.8). Skipped by default. Every test that touches SCD30's NVM at all needs this flag, "
-            "including the one further gated behind --allow-scd30-extra-write below - this is the "
-            "single flag that decides whether any real SCD30 NVM write test runs, not one flag per "
-            "test group."
+            "Global kill switch for ANY real limited-endurance persistence write - actually run "
+            "@pytest.mark.persistence_write tests. Covers every store with a finite write-wear "
+            "budget, not just one chip: the SCD30's own on-chip NVM, and the RP2040's flash "
+            "filesystem, which every accepted config-persisting PUT writes through "
+            "config_manager.py's own json.dump(). FRAM is deliberately NOT in scope - its endurance "
+            "is effectively unbounded for this project's write rates. Without this flag a full "
+            "bench/flash run spends zero such writes. Skipped by default. Every test that spends one "
+            "at all needs this flag, including the one further gated behind "
+            "--allow-scd30-extra-write below - this is the single flag that decides whether any "
+            "real persistence write happens, not one flag per test group."
         ),
     )
     parser.addoption(
@@ -72,11 +73,11 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         action="store_true",
         default=False,
         help=(
-            "On top of --allow-scd30-writes, also run the one @pytest.mark.scd30_extra_write test "
-            "that spends a SECOND real NVM-persisted SCD30 write beyond the one routine "
-            "per-session write --allow-scd30-writes alone already permits (SPECIFICATION.md Part "
-            "C.8). AND-gated with --allow-scd30-writes, not an independent flag - passing this "
-            "alone, without --allow-scd30-writes, still deselects the test. Skipped by default, "
+            "On top of --allow-persistence-writes, also run the one @pytest.mark.scd30_extra_write "
+            "test that spends a SECOND real NVM-persisted SCD30 write beyond the one routine "
+            "per-session write --allow-persistence-writes alone already permits (SPECIFICATION.md "
+            "Part C.8). Stays SCD30-specific, and stays AND-gated with the global flag - passing "
+            "this alone, without --allow-persistence-writes, still deselects the test. Skipped by default, "
             "same precedent as --allow-flash-cycle: an explicit, rare, deliberately-opted-into "
             "extra real write, never run as part of a routine pass."
         ),
@@ -87,21 +88,21 @@ def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line("markers", "long_soak: real-hardware passive observation over one of three named duration tiers (short/mid/long) - skipped unless --soak-tier is passed; see scripts/run_bench_soak_tests.sh")
     config.addinivalue_line("markers", "multi_day_rollover: a real, fixed ~12.4-day wait, not tier-selectable - skipped unless --allow-multi-day-rollover-wait is passed")
     config.addinivalue_line("markers", "flash_cycle: a deliberate re-provisioning flash (counts against the 'no extra flash cycles' constraint), skipped unless --allow-flash-cycle is passed")
-    config.addinivalue_line("markers", "scd30_write: at least one real NVM-persisted SCD30 write, directly or via a fixture it depends on (e.g. scd30_continuous_measurement_triggered) - deselected unless --allow-scd30-writes is passed")
-    config.addinivalue_line("markers", "scd30_extra_write: a SECOND real NVM-persisted SCD30 write beyond the routine per-session one already spent by a scd30_write test - always carried alongside @pytest.mark.scd30_write on the same test, deselected unless BOTH --allow-scd30-writes AND --allow-scd30-extra-write are passed")
+    config.addinivalue_line("markers", "persistence_write: the TEST ITSELF spends a real limited-endurance write (SCD30 on-chip NVM, or the RP2040 flash filesystem behind any config-persisting PUT), directly or through a helper it drives - deselected unless --allow-persistence-writes is passed. A write that is a shared PREREQUISITE rather than the thing under test stays unmarked and allowed - see tests_hardware/README.md")
+    config.addinivalue_line("markers", "scd30_extra_write: a SECOND real NVM-persisted SCD30 write beyond the routine per-session one already spent by a persistence_write test - always carried alongside @pytest.mark.persistence_write on the same test, deselected unless BOTH --allow-persistence-writes AND --allow-scd30-extra-write are passed")
     config.addinivalue_line("markers", "role_reversal: bench radio temporarily stops hosting br0-wifi-ap to join the DUT's own hotspot - informational marker, not skip-gated")
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
-    """Central deselection point for every real SCD30 NVM write test - AND-gates
-    @pytest.mark.scd30_extra_write on top of @pytest.mark.scd30_write, so --allow-scd30-writes alone
-    decides whether any real SCD30 write test runs at all; --allow-scd30-extra-write only narrows further."""
-    allow_writes = config.getoption("--allow-scd30-writes")
+    """Central deselection point for every real limited-endurance persistence write. AND-gates
+    scd30_extra_write on top of persistence_write: the global flag alone decides whether any such
+    write happens, and --allow-scd30-extra-write only narrows further, for SCD30's second write."""
+    allow_writes = config.getoption("--allow-persistence-writes")
     allow_extra_write = config.getoption("--allow-scd30-extra-write")
     kept: list[pytest.Item] = []
     deselected: list[pytest.Item] = []
     for item in items:
-        lacks_write_permission = item.get_closest_marker("scd30_write") is not None and not allow_writes
+        lacks_write_permission = item.get_closest_marker("persistence_write") is not None and not allow_writes
         lacks_extra_write_permission = item.get_closest_marker("scd30_extra_write") is not None and not allow_extra_write
         if lacks_write_permission or lacks_extra_write_permission:
             deselected.append(item)

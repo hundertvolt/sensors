@@ -61,6 +61,18 @@ export TZ=UTC
 # real CI, which always starts from a fresh checkout with no tests/_tmp to begin with.
 rm -rf tests/_tmp
 
+# Same "bound a long-lived local sandbox against a killed run's leftovers" reasoning as the sweep
+# above, for the one test fixture that has to live in the real tree: tests_scripts/
+# test_build_website_sh.py's malformed-TOML case writes devices/zz_test_<name>.toml and removes it
+# in `finally`, which a SIGKILL (the pytest job below is timeout-wrapped) defeats. A leaked file
+# there is not merely untidy - scripts/_generate_sensortask_modules.py globs devices/*.toml and
+# exits 1 on the first BuildError, so under `set -e` it aborts THIS script, scripts/typecheck.sh and
+# both twin runners outright, naming a device nobody added. `devices/zz_test_*.toml` is therefore a
+# reserved namespace for live-tree test fixtures (both halves of that reservation, and this
+# sweep's own placement ahead of the generation step, are asserted by tests_scripts/test_test_sh.py);
+# a real device may never be named that way. No-op on CI, which always starts from a fresh checkout.
+rm -f devices/zz_test_*.toml
+
 coverage=0
 for arg in "$@"; do
     case "$arg" in
@@ -84,13 +96,26 @@ if [ ! -x "$micropython_bin" ]; then
     uv run toolchain/setup_toolchain.py setup --toolchain-dir "$toolchain_dir" "${skip_apt_flag[@]}"
 fi
 
+# No static src/sensortask_wozi.py/sensortask_dev.py exist any more (BUILD_CHAIN_PLAN.md's Session
+# 6 finish criterion) - every device's own sensortask_<device>.py is generated fresh here, via
+# buildgen, into build/generated_src/ (gitignored - see scripts/_generate_sensortask_modules.py's
+# own docstring for why NOT into src/ itself). tests/_sensortask_scenarios.py (dynamic __import__()
+# per device) and every tests/test_digital_twin_*.py file that statically imports a sensortask_<device>
+# module keep working unchanged: MICROPYPATH below puts this directory first, so `import
+# sensortask_wozi` resolves to the freshly generated module.
+#
+# Runs BEFORE tests_scripts/ is backgrounded below, not after - see that block's own comment for
+# the devices/*.toml race this ordering closes.
+echo "== Generating buildgen device modules into build/generated_src/"
+uv run scripts/_generate_sensortask_modules.py
+
 # tests_scripts/ is genuinely independent of everything below this point - real CPython/pytest code
 # (never MICROPYPATH/build/generated_src/frozen_modules-dependent, see tests_scripts/conftest.py's
 # own docstring) that only ever touches pytest's own isolated tmp_path fixtures or OS-assigned free
 # ports (test_digital_twin_generated_boot.py's own _free_port()), never this repo's real
 # build/generated_src/ or frozen_modules/ - confirmed directly, no test file in tests_scripts/
 # references either outside a tmp_path. So it needs nothing from the setcap/frozen_html/
-# frozen_website/buildgen steps below, and backgrounding it here - instead of the old placement
+# frozen_website steps below, and backgrounding it here - instead of the old placement
 # right before the MicroPython test-file loop - overlaps its own real ~4-minute wall-clock (measured
 # directly: 247.93s under pytest's own timer) with essentially the *entire* rest of this script
 # rather than serializing in front of it. Counted the same as any other job against
@@ -106,11 +131,53 @@ fi
 # a real failure worth reporting as one. 1200s is ~5x its measured ~248s, so it only ever fires on
 # a genuine hang, never on ordinary slowness. CI's own timeout-minutes stays the outer backstop,
 # not the defense (see .github/workflows/ci.yml's own comment on that distinction).
+#
+# MUST stay behind the buildgen generation step above, which globs devices/*.toml: one
+# tests_scripts/ test (test_build_website_sh.py's malformed-TOML case) writes a throwaway
+# devices/zz_test_*.toml into the live tree and removes it again, and build_website.sh resolves
+# devices/<device>.toml from the repo root, so it cannot be given a tmp_path tree instead. Generated
+# first, that file's brief existence is never observed; backgrounded first, a glob landing inside
+# that window aborts the whole run under `set -e` with a BuildError naming a device nobody added.
+# Nothing else in the foreground re-globs devices/ once generation is done (the test loop reads the
+# generated wiring-plan JSONs, and build_website.sh below names one device explicitly).
+
 echo "== Running tests_scripts/ (CPython-side build-tooling tests)"
 tests_scripts_status_file="$(mktemp)"
 tests_scripts_timeout_s="${TESTS_SCRIPTS_TIMEOUT_S:-1200}"
+# Pre-declared empty and the trap armed HERE, before the background job exists - not alongside the
+# two mktemp -d calls further down. Bash does not kill its background jobs when the parent exits,
+# and every step between this point and there (setcap, the two frozen-module builds) can abort under
+# `set -e`: an orphaned pytest would then keep running for up to its own timeout and transiently
+# write a devices/zz_test_*.toml into the live tree, re-opening the very glob hazard the generation
+# ordering above closes. Both halves confirmed directly by reproducing the pattern: with no trap the
+# inner `timeout` outlives the aborted parent, with this one it is gone. `rm -rf ""` is a harmless no-op for either dir before its mktemp has run,
+# and tests_scripts_pid is cleared once the job is reaped so this can never signal a recycled PID.
+raw_dir=""
+results_dir=""
+tests_scripts_pid=""
+tests_scripts_inner_pidfile="$(mktemp)"
+# shellcheck disable=SC2329  # invoked indirectly, by the `trap _cleanup EXIT` below
+_cleanup() {
+    # The subshell alone is not enough to kill: its `timeout` child would be reparented and keep
+    # running (with pytest under it) for the rest of its own budget. The subshell therefore records
+    # that child's pid, so both are signalled by pid - exact, and with no dependency on pkill/procps,
+    # which a --variant=minbase chroot does not have. `timeout` forwards the signal to pytest
+    # itself, so one SIGTERM takes the whole chain down.
+    if [ -n "$tests_scripts_pid" ]; then
+        inner="$(cat "$tests_scripts_inner_pidfile" 2>/dev/null || true)"
+        if [ -n "$inner" ]; then
+            kill "$inner" 2>/dev/null || true
+        fi
+        kill "$tests_scripts_pid" 2>/dev/null || true
+    fi
+    rm -rf "$raw_dir" "$results_dir" "$tests_scripts_status_file" "$tests_scripts_inner_pidfile"
+}
+trap _cleanup EXIT
 (
-    if timeout --kill-after=10 "$tests_scripts_timeout_s" uv run pytest tests_scripts -q; then
+    timeout --kill-after=10 "$tests_scripts_timeout_s" uv run pytest tests_scripts -q &
+    inner_pid=$!
+    echo "$inner_pid" >"$tests_scripts_inner_pidfile"
+    if wait "$inner_pid"; then
         echo "PASS" >"$tests_scripts_status_file"
     else
         ec=$?
@@ -120,6 +187,7 @@ tests_scripts_timeout_s="${TESTS_SCRIPTS_TIMEOUT_S:-1200}"
         echo "FAIL" >"$tests_scripts_status_file"
     fi
 ) &
+tests_scripts_pid=$!
 
 # tests/test_digital_twin_sensortask_integration.py's own hotspot/DNS test binds the real
 # privileged port 53 (src/captive_dns.py's DNSServer) from a genuine, organically-triggered hotspot
@@ -151,16 +219,6 @@ scripts/build_frozen_html.sh
 echo "== Building frozen_modules/frozen_website_wozi.py"
 scripts/build_website.sh wozi frozen_modules/frozen_website_wozi.py
 
-# No static src/sensortask_wozi.py/sensortask_dev.py exist any more (BUILD_CHAIN_PLAN.md's Session
-# 6 finish criterion) - every device's own sensortask_<device>.py is generated fresh here, via
-# buildgen, into build/generated_src/ (gitignored - see scripts/_generate_sensortask_modules.py's
-# own docstring for why NOT into src/ itself). tests/_sensortask_scenarios.py (dynamic __import__()
-# per device) and every tests/test_digital_twin_*.py file that statically imports a sensortask_<device>
-# module keep working unchanged: MICROPYPATH below puts this directory first, so `import
-# sensortask_wozi` resolves to the freshly generated module.
-echo "== Generating buildgen device modules into build/generated_src/"
-uv run scripts/_generate_sensortask_modules.py
-
 # tests_scripts/ itself (CPython-side build-tooling tests: scripts/build_frozen_html.sh, scripts/
 # build_website.sh, scripts/build_firmware.py - SPECIFICATION.md Part B.11's "fully verified"
 # follow-up; see tests_scripts/conftest.py's own docstring for why these run under CPython/pytest
@@ -170,19 +228,16 @@ uv run scripts/_generate_sensortask_modules.py
 # compile it gates stays opt-in for fast local iteration - .github/workflows/ci.yml's
 # firmware-build-verify job is what actually sets it.
 
-raw_dir=""
 if [ "$coverage" = "1" ]; then
     raw_dir="$(mktemp -d)"
 fi
 # One shared results_dir regardless of --coverage: every parallel test-file job (below) writes its
 # own PASS/FAIL status here instead of returning it as its own process exit code or mutating a
 # shared bash array from a background subshell (which wouldn't be visible to the parent shell).
-# Removing raw_dir's own narrower trap in favor of this one, unconditional trap - bash's `trap ...
-# EXIT` replaces any previously registered EXIT handler outright rather than stacking, so the two
-# cleanups must live in one trap. `rm -rf ""` (raw_dir when --coverage was never passed) is a
-# harmless no-op, not an error.
+# Both dirs are cleaned by the single EXIT trap armed with the pytest job above - bash's `trap ...
+# EXIT` replaces any previously registered EXIT handler outright rather than stacking, so every
+# cleanup this script needs has to live in that one trap.
 results_dir="$(mktemp -d)"
-trap 'rm -rf "$raw_dir" "$results_dir" "$tests_scripts_status_file"' EXIT
 
 failed=0
 # Per-file timeout with two retries (three attempts total), not just the job-level
@@ -287,8 +342,22 @@ max_attempts=3
 # TEST_PARALLELISM: how many test_*.py files run at once. Each file is already a fully isolated
 # Unix-port OS process (its own heap, its own machine.py-fake global state) with no shared memory
 # with any other file's process, so running several concurrently changes wall-clock only, never
-# behavior - PROVIDED the two things that can actually break under real concurrency stay disjoint
-# across files, both re-audited by enumerating every file (2026-09-17, not spot-checked): TmpScratch
+# behavior - EXCEPT for a THIRD hazard this list did not originally name, and which is NOT closed:
+# a twin test asserting that a real background state transition completed within a fixed budget is
+# measuring host speed, so CPU starvation can fail it while the code under test is healthy. Found on
+# the bench Pi4 (2026-09-17): test_digital_twin_sensortask_integration.py's hotspot/DNS test fails
+# with "real hotspot activation never started the real DNSServer task" under the full parallel suite,
+# and - decisively - reproduces with twelve synthetic CPU busy-loops and NO parallel test processes
+# at all, ruling out port contention and the chroot. Which file loses is non-deterministic; a second
+# file (test_digital_twin_webserver_concurrency_dev.py) lost on one run. The default below is 4x core
+# count, i.e. 16 concurrent Unix-port processes on that 4-core host, whose cores are far slower than
+# the sandbox the 4x multiplier was measured on. Not reproducible here at the same nominal load, and
+# GitHub's own runners have not hit it. BACKLOG.md carries the open decision (lower the default on
+# low-core hosts / widen the budget / mark such tests non-parallel) - do not assume a failure in one
+# of those files is a code bug before checking host load.
+#
+# The two hazards this list DID name stay disjoint, both re-audited by enumerating every file
+# (2026-09-17, not spot-checked): TmpScratch
 # keys (all 29 in the suite confirmed pairwise distinct - tests/_tmp_scratch.py's own docstring; the
 # per-device split above gives each of its 12 new files its own key for exactly this reason) and
 # real socket ports (each file's own fixed base range, with headroom over what it actually
@@ -307,7 +376,18 @@ max_attempts=3
 # ntp_fram_system / wifi_service). A new test file that binds a socket claims an unused base below
 # 32768 - never a neighbour's, never inside the ephemeral range.
 #
-# Defaults to 4x the runner's own core count, not 1x: measured directly on a 4-core sandbox
+# The multiplier is AUTODETECTED from the host's real capability, not fixed at 4x, because 4x is
+# safe on a fast host and demonstrably not safe on a slow one: the same 4 cores that make a
+# GitHub-hosted runner comfortable at 16 concurrent processes make the bench Pi4 starve a twin
+# test's real-time budget (BACKLOG.md item 28). Core COUNT cannot tell those two apart - both are
+# 4-core - so the probe below measures core SPEED instead, by timing a fixed integer loop in the
+# very interpreter the tests run under (the most honest proxy available, and ~120ms on a fast x86
+# host). The thresholds are calibrated against that measurement, not guessed. TEST_PARALLELISM
+# still overrides everything, which is what the bench Pi4 should use if the probe ever misjudges it.
+#
+# The 4x branch preserves exactly the behaviour measured below, so nothing changes on CI.
+#
+# Defaults to 4x the runner's own core count on a fast host, not 1x: measured directly on a 4-core sandbox
 # (matching a GitHub-hosted ubuntu-latest runner's core count), total `user` CPU time across the
 # whole suite stayed flat (~4m21s-4m27s) at TEST_PARALLELISM 4/8/16 while wall-clock dropped
 # 8m27s -> 4m28s -> 3m45s - direct confirmation the suite is genuinely sleep-bound (real SPI
@@ -316,8 +396,10 @@ max_attempts=3
 # "free" concurrency here. At 16, the bottleneck shifts entirely to the backgrounded tests_scripts/
 # job's own single-process pytest runtime (measured: 224s, matching the 3m44.855s total almost
 # exactly) - going further would need tests_scripts/ itself parallelized (e.g. pytest-xdist) to see
-# any more benefit, not attempted. Override downward (e.g. TEST_PARALLELISM=1 to fully recover the
-# old strictly-sequential behavior, or a smaller multiple) if a future file is ever found to violate
+# any more benefit, not attempted. Override downward (e.g. TEST_PARALLELISM=1 to run the test files
+# themselves one at a time - not a full return to the old strictly-sequential behavior, since the
+# backgrounded tests_scripts/ job holds that single slot until it finishes, so the first test file
+# only starts once pytest is done - or a smaller multiple) if a future file is ever found to violate
 # one of the two collision-safety assumptions above, or if a given runner's real memory/CPU-quota
 # limits make 4x too aggressive.
 #
@@ -332,7 +414,44 @@ max_attempts=3
 # CLAUDE.md's hard rule on avoidable hardware wear covers the host's own disk, not just the
 # target's flash, and a second file of that shape would contend with everything else here rather
 # than overlap with it.
-max_parallel="${TEST_PARALLELISM:-$(( $(nproc 2>/dev/null || echo 4) * 4 ))}"
+_detect_parallelism() {
+    local cores quota period probe_start probe_ms multiplier
+    cores="$(nproc 2>/dev/null || echo 4)"
+    # A container's CPU quota bounds real parallelism far below what nproc reports (cgroup v2; v1
+    # and "max" both fall through to the nproc value unchanged).
+    if [ -r /sys/fs/cgroup/cpu.max ]; then
+        read -r quota period < /sys/fs/cgroup/cpu.max || true
+        if [ "${quota:-max}" != "max" ] && [ "${period:-0}" -gt 0 ] 2>/dev/null; then
+            local quota_cores=$(( (quota + period - 1) / period ))
+            [ "$quota_cores" -ge 1 ] && [ "$quota_cores" -lt "$cores" ] && cores="$quota_cores"
+        fi
+    fi
+    # Speed probe. Never allowed to fail the run: any error, and we fall through to the fast-host
+    # multiplier, i.e. exactly the previous behaviour.
+    probe_start="$(date +%s%N 2>/dev/null || echo 0)"
+    "$micropython_bin" -c 'x=0
+for i in range(500000):
+    x+=i' >/dev/null 2>&1 || true
+    probe_ms=$(( ( $(date +%s%N 2>/dev/null || echo 0) - probe_start ) / 1000000 ))
+    # A failed probe lands here too, and deliberately so: its probe_ms is <= 0, which picks the
+    # fast-host multiplier, i.e. exactly the behaviour this autodetection replaced. Never silently
+    # slower than before because the probe itself broke.
+    if [ "$probe_ms" -le 250 ]; then
+        multiplier=4            # fast host (measured: ~120ms on this project's own x86 sandbox)
+    elif [ "$probe_ms" -le 900 ]; then
+        multiplier=2            # mid host - the bench Pi4's class; halves the oversubscription
+    else                        # that starved a twin test's real-time budget at 4x
+        multiplier=1
+    fi
+    echo "$(( cores * multiplier )) $cores $multiplier $probe_ms"
+}
+if [ -n "${TEST_PARALLELISM:-}" ]; then
+    max_parallel="$TEST_PARALLELISM"
+    echo "== Test parallelism: $max_parallel (TEST_PARALLELISM override)"
+else
+    read -r max_parallel _cores _multiplier _probe_ms < <(_detect_parallelism)
+    echo "== Test parallelism: $max_parallel ($_cores usable cores x $_multiplier, interpreter speed probe ${_probe_ms}ms)"
+fi
 # Clamped to >= 1: the dispatch loop below blocks while the running-job count is >= max_parallel, so
 # a 0 or negative value (a plausible "turn parallelism off" guess - 1 is what actually does that)
 # makes that `wait -n || true` spin forever without ever dispatching a test. Confirmed directly, and
@@ -457,6 +576,7 @@ for test_file in "${test_files[@]}"; do
     run_test_file "$test_file" "$status_file" &
 done
 wait || true
+tests_scripts_pid=""  # reaped by the `wait` above - cleared so the EXIT trap can't signal a recycled PID
 
 # The tests_scripts/ background job (started before this loop, see the toolchain-check block
 # above) is reaped by the same unqualified `wait` just above like any other job; its own status

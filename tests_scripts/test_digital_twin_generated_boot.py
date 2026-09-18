@@ -10,15 +10,17 @@ import os
 import socket
 import subprocess
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import pytest
 
+from buildgen.definitions import generate_definitions
 from buildgen.generate import generate_device
 from buildgen.twin_wiring import compute_twin_wiring
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from buildgen.model import DeviceModel
 
 _HOST = "127.0.0.1"
 _HTTP_OK = 200
@@ -50,6 +52,33 @@ _TWIN_DURATION_S = 15
 # reasoning, confirmed directly by reading that route's implementation).
 _STUB_FROZEN_HTML = '"""Test-only stub - digital_twin/machine.py has no static content of its own; this suite never requests \'/\'."""\n'
 _SMOKE_ENDPOINTS = ("/measurements", "/sensors", "/networking", "/system", "/status")
+
+# Discovered, never listed: a device TOML added to devices/ is covered by every test below with no
+# edit here, which is the whole point of a generated build chain. Same for a new synthetic fixture,
+# minus the deliberately malformed ones (they exist to be rejected, not booted).
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+_REAL_DEVICE_TOMLS = sorted(p.name for p in (_REPO_ROOT / "devices").glob("*.toml"))
+_FIXTURE_TOMLS = sorted(p.name for p in (_REPO_ROOT / "tests_scripts" / "buildgen_fixtures").glob("*.toml") if not p.name.startswith("malformed_"))
+
+# Reported, not fixed (BACKLOG item 31, and CLAUDE.md's "flag, don't silently change" rule for a
+# cross-file discrepancy a scan turns up). buildgen/definitions.py's _errcount_group() is keyed by
+# DRIVER KIND - it receives only a set of have-keys and has no instance information at all - while
+# the API publishes one key per LOGGER INSTANCE. No real device is affected (none declares two
+# instances of one driver, and dev's uart_link pair happens to use exactly the name_ext values the
+# catalog hardcodes), so this is latent, not live. Both synthetic fixtures are affected, which is
+# precisely what a fixture is for. Pinned exactly rather than waved through: closing the gap makes
+# this fail and prompts the exemption's removal, and any OTHER drift still fails immediately.
+# Each value is (published-but-never-displayed, displayed-but-never-published).
+_KNOWN_CATALOG_DRIFT: dict[str, tuple[frozenset[str], frozenset[str]]] = {
+    "novel_combo": (
+        frozenset({"SCD30_primary", "SCD30_secondary", "UART_a", "UART_b"}),
+        frozenset({"SCD30", "UART_init", "UART_resp"}),
+    ),
+    "multi_instance": (
+        frozenset({"BMP3XX_only", "CFGMGR_BMP3XX_only", "CFGMGR_SGP40_a", "CFGMGR_SGP40_b", "SCD30_a", "SCD30_b", "SGP40_a", "SGP40_b"}),
+        frozenset({"BMP3XX", "CFGMGR_BMP3XX", "CFGMGR_SGP40", "SCD30", "SGP40"}),
+    ),
+}
 
 
 @pytest.fixture
@@ -101,6 +130,42 @@ def _wait_until_serving(proc: subprocess.Popen[str], port: int, timeout_s: float
     raise TimeoutError(f"generated device never started serving on {_HOST}:{port} within {timeout_s}s")
 
 
+def _website_errcount_keys(model: DeviceModel, src_dir: Path) -> set[str]:
+    """The errcount rows js/templates.js will render for this device, from the real generator."""
+    groups = [g for section in generate_definitions(model, src_dir)["sections"] for g in section["groups"] if g.get("kind") == "errcount"]
+    assert len(groups) == 1, f"expected exactly one errcount group for {model.device}, got {len(groups)}"
+    return {row["key"] for row in groups[0]["modules"]}
+
+
+def _errcount_parity_failures(model: DeviceModel, src_dir: Path, status_body: object) -> list[str]:
+    """Compares the error sources GET /status really publishes against the website's own catalog.
+
+    The two sides are built by unrelated mechanisms: the API derives itself from the live object
+    graph (SensorReaderConfig.get_error_sources() returns [self, self.cfgmgr], and the generated
+    _collect_error_sources() is a plain loop over every constructed module), while the catalog in
+    buildgen/definitions.py is hand-kept. Both drift directions are silent in the product - a source
+    with no row is never rendered, and a row with no source renders a permanent, reassuring "0",
+    because js/templates.js falls back to `errcount[key] ?? {counter: 0}`.
+    """
+    if not isinstance(status_body, dict) or not isinstance(status_body.get("errcount"), dict):
+        return ["GET /status carried no usable errcount object, so no parity claim would mean anything"]
+    published = set(status_body["errcount"])
+    displayed = _website_errcount_keys(model, src_dir)
+    expected_missing, expected_extra = _KNOWN_CATALOG_DRIFT.get(model.device, (frozenset(), frozenset()))
+    missing = (published - displayed) - expected_missing
+    extra = (displayed - published) - expected_extra
+    failures = []
+    if missing:
+        failures.append(f"error sources published by GET /status with no website row (never displayed): {sorted(missing)}")
+    if extra:
+        failures.append(f"website errcount rows with no published source (each renders a permanent 0): {sorted(extra)}")
+    # The exemption is a record of a REPORTED gap, not a licence. Once the catalog derives per
+    # instance, these stop being drift and the stale entry has to go - loudly, not quietly.
+    if expected_missing and not (expected_missing & published):
+        failures.append(f"{model.device}'s _KNOWN_CATALOG_DRIFT entry is stale - the gap appears to be fixed, so delete it (and BACKLOG item 31) rather than carrying it")
+    return failures
+
+
 def _boot_generated_device(repo_root: Path, micropython_bin: Path, src_dir: Path, ext_dir: Path, device_toml: Path, tmp_path: Path, port: int) -> list[str]:
     """Generates `device_toml` via buildgen, boots the result under run_generic_integration.py in a
     real MicroPython Unix-port subprocess, hits a handful of real REST endpoints, and returns any
@@ -140,6 +205,10 @@ def _boot_generated_device(repo_root: Path, micropython_bin: Path, src_dir: Path
                 failures.append(f"GET {path} -> {status}")
             elif not isinstance(body, dict):
                 failures.append(f"GET {path} -> non-JSON-object body {body!r}")
+            elif path == "/status":
+                # Rides the body this loop already fetched - the parity check costs no extra boot,
+                # and inherits this test's own generic device/fixture coverage for free.
+                failures.extend(_errcount_parity_failures(generated.model, src_dir, body))
     finally:
         try:
             proc.wait(timeout=_SHUTDOWN_TIMEOUT_S)
@@ -157,7 +226,7 @@ def _boot_generated_device(repo_root: Path, micropython_bin: Path, src_dir: Path
     return failures
 
 
-@pytest.mark.parametrize("device_toml_name", ["novel_combo.toml", "multi_instance.toml"])
+@pytest.mark.parametrize("device_toml_name", _FIXTURE_TOMLS)
 def test_synthetic_fixture_boots_and_serves_over_real_http(
     repo_root: Path, micropython_bin: Path, src_dir: Path, ext_dir: Path, fixtures_dir: Path, tmp_path: Path, device_toml_name: str,
 ) -> None:
@@ -170,14 +239,14 @@ def test_synthetic_fixture_boots_and_serves_over_real_http(
     assert failures == []
 
 
-@pytest.mark.parametrize("device", ["wozi", "dev", "arzi", "klkizi", "grkizi", "schlafzi"])
+@pytest.mark.parametrize("device_toml_name", _REAL_DEVICE_TOMLS)
 def test_real_device_boots_its_generated_module_and_serves_over_real_http(
-    repo_root: Path, micropython_bin: Path, src_dir: Path, ext_dir: Path, tmp_path: Path, device: str,
+    repo_root: Path, micropython_bin: Path, src_dir: Path, ext_dir: Path, tmp_path: Path, device_toml_name: str,
 ) -> None:
     # Every real device's own TOML, generated fresh here - the actual proof that Session 3's
     # generator produces a module that runs, for every real device, not just ast.parse()s
     # (BUILD_CHAIN_PLAN.md's Session 5 write-up: "ideally every" entry point).
-    device_toml = repo_root / "devices" / f"{device}.toml"
+    device_toml = repo_root / "devices" / device_toml_name
     port = _free_port()
     failures = _boot_generated_device(repo_root, micropython_bin, src_dir, ext_dir, device_toml, tmp_path, port)
     assert failures == []

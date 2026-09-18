@@ -9,6 +9,7 @@ import time
 from typing import TYPE_CHECKING
 
 import http_client
+import pytest
 from error_log_helpers import assert_module_error_log_empty, reset_all_error_logs
 from harness import Board, wait_until
 
@@ -129,6 +130,7 @@ def _try_fetch_ok(dut_ip: str) -> bool:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.persistence_write
 def test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly(board: Board, bench: BenchBridge, dut_ip: str) -> None:
     reset_all_error_logs(dut_ip)
     current = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=10.0).json()

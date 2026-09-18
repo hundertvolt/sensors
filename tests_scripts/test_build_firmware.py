@@ -12,6 +12,7 @@ from pathlib import Path
 from types import ModuleType
 
 import pytest
+from _devices import DEVICE_NAMES
 from _script_loader import load_script_module
 
 
@@ -202,7 +203,7 @@ def test_cli_missing_toolchain_dir_fails_before_attempting_a_build(repo_root: Pa
     assert not (tmp_path / "out.uf2").exists()
 
 
-@pytest.mark.parametrize("device", ["wozi", "dev", "arzi", "klkizi", "grkizi", "schlafzi"])
+@pytest.mark.parametrize("device", DEVICE_NAMES)
 @pytest.mark.skipif(
     os.environ.get("RUN_SLOW_FIRMWARE_BUILD") != "1",
     reason="real ARM firmware compile, several minutes - opt in with RUN_SLOW_FIRMWARE_BUILD=1 "

@@ -1489,6 +1489,26 @@ are uninitialized, and which ones is decided by task-scheduling order. The resul
 clear behind a `200`, inconsistent across modules. Fixed 2026-09-11; covered at the mock, twin and
 flash tiers.
 
+**Confirmed on real hardware (dev bench board, 2026-09-17).** Three properties of this layer that
+had only ever been shown against the twin's fake chip were re-run against the real FM25xx, with the
+board's own `dev` firmware:
+
+- **The all-or-nothing abrupt-restart guarantee holds, with the "all" branch actually exercised.**
+  WIFI's FRAM-backed log read `counter=3`, history `W5, W4, W4` before an abrupt `hard_reset()` and
+  byte-identical values after it — not a partial remnant, and not the vacuous `0 → 0` a test built on
+  a deauth would produce (`bench.kick_all_stations()` logs nothing at all; only a real
+  `bench.ap_down()` outage generates entries).
+- **`PUT /status {"ResetErrors": true}` clears every chunk and yields while doing it.** All 21 of
+  `dev`'s chunks (`UART_init`/`UART_resp` included) read back 0 with their rings cleared, and a
+  concurrent `GET /status` stayed at 0.56-0.76s throughout a `PUT` lasting 8.1s — so the sweep never
+  holds the event loop and cannot threaten the 8388ms watchdog cap. Its cost is fixed **per chunk**
+  (~305ms), not per history entry. Timings and the remaining load-case concern: BACKLOG.md item 24.
+- **The UART link keeps its never-block invariant under sustained FRAM writing.** Across a 20.8s
+  window carrying three back-to-back `ResetErrors` calls (~6.9s each, i.e. near-continuous chunk
+  writing), `dev`'s crossover pair completed 23 further transfers with zero failures and held its 1s
+  exerciser cadence — the guarantee in CLAUDE.md's `asy_uart_comm.py` rule, shown against the real
+  peripheral rather than only the bench jumper at idle.
+
 Log-level methods, two tiers: `pr.one`/`pr.evt`/`pr.all` (sync, print-only, no history) for
 info/trace; `pr.err_s`/`pr.wrn_s` (async, persist to history/FRAM) for anything counting against
 `get_error_counter()`; `pr.err`/`pr.wrn` (sync, non-persisting) for a genuinely sync call site
@@ -1653,7 +1673,7 @@ optional polish (project owner's explicit direction):**
   one exception: **SCD30's own on-chip NVM write is opt-in, off by default, and capped at one real
   write per test session** — every real SCD30 write, flash wear being a real, always-relevant
   concern on real hardware, is gated behind `tests_hardware/conftest.py`'s
-  `--allow-scd30-writes`/`@pytest.mark.scd30_write` (the single global permission: without it, a
+  `--allow-persistence-writes`/`@pytest.mark.persistence_write` (the single global permission: without it, a
   full flash-tier run spends zero real SCD30 writes, including the one routine per-session write
   `scd30_continuous_measurement_triggered` would otherwise make for the whole bus-hazard group).
   Any additional test that needs to fire SCD30's own write a second time is gated behind a further,
@@ -2685,9 +2705,21 @@ Unit tests for `src/`. Get the current count with `ls tests/test_*.py | wc -l` a
 Tests run under a **real MicroPython interpreter** (the Unix port), not CPython plus
 MicroPython-flavored stubs. `scripts/test.sh` shells out to a built Unix-port binary directly, once
 per `tests/test_*.py`, and checks its exit code. `pytest` covers the host-only side instead:
-`tests_scripts/` exercises the build tooling (`scripts/build_firmware.py`, `build_frozen_html.sh`,
-`build_website.sh`) under real CPython, since none of that is MicroPython-target code.
-`scripts/test.sh` runs both suites, pytest first.
+`tests_scripts/` runs under real CPython, since none of what it covers is MicroPython-target code —
+the build tooling (`scripts/build_firmware.py`, `build_frozen_html.sh`, `build_website.sh`),
+`buildgen/` and `toolchain/`, `devices/*.toml`'s own shape, the pure helpers of host-side scripts
+like `scripts/_digital_twin_ci_suite.py`, `tests_hardware/`'s pytest-level marker gating, and
+cross-file invariants that can only be checked by reading real source text (`scripts/test.sh`'s own
+step ordering; the `outer_cap_s` ceiling's mirrors, Part H.4).
+
+`scripts/test.sh` runs both suites. **It launches pytest first but does not wait for it** — the
+pytest tier is backgrounded so its single-process runtime overlaps the whole MicroPython loop
+instead of serializing in front of it, and both are reaped by one `wait` at the end (it counts
+against the same `TEST_PARALLELISM` budget as any test file, and carries its own `timeout` for the
+standing "hanging tests are never allowed" rule). One ordering constraint follows from that
+concurrency and is load-bearing: every step that globs `devices/*.toml` must run **before** the
+background launch, because one `tests_scripts/` test necessarily writes a throwaway
+`devices/zz_test_*.toml` into the live tree. See that script's own comments.
 
 ## E.2 Test framework
 
@@ -2743,7 +2775,8 @@ buffer methods *before* their `try:` block started — fixed by widening both to
 body.
 
 **The allocator is the one other sanctioned mocking surface**, on the same
-no-real-class-equivalent reasoning: an 8MB test heap cannot be starved at a chosen moment, so
+no-real-class-equivalent reasoning: the Unix-port test heap (`scripts/test.sh`'s own `-X heapsize`,
+a deliberately generous multiple of the 2MB default) cannot be starved at a chosen moment, so
 `tests/test_asy_uart_comm.py`'s `_StarvedAlloc` shadows *that module's own* `bytearray` global —
 the reassign-a-module-name mechanism the rest of `tests/` already uses, pointed at an allocation
 instead of a method. Two rules make it safe, both learned by getting them wrong first: it must be
@@ -2802,7 +2835,7 @@ fire through any call path that exists. Measured one by one: `_write_frame_with_
 destination nor a push callback, so `_run_get()` always allocates one). `asy_uart_driver.py` adds
 four more of a different kind — the `except MemoryError` around `msg += add` in
 `read_until_complete()`/`readline_until_complete()`, which guard an accumulator growing across rounds
-with no deterministic injection point under the 8M test heap. Kept, like the rest — one branch of
+with no deterministic injection point under the Unix-port test heap. Kept, like the rest — one branch of
 defence in depth in a module contracted never to raise is cheaper than the day the surrounding logic
 moves.
 
@@ -3958,14 +3991,15 @@ number/string field's caption** — a toggle/enum field's round-trip needs a gen
 | REST target | `asy_webserver_service.py` (A.8) | Six endpoints, sparse-body PUT, no `cmd` envelope, no `Led` prefix. |
 | Nav grouping | Mirrors the 6 REST endpoints 1:1 | Measurements, Sensors, Networking, System, Status, Notification. |
 | History depth | Counts always visible; full history on demand; no pagination | A realistic depth stays well under 20 entries, rides along in `/status`. |
-| Poll coordination | One shared poll-manager (single-flight queue) | Measurements and status/settings groups are never polled concurrently by design; every fetch has a shared `AbortController` timeout. |
+| Poll coordination | One shared poll-manager (single-flight queue) | Measurements and status/settings groups are never polled concurrently by design; every fetch has a shared `AbortController` timeout — `DEFAULT_TIMEOUT_MS = 15000`, see the row below for why that exact value. |
+| Per-request timeout value | `poll-manager.js`'s `DEFAULT_TIMEOUT_MS` deliberately **equals** `asy_webserver_service.py`'s `outer_cap_s` (15.0s) | Not an independently-chosen UI number: the server aborts any request at `outer_cap_s` (applied via `asyncio.wait_for()`), so matching it is what makes a slow request surface as *the server's own abort*, which the UI can report, rather than a client-side give-up it cannot explain. Giving up earlier would hide real server aborts behind a generic timeout; later would leave the UI hanging past the point the server already gave up. The heaviest real request is `PUT /status {"ResetErrors": true}`, which resets every error source sequentially (BACKLOG item 24) — this ceiling is a product constraint for its operators, not a test-harness number. The mirror is enforced structurally by `tests_scripts/test_request_timeout_ceiling.py`, which parses `outer_cap_s` out of `src/` with `ast` and pins this constant and both test tiers' own `ResetErrors` client timeouts against it. |
 | API reachability | No dedicated API-browser page | Reachable somewhere in the ordinary GUI is enough. |
 | Definitions validation | Strict — visible error banner on mismatch | Checks shape/version including `pollGroup` and poll-interval fields. |
 | Landing page | Measurements | Matches legacy's default. |
 | Card/nav visual treatment | Modernized flat cards; slide-in drawer nav | Soft border/shadow, real light/dark tokens. |
 | Rendering safety | `textContent` only, never `innerHTML` | XSS-safe by construction. |
 | Numeric coercion/validation | `type_or_range_error()`/`coerce_numeric()`, mirrored in `mock-server.js` | Canonical for every numeric field (A.8, Part G). |
-| Dispatch-only PUT fields | `SystemCmd`, `PauseTime`, `lightCmdLED`, `ResetErrors` | None persisted — each re-dispatches fresh every submission. An enum field with no GET-matching state renders a blank placeholder by default. |
+| Dispatch-only PUT fields | `SystemCmd`, `PauseTime`, `lightCmdLED`, `ResetErrors`, plus every schema field carrying `dispatch=true` in its own `@web` tag (`SGPResetVOC`, `ISLCalibrate` today — derive the set from the tags, never from this list alone) | None persisted — each re-dispatches fresh every submission. **This distinction is load-bearing beyond the UI**: a PUT to any *other* field is written straight through to the RP2040's flash filesystem by `config_manager.py`'s own `json.dump()`, i.e. it spends a real flash cycle, which is why `tests_hardware/`'s `@pytest.mark.persistence_write` gate exists and why a dispatch-only PUT is deliberately outside it. An enum field with no GET-matching state renders a blank placeholder by default. |
 | PUT-result coloring | 4-state (`Valid`/`Unchanged`/`Invalid`/`Failed`), colored at group and field level | Matches the backend vocabulary. A whole-request failure marks every field `Failed` individually. |
 | PUT/GET error handling | Non-2xx / null body / `res:"ERR"` = whole-request failure, surfacing the server's `descr` | A field missing from `result` shows `"Failed"`. A GET failure shows a per-section banner without clearing stale data. |
 | Per-device page-scheme mechanism | The definitions file itself | `render.js`/`nav.js` have zero device-specific branching. |
