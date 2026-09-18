@@ -2249,6 +2249,11 @@ non-collecting arm to within a point and is therefore trustworthy for A alone.
 
 ### 7B.1 Gain
 
+> **Amended by §7D.4 [HW].** This section predicted A would buy no layout gain. On real hardware it
+> buys 40.2% of one. The prediction was made from [TWIN] figures taken in the cold configuration
+> §7D.2 shows the defect does not appear in; B's own numbers here are still [TWIN] and unmeasured
+> on silicon (§7D.8).
+
 | | A: FRAM restructure | B: boot collects |
 |---|---|---|
 | layout, after `build_system()` | **P2 (38x): none** - 9.6% against base's 15.4%, worst-case kept 14% against 16%. **One lock per chunk operation (~90x): partial** - 51%, 0 of 10 clear 55% | 14.2% -> **45.0%** (3.2x), 0 of 10 clear 55% |
@@ -2436,6 +2441,14 @@ concurrent task still observes a block marked BUSY and then IDLE again during on
 
 ### 7C.2 The perturbation ensemble on the real path — no layout gain, and one instrument family invalidated
 
+> **Superseded in its headline by §7D.4 [HW], 2026-09-18.** This section's central conclusion — that
+> A buys no layout gain — is **false on real silicon**, where A improves the in-suite largest
+> obtainable block by 40.2% (20,592 → 28,864 B). The reason is §7D.2: `Board.run_isolated()` never
+> resets, so this ensemble's cold, single-purpose process is the configuration in which the defect
+> does not exist. The twin was measuring the arm of the comparison with nothing to find. Everything
+> below is still valid as a [TWIN] measurement of construction cost and of A's variance removal
+> (which §7D.4 confirms on silicon); read its layout conclusions as superseded.
+
 §7A.8's protocol, re-run with A in place: `build-nosettrace` rebuilt against the restructured
 `src/` through `manifest_heap.py` (so the frozen bytecode is the shipped code, not a live-source
 import whose own code objects would sit on the measured heap), `gc.threshold(-1)`, the same
@@ -2536,11 +2549,13 @@ B/logger, below the 9,369 B point that measured 51.1%. **That is retracted** —
 items and neither recovers what was attributed to it. The residue is real, but it is not in those
 two places, so there is no measured path from 13,696 B to the far side of the bracket.
 
-**That is the honest I.4(e)/(f) record this row exists for** (HEAP_REMEDIATION_PLAN.md A.5): A is an
-allocation-count fix worth 9.0x, it reduces batch survivors ~10% on an axis that is not binding, it
-does not reduce their scatter, and it leaves the churn axis short of its own threshold. Survivor
-*scatter* is what measure B addresses directly — §7A.4's deciles go from 20/5/4/2/1/5/5/13/4/5 at a
-1,504 B median gap to 29/7/0/0/1/0/0/0/32/0 at 224 B — and §7B.5 sequences it exactly here.
+**That is the honest I.4(e)/(f) record this row exists for** (HEAP_REMEDIATION_PLAN.md A.5): on the
+twin, A is an allocation-count fix worth 9.0x that reduces batch survivors ~10% on an axis that is
+not binding, does not reduce their scatter, and leaves the churn axis short of its own threshold.
+**§7D overturns the layout half of that on silicon** — +40.2% — so the sentence that survives is the
+narrower one: this ensemble could not see a layout gain because it measured a cold heap. Survivor
+*scatter* is still what measure B addresses directly — §7A.4's deciles go from 20/5/4/2/1/5/5/13/4/5
+at a 1,504 B median gap to 29/7/0/0/1/0/0/0/32/0 at 224 B — and §7B.5 sequences it exactly here.
 
 *Instrument note, in §1.2's spirit.* Adding a `len(chunk.__dict__)` call to the attribution script to
 count those 17 attributes inflated the hoisted-buffer figure measured immediately after it from 3,200

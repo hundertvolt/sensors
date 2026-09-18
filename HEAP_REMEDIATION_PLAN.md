@@ -372,7 +372,13 @@ reopened only if A.6's measurement asks for it.
       beside `base`'s 11.9-14.2% / 8.1-8.4% and the synthetic prediction for a 38x cut (9.6%,
       i.e. no layout gain expected from A alone — §7B.1). The point of this row is the honest
       (e)/(f) record, not a pass.
-      **Done.** Recorded as §7C.2. §7B.1's prediction holds: **A does not move the ratio and is
+      **Done.** Recorded as §7C.2. **Superseded in its headline by §7D [HW], 2026-09-18: on real
+      silicon A improves the in-suite largest block by 40.2% (20,592 → 28,864 B).** The twin
+      measured a cold, single-purpose process, which §7D.2 shows is the configuration the defect
+      does not appear in — `Board.run_isolated()` never resets, so a device script builds inside
+      `main.py`'s aged heap. What follows is the [TWIN] record, still valid for construction cost
+      and for the variance removal §7D.4 confirms on silicon.
+      §7B.1's prediction holds *on the twin*: **A does not move the ratio and is
       slightly worse** — 12.4% against `base`'s 14.2% median after `build_system()`, 7.4% against
       8.4% after the whole sequence, with all six matched pairs below `base`. A is flat across the
       ten comparable `k` perturbations at 508k (31,328 B every run, against `base`'s 1.24x spread)
@@ -403,7 +409,10 @@ reopened only if A.6's measurement asks for it.
       alone clear the tripwire" — the wrong test: the 80,000 B floor is a regression tripwire at
       69% of one healthy board reading, not a demand any allocation makes (§7A.8, §7A.9), and the
       goal is fewer long-lived survivors scattered through the heap. **On the goal as stated, A
-      alone does not get there either**: §7C.2 measures the survivor scatter essentially unchanged
+      alone does not get there either** — though §7D [HW] has since shown it gets **40.2% of the
+      way** on real hardware, where the twin saw nothing, so the reasoning below understates A and
+      the conclusion (B is still needed) is unchanged rather than merely intact:
+      §7C.2 measures the survivor scatter essentially unchanged
       (44-50 distinct free runs at 99% span against `base`'s 52-55 at 97-98%; 288 → 258 survivors,
       an axis §6A.12 puts an order of magnitude below its own threshold) and the ratio slightly
       worse. So B is not pure defense in depth, it is what §7B.5 says it is, and I.4 is amended as
