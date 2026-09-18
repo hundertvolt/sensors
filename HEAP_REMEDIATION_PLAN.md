@@ -376,14 +376,15 @@ reopened only if A.6's measurement asks for it.
       and confirm the 38x against the prototype's 3,072 B (the prototype was not the real code;
       this is the first real number).
       **Done, and it does not confirm the 38x.** Recorded as §7C in
-      `HEAP_FRAGMENTATION_MEASUREMENTS.md`. Board-equivalent on the twin, median of five: a blank
-      `setup()` costs **18,240 B against the base branch's 122,880 (6.7x)** and a valid one 13,536
-      against 80,384 (5.9x). The synchronous five-CS write envelope itself is down to **32 B**, so
-      the bus work is effectively free; what is left is await machinery, ~6,900 B of it the
-      per-command bus lock that A.1.4 chose and mis-priced. §7C.1 has the per-node table and the
-      ladder of lock scopes with their measured costs; the decision is `HEAP_FRAGMENTATION_MEASUREMENTS.md`
-      §11 item 6, put to the owner. The ensemble measurement below is held until it is answered, so
-      it is not run twice against two different structures.
+      `HEAP_FRAGMENTATION_MEASUREMENTS.md`. Board-equivalent on the twin, median of five, in the
+      shipped per-block-operation lock scope: a blank `setup()` costs **13,696 B against the base
+      branch's 122,880 (9.0x)** and a valid one **9,152 against 80,384 (8.8x)**. The per-command
+      scope A.1.4 had chosen measured 18,240 / 13,536 (6.7x / 5.9x) — the arm the owner replaced
+      (§11 item 6, answered 2026-09-18), kept in §7C's table for the comparison. The synchronous
+      five-CS write envelope itself is down to **32 B**, so the bus work is effectively free; what
+      is left is await machinery, and §7C.1 has the per-node table plus the three residue terms
+      that belong to A.7, A.8 and C.7.1 rather than to this measure. The ensemble measurement
+      above is unblocked now that the scope is settled, and has not been run.
 
 ### A.6 Decision gate after A
 
