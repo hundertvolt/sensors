@@ -60,6 +60,7 @@ _BUS_FAULT_OPS = {  # the real bus-level call each driver's own bus access goes 
     "scd30": "writeto",
     "sgp40": "writeto",
     "bmp3xx": "readfrom_mem",
+    "isl29125": "readfrom_mem",  # every periodic read is get_register_struct() -> readfrom_mem
     "fram": "write",
 }
 _BUS_FAULT_ERROR_COUNT = 500  # sustained/high-repeat-count - see Run 3's own comment for why.
@@ -69,7 +70,7 @@ _BUS_FAULT_ERROR_COUNT = 500  # sustained/high-repeat-count - see Run 3's own co
 # both warn against assuming that - e.g. NotificationCoordinator's own _NAME is "NOTIFY", not
 # "NOTIFICATION") - this table is the verified, narrow exception for exactly these four bus-attached,
 # fault-injectable drivers, not instance_name()/`_NAME` resolution reused generically.
-_DRIVER_ERRCOUNT_NAME = {"scd30": "SCD30", "sgp40": "SGP40", "bmp3xx": "BMP3XX", "fram": "FRAM"}
+_DRIVER_ERRCOUNT_NAME = {"scd30": "SCD30", "sgp40": "SGP40", "bmp3xx": "BMP3XX", "isl29125": "ISL29125", "fram": "FRAM"}
 # Which bus-attached drivers produce a real /measurements reading (Run 4's "came back after being
 # faulted" check) vs which Run 4 asserts came back at 0.
 #
@@ -94,8 +95,8 @@ _DRIVER_ERRCOUNT_NAME = {"scd30": "SCD30", "sgp40": "SGP40", "bmp3xx": "BMP3XX",
 # a defect - self-healing detecting real torn state IS the FRAM driver working as designed, the same
 # reasoning that already excludes SGP40's own history from an assertion here for the identical root
 # cause (see this function's own comment below).
-_MEASUREMENT_DRIVERS = frozenset({"scd30", "sgp40", "bmp3xx"})
-_NO_PERSIST_WHEN_FRAM_FAULTED = frozenset({"scd30", "bmp3xx"})
+_MEASUREMENT_DRIVERS = frozenset({"scd30", "sgp40", "bmp3xx", "isl29125"})
+_NO_PERSIST_WHEN_FRAM_FAULTED = frozenset({"scd30", "bmp3xx", "isl29125"})
 _PERSISTED_ERROR_MODULES = ("SGP40",)  # the only fault-injectable module whose reboot persistence
 # is actually PROVEN here, not the only one that has it - SCD30/BMP3XX are FRAM-backed too and
 # simply have no equivalent chip-healthy check (see above, and BACKLOG.md).
@@ -640,10 +641,14 @@ def _wait_for_dns_answer(host: str, timeout_s: float) -> bool:
 
 def _bus_fault_drivers(ctx: RunContext) -> list[str]:
     # Sorted, deterministic subset of ctx.drivers this suite actually knows how to fault/check -
-    # every real device's own bus-attached driver set (scd30/sgp40/fram always; bmp3xx only on
-    # wozi/dev) is covered by _BUS_FAULT_OPS today, so this is currently a no-op filter, but stays
-    # a filter (not a bare ctx.drivers sort) so a future bus-attached driver this suite hasn't been
-    # taught to fault yet is silently skipped here rather than KeyError-ing in Run 3/4.
+    # every real device's own bus-attached driver set (scd30/sgp40/fram always; bmp3xx on wozi/dev;
+    # isl29125 on dev) is covered by _BUS_FAULT_OPS today, so this is currently a no-op filter. It
+    # stays a filter (not a bare ctx.drivers sort) so a future bus-attached driver this suite has
+    # not been taught to fault yet is skipped rather than KeyError-ing in Run 3/4 - but that skip
+    # is SILENT, and it has already cost real coverage once: the ISL29125 landed with its own
+    # fault-capable chip fake and sat outside every run here until 2026-09-18, because nothing
+    # fails when a driver is merely missing from these tables. Adding a bus-attached driver means
+    # adding it to _BUS_FAULT_OPS/_DRIVER_ERRCOUNT_NAME/_MEASUREMENT_DRIVERS in the same change.
     return sorted(d for d in ctx.drivers if d in _BUS_FAULT_OPS)
 
 

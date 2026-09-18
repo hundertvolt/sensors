@@ -23,6 +23,8 @@ _FAULT_DEVICE_OPS = {
     "sgp40": ("writeto", "readfrom_into"),
     "scd30": ("writeto", "readfrom_into"),
     "bmp3xx": ("readfrom_mem", "writeto_mem"),
+    "isl29125": ("readfrom_mem", "writeto_mem", "writeto"),  # dev-only; this launcher's own fixed
+    # wiring below has no ISL29125, so only run_generic_integration.py can actually apply one.
     "fram": ("write", "readinto"),
     "wlan": ("active", "connect", "disconnect", "deinit", "isconnected", "status", "config", "ifconfig"),
 }
@@ -73,6 +75,7 @@ _HANG_DEVICE_OPS = {
     "sgp40": ("writeto", "readfrom_into"),
     "scd30": ("writeto", "readfrom_into"),
     "bmp3xx": ("readfrom_mem", "writeto_mem"),
+    "isl29125": ("readfrom_mem", "writeto_mem"),
     "fram": ("write", "readinto"),
 }
 
@@ -196,11 +199,22 @@ def _apply_fault(device: str, op: str, times: int, chips: "dict[str, Any]", wlan
         # express on this twin.
         wlan.raise_on[op] = OSError(errno.EIO, message)
         return
+    _require_wired(device, chips)
     chips[device].fault.inject_fault(op, OSError(errno.EIO, message), times=times)
 
 
 def _apply_hang(device: str, op: str, seconds: float, times: int, chips: "dict[str, Any]") -> None:
+    _require_wired(device, chips)
     chips[device].fault.inject_hang(op, seconds, times=times)
+
+
+def _require_wired(device: str, chips: "dict[str, Any]") -> None:
+    # A name in the vocabulary above is not the same as a chip this run actually wired: this
+    # launcher's own wiring is fixed, and a generated device only carries the drivers its TOML
+    # declares. Without this the miss is a bare KeyError from inside the fault plumbing, naming
+    # nothing - the build-tooling "say exactly what and where" bar (SPECIFICATION.md Part L.5).
+    if device not in chips:
+        raise ValueError(f"--fault/--hang device {device!r} is in the known op vocabulary but is not wired on this run - wired here: {sorted(chips)}")
 
 
 def _decode_bmp3xx_calibration(raw: bytes) -> "tuple[tuple[float, float, float], tuple[float, ...]]":

@@ -238,11 +238,21 @@ def _apply_fault(device: str, op: str, times: int, chips: "dict[str, Any]", wlan
     if device == "wlan":
         wlan.raise_on[op] = OSError(errno.EIO, message)
         return
+    _require_wired(device, chips)
     chips[device].fault.inject_fault(op, OSError(errno.EIO, message), times=times)
 
 
 def _apply_hang(device: str, op: str, seconds: float, times: int, chips: "dict[str, Any]") -> None:
+    _require_wired(device, chips)
     chips[device].fault.inject_hang(op, seconds, times=times)
+
+
+def _require_wired(device: str, chips: "dict[str, Any]") -> None:
+    # Being in launch.py's shared op vocabulary only says the NAME is spelled right; whether the
+    # chip exists depends on this device's own TOML (bmp3xx is wozi/dev-only, isl29125 dev-only).
+    # A bare KeyError here would name neither the device nor what was actually wired.
+    if device not in chips:
+        raise ValueError(f"--fault/--hang device {device!r} is not wired on this device - wired here: {sorted(chips)}")
 
 
 async def _wait_until_built(module: "Any", timeout_s: float = 10.0) -> None:
