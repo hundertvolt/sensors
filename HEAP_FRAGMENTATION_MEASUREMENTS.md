@@ -10,6 +10,14 @@ defective instrument, or that a later and stronger measurement overturned, are n
 are quarantined in §9, named, with the reason, so nobody re-uses them. §1 records the instrument
 defects themselves, because each one is a trap a future session will otherwise re-enter.
 
+**Start at §0.** It is the ledger of every hypothesis this investigation tested — whose it was, what
+tested it, and whether it is confirmed, suggestive, refuted, withdrawn or still untested. The rest
+of the document is the evidence those verdicts rest on. §6A.12's scorecard is the same thing
+narrowed to the factors that control the defect.
+
+Note also §2.1's calibration: the twin heap is sized by **fill fraction**, not by copying a number
+from the handover.
+
 Provenance, same markers the handover uses:
 - **[TWIN]** = measured host-side in the digital twin, on a frozen MicroPython 1.29.0 Unix port,
   by this branch's sessions. Independently reproducible; the harnesses are named in §10.
@@ -25,6 +33,45 @@ not**. Twin heap sized to `-X heapsize=560k` for layout work (calibrated in §2.
 churn work (so no collection can intervene — see §1.2).
 
 ---
+
+## 0. Hypothesis ledger — whose theory, what tested it, where it stands
+
+The sections below are evidence; this is the map of the reasoning that produced them, kept so no
+falsified theory gets re-proposed and so every conclusion carries its strength and its author.
+**[O]** = the project owner's hypothesis, **[C]** = this session's. Standing is one of *confirmed*,
+*suggestive*, *refuted*, *withdrawn* (mine, on my own later evidence) or *untested*.
+
+### 0.1 The owner's hypotheses
+
+| # | hypothesis | standing | evidence |
+|---|---|---|---|
+| O1 | Without the FRAM, fragmentation is negligible | **confirmed** | big run survives byte-for-byte, 132,416 -> 132,416, in_big 0 every repeat (§2.3) |
+| O2 | Other modules allocate in the same region when instantiating, without pain | **confirmed literally, but an artifact of nesting** | every module's `setup()` is 936-971 KB — but that is its logger's FRAM round trip; own work is 5-18 KB (§4.1, §4.2) |
+| O3 | Something inside the FRAM path is plainly inefficient — masses of short-lived allocations | **confirmed and quantified** | 74 chip-select sessions to persist 12 bytes; 40 of the 50 write sessions carry four flag bytes (§3.1) |
+| O4 | A shared per-instance buffer would beat short-lived per-call allocations | **refuted as a lever** | hoisting all 80 throwaways saves 3,488 B of 843,040 (0.41%) and fragmentation is no better, mostly worse (§6.2) |
+| O5 | It IS findable — fragmentation was always either heavy or absent, never partial | **confirmed, and reproduced from one knob** | allocation size 5 -> 9 GC blocks flips in_big 21 -> 0 at constant volume and yields (§6A.2) |
+| O6 | Replace the awaited CS settle with `time.sleep_us(2)` | **implemented; churn win real, contiguity not** | 56% of each session's allocation and a real hazard removed, but neutral-to-worse on layout (§8) — and it caused a regression (§8.1) |
+| O7 | Arbitrate the bus with `threading.Lock` + `ThreadSafeFlag` | **refuted** | wrong primitive: only one task may wait on a `ThreadSafeFlag`, and `machine.SPI` is already blocking (§7.3) |
+| O8 | The pattern: moderate per-call churn x very many calls x asyncio-friendly frequent yields x emergent across files x running in parallel with long-lived allocation | **confirmed in structure; one element inverted** | plain `bytearray(64)` churn at that position reproduces the defect and exceeds it, so it is not FRAM/SPI/chunk-specific (§6A.1). The yield element measures protective, not harmful (§6A.4) |
+| O9 | The sawtooth: churn repeatedly allocates the whole free memory, gc collects often because fill is high, the level sawtooths across the whole heap, and survivors thrown at random points stay where they land, ending evenly distributed | **confirmed** | fill driven to **64 bytes free**, amplitude 272,576 of ~278,000 (§6A.6); survivors smeared across all ten heap deciles at span 96-99% when broken vs the bottom 1-2 deciles at 18-40% when clean (§6A.7) |
+| O10 | There is no churn budget: it is a lottery, pure chance plus nonlinearity — a conjunction of parallelism, volume and interleaving, each with a threshold, and the knee is where all conditions are met at once | **confirmed for the conjunction and the absence of a budget; component verdicts differ** | volume x survivor population interact multiplicatively (§6A.11); parallelism suggestive (§6A.10); interleaving inverted (§6A.4). "No budget" now has a mechanism: the churn knee is a property of the *pair*, not of the churn (§6A.11) |
+| O11 | The survivor population is itself one of the conditions | **confirmed, decisively** | churn alone 0%, survivors alone -18%, both together **-88%** of the largest free block (§6A.11) |
+
+### 0.2 This session's hypotheses
+
+| # | hypothesis | standing | evidence |
+|---|---|---|---|
+| C1 | Interleaving of churn with long-lived allocation is the whole story | **withdrawn — too glib** | true as far as it goes, but §4 shows the FRAM path is also 36x every other peripheral in transaction count, and §6A shows size class dominates (§9) |
+| C2 | Collections during the batch strand the survivors (collection-stranding) | **refuted by my own test** | base is broken at 560k, 4M *and* 16M, where the entire 8.4 MB of churn fits with room to spare (§6.5) |
+| C3 | The churn's sweep *extent* is the variable | **refuted** | no dose-response: 4 loggers (498 sessions) keep 100% in 5/5 runs while 1 logger (126 sessions) keeps 51-62% (§9) |
+| C4 | A large heap will clear the defect | **prediction failed, recorded as such** | broken at 16 MB, kept 49%, in_big 41 (§6.5) |
+| C5 | Churn volume does not control the outcome | **confounded; restated** | every rung changed size mix and object count along with volume; held fixed, volume *is* monotonic 0 -> 3 -> 21 (§6.1, §6A.1) |
+| C6 | The `bare` control shows a bare SPI transaction is harmless | **withdrawn** | `_after_fram()` injects the whole burst as one early block, so it measured the churn-first configuration, not the interleaved one (§9) |
+| C7 | Churn and survivors compete for the *same* dust holes, because they are the same size class | **confirmed, quantitatively** | survivors are mean 52 B ~ 2 blocks; a 2-block request fits 82% of the 1,058 seam holes, a 9-block request 21%; measured mid-churn occupancy 82% vs 16% — 82% measured against 82% predicted (§6A.3) |
+| C8 | The size threshold is mediated by collection frequency — a large request fails on contiguity and forces an early, shallow collection | **confirmed** | large-unit churn collects at a median 220,864 B still free vs 1,440 B for small-unit churn (§6A.6) |
+| C9 | Cutting the 74 chip-select sessions to ~6 will clear the contiguity floor | **withdrawn** | ~12x against a required 40-100x; 70,000 B per logger measures in_big 14 / span 97%, inside the saturated regime (§6A.8) |
+| C10 | Loop yields are protective for layout | **confirmed, and confound-checked** | first measured at constant total bytes, which entangled it with small-object count; re-run at fixed small-object count it holds — in_big 21 -> 4 -> 2 as yields rise (§6A.4) |
+| C11 | Pre-allocating each module's permanent objects at construction is the remedy the evidence favours | **untested** | the survivor knob only *adds* objects, so the sub-76 regime is unmeasured; needs a variant that hoists the batch's own survivors out of the window (§6A.11, §11) |
 
 ## 1. The instrument
 
@@ -543,9 +590,22 @@ at exactly the real position, distributed one-per-module across the batch — wi
 number of transient allocations of controllable size, plus a controllable number of
 `await asyncio.sleep(0)` loop yields.
 
-Calibration, [TWIN], all windows identity-verified (§1.2): `bytearray(n)` costs
-`ceil(n/32)*32 + 32`; a bare awaited immediate-return coroutine costs **224 B** and is **not** a
-scheduler round-trip; `await asyncio.sleep(0)` costs **896 B**. Because a yield itself costs 896 B,
+Calibration, [TWIN], every window identity-verified (§1.2). `bytearray(n)` costs
+`ceil(n/32)*32 + 32` — predicted and measured agree exactly at every size:
+
+| construct | measured | predicted |
+|---|---|---|
+| `bytearray(32)` | 64 B (2 blk) | 64 |
+| `bytearray(64)` | 96 B (3 blk) | 96 |
+| `bytearray(128)` | 160 B (5 blk) | 160 |
+| `bytearray(256)` | 288 B (9 blk) | 288 |
+| `bytearray(512)` | 544 B (17 blk) | 544 |
+| `bytearray(1024)` | 1,056 B (33 blk) | 1,056 |
+| `await` an immediate-return coroutine | **224 B**, and **not** a scheduler round-trip | — |
+| `await asyncio.sleep(0)` | **896 B** (28 blk) | — |
+
+The 224 B figure independently reproduces §3.2's bare-await line item, and the 896 B figure
+independently reproduces the handover's own [TWIN] value — two cross-checks on this port. Because a yield itself costs 896 B,
 the filler count is reduced to compensate, so total churn stays fixed while the yield count varies.
 At C = 843,232 B / Y = 172 the injector reproduces base's churn, its total loop-yield count
 (9 x 172 + 2 = `sleep=1552`, identical to base) and its position, with `cs=2` — no real FRAM I/O.
@@ -714,7 +774,7 @@ across a 42x range. **The knee sits between 8,000 and 20,000 B of small-object c
 setup** — against base's 843,232 B, a required reduction of **40-100x**.
 
 This is the step function behind the field observation that fragmentation was always either heavy or
-absent, never partial. **§6A.12 amends where the knee comes from**: these figures are all at the
+absent, never partial. **§6A.11 amends where the knee comes from**: these figures are all at the
 natural ~76-survivor population, and the knee moves with that population rather than being a
 property of the churn. It also **retires churn reduction as a remedy**: the 74 -> ~6 chip-select
 transaction reduction that §3.1's arithmetic points to is a ~12x cut, landing near 70,000 B per
@@ -789,7 +849,7 @@ been a fixed ~76 objects / ~4 KB in every run here, never varied. "More permanen
 during the churn window" is a plausible fourth condition and is directly testable by injecting extra
 *retained* allocations during the batch, which no experiment here does.
 
-### 6A.12 The survivor population — the factor that explains why there is no budget
+### 6A.11 The survivor population — the factor that explains why there is no budget
 
 The knob: extra **retained** 64 B bytearrays per logger setup, interleaved with the churn at the
 same position and in the same size class as the batch's own ~52 B survivors. Accounting audited —
@@ -837,7 +897,7 @@ churn; it is a property of the **pair**. Measured at the natural ~76-survivor po
 there; raise the population and 4,800 B suffices. Onset in the survivor axis is equally sharp —
 nothing at all up to 525 survivors, then 0 -> 7 -> 119 between 795 and 1,148. Both axes have a
 threshold, and the defect needs both crossed at once, which is exactly the conjunction model in
-§6A.11.
+§6A.12.
 
 **Limit of this experiment, and the next step it names.** The knob only *adds* survivors, so the
 **sub-76 regime is untested** — and that is precisely where remedy lever (b) operates (pre-allocate
@@ -848,7 +908,7 @@ real code change, not a knob. Cells at 400 extra survivors per logger, and at 3,
 with 100, are absent because they `MemoryError` — 3,600 retained bytearrays is ~230 KB on a 278 KB
 free heap. Out of range by construction, not a defect, and not read as data.
 
-### 6A.11 Scorecard against the conjunction model
+### 6A.12 Scorecard against the conjunction model
 
 The model that matches the evidence: the defect needs several conditions met at once, each with a
 threshold, and above them the outcome is a heavy-tailed lottery rather than a gradient.
@@ -856,11 +916,11 @@ threshold, and above them the outcome is a heavy-tailed lottery rather than a gr
 | candidate factor | verdict |
 |---|---|
 | **allocation size class** of the transients relative to the survivors | **decisive, hard threshold** (§6A.2/§6A.3) — 5 vs 9 GC blocks flips it binary at constant everything else, with 82% vs 16% dust-hole occupancy measured and predicted from the hole histogram. The sharpest single knob found |
-| **churn volume** | **threshold, then saturation** (§6A.8) — gradual front advance to 8,000 B per logger, saturated from 20,000 B, then flat across a 42x range. **But the threshold is not a property of the churn**: §6A.12 shows it moves with the survivor population, and at a raised population 4,800 B is enough |
+| **churn volume** | **threshold, then saturation** (§6A.8) — gradual front advance to 8,000 B per logger, saturated from 20,000 B, then flat across a 42x range. **But the threshold is not a property of the churn**: §6A.11 shows it moves with the survivor population, and at a raised population 4,800 B is enough |
 | **position** relative to long-lived allocation | **decisive** (§2.5) — the only exact zero found anywhere |
 | **parallelism** (churn concurrent with survivor births) | **suggestive**: worse tail and lower median (§6A.10), not established |
 | **interleaving / yield count** | **measured in the opposite direction** — protective at fixed small-object count (§6A.4), with a mechanism that explains why. Note this is a layout statement only; §8.1 is what removing yields costs |
-| **survivor population size** | **confirmed, threshold, and it interacts multiplicatively with churn volume** (§6A.12) — alone -18%, with a 176x-below-knee churn dose -88%. The sub-76 regime, where remedy lever (b) operates, is still untested |
+| **survivor population size** | **confirmed, threshold, and it interacts multiplicatively with churn volume** (§6A.11) — alone -18%, with a 176x-below-knee churn dose -88%. The sub-76 regime, where remedy lever (b) operates, is still untested |
 
 ## 7. Remedy candidates, measured
 
