@@ -26,7 +26,11 @@ _JUSTIFIED_UNMARKED = {
 _KNOWN_PERSISTING_HELPERS = {
     "isl29125_write_worker",  # bus-concurrency writer, driven only from persistence_write-marked tests
     "bmp3xx_write_worker",  # same
-    "joined_hotspot",  # fixture: restores real credentials over the hotspot link; every dependent is marked
+    # Fixture, and the one entry whose triage is NOT settled: its stage-0 `PUT {"SSID": ""}` and
+    # its stage-7 restore both persist, and six of its dependents carry no marker, so a default
+    # run does spend flash through it. Marking them changes which tests run by default, so the
+    # call is the project owner's - see HANDOVER_HARNESS_AND_HEAP_FRAGMENTATION.md section 1.7.
+    "joined_hotspot",
     "_restore_ssid_over",  # teardown-side restore for the garbage-SSID outage test
     "_recover_stale_dut_credentials",  # session-level recovery path, not a test's own write
 }

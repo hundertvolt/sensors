@@ -467,7 +467,11 @@ def test_garbage_ntp_host_via_rest_config_degrades_and_recovers_cleanly(board: B
         reset_all_error_logs(dut_ip)
         restore_res = http_client.fetch(dut_ip, 80, "PUT", "/networking", {"NTP_Host": original_host}, timeout_s=10.0)
         assert restore_res.status_code == 200, f"failed to restore original NTP_Host {original_host!r}: {restore_res.status_code} {restore_res.body!r}"
-        assert restore_res.json()["result"].get("NTP_Host") == "Valid", f"restoring the original NTP_Host was rejected: {restore_res.json()!r}"
+        # "Unchanged" counts as restored, same as _restore_ssid_over() below already has it and
+        # as the two sensor-config files do: if the body failed before its own PUT landed, the
+        # board is still on original_host and this is a legitimate no-op - insisting on "Valid"
+        # would replace the real failure with a cleanup assertion.
+        assert restore_res.json()["result"].get("NTP_Host") in ("Valid", "Unchanged"), f"restoring the original NTP_Host was rejected: {restore_res.json()!r}"
 
     # Recovery: the next forced resync (post_asy_fct fires on this restore PUT too) must actually
     # succeed - checked via NtpSynced under GET /status's nested "networking" object, not
