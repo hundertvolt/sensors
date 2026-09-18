@@ -499,9 +499,19 @@ information):
   self-contained `uv run` script, under CPython) are two separate stages glued together through
   `coverage.py`'s own `CoverageData` API — see SPECIFICATION.md Part E.5 ("Coverage") for the full
   pipeline. The Unix port binary is always built with `MICROPY_PY_SYS_SETTRACE=1`
-  (`build_unix_port()` in `toolchain/setup_toolchain.py`) — an inert hook check when unused, not a
-  behavior change, confirmed directly — so plain `scripts/test.sh` and `--coverage` share one
-  binary; `ports/rp2`'s firmware build never gets this flag. CI
+  (`build_unix_port()` in `toolchain/setup_toolchain.py`) so plain `scripts/test.sh` and
+  `--coverage` share one binary; `ports/rp2`'s firmware build never gets this flag. **An earlier
+  note here called the flag "an inert hook check when unused" — measured false on 2026-09-18**:
+  with it compiled in, `py/vm.c`'s `FRAME_ENTER()` runs `mp_prof_frame_enter()` on every bytecode
+  entry, which allocates a frame object and a code object per call and per generator resume whether
+  or not a trace callback is installed (`py/profile.c:190`). Against an otherwise identical
+  settrace-free build of the same frozen manifest: `await asyncio.sleep(0)` 1,152 B vs 0 B, a
+  coroutine call 224 vs 64 B, one FRAM logger `setup()` 651,680 vs 137,120 B (4.75x). It changes no
+  test's *result*, but every allocation figure measured under this binary — the digital twin's and
+  the memory-safety suite's alike — is inflated 4-5x, non-uniformly, relative to the firmware. Full
+  account and the per-node conversion table: HEAP_FRAGMENTATION_MEASUREMENTS.md §1.2 item 7 and
+  §3A; whether to build a second, flag-free binary for the plain run is an open owner decision
+  there (§11 item 0). CI
   (`.github/workflows/ci.yml`) runs it as its own non-gating job, `unit-tests-coverage` — separate
   from `unit-tests` because `timeout-minutes` gates a whole job rather than its real step, so the
   instrumented rerun would otherwise cancel a suite that had already passed (it did, on run

@@ -681,8 +681,11 @@ uv run toolchain/setup_toolchain.py test                          # re-verify ex
 `--toolchain-dir`/`--jobs` apply to both; the rest are `setup`-only. `scripts/test.sh` exposes
 `--skip-apt` as `SKIP_APT=1`. No venv needed — `uv run` provisions an ephemeral interpreter (B.8).
 Both subcommands also build/verify a Unix-port interpreter, always with
-`MICROPY_PY_SYS_SETTRACE=1` (inert when unused), so one binary backs both plain `scripts/test.sh`
-and `--coverage` (E.5). RP2040 firmware never gets this flag.
+`MICROPY_PY_SYS_SETTRACE=1`, so one binary backs both plain `scripts/test.sh` and `--coverage`
+(E.5). RP2040 firmware never gets this flag. **Not inert when unused** (measured 2026-09-18,
+corrected here and in CLAUDE.md): the flag makes the VM allocate a frame and a code object on every
+call and every generator resume, callback or not, inflating every allocation figure measured under
+this binary 4-5x relative to the firmware — see HEAP_FRAGMENTATION_MEASUREMENTS.md §1.2 item 7.
 
 **Prerequisites**: `sudo`; outbound network to GitHub/apt; `uv`; Ubuntu's `universe` component
 (default on real Ubuntu images — `gcc-arm-none-eabi` lives there).

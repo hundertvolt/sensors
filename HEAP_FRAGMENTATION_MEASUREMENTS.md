@@ -12,7 +12,9 @@ defects themselves, because each one is a trap a future session will otherwise r
 
 **Start at §0A** for the mechanism — what is happening and why it produces the observed effects,
 with every observation it accounts for; §0A.6 is the whole thing in one paragraph, and §0A.3 is the
-load-bearing part. §0B is the test record, and §0B.7 is what is still open. **§0** is the ledger of every hypothesis this investigation tested — whose it was, what
+load-bearing part. §0B is the test record, and §0B.7 is what is still open. **§1.2 item 7 (2026-09-18) is a
+correction to every absolute byte figure in the file: the twin's build flag inflates allocation 4-5x; the
+board-faithful re-pricing of the FRAM path is §3A.** **§0** is the ledger of every hypothesis this investigation tested — whose it was, what
 tested it, and whether it is confirmed, suggestive, refuted, withdrawn or still untested. The rest
 of the document is the evidence those verdicts rest on. §6A.13's scorecard is the same thing
 narrowed to the factors that control the defect.
@@ -49,14 +51,14 @@ falsified theory gets re-proposed and so every conclusion carries its strength a
 |---|---|---|---|
 | O1 | Without the FRAM, fragmentation is negligible | **confirmed** | big run survives byte-for-byte, 132,416 -> 132,416, in_big 0 every repeat (§2.3) |
 | O2 | Other modules allocate in the same region when instantiating, without pain | **confirmed literally, but an artifact of nesting** | every module's `setup()` is 936-971 KB — but that is its logger's FRAM round trip; own work is 5-18 KB (§4.1, §4.2). All ten setups also contribute permanent objects to the seam's free space, 4-10 eligible each (§0B.6) |
-| O3 | Something inside the FRAM path is plainly inefficient — masses of short-lived allocations | **confirmed and quantified** | 74 chip-select sessions to persist 12 bytes; 40 of the 50 write sessions carry four flag bytes (§3.1) |
+| O3 | Something inside the FRAM path is plainly inefficient — masses of short-lived allocations | **confirmed and quantified; re-priced on the settrace-free build** | 74 chip-select sessions to persist 12 bytes; 40 of the 50 write sessions carry four flag bytes (§3.1). On the real VM: 137,120 B per logger `setup()`, 73% of it the twelve single-status-byte writes, ~1 KB of asyncio bookkeeping per session; the yields cost 0 B (§3A) |
 | O4 | A shared per-instance buffer would beat short-lived per-call allocations | **refuted as a lever** | hoisting all 80 throwaways saves 3,488 B of 843,040 (0.41%) and fragmentation is no better, mostly worse (§6.2) |
 | O5 | It IS findable — fragmentation was always either heavy or absent, never partial | **confirmed, and reproduced from one knob** | allocation size 5 -> 9 GC blocks flips in_big 21 -> 0 at constant volume and yields (§6A.2) |
-| O6 | Replace the awaited CS settle with `time.sleep_us(2)` | **implemented; churn win real, contiguity not** | 56% of each session's allocation and a real hazard removed, but neutral-to-worse on layout (§8) — and it caused a regression (§8.1) |
+| O6 | Replace the awaited CS settle with `time.sleep_us(2)` | **implemented; the hazard fix is the case for it, the churn win was settrace** | "56% of each session's allocation" was the settrace cost of two `sleep()`s; on the real VM they were ~32 B each (§3A.6). The bus hazard (§5.1) is real and removed; neutral-to-worse on layout (§8); caused a regression (§8.1) |
 | O7 | Arbitrate the bus with `threading.Lock` + `ThreadSafeFlag` | **refuted** | wrong primitive: only one task may wait on a `ThreadSafeFlag`, and `machine.SPI` is already blocking (§7.3) |
-| O8 | The pattern: moderate per-call churn x very many calls x asyncio-friendly frequent yields x emergent across files x running in parallel with long-lived allocation | **confirmed in structure; two elements inverted** | plain `bytearray(64)` churn at that position reproduces the defect and exceeds it, so it is not FRAM/SPI/chunk-specific (§6A.1). The yield element measures protective, not harmful (§6A.4). "In parallel" is refuted outright for the boot batch: 0 of 1,562 yields had another `src/` task runnable, and `build_system()` creates no task at all — the interleaving is one task alternating churn with its own survivors (§0B.6) |
+| O8 | The pattern: moderate per-call churn x very many calls x asyncio-friendly frequent yields x emergent across files x running in parallel with long-lived allocation | **confirmed in structure; two elements null** | plain `bytearray(64)` churn at that position reproduces the defect and exceeds it, so it is not FRAM/SPI/chunk-specific (§6A.1). The yield element is **null on the real VM: a yield allocates 0 B** (§1.2 item 7, §3A.5) — §6A.4's "protective" result measured the settrace build's 28-block sleep object, not a yield. "In parallel" is refuted outright for the boot batch: 0 of 1,562 yields had another `src/` task runnable, and `build_system()` creates no task at all — the interleaving is one task alternating churn with its own survivors (§0B.6). The "emergent across files" element is exactly right: §3A.5's critical path is eight async layers in four files |
 | O9 | The sawtooth: churn repeatedly allocates the whole free memory, gc collects often because fill is high, the level sawtooths across the whole heap, and survivors thrown at random points stay where they land, ending evenly distributed | **confirmed** | fill driven to **64 bytes free**, amplitude 272,576 of ~278,000 (§6A.6); survivors smeared across all ten heap deciles at span 96-99% when broken vs the bottom 1-2 deciles at 18-40% when clean (§6A.7) |
-| O10 | There is no churn budget: it is a lottery, pure chance plus nonlinearity — a conjunction of parallelism, volume and interleaving, each with a threshold, and the knee is where all conditions are met at once | **confirmed for the conjunction and the absence of a budget; component verdicts differ** | volume x survivor population interact multiplicatively (§6A.11); interleaving inverted (§6A.4); **parallelism is absent from the boot batch entirely** (§0B.6), so it cannot be one of the met conditions there. "No budget" now has a mechanism: the churn knee is a property of the *pair*, not of the churn (§6A.11). The chance is not between runs — the outcome is deterministic per configuration (§6.3, §6.4) — it is a fixed order's sensitivity to any shift in it |
+| O10 | There is no churn budget: it is a lottery, pure chance plus nonlinearity — a conjunction of parallelism, volume and interleaving, each with a threshold, and the knee is where all conditions are met at once | **confirmed for the conjunction and the absence of a budget; component verdicts differ** | volume x survivor population interact multiplicatively (§6A.11); interleaving null — a yield allocates nothing on the real VM (§1.2 item 7); **parallelism is absent from the boot batch entirely** (§0B.6), so it cannot be one of the met conditions there. "No budget" now has a mechanism: the churn knee is a property of the *pair*, not of the churn (§6A.11). The chance is not between runs — the outcome is deterministic per configuration (§6.3, §6.4) — it is a fixed order's sensitivity to any shift in it |
 | O11 | The survivor population is itself one of the conditions | **confirmed, decisively** | churn alone 0%, survivors alone -18%, both together **-88%** of the largest free block (§6A.11) |
 
 ### 0.2 This session's hypotheses
@@ -70,9 +72,9 @@ falsified theory gets re-proposed and so every conclusion carries its strength a
 | C5 | Churn volume does not control the outcome | **confounded; restated**, and §0B.4 now shows uniform small churn strands nothing at a natural survivor population even at 2.3x base's volume | every rung changed size mix and object count along with volume; held fixed, volume *is* monotonic 0 -> 3 -> 21 (§6.1, §6A.1) |
 | C6 | The `bare` control shows a bare SPI transaction is harmless | **withdrawn** | `_after_fram()` injects the whole burst as one early block, so it measured the churn-first configuration, not the interleaved one (§9) |
 | C7 | Churn and survivors compete for the *same* dust holes, because they are the same size class | **confirmed per object, 162/162** (§0B.1); refined — only survivors needing >= 2 contiguous blocks are eligible, which is 25 of the 76 (§0B.2) | survivors are mean 52 B ~ 2 blocks; a 2-block request fits 82% of the 1,058 seam holes, a 9-block request 21%; measured mid-churn occupancy 82% vs 16% — 82% measured against 82% predicted (§6A.3) |
-| C8 | The size threshold is mediated by collection frequency — a large request fails on contiguity and forces an early, shallow collection | **confirmed** | large-unit churn collects at a median 220,864 B still free vs 1,440 B for small-unit churn (§6A.6) |
+| C8 | The size threshold is mediated by collection frequency — a large request fails on contiguity and forces an early, shallow collection | **confirmed on the settrace build; the mechanism is allocator-level and build-independent, the byte figures are not** | large-unit churn collects at a median 220,864 B still free vs 1,440 B for small-unit churn (§6A.6) |
 | C9 | Cutting the 74 chip-select sessions to ~6 will clear the contiguity floor | **withdrawn** | ~12x against a required 40-100x; 70,000 B per logger measures in_big 14 / span 97%, inside the saturated regime (§6A.8) |
-| C10 | Loop yields are protective for layout | **confirmed, and confound-checked** | first measured at constant total bytes, which entangled it with small-object count; re-run at fixed small-object count it holds — in_big 21 -> 4 -> 2 as yields rise (§6A.4) |
+| C10 | Loop yields are protective for layout | **withdrawn — a settrace artifact** | it held, confound-checked, on the settrace build (§6A.4), where each yield allocated a 28-block object that competed for no survivor's hole and forced early collections. On the real VM a yield allocates 0 B (§1.2 item 7), so it can be neither protective nor harmful to layout |
 | C11 | Pre-allocating each module's permanent objects at construction is the remedy the evidence favours | **refuted** | the mechanism is real — the same objects placed pre-seam give in_big 0 and 100% kept where in-window they give 380 and 12% — but it holds only below the churn threshold. At the real 843,232 B dose pre-seam objects are unprotected (kept ~50%), and the real system's 76 survivors are already an order of magnitude below the survivor axis's own onset, so that axis is not the binding constraint (§6A.12) |
 
 ## 0A. The model
@@ -491,8 +493,11 @@ is why a 2-block change of one object's size moves the result and why nothing co
 ### 0B.7 Still open
 
 - **Gap 2's positive branch at real positions** (§0B.4) — the one remaining mechanism gap.
-- **What in base's churn does the stranding**, given uniform churn does not (§0B.4). Its size mix is
-  the named suspect and is directly testable.
+- **What in base's churn does the stranding**, given uniform churn does not (§0B.4). Its size mix was
+  the named suspect — and §1.2 item 7 now weighs against it too: on the settrace-free build the
+  transient population is entirely different (no frame/code object per call, no 28-block object per
+  yield, 4.75x fewer bytes) and the defect is **stronger** (in_big 30 vs 11, kept 18% vs 59%). The
+  §0B.4 series has not been re-run on that build; that is the next test.
 - **Gap 9, parallelism** — the question is now narrower than "not re-run": §0B.6 shows the real
   startup phase has *none*, so §6A.10's added-parallelism arm describes a regime the boot batch
   never enters. What is still untested is whether parallelism matters *after* boot, once the task
@@ -522,9 +527,62 @@ figure. `mem_info(1)` prints the block map but **abbreviates two or more consecu
 as `(N lines all free)`**, so any reconstruction must work by absolute address, not by counting
 printed lines.
 
-### 1.2 Six instrument defects, each of which silently produced wrong numbers
+### 1.2 Seven instrument defects, each of which silently produced wrong numbers
 
 Recorded because every one of these is re-enterable, and each was caught only by an explicit audit.
+**Item 7 is the largest and was found last (2026-09-18); it inflates every absolute byte figure
+measured before it, and is therefore stated first.**
+
+7. **The Unix port is built with `MICROPY_PY_SYS_SETTRACE=1`, and that flag is not inert: it
+   allocates a frame object *and* a code object on every bytecode entry — every call and every
+   generator resume — whether or not a trace callback is installed.** [SRC] `py/vm.c:272`
+   `FRAME_ENTER()` calls `py/profile.c:190` `mp_prof_frame_enter()`, which does
+   `mp_obj_new_frame()` unconditionally; only the callback dispatch *after* it is gated. The rp2
+   firmware never carries the flag (CLAUDE.md), so this is a twin-only cost. Found by building the
+   same frozen manifest without it (`build-nosettrace`, recipe in §10) and re-pricing every node of
+   the FRAM path on both binaries — the price list is byte-identical whether modules are frozen or
+   source-loaded, so the difference is the flag alone.
+
+   | node [TWIN, 32 B blocks] | settrace (every run before this item) | settrace-free | ratio |
+   |---|---|---|---|
+   | `await asyncio.sleep(0)` / `sleep_ms(n)` | 1,152 / 1,024-1,152 | **0** | — |
+   | `await asyncio.sleep(float > 0)` | 1,312 | 32 | 41x |
+   | `await` an immediate-return coroutine | 224 | 64 | 3.5x |
+   | `asyncio.Lock` acquire + release | 672 | 288 | 2.3x |
+   | one chip-select session, empty | 4,032 | 1,024 | 3.9x |
+   | `CRC8._crc()` over 13 bytes (13 yields) | 15,424 | 160 | 96x |
+   | `FRAM_SPI._write()` (5 sessions) | 33,536 | 8,192 | 4.1x |
+   | `_handle_status_bytes(check_idle=True)` (12 sessions) | 91,552 | 21,728 | 4.2x |
+   | one logger `setup()`, blank chunk (74 sessions) | **651,680** | **137,120** | **4.75x** |
+   | one logger `setup()`, valid chunk (47 sessions) | 453,728 | 89,536 | 5.1x |
+
+   It was found through its signature: with the flag, **every level of await chain adds 128 B to
+   every yield that passes through it** (plus 224 B per call) — measured 352 B/level on a plain
+   `yield from` chain with no asyncio at all, 736 B/level with four yields per leaf, exactly
+   `224 + k*128`; without the flag the per-yield term is **0** and the per-call term 96 B. So a
+   `sleep(0)` at the FRAM path's mean depth of 10.7 cost ~2.5 KB in the twin and costs nothing on
+   the board, and a thin async wrapper layer appeared to cost ~10 KB per logger setup (§3A).
+
+   **What survives this item unchanged:** every *count* (sessions, transfers, calls, yields,
+   survivors), every *retained*-bytes figure, the call graph, the ratios between variants measured
+   on the same binary, and — tested directly — **the defect itself**, which reproduces on the
+   settrace-free build and is *stronger* there, with the transient population that produced it in
+   the twin (frame/code objects on every call, a 28-block object per yield) entirely absent:
+
+   | build | heapsize | survivors | in_big | kept% | largest free after |
+   |---|---|---|---|---|---|
+   | settrace, frozen (every earlier run) | 560k | 76 | 11 | 59 | 72,224 |
+   | settrace-free, same manifest | 560k | 64 | **30** | **18** | 50,752 |
+   | settrace-free | 480k | 65 | 28 | 16 | 33,440 |
+   | settrace-free | 400k | 65 | 34 | 38 | 46,176 |
+
+   The settrace-free twin is 44% full at **~455k** (113,888 B after import, 200,096 B after
+   `build_system()`), against ~529k for the settrace build — §1.4's calibration is for the old
+   binary. **What does not survive:** any conclusion that rested on a yield or a call *allocating*.
+   Those are corrected where they stand — the ledger's O6, O8, O10 and C10, §3.2-3.4, §5, §6.1's
+   r2 explanation — and §3A gives the board-faithful anatomy. Everything else in this file that
+   quotes a [TWIN] byte figure from before this item should be read as "on the settrace build",
+   inflated 4-5x in total and non-uniformly per node; the per-node table above is the conversion.
 
 1. **`mem_alloc()` deltas silently undercount when a collection fires mid-window.** The weak check
    ("`free` fell and `alloc` rose") passes even when a collection has truncated the window. The
@@ -586,6 +644,9 @@ At 560k, the twin reproduces the board's shape:
 | after import | 366,432 | 0.88 |
 | after the construction phase | 178,496 | 0.54 |
 | after the setup batch (as shipped) | 43,904-51,776 | 0.13 |
+
+**For the settrace-free build (§1.2 item 7) the same fill-fraction rule gives ~455k**: 113,888 B
+after import, 200,096 B after `build_system()`, against 145,120 / 232,640 for the settrace build.
 
 Frozen-port import cost, for reference — this is what makes a run take ~4 s instead of minutes:
 
@@ -686,6 +747,10 @@ small object per logger). Residual in_big 0-4.
 ---
 
 ## 3. The FRAM logging path, priced exactly
+
+**Every byte figure in §3.1-3.4 is on the settrace build (§1.2 item 7) — inflated ~4x overall and
+up to 96x on the CRC. The counts are exact and stand. §3A re-prices the same path node by node on
+the settrace-free build and is the anatomy to use.**
 
 ### 3.1 Transaction amplification — the headline finding
 
@@ -800,6 +865,196 @@ independent harnesses. This file is under no editing restriction.
 
 ---
 
+## 3A. The FRAM path, file by file — call graph and cost anatomy on the settrace-free twin
+
+Asked for as: the exact files, classes, instantiation and call graph from the top-level logger down
+to the SPI bus driver, and where in that construction the high-churn / high-temporary / high-yield
+pattern sits, and whether it runs along survivor creation. [SRC] for the structure, [TWIN,
+settrace-free, 32 B blocks] for every byte, [SRC]-verified counts from an instrumented run for every
+edge. Standalone: one `AsyFramManager`, one `PrintLogHistoryStore`, nothing else loaded.
+
+### 3A.1 Files, classes, instantiation
+
+| layer | file | class (base) | instances | what it owns |
+|---|---|---|---|---|
+| logger | `print_log.py` | `PrintLogHistoryStore(PrintLogHistory(PrintLog))` | one per module **and** one per `ConfigManager` (WP2) — 20 store-backed on `dev` | `history` deque(10), `err_count`; its `fram` chunk from `fram.get_chunk(12, crc=CRC8())` in `__init__` |
+| chunk | `asy_fram_manager.py` | `AsyFramChunk(_AsyBaseFramChunk)` | one per logger | `block_addr` = two redundant blocks, `crc`, `_op_lock` (`asyncio.Lock`), `_check_length=8` |
+| buffer | `asy_fram_manager.py` / `base_classes.py` | `AsyFramChunkBuffer(LockableBuffer(Lockable))` | **one per read/write call**, from `get_buffer()` | a 13-byte `bytearray` + its own `asyncio.Lock` (never used on this path) |
+| integrity | `crc_checks.py` | `CRC8(CRC_Base)` | one per chunk | `inc_crc`/`inc_count` for the incremental read check |
+| manager | `asy_fram_manager.py` | `AsyFramManager` | one per device | `fram` (the chip), `allocated_size`, the chunk allocator |
+| chip | `asy_fram_driver.py` | `FRAM_SPI(Lockable)` | one | `_spidev`, pre-allocated `_id_buf`/`_status_buf`/`_addr_buf` |
+| bus device | `asy_spi_driver.py` | `SPIDevice(Lockable)` | one per chip | CS pin; **shares** the bus's `asyncio.Lock` |
+| bus | `asy_spi_driver.py` | `SPI` | one per bus | `machine.SPI`, `async_lock` |
+
+`framing_codecs.py` is not on this path (UART only). Every `Lockable` is an `asyncio.Lock` wrapper;
+`async with` on any of them is two coroutine calls plus a Python-implemented `acquire()` generator.
+
+### 3A.2 The call graph, with exact counts
+
+`setup()` on a blank chunk (what the twin does every run, and the board on its first boot ever):
+`_read()` fails on both blocks, then `_write()`. 74 sessions.
+
+```
+PrintLogHistoryStore.setup                                          1
++- PrintLogHistoryStore._read                                       1   get_buffer() -> AsyFramChunkBuffer
+|  +- AsyFramChunk.read_into -> _AsyBaseFramChunk._read             1   async with _op_lock
+|     +- _read_into (block 0), _read_into (block 1)                 2
+|        +- _read_chunk                                             2   async with fram (drv lock)
+|           +- _handle_status_bytes(BUSY, check_idle=True)          2
+|              +- _set_check_sb  x2 (status byte 1, status byte 2)  4
+|                 +- FRAM_SPI.get_values(1 B)  -> _read_address     4   1 session each
+|                 +- FRAM_SPI.set_values(1 B)  -> _write            4   5 sessions each
+|           (uninitialised -> return; no payload read, no IDLE reset)
++- PrintLogHistoryStore._write                                      1   get_buffer() again
+   +- AsyFramChunk.write_into -> _AsyBaseFramChunk._write           1   async with _op_lock
+      +- _write_chunk (block 0), _write_chunk (block 1)             2   async with fram
+         +- _handle_status_bytes(BUSY, check_idle=False)            2   -> 2 x set_values(1 B)
+         +- CRC8.add_into(13 B buf, 12)  -> _crc: 12 yields         2
+         +- FRAM_SPI.set_values(13 B)     -> _write                 2   5 sessions
+         +- _handle_status_bytes(IDLE, check_idle=False)            2   -> 2 x set_values(1 B)
+
+FRAM_SPI._write(addr, data)   [every set_values]                   14   = 5 sessions
+   get_write_protected                                             14
+   _enable_write  = _send_opcode(WREN) + _wel_is_set(_read_status) 14   2 sessions
+   session: write(addr buf 4 B) + write(data)                      14   1 session
+   _disable_write = _send_opcode(WRDI) + _wel_is_set(_read_status) 14   2 sessions
+SPIDevice.__aenter__ / __aexit__                                    74   each: Lockable -> Lock.acquire/release
+   SPI.configure(5 kw) -> machine.SPI.init                          74
+   SPIDevice.write -> SPI.write -> machine.SPI.write                88
+   SPIDevice.readinto -> SPI.readinto -> machine.SPI.readinto       32
+   asyncio.sleep(0) in __aexit__                                    74   + 24 in CRC8._crc = 98 yields
+```
+
+`setup()` on a valid chunk (the board on every boot after the first): `_read_into(block 0)` (23
+sessions: 12 status BUSY-with-check, 1 payload read, 10 status IDLE) then `_compare_with(block 1)`
+(24: the same with the 8-byte `_check_length` buffer taking two reads). **47 sessions, 8 byte-level
+writes, 7 reads; still 44 of 47 sessions are status-byte traffic.** The twin overstates the board's
+steady state by 74 vs 47.
+
+### 3A.3 Prices per node
+
+Each node in its own collection-free window, current `src/`, 8 reps, all identical, no collection.
+Both binaries; the settrace-free column is the one that transfers to the board (in 32 B units).
+
+| node | sessions | settrace | **settrace-free** | kept |
+|---|---|---|---|---|
+| `TWIN machine.Pin.value()` | | 256 | 0 | 0 |
+| `TWIN machine.SPI.init(5 kw)` | | 448 | 64 | 0 |
+| `TWIN machine.SPI.write(n)` / `readinto(n)` | | 864 / 1,024 | 96 / 128 | 0 |
+| `await` immediate-return coroutine | | 224 | 64 | 0 |
+| `await asyncio.sleep(0)` | | 1,152 | **0** | 0 |
+| `asyncio.Lock` acquire + release | | 672 | 288 | 0 |
+| `SPI.configure(5 kw)` (incl. twin `init`) | | 704 | 64 | 0 |
+| **`SPIDevice` session, empty** | 1 | 4,032 | **1,024** | 0 |
+| `SPIDevice.write(1 B)` inside a session | | 1,120 | 192 | 0 |
+| `SPIDevice.readinto(1 B)` inside a session | | 1,312 | 256 | 0 |
+| `FRAM_SPI._send_opcode` | 1 | 5,472 | 1,408 | 0 |
+| `FRAM_SPI._read_status` | 1 | 6,720 | 1,696 | 0 |
+| `FRAM_SPI._enable_write` / `_disable_write` | 2 | 12,960 | 3,296 / 3,328 | 0 |
+| `FRAM_SPI._read_address(n)` (n = 1, 8, 13: identical) | 1 | 6,912 | 1,504 | 0 |
+| **`FRAM_SPI._write(n)` (n = 1 or 13: identical)** | 5 | 33,536 | **8,192** | 0 |
+| `get_values(1 B)` under the drv lock | 1 | 7,488 | 1,664 | 0 |
+| `set_values(n)` under the drv lock | 5 | 35,136 | 8,352 | 0 |
+| `CRC8.add_into(13 B, 12)` (12 yields) | 0 | 16,384 | **448** | 0 |
+| `CRC8.check_inc()+run_inc(13 B)` | 0 | 19,520 | 480 | 0 |
+| `_set_check_sb(check_idle=False)` | 5 | 36,288 | 8,736 | 0 |
+| `_set_check_sb(check_idle=True)` | 6 | 43,936 | 10,432 | 0 |
+| `_handle_status_bytes(check_idle=False)` | 10 | 74,336 | 17,664 | 0 |
+| `_handle_status_bytes(check_idle=True)` | 12 | 89,888 | 21,056 | 0 |
+| `_write_chunk` | 25 | 203,040 | 44,768 | 0 |
+| `_read_chunk`, valid, 13 B buf / 8 B buf | 23 / 24 | 194,496 / 204,064 | 41,856 / 44,000 | 32 |
+| `_read_chunk`, blank | 12 | 91,744 | 21,920 | 0 |
+| `chunk._read`, valid / blank | 47 / 24 | 422,176 / 192,544 | 88,672 / 45,408 | 0 |
+| `chunk._write` | 50 | 417,408 | 90,336 | 0 |
+| `PrintLogHistoryStore._read`, valid / blank | 47 / 24 | 443,616 / 200,544 | 89,440 / 46,048 | 0 |
+| `PrintLogHistoryStore._write` | 50 | 438,208 | 90,976 | 0 |
+| **`PrintLogHistoryStore.setup()`, blank** | **74** | 651,680 | **137,120** | 0 |
+| `PrintLogHistoryStore.setup()`, valid | 47 | 453,728 | 89,536 | 0 |
+| `PrintLogHistoryStore(...)` constructor (`get_chunk`) | 0 | 3,200 | 1,280 | (permanent) |
+
+The "under the drv lock" rows have the harness's own `async with drv` (1,664 / 672) subtracted.
+In situ inside the real batch, three more await levels down, the same `setup()` measures
+**137,184 B** — the depth tax is gone with the flag (it was 50,240 B there on the settrace build,
+exactly 4 levels x 98 yields x 128).
+
+### 3A.4 The anatomy — where the bytes are
+
+**One chip-select session, 1,024 B:** `asyncio.Lock` acquire + release 288 (28%); the five
+coroutine frames `SPIDevice.__aenter__`, `Lockable.__aenter__`, `Lock.acquire` (a generator),
+`SPIDevice.__aexit__`, `Lockable.__aexit__` ~480; the two `super()` objects and their bound methods
+~190; `SPI.configure` -> twin `machine.SPI.init` 64 (0 on the board, a C call); `Pin.value` 0;
+**`asyncio.sleep(0)` 0**. A transfer inside it: 192 (write) / 256 (readinto) — a coroutine frame
+around a C call, plus the twin's 96/128.
+
+**One byte-level write, 8,352 B for 5 sessions:** WREN session + RDSR session + WRITE session (two
+transfers) + WRDI session + RDSR session = 5 x 1,024 + 6 x 192 + 2 x 256 = 6,784; the twelve
+coroutine frames of `set_values`/`_write`/`_enable_write`/`_disable_write`/2x`_send_opcode`/
+2x`_wel_is_set`/2x`_read_status`/`get_write_protected`/`_setup_addr_buffer` and two
+`bytearray([opcode])` make up the rest. **Identical for 1 and 13 bytes of payload.**
+
+**One logger `setup()`, 137,120 B, by leaf work:**
+
+| | sessions | B | share |
+|---|---|---|---|
+| 12 single-status-byte writes (`set_values(1 B)`) | 60 | 100,224 | **73%** |
+| 2 payload writes (`set_values(13 B)`) | 10 | 16,704 | 12% |
+| 4 status-byte reads (`get_values(1 B)`) | 4 | 6,656 | 5% |
+| 2 CRC8 computations over 12 B (24 yields) | 0 | 896 | 0.7% |
+| the seven manager/logger layers above them (frames, kwargs, two `get_buffer()`, `_op_lock`, log calls) | 0 | ~12,640 | 9% |
+| of the total, twin-only (`Pin.value`, `SPI.init`, `SPI.write`, `SPI.readinto` — C on the board) | | 17,280 | 12.6% |
+
+**Board-equivalent: ~119,840 B in this build's 32 B units.** On the RP2040 a GC block is 16 B and a
+pointer 4 B, so the same objects take roughly half the bytes — order **60-70 KB per logger
+`setup()`, ten of them per boot on `dev`**, in a 190 KB heap. Not measured on hardware (no
+go-ahead); the count of objects transfers exactly, the bytes are an estimate.
+
+### 3A.5 The critical path, and what the three "highs" actually are
+
+**The path.** `_AsyBaseFramChunk._handle_status_bytes -> _set_check_sb -> FRAM_SPI.set_values ->
+FRAM_SPI._write -> {_enable_write, _disable_write} -> {_send_opcode, _read_status} ->
+SPIDevice.__aenter__/__aexit__` — 60 of the 74 sessions and 73% of the bytes go through it, and it
+is 8 async layers deep at the session. It exists because the chunk protocol writes **two redundant
+status bytes, one at a time, before and after every block operation**, and the chip driver wraps
+**every** write, however short, in its own WREN / RDSR-verify / WRITE / WRDI / RDSR-verify
+envelope. 12 bytes of payload -> 14 byte-level writes -> 70 sessions; 2 of the 74 carry payload.
+
+**"High churn"** is this: ~1 KB of asyncio bookkeeping per session x 74 sessions, plus ~200 B per
+transfer. The buffers the code hoists (`_addr_buf`, `_status_buf`) are already hoisted; the
+per-call `bytearray([opcode])` and `bytearray(1)` are ~64 B each. O4 (§6.2) stands: buffers are
+not it. **"High temporary allocation"** is coroutine frames and `asyncio.Lock` objects — the *shape*
+of the layering, not any buffer. **"High loop yield"** is real as a count (98 per setup: one per
+session in `SPIDevice.__aexit__`, one per byte in `CRC8._crc`) and **costs 0 B on the real VM**; on
+the board a yield is a scheduler round-trip that finds an empty queue (§0B.6) and returns — time,
+not heap. The 896-1,152 B per yield, the 128 B/level depth tax and the "yields are protective"
+result were all the settrace flag (§1.2 item 7).
+
+**Along survivor creation?** No — strictly *between*. Every node's `kept` is 0 (±32 B); the whole
+round trip retains 64-352 B per logger (the `initialized` flag and the restored history), 1,152 B
+over all ten on `dev`. The survivors are born in the module's own code before and after the round
+trip — the same sequential alternation §0B.6 established, with the settrace-free in-situ numbers:
+
+| per module `setup()` | allocated | retained |
+|---|---|---|
+| module-own code before its logger's round trip | 512-800 | (live frames) |
+| the logger's round trip | **137,184** | 64-352 |
+| module-own code after it | 1,344-3,584 | net ~256 |
+| **all ten:** logger round trips / module-own code | **1,234,656** / 36,672 | 1,152 / 3,584 |
+
+So the FRAM path is 97% of the setup batch's allocation and 24% of its retention; the module code
+is 3% of the allocation and 76% of the retention. They alternate ten times in one task.
+
+### 3A.6 Corrections this makes to earlier sections
+
+- §3.2's "per-session atom" and §3.3's standalone pricing are settrace figures: the atom is 1,024 B
+  not 4,032; the setup 137,120 not 651,680. The session and transfer counts stand.
+- §3.4: the CRC's byte-wise yield costs **448 B per 12-byte CRC** on the real VM, not 16,800. The
+  yield-granularity fix is a latency fix only (12 scheduler round-trips per CRC, 24 per setup).
+- O6/§8: the awaited-settle replacement removed 2 x ~32 B per session on the real VM, not 56% of
+  the session — its **bus-hazard** justification (§5.1) is the whole case for it now.
+- C9/§6A.8's "~12x against a required 40-100x" was computed in settrace bytes; the *ratio* is
+  build-independent only if both terms scale alike, which §1.2 item 7's table shows they do not.
+  Not re-derived here.
+
 ## 4. Per-module census — what is different about the FRAM path
 
 Every module constructed and set up in its own collection-free window, one process per
@@ -876,7 +1131,23 @@ bookkeeping.
 
 ## 5. `asyncio.sleep` allocation semantics
 
-[TWIN] Measured with one process per scenario (see §1.2 defect 6), windows verified collection-free.
+**Superseded on the numbers by §1.2 item 7.** Every figure in the table below is the settrace
+build's. On the settrace-free build (and therefore the board), measured the same way:
+
+| form | settrace | **settrace-free** |
+|---|---|---|
+| `await asyncio.sleep(0)`, `sleep_ms(0)`, `sleep_ms(1)`, `sleep_ms(50)` | 1,024-1,152 | **0 B** |
+| `await asyncio.sleep(0.001)`, `sleep(0.02)` | 1,312 | 32 B (one float) |
+| `await` an immediate-return coroutine | 224 | 64 B |
+| `asyncio.Lock` acquire + release | 672 | 288 B |
+| `async with lock: pass` | 1,216 | 576 B |
+
+A yield allocates nothing on the real VM. The rows below that describe *retention* (obsolete once
+complete, collectable) remain true trivially; the two rows about the damaging combination were
+measured with settrace's 28-block sleep objects standing in for "transient churn" and describe that
+object, not a yield.
+
+[TWIN, settrace] Measured with one process per scenario (see §1.2 defect 6), windows verified collection-free.
 
 | property | result |
 |---|---|
@@ -1612,6 +1883,13 @@ built per §1.4 and run from the repo root with `MICROPYPATH=.frozen`.
 | `unitcost.py` / `unit2.py` | per-allocation cost calibration (`bytearray(n)`, bare await, `sleep(0)`) |
 | `conc.py` | §0B.6's concurrency instrument: `_task_queue.peek()` at every yield of the real batch, phase-tagged per module `setup()`, with CS/I2C counters. `<cfg> [nofake] [census\|maps]` — `nofake` neutralises the twin's `Timer`/`WDT` task fakes (the real-hardware equivalent), `census` reports net retained bytes per phase, `maps` dumps the map at the seam and after each phase |
 | `qdbg.py` / `cattr.py` / `twinpar.py` | the two-task control validating `peek()`; per-module survivor attribution from `conc.py maps`; the count of twin `Timer`/`WDT` fake executions during the batch |
+| `fgraph.py` | §3A's instrumented call graph: every method of the six FRAM-path modules wrapped, exact call counts, caller->callee edges, yields and src-level await depth per yield site; `<cfg> <setup\|read\|write> [raw]`. Its byte columns are wrapper-inflated and only the counts/edges are used |
+| `fprice.py` | §3A.3's price list: every node in its own raw collection-free window, 8 reps, blank/valid state reset outside the window, `kept` column; `<cfg>` |
+| `depth.py` / `depth2.py` / `depth4.py` | the yield-cost-vs-await-depth measurements that exposed §1.2 item 7 (asyncio; multi-yield leaves; plain `yield from` chains with no asyncio) |
+| `cmp_settrace.sh` / `sleepcost2.py` | the same measurements on the settrace and settrace-free binaries side by side; the `asyncio.sleep`/`Lock` forms on both |
+| `along.py` | per module `setup()`: allocated and retained in the module's own code before, during and after its logger's round trip; twin `Timer`/`WDT` fakes neutralised |
+| `fill.py` | post-`build_system()` fill on a large heap, for §1.4's fill-fraction calibration of either binary |
+| `build-nosettrace` | `make -j8 BUILD=build-nosettrace VARIANT=standard VARIANT_DIR=<toolchain>/build_overrides/unix_kbd_intr_variant "CFLAGS_EXTRA=-DMICROPY_PY_SYS_SETTRACE=0 -Wno-array-bounds" FROZEN_MANIFEST=<scratchpad>/manifest_heap.py` in `ports/unix` — the heapprobe recipe with the flag off, into its own build dir; builds clean with no warnings |
 
 Two runtime neutralisations are applied in every harness, and are twin artifacts with no counterpart
 on the device: `_fram_chip.FramChip.__init__` shrunk from a 262 KB backing bytearray to 8 KB (the
@@ -1624,9 +1902,15 @@ allocation — hence rung r0's -68,992 B is an artifact, not a real saving.
 
 ## 11. Open decisions — owner's call, put and not yet answered
 
+0. **Build the twin/test interpreter without `MICROPY_PY_SYS_SETTRACE`** (§1.2 item 7) — a second
+   binary for `scripts/test.sh`, `--coverage` keeping its own. Every allocation figure the twin
+   produces today, the memory-safety suite's included, carries a per-call and per-resume cost the
+   firmware does not have. Touches `toolchain/setup_toolchain.py` and `scripts/`, so it is behind
+   the two-target clean-chroot gate; the recipe that produced `build-nosettrace` is in §10.
 1. **Ship the CRC yield-granularity fix (§3.4) on its own merits?** `src/crc_checks.py` is under no
-   editing restriction. Justified on latency and churn alone; measured **not** to improve
-   fragmentation (worst 26,528 vs base 26,784), so it is an efficiency fix, not the remedy.
+   editing restriction. Justified on latency alone now — 448 B per CRC on the real VM, not 16,800
+   (§3A.6); measured **not** to improve fragmentation (worst 26,528 vs base 26,784), so it is an
+   efficiency fix, not the remedy.
 2. **Are `asy_fram_driver.py`/`asy_fram_manager.py` open for a scoped exception?** The
    transaction-count reduction the §3.1 arithmetic points to — one 2-byte status write instead of two
    1-byte writes, one WREN envelope per chunk operation instead of per byte-level op — is a ~12x
