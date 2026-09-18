@@ -415,6 +415,10 @@ reopened only if A.6's measurement asks for it.
 
 ### A.7 Follow-ups A creates, outside the three files (each its own decision, none silent)
 
+- [x] **Measured on the owner's instruction, and the recommendation is against it** (§7C.3):
+      saves 288 B per FRAM operation and **0 B** at `setup()`, while costing 299 B of permanent
+      retention per store — ~6,300 B across the 21 stores. A ~1:1 trade of transient churn for
+      permanent survivors, which is the quantity the goal names. Owner's decision.
 - [ ] `AsyFramChunkBuffer` per store instead of per `get_buffer()` call: `print_log.py`'s
       `_write()`/`_read()` and `asy_sgp40_driver.py`'s `ts_storage` paths. Saves a `bytearray` +
       an `asyncio.Lock` per operation; a consumer-side change with its own tests. Propose, don't
@@ -424,6 +428,11 @@ reopened only if A.6's measurement asks for it.
 
 ### A.8 §11 item 1, folded in only if the owner says so
 
+- [x] **Measured on the owner's question** (§7C.3): the assumption is sound for the large
+      buffers (256 B SGP40 backup, 255 B UART max), the means is too fine (per-byte yielding costs
+      **5.8x the total wall time**), and it recovers **no memory at all** — allocation is a flat
+      160 B per `_crc` call regardless of length, since `sleep(0)` is free on this build. The fix
+      is size-dependent, not granularity-only. Owner's decision.
 - [ ] `src/crc_checks.py`'s `_crc()` yields after every byte; the FRAM path calls it on 13-byte
       buffers. Making the yield granularity a constructor parameter (default: unchanged) or
       yielding per N bytes is a latency-only fix (0 B on the real VM; 448 → ~100 B per CRC on

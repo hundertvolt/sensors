@@ -2387,8 +2387,11 @@ paid, and that difference — 4,544 B measured, 18,240 to 13,696 — is the whol
 bought.
 
 The residue, roughly: ~4,600 B of block-operation locks, ~1,700 B of `_set_check_sb()`/
-`_handle_status_bytes()` coroutines (18 per blank `setup()`), ~2,300 B of `crc_checks`' `async`
-per-byte CRC, and ~5,000 B of the chunk layer's own coroutines and buffers.
+`_handle_status_bytes()` coroutines (18 per blank `setup()`), and the rest in the chunk layer's own
+coroutines and buffers. **Two terms of an earlier version of this list were wrong and are corrected
+in §7C.3**: the CRC term was given as ~2,300 B (it is ~320 B — a blank `setup()` makes exactly
+**two** `_crc` calls, not fourteen) and ~5,000 B was attributed to what plan item A.7 could recover
+(it recovers 288 B per operation and nothing at `setup()`).
 
 **Why this is not §3B's 38x, and why that number was never reachable.** Two of those four residue
 terms are not part of this restructure at all. `crc_checks.CRC_Base._crc` is a coroutine with an
@@ -2525,12 +2528,11 @@ non-collecting arm (it predicted 15.4% where `base` measured 14.2%). A's real do
 B/logger** and it measured **12.4%** — inside the bracket, on the high side, exactly where the
 injector says that dose lands. Instrument and real code agree.
 
-**So A stopped just short of a threshold whose position is now bracketed**, and the residue that
-would cross it is named: ~2,300 B of `crc_checks`' `async` per-byte CRC (§11 item 1 / plan A.8) and
-~5,000 B of chunk-layer coroutines and per-`get_buffer()` `Lock`s (plan A.7), both **outside** the
-three files this measure's scoped exception covers. Taking them would put the dose near 6,400
-B/logger, below the 9,369 B point that measured 51.1%. That reclassifies A.7 and A.8 from optional
-follow-ups to the remainder of the churn fix — a prediction, cheap to test, not a claim.
+**So A stopped just short of a threshold whose position is now bracketed.** An earlier version of
+this section then claimed A.7 and A.8 would together recover ~7,300 B and put the dose near 6,400
+B/logger, below the 9,369 B point that measured 51.1%. **That is retracted** — §7C.3 measured both
+items and neither recovers what was attributed to it. The residue is real, but it is not in those
+two places, so there is no measured path from 13,696 B to the far side of the bracket.
 
 **That is the honest I.4(e)/(f) record this row exists for** (HEAP_REMEDIATION_PLAN.md A.5): A is an
 allocation-count fix worth 9.0x, it reduces batch survivors ~10% on an axis that is not binding, it
@@ -2542,6 +2544,61 @@ does not reduce their scatter, and it leaves the churn axis short of its own thr
 count those 17 attributes inflated the hoisted-buffer figure measured immediately after it from 3,200
 to 3,520 B — the `__dict__` access allocates 320 B of its own, the same artifact `mapdump_live` has.
 The 3,200 B above is from the run without it.
+
+### 7C.3 A.7 and A.8 measured, on the owner's instruction (2026-09-18)
+
+Both were filed as "propose, don't do". The owner asked for A.7 to be measured before deciding, and
+asked of A.8 whether the assumption behind it was wrong or only the means. Settrace-free binary,
+live `src/`, steady state past first-instance module-init artifacts.
+
+**A.8 — `crc_checks.CRC_Base._crc`'s `await asyncio.sleep(0)` after every byte.** The owner's reason
+for it was that a CRC run in one go could stall other asyncio tasks.
+
+| input | synchronous | per-byte yield | factor | alloc sync | alloc async |
+|---|---|---|---|---|---|
+| CRC8, 12 B — a `PrintLogHistoryStore` chunk | 7.5 us | 41.8 us | 5.8x | 0 B | 160 B |
+| CRC8, 48 B — `asy_uart_comm`'s default payload | 29.7 us | 172.5 us | 5.8x | 0 B | 160 B |
+| CRC8, 255 B — that payload's maximum | 154.6 us | 903.5 us | 5.8x | 0 B | 160 B |
+| CRC32, 256 B — the SGP40 FRAM backup | 156.9 us | 910.9 us | 5.8x | 0 B | 160 B |
+
+(x86 Unix port; the RP2040 factor is **unmeasured** — queued as a device script beside
+`REAL_HARDWARE_TEST_QUEUE.md` §1A's A6.)
+
+Three things follow. **The assumption is sound where the buffers are large**: the largest CRC input
+in the system is 256 B (`VOCAlgorithm.get_params_memsize()`, CRC32, the SGP40 backup) and 255 B on
+the UART, and a synchronous run over those is 2,048 inner iterations of interpreted bit-banging.
+Even a conservative RP2040 factor puts that in the milliseconds, which is the same order as the
+4.4 ms per-frame UART stall Part F.5.8 treats as a defect. **The means is too fine**: the yield
+count scales with the buffer, so bounding each stretch at one byte costs **5.8x the total wall
+time** — the loop is occupied almost six times longer to keep each stretch short. Yielding every
+`N` bytes bounds the stretch just as well at a fraction of that (at N=16 the overhead is ~1.4x, not
+5.8x). **And it recovers no memory**: the allocation is a flat **160 B per `_crc` call regardless of
+length**, because `await asyncio.sleep(0)` allocates nothing on this build (§5) — so the per-byte
+yields are free in bytes and expensive in time, the exact opposite of how this file had them priced.
+A blank logger `setup()` makes **two** `_crc` calls, 12 B each, for ~320 B in total. Only making
+`_crc` synchronous recovers that, and for the 256 B case the owner's original concern forbids it.
+The shape the evidence points at is therefore size-dependent, not granularity-only: a synchronous
+path for small buffers and a coarse-yield async path above some length.
+
+**A.7 — `AsyFramChunkBuffer` per store instead of per `get_buffer()` call.** Prototyped by caching
+one instance per chunk and re-running the real paths:
+
+| | valid `setup()` | 10x `_write()` | 10x `_read()` |
+|---|---|---|---|
+| per call (today) | 96 B | 178,240 B | 191,680 B |
+| per store (A.7) | 96 B | 175,360 B | 188,800 B |
+| **saving** | **0 B** | **2,880 B (288 B/op)** | **2,880 B (288 B/op)** |
+
+And the cost side, steady state: **299 B of permanent retention per buffer** (110 B of it the
+`asyncio.Lock`; the first instance reads 384-1,120 B, a one-time module-init artifact that a warm-up
+removes). Across the 21 FRAM-backed stores that is **~6,300 B of new permanent survivors**.
+
+**So A.7 trades 288 B of transient churn per operation for 299 B of permanent retention per store,
+roughly 1:1 by the byte** — and it saves nothing at `setup()`, which is the phase the defect lives
+in. That is the same trade A.1.3's buffer hoisting already made (+7,232 B permanent, §7C.2), which
+measured slightly net-negative on placement and did not reduce scatter. Permanent survivors are the
+quantity the goal names. **Recommendation: do not take A.7.** The 288 B/operation is a run-phase
+saving worth under 10% of a block operation's ~3,200 B, and it is not worth 21 more survivors.
 
 ---
 
