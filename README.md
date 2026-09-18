@@ -722,6 +722,16 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   listed here for now so it isn't only locatable by cross-reference in the meantime. See
   `SPECIFICATION.md` Part A.10 for how it fits into the rest of the architecture.
 
+**`tests_hardware/README.md`** (permanent, kept current):
+
+- **`tests_hardware/README.md`** — the durable technical reference for the real-hardware tier:
+  prerequisites, environment variables, how to run each tier, the safety facts (the
+  `--allow-flash-cycle`/`--allow-persistence-writes`/`--allow-neopixel-sweep`/long-soak opt-in
+  gates, the stage-6 permanent-WLAN-deactivation risk, the FRAM-chunk overwrite trap), the ISL29125
+  bench-rig facts and the numbered audit passes that found this tier's own gaps. CLAUDE.md's
+  real-hardware hard rule points here for what a session with the owner's go-ahead needs to know;
+  `REAL_HARDWARE_TEST_QUEUE.md` above says *what* is owed, this file says *how*.
+
 **`dev_legacy/README.md`** (permanent, kept current):
 
 - **`dev_legacy/README.md`** — the single source of truth for the physical "dev" RP2040 bench

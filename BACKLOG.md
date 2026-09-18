@@ -534,7 +534,8 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     **Deliberately NOT carried, which is the one thing to know if this is ever revisited**: none of
     PR #84 exists on any other branch — `buildgen/gc_policy.py`, `scripts/build_firmware.py
     --gc-policy`, `--memory-pressure`, `tests_hardware/device_modules/memory_pressure.py`,
-    `tests_scripts/test_hardware_harness_transients.py` and SPECIFICATION.md Part I.6 — so that
+    `tests_scripts/test_hardware_harness_transients.py` and a Part I.6 that was only ever written on
+    that branch (nothing here references it, and no such section exists in SPECIFICATION.md) — so that
     build-and-instrument tooling, and the four validation-apparatus fixes that came with it, are
     unshipped by decision rather than by oversight. Its three bench passes stand as executed (queue
     §5).
