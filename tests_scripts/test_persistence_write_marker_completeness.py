@@ -1,6 +1,11 @@
 """Completeness guard for tests_hardware/'s persistence gate: a test that PUTs a config-persisting
 field but forgets @pytest.mark.persistence_write spends real RP2040 flash wear on every routine run,
-silently. The sibling gating test proves the flag WORKS; this proves nothing escapes it."""
+silently. The sibling gating test proves the flag WORKS; this proves nothing escapes it unowned."""
+
+# The gate covers the write a test OWNS, not one it is merely reached through: a shared prerequisite
+# (a fixture forcing a mode many tests then exercise, a recovery path) stays unmarked and allowed,
+# because gating it would deselect the tests it exists to enable. Owner's rule, 2026-09-18; the full
+# statement, and why the answer is not "spend zero", is in tests_hardware/README.md.
 
 import ast
 import re
@@ -26,10 +31,9 @@ _JUSTIFIED_UNMARKED = {
 _KNOWN_PERSISTING_HELPERS = {
     "isl29125_write_worker",  # bus-concurrency writer, driven only from persistence_write-marked tests
     "bmp3xx_write_worker",  # same
-    # Fixture, and the one entry whose triage is NOT settled: its stage-0 `PUT {"SSID": ""}` and
-    # its stage-7 restore both persist, and six of its dependents carry no marker, so a default
-    # run does spend flash through it. Marking them changes which tests run by default, so the
-    # call is the project owner's - see HANDOVER_HARNESS_AND_HEAP_FRAGMENTATION.md section 1.7.
+    # Fixture: its stage-0 `PUT {"SSID": ""}` forces hotspot mode so a dozen tests can run at all,
+    # and its stage-7 restore undoes that - prerequisite writes, not any one test's own, so its six
+    # unmarked dependents are correct rather than an oversight (owner's rule above).
     "joined_hotspot",
     "_restore_ssid_over",  # teardown-side restore for the garbage-SSID outage test
     "_recover_stale_dut_credentials",  # session-level recovery path, not a test's own write

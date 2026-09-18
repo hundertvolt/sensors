@@ -1006,6 +1006,17 @@ deliberately not one, in a strict hierarchy —
   write beyond the routine one. It is AND-gated with the global flag in code, not just by
   convention — passing it alone, without `--allow-persistence-writes`, still deselects that test.
 
+**What the gate is about: the write a test OWNS, not one it is reached through** (project owner's
+clarification, 2026-09-18). A persisting write that *is* the thing under test is optional, and
+belongs behind the marker. A persisting write that is a **prerequisite** several other tests are
+reached through — `test_hotspot_role_reversal.py`'s `joined_hotspot` clearing the SSID to force
+hotspot mode (and restoring it in teardown), `conftest.py`'s `_recover_stale_dut_credentials()` —
+stays unmarked and allowed: gating it would deselect the tests it exists to enable, and those tests
+are not what spends the wear. So the choice the flag offers is "test everything and accept the
+higher write wear" versus "test everything that matters and keep wear as low as it can go" — never
+"spend zero". `tests_scripts/test_persistence_write_marker_completeness.py` pins the prerequisite
+set by name, so a new one has to be triaged against this rule rather than silently joining it.
+
 **What counts as a limited-endurance store**: the SCD30's own on-chip NVM, and the RP2040's flash
 filesystem — which every accepted *config-persisting* PUT writes through `config_manager.py`'s own
 `json.dump()`, so a REST write is a flash cycle, not just a network round trip. A **dispatch-only**

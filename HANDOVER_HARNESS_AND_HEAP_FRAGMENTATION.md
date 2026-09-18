@@ -190,16 +190,18 @@ first (skipping the pretest build fails at `waitForSelector`).
 **Still unvalidated, by nature:** #2 is the only one of the five that changes what a real board run
 asserts, and nothing short of a bench go-ahead settles it.
 
-**One pre-existing thing §1.2 makes worth stating** (not introduced by it, not changed here): six
-tests in `test_hotspot_role_reversal.py` use the `joined_hotspot` fixture without carrying
-`@pytest.mark.persistence_write` (the ones at stage 0-2 and the DHCP pair). So in a default run with
-no `--allow-persistence-writes` — §1.6's run 3 — the fixture still instantiates, stage 0's SSID
-clear still writes the RP2040 flash filesystem, and the new teardown restore now writes it a second
-time (stage 6 is deselected in that mode, so the restore is a real change, not an `"Unchanged"`
-no-op). That is the right trade against stranding the board, but it means the gated bench run costs
-2 flash writes it is documented as not spending. Deciding whether those six tests should carry the
-marker changes which tests run by default, so it is left to the project owner rather than taken
-here.
+**A flash-wear question §1.2 raised, now settled by the project owner (2026-09-18).** Six tests in
+`test_hotspot_role_reversal.py` use the `joined_hotspot` fixture without carrying
+`@pytest.mark.persistence_write`, so in a default run with no `--allow-persistence-writes` — §1.6's
+run 3 — the fixture still instantiates, stage 0's SSID clear writes the RP2040 flash filesystem, and
+the teardown restore writes it a second time (stage 6 is deselected in that mode, so the restore is
+a real change, not an `"Unchanged"` no-op). **That is correct, not a gap**: the gate covers a write
+a test *owns*, not one it is reached through, and these are prerequisite writes that exist so a
+dozen other tests can run at all. Gating them would deselect exactly what they enable. The flag
+chooses between "test everything and accept the higher wear" and "test everything that matters and
+keep wear as low as it can go" — never "spend zero". Recorded in `CLAUDE.md`, `tests_hardware/
+README.md` and the completeness guard itself, whose `joined_hotspot` entry had justified the
+exemption on a different and untrue ground ("every dependent is marked").
 
 **Still open, not fixed:** `resolve_board_device()` is a second device-discovery implementation
 alongside `toolchain/setup_toolchain.py`'s vendor-ID one (`detect_pico_serial_devices()` /
