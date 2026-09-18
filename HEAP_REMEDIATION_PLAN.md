@@ -344,11 +344,24 @@ reopened only if A.6's measurement asks for it.
       zero `MemoryError`s anywhere in the sequence — caught-and-logged included, which the suite
       counts as a failure. Run 10's watchdog backstop still engaged for a genuinely wedged bus
       (`would_have_triggered_count=2`), so the blocking settle did not blunt it.
+      **Re-run after the §11 item 6 rebuild**: passed again at both thresholds, Run 11's trend a
+      1,021 B decline against an 11,749 B tolerance over 817 samples. One established test in
+      `tests/test_digital_twin_sensortask_integration.py` needed fixing for it — see A.3's note.
 - [x] `tests/test_digital_twin_sensortask_integration.py` (13 tests, including the hotspot-
       fallback one `f6a182d` once broke) green in isolation 5 of 5 runs — the scheduling-point
       regression of §8.1 is exactly the class of fault a yield-policy change can cause, and this
       is the file that caught it.
-      **Done**: 13/13 on all five isolated runs.
+      **Done**: 13/13 on all five isolated runs — and this is the file that caught the one real
+      consequence of making the FRAM path faster. `test_wifi_sta_failure_falls_back_to_hotspot_...`
+      scripted a *single* `STAT_NO_AP_FOUND`, and `digital_twin/network.py`'s queue falls back to
+      always-succeeding once exhausted, so the test hinged on that failure resolving *after* its
+      `connection_failures = 4` seeding, separated only by `await asyncio.sleep(0.2)`. That window
+      was only ever won by `wlan_connect()`'s prefix — two FRAM-backed `pr.setup()` calls — being
+      slower than 0.2 s, and at 9.0x it no longer is: 2 of 2 runs failed. Ruled out as a deadlock
+      (every FRAM lock free at the timeout, the WiFi warning persisted) and as the `_read_chunk`
+      yield bug (it reproduced with that fixed). The test now scripts eight failures, so either
+      ordering reaches `conn_fail_to_hotspot=5` through the same real state machine: 5 of 5 pass.
+      Slowing production code to fit a test's timing window would have been the wrong direction.
 
 ### A.5 Measurement, A alone (twin, no hardware)
 
