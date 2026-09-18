@@ -620,6 +620,25 @@ factor here; it is mildly protective at equal churn.
 carry an entirely separate, load-bearing obligation — keeping the event loop turning — and removing
 them broke a real test. See §8.1.
 
+**Re-tested without its confound, and it holds.** The table above holds *total churn* constant, so
+raising the yield count lowers the small-object count (each yield costs 896 B) — the yield axis was
+entangled with the one variable §6A.2 shows to be decisive. Re-run holding the **small-object count
+fixed** and adding yields on top, so yields add bytes without displacing any small object:
+
+| yields per logger | in_big at 3,000 small objects (p0/p3) | in_big at 8,783 small objects (p0/p3) |
+|---|---|---|
+| 0 | **21 / 21** | **15 / 13** |
+| 50 | 8 / 8 | 8 / 8 |
+| 200 | **4 / 4** | 6 / 6 |
+| 800 | 13 / 8 | 7 / 7 |
+| 3,000 | **2 / 0** | **2 / 2** |
+
+Monotone-ish downward at both dose levels and in both perturbation families, so the protective
+effect is real and not the confound. The mechanism is the same one §6A.3 measures: a yield is a
+28-block allocation that fits 1% of the dust holes, so it cannot take a hole a ~2-block survivor
+needs. `kept%` is noisier than `in_big` here (at 50 yields it reads worse than at 0 while in_big
+reads better) — the placement lottery, §6A.10.
+
 ### 6A.5 Small-object count, total bytes held constant
 
 Balance of the byte budget in 1024 B units, which cannot fit a dust hole:
@@ -730,6 +749,57 @@ mixed-shape branch), which shifts the seam and therefore the placement lottery �
 the same configuration read in_big 3 in one campaign and 8 in another. Compare figures only within
 the campaign that produced them; each table above is internally consistent and was reproduced across
 both perturbation families.
+
+### 6A.10 Parallelism, and why the whole thing is a lottery
+
+**The outcome is chance plus a threshold, at every level measured.** The same configuration gives
+in_big 2-20 across perturbations; two perturbation families disagree in *direction* on the same
+variant; no two beneficial changes compose (§6.6). This is the most robust qualitative finding in
+the investigation, and it is why every headline figure here is ensembled and why a single
+configuration can never establish a remedy.
+
+**Genuine parallelism — churn concurrent with survivor births, not merely adjacent to them.** Every
+other experiment in §6A injects churn *inline*, inside a logger setup, so churn and survivor
+allocation alternate at module granularity. `parplus` instead keeps the real batch completely intact
+(`cs=668`, `xfer=1084`, `initialized=10` — the real FRAM logger I/O untouched, so the batch keeps
+its real duration and its real await points) and adds a **concurrent churn task** on top, running
+for the batch's whole duration. Ensembled over 6 perturbations, with ~5M concurrent small objects:
+
+| | base | base + concurrent churn |
+|---|---|---|
+| in_big per run | 4, 6, 2, 4, 2, 2 | 0, **20**, 6, 6, 2, 3 |
+| in_big worst | 6 | **20** |
+| largest free block, median | 40,544 | **33,120** |
+| largest free block, worst | 25,248 | 25,120 |
+
+Added parallelism **widens the distribution and worsens the tail** (worst in_big 6 -> 20, median
+largest block down 18%) while barely moving the worst case of the largest-block metric. That is the
+shape of "more parallelism buys more tickets in a worse lottery".
+
+**Stated as suggestive, not established**, for three reasons: n=6 per variant rather than the usual
+16; this campaign's base runs unusually clean (in_big 2-6, against 7-16 in the larger ensembles), so
+the contrast may be inflated; and the churn task retains its own objects, moving the survivor
+population 69 -> 82, so it is not a pure isolation. Closing it needs the full ensemble and a design
+that holds the churner's own retained objects constant.
+
+**One factor in the conjunction remains entirely untested: the survivor population itself.** It has
+been a fixed ~76 objects / ~4 KB in every run here, never varied. "More permanent reservations made
+during the churn window" is a plausible fourth condition and is directly testable by injecting extra
+*retained* allocations during the batch, which no experiment here does.
+
+### 6A.11 Scorecard against the conjunction model
+
+The model that matches the evidence: the defect needs several conditions met at once, each with a
+threshold, and above them the outcome is a heavy-tailed lottery rather than a gradient.
+
+| candidate factor | verdict |
+|---|---|
+| **allocation size class** of the transients relative to the survivors | **decisive, hard threshold** (§6A.2/§6A.3) — 5 vs 9 GC blocks flips it binary at constant everything else, with 82% vs 16% dust-hole occupancy measured and predicted from the hole histogram. The sharpest single knob found |
+| **churn volume** | **threshold, then saturation** (§6A.8) — gradual front advance to 8,000 B per logger, saturated from 20,000 B, then flat across a 42x range |
+| **position** relative to long-lived allocation | **decisive** (§2.5) — the only exact zero found anywhere |
+| **parallelism** (churn concurrent with survivor births) | **suggestive**: worse tail and lower median (§6A.10), not established |
+| **interleaving / yield count** | **measured in the opposite direction** — protective at fixed small-object count (§6A.4), with a mechanism that explains why. Note this is a layout statement only; §8.1 is what removing yields costs |
+| **survivor population size** | **untested** (§6A.10) |
 
 ## 7. Remedy candidates, measured
 
@@ -915,7 +985,9 @@ built per §1.4 and run from the repo root with `MICROPYPATH=.frozen`.
 | `sleepbench.py` | §5's sleep-cost scenarios, one process each |
 | `ens.sh` / `ens2.sh` | the two perturbation families (§1.3) |
 | `audit_check.py` / `constchk.py` | per-variant semantic audits; the `const()` visibility check |
-| `probe.py synth` mode | §6A's factorial injector. argv: `<cfg> synth <audit> <pert> <q> <churn_b> <yields> <blk\|coro> <unit> [peak] [small_n]` |
+| `probe.py synth` mode | §6A's factorial injector. argv: `<cfg> synth <audit> <pert> <q> <churn_b> <yields> <blk\|coro> <unit> [peak\|trace] [small_n]`. With `small_n >= 0` the three knobs (small objects, yields, hole-proof 1024 B units) are set explicitly and interleaved evenly, which is how §6A.4's confound-free yield sweep is run; with `small_n` omitted the byte budget is held constant instead |
+| `probe.py synthpar` / `parplus` modes | §6A.10's concurrent-churn task. `synthpar` no-ops the logger setups (and so starves its own task of scheduling slots - the batch's awaits are what create the parallelism); `parplus` keeps the real batch intact and adds the task on top, which is the one that isolates added parallelism |
+| `spread.py` / `saw.py` | survivor decile histogram, heap span and distinct-run count; the fill-sawtooth trace analysis |
 | `fgrid.py` / `holes.py` / `peak.py` / `hist.py` | in_big + kept% per run; dust-hole occupancy; matched non-collecting peak dumps; the seam hole-size histogram |
 | `unitcost.py` / `unit2.py` | per-allocation cost calibration (`bytearray(n)`, bare await, `sleep(0)`) |
 
