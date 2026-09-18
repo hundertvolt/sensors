@@ -4236,6 +4236,19 @@ themselves linted (their own `files` block in `eslint.config.js`, Node globals, 
 `BUG_CATCHING_RULES` as `scripts/**/*.mjs`), so the linter is not held to a weaker standard than
 the code it checks. Root `.nvmrc` pins the Node version.
 
+**The workflow triggers on `push` to every branch as well as on `pull_request`, and that is not
+redundancy.** A `pull_request` run builds `refs/pull/N/merge`; when a PR conflicts with its base
+that ref cannot be created, so GitHub creates **no run at all** — the branch silently stops being
+tested, with nothing red anywhere to notice. Found the hard way (2026-09-18): `main` landed its own
+ISL29125 promotion on 2026-09-14, `claude/automated-build-chain-nuzumw` went conflicted the same
+day, and because `push` was scoped to `main` alone, **128 commits went unverified** before anyone
+looked. The `push` leg is the branch's own guaranteed coverage; the shared concurrency group
+(`github.head_ref || github.ref_name`, identical for both triggers on one branch) plus
+`cancel-in-progress` keeps exactly one of the two alive per push, so the second trigger costs no
+extra matrix time. This is the same failure class as the `paths:`-filtered second workflow file
+above — a check that never fires reads exactly like a check that passed. **When judging whether a
+branch is green, check that CI actually ran on its head commit**, not just that nothing is red.
+
 ### H.8.1 JSDoc typedef imports across the browser/Node split
 
 A JSDoc `@typedef {import("./x.js").Y}` pulls the *entire* referenced file into whichever

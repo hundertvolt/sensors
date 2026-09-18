@@ -1,12 +1,28 @@
 name: CI
 
+# Two triggers on purpose, and the `push` leg is the load-bearing one. A `pull_request` run is
+# built against `refs/pull/N/merge`, the merge commit GitHub precomputes - so when a PR has a
+# merge CONFLICT with its base, that ref cannot exist, GitHub creates no run at all, and the
+# branch silently stops being tested with no failure anywhere to notice. That is not
+# hypothetical: `main` landed its own ISL29125 promotion on 2026-09-14, which conflicted with
+# `claude/automated-build-chain-nuzumw`, and 128 commits then went unverified because
+# `push` was scoped to `main` alone and nothing else covered the branch. Same failure class as
+# the `paths:`-filtered second workflow file the web-changes job below explains avoiding
+# (SPECIFICATION.md Part H.8): a check that never fires reads exactly like a check that passed.
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: ['**']  # '**' rather than bare `push:`, so pushing a tag doesn't run the suite again
 
+# Deliberately shared between the two triggers above: `github.head_ref` is the source branch on a
+# pull_request and empty on a push, where `github.ref_name` is that same branch name - so a push
+# to a branch with an open PR puts both runs in ONE group and `cancel-in-progress` leaves exactly
+# one alive. Exactly one, not zero and not two: no doubled spend on this matrix, and a conflicted
+# PR still gets the `push` run because it is then the only one that exists. Which of the two
+# survives is a race and does not matter - they differ only in whether the tree carries the merge
+# commit, and for a conflicted PR there is no merge commit to test in the first place.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 # Deny-by-default for the automatic GITHUB_TOKEN: without this block every job inherits whatever
